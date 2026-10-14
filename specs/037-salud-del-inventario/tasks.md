@@ -20,7 +20,8 @@
 - [ ] T003 [P] Test table-driven de `HealthFilter.Validate` (rango invertido, más de 366 días, fecha mal formada → `ErrValidation`; ausente → últimos 30 días; `section`, `limit`, `offset` fuera de rango → `ErrValidation`) en `server/internal/domain/inventory_health_test.go`
 - [ ] T004 [P] Test table-driven de `ModeOf` (own_stock heredado, recipe, package, none confirmado, undecided) en `server/internal/domain/consumption_mode_test.go`
 - [ ] T005 Implementar `HealthFilter`, `HealthIssueKind` en `server/internal/domain/inventory_health.go` y `ConsumptionMode`, `ModeOf` en `server/internal/domain/consumption_mode.go` hasta que T003 y T004 pasen
-- [ ] T006 [P] Test de que `inventory.health_view` y `menu.configure` los tienen admin y gerente y no cajero ni cocina, en `server/internal/domain/permission_test.go`; luego agregar `PermInventoryHealthView` y `PermMenuConfigure` en `server/internal/domain/permission.go` y su espejo en `web/src/app/permissions.ts`
+- [ ] T006 [P] Test de que `inventory.health_view` y `menu.configure` los tienen admin y gerente y no cajero ni cocina, en `server/internal/domain/permission_test.go`
+- [ ] T006a Hasta que T006 pase: agregar `PermInventoryHealthView` y `PermMenuConfigure` en `server/internal/domain/permission.go` y su espejo en `web/src/app/permissions.ts`
 - [ ] T007 (movida a T030: la acción de bitácora se agrega en el mismo cambio que la produce, para que `TestEveryAuditActionIsProduced` nunca quede en rojo entre commits)
 
 **Checkpoint**: dominio base listo.
@@ -44,6 +45,7 @@
 - [ ] T012b [P] [US1] Test de que Menú › Recetas abre con el filtro de `?status=review` y con la receta de `?open=product:N` / `?open=option:N` ya abierta; un valor desconocido no rompe la pantalla y se ignora sin filtrar (FR-008, FR-009), en `web/src/features/admin/RecipesPage.test.tsx`
 - [ ] T012c [P] [US1] Test de `StockPage`: la pestaña «Salud» aparece con `can('inventory.health_view')` y no aparece sin él, sin mirar el nombre del rol; las pestañas miden al menos 44 px; las tres pestañas de antes siguen funcionando dentro de `<Page fill>` (FR-012), en `web/src/features/backoffice/StockPage.test.tsx`
 - [ ] T012d [P] [US1] Test de que `rolesPorPantalla` de Salud coincide con los roles que tienen `inventory.health_view` en el mapa de permisos, y falla nombrando la pantalla si divergen, en `server/internal/domain/uso_test.go`
+- [ ] T018 [P] [US1] Tests de vitest de la pestaña (secciones que se abren, primera abierta, «El inventario está sano» solo con ventas en el periodo y cero problemas, «No hubo ventas en este periodo» sin ventas (y las demás secciones igual visibles), negativos con renglón explicativo, «Recetas pendientes de confirmar» con «Las cargó el sistema y nadie las ha confirmado» y «Ir a Recetas ›» hacia `?status=review` (FR-008), «Las ventas anteriores no se recalculan», combos con varias opciones con su pastilla «Siempre resta el de fábrica» (FR-002b), un periodo rechazado por el servidor muestra el mensaje y no cambia la lista (FR-010), textos de FR-019 tal cual, renglón completo como botón, sin `Page` anidado contando `max-width: 1150px`) en `web/src/features/backoffice/InventoryHealthTab.test.tsx`
 
 ### Implementación
 
@@ -52,7 +54,6 @@
 - [ ] T015 [US1] Handler fino `GetInventoryHealth` y ruta `GET /stock/health` con `RequirePermission(PermInventoryHealthView)`, registrada FUERA del grupo `/stock` con `RequireRole`, hasta que T011 y T012a pasen, en `server/internal/httpapi/handlers_inventory_health.go` y `server/internal/httpapi/router.go`
 - [ ] T016 [US1] Medir con `EXPLAIN (ANALYZE, BUFFERS)` como `gatobobah_app` sobre el respaldo del 13-oct; 30 días < 1 s; anotar el resultado en `specs/037-salud-del-inventario/research.md`
 - [ ] T017 [P] [US1] Cliente `health()` y tipos (campos de arreglo opcionales) en `web/src/api/backoffice.ts`
-- [ ] T018 [P] [US1] Tests de vitest de la pestaña (secciones que se abren, primera abierta, «El inventario está sano» solo con ventas en el periodo y cero problemas, «No hubo ventas en este periodo» sin ventas (y las demás secciones igual visibles), negativos con renglón explicativo, «Recetas pendientes de confirmar» con «Las cargó el sistema y nadie las ha confirmado» y «Ir a Recetas ›» hacia `?status=review` (FR-008), «Las ventas anteriores no se recalculan», combos con varias opciones con su pastilla «Siempre resta el de fábrica» (FR-002b), un periodo rechazado por el servidor muestra el mensaje y no cambia la lista (FR-010), textos de FR-019 tal cual, renglón completo como botón, sin `Page` anidado contando `max-width: 1150px`) en `web/src/features/backoffice/InventoryHealthTab.test.tsx`
 - [ ] T019 [US1] `InventoryHealthTab` según plan.md › Maquetas, fila «Almacén › Salud» (opción A): `Box flex="1" minH={0}`, periodo con `Picker` y dos `DatePickerButton`; al desplegar «sin compras», un `DatePickerButton` «Sin compras desde» (ausente = nunca) que manda `noPurchasesSince`; renglones de 54 px, «Ver 25 más» que pide `section=…`, en `web/src/features/backoffice/InventoryHealthTab.tsx`
 - [ ] T020 [US1] Hasta que T012c pase: `StockPage` pasa a `<Page fill>` con la pestaña «Salud» visible solo con `can('inventory.health_view')` (nunca por nombre de rol), y `Tabs.Trigger` con `minH="44px"` en `web/src/features/backoffice/StockPage.tsx`
 - [ ] T021 [P] [US1] Menú › Recetas lee `?status=` y `?open=` de la URL, hasta que T012b pase, en `web/src/features/admin/RecipesPage.tsx`
@@ -77,6 +78,7 @@
 - [ ] T027 [P] [US3] Test de que un cajero recibe 403 en las rutas `PUT …/composition` y `…/confirm` de producto y de extra aunque la petición no venga de la pantalla, y que con un `PermissionResolver` de prueba decide el permiso `menu.configure` y no el nombre del rol (FR-016), en `server/internal/httpapi/handlers_composition_test.go`
 - [ ] T027a [US3] Tests en rojo de nombres de insumo sin duplicar (sin distinguir mayúsculas ni acentos), en `server/internal/integration/consumption_mode_test.go`: alta duplicada → 409; renombrar a un duplicado con `UpdateIngredient` → 409; dos altas concurrentes «Lata» / «lata» → exactamente una gana. Y en `web/src/features/backoffice/ExpenseDialog.test.tsx`: el alta desde el diálogo del gasto con un nombre que solo cambia mayúsculas o acentos muestra el aviso de nombre repetido que ya existe para el 409
 - [ ] T027b [P] [US3] Test de que el renglón de Menú › Recetas de un producto «Se compra hecho» dice «Resta 1 por venta · tienes N» con N la existencia del insumo, y «Resta 6 por venta» cuando la receta lleva 6, en `web/src/features/admin/RecipesPage.test.tsx`
+- [ ] T031 [P] [US3] Tests de vitest de la hoja: cuatro tarjetas; «Se compra hecho» preselecciona el insumo de nombre parecido y deja «Crear una nueva» al final; «¿Cuántas tienes de verdad?» en rejilla 2×2 con «Guardar» apagado hasta elegir; «Otra» con `scrollIntoView`; «Guardar» apagado en «Se prepara aquí» o «Es un combo» sin contenido (FR-014b); «Crear una nueva» con un nombre que ya existe ofrece el existente en vez de crear; aviso de latas solo si había existencia propia (FR-020); confirmación antes de dejar en cero (FR-014b); 409 vuelve a preguntar con cifras nuevas; una receta por revisar muestra el aviso con «Las cargó el sistema y nadie las ha confirmado» tal cual (FR-019); «¿Una venta lleva más de una?» muestra el selector oculto y guardar manda la cantidad elegida; en `web/src/shared/CompositionSheet.test.tsx`
 
 ### Implementación
 
@@ -85,7 +87,6 @@
 - [ ] T029a [US3] Hasta que T027 pase: sacar las rutas `PUT …/composition` y `…/confirm` de producto y de extra de los grupos con `RequireRole` y dejarlas solo con `RequirePermission(PermMenuConfigure)`, en `server/internal/httpapi/router.go`
 - [ ] T030a [US3] Nombres de insumo sin duplicar, hasta que T027a pase: `CreateIngredient` (`server/internal/app/articles.go`) **y** `UpdateIngredient` (`server/internal/app/costing.go`, el que renombra) rechazan con `ErrConflict` un nombre igual a otro insumo de la empresa sin distinguir mayúsculas ni acentos (hoy el `unique (company_id, name)` solo atrapa el idéntico). La normalización vive en `domain` y es la misma que usa «duplicado» en «Recetas con un error» (FR-007). Dentro de la transacción, antes de buscar, se toma el candado por empresa con llave propia (research R7d)
 - [ ] T030 [US3] Agregar la acción `product.consumption_mode` (grupo `inventory`) a la lista blanca de `server/internal/domain/audit.go` y su etiqueta en `web/src/shared/audit/labels.ts`. En `SaveComposition`: después de `LockCompositionEdits`, bloquear filas, llamar a `PlanModeChange`, insertar ajustes, apagar `track_stock`, `recordAudit` en la misma tx; `validateComposition` deja de rechazar receta en `track_stock`; aceptar `actualStock`, `seenProductOnHand`, `seenIngredientOnHand`; en `server/internal/app/composition.go` y su handler
-- [ ] T031 [P] [US3] Tests de vitest de la hoja: cuatro tarjetas; «Se compra hecho» preselecciona el insumo de nombre parecido y deja «Crear una nueva» al final; «¿Cuántas tienes de verdad?» en rejilla 2×2 con «Guardar» apagado hasta elegir; «Otra» con `scrollIntoView`; «Guardar» apagado en «Se prepara aquí» o «Es un combo» sin contenido (FR-014b); «Crear una nueva» con un nombre que ya existe ofrece el existente en vez de crear; aviso de latas solo si había existencia propia (FR-020); confirmación antes de dejar en cero (FR-014b); 409 vuelve a preguntar con cifras nuevas; en `web/src/shared/CompositionSheet.test.tsx`
 - [ ] T032 [US3] `CompositionSheet` según plan.md › Maquetas, fila «Hoja de receta: modo de consumo» (B simplificada, versión 7): título en pregunta, tarjeta «Se compra hecho» que crea el insumo con `POST /stock/ingredients` solo como última opción, stepper detrás de «¿Una venta lleva más de una?», aviso de recetas por revisar con la frase de FR-019, en `web/src/shared/CompositionSheet.tsx`
 - [ ] T033 [US3] Hasta que T027b pase: el renglón de Menú › Recetas muestra «Resta 1 por venta · tienes N» en `web/src/features/admin/RecipesPage.tsx`
 
@@ -133,9 +134,9 @@
 
 ## Parallel examples
 
-- Phase 2: T003, T004 y T006 a la vez.
-- US1: T008, T011, T012b, T012c y T012d a la vez (archivos distintos); T009, T010 y T012 después de T008, y T012a después de T011, en el mismo archivo; luego T017, T018 y T021 en paralelo con T013–T015.
-- US3: T023, T024, T027 y T027b a la vez (archivos distintos); T025, T026 y T027a después de T024, en el mismo archivo; T031 en paralelo con T028–T030.
+- Phase 2: T003, T004 y T006 a la vez; T005 y T006a después.
+- US1: T008, T011, T012b, T012c, T012d y T018 a la vez (archivos distintos); T009, T010 y T012 después de T008, y T012a después de T011, en el mismo archivo; luego T017 y T021 en paralelo con T013–T015.
+- US3: T023, T024, T027, T027b y T031 a la vez (archivos distintos); T025, T026 y T027a después de T024, en el mismo archivo.
 
 ## Implementation strategy
 
