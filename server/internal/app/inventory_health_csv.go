@@ -54,12 +54,17 @@ func (s *InventoryHealthService) CSV(ctx context.Context, f domain.HealthFilter)
 		}
 		for _, u := range it.Units {
 			// El costo se reparte por canal con el costo unitario de hoy: sumar la columna da el total.
-			cost := decimal.Zero
-			if it.Pieces.IsPositive() {
-				cost = domain.Round2(it.EstimatedCost.Mul(u.Units).Div(it.Pieces))
+			// Sin costo capturado, la celda va vacía: un 0 se sumaría como «no se pierde nada».
+			cost := ""
+			if it.EstimatedCost != nil {
+				share := decimal.Zero
+				if it.Pieces.IsPositive() {
+					share = domain.Round2(it.EstimatedCost.Mul(u.Units).Div(it.Pieces))
+				}
+				cost = num(share)
 			}
 			write(string(domain.SectionUnsold), tipo, id(it.ID), safeCell(it.Name), safeCell(it.Group), it.Status,
-				safeCell(u.Channel), num(u.Units), num(cost), "", "", "")
+				safeCell(u.Channel), num(u.Units), cost, "", "", "")
 		}
 	}
 	for _, c := range v.ComboChoices.Items {

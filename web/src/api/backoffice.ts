@@ -624,7 +624,8 @@ export interface HealthUnsoldItem {
   units?: { channel: string; units: string }[];
   pieces: string;
   linesWithoutDeduction: number;
-  estimatedCost: string;
+  // null cuando nadie ha capturado el costo: no es «$0».
+  estimatedCost: string | null;
   fixAt: string;
 }
 export interface HealthComboChoice { productId: number; name: string; slot: string; options: number; fixAt: string }

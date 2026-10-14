@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -207,7 +208,7 @@ func TestUnsoldDeductionIsMeasuredOnWhatTheSaleLeft(t *testing.T) {
 	if porCanal["Mostrador"] != "2" || porCanal["Uber Eats"] != "1" || len(porCanal) != 2 {
 		t.Errorf("piezas del Shot por canal = %v, quiere Mostrador 2 y Uber Eats 1", porCanal)
 	}
-	if !shot.EstimatedCost.Equal(decimal.RequireFromString("37.5")) {
+	if shot.EstimatedCost == nil || !shot.EstimatedCost.Equal(decimal.RequireFromString("37.5")) {
 		t.Errorf("costo estimado del Shot = %s, quiere 3 × 12.50 = 37.50", shot.EstimatedCost)
 	}
 	if shot.Status != string(domain.ModeUndecided) {
@@ -555,5 +556,59 @@ func TestAnEmptyPageKeepsTheRealTotal(t *testing.T) {
 	f.Section = domain.SectionMalformed
 	if v := reportAsApp(t, k.st, f); v.MalformedRecipes.Total != 0 {
 		t.Errorf("sin recetas con error, el total sigue en 0: %d", v.MalformedRecipes.Total)
+	}
+}
+
+// Visto en el ambiente de pruebas (13-oct): los extras sin costo capturado salían con «$0 costo
+// estimado», que se lee como «aquí no se pierde dinero», y por ordenar por costo se iban al fondo
+// aunque se vendieran mucho. Sin costo se dice «sin costo» (null, celda vacía en el CSV) y esos
+// renglones van después de los que tienen monto, por piezas vendidas.
+func TestAnItemWithoutCostSaysSoInsteadOfZero(t *testing.T) {
+	t.Parallel()
+	k := newHealthKit(t)
+	galleta := makeProduct(t, k.st, "Galleta sin costo salud", decimal.RequireFromString("10"), false)
+	dulce := makeProduct(t, k.st, "Dulce sin costo salud", decimal.RequireFromString("10"), false)
+	k.sell(t, line(galleta, "5"), line(dulce, "2"), line(k.shot, "1"), line(k.frappe, "1", k.sinReceta))
+
+	v := reportAsApp(t, k.st, julio())
+	var order []int64
+	for _, it := range v.UnsoldDeduction.Items {
+		order = append(order, it.ID)
+	}
+	want := []int64{k.shot, k.sinReceta, galleta, dulce}
+	if len(order) != len(want) {
+		t.Fatalf("renglones = %v, quiere %v", order, want)
+	}
+	for i := range want {
+		if order[i] != want[i] {
+			t.Fatalf("orden = %v, quiere primero los que tienen monto (Shot 12.50, sabor 4.00) y después los sin costo por piezas (galleta 5, dulce 2): %v", order, want)
+		}
+	}
+	raw, err := json.Marshal(unsoldOf(v, "product", galleta))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"estimatedCost":null`) {
+		t.Errorf("un producto sin costo capturado viaja como %s: «0» se lee como «no se pierde nada»", raw)
+	}
+
+	as := appRoleStore(t)
+	ctx, release, err := as.AcquireTenant(context.Background(), defaultCompanyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	body, _, err := app.NewInventoryHealthService(as).CSV(ctx, julio())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(body), "\uFEFF"))).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows[1:] {
+		if r[3] == "Galleta sin costo salud" && r[8] != "" {
+			t.Errorf("en el CSV la galleta sin costo dice costo_estimado %q; quiere la celda vacía", r[8])
+		}
 	}
 }

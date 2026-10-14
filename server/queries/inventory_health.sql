@@ -61,7 +61,9 @@ with lines as (
   select i.kind, i.id, i.pieces, i.lines, i.units,
          case when i.kind = 'product' then p.name::text else mo.name::text end as name,
          case when i.kind = 'product' then c.name::text else mg.name::text end as grp,
-         coalesce(case when i.kind = 'product' then p.current_cost else mo.current_cost end, 0) as cost,
+         -- Un costo en 0 es «nadie lo ha capturado», no «no cuesta»: queda NULL para no ordenarse ni
+         -- mostrarse como «aquí no se pierde dinero».
+         nullif(case when i.kind = 'product' then p.current_cost else mo.current_cost end, 0) as cost,
          coalesce(p.track_stock, false) as track_stock,
          coalesce(p.type::text, '') as product_type,
          coalesce(case when i.kind = 'product' then p.recipe_id else mo.recipe_id end, 0) as recipe_id,
@@ -75,14 +77,15 @@ with lines as (
 )
 select d.kind::text as kind, d.id::bigint as id, d.name::text as name, d.grp::text as grp,
        d.pieces::numeric(14,4) as pieces, d.lines::int as lines, d.units::jsonb as units,
-       round(d.pieces * d.cost, 2)::numeric(14,2) as estimated_cost,
+       coalesce(round(d.pieces * d.cost, 2), 0)::numeric(14,2) as estimated_cost,
+       (d.cost is not null)::bool as has_cost,
        d.track_stock::bool as track_stock, d.product_type::text as product_type,
        (d.recipe_id <> 0 and exists (select 1 from recipe_items ri where ri.recipe_id = d.recipe_id))::bool as has_recipe_items,
        (d.linked_product_id <> 0)::bool as is_linked,
        d.composition_status::text as composition_status,
        count(*) over() as total
   from described d
- order by d.pieces * d.cost desc, d.name, d.kind, d.id
+ order by d.cost is null, d.pieces * d.cost desc, d.pieces desc, d.name, d.kind, d.id
  limit sqlc.arg(lim)::int offset sqlc.arg(off)::int;
 
 -- name: HealthUnpairedLines :one
