@@ -118,10 +118,10 @@
 ## Phase 7: Polish
 
 - [X] T050 [P] Test de FR-018 / SC-006: ningún nombre de producto o marca del negocio en el código ni en las migraciones de la feature (búsqueda en el diff), en `server/internal/integration/inventory_health_test.go` o script de CI
-- [ ] T051 Capturas con Playwright a 1024×600 de las dos pantallas contra el ambiente de pruebas y un subagente de usuario nuevo que las use sin contexto
+- [X] T051 Capturas con Playwright a 1024×600 de las dos pantallas contra el ambiente de pruebas y un subagente de usuario nuevo que las use sin contexto — hechas contra la API y el front LOCALES del worktree (copia del respaldo de producción del 13-oct), no contra el ambiente de pruebas desplegado: la rama no está desplegada
 - [X] T052 Actualizar AGENTS.md (bloque del almacén: «Salud del inventario», salida de la existencia propia con bloqueo de filas) y `docs/matriz-de-pantallas.md`
 - [X] T053 Gates: `make api-build && make api-test`, `make test-integration`, `bun run lint`, `bun run vitest run`, `bun run build`, `make ci-local`; correr quickstart.md completo
-- [ ] T054 `/revision-de-codigo` (hook `after_implement`)
+- [X] T054 `/revision-de-codigo` (hook `after_implement`)
 
 ---
 
