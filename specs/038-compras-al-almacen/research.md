@@ -20,6 +20,14 @@ símbolos citados son de `develop` en `c33f50e`.
   se revierte. Recibir no toca `ingredients.current_cost` ni recalcula recetas; el costo de una
   materia prima solo lo escribió la importación de FUDO.
 
+- **Segundo defecto (encontrado al revisar unidades):** el alta rápida de un insumo desde el gasto
+  (`ExpenseDialog.tsx:495`) no pregunta la unidad; toma la de compra del renglón (puede ser kg) o
+  pieza. El almacén cuenta siempre en g, ml o pieza (`domain.BaseQty`), así que un insumo con
+  unidad kg tendría lo guardado en gramos y se leería 1,000 veces mal. Hoy no ha pasado (todos los
+  insumos de la copia de producción están en g, ml o pieza). El 038 lo cierra: el alta pregunta
+  peso, líquido o piezas y fija g, ml o pieza; el servidor rechaza crear un insumo con una unidad
+  que no sea la base de su tipo (`to_base = 1`).
+
 ## R1. «Recibida» solo con mercancía
 
 - **Decisión:** el servidor guarda `received_at` solo si el gasto lleva al menos un renglón de

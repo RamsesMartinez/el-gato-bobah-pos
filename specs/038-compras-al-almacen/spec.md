@@ -120,6 +120,30 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **El hermano que no se movió:**
   - «Insumos sin compras registradas» y «Lo guardado en negativo» del 037 leen las mismas entradas: un insumo comprado deja de aparecer en la primera; una empresa con alguna compra deja de ver la segunda resumida.
   - El costo de un insumo alimenta el costo de las recetas: si la compra lo cambia, cambia el costo estimado de los productos.
+- **Unidades y empaques** (medido el 14-oct en la copia de producción: la cuenta se lleva solo en g,
+  ml o pieza; kg y L son para comprar y mostrar; 142 de 398 insumos activos traen una medida o un
+  empaque en el nombre). Reglas aceptadas por el dueño el 14-oct:
+  1. Un empaque pide número **y unidad** del mismo tipo (kg o g; L o ml) y muestra la equivalencia
+     («= 25,000 g») antes de guardar: «25» a secas en un insumo en gramos sería un error de 1,000 veces
+     que nadie ve.
+  2. Un insumo que se cuenta en piezas se compra por pieza o por empaque; comprarlo en litros o kilos
+     se rechaza diciendo cómo hacerlo.
+  3. Comprar por peso algo que se cuenta en volumen (o al revés) se rechaza y se ofrece un empaque:
+     no se adivina una densidad.
+  4. La unidad de un insumo se elige al crearlo («¿En qué lo mides?»: peso, líquido o piezas) y no
+     cambia si ya tiene existencia, recetas o compras.
+  5. Dos empaques del mismo insumo se distinguen por nombre y contenido («Bulto 25 kg» y «Bulto 20
+     kg» conviven).
+  6. Empaque dentro de empaque no existe: una caja de 12 paquetes de 50 vasos es «Caja = 600 piezas».
+  7. Lo de peso variable (0.280 kg) se compra directo en kg, sin empaque.
+  8. Las cantidades aceptan hasta 4 decimales (1.5 bultos, 0.25 L).
+  9. Cucharada, cucharadita y onza no se ofrecen al comprar.
+  10. Lo guardado se muestra en kg o L desde 1,000 g o ml, y el costo por kg o por L.
+  11. Si el ticket trae un tamaño y el proveedor ya tiene uno aprendido, gana el empaque que se
+      elija; lo aprendido solo lo propone.
+  12. El conteo acepta empaques más sueltos («3 cajas + 2 L») y los suma.
+  13. Un empaque que ya no se usa se desactiva; las compras pasadas lo muestran con su contenido de
+      entonces.
 - **Varias sucursales:** una compra y un conteo son de una sucursal; con dos sucursales y sin elegir, no se adivina (como el resto del sistema).
 - **Otra empresa:** ni una compra, ni una presentación, ni un conteo de otra empresa se ven ni se tocan.
 
@@ -143,7 +167,8 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 - **FR-008**: Cada insumo MUST poder tener cero o más presentaciones de compra, cada una con un nombre y su equivalencia en la unidad base del insumo, editable.
 - **FR-009**: Cada renglón de compra MUST guardar la equivalencia con la que se registró; cambiar la presentación después MUST NOT cambiar compras anteriores.
-- **FR-010**: Una presentación cuya unidad no se puede convertir a la del insumo MUST exigir la equivalencia explícita; nunca se convierte en silencio.
+- **FR-010**: Una presentación MUST capturarse con su contenido **y su unidad** del mismo tipo que el insumo (kg o g, L o ml, piezas) y mostrar la equivalencia antes de guardar; una compra en una unidad de otro tipo MUST rechazarse diciendo cómo capturarla. Nunca se convierte en silencio (reglas 1–3 de *Unidades y empaques*).
+- **FR-010a**: Al crear un insumo desde la compra MUST preguntarse en qué se mide (peso, líquido o piezas); la unidad de un insumo con existencia, recetas o compras MUST NOT cambiarse.
 - **FR-011**: Desde la captura de una compra MUST poder crearse la presentación que falta, sin salir de la pantalla.
 
 **Conteo (Historia 3)**
@@ -158,7 +183,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 - **FR-017**: Registrar compras con insumos, configurar presentaciones y contar MUST pedir permisos verificados en el servidor (no nombres de rol; constitución, «Roles: modelo híbrido»), con administrador y gerente por omisión.
 - **FR-018**: Ningún nombre, marca, producto o proveedor de un negocio en particular MUST aparecer en el código ni en las migraciones de esquema.
-- **FR-019**: Los textos de la pantalla MUST usar palabras de quien opera: «lo que tienes guardado», «llegó», «contaste», «restar» y «sumar»; no «existencia», «movimiento» ni «unidad base».
+- **FR-019**: Los textos de la pantalla MUST usar palabras de quien opera, validadas con usuarios sin contexto el 14-oct: «lo que tienes guardado» o «tienes», «llegó», «contaste», «restar» y «sumar», y «empaque» (no «presentación», que se leyó como exposición); no «existencia», «movimiento» ni «unidad base».
 
 ### Key Entities
 
