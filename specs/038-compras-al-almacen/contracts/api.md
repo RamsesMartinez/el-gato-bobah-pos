@@ -91,6 +91,14 @@ Permiso `inventory.count`.
 
 `countedQty` negativo, NaN o fuera de `MaxStockQty` → 400.
 
+`GET /stock/counts/current` devuelve los insumos activos ordenados por lugar (los sin lugar al
+final) y por nombre, cada uno con sus empaques activos; **no** devuelve `system_qty` mientras el
+conteo esté abierto. `POST …/close` responde además, por renglón contado, lo que el sistema
+tenía y la diferencia, y la lista de los no contados por nombre; la pantalla pide confirmar antes
+con `GET /stock/counts/{id}/preview` (mismo cálculo, sin escribir).
+
+`PUT /stock/ingredients/{id}/place` — permiso `inventory.configure`: `{ "place": "Refri" | null }`.
+
 ## Configuración
 
 `PUT /settings/inventory` — permiso `inventory.configure`, registrada fuera del grupo con rol.

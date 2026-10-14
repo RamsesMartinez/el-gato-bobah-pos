@@ -67,6 +67,7 @@ Llave primaria `(count_id, ingredient_id)`.
 | `expense_items` | `closed_at timestamptz null` | «Ya no va a llegar»: deja de estar pendiente sin sumar (R2b) |
 | `expense_items` | `closed_by bigint null` | Quién lo cerró |
 | `expense_items` | `is_gift bool not null default false` | Regalo del proveedor: importe 0 permitido y no mueve el costo (FR-007d) |
+| `ingredients` | `count_place text null` | «Lugar» opcional para ordenar el conteo (Bodega, Refri…); texto libre de la empresa, 1–30 caracteres. No es un almacén (puerta del principio VIII, issue #65) |
 | `business_settings` | `costing_method text not null default 'last'` | check `in ('last','weighted')` (R4) |
 | `business_settings` | `stock_item_label text not null default 'artículo'` | 1–20 caracteres (R11) |
 
