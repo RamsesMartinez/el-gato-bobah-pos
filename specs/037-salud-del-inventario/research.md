@@ -84,4 +84,4 @@ Decisiones de diseño, cada una con lo que se descartó. Base: mapa del código 
 - **Decisión:**
   - cada sección muestra sus primeros 25 renglones y se pagina;
   - «Insumos sin compras registradas» abre como un renglón resumen que se despliega (aclaración del 13-oct);
-  - la lista de «Por revisar» no se repite: se manda a Menú › Recetas con el filtro en la URL (`?status=review`), que hoy no existe y se agrega.
+  - las listas de recetas pendientes no se repiten: «Falta decir qué resta» y «Las cargó el sistema» mandan a Menú › Recetas con el filtro en la URL (`?status=pending` y `?status=review`), que hoy no existe y se agrega.
