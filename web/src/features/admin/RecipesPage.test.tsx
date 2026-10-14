@@ -143,5 +143,17 @@ describe('Menú › Recetas', () => {
     expect(api.recipes).toHaveBeenCalledWith(expect.objectContaining({ kind: 'product', status: 'pending' }));
     expect(api.composition).not.toHaveBeenCalled();
   });
+
+  // Un revendido convertido (spec 037) dice en su renglón cuánto resta y cuánto hay.
+  it('un producto que se compra hecho dice cuánto resta por venta y cuántas tienes', async () => {
+    api.recipes.mockImplementation(() => Promise.resolve({
+      items: [row(40, 'Lata de Coca', { status: 'done', mode: 'items', summary: '1 pieza Lata Coca', lines: 1, perSale: '1', onHand: '7' }),
+        row(41, 'Six de Coca', { status: 'done', mode: 'items', summary: '6 pieza Lata Coca', lines: 1, perSale: '6', onHand: '7' })],
+      total: 2, counts: { pending: 0, review: 0, done: 2 }, totals,
+    }));
+    montar();
+    expect(await screen.findByText('Resta 1 por venta · tienes 7')).toBeInTheDocument();
+    expect(screen.getByText('Resta 6 por venta · tienes 7')).toBeInTheDocument();
+  });
 });
 

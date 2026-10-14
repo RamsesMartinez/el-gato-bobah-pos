@@ -22,7 +22,7 @@ const COLOR: Record<string, string> = Object.fromEntries(GROUPS.map((g) => [g.id
 // El grupo de cada acción, espejo de domain.AuditGroupOf: solo pinta el punto de color.
 function groupOf(action: string): AuditGroup {
   if (['payment.voided', 'payment.refunded', 'order.cancelled', 'order.line_removed', 'stock.written_off'].includes(action)) return 'cancel';
-  if (action.startsWith('price.')) return 'price';
+  if (action.startsWith('price.') || action.startsWith('product.')) return 'price';
   if (action.startsWith('cash.') || action.startsWith('expense.') || action.startsWith('tip.')) return 'cash';
   if (action.startsWith('attendance.') || action.startsWith('user.')) return 'attendance';
   return 'money';

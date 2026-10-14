@@ -41,6 +41,7 @@ function summaryOf(r: RecipeRow): string {
   if (r.mode === 'own') return 'Se descuenta solo';
   if (r.mode === 'combo') return r.summary ? `Combo: ${r.summary}` : 'Combo';
   if (r.mode === 'product') return `Es: ${r.summary}`;
+  if (r.mode === 'items' && r.perSale !== undefined && r.onHand !== undefined) return `Resta ${Number(r.perSale)} por venta · tienes ${Number(r.onHand)}`;
   if (r.mode === 'items') return r.summary + (r.lines > 3 ? ` · +${r.lines - 3} más` : '');
   return r.status === 'done' ? 'No gasta insumos' : 'Falta la receta';
 }

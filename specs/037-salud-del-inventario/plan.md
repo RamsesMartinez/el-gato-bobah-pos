@@ -56,7 +56,7 @@ Sin violaciones.
 | Consultas del reporte (5 secciones + sus `Count`) | store (sqlc) | `server/queries/inventory_health.sql` |
 | `HealthFilter`, `HealthIssueKind`, `ConsumptionMode`, `ModeOf`, `PlanModeChange` | domain | `server/internal/domain/inventory_health.go`, `consumption_mode.go` (+ `_test`) |
 | Permisos `inventory.health_view` y `menu.configure` | domain | `server/internal/domain/permission.go` (+ espejo en `web/src/app/permissions.ts`) |
-| Acción de bitácora `product.consumption_mode` | domain | `server/internal/domain/audit.go` (lista blanca, grupo nuevo `inventory`) |
+| Acción de bitácora `product.consumption_mode` | domain | `server/internal/domain/audit.go` (lista blanca, grupo «Precios»: un grupo propio cambiaría la rejilla de cinco contadores de la bitácora, que es una disposición de tableta; decidido al implementar) |
 | Reporte y CSV | app | `server/internal/app/inventory_health.go` |
 | Nombres de insumo sin duplicar (mayúsculas y acentos) | domain + app | normalización en `server/internal/domain/`; `CreateIngredient` en `server/internal/app/articles.go` y `UpdateIngredient` en `server/internal/app/costing.go`, con candado por empresa (research R7d) |
 | Transición de modo en la captura | app | `server/internal/app/composition.go` (`SaveComposition` con `actualStock`; `validateComposition` deja de rechazar receta en `track_stock`) |
