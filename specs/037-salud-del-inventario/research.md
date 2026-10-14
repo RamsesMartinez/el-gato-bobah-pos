@@ -75,6 +75,6 @@ Decisiones de diseño, cada una con lo que se descartó. Base: mapa del código 
 ## R9. Escala en la tableta
 
 - **Decisión:**
-  - cada sección muestra sus primeros 20 renglones y se pagina;
+  - cada sección muestra sus primeros 25 renglones y se pagina;
   - «Insumos sin compras registradas» abre como un renglón resumen que se despliega (aclaración del 13-oct);
   - la lista de «Por revisar» no se repite: se manda a Menú › Recetas con el filtro en la URL (`?status=review`), que hoy no existe y se agrega.

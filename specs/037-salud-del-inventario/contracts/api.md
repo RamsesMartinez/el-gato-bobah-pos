@@ -12,8 +12,8 @@ Query (todo opcional; uno presente y mal formado → 400 `VALIDATION`, nunca un 
 |---|---|---|
 | `from`, `to` | `YYYY-MM-DD`, día de negocio | últimos 30 días |
 | `noPurchasesSince` | `YYYY-MM-DD` | inicio de los datos |
-| `section` | una de las 5 secciones | todas, con 20 renglones cada una |
-| `limit` / `offset` | 1–100 / ≥0 | 20 / 0 (solo con `section`) |
+| `section` | una de las 5 secciones | todas, con 25 renglones cada una |
+| `limit` / `offset` | 1–100 / ≥0 | 25 / 0 (solo con `section`), igual que «Ver 25 más» de Recetas |
 
 Respuesta 200 (todo arreglo viaja aunque esté vacío, nunca `null`):
 

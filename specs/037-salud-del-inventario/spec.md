@@ -174,7 +174,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-009**: Cada renglón MUST llevar a la pantalla donde se corrige (la receta del producto o extra, el insumo).
 - **FR-010**: El periodo MUST poder elegirse; un periodo mal formado se rechaza con un mensaje, nunca se reemplaza en silencio por otro (constitución V).
 - **FR-011**: La pantalla MUST exportarse a un archivo que abre en una hoja de cálculo, con las mismas cifras y el mismo periodo que se ven.
-- **FR-012**: La pantalla MUST verla solo quien tiene permiso de administrar el menú o el almacén, y mostrar solo datos de su empresa.
+- **FR-012**: La pantalla y su exportación MUST verlas solo quien tiene el permiso de ver la salud del inventario (`inventory.health_view`; administrador y gerente por omisión), verificado en el servidor, y mostrar solo datos de su empresa.
 
 **Modo de consumo (Historia 3)**
 
