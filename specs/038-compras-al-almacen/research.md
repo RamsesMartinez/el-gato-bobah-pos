@@ -95,6 +95,14 @@ símbolos citados son de `develop` en `c33f50e`.
   que adivinar (FR-010): «caja = 12» en un insumo en litros es 12 L.
 - Nombre único por insumo sin distinguir mayúsculas ni acentos (misma normalización que los
   insumos del 037).
+- **Empaque aproximado (dueño, 14-oct):** `ingredient_presentations` gana `purchase_unit_id` (nulo:
+  el empaque es «pieza» de compra, lo de siempre) e `is_approximate`. Un empaque aproximado es
+  «por kilo ≈ 4 piezas» en un insumo por pieza: `purchase_unit_id = kg`, `qty_in_base = 4`. Es el
+  único camino entre tipos distintos, y solo porque alguien lo declaró aproximado; `BaseQty` sigue
+  rechazando la conversión implícita.
+- **Piezas enteras:** en un insumo por pieza, `qty_in_base` de un empaque debe ser entero (check
+  en el servidor); en peso, volumen y longitud acepta 4 decimales.
+- **Partir un renglón** es solo de la pantalla: al guardar llegan dos renglones normales.
 - **Los formatos aprendidos por proveedor siguen**: si el proveedor ya tiene un tamaño aprendido, la
   captura lo propone; la presentación es lo que se elige a mano.
 - **Alternativa descartada:** presentaciones por proveedor. El requerimiento las pide por insumo, y

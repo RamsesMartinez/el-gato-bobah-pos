@@ -13,8 +13,10 @@ Una migración, `0091_purchases_into_stock.sql`, con su test de integración (ho
 | `company_id` | bigint not null | default del GUC, FK a `companies` on delete cascade; RLS con `nullif` |
 | `ingredient_id` | bigint not null | FK compuesta `(company_id, ingredient_id)` a `ingredients` (patrón 0041), on delete cascade |
 | `name` | text not null | 1–40 caracteres; único por insumo sin distinguir mayúsculas ni acentos |
-| `qty_in_base` | numeric(14,4) not null | `> 0`, en la unidad base del insumo |
+| `qty_in_base` | numeric(14,4) not null | `> 0`, en la unidad base del insumo; entero si el insumo es por pieza |
 | `active` | bool not null default true | una presentación se desactiva, no se borra si ya se usó |
+| `purchase_unit_id` | smallint null | FK a `units`. Nulo: el empaque es una pieza de compra. Con valor: empaque aproximado de otro tipo («por kilo») |
+| `is_approximate` | bool not null default false | check: verdadero si y solo si `purchase_unit_id` es de otro tipo que la base del insumo |
 | `created_at` | timestamptz | |
 
 Índice único: `(company_id, ingredient_id, <nombre normalizado>)` donde `active`, con la misma

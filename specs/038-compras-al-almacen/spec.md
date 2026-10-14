@@ -36,6 +36,7 @@ conteo, y desde ese conteo cada compra suma y cada venta resta.
 - Q (mismas maquetas): ¿qué reglas de dinero tiene una compra? → A: Cada renglón de mercancía lleva su importe, y la suma de los renglones no puede pasar del total pagado; lo que falta para el total queda como «otros» del gasto (envío, bolsa).
 - Q (maquetas, 14-oct): a veces se paga antes y el proveedor entrega después, o por partes, ¿cómo se registra? → A: Dos flujos. **Compra rápida**: todo llegó y suma al guardar. **Por recibir**: cada renglón puede quedar «Llega después»; una lista en Almacén junta lo pendiente de todas las compras, y al llegar se dice cuánto llegó (puede ser por partes). Lo que ya no llegará se marca «Ya no va a llegar». El total pagado nunca cambia por esto; una devolución de dinero es del pago, fuera de este spec. Las órdenes de compra completas (pedir antes de pagar, autorizar) siguen fuera.
 - Q (maquetas, 14-oct): al llegar el proveedor ofrece algo y se compra de más, o regala algo, ¿cómo se registra? → A: Al recibir, lo que llega de más de lo que faltaba se acepta con su importe; «Llegó algo más» agrega a la misma compra otro producto con su importe; un regalo entra con importe 0 marcado «regalo». Lo pagado de más sube el total de esa compra; el regalo no cambia el total ni el costo del insumo. «Por recibir» queda agrupado por compra con un buscador por artículo.
+- Q (maquetas, 14-oct): un mismo producto llega en varias presentaciones (salsa en sobre de 5 g, sobre de 8 g, bolsa de medio kilo; lata suelta y caja), ¿cuándo es el mismo insumo? → A: Es el mismo solo si se gasta por peso o volumen; si se gasta por pieza, cada tamaño es otro insumo. El contenido de un empaque en piezas es entero y sale de la etiqueta. Un renglón surtido del ticket se parte en varios. Lo que se compra por kilo y se usa por pieza lleva un empaque aproximado («kilo ≈ 4 piezas») que el conteo corrige. «Cómo llega un artículo» queda a la vista en la lista (opción B).
 - Q: Al cerrar un conteo, ¿qué pasa con los insumos que nadie contó? → A: Se quedan como estaban; solo cambia lo contado. Salud los sigue señalando y se pueden contar después.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -177,7 +178,22 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
   13. Un empaque que ya no se usa se desactiva; las compras pasadas lo muestran con su contenido de
       entonces.
   14. Un empaque no puede llamarse como una unidad («Litro», «Kilo», «Metro»): eso es comprar suelto,
-      no un empaque.
+      no un empaque. La excepción es el empaque aproximado de la regla 18, que se nombra por su unidad.
+  15. Dos tamaños del mismo producto son el mismo insumo solo si se gasta por peso o volumen (salsa
+      en sobre de 5 g y bolsa de 500 g, receta en gramos). Si se gasta por pieza («1 sobre» por
+      orden), cada tamaño es otro insumo; la pantalla lo advierte al crear un empaque de otro tamaño
+      en un insumo por pieza. La lata de 355 ml y la botella de 600 ml son insumos distintos.
+  16. El contenido de un empaque en piezas es entero y sale de la etiqueta (una bolsa de medio kilo
+      de sobres de 8 g trae los sobres que dice la etiqueta, no 62.5).
+  17. Un renglón surtido del ticket (24 latas de dos sabores) se parte en varios renglones, cada uno
+      con su insumo y cantidad; el importe se reparte por cantidad y se puede ajustar.
+  18. Lo que se compra por peso y se usa por pieza (aguacate por kilo, receta «½ aguacate») lleva un
+      empaque **aproximado** («Kilo ≈ 4 piezas»), marcado así en pantalla; el conteo corrige la
+      diferencia.
+  19. Una promoción «12 + 2 gratis» se captura con lo que llegó (14) y lo pagado; el costo por pieza
+      baja solo. El peso escurrido o neto lo decide quien configura y va en el nombre del empaque.
+  20. Fuera de alcance: envases retornables y su depósito (se registra solo el contenido), y la
+      marca de un insumo (dos marcas del mismo tamaño son el mismo insumo).
 - **Varias sucursales:** una compra y un conteo son de una sucursal; con dos sucursales y sin elegir, no se adivina (como el resto del sistema).
 - **Otra empresa:** ni una compra, ni una presentación, ni un conteo de otra empresa se ven ni se tocan.
 
