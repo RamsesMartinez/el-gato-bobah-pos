@@ -55,7 +55,7 @@ Mismo permiso y mismos parámetros que `/stock/health`, sin paginar.
 
 - `200 text/csv; charset=utf-8`, con BOM y `Content-Disposition: attachment; filename="salud-del-inventario-<from>-<to>.csv"`.
 - Columnas: `seccion, tipo, id, nombre, grupo, estado, canal, piezas, costo_estimado, existencia, sucursal, problema`.
-- «Recetas pendientes» no tiene renglones de lista: va como cuatro renglones de resumen, `seccion=pending_recipe`, `tipo=resumen`, `problema` = `undecided_products`, `undecided_extras`, `review_products` o `review_extras`, y la cuenta en `piezas`. Así el archivo trae las mismas cifras que la pantalla (FR-011). `tipo` ∈ producto, extra, combo, insumo, renglon_receta, resumen. `seccion` es el código estable de la sección (`unsold_deduction`, `negative_stock`, `no_purchases`, `malformed_recipe`, `pending_recipe`), el mismo de `?section=`. En lo vendido sin restar, `costo_estimado` se reparte por canal con el costo unitario de hoy: la columna suma el total del producto. Las celdas de texto que empiezan con `=`, `+`, `-` o `@` llevan un apóstrofo delante; las numéricas no. Un renglón por problema y por canal.
+- «Recetas pendientes» no tiene renglones de lista: va como cuatro renglones de resumen, `seccion=pending_recipe`, `tipo=resumen`, `problema` = `undecided_products`, `undecided_extras`, `review_products` o `review_extras`, y la cuenta en `piezas`. Así el archivo trae las mismas cifras que la pantalla (FR-011). `tipo` ∈ producto, extra, combo, insumo, renglon_receta, resumen. `seccion` es el código estable de la sección (`unsold_deduction`, `negative_stock`, `no_purchases`, `malformed_recipe`, `pending_recipe`), el mismo de `?section=`. En lo vendido sin restar, `costo_estimado` se reparte por canal con el costo unitario de hoy: la columna suma el total del producto. Las celdas de texto que empiezan con `=`, `+`, `-`, `@`, tabulador o retorno de carro llevan un apóstrofo delante; las numéricas no. En `negative_stock`, `existencia` es solo el número (una hoja de cálculo la suma) y la unidad va en `grupo`. Un renglón por problema y por canal.
 - Lo calcula el mismo servicio que la pantalla (SC-005).
 
 ## PUT /admin/products/{id}/composition (cambio)
@@ -78,7 +78,7 @@ Los mismos modos que hoy (`items`, `package`, `nothing`); **no** se agrega un mo
 
 - Toda transición deja un evento `product.consumption_mode` en la bitácora.
 - Sin existencia propia de por medio, el comportamiento es el de hoy, salvo el evento de bitácora cuando cambia el modo.
-- Errores: 409 `CONFLICT` si la copia está vieja (como hoy); 400 `VALIDATION` si falta `actualStock` cuando hace falta, o si viene negativo o mal formado; 409 `CONFLICT` si la existencia cambió desde que se mostró (una venta en medio): la hoja vuelve a preguntar con las cifras nuevas; 409 si el producto tiene existencia en más de una sucursal y el insumo también (se resuelve con un conteo).
+- Errores: 409 `CONFLICT` si la copia está vieja (como hoy); 400 `VALIDATION` si falta `actualStock` cuando hace falta, o si viene negativo o mal formado; 409 `CONFLICT` si la existencia cambió desde que se mostró (una venta en medio): la hoja vuelve a preguntar con las cifras nuevas; 409 si una venta en curso tiene tomada la existencia del insumo (se reintenta en un momento); 400 si el producto tiene existencia propia y la petición no dice `mode`; 409 si el producto tiene existencia en más de una sucursal y el insumo también (se resuelve con un conteo).
 
 ## GET /admin/recipes (cambio menor)
 

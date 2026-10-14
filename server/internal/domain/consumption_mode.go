@@ -24,14 +24,14 @@ type ProductModeFacts struct {
 	CompositionStatus string
 }
 
-// ModeOf deduce el modo en el mismo orden que ExpandSale: la existencia propia gana sobre una
-// receta guardada al lado.
+// ModeOf deduce el modo en el mismo orden que ExpandSale: un paquete se expande por sus piezas
+// aunque traiga existencia propia, y la existencia propia gana sobre una receta guardada al lado.
 func ModeOf(p ProductModeFacts) ConsumptionMode {
 	switch {
-	case p.TrackStock:
-		return ModeOwnStock
 	case p.IsPackage:
 		return ModePackage
+	case p.TrackStock:
+		return ModeOwnStock
 	case p.HasRecipeItems:
 		return ModeRecipe
 	case p.CompositionStatus == "confirmed":

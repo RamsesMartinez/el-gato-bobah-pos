@@ -48,10 +48,14 @@ select branch_id, on_hand from stock_levels
    for update;
 
 -- name: LockIngredientStockLevels :many
+-- NOWAIT a propósito: una venta bloquea en el orden de su ticket, y si ya tiene tomado el insumo y
+-- espera por el producto que esta conversión ya bloqueó, esperar aquí sería un bloqueo mutuo y
+-- Postgres cancelaría una de las dos (a veces el cobro). Sin esperar, la conversión falla con
+-- 55P03, la app responde 409 y la venta sigue.
 select branch_id, on_hand from stock_levels
  where item_type = 'ingrediente' and ingredient_id = $1
  order by branch_id
-   for update;
+   for update nowait;
 
 -- name: InsertModeAdjustment :exec
 -- Un ajuste del cambio de modo. Va con su sucursal explícita (la de la fila bloqueada), la nota que
@@ -67,7 +71,9 @@ update products set track_stock = false, updated_at = now() where id = $1;
 -- name: GetUnitToIngredientBase :one
 -- Cuánto de la unidad base del insumo es una unidad capturada: «1 caja» de un insumo que se lleva
 -- por pieza. La captura ya exige que sean del mismo tipo.
-select (u.to_base / bu.to_base)::numeric as factor
+-- Con 6 decimales, como units.to_base: la división de Postgres devuelve 20, y multiplicada por una
+-- existencia queda fuera de lo que Round4 acepta redondear.
+select (u.to_base / bu.to_base)::numeric(20,6) as factor
   from units u, ingredients i join units bu on bu.id = i.base_unit_id
  where u.id = sqlc.arg(unit_id) and i.id = sqlc.arg(ingredient_id);
 

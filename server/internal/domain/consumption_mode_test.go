@@ -80,6 +80,23 @@ func TestPlanModeChange(t *testing.T) {
 			turnOff: true,
 		},
 		{
+			name: "no queda ninguna de verdad: cero es una respuesta válida",
+			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
+				Levels:      []BranchLevels{{BranchID: branch, Product: dec("12"), Ingredient: dec("20")}},
+				ActualStock: decp("0"), SeenProductOnHand: decp("12"), SeenIngredientOnHand: decp("20")},
+			want: []StockAdjustment{
+				{BranchID: branch, ItemType: "producto", ID: product, Qty: dec("-12")},
+				{BranchID: branch, ItemType: "ingrediente", ID: ingredient, Qty: dec("-20")},
+			},
+			turnOff: true,
+		},
+		{
+			name: "una cantidad absurda por venta desborda la columna: se rechaza, no es un 500",
+			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1000000"),
+				Levels: []BranchLevels{{BranchID: branch, Product: dec("10001")}}},
+			err: ErrValidation,
+		},
+		{
 			name: "una venta entre mostrar y guardar: lo que se vio ya no es lo que hay",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
 				Levels:      []BranchLevels{{BranchID: branch, Product: dec("11"), Ingredient: dec("20")}},
@@ -170,6 +187,9 @@ func TestModeOf(t *testing.T) {
 		{"existencia propia con receta guardada", ProductModeFacts{TrackStock: true, HasRecipeItems: true}, ModeOwnStock},
 		{"receta con insumos", ProductModeFacts{HasRecipeItems: true, CompositionStatus: "estimated"}, ModeRecipe},
 		{"paquete", ProductModeFacts{IsPackage: true, CompositionStatus: "confirmed"}, ModePackage},
+		// ExpandSale expande un paquete por sus piezas aunque traiga existencia propia (dato heredado):
+		// la pantalla tiene que decir lo mismo.
+		{"paquete con existencia propia heredada", ProductModeFacts{TrackStock: true, IsPackage: true}, ModePackage},
 		{"no gasta insumos, confirmado", ProductModeFacts{CompositionStatus: "confirmed"}, ModeNone},
 		// Nunca decidido no es «no gasta insumos»: el primero es un problema y el segundo no (FR-004).
 		{"nunca decidido", ProductModeFacts{}, ModeUndecided},

@@ -33,7 +33,7 @@ func (q *Queries) GetProductOnHand(ctx context.Context, productID *int64) (GetPr
 }
 
 const getUnitToIngredientBase = `-- name: GetUnitToIngredientBase :one
-select (u.to_base / bu.to_base)::numeric as factor
+select (u.to_base / bu.to_base)::numeric(20,6) as factor
   from units u, ingredients i join units bu on bu.id = i.base_unit_id
  where u.id = $1 and i.id = $2
 `
@@ -45,6 +45,8 @@ type GetUnitToIngredientBaseParams struct {
 
 // Cuánto de la unidad base del insumo es una unidad capturada: «1 caja» de un insumo que se lleva
 // por pieza. La captura ya exige que sean del mismo tipo.
+// Con 6 decimales, como units.to_base: la división de Postgres devuelve 20, y multiplicada por una
+// existencia queda fuera de lo que Round4 acepta redondear.
 func (q *Queries) GetUnitToIngredientBase(ctx context.Context, arg GetUnitToIngredientBaseParams) (decimal.Decimal, error) {
 	row := q.db.QueryRow(ctx, getUnitToIngredientBase, arg.UnitID, arg.IngredientID)
 	var factor decimal.Decimal
@@ -235,7 +237,7 @@ const lockIngredientStockLevels = `-- name: LockIngredientStockLevels :many
 select branch_id, on_hand from stock_levels
  where item_type = 'ingrediente' and ingredient_id = $1
  order by branch_id
-   for update
+   for update nowait
 `
 
 type LockIngredientStockLevelsRow struct {
@@ -243,6 +245,10 @@ type LockIngredientStockLevelsRow struct {
 	OnHand   decimal.Decimal `json:"on_hand"`
 }
 
+// NOWAIT a propósito: una venta bloquea en el orden de su ticket, y si ya tiene tomado el insumo y
+// espera por el producto que esta conversión ya bloqueó, esperar aquí sería un bloqueo mutuo y
+// Postgres cancelaría una de las dos (a veces el cobro). Sin esperar, la conversión falla con
+// 55P03, la app responde 409 y la venta sigue.
 func (q *Queries) LockIngredientStockLevels(ctx context.Context, ingredientID *int64) ([]LockIngredientStockLevelsRow, error) {
 	rows, err := q.db.Query(ctx, lockIngredientStockLevels, ingredientID)
 	if err != nil {

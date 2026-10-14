@@ -155,5 +155,15 @@ describe('Menú › Recetas', () => {
     expect(await screen.findByText('Resta 1 por venta · tienes 7')).toBeInTheDocument();
     expect(screen.getByText('Resta 6 por venta · tienes 7')).toBeInTheDocument();
   });
-});
 
+  // FR-019: «restar», nunca «descontar». Se le escapó a esta pantalla (revisión de tableta, 13-oct).
+  it('un producto con existencia propia dice que se resta solo, no que se descuenta', async () => {
+    api.recipes.mockImplementation(() => Promise.resolve({
+      items: [row(50, 'Pocky', { status: 'done', mode: 'own' })],
+      total: 1, counts: { pending: 0, review: 0, done: 1 }, totals,
+    }));
+    montar();
+    expect(await screen.findByText('Se resta solo')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/descuenta|descontar/i);
+  });
+});

@@ -203,5 +203,23 @@ describe('Almacén › Salud', () => {
     expect(await screen.findByText(/Del 14 sep 2026 al 13 oct 2026 · 40 ventas/)).toBeInTheDocument();
     expect(screen.queryByText(/2026-09-14/)).not.toBeInTheDocument();
   });
-});
 
+  // Lo vieron el usuario nuevo y el revisor de tableta (13-oct): al cambiar el periodo seguían los
+  // números del anterior, sin aviso, mientras cargaban los nuevos.
+  it('mientras carga un periodo nuevo, la lista se marca como que se está actualizando', async () => {
+    montar();
+    await screen.findByRole('button', { name: /Shot Expreso/ });
+    back.inventoryHealth.mockImplementation(() => new Promise(() => {}));
+    fireEvent.click(screen.getByRole('button', { name: /Periodo/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Últimos 7 días' }));
+    expect(await screen.findByText('Actualizando…')).toBeInTheDocument();
+    expect(screen.getByTestId('lista-salud')).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('el monto dice qué es y «Ver más» no repite el número', async () => {
+    back.inventoryHealth.mockImplementation(() => Promise.resolve(base({ unsoldDeduction: { ...base().unsoldDeduction, total: 10 } })));
+    montar();
+    expect(await screen.findByRole('button', { name: /Shot Expreso/ })).toHaveTextContent('costo estimado');
+    expect(screen.getByRole('button', { name: 'Ver los 8 que quedan' })).toBeInTheDocument();
+  });
+});

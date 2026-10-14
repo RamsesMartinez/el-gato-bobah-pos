@@ -78,7 +78,7 @@ func PlanModeChange(in ModeChangeInput) (ModeChange, error) {
 				out.Adjustments = append(out.Adjustments, StockAdjustment{BranchID: l.BranchID, ItemType: "producto", ID: in.ProductID, Qty: l.Product.Neg()})
 			}
 		}
-		return out, nil
+		return out, checkAdjustments(out.Adjustments)
 	}
 
 	ing := *in.Target.SingleIngredient
@@ -97,7 +97,9 @@ func PlanModeChange(in ModeChangeInput) (ModeChange, error) {
 		if in.ActualStock == nil || in.SeenProductOnHand == nil || in.SeenIngredientOnHand == nil {
 			return out, fmt.Errorf("%w: el insumo ya tiene existencia; falta decir cuántas hay de verdad", ErrValidation)
 		}
-		if !ValidQty(*in.ActualStock, MaxStockQty, false) {
+		// Cero es válido: «no queda ninguna» es una respuesta de verdad. ValidQty no admite cero, así
+		// que el cero se revisa aparte.
+		if in.ActualStock.IsNegative() || (!in.ActualStock.IsZero() && !ValidQty(*in.ActualStock, MaxStockQty, false)) {
 			return out, fmt.Errorf("%w: la cantidad no es válida", ErrValidation)
 		}
 		if !in.SeenProductOnHand.Equal(both[0].Product) || !in.SeenIngredientOnHand.Equal(both[0].Ingredient) {
@@ -124,5 +126,17 @@ func PlanModeChange(in ModeChangeInput) (ModeChange, error) {
 			out.Adjustments = append(out.Adjustments, StockAdjustment{BranchID: l.BranchID, ItemType: "ingrediente", ID: ing, Qty: toIngredient})
 		}
 	}
-	return out, nil
+	return out, checkAdjustments(out.Adjustments)
+}
+
+// checkAdjustments acota cada ajuste como cualquier movimiento de almacén: una cantidad absurda
+// por venta (un millón de piezas) desbordaría la columna y respondería 500 en vez de decir qué
+// está mal.
+func checkAdjustments(adj []StockAdjustment) error {
+	for _, a := range adj {
+		if !ValidQty(a.Qty, MaxStockQty, true) {
+			return fmt.Errorf("%w: el traslado de existencias queda fuera de rango; revisa la cantidad por venta", ErrValidation)
+		}
+	}
+	return nil
 }

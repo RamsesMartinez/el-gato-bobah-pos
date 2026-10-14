@@ -215,6 +215,17 @@ func (s *InventoryHealthService) report(ctx context.Context, f domain.HealthFilt
 			v.UnsoldDeduction.Items = append(v.UnsoldDeduction.Items, it)
 			v.UnsoldDeduction.Total = int(r.Total)
 		}
+		// Una página vacía más allá del final no trae count(*) over(): el total se pide aparte, o
+		// diría 0 y se leería como «todo sano».
+		if len(rows) == 0 && off > 0 {
+			first, err := q.HealthUnsold(ctx, db.HealthUnsoldParams{FromDate: from, ToDate: to, Lim: 1, Off: 0})
+			if err != nil {
+				return v, err
+			}
+			if len(first) > 0 {
+				v.UnsoldDeduction.Total = int(first[0].Total)
+			}
+		}
 		unpaired, err := q.HealthUnpairedLines(ctx, db.HealthUnpairedLinesParams{FromDate: from, ToDate: to})
 		if err != nil {
 			return v, err
@@ -251,6 +262,15 @@ func (s *InventoryHealthService) report(ctx context.Context, f domain.HealthFilt
 			}
 			v.NegativeStock.Items = append(v.NegativeStock.Items, n)
 			v.NegativeStock.Total = int(r.Total)
+		}
+		if len(rows) == 0 && off > 0 {
+			first, err := q.HealthNegativeStock(ctx, db.HealthNegativeStockParams{Lim: 1, Off: 0})
+			if err != nil {
+				return v, err
+			}
+			if len(first) > 0 {
+				v.NegativeStock.Total = int(first[0].Total)
+			}
 		}
 	}
 
@@ -292,6 +312,15 @@ func (s *InventoryHealthService) report(ctx context.Context, f domain.HealthFilt
 			}
 			v.MalformedRecipes.Items = append(v.MalformedRecipes.Items, m)
 			v.MalformedRecipes.Total = int(r.Total)
+		}
+		if len(rows) == 0 && off > 0 {
+			first, err := q.HealthMalformedRecipes(ctx, db.HealthMalformedRecipesParams{Lim: 1, Off: 0})
+			if err != nil {
+				return v, err
+			}
+			if len(first) > 0 {
+				v.MalformedRecipes.Total = int(first[0].Total)
+			}
 		}
 	}
 

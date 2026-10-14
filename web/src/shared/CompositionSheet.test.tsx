@@ -424,7 +424,7 @@ describe('se compra hecho', () => {
     back.createIngredient.mockResolvedValueOnce({ id: 70, name: 'Chai Latte G', baseUnitId: 5, baseUnitCode: 'pieza', baseUnitKind: 'pieza', recipeUses: 0 });
     montar();
     fireEvent.click(await screen.findByText('Se compra hecho'));
-    expect(await screen.findByText(/se crea con este nombre/)).toBeInTheDocument();
+    expect(await screen.findByText(/se crea uno nuevo con este nombre/)).toBeInTheDocument();
     await guardar();
     await waitFor(() => expect(back.createIngredient).toHaveBeenCalledWith({ name: 'Chai Latte G', baseUnitId: 5 }));
     await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55,
@@ -534,5 +534,25 @@ describe('se compra hecho', () => {
     expect(await screen.findByText(/se vendieron 3 más de las que había registradas/)).toBeInTheDocument();
     expect(screen.queryByText(/contadas -3/)).not.toBeInTheDocument();
   });
-});
 
+  // Visto en la captura de «No se cuenta» (13-oct): «Tus -3 de Jarritos siguen donde están», justo
+  // antes de una acción que no se deshace.
+  it('salir de una existencia negativa no habla de «-3 latas» ni en el aviso ni en la confirmación', async () => {
+    api.composition.mockResolvedValue({ ...propia, productOnHand: '-3' });
+    back.ingredients.mockResolvedValueOnce(conLata());
+    montar();
+    fireEvent.click(await screen.findByText('No se cuenta'));
+    expect(await screen.findByText(/se vendieron 3 más de las que había registradas/)).toBeInTheDocument();
+    await guardar();
+    expect(await screen.findByRole('alertdialog')).not.toHaveTextContent('-3');
+    expect(document.body.textContent).not.toMatch(/Tus -3/);
+  });
+
+  it('crear uno nuevo lo dice claro y el botón dice qué hace', async () => {
+    back.ingredients.mockResolvedValueOnce({ items: [conLata().items[0]] });
+    montar();
+    fireEvent.click(await screen.findByText('Se compra hecho'));
+    expect(await screen.findByText(/no hay uno parecido: se crea uno nuevo con este nombre/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cambiar lo que se resta' })).toHaveTextContent('Elegir otro');
+  });
+});

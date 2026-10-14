@@ -117,6 +117,8 @@ export function InventoryHealthTab() {
   const pickFrom = (v: string) => { setPrevRange(range); setFrom(v); };
   const pickTo = (v: string) => { setPrevRange(range); setTo(v); };
 
+  // Lo que se ve es de otro periodo: el que se pidió todavía no llega.
+  const updating = report.isFetching && (report.isPlaceholderData || !report.data);
   const error = report.error instanceof ApiError ? report.error.message : report.error ? 'No hay conexión con el servidor. Intenta de nuevo.' : '';
   const presetLabel = PRESETS.find((x) => x.p === preset)?.label ?? '';
 
@@ -143,7 +145,9 @@ export function InventoryHealthTab() {
           </>
         )}
         <Text fontSize="sm" color="fg.muted" flex="1" minW="200px">
-          Del {formatDay(data.from)} al {formatDay(data.to)} · {data.salesInPeriod} {data.salesInPeriod === 1 ? 'venta' : 'ventas'}
+          {/* Mientras llega el periodo nuevo se dice: los números de abajo todavía son del anterior. */}
+          {updating ? 'Actualizando…'
+            : `Del ${formatDay(data.from)} al ${formatDay(data.to)} · ${data.salesInPeriod} ${data.salesInPeriod === 1 ? 'venta' : 'ventas'}`}
         </Text>
         <Button minH="44px" variant="outline" loading={exporter.isPending} disabled={exporter.isPending} onClick={() => exporter.mutate()}>Exportar</Button>
       </HStack>
@@ -165,17 +169,18 @@ export function InventoryHealthTab() {
         </DrawerContent>
       </DrawerRoot>
 
-      <Box flex="1" minH={0} overflowY="auto" borderWidth="1px" borderRadius="xl">
+      <Box flex="1" minH={0} overflowY="auto" borderWidth="1px" borderRadius="xl" data-testid="lista-salud"
+        aria-busy={updating} opacity={updating ? 0.45 : 1} transition="opacity 0.15s">
         {healthy ? (
           <VStack py={12} gap={1}><Text fontWeight="700" fontSize="lg">El inventario está sano</Text><Text color="fg.muted">Todo lo que se vendió restó de lo guardado.</Text></VStack>
         ) : (
           <>
-            <Section title="Se vende sin restar" color="red.500" count={unsoldTotal} open={open.unsold} onToggle={() => toggle('unsold')}>
+            <Section title="Se vende sin restar" color="orange.500" count={unsoldTotal} open={open.unsold} onToggle={() => toggle('unsold')}>
               {data.salesInPeriod === 0 && <Note>No hubo ventas en este periodo</Note>}
               {unsold.map((it) => (
                 <Row key={`${it.kind}-${it.id}`} onClick={() => go(it.fixAt, it.name)}
                   title={it.name} subtitle={it.group} pill={statusLabel(it)}
-                  right={<Text fontWeight="600">{money(it.estimatedCost)}</Text>}>
+                  right={<VStack gap={0} align="end"><Text fontWeight="600">{money(it.estimatedCost)}</Text><Text fontSize="xs" color="fg.muted">costo estimado</Text></VStack>}>
                   {(it.units ?? []).map((u) => <Badge key={u.channel} variant="subtle" colorPalette="gray">{u.channel} {Number(u.units)}</Badge>)}
                 </Row>
               ))}
@@ -212,7 +217,7 @@ export function InventoryHealthTab() {
               )}
             </Section>
 
-            <Section title="Insumos sin compras registradas" color="yellow.500" count={data.noPurchases.total} open={open.noPurchases} onToggle={() => toggle('noPurchases')}>
+            <Section title="Insumos sin compras registradas" color="orange.500" count={data.noPurchases.total} open={open.noPurchases} onToggle={() => toggle('noPurchases')}>
               <HStack px={4} py={2} gap={2}>
                 <Text fontSize="sm" color="fg.muted">Sin compras desde</Text>
                 <DatePickerButton label="Sin compras desde" value={since} onChange={setSince} clearable max={today || undefined} />
@@ -226,7 +231,7 @@ export function InventoryHealthTab() {
               )}
             </Section>
 
-            <Section title="Recetas con un error" color="purple.500" count={data.malformedRecipes.total} open={open.malformed} onToggle={() => toggle('malformed')}>
+            <Section title="Recetas con un error" color="orange.500" count={data.malformedRecipes.total} open={open.malformed} onToggle={() => toggle('malformed')}>
               {malformed.map((m) => (
                 <Row key={`${m.ownerKind}-${m.ownerId}-${m.ingredient}-${m.problem}`} onClick={() => go(m.fixAt, m.ownerName)}
                   title={m.ownerName} subtitle={`${PROBLEM[m.problem]}: ${m.ingredient}`} />
@@ -237,7 +242,7 @@ export function InventoryHealthTab() {
               )}
             </Section>
 
-            <Section title="Recetas pendientes" color="blue.500" count={pendingTotal} open={open.pending} onToggle={() => toggle('pending')}>
+            <Section title="Recetas pendientes" color="orange.500" count={pendingTotal} open={open.pending} onToggle={() => toggle('pending')}>
               <Row onClick={() => go(pending.undecided.fixAt)} title="Falta decir qué resta"
                 subtitle={`${pending.undecided.products} productos · ${pending.undecided.extras} extras`} right={<Text color="fg.muted">Ir a Recetas</Text>} />
               <Row onClick={() => go(pending.review.fixAt)} title="Las cargó el sistema y nadie las ha confirmado"
@@ -267,7 +272,7 @@ function Section({ title, color, count, open, onToggle, children }: {
     <Box borderBottomWidth="1px" borderColor="border.muted">
       <Button variant="ghost" w="100%" minH="52px" px={4} gap={3} borderRadius={0} justifyContent="start"
         aria-expanded={open} onClick={onToggle}>
-        <Box w="10px" h="10px" borderRadius="full" bg={count > 0 ? color : 'gray.300'} flex="none" />
+        <Box w="10px" h="10px" borderRadius="full" bg={count > 0 ? color : 'gray.300'} flex="none" aria-hidden />
         <Text fontWeight="700" flex="1" textAlign="start">{title}</Text>
         <Text fontWeight="700" color={count > 0 ? 'fg' : 'fg.muted'}>{count}</Text>
         {open ? <LuChevronDown /> : <LuChevronRight />}
@@ -309,7 +314,9 @@ function Note({ children }: { children: ReactNode }) {
 function MoreButton({ left, loading, onClick }: { left: number; loading: boolean; onClick: () => void }) {
   return (
     <HStack justify="center" py={3} borderTopWidth="1px" borderColor="border.muted">
-      <Button minH="44px" variant="outline" loading={loading} onClick={onClick}>Ver {Math.min(PAGE, left)} más · quedan {left}</Button>
+      <Button minH="44px" variant="outline" loading={loading} onClick={onClick}>
+        {left <= PAGE ? `Ver los ${left} que quedan` : `Ver ${PAGE} más · quedan ${left}`}
+      </Button>
     </HStack>
   );
 }

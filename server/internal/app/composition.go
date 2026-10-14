@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
@@ -465,6 +466,11 @@ func applyModeChange(ctx context.Context, q *db.Queries, id int64, req Compositi
 	if before != domain.ModeOwnStock {
 		return audit, nil
 	}
+	// Salir de la existencia propia mueve existencias sin vuelta atrás: tiene que venir de una
+	// tarjeta elegida, no de un guardado viejo o de un script que mande el cuerpo vacío.
+	if req.Mode == "" {
+		return nil, fmt.Errorf("%w: elige qué resta este producto", domain.ErrValidation)
+	}
 
 	target := domain.ModeTarget{Kind: domain.TargetNothing}
 	switch {
@@ -498,9 +504,13 @@ func applyModeChange(ctx context.Context, q *db.Queries, id int64, req Compositi
 		}
 		ing := it.IngredientID
 		target.SingleIngredient = &ing
-		target.QtyPerSale = it.Quantity.Mul(factor)
+		target.QtyPerSale = domain.Round4(it.Quantity.Mul(factor))
 		rows, err := q.LockIngredientStockLevels(ctx, &ing)
 		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "55P03" {
+				return nil, fmt.Errorf("%w: hay una venta en curso con ese insumo; vuelve a intentar en un momento", domain.ErrConflict)
+			}
 			return nil, err
 		}
 		for _, l := range rows {

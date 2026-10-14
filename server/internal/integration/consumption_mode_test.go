@@ -7,6 +7,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/shopspring/decimal"
@@ -371,5 +372,89 @@ func TestIngredientNamesAreUniqueIgnoringCaseAndAccents(t *testing.T) {
 	}
 	if ok != 1 {
 		t.Errorf("de dos altas casi simultáneas ganaron %d, quiere exactamente 1", ok)
+	}
+}
+
+// Convertir un producto mientras una venta tiene tomado el insumo destino (revisión de base de datos
+// del 037): una venta bloquea en el orden de su ticket, así que «insumo y luego producto» contra
+// «producto y luego insumo» era un bloqueo mutuo, y Postgres cancelaba una de las dos —a veces el
+// cobro—. La conversión ahora no espera por el insumo: si está tomado, responde 409 y la venta sigue.
+func TestModeChangeNeverDeadlocksWithASale(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	admin := makeUser(t, st, "admin_bloqueo", "admin")
+	svc, ctx := asApp(t, defaultCompanyID)
+	lata := makeProduct(t, st, "Lata bloqueo", decimal.RequireFromString("30"), true)
+	adjust(t, st, "producto", lata, "12")
+	ing := pieceIngredient(t, st, "Lata bloqueo insumo")
+	adjust(t, st, "ingrediente", ing, "4")
+
+	// Una «venta» a medias: tiene tomada la existencia del insumo y no ha terminado.
+	tx, err := st.Pool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(context.Background(), `select 1 from stock_levels where ingredient_id = $1 for update`, ing); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.SaveComposition(ctx, app.CompositionOfProduct, lata, app.CompositionRequest{Mode: "nothing"}, admin)
+	}()
+	// «No se cuenta» no toca el insumo: no tiene por qué esperar.
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("pasar a «No se cuenta» con el insumo tomado por otra venta: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("pasar a «No se cuenta» se quedó esperando a una venta que no le estorba")
+	}
+
+	lata2 := makeProduct(t, st, "Lata bloqueo dos", decimal.RequireFromString("30"), true)
+	adjust(t, st, "producto", lata2, "12")
+	go func() {
+		done <- svc.SaveComposition(ctx, app.CompositionOfProduct, lata2, app.CompositionRequest{Mode: "items", Items: pieces(t, ing, "1", st),
+			ActualStock:          func() *decimal.Decimal { v := decimal.RequireFromString("10"); return &v }(),
+			SeenProductOnHand:    func() *decimal.Decimal { v := decimal.RequireFromString("12"); return &v }(),
+			SeenIngredientOnHand: func() *decimal.Decimal { v := decimal.RequireFromString("4"); return &v }()}, admin)
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("con el insumo tomado por una venta = %v, quiere ErrConflict de inmediato", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("la conversión esperó por el insumo: con una venta que espera por el producto, sería un bloqueo mutuo")
+	}
+	if !trackStock(t, st, lata2) || !onHand(t, st, lata2).Equal(decimal.NewFromInt(12)) {
+		t.Error("el rechazo movió la existencia del producto")
+	}
+	_ = tx.Rollback(context.Background())
+	// Ya sin la venta a medias, la misma conversión pasa.
+	if err := svc.SaveComposition(ctx, app.CompositionOfProduct, lata2, app.CompositionRequest{Mode: "items", Items: pieces(t, ing, "1", st),
+		ActualStock:          func() *decimal.Decimal { v := decimal.RequireFromString("10"); return &v }(),
+		SeenProductOnHand:    func() *decimal.Decimal { v := decimal.RequireFromString("12"); return &v }(),
+		SeenIngredientOnHand: func() *decimal.Decimal { v := decimal.RequireFromString("4"); return &v }()}, admin); err != nil {
+		t.Fatalf("sin la venta a medias, la conversión pasa: %v", err)
+	}
+}
+
+// Un guardado sin tarjeta (una pestaña vieja, un script) no puede dejar en cero la existencia propia
+// sin que nadie eligiera «No se cuenta» (revisión de seguridad del 037).
+func TestOwnStockNeedsAChosenCard(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	admin := makeUser(t, st, "admin_sin_tarjeta", "admin")
+	svc, ctx := asApp(t, defaultCompanyID)
+	lata := makeProduct(t, st, "Lata sin tarjeta", decimal.RequireFromString("30"), true)
+	adjust(t, st, "producto", lata, "9")
+	if err := svc.SaveComposition(ctx, app.CompositionOfProduct, lata, app.CompositionRequest{}, admin); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("guardar sin tarjeta un producto con existencia propia = %v, quiere ErrValidation", err)
+	}
+	if !trackStock(t, st, lata) || !onHand(t, st, lata).Equal(decimal.NewFromInt(9)) {
+		t.Error("el guardado sin tarjeta movió la existencia")
 	}
 }

@@ -537,3 +537,23 @@ func TestUnconfiguredExtraSellsAndShowsUp(t *testing.T) {
 		t.Error("«Sin hielo», confirmado «No gasta insumos», aparece como problema")
 	}
 }
+
+// Pedir «Ver más» más allá del final no puede decir «0»: se leería como «todo sano» (revisión de
+// backend del 037).
+func TestAnEmptyPageKeepsTheRealTotal(t *testing.T) {
+	t.Parallel()
+	k := newHealthKit(t)
+	k.sell(t, line(k.shot, "2"), line(k.frappe, "1", k.sinReceta))
+	f := julio()
+	f.Section = domain.SectionUnsold
+	f.Offset = 1000
+	v := reportAsApp(t, k.st, f)
+	if len(v.UnsoldDeduction.Items) != 0 || v.UnsoldDeduction.Total != 2 {
+		t.Errorf("página vacía: %d renglones, total %d; quiere 0 renglones y el total real, 2",
+			len(v.UnsoldDeduction.Items), v.UnsoldDeduction.Total)
+	}
+	f.Section = domain.SectionMalformed
+	if v := reportAsApp(t, k.st, f); v.MalformedRecipes.Total != 0 {
+		t.Errorf("sin recetas con error, el total sigue en 0: %d", v.MalformedRecipes.Total)
+	}
+}

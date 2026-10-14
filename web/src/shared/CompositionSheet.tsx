@@ -221,6 +221,10 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
   const actualOk = !needsActual || (Number.isFinite(actualValue) && actualValue >= 0);
   // Las otras tres tarjetas dejan de contar la existencia del producto (FR-014b, FR-020).
   const leavesStock = ownStock && mode !== 'store';
+  // Con existencia negativa no hay «-3 latas» guardadas: se vendieron más de las que se registraron.
+  const stockNote = productOnHand > 0
+    ? `Tus ${productOnHand} de ${name} siguen donde están; el sistema solo deja de contarlas.`
+    : `Según el sistema se vendieron ${-productOnHand} más de las que había registradas de ${name}; desde ahora el sistema deja de llevar esa cuenta. Lo que tengas guardado no se mueve.`;
   const origById = useMemo(() => new Map(original.map((o) => [o.ingredientId, o])), [original]);
   // En la unidad base: 200 ml y 0.2 L son lo mismo y no cuentan como cambio.
   const baseQty = (r: Row) => toNumber(r.text) * Number(unitById.get(r.unitId)?.toBase ?? 1);
@@ -566,10 +570,10 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
               <HStack gap={2} wrap="wrap">
                 <Text flex="1" minW="200px">
                   {storeId === 'new'
-                    ? `Cada venta resta ${storeQty} de «${name}» (se crea con este nombre)`
+                    ? `Cada venta resta ${storeQty} de «${name}» (no hay uno parecido: se crea uno nuevo con este nombre)`
                     : `Cada venta resta ${storeQty} de «${storeIng?.name ?? ''}»`}
                 </Text>
-                <Button minH="44px" variant="outline" aria-label="Cambiar lo que se resta" onClick={() => setPicker('store')}>Cambiar</Button>
+                <Button minH="44px" variant="outline" aria-label="Cambiar lo que se resta" onClick={() => setPicker('store')}>Elegir otro</Button>
               </HStack>
               {showStepper ? (
                 <HStack gap={2}>
@@ -590,7 +594,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
                   {productOnHand > 0
                     ? `El sistema tenía contadas ${productOnHand} de ${name}: pasan a «${storeName}», y cada vez que vendas una, quedará una menos.`
                     // Negativa: se vendieron más de las que se registraron (las compras no entraban al almacén).
-                    : `Según el sistema se vendieron ${-productOnHand} más de las que había registradas de ${name}: esa cuenta pasa a «${storeName}», y cada vez que vendas una, quedará una menos.`}
+                    : `Según el sistema se vendieron ${-productOnHand} más de las que había registradas de ${name}. Desde ahora se cuentan en «${storeName}»: cada vez que vendas una, quedará una menos.`}
                 </Text>
               )}
               {needsActual && (
@@ -617,7 +621,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
 
           {leavesStock && (
             <Text fontSize="sm" bg="orange.50" borderWidth="1px" borderColor="orange.200" borderRadius="lg" p={3}>
-              Tus {productOnHand} de {name} siguen donde están; el sistema solo deja de contarlas.
+              {stockNote}
             </Text>
           )}
 
@@ -725,7 +729,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
         <DialogContent>
           <DialogHeader><DialogTitle>¿Dejar de contar {name}?</DialogTitle></DialogHeader>
           <DialogBody>
-            <Text>Tus {productOnHand} siguen donde están, pero el sistema deja de contarlas. Si después lo regresas, la existencia no vuelve sola.</Text>
+            <Text>{stockNote} Si después lo regresas, la existencia no vuelve sola.</Text>
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" minH="44px" onClick={() => setAskZero(false)}>Seguir editando</Button>

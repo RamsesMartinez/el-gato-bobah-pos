@@ -16,11 +16,12 @@ import (
 // estable, el mismo de la query string, para que un archivo de hoy se pueda filtrar igual mañana.
 var csvHeader = []string{"seccion", "tipo", "id", "nombre", "grupo", "estado", "canal", "piezas", "costo_estimado", "existencia", "sucursal", "problema"}
 
-// safeCell protege un texto que una hoja de cálculo leería como fórmula (=, +, -, @): un nombre de
+// safeCell protege un texto que una hoja de cálculo leería como fórmula (=, +, -, @, y un tabulador o
+// retorno de carro al inicio, que las hojas recortan al importar antes de evaluar): un nombre de
 // producto como «=HYPERLINK(...)» se ejecutaría al abrir el archivo. Solo en texto; los números van
 // tal cual, o «-200» dejaría de ser un número.
 func safeCell(s string) string {
-	if s != "" && strings.ContainsRune("=+-@", rune(s[0])) {
+	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
 		return "'" + s
 	}
 	return s
@@ -69,8 +70,10 @@ func (s *InventoryHealthService) CSV(ctx context.Context, f domain.HealthFilter)
 		if n.Branch != nil {
 			branch = *n.Branch
 		}
-		write(string(domain.SectionNegative), "insumo", id(n.IngredientID), safeCell(n.Name), "", "", "", "", "",
-			num(n.OnHand)+" "+n.Unit, safeCell(branch), "")
+		// La existencia va como número solo (una hoja la suma) y la unidad en «grupo»: pegadas, «-12 kg»
+		// sería texto que empieza con «-».
+		write(string(domain.SectionNegative), "insumo", id(n.IngredientID), safeCell(n.Name), safeCell(n.Unit), "", "", "", "",
+			num(n.OnHand), safeCell(branch), "")
 	}
 	for _, n := range v.NoPurchases.Items {
 		write(string(domain.SectionNoPurchases), "insumo", id(n.IngredientID), safeCell(n.Name), "", "", "", "", "", "", "", "sin_compras")
