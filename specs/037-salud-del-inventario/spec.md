@@ -47,7 +47,7 @@ como producto a tiendas nuevas. Lo heredado se ajusta con el conteo del 038, no 
 
 Quien administra el negocio abre «Salud del inventario» y ve, agrupado por tipo de problema, todo lo
 que hace que las existencias no cuadren: lo que se vende sin restar, lo guardado en negativo, los
-insumos sin compras registradas, las recetas con un error y las recetas pendientes de confirmar.
+insumos sin compras registradas, las recetas con un error y las recetas pendientes.
 Cada renglón dice qué es, cuánto pesa (unidades vendidas por canal en el periodo, existencia
 actual) y lleva directo a donde se corrige.
 
@@ -67,7 +67,8 @@ sin decidir que la auditoría encontró aunque no se hayan vendido.
 4. **Given** un insumo con existencia negativa, **When** se abre la pantalla, **Then** aparece en «Lo guardado en negativo» con su existencia y las recetas que lo usan.
 5. **Given** una receta con un renglón en cantidad cero, con unidad de otro tipo que la del insumo, o que apunta a un insumo archivado o duplicado, **When** se abre la pantalla, **Then** aparece en «Recetas con un error» con el renglón señalado.
 6. **Given** recetas «Por revisar», **When** se abre la pantalla, **Then** se ve cuántas son y un toque lleva a Menú › Recetas filtrado en «Por revisar».
-7. **Given** una empresa sin ningún problema, **When** se abre la pantalla, **Then** dice que el inventario está sano, sin listas vacías que parezcan error.
+7. **Given** un producto activo que nadie ha decidido qué resta y que no se vendió en el periodo, **When** se abre la pantalla, **Then** se cuenta en «Recetas pendientes» como «Falta decir qué resta», y un toque lleva a Menú › Recetas con ese filtro.
+8. **Given** una empresa sin ningún problema, **When** se abre la pantalla, **Then** dice que el inventario está sano, sin listas vacías que parezcan error.
 
 ---
 
@@ -163,7 +164,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 **Salud del inventario (Historia 1 y 2)**
 
-- **FR-001**: El sistema MUST mostrar una pantalla «Salud del inventario» con cinco secciones: se vende sin restar; lo guardado en negativo; insumos sin compras registradas; recetas con un error; recetas pendientes de confirmar.
+- **FR-001**: El sistema MUST mostrar una pantalla «Salud del inventario» con cinco secciones: se vende sin restar; lo guardado en negativo; insumos sin compras registradas; recetas con un error; recetas pendientes.
 - **FR-002**: «Se vende sin restar» MUST listar cada producto y cada extra activos que en el periodo elegido se vendieron y no dejaron ningún movimiento de almacén, con sus piezas vendidas separadas por canal (mostrador y cada plataforma de reparto) y el costo estimado de lo que no se restó (piezas por el costo de hoy del producto o extra), para priorizar por dinero.
 - **FR-002a**: Corregir la receta de un producto MUST NOT recalcular sus ventas anteriores; la pantalla MUST decirlo junto al renglón («las ventas anteriores no se recalculan»).
 - **FR-002b**: La pantalla MUST señalar cada combo activo que tenga un hueco con más de un producto, porque siempre resta el producto de fábrica: lo que el cliente elige debe configurarse como extra ligado a su producto.
@@ -172,7 +173,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-005**: «Lo guardado en negativo» MUST listar cada insumo activo con existencia menor que cero **a hoy** (lo dice la sección; no depende del periodo), con su existencia y las recetas activas que lo usan. Mientras la empresa no tenga ninguna compra registrada, la sección MUST abrir con un renglón que explique que lo guardado solo baja, y desplegar la lista con un toque.
 - **FR-006**: «Insumos sin compras registradas» MUST mostrar primero un renglón resumen («N de M insumos sin compras registradas») y, con un toque, desplegar la lista de cada insumo activo usado por alguna receta activa sin ninguna entrada de compra desde una fecha elegible. La exportación MUST traer siempre la lista completa.
 - **FR-007**: «Recetas con un error» MUST listar cada renglón de receta activa con cantidad cero o menor, con unidad de un tipo distinto al del insumo, o que apunta a un insumo archivado o a uno duplicado (mismo nombre, sin distinguir mayúsculas ni acentos, que otro insumo activo).
-- **FR-008**: «Recetas pendientes de confirmar» MUST mostrar dos cuentas, cada una de productos y de extras activos, con el mismo criterio que las pestañas de Menú › Recetas: los que nadie ha decidido qué restan («Falta decir qué resta», se hayan vendido o no) y los que «Las cargó el sistema y nadie las ha confirmado». Cada cuenta lleva a Menú › Recetas con su filtro.
+- **FR-008**: «Recetas pendientes» MUST mostrar dos cuentas, cada una de productos y de extras activos, con el mismo criterio que las pestañas de Menú › Recetas: los que nadie ha decidido qué restan («Falta decir qué resta», se hayan vendido o no) y los que «Las cargó el sistema y nadie las ha confirmado». Cada cuenta lleva a Menú › Recetas con su filtro.
 - **FR-009**: Cada renglón MUST llevar a la pantalla donde se corrige (la receta del producto o extra, el insumo).
 - **FR-010**: El periodo MUST poder elegirse; un periodo mal formado se rechaza con un mensaje, nunca se reemplaza en silencio por otro (constitución V).
 - **FR-011**: La pantalla MUST exportarse a un archivo que abre en una hoja de cálculo, con las mismas cifras y el mismo periodo que se ven.

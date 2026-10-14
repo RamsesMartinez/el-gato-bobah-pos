@@ -54,7 +54,8 @@ Respuesta 200 (todo arreglo viaja aunque esté vacío, nunca `null`):
 Mismo permiso y mismos parámetros que `/stock/health`, sin paginar.
 
 - `200 text/csv; charset=utf-8`, con BOM y `Content-Disposition: attachment; filename="salud-del-inventario-<from>-<to>.csv"`.
-- Columnas: `seccion, tipo, id, nombre, grupo, estado, canal, piezas, costo_estimado, existencia, sucursal, problema`. `tipo` ∈ producto, extra, combo, insumo, renglon_receta. Un renglón por problema y por canal.
+- Columnas: `seccion, tipo, id, nombre, grupo, estado, canal, piezas, costo_estimado, existencia, sucursal, problema`.
+- «Recetas pendientes» no tiene renglones de lista: va como cuatro renglones de resumen, `seccion=pending_recipe`, `tipo=resumen`, `problema` = `undecided_products`, `undecided_extras`, `review_products` o `review_extras`, y la cuenta en `piezas`. Así el archivo trae las mismas cifras que la pantalla (FR-011). `tipo` ∈ producto, extra, combo, insumo, renglon_receta. Un renglón por problema y por canal.
 - Lo calcula el mismo servicio que la pantalla (SC-005).
 
 ## PUT /admin/products/{id}/composition (cambio)
