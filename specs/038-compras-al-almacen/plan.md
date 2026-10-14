@@ -22,7 +22,7 @@ Decisiones en [research.md](research.md); esquema en [data-model.md](data-model.
 
 **Language/Version**: Go 1.27.2 (server), TypeScript / React 19 (web)
 **Primary Dependencies**: chi, pgx + sqlc, goose; Chakra UI v3, TanStack Query
-**Storage**: PostgreSQL con RLS (`gatobobah_app`); una migración (0091)
+**Storage**: PostgreSQL con RLS (`gatobobah_app`); dos migraciones (0091 tipo de unidad, 0092 el resto)
 **Testing**: `go test` (domain table-driven; integración bajo `appRoleStore` con `inTheThreeCases`, dos empresas), vitest, capturas a 1024×600 contra el ambiente de pruebas
 **Target Platform**: API en VM Linux; tabletas 1024×600
 **Project Type**: web-service + SPA

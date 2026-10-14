@@ -62,7 +62,7 @@ del 037 ya no la lista.
 2. **Given** un gasto con renglones de mercancía y renglones que no son de almacén (envío, bolsa), **When** se guarda, **Then** solo los renglones de insumo tocan el almacén; los demás suman al importe y nada más.
 3. **Given** un gasto sin ningún renglón de insumo (luz, renta), **When** se guarda, **Then** se registra como hoy, sin pedir insumos.
 4. **Given** un gasto ya registrado que entró al almacén, **When** se corrige la cantidad de un renglón, **Then** el almacén se ajusta por la diferencia con un movimiento que lo dice, nunca se duplica la entrada.
-5. **Given** un gasto que entró al almacén, **When** se borra, **Then** sus entradas se revierten con movimientos que lo dicen; el historial no se borra.
+5. **Given** un gasto que entró al almacén, **When** se anula, **Then** sus entradas se revierten con movimientos que lo dicen; el gasto queda anulado y el historial no se borra.
 6. **Given** una empresa con el costeo por omisión, **When** se guarda una compra de leche a $25 el litro, **Then** el costo de la leche pasa a $25 el litro.
 7. **Given** una empresa que eligió promedio ponderado, con 10 L a $20 y una compra de 10 L a $30, **When** se guarda, **Then** el costo de la leche pasa a $25 el litro.
 
@@ -110,7 +110,7 @@ sube 24 L; cambiar la caja a 10 L y ver que una compra nueva usa 10 y la anterio
 
 1. **Given** un insumo en litros, **When** se le agrega la presentación «caja» con 12, **Then** se ofrece al capturar compras de ese insumo, junto con la unidad base.
 2. **Given** una presentación que cambia de 12 a 10, **When** se registra una compra nueva, **Then** usa 10; las compras anteriores conservan la equivalencia con la que se registraron.
-3. **Given** una presentación en una unidad de otro tipo (una caja de 12 piezas para un insumo en litros), **When** se intenta guardar, **Then** se pide cuánto trae cada pieza en la unidad base o se rechaza; nunca se convierte en silencio.
+3. **Given** un insumo en litros, **When** se crea un empaque, **Then** su contenido se captura en litros o mililitros; un contenido en otro tipo de unidad (piezas, kilos) se rechaza diciendo cómo capturarlo. La única excepción es el empaque aproximado entre tipos (regla 18), que se marca como tal. Nunca se convierte en silencio.
 4. **Given** un insumo sin presentaciones, **When** se captura una compra, **Then** se puede capturar en su unidad base y, desde ahí mismo, crear la presentación para la próxima vez.
 
 ---
@@ -165,7 +165,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
      se rechaza diciendo cómo hacerlo.
   3. Comprar por peso algo que se cuenta en volumen (o al revés) se rechaza y se ofrece un empaque:
      no se adivina una densidad.
-  4. La unidad de un insumo se elige al crearlo («¿En qué lo mides?»: peso, líquido o piezas) y no
+  4. La unidad de un insumo se elige al crearlo («¿En qué lo mides?»: peso, líquido, longitud o piezas) y no
      cambia si ya tiene existencia, recetas o compras.
   5. Dos empaques del mismo insumo se distinguen por nombre y contenido («Bulto 25 kg» y «Bulto 20
      kg» conviven).
@@ -207,7 +207,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 - **FR-001**: Al registrar un gasto, el sistema MUST permitir agregar renglones de insumo con cantidad y presentación (o unidad base), además de los renglones que no son de almacén.
 - **FR-002**: Cada renglón de insumo de un gasto que ya llegó MUST sumar a la existencia del insumo, en su unidad base, con un movimiento de entrada ligado al gasto y al renglón.
-- **FR-003**: Corregir la cantidad, la presentación o el insumo de un renglón ya recibido MUST ajustar el almacén por la diferencia, con un movimiento que lo dice; borrar el gasto MUST revertir sus entradas con movimientos que lo dicen. Nunca se borra un movimiento.
+- **FR-003**: Corregir la cantidad, la presentación o el insumo de un renglón ya recibido MUST ajustar el almacén por la diferencia, con un movimiento que lo dice; anular el gasto MUST revertir sus entradas con movimientos que lo dicen. Nunca se borra un movimiento ni un gasto.
 - **FR-004**: Un gasto sin renglones de insumo MUST poder registrarse como hoy.
 - **FR-004a**: Cada renglón de mercancía MUST llevar un importe mayor que cero, y la suma de los renglones MUST NOT pasar del total pagado del gasto; lo que falte para el total queda como «otros» del gasto. El servidor lo valida (400), no solo la pantalla.
 - **FR-004b**: Un gasto MUST NOT guardarse sin categoría ni sin total. Las categorías y los proveedores son los de la empresa y se pueden crear desde la captura.
@@ -250,7 +250,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-017**: Registrar compras con insumos, configurar presentaciones y contar MUST pedir permisos verificados en el servidor (no nombres de rol; constitución, «Roles: modelo híbrido»), con administrador y gerente por omisión.
 - **FR-018**: Ningún nombre, marca, producto o proveedor de un negocio en particular MUST aparecer en el código ni en las migraciones de esquema. Ninguna pantalla trae listas fijas de un giro: categorías y proveedores salen de los de la empresa (y se crean desde la captura); los nombres de empaque que se sugieren son los que la empresa ya usa.
 - **FR-018a**: La palabra con que las pantallas de compras, empaques y conteo llaman a lo que se guarda en el almacén MUST ser configurable por empresa, con «artículo» por omisión.
-- **FR-019**: Los textos de la pantalla MUST usar palabras de quien opera, validadas con usuarios sin contexto el 14-oct: «lo que tienes guardado» o «tienes», «llegó», «contaste», «restar» y «sumar», y «empaque» (no «presentación», que se leyó como exposición); no «existencia», «movimiento» ni «unidad base».
+- **FR-019**: Los textos de la pantalla MUST usar palabras de quien opera, validadas con usuarios sin contexto el 14-oct: «lo que tienes guardado» o «tienes», «llegó», «contaste», «restar» y «sumar», y «empaque» (no «presentación», que se leyó como exposición; «presentación» queda como nombre interno en el código y en este documento); no «existencia», «movimiento» ni «unidad base».
 
 ### Key Entities
 
@@ -266,7 +266,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **SC-001**: Quien recibe la mercancía registra una compra de 5 insumos con presentación en menos de 2 minutos, y cada insumo sube lo que llegó.
 - **SC-002**: Después de un conteo y una semana de compras registradas, «Lo guardado en negativo» del 037 no lista insumos contados (salvo los que de verdad se acabaron y se siguieron vendiendo).
 - **SC-003**: Cada cambio de existencia por compra o conteo se puede rastrear hasta su gasto o su conteo, con quién y cuándo.
-- **SC-004**: Corregir o borrar un gasto nunca deja el almacén con una entrada duplicada ni huérfana.
+- **SC-004**: Corregir o anular un gasto nunca deja el almacén con una entrada duplicada ni huérfana.
 - **SC-005**: Un conteo a medias sobrevive a recargar la página y a cambiar de tableta sin perder una sola cifra.
 - **SC-006**: Ninguna referencia a marcas, productos ni proveedores de un negocio aparece en el código ni en las migraciones de esta feature.
 
@@ -279,4 +279,5 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **Un gasto con fecha anterior al último conteo** entra al almacén igual: el conteo no sabe qué compras llegaron antes de contar. Es un riesgo aceptado; quien registra tarde ve un aviso.
 - **El costo de las ventas ya registradas no cambia** con ningún método: cada renglón de venta guarda su costo del momento (constitución VIII, snapshot).
 - **Los formatos aprendidos por proveedor** que ya existen siguen funcionando; las presentaciones por insumo son el camino principal.
-- **Permisos sugeridos:** `inventory.receive` (compras con insumos), `inventory.configure` (presentaciones) e `inventory.count` (conteo); nombres finales en el plan.
+- **Permisos:** `inventory.receive` (compras con insumos, recibir, corregir), `inventory.configure` (presentaciones, lugar, método de costeo, palabra) e `inventory.count` (conteo); admin y gerente por omisión (research R6).
+- **Categorías y proveedores** se crean desde la captura con las rutas que ya existen (`POST /expense-categories`, `POST /suppliers`, grupo de admin y gerente); pasan a permiso cuando el issue #61 toque ese grupo.

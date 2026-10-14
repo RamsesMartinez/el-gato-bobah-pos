@@ -177,6 +177,9 @@ símbolos citados son de `develop` en `c33f50e`.
 - «Insumos sin compras registradas» busca un `compra` del insumo. Con las reversiones negativas,
   un gasto anulado seguiría contando como compra: la consulta pasa a exigir que la **suma** de
   `compra` del insumo en el periodo sea mayor que cero.
+- «Lo guardado en negativo» abre resumido mientras no exista compra; con el mismo criterio, la
+  compra cuenta solo si la suma de `compra` de la empresa es mayor que cero (`HealthAnyPurchase`),
+  así una compra anulada no la abre.
 - Un conteo es `ajuste`, no `compra`: no cuenta como compra, a propósito.
 
 ## R9. Sucursal
