@@ -272,7 +272,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 ## Assumptions
 
-- **Fuera de alcance:** multi-almacén y traspasos, mermas y cortesías, conteos parciales periódicos, kardex y valor del inventario, pago a proveedores, órdenes de compra.
+- **Fuera de alcance:** multi-almacén y traspasos (issue #65), mermas y cortesías (issue #66: la diferencia del conteo se guarda como ajuste «conteo» y su renglón conserva lo contado y lo que el sistema tenía, para calcular después el faltante sin explicar), conteos parciales periódicos, kardex y valor del inventario, pago a proveedores, órdenes de compra.
 - **Un almacén por sucursal**, que es lo que existe hoy.
 - **El paso «recibir» separado del gasto se conserva** para el pedido que se paga antes de llegar; el caso normal es «ya llegó» y entra al guardar.
 - **La venta durante el conteo:** la cifra contada se toma como la existencia en el momento de capturarla; lo que se venda después de capturar ese renglón sigue restando sobre la cifra contada.
