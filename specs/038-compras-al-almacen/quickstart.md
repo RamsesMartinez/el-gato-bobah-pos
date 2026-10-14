@@ -10,7 +10,8 @@ Registrar un gasto de luz sin renglones desde la pantalla. **Esperado:** el gast
 
 ## 2. Compra en presentación suma al almacén y fija el costo
 
-1. Almacén › Insumos › Leche › Presentaciones: agregar «Caja» = 12 (L).
+1. Almacén › Insumos, columna «Cómo llega» de la leche › «+ Agregar»: empaque «Caja» que trae 12 L
+   (la pantalla muestra «= 12,000 ml» antes de guardar).
 2. Gastos › nuevo: renglón «Leche», 3 «Caja», $540, «Ya llegó».
 3. **Esperado:** la leche sube 36 L; el movimiento dice el gasto y el renglón; el costo de la leche
    queda en $15 por litro y el costo de las recetas con leche cambia; Salud deja de listarla en
@@ -37,9 +38,22 @@ costo $25. Con lo guardado en negativo, comprar a $30: costo $30.
 4. **Esperado:** el insumo queda en 1,400 ml; un ajuste de +1,700 con el conteo; los no contados
    igual que antes y la pantalla dice cuántos quedaron sin contar; Salud ya no lo lista en negativo.
 
-## 6. Aislamiento y permisos
+## 6. Por recibir
 
-Un cajero recibe 403 en recibir, corregir, presentaciones, conteo y método de costeo. Nada de otra
+1. Registrar una compra de 3 cajas de leche con «Llega después». **Esperado:** no suma; aparece en
+   Almacén › Por recibir con proveedor, fecha y lo pagado.
+2. «Recibir…» 2 cajas. **Esperado:** +24 L con la fecha de hoy; queda 1 caja pendiente.
+3. «Ya no va a llegar…» la caja restante. **Esperado:** sale de la lista; el total pagado no cambia;
+   la compra deja de salir en Gastos › «Con pendientes».
+4. Otra compra con 3 cajas pendientes: recibir 4, con $180 por la de más. **Esperado:** +48 L y el
+   total pagado sube $180.
+5. «Llegó algo más…» con 2 cajas de crema pagadas y otra como regalo. **Esperado:** las dos suman; el
+   total sube solo por la pagada; el costo de la crema no cambia por el regalo.
+6. Dos tabletas recibiendo el mismo renglón: la segunda recibe 409 con lo ya recibido.
+
+## 7. Aislamiento y permisos
+
+Un cajero recibe 403 en recibir, corregir, por recibir, empaques, conteo y configuración del almacén. Nada de otra
 empresa aparece ni se modifica (tests bajo `appRoleStore` con `inTheThreeCases`).
 
 ## Gates
