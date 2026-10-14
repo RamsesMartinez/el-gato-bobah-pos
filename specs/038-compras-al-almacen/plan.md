@@ -65,6 +65,7 @@ Sin violaciones.
 | Método de costeo | app | `server/internal/app/settings.go` |
 | Rutas | httpapi | `handlers_backoffice.go` (gastos), `handlers_stock_counts.go`, `router.go` |
 | Salud: «sin compras» por suma positiva | store | `server/queries/inventory_health.sql` (R8) |
+| Filtro «Con pendientes» de la lista de gastos | store | `server/queries/expenses.sql` (`ListExpenses`/`CountExpenses`, mismo `where`) |
 
 ## Pantallas y maquetas
 
@@ -122,7 +123,7 @@ de sobra.
 specs/038-compras-al-almacen/  spec.md plan.md research.md data-model.md quickstart.md contracts/api.md
 
 server/migrations/0091_unit_kind_length.sql, 0092_purchases_into_stock.sql
-server/queries/purchases.sql, stock_counts.sql, ingredients.sql, inventory_health.sql
+server/queries/purchases.sql, stock_counts.sql, ingredients.sql, inventory_health.sql, expenses.sql
 server/internal/domain/purchases.go, stock_count.go, permission.go, audit.go (+_test)
 server/internal/app/expenses.go, costing.go, stock_counts.go, articles.go, settings.go
 server/internal/httpapi/handlers_backoffice.go, handlers_stock_counts.go, router.go

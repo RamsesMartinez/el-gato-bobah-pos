@@ -83,10 +83,10 @@ Va antes de US1 porque la compra en empaque los usa.
 - [ ] T033 [US1] `domain.PlanStockLines` (deseado contra aplicado, ordenado por insumo) con su test table-driven en `server/internal/domain/purchases.go` y `purchases_test.go`
 - [ ] T034 [US1] En `server/internal/app/expenses.go`: «recibido» solo con mercancía (T022), reglas de dinero, costo con `ApplyPurchaseCost` + `RecomputeAll` en la misma tx (`server/internal/app/costing.go`), `SaveStockLines`, anular recibido por reversión, eventos `expense.received` y `expense.stock_corrected`, hasta que T024–T027 pasen
 - [ ] T035 [US1] Alta de insumo que exige la unidad base de su tipo en `server/internal/app/articles.go` hasta que T023 pase
-- [ ] T036 [US1] Método de costeo y palabra configurable: `PUT /settings/inventory` en `server/internal/app/settings.go` y su handler, `GET /business-settings` los incluye, evento `settings.costing_method`; la fecha del último conteo cerrado de la sucursal viaja en la respuesta de la captura para el aviso de fecha anterior (Assumptions del spec)
+- [ ] T036 [US1] Método de costeo y palabra configurable: `PUT /settings/inventory` en `server/internal/app/settings.go` y su handler, `GET /business-settings` los incluye, evento `settings.costing_method`
 - [ ] T037 [US1] Rutas `POST /expenses/{id}/receive` (pasa a `RequirePermission(PermInventoryReceive)`), `PUT /expenses/{id}/stock-lines`, `PUT /settings/inventory`, fuera de los grupos con rol, en `server/internal/httpapi/router.go` y `handlers_backoffice.go`, hasta que T028 pase
 - [ ] T038 [US1] «Sin compras» y `HealthAnyPurchase` por suma positiva en `server/queries/inventory_health.sql` hasta que T029 pase; `make sqlc`
-- [ ] T039 [P] [US1] Cliente y tipos (renglón con estado, `seenApplied`, `isGift`, `costingMethod`, `stockItemLabel`, fecha del último conteo cerrado de la sucursal para el aviso de G3) en `web/src/api/backoffice.ts`
+- [ ] T039 [P] [US1] Cliente y tipos (renglón con estado, `seenApplied`, `isGift`, `costingMethod`, `stockItemLabel`, `lastClosedCount()` para el aviso de gasto con fecha anterior al último conteo) en `web/src/api/backoffice.ts`
 - [ ] T040 [US1] Captura según plan.md › Maquetas, fila «Captura de una compra» (C), en `web/src/features/backoffice/ExpenseDialog.tsx` y `expenseDraft.ts`, hasta que T030 pase
 - [ ] T041 [US1] «Corregir lo que llegó» según plan.md › Maquetas, fila «Corregir lo que llegó» (B), en `web/src/features/backoffice/ExpenseDetailDialog.tsx`, hasta que T031 pase
 - [ ] T042 [US1] Renglón de costeo y palabra en `web/src/features/admin/BusinessSettingsPage.tsx` (+ test)
@@ -102,16 +102,16 @@ Va antes de US1 porque la compra en empaque los usa.
 ### Tests (primero, en rojo)
 
 - [ ] T043 [US1b] Test de integración bajo `appRoleStore` con `inTheThreeCases` de `GET /stock/pending-receipts` y de recibir por partes: suma con la fecha del día; de más con `extraAmount` sube cantidad, importe y total; «ya no va a llegar» parcial con `not_coming_qty`; «Llegó algo más» pagado y regalo (no cambia total ni costo); `received_at` vuelve a nulo al agregar un pendiente y se fija cuando ya no queda nada; dos tabletas → una 409 con lo ya recibido; con dos sucursales, la lista es de la sucursal, en `server/internal/integration/pending_receipts_test.go`
-- [ ] T043b [US1b] Test de integración bajo `appRoleStore` con `inTheThreeCases` del filtro «Con pendientes» en la lista de gastos: `ListExpenses` y `CountExpenses` con el mismo `where` (regla de listas de AGENTS.md), una compra sin pendientes no sale, una con un renglón «llega después» sí, en `server/internal/integration/pending_receipts_test.go`
-- [ ] T044 [P] [US1b] Test del handler: cajero → 403; recibir de más sin `extraAmount` → 400; regalo con importe ≠ 0 → 400; arreglo `[]` vacío, en `server/internal/integration/pending_receipts_http_test.go`
-- [ ] T045 [P] [US1b] Tests de vitest de «Por recibir» (maqueta A con buscador): agrupado por compra, buscador, «Recibir…» con cantidad tecleada y vacía al abrir, de más pide importe, «Ya no va a llegar…» con cuántas, «Llegó todo…» con confirmación, «Llegó algo más…» (lo pagué / fue regalo), en `web/src/features/backoffice/PendingReceiptsTab.test.tsx`
+- [ ] T044 [US1b] Test de integración bajo `appRoleStore` con `inTheThreeCases` del filtro «Con pendientes» en la lista de gastos: `ListExpenses` y `CountExpenses` con el mismo `where` (regla de listas de AGENTS.md), una compra sin pendientes no sale, una con un renglón «llega después» sí, en `server/internal/integration/pending_receipts_test.go`
+- [ ] T045 [P] [US1b] Test del handler: cajero → 403; recibir de más sin `extraAmount` → 400; regalo con importe ≠ 0 → 400; arreglo `[]` vacío, en `server/internal/integration/pending_receipts_http_test.go`
+- [ ] T046 [P] [US1b] Tests de vitest de «Por recibir» (maqueta A con buscador): agrupado por compra, buscador, «Recibir…» con cantidad tecleada y vacía al abrir, de más pide importe, «Ya no va a llegar…» con cuántas, «Llegó todo…» con confirmación, «Llegó algo más…» (lo pagué / fue regalo), en `web/src/features/backoffice/PendingReceiptsTab.test.tsx`
 
 ### Implementación
 
-- [ ] T046 [US1b] Consultas de pendientes y de recibir/no llega/agregar renglón en `server/queries/purchases.sql`, y el filtro `sqlc.narg('pending')` en `ListExpenses`/`CountExpenses` de `server/queries/expenses.sql` hasta que T043b pase; `make sqlc`
-- [ ] T047 [US1b] `ReceiveItem`, `MarkNotComing`, `AddArrivedItem` en `server/internal/app/expenses.go`, con eventos y orden por insumo, hasta que T043 pase
-- [ ] T048 [US1b] Rutas `GET /stock/pending-receipts`, `POST /expenses/{id}/items/{itemId}/receive`, `…/not-coming`, `POST /expenses/{id}/items`, con `RequirePermission(PermInventoryReceive)`, en `router.go` y `handlers_backoffice.go`, hasta que T044 pase
-- [ ] T049 [US1b] Pestaña «Por recibir» según plan.md › Maquetas, fila «Almacén › Por recibir» (A con buscador), en `web/src/features/backoffice/PendingReceiptsTab.tsx` y `StockPage.tsx` (pestañas en el orden fijado en el plan); filtro «Con pendientes» en `web/src/features/backoffice/ExpensesPage.tsx`; hasta que T045 pase
+- [ ] T047 [US1b] Consultas de pendientes y de recibir/no llega/agregar renglón en `server/queries/purchases.sql`, y el filtro `sqlc.narg('pending')` en `ListExpenses`/`CountExpenses` de `server/queries/expenses.sql` hasta que T044 pase; `make sqlc`
+- [ ] T048 [US1b] `ReceiveItem`, `MarkNotComing`, `AddArrivedItem` en `server/internal/app/expenses.go`, con eventos y orden por insumo, hasta que T043 pase
+- [ ] T049 [US1b] Rutas `GET /stock/pending-receipts`, `POST /expenses/{id}/items/{itemId}/receive`, `…/not-coming`, `POST /expenses/{id}/items`, con `RequirePermission(PermInventoryReceive)`, en `router.go` y `handlers_backoffice.go`, hasta que T045 pase
+- [ ] T050 [US1b] Pestaña «Por recibir» según plan.md › Maquetas, fila «Almacén › Por recibir» (A con buscador), en `web/src/features/backoffice/PendingReceiptsTab.tsx` y `StockPage.tsx` (pestañas en el orden fijado en el plan); filtro «Con pendientes» en `web/src/features/backoffice/ExpensesPage.tsx`; hasta que T046 pase
 
 ---
 
@@ -121,39 +121,39 @@ Va antes de US1 porque la compra en empaque los usa.
 
 ### Tests (primero, en rojo)
 
-- [ ] T050 [P] [US3] Test table-driven de `CountAdjustment` (contado − sistema al capturar; recaptura usa la lectura nueva; ajuste 0 no inserta) en `server/internal/domain/stock_count_test.go`
-- [ ] T051 [US3] Test de integración bajo `appRoleStore` con `inTheThreeCases`: un conteo abierto por sucursal (segundo → 409 con su id); capturar guarda `system_qty`; una venta después de capturar queda restada al cerrar; no contados intactos; conteo cerrado no acepta capturas; descartar no toca lo guardado; `system_qty` no viaja mientras está abierto (a ciegas); `preview` igual a lo que hace `close`; ajustes ordenados por insumo, con `stock_count_id`, sucursal del conteo y quién cerró (SC-003); evento `stock.counted`, en `server/internal/integration/stock_counts_test.go`
-- [ ] T052 [P] [US3] Test del handler: cajero → 403; `countedQty` negativo, NaN o sobre `MaxStockQty` → 400; `PUT /stock/ingredients/{id}/place` de más de 30 → 400, en `server/internal/integration/stock_counts_http_test.go`
-- [ ] T053 [P] [US3] Tests de vitest del teclado numérico en pantalla (teclas ≥ 56 px, punto solo con decimales, borrar, siguiente casilla, no abre el teclado del sistema) en `web/src/components/NumericKeypad.test.tsx`
-- [ ] T054 [P] [US3] Tests de vitest del conteo (maqueta «Almacén › Conteo»): dos vistas con interruptor recordado en la tableta; agrupado por lugar; empaques con contenido; «—» y no «0» de fondo; guardar vacío no cierra; «✓ guardado»; cierre que nombra no contados, dice «sobraban/faltaban», marca diferencias grandes y nunca muestra una existencia negativa a secas; descartar con confirmación; estado cerrado visible, en `web/src/features/backoffice/StockCountTab.test.tsx`
+- [ ] T051 [P] [US3] Test table-driven de `CountAdjustment` (contado − sistema al capturar; recaptura usa la lectura nueva; ajuste 0 no inserta) en `server/internal/domain/stock_count_test.go`
+- [ ] T052 [US3] Test de integración bajo `appRoleStore` con `inTheThreeCases`: un conteo abierto por sucursal (segundo → 409 con su id); capturar guarda `system_qty`; una venta después de capturar queda restada al cerrar; no contados intactos; conteo cerrado no acepta capturas; descartar no toca lo guardado; `system_qty` no viaja mientras está abierto (a ciegas); `preview` igual a lo que hace `close`; `GET /stock/counts/last-closed` devuelve el cierre más reciente de la sucursal o `null`; ajustes ordenados por insumo, con `stock_count_id`, sucursal del conteo y quién cerró (SC-003); evento `stock.counted`, en `server/internal/integration/stock_counts_test.go`
+- [ ] T053 [P] [US3] Test del handler: cajero → 403; `countedQty` negativo, NaN o sobre `MaxStockQty` → 400; `PUT /stock/ingredients/{id}/place` de más de 30 → 400, en `server/internal/integration/stock_counts_http_test.go`
+- [ ] T054 [P] [US3] Tests de vitest del teclado numérico en pantalla (teclas ≥ 56 px, punto solo con decimales, borrar, siguiente casilla, no abre el teclado del sistema) en `web/src/components/NumericKeypad.test.tsx`
+- [ ] T055 [P] [US3] Tests de vitest del conteo (maqueta «Almacén › Conteo»): dos vistas con interruptor recordado en la tableta; agrupado por lugar; empaques con contenido; «—» y no «0» de fondo; guardar vacío no cierra; «✓ guardado»; cierre que nombra no contados, dice «sobraban/faltaban», marca diferencias grandes y nunca muestra una existencia negativa a secas; descartar con confirmación; estado cerrado visible, en `web/src/features/backoffice/StockCountTab.test.tsx`
 
 ### Implementación
 
-- [ ] T055 [US3] `CountAdjustment` en `server/internal/domain/stock_count.go` hasta que T050 pase
-- [ ] T056 [US3] Consultas en `server/queries/stock_counts.sql` (abrir, capturar, quitar, vista previa, cerrar, descartar, lista por lugar) y `count_place` en `server/queries/ingredients.sql`; `make sqlc`
-- [ ] T057 [US3] `StockCountService` en `server/internal/app/stock_counts.go` y lugar del insumo en `articles.go`, hasta que T051 pase
-- [ ] T058 [US3] Rutas de conteo con `RequirePermission(PermInventoryCount)` y `PUT /stock/ingredients/{id}/place` con `PermInventoryConfigure`, en `server/internal/httpapi/handlers_stock_counts.go` y `router.go`, hasta que T052 pase
-- [ ] T059 [P] [US3] `NumericKeypad` en `web/src/components/NumericKeypad.tsx` hasta que T053 pase
-- [ ] T060 [US3] Pestaña «Conteo» según plan.md › Maquetas, fila «Almacén › Conteo» (las dos vistas), en `web/src/features/backoffice/StockCountTab.tsx`, y el lugar en la hoja del insumo, hasta que T054 pase
+- [ ] T056 [US3] `CountAdjustment` en `server/internal/domain/stock_count.go` hasta que T051 pase
+- [ ] T057 [US3] Consultas en `server/queries/stock_counts.sql` (abrir, capturar, quitar, vista previa, cerrar, descartar, lista por lugar) y `count_place` en `server/queries/ingredients.sql`; `make sqlc`
+- [ ] T058 [US3] `StockCountService` en `server/internal/app/stock_counts.go` y lugar del insumo en `articles.go`, hasta que T052 pase
+- [ ] T059 [US3] Rutas de conteo con `RequirePermission(PermInventoryCount)` y `PUT /stock/ingredients/{id}/place` con `PermInventoryConfigure`, en `server/internal/httpapi/handlers_stock_counts.go` y `router.go`, hasta que T053 pase
+- [ ] T060 [P] [US3] `NumericKeypad` en `web/src/components/NumericKeypad.tsx` hasta que T054 pase
+- [ ] T061 [US3] Pestaña «Conteo» según plan.md › Maquetas, fila «Almacén › Conteo» (las dos vistas), en `web/src/features/backoffice/StockCountTab.tsx`, y el lugar en la hoja del insumo, hasta que T055 pase
 
 ---
 
 ## Phase 7: Polish
 
-- [ ] T061 [P] Medición de uso: acciones de compras, por recibir y conteo en `accionesMedibles` de `server/internal/domain/uso.go` (+ test) y sus etiquetas en `web/src/consola/etiquetas-de-uso.ts`
-- [ ] T062 [P] Test de FR-018 / SC-006: ningún nombre de producto, marca ni proveedor del negocio en el código ni en las migraciones de la feature, en `server/internal/integration/inventory_health_test.go` o script de CI
-- [ ] T063 Medir con `EXPLAIN (ANALYZE, BUFFERS)` como `gatobobah_app` sobre la copia de producción: guardar un gasto de 10 renglones con recálculo de costos < 1 s, lista de pendientes y conteo; anotar en research.md
-- [ ] T064 Capturas con Playwright a 1024×600 de las cinco pantallas contra el ambiente de pruebas (tras el merge a develop) y prueba sin contexto con dos personas de comida (el café del cliente y otra fonda o taquería)
-- [ ] T065 Actualizar AGENTS.md (compras que suman, corregir por diferencia, por recibir, conteo por diferencia, longitud, «lugar» no es almacén) y `docs/matriz-de-pantallas.md`
-- [ ] T066 Gates: `make api-build && make api-test`, `make test-integration`, `bun run lint`, `bun run vitest run`, `bun run build`, `make ci-local`; correr quickstart.md completo
-- [ ] T067 `/revision-de-codigo` (hook `after_implement`)
+- [ ] T062 [P] Medición de uso: acciones de compras, por recibir y conteo en `accionesMedibles` de `server/internal/domain/uso.go` (+ test) y sus etiquetas en `web/src/consola/etiquetas-de-uso.ts`
+- [ ] T063 [P] Test de FR-018 / SC-006: ningún nombre de producto, marca ni proveedor del negocio en el código ni en las migraciones de la feature, en `server/internal/integration/inventory_health_test.go` o script de CI
+- [ ] T064 Medir con `EXPLAIN (ANALYZE, BUFFERS)` como `gatobobah_app` sobre la copia de producción: guardar un gasto de 10 renglones con recálculo de costos < 1 s, lista de pendientes y conteo; anotar en research.md
+- [ ] T065 Capturas con Playwright a 1024×600 de las cinco pantallas contra el ambiente de pruebas (tras el merge a develop) y prueba sin contexto con dos personas de comida (el café del cliente y otra fonda o taquería)
+- [ ] T066 Actualizar AGENTS.md (compras que suman, corregir por diferencia, por recibir, conteo por diferencia, longitud, «lugar» no es almacén) y `docs/matriz-de-pantallas.md`
+- [ ] T067 Gates: `make api-build && make api-test`, `make test-integration`, `bun run lint`, `bun run vitest run`, `bun run build`, `make ci-local`; correr quickstart.md completo
+- [ ] T068 `/revision-de-codigo` (hook `after_implement`)
 
 ---
 
 ## Dependencies
 
 - Phase 1 → Phase 2 → US2 → US1 → US1b; US3 depende solo de Phase 2 y puede ir en paralelo con US2/US1.
-- Archivos compartidos que obligan orden: `router.go` (T019 → T037 → T048 → T058), `web/src/api/backoffice.ts` (T020 → T039), `StockPage.tsx` (T021 → T049 → T060), `server/queries/purchases.sql` (T032 → T046), `expenses.go` (T034 → T047), `articles.go` (T018 → T035 → T057).
+- Archivos compartidos que obligan orden: `router.go` (T019 → T037 → T049 → T059), `web/src/api/backoffice.ts` (T020 → T039), `StockPage.tsx` (T021 → T050 → T061), `server/queries/purchases.sql` (T032 → T047), `expenses.go` (T034 → T048), `articles.go` (T018 → T035 → T058).
 - Dentro de cada historia: tests en rojo → dominio → consultas → servicio → handler → web.
 
 ## Parallel examples
@@ -161,7 +161,7 @@ Va antes de US1 porque la compra en empaque los usa.
 - Phase 2: T003, T004, T005, T006 y T007 a la vez; luego T010, T011, T012 y T013 en paralelo tras T008–T009.
 - US2: T014, T015 y T016 a la vez; T020 en paralelo con T017–T019.
 - US1: T028, T029, T030 y T031 a la vez con T022–T027 (mismo archivo entre sí, en orden).
-- US3: T050, T052, T053 y T054 a la vez; T059 en paralelo con T055–T058.
+- US3: T051, T053, T054 y T055 a la vez; T060 en paralelo con T056–T059.
 
 ## Implementation strategy
 

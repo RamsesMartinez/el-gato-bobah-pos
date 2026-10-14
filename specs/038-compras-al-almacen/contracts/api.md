@@ -5,6 +5,11 @@ validación, 403 permiso, 404 no existe, 409 conflicto (incluye `BRANCH_AMBIGUOU
 
 ## Compras
 
+### `GET /expenses` (existente, cambia)
+
+Acepta `pending=true`: solo gastos con algún renglón pendiente de llegar. Ausente = todos; otro
+valor → 400. `CountExpenses` usa el mismo `where`.
+
 ### `POST /expenses` (existente, cambia)
 
 - `receivedAt` se guarda solo si el gasto lleva al menos un renglón de almacén; sin renglones se
@@ -92,6 +97,10 @@ Permiso `inventory.count`.
 | POST | `/stock/counts/{id}/discard` | Descarta sin tocar el almacén |
 
 `countedQty` negativo, NaN o fuera de `MaxStockQty` → 400.
+
+`GET /stock/counts/last-closed` (permiso `inventory.receive` o `inventory.count`): `{ "closedAt":
+"2026-10-14T07:55:00-06:00" }` del último conteo cerrado de la sucursal, o `{ "closedAt": null }`.
+La captura lo usa para avisar cuando la fecha del gasto es anterior (Assumptions del spec).
 
 `GET /stock/counts/current` devuelve los insumos activos ordenados por lugar (los sin lugar al
 final) y por nombre, cada uno con sus empaques activos; **no** devuelve `system_qty` mientras el
