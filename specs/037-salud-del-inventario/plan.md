@@ -107,25 +107,30 @@ Las llena `/maquetas` (hook `after_plan`): 2 o 3 opciones navegables por pantall
 ```text
 specs/037-salud-del-inventario/  spec.md plan.md research.md data-model.md quickstart.md contracts/api.md
 
-server/queries/inventory_health.sql
+server/queries/inventory_health.sql                # lectura del reporte
+server/queries/stock.sql                           # bloqueo de existencias y ajustes al convertir
 server/internal/domain/inventory_health.go (+_test)
 server/internal/domain/consumption_mode.go (+_test)
-server/internal/domain/permission.go               # inventory.health_view
+server/internal/domain/permission.go (+_test)      # inventory.health_view, menu.configure
+server/internal/domain/uso.go (+_test)             # medición de uso de Salud
 server/internal/domain/audit.go                    # product.consumption_mode, grupo inventory
 server/internal/app/inventory_health.go
 server/internal/app/composition.go                 # transición de modo
 server/internal/app/articles.go, costing.go        # nombres de insumo sin duplicar
-server/internal/httpapi/handlers_inventory_health.go
+server/internal/httpapi/handlers_inventory_health.go (+_test)
+server/internal/httpapi/handlers_composition_test.go  # permiso menu.configure
 server/internal/httpapi/router.go
 server/internal/integration/inventory_health_test.go
 server/internal/integration/consumption_mode_test.go
 
 web/src/api/backoffice.ts                          # health, exportHealth
 web/src/features/backoffice/InventoryHealthTab.tsx (+test)
-web/src/features/backoffice/StockPage.tsx          # pestaña
+web/src/features/backoffice/StockPage.tsx (+test)  # pestaña
+web/src/features/backoffice/ExpenseDialog.test.tsx # insumo con nombre repetido
 web/src/shared/CompositionSheet.tsx (+test)        # «Se compra hecho», salida de existencia propia
 web/src/features/admin/RecipesPage.tsx (+test)     # ?status= ?open=
 web/src/app/permissions.ts, web/src/app/rutas-medidas.ts
+web/src/shared/audit/labels.ts                     # etiqueta de product.consumption_mode
 ```
 
 **Structure Decision**: monorepo existente (`server/` + `web/`), sin módulos nuevos.
