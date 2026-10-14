@@ -222,4 +222,18 @@ describe('Almacén › Salud', () => {
     expect(await screen.findByRole('button', { name: /Shot Expreso/ })).toHaveTextContent('costo estimado');
     expect(screen.getByRole('button', { name: 'Ver los 8 que quedan' })).toBeInTheDocument();
   });
+
+  // Visto en el ambiente de pruebas (13-oct): sin costo capturado salía «$0 costo estimado», que se
+  // lee como «aquí no se pierde dinero».
+  it('un renglón sin costo capturado dice «Sin costo», no «$0»', async () => {
+    const [shot, crema] = base().unsoldDeduction.items ?? [];
+    back.inventoryHealth.mockImplementation(() => Promise.resolve(base({
+      unsoldDeduction: { ...base().unsoldDeduction, items: [shot, { ...crema, estimatedCost: null }] },
+    })));
+    montar();
+    const fila = await screen.findByRole('button', { name: /Crema Irlandesa/ });
+    expect(fila).toHaveTextContent('Sin costo');
+    expect(fila).not.toHaveTextContent('$0');
+    expect(fila).not.toHaveTextContent('costo estimado');
+  });
 });

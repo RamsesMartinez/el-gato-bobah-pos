@@ -54,8 +54,9 @@ type HealthUnsoldItem struct {
 	// LinesWithoutDeduction: renglones de venta que no restaron.
 	LinesWithoutDeduction int `json:"linesWithoutDeduction"`
 	// EstimatedCost: piezas × costo de hoy. Ordena la lista; no es contable y no se suma a nada.
-	EstimatedCost decimal.Decimal `json:"estimatedCost"`
-	FixAt         string          `json:"fixAt"`
+	// Nil cuando nadie ha capturado el costo: un 0 se leería como «aquí no se pierde dinero».
+	EstimatedCost *decimal.Decimal `json:"estimatedCost"`
+	FixAt         string           `json:"fixAt"`
 }
 
 type HealthComboChoice struct {
@@ -343,8 +344,11 @@ func (s *InventoryHealthService) report(ctx context.Context, f domain.HealthFilt
 func unsoldItem(r db.HealthUnsoldRow) (HealthUnsoldItem, error) {
 	it := HealthUnsoldItem{
 		Kind: r.Kind, ID: r.ID, Name: r.Name, Group: r.Grp, Pieces: r.Pieces,
-		LinesWithoutDeduction: int(r.Lines), EstimatedCost: r.EstimatedCost, FixAt: recipeFixAt(r.Kind, r.ID),
+		LinesWithoutDeduction: int(r.Lines), FixAt: recipeFixAt(r.Kind, r.ID),
 		Units: []HealthChannelUnits{},
+	}
+	if r.HasCost {
+		it.EstimatedCost = &r.EstimatedCost
 	}
 	if err := json.Unmarshal(r.Units, &it.Units); err != nil {
 		return it, fmt.Errorf("piezas por canal de %s %d: %w", r.Kind, r.ID, err)

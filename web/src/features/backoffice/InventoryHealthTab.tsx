@@ -180,7 +180,9 @@ export function InventoryHealthTab() {
               {unsold.map((it) => (
                 <Row key={`${it.kind}-${it.id}`} onClick={() => go(it.fixAt, it.name)}
                   title={it.name} subtitle={it.group} pill={statusLabel(it)}
-                  right={<VStack gap={0} align="end"><Text fontWeight="600">{money(it.estimatedCost)}</Text><Text fontSize="xs" color="fg.muted">costo estimado</Text></VStack>}>
+                  right={it.estimatedCost == null
+                    ? <Text fontSize="sm" color="fg.muted">Sin costo</Text>
+                    : <VStack gap={0} align="end"><Text fontWeight="600">{money(it.estimatedCost)}</Text><Text fontSize="xs" color="fg.muted">costo estimado</Text></VStack>}>
                   {(it.units ?? []).map((u) => <Badge key={u.channel} variant="subtle" colorPalette="gray">{u.channel} {Number(u.units)}</Badge>)}
                 </Row>
               ))}
