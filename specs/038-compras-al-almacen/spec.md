@@ -30,6 +30,8 @@ conteo, y desde ese conteo cada compra suma y cada venta resta.
 ### Session 2026-10-14
 
 - Q: Cuando se registra una compra, ¿qué pasa con el costo del insumo? → A: Por omisión toma el costo de la última compra. Cada empresa puede elegir en su configuración el promedio ponderado (lotes comprados a precios distintos), como opción avanzada para ver sus números de otra manera.
+- Q (prueba con una ferretería, 14-oct): ¿agregamos una unidad de longitud? → A: Sí, en el 038: longitud (m, cm) como cuarto tipo, junto a peso, líquido y piezas.
+- Q (misma prueba): «insumo» no le dice nada a quien revende, ¿qué hacemos? → A: Las pantallas de compras, empaques y conteo dicen «artículo» por omisión y cada empresa puede cambiar la palabra. Un modelo de reventa propio (precio por pieza y por caja, variantes) va en el issue #64.
 - Q: Al cerrar un conteo, ¿qué pasa con los insumos que nadie contó? → A: Se quedan como estaban; solo cambia lo contado. Salud los sigue señalando y se pueden contar después.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -144,6 +146,8 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
   12. El conteo acepta empaques más sueltos («3 cajas + 2 L») y los suma.
   13. Un empaque que ya no se usa se desactiva; las compras pasadas lo muestran con su contenido de
       entonces.
+  14. Un empaque no puede llamarse como una unidad («Litro», «Kilo», «Metro»): eso es comprar suelto,
+      no un empaque.
 - **Varias sucursales:** una compra y un conteo son de una sucursal; con dos sucursales y sin elegir, no se adivina (como el resto del sistema).
 - **Otra empresa:** ni una compra, ni una presentación, ni un conteo de otra empresa se ven ni se tocan.
 
@@ -168,7 +172,8 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-008**: Cada insumo MUST poder tener cero o más presentaciones de compra, cada una con un nombre y su equivalencia en la unidad base del insumo, editable.
 - **FR-009**: Cada renglón de compra MUST guardar la equivalencia con la que se registró; cambiar la presentación después MUST NOT cambiar compras anteriores.
 - **FR-010**: Una presentación MUST capturarse con su contenido **y su unidad** del mismo tipo que el insumo (kg o g, L o ml, piezas) y mostrar la equivalencia antes de guardar; una compra en una unidad de otro tipo MUST rechazarse diciendo cómo capturarla. Nunca se convierte en silencio (reglas 1–3 de *Unidades y empaques*).
-- **FR-010a**: Al crear un insumo desde la compra MUST preguntarse en qué se mide (peso, líquido o piezas); la unidad de un insumo con existencia, recetas o compras MUST NOT cambiarse.
+- **FR-010a**: Al crear un insumo desde la compra MUST preguntarse en qué se mide (peso, líquido, longitud o piezas); la unidad de un insumo con existencia, recetas o compras MUST NOT cambiarse.
+- **FR-010b**: El sistema MUST ofrecer longitud (m, cm) como cuarto tipo de unidad, con las mismas reglas de conversión que peso y líquido.
 - **FR-011**: Desde la captura de una compra MUST poder crearse la presentación que falta, sin salir de la pantalla.
 
 **Conteo (Historia 3)**
@@ -182,7 +187,8 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 **Permisos y producto**
 
 - **FR-017**: Registrar compras con insumos, configurar presentaciones y contar MUST pedir permisos verificados en el servidor (no nombres de rol; constitución, «Roles: modelo híbrido»), con administrador y gerente por omisión.
-- **FR-018**: Ningún nombre, marca, producto o proveedor de un negocio en particular MUST aparecer en el código ni en las migraciones de esquema.
+- **FR-018**: Ningún nombre, marca, producto o proveedor de un negocio en particular MUST aparecer en el código ni en las migraciones de esquema. Ninguna pantalla trae listas fijas de un giro: categorías y proveedores salen de los de la empresa (y se crean desde la captura); los nombres de empaque que se sugieren son los que la empresa ya usa.
+- **FR-018a**: La palabra con que las pantallas de compras, empaques y conteo llaman a lo que se guarda en el almacén MUST ser configurable por empresa, con «artículo» por omisión.
 - **FR-019**: Los textos de la pantalla MUST usar palabras de quien opera, validadas con usuarios sin contexto el 14-oct: «lo que tienes guardado» o «tienes», «llegó», «contaste», «restar» y «sumar», y «empaque» (no «presentación», que se leyó como exposición); no «existencia», «movimiento» ni «unidad base».
 
 ### Key Entities

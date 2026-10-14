@@ -70,8 +70,9 @@ Permiso `inventory.count`.
 
 ## Configuración
 
-`PUT /settings/costing-method` — permiso `inventory.configure`, registrada fuera del grupo con rol.
-`{ "method": "last" | "weighted" }`; otro valor → 400. Deja `settings.costing_method` en la
-bitácora. `GET /business-settings` (existente) lo incluye como `costingMethod`. Va en su propia
+`PUT /settings/inventory` — permiso `inventory.configure`, registrada fuera del grupo con rol.
+`{ "costingMethod": "last" | "weighted", "stockItemLabel": "artículo" }`; otro método, o una
+palabra vacía o de más de 20 caracteres → 400. Deja `settings.costing_method` en la
+bitácora. `GET /business-settings` (existente) los incluye como `costingMethod` y `stockItemLabel`. Va en su propia
 ruta y no en `PUT /business-settings` porque ésa exige rol y lleva datos fiscales: un permiso de
 almacén no debe poder cambiar el nombre fiscal.

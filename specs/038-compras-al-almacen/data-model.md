@@ -48,6 +48,12 @@ sucursal.
 
 Llave primaria `(count_id, ingredient_id)`.
 
+## Tipos y catálogo
+
+- `unit_kind` gana el valor `longitud` (R10).
+- `units` gana `cm` (`longitud`, `to_base 1`) y `m` (`longitud`, `to_base 100`). El catálogo de
+  unidades es global, no por empresa, como hoy.
+
 ## Columnas nuevas
 
 | Tabla | Columna | Por qué |
@@ -57,6 +63,7 @@ Llave primaria `(count_id, ingredient_id)`.
 | `expense_items` | `presentation_id bigint null` | Referencia a la presentación elegida; la equivalencia vive copiada en `pack_qty_in_base` |
 | `expense_items` | `voided_at timestamptz null` | Renglón quitado en una corrección; sus movimientos se conservan |
 | `business_settings` | `costing_method text not null default 'last'` | check `in ('last','weighted')` (R4) |
+| `business_settings` | `stock_item_label text not null default 'artículo'` | 1–20 caracteres (R11) |
 
 Índices: `stock_movements (company_id, expense_item_id)` donde no es nulo, para sumar lo aplicado
 por renglón; `stock_movements (company_id, stock_count_id)` donde no es nulo.

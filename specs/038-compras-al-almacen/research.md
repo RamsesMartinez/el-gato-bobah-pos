@@ -150,6 +150,26 @@ símbolos citados son de `develop` en `c33f50e`.
 - `expenses.branch_id` sigue nulo como hoy: decidir la sucursal del gasto es del selector de
   sucursal, no de esta feature.
 
+## R10. Longitud
+
+- **Decisión (dueño, 14-oct):** cuarto valor del enum `unit_kind`, `longitud`, con `cm` como base
+  (`to_base = 1`) y `m` (`to_base = 100`). Base en cm y no en m por el mismo criterio que g y ml:
+  la base es la unidad más chica de uso común, así las cantidades de receta y de corte (35 cm de
+  cable) no viven en decimales.
+- `domain.BaseQty` ya es genérica por tipo: no cambia. Cambian la lista de tipos en el alta y en
+  la pantalla (`KIND` del front) y la regla «se muestra en m desde 100 cm».
+- `alter type unit_kind add value` no se puede revertir en Postgres: el Down de la 0091 deja el
+  valor y solo borra las filas de `units` si ningún insumo las usa.
+
+## R11. «Artículo», configurable
+
+- **Decisión (dueño, 14-oct):** `business_settings.stock_item_label text not null default
+  'artículo'` (singular; el plural se forma con «s» o «es» en el front, y una empresa que use una
+  palabra irregular la escribe en singular igual). Se usa solo en las pantallas de este spec; las
+  de recetas siguen diciendo «insumo» porque ahí sí es un insumo.
+- Lo cambia quien tiene `inventory.configure`, en la misma ruta que el método de costeo.
+- Un modelo de reventa propio queda en el issue #64.
+
 ## R9b. Puertas (principio VIII)
 
 - **¿Se puede agregar después al mismo costo?** El renglón de compra con su equivalencia copiada,
