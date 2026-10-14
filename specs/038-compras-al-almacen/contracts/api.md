@@ -50,16 +50,19 @@ Permiso `inventory.receive`. El conjunto deseado de renglones de almacén del ga
 
 ### `GET /stock/pending-receipts` (nuevo)
 
-Permiso `inventory.receive`. Lo pendiente de la sucursal: por renglón, la compra (id, fecha,
+Permiso `inventory.receive`. Lo pendiente: por renglón, la compra (id, fecha,
 proveedor), el artículo, lo pedido, lo recibido y lo que falta, en su empaque y en unidad base.
-Siempre arreglo, aunque vacío.
+Siempre arreglo, aunque vacío. Las compras todavía no guardan sucursal (R9): con dos
+sucursales y sin selector responde 409 `BRANCH_AMBIGUOUS` en vez de mostrar como de esta
+sucursal lo que pudo ser de otra.
 
 ### `POST /expenses/{id}/items/{itemId}/receive` (nuevo)
 
 Permiso `inventory.receive`. `{ "qty": "2", "seenApplied": "0", "extraAmount": null }` en la
 unidad del renglón (empaque o unidad). Suma la parte. Si pasa de lo que falta, `extraAmount` es
 obligatorio (> 0): lo extra sube la cantidad y el importe del renglón y el total de la compra. Si
-`seenApplied` ya no es lo aplicado → 409 con lo ya recibido.
+`seenApplied` ya no es lo aplicado → 409. Si la compra estaba pagada y el total sube, queda
+pendiente por la diferencia.
 
 ### `POST /expenses/{id}/items` (nuevo)
 

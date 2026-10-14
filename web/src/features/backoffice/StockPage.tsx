@@ -13,8 +13,11 @@ import { useSessionStore } from '../../stores/session';
 import { InventoryHealthTab } from './InventoryHealthTab';
 import { PresentationsSheet, type PresentationsIngredient } from './PresentationsSheet';
 import { formatBaseQty } from '../../shared/units';
+import { PendingReceiptsTab } from './PendingReceiptsTab';
+import { posApi } from '../../api/pos';
 
-const TABS = ['existencias', 'movimientos', 'insumos', 'salud'] as const;
+// El orden lo fijó el plan del 038: Existencias · Movimientos · Insumos · Por recibir · Conteo · Salud.
+const TABS = ['existencias', 'movimientos', 'insumos', 'por-recibir', 'salud'] as const;
 type Tab = (typeof TABS)[number];
 
 export function StockPage() {
@@ -36,7 +39,14 @@ export function StockPage() {
   // ?tab=insumos&open=N. Un valor desconocido cae a la primera pestaña, nunca a una que no existe.
   const [params, setParams] = useSearchParams();
   const asked = params.get('tab') as Tab | null;
-  const tab: Tab = asked && TABS.includes(asked) && (asked !== 'salud' || canHealth) ? asked : 'existencias';
+  const allowed = (t: Tab) => (t !== 'salud' || canHealth) && (t !== 'por-recibir' || canReceive);
+  const tab: Tab = asked && TABS.includes(asked) && allowed(asked) ? asked : 'existencias';
+  const settings = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
+  const pending = useQuery({ queryKey: ['stock', 'pending-receipts'], queryFn: backofficeApi.pendingReceipts, enabled: canReceive });
+  // La palabra de la empresa para lo que se guarda (spec 038), en plural y con mayúscula.
+  const word = settings.data?.stockItemLabel || 'insumo';
+  const plural = /[aeiouáéíóú]$/i.test(word) ? `${word}s` : `${word}es`;
+  const itemsTab = plural.charAt(0).toUpperCase() + plural.slice(1);
   const openId = Number(params.get('open'));
   const linked = (ingredients.data?.items ?? []).find((i) => i.id === openId);
   const [composing, setComposing] = useState<{ id: number; name: string } | null>(null);
@@ -56,7 +66,12 @@ export function StockPage() {
         <Tabs.List>
           <Tabs.Trigger value="existencias" minH="44px">Existencias</Tabs.Trigger>
           <Tabs.Trigger value="movimientos" minH="44px">Movimientos</Tabs.Trigger>
-          <Tabs.Trigger value="insumos" minH="44px">Insumos</Tabs.Trigger>
+          <Tabs.Trigger value="insumos" minH="44px">{itemsTab}</Tabs.Trigger>
+          {canReceive && (
+            <Tabs.Trigger value="por-recibir" minH="44px">
+              Por recibir{pending.data && pending.data.length > 0 ? ` · ${pending.data.length}` : ''}
+            </Tabs.Trigger>
+          )}
           {canHealth && <Tabs.Trigger value="salud" minH="44px">Salud</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
@@ -150,6 +165,11 @@ export function StockPage() {
             </Table.Root>
           </Box>
         </Tabs.Content>
+        {canReceive && (
+          <Tabs.Content value="por-recibir" px={0} flex="1" minH={0} overflowY="auto">
+            {tab === 'por-recibir' && <PendingReceiptsTab />}
+          </Tabs.Content>
+        )}
         {canHealth && (
           <Tabs.Content value="salud" px={0} flex="1" minH={0} display="flex" flexDirection="column">
             {tab === 'salud' && <InventoryHealthTab />}

@@ -27,6 +27,20 @@ func (q *Queries) AddAppliedQty(ctx context.Context, arg AddAppliedQtyParams) er
 	return err
 }
 
+const addNotComing = `-- name: AddNotComing :exec
+update expense_items set not_coming_qty = not_coming_qty + $1 where id = $2
+`
+
+type AddNotComingParams struct {
+	Qty decimal.Decimal `json:"qty"`
+	ID  int64           `json:"id"`
+}
+
+func (q *Queries) AddNotComing(ctx context.Context, arg AddNotComingParams) error {
+	_, err := q.db.Exec(ctx, addNotComing, arg.Qty, arg.ID)
+	return err
+}
+
 const costingMethod = `-- name: CostingMethod :one
 select coalesce((select costing_method from business_settings limit 1), 'last')::text as costing_method
 `
@@ -297,6 +311,140 @@ func (q *Queries) LockIngredientsNowait(ctx context.Context, ids []int64) ([]int
 	return items, nil
 }
 
+const lockStockLine = `-- name: LockStockLine :one
+select id, quantity, qty_received, not_coming_qty, amount, applied_qty_base, ingredient_id, is_gift
+  from expense_items
+ where id = $1 and expense_id = $2 and item_type is not null and voided_at is null
+   for update
+`
+
+type LockStockLineParams struct {
+	ID        int64 `json:"id"`
+	ExpenseID int64 `json:"expense_id"`
+}
+
+type LockStockLineRow struct {
+	ID             int64            `json:"id"`
+	Quantity       decimal.Decimal  `json:"quantity"`
+	QtyReceived    *decimal.Decimal `json:"qty_received"`
+	NotComingQty   decimal.Decimal  `json:"not_coming_qty"`
+	Amount         decimal.Decimal  `json:"amount"`
+	AppliedQtyBase decimal.Decimal  `json:"applied_qty_base"`
+	IngredientID   *int64           `json:"ingredient_id"`
+	IsGift         bool             `json:"is_gift"`
+}
+
+// Un renglón de almacén vivo de un gasto, bloqueado: recibir o cerrar una parte compara contra lo
+// que tiene ahora, no contra lo que leyó la pantalla.
+func (q *Queries) LockStockLine(ctx context.Context, arg LockStockLineParams) (LockStockLineRow, error) {
+	row := q.db.QueryRow(ctx, lockStockLine, arg.ID, arg.ExpenseID)
+	var i LockStockLineRow
+	err := row.Scan(
+		&i.ID,
+		&i.Quantity,
+		&i.QtyReceived,
+		&i.NotComingQty,
+		&i.Amount,
+		&i.AppliedQtyBase,
+		&i.IngredientID,
+		&i.IsGift,
+	)
+	return i, err
+}
+
+const nextItemPosition = `-- name: NextItemPosition :one
+select (coalesce(max(position), -1) + 1)::int as position from expense_items where expense_id = $1
+`
+
+func (q *Queries) NextItemPosition(ctx context.Context, expenseID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, nextItemPosition, expenseID)
+	var position int32
+	err := row.Scan(&position)
+	return position, err
+}
+
+const pendingReceipts = `-- name: PendingReceipts :many
+select e.id as expense_id, e.expense_date, s.name as supplier, e.amount as expense_amount,
+       (e.status = 'pagada')::bool as paid,
+       ei.id as item_id, coalesce(i.name, p.name, ei.description)::text as item_name,
+       ei.quantity, coalesce(ei.qty_received, 0)::numeric(14,4) as received, ei.not_coming_qty,
+       (ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty)::numeric(14,4) as missing,
+       ei.applied_qty_base, ei.pack_qty_in_base, pr.name as presentation_name, u.code as unit_code,
+       iu.code as base_unit_code
+  from expense_items ei
+  join expenses e on e.id = ei.expense_id
+  cross join (select current_branch_id() as branch_id) cb
+  left join suppliers s on s.id = e.supplier_id
+  left join ingredients i on i.id = ei.ingredient_id
+  left join products p on p.id = ei.product_id
+  left join units u on u.id = ei.unit_id
+  left join units iu on iu.id = i.base_unit_id
+  left join ingredient_presentations pr on pr.id = ei.presentation_id
+ where cb.branch_id is not null and e.status <> 'cancelada'
+   and ei.item_type is not null and ei.voided_at is null
+   and ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty > 0
+ order by e.expense_date, e.id, ei.position, ei.id
+`
+
+type PendingReceiptsRow struct {
+	ExpenseID        int64            `json:"expense_id"`
+	ExpenseDate      pgtype.Date      `json:"expense_date"`
+	Supplier         *string          `json:"supplier"`
+	ExpenseAmount    decimal.Decimal  `json:"expense_amount"`
+	Paid             bool             `json:"paid"`
+	ItemID           int64            `json:"item_id"`
+	ItemName         string           `json:"item_name"`
+	Quantity         decimal.Decimal  `json:"quantity"`
+	Received         decimal.Decimal  `json:"received"`
+	NotComingQty     decimal.Decimal  `json:"not_coming_qty"`
+	Missing          decimal.Decimal  `json:"missing"`
+	AppliedQtyBase   decimal.Decimal  `json:"applied_qty_base"`
+	PackQtyInBase    *decimal.Decimal `json:"pack_qty_in_base"`
+	PresentationName *string          `json:"presentation_name"`
+	UnitCode         *string          `json:"unit_code"`
+	BaseUnitCode     *string          `json:"base_unit_code"`
+}
+
+// Lo pagado que no ha llegado, renglón por renglón (spec 038, «Por recibir»). Las compras no
+// guardan sucursal todavía: con dos sucursales y sin selector, `current_branch_id()` truena
+// (EGB01) en vez de mostrar como de esta sucursal lo que pudo ser de otra.
+func (q *Queries) PendingReceipts(ctx context.Context) ([]PendingReceiptsRow, error) {
+	rows, err := q.db.Query(ctx, pendingReceipts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PendingReceiptsRow{}
+	for rows.Next() {
+		var i PendingReceiptsRow
+		if err := rows.Scan(
+			&i.ExpenseID,
+			&i.ExpenseDate,
+			&i.Supplier,
+			&i.ExpenseAmount,
+			&i.Paid,
+			&i.ItemID,
+			&i.ItemName,
+			&i.Quantity,
+			&i.Received,
+			&i.NotComingQty,
+			&i.Missing,
+			&i.AppliedQtyBase,
+			&i.PackQtyInBase,
+			&i.PresentationName,
+			&i.UnitCode,
+			&i.BaseUnitCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pieceUnitID = `-- name: PieceUnitID :one
 select id from units where code = 'pieza'
 `
@@ -306,6 +454,28 @@ func (q *Queries) PieceUnitID(ctx context.Context) (int16, error) {
 	var id int16
 	err := row.Scan(&id)
 	return id, err
+}
+
+const raiseExpenseAmount = `-- name: RaiseExpenseAmount :exec
+update expenses
+   set amount = expenses.amount + $1,
+       status = case when status = 'pagada'
+                      and (select coalesce(sum(ep.amount), 0) from expense_payments ep where ep.expense_id = expenses.id)
+                          < expenses.amount + $1
+                     then 'pendiente'::expense_status else status end
+ where expenses.id = $2
+`
+
+type RaiseExpenseAmountParams struct {
+	Extra decimal.Decimal `json:"extra"`
+	ID    int64           `json:"id"`
+}
+
+// Lo que llegó de más o «Llegó algo más» pagado sube el total. Si estaba pagada y los pagos ya no
+// lo cubren, vuelve a deberse: queda pendiente por la diferencia.
+func (q *Queries) RaiseExpenseAmount(ctx context.Context, arg RaiseExpenseAmountParams) error {
+	_, err := q.db.Exec(ctx, raiseExpenseAmount, arg.Extra, arg.ID)
+	return err
 }
 
 const setExpenseReceivedAt = `-- name: SetExpenseReceivedAt :exec
@@ -320,6 +490,33 @@ type SetExpenseReceivedAtParams struct {
 // La fecha en que ya no quedó nada pendiente, o nula si todavía falta algo (R2b).
 func (q *Queries) SetExpenseReceivedAt(ctx context.Context, arg SetExpenseReceivedAtParams) error {
 	_, err := q.db.Exec(ctx, setExpenseReceivedAt, arg.ReceivedAt, arg.ID)
+	return err
+}
+
+const setLineArrival = `-- name: SetLineArrival :exec
+update expense_items
+   set qty_received = $1, quantity = $2, amount = $3,
+       unit_cost = $4
+ where id = $5
+`
+
+type SetLineArrivalParams struct {
+	QtyReceived *decimal.Decimal `json:"qty_received"`
+	Quantity    decimal.Decimal  `json:"quantity"`
+	Amount      decimal.Decimal  `json:"amount"`
+	UnitCost    decimal.Decimal  `json:"unit_cost"`
+	ID          int64            `json:"id"`
+}
+
+// Lo que llegó de un renglón; si llegó de más, también lo pedido y el importe.
+func (q *Queries) SetLineArrival(ctx context.Context, arg SetLineArrivalParams) error {
+	_, err := q.db.Exec(ctx, setLineArrival,
+		arg.QtyReceived,
+		arg.Quantity,
+		arg.Amount,
+		arg.UnitCost,
+		arg.ID,
+	)
 	return err
 }
 

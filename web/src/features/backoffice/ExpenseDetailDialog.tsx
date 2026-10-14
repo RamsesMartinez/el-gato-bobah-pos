@@ -14,6 +14,8 @@ import { backofficeApi, type ExpenseDetail, type ExpenseItem, type StockLineBody
 import { ApiError } from '../../api/client';
 import { parseNumero, round2 } from '../../domain/numeros';
 import { formatBaseQty } from '../../shared/units';
+import { posApi } from '../../api/pos';
+import { ArrivedItemSheet } from './ArrivedItemSheet';
 
 // Detalle del gasto y «Corregir lo que llegó» (spec 038, maqueta B: editar todo y ver la
 // diferencia). El almacén se mueve solo por la diferencia contra lo que cada renglón ya sumó, así
@@ -64,6 +66,8 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
   const [freshSeq, setFreshSeq] = useState(0);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [conflict, setConflict] = useState(false);
+  const [addingMore, setAddingMore] = useState(false);
+  const { data: settings } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings, enabled: id !== null });
 
   const unitList = units?.items ?? [];
   const presList = presentations ?? [];
@@ -185,6 +189,11 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                         desired={desiredBase(i)} onEdit={(patch) => setEdit(i, patch)} />
                     ))}
                   </VStack>
+                  {editing && (
+                    <Button minH="44px" variant="outline" borderStyle="dashed" colorPalette="red" onClick={() => setAddingMore(true)}>
+                      + Agregar un {settings?.stockItemLabel || 'artículo'} que faltó
+                    </Button>
+                  )}
                   {editing && <Text fontSize="sm" color="fg.muted">El total pagado no cambia al corregir lo que llegó.</Text>}
                 </>
               )}
@@ -228,6 +237,11 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
             </VStack>
           )}
         </DialogBody>
+
+        {addingMore && data && (
+          <ArrivedItemSheet expenseId={data.id} supplier={data.supplier} onClose={() => setAddingMore(false)}
+            onDone={() => { setAddingMore(false); void refetch(); void qc.invalidateQueries({ queryKey: ['stock'] }); onChanged(); }} />
+        )}
 
         {data && !cancelled && goods.length > 0 && (
           <DialogFooter borderTopWidth="1px">

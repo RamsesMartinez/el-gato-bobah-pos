@@ -14,8 +14,10 @@ const back = vi.hoisted(() => ({
   saveStockLines: vi.fn(),
   receiveExpense: vi.fn(),
   cancelExpense: vi.fn(),
+  searchArticles: vi.fn(() => Promise.resolve({ items: [] })),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
+vi.mock('../../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ stockItemLabel: 'artículo' })) } }));
 
 const leche = (over: Partial<ExpenseItem> = {}): ExpenseItem => ({
   id: 41, itemType: 'ingrediente', ingredientId: 7, productId: null, itemName: 'Leche entera', description: 'Leche',
@@ -120,5 +122,11 @@ describe('Corregir lo que llegó (spec 038, maqueta B)', () => {
     expect(await screen.findByText(/Se pidieron 3 cajas \(12 L c\/u\); no ha llegado/)).toBeInTheDocument();
     click(await screen.findByRole('button', { name: 'Llegó todo' }).then((b) => b.textContent!));
     await waitFor(() => expect(back.receiveExpense).toHaveBeenCalledWith(9, {}));
+  });
+  test('«+ Agregar un artículo que faltó» abre «Llegó algo más» de esta compra', async () => {
+    montar();
+    click(await screen.findByRole('button', { name: 'Corregir lo que llegó' }).then((b) => b.textContent!));
+    click(await screen.findByRole('button', { name: /Agregar un artículo que faltó/ }).then((b) => b.textContent!));
+    expect(await screen.findByText('Llegó algo más de Lácteos del Centro')).toBeInTheDocument();
   });
 });

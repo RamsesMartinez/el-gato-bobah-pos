@@ -98,3 +98,60 @@ update expense_items set qty_received = quantity - not_coming_qty
 -- `no key update` y no `update`: la llave foránea de los movimientos de una venta toma el insumo en
 -- `key share`, que no choca con éste; así una compra en curso no frena el cobro.
 select id from ingredients where id = any(sqlc.arg(ids)::bigint[]) order by id for no key update nowait;
+
+-- name: PendingReceipts :many
+-- Lo pagado que no ha llegado, renglón por renglón (spec 038, «Por recibir»). Las compras no
+-- guardan sucursal todavía: con dos sucursales y sin selector, `current_branch_id()` truena
+-- (EGB01) en vez de mostrar como de esta sucursal lo que pudo ser de otra.
+select e.id as expense_id, e.expense_date, s.name as supplier, e.amount as expense_amount,
+       (e.status = 'pagada')::bool as paid,
+       ei.id as item_id, coalesce(i.name, p.name, ei.description)::text as item_name,
+       ei.quantity, coalesce(ei.qty_received, 0)::numeric(14,4) as received, ei.not_coming_qty,
+       (ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty)::numeric(14,4) as missing,
+       ei.applied_qty_base, ei.pack_qty_in_base, pr.name as presentation_name, u.code as unit_code,
+       iu.code as base_unit_code
+  from expense_items ei
+  join expenses e on e.id = ei.expense_id
+  cross join (select current_branch_id() as branch_id) cb
+  left join suppliers s on s.id = e.supplier_id
+  left join ingredients i on i.id = ei.ingredient_id
+  left join products p on p.id = ei.product_id
+  left join units u on u.id = ei.unit_id
+  left join units iu on iu.id = i.base_unit_id
+  left join ingredient_presentations pr on pr.id = ei.presentation_id
+ where cb.branch_id is not null and e.status <> 'cancelada'
+   and ei.item_type is not null and ei.voided_at is null
+   and ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty > 0
+ order by e.expense_date, e.id, ei.position, ei.id;
+
+-- name: LockStockLine :one
+-- Un renglón de almacén vivo de un gasto, bloqueado: recibir o cerrar una parte compara contra lo
+-- que tiene ahora, no contra lo que leyó la pantalla.
+select id, quantity, qty_received, not_coming_qty, amount, applied_qty_base, ingredient_id, is_gift
+  from expense_items
+ where id = $1 and expense_id = $2 and item_type is not null and voided_at is null
+   for update;
+
+-- name: SetLineArrival :exec
+-- Lo que llegó de un renglón; si llegó de más, también lo pedido y el importe.
+update expense_items
+   set qty_received = sqlc.arg(qty_received), quantity = sqlc.arg(quantity), amount = sqlc.arg(amount),
+       unit_cost = sqlc.arg(unit_cost)
+ where id = sqlc.arg(id);
+
+-- name: AddNotComing :exec
+update expense_items set not_coming_qty = not_coming_qty + sqlc.arg(qty) where id = sqlc.arg(id);
+
+-- name: RaiseExpenseAmount :exec
+-- Lo que llegó de más o «Llegó algo más» pagado sube el total. Si estaba pagada y los pagos ya no
+-- lo cubren, vuelve a deberse: queda pendiente por la diferencia.
+update expenses
+   set amount = expenses.amount + sqlc.arg(extra),
+       status = case when status = 'pagada'
+                      and (select coalesce(sum(ep.amount), 0) from expense_payments ep where ep.expense_id = expenses.id)
+                          < expenses.amount + sqlc.arg(extra)
+                     then 'pendiente'::expense_status else status end
+ where expenses.id = sqlc.arg(id);
+
+-- name: NextItemPosition :one
+select (coalesce(max(position), -1) + 1)::int as position from expense_items where expense_id = $1;

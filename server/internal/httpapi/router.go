@@ -372,6 +372,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.Route("/expenses", func(r chi.Router) {
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/receive", h.ReceiveExpense)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Put("/{id}/stock-lines", h.SaveStockLines)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items", h.AddArrivedItem)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items/{itemId}/receive", h.ReceiveItem)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items/{itemId}/not-coming", h.MarkNotComing)
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
 						r.Get("/", h.ListExpenses)
 						r.Post("/", h.CreateExpense)
@@ -411,6 +414,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Empaques de compra (spec 038): por permiso y fuera del grupo por rol, igual que la salud.
 					// Leerlos es de quien registra compras; cambiarlos, de quien configura el almacén.
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/presentations", h.ListPresentations)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/pending-receipts", h.PendingReceipts)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/ingredients/{id}/presentations", h.ListIngredientPresentations)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredients/{id}/presentations", h.CreatePresentation)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/presentations/{id}", h.UpdatePresentation)

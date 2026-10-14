@@ -640,6 +640,39 @@ export interface ExpenseItemBody {
   isGift?: boolean;
 }
 
+// Un renglón que falta por llegar (spec 038). Cantidades en la unidad del renglón: el empaque
+// (`presentationName`, con `packQtyInBase` en `baseUnitCode`) o la unidad (`unitCode`).
+export interface PendingReceipt {
+  expenseId: number;
+  expenseDate: string;
+  supplier: string | null;
+  expenseAmount: string;
+  paid: boolean;
+  itemId: number;
+  itemName: string;
+  quantity: string;
+  received: string;
+  notComing: string;
+  missing: string;
+  applied: string;
+  packQtyInBase: string | null;
+  presentationName: string | null;
+  unitCode: string | null;
+  baseUnitCode: string | null;
+}
+// «Llegó algo más»: un renglón que no venía y ya llegó. Con `isGift`, `amount` va en 0.
+export interface ArrivedItemBody {
+  itemType: ItemType;
+  ingredientId?: number;
+  productId?: number;
+  description: string;
+  quantity: string;
+  presentationId?: number;
+  unitId?: number;
+  amount: string;
+  isGift: boolean;
+}
+
 // Un renglón de «Corregir lo que llegó» (spec 038). Cantidades en la unidad del renglón.
 export interface StockLineBody {
   id?: number;
@@ -812,9 +845,12 @@ export const backofficeApi = {
   // Gastos (paginado; el orden lo aplica el backend para que abarque todas las páginas)
   expenses: (params?: {
     status?: ExpenseStatus; page?: number; pageSize?: number; sort?: ExpenseSort; dir?: 'asc' | 'desc';
+    // Solo compras con algo que no ha llegado (spec 038).
+    pending?: boolean;
   }) => {
     const q = new URLSearchParams();
     if (params?.status) q.set('status', params.status);
+    if (params?.pending) q.set('pending', 'true');
     if (params?.page != null) q.set('page', String(params.page));
     if (params?.pageSize != null) q.set('pageSize', String(params.pageSize));
     if (params?.sort) { q.set('sort', params.sort); q.set('dir', params.dir ?? 'asc'); }
@@ -849,6 +885,13 @@ export const backofficeApi = {
     api.put<ExpenseDetail>(`/expenses/${id}/stock-lines`, { lines }),
   updateInventorySettings: (b: { costingMethod: CostingMethod; stockItemLabel: string }) =>
     api.put<unknown>('/settings/inventory', b),
+  // «Por recibir» (spec 038): lo pagado que no ha llegado, renglón por renglón.
+  pendingReceipts: () => api.get<PendingReceipt[]>('/stock/pending-receipts'),
+  receiveItem: (expenseId: number, itemId: number, b: { qty: string; seenApplied: string; extraAmount?: string }) =>
+    api.post<void>(`/expenses/${expenseId}/items/${itemId}/receive`, b),
+  markNotComing: (expenseId: number, itemId: number, qty: string) =>
+    api.post<void>(`/expenses/${expenseId}/items/${itemId}/not-coming`, { qty }),
+  addArrivedItem: (expenseId: number, b: ArrivedItemBody) => api.post<void>(`/expenses/${expenseId}/items`, b),
 
   // Extracción del documento → borrador. NO escribe nada: el operador confirma.
   parseDoc: (file: File) => {

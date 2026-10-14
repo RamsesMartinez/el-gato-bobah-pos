@@ -82,3 +82,105 @@ func (h *Handlers) UpdateInventorySettings(w http.ResponseWriter, r *http.Reques
 	}
 	JSON(w, http.StatusOK, bs)
 }
+
+// GET /stock/pending-receipts — permiso inventory.receive. Siempre arreglo, aunque vacío.
+func (h *Handlers) PendingReceipts(w http.ResponseWriter, r *http.Request) {
+	list, err := h.backoffice.PendingReceipts(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, list)
+}
+
+// POST /expenses/{id}/items/{itemId}/receive — lo que llegó de un renglón, en su unidad.
+func (h *Handlers) ReceiveItem(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	itemID, err := idParam(r, "itemId")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		Qty         decimal.Decimal  `json:"qty"`
+		SeenApplied decimal.Decimal  `json:"seenApplied"`
+		ExtraAmount *decimal.Decimal `json:"extraAmount"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.ReceiveItem(r.Context(), id, itemID, app.ReceiveItemInput{
+		Qty: body.Qty, SeenApplied: body.SeenApplied, ExtraAmount: body.ExtraAmount,
+	}, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /expenses/{id}/items/{itemId}/not-coming — «Ya no va a llegar», hasta lo que falta.
+func (h *Handlers) MarkNotComing(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	itemID, err := idParam(r, "itemId")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		Qty decimal.Decimal `json:"qty"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.MarkNotComing(r.Context(), id, itemID, body.Qty, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /expenses/{id}/items — «Llegó algo más». Llega ya recibido.
+func (h *Handlers) AddArrivedItem(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		ItemType       string          `json:"itemType"`
+		IngredientID   *int64          `json:"ingredientId"`
+		ProductID      *int64          `json:"productId"`
+		Description    string          `json:"description"`
+		Quantity       decimal.Decimal `json:"quantity"`
+		PresentationID *int64          `json:"presentationId"`
+		UnitID         *int16          `json:"unitId"`
+		Amount         decimal.Decimal `json:"amount"`
+		IsGift         bool            `json:"isGift"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.AddArrivedItem(r.Context(), id, app.ArrivedItemInput{
+		ItemType: body.ItemType, IngredientID: body.IngredientID, ProductID: body.ProductID,
+		Description: body.Description, Quantity: body.Quantity, PresentationID: body.PresentationID,
+		UnitID: body.UnitID, Amount: body.Amount, IsGift: body.IsGift,
+	}, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
