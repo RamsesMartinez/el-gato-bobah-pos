@@ -136,6 +136,8 @@ type Deps struct {
 	Permissions PermissionResolver
 	Attendance  *app.AttendanceService
 	Audit       *app.AuditService
+	// InventoryHealth es «Salud del inventario» (spec 037).
+	InventoryHealth *app.InventoryHealthService
 }
 
 type Handlers struct {
@@ -198,6 +200,7 @@ type Handlers struct {
 	permissions PermissionResolver
 	attendance  *app.AttendanceService
 	audit       *app.AuditService
+	health      *app.InventoryHealthService
 }
 
 func NewHandlers(d Deps) *Handlers {
@@ -222,6 +225,7 @@ func newHandlers(d Deps) *Handlers {
 		permissions: permissions,
 		attendance:  d.Attendance,
 		audit:       d.Audit,
+		health:      d.InventoryHealth,
 		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,

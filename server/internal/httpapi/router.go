@@ -394,14 +394,21 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Delete("/supplier-items/{id}", h.ForgetSupplierItem)
 				})
 				// inventario: ajustes/mermas los hace gerencia
-				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/stock", func(r chi.Router) {
-					r.Get("/levels", h.StockLevels)
-					r.Get("/movements", h.StockMovements)
-					r.Post("/movements", h.CreateStockMovement)
-					// Insumos que se preparan en el local: qué llevan y cuánto rinden.
-					r.Get("/ingredients/{id}/composition", h.GetIngredientComposition)
-					r.Put("/ingredients/{id}/composition", h.PutIngredientComposition)
-					r.Post("/ingredients/{id}/composition/confirm", h.ConfirmIngredientComposition)
+				r.Route("/stock", func(r chi.Router) {
+					// Salud del inventario (spec 037): por permiso y FUERA del grupo por rol. Dentro, el
+					// RequireRole de abajo seguiría decidiendo antes que el permiso, y un rol propio de una
+					// empresa con el permiso rebotaría (constitución, «Roles: modelo híbrido»).
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health", h.GetInventoryHealth)
+					r.Group(func(r chi.Router) {
+						r.Use(RequireRole(domain.RoleAdmin, domain.RoleGerente))
+						r.Get("/levels", h.StockLevels)
+						r.Get("/movements", h.StockMovements)
+						r.Post("/movements", h.CreateStockMovement)
+						// Insumos que se preparan en el local: qué llevan y cuánto rinden.
+						r.Get("/ingredients/{id}/composition", h.GetIngredientComposition)
+						r.Put("/ingredients/{id}/composition", h.PutIngredientComposition)
+						r.Post("/ingredients/{id}/composition/confirm", h.ConfirmIngredientComposition)
+					})
 				})
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/reports", func(r chi.Router) {
 					r.Get("/sales", h.ReportSales)
