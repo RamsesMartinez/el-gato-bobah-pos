@@ -1,0 +1,4 @@
+-- Salud del inventario (spec 037): lo que hace que las existencias no cuadren. Solo lectura; la
+-- escritura del cambio de modo vive en stock.sql.
+--
+-- Cada lista tiene su gemela de conteo con el MISMO `where` (AGENTS.md §1). La empresa la pone RLS.

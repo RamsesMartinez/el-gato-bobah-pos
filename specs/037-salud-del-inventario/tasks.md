@@ -10,18 +10,18 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Levantar la infraestructura del worktree con `make worktree-env n=37` y `make start`; restaurar el respaldo de producción del 13-oct con `make db-restaurar` (base de SC-001), sin tocar la carpeta principal
-- [ ] T002 Crear `server/queries/inventory_health.sql` vacío con su encabezado y confirmar que `make sqlc` corre limpio
+- [X] T001 Levantar la infraestructura del worktree con `make worktree-env n=37` y `make start`; restaurar el respaldo de producción del 13-oct con `make db-restaurar` (base de SC-001), sin tocar la carpeta principal
+- [X] T002 Crear `server/queries/inventory_health.sql` vacío con su encabezado y confirmar que `make sqlc` corre limpio
 
 ---
 
 ## Phase 2: Foundational (bloquea a todas las historias)
 
-- [ ] T003 [P] Test table-driven de `HealthFilter.Validate` (rango invertido, más de 366 días, fecha mal formada → `ErrValidation`; ausente → últimos 30 días; `section`, `limit`, `offset` fuera de rango → `ErrValidation`) en `server/internal/domain/inventory_health_test.go`
-- [ ] T004 [P] Test table-driven de `ModeOf` (own_stock heredado, recipe, package, none confirmado, undecided) en `server/internal/domain/consumption_mode_test.go`
-- [ ] T005 Implementar `HealthFilter`, `HealthIssueKind` en `server/internal/domain/inventory_health.go` y `ConsumptionMode`, `ModeOf` en `server/internal/domain/consumption_mode.go` hasta que T003 y T004 pasen
-- [ ] T006 [P] Test de que `inventory.health_view` y `menu.configure` los tienen admin y gerente y no cajero ni cocina, en `server/internal/domain/permission_test.go`
-- [ ] T007 Hasta que T006 pase: agregar `PermInventoryHealthView` y `PermMenuConfigure` en `server/internal/domain/permission.go` y su espejo en `web/src/app/permissions.ts`
+- [X] T003 [P] Test table-driven de `HealthFilter.Validate` (rango invertido, más de 366 días, fecha mal formada → `ErrValidation`; ausente → últimos 30 días; `section`, `limit`, `offset` fuera de rango → `ErrValidation`) en `server/internal/domain/inventory_health_test.go`
+- [X] T004 [P] Test table-driven de `ModeOf` (own_stock heredado, recipe, package, none confirmado, undecided) en `server/internal/domain/consumption_mode_test.go`
+- [X] T005 Implementar `HealthFilter`, `HealthIssueKind` en `server/internal/domain/inventory_health.go` y `ConsumptionMode`, `ModeOf` en `server/internal/domain/consumption_mode.go` hasta que T003 y T004 pasen
+- [X] T006 [P] Test de que `inventory.health_view` y `menu.configure` los tienen admin y gerente y no cajero ni cocina, en `server/internal/domain/permission_test.go`
+- [X] T007 Hasta que T006 pase: agregar `PermInventoryHealthView` y `PermMenuConfigure` en `server/internal/domain/permission.go` y su espejo en `web/src/app/permissions.ts`
 
 **Checkpoint**: dominio base listo.
 
