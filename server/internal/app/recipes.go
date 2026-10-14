@@ -23,6 +23,10 @@ type RecipeRow struct {
 	Summary      string          `json:"summary"`
 	Lines        int             `json:"lines"`
 	SoldPerMonth decimal.Decimal `json:"soldPerMonth"`
+	// PerSale y OnHand: con un solo insumo por pieza, cuánto resta cada venta y cuánto hay de ese
+	// insumo («Resta 1 por venta · tienes N», spec 037). Nil en lo demás.
+	PerSale *decimal.Decimal `json:"perSale,omitempty"`
+	OnHand  *decimal.Decimal `json:"onHand,omitempty"`
 }
 
 // RecipeCounts son cuántas recetas hay en cada estado.
@@ -72,6 +76,10 @@ func (s *AdminService) ListRecipes(ctx context.Context, f domain.RecipeFilter, n
 		}
 		for _, r := range rows {
 			row := RecipeRow{ID: r.ID, Name: r.Name, Group: r.Category, Status: r.Status, Summary: r.Summary, Lines: int(r.Lines), SoldPerMonth: r.Sold}
+			if r.SinglePiece {
+				perSale, onHand := r.PerSale, r.PerSaleOnHand
+				row.PerSale, row.OnHand = &perSale, &onHand
+			}
 			switch {
 			case r.TrackStock:
 				row.Mode = "own"

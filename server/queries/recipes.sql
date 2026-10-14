@@ -46,6 +46,15 @@ select b.id, b.name, b.category, b.type, b.track_stock, b.status, b.sold,
           join combo_slot_products csp on csp.slot_id = cs.id and csp.is_default
           join products cp on cp.id = csp.product_id
          where cs.combo_id = b.id), '')::text as combo_summary,
+       -- Con un solo insumo por pieza (lo que se compra hecho, spec 037): cuánto resta cada venta y
+       -- cuánto hay de ese insumo, para «Resta 1 por venta · tienes N». Con coalesce y una bandera
+       -- aparte: la subconsulta es NULL con varios insumos, y el cast no lo salva (AGENTS.md §1).
+       (select count(*) = 1 and bool_and(u.kind = 'pieza') from recipe_items ri join units u on u.id = ri.unit_id
+         where ri.recipe_id = b.recipe_id)::bool as single_piece,
+       coalesce((select ri.quantity from recipe_items ri where ri.recipe_id = b.recipe_id limit 1), 0)::numeric as per_sale,
+       coalesce((select sum(sl.on_hand) from recipe_items ri
+          join stock_levels sl on sl.item_type = 'ingrediente' and sl.ingredient_id = ri.ingredient_id
+         where ri.recipe_id = b.recipe_id), 0)::numeric as per_sale_on_hand,
        count(*) over() as total
   from base b
  where b.status = sqlc.arg(status)::text

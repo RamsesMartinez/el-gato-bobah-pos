@@ -101,6 +101,23 @@ func (q *Queries) GetIngredientUnit(ctx context.Context, id int64) (GetIngredien
 	return i, err
 }
 
+const ingredientNameTaken = `-- name: IngredientNameTaken :one
+select exists (
+  select 1 from ingredients
+   where regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+       = regexp_replace(translate(lower(trim($1::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+)::bool
+`
+
+// ¿Hay otro insumo de la empresa con el mismo nombre sin distinguir mayúsculas, acentos ni espacios
+// de más? La misma normalización que «duplicado» en Salud del inventario.
+func (q *Queries) IngredientNameTaken(ctx context.Context, name string) (bool, error) {
+	row := q.db.QueryRow(ctx, ingredientNameTaken, name)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listIngredientCategories = `-- name: ListIngredientCategories :many
 select id, name from ingredient_categories where is_active order by name
 `
@@ -236,6 +253,19 @@ func (q *Queries) ListUnits(ctx context.Context) ([]Unit, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockIngredientNames = `-- name: LockIngredientNames :exec
+select pg_advisory_xact_lock(28037, coalesce(nullif(current_setting('app.company_id', true), '')::int, 0))
+`
+
+// Un alta de insumo a la vez por empresa, hasta el fin de la transacción (spec 037, research R7d).
+// Llave propia, distinta de la 28028 de las recetas: guardar una receta y dar de alta un insumo no
+// tienen por qué esperarse. Sin el candado, dos altas casi simultáneas de «Lata» y «lata» pasaban las
+// dos: el `unique (company_id, name)` solo atrapa el nombre idéntico.
+func (q *Queries) LockIngredientNames(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockIngredientNames)
+	return err
 }
 
 const searchArticles = `-- name: SearchArticles :many

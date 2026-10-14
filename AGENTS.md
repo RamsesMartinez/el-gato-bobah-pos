@@ -151,6 +151,12 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     carpeta principal. Pasó el 2026-10-12: un `down -v` así borró `deploy_pgdata_dev` y hubo que
     restaurarla de un respaldo. `make stop` y `make deps-down` se niegan a bajar `deploy` desde un
     worktree ([guard-shared-compose.sh](scripts/guard-shared-compose.sh)).
+  - **`make db-restaurar` restaura en la base del worktree, y desde un worktree se niega a tocar la
+    de la carpeta principal**, aunque se le pase `PG_CONTAINER=deploy-postgres-1`. Pasó el
+    2026-10-13: el script tenía el contenedor fijo y un restore desde un worktree borró la base de
+    la carpeta principal. Lo vigila
+    [restaurar-respaldo-test.sh](scripts/tests/restaurar-respaldo-test.sh), que corre en el
+    pre-commit cuando cambia el script. Para restaurar la carpeta principal, se corre desde ahí.
 - `make api-dev` (hot reload con air) · `make api-build` (= `cd server && go build ./...`) · `make api-test` (= `cd server && go test ./...`).
 - **La base local se comporta como producción: RLS y GRANT aplican también en dev.** La regla vive
   en la constitución (IV, *La base local niega lo mismo que producción*); esto es la mecánica, y
@@ -283,6 +289,25 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     y ya salió a cocina se da por gastado y no vuelve; lo que no se ha mandado, sí. Lo que no se
     prepara (una lata) se repone aunque ya se haya mandado. Una sola regla para quitar un renglón y
     cancelar el pedido entero: `domain.ReponeInventario`. Un pedido entregado no repone nada.
+  - **«Salud del inventario» mide lo que la venta dejó, no la configuración** (spec 037): un renglón
+    «se vendió sin restar» si no dejó ningún movimiento `venta` con su `order_line_id` (y su
+    `modifier_option_id`, en un extra). La excepción son las piezas de un paquete: el movimiento
+    guarda en `component_of_product_id` el **paquete**, no la pieza, así que una pieza se marca por
+    lo que tiene para restar. La pantalla y la exportación salen del mismo `report()`.
+  - **Un producto con existencia propia ya puede recibir receta o volverse paquete** (spec 037): su
+    existencia pasa al insumo (receta de un insumo) o se cierra en cero (lo demás), con las filas de
+    `stock_levels` bloqueadas (`FOR UPDATE`) dentro de `SaveComposition`. El trigger de existencias
+    suma deltas sin releer, y sin ese bloqueo una venta simultánea perdería o inventaría piezas. La
+    hoja manda las cifras que mostró (`seenProductOnHand`, `seenIngredientOnHand`); si ya no son las
+    bloqueadas, 409. La existencia propia ya no se ofrece en pantalla: solo se sale de ella.
+  - **Un insumo no se da de alta con un nombre que ya existe** sin distinguir mayúsculas, acentos ni
+    espacios (`IngredientNameTaken`, con candado por empresa 28037). El gasto y la receta reciben el
+    que ya existe (`web/src/shared/createIngredient.ts`). Hoy ninguna ruta renombra insumos; la que
+    se agregue aplica la misma regla.
+  - **Corregir una receta no recalcula lo ya vendido** (decisión del dueño, 2026-10-13): el
+    inventario de la empresa en producción es un histórico heredado de FUDO y se corrige de aquí en
+    adelante, no hacia atrás. La diferencia acumulada la ajusta un conteo, nunca un script que
+    reescriba `stock_movements` de ventas pasadas.
   - **La carga de FUDO** es `make fudo-composiciones empresa=gatobobah` (con `prueba=1` solo
     reporta). Llena solo lo que no tiene composición y lo marca **estimado**, que descuenta desde
     ese momento (decisión del dueño, 2026-10-07). No arma paquetes —sus cantidades en FUDO no

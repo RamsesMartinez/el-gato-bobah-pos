@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Picker, type PickerOption } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { toaster } from '../../components/ui/toaster';
+import { createIngredientOrExisting } from '../../shared/createIngredient';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogCloseTrigger,
 } from '../../components/ui/dialog';
@@ -493,8 +494,17 @@ function ItemRow({ item, units, articles, showReceived, onChange, onRemove }: {
               onCreate={async (name) => {
                 // Alta rápida: unidad = la de compra de la línea si ya se eligió, y si no pieza.
                 const unit = units.find((u) => u.id === item.unitId) ?? units.find((u) => u.code === 'pieza');
-                const ing = await backofficeApi.createIngredient({ name, baseUnitId: unit?.id ?? 1 });
+                // Un nombre que ya existe con otras mayúsculas o acentos elige ese (spec 037): dos
+                // insumos para las mismas latas se contarían dos veces.
+                const known = options.filter((o) => o.value.startsWith('ingrediente:'))
+                  .map((o) => ({ id: Number(o.value.slice('ingrediente:'.length)), name: o.label }));
+                const { ingredient: ing, existed } = await createIngredientOrExisting(
+                  backofficeApi.createIngredient, { name, baseUnitId: unit?.id ?? 1 }, known);
                 const value = `ingrediente:${ing.id}`;
+                if (existed) {
+                  toaster.create({ title: `Ya hay un insumo que se llama así: se eligió «${ing.name}»`, type: 'info' });
+                  return { value, label: ing.name };
+                }
                 setCreated((p) => [...p, { value, label: ing.name }]);
                 return { value, label: ing.name };
               }} />

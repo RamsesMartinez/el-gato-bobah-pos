@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
@@ -108,10 +109,15 @@ type CompositionView struct {
 	// Yield es cuánto rinde un insumo preparado, en su unidad base (YieldUnitCode).
 	Yield         *decimal.Decimal `json:"yield,omitempty"`
 	YieldUnitCode string           `json:"yieldUnitCode,omitempty"`
-	// Editable es falso en un producto con existencias propias: descuenta él mismo, y no hay nada
-	// que capturar.
+	// Editable es falso en un paquete que deja elegir entre productos: capturarlo lo borraría.
 	Editable bool   `json:"editable"`
 	Reason   string `json:"reason,omitempty"`
+	// OwnStock: el producto todavía cuenta su propia existencia (ProductOnHand). Ya no se ofrece como
+	// opción; al elegir otra tarjeta, esa existencia se traslada o se cierra (spec 037).
+	OwnStock      bool            `json:"ownStock"`
+	ProductOnHand decimal.Decimal `json:"productOnHand"`
+	// OwnStockBranches: en cuántas sucursales hay existencia propia distinta de cero.
+	OwnStockBranches int `json:"ownStockBranches"`
 	// Stamp es cuándo se guardó por última vez; la pantalla lo devuelve al guardar (BasedOn) para
 	// saber si otra persona la cambió mientras se editaba.
 	Stamp string `json:"stamp"`
@@ -159,6 +165,16 @@ type CompositionRequest struct {
 	BasedOn *string `json:"basedOn"`
 	// AlsoBasedOn es el Stamp de cada extra de AlsoOptionIDs, con la misma regla que BasedOn.
 	AlsoBasedOn map[int64]string `json:"alsoBasedOn"`
+	// Mode es la tarjeta que se eligió: "items" (se prepara aquí o se compra hecho), "package",
+	// "product" (un extra que es otro producto) o "nothing" («No se cuenta»). Vacío = como antes de
+	// la spec 037, sin revisar que el contenido corresponda a la tarjeta.
+	Mode string `json:"mode"`
+	// ActualStock, SeenProductOnHand y SeenIngredientOnHand son «¿Cuántas tienes de verdad?» al salir
+	// de la existencia propia hacia un insumo que ya tiene existencia (FR-014a): la cifra elegida y
+	// las que mostró la pantalla al preguntar.
+	ActualStock          *decimal.Decimal `json:"actualStock"`
+	SeenProductOnHand    *decimal.Decimal `json:"seenProductOnHand"`
+	SeenIngredientOnHand *decimal.Decimal `json:"seenIngredientOnHand"`
 }
 
 // Composition devuelve lo que lleva un producto o un extra.
@@ -176,7 +192,11 @@ func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id
 		}
 		recipe, status, by, at = p.RecipeID, p.CompositionStatus, p.ConfirmedByName, p.CompositionConfirmedAt
 		if p.TrackStock {
-			v.Editable, v.Reason = false, "own_stock"
+			oh, err := q.GetProductOnHand(ctx, &id)
+			if err != nil {
+				return v, err
+			}
+			v.OwnStock, v.ProductOnHand, v.OwnStockBranches = true, oh.OnHand, int(oh.Branches)
 		}
 		if p.Type == db.ProductTypeCombo {
 			choices, err := q.PackageHasChoices(ctx, id)
@@ -271,6 +291,9 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 	if kind == CompositionOfOption && len(req.Components) > 0 {
 		return fmt.Errorf("%w: un extra que lleva varios productos se liga a un paquete", domain.ErrValidation)
 	}
+	if err := validateMode(req); err != nil {
+		return err
+	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		if err := q.LockCompositionEdits(ctx); err != nil {
 			return err
@@ -284,6 +307,12 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 		}
 		if err := validateTwins(ctx, q, kind, id, req.AlsoOptionIDs); err != nil {
 			return err
+		}
+		var change *modeChangeAudit
+		if kind == CompositionOfProduct {
+			if change, err = applyModeChange(ctx, q, id, req, actor); err != nil {
+				return err
+			}
 		}
 		if req.BasedOn != nil {
 			for _, twin := range req.AlsoOptionIDs {
@@ -299,7 +328,9 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 		}
 		var status *string
 		var by *int64
-		if recipe != nil || req.LinkedProductID != nil || len(req.Components) > 0 {
+		// «No se cuenta» queda confirmado en el mismo guardado: en dos pasos, un corte entre los dos
+		// dejaba el producto como «nunca decidido».
+		if recipe != nil || req.LinkedProductID != nil || len(req.Components) > 0 || req.Mode == "nothing" {
 			confirmed := "confirmed"
 			status, by = &confirmed, &actor
 		}
@@ -347,8 +378,177 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 		if err == nil && n == 0 {
 			return domain.ErrNotFound
 		}
+		if err == nil && change != nil {
+			err = change.record(ctx, q, id, actor)
+		}
 		return err
 	})
+}
+
+// validateMode revisa que lo que se guarda corresponda a la tarjeta elegida (FR-014b): «Se prepara
+// aquí» o «Es un combo» sin lo que llevan se guardaría como «nunca decidido», que no es lo que se
+// eligió.
+func validateMode(req CompositionRequest) error {
+	empty := len(req.Items) == 0 && len(req.Components) == 0 && req.LinkedProductID == nil
+	switch req.Mode {
+	case "":
+		return nil
+	case "items":
+		if len(req.Items) == 0 {
+			return fmt.Errorf("%w: agrega al menos un insumo", domain.ErrValidation)
+		}
+	case "package":
+		if len(req.Components) == 0 {
+			return fmt.Errorf("%w: agrega al menos un producto al combo", domain.ErrValidation)
+		}
+	case "product":
+		if req.LinkedProductID == nil {
+			return fmt.Errorf("%w: elige el producto", domain.ErrValidation)
+		}
+	case "nothing":
+		if !empty {
+			return fmt.Errorf("%w: «No se cuenta» no lleva nada", domain.ErrValidation)
+		}
+	default:
+		return fmt.Errorf("%w: modo desconocido (%q)", domain.ErrValidation, req.Mode)
+	}
+	return nil
+}
+
+// modeChangeAudit es el antes y el después de qué resta un producto.
+type modeChangeAudit struct{ before, after domain.ConsumptionMode }
+
+func (m modeChangeAudit) record(ctx context.Context, q *db.Queries, id, actor int64) error {
+	if m.before == m.after {
+		return nil
+	}
+	return auditEntity(ctx, q, domain.AuditProductConsumptionMode, "product", id, nil, &actor,
+		map[string]any{"mode": m.before}, map[string]any{"mode": m.after})
+}
+
+// targetMode es el modo en que queda un producto con lo que se va a guardar.
+func targetMode(req CompositionRequest) domain.ConsumptionMode {
+	switch {
+	case len(req.Components) > 0:
+		return domain.ModePackage
+	case len(req.Items) > 0:
+		return domain.ModeRecipe
+	case req.Mode == "nothing":
+		return domain.ModeNone
+	}
+	return domain.ModeUndecided
+}
+
+// applyModeChange sale de la existencia propia si hace falta (research R6): bloquea las existencias
+// del producto y del insumo, decide con domain.PlanModeChange, inserta los ajustes y apaga la
+// existencia propia antes de que se guarde la receta (el check de products no deja las dos a la
+// vez). Devuelve el antes y el después para la bitácora.
+func applyModeChange(ctx context.Context, q *db.Queries, id int64, req CompositionRequest, actor int64) (*modeChangeAudit, error) {
+	p, err := q.GetProductComposition(ctx, id)
+	if err != nil {
+		return nil, notFound(err)
+	}
+	hasItems := false
+	if p.RecipeID != nil {
+		items, err := q.ListCompositionItems(ctx, *p.RecipeID)
+		if err != nil {
+			return nil, err
+		}
+		hasItems = len(items) > 0
+	}
+	status := ""
+	if p.CompositionStatus != nil {
+		status = *p.CompositionStatus
+	}
+	before := domain.ModeOf(domain.ProductModeFacts{TrackStock: p.TrackStock, HasRecipeItems: hasItems,
+		IsPackage: p.Type == db.ProductTypeCombo, CompositionStatus: status})
+	audit := &modeChangeAudit{before: before, after: targetMode(req)}
+	if before != domain.ModeOwnStock {
+		return audit, nil
+	}
+	// Salir de la existencia propia mueve existencias sin vuelta atrás: tiene que venir de una
+	// tarjeta elegida, no de un guardado viejo o de un script que mande el cuerpo vacío.
+	if req.Mode == "" {
+		return nil, fmt.Errorf("%w: elige qué resta este producto", domain.ErrValidation)
+	}
+
+	target := domain.ModeTarget{Kind: domain.TargetNothing}
+	switch {
+	case len(req.Components) > 0:
+		target.Kind = domain.TargetPackage
+	case len(req.Items) > 0:
+		target.Kind = domain.TargetItems
+	}
+	levels := map[int64]*domain.BranchLevels{}
+	var order []int64
+	branchLevel := func(b int64) *domain.BranchLevels {
+		if l, ok := levels[b]; ok {
+			return l
+		}
+		levels[b] = &domain.BranchLevels{BranchID: b}
+		order = append(order, b)
+		return levels[b]
+	}
+	own, err := q.LockProductStockLevels(ctx, &id)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range own {
+		branchLevel(l.BranchID).Product = l.OnHand
+	}
+	if len(req.Items) == 1 {
+		it := req.Items[0]
+		factor, err := q.GetUnitToIngredientBase(ctx, db.GetUnitToIngredientBaseParams{UnitID: it.UnitID, IngredientID: it.IngredientID})
+		if err != nil {
+			return nil, notFound(err)
+		}
+		ing := it.IngredientID
+		target.SingleIngredient = &ing
+		target.QtyPerSale = domain.Round4(it.Quantity.Mul(factor))
+		rows, err := q.LockIngredientStockLevels(ctx, &ing)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "55P03" {
+				return nil, fmt.Errorf("%w: hay una venta en curso con ese insumo; vuelve a intentar en un momento", domain.ErrConflict)
+			}
+			return nil, err
+		}
+		for _, l := range rows {
+			// Solo cuenta el insumo de las sucursales donde el producto tiene algo que entregar.
+			if _, ok := levels[l.BranchID]; ok {
+				levels[l.BranchID].Ingredient = l.OnHand
+			}
+		}
+	}
+	in := domain.ModeChangeInput{From: before, ProductID: id, Target: target,
+		ActualStock: req.ActualStock, SeenProductOnHand: req.SeenProductOnHand, SeenIngredientOnHand: req.SeenIngredientOnHand}
+	for _, b := range order {
+		in.Levels = append(in.Levels, *levels[b])
+	}
+	plan, err := domain.PlanModeChange(in)
+	if err != nil {
+		return nil, err
+	}
+	note := fmt.Sprintf("Producto %d: deja de contar su propia existencia (%s)", id, audit.after)
+	for _, a := range plan.Adjustments {
+		arg := db.InsertModeAdjustmentParams{ItemType: db.StockItemType(a.ItemType), Quantity: domain.Round4(a.Qty),
+			BranchID: a.BranchID, UserID: &actor, Note: &note}
+		aid := a.ID
+		if a.ItemType == "producto" {
+			arg.ProductID = &aid
+		} else {
+			arg.IngredientID = &aid
+		}
+		if err := q.InsertModeAdjustment(ctx, arg); err != nil {
+			return nil, err
+		}
+	}
+	if plan.TurnOffTrackStock {
+		if err := q.TurnOffProductTrackStock(ctx, id); err != nil {
+			return nil, err
+		}
+	}
+	return audit, nil
 }
 
 // createRecipe guarda los renglones como una receta nueva; sin renglones, ninguna.
@@ -465,9 +665,6 @@ func validateComposition(ctx context.Context, q *db.Queries, kind CompositionKin
 	p, err := q.GetProductComposition(ctx, id)
 	if err != nil {
 		return nil, notFound(err)
-	}
-	if p.TrackStock && (len(req.Items) > 0 || len(req.Components) > 0) {
-		return nil, fmt.Errorf("%w: este producto descuenta sus propias existencias", domain.ErrValidation)
 	}
 	if p.Type == db.ProductTypeCombo {
 		choices, err := q.PackageHasChoices(ctx, id)

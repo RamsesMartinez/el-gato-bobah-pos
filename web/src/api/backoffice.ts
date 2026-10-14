@@ -611,6 +611,55 @@ export interface ExpensePaymentBody {
   reference?: string;
 }
 
+// Salud del inventario (spec 037). Las listas se declaran opcionales a propósito: un `null` del
+// servidor tumbaría la pantalla sin un solo error, y así el compilador obliga a la guarda.
+export type HealthSection = 'unsold_deduction' | 'negative_stock' | 'no_purchases' | 'malformed_recipe' | 'pending_recipe';
+export interface HealthUnsoldItem {
+  kind: 'product' | 'extra';
+  id: number;
+  name: string;
+  group: string;
+  // own_stock | recipe | package | none | undecided en un producto; 'extra' en un extra.
+  status: string;
+  units?: { channel: string; units: string }[];
+  pieces: string;
+  linesWithoutDeduction: number;
+  estimatedCost: string;
+  fixAt: string;
+}
+export interface HealthComboChoice { productId: number; name: string; slot: string; options: number; fixAt: string }
+export interface HealthNegative { ingredientId: number; name: string; unit: string; onHand: string; branch: string | null; usedBy: number; fixAt: string }
+export interface HealthNoPurchase { ingredientId: number; name: string; unit: string; fixAt: string }
+export interface HealthMalformed {
+  ownerKind: 'product' | 'extra' | 'prep';
+  ownerId: number;
+  ownerName: string;
+  ingredient: string;
+  problem: 'zero_quantity' | 'unit_mismatch' | 'archived_ingredient' | 'duplicate_ingredient';
+  fixAt: string;
+}
+export interface HealthPendingCount { products: number; extras: number; fixAt: string }
+export interface InventoryHealth {
+  from: string;
+  to: string;
+  multipleBranches: boolean;
+  salesInPeriod: number;
+  unsoldDeduction: { total: number; items?: HealthUnsoldItem[]; unpairedPlatformLines: number };
+  comboChoices: { total: number; items?: HealthComboChoice[] };
+  negativeStock: { total: number; collapsed: boolean; items?: HealthNegative[] };
+  noPurchases: { total: number; of: number; items?: HealthNoPurchase[] };
+  malformedRecipes: { total: number; items?: HealthMalformed[] };
+  pendingRecipes: { undecided: HealthPendingCount; review: HealthPendingCount };
+}
+export interface HealthQuery {
+  from?: string;
+  to?: string;
+  section?: HealthSection;
+  limit?: number;
+  offset?: number;
+  noPurchasesSince?: string;
+}
+
 export const backofficeApi = {
   // Cajas (catálogo). `cashRegisters` = activas + estado de sesión; `allCashRegisters` = gestión.
   cashRegisters: () => api.get<{ items: CashRegister[] }>('/cash-registers'),
@@ -779,6 +828,13 @@ export const backofficeApi = {
 
   stockLevels: () => api.get<{ items: StockLevel[] }>('/stock/levels'),
   stockMovements: () => api.get<{ items: StockMovement[] }>('/stock/movements'),
+  inventoryHealth: (q: HealthQuery = {}) => api.get<InventoryHealth>(`/stock/health?${qsReporte(q as ReportQuery)}`),
+  // El archivo de la misma pantalla. El nombre viene del servidor (Content-Disposition), con el periodo.
+  exportInventoryHealth: async (q: Pick<HealthQuery, 'from' | 'to'>) => {
+    const res = await api.getRaw(`/stock/health.csv?${qsReporte(q as ReportQuery)}`);
+    const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'salud-del-inventario.csv';
+    return { blob: await res.blob(), filename: name };
+  },
   createMovement: (b: {
     itemType: string;
     ingredientId?: number;

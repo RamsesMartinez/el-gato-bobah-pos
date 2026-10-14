@@ -567,3 +567,26 @@ contra el código: 52 px, el alto exacto de la fila retirada.
 | X17 | El test viejo `TestRefreshReuseRevokesFamily` tenía UNA sola sesión | Con una sola, revocar por usuario y revocar por familia son indistinguibles: pasaba en verde con el comportamiento equivocado. Se conserva (cubre el rechazo) y la distinción la mide ahora `TestElReusoRevocaSoloLaFamiliaComprometida` | — |
 | X18 | Cuatro pedidos de producción cancelados y cobrados sin devolución ($729, 29-ago) | Son datos anteriores a la feature de devoluciones; corregirlos reescribiría un arqueo firmado. Es una decisión del dueño, no un cambio de código. Lo nuevo ya impide que se repita | — |
 | ~~X19~~ | ~~Una tableta con la pantalla en blanco no puede aplicar la versión que la arregla~~ **CUBIERTA (2026-09-08)** | `PantallaQueNoSeCae` envuelve a `<App/>` dentro del Provider: un throw en render deja de vaciar el `#root` y pinta una salida con un botón de 56 px que fuerza una navegación nueva (`?r=<ts>`) en vez de un `reload`, que podría volver a servirse del service worker viejo. El detalle del error va a la consola y no a la tableta. Lo que sigue fuera: no reporta a ningún servicio — el techo está escrito en el `// ponytail:` del componente | `PantallaQueNoSeCae.test.tsx` (4 casos) |
+
+## S. Salud del inventario y la hoja de receta (spec 037)
+
+Lo que estas pantallas podían decir que no es cierto: que un producto resta cuando no resta, que la
+exportación cuenta otra cosa que la pantalla, o que al cambiar qué resta un producto se pierden o se
+inventan existencias.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| S1 | Un producto que no resta por sí mismo pero su sabor obligatorio sí | No se marca; el sabor que no resta, sí | `TestUnsoldDeductionIsMeasuredOnWhatTheSaleLeft` | Postgres |
+| S2 | Estado de receta NULL (nunca decidido) | Se marca. `not (NULL and …)` lo descartaba en silencio | `TestUnsoldDeductionIsMeasuredOnWhatTheSaleLeft` | Postgres |
+| S3 | Pieza de un paquete sin nada que restar | Se marca la pieza; el movimiento guarda el paquete, no la pieza, así que se mide por su configuración | `TestUnsoldDeductionIsMeasuredOnWhatTheSaleLeft` | Postgres |
+| S4 | La exportación contra la pantalla | Mismo cálculo, mismos totales, «sin compras» completo en el archivo | `TestInventoryHealthExportMatchesTheScreen` | Postgres |
+| S5 | Recetas pendientes contra las pestañas de Recetas | Las mismas cuentas | `TestHealthSectionsThatDoNotDependOnSales` | Postgres |
+| S6 | Periodo sin ventas | «No hubo ventas en este periodo», nunca «El inventario está sano» | `InventoryHealthTab.test.tsx` | Navegador (vitest) |
+| S7 | Periodo que el servidor rechaza | El mensaje se ve y la lista anterior se queda | `InventoryHealthTab.test.tsx` | Navegador (vitest) |
+| S8 | Convertir un revendido con existencia propia | Las piezas pasan al insumo con dos ajustes ligados; nada se pierde ni se inventa | `TestLeavingOwnStockMovesTheStockOnce` | Postgres |
+| S9 | Una venta entre mostrar las cifras y guardar | 409 y la hoja vuelve a preguntar con las cifras nuevas | `TestModeChangeRejectsStaleFigures`, `CompositionSheet.test.tsx` | Postgres, navegador (vitest) |
+| S10 | Las dos cuentas con existencia | Pregunta cuántas hay de verdad; nunca suma a ciegas | `TestPlanModeChange`, `CompositionSheet.test.tsx` | Go, navegador (vitest) |
+
+**Lo que S no cubre:** cuántos renglones de la pestaña Salud se ven a 1024×600 en una tableta real
+(jsdom no hace layout); eso lo miden las capturas de T051.
+

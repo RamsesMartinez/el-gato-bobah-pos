@@ -71,3 +71,19 @@ where p.is_active and p.track_stock
   and (sqlc.narg('q')::text is null or p.name::text ilike '%' || sqlc.narg('q')::text || '%')
 order by name
 limit sqlc.arg('lim');
+
+-- name: LockIngredientNames :exec
+-- Un alta de insumo a la vez por empresa, hasta el fin de la transacción (spec 037, research R7d).
+-- Llave propia, distinta de la 28028 de las recetas: guardar una receta y dar de alta un insumo no
+-- tienen por qué esperarse. Sin el candado, dos altas casi simultáneas de «Lata» y «lata» pasaban las
+-- dos: el `unique (company_id, name)` solo atrapa el nombre idéntico.
+select pg_advisory_xact_lock(28037, coalesce(nullif(current_setting('app.company_id', true), '')::int, 0));
+
+-- name: IngredientNameTaken :one
+-- ¿Hay otro insumo de la empresa con el mismo nombre sin distinguir mayúsculas, acentos ni espacios
+-- de más? La misma normalización que «duplicado» en Salud del inventario.
+select exists (
+  select 1 from ingredients
+   where regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+       = regexp_replace(translate(lower(trim(sqlc.arg(name)::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+)::bool;
