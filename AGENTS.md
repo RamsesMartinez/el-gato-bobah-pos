@@ -151,6 +151,12 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     carpeta principal. Pasó el 2026-10-12: un `down -v` así borró `deploy_pgdata_dev` y hubo que
     restaurarla de un respaldo. `make stop` y `make deps-down` se niegan a bajar `deploy` desde un
     worktree ([guard-shared-compose.sh](scripts/guard-shared-compose.sh)).
+  - **`make db-restaurar` restaura en la base del worktree, y desde un worktree se niega a tocar la
+    de la carpeta principal**, aunque se le pase `PG_CONTAINER=deploy-postgres-1`. Pasó el
+    2026-10-13: el script tenía el contenedor fijo y un restore desde un worktree borró la base de
+    la carpeta principal. Lo vigila
+    [restaurar-respaldo-test.sh](scripts/tests/restaurar-respaldo-test.sh), que corre en el
+    pre-commit cuando cambia el script. Para restaurar la carpeta principal, se corre desde ahí.
 - `make api-dev` (hot reload con air) · `make api-build` (= `cd server && go build ./...`) · `make api-test` (= `cd server && go test ./...`).
 - **La base local se comporta como producción: RLS y GRANT aplican también en dev.** La regla vive
   en la constitución (IV, *La base local niega lo mismo que producción*); esto es la mecánica, y
