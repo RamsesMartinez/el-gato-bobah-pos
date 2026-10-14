@@ -68,6 +68,12 @@ Decisiones de diseño, cada una con lo que se descartó. Base: mapa del código 
 
 - **Decisión:** piezas sin restar × el costo de hoy del producto o extra (el mismo que muestra Menú › Recetas). Es una cifra para ordenar, no contable: la pantalla la llama «costo estimado» y no la suma a ningún total (constitución III).
 
+## R7d. Nombres de insumo sin duplicar
+
+- **Decisión:** alta y renombre de insumo rechazan un nombre igual a otro de la empresa sin distinguir mayúsculas ni acentos, con una función de normalización en `domain` (la misma que detecta «duplicado» en FR-007). La búsqueda va dentro de la transacción después de un candado por empresa (`pg_advisory_xact_lock`), para que dos altas casi simultáneas no pasen las dos.
+- **Descartado:** un índice único sobre el nombre normalizado. Producción ya tiene insumos así (es lo que FR-007 marca), y la migración fallaría al crearlo. Primero se corrigen con «Salud del inventario»; el índice puede venir después.
+- **Alcance:** afecta también el alta desde el diálogo del gasto, que ya muestra el 409 de nombre repetido.
+
 ## R8. Existencias con más de una sucursal
 
 - **Decisión:** «Lo guardado en negativo» lee `stock_levels` por sucursal y muestra la sucursal solo si la empresa tiene más de una. No usa `current_branch_id()`, que con dos sucursales truena con `EGB01`.

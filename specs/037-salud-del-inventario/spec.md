@@ -45,7 +45,7 @@ como producto a tiendas nuevas. Lo heredado se ajusta con el conteo del 038, no 
 ### User Story 1 - Ver qué está mal en el inventario, en una sola pantalla (Priority: P1)
 
 Quien administra el negocio abre «Salud del inventario» y ve, agrupado por tipo de problema, todo lo
-que hace que las existencias no cuadren: lo que se vende sin descontar, los insumos en negativo, los
+que hace que las existencias no cuadren: lo que se vende sin restar, lo guardado en negativo, los
 insumos sin compras registradas, las recetas con un error y las recetas pendientes de confirmar.
 Cada renglón dice qué es, cuánto pesa (unidades vendidas por canal en el periodo, existencia
 actual) y lleva directo a donde se corrige.

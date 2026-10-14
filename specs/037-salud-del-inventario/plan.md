@@ -58,6 +58,7 @@ Sin violaciones.
 | Permisos `inventory.health_view` y `menu.configure` | domain | `server/internal/domain/permission.go` (+ espejo en `web/src/app/permissions.ts`) |
 | Acción de bitácora `product.consumption_mode` | domain | `server/internal/domain/audit.go` (lista blanca, grupo nuevo `inventory`) |
 | Reporte y CSV | app | `server/internal/app/inventory_health.go` |
+| Nombres de insumo sin duplicar (mayúsculas y acentos) | domain + app | normalización en `server/internal/domain/`; `CreateIngredient` en `server/internal/app/articles.go` y `UpdateIngredient` en `server/internal/app/costing.go`, con candado por empresa (research R7d) |
 | Transición de modo en la captura | app | `server/internal/app/composition.go` (`SaveComposition` con `actualStock`; `validateComposition` deja de rechazar receta en `track_stock`) |
 | Rutas | httpapi | `server/internal/httpapi/handlers_inventory_health.go`, `router.go` (bajo `/stock`) |
 | Pantalla Salud | web | `web/src/features/backoffice/InventoryHealthTab.tsx` (pestaña de `StockPage`) |
@@ -113,6 +114,7 @@ server/internal/domain/permission.go               # inventory.health_view
 server/internal/domain/audit.go                    # product.consumption_mode, grupo inventory
 server/internal/app/inventory_health.go
 server/internal/app/composition.go                 # transición de modo
+server/internal/app/articles.go, costing.go        # nombres de insumo sin duplicar
 server/internal/httpapi/handlers_inventory_health.go
 server/internal/httpapi/router.go
 server/internal/integration/inventory_health_test.go
