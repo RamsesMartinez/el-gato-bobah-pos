@@ -58,13 +58,13 @@ Sin violaciones.
 | Permisos `inventory.health_view` y `menu.configure` | domain | `server/internal/domain/permission.go` (+ espejo en `web/src/app/permissions.ts`) |
 | Acción de bitácora `product.consumption_mode` | domain | `server/internal/domain/audit.go` (lista blanca, grupo «Precios»: un grupo propio cambiaría la rejilla de cinco contadores de la bitácora, que es una disposición de tableta; decidido al implementar) |
 | Reporte y CSV | app | `server/internal/app/inventory_health.go` |
-| Nombres de insumo sin duplicar (mayúsculas y acentos) | domain + app | normalización en `server/internal/domain/`; `CreateIngredient` en `server/internal/app/articles.go` y `UpdateIngredient` en `server/internal/app/costing.go`, con candado por empresa (research R7d) |
+| Nombres de insumo sin duplicar (mayúsculas y acentos) | domain + app | normalización en `server/internal/domain/`; `CreateIngredient` en `server/internal/app/articles.go`, con candado por empresa (research R7d). Hoy ninguna ruta renombra insumos; la que se agregue aplica la misma regla |
 | Transición de modo en la captura | app | `server/internal/app/composition.go` (`SaveComposition` con `actualStock`; `validateComposition` deja de rechazar receta en `track_stock`) |
 | Rutas | httpapi | `server/internal/httpapi/handlers_inventory_health.go`, `router.go` (bajo `/stock`) |
 | Pantalla Salud | web | `web/src/features/backoffice/InventoryHealthTab.tsx` (pestaña de `StockPage`) |
 | Tarjeta «Se compra hecho» y «¿Cuántas tienes de verdad?» | web | `web/src/shared/CompositionSheet.tsx` |
 | Filtro por URL en Recetas | web | `web/src/features/admin/RecipesPage.tsx` (`?status=`, `?open=`) |
-| Medición de uso | web + domain | `pantallasMedibles` / `rolesPorPantalla` en `uso.go` y `PANTALLAS` en `rutas-medidas.ts` (AGENTS.md: tres lugares) |
+| Medición de uso | web + domain | acciones «ver-salud» y «exportar-salud» de «inventario» en `accionesMedibles` de `uso.go` y su etiqueta en `etiquetas-de-uso.ts`. La pestaña vive en `/almacen`, que ya se mide: no hay pantalla nueva en `pantallasMedibles`, `rolesPorPantalla` ni `PANTALLAS` (decidido al implementar) |
 
 ## Pantallas y maquetas
 
@@ -92,7 +92,7 @@ Las llena `/maquetas` (hook `after_plan`): 2 o 3 opciones navegables por pantall
    - «Se compra hecho» viene lleno: «Cada venta resta 1 de [insumo]». Si existe uno de nombre parecido, se preselecciona; si no, «se crea con este nombre». El buscador marca con ✓ lo elegido y deja «Crear una nueva» al final. «¿Una venta lleva más de una? (por ejemplo, un six)» muestra el − / +.
    - Avisos solo cuando hay existencia que mover:
      - Si el insumo es nuevo: «El sistema tenía contadas 12 latas… cada vez que vendas una, quedará una menos».
-     - Si el insumo ya existía con existencia: «¿Cuántas tienes de verdad?» con 12, 20, «32 (las dos)» u «Otra» (número escrito), en rejilla de 2×2 como las tarjetas de modo; el campo de «Otra» lleva el mismo `onFocus` → `scrollIntoView({ block: 'center' })` que los otros campos de la hoja, para que el teclado no tape «Guardar»; «Guardar» se apaga hasta elegir. Reemplaza el «sumar o quedarse» de FR-014a: la cifra elegida queda como existencia del insumo, con un ajuste que lo dice.
+     - Si el insumo ya existía con existencia: «¿Cuántas tienes de verdad?» con 12, 20, «32 (las dos)» u «Otra» (número escrito), en rejilla de 2×2 como las tarjetas de modo; el campo de «Otra» lleva el mismo `onFocus` → `scrollIntoView({ block: 'center' })` que los otros campos de la hoja, para que el teclado no tape «Guardar»; «Guardar» se apaga hasta elegir. La cifra elegida queda como existencia del insumo, con un ajuste que lo dice.
      - En las otras tres tarjetas, y solo si el producto tenía existencia propia (FR-020): «Tus latas siguen donde están; el sistema solo deja de contarlas…», con confirmación antes de guardar (FR-014b).
    - «Guardar» cierra la hoja; el renglón de Menú › Recetas muestra «Resta 1 por venta · tienes N».
    - Palabras para quien no conoce el sistema: «se resta» y «lo que tienes guardado», no «insumo» ni «existencia propia».
@@ -113,20 +113,21 @@ server/internal/domain/inventory_health.go (+_test)
 server/internal/domain/consumption_mode.go (+_test)
 server/internal/domain/permission.go (+_test)      # inventory.health_view, menu.configure
 server/internal/domain/uso.go (+_test)             # medición de uso de Salud
-server/internal/domain/audit.go                    # product.consumption_mode, grupo inventory
+server/internal/domain/audit.go                    # product.consumption_mode, grupo «Precios»
 server/internal/app/inventory_health.go
 server/internal/app/composition.go                 # transición de modo
-server/internal/app/articles.go, costing.go        # nombres de insumo sin duplicar
-server/internal/httpapi/handlers_inventory_health.go (+_test)
+server/internal/app/articles.go                    # nombres de insumo sin duplicar
+server/internal/httpapi/handlers_inventory_health.go
 server/internal/httpapi/handlers_composition_test.go  # permiso menu.configure
 server/internal/httpapi/router.go
 server/internal/integration/inventory_health_test.go
 server/internal/integration/consumption_mode_test.go
+server/internal/integration/inventory_health_http_test.go   # handler y permiso por el router real
 
 web/src/api/backoffice.ts                          # health, exportHealth
 web/src/features/backoffice/InventoryHealthTab.tsx (+test)
 web/src/features/backoffice/StockPage.tsx (+test)  # pestaña
-web/src/features/backoffice/ExpenseDialog.test.tsx # insumo con nombre repetido
+web/src/shared/createIngredient.ts (+test)         # insumo con nombre repetido (gasto y receta)
 web/src/shared/CompositionSheet.tsx (+test)        # «Se compra hecho», salida de existencia propia
 web/src/features/admin/RecipesPage.tsx (+test)     # ?status= ?open=
 web/src/app/permissions.ts, web/src/app/rutas-medidas.ts

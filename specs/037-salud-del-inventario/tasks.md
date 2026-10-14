@@ -85,7 +85,7 @@
 - [X] T036 [US3] Consultas `LockStockLevelsForProduct` / `LockStockLevelsForIngredient` (`FOR UPDATE`, por sucursal) e insert de ajustes en `server/queries/stock.sql` (escritura de almacén; `inventory_health.sql` queda solo de lectura); `make sqlc`
 - [X] T037 [US3] Hasta que T031 pase: sacar las rutas `PUT …/composition` y `…/confirm` de producto y de extra de los grupos con `RequireRole` y dejarlas solo con `RequirePermission(PermMenuConfigure)`, en `server/internal/httpapi/router.go`
 - [X] T038 [US3] Nombres de insumo sin duplicar, hasta que T032 pase: `CreateIngredient` (`server/internal/app/articles.go`) rechaza con `ErrConflict` un nombre igual a otro insumo de la empresa sin distinguir mayúsculas, acentos ni espacios de más (`IngredientNameTaken`, la misma normalización que «duplicado» en «Recetas con un error»), detrás de un candado por empresa con llave propia (research R7d). `web/src/shared/createIngredient.ts` lo usan el diálogo del gasto y la hoja de receta
-- [X] T039 [US3] Agregar la acción `product.consumption_mode` (grupo `inventory`) a la lista blanca de `server/internal/domain/audit.go` y su etiqueta en `web/src/shared/audit/labels.ts`. En `SaveComposition`: después de `LockCompositionEdits`, bloquear filas, llamar a `PlanModeChange`, insertar ajustes, apagar `track_stock`, `recordAudit` en la misma tx; `validateComposition` deja de rechazar receta en `track_stock`; aceptar `actualStock`, `seenProductOnHand`, `seenIngredientOnHand`; en `server/internal/app/composition.go` y su handler
+- [X] T039 [US3] Agregar la acción `product.consumption_mode` (grupo «Precios»: un grupo propio cambiaría la rejilla de la bitácora) a la lista blanca de `server/internal/domain/audit.go` y su etiqueta en `web/src/shared/audit/labels.ts`. En `SaveComposition`: después de `LockCompositionEdits`, bloquear filas, llamar a `PlanModeChange`, insertar ajustes, apagar `track_stock`, `recordAudit` en la misma tx; `validateComposition` deja de rechazar receta en `track_stock`; aceptar `actualStock`, `seenProductOnHand`, `seenIngredientOnHand`; en `server/internal/app/composition.go` y su handler
 - [X] T040 [US3] `CompositionSheet` según plan.md › Maquetas, fila «Hoja de receta: modo de consumo» (B simplificada, versión 7): título en pregunta, tarjeta «Se compra hecho» que crea el insumo con `POST /stock/ingredients` solo como última opción, stepper detrás de «¿Una venta lleva más de una?», aviso de recetas por revisar con la frase de FR-019, en `web/src/shared/CompositionSheet.tsx`
 - [X] T041 [US3] Hasta que T033 pase: el renglón de Menú › Recetas muestra «Resta 1 por venta · tienes N» en `web/src/features/admin/RecipesPage.tsx`
 
@@ -110,7 +110,7 @@
 
 **Independent Test**: un extra sin receta ni producto ligado se vende sin aviso y aparece en Salud.
 
-- [X] T048 [US4] Test de integración: vender un extra sin configurar no bloquea ni avisa (FR-017) y aparece con «Extra que no resta nada» y sus piezas; uno confirmado «No gasta insumos» no aparece; en `server/internal/integration/inventory_health_test.go`
+- [X] T048 [US4] Test de integración: vender un extra sin configurar no bloquea ni avisa (FR-017) y aparece con «Extra que no resta nada» y sus piezas; uno confirmado «No gasta insumos» no aparece; en `server/internal/integration/inventory_health_test.go`. El comportamiento ya existía, así que se vio en rojo con dos mutaciones de la consulta (extras nunca listados; confirmados no excluidos), cada una con su mensaje
 - [X] T049 [US4] Ajustar lo que falte en la consulta o en la pastilla de estado para que T048 pase (`server/queries/inventory_health.sql`, `web/src/features/backoffice/InventoryHealthTab.tsx`)
 
 ---
@@ -122,6 +122,8 @@
 - [X] T052 Actualizar AGENTS.md (bloque del almacén: «Salud del inventario», salida de la existencia propia con bloqueo de filas) y `docs/matriz-de-pantallas.md`
 - [X] T053 Gates: `make api-build && make api-test`, `make test-integration`, `bun run lint`, `bun run vitest run`, `bun run build`, `make ci-local`; correr quickstart.md completo
 - [X] T054 `/revision-de-codigo` (hook `after_implement`)
+- [X] T055 [US3] Hallazgo de la revisión de base de datos: la conversión no espera por el insumo que una venta tiene tomado (`for update nowait`, 55P03 → 409), porque las dos bloquean en orden contrario y Postgres cancelaba una —a veces el cobro—. `TestModeChangeNeverDeadlocksWithASale` en `server/internal/integration/consumption_mode_test.go`; consulta en `server/queries/stock.sql`
+- [X] T056 [US3] Hallazgo de la revisión de seguridad: guardar sin tarjeta un producto con existencia propia → 400, sin tocar la existencia (una pestaña vieja o un script no puede cerrarla sin que nadie eligiera «No se cuenta»). `TestOwnStockNeedsAChosenCard` en `server/internal/integration/consumption_mode_test.go`; regla en `server/internal/app/composition.go`
 
 ---
 
