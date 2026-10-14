@@ -62,6 +62,8 @@ Llave primaria `(count_id, ingredient_id)`.
 | `stock_movements` | `stock_count_id bigint null` | FK compuesta a `stock_counts`, on delete restrict. Cada ajuste de conteo apunta a su conteo (SC-003) |
 | `expense_items` | `presentation_id bigint null` | Referencia a la presentación elegida; la equivalencia vive copiada en `pack_qty_in_base` |
 | `expense_items` | `voided_at timestamptz null` | Renglón quitado en una corrección; sus movimientos se conservan |
+| `expense_items` | `closed_at timestamptz null` | «Ya no va a llegar»: deja de estar pendiente sin sumar (R2b) |
+| `expense_items` | `closed_by bigint null` | Quién lo cerró |
 | `business_settings` | `costing_method text not null default 'last'` | check `in ('last','weighted')` (R4) |
 | `business_settings` | `stock_item_label text not null default 'artículo'` | 1–20 caracteres (R11) |
 
@@ -73,8 +75,11 @@ por renglón; `stock_movements (company_id, stock_count_id)` donde no es nulo.
 - **Renglón de compra:** aplicado = suma de sus movimientos `compra`. Deseado = `qty_received` (o
   `quantity` si llegó completo) convertido a base; quitado (`voided_at`) = 0. Toda escritura inserta
   `deseado − aplicado`.
-- **Gasto:** `received_at` solo con al menos un renglón de almacén (R1). Anular uno recibido exige
-  que todo lo aplicado sea 0.
+- **Renglón pendiente:** aplicado < pedido y sin `closed_at`. Recibir una parte inserta un `compra`
+  por la parte. Índice parcial `expense_items (company_id, expense_id)` donde pendiente, para la
+  lista «Por recibir».
+- **Gasto:** `received_at` es la fecha en que ya no quedó nada pendiente (R2b); solo con al menos
+  un renglón de almacén (R1). Anular uno recibido exige que todo lo aplicado sea 0.
 - **Conteo:** `open` acepta capturas; `closed` inserta un `ajuste` por renglón con
   `counted_qty − system_qty` y no acepta más; `discarded` no toca el almacén.
 

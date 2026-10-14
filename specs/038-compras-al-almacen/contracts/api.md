@@ -36,6 +36,22 @@ Permiso `inventory.receive`. El conjunto deseado de renglones de almacén del ga
 - Respuesta 200: el gasto con sus renglones, y por renglón `applied` (unidad base) y la unidad.
 - Un gasto anulado → 409. Un gasto sin recibir → los renglones se guardan sin tocar el almacén.
 
+### `GET /stock/pending-receipts` (nuevo)
+
+Permiso `inventory.receive`. Lo pendiente de la sucursal: por renglón, la compra (id, fecha,
+proveedor), el artículo, lo pedido, lo recibido y lo que falta, en su empaque y en unidad base.
+Siempre arreglo, aunque vacío.
+
+### `POST /expenses/{id}/items/{itemId}/receive` (nuevo)
+
+Permiso `inventory.receive`. `{ "qty": "2", "seenApplied": "0" }` en la unidad del renglón
+(empaque o unidad). Suma la parte; si pasa de lo que falta → 400; si `seenApplied` ya no es lo
+aplicado → 409 con lo ya recibido.
+
+### `POST /expenses/{id}/items/{itemId}/close` (nuevo)
+
+Permiso `inventory.receive`. «Ya no va a llegar». No suma ni cambia el total.
+
 ### `POST /expenses/{id}/cancel` (existente, cambia)
 
 Un gasto recibido se anula si todo lo aplicado es 0 (se revierte antes con `stock-lines` vacío; la

@@ -60,6 +60,21 @@ símbolos citados son de `develop` en `c33f50e`.
 - Necesita `stock_movements.expense_item_id`: hoy el movimiento solo guarda `expense_id`, y con dos
   renglones del mismo insumo no se sabe cuál corregir.
 
+## R2b. Por recibir: el renglón manda, por partes
+
+- **Decisión (dueño, 14-oct):** lo recibido de un renglón es la suma de sus movimientos `compra`
+  (lo «aplicado» de R2). Un renglón está **pendiente** si lo aplicado es menor que lo pedido y no
+  está cerrado; **cerrado** («Ya no va a llegar») con `closed_at`. Recibir una parte inserta un
+  movimiento por la parte, con la fecha del día; nada se sobrescribe.
+- `expenses.received_at` deja de ser la guarda de todo el gasto: pasa a ser la fecha en que ya no
+  quedó nada pendiente (último renglón recibido o cerrado). Lo que ya está guardado se respeta.
+- `POST /expenses/{id}/receive` sigue para «llegó todo» (la compra rápida) y se vuelve un caso de
+  recibir cada renglón pendiente por lo que falta.
+- Dos tabletas recibiendo a la vez: el renglón viaja con `seenApplied`; bajo el bloqueo del gasto,
+  si ya no coincide, 409 con lo ya recibido.
+- **Alternativa descartada:** órdenes de compra (pedir antes de pagar, autorizar, comparar): fuera
+  de alcance por decisión del dueño; esto cubre «se pagó antes y llega después» sin ellas.
+
 ## R3. Presentaciones: una tabla por insumo, copiada al renglón
 
 - **Decisión:** `ingredient_presentations` (empresa, insumo, nombre, `qty_in_base` en la unidad base

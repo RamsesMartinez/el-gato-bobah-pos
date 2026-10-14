@@ -32,6 +32,9 @@ conteo, y desde ese conteo cada compra suma y cada venta resta.
 - Q: Cuando se registra una compra, ¿qué pasa con el costo del insumo? → A: Por omisión toma el costo de la última compra. Cada empresa puede elegir en su configuración el promedio ponderado (lotes comprados a precios distintos), como opción avanzada para ver sus números de otra manera.
 - Q (prueba con una ferretería, 14-oct): ¿agregamos una unidad de longitud? → A: Sí, en el 038: longitud (m, cm) como cuarto tipo, junto a peso, líquido y piezas.
 - Q (misma prueba): «insumo» no le dice nada a quien revende, ¿qué hacemos? → A: Las pantallas de compras, empaques y conteo dicen «artículo» por omisión y cada empresa puede cambiar la palabra. Un modelo de reventa propio (precio por pieza y por caja, variantes) va en el issue #64.
+- Q (maquetas, 14-oct): ¿cómo se captura una compra? → A: Primero el ticket (opción C de la maqueta); sin ticket, «Capturar sin ticket» lleva a la captura a mano, que sirve también para un gasto sin mercancía. Cada renglón leído se puede cambiar, y uno dudoso no suma hasta confirmarlo, sin bloquear el guardado.
+- Q (mismas maquetas): ¿qué reglas de dinero tiene una compra? → A: Cada renglón de mercancía lleva su importe, y la suma de los renglones no puede pasar del total pagado; lo que falta para el total queda como «otros» del gasto (envío, bolsa).
+- Q (maquetas, 14-oct): a veces se paga antes y el proveedor entrega después, o por partes, ¿cómo se registra? → A: Dos flujos. **Compra rápida**: todo llegó y suma al guardar. **Por recibir**: cada renglón puede quedar «Llega después»; una lista en Almacén junta lo pendiente de todas las compras, y al llegar se dice cuánto llegó (puede ser por partes). Lo que ya no llegará se marca «Ya no va a llegar». El total pagado nunca cambia por esto; una devolución de dinero es del pago, fuera de este spec. Las órdenes de compra completas (pedir antes de pagar, autorizar) siguen fuera.
 - Q: Al cerrar un conteo, ¿qué pasa con los insumos que nadie contó? → A: Se quedan como estaban; solo cambia lo contado. Salud los sigue señalando y se pueden contar después.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -58,6 +61,29 @@ del 037 ya no la lista.
 5. **Given** un gasto que entró al almacén, **When** se borra, **Then** sus entradas se revierten con movimientos que lo dicen; el historial no se borra.
 6. **Given** una empresa con el costeo por omisión, **When** se guarda una compra de leche a $25 el litro, **Then** el costo de la leche pasa a $25 el litro.
 7. **Given** una empresa que eligió promedio ponderado, con 10 L a $20 y una compra de 10 L a $30, **When** se guarda, **Then** el costo de la leche pasa a $25 el litro.
+
+---
+
+### User Story 1b - Recibir lo que llega después (Priority: P1)
+
+Quien recibe la mercancía abre «Por recibir» y ve lo que se pagó o pidió y todavía no llega, de
+todas las compras. Cuando llega algo, dice cuánto llegó y suma; si llega por partes, lo que falta
+sigue pendiente. Lo que ya no va a llegar se marca así y deja de estar pendiente.
+
+**Why this priority**: Pagar antes y recibir después es normal con proveedores; sin esto, lo
+pendiente se olvida y lo guardado nunca cuadra.
+
+**Independent Test**: Registrar una compra de 3 cajas de leche con «Llega después»; ver que no
+suma y aparece en «Por recibir»; recibir 2 cajas (suma 24 L, queda 1 pendiente); marcar la última
+«Ya no va a llegar» y ver que sale de la lista sin tocar el total pagado.
+
+**Acceptance Scenarios**:
+
+1. **Given** una compra con un renglón «Llega después», **When** se guarda, **Then** ese renglón no suma y aparece en «Por recibir» con la compra, el proveedor y la fecha.
+2. **Given** 3 cajas pendientes, **When** llegan 2, **Then** suman 24 L con la fecha de ese día, y 1 caja sigue pendiente.
+3. **Given** un renglón pendiente, **When** se marca «Ya no va a llegar», **Then** sale de la lista, no suma nada y el total pagado no cambia.
+4. **Given** dos tabletas recibiendo el mismo renglón a la vez, **When** las dos guardan, **Then** la segunda recibe un aviso con lo que ya se recibió; nunca se suma dos veces.
+5. **Given** una compra con todo recibido o cerrado, **When** se ve en Gastos, **Then** ya no dice «con pendientes».
 
 ---
 
@@ -161,11 +187,17 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-002**: Cada renglón de insumo de un gasto que ya llegó MUST sumar a la existencia del insumo, en su unidad base, con un movimiento de entrada ligado al gasto y al renglón.
 - **FR-003**: Corregir la cantidad, la presentación o el insumo de un renglón ya recibido MUST ajustar el almacén por la diferencia, con un movimiento que lo dice; borrar el gasto MUST revertir sus entradas con movimientos que lo dicen. Nunca se borra un movimiento.
 - **FR-004**: Un gasto sin renglones de insumo MUST poder registrarse como hoy.
+- **FR-004a**: Cada renglón de mercancía MUST llevar un importe mayor que cero, y la suma de los renglones MUST NOT pasar del total pagado del gasto; lo que falte para el total queda como «otros» del gasto. El servidor lo valida (400), no solo la pantalla.
+- **FR-004b**: Un gasto MUST NOT guardarse sin categoría ni sin total. Las categorías y los proveedores son los de la empresa y se pueden crear desde la captura.
+- **FR-004c**: Si la lectura del ticket trae un total distinto del que se escribió, la pantalla MUST preguntar cuál usar; nunca lo cambia sola.
 - **FR-005**: Los renglones que propone la lectura automática de un ticket MUST quedar como propuesta hasta que alguien confirme el insumo y la cantidad; ninguno suma solo.
 - **FR-006**: Al guardar una compra, el costo del insumo MUST actualizarse según el método de costeo de la empresa: **última compra** por omisión, o **promedio ponderado** (lo que había por su costo más lo que llegó por el suyo, entre el total) si la empresa lo eligió.
 - **FR-006a**: El método de costeo MUST ser una configuración por empresa, cambiable por quien tiene el permiso de configurar el almacén. Cambiarlo afecta el costo desde ese momento; MUST NOT reescribir el costo guardado en ventas anteriores.
 - **FR-006b**: Con promedio ponderado, si lo guardado es cero o negativo, el costo MUST tomarse de la compra (no hay nada que promediar); un negativo heredado no puede producir un costo negativo ni absurdo.
 - **FR-007**: Un gasto recibido antes de esta feature MUST NOT recalcularse ni reconstruirse.
+- **FR-007a**: Cada renglón de mercancía MUST tener uno de tres estados: llegó (con lo recibido), llega después (pendiente) o ya no va a llegar (cerrado). Recibir MUST poder hacerse por partes y en días distintos; cada parte suma con su fecha.
+- **FR-007b**: El sistema MUST mostrar una lista «Por recibir» con lo pendiente de todas las compras de la sucursal, y en Gastos MUST poder filtrarse «Con pendientes».
+- **FR-007c**: Ningún cambio de estado de un renglón MUST cambiar el total pagado del gasto.
 
 **Presentaciones (Historia 2)**
 
