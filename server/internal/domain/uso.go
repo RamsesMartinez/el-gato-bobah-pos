@@ -85,8 +85,14 @@ var accionesMedibles = map[string]map[string]struct{}{
 	"pedidos":  {"cobrar": {}, "split-by-products": {}, "move-lines": {}, "void-payment": {}, "close-order": {}, "cancel-pending": {}},
 	"caja":     {"abrir-turno": {}, "cerrar-turno": {}, "contar-efectivo": {}, "traspaso": {}},
 	"catalogo": {"editar-producto": {}},
-	// Salud del inventario (spec 037) es una pestaña de Almacén, no una ruta: se mide como acciones.
-	"inventario": {"ver-salud": {}, "exportar-salud": {}},
+	// Compras que suman al almacén (spec 038).
+	"gastos": {"registrar-compra": {}, "corregir-compra": {}},
+	// Salud del inventario (spec 037), Por recibir y Conteo (spec 038) son pestañas de Almacén, no
+	// rutas: se miden como acciones.
+	"inventario": {
+		"ver-salud": {}, "exportar-salud": {},
+		"ver-por-recibir": {}, "recibir": {}, "ver-conteo": {}, "cerrar-conteo": {},
+	},
 }
 
 // maxNombreDePantalla y maxNombreDeAccion son el espejo de los `check` de la migración 0069.

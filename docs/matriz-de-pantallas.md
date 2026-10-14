@@ -590,3 +590,30 @@ inventan existencias.
 **Lo que S no cubre:** cuántos renglones de la pestaña Salud se ven a 1024×600 en una tableta real
 (jsdom no hace layout); eso lo miden las capturas de T051.
 
+
+## B. Compras que suman, por recibir y conteo (spec 038)
+
+Lo que estas pantallas podían decir que no es cierto: que algo entró al almacén cuando no entró (o
+dos veces), que una compra está «recibida» sin traer mercancía, o que el conteo corrigió con una
+cifra que ya no era la del anaquel.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| B1 | Gasto sin mercancía con fecha de recepción | No queda «recibido» ni aparece en «Por recibir» | `TestAnExpenseWithoutGoodsIsNotMarkedReceived`, `TestLinesOutsideTheStockTouchNothing` | Postgres |
+| B2 | Reenviar la misma corrección | Diferencia cero, ningún movimiento nuevo | `TestCorrectingWhatArrivedByDifference` | Postgres |
+| B3 | Dos tabletas corrigen o reciben el mismo renglón | Una gana, la otra 409; nunca suma dos veces | `TestTwoCorrectionsOfTheSameLineOneLoses`, `TestReceivingInParts` | Postgres |
+| B4 | Corregir un renglón a «Llega después» | Se acepta (recibido 0) y resta lo que había sumado | `TestCorrectingALineToNotArrivedYet` | Postgres |
+| B5 | Anular una compra recibida | Revierte con movimientos nuevos; no borra ninguno | `TestCancellingAReceivedPurchaseReversesWithoutDeleting` | Postgres |
+| B6 | Una venta tiene tomado el insumo | La compra responde 409 al instante, no espera | `TestAPurchaseNeverWaitsForAnIngredientHeldByASale` | Postgres |
+| B7 | Llegó de más sin decir cuánto costó | 400; no se adivina el precio | `TestReceivingMoreThanMissingRaisesTheTotal` | Postgres |
+| B8 | Una compra anulada en «sin compras» | Sigue contando como sin compras | `TestACancelledPurchaseDoesNotCountAsBought` | Postgres |
+| B9 | Un dudoso del ticket | No suma hasta confirmarlo y no le enseña nada al proveedor | `ExpenseDialog.test.tsx` | Navegador (vitest) |
+| B10 | «Tendrás X» al corregir | Se vuelve a pedir al servidor antes de habilitar Guardar | `ExpenseDetailDialog.test.tsx` | Navegador (vitest) |
+| B11 | Conteo con ventas mientras se cuenta | Se ajusta contra lo que había al capturar: lo vendido después queda restado | `TestACountAdjustsAgainstWhatThereWasWhenCaptured` | Postgres |
+| B12 | El conteo abierto | No deja ver lo que el sistema tiene (a ciegas) | `TestOneOpenCountPerBranchAndBlindWhileOpen` | Postgres |
+| B13 | Casillas vacías del conteo | «No contado», no 0; el cierre lo nombra y no lo toca | `countEntry.test.ts`, `StockCountTab.test.tsx` | Navegador (vitest) |
+| B14 | Diferencias del cierre | «Sobraban / faltaban», nunca una existencia negativa a secas; las grandes marcadas | `StockCountTab.test.tsx` | Navegador (vitest) |
+
+**Lo que B no cubre:** cómo se ven estas pantallas a 1024×600 en el ambiente de pruebas y si alguien
+nuevo las entiende sin ayuda (T065, tras el merge a develop); el tiempo con datos de producción en
+la VM (lo medido está en `specs/038-compras-al-almacen/research.md`, R12, en la máquina local).

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { medirAccion } from '../../api/uso';
 import { Box, Button, Center, HStack, Input, Progress, Spinner, Text, VStack } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -37,6 +38,7 @@ export function StockCountTab() {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [closing, setClosing] = useState(false);
+  useEffect(() => { medirAccion('inventario', 'ver-conteo'); }, []);
 
   const open = useMutation({
     mutationFn: backofficeApi.openCount,
@@ -300,7 +302,10 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
 
 function CloseSheet({ countId, onClose, onClosed }: { countId: number; onClose: () => void; onClosed: (r: CountClose) => void }) {
   const { data: preview, isLoading } = useQuery({ queryKey: ['stock', 'count', countId, 'preview'], queryFn: () => backofficeApi.previewCount(countId) });
-  const close = useMutation({ mutationFn: () => backofficeApi.closeCount(countId), onSuccess: onClosed });
+  const close = useMutation({
+    mutationFn: () => backofficeApi.closeCount(countId),
+    onSuccess: (r) => { medirAccion('inventario', 'cerrar-conteo'); onClosed(r); },
+  });
   return (
     <DrawerRoot open placement="bottom" onOpenChange={(x) => { if (!x.open) onClose(); }}>
       <DrawerBackdrop />

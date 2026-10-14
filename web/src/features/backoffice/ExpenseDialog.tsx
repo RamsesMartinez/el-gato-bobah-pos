@@ -27,6 +27,7 @@ import { montoTecleado, parseNumero, round2 } from '../../domain/numeros';
 import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
 import { PresentationsSheet } from './PresentationsSheet';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
+import { medirAccion } from '../../api/uso';
 
 // Alta de una compra (spec 038, maqueta «Captura de una compra», opción C: primero el ticket).
 //
@@ -292,6 +293,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
       })),
     }),
     onSuccess: () => {
+      if (withGoods) medirAccion('gastos', 'registrar-compra');
       void qc.invalidateQueries({ queryKey: ['stock'] });
       void qc.invalidateQueries({ queryKey: ['ingredients'] });
       reset();

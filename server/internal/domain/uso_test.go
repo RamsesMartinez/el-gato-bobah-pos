@@ -258,3 +258,18 @@ func TestInventoryHealthIsMeasuredInsideInventory(t *testing.T) {
 		}
 	}
 }
+
+// Las pestañas y acciones de compras y conteo (spec 038): si alguna sale de la lista blanca, su
+// medición se descarta en el servidor sin un solo error.
+func TestPurchasesAndCountsAreMeasured(t *testing.T) {
+	for pantalla, acciones := range map[string][]string{
+		"gastos":     {"registrar-compra", "corregir-compra"},
+		"inventario": {"ver-por-recibir", "recibir", "ver-conteo", "cerrar-conteo"},
+	} {
+		for _, a := range acciones {
+			if !EventoDeUsoValido(pantalla, a) {
+				t.Errorf("la acción %q de %q se descarta", a, pantalla)
+			}
+		}
+	}
+}

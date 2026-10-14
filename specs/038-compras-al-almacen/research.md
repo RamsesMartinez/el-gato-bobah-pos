@@ -221,3 +221,20 @@ símbolos citados son de `develop` en `c33f50e`.
   ajuste de conteo no se pueden rastrear después (SC-003). Se construyen hoy.
 - El valor del inventario y el kárdex (fuera de alcance) quedan posibles: cada entrada guarda su
   costo unitario.
+
+## R12. Medición (T064, 14-oct)
+
+Medido como `gatobobah_app` sobre la copia local del worktree (dos empresas, 725 insumos, 2,913
+movimientos), en la máquina de desarrollo (WSL2); tres corridas, la primera en frío.
+
+| Qué | Tiempo | Meta |
+|---|---|---|
+| Migración 0092 sobre la copia | 110 ms | — |
+| Guardar una compra de 10 renglones recibidos, con recálculo de costos | 320 ms en frío; 30–33 ms después | < 1 s |
+| «Por recibir» | 5–6 ms | — |
+| Anular la compra (revierte 10 renglones) | 9–10 ms | — |
+| Abrir un conteo de 384 insumos | 5–7 ms | — |
+| Vista previa del cierre con 10 cifras | 3–4 ms | — |
+
+No medido: la VM de pruebas ni producción, ni la compra con dos tabletas a la vez (el bloqueo sin
+espera responde 409 al instante, y eso lo cubre una prueba, no una medición).

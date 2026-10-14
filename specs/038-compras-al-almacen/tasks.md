@@ -140,11 +140,11 @@ Va antes de US1 porque la compra en empaque los usa.
 
 ## Phase 7: Polish
 
-- [ ] T062 [P] Medición de uso: acciones de compras, por recibir y conteo en `accionesMedibles` de `server/internal/domain/uso.go` (+ test) y sus etiquetas en `web/src/consola/etiquetas-de-uso.ts`
-- [ ] T063 [P] Test de FR-018 / SC-006: ningún nombre de producto, marca ni proveedor del negocio en el código ni en las migraciones de la feature, en `server/internal/integration/inventory_health_test.go` o script de CI
-- [ ] T064 Medir con `EXPLAIN (ANALYZE, BUFFERS)` como `gatobobah_app` sobre la copia de producción: guardar un gasto de 10 renglones con recálculo de costos < 1 s, lista de pendientes y conteo; anotar en research.md
+- [X] T062 [P] Medición de uso: acciones de compras, por recibir y conteo en `accionesMedibles` de `server/internal/domain/uso.go` (+ test) y sus etiquetas en `web/src/consola/etiquetas-de-uso.ts`
+- [X] T063 [P] Test de FR-018 / SC-006: ningún nombre de producto, marca ni proveedor del negocio en el código ni en las migraciones de la feature, en `server/internal/app/purchases_names_test.go` (espejo del de la 037)
+- [X] T064 Medir con `EXPLAIN (ANALYZE, BUFFERS)` como `gatobobah_app` sobre la copia de producción: guardar un gasto de 10 renglones con recálculo de costos < 1 s, lista de pendientes y conteo; anotar en research.md
 - [ ] T065 Capturas con Playwright a 1024×600 de las cinco pantallas contra el ambiente de pruebas (tras el merge a develop) y prueba sin contexto con dos personas de comida (el café del cliente y otra fonda o taquería)
-- [ ] T066 Actualizar AGENTS.md (compras que suman, corregir por diferencia, por recibir, conteo por diferencia, longitud, «lugar» no es almacén) y `docs/matriz-de-pantallas.md`
+- [X] T066 Actualizar AGENTS.md (compras que suman, corregir por diferencia, por recibir, conteo por diferencia, longitud, «lugar» no es almacén) y `docs/matriz-de-pantallas.md`
 - [ ] T067 Gates: `make api-build && make api-test`, `make test-integration`, `bun run lint`, `bun run vitest run`, `bun run build`, `make ci-local`; correr quickstart.md completo
 - [ ] T068 `/revision-de-codigo` (hook `after_implement`)
 

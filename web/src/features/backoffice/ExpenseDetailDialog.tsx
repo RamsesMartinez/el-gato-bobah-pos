@@ -16,6 +16,7 @@ import { parseNumero, round2 } from '../../domain/numeros';
 import { formatBaseQty } from '../../shared/units';
 import { posApi } from '../../api/pos';
 import { ArrivedItemSheet } from './ArrivedItemSheet';
+import { medirAccion } from '../../api/uso';
 
 // Detalle del gasto y «Corregir lo que llegó» (spec 038, maqueta B: editar todo y ver la
 // diferencia). El almacén se mueve solo por la diferencia contra lo que cada renglón ya sumó, así
@@ -106,6 +107,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
       };
     })),
     onSuccess: (fresh) => {
+      medirAccion('gastos', 'corregir-compra');
       qc.setQueryData(['expense', id], fresh);
       void qc.invalidateQueries({ queryKey: ['stock'] });
       setEditing(false); setEdits({});

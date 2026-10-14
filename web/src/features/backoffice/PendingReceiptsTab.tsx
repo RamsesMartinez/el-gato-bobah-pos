@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { medirAccion } from '../../api/uso';
 import { Box, Button, HStack, Input, Text, VStack, Center, Spinner } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { backofficeApi, type PendingReceipt } from '../../api/backoffice';
@@ -40,6 +41,7 @@ export function PendingReceiptsTab() {
   const [q, setQ] = useState('');
   const [action, setAction] = useState<Action | null>(null);
   const [done, setDone] = useState('');
+  useEffect(() => { medirAccion('inventario', 'ver-por-recibir'); }, []);
 
   const refresh = (msg: string) => {
     setAction(null);
@@ -124,7 +126,7 @@ function ReceiveSheet({ row, onClose, onDone }: { row: PendingReceipt; onClose: 
     mutationFn: () => backofficeApi.receiveItem(row.expenseId, row.itemId, {
       qty: value, seenApplied: row.applied, extraAmount: over > 0 ? extra : undefined,
     }),
-    onSuccess: () => onDone(`Listo. ${row.itemName}: llegaron ${qty(value)} ${unitWord(row, n)}.`),
+    onSuccess: () => { medirAccion('inventario', 'recibir'); onDone(`Listo. ${row.itemName}: llegaron ${qty(value)} ${unitWord(row, n)}.`); },
   });
   return (
     <ReceiptSheet title={`¿Cuánto llegó de ${row.itemName}?`} onClose={onClose}
