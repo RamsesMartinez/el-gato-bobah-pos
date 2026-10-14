@@ -151,3 +151,31 @@ func TestInventoryHealthIsGatedByPermissionNotRole(t *testing.T) {
 		t.Error("el gerente de hoy perdió el permiso")
 	}
 }
+
+// El archivo por el router real: mismo permiso, mismos parámetros y lo que una hoja de cálculo
+// necesita para abrirlo bien.
+func TestInventoryHealthCSVByTheRouter(t *testing.T) {
+	t.Parallel()
+	r, _, token := newHealthAPI(t, nil)
+	csvPath := "/api/v1/stock/health.csv?from=2026-07-01&to=2026-07-31"
+	if w := do(t, r, http.MethodGet, csvPath, token("cajero_csv", "cajero"), nil, ""); w.Code != http.StatusForbidden {
+		t.Errorf("el cajero exporta la salud del inventario: %d", w.Code)
+	}
+	admin := token("admin_csv", "admin")
+	w := do(t, r, http.MethodGet, csvPath, admin, nil, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET csv = %d: %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/csv") {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	if cd := w.Header().Get("Content-Disposition"); !strings.Contains(cd, `filename="salud-del-inventario-2026-07-01-2026-07-31.csv"`) {
+		t.Errorf("Content-Disposition = %q", cd)
+	}
+	if !strings.HasPrefix(w.Body.String(), "\uFEFF") {
+		t.Error("el archivo no trae BOM")
+	}
+	if w := do(t, r, http.MethodGet, "/api/v1/stock/health.csv?from=2026-13-01", admin, nil, ""); w.Code != http.StatusBadRequest && w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("un periodo mal formado se rechaza también al exportar: %d", w.Code)
+	}
+}

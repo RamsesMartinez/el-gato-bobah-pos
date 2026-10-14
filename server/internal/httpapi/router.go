@@ -399,6 +399,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// RequireRole de abajo seguiría decidiendo antes que el permiso, y un rol propio de una
 					// empresa con el permiso rebotaría (constitución, «Roles: modelo híbrido»).
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health", h.GetInventoryHealth)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health.csv", h.ExportInventoryHealth)
 					r.Group(func(r chi.Router) {
 						r.Use(RequireRole(domain.RoleAdmin, domain.RoleGerente))
 						r.Get("/levels", h.StockLevels)

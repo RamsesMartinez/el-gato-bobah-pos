@@ -56,3 +56,25 @@ func (h *Handlers) GetInventoryHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, v)
 }
+
+// ExportInventoryHealth es el archivo de la misma pantalla, con los mismos parámetros.
+func (h *Handlers) ExportInventoryHealth(w http.ResponseWriter, r *http.Request) {
+	f, err := healthFilterFrom(r.URL.Query(), func() domain.Range { return domain.DefaultHealthRange(h.health.Today(r.Context())) })
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	body, name, err := h.health.CSV(r.Context(), f)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	// nosniff y attachment: el navegador lo baja como archivo y nunca lo interpreta como HTML, aunque
+	// un nombre de producto traiga marcado. Las fórmulas de hoja de cálculo ya van protegidas en CSV().
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	w.WriteHeader(http.StatusOK)
+	//nolint:gosec // G705: text/csv como adjunto con nosniff; no se pinta en el navegador
+	_, _ = w.Write(body)
+}

@@ -30,7 +30,7 @@ const base = (over: Partial<InventoryHealth> = {}): InventoryHealth => ({
   ...over,
 });
 
-const back = vi.hoisted(() => ({ inventoryHealth: vi.fn() }));
+const back = vi.hoisted(() => ({ inventoryHealth: vi.fn(), exportInventoryHealth: vi.fn() }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 const uso = vi.hoisted(() => ({ medirAccion: vi.fn() }));
 vi.mock('../../api/uso', async (orig) => ({ ...(await orig<object>()), medirAccion: uso.medirAccion }));
@@ -178,4 +178,23 @@ describe('Almacén › Salud', () => {
     expect(pages).toHaveLength(0);
     expect(within(container).queryByText(/null|undefined/)).toBeNull();
   });
+
+  it('«Exportar» descarga con el mismo periodo que se ve y queda apagado mientras baja', async () => {
+    let resolve!: (v: { blob: Blob; filename: string }) => void;
+    back.exportInventoryHealth.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    URL.createObjectURL = vi.fn(() => 'blob:x');
+    URL.revokeObjectURL = vi.fn();
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: /Periodo/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Últimos 7 días' }));
+    await waitFor(() => expect(back.inventoryHealth).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-07' })));
+    const exportar = screen.getByRole('button', { name: 'Exportar' });
+    fireEvent.click(exportar);
+    await waitFor(() => expect(back.exportInventoryHealth).toHaveBeenCalledWith({ from: '2026-10-07', to: '2026-10-13' }));
+    expect(exportar).toBeDisabled();
+    resolve({ blob: new Blob(['x']), filename: 'salud.csv' });
+    await waitFor(() => expect(exportar).not.toBeDisabled());
+    expect(uso.medirAccion).toHaveBeenCalledWith('inventario', 'exportar-salud');
+  });
 });
+

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Badge, Box, Button, HStack, Text, VStack } from '@chakra-ui/react';
 import { LuChevronDown, LuChevronRight } from 'react-icons/lu';
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { ApiError } from '../../api/client';
 import { backofficeApi, type HealthMalformed, type HealthQuery, type HealthUnsoldItem, type InventoryHealth } from '../../api/backoffice';
@@ -97,6 +97,19 @@ export function InventoryHealthTab() {
   const negatives = useMemo(() => [...(data?.negativeStock.items ?? []), ...(moreNegative.data?.negativeStock.items ?? [])], [data, moreNegative.data]);
   const malformed = useMemo(() => [...(data?.malformedRecipes.items ?? []), ...(moreMalformed.data?.malformedRecipes.items ?? [])], [data, moreMalformed.data]);
 
+  // Exporta lo que se ve: el mismo periodo, calculado por el servidor igual que la pantalla.
+  const exporter = useMutation({
+    mutationFn: () => backofficeApi.exportInventoryHealth(range),
+    onSuccess: ({ blob, filename }) => {
+      medirAccion('inventario', 'exportar-salud');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+  });
   const go = (fixAt: string, name?: string) => { if (fixAt) navigate(fixAt, { state: { name } }); };
   const toggle = (k: SectionKey) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const pickPreset = (p: Preset) => { setPrevRange(range); setPreset(p); setPeriodOpen(false); setMore({ unsold: 0, negative: 0, malformed: 0 }); };
@@ -131,7 +144,11 @@ export function InventoryHealthTab() {
         <Text fontSize="sm" color="fg.muted" flex="1" minW="200px">
           Del {data.from} al {data.to} · {data.salesInPeriod} {data.salesInPeriod === 1 ? 'venta' : 'ventas'}
         </Text>
+        <Button minH="44px" variant="outline" loading={exporter.isPending} disabled={exporter.isPending} onClick={() => exporter.mutate()}>Exportar</Button>
       </HStack>
+      {exporter.error && (
+        <Text fontSize="sm" color="red.700">{exporter.error instanceof ApiError ? exporter.error.message : 'No se pudo exportar. Intenta de nuevo.'}</Text>
+      )}
       {error && (
         <Text fontSize="sm" color="red.700" bg="red.50" borderWidth="1px" borderColor="red.200" borderRadius="md" px={3} py={2}>{error}</Text>
       )}

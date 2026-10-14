@@ -148,9 +148,15 @@ func ingredientFixAt(id int64) string {
 
 func healthDate(t pgtype.Date) string { return t.Time.Format("2006-01-02") }
 
+// allRows es el «sin paginar» de la exportación: el archivo trae todo lo que la pantalla cuenta.
+const allRows = int32(1 << 30)
+
 // sectionPage es la página de una sección: sin sección pedida, la primera de todas; con una, solo
 // esa recibe el desplazamiento y las demás no se consultan (la pantalla pide «Ver 25 más»).
 func sectionPage(f domain.HealthFilter, s domain.HealthSection) (lim, off int32, wanted bool) {
+	if f.Limit == allRows {
+		return allRows, 0, true
+	}
 	if f.Section == "" {
 		return f.Limit, 0, true
 	}
@@ -165,6 +171,11 @@ func (s *InventoryHealthService) Report(ctx context.Context, f domain.HealthFilt
 	if err := f.Validate(); err != nil {
 		return InventoryHealthView{}, err
 	}
+	return s.report(ctx, f)
+}
+
+// report es el cálculo único de la pantalla y de la exportación: con Limit = allRows trae todo.
+func (s *InventoryHealthService) report(ctx context.Context, f domain.HealthFilter) (InventoryHealthView, error) {
 	q := s.store.QC(ctx)
 	from := pgtype.Date{Time: f.Range.From, Valid: true}
 	to := pgtype.Date{Time: f.Range.To, Valid: true}
@@ -249,8 +260,12 @@ func (s *InventoryHealthService) Report(ctx context.Context, f domain.HealthFilt
 		return v, err
 	}
 	v.NoPurchases.Total, v.NoPurchases.Of = int(counts.Missing), int(counts.OfTotal)
-	if f.Section == domain.SectionNoPurchases {
-		rows, err := q.HealthNoPurchases(ctx, db.HealthNoPurchasesParams{Since: since, Lim: f.Limit, Off: f.Offset})
+	if f.Section == domain.SectionNoPurchases || f.Limit == allRows {
+		lim, off := f.Limit, f.Offset
+		if f.Limit == allRows {
+			off = 0
+		}
+		rows, err := q.HealthNoPurchases(ctx, db.HealthNoPurchasesParams{Since: since, Lim: lim, Off: off})
 		if err != nil {
 			return v, err
 		}

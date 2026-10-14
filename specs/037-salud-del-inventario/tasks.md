@@ -97,12 +97,12 @@
 
 **Independent Test**: la exportación coincide renglón por renglón con la pantalla (SC-005).
 
-- [ ] T042 [US2] Test que falla nombrando «la exportación y la pantalla divergen» (mismo servicio, mismo filtro, mismos renglones), más BOM, acentos y escape de celdas que empiezan con `=`, `+`, `-`, `@`; la exportación trae la lista COMPLETA de insumos sin compras aunque la pantalla la muestre resumida (FR-006); y los cuatro renglones de resumen de «Recetas pendientes» con las mismas cuentas que la pantalla (FR-008, FR-011), en `server/internal/integration/inventory_health_test.go`
-- [ ] T043 [US2] Test del handler de `GET /stock/health.csv`: cajero → 403; con el permiso → 200 con `text/csv`, BOM y `Content-Disposition` con el periodo en el nombre; parámetro mal formado → 400 (FR-011, FR-012), en `server/internal/integration/inventory_health_http_test.go` (por el router real: necesita base)
-- [ ] T044 [P] [US2] Test de que «Exportar» descarga con el mismo periodo que muestra la pantalla y queda apagado mientras carga, en `web/src/features/backoffice/InventoryHealthTab.test.tsx`
-- [ ] T045 [US2] `InventoryHealthService.CSV` con `encoding/csv` sobre el mismo `Report` sin paginar, en `server/internal/app/inventory_health.go`
-- [ ] T046 [US2] Hasta que T043 pase: ruta `GET /stock/health.csv` con el mismo permiso y parámetros, fuera del grupo con `RequireRole`, en `server/internal/httpapi/handlers_inventory_health.go` y `router.go`
-- [ ] T047 [US2] Hasta que T044 pase: botón «Exportar» que descarga con el periodo de la pantalla, en `web/src/features/backoffice/InventoryHealthTab.tsx`
+- [X] T042 [US2] Test que falla nombrando «la exportación y la pantalla divergen» (mismo servicio, mismo filtro, mismos renglones), más BOM, acentos y escape de celdas que empiezan con `=`, `+`, `-`, `@`; la exportación trae la lista COMPLETA de insumos sin compras aunque la pantalla la muestre resumida (FR-006); y los cuatro renglones de resumen de «Recetas pendientes» con las mismas cuentas que la pantalla (FR-008, FR-011), en `server/internal/integration/inventory_health_test.go`
+- [X] T043 [US2] Test del handler de `GET /stock/health.csv`: cajero → 403; con el permiso → 200 con `text/csv`, BOM y `Content-Disposition` con el periodo en el nombre; parámetro mal formado → 400 (FR-011, FR-012), en `server/internal/integration/inventory_health_http_test.go` (por el router real: necesita base)
+- [X] T044 [P] [US2] Test de que «Exportar» descarga con el mismo periodo que muestra la pantalla y queda apagado mientras carga, en `web/src/features/backoffice/InventoryHealthTab.test.tsx`
+- [X] T045 [US2] `InventoryHealthService.CSV` con `encoding/csv` sobre el mismo `Report` sin paginar, en `server/internal/app/inventory_health.go`
+- [X] T046 [US2] Hasta que T043 pase: ruta `GET /stock/health.csv` con el mismo permiso y parámetros, fuera del grupo con `RequireRole`, en `server/internal/httpapi/handlers_inventory_health.go` y `router.go`
+- [X] T047 [US2] Hasta que T044 pase: botón «Exportar» que descarga con el periodo de la pantalla, en `web/src/features/backoffice/InventoryHealthTab.tsx`
 
 ---
 
@@ -110,8 +110,8 @@
 
 **Independent Test**: un extra sin receta ni producto ligado se vende sin aviso y aparece en Salud.
 
-- [ ] T048 [US4] Test de integración: vender un extra sin configurar no bloquea ni avisa (FR-017) y aparece con «Extra que no resta nada» y sus piezas; uno confirmado «No gasta insumos» no aparece; en `server/internal/integration/inventory_health_test.go`
-- [ ] T049 [US4] Ajustar lo que falte en la consulta o en la pastilla de estado para que T048 pase (`server/queries/inventory_health.sql`, `web/src/features/backoffice/InventoryHealthTab.tsx`)
+- [X] T048 [US4] Test de integración: vender un extra sin configurar no bloquea ni avisa (FR-017) y aparece con «Extra que no resta nada» y sus piezas; uno confirmado «No gasta insumos» no aparece; en `server/internal/integration/inventory_health_test.go`
+- [X] T049 [US4] Ajustar lo que falte en la consulta o en la pastilla de estado para que T048 pase (`server/queries/inventory_health.sql`, `web/src/features/backoffice/InventoryHealthTab.tsx`)
 
 ---
 

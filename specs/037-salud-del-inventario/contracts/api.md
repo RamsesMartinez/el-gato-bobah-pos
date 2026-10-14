@@ -47,7 +47,7 @@ Respuesta 200 (todo arreglo viaja aunque esté vacío, nunca `null`):
 - `noPurchases.items` viene vacío salvo con `section=no_purchases`: la pantalla lo pide al desplegar.
 - `negativeStock.collapsed` es `true` mientras la empresa no tenga ninguna compra registrada (FR-005): la pantalla abre la sección con su renglón explicativo.
 - `estimatedCost` = piezas sin restar × costo de hoy; cadena decimal, ordena la lista de mayor a menor. No se suma a ningún total.
-- `comboChoices` lista los combos con un hueco de más de un producto (FR-002b). No es una sección propia: la pantalla los muestra dentro de «Se vende sin restar» y el total de esa sección los incluye. No se pagina (son pocos: uno por combo). En la exportación salen con `seccion=se_vende_sin_restar`, `tipo=combo` y `problema=varias_opciones`.
+- `comboChoices` lista los combos con un hueco de más de un producto (FR-002b). No es una sección propia: la pantalla los muestra dentro de «Se vende sin restar» y el total de esa sección los incluye. No se pagina (son pocos: uno por combo). En la exportación salen con `seccion=unsold_deduction`, `tipo=combo` y `problema=varias_opciones`.
 
 ## GET /stock/health.csv
 
@@ -55,7 +55,7 @@ Mismo permiso y mismos parámetros que `/stock/health`, sin paginar.
 
 - `200 text/csv; charset=utf-8`, con BOM y `Content-Disposition: attachment; filename="salud-del-inventario-<from>-<to>.csv"`.
 - Columnas: `seccion, tipo, id, nombre, grupo, estado, canal, piezas, costo_estimado, existencia, sucursal, problema`.
-- «Recetas pendientes» no tiene renglones de lista: va como cuatro renglones de resumen, `seccion=pending_recipe`, `tipo=resumen`, `problema` = `undecided_products`, `undecided_extras`, `review_products` o `review_extras`, y la cuenta en `piezas`. Así el archivo trae las mismas cifras que la pantalla (FR-011). `tipo` ∈ producto, extra, combo, insumo, renglon_receta. Un renglón por problema y por canal.
+- «Recetas pendientes» no tiene renglones de lista: va como cuatro renglones de resumen, `seccion=pending_recipe`, `tipo=resumen`, `problema` = `undecided_products`, `undecided_extras`, `review_products` o `review_extras`, y la cuenta en `piezas`. Así el archivo trae las mismas cifras que la pantalla (FR-011). `tipo` ∈ producto, extra, combo, insumo, renglon_receta, resumen. `seccion` es el código estable de la sección (`unsold_deduction`, `negative_stock`, `no_purchases`, `malformed_recipe`, `pending_recipe`), el mismo de `?section=`. En lo vendido sin restar, `costo_estimado` se reparte por canal con el costo unitario de hoy: la columna suma el total del producto. Las celdas de texto que empiezan con `=`, `+`, `-` o `@` llevan un apóstrofo delante; las numéricas no. Un renglón por problema y por canal.
 - Lo calcula el mismo servicio que la pantalla (SC-005).
 
 ## PUT /admin/products/{id}/composition (cambio)

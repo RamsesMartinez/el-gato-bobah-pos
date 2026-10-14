@@ -829,6 +829,12 @@ export const backofficeApi = {
   stockLevels: () => api.get<{ items: StockLevel[] }>('/stock/levels'),
   stockMovements: () => api.get<{ items: StockMovement[] }>('/stock/movements'),
   inventoryHealth: (q: HealthQuery = {}) => api.get<InventoryHealth>(`/stock/health?${qsReporte(q as ReportQuery)}`),
+  // El archivo de la misma pantalla. El nombre viene del servidor (Content-Disposition), con el periodo.
+  exportInventoryHealth: async (q: Pick<HealthQuery, 'from' | 'to'>) => {
+    const res = await api.getRaw(`/stock/health.csv?${qsReporte(q as ReportQuery)}`);
+    const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'salud-del-inventario.csv';
+    return { blob: await res.blob(), filename: name };
+  },
   createMovement: (b: {
     itemType: string;
     ingredientId?: number;

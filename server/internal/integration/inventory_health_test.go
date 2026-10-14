@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"encoding/csv"
 	"strings"
 	"testing"
 	"time"
@@ -442,4 +443,97 @@ func TestInventoryHealthIsIsolated(t *testing.T) {
 			t.Fatalf("la salud del inventario de otra empresa muestra datos de la dueña: %+v", v)
 		}
 	})
+}
+
+// La exportación y la pantalla salen del mismo cálculo (SC-005): si divergen, una de las dos miente.
+func TestInventoryHealthExportMatchesTheScreen(t *testing.T) {
+	t.Parallel()
+	k := newHealthKit(t)
+	k.sell(t, line(k.shot, "2"), line(k.cafe, "1"), line(k.frappe, "3", k.sinReceta))
+	// Un nombre que una hoja de cálculo leería como fórmula.
+	formula := makeProduct(t, k.st, "=HYPERLINK(\"x\")", decimal.RequireFromString("10"), false)
+	k.sell(t, line(formula, "1"))
+
+	as := appRoleStore(t)
+	ctx, release, err := as.AcquireTenant(context.Background(), defaultCompanyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	svc := app.NewInventoryHealthService(as)
+	screen, err := svc.Report(ctx, julio())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, name, err := svc.CSV(ctx, julio())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "salud-del-inventario-2026-07-01-2026-07-31.csv" {
+		t.Errorf("nombre del archivo = %q", name)
+	}
+	if !strings.HasPrefix(string(body), "\uFEFF") {
+		t.Error("sin BOM, una hoja de cálculo lee mal los acentos")
+	}
+	rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(body), "\uFEFF"))).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(rows[0], ",") != "seccion,tipo,id,nombre,grupo,estado,canal,piezas,costo_estimado,existencia,sucursal,problema" {
+		t.Fatalf("encabezado = %v", rows[0])
+	}
+	count := map[string]int{}
+	for _, r := range rows[1:] {
+		count[r[0]]++
+		if strings.HasPrefix(r[3], "=") || strings.HasPrefix(r[3], "+") || strings.HasPrefix(r[3], "@") {
+			t.Errorf("la celda %q se leería como fórmula", r[3])
+		}
+	}
+	// Un renglón por canal en lo vendido sin restar, uno por insumo en lo demás, y el resumen de pendientes.
+	channels := 0
+	for _, it := range screen.UnsoldDeduction.Items {
+		channels += len(it.Units)
+	}
+	if count["unsold_deduction"] != channels+len(screen.ComboChoices.Items) {
+		t.Errorf("la exportación y la pantalla divergen en «Se vende sin restar»: %d renglones contra %d canales en pantalla",
+			count["unsold_deduction"], channels+len(screen.ComboChoices.Items))
+	}
+	if count["negative_stock"] != screen.NegativeStock.Total {
+		t.Errorf("la exportación y la pantalla divergen en negativos: %d contra %d", count["negative_stock"], screen.NegativeStock.Total)
+	}
+	// La pantalla muestra «sin compras» resumido; el archivo trae la lista completa (FR-006).
+	if count["no_purchases"] != screen.NoPurchases.Total {
+		t.Errorf("la exportación trae %d insumos sin compras, la pantalla cuenta %d", count["no_purchases"], screen.NoPurchases.Total)
+	}
+	if count["malformed_recipe"] != screen.MalformedRecipes.Total {
+		t.Errorf("la exportación y la pantalla divergen en recetas con un error: %d contra %d", count["malformed_recipe"], screen.MalformedRecipes.Total)
+	}
+	if count["pending_recipe"] != 4 {
+		t.Errorf("recetas pendientes van como cuatro renglones de resumen: hay %d", count["pending_recipe"])
+	}
+}
+
+// Un extra que nadie configuró se vende sin bloqueo ni aviso a quien opera, y aparece en Salud
+// (FR-017, decisión del dueño del 13-oct); uno confirmado «No gasta insumos» no es problema.
+func TestUnconfiguredExtraSellsAndShowsUp(t *testing.T) {
+	t.Parallel()
+	k := newHealthKit(t)
+	o, err := k.orders.Create(context.Background(), app.CreateOrderCmd{
+		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: k.cashier,
+		Lines: []domain.OrderLineInput{line(k.frappe, "2", k.sinReceta, k.hielo)},
+	})
+	if err != nil {
+		t.Fatalf("un extra sin configurar bloqueó la venta: %v", err)
+	}
+	if len(o.Lines) != 1 {
+		t.Fatalf("la venta salió con %d renglones", len(o.Lines))
+	}
+	v := reportAsApp(t, k.st, julio())
+	it := unsoldOf(v, "extra", k.sinReceta)
+	if it == nil || it.Status != "extra" || !it.Pieces.Equal(decimal.NewFromInt(2)) {
+		t.Errorf("el extra sin configurar aparece así: %+v", it)
+	}
+	if unsoldOf(v, "extra", k.hielo) != nil {
+		t.Error("«Sin hielo», confirmado «No gasta insumos», aparece como problema")
+	}
 }
