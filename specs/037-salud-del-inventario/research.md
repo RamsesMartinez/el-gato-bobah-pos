@@ -70,7 +70,7 @@ Decisiones de diseño, cada una con lo que se descartó. Base: mapa del código 
 
 ## R7d. Nombres de insumo sin duplicar
 
-- **Decisión:** alta y renombre de insumo rechazan un nombre igual a otro de la empresa sin distinguir mayúsculas ni acentos, con una función de normalización en `domain` (la misma que detecta «duplicado» en FR-007). La búsqueda va dentro de la transacción después de un candado por empresa (`pg_advisory_xact_lock`), para que dos altas casi simultáneas no pasen las dos.
+- **Decisión:** alta y renombre de insumo rechazan un nombre igual a otro de la empresa sin distinguir mayúsculas ni acentos, con una función de normalización en `domain` (la misma que detecta «duplicado» en FR-007). La búsqueda va dentro de la transacción después de un candado por empresa (`pg_advisory_xact_lock` con una llave propia, distinta de la 28028 de `LockCompositionEdits`, para que guardar una receta y dar de alta un insumo no se esperen entre sí), y así dos altas casi simultáneas no pasan las dos.
 - **Descartado:** un índice único sobre el nombre normalizado. Producción ya tiene insumos así (es lo que FR-007 marca), y la migración fallaría al crearlo. Primero se corrigen con «Salud del inventario»; el índice puede venir después.
 - **Alcance:** afecta también el alta desde el diálogo del gasto, que ya muestra el 409 de nombre repetido.
 
