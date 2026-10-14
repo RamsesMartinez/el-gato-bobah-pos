@@ -587,7 +587,10 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
               )}
               {ownStock && !needsActual && (
                 <Text fontSize="sm" color="fg.muted" bg="bg.muted" borderRadius="lg" p={3}>
-                  El sistema tenía contadas {productOnHand} de {name}: pasan a «{storeName}», y cada vez que vendas una, quedará una menos.
+                  {productOnHand > 0
+                    ? `El sistema tenía contadas ${productOnHand} de ${name}: pasan a «${storeName}», y cada vez que vendas una, quedará una menos.`
+                    // Negativa: se vendieron más de las que se registraron (las compras no entraban al almacén).
+                    : `Según el sistema se vendieron ${-productOnHand} más de las que había registradas de ${name}: esa cuenta pasa a «${storeName}», y cada vez que vendas una, quedará una menos.`}
                 </Text>
               )}
               {needsActual && (

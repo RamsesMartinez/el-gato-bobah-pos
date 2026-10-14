@@ -524,4 +524,15 @@ describe('se compra hecho', () => {
     await waitFor(() => expect(api.composition.mock.calls.length).toBeGreaterThan(antes));
     await waitFor(() => expect(back.ingredients.mock.calls.length).toBeGreaterThan(antesIng));
   });
+
+  // Visto en las capturas (13-oct): con existencia propia negativa decía «tenía contadas -3», que no
+  // se entiende. Hay 30 productos así en producción: se vendieron más de los que se registraron.
+  it('con existencia propia negativa dice que se vendieron más de las registradas', async () => {
+    api.composition.mockResolvedValue({ ...propia, productOnHand: '-3' });
+    back.ingredients.mockResolvedValueOnce(conLata());
+    montar();
+    expect(await screen.findByText(/se vendieron 3 más de las que había registradas/)).toBeInTheDocument();
+    expect(screen.queryByText(/contadas -3/)).not.toBeInTheDocument();
+  });
 });
+

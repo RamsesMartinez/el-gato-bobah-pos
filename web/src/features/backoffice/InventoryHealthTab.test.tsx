@@ -196,5 +196,12 @@ describe('Almacén › Salud', () => {
     await waitFor(() => expect(exportar).not.toBeDisabled());
     expect(uso.medirAccion).toHaveBeenCalledWith('inventario', 'exportar-salud');
   });
+
+  // Visto en las capturas a 1024×600 (13-oct): el periodo salía como «Del 2026-09-14 al 2026-10-13».
+  it('el periodo se lee como fechas, no como formato técnico', async () => {
+    montar();
+    expect(await screen.findByText(/Del 14 sep 2026 al 13 oct 2026 · 40 ventas/)).toBeInTheDocument();
+    expect(screen.queryByText(/2026-09-14/)).not.toBeInTheDocument();
+  });
 });
 

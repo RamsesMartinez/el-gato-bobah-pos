@@ -10,6 +10,7 @@ import { DatePickerButton } from '../../components/DatePickerButton';
 import { ListRow } from '../../components/ListRow';
 import { DrawerBackdrop, DrawerCloseTrigger, DrawerContent, DrawerRoot } from '../../components/ui/drawer';
 import { money } from '../../utils/format';
+import { formatDay } from '../../utils/calendar';
 
 // Almacén › Salud (spec 037, maqueta A «Secciones que se abren»): lo que hace que las existencias
 // no cuadren, en cinco secciones que se abren con un toque. Va DENTRO de la pestaña de Almacén: no
@@ -142,7 +143,7 @@ export function InventoryHealthTab() {
           </>
         )}
         <Text fontSize="sm" color="fg.muted" flex="1" minW="200px">
-          Del {data.from} al {data.to} · {data.salesInPeriod} {data.salesInPeriod === 1 ? 'venta' : 'ventas'}
+          Del {formatDay(data.from)} al {formatDay(data.to)} · {data.salesInPeriod} {data.salesInPeriod === 1 ? 'venta' : 'ventas'}
         </Text>
         <Button minH="44px" variant="outline" loading={exporter.isPending} disabled={exporter.isPending} onClick={() => exporter.mutate()}>Exportar</Button>
       </HStack>
