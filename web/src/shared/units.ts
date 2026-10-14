@@ -1,0 +1,36 @@
+import type { Unit } from '../api/backoffice';
+import { round2 } from '../domain/numeros';
+
+// Unidades del almacén (spec 038). Lo guardado se cuenta en g, ml, cm o pieza; a quien opera se le
+// muestra en kg, L o m en cuanto llega a una unidad grande, y nunca con decimales rotos.
+
+const BIG: Record<string, { at: number; unit: string }> = {
+  g: { at: 1000, unit: 'kg' },
+  ml: { at: 1000, unit: 'L' },
+  cm: { at: 100, unit: 'm' },
+};
+
+const num = (n: number) => round2(n).toLocaleString('es-MX', { maximumFractionDigits: 2 });
+
+// formatBaseQty muestra una cantidad en unidad base («12000», «ml») como la diría alguien
+// («12 L»). Los negativos se muestran tal cual: quien decide cómo decirlos es la pantalla.
+export function formatBaseQty(qty: string | number, baseUnitCode: string): string {
+  const n = typeof qty === 'number' ? qty : Number(qty);
+  if (baseUnitCode === 'pieza') return `${num(n)} ${round2(Math.abs(n)) === 1 ? 'pieza' : 'piezas'}`;
+  const big = BIG[baseUnitCode];
+  if (big && Math.abs(n) >= big.at) return `${num(n / big.at)} ${big.unit}`;
+  return `${num(n)} ${baseUnitCode}`;
+}
+
+// Las unidades de receta (cucharadas, onzas) no se ofrecen al comprar (regla 9).
+const NOT_FOR_BUYING = new Set(['cda', 'cdta', 'floz']);
+
+// unitLabel es como se dice la unidad en un botón: «L» y no «l».
+export const unitLabel = (u: Unit) => (u.code === 'l' ? 'L' : u.code === 'pieza' ? 'piezas' : u.code);
+
+// purchaseUnitsFor devuelve las unidades de compra de un tipo, de la más grande a la más chica.
+export function purchaseUnitsFor(kind: string, units: Unit[]): Unit[] {
+  return units
+    .filter((u) => u.kind === kind && !NOT_FOR_BUYING.has(u.code))
+    .sort((a, b) => Number(b.toBase) - Number(a.toBase));
+}

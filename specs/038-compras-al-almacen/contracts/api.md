@@ -73,11 +73,12 @@ pantalla hace los dos pasos con una sola confirmación). Si queda algo aplicado 
 
 ## Presentaciones
 
-Permiso `inventory.configure` para escribir; leer, cualquiera con acceso a Almacén.
+Permiso `inventory.configure` para escribir; `inventory.receive` para leer (los usa la captura de compras). Cuerpo de escritura: `{ name, qty, unitId, approximate, active? }`, con `qty` en la unidad `unitId`; el servidor guarda `qtyInBase` en la unidad del insumo.
 
 | Método | Ruta | Cuerpo / respuesta |
 |---|---|---|
-| GET | `/stock/ingredients/{id}/presentations` | `[{ id, name, qtyInBase, active }]` |
+| GET | `/stock/presentations` | Todos los de la empresa, para la columna «Cómo llega»: `[{ id, ingredientId, name, qtyInBase, baseUnitCode, active, approximate, purchaseUnitId }]` |
+| GET | `/stock/ingredients/{id}/presentations` | Los de un insumo, misma forma |
 | POST | `/stock/ingredients/{id}/presentations` | `{ name, qtyInBase }` → 201; nombre repetido → 409 |
 | PUT | `/stock/presentations/{id}` | `{ name, qtyInBase, active }` |
 

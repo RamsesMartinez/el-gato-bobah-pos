@@ -80,6 +80,33 @@ func (q *Queries) CreateIngredientCategory(ctx context.Context, name string) (Cr
 	return i, err
 }
 
+const createPresentation = `-- name: CreatePresentation :one
+insert into ingredient_presentations (ingredient_id, name, qty_in_base, purchase_unit_id, is_approximate)
+values ($1, $2, $3, $4, $5)
+returning id
+`
+
+type CreatePresentationParams struct {
+	IngredientID   int64           `json:"ingredient_id"`
+	Name           string          `json:"name"`
+	QtyInBase      decimal.Decimal `json:"qty_in_base"`
+	PurchaseUnitID *int16          `json:"purchase_unit_id"`
+	IsApproximate  bool            `json:"is_approximate"`
+}
+
+func (q *Queries) CreatePresentation(ctx context.Context, arg CreatePresentationParams) (int64, error) {
+	row := q.db.QueryRow(ctx, createPresentation,
+		arg.IngredientID,
+		arg.Name,
+		arg.QtyInBase,
+		arg.PurchaseUnitID,
+		arg.IsApproximate,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getIngredientUnit = `-- name: GetIngredientUnit :one
 select i.id, u.kind as base_unit_kind, u.to_base as base_to_base
 from ingredients i join units u on u.id = i.base_unit_id
@@ -98,6 +125,34 @@ func (q *Queries) GetIngredientUnit(ctx context.Context, id int64) (GetIngredien
 	row := q.db.QueryRow(ctx, getIngredientUnit, id)
 	var i GetIngredientUnitRow
 	err := row.Scan(&i.ID, &i.BaseUnitKind, &i.BaseToBase)
+	return i, err
+}
+
+const getPresentationIngredient = `-- name: GetPresentationIngredient :one
+select ingredient_id from ingredient_presentations where id = $1
+`
+
+func (q *Queries) GetPresentationIngredient(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, getPresentationIngredient, id)
+	var ingredient_id int64
+	err := row.Scan(&ingredient_id)
+	return ingredient_id, err
+}
+
+const getUnit = `-- name: GetUnit :one
+select id, code, name, kind, to_base from units where id = $1
+`
+
+func (q *Queries) GetUnit(ctx context.Context, id int16) (Unit, error) {
+	row := q.db.QueryRow(ctx, getUnit, id)
+	var i Unit
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Kind,
+		&i.ToBase,
+	)
 	return i, err
 }
 
@@ -206,6 +261,60 @@ func (q *Queries) ListIngredients(ctx context.Context, onlyActive *bool) ([]List
 			&i.IsPrep,
 			&i.CompositionStatus,
 			&i.RecipeUses,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPresentations = `-- name: ListPresentations :many
+select p.id, p.ingredient_id, p.name, p.qty_in_base, p.active, p.is_approximate, p.purchase_unit_id,
+       u.code as base_unit_code, u.kind as base_unit_kind
+from ingredient_presentations p
+join ingredients i on i.id = p.ingredient_id
+join units u on u.id = i.base_unit_id
+where ($1::bigint is null or p.ingredient_id = $1)
+order by p.ingredient_id, p.active desc, p.name, p.id
+`
+
+type ListPresentationsRow struct {
+	ID             int64           `json:"id"`
+	IngredientID   int64           `json:"ingredient_id"`
+	Name           string          `json:"name"`
+	QtyInBase      decimal.Decimal `json:"qty_in_base"`
+	Active         bool            `json:"active"`
+	IsApproximate  bool            `json:"is_approximate"`
+	PurchaseUnitID *int16          `json:"purchase_unit_id"`
+	BaseUnitCode   string          `json:"base_unit_code"`
+	BaseUnitKind   UnitKind        `json:"base_unit_kind"`
+}
+
+// Empaques de compra (spec 038), los activos primero. Sin filtro, todos los de la empresa: la
+// columna «Cómo llega» los pinta de una vez en vez de pedirlos insumo por insumo.
+func (q *Queries) ListPresentations(ctx context.Context, ingredientID *int64) ([]ListPresentationsRow, error) {
+	rows, err := q.db.Query(ctx, listPresentations, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPresentationsRow{}
+	for rows.Next() {
+		var i ListPresentationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.IngredientID,
+			&i.Name,
+			&i.QtyInBase,
+			&i.Active,
+			&i.IsApproximate,
+			&i.PurchaseUnitID,
+			&i.BaseUnitCode,
+			&i.BaseUnitKind,
 		); err != nil {
 			return nil, err
 		}
@@ -372,4 +481,34 @@ func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientPara
 		&i.IsActive,
 	)
 	return i, err
+}
+
+const updatePresentation = `-- name: UpdatePresentation :execrows
+update ingredient_presentations
+set name = $2, qty_in_base = $3, purchase_unit_id = $4, is_approximate = $5, active = $6
+where id = $1
+`
+
+type UpdatePresentationParams struct {
+	ID             int64           `json:"id"`
+	Name           string          `json:"name"`
+	QtyInBase      decimal.Decimal `json:"qty_in_base"`
+	PurchaseUnitID *int16          `json:"purchase_unit_id"`
+	IsApproximate  bool            `json:"is_approximate"`
+	Active         bool            `json:"active"`
+}
+
+func (q *Queries) UpdatePresentation(ctx context.Context, arg UpdatePresentationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updatePresentation,
+		arg.ID,
+		arg.Name,
+		arg.QtyInBase,
+		arg.PurchaseUnitID,
+		arg.IsApproximate,
+		arg.Active,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

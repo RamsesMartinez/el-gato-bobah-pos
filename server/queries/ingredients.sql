@@ -87,3 +87,30 @@ select exists (
    where regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
        = regexp_replace(translate(lower(trim(sqlc.arg(name)::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
 )::bool;
+
+-- name: ListPresentations :many
+-- Empaques de compra (spec 038), los activos primero. Sin filtro, todos los de la empresa: la
+-- columna «Cómo llega» los pinta de una vez en vez de pedirlos insumo por insumo.
+select p.id, p.ingredient_id, p.name, p.qty_in_base, p.active, p.is_approximate, p.purchase_unit_id,
+       u.code as base_unit_code, u.kind as base_unit_kind
+from ingredient_presentations p
+join ingredients i on i.id = p.ingredient_id
+join units u on u.id = i.base_unit_id
+where (sqlc.narg('ingredient_id')::bigint is null or p.ingredient_id = sqlc.narg('ingredient_id'))
+order by p.ingredient_id, p.active desc, p.name, p.id;
+
+-- name: CreatePresentation :one
+insert into ingredient_presentations (ingredient_id, name, qty_in_base, purchase_unit_id, is_approximate)
+values ($1, $2, $3, $4, $5)
+returning id;
+
+-- name: UpdatePresentation :execrows
+update ingredient_presentations
+set name = $2, qty_in_base = $3, purchase_unit_id = $4, is_approximate = $5, active = $6
+where id = $1;
+
+-- name: GetPresentationIngredient :one
+select ingredient_id from ingredient_presentations where id = $1;
+
+-- name: GetUnit :one
+select id, code, name, kind, to_base from units where id = $1;

@@ -46,17 +46,17 @@ Va antes de US1 porque la compra en empaque los usa.
 
 ### Tests (primero, en rojo)
 
-- [ ] T014 [P] [US2] Test de integración bajo `appRoleStore` con `inTheThreeCases` de las consultas de presentaciones (listar, crear, editar, desactivar) con dos empresas; nombre repetido sin acentos ni mayúsculas → 409; dos tamaños en un insumo por pieza permitidos pero con el aviso que devuelve el servicio; en `server/internal/integration/presentations_test.go`
-- [ ] T015 [P] [US2] Test del handler por el router real: cajero → 403 en escribir; `qtyInBase` 0, negativo o con decimales en pieza → 400; presentación de otro insumo → 400; JSON crudo con arreglo vacío `[]`, en `server/internal/integration/presentations_http_test.go`
-- [ ] T016 [P] [US2] Tests de vitest de la columna «Cómo llega» (maqueta «Cómo llega un insumo», opción B): empaques con su contenido, «Ya no llega en: …», «+ Agregar» con nombres que la empresa ya usa y «Otro…», número **y** unidad con la equivalencia antes de guardar (caso borde 1), aproximado marcado «≈», sin `<select>` nativo, en `web/src/features/backoffice/PresentationsSheet.test.tsx`
+- [X] T014 [P] [US2] Test de integración bajo `appRoleStore` con `inTheThreeCases` de las consultas de presentaciones (listar, crear, editar, desactivar) con dos empresas; nombre repetido sin acentos ni mayúsculas → 409; aproximado por kilo en un insumo por pieza; piezas con decimales → 400 (el aviso de «otro tamaño de pieza es otro insumo» lo da la pantalla: el servidor no tiene cómo saber que dos empaques son tamaños distintos); en `server/internal/integration/presentations_test.go`
+- [X] T015 [P] [US2] Test del handler por el router real: cajero → 403 en escribir; `qtyInBase` 0, negativo o con decimales en pieza → 400; presentación de otro insumo → 400; JSON crudo con arreglo vacío `[]`, en `server/internal/integration/presentations_http_test.go`
+- [X] T016 [P] [US2] Tests de vitest de la columna «Cómo llega» (maqueta «Cómo llega un insumo», opción B): empaques con su contenido, «Ya no llega en: …», «+ Agregar» con nombres que la empresa ya usa y «Otro…», número **y** unidad con la equivalencia antes de guardar (caso borde 1), aproximado marcado «≈», sin `<select>` nativo, en `web/src/features/backoffice/PresentationsSheet.test.tsx`
 
 ### Implementación
 
-- [ ] T017 [US2] Consultas de presentaciones en `server/queries/ingredients.sql`; `make sqlc`
-- [ ] T018 [US2] `PresentationsService` (crear, editar, desactivar, aviso de tamaño distinto en pieza) en `server/internal/app/articles.go`
-- [ ] T019 [US2] Rutas `GET/POST /stock/ingredients/{id}/presentations` y `PUT /stock/presentations/{id}` con `RequirePermission(PermInventoryConfigure)` para escribir, fuera de los grupos con rol, en `server/internal/httpapi/handlers_backoffice.go` y `router.go`, hasta que T015 pase
-- [ ] T020 [P] [US2] Cliente y tipos en `web/src/api/backoffice.ts`
-- [ ] T021 [US2] Columna «Cómo llega» y hoja `PresentationsSheet` según plan.md › Maquetas, fila «Cómo llega un insumo» (B), en `web/src/features/backoffice/StockPage.tsx` y `PresentationsSheet.tsx`, hasta que T016 pase
+- [X] T017 [US2] Consultas de presentaciones en `server/queries/ingredients.sql`; `make sqlc`
+- [X] T018 [US2] Servicio de empaques (crear, editar, desactivar) en `server/internal/app/presentations.go`
+- [X] T019 [US2] Rutas `GET/POST /stock/ingredients/{id}/presentations` y `PUT /stock/presentations/{id}` con `RequirePermission(PermInventoryConfigure)` para escribir, fuera de los grupos con rol, en `server/internal/httpapi/handlers_backoffice.go` y `router.go`, hasta que T015 pase
+- [X] T020 [P] [US2] Cliente y tipos en `web/src/api/backoffice.ts`
+- [X] T021 [US2] Columna «Cómo llega» y hoja `PresentationsSheet` según plan.md › Maquetas, fila «Cómo llega un insumo» (B), en `web/src/features/backoffice/StockPage.tsx` y `PresentationsSheet.tsx`, hasta que T016 pase
 
 ---
 

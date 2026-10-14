@@ -455,8 +455,29 @@ export interface Unit {
   id: number;
   code: string;
   name: string;
-  kind: 'masa' | 'volumen' | 'pieza';
+  kind: 'masa' | 'volumen' | 'pieza' | 'longitud';
   toBase: string;
+}
+
+// Un empaque de compra de un insumo (spec 038): «Caja = 12 L». `qtyInBase` va en la unidad base
+// del insumo (ml); el contenido se copia a cada compra, así que editarlo no toca las pasadas.
+export interface Presentation {
+  id: number;
+  ingredientId: number;
+  name: string;
+  qtyInBase: string;
+  baseUnitCode: string;
+  active: boolean;
+  // Se compra en otro tipo de unidad que el insumo («Kilo ≈ 4 piezas»).
+  approximate: boolean;
+  purchaseUnitId: number | null;
+}
+export interface PresentationBody {
+  name: string;
+  qty: string;
+  unitId: number;
+  approximate: boolean;
+  active?: boolean;
 }
 export interface Ingredient {
   id: number;
@@ -805,6 +826,10 @@ export const backofficeApi = {
     api.get<{ items: Ingredient[] }>(`/ingredients${onlyActive ? '?onlyActive=true' : ''}`),
   createIngredient: (b: { name: string; baseUnitId: number; minStock?: string }) =>
     api.post<Ingredient>('/ingredients', b),
+  presentations: () => api.get<Presentation[]>('/stock/presentations'),
+  createPresentation: (ingredientId: number, b: PresentationBody) =>
+    api.post<Presentation>(`/stock/ingredients/${ingredientId}/presentations`, b),
+  updatePresentation: (id: number, b: PresentationBody) => api.put<Presentation>(`/stock/presentations/${id}`, b),
   searchArticles: (q: string) =>
     api.get<{ items: Article[] }>(`/articles?q=${encodeURIComponent(q)}`),
   // Catálogo aprendido: revisar qué mapeó el sistema y deshacer un mapeo equivocado.

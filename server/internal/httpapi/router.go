@@ -400,6 +400,12 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// empresa con el permiso rebotaría (constitución, «Roles: modelo híbrido»).
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health", h.GetInventoryHealth)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health.csv", h.ExportInventoryHealth)
+					// Empaques de compra (spec 038): por permiso y fuera del grupo por rol, igual que la salud.
+					// Leerlos es de quien registra compras; cambiarlos, de quien configura el almacén.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/presentations", h.ListPresentations)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/ingredients/{id}/presentations", h.ListIngredientPresentations)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredients/{id}/presentations", h.CreatePresentation)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/presentations/{id}", h.UpdatePresentation)
 					r.Group(func(r chi.Router) {
 						r.Use(RequireRole(domain.RoleAdmin, domain.RoleGerente))
 						r.Get("/levels", h.StockLevels)
