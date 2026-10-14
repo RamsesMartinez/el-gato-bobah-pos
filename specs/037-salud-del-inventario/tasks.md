@@ -36,10 +36,10 @@
 ### Tests (primero, en rojo)
 
 - [ ] T008 [P] [US1] Test de integración bajo `appRoleStore` con `inTheThreeCases` (otra empresa, conexión reciclada, sin empresa) para cada consulta de `inventory_health.sql`, con dos empresas, en `server/internal/integration/inventory_health_test.go`
-- [ ] T009 [P] [US1] Test de integración «se vende sin restar» contra el borde: un producto cuyo extra obligatorio descuenta NO se marca; la opción de ese grupo que no descuenta SÍ; lo confirmado «No gasta insumos» no; `platform_unpaired` sale en su propio contador; el componente de paquete que no descuenta se marca; renglones y pedidos cancelados o reembolsados no cuentan; un periodo sin ventas devuelve `salesInPeriod = 0` y las demás secciones intactas; piezas por canal y costo estimado (piezas × costo de hoy) correctos; en `server/internal/integration/inventory_health_test.go`
-- [ ] T010 [P] [US1] Test de integración de negativos (`collapsed = true` sin ningún movimiento `compra`, `false` con uno; sucursal visible solo con más de una), «sin compras» (resumen N de M), recetas con un error (cantidad cero, unidad de otro tipo, insumo archivado, duplicado por nombre sin acentos ni mayúsculas) y combos con un hueco de más de un producto; `noPurchasesSince` cuenta solo compras desde esa fecha (un insumo con compra anterior aparece, uno con compra posterior no); «Recetas pendientes de confirmar» cuenta productos y extras activos «Por revisar» por separado y no cuenta los confirmados ni los inactivos (FR-008), en `server/internal/integration/inventory_health_test.go`
+- [ ] T009 [US1] Test de integración «se vende sin restar» contra el borde: un producto cuyo extra obligatorio descuenta NO se marca; la opción de ese grupo que no descuenta SÍ; lo confirmado «No gasta insumos» no; `platform_unpaired` sale en su propio contador; el componente de paquete que no descuenta se marca; renglones y pedidos cancelados o reembolsados no cuentan; un periodo sin ventas devuelve `salesInPeriod = 0` y las demás secciones intactas; piezas por canal y costo estimado (piezas × costo de hoy) correctos; en `server/internal/integration/inventory_health_test.go`
+- [ ] T010 [US1] Test de integración de negativos (`collapsed = true` sin ningún movimiento `compra`, `false` con uno; sucursal visible solo con más de una), «sin compras» (resumen N de M), recetas con un error (cantidad cero, unidad de otro tipo, insumo archivado, duplicado por nombre sin acentos ni mayúsculas) y combos con un hueco de más de un producto; `noPurchasesSince` cuenta solo compras desde esa fecha (un insumo con compra anterior aparece, uno con compra posterior no); «Recetas pendientes de confirmar» cuenta productos y extras activos «Por revisar» por separado y no cuenta los confirmados ni los inactivos (FR-008), en `server/internal/integration/inventory_health_test.go`
 - [ ] T011 [P] [US1] Test del handler sobre JSON crudo: todo arreglo viaja como `[]`, nunca `null`, con la empresa vacía; `from=2026-13-01` → 400; cajero → 403; cada tipo de renglón trae su `fixAt` correcto (producto y extra → la receta en Menú › Recetas con `?open=`, insumo → su ficha en Almacén, renglón de receta → la receta que lo contiene, pendientes → `?status=review`), que es el segundo y último toque de SC-002 (FR-009); en `server/internal/httpapi/handlers_inventory_health_test.go`
-- [ ] T012 [P] [US1] Test de regresión de FR-002a: guardar una receta nueva no modifica ningún `stock_movements` de tipo `venta` previo, en `server/internal/integration/inventory_health_test.go`
+- [ ] T012 [US1] Test de regresión de FR-002a: guardar una receta nueva no modifica ningún `stock_movements` de tipo `venta` previo, en `server/internal/integration/inventory_health_test.go`
 
 ### Implementación
 
@@ -91,7 +91,7 @@
 
 **Independent Test**: la exportación coincide renglón por renglón con la pantalla (SC-005).
 
-- [ ] T034 [P] [US2] Test que falla nombrando «la exportación y la pantalla divergen» (mismo servicio, mismo filtro, mismos renglones), más BOM, acentos y escape de celdas que empiezan con `=`, `+`, `-`, `@`; la exportación trae la lista COMPLETA de insumos sin compras aunque la pantalla la muestre resumida (FR-006), en `server/internal/integration/inventory_health_test.go`
+- [ ] T034 [US2] Test que falla nombrando «la exportación y la pantalla divergen» (mismo servicio, mismo filtro, mismos renglones), más BOM, acentos y escape de celdas que empiezan con `=`, `+`, `-`, `@`; la exportación trae la lista COMPLETA de insumos sin compras aunque la pantalla la muestre resumida (FR-006), en `server/internal/integration/inventory_health_test.go`
 - [ ] T035 [US2] `InventoryHealthService.CSV` con `encoding/csv` sobre el mismo `Report` sin paginar, en `server/internal/app/inventory_health.go`
 - [ ] T036 [US2] Ruta `GET /stock/health.csv` con el mismo permiso y parámetros, fuera del grupo con `RequireRole`, en `server/internal/httpapi/handlers_inventory_health.go` y `router.go`
 - [ ] T037 [US2] Botón «Exportar» que descarga con el periodo de la pantalla, con test, en `web/src/features/backoffice/InventoryHealthTab.tsx`
@@ -102,7 +102,7 @@
 
 **Independent Test**: un extra sin receta ni producto ligado se vende sin aviso y aparece en Salud.
 
-- [ ] T038 [P] [US4] Test de integración: vender un extra sin configurar no bloquea ni avisa (FR-017) y aparece con «Extra que no resta nada» y sus piezas; uno confirmado «No gasta insumos» no aparece; en `server/internal/integration/inventory_health_test.go`
+- [ ] T038 [US4] Test de integración: vender un extra sin configurar no bloquea ni avisa (FR-017) y aparece con «Extra que no resta nada» y sus piezas; uno confirmado «No gasta insumos» no aparece; en `server/internal/integration/inventory_health_test.go`
 - [ ] T039 [US4] Ajustar lo que falte en la consulta o en la pastilla de estado para que T038 pase (`server/queries/inventory_health.sql`, `web/src/features/backoffice/InventoryHealthTab.tsx`)
 
 ---
@@ -126,7 +126,7 @@
 ## Parallel examples
 
 - Phase 2: T003, T004 y T006 a la vez.
-- US1: T008–T012 a la vez; luego T017, T018 y T021 en paralelo con T013–T015.
+- US1: T008 y T011 a la vez (archivos distintos); T009, T010 y T012 después de T008, en el mismo archivo; luego T017, T018 y T021 en paralelo con T013–T015.
 - US3: T023, T024 y T027 a la vez (archivos distintos); T025, T026 y T027a después de T024, en el mismo archivo; T031 en paralelo con T028–T030.
 
 ## Implementation strategy
