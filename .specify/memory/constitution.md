@@ -230,6 +230,7 @@ que el negocio ya sabe que va a querer. Un plan que cierre una de ellas es un ha
 | Puerta | Qué la cerraría | Dónde está hoy |
 |---|---|---|
 | ~~**Más de una sucursal** dentro de una empresa~~ **CRUZADA (spec 025, 2026-10-02)** | — | `branches` con matriz por empresa; cajas, pedidos, tiendas de plataforma y existencias guardan su sucursal con llave compuesta. Sigue abierto: el selector de sucursal, quién trabaja en cuál, y precio o disponibilidad por sucursal sobre el catálogo maestro |
+| **Más de un almacén por sucursal** — bodega y cocina con existencias propias, traspasos entre ellos (decidido el 2026-10-14, issue #65) | Asumir que lo guardado de una sucursal está en un solo lugar de forma que no se pueda partir: una existencia, un conteo o un movimiento que no admita después un almacén, o usar el «lugar» del insumo como si fuera un almacén | `stock_levels`, `stock_movements` y `stock_counts` (038) son por sucursal; agregar el almacén cuesta una columna y asignar lo existente al principal. El «lugar» del insumo (038) solo ordena el recorrido del conteo |
 | **Más de una caja vendiendo a la vez** | Cualquier cosa que asuma "la" caja abierta | `GetOpenPrimarySession` asume una sola; 3 configuradas, 1 que vende |
 | **Saber de quién es un pedido** | Un pedido que no guarda quién lo capturó, o guardarlo con una identidad que no distingue estaciones | `orders.opened_by` existe, pero dos tabletas comparten la misma cuenta: hoy no distingue |
 | ~~**Cuánto deja cada plataforma**~~ **CRUZADA (spec 014, 2026-09-08)** | — | `platform_settlements` guarda por pedido lo que dice el documento de pago: comisión (monto y tasa), retenciones, neto y quién financió el descuento. Dejó de ser puerta y es feature |
@@ -392,4 +393,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.21.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-14
+**Version**: 1.22.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-14
