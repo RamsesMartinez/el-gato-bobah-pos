@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -238,5 +239,22 @@ func TestElBaldeSinCorteNoPuedeSerUnaSolaPersona(t *testing.T) {
 				t.Fatalf("CortarPorRol(%v, %q) = %v, quiere %v", c.activos, c.rol, got, c.quiere)
 			}
 		})
+	}
+}
+
+// Salud del inventario (spec 037) es una pestaña de Almacén, no una ruta: se cuenta como acciones de
+// «inventario». Si alguien la saca de la lista, la medición de la pestaña sale en cero sin un error.
+func TestInventoryHealthIsMeasuredInsideInventory(t *testing.T) {
+	for _, a := range []string{"ver-salud", "exportar-salud"} {
+		if !EventoDeUsoValido("inventario", a) {
+			t.Errorf("la acción %q de inventario se descarta: la pestaña Salud no se mediría", a)
+		}
+	}
+	// Quien puede ver la pestaña puede abrir la pantalla que la contiene; si no, sus aperturas se
+	// descartarían por rol.
+	for _, r := range []Role{RoleAdmin, RoleGerente, RoleCajero, RoleMesero} {
+		if slices.Contains(PermissionsFor(r), PermInventoryHealthView) && !PantallaPermitidaParaRol("inventario", r) {
+			t.Errorf("el rol %q ve la salud del inventario pero su medición se descarta por rol", r)
+		}
 	}
 }

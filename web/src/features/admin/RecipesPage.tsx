@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge, Box, Button, HStack, Input, Progress, Text, VStack } from '@chakra-ui/react';
 import { LuChevronRight, LuSearch } from 'react-icons/lu';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocation, useSearchParams } from 'react-router';
 import { ApiError } from '../../api/client';
 import { adminApi, type CompositionKind, type RecipeKind, type RecipeRow, type RecipeStatus } from '../../api/admin';
 import { Page } from '../../components/Page';
@@ -24,6 +25,18 @@ const STATUSES: { s: RecipeStatus; label: string }[] = [
 ];
 const sheetKind: Record<RecipeKind, CompositionKind> = { product: 'product', extra: 'option', prep: 'ingredient' };
 
+// «Salud del inventario» manda aquí con ?kind=, ?status= y ?open=product:N | option:N. Un valor
+// desconocido se ignora: abre como siempre, nunca con un filtro inventado.
+function fromUrl(params: URLSearchParams, name: string) {
+  const kind = KINDS.find((k) => k.k === params.get('kind'))?.k ?? 'product';
+  const status = STATUSES.find((x) => x.s === params.get('status'))?.s ?? 'pending';
+  const m = /^(product|option):(\d+)$/.exec(params.get('open') ?? '');
+  const open = m && (m[1] === 'option') === (kind === 'extra')
+    ? { id: Number(m[2]), name, group: '', status, mode: '', summary: '', lines: 0, soldPerMonth: '0' } as RecipeRow
+    : null;
+  return { kind, status, open };
+}
+
 function summaryOf(r: RecipeRow): string {
   if (r.mode === 'own') return 'Se descuenta solo';
   if (r.mode === 'combo') return r.summary ? `Combo: ${r.summary}` : 'Combo';
@@ -34,13 +47,16 @@ function summaryOf(r: RecipeRow): string {
 
 export function RecipesPage() {
   const qc = useQueryClient();
-  const [kind, setKind] = useState<RecipeKind>('product');
-  const [status, setStatus] = useState<RecipeStatus>('pending');
+  const [params] = useSearchParams();
+  const location = useLocation();
+  const [initial] = useState(() => fromUrl(params, (location.state as { name?: string } | null)?.name ?? ''));
+  const [kind, setKind] = useState<RecipeKind>(initial.kind);
+  const [status, setStatus] = useState<RecipeStatus>(initial.status);
   const [sort, setSort] = useState<'sales' | 'az'>('sales');
   const [search, setSearch] = useState('');
   const [q, setQ] = useState(''); // con retraso: una petición por pausa de tecleo
   const [category, setCategory] = useState('');
-  const [open, setOpen] = useState<RecipeRow | null>(null);
+  const [open, setOpen] = useState<RecipeRow | null>(initial.open);
 
   useEffect(() => { const t = setTimeout(() => setQ(search.trim()), 300); return () => clearTimeout(t); }, [search]);
 

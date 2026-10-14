@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router';
 
 import { Provider } from '../../components/ui/provider';
 import { RecipesPage } from './RecipesPage';
@@ -32,9 +33,9 @@ vi.mock('../../api/admin', () => ({ adminApi: api }));
 vi.mock('../../api/backoffice', () => ({ backofficeApi: back }));
 vi.mock('../../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) } }));
 
-function montar() {
+function montar(entrada: string | { pathname: string; search: string; state?: unknown } = '/catalogo/recetas') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<QueryClientProvider client={qc}><Provider><RecipesPage /></Provider></QueryClientProvider>);
+  return render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={[entrada]}><RecipesPage /></MemoryRouter></Provider></QueryClientProvider>);
 }
 
 describe('Menú › Recetas', () => {
@@ -120,4 +121,27 @@ describe('Menú › Recetas', () => {
     fireEvent.click(await screen.findByRole('tab', { name: /Preparados/ }));
     await waitFor(() => expect(api.recipes).toHaveBeenCalledWith(expect.objectContaining({ kind: 'prep', status: 'review' })));
   });
+
+  // Salud del inventario (spec 037) manda aquí con el filtro o la receta ya puestos: el segundo y
+  // último toque para corregir.
+  it('la dirección pone la lista y el estado que pide Salud', async () => {
+    montar('/catalogo/recetas?kind=product&status=review');
+    await waitFor(() => expect(api.recipes).toHaveBeenCalledWith(expect.objectContaining({ kind: 'product', status: 'review' })));
+    expect(await screen.findByText('Frappé Taro')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirmar las 2 de esta lista' })).toBeInTheDocument();
+  });
+
+  it('la dirección abre la receta de un extra con su nombre', async () => {
+    montar({ pathname: '/catalogo/recetas', search: '?kind=extra&open=option:9', state: { name: 'Crema Irlandesa' } });
+    expect(await screen.findByText(/Receta de Crema Irlandesa/)).toBeInTheDocument();
+    expect(api.composition).toHaveBeenCalledWith('option', 9);
+  });
+
+  it('una dirección con valores desconocidos no rompe la pantalla ni filtra por algo inventado', async () => {
+    montar('/catalogo/recetas?kind=todo&status=zzz&open=algo:1');
+    expect(await screen.findByText('Producto 1')).toBeInTheDocument();
+    expect(api.recipes).toHaveBeenCalledWith(expect.objectContaining({ kind: 'product', status: 'pending' }));
+    expect(api.composition).not.toHaveBeenCalled();
+  });
 });
+
