@@ -58,6 +58,13 @@ type ExpenseItemView struct {
 	UnitCost      decimal.Decimal  `json:"unitCost"`
 	Amount        decimal.Decimal  `json:"amount"`
 	PackQtyInBase *decimal.Decimal `json:"packQtyInBase"`
+	// Lo que este renglón ya sumó al almacén, en la unidad base del artículo: es el `seenApplied`
+	// que la pantalla devuelve al corregir (spec 038).
+	Applied        decimal.Decimal `json:"applied"`
+	BaseUnitCode   *string         `json:"baseUnitCode"`
+	NotComing      decimal.Decimal `json:"notComing"`
+	IsGift         bool            `json:"isGift"`
+	PresentationID *int64          `json:"presentationId"`
 }
 
 type ExpensePaymentView struct {
@@ -93,6 +100,11 @@ type ExpenseItemInput struct {
 	QtyReceived   *decimal.Decimal // nil = no recibido aún
 	Amount        decimal.Decimal
 	PackQtyInBase *decimal.Decimal
+	// PresentationID: el empaque del insumo («Bulto = 25 kg»). Con él, la unidad es pieza y el
+	// contenido se copia al renglón (spec 038).
+	PresentationID *int64
+	// IsGift: llegó sin costo. Va con importe 0, suma a lo guardado y no mueve el costo.
+	IsGift bool
 	// RawCode/RawName: el texto del documento del proveedor. Se guardan aparte del Description
 	// porque son la LLAVE con la que se aprende el mapeo (ver learnSupplierItems).
 	RawCode string
@@ -204,9 +216,6 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 		DocFolio: strPtr(in.DocFolio),
 		DocRaw:   in.DocRaw,
 	}
-	if hasReceived {
-		params.ReceivedAt = pgtype.Date{Time: received, Valid: true}
-	}
 	if in.Status == domain.ExpensePagada {
 		params.PaidAt = pgtype.Timestamptz{Time: s.now(), Valid: true}
 		params.PaidBy = &in.UserID
@@ -215,19 +224,38 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 	var id int64
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		var err error
+		var ids []int64
+		for _, it := range in.Items {
+			if it.IngredientID != nil {
+				ids = append(ids, *it.IngredientID)
+			}
+		}
+		if err := lockIngredients(ctx, q, ids); err != nil {
+			return err
+		}
 		if id, err = q.CreateExpense(ctx, params); err != nil {
 			return err
 		}
-		if err := s.insertItems(ctx, q, id, in.Items); err != nil {
+		if err := s.insertItems(ctx, q, id, in.Items, amount, hasReceived); err != nil {
 			return err
 		}
 		if err := s.insertPayments(ctx, q, id, in.Description, in.UserID, payments); err != nil {
 			return err
 		}
-		// Si ya llegó la mercancía, se descuenta en la misma tx: el caso normal es volver de la
-		// tienda con las cosas y capturar una sola vez.
+		// Lo que llegó suma en la misma tx: el caso normal es volver de la tienda con las cosas y
+		// capturar una sola vez. `received_at` lo fija applyStockLines, y solo si el gasto trae
+		// mercancía y ya no falta nada (R0: antes un gasto sin mercancía quedaba «recibido»).
+		var day *time.Time
 		if hasReceived {
-			if err := s.depleteReceived(ctx, q, id, in.UserID); err != nil {
+			day = &received
+		}
+		applied, err := s.applyStockLines(ctx, q, id, in.UserID, day)
+		if err != nil {
+			return err
+		}
+		if applied {
+			if err := auditEntity(ctx, q, domain.AuditExpenseReceived, "expense", id, nil, &in.UserID, nil,
+				map[string]any{"receivedAt": in.ReceivedAt}); err != nil {
 				return err
 			}
 		}
@@ -242,31 +270,32 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 
 // ---- Recepción ----
 
-// ReceiveExpense marca la mercancía como recibida en la fecha dada y genera los movimientos de
-// almacén de las líneas que llegaron.
-//
-// Idempotente por el guard `received_at is null` de la query: un doble-tap no puede duplicar el
-// inventario. Las cantidades recibidas (qty_received) se fijan antes con SetItemsReceived —
-// aquí solo se consume lo que llegó.
+// ReceiveExpense da por llegado todo lo que faltaba de un gasto («Llegó todo») y lo suma al
+// almacén por diferencia: un doble toque no duplica nada, porque la segunda vez no hay diferencia.
 func (s *BackofficeService) ReceiveExpense(ctx context.Context, id int64, receivedAt string, userID int64) error {
 	date, err := s.parseDayOrToday(receivedAt)
 	if err != nil {
 		return err
 	}
-	if _, err := s.getExpense(ctx, id); err != nil {
-		return err
-	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		n, err := q.MarkExpenseReceived(ctx, db.MarkExpenseReceivedParams{
-			ID: id, ReceivedAt: pgtype.Date{Time: date, Valid: true},
-		})
+		exp, err := q.LockExpenseForStock(ctx, id)
 		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
 			return err
 		}
-		if n == 0 {
-			return domain.ErrConflict // ya estaba recibido
+		if exp.ReceivedAt.Valid || exp.Status == db.ExpenseStatusCancelada {
+			return domain.ErrConflict
 		}
-		return s.depleteReceived(ctx, q, id, userID)
+		if err := q.FillMissingReceived(ctx, id); err != nil {
+			return err
+		}
+		if _, err := s.applyStockLines(ctx, q, id, userID, &date); err != nil {
+			return err
+		}
+		return auditEntity(ctx, q, domain.AuditExpenseReceived, "expense", id, nil, &userID, nil,
+			map[string]any{"receivedAt": date.Format(time.DateOnly)})
 	})
 }
 
@@ -300,50 +329,6 @@ func (s *BackofficeService) SetItemsReceived(ctx context.Context, expenseID int6
 		}
 		return nil
 	})
-}
-
-// depleteReceived inserta un movimiento 'compra' por cada línea inventariable que llegó.
-// El trigger de stock_movements actualiza stock_levels (0009), así que aquí no se toca el nivel.
-func (s *BackofficeService) depleteReceived(ctx context.Context, q *db.Queries, expenseID, userID int64) error {
-	rows, err := q.ItemsToDeplete(ctx, expenseID)
-	if err != nil {
-		return err
-	}
-	for _, r := range rows {
-		if r.QtyReceived == nil {
-			continue
-		}
-		baseQty, err := domain.BaseQty(*r.QtyReceived, domain.PurchaseUnit{
-			Kind:          string(r.BuyKind),
-			ToBase:        r.BuyToBase,
-			BaseKind:      string(r.BaseKind),
-			PackQtyInBase: r.PackQtyInBase,
-		})
-		if err != nil {
-			// Falta el formato del proveedor o la unidad no es compatible: se devuelve tal cual
-			// (envuelve ErrValidation → 422 con mensaje accionable) en vez de meter al almacén
-			// una cantidad inventada.
-			return err
-		}
-		if !domain.ValidQty(baseQty, domain.MaxStockQty, false) {
-			return domain.ErrValidation
-		}
-		cost := domain.UnitCost(r.Amount, baseQty)
-		reason := "compra: " + r.Description
-		if err := q.InsertPurchaseMovement(ctx, db.InsertPurchaseMovementParams{
-			ItemType:     *r.ItemType,
-			IngredientID: r.IngredientID,
-			ProductID:    r.ProductID,
-			Quantity:     baseQty,
-			UnitCost:     &cost,
-			ExpenseID:    &expenseID,
-			UserID:       &userID,
-			Reason:       &reason,
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // ---- Pagos ----
@@ -525,7 +510,11 @@ func learnedStatus(it ExpenseItemInput) (string, error) {
 
 // ---- Líneas ----
 
-func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expenseID int64, items []ExpenseItemInput) error {
+// insertItems guarda los renglones con las reglas de dinero de la compra (FR-004a): cada renglón de
+// mercancía lleva importe, salvo un regalo, y entre todos no pasan del total pagado. Con
+// `receivedAll`, un renglón de mercancía sin cantidad recibida se da por llegado completo.
+func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expenseID int64, items []ExpenseItemInput, total decimal.Decimal, receivedAll bool) error {
+	amounts := make([]decimal.Decimal, 0, len(items))
 	for i, it := range items {
 		// Un renglón de la casa no es una línea del gasto: se descarta aquí (ya se aprendió en
 		// learnSupplierItems) para que no sume al importe ni toque el almacén.
@@ -537,7 +526,7 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 			return domain.ErrValidation
 		}
 		amount := domain.Round2(it.Amount)
-		if !domain.ValidMoney(amount, true) { // 0 permitido: una cortesía o un renglón sin costo
+		if !domain.ValidMoney(amount, true) { // 0 permitido fuera de la mercancía: un renglón sin costo
 			return domain.ErrValidation
 		}
 		if it.Description == "" {
@@ -547,6 +536,20 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 		if err != nil {
 			return err
 		}
+		if itemType != nil {
+			if err := checkLineMoney(amount, it.IsGift); err != nil {
+				return err
+			}
+			if it.UnitID, it.PackQtyInBase, err = lineUnit(ctx, q, it.IngredientID, it.PresentationID, it.UnitID, it.PackQtyInBase); err != nil {
+				return err
+			}
+			if it.QtyReceived == nil && receivedAll {
+				it.QtyReceived = &qty
+			}
+		} else if it.IsGift || it.PresentationID != nil {
+			return domain.ErrValidation
+		}
+		amounts = append(amounts, amount)
 		// Una línea inventariable exige unidad: sin ella no hay conversión a unidad de almacén
 		// (el CHECK de la tabla lo repite como defensa en profundidad).
 		if itemType != nil && it.UnitID == nil {
@@ -566,11 +569,12 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 			Description: it.Description, Quantity: qty, UnitID: it.UnitID,
 			QtyReceived: it.QtyReceived, UnitCost: unitCost, Amount: amount,
 			PackQtyInBase: it.PackQtyInBase, Position: int32(i),
+			PresentationID: it.PresentationID, IsGift: it.IsGift,
 		}); err != nil {
 			return err
 		}
 	}
-	return nil
+	return checkLinesFitTotal(amounts, total)
 }
 
 // itemTypeParam valida la coherencia tipo↔referencia antes de que el CHECK de la tabla la
@@ -654,12 +658,16 @@ func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason 
 	if !domain.CanCancelExpense(string(exp.Status)) {
 		return domain.ErrConflict
 	}
-	// Una compra ya recibida movió el almacén: anular el gasto no puede devolver la mercancía
-	// sola, y dejar el movimiento sin gasto rompe la trazabilidad del ledger.
-	if exp.ReceivedAt.Valid {
-		return domain.ErrConflict
-	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		if _, err := q.LockExpenseForStock(ctx, id); err != nil {
+			return err
+		}
+		// Lo que la compra sumó al almacén se revierte con movimientos nuevos, en la misma tx:
+		// anular el gasto y dejar la mercancía sumada haría que el almacén contara algo que no
+		// se compró (spec 038; antes se respondía 409).
+		if err := s.reverseStockLines(ctx, q, id, userID); err != nil {
+			return err
+		}
 		n, err := q.CancelExpense(ctx, db.CancelExpenseParams{
 			ID: id, CancelledBy: &userID, CancelReason: strPtr(reason),
 		})
@@ -745,19 +753,25 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 		CreatedBy: exp.CreatedByName,
 	}
 	out.Paid = paid
-	out.Items = make([]ExpenseItemView, len(items))
-	for i, r := range items {
+	// Un renglón quitado en una corrección no se muestra: su rastro son sus movimientos.
+	out.Items = make([]ExpenseItemView, 0, len(items))
+	for _, r := range items {
+		if r.VoidedAt.Valid {
+			continue
+		}
 		v := ExpenseItemView{
 			ID: r.ID, IngredientID: r.IngredientID, ProductID: r.ProductID,
 			ItemName: firstName(r.IngredientName, r.ProductName), Description: r.Description, Quantity: r.Quantity,
 			UnitCode: r.UnitCode, QtyReceived: r.QtyReceived, UnitCost: r.UnitCost,
 			Amount: r.Amount, PackQtyInBase: r.PackQtyInBase,
+			Applied: r.AppliedQtyBase, BaseUnitCode: r.BaseUnitCode, NotComing: r.NotComingQty,
+			IsGift: r.IsGift, PresentationID: r.PresentationID,
 		}
 		if r.ItemType != nil {
 			t := string(*r.ItemType)
 			v.ItemType = &t
 		}
-		out.Items[i] = v
+		out.Items = append(out.Items, v)
 	}
 	out.Payments = make([]ExpensePaymentView, len(pays))
 	for i, r := range pays {

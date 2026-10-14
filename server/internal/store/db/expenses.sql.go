@@ -35,7 +35,10 @@ func (q *Queries) CancelExpense(ctx context.Context, arg CancelExpenseParams) (i
 const countExpenses = `-- name: CountExpenses :one
 select count(*) from expenses e
 where ($1::expense_status is null or e.status = $1)
-  and ($2::boolean is not true or e.received_at is null)
+  and ($2::boolean is not true or (
+        e.received_at is null and e.status <> 'cancelada'
+        and exists (select 1 from expense_items pi where pi.expense_id = e.id
+                     and pi.item_type is not null and pi.voided_at is null)))
 `
 
 type CountExpensesParams struct {
@@ -127,24 +130,27 @@ const createExpenseItem = `-- name: CreateExpenseItem :one
 
 insert into expense_items (
   expense_id, item_type, ingredient_id, product_id, description,
-  quantity, unit_id, qty_received, unit_cost, amount, pack_qty_in_base, position
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+  quantity, unit_id, qty_received, unit_cost, amount, pack_qty_in_base, position,
+  presentation_id, is_gift
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 returning id
 `
 
 type CreateExpenseItemParams struct {
-	ExpenseID     int64            `json:"expense_id"`
-	ItemType      *StockItemType   `json:"item_type"`
-	IngredientID  *int64           `json:"ingredient_id"`
-	ProductID     *int64           `json:"product_id"`
-	Description   string           `json:"description"`
-	Quantity      decimal.Decimal  `json:"quantity"`
-	UnitID        *int16           `json:"unit_id"`
-	QtyReceived   *decimal.Decimal `json:"qty_received"`
-	UnitCost      decimal.Decimal  `json:"unit_cost"`
-	Amount        decimal.Decimal  `json:"amount"`
-	PackQtyInBase *decimal.Decimal `json:"pack_qty_in_base"`
-	Position      int32            `json:"position"`
+	ExpenseID      int64            `json:"expense_id"`
+	ItemType       *StockItemType   `json:"item_type"`
+	IngredientID   *int64           `json:"ingredient_id"`
+	ProductID      *int64           `json:"product_id"`
+	Description    string           `json:"description"`
+	Quantity       decimal.Decimal  `json:"quantity"`
+	UnitID         *int16           `json:"unit_id"`
+	QtyReceived    *decimal.Decimal `json:"qty_received"`
+	UnitCost       decimal.Decimal  `json:"unit_cost"`
+	Amount         decimal.Decimal  `json:"amount"`
+	PackQtyInBase  *decimal.Decimal `json:"pack_qty_in_base"`
+	Position       int32            `json:"position"`
+	PresentationID *int64           `json:"presentation_id"`
+	IsGift         bool             `json:"is_gift"`
 }
 
 // ==== Líneas del gasto (mercancía) ====
@@ -162,6 +168,8 @@ func (q *Queries) CreateExpenseItem(ctx context.Context, arg CreateExpenseItemPa
 		arg.Amount,
 		arg.PackQtyInBase,
 		arg.Position,
+		arg.PresentationID,
+		arg.IsGift,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -531,32 +539,41 @@ const listExpenseItems = `-- name: ListExpenseItems :many
 select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description,
        ei.quantity, ei.unit_id, u.code as unit_code, u.kind as unit_kind,
        ei.qty_received, ei.unit_cost, ei.amount, ei.pack_qty_in_base, ei.position,
-       i.name as ingredient_name, p.name as product_name
+       i.name as ingredient_name, p.name as product_name,
+       ei.applied_qty_base, ei.not_coming_qty, ei.voided_at, ei.is_gift, ei.presentation_id,
+       iu.code as base_unit_code
 from expense_items ei
 left join units u on u.id = ei.unit_id
 left join ingredients i on i.id = ei.ingredient_id
+left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = ei.product_id
 where ei.expense_id = $1
 order by ei.position, ei.id
 `
 
 type ListExpenseItemsRow struct {
-	ID             int64            `json:"id"`
-	ItemType       *StockItemType   `json:"item_type"`
-	IngredientID   *int64           `json:"ingredient_id"`
-	ProductID      *int64           `json:"product_id"`
-	Description    string           `json:"description"`
-	Quantity       decimal.Decimal  `json:"quantity"`
-	UnitID         *int16           `json:"unit_id"`
-	UnitCode       *string          `json:"unit_code"`
-	UnitKind       *UnitKind        `json:"unit_kind"`
-	QtyReceived    *decimal.Decimal `json:"qty_received"`
-	UnitCost       decimal.Decimal  `json:"unit_cost"`
-	Amount         decimal.Decimal  `json:"amount"`
-	PackQtyInBase  *decimal.Decimal `json:"pack_qty_in_base"`
-	Position       int32            `json:"position"`
-	IngredientName *string          `json:"ingredient_name"`
-	ProductName    *string          `json:"product_name"`
+	ID             int64              `json:"id"`
+	ItemType       *StockItemType     `json:"item_type"`
+	IngredientID   *int64             `json:"ingredient_id"`
+	ProductID      *int64             `json:"product_id"`
+	Description    string             `json:"description"`
+	Quantity       decimal.Decimal    `json:"quantity"`
+	UnitID         *int16             `json:"unit_id"`
+	UnitCode       *string            `json:"unit_code"`
+	UnitKind       *UnitKind          `json:"unit_kind"`
+	QtyReceived    *decimal.Decimal   `json:"qty_received"`
+	UnitCost       decimal.Decimal    `json:"unit_cost"`
+	Amount         decimal.Decimal    `json:"amount"`
+	PackQtyInBase  *decimal.Decimal   `json:"pack_qty_in_base"`
+	Position       int32              `json:"position"`
+	IngredientName *string            `json:"ingredient_name"`
+	ProductName    *string            `json:"product_name"`
+	AppliedQtyBase decimal.Decimal    `json:"applied_qty_base"`
+	NotComingQty   decimal.Decimal    `json:"not_coming_qty"`
+	VoidedAt       pgtype.Timestamptz `json:"voided_at"`
+	IsGift         bool               `json:"is_gift"`
+	PresentationID *int64             `json:"presentation_id"`
+	BaseUnitCode   *string            `json:"base_unit_code"`
 }
 
 func (q *Queries) ListExpenseItems(ctx context.Context, expenseID int64) ([]ListExpenseItemsRow, error) {
@@ -585,6 +602,12 @@ func (q *Queries) ListExpenseItems(ctx context.Context, expenseID int64) ([]List
 			&i.Position,
 			&i.IngredientName,
 			&i.ProductName,
+			&i.AppliedQtyBase,
+			&i.NotComingQty,
+			&i.VoidedAt,
+			&i.IsGift,
+			&i.PresentationID,
+			&i.BaseUnitCode,
 		); err != nil {
 			return nil, err
 		}
@@ -660,7 +683,10 @@ join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
 left join users ub on ub.id = e.created_by
 where ($1::expense_status is null or e.status = $1)
-  and ($2::boolean is not true or e.received_at is null)
+  and ($2::boolean is not true or (
+        e.received_at is null and e.status <> 'cancelada'
+        and exists (select 1 from expense_items pi where pi.expense_id = e.id
+                     and pi.item_type is not null and pi.voided_at is null)))
 order by
   case when $3::text = 'amount'      and $4::text = 'asc'  then e.amount end asc  nulls last,
   case when $3::text = 'amount'      and $4::text <> 'asc' then e.amount end desc nulls last,

@@ -283,6 +283,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).
 					Delete("/business-settings/ticket-logo", h.DeleteTicketLogo)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/business-settings", h.UpdateBusinessSettings)
+				// Costeo y palabra del almacén (spec 038): por permiso y aparte de los datos fiscales.
+				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/inventory", h.UpdateInventorySettings)
 				// ¿hay caja abierta? aviso del POS — cualquier rol autenticado (incl. mesero); no es dato sensible
 				r.Get("/cash-status", h.CashStatus)
 				// caja: la opera el cajero; excluye al mesero para que no cierre cortes ajenos
@@ -364,23 +366,29 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// Lista de categorías (para el formulario de gasto): cualquier autenticado.
 				r.Get("/expense-categories", h.ExpenseCategories)
 				// Gastos, proveedores y catálogo de categorías = gestión/contabilidad → admin/gerente.
+				// Gastos: recibir y corregir lo que llegó van por permiso (spec 038) y FUERA del grupo por
+				// rol; dentro, el RequireRole decidiría antes que el permiso y un rol propio con el
+				// permiso rebotaría (constitución, «Roles: modelo híbrido»).
+				r.Route("/expenses", func(r chi.Router) {
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/receive", h.ReceiveExpense)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Put("/{id}/stock-lines", h.SaveStockLines)
+					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
+						r.Get("/", h.ListExpenses)
+						r.Post("/", h.CreateExpense)
+						r.Get("/{id}", h.ExpenseDetail)
+						r.Post("/{id}/pay", h.PayExpense) // agrega UN pago (el "+1 nuevo pago")
+						r.Post("/{id}/cancel", h.CancelExpense)
+						// Extracción del documento (ticket/factura/pedido) → borrador. NO escribe nada:
+						// devuelve las líneas para que el operador las confirme.
+						r.Post("/parse-doc", h.ExtractPurchaseDoc)
+					})
+				})
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
 					r.Post("/expense-categories", h.CreateExpenseCategory)
 					r.Patch("/expense-categories/{id}", h.UpdateExpenseCategory)
 					r.Get("/suppliers", h.Suppliers)
 					r.Post("/suppliers", h.CreateSupplier)
 					r.Patch("/suppliers/{id}", h.UpdateSupplier)
-					r.Route("/expenses", func(r chi.Router) {
-						r.Get("/", h.ListExpenses)
-						r.Post("/", h.CreateExpense)
-						r.Get("/{id}", h.ExpenseDetail)
-						r.Post("/{id}/pay", h.PayExpense)         // agrega UN pago (el "+1 nuevo pago")
-						r.Post("/{id}/receive", h.ReceiveExpense) // entra al almacén
-						r.Post("/{id}/cancel", h.CancelExpense)
-						// Extracción del documento (ticket/factura/pedido) → borrador. NO escribe nada:
-						// devuelve las líneas para que el operador las confirme.
-						r.Post("/parse-doc", h.ExtractPurchaseDoc)
-					})
 					// Catálogo de insumos y buscador de artículos: sin esto el detalle del gasto no
 					// tiene contra qué buscar (los ingredientes solo entraban por el importador).
 					r.Get("/units", h.Units)

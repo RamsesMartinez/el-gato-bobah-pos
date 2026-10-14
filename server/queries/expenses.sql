@@ -77,7 +77,10 @@ join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
 left join users ub on ub.id = e.created_by
 where (sqlc.narg('status')::expense_status is null or e.status = sqlc.narg('status'))
-  and (sqlc.narg('pending_receipt')::boolean is not true or e.received_at is null)
+  and (sqlc.narg('pending_receipt')::boolean is not true or (
+        e.received_at is null and e.status <> 'cancelada'
+        and exists (select 1 from expense_items pi where pi.expense_id = e.id
+                     and pi.item_type is not null and pi.voided_at is null)))
 order by
   case when @sort::text = 'amount'      and @dir::text = 'asc'  then e.amount end asc  nulls last,
   case when @sort::text = 'amount'      and @dir::text <> 'asc' then e.amount end desc nulls last,
@@ -96,7 +99,10 @@ limit sqlc.arg('lim') offset sqlc.arg('off');
 -- name: CountExpenses :one
 select count(*) from expenses e
 where (sqlc.narg('status')::expense_status is null or e.status = sqlc.narg('status'))
-  and (sqlc.narg('pending_receipt')::boolean is not true or e.received_at is null);
+  and (sqlc.narg('pending_receipt')::boolean is not true or (
+        e.received_at is null and e.status <> 'cancelada'
+        and exists (select 1 from expense_items pi where pi.expense_id = e.id
+                     and pi.item_type is not null and pi.voided_at is null)));
 
 -- name: CancelExpense :execrows
 update expenses set status = 'cancelada', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
@@ -107,18 +113,22 @@ where id = $1 and status = 'pendiente';
 -- name: CreateExpenseItem :one
 insert into expense_items (
   expense_id, item_type, ingredient_id, product_id, description,
-  quantity, unit_id, qty_received, unit_cost, amount, pack_qty_in_base, position
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+  quantity, unit_id, qty_received, unit_cost, amount, pack_qty_in_base, position,
+  presentation_id, is_gift
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 returning id;
 
 -- name: ListExpenseItems :many
 select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description,
        ei.quantity, ei.unit_id, u.code as unit_code, u.kind as unit_kind,
        ei.qty_received, ei.unit_cost, ei.amount, ei.pack_qty_in_base, ei.position,
-       i.name as ingredient_name, p.name as product_name
+       i.name as ingredient_name, p.name as product_name,
+       ei.applied_qty_base, ei.not_coming_qty, ei.voided_at, ei.is_gift, ei.presentation_id,
+       iu.code as base_unit_code
 from expense_items ei
 left join units u on u.id = ei.unit_id
 left join ingredients i on i.id = ei.ingredient_id
+left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = ei.product_id
 where ei.expense_id = $1
 order by ei.position, ei.id;

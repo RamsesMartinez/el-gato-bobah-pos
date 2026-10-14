@@ -269,7 +269,6 @@ func TestMigration0092OneOpenCountPerBranch(t *testing.T) {
 // La 0092 se niega a bajar con datos (es la única copia de esos hechos); sin datos baja limpia, y la
 // 0091 deja el valor del enum (Postgres no sabe quitarlo) sin tronar.
 func TestMigration0092DownRefusesWithDataAndRevertsClean(t *testing.T) {
-	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	co := makeCompany(t, st, "m92-down")

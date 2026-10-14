@@ -436,53 +436,6 @@ func (q *Queries) SearchArticles(ctx context.Context, arg SearchArticlesParams) 
 	return items, nil
 }
 
-const updateIngredient = `-- name: UpdateIngredient :one
-update ingredients
-set name = $2, base_unit_id = $3, category_id = $4, min_stock = $5,
-    track_stock = $6, is_packaging = $7, is_active = $8, updated_at = now()
-where id = $1
-returning id, name, base_unit_id, is_active
-`
-
-type UpdateIngredientParams struct {
-	ID          int64            `json:"id"`
-	Name        string           `json:"name"`
-	BaseUnitID  int16            `json:"base_unit_id"`
-	CategoryID  *int64           `json:"category_id"`
-	MinStock    *decimal.Decimal `json:"min_stock"`
-	TrackStock  bool             `json:"track_stock"`
-	IsPackaging bool             `json:"is_packaging"`
-	IsActive    bool             `json:"is_active"`
-}
-
-type UpdateIngredientRow struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	BaseUnitID int16  `json:"base_unit_id"`
-	IsActive   bool   `json:"is_active"`
-}
-
-func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientParams) (UpdateIngredientRow, error) {
-	row := q.db.QueryRow(ctx, updateIngredient,
-		arg.ID,
-		arg.Name,
-		arg.BaseUnitID,
-		arg.CategoryID,
-		arg.MinStock,
-		arg.TrackStock,
-		arg.IsPackaging,
-		arg.IsActive,
-	)
-	var i UpdateIngredientRow
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.BaseUnitID,
-		&i.IsActive,
-	)
-	return i, err
-}
-
 const updatePresentation = `-- name: UpdatePresentation :execrows
 update ingredient_presentations
 set name = $2, qty_in_base = $3, purchase_unit_id = $4, is_approximate = $5, active = $6

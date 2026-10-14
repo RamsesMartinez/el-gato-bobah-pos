@@ -125,6 +125,19 @@ func (s *BackofficeService) CreateIngredient(ctx context.Context, in IngredientI
 	}
 	var r db.CreateIngredientRow
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Un insumo se cuenta en la unidad base de su tipo (g, ml, cm, pieza). Antes el alta rápida
+		// tomaba la unidad de compra (kg) y lo guardado se leía mil veces mal (spec 038, R0); lo
+		// que llega en kg se captura como empaque o unidad de compra.
+		u, err := q.GetUnit(ctx, in.BaseUnitID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrValidation
+			}
+			return err
+		}
+		if !u.ToBase.Equal(decimal.NewFromInt(1)) {
+			return fmt.Errorf("%w: el insumo se cuenta en g, ml, cm o piezas; lo que llega en kg o L se captura como empaque", domain.ErrValidation)
+		}
 		// Mismo nombre sin mayúsculas, acentos ni espacios de más: dos cuentas de las mismas latas se
 		// contarían dos veces (spec 037). El candado es por empresa, para que dos altas casi
 		// simultáneas no pasen las dos.

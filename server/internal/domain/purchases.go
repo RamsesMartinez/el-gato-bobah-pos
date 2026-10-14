@@ -1,9 +1,12 @@
 package domain
 
 import (
+	"cmp"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/shopspring/decimal"
 )
@@ -129,4 +132,73 @@ func NextIngredientCost(method CostingMethod, onHand, cost, qty, unitCost decima
 	}
 	total := onHand.Mul(cost).Add(qty.Mul(unitCost))
 	return total.Div(onHand.Add(qty)).Round(6)
+}
+
+// StockLineState es un renglón de compra tal como está guardado: lo pedido, lo que llegó y lo que
+// ya no va a llegar en la unidad del renglón, y lo que ya sumó al almacén en unidad base.
+type StockLineState struct {
+	ID           int64
+	IngredientID int64 // 0 = producto
+	Unit         PurchaseUnit
+	Ordered      decimal.Decimal
+	Received     decimal.Decimal
+	NotComing    decimal.Decimal
+	Applied      decimal.Decimal
+}
+
+// StockLineMove es lo que hay que sumar (o restar) a un renglón para que lo aplicado sea lo que
+// llegó. Ordered va en base porque de ahí sale el costo por unidad base.
+type StockLineMove struct {
+	ID           int64
+	IngredientID int64
+	Delta        decimal.Decimal
+	Ordered      decimal.Decimal
+}
+
+// PlanStockLines compara lo que llegó contra lo ya sumado y devuelve solo las diferencias, en
+// orden de insumo: dos escrituras que tocan los mismos insumos los toman en el mismo orden y no se
+// esperan en ciclo. `pending` dice si algo sigue por llegar; sin renglones también es pendiente,
+// porque un gasto sin mercancía nunca queda «recibido» (R0).
+func PlanStockLines(lines []StockLineState) (moves []StockLineMove, pending bool, err error) {
+	pending = len(lines) == 0
+	for _, l := range lines {
+		base := func(q decimal.Decimal) (decimal.Decimal, error) {
+			if !q.IsPositive() {
+				return decimal.Zero, nil
+			}
+			return BaseQty(q, l.Unit)
+		}
+		ordered, err := base(l.Ordered)
+		if err != nil {
+			return nil, false, err
+		}
+		received, err := base(l.Received)
+		if err != nil {
+			return nil, false, err
+		}
+		if l.Ordered.Sub(l.Received).Sub(l.NotComing).IsPositive() {
+			pending = true
+		}
+		delta := Round4(received.Sub(l.Applied))
+		if delta.IsZero() {
+			continue
+		}
+		moves = append(moves, StockLineMove{ID: l.ID, IngredientID: l.IngredientID, Delta: delta, Ordered: ordered})
+	}
+	slices.SortStableFunc(moves, func(a, b StockLineMove) int { return cmp.Compare(a.IngredientID, b.IngredientID) })
+	return moves, pending, nil
+}
+
+// DefaultStockItemLabel es como se le dice a lo que se guarda mientras la empresa no elija otra
+// palabra (el mismo default que la columna).
+const DefaultStockItemLabel = "artículo"
+
+// ValidStockItemLabel recorta la palabra y la acepta de 1 a 20 letras: es una etiqueta de pantalla,
+// no un texto libre.
+func ValidStockItemLabel(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if n := utf8.RuneCountInString(s); n < 1 || n > 20 {
+		return "", fmt.Errorf("%w: la palabra va de 1 a 20 letras", ErrValidation)
+	}
+	return s, nil
 }

@@ -7,8 +7,9 @@ validación, 403 permiso, 404 no existe, 409 conflicto (incluye `BRANCH_AMBIGUOU
 
 ### `GET /expenses` (existente, cambia)
 
-Acepta `pending=true`: solo gastos con algún renglón pendiente de llegar. Ausente = todos; otro
-valor → 400. `CountExpenses` usa el mismo `where`.
+Acepta `pending=true`: solo gastos no anulados, con algún renglón de almacén vivo y sin
+`received_at`. Ausente = todos; un valor distinto de `true`/`false` → 400. `pendingReceipt` es el
+nombre viejo y se acepta igual. `CountExpenses` usa el mismo `where`.
 
 ### `POST /expenses` (existente, cambia)
 
@@ -30,16 +31,22 @@ Permiso `inventory.receive`. El conjunto deseado de renglones de almacén del ga
 ```json
 {
   "lines": [
-    { "id": 41, "seenApplied": "36000", "ingredientId": 7, "quantity": "3", "presentationId": 2, "amount": "540.00" },
-    { "ingredientId": 9, "quantity": "2", "unitId": 2, "amount": "90.00" }
+    { "id": 41, "seenApplied": "36000", "itemType": "ingrediente", "ingredientId": 7, "description": "Leche",
+      "quantity": "3", "received": "3", "notComing": "0", "presentationId": 2, "amount": "540.00" },
+    { "itemType": "ingrediente", "ingredientId": 9, "description": "Azúcar", "quantity": "2",
+      "received": "0", "unitId": 2, "amount": "90.00", "isGift": false }
   ]
 }
 ```
 
-- Un renglón con `id` se corrige; sin `id` se agrega; un `id` existente que no viene se quita.
+- `quantity` es lo pedido, `received` lo que llegó (0 = llega después) y `notComing` lo que ya no va
+  a llegar, las tres en la unidad del renglón. Lo que no llegó ni se cerró queda en «Por recibir».
+- Un renglón con `id` se corrige; sin `id` se agrega; un `id` existente que no viene se quita (lo
+  que sumó se revierte con un movimiento y el renglón se marca, no se borra).
 - `seenApplied` es obligatorio en los renglones con `id`; si ya no es lo aplicado → 409.
-- Respuesta 200: el gasto con sus renglones, y por renglón `applied` (unidad base) y la unidad.
-- Un gasto anulado → 409. Un gasto sin recibir → los renglones se guardan sin tocar el almacén.
+- Respuesta 200: el detalle del gasto; por renglón `applied` y `baseUnitCode` (lo sumado, en unidad
+  base), `notComing`, `isGift` y `presentationId`. Los renglones quitados no se listan.
+- Un gasto anulado → 409. Los importes siguen las reglas de `POST /expenses` (FR-004a).
 
 ### `GET /stock/pending-receipts` (nuevo)
 
@@ -68,8 +75,8 @@ pendiente en la compra, fija `received_at`.
 
 ### `POST /expenses/{id}/cancel` (existente, cambia)
 
-Un gasto recibido se anula si todo lo aplicado es 0 (se revierte antes con `stock-lines` vacío; la
-pantalla hace los dos pasos con una sola confirmación). Si queda algo aplicado → 409.
+Un gasto recibido se anula en un solo paso: el servidor revierte lo que cada renglón sumó con
+movimientos nuevos y anula el gasto en la misma transacción. Nunca se borra un movimiento.
 
 ## Presentaciones
 

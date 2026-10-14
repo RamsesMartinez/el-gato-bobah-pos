@@ -39,13 +39,6 @@ values ($1, $2, $3, $4, coalesce(sqlc.narg('track_stock')::boolean, true), coale
 -- reportaba track_stock=false cuando en la base había quedado true.
 returning id, name, base_unit_id, is_active, track_stock, is_packaging, min_stock, current_cost;
 
--- name: UpdateIngredient :one
-update ingredients
-set name = $2, base_unit_id = $3, category_id = $4, min_stock = $5,
-    track_stock = $6, is_packaging = $7, is_active = $8, updated_at = now()
-where id = $1
-returning id, name, base_unit_id, is_active;
-
 -- name: GetIngredientUnit :one
 -- El kind y el factor de la unidad base de un artículo: lo que domain.BaseQty necesita para
 -- decidir si la unidad de compra es convertible.

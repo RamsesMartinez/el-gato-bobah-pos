@@ -612,3 +612,23 @@ func TestAnItemWithoutCostSaysSoInsteadOfZero(t *testing.T) {
 		}
 	}
 }
+
+// Una compra anulada deja su entrada y su reversión (spec 038): no es una compra. Contarla sacaría
+// el insumo de «sin compras» y abriría completa la sección de negativos con nada comprado.
+func TestACancelledPurchaseDoesNotCountAsBought(t *testing.T) {
+	t.Parallel()
+	k := newHealthKit(t)
+	k.sell(t, line(k.cafe, "1"))
+	if _, err := k.st.Pool.Exec(context.Background(), `
+		insert into stock_movements (item_type, ingredient_id, movement_type, quantity, created_at)
+		values ('ingrediente', $1, 'compra', 1000, '2026-07-02'), ('ingrediente', $1, 'compra', -1000, '2026-07-03')`, k.azucar); err != nil {
+		t.Fatal(err)
+	}
+	v := reportAsApp(t, k.st, julio())
+	if v.NoPurchases.Total != 2 {
+		t.Errorf("sin compras = %d; quiere 2: la compra de azúcar se anuló", v.NoPurchases.Total)
+	}
+	if !v.NegativeStock.Collapsed {
+		t.Error("con la única compra anulada, la sección de negativos sigue abriendo resumida")
+	}
+}

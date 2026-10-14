@@ -3,6 +3,8 @@ package domain
 import (
 	"errors"
 	"testing"
+
+	"github.com/shopspring/decimal"
 )
 
 // Longitud (spec 038) usa el mismo camino que peso y volumen: mismo tipo multiplica, otro tipo se
@@ -120,6 +122,71 @@ func TestParseCostingMethod(t *testing.T) {
 	for _, bad := range []string{"", "fifo", "LAST"} {
 		if _, err := ParseCostingMethod(bad); !errors.Is(err, ErrValidation) {
 			t.Errorf("%q debió rechazarse: %v", bad, err)
+		}
+	}
+}
+
+func TestPlanStockLines(t *testing.T) {
+	gram := PurchaseUnit{Kind: "masa", ToBase: decimal.NewFromInt(1), BaseKind: "masa"}
+	bulto := decimal.NewFromInt(25000)
+	pack := PurchaseUnit{Kind: "pieza", ToBase: decimal.NewFromInt(1), BaseKind: "masa", PackQtyInBase: &bulto}
+	d := decimal.RequireFromString
+	tests := []struct {
+		name    string
+		lines   []StockLineState
+		deltas  map[int64]string
+		pending bool
+	}{
+		{"sin renglones es pendiente: un gasto sin mercancía no queda recibido", nil, map[int64]string{}, true},
+		{"llegó todo en empaques: suma en base", []StockLineState{{ID: 1, IngredientID: 7, Unit: pack, Ordered: d("2"), Received: d("2")}},
+			map[int64]string{1: "50000"}, false},
+		{"reenviar lo mismo no mueve nada", []StockLineState{{ID: 1, IngredientID: 7, Unit: pack, Ordered: d("2"), Received: d("2"), Applied: d("50000")}},
+			map[int64]string{}, false},
+		{"llegó menos que lo aplicado: resta la diferencia y queda pendiente", []StockLineState{{ID: 1, IngredientID: 7, Unit: pack, Ordered: d("3"), Received: d("2"), Applied: d("75000")}},
+			map[int64]string{1: "-25000"}, true},
+		{"lo que ya no va a llegar no deja pendiente", []StockLineState{{ID: 1, IngredientID: 7, Unit: gram, Ordered: d("1000"), Received: d("600"), NotComing: d("400")}},
+			map[int64]string{1: "600"}, false},
+		{"llegó de más: suma lo que llegó", []StockLineState{{ID: 1, IngredientID: 7, Unit: gram, Ordered: d("1000"), Received: d("1200")}},
+			map[int64]string{1: "1200"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			moves, pending, err := PlanStockLines(tt.lines)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if pending != tt.pending {
+				t.Errorf("pending = %v; quiere %v", pending, tt.pending)
+			}
+			if len(moves) != len(tt.deltas) {
+				t.Fatalf("movimientos = %v; quiere %v", moves, tt.deltas)
+			}
+			for _, m := range moves {
+				if !m.Delta.Equal(d(tt.deltas[m.ID])) {
+					t.Errorf("renglón %d: delta %s; quiere %s", m.ID, m.Delta, tt.deltas[m.ID])
+				}
+			}
+		})
+	}
+	t.Run("ordenado por insumo para que dos escrituras no se esperen en ciclo", func(t *testing.T) {
+		moves, _, _ := PlanStockLines([]StockLineState{
+			{ID: 1, IngredientID: 9, Unit: gram, Ordered: d("1"), Received: d("1")},
+			{ID: 2, IngredientID: 3, Unit: gram, Ordered: d("1"), Received: d("1")},
+		})
+		if moves[0].IngredientID != 3 {
+			t.Errorf("primero el insumo %d; quiere 3", moves[0].IngredientID)
+		}
+	})
+}
+
+func TestValidStockItemLabel(t *testing.T) {
+	for in, ok := range map[string]bool{
+		"artículo": true, "  insumo  ": true, "": false, "   ": false,
+		"veinte letras exacto": true, "veintiuna letras exac": false,
+	} {
+		_, err := ValidStockItemLabel(in)
+		if (err == nil) != ok {
+			t.Errorf("%q: err = %v; quiere ok=%v", in, err, ok)
 		}
 	}
 }
