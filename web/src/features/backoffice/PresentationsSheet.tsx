@@ -8,6 +8,7 @@ import { backofficeApi, type Presentation, type PresentationBody, type Unit } fr
 import { ApiError } from '../../api/client';
 import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
 import { round2 } from '../../domain/numeros';
+import { CountPlaceField } from './CountPlaceField';
 
 // «Cómo llega» un insumo (spec 038, maqueta «Cómo llega un insumo», opción B): sus empaques de
 // compra. Cada empaque se captura con número Y unidad, y se ve su equivalencia antes de guardar:
@@ -18,6 +19,9 @@ export interface PresentationsIngredient {
   name: string;
   baseUnitCode: string;
   baseUnitKind: string;
+  // Con él, la hoja deja cambiar el lugar del insumo (lo hace quien configura el almacén); sin él,
+  // como desde la captura de una compra, no se ofrece.
+  countPlace?: string | null;
 }
 
 interface Props {
@@ -117,6 +121,7 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, usedName
         <DrawerHeader pb={1}>
           <Text fontSize="lg" fontWeight="700">Cómo llega {ingredient.name}</Text>
           <Text fontSize="sm" color="fg.muted">Se cuenta en {formatBaseQty(1, ingredient.baseUnitCode).replace(/^1 /, '')}</Text>
+          {ingredient.countPlace !== undefined && <CountPlaceField ingredientId={ingredient.id} place={ingredient.countPlace} />}
         </DrawerHeader>
         <DrawerBody flex="1" minH={0} overflowY="auto" pb={2}>
           <Stack gap={2}>

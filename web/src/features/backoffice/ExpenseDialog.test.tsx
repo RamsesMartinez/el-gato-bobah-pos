@@ -28,11 +28,12 @@ const back = vi.hoisted(() => ({
   createSupplier: vi.fn(),
   parseDoc: vi.fn(),
   suggestArticles: vi.fn(),
+  lastClosedCount: vi.fn(),
 }));
 const pos = vi.hoisted(() => ({
   paymentMethods: vi.fn(() => Promise.resolve({ items: [] })),
   cashStatus: vi.fn(() => Promise.resolve({ open: false })),
-  businessSettings: vi.fn(() => Promise.resolve({ stockItemLabel: 'artículo' })),
+  businessSettings: vi.fn(() => Promise.resolve({ stockItemLabel: 'artículo', timezone: 'America/Mexico_City' })),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 vi.mock('../../api/pos', () => ({ posApi: pos }));
@@ -84,7 +85,8 @@ beforeEach(() => {
   ] });
   back.createExpense.mockResolvedValue({ id: 99 });
   back.createIngredient.mockResolvedValue({ id: 50, name: 'Canela' });
-  pos.businessSettings.mockResolvedValue({ stockItemLabel: 'artículo' });
+  back.lastClosedCount.mockResolvedValue({ closedAt: null });
+  pos.businessSettings.mockResolvedValue({ stockItemLabel: 'artículo', timezone: 'America/Mexico_City' });
 });
 // Las hojas dejan en `body` el bloqueo de scroll y el `aria-hidden` de lo que tapan; sin limpiarlo,
 // la prueba siguiente nace con su diálogo oculto.
@@ -225,8 +227,27 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
     expect(screen.queryAllByTestId('renglon')).toHaveLength(0);
   });
 
+  test('una compra con fecha anterior al último conteo avisa', async () => {
+    // La fecha de la compra arranca hoy; un conteo «cerrado» después de hoy la deja antes.
+    back.lastClosedCount.mockResolvedValue({ closedAt: '2099-01-01T18:00:00Z' });
+    montar();
+    click(/Capturar sin ticket/);
+    click('Sí');
+    expect(await screen.findByText(/Esta compra es de antes del último conteo/)).toBeInTheDocument();
+  });
+
+  test('una compra posterior al último conteo no avisa', async () => {
+    back.lastClosedCount.mockResolvedValue({ closedAt: '2000-01-01T18:00:00Z' });
+    montar();
+    click(/Capturar sin ticket/);
+    click('Sí');
+    await screen.findByRole('button', { name: /Agregar artículo/ });
+    await waitFor(() => expect(back.lastClosedCount).toHaveBeenCalled());
+    expect(screen.queryByText(/de antes del último conteo/)).toBeNull();
+  });
+
   test('la palabra del almacén es la de la empresa', async () => {
-    pos.businessSettings.mockResolvedValue({ stockItemLabel: 'insumo' });
+    pos.businessSettings.mockResolvedValue({ stockItemLabel: 'insumo', timezone: 'America/Mexico_City' });
     montar();
     click(/Capturar sin ticket/);
     click('Sí');

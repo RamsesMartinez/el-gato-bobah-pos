@@ -207,7 +207,8 @@ select i.id, i.name, i.is_active, i.track_stock, i.is_packaging, i.min_stock,
        i.current_cost, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
        ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
        i.is_prep, i.composition_status,
-       (select count(*) from recipe_items ri where ri.ingredient_id = i.id)::int as recipe_uses
+       (select count(*) from recipe_items ri where ri.ingredient_id = i.id)::int as recipe_uses,
+       i.count_place
 from ingredients i
 join units u on u.id = i.base_unit_id
 left join ingredient_categories ic on ic.id = i.category_id
@@ -232,6 +233,7 @@ type ListIngredientsRow struct {
 	IsPrep            bool             `json:"is_prep"`
 	CompositionStatus *string          `json:"composition_status"`
 	RecipeUses        int32            `json:"recipe_uses"`
+	CountPlace        *string          `json:"count_place"`
 }
 
 // Existencias de la sucursal (0076): sin el filtro, con dos sucursales cada insumo saldría dos
@@ -261,6 +263,7 @@ func (q *Queries) ListIngredients(ctx context.Context, onlyActive *bool) ([]List
 			&i.IsPrep,
 			&i.CompositionStatus,
 			&i.RecipeUses,
+			&i.CountPlace,
 		); err != nil {
 			return nil, err
 		}

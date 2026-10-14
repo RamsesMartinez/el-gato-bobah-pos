@@ -3,9 +3,9 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from '../../components/ui/provider';
 import type { Presentation, Unit } from '../../api/backoffice';
-import { PresentationsSheet } from './PresentationsSheet';
+import { PresentationsSheet, type PresentationsIngredient } from './PresentationsSheet';
 
-const back = vi.hoisted(() => ({ createPresentation: vi.fn(), updatePresentation: vi.fn() }));
+const back = vi.hoisted(() => ({ createPresentation: vi.fn(), updatePresentation: vi.fn(), setCountPlace: vi.fn() }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 
 const units: Unit[] = [
@@ -22,7 +22,7 @@ const pres = (over: Partial<Presentation>): Presentation => ({
   id: 1, ingredientId: 10, name: 'Caja', qtyInBase: '12000', baseUnitCode: 'ml', active: true, approximate: false, purchaseUnitId: null, ...over,
 });
 
-function montar(ingredient = leche, presentations: Presentation[] = [], usedNames = ['Caja', 'Bolsa', 'Bulto']) {
+function montar(ingredient: PresentationsIngredient = leche, presentations: Presentation[] = [], usedNames = ['Caja', 'Bolsa', 'Bulto']) {
   const onClose = vi.fn();
   render(
     <Provider>
@@ -102,5 +102,22 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
     const row = (await screen.findByText('Caja · 12 L')).closest('[data-row]') as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: 'Ya no llega así' }));
     await waitFor(() => expect(back.updatePresentation).toHaveBeenCalledWith(1, { name: 'Caja', qty: '12', unitId: 7, approximate: false, active: false }));
+  });
+});
+
+describe('lugar para contar (spec 038)', () => {
+  test('desde Almacén se cambia el lugar; vacío lo quita', async () => {
+    back.setCountPlace.mockResolvedValue(undefined);
+    montar({ ...leche, countPlace: 'Barra' });
+    const input = await screen.findByLabelText('Lugar para contar');
+    expect(input).toHaveValue('Barra');
+    fireEvent.change(input, { target: { value: '  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar lugar' }));
+    await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(10, null));
+  });
+  test('desde la captura de una compra no se ofrece', async () => {
+    montar();
+    await screen.findByRole('dialog');
+    expect(screen.queryByLabelText('Lugar para contar')).toBeNull();
   });
 });

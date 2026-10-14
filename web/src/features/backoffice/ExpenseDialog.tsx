@@ -26,6 +26,7 @@ import {
 import { montoTecleado, parseNumero, round2 } from '../../domain/numeros';
 import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
 import { PresentationsSheet } from './PresentationsSheet';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
 // Alta de una compra (spec 038, maqueta «Captura de una compra», opción C: primero el ticket).
 //
@@ -114,6 +115,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   // El catálogo completo, una sola vez: el picker filtra en local (buscar no debe costar un
   // round-trip por tecla en un tablet).
   const { data: articles } = useQuery({ queryKey: ['articles'], queryFn: () => backofficeApi.searchArticles(''), enabled: open });
+  const { data: lastCount } = useQuery({ queryKey: ['stock', 'count', 'last-closed'], queryFn: backofficeApi.lastClosedCount, enabled: open });
+  const hora = useHoraDelNegocio();
 
   const [step, setStep] = useState<Step>('start');
   const [withGoods, setWithGoods] = useState(true);
@@ -435,6 +438,14 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 </HStack>
               )}
               {parsed && <DocSummary parsed={parsed} />}
+              {/* Lo que llegó antes del último conteo ya pudo contarse: entra igual (Assumptions del
+                  spec 038), pero quien registra tarde tiene que saberlo. */}
+              {withGoods && lastCount?.closedAt && expenseDate < hora.diaDelNegocio(lastCount.closedAt) && (
+                <Warn>
+                  Esta compra es de antes del último conteo ({hora.soloFecha(lastCount.closedAt)}). Si ya estaba en el
+                  anaquel cuando se contó, marca sus renglones como «Llega después» o se sumará dos veces.
+                </Warn>
+              )}
 
               {/* ---- Renglones ---- */}
               {withGoods && (

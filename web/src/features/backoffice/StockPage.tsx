@@ -14,10 +14,11 @@ import { InventoryHealthTab } from './InventoryHealthTab';
 import { PresentationsSheet, type PresentationsIngredient } from './PresentationsSheet';
 import { formatBaseQty } from '../../shared/units';
 import { PendingReceiptsTab } from './PendingReceiptsTab';
+import { StockCountTab } from './StockCountTab';
 import { posApi } from '../../api/pos';
 
 // El orden lo fijó el plan del 038: Existencias · Movimientos · Insumos · Por recibir · Conteo · Salud.
-const TABS = ['existencias', 'movimientos', 'insumos', 'por-recibir', 'salud'] as const;
+const TABS = ['existencias', 'movimientos', 'insumos', 'por-recibir', 'conteo', 'salud'] as const;
 type Tab = (typeof TABS)[number];
 
 export function StockPage() {
@@ -30,6 +31,7 @@ export function StockPage() {
   // Cómo llega cada insumo (spec 038): lo ve quien registra compras y lo cambia quien configura.
   const canReceive = can('inventory.receive', user);
   const canConfigure = can('inventory.configure', user);
+  const canCount = can('inventory.count', user);
   const presentations = useQuery({ queryKey: ['presentations'], queryFn: backofficeApi.presentations, enabled: canReceive });
   const units = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units, enabled: canReceive });
   const [packaging, setPackaging] = useState<PresentationsIngredient | null>(null);
@@ -39,7 +41,7 @@ export function StockPage() {
   // ?tab=insumos&open=N. Un valor desconocido cae a la primera pestaña, nunca a una que no existe.
   const [params, setParams] = useSearchParams();
   const asked = params.get('tab') as Tab | null;
-  const allowed = (t: Tab) => (t !== 'salud' || canHealth) && (t !== 'por-recibir' || canReceive);
+  const allowed = (t: Tab) => (t !== 'salud' || canHealth) && (t !== 'por-recibir' || canReceive) && (t !== 'conteo' || canCount);
   const tab: Tab = asked && TABS.includes(asked) && allowed(asked) ? asked : 'existencias';
   const settings = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const pending = useQuery({ queryKey: ['stock', 'pending-receipts'], queryFn: backofficeApi.pendingReceipts, enabled: canReceive });
@@ -72,6 +74,7 @@ export function StockPage() {
               Por recibir{pending.data && pending.data.length > 0 ? ` · ${pending.data.length}` : ''}
             </Tabs.Trigger>
           )}
+          {canCount && <Tabs.Trigger value="conteo" minH="44px">Conteo</Tabs.Trigger>}
           {canHealth && <Tabs.Trigger value="salud" minH="44px">Salud</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
@@ -143,7 +146,7 @@ export function StockPage() {
                             </Box>
                             {canConfigure && (
                               <Button aria-label={`Cómo llega ${i.name}`} size="sm" variant="outline" minH="44px" flexShrink={0}
-                                onClick={() => setPackaging({ id: i.id, name: i.name, baseUnitCode: i.baseUnitCode, baseUnitKind: i.baseUnitKind })}>
+                                onClick={() => setPackaging({ id: i.id, name: i.name, baseUnitCode: i.baseUnitCode, baseUnitKind: i.baseUnitKind, countPlace: i.countPlace ?? null })}>
                                 {on.length ? 'Cambiar ›' : '+ Agregar'}
                               </Button>
                             )}
@@ -168,6 +171,11 @@ export function StockPage() {
         {canReceive && (
           <Tabs.Content value="por-recibir" px={0} flex="1" minH={0} overflowY="auto">
             {tab === 'por-recibir' && <PendingReceiptsTab />}
+          </Tabs.Content>
+        )}
+        {canCount && (
+          <Tabs.Content value="conteo" px={0} flex="1" minH={0} display="flex" flexDirection="column">
+            {tab === 'conteo' && <StockCountTab />}
           </Tabs.Content>
         )}
         {canHealth && (

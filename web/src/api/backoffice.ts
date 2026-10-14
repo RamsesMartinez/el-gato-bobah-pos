@@ -506,6 +506,8 @@ export interface Ingredient {
   compositionStatus?: '' | 'estimated' | 'confirmed';
   // En cuántas recetas aparece: los más usados van arriba en el buscador.
   recipeUses?: number;
+  // Dónde está, para ordenar el conteo (spec 038).
+  countPlace?: string | null;
   category: string | null;
   onHand: string;
 }
@@ -660,6 +662,25 @@ export interface PendingReceipt {
   unitCode: string | null;
   baseUnitCode: string | null;
 }
+// Conteo (spec 038). A ciegas: lo que el sistema tiene no viene mientras se cuenta.
+export interface CountItem {
+  ingredientId: number;
+  name: string;
+  place: string | null;
+  baseUnitCode: string;
+  presentations: { name: string; qtyInBase: string }[];
+  countedQty: string | null; // null = no contado
+}
+export interface StockCount {
+  id: number;
+  openedAt: string;
+  items: CountItem[];
+}
+export interface CountClose {
+  adjusted: { ingredientId: number; name: string; baseUnitCode: string; system: string; counted: string; delta: string }[];
+  notCounted: { ingredientId: number; name: string }[];
+}
+
 // «Llegó algo más»: un renglón que no venía y ya llegó. Con `isGift`, `amount` va en 0.
 export interface ArrivedItemBody {
   itemType: ItemType;
@@ -892,6 +913,18 @@ export const backofficeApi = {
   markNotComing: (expenseId: number, itemId: number, qty: string) =>
     api.post<void>(`/expenses/${expenseId}/items/${itemId}/not-coming`, { qty }),
   addArrivedItem: (expenseId: number, b: ArrivedItemBody) => api.post<void>(`/expenses/${expenseId}/items`, b),
+  // Conteo (spec 038). Las cifras van en la unidad base del insumo.
+  // null sin conteo abierto (204): TanStack Query no acepta `undefined` como dato.
+  currentCount: () => api.get<StockCount | undefined>('/stock/counts/current').then((c) => c ?? null),
+  openCount: () => api.post<StockCount>('/stock/counts', {}),
+  captureCount: (id: number, ingredientId: number, countedQty: string) =>
+    api.put<void>(`/stock/counts/${id}/lines/${ingredientId}`, { countedQty }),
+  uncaptureCount: (id: number, ingredientId: number) => api.del<void>(`/stock/counts/${id}/lines/${ingredientId}`),
+  previewCount: (id: number) => api.get<CountClose>(`/stock/counts/${id}/preview`),
+  closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),
+  discardCount: (id: number) => api.post<void>(`/stock/counts/${id}/discard`, {}),
+  lastClosedCount: () => api.get<{ closedAt: string | null }>('/stock/counts/last-closed'),
+  setCountPlace: (ingredientId: number, place: string | null) => api.put<void>(`/stock/ingredients/${ingredientId}/place`, { place }),
 
   // Extracción del documento → borrador. NO escribe nada: el operador confirma.
   parseDoc: (file: File) => {
