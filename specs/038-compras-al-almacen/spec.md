@@ -35,6 +35,7 @@ conteo, y desde ese conteo cada compra suma y cada venta resta.
 - Q (maquetas, 14-oct): ¿cómo se captura una compra? → A: Primero el ticket (opción C de la maqueta); sin ticket, «Capturar sin ticket» lleva a la captura a mano, que sirve también para un gasto sin mercancía. Cada renglón leído se puede cambiar, y uno dudoso no suma hasta confirmarlo, sin bloquear el guardado.
 - Q (mismas maquetas): ¿qué reglas de dinero tiene una compra? → A: Cada renglón de mercancía lleva su importe, y la suma de los renglones no puede pasar del total pagado; lo que falta para el total queda como «otros» del gasto (envío, bolsa).
 - Q (maquetas, 14-oct): a veces se paga antes y el proveedor entrega después, o por partes, ¿cómo se registra? → A: Dos flujos. **Compra rápida**: todo llegó y suma al guardar. **Por recibir**: cada renglón puede quedar «Llega después»; una lista en Almacén junta lo pendiente de todas las compras, y al llegar se dice cuánto llegó (puede ser por partes). Lo que ya no llegará se marca «Ya no va a llegar». El total pagado nunca cambia por esto; una devolución de dinero es del pago, fuera de este spec. Las órdenes de compra completas (pedir antes de pagar, autorizar) siguen fuera.
+- Q (maquetas, 14-oct): al llegar el proveedor ofrece algo y se compra de más, o regala algo, ¿cómo se registra? → A: Al recibir, lo que llega de más de lo que faltaba se acepta con su importe; «Llegó algo más» agrega a la misma compra otro producto con su importe; un regalo entra con importe 0 marcado «regalo». Lo pagado de más sube el total de esa compra; el regalo no cambia el total ni el costo del insumo. «Por recibir» queda agrupado por compra con un buscador por artículo.
 - Q: Al cerrar un conteo, ¿qué pasa con los insumos que nadie contó? → A: Se quedan como estaban; solo cambia lo contado. Salud los sigue señalando y se pueden contar después.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -84,6 +85,9 @@ suma y aparece en «Por recibir»; recibir 2 cajas (suma 24 L, queda 1 pendiente
 3. **Given** un renglón pendiente, **When** se marca «Ya no va a llegar», **Then** sale de la lista, no suma nada y el total pagado no cambia.
 4. **Given** dos tabletas recibiendo el mismo renglón a la vez, **When** las dos guardan, **Then** la segunda recibe un aviso con lo que ya se recibió; nunca se suma dos veces.
 5. **Given** una compra con todo recibido o cerrado, **When** se ve en Gastos, **Then** ya no dice «con pendientes».
+6. **Given** 3 cajas pendientes, **When** llegan 4 y la cuarta se paga en ese momento ($180), **Then** suman 48 L y el total pagado de la compra sube $180.
+7. **Given** una compra en recepción, **When** se agrega «Llegó algo más» con un producto que no estaba y su importe, **Then** suma a lo guardado y el total pagado sube por ese importe.
+8. **Given** un regalo del proveedor, **When** se agrega como «regalo», **Then** suma a lo guardado, el total pagado no cambia y el costo del insumo tampoco.
 
 ---
 
@@ -197,7 +201,8 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-007**: Un gasto recibido antes de esta feature MUST NOT recalcularse ni reconstruirse.
 - **FR-007a**: Cada renglón de mercancía MUST tener uno de tres estados: llegó (con lo recibido), llega después (pendiente) o ya no va a llegar (cerrado). Recibir MUST poder hacerse por partes y en días distintos; cada parte suma con su fecha.
 - **FR-007b**: El sistema MUST mostrar una lista «Por recibir» con lo pendiente de todas las compras de la sucursal, y en Gastos MUST poder filtrarse «Con pendientes».
-- **FR-007c**: Ningún cambio de estado de un renglón MUST cambiar el total pagado del gasto.
+- **FR-007c**: Cambiar el estado de un renglón (llegó, llega después, ya no va a llegar) MUST NOT cambiar el total pagado.
+- **FR-007d**: Al recibir MUST aceptarse más de lo que faltaba, y MUST poder agregarse a la misma compra algo que no estaba («Llegó algo más»). Lo que se paga de más lleva su importe y sube el total pagado de esa compra por ese importe; un regalo entra con importe 0 marcado «regalo», no cambia el total y no cambia el costo del insumo (es la única excepción a FR-004a).
 
 **Presentaciones (Historia 2)**
 

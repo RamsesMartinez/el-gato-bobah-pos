@@ -44,9 +44,16 @@ Siempre arreglo, aunque vacío.
 
 ### `POST /expenses/{id}/items/{itemId}/receive` (nuevo)
 
-Permiso `inventory.receive`. `{ "qty": "2", "seenApplied": "0" }` en la unidad del renglón
-(empaque o unidad). Suma la parte; si pasa de lo que falta → 400; si `seenApplied` ya no es lo
-aplicado → 409 con lo ya recibido.
+Permiso `inventory.receive`. `{ "qty": "2", "seenApplied": "0", "extraAmount": null }` en la
+unidad del renglón (empaque o unidad). Suma la parte. Si pasa de lo que falta, `extraAmount` es
+obligatorio (> 0): lo extra sube la cantidad y el importe del renglón y el total de la compra. Si
+`seenApplied` ya no es lo aplicado → 409 con lo ya recibido.
+
+### `POST /expenses/{id}/items` (nuevo)
+
+Permiso `inventory.receive`. «Llegó algo más»: `{ "ingredientId", "quantity", "presentationId" |
+"unitId", "amount", "isGift": false }`. Llega ya recibido: suma al guardarse. Con `isGift`, `amount`
+debe ser 0 y no cambia el total; sin él, `amount > 0` y el total de la compra sube por ese importe.
 
 ### `POST /expenses/{id}/items/{itemId}/close` (nuevo)
 

@@ -74,6 +74,15 @@ símbolos citados son de `develop` en `c33f50e`.
   si ya no coincide, 409 con lo ya recibido.
 - **Alternativa descartada:** órdenes de compra (pedir antes de pagar, autorizar, comparar): fuera
   de alcance por decisión del dueño; esto cubre «se pagó antes y llega después» sin ellas.
+- **Extras al recibir (dueño, 14-oct):** recibir más de lo que faltaba sube `quantity` del renglón
+  por lo extra y su `amount` por el importe extra; «Llegó algo más» inserta un renglón nuevo en la
+  misma compra; los dos suben `expenses.amount` en la misma transacción, con evento
+  `expense.stock_corrected` (que ya guarda el antes y el después). Un regalo es un renglón con
+  `amount = 0` e `is_gift = true`: el check de importe > 0 lo exime, y `NextIngredientCost` no lo
+  toma (R4 ya excluía el importe 0).
+- **El total de la compra puede subir después de pagada:** el pago registrado (`expense_payments`)
+  no cambia; la diferencia queda como saldo pendiente con el proveedor, igual que un gasto que se
+  paga después. Cómo se liquida es del pago a proveedores, fuera de alcance.
 
 ## R3. Presentaciones: una tabla por insumo, copiada al renglón
 
