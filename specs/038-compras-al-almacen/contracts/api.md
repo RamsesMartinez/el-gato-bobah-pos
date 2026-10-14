@@ -98,7 +98,7 @@ Permiso `inventory.count`.
 
 `countedQty` negativo, NaN o fuera de `MaxStockQty` → 400.
 
-`GET /stock/counts/last-closed` (permiso `inventory.receive` o `inventory.count`): `{ "closedAt":
+`GET /stock/counts/last-closed` (permiso `inventory.receive`: lo usa la captura de compras; `RequirePermission` acepta un solo permiso): `{ "closedAt":
 "2026-10-14T07:55:00-06:00" }` del último conteo cerrado de la sucursal, o `{ "closedAt": null }`.
 La captura lo usa para avisar cuando la fecha del gasto es anterior (Assumptions del spec).
 
