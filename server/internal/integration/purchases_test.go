@@ -552,3 +552,23 @@ func TestTwoWeightedPurchasesAtOnceNeverLoseOne(t *testing.T) {
 		}
 	}
 }
+
+// Defecto encontrado al implementar el conteo: `ValidQty` rechaza el cero, y «Llega después» manda
+// recibido 0. Corregir un renglón a «todavía no llega» respondía 400.
+func TestCorrectingALineToNotArrivedYet(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	id, err := k.svc.CreateExpense(k.ctx, k.bultos("2", "1000"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, applied := k.itemOf(t, id)
+	later := app.StockLineInput{ID: &item, SeenApplied: &applied, ItemType: "ingrediente", IngredientID: &k.azucar,
+		Quantity: dd("2"), Received: dd("0"), PresentationID: &k.bulto, Amount: dd("1000"), Description: "Azúcar"}
+	if _, err := k.svc.SaveStockLines(k.ctx, id, []app.StockLineInput{later}, k.user); err != nil {
+		t.Fatalf("«Llega después» = %v; quiere aceptarlo", err)
+	}
+	if got := k.onHand(t); !got.IsZero() {
+		t.Errorf("lo guardado = %s; quiere 0 (no ha llegado)", got)
+	}
+}

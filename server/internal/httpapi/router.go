@@ -415,6 +415,18 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Leerlos es de quien registra compras; cambiarlos, de quien configura el almacén.
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/presentations", h.ListPresentations)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/pending-receipts", h.PendingReceipts)
+					// Conteo (spec 038): por permiso. El último cierre lo lee la captura de compras.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/counts/last-closed", h.LastClosedCount)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryCount)).Group(func(r chi.Router) {
+						r.Get("/counts/current", h.CurrentCount)
+						r.Post("/counts", h.OpenCount)
+						r.Put("/counts/{id}/lines/{ingredientId}", h.CaptureCount)
+						r.Delete("/counts/{id}/lines/{ingredientId}", h.UncaptureCount)
+						r.Get("/counts/{id}/preview", h.PreviewCount)
+						r.Post("/counts/{id}/close", h.CloseCount)
+						r.Post("/counts/{id}/discard", h.DiscardCount)
+					})
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/ingredients/{id}/place", h.SetCountPlace)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/ingredients/{id}/presentations", h.ListIngredientPresentations)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredients/{id}/presentations", h.CreatePresentation)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/presentations/{id}", h.UpdatePresentation)

@@ -343,7 +343,7 @@ func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, ex
 	received := domain.Round4(l.Received)
 	notComing := domain.Round4(l.NotComing)
 	if !qty.IsPositive() || !domain.ValidQty(qty, domain.MaxStockQty, false) ||
-		received.IsNegative() || !domain.ValidQty(received, domain.MaxStockQty, true) ||
+		!domain.ValidStockQtyOrZero(received) ||
 		notComing.IsNegative() || notComing.GreaterThan(qty) || l.Description == "" {
 		return domain.ErrValidation
 	}

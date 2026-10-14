@@ -121,18 +121,18 @@ Va antes de US1 porque la compra en empaque los usa.
 
 ### Tests (primero, en rojo)
 
-- [ ] T051 [P] [US3] Test table-driven de `CountAdjustment` (contado − sistema al capturar; recaptura usa la lectura nueva; ajuste 0 no inserta) en `server/internal/domain/stock_count_test.go`
-- [ ] T052 [US3] Test de integración bajo `appRoleStore` con `inTheThreeCases`: un conteo abierto por sucursal (segundo → 409 con su id); capturar guarda `system_qty`; una venta después de capturar queda restada al cerrar; no contados intactos; conteo cerrado no acepta capturas; descartar no toca lo guardado; `system_qty` no viaja mientras está abierto (a ciegas); `preview` igual a lo que hace `close`; `GET /stock/counts/last-closed` devuelve el cierre más reciente de la sucursal o `null`; ajustes ordenados por insumo, con `stock_count_id`, sucursal del conteo y quién cerró (SC-003); evento `stock.counted`, en `server/internal/integration/stock_counts_test.go`
-- [ ] T053 [P] [US3] Test del handler: cajero → 403; `GET /stock/counts/last-closed` exige `inventory.receive`; `countedQty` negativo, NaN o sobre `MaxStockQty` → 400; `PUT /stock/ingredients/{id}/place` de más de 30 → 400, en `server/internal/integration/stock_counts_http_test.go`
+- [X] T051 [P] [US3] Test table-driven de `CountAdjustment` (contado − sistema al capturar; recaptura usa la lectura nueva; ajuste 0 no inserta) en `server/internal/domain/stock_count_test.go`
+- [X] T052 [US3] Test de integración bajo `appRoleStore` con `inTheThreeCases`: un conteo abierto por sucursal (segundo → 409 con su id); capturar guarda `system_qty`; una venta después de capturar queda restada al cerrar; no contados intactos; conteo cerrado no acepta capturas; descartar no toca lo guardado; `system_qty` no viaja mientras está abierto (a ciegas); `preview` igual a lo que hace `close`; `GET /stock/counts/last-closed` devuelve el cierre más reciente de la sucursal o `null`; ajustes ordenados por insumo, con `stock_count_id`, sucursal del conteo y quién cerró (SC-003); evento `stock.counted`, en `server/internal/integration/stock_counts_test.go`
+- [X] T053 [P] [US3] Test del handler: cajero → 403; `GET /stock/counts/last-closed` exige `inventory.receive`; `countedQty` negativo, NaN o sobre `MaxStockQty` → 400; `PUT /stock/ingredients/{id}/place` de más de 30 → 400, en `server/internal/integration/stock_counts_http_test.go`
 - [ ] T054 [P] [US3] Tests de vitest del teclado numérico en pantalla (teclas ≥ 56 px, punto solo con decimales, borrar, siguiente casilla, no abre el teclado del sistema) en `web/src/components/NumericKeypad.test.tsx`
 - [ ] T055 [P] [US3] Tests de vitest del conteo (maqueta «Almacén › Conteo»): dos vistas con interruptor recordado en la tableta; agrupado por lugar; empaques con contenido; «—» y no «0» de fondo; guardar vacío no cierra; «✓ guardado»; cierre que nombra no contados, dice «sobraban/faltaban», marca diferencias grandes y nunca muestra una existencia negativa a secas; descartar con confirmación; estado cerrado visible, en `web/src/features/backoffice/StockCountTab.test.tsx`
 
 ### Implementación
 
-- [ ] T056 [US3] `CountAdjustment` en `server/internal/domain/stock_count.go` hasta que T051 pase
-- [ ] T057 [US3] Consultas en `server/queries/stock_counts.sql` (abrir, capturar, quitar, vista previa, cerrar, descartar, lista por lugar) y `count_place` en `server/queries/ingredients.sql`; `make sqlc`
-- [ ] T058 [US3] `StockCountService` en `server/internal/app/stock_counts.go` y lugar del insumo en `articles.go`, hasta que T052 pase
-- [ ] T059 [US3] Rutas de conteo con `RequirePermission(PermInventoryCount)` y `PUT /stock/ingredients/{id}/place` con `PermInventoryConfigure`, en `server/internal/httpapi/handlers_stock_counts.go` y `router.go`, hasta que T053 pase
+- [X] T056 [US3] `CountAdjustment` en `server/internal/domain/stock_count.go` hasta que T051 pase
+- [X] T057 [US3] Consultas en `server/queries/stock_counts.sql` (abrir, capturar, quitar, vista previa, cerrar, descartar, lista por lugar) y `count_place` en `server/queries/ingredients.sql`; `make sqlc`
+- [X] T058 [US3] Servicio de conteo (métodos de `BackofficeService`, que ya trae el almacén y las compras) en `server/internal/app/stock_counts.go` y lugar del insumo en `articles.go`, hasta que T052 pase
+- [X] T059 [US3] Rutas de conteo con `RequirePermission(PermInventoryCount)` y `PUT /stock/ingredients/{id}/place` con `PermInventoryConfigure`, en `server/internal/httpapi/handlers_stock_counts.go` y `router.go`, hasta que T053 pase
 - [ ] T060 [P] [US3] `NumericKeypad` en `web/src/components/NumericKeypad.tsx` hasta que T054 pase
 - [ ] T061 [US3] Pestaña «Conteo» según plan.md › Maquetas, fila «Almacén › Conteo» (las dos vistas), en `web/src/features/backoffice/StockCountTab.tsx`, y el lugar en la hoja del insumo, hasta que T055 pase; además `lastClosedCount()` en `web/src/api/backoffice.ts` y, en la captura (`ExpenseDialog.tsx`), el aviso si la fecha del gasto es anterior al último conteo cerrado, con su prueba en `ExpenseDialog.test.tsx` (venía de T030/T039)
 
