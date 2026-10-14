@@ -35,6 +35,10 @@ export const ACTION_LABELS: Record<string, string> = {
   'user.tracks_attendance_changed': 'Lleva asistencia',
   'payment.terminal_changed': 'Terminal cambiada',
   'product.consumption_mode': 'Cambió qué resta',
+  'expense.received': 'Llegó mercancía',
+  'expense.stock_corrected': 'Corrigió lo que llegó',
+  'stock.counted': 'Cerró un conteo',
+  'settings.costing_method': 'Cambió el costeo del almacén',
 };
 
 // Qué resta un producto (spec 037), con las palabras de la hoja de receta.

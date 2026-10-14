@@ -66,10 +66,28 @@ var auditActions = []struct {
 	// Qué resta un producto (spec 037). Va con los precios porque es configuración del menú: un
 	// grupo propio cambiaría la rejilla de contadores de la bitácora, pensada para la tableta.
 	{AuditProductConsumptionMode, AuditGroupPrice},
+	// Compras al almacén (spec 038). Recibir y corregir van con los demás gastos; el conteo con lo
+	// dado por perdido, que también reescribe lo guardado; el método de costeo con los precios. Ningún
+	// grupo nuevo: la rejilla de la bitácora es una disposición de tableta.
+	{AuditExpenseReceived, AuditGroupCash},
+	{AuditExpenseStockCorrected, AuditGroupCash},
+	{AuditStockCounted, AuditGroupCancel},
+	{AuditSettingsCostingMethod, AuditGroupPrice},
 }
 
 // AuditProductConsumptionMode: cambió qué resta un producto al venderse.
 const AuditProductConsumptionMode AuditAction = "product.consumption_mode"
+
+const (
+	// AuditExpenseReceived: llegó mercancía de una compra y sumó a lo guardado.
+	AuditExpenseReceived AuditAction = "expense.received"
+	// AuditExpenseStockCorrected: se corrigió, agregó, cerró o revirtió lo que llegó de una compra.
+	AuditExpenseStockCorrected AuditAction = "expense.stock_corrected"
+	// AuditStockCounted: se cerró un conteo y lo guardado quedó con lo contado.
+	AuditStockCounted AuditAction = "stock.counted"
+	// AuditSettingsCostingMethod: cambió el método de costeo o la palabra del almacén.
+	AuditSettingsCostingMethod AuditAction = "settings.costing_method"
+)
 
 // AllAuditActions devuelve la lista blanca de acciones, en orden fijo.
 func AllAuditActions() []AuditAction {

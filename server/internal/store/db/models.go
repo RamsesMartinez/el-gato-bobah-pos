@@ -709,9 +709,10 @@ func (ns NullStockMovementType) Value() (driver.Value, error) {
 type UnitKind string
 
 const (
-	UnitKindMasa    UnitKind = "masa"
-	UnitKindVolumen UnitKind = "volumen"
-	UnitKindPieza   UnitKind = "pieza"
+	UnitKindMasa     UnitKind = "masa"
+	UnitKindVolumen  UnitKind = "volumen"
+	UnitKindPieza    UnitKind = "pieza"
+	UnitKindLongitud UnitKind = "longitud"
 )
 
 func (e *UnitKind) Scan(src interface{}) error {
@@ -889,6 +890,8 @@ type BusinessSetting struct {
 	AttendanceMeasureSchedule bool               `json:"attendance_measure_schedule"`
 	AttendanceGraceInMin      int16              `json:"attendance_grace_in_min"`
 	AttendanceGraceOutMin     int16              `json:"attendance_grace_out_min"`
+	CostingMethod             string             `json:"costing_method"`
+	StockItemLabel            string             `json:"stock_item_label"`
 }
 
 type CandidatasDelAviso struct {
@@ -1046,21 +1049,26 @@ type ExpenseCategory struct {
 }
 
 type ExpenseItem struct {
-	ID            int64            `json:"id"`
-	ExpenseID     int64            `json:"expense_id"`
-	ItemType      *StockItemType   `json:"item_type"`
-	IngredientID  *int64           `json:"ingredient_id"`
-	ProductID     *int64           `json:"product_id"`
-	Description   string           `json:"description"`
-	Quantity      decimal.Decimal  `json:"quantity"`
-	UnitID        *int16           `json:"unit_id"`
-	QtyReceived   *decimal.Decimal `json:"qty_received"`
-	UnitCost      decimal.Decimal  `json:"unit_cost"`
-	Amount        decimal.Decimal  `json:"amount"`
-	PackQtyInBase *decimal.Decimal `json:"pack_qty_in_base"`
-	Position      int32            `json:"position"`
-	CreatedAt     time.Time        `json:"created_at"`
-	CompanyID     int64            `json:"company_id"`
+	ID             int64              `json:"id"`
+	ExpenseID      int64              `json:"expense_id"`
+	ItemType       *StockItemType     `json:"item_type"`
+	IngredientID   *int64             `json:"ingredient_id"`
+	ProductID      *int64             `json:"product_id"`
+	Description    string             `json:"description"`
+	Quantity       decimal.Decimal    `json:"quantity"`
+	UnitID         *int16             `json:"unit_id"`
+	QtyReceived    *decimal.Decimal   `json:"qty_received"`
+	UnitCost       decimal.Decimal    `json:"unit_cost"`
+	Amount         decimal.Decimal    `json:"amount"`
+	PackQtyInBase  *decimal.Decimal   `json:"pack_qty_in_base"`
+	Position       int32              `json:"position"`
+	CreatedAt      time.Time          `json:"created_at"`
+	CompanyID      int64              `json:"company_id"`
+	PresentationID *int64             `json:"presentation_id"`
+	AppliedQtyBase decimal.Decimal    `json:"applied_qty_base"`
+	NotComingQty   decimal.Decimal    `json:"not_coming_qty"`
+	VoidedAt       pgtype.Timestamptz `json:"voided_at"`
+	IsGift         bool               `json:"is_gift"`
 }
 
 type ExpensePayment struct {
@@ -1119,12 +1127,25 @@ type Ingredient struct {
 	CompositionStatus      *string            `json:"composition_status"`
 	CompositionConfirmedBy *int64             `json:"composition_confirmed_by"`
 	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
+	CountPlace             *string            `json:"count_place"`
 }
 
 type IngredientCategory struct {
 	ID       int64  `json:"id"`
 	Name     string `json:"name"`
 	IsActive bool   `json:"is_active"`
+}
+
+type IngredientPresentation struct {
+	ID             int64           `json:"id"`
+	CompanyID      int64           `json:"company_id"`
+	IngredientID   int64           `json:"ingredient_id"`
+	Name           string          `json:"name"`
+	QtyInBase      decimal.Decimal `json:"qty_in_base"`
+	Active         bool            `json:"active"`
+	PurchaseUnitID *int16          `json:"purchase_unit_id"`
+	IsApproximate  bool            `json:"is_approximate"`
+	CreatedAt      time.Time       `json:"created_at"`
 }
 
 type IngredientPurchaseFormat struct {
@@ -1762,6 +1783,27 @@ type SessionTerminalCount struct {
 	CreatedAt      time.Time       `json:"created_at"`
 }
 
+type StockCount struct {
+	ID        int64              `json:"id"`
+	CompanyID int64              `json:"company_id"`
+	BranchID  int64              `json:"branch_id"`
+	Status    string             `json:"status"`
+	OpenedBy  int64              `json:"opened_by"`
+	OpenedAt  time.Time          `json:"opened_at"`
+	ClosedBy  *int64             `json:"closed_by"`
+	ClosedAt  pgtype.Timestamptz `json:"closed_at"`
+}
+
+type StockCountLine struct {
+	CountID      int64           `json:"count_id"`
+	CompanyID    int64           `json:"company_id"`
+	IngredientID int64           `json:"ingredient_id"`
+	CountedQty   decimal.Decimal `json:"counted_qty"`
+	SystemQty    decimal.Decimal `json:"system_qty"`
+	CapturedBy   int64           `json:"captured_by"`
+	CapturedAt   time.Time       `json:"captured_at"`
+}
+
 type StockLevel struct {
 	ItemType     StockItemType   `json:"item_type"`
 	IngredientID *int64          `json:"ingredient_id"`
@@ -1789,6 +1831,8 @@ type StockMovement struct {
 	BranchID             int64             `json:"branch_id"`
 	ModifierOptionID     *int64            `json:"modifier_option_id"`
 	ComponentOfProductID *int64            `json:"component_of_product_id"`
+	ExpenseItemID        *int64            `json:"expense_item_id"`
+	StockCountID         *int64            `json:"stock_count_id"`
 }
 
 type Supplier struct {

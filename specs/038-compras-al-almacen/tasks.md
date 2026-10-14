@@ -10,8 +10,8 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirmar la infraestructura del worktree (`make worktree-env n=37` ya hecho; `make start`) y restaurar la copia de producción con `make db-restaurar`; anotar en research.md cuántos `expense_items` tienen importe 0 (decide si el check de la 0092 entra `not valid`)
-- [ ] T002 Crear `server/queries/purchases.sql` y `server/queries/stock_counts.sql` con su encabezado y confirmar que `make sqlc` corre limpio
+- [X] T001 Confirmar la infraestructura del worktree (`make worktree-env n=37` ya hecho; `make start`) y restaurar la copia de producción con `make db-restaurar`; anotar en research.md cuántos `expense_items` tienen importe 0 (decide si el check de la 0092 entra `not valid`)
+- [X] T002 Crear `server/queries/purchases.sql` y `server/queries/stock_counts.sql` con su encabezado y confirmar que `make sqlc` corre limpio
 
 ---
 
@@ -19,20 +19,20 @@
 
 ### Tests (primero, en rojo)
 
-- [ ] T003 [P] Test de integración de la migración 0091 (`longitud` existe en `unit_kind`; su Down lo deja y no truena) y de la 0092 sobre la copia restaurada con dos empresas: índices `ingredients_tenant_key` y `expense_items_tenant_key`; FK compuestas que rechazan cruzar empresas como owner (`presentation_id`, `count_id`, `expense_item_id`, `stock_count_id`); trigger de presentaciones (pieza entera, aproximado, nombre de unidad); checks de `is_gift`, `not_coming_qty`, `count_place`, `stock_item_label`; el Down se niega con datos, en `server/internal/integration/migration_0092_test.go`
-- [ ] T004 [P] Test de que las tres tablas nuevas entran a `TestEveryCompanyTableIsIsolated` (RLS, política con `nullif`, grants de `gatobobah_app` sin `delete`), en `server/internal/integration/rls_all_tables_test.go` (existente)
-- [ ] T005 [P] Test table-driven de `BaseQty` con longitud (m → cm, cm → cm, m → kg rechazado) y de `PresentationQty` (entero en pieza, aproximado solo entre tipos distintos, nombre igual a una unidad rechazado salvo aproximado), en `server/internal/domain/purchaseqty_test.go`
-- [ ] T006 [P] Test table-driven de `NextIngredientCost` (última compra; ponderado con existencia positiva; ponderado con existencia 0 o negativa toma la compra; importe 0 o regalo no cambia el costo), en `server/internal/domain/purchases_test.go`
-- [ ] T007 [P] Test de que `inventory.receive`, `inventory.configure` e `inventory.count` los tienen admin y gerente y no cajero ni cocina, en `server/internal/domain/permission_test.go`
+- [X] T003 [P] Test de integración de la migración 0091 (`longitud` existe en `unit_kind`; su Down lo deja y no truena) y de la 0092 sobre la copia restaurada con dos empresas: índices `ingredients_tenant_key` y `expense_items_tenant_key`; FK compuestas que rechazan cruzar empresas como owner (`presentation_id`, `count_id`, `expense_item_id`, `stock_count_id`); trigger de presentaciones (pieza entera, aproximado, nombre de unidad); checks de `is_gift`, `not_coming_qty`, `count_place`, `stock_item_label`; el Down se niega con datos, en `server/internal/integration/migration_0092_test.go`
+- [X] T004 [P] Test de que las tres tablas nuevas entran a `TestEveryCompanyTableIsIsolated` (RLS, política con `nullif`, grants de `gatobobah_app` sin `delete`), en `server/internal/integration/rls_all_tables_test.go` (existente)
+- [X] T005 [P] Test table-driven de `BaseQty` con longitud (m → cm, cm → cm, m → kg rechazado) y de `PresentationQty` (entero en pieza, aproximado solo entre tipos distintos, nombre igual a una unidad rechazado salvo aproximado), en `server/internal/domain/purchaseqty_test.go`
+- [X] T006 [P] Test table-driven de `NextIngredientCost` (última compra; ponderado con existencia positiva; ponderado con existencia 0 o negativa toma la compra; importe 0 o regalo no cambia el costo), en `server/internal/domain/purchases_test.go`
+- [X] T007 [P] Test de que `inventory.receive`, `inventory.configure` e `inventory.count` los tienen admin y gerente y no cajero ni cocina, en `server/internal/domain/permission_test.go`
 
 ### Implementación
 
-- [ ] T008 Migración `server/migrations/0091_unit_kind_length.sql` (solo `alter type unit_kind add value 'longitud'`) hasta que su parte de T003 pase
-- [ ] T009 Migración `server/migrations/0092_purchases_into_stock.sql` según data-model.md (unidades `cm`/`m`, índices de llave por empresa, tablas, columnas, checks, trigger `ingredient_presentations_before_write`, índices, RLS y grants, Down que se niega con datos) hasta que T003 y T004 pasen; `make sqlc`
-- [ ] T010 [P] `BaseQty` para longitud y `PresentationQty` en `server/internal/domain/purchaseqty.go` hasta que T005 pase
-- [ ] T011 [P] `NextIngredientCost` y `CostingMethod` en `server/internal/domain/purchases.go` hasta que T006 pase
-- [ ] T012 [P] Permisos `PermInventoryReceive`, `PermInventoryConfigure`, `PermInventoryCount` en `server/internal/domain/permission.go` y su espejo en `web/src/app/permissions.ts` hasta que T007 pase
-- [ ] T013 [P] Acciones `expense.received`, `expense.stock_corrected` (grupo Caja), `stock.counted` (grupo Cancelaciones), `settings.costing_method` (grupo Precios) en `server/internal/domain/audit.go` y sus etiquetas en `web/src/shared/audit/labels.ts`; cada una con su test productor (lo exige `TestEveryAuditActionIsProduced`) en la historia que la escribe
+- [X] T008 Migración `server/migrations/0091_unit_kind_length.sql` (solo `alter type unit_kind add value 'longitud'`) hasta que su parte de T003 pase
+- [X] T009 Migración `server/migrations/0092_purchases_into_stock.sql` según data-model.md (unidades `cm`/`m`, índices de llave por empresa, tablas, columnas, checks, trigger `ingredient_presentations_before_write`, índices, RLS y grants, Down que se niega con datos) hasta que T003 y T004 pasen; `make sqlc`
+- [X] T010 [P] `BaseQty` para longitud y `PresentationQty` en `server/internal/domain/purchaseqty.go` hasta que T005 pase
+- [X] T011 [P] `NextIngredientCost` y `CostingMethod` en `server/internal/domain/purchases.go` hasta que T006 pase
+- [X] T012 [P] Permisos `PermInventoryReceive`, `PermInventoryConfigure`, `PermInventoryCount` en `server/internal/domain/permission.go` y su espejo en `web/src/app/permissions.ts` hasta que T007 pase
+- [X] T013 [P] Acciones `expense.received`, `expense.stock_corrected` (grupo Caja), `stock.counted` (grupo Cancelaciones), `settings.costing_method` (grupo Precios) en `server/internal/domain/audit.go` y sus etiquetas en `web/src/shared/audit/labels.ts`; cada una con su test productor (lo exige `TestEveryAuditActionIsProduced`) en la historia que la escribe
 
 **Checkpoint**: esquema, dominio base y permisos listos.
 

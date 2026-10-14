@@ -1,0 +1,2 @@
+-- Conteo de una sucursal (spec 038): se captura a ciegas, se guarda al capturar y se cierra por
+-- diferencia contra lo que el sistema tenía en ese momento. La empresa la pone RLS.

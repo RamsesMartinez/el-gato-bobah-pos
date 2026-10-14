@@ -28,6 +28,10 @@ símbolos citados son de `develop` en `c33f50e`.
   peso, líquido o piezas y fija g, ml o pieza; el servidor rechaza crear un insumo con una unidad
   que no sea la base de su tipo (`to_base = 1`).
 
+- **Medido al implementar (T001, copia de producción del 13-oct):** hay 1 renglón de gasto con
+  importe 0. Por eso el check `amount > 0 or is_gift` de la 0092 entra `not valid`: aplica a lo
+  nuevo y a lo que se edite, sin reescribir ese renglón.
+
 ## R1. «Recibida» solo con mercancía
 
 - **Decisión:** el servidor guarda `received_at` solo si el gasto lleva al menos un renglón de

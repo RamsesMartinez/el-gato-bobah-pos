@@ -1,0 +1,2 @@
+-- Compras al almacén (spec 038): lo aplicado por renglón de compra, la corrección por diferencia,
+-- lo que llega después y el costo del insumo. La empresa la pone RLS.

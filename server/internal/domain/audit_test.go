@@ -17,7 +17,8 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		"price.set", "price.deleted", "price.synced", "attendance.clock_in", "attendance.clock_out",
 		"attendance.corrected", "attendance.manual_entry", "attendance.settings_changed",
 		"attendance.schedule_set", "user.tracks_attendance_changed", "payment.terminal_changed",
-		"product.consumption_mode",
+		"product.consumption_mode", "expense.received", "expense.stock_corrected", "stock.counted",
+		"settings.costing_method",
 	}
 	got := AllAuditActions()
 	if len(got) != len(want) {
@@ -142,8 +143,9 @@ func TestAuditFilterActions(t *testing.T) {
 	if got := (AuditFilter{}).Actions(); got != nil {
 		t.Fatalf("sin filtro = %v, quiere nil", got)
 	}
-	// Tres de precio y qué resta un producto (spec 037): las dos son configuración del menú.
-	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 4 {
+	// Tres de precio, qué resta un producto (spec 037) y el costeo del almacén (spec 038): todas
+	// son configuración de lo que cuesta o se resta.
+	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 5 {
 		t.Fatalf("grupo precios = %v", got)
 	}
 	if got := (AuditFilter{Group: "price", Action: "price.set"}).Actions(); len(got) != 1 || got[0] != "price.set" {
