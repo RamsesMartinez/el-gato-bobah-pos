@@ -1,8 +1,12 @@
 import {
   Box, Flex, VStack, Text, Button, Image } from '@chakra-ui/react';
-import { NavLink, Outlet, useNavigate } from 'react-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { LuChevronDown } from 'react-icons/lu';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import logo from '../assets/logo.webp';
 import { posApi } from '../api/pos';
+import { attendanceApi } from '../api/attendance';
 import { useSessionStore } from '../stores/session';
 import { useUiStore } from '../stores/ui';
 import { canAccess } from './roles';
@@ -15,9 +19,28 @@ export function AppShell() {
   const clear = useSessionStore((s) => s.clear);
   const palette = useUiStore((s) => s.palette);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   // No mostrar accesos que el rol no puede usar (evita el 403 sorpresa). El backend sigue
   // siendo la autoridad; esto es solo UX.
-  const nav = NAV.filter((n) => canAccess(user?.role, n.to));
+  // La asistencia es activable por empresa: apagada, su ítem no ocupa lugar en el riel.
+  const { data: attendance } = useQuery({ queryKey: ['asistencia', 'roster'], queryFn: attendanceApi.roster, staleTime: 60_000 });
+  const navList = useRef<HTMLDivElement>(null);
+  const [moreBelow, setMoreBelow] = useState(false);
+  const measureRail = useCallback(() => {
+    const el = navList.current;
+    setMoreBelow(!!el && el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+  }, []);
+  const nav = NAV.filter((n) => canAccess(user?.role, n.to) && (n.to !== '/asistencia' || attendance?.enabled === true));
+  // El ítem de la pantalla abierta siempre a la vista: a 600 px «Reportes» quedaba partido bajo el
+  // pliegue, y no se veía en qué pantalla estaba uno.
+  useEffect(() => {
+    navList.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest' });
+  }, [pathname, nav.length]);
+  useEffect(() => {
+    measureRail();
+    window.addEventListener('resize', measureRail);
+    return () => window.removeEventListener('resize', measureRail);
+  }, [measureRail, nav.length]);
 
   const logout = async () => {
     // Revoca la cookie de refresh en el server ANTES de limpiar; si no, la sesión revive
@@ -42,8 +65,12 @@ export function AppShell() {
     <Flex data-medible h="100dvh" overflow="hidden" colorPalette={palette}>
       <Flex direction="column" w="76px" bg="gray.900" color="white" py={3} flexShrink={0}>
         <Image src={logo} alt="El Gato Bobah" boxSize="44px" borderRadius="lg" mb={2} alignSelf="center" flexShrink={0} />
-        {/* lista scrollable: en pantallas de poco alto (7") no se recortan los ítems */}
+        {/* lista scrollable: en pantallas de poco alto (7") no se recortan los ítems. La barra de
+            scroll va oculta, así que un ítem abajo del pliegue no se notaba (medido a 1024×600 con
+            el rol admin: «Asistencia» desaparecía sin rastro). La flecha del pie dice que hay más. */}
+        <Box position="relative" flex="1" minH={0} display="flex">
         <VStack
+          ref={navList} onScroll={measureRail}
           flex="1" minH={0} overflowY="auto" gap={1} w="100%"
           css={{ scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}
         >
@@ -65,7 +92,14 @@ export function AppShell() {
             );
           })}
         </VStack>
-        <VStack gap={0} flexShrink={0}>
+        </Box>
+        {/* La flecha va en su propio renglón y no encima de la lista: superpuesta tapaba el rótulo del
+            último ítem visible, y a 600 px «Reportes» se leía encimado con el nombre de quien entró. */}
+        <Flex data-rail-more h="16px" flexShrink={0} justify="center" align="center" aria-hidden
+          visibility={moreBelow ? 'visible' : 'hidden'}>
+          <LuChevronDown size={14} />
+        </Flex>
+        <VStack gap={0} flexShrink={0} borderTopWidth="1px" borderColor="whiteAlpha.300" pt={1}>
           <Text fontSize="10px" color="gray.400" lineClamp={1} px={1}>{user?.name}</Text>
           {/* 44 px: es un control táctil como cualquier otro, aunque se toque poco. */}
           <Button size="xs" minH="44px" w="100%" variant="ghost" colorPalette="whiteAlpha" onClick={logout}>Salir</Button>

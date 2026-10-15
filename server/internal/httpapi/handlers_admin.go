@@ -243,7 +243,7 @@ func (h *Handlers) AdminUpdateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// el catálogo cambió: avisar a las tablets (de esta empresa). El menú guardado cambia de llave
-	// solo con la versión de catálogo (0089).
+	// solo con la versión de catálogo (0093).
 	u, _ := userFrom(r.Context())
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "menu.updated"})
 	w.WriteHeader(http.StatusNoContent)

@@ -9,6 +9,10 @@ import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
 import { InstallAppSection } from '../../shared/pwa/InstallAppSection';
+import { AttendanceSettingsSection } from './AttendanceSettingsSection';
+import { InventorySettingsSection } from './InventorySettingsSection';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
 import { AjustesDeCaja } from './AjustesDeCaja';
 import { ZONAS_MEXICO } from './zonas';
 import { montoTecleado } from '../../domain/numeros';
@@ -40,6 +44,7 @@ function Interruptor(props: ComponentProps<typeof Switch>) {
 // Ajustes de negocio (admin/gerente). Hoy solo el costo de envío por defecto; el backend es
 // la autoridad (el PUT exige rol) — esta pantalla es la UX para editarlo.
 export function BusinessSettingsPage() {
+  const user = useSessionStore((s) => s.user);
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   // La lista COMPLETA, con los apagados: es la pantalla desde la que se vuelven a encender.
@@ -340,6 +345,10 @@ export function BusinessSettingsPage() {
       <Box mt={6}>
         <AjustesDeCaja />
       </Box>
+
+      {can('attendance.configure', user) && <AttendanceSettingsSection />}
+
+      {can('inventory.configure', user) && <InventorySettingsSection />}
 
       <InstallAppSection />
     </Page>

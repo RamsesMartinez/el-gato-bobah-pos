@@ -90,3 +90,20 @@ func ValidConfirmIDs(ids []int64) error {
 	}
 	return nil
 }
+
+// RecipeToday dice en una línea lo que lleva hoy un extra: sus primeros tres insumos, el producto
+// que es, «No gasta insumos» o «Pendiente».
+func RecipeToday(status, linkedName string, items []string) string {
+	switch {
+	case linkedName != "":
+		return "Es: " + linkedName
+	case len(items) > 3:
+		return strings.Join(items[:3], " · ") + fmt.Sprintf(" · +%d más", len(items)-3)
+	case len(items) > 0:
+		return strings.Join(items, " · ")
+	case status == "confirmed":
+		return "No gasta insumos"
+	default:
+		return "Pendiente"
+	}
+}

@@ -149,7 +149,7 @@ func (h *Handlers) DeleteOptionPlatformPrice(w http.ResponseWriter, r *http.Requ
 
 // invalidarMenu avisa a las demás pantallas para que pidan el menú al instante: si no, otra tablet
 // mostraría el precio viejo hasta su siguiente revisión mientras el servidor cobra el nuevo. El
-// menú guardado ya cambió de llave con la versión de catálogo (0089).
+// menú guardado ya cambió de llave con la versión de catálogo (0093).
 func (h *Handlers) invalidarMenu(r *http.Request, companyID int64) {
 	h.broker.Publish(companyID, realtime.Event{Type: "menu.updated"})
 }

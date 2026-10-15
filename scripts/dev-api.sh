@@ -7,6 +7,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Infraestructura propia del worktree, si la tiene (make worktree-env).
+source "$(dirname "${BASH_SOURCE[0]}")/worktree-env-load.sh"
 
 if [ ! -f "$ROOT/deploy/.env" ]; then
   echo "Falta deploy/.env — corre 'make check-env' para crearlo y configúralo." >&2

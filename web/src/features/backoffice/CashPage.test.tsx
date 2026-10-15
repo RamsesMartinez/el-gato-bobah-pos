@@ -1,4 +1,5 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
+import { pickDate } from '../../testing/pickDate';
 import { vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../components/ui/provider';
@@ -7,8 +8,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, CorteSummary, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
 import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
 import { CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico, TerminalesYPropinasDelCorte } from './CashPage';
+import { diferenciaDelHistorico } from './historicoDeCaja';
 import type { AccountItem } from '../../types/pos';
 import { diferenciasDelCierre } from './cierreDeCaja';
+import { money } from '../../utils/format';
 import type { ResultadoDelConteo } from './conteo';
 
 // Render con el Provider de Chakra (los componentes usan su sistema de temas).
@@ -781,7 +784,7 @@ describe('los controles del histórico de cortes', () => {
     for (const b of screen.getAllByRole('button')) {
       expect(parseInt(getComputedStyle(b).minHeight, 10)).toBeGreaterThanOrEqual(44);
     }
-    for (const i of [screen.getByLabelText('Desde'), screen.getByLabelText('Hasta')]) {
+    for (const i of [screen.getByRole('button', { name: 'Desde' }), screen.getByRole('button', { name: 'Hasta' })]) {
       expect(parseInt(getComputedStyle(i).minHeight, 10)).toBeGreaterThanOrEqual(44);
     }
     expect(container.querySelector('select')).toBeNull();
@@ -790,8 +793,8 @@ describe('los controles del histórico de cortes', () => {
   test('un rango al revés no se aplica y lo dice', async () => {
     const onRango = vi.fn();
     wrap(<ControlesDelHistorico {...base} onRango={onRango} />);
-    await userEvent.type(screen.getByLabelText('Desde'), '2026-09-10');
-    await userEvent.type(screen.getByLabelText('Hasta'), '2026-09-01');
+    await pickDate('Desde', '2026-09-10');
+    await pickDate('Hasta', '2026-09-01');
     expect(screen.getByRole('status')).toHaveTextContent(/inicio va después/);
     expect(onRango).not.toHaveBeenLastCalledWith('2026-09-10', '2026-09-01');
   });
@@ -815,10 +818,10 @@ test('MovementsTable etiqueta la propina entregada como Propina, no como Salida'
 // Un faltante de $2 en una terminal no se veía en ningún lado una vez cerrado el turno.
 test('el corte cerrado muestra declarado, esperado y diferencia por terminal y las propinas', () => {
   wrap(<TerminalesYPropinasDelCorte currency="MXN" session={{
-    terminalCounts: [{ terminalId: 3, name: 'Getnet', expected: '250', declared: '248', difference: '-2' }],
+    terminalCounts: [{ terminalId: 3, name: 'Terminal B', expected: '250', declared: '248', difference: '-2' }],
     tipsPaidOut: '40', cardTipsPaidInCash: '15', tipsCarriedOver: '12.40',
   }} />);
-  const fila = screen.getByText('Getnet').closest('tr') as HTMLElement;
+  const fila = screen.getByText('Terminal B').closest('tr') as HTMLElement;
   expect(within(fila).getByText('$248')).toBeInTheDocument();
   expect(within(fila).getByText('$250')).toBeInTheDocument();
   expect(within(fila).getByText(/-\$2/)).toBeInTheDocument();
@@ -827,9 +830,73 @@ test('el corte cerrado muestra declarado, esperado y diferencia por terminal y l
   expect(screen.getByText(/tarjeta pagada en efectivo/).closest('tr')?.textContent).toContain('$15');
 });
 
+// Si alguien corrigió la terminal de un pago después del arqueo (spec 036), lo firmado no cambia y
+// el corte lo dice terminal por terminal. Sin el aviso, el faltante de Terminal A real seguiría
+// viéndose como faltante aunque el dinero ya esté en Terminal B.
+test('el corte cerrado avisa qué terminal cambió después del arqueo, y solo esa', () => {
+  wrap(<TerminalesYPropinasDelCorte currency="MXN" session={{
+    terminalCounts: [
+      { terminalId: 2, name: 'Terminal A', expected: '250', declared: '0', difference: '-250', expectedNow: '0', differenceNow: '0' },
+      { terminalId: 3, name: 'Terminal B', expected: '0', declared: '0', difference: '0', expectedNow: '250', differenceNow: '-250' },
+      { terminalId: 4, name: 'Clip', expected: '50', declared: '50', difference: '0', expectedNow: '50', differenceNow: '0' },
+    ],
+  }} />);
+  const avisos = screen.getAllByRole('status').map((n) => n.textContent);
+  expect(avisos).toEqual([
+    'Terminal A: el esperado pasó de $250 a $0 después del arqueo. Diferencia ahora: $0',
+    'Terminal B: el esperado pasó de $0 a $250 después del arqueo. Diferencia ahora: -$250',
+  ]);
+});
+
+test('un backend sin «expectedNow» no inventa avisos', () => {
+  wrap(<TerminalesYPropinasDelCorte currency="MXN" session={{
+    terminalCounts: [{ terminalId: 3, name: 'Terminal B', expected: '250', declared: '248', difference: '-2' }],
+  }} />);
+  expect(screen.queryByRole('status')).toBeNull();
+});
+
 test('sin terminales arqueadas ni propinas, el corte no agrega la sección', () => {
   const { container } = wrap(<TerminalesYPropinasDelCorte currency="MXN" session={{
     terminalCounts: [], tipsPaidOut: '0', cardTipsPaidInCash: '0', tipsCarriedOver: '0',
   }} />);
   expect(container.textContent).not.toMatch(/Terminales|Propinas/);
+});
+
+// Spec 035 (Maquetas: «Hoja de cierre», A). El retiro no es una salida del negocio: se nombra
+// «Retiro» con quién se lo llevó, y la confirmación del cierre lo dice antes de volverlo definitivo.
+describe('retiro al cierre', () => {
+  test('el movimiento de retiro se nombra «Retiro» y dice quién se lo llevó', () => {
+    wrap(<MovementsTable movements={[mov({ id: 9, kind: 'retiro', amount: '4300', concept: 'Retiro al cierre', recipientName: 'Luis' })]} currency="MXN" />);
+    expect(screen.getByText('Retiro')).toBeInTheDocument();
+    expect(screen.queryByText('Salida')).toBeNull();
+    expect(screen.getByText(/Retiro al cierre · Luis/)).toBeInTheDocument();
+  });
+
+  test('la hoja de «¿Cerrar caja?» muestra el resumen del retiro', async () => {
+    wrap(<BotonCerrarCaja nombre="Caja principal" disabled={false} loading={false} onCerrar={vi.fn()}
+      descripcion="Se retiran $4,300 · se los lleva Luis. No podrás modificarla después." />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar caja' }));
+    expect(await screen.findByText(/Se retiran \$4,300 · se los lleva Luis/)).toBeInTheDocument();
+  });
+});
+
+// Con arqueo ciego, el último cierre de una caja no reabierta llega sin arqueo para el cajero (spec
+// 035, R8). Lo vacío es oculto, no cero: pintar «Ingresos $0» o «Diferencia $0.00» se leería como un
+// turno sin ventas o cuadrado.
+describe('el último cierre con el arqueo oculto', () => {
+  test('el resumen dice que está oculto y no pinta ingresos en cero', () => {
+    const data = { openingCash: '0', currency: 'MXN', arqueoHidden: true,
+      breakdown: { ingresos: [], ingresosTotal: '0', egresos: [], egresosTotal: '0', plataformas: [] },
+      totals: [], movements: [], expenses: [], counts: null, drawer: null };
+    render(<QueryClientProvider client={new QueryClient()}><Provider><CorteSummary data={data} /></Provider></QueryClientProvider>);
+    expect(screen.getByText(/se ve cuando se vuelva a abrir la caja/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Ingresos/)).not.toBeInTheDocument();
+  });
+
+  test('el histórico dice «Oculto» en vez de una diferencia', () => {
+    const fila = { status: 'cerrada', totalDifference: null, arqueoHidden: true, currency: 'MXN' };
+    expect(diferenciaDelHistorico(fila)).toBe('Oculto');
+    expect(diferenciaDelHistorico({ ...fila, arqueoHidden: false, totalDifference: '-50' })).toBe(money('-50', 'MXN'));
+    expect(diferenciaDelHistorico({ ...fila, status: 'abierta' })).toBe('—');
+  });
 });

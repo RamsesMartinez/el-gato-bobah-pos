@@ -27,6 +27,8 @@ const PANTALLAS: Array<[RegExp, string]> = [
   // server/internal/domain/uso.go. Sin la del servidor, cada evento se descarta en silencio.
   [/^\/plataformas\/[0-9]+\/emparejar/, 'emparejar'],
   [/^\/plataformas/, 'plataformas'],
+  // Asistencia (spec 033): también en `pantallasMedibles` y `rolesPorPantalla` del servidor.
+  [/^\/asistencia/, 'asistencia'],
 ];
 
 // pantallaDe traduce una ruta al nombre que se mide, o `null` si esa ruta no se mide.

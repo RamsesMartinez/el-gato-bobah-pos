@@ -26,7 +26,7 @@ const popularTTL = 5 * time.Minute
 const menuSchema = "v3"
 
 // MenuETag identifica un menú: forma del documento, empresa, versión de catálogo (la suben los
-// triggers de la 0089 con cualquier cambio, también por SQL directo) y día (la disponibilidad por
+// triggers de la 0093 con cualquier cambio, también por SQL directo) y día (la disponibilidad por
 // fecha cambia el menú sin tocar el catálogo). La empresa va adentro porque la URL es la misma
 // para dos empresas que inician sesión en la misma tableta.
 func MenuETag(companyID, version int64, day string) string {

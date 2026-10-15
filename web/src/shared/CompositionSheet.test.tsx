@@ -72,11 +72,13 @@ describe('la receta', () => {
     api.composition.mockResolvedValue(vacia);
   });
 
-  it('se titula como receta y dice qué sale al vender', async () => {
+  it('se titula como receta, pregunta qué se resta y ofrece las cuatro tarjetas', async () => {
     montar();
     expect(await screen.findByText('Receta de Chai Latte G')).toBeInTheDocument();
-    expect(screen.getByText('Al vender 1, del almacén sale:')).toBeInTheDocument();
-    for (const t of ['Lleva insumos', 'Es un combo', 'No gasta insumos']) expect(screen.getByText(t)).toBeInTheDocument();
+    expect(screen.getByText('Cuando vendes Chai Latte G, ¿qué se resta de lo que tienes?')).toBeInTheDocument();
+    for (const t of ['Se prepara aquí', 'Se compra hecho', 'Es un combo', 'No se cuenta']) expect(screen.getByText(t)).toBeInTheDocument();
+    // FR-019: «restar», nunca «descontar».
+    expect(document.body.textContent).not.toMatch(/descuenta|descontar/i);
   });
 
   it('la cantidad se escribe; cambiar a litros convierte el número', async () => {
@@ -168,42 +170,88 @@ describe('la receta', () => {
     await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ linkedProductId: 9 })));
   });
 
-  it('«No gasta insumos» se guarda vacía y se confirma', async () => {
+  it('«No gasta insumos» se guarda vacía y confirmada en un solo paso', async () => {
     montar('option');
     fireEvent.click(await screen.findByText('No gasta insumos'));
     await guardar();
-    await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('option', 55));
-    expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ items: [], components: [], linkedProductId: null }));
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55,
+      expect.objectContaining({ mode: 'nothing', items: [], components: [], linkedProductId: null })));
+    expect(api.confirmComposition).not.toHaveBeenCalledWith('option', 55);
   });
 
   it('lo que se cargó del sistema anterior se confirma con «Está bien» sin tocar nada', async () => {
     api.composition.mockResolvedValue({ ...vacia, status: 'estimated', items: [{ ingredientId: 2, ingredientName: 'Azúcar', quantity: '5', unitId: 1, unitCode: 'g' }] });
     montar();
-    expect(await screen.findByText(/se cargó de tu sistema anterior/)).toBeInTheDocument();
+    expect(await screen.findByText(/Las cargó el sistema y nadie las ha confirmado/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Está bien' }));
     await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('product', 55));
     expect(api.saveComposition).not.toHaveBeenCalled();
   });
 
-  it('un extra que se llama igual en otro grupo recibe la misma receta, si se deja marcado', async () => {
-    api.composition.mockResolvedValue({ ...vacia, sameName: [{ id: 77, group: 'Toppings de frappé', stamp: '2026-10-01T00:00:00Z' }] });
-    montar('option');
-    fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
-    expect(await screen.findByRole('button', { name: /También en «Toppings de frappé»/ })).toHaveAttribute('aria-pressed', 'true');
-    await guardar();
-    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ alsoOptionIds: [77], alsoBasedOn: { 77: '2026-10-01T00:00:00Z' } })));
-  });
+  // Lo encontró producción (2026-10-11): la casilla venía encendida y copió la receta de la salsa
+  // «Lemon Pepper» al sazonador en polvo del mismo nombre. Ahora viene apagada, va una por grupo y
+  // cada una dice lo que ese extra lleva hoy.
+  describe('«También en…»', () => {
+    const gemelos = [
+      { id: 77, group: 'Salsa extra', stamp: '2026-10-01T00:00:00Z', today: '36 ml Lemon Pepper Salsa' },
+      { id: 78, group: 'Sazonador de polvo', stamp: '2026-10-02T00:00:00Z', today: '5 g Sazonador Lemon Pepper' },
+    ];
 
-  // Lo encontró una persona nueva: «También en…» quedaba marcado y al escoger «No gasta insumos»
-  // desaparecía; los otros extras seguían pendientes.
-  it('«No gasta insumos» también se guarda en el extra que se llama igual', async () => {
-    api.composition.mockResolvedValue({ ...vacia, sameName: [{ id: 77, group: 'Toppings de frappé', stamp: '' }] });
-    montar('option');
-    fireEvent.click(await screen.findByText('No gasta insumos'));
-    expect(await screen.findByRole('button', { name: /También en «Toppings de frappé»/ })).toHaveAttribute('aria-pressed', 'true');
-    await guardar();
-    await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('option', 77));
-    expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ items: [], alsoOptionIds: [77] }));
+    it('viene apagada y no copia nada si no se marca', async () => {
+      api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
+      montar('option');
+      fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+      for (const g of ['Salsa extra', 'Sazonador de polvo']) {
+        expect(screen.getByRole('button', { name: new RegExp(`También en «${g}»`) })).toHaveAttribute('aria-pressed', 'false');
+      }
+      await guardar();
+      await waitFor(() => expect(api.saveComposition).toHaveBeenCalled());
+      const body = api.saveComposition.mock.calls[0][2] as { alsoOptionIds?: number[] };
+      expect(body.alsoOptionIds ?? []).toEqual([]);
+    });
+
+    // La revisión de tableta: un aria-label con solo el grupo callaba justo el «Hoy» al lector de
+    // pantalla, y con varios gemelos el último quedaba bajo el corte sin que nada dijera cuántos son.
+    it('dice cuántos son y lo que lleva hoy cada uno, también al lector de pantalla', async () => {
+      api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
+      montar('option');
+      fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+      expect(screen.getByText('Se llama igual en 2 grupos más. Marca dónde guardar esta misma receta:')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /También en «Sazonador de polvo».*Hoy: 5 g Sazonador Lemon Pepper/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /También en «Salsa extra».*Hoy: 36 ml Lemon Pepper Salsa/ })).toBeInTheDocument();
+    });
+
+    // Con varios insumos la lista de casillas quedaba bajo el corte de la tableta: va antes de
+    // los insumos, justo debajo del tipo de receta, para que siempre se vea sin desplazar.
+    it('va antes de los insumos', async () => {
+      api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
+      montar('option');
+      const agregar = await screen.findByRole('button', { name: /Agregar insumo/ });
+      const casilla = screen.getByRole('button', { name: /También en «Salsa extra»/ });
+      expect(casilla.compareDocumentPosition(agregar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('copia solo a los que se marcan, con la marca de cada uno', async () => {
+      api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
+      montar('option');
+      fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+      fireEvent.click(screen.getByRole('button', { name: /También en «Salsa extra»/ }));
+      expect(screen.getByRole('button', { name: /También en «Salsa extra»/ })).toHaveAttribute('aria-pressed', 'true');
+      await guardar();
+      await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55,
+        expect.objectContaining({ alsoOptionIds: [77], alsoBasedOn: { 77: '2026-10-01T00:00:00Z' } })));
+    });
+
+    it('«No gasta insumos» también se guarda en el que se marca', async () => {
+      api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
+      montar('option');
+      fireEvent.click(await screen.findByText('No gasta insumos'));
+      fireEvent.click(await screen.findByRole('button', { name: /También en «Salsa extra»/ }));
+      await guardar();
+      await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('option', 77));
+      expect(api.confirmComposition).not.toHaveBeenCalledWith('option', 78);
+      expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ items: [], alsoOptionIds: [77] }));
+    });
   });
 
   it('una receta nueva no empieza con un aviso de error', async () => {
@@ -269,12 +317,6 @@ describe('la receta', () => {
     await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('ingredient', 55, expect.objectContaining({ yield: '1000' })));
   });
 
-  it('lo que se descuenta solo no tiene nada que capturar', async () => {
-    api.composition.mockResolvedValue({ ...vacia, status: 'confirmed', editable: false, reason: 'own_stock' });
-    montar();
-    expect(await screen.findByText(/Se descuenta solo/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Guardar' })).not.toBeInTheDocument();
-  });
 
   it('un combo que deja elegir no se reescribe', async () => {
     api.composition.mockResolvedValue({ ...vacia, status: 'confirmed', editable: false, reason: 'package_choices' });
@@ -346,5 +388,171 @@ describe('la receta', () => {
     expect(screen.getByText('Al vender 1:')).toBeInTheDocument();
     fireEvent.blur(qty);
     expect(screen.getByText('Al vender 1:')).toBeInTheDocument();
+  });
+});
+
+// «SE COMPRA HECHO» Y LA SALIDA DE LA EXISTENCIA PROPIA (spec 037, maqueta B simplificada v7).
+describe('se compra hecho', () => {
+  const conLata = (extra: Record<string, unknown> = {}) => ({
+    items: [
+      { id: 3, name: 'Vaso 16 oz', baseUnitId: 5, baseUnitCode: 'pieza', baseUnitKind: 'pieza', recipeUses: 12, isPrep: false, onHand: '40' },
+      { id: 10, name: 'chai latte g', baseUnitId: 5, baseUnitCode: 'pieza', baseUnitKind: 'pieza', recipeUses: 0, isPrep: false, onHand: '0', ...extra },
+    ],
+  });
+  const propia = { ...vacia, status: 'confirmed', ownStock: true, productOnHand: '12', ownStockBranches: 1, stamp: 's1' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.composition.mockResolvedValue(vacia);
+  });
+
+  it('un producto con existencia propia abre en «Se compra hecho» con el insumo de nombre parecido', async () => {
+    api.composition.mockResolvedValue(propia);
+    back.ingredients.mockResolvedValueOnce(conLata());
+    montar();
+    expect(await screen.findByRole('button', { name: /Se compra hecho/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByText(/Cada venta resta 1 de/)).toHaveTextContent('chai latte g');
+    // El insumo no tiene existencia: las 12 pasan a él y lo dice.
+    expect(screen.getByText(/El sistema tenía contadas 12/)).toBeInTheDocument();
+    await guardar();
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55,
+      expect.objectContaining({ mode: 'items', items: [{ ingredientId: 10, quantity: '1', unitId: 5 }] })));
+  });
+
+  it('sin uno parecido, se crea con el nombre del producto y por pieza', async () => {
+    back.ingredients.mockResolvedValueOnce({ items: [conLata().items[0]] });
+    back.createIngredient.mockResolvedValueOnce({ id: 70, name: 'Chai Latte G', baseUnitId: 5, baseUnitCode: 'pieza', baseUnitKind: 'pieza', recipeUses: 0 });
+    montar();
+    fireEvent.click(await screen.findByText('Se compra hecho'));
+    expect(await screen.findByText(/se crea uno nuevo con este nombre/)).toBeInTheDocument();
+    await guardar();
+    await waitFor(() => expect(back.createIngredient).toHaveBeenCalledWith({ name: 'Chai Latte G', baseUnitId: 5 }));
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55,
+      expect.objectContaining({ mode: 'items', items: [{ ingredientId: 70, quantity: '1', unitId: 5 }] })));
+  });
+
+  it('el buscador marca el elegido y deja «Crear una nueva» al final', async () => {
+    back.ingredients.mockResolvedValueOnce(conLata());
+    montar();
+    fireEvent.click(await screen.findByText('Se compra hecho'));
+    fireEvent.click(await screen.findByRole('button', { name: /Cambiar lo que se resta/ }));
+    const opciones = await screen.findAllByRole('button', { name: /chai latte g|Vaso 16 oz|Crear una nueva/ });
+    expect(opciones[opciones.length - 1]).toHaveTextContent('Crear una nueva');
+    expect(screen.getAllByRole('button', { name: /chai latte g/ }).some((b) => b.textContent?.includes('✓'))).toBe(true);
+  });
+
+  it('un six: el número se cambia con − y +, escondidos hasta pedirlos', async () => {
+    back.ingredients.mockResolvedValueOnce(conLata());
+    montar();
+    fireEvent.click(await screen.findByText('Se compra hecho'));
+    expect(screen.queryByRole('button', { name: 'Una más por venta' })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /¿Una venta lleva más de una\?/ }));
+    for (let i = 0; i < 5; i++) fireEvent.click(screen.getByRole('button', { name: 'Una más por venta' }));
+    expect(screen.getByText(/Cada venta resta 6 de/)).toBeInTheDocument();
+    await guardar();
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55,
+      expect.objectContaining({ items: [{ ingredientId: 10, quantity: '6', unitId: 5 }] })));
+  });
+
+  it('si las dos cuentas tienen existencia, pregunta cuántas hay de verdad y no guarda hasta elegir', async () => {
+    api.composition.mockResolvedValue(propia);
+    back.ingredients.mockResolvedValueOnce(conLata({ onHand: '20' }));
+    montar();
+    expect(await screen.findByText('¿Cuántas tienes de verdad?')).toBeInTheDocument();
+    for (const o of [/^12/, /^20/, /^32 \(las dos\)/, /^Otra/]) expect(screen.getByRole('button', { name: o })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /^32 \(las dos\)/ }));
+    await guardar();
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55,
+      expect.objectContaining({ actualStock: '32', seenProductOnHand: '12', seenIngredientOnHand: '20' })));
+  });
+
+  it('«Otra» se escribe y se acomoda sobre el teclado', async () => {
+    api.composition.mockResolvedValue(propia);
+    back.ingredients.mockResolvedValueOnce(conLata({ onHand: '20' }));
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: /^Otra/ }));
+    const input = await screen.findByLabelText('Cuántas tienes de verdad');
+    const scroll = vi.fn();
+    (input as HTMLInputElement).scrollIntoView = scroll;
+    fireEvent.focus(input);
+    expect(scroll).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    fireEvent.change(input, { target: { value: '25' } });
+    await guardar();
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55, expect.objectContaining({ actualStock: '25' })));
+  });
+
+  it('salir de la existencia propia a otra tarjeta avisa y confirma antes de dejarla en cero', async () => {
+    api.composition.mockResolvedValue(propia);
+    back.ingredients.mockResolvedValueOnce(conLata());
+    montar();
+    fireEvent.click(await screen.findByText('No se cuenta'));
+    expect(await screen.findByText(/siguen donde están; el sistema solo deja de contarlas/)).toBeInTheDocument();
+    await guardar();
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent(/no vuelve sola/);
+    expect(api.saveComposition).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Sí, dejar de contarla' }));
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55, expect.objectContaining({ mode: 'nothing' })));
+  });
+
+  it('sin existencia propia no hay aviso de latas (FR-020)', async () => {
+    montar();
+    fireEvent.click(await screen.findByText('No se cuenta'));
+    expect(screen.queryByText(/siguen donde están; el sistema solo deja de contarlas/)).not.toBeInTheDocument();
+  });
+
+  it('«Se prepara aquí» o «Es un combo» sin contenido no se guardan', async () => {
+    montar();
+    fireEvent.click(await screen.findByText('Se prepara aquí'));
+    expect(await screen.findByRole('button', { name: 'Guardar' })).toBeDisabled();
+    fireEvent.click(screen.getByText('Es un combo'));
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+  });
+
+  it('una venta entre mostrar y guardar: lo dice y vuelve a preguntar con las cifras nuevas', async () => {
+    api.composition.mockResolvedValue(propia);
+    back.ingredients.mockResolvedValue(conLata({ onHand: '20' }));
+    api.saveComposition.mockRejectedValueOnce(new ApiError(409, 'CONFLICT', 'la existencia cambió mientras decidías; vuelve a revisar las cifras', 'r1'));
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: /^32 \(las dos\)/ }));
+    await guardar();
+    expect(await screen.findByRole('alert')).toHaveTextContent(/la existencia cambió/);
+    const antes = api.composition.mock.calls.length;
+    const antesIng = back.ingredients.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir de nuevo' }));
+    await waitFor(() => expect(api.composition.mock.calls.length).toBeGreaterThan(antes));
+    await waitFor(() => expect(back.ingredients.mock.calls.length).toBeGreaterThan(antesIng));
+  });
+
+  // Visto en las capturas (13-oct): con existencia propia negativa decía «tenía contadas -3», que no
+  // se entiende. Hay 30 productos así en producción: se vendieron más de los que se registraron.
+  it('con existencia propia negativa dice que se vendieron más de las registradas', async () => {
+    api.composition.mockResolvedValue({ ...propia, productOnHand: '-3' });
+    back.ingredients.mockResolvedValueOnce(conLata());
+    montar();
+    expect(await screen.findByText(/se vendieron 3 más de las que había registradas/)).toBeInTheDocument();
+    expect(screen.queryByText(/contadas -3/)).not.toBeInTheDocument();
+  });
+
+  // Visto en la captura de «No se cuenta» (13-oct): «Tus -3 de Jarritos siguen donde están», justo
+  // antes de una acción que no se deshace.
+  it('salir de una existencia negativa no habla de «-3 latas» ni en el aviso ni en la confirmación', async () => {
+    api.composition.mockResolvedValue({ ...propia, productOnHand: '-3' });
+    back.ingredients.mockResolvedValueOnce(conLata());
+    montar();
+    fireEvent.click(await screen.findByText('No se cuenta'));
+    expect(await screen.findByText(/se vendieron 3 más de las que había registradas/)).toBeInTheDocument();
+    await guardar();
+    expect(await screen.findByRole('alertdialog')).not.toHaveTextContent('-3');
+    expect(document.body.textContent).not.toMatch(/Tus -3/);
+  });
+
+  it('crear uno nuevo lo dice claro y el botón dice qué hace', async () => {
+    back.ingredients.mockResolvedValueOnce({ items: [conLata().items[0]] });
+    montar();
+    fireEvent.click(await screen.findByText('Se compra hecho'));
+    expect(await screen.findByText(/no hay uno parecido: se crea uno nuevo con este nombre/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cambiar lo que se resta' })).toHaveTextContent('Elegir otro');
   });
 });

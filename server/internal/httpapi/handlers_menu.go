@@ -113,7 +113,7 @@ func (h *Handlers) ModifierDefaults(w http.ResponseWriter, r *http.Request) {
 
 // POST /admin/reload — recarga el estado en caché sin reiniciar el proceso: popularidad y el memo
 // del recomendador. El menú ya no hace falta: su llave cambia sola con la versión de catálogo
-// (0089), también tras un script.
+// (0093), también tras un script.
 // OJO: recarga ESTADO, no CÓDIGO — cambios de lógica siguen requiriendo recompilar.
 func (h *Handlers) AdminReload(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

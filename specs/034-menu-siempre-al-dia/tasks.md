@@ -6,7 +6,7 @@ TDD estricto (constitución IV): cada test se escribe y se ve fallar antes de su
 
 ## Phase 1: Setup
 
-- [X] T001 Levantar un Postgres desechable para integración (puerto propio, nunca el de dev) y confirmar que `0089` es la siguiente migración libre en `server/migrations/`
+- [X] T001 Levantar un Postgres desechable para integración (puerto propio, nunca el de dev) y confirmar que `0089` (hoy `0093`, ver plan) es la siguiente migración libre en `server/migrations/`
 
 ## Phase 2: Foundational
 
@@ -17,7 +17,7 @@ TDD estricto (constitución IV): cada test se escribe y se ve fallar antes de su
 **Independent test**: un `update` directo como owner sin empresa cambia la versión de las empresas tocadas y solo ésas; el menú servido cambia de llave.
 
 - [X] T002 [US1] Tests de integración E1–E4, E15 y la regla «todas las tablas del menú suben la versión» en server/internal/integration/catalog_versions_test.go (verlos fallar)
-- [X] T003 [US1] Migración server/migrations/0089_catalog_versions.sql: tabla, RLS, grant, función `security definer`, 30 triggers, Down
+- [X] T003 [US1] Migración server/migrations/0093_catalog_versions.sql (escrita como 0089; renumerada al retomar, ver plan): tabla, RLS, grant, función `security definer`, 30 triggers, Down
 - [X] T004 [US1] Consulta `CatalogVersion :one` (versión + `current_date`) en server/queries/menu.sql y `make sqlc`
 - [X] T005 [US1] `MenuService.Version(ctx)` en server/internal/app/menu.go (tipo `MenuVersion{Catalog, Day}`)
 - [X] T006 [P] [US1] Test unitario de `MenuETag` (E6, E7: día y empresa cambian el ETag; schema incluido) en server/internal/cache/menu_test.go

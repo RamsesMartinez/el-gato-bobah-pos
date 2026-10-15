@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, HStack, VStack, Text, Input } from '@chakra-ui/react';
 import { LuChevronDown, LuSearch, LuPlus } from 'react-icons/lu';
 import { DrawerRoot, DrawerBackdrop, DrawerContent, DrawerCloseTrigger } from './ui/drawer';
@@ -23,8 +23,9 @@ interface Props {
   disabled?: boolean;
   size?: 'sm' | 'md' | 'lg';
   // Alta inline: si se define, al buscar algo sin coincidencia aparece "+ Crear «query»".
-  // Debe devolver la opción ya creada (para seleccionarla al vuelo).
-  onCreate?: (name: string) => Promise<PickerOption>;
+  // Debe devolver la opción ya creada (para seleccionarla al vuelo), o null si quien crea se
+  // arrepintió a medio camino (p. ej. no eligió en qué se mide un insumo).
+  onCreate?: (name: string) => Promise<PickerOption | null>;
 }
 
 // Picker táctil: reemplaza al <select> nativo (malo en tablet con muchos ítems). Abre un
@@ -49,6 +50,18 @@ export function Picker({
   }, [q, options]);
   const exact = q.trim() !== '' && options.some((o) => comparable(o.label) === comparable(q));
 
+  // Al abrir, la hoja baja hasta lo elegido: con 96 horas, abrir arriba obligaba a recorrer la lista
+  // con el dedo hasta la hora que ya estaba puesta.
+  const selectedRow = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => {
+      const row = selectedRow.current?.firstElementChild ?? selectedRow.current;
+      row?.scrollIntoView?.({ block: 'center' });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [open]);
+
   const pick = (v: string) => { onChange(v); setOpen(false); setQ(''); };
 
   const create = async () => {
@@ -56,7 +69,7 @@ export function Picker({
     setCreating(true);
     try {
       const opt = await onCreate(q.trim());
-      pick(opt.value);
+      if (opt) pick(opt.value);
     } finally {
       setCreating(false);
     }
@@ -93,7 +106,9 @@ export function Picker({
             <VStack align="stretch" gap={1} overflowY="auto" px={3} pb={4} pt={1} flex="1">
               {clearable && <ListRow label={clearLabel} muted selected={!value} onClick={() => pick('')} />}
               {filtered.map((o) => (
-                <ListRow key={o.value} label={o.label} hint={o.hint} selected={o.value === value} onClick={() => pick(o.value)} />
+                o.value === value
+                  ? <Box key={o.value} ref={selectedRow} display="contents"><ListRow label={o.label} hint={o.hint} selected onClick={() => pick(o.value)} /></Box>
+                  : <ListRow key={o.value} label={o.label} hint={o.hint} selected={false} onClick={() => pick(o.value)} />
               ))}
               {onCreate && q.trim() !== '' && !exact && (
                 <Button size="lg" minH="52px" variant="subtle" colorPalette="green" justifyContent="start"

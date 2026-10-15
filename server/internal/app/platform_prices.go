@@ -43,12 +43,27 @@ func (s *PlatformPricesService) SetProductPrice(ctx context.Context, productID i
 	if err := s.pertenecePlataforma(ctx, platformID); err != nil {
 		return err
 	}
-	if err := s.store.QC(ctx).UpsertProductPlatformPrice(ctx, db.UpsertProductPlatformPriceParams{
-		ProductID: productID, PlatformID: platformID, Price: p, UpdatedBy: userID,
-	}); err != nil {
-		return err
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		before, err := q.GetProductPlatformPriceForAudit(ctx, db.GetProductPlatformPriceForAuditParams{ProductID: productID, PlatformID: platformID})
+		if err != nil {
+			return err
+		}
+		if err := q.UpsertProductPlatformPrice(ctx, db.UpsertProductPlatformPriceParams{
+			ProductID: productID, PlatformID: platformID, Price: p, UpdatedBy: userID,
+		}); err != nil {
+			return err
+		}
+		return auditEntity(ctx, q, "price.set", "product", productID, nil, &userID,
+			priceSnapshot(before, platformID), map[string]any{"price": p, "platformId": platformID})
+	})
+}
+
+// priceSnapshot es el «antes» de un precio por plataforma: vacío si no había uno capturado.
+func priceSnapshot(prices []decimal.Decimal, platformID int16) map[string]any {
+	if len(prices) == 0 {
+		return map[string]any{"price": nil, "platformId": platformID}
 	}
-	return nil
+	return map[string]any{"price": prices[0], "platformId": platformID}
 }
 
 // DeleteProductPrice quita la excepción: el producto vuelve al precio calculado. Devuelve si
@@ -64,8 +79,18 @@ func (s *PlatformPricesService) DeleteProductPrice(ctx context.Context, productI
 	if err := s.productManaged(ctx, productID, platformID); err != nil {
 		return false, err
 	}
-	n, err := s.store.QC(ctx).DeleteProductPlatformPrice(ctx, db.DeleteProductPlatformPriceParams{
-		ProductID: productID, PlatformID: platformID,
+	var n int64
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		before, err := q.GetProductPlatformPriceForAudit(ctx, db.GetProductPlatformPriceForAuditParams{ProductID: productID, PlatformID: platformID})
+		if err != nil {
+			return err
+		}
+		if n, err = q.DeleteProductPlatformPrice(ctx, db.DeleteProductPlatformPriceParams{
+			ProductID: productID, PlatformID: platformID,
+		}); err != nil || n == 0 {
+			return err
+		}
+		return auditEntity(ctx, q, "price.deleted", "product", productID, nil, nil, priceSnapshot(before, platformID), nil)
 	})
 	if err != nil {
 		return false, err
@@ -90,20 +115,37 @@ func (s *PlatformPricesService) SetOptionDelta(ctx context.Context, optionID int
 	if err := s.pertenecePlataforma(ctx, platformID); err != nil {
 		return err
 	}
-	if err := s.store.QC(ctx).UpsertOptionPlatformPrice(ctx, db.UpsertOptionPlatformPriceParams{
-		OptionID: optionID, PlatformID: platformID, PriceDelta: d, UpdatedBy: userID,
-	}); err != nil {
-		return err
-	}
-	return nil
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		before, err := q.GetOptionPlatformPriceForAudit(ctx, db.GetOptionPlatformPriceForAuditParams{OptionID: optionID, PlatformID: platformID})
+		if err != nil {
+			return err
+		}
+		if err := q.UpsertOptionPlatformPrice(ctx, db.UpsertOptionPlatformPriceParams{
+			OptionID: optionID, PlatformID: platformID, PriceDelta: d, UpdatedBy: userID,
+		}); err != nil {
+			return err
+		}
+		return auditEntity(ctx, q, "price.set", "modifier_option", optionID, nil, &userID,
+			priceSnapshot(before, platformID), map[string]any{"price": d, "platformId": platformID})
+	})
 }
 
 func (s *PlatformPricesService) DeleteOptionDelta(ctx context.Context, optionID int64, platformID int16) (bool, error) {
 	if err := s.optionManaged(ctx, optionID, platformID); err != nil {
 		return false, err
 	}
-	n, err := s.store.QC(ctx).DeleteOptionPlatformPrice(ctx, db.DeleteOptionPlatformPriceParams{
-		OptionID: optionID, PlatformID: platformID,
+	var n int64
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		before, err := q.GetOptionPlatformPriceForAudit(ctx, db.GetOptionPlatformPriceForAuditParams{OptionID: optionID, PlatformID: platformID})
+		if err != nil {
+			return err
+		}
+		if n, err = q.DeleteOptionPlatformPrice(ctx, db.DeleteOptionPlatformPriceParams{
+			OptionID: optionID, PlatformID: platformID,
+		}); err != nil || n == 0 {
+			return err
+		}
+		return auditEntity(ctx, q, "price.deleted", "modifier_option", optionID, nil, nil, priceSnapshot(before, platformID), nil)
 	})
 	if err != nil {
 		return false, err

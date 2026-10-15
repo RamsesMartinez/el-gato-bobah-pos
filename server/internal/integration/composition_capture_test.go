@@ -186,8 +186,8 @@ func TestCapturingACompositionUnderTheAppRole(t *testing.T) {
 		{"insumo de otra empresa", app.CompositionOfProduct, frappe, app.CompositionRequest{Items: []app.CompositionInputItem{item(foreignIngredient, "1", g)}}},
 		{"unidad de otro tipo", app.CompositionOfProduct, frappe, app.CompositionRequest{Items: []app.CompositionInputItem{item(milk, "1", ml)}}},
 		{"cantidad que redondea a cero", app.CompositionOfProduct, frappe, app.CompositionRequest{Items: []app.CompositionInputItem{item(milk, "0.00003", g)}}},
-		{"producto con existencias propias con insumos", app.CompositionOfProduct, soda, app.CompositionRequest{Items: []app.CompositionInputItem{item(milk, "1", g)}}},
-		{"producto con existencias propias como paquete", app.CompositionOfProduct, soda, pkg(frappe, 1)},
+		// Un producto con existencia propia YA PUEDE recibir receta o volverse paquete (spec 037): su
+		// existencia se traslada o se cierra. Lo prueba consumption_mode_test.go.
 		{"paquete dentro de un paquete", app.CompositionOfProduct, frappe, pkg(party, 1)},
 		{"paquete que se lleva a sí mismo", app.CompositionOfProduct, party, pkg(party, 1)},
 		{"producto que va en un paquete y se quiere volver paquete", app.CompositionOfProduct, frappe, pkg(soda, 1)},

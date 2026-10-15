@@ -67,6 +67,8 @@ var pantallasMedibles = map[string]struct{}{
 	// que la medición de la pantalla sale vacía SIN un solo error visible.
 	"plataformas": {},
 	"emparejar":   {},
+	// Asistencia (spec 033): checar es de todos; el reporte va en la misma ruta.
+	"asistencia": {},
 }
 
 // accionesMedibles son las acciones con nombre que vale la pena contar, por pantalla.
@@ -83,6 +85,14 @@ var accionesMedibles = map[string]map[string]struct{}{
 	"pedidos":  {"cobrar": {}, "split-by-products": {}, "move-lines": {}, "void-payment": {}, "close-order": {}, "cancel-pending": {}},
 	"caja":     {"abrir-turno": {}, "cerrar-turno": {}, "contar-efectivo": {}, "traspaso": {}},
 	"catalogo": {"editar-producto": {}},
+	// Compras que suman al almacén (spec 038).
+	"gastos": {"registrar-compra": {}, "corregir-compra": {}},
+	// Salud del inventario (spec 037), Por recibir y Conteo (spec 038) son pestañas de Almacén, no
+	// rutas: se miden como acciones.
+	"inventario": {
+		"ver-salud": {}, "exportar-salud": {},
+		"ver-por-recibir": {}, "recibir": {}, "ver-conteo": {}, "cerrar-conteo": {},
+	},
 }
 
 // maxNombreDePantalla y maxNombreDeAccion son el espejo de los `check` de la migración 0069.
@@ -142,6 +152,8 @@ var rolesPorPantalla = map[string][]Role{
 	// tiene su tablero de pedidos; esto administra el catálogo.
 	"plataformas": {RoleAdmin, RoleGerente},
 	"emparejar":   {RoleAdmin, RoleGerente},
+	// Asistencia (spec 033): cualquier rol checa su entrada.
+	"asistencia": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
 }
 
 // PantallaPermitidaParaRol dice si ese rol puede siquiera abrir esa pantalla.

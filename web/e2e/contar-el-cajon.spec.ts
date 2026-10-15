@@ -120,7 +120,7 @@ test('C4 · contar 40 monedas se teclea, y el total es el que suma el servidor',
   await page.getByLabel('Piezas de $50', { exact: true }).fill('3');
   await expect(page.getByLabel('Total contado')).toHaveText('$550');
 
-  await page.getByRole('button', { name: 'Abrir caja' }).click();
+  await abrirLaCaja(page);
 
   // EL SERVIDOR TIENE QUE HABER GUARDADO LA MISMA CIFRA. Es lo único que esta suite puede probar y
   // los tests de pantalla no: la hoja suma en el cliente y el servidor recalcula desde las piezas —
@@ -157,7 +157,7 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
 
   // Se abre con $500 contados y se cierra declarando $450: faltan $50.
   await page.getByLabel('Piezas de $500', { exact: true }).fill('1');
-  await page.getByRole('button', { name: 'Abrir caja' }).click();
+  await abrirLaCaja(page);
   await expect(page.getByText('Monto inicial')).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole('button', { name: 'Contar efectivo' }).click();
@@ -173,6 +173,7 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
 
   // Y un faltante NO bloquea el cierre: si bloqueara, el operador se queda con la caja abierta toda
   // la noche por $50 que no aparecen.
+  await dejarTodoEnElCajon(page);
   const cerrar = page.getByRole('button', { name: 'Cerrar caja' });
   await expect(cerrar).toBeEnabled();
   await cerrarLaCaja(page);
@@ -208,7 +209,7 @@ test('C6 · el total a mano exige motivo, y cambiar de camino avisa antes de bor
   await page.getByLabel('Efectivo', { exact: true }).fill('400');
   await expect(page.getByRole('button', { name: 'Abrir caja' })).toBeDisabled();
   await page.getByLabel('Por qué no se contó pieza por pieza').fill('billete que no está en la lista');
-  await page.getByRole('button', { name: 'Abrir caja' }).click();
+  await abrirLaCaja(page);
 
   await expect(page.getByText('Monto inicial')).toBeVisible({ timeout: 30_000 });
 
@@ -279,6 +280,28 @@ test('C7 · un corte anterior a la funcionalidad no muestra desglose ni lo inven
 // «Cerrar caja» pregunta en una hoja de la app (spec 030): ya no hay `confirm()` del navegador que
 // aceptar. Se toca el botón y después el de la hoja.
 async function cerrarLaCaja(page: Page) {
+  await dejarTodoEnElCajon(page);
   await page.getByRole('button', { name: 'Cerrar caja' }).click();
   await page.getByRole('dialog').last().getByRole('button', { name: 'Cerrar caja' }).click();
+}
+
+// Abrir con una cifra distinta de la que dejó el cierre anterior pregunta el motivo (apertura a
+// ciegas, spec 033). En un ambiente compartido el cierre anterior lo hizo otra prueba u otra
+// persona, así que la diferencia es lo normal: se responde y se sigue.
+async function abrirLaCaja(page: Page) {
+  await page.getByRole('button', { name: 'Abrir caja' }).click();
+  const pregunta = page.getByText('Lo contado no coincide con el cierre anterior');
+  const abierta = page.getByText('Monto inicial');
+  await expect(pregunta.or(abierta).first()).toBeVisible({ timeout: 30_000 });
+  if (await pregunta.isVisible()) {
+    await page.getByRole('button', { name: 'Cambié el fondo' }).click();
+    await page.getByRole('dialog').last().getByRole('button', { name: 'Abrir caja' }).click();
+  }
+}
+
+// Desde el fondo fijo (spec 035) el cierre propone retirar y pide el fondo y quién se lo lleva. Estas
+// pruebas cuidan el conteo, no el retiro: todo se queda en el cajón.
+async function dejarTodoEnElCajon(page: Page) {
+  const no = page.getByRole('button', { name: 'No, todo se queda' });
+  if (await no.isVisible().catch(() => false)) await no.click();
 }

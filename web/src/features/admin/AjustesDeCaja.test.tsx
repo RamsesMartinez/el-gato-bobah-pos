@@ -9,11 +9,13 @@ const api = vi.hoisted(() => ({
   cardTerminals: vi.fn(), createCardTerminal: vi.fn(), updateCardTerminal: vi.fn(),
   cardCountModes: vi.fn(), setCardCountMode: vi.fn(),
   summaryEmails: vi.fn(), setSummaryEmails: vi.fn(),
+  allCashRegisters: vi.fn(), setFixedFloat: vi.fn(),
 }));
 vi.mock('../../api/backoffice', () => ({ backofficeApi: api }));
 vi.mock('../../components/ui/toaster', () => ({ toaster: { create: vi.fn() } }));
 
 import { AjustesDeCaja } from './AjustesDeCaja';
+import { useSessionStore } from '../../stores/session';
 
 beforeEach(() => {
   api.cashConcepts.mockResolvedValue({ items: [
@@ -25,6 +27,12 @@ beforeEach(() => {
   api.summaryEmails.mockResolvedValue({ emails: ['dueno@ejemplo.com'] });
   for (const f of [api.updateCashConcept, api.mergeCashConcept, api.createCardTerminal, api.updateCardTerminal, api.setCardCountMode]) f.mockResolvedValue(null);
   api.setSummaryEmails.mockResolvedValue({ emails: [] });
+  api.allCashRegisters.mockResolvedValue({ items: [
+    { id: 1, name: 'Caja principal', isPrimary: true, isActive: true, fixedFloat: '1000' },
+    { id: 2, name: 'Barra', isPrimary: false, isActive: true, fixedFloat: null },
+  ] });
+  api.setFixedFloat.mockResolvedValue(null);
+  useSessionStore.setState({ user: { id: 1, companyId: 1, name: 'Gerente', role: 'gerente', permissions: ['cash.configure'] } });
 });
 
 function pinta() {
@@ -90,4 +98,53 @@ test('archivar una terminal pide confirmar', async () => {
   const hoja = await screen.findByRole('dialog');
   await userEvent.click(within(hoja).getByRole('button', { name: 'Archivar' }));
   await waitFor(() => expect(api.updateCardTerminal).toHaveBeenCalledWith(5, { archived: true }));
+});
+
+// Spec 035, opción B de las maquetas (plan.md, «Maquetas», fila «Ajustes › Caja: fondo fijo»): un
+// renglón por caja que abre una hoja con teclado propio; el campo no abre el teclado del sistema.
+describe('fondo fijo', () => {
+  test('un renglón de 56 px por caja con su monto o «Sin configurar»', async () => {
+    pinta();
+    const fila = await screen.findByRole('button', { name: /Caja principal/ });
+    expect(getComputedStyle(fila).minHeight).toBe('56px');
+    expect(within(fila).getByText('$1,000')).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: /Barra/ })).getByText(/Sin configurar/)).toBeInTheDocument();
+  });
+
+  test('se teclea en la hoja y se guarda', async () => {
+    pinta();
+    await userEvent.click(await screen.findByRole('button', { name: /Barra/ }));
+    const hoja = await screen.findByRole('dialog');
+    const campo = within(hoja).getByLabelText('Fondo fijo');
+    expect(campo).toHaveAttribute('readonly');
+    expect(campo).toHaveAttribute('inputmode', 'none');
+    for (const k of ['5', '0', '0']) await userEvent.click(within(hoja).getByRole('button', { name: k }));
+    expect(campo).toHaveValue('500');
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(api.setFixedFloat).toHaveBeenCalledWith(2, 500));
+  });
+
+  // Se veía en la tableta a 1024×600 como una caja a media página con «Guardar» en y=848: la hoja se
+  // armaba con las piezas crudas de Chakra, sin el Positioner que la fija al borde de la pantalla.
+  test('la hoja va fija al borde inferior de la pantalla, no a media página', async () => {
+    pinta();
+    await userEvent.click(await screen.findByRole('button', { name: /Barra/ }));
+    const hoja = await screen.findByRole('dialog');
+    expect(hoja.closest('[data-part="positioner"]')).not.toBeNull();
+  });
+
+  test('«Quitar fondo fijo» manda null', async () => {
+    pinta();
+    await userEvent.click(await screen.findByRole('button', { name: /Caja principal/ }));
+    const hoja = await screen.findByRole('dialog');
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Quitar fondo fijo' }));
+    await waitFor(() => expect(api.setFixedFloat).toHaveBeenCalledWith(1, null));
+  });
+
+  test('sin el permiso se ve el monto pero no se abre nada', async () => {
+    useSessionStore.setState({ user: { id: 1, companyId: 1, name: 'Cajero', role: 'cajero', permissions: [] } });
+    pinta();
+    expect(await screen.findByText('Caja principal')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Caja principal/ })).toBeNull();
+  });
 });

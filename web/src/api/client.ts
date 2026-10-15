@@ -1,4 +1,5 @@
 import { useSessionStore, type SessionUser } from '../stores/session';
+import { deviceHeaders } from './origin';
 import { uuid } from '../utils/uuid';
 
 // En dev, Vite hace proxy de /api → localhost:8080. En prod, mismo origen tras Caddy.
@@ -21,12 +22,15 @@ export class ApiError extends Error {
   status: number;
   requestId: string;
   details?: ApiErrorDetails;
-  constructor(status: number, code: string, message: string, requestId: string, details?: ApiErrorDetails) {
+  // Segundos que pide esperar un 429 (header Retry-After), para decir en cuánto reintentar.
+  retryAfter?: number;
+  constructor(status: number, code: string, message: string, requestId: string, details?: ApiErrorDetails, retryAfter?: number) {
     super(message);
     this.status = status;
     this.code = code;
     this.requestId = requestId;
     this.details = details;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -99,6 +103,7 @@ async function request<T>(
       headers: {
         ...(isForm ? {} : { 'Content-Type': 'application/json' }),
         'X-Request-Id': requestId,
+        ...deviceHeaders(),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...extra,
       },
@@ -146,7 +151,8 @@ async function request<T>(
       useSessionStore.getState().clear('caducada');
     }
     console.error(`[api] ✗ ${label} · ${res.status} ${code} · ${ms}ms · id=${traceId}`);
-    throw new ApiError(res.status, code, message, traceId, details);
+    const retryAfter = Number(res.headers.get('Retry-After')) || undefined;
+    throw new ApiError(res.status, code, message, traceId, details, retryAfter);
   }
 
   if (DEBUG) {

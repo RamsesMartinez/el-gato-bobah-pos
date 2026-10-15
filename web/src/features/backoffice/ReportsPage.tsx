@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import {
-  Box, Heading, SimpleGrid, Table, Center, Spinner, Text, Stat, HStack,
+  Box, Heading, SimpleGrid, Table, Center, Spinner, Text, Stat, HStack, Tabs,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { backofficeApi, type ReportPreset } from '../../api/backoffice';
 import { money } from '../../utils/format';
 import { round2 } from '../../domain/cobro';
 import { Page } from '../../components/Page';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
+import { AuditLogTab } from './AuditLogTab';
 import { RangoDeFechas } from '../../components/RangoDeFechas';
 import { validarRango } from '../../domain/rangoDeFechas';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
@@ -18,7 +21,28 @@ const PRESETS = [
   { id: 'mes', label: 'Mes' },
 ];
 
+// ReportsPage es /reportes. Con permiso de bitácora gana una pestaña «Bitácora» (spec 033); sin él
+// se ve como siempre, sin una fila de pestañas que le quite alto.
 export function ReportsPage() {
+  const user = useSessionStore((s) => s.user);
+  if (!can('audit.view', user)) {
+    return <Page maxW="1150px"><ReportesDeVentas /></Page>;
+  }
+  return (
+    <Page maxW="1150px" fill>
+      <Tabs.Root defaultValue="ventas" display="flex" flexDirection="column" flex="1" minH={0}>
+        <Tabs.List>
+          <Tabs.Trigger value="ventas" minH="44px">Ventas</Tabs.Trigger>
+          <Tabs.Trigger value="bitacora" minH="44px">Bitácora</Tabs.Trigger>
+        </Tabs.List>
+        <Tabs.Content value="ventas" flex="1" minH={0} overflowY="auto" px={0}><ReportesDeVentas /></Tabs.Content>
+        <Tabs.Content value="bitacora" flex="1" minH={0} display="flex" flexDirection="column" px={0}><AuditLogTab /></Tabs.Content>
+      </Tabs.Root>
+    </Page>
+  );
+}
+
+function ReportesDeVentas() {
   const horaNegocio = useHoraDelNegocio();
   const [preset, setPreset] = useState<ReportPreset>('30d');
   const [desde, setDesde] = useState('');
@@ -72,7 +96,7 @@ export function ReportsPage() {
   const totalTips = tips.data?.byEmployee.reduce((s, e) => s + Number(e.tips), 0) ?? 0;
 
   return (
-    <Page maxW="1150px">
+    <Box>
       <HStack justify="space-between" align="baseline" mb={2} flexWrap="wrap">
         <Heading size="lg">Reportes</Heading>
         {/* El periodo que el SERVIDOR consultó, no el que la pantalla cree haber pedido. El
@@ -217,6 +241,6 @@ export function ReportsPage() {
           )}
         </Box>
       </SimpleGrid>
-    </Page>
+    </Box>
   );
 }

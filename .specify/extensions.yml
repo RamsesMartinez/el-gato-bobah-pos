@@ -21,6 +21,13 @@ hooks:
   # todavía se corrigen editando un documento. El mismo hallazgo después de implementar se corrige
   # con una migración sobre datos de un negocio en operación.
   after_plan:
+    # Primero las maquetas: el dueño elige cómo se ve cada pantalla nueva, y el revisor de tableta
+    # revisa la opción elegida, no tres candidatas. Si el plan no toca pantallas, no hace nada.
+    - extension: maquetas
+      command: maquetas
+      description: "2 o 3 maquetas navegables a 1024×600 por pantalla nueva; el dueño elige y queda en plan.md"
+      optional: false
+      enabled: true
     - extension: revision-de-arquitectura
       command: revision-de-arquitectura
       description: "db-architect y tablet-ui-reviewer contra el plan, antes de que exista código"

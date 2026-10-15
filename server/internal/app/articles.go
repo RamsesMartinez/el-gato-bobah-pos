@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -46,6 +47,8 @@ type IngredientView struct {
 	CompositionStatus string `json:"compositionStatus"`
 	// RecipeUses: en cuántas recetas aparece; ordena el buscador de insumos con los más usados arriba.
 	RecipeUses int `json:"recipeUses"`
+	// CountPlace: dónde está, para ordenar el conteo (spec 038). No es un almacén.
+	CountPlace *string `json:"countPlace"`
 }
 
 // ArticleView es una entrada del buscador único: ingredientes y productos con control de stock
@@ -102,6 +105,7 @@ func (s *BackofficeService) Ingredients(ctx context.Context, onlyActive bool) ([
 			BaseUnitID: r.BaseUnitID, BaseUnitCode: r.BaseUnitCode, BaseUnitKind: string(r.BaseUnitKind),
 			Category: r.Category, OnHand: r.OnHand,
 			IsPrep: r.IsPrep, CompositionStatus: textoDe(r.CompositionStatus), RecipeUses: int(r.RecipeUses),
+			CountPlace: r.CountPlace,
 		}
 	}
 	return out, nil
@@ -122,11 +126,44 @@ func (s *BackofficeService) CreateIngredient(ctx context.Context, in IngredientI
 		}
 		in.MinStock = &v
 	}
-	r, err := s.store.QC(ctx).CreateIngredient(ctx, db.CreateIngredientParams{
-		Name: name, BaseUnitID: in.BaseUnitID, CategoryID: in.CategoryID,
-		MinStock: in.MinStock, TrackStock: in.TrackStock, IsPackaging: in.IsPackaging,
+	var r db.CreateIngredientRow
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Un insumo se cuenta en la unidad base de su tipo (g, ml, cm, pieza). Antes el alta rápida
+		// tomaba la unidad de compra (kg) y lo guardado se leía mil veces mal (spec 038, R0); lo
+		// que llega en kg se captura como empaque o unidad de compra.
+		u, err := q.GetUnit(ctx, in.BaseUnitID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrValidation
+			}
+			return err
+		}
+		if !u.ToBase.Equal(decimal.NewFromInt(1)) {
+			return fmt.Errorf("%w: el insumo se cuenta en g, ml, cm o piezas; lo que llega en kg o L se captura como empaque", domain.ErrValidation)
+		}
+		// Mismo nombre sin mayúsculas, acentos ni espacios de más: dos cuentas de las mismas latas se
+		// contarían dos veces (spec 037). El candado es por empresa, para que dos altas casi
+		// simultáneas no pasen las dos.
+		if err := q.LockIngredientNames(ctx); err != nil {
+			return err
+		}
+		taken, err := q.IngredientNameTaken(ctx, name)
+		if err != nil {
+			return err
+		}
+		if taken {
+			return fmt.Errorf("%w: ya hay un insumo que se llama así", domain.ErrConflict)
+		}
+		r, err = q.CreateIngredient(ctx, db.CreateIngredientParams{
+			Name: name, BaseUnitID: in.BaseUnitID, CategoryID: in.CategoryID,
+			MinStock: in.MinStock, TrackStock: in.TrackStock, IsPackaging: in.IsPackaging,
+		})
+		return err
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			return IngredientView{}, err
+		}
 		// El unique (company_id, name) protege contra dos "Leche entera" en la misma empresa;
 		// llega como 409 accionable en vez de un 500 opaco.
 		if isUniqueViolation(err) {

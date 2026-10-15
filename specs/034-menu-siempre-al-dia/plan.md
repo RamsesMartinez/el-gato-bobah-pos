@@ -19,7 +19,8 @@ avisa en neutro y reabre la hoja de extras sin tocar el resto de la cuenta.
   `appRoleStore` con `inTheThreeCases`; vitest en `web/`.
 - **Plataforma**: tabletas 1024×600; el aviso es un toast informativo, sin pantalla nueva.
 - **Restricciones**: se despliega con el negocio operando → migración aditiva, API vieja compatible.
-- **Siguiente migración libre en develop**: `0089` (la 033 vive en otra rama: verificar al commitear).
+- **Migración**: `0093`. Se escribió como `0089` y se renumeró al retomar la feature el 2026-10-15: la 033
+  (asistencia y bitácora) llegó antes a develop con ese número, y después la 035 y la 038 tomaron 0090–0092.
 
 ## Tablas que alimentan el menú (leídas de `queries/menu.sql` y `platform_prices.sql`)
 
@@ -74,7 +75,7 @@ siendo correcta (más invalidaciones, nunca menos). No cierra ninguna puerta.
 
 | Pieza | Capa |
 | --- | --- |
-| Tabla `catalog_versions`, función `bump_catalog_version()` y 30 triggers | `migrations/0089_catalog_versions.sql` |
+| Tabla `catalog_versions`, función `bump_catalog_version()` y 30 triggers | `migrations/0093_catalog_versions.sql` |
 | `CatalogVersion :one` | `queries/menu.sql` → sqlc |
 | `MenuService.Version(ctx)` | `app/menu.go` |
 | `MenuETag`, llave versionada; se quita `Invalidate` | `cache/menu.go` |
@@ -92,7 +93,7 @@ siendo correcta (más invalidaciones, nunca menos). No cierra ninguna puerta.
 ## Project Structure
 
 ```text
-server/migrations/0089_catalog_versions.sql
+server/migrations/0093_catalog_versions.sql
 server/queries/menu.sql
 server/internal/{cache,app,httpapi}/…
 server/internal/integration/catalog_versions_test.go
@@ -107,7 +108,7 @@ AGENTS.md
   lee el contador con candado (lectura MVCC).
 - **Despliegue**: migrar primero; la API vieja ignora tabla y triggers. La API nueva con caché vieja
   usa otra llave: el primer request arma el menú, una vez.
-- **Medido (2026-10-10)**: la 0089 tarda **17.68 ms** (lo que reporta goose) sobre una copia de la
+- **Medido (2026-10-10)**: la migración (entonces 0089) tarda **17.68 ms** (lo que reporta goose) sobre una copia de la
   base local restaurada de producción, en 0088 y con dos empresas (1018 productos, 564 ligas
   producto-grupo); `catalog_versions` nace vacía y se llena con el primer cambio. Un `update` de
   todos los productos con los triggers ya puestos: 22.6 ms. Postgres 16 en Docker sobre WSL2, no la

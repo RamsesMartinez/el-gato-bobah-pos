@@ -20,6 +20,11 @@ pre-commit:
     # constitución y aun así se rompió: un recordatorio se olvida, un commit que falla no.
     migracion-con-test:
       run: bash scripts/hooks/migracion-con-test.sh
+    # Los scripts que borran una base tienen prueba (scripts/tests/): un cambio que los vuelva a
+    # apuntar a la base de la carpeta principal desde un worktree no se commitea.
+    scripts-test:
+      glob: "scripts/{restaurar-respaldo,worktree-env-load}.sh"
+      run: bash scripts/tests/restaurar-respaldo-test.sh
 
 pre-push:
   parallel: true

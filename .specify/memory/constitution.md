@@ -155,7 +155,7 @@ un no-op y la migración pasa verde para romper en producción.
 
 Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/security-owasp.md](../../docs/security-owasp.md)). Estos helpers **ya existen**: úsalos, no reinventes.
 
-- **Autorización SIEMPRE en el backend.** [`RequireAuth`](../../server/internal/httpapi/middleware.go) + [`RequireRole`](../../server/internal/httpapi/middleware.go) en el router; el front (`web/src/app/roles.ts`) es **solo UX/espejo**, nunca la barrera.
+- **Autorización SIEMPRE en el backend.** [`RequireAuth`](../../server/internal/httpapi/middleware.go) + `RequirePermission` en el router (los `RequireRole` que quedan son anteriores al modelo híbrido de roles); el front (`web/src/app/roles.ts`) es **solo UX/espejo**, nunca la barrera.
 - **Secretos por env, validados al arranque (fail-fast).** [`config.Validate`](../../server/internal/config/config.go) rechaza `JWT_SECRET` débil/placeholder y `CORS_ORIGIN=*` en producción: la API **no arranca**. Nuevo secreto/config peligrosa → añade su check aquí.
 - **Rate limiting en todo endpoint sensible.** [`httpapi.rateLimiter`](../../server/internal/httpapi/ratelimit.go): per-IP (proxy-safe vía `rateKeyIP`) **y** per-cuenta con lockout, cableado en `/login`, `/refresh`, `/forgot` y `/reset`. Backed por Redis cuando `REDIS_URL` está definido; sin Redis cae a in-memory (dev). Redis caído = **fail-open** (nunca tumba login por un hiccup del caché), logueado como evento de seguridad.
 - **Eventos de seguridad con clave estable, nunca secretos/PII.** [`logging.SecurityEvent`](../../server/internal/logging/security.go) para `login_failed`/`pin_failed`/`auth_lockout`/`forbidden`/`refresh_reuse`. PII (customerName/notas) fuera de logs salvo `LOG_LEVEL=debug` o 5xx.
@@ -230,6 +230,7 @@ que el negocio ya sabe que va a querer. Un plan que cierre una de ellas es un ha
 | Puerta | Qué la cerraría | Dónde está hoy |
 |---|---|---|
 | ~~**Más de una sucursal** dentro de una empresa~~ **CRUZADA (spec 025, 2026-10-02)** | — | `branches` con matriz por empresa; cajas, pedidos, tiendas de plataforma y existencias guardan su sucursal con llave compuesta. Sigue abierto: el selector de sucursal, quién trabaja en cuál, y precio o disponibilidad por sucursal sobre el catálogo maestro |
+| **Más de un almacén por sucursal** — bodega y cocina con existencias propias, traspasos entre ellos (decidido el 2026-10-14, issue #65) | Asumir que lo guardado de una sucursal está en un solo lugar de forma que no se pueda partir: una existencia, un conteo o un movimiento que no admita después un almacén, o usar el «lugar» del insumo como si fuera un almacén | `stock_levels`, `stock_movements` y `stock_counts` (038) son por sucursal; agregar el almacén cuesta una columna y asignar lo existente al principal. El «lugar» del insumo (038) solo ordena el recorrido del conteo |
 | **Más de una caja vendiendo a la vez** | Cualquier cosa que asuma "la" caja abierta | `GetOpenPrimarySession` asume una sola; 3 configuradas, 1 que vende |
 | **Saber de quién es un pedido** | Un pedido que no guarda quién lo capturó, o guardarlo con una identidad que no distingue estaciones | `orders.opened_by` existe, pero dos tabletas comparten la misma cuenta: hoy no distingue |
 | ~~**Cuánto deja cada plataforma**~~ **CRUZADA (spec 014, 2026-09-08)** | — | `platform_settlements` guarda por pedido lo que dice el documento de pago: comisión (monto y tasa), retenciones, neto y quién financió el descuento. Dejó de ser puerta y es feature |
@@ -251,7 +252,8 @@ y sin selector truena en vez de escoger la matriz.
 
 La puerta de **roles y permisos** la abrió el dueño el 2026-10-05, al planear el spec 027: los
 clientes van a definir sus propios roles. No se construye todavía; lo que se exige desde ya es que
-ningún control nuevo pregunte por el nombre de un rol.
+ningún control nuevo pregunte por el nombre de un rol. El 2026-10-13 el dueño fijó la forma que
+tendrá: **modelo híbrido** (ver *Restricciones del producto*).
 
 **Dos puertas se cruzaron el 2026-09-08 con el spec 014** y se dejan tachadas en vez de borradas:
 lo que enseñan —qué hecho era irrecuperable y por qué— es lo que hace que la siguiente puerta se
@@ -282,9 +284,18 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
     sistema operativo con renglones de ~20 px, tapa la pantalla y no se acierta con el dedo. Va
     [`Picker`](../../web/src/components/Picker.tsx): una hoja inferior con filas grandes y buscador.
     Esta regla ya se había perdido una vez por vivir solo en el comentario de un componente; por eso
-    está aquí. Aplica igual a cualquier control cuyo desplegable pinte el sistema.
+    está aquí. Aplica igual a cualquier control cuyo desplegable pinte el sistema: el calendario de
+    `input type="date"` o `type="time"` también (celdas de ~30 px). Va
+    [`DatePickerButton`](../../web/src/components/DatePickerButton.tsx) o, para horas, un `Picker`
+    de pasos de 15 minutos (decidido el 2026-10-11).
   - **Todo control tappable mide al menos 44 px de alto.** Es el mínimo con el que un dedo acierta a
     la primera; por debajo, el operador toca dos veces y la segunda cae en otra cosa.
+  - **La pantalla la verifica el agente, no una persona con la tableta en la mano** (decidido el
+    2026-10-11). No hay paso manual «en tableta real» ni se deja como pendiente: se mide con
+    Playwright a 1024×600 contra el ambiente de pruebas, con capturas, y con subagentes que usan la
+    pantalla como alguien nuevo y reportan dónde se atoran. Lo que Chromium no reproduce (el teclado
+    del sistema, la densidad de una Surface) se simula —ventana encogida, `deviceScaleFactor`— y se
+    nombra como simulado, no como pendiente para alguien más.
 - **El texto de la interfaz es para quien opera el negocio, no para quien lo programa.** Este producto se vende. Una pantalla que justifica *por qué* una decisión técnica es la correcta, o que argumenta contra la alternativa, delata al desarrollador y resta confianza en el producto. En pantalla va lo que el operador necesita para decidir; el porqué vive en el comentario del código o en `docs/`.
   - **Prohibido en la UI**: justificar un tradeoff ("peor que el toque que esto viene a quitar"), nombrar internals (flags del navegador, endpoints, columnas) o advertir de algo que el usuario no puede accionar desde ahí.
   - **El detalle operativo que sí sirve** —cómo dejar la tablet lista, qué formato de imagen se acepta— se guarda detrás de un icono de ayuda y se redacta como instrucción en pasos, no como explicación. Ej.: el interruptor de impresión automática en [`PrintSettingsPage`](../../web/src/features/admin/PrintSettingsPage.tsx) dice qué hace en un renglón y deja el "cómo configurarlo" en un diálogo de ayuda.
@@ -319,12 +330,46 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
   cobran, si hay meseros identificados y cuántas sucursales tiene una empresa los decide un cliente
   que todavía no existe. Por eso las puertas del principio VIII no son hipótesis: son requisitos con
   fecha desconocida, y cerrar una es cerrarla para un cliente que ya firmó.
+- **El producto es para negocios de comida** (decidido el 2026-10-14): restaurantes, cafeterías,
+  fondas y parecidos. Cuando una feature dice «configurable por empresa», la vara es otro negocio
+  de comida con otra operación (una fonda, una taquería, una panadería), no cualquier giro. Las
+  pruebas de pantalla con alguien sin contexto usan esas personas. Lo que ya sirve de más (la
+  longitud como unidad, la palabra «artículo» configurable) se deja: no estorba y un cliente de
+  comida puede necesitarlo; pero no se diseña una feature para otro giro.
+- **Roles: modelo híbrido, roles sugeridos más roles propios de cada empresa** (decidido el
+  2026-10-13). Así se vende el producto: una empresa nueva arranca con roles sugeridos que ya traen
+  sus permisos cargados (los cuatro de hoy: admin, gerente, cajero, cocina) y puede crear roles
+  propios y asignarles cualquier permiso, sin pedir un cambio de código. De ahí salen tres reglas:
+  - **El código solo pregunta por permisos, nunca por el nombre de un rol.** Todo control nuevo
+    cuelga de un `domain.Permission` (`RequirePermission` en el servidor, `can()` en el front). Un
+    `RequireRole` nuevo, o un `role === '…'` nuevo en el front, es un hallazgo de revisión. Los 32
+    `RequireRole` que ya existen se migran a permiso cuando alguien toca esa ruta por otra razón.
+  - **Un permiso es una capacidad que el operador entiende, con nombre estable en inglés**
+    (`menu.configure`, `inventory.health_view`): se guarda como dato en cuanto los roles vivan en la
+    base, y renombrarlo después rompe los roles que ya armó cada cliente. Uno por capacidad, no uno
+    por pantalla ni por botón.
+  - **Los roles sugeridos son una semilla, no una regla.** El mapa rol → permisos de `domain` es lo
+    que hoy los define y lo que pasará a la base como plantilla de cada empresa nueva; una empresa
+    puede editarlos. Ninguna lógica puede depender de que un rol sugerido exista o conserve sus
+    permisos.
 - **Dependencias siempre en la última versión estable**, y **un CVE bloquea el merge**: `govulncheck` (Go) y `bun audit --audit-level=high` (web) son bloqueantes en CI y no se aflojan.
 
 ## Quality gates
 
 - **`/speckit-analyze` corre antes de `/speckit-implement`, siempre.** El flujo publicado lo marca opcional; en este repo no lo es. Un hallazgo CRITICAL o HIGH bloquea la implementación hasta resolverse o hasta que el dueño lo exima explícitamente.
+- **Un gate de spec-kit se cumple corriendo el comando, nunca con una revisión a mano** (decidido el
+  2026-10-13). Después de cualquier cambio a `spec.md`, `plan.md`, `tasks.md` o a esta constitución,
+  `/speckit-analyze` se vuelve a correr completo, y su reporte trae la tabla de cobertura requisito
+  por requisito. Un «está cubierto» sin esa tabla no cuenta, lo diga quien lo diga. Pasó en el spec
+  037: una revisión a mano declaró 24 de 24 requisitos cubiertos y el comando completo encontró uno
+  sin ninguna tarea (una de las cinco secciones de la pantalla) y dos choques con la regla de roles
+  enmendada ese mismo día.
 - **Los revisores de diseño corren solos, no por recordatorio.** [`.specify/extensions.yml`](../extensions.yml) engancha `/revision-de-arquitectura` en `after_plan` —`db-architect` y `tablet-ui-reviewer` sobre el plan, cuando corregir todavía cuesta editar un documento— y `/revision-de-codigo` en `after_implement`. Ninguno es `optional`: un hook opcional imprime una sugerencia, y una sugerencia es justo el recordatorio que el hook viene a reemplazar. Que qué revisor aplica se decida leyendo el diff, y no en el archivo de hooks, es a propósito.
+- **Una pantalla nueva o con disposición cambiada no se implementa sin maqueta elegida.** El hook
+  `after_plan` corre `/maquetas` antes que los revisores de diseño: 2 o 3 opciones navegables a
+  1024×600 por pantalla, el dueño elige y la decisión queda en la sección «Maquetas» del plan. Una
+  pantalla aprobada en una tabla se aprueba sin verla, y el defecto aparece en la tableta. Un plan
+  que toca `web/` con la sección vacía es un hallazgo CRITICAL de `/speckit-analyze`.
 - **Los hooks de lefthook quedan verdes** antes de commitear o pushear. `--no-verify` no se usa: si un hook falla, se arregla la causa. (Qué corre cada hook: `AGENTS.md`.)
 - **Verificación de backend antes de dar algo por bueno**: `make api-build && make api-test`.
 - Commits pequeños y enfocados.
@@ -348,4 +393,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.16.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-07
+**Version**: 1.22.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-14

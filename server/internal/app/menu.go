@@ -95,7 +95,7 @@ func NewMenuService(s *store.Store, now func() time.Time) *MenuService {
 }
 
 // MenuVersion identifica el contenido del menú de la empresa de la sesión: la versión de catálogo
-// que suben los triggers (0089) y el día de la base, porque la disponibilidad por fecha cambia el
+// que suben los triggers (0093) y el día de la base, porque la disponibilidad por fecha cambia el
 // menú sin que nadie toque el catálogo.
 type MenuVersion struct {
 	Catalog int64

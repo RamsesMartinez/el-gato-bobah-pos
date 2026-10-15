@@ -77,6 +77,12 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusUnprocessableEntity, "CARD_TERMINAL_REQUIRED"
 	case errors.Is(err, domain.ErrTerminalCountRequired):
 		status, code = http.StatusUnprocessableEntity, "TERMINAL_COUNT_REQUIRED"
+	case errors.Is(err, domain.ErrAttendanceDisabled):
+		status, code = http.StatusConflict, "ATTENDANCE_DISABLED"
+	case errors.Is(err, domain.ErrAttendanceStateChanged):
+		status, code = http.StatusConflict, "ATTENDANCE_STATE_CHANGED"
+	case errors.Is(err, domain.ErrAttendanceOverlap):
+		status, code = http.StatusConflict, "ATTENDANCE_OVERLAP"
 	case errors.Is(err, domain.ErrValidation):
 		status, code = http.StatusBadRequest, "VALIDATION"
 	case errors.Is(err, domain.ErrPlatformNotFound):

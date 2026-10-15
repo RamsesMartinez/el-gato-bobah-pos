@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -148,6 +149,28 @@ func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, v)
 }
 
+// PUT /cash-registers/{id}/fixed-float — el fondo que se queda al cerrar (spec 035); null lo quita.
+func (h *Handlers) SetFixedFloat(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		FixedFloat *decimal.Decimal `json:"fixedFloat"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.SetFixedFloat(r.Context(), id, body.FixedFloat)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
 // GET /cash/denominations?currency= — qué piezas se pueden contar.
 //
 // La moneda es un parámetro de frontera: uno desconocido se RECHAZA y no cae a MXN en silencio. Un
@@ -256,6 +279,11 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		TerminalCounts map[string]decimal.Decimal `json:"terminalCounts"`
 		// FloatLeft: el fondo que se queda para el siguiente turno (2026-10-10).
 		FloatLeft *decimal.Decimal `json:"floatLeft"`
+		// FixedFloatShown y WithdrawalUserID (spec 035): el fijo que la hoja mostró y quién se lleva
+		// el retiro. Ausentes en una tableta con el front anterior: el servidor usa el fijo vigente y
+		// a quien cierra.
+		FixedFloatShown  *decimal.Decimal `json:"fixedFloatShown"`
+		WithdrawalUserID *int64           `json:"withdrawalUserId"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -285,6 +313,7 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 	u, _ := userFrom(r.Context())
 	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
 		TerminalCounts: terminales, FloatLeft: body.FloatLeft,
+		FixedFloatShown: body.FixedFloatShown, WithdrawalUserID: body.WithdrawalUserID,
 		Declarado: declared, Piezas: piezasDelBody(body.Counts),
 		Total: body.CountedCash, Motivo: body.ManualReason, Notas: body.Notes, Propinas: body.TipsDecision,
 	})
@@ -379,7 +408,8 @@ func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
 			*p.dst = &d
 		}
 	}
-	rows, total, err := h.backoffice.SessionHistory(r.Context(), f)
+	u, _ := userFrom(r.Context())
+	rows, total, err := h.backoffice.SessionHistoryFor(r.Context(), f, slices.Contains(h.permissions(u.Role), domain.PermCashConfigure))
 	if err != nil {
 		Error(w, err)
 		return
@@ -394,7 +424,8 @@ func (h *Handlers) CashSessionDetail(w http.ResponseWriter, r *http.Request) {
 		Error(w, domain.ErrValidation)
 		return
 	}
-	view, err := h.backoffice.SessionDetail(r.Context(), id)
+	u, _ := userFrom(r.Context())
+	view, err := h.backoffice.SessionDetailFor(r.Context(), id, slices.Contains(h.permissions(u.Role), domain.PermCashConfigure))
 	if err != nil {
 		Error(w, err)
 		return
@@ -794,8 +825,26 @@ func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
 	if n, err := strconv.Atoi(r.URL.Query().Get("pageSize")); err == nil && n >= 1 && n <= 100 {
 		pageSize = n
 	}
-	// pendingReceipt: la bandeja de "mercancía por llegar" (un pedido pagado que aún no entra).
-	pending := r.URL.Query().Get("pendingReceipt") == "true"
+	// pending: la bandeja de mercancía por llegar. Ausente = todos; un valor que no es true/false se
+	// rechaza en vez de mostrar «todos» como si fuera el filtro. `pendingReceipt` es el nombre viejo.
+	var pending bool
+	seen := map[string]bool{}
+	for _, name := range []string{"pending", "pendingReceipt"} {
+		switch v := r.URL.Query().Get(name); v {
+		case "":
+		case "true", "false":
+			seen[v] = true
+			pending = v == "true"
+		default:
+			Error(w, fmt.Errorf("%w: %s inválido", domain.ErrValidation, name))
+			return
+		}
+	}
+	// Los dos nombres en desacuerdo: no se escoge uno en silencio.
+	if seen["true"] && seen["false"] {
+		Error(w, fmt.Errorf("%w: pending y pendingReceipt dicen cosas distintas", domain.ErrValidation))
+		return
+	}
 	// Orden por columna: solo valores conocidos (lo demás → fecha desc, el default del query).
 	sort := r.URL.Query().Get("sort")
 	switch sort {
@@ -840,8 +889,11 @@ type expenseItemBody struct {
 	QtyReceived   *decimal.Decimal `json:"qtyReceived"`
 	Amount        decimal.Decimal  `json:"amount"`
 	PackQtyInBase *decimal.Decimal `json:"packQtyInBase"`
-	RawCode       string           `json:"rawCode"`
-	RawName       string           `json:"rawName"`
+	// PresentationID: el empaque del insumo; el servidor copia su contenido (spec 038).
+	PresentationID *int64 `json:"presentationId"`
+	IsGift         bool   `json:"isGift"`
+	RawCode        string `json:"rawCode"`
+	RawName        string `json:"rawName"`
 	// Personal: venía en el ticket pero no es del local. No se guarda como línea del gasto.
 	Personal bool `json:"personal"`
 }
@@ -864,6 +916,7 @@ func toItemInputs(in []expenseItemBody) []app.ExpenseItemInput {
 			Description: it.Description, Quantity: it.Quantity, UnitID: it.UnitID,
 			QtyReceived: it.QtyReceived, Amount: it.Amount, PackQtyInBase: it.PackQtyInBase,
 			RawCode: it.RawCode, RawName: it.RawName, Personal: it.Personal,
+			PresentationID: it.PresentationID, IsGift: it.IsGift,
 		}
 	}
 	return out

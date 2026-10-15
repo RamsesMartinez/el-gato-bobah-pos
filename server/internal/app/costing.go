@@ -26,70 +26,74 @@ func NewCostingService(s *store.Store) *CostingService { return &CostingService{
 // Es idempotente y barato (~750 productos < 50ms), sirve tras importar/editar catálogo
 // y como job nocturno de seguridad.
 func (s *CostingService) RecomputeAll(ctx context.Context) error {
-	g, ings, prods, opts, err := s.loadGraph(ctx)
+	return s.store.WithTx(ctx, func(q *db.Queries) error { return recomputeCosts(ctx, q) })
+}
+
+// recomputeCosts es RecomputeAll dentro de una transacción ajena: una compra cambia el costo de un
+// insumo y propaga a recetas, productos y extras en la MISMA transacción (spec 038), para que nadie
+// lea un producto costeado con el insumo viejo y la compra ya guardada.
+func recomputeCosts(ctx context.Context, q *db.Queries) error {
+	g, ings, prods, opts, err := loadGraph(ctx, q)
 	if err != nil {
 		return err
 	}
-
-	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		for _, ing := range ings {
-			if !ing.IsPrep {
-				continue // materia prima: su costo no se deriva
-			}
-			c := costDec(g.IngredientCost(ing.ID))
-			if err := q.UpdateIngredientCost(ctx, db.UpdateIngredientCostParams{ID: ing.ID, CurrentCost: c}); err != nil {
-				return err
-			}
+	for _, ing := range ings {
+		if !ing.IsPrep {
+			continue // materia prima: su costo no se deriva
 		}
-		for _, p := range prods {
-			c := costDec(g.ProductCost(p.ID))
-			if err := q.UpdateProductCost(ctx, db.UpdateProductCostParams{ID: p.ID, CurrentCost: c}); err != nil {
-				return err
-			}
+		c := costDec(g.IngredientCost(ing.ID))
+		if err := q.UpdateIngredientCost(ctx, db.UpdateIngredientCostParams{ID: ing.ID, CurrentCost: c}); err != nil {
+			return err
 		}
-		for _, o := range opts {
-			c := costDec(g.OptionCost(o.ID))
-			if err := q.UpdateOptionCost(ctx, db.UpdateOptionCostParams{ID: o.ID, CurrentCost: c}); err != nil {
-				return err
-			}
+	}
+	for _, p := range prods {
+		c := costDec(g.ProductCost(p.ID))
+		if err := q.UpdateProductCost(ctx, db.UpdateProductCostParams{ID: p.ID, CurrentCost: c}); err != nil {
+			return err
 		}
-		return nil
-	})
+	}
+	for _, o := range opts {
+		c := costDec(g.OptionCost(o.ID))
+		if err := q.UpdateOptionCost(ctx, db.UpdateOptionCostParams{ID: o.ID, CurrentCost: c}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ProductCost devuelve el costo calculado de un producto (sin persistir), para /costing.
 func (s *CostingService) ProductCost(ctx context.Context, productID int64) (decimal.Decimal, error) {
-	g, _, _, _, err := s.loadGraph(ctx)
+	g, _, _, _, err := loadGraph(ctx, s.store.QC(ctx))
 	if err != nil {
 		return decimal.Zero, err
 	}
 	return costDec(g.ProductCost(productID)), nil
 }
 
-func (s *CostingService) loadGraph(ctx context.Context) (
+func loadGraph(ctx context.Context, q *db.Queries) (
 	*domain.CostGraph,
 	[]db.ListIngredientsForCostingRow,
 	[]db.ListProductsForCostingRow,
 	[]db.ListModifierOptionsForCostingRow,
 	error,
 ) {
-	ingRows, err := s.store.QC(ctx).ListIngredientsForCosting(ctx)
+	ingRows, err := q.ListIngredientsForCosting(ctx)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	itemRows, err := s.store.QC(ctx).ListRecipeItemsForCosting(ctx)
+	itemRows, err := q.ListRecipeItemsForCosting(ctx)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	prodRows, err := s.store.QC(ctx).ListProductsForCosting(ctx)
+	prodRows, err := q.ListProductsForCosting(ctx)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	comboRows, err := s.store.QC(ctx).ListComboSlotDefaultsForCosting(ctx)
+	comboRows, err := q.ListComboSlotDefaultsForCosting(ctx)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	optRows, err := s.store.QC(ctx).ListModifierOptionsForCosting(ctx)
+	optRows, err := q.ListModifierOptionsForCosting(ctx)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

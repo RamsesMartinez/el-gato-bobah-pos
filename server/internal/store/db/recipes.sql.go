@@ -413,6 +413,15 @@ select b.id, b.name, b.category, b.type, b.track_stock, b.status, b.sold,
           join combo_slot_products csp on csp.slot_id = cs.id and csp.is_default
           join products cp on cp.id = csp.product_id
          where cs.combo_id = b.id), '')::text as combo_summary,
+       -- Con un solo insumo por pieza (lo que se compra hecho, spec 037): cuánto resta cada venta y
+       -- cuánto hay de ese insumo, para «Resta 1 por venta · tienes N». Con coalesce y una bandera
+       -- aparte: la subconsulta es NULL con varios insumos, y el cast no lo salva (AGENTS.md §1).
+       (select count(*) = 1 and bool_and(u.kind = 'pieza') from recipe_items ri join units u on u.id = ri.unit_id
+         where ri.recipe_id = b.recipe_id)::bool as single_piece,
+       coalesce((select ri.quantity from recipe_items ri where ri.recipe_id = b.recipe_id limit 1), 0)::numeric as per_sale,
+       coalesce((select sum(sl.on_hand) from recipe_items ri
+          join stock_levels sl on sl.item_type = 'ingrediente' and sl.ingredient_id = ri.ingredient_id
+         where ri.recipe_id = b.recipe_id), 0)::numeric as per_sale_on_hand,
        count(*) over() as total
   from base b
  where b.status = $1::text
@@ -431,17 +440,20 @@ type ListProductRecipesParams struct {
 }
 
 type ListProductRecipesRow struct {
-	ID           int64           `json:"id"`
-	Name         string          `json:"name"`
-	Category     string          `json:"category"`
-	Type         string          `json:"type"`
-	TrackStock   bool            `json:"track_stock"`
-	Status       string          `json:"status"`
-	Sold         decimal.Decimal `json:"sold"`
-	Summary      string          `json:"summary"`
-	Lines        int32           `json:"lines"`
-	ComboSummary string          `json:"combo_summary"`
-	Total        int64           `json:"total"`
+	ID            int64           `json:"id"`
+	Name          string          `json:"name"`
+	Category      string          `json:"category"`
+	Type          string          `json:"type"`
+	TrackStock    bool            `json:"track_stock"`
+	Status        string          `json:"status"`
+	Sold          decimal.Decimal `json:"sold"`
+	Summary       string          `json:"summary"`
+	Lines         int32           `json:"lines"`
+	ComboSummary  string          `json:"combo_summary"`
+	SinglePiece   bool            `json:"single_piece"`
+	PerSale       decimal.Decimal `json:"per_sale"`
+	PerSaleOnHand decimal.Decimal `json:"per_sale_on_hand"`
+	Total         int64           `json:"total"`
 }
 
 // Menú › Recetas (spec 028): productos, extras y preparados con el estado de su receta.
@@ -482,6 +494,9 @@ func (q *Queries) ListProductRecipes(ctx context.Context, arg ListProductRecipes
 			&i.Summary,
 			&i.Lines,
 			&i.ComboSummary,
+			&i.SinglePiece,
+			&i.PerSale,
+			&i.PerSaleOnHand,
 			&i.Total,
 		); err != nil {
 			return nil, err
@@ -495,7 +510,16 @@ func (q *Queries) ListProductRecipes(ctx context.Context, arg ListProductRecipes
 }
 
 const listSameNameOptions = `-- name: ListSameNameOptions :many
-select o.id, g.name::text as group_name, o.composition_confirmed_at
+select o.id, g.name::text as group_name, o.composition_confirmed_at,
+       coalesce(o.composition_status::text, '')::text as status,
+       coalesce((select lp.name::text from products lp where lp.id = o.linked_product_id), '')::text as linked_name,
+       coalesce((select array_agg(x.txt order by x.pos, x.id) from (
+          select ri.position as pos, ri.id,
+                 case when u.code in ('kg', 'l') and ri.quantity < 1
+                 then trim_scale(ri.quantity * 1000)::text || ' ' || case u.code when 'kg' then 'g' else 'ml' end
+                 else trim_scale(ri.quantity)::text || ' ' || u.code end || ' ' || i.name as txt
+            from recipe_items ri join units u on u.id = ri.unit_id join ingredients i on i.id = ri.ingredient_id
+           where ri.recipe_id = o.recipe_id) x), '{}')::text[] as items
   from modifier_options o
   join modifier_groups g on g.id = o.group_id
   join modifier_options me on me.id = $1
@@ -507,10 +531,15 @@ type ListSameNameOptionsRow struct {
 	ID                     int64              `json:"id"`
 	GroupName              string             `json:"group_name"`
 	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
+	Status                 string             `json:"status"`
+	LinkedName             string             `json:"linked_name"`
+	Items                  []string           `json:"items"`
 }
 
 // Los extras que se llaman igual en otro grupo («Tapioca» en Toppings y en Toppings de frappé): la
 // pantalla ofrece guardarles la misma receta.
+// Cada uno trae lo que lleva hoy: copiarle la receta lo pisa, y un mismo nombre puede ser otra cosa
+// (la salsa y el sazonador en polvo «Lemon Pepper»).
 func (q *Queries) ListSameNameOptions(ctx context.Context, id int64) ([]ListSameNameOptionsRow, error) {
 	rows, err := q.db.Query(ctx, listSameNameOptions, id)
 	if err != nil {
@@ -520,7 +549,14 @@ func (q *Queries) ListSameNameOptions(ctx context.Context, id int64) ([]ListSame
 	items := []ListSameNameOptionsRow{}
 	for rows.Next() {
 		var i ListSameNameOptionsRow
-		if err := rows.Scan(&i.ID, &i.GroupName, &i.CompositionConfirmedAt); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.GroupName,
+			&i.CompositionConfirmedAt,
+			&i.Status,
+			&i.LinkedName,
+			&i.Items,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

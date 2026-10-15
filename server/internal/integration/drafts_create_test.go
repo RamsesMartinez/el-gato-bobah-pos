@@ -270,11 +270,12 @@ func TestIdleDraftExpires(t *testing.T) {
 	if got := draftStatus(t, k.st, recent.ID); got != domain.DraftCapturing {
 		t.Fatalf("la de 11 h quedó %s: las 12 horas cuentan desde el último cambio", got)
 	}
+	// Solo cuenta la marca VIEJA (la de hace dos días): la cuenta que barrió puede sacar de la bolsa
+	// justo el nombre que se acaba de liberar, y esa marca nueva es correcta. Contar cualquier marca
+	// volvía la prueba intermitente (~1 de cada 7 corridas).
 	var still int
-	// Solo la marca VIEJA: un nombre liberado vuelve a la bolsa y otra prueba en paralelo puede tomarlo
-	// en el acto (marca nueva); contarlo hacía fallar esta prueba al azar en CI.
-	if err := k.st.Pool.QueryRow(ctx, `select count(*) from folio_consumido where name = $1
-		and taken_at < now() - interval '1 day'`, *old.FolioName).Scan(&still); err != nil {
+	if err := k.st.Pool.QueryRow(ctx, `select count(*) from folio_consumido
+		where name = $1 and taken_at < now() - interval '1 day'`, *old.FolioName).Scan(&still); err != nil {
 		t.Fatal(err)
 	}
 	if still != 0 {
