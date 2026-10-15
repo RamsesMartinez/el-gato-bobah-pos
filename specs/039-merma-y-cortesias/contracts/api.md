@@ -20,7 +20,8 @@ insumo ocupado («vuelve a intentar»), 409 `BRANCH_AMBIGUOUS`.
 | POST | `/waste` | `inventory.write_off` | `{ reasonId, ingredientId? , productId?, qty, unitId?, presentationId?, note? }` → `{ id, status: "applied" \| "pending", totalCost }` |
 | GET | `/waste/today` | `inventory.write_off` | Las del día de la sucursal, con `canUndo` |
 | POST | `/waste/{id}/undo` | `inventory.write_off` (el que registró) o `inventory.configure` | 204 |
-| GET | `/waste/pending` | `inventory.write_off_approve` | `[{ id, item, qty, totalCost, reason, recordedBy, recordedAt }]` |
+| GET | `/waste/pending` | `inventory.write_off_approve` | `[{ id, item, qty, totalCost, reason, recordedBy, recordedAt }]`; la franja lo pide al cargar y con el aviso en vivo |
+| GET | `/waste?from=&to=&reasonId=` | `inventory.health_view` | Registros del periodo para la pestaña Merma, con estado; `reasonId` opcional |
 | POST | `/waste/{id}/approve` | `inventory.write_off_approve` | 204; 409 si ya se resolvió o la cubrió un conteo |
 | POST | `/waste/{id}/reject` | `inventory.write_off_approve` | 204 |
 
@@ -29,7 +30,7 @@ insumo ocupado («vuelve a intentar»), 409 `BRANCH_AMBIGUOUS`.
 | Método | Ruta | Permiso | Respuesta |
 |---|---|---|---|
 | GET | `/stock/counts/{id}/loss` | `inventory.health_view` | `{ firstCount: bool, costAsOf, items: [{ ingredientId, name, unit, registered, unexplained, lost, surplus, unitCost? }], totals }` |
-| GET | `/waste/by-reason?from=&to=` | `inventory.health_view` | `{ reasons: [{ id, name, isStaffMeal, totalCost, items: [...] }] }`; fechas mal formadas → 400 |
+| GET | `/waste/by-reason?from=&to=` | `inventory.health_view` | `{ reasons: [{ id, name, isStaffMeal, totalCost, records }] }` (las fichas); fechas mal formadas → 400 |
 
 ## Configuración
 

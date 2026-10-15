@@ -69,21 +69,29 @@ nada que dependa de la red más de lo que ya depende; textos para quien opera
 
 ## Pantallas y maquetas
 
-| Pantalla | Dónde vive | Alto en 1024×600 |
+Elegidas por el dueño el 2026-10-15 (tabla de abajo). Cada pantalla, como quedó:
+
+| Pantalla | Dónde vive | Cómo se reparte el alto de 1024×600 |
 |---|---|---|
-| **Se echó a perder** (captura) | Una entrada que vean cajero y cocina: hoy no entran a Almacén. La maqueta decide entre el riel del POS, un botón en la cocina o una sección «Inventario» con acciones grandes (decisión del 9-oct, punto 35) | Motivos frecuentes como botones (2 renglones), buscador de insumo o producto, cantidad con el teclado del 038, Guardar fijo abajo |
-| **Por aprobar** | Almacén, pestaña o aviso para admin/gerente | Lista de pendientes con costo, quién y cuándo; Aprobar / Rechazar por renglón |
-| **Faltante sin explicar** | Al cerrar un conteo y desde los conteos cerrados (Almacén › Conteo) | Tabla por insumo: perdido, registrado, sin explicar, pesos; total arriba |
-| **Merma por motivo** | Almacén o Reportes, con rango de fechas | Un renglón por motivo; consumo del personal aparte |
-| **Motivos y tope** | Configuración del negocio › Inventario (sección del 038) | Lista editable; un renglón para el tope |
+| **Se echó a perder** (captura) | Un renglón propio en el riel, visible con `inventory.write_off` (cajero y cocina incluidos). Dos vistas con un interruptor arriba que cada tableta recuerda, como «Lista / Uno por uno» del conteo: **«Una pantalla»** (por omisión: motivos como botones a la izquierda, artículo con buscador y recientes al centro, cantidad con empaques, teclado y Guardar a la derecha) y **«Paso a paso»** (Motivo → Qué → Cuánto). El botón dice «Mandar a aprobar» cuando el costo pasa el tope. «Hoy» lista lo registrado en el día con Deshacer | Barra de 52 px; tres columnas a todo el alto restante; Guardar de 56 px |
+| **Por aprobar** | Una franja de 36 px arriba de cualquier pantalla, solo para quien tiene `inventory.write_off_approve` y solo mientras hay pendientes de su sucursal; un toque abre una hoja inferior con Aprobar / Rechazar por renglón | 36 px mientras haya pendientes; la hoja ocupa 480 px |
+| **Faltante sin explicar** | Almacén › Conteo, al cerrar un conteo y desde cualquier conteo cerrado: tres cifras arriba (se perdió, registrado, sin explicar) y una barra por insumo (gris registrado, rojo sin explicar) con las cantidades y los pesos a la derecha; «Sobraba» en verde, sin barra | Fichas de ~70 px; la lista se desplaza en lo que queda |
+| **Merma por motivo** | Pestaña «Merma» en Almacén: rango (esta semana, este mes, elegir fechas con `DatePickerButton`), fichas con el total por motivo (consumo del personal aparte) y debajo los registros; tocar una ficha filtra | Fichas de ~70 px; registros en el resto |
+| **Motivos y tope** | Negocio › Inventario (la sección del 038): un renglón para el tope y la lista de motivos con Editar (nombre, descripción, archivar, «sale aparte») y Juntar en hojas inferiores | Sección dentro de una pantalla que ya existe |
+
+Riel: «Se echó a perder» es un renglón nuevo. Para el admin el riel ya muestra 8 de 15 sin
+desplazar; va después de «Caja», y empuja a «Reportes» abajo del pliegue para el admin. Lo revisa
+el revisor de tableta; cajero y cocina ven pocos renglones y lo ven siempre.
+
+## Maquetas
 
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|
-| Se echó a perder | pendiente | pendiente | pendiente |
-| Por aprobar | pendiente | pendiente | pendiente |
-| Faltante sin explicar | pendiente | pendiente | pendiente |
-| Merma por motivo | pendiente | pendiente | pendiente |
-| Motivos y tope | pendiente | pendiente | pendiente |
+| Se echó a perder | https://claude.ai/artifact/GQnMiCLJiztBmFpAhDZcPR | D: A + C con interruptor; llega «Una pantalla» | Rápido para quien conoce el flujo, guiado para quien empieza; lo elige cada tableta |
+| Por aprobar | https://claude.ai/artifact/HHzpyZeHDVWCSySLkr1KvD | B: franja arriba | Mientras no se aprueba no resta; una pendiente olvidada deja el almacén mal |
+| Faltante sin explicar | https://claude.ai/artifact/2rzABH7wdXkddBFRcs1e6a | B: resumen y barras | Se ve de un vistazo qué es grave |
+| Merma por motivo | https://claude.ai/artifact/WtD5y8mYdQNEjzZUnQeCRK | B: pestaña Merma en Almacén | Totales y registros juntos; sirve para revisar el día |
+| Motivos y tope | https://claude.ai/artifact/NDg8JDFuN4Sr2CJwWqvHMR | A: Negocio › Inventario | Toda la configuración del almacén en un lugar |
 
 ## Capas
 
@@ -102,7 +110,7 @@ nada que dependa de la red más de lo que ya depende; textos para quien opera
 | Reportes | app | `server/internal/app/waste_reports.go` |
 | Rutas | httpapi | `server/internal/httpapi/handlers_waste.go`, `router.go` |
 | Medición de uso | domain + web | `uso.go` y `rutas-medidas.ts` |
-| Pantallas | web | `web/src/features/waste/` (captura, por aprobar, reportes), `InventorySettingsSection.tsx` |
+| Pantallas | web | `web/src/features/waste/` (captura con sus dos vistas, franja y hoja de por aprobar, pestaña Merma), `StockCountTab.tsx` (faltante), `InventorySettingsSection.tsx` (motivos y tope), `app/nav.ts` (renglón del riel) |
 
 ## Bordes (se piensan antes del código)
 
