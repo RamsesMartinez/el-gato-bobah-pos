@@ -51,7 +51,7 @@ import { DescartarCuentaSheet } from './DescartarCuentaSheet';
 import { hayQuePreguntar } from './estadosDeCuenta';
 import { ProductGrid } from './ProductGrid';
 import { ModifierSheet } from './ModifierSheet';
-import { productoParaReelegir } from './reelegir';
+import { productToReselect } from './reselect';
 import { Ticket } from './Ticket';
 import { CobrarSheet } from '../../shared/CobrarSheet';
 import { FolioPlataformaSheet } from './FolioPlataformaSheet';
@@ -123,10 +123,10 @@ export function POSPage() {
   const modSheet = useDisclosure();
   const cuenta = useCuenta({
     envioPorDefecto, cobrando: cobrando !== null,
-    onMenuCambiado: (productId) => {
-      void qc.fetchQuery({ queryKey: ['menu'], queryFn: posApi.menu, staleTime: 0 }).then((fresco) => {
+    onMenuChanged: (productId) => {
+      void qc.fetchQuery({ queryKey: ['menu'], queryFn: posApi.menu, staleTime: 0 }).then((fresh) => {
         if (productId === null) return;
-        const p = productoParaReelegir(fresco, productId);
+        const p = productToReselect(fresh, productId);
         if (!p) return;
         setEditing(null);
         setModProduct(p);
@@ -178,14 +178,14 @@ export function POSPage() {
   const ticketSwipe = useSwipeDownToClose(ticketDrawer.onClose);
   // El renglón que el servidor rechazó por menú viejo al mandar o cobrar. Se señala hasta que se
   // vuelve a elegir o se quita; su hoja se reabre con el menú nuevo si el producto sigue a la venta.
-  const [reelegir, setReelegir] = useState<string | null>(null);
+  const [reselectLineId, setReselectLineId] = useState<string | null>(null);
   const { enviar, enviando, motivo, limpiarMotivo } = useEnviarCuenta({
     onComanda: (order, ids) => setComanda({ order, ids }),
-    onMenuCambiado: ({ lineId, productId }) => {
-      setReelegir(lineId);
-      void qc.fetchQuery({ queryKey: ['menu'], queryFn: posApi.menu, staleTime: 0 }).then((fresco) => {
+    onMenuChanged: ({ lineId, productId }) => {
+      setReselectLineId(lineId);
+      void qc.fetchQuery({ queryKey: ['menu'], queryFn: posApi.menu, staleTime: 0 }).then((fresh) => {
         const r = cuenta.vista.nuevos.find((x) => x.id === lineId);
-        const p = productId === null ? null : productoParaReelegir(fresco, productId);
+        const p = productId === null ? null : productToReselect(fresh, productId);
         if (!r || !p) return;
         setEditing(r);
         setModProduct(p);
@@ -464,7 +464,7 @@ export function POSPage() {
     if (!modProduct) return;
     if (editing) {
       cuenta.cambiar(editing, modifiers, notes);
-      if (editing.id === reelegir) setReelegir(null);
+      if (editing.id === reselectLineId) setReselectLineId(null);
     } else {
       for (let i = 0; i < qty; i++) {
         cuenta.agregar({
@@ -519,14 +519,14 @@ export function POSPage() {
     envioPorDefecto,
     enviando,
     motivo,
-    reelegir: vista.nuevos.some((r) => r.id === reelegir) ? reelegir : null,
+    reselectLineId: vista.nuevos.some((r) => r.id === reselectLineId) ? reselectLineId : null,
     puedeCancelar: can('orders.cancel', user),
     onMas: cuenta.mas,
     onMenos: cuenta.menos,
     onQuitar: cuenta.quitar,
     onEditLine: editLine,
     onCabecera: cuenta.cabecera,
-    onQuitarNoDisponibles: () => vista.noDisponibles.filter((l) => l.id !== reelegir).forEach((l) => cuenta.quitar(l)),
+    onQuitarNoDisponibles: () => vista.noDisponibles.filter((l) => l.id !== reselectLineId).forEach((l) => cuenta.quitar(l)),
     onEnviar: enviarACocina,
     onCobrar: cobrarLaCuenta,
     onDescartar: pedirDescartar,

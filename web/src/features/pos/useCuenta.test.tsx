@@ -335,21 +335,21 @@ test('esperar() no resuelve hasta que el folio quedó guardado', async () => {
 describe('el menú cambió debajo de la tableta', () => {
   const MENU_CAMBIADO = () => new ApiError(422, 'MENU_CHANGED', 'Chocolate no es un extra de Taro', 'r');
 
-  async function conCuenta(onMenuCambiado = vi.fn()) {
+  async function conCuenta(onMenuChanged = vi.fn()) {
     usePosStore.getState().seleccionar({ kind: 'draft', id: 'd-1' });
     api.getDraft.mockResolvedValue(draft({ lines: [renglon()] }));
-    const hook = renderHook(() => useCuenta({ onMenuCambiado }), { wrapper });
+    const hook = renderHook(() => useCuenta({ onMenuChanged }), { wrapper });
     await waitFor(() => expect(hook.result.current.vista.nuevos).toHaveLength(1));
-    return { ...hook, onMenuCambiado };
+    return { ...hook, onMenuChanged };
   }
 
   test('al agregar: aviso neutro, pide elegir ese producto otra vez y la cuenta conserva lo demás', async () => {
-    const { result, onMenuCambiado } = await conCuenta();
+    const { result, onMenuChanged } = await conCuenta();
     api.addDraftLine.mockRejectedValueOnce(MENU_CAMBIADO());
 
     act(() => result.current.agregar({ ...TARO, productId: 630, name: 'Frappé' }));
 
-    await waitFor(() => expect(onMenuCambiado).toHaveBeenCalledWith(630));
+    await waitFor(() => expect(onMenuChanged).toHaveBeenCalledWith(630));
     expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({
       title: 'El menú se actualizó; elige de nuevo', type: 'info', id: 'menu-cambiado',
     }));
@@ -358,21 +358,21 @@ describe('el menú cambió debajo de la tableta', () => {
   });
 
   test('al cambiar un renglón: el mismo aviso, recarga el menú y no abre la hoja como alta nueva', async () => {
-    const { result, onMenuCambiado } = await conCuenta();
+    const { result, onMenuChanged } = await conCuenta();
     api.changeDraftLine.mockRejectedValueOnce(MENU_CAMBIADO());
 
     act(() => result.current.menos(result.current.vista.nuevos[0]));
 
-    await waitFor(() => expect(onMenuCambiado).toHaveBeenCalledWith(null));
+    await waitFor(() => expect(onMenuChanged).toHaveBeenCalledWith(null));
     expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'info', id: 'menu-cambiado' }));
     expect(toasts.create).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
   });
 
   test('otro rechazo de negocio sigue siendo un error rojo', async () => {
-    const { result, onMenuCambiado } = await conCuenta();
+    const { result, onMenuChanged } = await conCuenta();
     api.addDraftLine.mockRejectedValueOnce(new ApiError(422, 'UNPROCESSABLE', 'La cuenta está vacía', 'r'));
     act(() => result.current.agregar(TARO));
     await waitFor(() => expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' })));
-    expect(onMenuCambiado).not.toHaveBeenCalled();
+    expect(onMenuChanged).not.toHaveBeenCalled();
   });
 });

@@ -136,12 +136,12 @@ siguen ahí.
   extras, y conservar el resto de la cuenta.
 - **FR-011**: El cambio de esquema MUST ser aditivo: la versión anterior del servidor sigue
   funcionando con él, porque se despliega con el negocio operando.
+- **FR-012**: La documentación operativa MUST decir que un cambio de catálogo por script ya no
+  necesita borrar el menú guardado a mano.
 - **FR-013**: El mismo código MUST aplicar al mandar a cocina y al «Enviar y cobrar», y la respuesta
   MUST identificar el renglón de la cuenta rechazado; la tableta MUST señalarlo para elegirlo de
   nuevo, sin perder la cuenta y sin el aviso rojo. Cobrar un pedido ya enviado no revalida el menú
   (sus renglones ya son pedido) y queda fuera.
-- **FR-012**: La documentación operativa MUST decir que un cambio de catálogo por script ya no
-  necesita borrar el menú guardado a mano.
 
 ### Key Entities
 

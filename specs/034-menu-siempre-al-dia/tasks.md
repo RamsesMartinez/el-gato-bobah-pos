@@ -41,8 +41,8 @@ TDD estricto (constitución IV): cada test se escribe y se ve fallar antes de su
 
 - [X] T015 [US3] Test en server/internal/httpapi/respond_test.go: `ErrOptionNotFound`, `ErrProductNotSell`/`ProductUnavailable`, `ErrOptionOverMax` → 422 `MENU_CHANGED`; `ErrEmptyOrder` sigue `UNPROCESSABLE`
 - [X] T016 [US3] Mapeo `MENU_CHANGED` en server/internal/httpapi/respond.go
-- [X] T017 [P] [US3] Tests vitest (E12–E14) en web/src/features/pos/useCuenta.test.tsx: `onMenuCambiado` se llama con el producto, toast `info` con id fijo, sin toast rojo, la cuenta conserva sus renglones; al cambiar un renglón, mismo aviso
-- [X] T018 [US3] `onMenuCambiado` en web/src/features/pos/useCuenta.ts (agregar y `alRechazo`)
+- [X] T017 [P] [US3] Tests vitest (E12–E14) en web/src/features/pos/useCuenta.test.tsx: `onMenuChanged` se llama con el producto, toast `info` con id fijo, sin toast rojo, la cuenta conserva sus renglones; al cambiar un renglón, mismo aviso
+- [X] T018 [US3] `onMenuChanged` en web/src/features/pos/useCuenta.ts (agregar y `alRechazo`)
 - [X] T019 [US3] En web/src/features/pos/POSPage.tsx: al recibirlo, refetch del menú y reabrir `ModifierSheet` con el producto fresco si sigue a la venta y tiene extras (E13)
 
 ### Ampliación: mandar a cocina y «Enviar y cobrar» (FR-013)
@@ -53,7 +53,7 @@ TDD estricto (constitución IV): cada test se escribe y se ve fallar antes de su
 - [X] T026 [US3] `onDraftLine` en server/internal/app/drafts.go (y el rechazo propio de `orderLinesOf`)
 - [X] T027 [US3] Test y `details.lineId` en server/internal/httpapi/respond.go
 - [X] T028 [P] [US3] Tests vitest en web/src/features/pos/useEnviarCuenta.test.tsx y cobrarDesdeElTicket.test.tsx (mandar y cobrar): aviso neutro, sin rojo, renglón señalado, cobro sin abrir
-- [X] T029 [US3] `onMenuCambiado` en useEnviarCuenta.ts, `reelegir` en Ticket.tsx y reapertura en POSPage.tsx; aviso compartido en menuCambiado.ts
+- [X] T029 [US3] `onMenuChanged` en useEnviarCuenta.ts, `reselectLineId` en Ticket.tsx y reapertura en POSPage.tsx; aviso compartido en menuChanged.ts
 - [X] T030 [US3] Revisión de tableta: el renglón por volver a elegir no se tacha ni entra en «Ya no están en el menú · Quitar» (su producto sigue a la venta); test en Ticket.test.tsx
 
 ## Phase 6: Polish
@@ -61,6 +61,15 @@ TDD estricto (constitución IV): cada test se escribe y se ve fallar antes de su
 - [X] T020 Regla y nota del incidente en AGENTS.md (sin números del negocio): un cambio de catálogo por SQL ya no necesita borrar el menú guardado
 - [X] T021 Correr `make ci-local`
 - [X] T022 `/revision-de-codigo` (hook after_implement)
+
+## Phase 7: Al retomar la feature (2026-10-15, /speckit-analyze sobre develop al día)
+
+- [X] T031 Fusionar develop y renumerar la migración de 0089 a 0093 (la 0089 la tomó la 033) en el código, AGENTS.md y este spec
+- [X] T032 Test de la migración sobre un respaldo de producción restaurado con dos empresas: 30 triggers sin tocar el catálogo, versión por empresa (también como gatobobah_app) y Down limpio, en server/internal/integration/migration_0093_test.go (visto en rojo con un Down incompleto)
+- [X] T033 Test de FR-004: con una transacción de catálogo abierta, vender y cobrar el mismo producto no espera, en server/internal/integration/catalog_versions_test.go (visto en rojo metiendo `order_lines` en las tablas versionadas); E16 del plan corregido con las dos excepciones medidas
+- [X] T034 Identificadores nuevos del front en inglés (constitución VII): `menuChanged.ts`, `reselect.ts`, `isStaleMenu`, `notifyMenuChanged`, `forgetMenu`, `productToReselect`, `onMenuChanged`, `reselectLineId`
+- [X] T035 Sección «Maquetas» del plan: no aplica, con el porqué
+- [ ] T036 Volver a correr `make ci-local` y `/revision-de-codigo` sobre el diff contra develop al día
 
 ## Dependencies
 

@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { mensajeDeError } from '../../api/mensajes';
-import { avisarMenuCambiado, esMenuViejo } from './menuCambiado';
+import { notifyMenuChanged, isStaleMenu } from './menuChanged';
 import { posApi } from '../../api/pos';
 import { toaster } from '../../components/ui/toaster';
 import { usePosStore, type Seleccion } from '../../stores/pos';
@@ -136,10 +136,10 @@ interface Opciones {
   // El servidor rechazó un producto o extra porque el menú de esta tableta es viejo. Recibe el
   // producto que hay que volver a elegir, o null cuando se cambiaba un renglón ya capturado (ahí
   // solo se recarga el menú: reabrir la hoja como alta duplicaría el renglón).
-  onMenuCambiado?: (productId: number | null) => void;
+  onMenuChanged?: (productId: number | null) => void;
 }
 
-export function useCuenta({ envioPorDefecto = 0, cobrando = false, onMenuCambiado }: Opciones = {}): Cuenta {
+export function useCuenta({ envioPorDefecto = 0, cobrando = false, onMenuChanged }: Opciones = {}): Cuenta {
   const qc = useQueryClient();
   const seleccion = usePosStore((s) => s.selected);
   const nueva = usePosStore((s) => s.nueva);
@@ -257,9 +257,9 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false, onMenuCambiad
       toaster.create({ title: 'No se guardó el cambio', description: mensajeDeError(e), type: 'error' });
       return;
     }
-    if (esMenuViejo(e)) {
-      avisarMenuCambiado();
-      onMenuCambiado?.(null);
+    if (isStaleMenu(e)) {
+      notifyMenuChanged();
+      onMenuChanged?.(null);
       void recargar(id);
       return;
     }
@@ -329,9 +329,9 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false, onMenuCambiad
           });
           return;
         }
-        if (esMenuViejo(e)) {
-          avisarMenuCambiado();
-          onMenuCambiado?.(pendiente.productId);
+        if (isStaleMenu(e)) {
+          notifyMenuChanged();
+          onMenuChanged?.(pendiente.productId);
           return;
         }
         if (e instanceof ApiError && e.status === 404) {

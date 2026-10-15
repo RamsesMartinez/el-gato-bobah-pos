@@ -26,8 +26,8 @@ import type { SessionUser } from '../stores/session';
 
 let ultimoMenu: { etag: string; menu: Menu } | null = null;
 
-// olvidarMenu suelta el menú guardado para que la siguiente petición lo traiga completo.
-export function olvidarMenu(): void {
+// forgetMenu suelta el menú guardado para que la siguiente petición lo traiga completo.
+export function forgetMenu(): void {
   ultimoMenu = null;
 }
 
@@ -117,7 +117,7 @@ export const posApi = {
     if (r.notModified && ultimoMenu) return ultimoMenu.menu;
     if (r.notModified) {
       // Un 304 sin menú guardado no debería pasar (no se mandó ETag); se pide completo.
-      olvidarMenu();
+      forgetMenu();
       return posApi.menu();
     }
     ultimoMenu = r.etag ? { etag: r.etag, menu: r.data } : null;

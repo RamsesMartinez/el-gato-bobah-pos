@@ -69,7 +69,7 @@ siendo correcta (más invalidaciones, nunca menos). No cierra ninguna puerta.
 | E15 | Lectura del contador en `inTheThreeCases` (otra empresa, conexión reciclada, sin empresa) | integración |
 | E17 | `MENU_CHANGED` al mandar a cocina o «Enviar y cobrar»: el rechazo nombra el renglón de la cuenta (`domain.LineRejected` con índice → `LineID` en `DraftsService.trySend`), `details.lineId` viaja en el 422 | unitario `domain` + integración `drafts_send_menu_changed_test.go` + `respond_test.go` |
 | E18 | En la tableta: aviso neutro, sin motivo rojo en el pie, renglón señalado «Elige de nuevo», cobro no se abre, la cuenta se queda | vitest `useEnviarCuenta`, `cobrarDesdeElTicket` |
-| E16 | `RecomputeAll` (mil `update` en una tx) no bloquea cobros: los pedidos no escriben en las diez tablas | revisión de queries (hecha) + test E2 de que solo el catálogo sube |
+| E16 | `RecomputeAll` (mil `update` en una tx) no bloquea cobros: una venta no escribe en las diez tablas. Dos excepciones medidas al retomar (2026-10-15): el primer pedido de plataforma sin pareja de una empresa crea el producto genérico (`ensure_platform_unpaired_product`) y espera al contador si hay una escritura de catálogo en curso, una vez por empresa; y RENOMBRAR un producto toca un índice único, así que la venta de ese producto espera a que el renombre confirme (ya pasaba antes del 034) | `TestACatalogChangeInFlightDoesNotHoldACharge`: con una transacción de catálogo abierta, vender y cobrar el mismo producto no espera |
 
 ## Capas
 
@@ -83,11 +83,11 @@ siendo correcta (más invalidaciones, nunca menos). No cierra ninguna puerta.
 | `MENU_CHANGED` | `httpapi/respond.go` |
 | `api.getConditional`, `posApi.menu` con ETag | `web/src/api/` |
 | `useMenu`: 60 s + foco; `POSPage` no se cae por un refetch fallido | `web/src/hooks`, `features/pos` |
-| `onMenuCambiado` en `useCuenta` (agregar y cambiar) y reapertura de la hoja en `POSPage` | `web/src/features/pos` |
+| `onMenuChanged` en `useCuenta` (agregar y cambiar) y reapertura de la hoja en `POSPage` | `web/src/features/pos` |
 | `LineRejected` (en qué renglón falló `BuildOrder`, sin cambiar el sentinel) | `domain/order.go` |
 | `onDraftLine`: índice → id del renglón de la cuenta al mandar | `app/drafts.go` |
 | `details.lineId` en el 422 | `httpapi/respond.go` |
-| `onMenuCambiado` en `useEnviarCuenta`, renglón señalado en `Ticket` y hoja reabierta en `POSPage` | `web/src/features/pos` |
+| `onMenuChanged` en `useEnviarCuenta`, renglón señalado en `Ticket` y hoja reabierta en `POSPage` | `web/src/features/pos` |
 | Regla en `AGENTS.md` | docs |
 
 ## Project Structure
@@ -114,6 +114,13 @@ AGENTS.md
   todos los productos con los triggers ya puestos: 22.6 ms. Postgres 16 en Docker sobre WSL2, no la
   VM de producción.
 - **Costo por escritura**: un `insert … on conflict` por sentencia de catálogo; despreciable.
+
+## Maquetas
+
+No aplica: el 034 no crea pantallas ni cambia la disposición de ninguna. Lo que se ve es un aviso
+(toast) y una marca de color sobre un renglón que ya existía en la cuenta («Elige de nuevo»), con
+la hoja de extras de siempre. Anotado al retomar la feature (2026-10-15): la regla de maquetas
+entró a la constitución el mismo día que se escribió este plan.
 
 ## Complexity Tracking
 

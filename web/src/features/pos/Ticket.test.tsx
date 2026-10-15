@@ -239,7 +239,7 @@ describe('los renglones nuevos', () => {
   // mandaba al operador a perder el producto en vez de volver a elegirlo.
   test('el renglón por volver a elegir no se tacha ni se ofrece quitar', () => {
     const l = { ...draft().lines![0], available: false };
-    pinta(vista({ draft: draft({ lines: [l], unavailable: ['Coca Cola 355ml'] }) }), { reelegir: 'l-1' });
+    pinta(vista({ draft: draft({ lines: [l], unavailable: ['Coca Cola 355ml'] }) }), { reselectLineId: 'l-1' });
     expect(screen.getByText('Elige de nuevo')).toBeInTheDocument();
     expect(screen.queryByText('Ya no están en el menú')).toBeNull();
     expect(screen.getByText('Coca Cola 355ml')).not.toHaveStyle({ textDecoration: 'line-through' });

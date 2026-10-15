@@ -10,7 +10,7 @@ import type { DraftView, OrderView } from '../../types/pos';
 import { uuid } from '../../utils/uuid';
 import { descartarCuenta } from './descartarCuenta';
 import { reportarResultado } from './useSinConexion';
-import { avisarMenuCambiado, esMenuViejo } from './menuCambiado';
+import { notifyMenuChanged, isStaleMenu } from './menuChanged';
 
 // MANDAR A COCINA (spec 030, US3; research R-4).
 //
@@ -25,10 +25,10 @@ interface Opciones {
   onComanda: (order: OrderView, printLineIds: number[]) => void;
   // El servidor rechazó un renglón porque el menú de esta tableta es viejo: cuál, para señalarlo y
   // volver a elegirlo. La cuenta no se pierde.
-  onMenuCambiado?: (renglon: { lineId: string | null; productId: number | null }) => void;
+  onMenuChanged?: (renglon: { lineId: string | null; productId: number | null }) => void;
 }
 
-export function useEnviarCuenta({ onComanda, onMenuCambiado }: Opciones) {
+export function useEnviarCuenta({ onComanda, onMenuChanged }: Opciones) {
   const qc = useQueryClient();
   const [motivo, setMotivo] = useState<string | null>(null);
 
@@ -67,10 +67,10 @@ export function useEnviarCuenta({ onComanda, onMenuCambiado }: Opciones) {
     },
     onError: (e: unknown, draftId) => {
       reportarResultado(e);
-      if (esMenuViejo(e)) {
+      if (isStaleMenu(e)) {
         setMotivo(null);
-        avisarMenuCambiado();
-        onMenuCambiado?.({ lineId: e.details?.lineId ?? null, productId: e.details?.productId ?? null });
+        notifyMenuChanged();
+        onMenuChanged?.({ lineId: e.details?.lineId ?? null, productId: e.details?.productId ?? null });
         qc.invalidateQueries({ queryKey: ['pos', 'draft', draftId] });
         return;
       }

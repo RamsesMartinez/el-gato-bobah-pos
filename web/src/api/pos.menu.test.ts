@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { posApi, olvidarMenu } from './pos';
+import { posApi, forgetMenu } from './pos';
 
 // La tableta revisa el menú cada minuto. Si no mandara el ETag, cada revisión bajaría el catálogo
 // completo; si un 304 no devolviera el menú que ya tenía, la pantalla de venta se quedaría vacía.
-beforeEach(() => olvidarMenu());
+beforeEach(() => forgetMenu());
 afterEach(() => vi.unstubAllGlobals());
 
 const menuA = { version: 1, categories: [], products: [{ id: 1 }] };

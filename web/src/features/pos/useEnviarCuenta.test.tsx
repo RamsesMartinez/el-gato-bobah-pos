@@ -117,13 +117,13 @@ describe('el menú cambió debajo de la cuenta al mandar o cobrar', () => {
   test('aviso neutro, señala el renglón y no deja un motivo rojo en el pie', async () => {
     qc.setQueryData(['pos', 'draft', 'd-1'], CUENTA);
     api.sendDraft.mockRejectedValue(MENU_CAMBIADO());
-    const onMenuCambiado = vi.fn();
-    const { result } = renderHook(() => useEnviarCuenta({ onComanda: vi.fn(), onMenuCambiado }), { wrapper });
+    const onMenuChanged = vi.fn();
+    const { result } = renderHook(() => useEnviarCuenta({ onComanda: vi.fn(), onMenuChanged }), { wrapper });
     let r: OrderView | null = PEDIDO;
     await act(async () => { r = await result.current.enviar('d-1'); });
 
     expect(r).toBeNull();
-    expect(onMenuCambiado).toHaveBeenCalledWith({ lineId: 'l-1', productId: 41 });
+    expect(onMenuChanged).toHaveBeenCalledWith({ lineId: 'l-1', productId: 41 });
     expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({
       title: 'El menú se actualizó; elige de nuevo', type: 'info', id: 'menu-cambiado',
     }));

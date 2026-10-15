@@ -5,10 +5,13 @@ package integration
 import (
 	"context"
 	"testing"
+	"time"
+	"uuid"
 
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
@@ -231,4 +234,50 @@ func TestCatalogVersionIsIsolated(t *testing.T) {
 			t.Fatalf("se leyó la versión de la empresa dueña (%d) desde fuera", v.Catalog)
 		}
 	})
+}
+
+// FR-004: un cambio de catálogo no hace esperar un cobro. Con una transacción de catálogo abierta
+// —que tiene tomado el contador de versión de la empresa y el producto que cambia, como el recálculo
+// de costos—, vender y cobrar ese mismo producto termina sin esperar a que confirme. Si la venta
+// escribiera en una de las diez tablas del menú, esperaría al contador.
+//
+// Límite que ya existía y que esto no cubre: RENOMBRAR un producto cambia una columna de índice
+// único (`products_company_name_key`), y eso toma el producto entero; la llave foránea del renglón
+// de una venta de ESE producto espera a que el renombre confirme. Ningún camino renombra dentro de
+// una transacción larga, así que la espera es la de un `update`.
+func TestACatalogChangeInFlightDoesNotHoldACharge(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	cajero := makeUser(t, st, "cajero_catalogo_abierto", "cajero")
+	abrirCajaPrincipal(t, st, cajero)
+	prod := makeProduct(t, st, "Frappé en cambio", decimal.RequireFromString("50"), false)
+
+	catalogo, err := st.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = catalogo.Rollback(ctx) }()
+	if _, err := catalogo.Exec(ctx, `update products set price = 55, current_cost = 20, updated_at = now() where id = $1`, prod); err != nil {
+		t.Fatal(err)
+	}
+
+	sale, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	orders := app.NewOrdersService(st, clock)
+	ord, err := orders.Create(sale, app.CreateOrderCmd{
+		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
+		Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
+	})
+	if err != nil {
+		t.Fatalf("vender con un cambio de catálogo abierto: %v (si es un timeout, la venta esperó al catálogo)", err)
+	}
+	if _, err := orders.Charge(sale, app.ChargeCmd{
+		OrderID: ord.ID, MethodID: paymentMethodID(t, st, "Efectivo"), Amount: ord.Total, ActorID: cajero,
+	}); err != nil {
+		t.Fatalf("cobrar con un cambio de catálogo abierto: %v (si es un timeout, el cobro esperó al catálogo)", err)
+	}
+	if err := catalogo.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
 }
