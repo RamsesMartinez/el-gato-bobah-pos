@@ -345,9 +345,10 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
 
   return (
     <DialogRoot open={open} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }}
-      placement="center" size="cover" scrollBehavior="inside">
+      placement="center" size="full" scrollBehavior="inside">
       <DialogBackdrop />
-      <DialogContent>
+      {/* Pantalla completa: «cover» con scroll interno lo dejaba en 400 de los 600 px. */}
+      <DialogContent h="100dvh" maxH="100dvh">
         <DialogHeader>
           <DialogTitle>{step === 'capture' && parsed ? 'Nuevo gasto · desde el ticket' : 'Nuevo gasto'}</DialogTitle>
         </DialogHeader>
@@ -524,7 +525,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 )}
                 {withGoods && (
                   <>{goodsLines.length} {goodsLines.length === 1 ? label : plural(label)}
-                    {summary.length > 0 && ` · suma: ${summary.join(' · ')}`}</>
+                    {/* Tres y «y N más»: con un ticket largo, el pie se partía en varias líneas y le
+                        quitaba alto a la lista de renglones. */}
+                    {summary.length > 0 && ` · suma: ${summary.slice(0, 3).join(' · ')}${summary.length > 3 ? ` y ${summary.length - 3} más` : ''}`}</>
                 )}
                 {!categoryId && <Text as="span" color="orange.700"> · falta la categoría</Text>}
                 {!(total > 0) && <Text as="span" color="orange.700"> · falta el total pagado</Text>}

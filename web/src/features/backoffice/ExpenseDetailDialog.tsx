@@ -147,9 +147,10 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
 
   return (
     <DialogRoot open={id !== null} onOpenChange={(e) => { if (!e.open) onClose(); }}
-      placement="center" size="cover" scrollBehavior="inside">
+      placement="center" size="full" scrollBehavior="inside">
       <DialogBackdrop />
-      <DialogContent>
+      {/* Pantalla completa: «cover» con scroll interno lo dejaba en 400 de los 600 px. */}
+      <DialogContent h="100dvh" maxH="100dvh">
         <DialogHeader><DialogTitle>{editing ? 'Corregir lo que llegó' : `Gasto ${id}`}</DialogTitle></DialogHeader>
         <DialogCloseTrigger />
         <DialogBody pb={4}>

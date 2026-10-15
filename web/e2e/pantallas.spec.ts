@@ -304,3 +304,18 @@ test.describe('D — devolver dinero: lo que el servidor NO acepta', () => {
     expect(r.status(), 'un id ilegible salió como 500').toBeLessThan(500);
   });
 });
+
+test.describe('B — compras al almacén en la tableta (spec 038)', () => {
+  // «cover» con scroll interno dejaba el diálogo en 400 de los 600 px: el margen del positioner más
+  // el tope de alto de la receta. A los renglones del ticket les quedaba lugar para casi ninguno.
+  test('B15 · la captura de una compra ocupa todo el alto de la tableta', async ({ page }) => {
+    await entrar(page, '/gastos');
+    await page.getByRole('button', { name: /Nuevo gasto/ }).click();
+    await page.getByRole('button', { name: /Capturar sin ticket/ }).click();
+    await page.getByRole('button', { name: 'Sí', exact: true }).click();
+    const caja = await page.getByRole('dialog').boundingBox();
+    expect(caja, 'no se encontró el diálogo').not.toBeNull();
+    expect(caja?.height ?? 0, `el diálogo mide ${Math.round(caja?.height ?? 0)} px de los 600`).toBeGreaterThanOrEqual(580);
+    await page.keyboard.press('Escape');
+  });
+});

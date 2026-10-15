@@ -146,7 +146,26 @@ Va antes de US1 porque la compra en empaque los usa.
 - [ ] T065 Capturas con Playwright a 1024×600 de las cinco pantallas contra el ambiente de pruebas (tras el merge a develop) y prueba sin contexto con dos personas de comida (el café del cliente y otra fonda o taquería)
 - [X] T066 Actualizar AGENTS.md (compras que suman, corregir por diferencia, por recibir, conteo por diferencia, longitud, «lugar» no es almacén) y `docs/matriz-de-pantallas.md`
 - [ ] T067 Gates: `make api-build && make api-test`, `make test-integration`, `bun run lint`, `bun run vitest run`, `bun run build`, `make ci-local`; correr quickstart.md completo
-- [ ] T068 `/revision-de-codigo` (hook `after_implement`)
+- [X] T068 `/revision-de-codigo` (hook `after_implement`)
+
+
+## Phase 8: Arreglos de la revisión de código (T068)
+
+Cada uno con su prueba vista en rojo antes del arreglo.
+
+- [X] T069 Llave compuesta `(ingredient_id, company_id)` en `expense_items`, `stock_movements` y `stock_levels` (en `server/migrations/0092_purchases_into_stock.sql`, que no está en producción) y 404 desde `lockIngredients` en `server/internal/app/purchases.go` si un insumo no es de la empresa; pruebas en `migration_0092_test.go` y `TestAPurchaseCannotUseAnotherCompanysIngredient`
+- [X] T070 Lo recibido más lo que ya no llega no pasa de lo pedido: `saveStockLine`, `insertItems`, `SetItemsReceived` y el check `expense_items_received_range`; `TestReceivingMoreThanOrderedOutsideReceiveIsRejected`, `TestAbsurdQuantitiesAreRejectedQuickly`
+- [X] T071 Cambiar el artículo de un renglón ya recibido regresa lo sumado al artículo viejo, en `server/internal/app/purchases.go`; `TestChangingTheIngredientOfAReceivedLineMovesWhatItAdded`
+- [X] T072 Cantidades con exponente absurdo → 400 (`domain.ValidStockQtyOrZero` con guarda de escala; `seenApplied`, `notComing`, «ya no va a llegar»); `TestValidStockQtyOrZero`, `TestAbsurdQuantitiesAreRejectedQuickly`
+- [X] T073 `lockIngredients` toma también las existencias sin esperar (anular, quitar, cambiar de artículo); `TestCancellingNeverWaitsForStockHeldElsewhere`
+- [X] T074 Editar un empaque sin mandar `active` conserva su estado (`server/internal/app/presentations.go`); `TestEditingARetiredPresentationKeepsItRetired`
+- [X] T075 Un empaque retirado no bloquea corregir compras viejas (`lineKeepsPresentation`); `TestARetiredPresentationDoesNotBlockCorrectingOldPurchases`
+- [X] T076 Una compra pagada que vuelve a deberse borra `paid_at`/`paid_by`; el total y el costo unitario se validan antes de escribir (`RaiseExpenseAmount`, `raiseTotal`, `domain.ValidLineUnitCost`); `TestAPaidPurchaseThatGrowsOwesTheDifference`, `TestATotalThatGrowsPastTheMoneyCeilingIsRejected`
+- [X] T077 El cierre de un conteo dice en la bitácora cuántas cifras cambiaron después de la vista previa (`stock_counts.previewed_at`); `TestRecapturingAfterThePreviewIsRecorded`
+- [X] T078 `pending` y `pendingReceipt` en desacuerdo → 400; la reversa de la 0092 revisa lo aprendido de proveedores en cm/m; `TestPurchasesHTTP`, `TestMigration0092DownRefusesWithDataAndRevertsClean`
+- [X] T079 La captura y «Corregir lo que llegó» a pantalla completa (`size="full"`, 100dvh): medían 400 de 600 px; `e2e/pantallas.spec.ts › B15`, medida con Playwright a 1024×600 contra la app local del worktree
+- [X] T080 El pie de la captura muestra lo que suman tres renglones y «y N más»; `ExpenseDialog.test.tsx`
+- [X] T081 Los filtros de Gastos miden 44 px; `ExpensesPage.test.tsx`
 
 ---
 

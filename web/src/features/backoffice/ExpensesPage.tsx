@@ -102,7 +102,7 @@ function GastosTab() {
       <HStack justify="space-between" flexWrap="wrap" gap={3}>
         <HStack gap={2} flexWrap="wrap">
           {([['', 'Todos'], ['pendiente', 'Pendientes'], ['pagada', 'Pagadas'], ['cancelada', 'Canceladas'], ['por-llegar', 'Con pendientes de llegar']] as const).map(([v, label]) => (
-            <Button key={v} size="sm" variant={filter === v ? 'solid' : 'outline'} colorPalette={filter === v ? undefined : 'gray'}
+            <Button key={v} size="sm" minH="44px" variant={filter === v ? 'solid' : 'outline'} colorPalette={filter === v ? undefined : 'gray'}
               onClick={() => setFilterReset(v)}>{label}</Button>
           ))}
         </HStack>

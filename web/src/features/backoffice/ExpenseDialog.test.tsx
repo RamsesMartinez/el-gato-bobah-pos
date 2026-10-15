@@ -325,3 +325,24 @@ describe('desde el ticket', () => {
     expect(screen.getByLabelText('Total pagado')).toHaveValue('1140.00');
   });
 });
+
+// Revisión de tableta del 038: el pie juntaba lo que suma cada renglón en un solo texto, y un ticket
+// de 10 renglones lo partía en 3 o 4 líneas que se comían el alto de la lista.
+test('el pie dice lo que suman los primeros renglones y cuántos más', async () => {
+  const lines = ['A', 'B', 'C', 'D', 'E'].map((n) => ({
+    rawCode: '', rawName: `LECHE ${n}`, qty: '1', amount: '100', unitPrice: '', packQty: '', packUnit: '', status: '',
+  }));
+  back.parseDoc.mockResolvedValue({
+    doc: { issuedOn: '2026-10-14', total: '500.00', kind: 'ticket', folio: '', supplier: '', charges: [], payments: [], warnings: [], lines },
+    raw: {}, reconciliation: { balanced: true, diff: '0', linesSum: '500', chargesSum: '0', breakdownSum: '0', total: '500', hasSubtotal: false, linesMatchSubtotal: true, unreadable: [] },
+  });
+  back.suggestArticles.mockResolvedValue({ items: [
+    { itemType: 'ingrediente', itemId: 10, itemName: 'Leche entera', source: 'aprendido', score: 1, matchedVia: 'LECHE', packQtyInBase: '', unitId: 7 },
+  ] });
+  montar();
+  fireEvent.change(screen.getByTestId('ticket-file'), { target: { files: [new File(['x'], 't.jpg', { type: 'image/jpeg' })] } });
+  await waitFor(() => expect(screen.getAllByTestId('renglon')).toHaveLength(5));
+  const pie = screen.getByTestId('pie-compra');
+  expect(pie).toHaveTextContent('y 2 más');
+  expect(pie.textContent?.match(/Leche entera \+/g)).toHaveLength(3);
+});
