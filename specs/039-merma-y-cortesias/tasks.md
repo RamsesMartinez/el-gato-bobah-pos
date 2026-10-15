@@ -7,20 +7,20 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirmar que `0094` es la siguiente migración libre en `server/migrations/` y que el worktree tiene Postgres de pruebas y una base restaurada con dos empresas (`make respaldo-anonimo` a `gatobobah_restaurado`)
+- [X] T001 Confirmar que `0094` es la siguiente migración libre en `server/migrations/` y que el worktree tiene Postgres de pruebas y una base restaurada con dos empresas (`make respaldo-anonimo` a `gatobobah_restaurado`)
 
 ## Phase 2: Foundational (bloquea a todas las historias)
 
-- [ ] T002 [P] Test de dominio de estados y transiciones de merma (`applied`, `pending`, `rejected`, `covered`, `undone`; las no listadas → `ErrConflict`), de «¿pide aprobación?» (sin tope, bajo, sobre, sin costo) y de «¿se puede deshacer?» (mismo día, insumo no contado después) en `server/internal/domain/waste_test.go`
-- [ ] T003 [P] Test de dominio de `SplitLoss` (perdido = registrado + sin explicar; «sobraba»; sin costo; primer conteo) nombrando el concepto que se duplicaría, y de la normalización del nombre de motivo, en `server/internal/domain/waste_test.go`
-- [ ] T004 [P] Test de que `inventory.write_off` lo tienen admin, gerente, cajero y mesero, e `inventory.write_off_approve` solo admin y gerente, en `server/internal/domain/permission_test.go`
-- [ ] T005 Test de la migración 0094 sobre el respaldo restaurado con dos empresas: tablas con RLS, `nullif`, grants sin `delete`; motivos sembrados una vez por empresa; los checks rechazan estado inválido, cantidad 0, costo a medias y `covered` sin conteo; el índice de nombre rechaza un duplicado con otra mayúscula o acento; el Down se niega con registros y deja todo limpio sin ellos, en `server/internal/integration/migration_0094_test.go`
-- [ ] T006 Migración `server/migrations/0094_waste.sql` según `data-model.md` (tablas, FKs con su `on delete`, checks, índices, columnas nuevas en `stock_movements`, `stock_count_lines` y `business_settings`, siembra, Down protegido) hasta que T005 pase
-- [ ] T007 Siembra de motivos en el CTE de `CreateCompany` en `server/queries/companies.sql` y test de que una empresa nueva nace con sus cinco motivos en `server/internal/integration/companies_test.go`
-- [ ] T008 `domain/waste.go`: estados, transiciones, regla de aprobación y de deshacer, `SplitLoss`, normalización de nombre, hasta que T002 y T003 pasen
-- [ ] T009 Permisos `PermInventoryWriteOff` y `PermInventoryWriteOffApprove` en `server/internal/domain/permission.go` (con su mensaje de permiso negado) y su espejo en `web/src/app/permissions.ts` hasta que T004 pase
-- [ ] T010 Acciones de bitácora `waste.recorded`, `waste.approved`, `waste.rejected`, `waste.undone`, `settings.waste_threshold` en `server/internal/domain/audit.go` y sus etiquetas en `web/src/shared/audit/labels.ts`
-- [ ] T011 Consultas en `server/queries/waste.sql` (motivos con usos, insertar registro y movimientos con `branch_id` explícito y `clock_timestamp()`, `for update` del registro, pendientes de la sucursal, registros del periodo, por motivo siguiendo `merged_into_id`) y en `server/queries/stock_counts.sql` (`last_movement_id` al capturar, costo al cerrar, faltante por id de movimiento); `make sqlc`
+- [X] T002 [P] Test de dominio de estados y transiciones de merma (`applied`, `pending`, `rejected`, `covered`, `undone`; las no listadas → `ErrConflict`), de «¿pide aprobación?» (sin tope, bajo, sobre, sin costo) y de «¿se puede deshacer?» (mismo día, insumo no contado después) en `server/internal/domain/waste_test.go`
+- [X] T003 [P] Test de dominio de `SplitLoss` (perdido = registrado + sin explicar; «sobraba»; sin costo; primer conteo) nombrando el concepto que se duplicaría, y de la normalización del nombre de motivo, en `server/internal/domain/waste_test.go`
+- [X] T004 [P] Test de que `inventory.write_off` lo tienen admin, gerente, cajero y mesero, e `inventory.write_off_approve` solo admin y gerente, en `server/internal/domain/permission_test.go`
+- [X] T005 Test de la migración 0094 sobre el respaldo restaurado con dos empresas: tablas con RLS, `nullif`, grants sin `delete`; motivos sembrados una vez por empresa; los checks rechazan estado inválido, cantidad 0, costo a medias y `covered` sin conteo; el índice de nombre rechaza un duplicado con otra mayúscula o acento; el Down se niega con registros y deja todo limpio sin ellos, en `server/internal/integration/migration_0094_test.go`
+- [X] T006 Migración `server/migrations/0094_waste.sql` según `data-model.md` (tablas, FKs con su `on delete`, checks, índices, columnas nuevas en `stock_movements`, `stock_count_lines` y `business_settings`, siembra, Down protegido) hasta que T005 pase
+- [X] T007 Siembra de motivos en el CTE de `CreateCompany` en `server/queries/companies.sql` y test de que una empresa nueva nace con sus cinco motivos en `server/internal/integration/companies_test.go`
+- [X] T008 `domain/waste.go`: estados, transiciones, regla de aprobación y de deshacer, `SplitLoss`, normalización de nombre, hasta que T002 y T003 pasen
+- [X] T009 Permisos `PermInventoryWriteOff` y `PermInventoryWriteOffApprove` en `server/internal/domain/permission.go` (con su mensaje de permiso negado) y su espejo en `web/src/app/permissions.ts` hasta que T004 pase
+- [X] T010 Acciones de bitácora `waste.recorded`, `waste.approved`, `waste.rejected`, `waste.undone`, `settings.waste_threshold` en `server/internal/domain/audit.go` y sus etiquetas en `web/src/shared/audit/labels.ts`
+- [X] T011 Consultas en `server/queries/waste.sql` (motivos con usos, insertar registro y movimientos con `branch_id` explícito y `clock_timestamp()`, `for update` del registro, pendientes de la sucursal, registros del periodo, por motivo siguiendo `merged_into_id`) y en `server/queries/stock_counts.sql` (`last_movement_id` al capturar, costo al cerrar, faltante por id de movimiento); `make sqlc`
 
 ## Phase 3: User Story 1 — Registrar lo que se echó a perder (P1) 🎯 MVP
 
