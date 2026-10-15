@@ -3,6 +3,13 @@
 package integration
 
 import (
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -62,5 +69,46 @@ func TestStockCountsHTTP(t *testing.T) {
 	w = do(t, r, http.MethodPost, "/api/v1/stock/counts/"+strconv.FormatInt(id, 10)+"/close", admin, nil, "")
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"adjusted":[`) || !strings.Contains(w.Body.String(), `"notCounted":[`) {
 		t.Fatalf("cerrar = %d %s", w.Code, w.Body.String())
+	}
+}
+
+// El lugar se pone al contar (FR-015f, decisión del dueño del 14-oct): lo decide `inventory.count`,
+// no `inventory.configure`. Un rol que cuenta sin configurar el almacén lo puede poner; uno que
+// configura sin contar, no.
+func TestTheCountPlaceIsSetByWhoCounts(t *testing.T) {
+	t.Parallel()
+	only := func(p domain.Permission) httpapi.PermissionResolver {
+		return func(domain.Role) []domain.Permission { return []domain.Permission{p} }
+	}
+	for _, c := range []struct {
+		name   string
+		perms  httpapi.PermissionResolver
+		denied bool
+	}{
+		{"quien cuenta sí", only(domain.PermInventoryCount), false},
+		{"quien solo configura el almacén no", only(domain.PermInventoryConfigure), true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			st := newTestStore(t)
+			jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
+			h := httpapi.NewHandlers(httpapi.Deps{
+				JWT: jm, Backoffice: app.NewBackofficeService(st, nil), MenuCache: cache.NewMenuCache(""),
+				Broker: realtime.NewBroker(), Permissions: c.perms,
+			})
+			r := httpapi.Router(config.Config{}, jm, h, st)
+			id := makeUser(t, st, "lugar_"+itoa(len(c.name)), "cajero")
+			tok, err := jm.Issue(domain.User{ID: id, CompanyID: defaultCompanyID, Name: "x", Role: domain.RoleCajero})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ing := ingredientIn(t, st, defaultCompanyID, "Lugar "+c.name, "g")
+			w := do(t, r, http.MethodPut, "/api/v1/stock/ingredients/"+strconv.FormatInt(ing, 10)+"/place", tok, []byte(`{"place":"Refri"}`), "application/json")
+			if c.denied && w.Code != http.StatusForbidden {
+				t.Errorf("= %d; quiere 403", w.Code)
+			}
+			if !c.denied && w.Code != http.StatusNoContent {
+				t.Errorf("= %d %s; quiere 204", w.Code, w.Body.String())
+			}
+		})
 	}
 }

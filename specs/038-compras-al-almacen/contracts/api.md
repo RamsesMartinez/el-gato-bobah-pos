@@ -123,7 +123,7 @@ conteo esté abierto. `POST …/close` responde además, por renglón contado, l
 tenía y la diferencia, y la lista de los no contados por nombre; la pantalla pide confirmar antes
 con `GET /stock/counts/{id}/preview` (mismo cálculo, sin escribir).
 
-`PUT /stock/ingredients/{id}/place` — permiso `inventory.configure`: `{ "place": "Refri" | null }`.
+`PUT /stock/ingredients/{id}/place` — permiso `inventory.count` (lo pone quien cuenta, FR-015f): `{ "place": "Refri" | null }`.
 
 ## Configuración
 

@@ -167,6 +167,19 @@ Cada uno con su prueba vista en rojo antes del arreglo.
 - [X] T080 El pie de la captura muestra lo que suman tres renglones y «y N más»; `ExpenseDialog.test.tsx`
 - [X] T081 Los filtros de Gastos miden 44 px; `ExpensesPage.test.tsx`
 
+
+## Phase 9: Decisiones del dueño tras la prueba sin contexto (research R13)
+
+Cada una con su prueba vista en rojo antes del código.
+
+- [X] T082 [P] Tests de vitest de «¿Cómo se pagó?» (FR-004d): «Total de la compra»; no guarda sin contestar; un método manda un pago por el total; efectivo con una caja abierta la toma sola, con varias la pide y sin ninguna no se ofrece; «Todavía no se paga» guarda sin pagos; con pagos capturados abajo no se pregunta, en `web/src/features/backoffice/ExpenseDialog.test.tsx`
+- [X] T083 [P] Tests de vitest de «Llegó una parte» (FR-007e): pide cuántos, acepta más que cero y menos que lo pedido, manda `qtyReceived` con esa cantidad y el pie dice lo que suma, en `web/src/features/backoffice/ExpenseDialog.test.tsx`
+- [X] T084 [P] Test de integración: una compra con un renglón a medias queda en «Por recibir» con lo que falta, en `server/internal/integration/pending_receipts_test.go`
+- [X] T085 [P] Tests del lugar desde el conteo (FR-015f): el renglón ofrece los lugares que ya usa la empresa y «Otro…», guarda y vuelve a ordenar; la ruta pide `inventory.count` y no `inventory.configure` (handler y vitest), en `server/internal/integration/stock_counts_http_test.go` y `web/src/features/backoffice/StockCountTab.test.tsx`
+- [X] T086 «¿Cómo se pagó?» y «Llegó una parte» en `web/src/features/backoffice/ExpenseDialog.tsx` hasta que T082 y T083 pasen
+- [X] T087 Ruta del lugar con `RequirePermission(PermInventoryCount)` en `server/internal/httpapi/router.go` y «Lugar» en `web/src/features/backoffice/StockCountTab.tsx` hasta que T085 pase
+- [ ] T088 Capturas a 1024×600 contra el ambiente de pruebas de las tres pantallas tocadas, tras el merge
+
 ---
 
 ## Dependencies

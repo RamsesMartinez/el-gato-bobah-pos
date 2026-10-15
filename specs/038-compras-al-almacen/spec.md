@@ -219,6 +219,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-004a**: Cada renglón de mercancía MUST llevar un importe mayor que cero, y la suma de los renglones MUST NOT pasar del total pagado del gasto; lo que falte para el total queda como «otros» del gasto. El servidor lo valida (400), no solo la pantalla.
 - **FR-004b**: Un gasto MUST NOT guardarse sin categoría ni sin total. Las categorías y los proveedores son los de la empresa y se pueden crear desde la captura.
 - **FR-004c**: Si la lectura del ticket trae un total distinto del que se escribió, la pantalla MUST preguntar cuál usar; nunca lo cambia sola.
+- **FR-004d**: Al guardar una compra, la captura MUST preguntar cómo se pagó: los métodos de pago de la empresa y «Todavía no se paga». Elegir un método registra un pago por el total (el efectivo pide la caja de la que sale). No se guarda sin contestar. El campo se llama «Total de la compra» (decisión del dueño, 14-oct, tras la prueba sin contexto: «Total pagado» se leía como «ya está pagado» y una compra en efectivo quedaba como deuda).
 - **FR-005**: Los renglones que propone la lectura automática de un ticket MUST quedar como propuesta hasta que alguien confirme el insumo y la cantidad; ninguno suma solo.
 - **FR-005a**: Mientras haya renglones sin confirmar, el pie de la captura MUST decir cuántos («1 renglón sin confirmar: no suma») y esos renglones MUST mostrarse arriba de la lista, para que un ticket largo no los deje fuera de la vista. Quitar un renglón con cantidad o importe ya capturados MUST pedir confirmación.
 - **FR-006**: Al guardar una compra, el costo del insumo MUST actualizarse según el método de costeo de la empresa: **última compra** por omisión, o **promedio ponderado** (lo que había por su costo más lo que llegó por el suyo, entre el total) si la empresa lo eligió.
@@ -229,6 +230,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-007b**: El sistema MUST mostrar una lista «Por recibir» con lo pendiente de todas las compras de la sucursal, y en Gastos MUST poder filtrarse «Con pendientes».
 - **FR-007c**: Cambiar el estado de un renglón (llegó, llega después, ya no va a llegar) MUST NOT cambiar el total pagado.
 - **FR-007d**: Al recibir MUST aceptarse más de lo que faltaba, y MUST poder agregarse a la misma compra algo que no estaba («Llegó algo más»). Lo que se paga de más lleva su importe y sube el total pagado de esa compra por ese importe; un regalo entra con importe 0 marcado «regalo», no cambia el total y no cambia el costo del insumo (es la única excepción a FR-004a).
+- **FR-007e**: En la captura, un renglón de mercancía MUST poder quedar «Llegó una parte», con cuántos llegaron (más que cero y menos que lo pedido): suma lo que llegó y el resto queda en «Por recibir» (decisión del dueño, 14-oct).
 
 **Presentaciones (Historia 2)**
 
@@ -250,6 +252,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-015c**: Descartar un conteo con cifras capturadas MUST pedir confirmación.
 - **FR-015d**: El conteo MUST ofrecer las dos vistas, «Lista» (todos los insumos agrupados por lugar) y «Uno por uno» (una tarjeta por insumo en el orden del recorrido), con un interruptor; la vista elegida se recuerda en la tableta.
 - **FR-015e**: Las cifras del conteo MUST capturarse con un teclado numérico en pantalla (teclas de al menos 56 px, punto solo donde se aceptan decimales, borrar y «siguiente casilla»), sin abrir el teclado del sistema.
+- **FR-015f**: El lugar de un insumo MUST poder ponerse desde el conteo, con los lugares que la empresa ya usa y «Otro…». Lo pone quien cuenta (permiso de contar), y el siguiente conteo ya sale en ese orden (decisión del dueño, 14-oct: nadie encontró el lugar en la hoja «Cómo llega»).
 - **FR-016**: Al cerrar, los insumos no contados MUST quedarse como estaban; el conteo MUST NOT afirmar una cifra que nadie capturó. Al cerrar, la pantalla dice cuántos insumos activos quedaron sin contar.
 
 **Permisos y producto**
@@ -286,5 +289,5 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **Un gasto con fecha anterior al último conteo** entra al almacén igual: el conteo no sabe qué compras llegaron antes de contar. Es un riesgo aceptado; quien registra tarde ve un aviso.
 - **El costo de las ventas ya registradas no cambia** con ningún método: cada renglón de venta guarda su costo del momento (constitución VIII, snapshot).
 - **Los formatos aprendidos por proveedor** que ya existen siguen funcionando; las presentaciones por insumo son el camino principal.
-- **Permisos:** `inventory.receive` (compras con insumos, recibir, corregir), `inventory.configure` (presentaciones, lugar, método de costeo, palabra) e `inventory.count` (conteo); admin y gerente por omisión (research R6).
+- **Permisos:** `inventory.receive` (compras con insumos, recibir, corregir), `inventory.configure` (presentaciones, método de costeo, palabra) e `inventory.count` (conteo y el lugar de cada insumo, que se pone al contar: FR-015f); admin y gerente por omisión (research R6).
 - **Categorías y proveedores** se crean desde la captura con las rutas que ya existen (`POST /expense-categories`, `POST /suppliers`, grupo de admin y gerente); pasan a permiso cuando el issue #61 toque ese grupo.

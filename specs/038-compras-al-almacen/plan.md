@@ -117,6 +117,12 @@ de sobra.
 | Almacén › Por recibir | https://claude.ai/artifact/GcNdLqbCqWHSujwN7Gsrm8 | A con buscador (v3) | El repartidor llega con una nota; el buscador cubre «¿dónde quedó la leche?» |
 | Almacén › Conteo | https://claude.ai/artifact/JYz2e9k2Pej1FVHJFPhRax | Las dos vistas, con teclado en pantalla (v3) | El café cuenta con su hoja, la fonda caminando: cada quien elige |
 
+**Ajustes tras la prueba sin contexto (14-oct, research R13).** Tres decisiones del dueño que
+agregan controles dentro de disposiciones ya elegidas, sin cambiar la disposición: en la captura,
+«¿Cómo se pagó?» junto a Guardar y un tercer estado «Llegó una parte» en el renglón; en el conteo,
+«Lugar» en cada renglón. Se validan con capturas reales a 1024×600 en el ambiente de pruebas, no
+con maqueta nueva.
+
 ## Project Structure
 
 ```text

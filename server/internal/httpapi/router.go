@@ -426,7 +426,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						r.Post("/counts/{id}/close", h.CloseCount)
 						r.Post("/counts/{id}/discard", h.DiscardCount)
 					})
-					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/ingredients/{id}/place", h.SetCountPlace)
+					// El lugar se pone al contar (FR-015f): lo decide quien cuenta, no quien configura el almacén.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryCount)).Put("/ingredients/{id}/place", h.SetCountPlace)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/ingredients/{id}/presentations", h.ListIngredientPresentations)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredients/{id}/presentations", h.CreatePresentation)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/presentations/{id}", h.UpdatePresentation)

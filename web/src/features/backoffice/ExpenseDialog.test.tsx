@@ -31,7 +31,7 @@ const back = vi.hoisted(() => ({
   lastClosedCount: vi.fn(),
 }));
 const pos = vi.hoisted(() => ({
-  paymentMethods: vi.fn(() => Promise.resolve({ items: [] })),
+  paymentMethods: vi.fn(() => Promise.resolve({ items: [] as unknown[] })),
   cashStatus: vi.fn(() => Promise.resolve({ open: false })),
   businessSettings: vi.fn(() => Promise.resolve({ stockItemLabel: 'artículo', timezone: 'America/Mexico_City' })),
 }));
@@ -116,7 +116,7 @@ async function elegir(placeholder: string | RegExp, opcion: string | RegExp) {
 
 async function encabezado(total = '1140') {
   await elegir(/Elegir categoría/, 'Mercancía');
-  fireEvent.change(screen.getByLabelText('Total pagado'), { target: { value: total } });
+  fireEvent.change(screen.getByLabelText('Total de la compra'), { target: { value: total } });
 }
 
 async function capturaConMercancia() {
@@ -141,6 +141,7 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
     click('No, solo el gasto');
     expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
       await encabezado('640');
+    click('Todavía no se paga');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar' })).toBeEnabled());
     fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
     await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
@@ -153,7 +154,7 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
     montar();
     click(/Capturar sin ticket/);
     click('No, solo el gasto');
-    fireEvent.change(screen.getByLabelText('Total pagado'), { target: { value: '640' } });
+    fireEvent.change(screen.getByLabelText('Total de la compra'), { target: { value: '640' } });
     expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
     expect(screen.getByTestId('pie-compra')).toHaveTextContent('falta la categoría');
   });
@@ -170,6 +171,7 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
     expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '540' } });
     expect(screen.getByTestId('pie-compra')).toHaveTextContent('el resto queda como «otros» del gasto');
+    click('Todavía no se paga');
     click('Guardar');
     await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
     const [item] = back.createExpense.mock.calls[0][0].items;
@@ -182,6 +184,7 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
     await elegir('Buscar o crear', /Leche entera/);
     fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
     click('Llega después');
+    click('Todavía no se paga');
     click('Guardar');
     await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
     expect(back.createExpense.mock.calls[0][0].items[0].qtyReceived).toBe('0');
@@ -200,6 +203,7 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
     await elegir('Buscar o crear', /Leche entera/);
     click(/Regalo/);
     expect(screen.getByLabelText('Importe')).toHaveValue('0');
+    click('Todavía no se paga');
     click('Guardar');
     await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
     expect(back.createExpense.mock.calls[0][0].items[0]).toMatchObject({ isGift: true, amount: '0' });
@@ -283,6 +287,7 @@ describe('desde el ticket', () => {
     expect(dudoso).toHaveTextContent('¿Es Azúcar');
     expect(screen.getByTestId('pie-compra')).toHaveTextContent('1 renglón sin confirmar: no suma');
     await elegir(/Elegir categoría/, 'Mercancía');
+    click('Todavía no se paga');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar' })).toBeEnabled());
     click('Guardar');
     await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
@@ -309,6 +314,7 @@ describe('desde el ticket', () => {
     fireEvent.change(importes[0], { target: { value: '400' } });
     await elegir('Buscar o crear', /Leche entera/);
     fireEvent.change(screen.getAllByLabelText('Importe')[1], { target: { value: '200' } });
+    click('Todavía no se paga');
     click('Guardar');
     await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
     const [a, b] = back.createExpense.mock.calls[0][0].items;
@@ -319,10 +325,10 @@ describe('desde el ticket', () => {
 
   test('si el total capturado no es el del ticket, pregunta cuál', async () => {
     await subirTicket();
-    fireEvent.change(screen.getByLabelText('Total pagado'), { target: { value: '1000' } });
+    fireEvent.change(screen.getByLabelText('Total de la compra'), { target: { value: '1000' } });
     expect(screen.getByText(/El ticket dice \$1,140 y capturaste \$1,000/)).toBeInTheDocument();
     click(/el del ticket/);
-    expect(screen.getByLabelText('Total pagado')).toHaveValue('1140.00');
+    expect(screen.getByLabelText('Total de la compra')).toHaveValue('1140.00');
   });
 });
 
@@ -388,6 +394,7 @@ describe('lo que se crea desde la captura', () => {
     await screen.findByTestId('renglon');
     await elegir(/Elegir categoría/, 'Mercancía');
     fireEvent.click(await screen.findByRole('button', { name: 'Caja · 12 L' }));
+    click('Todavía no se paga');
     click('Guardar');
     await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
     const [item] = back.createExpense.mock.calls[0][0].items;
@@ -404,4 +411,102 @@ test('la fecha dice que es la del ticket', async () => {
   click(/Capturar sin ticket/);
   click('No, solo el gasto');
   expect(await screen.findByText('Fecha del ticket')).toBeInTheDocument();
+});
+
+// Decisión del dueño tras la prueba sin contexto (FR-004d): «Total pagado» se leía como «ya está
+// pagado», y sin un pago capturado aparte la compra quedaba como deuda.
+describe('¿Cómo se pagó? (FR-004d)', () => {
+  beforeEach(() => {
+    pos.paymentMethods.mockResolvedValue({ items: [
+      { id: 1, name: 'Efectivo', affectsCashDrawer: true, isActive: true },
+      { id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true },
+    ] });
+  });
+
+  async function gastoListo(total = '640') {
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    await encabezado(total);
+  }
+
+  test('no se guarda sin contestar', async () => {
+    await gastoListo();
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    expect(screen.getByTestId('pie-compra')).toHaveTextContent('elige cómo se pagó');
+  });
+
+  test('un método registra un pago por el total y la compra queda pagada', async () => {
+    await gastoListo();
+    click('Tarjeta');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const body = back.createExpense.mock.calls[0][0];
+    expect(body.payments).toEqual([expect.objectContaining({ methodId: 2, amount: '640' })]);
+    expect(body.status).toBe('pagada');
+  });
+
+  test('efectivo con una sola caja abierta la toma sola', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', openSessionId: 70 }] });
+    await gastoListo();
+    click('Efectivo');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments).toEqual([expect.objectContaining({ methodId: 1, registerId: 7 })]);
+  });
+
+  test('efectivo con varias cajas abiertas pide de cuál sale', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [
+      { id: 7, name: 'Caja 1', openSessionId: 70 }, { id: 8, name: 'Caja 2', openSessionId: 80 },
+    ] });
+    await gastoListo();
+    click('Efectivo');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    await elegir(/¿De qué caja sale\?/, 'Caja 2');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments).toEqual([expect.objectContaining({ registerId: 8 })]);
+  });
+
+  test('sin caja abierta no se ofrece efectivo', async () => {
+    await gastoListo();
+    await screen.findByRole('button', { name: 'Tarjeta' });
+    expect(screen.queryByRole('button', { name: 'Efectivo' })).toBeNull();
+  });
+
+  test('«Todavía no se paga» guarda sin pagos y queda pendiente', async () => {
+    await gastoListo();
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0]).toMatchObject({ payments: [], status: 'pendiente' });
+  });
+
+  test('con pagos capturados abajo no se pregunta', async () => {
+    await gastoListo();
+    click('Agregar pago');
+    expect(screen.queryByRole('button', { name: 'Todavía no se paga' })).toBeNull();
+  });
+});
+
+// Decisión del dueño tras la prueba sin contexto (FR-007e): «pedí 2, llegó 1» se dice en la captura.
+describe('Llegó una parte (FR-007e)', () => {
+  test('pide cuántos, acepta menos que lo pedido y manda esa cantidad', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '540' } });
+    click('Llegó una parte');
+    const cuantos = screen.getByLabelText('¿Cuántos llegaron?');
+    click('Todavía no se paga');
+    for (const bad of ['', '0', '3', '4']) {
+      fireEvent.change(cuantos, { target: { value: bad } });
+      expect(screen.getByRole('button', { name: 'Guardar' }), `«${bad}» llegaron de 3`).toBeDisabled();
+    }
+    fireEvent.change(cuantos, { target: { value: '2' } });
+    expect(screen.getByText('= 24 L')).toBeInTheDocument();
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].items[0]).toMatchObject({ quantity: '3', qtyReceived: '2' });
+  });
 });
