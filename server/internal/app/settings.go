@@ -68,10 +68,12 @@ type BusinessSettings struct {
 	FolioScheme string `json:"folioScheme"`
 	// CostingMethod: cómo cambia el costo de un insumo al comprarlo (`last` por omisión o
 	// `weighted`). StockItemLabel: cómo se le dice a lo que se guarda en el almacén (spec 038).
-	CostingMethod  string     `json:"costingMethod"`
-	StockItemLabel string     `json:"stockItemLabel"`
-	HasLogo        bool       `json:"hasLogo"`
-	LogoUpdatedAt  *time.Time `json:"logoUpdatedAt"`
+	CostingMethod  string `json:"costingMethod"`
+	StockItemLabel string `json:"stockItemLabel"`
+	// WasteApprovalThreshold: a partir de cuánto una merma espera aprobación; nulo, ninguna (spec 039).
+	WasteApprovalThreshold *decimal.Decimal `json:"wasteApprovalThreshold"`
+	HasLogo                bool             `json:"hasLogo"`
+	LogoUpdatedAt          *time.Time       `json:"logoUpdatedAt"`
 }
 
 func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
@@ -102,25 +104,26 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		return BusinessSettings{}, err
 	}
 	bs := BusinessSettings{
-		DeliveryFee:        row.DeliveryFee,
-		BusinessName:       row.BusinessName,
-		Address:            derefStr(row.Address),
-		Phone:              derefStr(row.Phone),
-		FooterNote:         derefStr(row.FooterNote),
-		HeaderNote:         derefStr(row.HeaderNote),
-		AutoPrintOnClose:   row.AutoPrintOnClose,
-		Timezone:           row.Timezone,
-		PrintFreeModifiers: row.PrintFreeModifiers,
-		PrintKitchenTicket: row.PrintKitchenTicket,
-		CorteDeVista:       row.CorteDeVista,
-		BlindCashCount:     row.BlindCashCount,
-		PinOnlyUnlock:      row.PinOnlyUnlock,
-		LockAfterSeconds:   int(row.LockAfterSeconds),
-		SessionHours:       int(row.SessionHours),
-		FolioScheme:        string(row.FolioScheme),
-		CostingMethod:      row.CostingMethod,
-		StockItemLabel:     row.StockItemLabel,
-		HasLogo:            row.HasLogo,
+		DeliveryFee:            row.DeliveryFee,
+		BusinessName:           row.BusinessName,
+		Address:                derefStr(row.Address),
+		Phone:                  derefStr(row.Phone),
+		FooterNote:             derefStr(row.FooterNote),
+		HeaderNote:             derefStr(row.HeaderNote),
+		AutoPrintOnClose:       row.AutoPrintOnClose,
+		Timezone:               row.Timezone,
+		PrintFreeModifiers:     row.PrintFreeModifiers,
+		PrintKitchenTicket:     row.PrintKitchenTicket,
+		CorteDeVista:           row.CorteDeVista,
+		BlindCashCount:         row.BlindCashCount,
+		PinOnlyUnlock:          row.PinOnlyUnlock,
+		LockAfterSeconds:       int(row.LockAfterSeconds),
+		SessionHours:           int(row.SessionHours),
+		FolioScheme:            string(row.FolioScheme),
+		CostingMethod:          row.CostingMethod,
+		WasteApprovalThreshold: row.WasteApprovalThreshold,
+		StockItemLabel:         row.StockItemLabel,
+		HasLogo:                row.HasLogo,
 	}
 	if row.LogoUpdatedAt.Valid {
 		bs.LogoUpdatedAt = &row.LogoUpdatedAt.Time

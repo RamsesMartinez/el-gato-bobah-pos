@@ -2,8 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -131,4 +135,160 @@ func coverPendingWaste(ctx context.Context, q *db.Queries, countID, branch int64
 		}
 	}
 	return nil
+}
+
+// WasteReasonAdmin es un motivo para administrarlo: también los archivados y los juntados.
+type WasteReasonAdmin struct {
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	IsStaffMeal  bool   `json:"isStaffMeal"`
+	Archived     bool   `json:"archived"`
+	MergedIntoID *int64 `json:"mergedIntoId"`
+	Uses         int32  `json:"uses"`
+}
+
+// AllWasteReasons lista todos los motivos de la empresa, para administrarlos.
+func (s *BackofficeService) AllWasteReasons(ctx context.Context) ([]WasteReasonAdmin, error) {
+	rows, err := s.store.QC(ctx).ListAllWasteReasons(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WasteReasonAdmin, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, WasteReasonAdmin{ID: r.ID, Name: r.Name, Description: r.Description, IsStaffMeal: r.IsStaffMeal,
+			Archived: r.ArchivedAt.Valid, MergedIntoID: r.MergedIntoID, Uses: r.Uses})
+	}
+	return out, nil
+}
+
+// WasteReasonUpdate es lo editable de un motivo.
+type WasteReasonUpdate struct {
+	Name        string
+	Description string
+	IsStaffMeal bool
+	Archived    bool
+}
+
+// UpdateWasteReason renombra, describe, marca «no cuenta como pérdida» o archiva un motivo. Lo ya
+// registrado no cambia: cada registro copió la marca al registrarse.
+func (s *BackofficeService) UpdateWasteReason(ctx context.Context, id int64, u WasteReasonUpdate, actor int64) error {
+	if err := domain.ValidWasteReason(u.Name, u.Description); err != nil {
+		return err
+	}
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		n, err := q.UpdateWasteReason(ctx, db.UpdateWasteReasonParams{
+			Name: strings.TrimSpace(u.Name), Description: strings.TrimSpace(u.Description), IsStaffMeal: u.IsStaffMeal,
+			Archived: u.Archived, ID: id,
+		})
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return fmt.Errorf("%w: ya hay un motivo con ese nombre", domain.ErrConflict)
+		}
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: ese motivo no existe o ya se juntó con otro", domain.ErrNotFound)
+		}
+		return nil
+	})
+}
+
+// MergeWasteReason junta un motivo con otro: deja de ofrecerse y el reporte suma sus registros bajo
+// el que queda. Los registros NO cambian de motivo (revisión de arquitectura): reescribirlos perdería
+// para siempre con qué motivo se capturó cada uno. Un solo nivel: el destino no puede estar juntado
+// ni archivado.
+func (s *BackofficeService) MergeWasteReason(ctx context.Context, id, into, actor int64) error {
+	if id == into {
+		return fmt.Errorf("%w: un motivo no se junta consigo mismo", domain.ErrValidation)
+	}
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		if _, err := q.GetWasteReason(ctx, id); err != nil {
+			return notFound(err)
+		}
+		target, err := q.GetWasteReason(ctx, into)
+		if err != nil {
+			return notFound(err)
+		}
+		if target.ArchivedAt.Valid || target.MergedIntoID != nil {
+			return fmt.Errorf("%w: se junta con un motivo que se sigue usando", domain.ErrValidation)
+		}
+		n, err := q.MergeWasteReason(ctx, db.MergeWasteReasonParams{IntoID: &into, ID: id})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: ese motivo ya se juntó con otro", domain.ErrConflict)
+		}
+		return nil
+	})
+}
+
+// wastePeriod convierte dos fechas del local en el intervalo [desde, hasta+1 día).
+func (s *BackofficeService) wastePeriod(ctx context.Context, from, to time.Time) (time.Time, time.Time, error) {
+	if to.Before(from) {
+		return time.Time{}, time.Time{}, fmt.Errorf("%w: la fecha final va después de la inicial", domain.ErrValidation)
+	}
+	loc := s.location(ctx)
+	start := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, loc)
+	end := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1)
+	return start, end, nil
+}
+
+// ListWaste lista los registros de un periodo, opcionalmente de un motivo (siguiendo los juntados).
+func (s *BackofficeService) ListWaste(ctx context.Context, from, to time.Time, reasonID *int64) ([]WasteRow, error) {
+	start, end, err := s.wastePeriod(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.store.QC(ctx).ListWaste(ctx, db.ListWasteParams{FromTs: start, ToTs: end, ReasonID: reasonID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WasteRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, WasteRow{ID: r.ID, ItemType: string(r.ItemType), ItemName: r.ItemName, Quantity: r.Quantity,
+			UnitCode: r.UnitCode, TotalCost: r.TotalCost, Status: r.Status, Reason: r.ReasonName, IsStaffMeal: r.IsStaffMeal,
+			ReportReason: r.ReportReasonID, RecordedBy: r.RecordedByName, RecordedAt: r.RecordedAt})
+	}
+	return out, nil
+}
+
+// WasteReasonTotal es lo que restó un motivo en el periodo.
+type WasteReasonTotal struct {
+	ReasonID    int64           `json:"reasonId"`
+	Name        string          `json:"name"`
+	IsStaffMeal bool            `json:"isStaffMeal"`
+	Records     int32           `json:"records"`
+	TotalCost   decimal.Decimal `json:"totalCost"`
+	WithoutCost int32           `json:"withoutCost"`
+}
+
+// WasteByReason suma lo que restó en el periodo por motivo (el que queda tras juntar), con la
+// comida del personal aparte por la marca que se copió al registrar.
+func (s *BackofficeService) WasteByReason(ctx context.Context, from, to time.Time) ([]WasteReasonTotal, error) {
+	start, end, err := s.wastePeriod(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+	q := s.store.QC(ctx)
+	rows, err := q.WasteByReason(ctx, db.WasteByReasonParams{FromTs: start, ToTs: end})
+	if err != nil {
+		return nil, err
+	}
+	reasons, err := q.ListAllWasteReasons(ctx)
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[int64]string, len(reasons))
+	for _, r := range reasons {
+		names[r.ID] = r.Name
+	}
+	out := make([]WasteReasonTotal, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, WasteReasonTotal{ReasonID: r.ReasonID, Name: names[r.ReasonID], IsStaffMeal: r.IsStaffMeal,
+			Records: r.Records, TotalCost: r.TotalCost, WithoutCost: r.WithoutCost})
+	}
+	return out, nil
 }

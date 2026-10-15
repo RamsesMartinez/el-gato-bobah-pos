@@ -8,6 +8,7 @@ import {
 import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
 import { medirAccion } from '../../api/uso';
+import { moneyExact } from '../../utils/format';
 import { wasteApi } from '../../api/waste';
 
 // Mermas por aprobar (spec 039, maqueta B): una franja arriba para quien aprueba, mientras haya
@@ -74,7 +75,7 @@ function PendingSheet({ open, onClose }: { open: boolean; onClose: () => void })
             <Flex key={r.id} data-testid="renglon-por-aprobar" minH="64px" align="center" justify="space-between" gap={3} borderBottomWidth="1px" py={1}>
               <Box minW={0}>
                 <Text fontWeight="600">{r.itemName} · {r.quantity} {r.unitCode}</Text>
-                <Text fontSize="sm" color="fg.muted">{r.reason} · {r.recordedBy}{r.totalCost ? ` · $${r.totalCost}` : ' · sin costo'}</Text>
+                <Text fontSize="sm" color="fg.muted">{r.reason} · {r.recordedBy}{r.totalCost ? ` · ${moneyExact(r.totalCost)}` : ' · sin costo'}</Text>
               </Box>
               {confirm === r.id ? (
                 <HStack gap={3} flexShrink={0}>

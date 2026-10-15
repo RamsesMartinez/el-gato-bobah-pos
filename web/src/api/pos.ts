@@ -263,6 +263,8 @@ export interface BusinessSettings {
   deliveryFee: string;
   // Spec 038: cómo se costea un insumo al comprarlo y cómo se le dice a lo del almacén.
   costingMethod?: 'last' | 'weighted';
+  // A partir de cuánto una merma espera aprobación; nulo, ninguna (spec 039).
+  wasteApprovalThreshold?: string | null;
   stockItemLabel?: string;
   // Identidad que va en el encabezado del ticket. Los opcionales llegan como string vacío y no
   // como null: el ticket omite el renglón cuando está vacío.

@@ -417,6 +417,15 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						// Deshacer la propia; la de otro la decide el servicio con el permiso de configurar.
 						r.Post("/{id}/undo", h.UndoWaste)
 					})
+					// La pestaña de Almacén y el reporte por motivo: quien ve la salud del inventario.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/", h.ListWaste)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/by-reason", h.WasteByReason)
+					// Administrar motivos: quien configura el almacén.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Group(func(r chi.Router) {
+						r.Get("/reasons/all", h.AllWasteReasons)
+						r.Put("/reasons/{id}", h.UpdateWasteReason)
+						r.Post("/reasons/{id}/merge", h.MergeWasteReason)
+					})
 					r.With(RequirePermission(h.permissions, domain.PermInventoryWriteOffApprove)).Group(func(r chi.Router) {
 						r.Get("/pending", h.PendingWaste)
 						r.Post("/{id}/approve", h.ApproveWaste)

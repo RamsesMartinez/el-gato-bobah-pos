@@ -183,8 +183,8 @@ select coalesce(r.merged_into_id, r.id)::bigint as reason_id, w.is_staff_meal,
   from waste_records w
   join waste_reasons r on r.id = w.reason_id
  where w.branch_id = current_branch_id() and w.status = 'applied'
-   and coalesce(w.resolved_at, w.recorded_at) >= sqlc.arg(from_ts)
-   and coalesce(w.resolved_at, w.recorded_at) < sqlc.arg(to_ts)
+   and coalesce(w.resolved_at, w.recorded_at) >= sqlc.arg(from_ts)::timestamptz
+   and coalesce(w.resolved_at, w.recorded_at) < sqlc.arg(to_ts)::timestamptz
  group by 1, 2
  order by 4 desc;
 

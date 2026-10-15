@@ -9,6 +9,7 @@ import { Picker } from '../../components/Picker';
 import { pressKey } from '../../components/pressKey';
 import { ApiError } from '../../api/client';
 import { medirAccion } from '../../api/uso';
+import { moneyExact } from '../../utils/format';
 import { wasteApi, type WasteItems, type WasteReason, type WasteRow } from '../../api/waste';
 
 // Lo que se echó a perder (spec 039, maqueta D: «Una pantalla» y «Paso a paso» con interruptor).
@@ -260,7 +261,7 @@ function TodayList({ rows }: { rows: WasteRow[] }) {
         <Flex key={r.id} data-testid="renglon-merma" minH="56px" align="center" justify="space-between" gap={3} borderBottomWidth="1px" py={1}>
           <Box minW={0}>
             <Text fontWeight="600">{r.itemName} · {r.quantity} {r.unitCode}</Text>
-            <Text fontSize="sm" color="fg.muted">{r.reason} · {r.recordedBy} · {STATUS_WORDS[r.status] ?? r.status}{r.totalCost ? ` · $${r.totalCost}` : ''}</Text>
+            <Text fontSize="sm" color="fg.muted">{r.reason} · {r.recordedBy} · {STATUS_WORDS[r.status] ?? r.status}{r.totalCost ? ` · ${moneyExact(r.totalCost)}` : ''}</Text>
           </Box>
           {r.canUndo && (confirm === r.id ? (
             <HStack gap={3} flexShrink={0}>

@@ -100,6 +100,20 @@ func TestWasteHTTP(t *testing.T) {
 		}
 	})
 
+	t.Run("fechas y motivos mal escritos son 400, no un periodo por omisión", func(t *testing.T) {
+		for _, path := range []string{"/api/v1/waste?from=15-10-2026", "/api/v1/waste/by-reason?to=ayer", "/api/v1/waste?reasonId=abc"} {
+			if w := do(t, r, http.MethodGet, path, gerente, nil, ""); w.Code != http.StatusBadRequest {
+				t.Errorf("%s = %d; quiere 400", path, w.Code)
+			}
+		}
+		if w := do(t, r, http.MethodGet, "/api/v1/waste/by-reason", cajero, nil, ""); w.Code != http.StatusForbidden {
+			t.Errorf("cajero por motivo = %d; quiere 403", w.Code)
+		}
+		if w := do(t, r, http.MethodPost, "/api/v1/waste/reasons/1/merge", cajero, []byte(`{"intoId":2}`), json); w.Code != http.StatusForbidden {
+			t.Errorf("cajero juntar = %d; quiere 403", w.Code)
+		}
+	})
+
 	t.Run("un motivo repetido responde 409 con el que existe", func(t *testing.T) {
 		w := do(t, r, http.MethodPost, "/api/v1/waste/reasons", cajero, []byte(`{"name":" caduco ","description":"otra"}`), json)
 		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"existingId":`+strconv.FormatInt(caduco, 10)) {

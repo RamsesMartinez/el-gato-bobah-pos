@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
+	"time"
 
 	"github.com/shopspring/decimal"
 
@@ -181,4 +184,117 @@ func (h *Handlers) CountLoss(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, v)
+}
+
+// wastePeriodParams lee `from` y `to` (AAAA-MM-DD). Sin ellos, los últimos siete días; mal escritos,
+// 400: caer a un periodo por omisión mostraría un número que nadie pidió.
+func wastePeriodParams(r *http.Request) (time.Time, time.Time, error) {
+	today := time.Now()
+	from, err := parseDate(r.URL.Query().Get("from"), today.AddDate(0, 0, -6))
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	to, err := parseDate(r.URL.Query().Get("to"), today)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	return from, to, nil
+}
+
+// GET /waste?from=&to=&reasonId= — los registros del periodo para la pestaña de Almacén.
+func (h *Handlers) ListWaste(w http.ResponseWriter, r *http.Request) {
+	from, to, err := wastePeriodParams(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var reason *int64
+	if v := r.URL.Query().Get("reasonId"); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			Error(w, fmt.Errorf("%w: el motivo %q no es válido", domain.ErrValidation, v))
+			return
+		}
+		reason = &id
+	}
+	rows, err := h.backoffice.ListWaste(r.Context(), from, to, reason)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, rows)
+}
+
+// GET /waste/by-reason?from=&to= — lo que restó cada motivo en el periodo.
+func (h *Handlers) WasteByReason(w http.ResponseWriter, r *http.Request) {
+	from, to, err := wastePeriodParams(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.WasteByReason(r.Context(), from, to)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
+// GET /waste/reasons/all — todos los motivos, para administrarlos.
+func (h *Handlers) AllWasteReasons(w http.ResponseWriter, r *http.Request) {
+	v, err := h.backoffice.AllWasteReasons(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
+// PUT /waste/reasons/{id} — `{ name, description, isStaffMeal, archived }`.
+func (h *Handlers) UpdateWasteReason(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		IsStaffMeal bool   `json:"isStaffMeal"`
+		Archived    bool   `json:"archived"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.UpdateWasteReason(r.Context(), id, app.WasteReasonUpdate{
+		Name: body.Name, Description: body.Description, IsStaffMeal: body.IsStaffMeal, Archived: body.Archived,
+	}, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /waste/reasons/{id}/merge — `{ intoId }`.
+func (h *Handlers) MergeWasteReason(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		IntoID int64 `json:"intoId"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.MergeWasteReason(r.Context(), id, body.IntoID, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -1,12 +1,13 @@
 import { Box, Flex, Grid, Spinner, Text, VStack } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { wasteApi, type LossItem } from '../../api/waste';
+import { moneyExact } from '../../utils/format';
 
 // Lo que se perdió desde el conteo anterior (spec 039, maqueta B): tres cifras arriba y una barra por
 // artículo, en gris lo registrado como merma y en rojo lo que el conteo encontró de menos. Los pesos
 // son al costo de cuando se cerró el conteo. Lo que sobraba se dice así, sin barra.
 
-const money = (v: string) => `$${Number(v).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (v: string) => moneyExact(v);
 const qty = (v: string) => String(Number(Number(v).toFixed(2)));
 
 export function CountLossReport({ countId }: { countId: number }) {

@@ -54,6 +54,25 @@ export interface CountLoss {
   totals: { lost: string; registered: string; unexplained: string; withoutCost: number };
 }
 
+export interface WasteReasonTotal {
+  reasonId: number;
+  name: string;
+  isStaffMeal: boolean;
+  records: number;
+  totalCost: string;
+  withoutCost: number;
+}
+
+export interface WasteReasonAdmin {
+  id: number;
+  name: string;
+  description: string;
+  isStaffMeal: boolean;
+  archived: boolean;
+  mergedIntoId: number | null;
+  uses: number;
+}
+
 export interface RecordWasteInput {
   reasonId: number;
   ingredientId?: number;
@@ -82,4 +101,11 @@ export const wasteApi = {
   reject: (id: number) => api.post<void>(`/waste/${id}/reject`),
   setThreshold: (threshold: string | null) => api.put<void>('/settings/waste-threshold', { threshold }),
   countLoss: (countId: number) => api.get<CountLoss>(`/stock/counts/${countId}/loss`),
+  list: (from: string, to: string, reasonId?: number | null) =>
+    api.get<WasteRow[]>(`/waste?from=${from}&to=${to}${reasonId ? `&reasonId=${reasonId}` : ''}`),
+  byReason: (from: string, to: string) => api.get<WasteReasonTotal[]>(`/waste/by-reason?from=${from}&to=${to}`),
+  allReasons: () => api.get<WasteReasonAdmin[]>('/waste/reasons/all'),
+  updateReason: (id: number, r: { name: string; description: string; isStaffMeal: boolean; archived: boolean }) =>
+    api.put<void>(`/waste/reasons/${id}`, r),
+  mergeReason: (id: number, intoId: number) => api.post<void>(`/waste/reasons/${id}/merge`, { intoId }),
 };

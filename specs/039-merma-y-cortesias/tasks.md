@@ -57,12 +57,12 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 **Independent test**: mermas de la semana con dos motivos → cada uno con su total y el del personal aparte; juntar dos motivos suma bajo el que queda sin cambiar el motivo de ningún registro.
 
-- [ ] T033 [P] [US3] Tests de integración por motivo y motivos en los tres casos: totales por motivo siguiendo `merged_into_id`; juntar no cambia `reason_id` (E16) y rechaza destino juntado o archivado; archivar no cambia lo registrado; cambiar «no cuenta como pérdida» no reclasifica el pasado; fechas mal formadas → 400; borrar una empresa con mermas cae por cascade (E17), en `server/internal/integration/waste_reasons_test.go`
-- [ ] T034 [US3] Servicio y rutas de editar, archivar y juntar motivos, `GET /waste` y `GET /waste/by-reason` en `server/internal/app/waste_reports.go`, `waste.go` y `handlers_waste.go`, hasta que T033 pase
-- [ ] T035 [P] [US3] Tests de vitest de la pestaña (Maquetas: «Merma por motivo», opción B): pestaña «Se echó a perder» en Almacén con `Tabs.List` que se desplaza; fichas en una fila con la activa a la vista; tocar filtra; rango con `DatePickerButton`, en `web/src/features/waste/WasteTab.test.tsx`
-- [ ] T036 [US3] Pestaña `web/src/features/waste/WasteTab.tsx` en `web/src/features/backoffice/StockPage.tsx`, hasta que T035 pase
-- [ ] T037 [P] [US3] Tests de vitest de motivos y tope (Maquetas: «Motivos y tope», opción A): renglón del tope, Editar (nombre, descripción, archivar, «No cuenta como pérdida del negocio») y Juntar apartado y con confirmación, en `web/src/features/admin/InventorySettingsSection.test.tsx`
-- [ ] T038 [US3] Motivos y tope en `web/src/features/admin/InventorySettingsSection.tsx` hasta que T037 pase
+- [X] T033 [P] [US3] Tests de integración por motivo y motivos en los tres casos: totales por motivo siguiendo `merged_into_id`; juntar no cambia `reason_id` (E16) y rechaza destino juntado o archivado; archivar no cambia lo registrado; cambiar «no cuenta como pérdida» no reclasifica el pasado; fechas mal formadas → 400; borrar una empresa con mermas cae por cascade (E17), en `server/internal/integration/waste_reasons_test.go`
+- [X] T034 [US3] Servicio y rutas de editar, archivar y juntar motivos, `GET /waste` y `GET /waste/by-reason` en `server/internal/app/waste_reports.go`, `waste.go` y `handlers_waste.go`, hasta que T033 pase
+- [X] T035 [P] [US3] Tests de vitest de la pestaña (Maquetas: «Merma por motivo», opción B): pestaña «Se echó a perder» en Almacén con `Tabs.List` que se desplaza; fichas en una fila con la activa a la vista; tocar filtra; rango con `DatePickerButton`, en `web/src/features/waste/WasteTab.test.tsx`
+- [X] T036 [US3] Pestaña `web/src/features/waste/WasteTab.tsx` en `web/src/features/backoffice/StockPage.tsx`, hasta que T035 pase
+- [X] T037 [P] [US3] Tests de vitest de motivos y tope (Maquetas: «Motivos y tope», opción A): renglón del tope, Editar (nombre, descripción, archivar, «No cuenta como pérdida del negocio») y Juntar apartado y con confirmación, en `web/src/features/admin/InventorySettingsSection.test.tsx`
+- [X] T038 [US3] Motivos y tope en `web/src/features/admin/InventorySettingsSection.tsx` hasta que T037 pase
 
 ## Phase 6: Polish
 

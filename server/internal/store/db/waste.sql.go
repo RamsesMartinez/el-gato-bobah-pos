@@ -727,15 +727,15 @@ select coalesce(r.merged_into_id, r.id)::bigint as reason_id, w.is_staff_meal,
   from waste_records w
   join waste_reasons r on r.id = w.reason_id
  where w.branch_id = current_branch_id() and w.status = 'applied'
-   and coalesce(w.resolved_at, w.recorded_at) >= $1
-   and coalesce(w.resolved_at, w.recorded_at) < $2
+   and coalesce(w.resolved_at, w.recorded_at) >= $1::timestamptz
+   and coalesce(w.resolved_at, w.recorded_at) < $2::timestamptz
  group by 1, 2
  order by 4 desc
 `
 
 type WasteByReasonParams struct {
-	FromTs pgtype.Timestamptz `json:"from_ts"`
-	ToTs   pgtype.Timestamptz `json:"to_ts"`
+	FromTs time.Time `json:"from_ts"`
+	ToTs   time.Time `json:"to_ts"`
 }
 
 type WasteByReasonRow struct {
