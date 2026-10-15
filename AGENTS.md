@@ -636,8 +636,10 @@ de [ci.yml](.github/workflows/ci.yml) lo decide). Un PR corre solo lo que su cam
 puros `specs/` o `docs/` no corre nada— y el push a develop solo construye y despliega. Lo que lo
 hace seguro: el PR se mergea **al día** con develop y con sus checks en verde, así que lo probado es
 lo que queda. Hoy lo cuida quien mergea; la protección de develop que lo exige (checks requeridos y
-«al día») la activa el dueño. Si GitHub dice que el PR va atrás, se actualiza
-(`gh pr update-branch`) y se espera el CI de nuevo; no se mergea sin eso. `main` corre todo siempre.
+«al día») la activa el dueño. Si el PR va atrás, se trae develop **en local** (commit firmado),
+`make ci-local`, se empuja y se espera el CI de nuevo; no se mergea sin eso. **No** con
+`gh pr update-branch` ni el botón «Update branch»: ese merge lo firma GitHub y no el dueño, y rompe la
+autoría única de la constitución. `main` corre todo siempre.
 Un test que lea archivos de otra carpeta (como los de nombres de empresa, que leen `web/src`) se
 agrega también al filtro de su job, o un PR de esa carpeta lo deja de correr.
 
