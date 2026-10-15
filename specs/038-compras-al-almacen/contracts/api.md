@@ -9,7 +9,7 @@ validación, 403 permiso, 404 no existe, 409 conflicto (incluye `BRANCH_AMBIGUOU
 
 Acepta `pending=true`: solo gastos no anulados, con algún renglón de almacén vivo y sin
 `received_at`. Ausente = todos; un valor distinto de `true`/`false` → 400. `pendingReceipt` es el
-nombre viejo y se acepta igual. `CountExpenses` usa el mismo `where`.
+nombre viejo y se acepta igual; los dos en desacuerdo → 400. `CountExpenses` usa el mismo `where`.
 
 ### `POST /expenses` (existente, cambia)
 
@@ -17,6 +17,10 @@ nombre viejo y se acepta igual. `CountExpenses` usa el mismo `where`.
   ignora (R1).
 - Un renglón de almacén acepta `presentationId`; si viene, el servidor copia su `qtyInBase` en
   `packQtyInBase` y fija la unidad «pieza». Una presentación de otro insumo → 400.
+- Un insumo que no es de la empresa (o no existe) → 404, en este y en todos los caminos de compra.
+- `qtyReceived` no pasa de `quantity` → 400: lo de más entra por `…/items/{itemId}/receive`. El
+  importe por unidad cabe en su columna (hasta $999,999.99) o → 400. Lo mismo en `stock-lines`
+  (`received + notComing ≤ quantity`).
 - Si el gasto llega recibido, cada renglón suma y el costo del insumo se actualiza (R4).
 
 ### `POST /expenses/{id}/receive` (existente, cambia de guarda)

@@ -346,3 +346,53 @@ test('el pie dice lo que suman los primeros renglones y cuántos más', async ()
   expect(pie).toHaveTextContent('y 2 más');
   expect(pie.textContent?.match(/Leche entera \+/g)).toHaveLength(3);
 });
+
+// Análisis del 038 (C1): T030 prometía estas tres y no estaban.
+describe('lo que se crea desde la captura', () => {
+  test('«+ Otro empaque» abre «Cómo llega» del insumo sin salir de la captura (FR-011)', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.click(screen.getByRole('button', { name: '+ Otro empaque' }));
+    expect(await screen.findByText('Cómo llega Leche entera')).toBeInTheDocument();
+  });
+
+  test('categoría y proveedor nuevos se crean con las rutas de la empresa (FR-004b)', async () => {
+    back.createExpenseCategory.mockResolvedValue({ id: 40, name: 'Insumos de barra', financialGroup: 'operacional', isActive: true });
+    back.createSupplier.mockResolvedValue({ id: 60, name: 'Abarrotes La Esquina', isActive: true });
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    fireEvent.click(await screen.findByRole('button', { name: /Elegir categoría/ }));
+    fireEvent.change(screen.getByPlaceholderText('Buscar…'), { target: { value: 'Insumos de barra' } });
+    fireEvent.click(screen.getByRole('button', { name: /Crear «Insumos de barra»/ }));
+    await waitFor(() => expect(back.createExpenseCategory).toHaveBeenCalledWith({ name: 'Insumos de barra', financialGroup: 'operacional' }));
+    expect(await screen.findByRole('button', { name: 'Insumos de barra' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Sin proveedor/ }));
+    fireEvent.change(screen.getByPlaceholderText('Buscar…'), { target: { value: 'Abarrotes La Esquina' } });
+    fireEvent.click(screen.getByRole('button', { name: /Crear «Abarrotes La Esquina»/ }));
+    await waitFor(() => expect(back.createSupplier).toHaveBeenCalledWith({ name: 'Abarrotes La Esquina' }));
+  });
+
+  test('el empaque que se elige gana sobre el tamaño aprendido del proveedor (regla 11)', async () => {
+    back.parseDoc.mockResolvedValue({
+      doc: { issuedOn: '2026-10-14', total: '540.00', kind: 'ticket', folio: '', supplier: '', charges: [], payments: [], warnings: [],
+        lines: [{ rawCode: '', rawName: 'LECHE CAJA', qty: '3', amount: '540', unitPrice: '', packQty: '', packUnit: '', status: '' }] },
+      raw: {}, reconciliation: { balanced: true, diff: '0', linesSum: '540', chargesSum: '0', breakdownSum: '0', total: '540', hasSubtotal: false, linesMatchSubtotal: true, unreadable: [] },
+    });
+    // Lo aprendido dice «pieza de 999 ml»; la empresa tiene «Caja · 12 L».
+    back.suggestArticles.mockResolvedValue({ items: [
+      { itemType: 'ingrediente', itemId: 10, itemName: 'Leche entera', source: 'aprendido', score: 1, matchedVia: 'LECHE', packQtyInBase: '999', unitId: 8 },
+    ] });
+    montar();
+    fireEvent.change(screen.getByTestId('ticket-file'), { target: { files: [new File(['x'], 't.jpg', { type: 'image/jpeg' })] } });
+    await screen.findByTestId('renglon');
+    await elegir(/Elegir categoría/, 'Mercancía');
+    fireEvent.click(await screen.findByRole('button', { name: 'Caja · 12 L' }));
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const [item] = back.createExpense.mock.calls[0][0].items;
+    expect(item).toMatchObject({ presentationId: 2 });
+    expect(item.packQtyInBase).toBeUndefined();
+    expect(item.unitId).toBeUndefined();
+  });
+});

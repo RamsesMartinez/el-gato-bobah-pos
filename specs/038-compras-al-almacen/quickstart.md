@@ -60,3 +60,11 @@ empresa aparece ni se modifica (tests bajo `appRoleStore` con `inTheThreeCases`)
 
 `make api-build && make api-test`, `make test-integration`, `bun run lint`, `bun run vitest run`,
 `bun run build`, `make ci-local`.
+
+## Corrida del 14-oct
+
+Contra la app local del worktree (copia de producción con dos empresas, la API como
+`gatobobah_app`), por la API real con login: los pasos 1 a 6 pasan, 24 de 24 comprobaciones sobre lo
+guardado en la base. No se corrió en esta vuelta: el paso 7 por la pantalla (lo cubren las pruebas
+de integración por el router real) ni lo que Salud muestra en los pasos 2 y 5. La pasada por
+pantalla, con capturas a 1024×600 y usuarios sin contexto, es T065 tras el merge.

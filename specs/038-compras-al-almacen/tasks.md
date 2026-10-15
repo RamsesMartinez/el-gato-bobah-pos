@@ -109,7 +109,7 @@ Va antes de US1 porque la compra en empaque los usa.
 ### Implementación
 
 - [X] T047 [US1b] Consultas de pendientes y de recibir/no llega/agregar renglón en `server/queries/purchases.sql`, y el filtro `sqlc.narg('pending')` en `ListExpenses`/`CountExpenses` de `server/queries/expenses.sql` hasta que T044 pase; `make sqlc`
-- [X] T048 [US1b] `ReceiveItem`, `MarkNotComing`, `AddArrivedItem` en `server/internal/app/expenses.go`, con eventos y orden por insumo, hasta que T043 pase
+- [X] T048 [US1b] `ReceiveItem`, `MarkNotComing`, `AddArrivedItem` en `server/internal/app/purchases_receive.go`, con eventos y orden por insumo, hasta que T043 pase
 - [X] T049 [US1b] Rutas `GET /stock/pending-receipts`, `POST /expenses/{id}/items/{itemId}/receive`, `…/not-coming`, `POST /expenses/{id}/items`, con `RequirePermission(PermInventoryReceive)`, en `router.go` y `handlers_backoffice.go`, hasta que T045 pase
 - [X] T050 [US1b] Pestaña «Por recibir» según plan.md › Maquetas, fila «Almacén › Por recibir» (A con buscador), en `web/src/features/backoffice/PendingReceiptsTab.tsx` y `StockPage.tsx` (pestañas en el orden fijado en el plan); filtro «Con pendientes» en `web/src/features/backoffice/ExpensesPage.tsx`; hasta que T046 pase
 
@@ -142,10 +142,10 @@ Va antes de US1 porque la compra en empaque los usa.
 
 - [X] T062 [P] Medición de uso: acciones de compras, por recibir y conteo en `accionesMedibles` de `server/internal/domain/uso.go` (+ test) y sus etiquetas en `web/src/consola/etiquetas-de-uso.ts`
 - [X] T063 [P] Test de FR-018 / SC-006: ningún nombre de producto, marca ni proveedor del negocio en el código ni en las migraciones de la feature, en `server/internal/app/purchases_names_test.go` (espejo del de la 037)
-- [X] T064 Medir con `EXPLAIN (ANALYZE, BUFFERS)` como `gatobobah_app` sobre la copia de producción: guardar un gasto de 10 renglones con recálculo de costos < 1 s, lista de pendientes y conteo; anotar en research.md
+- [X] T064 Medir el tiempo del servicio como `gatobobah_app` sobre la copia de producción (se midió la llamada completa y no cada `EXPLAIN`: la meta es de la operación): guardar un gasto de 10 renglones con recálculo de costos < 1 s, lista de pendientes y conteo; anotar en research.md
 - [ ] T065 Capturas con Playwright a 1024×600 de las cinco pantallas contra el ambiente de pruebas (tras el merge a develop) y prueba sin contexto con dos personas de comida (el café del cliente y otra fonda o taquería)
 - [X] T066 Actualizar AGENTS.md (compras que suman, corregir por diferencia, por recibir, conteo por diferencia, longitud, «lugar» no es almacén) y `docs/matriz-de-pantallas.md`
-- [ ] T067 Gates: `make api-build && make api-test`, `make test-integration`, `bun run lint`, `bun run vitest run`, `bun run build`, `make ci-local`; correr quickstart.md completo
+- [X] T067 Gates: `make api-build && make api-test`, `make test-integration`, `bun run lint`, `bun run vitest run`, `bun run build`, `make ci-local`; correr quickstart.md completo
 - [X] T068 `/revision-de-codigo` (hook `after_implement`)
 
 

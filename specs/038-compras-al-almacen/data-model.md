@@ -57,6 +57,7 @@ owner (un arreglo de datos, la importación) no puede colgar una fila de la empr
 | `status` | text not null | `check in ('open','closed','discarded')` |
 | `opened_by` / `opened_at` | | |
 | `closed_by` / `closed_at` | nulos mientras `open` | check: llenos si y solo si `status <> 'open'` |
+| `previewed_at` | timestamptz null | La primera vez que se pidió la vista previa del cierre (que ya dice cuánto sobraba o faltaba). El cierre deja en la bitácora cuántas cifras se capturaron después (revisión de código) |
 
 Único parcial `(company_id, branch_id)` donde `status = 'open'`: un conteo abierto por sucursal.
 
@@ -100,6 +101,14 @@ Checks que cambian en `expense_items`:
   la copia de producción; si los hay, la migración no los reescribe y el check entra `not valid`
   (aplica solo a lo nuevo).
 - `check (not_coming_qty >= 0 and not_coming_qty <= quantity)`.
+- `check (coalesce(qty_received, 0) + not_coming_qty <= quantity) not valid`: lo de más sube lo
+  pedido con su importe, nunca queda recibido > pedido (dividía el costo entre lo que no entró).
+  `not valid` como el de arriba; la copia de producción no tenía ninguno que lo violara.
+
+Llaves que cambian (revisión de código del 038): `expense_items.ingredient_id`,
+`stock_movements.ingredient_id` y `stock_levels.ingredient_id` pasan de la llave simple de la 0008
+y la 0028 a la compuesta `(ingredient_id, company_id)`, igual que las de producto en la 0041. Sin
+esto una compra de una empresa podía apuntar al insumo de otra: la llave foránea salta RLS.
 
 Índices:
 - `stock_movements (company_id, expense_item_id)` y `(company_id, stock_count_id)` donde no son

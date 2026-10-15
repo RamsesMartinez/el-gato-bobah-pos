@@ -149,6 +149,13 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
   - Un gasto que se edita, se borra o cambia de insumo no puede dejar entradas duplicadas ni huérfanas.
   - La lectura de un ticket (la extracción automática que ya existe) propone renglones; ninguno entra al almacén sin que alguien lo confirme.
 - **El estado que no sobrevive:** un conteo a medias sobrevive a recargar la página, a que se caiga la red y a cambiar de tableta.
+- **Encontrados en la revisión de código (14-oct), documentados aquí porque el spec no los vio:**
+  - Corregir un renglón con «llegó» mayor que «pedido» inflaba el costo (se divide entre lo pedido). Lo de más solo entra por «Recibir…», con su importe.
+  - Cambiar el artículo de un renglón ya recibido dejaba lo sumado en el artículo viejo. Lo sumado se regresa al viejo antes de cambiarlo.
+  - Retirar un empaque no puede dejar sin corregir las compras que lo usaron: su contenido ya está copiado en el renglón.
+  - La vista previa del cierre dice cuánto sobraba o faltaba, y con eso se puede recapturar lo que el sistema tenía. No se esconde (es lo que se decidió para el cierre); el cierre deja en la bitácora cuántas cifras cambiaron después de verla.
+  - Una compra pagada que sube de total por lo que llegó de más vuelve a deberse: queda pendiente y sin fecha de pago.
+  - El id de un insumo de otra empresa no puede colarse en una compra: se responde como si no existiera.
 - **Lo que entra en otro orden:**
   - Una compra registrada antes del conteo y recibida después: el conteo manda sobre lo que había hasta capturar la cifra.
   - Un gasto con fecha anterior al último conteo: entra al almacén igual, con su fecha (ver Assumptions).
