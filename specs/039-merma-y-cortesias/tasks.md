@@ -34,7 +34,7 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 - [ ] T017 [P] [US1] Test de que cada acción de bitácora nueva la produce su camino en la misma transacción (lo exige `TestEveryAuditActionIsProduced`), en `server/internal/integration/waste_audit_test.go`
 - [ ] T018 [US1] Servicio en `server/internal/app/waste.go`: `Record` (con `lockIngredients` del 038 y `ExpandSale` para producto), `Approve`, `Reject`, `Undo`, `Today`, `Pending`, motivos (listar y crear con el 23505 → 409 con el id existente), hasta que T012–T015 y T017 pasen
 - [ ] T019 [US1] Rutas en `server/internal/httpapi/handlers_waste.go` y `router.go` con `RequirePermission`, fuera de grupos con rol, hasta que T016 pase
-- [ ] T020 [US1] Tope en `PUT /settings/inventory` (`server/internal/app/settings.go`) con `ValidMoney` y su evento `settings.waste_threshold`, y test en `server/internal/integration/purchases_http_test.go` o su gemelo de ajustes
+- [ ] T020 [US1] Tope en `PUT /settings/inventory` (`server/internal/app/settings.go`) con `ValidMoney` y su evento `settings.waste_threshold`, y test en `server/internal/integration/inventory_settings_http_test.go`
 - [ ] T021 [P] [US1] Medición de uso de la pantalla y sus acciones en `server/internal/domain/uso.go` (`pantallasMedibles` y `rolesPorPantalla`) y `web/src/app/rutas-medidas.ts`
 - [ ] T022 [P] [US1] Tests de vitest del riel: la entrada «Se echó a perder» sale con `inventory.write_off` y no sin él, va después de «Reportes» para el admin, y lleva el número de pendientes para quien aprueba, en `web/src/app/AppShell.test.tsx`
 - [ ] T023 [US1] Campo `permission` en `NAV` (`web/src/app/nav.ts`) y filtro con `can()` en `web/src/app/AppShell.tsx` hasta que T022 pase
@@ -65,6 +65,9 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 - [ ] T038 [US3] Motivos y tope en `web/src/features/admin/InventorySettingsSection.tsx` hasta que T037 pase
 
 ## Phase 6: Polish
+
+- [ ] T044 [P] Test de nombres: ni `0094_waste.sql`, ni `waste.sql`, ni las pantallas de `web/src/features/waste/` traen nombres de un negocio, como el del 038 (FR-022), en `server/internal/app/waste_names_test.go`
+- [ ] T045 [P] Test de palabras de pantalla: los textos de `web/src/features/waste/` y del faltante dicen «Se echó a perder» y nunca «merma», «movimiento», «ajuste» ni «kardex» (FR-023), agregando esos archivos a `web/src/features/backoffice/operatorWords.test.ts`
 
 - [ ] T039 [P] Bloque de la 039 en `AGENTS.md` (lo que no se ve: el periodo por id de movimiento, juntar no reescribe, la sucursal explícita del movimiento) y filas en `docs/matriz-de-pantallas.md`
 - [ ] T040 Medir con Playwright a 1024×600 contra el ambiente de pruebas la captura «Una pantalla» con empaques y con 8 o más motivos, la franja y la pestaña, con capturas; y una prueba con usuario sin contexto (SC-005)

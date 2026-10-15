@@ -69,8 +69,9 @@
 
 ## R8. Quién registra
 
-- **Decisión**: `inventory.write_off` para admin, gerente, cajero, mesero y cocina (decisión del
-  9-oct: cualquiera del local). `inventory.write_off_approve` para admin y gerente. Motivos y tope
+- **Decisión**: `inventory.write_off` para admin, gerente, cajero y mesero, los roles de la tableta
+  (decisión del 9-oct: cualquiera del local). La cocina usa la sesión del rol de su tableta; no se
+  crea un rol de cocina. `inventory.write_off_approve` para admin y gerente. Motivos y tope
   bajo `inventory.configure`. Reportes bajo `inventory.health_view`.
 
 ## R9. Lo que cambió con la revisión de arquitectura (2026-10-15)

@@ -191,9 +191,11 @@ total coincide con la suma de los registros no deshechos.
   el conteo encontró de menos contra lo que el sistema tenía al capturarlo) y el total perdido (la
   suma de los dos), en cantidad y en pesos al costo de cuando se cerró el conteo. La merma registrada ya restó de lo que
   el sistema tenía: restarla otra vez del faltante del conteo la contaría dos veces.
-- **FR-015**: El periodo de un insumo MUST ir de su captura en el conteo anterior a su captura en
-  este conteo, y cuenta la merma que RESTÓ en ese periodo (por la fecha en que restó: al
-  registrarse o al aprobarse); la deshecha, la rechazada y la que cubrió el conteo no cuentan.
+- **FR-015**: El periodo de un insumo MUST ir de lo que vio el conteo anterior al capturarlo a lo
+  que vio este conteo al capturarlo, contado por el orden de los movimientos del almacén y no por la
+  hora: una merma que confirmó después de la captura queda en el periodo siguiente aunque haya
+  empezado antes. Cuenta la merma que RESTÓ (al registrarse o al aprobarse); la deshecha, la
+  rechazada y la que cubrió el conteo no cuentan.
 - **FR-016**: Lo que sobraba MUST decirse como «sobraba»; un insumo sin costo MUST decir «sin costo»;
   el primer conteo MUST decir que no hay con qué comparar.
 - **FR-017**: El reporte MUST poder verse otra vez para cualquier conteo cerrado, con las mismas
@@ -212,16 +214,18 @@ total coincide con la suma de los registros no deshechos.
 **Transversales**
 
 - **FR-020**: Registrar, deshacer y administrar motivos MUST pedir permisos verificados en el
-  servidor, no nombres de rol. Registrar merma lo pueden hacer por omisión los cuatro roles
-  sugeridos (decisión del 9-oct: cualquiera del local); aprobar mermas, administrar motivos y el
-  tope, admin y gerente.
+  servidor, no nombres de rol. Registrar merma lo pueden hacer por omisión todos los roles de la
+  tableta: admin, gerente, cajero y mesero (decisión del 9-oct: cualquiera del local). La cocina
+  registra con la sesión del rol que tenga su tableta; no se crea un rol de cocina. Aprobar mermas,
+  administrar motivos y el tope: admin y gerente.
 - **FR-021**: Registrar, aprobar, rechazar y deshacer una merma, y cambiar el tope, MUST dejar su
   evento en la bitácora de auditoría, en la misma operación.
 - **FR-022**: Ninguna lista fija de un negocio en el código ni en migraciones: los motivos
   sugeridos son una semilla editable.
-- **FR-023**: Los textos de la pantalla MUST usar palabras de quien opera: «Se echó a perder»,
-  «tienes», «faltaba», «sobraba», «sin explicar»; no «merma» en la pantalla del equipo si no se
-  entiende, ni «movimiento», «ajuste» ni «kardex».
+- **FR-023**: Los textos de la pantalla MUST usar palabras de quien opera. Todo lo de esta feature se
+  llama «Se echó a perder» en pantalla (riel, captura, pestaña de Almacén, por aprobar); «merma»
+  queda como nombre interno. Se dice «tienes», «faltaba», «sobraba», «sin explicar»; nunca
+  «movimiento», «ajuste» ni «kardex».
 
 ### Key Entities
 

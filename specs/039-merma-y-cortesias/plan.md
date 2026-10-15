@@ -54,7 +54,7 @@ nada que dependa de la red más de lo que ya depende; textos para quien opera
 | VI YAGNI | Sin estados de flujo más allá de los cinco que pide el spec; sin reporte de consumo teórico |
 | VII Comentarios e idioma | Identificadores nuevos en inglés (`waste_records`, `waste_reasons`, `inventory.write_off`); texto de pantalla en español de quien opera |
 | VIII Puertas | Ver abajo |
-| Roles | Permisos nuevos `inventory.write_off` (los roles sugeridos con acceso al local, incluida cocina) e `inventory.write_off_approve` (admin y gerente); motivos y tope con `inventory.configure` |
+| Roles | Permisos nuevos `inventory.write_off` (admin, gerente, cajero y mesero; la cocina con la sesión del rol de su tableta) e `inventory.write_off_approve` (admin y gerente); motivos y tope con `inventory.configure` |
 | Tableta | Sin `<select>` nativo (botones grandes + `Picker`), controles ≥ 44 px, teclado numérico del 038, alto contado contra 600 px |
 
 ### Pregunta VIII: ¿se puede agregar después al mismo costo?
