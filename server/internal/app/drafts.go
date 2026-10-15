@@ -478,7 +478,7 @@ func (s *DraftsService) ChangeLine(ctx context.Context, cmd ChangeDraftLineCmd) 
 		}
 		if cmd.Modifiers != nil {
 			if err := checkLineSells(ctx, q, in); err != nil {
-				return err
+				return onKnownDraftLine(err, cmd.LineID)
 			}
 		}
 		n, err := q.ChangeDraftLine(ctx, db.ChangeDraftLineParams{
@@ -1370,6 +1370,17 @@ func onDraftLine(err error, rows []db.OrderDraftLine) error {
 		return err
 	}
 	lr.LineID = rows[lr.Index].ID.String()
+	return lr
+}
+
+// onKnownDraftLine es onDraftLine cuando el renglón ya se sabe: al cambiar los extras de uno, el
+// rechazo por menú viejo nombra ESE renglón para que la tableta lo señale.
+func onKnownDraftLine(err error, lineID uuid.UUID) error {
+	var lr domain.LineRejected
+	if !errors.As(err, &lr) || lr.LineID != "" {
+		return err
+	}
+	lr.LineID = lineID.String()
 	return lr
 }
 

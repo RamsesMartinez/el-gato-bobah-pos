@@ -58,6 +58,30 @@ func TestSendRejectedByAStaleMenuNamesTheDraftLine(t *testing.T) {
 	})
 }
 
+// Visto en la revisión al retomar el 034: cambiar los extras de un renglón con el menú ya cambiado
+// respondía MENU_CHANGED sin decir qué renglón, aunque el servicio sabe cuál se está editando.
+func TestChangeLineRejectedByAStaleMenuNamesTheLine(t *testing.T) {
+	t.Parallel()
+	k := newDraftsKit(t)
+	frappe := makeProduct(t, k.st, "Frappé de extras viejos", pesos("70"), false)
+	perlasViejas := extraOf(t, k.st, frappe, "Perlas de antes", pesos("10"), 1)
+	v := k.newDraft(t, withExtra(frappe, perlasViejas, 1))
+	l := v.Lines[0]
+	if _, err := k.st.Pool.Exec(k.ctx, `delete from product_modifier_groups where product_id = $1`, frappe); err != nil {
+		t.Fatal(err)
+	}
+
+	mods := []domain.DraftModifier{{OptionID: perlasViejas, Qty: 1}}
+	_, err := k.drafts.ChangeLine(k.ctx, app.ChangeDraftLineCmd{DraftID: v.ID, LineID: l.ID, ExpectedVersion: l.Version, Modifiers: &mods})
+	if !errors.Is(err, domain.ErrOptionNotFound) {
+		t.Fatalf("ChangeLine = %v, quería el 422 MENU_CHANGED (opción que ya no es del producto)", err)
+	}
+	var lr domain.LineRejected
+	if !errors.As(err, &lr) || lr.LineID != l.ID.String() {
+		t.Fatalf("el rechazo de cambiar los extras nombra el renglón %q, quería %s: la tableta no sabe cuál volver a elegir", lr.LineID, l.ID)
+	}
+}
+
 func lineOf(t *testing.T, v *app.DraftView, productID int64) uuid.UUID {
 	t.Helper()
 	for _, l := range v.Lines {

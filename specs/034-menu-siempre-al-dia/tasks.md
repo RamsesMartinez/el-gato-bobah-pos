@@ -69,7 +69,8 @@ TDD estricto (constitución IV): cada test se escribe y se ve fallar antes de su
 - [X] T033 Test de FR-004: con una transacción de catálogo abierta, vender y cobrar el mismo producto no espera, en server/internal/integration/catalog_versions_test.go (visto en rojo metiendo `order_lines` en las tablas versionadas); E16 del plan corregido con las dos excepciones medidas
 - [X] T034 Identificadores nuevos del front en inglés (constitución VII): `menuChanged.ts`, `reselect.ts`, `isStaleMenu`, `notifyMenuChanged`, `forgetMenu`, `productToReselect`, `onMenuChanged`, `reselectLineId`
 - [X] T035 Sección «Maquetas» del plan: no aplica, con el porqué
-- [ ] T036 Volver a correr `make ci-local` y `/revision-de-codigo` sobre el diff contra develop al día
+- [X] T036 Volver a correr `make ci-local` y `/revision-de-codigo` sobre el diff contra develop al día
+- [X] T037 Lo que encontró esa revisión: cambiar los extras de un renglón con el menú ya cambiado respondía MENU_CHANGED sin `lineId`. Test `TestChangeLineRejectedByAStaleMenuNamesTheLine` (visto en rojo) y `onKnownDraftLine` en server/internal/app/drafts.go. La otra nota de la revisión —guardar la receta de un extra no avisa en vivo— no aplica: el menú de la tableta no lleva receta ni costo de los extras
 
 ## Dependencies
 
