@@ -185,3 +185,13 @@ Sin violaciones.
 aplicados en este plan, `data-model.md`, `research.md` (R2, R5, R9), `contracts/api.md` y el spec
 (FR de juntar, de cobertura y del costo del faltante). Los de tableta se cuentan contra 600 px
 estimados; la captura «Una pantalla» se mide con Playwright antes de darla por buena.
+
+## Al construir (2026-10-15)
+
+- La captura necesita su propia lista de artículos (`GET /waste/items`): cajero y cocina no entran
+  al catálogo de insumos ni a los empaques de compra, que son de admin y gerente o de quien recibe.
+- La pestaña «Se echó a perder» vive en `features/backoffice/WasteTab.tsx` y no en
+  `features/waste/`: las fronteras de eslint impiden que Almacén importe de otra feature.
+- La captura no anticipa «Mandar a aprobar»: la tableta no conoce el costo ni el tope. Lo dice el
+  servidor al guardar («Quedó por aprobar»).
+- Las horas de la merma salen de la base, no del reloj de la API (ver AGENTS.md).

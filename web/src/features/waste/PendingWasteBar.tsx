@@ -42,7 +42,7 @@ export function PendingWasteBar() {
       {!hidden && (
         <Flex minH="44px" align="center" bg="orange.50" color="orange.800" borderBottomWidth="1px" borderColor="orange.200" px={3} gap={2} flexShrink={0}>
           <Button flex="1" minH="44px" variant="ghost" justifyContent="flex-start" color="inherit" fontWeight="600" onClick={() => setOpen(true)}>
-            {pending.length} {pending.length === 1 ? 'merma espera' : 'esperan'} tu aprobación · Ver
+            {pending.length === 1 ? '1 espera tu aprobación' : `${pending.length} esperan tu aprobación`} · Ver
           </Button>
           <Button minH="44px" variant="ghost" color="inherit" onClick={hide}>Ocultar por ahora</Button>
         </Flex>
@@ -70,7 +70,7 @@ function PendingSheet({ open, onClose }: { open: boolean; onClose: () => void })
           </Flex>
         </DrawerHeader>
         <DrawerBody overflowY="auto">
-          {pending.length === 0 && <Text color="fg.muted">No hay mermas por aprobar.</Text>}
+          {pending.length === 0 && <Text color="fg.muted">No hay nada por aprobar.</Text>}
           {pending.map((r) => (
             <Flex key={r.id} data-testid="renglon-por-aprobar" minH="64px" align="center" justify="space-between" gap={3} borderBottomWidth="1px" py={1}>
               <Box minW={0}>

@@ -8,6 +8,8 @@ insumo ocupado («vuelve a intentar»), 409 `BRANCH_AMBIGUOUS`.
 
 | Método | Ruta | Permiso | Cuerpo / respuesta |
 |---|---|---|---|
+| GET | `/waste/items` | `inventory.write_off` | `{ ingredients: [{ id, name, unitCode, units, packs }], products, recent }`: lo que ofrece la captura. Ruta propia porque cajero y cocina no entran al catálogo de insumos (encontrado al construir) |
+| GET | `/waste/reasons/all` | `inventory.configure` | Todos los motivos, también archivados y juntados |
 | GET | `/waste/reasons` | `inventory.write_off` | `[{ id, name, description, isStaffMeal, uses }]` activos, más usados primero |
 | POST | `/waste/reasons` | `inventory.write_off` | `{ name, description }` → el creado, o 409 `{ existingId }` si el nombre ya existe |
 | PUT | `/waste/reasons/{id}` | `inventory.configure` | `{ name, description, isStaffMeal, archived }` |
@@ -34,4 +36,4 @@ insumo ocupado («vuelve a intentar»), 409 `BRANCH_AMBIGUOUS`.
 
 ## Configuración
 
-`PUT /settings/inventory` (038) acepta además `wasteApprovalThreshold: string | null`.
+`PUT /settings/waste-threshold` — `{ threshold: "100" | null }`, permiso `inventory.configure` (ruta propia en vez de ampliar la del 038). `GET /business-settings` trae `wasteApprovalThreshold`. `GET /stock/counts/last-closed` trae además `id`, para abrir el faltante del último conteo.

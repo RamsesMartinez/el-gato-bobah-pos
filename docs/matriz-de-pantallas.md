@@ -625,3 +625,25 @@ cifra que ya no era la del anaquel.
 **Lo que B no cubre:** cómo se ven estas pantallas a 1024×600 en el ambiente de pruebas y si alguien
 nuevo las entiende sin ayuda (T065, tras el merge a develop); el tiempo con datos de producción en
 la VM (lo medido está en `specs/038-compras-al-almacen/research.md`, R12, en la máquina local).
+
+## C. Lo que se echó a perder (spec 039)
+
+Lo que estas pantallas podían decir que no es cierto: que algo se restó cuando quedó por aprobar, que
+una merma se restó dos veces (al registrarla y otra vez en el conteo), o que un faltante «sin
+explicar» incluía lo que sí se registró.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+| --- | --- | --- | --- | --- |
+| C1 | Registrar | Resta en el momento; un producto resta lo mismo que venderlo y no es venta | `waste_record_test.go` | Postgres |
+| C2 | Sobre el tope | Queda por aprobar y no resta; aprobar resta y toma el costo si no tenía | `waste_approve_test.go` | Postgres |
+| C3 | Deshacer | Devuelve exactamente lo restado; no al día siguiente ni con el artículo ya contado | `waste_approve_test.go › Undoing` | Postgres |
+| C4 | Una merma que confirma a media captura del conteo | Se resta una sola vez y cae en el periodo correcto | `waste_loss_test.go › CommittingDuringTheCapture` | Postgres, dos transacciones |
+| C5 | El faltante | Perdido = registrado + sin explicar; la merma no se cuenta dos veces; el costo es el del cierre | `waste_loss_test.go`, `CountLossReport.test.tsx` | Postgres, vitest |
+| C6 | Juntar motivos | Suma bajo el que queda sin cambiar el motivo de ningún registro | `waste_reasons_test.go` | Postgres |
+| C7 | La franja de por aprobar | 44 px, solo para quien aprueba, nunca en Vender ni Pedidos | `PendingWasteBar.test.tsx` | Navegador (vitest) |
+| C8 | Los textos | «Se echó a perder» y nunca «merma», «ajuste» ni «kardex» | `operatorWords.test.ts` | Navegador (lee los textos del código) |
+
+**Lo que C no cubre:** cómo se ven a 1024×600 en el ambiente de pruebas y si alguien nuevo registra
+sin ayuda (T040, tras el merge a develop). El botón de la captura no anticipa «Mandar a aprobar»: la
+tableta no conoce el costo ni el tope, así que lo dice el servidor al guardar.
+

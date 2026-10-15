@@ -59,17 +59,17 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 - [X] T033 [P] [US3] Tests de integración por motivo y motivos en los tres casos: totales por motivo siguiendo `merged_into_id`; juntar no cambia `reason_id` (E16) y rechaza destino juntado o archivado; archivar no cambia lo registrado; cambiar «no cuenta como pérdida» no reclasifica el pasado; fechas mal formadas → 400; borrar una empresa con mermas cae por cascade (E17), en `server/internal/integration/waste_reasons_test.go`
 - [X] T034 [US3] Servicio y rutas de editar, archivar y juntar motivos, `GET /waste` y `GET /waste/by-reason` en `server/internal/app/waste_reports.go`, `waste.go` y `handlers_waste.go`, hasta que T033 pase
-- [X] T035 [P] [US3] Tests de vitest de la pestaña (Maquetas: «Merma por motivo», opción B): pestaña «Se echó a perder» en Almacén con `Tabs.List` que se desplaza; fichas en una fila con la activa a la vista; tocar filtra; rango con `DatePickerButton`, en `web/src/features/waste/WasteTab.test.tsx`
-- [X] T036 [US3] Pestaña `web/src/features/waste/WasteTab.tsx` en `web/src/features/backoffice/StockPage.tsx`, hasta que T035 pase
-- [X] T037 [P] [US3] Tests de vitest de motivos y tope (Maquetas: «Motivos y tope», opción A): renglón del tope, Editar (nombre, descripción, archivar, «No cuenta como pérdida del negocio») y Juntar apartado y con confirmación, en `web/src/features/admin/InventorySettingsSection.test.tsx`
-- [X] T038 [US3] Motivos y tope en `web/src/features/admin/InventorySettingsSection.tsx` hasta que T037 pase
+- [X] T035 [P] [US3] Tests de vitest de la pestaña (Maquetas: «Merma por motivo», opción B): pestaña «Se echó a perder» en Almacén con `Tabs.List` que se desplaza; fichas en una fila con la activa a la vista; tocar filtra; rango con `DatePickerButton`, en `web/src/features/backoffice/WasteTab.test.tsx`
+- [X] T036 [US3] Pestaña `web/src/features/backoffice/WasteTab.tsx` (no en `features/waste/`: las fronteras de eslint) en `web/src/features/backoffice/StockPage.tsx`, hasta que T035 pase
+- [X] T037 [P] [US3] Tests de vitest de motivos y tope (Maquetas: «Motivos y tope», opción A): renglón del tope, Editar (nombre, descripción, archivar, «No cuenta como pérdida del negocio») y Juntar apartado y con confirmación, en `web/src/features/admin/WasteSettings.test.tsx`
+- [X] T038 [US3] Motivos y tope en `web/src/features/admin/WasteSettings.tsx`, dentro de `InventorySettingsSection.tsx`, hasta que T037 pase
 
 ## Phase 6: Polish
 
-- [ ] T044 [P] Test de nombres: ni `0094_waste.sql`, ni `waste.sql`, ni las pantallas de `web/src/features/waste/` traen nombres de un negocio, como el del 038 (FR-022), en `server/internal/app/waste_names_test.go`
-- [ ] T045 [P] Test de palabras de pantalla: los textos de `web/src/features/waste/` y del faltante dicen «Se echó a perder» y nunca «merma», «movimiento», «ajuste» ni «kardex» (FR-023), agregando esos archivos a `web/src/features/backoffice/operatorWords.test.ts`
+- [X] T044 [P] Test de nombres: ni `0094_waste.sql`, ni `waste.sql`, ni las pantallas de `web/src/features/waste/` traen nombres de un negocio, como el del 038 (FR-022), en `server/internal/app/waste_names_test.go`
+- [X] T045 [P] Test de palabras de pantalla: los textos de `web/src/features/waste/` y del faltante dicen «Se echó a perder» y nunca «merma», «movimiento», «ajuste» ni «kardex» (FR-023), agregando esos archivos a `web/src/features/backoffice/operatorWords.test.ts`
 
-- [ ] T039 [P] Bloque de la 039 en `AGENTS.md` (lo que no se ve: el periodo por id de movimiento, juntar no reescribe, la sucursal explícita del movimiento) y filas en `docs/matriz-de-pantallas.md`
+- [X] T039 [P] Bloque de la 039 en `AGENTS.md` (lo que no se ve: el periodo por id de movimiento, juntar no reescribe, la sucursal explícita del movimiento) y filas en `docs/matriz-de-pantallas.md`
 - [ ] T040 Medir con Playwright a 1024×600 contra el ambiente de pruebas la captura «Una pantalla» con empaques y con 8 o más motivos, la franja y la pestaña, con capturas; y una prueba con usuario sin contexto (SC-005)
 - [ ] T041 Correr el `quickstart.md` contra la API local
 - [ ] T042 `make ci-local`
