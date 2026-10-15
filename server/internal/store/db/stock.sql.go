@@ -269,8 +269,22 @@ func (q *Queries) LockIngredientStockLevels(ctx context.Context, ingredientID *i
 	return items, nil
 }
 
-const lockProductStockLevels = `-- name: LockProductStockLevels :many
+const lockProductForComposition = `-- name: LockProductForComposition :exec
 
+select 1 from products where id = $1 for update
+`
+
+// Cambio de modo de consumo (spec 037, research R6) -----------------------------------------------
+// El producto ANTES que sus existencias, en el mismo orden que una venta (la llave foránea de su
+// renglón toma el producto y luego el trigger toma la existencia). Guardar la receta cambia
+// recipe_id, que es único, y eso choca con esa llave: tomado después de la existencia, una venta a
+// la mitad cerraba el círculo y Postgres cancelaba una de las dos (40P01).
+func (q *Queries) LockProductForComposition(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, lockProductForComposition, id)
+	return err
+}
+
+const lockProductStockLevels = `-- name: LockProductStockLevels :many
 select branch_id, on_hand from stock_levels
  where item_type = 'producto' and product_id = $1
  order by branch_id
@@ -282,7 +296,6 @@ type LockProductStockLevelsRow struct {
 	OnHand   decimal.Decimal `json:"on_hand"`
 }
 
-// Cambio de modo de consumo (spec 037, research R6) -----------------------------------------------
 // Las existencias del producto, una por sucursal, BLOQUEADAS: una venta simultánea espera a que la
 // conversión termine en vez de aplicar su delta sobre una cifra que ya se trasladó. El trigger de
 // existencias suma deltas y no relee nada, así que sin este bloqueo se perdería o se inventaría.

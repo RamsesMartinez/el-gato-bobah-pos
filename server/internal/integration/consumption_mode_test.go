@@ -458,3 +458,59 @@ func TestOwnStockNeedsAChosenCard(t *testing.T) {
 		t.Error("el guardado sin tarjeta movió la existencia")
 	}
 }
+
+// Visto en CI (40P01): una venta toma el producto (la llave foránea del renglón) y DESPUÉS su
+// existencia; guardar la receta bloqueaba la existencia y DESPUÉS el producto (cambiar recipe_id,
+// que es único, choca con esa llave). Con la venta a la mitad, Postgres cancelaba una de las dos.
+func TestSavingARecipeDuringASaleDoesNotDeadlock(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	admin := makeUser(t, st, "admin_sin_abrazo", "admin")
+	svc, ctx := asApp(t, defaultCompanyID)
+	lata := makeProduct(t, st, "Lata abrazo", decimal.RequireFromString("30"), true)
+	adjust(t, st, "producto", lata, "10")
+	ing := pieceIngredient(t, st, "Lata abrazo insumo")
+
+	sale, err := st.Pool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sale.Rollback(context.Background()) }()
+	if _, err := sale.Exec(context.Background(), `select 1 from products where id = $1 for key share`, lata); err != nil {
+		t.Fatal(err)
+	}
+
+	saved := make(chan error, 1)
+	go func() {
+		saved <- svc.SaveComposition(ctx, app.CompositionOfProduct, lata, app.CompositionRequest{Mode: "items", Items: pieces(t, ing, "1", st)}, admin)
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var waiting int
+		if err := st.Pool.QueryRow(context.Background(), `
+			select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("guardar la receta nunca esperó a la venta")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if _, err := sale.Exec(context.Background(), `
+		insert into stock_movements (item_type, product_id, movement_type, quantity) values ('producto', $1, 'venta', -1)`, lata); err != nil {
+		t.Fatalf("la venta a la mitad se canceló al guardar la receta: %v", err)
+	}
+	if err := sale.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-saved; err != nil {
+		t.Fatalf("guardar la receta con una venta a la mitad = %v", err)
+	}
+	if got := onHand(t, st, lata).Add(onHandIngredient(t, st, ing)); !got.Equal(decimal.NewFromInt(9)) {
+		t.Errorf("entre producto e insumo quedan %s, quiere 9", got)
+	}
+}

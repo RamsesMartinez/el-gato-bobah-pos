@@ -489,6 +489,9 @@ func applyModeChange(ctx context.Context, q *db.Queries, id int64, req Compositi
 		order = append(order, b)
 		return levels[b]
 	}
+	if err := q.LockProductForComposition(ctx, id); err != nil {
+		return nil, err
+	}
 	own, err := q.LockProductStockLevels(ctx, &id)
 	if err != nil {
 		return nil, err
