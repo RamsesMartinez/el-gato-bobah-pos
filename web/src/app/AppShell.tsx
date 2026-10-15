@@ -10,9 +10,12 @@ import { attendanceApi } from '../api/attendance';
 import { useSessionStore } from '../stores/session';
 import { useUiStore } from '../stores/ui';
 import { canAccess } from './roles';
+import { can } from './permissions';
+import { wasteApi } from '../api/waste';
 import { RADIUS } from '../theme/ui';
 import { SystemInfo } from './SystemInfo';
 import { NAV } from './nav';
+import { PendingWasteBar } from '../features/waste/PendingWasteBar';
 
 export function AppShell() {
   const user = useSessionStore((s) => s.user);
@@ -30,7 +33,15 @@ export function AppShell() {
     const el = navList.current;
     setMoreBelow(!!el && el.scrollHeight - el.scrollTop - el.clientHeight > 4);
   }, []);
-  const nav = NAV.filter((n) => canAccess(user?.role, n.to) && (n.to !== '/asistencia' || attendance?.enabled === true));
+  // Lo que se echó a perder (spec 039) se ofrece por permiso: el rol no basta para decirlo.
+  const nav = NAV.filter((n) => canAccess(user?.role, n.to) && (n.to !== '/asistencia' || attendance?.enabled === true)
+    && (!n.permission || can(n.permission, user)));
+  // Las mermas por aprobar, para el número del riel: en Vender y Pedidos es el único aviso.
+  const approver = can('inventory.write_off_approve', user);
+  const { data: pendingWaste } = useQuery({
+    queryKey: ['merma', 'por-aprobar'], queryFn: wasteApi.pending, enabled: approver, staleTime: 30_000, refetchInterval: 60_000,
+  });
+  const pendingCount = approver ? (pendingWaste?.length ?? 0) : 0;
   // El ítem de la pantalla abierta siempre a la vista: a 600 px «Reportes» quedaba partido bajo el
   // pliegue, y no se veía en qué pantalla estaba uno.
   useEffect(() => {
@@ -84,8 +95,16 @@ export function AppShell() {
                     bg={isActive ? 'colorPalette.600' : 'transparent'}
                     _hover={{ bg: isActive ? 'colorPalette.600' : 'whiteAlpha.200' }}
                   >
-                    <Icon size={22} />
-                    <Text fontSize="10px">{n.label}</Text>
+                    <Box position="relative">
+                      <Icon size={22} />
+                      {n.to === '/merma' && pendingCount > 0 && (
+                        <Box position="absolute" top="-6px" right="-10px" minW="16px" h="16px" px="3px" borderRadius="full"
+                          bg="orange.500" color="white" fontSize="10px" fontWeight="700" lineHeight="16px" textAlign="center">
+                          {pendingCount}
+                        </Box>
+                      )}
+                    </Box>
+                    <Text fontSize="10px" textAlign="center" lineHeight="1.1">{n.label}</Text>
                   </VStack>
                 )}
               </NavLink>
@@ -106,9 +125,14 @@ export function AppShell() {
           <SystemInfo />
         </VStack>
       </Flex>
-      <Box flex="1" minW={0} overflowY="auto">
-        <Outlet />
-      </Box>
+      {/* La franja de mermas por aprobar es una FILA de esta columna y no algo encima: así le quita
+          su alto a la pantalla en vez de empujarla 44 px fuera de los 600 (spec 039). */}
+      <Flex flex="1" minW={0} direction="column">
+        <PendingWasteBar />
+        <Box flex="1" minH={0} overflowY="auto">
+          <Outlet />
+        </Box>
+      </Flex>
     </Flex>
   );
 }

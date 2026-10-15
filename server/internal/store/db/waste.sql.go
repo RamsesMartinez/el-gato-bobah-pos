@@ -582,6 +582,42 @@ func (q *Queries) ProductCostForWaste(ctx context.Context, id int64) (ProductCos
 	return i, err
 }
 
+const recentWasteItems = `-- name: RecentWasteItems :many
+select item_type::text as item_type, item_id
+  from (select distinct on (item_type, coalesce(ingredient_id, product_id))
+               item_type, coalesce(ingredient_id, product_id)::bigint as item_id, recorded_at
+          from waste_records where branch_id = current_branch_id()
+         order by item_type, coalesce(ingredient_id, product_id), recorded_at desc) w
+ order by recorded_at desc
+ limit 8
+`
+
+type RecentWasteItemsRow struct {
+	ItemType string `json:"item_type"`
+	ItemID   int64  `json:"item_id"`
+}
+
+// Lo último registrado en la sucursal, sin repetir, para los «recientes» de la captura.
+func (q *Queries) RecentWasteItems(ctx context.Context) ([]RecentWasteItemsRow, error) {
+	rows, err := q.db.Query(ctx, recentWasteItems)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecentWasteItemsRow{}
+	for rows.Next() {
+		var i RecentWasteItemsRow
+		if err := rows.Scan(&i.ItemType, &i.ItemID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resolveWasteRecord = `-- name: ResolveWasteRecord :execrows
 update waste_records
    set status = $1, resolved_by = $2, resolved_at = clock_timestamp(),
@@ -728,6 +764,49 @@ func (q *Queries) WasteByReason(ctx context.Context, arg WasteByReasonParams) ([
 	return items, nil
 }
 
+const wasteIngredients = `-- name: WasteIngredients :many
+select i.id, i.name, u.id as unit_id, u.code as unit_code, u.kind::text as unit_kind
+  from ingredients i join units u on u.id = i.base_unit_id
+ where i.is_active and i.track_stock
+ order by i.name, i.id
+`
+
+type WasteIngredientsRow struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	UnitID   int16  `json:"unit_id"`
+	UnitCode string `json:"unit_code"`
+	UnitKind string `json:"unit_kind"`
+}
+
+// Lo que se puede registrar como artículo: los insumos activos que llevan existencia, con su unidad
+// base. Ruta propia porque la captura la usan cajero y cocina, que no entran al catálogo de insumos.
+func (q *Queries) WasteIngredients(ctx context.Context) ([]WasteIngredientsRow, error) {
+	rows, err := q.db.Query(ctx, wasteIngredients)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WasteIngredientsRow{}
+	for rows.Next() {
+		var i WasteIngredientsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.UnitID,
+			&i.UnitCode,
+			&i.UnitKind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const wasteMovements = `-- name: WasteMovements :many
 select item_type, ingredient_id, product_id, quantity, unit_cost, modifier_option_id, component_of_product_id
   from stock_movements where waste_record_id = $1 order by id
@@ -826,6 +905,109 @@ func (q *Queries) WasteOfDay(ctx context.Context, since time.Time) ([]WasteOfDay
 			&i.RecordedBy,
 			&i.RecordedByName,
 			&i.RecordedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const wastePresentations = `-- name: WastePresentations :many
+select id, ingredient_id, name, qty_in_base from ingredient_presentations where active order by ingredient_id, name
+`
+
+type WastePresentationsRow struct {
+	ID           int64           `json:"id"`
+	IngredientID int64           `json:"ingredient_id"`
+	Name         string          `json:"name"`
+	QtyInBase    decimal.Decimal `json:"qty_in_base"`
+}
+
+func (q *Queries) WastePresentations(ctx context.Context) ([]WastePresentationsRow, error) {
+	rows, err := q.db.Query(ctx, wastePresentations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WastePresentationsRow{}
+	for rows.Next() {
+		var i WastePresentationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.IngredientID,
+			&i.Name,
+			&i.QtyInBase,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const wasteProducts = `-- name: WasteProducts :many
+select id, name from products where is_active and system_kind is null order by name, id
+`
+
+type WasteProductsRow struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// Los productos que se pueden registrar: los activos que no son del sistema. Si no tienen qué
+// restar, el registro lo rechaza con su motivo.
+func (q *Queries) WasteProducts(ctx context.Context) ([]WasteProductsRow, error) {
+	rows, err := q.db.Query(ctx, wasteProducts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WasteProductsRow{}
+	for rows.Next() {
+		var i WasteProductsRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const wasteUnits = `-- name: WasteUnits :many
+select id, code, kind::text as kind, to_base from units order by kind, to_base
+`
+
+type WasteUnitsRow struct {
+	ID     int16           `json:"id"`
+	Code   string          `json:"code"`
+	Kind   string          `json:"kind"`
+	ToBase decimal.Decimal `json:"to_base"`
+}
+
+func (q *Queries) WasteUnits(ctx context.Context) ([]WasteUnitsRow, error) {
+	rows, err := q.db.Query(ctx, wasteUnits)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WasteUnitsRow{}
+	for rows.Next() {
+		var i WasteUnitsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Kind,
+			&i.ToBase,
 		); err != nil {
 			return nil, err
 		}

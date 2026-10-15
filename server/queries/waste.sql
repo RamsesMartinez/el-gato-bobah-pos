@@ -184,3 +184,32 @@ select coalesce(r.merged_into_id, r.id)::bigint as reason_id, w.is_staff_meal,
 
 -- name: SetWasteApprovalThreshold :execrows
 update business_settings set waste_approval_threshold = sqlc.narg(threshold), updated_at = now();
+
+-- name: WasteIngredients :many
+-- Lo que se puede registrar como artículo: los insumos activos que llevan existencia, con su unidad
+-- base. Ruta propia porque la captura la usan cajero y cocina, que no entran al catálogo de insumos.
+select i.id, i.name, u.id as unit_id, u.code as unit_code, u.kind::text as unit_kind
+  from ingredients i join units u on u.id = i.base_unit_id
+ where i.is_active and i.track_stock
+ order by i.name, i.id;
+
+-- name: WastePresentations :many
+select id, ingredient_id, name, qty_in_base from ingredient_presentations where active order by ingredient_id, name;
+
+-- name: WasteUnits :many
+select id, code, kind::text as kind, to_base from units order by kind, to_base;
+
+-- name: WasteProducts :many
+-- Los productos que se pueden registrar: los activos que no son del sistema. Si no tienen qué
+-- restar, el registro lo rechaza con su motivo.
+select id, name from products where is_active and system_kind is null order by name, id;
+
+-- name: RecentWasteItems :many
+-- Lo último registrado en la sucursal, sin repetir, para los «recientes» de la captura.
+select item_type::text as item_type, item_id
+  from (select distinct on (item_type, coalesce(ingredient_id, product_id))
+               item_type, coalesce(ingredient_id, product_id)::bigint as item_id, recorded_at
+          from waste_records where branch_id = current_branch_id()
+         order by item_type, coalesce(ingredient_id, product_id), recorded_at desc) w
+ order by recorded_at desc
+ limit 8;

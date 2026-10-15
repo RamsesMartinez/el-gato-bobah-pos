@@ -1,8 +1,9 @@
 import {
   LuShoppingCart, LuClipboardList, LuWallet, LuHandCoins, LuReceiptText,
   LuPackage, LuChartColumn, LuBookOpenText, LuUsers, LuPalette, LuStore, LuUserCog, LuPrinter, LuBike,
-  LuClock,
+  LuClock, LuTrash2,
 } from 'react-icons/lu';
+import type { Permission } from './permissions';
 
 // NAV es la barra lateral, en orden. En la tableta de 600 px se ven los primeros 8 sin desplazar:
 // lo de todos los días va arriba. «Menú» (antes «Catálogo», decisión del dueño 2026-10-07) va junto a
@@ -20,6 +21,10 @@ export const NAV = [
   { to: '/gastos', icon: LuHandCoins, label: 'Gastos' },
   { to: '/reportes', icon: LuChartColumn, label: 'Reportes' },
   { to: '/asistencia', icon: LuClock, label: 'Asistencia' },
+  // Lo que se echó a perder (spec 039): por PERMISO, no por rol, porque lo usan cajero y cocina, que
+  // no entran a Almacén. Va después de «Reportes» para que el admin siga viendo «Reportes» en los
+  // ocho de arriba a 600 px.
+  { to: '/merma', icon: LuTrash2, label: 'Se echó a perder', permission: 'inventory.write_off' as Permission },
   { to: '/plataformas', icon: LuBike, label: 'Plataformas' },
   { to: '/empleados', icon: LuUsers, label: 'Empleados' },
   { to: '/negocio', icon: LuStore, label: 'Negocio' },

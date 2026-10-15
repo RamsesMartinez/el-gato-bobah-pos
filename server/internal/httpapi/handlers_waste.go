@@ -42,6 +42,16 @@ func (h *Handlers) CreateWasteReason(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, map[string]int64{"id": id})
 }
 
+// GET /waste/items — los artículos, productos y recientes que ofrece la captura.
+func (h *Handlers) WasteItems(w http.ResponseWriter, r *http.Request) {
+	v, err := h.backoffice.WasteItemsForCapture(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
 // POST /waste — registra lo que se echó a perder.
 func (h *Handlers) RecordWaste(w http.ResponseWriter, r *http.Request) {
 	var body struct {

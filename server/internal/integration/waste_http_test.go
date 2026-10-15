@@ -75,6 +75,14 @@ func TestWasteHTTP(t *testing.T) {
 		}
 	})
 
+	t.Run("la captura trae sus artículos aunque el cajero no entre al catálogo", func(t *testing.T) {
+		w := do(t, r, http.MethodGet, "/api/v1/waste/items", cajero, nil, "")
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Insumo de la merma http") ||
+			strings.Contains(w.Body.String(), `"packs":null`) || strings.Contains(w.Body.String(), `"recent":null`) {
+			t.Fatalf("= %d %s", w.Code, w.Body.String())
+		}
+	})
+
 	t.Run("sin pendientes la lista es [] y no null", func(t *testing.T) {
 		w := do(t, r, http.MethodGet, "/api/v1/waste/pending", gerente, nil, "")
 		if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "[]" {

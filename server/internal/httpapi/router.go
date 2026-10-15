@@ -410,6 +410,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.Route("/waste", func(r chi.Router) {
 					r.With(RequirePermission(h.permissions, domain.PermInventoryWriteOff)).Group(func(r chi.Router) {
 						r.Get("/reasons", h.WasteReasons)
+						r.Get("/items", h.WasteItems)
 						r.Post("/reasons", h.CreateWasteReason)
 						r.Post("/", h.RecordWaste)
 						r.Get("/today", h.WasteToday)

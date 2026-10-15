@@ -509,3 +509,96 @@ func (s *BackofficeService) SetWasteThreshold(ctx context.Context, threshold *st
 			map[string]any{"threshold": before}, map[string]any{"threshold": value})
 	})
 }
+
+// WasteItemUnit es una unidad en la que se puede capturar un artículo (del mismo tipo que su base).
+type WasteItemUnit struct {
+	ID   int16  `json:"id"`
+	Code string `json:"code"`
+}
+
+// WastePack es un empaque del artículo, con lo que trae en su unidad base.
+type WastePack struct {
+	ID        int64           `json:"id"`
+	Name      string          `json:"name"`
+	QtyInBase decimal.Decimal `json:"qtyInBase"`
+}
+
+// WasteIngredient es un artículo que se puede registrar.
+type WasteIngredient struct {
+	ID       int64           `json:"id"`
+	Name     string          `json:"name"`
+	UnitCode string          `json:"unitCode"`
+	Units    []WasteItemUnit `json:"units"`
+	Packs    []WastePack     `json:"packs"`
+}
+
+// WasteProduct es un producto que se puede registrar (en piezas).
+type WasteProduct struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// WasteRecent es algo registrado hace poco en la sucursal.
+type WasteRecent struct {
+	ItemType string `json:"itemType"`
+	ID       int64  `json:"id"`
+}
+
+// WasteItems es todo lo que la captura ofrece. Ruta propia: la usan cajero y cocina, que no entran
+// al catálogo de insumos ni a los empaques de compra.
+type WasteItems struct {
+	Ingredients []WasteIngredient `json:"ingredients"`
+	Products    []WasteProduct    `json:"products"`
+	Recent      []WasteRecent     `json:"recent"`
+}
+
+// WasteItemsForCapture arma la lista de la captura. Toda lista va como [] aunque esté vacía.
+func (s *BackofficeService) WasteItemsForCapture(ctx context.Context) (WasteItems, error) {
+	q := s.store.QC(ctx)
+	ings, err := q.WasteIngredients(ctx)
+	if err != nil {
+		return WasteItems{}, err
+	}
+	packs, err := q.WastePresentations(ctx)
+	if err != nil {
+		return WasteItems{}, err
+	}
+	units, err := q.WasteUnits(ctx)
+	if err != nil {
+		return WasteItems{}, err
+	}
+	prods, err := q.WasteProducts(ctx)
+	if err != nil {
+		return WasteItems{}, err
+	}
+	recent, err := q.RecentWasteItems(ctx)
+	if err != nil {
+		return WasteItems{}, err
+	}
+	byIng := map[int64][]WastePack{}
+	for _, p := range packs {
+		byIng[p.IngredientID] = append(byIng[p.IngredientID], WastePack{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase})
+	}
+	out := WasteItems{Ingredients: make([]WasteIngredient, 0, len(ings)), Products: make([]WasteProduct, 0, len(prods)),
+		Recent: make([]WasteRecent, 0, len(recent))}
+	for _, i := range ings {
+		us := []WasteItemUnit{}
+		for _, u := range units {
+			if u.Kind == i.UnitKind {
+				us = append(us, WasteItemUnit{ID: u.ID, Code: u.Code})
+			}
+		}
+		ps := byIng[i.ID]
+		if ps == nil {
+			ps = []WastePack{}
+		}
+		out.Ingredients = append(out.Ingredients, WasteIngredient{ID: i.ID, Name: i.Name, UnitCode: i.UnitCode, Units: us, Packs: ps})
+	}
+	for _, p := range prods {
+		out.Products = append(out.Products, WasteProduct{ID: p.ID, Name: p.Name})
+	}
+	for _, r := range recent {
+		out.Recent = append(out.Recent, WasteRecent{ItemType: r.ItemType, ID: r.ItemID})
+	}
+	return out, nil
+}

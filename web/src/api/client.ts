@@ -15,6 +15,8 @@ export interface ApiErrorDetails {
   productName?: string;
   // El renglón de la cuenta que el servidor rechazó por menú viejo (MENU_CHANGED al mandar o cobrar).
   lineId?: string;
+  // El motivo de merma que ya existe con ese nombre (spec 039): la pantalla lo elige en vez de crear otro.
+  existingId?: number;
 }
 
 export class ApiError extends Error {
