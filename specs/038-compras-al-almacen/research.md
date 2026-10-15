@@ -160,7 +160,7 @@ símbolos citados son de `develop` en `c33f50e`.
 ## R6. Permisos
 
 - Nuevos: `inventory.receive` (agregar, recibir y corregir mercancía de un gasto),
-  `inventory.configure` (presentaciones y método de costeo) e `inventory.count` (contar). Admin y
+  `inventory.configure` (presentaciones y método de costeo) e `inventory.count` (contar y poner el lugar de cada insumo, FR-015f). Admin y
   gerente por omisión.
 - Las rutas nuevas y las que se tocan (`/receive`, `/stock-lines`, presentaciones, conteos,
   método de costeo) se registran **fuera** de los grupos con `RequireRole`, solo con su permiso
