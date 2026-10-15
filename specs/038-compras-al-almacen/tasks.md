@@ -79,7 +79,7 @@ Va antes de US1 porque la compra en empaque los usa.
 
 ### Implementación
 
-- [X] T032 [US1] Consultas en `server/queries/purchases.sql`: bloquear gasto y renglones (`FOR UPDATE`), insertar movimiento con `expense_item_id` y sucursal explícita, actualizar `applied_qty_base`, bloquear insumo para costo (`FOR UPDATE NOWAIT`), suma de existencias para ponderado; `make sqlc`
+- [X] T032 [US1] Consultas en `server/queries/purchases.sql`: bloquear gasto y renglones (`FOR UPDATE`), insertar movimiento con `expense_item_id` y sucursal explícita, actualizar `applied_qty_base`, bloquear insumo para costo (`FOR NO KEY UPDATE NOWAIT`, y sus existencias con `NOWAIT` desde T073), suma de existencias para ponderado; `make sqlc`
 - [X] T033 [US1] `domain.PlanStockLines` (deseado contra aplicado, ordenado por insumo) con su test table-driven en `server/internal/domain/purchases.go` y `purchases_test.go`
 - [X] T034 [US1] En `server/internal/app/expenses.go`: «recibido» solo con mercancía (T022), reglas de dinero, costo con `ApplyPurchaseCost` + `RecomputeAll` en la misma tx (`server/internal/app/costing.go`), `SaveStockLines`, anular recibido por reversión, eventos `expense.received` y `expense.stock_corrected`, hasta que T024–T027 pasen
 - [X] T035 [US1] Alta de insumo que exige la unidad base de su tipo en `server/internal/app/articles.go` hasta que T023 pase
@@ -132,7 +132,7 @@ Va antes de US1 porque la compra en empaque los usa.
 - [X] T056 [US3] `CountAdjustment` en `server/internal/domain/stock_count.go` hasta que T051 pase
 - [X] T057 [US3] Consultas en `server/queries/stock_counts.sql` (abrir, capturar, quitar, vista previa, cerrar, descartar, lista por lugar) y `count_place` en `server/queries/ingredients.sql`; `make sqlc`
 - [X] T058 [US3] Servicio de conteo (métodos de `BackofficeService`, que ya trae el almacén y las compras) en `server/internal/app/stock_counts.go` y lugar del insumo en `articles.go`, hasta que T052 pase
-- [X] T059 [US3] Rutas de conteo con `RequirePermission(PermInventoryCount)` y `PUT /stock/ingredients/{id}/place` con `PermInventoryConfigure`, en `server/internal/httpapi/handlers_stock_counts.go` y `router.go`, hasta que T053 pase
+- [X] T059 [US3] Rutas de conteo con `RequirePermission(PermInventoryCount)` y `PUT /stock/ingredients/{id}/place` con `PermInventoryConfigure` (T087 la pasó a `PermInventoryCount`: el lugar se pone desde el conteo, FR-015f), en `server/internal/httpapi/handlers_stock_counts.go` y `router.go`, hasta que T053 pase
 - [X] T060 [P] [US3] `NumericKeypad` en `web/src/components/NumericKeypad.tsx` hasta que T054 pase
 - [X] T061 [US3] Pestaña «Conteo» según plan.md › Maquetas, fila «Almacén › Conteo» (las dos vistas), en `web/src/features/backoffice/StockCountTab.tsx`, y el lugar en la hoja del insumo («Cómo llega», `CountPlaceField.tsx`), hasta que T055 pase; además `lastClosedCount()` en `web/src/api/backoffice.ts` y, en la captura (`ExpenseDialog.tsx`), el aviso si la fecha del gasto es anterior al último conteo cerrado, con su prueba en `ExpenseDialog.test.tsx` (venía de T030/T039)
 

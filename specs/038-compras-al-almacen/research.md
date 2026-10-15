@@ -118,7 +118,9 @@ símbolos citados son de `develop` en `c33f50e`.
 
 - **Decisión (dueño, 14-oct):** por omisión, el costo de la última compra; cada empresa puede elegir
   promedio ponderado en su configuración (`business_settings.costing_method`, `last` | `weighted`).
-- El bloqueo del insumo para el costo usa `FOR UPDATE NOWAIT` (como el 037): una venta tiene
+- El bloqueo del insumo para el costo usa `FOR NO KEY UPDATE NOWAIT`, y sus existencias `FOR UPDATE
+  NOWAIT` (T073). `no key update` y no `update`: así no frena la llave foránea de los movimientos
+  de una venta. Como en el 037, una venta tiene
   tomadas las existencias en el orden de su ticket, y esperar aquí podría cerrar un ciclo. Si está
   tomado, 409 y se reintenta; la compra no queda a medias porque todo va en una transacción.
 - Fórmula en `domain.NextIngredientCost(method, onHand, cost, qty, unitCost)`:
