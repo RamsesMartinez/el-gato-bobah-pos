@@ -615,6 +615,16 @@ Que deban quedar verdes y que `--no-verify` no se use son quality gates de la co
 pruebas que vienen después. Si CI falla, se arregla; no se mergea. **Producción (`main`, `pos-vps`)
 sigue pidiendo OK explícito del dueño.**
 
+**Las pruebas corren en el PR, no al mergear a develop** (decidido el 2026-10-15; el job `changes`
+de [ci.yml](.github/workflows/ci.yml) lo decide). Un PR corre solo lo que su cambio toca —uno de
+puros `specs/` o `docs/` no corre nada— y el push a develop solo construye y despliega. Lo que lo
+hace seguro: el PR se mergea **al día** con develop y con sus checks en verde, así que lo probado es
+lo que queda. Hoy lo cuida quien mergea; la protección de develop que lo exige (checks requeridos y
+«al día») la activa el dueño. Si GitHub dice que el PR va atrás, se actualiza
+(`gh pr update-branch`) y se espera el CI de nuevo; no se mergea sin eso. `main` corre todo siempre.
+Un test que lea archivos de otra carpeta (como los de nombres de empresa, que leen `web/src`) se
+agrega también al filtro de su job, o un PR de esa carpeta lo deja de correr.
+
 ### Identidad, firma y autoría
 
 Se clona y se pushea **por SSH** (`git@github.com:…`, nunca HTTPS) y **todo commit va firmado con
