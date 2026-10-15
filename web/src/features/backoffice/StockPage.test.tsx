@@ -40,9 +40,8 @@ const admin = vi.hoisted(() => ({
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 vi.mock('../../api/admin', () => ({ adminApi: admin }));
-vi.mock('../../api/pos', () => ({
-  posApi: { businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) },
-}));
+const pos = vi.hoisted(() => ({ businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' } as Record<string, string>)) }));
+vi.mock('../../api/pos', () => ({ posApi: pos }));
 
 function montar(entrada = '/almacen') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -133,4 +132,13 @@ describe('Almacén › pestañas', () => {
     expect(screen.queryByText('Cómo llega')).toBeNull();
     expect(back.presentations).not.toHaveBeenCalled();
   });
+});
+
+// Capturas del 038: la pestaña ya decía «Artículos» con la palabra de la empresa y la columna seguía
+// diciendo «Insumo».
+it('la columna usa la misma palabra que la pestaña', async () => {
+  pos.businessSettings.mockResolvedValueOnce({ timezone: 'America/Mexico_City', stockItemLabel: 'artículo' });
+  montar('/almacen?tab=insumos');
+  expect(await screen.findByRole('tab', { name: 'Artículos' })).toBeInTheDocument();
+  expect(await screen.findByRole('columnheader', { name: 'Artículo' })).toBeInTheDocument();
 });

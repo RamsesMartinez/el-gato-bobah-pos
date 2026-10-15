@@ -396,3 +396,12 @@ describe('lo que se crea desde la captura', () => {
     expect(item.unitId).toBeUndefined();
   });
 });
+
+// Prueba con usuarios sin contexto (T065): «Fecha» junto a «Día del gasto» se leía como dos fechas
+// que no cuadran. Una es la del papel, la otra el día de la caja.
+test('la fecha dice que es la del ticket', async () => {
+  montar();
+  click(/Capturar sin ticket/);
+  click('No, solo el gasto');
+  expect(await screen.findByText('Fecha del ticket')).toBeInTheDocument();
+});

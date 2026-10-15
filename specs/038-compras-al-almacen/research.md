@@ -238,3 +238,25 @@ movimientos), en la máquina de desarrollo (WSL2); tres corridas, la primera en 
 
 No medido: la VM de pruebas ni producción, ni la compra con dos tabletas a la vez (el bloqueo sin
 espera responde 409 al instante, y eso lo cubre una prueba, no una medición).
+
+## R13. Capturas y prueba sin contexto (T065, 14-oct)
+
+Capturas a 1024×600 contra el ambiente de pruebas, con la versión de develop 6255c24. Todas las
+pantallas caben sin desplazamiento horizontal, y los diálogos de compra miden 600 px. Dos personas
+sin contexto, una de un café y otra de una fonda, resolvieron tareas sobre las capturas.
+
+Arreglado en el mismo PR:
+- «Tendrás 1 pieza guardados», «Se pidieron 1 pieza» y la columna «Insumo» con la pestaña «Artículos».
+- «Fecha» al lado de «Día del gasto» se leía como dos fechas que no cuadran; ahora dice «Fecha del ticket».
+- «Cerrar conteo» apagado sin decir por qué; el importe de lo de más sin «$».
+
+No eran defectos: el teclado sin punto y «piezas» salieron de capturar con un insumo que se cuenta
+por pieza (ahí el punto no va, a propósito).
+
+Para decisión del dueño (las dos personas los pusieron entre lo que más las frenaría):
+1. «Total pagado» se lee como «ya está pagado»; sin un pago capturado, la compra queda como cuenta
+   por pagar. Una compra del mercado en efectivo queda como deuda sin que nadie lo note.
+2. En la captura, un renglón es «Llegó» o «Llega después»: no hay cómo decir «pedí 2, llegó 1».
+   Hoy se resuelve después, desde «Por recibir».
+3. El lugar del conteo solo se pone desde la hoja «Cómo llega» de cada insumo; con 302 insumos
+   «Sin lugar», nadie lo encuentra.

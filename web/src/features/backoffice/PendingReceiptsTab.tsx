@@ -142,7 +142,10 @@ function ReceiveSheet({ row, onClose, onDone }: { row: PendingReceipt; onClose: 
         {over > 0 && (
           <HStack gap={2} p={3} borderRadius="lg" bg="orange.subtle" flexWrap="wrap">
             <Text fontSize="sm">Llegaron {qty(String(over))} de más. ¿Cuánto pagaste por lo de más?</Text>
-            <Input aria-label="Importe de lo de más" w="120px" minH="44px" inputMode="decimal" value={extra} onChange={(e) => setExtra(e.target.value)} />
+            <HStack gap={1}>
+              <Text fontWeight="700">$</Text>
+              <Input aria-label="Importe de lo de más" w="120px" minH="44px" inputMode="decimal" value={extra} onChange={(e) => setExtra(e.target.value)} />
+            </HStack>
             <Text fontSize="sm">Sube el total pagado de esta compra.</Text>
           </HStack>
         )}

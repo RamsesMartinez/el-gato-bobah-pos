@@ -142,3 +142,11 @@ describe('Por recibir (spec 038, maqueta A con buscador)', () => {
     expect(document.querySelector('select')).toBeNull();
   });
 });
+
+// Prueba con usuarios sin contexto (T065): la casilla del importe de lo de más no decía que era dinero.
+test('el importe de lo de más dice que es dinero', async () => {
+  montar();
+  fireEvent.click(within(await renglon('Leche entera')).getByRole('button', { name: 'Recibir…' }));
+  fireEvent.change(await screen.findByLabelText('Llegaron'), { target: { value: '4' } });
+  expect(screen.getByLabelText('Importe de lo de más').closest('div')!.parentElement).toHaveTextContent('$');
+});
