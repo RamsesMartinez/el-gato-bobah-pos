@@ -180,6 +180,17 @@ Cada una con su prueba vista en rojo antes del código.
 - [X] T087 Ruta del lugar con `RequirePermission(PermInventoryCount)` en `server/internal/httpapi/router.go` y «Lugar» en `web/src/features/backoffice/StockCountTab.tsx` hasta que T085 pase
 - [X] T088 Capturas a 1024×600 contra el ambiente de pruebas de las tres pantallas tocadas, tras el merge. Encontró dos defectos, arreglados con su prueba: sin empaque llegaba elegida la unidad base (ml) en vez de la grande, y «¿Cómo se pagó?» ofrecía los métodos de las plataformas
 
+
+## Phase 10: Cobertura que el análisis encontró indirecta (analyze C1, C2)
+
+Cada test se vio en rojo con una mutación antes de darlo por bueno.
+
+- [X] T089 [P] Test de que ningún texto de las pantallas de compras, empaques y conteo dice «existencia», «movimiento», «unidad base» ni «presentación» (FR-019), leyendo los textos del código y no los comentarios, en `web/src/features/backoffice/operatorWords.test.ts`
+- [X] T090 [P] Test de que un conteo a medias vuelve igual al montar la pantalla sin caché ni almacenamiento local, como al recargar o en otra tableta (SC-005), en `web/src/features/backoffice/StockCountTab.test.tsx`
+
+SC-001 (5 insumos en menos de 2 minutos) no lleva tarea de código: un script mide la velocidad de un
+robot, no la de una persona. Se mide con cronómetro en la siguiente prueba con alguien sin contexto.
+
 ---
 
 ## Dependencies
