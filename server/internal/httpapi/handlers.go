@@ -205,11 +205,10 @@ type Handlers struct {
 
 func NewHandlers(d Deps) *Handlers {
 	h := newHandlers(d)
-	// La lectura del menú copia precios en una goroutine que no pasa por un handler (0077). Sin este
-	// aviso el menú cacheado dura 24 horas y las tabletas cobrarían con el precio viejo.
-	if h.menusPlataforma != nil && h.menuCache != nil && h.broker != nil {
-		h.menusPlataforma.OnPricesSynced(func(ctx context.Context, companyID int64) {
-			h.menuCache.Invalidate(ctx, companyID)
+	// La lectura del menú copia precios en una goroutine que no pasa por un handler (0077). El menú
+	// guardado ya cambia de llave solo (0093); el aviso es para que las tabletas lo pidan al instante.
+	if h.menusPlataforma != nil && h.broker != nil {
+		h.menusPlataforma.OnPricesSynced(func(_ context.Context, companyID int64) {
 			h.broker.Publish(companyID, realtime.Event{Type: "menu.updated"})
 		})
 	}

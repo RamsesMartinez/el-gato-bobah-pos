@@ -9,6 +9,12 @@
 #   bash scripts/tests/restaurar-respaldo-test.sh
 set -euo pipefail
 
+# Corre dentro del pre-commit, que exporta GIT_INDEX_FILE y compañía apuntando al repositorio de
+# verdad: heredadas, el commit del repositorio de prueba arma su árbol con ese índice y truena
+# («Error building trees»). Se limpian antes de crear nada.
+# shellcheck disable=SC2046
+unset $(git rev-parse --local-env-vars)
+
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

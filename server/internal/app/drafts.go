@@ -478,7 +478,7 @@ func (s *DraftsService) ChangeLine(ctx context.Context, cmd ChangeDraftLineCmd) 
 		}
 		if cmd.Modifiers != nil {
 			if err := checkLineSells(ctx, q, in); err != nil {
-				return err
+				return onKnownDraftLine(err, cmd.LineID)
 			}
 		}
 		n, err := q.ChangeDraftLine(ctx, db.ChangeDraftLineParams{
@@ -1352,10 +1352,36 @@ func (s *DraftsService) trySend(ctx context.Context, id uuid.UUID, actor int64) 
 	if err != nil {
 		return nil, false, err
 	}
+	var res *SendResult
+	var retry bool
 	if d.OrderID != nil {
-		return s.sendNew(ctx, d, lines, actor)
+		res, retry, err = s.sendNew(ctx, d, lines, actor)
+	} else {
+		res, retry, err = s.sendAccount(ctx, d, lines)
 	}
-	return s.sendAccount(ctx, d, lines)
+	return res, retry, onDraftLine(err, rows)
+}
+
+// onDraftLine le pone al rechazo de un renglón el id del renglón de la CUENTA: la tableta conoce sus
+// renglones por ese id, no por la posición en la que el servidor los valuó (spec 034, US3).
+func onDraftLine(err error, rows []db.OrderDraftLine) error {
+	var lr domain.LineRejected
+	if !errors.As(err, &lr) || lr.LineID != "" || lr.Index < 0 || lr.Index >= len(rows) {
+		return err
+	}
+	lr.LineID = rows[lr.Index].ID.String()
+	return lr
+}
+
+// onKnownDraftLine es onDraftLine cuando el renglón ya se sabe: al cambiar los extras de uno, el
+// rechazo por menú viejo nombra ESE renglón para que la tableta lo señale.
+func onKnownDraftLine(err error, lineID uuid.UUID) error {
+	var lr domain.LineRejected
+	if !errors.As(err, &lr) || lr.LineID != "" {
+		return err
+	}
+	lr.LineID = lineID.String()
+	return lr
 }
 
 // sendAccount convierte una cuenta nueva en pedido.
@@ -1512,7 +1538,7 @@ func orderLinesOf(ctx context.Context, q *db.Queries, rows []db.OrderDraftLine) 
 		return nil, err
 	}
 	out := make([]domain.OrderLineInput, 0, len(rows))
-	for _, r := range rows {
+	for i, r := range rows {
 		mods := modsOf(r.Modifiers)
 		for _, m := range mods {
 			if _, ok := options[m.OptionID]; !ok {
@@ -1520,7 +1546,8 @@ func orderLinesOf(ctx context.Context, q *db.Queries, rows []db.OrderDraftLine) 
 				if p, ok := products[r.ProductID]; ok {
 					name = p.Name
 				}
-				return nil, fmt.Errorf("%w en %s: quítalo o cámbialo", domain.ErrOptionNotFound, name)
+				return nil, domain.LineRejected{Index: i, LineID: r.ID.String(), ProductID: r.ProductID,
+					Err: fmt.Errorf("%w en %s: quítalo o cámbialo", domain.ErrOptionNotFound, name)}
 			}
 		}
 		out = append(out, orderLineOf(r.ProductID, r.Qty, mods, derefStr(r.Notes)))

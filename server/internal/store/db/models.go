@@ -952,6 +952,12 @@ type CashTransfer struct {
 	CompanyID     int64           `json:"company_id"`
 }
 
+type CatalogVersion struct {
+	CompanyID int64     `json:"company_id"`
+	Version   int64     `json:"version"`
+	ChangedAt time.Time `json:"changed_at"`
+}
+
 type Category struct {
 	ID       int64           `json:"id"`
 	Name     string          `json:"name"`

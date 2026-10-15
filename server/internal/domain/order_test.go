@@ -394,3 +394,55 @@ func TestBuildOrderRejectsAnOptionThatIsNotAnExtraOfTheProduct(t *testing.T) {
 		})
 	}
 }
+
+// Al mandar a cocina o cobrar, la cuenta lleva varios renglones y el servidor rechaza UNO por menú
+// viejo. Sin saber cuál, la tableta solo podía decir «No se pudo» y el operador adivinaba qué
+// renglón volver a elegir (2026-10-10, spec 034). El rechazo dice en qué renglón ocurrió, sin dejar
+// de ser el mismo sentinel que decide el 422.
+func TestBuildOrderSaysWhichLineWasRejected(t *testing.T) {
+	prods := map[int64]PricedProduct{
+		1: {ID: 1, Name: "Taro", Price: decimal.NewFromInt(50), Active: true},
+		2: {ID: 2, Name: "Frappé Gatuno", Price: decimal.NewFromInt(70), Active: true, ModifierGroups: []int64{20}},
+		3: {ID: 3, Name: "Chococino", Price: decimal.NewFromInt(50), Active: false},
+	}
+	opts := map[int64]PricedOption{
+		9:  {ID: 9, GroupID: 10, Name: "Perlas viejas", MaxPerLine: 1},
+		11: {ID: 11, GroupID: 20, Name: "Perlas", MaxPerLine: 1},
+	}
+	uno := decimal.NewFromInt(1)
+	casos := []struct {
+		nombre   string
+		lines    []OrderLineInput
+		sentinel error
+		index    int
+		product  int64
+	}{
+		{"extra de un grupo que ya no es del producto", []OrderLineInput{
+			{ProductID: 1, Qty: uno}, {ProductID: 2, Qty: uno, Modifiers: []OrderModInput{{OptionID: 9}}},
+		}, ErrOptionNotFound, 1, 2},
+		{"extra que ya no existe", []OrderLineInput{
+			{ProductID: 2, Qty: uno, Modifiers: []OrderModInput{{OptionID: 404}}},
+		}, ErrOptionNotFound, 0, 2},
+		{"producto que ya no se vende", []OrderLineInput{
+			{ProductID: 1, Qty: uno}, {ProductID: 1, Qty: uno}, {ProductID: 3, Qty: uno},
+		}, ErrProductNotSell, 2, 3},
+		{"más piezas de las que hoy se permiten", []OrderLineInput{
+			{ProductID: 2, Qty: uno, Modifiers: []OrderModInput{{OptionID: 11, Qty: 3}}},
+		}, ErrOptionOverMax, 0, 2},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			_, err := BuildOrder(c.lines, prods, opts)
+			if !errors.Is(err, c.sentinel) {
+				t.Fatalf("err = %v, debe seguir siendo %v", err, c.sentinel)
+			}
+			var lr LineRejected
+			if !errors.As(err, &lr) {
+				t.Fatalf("el rechazo no dice qué renglón falló (%T): la tableta no puede señalarlo", err)
+			}
+			if lr.Index != c.index || lr.ProductID != c.product {
+				t.Fatalf("renglón %d producto %d, quería renglón %d producto %d", lr.Index, lr.ProductID, c.index, c.product)
+			}
+		})
+	}
+}

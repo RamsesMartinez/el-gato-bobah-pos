@@ -25,10 +25,19 @@ const popularTTL = 5 * time.Minute
 // v2: agrega platforms, platformPrices y platformModPrices (spec 002).
 const menuSchema = "v3"
 
-// Claves namespaced por empresa: el menú/popularidad de una empresa NUNCA se sirve a otra
-// (aislamiento multi-tenant también en la caché). company_id viene del JWT, no del cliente.
-func menuKey(companyID int64) string {
-	return fmt.Sprintf("pos:menu:%s:%d", menuSchema, companyID)
+// MenuETag identifica un menú: forma del documento, empresa, versión de catálogo (la suben los
+// triggers de la 0093 con cualquier cambio, también por SQL directo) y día (la disponibilidad por
+// fecha cambia el menú sin tocar el catálogo). La empresa va adentro porque la URL es la misma
+// para dos empresas que inician sesión en la misma tableta.
+func MenuETag(companyID, version int64, day string) string {
+	return fmt.Sprintf(`"%s-%d-%d-%s"`, menuSchema, companyID, version, day)
+}
+
+// menuKey lleva lo mismo que el ETag: un menú guardado de otra versión simplemente no se encuentra,
+// en vez de depender de que alguien se acuerde de borrarlo (2026-10-10). Las llaves viejas vencen
+// solas con el TTL. company_id viene del JWT, no del cliente.
+func menuKey(companyID, version int64, day string) string {
+	return fmt.Sprintf("pos:menu:%s:%d:%d:%s", menuSchema, companyID, version, day)
 }
 func popularKey(companyID int64) string { return fmt.Sprintf("pos:popular:%d", companyID) }
 
@@ -49,30 +58,22 @@ func NewMenuCache(redisURL string) *MenuCache {
 	return &MenuCache{rdb: redis.NewClient(opt)}
 }
 
-func (c *MenuCache) Get(ctx context.Context, companyID int64) ([]byte, bool) {
+func (c *MenuCache) Get(ctx context.Context, companyID, version int64, day string) ([]byte, bool) {
 	if c.rdb == nil {
 		return nil, false
 	}
-	b, err := c.rdb.Get(ctx, menuKey(companyID)).Bytes()
+	b, err := c.rdb.Get(ctx, menuKey(companyID, version, day)).Bytes()
 	if err != nil {
 		return nil, false
 	}
 	return b, true
 }
 
-func (c *MenuCache) Set(ctx context.Context, companyID int64, doc []byte) {
+func (c *MenuCache) Set(ctx context.Context, companyID, version int64, day string, doc []byte) {
 	if c.rdb == nil {
 		return
 	}
-	_ = c.rdb.Set(ctx, menuKey(companyID), doc, menuTTL).Err()
-}
-
-// Invalidate borra el menú cacheado de la empresa (llamar tras cualquier cambio de catálogo).
-func (c *MenuCache) Invalidate(ctx context.Context, companyID int64) {
-	if c.rdb == nil {
-		return
-	}
-	_ = c.rdb.Del(ctx, menuKey(companyID)).Err()
+	_ = c.rdb.Set(ctx, menuKey(companyID, version, day), doc, menuTTL).Err()
 }
 
 func (c *MenuCache) GetPopular(ctx context.Context, companyID int64) ([]byte, bool) {

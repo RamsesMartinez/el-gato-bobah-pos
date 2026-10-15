@@ -38,6 +38,9 @@ interface Props {
   // Por qué no se pudo enviar o cobrar la última vez (sin caja, un producto que ya no se vende).
   // Se queda en el pie: un aviso que se va solo no se lee con el cliente enfrente.
   motivo?: string | null;
+  // El renglón que el servidor rechazó por menú viejo al mandar o cobrar: se señala para elegirlo
+  // de nuevo.
+  reselectLineId?: string | null;
   puedeCancelar: boolean;
   onMas: (r: RenglonNuevo) => void;
   onMenos: (r: RenglonNuevo) => void;
@@ -80,10 +83,13 @@ export function Ticket(props: Props) {
 
   const hayNuevo = vista.nuevos.length > 0;
   const noSeVende = vista.noDisponibles.length > 0;
+  // El renglón por volver a elegir sigue a la venta (cambió su extra): no se ofrece quitarlo.
+  const removable = vista.noDisponibles.filter((l) => l.id !== props.reselectLineId);
   const bloqueo = sinConexion
     ? 'Sin conexión: no se puede mandar a cocina ni cobrar.'
     : vista.guardando ? 'Guardando…'
-      : noSeVende ? 'Quita lo que ya no se vende para mandar o cobrar.' : null;
+      : removable.length > 0 ? 'Quita lo que ya no se vende para mandar o cobrar.'
+        : noSeVende ? 'Elige de nuevo lo señalado para mandar o cobrar.' : null;
   const capturaMal = (llevaEnvio && envioMal) || descuentoMal;
   const enviarApagado = !hayNuevo || bloqueo !== null || noSeVende || capturaMal;
   const cobrarApagado = vista.falta <= 0 || bloqueo !== null || capturaMal;
@@ -225,11 +231,11 @@ export function Ticket(props: Props) {
       <Separator />
       {/* Lo que el servidor ya no vende. Vive FUERA de la caja de totales: adentro mandaba Cobrar a
           un scroll interno. */}
-      {noSeVende && (
+      {removable.length > 0 && (
         <Box colorPalette="orange" borderWidth="1px" borderColor="colorPalette.emphasized"
           bg="colorPalette.subtle" borderRadius="lg" p={2} mx={3} mb={2} flexShrink={0}>
           <Text fontWeight="700" fontSize="sm" color="colorPalette.fg">Ya no están en el menú</Text>
-          <Text fontSize="xs" color="fg.muted" mb={2}>{vista.noDisponibles.map((l) => l.name).join(', ')}</Text>
+          <Text fontSize="xs" color="fg.muted" mb={2}>{removable.map((l) => l.name).join(', ')}</Text>
           <Button size="sm" minH="44px" variant="outline" colorPalette="orange" onClick={props.onQuitarNoDisponibles}>
             Quitar del pedido
           </Button>
@@ -327,12 +333,13 @@ function Seccion({ titulo, color, plegable, total, children }: {
 // Un renglón de 44 px en UNA línea: papelera · nombre y precio · −/cantidad/+. En dos líneas medía
 // ~80 px y en el panel de 600 px cabían tres. La papelera va al extremo OPUESTO del «+»: quitar un
 // renglón por accidente obliga a volver a buscar el producto en el menú.
-function Nuevos({ vista, onMas, onMenos, onQuitar, onEditLine }: Props) {
+function Nuevos({ vista, reselectLineId, onMas, onMenos, onQuitar, onEditLine }: Props) {
   return (
     <>
       {vista.nuevos.map((l) => (
         <HStack key={l.id} py={1} px={1} gap={1} minH="44px" borderBottomWidth="1px" borderColor="border.muted"
-          opacity={l.guardando ? 0.6 : 1}>
+          opacity={l.guardando ? 0.6 : 1}
+          {...(l.id === reselectLineId ? { borderLeftWidth: '4px', borderLeftColor: 'orange.solid', bg: 'orange.subtle' } : {})}>
           {l.guardando ? (
             <Box minW="44px" />
           ) : (
@@ -340,9 +347,12 @@ function Nuevos({ vista, onMas, onMenos, onQuitar, onEditLine }: Props) {
               colorPalette="red" flexShrink={0} onClick={() => onQuitar(l)}><LuTrash2 /></IconButton>
           )}
           <Box flex="1" minW={0} onClick={() => !l.guardando && onEditLine(l)} cursor="pointer">
-            <Text fontWeight="600" fontSize="sm" lineClamp={2} textDecoration={l.available ? undefined : 'line-through'}>
+            <Text fontWeight="600" fontSize="sm" lineClamp={2} textDecoration={l.available || l.id === reselectLineId ? undefined : 'line-through'}>
               {l.name}
             </Text>
+            {l.id === reselectLineId && (
+              <Text fontSize="xs" fontWeight="600" color="orange.fg">Elige de nuevo</Text>
+            )}
             {l.modifiers.length > 0 && (
               <Text fontSize="xs" color="fg.muted" lineClamp={2}>{detalleDeModificadores(l.modifiers)}</Text>
             )}

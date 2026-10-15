@@ -23,11 +23,12 @@ type errorBody struct {
 	Details *errorDetails `json:"details,omitempty"`
 }
 
-// errorDetails son los campos estructurados que un error puede aportar. Hoy solo el producto que
-// tumbó el cobro; se agregan campos cuando otro error los necesite, no antes.
+// errorDetails son los campos estructurados que un error puede aportar: el producto que tumbó el
+// cobro y, si el rechazo fue de un renglón de la cuenta, cuál (para señalarlo en la tableta).
 type errorDetails struct {
 	ProductID   int64  `json:"productId,omitempty"`
 	ProductName string `json:"productName,omitempty"`
+	LineID      string `json:"lineId,omitempty"`
 }
 
 // JSON writes v as JSON with the given status.
@@ -94,11 +95,14 @@ func Error(w http.ResponseWriter, err error) {
 		// El front lo necesita distinguible para decir con cuál sí se puede cobrar, en vez de un
 		// "datos inválidos" que no dice qué corregir.
 		status, code = http.StatusUnprocessableEntity, "PAYMENT_METHOD_PLATFORM"
-	case errors.Is(err, domain.ErrOptionOverMax):
-		// 422 y código propio: los ids son válidos y lo que no cuadra es cuántas veces se pidió una
-		// opción. El mensaje trae el nombre y los dos números para que la pantalla diga qué
-		// corregir en vez de un "datos inválidos" que no dice nada.
-		status, code = http.StatusUnprocessableEntity, "OPTION_OVER_MAX"
+	case errors.Is(err, domain.ErrOptionOverMax),
+		errors.Is(err, domain.ErrOptionNotFound),
+		errors.Is(err, domain.ErrProductNotSell):
+		// Un producto que ya no se vende, un extra que ya no es del producto o más piezas de las
+		// que hoy se permiten: la tableta armó la línea con un menú viejo (respeta los topes del
+		// que tiene). Un solo código para que recargue el menú y pida elegir de nuevo sin
+		// escarbar el texto (2026-10-10: se rechazó 18 veces la misma venta con un error rojo).
+		status, code = http.StatusUnprocessableEntity, "MENU_CHANGED"
 	case errors.Is(err, domain.ErrUnpaidOrders):
 		// 409 con código propio, como OPEN_ORDERS: el cierre lista esos pedidos con «Cobrar» y
 		// «Cancelar», y el mensaje nombra cada uno con lo que debe (no hay fiados, 2026-10-09).
@@ -197,9 +201,7 @@ func Error(w http.ResponseWriter, err error) {
 		// se vendió. El código propio deja que la pantalla ponga el máximo donde el operador lo
 		// está tecleando, en vez de un aviso genérico de "datos inválidos".
 		status, code = http.StatusUnprocessableEntity, "DISCOUNT_OVER_SUBTOTAL"
-	case errors.Is(err, domain.ErrProductNotSell),
-		errors.Is(err, domain.ErrOptionNotFound),
-		errors.Is(err, domain.ErrEmptyOrder):
+	case errors.Is(err, domain.ErrEmptyOrder):
 		// reglas de negocio del armado del pedido: 422 con el mensaje real (no 500 opaco)
 		status, code = http.StatusUnprocessableEntity, "UNPROCESSABLE"
 	case errors.Is(err, domain.ErrWeakPassword):
@@ -230,6 +232,13 @@ func Error(w http.ResponseWriter, err error) {
 	var pu domain.ProductUnavailable
 	if errors.As(err, &pu) {
 		details = &errorDetails{ProductID: pu.ProductID, ProductName: pu.Name}
+	}
+	var lr domain.LineRejected
+	if errors.As(err, &lr) && lr.LineID != "" {
+		if details == nil {
+			details = &errorDetails{ProductID: lr.ProductID}
+		}
+		details.LineID = lr.LineID
 	}
 	JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: operatorMessage(msg), Details: details}})
 }

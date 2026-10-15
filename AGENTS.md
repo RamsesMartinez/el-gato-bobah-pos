@@ -319,6 +319,22 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Un insumo preparado se captura en Almacén → Insumos** (qué lleva y cuánto rinde, en su unidad
     base). Los ciclos se rechazan con `StockGraph.ValidatePrepIngredient` contra todo el catálogo,
     en la captura **y** en la carga de FUDO: una sola regla para los dos caminos.
+- **Un cambio de catálogo por SQL directo ya NO necesita borrar el menú guardado** (spec 034).
+  Diez tablas —las que lee el menú del POS: `products`, `categories`, `modifier_groups`,
+  `modifier_options`, `product_modifier_groups`, `product_channels`, `channels`,
+  `delivery_platforms` y los dos precios por plataforma— tienen triggers de sentencia que suben
+  `catalog_versions` de cada empresa tocada, sin importar quién escribe ni si puso
+  `app.company_id`. La llave del menú en Redis y su `ETag` llevan esa versión, y la tableta revisa
+  cada minuto y al volver al frente (304 si no cambió). No hagas `DEL pos:menu:*` ni
+  `POST /admin/reload` para el menú: ya no hace falta.
+
+  Origen: el 2026-10-10 un script desligó un grupo de extras de un producto; el menú guardado solo
+  se borraba desde las pantallas de administración, la tableta siguió ofreciendo el grupo y el
+  servidor rechazó la venta una y otra vez hasta que alguien borró el caché a mano. Si el menú
+  llega a leer **otra tabla**, agrégala a la lista de la migración 0093 (en una migración nueva) y
+  a `TestEveryMenuTableBumpsTheVersion`: una tabla sin trigger es exactamente ese camino. Y si
+  aun así una tableta manda algo que ya no vale, el servidor responde `MENU_CHANGED` y la tableta
+  recarga y pide elegir de nuevo.
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
   «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,

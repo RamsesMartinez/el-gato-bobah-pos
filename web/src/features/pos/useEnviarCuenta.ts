@@ -10,6 +10,7 @@ import type { DraftView, OrderView } from '../../types/pos';
 import { uuid } from '../../utils/uuid';
 import { descartarCuenta } from './descartarCuenta';
 import { reportarResultado } from './useSinConexion';
+import { notifyMenuChanged, isStaleMenu } from './menuChanged';
 
 // MANDAR A COCINA (spec 030, US3; research R-4).
 //
@@ -22,9 +23,12 @@ import { reportarResultado } from './useSinConexion';
 
 interface Opciones {
   onComanda: (order: OrderView, printLineIds: number[]) => void;
+  // El servidor rechazó un renglón porque el menú de esta tableta es viejo: cuál, para señalarlo y
+  // volver a elegirlo. La cuenta no se pierde.
+  onMenuChanged?: (renglon: { lineId: string | null; productId: number | null }) => void;
 }
 
-export function useEnviarCuenta({ onComanda }: Opciones) {
+export function useEnviarCuenta({ onComanda, onMenuChanged }: Opciones) {
   const qc = useQueryClient();
   const [motivo, setMotivo] = useState<string | null>(null);
 
@@ -63,6 +67,13 @@ export function useEnviarCuenta({ onComanda }: Opciones) {
     },
     onError: (e: unknown, draftId) => {
       reportarResultado(e);
+      if (isStaleMenu(e)) {
+        setMotivo(null);
+        notifyMenuChanged();
+        onMenuChanged?.({ lineId: e.details?.lineId ?? null, productId: e.details?.productId ?? null });
+        qc.invalidateQueries({ queryKey: ['pos', 'draft', draftId] });
+        return;
+      }
       const texto = e instanceof ApiError && e.code === 'NO_OPEN_REGISTER' ? 'No hay caja abierta' : mensajeDeError(e);
       setMotivo(texto);
       if (e instanceof ApiError && e.code === 'ORDER_CLOSED') {

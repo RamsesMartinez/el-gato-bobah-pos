@@ -173,3 +173,28 @@ describe('cobrar desde el ticket', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Sin conexión');
   });
 });
+
+// El 2026-10-10 se cambió el grupo de perlas de un producto con la cuenta capturada: mandar a cocina y
+// cobrar salían en rojo con «No se pudo: X» y el operador no sabía qué renglón volver a elegir
+// (spec 034). Con el menú viejo no se equivoca el operador: se señala el renglón y la cuenta se queda.
+describe('el menú cambió debajo de la cuenta', () => {
+  const MENU_CAMBIADO = () => new ApiError(422, 'MENU_CHANGED', 'Perlas no es un extra de Crepa', 'r',
+    { lineId: 'l-1', productId: 1 });
+
+  test.each([
+    ['Enviar y cobrar', /Enviar y cobrar/],
+    ['Mandar a cocina', /Enviar 1 a cocina/],
+  ])('%s: señala el renglón, sin rojo y sin abrir el cobro', async (_, boton) => {
+    usePosStore.getState().seleccionar({ kind: 'draft', id: 'd-1' });
+    api.getDraft.mockResolvedValue(draft());
+    api.sendDraft.mockRejectedValue(MENU_CAMBIADO());
+    montar();
+    await userEvent.click((await screen.findAllByRole('button', { name: boton })).at(-1)!);
+
+    expect(await screen.findByText('Elige de nuevo')).toBeInTheDocument();
+    expect(screen.queryByText(/No se pudo/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Efectivo' })).toBeNull();
+    expect(screen.getByText('Crepa')).toBeInTheDocument();
+    expect(usePosStore.getState().selected).toEqual({ kind: 'draft', id: 'd-1' });
+  });
+});
