@@ -49,6 +49,7 @@ export function StockPage() {
   const word = settings.data?.stockItemLabel || 'insumo';
   const plural = /[aeiouáéíóú]$/i.test(word) ? `${word}s` : `${word}es`;
   const itemsTab = plural.charAt(0).toUpperCase() + plural.slice(1);
+  const itemCol = word.charAt(0).toUpperCase() + word.slice(1);
   const openId = Number(params.get('open'));
   const linked = (ingredients.data?.items ?? []).find((i) => i.id === openId);
   const [composing, setComposing] = useState<{ id: number; name: string } | null>(null);
@@ -125,7 +126,7 @@ export function StockPage() {
         <Tabs.Content value="insumos" px={0} flex="1" minH={0} overflowY="auto">
           <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
             <Table.Root size="sm">
-              <Table.Header><Table.Row><Table.ColumnHeader>Insumo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader>{canReceive && <Table.ColumnHeader>Cómo llega</Table.ColumnHeader>}<Table.ColumnHeader>Receta</Table.ColumnHeader></Table.Row></Table.Header>
+              <Table.Header><Table.Row><Table.ColumnHeader>{itemCol}</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader>{canReceive && <Table.ColumnHeader>Cómo llega</Table.ColumnHeader>}<Table.ColumnHeader>Receta</Table.ColumnHeader></Table.Row></Table.Header>
               <Table.Body>
                 {(ingredients.data?.items ?? []).map((i) => (
                   <Table.Row key={i.id}>

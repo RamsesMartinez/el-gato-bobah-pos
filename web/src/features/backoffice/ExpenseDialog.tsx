@@ -391,8 +391,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
             <VStack align="stretch" gap={4} maxW="1100px" mx="auto">
               {/* ---- Encabezado ---- */}
               <HStack flexWrap="wrap" gap={3} align="start">
-                <Field label="Fecha" w="160px">
-                  <DatePickerButton label="Fecha" value={expenseDate} onChange={setExpenseDate} />
+                <Field label="Fecha del ticket" w="160px">
+                  <DatePickerButton label="Fecha del ticket" value={expenseDate} onChange={setExpenseDate} />
                 </Field>
                 <Field label="Categoría" flex="1" minW="180px">
                   <Picker value={categoryId} onChange={setCategoryId} placeholder="Elegir categoría" title="Categoría"

@@ -137,3 +137,10 @@ describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
     await waitFor(() => expect(back.discardCount).toHaveBeenCalledWith(5));
   });
 });
+
+// Prueba con usuarios sin contexto (T065): «Cerrar conteo» apagado sin decir por qué.
+test('dice por qué no se puede cerrar todavía', async () => {
+  montar();
+  expect(await screen.findByRole('button', { name: 'Cerrar conteo' })).toBeDisabled();
+  expect(screen.getByText('Cuenta al menos uno para cerrar')).toBeInTheDocument();
+});

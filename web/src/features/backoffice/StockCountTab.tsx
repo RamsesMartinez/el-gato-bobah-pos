@@ -107,7 +107,10 @@ export function StockCountTab() {
         ) : (
           <Button minH="44px" variant="outline" onClick={() => setConfirmDiscard(true)}>Descartar conteo</Button>
         )}
-        <Button minH="44px" colorPalette="red" disabled={done === 0} onClick={() => setClosing(true)}>Cerrar conteo</Button>
+        <VStack gap={0} align="end">
+          <Button minH="44px" colorPalette="red" disabled={done === 0} onClick={() => setClosing(true)}>Cerrar conteo</Button>
+          {done === 0 && <Text fontSize="xs" color="fg.muted">Cuenta al menos uno para cerrar</Text>}
+        </VStack>
       </HStack>
 
       {view === 'lista'

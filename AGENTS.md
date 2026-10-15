@@ -610,6 +610,11 @@ Qué corre cada hook de **lefthook** ([lefthook.yml](lefthook.yml)):
 
 Que deban quedar verdes y que `--no-verify` no se use son quality gates de la constitución.
 
+**Un PR hacia `develop` se mergea en cuanto su CI termina en verde, sin pedir OK** (decidido el
+2026-10-14): develop solo despliega al ambiente de pruebas, y detenerse ahí frena las capturas y las
+pruebas que vienen después. Si CI falla, se arregla; no se mergea. **Producción (`main`, `pos-vps`)
+sigue pidiendo OK explícito del dueño.**
+
 ### Identidad, firma y autoría
 
 Se clona y se pushea **por SSH** (`git@github.com:…`, nunca HTTPS) y **todo commit va firmado con

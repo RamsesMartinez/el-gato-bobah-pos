@@ -70,7 +70,7 @@ describe('Corregir lo que llegó (spec 038, maqueta B)', () => {
     expect(screen.getByTestId('resumen-correccion')).toHaveTextContent('Sin cambios todavía');
     fireEvent.click(within(row).getByRole('button', { name: 'Menos' }));
     // 2 cajas = 24 L: hoy 40 L, la compra había sumado 36 → quedarán 28 L.
-    expect(within(row).getByTestId('tendras')).toHaveTextContent('Tendrás 28 L guardados (hoy 40 L)');
+    expect(within(row).getByTestId('tendras')).toHaveTextContent('Tendrás 28 L (hoy 40 L)');
     expect(screen.getByTestId('resumen-correccion')).toHaveTextContent('Leche entera: −12 L');
     // La cifra se vuelve a pedir al servidor antes de habilitar Guardar.
     await waitFor(() => expect(back.expenseDetail.mock.calls.length).toBeGreaterThanOrEqual(3));
@@ -86,7 +86,7 @@ describe('Corregir lo que llegó (spec 038, maqueta B)', () => {
     click(await screen.findByRole('button', { name: 'Corregir lo que llegó' }).then((b) => b.textContent!));
     const row = await screen.findByTestId('renglon-recibido');
     fireEvent.click(within(row).getByRole('button', { name: 'No va a llegar' }));
-    expect(within(row).getByTestId('tendras')).toHaveTextContent('Tendrás 4 L guardados (hoy 40 L)');
+    expect(within(row).getByTestId('tendras')).toHaveTextContent('Tendrás 4 L (hoy 40 L)');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar' })).toBeEnabled());
     click('Guardar');
     await waitFor(() => expect(back.saveStockLines).toHaveBeenCalled());
@@ -129,4 +129,15 @@ describe('Corregir lo que llegó (spec 038, maqueta B)', () => {
     click(await screen.findByRole('button', { name: /Agregar un artículo que faltó/ }).then((b) => b.textContent!));
     expect(await screen.findByText('Llegó algo más de Lácteos del Centro')).toBeInTheDocument();
   });
+});
+
+// Capturas del 038 en el ambiente de pruebas: «Tendrás 1 pieza guardados» y «Se pidieron 1 pieza».
+test('una sola pieza se dice en singular', async () => {
+  back.expenseDetail.mockResolvedValue(detail([leche({ quantity: '1', qtyReceived: '0', applied: '0', presentationId: null,
+    packQtyInBase: null, unitCode: 'pieza', baseUnitCode: 'pieza', onHand: '0' })], { receivedAt: null }));
+  montar();
+  expect(await screen.findByText(/Se pidió 1 pieza; no ha llegado/)).toBeInTheDocument();
+  click(await screen.findByRole('button', { name: 'Corregir lo que llegó' }).then((b) => b.textContent!));
+  fireEvent.click(within(await screen.findByTestId('renglon-recibido')).getByRole('button', { name: 'Llegó' }));
+  expect(screen.getByTestId('tendras')).toHaveTextContent('Tendrás 1 pieza (hoy 0 piezas)');
 });

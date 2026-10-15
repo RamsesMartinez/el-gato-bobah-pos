@@ -295,6 +295,7 @@ function howItCame(i: ExpenseItem, qty: string, presentations: Presentation[]): 
     const name = p.name.toLowerCase();
     return `${qty} ${n === 1 ? name : `${name}s`} (${formatBaseQty(i.packQtyInBase, i.baseUnitCode ?? '')} c/u)`;
   }
+  if (i.unitCode === 'pieza') return `${qty} ${num(qty) === 1 ? 'pieza' : 'piezas'}`;
   return `${qty} ${i.unitCode ?? ''}`.trim();
 }
 
@@ -313,12 +314,14 @@ function GoodsRow({ item, edit, editing, presentations, desired, onEdit }: {
       <VStack align="start" gap={0} flex="1" minW="200px">
         <Text fontWeight="600">{item.itemName ?? item.description}{item.isGift ? ' · regalo' : ''}</Text>
         <Text fontSize="xs" color="fg.muted">
-          {stateOf(item) === 'llego' ? `Llegaron ${howItCame(item, item.qtyReceived ?? item.quantity, presentations)}`
-            : stateOf(item) === 'no_llega' ? 'No va a llegar' : `Se pidieron ${howItCame(item, item.quantity, presentations)}; no ha llegado`}
+          {stateOf(item) === 'llego'
+            ? `${num(item.qtyReceived ?? item.quantity) === 1 ? 'Llegó' : 'Llegaron'} ${howItCame(item, item.qtyReceived ?? item.quantity, presentations)}`
+            : stateOf(item) === 'no_llega' ? 'No va a llegar'
+              : `${num(item.quantity) === 1 ? 'Se pidió' : 'Se pidieron'} ${howItCame(item, item.quantity, presentations)}; no ha llegado`}
         </Text>
         {editing && (
           <Text fontSize="sm" color="fg" data-testid="tendras">
-            Tendrás {formatBaseQty(willHave, base)} guardados (hoy {formatBaseQty(onHand, base)})
+            Tendrás {formatBaseQty(willHave, base)} (hoy {formatBaseQty(onHand, base)})
           </Text>
         )}
       </VStack>
