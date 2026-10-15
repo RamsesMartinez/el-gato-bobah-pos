@@ -202,3 +202,12 @@ func ValidStockItemLabel(s string) (string, error) {
 	}
 	return s, nil
 }
+
+// MaxLineUnitCost es el techo de `expense_items.unit_cost` (numeric(12,6)). Un renglón de una sola
+// pieza con un importe mayor no cabe y la base respondía 500.
+var MaxLineUnitCost = decimal.RequireFromString("999999.999999")
+
+// ValidLineUnitCost dice si el costo por unidad de un renglón de gasto cabe en su columna.
+func ValidLineUnitCost(c decimal.Decimal) bool {
+	return !c.IsNegative() && !c.GreaterThan(MaxLineUnitCost)
+}

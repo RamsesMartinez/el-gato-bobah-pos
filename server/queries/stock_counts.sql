@@ -80,3 +80,12 @@ select closed_at from stock_counts
 
 -- name: SetCountPlace :execrows
 update ingredients set count_place = sqlc.narg(place), updated_at = now() where id = sqlc.arg(id);
+
+-- name: MarkCountPreviewed :exec
+-- Solo la primera vez: lo que importa es qué cambió desde que se vieron las diferencias.
+update stock_counts set previewed_at = coalesce(previewed_at, now()) where id = $1 and status = 'open';
+
+-- name: CountChangedAfterPreview :one
+select count(*)::int from stock_count_lines l
+  join stock_counts c on c.id = l.count_id
+ where l.count_id = $1 and c.previewed_at is not null and l.captured_at > c.previewed_at;

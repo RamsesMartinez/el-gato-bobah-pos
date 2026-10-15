@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 
@@ -172,9 +173,41 @@ func TestAPaidPurchaseThatGrowsOwesTheDifference(t *testing.T) {
 		t.Fatal(err)
 	}
 	var status string
-	_ = k.st.Pool.QueryRow(context.Background(), `select status::text from expenses where id = $1`, id).Scan(&status)
+	var paidAt *time.Time
+	_ = k.st.Pool.QueryRow(context.Background(), `select status::text, paid_at from expenses where id = $1`, id).Scan(&status, &paidAt)
 	if status != "pendiente" {
 		t.Errorf("estado = %s; quiere pendiente (se deben $500)", status)
+	}
+	// Revisión de base de datos del 038: «pendiente» con la fecha de un pago que ya no la cubre es un
+	// dato que un reporte de cuentas por pagar tomaría por cierto.
+	if paidAt != nil {
+		t.Errorf("pendiente con fecha de pago %v", paidAt)
+	}
+}
+
+// Revisión de seguridad del 038: cada importe de más se validaba solo, y la suma no. Diez «Llegó algo
+// más» de $9,999,999 llevaban el total de la compra a desbordar la columna: 500 en vez de 400.
+func TestATotalThatGrowsPastTheMoneyCeilingIsRejected(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	id, err := k.svc.CreateExpense(k.ctx, k.bultos("1", "500"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	big := app.ArrivedItemInput{ItemType: "ingrediente", IngredientID: &k.azucar, Description: "Azúcar",
+		Quantity: dd("100"), PresentationID: &k.bulto, Amount: domain.MaxMoney}
+	if err := k.svc.AddArrivedItem(k.ctx, id, big, k.user); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("total sobre el tope = %v; quiere ErrValidation", err)
+	}
+	// Y un renglón de una sola pieza carísima: su costo unitario no cabe en la columna (500 antes).
+	one := big
+	one.Quantity, one.Amount = dd("1"), dd("2000000")
+	if err := k.svc.AddArrivedItem(k.ctx, id, one, k.user); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("costo unitario sobre la columna = %v; quiere ErrValidation", err)
+	}
+	gasto := k.bultos("1", "2000000")
+	if _, err := k.svc.CreateExpense(k.ctx, gasto); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("captura con costo unitario sobre la columna = %v; quiere ErrValidation", err)
 	}
 }
 

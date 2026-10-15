@@ -190,3 +190,11 @@ func TestValidStockItemLabel(t *testing.T) {
 		}
 	}
 }
+
+func TestValidLineUnitCost(t *testing.T) {
+	for c, ok := range map[string]bool{"0": true, "999999.999999": true, "1000000": false, "-1": false} {
+		if ValidLineUnitCost(decimal.RequireFromString(c)) != ok {
+			t.Errorf("%s: quiere %v", c, ok)
+		}
+	}
+}

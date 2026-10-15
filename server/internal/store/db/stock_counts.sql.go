@@ -13,6 +13,19 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const countChangedAfterPreview = `-- name: CountChangedAfterPreview :one
+select count(*)::int from stock_count_lines l
+  join stock_counts c on c.id = l.count_id
+ where l.count_id = $1 and c.previewed_at is not null and l.captured_at > c.previewed_at
+`
+
+func (q *Queries) CountChangedAfterPreview(ctx context.Context, countID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, countChangedAfterPreview, countID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countItems = `-- name: CountItems :many
 select i.id, i.name, i.count_place, u.code as base_unit_code, l.counted_qty, l.captured_at
   from ingredients i
@@ -249,6 +262,16 @@ func (q *Queries) LockStockLevelsInBranchNowait(ctx context.Context, arg LockSto
 		return nil, err
 	}
 	return items, nil
+}
+
+const markCountPreviewed = `-- name: MarkCountPreviewed :exec
+update stock_counts set previewed_at = coalesce(previewed_at, now()) where id = $1 and status = 'open'
+`
+
+// Solo la primera vez: lo que importa es qué cambió desde que se vieron las diferencias.
+func (q *Queries) MarkCountPreviewed(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, markCountPreviewed, id)
+	return err
 }
 
 const notCountedIngredients = `-- name: NotCountedIngredients :many

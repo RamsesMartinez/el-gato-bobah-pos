@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
@@ -137,6 +138,11 @@ func TestMigration0092RejectsCrossCompanyReferences(t *testing.T) {
 		{"renglón de conteo de B en conteo de A", `insert into stock_count_lines (company_id, count_id, ingredient_id, counted_qty, system_qty, captured_by) values ($1, $2, $3, 1, 0, $4)`, []any{b, countA, ingB, userB}},
 		{"movimiento de B ligado a renglón de A", `insert into stock_movements (company_id, item_type, ingredient_id, movement_type, quantity, expense_item_id) values ($1, 'ingrediente', $2, 'compra', 1, $3)`, []any{b, ingB, itemA}},
 		{"movimiento de B ligado a conteo de A", `insert into stock_movements (company_id, item_type, ingredient_id, movement_type, quantity, stock_count_id) values ($1, 'ingrediente', $2, 'ajuste', 1, $3)`, []any{b, ingB, countA}},
+		// Revisión de código del 038: estas tres columnas venían con la llave simple de la 0008 y la
+		// 0028, que no revisa la empresa; una compra de A podía apuntar al insumo de B.
+		{"renglón de compra de A con insumo de B", `update expense_items set ingredient_id = $2 where id = $1`, []any{itemA, ingB}},
+		{"existencia de A con insumo de B", `insert into stock_levels (company_id, item_type, ingredient_id, branch_id, on_hand) select $1, 'ingrediente', $2, id, 1 from branches where company_id = $1 limit 1`, []any{a, ingB}},
+		{"movimiento de A con insumo de B", `insert into stock_movements (company_id, item_type, ingredient_id, movement_type, quantity) values ($1, 'ingrediente', $2, 'compra', 1)`, []any{a, ingB}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -220,6 +226,9 @@ func TestMigration0092ColumnChecks(t *testing.T) {
 		{"regalo con importe", `update expense_items set is_gift = true where id = $1`, []any{item}},
 		{"ya no va a llegar más de lo pedido", `update expense_items set not_coming_qty = 2 where id = $1`, []any{item}},
 		{"ya no va a llegar negativo", `update expense_items set not_coming_qty = -1 where id = $1`, []any{item}},
+		// Lo que llega de más sube lo pedido (con su importe); nunca queda recibido > pedido, que
+		// divide el costo entre lo que no entró (revisión de código del 038).
+		{"recibido más que lo pedido", `update expense_items set qty_received = quantity + 1 where id = $1`, []any{item}},
 		{"lugar vacío", `update ingredients set count_place = '' where id = $1`, []any{ing}},
 		{"método de costeo desconocido", `update business_settings set costing_method = 'fifo' where company_id = $1`, []any{co}},
 		{"palabra del almacén de más de 20", `update business_settings set stock_item_label = repeat('x', 21) where company_id = $1`, []any{co}},
@@ -282,6 +291,19 @@ func TestMigration0092DownRefusesWithDataAndRevertsClean(t *testing.T) {
 		t.Fatal("el Down borró un conteo")
 	}
 	if _, err := st.Pool.Exec(ctx, `delete from stock_counts`); err != nil {
+		t.Fatal(err)
+	}
+	// Lo aprendido de un proveedor puede quedar en cm sin insumo todavía: el Down tiene que decirlo,
+	// no tronar con la llave foránea de `units` (revisión de código del 038).
+	if _, err := st.Pool.Exec(ctx, `with s as (insert into suppliers (company_id, name) values ($1, 'Proveedor m92') returning id)
+		insert into supplier_items (company_id, supplier_id, raw_name, norm_name, unit_id)
+		select $1, s.id, 'LISTON 2CM', 'liston 2cm', u.id from s, units u where u.code = 'cm'`, co); err != nil {
+		t.Fatal(err)
+	}
+	if err := downTo(db, 91); err == nil || !strings.Contains(err.Error(), "longitud") {
+		t.Fatalf("Down con lo aprendido en cm = %v; quiere el aviso de unidades de longitud", err)
+	}
+	if _, err := st.Pool.Exec(ctx, `delete from supplier_items`); err != nil {
 		t.Fatal(err)
 	}
 	migrarAbajoHasta(t, st.Pool, 90)

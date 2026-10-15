@@ -109,10 +109,19 @@ func missingOf(l db.LockStockLineRow) decimal.Decimal {
 	return m
 }
 
-// raiseTotal sube el total de la compra por lo que llegó de más o «Llegó algo más» pagado.
+// raiseTotal sube el total de la compra por lo que llegó de más o «Llegó algo más» pagado. Cada
+// importe se valida solo, así que el total que resulta se valida aquí, antes de escribir: sin esto,
+// varios importes válidos llevaban la columna a desbordarse (500).
 func raiseTotal(ctx context.Context, q *db.Queries, expenseID int64, extra decimal.Decimal) error {
 	if !extra.IsPositive() {
 		return nil
+	}
+	exp, err := q.LockExpenseForStock(ctx, expenseID)
+	if err != nil {
+		return err
+	}
+	if !domain.ValidMoney(exp.Amount.Add(extra), false) {
+		return fmt.Errorf("%w: el total de la compra pasaría del máximo", domain.ErrValidation)
 	}
 	return q.RaiseExpenseAmount(ctx, db.RaiseExpenseAmountParams{ID: expenseID, Extra: extra})
 }
@@ -132,6 +141,9 @@ func (s *BackofficeService) ReceiveItem(ctx context.Context, expenseID, itemID i
 		line, err := s.lockedLine(ctx, q, expenseID, itemID)
 		if err != nil {
 			return err
+		}
+		if !domain.ValidStockQtyOrZero(in.SeenApplied) {
+			return domain.ErrValidation
 		}
 		if !domain.Round4(in.SeenApplied).Equal(line.AppliedQtyBase) {
 			return fmt.Errorf("%w: alguien más ya recibió en esta compra; vuelve a abrirla", domain.ErrConflict)
@@ -157,12 +169,15 @@ func (s *BackofficeService) ReceiveItem(ctx context.Context, expenseID, itemID i
 		if line.QtyReceived != nil {
 			got = got.Add(*line.QtyReceived)
 		}
+		if err := raiseTotal(ctx, q, expenseID, extra); err != nil {
+			return err
+		}
+		if !domain.ValidLineUnitCost(domain.UnitCost(amount, quantity)) {
+			return fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
+		}
 		if err := q.SetLineArrival(ctx, db.SetLineArrivalParams{
 			ID: itemID, QtyReceived: &got, Quantity: quantity, Amount: amount, UnitCost: domain.UnitCost(amount, quantity),
 		}); err != nil {
-			return err
-		}
-		if err := raiseTotal(ctx, q, expenseID, extra); err != nil {
 			return err
 		}
 		if _, err := s.applyStockLines(ctx, q, expenseID, userID, &day); err != nil {
@@ -177,7 +192,7 @@ func (s *BackofficeService) ReceiveItem(ctx context.Context, expenseID, itemID i
 // no queda nada pendiente en la compra, queda recibida.
 func (s *BackofficeService) MarkNotComing(ctx context.Context, expenseID, itemID int64, qty decimal.Decimal, userID int64) error {
 	qty = domain.Round4(qty)
-	if !qty.IsPositive() {
+	if !qty.IsPositive() || !domain.ValidQty(qty, domain.MaxStockQty, false) {
 		return domain.ErrValidation
 	}
 	day, err := s.parseDayOrToday("")
@@ -269,6 +284,12 @@ func (s *BackofficeService) AddArrivedItem(ctx context.Context, expenseID int64,
 		if unit == nil {
 			return domain.ErrValidation
 		}
+		if err := raiseTotal(ctx, q, expenseID, amount); err != nil {
+			return err
+		}
+		if !domain.ValidLineUnitCost(domain.UnitCost(amount, qty)) {
+			return fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
+		}
 		pos, err := q.NextItemPosition(ctx, expenseID)
 		if err != nil {
 			return err
@@ -279,9 +300,6 @@ func (s *BackofficeService) AddArrivedItem(ctx context.Context, expenseID int64,
 			UnitCost: domain.UnitCost(amount, qty), Amount: amount, PackQtyInBase: pack,
 			Position: pos, PresentationID: in.PresentationID, IsGift: in.IsGift,
 		}); err != nil {
-			return err
-		}
-		if err := raiseTotal(ctx, q, expenseID, amount); err != nil {
 			return err
 		}
 		if _, err := s.applyStockLines(ctx, q, expenseID, userID, &day); err != nil {

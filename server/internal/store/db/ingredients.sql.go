@@ -129,14 +129,20 @@ func (q *Queries) GetIngredientUnit(ctx context.Context, id int64) (GetIngredien
 }
 
 const getPresentationIngredient = `-- name: GetPresentationIngredient :one
-select ingredient_id from ingredient_presentations where id = $1
+select ingredient_id, active from ingredient_presentations where id = $1
 `
 
-func (q *Queries) GetPresentationIngredient(ctx context.Context, id int64) (int64, error) {
+type GetPresentationIngredientRow struct {
+	IngredientID int64 `json:"ingredient_id"`
+	Active       bool  `json:"active"`
+}
+
+// El insumo y el estado actual: editar sin mandar `active` conserva el que tiene.
+func (q *Queries) GetPresentationIngredient(ctx context.Context, id int64) (GetPresentationIngredientRow, error) {
 	row := q.db.QueryRow(ctx, getPresentationIngredient, id)
-	var ingredient_id int64
-	err := row.Scan(&ingredient_id)
-	return ingredient_id, err
+	var i GetPresentationIngredientRow
+	err := row.Scan(&i.IngredientID, &i.Active)
+	return i, err
 }
 
 const getUnit = `-- name: GetUnit :one

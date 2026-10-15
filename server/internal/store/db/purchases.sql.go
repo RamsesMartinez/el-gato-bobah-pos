@@ -457,13 +457,19 @@ func (q *Queries) PieceUnitID(ctx context.Context) (int16, error) {
 }
 
 const raiseExpenseAmount = `-- name: RaiseExpenseAmount :exec
+with owed as (
+  select e.id, (e.status = 'pagada'
+                and (select coalesce(sum(ep.amount), 0) from expense_payments ep where ep.expense_id = e.id)
+                    < e.amount + $1) as reopened
+    from expenses e where e.id = $2
+)
 update expenses
    set amount = expenses.amount + $1,
-       status = case when status = 'pagada'
-                      and (select coalesce(sum(ep.amount), 0) from expense_payments ep where ep.expense_id = expenses.id)
-                          < expenses.amount + $1
-                     then 'pendiente'::expense_status else status end
- where expenses.id = $2
+       status = case when owed.reopened then 'pendiente'::expense_status else expenses.status end,
+       paid_at = case when owed.reopened then null else expenses.paid_at end,
+       paid_by = case when owed.reopened then null else expenses.paid_by end
+  from owed
+ where expenses.id = owed.id
 `
 
 type RaiseExpenseAmountParams struct {
@@ -473,6 +479,8 @@ type RaiseExpenseAmountParams struct {
 
 // Lo que llegó de más o «Llegó algo más» pagado sube el total. Si estaba pagada y los pagos ya no
 // lo cubren, vuelve a deberse: queda pendiente por la diferencia.
+// Al volver a deberse, la fecha y quién pagó se borran: «pendiente» con la fecha de un pago que ya
+// no la cubre es un dato que un reporte de cuentas por pagar tomaría por cierto.
 func (q *Queries) RaiseExpenseAmount(ctx context.Context, arg RaiseExpenseAmountParams) error {
 	_, err := q.db.Exec(ctx, raiseExpenseAmount, arg.Extra, arg.ID)
 	return err

@@ -572,3 +572,208 @@ func TestCorrectingALineToNotArrivedYet(t *testing.T) {
 		t.Errorf("lo guardado = %s; quiere 0 (no ha llegado)", got)
 	}
 }
+
+// Revisión de código del 038: el bloqueo de insumos descartaba cuántos encontró, así que el id de un
+// insumo de otra empresa (RLS lo esconde) pasaba de largo hasta la escritura. Con la llave compuesta
+// de la 0092 la base ya lo frena; el servicio lo dice como 404 y no como un 500 que confirma que el
+// id existe.
+func TestAPurchaseCannotUseAnotherCompanysIngredient(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	other := makeCompany(t, k.st, "insumo-ajeno")
+	foreign := ingredientIn(t, k.st, other, "Harina ajena", "g")
+	g := unitID(t, k.st, "g")
+	in := k.bultos("1", "500")
+	in.Items[0].IngredientID, in.Items[0].PresentationID, in.Items[0].UnitID = &foreign, nil, &g
+	if _, err := k.svc.CreateExpense(k.ctx, in); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("compra con insumo de otra empresa = %v; quiere ErrNotFound", err)
+	}
+	id, err := k.svc.CreateExpense(k.ctx, k.bultos("1", "500"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gift := app.ArrivedItemInput{ItemType: "ingrediente", IngredientID: &foreign, Description: "ajeno",
+		Quantity: dd("1"), UnitID: &g, Amount: dd("0"), IsGift: true}
+	if err := k.svc.AddArrivedItem(k.ctx, id, gift, k.user); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("«Llegó algo más» con insumo de otra empresa = %v; quiere ErrNotFound", err)
+	}
+	line := app.StockLineInput{ItemType: "ingrediente", IngredientID: &foreign, Quantity: dd("1"), Received: dd("1"),
+		UnitID: &g, Amount: dd("1"), Description: "ajeno"}
+	if _, err := k.svc.SaveStockLines(k.ctx, id, []app.StockLineInput{line}, k.user); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("corregir con insumo de otra empresa = %v; quiere ErrNotFound", err)
+	}
+	if got := onHandIngredient(t, k.st, foreign); !got.IsZero() {
+		t.Errorf("el insumo de la otra empresa quedó con %s", got)
+	}
+}
+
+// Revisión de código del 038: el costo por unidad se divide entre lo PEDIDO, así que «llegaron 10» de
+// 3 pedidos con el mismo importe subía el costo del insumo 3.3 veces, y de ahí el de las recetas,
+// sin un solo error. Lo que llega de más entra por «Recibir…», que pide su importe.
+func TestReceivingMoreThanOrderedOutsideReceiveIsRejected(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	over := k.bultos("3", "1500")
+	ten := dd("10")
+	over.Items[0].QtyReceived = &ten
+	if _, err := k.svc.CreateExpense(k.ctx, over); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("captura con 10 recibidos de 3 = %v; quiere ErrValidation", err)
+	}
+	id, err := k.svc.CreateExpense(k.ctx, k.bultos("3", "1500"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost := k.ingredientCost(t)
+	item, applied := k.itemOf(t, id)
+	for name, l := range map[string]app.StockLineInput{
+		"recibido mayor que lo pedido":                  {Quantity: dd("3"), Received: dd("10")},
+		"recibido y lo que no llega pasan de lo pedido": {Quantity: dd("3"), Received: dd("2"), NotComing: dd("2")},
+	} {
+		l.ID, l.SeenApplied, l.ItemType, l.IngredientID = &item, &applied, "ingrediente", &k.azucar
+		l.PresentationID, l.Amount, l.Description = &k.bulto, dd("1500"), "Azúcar"
+		if _, err := k.svc.SaveStockLines(k.ctx, id, []app.StockLineInput{l}, k.user); !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("%s = %v; quiere ErrValidation", name, err)
+		}
+	}
+	if c := k.ingredientCost(t); !c.Equal(cost) {
+		t.Errorf("el costo cambió de %s a %s", cost, c)
+	}
+}
+
+// Revisión de seguridad del 038: varios campos de cantidad llegaban a una comparación o a la base sin
+// pasar por la validación de la frontera. El JSON ya topa el exponente en 9999 (no hay un costo de
+// CPU que explotar), pero un cero con ese exponente no cabe en la columna y respondía 500. Todo campo
+// de cantidad se rechaza como 400.
+func TestAbsurdQuantitiesAreRejectedQuickly(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	id, item := k.porLlegar(t)
+	huge := dd("1e9999")
+	zero := dd("0e9999")
+	start := time.Now()
+	checks := map[string]func() error{
+		"recibir con lo aplicado absurdo": func() error {
+			return k.svc.ReceiveItem(k.ctx, id, item, app.ReceiveItemInput{Qty: dd("1"), SeenApplied: huge}, k.user)
+		},
+		"ya no va a llegar absurdo": func() error { return k.svc.MarkNotComing(k.ctx, id, item, huge, k.user) },
+		"corregir con lo que no llega absurdo": func() error {
+			z := dd("0")
+			_, err := k.svc.SaveStockLines(k.ctx, id, []app.StockLineInput{{ID: &item, SeenApplied: &z, ItemType: "ingrediente",
+				IngredientID: &k.azucar, Quantity: dd("3"), NotComing: huge, PresentationID: &k.bulto, Amount: dd("1500"), Description: "Azúcar"}}, k.user)
+			return err
+		},
+		"corregir con lo aplicado absurdo": func() error {
+			_, err := k.svc.SaveStockLines(k.ctx, id, []app.StockLineInput{{ID: &item, SeenApplied: &huge, ItemType: "ingrediente",
+				IngredientID: &k.azucar, Quantity: dd("3"), PresentationID: &k.bulto, Amount: dd("1500"), Description: "Azúcar"}}, k.user)
+			return err
+		},
+		"cero con exponente absurdo al recibir por la ruta vieja": func() error {
+			return k.svc.SetItemsReceived(k.ctx, id, map[int64]decimal.Decimal{item: zero})
+		},
+		"más de lo pedido por la ruta vieja": func() error {
+			return k.svc.SetItemsReceived(k.ctx, id, map[int64]decimal.Decimal{item: dd("4")})
+		},
+	}
+	for name, f := range checks {
+		if err := f(); !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("%s = %v; quiere ErrValidation", name, err)
+		}
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("rechazar los números absurdos tardó %s", d)
+	}
+	c, err := k.svc.OpenCount(k.ctx, k.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := k.svc.CaptureCount(k.ctx, c.ID, k.azucar, zero, k.user); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("contar con un cero de exponente absurdo = %v; quiere ErrValidation", err)
+	}
+}
+
+// Revisión de seguridad del 038: corregir el insumo de un renglón ya recibido dejaba lo sumado en el
+// insumo viejo (la diferencia en unidad base era cero), y anular después lo restaba del nuevo, que
+// nunca lo recibió: existencia pasada de un insumo a otro sin una compra real.
+func TestChangingTheIngredientOfAReceivedLineMovesWhatItAdded(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	harina := ingredientIn(t, k.st, defaultCompanyID, "Harina cambio", "g")
+	g := unitID(t, k.st, "g")
+	id, err := k.svc.CreateExpense(k.ctx, k.bultos("1", "500"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, applied := k.itemOf(t, id)
+	fixed := app.StockLineInput{ID: &item, SeenApplied: &applied, ItemType: "ingrediente", IngredientID: &harina,
+		Quantity: dd("25000"), Received: dd("25000"), UnitID: &g, Amount: dd("500"), Description: "Harina"}
+	if _, err := k.svc.SaveStockLines(k.ctx, id, []app.StockLineInput{fixed}, k.user); err != nil {
+		t.Fatalf("corregir el insumo: %v", err)
+	}
+	if got := k.onHand(t); !got.IsZero() {
+		t.Errorf("el azúcar se quedó con %s g que eran de la harina", got)
+	}
+	if got := onHandIngredient(t, k.st, harina); !got.Equal(dd("25000")) {
+		t.Errorf("la harina tiene %s g; quiere 25000", got)
+	}
+	if err := k.svc.CancelExpense(k.ctx, id, "", k.user); err != nil {
+		t.Fatal(err)
+	}
+	if a, h := k.onHand(t), onHandIngredient(t, k.st, harina); !a.IsZero() || !h.IsZero() {
+		t.Errorf("tras anular: azúcar %s, harina %s; quiere 0 y 0", a, h)
+	}
+}
+
+// Revisión de código del 038: anular una compra tomaba los insumos sin esperar, pero no sus
+// existencias; con una venta (o un cambio de modo) que las tiene tomadas, se quedaba esperando en vez
+// de responder 409 como el resto de las escrituras de compras.
+func TestCancellingNeverWaitsForStockHeldElsewhere(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	id, err := k.svc.CreateExpense(k.ctx, k.bultos("1", "500"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := k.st.Pool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(context.Background(), `select 1 from stock_levels where ingredient_id = $1 for update`, k.azucar); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- k.svc.CancelExpense(k.ctx, id, "", k.user) }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("anular con las existencias tomadas = %v; quiere ErrConflict de inmediato", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("anular esperó por las existencias")
+	}
+}
+
+// Revisión de código del 038: la corrección reenvía todos los renglones con su empaque, y el empaque
+// se volvía a validar contra los activos. Retirar un tamaño de bulto dejaba sin poder corregir
+// cualquier compra vieja que lo usó, aunque se corrigiera otro renglón. El contenido ya está copiado
+// en el renglón: un empaque que no cambia no se vuelve a resolver.
+func TestARetiredPresentationDoesNotBlockCorrectingOldPurchases(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	id, err := k.svc.CreateExpense(k.ctx, k.bultos("2", "1000"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.st.Pool.Exec(context.Background(), `update ingredient_presentations set active = false where id = $1`, k.bulto); err != nil {
+		t.Fatal(err)
+	}
+	item, applied := k.itemOf(t, id)
+	line := app.StockLineInput{ID: &item, SeenApplied: &applied, ItemType: "ingrediente", IngredientID: &k.azucar,
+		Quantity: dd("2"), Received: dd("1"), PresentationID: &k.bulto, Amount: dd("1000"), Description: "Azúcar"}
+	if _, err := k.svc.SaveStockLines(k.ctx, id, []app.StockLineInput{line}, k.user); err != nil {
+		t.Fatalf("corregir una compra con un empaque retirado = %v; quiere aceptarlo", err)
+	}
+	if got := k.onHand(t); !got.Equal(dd("25000")) {
+		t.Errorf("lo guardado = %s; quiere 25000 (un bulto)", got)
+	}
+}

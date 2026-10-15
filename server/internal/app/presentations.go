@@ -30,7 +30,7 @@ type PresentationView struct {
 }
 
 // PresentationInput es un empaque tal como se captura: cuánto trae y en qué unidad. Active nulo
-// deja el empaque activo.
+// crea el empaque activo y, al editar, conserva su estado.
 type PresentationInput struct {
 	Name        string
 	Qty         decimal.Decimal
@@ -117,19 +117,21 @@ func (s *BackofficeService) CreatePresentation(ctx context.Context, ingredientID
 func (s *BackofficeService) UpdatePresentation(ctx context.Context, id int64, in PresentationInput) (PresentationView, error) {
 	var ingredientID int64
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
-		var err error
-		ingredientID, err = q.GetPresentationIngredient(ctx, id)
+		cur, err := q.GetPresentationIngredient(ctx, id)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return domain.ErrNotFound
 			}
 			return err
 		}
+		ingredientID = cur.IngredientID
 		plan, err := planPresentation(ctx, q, ingredientID, in)
 		if err != nil {
 			return err
 		}
-		active := true
+		// Sin estado, se queda el que tiene: editar el nombre de un empaque que ya no llega no lo
+		// vuelve a ofrecer en la captura.
+		active := cur.Active
 		if in.Active != nil {
 			active = *in.Active
 		}

@@ -231,3 +231,36 @@ func TestCountsAreIsolated(t *testing.T) {
 		t.Errorf("otra empresa movió lo guardado a %s", got)
 	}
 }
+
+// Revisión de seguridad del 038: la vista previa del cierre dice cuánto sobraba o faltaba (decisión
+// del dueño), y con eso se puede volver a capturar justo lo que el sistema tenía y esconder un
+// faltante. No se esconde la diferencia: lo que se cambió después de verla queda en la bitácora.
+func TestRecapturingAfterThePreviewIsRecorded(t *testing.T) {
+	t.Parallel()
+	k := newCountKit(t)
+	c, err := k.svc.OpenCount(k.ctx, k.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := k.svc.CaptureCount(k.ctx, c.ID, k.leche, dd("100"), k.user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.svc.PreviewCount(k.ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Vio «faltaban 400 ml» y recaptura lo que el sistema decía.
+	if err := k.svc.CaptureCount(k.ctx, c.ID, k.leche, dd("500"), k.user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.svc.CloseCount(k.ctx, c.ID, k.user); err != nil {
+		t.Fatal(err)
+	}
+	var after string
+	if err := k.st.Pool.QueryRow(context.Background(), `select after::text from audit_events
+		where action = 'stock.counted' and entity_id = $1`, c.ID).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(after, `"changedAfterPreview": 1`) {
+		t.Errorf("la bitácora del cierre no dice que una cifra cambió después de ver las diferencias: %s", after)
+	}
+}

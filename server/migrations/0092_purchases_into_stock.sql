@@ -18,6 +18,20 @@ insert into units (code, name, kind, to_base) values
 alter table ingredients   add constraint ingredients_id_company_key   unique (id, company_id);
 alter table expense_items add constraint expense_items_id_company_key unique (id, company_id);
 
+-- 2b. EL INSUMO DE UNA COMPRA, UN MOVIMIENTO O UNA EXISTENCIA ES DE LA MISMA EMPRESA. Estas tres
+--     columnas venían con la llave simple de la 0008 y la 0028, que no revisa la empresa (las de
+--     producto ya se corrigieron en la 0041). Una llave foránea salta RLS por diseño: sin esto, una
+--     compra de A podía apuntar al insumo de B con solo mandar su id (revisión de código del 038).
+alter table expense_items
+  drop constraint expense_items_ingredient_id_fkey,
+  add constraint expense_items_ingredient_fkey foreign key (ingredient_id, company_id) references ingredients (id, company_id);
+alter table stock_movements
+  drop constraint stock_movements_ingredient_id_fkey,
+  add constraint stock_movements_ingredient_fkey foreign key (ingredient_id, company_id) references ingredients (id, company_id);
+alter table stock_levels
+  drop constraint stock_levels_ingredient_id_fkey,
+  add constraint stock_levels_ingredient_fkey foreign key (ingredient_id, company_id) references ingredients (id, company_id);
+
 -- 3. EMPAQUES DE COMPRA POR INSUMO («Caja = 12 L»). Su contenido se copia al renglón de compra
 --    (`pack_qty_in_base`), así que cambiar o desactivar un empaque no reescribe compras pasadas.
 create table ingredient_presentations (
@@ -109,6 +123,9 @@ create table stock_counts (
   opened_at   timestamptz not null default now(),
   closed_by   bigint,
   closed_at   timestamptz,
+  -- La primera vez que se pidió la vista previa del cierre, que ya dice cuánto sobraba o faltaba:
+  -- lo que se recaptura después queda dicho en la bitácora del cierre.
+  previewed_at timestamptz,
   constraint stock_counts_id_company_key unique (id, company_id),
   constraint stock_counts_branch_fkey foreign key (company_id, branch_id) references branches (company_id, id),
   constraint stock_counts_opened_by_fkey foreign key (company_id, opened_by) references users (company_id, id),
@@ -168,6 +185,10 @@ alter table expense_items
 -- (medido el 14-oct en la copia de producción) que no se reescriben; aplica a lo nuevo y a lo que
 -- se edite.
 alter table expense_items add constraint expense_items_amount_positive check (amount > 0 or is_gift) not valid;
+-- Lo recibido más lo que ya no llega no pasa de lo pedido: lo de más sube lo pedido con su importe.
+-- `not valid` por la misma razón que el de arriba: aplica a lo nuevo sin reescribir lo heredado.
+alter table expense_items add constraint expense_items_received_range
+  check (coalesce(qty_received, 0) + not_coming_qty <= quantity) not valid;
 create index expense_items_open_by_expense on expense_items (company_id, expense_id) where voided_at is null;
 
 -- 7. EL «LUGAR» DE UN INSUMO solo ordena el recorrido del conteo; no es un almacén (puerta del
@@ -216,7 +237,8 @@ begin
     raise exception 'hay renglones de compra con datos de la 0092';
   end if;
   if exists (select 1 from ingredients i join units u on u.id = i.base_unit_id where u.kind = 'longitud')
-     or exists (select 1 from expense_items e join units u on u.id = e.unit_id where u.kind = 'longitud') then
+     or exists (select 1 from expense_items e join units u on u.id = e.unit_id where u.kind = 'longitud')
+     or exists (select 1 from supplier_items si join units u on u.id = si.unit_id where u.kind = 'longitud') then
     raise exception 'hay insumos o compras en unidades de longitud';
   end if;
 end $$;
@@ -226,6 +248,7 @@ alter table business_settings drop column stock_item_label, drop column costing_
 alter table ingredients drop column count_place;
 drop index expense_items_open_by_expense;
 alter table expense_items
+  drop constraint expense_items_received_range,
   drop constraint expense_items_amount_positive,
   drop constraint expense_items_gift_is_free,
   drop constraint expense_items_not_coming_range,
@@ -248,5 +271,14 @@ drop trigger ingredient_presentations_before_write on ingredient_presentations;
 drop function ingredient_presentations_before_write();
 drop table ingredient_presentations;
 alter table expense_items drop constraint expense_items_id_company_key;
+alter table stock_levels
+  drop constraint stock_levels_ingredient_fkey,
+  add constraint stock_levels_ingredient_id_fkey foreign key (ingredient_id) references ingredients (id);
+alter table stock_movements
+  drop constraint stock_movements_ingredient_fkey,
+  add constraint stock_movements_ingredient_id_fkey foreign key (ingredient_id) references ingredients (id);
+alter table expense_items
+  drop constraint expense_items_ingredient_fkey,
+  add constraint expense_items_ingredient_id_fkey foreign key (ingredient_id) references ingredients (id);
 alter table ingredients drop constraint ingredients_id_company_key;
 delete from units where code in ('cm', 'm');

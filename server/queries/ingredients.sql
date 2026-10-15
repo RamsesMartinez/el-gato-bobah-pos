@@ -104,7 +104,8 @@ set name = $2, qty_in_base = $3, purchase_unit_id = $4, is_approximate = $5, act
 where id = $1;
 
 -- name: GetPresentationIngredient :one
-select ingredient_id from ingredient_presentations where id = $1;
+-- El insumo y el estado actual: editar sin mandar `active` conserva el que tiene.
+select ingredient_id, active from ingredient_presentations where id = $1;
 
 -- name: GetUnit :one
 select id, code, name, kind, to_base from units where id = $1;

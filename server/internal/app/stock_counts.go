@@ -214,6 +214,9 @@ func (s *BackofficeService) PreviewCount(ctx context.Context, countID int64) (Co
 		if _, err := openCount(ctx, q, countID); err != nil {
 			return err
 		}
+		if err := q.MarkCountPreviewed(ctx, countID); err != nil {
+			return err
+		}
 		var err error
 		out, _, err = s.planClose(ctx, q, countID)
 		return err
@@ -255,9 +258,15 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 		if _, err := q.FinishStockCount(ctx, db.FinishStockCountParams{ID: countID, Status: "closed", ClosedBy: &userID}); err != nil {
 			return err
 		}
+		// La vista previa dice cuánto sobraba o faltaba (decisión del dueño); con eso se puede volver a
+		// capturar lo que el sistema tenía. No se esconde: queda dicho cuántas cifras cambiaron después.
+		changed, err := q.CountChangedAfterPreview(ctx, countID)
+		if err != nil {
+			return err
+		}
 		branch := c.BranchID
 		return auditEntity(ctx, q, domain.AuditStockCounted, "stock_count", countID, &branch, &userID, nil,
-			map[string]any{"adjusted": len(out.Adjusted), "notCounted": len(out.NotCounted)})
+			map[string]any{"adjusted": len(out.Adjusted), "notCounted": len(out.NotCounted), "changedAfterPreview": changed})
 	})
 	return out, err
 }

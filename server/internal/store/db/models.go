@@ -1784,14 +1784,15 @@ type SessionTerminalCount struct {
 }
 
 type StockCount struct {
-	ID        int64              `json:"id"`
-	CompanyID int64              `json:"company_id"`
-	BranchID  int64              `json:"branch_id"`
-	Status    string             `json:"status"`
-	OpenedBy  int64              `json:"opened_by"`
-	OpenedAt  time.Time          `json:"opened_at"`
-	ClosedBy  *int64             `json:"closed_by"`
-	ClosedAt  pgtype.Timestamptz `json:"closed_at"`
+	ID          int64              `json:"id"`
+	CompanyID   int64              `json:"company_id"`
+	BranchID    int64              `json:"branch_id"`
+	Status      string             `json:"status"`
+	OpenedBy    int64              `json:"opened_by"`
+	OpenedAt    time.Time          `json:"opened_at"`
+	ClosedBy    *int64             `json:"closed_by"`
+	ClosedAt    pgtype.Timestamptz `json:"closed_at"`
+	PreviewedAt pgtype.Timestamptz `json:"previewed_at"`
 }
 
 type StockCountLine struct {

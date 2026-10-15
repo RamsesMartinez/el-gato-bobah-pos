@@ -44,7 +44,11 @@ func PlanCountClose(lines []CountLine) []CountAdjustment {
 
 // ValidStockQtyOrZero acepta una cantidad del almacén que puede valer cero: lo contado («no hay») o
 // lo que llegó («todavía no llega»). ValidQty rechaza el cero a propósito —una venta de 0 piezas es
-// un error—, y usarla aquí convertía esos dos casos normales en un 400.
+// un error—, y usarla aquí convertía esos dos casos normales en un 400. El cero también pasa por la
+// guarda de escala: «0e9999» es cero y no es una cantidad que alguien teclee.
 func ValidStockQtyOrZero(q decimal.Decimal) bool {
-	return q.IsZero() || ValidQty(q, MaxStockQty, false)
+	if q.IsZero() {
+		return escalaSana(q)
+	}
+	return ValidQty(q, MaxStockQty, false)
 }

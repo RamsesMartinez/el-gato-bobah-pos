@@ -43,7 +43,10 @@ func TestPlanCountClose(t *testing.T) {
 }
 
 func TestValidStockQtyOrZero(t *testing.T) {
-	for q, ok := range map[string]bool{"0": true, "3000": true, "-1": false, "1e20": false} {
+	// «0e9999» es cero, pero su exponente no cabe en una columna numeric: llegaba hasta la base y
+	// respondía 500 en vez de 400 (revisión de seguridad del 038). 9999 es lo más que el JSON deja
+	// pasar (`decimal.MaxDecodeExponent`).
+	for q, ok := range map[string]bool{"0": true, "3000": true, "-1": false, "1e20": false, "0e9999": false, "1e-9999": false} {
 		if ValidStockQtyOrZero(decimal.RequireFromString(q)) != ok {
 			t.Errorf("%s: quiere %v", q, ok)
 		}

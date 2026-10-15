@@ -828,16 +828,22 @@ func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
 	// pending: la bandeja de mercancía por llegar. Ausente = todos; un valor que no es true/false se
 	// rechaza en vez de mostrar «todos» como si fuera el filtro. `pendingReceipt` es el nombre viejo.
 	var pending bool
+	seen := map[string]bool{}
 	for _, name := range []string{"pending", "pendingReceipt"} {
-		switch r.URL.Query().Get(name) {
+		switch v := r.URL.Query().Get(name); v {
 		case "":
-		case "true":
-			pending = true
-		case "false":
+		case "true", "false":
+			seen[v] = true
+			pending = v == "true"
 		default:
 			Error(w, fmt.Errorf("%w: %s inválido", domain.ErrValidation, name))
 			return
 		}
+	}
+	// Los dos nombres en desacuerdo: no se escoge uno en silencio.
+	if seen["true"] && seen["false"] {
+		Error(w, fmt.Errorf("%w: pending y pendingReceipt dicen cosas distintas", domain.ErrValidation))
+		return
 	}
 	// Orden por columna: solo valores conocidos (lo demás → fecha desc, el default del query).
 	sort := r.URL.Query().Get("sort")

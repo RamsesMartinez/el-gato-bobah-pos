@@ -145,13 +145,21 @@ update expense_items set not_coming_qty = not_coming_qty + sqlc.arg(qty) where i
 -- name: RaiseExpenseAmount :exec
 -- Lo que llegó de más o «Llegó algo más» pagado sube el total. Si estaba pagada y los pagos ya no
 -- lo cubren, vuelve a deberse: queda pendiente por la diferencia.
+-- Al volver a deberse, la fecha y quién pagó se borran: «pendiente» con la fecha de un pago que ya
+-- no la cubre es un dato que un reporte de cuentas por pagar tomaría por cierto.
+with owed as (
+  select e.id, (e.status = 'pagada'
+                and (select coalesce(sum(ep.amount), 0) from expense_payments ep where ep.expense_id = e.id)
+                    < e.amount + sqlc.arg(extra)) as reopened
+    from expenses e where e.id = sqlc.arg(id)
+)
 update expenses
    set amount = expenses.amount + sqlc.arg(extra),
-       status = case when status = 'pagada'
-                      and (select coalesce(sum(ep.amount), 0) from expense_payments ep where ep.expense_id = expenses.id)
-                          < expenses.amount + sqlc.arg(extra)
-                     then 'pendiente'::expense_status else status end
- where expenses.id = sqlc.arg(id);
+       status = case when owed.reopened then 'pendiente'::expense_status else expenses.status end,
+       paid_at = case when owed.reopened then null else expenses.paid_at end,
+       paid_by = case when owed.reopened then null else expenses.paid_by end
+  from owed
+ where expenses.id = owed.id;
 
 -- name: NextItemPosition :one
 select (coalesce(max(position), -1) + 1)::int as position from expense_items where expense_id = $1;

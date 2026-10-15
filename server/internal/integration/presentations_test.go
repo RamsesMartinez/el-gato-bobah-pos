@@ -117,3 +117,28 @@ func TestPresentationsAreIsolated(t *testing.T) {
 		}
 	})
 }
+
+// Revisión de código del 038: editar el nombre o el contenido de un empaque que ya no llega, sin
+// volver a mandar su estado, lo reactivaba; volvía a ofrecerse en la captura sin que nadie lo pidiera.
+func TestEditingARetiredPresentationKeepsItRetired(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	leche := ingredientIn(t, st, defaultCompanyID, "Leche retirada", "ml")
+	svc, ctx := asTenant(t, defaultCompanyID)
+	l := unitID(t, st, "l")
+	caja, err := svc.CreatePresentation(ctx, leche, app.PresentationInput{Name: "Caja", Qty: decimal.RequireFromString("12"), UnitID: l})
+	if err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	if _, err := svc.UpdatePresentation(ctx, caja.ID, app.PresentationInput{Name: "Caja", Qty: decimal.RequireFromString("12"), UnitID: l, Active: &off}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.UpdatePresentation(ctx, caja.ID, app.PresentationInput{Name: "Caja grande", Qty: decimal.RequireFromString("12"), UnitID: l})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Active {
+		t.Error("editar el nombre reactivó un empaque que ya no llega")
+	}
+}

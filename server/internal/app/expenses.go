@@ -308,16 +308,37 @@ func (s *BackofficeService) SetItemsReceived(ctx context.Context, expenseID int6
 	if err != nil {
 		return err
 	}
-	// Después de recibido las cantidades ya generaron movimientos de almacén; cambiarlas dejaría
-	// el ledger mintiendo. La corrección es un ajuste de inventario, no una edición del gasto.
+	// Después de recibido las cantidades ya generaron movimientos de almacén; cambiarlas por aquí
+	// saltaría la comparación contra lo aplicado. Eso se corrige con SaveStockLines.
 	if exp.ReceivedAt.Valid {
 		return domain.ErrConflict
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		if _, err := q.LockExpenseForStock(ctx, expenseID); err != nil {
+			return err
+		}
+		lines, err := q.ListStockLines(ctx, expenseID)
+		if err != nil {
+			return err
+		}
+		byID := make(map[int64]db.ListStockLinesRow, len(lines))
+		for _, l := range lines {
+			byID[l.ID] = l
+		}
 		for itemID, qty := range got {
 			v := domain.Round4(qty)
-			if v.IsNegative() || v.GreaterThan(domain.MaxStockQty) {
+			if !domain.ValidStockQtyOrZero(v) {
 				return domain.ErrValidation
+			}
+			if l, ok := byID[itemID]; ok {
+				// Lo de más entra por «Recibir…» con su importe (spec 038), y un renglón que ya sumó
+				// algo se corrige comparando contra lo aplicado.
+				if v.Add(l.NotComingQty).GreaterThan(l.Quantity) {
+					return fmt.Errorf("%w: llegó más de lo pedido; recíbelo con su importe", domain.ErrValidation)
+				}
+				if !l.AppliedQtyBase.IsZero() {
+					return fmt.Errorf("%w: ya llegó una parte; corrígelo desde la compra", domain.ErrConflict)
+				}
 			}
 			n, err := q.SetExpenseItemReceived(ctx, db.SetExpenseItemReceivedParams{
 				ID: itemID, ExpenseID: expenseID, QtyReceived: &v,
@@ -559,12 +580,17 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 		}
 		if it.QtyReceived != nil {
 			v := domain.Round4(*it.QtyReceived)
-			if v.IsNegative() || v.GreaterThan(domain.MaxStockQty) {
+			// Lo que llega de más entra por «Recibir…» con su importe: recibido > pedido dividiría el
+			// costo entre lo que no entró.
+			if !domain.ValidStockQtyOrZero(v) || v.GreaterThan(qty) {
 				return domain.ErrValidation
 			}
 			it.QtyReceived = &v
 		}
 		unitCost := domain.UnitCost(amount, qty)
+		if !domain.ValidLineUnitCost(unitCost) {
+			return fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
+		}
 		if _, err := q.CreateExpenseItem(ctx, db.CreateExpenseItemParams{
 			ExpenseID: expenseID, ItemType: itemType,
 			IngredientID: it.IngredientID, ProductID: it.ProductID,

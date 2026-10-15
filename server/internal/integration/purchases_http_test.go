@@ -84,6 +84,10 @@ func TestPurchasesHTTP(t *testing.T) {
 	if w := do(t, r, http.MethodGet, "/api/v1/expenses?pending=quiza", admin, nil, ""); w.Code != http.StatusBadRequest {
 		t.Errorf("pending=quiza = %d; quiere 400 (no «todos» en silencio)", w.Code)
 	}
+	// Los dos nombres del filtro en desacuerdo: no se escoge uno en silencio.
+	if w := do(t, r, http.MethodGet, "/api/v1/expenses?pending=true&pendingReceipt=false", admin, nil, ""); w.Code != http.StatusBadRequest {
+		t.Errorf("pending y pendingReceipt en desacuerdo = %d; quiere 400", w.Code)
+	}
 
 	// Por recibir: arreglo vacío, permisos y reglas de la frontera (spec 038, historia 1b).
 	if w := do(t, r, http.MethodGet, "/api/v1/stock/pending-receipts", admin, nil, ""); w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "[]" {

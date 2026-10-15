@@ -113,8 +113,25 @@ func lockIngredients(ctx context.Context, q *db.Queries, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	_, err := q.LockIngredientsNowait(ctx, ids)
-	return lockErr(err)
+	got, err := q.LockIngredientsNowait(ctx, ids)
+	if err != nil {
+		return lockErr(err)
+	}
+	// RLS esconde el insumo de otra empresa en vez de rechazarlo: si falta alguno de los pedidos, el
+	// id no es de esta empresa (o no existe), y se dice antes de escribir nada.
+	want := map[int64]struct{}{}
+	for _, id := range ids {
+		want[id] = struct{}{}
+	}
+	if len(got) != len(want) {
+		return fmt.Errorf("%w: el insumo no existe", domain.ErrNotFound)
+	}
+	// Sus existencias también, sin esperar: anular, quitar un renglón o cambiarle el artículo restan
+	// antes de applyStockLines, y sin esto esperaban a una venta en vez de responder 409.
+	if _, err := q.LockIngredientStockNowait(ctx, ids); err != nil {
+		return lockErr(err)
+	}
+	return nil
 }
 
 func derefID(p *int64) int64 {
@@ -292,7 +309,7 @@ func (s *BackofficeService) SaveStockLines(ctx context.Context, expenseID int64,
 		kept := map[int64]bool{}
 		amounts := []decimal.Decimal{}
 		for i, l := range lines {
-			if err := s.saveStockLine(ctx, q, expenseID, i, l, current, kept); err != nil {
+			if err := s.saveStockLine(ctx, q, expenseID, userID, i, l, current, kept); err != nil {
 				return err
 			}
 			amounts = append(amounts, domain.Round2(l.Amount))
@@ -334,7 +351,21 @@ func (s *BackofficeService) SaveStockLines(ctx context.Context, expenseID int64,
 	return s.ExpenseDetail(ctx, expenseID)
 }
 
-func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, expenseID int64, pos int, l StockLineInput, current map[int64]db.ListStockLinesRow, kept map[int64]bool) error {
+// lineKeepsPresentation dice si un renglón que ya existe se reenvía con el mismo artículo y el mismo
+// empaque, y devuelve lo guardado.
+func lineKeepsPresentation(l StockLineInput, current map[int64]db.ListStockLinesRow) (db.ListStockLinesRow, bool) {
+	if l.ID == nil || l.PresentationID == nil {
+		return db.ListStockLinesRow{}, false
+	}
+	row, ok := current[*l.ID]
+	if !ok || row.PresentationID == nil || *row.PresentationID != *l.PresentationID ||
+		derefID(row.IngredientID) != derefID(l.IngredientID) {
+		return db.ListStockLinesRow{}, false
+	}
+	return row, true
+}
+
+func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, expenseID, userID int64, pos int, l StockLineInput, current map[int64]db.ListStockLinesRow, kept map[int64]bool) error {
 	amount := domain.Round2(l.Amount)
 	if err := checkLineMoney(amount, l.IsGift); err != nil {
 		return err
@@ -344,15 +375,23 @@ func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, ex
 	notComing := domain.Round4(l.NotComing)
 	if !qty.IsPositive() || !domain.ValidQty(qty, domain.MaxStockQty, false) ||
 		!domain.ValidStockQtyOrZero(received) ||
-		notComing.IsNegative() || notComing.GreaterThan(qty) || l.Description == "" {
+		!domain.ValidStockQtyOrZero(notComing) || received.Add(notComing).GreaterThan(qty) || l.Description == "" {
 		return domain.ErrValidation
 	}
 	itemType, err := itemTypeParam(ExpenseItemInput{ItemType: l.ItemType, IngredientID: l.IngredientID, ProductID: l.ProductID})
 	if err != nil || itemType == nil {
 		return domain.ErrValidation
 	}
-	unit, pack, err := lineUnit(ctx, q, l.IngredientID, l.PresentationID, l.UnitID, nil)
-	if err != nil {
+	if !domain.ValidLineUnitCost(domain.UnitCost(amount, qty)) {
+		return fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
+	}
+	var unit *int16
+	var pack *decimal.Decimal
+	if prev, ok := lineKeepsPresentation(l, current); ok {
+		// El empaque no cambió: su contenido ya está copiado en el renglón. Resolverlo de nuevo contra
+		// los empaques activos dejaba sin poder corregir una compra cuyo empaque ya se retiró.
+		unit, pack = prev.UnitID, prev.PackQtyInBase
+	} else if unit, pack, err = lineUnit(ctx, q, l.IngredientID, l.PresentationID, l.UnitID, nil); err != nil {
 		return err
 	}
 	if unit == nil {
@@ -375,10 +414,20 @@ func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, ex
 	if !ok {
 		return domain.ErrNotFound
 	}
-	if l.SeenApplied == nil || !domain.Round4(*l.SeenApplied).Equal(row.AppliedQtyBase) {
+	if l.SeenApplied == nil || !domain.ValidStockQtyOrZero(*l.SeenApplied) {
+		return domain.ErrValidation
+	}
+	if !domain.Round4(*l.SeenApplied).Equal(row.AppliedQtyBase) {
 		return fmt.Errorf("%w: alguien más corrigió esta compra; vuelve a abrirla", domain.ErrConflict)
 	}
 	kept[*l.ID] = true
+	// Otro artículo: lo que el renglón sumó es del artículo viejo y se le regresa ahí. Comparar solo
+	// en unidad base daría diferencia cero y dejaría la existencia en el insumo equivocado.
+	if derefID(row.IngredientID) != derefID(l.IngredientID) || derefID(row.ProductID) != derefID(l.ProductID) {
+		if err := reverseLine(ctx, q, expenseID, userID, row, "cambio de artículo: "); err != nil {
+			return err
+		}
+	}
 	n, err := q.UpdateStockLine(ctx, db.UpdateStockLineParams{
 		ID: *l.ID, ExpenseID: expenseID, ItemType: itemType, IngredientID: l.IngredientID, ProductID: l.ProductID,
 		Description: l.Description, Quantity: qty, UnitID: unit, QtyReceived: recv, Amount: amount,
