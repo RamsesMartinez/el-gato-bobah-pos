@@ -510,3 +510,30 @@ describe('Llegó una parte (FR-007e)', () => {
     expect(back.createExpense.mock.calls[0][0].items[0]).toMatchObject({ quantity: '3', qtyReceived: '2' });
   });
 });
+
+// Capturas en el ambiente de pruebas (T088): un insumo en ml sin empaque llegaba con «ml» elegido,
+// y «3» se guardaba como 3 ml. Nadie compra mililitros: llega elegida la unidad grande.
+test('sin empaque, la unidad que llega elegida es la grande (kg, L, m)', async () => {
+  await capturaConMercancia();
+  await elegir('Buscar o crear', /Azúcar/);
+  expect(await screen.findByRole('button', { name: 'kg' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '100' } });
+  click('Todavía no se paga');
+  click('Guardar');
+  await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+  expect(back.createExpense.mock.calls[0][0].items[0]).toMatchObject({ unitId: 2 });
+});
+
+// Capturas en el ambiente de pruebas (T088): «¿Cómo se pagó?» ofrecía los métodos de las
+// plataformas (Uber, Didi, Rappi), que no pagan una compra; con ellos eran dos filas.
+test('«¿Cómo se pagó?» no ofrece los métodos de las plataformas', async () => {
+  pos.paymentMethods.mockResolvedValue({ items: [
+    { id: 2, name: 'Tarjeta', kind: 'tarjeta', affectsCashDrawer: false, isActive: true },
+    { id: 5, name: 'Uber Eats en línea', kind: 'plataforma', affectsCashDrawer: false, isActive: true },
+  ] });
+  montar();
+  click(/Capturar sin ticket/);
+  click('No, solo el gasto');
+  expect(await screen.findByRole('button', { name: 'Tarjeta' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Uber Eats en línea' })).toBeNull();
+});

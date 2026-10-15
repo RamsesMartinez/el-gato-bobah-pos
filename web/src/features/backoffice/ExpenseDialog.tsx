@@ -343,7 +343,10 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
     const art = articleList.find((a) => a.itemType === type && a.id === id);
     return {
       presentationId: pack?.id ?? null,
-      unitId: pack ? null : unitId ?? unitList.find((u) => u.code === art?.unitCode)?.id ?? null,
+      // Sin empaque llega elegida la unidad grande de su tipo (kg, L, m): nadie compra mililitros, y
+      // con la base elegida «3» se guardaba como 3 ml.
+      unitId: pack ? null : unitId ?? (art ? purchaseUnitsFor(art.unitKind, unitList)[0]?.id : undefined)
+        ?? unitList.find((u) => u.code === art?.unitCode)?.id ?? null,
     };
   };
 
@@ -547,7 +550,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
             {payments.length === 0 && (
               <HStack gap={2} flexWrap="wrap" role="group" aria-label="¿Cómo se pagó?">
                 <Text fontSize="sm" fontWeight="600">¿Cómo se pagó?</Text>
-                {methodList.filter((m) => m.isActive !== false && (!m.affectsCashDrawer || openRegisters.length > 0)).map((m) => (
+                {/* Los métodos de las plataformas (Uber, Didi, Rappi) cobran ventas, no pagan compras. */}
+                {methodList.filter((m) => m.isActive !== false && m.kind !== 'plataforma'
+                  && (!m.affectsCashDrawer || openRegisters.length > 0)).map((m) => (
                   <Button key={m.id} minH="44px" size="sm" aria-pressed={payWith === String(m.id)}
                     variant={payWith === String(m.id) ? 'solid' : 'outline'} colorPalette={payWith === String(m.id) ? 'red' : 'gray'}
                     onClick={() => setPayWith(String(m.id))}>

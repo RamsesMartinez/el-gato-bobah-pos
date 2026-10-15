@@ -617,6 +617,8 @@ cifra que ya no era la del anaquel.
 | B16 | Una compra en efectivo del mercado | No queda como deuda sin que nadie lo note: se pregunta cómo se pagó antes de guardar (FR-004d) | `ExpenseDialog.test.tsx › ¿Cómo se pagó?` | Navegador (vitest) |
 | B17 | «Pedí 2, llegó 1» al capturar | Suma lo que llegó y el resto queda por recibir (FR-007e) | `ExpenseDialog.test.tsx › Llegó una parte`, `TestAPartlyArrivedLineLeavesTheRestPending` | Navegador (vitest), Postgres |
 | B18 | Poner el lugar a media cuenta | Se pone desde el conteo; «Uno por uno» sigue en el mismo insumo aunque la lista se reordene (FR-015f) | `StockCountTab.test.tsx`, `TestTheCountPlaceIsSetByWhoCounts` | Navegador (vitest), Postgres |
+| B19 | Un insumo en ml o g sin empaque | Llega elegida la unidad grande (L, kg, m); con la base, «3» se guardaba como 3 ml | `ExpenseDialog.test.tsx › la unidad que llega elegida es la grande` | Navegador (vitest) |
+| B20 | «¿Cómo se pagó?» | Sin los métodos de las plataformas: cobran ventas, no pagan compras | `ExpenseDialog.test.tsx › no ofrece los métodos de las plataformas` | Navegador (vitest) |
 
 **Lo que B no cubre:** cómo se ven estas pantallas a 1024×600 en el ambiente de pruebas y si alguien
 nuevo las entiende sin ayuda (T065, tras el merge a develop); el tiempo con datos de producción en

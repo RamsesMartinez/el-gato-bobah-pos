@@ -38,6 +38,13 @@ limit $1;
 
 -- Cambio de modo de consumo (spec 037, research R6) -----------------------------------------------
 
+-- name: LockProductForComposition :exec
+-- El producto ANTES que sus existencias, en el mismo orden que una venta (la llave foránea de su
+-- renglón toma el producto y luego el trigger toma la existencia). Guardar la receta cambia
+-- recipe_id, que es único, y eso choca con esa llave: tomado después de la existencia, una venta a
+-- la mitad cerraba el círculo y Postgres cancelaba una de las dos (40P01).
+select 1 from products where id = $1 for update;
+
 -- name: LockProductStockLevels :many
 -- Las existencias del producto, una por sucursal, BLOQUEADAS: una venta simultánea espera a que la
 -- conversión termine en vez de aplicar su delta sobre una cifra que ya se trasladó. El trigger de
