@@ -11,6 +11,7 @@ import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
 import { AccountPage } from './features/auth/AccountPage';
 import { AttendancePage } from './features/attendance/AttendancePage';
+import { WastePage } from './features/waste/WastePage';
 import { POSPage } from './features/pos/POSPage';
 import { OrdersBoardPage } from './features/orders/OrdersBoardPage';
 import { SalesPage } from './features/sales/SalesPage';
@@ -86,6 +87,7 @@ export const App = () => {
         <Route path="/apariencia" element={<AppearancePage />} />
         <Route path="/cuenta" element={<AccountPage />} />
         <Route path="/asistencia" element={<AttendancePage />} />
+        <Route path="/merma" element={<WastePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/pos" replace />} />
       </Routes>

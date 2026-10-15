@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from '../components/ui/provider';
@@ -10,6 +10,8 @@ vi.mock('../api/pos', () => ({ posApi: { logout: vi.fn() } }));
 vi.mock('./SystemInfo', () => ({ SystemInfo: () => null }));
 const roster = vi.hoisted(() => vi.fn(() => Promise.resolve({ enabled: false, people: [] })));
 vi.mock('../api/attendance', () => ({ attendanceApi: { roster: () => roster() } }));
+const pendingWaste = vi.hoisted(() => vi.fn(() => Promise.resolve([] as unknown[])));
+vi.mock('../api/waste', () => ({ wasteApi: { pending: () => pendingWaste() } }));
 
 function renderView() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -63,5 +65,32 @@ describe('el menú lateral', () => {
     await vi.waitFor(() => expect(spy).toHaveBeenCalled());
     expect((spy.mock.contexts.at(-1) as HTMLElement).textContent).toContain('Reportes');
   });
-});
 
+  // Lo que se echó a perder (spec 039): el renglón sale por PERMISO y no por rol, porque lo usan
+  // cajero y cocina, que no entran a Almacén. Para quien administra va después de «Reportes», como
+  // Asistencia, para no sacar a «Reportes» de los ocho visibles a 600 px.
+  test('«Se echó a perder» sale con su permiso, después de «Reportes»', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: [] } as never });
+    const { unmount } = renderView();
+    await screen.findByText('Vender');
+    expect(screen.queryByText('Se echó a perder')).toBeNull();
+    unmount();
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.write_off'] } as never });
+    const second = renderView();
+    expect(await screen.findByText('Se echó a perder')).toBeInTheDocument();
+    second.unmount();
+    useSessionStore.setState({ user: { id: 1, name: 'Admin', role: 'admin', permissions: ['inventory.write_off'] } as never });
+    renderView();
+    const labels = Array.from(document.querySelectorAll('a')).map((a) => a.textContent);
+    expect(labels.indexOf('Se echó a perder')).toBeGreaterThan(labels.indexOf('Reportes'));
+  });
+
+  // Quien aprueba ve en el riel cuántas esperan: en Vender y Pedidos es el único aviso.
+  test('el renglón lleva el número de mermas por aprobar para quien aprueba', async () => {
+    pendingWaste.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+    useSessionStore.setState({ user: { id: 1, name: 'Gerente', role: 'gerente', permissions: ['inventory.write_off', 'inventory.write_off_approve'] } as never });
+    renderView();
+    const link = (await screen.findByText('Se echó a perder')).closest('a')!;
+    expect(await within(link).findByText('2')).toBeInTheDocument();
+  });
+});

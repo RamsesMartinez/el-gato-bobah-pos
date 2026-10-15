@@ -35,6 +35,11 @@ const (
 	PermInventoryReceive   Permission = "inventory.receive"
 	PermInventoryConfigure Permission = "inventory.configure"
 	PermInventoryCount     Permission = "inventory.count"
+
+	// Lo que se echó a perder (spec 039): registrarlo lo hace cualquiera del local; aprobar la merma
+	// que pasa el tope de la empresa, quien revisa.
+	PermInventoryWriteOff        Permission = "inventory.write_off"
+	PermInventoryWriteOffApprove Permission = "inventory.write_off_approve"
 )
 
 // AllPermissions devuelve todos los permisos que existen, en un orden fijo.
@@ -42,7 +47,7 @@ func AllPermissions() []Permission {
 	return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 		PermAttendanceConfigure, PermAttendanceReport, PermAttendanceCorrectOthers, PermAttendanceCorrectOwn,
 		PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure, PermInventoryHealthView, PermMenuConfigure,
-		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount}
+		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount, PermInventoryWriteOff, PermInventoryWriteOffApprove}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -59,9 +64,10 @@ func PermissionsFor(role Role) []Permission {
 	case RoleGerente:
 		return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 			PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
-			PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount}
+			PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount,
+			PermInventoryWriteOff, PermInventoryWriteOffApprove}
 	case RoleCajero, RoleMesero:
-		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending}
+		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}
 	}
 	return []Permission{}
 }
@@ -102,6 +108,10 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede configurar el almacén"
 	case PermInventoryCount:
 		return "Tu usuario no puede contar el almacén"
+	case PermInventoryWriteOff:
+		return "Tu usuario no puede registrar lo que se echó a perder"
+	case PermInventoryWriteOffApprove:
+		return "Tu usuario no puede aprobar lo que se echó a perder"
 	}
 	return "Tu usuario no puede hacer esto"
 }

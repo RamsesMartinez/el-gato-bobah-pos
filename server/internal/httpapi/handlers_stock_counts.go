@@ -35,12 +35,16 @@ func (h *Handlers) OpenCount(w http.ResponseWriter, r *http.Request) {
 
 // GET /stock/counts/last-closed — `{ closedAt }` del último conteo cerrado, o null.
 func (h *Handlers) LastClosedCount(w http.ResponseWriter, r *http.Request) {
-	at, err := h.backoffice.LastClosedCount(r.Context())
+	last, err := h.backoffice.LastClosedCount(r.Context())
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"closedAt": at})
+	if last == nil {
+		JSON(w, http.StatusOK, map[string]any{"closedAt": nil, "id": nil})
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"closedAt": last.ClosedAt, "id": last.ID})
 }
 
 // PUT /stock/counts/{id}/lines/{ingredientId} — `{ countedQty }`.

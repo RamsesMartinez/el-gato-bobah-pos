@@ -39,6 +39,11 @@ export const ACTION_LABELS: Record<string, string> = {
   'expense.stock_corrected': 'Corrigió lo que llegó',
   'stock.counted': 'Cerró un conteo',
   'settings.costing_method': 'Cambió el costeo del almacén',
+  'waste.recorded': 'Se echó a perder',
+  'waste.approved': 'Aprobó lo que se echó a perder',
+  'waste.rejected': 'Rechazó lo que se echó a perder',
+  'waste.undone': 'Deshizo lo que se echó a perder',
+  'settings.waste_threshold': 'Cambió el tope de aprobación',
 };
 
 // Qué resta un producto (spec 037), con las palabras de la hoja de receta.

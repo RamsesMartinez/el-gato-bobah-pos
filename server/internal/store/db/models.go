@@ -892,6 +892,7 @@ type BusinessSetting struct {
 	AttendanceGraceOutMin     int16              `json:"attendance_grace_out_min"`
 	CostingMethod             string             `json:"costing_method"`
 	StockItemLabel            string             `json:"stock_item_label"`
+	WasteApprovalThreshold    *decimal.Decimal   `json:"waste_approval_threshold"`
 }
 
 type CandidatasDelAviso struct {
@@ -1802,13 +1803,15 @@ type StockCount struct {
 }
 
 type StockCountLine struct {
-	CountID      int64           `json:"count_id"`
-	CompanyID    int64           `json:"company_id"`
-	IngredientID int64           `json:"ingredient_id"`
-	CountedQty   decimal.Decimal `json:"counted_qty"`
-	SystemQty    decimal.Decimal `json:"system_qty"`
-	CapturedBy   int64           `json:"captured_by"`
-	CapturedAt   time.Time       `json:"captured_at"`
+	CountID        int64            `json:"count_id"`
+	CompanyID      int64            `json:"company_id"`
+	IngredientID   int64            `json:"ingredient_id"`
+	CountedQty     decimal.Decimal  `json:"counted_qty"`
+	SystemQty      decimal.Decimal  `json:"system_qty"`
+	CapturedBy     int64            `json:"captured_by"`
+	CapturedAt     time.Time        `json:"captured_at"`
+	LastMovementID *int64           `json:"last_movement_id"`
+	UnitCost       *decimal.Decimal `json:"unit_cost"`
 }
 
 type StockLevel struct {
@@ -1840,6 +1843,7 @@ type StockMovement struct {
 	ComponentOfProductID *int64            `json:"component_of_product_id"`
 	ExpenseItemID        *int64            `json:"expense_item_id"`
 	StockCountID         *int64            `json:"stock_count_id"`
+	WasteRecordID        *int64            `json:"waste_record_id"`
 }
 
 type Supplier struct {
@@ -1934,6 +1938,41 @@ type UserPreference struct {
 	Key       string    `json:"key"`
 	Value     []byte    `json:"value"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type WasteReason struct {
+	ID           int64              `json:"id"`
+	CompanyID    int64              `json:"company_id"`
+	Name         string             `json:"name"`
+	Description  string             `json:"description"`
+	IsStaffMeal  bool               `json:"is_staff_meal"`
+	ArchivedAt   pgtype.Timestamptz `json:"archived_at"`
+	MergedIntoID *int64             `json:"merged_into_id"`
+	CreatedBy    *int64             `json:"created_by"`
+	CreatedAt    time.Time          `json:"created_at"`
+}
+
+type WasteRecord struct {
+	ID               int64              `json:"id"`
+	CompanyID        int64              `json:"company_id"`
+	BranchID         int64              `json:"branch_id"`
+	ReasonID         int64              `json:"reason_id"`
+	ItemType         StockItemType      `json:"item_type"`
+	IngredientID     *int64             `json:"ingredient_id"`
+	ProductID        *int64             `json:"product_id"`
+	Quantity         decimal.Decimal    `json:"quantity"`
+	EnteredQty       decimal.Decimal    `json:"entered_qty"`
+	PresentationID   *int64             `json:"presentation_id"`
+	UnitCost         *decimal.Decimal   `json:"unit_cost"`
+	TotalCost        *decimal.Decimal   `json:"total_cost"`
+	IsStaffMeal      bool               `json:"is_staff_meal"`
+	Note             *string            `json:"note"`
+	Status           string             `json:"status"`
+	RecordedBy       int64              `json:"recorded_by"`
+	RecordedAt       time.Time          `json:"recorded_at"`
+	ResolvedBy       *int64             `json:"resolved_by"`
+	ResolvedAt       pgtype.Timestamptz `json:"resolved_at"`
+	CoveredByCountID *int64             `json:"covered_by_count_id"`
 }
 
 type WorkScheduleDay struct {

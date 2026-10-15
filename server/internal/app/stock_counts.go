@@ -154,12 +154,20 @@ func (s *BackofficeService) CaptureCount(ctx context.Context, countID, ingredien
 		if err != nil {
 			return err
 		}
-		system, err := q.OnHandInBranch(ctx, db.OnHandInBranchParams{IngredientID: &ingredientID, BranchID: c.BranchID})
+		// Lo que el sistema tiene y el último movimiento que lo formó, leídos con la existencia tomada:
+		// una merma o una venta en curso termina antes, y las dos cifras hablan del mismo momento. El
+		// periodo del faltante se ancla por ese id (spec 039, R2); sin el candado, una merma que
+		// confirmara a media captura quedaría fuera de lo que el conteo vio y se restaría dos veces.
+		if err := q.LockStockLevelForCapture(ctx, db.LockStockLevelForCaptureParams{IngredientID: ingredientID, BranchID: c.BranchID}); err != nil {
+			return err
+		}
+		seen, err := q.OnHandForCapture(ctx, db.OnHandForCaptureParams{IngredientID: ingredientID, BranchID: c.BranchID})
 		if err != nil {
 			return err
 		}
 		err = q.UpsertCountLine(ctx, db.UpsertCountLineParams{
-			CountID: countID, IngredientID: ingredientID, CountedQty: counted, SystemQty: system, CapturedBy: userID,
+			CountID: countID, IngredientID: ingredientID, CountedQty: counted, SystemQty: seen.OnHand, CapturedBy: userID,
+			LastMovementID: &seen.LastMovementID,
 		})
 		if isForeignKeyViolation(err) {
 			return domain.ErrNotFound // un insumo de otra empresa o que no existe
@@ -258,6 +266,14 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 		if _, err := q.FinishStockCount(ctx, db.FinishStockCountParams{ID: countID, Status: "closed", ClosedBy: &userID}); err != nil {
 			return err
 		}
+		// El costo de cada artículo contado, para que su faltante no cambie después; y las mermas por
+		// aprobar que este conteo ya reflejó (spec 039).
+		if err := q.SaveCountLineCosts(ctx, countID); err != nil {
+			return err
+		}
+		if err := coverPendingWaste(ctx, q, countID, c.BranchID); err != nil {
+			return err
+		}
 		// La vista previa dice cuánto sobraba o faltaba (decisión del dueño); con eso se puede volver a
 		// capturar lo que el sistema tenía. No se esconde: queda dicho cuántas cifras cambiaron después.
 		changed, err := q.CountChangedAfterPreview(ctx, countID)
@@ -283,15 +299,22 @@ func (s *BackofficeService) DiscardCount(ctx context.Context, countID, userID in
 }
 
 // LastClosedCount es cuándo se cerró el último conteo de la sucursal, o nil si nunca.
-func (s *BackofficeService) LastClosedCount(ctx context.Context) (*time.Time, error) {
-	at, err := s.store.QC(ctx).LastClosedStockCount(ctx)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !at.Valid) {
+func (s *BackofficeService) LastClosedCount(ctx context.Context) (*LastClosedCount, error) {
+	row, err := s.store.QC(ctx).LastClosedStockCount(ctx)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !row.ClosedAt.Valid) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &at.Time, nil
+	return &LastClosedCount{ID: row.ID, ClosedAt: row.ClosedAt.Time}, nil
+}
+
+// LastClosedCount es el último conteo cerrado de la sucursal: cuándo (lo usa la captura de compras)
+// y cuál (para abrir su faltante, spec 039).
+type LastClosedCount struct {
+	ID       int64
+	ClosedAt time.Time
 }
 
 // SetCountPlace fija el lugar del insumo que ordena el conteo («Refri»). No es un almacén: es en

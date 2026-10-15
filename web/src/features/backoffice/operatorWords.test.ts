@@ -41,3 +41,22 @@ test.each(PANTALLAS)('%s no usa palabras que quien opera no entendió', (file) =
   const malas = textosDePantalla(file).filter((t) => PROHIBIDAS.some((p) => p.test(t)));
   expect(malas, `textos con palabras que no se entendieron en la prueba sin contexto`).toEqual([]);
 });
+
+// FR-023 (spec 039): todo lo de la merma se llama «Se echó a perder» en pantalla; «merma», «ajuste»
+// y «kardex» son palabras de contabilidad. Solo se revisan los textos que se leen —los que llevan un
+// espacio o una mayúscula—: «merma» como llave de consulta o de medición es un nombre interno.
+const PANTALLAS_039 = [
+  'features/waste/WastePage.tsx',
+  'features/waste/PendingWasteBar.tsx',
+  'features/backoffice/WasteTab.tsx',
+  'features/backoffice/CountLossReport.tsx',
+  'features/admin/WasteSettings.tsx',
+  'app/nav.ts',
+];
+const PROHIBIDAS_039 = [/\bmermas?\b/i, /\bajustes?\b/i, /kardex/i, /movimiento/i, /existencia/i];
+
+test.each(PANTALLAS_039)('%s dice «Se echó a perder» y no palabras de contabilidad', (file) => {
+  const leidos = textosDePantalla(file).filter((t) => /\s/.test(t.trim()) || /[A-ZÁÉÍÓÚ]/.test(t));
+  const malas = leidos.filter((t) => PROHIBIDAS_039.some((p) => p.test(t)));
+  expect(malas, 'textos de pantalla con palabras de contabilidad').toEqual([]);
+});

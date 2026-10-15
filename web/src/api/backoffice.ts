@@ -923,7 +923,7 @@ export const backofficeApi = {
   previewCount: (id: number) => api.get<CountClose>(`/stock/counts/${id}/preview`),
   closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),
   discardCount: (id: number) => api.post<void>(`/stock/counts/${id}/discard`, {}),
-  lastClosedCount: () => api.get<{ closedAt: string | null }>('/stock/counts/last-closed'),
+  lastClosedCount: () => api.get<{ closedAt: string | null; id: number | null }>('/stock/counts/last-closed'),
   setCountPlace: (ingredientId: number, place: string | null) => api.put<void>(`/stock/ingredients/${ingredientId}/place`, { place }),
 
   // Extracción del documento → borrador. NO escribe nada: el operador confirma.

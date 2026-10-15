@@ -116,6 +116,100 @@ func (q *Queries) CountLines(ctx context.Context, countID int64) ([]CountLinesRo
 	return items, nil
 }
 
+const countLossLines = `-- name: CountLossLines :many
+select l.ingredient_id, i.name, u.code as base_unit_code, l.counted_qty, l.system_qty,
+       l.unit_cost, (prev.last_movement_id is not null and l.last_movement_id is not null)::bool as has_previous,
+       coalesce((select -sum(m.quantity) from stock_movements m
+                  where m.waste_record_id is not null and m.ingredient_id = l.ingredient_id
+                    and m.branch_id = c.branch_id
+                    and m.id > prev.last_movement_id and m.id <= l.last_movement_id), 0)::numeric(14,4) as registered
+  from stock_count_lines l
+  join stock_counts c on c.id = l.count_id
+  join ingredients i on i.id = l.ingredient_id
+  join units u on u.id = i.base_unit_id
+  left join lateral (
+    select pl.last_movement_id from stock_count_lines pl join stock_counts pc on pc.id = pl.count_id
+     where pc.status = 'closed' and pc.branch_id = c.branch_id and pc.id <> c.id
+       and pl.ingredient_id = l.ingredient_id and pl.captured_at < l.captured_at
+     order by pl.captured_at desc limit 1
+  ) prev on true
+ where l.count_id = $1 and c.status = 'closed'
+ order by i.name, l.ingredient_id
+`
+
+type CountLossLinesRow struct {
+	IngredientID int64            `json:"ingredient_id"`
+	Name         string           `json:"name"`
+	BaseUnitCode string           `json:"base_unit_code"`
+	CountedQty   decimal.Decimal  `json:"counted_qty"`
+	SystemQty    decimal.Decimal  `json:"system_qty"`
+	UnitCost     *decimal.Decimal `json:"unit_cost"`
+	HasPrevious  bool             `json:"has_previous"`
+	Registered   decimal.Decimal  `json:"registered"`
+}
+
+// El faltante de un conteo cerrado, por insumo: lo contado, lo que el sistema tenía, su costo al
+// cerrar, y la merma que restó entre lo que vio el conteo anterior de ese insumo y lo que vio
+// éste. Sin conteo anterior comparable (`has_previous` falso), no hay periodo.
+func (q *Queries) CountLossLines(ctx context.Context, countID int64) ([]CountLossLinesRow, error) {
+	rows, err := q.db.Query(ctx, countLossLines, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountLossLinesRow{}
+	for rows.Next() {
+		var i CountLossLinesRow
+		if err := rows.Scan(
+			&i.IngredientID,
+			&i.Name,
+			&i.BaseUnitCode,
+			&i.CountedQty,
+			&i.SystemQty,
+			&i.UnitCost,
+			&i.HasPrevious,
+			&i.Registered,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countedLinesSince = `-- name: CountedLinesSince :many
+select ingredient_id, captured_at from stock_count_lines where count_id = $1
+`
+
+type CountedLinesSinceRow struct {
+	IngredientID int64     `json:"ingredient_id"`
+	CapturedAt   time.Time `json:"captured_at"`
+}
+
+// Los insumos que capturó un conteo y cuándo, para cubrir las mermas por aprobar que vio.
+func (q *Queries) CountedLinesSince(ctx context.Context, countID int64) ([]CountedLinesSinceRow, error) {
+	rows, err := q.db.Query(ctx, countedLinesSince, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountedLinesSinceRow{}
+	for rows.Next() {
+		var i CountedLinesSinceRow
+		if err := rows.Scan(&i.IngredientID, &i.CapturedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const currentStockCount = `-- name: CurrentStockCount :one
 select id, opened_at, opened_by from stock_counts where status = 'open' and branch_id = current_branch_id()
 `
@@ -198,18 +292,23 @@ func (q *Queries) InsertCountMovement(ctx context.Context, arg InsertCountMoveme
 }
 
 const lastClosedStockCount = `-- name: LastClosedStockCount :one
-select closed_at from stock_counts
+select id, closed_at from stock_counts
  where status = 'closed' and branch_id = current_branch_id()
  order by closed_at desc limit 1
 `
 
+type LastClosedStockCountRow struct {
+	ID       int64              `json:"id"`
+	ClosedAt pgtype.Timestamptz `json:"closed_at"`
+}
+
 // Sin `max()`: sobre ningún conteo devuelve NULL y el scan a un tipo no nulable truena. Sin filas
 // es «nunca se ha cerrado uno».
-func (q *Queries) LastClosedStockCount(ctx context.Context) (pgtype.Timestamptz, error) {
+func (q *Queries) LastClosedStockCount(ctx context.Context) (LastClosedStockCountRow, error) {
 	row := q.db.QueryRow(ctx, lastClosedStockCount)
-	var closed_at pgtype.Timestamptz
-	err := row.Scan(&closed_at)
-	return closed_at, err
+	var i LastClosedStockCountRow
+	err := row.Scan(&i.ID, &i.ClosedAt)
+	return i, err
 }
 
 const lockStockCount = `-- name: LockStockCount :one
@@ -228,6 +327,26 @@ func (q *Queries) LockStockCount(ctx context.Context, id int64) (LockStockCountR
 	var i LockStockCountRow
 	err := row.Scan(&i.ID, &i.BranchID, &i.Status)
 	return i, err
+}
+
+const lockStockLevelForCapture = `-- name: LockStockLevelForCapture :exec
+select 1 from stock_levels
+ where item_type = 'ingrediente' and ingredient_id = $1::bigint and branch_id = $2::bigint
+   for share
+`
+
+type LockStockLevelForCaptureParams struct {
+	IngredientID int64 `json:"ingredient_id"`
+	BranchID     int64 `json:"branch_id"`
+}
+
+// Toma la existencia del insumo antes de leerla: una merma o una venta en curso termina antes. Va
+// en una sentencia APARTE de la lectura: en una sola, Postgres relee la fila esperada pero el resto
+// de la consulta sale de la foto tomada antes de esperar, y el último movimiento quedaba viejo (la
+// merma que acababa de confirmar caía fuera del periodo del faltante).
+func (q *Queries) LockStockLevelForCapture(ctx context.Context, arg LockStockLevelForCaptureParams) error {
+	_, err := q.db.Exec(ctx, lockStockLevelForCapture, arg.IngredientID, arg.BranchID)
+	return err
 }
 
 const lockStockLevelsInBranchNowait = `-- name: LockStockLevelsInBranchNowait :many
@@ -306,6 +425,34 @@ func (q *Queries) NotCountedIngredients(ctx context.Context, countID int64) ([]N
 	return items, nil
 }
 
+const onHandForCapture = `-- name: OnHandForCapture :one
+select coalesce((select sl.on_hand from stock_levels sl
+                  where sl.item_type = 'ingrediente' and sl.ingredient_id = $1::bigint
+                    and sl.branch_id = $2::bigint), 0)::numeric(14,4) as on_hand,
+       coalesce((select max(sm.id) from stock_movements sm
+                  where sm.ingredient_id = $1::bigint
+                    and sm.branch_id = $2::bigint), 0)::bigint as last_movement_id
+`
+
+type OnHandForCaptureParams struct {
+	IngredientID int64 `json:"ingredient_id"`
+	BranchID     int64 `json:"branch_id"`
+}
+
+type OnHandForCaptureRow struct {
+	OnHand         decimal.Decimal `json:"on_hand"`
+	LastMovementID int64           `json:"last_movement_id"`
+}
+
+// Lo que el sistema tiene del insumo y el último movimiento que lo formó, en la misma foto (spec
+// 039, R2): el periodo del faltante se ancla por ese id y no por hora.
+func (q *Queries) OnHandForCapture(ctx context.Context, arg OnHandForCaptureParams) (OnHandForCaptureRow, error) {
+	row := q.db.QueryRow(ctx, onHandForCapture, arg.IngredientID, arg.BranchID)
+	var i OnHandForCaptureRow
+	err := row.Scan(&i.OnHand, &i.LastMovementID)
+	return i, err
+}
+
 const onHandInBranch = `-- name: OnHandInBranch :one
 select coalesce((select on_hand from stock_levels
                   where item_type = 'ingrediente' and ingredient_id = $1
@@ -345,6 +492,18 @@ func (q *Queries) OpenStockCount(ctx context.Context, openedBy int64) (OpenStock
 	return i, err
 }
 
+const saveCountLineCosts = `-- name: SaveCountLineCosts :exec
+update stock_count_lines l set unit_cost = i.current_cost
+  from ingredients i where l.count_id = $1 and i.id = l.ingredient_id
+`
+
+// Al cerrar, el costo de cada insumo contado: el reporte del faltante de este conteo no cambia
+// cuando después cambia el costo (spec 039, revisión de arquitectura).
+func (q *Queries) SaveCountLineCosts(ctx context.Context, countID int64) error {
+	_, err := q.db.Exec(ctx, saveCountLineCosts, countID)
+	return err
+}
+
 const setCountPlace = `-- name: SetCountPlace :execrows
 update ingredients set count_place = $1, updated_at = now() where id = $2
 `
@@ -363,22 +522,25 @@ func (q *Queries) SetCountPlace(ctx context.Context, arg SetCountPlaceParams) (i
 }
 
 const upsertCountLine = `-- name: UpsertCountLine :exec
-insert into stock_count_lines (count_id, ingredient_id, counted_qty, system_qty, captured_by)
-values ($1, $2, $3, $4, $5)
+insert into stock_count_lines (count_id, ingredient_id, counted_qty, system_qty, captured_by, last_movement_id)
+values ($1, $2, $3, $4, $5,
+        $6)
 on conflict (count_id, ingredient_id) do update
    set counted_qty = excluded.counted_qty, system_qty = excluded.system_qty,
-       captured_by = excluded.captured_by, captured_at = now()
+       captured_by = excluded.captured_by, captured_at = now(), last_movement_id = excluded.last_movement_id
 `
 
 type UpsertCountLineParams struct {
-	CountID      int64           `json:"count_id"`
-	IngredientID int64           `json:"ingredient_id"`
-	CountedQty   decimal.Decimal `json:"counted_qty"`
-	SystemQty    decimal.Decimal `json:"system_qty"`
-	CapturedBy   int64           `json:"captured_by"`
+	CountID        int64           `json:"count_id"`
+	IngredientID   int64           `json:"ingredient_id"`
+	CountedQty     decimal.Decimal `json:"counted_qty"`
+	SystemQty      decimal.Decimal `json:"system_qty"`
+	CapturedBy     int64           `json:"captured_by"`
+	LastMovementID *int64          `json:"last_movement_id"`
 }
 
-// Recapturar manda: la lectura nueva reemplaza cifra y lo que había en el sistema.
+// Recapturar manda: la lectura nueva reemplaza cifra, lo que había en el sistema y su último
+// movimiento.
 func (q *Queries) UpsertCountLine(ctx context.Context, arg UpsertCountLineParams) error {
 	_, err := q.db.Exec(ctx, upsertCountLine,
 		arg.CountID,
@@ -386,6 +548,7 @@ func (q *Queries) UpsertCountLine(ctx context.Context, arg UpsertCountLineParams
 		arg.CountedQty,
 		arg.SystemQty,
 		arg.CapturedBy,
+		arg.LastMovementID,
 	)
 	return err
 }

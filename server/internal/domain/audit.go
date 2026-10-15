@@ -73,6 +73,13 @@ var auditActions = []struct {
 	{AuditExpenseStockCorrected, AuditGroupCash},
 	{AuditStockCounted, AuditGroupCancel},
 	{AuditSettingsCostingMethod, AuditGroupPrice},
+	// Lo que se echó a perder (spec 039): con lo dado por perdido. El tope de aprobación, con los
+	// precios, como el método de costeo.
+	{AuditWasteRecorded, AuditGroupCancel},
+	{AuditWasteApproved, AuditGroupCancel},
+	{AuditWasteRejected, AuditGroupCancel},
+	{AuditWasteUndone, AuditGroupCancel},
+	{AuditSettingsWasteThreshold, AuditGroupPrice},
 }
 
 // AuditProductConsumptionMode: cambió qué resta un producto al venderse.
@@ -87,6 +94,16 @@ const (
 	AuditStockCounted AuditAction = "stock.counted"
 	// AuditSettingsCostingMethod: cambió el método de costeo o la palabra del almacén.
 	AuditSettingsCostingMethod AuditAction = "settings.costing_method"
+	// AuditWasteRecorded: se registró algo que se echó a perder (restó o quedó por aprobar).
+	AuditWasteRecorded AuditAction = "waste.recorded"
+	// AuditWasteApproved: se aprobó una merma que pasaba el tope, y restó.
+	AuditWasteApproved AuditAction = "waste.approved"
+	// AuditWasteRejected: se rechazó una merma por aprobar; nunca restó.
+	AuditWasteRejected AuditAction = "waste.rejected"
+	// AuditWasteUndone: se deshizo una merma y volvió lo que había restado.
+	AuditWasteUndone AuditAction = "waste.undone"
+	// AuditSettingsWasteThreshold: cambió el tope a partir del cual una merma espera aprobación.
+	AuditSettingsWasteThreshold AuditAction = "settings.waste_threshold"
 )
 
 // AllAuditActions devuelve la lista blanca de acciones, en orden fijo.

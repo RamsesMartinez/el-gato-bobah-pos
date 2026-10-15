@@ -18,17 +18,20 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 	// menú y el almacén; dárselos a un cajero le dejaría mover existencias desde la hoja de receta.
 	// Recibir compras, configurar el almacén y contar (spec 038) mueven lo guardado y el costo de los
 	// insumos: tampoco son de quien opera la caja.
+	// Registrar lo que se echó a perder (spec 039) lo hace cualquiera del local (decisión del 9-oct);
+	// aprobar la merma que pasa el tope, solo quien revisa.
 	gerente := []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 		PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
-		PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount}
+		PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount,
+		PermInventoryWriteOff, PermInventoryWriteOffApprove}
 	cases := []struct {
 		role Role
 		want []Permission
 	}{
 		{RoleAdmin, all},
 		{RoleGerente, gerente},
-		{RoleCajero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending}},
-		{RoleMesero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending}},
+		{RoleCajero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}},
+		{RoleMesero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}},
 		{Role("dueño"), nil},
 		{Role(""), nil},
 	}
@@ -55,22 +58,24 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 // empresa, «gerente» puede no existir, y un texto que lo nombre manda a buscar a alguien que no hay.
 func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 	want := map[Permission]string{
-		PermPaymentsVoid:            "Tu usuario no puede devolver pagos",
-		PermOrdersCancel:            "Tu usuario no puede cancelar pedidos",
-		PermOrdersMoveLines:         "Tu usuario no puede pasar productos",
-		PermOrdersCancelPending:     "Tu usuario no puede quitar productos",
-		PermAttendanceConfigure:     "Tu usuario no puede configurar la asistencia",
-		PermAttendanceReport:        "Tu usuario no puede ver la asistencia del personal",
-		PermAttendanceCorrectOthers: "Tu usuario no puede corregir la asistencia de otras personas",
-		PermAttendanceCorrectOwn:    "Tu usuario no puede corregir su propia asistencia",
-		PermAuditView:               "Tu usuario no puede ver la bitácora",
-		PermPaymentsChangeTerminal:  "Tu usuario no puede cambiar la terminal de un pago",
-		PermCashConfigure:           "Tu usuario no puede configurar la caja",
-		PermInventoryHealthView:     "Tu usuario no puede ver la salud del inventario",
-		PermMenuConfigure:           "Tu usuario no puede configurar el menú",
-		PermInventoryReceive:        "Tu usuario no puede registrar lo que llega al almacén",
-		PermInventoryConfigure:      "Tu usuario no puede configurar el almacén",
-		PermInventoryCount:          "Tu usuario no puede contar el almacén",
+		PermPaymentsVoid:             "Tu usuario no puede devolver pagos",
+		PermOrdersCancel:             "Tu usuario no puede cancelar pedidos",
+		PermOrdersMoveLines:          "Tu usuario no puede pasar productos",
+		PermOrdersCancelPending:      "Tu usuario no puede quitar productos",
+		PermAttendanceConfigure:      "Tu usuario no puede configurar la asistencia",
+		PermAttendanceReport:         "Tu usuario no puede ver la asistencia del personal",
+		PermAttendanceCorrectOthers:  "Tu usuario no puede corregir la asistencia de otras personas",
+		PermAttendanceCorrectOwn:     "Tu usuario no puede corregir su propia asistencia",
+		PermAuditView:                "Tu usuario no puede ver la bitácora",
+		PermPaymentsChangeTerminal:   "Tu usuario no puede cambiar la terminal de un pago",
+		PermCashConfigure:            "Tu usuario no puede configurar la caja",
+		PermInventoryHealthView:      "Tu usuario no puede ver la salud del inventario",
+		PermMenuConfigure:            "Tu usuario no puede configurar el menú",
+		PermInventoryReceive:         "Tu usuario no puede registrar lo que llega al almacén",
+		PermInventoryConfigure:       "Tu usuario no puede configurar el almacén",
+		PermInventoryCount:           "Tu usuario no puede contar el almacén",
+		PermInventoryWriteOff:        "Tu usuario no puede registrar lo que se echó a perder",
+		PermInventoryWriteOffApprove: "Tu usuario no puede aprobar lo que se echó a perder",
 	}
 	for _, p := range AllPermissions() {
 		msg := PermissionDeniedMessage(p)

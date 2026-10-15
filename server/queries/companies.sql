@@ -30,6 +30,17 @@ with company as (
   -- Y con los conceptos de salida frecuentes (punto 3).
   insert into cash_concepts (company_id, name)
   select c.id, n.name from company c cross join (values ('Basura'), ('Hielo'), ('Vigilancia'), ('Insumos')) as n(name)
+), waste_reasons_seed as (
+  -- Y con los motivos sugeridos de lo que se echa a perder (spec 039), los mismos que la 0094
+  -- sembró a las empresas que ya existían. La empresa los renombra o archiva.
+  insert into waste_reasons (company_id, name, description, is_staff_meal)
+  select c.id, r.name, r.description, r.is_staff_meal from company c cross join (values
+    ('Caducó',               'Pasó su fecha o se echó a perder guardado', false),
+    ('Se cayó',              'Un accidente al servir o al moverlo',         false),
+    ('Mal preparado',        'Salió mal y no se pudo vender',               false),
+    ('Prueba de receta',     'Lo que se usó para probar una receta',        false),
+    ('Consumo del personal', 'Lo que se toma o se come el equipo',          true)
+  ) as r(name, description, is_staff_meal)
 )
 select * from company;
 

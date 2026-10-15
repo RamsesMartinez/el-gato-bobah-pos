@@ -15,10 +15,11 @@ import { PresentationsSheet, type PresentationsIngredient } from './Presentation
 import { formatBaseQty } from '../../shared/units';
 import { PendingReceiptsTab } from './PendingReceiptsTab';
 import { StockCountTab } from './StockCountTab';
+import { WasteTab } from './WasteTab';
 import { posApi } from '../../api/pos';
 
 // El orden lo fijó el plan del 038: Existencias · Movimientos · Insumos · Por recibir · Conteo · Salud.
-const TABS = ['existencias', 'movimientos', 'insumos', 'por-recibir', 'conteo', 'salud'] as const;
+const TABS = ['existencias', 'movimientos', 'insumos', 'por-recibir', 'conteo', 'merma', 'salud'] as const;
 type Tab = (typeof TABS)[number];
 
 export function StockPage() {
@@ -41,7 +42,7 @@ export function StockPage() {
   // ?tab=insumos&open=N. Un valor desconocido cae a la primera pestaña, nunca a una que no existe.
   const [params, setParams] = useSearchParams();
   const asked = params.get('tab') as Tab | null;
-  const allowed = (t: Tab) => (t !== 'salud' || canHealth) && (t !== 'por-recibir' || canReceive) && (t !== 'conteo' || canCount);
+  const allowed = (t: Tab) => ((t !== 'salud' && t !== 'merma') || canHealth) && (t !== 'por-recibir' || canReceive) && (t !== 'conteo' || canCount);
   const tab: Tab = asked && TABS.includes(asked) && allowed(asked) ? asked : 'existencias';
   const settings = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const pending = useQuery({ queryKey: ['stock', 'pending-receipts'], queryFn: backofficeApi.pendingReceipts, enabled: canReceive });
@@ -66,7 +67,8 @@ export function StockPage() {
       <Heading size="lg" mb={4}>Almacén</Heading>
       <Tabs.Root value={tab} onValueChange={(e) => setParams({ tab: e.value }, { replace: true })}
         display="flex" flexDirection="column" flex="1" minH={0}>
-        <Tabs.List>
+        {/* Con «Se echó a perder» son siete: la fila se desplaza a lo ancho antes que salirse de 1024 px. */}
+        <Tabs.List overflowX="auto" flexShrink={0}>
           <Tabs.Trigger value="existencias" minH="44px">Existencias</Tabs.Trigger>
           <Tabs.Trigger value="movimientos" minH="44px">Movimientos</Tabs.Trigger>
           <Tabs.Trigger value="insumos" minH="44px">{itemsTab}</Tabs.Trigger>
@@ -76,6 +78,7 @@ export function StockPage() {
             </Tabs.Trigger>
           )}
           {canCount && <Tabs.Trigger value="conteo" minH="44px">Conteo</Tabs.Trigger>}
+          {canHealth && <Tabs.Trigger value="merma" minH="44px" flexShrink={0}>Se echó a perder</Tabs.Trigger>}
           {canHealth && <Tabs.Trigger value="salud" minH="44px">Salud</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
@@ -177,6 +180,11 @@ export function StockPage() {
         {canCount && (
           <Tabs.Content value="conteo" px={0} flex="1" minH={0} display="flex" flexDirection="column">
             {tab === 'conteo' && <StockCountTab />}
+          </Tabs.Content>
+        )}
+        {canHealth && (
+          <Tabs.Content value="merma" px={0} flex="1" minH={0} display="flex" flexDirection="column">
+            {tab === 'merma' && <WasteTab />}
           </Tabs.Content>
         )}
         {canHealth && (

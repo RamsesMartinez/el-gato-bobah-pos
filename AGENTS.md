@@ -426,6 +426,19 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **El «lugar» de un insumo no es un almacén**: solo ordena el conteo. Más de un almacén por
     sucursal es una puerta del principio VIII (issue #65). Las compras todavía no guardan sucursal:
     con dos y sin selector, «Por recibir» responde `BRANCH_AMBIGUOUS`.
+- **Lo que se echó a perder** (spec 039, 0094). Cuatro cosas que no se ven:
+  - **El periodo del faltante se cuenta por id de movimiento, no por hora.** Al capturar un artículo,
+    el conteo toma su existencia (`for share`) y DESPUÉS, en otra sentencia, lee lo que había y el
+    último movimiento (`last_movement_id`). En una sola consulta, Postgres relee la fila esperada pero
+    el resto sale de la foto vieja, y una merma que confirmaba a media captura se restaba dos veces.
+  - **La merma registrada YA restó de lo que el sistema tenía**: lo que el conteo encuentra de menos es
+    lo sin explicar tal cual (`domain.SplitLoss`). Restarle otra vez la merma la cuenta dos veces.
+  - **Juntar motivos no reescribe `reason_id`**: el reporte sigue `merged_into_id` (un nivel). La marca
+    «no cuenta como pérdida» se copia al registro; cambiarla en el motivo no reclasifica el pasado.
+  - **Las horas de la merma son de la base** (`recorded_at`, `DBNow`): se comparan con `captured_at`
+    del conteo, que también pone la base. Con el reloj de la API se mezclarían dos relojes. Y
+    `CreateCompany` siembra los motivos: una prueba que baje el esquema debajo de la 0094 crea sus
+    empresas ANTES de bajarlo.
 - **Asistencia y bitácora de auditoría** (spec 033, 0089). Cinco cosas que no se ven:
   - **Todo camino nuevo que mueva dinero, caja, precios o asistencia escribe su evento** con
     `recordAudit` (o `auditOrder` / `auditCash`) **dentro de su transacción**, y su acción va en la

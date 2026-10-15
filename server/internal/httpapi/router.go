@@ -285,6 +285,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/business-settings", h.UpdateBusinessSettings)
 				// Costeo y palabra del almacén (spec 038): por permiso y aparte de los datos fiscales.
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/inventory", h.UpdateInventorySettings)
+				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/waste-threshold", h.SetWasteThreshold)
 				// ¿hay caja abierta? aviso del POS — cualquier rol autenticado (incl. mesero); no es dato sensible
 				r.Get("/cash-status", h.CashStatus)
 				// caja: la opera el cajero; excluye al mesero para que no cierre cortes ajenos
@@ -404,6 +405,33 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/supplier-items", h.SupplierItems)
 					r.Delete("/supplier-items/{id}", h.ForgetSupplierItem)
 				})
+				// Lo que se echó a perder (spec 039): por permiso y fuera de todo grupo por rol. Registrar
+				// lo hace cualquiera del local; aprobar, quien revisa; los motivos y el tope, quien configura.
+				r.Route("/waste", func(r chi.Router) {
+					r.With(RequirePermission(h.permissions, domain.PermInventoryWriteOff)).Group(func(r chi.Router) {
+						r.Get("/reasons", h.WasteReasons)
+						r.Get("/items", h.WasteItems)
+						r.Post("/reasons", h.CreateWasteReason)
+						r.Post("/", h.RecordWaste)
+						r.Get("/today", h.WasteToday)
+						// Deshacer la propia; la de otro la decide el servicio con el permiso de configurar.
+						r.Post("/{id}/undo", h.UndoWaste)
+					})
+					// La pestaña de Almacén y el reporte por motivo: quien ve la salud del inventario.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/", h.ListWaste)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/by-reason", h.WasteByReason)
+					// Administrar motivos: quien configura el almacén.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Group(func(r chi.Router) {
+						r.Get("/reasons/all", h.AllWasteReasons)
+						r.Put("/reasons/{id}", h.UpdateWasteReason)
+						r.Post("/reasons/{id}/merge", h.MergeWasteReason)
+					})
+					r.With(RequirePermission(h.permissions, domain.PermInventoryWriteOffApprove)).Group(func(r chi.Router) {
+						r.Get("/pending", h.PendingWaste)
+						r.Post("/{id}/approve", h.ApproveWaste)
+						r.Post("/{id}/reject", h.RejectWaste)
+					})
+				})
 				// inventario: ajustes/mermas los hace gerencia
 				r.Route("/stock", func(r chi.Router) {
 					// Salud del inventario (spec 037): por permiso y FUERA del grupo por rol. Dentro, el
@@ -411,6 +439,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// empresa con el permiso rebotaría (constitución, «Roles: modelo híbrido»).
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health", h.GetInventoryHealth)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health.csv", h.ExportInventoryHealth)
+					// El faltante de un conteo (spec 039): lo lee quien ve la salud del inventario.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/counts/{id}/loss", h.CountLoss)
 					// Empaques de compra (spec 038): por permiso y fuera del grupo por rol, igual que la salud.
 					// Leerlos es de quien registra compras; cambiarlos, de quien configura el almacén.
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/presentations", h.ListPresentations)
