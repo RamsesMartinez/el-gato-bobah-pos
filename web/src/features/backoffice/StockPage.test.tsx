@@ -11,7 +11,14 @@ import { StockPage } from './StockPage';
 const back = vi.hoisted(() => ({
   stockLevels: vi.fn(() => Promise.resolve({ items: [] })),
   stockMovements: vi.fn(() => Promise.resolve({ items: [] })),
-  units: vi.fn(() => Promise.resolve({ items: [] })),
+  units: vi.fn(() => Promise.resolve({ items: [
+    { id: 3, code: 'ml', name: 'Mililitro', kind: 'volumen', toBase: '1' },
+    { id: 7, code: 'l', name: 'Litro', kind: 'volumen', toBase: '1000' },
+  ] })),
+  presentations: vi.fn(() => Promise.resolve([
+    { id: 5, ingredientId: 2, name: 'Botella', qtyInBase: '750', baseUnitCode: 'ml', active: true, approximate: false, purchaseUnitId: null },
+    { id: 6, ingredientId: 2, name: 'Garrafa', qtyInBase: '5000', baseUnitCode: 'ml', active: false, approximate: false, purchaseUnitId: null },
+  ])),
   ingredients: vi.fn(() => Promise.resolve({
     items: [
       { id: 1, name: 'Azúcar', onHand: '1200', baseUnitCode: 'g', baseUnitKind: 'masa', baseUnitId: 1, isPrep: false, compositionStatus: '' },
@@ -103,5 +110,27 @@ describe('Almacén › pestañas', () => {
     montar('/almacen?tab=insumos&open=2');
     expect(await screen.findByText('Para prepararlo se usa:')).toBeInTheDocument();
     expect(admin.composition).toHaveBeenCalledWith('ingredient', 2);
+  });
+
+  // Cómo llega cada insumo (spec 038, maqueta «Cómo llega un insumo», opción B): a la vista en la
+  // lista, para ver de un vistazo cuál no tiene empaque.
+  it('con el permiso de compras, cada insumo dice cómo llega y se puede cambiar', async () => {
+    sesion(['inventory.receive', 'inventory.configure']);
+    montar('/almacen?tab=insumos');
+    const jarabe = (await screen.findByText('Jarabe natural')).closest('tr')!;
+    expect(await screen.findByText('Botella · 750 ml')).toBeInTheDocument();
+    expect(jarabe).toHaveTextContent('Ya no llega en: Garrafa');
+    const azucar = screen.getByText('Azúcar').closest('tr')!;
+    expect(azucar).toHaveTextContent('Todavía no dices cómo llega');
+    fireEvent.click(screen.getByRole('button', { name: 'Cómo llega Jarabe natural' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Cómo llega Jarabe natural');
+  });
+
+  it('sin el permiso de compras no se pide ni se muestra la columna', async () => {
+    sesion([]);
+    montar('/almacen?tab=insumos');
+    await screen.findByText('Jarabe natural');
+    expect(screen.queryByText('Cómo llega')).toBeNull();
+    expect(back.presentations).not.toHaveBeenCalled();
   });
 });

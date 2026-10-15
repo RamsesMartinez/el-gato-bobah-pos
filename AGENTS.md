@@ -394,6 +394,22 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `can()` en el front), no por nombre de rol: los roles serán de cada empresa (constitución,
     principio VIII). La migración 0079 se niega a bajar en cuanto hay un cobro nuevo; tras
     desplegarla, el rollback es restaurar el respaldo.
+- **Compras al almacén, por recibir y conteo** (spec 038, 0091/0092). Cinco cosas que no se ven:
+  - **El almacén se mueve por diferencia, nunca editando un movimiento.** Cada renglón de compra
+    guarda en `applied_qty_base` lo que ya sumó; recibir, corregir, quitar (`voided_at`) y anular
+    calculan lo que debería haber sumado e insertan solo la diferencia (`domain.PlanStockLines`).
+    Un camino nuevo que toque lo recibido pasa por `applyStockLines`, o duplica o pierde mercancía.
+  - **Los insumos se toman sin esperar, ANTES de escribir** (`lockIngredients`, `for no key update
+    nowait`): la llave foránea del renglón tomaría el insumo y esperaría a una venta. Una venta en
+    curso responde 409 «vuelve a intentar», no una espera. `no key update` y no `update`: así la
+    compra no frena la llave foránea de los movimientos de la venta.
+  - **`ValidQty` rechaza el cero**, y lo recibido («todavía no llega») y lo contado («no hay») lo
+    usan a menudo: para eso está `domain.ValidStockQtyOrZero`. Usar `ValidQty` ahí responde 400.
+  - **El conteo ajusta contra lo que había AL CAPTURAR**, no al cerrar: lo vendido mientras se cuenta
+    queda restado. Lo no contado no se toca. Mientras está abierto, lo que el sistema tiene no viaja.
+  - **El «lugar» de un insumo no es un almacén**: solo ordena el conteo. Más de un almacén por
+    sucursal es una puerta del principio VIII (issue #65). Las compras todavía no guardan sucursal:
+    con dos y sin selector, «Por recibir» responde `BRANCH_AMBIGUOUS`.
 - **Asistencia y bitácora de auditoría** (spec 033, 0089). Cinco cosas que no se ven:
   - **Todo camino nuevo que mueva dinero, caja, precios o asistencia escribe su evento** con
     `recordAudit` (o `auditOrder` / `auditCash`) **dentro de su transacción**, y su acción va en la

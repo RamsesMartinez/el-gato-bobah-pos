@@ -37,6 +37,12 @@ const ACCIONES: Record<string, string> = {
   'registrar-gasto': 'Registrar gasto',
   'ver-salud': 'Ver salud del inventario',
   'exportar-salud': 'Exportar salud del inventario',
+  'registrar-compra': 'Registrar compra al almacén',
+  'corregir-compra': 'Corregir lo que llegó',
+  'ver-por-recibir': 'Ver por recibir',
+  recibir: 'Recibir',
+  'ver-conteo': 'Ver conteo',
+  'cerrar-conteo': 'Cerrar conteo',
 };
 
 // etiquetaDePantalla y etiquetaDeAccion caen al slug si no lo conocen.

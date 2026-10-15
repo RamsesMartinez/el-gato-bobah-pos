@@ -20,7 +20,8 @@ select i.id, i.name, i.is_active, i.track_stock, i.is_packaging, i.min_stock,
        i.current_cost, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
        ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
        i.is_prep, i.composition_status,
-       (select count(*) from recipe_items ri where ri.ingredient_id = i.id)::int as recipe_uses
+       (select count(*) from recipe_items ri where ri.ingredient_id = i.id)::int as recipe_uses,
+       i.count_place
 from ingredients i
 join units u on u.id = i.base_unit_id
 left join ingredient_categories ic on ic.id = i.category_id
@@ -38,13 +39,6 @@ values ($1, $2, $3, $4, coalesce(sqlc.narg('track_stock')::boolean, true), coale
 -- Devuelve los valores REALES tras aplicar los defaults: con un returning parcial la respuesta
 -- reportaba track_stock=false cuando en la base había quedado true.
 returning id, name, base_unit_id, is_active, track_stock, is_packaging, min_stock, current_cost;
-
--- name: UpdateIngredient :one
-update ingredients
-set name = $2, base_unit_id = $3, category_id = $4, min_stock = $5,
-    track_stock = $6, is_packaging = $7, is_active = $8, updated_at = now()
-where id = $1
-returning id, name, base_unit_id, is_active;
 
 -- name: GetIngredientUnit :one
 -- El kind y el factor de la unidad base de un artículo: lo que domain.BaseQty necesita para
@@ -87,3 +81,31 @@ select exists (
    where regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
        = regexp_replace(translate(lower(trim(sqlc.arg(name)::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
 )::bool;
+
+-- name: ListPresentations :many
+-- Empaques de compra (spec 038), los activos primero. Sin filtro, todos los de la empresa: la
+-- columna «Cómo llega» los pinta de una vez en vez de pedirlos insumo por insumo.
+select p.id, p.ingredient_id, p.name, p.qty_in_base, p.active, p.is_approximate, p.purchase_unit_id,
+       u.code as base_unit_code, u.kind as base_unit_kind
+from ingredient_presentations p
+join ingredients i on i.id = p.ingredient_id
+join units u on u.id = i.base_unit_id
+where (sqlc.narg('ingredient_id')::bigint is null or p.ingredient_id = sqlc.narg('ingredient_id'))
+order by p.ingredient_id, p.active desc, p.name, p.id;
+
+-- name: CreatePresentation :one
+insert into ingredient_presentations (ingredient_id, name, qty_in_base, purchase_unit_id, is_approximate)
+values ($1, $2, $3, $4, $5)
+returning id;
+
+-- name: UpdatePresentation :execrows
+update ingredient_presentations
+set name = $2, qty_in_base = $3, purchase_unit_id = $4, is_approximate = $5, active = $6
+where id = $1;
+
+-- name: GetPresentationIngredient :one
+-- El insumo y el estado actual: editar sin mandar `active` conserva el que tiene.
+select ingredient_id, active from ingredient_presentations where id = $1;
+
+-- name: GetUnit :one
+select id, code, name, kind, to_base from units where id = $1;

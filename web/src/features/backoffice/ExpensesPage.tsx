@@ -51,14 +51,18 @@ export function ExpensesPage() {
 // ---- Tab: gastos (registrar, listar, pagar, cancelar) ----
 function GastosTab() {
   const qc = useQueryClient();
-  const [filter, setFilter] = useState<ExpenseStatus | ''>('');
+  // 'por-llegar' no es un estado de pago: son las compras con algo que no ha llegado (spec 038).
+  const [filter, setFilter] = useState<ExpenseStatus | '' | 'por-llegar'>('');
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<ExpenseSort>('date');
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const pageSize = 20;
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', filter, page, sort, dir],
-    queryFn: () => backofficeApi.expenses({ status: filter || undefined, page, pageSize, sort, dir }),
+    queryFn: () => backofficeApi.expenses({
+      status: filter && filter !== 'por-llegar' ? filter : undefined, pending: filter === 'por-llegar' || undefined,
+      page, pageSize, sort, dir,
+    }),
     placeholderData: (prev) => prev, // sin parpadeo al cambiar de página
   });
   const { data: methods } = useQuery({ queryKey: ['payment-methods'], queryFn: posApi.paymentMethods });
@@ -81,7 +85,7 @@ function GastosTab() {
     onError: (e) => toaster.create({ title: 'No se pudo cancelar', description: String(e), type: 'error' }),
   });
 
-  const setFilterReset = (f: ExpenseStatus | '') => { setFilter(f); setPage(0); };
+  const setFilterReset = (f: ExpenseStatus | '' | 'por-llegar') => { setFilter(f); setPage(0); };
   // Orden por columna: 1er clic ordena (texto asc / fecha e importe desc); reclics alternan.
   const onSort = (col: ExpenseSort, numeric = false) => {
     if (sort === col) setDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -97,8 +101,8 @@ function GastosTab() {
       {/* Cabecera: filtros por estado + acción principal (la tabla es la protagonista) */}
       <HStack justify="space-between" flexWrap="wrap" gap={3}>
         <HStack gap={2} flexWrap="wrap">
-          {([['', 'Todos'], ['pendiente', 'Pendientes'], ['pagada', 'Pagadas'], ['cancelada', 'Canceladas']] as const).map(([v, label]) => (
-            <Button key={v} size="sm" variant={filter === v ? 'solid' : 'outline'} colorPalette={filter === v ? undefined : 'gray'}
+          {([['', 'Todos'], ['pendiente', 'Pendientes'], ['pagada', 'Pagadas'], ['cancelada', 'Canceladas'], ['por-llegar', 'Con pendientes de llegar']] as const).map(([v, label]) => (
+            <Button key={v} size="sm" minH="44px" variant={filter === v ? 'solid' : 'outline'} colorPalette={filter === v ? undefined : 'gray'}
               onClick={() => setFilterReset(v)}>{label}</Button>
           ))}
         </HStack>

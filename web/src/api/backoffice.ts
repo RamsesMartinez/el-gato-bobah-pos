@@ -419,6 +419,9 @@ export interface Expense {
 
 export type ItemType = 'ingrediente' | 'producto';
 
+// Cómo cambia el costo de un insumo al comprarlo: el de la última compra o el promedio ponderado.
+export type CostingMethod = 'last' | 'weighted';
+
 export interface ExpenseItem {
   id: number;
   itemType: ItemType | null; // null = línea no inventariable (bolsa, envío, IVA)
@@ -432,6 +435,14 @@ export interface ExpenseItem {
   unitCost: string;
   amount: string;
   packQtyInBase: string | null;
+  // Spec 038. `applied`: lo que el renglón ya sumó al almacén, en `baseUnitCode`; se devuelve como
+  // `seenApplied` al corregir. `onHand`: lo guardado hoy del artículo (null fuera del almacén).
+  applied: string;
+  baseUnitCode: string | null;
+  notComing: string;
+  isGift: boolean;
+  presentationId: number | null;
+  onHand?: string | null;
 }
 export interface ExpensePayment {
   id: number;
@@ -455,8 +466,29 @@ export interface Unit {
   id: number;
   code: string;
   name: string;
-  kind: 'masa' | 'volumen' | 'pieza';
+  kind: 'masa' | 'volumen' | 'pieza' | 'longitud';
   toBase: string;
+}
+
+// Un empaque de compra de un insumo (spec 038): «Caja = 12 L». `qtyInBase` va en la unidad base
+// del insumo (ml); el contenido se copia a cada compra, así que editarlo no toca las pasadas.
+export interface Presentation {
+  id: number;
+  ingredientId: number;
+  name: string;
+  qtyInBase: string;
+  baseUnitCode: string;
+  active: boolean;
+  // Se compra en otro tipo de unidad que el insumo («Kilo ≈ 4 piezas»).
+  approximate: boolean;
+  purchaseUnitId: number | null;
+}
+export interface PresentationBody {
+  name: string;
+  qty: string;
+  unitId: number;
+  approximate: boolean;
+  active?: boolean;
 }
 export interface Ingredient {
   id: number;
@@ -474,6 +506,8 @@ export interface Ingredient {
   compositionStatus?: '' | 'estimated' | 'confirmed';
   // En cuántas recetas aparece: los más usados van arriba en el buscador.
   recipeUses?: number;
+  // Dónde está, para ordenar el conteo (spec 038).
+  countPlace?: string | null;
   category: string | null;
   onHand: string;
 }
@@ -602,6 +636,79 @@ export interface ExpenseItemBody {
   // personal: venía en el ticket pero no es del local. El backend lo aprende y no lo guarda
   // como línea del gasto.
   personal?: boolean;
+  // El empaque del insumo: el servidor copia su contenido y fija la unidad (spec 038).
+  presentationId?: number;
+  // Llegó sin costo: importe 0, suma a lo guardado y no mueve el costo.
+  isGift?: boolean;
+}
+
+// Un renglón que falta por llegar (spec 038). Cantidades en la unidad del renglón: el empaque
+// (`presentationName`, con `packQtyInBase` en `baseUnitCode`) o la unidad (`unitCode`).
+export interface PendingReceipt {
+  expenseId: number;
+  expenseDate: string;
+  supplier: string | null;
+  expenseAmount: string;
+  paid: boolean;
+  itemId: number;
+  itemName: string;
+  quantity: string;
+  received: string;
+  notComing: string;
+  missing: string;
+  applied: string;
+  packQtyInBase: string | null;
+  presentationName: string | null;
+  unitCode: string | null;
+  baseUnitCode: string | null;
+}
+// Conteo (spec 038). A ciegas: lo que el sistema tiene no viene mientras se cuenta.
+export interface CountItem {
+  ingredientId: number;
+  name: string;
+  place: string | null;
+  baseUnitCode: string;
+  presentations: { name: string; qtyInBase: string }[];
+  countedQty: string | null; // null = no contado
+}
+export interface StockCount {
+  id: number;
+  openedAt: string;
+  items: CountItem[];
+}
+export interface CountClose {
+  adjusted: { ingredientId: number; name: string; baseUnitCode: string; system: string; counted: string; delta: string }[];
+  notCounted: { ingredientId: number; name: string }[];
+}
+
+// «Llegó algo más»: un renglón que no venía y ya llegó. Con `isGift`, `amount` va en 0.
+export interface ArrivedItemBody {
+  itemType: ItemType;
+  ingredientId?: number;
+  productId?: number;
+  description: string;
+  quantity: string;
+  presentationId?: number;
+  unitId?: number;
+  amount: string;
+  isGift: boolean;
+}
+
+// Un renglón de «Corregir lo que llegó» (spec 038). Cantidades en la unidad del renglón.
+export interface StockLineBody {
+  id?: number;
+  seenApplied?: string;
+  itemType: ItemType;
+  ingredientId?: number;
+  productId?: number;
+  description: string;
+  quantity: string;
+  received: string;
+  notComing: string;
+  presentationId?: number;
+  unitId?: number;
+  amount: string;
+  isGift?: boolean;
 }
 export interface ExpensePaymentBody {
   methodId: number;
@@ -759,9 +866,12 @@ export const backofficeApi = {
   // Gastos (paginado; el orden lo aplica el backend para que abarque todas las páginas)
   expenses: (params?: {
     status?: ExpenseStatus; page?: number; pageSize?: number; sort?: ExpenseSort; dir?: 'asc' | 'desc';
+    // Solo compras con algo que no ha llegado (spec 038).
+    pending?: boolean;
   }) => {
     const q = new URLSearchParams();
     if (params?.status) q.set('status', params.status);
+    if (params?.pending) q.set('pending', 'true');
     if (params?.page != null) q.set('page', String(params.page));
     if (params?.pageSize != null) q.set('pageSize', String(params.pageSize));
     if (params?.sort) { q.set('sort', params.sort); q.set('dir', params.dir ?? 'asc'); }
@@ -791,6 +901,30 @@ export const backofficeApi = {
   receiveExpense: (id: number, b: { receivedAt?: string; received?: Record<string, string> }) =>
     api.post<void>(`/expenses/${id}/receive`, b),
   cancelExpense: (id: number, reason: string) => api.post<void>(`/expenses/${id}/cancel`, { reason }),
+  // El conjunto deseado de renglones de almacén: el servidor mueve el almacén por la diferencia.
+  saveStockLines: (id: number, lines: StockLineBody[]) =>
+    api.put<ExpenseDetail>(`/expenses/${id}/stock-lines`, { lines }),
+  updateInventorySettings: (b: { costingMethod: CostingMethod; stockItemLabel: string }) =>
+    api.put<unknown>('/settings/inventory', b),
+  // «Por recibir» (spec 038): lo pagado que no ha llegado, renglón por renglón.
+  pendingReceipts: () => api.get<PendingReceipt[]>('/stock/pending-receipts'),
+  receiveItem: (expenseId: number, itemId: number, b: { qty: string; seenApplied: string; extraAmount?: string }) =>
+    api.post<void>(`/expenses/${expenseId}/items/${itemId}/receive`, b),
+  markNotComing: (expenseId: number, itemId: number, qty: string) =>
+    api.post<void>(`/expenses/${expenseId}/items/${itemId}/not-coming`, { qty }),
+  addArrivedItem: (expenseId: number, b: ArrivedItemBody) => api.post<void>(`/expenses/${expenseId}/items`, b),
+  // Conteo (spec 038). Las cifras van en la unidad base del insumo.
+  // null sin conteo abierto (204): TanStack Query no acepta `undefined` como dato.
+  currentCount: () => api.get<StockCount | undefined>('/stock/counts/current').then((c) => c ?? null),
+  openCount: () => api.post<StockCount>('/stock/counts', {}),
+  captureCount: (id: number, ingredientId: number, countedQty: string) =>
+    api.put<void>(`/stock/counts/${id}/lines/${ingredientId}`, { countedQty }),
+  uncaptureCount: (id: number, ingredientId: number) => api.del<void>(`/stock/counts/${id}/lines/${ingredientId}`),
+  previewCount: (id: number) => api.get<CountClose>(`/stock/counts/${id}/preview`),
+  closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),
+  discardCount: (id: number) => api.post<void>(`/stock/counts/${id}/discard`, {}),
+  lastClosedCount: () => api.get<{ closedAt: string | null }>('/stock/counts/last-closed'),
+  setCountPlace: (ingredientId: number, place: string | null) => api.put<void>(`/stock/ingredients/${ingredientId}/place`, { place }),
 
   // Extracción del documento → borrador. NO escribe nada: el operador confirma.
   parseDoc: (file: File) => {
@@ -805,6 +939,10 @@ export const backofficeApi = {
     api.get<{ items: Ingredient[] }>(`/ingredients${onlyActive ? '?onlyActive=true' : ''}`),
   createIngredient: (b: { name: string; baseUnitId: number; minStock?: string }) =>
     api.post<Ingredient>('/ingredients', b),
+  presentations: () => api.get<Presentation[]>('/stock/presentations'),
+  createPresentation: (ingredientId: number, b: PresentationBody) =>
+    api.post<Presentation>(`/stock/ingredients/${ingredientId}/presentations`, b),
+  updatePresentation: (id: number, b: PresentationBody) => api.put<Presentation>(`/stock/presentations/${id}`, b),
   searchArticles: (q: string) =>
     api.get<{ items: Article[] }>(`/articles?q=${encodeURIComponent(q)}`),
   // Catálogo aprendido: revisar qué mapeó el sistema y deshacer un mapeo equivocado.

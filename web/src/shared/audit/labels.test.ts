@@ -8,6 +8,7 @@ const FROM_SERVER = [
   'order.cancelled', 'order.discount_set', 'order.platform_ref_set', 'payment.charged',
   'payment.voided', 'payment.refunded', 'stock.written_off', 'cash.opened', 'cash.closed',
   'cash.movement', 'cash.movement_corrected', 'expense.created', 'expense.paid', 'expense.cancelled', 'tip.paid_out',
+  'expense.received', 'expense.stock_corrected', 'stock.counted', 'settings.costing_method',
   'price.set', 'price.deleted', 'price.synced', 'attendance.clock_in', 'attendance.clock_out',
   'attendance.corrected', 'attendance.manual_entry', 'attendance.settings_changed',
   'attendance.schedule_set', 'user.tracks_attendance_changed', 'payment.terminal_changed',

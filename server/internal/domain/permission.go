@@ -29,13 +29,20 @@ const (
 	// PermMenuConfigure: decidir qué resta un producto o un extra. Desde ahí se mueven existencias al
 	// salir de la existencia propia, así que no es de quien opera la caja.
 	PermMenuConfigure Permission = "menu.configure"
+
+	// Compras al almacén (spec 038). Recibir mueve lo guardado y el costo de los insumos; configurar
+	// decide empaques, lugares y el método de costeo; contar reemplaza lo que el sistema creía tener.
+	PermInventoryReceive   Permission = "inventory.receive"
+	PermInventoryConfigure Permission = "inventory.configure"
+	PermInventoryCount     Permission = "inventory.count"
 )
 
 // AllPermissions devuelve todos los permisos que existen, en un orden fijo.
 func AllPermissions() []Permission {
 	return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 		PermAttendanceConfigure, PermAttendanceReport, PermAttendanceCorrectOthers, PermAttendanceCorrectOwn,
-		PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure, PermInventoryHealthView, PermMenuConfigure}
+		PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure, PermInventoryHealthView, PermMenuConfigure,
+		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -52,7 +59,7 @@ func PermissionsFor(role Role) []Permission {
 	case RoleGerente:
 		return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 			PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
-			PermInventoryHealthView, PermMenuConfigure}
+			PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount}
 	case RoleCajero, RoleMesero:
 		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending}
 	}
@@ -89,6 +96,12 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede ver la salud del inventario"
 	case PermMenuConfigure:
 		return "Tu usuario no puede configurar el menú"
+	case PermInventoryReceive:
+		return "Tu usuario no puede registrar lo que llega al almacén"
+	case PermInventoryConfigure:
+		return "Tu usuario no puede configurar el almacén"
+	case PermInventoryCount:
+		return "Tu usuario no puede contar el almacén"
 	}
 	return "Tu usuario no puede hacer esto"
 }

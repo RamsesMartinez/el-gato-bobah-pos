@@ -13,11 +13,13 @@ import (
 )
 
 const healthAnyPurchase = `-- name: HealthAnyPurchase :one
-select exists (select 1 from stock_movements where movement_type = 'compra')::bool
+select exists (select 1 from stock_movements where movement_type = 'compra'
+                group by item_type, ingredient_id, product_id having sum(quantity) > 0)::bool
 `
 
 // Mientras ninguna compra entre al almacén, lo guardado solo baja y la sección de negativos abre
-// resumida (FR-005).
+// resumida (FR-005). Cuenta lo que SUMÓ: una compra anulada deja su entrada y su reversión, y no
+// es una compra (spec 038).
 func (q *Queries) HealthAnyPurchase(ctx context.Context) (bool, error) {
 	row := q.db.QueryRow(ctx, healthAnyPurchase)
 	var column_1 bool
@@ -236,9 +238,9 @@ with used as (
        or exists (select 1 from ingredients pi where pi.recipe_id = ri.recipe_id and pi.is_active))
 ), missing as (
   select u.id, u.name, u.unit from used u
-   where not exists (select 1 from stock_movements sm
+   where coalesce((select sum(sm.quantity) from stock_movements sm
                       where sm.ingredient_id = u.id and sm.movement_type = 'compra'
-                        and ($3::date is null or sm.created_at >= $3::date))
+                        and ($3::date is null or sm.created_at >= $3::date)), 0) <= 0
 )
 select m.id as ingredient_id, m.name, m.unit,
        count(*) over() as total, (select count(*) from used)::int as of_total
@@ -300,9 +302,9 @@ with used as (
        or exists (select 1 from ingredients pi where pi.recipe_id = ri.recipe_id and pi.is_active))
 )
 select (select count(*) from used u
-         where not exists (select 1 from stock_movements sm
+         where coalesce((select sum(sm.quantity) from stock_movements sm
                             where sm.ingredient_id = u.id and sm.movement_type = 'compra'
-                              and ($1::date is null or sm.created_at >= $1::date)))::int as missing,
+                              and ($1::date is null or sm.created_at >= $1::date)), 0) <= 0)::int as missing,
        (select count(*) from used)::int as of_total
 `
 

@@ -41,6 +41,8 @@ select delivery_fee,
        lock_after_seconds,
        session_hours,
        folio_scheme,
+       costing_method,
+       stock_item_label,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -66,6 +68,8 @@ type GetBusinessSettingsRow struct {
 	LockAfterSeconds   int32              `json:"lock_after_seconds"`
 	SessionHours       int32              `json:"session_hours"`
 	FolioScheme        FolioScheme        `json:"folio_scheme"`
+	CostingMethod      string             `json:"costing_method"`
+	StockItemLabel     string             `json:"stock_item_label"`
 	HasLogo            bool               `json:"has_logo"`
 	LogoUpdatedAt      pgtype.Timestamptz `json:"logo_updated_at"`
 	UpdatedAt          time.Time          `json:"updated_at"`
@@ -99,6 +103,8 @@ func (q *Queries) GetBusinessSettings(ctx context.Context) (GetBusinessSettingsR
 		&i.LockAfterSeconds,
 		&i.SessionHours,
 		&i.FolioScheme,
+		&i.CostingMethod,
+		&i.StockItemLabel,
 		&i.HasLogo,
 		&i.LogoUpdatedAt,
 		&i.UpdatedAt,
@@ -264,4 +270,27 @@ func (q *Queries) UpdateDeliveryFee(ctx context.Context, arg UpdateDeliveryFeePa
 	var i UpdateDeliveryFeeRow
 	err := row.Scan(&i.DeliveryFee, &i.UpdatedAt, &i.UpdatedBy)
 	return i, err
+}
+
+const updateInventorySettings = `-- name: UpdateInventorySettings :one
+update business_settings b
+   set costing_method = $1, stock_item_label = $2,
+       updated_at = now(), updated_by = $3
+  from (select costing_method from business_settings limit 1) old
+returning old.costing_method as previous_method
+`
+
+type UpdateInventorySettingsParams struct {
+	CostingMethod  string `json:"costing_method"`
+	StockItemLabel string `json:"stock_item_label"`
+	UpdatedBy      *int64 `json:"updated_by"`
+}
+
+// Cómo se costea un insumo al comprarlo y cómo se le dice a lo que se guarda en el almacén (spec
+// 038). Devuelve el método anterior para la bitácora.
+func (q *Queries) UpdateInventorySettings(ctx context.Context, arg UpdateInventorySettingsParams) (string, error) {
+	row := q.db.QueryRow(ctx, updateInventorySettings, arg.CostingMethod, arg.StockItemLabel, arg.UpdatedBy)
+	var previous_method string
+	err := row.Scan(&previous_method)
+	return previous_method, err
 }

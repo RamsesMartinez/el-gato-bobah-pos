@@ -23,8 +23,9 @@ interface Props {
   disabled?: boolean;
   size?: 'sm' | 'md' | 'lg';
   // Alta inline: si se define, al buscar algo sin coincidencia aparece "+ Crear «query»".
-  // Debe devolver la opción ya creada (para seleccionarla al vuelo).
-  onCreate?: (name: string) => Promise<PickerOption>;
+  // Debe devolver la opción ya creada (para seleccionarla al vuelo), o null si quien crea se
+  // arrepintió a medio camino (p. ej. no eligió en qué se mide un insumo).
+  onCreate?: (name: string) => Promise<PickerOption | null>;
 }
 
 // Picker táctil: reemplaza al <select> nativo (malo en tablet con muchos ítems). Abre un
@@ -68,7 +69,7 @@ export function Picker({
     setCreating(true);
     try {
       const opt = await onCreate(q.trim());
-      pick(opt.value);
+      if (opt) pick(opt.value);
     } finally {
       setCreating(false);
     }
