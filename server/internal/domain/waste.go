@@ -110,6 +110,13 @@ func NormalizeReasonName(name string) string {
 	return reasonSpaces.ReplaceAllString(reasonAccents.Replace(strings.ToLower(strings.TrimSpace(name))), " ")
 }
 
+// WasteReasonExists dice que ya hay un motivo con ese nombre; lleva su id para que la pantalla lo
+// ofrezca en vez de crear otro igual. Es un conflicto (409).
+type WasteReasonExists struct{ ID int64 }
+
+func (e WasteReasonExists) Error() string { return "ese motivo ya existe" }
+func (e WasteReasonExists) Unwrap() error { return ErrConflict }
+
 // ValidWasteReason valida el nombre (1–40) y la descripción obligatoria (1–200) de un motivo.
 func ValidWasteReason(name, description string) error {
 	n := utf8.RuneCountInString(strings.TrimSpace(name))

@@ -191,11 +191,11 @@ func (q *Queries) InsertWasteReason(ctx context.Context, arg InsertWasteReasonPa
 const insertWasteRecord = `-- name: InsertWasteRecord :one
 insert into waste_records (
   branch_id, reason_id, item_type, ingredient_id, product_id, quantity, entered_qty, presentation_id,
-  unit_cost, total_cost, is_staff_meal, note, status, recorded_by
+  unit_cost, total_cost, is_staff_meal, note, status, recorded_by, recorded_at
 ) values (
   $1, $2, $3, $4, $5,
   $6, $7, $8, $9, $10,
-  $11, $12, $13, $14
+  $11, $12, $13, $14, $15
 ) returning id, recorded_at
 `
 
@@ -214,6 +214,7 @@ type InsertWasteRecordParams struct {
 	Note           *string          `json:"note"`
 	Status         string           `json:"status"`
 	RecordedBy     int64            `json:"recorded_by"`
+	RecordedAt     time.Time        `json:"recorded_at"`
 }
 
 type InsertWasteRecordRow struct {
@@ -237,6 +238,7 @@ func (q *Queries) InsertWasteRecord(ctx context.Context, arg InsertWasteRecordPa
 		arg.Note,
 		arg.Status,
 		arg.RecordedBy,
+		arg.RecordedAt,
 	)
 	var i InsertWasteRecordRow
 	err := row.Scan(&i.ID, &i.RecordedAt)
@@ -615,6 +617,18 @@ func (q *Queries) ResolveWasteRecord(ctx context.Context, arg ResolveWasteRecord
 	return result.RowsAffected(), nil
 }
 
+const setWasteApprovalThreshold = `-- name: SetWasteApprovalThreshold :execrows
+update business_settings set waste_approval_threshold = $1, updated_at = now()
+`
+
+func (q *Queries) SetWasteApprovalThreshold(ctx context.Context, threshold *decimal.Decimal) (int64, error) {
+	result, err := q.db.Exec(ctx, setWasteApprovalThreshold, threshold)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateWasteReason = `-- name: UpdateWasteReason :execrows
 update waste_reasons
    set name = $1, description = $2, is_staff_meal = $3,
@@ -645,14 +659,16 @@ func (q *Queries) UpdateWasteReason(ctx context.Context, arg UpdateWasteReasonPa
 }
 
 const wasteApprovalThreshold = `-- name: WasteApprovalThreshold :one
-select (select waste_approval_threshold from business_settings limit 1)::numeric(12,2) as threshold
+select waste_approval_threshold from business_settings limit 1
 `
 
-func (q *Queries) WasteApprovalThreshold(ctx context.Context) (decimal.Decimal, error) {
+// Sin cast: la columna es nulable (sin tope) y un cast haría que sqlc la tipara como no nulable y el
+// scan tronara con el tope vacío. Sin fila de configuración, ErrNoRows: tampoco hay tope.
+func (q *Queries) WasteApprovalThreshold(ctx context.Context) (*decimal.Decimal, error) {
 	row := q.db.QueryRow(ctx, wasteApprovalThreshold)
-	var threshold decimal.Decimal
-	err := row.Scan(&threshold)
-	return threshold, err
+	var waste_approval_threshold *decimal.Decimal
+	err := row.Scan(&waste_approval_threshold)
+	return waste_approval_threshold, err
 }
 
 const wasteByReason = `-- name: WasteByReason :many

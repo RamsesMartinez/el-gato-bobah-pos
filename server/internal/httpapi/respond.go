@@ -29,6 +29,8 @@ type errorDetails struct {
 	ProductID   int64  `json:"productId,omitempty"`
 	ProductName string `json:"productName,omitempty"`
 	LineID      string `json:"lineId,omitempty"`
+	// ExistingID: el motivo de merma que ya existe con ese nombre (spec 039), para ofrecerlo.
+	ExistingID int64 `json:"existingId,omitempty"`
 }
 
 // JSON writes v as JSON with the given status.
@@ -239,6 +241,10 @@ func Error(w http.ResponseWriter, err error) {
 			details = &errorDetails{ProductID: lr.ProductID}
 		}
 		details.LineID = lr.LineID
+	}
+	var exists domain.WasteReasonExists
+	if errors.As(err, &exists) {
+		details = &errorDetails{ExistingID: exists.ID}
 	}
 	JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: operatorMessage(msg), Details: details}})
 }

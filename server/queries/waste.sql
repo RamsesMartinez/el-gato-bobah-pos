@@ -45,7 +45,9 @@ update waste_reasons set merged_into_id = sqlc.arg(into_id)
  where id = sqlc.arg(id) and merged_into_id is null;
 
 -- name: WasteApprovalThreshold :one
-select (select waste_approval_threshold from business_settings limit 1)::numeric(12,2) as threshold;
+-- Sin cast: la columna es nulable (sin tope) y un cast haría que sqlc la tipara como no nulable y el
+-- scan tronara con el tope vacío. Sin fila de configuración, ErrNoRows: tampoco hay tope.
+select waste_approval_threshold from business_settings limit 1;
 
 -- name: IngredientForWaste :one
 -- El insumo, su costo por unidad base y cuánto de su unidad base es la unidad capturada; `same_kind`
@@ -64,11 +66,11 @@ select id, current_cost from products where id = $1;
 -- name: InsertWasteRecord :one
 insert into waste_records (
   branch_id, reason_id, item_type, ingredient_id, product_id, quantity, entered_qty, presentation_id,
-  unit_cost, total_cost, is_staff_meal, note, status, recorded_by
+  unit_cost, total_cost, is_staff_meal, note, status, recorded_by, recorded_at
 ) values (
   sqlc.arg(branch_id), sqlc.arg(reason_id), sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id),
   sqlc.arg(quantity), sqlc.arg(entered_qty), sqlc.narg(presentation_id), sqlc.narg(unit_cost), sqlc.narg(total_cost),
-  sqlc.arg(is_staff_meal), sqlc.narg(note), sqlc.arg(status), sqlc.arg(recorded_by)
+  sqlc.arg(is_staff_meal), sqlc.narg(note), sqlc.arg(status), sqlc.arg(recorded_by), sqlc.arg(recorded_at)
 ) returning id, recorded_at;
 
 -- name: InsertWasteMovement :exec
@@ -179,3 +181,6 @@ select coalesce(r.merged_into_id, r.id)::bigint as reason_id, w.is_staff_meal,
    and coalesce(w.resolved_at, w.recorded_at) < sqlc.arg(to_ts)
  group by 1, 2
  order by 4 desc;
+
+-- name: SetWasteApprovalThreshold :execrows
+update business_settings set waste_approval_threshold = sqlc.narg(threshold), updated_at = now();
