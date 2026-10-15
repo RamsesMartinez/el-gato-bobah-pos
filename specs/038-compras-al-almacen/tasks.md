@@ -178,7 +178,7 @@ Cada una con su prueba vista en rojo antes del código.
 - [X] T085 [P] Tests del lugar desde el conteo (FR-015f): el renglón ofrece los lugares que ya usa la empresa y «Otro…», guarda y vuelve a ordenar; la ruta pide `inventory.count` y no `inventory.configure` (handler y vitest), en `server/internal/integration/stock_counts_http_test.go` y `web/src/features/backoffice/StockCountTab.test.tsx`
 - [X] T086 «¿Cómo se pagó?» y «Llegó una parte» en `web/src/features/backoffice/ExpenseDialog.tsx` hasta que T082 y T083 pasen
 - [X] T087 Ruta del lugar con `RequirePermission(PermInventoryCount)` en `server/internal/httpapi/router.go` y «Lugar» en `web/src/features/backoffice/StockCountTab.tsx` hasta que T085 pase
-- [ ] T088 Capturas a 1024×600 contra el ambiente de pruebas de las tres pantallas tocadas, tras el merge
+- [X] T088 Capturas a 1024×600 contra el ambiente de pruebas de las tres pantallas tocadas, tras el merge. Encontró dos defectos, arreglados con su prueba: sin empaque llegaba elegida la unidad base (ml) en vez de la grande, y «¿Cómo se pagó?» ofrecía los métodos de las plataformas
 
 ---
 
