@@ -107,7 +107,7 @@ de sobra.
    uno» (se recuerda por tableta), agrupadas por lugar; teclado numérico en pantalla; a ciegas;
    «✓ guardado»; el cierre nombra lo no contado y marca diferencias grandes.
 6. **Configuración del negocio** (un renglón, sin cambiar la disposición): método de costeo y la
-   palabra para lo del almacén; el lugar de cada insumo se edita en su hoja de Insumos.
+   palabra para lo del almacén; el lugar de cada insumo se edita en su hoja de Insumos y también desde el conteo (FR-015f).
 
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|

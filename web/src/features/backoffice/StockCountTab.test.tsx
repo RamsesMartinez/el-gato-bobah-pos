@@ -215,3 +215,26 @@ test('uno por uno sigue en el mismo insumo cuando el lugar lo reordena', async (
   expect(await screen.findByText('Jarabe de vainilla')).toBeInTheDocument();
   expect(screen.queryByText('Azúcar')).toBeNull();
 });
+
+// SC-005: un conteo a medias sobrevive a recargar y a cambiar de tableta. Lo contado vive en el
+// servidor, no en la memoria de la pantalla: al volver a montar sin nada local, las cifras vuelven.
+test('al recargar o abrir en otra tableta, lo ya contado sigue ahí', async () => {
+  montar();
+  fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[0]).getByRole('button', { name: 'Contar' }));
+  await screen.findByLabelText('Botella de Jarabe de vainilla');
+  tecla('3');
+  click(/Siguiente casilla/);
+  tecla('punto'); tecla('5');
+  click('Guardar');
+  await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, '2750'));
+
+  // Otra tableta: sin caché de consultas ni almacenamiento local; solo lo que el servidor guardó.
+  const guardado = conteo();
+  guardado.items[0].countedQty = '2750';
+  back.currentCount.mockResolvedValue(guardado);
+  cleanup();
+  try { localStorage.clear(); } catch { /* sin almacenamiento */ }
+  montar();
+  expect(await screen.findByText('✓ 2.75 L')).toBeInTheDocument();
+  expect(screen.getByTestId('avance')).toHaveTextContent('1 de 3 contados');
+});

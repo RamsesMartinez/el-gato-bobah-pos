@@ -118,7 +118,9 @@ símbolos citados son de `develop` en `c33f50e`.
 
 - **Decisión (dueño, 14-oct):** por omisión, el costo de la última compra; cada empresa puede elegir
   promedio ponderado en su configuración (`business_settings.costing_method`, `last` | `weighted`).
-- El bloqueo del insumo para el costo usa `FOR UPDATE NOWAIT` (como el 037): una venta tiene
+- El bloqueo del insumo para el costo usa `FOR NO KEY UPDATE NOWAIT`, y sus existencias `FOR UPDATE
+  NOWAIT` (T073). `no key update` y no `update`: así no frena la llave foránea de los movimientos
+  de una venta. Como en el 037, una venta tiene
   tomadas las existencias en el orden de su ticket, y esperar aquí podría cerrar un ciclo. Si está
   tomado, 409 y se reintenta; la compra no queda a medias porque todo va en una transacción.
 - Fórmula en `domain.NextIngredientCost(method, onHand, cost, qty, unitCost)`:
@@ -158,7 +160,7 @@ símbolos citados son de `develop` en `c33f50e`.
 ## R6. Permisos
 
 - Nuevos: `inventory.receive` (agregar, recibir y corregir mercancía de un gasto),
-  `inventory.configure` (presentaciones y método de costeo) e `inventory.count` (contar). Admin y
+  `inventory.configure` (presentaciones y método de costeo) e `inventory.count` (contar y poner el lugar de cada insumo, FR-015f). Admin y
   gerente por omisión.
 - Las rutas nuevas y las que se tocan (`/receive`, `/stock-lines`, presentaciones, conteos,
   método de costeo) se registran **fuera** de los grupos con `RequireRole`, solo con su permiso

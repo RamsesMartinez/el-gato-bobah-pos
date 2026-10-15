@@ -619,6 +619,8 @@ cifra que ya no era la del anaquel.
 | B18 | Poner el lugar a media cuenta | Se pone desde el conteo; «Uno por uno» sigue en el mismo insumo aunque la lista se reordene (FR-015f) | `StockCountTab.test.tsx`, `TestTheCountPlaceIsSetByWhoCounts` | Navegador (vitest), Postgres |
 | B19 | Un insumo en ml o g sin empaque | Llega elegida la unidad grande (L, kg, m); con la base, «3» se guardaba como 3 ml | `ExpenseDialog.test.tsx › la unidad que llega elegida es la grande` | Navegador (vitest) |
 | B20 | «¿Cómo se pagó?» | Sin los métodos de las plataformas: cobran ventas, no pagan compras | `ExpenseDialog.test.tsx › no ofrece los métodos de las plataformas` | Navegador (vitest) |
+| B21 | Los textos de compras, empaques y conteo | Sin «existencia», «movimiento», «unidad base» ni «presentación», que quien opera no entendió (FR-019) | `operatorWords.test.ts` | Navegador (vitest, lee los textos del código) |
+| B22 | Un conteo a medias tras recargar o en otra tableta | Lo contado vuelve del servidor; nada vive solo en la pantalla (SC-005) | `StockCountTab.test.tsx › al recargar o abrir en otra tableta` | Navegador (vitest) |
 
 **Lo que B no cubre:** cómo se ven estas pantallas a 1024×600 en el ambiente de pruebas y si alguien
 nuevo las entiende sin ayuda (T065, tras el merge a develop); el tiempo con datos de producción en
