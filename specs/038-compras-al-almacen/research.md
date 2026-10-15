@@ -260,3 +260,7 @@ Para decisión del dueño (las dos personas los pusieron entre lo que más las f
    Hoy se resuelve después, desde «Por recibir».
 3. El lugar del conteo solo se pone desde la hoja «Cómo llega» de cada insumo; con 302 insumos
    «Sin lugar», nadie lo encuentra.
+
+Resuelto el mismo día (decisiones del dueño): «¿Cómo se pagó?» al guardar y «Total de la compra»
+(FR-004d), «Llegó una parte» en la captura (FR-007e) y el lugar desde el conteo, con el permiso de
+contar (FR-015f).

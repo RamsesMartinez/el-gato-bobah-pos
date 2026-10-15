@@ -53,8 +53,10 @@ interface DraftItem {
   presentationId: number | null;
   amount: string;
   packQtyInBase: string;
-  // arrived: «Llegó» o «Llega después». Lo que llega después queda en «Por recibir».
+  // arrived: «Llegó» (todo o una parte) o «Llega después». Lo que no llegó queda en «Por recibir».
   arrived: boolean;
+  // partQty: con «Llegó una parte», cuántos llegaron (FR-007e); null = llegó todo o llega después.
+  partQty: string | null;
   isGift: boolean;
   // doubtful: el ticket sugiere un artículo que nadie ha confirmado. No suma hasta que se diga.
   doubtful: boolean;
@@ -82,7 +84,7 @@ const nextKey = () => `k${++seq}`;
 const emptyItem = (): DraftItem => ({
   key: nextKey(), rawCode: '', rawName: '', description: '', itemType: '', itemId: null,
   itemName: '', quantity: '1', unitId: null, presentationId: null, amount: '', packQtyInBase: '',
-  arrived: true, isGift: false, doubtful: false, suggestion: null, suggestions: [], docStatus: '', personal: false,
+  arrived: true, partQty: null, isGift: false, doubtful: false, suggestion: null, suggestions: [], docStatus: '', personal: false,
 });
 
 const emptyPayment = (): DraftPayment => ({
@@ -137,6 +139,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
 
   const [items, setItems] = useState<DraftItem[]>([]);
   const [payments, setPayments] = useState<DraftPayment[]>([]);
+  // '' sin contestar, 'later' «Todavía no se paga», o el id del método.
+  const [payWith, setPayWith] = useState('');
+  const [payRegister, setPayRegister] = useState('');
   const [parsed, setParsed] = useState<ParsedDoc | null>(null);
   const [created, setCreated] = useState<Article[]>([]);
   const [packsOf, setPacksOf] = useState<Article | null>(null);
@@ -158,7 +163,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
     setStep('start'); setWithGoods(true);
     setExpenseDate(today()); setCategoryId(''); setSupplierId(''); setAmount('');
     setDescription(''); setDocKind(''); setDocFolio(''); setDocRaw(undefined);
-    setItems([]); setPayments([]); setParsed(null);
+    setItems([]); setPayments([]); setParsed(null); setPayWith(''); setPayRegister('');
   };
 
   // ---- Subir documento ----
@@ -224,11 +229,31 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const total = montoTecleado(amount) ?? 0;
   const counted = withGoods ? items : [];
   const isGoods = (i: DraftItem) => !!i.itemId && !i.doubtful && !i.personal;
+  const receivedOf = (i: DraftItem) => (i.partQty !== null ? i.partQty : i.quantity || '1');
+  // Una parte es más que cero y menos que lo pedido: «todo» y «nada» ya tienen su botón.
+  const partBad = (i: DraftItem) => {
+    if (!isGoods(i) || i.partQty === null) return false;
+    const got = parseNumero(i.partQty);
+    const asked = parseNumero(i.quantity);
+    return got.estado !== 'valido' || asked.estado !== 'valido' || got.valor <= 0 || got.valor >= asked.valor;
+  };
   const moneyCheck = purchaseMoney(counted.map((i) => ({
     amount: i.isGift ? '0' : i.amount, goods: isGoods(i), gift: i.isGift, personal: i.personal,
   })), total);
-  const paymentsSum = payments.reduce((a, p) => a + (montoTecleado(p.amount) ?? 0), 0);
+  // ¿Cómo se pagó? (FR-004d): sin pagos capturados abajo, se pregunta al guardar. Un método registra
+  // un pago por el total; el efectivo sale de una caja abierta (si hay una sola, ésa).
+  const quickMethod = payments.length === 0 && payWith && payWith !== 'later'
+    ? methodList.find((m) => String(m.id) === payWith) : undefined;
+  const quickRegister = quickMethod?.affectsCashDrawer
+    ? (openRegisters.length === 1 ? String(openRegisters[0].id) : payRegister) : '';
+  const quickPayment: ExpensePaymentBody | null = quickMethod ? {
+    methodId: quickMethod.id, amount, paidOn: today(),
+    registerId: quickRegister ? Number(quickRegister) : undefined,
+  } : null;
+  const paymentsSum = payments.reduce((a, p) => a + (montoTecleado(p.amount) ?? 0), 0) + (quickPayment ? total : 0);
   const status: 'pendiente' | 'pagada' = paymentsSum > 0 && paymentsSum >= total ? 'pagada' : 'pendiente';
+  const payUnanswered = payments.length === 0 && payWith === '';
+  const payNeedsRegister = !!quickMethod?.affectsCashDrawer && !quickRegister;
   const doubtfulCount = counted.filter((i) => i.doubtful).length;
   const ticketTotal = parsed?.doc.total ? montoTecleado(parsed.doc.total) : undefined;
 
@@ -246,7 +271,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const sumsLine = (i: DraftItem) => {
     if (!isGoods(i) || !i.arrived) return null;
     const { factor, base } = factorOf(i);
-    const n = baseOfLine(i.quantity, factor);
+    const n = baseOfLine(receivedOf(i), factor);
     return n === null ? null : `${i.itemName} +${formatBaseQty(n, base)}`;
   };
 
@@ -275,7 +300,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
           quantity: i.quantity || '1',
           unitId: goods && !i.presentationId ? i.unitId ?? undefined : undefined,
           presentationId: goods ? i.presentationId ?? undefined : undefined,
-          qtyReceived: goods ? (i.arrived ? i.quantity || '1' : '0') : undefined,
+          qtyReceived: goods ? (i.arrived ? receivedOf(i) : '0') : undefined,
           amount: i.isGift ? '0' : i.amount || '0',
           isGift: goods && i.isGift ? true : undefined,
           packQtyInBase: goods && !i.presentationId ? i.packQtyInBase || undefined : undefined,
@@ -284,7 +309,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
           personal: i.personal || undefined,
         };
       }),
-      payments: payments.map((p): ExpensePaymentBody => ({
+      payments: quickPayment ? [quickPayment] : payments.map((p): ExpensePaymentBody => ({
         methodId: Number(p.methodId),
         amount: p.amount,
         paidOn: p.paidOn || undefined,
@@ -304,7 +329,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
 
   const missingUnit = counted.some((i) => isGoods(i) && !i.presentationId && !i.unitId);
   const badPayment = payments.find((p) => !p.methodId || !((montoTecleado(p.amount) ?? 0) > 0) || (needsRegister(p, methodList) && !p.registerId));
-  const canSave = !!categoryId && total > 0 && moneyCheck.missingAmount === 0 && !moneyCheck.over && !missingUnit && !badPayment;
+  const anyPartBad = counted.some(partBad);
+  const canSave = !!categoryId && total > 0 && moneyCheck.missingAmount === 0 && !moneyCheck.over && !missingUnit && !badPayment
+    && !payUnanswered && !payNeedsRegister && !anyPartBad;
 
   const setItem = (key: string, patch: Partial<DraftItem>) =>
     setItems((prev) => prev.map((i) => (i.key === key ? { ...i, ...patch } : i)));
@@ -413,8 +440,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                       return { value: String(s.id), label: s.name };
                     }} />
                 </Field>
-                <Field label="Total pagado" w="150px">
-                  <Input aria-label="Total pagado" inputMode="decimal" placeholder="0.00" value={amount} minH="44px"
+                <Field label="Total de la compra" w="150px">
+                  <Input aria-label="Total de la compra" inputMode="decimal" placeholder="0.00" value={amount} minH="44px"
                     onChange={(e) => setAmount(e.target.value)} />
                 </Field>
               </HStack>
@@ -516,6 +543,30 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
           </DialogBody>
 
           <DialogFooter borderTopWidth="1px">
+            <VStack w="100%" gap={2} align="stretch">
+            {payments.length === 0 && (
+              <HStack gap={2} flexWrap="wrap" role="group" aria-label="¿Cómo se pagó?">
+                <Text fontSize="sm" fontWeight="600">¿Cómo se pagó?</Text>
+                {methodList.filter((m) => m.isActive !== false && (!m.affectsCashDrawer || openRegisters.length > 0)).map((m) => (
+                  <Button key={m.id} minH="44px" size="sm" aria-pressed={payWith === String(m.id)}
+                    variant={payWith === String(m.id) ? 'solid' : 'outline'} colorPalette={payWith === String(m.id) ? 'red' : 'gray'}
+                    onClick={() => setPayWith(String(m.id))}>
+                    {m.name}
+                  </Button>
+                ))}
+                <Button minH="44px" size="sm" aria-pressed={payWith === 'later'}
+                  variant={payWith === 'later' ? 'solid' : 'outline'} colorPalette={payWith === 'later' ? 'red' : 'gray'}
+                  onClick={() => setPayWith('later')}>
+                  Todavía no se paga
+                </Button>
+                {quickMethod?.affectsCashDrawer && openRegisters.length > 1 && (
+                  <Box minW="200px">
+                    <Picker value={payRegister} onChange={setPayRegister} placeholder="¿De qué caja sale?" title="¿De qué caja sale?"
+                      options={openRegisters.map((r) => ({ value: String(r.id), label: r.name }))} />
+                  </Box>
+                )}
+              </HStack>
+            )}
             <HStack w="100%" gap={3} align="center">
               <Text fontSize="sm" flex="1" data-testid="pie-compra">
                 {doubtfulCount > 0 && (
@@ -530,13 +581,16 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                     {summary.length > 0 && ` · suma: ${summary.slice(0, 3).join(' · ')}${summary.length > 3 ? ` y ${summary.length - 3} más` : ''}`}</>
                 )}
                 {!categoryId && <Text as="span" color="orange.700"> · falta la categoría</Text>}
-                {!(total > 0) && <Text as="span" color="orange.700"> · falta el total pagado</Text>}
+                {!(total > 0) && <Text as="span" color="orange.700"> · falta el total</Text>}
                 {moneyCheck.missingAmount > 0 && (
                   <Text as="span" fontWeight="700" color="orange.700">
                     {' · '}falta el importe de {moneyCheck.missingAmount === 1 ? 'un renglón' : `${moneyCheck.missingAmount} renglones`}
                   </Text>
                 )}
                 {missingUnit && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo llegó cada {label}</Text>}
+                {anyPartBad && <Text as="span" fontWeight="700" color="orange.700"> · di cuántos llegaron (menos de lo pedido)</Text>}
+                {payUnanswered && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo se pagó</Text>}
+                {payNeedsRegister && <Text as="span" fontWeight="700" color="orange.700"> · elige de qué caja sale</Text>}
                 {moneyCheck.over && (
                   <Text as="span" fontWeight="700" color="red.600">
                     {' · '}los renglones suman {money(moneyCheck.linesSum.toFixed(2))} y el total es {money(total.toFixed(2))}
@@ -553,6 +607,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 Guardar
               </Button>
             </HStack>
+            </VStack>
           </DialogFooter>
         </>)}
 
@@ -738,12 +793,24 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
                 + Otro empaque
               </Button>
             )}
+            {item.arrived && item.partQty !== null && (
+              <Input aria-label="¿Cuántos llegaron?" placeholder="¿Cuántos?" w="96px" minH="44px" inputMode="decimal"
+                value={item.partQty} onChange={(e) => onChange({ partQty: e.target.value })} />
+            )}
             {sums && <Text fontSize="sm" fontWeight="700" color="green.700">= {sums.split(' +').pop()}</Text>}
             <HStack gap={0} ml="auto" borderWidth="1px" borderRadius="md" role="group" aria-label="Estado">
-              <Button minH="44px" size="sm" variant={item.arrived ? 'subtle' : 'ghost'} colorPalette={item.arrived ? 'green' : 'gray'}
-                aria-pressed={item.arrived} onClick={() => onChange({ arrived: true })}>Llegó</Button>
-              <Button minH="44px" size="sm" variant={!item.arrived ? 'subtle' : 'ghost'} colorPalette={!item.arrived ? 'orange' : 'gray'}
-                aria-pressed={!item.arrived} onClick={() => onChange({ arrived: false })}>Llega después</Button>
+              {(() => {
+                const full = item.arrived && item.partQty === null;
+                const part = item.arrived && item.partQty !== null;
+                return (<>
+                  <Button minH="44px" size="sm" variant={full ? 'subtle' : 'ghost'} colorPalette={full ? 'green' : 'gray'}
+                    aria-pressed={full} onClick={() => onChange({ arrived: true, partQty: null })}>Llegó</Button>
+                  <Button minH="44px" size="sm" variant={part ? 'subtle' : 'ghost'} colorPalette={part ? 'green' : 'gray'}
+                    aria-pressed={part} onClick={() => onChange({ arrived: true, partQty: item.partQty ?? '' })}>Llegó una parte</Button>
+                  <Button minH="44px" size="sm" variant={!item.arrived ? 'subtle' : 'ghost'} colorPalette={!item.arrived ? 'orange' : 'gray'}
+                    aria-pressed={!item.arrived} onClick={() => onChange({ arrived: false, partQty: null })}>Llega después</Button>
+                </>);
+              })()}
             </HStack>
             <Button minH="44px" size="sm" variant={item.isGift ? 'subtle' : 'outline'} colorPalette={item.isGift ? 'purple' : 'gray'}
               aria-pressed={item.isGift} onClick={() => onChange({ isGift: !item.isGift })}>

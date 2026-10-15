@@ -14,9 +14,37 @@ const back = vi.hoisted(() => ({
   previewCount: vi.fn(),
   closeCount: vi.fn(),
   discardCount: vi.fn(),
+  setCountPlace: vi.fn(),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 vi.mock('../../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) } }));
+
+// Doble del Picker sin hoja animada (ver ExpenseDialog.test.tsx).
+vi.mock('../../components/Picker', async () => {
+  const { useState } = await import('react');
+  type Opt = { value: string; label: string };
+  function Picker({ value, options, onChange, placeholder, onCreate }: {
+    value: string; options: Opt[]; onChange: (v: string) => void; placeholder?: string;
+    onCreate?: (name: string) => Promise<Opt | null>;
+  }) {
+    const [open, setOpen] = useState(false);
+    const [q, setQ] = useState('');
+    const selected = options.find((o) => o.value === value);
+    return (
+      <div>
+        <button type="button" onClick={() => setOpen(true)}>{selected ? selected.label : placeholder}</button>
+        {open && (
+          <div>
+            {onCreate && <input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} />}
+            {options.map((o) => <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}>{o.label}</button>)}
+            {onCreate && q && <button type="button" onClick={async () => { const o = await onCreate(q); if (o) onChange(o.value); setOpen(false); }}>Crear «{q}»</button>}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return { Picker };
+});
 
 const conteo = (): StockCount => ({
   id: 5, openedAt: '2026-10-14T13:40:00Z',
@@ -33,6 +61,7 @@ beforeEach(() => {
   back.openCount.mockResolvedValue(conteo());
   back.captureCount.mockResolvedValue(undefined);
   back.discardCount.mockResolvedValue(undefined);
+  back.setCountPlace.mockResolvedValue(undefined);
   back.previewCount.mockResolvedValue({
     adjusted: [
       { ingredientId: 2, name: 'Azúcar', baseUnitCode: 'g', system: '-1200', counted: '3000', delta: '4200' },
@@ -143,4 +172,46 @@ test('dice por qué no se puede cerrar todavía', async () => {
   montar();
   expect(await screen.findByRole('button', { name: 'Cerrar conteo' })).toBeDisabled();
   expect(screen.getByText('Cuenta al menos uno para cerrar')).toBeInTheDocument();
+});
+
+// Decisión del dueño tras la prueba sin contexto (FR-015f): el lugar se pone desde el conteo, con los
+// lugares que la empresa ya usa y «Otro…»; nadie lo encontró en la hoja «Cómo llega».
+describe('lugar desde el conteo (FR-015f)', () => {
+  test('ofrece los lugares de la empresa y guarda el elegido', async () => {
+    montar();
+    const fila = (await screen.findAllByTestId('renglon-conteo'))[2]; // Limón, sin lugar
+    fireEvent.click(within(fila).getByRole('button', { name: 'Lugar' }));
+    expect(within(fila).getByRole('button', { name: 'Barra' })).toBeInTheDocument();
+    expect(within(fila).getByRole('button', { name: 'Bodega' })).toBeInTheDocument();
+    fireEvent.click(within(fila).getByRole('button', { name: 'Barra' }));
+    await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(3, 'Barra'));
+    await waitFor(() => expect(back.currentCount.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  test('un lugar nuevo se crea escribiéndolo', async () => {
+    montar();
+    const fila = (await screen.findAllByTestId('renglon-conteo'))[2];
+    fireEvent.click(within(fila).getByRole('button', { name: 'Lugar' }));
+    fireEvent.change(within(fila).getByPlaceholderText('Buscar…'), { target: { value: 'Refri' } });
+    fireEvent.click(within(fila).getByRole('button', { name: /Crear «Refri»/ }));
+    await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(3, 'Refri'));
+  });
+});
+
+// Poner un lugar reordena el conteo; en «Uno por uno» la tarjeta sigue en el mismo insumo y no salta
+// al que quedó en su posición.
+test('uno por uno sigue en el mismo insumo cuando el lugar lo reordena', async () => {
+  montar();
+  fireEvent.click(await screen.findByRole('button', { name: 'Uno por uno' }));
+  expect(screen.getByText('Jarabe de vainilla')).toBeInTheDocument();
+  const reordered = conteo();
+  reordered.items = [reordered.items[1], reordered.items[2], { ...reordered.items[0], place: 'Zótano' }];
+  back.currentCount.mockResolvedValue(reordered);
+  fireEvent.click(screen.getByRole('button', { name: 'Barra' }));
+  fireEvent.change(screen.getByPlaceholderText('Buscar…'), { target: { value: 'Zótano' } });
+  fireEvent.click(screen.getByRole('button', { name: /Crear «Zótano»/ }));
+  await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(1, 'Zótano'));
+  await waitFor(() => expect(back.currentCount.mock.calls.length).toBeGreaterThan(1));
+  expect(await screen.findByText('Jarabe de vainilla')).toBeInTheDocument();
+  expect(screen.queryByText('Azúcar')).toBeNull();
 });

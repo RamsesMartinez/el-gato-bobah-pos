@@ -242,3 +242,30 @@ func TestPendingReceiptsAreIsolated(t *testing.T) {
 		t.Errorf("otra empresa movió lo guardado a %s", got)
 	}
 }
+
+// «Llegó una parte» desde la captura (FR-007e): suma lo que llegó y el resto queda por recibir.
+func TestAPartlyArrivedLineLeavesTheRestPending(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	in := k.bultos("2", "1000")
+	one := dd("1")
+	in.Items[0].QtyReceived = &one
+	id, err := k.svc.CreateExpense(k.ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := k.onHand(t); !got.Equal(dd("25000")) {
+		t.Errorf("lo guardado = %s; quiere 25000 (llegó 1 de 2 bultos)", got)
+	}
+	if _, received := k.expense(t, id); received {
+		t.Error("falta un bulto y la compra quedó como recibida")
+	}
+	item, _ := k.itemOf(t, id)
+	list, err := k.svc.PendingReceipts(k.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := pendingOf(t, list, item); p == nil || !p.Missing.Equal(dd("1")) {
+		t.Errorf("por recibir = %+v; quiere 1 bulto", p)
+	}
+}

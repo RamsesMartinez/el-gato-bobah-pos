@@ -6,6 +6,7 @@ import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../components/ui/drawer';
 import { NumericKeypad } from '../../components/NumericKeypad';
+import { Picker } from '../../components/Picker';
 import { pressKey } from '../../components/pressKey';
 import { backofficeApi, type CountClose, type CountItem, type StockCount } from '../../api/backoffice';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
@@ -184,6 +185,29 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
   });
 }
 
+
+// PlacePicker pone el lugar del insumo desde el conteo (FR-015f, decisión del dueño del 14-oct):
+// nadie lo encontraba en la hoja «Cómo llega». Ofrece los lugares que la empresa ya usa y uno nuevo
+// escribiéndolo; al guardarlo el conteo se vuelve a ordenar por lugar.
+function PlacePicker({ item, places }: { item: CountItem; places: string[] }) {
+  const qc = useQueryClient();
+  const save = useMutation({
+    mutationFn: (place: string | null) => backofficeApi.setCountPlace(item.ingredientId, place),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['stock', 'count'] }),
+  });
+  return (
+    <Box w="160px" flexShrink={0}>
+      <Picker value={item.place ?? ''} placeholder="Lugar" title={`¿Dónde está ${item.name}?`}
+        clearable clearLabel="— Sin lugar —"
+        options={places.map((p) => ({ value: p, label: p }))}
+        onChange={(v) => save.mutate(v || null)}
+        onCreate={async (name) => ({ value: name, label: name })} />
+    </Box>
+  );
+}
+
+const placesOf = (count: StockCount) => [...new Set(count.items.map((i) => i.place).filter((p): p is string => !!p))].sort();
+
 // ---- Lista ----
 
 function ListView({ count, onSaved }: { count: StockCount; onSaved: (id: number, qty: string | null) => void }) {
@@ -210,6 +234,7 @@ function ListView({ count, onSaved }: { count: StockCount; onSaved: (id: number,
                     </Text>
                   )}
                 </VStack>
+                <PlacePicker item={i} places={placesOf(count)} />
                 <Text fontSize="sm" color={i.countedQty !== null ? 'green.700' : 'fg.muted'} minW="120px">
                   {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}` : 'Sin contar'}
                 </Text>
@@ -260,22 +285,25 @@ function EntrySheet({ countId, item, onClose, onSaved }: {
 // ---- Uno por uno ----
 
 function OneByOne({ count, onSaved }: { count: StockCount; onSaved: (id: number, qty: string | null) => void }) {
-  const firstPending = count.items.findIndex((i) => i.countedQty === null);
-  const [at, setAt] = useState(firstPending >= 0 ? firstPending : 0);
-  const item = count.items[Math.min(at, count.items.length - 1)];
+  // Se sigue al INSUMO, no a la posición: poner un lugar reordena la lista, y por posición la tarjeta
+  // saltaría a otro insumo a media captura.
+  const [atId, setAtId] = useState<number | null>(() => (count.items.find((i) => i.countedQty === null) ?? count.items[0])?.ingredientId ?? null);
+  const item = count.items.find((i) => i.ingredientId === atId) ?? count.items[0];
   if (!item) return <Text color="fg.muted">No hay insumos que contar.</Text>;
+  const at = count.items.indexOf(item);
+  const go = (i: number) => setAtId(count.items[Math.max(0, Math.min(i, count.items.length - 1))].ingredientId);
   const sameplace = count.items.filter((i) => placeOf(i) === placeOf(item));
   return (
-    <OneCard key={item.ingredientId} countId={count.id} item={item}
+    <OneCard key={item.ingredientId} countId={count.id} item={item} places={placesOf(count)}
       where={`${placeOf(item)} · ${sameplace.indexOf(item) + 1} de ${sameplace.length}`}
-      onPrev={at > 0 ? () => setAt(at - 1) : undefined}
-      onNext={() => setAt(Math.min(at + 1, count.items.length - 1))}
+      onPrev={at > 0 ? () => go(at - 1) : undefined}
+      onNext={() => go(at + 1)}
       onSaved={onSaved} />
   );
 }
 
-function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
-  countId: number; item: CountItem; where: string; onPrev?: () => void; onNext: () => void;
+function OneCard({ countId, item, places, where, onPrev, onNext, onSaved }: {
+  countId: number; item: CountItem; places: string[]; where: string; onPrev?: () => void; onNext: () => void;
   onSaved: (id: number, qty: string | null) => void;
 }) {
   const e = useEntry(item);
@@ -284,7 +312,10 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
     <HStack align="stretch" gap={3} flex="1" minH={0}>
       <VStack align="stretch" justify="center" gap={4} flex="1" p={6} borderWidth="1px" borderRadius="lg" bg="bg.panel">
         <Text fontSize="xs" color="fg.muted">{where}</Text>
-        <Text fontSize="2xl" fontWeight="700">{item.name}</Text>
+        <HStack gap={3} flexWrap="wrap">
+          <Text fontSize="2xl" fontWeight="700" flex="1">{item.name}</Text>
+          <PlacePicker item={item} places={places} />
+        </HStack>
         <Text>¿Cuánto hay?</Text>
         <EntryFields item={item} e={e} />
         <HStack gap={3}>

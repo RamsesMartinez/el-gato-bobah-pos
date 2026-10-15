@@ -613,6 +613,10 @@ cifra que ya no era la del anaquel.
 | B12 | El conteo abierto | No deja ver lo que el sistema tiene (a ciegas) | `TestOneOpenCountPerBranchAndBlindWhileOpen` | Postgres |
 | B13 | Casillas vacías del conteo | «No contado», no 0; el cierre lo nombra y no lo toca | `countEntry.test.ts`, `StockCountTab.test.tsx` | Navegador (vitest) |
 | B14 | Diferencias del cierre | «Sobraban / faltaban», nunca una existencia negativa a secas; las grandes marcadas | `StockCountTab.test.tsx` | Navegador (vitest) |
+| B15 | La captura de una compra en la tableta | Ocupa los 600 px; con «cover» quedaba en 400 | `e2e/pantallas.spec.ts › B15` | Navegador (Playwright, 1024×600) |
+| B16 | Una compra en efectivo del mercado | No queda como deuda sin que nadie lo note: se pregunta cómo se pagó antes de guardar (FR-004d) | `ExpenseDialog.test.tsx › ¿Cómo se pagó?` | Navegador (vitest) |
+| B17 | «Pedí 2, llegó 1» al capturar | Suma lo que llegó y el resto queda por recibir (FR-007e) | `ExpenseDialog.test.tsx › Llegó una parte`, `TestAPartlyArrivedLineLeavesTheRestPending` | Navegador (vitest), Postgres |
+| B18 | Poner el lugar a media cuenta | Se pone desde el conteo; «Uno por uno» sigue en el mismo insumo aunque la lista se reordene (FR-015f) | `StockCountTab.test.tsx`, `TestTheCountPlaceIsSetByWhoCounts` | Navegador (vitest), Postgres |
 
 **Lo que B no cubre:** cómo se ven estas pantallas a 1024×600 en el ambiente de pruebas y si alguien
 nuevo las entiende sin ayuda (T065, tras el merge a develop); el tiempo con datos de producción en
