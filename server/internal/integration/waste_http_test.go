@@ -90,6 +90,16 @@ func TestWasteHTTP(t *testing.T) {
 		}
 	})
 
+	t.Run("el faltante de un conteo es de quien ve la salud del inventario", func(t *testing.T) {
+		if w := do(t, r, http.MethodGet, "/api/v1/stock/counts/1/loss", cajero, nil, ""); w.Code != http.StatusForbidden {
+			t.Errorf("cajero = %d; quiere 403", w.Code)
+		}
+		w := do(t, r, http.MethodGet, "/api/v1/stock/counts/999999/loss", gerente, nil, "")
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"items":[]`) {
+			t.Fatalf("= %d %s; un conteo sin renglones da items [] y no null", w.Code, w.Body.String())
+		}
+	})
+
 	t.Run("un motivo repetido responde 409 con el que existe", func(t *testing.T) {
 		w := do(t, r, http.MethodPost, "/api/v1/waste/reasons", cajero, []byte(`{"name":" caduco ","description":"otra"}`), json)
 		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"existingId":`+strconv.FormatInt(caduco, 10)) {

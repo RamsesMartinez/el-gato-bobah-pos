@@ -47,11 +47,11 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 **Independent test**: dos conteos cerrados con 3 de merma registrada entre ellos y el segundo encontró 2 de menos → perdido 5, registrado 3, sin explicar 2, en pesos al costo del cierre.
 
-- [ ] T028 [P] [US2] Tests de integración del faltante en los tres casos: partido correcto (E6); primer conteo; sobraba; sin costo; la merma que confirmó después de la captura cae en el periodo siguiente con dos transacciones (E14); la deshecha, rechazada y cubierta no cuentan; el reporte cerrado no cambia si cambia el costo después (E19), en `server/internal/integration/waste_loss_test.go`
-- [ ] T029 [P] [US2] Tests de cobertura al cerrar: la pendiente registrada antes de la captura queda `covered` y ya no se aprueba; la registrada entre captura y cierre sigue pendiente (E15); un conteo descartado no cubre nada, en `server/internal/integration/waste_covered_test.go`
-- [ ] T030 [US2] `CaptureCount` guarda `last_movement_id` con el insumo tomado y `CloseCount` guarda el costo y cubre en su transacción (`server/internal/app/stock_counts.go`); reporte en `server/internal/app/waste_reports.go`; ruta `GET /stock/counts/{id}/loss`, hasta que T028 y T029 pasen
-- [ ] T031 [P] [US2] Tests de vitest del faltante (Maquetas: «Faltante sin explicar», opción B): tres cifras arriba, una barra por insumo (registrado gris, sin explicar rojo), «Sobraba» sin barra, «sin costo guardado» en conteos viejos, primer conteo sin cifras inventadas, en `web/src/features/backoffice/CountLossReport.test.tsx`
-- [ ] T032 [US2] Reporte en `web/src/features/backoffice/CountLossReport.tsx`, abierto al cerrar un conteo y desde los conteos cerrados en `StockCountTab.tsx`, hasta que T031 pase
+- [X] T028 [P] [US2] Tests de integración del faltante en los tres casos: partido correcto (E6); primer conteo; sobraba; sin costo; la merma que confirmó después de la captura cae en el periodo siguiente con dos transacciones (E14); la deshecha, rechazada y cubierta no cuentan; el reporte cerrado no cambia si cambia el costo después (E19), en `server/internal/integration/waste_loss_test.go`
+- [X] T029 [P] [US2] Tests de cobertura al cerrar: la pendiente registrada antes de la captura queda `covered` y ya no se aprueba; la registrada entre captura y cierre sigue pendiente (E15); un conteo descartado no cubre nada, en `server/internal/integration/waste_covered_test.go`
+- [X] T030 [US2] `CaptureCount` guarda `last_movement_id` con el insumo tomado y `CloseCount` guarda el costo y cubre en su transacción (`server/internal/app/stock_counts.go`); reporte en `server/internal/app/waste_reports.go`; ruta `GET /stock/counts/{id}/loss`, hasta que T028 y T029 pasen
+- [X] T031 [P] [US2] Tests de vitest del faltante (Maquetas: «Faltante sin explicar», opción B): tres cifras arriba, una barra por insumo (registrado gris, sin explicar rojo), «Sobraba» sin barra, «sin costo guardado» en conteos viejos, primer conteo sin cifras inventadas, en `web/src/features/backoffice/CountLossReport.test.tsx`
+- [X] T032 [US2] Reporte en `web/src/features/backoffice/CountLossReport.tsx`, abierto al cerrar un conteo y desde los conteos cerrados en `StockCountTab.tsx`, hasta que T031 pase
 
 ## Phase 5: User Story 3 — Por motivo y los motivos de la empresa (P3)
 

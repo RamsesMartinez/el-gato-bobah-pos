@@ -27,6 +27,20 @@ func (q *Queries) CurrentBranchID(ctx context.Context) (int64, error) {
 	return branch_id, err
 }
 
+const dBNow = `-- name: DBNow :one
+select clock_timestamp()::timestamptz as now
+`
+
+// La hora de la base. Las decisiones de tiempo de la merma (mismo día, contado después, vio el
+// conteo) comparan contra `recorded_at` y `captured_at`, que pone la base: con el reloj de la API
+// se mezclarían dos relojes.
+func (q *Queries) DBNow(ctx context.Context) (time.Time, error) {
+	row := q.db.QueryRow(ctx, dBNow)
+	var now time.Time
+	err := row.Scan(&now)
+	return now, err
+}
+
 const findWasteReasonByName = `-- name: FindWasteReasonByName :one
 select id from waste_reasons
  where archived_at is null and merged_into_id is null
@@ -191,11 +205,11 @@ func (q *Queries) InsertWasteReason(ctx context.Context, arg InsertWasteReasonPa
 const insertWasteRecord = `-- name: InsertWasteRecord :one
 insert into waste_records (
   branch_id, reason_id, item_type, ingredient_id, product_id, quantity, entered_qty, presentation_id,
-  unit_cost, total_cost, is_staff_meal, note, status, recorded_by, recorded_at
+  unit_cost, total_cost, is_staff_meal, note, status, recorded_by
 ) values (
   $1, $2, $3, $4, $5,
   $6, $7, $8, $9, $10,
-  $11, $12, $13, $14, $15
+  $11, $12, $13, $14
 ) returning id, recorded_at
 `
 
@@ -214,7 +228,6 @@ type InsertWasteRecordParams struct {
 	Note           *string          `json:"note"`
 	Status         string           `json:"status"`
 	RecordedBy     int64            `json:"recorded_by"`
-	RecordedAt     time.Time        `json:"recorded_at"`
 }
 
 type InsertWasteRecordRow struct {
@@ -238,7 +251,6 @@ func (q *Queries) InsertWasteRecord(ctx context.Context, arg InsertWasteRecordPa
 		arg.Note,
 		arg.Status,
 		arg.RecordedBy,
-		arg.RecordedAt,
 	)
 	var i InsertWasteRecordRow
 	err := row.Scan(&i.ID, &i.RecordedAt)

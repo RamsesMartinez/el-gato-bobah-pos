@@ -34,6 +34,26 @@ export interface WasteItems {
   recent: { itemType: 'ingrediente' | 'producto'; id: number }[];
 }
 
+export interface LossItem {
+  ingredientId: number;
+  name: string;
+  unitCode: string;
+  hasPrevious: boolean;
+  registered: string;
+  unexplained: string;
+  surplus: string;
+  lost: string;
+  unitCost: string | null;
+  lostCost: string | null;
+  unexplainedCost: string | null;
+}
+
+export interface CountLoss {
+  firstCount: boolean;
+  items: LossItem[];
+  totals: { lost: string; registered: string; unexplained: string; withoutCost: number };
+}
+
 export interface RecordWasteInput {
   reasonId: number;
   ingredientId?: number;
@@ -61,4 +81,5 @@ export const wasteApi = {
   approve: (id: number) => api.post<void>(`/waste/${id}/approve`),
   reject: (id: number) => api.post<void>(`/waste/${id}/reject`),
   setThreshold: (threshold: string | null) => api.put<void>('/settings/waste-threshold', { threshold }),
+  countLoss: (countId: number) => api.get<CountLoss>(`/stock/counts/${countId}/loss`),
 };

@@ -292,18 +292,23 @@ func (q *Queries) InsertCountMovement(ctx context.Context, arg InsertCountMoveme
 }
 
 const lastClosedStockCount = `-- name: LastClosedStockCount :one
-select closed_at from stock_counts
+select id, closed_at from stock_counts
  where status = 'closed' and branch_id = current_branch_id()
  order by closed_at desc limit 1
 `
 
+type LastClosedStockCountRow struct {
+	ID       int64              `json:"id"`
+	ClosedAt pgtype.Timestamptz `json:"closed_at"`
+}
+
 // Sin `max()`: sobre ningún conteo devuelve NULL y el scan a un tipo no nulable truena. Sin filas
 // es «nunca se ha cerrado uno».
-func (q *Queries) LastClosedStockCount(ctx context.Context) (pgtype.Timestamptz, error) {
+func (q *Queries) LastClosedStockCount(ctx context.Context) (LastClosedStockCountRow, error) {
 	row := q.db.QueryRow(ctx, lastClosedStockCount)
-	var closed_at pgtype.Timestamptz
-	err := row.Scan(&closed_at)
-	return closed_at, err
+	var i LastClosedStockCountRow
+	err := row.Scan(&i.ID, &i.ClosedAt)
+	return i, err
 }
 
 const lockStockCount = `-- name: LockStockCount :one
@@ -322,6 +327,26 @@ func (q *Queries) LockStockCount(ctx context.Context, id int64) (LockStockCountR
 	var i LockStockCountRow
 	err := row.Scan(&i.ID, &i.BranchID, &i.Status)
 	return i, err
+}
+
+const lockStockLevelForCapture = `-- name: LockStockLevelForCapture :exec
+select 1 from stock_levels
+ where item_type = 'ingrediente' and ingredient_id = $1::bigint and branch_id = $2::bigint
+   for share
+`
+
+type LockStockLevelForCaptureParams struct {
+	IngredientID int64 `json:"ingredient_id"`
+	BranchID     int64 `json:"branch_id"`
+}
+
+// Toma la existencia del insumo antes de leerla: una merma o una venta en curso termina antes. Va
+// en una sentencia APARTE de la lectura: en una sola, Postgres relee la fila esperada pero el resto
+// de la consulta sale de la foto tomada antes de esperar, y el último movimiento quedaba viejo (la
+// merma que acababa de confirmar caía fuera del periodo del faltante).
+func (q *Queries) LockStockLevelForCapture(ctx context.Context, arg LockStockLevelForCaptureParams) error {
+	_, err := q.db.Exec(ctx, lockStockLevelForCapture, arg.IngredientID, arg.BranchID)
+	return err
 }
 
 const lockStockLevelsInBranchNowait = `-- name: LockStockLevelsInBranchNowait :many
@@ -403,7 +428,7 @@ func (q *Queries) NotCountedIngredients(ctx context.Context, countID int64) ([]N
 const onHandForCapture = `-- name: OnHandForCapture :one
 select coalesce((select sl.on_hand from stock_levels sl
                   where sl.item_type = 'ingrediente' and sl.ingredient_id = $1::bigint
-                    and sl.branch_id = $2::bigint for share), 0)::numeric(14,4) as on_hand,
+                    and sl.branch_id = $2::bigint), 0)::numeric(14,4) as on_hand,
        coalesce((select max(sm.id) from stock_movements sm
                   where sm.ingredient_id = $1::bigint
                     and sm.branch_id = $2::bigint), 0)::bigint as last_movement_id
@@ -419,9 +444,8 @@ type OnHandForCaptureRow struct {
 	LastMovementID int64           `json:"last_movement_id"`
 }
 
-// Lo que el sistema tiene del insumo y el último movimiento que lo formó, leídos con su existencia
-// tomada (`for share`): una merma o una venta en curso termina antes, y la cifra y el id hablan del
-// mismo momento. El periodo del faltante se ancla por ese id y no por hora (spec 039, R2).
+// Lo que el sistema tiene del insumo y el último movimiento que lo formó, en la misma foto (spec
+// 039, R2): el periodo del faltante se ancla por ese id y no por hora.
 func (q *Queries) OnHandForCapture(ctx context.Context, arg OnHandForCaptureParams) (OnHandForCaptureRow, error) {
 	row := q.db.QueryRow(ctx, onHandForCapture, arg.IngredientID, arg.BranchID)
 	var i OnHandForCaptureRow

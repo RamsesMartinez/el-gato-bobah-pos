@@ -13,6 +13,8 @@ import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { normalize } from '../../utils/format';
 import { formatBaseQty } from '../../shared/units';
 import { countedWords, diffWords, entryTotal, isBigDiff, looseUnitOf } from './countEntry';
+import { CountLossReport } from './CountLossReport';
+import { can } from '../../app/permissions';
 
 // Conteo de existencias (spec 038, maqueta «Almacén › Conteo»: las dos vistas). A ciegas —no se ve
 // lo que el sistema tiene—, cada cifra se guarda al capturarla y el cierre dice qué no se contó y
@@ -39,6 +41,14 @@ export function StockCountTab() {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [closing, setClosing] = useState(false);
+  // El conteo que se acaba de cerrar o el último cerrado, para ver lo que se perdió (spec 039).
+  const [closedId, setClosedId] = useState<number | null>(null);
+  const [showLoss, setShowLoss] = useState(false);
+  const canSeeLoss = can('inventory.health_view');
+  const { data: lastClosed } = useQuery({
+    queryKey: ['stock', 'count', 'last-closed'], queryFn: backofficeApi.lastClosedCount, enabled: canSeeLoss && !count,
+  });
+  const lossCountId = closedId ?? lastClosed?.id ?? null;
   useEffect(() => { medirAccion('inventario', 'ver-conteo'); }, []);
 
   const open = useMutation({
@@ -59,6 +69,14 @@ export function StockCountTab() {
       <VStack align="stretch" gap={3} maxW="640px" py={4}>
         {closed && <ClosedSummary result={closed} />}
         <Text>{closed ? 'El conteo quedó cerrado.' : 'No hay un conteo abierto.'}</Text>
+        {canSeeLoss && lossCountId !== null && (showLoss
+          ? <CountLossReport countId={lossCountId} />
+          : (
+            <Button alignSelf="start" minH="44px" variant="outline"
+              onClick={() => { setShowLoss(true); medirAccion('inventario', 'ver-faltante'); }}>
+              {closed ? 'Ver lo que se perdió desde el conteo anterior' : 'Ver lo que se perdió en el último conteo'}
+            </Button>
+          ))}
         <Text fontSize="sm" color="fg.muted">
           Cuenta lo que hay en el anaquel; al cerrar, lo guardado se corrige con lo que contaste. Lo que
           no cuentes se queda como está.
@@ -121,7 +139,7 @@ export function StockCountTab() {
       {closing && (
         <CloseSheet countId={count.id} onClose={() => setClosing(false)}
           onClosed={(r) => {
-            setClosing(false); setClosed(r);
+            setClosing(false); setClosed(r); setClosedId(count.id); setShowLoss(false);
             qc.setQueryData(['stock', 'count'], null);
             void qc.invalidateQueries({ queryKey: ['stock', 'levels'] });
           }} />

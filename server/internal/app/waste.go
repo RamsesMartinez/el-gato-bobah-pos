@@ -95,7 +95,7 @@ func (s *BackofficeService) RecordWaste(ctx context.Context, cmd RecordWasteCmd)
 			BranchID: branch, ReasonID: reason.ID, ItemType: itemType, IngredientID: cmd.IngredientID,
 			ProductID: cmd.ProductID, Quantity: plan.quantity, EnteredQty: entered, PresentationID: cmd.PresentationID,
 			UnitCost: plan.unitCost, TotalCost: plan.total, IsStaffMeal: reason.IsStaffMeal, Note: note,
-			Status: string(status), RecordedBy: cmd.Actor, RecordedAt: s.now(),
+			Status: string(status), RecordedBy: cmd.Actor,
 		})
 		if err != nil {
 			return err
@@ -344,7 +344,11 @@ func (s *BackofficeService) UndoWaste(ctx context.Context, id, actor int64, canC
 			if err != nil {
 				return err
 			}
-			if err := domain.WasteCanUndo(r.RecordedAt, s.now(), s.location(ctx), counted); err != nil {
+			now, err := q.DBNow(ctx)
+			if err != nil {
+				return err
+			}
+			if err := domain.WasteCanUndo(r.RecordedAt, now, s.location(ctx), counted); err != nil {
 				return err
 			}
 			if err := lockIngredients(ctx, q, ids); err != nil {
@@ -402,7 +406,11 @@ type WasteRow struct {
 // WasteToday lista lo registrado hoy en la sucursal.
 func (s *BackofficeService) WasteToday(ctx context.Context) ([]WasteRow, error) {
 	loc := s.location(ctx)
-	y, m, d := s.now().In(loc).Date()
+	now, err := s.store.QC(ctx).DBNow(ctx)
+	if err != nil {
+		return nil, err
+	}
+	y, m, d := now.In(loc).Date()
 	rows, err := s.store.QC(ctx).WasteOfDay(ctx, time.Date(y, m, d, 0, 0, 0, 0, loc))
 	if err != nil {
 		return nil, err

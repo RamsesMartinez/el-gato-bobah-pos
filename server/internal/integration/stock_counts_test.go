@@ -102,8 +102,8 @@ func TestACountAdjustsAgainstWhatThereWasWhenCaptured(t *testing.T) {
 		t.Errorf("capturar en un conteo cerrado = %v; quiere ErrConflict", err)
 	}
 	last, err := k.svc.LastClosedCount(k.ctx)
-	if err != nil || last == nil {
-		t.Errorf("último conteo cerrado = %v (%v); quiere su fecha", last, err)
+	if err != nil || last == nil || last.ID != c.ID {
+		t.Errorf("último conteo cerrado = %v (%v); quiere su fecha y su id (para abrir su faltante)", last, err)
 	}
 }
 

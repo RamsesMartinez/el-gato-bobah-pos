@@ -66,12 +66,18 @@ select id, current_cost from products where id = $1;
 -- name: InsertWasteRecord :one
 insert into waste_records (
   branch_id, reason_id, item_type, ingredient_id, product_id, quantity, entered_qty, presentation_id,
-  unit_cost, total_cost, is_staff_meal, note, status, recorded_by, recorded_at
+  unit_cost, total_cost, is_staff_meal, note, status, recorded_by
 ) values (
   sqlc.arg(branch_id), sqlc.arg(reason_id), sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id),
   sqlc.arg(quantity), sqlc.arg(entered_qty), sqlc.narg(presentation_id), sqlc.narg(unit_cost), sqlc.narg(total_cost),
-  sqlc.arg(is_staff_meal), sqlc.narg(note), sqlc.arg(status), sqlc.arg(recorded_by), sqlc.arg(recorded_at)
+  sqlc.arg(is_staff_meal), sqlc.narg(note), sqlc.arg(status), sqlc.arg(recorded_by)
 ) returning id, recorded_at;
+
+-- name: DBNow :one
+-- La hora de la base. Las decisiones de tiempo de la merma (mismo día, contado después, vio el
+-- conteo) comparan contra `recorded_at` y `captured_at`, que pone la base: con el reloj de la API
+-- se mezclarían dos relojes.
+select clock_timestamp()::timestamptz as now;
 
 -- name: InsertWasteMovement :exec
 -- La sucursal es la del registro, explícita: el trigger genérico la tomaría de la empresa y truena

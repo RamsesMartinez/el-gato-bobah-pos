@@ -28,13 +28,21 @@ select coalesce((select on_hand from stock_levels
                   where item_type = 'ingrediente' and ingredient_id = sqlc.arg(ingredient_id)
                     and branch_id = sqlc.arg(branch_id)), 0)::numeric(14,4) as on_hand;
 
+-- name: LockStockLevelForCapture :exec
+-- Toma la existencia del insumo antes de leerla: una merma o una venta en curso termina antes. Va
+-- en una sentencia APARTE de la lectura: en una sola, Postgres relee la fila esperada pero el resto
+-- de la consulta sale de la foto tomada antes de esperar, y el último movimiento quedaba viejo (la
+-- merma que acababa de confirmar caía fuera del periodo del faltante).
+select 1 from stock_levels
+ where item_type = 'ingrediente' and ingredient_id = sqlc.arg(ingredient_id)::bigint and branch_id = sqlc.arg(branch_id)::bigint
+   for share;
+
 -- name: OnHandForCapture :one
--- Lo que el sistema tiene del insumo y el último movimiento que lo formó, leídos con su existencia
--- tomada (`for share`): una merma o una venta en curso termina antes, y la cifra y el id hablan del
--- mismo momento. El periodo del faltante se ancla por ese id y no por hora (spec 039, R2).
+-- Lo que el sistema tiene del insumo y el último movimiento que lo formó, en la misma foto (spec
+-- 039, R2): el periodo del faltante se ancla por ese id y no por hora.
 select coalesce((select sl.on_hand from stock_levels sl
                   where sl.item_type = 'ingrediente' and sl.ingredient_id = sqlc.arg(ingredient_id)::bigint
-                    and sl.branch_id = sqlc.arg(branch_id)::bigint for share), 0)::numeric(14,4) as on_hand,
+                    and sl.branch_id = sqlc.arg(branch_id)::bigint), 0)::numeric(14,4) as on_hand,
        coalesce((select max(sm.id) from stock_movements sm
                   where sm.ingredient_id = sqlc.arg(ingredient_id)::bigint
                     and sm.branch_id = sqlc.arg(branch_id)::bigint), 0)::bigint as last_movement_id;
@@ -120,7 +128,7 @@ update stock_counts set status = sqlc.arg(status), closed_by = sqlc.arg(closed_b
 -- name: LastClosedStockCount :one
 -- Sin `max()`: sobre ningún conteo devuelve NULL y el scan a un tipo no nulable truena. Sin filas
 -- es «nunca se ha cerrado uno».
-select closed_at from stock_counts
+select id, closed_at from stock_counts
  where status = 'closed' and branch_id = current_branch_id()
  order by closed_at desc limit 1;
 

@@ -167,3 +167,18 @@ func (h *Handlers) wastePendingChanged(r *http.Request) {
 	u, _ := userFrom(r.Context())
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "waste.pending_changed"})
 }
+
+// GET /stock/counts/{id}/loss — el faltante de un conteo cerrado: registrado y sin explicar.
+func (h *Handlers) CountLoss(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.CountLoss(r.Context(), id)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
