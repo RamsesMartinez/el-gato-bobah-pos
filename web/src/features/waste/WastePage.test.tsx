@@ -146,6 +146,8 @@ describe('Se echó a perder (spec 039, maqueta D)', () => {
     const row = (await screen.findByText(/Leche entera/)).closest('[data-testid="renglon-merma"]') as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: 'Deshacer' }));
     expect(waste.undo).not.toHaveBeenCalled();
+    const botones = within(row).getAllByRole('button').map((b) => b.textContent);
+    expect(botones[botones.length - 1]).toBe('No');
     click('Sí, deshacer');
     await waitFor(() => expect(waste.undo).toHaveBeenCalledWith(5));
   });

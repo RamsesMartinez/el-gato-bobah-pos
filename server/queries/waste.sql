@@ -39,6 +39,16 @@ update waste_reasons
        archived_at = case when sqlc.arg(archived)::bool then coalesce(archived_at, now()) end
  where id = sqlc.arg(id) and merged_into_id is null;
 
+-- name: LockWasteReasonsForMerge :exec
+-- Los dos motivos de un juntar, en orden de id: dos juntares cruzados (A en B y B en A) no pasan los
+-- dos la validación ni dejan un ciclo.
+select id from waste_reasons where id = any(sqlc.arg(ids)::bigint[]) order by id for update;
+
+-- name: MoveMergedWasteReasons :exec
+-- Lo que ya apuntaba al que se junta pasa al que queda: un solo nivel. Solo mueve ligas de motivos,
+-- nunca los registros.
+update waste_reasons set merged_into_id = sqlc.arg(into_id) where merged_into_id = sqlc.arg(id);
+
 -- name: MergeWasteReason :execrows
 -- Juntar no toca los registros (revisión de arquitectura): el reporte sigue esta liga.
 update waste_reasons set merged_into_id = sqlc.arg(into_id)
@@ -110,11 +120,12 @@ update waste_records
  where id = sqlc.arg(id) and status = sqlc.arg(from_status);
 
 -- name: IngredientsCountedSince :one
--- ¿Algún conteo cerrado de la sucursal capturó alguno de estos insumos después de la merma? Entonces
--- el conteo ya corrigió lo guardado y deshacer inventaría lo que el conteo quitó.
+-- ¿Algún conteo de la sucursal, cerrado o abierto, capturó alguno de estos insumos después de la
+-- merma? Entonces el conteo ya corrige lo guardado contra lo que vio, y deshacer inventaría lo que
+-- quitó; abierto también: su ajuste se calculó al capturar (revisión de código).
 select exists (
   select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id
-   where c.status = 'closed' and c.branch_id = sqlc.arg(branch_id)
+   where c.status in ('open', 'closed') and c.branch_id = sqlc.arg(branch_id)
      and l.ingredient_id = any(sqlc.arg(ids)::bigint[]) and l.captured_at > sqlc.arg(since)
 )::bool;
 
@@ -145,9 +156,18 @@ select w.id, w.item_type, coalesce(i.name, p.name)::text as item_name, w.quantit
  where w.branch_id = current_branch_id() and w.status = 'pending'
  order by w.recorded_at, w.id;
 
+-- name: OpenCountThatSaw :one
+-- El conteo abierto de la sucursal que capturó alguno de estos insumos después de la merma, si lo
+-- hay: ya ajustará esa pérdida al cerrar, así que aprobarla la restaría dos veces.
+select coalesce((
+  select c.id from stock_count_lines l join stock_counts c on c.id = l.count_id
+   where c.status = 'open' and c.branch_id = sqlc.arg(branch_id)
+     and l.ingredient_id = any(sqlc.arg(ids)::bigint[]) and l.captured_at >= sqlc.arg(since)
+   order by c.id limit 1), 0)::bigint;
+
 -- name: PendingWasteToCover :many
--- Las por aprobar de la sucursal registradas antes del momento dado, para que el cierre de un
--- conteo cubra las que vio (revisión de arquitectura).
+-- Las por aprobar de la sucursal, para que el cierre de un conteo cubra las que vio; cuáles vio lo
+-- decide coverPendingWaste contra la hora de captura de cada insumo.
 select id, item_type, ingredient_id, product_id, quantity, recorded_at
   from waste_records
  where branch_id = sqlc.arg(branch_id) and status = 'pending'

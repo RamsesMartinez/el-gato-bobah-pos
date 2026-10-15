@@ -41,7 +41,7 @@ describe('mermas por aprobar (spec 039, maqueta B)', () => {
   });
 
   test('no sale en Vender ni en Pedidos: ahí el aviso es el número del riel', async () => {
-    for (const path of ['/pos', '/pedidos']) {
+    for (const path of ['/pos', '/pedidos', '/merma']) {
       montar(path);
       await waitFor(() => expect(waste.pending).toHaveBeenCalled());
       expect(screen.queryByRole('button', { name: /esperan tu aprobación/ })).toBeNull();
@@ -66,6 +66,24 @@ describe('mermas por aprobar (spec 039, maqueta B)', () => {
     montar();
     await waitFor(() => expect(waste.pending).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: /esperan tu aprobación/ })).toBeNull();
+  });
+
+  test('oculta vuelve a salir si llega otra por aprobar', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ocultar por ahora' }));
+    cleanup();
+    waste.pending.mockResolvedValue([row(1, 'Perlas de tapioca'), row(2, 'Leche entera'), row(3, 'Fresa')]);
+    montar();
+    expect(await screen.findByRole('button', { name: /3 esperan tu aprobación/ })).toBeTruthy();
+  });
+
+  test('«Sí, rechazar» no cae donde estaba «Aprobar»: un doble toque no rechaza', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: /esperan tu aprobación/ }));
+    const leche = (await screen.findByText(/Leche entera/)).closest('[data-testid="renglon-por-aprobar"]') as HTMLElement;
+    fireEvent.click(within(leche).getByRole('button', { name: 'Rechazar' }));
+    const botones = within(leche).getAllByRole('button').map((b) => b.textContent);
+    expect(botones[botones.length - 1]).toBe('No');
   });
 
   test('la hoja aprueba de un toque y rechaza con confirmación', async () => {

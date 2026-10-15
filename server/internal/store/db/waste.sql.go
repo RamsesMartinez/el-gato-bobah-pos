@@ -121,7 +121,7 @@ func (q *Queries) IngredientForWaste(ctx context.Context, arg IngredientForWaste
 const ingredientsCountedSince = `-- name: IngredientsCountedSince :one
 select exists (
   select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id
-   where c.status = 'closed' and c.branch_id = $1
+   where c.status in ('open', 'closed') and c.branch_id = $1
      and l.ingredient_id = any($2::bigint[]) and l.captured_at > $3
 )::bool
 `
@@ -132,8 +132,9 @@ type IngredientsCountedSinceParams struct {
 	Since    time.Time `json:"since"`
 }
 
-// ¿Algún conteo cerrado de la sucursal capturó alguno de estos insumos después de la merma? Entonces
-// el conteo ya corrigió lo guardado y deshacer inventaría lo que el conteo quitó.
+// ¿Algún conteo de la sucursal, cerrado o abierto, capturó alguno de estos insumos después de la
+// merma? Entonces el conteo ya corrige lo guardado contra lo que vio, y deshacer inventaría lo que
+// quitó; abierto también: su ajuste se calculó al capturar (revisión de código).
 func (q *Queries) IngredientsCountedSince(ctx context.Context, arg IngredientsCountedSinceParams) (bool, error) {
 	row := q.db.QueryRow(ctx, ingredientsCountedSince, arg.BranchID, arg.Ids, arg.Since)
 	var column_1 bool
@@ -419,6 +420,17 @@ func (q *Queries) ListWaste(ctx context.Context, arg ListWasteParams) ([]ListWas
 	return items, nil
 }
 
+const lockWasteReasonsForMerge = `-- name: LockWasteReasonsForMerge :exec
+select id from waste_reasons where id = any($1::bigint[]) order by id for update
+`
+
+// Los dos motivos de un juntar, en orden de id: dos juntares cruzados (A en B y B en A) no pasan los
+// dos la validación ni dejan un ciclo.
+func (q *Queries) LockWasteReasonsForMerge(ctx context.Context, ids []int64) error {
+	_, err := q.db.Exec(ctx, lockWasteReasonsForMerge, ids)
+	return err
+}
+
 const lockWasteRecord = `-- name: LockWasteRecord :one
 select id, branch_id, item_type, ingredient_id, product_id, quantity, unit_cost, total_cost, status,
        recorded_by, recorded_at
@@ -475,6 +487,45 @@ func (q *Queries) MergeWasteReason(ctx context.Context, arg MergeWasteReasonPara
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const moveMergedWasteReasons = `-- name: MoveMergedWasteReasons :exec
+update waste_reasons set merged_into_id = $1 where merged_into_id = $2
+`
+
+type MoveMergedWasteReasonsParams struct {
+	IntoID *int64 `json:"into_id"`
+	ID     *int64 `json:"id"`
+}
+
+// Lo que ya apuntaba al que se junta pasa al que queda: un solo nivel. Solo mueve ligas de motivos,
+// nunca los registros.
+func (q *Queries) MoveMergedWasteReasons(ctx context.Context, arg MoveMergedWasteReasonsParams) error {
+	_, err := q.db.Exec(ctx, moveMergedWasteReasons, arg.IntoID, arg.ID)
+	return err
+}
+
+const openCountThatSaw = `-- name: OpenCountThatSaw :one
+select coalesce((
+  select c.id from stock_count_lines l join stock_counts c on c.id = l.count_id
+   where c.status = 'open' and c.branch_id = $1
+     and l.ingredient_id = any($2::bigint[]) and l.captured_at >= $3
+   order by c.id limit 1), 0)::bigint
+`
+
+type OpenCountThatSawParams struct {
+	BranchID int64     `json:"branch_id"`
+	Ids      []int64   `json:"ids"`
+	Since    time.Time `json:"since"`
+}
+
+// El conteo abierto de la sucursal que capturó alguno de estos insumos después de la merma, si lo
+// hay: ya ajustará esa pérdida al cerrar, así que aprobarla la restaría dos veces.
+func (q *Queries) OpenCountThatSaw(ctx context.Context, arg OpenCountThatSawParams) (int64, error) {
+	row := q.db.QueryRow(ctx, openCountThatSaw, arg.BranchID, arg.Ids, arg.Since)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const pendingWaste = `-- name: PendingWaste :many
@@ -549,8 +600,8 @@ type PendingWasteToCoverRow struct {
 	RecordedAt   time.Time       `json:"recorded_at"`
 }
 
-// Las por aprobar de la sucursal registradas antes del momento dado, para que el cierre de un
-// conteo cubra las que vio (revisión de arquitectura).
+// Las por aprobar de la sucursal, para que el cierre de un conteo cubra las que vio; cuáles vio lo
+// decide coverPendingWaste contra la hora de captura de cada insumo.
 func (q *Queries) PendingWasteToCover(ctx context.Context, branchID int64) ([]PendingWasteToCoverRow, error) {
 	rows, err := q.db.Query(ctx, pendingWasteToCover, branchID)
 	if err != nil {

@@ -101,7 +101,7 @@ func (s *BackofficeService) RecordWaste(ctx context.Context, cmd RecordWasteCmd)
 			return err
 		}
 		if status == domain.WasteApplied {
-			if err := insertWasteMovements(ctx, q, rec.ID, branch, cmd.Actor, plan.deltas, plan.unitCost); err != nil {
+			if err := insertWasteMovements(ctx, q, rec.ID, branch, cmd.Actor, plan.deltas, movementCost(cmd.ProductID, plan.unitCost)); err != nil {
 				return err
 			}
 		}
@@ -192,6 +192,16 @@ func withCost(p wastePlan, unitCost decimal.Decimal) (wastePlan, error) {
 	return p, nil
 }
 
+// movementCost es el costo por unidad que se copia al movimiento: el del registro solo si es de un
+// insumo. El de un producto es por pieza, y en una receta de un solo insumo acababa valuando el
+// gramo como el producto entero (revisión de código).
+func movementCost(productID *int64, unitCost *decimal.Decimal) *decimal.Decimal {
+	if productID != nil {
+		return nil
+	}
+	return unitCost
+}
+
 func insertWasteMovements(ctx context.Context, q *db.Queries, recordID, branch, actor int64, deltas []domain.StockDelta, unitCost *decimal.Decimal) error {
 	reason := wasteMovementReason
 	for _, d := range deltas {
@@ -204,8 +214,6 @@ func insertWasteMovements(ctx context.Context, q *db.Queries, recordID, branch, 
 			WasteRecordID: &recordID, UserID: &actor, Reason: &reason, BranchID: branch,
 			ModifierOptionID: d.OptionID, ComponentOfProductID: d.ComponentOf,
 		}
-		// El costo por unidad del registro es del artículo registrado; en la receta de un producto
-		// cada insumo tiene el suyo y no se copia.
 		if d.ProductID == nil && len(deltas) == 1 {
 			p.UnitCost = unitCost
 		}
@@ -279,6 +287,25 @@ func (s *BackofficeService) ApproveWaste(ctx context.Context, id, actor int64) e
 		if unitCost == nil {
 			unitCost, total = plan.unitCost, plan.total
 		}
+		// Un conteo abierto que ya capturó el artículo ajustará esta pérdida al cerrar: aprobarla
+		// también la restaría dos veces. Queda cubierta por ese conteo, como al cerrarlo.
+		seenBy, err := q.OpenCountThatSaw(ctx, db.OpenCountThatSawParams{BranchID: r.BranchID, Ids: plan.ingredientIDs(), Since: r.RecordedAt})
+		if err != nil {
+			return err
+		}
+		if seenBy != 0 {
+			n, err := q.ResolveWasteRecord(ctx, db.ResolveWasteRecordParams{Status: string(domain.WasteCovered), ResolvedBy: &actor,
+				UnitCost: unitCost, TotalCost: total, CoveredByCountID: &seenBy, ID: id, FromStatus: r.Status})
+			if err != nil {
+				return err
+			}
+			if n == 0 {
+				return fmt.Errorf("%w: esta merma ya se resolvió", domain.ErrConflict)
+			}
+			branch := r.BranchID
+			return auditEntity(ctx, q, domain.AuditWasteApproved, "waste_record", id, &branch, &actor, nil,
+				map[string]any{"totalCost": total, "coveredByCount": seenBy})
+		}
 		n, err := q.ResolveWasteRecord(ctx, db.ResolveWasteRecordParams{Status: string(next), ResolvedBy: &actor,
 			UnitCost: unitCost, TotalCost: total, ID: id, FromStatus: r.Status})
 		if err != nil {
@@ -287,7 +314,7 @@ func (s *BackofficeService) ApproveWaste(ctx context.Context, id, actor int64) e
 		if n == 0 {
 			return fmt.Errorf("%w: esta merma ya se resolvió", domain.ErrConflict)
 		}
-		if err := insertWasteMovements(ctx, q, id, r.BranchID, actor, plan.deltas, unitCost); err != nil {
+		if err := insertWasteMovements(ctx, q, id, r.BranchID, actor, plan.deltas, movementCost(r.ProductID, unitCost)); err != nil {
 			return err
 		}
 		branch := r.BranchID

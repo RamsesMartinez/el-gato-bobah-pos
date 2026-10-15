@@ -204,6 +204,9 @@ func (s *BackofficeService) MergeWasteReason(ctx context.Context, id, into, acto
 		return fmt.Errorf("%w: un motivo no se junta consigo mismo", domain.ErrValidation)
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := q.LockWasteReasonsForMerge(ctx, []int64{id, into}); err != nil {
+			return err
+		}
 		if _, err := q.GetWasteReason(ctx, id); err != nil {
 			return notFound(err)
 		}
@@ -221,7 +224,7 @@ func (s *BackofficeService) MergeWasteReason(ctx context.Context, id, into, acto
 		if n == 0 {
 			return fmt.Errorf("%w: ese motivo ya se juntó con otro", domain.ErrConflict)
 		}
-		return nil
+		return q.MoveMergedWasteReasons(ctx, db.MoveMergedWasteReasonsParams{IntoID: &into, ID: &id})
 	})
 }
 

@@ -14,28 +14,30 @@ import { wasteApi } from '../../api/waste';
 // Mermas por aprobar (spec 039, maqueta B): una franja arriba para quien aprueba, mientras haya
 // pendientes. Una pendiente no resta hasta que alguien la aprueba, y olvidada deja el almacén mal.
 // No sale en Vender ni en Pedidos: ahí quita una fila de productos a quien cobra, y el aviso es el
-// número del riel. Se puede ocultar por la sesión.
+// número del riel; tampoco en la captura, que ya lo dice y necesita el alto para «Guardar». Se oculta
+// por la sesión hasta que llegue otra pendiente: guarda cuántas había al ocultarla.
 
 const HIDDEN_KEY = 'egb:merma:franja-oculta';
-const NOT_HERE = [/^\/pos/, /^\/pedidos/];
+const NOT_HERE = [/^\/pos/, /^\/pedidos/, /^\/merma/];
 
-function isHidden(): boolean {
-  try { return sessionStorage.getItem(HIDDEN_KEY) === '1'; } catch { return false; }
+function hiddenAt(): number {
+  try { return Number(sessionStorage.getItem(HIDDEN_KEY) ?? '0') || 0; } catch { return 0; }
 }
 
 export function PendingWasteBar() {
   const user = useSessionStore((s) => s.user);
   const { pathname } = useLocation();
   const approver = can('inventory.write_off_approve', user);
-  const [hidden, setHidden] = useState(isHidden);
+  const [hiddenCount, setHiddenCount] = useState(hiddenAt);
   const [open, setOpen] = useState(false);
   const { data: pending = [] } = useQuery({
     queryKey: ['merma', 'por-aprobar'], queryFn: wasteApi.pending, enabled: approver, staleTime: 30_000, refetchInterval: 60_000,
   });
   if (!approver || pending.length === 0 || NOT_HERE.some((r) => r.test(pathname))) return null;
+  const hidden = hiddenCount > 0 && pending.length <= hiddenCount;
   const hide = () => {
-    setHidden(true);
-    try { sessionStorage.setItem(HIDDEN_KEY, '1'); } catch { /* sin almacenamiento, se oculta solo aquí */ }
+    setHiddenCount(pending.length);
+    try { sessionStorage.setItem(HIDDEN_KEY, String(pending.length)); } catch { /* sin almacenamiento, se oculta solo aquí */ }
   };
   return (
     <>
@@ -79,8 +81,8 @@ function PendingSheet({ open, onClose }: { open: boolean; onClose: () => void })
               </Box>
               {confirm === r.id ? (
                 <HStack gap={3} flexShrink={0}>
-                  <Button minH="44px" variant="ghost" onClick={() => setConfirm(null)}>No</Button>
                   <Button minH="44px" colorPalette="red" disabled={reject.isPending} onClick={() => reject.mutate(r.id)}>Sí, rechazar</Button>
+                  <Button minH="44px" variant="ghost" onClick={() => setConfirm(null)}>No</Button>
                 </HStack>
               ) : (
                 <HStack gap={4} flexShrink={0}>

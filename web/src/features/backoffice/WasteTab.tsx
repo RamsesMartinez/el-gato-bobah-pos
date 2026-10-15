@@ -3,7 +3,7 @@ import { Box, Button, Flex, HStack, Text, VStack } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { medirAccion } from '../../api/uso';
-import { wasteApi } from '../../api/waste';
+import { WASTE_STATUS_WORDS as STATUS_WORDS, wasteApi } from '../../api/waste';
 import { moneyExact } from '../../utils/format';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
@@ -15,9 +15,6 @@ import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 type Preset = 'semana' | 'mes' | 'fechas';
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const money = (v: string) => moneyExact(v);
-const STATUS_WORDS: Record<string, string> = {
-  applied: 'Restó', pending: 'Por aprobar', rejected: 'Rechazada', covered: 'La cubrió el conteo', undone: 'Deshecha',
-};
 
 function presetRange(p: Preset): { from: string; to: string } {
   const today = new Date();

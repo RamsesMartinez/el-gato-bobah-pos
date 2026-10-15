@@ -10,7 +10,7 @@ import { pressKey } from '../../components/pressKey';
 import { ApiError } from '../../api/client';
 import { medirAccion } from '../../api/uso';
 import { moneyExact } from '../../utils/format';
-import { wasteApi, type WasteItems, type WasteReason, type WasteRow } from '../../api/waste';
+import { WASTE_STATUS_WORDS as STATUS_WORDS, wasteApi, type WasteItems, type WasteReason, type WasteRow } from '../../api/waste';
 
 // Lo que se echó a perder (spec 039, maqueta D: «Una pantalla» y «Paso a paso» con interruptor).
 // Llega «Una pantalla» (decisión del dueño); cada tableta recuerda la vista que eligió, como el
@@ -29,9 +29,6 @@ type Item = { kind: 'i' | 'p'; id: number };
 // En qué se captura: la unidad base (sin nada que mandar), otra unidad del mismo tipo o un empaque.
 type Measure = { kind: 'base' } | { kind: 'unit'; id: number } | { kind: 'pack'; id: number };
 
-const STATUS_WORDS: Record<string, string> = {
-  applied: 'Restó', pending: 'Por aprobar', rejected: 'Rechazada', covered: 'La cubrió el conteo', undone: 'Deshecha',
-};
 
 export function WastePage() {
   const qc = useQueryClient();
@@ -132,7 +129,7 @@ export function WastePage() {
       )}
       {product && <Text color="fg.muted">En piezas</Text>}
       <NumericKeypad allowDecimal={allowDecimal} onKey={(k) => setQty((q) => pressKey(q, k, allowDecimal))} />
-      <Button minH="56px" colorPalette="red" disabled={!ready || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
+      <Button minH="56px" position="sticky" bottom={0} zIndex={1} colorPalette="red" disabled={!ready || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
     </VStack>
   );
 
@@ -265,8 +262,8 @@ function TodayList({ rows }: { rows: WasteRow[] }) {
           </Box>
           {r.canUndo && (confirm === r.id ? (
             <HStack gap={3} flexShrink={0}>
-              <Button minH="44px" variant="ghost" onClick={() => setConfirm(null)}>No</Button>
               <Button minH="44px" colorPalette="red" disabled={undo.isPending} onClick={() => undo.mutate(r.id)}>Sí, deshacer</Button>
+              <Button minH="44px" variant="ghost" onClick={() => setConfirm(null)}>No</Button>
             </HStack>
           ) : (
             <Button minH="44px" variant="outline" flexShrink={0} onClick={() => setConfirm(r.id)}>Deshacer</Button>

@@ -71,9 +71,9 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 - [X] T039 [P] Bloque de la 039 en `AGENTS.md` (lo que no se ve: el periodo por id de movimiento, juntar no reescribe, la sucursal explícita del movimiento) y filas en `docs/matriz-de-pantallas.md`
 - [ ] T040 Medir con Playwright a 1024×600 contra el ambiente de pruebas la captura «Una pantalla» con empaques y con 8 o más motivos, la franja y la pestaña, con capturas; y una prueba con usuario sin contexto (SC-005)
-- [ ] T041 Correr el `quickstart.md` contra la API local
-- [ ] T042 `make ci-local`
-- [ ] T043 `/revision-de-codigo` (hook `after_implement`)
+- [X] T041 Correr el `quickstart.md` contra la API local
+- [X] T042 `make ci-local`
+- [X] T043 `/revision-de-codigo` (hook `after_implement`)
 
 ## Dependencies
 
