@@ -11,7 +11,7 @@ insumo ocupado («vuelve a intentar»), 409 `BRANCH_AMBIGUOUS`.
 | GET | `/waste/reasons` | `inventory.write_off` | `[{ id, name, description, isStaffMeal, uses }]` activos, más usados primero |
 | POST | `/waste/reasons` | `inventory.write_off` | `{ name, description }` → el creado, o 409 `{ existingId }` si el nombre ya existe |
 | PUT | `/waste/reasons/{id}` | `inventory.configure` | `{ name, description, isStaffMeal, archived }` |
-| POST | `/waste/reasons/{id}/merge` | `inventory.configure` | `{ intoId }`: los registros pasan a `intoId`; el motivo queda archivado y `mergedIntoId` |
+| POST | `/waste/reasons/{id}/merge` | `inventory.configure` | `{ intoId }`: el motivo queda con `mergedIntoId` y deja de ofrecerse; los registros conservan su motivo y el reporte los suma bajo `intoId`. El destino no puede estar juntado ni archivado; 409 si lo está |
 
 ## Registros
 
@@ -29,7 +29,7 @@ insumo ocupado («vuelve a intentar»), 409 `BRANCH_AMBIGUOUS`.
 
 | Método | Ruta | Permiso | Respuesta |
 |---|---|---|---|
-| GET | `/stock/counts/{id}/loss` | `inventory.health_view` | `{ firstCount: bool, costAsOf, items: [{ ingredientId, name, unit, registered, unexplained, lost, surplus, unitCost? }], totals }` |
+| GET | `/stock/counts/{id}/loss` | `inventory.health_view` | `{ firstCount: bool, costSaved: bool, items: [{ ingredientId, name, unit, registered, unexplained, lost, surplus, unitCost? }], totals }`; pesos con el costo guardado al cerrar |
 | GET | `/waste/by-reason?from=&to=` | `inventory.health_view` | `{ reasons: [{ id, name, isStaffMeal, totalCost, records }] }` (las fichas); fechas mal formadas → 400 |
 
 ## Configuración

@@ -73,15 +73,19 @@ Elegidas por el dueño el 2026-10-15 (tabla de abajo). Cada pantalla, como qued�
 
 | Pantalla | Dónde vive | Cómo se reparte el alto de 1024×600 |
 |---|---|---|
-| **Se echó a perder** (captura) | Un renglón propio en el riel, visible con `inventory.write_off` (cajero y cocina incluidos). Dos vistas con un interruptor arriba que cada tableta recuerda, como «Lista / Uno por uno» del conteo: **«Una pantalla»** (por omisión: motivos como botones a la izquierda, artículo con buscador y recientes al centro, cantidad con empaques, teclado y Guardar a la derecha) y **«Paso a paso»** (Motivo → Qué → Cuánto). El botón dice «Mandar a aprobar» cuando el costo pasa el tope. «Hoy» lista lo registrado en el día con Deshacer | Barra de 52 px; tres columnas a todo el alto restante; Guardar de 56 px |
-| **Por aprobar** | Una franja de 36 px arriba de cualquier pantalla, solo para quien tiene `inventory.write_off_approve` y solo mientras hay pendientes de su sucursal; un toque abre una hoja inferior con Aprobar / Rechazar por renglón | 36 px mientras haya pendientes; la hoja ocupa 480 px |
+| **Se echó a perder** (captura) | Un renglón propio en el riel, visible con `inventory.write_off` (cajero y cocina incluidos). Dos vistas con un interruptor arriba que cada tableta recuerda, como «Lista / Uno por uno» del conteo: **«Una pantalla»** (por omisión, decidido por el dueño: motivos como botones a la izquierda, artículo con recientes al centro y búsqueda en `Picker`, cantidad con empaques, teclado y Guardar a la derecha; la pantalla no usa el relleno de `Page` sino `p=2` y `h="100%"`, cada columna con `minH={0}` y su propio desplazamiento, Guardar fijo al pie de la derecha, la cantidad con `inputMode="none"`, y el teclado baja a 48 px por tecla cuando hay empaques; se mide con Playwright a 1024×600 con empaques y con 8 o más motivos) y **«Paso a paso»** (Motivo → Qué → Cuánto). El botón dice «Mandar a aprobar» cuando el costo pasa el tope. «Hoy» lista lo registrado en el día con Deshacer a la derecha de cada renglón (nunca toda la fila) y con confirmación | Barra de 52 px; tres columnas a todo el alto restante; Guardar de 56 px |
+| **Por aprobar** | Una franja de **44 px** arriba de las pantallas de administración (no en Vender ni en Pedidos), solo para quien tiene `inventory.write_off_approve` y solo mientras hay pendientes de su sucursal; se cierra por sesión. En Vender y Pedidos el aviso es un número sobre el renglón del riel. Un toque abre una hoja inferior con Aprobar / Rechazar por renglón: «Rechazar» como botón fantasma rojo, a ≥ 12 px de «Aprobar» y con confirmación de un paso | Una fila del shell (columna flex, `Outlet` con `flex=1 minH={0}`), no encima del alto de la pantalla |
 | **Faltante sin explicar** | Almacén › Conteo, al cerrar un conteo y desde cualquier conteo cerrado: tres cifras arriba (se perdió, registrado, sin explicar) y una barra por insumo (gris registrado, rojo sin explicar) con las cantidades y los pesos a la derecha; «Sobraba» en verde, sin barra | Fichas de ~70 px; la lista se desplaza en lo que queda |
-| **Merma por motivo** | Pestaña «Merma» en Almacén: rango (esta semana, este mes, elegir fechas con `DatePickerButton`), fichas con el total por motivo (consumo del personal aparte) y debajo los registros; tocar una ficha filtra | Fichas de ~70 px; registros en el resto |
-| **Motivos y tope** | Negocio › Inventario (la sección del 038): un renglón para el tope y la lista de motivos con Editar (nombre, descripción, archivar, «sale aparte») y Juntar en hojas inferiores | Sección dentro de una pantalla que ya existe |
+| **Merma por motivo** | Pestaña «Se echó a perder» en Almacén (`Tabs.List` con desplazamiento horizontal: con ella son siete pestañas): rango (esta semana, este mes, elegir fechas con `DatePickerButton`), fichas con el total por motivo (consumo del personal aparte) en una sola fila que se desplaza a lo ancho y deja la activa a la vista, y debajo los registros; tocar una ficha filtra; los atajos de rango y los `DatePickerButton` en una fila de 44 px | Fichas de ~70 px; registros en el resto |
+| **Motivos y tope** | Negocio › Inventario (la sección del 038): un renglón para el tope y la lista de motivos con Editar (nombre, descripción, archivar, «No cuenta como pérdida del negocio») y Juntar en hojas inferiores; «Juntar» como botón fantasma rojo, apartado de «Editar» y con confirmación | Sección dentro de una pantalla que ya existe |
 
-Riel: «Se echó a perder» es un renglón nuevo. Para el admin el riel ya muestra 8 de 15 sin
-desplazar; va después de «Caja», y empuja a «Reportes» abajo del pliegue para el admin. Lo revisa
-el revisor de tableta; cajero y cocina ven pocos renglones y lo ven siempre.
+Riel: «Se echó a perder» es un renglón nuevo. Las entradas de `NAV` ganan un campo `permission` y
+`AppShell` las filtra con `can()` (hoy solo filtra por rol con `canAccess`): la entrada nueva pide
+`inventory.write_off`. Va **después de «Reportes»**, como Asistencia, para no sacar a «Reportes» de
+los 8 visibles del admin; cajero y cocina ven pocos renglones y la ven siempre. Lleva el número de
+pendientes para quien aprueba (en Vender y Pedidos es el único aviso). Cocina no es un rol de la
+tableta en `roles.ts` (`admin | gerente | cajero | mesero`): el permiso se resuelve por el rol que
+tenga la sesión de la cocina, y se verifica en la implementación.
 
 ## Maquetas
 
@@ -103,13 +107,14 @@ el revisor de tableta; cajero y cocina ven pocos renglones y lo ven siempre.
 | Nombre de motivo normalizado (reusa la regla de nombres de insumo) | domain | `server/internal/domain/waste.go` |
 | Permisos `inventory.write_off`, `inventory.write_off_approve` | domain | `server/internal/domain/permission.go` + `web/src/app/permissions.ts` |
 | Acciones de bitácora `waste.recorded`, `waste.approved`, `waste.rejected`, `waste.undone`, `settings.waste_threshold` | domain | `server/internal/domain/audit.go` + `web/src/shared/audit/labels.ts` |
-| Esquema: `waste_reasons`, `waste_records`, `stock_movements.waste_record_id`, `business_settings.waste_approval_threshold`, motivos sugeridos | migración | `server/migrations/0094_waste.sql` |
+| Esquema: `waste_reasons`, `waste_records`, `stock_movements.waste_record_id`, `stock_count_lines.last_movement_id` y `unit_cost`, `business_settings.waste_approval_threshold`, motivos sugeridos, RLS y grants (ver data-model) | migración | `server/migrations/0094_waste.sql` |
 | Motivos sugeridos de una empresa nueva | sqlc | `CreateCompany` en `server/queries/companies.sql` (CTE, no trigger: ver 0076) |
 | Consultas | sqlc | `server/queries/waste.sql` |
-| Registrar, aprobar, rechazar, deshacer, cubrir al cerrar conteo | app | `server/internal/app/waste.go`; `CloseCount` en `stock_counts.go` llama a la cobertura en su transacción |
+| Registrar, aprobar, rechazar, deshacer, cubrir al cerrar conteo | app | `server/internal/app/waste.go`; `CaptureCount` guarda `last_movement_id` con el insumo tomado y `CloseCount` guarda el costo y cubre en su transacción (`stock_counts.go`) |
 | Reportes | app | `server/internal/app/waste_reports.go` |
 | Rutas | httpapi | `server/internal/httpapi/handlers_waste.go`, `router.go` |
 | Medición de uso | domain + web | `uso.go` y `rutas-medidas.ts` |
+| Riel filtrado por permiso | web | `app/nav.ts` (campo `permission`), `app/AppShell.tsx` |
 | Pantallas | web | `web/src/features/waste/` (captura con sus dos vistas, franja y hoja de por aprobar, pestaña Merma), `StockCountTab.tsx` (faltante), `InventorySettingsSection.tsx` (motivos y tope), `app/nav.ts` (renglón del riel) |
 
 ## Bordes (se piensan antes del código)
@@ -129,6 +134,12 @@ el revisor de tableta; cajero y cocina ven pocos renglones y lo ven siempre.
 | E11 | Dos sucursales sin selector | `current_branch_id()` → `BRANCH_AMBIGUOUS`, no adivina | integración |
 | E12 | Cantidad vacía, 0, negativa, NaN o enorme | `ValidQty` + `MaxStockQty` → 400 | handler |
 | E13 | Movimiento huérfano al deshacer | Deshacer inserta el movimiento inverso con el mismo `waste_record_id`; nunca borra | integración |
+| E14 | Una merma empieza antes de la captura del conteo y confirma después | El periodo se ancla por `last_movement_id` leído con el insumo tomado; la merma cae en el periodo siguiente | integración con dos transacciones |
+| E15 | Pendiente registrada entre la captura y el cierre | No se cubre: sigue por aprobar | integración |
+| E16 | Juntar motivos | `reason_id` no cambia; el reporte suma por el destino | integración |
+| E17 | Borrar una empresa con mermas | Cascade sin que la FK del movimiento lo impida (`no action`) | integración |
+| E18 | Movimiento de merma con dos sucursales | `branch_id` explícito y FK compuesta con el registro; nada pasa por el trigger genérico | integración con dos sucursales |
+| E19 | Cambiar el costo o la marca «no cuenta como pérdida» después | El reporte cerrado no cambia: costo guardado en el conteo y marca copiada al registro | integración |
 
 ## Project Structure
 
@@ -167,3 +178,10 @@ web/src/
 ## Complexity Tracking
 
 Sin violaciones.
+
+## Revisión after_plan (2026-10-15)
+
+`/revision-de-arquitectura` con `db-architect` y `tablet-ui-reviewer`: cambios requeridos, todos
+aplicados en este plan, `data-model.md`, `research.md` (R2, R5, R9), `contracts/api.md` y el spec
+(FR de juntar, de cobertura y del costo del faltante). Los de tableta se cuentan contra 600 px
+estimados; la captura «Una pantalla» se mide con Playwright antes de darla por buena.

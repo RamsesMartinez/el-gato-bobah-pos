@@ -73,7 +73,7 @@ de que exista la merma (US1) y de que haya dos conteos.
 
 **Independent Test**: con dos conteos cerrados de un insumo y 3 de merma registrada entre ellos
 (que ya restaron), si el segundo conteo encontró 2 menos de lo que el sistema tenía, el reporte dice
-5 perdidos: 3 registrados y 2 sin explicar, en pesos al costo de hoy.
+5 perdidos: 3 registrados y 2 sin explicar, en pesos al costo del cierre.
 
 **Acceptance Scenarios**:
 
@@ -105,8 +105,8 @@ total coincide con la suma de los registros no deshechos.
 1. **Given** mermas de la semana con motivos «Caducó» y «Consumo del personal», **When** se abre
    el reporte de la semana, **Then** cada motivo tiene su total y el consumo del personal sale en
    su propio renglón.
-2. **Given** dos motivos que significan lo mismo, **When** se juntan, **Then** sus registros
-   quedan bajo el que se conserva y el otro deja de ofrecerse.
+2. **Given** dos motivos que significan lo mismo, **When** se juntan, **Then** el reporte los suma
+   bajo el que se conserva, el otro deja de ofrecerse, y cada registro sigue diciendo su motivo.
 3. **Given** un motivo archivado, **When** se registra una merma nueva, **Then** ya no se ofrece,
    pero las mermas viejas siguen diciendo su motivo.
 
@@ -180,15 +180,16 @@ total coincide con la suma de los registros no deshechos.
   sucursal y poder aprobarlas (resta en ese momento) o rechazarlas (no resta), quedando quién y
   cuándo. Una merma resuelta no se vuelve a resolver.
 - **FR-013**: Una merma por aprobar MUST cerrarse como «la cubrió el conteo», y no poder aprobarse
-  después, cuando se cierra un conteo que contó alguno de los insumos que restaría. Un conteo
-  descartado no cubre nada.
+  después, cuando se cierra un conteo que contó alguno de los insumos que restaría **y la merma se
+  registró antes de que ese insumo se capturara**. Una registrada después de la captura no la vio
+  el conteo y sigue por aprobar. Un conteo descartado no cubre nada.
 
 **Faltante sin explicar (US2)**
 
 - **FR-014**: Al cerrar un conteo, el sistema MUST ofrecer, por cada insumo contado que tenga un
   conteo cerrado anterior, la merma registrada en el periodo, el faltante sin explicar (lo que
   el conteo encontró de menos contra lo que el sistema tenía al capturarlo) y el total perdido (la
-  suma de los dos), en cantidad y en pesos al costo de hoy. La merma registrada ya restó de lo que
+  suma de los dos), en cantidad y en pesos al costo de cuando se cerró el conteo. La merma registrada ya restó de lo que
   el sistema tenía: restarla otra vez del faltante del conteo la contaría dos veces.
 - **FR-015**: El periodo de un insumo MUST ir de su captura en el conteo anterior a su captura en
   este conteo, y cuenta la merma que RESTÓ en ese periodo (por la fecha en que restó: al
@@ -196,7 +197,7 @@ total coincide con la suma de los registros no deshechos.
 - **FR-016**: Lo que sobraba MUST decirse como «sobraba»; un insumo sin costo MUST decir «sin costo»;
   el primer conteo MUST decir que no hay con qué comparar.
 - **FR-017**: El reporte MUST poder verse otra vez para cualquier conteo cerrado, con las mismas
-  cifras (el faltante del conteo es fijo; el costo es el de hoy y la pantalla lo dice).
+  cifras (cantidades y costo se fijan al cerrar el conteo; un conteo de antes de esta feature dice «sin costo guardado»).
 
 **Por motivo y motivos (US3)**
 
@@ -204,8 +205,9 @@ total coincide con la suma de los registros no deshechos.
   motivo, en cantidad por insumo y en pesos al costo del registro, con «consumo del personal» en su
   propio renglón.
 - **FR-019**: Quien administra el almacén MUST poder renombrar, cambiar la descripción, archivar y
-  juntar motivos. Archivar deja de ofrecerlo sin cambiar lo registrado; juntar pasa los registros
-  al motivo que se conserva.
+  juntar motivos. Archivar deja de ofrecerlo sin cambiar lo registrado; juntar deja de ofrecer el
+  motivo y el reporte suma sus registros bajo el que se conserva, pero cada registro conserva su
+  motivo original (no se reescribe el pasado).
 
 **Transversales**
 
@@ -250,8 +252,11 @@ total coincide con la suma de los registros no deshechos.
 
 - Por omisión una empresa nueva no tiene tope (ninguna merma pide aprobación); El Gato Bobah pone el
   suyo en su configuración.
-- El dinero del faltante sin explicar es al costo de hoy (decisión del issue); el de la merma por
-  motivo, al costo de cuando se registró.
+- El dinero del faltante se fija con el costo al cerrar el conteo (ajuste de la revisión de
+  arquitectura: con «costo de hoy» un reporte cerrado cambiaba solo); el de la merma por motivo, al
+  costo de cuando se registró. Una merma de un insumo sin costo toma el costo vigente al aprobarse.
+- En pantalla todo se llama «Se echó a perder» (el riel, la captura y la pestaña de Almacén); «merma»
+  queda como nombre interno y en este documento.
 - Un solo almacén por sucursal (más de uno es otra feature, issue #65); la merma es de la sucursal.
 - El costo de lo que se tira de un producto se calcula con su receta al costo de ese momento.
 - La merma de un producto no lleva empaques: se registra en piezas.

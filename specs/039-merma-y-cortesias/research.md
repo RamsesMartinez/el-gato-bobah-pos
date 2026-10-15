@@ -13,9 +13,13 @@
 
 ## R2. El periodo de un insumo
 
-- **Decisión**: de `captured_at` del renglón del conteo anterior cerrado que contó ese insumo, a
-  `captured_at` del renglón de este conteo. Cuenta la merma por la fecha de su movimiento (cuando
-  restó: al registrarse o al aprobarse).
+- **Decisión** (corregida tras la revisión de arquitectura): el periodo se ancla por **id de
+  movimiento**, no por hora. Al capturar un insumo, el conteo guarda el último movimiento del insumo
+  en la sucursal (`last_movement_id`), leído con el insumo tomado. El periodo es
+  `(anterior.last_movement_id, este.last_movement_id]`.
+- **Por qué no la hora**: `now()` es la hora de inicio de la transacción. Una merma que empezó antes
+  de la captura y confirmó después tendría hora anterior y caería en el periodo equivocado, aunque
+  el conteo no la vio. El id lo asigna la base al insertar y el candado del insumo ordena las dos.
 - **Por qué**: el conteo ajusta contra lo que había al capturar (038); una merma posterior a la
   captura ya queda fuera de este conteo y entra en el siguiente, sin perderse ni duplicarse.
 - **Alternativas**: por fecha de cierre del conteo (descartado: una merma entre captura y cierre
@@ -41,7 +45,9 @@
 ## R5. Cobertura por el conteo
 
 - **Decisión**: `CloseCount` pasa a `covered` las pendientes de la sucursal cuyos insumos que
-  restarían incluyan alguno contado, dentro de la misma transacción del cierre.
+  restarían incluyan alguno contado **y que se registraron antes de la captura de ese insumo**,
+  dentro de la misma transacción del cierre. Una registrada entre la captura y el cierre no la vio
+  el conteo: sigue por aprobar.
 - **Por qué**: un conteo descartado no corrige nada, así que no debe cubrir; y hacerlo al capturar
   dejaría pendientes cubiertas por un conteo que nunca se cerró.
 
@@ -66,3 +72,16 @@
 - **Decisión**: `inventory.write_off` para admin, gerente, cajero, mesero y cocina (decisión del
   9-oct: cualquiera del local). `inventory.write_off_approve` para admin y gerente. Motivos y tope
   bajo `inventory.configure`. Reportes bajo `inventory.health_view`.
+
+## R9. Lo que cambió con la revisión de arquitectura (2026-10-15)
+
+- Juntar motivos no reescribe `reason_id`: el registro guarda su motivo y el reporte sigue
+  `merged_into_id` (un nivel). Reescribirlo cerraba la puerta de reconstruir el motivo original.
+- El faltante guarda su costo al cerrar (`stock_count_lines.unit_cost`) y la merma copia
+  `is_staff_meal`. Así un reporte cerrado no cambia cuando cambia un costo o una marca.
+- La sucursal del movimiento de merma es explícita y está amarrada al registro con FK compuesta.
+  El trigger genérico de 0076 la tomaría de la empresa y truena con dos sucursales, como le pasó a
+  la venta en 0078.
+- Unicidad del nombre de motivo con índice en la base, no solo con candado.
+- Pantalla: franja de 44 px y nunca en Vender ni Pedidos; el riel filtra por permiso; la vista «Una
+  pantalla» con columnas que se desplazan solas y el artículo en `Picker`. Detalle en el plan.
