@@ -64,22 +64,22 @@ hoy no existe. Sola ya da valor: lo guardado deja de bajar «sin razón».
 
 ### User Story 2 - Ver el faltante sin explicar después de un conteo (Priority: P2)
 
-Al cerrar un conteo, quien administra ve, por insumo, cuánto faltaba según el conteo, cuánto de
-eso ya se había registrado como merma desde el conteo anterior, y lo que queda: el **faltante sin
-explicar**, en cantidad y en pesos.
+Al cerrar un conteo, quien administra ve, por insumo, lo que se perdió desde el conteo anterior
+partido en dos: lo **registrado como merma** (ya se había restado de lo que el sistema tenía) y el
+**faltante sin explicar**, que es lo que el conteo encontró de menos. En cantidad y en pesos.
 
 **Why this priority**: es lo que el dueño quiere saber (¿desperdicio normal o algo más?). Depende
 de que exista la merma (US1) y de que haya dos conteos.
 
-**Independent Test**: con dos conteos cerrados de un insumo y 3 de merma registrada entre ellos,
-si el segundo conteo encontró 5 menos de lo que el sistema tenía, el reporte dice 3 explicados y
-2 sin explicar, en pesos al costo de hoy.
+**Independent Test**: con dos conteos cerrados de un insumo y 3 de merma registrada entre ellos
+(que ya restaron), si el segundo conteo encontró 2 menos de lo que el sistema tenía, el reporte dice
+5 perdidos: 3 registrados y 2 sin explicar, en pesos al costo de hoy.
 
 **Acceptance Scenarios**:
 
 1. **Given** un conteo cerrado con un conteo anterior del mismo insumo, **When** se abre el
-   reporte, **Then** cada insumo contado muestra faltante del conteo, merma registrada en el
-   periodo y faltante sin explicar, en cantidad y en pesos.
+   reporte, **Then** cada insumo contado muestra lo perdido en el periodo, cuánto de eso se
+   registró como merma y cuánto quedó sin explicar, en cantidad y en pesos.
 2. **Given** que el conteo encontró de más (sobraba), **When** se ve el reporte, **Then** lo dice
    como «sobraba», no como un faltante negativo.
 3. **Given** el primer conteo de la sucursal, **When** se abre el reporte, **Then** dice que no hay
@@ -135,8 +135,8 @@ total coincide con la suma de los registros no deshechos.
 - **Juntar un motivo con otro de otra empresa**: imposible; los motivos son de cada empresa.
 - **Sin tope configurado**: ninguna merma pide aprobación.
 - **Insumo sin costo con tope configurado**: no se sabe cuánto vale, así que queda por aprobar.
-- **Merma por aprobar cuando se cuenta su insumo**: el conteo ya reflejó la pérdida; aprobarla
-  después la restaría dos veces. Queda cerrada como «la cubrió el conteo» y ya no se puede aprobar.
+- **Merma por aprobar cuando se cierra un conteo que contó su insumo**: el conteo ya reflejó la
+  pérdida; aprobarla después la restaría dos veces. Queda cerrada como «la cubrió el conteo» y ya no se puede aprobar.
 - **Aprobar la propia merma**: se permite solo a quien tiene el permiso de aprobar; queda en la
   bitácora igual que cualquier aprobación.
 - **Dos personas aprueban o rechazan la misma a la vez**: una gana; la otra ve que ya se resolvió.
@@ -179,14 +179,17 @@ total coincide con la suma de los registros no deshechos.
 - **FR-012**: Quien tiene el permiso de aprobar mermas MUST ver las que esperan aprobación de su
   sucursal y poder aprobarlas (resta en ese momento) o rechazarlas (no resta), quedando quién y
   cuándo. Una merma resuelta no se vuelve a resolver.
-- **FR-013**: Una merma por aprobar cuyo insumo se captura en un conteo MUST cerrarse como «la cubrió
-  el conteo» y no poder aprobarse después.
+- **FR-013**: Una merma por aprobar MUST cerrarse como «la cubrió el conteo», y no poder aprobarse
+  después, cuando se cierra un conteo que contó alguno de los insumos que restaría. Un conteo
+  descartado no cubre nada.
 
 **Faltante sin explicar (US2)**
 
 - **FR-014**: Al cerrar un conteo, el sistema MUST ofrecer, por cada insumo contado que tenga un
-  conteo cerrado anterior, el faltante del conteo, la merma registrada en el periodo y el faltante
-  sin explicar (faltante del conteo menos merma registrada), en cantidad y en pesos al costo de hoy.
+  conteo cerrado anterior, la merma registrada en el periodo, el faltante sin explicar (lo que
+  el conteo encontró de menos contra lo que el sistema tenía al capturarlo) y el total perdido (la
+  suma de los dos), en cantidad y en pesos al costo de hoy. La merma registrada ya restó de lo que
+  el sistema tenía: restarla otra vez del faltante del conteo la contaría dos veces.
 - **FR-015**: El periodo de un insumo MUST ir de su captura en el conteo anterior a su captura en
   este conteo, y cuenta la merma que RESTÓ en ese periodo (por la fecha en que restó: al
   registrarse o al aprobarse); la deshecha, la rechazada y la que cubrió el conteo no cuentan.
@@ -238,8 +241,8 @@ total coincide con la suma de los registros no deshechos.
   desde la pantalla de inventario, sin contar teclear la cantidad.
 - **SC-002**: Después de un conteo, el dueño ve en una sola pantalla cuánto del faltante estaba
   explicado y cuánto no, por insumo y en pesos.
-- **SC-003**: La suma de la merma registrada en un periodo, más el faltante sin explicar, es igual
-  al faltante que encontró el conteo, insumo por insumo.
+- **SC-003**: Insumo por insumo, lo perdido en el periodo es exactamente la merma registrada más lo
+  que el conteo encontró de menos; ninguna de las dos se cuenta dos veces.
 - **SC-004**: Ninguna merma deshecha ni ninguna de otra sucursal o empresa aparece en los reportes.
 - **SC-005**: Una persona nueva registra una merma sin ayuda en la prueba con usuarios sin contexto.
 
