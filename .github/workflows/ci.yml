@@ -11,8 +11,50 @@ permissions:
   contents: read
 
 jobs:
+  # Qué pruebas corren (decidido el 2026-10-15; medido: de abrir el PR a verlo desplegado eran
+  # ~11 min, la mitad repitiendo pruebas):
+  # - En un PR, solo las de lo que el cambio toca. Conservador: el job de Go corre también si cambia
+  #   web/src (los tests de nombres de empresa leen esas pantallas) y el del front si cambian los
+  #   PDF de docs/tickets (son fixtures de expenseDraft.test.ts). Tocar CI, scripts o el Makefile
+  #   corre todo.
+  # - Al mergear a develop, ninguna: el PR ya las pasó, y se mergea al día con develop (AGENTS.md
+  #   §4). Solo se construye y se despliega.
+  # - En main, todas siempre: producción no depende de lo que se probó en otro lado.
+  changes:
+    name: Qué toca el cambio
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.f.outputs.go }}
+      integration: ${{ steps.f.outputs.integration }}
+      web: ${{ steps.f.outputs.web }}
+    steps:
+      # En un PR el checkout es el commit de merge; su primer padre es develop tal como estaba al
+      # armarlo, así que la diferencia contra él es exactamente lo que el PR cambia.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 2
+      - id: f
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$EVENT" = push ]; then
+            all=false; [ "$REF" = refs/heads/main ] && all=true
+            for k in go integration web; do echo "$k=$all" >> "$GITHUB_OUTPUT"; done
+            exit 0
+          fi
+          files="$(git diff --name-only HEAD^1 HEAD)"
+          echo "$files"
+          touches() { echo "$files" | grep -qE "$1" && echo true || echo false; }
+          common='^(\.github/workflows/|scripts/|Makefile$)'
+          echo "go=$(touches "$common|^server/|^web/src/")" >> "$GITHUB_OUTPUT"
+          echo "integration=$(touches "$common|^server/")" >> "$GITHUB_OUTPUT"
+          echo "web=$(touches "$common|^web/|^docs/tickets/")" >> "$GITHUB_OUTPUT"
+
   backend:
     name: Backend (Go)
+    needs: [changes]
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -47,6 +89,8 @@ jobs:
 
   integration:
     name: Backend integration (Postgres)
+    needs: [changes]
+    if: needs.changes.outputs.integration == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -147,6 +191,8 @@ jobs:
 
   frontend:
     name: Frontend (Vite)
+    needs: [changes]
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -227,7 +273,9 @@ jobs:
     # Mismo orden que en producción: el ambiente de pruebas no sirve para ensayar un deploy si su
     # secuencia no es la que va a correr de verdad.
     needs: [frontend, deploy-staging]
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    # En develop `frontend` se salta (ver `changes`): un `needs` saltado salta a quien lo espera
+    # salvo que el `if` lo diga. Lo que gatea aquí es que el backend de pruebas haya salido.
+    if: ${{ !cancelled() && !failure() && needs.deploy-staging.result == 'success' && github.ref == 'refs/heads/develop' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -311,7 +359,7 @@ jobs:
   deploy-consola-staging:
     name: Deploy consola (ambiente de pruebas)
     needs: [frontend, deploy-staging]
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    if: ${{ !cancelled() && !failure() && needs.deploy-staging.result == 'success' && github.ref == 'refs/heads/develop' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -361,7 +409,9 @@ jobs:
     needs: [backend]
     # Las DOS ramas: main alimenta producción y develop el ambiente de pruebas. Sin construir en
     # develop, api-dev se quedaría corriendo la imagen de producción y no probaría nada.
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && github.event_name == 'push'
+    # `!failure()` y no el `success()` implícito: en develop `backend` se salta (ver `changes`) y
+    # eso saltaría la imagen. En main `backend` corre, y si falla la imagen no se construye.
+    if: ${{ !cancelled() && !failure() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -407,9 +457,10 @@ jobs:
 
   deploy-staging:
     name: Deploy backend (ambiente de pruebas)
-    # `integration` va aquí, no en `image`: el gate es del despliegue.
+    # `integration` va aquí, no en `image`: el gate es del despliegue. En develop se salta (el PR ya
+    # la pasó, ver `changes`); si corriera y fallara, `!failure()` detiene el despliegue igual.
     needs: [image, integration]
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    if: ${{ !cancelled() && !failure() && needs.image.result == 'success' && github.ref == 'refs/heads/develop' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
