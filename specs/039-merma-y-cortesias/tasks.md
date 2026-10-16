@@ -70,9 +70,10 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 - [X] T045 [P] Test de palabras de pantalla: los textos de `web/src/features/waste/` y del faltante dicen «Se echó a perder» y nunca «merma», «movimiento», «ajuste» ni «kardex» (FR-023), agregando esos archivos a `web/src/features/backoffice/operatorWords.test.ts`
 
 - [X] T039 [P] Bloque de la 039 en `AGENTS.md` (lo que no se ve: el periodo por id de movimiento, juntar no reescribe, la sucursal explícita del movimiento) y filas en `docs/matriz-de-pantallas.md`
-- [ ] T040 Medir con Playwright a 1024×600 contra el ambiente de pruebas la captura «Una pantalla» con empaques y con 8 o más motivos, la franja y la pestaña, con capturas; contar los toques del flujo frecuente (motivo visible, artículo reciente): 3 o menos sin contar la cantidad (SC-001); y una prueba con usuario sin contexto (SC-005)
+- [X] T040 Medir con Playwright a 1024×600 contra el ambiente de pruebas la captura «Una pantalla» con empaques y con 8 o más motivos, la franja y la pestaña, con capturas; contar los toques del flujo frecuente (motivo visible, artículo reciente): 3 o menos sin contar la cantidad (SC-001); y una prueba con usuario sin contexto (SC-005)
 - [X] T046 [US1] Test de que aprobar, rechazar o deshacer una merma de otra sucursal responde no encontrada (FR-012), en `server/internal/integration/waste_review_test.go`
 - [X] T047 [US1] `LockWasteRecord` filtra por `branch_id = current_branch_id()` en `server/queries/waste.sql`, hasta que T046 pase
+- [X] T048 [US1] Lo que encontró T040: «Hoy» muestra lo que se restó en la unidad del insumo (1 kg salía «1 g»), con test en `waste_review_test.go`; y un Deshacer que falla lo dice y quita la confirmación, con test en `WastePage.test.tsx`. La medición queda en `web/e2e/se-echo-a-perder.spec.ts`
 - [X] T041 Correr el `quickstart.md` contra la API local
 - [X] T042 `make ci-local`
 - [X] T043 `/revision-de-codigo` (hook `after_implement`)

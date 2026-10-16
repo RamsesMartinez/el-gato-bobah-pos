@@ -247,13 +247,21 @@ function NewReasonSheet({ open, onClose, onChosen }: { open: boolean; onClose: (
 function TodayList({ rows }: { rows: WasteRow[] }) {
   const qc = useQueryClient();
   const [confirm, setConfirm] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const undo = useMutation({
     mutationFn: (id: number) => wasteApi.undo(id),
+    onMutate: () => setError(null),
     onSuccess: () => { medirAccion('merma', 'deshacer'); setConfirm(null); void qc.invalidateQueries({ queryKey: ['merma'] }); },
+    onError: (e) => {
+      setError(e instanceof ApiError ? e.message : 'No se pudo deshacer; vuelve a intentar.');
+      setConfirm(null);
+      void qc.invalidateQueries({ queryKey: ['merma'] });
+    },
   });
   if (rows.length === 0) return <Text p={3} color="fg.muted">Hoy no se ha registrado nada.</Text>;
   return (
     <Box flex="1" minH={0} overflowY="auto" px={3}>
+      {error && <Text role="alert" py={2} color="red.fg">{error}</Text>}
       {rows.map((r) => (
         <Flex key={r.id} data-testid="renglon-merma" minH="56px" align="center" justify="space-between" gap={3} borderBottomWidth="1px" py={1}>
           <Box minW={0}>

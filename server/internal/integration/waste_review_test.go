@@ -193,3 +193,36 @@ func TestWasteOfAnotherBranchCannotBeResolved(t *testing.T) {
 		t.Fatalf("deshacer desde otra sucursal = %v; quiere no encontrada", err)
 	}
 }
+
+// «Hoy» mostraba lo capturado con la unidad del insumo: 1 kg de un insumo en gramos salía «1 g»,
+// mil veces menos de lo que se restó, y quien revisa no sabe qué deshacer.
+func TestWasteOfTodayShowsWhatWasSubtracted(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	actor := makeUser(t, st, "gerente_hoy_kg", "gerente")
+	svc, ctx := asWaste(t, defaultCompanyID)
+	caduco := reasonNamed(t, st, defaultCompanyID, "Caducó")
+	var ing int64
+	if err := st.Pool.QueryRow(context.Background(), `
+		insert into ingredients (name, base_unit_id) select 'Insumo en gramos de hoy', id from units where code = 'g' returning id`).Scan(&ing); err != nil {
+		t.Fatal(err)
+	}
+	kg := unitID(t, st, "kg")
+	r, err := svc.RecordWaste(ctx, app.RecordWasteCmd{ReasonID: caduco, IngredientID: &ing, UnitID: &kg, Qty: qty("1"), Actor: actor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := svc.WasteToday(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.ID == r.ID {
+			if row.UnitCode != "g" || !row.Quantity.Equal(qty("1000")) {
+				t.Fatalf("«Hoy» dice %s %s; se restaron 1000 g", row.Quantity, row.UnitCode)
+			}
+			return
+		}
+	}
+	t.Fatal("la merma no salió en «Hoy»")
+}
