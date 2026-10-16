@@ -3,6 +3,8 @@
 package integration
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
@@ -143,5 +145,51 @@ func TestMergingAMergedIntoReasonKeepsOneLevel(t *testing.T) {
 	}
 	if into != c {
 		t.Fatalf("el primero apunta a %d; quiere %d, el que queda", into, c)
+	}
+}
+
+// Aprobar, rechazar o deshacer por id no revisaba la sucursal: desde otra sucursal de la misma
+// empresa se resolvía una merma ajena y se restaba de un almacén que no era el suyo.
+func TestWasteOfAnotherBranchCannotBeResolved(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	company := makeCompany(t, st, "merma-otra-sucursal")
+	actor := makeUserIn(t, st, company, "gerente_otra_sucursal", "gerente")
+	svc, ctx := asWaste(t, company)
+	caduco := reasonNamed(t, st, company, "Caducó")
+	var ing int64
+	if err := st.Pool.QueryRow(context.Background(), `
+		insert into ingredients (company_id, name, base_unit_id, current_cost)
+		select $1, 'Insumo de la matriz', id, 50 from units where code = 'pieza' returning id`, company).Scan(&ing); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(context.Background(), `insert into business_settings (company_id, business_name) values ($1, 'Otra sucursal')`, company); err != nil {
+		t.Fatal(err)
+	}
+	tope := "1"
+	setWasteThreshold(t, ctx, svc, actor, &tope)
+	pending, err := svc.RecordWaste(ctx, app.RecordWasteCmd{ReasonID: caduco, IngredientID: &ing, Qty: qty("2"), Actor: actor})
+	if err != nil || pending.Status != string(domain.WastePending) {
+		t.Fatalf("= %+v, %v", pending, err)
+	}
+	setWasteThreshold(t, ctx, svc, actor, nil)
+	applied, err := svc.RecordWaste(ctx, app.RecordWasteCmd{ReasonID: caduco, IngredientID: &ing, Qty: qty("1"), Actor: actor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// La sesión pasa a resolver a otra sucursal: alta de la segunda y la matriz queda inactiva.
+	addBranch(t, st, company, "SEGUNDA")
+	if _, err := st.Pool.Exec(context.Background(),
+		`update branches set is_active = false where company_id = $1 and is_headquarters`, company); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ApproveWaste(ctx, pending.ID, actor); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("aprobar desde otra sucursal = %v; quiere no encontrada", err)
+	}
+	if err := svc.RejectWaste(ctx, pending.ID, actor); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("rechazar desde otra sucursal = %v; quiere no encontrada", err)
+	}
+	if err := svc.UndoWaste(ctx, applied.ID, actor, true); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("deshacer desde otra sucursal = %v; quiere no encontrada", err)
 	}
 }

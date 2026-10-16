@@ -73,7 +73,7 @@ Elegidas por el dueño el 2026-10-15 (tabla de abajo). Cada pantalla, como qued�
 
 | Pantalla | Dónde vive | Cómo se reparte el alto de 1024×600 |
 |---|---|---|
-| **Se echó a perder** (captura) | Un renglón propio en el riel, visible con `inventory.write_off` (cajero y cocina incluidos). Dos vistas con un interruptor arriba que cada tableta recuerda, como «Lista / Uno por uno» del conteo: **«Una pantalla»** (por omisión, decidido por el dueño: motivos como botones a la izquierda, artículo con recientes al centro y búsqueda en `Picker`, cantidad con empaques, teclado y Guardar a la derecha; la pantalla no usa el relleno de `Page` sino `p=2` y `h="100%"`, cada columna con `minH={0}` y su propio desplazamiento, Guardar fijo al pie de la derecha, la cantidad con `inputMode="none"`, y el teclado baja a 48 px por tecla cuando hay empaques; se mide con Playwright a 1024×600 con empaques y con 8 o más motivos) y **«Paso a paso»** (Motivo → Qué → Cuánto). El botón dice «Mandar a aprobar» cuando el costo pasa el tope. «Hoy» lista lo registrado en el día con Deshacer a la derecha de cada renglón (nunca toda la fila) y con confirmación | Barra de 52 px; tres columnas a todo el alto restante; Guardar de 56 px |
+| **Se echó a perder** (captura) | Un renglón propio en el riel, visible con `inventory.write_off` (cajero y cocina incluidos). Dos vistas con un interruptor arriba que cada tableta recuerda, como «Lista / Uno por uno» del conteo: **«Una pantalla»** (por omisión, decidido por el dueño: motivos como botones a la izquierda, artículo con recientes al centro y búsqueda en `Picker`, cantidad con empaques, teclado y Guardar a la derecha; la pantalla no usa el relleno de `Page` sino `p=2` y `h="100%"`, cada columna con `minH={0}` y su propio desplazamiento, Guardar fijo al pie de la derecha, la cantidad con `inputMode="none"`, y el teclado baja a 48 px por tecla cuando hay empaques; se mide con Playwright a 1024×600 con empaques y con 8 o más motivos) y **«Paso a paso»** (Motivo → Qué → Cuánto). Si el costo pasa el tope, al guardar la pantalla avisa «Quedó por aprobar». «Hoy» lista lo registrado en el día con Deshacer a la derecha de cada renglón (nunca toda la fila) y con confirmación | Barra de 52 px; tres columnas a todo el alto restante; Guardar de 56 px |
 | **Por aprobar** | Una franja de **44 px** arriba de las pantallas de administración (no en Vender ni en Pedidos), solo para quien tiene `inventory.write_off_approve` y solo mientras hay pendientes de su sucursal; se cierra por sesión. En Vender y Pedidos el aviso es un número sobre el renglón del riel. Un toque abre una hoja inferior con Aprobar / Rechazar por renglón: «Rechazar» como botón fantasma rojo, a ≥ 12 px de «Aprobar» y con confirmación de un paso | Una fila del shell (columna flex, `Outlet` con `flex=1 minH={0}`), no encima del alto de la pantalla |
 | **Faltante sin explicar** | Almacén › Conteo, al cerrar un conteo y desde cualquier conteo cerrado: tres cifras arriba (se perdió, registrado, sin explicar) y una barra por insumo (gris registrado, rojo sin explicar) con las cantidades y los pesos a la derecha; «Sobraba» en verde, sin barra | Fichas de ~70 px; la lista se desplaza en lo que queda |
 | **Merma por motivo** | Pestaña «Se echó a perder» en Almacén (`Tabs.List` con desplazamiento horizontal: con ella son siete pestañas): rango (esta semana, este mes, elegir fechas con `DatePickerButton`), fichas con el total por motivo (consumo del personal aparte) en una sola fila que se desplaza a lo ancho y deja la activa a la vista, y debajo los registros; tocar una ficha filtra; los atajos de rango y los `DatePickerButton` en una fila de 44 px | Fichas de ~70 px; registros en el resto |
@@ -127,7 +127,7 @@ tenga la sesión de la cocina, y se verifica en la implementación.
 | E4 | Merma de producto sin nada que restar | `ExpandSale` vacío → 422 con texto para quien opera | domain + integración |
 | E5 | Insumo sin costo con tope | Pendiente (FR-011) | domain |
 | E6 | Faltante: la merma restada se resta otra vez | `domain.SplitLoss` toma lo que el conteo encontró de menos tal cual; prueba nombrada por el concepto duplicado | domain + integración |
-| E7 | Periodo con merma aprobada en otro día | Cuenta por la fecha del movimiento (cuando restó), no del registro | integración |
+| E7 | Periodo con merma aprobada en otro día | Cuenta por el id del movimiento que restó (al registrar o al aprobar), no por la hora ni por el registro; ver E14 | integración |
 | E8 | Deshacer después de que se contó el insumo | Rechazo: el conteo ya corrigió | integración |
 | E9 | Motivo, insumo o producto de otra empresa | Llave compuesta `(id, company_id)` → 404 | integración tres casos |
 | E10 | Juntar motivos cruzando empresas | Imposible por llave compuesta; prueba igual | integración |
@@ -167,7 +167,8 @@ server/
 └── internal/integration/waste_*_test.go, migration_0094_test.go
 
 web/src/
-├── features/waste/ (captura, por aprobar, faltante, por motivo)
+├── features/waste/ (captura, por aprobar)
+├── features/backoffice/ (faltante y pestaña por motivo: las fronteras de eslint)
 ├── features/admin/InventorySettingsSection.tsx
 ├── api/backoffice.ts, app/permissions.ts, app/rutas-medidas.ts
 └── shared/audit/labels.ts
