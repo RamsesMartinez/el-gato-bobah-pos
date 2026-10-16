@@ -151,4 +151,19 @@ describe('Se echó a perder (spec 039, maqueta D)', () => {
     click('Sí, deshacer');
     await waitFor(() => expect(waste.undo).toHaveBeenCalledWith(5));
   });
+
+  // Si alguien más ya la deshizo, el 409 se quedaba callado y los botones de confirmar seguían ahí:
+  // quien opera no sabía si se había deshecho.
+  test('si no se puede deshacer, lo dice y quita la confirmación', async () => {
+    waste.today.mockResolvedValue([{ id: 6, itemType: 'ingrediente', itemName: 'Tortillas', quantity: '1000', unitCode: 'g', totalCost: '13.00', status: 'applied', reason: 'Se cayó', recordedBy: 'Ana', recordedAt: '2026-10-15T15:00:00Z', canUndo: true }]);
+    waste.undo.mockRejectedValue(new ApiError(409, 'CONFLICT', 'ya se deshizo', 'r'));
+    montar();
+    await screen.findByRole('button', { name: /^Hoy/ });
+    click(/^Hoy/);
+    const row = (await screen.findByText(/Tortillas/)).closest('[data-testid="renglon-merma"]') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Deshacer' }));
+    click('Sí, deshacer');
+    expect(await screen.findByText('ya se deshizo')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sí, deshacer' })).not.toBeInTheDocument();
+  });
 });

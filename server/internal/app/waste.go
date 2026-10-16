@@ -444,7 +444,7 @@ func (s *BackofficeService) WasteToday(ctx context.Context) ([]WasteRow, error) 
 	}
 	out := make([]WasteRow, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, WasteRow{ID: r.ID, ItemType: string(r.ItemType), ItemName: r.ItemName, Quantity: r.EnteredQty,
+		out = append(out, WasteRow{ID: r.ID, ItemType: string(r.ItemType), ItemName: r.ItemName, Quantity: r.Quantity,
 			UnitCode: r.UnitCode, TotalCost: r.TotalCost, Status: r.Status, Reason: r.ReasonName,
 			RecordedBy: r.RecordedByName, RecordedAt: r.RecordedAt, RecordedByID: r.RecordedBy, Note: r.Note,
 			CanUndo: r.Status == string(domain.WasteApplied) || r.Status == string(domain.WastePending)})
