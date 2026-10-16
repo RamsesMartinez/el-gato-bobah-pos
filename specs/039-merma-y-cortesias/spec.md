@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-15
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: Issue #66 «Merma y cortesías: registro con motivo y faltante sin explicar después del
 conteo», decidido por el dueño el 14-oct-2026 como feature aparte del 038; y las decisiones del
@@ -209,7 +209,9 @@ total coincide con la suma de los registros no deshechos.
 - **FR-019**: Quien administra el almacén MUST poder renombrar, cambiar la descripción, archivar y
   juntar motivos. Archivar deja de ofrecerlo sin cambiar lo registrado; juntar deja de ofrecer el
   motivo y el reporte suma sus registros bajo el que se conserva, pero cada registro conserva su
-  motivo original (no se reescribe el pasado).
+  motivo original (no se reescribe el pasado). Un motivo MUST poder marcarse como «no cuenta como
+  pérdida del negocio» (consumo del personal); la marca se copia al registro y cambiarla no
+  reclasifica el pasado.
 
 **Transversales**
 

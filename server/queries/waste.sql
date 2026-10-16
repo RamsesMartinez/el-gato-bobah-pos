@@ -109,7 +109,7 @@ select item_type, ingredient_id, product_id, quantity, unit_cost, modifier_optio
 -- name: LockWasteRecord :one
 select id, branch_id, item_type, ingredient_id, product_id, quantity, unit_cost, total_cost, status,
        recorded_by, recorded_at
-  from waste_records where id = $1 for update;
+  from waste_records where id = $1 and branch_id = current_branch_id() for update;
 
 -- name: ResolveWasteRecord :execrows
 -- Cambia de estado con quién y cuándo. Aprobar fija el costo si el registro no tenía.
