@@ -75,6 +75,12 @@ func TestStockCountsHTTP(t *testing.T) {
 	if w := do(t, r, http.MethodPost, "/api/v1/stock/count-places", admin, []byte(`{"name":" REFRI del HTTP "}`), json); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"existingId"`) {
 		t.Errorf("lugar repetido = %d %s; quiere 409 con existingId", w.Code, w.Body.String())
 	}
+	// Sin toPosition el lugar se iba al primer puesto con 204: un parámetro ausente no cae a un default.
+	for _, body := range []string{`{}`, `{"to":2}`} {
+		if w := do(t, r, http.MethodPost, "/api/v1/stock/count-places/1/move", admin, []byte(body), json); w.Code != http.StatusBadRequest {
+			t.Errorf("mover con %s = %d; quiere 400", body, w.Code)
+		}
+	}
 	if w := do(t, r, http.MethodPut, place, cajero, []byte(`{"placeId":null}`), json); w.Code != http.StatusForbidden {
 		t.Errorf("cajero cambia el lugar = %d; quiere 403", w.Code)
 	}

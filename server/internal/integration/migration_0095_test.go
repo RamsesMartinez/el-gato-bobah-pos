@@ -54,7 +54,7 @@ func TestMigrationCountPlacesOnARealBackup(t *testing.T) {
 	if _, err := st.Pool.Exec(ctx, `update ingredients set count_place = null`); err != nil {
 		t.Fatal(err)
 	}
-	for id, place := range map[int64]string{a1: "Refri", a2: "refri ", a3: "Refri", b1: "REFRI"} {
+	for id, place := range map[int64]string{a1: "Refri", a2: "\tRefri", a3: "Refri", b1: "REFRI"} {
 		if _, err := st.Pool.Exec(ctx, `update ingredients set count_place = $2 where id = $1`, id, place); err != nil {
 			t.Fatal(err)
 		}

@@ -5,9 +5,8 @@ package integration
 import (
 	"context"
 	"errors"
-	"fmt"
-	"sync"
 	"testing"
+	"time"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -127,39 +126,60 @@ func TestAPlaceOfAnotherCompanyOrArchivedCannotBeAssigned(t *testing.T) {
 		if err := svc.SetCountPlace(c, theirs, &place); err == nil {
 			t.Fatal("otra sesión asignó el lugar de la dueña")
 		}
+		if err := svc.RenameCountPlace(c, place, "Tomado"); err == nil {
+			t.Fatal("otra sesión renombró el lugar de la dueña")
+		}
+		if err := svc.MoveCountPlace(c, place, 0); err == nil {
+			t.Fatal("otra sesión movió el lugar de la dueña")
+		}
+		if err := svc.ArchiveCountPlaceMoving(c, place, nil); err == nil {
+			t.Fatal("otra sesión archivó el lugar de la dueña")
+		}
 	})
 }
 
-// Asignar un lugar mientras otra tableta lo archiva: sin candado, el artículo quedaba en un lugar
-// archivado que ya no se ofrece (revisión de arquitectura, E5).
+// Asignar un lugar mientras otra tableta lo archiva: sin el `for share` de la asignación, leía el lugar
+// todavía activo y el artículo quedaba en un lugar archivado que ya no se ofrece (E5). Determinista:
+// el archivo queda a medias en otra transacción, la asignación tiene que esperarlo, y al confirmarse
+// el archivo la asignación responde conflicto.
 func TestAssigningWhileArchivingNeverLeavesAnArchivedPlace(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
 	co := makeCompany(t, st, "lugares-carrera")
-	svcA, ctxA := asWaste(t, co)
-	svcB, ctxB := asWaste(t, co)
-	place, err := svcA.CreateCountPlace(ctxA, "Refri en disputa")
+	svc, ctx := asWaste(t, co)
+	place, err := svc.CreateCountPlace(ctx, "Refri en disputa")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := range 10 {
-		ing := placeIngredient(t, st, co, "Insumo en carrera "+string(rune('a'+i)))
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() { defer wg.Done(); _ = svcA.SetCountPlace(ctxA, ing, &place) }()
-		go func() { defer wg.Done(); _ = svcB.ArchiveCountPlace(ctxB, place) }()
-		wg.Wait()
-		var bad int
-		if err := st.Pool.QueryRow(context.Background(), `
-			select count(*) from ingredients i join count_places p on p.id = i.count_place_id
-			 where p.archived_at is not null`).Scan(&bad); err != nil {
-			t.Fatal(err)
-		}
-		if bad != 0 {
-			t.Fatalf("vuelta %d: %d artículos quedaron en un lugar archivado", i, bad)
-		}
-		if place, err = svcA.CreateCountPlace(ctxA, fmt.Sprintf("Refri en disputa %d", i)); err != nil {
-			t.Fatal(err)
-		}
+	ing := placeIngredient(t, st, co, "Insumo en carrera")
+
+	tx, err := st.Pool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(context.Background(), `select 1 from count_places where id = $1 for update`, place); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(context.Background(), `update count_places set archived_at = now() where id = $1`, place); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- svc.SetCountPlace(ctx, ing, &place) }()
+	select {
+	case err := <-done:
+		t.Fatalf("la asignación no esperó al archivo en curso: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if err := tx.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("asignar un lugar que se acaba de archivar = %v; quiere conflicto", err)
+	}
+	var got *int64
+	if err := st.Pool.QueryRow(context.Background(), `select count_place_id from ingredients where id = $1`, ing).Scan(&got); err != nil || got != nil {
+		t.Fatalf("el artículo quedó en %v, %v; quiere sin lugar", got, err)
 	}
 }

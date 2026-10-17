@@ -65,9 +65,6 @@ func TestRequireRole_EmitsForbiddenEvent(t *testing.T) {
 	}
 }
 
-// RequirePermission pregunta por permiso, no por rol. El resolutor se inyecta porque hoy todos los
-// roles tienen `orders.cancel_pending`: sin inyectarlo no existe usuario con quien ver el 403, y
-// una ruta que perdió su gate pasaría todas las pruebas.
 // RequireAnyPermission deja pasar con uno de los permisos y responde 403 sin ninguno: listar los
 // lugares lo necesita quien cuenta y quien configura, y un rol propio puede tener solo uno.
 func TestRequireAnyPermission(t *testing.T) {
@@ -91,8 +88,25 @@ func TestRequireAnyPermission(t *testing.T) {
 	if c := call(only(domain.PermOrdersCancelPending)); c != http.StatusForbidden {
 		t.Errorf("sin ninguno = %d; quiere 403", c)
 	}
+	// Sin usuario en el contexto también es 403: invertir el `if ok` no puede dejar pasar a nadie.
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	rec := httptest.NewRecorder()
+	RequireAnyPermission(only(domain.PermInventoryCount), domain.PermInventoryCount)(next).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/stock/count-places", nil))
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("sin usuario = %d; quiere 403", rec.Code)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("RequireAnyPermission sin permisos se armó sin tronar")
+		}
+	}()
+	RequireAnyPermission(only(domain.PermInventoryCount))
 }
 
+// RequirePermission pregunta por permiso, no por rol. El resolutor se inyecta porque hoy todos los
+// roles tienen `orders.cancel_pending`: sin inyectarlo no existe usuario con quien ver el 403, y
+// una ruta que perdió su gate pasaría todas las pruebas.
 func TestRequirePermission(t *testing.T) {
 	none := func(domain.Role) []domain.Permission { return []domain.Permission{} }
 	call := func(resolve PermissionResolver, p domain.Permission, u *AuthUser) *httptest.ResponseRecorder {

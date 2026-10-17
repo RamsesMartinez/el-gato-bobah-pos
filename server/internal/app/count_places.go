@@ -20,15 +20,6 @@ type CountPlace struct {
 	Ingredients int32  `json:"ingredients"`
 }
 
-// CountPlaceHasIngredients dice que el lugar que se quiere archivar tiene artículos y no vino a
-// dónde pasarlos: la pantalla pregunta. Es un conflicto (409).
-type CountPlaceHasIngredients struct{ Ingredients int32 }
-
-func (e CountPlaceHasIngredients) Error() string {
-	return fmt.Sprintf("el lugar tiene %d artículos: elige a qué lugar pasan", e.Ingredients)
-}
-func (e CountPlaceHasIngredients) Unwrap() error { return domain.ErrConflict }
-
 // ListCountPlaces son los lugares que se ofrecen, en el orden del recorrido.
 func (s *BackofficeService) ListCountPlaces(ctx context.Context) ([]CountPlace, error) {
 	rows, err := s.store.QC(ctx).ListCountPlaces(ctx)
@@ -59,7 +50,7 @@ func (s *BackofficeService) CreateCountPlace(ctx context.Context, name string) (
 		}
 		var err error
 		id, err = q.CreateCountPlace(ctx, name)
-		return placeNameConflict(ctx, q, name, err)
+		return placeNameConflict(err)
 	})
 	return id, err
 }
@@ -80,7 +71,7 @@ func (s *BackofficeService) RenameCountPlace(ctx context.Context, id int64, name
 			return err
 		}
 		n, err := q.RenameCountPlace(ctx, db.RenameCountPlaceParams{ID: id, Name: name})
-		if err = placeNameConflict(ctx, q, name, err); err != nil {
+		if err = placeNameConflict(err); err != nil {
 			return err
 		}
 		if n == 0 {
@@ -137,19 +128,19 @@ func (s *BackofficeService) archivePlace(ctx context.Context, id int64, dest *in
 		if p.ArchivedAt.Valid {
 			return nil
 		}
+		if dest != nil {
+			if err := activePlace(ctx, q, *dest); err != nil {
+				return err
+			}
+		}
 		n, err := q.CountPlaceIngredients(ctx, &id)
 		if err != nil {
 			return err
 		}
 		if n > 0 && !decided {
-			return CountPlaceHasIngredients{Ingredients: n}
+			return domain.CountPlaceHasIngredients{Ingredients: n}
 		}
 		if n > 0 {
-			if dest != nil {
-				if err := activePlace(ctx, q, *dest); err != nil {
-					return err
-				}
-			}
 			if err := q.MoveCountPlaceIngredients(ctx, db.MoveCountPlaceIngredientsParams{FromPlaceID: &id, ToPlaceID: dest}); err != nil {
 				return err
 			}
@@ -207,9 +198,9 @@ func placeNameFree(ctx context.Context, q *db.Queries, name string) error {
 	return err
 }
 
-// placeNameConflict convierte el 23505 del índice en el lugar que ya existe. Con el candado por
-// empresa no debería pasar; si pasa, el índice manda.
-func placeNameConflict(ctx context.Context, q *db.Queries, name string, err error) error {
+// placeNameConflict convierte el 23505 del índice en conflicto. Bajo el candado por empresa la
+// búsqueda previa ya encontró el repetido; el índice queda como segunda barrera.
+func placeNameConflict(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return fmt.Errorf("%w: ese lugar ya existe", domain.ErrConflict)

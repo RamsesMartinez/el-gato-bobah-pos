@@ -132,6 +132,10 @@ func RequirePermission(resolve PermissionResolver, p domain.Permission) func(htt
 // tanto quien opera como quien configura (los lugares del conteo). Sin ninguna, 403 con el texto
 // de la primera.
 func RequireAnyPermission(resolve PermissionResolver, ps ...domain.Permission) func(http.Handler) http.Handler {
+	if len(ps) == 0 {
+		// Al armar el router, no en el primer request: sin permisos no hay a quién dejar pasar.
+		panic("RequireAnyPermission sin permisos")
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			u, ok := userFrom(r.Context())

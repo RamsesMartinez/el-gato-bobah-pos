@@ -31,6 +31,15 @@ type CountPlaceExists struct{ ID int64 }
 func (e CountPlaceExists) Error() string { return "ese lugar ya existe" }
 func (e CountPlaceExists) Unwrap() error { return ErrConflict }
 
+// CountPlaceHasIngredients dice que el lugar que se quiere archivar tiene artículos y no vino a
+// dónde pasarlos: la pantalla pregunta. Es un conflicto (409).
+type CountPlaceHasIngredients struct{ Ingredients int32 }
+
+func (e CountPlaceHasIngredients) Error() string {
+	return fmt.Sprintf("el lugar tiene %d artículos: elige a qué lugar pasan", e.Ingredients)
+}
+func (e CountPlaceHasIngredients) Unwrap() error { return ErrConflict }
+
 // MoveCountPlace devuelve el recorrido con el lugar id en la posición to (0 = primero), sin tocar
 // el que recibe. to es el ordinal entre los lugares activos: fuera de rango es un error, no el
 // extremo más cercano, porque una pantalla que pide una posición que no existe trae otra lista.
@@ -40,7 +49,7 @@ func MoveCountPlace(order []int64, id int64, to int) ([]int64, error) {
 		return nil, fmt.Errorf("%w: el lugar no está en el recorrido", ErrValidation)
 	}
 	if to < 0 || to >= len(order) {
-		return nil, fmt.Errorf("%w: la posición va de 1 a %d", ErrValidation, len(order))
+		return nil, fmt.Errorf("%w: esa posición no existe en el recorrido", ErrValidation)
 	}
 	out := slices.Delete(slices.Clone(order), from, from+1)
 	return slices.Insert(out, to, id), nil

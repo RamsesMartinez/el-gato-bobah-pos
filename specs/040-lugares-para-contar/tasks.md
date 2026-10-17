@@ -86,7 +86,7 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 - [ ] T021 Correr `quickstart.md` contra la API local
 - [ ] T022 Prueba con usuario sin contexto (subagente) a 1024×600 en el ambiente de pruebas: asignar un lugar, crear uno y reordenar (SC-005)
 - [X] T023 `make ci-local`
-- [ ] T024 `/revision-de-codigo` (hook `after_implement`)
+- [X] T024 `/revision-de-codigo` (hook `after_implement`)
 
 ## Dependencies
 

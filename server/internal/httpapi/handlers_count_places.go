@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
+
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
 // GET /stock/count-places — los lugares que se ofrecen, en el orden del recorrido.
@@ -60,13 +63,18 @@ func (h *Handlers) MoveCountPlace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		ToPosition int `json:"toPosition"`
+		ToPosition *int `json:"toPosition"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	if err := h.backoffice.MoveCountPlace(r.Context(), id, body.ToPosition); err != nil {
+	// Ausente no es «al principio»: un cliente viejo que manda otra llave movería el lugar sin querer.
+	if body.ToPosition == nil {
+		Error(w, fmt.Errorf("%w: falta a qué posición se mueve", domain.ErrValidation))
+		return
+	}
+	if err := h.backoffice.MoveCountPlace(r.Context(), id, *body.ToPosition); err != nil {
 		Error(w, err)
 		return
 	}

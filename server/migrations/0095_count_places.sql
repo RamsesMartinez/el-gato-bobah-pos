@@ -43,10 +43,13 @@ create index ingredients_by_count_place on ingredients (count_place_id) where co
 -- Lo escrito a mano: un lugar por texto normalizado y empresa. El nombre es el texto más usado del
 -- grupo, sin espacios de más (en empate, el primero en orden de bytes, para que no dependa de la
 -- intercalación); el orden inicial es alfabético.
-with written as (
-  select company_id, regexp_replace(btrim(count_place), '\s+', ' ', 'g') as clean,
-         regexp_replace(translate(lower(btrim(count_place)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g') as norm
+-- Los espacios se juntan ANTES del btrim: btrim solo quita espacios, y un tab o un espacio duro en
+-- la orilla («\tRefri») daba otro grupo, chocaba con el índice o dejaba al artículo sin lugar.
+with cleaned as (
+  select company_id, btrim(regexp_replace(count_place, '\s+', ' ', 'g')) as clean
     from ingredients where count_place is not null
+), written as (
+  select company_id, clean, translate(lower(clean), 'áéíóúüñ', 'aeiouun') as norm from cleaned
 ), chosen as (
   select distinct on (company_id, norm) company_id, norm, clean
     from (select company_id, norm, clean, count(*) as uses from written group by 1, 2, 3) g
@@ -59,8 +62,19 @@ select company_id, clean, (row_number() over (partition by company_id order by n
 update ingredients i set count_place_id = p.id
   from count_places p
  where i.count_place is not null and p.company_id = i.company_id
-   and regexp_replace(translate(lower(btrim(p.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
-     = regexp_replace(translate(lower(btrim(i.count_place)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g');
+   and translate(lower(p.name), 'áéíóúüñ', 'aeiouun')
+     = translate(lower(btrim(regexp_replace(i.count_place, '\s+', ' ', 'g'))), 'áéíóúüñ', 'aeiouun');
+
+-- Ningún artículo que tenía lugar se queda sin él: si el paso falló para alguno, se aborta antes de
+-- borrar la única copia del texto.
+-- +goose StatementBegin
+do $$
+begin
+  if exists (select 1 from ingredients where count_place is not null and count_place_id is null) then
+    raise exception '0095: hay artículos que perderían su lugar';
+  end if;
+end $$;
+-- +goose StatementEnd
 
 alter table ingredients drop column count_place;
 

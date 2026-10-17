@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react';
-import { LuGripVertical } from 'react-icons/lu';
+import { LuCheck, LuGripVertical } from 'react-icons/lu';
 import {
   DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent,
 } from '@dnd-kit/core';
@@ -87,7 +87,9 @@ function PlaceRow({ place, n, onEdit }: { place: CountPlace; n: number; onEdit: 
         <LuGripVertical size={22} />
       </Box>
       <Text w="24px" color="fg.muted" textAlign="right" flexShrink={0}>{n}</Text>
-      <Text flex="1" minW={0} truncate>{place.name} · {articles(place.ingredients)}</Text>
+      {/* Solo el nombre se recorta: cuántos artículos tiene decide si archivarlo duele. */}
+      <Text flex="1" minW={0} truncate>{place.name}</Text>
+      <Text color="fg.muted" flexShrink={0}>{articles(place.ingredients)}</Text>
       <Button minH="44px" variant="outline" onClick={onEdit}>Editar</Button>
     </Flex>
   );
@@ -147,8 +149,10 @@ function EditSheet({ place, others, onClose, onDone }: {
             <VStack align="stretch" gap={0}>
               <Text mb={2}>{place.name} tiene {articles(place.ingredients)}. ¿A qué lugar pasan?</Text>
               {[...others.map((o) => ({ id: o.id as number | null, name: o.name })), { id: null, name: 'Sin lugar' }].map((o) => (
-                <Button key={String(o.id)} minH="52px" justifyContent="flex-start" variant={dest === o.id ? 'subtle' : 'ghost'}
-                  aria-pressed={dest === o.id} onClick={() => setDest(o.id)}>{o.name}</Button>
+                <Button key={String(o.id)} minH="52px" justifyContent="space-between" variant={dest === o.id ? 'solid' : 'ghost'}
+                  aria-pressed={dest === o.id} onClick={() => setDest(o.id)}>
+                  {o.name}{dest === o.id && <LuCheck aria-hidden />}
+                </Button>
               ))}
             </VStack>
           )}

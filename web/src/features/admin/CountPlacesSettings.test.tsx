@@ -25,13 +25,13 @@ function montar() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={qc}><Provider><CountPlacesSettings /></Provider></QueryClientProvider>);
 }
-const row = async (name: string) => (await screen.findByText(new RegExp(`^${name} ·`))).closest('[data-place]') as HTMLElement;
+const row = async (name: string) => (await screen.findByText(name, { exact: true })).closest('[data-place]') as HTMLElement;
 
 describe('lugares del recorrido (spec 040, maqueta C)', () => {
   test('cada renglón en una línea con su agarradera; «Agregar lugar» junto al título', async () => {
     montar();
-    expect(await screen.findByText('Refri · 12 artículos')).toBeInTheDocument();
-    expect(screen.getByText('Barra · Sin artículos')).toBeInTheDocument();
+    expect(within(await row('Refri')).getByText('12 artículos')).toBeInTheDocument();
+    expect(within(await row('Barra')).getByText('Sin artículos')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Agregar lugar' })).toBeInTheDocument();
     expect(screen.getByText('Mantén presionada ≡ para mover un lugar')).toBeInTheDocument();
     const grip = within(await row('Refri')).getByRole('button', { name: 'Mover Refri' });
@@ -73,6 +73,7 @@ describe('lugares del recorrido (spec 040, maqueta C)', () => {
     const pasar = screen.getByRole('button', { name: 'Pasar y archivar' });
     expect(pasar).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Sin lugar' }));
+    expect(screen.getByRole('button', { name: 'Sin lugar', pressed: true })).toBeInTheDocument();
     fireEvent.click(pasar);
     await waitFor(() => expect(back.archiveCountPlace).toHaveBeenCalledWith(1, null));
   });

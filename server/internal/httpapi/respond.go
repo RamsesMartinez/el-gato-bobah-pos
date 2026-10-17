@@ -253,7 +253,7 @@ func Error(w http.ResponseWriter, err error) {
 	if errors.As(err, &place) {
 		details = &errorDetails{ExistingID: place.ID}
 	}
-	var busy app.CountPlaceHasIngredients
+	var busy domain.CountPlaceHasIngredients
 	if errors.As(err, &busy) {
 		details = &errorDetails{Ingredients: busy.Ingredients}
 	}

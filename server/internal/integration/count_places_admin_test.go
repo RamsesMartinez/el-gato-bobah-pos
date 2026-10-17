@@ -98,8 +98,9 @@ func TestMovingAPlaceChangesTheCountRoute(t *testing.T) {
 	})
 }
 
-// Crear y mover a la vez repetían posición: el orden del conteo quedaba al azar (E7). Dos renombres
-// a la vez no pueden dejar dos lugares con el mismo nombre.
+// Crear y mover a la vez repetían posición: el orden del conteo quedaba al azar (E7); esta mitad
+// falla sin el candado por empresa (verificado). Los dos renombres a la vez no prueban el candado:
+// prueban que nunca quedan dos nombres iguales, lo sostenga el candado o el índice.
 func TestConcurrentPlaceChangesKeepOneOrderAndUniqueNames(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
@@ -187,7 +188,7 @@ func TestArchivingAPlaceMovesItsItems(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var has app.CountPlaceHasIngredients
+	var has domain.CountPlaceHasIngredients
 	if err := svc.ArchiveCountPlace(ctx, refri); !errors.As(err, &has) || has.Ingredients != 2 {
 		t.Fatalf("archivar sin destino = %v; quiere conflicto con 2 artículos (también el inactivo)", err)
 	}
@@ -206,6 +207,11 @@ func TestArchivingAPlaceMovesItsItems(t *testing.T) {
 	}
 	if err := svc.ArchiveCountPlaceMoving(ctx, barra, &refri); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("pasarlos a uno archivado = %v; quiere conflicto", err)
+	}
+	// Un destino inválido se rechaza aunque el lugar no tenga artículos que mover.
+	vacio, _ := svc.CreateCountPlace(ctx, "Vacío")
+	if err := svc.ArchiveCountPlaceMoving(ctx, vacio, &refri); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("archivar uno vacío hacia uno archivado = %v; quiere conflicto", err)
 	}
 	if err := svc.ArchiveCountPlaceMoving(ctx, barra, nil); err != nil {
 		t.Fatalf("pasarlos a «Sin lugar» = %v", err)

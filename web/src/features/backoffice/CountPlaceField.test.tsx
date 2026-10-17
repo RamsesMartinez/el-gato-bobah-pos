@@ -8,6 +8,8 @@ import { CountPlaceField } from './CountPlaceField';
 
 const back = vi.hoisted(() => ({ countPlaces: vi.fn(), createCountPlace: vi.fn(), setCountPlace: vi.fn() }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
+const toasts = vi.hoisted(() => ({ create: vi.fn() }));
+vi.mock('../../components/ui/toaster', () => ({ toaster: toasts }));
 
 beforeEach(() => {
   back.countPlaces.mockResolvedValue([
@@ -55,6 +57,18 @@ describe('lugar del artículo (spec 040, maqueta A)', () => {
     fireEvent.change(screen.getByPlaceholderText('Buscar…'), { target: { value: 'Refrí grande' } });
     fireEvent.click(await screen.findByRole('button', { name: /Crear/ }));
     await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(10, 1));
-    expect(await screen.findByText('Ya tenías «Refri»; quedó elegido')).toBeInTheDocument();
+    expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'Ya tenías «Refri»; quedó elegido' }));
+  });
+
+  test('un nombre que el servidor rechaza lo dice y no deja la hoja trabada', async () => {
+    back.createCountPlace.mockRejectedValue(new ApiError(400, 'VALIDATION', 'largo', 'r'));
+    montar(null);
+    fireEvent.click(await screen.findByRole('button', { name: /Sin lugar/ }));
+    const buscar = await screen.findByPlaceholderText('Buscar…');
+    expect(buscar).toHaveAttribute('maxlength', '30');
+    fireEvent.change(buscar, { target: { value: 'Otro nombre' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Crear/ }));
+    await waitFor(() => expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'El lugar lleva de 1 a 30 letras' })));
+    expect(back.setCountPlace).not.toHaveBeenCalled();
   });
 });
