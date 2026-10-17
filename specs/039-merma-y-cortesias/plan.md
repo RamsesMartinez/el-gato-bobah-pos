@@ -81,7 +81,7 @@ Elegidas por el dueño el 2026-10-15 (tabla de abajo). Cada pantalla, como qued�
 
 Riel: «Se echó a perder» es un renglón nuevo. Las entradas de `NAV` ganan un campo `permission` y
 `AppShell` las filtra con `can()` (hoy solo filtra por rol con `canAccess`): la entrada nueva pide
-`inventory.write_off`. Va **después de «Reportes»**, como Asistencia, para no sacar a «Reportes» de
+`inventory.write_off`. Va **después de «Reportes» y antes de «Asistencia»** (T049), para no sacar a «Reportes» de
 los 8 visibles del admin; cajero y cocina ven pocos renglones y la ven siempre. Lleva el número de
 pendientes para quien aprueba (en Vender y Pedidos es el único aviso). Cocina no es un rol de la
 tableta en `roles.ts` (`admin | gerente | cajero | mesero`): el permiso se resuelve por el rol que
