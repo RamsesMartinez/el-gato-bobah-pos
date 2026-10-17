@@ -20,11 +20,12 @@ export const NAV = [
   { to: '/almacen', icon: LuPackage, label: 'Almacén' },
   { to: '/gastos', icon: LuHandCoins, label: 'Gastos' },
   { to: '/reportes', icon: LuChartColumn, label: 'Reportes' },
-  { to: '/asistencia', icon: LuClock, label: 'Asistencia' },
   // Lo que se echó a perder (spec 039): por PERMISO, no por rol, porque lo usan cajero y cocina, que
   // no entran a Almacén. Va después de «Reportes» para que el admin siga viendo «Reportes» en los
-  // ocho de arriba a 600 px.
+  // ocho de arriba a 600 px, y antes de «Asistencia»: con ella activa, una persona nueva no lo
+  // encontraba (checar además está en la pantalla de bloqueo).
   { to: '/merma', icon: LuTrash2, label: 'Se echó a perder', permission: 'inventory.write_off' as Permission },
+  { to: '/asistencia', icon: LuClock, label: 'Asistencia' },
   { to: '/plataformas', icon: LuBike, label: 'Plataformas' },
   { to: '/empleados', icon: LuUsers, label: 'Empleados' },
   { to: '/negocio', icon: LuStore, label: 'Negocio' },

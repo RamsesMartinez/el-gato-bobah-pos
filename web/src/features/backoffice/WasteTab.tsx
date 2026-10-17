@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Box, Button, Flex, HStack, Text, VStack } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { medirAccion } from '../../api/uso';
 import { WASTE_STATUS_WORDS as STATUS_WORDS, wasteApi } from '../../api/waste';
@@ -26,6 +29,9 @@ function presetRange(p: Preset): { from: string; to: string } {
 
 export function WasteTab() {
   const hora = useHoraDelNegocio();
+  const navigate = useNavigate();
+  const user = useSessionStore((s) => s.user);
+  const canRecord = can('inventory.write_off', user);
   const [preset, setPreset] = useState<Preset>('semana');
   const [range, setRange] = useState(() => presetRange('semana'));
   const [reasonId, setReasonId] = useState<number | null>(null);
@@ -52,6 +58,10 @@ export function WasteTab() {
             <DatePickerButton label="Desde" value={range.from} max={range.to} onChange={(v) => setRange((r) => ({ ...r, from: v }))} />
             <DatePickerButton label="Hasta" value={range.to} onChange={(v) => setRange((r) => ({ ...r, to: v }))} />
           </>
+        )}
+        {canRecord && (
+          // Se llama igual que la captura, y quien buscaba dónde registrar llegaba aquí.
+          <Button minH="44px" ms="auto" colorPalette="red" onClick={() => navigate('/merma')}>Registrar</Button>
         )}
       </HStack>
       <Flex gap={2} overflowX="auto" flexShrink={0} pb={1}>

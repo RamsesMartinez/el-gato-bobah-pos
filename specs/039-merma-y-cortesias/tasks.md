@@ -45,6 +45,7 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 - [X] T046 [US1] Test de que aprobar, rechazar o deshacer una merma de otra sucursal responde no encontrada (FR-012), en `server/internal/integration/waste_review_test.go`
 - [X] T047 [US1] `LockWasteRecord` filtra por `branch_id = current_branch_id()` en `server/queries/waste.sql`, hasta que T046 pase
 - [X] T048 [US1] Lo que encontró T040: «Hoy» muestra lo que se restó en la unidad del insumo (1 kg salía «1 g»), con test en `waste_review_test.go`; y un Deshacer que falla lo dice y quita la confirmación, con test en `WastePage.test.tsx`. La medición queda en `web/e2e/se-echo-a-perder.spec.ts`
+- [X] T049 [US1] Los atoros de la persona nueva en T040, cada uno con su test de vitest: «Registrar» en la pestaña de Almacén lleva a la captura (`WasteTab.tsx`); los motivos no se reordenan después de guardar (`WastePage.tsx`); «Hoy» dice «Ya se descontó» y «No se aprobó», y sus pestañas tienen borde (`api/waste.ts`); el renglón del riel va antes de «Asistencia» (`nav.ts`)
 
 ## Phase 4: User Story 2 — Faltante sin explicar después de un conteo (P2)
 
@@ -79,7 +80,7 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 ## Dependencies
 
-Phase 1 → Phase 2 → US1 → US2 → US3. US2 depende de que existan mermas (US1) y de las columnas del conteo (T006). US3 solo de Phase 2 y del servicio de US1. Dentro de cada historia: tests en rojo → servicio → rutas → web. T046–T048 se agregaron después de construir: T046 y T047 salen de `/speckit-analyze` y T048 de lo que encontró T040, así que T048 va después de T040 aunque viva en US1.
+Phase 1 → Phase 2 → US1 → US2 → US3. US2 depende de que existan mermas (US1) y de las columnas del conteo (T006). US3 solo de Phase 2 y del servicio de US1. Dentro de cada historia: tests en rojo → servicio → rutas → web. T046–T049 se agregaron después de construir: T046 y T047 salen de `/speckit-analyze`, y T048 y T049 de lo que encontró T040, así que van después de T040 aunque vivan en US1.
 
 Archivos compartidos que obligan orden: `router.go` y `handlers_waste.go` (T019 → T034), `AppShell.tsx` (T023 → T027), `waste.go` (T018 → T034), `stock_counts.go` (T030), `backoffice.ts` (T025 → T032 → T036).
 

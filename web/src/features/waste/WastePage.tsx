@@ -42,7 +42,13 @@ export function WastePage() {
   const [message, setMessage] = useState<{ text: string; tone: 'ok' | 'warn' | 'error' } | null>(null);
   const [newReason, setNewReason] = useState(false);
 
-  const { data: reasons = [] } = useQuery({ queryKey: ['merma', 'motivos'], queryFn: wasteApi.reasons });
+  const { data: fetchedReasons = [] } = useQuery({ queryKey: ['merma', 'motivos'], queryFn: wasteApi.reasons });
+  // El orden por uso se toma al entrar y no se mueve a media captura: quien toca de memoria le
+  // atinaba a otro motivo en cuanto guardaba. Un motivo nuevo va al final.
+  const [order, setOrder] = useState<number[] | null>(null);
+  if (order === null && fetchedReasons.length > 0) setOrder(fetchedReasons.map((r) => r.id));
+  const rank = (id: number) => { const i = order?.indexOf(id) ?? -1; return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
+  const reasons = [...fetchedReasons].sort((a, b) => rank(a.id) - rank(b.id));
   const { data: items } = useQuery({ queryKey: ['merma', 'articulos'], queryFn: wasteApi.items });
   const { data: today = [] } = useQuery({ queryKey: ['merma', 'hoy'], queryFn: wasteApi.today });
 
@@ -83,7 +89,7 @@ export function WastePage() {
       </HStack>
       <HStack gap={1}>
         {(['registrar', 'hoy'] as const).map((t) => (
-          <Button key={t} minH="44px" aria-pressed={tab === t} variant={tab === t ? 'solid' : 'ghost'} onClick={() => setTab(t)}>
+          <Button key={t} minH="44px" aria-pressed={tab === t} variant={tab === t ? 'solid' : 'outline'} onClick={() => setTab(t)}>
             {t === 'registrar' ? 'Registrar' : `Hoy${today.length ? ` · ${today.length}` : ''}`}
           </Button>
         ))}

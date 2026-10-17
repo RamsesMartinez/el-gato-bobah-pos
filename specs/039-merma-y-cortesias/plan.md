@@ -200,3 +200,6 @@ estimados; la captura «Una pantalla» se mide con Playwright antes de darla por
   gramos salía «1 g» (lo encontró la prueba con usuario sin contexto, T040).
 - Un Deshacer que el servidor rechaza (otra persona ya lo deshizo) lo dice en la lista y quita la
   confirmación; antes los botones se quedaban sin aviso.
+- La persona nueva de T040 buscó dónde registrar en la pestaña de Almacén (se llama igual que la
+  captura): ahí va un botón «Registrar». Los motivos se ordenan por uso al entrar y ya no se mueven
+  después de guardar. El renglón del riel va antes de «Asistencia».
