@@ -8,8 +8,28 @@ package db
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 )
+
+const catalogVersion = `-- name: CatalogVersion :one
+select coalesce(max(version), 0)::bigint as version, current_date::date as today
+from catalog_versions
+`
+
+type CatalogVersionRow struct {
+	Version int64       `json:"version"`
+	Today   pgtype.Date `json:"today"`
+}
+
+// La versión de catálogo de la empresa de la sesión (RLS pone el filtro) y el día de la base, que
+// es el mismo con el que MenuProducts filtra la disponibilidad por fecha. Sin fila = versión 0.
+func (q *Queries) CatalogVersion(ctx context.Context) (CatalogVersionRow, error) {
+	row := q.db.QueryRow(ctx, catalogVersion)
+	var i CatalogVersionRow
+	err := row.Scan(&i.Version, &i.Today)
+	return i, err
+}
 
 const menuCategories = `-- name: MenuCategories :many
 

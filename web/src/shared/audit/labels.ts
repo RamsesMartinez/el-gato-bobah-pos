@@ -34,6 +34,22 @@ export const ACTION_LABELS: Record<string, string> = {
   'attendance.schedule_set': 'Horario capturado',
   'user.tracks_attendance_changed': 'Lleva asistencia',
   'payment.terminal_changed': 'Terminal cambiada',
+  'product.consumption_mode': 'Cambió qué resta',
+  'expense.received': 'Llegó mercancía',
+  'expense.stock_corrected': 'Corrigió lo que llegó',
+  'stock.counted': 'Cerró un conteo',
+  'settings.costing_method': 'Cambió el costeo del almacén',
+  'waste.recorded': 'Se echó a perder',
+  'waste.approved': 'Aprobó lo que se echó a perder',
+  'waste.rejected': 'Rechazó lo que se echó a perder',
+  'waste.undone': 'Deshizo lo que se echó a perder',
+  'settings.waste_threshold': 'Cambió el tope de aprobación',
+};
+
+// Qué resta un producto (spec 037), con las palabras de la hoja de receta.
+const MODE_LABELS: Record<string, string> = {
+  own_stock: 'Su propia existencia', recipe: 'Lo que lleva', package: 'Es un combo',
+  none: 'No se cuenta', undecided: 'Falta decir qué resta',
 };
 
 export function actionLabel(action: string): string {
@@ -52,6 +68,7 @@ const FIELDS: Array<[string, string, boolean]> = [
   ['status', 'Estado', false],
   ['ref', 'Folio', false],
   ['reason', 'Motivo', false],
+  ['mode', 'Qué resta', false],
 ];
 
 type ChangeData = Record<string, unknown> | null | undefined;
@@ -60,6 +77,7 @@ function formatValue(v: unknown, isMoney: boolean, key: string): string {
   // Un pago con tarjeta sin terminal es un hecho que se corrige, no un dato que falta.
   if ((v === null || v === undefined || v === '') && key === 'terminalName') return 'Sin terminal';
   if (v === null || v === undefined || v === '') return '—';
+  if (key === 'mode') return MODE_LABELS[String(v)] ?? String(v);
   return isMoney ? money(String(v)) : String(v);
 }
 

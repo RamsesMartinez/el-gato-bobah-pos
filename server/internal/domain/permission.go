@@ -23,13 +23,31 @@ const (
 	// PermCashConfigure: el fondo fijo de cada caja (spec 035). Cambia lo que el cierre propone dejar
 	// y, con eso, cuánto se retira; por eso no es de quien opera la caja.
 	PermCashConfigure Permission = "cash.configure"
+
+	// Salud del inventario (spec 037): ver qué no cuadra y exportarlo.
+	PermInventoryHealthView Permission = "inventory.health_view"
+	// PermMenuConfigure: decidir qué resta un producto o un extra. Desde ahí se mueven existencias al
+	// salir de la existencia propia, así que no es de quien opera la caja.
+	PermMenuConfigure Permission = "menu.configure"
+
+	// Compras al almacén (spec 038). Recibir mueve lo guardado y el costo de los insumos; configurar
+	// decide empaques, lugares y el método de costeo; contar reemplaza lo que el sistema creía tener.
+	PermInventoryReceive   Permission = "inventory.receive"
+	PermInventoryConfigure Permission = "inventory.configure"
+	PermInventoryCount     Permission = "inventory.count"
+
+	// Lo que se echó a perder (spec 039): registrarlo lo hace cualquiera del local; aprobar la merma
+	// que pasa el tope de la empresa, quien revisa.
+	PermInventoryWriteOff        Permission = "inventory.write_off"
+	PermInventoryWriteOffApprove Permission = "inventory.write_off_approve"
 )
 
 // AllPermissions devuelve todos los permisos que existen, en un orden fijo.
 func AllPermissions() []Permission {
 	return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 		PermAttendanceConfigure, PermAttendanceReport, PermAttendanceCorrectOthers, PermAttendanceCorrectOwn,
-		PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure}
+		PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure, PermInventoryHealthView, PermMenuConfigure,
+		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount, PermInventoryWriteOff, PermInventoryWriteOffApprove}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -45,9 +63,11 @@ func PermissionsFor(role Role) []Permission {
 		return AllPermissions()
 	case RoleGerente:
 		return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
-			PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure}
+			PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
+			PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount,
+			PermInventoryWriteOff, PermInventoryWriteOffApprove}
 	case RoleCajero, RoleMesero:
-		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending}
+		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}
 	}
 	return []Permission{}
 }
@@ -78,6 +98,20 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede cambiar la terminal de un pago"
 	case PermCashConfigure:
 		return "Tu usuario no puede configurar la caja"
+	case PermInventoryHealthView:
+		return "Tu usuario no puede ver la salud del inventario"
+	case PermMenuConfigure:
+		return "Tu usuario no puede configurar el menú"
+	case PermInventoryReceive:
+		return "Tu usuario no puede registrar lo que llega al almacén"
+	case PermInventoryConfigure:
+		return "Tu usuario no puede configurar el almacén"
+	case PermInventoryCount:
+		return "Tu usuario no puede contar el almacén"
+	case PermInventoryWriteOff:
+		return "Tu usuario no puede registrar lo que se echó a perder"
+	case PermInventoryWriteOffApprove:
+		return "Tu usuario no puede aprobar lo que se echó a perder"
 	}
 	return "Tu usuario no puede hacer esto"
 }

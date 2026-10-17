@@ -283,6 +283,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).
 					Delete("/business-settings/ticket-logo", h.DeleteTicketLogo)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/business-settings", h.UpdateBusinessSettings)
+				// Costeo y palabra del almacén (spec 038): por permiso y aparte de los datos fiscales.
+				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/inventory", h.UpdateInventorySettings)
+				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/waste-threshold", h.SetWasteThreshold)
 				// ¿hay caja abierta? aviso del POS — cualquier rol autenticado (incl. mesero); no es dato sensible
 				r.Get("/cash-status", h.CashStatus)
 				// caja: la opera el cajero; excluye al mesero para que no cierre cortes ajenos
@@ -364,23 +367,32 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// Lista de categorías (para el formulario de gasto): cualquier autenticado.
 				r.Get("/expense-categories", h.ExpenseCategories)
 				// Gastos, proveedores y catálogo de categorías = gestión/contabilidad → admin/gerente.
+				// Gastos: recibir y corregir lo que llegó van por permiso (spec 038) y FUERA del grupo por
+				// rol; dentro, el RequireRole decidiría antes que el permiso y un rol propio con el
+				// permiso rebotaría (constitución, «Roles: modelo híbrido»).
+				r.Route("/expenses", func(r chi.Router) {
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/receive", h.ReceiveExpense)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Put("/{id}/stock-lines", h.SaveStockLines)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items", h.AddArrivedItem)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items/{itemId}/receive", h.ReceiveItem)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items/{itemId}/not-coming", h.MarkNotComing)
+					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
+						r.Get("/", h.ListExpenses)
+						r.Post("/", h.CreateExpense)
+						r.Get("/{id}", h.ExpenseDetail)
+						r.Post("/{id}/pay", h.PayExpense) // agrega UN pago (el "+1 nuevo pago")
+						r.Post("/{id}/cancel", h.CancelExpense)
+						// Extracción del documento (ticket/factura/pedido) → borrador. NO escribe nada:
+						// devuelve las líneas para que el operador las confirme.
+						r.Post("/parse-doc", h.ExtractPurchaseDoc)
+					})
+				})
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
 					r.Post("/expense-categories", h.CreateExpenseCategory)
 					r.Patch("/expense-categories/{id}", h.UpdateExpenseCategory)
 					r.Get("/suppliers", h.Suppliers)
 					r.Post("/suppliers", h.CreateSupplier)
 					r.Patch("/suppliers/{id}", h.UpdateSupplier)
-					r.Route("/expenses", func(r chi.Router) {
-						r.Get("/", h.ListExpenses)
-						r.Post("/", h.CreateExpense)
-						r.Get("/{id}", h.ExpenseDetail)
-						r.Post("/{id}/pay", h.PayExpense)         // agrega UN pago (el "+1 nuevo pago")
-						r.Post("/{id}/receive", h.ReceiveExpense) // entra al almacén
-						r.Post("/{id}/cancel", h.CancelExpense)
-						// Extracción del documento (ticket/factura/pedido) → borrador. NO escribe nada:
-						// devuelve las líneas para que el operador las confirme.
-						r.Post("/parse-doc", h.ExtractPurchaseDoc)
-					})
 					// Catálogo de insumos y buscador de artículos: sin esto el detalle del gasto no
 					// tiene contra qué buscar (los ingredientes solo entraban por el importador).
 					r.Get("/units", h.Units)
@@ -393,15 +405,79 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/supplier-items", h.SupplierItems)
 					r.Delete("/supplier-items/{id}", h.ForgetSupplierItem)
 				})
+				// Lo que se echó a perder (spec 039): por permiso y fuera de todo grupo por rol. Registrar
+				// lo hace cualquiera del local; aprobar, quien revisa; los motivos y el tope, quien configura.
+				r.Route("/waste", func(r chi.Router) {
+					r.With(RequirePermission(h.permissions, domain.PermInventoryWriteOff)).Group(func(r chi.Router) {
+						r.Get("/reasons", h.WasteReasons)
+						r.Get("/items", h.WasteItems)
+						r.Post("/reasons", h.CreateWasteReason)
+						r.Post("/", h.RecordWaste)
+						r.Get("/today", h.WasteToday)
+						// Deshacer la propia; la de otro la decide el servicio con el permiso de configurar.
+						r.Post("/{id}/undo", h.UndoWaste)
+					})
+					// La pestaña de Almacén y el reporte por motivo: quien ve la salud del inventario.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/", h.ListWaste)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/by-reason", h.WasteByReason)
+					// Administrar motivos: quien configura el almacén.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Group(func(r chi.Router) {
+						r.Get("/reasons/all", h.AllWasteReasons)
+						r.Put("/reasons/{id}", h.UpdateWasteReason)
+						r.Post("/reasons/{id}/merge", h.MergeWasteReason)
+					})
+					r.With(RequirePermission(h.permissions, domain.PermInventoryWriteOffApprove)).Group(func(r chi.Router) {
+						r.Get("/pending", h.PendingWaste)
+						r.Post("/{id}/approve", h.ApproveWaste)
+						r.Post("/{id}/reject", h.RejectWaste)
+					})
+				})
 				// inventario: ajustes/mermas los hace gerencia
-				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/stock", func(r chi.Router) {
-					r.Get("/levels", h.StockLevels)
-					r.Get("/movements", h.StockMovements)
-					r.Post("/movements", h.CreateStockMovement)
-					// Insumos que se preparan en el local: qué llevan y cuánto rinden.
-					r.Get("/ingredients/{id}/composition", h.GetIngredientComposition)
-					r.Put("/ingredients/{id}/composition", h.PutIngredientComposition)
-					r.Post("/ingredients/{id}/composition/confirm", h.ConfirmIngredientComposition)
+				r.Route("/stock", func(r chi.Router) {
+					// Salud del inventario (spec 037): por permiso y FUERA del grupo por rol. Dentro, el
+					// RequireRole de abajo seguiría decidiendo antes que el permiso, y un rol propio de una
+					// empresa con el permiso rebotaría (constitución, «Roles: modelo híbrido»).
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health", h.GetInventoryHealth)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health.csv", h.ExportInventoryHealth)
+					// El faltante de un conteo (spec 039): lo lee quien ve la salud del inventario.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/counts/{id}/loss", h.CountLoss)
+					// Empaques de compra (spec 038): por permiso y fuera del grupo por rol, igual que la salud.
+					// Leerlos es de quien registra compras; cambiarlos, de quien configura el almacén.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/presentations", h.ListPresentations)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/pending-receipts", h.PendingReceipts)
+					// Conteo (spec 038): por permiso. El último cierre lo lee la captura de compras.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/counts/last-closed", h.LastClosedCount)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryCount)).Group(func(r chi.Router) {
+						r.Get("/counts/current", h.CurrentCount)
+						r.Post("/counts", h.OpenCount)
+						r.Put("/counts/{id}/lines/{ingredientId}", h.CaptureCount)
+						r.Delete("/counts/{id}/lines/{ingredientId}", h.UncaptureCount)
+						r.Get("/counts/{id}/preview", h.PreviewCount)
+						r.Post("/counts/{id}/close", h.CloseCount)
+						r.Post("/counts/{id}/discard", h.DiscardCount)
+					})
+					// El lugar se pone al contar (FR-015f): lo decide quien cuenta, no quien configura el almacén.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryCount)).Put("/ingredients/{id}/place", h.SetCountPlace)
+					// Lugares del recorrido (spec 040): elegir y dar de alta desde el artículo es de quien
+					// cuenta; renombrar, ordenar y archivar, de quien configura. Leer, de cualquiera de los dos.
+					r.With(RequireAnyPermission(h.permissions, domain.PermInventoryCount, domain.PermInventoryConfigure)).Get("/count-places", h.ListCountPlaces)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryCount)).Post("/count-places", h.CreateCountPlace)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/count-places/{id}", h.RenameCountPlace)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/count-places/{id}/move", h.MoveCountPlace)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/count-places/{id}/archive", h.ArchiveCountPlace)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/ingredients/{id}/presentations", h.ListIngredientPresentations)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredients/{id}/presentations", h.CreatePresentation)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/presentations/{id}", h.UpdatePresentation)
+					r.Group(func(r chi.Router) {
+						r.Use(RequireRole(domain.RoleAdmin, domain.RoleGerente))
+						r.Get("/levels", h.StockLevels)
+						r.Get("/movements", h.StockMovements)
+						r.Post("/movements", h.CreateStockMovement)
+						// Insumos que se preparan en el local: qué llevan y cuánto rinden.
+						r.Get("/ingredients/{id}/composition", h.GetIngredientComposition)
+						r.Put("/ingredients/{id}/composition", h.PutIngredientComposition)
+						r.Post("/ingredients/{id}/composition/confirm", h.ConfirmIngredientComposition)
+					})
 				})
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/reports", func(r chi.Router) {
 					r.Get("/sales", h.ReportSales)
@@ -415,26 +491,37 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// Menú › Recetas: lo que gasta cada producto, extra y preparado.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/admin/recipes", h.ListRecipes)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/admin/recipes/confirm", h.ConfirmRecipes)
-				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/products", func(r chi.Router) {
-					r.Get("/", h.AdminListProducts)
-					r.Post("/", h.AdminCreateProduct)                  // alta de producto (gerente y admin)
-					r.Post("/{id}/duplicate", h.AdminDuplicateProduct) // clon con todas sus relaciones
-					r.Patch("/{id}", h.AdminUpdateProduct)
-					// grupos de modificadores asignados a un producto (min/max/obligatorio por producto)
-					r.Get("/{id}/composition", h.GetProductComposition)
-					r.Put("/{id}/composition", h.PutProductComposition)
-					r.Post("/{id}/composition/confirm", h.ConfirmProductComposition)
-					r.Get("/{id}/groups", h.AdminProductGroups)
-					r.Post("/{id}/groups", h.AdminAttachProductGroup)
-					r.Delete("/{id}/groups/{groupId}", h.AdminDetachProductGroup)
+				// Decidir qué resta un producto o un extra (spec 037) mueve existencias al salir de la
+				// existencia propia: por permiso y FUERA de los grupos por rol, para que un rol propio de
+				// una empresa con `menu.configure` pueda (constitución, «Roles: modelo híbrido»). Leer la
+				// receta sigue en el grupo de siempre.
+				menuConfigure := RequirePermission(h.permissions, domain.PermMenuConfigure)
+				r.Route("/admin/products", func(r chi.Router) {
+					r.With(menuConfigure).Put("/{id}/composition", h.PutProductComposition)
+					r.With(menuConfigure).Post("/{id}/composition/confirm", h.ConfirmProductComposition)
+					r.Group(func(r chi.Router) {
+						r.Use(RequireRole(domain.RoleAdmin, domain.RoleGerente))
+						r.Get("/", h.AdminListProducts)
+						r.Post("/", h.AdminCreateProduct)                  // alta de producto (gerente y admin)
+						r.Post("/{id}/duplicate", h.AdminDuplicateProduct) // clon con todas sus relaciones
+						r.Patch("/{id}", h.AdminUpdateProduct)
+						// grupos de modificadores asignados a un producto (min/max/obligatorio por producto)
+						r.Get("/{id}/composition", h.GetProductComposition)
+						r.Get("/{id}/groups", h.AdminProductGroups)
+						r.Post("/{id}/groups", h.AdminAttachProductGroup)
+						r.Delete("/{id}/groups/{groupId}", h.AdminDetachProductGroup)
+					})
 				})
 
-				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/modifier-options", func(r chi.Router) {
-					r.Get("/", h.AdminListModifierOptions)
-					r.Patch("/{id}", h.AdminUpdateOption)
-					r.Get("/{id}/composition", h.GetOptionComposition)
-					r.Put("/{id}/composition", h.PutOptionComposition)
-					r.Post("/{id}/composition/confirm", h.ConfirmOptionComposition)
+				r.Route("/admin/modifier-options", func(r chi.Router) {
+					r.With(menuConfigure).Put("/{id}/composition", h.PutOptionComposition)
+					r.With(menuConfigure).Post("/{id}/composition/confirm", h.ConfirmOptionComposition)
+					r.Group(func(r chi.Router) {
+						r.Use(RequireRole(domain.RoleAdmin, domain.RoleGerente))
+						r.Get("/", h.AdminListModifierOptions)
+						r.Patch("/{id}", h.AdminUpdateOption)
+						r.Get("/{id}/composition", h.GetOptionComposition)
+					})
 				})
 
 				// catálogo global de grupos + sus opciones

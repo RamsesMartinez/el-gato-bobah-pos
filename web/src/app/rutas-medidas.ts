@@ -29,6 +29,8 @@ const PANTALLAS: Array<[RegExp, string]> = [
   [/^\/plataformas/, 'plataformas'],
   // Asistencia (spec 033): también en `pantallasMedibles` y `rolesPorPantalla` del servidor.
   [/^\/asistencia/, 'asistencia'],
+  // Lo que se echó a perder (spec 039): también en `pantallasMedibles` y `rolesPorPantalla`.
+  [/^\/merma/, 'merma'],
 ];
 
 // pantallaDe traduce una ruta al nombre que se mide, o `null` si esa ruta no se mide.

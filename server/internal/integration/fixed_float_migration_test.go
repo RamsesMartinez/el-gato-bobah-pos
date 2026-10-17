@@ -45,6 +45,9 @@ func cierreViejo(t *testing.T, st *store.Store, company, reg, user int64, contad
 func TestMigrationFixedFloatKeepsPastClosesIntact(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
+	// La empresa B se crea ANTES de bajar el esquema: `CreateCompany` siembra lo que exige el esquema
+	// de hoy (los motivos de merma de la 0094), y las filas de la empresa sobreviven a bajarlo.
+	coB := makeCompany(t, st, "mig-ff-b")
 	migrarAbajoHasta(t, st.Pool, fixedFloatVersion-1)
 
 	cajeroA := makeUser(t, st, "cajero_mig_ff_a", "cajero")
@@ -52,7 +55,6 @@ func TestMigrationFixedFloatKeepsPastClosesIntact(t *testing.T) {
 	cierreViejo(t, st, defaultCompanyID, regA, cajeroA, "1000", "700")
 	cierreViejo(t, st, defaultCompanyID, regA, cajeroA, "900", "")
 
-	coB := makeCompany(t, st, "mig-ff-b")
 	cajeroB := makeUserIn(t, st, coB, "cajero_mig_ff_b", "cajero")
 	var regB int64
 	if err := st.Pool.QueryRow(ctx, `insert into cash_registers (company_id, name, is_primary) values ($1, 'Principal B', true) returning id`, coB).Scan(&regB); err != nil {

@@ -69,6 +69,8 @@ var pantallasMedibles = map[string]struct{}{
 	"emparejar":   {},
 	// Asistencia (spec 033): checar es de todos; el reporte va en la misma ruta.
 	"asistencia": {},
+	// Lo que se echó a perder (spec 039): la captura es de todos los del local.
+	"merma": {},
 }
 
 // accionesMedibles son las acciones con nombre que vale la pena contar, por pantalla.
@@ -85,6 +87,19 @@ var accionesMedibles = map[string]map[string]struct{}{
 	"pedidos":  {"cobrar": {}, "split-by-products": {}, "move-lines": {}, "void-payment": {}, "close-order": {}, "cancel-pending": {}},
 	"caja":     {"abrir-turno": {}, "cerrar-turno": {}, "contar-efectivo": {}, "traspaso": {}},
 	"catalogo": {"editar-producto": {}},
+	// Compras que suman al almacén (spec 038).
+	"gastos": {"registrar-compra": {}, "corregir-compra": {}},
+	// Salud del inventario (spec 037), Por recibir y Conteo (spec 038) son pestañas de Almacén, no
+	// rutas: se miden como acciones.
+	"inventario": {
+		"ver-salud": {}, "exportar-salud": {},
+		"ver-por-recibir": {}, "recibir": {}, "ver-conteo": {}, "cerrar-conteo": {},
+		// Spec 039: la pestaña de lo que se echó a perder y el faltante de un conteo.
+		"ver-merma": {}, "ver-faltante": {},
+	},
+	// Lo que se echó a perder (spec 039). Aprobar y rechazar se hacen en la hoja de la franja, que
+	// se abre sobre cualquier pantalla: se cuentan aquí para no repartirlas entre pantallas.
+	"merma": {"registrar": {}, "deshacer": {}, "aprobar": {}, "rechazar": {}},
 }
 
 // maxNombreDePantalla y maxNombreDeAccion son el espejo de los `check` de la migración 0069.
@@ -146,6 +161,8 @@ var rolesPorPantalla = map[string][]Role{
 	"emparejar":   {RoleAdmin, RoleGerente},
 	// Asistencia (spec 033): cualquier rol checa su entrada.
 	"asistencia": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+	// Lo que se echó a perder (spec 039): `inventory.write_off` lo tienen los cuatro roles.
+	"merma": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
 }
 
 // PantallaPermitidaParaRol dice si ese rol puede siquiera abrir esa pantalla.

@@ -51,6 +51,7 @@ import { DescartarCuentaSheet } from './DescartarCuentaSheet';
 import { hayQuePreguntar } from './estadosDeCuenta';
 import { ProductGrid } from './ProductGrid';
 import { ModifierSheet } from './ModifierSheet';
+import { productToReselect } from './reselect';
 import { Ticket } from './Ticket';
 import { CobrarSheet } from '../../shared/CobrarSheet';
 import { FolioPlataformaSheet } from './FolioPlataformaSheet';
@@ -115,7 +116,24 @@ export function POSPage() {
 
   // El pedido que se está cobrando. La hoja se abre SIEMPRE sobre un pedido que ya existe.
   const [cobrando, setCobrando] = useState<PedidoParaCobrar | null>(null);
-  const cuenta = useCuenta({ envioPorDefecto, cobrando: cobrando !== null });
+  // Rechazo por menú viejo: se trae el menú nuevo y, si el producto sigue a la venta con extras, su
+  // hoja se reabre con lo actual.
+  const [modProduct, setModProduct] = useState<MenuProduct | null>(null);
+  const [editing, setEditing] = useState<RenglonNuevo | null>(null);
+  const modSheet = useDisclosure();
+  const cuenta = useCuenta({
+    envioPorDefecto, cobrando: cobrando !== null,
+    onMenuChanged: (productId) => {
+      void qc.fetchQuery({ queryKey: ['menu'], queryFn: posApi.menu, staleTime: 0 }).then((fresh) => {
+        if (productId === null) return;
+        const p = productToReselect(fresh, productId);
+        if (!p) return;
+        setEditing(null);
+        setModProduct(p);
+        modSheet.onOpen();
+      }).catch(() => undefined);
+    },
+  });
   const { vista } = cuenta;
   const lista = vista.platformId;
   const { data: vivas } = useCuentasVivas();
@@ -132,8 +150,6 @@ export function POSPage() {
   const [showPrices, setShowPrices] = useState(() => localStorage.getItem('pos.showPrices') !== '0');
   const togglePrices = () =>
     setShowPrices((v) => { localStorage.setItem('pos.showPrices', v ? '0' : '1'); return !v; });
-  const [modProduct, setModProduct] = useState<MenuProduct | null>(null);
-  const [editing, setEditing] = useState<RenglonNuevo | null>(null);
   // La comanda: el pedido y los renglones que salen a cocina.
   const [comanda, setComanda] = useState<{ order: OrderView; ids: number[] } | null>(null);
   const [lastOrder, setLastOrder] = useState<OrderView | null>(null);
@@ -160,8 +176,22 @@ export function POSPage() {
 
   const ticketDrawer = useDisclosure();
   const ticketSwipe = useSwipeDownToClose(ticketDrawer.onClose);
+  // El renglón que el servidor rechazó por menú viejo al mandar o cobrar. Se señala hasta que se
+  // vuelve a elegir o se quita; su hoja se reabre con el menú nuevo si el producto sigue a la venta.
+  const [reselectLineId, setReselectLineId] = useState<string | null>(null);
   const { enviar, enviando, motivo, limpiarMotivo } = useEnviarCuenta({
     onComanda: (order, ids) => setComanda({ order, ids }),
+    onMenuChanged: ({ lineId, productId }) => {
+      setReselectLineId(lineId);
+      void qc.fetchQuery({ queryKey: ['menu'], queryFn: posApi.menu, staleTime: 0 }).then((fresh) => {
+        const r = cuenta.vista.nuevos.find((x) => x.id === lineId);
+        const p = productId === null ? null : productToReselect(fresh, productId);
+        if (!r || !p) return;
+        setEditing(r);
+        setModProduct(p);
+        modSheet.onOpen();
+      }).catch(() => undefined);
+    },
   });
 
   const claveCuenta = vista.borradorId ?? '';
@@ -298,7 +328,6 @@ export function POSPage() {
     else if (c.orderId) seleccionar({ kind: 'order', id: c.orderId });
   };
 
-  const modSheet = useDisclosure();
   // En pantallas bajas (7" landscape) el panel lateral roba ~31% del ancho: arranca colapsado.
   const [panelHidden, setPanelHidden] = useState(
     () => window.matchMedia?.('(max-height: 720px)')?.matches ?? false,
@@ -435,6 +464,7 @@ export function POSPage() {
     if (!modProduct) return;
     if (editing) {
       cuenta.cambiar(editing, modifiers, notes);
+      if (editing.id === reselectLineId) setReselectLineId(null);
     } else {
       for (let i = 0; i < qty; i++) {
         cuenta.agregar({
@@ -448,7 +478,9 @@ export function POSPage() {
   };
 
   if (isLoading) return <Center h="80vh"><Spinner size="xl" /></Center>;
-  if (error) return <Center h="80vh"><Text color="red.500">Error cargando el menú</Text></Center>;
+  // Solo sin menú alguno: una revisión periódica que falla sin red deja el error puesto pero conserva
+  // el menú anterior, y con él se sigue vendiendo.
+  if (error && !menu) return <Center h="80vh"><Text color="red.500">Error cargando el menú</Text></Center>;
 
   // Sin turno abierto la pantalla de venta no se muestra.
   if (cashStatus.data && !cashStatus.data.open) {
@@ -487,13 +519,14 @@ export function POSPage() {
     envioPorDefecto,
     enviando,
     motivo,
+    reselectLineId: vista.nuevos.some((r) => r.id === reselectLineId) ? reselectLineId : null,
     puedeCancelar: can('orders.cancel', user),
     onMas: cuenta.mas,
     onMenos: cuenta.menos,
     onQuitar: cuenta.quitar,
     onEditLine: editLine,
     onCabecera: cuenta.cabecera,
-    onQuitarNoDisponibles: () => vista.noDisponibles.forEach((l) => cuenta.quitar(l)),
+    onQuitarNoDisponibles: () => vista.noDisponibles.filter((l) => l.id !== reselectLineId).forEach((l) => cuenta.quitar(l)),
     onEnviar: enviarACocina,
     onCobrar: cobrarLaCuenta,
     onDescartar: pedirDescartar,

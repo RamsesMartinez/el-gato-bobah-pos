@@ -51,19 +51,23 @@ func TestLoginBranches_ComparableTiming(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	median := func(f func()) time.Duration {
-		const n = 5
-		ds := make([]time.Duration, n)
-		for i := range ds {
-			start := time.Now()
-			f()
-			ds[i] = time.Since(start)
-		}
-		slices.Sort(ds)
-		return ds[n/2]
+	// Las dos ramas se miden INTERCALADAS. Medidas una tanda tras otra, la primera caía en el arranque
+	// de `go test ./...`, con los demás paquetes compitiendo por CPU, y salía ~2.2× más lenta sin que
+	// el código cambiara: falló así en CI el 12 y el 14 de octubre de 2026. Intercaladas, el ruido les
+	// pega igual a las dos.
+	const n = 9
+	nf, wp := make([]time.Duration, n), make([]time.Duration, n)
+	for i := range n {
+		start := time.Now()
+		CheckDummySecret("intento")
+		nf[i] = time.Since(start)
+		start = time.Now()
+		CheckSecret(real, "intento")
+		wp[i] = time.Since(start)
 	}
-	notFound := median(func() { CheckDummySecret("intento") })
-	wrongPw := median(func() { CheckSecret(real, "intento") })
+	slices.Sort(nf)
+	slices.Sort(wp)
+	notFound, wrongPw := nf[n/2], wp[n/2]
 	// Cota deliberadamente holgada (mismo orden de magnitud) para no ser flaky bajo carga
 	// de CI; basta para detectar la ausencia del bcrypt de descarte.
 	if notFound < wrongPw/2 || notFound > wrongPw*2 {

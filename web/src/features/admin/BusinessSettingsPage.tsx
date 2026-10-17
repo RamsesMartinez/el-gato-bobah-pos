@@ -10,6 +10,7 @@ import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
 import { InstallAppSection } from '../../shared/pwa/InstallAppSection';
 import { AttendanceSettingsSection } from './AttendanceSettingsSection';
+import { InventorySettingsSection } from './InventorySettingsSection';
 import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
 import { AjustesDeCaja } from './AjustesDeCaja';
@@ -346,6 +347,8 @@ export function BusinessSettingsPage() {
       </Box>
 
       {can('attendance.configure', user) && <AttendanceSettingsSection />}
+
+      {can('inventory.configure', user) && <InventorySettingsSection />}
 
       <InstallAppSection />
     </Page>

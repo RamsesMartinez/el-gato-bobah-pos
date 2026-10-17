@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'vitest';
-import { packToBase, lineAmount, splitTotals } from './expenseDraft';
+import { packToBase, lineAmount, splitTotals, purchaseMoney, baseOfLine } from './expenseDraft';
 
 // Unidades como las siembra la migración 0010.
 const units = [
@@ -125,4 +125,35 @@ test('un número con la unidad pegada se rechaza en vez de tirar la cola', () =>
 test('un importe con coma no se suma al total del documento', () => {
   const { local } = splitTotals([{ amount: '1,000', personal: false }, { amount: '250', personal: false }]);
   expect(local).toBe(250);
+});
+
+describe('purchaseMoney (FR-004a)', () => {
+  const goods = (amount: string, gift = false) => ({ amount, goods: true, gift });
+  test('un renglón de mercancía sin importe se cuenta como faltante; un regalo en 0 no', () => {
+    const m = purchaseMoney([goods(''), goods('0'), goods('0', true), { amount: '0', goods: false, gift: false }], 100);
+    expect(m.missingAmount).toBe(2);
+  });
+  test('renglones sobre el total se marcan; lo que falta queda como «otros»', () => {
+    expect(purchaseMoney([goods('730'), goods('410.01')], 1140).over).toBe(true);
+    const m = purchaseMoney([goods('190'), goods('540')], 1140);
+    expect(m).toMatchObject({ linesSum: 730, over: false, others: 410 });
+  });
+  test('lo de la casa no suma al gasto', () => {
+    expect(purchaseMoney([goods('100'), { amount: '50', goods: false, gift: false, personal: true }], 100).over).toBe(false);
+  });
+  test('sin centavos fantasma al sumar', () => {
+    expect(purchaseMoney([goods('0.1'), goods('0.2')], 0.3).over).toBe(false);
+  });
+});
+
+describe('baseOfLine', () => {
+  test('cantidad por lo que trae el empaque', () => {
+    expect(baseOfLine('3', '12000')).toBe(36000);
+    expect(baseOfLine('1.5', '12000')).toBe(18000);
+  });
+  test('sin empaque o sin cantidad no inventa un cero', () => {
+    expect(baseOfLine('3', null)).toBeNull();
+    expect(baseOfLine('', '12000')).toBeNull();
+    expect(baseOfLine('0', '12000')).toBeNull();
+  });
 });

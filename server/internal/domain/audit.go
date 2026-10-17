@@ -63,7 +63,48 @@ var auditActions = []struct {
 	{"attendance.schedule_set", AuditGroupAttendance},
 	{"user.tracks_attendance_changed", AuditGroupAttendance},
 	{"payment.terminal_changed", AuditGroupMoney},
+	// Qué resta un producto (spec 037). Va con los precios porque es configuración del menú: un
+	// grupo propio cambiaría la rejilla de contadores de la bitácora, pensada para la tableta.
+	{AuditProductConsumptionMode, AuditGroupPrice},
+	// Compras al almacén (spec 038). Recibir y corregir van con los demás gastos; el conteo con lo
+	// dado por perdido, que también reescribe lo guardado; el método de costeo con los precios. Ningún
+	// grupo nuevo: la rejilla de la bitácora es una disposición de tableta.
+	{AuditExpenseReceived, AuditGroupCash},
+	{AuditExpenseStockCorrected, AuditGroupCash},
+	{AuditStockCounted, AuditGroupCancel},
+	{AuditSettingsCostingMethod, AuditGroupPrice},
+	// Lo que se echó a perder (spec 039): con lo dado por perdido. El tope de aprobación, con los
+	// precios, como el método de costeo.
+	{AuditWasteRecorded, AuditGroupCancel},
+	{AuditWasteApproved, AuditGroupCancel},
+	{AuditWasteRejected, AuditGroupCancel},
+	{AuditWasteUndone, AuditGroupCancel},
+	{AuditSettingsWasteThreshold, AuditGroupPrice},
 }
+
+// AuditProductConsumptionMode: cambió qué resta un producto al venderse.
+const AuditProductConsumptionMode AuditAction = "product.consumption_mode"
+
+const (
+	// AuditExpenseReceived: llegó mercancía de una compra y sumó a lo guardado.
+	AuditExpenseReceived AuditAction = "expense.received"
+	// AuditExpenseStockCorrected: se corrigió, agregó, cerró o revirtió lo que llegó de una compra.
+	AuditExpenseStockCorrected AuditAction = "expense.stock_corrected"
+	// AuditStockCounted: se cerró un conteo y lo guardado quedó con lo contado.
+	AuditStockCounted AuditAction = "stock.counted"
+	// AuditSettingsCostingMethod: cambió el método de costeo o la palabra del almacén.
+	AuditSettingsCostingMethod AuditAction = "settings.costing_method"
+	// AuditWasteRecorded: se registró algo que se echó a perder (restó o quedó por aprobar).
+	AuditWasteRecorded AuditAction = "waste.recorded"
+	// AuditWasteApproved: se aprobó una merma que pasaba el tope, y restó.
+	AuditWasteApproved AuditAction = "waste.approved"
+	// AuditWasteRejected: se rechazó una merma por aprobar; nunca restó.
+	AuditWasteRejected AuditAction = "waste.rejected"
+	// AuditWasteUndone: se deshizo una merma y volvió lo que había restado.
+	AuditWasteUndone AuditAction = "waste.undone"
+	// AuditSettingsWasteThreshold: cambió el tope a partir del cual una merma espera aprobación.
+	AuditSettingsWasteThreshold AuditAction = "settings.waste_threshold"
+)
 
 // AllAuditActions devuelve la lista blanca de acciones, en orden fijo.
 func AllAuditActions() []AuditAction {

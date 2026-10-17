@@ -38,6 +38,21 @@ func (e ProductUnavailable) Error() string {
 // Unwrap mantiene el sentinel: httpapi.Error sigue mapeando esto a 422 por errors.Is.
 func (e ProductUnavailable) Unwrap() error { return ErrProductNotSell }
 
+// LineRejected dice en qué renglón de la entrada se rechazó un pedido, sin cambiar el sentinel que
+// decide la respuesta (Unwrap). Al mandar a cocina o cobrar una cuenta de varios renglones, la tableta
+// necesita saber CUÁL volver a elegir; LineID lo llena quien conoce el renglón guardado (la cuenta).
+type LineRejected struct {
+	Index     int
+	LineID    string
+	ProductID int64
+	Err       error
+}
+
+func (e LineRejected) Error() string { return e.Err.Error() }
+
+// Unwrap conserva el sentinel (y ProductUnavailable) para errors.Is / errors.As.
+func (e LineRejected) Unwrap() error { return e.Err }
+
 // Estados de una orden. "paid" es un campo derivado, no un estado.
 const (
 	StatusAbierta   = "abierta"
@@ -152,77 +167,11 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 		return BuiltOrder{}, ErrEmptyOrder
 	}
 	var out BuiltOrder
-	for _, in := range lines {
-		p, ok := products[in.ProductID]
-		if !ok {
-			return BuiltOrder{}, ProductUnavailable{ProductID: in.ProductID}
+	for i, in := range lines {
+		line, err := buildLine(in, products, options)
+		if err != nil {
+			return BuiltOrder{}, LineRejected{Index: i, ProductID: in.ProductID, Err: err}
 		}
-		if !p.Active {
-			return BuiltOrder{}, ProductUnavailable{ProductID: p.ID, Name: p.Name}
-		}
-		// Redondear a 2dp (order_lines.quantity es numeric(8,2)) y validar el valor ya
-		// redondeado: si no, un qty como 0.001 pasa la validación pero Postgres lo coacciona
-		// a 0.00 y viola el check (quantity > 0) → 500 en vez de un 400 limpio.
-		qty := Round2(in.Qty)
-		if !ValidQty(qty, MaxOrderQty, false) {
-			return BuiltOrder{}, ErrValidation
-		}
-		line := BuiltLine{
-			ProductID:   p.ID,
-			ProductName: p.Name,
-			Qty:         qty,
-			UnitPrice:   p.Price,
-			UnitCost:    p.Cost,
-			Notes:       in.Notes,
-		}
-		var modsPerUnit, modCostPerUnit decimal.Decimal
-		for _, m := range in.Modifiers {
-			o, ok := options[m.OptionID]
-			if !ok {
-				return BuiltOrder{}, fmt.Errorf("%w (id %d)", ErrOptionNotFound, m.OptionID)
-			}
-			// Fail-closed: un producto sin grupos no admite ningún extra. El precio de la opción sale del
-			// catálogo, pero la combinación la decide el negocio al ligar grupos al producto.
-			if !slices.Contains(p.ModifierGroups, o.GroupID) {
-				return BuiltOrder{}, fmt.Errorf("%w: %s no es un extra de %s", ErrOptionNotFound, o.Name, p.Name)
-			}
-			q := m.Qty
-			if q <= 0 {
-				q = 1
-			}
-			// El tope que puso el negocio por opción. Se valida aquí y no solo en la pantalla
-			// porque la pantalla es espejo, no barrera: un cliente que mande 40 salsas en una
-			// línea manda a cocina un ticket que el negocio nunca aceptó, y lo hace en silencio.
-			tope := o.MaxPerLine
-			if tope <= 0 {
-				tope = 1 // 0 es "sin configurar" (el default de la columna es 1), no "ninguna"
-			}
-			if q > tope {
-				return BuiltOrder{}, fmt.Errorf("%w: %s admite %d por línea y se pidieron %d", ErrOptionOverMax, o.Name, tope, q)
-			}
-			qd := decimal.NewFromInt(int64(q))
-			// Cota superior: el modificador se persiste como int16; sin esto un Qty enorme
-			// hace wrap (40000 → -25536) y corrompe el ticket sin siquiera dar 500.
-			if !ValidQty(qd, MaxOrderQty, false) {
-				return BuiltOrder{}, ErrValidation
-			}
-			modsPerUnit = modsPerUnit.Add(o.PriceDelta.Mul(qd))
-			modCostPerUnit = modCostPerUnit.Add(o.Cost.Mul(qd))
-			// ponytail: la mitad se refleja prefijando el nombre snapshot ("½A · BBQ").
-			// Aflora en cocina/ticket sin migración. Ceiling: solo 2 mitades, sin precio
-			// fraccionado por mitad ni líneas hijas (parent_line_id).
-			name := o.Name
-			if m.Portion == "A" || m.Portion == "B" {
-				name = "½" + m.Portion + " · " + o.Name
-			}
-			line.Modifiers = append(line.Modifiers, BuiltMod{
-				OptionID: o.ID, GroupTitle: o.GroupTitle, OptionName: name,
-				Qty: q, PriceDelta: o.PriceDelta, UnitCost: o.Cost,
-			})
-		}
-		line.ModifiersTotal = Round2(modsPerUnit)
-		line.UnitCost = Round2(p.Cost.Add(modCostPerUnit))
-		line.LineTotal = Round2(p.Price.Add(modsPerUnit).Mul(qty))
 		out.Lines = append(out.Lines, line)
 		out.Subtotal = out.Subtotal.Add(line.LineTotal)
 	}
@@ -238,6 +187,82 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 		return BuiltOrder{}, ErrValidation
 	}
 	return out, nil
+}
+
+// buildLine valúa un renglón con el catálogo autoritativo; BuildOrder le pone en qué renglón ocurrió
+// el rechazo.
+func buildLine(in OrderLineInput, products map[int64]PricedProduct, options map[int64]PricedOption) (BuiltLine, error) {
+	p, ok := products[in.ProductID]
+	if !ok {
+		return BuiltLine{}, ProductUnavailable{ProductID: in.ProductID}
+	}
+	if !p.Active {
+		return BuiltLine{}, ProductUnavailable{ProductID: p.ID, Name: p.Name}
+	}
+	// Redondear a 2dp (order_lines.quantity es numeric(8,2)) y validar el valor ya
+	// redondeado: si no, un qty como 0.001 pasa la validación pero Postgres lo coacciona
+	// a 0.00 y viola el check (quantity > 0) → 500 en vez de un 400 limpio.
+	qty := Round2(in.Qty)
+	if !ValidQty(qty, MaxOrderQty, false) {
+		return BuiltLine{}, ErrValidation
+	}
+	line := BuiltLine{
+		ProductID:   p.ID,
+		ProductName: p.Name,
+		Qty:         qty,
+		UnitPrice:   p.Price,
+		UnitCost:    p.Cost,
+		Notes:       in.Notes,
+	}
+	var modsPerUnit, modCostPerUnit decimal.Decimal
+	for _, m := range in.Modifiers {
+		o, ok := options[m.OptionID]
+		if !ok {
+			return BuiltLine{}, fmt.Errorf("%w (id %d)", ErrOptionNotFound, m.OptionID)
+		}
+		// Fail-closed: un producto sin grupos no admite ningún extra. El precio de la opción sale del
+		// catálogo, pero la combinación la decide el negocio al ligar grupos al producto.
+		if !slices.Contains(p.ModifierGroups, o.GroupID) {
+			return BuiltLine{}, fmt.Errorf("%w: %s no es un extra de %s", ErrOptionNotFound, o.Name, p.Name)
+		}
+		q := m.Qty
+		if q <= 0 {
+			q = 1
+		}
+		// El tope que puso el negocio por opción. Se valida aquí y no solo en la pantalla
+		// porque la pantalla es espejo, no barrera: un cliente que mande 40 salsas en una
+		// línea manda a cocina un ticket que el negocio nunca aceptó, y lo hace en silencio.
+		tope := o.MaxPerLine
+		if tope <= 0 {
+			tope = 1 // 0 es "sin configurar" (el default de la columna es 1), no "ninguna"
+		}
+		if q > tope {
+			return BuiltLine{}, fmt.Errorf("%w: %s admite %d por línea y se pidieron %d", ErrOptionOverMax, o.Name, tope, q)
+		}
+		qd := decimal.NewFromInt(int64(q))
+		// Cota superior: el modificador se persiste como int16; sin esto un Qty enorme
+		// hace wrap (40000 → -25536) y corrompe el ticket sin siquiera dar 500.
+		if !ValidQty(qd, MaxOrderQty, false) {
+			return BuiltLine{}, ErrValidation
+		}
+		modsPerUnit = modsPerUnit.Add(o.PriceDelta.Mul(qd))
+		modCostPerUnit = modCostPerUnit.Add(o.Cost.Mul(qd))
+		// ponytail: la mitad se refleja prefijando el nombre snapshot ("½A · BBQ").
+		// Aflora en cocina/ticket sin migración. Ceiling: solo 2 mitades, sin precio
+		// fraccionado por mitad ni líneas hijas (parent_line_id).
+		name := o.Name
+		if m.Portion == "A" || m.Portion == "B" {
+			name = "½" + m.Portion + " · " + o.Name
+		}
+		line.Modifiers = append(line.Modifiers, BuiltMod{
+			OptionID: o.ID, GroupTitle: o.GroupTitle, OptionName: name,
+			Qty: q, PriceDelta: o.PriceDelta, UnitCost: o.Cost,
+		})
+	}
+	line.ModifiersTotal = Round2(modsPerUnit)
+	line.UnitCost = Round2(p.Cost.Add(modCostPerUnit))
+	line.LineTotal = Round2(p.Price.Add(modsPerUnit).Mul(qty))
+	return line, nil
 }
 
 // ApplyDeliveryFee suma el costo de envío al total de un pedido a domicilio. El fee lo captura

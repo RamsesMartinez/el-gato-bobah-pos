@@ -112,6 +112,51 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 
 - `make install` — setup completo (valida entorno, instala deps y herramientas). `make check` solo verifica prereqs.
 - `make start` — levanta todo: Postgres (default **:5490**), Redis (**:6390**), mailpit (**:8095**/**:1095**), API (default **:8080**) y web (Vite default **:3000**). **Ningún puerto es fijo**: un default, por raro que sea, choca con el postgres/redis de otro compose local. `start.sh` reusa el puerto que ya publica el contenedor vivo o toma el primero libre desde el default, y exporta `PG_PORT`/`REDIS_PORT`/`MAILPIT_*` para el compose y `dev-api.sh`; el `Makefile` los lee igual (`PG_PORT=… make db-migrate`). Pregunta los puertos de API/web (defaults auto-ajustados al primer libre) y **detecta puertos ocupados** antes de levantar. Fíjalos sin preguntar con `BACKEND_PORT=… FRONTEND_PORT=… make start`. El binario Go lee `PORT`; `vite.config.ts` lee `BACKEND_PORT` (proxy `/api`) y `FRONTEND_PORT`.
+- **Varios worktrees a la vez: cada uno con su propia infraestructura** (decidido el 2026-10-12).
+  `docker compose` toma el nombre del proyecto de la carpeta del compose (`deploy/`), que es la
+  misma en todos los worktrees: sin esto, cada `make start` cae en los MISMOS `deploy-postgres-1` y
+  `deploy-redis-1`. Lo que costaba, medido: una rama migra la base de otra (dos ramas con la misma
+  migración 0089 dejan a la otra API sin arrancar), el caché del menú y los bloqueos de login se
+  comparten en Redis, y las pruebas de integración —que fijan las contraseñas de los roles de TODO
+  el servidor de Postgres— dejaron «db_down» la API local que usaba ese servidor.
+
+  Al crear un worktree, antes del primer `make start`: **`make worktree-env n=NN`**, con NN el número
+  de la feature (035 → 35). Escribe `.env.worktree.local` (ignorado por git), que leen el Makefile,
+  `start.sh`, `stop.sh`, `dev-api.sh` y `ci-local.sh`:
+
+  | Pieza | Puerto | Nota |
+  | --- | --- | --- |
+  | Proyecto de compose | `egbNN` | Contenedores y volúmenes propios |
+  | Postgres de la API | 5500+NN | |
+  | Postgres de pruebas | 5600+NN | Servicio `postgres-test` (perfil `test`, en memoria); lo usa `make test-integration` |
+  | Postgres de `make ci-local` | 5700+NN | Antes fijo en 5510: dos `ci-local` a la vez chocaban |
+  | Redis | 6400+NN | |
+  | API · web | 8000+NN · 3000+NN | |
+  | mailpit (web · SMTP) | 8200+NN · 1100+NN | |
+
+  Reglas:
+  - **Las credenciales son las del `deploy/.env` de ese worktree**; si no existe, `make check-env`
+    lo crea con contraseñas nuevas. Como cada worktree tiene su propio servidor de Postgres, los
+    roles y sus contraseñas ya no se pisan.
+  - **Las pruebas de integración van contra el Postgres de pruebas, nunca contra el de la API**:
+    `make test-integration`, no `TEST_DATABASE_URL=<la base de la API>`.
+  - **Un worktree que ya trabaja se cambia solo entre tareas**, nunca a media corrida de pruebas:
+    cambiar el proyecto de compose deja su base anterior fuera de su alcance (los datos siguen en el
+    contenedor viejo; se traen con `make db-restaurar` si hacen falta).
+  - **La carpeta principal no se toca**: el script se niega a correr ahí, y sin el archivo todo
+    sigue con los puertos de siempre (5490, 6390, 8080, 3000). Producción, por supuesto, tampoco.
+  - **Nunca `docker compose down` (y menos `down -v`) directo en la terminal: siempre `make stop` o
+    `make deps-down`.** El proyecto de cada worktree vive en `.env.worktree.local`, que solo cargan
+    el Makefile y los scripts; un `docker compose` a mano cae en el proyecto `deploy`, el de la
+    carpeta principal. Pasó el 2026-10-12: un `down -v` así borró `deploy_pgdata_dev` y hubo que
+    restaurarla de un respaldo. `make stop` y `make deps-down` se niegan a bajar `deploy` desde un
+    worktree ([guard-shared-compose.sh](scripts/guard-shared-compose.sh)).
+  - **`make db-restaurar` restaura en la base del worktree, y desde un worktree se niega a tocar la
+    de la carpeta principal**, aunque se le pase `PG_CONTAINER=deploy-postgres-1`. Pasó el
+    2026-10-13: el script tenía el contenedor fijo y un restore desde un worktree borró la base de
+    la carpeta principal. Lo vigila
+    [restaurar-respaldo-test.sh](scripts/tests/restaurar-respaldo-test.sh), que corre en el
+    pre-commit cuando cambia el script. Para restaurar la carpeta principal, se corre desde ahí.
 - `make api-dev` (hot reload con air) · `make api-build` (= `cd server && go build ./...`) · `make api-test` (= `cd server && go test ./...`).
 - **La base local se comporta como producción: RLS y GRANT aplican también en dev.** La regla vive
   en la constitución (IV, *La base local niega lo mismo que producción*); esto es la mecánica, y
@@ -244,6 +289,25 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     y ya salió a cocina se da por gastado y no vuelve; lo que no se ha mandado, sí. Lo que no se
     prepara (una lata) se repone aunque ya se haya mandado. Una sola regla para quitar un renglón y
     cancelar el pedido entero: `domain.ReponeInventario`. Un pedido entregado no repone nada.
+  - **«Salud del inventario» mide lo que la venta dejó, no la configuración** (spec 037): un renglón
+    «se vendió sin restar» si no dejó ningún movimiento `venta` con su `order_line_id` (y su
+    `modifier_option_id`, en un extra). La excepción son las piezas de un paquete: el movimiento
+    guarda en `component_of_product_id` el **paquete**, no la pieza, así que una pieza se marca por
+    lo que tiene para restar. La pantalla y la exportación salen del mismo `report()`.
+  - **Un producto con existencia propia ya puede recibir receta o volverse paquete** (spec 037): su
+    existencia pasa al insumo (receta de un insumo) o se cierra en cero (lo demás), con las filas de
+    `stock_levels` bloqueadas (`FOR UPDATE`) dentro de `SaveComposition`. El trigger de existencias
+    suma deltas sin releer, y sin ese bloqueo una venta simultánea perdería o inventaría piezas. La
+    hoja manda las cifras que mostró (`seenProductOnHand`, `seenIngredientOnHand`); si ya no son las
+    bloqueadas, 409. La existencia propia ya no se ofrece en pantalla: solo se sale de ella.
+  - **Un insumo no se da de alta con un nombre que ya existe** sin distinguir mayúsculas, acentos ni
+    espacios (`IngredientNameTaken`, con candado por empresa 28037). El gasto y la receta reciben el
+    que ya existe (`web/src/shared/createIngredient.ts`). Hoy ninguna ruta renombra insumos; la que
+    se agregue aplica la misma regla.
+  - **Corregir una receta no recalcula lo ya vendido** (decisión del dueño, 2026-10-13): el
+    inventario de la empresa en producción es un histórico heredado de FUDO y se corrige de aquí en
+    adelante, no hacia atrás. La diferencia acumulada la ajusta un conteo, nunca un script que
+    reescriba `stock_movements` de ventas pasadas.
   - **La carga de FUDO** es `make fudo-composiciones empresa=gatobobah` (con `prueba=1` solo
     reporta). Llena solo lo que no tiene composición y lo marca **estimado**, que descuenta desde
     ese momento (decisión del dueño, 2026-10-07). No arma paquetes —sus cantidades en FUDO no
@@ -255,6 +319,22 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Un insumo preparado se captura en Almacén → Insumos** (qué lleva y cuánto rinde, en su unidad
     base). Los ciclos se rechazan con `StockGraph.ValidatePrepIngredient` contra todo el catálogo,
     en la captura **y** en la carga de FUDO: una sola regla para los dos caminos.
+- **Un cambio de catálogo por SQL directo ya NO necesita borrar el menú guardado** (spec 034).
+  Diez tablas —las que lee el menú del POS: `products`, `categories`, `modifier_groups`,
+  `modifier_options`, `product_modifier_groups`, `product_channels`, `channels`,
+  `delivery_platforms` y los dos precios por plataforma— tienen triggers de sentencia que suben
+  `catalog_versions` de cada empresa tocada, sin importar quién escribe ni si puso
+  `app.company_id`. La llave del menú en Redis y su `ETag` llevan esa versión, y la tableta revisa
+  cada minuto y al volver al frente (304 si no cambió). No hagas `DEL pos:menu:*` ni
+  `POST /admin/reload` para el menú: ya no hace falta.
+
+  Origen: el 2026-10-10 un script desligó un grupo de extras de un producto; el menú guardado solo
+  se borraba desde las pantallas de administración, la tableta siguió ofreciendo el grupo y el
+  servidor rechazó la venta una y otra vez hasta que alguien borró el caché a mano. Si el menú
+  llega a leer **otra tabla**, agrégala a la lista de la migración 0093 (en una migración nueva) y
+  a `TestEveryMenuTableBumpsTheVersion`: una tabla sin trigger es exactamente ese camino. Y si
+  aun así una tableta manda algo que ya no vale, el servidor responde `MENU_CHANGED` y la tableta
+  recarga y pide elegir de nuevo.
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
   «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,
@@ -330,6 +410,45 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `can()` en el front), no por nombre de rol: los roles serán de cada empresa (constitución,
     principio VIII). La migración 0079 se niega a bajar en cuanto hay un cobro nuevo; tras
     desplegarla, el rollback es restaurar el respaldo.
+- **Compras al almacén, por recibir y conteo** (spec 038, 0091/0092). Cinco cosas que no se ven:
+  - **El almacén se mueve por diferencia, nunca editando un movimiento.** Cada renglón de compra
+    guarda en `applied_qty_base` lo que ya sumó; recibir, corregir, quitar (`voided_at`) y anular
+    calculan lo que debería haber sumado e insertan solo la diferencia (`domain.PlanStockLines`).
+    Un camino nuevo que toque lo recibido pasa por `applyStockLines`, o duplica o pierde mercancía.
+  - **Los insumos se toman sin esperar, ANTES de escribir** (`lockIngredients`, `for no key update
+    nowait`): la llave foránea del renglón tomaría el insumo y esperaría a una venta. Una venta en
+    curso responde 409 «vuelve a intentar», no una espera. `no key update` y no `update`: así la
+    compra no frena la llave foránea de los movimientos de la venta.
+  - **`ValidQty` rechaza el cero**, y lo recibido («todavía no llega») y lo contado («no hay») lo
+    usan a menudo: para eso está `domain.ValidStockQtyOrZero`. Usar `ValidQty` ahí responde 400.
+  - **El conteo ajusta contra lo que había AL CAPTURAR**, no al cerrar: lo vendido mientras se cuenta
+    queda restado. Lo no contado no se toca. Mientras está abierto, lo que el sistema tiene no viaja.
+  - **El «lugar» de un insumo no es un almacén**: solo ordena el conteo. Más de un almacén por
+    sucursal es una puerta del principio VIII (issue #65). Las compras todavía no guardan sucursal:
+    con dos y sin selector, «Por recibir» responde `BRANCH_AMBIGUOUS`.
+- **Lo que se echó a perder** (spec 039, 0094). Cuatro cosas que no se ven:
+  - **El periodo del faltante se cuenta por id de movimiento, no por hora.** Al capturar un artículo,
+    el conteo toma su existencia (`for share`) y DESPUÉS, en otra sentencia, lee lo que había y el
+    último movimiento (`last_movement_id`). En una sola consulta, Postgres relee la fila esperada pero
+    el resto sale de la foto vieja, y una merma que confirmaba a media captura se restaba dos veces.
+  - **La merma registrada YA restó de lo que el sistema tenía**: lo que el conteo encuentra de menos es
+    lo sin explicar tal cual (`domain.SplitLoss`). Restarle otra vez la merma la cuenta dos veces.
+  - **Juntar motivos no reescribe `reason_id`**: el reporte sigue `merged_into_id` (un nivel). La marca
+    «no cuenta como pérdida» se copia al registro; cambiarla en el motivo no reclasifica el pasado.
+  - **Las horas de la merma son de la base** (`recorded_at`, `DBNow`): se comparan con `captured_at`
+    del conteo, que también pone la base. Con el reloj de la API se mezclarían dos relojes. Y
+    `CreateCompany` siembra los motivos: una prueba que baje el esquema debajo de la 0094 crea sus
+    empresas ANTES de bajarlo.
+- **Lugares para contar** (spec 040, 0095). Tres cosas que no se ven:
+  - **El lugar es una liga a `count_places`, no texto.** Ordena el recorrido del conteo y nada más:
+    no es un almacén (#65) y no guarda existencias. La pantalla no lo llama «almacén».
+  - **Crear, mover y archivar toman primero `pg_advisory_xact_lock(28040, empresa)`** y después, en
+    otra sentencia, leen los activos y renumeran 0..n-1. Asignar toma el lugar `for share` y archivar
+    `for update`: así ningún artículo queda en un lugar archivado. Un camino nuevo que toque el orden
+    o archive pasa por el mismo candado.
+  - **La normalización de nombres junta espacios con `strings.Fields`, no con `\s` de regexp**: el de
+    Go no ve el espacio duro y el de Postgres sí (lo encontró la prueba de paridad de la 0095; también
+    afectaba a los motivos de merma). La Down de la 0095 pierde el orden y los lugares sin artículos.
 - **Asistencia y bitácora de auditoría** (spec 033, 0089). Cinco cosas que no se ven:
   - **Todo camino nuevo que mueva dinero, caja, precios o asistencia escribe su evento** con
     `recordAudit` (o `auditOrder` / `auditCash`) **dentro de su transacción**, y su acción va en la
@@ -529,6 +648,23 @@ Qué corre cada hook de **lefthook** ([lefthook.yml](lefthook.yml)):
 - **pre-push**: `go test ./...`, `govulncheck`, `bun run build`.
 
 Que deban quedar verdes y que `--no-verify` no se use son quality gates de la constitución.
+
+**Un PR hacia `develop` se mergea en cuanto su CI termina en verde, sin pedir OK** (decidido el
+2026-10-14): develop solo despliega al ambiente de pruebas, y detenerse ahí frena las capturas y las
+pruebas que vienen después. Si CI falla, se arregla; no se mergea. **Producción (`main`, `pos-vps`)
+sigue pidiendo OK explícito del dueño.**
+
+**Las pruebas corren en el PR, no al mergear a develop** (decidido el 2026-10-15; el job `changes`
+de [ci.yml](.github/workflows/ci.yml) lo decide). Un PR corre solo lo que su cambio toca —uno de
+puros `specs/` o `docs/` no corre nada— y el push a develop solo construye y despliega. Lo que lo
+hace seguro: el PR se mergea **al día** con develop y con sus checks en verde, así que lo probado es
+lo que queda. Hoy lo cuida quien mergea; la protección de develop que lo exige (checks requeridos y
+«al día») la activa el dueño. Si el PR va atrás, se trae develop **en local** (commit firmado),
+`make ci-local`, se empuja y se espera el CI de nuevo; no se mergea sin eso. **No** con
+`gh pr update-branch` ni el botón «Update branch»: ese merge lo firma GitHub y no el dueño, y rompe la
+autoría única de la constitución. `main` corre todo siempre.
+Un test que lea archivos de otra carpeta (como los de nombres de empresa, que leen `web/src`) se
+agrega también al filtro de su job, o un PR de esa carpeta lo deja de correr.
 
 ### Identidad, firma y autoría
 

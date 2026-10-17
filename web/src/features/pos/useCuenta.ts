@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { mensajeDeError } from '../../api/mensajes';
+import { notifyMenuChanged, isStaleMenu } from './menuChanged';
 import { posApi } from '../../api/pos';
 import { toaster } from '../../components/ui/toaster';
 import { usePosStore, type Seleccion } from '../../stores/pos';
@@ -132,9 +133,13 @@ interface Opciones {
   envioPorDefecto?: number;
   // Esta tableta está cobrando: lo que cambie el pedido mientras tanto es suyo, no de otra.
   cobrando?: boolean;
+  // El servidor rechazó un producto o extra porque el menú de esta tableta es viejo. Recibe el
+  // producto que hay que volver a elegir, o null cuando se cambiaba un renglón ya capturado (ahí
+  // solo se recarga el menú: reabrir la hoja como alta duplicaría el renglón).
+  onMenuChanged?: (productId: number | null) => void;
 }
 
-export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = {}): Cuenta {
+export function useCuenta({ envioPorDefecto = 0, cobrando = false, onMenuChanged }: Opciones = {}): Cuenta {
   const qc = useQueryClient();
   const seleccion = usePosStore((s) => s.selected);
   const nueva = usePosStore((s) => s.nueva);
@@ -252,6 +257,12 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = 
       toaster.create({ title: 'No se guardó el cambio', description: mensajeDeError(e), type: 'error' });
       return;
     }
+    if (isStaleMenu(e)) {
+      notifyMenuChanged();
+      onMenuChanged?.(null);
+      void recargar(id);
+      return;
+    }
     const fresca = await recargar(id);
     if (e instanceof ApiError && (e.code === 'DRAFT_CHANGED' || e.status === 404)) {
       if (!fresca || !yaQuedo(fresca)) avisarCambio();
@@ -316,6 +327,11 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = 
             title: mensajeDeError(e), type: 'info',
             action: { label: 'Cuenta nueva', onClick: () => usePosStore.getState().cuentaNueva() },
           });
+          return;
+        }
+        if (isStaleMenu(e)) {
+          notifyMenuChanged();
+          onMenuChanged?.(pendiente.productId);
           return;
         }
         if (e instanceof ApiError && e.status === 404) {

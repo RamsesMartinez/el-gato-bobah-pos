@@ -60,7 +60,12 @@ export interface Composition {
   yield?: string;
   yieldUnitCode?: string;
   editable: boolean;
-  reason?: 'own_stock' | 'package_choices';
+  reason?: 'package_choices';
+  // El producto todavía cuenta su propia existencia (spec 037): al elegir otra tarjeta se traslada o
+  // se cierra. productOnHand es la cifra que se muestra al preguntar «¿Cuántas tienes de verdad?».
+  ownStock?: boolean;
+  productOnHand?: string;
+  ownStockBranches?: number;
   // Cuándo se guardó por última vez: se devuelve al guardar para saber si otra persona la cambió.
   stamp?: string;
   // Extras que se llaman igual en otro grupo.
@@ -76,6 +81,12 @@ export interface CompositionBody {
   // La marca de cada extra de alsoOptionIds: copiarle la receta no pisa lo que alguien le guardó.
   alsoBasedOn?: Record<number, string>;
   basedOn?: string;
+  // La tarjeta elegida: el servidor revisa que el contenido le corresponda (spec 037).
+  mode?: 'items' | 'package' | 'product' | 'nothing';
+  // «¿Cuántas tienes de verdad?» y las cifras que se mostraron al preguntar.
+  actualStock?: string;
+  seenProductOnHand?: string;
+  seenIngredientOnHand?: string;
 }
 
 // Menú › Recetas.
@@ -90,6 +101,9 @@ export interface RecipeRow {
   summary: string;
   lines: number;
   soldPerMonth: string;
+  // Con un solo insumo por pieza (se compra hecho): cuánto resta cada venta y cuánto hay.
+  perSale?: string;
+  onHand?: string;
 }
 export interface RecipeCounts { pending: number; review: number; done: number }
 export interface RecipePage {

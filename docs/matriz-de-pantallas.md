@@ -567,3 +567,103 @@ contra el código: 52 px, el alto exacto de la fila retirada.
 | X17 | El test viejo `TestRefreshReuseRevokesFamily` tenía UNA sola sesión | Con una sola, revocar por usuario y revocar por familia son indistinguibles: pasaba en verde con el comportamiento equivocado. Se conserva (cubre el rechazo) y la distinción la mide ahora `TestElReusoRevocaSoloLaFamiliaComprometida` | — |
 | X18 | Cuatro pedidos de producción cancelados y cobrados sin devolución ($729, 29-ago) | Son datos anteriores a la feature de devoluciones; corregirlos reescribiría un arqueo firmado. Es una decisión del dueño, no un cambio de código. Lo nuevo ya impide que se repita | — |
 | ~~X19~~ | ~~Una tableta con la pantalla en blanco no puede aplicar la versión que la arregla~~ **CUBIERTA (2026-09-08)** | `PantallaQueNoSeCae` envuelve a `<App/>` dentro del Provider: un throw en render deja de vaciar el `#root` y pinta una salida con un botón de 56 px que fuerza una navegación nueva (`?r=<ts>`) en vez de un `reload`, que podría volver a servirse del service worker viejo. El detalle del error va a la consola y no a la tableta. Lo que sigue fuera: no reporta a ningún servicio — el techo está escrito en el `// ponytail:` del componente | `PantallaQueNoSeCae.test.tsx` (4 casos) |
+
+## S. Salud del inventario y la hoja de receta (spec 037)
+
+Lo que estas pantallas podían decir que no es cierto: que un producto resta cuando no resta, que la
+exportación cuenta otra cosa que la pantalla, o que al cambiar qué resta un producto se pierden o se
+inventan existencias.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| S1 | Un producto que no resta por sí mismo pero su sabor obligatorio sí | No se marca; el sabor que no resta, sí | `TestUnsoldDeductionIsMeasuredOnWhatTheSaleLeft` | Postgres |
+| S2 | Estado de receta NULL (nunca decidido) | Se marca. `not (NULL and …)` lo descartaba en silencio | `TestUnsoldDeductionIsMeasuredOnWhatTheSaleLeft` | Postgres |
+| S3 | Pieza de un paquete sin nada que restar | Se marca la pieza; el movimiento guarda el paquete, no la pieza, así que se mide por su configuración | `TestUnsoldDeductionIsMeasuredOnWhatTheSaleLeft` | Postgres |
+| S4 | La exportación contra la pantalla | Mismo cálculo, mismos totales, «sin compras» completo en el archivo | `TestInventoryHealthExportMatchesTheScreen` | Postgres |
+| S5 | Recetas pendientes contra las pestañas de Recetas | Las mismas cuentas | `TestHealthSectionsThatDoNotDependOnSales` | Postgres |
+| S6 | Periodo sin ventas | «No hubo ventas en este periodo», nunca «El inventario está sano» | `InventoryHealthTab.test.tsx` | Navegador (vitest) |
+| S7 | Periodo que el servidor rechaza | El mensaje se ve y la lista anterior se queda | `InventoryHealthTab.test.tsx` | Navegador (vitest) |
+| S8 | Convertir un revendido con existencia propia | Las piezas pasan al insumo con dos ajustes ligados; nada se pierde ni se inventa | `TestLeavingOwnStockMovesTheStockOnce` | Postgres |
+| S9 | Una venta entre mostrar las cifras y guardar | 409 y la hoja vuelve a preguntar con las cifras nuevas | `TestModeChangeRejectsStaleFigures`, `CompositionSheet.test.tsx` | Postgres, navegador (vitest) |
+| S10 | Las dos cuentas con existencia | Pregunta cuántas hay de verdad; nunca suma a ciegas | `TestPlanModeChange`, `CompositionSheet.test.tsx` | Go, navegador (vitest) |
+
+**Lo que S no cubre:** cuántos renglones de la pestaña Salud se ven a 1024×600 en una tableta real
+(jsdom no hace layout); eso lo miden las capturas de T051.
+
+
+## B. Compras que suman, por recibir y conteo (spec 038)
+
+Lo que estas pantallas podían decir que no es cierto: que algo entró al almacén cuando no entró (o
+dos veces), que una compra está «recibida» sin traer mercancía, o que el conteo corrigió con una
+cifra que ya no era la del anaquel.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| B1 | Gasto sin mercancía con fecha de recepción | No queda «recibido» ni aparece en «Por recibir» | `TestAnExpenseWithoutGoodsIsNotMarkedReceived`, `TestLinesOutsideTheStockTouchNothing` | Postgres |
+| B2 | Reenviar la misma corrección | Diferencia cero, ningún movimiento nuevo | `TestCorrectingWhatArrivedByDifference` | Postgres |
+| B3 | Dos tabletas corrigen o reciben el mismo renglón | Una gana, la otra 409; nunca suma dos veces | `TestTwoCorrectionsOfTheSameLineOneLoses`, `TestReceivingInParts` | Postgres |
+| B4 | Corregir un renglón a «Llega después» | Se acepta (recibido 0) y resta lo que había sumado | `TestCorrectingALineToNotArrivedYet` | Postgres |
+| B5 | Anular una compra recibida | Revierte con movimientos nuevos; no borra ninguno | `TestCancellingAReceivedPurchaseReversesWithoutDeleting` | Postgres |
+| B6 | Una venta tiene tomado el insumo | La compra responde 409 al instante, no espera | `TestAPurchaseNeverWaitsForAnIngredientHeldByASale` | Postgres |
+| B7 | Llegó de más sin decir cuánto costó | 400; no se adivina el precio | `TestReceivingMoreThanMissingRaisesTheTotal` | Postgres |
+| B8 | Una compra anulada en «sin compras» | Sigue contando como sin compras | `TestACancelledPurchaseDoesNotCountAsBought` | Postgres |
+| B9 | Un dudoso del ticket | No suma hasta confirmarlo y no le enseña nada al proveedor | `ExpenseDialog.test.tsx` | Navegador (vitest) |
+| B10 | «Tendrás X» al corregir | Se vuelve a pedir al servidor antes de habilitar Guardar | `ExpenseDetailDialog.test.tsx` | Navegador (vitest) |
+| B11 | Conteo con ventas mientras se cuenta | Se ajusta contra lo que había al capturar: lo vendido después queda restado | `TestACountAdjustsAgainstWhatThereWasWhenCaptured` | Postgres |
+| B12 | El conteo abierto | No deja ver lo que el sistema tiene (a ciegas) | `TestOneOpenCountPerBranchAndBlindWhileOpen` | Postgres |
+| B13 | Casillas vacías del conteo | «No contado», no 0; el cierre lo nombra y no lo toca | `countEntry.test.ts`, `StockCountTab.test.tsx` | Navegador (vitest) |
+| B14 | Diferencias del cierre | «Sobraban / faltaban», nunca una existencia negativa a secas; las grandes marcadas | `StockCountTab.test.tsx` | Navegador (vitest) |
+| B15 | La captura de una compra en la tableta | Ocupa los 600 px; con «cover» quedaba en 400 | `e2e/pantallas.spec.ts › B15` | Navegador (Playwright, 1024×600) |
+| B16 | Una compra en efectivo del mercado | No queda como deuda sin que nadie lo note: se pregunta cómo se pagó antes de guardar (FR-004d) | `ExpenseDialog.test.tsx › ¿Cómo se pagó?` | Navegador (vitest) |
+| B17 | «Pedí 2, llegó 1» al capturar | Suma lo que llegó y el resto queda por recibir (FR-007e) | `ExpenseDialog.test.tsx › Llegó una parte`, `TestAPartlyArrivedLineLeavesTheRestPending` | Navegador (vitest), Postgres |
+| B18 | Poner el lugar a media cuenta | Se pone desde el conteo; «Uno por uno» sigue en el mismo insumo aunque la lista se reordene (FR-015f) | `StockCountTab.test.tsx`, `TestTheCountPlaceIsSetByWhoCounts` | Navegador (vitest), Postgres |
+| B19 | Un insumo en ml o g sin empaque | Llega elegida la unidad grande (L, kg, m); con la base, «3» se guardaba como 3 ml | `ExpenseDialog.test.tsx › la unidad que llega elegida es la grande` | Navegador (vitest) |
+| B20 | «¿Cómo se pagó?» | Sin los métodos de las plataformas: cobran ventas, no pagan compras | `ExpenseDialog.test.tsx › no ofrece los métodos de las plataformas` | Navegador (vitest) |
+| B21 | Los textos de compras, empaques y conteo | Sin «existencia», «movimiento», «unidad base» ni «presentación», que quien opera no entendió (FR-019) | `operatorWords.test.ts` | Navegador (vitest, lee los textos del código) |
+| B22 | Un conteo a medias tras recargar o en otra tableta | Lo contado vuelve del servidor; nada vive solo en la pantalla (SC-005) | `StockCountTab.test.tsx › al recargar o abrir en otra tableta` | Navegador (vitest) |
+
+**Lo que B no cubre:** cómo se ven estas pantallas a 1024×600 en el ambiente de pruebas y si alguien
+nuevo las entiende sin ayuda (T065, tras el merge a develop); el tiempo con datos de producción en
+la VM (lo medido está en `specs/038-compras-al-almacen/research.md`, R12, en la máquina local).
+
+## C. Lo que se echó a perder (spec 039)
+
+Lo que estas pantallas podían decir que no es cierto: que algo se restó cuando quedó por aprobar, que
+una merma se restó dos veces (al registrarla y otra vez en el conteo), o que un faltante «sin
+explicar» incluía lo que sí se registró.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+| --- | --- | --- | --- | --- |
+| C1 | Registrar | Resta en el momento; un producto resta lo mismo que venderlo y no es venta | `waste_record_test.go` | Postgres |
+| C2 | Sobre el tope | Queda por aprobar y no resta; aprobar resta y toma el costo si no tenía | `waste_approve_test.go` | Postgres |
+| C3 | Deshacer | Devuelve exactamente lo restado; no al día siguiente ni con el artículo ya contado | `waste_approve_test.go › Undoing` | Postgres |
+| C4 | Una merma que confirma a media captura del conteo | Se resta una sola vez y cae en el periodo correcto | `waste_loss_test.go › CommittingDuringTheCapture` | Postgres, dos transacciones |
+| C5 | El faltante | Perdido = registrado + sin explicar; la merma no se cuenta dos veces; el costo es el del cierre | `waste_loss_test.go`, `CountLossReport.test.tsx` | Postgres, vitest |
+| C6 | Juntar motivos | Suma bajo el que queda sin cambiar el motivo de ningún registro | `waste_reasons_test.go` | Postgres |
+| C7 | La franja de por aprobar | 44 px, solo para quien aprueba, nunca en Vender ni Pedidos | `PendingWasteBar.test.tsx` | Navegador (vitest) |
+| C8 | Los textos | «Se echó a perder» y nunca «merma», «ajuste» ni «kardex» | `operatorWords.test.ts` | Navegador (lee los textos del código) |
+
+**Lo que C no cubre:** cómo se ven a 1024×600 en el ambiente de pruebas y si alguien nuevo registra
+sin ayuda (T040, tras el merge a develop). El botón de la captura no anticipa «Mandar a aprobar»: la
+tableta no conoce el costo ni el tope, así que lo dice el servidor al guardar.
+
+
+## D. Lugares para contar (spec 040)
+
+Lo que estas pantallas podían decir que no es cierto: que «Refri» y «refri» son dos lugares, que un
+artículo está en un lugar que ya no se ofrece, o que el conteo recorre en un orden distinto del que
+se ve en la lista.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+| --- | --- | --- | --- | --- |
+| D1 | Lo escrito a mano | Pasa a la lista juntando mayúsculas, acentos y espacios; nadie pierde su lugar | `migration_0095_test.go` | Postgres, respaldo con dos empresas |
+| D2 | Un nombre repetido | No crea otro; elige el que existe y lo dice | `count_places_test.go`, `CountPlaceField.test.tsx` | Postgres, vitest |
+| D3 | Asignar mientras otro archiva | Ningún artículo queda en un lugar archivado | `count_places_test.go › AssigningWhileArchiving` | Postgres, dos transacciones |
+| D4 | Crear y mover a la vez | Ninguna posición repetida | `count_places_admin_test.go › Concurrent` | Postgres, sesiones simultáneas |
+| D5 | El recorrido | El conteo sigue el orden de la lista; los sin lugar al final | `count_places_admin_test.go › MovingAPlace` | Postgres |
+| D6 | Archivar | Con artículos pregunta a dónde pasan (también los inactivos) | `count_places_admin_test.go › Archiving`, `CountPlacesSettings.test.tsx` | Postgres, vitest |
+| D7 | La base y el servidor normalizan igual | Mismo resultado con «Ñandú», espacios dobles y espacio duro | `migration_0095_test.go` | Postgres |
+
+**Lo que D no cubre:** el arrastre con el dedo (mantener 500 ms, desplazar la lista sin mover nada,
+desplazamiento automático al borde) solo se puede medir en Chromium táctil a 1024×600 contra el
+ambiente de pruebas (`web/e2e/lugares-para-contar.spec.ts`); jsdom mide todo en 0 px.

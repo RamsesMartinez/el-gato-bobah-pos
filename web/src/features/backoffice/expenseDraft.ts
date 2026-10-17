@@ -1,4 +1,4 @@
-import { parseMonto, parseNumero } from '../../domain/numeros';
+import { parseMonto, parseNumero, round2 } from '../../domain/numeros';
 
 // Reglas puras del borrador de gasto: convertir lo que dice un documento a lo que el almacén y
 // la contabilidad necesitan. Viven aparte del diálogo para poder probarse sin montar la UI.
@@ -77,4 +77,43 @@ export function lineAmount(amount: string, unitPrice: string, qty: string): stri
   const cant = parseNumero(qty);
   const n = precio.valor * (cant.estado === 'valido' && cant.valor > 0 ? cant.valor : 1);
   return n.toFixed(2);
+}
+
+// Reglas de dinero de una compra (spec 038, FR-004a): cada renglón de mercancía lleva importe
+// salvo un regalo, y los renglones no pasan del total pagado; lo que falta queda como «otros» del
+// gasto. El servidor las vuelve a validar: aquí es para decirlo en el pie antes del 400.
+export interface PurchaseMoneyLine {
+  amount: string;
+  goods: boolean; // renglón de almacén
+  gift: boolean;
+  // Fuera del gasto: lo de la casa no suma al importe del negocio.
+  personal?: boolean;
+}
+export interface PurchaseMoney {
+  linesSum: number;
+  missingAmount: number; // renglones de mercancía sin importe (y que no son regalo)
+  over: boolean; // los renglones pasan del total pagado
+  others: number; // lo que queda como «otros» del gasto
+}
+export function purchaseMoney(lines: PurchaseMoneyLine[], total: number): PurchaseMoney {
+  let sum = 0;
+  let missingAmount = 0;
+  for (const l of lines) {
+    if (l.personal) continue;
+    const m = parseMonto(l.amount);
+    const v = m.estado === 'valido' ? m.valor : 0;
+    if (l.goods && !l.gift && !(v > 0)) missingAmount++;
+    sum += v;
+  }
+  const linesSum = round2(sum);
+  return { linesSum, missingAmount, over: linesSum > round2(total), others: Math.max(0, round2(total - linesSum)) };
+}
+
+// baseOfLine es lo que un renglón suma en la unidad base del artículo: cantidad × lo que trae su
+// empaque (o el factor de su unidad). null cuando falta alguno de los dos: un «= 0 g» engañaría.
+export function baseOfLine(qty: string, factor: string | null | undefined): number | null {
+  const q = parseNumero(qty);
+  const f = parseNumero(factor ?? '');
+  if (q.estado !== 'valido' || f.estado !== 'valido' || q.valor <= 0 || f.valor <= 0) return null;
+  return Number((q.valor * f.valor).toFixed(4));
 }

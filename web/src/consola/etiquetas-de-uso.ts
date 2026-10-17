@@ -20,6 +20,7 @@ const ETIQUETAS: Record<string, string> = {
   impresion: 'Impresión',
   cuenta: 'Cuenta propia',
   asistencia: 'Asistencia',
+  merma: 'Se echó a perder',
 };
 
 const ACCIONES: Record<string, string> = {
@@ -35,6 +36,20 @@ const ACCIONES: Record<string, string> = {
   'crear-producto': 'Crear producto',
   'ajustar-stock': 'Ajustar existencias',
   'registrar-gasto': 'Registrar gasto',
+  'ver-salud': 'Ver salud del inventario',
+  'exportar-salud': 'Exportar salud del inventario',
+  'registrar-compra': 'Registrar compra al almacén',
+  'corregir-compra': 'Corregir lo que llegó',
+  'ver-por-recibir': 'Ver por recibir',
+  recibir: 'Recibir',
+  'ver-conteo': 'Ver conteo',
+  'cerrar-conteo': 'Cerrar conteo',
+  'ver-merma': 'Ver lo que se echó a perder',
+  'ver-faltante': 'Ver el faltante de un conteo',
+  registrar: 'Registrar lo que se echó a perder',
+  deshacer: 'Deshacer lo que se echó a perder',
+  aprobar: 'Aprobar lo que se echó a perder',
+  rechazar: 'Rechazar lo que se echó a perder',
 };
 
 // etiquetaDePantalla y etiquetaDeAccion caen al slug si no lo conocen.
