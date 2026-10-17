@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { MemoryRouter, Route, Routes } from 'react-router';
+
 import { Provider } from '../../components/ui/provider';
+import { useSessionStore } from '../../stores/session';
 import { WasteTab } from './WasteTab';
 
 const waste = vi.hoisted(() => ({ list: vi.fn(), byReason: vi.fn() }));
@@ -25,10 +28,26 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 function montar() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={qc}><Provider><WasteTab /></Provider></QueryClientProvider>);
+  render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={['/almacen']}>
+    <Routes><Route path="/almacen" element={<WasteTab />} /><Route path="/merma" element={<p>Captura</p>} /></Routes>
+  </MemoryRouter></Provider></QueryClientProvider>);
 }
 
 describe('pestaña «Se echó a perder» (spec 039, maqueta B)', () => {
+  // La prueba con alguien nuevo: buscó dónde registrar en esta pestaña, que se llama igual que la
+  // captura, y solo encontró el reporte.
+  test('con permiso de registrar, «Registrar» lleva a la captura; sin él, no aparece', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.write_off'] } as never });
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrar' }));
+    expect(await screen.findByText('Captura')).toBeInTheDocument();
+    cleanup();
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: [] } as never });
+    montar();
+    await screen.findByRole('button', { name: 'Esta semana' });
+    expect(screen.queryByRole('button', { name: 'Registrar' })).toBeNull();
+  });
+
   test('fichas por motivo en una fila con la del personal marcada aparte, y debajo los registros', async () => {
     montar();
     const caduco = await screen.findByRole('button', { name: /Caducó.*184\.00/ });

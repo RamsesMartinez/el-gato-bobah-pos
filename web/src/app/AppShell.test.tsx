@@ -85,6 +85,17 @@ describe('el menú lateral', () => {
     expect(labels.indexOf('Se echó a perder')).toBeGreaterThan(labels.indexOf('Reportes'));
   });
 
+  // La prueba con alguien nuevo no encontró el renglón: con la asistencia activa quedaba más abajo
+  // del pliegue. Lo de todos los días va antes que checar, que además está en la pantalla de bloqueo.
+  test('«Se echó a perder» va antes de «Asistencia»', async () => {
+    roster.mockResolvedValueOnce({ enabled: true, people: [] });
+    useSessionStore.setState({ user: { id: 1, name: 'Admin', role: 'admin', permissions: ['inventory.write_off'] } as never });
+    renderView();
+    await screen.findByText('Asistencia');
+    const labels = Array.from(document.querySelectorAll('a')).map((a) => a.textContent);
+    expect(labels.indexOf('Se echó a perder')).toBeLessThan(labels.indexOf('Asistencia'));
+  });
+
   // Quien aprueba ve en el riel cuántas esperan: en Vender y Pedidos es el único aviso.
   test('el renglón lleva el número de mermas por aprobar para quien aprueba', async () => {
     pendingWaste.mockResolvedValue([{ id: 1 }, { id: 2 }]);

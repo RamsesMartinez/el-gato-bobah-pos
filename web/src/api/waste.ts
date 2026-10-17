@@ -112,5 +112,5 @@ export const wasteApi = {
 
 // WASTE_STATUS_WORDS es una sola copia para «Hoy» y la pestaña de Almacén: si divergen, un registro dice dos cosas.
 export const WASTE_STATUS_WORDS: Record<string, string> = {
-  applied: 'Restó', pending: 'Por aprobar', rejected: 'Rechazada', covered: 'La cubrió el conteo', undone: 'Deshecha',
+  applied: 'Ya se descontó', pending: 'Por aprobar', rejected: 'No se aprobó', covered: 'La cubrió el conteo', undone: 'Deshecha',
 };

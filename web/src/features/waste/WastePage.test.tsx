@@ -93,6 +93,38 @@ describe('Se echó a perder (spec 039, maqueta D)', () => {
     await waitFor(() => expect(waste.record).toHaveBeenLastCalledWith(expect.objectContaining({ ingredientId: 1, unitId: 4, qty: '2' })));
   });
 
+  // La prueba con alguien nuevo: los motivos se reordenaban por uso justo después de guardar, y quien
+  // toca de memoria le atinaba a otro motivo. El orden se toma al entrar y no se mueve a media captura.
+  test('los motivos no cambian de lugar después de guardar', async () => {
+    montar();
+    await screen.findByRole('button', { name: 'Caducó' });
+    const orden = () => ['Caducó', 'Se cayó'].map((n) => screen.getAllByRole('button').findIndex((b) => b.textContent === n));
+    const antes = orden();
+    waste.reasons.mockResolvedValue([
+      { id: 12, name: 'Se cayó', description: 'Accidente', isStaffMeal: false, uses: 30 },
+      { id: 11, name: 'Caducó', description: 'Pasó su fecha', isStaffMeal: false, uses: 9 },
+    ]);
+    click('Se cayó');
+    click('Perlas de tapioca');
+    tecla('1');
+    click('Guardar');
+    await waitFor(() => expect(waste.reasons).toHaveBeenCalledTimes(2));
+    expect(orden()).toEqual(antes);
+  });
+
+  test('«Hoy» dice «Ya se descontó» y «No se aprobó», no «Restó» ni «Rechazada»', async () => {
+    waste.today.mockResolvedValue([
+      { id: 5, itemType: 'ingrediente', itemName: 'Leche entera', quantity: '1', unitCode: 'L', totalCost: '24.00', status: 'applied', reason: 'Caducó', recordedBy: 'Ana', recordedAt: '2026-10-15T15:00:00Z', canUndo: true },
+      { id: 6, itemType: 'ingrediente', itemName: 'Perlas', quantity: '1', unitCode: 'kg', totalCost: '90.00', status: 'rejected', reason: 'Caducó', recordedBy: 'Ana', recordedAt: '2026-10-15T15:00:00Z', canUndo: false },
+    ]);
+    montar();
+    await screen.findByRole('button', { name: /^Hoy/ });
+    click(/^Hoy/);
+    expect(await screen.findByText(/Ya se descontó/)).toBeInTheDocument();
+    expect(screen.getByText(/No se aprobó/)).toBeInTheDocument();
+    expect(screen.queryByText(/Restó|Rechazada/)).toBeNull();
+  });
+
   test('la cantidad no abre el teclado del sistema y no hay controles nativos', async () => {
     montar();
     const cantidad = await screen.findByLabelText('Cantidad');
