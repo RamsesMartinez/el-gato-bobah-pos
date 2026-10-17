@@ -147,11 +147,13 @@ export function StockPage() {
                               <Text fontSize="sm">{on.length ? on.slice(0, 2).map(label).join(' · ') + (on.length > 2 ? ` · +${on.length - 2}` : '') : ''}</Text>
                               {on.length === 0 && <Text fontSize="sm" color="fg.muted">Todavía no dices cómo llega</Text>}
                               {off.length > 0 && <Text fontSize="xs" color="fg.muted">Ya no llega en: {off.map((p) => p.name).join(', ')}</Text>}
+                              {/* El lugar a la vista: quien no lo conocía no lo encontró en otra parte (040, T022). */}
+                              <Text fontSize="xs" color="fg.muted">{i.countPlace ? `Lugar: ${i.countPlace}` : 'Sin lugar'}</Text>
                             </Box>
                             {canConfigure && (
                               <Button aria-label={`Cómo llega ${i.name}`} size="sm" variant="outline" minH="44px" flexShrink={0}
                                 onClick={() => setPackaging({ id: i.id, name: i.name, baseUnitCode: i.baseUnitCode, baseUnitKind: i.baseUnitKind, countPlaceId: i.countPlaceId ?? null })}>
-                                {on.length ? 'Cambiar ›' : '+ Agregar'}
+                                {on.length ? 'Cambiar o poner lugar ›' : '+ Empaque o lugar'}
                               </Button>
                             )}
                           </HStack>

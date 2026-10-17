@@ -22,7 +22,7 @@ const back = vi.hoisted(() => ({
   ingredients: vi.fn(() => Promise.resolve({
     items: [
       { id: 1, name: 'Azúcar', onHand: '1200', baseUnitCode: 'g', baseUnitKind: 'masa', baseUnitId: 1, isPrep: false, compositionStatus: '' },
-      { id: 2, name: 'Jarabe natural', onHand: '0', baseUnitCode: 'ml', baseUnitKind: 'volumen', baseUnitId: 3, isPrep: true, compositionStatus: 'estimated' },
+      { id: 2, name: 'Jarabe natural', onHand: '0', baseUnitCode: 'ml', baseUnitKind: 'volumen', baseUnitId: 3, isPrep: true, compositionStatus: 'estimated', countPlaceId: 4, countPlace: 'Barra' },
     ],
   })),
   inventoryHealth: vi.fn(() => Promise.resolve({
@@ -121,6 +121,11 @@ describe('Almacén › pestañas', () => {
     expect(jarabe).toHaveTextContent('Ya no llega en: Garrafa');
     const azucar = screen.getByText('Azúcar').closest('tr')!;
     expect(azucar).toHaveTextContent('Todavía no dices cómo llega');
+    // La prueba sin contexto (040, T022) no encontró dónde está el lugar: se ve junto a cómo llega,
+    // y el botón que abre la hoja lo dice.
+    expect(jarabe).toHaveTextContent('Lugar: Barra');
+    expect(azucar).toHaveTextContent('Sin lugar');
+    expect(screen.getByRole('button', { name: 'Cómo llega Jarabe natural' })).toHaveTextContent('Cambiar o poner lugar ›');
     fireEvent.click(screen.getByRole('button', { name: 'Cómo llega Jarabe natural' }));
     expect(await screen.findByRole('dialog')).toHaveTextContent('Cómo llega Jarabe natural');
   });

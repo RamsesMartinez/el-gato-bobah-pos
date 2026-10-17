@@ -131,6 +131,9 @@ dueño: solo arrastrar.
   espacio duro no encontraba el que ya existía. Ahora usa `strings.Fields`, con su test.
 - Listar lugares acepta `inventory.count` o `inventory.configure` con un middleware nuevo,
   `RequireAnyPermission`, con su test.
+- La prueba sin contexto (T022) no halló dónde se asigna el lugar fuera del conteo: Almacén ›
+  Artículos ahora lo muestra junto a cómo llega y su botón dice «Cambiar o poner lugar ›» (T025).
+  La agarradera usa el icono ≡ que nombra la instrucción.
 - El arrastre y las flechas del teclado no se pueden simular en jsdom (todo mide 0 px): vitest solo
   verifica que la agarradera se ofrece al teclado; el arrastre lo mide `web/e2e/lugares-para-contar.spec.ts`.
 

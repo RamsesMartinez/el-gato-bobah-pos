@@ -45,6 +45,8 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
   - No hay campo de texto libre ni `<select>`.
 - [X] T012 [US1] `CountPlaceField.tsx` con `Picker` (`clearable`, `clearLabel="Sin lugar"`, `onCreate`) y las llamadas en `web/src/api/backoffice.ts`; ajustar `PresentationsSheet.test.tsx` y el conteo que muestra el lugar; hasta que T011 pase
 
+- [X] T025 [US1] Lo que encontró T022 (persona nueva): no halló dónde se asigna el lugar (solo lo vio dentro de un conteo). Almacén › Artículos muestra «Lugar: …» o «Sin lugar» junto a cómo llega, y el botón dice «Cambiar o poner lugar ›»; la agarradera usa el icono ≡ que nombra la instrucción. Con su test en `StockPage.test.tsx`
+
 ## Phase 4: User Story 3 — Los lugares escritos a mano pasan a la lista (P1)
 
 **Independent test**: cubierto por T003. Esta historia es la migración de la Phase 2; aquí solo se corre contra la copia restaurada.
@@ -72,7 +74,7 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
   - Archivar sin artículos confirma en una línea; con artículos pregunta a dónde pasan, con «Sin lugar» como opción.
   - Mover con el teclado (`KeyboardSensor`) llama a `move` con `toPosition`.
 - [X] T017 [US2] `web/src/features/admin/CountPlacesSettings.tsx` con dnd-kit (`PointerSensor` `delay: 500, tolerance: 8`, `touch-action: none` y `-webkit-touch-callout: none` solo en la agarradera, `autoScroll`), montada en `InventorySettingsSection.tsx`, hasta que T016 pase
-- [ ] T018 [US2] Prueba Playwright táctil a 1024×600 contra el ambiente de pruebas, en `web/e2e/lugares-para-contar.spec.ts`:
+- [X] T018 [US2] Prueba Playwright táctil a 1024×600 contra el ambiente de pruebas, en `web/e2e/lugares-para-contar.spec.ts`:
   - Deslizar sobre un renglón desplaza la lista y no mueve nada (E11).
   - 500 ms sobre ≡ levanta el renglón; arrastrarlo de la fila 10 a la 1 desplaza la lista sola (E12).
   - El lugar del artículo abre la hoja sin teclado del sistema.
@@ -83,14 +85,14 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 - [X] T019 [P] Bloque de la 040 en `AGENTS.md` (el lugar no es un almacén, el candado por empresa para el orden, la Down pierde el orden) y filas en `docs/matriz-de-pantallas.md`
 - [X] T020 [P] Test de palabras de pantalla: «Lugar», «Sin lugar» y «Mantén presionada ≡ para mover un lugar», y nunca «catálogo» ni «almacén» en las dos pantallas (FR-011), agregando los archivos a `web/src/features/backoffice/operatorWords.test.ts`
-- [ ] T021 Correr `quickstart.md` contra la API local
-- [ ] T022 Prueba con usuario sin contexto (subagente) a 1024×600 en el ambiente de pruebas: asignar un lugar, crear uno y reordenar (SC-005)
+- [X] T021 Correr `quickstart.md` contra la API local
+- [X] T022 Prueba con usuario sin contexto (subagente) a 1024×600 en el ambiente de pruebas: asignar un lugar, crear uno y reordenar (SC-005)
 - [X] T023 `make ci-local`
 - [X] T024 `/revision-de-codigo` (hook `after_implement`)
 
 ## Dependencies
 
-Phase 1 → Phase 2 → US1 → US3 → US2. US3 es la migración de la Phase 2 corrida contra datos reales; va después de US1 porque la pantalla que la usa es la de US1. US2 depende de los lugares y de las consultas de la Phase 2.
+Phase 1 → Phase 2 → US1 → US3 → US2. US3 es la migración de la Phase 2 corrida contra datos reales; va después de US1 porque la pantalla que la usa es la de US1. US2 depende de los lugares y de las consultas de la Phase 2. T025 salió de la prueba con usuario sin contexto (T022), así que va después de ella aunque viva en US1.
 
 Archivos compartidos que obligan orden:
 - `count_places.go` del servicio: T009 → T015.
