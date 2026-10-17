@@ -121,6 +121,19 @@ quedaron aplicados en este plan, en `data-model.md`, `contracts/api.md` y el spe
 El respaldo con flechas que propuso el revisor de tableta para quien no puede arrastrar lo rechazó el
 dueño: solo arrastrar.
 
+## Al construir (2026-10-17)
+
+- **El plan no vio el segundo lugar donde se elige**: el conteo (038, FR-015f) también pone el lugar
+  desde cada renglón. Los dos usan ahora el mismo `PlaceChooser` de `CountPlaceField.tsx`, y la hoja
+  del conteo trae `placeId`.
+- **La prueba de paridad (E10) encontró un defecto de la 039**: `NormalizeReasonName` juntaba
+  espacios con `\s` de regexp, que en Go no ve el espacio duro y en Postgres sí; un motivo pegado con
+  espacio duro no encontraba el que ya existía. Ahora usa `strings.Fields`, con su test.
+- Listar lugares acepta `inventory.count` o `inventory.configure` con un middleware nuevo,
+  `RequireAnyPermission`, con su test.
+- El arrastre y las flechas del teclado no se pueden simular en jsdom (todo mide 0 px): vitest solo
+  verifica que la agarradera se ofrece al teclado; el arrastre lo mide `web/e2e/lugares-para-contar.spec.ts`.
+
 ## Project Structure
 
 ```text

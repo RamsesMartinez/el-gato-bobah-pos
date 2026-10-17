@@ -128,6 +128,30 @@ func RequirePermission(resolve PermissionResolver, p domain.Permission) func(htt
 	}
 }
 
+// RequireAnyPermission es RequirePermission con varias capacidades que bastan cada una: lo que lee
+// tanto quien opera como quien configura (los lugares del conteo). Sin ninguna, 403 con el texto
+// de la primera.
+func RequireAnyPermission(resolve PermissionResolver, ps ...domain.Permission) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, ok := userFrom(r.Context())
+			if ok {
+				has := resolve(u.Role)
+				for _, p := range ps {
+					if slices.Contains(has, p) {
+						next.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+			logging.SecurityEvent(r.Context(), "forbidden",
+				"user_id", u.ID, "role", string(u.Role), "permission", string(ps[0]),
+				"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
+			Error(w, fmt.Errorf("%w: %s", domain.ErrForbidden, domain.PermissionDeniedMessage(ps[0])))
+		})
+	}
+}
+
 // RequireOperador valida el Bearer con la firma de la CONSOLA y vuelve a leer al operador.
 //
 // Las dos mitades importan:

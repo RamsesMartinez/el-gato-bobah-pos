@@ -647,3 +647,23 @@ explicar» incluía lo que sí se registró.
 sin ayuda (T040, tras el merge a develop). El botón de la captura no anticipa «Mandar a aprobar»: la
 tableta no conoce el costo ni el tope, así que lo dice el servidor al guardar.
 
+
+## D. Lugares para contar (spec 040)
+
+Lo que estas pantallas podían decir que no es cierto: que «Refri» y «refri» son dos lugares, que un
+artículo está en un lugar que ya no se ofrece, o que el conteo recorre en un orden distinto del que
+se ve en la lista.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+| --- | --- | --- | --- | --- |
+| D1 | Lo escrito a mano | Pasa a la lista juntando mayúsculas, acentos y espacios; nadie pierde su lugar | `migration_0095_test.go` | Postgres, respaldo con dos empresas |
+| D2 | Un nombre repetido | No crea otro; elige el que existe y lo dice | `count_places_test.go`, `CountPlaceField.test.tsx` | Postgres, vitest |
+| D3 | Asignar mientras otro archiva | Ningún artículo queda en un lugar archivado | `count_places_test.go › AssigningWhileArchiving` | Postgres, dos transacciones |
+| D4 | Crear y mover a la vez | Ninguna posición repetida | `count_places_admin_test.go › Concurrent` | Postgres, sesiones simultáneas |
+| D5 | El recorrido | El conteo sigue el orden de la lista; los sin lugar al final | `count_places_admin_test.go › MovingAPlace` | Postgres |
+| D6 | Archivar | Con artículos pregunta a dónde pasan (también los inactivos) | `count_places_admin_test.go › Archiving`, `CountPlacesSettings.test.tsx` | Postgres, vitest |
+| D7 | La base y el servidor normalizan igual | Mismo resultado con «Ñandú», espacios dobles y espacio duro | `migration_0095_test.go` | Postgres |
+
+**Lo que D no cubre:** el arrastre con el dedo (mantener 500 ms, desplazar la lista sin mover nada,
+desplazamiento automático al borde) solo se puede medir en Chromium táctil a 1024×600 contra el
+ambiente de pruebas (`web/e2e/lugares-para-contar.spec.ts`); jsdom mide todo en 0 px.

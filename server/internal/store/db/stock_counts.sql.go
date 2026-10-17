@@ -27,18 +27,20 @@ func (q *Queries) CountChangedAfterPreview(ctx context.Context, countID int64) (
 }
 
 const countItems = `-- name: CountItems :many
-select i.id, i.name, i.count_place, u.code as base_unit_code, l.counted_qty, l.captured_at
+select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at
   from ingredients i
   join units u on u.id = i.base_unit_id
+  left join count_places cp on cp.id = i.count_place_id
   left join stock_count_lines l on l.ingredient_id = i.id and l.count_id = $1
  where i.is_active and i.track_stock
- order by i.count_place is null, i.count_place, i.name, i.id
+ order by cp.position is null, cp.position, i.name, i.id
 `
 
 type CountItemsRow struct {
 	ID           int64              `json:"id"`
 	Name         string             `json:"name"`
 	CountPlace   *string            `json:"count_place"`
+	CountPlaceID *int64             `json:"count_place_id"`
 	BaseUnitCode string             `json:"base_unit_code"`
 	CountedQty   *decimal.Decimal   `json:"counted_qty"`
 	CapturedAt   pgtype.Timestamptz `json:"captured_at"`
@@ -59,6 +61,7 @@ func (q *Queries) CountItems(ctx context.Context, countID int64) ([]CountItemsRo
 			&i.ID,
 			&i.Name,
 			&i.CountPlace,
+			&i.CountPlaceID,
 			&i.BaseUnitCode,
 			&i.CountedQty,
 			&i.CapturedAt,
@@ -505,16 +508,16 @@ func (q *Queries) SaveCountLineCosts(ctx context.Context, countID int64) error {
 }
 
 const setCountPlace = `-- name: SetCountPlace :execrows
-update ingredients set count_place = $1, updated_at = now() where id = $2
+update ingredients set count_place_id = $1, updated_at = now() where id = $2
 `
 
 type SetCountPlaceParams struct {
-	Place *string `json:"place"`
-	ID    int64   `json:"id"`
+	PlaceID *int64 `json:"place_id"`
+	ID      int64  `json:"id"`
 }
 
 func (q *Queries) SetCountPlace(ctx context.Context, arg SetCountPlaceParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setCountPlace, arg.Place, arg.ID)
+	result, err := q.db.Exec(ctx, setCountPlace, arg.PlaceID, arg.ID)
 	if err != nil {
 		return 0, err
 	}

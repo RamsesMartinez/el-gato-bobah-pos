@@ -2,7 +2,6 @@ package domain
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -100,14 +99,14 @@ func SplitLoss(registered, system, counted decimal.Decimal) LossSplit {
 	return s
 }
 
-var reasonSpaces = regexp.MustCompile(`\s+`)
 var reasonAccents = strings.NewReplacer("á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u", "ü", "u", "ñ", "n")
 
 // NormalizeReasonName es la forma con la que dos motivos se consideran el mismo: sin mayúsculas,
 // acentos ni espacios de más. Es la misma que el índice único de la base (0094) y que
-// IngredientNameTaken; si cambia una, cambian las tres.
+// IngredientNameTaken; si cambia una, cambian las tres. Los espacios se juntan con strings.Fields y
+// no con `\s` de regexp: el de Go no ve el espacio duro y el de Postgres sí.
 func NormalizeReasonName(name string) string {
-	return reasonSpaces.ReplaceAllString(reasonAccents.Replace(strings.ToLower(strings.TrimSpace(name))), " ")
+	return strings.Join(strings.Fields(reasonAccents.Replace(strings.ToLower(name))), " ")
 }
 
 // WasteReasonExists dice que ya hay un motivo con ese nombre; lleva su id para que la pantalla lo

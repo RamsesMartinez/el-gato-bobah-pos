@@ -60,3 +60,14 @@ test.each(PANTALLAS_039)('%s dice «Se echó a perder» y no palabras de contabi
   const malas = leidos.filter((t) => PROHIBIDAS_039.some((p) => p.test(t)));
   expect(malas, 'textos de pantalla con palabras de contabilidad').toEqual([]);
 });
+
+// FR-011 (spec 040): el lugar es «Lugar»; nunca «catálogo» ni «almacén», que lo confundiría con un
+// almacén con existencias propias (issue #65), ni «posición» de programador.
+const PANTALLAS_040 = ['features/backoffice/CountPlaceField.tsx', 'features/admin/CountPlacesSettings.tsx'];
+const PROHIBIDAS_040 = [/cat[aá]logo/i, /almac[eé]n/i, /posici[oó]n/i];
+
+test.each(PANTALLAS_040)('%s habla de lugares y no de almacenes', (file) => {
+  const leidos = textosDePantalla(file).filter((t) => /\s/.test(t.trim()) || /[A-ZÁÉÍÓÚ]/.test(t));
+  const malas = leidos.filter((t) => PROHIBIDAS_040.some((p) => p.test(t)));
+  expect(malas, 'textos de pantalla que no son de quien opera').toEqual([]);
+});

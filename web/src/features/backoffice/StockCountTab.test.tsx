@@ -15,6 +15,8 @@ const back = vi.hoisted(() => ({
   closeCount: vi.fn(),
   discardCount: vi.fn(),
   setCountPlace: vi.fn(),
+  countPlaces: vi.fn(),
+  createCountPlace: vi.fn(),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 vi.mock('../../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) } }));
@@ -49,9 +51,9 @@ vi.mock('../../components/Picker', async () => {
 const conteo = (): StockCount => ({
   id: 5, openedAt: '2026-10-14T13:40:00Z',
   items: [
-    { ingredientId: 1, name: 'Jarabe de vainilla', place: 'Barra', baseUnitCode: 'ml', presentations: [{ name: 'Botella', qtyInBase: '750' }], countedQty: null },
-    { ingredientId: 2, name: 'Azúcar', place: 'Bodega', baseUnitCode: 'g', presentations: [{ name: 'Bulto', qtyInBase: '25000' }], countedQty: null },
-    { ingredientId: 3, name: 'Limón', place: null, baseUnitCode: 'pieza', presentations: [], countedQty: null },
+    { ingredientId: 1, name: 'Jarabe de vainilla', place: 'Barra', placeId: 1, baseUnitCode: 'ml', presentations: [{ name: 'Botella', qtyInBase: '750' }], countedQty: null },
+    { ingredientId: 2, name: 'Azúcar', place: 'Bodega', placeId: 2, baseUnitCode: 'g', presentations: [{ name: 'Bulto', qtyInBase: '25000' }], countedQty: null },
+    { ingredientId: 3, name: 'Limón', place: null, placeId: null, baseUnitCode: 'pieza', presentations: [], countedQty: null },
   ],
 });
 
@@ -62,6 +64,8 @@ beforeEach(() => {
   back.captureCount.mockResolvedValue(undefined);
   back.discardCount.mockResolvedValue(undefined);
   back.setCountPlace.mockResolvedValue(undefined);
+  back.countPlaces.mockResolvedValue([{ id: 1, name: 'Barra', position: 0, ingredients: 1 }, { id: 2, name: 'Bodega', position: 1, ingredients: 1 }]);
+  back.createCountPlace.mockResolvedValue({ id: 9 });
   back.previewCount.mockResolvedValue({
     adjusted: [
       { ingredientId: 2, name: 'Azúcar', baseUnitCode: 'g', system: '-1200', counted: '3000', delta: '4200' },
@@ -100,7 +104,7 @@ describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
     expect(rows.map((r) => r.textContent)).toEqual([
       expect.stringContaining('Jarabe de vainilla'), expect.stringContaining('Azúcar'), expect.stringContaining('Limón'),
     ]);
-    expect(screen.getByText('Sin lugar')).toBeInTheDocument();
+    expect(screen.getAllByText('Sin lugar').some((e) => e.tagName !== 'BUTTON')).toBe(true); // el encabezado del grupo
     expect(rows[1]).toHaveTextContent('Bulto (25 kg)');
     expect(rows[1]).toHaveTextContent('Sin contar');
     expect(document.querySelector('select')).toBeNull();
@@ -174,27 +178,27 @@ test('dice por qué no se puede cerrar todavía', async () => {
   expect(screen.getByText('Cuenta al menos uno para cerrar')).toBeInTheDocument();
 });
 
-// Decisión del dueño tras la prueba sin contexto (FR-015f): el lugar se pone desde el conteo, con los
-// lugares que la empresa ya usa y «Otro…»; nadie lo encontró en la hoja «Cómo llega».
+// Decisión del dueño tras la prueba sin contexto (FR-015f): el lugar se pone desde el conteo; nadie lo
+// encontró en la hoja «Cómo llega». Desde la 040 se elige de la lista de lugares de la empresa.
 describe('lugar desde el conteo (FR-015f)', () => {
   test('ofrece los lugares de la empresa y guarda el elegido', async () => {
     montar();
     const fila = (await screen.findAllByTestId('renglon-conteo'))[2]; // Limón, sin lugar
-    fireEvent.click(within(fila).getByRole('button', { name: 'Lugar' }));
-    expect(within(fila).getByRole('button', { name: 'Barra' })).toBeInTheDocument();
+    fireEvent.click(await within(fila).findByRole('button', { name: 'Sin lugar' }));
+    expect(await within(fila).findByRole('button', { name: 'Barra' })).toBeInTheDocument();
     expect(within(fila).getByRole('button', { name: 'Bodega' })).toBeInTheDocument();
     fireEvent.click(within(fila).getByRole('button', { name: 'Barra' }));
-    await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(3, 'Barra'));
+    await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(3, 1));
     await waitFor(() => expect(back.currentCount.mock.calls.length).toBeGreaterThan(1));
   });
 
   test('un lugar nuevo se crea escribiéndolo', async () => {
     montar();
     const fila = (await screen.findAllByTestId('renglon-conteo'))[2];
-    fireEvent.click(within(fila).getByRole('button', { name: 'Lugar' }));
+    fireEvent.click(await within(fila).findByRole('button', { name: 'Sin lugar' }));
     fireEvent.change(within(fila).getByPlaceholderText('Buscar…'), { target: { value: 'Refri' } });
     fireEvent.click(within(fila).getByRole('button', { name: /Crear «Refri»/ }));
-    await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(3, 'Refri'));
+    await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(3, 9));
   });
 });
 
@@ -205,12 +209,12 @@ test('uno por uno sigue en el mismo insumo cuando el lugar lo reordena', async (
   fireEvent.click(await screen.findByRole('button', { name: 'Uno por uno' }));
   expect(screen.getByText('Jarabe de vainilla')).toBeInTheDocument();
   const reordered = conteo();
-  reordered.items = [reordered.items[1], reordered.items[2], { ...reordered.items[0], place: 'Zótano' }];
+  reordered.items = [reordered.items[1], reordered.items[2], { ...reordered.items[0], place: 'Zótano', placeId: 9 }];
   back.currentCount.mockResolvedValue(reordered);
-  fireEvent.click(screen.getByRole('button', { name: 'Barra' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Barra' }));
   fireEvent.change(screen.getByPlaceholderText('Buscar…'), { target: { value: 'Zótano' } });
   fireEvent.click(screen.getByRole('button', { name: /Crear «Zótano»/ }));
-  await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(1, 'Zótano'));
+  await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(1, 9));
   await waitFor(() => expect(back.currentCount.mock.calls.length).toBeGreaterThan(1));
   expect(await screen.findByText('Jarabe de vainilla')).toBeInTheDocument();
   expect(screen.queryByText('Azúcar')).toBeNull();

@@ -490,6 +490,13 @@ export interface PresentationBody {
   approximate: boolean;
   active?: boolean;
 }
+export interface CountPlace {
+  id: number;
+  name: string;
+  position: number;
+  ingredients: number;
+}
+
 export interface Ingredient {
   id: number;
   name: string;
@@ -508,6 +515,7 @@ export interface Ingredient {
   recipeUses?: number;
   // Dónde está, para ordenar el conteo (spec 038).
   countPlace?: string | null;
+  countPlaceId?: number | null;
   category: string | null;
   onHand: string;
 }
@@ -667,6 +675,7 @@ export interface CountItem {
   ingredientId: number;
   name: string;
   place: string | null;
+  placeId?: number | null;
   baseUnitCode: string;
   presentations: { name: string; qtyInBase: string }[];
   countedQty: string | null; // null = no contado
@@ -924,7 +933,14 @@ export const backofficeApi = {
   closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),
   discardCount: (id: number) => api.post<void>(`/stock/counts/${id}/discard`, {}),
   lastClosedCount: () => api.get<{ closedAt: string | null; id: number | null }>('/stock/counts/last-closed'),
-  setCountPlace: (ingredientId: number, place: string | null) => api.put<void>(`/stock/ingredients/${ingredientId}/place`, { place }),
+  // Lugares del recorrido del conteo (spec 040): una lista por empresa en vez de texto libre.
+  setCountPlace: (ingredientId: number, placeId: number | null) => api.put<void>(`/stock/ingredients/${ingredientId}/place`, { placeId }),
+  countPlaces: () => api.get<CountPlace[]>('/stock/count-places'),
+  createCountPlace: (name: string) => api.post<{ id: number }>('/stock/count-places', { name }),
+  renameCountPlace: (id: number, name: string) => api.put<void>(`/stock/count-places/${id}`, { name }),
+  moveCountPlace: (id: number, toPosition: number) => api.post<void>(`/stock/count-places/${id}/move`, { toPosition }),
+  archiveCountPlace: (id: number, moveTo?: number | null) =>
+    api.post<void>(`/stock/count-places/${id}/archive`, moveTo === undefined ? {} : { moveTo }),
 
   // Extracción del documento → borrador. NO escribe nada: el operador confirma.
   parseDoc: (file: File) => {

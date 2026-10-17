@@ -214,9 +214,10 @@ select i.id, i.name, i.is_active, i.track_stock, i.is_packaging, i.min_stock,
        ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
        i.is_prep, i.composition_status,
        (select count(*) from recipe_items ri where ri.ingredient_id = i.id)::int as recipe_uses,
-       i.count_place
+       i.count_place_id, cp.name as count_place
 from ingredients i
 join units u on u.id = i.base_unit_id
+left join count_places cp on cp.id = i.count_place_id
 left join ingredient_categories ic on ic.id = i.category_id
 left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
 where ($1::boolean is not true or i.is_active)
@@ -239,6 +240,7 @@ type ListIngredientsRow struct {
 	IsPrep            bool             `json:"is_prep"`
 	CompositionStatus *string          `json:"composition_status"`
 	RecipeUses        int32            `json:"recipe_uses"`
+	CountPlaceID      *int64           `json:"count_place_id"`
 	CountPlace        *string          `json:"count_place"`
 }
 
@@ -269,6 +271,7 @@ func (q *Queries) ListIngredients(ctx context.Context, onlyActive *bool) ([]List
 			&i.IsPrep,
 			&i.CompositionStatus,
 			&i.RecipeUses,
+			&i.CountPlaceID,
 			&i.CountPlace,
 		); err != nil {
 			return nil, err

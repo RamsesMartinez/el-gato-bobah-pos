@@ -120,6 +120,11 @@ func TestWasteReasonNames(t *testing.T) {
 	if NormalizeReasonName("  Se  CAYÓ ") != NormalizeReasonName("se cayo") {
 		t.Error("«  Se  CAYÓ » y «se cayo» son el mismo motivo")
 	}
+	// El espacio duro (lo deja un copiar y pegar) era espacio para la base y no para el servidor: el
+	// índice rechazaba el nombre y el 409 no encontraba el motivo que ya existía.
+	if got := NormalizeReasonName("Barra fría"); got != "barra fria" {
+		t.Errorf("con espacio duro = %q; quiere «barra fria», como el índice de la base", got)
+	}
 	for _, c := range []struct {
 		name, desc string
 		ok         bool

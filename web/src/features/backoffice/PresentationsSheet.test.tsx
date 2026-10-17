@@ -5,7 +5,7 @@ import { Provider } from '../../components/ui/provider';
 import type { Presentation, Unit } from '../../api/backoffice';
 import { PresentationsSheet, type PresentationsIngredient } from './PresentationsSheet';
 
-const back = vi.hoisted(() => ({ createPresentation: vi.fn(), updatePresentation: vi.fn(), setCountPlace: vi.fn() }));
+const back = vi.hoisted(() => ({ createPresentation: vi.fn(), updatePresentation: vi.fn(), setCountPlace: vi.fn(), countPlaces: vi.fn(), createCountPlace: vi.fn() }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 
 const units: Unit[] = [
@@ -105,19 +105,15 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
   });
 });
 
-describe('lugar para contar (spec 038)', () => {
-  test('desde Almacén se cambia el lugar; vacío lo quita', async () => {
-    back.setCountPlace.mockResolvedValue(undefined);
-    montar({ ...leche, countPlace: 'Barra' });
-    const input = await screen.findByLabelText('Lugar para contar');
-    expect(input).toHaveValue('Barra');
-    fireEvent.change(input, { target: { value: '  ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar lugar' }));
-    await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(10, null));
+describe('lugar para contar (spec 040)', () => {
+  test('desde Almacén se ofrece el lugar de la lista', async () => {
+    back.countPlaces.mockResolvedValue([{ id: 3, name: 'Barra', position: 0, ingredients: 1 }]);
+    montar({ ...leche, countPlaceId: 3 });
+    expect(await screen.findByRole('button', { name: /Barra/ })).toBeInTheDocument();
   });
   test('desde la captura de una compra no se ofrece', async () => {
     montar();
     await screen.findByRole('dialog');
-    expect(screen.queryByLabelText('Lugar para contar')).toBeNull();
+    expect(screen.queryByText('Lugar')).toBeNull();
   });
 });

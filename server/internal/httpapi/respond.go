@@ -31,6 +31,9 @@ type errorDetails struct {
 	LineID      string `json:"lineId,omitempty"`
 	// ExistingID: el motivo de merma que ya existe con ese nombre (spec 039), para ofrecerlo.
 	ExistingID int64 `json:"existingId,omitempty"`
+	// Ingredients: cuántos artículos tiene el lugar que se quiere archivar (spec 040), para preguntar
+	// a dónde pasan.
+	Ingredients int32 `json:"ingredients,omitempty"`
 }
 
 // JSON writes v as JSON with the given status.
@@ -245,6 +248,14 @@ func Error(w http.ResponseWriter, err error) {
 	var exists domain.WasteReasonExists
 	if errors.As(err, &exists) {
 		details = &errorDetails{ExistingID: exists.ID}
+	}
+	var place domain.CountPlaceExists
+	if errors.As(err, &place) {
+		details = &errorDetails{ExistingID: place.ID}
+	}
+	var busy app.CountPlaceHasIngredients
+	if errors.As(err, &busy) {
+		details = &errorDetails{Ingredients: busy.Ingredients}
 	}
 	JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: operatorMessage(msg), Details: details}})
 }

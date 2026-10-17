@@ -139,7 +139,7 @@ func (h *Handlers) DiscardCount(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// PUT /stock/ingredients/{id}/place — `{ place }`: el lugar que ordena el conteo, o null.
+// PUT /stock/ingredients/{id}/place — `{ placeId }`: un lugar de la lista (spec 040), o null.
 func (h *Handlers) SetCountPlace(w http.ResponseWriter, r *http.Request) {
 	id, err := idParam(r, "id")
 	if err != nil {
@@ -147,13 +147,13 @@ func (h *Handlers) SetCountPlace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Place *string `json:"place"`
+		PlaceID *int64 `json:"placeId"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	if err := h.backoffice.SetCountPlace(r.Context(), id, body.Place); err != nil {
+	if err := h.backoffice.SetCountPlace(r.Context(), id, body.PlaceID); err != nil {
 		Error(w, err)
 		return
 	}

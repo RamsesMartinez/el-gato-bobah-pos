@@ -21,9 +21,10 @@ select i.id, i.name, i.is_active, i.track_stock, i.is_packaging, i.min_stock,
        ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
        i.is_prep, i.composition_status,
        (select count(*) from recipe_items ri where ri.ingredient_id = i.id)::int as recipe_uses,
-       i.count_place
+       i.count_place_id, cp.name as count_place
 from ingredients i
 join units u on u.id = i.base_unit_id
+left join count_places cp on cp.id = i.count_place_id
 left join ingredient_categories ic on ic.id = i.category_id
 -- Existencias de la sucursal (0076): sin el filtro, con dos sucursales cada insumo saldría dos
 -- veces sin decir de cuál es.

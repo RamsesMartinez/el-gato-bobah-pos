@@ -1006,6 +1006,15 @@ type Company struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type CountPlace struct {
+	ID         int64              `json:"id"`
+	CompanyID  int64              `json:"company_id"`
+	Name       string             `json:"name"`
+	Position   int32              `json:"position"`
+	ArchivedAt pgtype.Timestamptz `json:"archived_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+}
+
 type DailySummarySend struct {
 	ID           int64              `json:"id"`
 	CompanyID    int64              `json:"company_id"`
@@ -1134,7 +1143,7 @@ type Ingredient struct {
 	CompositionStatus      *string            `json:"composition_status"`
 	CompositionConfirmedBy *int64             `json:"composition_confirmed_by"`
 	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
-	CountPlace             *string            `json:"count_place"`
+	CountPlaceID           *int64             `json:"count_place_id"`
 }
 
 type IngredientCategory struct {

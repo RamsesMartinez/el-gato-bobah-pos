@@ -48,7 +48,8 @@ type IngredientView struct {
 	// RecipeUses: en cuántas recetas aparece; ordena el buscador de insumos con los más usados arriba.
 	RecipeUses int `json:"recipeUses"`
 	// CountPlace: dónde está, para ordenar el conteo (spec 038). No es un almacén.
-	CountPlace *string `json:"countPlace"`
+	CountPlace   *string `json:"countPlace"`
+	CountPlaceID *int64  `json:"countPlaceId"`
 }
 
 // ArticleView es una entrada del buscador único: ingredientes y productos con control de stock
@@ -105,7 +106,7 @@ func (s *BackofficeService) Ingredients(ctx context.Context, onlyActive bool) ([
 			BaseUnitID: r.BaseUnitID, BaseUnitCode: r.BaseUnitCode, BaseUnitKind: string(r.BaseUnitKind),
 			Category: r.Category, OnHand: r.OnHand,
 			IsPrep: r.IsPrep, CompositionStatus: textoDe(r.CompositionStatus), RecipeUses: int(r.RecipeUses),
-			CountPlace: r.CountPlace,
+			CountPlace: r.CountPlace, CountPlaceID: r.CountPlaceID,
 		}
 	}
 	return out, nil

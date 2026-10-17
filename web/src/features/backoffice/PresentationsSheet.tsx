@@ -21,7 +21,8 @@ export interface PresentationsIngredient {
   baseUnitKind: string;
   // Con él, la hoja deja cambiar el lugar del insumo (lo hace quien configura el almacén); sin él,
   // como desde la captura de una compra, no se ofrece.
-  countPlace?: string | null;
+  // El lugar del recorrido (spec 040). Solo desde Almacén: undefined no ofrece el renglón.
+  countPlaceId?: number | null;
 }
 
 interface Props {
@@ -121,7 +122,7 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, usedName
         <DrawerHeader pb={1}>
           <Text fontSize="lg" fontWeight="700">Cómo llega {ingredient.name}</Text>
           <Text fontSize="sm" color="fg.muted">Se cuenta en {formatBaseQty(1, ingredient.baseUnitCode).replace(/^1 /, '')}</Text>
-          {ingredient.countPlace !== undefined && <CountPlaceField ingredientId={ingredient.id} place={ingredient.countPlace} />}
+          {ingredient.countPlaceId !== undefined && <CountPlaceField ingredientId={ingredient.id} placeId={ingredient.countPlaceId} />}
         </DrawerHeader>
         <DrawerBody flex="1" minH={0} overflowY="auto" pb={2}>
           <Stack gap={2}>
