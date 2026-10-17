@@ -79,7 +79,7 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 ## Dependencies
 
-Phase 1 → Phase 2 → US1 → US2 → US3. US2 depende de que existan mermas (US1) y de las columnas del conteo (T006). US3 solo de Phase 2 y del servicio de US1. Dentro de cada historia: tests en rojo → servicio → rutas → web.
+Phase 1 → Phase 2 → US1 → US2 → US3. US2 depende de que existan mermas (US1) y de las columnas del conteo (T006). US3 solo de Phase 2 y del servicio de US1. Dentro de cada historia: tests en rojo → servicio → rutas → web. T046–T048 se agregaron después de construir: T046 y T047 salen de `/speckit-analyze` y T048 de lo que encontró T040, así que T048 va después de T040 aunque viva en US1.
 
 Archivos compartidos que obligan orden: `router.go` y `handlers_waste.go` (T019 → T034), `AppShell.tsx` (T023 → T027), `waste.go` (T018 → T034), `stock_counts.go` (T030), `backoffice.ts` (T025 → T032 → T036).
 
