@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Box, HStack, Text } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { backofficeApi } from '../../api/backoffice';
@@ -51,10 +52,14 @@ export function PlaceChooser({ ingredientId, placeId, title = 'Lugar', onSaved }
   ingredientId: number; placeId: number | null; title?: string; onSaved?: () => void;
 }) {
   const { places, save, create } = usePlaceChooser(ingredientId, onSaved);
+  // Lo elegido se muestra de inmediato: la hoja del artículo guarda una copia del lugar al abrirse y
+  // no se vuelve a leer, así que el botón seguía diciendo el lugar anterior (segunda prueba, T022).
+  const [chosen, setChosen] = useState<number | null | undefined>(undefined);
+  const current = chosen === undefined ? placeId : chosen;
   return (
-    <Picker value={placeId === null ? '' : String(placeId)} options={places.map((p) => ({ value: String(p.id), label: p.name }))}
+    <Picker value={current === null ? '' : String(current)} options={places.map((p) => ({ value: String(p.id), label: p.name }))}
       title={title} placeholder="Sin lugar" clearable clearLabel="Sin lugar" focusSearch={false} searchMaxLength={30}
-      onChange={(v) => save.mutate(v === '' ? null : Number(v))} onCreate={create} />
+      onChange={(v) => { const id = v === '' ? null : Number(v); setChosen(id); save.mutate(id); }} onCreate={create} />
   );
 }
 

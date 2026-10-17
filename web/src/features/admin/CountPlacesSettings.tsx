@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react';
 import { LuCheck, LuMenu } from 'react-icons/lu';
@@ -32,6 +32,11 @@ export function CountPlacesSettings() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
   const refresh = () => qc.invalidateQueries({ queryKey: ['count-places'] });
+  // Desde el conteo se llega con #lugares: la sección vive al fondo de Negocio.
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (window.location.hash === '#lugares' && places.length > 0) box.current?.scrollIntoView?.({ block: 'start' });
+  }, [places.length]);
 
   const shown = order ? order.map((id) => places.find((p) => p.id === id)).filter((p): p is CountPlace => !!p) : places;
   const move = useMutation({
@@ -54,7 +59,7 @@ export function CountPlacesSettings() {
   };
 
   return (
-    <Box mt={6} borderWidth="1px" borderRadius="lg" p={5}>
+    <Box ref={box} id="lugares" mt={6} borderWidth="1px" borderRadius="lg" p={5}>
       <Flex justify="space-between" align="center" gap={3}>
         <Text fontWeight="700">Lugares</Text>
         <Button minH="44px" variant="outline" onClick={() => setAdding(true)}>Agregar lugar</Button>

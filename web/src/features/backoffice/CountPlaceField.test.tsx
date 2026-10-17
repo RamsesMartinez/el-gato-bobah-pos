@@ -46,6 +46,9 @@ describe('lugar del artículo (spec 040, maqueta A)', () => {
     expect(document.activeElement?.tagName).not.toBe('INPUT');
     fireEvent.click(screen.getByRole('button', { name: 'Barra' }));
     await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(10, 2));
+    // La hoja del artículo guarda una copia del lugar al abrirse: el botón tiene que decir el elegido
+    // aunque esa copia no cambie (segunda prueba sin contexto, T022).
+    expect(await screen.findByRole('button', { name: /Barra/ })).toBeInTheDocument();
   });
 
   test('un lugar nuevo se crea escribiéndolo; si ya existía con otra mayúscula, lo dice y lo elige', async () => {

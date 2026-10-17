@@ -47,6 +47,8 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 - [X] T025 [US1] Lo que encontró T022 (persona nueva): no halló dónde se asigna el lugar (solo lo vio dentro de un conteo). Almacén › Artículos muestra «Lugar: …» o «Sin lugar» junto a cómo llega, y el botón dice «Cambiar o poner lugar ›»; la agarradera usa el icono ≡ que nombra la instrucción. Con su test en `StockPage.test.tsx`
 
+- [X] T026 [US2] Lo que encontró la segunda vuelta de T022: no halló cómo ordenar los lugares y el botón del lugar mostraba el valor viejo tras elegir. El conteo, antes de empezar, dice «Se recorre en este orden: …» y con `inventory.configure` lleva a Negocio › Lugares (`/negocio#lugares`); `PlaceChooser` muestra lo elegido de inmediato. Tests en `StockCountTab.test.tsx`, `CountPlaceField.test.tsx` y `web/e2e/lugares-para-contar.spec.ts`
+
 ## Phase 4: User Story 3 — Los lugares escritos a mano pasan a la lista (P1)
 
 **Independent test**: cubierto por T003. Esta historia es la migración de la Phase 2; aquí solo se corre contra la copia restaurada.
@@ -92,7 +94,7 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 ## Dependencies
 
-Phase 1 → Phase 2 → US1 → US3 → US2. US3 es la migración de la Phase 2 corrida contra datos reales; va después de US1 porque la pantalla que la usa es la de US1. US2 depende de los lugares y de las consultas de la Phase 2. T025 salió de la prueba con usuario sin contexto (T022), así que va después de ella aunque viva en US1.
+Phase 1 → Phase 2 → US1 → US3 → US2. US3 es la migración de la Phase 2 corrida contra datos reales; va después de US1 porque la pantalla que la usa es la de US1. US2 depende de los lugares y de las consultas de la Phase 2. T025 y T026 salieron de la prueba con usuario sin contexto (T022, dos vueltas), así que van después de ella aunque vivan en US1 y US2.
 
 Archivos compartidos que obligan orden:
 - `count_places.go` del servicio: T009 → T015.
