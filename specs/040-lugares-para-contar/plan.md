@@ -134,6 +134,10 @@ dueño: solo arrastrar.
 - La prueba sin contexto (T022) no halló dónde se asigna el lugar fuera del conteo: Almacén ›
   Artículos ahora lo muestra junto a cómo llega y su botón dice «Cambiar o poner lugar ›» (T025).
   La agarradera usa el icono ≡ que nombra la instrucción.
+- La segunda vuelta de T022 no halló cómo ordenar los lugares (viven en Negocio y se buscaban en
+  Almacén): el conteo, antes de empezar, dice el orden del recorrido y lleva a Negocio › Lugares
+  (T026). El botón del lugar mostraba el valor viejo tras elegir: la hoja del artículo guarda una
+  copia al abrirse; ahora `PlaceChooser` muestra lo elegido de inmediato.
 - El arrastre y las flechas del teclado no se pueden simular en jsdom (todo mide 0 px): vitest solo
   verifica que la agarradera se ofrece al teclado; el arrastre lo mide `web/e2e/lugares-para-contar.spec.ts`.
 
