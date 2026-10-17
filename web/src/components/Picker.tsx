@@ -26,6 +26,12 @@ interface Props {
   // Debe devolver la opción ya creada (para seleccionarla al vuelo), o null si quien crea se
   // arrepintió a medio camino (p. ej. no eligió en qué se mide un insumo).
   onCreate?: (name: string) => Promise<PickerOption | null>;
+  // focusSearch=false no abre el teclado del sistema al abrir la hoja: en 600 px de alto se come la
+  // mitad y deja una o dos filas a la vista. Para listas cortas donde casi siempre se toca, no se escribe.
+  focusSearch?: boolean;
+  // searchMaxLength: el tope de lo que se puede crear desde el buscador, el mismo del servidor; sin
+  // él, un nombre largo volvía con 400 y la hoja se quedaba abierta sin decir por qué.
+  searchMaxLength?: number;
 }
 
 // Picker táctil: reemplaza al <select> nativo (malo en tablet con muchos ítems). Abre un
@@ -36,7 +42,7 @@ const comparable = (s: string) => normalize(s).trim().replace(/\s+/g, ' ');
 
 export function Picker({
   value, options, onChange, placeholder = 'Seleccionar', title, clearable,
-  clearLabel = '— Ninguno —', searchThreshold = 6, disabled, size = 'md', onCreate,
+  clearLabel = '— Ninguno —', searchThreshold = 6, disabled, size = 'md', onCreate, focusSearch = true, searchMaxLength,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -99,7 +105,7 @@ export function Picker({
                 <HStack px={3} borderWidth="1px" borderRadius="lg" bg="bg.subtle">
                   <LuSearch />
                   <Input variant="flushed" border="none" placeholder="Buscar…" value={q}
-                    onChange={(e) => setQ(e.target.value)} autoFocus />
+                    onChange={(e) => setQ(e.target.value)} autoFocus={focusSearch} maxLength={searchMaxLength} />
                 </HStack>
               </Box>
             )}

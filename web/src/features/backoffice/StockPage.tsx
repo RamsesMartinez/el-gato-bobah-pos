@@ -150,7 +150,7 @@ export function StockPage() {
                             </Box>
                             {canConfigure && (
                               <Button aria-label={`Cómo llega ${i.name}`} size="sm" variant="outline" minH="44px" flexShrink={0}
-                                onClick={() => setPackaging({ id: i.id, name: i.name, baseUnitCode: i.baseUnitCode, baseUnitKind: i.baseUnitKind, countPlace: i.countPlace ?? null })}>
+                                onClick={() => setPackaging({ id: i.id, name: i.name, baseUnitCode: i.baseUnitCode, baseUnitKind: i.baseUnitKind, countPlaceId: i.countPlaceId ?? null })}>
                                 {on.length ? 'Cambiar ›' : '+ Agregar'}
                               </Button>
                             )}

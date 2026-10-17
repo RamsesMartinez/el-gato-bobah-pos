@@ -16,12 +16,13 @@ select id, branch_id, status from stock_counts where id = $1 for update;
 -- name: CountItems :many
 -- Lo que se cuenta: los insumos activos que llevan existencia, por lugar (los sin lugar al final)
 -- y por nombre. Lo que el sistema tiene NO viaja: el conteo es a ciegas.
-select i.id, i.name, i.count_place, u.code as base_unit_code, l.counted_qty, l.captured_at
+select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at
   from ingredients i
   join units u on u.id = i.base_unit_id
+  left join count_places cp on cp.id = i.count_place_id
   left join stock_count_lines l on l.ingredient_id = i.id and l.count_id = sqlc.arg(count_id)
  where i.is_active and i.track_stock
- order by i.count_place is null, i.count_place, i.name, i.id;
+ order by cp.position is null, cp.position, i.name, i.id;
 
 -- name: OnHandInBranch :one
 select coalesce((select on_hand from stock_levels
@@ -133,7 +134,7 @@ select id, closed_at from stock_counts
  order by closed_at desc limit 1;
 
 -- name: SetCountPlace :execrows
-update ingredients set count_place = sqlc.narg(place), updated_at = now() where id = sqlc.arg(id);
+update ingredients set count_place_id = sqlc.narg(place_id), updated_at = now() where id = sqlc.arg(id);
 
 -- name: MarkCountPreviewed :exec
 -- Solo la primera vez: lo que importa es qué cambió desde que se vieron las diferencias.

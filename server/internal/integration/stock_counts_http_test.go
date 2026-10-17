@@ -60,10 +60,28 @@ func TestStockCountsHTTP(t *testing.T) {
 		t.Fatalf("capturar = %d %s", w.Code, w.Body.String())
 	}
 	place := "/api/v1/stock/ingredients/" + strconv.FormatInt(azucar, 10) + "/place"
-	if w := do(t, r, http.MethodPut, place, admin, []byte(`{"place":"`+strings.Repeat("x", 31)+`"}`), json); w.Code != http.StatusBadRequest {
+	// Lugares (spec 040): la lista llega como arreglo aunque esté vacía, un nombre de 31 letras es 400,
+	// uno repetido es 409 con el que ya existe, y asignar es de quien cuenta.
+	if w := do(t, r, http.MethodGet, "/api/v1/stock/count-places", admin, nil, ""); w.Code != http.StatusOK || !strings.HasPrefix(strings.TrimSpace(w.Body.String()), "[") {
+		t.Errorf("lista de lugares = %d %s; quiere 200 con un arreglo", w.Code, w.Body.String())
+	}
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/count-places", admin, []byte(`{"name":"`+strings.Repeat("x", 31)+`"}`), json); w.Code != http.StatusBadRequest {
 		t.Errorf("lugar de 31 = %d; quiere 400", w.Code)
 	}
-	if w := do(t, r, http.MethodPut, place, cajero, []byte(`{"place":"Refri"}`), json); w.Code != http.StatusForbidden {
+	w = do(t, r, http.MethodPost, "/api/v1/stock/count-places", admin, []byte(`{"name":"Refri del http"}`), json)
+	if w.Code != http.StatusCreated && w.Code != http.StatusConflict {
+		t.Fatalf("alta de lugar = %d %s", w.Code, w.Body.String())
+	}
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/count-places", admin, []byte(`{"name":" REFRI del HTTP "}`), json); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"existingId"`) {
+		t.Errorf("lugar repetido = %d %s; quiere 409 con existingId", w.Code, w.Body.String())
+	}
+	// Sin toPosition el lugar se iba al primer puesto con 204: un parámetro ausente no cae a un default.
+	for _, body := range []string{`{}`, `{"to":2}`} {
+		if w := do(t, r, http.MethodPost, "/api/v1/stock/count-places/1/move", admin, []byte(body), json); w.Code != http.StatusBadRequest {
+			t.Errorf("mover con %s = %d; quiere 400", body, w.Code)
+		}
+	}
+	if w := do(t, r, http.MethodPut, place, cajero, []byte(`{"placeId":null}`), json); w.Code != http.StatusForbidden {
 		t.Errorf("cajero cambia el lugar = %d; quiere 403", w.Code)
 	}
 	w = do(t, r, http.MethodPost, "/api/v1/stock/counts/"+strconv.FormatInt(id, 10)+"/close", admin, nil, "")

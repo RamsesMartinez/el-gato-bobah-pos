@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
@@ -30,6 +28,7 @@ type CountItem struct {
 	IngredientID  int64               `json:"ingredientId"`
 	Name          string              `json:"name"`
 	Place         *string             `json:"place"`
+	PlaceID       *int64              `json:"placeId"`
 	BaseUnitCode  string              `json:"baseUnitCode"`
 	Presentations []CountPresentation `json:"presentations"`
 	CountedQty    *decimal.Decimal    `json:"countedQty"`
@@ -121,7 +120,7 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 		if ps == nil {
 			ps = []CountPresentation{}
 		}
-		v.Items[i] = CountItem{IngredientID: r.ID, Name: r.Name, Place: r.CountPlace, BaseUnitCode: r.BaseUnitCode,
+		v.Items[i] = CountItem{IngredientID: r.ID, Name: r.Name, Place: r.CountPlace, PlaceID: r.CountPlaceID, BaseUnitCode: r.BaseUnitCode,
 			Presentations: ps, CountedQty: r.CountedQty}
 	}
 	return v, nil
@@ -315,24 +314,4 @@ func (s *BackofficeService) LastClosedCount(ctx context.Context) (*LastClosedCou
 type LastClosedCount struct {
 	ID       int64
 	ClosedAt time.Time
-}
-
-// SetCountPlace fija el lugar del insumo que ordena el conteo («Refri»). No es un almacén: es en
-// qué orden se camina al contar. nil o vacío lo quita.
-func (s *BackofficeService) SetCountPlace(ctx context.Context, ingredientID int64, place *string) error {
-	if place != nil {
-		p := strings.TrimSpace(*place)
-		if p == "" {
-			place = nil
-		} else if utf8.RuneCountInString(p) > 30 {
-			return fmt.Errorf("%w: el lugar va de 1 a 30 letras", domain.ErrValidation)
-		} else {
-			place = &p
-		}
-	}
-	n, err := s.store.QC(ctx).SetCountPlace(ctx, db.SetCountPlaceParams{ID: ingredientID, Place: place})
-	if err == nil && n == 0 {
-		return domain.ErrNotFound
-	}
-	return err
 }

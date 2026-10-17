@@ -229,7 +229,8 @@ func TestMigration0092ColumnChecks(t *testing.T) {
 		// Lo que llega de más sube lo pedido (con su importe); nunca queda recibido > pedido, que
 		// divide el costo entre lo que no entró (revisión de código del 038).
 		{"recibido más que lo pedido", `update expense_items set qty_received = quantity + 1 where id = $1`, []any{item}},
-		{"lugar vacío", `update ingredients set count_place = '' where id = $1`, []any{ing}},
+		// El lugar ya no es texto del artículo (0095): el nombre vacío lo rechaza la lista de lugares.
+		{"lugar vacío", `insert into count_places (company_id, name, position) values ($1, '  ', 0)`, []any{co}},
 		{"método de costeo desconocido", `update business_settings set costing_method = 'fifo' where company_id = $1`, []any{co}},
 		{"palabra del almacén de más de 20", `update business_settings set stock_item_label = repeat('x', 21) where company_id = $1`, []any{co}},
 	}

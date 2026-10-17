@@ -439,6 +439,16 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     del conteo, que también pone la base. Con el reloj de la API se mezclarían dos relojes. Y
     `CreateCompany` siembra los motivos: una prueba que baje el esquema debajo de la 0094 crea sus
     empresas ANTES de bajarlo.
+- **Lugares para contar** (spec 040, 0095). Tres cosas que no se ven:
+  - **El lugar es una liga a `count_places`, no texto.** Ordena el recorrido del conteo y nada más:
+    no es un almacén (#65) y no guarda existencias. La pantalla no lo llama «almacén».
+  - **Crear, mover y archivar toman primero `pg_advisory_xact_lock(28040, empresa)`** y después, en
+    otra sentencia, leen los activos y renumeran 0..n-1. Asignar toma el lugar `for share` y archivar
+    `for update`: así ningún artículo queda en un lugar archivado. Un camino nuevo que toque el orden
+    o archive pasa por el mismo candado.
+  - **La normalización de nombres junta espacios con `strings.Fields`, no con `\s` de regexp**: el de
+    Go no ve el espacio duro y el de Postgres sí (lo encontró la prueba de paridad de la 0095; también
+    afectaba a los motivos de merma). La Down de la 0095 pierde el orden y los lugares sin artículos.
 - **Asistencia y bitácora de auditoría** (spec 033, 0089). Cinco cosas que no se ven:
   - **Todo camino nuevo que mueva dinero, caja, precios o asistencia escribe su evento** con
     `recordAudit` (o `auditOrder` / `auditCash`) **dentro de su transacción**, y su acción va en la

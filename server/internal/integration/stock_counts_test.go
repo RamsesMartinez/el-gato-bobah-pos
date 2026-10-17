@@ -159,7 +159,14 @@ func TestOneOpenCountPerBranchAndBlindWhileOpen(t *testing.T) {
 func TestCountPlaceOrdersTheCount(t *testing.T) {
 	t.Parallel()
 	k := newCountKit(t)
-	refri := "Refri"
+	refri, err := k.svc.CreateCountPlace(k.ctx, "Refri del conteo")
+	if err != nil {
+		var exists domain.CountPlaceExists
+		if !errors.As(err, &exists) {
+			t.Fatal(err)
+		}
+		refri = exists.ID
+	}
 	if err := k.svc.SetCountPlace(k.ctx, k.leche, &refri); err != nil {
 		t.Fatal(err)
 	}
@@ -169,13 +176,9 @@ func TestCountPlaceOrdersTheCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, i := range list {
-		if i.ID == k.leche && (i.CountPlace == nil || *i.CountPlace != "Refri") {
+		if i.ID == k.leche && (i.CountPlace == nil || *i.CountPlace != "Refri del conteo") {
 			t.Errorf("la lista de insumos no trae el lugar: %v", i.CountPlace)
 		}
-	}
-	long := strings.Repeat("x", 31)
-	if err := k.svc.SetCountPlace(k.ctx, k.leche, &long); !errors.Is(err, domain.ErrValidation) {
-		t.Errorf("lugar de 31 letras = %v; quiere ErrValidation", err)
 	}
 	if _, err := k.svc.OpenCount(k.ctx, k.user); err != nil {
 		t.Fatal(err)
