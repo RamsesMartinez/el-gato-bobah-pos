@@ -196,3 +196,7 @@ estimados; la captura «Una pantalla» se mide con Playwright antes de darla por
 - La captura no anticipa «Mandar a aprobar»: la tableta no conoce el costo ni el tope. Lo dice el
   servidor al guardar («Quedó por aprobar»).
 - Las horas de la merma salen de la base, no del reloj de la API (ver AGENTS.md).
+- «Hoy» muestra lo que se restó en la unidad del insumo, no lo capturado: 1 kg de un insumo en
+  gramos salía «1 g» (lo encontró la prueba con usuario sin contexto, T040).
+- Un Deshacer que el servidor rechaza (otra persona ya lo deshizo) lo dice en la lista y quita la
+  confirmación; antes los botones se quedaban sin aviso.

@@ -42,6 +42,9 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 - [X] T025 [US1] Pantalla `web/src/features/waste/WastePage.tsx` (vistas «Una pantalla» y «Paso a paso», `p=2`, columnas con `minH={0}` y su propio desplazamiento, Guardar fijo al pie) y llamadas en `web/src/api/backoffice.ts`, hasta que T024 pase
 - [X] T026 [P] [US1] Tests de vitest de por aprobar (Maquetas: «Por aprobar», opción B): franja de 44 px solo con `inventory.write_off_approve`, solo con pendientes, no en `/pos` ni `/pedidos`, se cierra por sesión; la hoja aprueba y rechaza («Rechazar» apartado y con confirmación), en `web/src/features/waste/PendingWasteBar.test.tsx`
 - [X] T027 [US1] Franja y hoja en `web/src/features/waste/PendingWasteBar.tsx`, montada como fila del shell en `web/src/app/AppShell.tsx` (`Outlet` con `flex=1 minH={0}`), hasta que T026 pase
+- [X] T046 [US1] Test de que aprobar, rechazar o deshacer una merma de otra sucursal responde no encontrada (FR-012), en `server/internal/integration/waste_review_test.go`
+- [X] T047 [US1] `LockWasteRecord` filtra por `branch_id = current_branch_id()` en `server/queries/waste.sql`, hasta que T046 pase
+- [X] T048 [US1] Lo que encontró T040: «Hoy» muestra lo que se restó en la unidad del insumo (1 kg salía «1 g»), con test en `waste_review_test.go`; y un Deshacer que falla lo dice y quita la confirmación, con test en `WastePage.test.tsx`. La medición queda en `web/e2e/se-echo-a-perder.spec.ts`
 
 ## Phase 4: User Story 2 — Faltante sin explicar después de un conteo (P2)
 
@@ -66,17 +69,13 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 ## Phase 6: Polish
 
-- [X] T044 [P] Test de nombres: ni `0094_waste.sql`, ni `waste.sql`, ni las pantallas de `web/src/features/waste/` traen nombres de un negocio, como el del 038 (FR-022), en `server/internal/app/waste_names_test.go`
-- [X] T045 [P] Test de palabras de pantalla: los textos de `web/src/features/waste/` y del faltante dicen «Se echó a perder» y nunca «merma», «movimiento», «ajuste» ni «kardex» (FR-023), agregando esos archivos a `web/src/features/backoffice/operatorWords.test.ts`
-
 - [X] T039 [P] Bloque de la 039 en `AGENTS.md` (lo que no se ve: el periodo por id de movimiento, juntar no reescribe, la sucursal explícita del movimiento) y filas en `docs/matriz-de-pantallas.md`
 - [X] T040 Medir con Playwright a 1024×600 contra el ambiente de pruebas la captura «Una pantalla» con empaques y con 8 o más motivos, la franja y la pestaña, con capturas; contar los toques del flujo frecuente (motivo visible, artículo reciente): 3 o menos sin contar la cantidad (SC-001); y una prueba con usuario sin contexto (SC-005)
-- [X] T046 [US1] Test de que aprobar, rechazar o deshacer una merma de otra sucursal responde no encontrada (FR-012), en `server/internal/integration/waste_review_test.go`
-- [X] T047 [US1] `LockWasteRecord` filtra por `branch_id = current_branch_id()` en `server/queries/waste.sql`, hasta que T046 pase
-- [X] T048 [US1] Lo que encontró T040: «Hoy» muestra lo que se restó en la unidad del insumo (1 kg salía «1 g»), con test en `waste_review_test.go`; y un Deshacer que falla lo dice y quita la confirmación, con test en `WastePage.test.tsx`. La medición queda en `web/e2e/se-echo-a-perder.spec.ts`
 - [X] T041 Correr el `quickstart.md` contra la API local
 - [X] T042 `make ci-local`
 - [X] T043 `/revision-de-codigo` (hook `after_implement`)
+- [X] T044 [P] Test de nombres: ni `0094_waste.sql`, ni `waste.sql`, ni las pantallas de `web/src/features/waste/` traen nombres de un negocio, como el del 038 (FR-022), en `server/internal/app/waste_names_test.go`
+- [X] T045 [P] Test de palabras de pantalla: los textos de `web/src/features/waste/` y del faltante dicen «Se echó a perder» y nunca «merma», «movimiento», «ajuste» ni «kardex» (FR-023), agregando esos archivos a `web/src/features/backoffice/operatorWords.test.ts`
 
 ## Dependencies
 
