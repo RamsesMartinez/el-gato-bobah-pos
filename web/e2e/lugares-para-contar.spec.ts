@@ -52,7 +52,7 @@ test('desplazar la lista no mueve nada; 500 ms sobre ≡ levanta y arrastrar de 
   const antes: string[] = await nombres(request);
 
   // Un deslizamiento sobre el texto del renglón (no la agarradera) desplaza y no mueve.
-  const texto = page.getByText(new RegExp(`^${antes[2]} ·`));
+  const texto = page.getByText(antes[2], { exact: true });
   const caja = (await texto.boundingBox())!;
   await page.mouse.move(caja.x + 20, caja.y + caja.height / 2);
   await page.mouse.down();
@@ -71,11 +71,21 @@ test('desplazar la lista no mueve nada; 500 ms sobre ≡ levanta y arrastrar de 
   await page.waitForTimeout(650);
   await page.mouse.move(g.x + g.width / 2, g.y - 20, { steps: 5 });
   await page.screenshot({ path: `${CAPTURAS}/levantado.png` });
-  await page.mouse.move(g.x + g.width / 2, 8, { steps: 20 });
-  await page.waitForTimeout(2500);
+  // Como una persona: acerca el dedo a la orilla, deja que la lista suba un poco, lo regresa al
+  // centro para frenar y mira si ya ve el primero. Sostenerlo en la orilla sube sin parar.
   const primero = page.getByRole('button', { name: `Mover ${antes[0]}` });
-  const p = (await primero.boundingBox())!;
-  await page.mouse.move(p.x + p.width / 2, p.y + 4, { steps: 10 });
+  let p = await primero.boundingBox();
+  for (let i = 0; i < 30 && !(p && p.y > 40 && p.y < 520); i++) {
+    await page.mouse.move(g.x + g.width / 2, 10, { steps: 4 });
+    await page.waitForTimeout(250);
+    await page.mouse.move(g.x + g.width / 2, 300, { steps: 4 });
+    await page.waitForTimeout(150);
+    p = await primero.boundingBox();
+  }
+  expect(p && p.y > 40 && p.y < 520, 'la lista no subió sola hasta el primer lugar').toBeTruthy();
+  await page.mouse.move(p!.x + p!.width / 2, p!.y - 30, { steps: 10 });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${CAPTURAS}/antes-de-soltar.png` });
   await page.mouse.up();
   await expect.poll(async () => (await nombres(request))[0], { timeout: 10_000 }).toBe(ultimo);
   await page.screenshot({ path: `${CAPTURAS}/arrastrado.png` });
@@ -90,6 +100,7 @@ test('desplazar la lista no mueve nada; 500 ms sobre ≡ levanta y arrastrar de 
 test('el lugar del artículo se elige en dos toques y sin teclado', async ({ page, request }) => {
   await entrar(page);
   await page.goto('/almacen');
+  await page.getByRole('tab', { name: 'Artículos' }).click();
   await page.getByRole('button', { name: `Cómo llega ${articulo!.name}` }).click();
   const renglon = page.getByText('Lugar', { exact: true }).locator('..').getByRole('button').first();
   await expect(renglon).toBeVisible();

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react';
-import { LuCheck, LuGripVertical } from 'react-icons/lu';
+import { LuCheck, LuMenu } from 'react-icons/lu';
 import {
   DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent,
 } from '@dnd-kit/core';
@@ -84,7 +84,8 @@ function PlaceRow({ place, n, onEdit }: { place: CountPlace; n: number; onEdit: 
         w="52px" h="52px" display="flex" alignItems="center" justifyContent="center" color={isDragging ? 'red.fg' : 'fg.muted'}
         borderRadius="lg" cursor="grab"
         style={{ touchAction: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}>
-        <LuGripVertical size={22} />
+        {/* ≡, el mismo signo que dice la instrucción de arriba (T022: seis puntos no se reconocían). */}
+        <LuMenu size={22} />
       </Box>
       <Text w="24px" color="fg.muted" textAlign="right" flexShrink={0}>{n}</Text>
       {/* Solo el nombre se recorta: cuántos artículos tiene decide si archivarlo duele. */}
