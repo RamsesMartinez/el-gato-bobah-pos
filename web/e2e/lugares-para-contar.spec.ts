@@ -101,6 +101,10 @@ test('el lugar del artículo se elige en dos toques y sin teclado', async ({ pag
   await entrar(page);
   await page.goto('/almacen');
   await page.getByRole('tab', { name: 'Artículos' }).click();
+  // T025: el lugar se ve en la lista, sin abrir nada.
+  const fila = page.getByRole('row').filter({ has: page.getByRole('button', { name: `Cómo llega ${articulo!.name}` }) });
+  await expect(fila).toContainText(/Lugar: |Sin lugar/);
+  await expect(page.getByRole('button', { name: `Cómo llega ${articulo!.name}` })).toContainText(/lugar/);
   await page.getByRole('button', { name: `Cómo llega ${articulo!.name}` }).click();
   const renglon = page.getByText('Lugar', { exact: true }).locator('..').getByRole('button').first();
   await expect(renglon).toBeVisible();
