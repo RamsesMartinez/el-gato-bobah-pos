@@ -15,6 +15,7 @@ import {
 } from '../../components/ui/drawer';
 import { ApiError } from '../../api/client';
 import { backofficeApi, type CountPlace } from '../../api/backoffice';
+import { placeAnnouncements } from './placeAnnouncements';
 
 // Los lugares del recorrido del conteo (spec 040, maqueta C): se ordenan manteniendo presionada la
 // agarradera y arrastrando. Es la única forma de reordenar (decisión del dueño). La espera de 500 ms
@@ -74,7 +75,11 @@ export function CountPlacesSettings() {
       </Flex>
       <Text fontSize="sm" color="fg.muted" mb={2}>Mantén presionada ≡ para mover un lugar</Text>
       {shown.length === 0 && <Text color="fg.muted" py={2}>Todavía no hay lugares.</Text>}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} autoScroll>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} autoScroll
+        accessibility={{
+          announcements: placeAnnouncements((id) => shown.find((p) => p.id === Number(id))?.name ?? ''),
+          screenReaderInstructions: { draggable: 'Para mover un lugar, presiona espacio, muévelo con las flechas y vuelve a presionar espacio.' },
+        }}>
         <SortableContext items={shown.map((p) => p.id)} strategy={verticalListSortingStrategy}>
           {shown.map((p, i) => <PlaceRow key={p.id} place={p} n={i + 1} onEdit={() => setEditing(p)} />)}
         </SortableContext>
