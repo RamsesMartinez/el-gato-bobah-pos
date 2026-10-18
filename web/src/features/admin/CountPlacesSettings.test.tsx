@@ -61,9 +61,11 @@ describe('lugares del recorrido (spec 040, maqueta C)', () => {
   // el nombre del lugar, no su id.
   test('lo que se anuncia al arrastrar está en español y dice el lugar', () => {
     const names = new Map([[1, 'Refri'], [3, 'Bodega']]);
-    const a = placeAnnouncements((id) => names.get(Number(id)) ?? '');
+    const order = [1, 3];
+    const a = placeAnnouncements((id) => names.get(Number(id)) ?? '', (id) => order.indexOf(Number(id)), order.length);
     const drop = a.onDragEnd!({ active: { id: 3 }, over: { id: 1 } } as never) ?? '';
-    expect(drop).toBe('«Bodega» quedó en el lugar de «Refri».');
+    // «en el lugar de «Refri»» se oía como si se juntara con Refri: dice la posición.
+    expect(drop).toBe('«Bodega» quedó en el lugar 1 de 2.');
     expect(a.onDragStart!({ active: { id: 3 } } as never)).toBe('Moviendo «Bodega».');
     expect(a.onDragCancel!({ active: { id: 3 } } as never)).toBe('«Bodega» se quedó donde estaba.');
   });
