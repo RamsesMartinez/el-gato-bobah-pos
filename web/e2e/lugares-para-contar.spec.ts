@@ -119,3 +119,15 @@ test('el lugar del artículo se elige en dos toques y sin teclado', async ({ pag
   console.log(`[e2e] toques para elegir lugar=${toques}`);
   expect(toques).toBe(2);
 });
+
+// T026: desde el conteo, sin conteo abierto, se ve el orden del recorrido y se llega a cambiarlo.
+test('el conteo dice el orden de los lugares y lleva a ordenarlos', async ({ page }) => {
+  await entrar(page);
+  await page.goto('/almacen');
+  await page.getByRole('tab', { name: 'Conteo' }).click();
+  await expect(page.getByText(/^Se recorre en este orden: /)).toBeVisible();
+  await page.getByRole('button', { name: 'Cambiar el orden ›' }).click();
+  await expect(page).toHaveURL(/\/negocio#lugares$/);
+  await expect(page.getByText('Mantén presionada ≡ para mover un lugar')).toBeInViewport();
+  await page.screenshot({ path: `${CAPTURAS}/desde-el-conteo.png` });
+});

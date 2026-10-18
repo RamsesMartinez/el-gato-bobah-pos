@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { Provider } from '../../components/ui/provider';
+import { useSessionStore } from '../../stores/session';
 import type { StockCount } from '../../api/backoffice';
 import { StockCountTab } from './StockCountTab';
 
@@ -84,10 +86,32 @@ afterEach(() => {
 
 function montar() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={qc}><Provider><StockCountTab /></Provider></QueryClientProvider>);
+  render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={['/almacen']}>
+    <Routes><Route path="/almacen" element={<StockCountTab />} /><Route path="/negocio" element={<p>Negocio</p>} /></Routes>
+  </MemoryRouter></Provider></QueryClientProvider>);
 }
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
 const tecla = (k: string) => fireEvent.click(screen.getByRole('button', { name: k }));
+
+// La segunda prueba sin contexto (040, T022) no encontró cómo cambiar el orden del recorrido: antes
+// de empezar, el conteo dice en qué orden va y quien configura llega a ordenarlo desde ahí.
+describe('orden del recorrido (spec 040)', () => {
+  test('antes de empezar dice el orden de los lugares y lleva a cambiarlo', async () => {
+    back.currentCount.mockResolvedValue(null);
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.count', 'inventory.configure'] } as never });
+    montar();
+    expect(await screen.findByText('Se recorre en este orden: Barra → Bodega')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar el orden ›' }));
+    expect(await screen.findByText('Negocio')).toBeInTheDocument();
+  });
+  test('sin permiso de configurar no ofrece cambiarlo', async () => {
+    back.currentCount.mockResolvedValue(null);
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
+    montar();
+    expect(await screen.findByText('Se recorre en este orden: Barra → Bodega')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cambiar el orden ›' })).toBeNull();
+  });
+});
 
 describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
   test('sin conteo abierto ofrece empezar uno', async () => {

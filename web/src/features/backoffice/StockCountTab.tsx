@@ -14,6 +14,7 @@ import { formatBaseQty } from '../../shared/units';
 import { countedWords, diffWords, entryTotal, isBigDiff, looseUnitOf } from './countEntry';
 import { CountLossReport } from './CountLossReport';
 import { PlaceChooser } from './CountPlaceField';
+import { useNavigate } from 'react-router';
 import { can } from '../../app/permissions';
 
 // Conteo de existencias (spec 038, maqueta «Almacén › Conteo»: las dos vistas). A ciegas —no se ve
@@ -45,6 +46,11 @@ export function StockCountTab() {
   const [closedId, setClosedId] = useState<number | null>(null);
   const [showLoss, setShowLoss] = useState(false);
   const canSeeLoss = can('inventory.health_view');
+  const canOrder = can('inventory.configure');
+  const navigate = useNavigate();
+  // El orden del recorrido a la vista antes de empezar, y el camino a cambiarlo: la segunda prueba sin
+  // contexto (040, T022) no encontró dónde se ordenan los lugares.
+  const { data: places = [] } = useQuery({ queryKey: ['count-places'], queryFn: backofficeApi.countPlaces, enabled: !count });
   const { data: lastClosed } = useQuery({
     queryKey: ['stock', 'count', 'last-closed'], queryFn: backofficeApi.lastClosedCount, enabled: canSeeLoss && !count,
   });
@@ -81,6 +87,14 @@ export function StockCountTab() {
           Cuenta lo que hay en el anaquel; al cerrar, lo guardado se corrige con lo que contaste. Lo que
           no cuentes se queda como está.
         </Text>
+        {places.length > 0 && (
+          <HStack gap={3} flexWrap="wrap">
+            <Text fontSize="sm">Se recorre en este orden: {places.map((p) => p.name).join(' → ')}</Text>
+            {canOrder && (
+              <Button minH="44px" variant="outline" onClick={() => navigate('/negocio#lugares')}>Cambiar el orden ›</Button>
+            )}
+          </HStack>
+        )}
         <Button alignSelf="start" minH="44px" colorPalette="red" loading={open.isPending} onClick={() => open.mutate()}>
           {closed ? 'Empezar otro conteo' : 'Empezar conteo'}
         </Button>
