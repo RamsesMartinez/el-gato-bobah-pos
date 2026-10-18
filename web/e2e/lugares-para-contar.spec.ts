@@ -88,6 +88,10 @@ test('desplazar la lista no mueve nada; 500 ms sobre ≡ levanta y arrastrar de 
   await page.screenshot({ path: `${CAPTURAS}/antes-de-soltar.png` });
   await page.mouse.up();
   await expect.poll(async () => (await nombres(request))[0], { timeout: 10_000 }).toBe(ultimo);
+  // El aviso para lectores de pantalla, en español y con el nombre (no «Draggable item 95…»).
+  const avisos = (await page.locator('[aria-live]').allTextContents()).join(' ');
+  expect(avisos, 'aviso del arrastre').toContain(`«${ultimo}» quedó en el lugar de`);
+  expect(avisos).not.toMatch(/Draggable item/);
   await page.screenshot({ path: `${CAPTURAS}/arrastrado.png` });
   // Regresa el orden que tenía.
   const ids = (await api(request, 'get', '/stock/count-places')) as { id: number; name: string }[];
