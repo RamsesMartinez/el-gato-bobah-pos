@@ -2,7 +2,8 @@
 .PHONY: help deploy-journald install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
         sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import fudo-composiciones reset-admin reset-password build deploy \
-        prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo db-restaurar worktree-env test-integration
+        prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo db-restaurar worktree-env test-integration \
+        nuevo-worktree cerrar-worktree
 .DEFAULT_GOAL := help
 
 # Puertos de la infra dev. Son env con default (y no un número fijo) porque el 5433/6380 de
@@ -98,6 +99,12 @@ web-lint: ## Lint frontend (eslint + tsc)
 	cd web && bun run lint && bun run typecheck
 web-audit: ## Auditoría de deps del frontend
 	cd web && bun audit || true
+nuevo-worktree: ## Worktree de una feature nueva, de cero a la API respondiendo: make nuevo-worktree n=041 slug=subidas-sin-corte
+	@bash scripts/nuevo-worktree.sh "$(n)" "$(slug)"
+
+cerrar-worktree: ## Apaga y quita el worktree de una feature: make cerrar-worktree dir=../egb-041-x [datos=1]
+	@bash scripts/cerrar-worktree.sh "$(dir)" $(if $(datos),--datos,)
+
 worktree-env: ## Infra propia para este worktree (Postgres, pruebas, Redis, puertos): make worktree-env n=35
 	@bash scripts/worktree-env.sh "$(n)"
 
