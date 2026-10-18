@@ -25,6 +25,10 @@ pre-commit:
     scripts-test:
       glob: "scripts/{restaurar-respaldo,worktree-env-load}.sh"
       run: bash scripts/tests/restaurar-respaldo-test.sh
+    # Cerrar un worktree borra su carpeta, su rama y (con datos=1) su base.
+    cerrar-worktree-test:
+      glob: "{scripts/{cerrar-worktree,stop,guard-shared-compose,worktree-env-load}.sh,scripts/tests/cerrar-worktree-test.sh,Makefile}"
+      run: bash scripts/tests/cerrar-worktree-test.sh
     # El que mueve el tráfico de producción entre los dos lados de la API (spec 041): sus caminos de
     # falla no se ven en una subida que sale bien.
     deploy-azul-verde-test:
