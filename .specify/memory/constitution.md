@@ -151,6 +151,27 @@ un no-op y la migración pasa verde para romper en producción.
 - Un defecto que el ensayo manual encontró y el test no habría encontrado significa que falta ese
   test, no que el ensayo baste.
 
+#### Toda migración tolera a la versión anterior de la API corriendo (NO NEGOCIABLE)
+
+**Desde la spec 041 una subida arranca la API nueva junto a la vieja**, y la nueva migra al
+arrancar mientras la vieja sigue atendiendo contra la misma base. Durante esos segundos, el
+esquema ya es el nuevo y el código que lo usa todavía es el viejo.
+
+- **Primero se agrega, después se quita, nunca las dos cosas en la misma subida.** Una columna o
+  tabla nueva entra en una subida (nullable o con default, para que el insert viejo siga
+  funcionando); el código deja de usar la vieja en esa misma subida o en otra; y la vieja se borra
+  en una subida **posterior**, cuando ya ninguna versión en producción la lee.
+- **Renombrar es agregar y quitar**: dos subidas, nunca un `rename` que deje a la versión anterior
+  preguntando por un nombre que ya no existe.
+- **Un `not null` nuevo, un `check` más estricto o un tipo más angosto** también rompe a la versión
+  anterior si ella escribe lo que la regla nueva rechaza: va en la subida siguiente a la que deja de
+  escribirlo.
+- **Cómo se ve si se rompe**: errores 500 de la versión vieja durante el traslape, con la API
+  «sana» y el despliegue en verde, porque la que se revisa es la nueva.
+- Un plan que quite o renombre algo que la versión en producción lee, en la misma subida, es un
+  hallazgo de `/speckit-analyze` y del `db-architect`. Si de verdad no se puede partir, el plan lo
+  dice y el dueño acepta el corte por escrito.
+
 ### V. Seguridad verificada adversarialmente (NO NEGOCIABLE)
 
 Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/security-owasp.md](../../docs/security-owasp.md)). Estos helpers **ya existen**: úsalos, no reinventes.
@@ -402,4 +423,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.23.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-17
+**Version**: 1.24.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-18
