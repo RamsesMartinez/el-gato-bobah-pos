@@ -70,7 +70,7 @@ deps-up: ## Levanta postgres + redis (dev)
 	docker compose -f deploy/docker-compose.dev.yml up -d
 deps-down: ## Detiene postgres + redis (dev)
 	@bash scripts/guard-shared-compose.sh
-	docker compose -f deploy/docker-compose.dev.yml down
+	docker compose -f deploy/docker-compose.dev.yml --profile test down
 
 # --- Frontend ---
 web-dev: ## Frontend en dev (Vite, http://localhost:3000)
@@ -102,7 +102,7 @@ web-audit: ## Auditoría de deps del frontend
 nuevo-worktree: ## Worktree de una feature nueva, de cero a la API respondiendo: make nuevo-worktree n=041 slug=subidas-sin-corte
 	@bash scripts/nuevo-worktree.sh "$(n)" "$(slug)"
 
-cerrar-worktree: ## Apaga y quita el worktree de una feature: make cerrar-worktree dir=../egb-041-x [datos=1]
+cerrar-worktree: ## Apaga y quita el worktree: desde dentro, make cerrar-worktree [datos=1]; desde otro, dir=../egb-041-x
 	@bash scripts/cerrar-worktree.sh "$(dir)" $(if $(datos),--datos,)
 
 worktree-env: ## Infra propia para este worktree (Postgres, pruebas, Redis, puertos): make worktree-env n=35

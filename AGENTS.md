@@ -121,7 +121,8 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   el servidor de Postgres— dejaron «db_down» la API local que usaba ese servidor.
 
   **Cada feature arranca en su propio worktree, con un solo comando** (decidido el 2026-10-17). Desde
-  cualquier carpeta del repo: **`make nuevo-worktree n=041 slug=subidas-sin-corte`**
+  cualquier worktree (**no desde `~/git/el-gato-bobah-pos`**: es un repositorio bare, solo guarda la
+  historia y no tiene `Makefile`): **`make nuevo-worktree n=041 slug=subidas-sin-corte`**
   ([nuevo-worktree.sh](scripts/nuevo-worktree.sh)). Crea `../egb-041-subidas-sin-corte` con la rama
   `041-subidas-sin-corte` desde `origin/develop`, corre `worktree-env`, crea `deploy/.env` con
   secretos nuevos y valores locales para lo que `check-env` deja de ejemplo (`ADMIN_PASSWORD`,
@@ -129,9 +130,11 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   dependencias de `web/` (`node_modules` no viaja con el worktree), levanta `make start` en segundo
   plano (log en `/tmp/egbNN-start.log`) y espera `/readyz`. Arrancar la 041 a mano costó cinco
   vueltas, cada error visible solo al fallar el anterior. Al terminar la feature:
-  **`make cerrar-worktree dir=../egb-041-subidas-sin-corte`** ([cerrar-worktree.sh](scripts/cerrar-worktree.sh);
-  `datos=1` borra también sus volúmenes). Se niega con cambios sin commit o commits que no están en
-  origin, y nunca toca el proyecto `deploy` de la carpeta principal. La skill `/nuevo-spec` los usa.
+  **`make cerrar-worktree`** desde dentro de ese worktree, o `make cerrar-worktree dir=../egb-041-…` desde
+  otro ([cerrar-worktree.sh](scripts/cerrar-worktree.sh); `datos=1` borra también sus volúmenes). Baja
+  también el Postgres de pruebas (perfil `test`). Se niega con cambios sin commit o commits que no
+  están en origin, y nunca toca el proyecto `deploy` de la carpeta principal. Lo cubre
+  [cerrar-worktree-test.sh](scripts/tests/cerrar-worktree-test.sh). La skill `/nuevo-spec` los usa.
 
   Lo que hace por dentro, si hay que hacerlo a mano: antes del primer `make start`, **`make worktree-env n=NN`**, con NN el número
   de la feature (035 → 35). Escribe `.env.worktree.local` (ignorado por git), que leen el Makefile,
