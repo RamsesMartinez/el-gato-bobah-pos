@@ -517,6 +517,18 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   crea con `PLATFORM_OPERATOR_USERNAME=… PLATFORM_OPERATOR_PASSWORD=… ./api -reset-platform-operator`
   (la tabla nace vacía: una credencial sembrada por una migración vive en este repositorio, que es
   público).
+- **En producción no se prueba; después de subir solo se revisa la salud** (decidido el
+  2026-10-17). Las pruebas —e2e, quickstart, usuario sin contexto, scripts que escriben— corren en
+  el ambiente de pruebas (`app-dev`/`api-dev`), que es para eso; repetirlas en producción es
+  redundante y escribe en los datos de un negocio que está operando. Tras una subida a `main`, lo que
+  se revisa es de solo lectura y sin sesión:
+  - `GET https://api.elgatobobah.com/healthz` → `{"status":"ok"}` (el proceso vive) y
+    `GET /readyz` → `{"status":"ready"}` (además alcanza la base; 503 `db_down` si no).
+  - El job de despliegue de CI en verde: la imagen lleva el SHA del commit, así que eso dice qué
+    versión corre. (`/api/v1/version` también lo dice, pero pide sesión.)
+  - Los logs de la API en el journal, sin errores ni 5xx desde la subida.
+  Antes de subir se toma el respaldo (`/usr/local/bin/respaldo-gatobobah.sh` en la VM): solo lee la
+  base y guarda una copia aparte; no la detiene ni la sobrescribe.
 - `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y hace `up -d`. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído.
 - **La bitácora de la API se guarda 30 días en el journal de la VM**, no en el archivo del
   contenedor: ése se borra en cada deploy y llegaba a ~5 días. `make deploy-image` instala
