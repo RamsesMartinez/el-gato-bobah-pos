@@ -77,7 +77,8 @@ export function CountPlacesSettings() {
       {shown.length === 0 && <Text color="fg.muted" py={2}>Todavía no hay lugares.</Text>}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} autoScroll
         accessibility={{
-          announcements: placeAnnouncements((id) => shown.find((p) => p.id === Number(id))?.name ?? ''),
+          announcements: placeAnnouncements((id) => shown.find((p) => p.id === Number(id))?.name ?? '',
+            (id) => shown.findIndex((p) => p.id === Number(id)), shown.length),
           screenReaderInstructions: { draggable: 'Para mover un lugar, presiona espacio, muévelo con las flechas y vuelve a presionar espacio.' },
         }}>
         <SortableContext items={shown.map((p) => p.id)} strategy={verticalListSortingStrategy}>
