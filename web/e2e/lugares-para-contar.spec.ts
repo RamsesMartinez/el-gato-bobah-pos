@@ -101,12 +101,10 @@ test('el lugar del artículo se elige en dos toques y sin teclado', async ({ pag
   await entrar(page);
   await page.goto('/almacen');
   await page.getByRole('tab', { name: 'Artículos' }).click();
-  // T025: el lugar se ve en la lista, sin abrir nada.
+  // T025/T027: el lugar tiene su propio botón en el renglón del artículo, aparte de los empaques.
   const fila = page.getByRole('row').filter({ has: page.getByRole('button', { name: `Cómo llega ${articulo!.name}` }) });
-  await expect(fila).toContainText(/Lugar: |Sin lugar/);
-  await expect(page.getByRole('button', { name: `Cómo llega ${articulo!.name}` })).toContainText(/lugar/);
-  await page.getByRole('button', { name: `Cómo llega ${articulo!.name}` }).click();
-  const renglon = page.getByText('Lugar', { exact: true }).locator('..').getByRole('button').first();
+  await expect(page.getByRole('button', { name: `Cómo llega ${articulo!.name}` })).toContainText('Empaques');
+  const renglon = fila.getByText('Lugar', { exact: true }).locator('..').getByRole('button').first();
   await expect(renglon).toBeVisible();
   const destino: string = (await nombres(request))[1];
   let toques = 0;
@@ -129,5 +127,7 @@ test('el conteo dice el orden de los lugares y lleva a ordenarlos', async ({ pag
   await page.getByRole('button', { name: 'Cambiar el orden ›' }).click();
   await expect(page).toHaveURL(/\/negocio#lugares$/);
   await expect(page.getByText('Mantén presionada ≡ para mover un lugar')).toBeInViewport();
+  await page.getByRole('button', { name: '‹ Volver al conteo' }).click();
+  await expect(page.getByText(/^Se recorre en este orden: /)).toBeVisible();
   await page.screenshot({ path: `${CAPTURAS}/desde-el-conteo.png` });
 });

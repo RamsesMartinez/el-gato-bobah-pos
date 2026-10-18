@@ -67,7 +67,7 @@ las dos pantallas; Playwright a 1024×600 contra el ambiente de pruebas
 
 | Pantalla | Dónde vive | Cómo se reparte el alto de 1024×600 |
 |---|---|---|
-| **Lugar del artículo** | Almacén › Artículos, en la hoja del artículo donde hoy está el campo de texto: un renglón «Lugar: Refri ›» (sin lugar: «Lugar: Sin lugar ›») que abre el `Picker` con `clearable` y `clearLabel="Sin lugar"`, los lugares en su orden y su alta propia (`onCreate`): con el buscador vacío dice «¿No está en la lista? Escribe su nombre y podrás crearlo aquí»; al escribir aparece «Crear «x»». El buscador **no** toma el foco al abrir, para que el teclado del sistema no tape la hoja en 600 px. Si el nombre ya existe con otra mayúscula, elige el existente y lo dice: «Ya tenías «Refri»; quedó elegido». | Un renglón de 52 px; la hoja es la del `Picker` |
+| **Lugar del artículo** | Almacén › Artículos, con su propio botón en el renglón de cada artículo («Lugar  Refri ›», T027; la hoja de empaques ya no lo mezcla), y en cada renglón del conteo: un renglón «Lugar: Refri ›» (sin lugar: «Lugar: Sin lugar ›») que abre el `Picker` con `clearable` y `clearLabel="Sin lugar"`, los lugares en su orden y su alta propia (`onCreate`): con el buscador vacío dice «¿No está en la lista? Escribe su nombre y podrás crearlo aquí»; al escribir aparece «Crear «x»». El buscador **no** toma el foco al abrir, para que el teclado del sistema no tape la hoja en 600 px. Si el nombre ya existe con otra mayúscula, elige el existente y lo dice: «Ya tenías «Refri»; quedó elegido». | Un renglón de 52 px; la hoja es la del `Picker` |
 | **Lugares** | Negocio › Inventario, sección nueva junto a «Motivos y tope»: título «Lugares» con «Agregar lugar» (44 px) a la derecha en la misma línea, una línea de 14 px «Mantén presionada ≡ para mover un lugar», y la lista en orden de recorrido; cada renglón en una sola línea: agarradera ≡ de 52 px, «1  Refri · 12 artículos» y Editar a la derecha. **Arrastre**: dnd-kit (ya está en el proyecto) con `PointerSensor` `delay: 500, tolerance: 8` como `CategoryRail` (no `distance` como `GroupOptions`); `touch-action: none`, `user-select: none` y `-webkit-touch-callout: none` **solo en la agarradera**, `pan-y` en el resto del renglón para que la lista se desplace; `autoScroll` de dnd-kit activo sobre el contenedor que desplaza (la página de Negocio), para llevar la fila 10 a la 1; `KeyboardSensor` con `sortableKeyboardCoordinates` y `aria-label="Mover {nombre}"`. Sin otra forma de reordenar (decisión del dueño, 2026-10-16: solo arrastrar). Editar abre una hoja con el nombre, Guardar, y «Archivar» rojo a ≥ 48 px de Guardar; sin artículos confirma en una línea («Se archiva «Refri». Ya no aparece en las listas»); con artículos pregunta a qué lugar pasan (o «Sin lugar»). | Sección dentro de una pantalla que ya existe: ~64 px de encabezado y renglones de 56 px |
 
 | Pantalla | Maquetas | Elegida | Por qué |
@@ -138,6 +138,12 @@ dueño: solo arrastrar.
   Almacén): el conteo, antes de empezar, dice el orden del recorrido y lleva a Negocio › Lugares
   (T026). El botón del lugar mostraba el valor viejo tras elegir: la hoja del artículo guarda una
   copia al abrirse; ahora `PlaceChooser` muestra lo elegido de inmediato.
+- La tercera vuelta de T022 hizo las tres tareas sin ayuda y dejó palabras que confunden. Las de
+  esta feature se corrigieron (T027): el lugar tiene su propio botón en el renglón de Artículos y la
+  hoja de empaques ya no lo mezcla; «Sin empaques»; destinos de archivar con borde; «‹ Volver al
+  conteo». **Fuera de alcance, a propósito**: «Se compra hecho ›» (columna Receta, spec 037) y «Se
+  cuenta en g» (hoja de empaques, spec 038) son textos de otras features y no estorbaron ninguna
+  tarea; el lugar «jkk» en el ambiente de pruebas lo creó una persona, no esta feature.
 - El arrastre y las flechas del teclado no se pueden simular en jsdom (todo mide 0 px): vitest solo
   verifica que la agarradera se ofrece al teclado; el arrastre lo mide `web/e2e/lugares-para-contar.spec.ts`.
 

@@ -8,6 +8,7 @@ import { CompositionSheet } from '../../shared/CompositionSheet';
 import { backofficeApi } from '../../api/backoffice';
 import { Page } from '../../components/Page';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
+import { PlaceChooser } from './CountPlaceField';
 import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
 import { InventoryHealthTab } from './InventoryHealthTab';
@@ -145,15 +146,21 @@ export function StockPage() {
                           <HStack gap={2} justify="space-between">
                             <Box>
                               <Text fontSize="sm">{on.length ? on.slice(0, 2).map(label).join(' · ') + (on.length > 2 ? ` · +${on.length - 2}` : '') : ''}</Text>
-                              {on.length === 0 && <Text fontSize="sm" color="fg.muted">Todavía no dices cómo llega</Text>}
+                              {on.length === 0 && <Text fontSize="sm" color="fg.muted">Sin empaques</Text>}
                               {off.length > 0 && <Text fontSize="xs" color="fg.muted">Ya no llega en: {off.map((p) => p.name).join(', ')}</Text>}
-                              {/* El lugar a la vista: quien no lo conocía no lo encontró en otra parte (040, T022). */}
-                              <Text fontSize="xs" color="fg.muted">{i.countPlace ? `Lugar: ${i.countPlace}` : 'Sin lugar'}</Text>
+                              {/* El lugar con su propio botón: «+ Empaque o lugar» juntaba dos cosas y quien no
+                                  lo conocía no lo encontraba (040, T022). */}
+                              {canCount && (
+                                <HStack gap={2} mt={1}>
+                                  <Text fontSize="xs" color="fg.muted">Lugar</Text>
+                                  <PlaceChooser ingredientId={i.id} placeId={i.countPlaceId ?? null} title={`¿Dónde está ${i.name}?`} />
+                                </HStack>
+                              )}
                             </Box>
                             {canConfigure && (
                               <Button aria-label={`Cómo llega ${i.name}`} size="sm" variant="outline" minH="44px" flexShrink={0}
-                                onClick={() => setPackaging({ id: i.id, name: i.name, baseUnitCode: i.baseUnitCode, baseUnitKind: i.baseUnitKind, countPlaceId: i.countPlaceId ?? null })}>
-                                {on.length ? 'Cambiar o poner lugar ›' : '+ Empaque o lugar'}
+                                onClick={() => setPackaging({ id: i.id, name: i.name, baseUnitCode: i.baseUnitCode, baseUnitKind: i.baseUnitKind })}>
+                                {on.length ? 'Empaques ›' : '+ Empaques'}
                               </Button>
                             )}
                           </HStack>

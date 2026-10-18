@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react';
 import { LuCheck, LuMenu } from 'react-icons/lu';
@@ -34,9 +35,12 @@ export function CountPlacesSettings() {
   const refresh = () => qc.invalidateQueries({ queryKey: ['count-places'] });
   // Desde el conteo se llega con #lugares: la sección vive al fondo de Negocio.
   const box = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const fromCount = location.hash === '#lugares';
   useEffect(() => {
-    if (window.location.hash === '#lugares' && places.length > 0) box.current?.scrollIntoView?.({ block: 'start' });
-  }, [places.length]);
+    if (fromCount && places.length > 0) box.current?.scrollIntoView?.({ block: 'start' });
+  }, [fromCount, places.length]);
 
   const shown = order ? order.map((id) => places.find((p) => p.id === id)).filter((p): p is CountPlace => !!p) : places;
   const move = useMutation({
@@ -62,7 +66,11 @@ export function CountPlacesSettings() {
     <Box ref={box} id="lugares" mt={6} borderWidth="1px" borderRadius="lg" p={5}>
       <Flex justify="space-between" align="center" gap={3}>
         <Text fontWeight="700">Lugares</Text>
-        <Button minH="44px" variant="outline" onClick={() => setAdding(true)}>Agregar lugar</Button>
+        <HStack gap={2}>
+          {/* Quien llegó desde el conteo no sabía cómo volver: el menú lateral ya no lo lleva ahí. */}
+          {fromCount && <Button minH="44px" variant="ghost" onClick={() => navigate('/almacen?tab=conteo')}>‹ Volver al conteo</Button>}
+          <Button minH="44px" variant="outline" onClick={() => setAdding(true)}>Agregar lugar</Button>
+        </HStack>
       </Flex>
       <Text fontSize="sm" color="fg.muted" mb={2}>Mantén presionada ≡ para mover un lugar</Text>
       {shown.length === 0 && <Text color="fg.muted" py={2}>Todavía no hay lugares.</Text>}
@@ -155,7 +163,7 @@ function EditSheet({ place, others, onClose, onDone }: {
             <VStack align="stretch" gap={0}>
               <Text mb={2}>{place.name} tiene {articles(place.ingredients)}. ¿A qué lugar pasan?</Text>
               {[...others.map((o) => ({ id: o.id as number | null, name: o.name })), { id: null, name: 'Sin lugar' }].map((o) => (
-                <Button key={String(o.id)} minH="52px" justifyContent="space-between" variant={dest === o.id ? 'solid' : 'ghost'}
+                <Button key={String(o.id)} minH="52px" justifyContent="space-between" variant={dest === o.id ? 'solid' : 'outline'}
                   aria-pressed={dest === o.id} onClick={() => setDest(o.id)}>
                   {o.name}{dest === o.id && <LuCheck aria-hidden />}
                 </Button>

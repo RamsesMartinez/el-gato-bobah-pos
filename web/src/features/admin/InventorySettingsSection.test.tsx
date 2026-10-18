@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router';
 import { Provider } from '../../components/ui/provider';
 import { InventorySettingsSection } from './InventorySettingsSection';
 
@@ -16,7 +17,7 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 function montar() {
-  render(<QueryClientProvider client={new QueryClient()}><Provider><InventorySettingsSection /></Provider></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient()}><Provider><MemoryRouter><InventorySettingsSection /></MemoryRouter></Provider></QueryClientProvider>);
 }
 
 describe('Almacén en Configuración del negocio (spec 038)', () => {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { Provider } from '../../components/ui/provider';
 import { ApiError } from '../../api/client';
 import { CountPlacesSettings } from './CountPlacesSettings';
@@ -21,13 +22,26 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-function montar() {
+function montar(hash = '') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={qc}><Provider><CountPlacesSettings /></Provider></QueryClientProvider>);
+  render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={[`/negocio${hash}`]}>
+    <Routes><Route path="/negocio" element={<CountPlacesSettings />} /><Route path="/almacen" element={<p>Conteo abierto aquí</p>} /></Routes>
+  </MemoryRouter></Provider></QueryClientProvider>);
 }
 const row = async (name: string) => (await screen.findByText(name, { exact: true })).closest('[data-place]') as HTMLElement;
 
 describe('lugares del recorrido (spec 040, maqueta C)', () => {
+  // La tercera prueba sin contexto llegó desde el conteo y no supo cómo volver.
+  test('si se llegó desde el conteo, ofrece volver a él', async () => {
+    montar('#lugares');
+    fireEvent.click(await screen.findByRole('button', { name: '‹ Volver al conteo' }));
+    expect(await screen.findByText('Conteo abierto aquí')).toBeInTheDocument();
+    cleanup();
+    montar();
+    await screen.findByText('Lugares');
+    expect(screen.queryByRole('button', { name: '‹ Volver al conteo' })).toBeNull();
+  });
+
   test('cada renglón en una línea con su agarradera; «Agregar lugar» junto al título', async () => {
     montar();
     expect(within(await row('Refri')).getByText('12 artículos')).toBeInTheDocument();
