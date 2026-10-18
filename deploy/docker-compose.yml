@@ -1,4 +1,10 @@
-# Producción (VPS): api + postgres + redis + caddy (TLS del subdominio de la API).
+# Producción (VPS): api-blue + api-green + postgres + redis + caddy (TLS del subdominio de la API).
+#
+# DOS LADOS DE LA API (spec 041). Solo uno recibe tráfico: el que nombra deploy/upstream/activo.caddy,
+# que Caddy importa. Una subida arranca el otro, espera su /readyz, cambia el archivo, recarga Caddy
+# sin cortar y apaga el viejo (scripts/deploy-azul-verde.sh). NUNCA `docker compose up -d` sin nombrar
+# servicio: levantaría los dos lados, y el que no está en activo.caddy correría sin tráfico pero con
+# sus procesos de fondo.
 # El frontend ya NO se sirve aquí — vive en Cloudflare Pages (ver web/public/_headers).
 
 # Cap de logs para que ningún contenedor llene el disco del VPS.
@@ -11,14 +17,15 @@ x-logging: &default-logging
 # La API va al journal del host: sobrevive a cada deploy y se guarda 30 días (deploy/journald.conf).
 # Ahí queda la IP de cada request. `docker logs` sigue funcionando por la caché local de Docker.
 # Consulta (la VM está en UTC: las 18:00 de CDMX son las 00:00 UTC del día siguiente):
-#   journalctl CONTAINER_NAME=deploy-api-1 --since "2026-09-15 00:00" --until "2026-09-15 04:00" -o cat
+#   journalctl SYSLOG_IDENTIFIER=api --since "2026-09-15 00:00" --until "2026-09-15 04:00" -o cat
+# Los dos lados escriben con la misma etiqueta: la bitácora se lee igual sin saber cuál atendía.
 x-logging-journal: &journal-logging
   driver: journald
   options:
-    tag: "{{.Name}}"
+    tag: api
 
 services:
-  api:
+  api-blue: &api
     # La imagen la compila y publica CI (job `image` en ci.yml) y el VPS solo la BAJA: en un
     # e2-micro de 1 vCPU/1 GB compilar tarda ~30 min y puede morir por OOM. API_IMAGE lo pasa
     # el deploy con el tag del commit exacto; el default sirve para levantar a mano.
@@ -62,6 +69,7 @@ services:
       SMTP_PASS: ${SMTP_PASS}
       MAIL_FROM: ${MAIL_FROM}
       APP_BASE_URL: ${APP_BASE_URL}
+    # Cada lado su propio volumen de bitácora: dos procesos rotando el mismo archivo se pisan.
     volumes:
       - apilogs:/logs
     depends_on:
@@ -73,6 +81,11 @@ services:
       timeout: 3s
       retries: 3
     restart: unless-stopped
+
+  api-green:
+    <<: *api
+    volumes:
+      - apilogs_green:/logs
 
   postgres:
     image: postgres:16-alpine
@@ -112,11 +125,14 @@ services:
       API_DOMAIN: ${API_DOMAIN:-api.elgatobobah.com}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # El DIRECTORIO, no el archivo: el despliegue reescribe activo.caddy con tmp + mv, y un bind
+      # mount de archivo se queda con el inodo viejo.
+      - ./upstream:/etc/caddy/upstream:ro
       - caddy_data:/data
-    depends_on: [api]
     restart: unless-stopped
 
 volumes:
   pgdata: {}
   caddy_data: {}
   apilogs: {}
+  apilogs_green: {}

@@ -170,6 +170,10 @@ func Error(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrCredentialsMissingScopes):
 		status, code = http.StatusUnprocessableEntity, "PLATFORM_CREDENTIALS_MISSING_SCOPES"
 		msg = domain.ErrCredentialsMissingScopes.Error()
+	case errors.Is(err, domain.ErrShuttingDown):
+		// 503: la copia que se apaga; el reintento cae en la que ya atiende.
+		status, code = http.StatusServiceUnavailable, "SHUTTING_DOWN"
+		msg = domain.ErrShuttingDown.Error()
 	case errors.Is(err, domain.ErrPlatformUnavailable):
 		// 503: no es culpa de quien captura y reintentar más tarde es lo correcto.
 		status, code = http.StatusServiceUnavailable, "PLATFORM_UNAVAILABLE"

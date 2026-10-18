@@ -59,6 +59,23 @@ describe('usePedidosDePlataforma', () => {
     await waitFor(() => expect(api.pedidosPendientes).toHaveBeenCalledTimes(2));
   });
 
+  // Un pedido que entró por la copia vieja de la API durante una subida (spec 041) no llega como
+  // aviso a quien ya está en la nueva: se recupera al reconectar, no 30 segundos después.
+  it('al reconectarse vuelve a pedir los pendientes, y al conectarse la primera vez no', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(() => usePedidosDePlataforma(), { wrapper: envolver(qc) });
+    await waitFor(() => expect(api.pedidosPendientes).toHaveBeenCalledTimes(1));
+    const es = FakeEventSource.ultima!;
+
+    es.emitir('open');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.pedidosPendientes).toHaveBeenCalledTimes(1);
+
+    es.emitir('error');
+    es.emitir('open');
+    await waitFor(() => expect(api.pedidosPendientes).toHaveBeenCalledTimes(2));
+  });
+
   // Y CUANDO OTRA TABLETA YA LO ATENDIÓ. Sin esto, la segunda sigue mostrando la alarma y quien la
   // toque encuentra un botón que ya no hace nada.
   it('se entera de que otra tableta ya decidió', async () => {

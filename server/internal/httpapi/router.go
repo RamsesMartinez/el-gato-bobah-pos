@@ -31,6 +31,11 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 		JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	r.Get("/readyz", func(w http.ResponseWriter, req *http.Request) {
+		// Una copia que se apaga deja de anunciarse lista: si algo le vuelve a mandar tráfico, se ve.
+		if h.shuttingDown.Load() {
+			JSON(w, http.StatusServiceUnavailable, map[string]string{"status": "shutting_down"})
+			return
+		}
 		ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)
 		defer cancel()
 		if err := st.Pool.Ping(ctx); err != nil {

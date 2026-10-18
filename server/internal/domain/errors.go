@@ -7,7 +7,9 @@ import (
 
 // Sentinel domain errors. The HTTP layer maps these to status codes + error codes.
 var (
-	ErrNotFound           = errors.New("no encontrado")
+	ErrNotFound = errors.New("no encontrado")
+	// ErrShuttingDown: esta copia de la API se está apagando (spec 041); la otra ya atiende.
+	ErrShuttingDown       = errors.New("el servidor se está reiniciando; vuelve a intentar")
 	ErrUnauthorized       = errors.New("no autenticado")
 	ErrForbidden          = errors.New("sin permisos")
 	ErrInvalidCredentials = errors.New("credenciales inválidas")

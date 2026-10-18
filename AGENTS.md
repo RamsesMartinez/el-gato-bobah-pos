@@ -547,12 +547,15 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - Los logs de la API en el journal, sin errores ni 5xx desde la subida.
   Antes de subir se toma el respaldo (`/usr/local/bin/respaldo-gatobobah.sh` en la VM): solo lee la
   base y guarda una copia aparte; no la detiene ni la sobrescribe.
-- `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y hace `up -d`. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído.
+- `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y la sube **azul/verde** con [deploy-azul-verde.sh](scripts/deploy-azul-verde.sh) (spec 041): la nueva arranca junto a la vieja, Caddy cambia de lado con un reload cuando la nueva responde `/readyz`, y la vieja termina lo que traía. Si la nueva no queda lista, el tráfico no se mueve y el deploy falla. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído y pasa por el mismo script. Runbook: [docs/despliegue-sin-corte.md](docs/despliegue-sin-corte.md).
+  - **Nunca `docker compose -f deploy/docker-compose.yml up -d` sin nombrar servicio**: levanta los dos lados de la API.
+  - **Una migración tolera a la versión anterior corriendo** (constitución IV): durante la subida las dos versiones usan la misma base.
 - **La bitácora de la API se guarda 30 días en el journal de la VM**, no en el archivo del
   contenedor: ése se borra en cada deploy y llegaba a ~5 días. `make deploy-image` instala
   [deploy/journald.conf](deploy/journald.conf) (necesita `sudo` sin password en la VM). Ahí queda la
   IP y el usuario de cada request; se lee con
-  `sudo journalctl CONTAINER_NAME=deploy-api-1 --since "…" -o cat`, **en hora UTC**. Lo demás
+  `sudo journalctl SYSLOG_IDENTIFIER=api --since "…" -o cat`, **en hora UTC** — los dos lados (azul y
+  verde) escriben con esa etiqueta. Lo anterior a la spec 041 está bajo `CONTAINER_NAME=deploy-api-1`. Lo demás
   (postgres, redis, caddy) sigue en el archivo del contenedor: cambiarles el driver los recrea, y
   postgres se reinicia a media operación.
 - `make sqlc` (regenera código de queries) · `make migrate-new name=xxx` (nueva migración goose).

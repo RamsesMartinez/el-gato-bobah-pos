@@ -175,12 +175,12 @@ build: ## Build de imágenes de producción (API + web, self-contained, sin bun 
 deploy: deploy-journald ## Deploy compilando en la máquina local (fallback; en el VPS usa deploy-image)
 	@bash scripts/check-env.sh || (echo "Configura deploy/.env antes de desplegar"; exit 1)
 	$(MAKE) build
-	docker compose -f deploy/docker-compose.yml up -d
+	@# Por el mismo azul/verde (spec 041); la imagen se compiló aquí y no hay que bajarla.
+	SKIP_PULL=1 bash scripts/deploy-azul-verde.sh
 deploy-image: deploy-journald ## Deploy bajando la imagen ya compilada por CI (API_IMAGE=ghcr.io/...:sha-xxxx)
 	@bash scripts/check-env.sh || (echo "Configura deploy/.env antes de desplegar"; exit 1)
-	docker compose -f deploy/docker-compose.yml pull api
-	docker compose -f deploy/docker-compose.yml up -d
-	@docker image prune -f >/dev/null 2>&1 || true
+	@# Azul/verde (spec 041): la nueva arranca junto a la vieja y Caddy cambia sin cortar.
+	bash scripts/deploy-azul-verde.sh
 
 # Solo reinicia journald si la config cambió. Falla ruidoso sin sudo: un deploy que deja la
 # bitácora en memoria sin decirlo es justo lo que esto viene a quitar.

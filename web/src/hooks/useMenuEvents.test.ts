@@ -53,6 +53,24 @@ describe('useMenuEvents', () => {
     );
   });
 
+  // Una subida cambia de copia de la API (spec 041) y los avisos de la copia vieja no cruzan: lo que
+  // cambió durante el traslape solo se ve si la tableta vuelve a pedir al reconectarse.
+  it('al reconectarse vuelve a pedir el menú, y al conectarse la primera vez no', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidar = vi.spyOn(qc, 'invalidateQueries');
+    renderHook(() => useMenuEvents(), { wrapper: envoltura(qc) });
+    const es = FakeEventSource.ultima!;
+
+    es.emitir('open');
+    expect(invalidar).not.toHaveBeenCalled();
+
+    es.emitir('error');
+    es.emitir('open');
+    await waitFor(() =>
+      expect(invalidar).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ['menu'] })),
+    );
+  });
+
   // Sin sesión no hay a quién suscribirse, y abrir el EventSource igual dejaría al backend
   // rechazando una conexión por tablet en la pantalla de login.
   it('sin token no abre la conexión', () => {

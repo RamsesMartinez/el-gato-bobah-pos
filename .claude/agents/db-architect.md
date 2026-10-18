@@ -54,6 +54,7 @@ Reporta solo hallazgos accionables, cada uno con `archivo:línea`, el porqué y 
 
 - **Toda migración tiene su `-- +goose Down` y de verdad revierte.** Un Down que no existe o miente es un hallazgo.
 - **Nunca se edita una migración ya aplicada en producción**: se escribe una nueva.
+- **La versión anterior de la API sigue corriendo mientras la migración se aplica** (constitución IV, *Toda migración tolera a la versión anterior*): una subida arranca la API nueva junto a la vieja. Quitar, renombrar o endurecer (`not null`, `check`, tipo más angosto) algo que la versión en producción lee o escribe, en la misma subida en que se deja de usar, es un hallazgo: se agrega en una subida y se quita en otra.
 - Orden seguro para columna `not null` sobre tabla con datos: agregar nullable → backfill → poner `not null`. Un `not null` con default que evalúa una función se recalcula en el reescaneo — el repo ya tropezó con eso en `0022`.
 - Migración larga sobre tabla viva: di qué lock toma y cuánto bloquea. `create index` sobre una tabla con tráfico va **concurrently** (y entonces fuera de transacción, lo que goose necesita saber).
 - El esquema se migra con goose; los **datos** van con el patrón SQL numerado + rollback gemelo (`docs/reorg/`, `docs/corte-produccion/`), no con goose.
