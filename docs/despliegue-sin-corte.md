@@ -38,14 +38,14 @@ No hay que arreglar nada a mano: el siguiente `make deploy-image` parte del lado
 ## Cambiar el Caddyfile
 
 `git checkout` reemplaza el archivo y el contenedor de Caddy se queda viendo el anterior: un
-reload no basta. Hay que recrearlo, que corta ~1.5 s:
+reload no basta. Hay que recrearlo, que corta unos segundos (medido en la e2-micro del ambiente de pruebas: ~4.7 s):
 
 ```bash
 docker compose -f deploy/docker-compose.yml up -d --no-deps --force-recreate --timeout 1 caddy
 ```
 
 La primera subida con dos lados lo hace sola, por la misma razón: el Caddy de antes no tenía
-montado `deploy/upstream/`. Es el único corte del esquema, y ocurre una sola vez por máquina.
+montado `deploy/upstream/`. Es el único corte del esquema, y ocurre una sola vez por máquina: ~4.7 s medidos en el ambiente de pruebas. Decidido el 2026-10-18: se acepta, y en producción conviene hacerla a una hora sin operación.
 
 ## Bitácora
 

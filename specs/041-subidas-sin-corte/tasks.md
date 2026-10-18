@@ -81,7 +81,7 @@ Sin tareas: no hay esquema ni dependencia compartida que bloquee.
 - [X] T028 [P] Escribir `docs/despliegue-sin-corte.md`: cómo sube, cómo saber qué color está activo, cómo regresar a la versión anterior, y el `journalctl SYSLOG_IDENTIFIER=api`; agregar su renglón en `docs/README.md`
 - [X] T029 [P] Actualizar `AGENTS.md` §2/§3 (`make deploy-image`, bitácora por `tag`) y el comentario de cabecera de `deploy/docker-compose.yml` que cita `deploy-api-1`
 - [X] T030 `cd server && go build ./... && go test ./...`, `make test-integration`, `cd web && bun run lint && bun run vitest run`, `make ci-local`
-- [ ] T031 Una vez, con la versión final en el ambiente de pruebas: transición, una subida normal y una rota con `scripts/medir-corte.sh https://api-dev.elgatobobah.com/healthz`; anotar SC-001, SC-002, SC-004 y SC-006 en `quickstart.md`
+- [X] T031 Una vez, con la versión final en el ambiente de pruebas: transición, una subida normal y una rota con `scripts/medir-corte.sh https://api-dev.elgatobobah.com/healthz`; anotar SC-001, SC-002, SC-004 y SC-006 en `quickstart.md`
 - [ ] T032 Producción, solo con OK explícito del dueño: respaldo, subir, y revisar solo la salud (`/healthz`, `/readyz`, job verde, journal sin errores)
 
 ## Dependencies

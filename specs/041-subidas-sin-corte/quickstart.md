@@ -22,7 +22,7 @@
 
 1. Primera subida (transición `api` → `api-blue`) con `medir-corte` corriendo contra `https://api-dev.elgatobobah.com/healthz`.
 2. Una subida normal más y una con versión rota.
-3. Esperado: SC-001, SC-002 y SC-004 en las subidas normal y rota, y SC-006 (un solo corte, 2 s o menos) en la primera; se anotan en este archivo.
+3. Esperado: SC-001, SC-002 y SC-004 en las subidas normal y rota, y SC-006 (un solo corte, 6 s o menos) en la primera; se anotan en este archivo.
 
 ## 5. Producción
 
@@ -40,3 +40,11 @@ Con OK explícito del dueño. Tras subir, solo salud: `/healthz`, `/readyz`, job
 | Versión que no arranca (falta su configuración) | — | 0 de 350 fallidas; deploy termina en error «api-blue no quedó lista en 60 s; el tráfico sigue en legacy» | igual |
 
 Las cifras de la tabla son de la vuelta local. SC-001, SC-004 y SC-006 se cierran con la medición del ambiente de pruebas (T031).
+
+### Ambiente de pruebas (`pos-vps-dev`, e2-micro), 2026-10-18
+
+| Medición | Resultado | Criterio |
+| --- | --- | --- |
+| Primera subida (`api` → `api-blue`, recrea Caddy), por CI al mergear #106 | 14 de 154 fallidas, de 04:31:00 a 04:31:04.9 (~4.7 s). Docker tardó 4.2 s entre «Recreate» y «Recreated» de Caddy | Falló la meta original de SC-006 (≤ 2 s); el dueño aceptó el corte único y SC-006 quedó en ≤ 6 s |
+| Subida normal azul → verde (`make deploy-image` en la VM, misma imagen) | 0 de 177 fallidas, latencia máx 333 ms | SC-001 y SC-002 se cumplen |
+| Versión rota (`PLATFORM_JWT_SECRET` débil): no arranca | 0 de 249 fallidas, latencia máx 1205 ms; deploy sale 2 con «api-blue no quedó lista en 60 s; el tráfico sigue en green» | SC-004 y SC-002 se cumplen |

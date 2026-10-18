@@ -99,7 +99,7 @@ Como las dos versiones corren contra la misma base durante el traslape, la const
 
 - **La nueva queda sana y después truena** (sana en el primer chequeo, cae segundos después): el despliegue revisa de nuevo tras mover el tráfico; si cae y la vieja sigue viva, regresa el tráfico a la vieja.
 - **El despliegue se interrumpe a la mitad** (se cae la conexión de CI, se cancela el job): la configuración del proxy y las copias vivas quedan en un estado del que el siguiente despliegue parte sin intervención; nunca queda el proxy apuntando a una copia apagada.
-- **Primera subida con el esquema nuevo**: la máquina hoy tiene una sola copia con el nombre viejo, y su proxy nació sin el directorio de upstream y ve el archivo de configuración anterior (lo reemplaza `git checkout`). Hay que recrear el proxy una vez, y eso corta: medido en local, ~10 s con la espera por defecto de Docker (el proxy espera a los avisos en vivo) y ~1.5 s con espera de 1 s. Es un corte único por máquina, se dice y se mide (SC-006).
+- **Primera subida con el esquema nuevo**: la máquina hoy tiene una sola copia con el nombre viejo, y su proxy nació sin el directorio de upstream y ve el archivo de configuración anterior (lo reemplaza `git checkout`). Hay que recrear el proxy una vez, y eso corta: medido en local, ~10 s con la espera por defecto de Docker (el proxy espera a los avisos en vivo) y ~1.5 s con espera de 1 s; en el ambiente de pruebas (e2-micro), ~4.7 s. Es un corte único por máquina, se dice y se mide (SC-006).
 - **El resumen diario se cortaba a medio envío** (descubierto en la revisión de código, ya existía antes de esta feature): si la API se apagaba después de mandar el correo y antes de marcarlo, el envío quedaba «pendiente» y a los 10 minutos otra pasada lo volvía a mandar. El apagado detiene el ciclo, pero la pasada en curso termina.
 - **La migración corre al arrancar la copia nueva mientras la vieja atiende**: la vieja debe seguir funcionando con el esquema ya migrado (regla de la User Story 5); si una migración no puede cumplirla, el despliegue lo declara y se acepta el corte por escrito.
 - **Avisos en vivo durante el traslape**: cada copia sólo avisa a sus propias conexiones; un pedido creado en la vieja mientras la tableta ya está en la nueva no le llega como aviso. La tableta recupera el estado completo al reconectarse.
@@ -143,7 +143,7 @@ Como las dos versiones corren contra la misma base durante el traslape, la const
 - **SC-003**: El apagado de una copia con solo avisos en vivo abiertos tarda menos de 1 s (hoy: 10 s), y deja 0 renglones de error en el log.
 - **SC-004**: Una versión que no queda sana deja el servicio respondiendo con la anterior: 0 peticiones fallidas durante ese despliegue fallido.
 - **SC-005**: Con dos copias corriendo a la hora del resumen, sale exactamente 1 correo por empresa y día.
-- **SC-006**: La primera subida de cada máquina (paso de una copia a dos lados) corta una sola vez, 2 s o menos, medido con la misma prueba de SC-001.
+- **SC-006**: La primera subida de cada máquina (paso de una copia a dos lados) corta una sola vez, 6 s o menos, medido con la misma prueba de SC-001. La meta era 2 s; en la e2-micro Docker tarda ~4 s en recrear el proxy (medido: ~4.7 s en el ambiente de pruebas). El dueño aceptó ese corte único el 2026-10-18 en vez de construir una transición sin recrear el proxy, que dejaría la API sin destino si la VM se reinicia antes de recrearlo.
 
 ## Assumptions
 
