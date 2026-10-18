@@ -48,3 +48,10 @@ Las cifras de la tabla son de la vuelta local. SC-001, SC-004 y SC-006 se cierra
 | Primera subida (`api` → `api-blue`, recrea Caddy), por CI al mergear #106 | 14 de 154 fallidas, de 04:31:00 a 04:31:04.9 (~4.7 s). Docker tardó 4.2 s entre «Recreate» y «Recreated» de Caddy | Falló la meta original de SC-006 (≤ 2 s); el dueño aceptó el corte único y SC-006 quedó en ≤ 6 s |
 | Subida normal azul → verde (`make deploy-image` en la VM, misma imagen) | 0 de 177 fallidas, latencia máx 333 ms | SC-001 y SC-002 se cumplen |
 | Versión rota (`PLATFORM_JWT_SECRET` débil): no arranca | 0 de 249 fallidas, latencia máx 1205 ms; deploy sale 2 con «api-blue no quedó lista en 60 s; el tráfico sigue en green» | SC-004 y SC-002 se cumplen |
+
+### Producción (`pos-vps`), 2026-10-18, con OK del dueño
+
+| Medición | Resultado | Criterio |
+| --- | --- | --- |
+| Primera subida azul/verde (`api` → `api-blue`, recrea Caddy), imagen `sha-571270a`; respaldo previo `gatobobah-20261018-0438.dump` | 21 de 105 fallidas de `/healthz`, de 04:49:11.1 a 04:49:17.0 (~5.9 s) | SC-006 (≤ 6 s) se cumple, sin margen |
+| Salud después | `/healthz` ok, `/readyz` ready, job de deploy en verde, 0 ERROR y 0 respuestas 5xx en el journal; la API anterior registró «shutting down» sin error | — |
