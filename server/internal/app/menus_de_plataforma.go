@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -47,13 +48,18 @@ type MenusDePlataformaService struct {
 	clients        PlatformClients
 	ahora          func() time.Time
 	onPricesSynced func(ctx context.Context, companyID int64)
+
+	// Las lecturas que corren fuera de la petición, para que el apagado las espere (spec 041).
+	enCurso sync.WaitGroup
+	muVivas sync.Mutex
+	vivas   map[int64]int64 // lectura → empresa
 }
 
 func NewMenusDePlataformaService(s *store.Store, clients PlatformClients, now func() time.Time) *MenusDePlataformaService {
 	if now == nil {
 		now = time.Now
 	}
-	return &MenusDePlataformaService{store: s, clients: clients, ahora: now}
+	return &MenusDePlataformaService{store: s, clients: clients, ahora: now, vivas: map[int64]int64{}}
 }
 
 // OnPricesSynced registra qué hacer cuando una lectura copia precios: invalidar el menú cacheado y
@@ -317,7 +323,19 @@ func (s *MenusDePlataformaService) DispararLecturaPor(ctx context.Context, compa
 	// El contexto del request muere al responder, y con él moriría la lectura a media descarga; la
 	// goroutine arma el suyo con timeout propio. Es lo que SC-006 pide: leer 211 KB de un tercero
 	// dentro del request dejaría una conexión ocupada un segundo largo.
-	go s.correrLectura(companyID, conexionID, lectura.ID, usuarioID, con.ExternalStoreID, lector) //nolint:gosec // G118: ver arriba
+	s.enCurso.Add(1)
+	s.muVivas.Lock()
+	s.vivas[lectura.ID] = companyID
+	s.muVivas.Unlock()
+	go func() { //nolint:gosec // G118: ver arriba
+		defer func() {
+			s.muVivas.Lock()
+			delete(s.vivas, lectura.ID)
+			s.muVivas.Unlock()
+			s.enCurso.Done()
+		}()
+		s.correrLectura(companyID, conexionID, lectura.ID, usuarioID, con.ExternalStoreID, lector)
+	}()
 	return lectura.ID, lectura.StartedAt, nil
 }
 
@@ -370,13 +388,21 @@ func (s *MenusDePlataformaService) cerrarConFallo(ctx context.Context, companyID
 	// `en_curso` para siempre y la pantalla diría «se está leyendo» eternamente.
 	cierre, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	s.fallarLectura(cierre, companyID, lecturaID, clase)
+}
+
+func (s *MenusDePlataformaService) fallarLectura(ctx context.Context, companyID, lecturaID int64, clase domain.ClaseDeFallo) {
 	texto := string(clase)
-	_ = s.store.WithTenant(cierre, companyID, func(q *db.Queries) error {
-		return q.FailMenuRead(cierre, db.FailMenuReadParams{
+	_ = s.store.WithTenant(ctx, companyID, func(q *db.Queries) error {
+		return q.FailMenuRead(ctx, db.FailMenuReadParams{
 			ID: lecturaID, FailureKind: &texto,
 		})
 	})
 }
+
+// ShutdownCloseTimeout es lo que el apagado se da para marcar como fallidas las lecturas que no
+// terminaron. Entra en el presupuesto de 25 s de main.
+const ShutdownCloseTimeout = 5 * time.Second
 
 func (s *MenusDePlataformaService) ListarLecturas(ctx context.Context, conexionID int64, limite int32) ([]ResumenDeLectura, error) {
 	filas, err := s.store.QC(ctx).ListMenuReads(ctx, db.ListMenuReadsParams{ConnectionID: conexionID, Limit: limite})
@@ -388,6 +414,41 @@ func (s *MenusDePlataformaService) ListarLecturas(ctx context.Context, conexionI
 		out = append(out, *s.resumen(db.GetLastMenuReadRow(f)))
 	}
 	return out, nil
+}
+
+// Esperar regresa cuando terminan las lecturas que corren en segundo plano, o al vencer ctx.
+//
+// Lo llama el apagado: `http.Server.Shutdown` no ve estas goroutines, y el proceso moría con la
+// fila `en_curso`. Si vence el plazo, cada lectura viva se cierra como `tiempo_agotado` con la
+// empresa de ESA lectura: bajo el rol de app y sin empresa, RLS no deja ver la fila y el update no
+// haría nada sin avisar.
+func (s *MenusDePlataformaService) Esperar(ctx context.Context) error {
+	listo := make(chan struct{})
+	go func() {
+		s.enCurso.Wait()
+		close(listo)
+	}()
+	select {
+	case <-listo:
+		return nil
+	case <-ctx.Done():
+	}
+	s.muVivas.Lock()
+	vivas := make(map[int64]int64, len(s.vivas))
+	for lectura, empresa := range s.vivas {
+		vivas[lectura] = empresa
+	}
+	s.muVivas.Unlock()
+	// En paralelo y con un tope: en serie, cada una con el plazo de cerrarConFallo, varias vivas
+	// pasaban de los 30 s que Docker le da al apagado y el proceso moría a medio cierre.
+	cierre, cancel := context.WithTimeout(context.WithoutCancel(ctx), ShutdownCloseTimeout)
+	defer cancel()
+	var cerrando sync.WaitGroup
+	for lectura, empresa := range vivas {
+		cerrando.Go(func() { s.fallarLectura(cierre, empresa, lectura, domain.FalloTiempoAgotado) })
+	}
+	cerrando.Wait()
+	return fmt.Errorf("%d lectura(s) de menú sin terminar al apagar: %w", len(vivas), ctx.Err())
 }
 
 // TiempoMaximoDeLectura es lo que puede tardar una lectura antes de darse por perdida. Tiene que

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSessionStore } from '../stores/session';
+import { alReconectar } from './alReconectar';
 
 const BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -36,6 +37,7 @@ export function useOrderEvents(): boolean {
     es.addEventListener('order.created', invalidate);
     es.addEventListener('order.updated', invalidate);
     es.addEventListener('draft.updated', cuentas);
+    alReconectar(es, invalidate);
     es.onopen = () => setLive(true);
     es.onerror = () => setLive(false);
 

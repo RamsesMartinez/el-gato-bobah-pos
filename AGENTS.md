@@ -120,7 +120,20 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   comparten en Redis, y las pruebas de integración —que fijan las contraseñas de los roles de TODO
   el servidor de Postgres— dejaron «db_down» la API local que usaba ese servidor.
 
-  Al crear un worktree, antes del primer `make start`: **`make worktree-env n=NN`**, con NN el número
+  **Cada feature arranca en su propio worktree, con un solo comando** (decidido el 2026-10-17). Desde
+  cualquier carpeta del repo: **`make nuevo-worktree n=041 slug=subidas-sin-corte`**
+  ([nuevo-worktree.sh](scripts/nuevo-worktree.sh)). Crea `../egb-041-subidas-sin-corte` con la rama
+  `041-subidas-sin-corte` desde `origin/develop`, corre `worktree-env`, crea `deploy/.env` con
+  secretos nuevos y valores locales para lo que `check-env` deja de ejemplo (`ADMIN_PASSWORD`,
+  `ADMIN_PIN`, y `POSTGRES_PASSWORD=gatobobah`, la del compose de desarrollo), instala las
+  dependencias de `web/` (`node_modules` no viaja con el worktree), levanta `make start` en segundo
+  plano (log en `/tmp/egbNN-start.log`) y espera `/readyz`. Arrancar la 041 a mano costó cinco
+  vueltas, cada error visible solo al fallar el anterior. Al terminar la feature:
+  **`make cerrar-worktree dir=../egb-041-subidas-sin-corte`** ([cerrar-worktree.sh](scripts/cerrar-worktree.sh);
+  `datos=1` borra también sus volúmenes). Se niega con cambios sin commit o commits que no están en
+  origin, y nunca toca el proyecto `deploy` de la carpeta principal. La skill `/nuevo-spec` los usa.
+
+  Lo que hace por dentro, si hay que hacerlo a mano: antes del primer `make start`, **`make worktree-env n=NN`**, con NN el número
   de la feature (035 → 35). Escribe `.env.worktree.local` (ignorado por git), que leen el Makefile,
   `start.sh`, `stop.sh`, `dev-api.sh` y `ci-local.sh`:
 
@@ -534,12 +547,15 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - Los logs de la API en el journal, sin errores ni 5xx desde la subida.
   Antes de subir se toma el respaldo (`/usr/local/bin/respaldo-gatobobah.sh` en la VM): solo lee la
   base y guarda una copia aparte; no la detiene ni la sobrescribe.
-- `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y hace `up -d`. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído.
+- `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y la sube **azul/verde** con [deploy-azul-verde.sh](scripts/deploy-azul-verde.sh) (spec 041): la nueva arranca junto a la vieja, Caddy cambia de lado con un reload cuando la nueva responde `/readyz`, y la vieja termina lo que traía. Si la nueva no queda lista, el tráfico no se mueve y el deploy falla. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído y pasa por el mismo script. Runbook: [docs/despliegue-sin-corte.md](docs/despliegue-sin-corte.md).
+  - **Nunca `docker compose -f deploy/docker-compose.yml up -d` sin nombrar servicio**: levanta los dos lados de la API.
+  - **Una migración tolera a la versión anterior corriendo** (constitución IV): durante la subida las dos versiones usan la misma base.
 - **La bitácora de la API se guarda 30 días en el journal de la VM**, no en el archivo del
   contenedor: ése se borra en cada deploy y llegaba a ~5 días. `make deploy-image` instala
   [deploy/journald.conf](deploy/journald.conf) (necesita `sudo` sin password en la VM). Ahí queda la
   IP y el usuario de cada request; se lee con
-  `sudo journalctl CONTAINER_NAME=deploy-api-1 --since "…" -o cat`, **en hora UTC**. Lo demás
+  `sudo journalctl SYSLOG_IDENTIFIER=api --since "…" -o cat`, **en hora UTC** — los dos lados (azul y
+  verde) escriben con esa etiqueta. Lo anterior a la spec 041 está bajo `CONTAINER_NAME=deploy-api-1`. Lo demás
   (postgres, redis, caddy) sigue en el archivo del contenedor: cambiarles el driver los recrea, y
   postgres se reinicia a media operación.
 - `make sqlc` (regenera código de queries) · `make migrate-new name=xxx` (nueva migración goose).

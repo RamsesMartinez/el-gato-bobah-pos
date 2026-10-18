@@ -18,7 +18,7 @@ Este repo tiene un índice CodeGraph (`.codegraph/`). Para preguntas **estructur
 
 ## Skills
 
-Disponibles: `/code-review`, `/security-review`, `/simplify`, `/verify`, `/run`. Para trabajo de seguridad, `/security-review` complementa el principio V de la constitución.
+Disponibles: `/code-review`, `/security-review`, `/simplify`, `/verify`, `/run`. Para trabajo de seguridad, `/security-review` complementa el principio V de la constitución. **Toda feature nueva arranca con `/nuevo-spec NNN slug`**: su propio worktree, base e infraestructura, antes de `/speckit-specify`.
 
 Subagentes especializados en `.claude/agents/` (`go-backend-reviewer`, `security-auditor`, `db-architect`, `tablet-ui-reviewer`), y **dos skills que los lanzan en abanico y consolidan un solo veredicto**: `/revision-de-arquitectura` (los de diseño, sobre un `plan.md`) y `/revision-de-codigo` (los de código, sobre un diff, eligiendo cuáles aplican según qué archivos cambiaron). Antes de los dos, `/maquetas` publica opciones navegables de cada pantalla nueva del plan y deja la elegida en `plan.md`.
 

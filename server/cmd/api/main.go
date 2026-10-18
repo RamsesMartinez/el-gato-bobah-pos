@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -49,6 +50,7 @@ var (
 
 func main() {
 	healthcheck := flag.Bool("healthcheck", false, "ping local /healthz and exit (for Docker HEALTHCHECK)")
+	readycheck := flag.Bool("readycheck", false, "ping local /readyz (incluye la base) and exit (despliegue azul/verde)")
 	resetAdmin := flag.Bool("reset-admin", false, "actualiza/crea el admin con ADMIN_* y sale (sin borrar datos)")
 	createCompany := flag.Bool("create-company", false, "provisiona una empresa nueva (COMPANY_SLUG/NAME) + su admin (ADMIN_*) y sale")
 	resetPassword := flag.String("reset-password", "", "resetea la contraseña de username@slug (prompt interactivo, oculto) y sale")
@@ -64,7 +66,10 @@ func main() {
 	}
 
 	if *healthcheck {
-		os.Exit(runHealthcheck(cfg.Port))
+		os.Exit(runHealthcheck(cfg.Port, "/healthz"))
+	}
+	if *readycheck {
+		os.Exit(runHealthcheck(cfg.Port, "/readyz"))
 	}
 
 	logger, err := logging.Setup(cfg.LogDir, cfg.LogLevel)
@@ -215,6 +220,8 @@ func main() {
 		}
 		return errors.Join(errs...)
 	})
+	broker := realtime.NewBroker()
+	menusPlataforma := app.NewMenusDePlataformaService(st, credentials, nil)
 	handlers := httpapi.NewHandlers(httpapi.Deps{
 		Cfg:             cfg,
 		Version:         version,
@@ -239,12 +246,12 @@ func main() {
 		Settings:        app.NewSettingsService(st, cfg.PinPepper),
 		Company:         app.NewCompanyService(st),
 		Reset:           app.NewResetService(st, mail, hibpClient, cfg.HIBPEnabled, cfg.AppBaseURL, nil),
-		Broker:          realtime.NewBroker(),
+		Broker:          broker,
 		// nil cuando no hay ANTHROPIC_API_KEY: la extracción de tickets es opcional y el POS
 		// funciona capturando las líneas del gasto a mano (el handler responde 501).
 		PurchaseDoc:       app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
 		PlatformPrices:    app.NewPlatformPricesService(st),
-		MenusPlataforma:   app.NewMenusDePlataformaService(st, credentials, nil),
+		MenusPlataforma:   menusPlataforma,
 		PedidosPlataforma: app.NewPedidosDePlataformaService(st, credentials, cipher, cfg.UberEatsEnv, nil),
 		Credentials:       credentials,
 		Sales:             app.NewSalesService(st, nil),
@@ -276,22 +283,28 @@ func main() {
 	// que salta RLS viviendo junto a los handlers, para correr un `delete` una vez cada 24 horas.
 	ctxRecorte, detenerRecorte := context.WithCancel(ctx)
 	defer detenerRecorte()
-	go app.RecortarPeriodicamente(ctxRecorte, 24*time.Hour, func(c context.Context) (*store.Store, error) {
-		return store.New(c, cfg.DatabaseURL)
+	// El apagado los detiene y los espera (spec 041): una pasada del resumen a medio envío termina.
+	var fondo sync.WaitGroup
+	fondo.Go(func() {
+		app.RecortarPeriodicamente(ctxRecorte, 24*time.Hour, func(c context.Context) (*store.Store, error) {
+			return store.New(c, cfg.DatabaseURL)
+		})
 	})
 
-	go app.SendSummariesPeriodically(ctxRecorte, 15*time.Minute, resumen, func(c context.Context) ([]int64, error) {
-		rows, err := plataforma.QC(c).ListCompaniesForPlatform(c)
-		if err != nil {
-			return nil, err
-		}
-		ids := make([]int64, 0, len(rows))
-		for _, r := range rows {
-			if r.IsActive {
-				ids = append(ids, r.ID)
+	fondo.Go(func() {
+		app.SendSummariesPeriodically(ctxRecorte, 15*time.Minute, resumen, func(c context.Context) ([]int64, error) {
+			rows, err := plataforma.QC(c).ListCompaniesForPlatform(c)
+			if err != nil {
+				return nil, err
 			}
-		}
-		return ids, nil
+			ids := make([]int64, 0, len(rows))
+			for _, r := range rows {
+				if r.IsActive {
+					ids = append(ids, r.ID)
+				}
+			}
+			return ids, nil
+		})
 	})
 
 	srv := &http.Server{
@@ -302,6 +315,8 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 		// Sin WriteTimeout global: SSE (/events) mantiene la respuesta abierta.
 	}
+
+	srv.RegisterOnShutdown(broker.Close)
 
 	go func() {
 		slog.Info("listening", "port", cfg.Port, "env", cfg.Env)
@@ -315,12 +330,31 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
+	// EL ORDEN DEL APAGADO (spec 041). /readyz deja de decir «lista»; Shutdown deja de aceptar y,
+	// por RegisterOnShutdown, cierra los avisos en vivo, que si no lo esperarían el plazo completo
+	// (net/http no cancela el contexto de las peticiones); y al final las lecturas de menú que
+	// corren fuera de una petición. El plazo queda debajo del `stop -t 30` del despliegue: la API
+	// decide antes de que Docker la mate. Solo es ERROR si de verdad venció.
+	// Cada etapa tiene su presupuesto: con uno solo, una petición lenta se comía los 25 s y las
+	// lecturas se cerraban sin esperarlas. Peticiones hasta 15 s; lecturas y procesos de fondo
+	// hasta los 20 (al menos 3 s propios); el cierre de lo que no terminó, 5 más.
 	slog.Info("shutting down")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("shutdown", "error", err)
+	started := time.Now()
+	handlers.BeginShutdown()
+	detenerRecorte()
+	srvCtx, cancelSrv := context.WithTimeout(context.Background(), requestsTimeout)
+	defer cancelSrv()
+	srvErr := srv.Shutdown(srvCtx)
+	tail := max(time.Until(started.Add(backgroundDeadline)), minBackgroundWait)
+	tailCtx, cancelTail := context.WithTimeout(context.Background(), tail)
+	defer cancelTail()
+	readsErr := menusPlataforma.Esperar(tailCtx)
+	bgErr := waitGroupCtx(tailCtx, &fondo)
+	if err := errors.Join(srvErr, readsErr, bgErr); err != nil {
+		slog.Error("shutdown", "error", err, "duration_ms", time.Since(started).Milliseconds())
+		return
 	}
+	slog.Info("shutdown complete", "duration_ms", time.Since(started).Milliseconds())
 }
 
 // assertRLSEnforced verifica en runtime que el rol de servicio NO puede saltar RLS: (1) no es
@@ -722,10 +756,33 @@ func promptPassword(label string) (string, error) {
 	return string(b), nil
 }
 
-func runHealthcheck(port string) int {
+// El apagado completo cabe en 25 s, debajo del `stop -t 30` del despliegue: la API decide antes
+// de que Docker la mate.
+const (
+	requestsTimeout    = 15 * time.Second
+	backgroundDeadline = 20 * time.Second
+	minBackgroundWait  = 3 * time.Second
+)
+
+// waitGroupCtx espera wg o hasta que venza ctx.
+func waitGroupCtx(ctx context.Context, wg *sync.WaitGroup) error {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("procesos de fondo sin terminar al apagar: %w", ctx.Err())
+	}
+}
+
+func runHealthcheck(port, path string) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:"+port+"/healthz", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:"+port+path, nil)
 	if err != nil {
 		return 1
 	}
