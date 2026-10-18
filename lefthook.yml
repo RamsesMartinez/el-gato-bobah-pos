@@ -25,6 +25,11 @@ pre-commit:
     scripts-test:
       glob: "scripts/{restaurar-respaldo,worktree-env-load}.sh"
       run: bash scripts/tests/restaurar-respaldo-test.sh
+    # El que mueve el tráfico de producción entre los dos lados de la API (spec 041): sus caminos de
+    # falla no se ven en una subida que sale bien.
+    deploy-azul-verde-test:
+      glob: "scripts/{deploy-azul-verde.sh,tests/deploy-azul-verde-test.sh}"
+      run: bash scripts/tests/deploy-azul-verde-test.sh
 
 pre-push:
   parallel: true

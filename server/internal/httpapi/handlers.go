@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
@@ -164,6 +165,7 @@ type Handlers struct {
 	company           *app.CompanyService
 	reset             *app.ResetService
 	broker            *realtime.Broker
+	shuttingDown      atomic.Bool
 	purchaseDoc       *app.PurchaseDocService
 	platformPrices    *app.PlatformPricesService
 	menusPlataforma   *app.MenusDePlataformaService
@@ -202,6 +204,9 @@ type Handlers struct {
 	audit       *app.AuditService
 	health      *app.InventoryHealthService
 }
+
+// BeginShutdown hace que /readyz responda 503 mientras la copia termina lo que trae.
+func (h *Handlers) BeginShutdown() { h.shuttingDown.Store(true) }
 
 func NewHandlers(d Deps) *Handlers {
 	h := newHandlers(d)

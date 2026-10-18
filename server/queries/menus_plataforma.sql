@@ -58,9 +58,11 @@ update platform_menu_reads
 
 -- name: FailMenuRead :exec
 -- `failure_kind` es una clase cerrada, nunca el mensaje de la plataforma: ahí cabe un secreto.
+-- Solo la que sigue en curso: el apagado toma la lista de vivas y después las cierra, y una que
+-- terminó bien entre las dos cosas no puede quedar como «falló» (spec 041).
 update platform_menu_reads
    set status = 'fallida', finished_at = now(), failure_kind = $2
- where id = $1;
+ where id = $1 and status = 'en_curso';
 
 -- name: GetLastMenuRead :one
 -- La última lectura de la conexión, EN CUALQUIER ESTADO. Es lo que permite distinguir los tres
