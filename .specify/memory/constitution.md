@@ -296,6 +296,15 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
     pantalla como alguien nuevo y reportan dónde se atoran. Lo que Chromium no reproduce (el teclado
     del sistema, la densidad de una Surface) se simula —ventana encogida, `deviceScaleFactor`— y se
     nombra como simulado, no como pendiente para alguien más.
+  - **Dónde corre cada prueba de pantalla** (decidido el 2026-10-17). Las vueltas con alguien sin
+    contexto y los ajustes de pantalla que salen de ellas se iteran **en local**, contra el
+    `make start` del worktree (API como `gatobobah_app`, datos restaurados), a 1024×600: lo que miden
+    es si la pantalla se entiende, y la pantalla local es el mismo código. Pasar cada corrección de
+    una palabra por PR, CI y despliegue para volver a probar costó, en la 040, seis ciclos de 10 a
+    15 minutos. **El ambiente de pruebas desplegado** se usa una vez con la versión final, antes de
+    subir a producción: la suite e2e (lo que solo se ve desplegado: el build, el CSP, el desacuerdo
+    entre pantalla y servidor) y una última vuelta con alguien sin contexto. **En producción no se
+    prueba**: después de subir solo se revisa la salud (ver `AGENTS.md`).
 - **El texto de la interfaz es para quien opera el negocio, no para quien lo programa.** Este producto se vende. Una pantalla que justifica *por qué* una decisión técnica es la correcta, o que argumenta contra la alternativa, delata al desarrollador y resta confianza en el producto. En pantalla va lo que el operador necesita para decidir; el porqué vive en el comentario del código o en `docs/`.
   - **Prohibido en la UI**: justificar un tradeoff ("peor que el toque que esto viene a quitar"), nombrar internals (flags del navegador, endpoints, columnas) o advertir de algo que el usuario no puede accionar desde ahí.
   - **El detalle operativo que sí sirve** —cómo dejar la tablet lista, qué formato de imagen se acepta— se guarda detrás de un icono de ayuda y se redacta como instrucción en pasos, no como explicación. Ej.: el interruptor de impresión automática en [`PrintSettingsPage`](../../web/src/features/admin/PrintSettingsPage.tsx) dice qué hace en un renglón y deja el "cómo configurarlo" en un diálogo de ayuda.
@@ -393,4 +402,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.22.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-14
+**Version**: 1.23.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-17
