@@ -188,6 +188,11 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   gatobobah` a mano también es owner**: para ver lo que ve la API, `set role gatobobah_app; set
   app.company_id = '2';` antes de la consulta.
 - `make web-dev` · `make web-build` · `make web-test` (vitest).
+- **Vueltas con alguien sin contexto: en local mientras se itera** (constitución 1.23.0). El subagente
+  usa `http://localhost:30NN` del worktree (el `FRONTEND_PORT` de `.env.worktree.local`), con
+  `make start` arriba y una base restaurada (`make db-restaurar`), a 1024×600 y `hasTouch`. Corrige,
+  recarga (Vite lo hace solo) y vuelve a probar sin PR ni despliegue. En el ambiente de pruebas se
+  corre una sola vuelta final, junto con la suite e2e, antes de subir a `main`.
 - **`bun run e2e`** (en `web/`) — Playwright contra el **ambiente de pruebas desplegado**, a
   1024×600. No monta un servidor local a propósito: lo que estas pruebas atrapan es el desacuerdo
   entre lo que la pantalla calcula y lo que el servidor cobra, y con el backend simulado los dos
