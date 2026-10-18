@@ -49,6 +49,8 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 - [X] T026 [US2] Lo que encontró la segunda vuelta de T022: no halló cómo ordenar los lugares y el botón del lugar mostraba el valor viejo tras elegir. El conteo, antes de empezar, dice «Se recorre en este orden: …» y con `inventory.configure` lleva a Negocio › Lugares (`/negocio#lugares`); `PlaceChooser` muestra lo elegido de inmediato. Tests en `StockCountTab.test.tsx`, `CountPlaceField.test.tsx` y `web/e2e/lugares-para-contar.spec.ts`
 
+- [X] T027 [US1] Lo que encontró la tercera vuelta de T022: «+ Empaque o lugar» juntaba dos cosas; el lugar tiene su propio botón en el renglón de Artículos y el de la hoja dice solo «Empaques ›»; «Todavía no dices cómo llega» pasa a «Sin empaques»; los destinos al archivar llevan borde; desde el conteo, Negocio › Lugares ofrece «‹ Volver al conteo». Tests en `StockPage.test.tsx`, `CountPlacesSettings.test.tsx` y `web/e2e/lugares-para-contar.spec.ts`
+
 ## Phase 4: User Story 3 — Los lugares escritos a mano pasan a la lista (P1)
 
 **Independent test**: cubierto por T003. Esta historia es la migración de la Phase 2; aquí solo se corre contra la copia restaurada.
@@ -94,7 +96,7 @@ implementación. Las tareas de pantalla citan la fila de «Maquetas» del plan q
 
 ## Dependencies
 
-Phase 1 → Phase 2 → US1 → US3 → US2. US3 es la migración de la Phase 2 corrida contra datos reales; va después de US1 porque la pantalla que la usa es la de US1. US2 depende de los lugares y de las consultas de la Phase 2. T025 y T026 salieron de la prueba con usuario sin contexto (T022, dos vueltas), así que van después de ella aunque vivan en US1 y US2.
+Phase 1 → Phase 2 → US1 → US3 → US2. US3 es la migración de la Phase 2 corrida contra datos reales; va después de US1 porque la pantalla que la usa es la de US1. US2 depende de los lugares y de las consultas de la Phase 2. T025, T026 y T027 salieron de la prueba con usuario sin contexto (T022, tres vueltas), así que van después de ella aunque vivan en US1 y US2.
 
 Archivos compartidos que obligan orden:
 - `count_places.go` del servicio: T009 → T015.

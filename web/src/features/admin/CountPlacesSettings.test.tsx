@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { Provider } from '../../components/ui/provider';
 import { ApiError } from '../../api/client';
 import { CountPlacesSettings } from './CountPlacesSettings';
+import { placeAnnouncements } from './placeAnnouncements';
 
 const back = vi.hoisted(() => ({
   countPlaces: vi.fn(), createCountPlace: vi.fn(), renameCountPlace: vi.fn(), moveCountPlace: vi.fn(), archiveCountPlace: vi.fn(),
@@ -21,13 +23,26 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-function montar() {
+function montar(hash = '') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={qc}><Provider><CountPlacesSettings /></Provider></QueryClientProvider>);
+  render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={[`/negocio${hash}`]}>
+    <Routes><Route path="/negocio" element={<CountPlacesSettings />} /><Route path="/almacen" element={<p>Conteo abierto aquí</p>} /></Routes>
+  </MemoryRouter></Provider></QueryClientProvider>);
 }
 const row = async (name: string) => (await screen.findByText(name, { exact: true })).closest('[data-place]') as HTMLElement;
 
 describe('lugares del recorrido (spec 040, maqueta C)', () => {
+  // La tercera prueba sin contexto llegó desde el conteo y no supo cómo volver.
+  test('si se llegó desde el conteo, ofrece volver a él', async () => {
+    montar('#lugares');
+    fireEvent.click(await screen.findByRole('button', { name: '‹ Volver al conteo' }));
+    expect(await screen.findByText('Conteo abierto aquí')).toBeInTheDocument();
+    cleanup();
+    montar();
+    await screen.findByText('Lugares');
+    expect(screen.queryByRole('button', { name: '‹ Volver al conteo' })).toBeNull();
+  });
+
   test('cada renglón en una línea con su agarradera; «Agregar lugar» junto al título', async () => {
     montar();
     expect(within(await row('Refri')).getByText('12 artículos')).toBeInTheDocument();
@@ -41,6 +56,18 @@ describe('lugares del recorrido (spec 040, maqueta C)', () => {
   // jsdom no mide renglones (todo mide 0 px), así que el arrastre y las flechas no se pueden simular
   // aquí: los cubre la prueba táctil de Playwright a 1024×600 (T018). Aquí solo que la agarradera
   // se ofrece al teclado y a un lector de pantalla.
+  // dnd-kit anuncia el arrastre a los lectores de pantalla en inglés («Draggable item 95 was dropped
+  // over droppable area 2»; lo vio la cuarta prueba sin contexto): los avisos van en español y con
+  // el nombre del lugar, no su id.
+  test('lo que se anuncia al arrastrar está en español y dice el lugar', () => {
+    const names = new Map([[1, 'Refri'], [3, 'Bodega']]);
+    const a = placeAnnouncements((id) => names.get(Number(id)) ?? '');
+    const drop = a.onDragEnd!({ active: { id: 3 }, over: { id: 1 } } as never) ?? '';
+    expect(drop).toBe('«Bodega» quedó en el lugar de «Refri».');
+    expect(a.onDragStart!({ active: { id: 3 } } as never)).toBe('Moviendo «Bodega».');
+    expect(a.onDragCancel!({ active: { id: 3 } } as never)).toBe('«Bodega» se quedó donde estaba.');
+  });
+
   test('la agarradera se puede usar con el teclado', async () => {
     montar();
     const grip = within(await row('Bodega')).getByRole('button', { name: 'Mover Bodega' });

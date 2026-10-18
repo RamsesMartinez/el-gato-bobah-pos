@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 
@@ -9,6 +9,7 @@ import { Provider } from '../../components/ui/provider';
 import { StockPage } from './StockPage';
 
 const back = vi.hoisted(() => ({
+  countPlaces: vi.fn(() => Promise.resolve([{ id: 4, name: 'Barra', position: 0, ingredients: 1 }])),
   stockLevels: vi.fn(() => Promise.resolve({ items: [] })),
   stockMovements: vi.fn(() => Promise.resolve({ items: [] })),
   units: vi.fn(() => Promise.resolve({ items: [
@@ -114,18 +115,18 @@ describe('Almacén › pestañas', () => {
   // Cómo llega cada insumo (spec 038, maqueta «Cómo llega un insumo», opción B): a la vista en la
   // lista, para ver de un vistazo cuál no tiene empaque.
   it('con el permiso de compras, cada insumo dice cómo llega y se puede cambiar', async () => {
-    sesion(['inventory.receive', 'inventory.configure']);
+    sesion(['inventory.receive', 'inventory.configure', 'inventory.count']);
     montar('/almacen?tab=insumos');
     const jarabe = (await screen.findByText('Jarabe natural')).closest('tr')!;
     expect(await screen.findByText('Botella · 750 ml')).toBeInTheDocument();
     expect(jarabe).toHaveTextContent('Ya no llega en: Garrafa');
     const azucar = screen.getByText('Azúcar').closest('tr')!;
-    expect(azucar).toHaveTextContent('Todavía no dices cómo llega');
-    // La prueba sin contexto (040, T022) no encontró dónde está el lugar: se ve junto a cómo llega,
-    // y el botón que abre la hoja lo dice.
-    expect(jarabe).toHaveTextContent('Lugar: Barra');
-    expect(azucar).toHaveTextContent('Sin lugar');
-    expect(screen.getByRole('button', { name: 'Cómo llega Jarabe natural' })).toHaveTextContent('Cambiar o poner lugar ›');
+    expect(azucar).toHaveTextContent('Sin empaques');
+    // La prueba sin contexto (040, T022) no encontró dónde está el lugar, y «+ Empaque o lugar» juntaba
+    // dos cosas: el lugar tiene su propio botón en el renglón y el de empaques solo habla de empaques.
+    expect(await within(jarabe).findByRole('button', { name: /Barra/ })).toBeInTheDocument();
+    expect(within(azucar).getByRole('button', { name: /Sin lugar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cómo llega Jarabe natural' })).toHaveTextContent('Empaques ›');
     fireEvent.click(screen.getByRole('button', { name: 'Cómo llega Jarabe natural' }));
     expect(await screen.findByRole('dialog')).toHaveTextContent('Cómo llega Jarabe natural');
   });
