@@ -1,0 +1,99 @@
+<title>Maqueta teclado del conteo</title><meta name="claude:viewport-fit-sides" content="cover"><style>
+/* Marco fijo 1024x600 de la tableta, escalado al ancho disponible; riel de 76 px como el POS. */
+:root{--bg:#eef0f3;--surface:#fff;--fg:#1b1f24;--muted:#5d6670;--line:#d9dde3;--brand:#e23b2e;--brand-fg:#fff;--brand-soft:#fff1f0;--warn:#b45309;--warn-soft:#fff7e6;--ok:#15803d;--chip:#f3f4f6;
+--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;font-variant-numeric:tabular-nums}
+h1{font-size:22px;margin:0 0 4px;text-wrap:balance}.sub{color:var(--muted);margin:0 0 16px;max-width:70ch}
+.tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.tab{min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.stage{width:100%;max-width:1024px;overflow:hidden}
+.scaler{width:1024px;height:600px;transform-origin:0 0}
+.frame{width:1024px;height:600px;background:var(--bg);border:1px solid var(--line);border-radius:12px;display:flex;overflow:hidden;position:relative}
+.rail{width:76px;flex:none;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:10px}
+.rail i{width:52px;height:46px;border-radius:10px;background:var(--chip);display:grid;place-items:center;font:600 10px var(--font);font-style:normal;color:var(--muted)}
+.rail i.on{background:var(--brand-soft);color:var(--brand)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px 16px;gap:10px;position:relative}
+.btn{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--brand);color:var(--brand-fg);border-color:var(--brand)}
+.btn.danger{color:var(--brand);border-color:var(--brand)}
+.chip{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:500 14px var(--font);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+.input{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:16px var(--font);padding:0 12px}
+.notes{margin-top:14px;display:grid;gap:6px;max-width:1024px}.notes p{margin:0;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.notes b{display:inline-block;min-width:22px}
+.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+.sheet{background:var(--surface);width:100%;border-radius:16px 16px 0 0;padding:16px;display:flex;flex-direction:column;gap:10px;max-height:92%;overflow:auto}
+.modal{background:var(--surface);width:460px;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px;margin:auto}
+.muted{color:var(--muted)}.warn{color:var(--warn)}
+.tag{font:600 12px var(--font);padding:3px 8px;border-radius:6px;background:var(--chip);color:var(--muted)}
+.tag.neg{background:var(--brand-soft);color:var(--brand)}
+.example{font:600 12px var(--font);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+button:focus-visible,input:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+</style><script>
+function fit(){document.querySelectorAll('.stage').forEach(s=>{const k=Math.min(1,s.clientWidth/1024);const c=s.firstElementChild;c.style.transform='scale('+k+')';s.style.height=(600*k)+'px'})}
+addEventListener('resize',fit);
+function tabs(render){const bs=[...document.querySelectorAll('.tab')];const pick=id=>{bs.forEach(b=>b.setAttribute('aria-selected',b.dataset.opt===id));document.querySelectorAll('.opt-note').forEach(n=>n.style.fontWeight=n.dataset.opt===id?'600':'400');render(id);fit()};bs.forEach(b=>b.onclick=()=>pick(b.dataset.opt));const h=(location.hash||'').slice(1).toUpperCase();pick(['A','B','C'].includes(h)?h:'A')}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+</script>
+<h1>Teclado del conteo</h1>
+<p class="sub">Almacén › Conteo, al tocar «Hielo en bolsa» (se mide en gramos, existencia 0, empaques de 5 kg y 15 kg), a 1024×600. Escribe 740, cambia g por kg y guarda para ver el aviso. Contar 0 no avisa.</p>
+<div class="tabs" role="tablist">
+  <button class="tab" data-opt="A" role="tab">A · Empaques con + y −</button>
+  <button class="tab" data-opt="B" role="tab">B · Elegir y teclear</button>
+  <button class="tab" data-opt="C" role="tab">C · Un renglón por forma</button>
+</div>
+<div class="stage"><div class="scaler"><div class="frame" id="frame"></div></div></div>
+<div class="notes">
+  <p class="opt-note" data-opt="A"><b>A</b>Cada empaque tiene + y −, lo suelto va al teclado con su selector g o kg, y el total se ve grande. Privilegia: contar bolsas cerradas a toques, sin teclear. Cuesta: con más de 3 empaques, los contadores empujan el teclado hacia abajo.</p>
+  <p class="opt-note" data-opt="B"><b>B</b>Primero se elige en qué se cuenta (Bolsa 5 kg, Bolsa 15 kg, kg, g) y luego se teclea un solo número. Privilegia: una sola cifra en pantalla y la unidad imposible de pasar por alto. Cuesta: contar dos empaques distintos son dos capturas que se suman.</p>
+  <p class="opt-note" data-opt="C"><b>C</b>Un renglón por empaque y uno para lo suelto, cada uno con su casilla, y un teclado compartido. Privilegia: ver todo el desglose a la vez. Cuesta: hay que tocar la casilla correcta antes de teclear; es lo más parecido a la pantalla de hoy.</p>
+</div>
+<style>
+.cw{display:grid;grid-template-columns:1fr 340px;gap:14px;flex:1;min-height:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:0}
+.big{font-size:44px;font-weight:800;line-height:1}.big small{font-size:44px;font-weight:800;color:var(--brand)}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.keys button{min-height:60px;font:600 24px var(--font);border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;min-height:48px;border:0;background:var(--surface);color:var(--fg);font:700 18px var(--font);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.ctr{display:flex;align-items:center;justify-content:space-between;min-height:56px;border-bottom:1px solid var(--line)}
+.ctr .q{font-size:26px;font-weight:800;min-width:48px;text-align:center}
+.pm{width:52px;height:52px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:700 24px var(--font);cursor:pointer}
+.box{min-height:56px;border:2px solid var(--line);border-radius:10px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;cursor:pointer;background:var(--surface);color:var(--fg);font:inherit;width:100%}
+.box.on{border-color:var(--brand)}
+.box b{font-size:26px}
+</style>
+<script>
+const P=[{n:'Bolsa',g:5000},{n:'Bolsa',g:15000}];
+let opt='A',packs=[0,0],loose='',unit='g',sel='loose',bmode='kg',bval='',cfields={p0:'',p1:'',loose:''},cact='loose',modal=null;
+const f1=n=>n.toLocaleString('es-MX',{maximumFractionDigits:3});
+function totalG(){if(opt==='A')return packs[0]*5000+packs[1]*15000+(parseFloat(loose)||0)*(unit==='kg'?1000:1);
+ if(opt==='B'){const v=parseFloat(bval)||0;return bmode==='p0'?v*5000:bmode==='p1'?v*15000:v*(bmode==='kg'?1000:1)}
+ return (parseFloat(cfields.p0)||0)*5000+(parseFloat(cfields.p1)||0)*15000+(parseFloat(cfields.loose)||0)*(unit==='kg'?1000:1)}
+const show=g=>g>=1000?f1(g/1000)+' <small>kg</small>':f1(g)+' <small>g</small>';
+// Referencia (solo en el servidor en la versión real): esperado 0 → sin último conteo → 10 × empaque más grande = 150 kg; menor a 1/100 del más chico = 50 g.
+function check(g){if(g===0)return null;if(g>150000)return 'mucho';if(g<50)return 'poco';return null}
+const keys=()=>`<div class="keys">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map(k=>`<button data-k="${k}">${k}</button>`).join('')}</div>`;
+const seg=()=>`<div class="seg">${['g','kg'].map(u=>`<button data-u="${u}" aria-pressed="${unit===u}">${u}</button>`).join('')}</div>`;
+function render(){const f=document.getElementById('frame');const g=totalG();
+ let left='';
+ if(opt==='A')left=`<b>Empaques cerrados</b>${P.map((p,i)=>`<div class="ctr"><span style="font-size:18px"><b>${p.n}</b> · ${p.g/1000} kg</span><span style="display:flex;align-items:center;gap:8px"><button class="pm" data-m="${i}">−</button><span class="q">${packs[i]}</span><button class="pm" data-p="${i}">+</button></span></div>`).join('')}<b>Abierto o suelto</b><div style="display:flex;gap:10px;align-items:center"><div class="box on" style="flex:1"><span class="muted">Suelto</span><b>${loose||'0'} ${unit}</b></div><div style="width:130px">${seg()}</div></div>`;
+ if(opt==='B')left=`<b>¿En qué lo cuentas?</b><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${[['p0','Bolsa · 5 kg'],['p1','Bolsa · 15 kg'],['kg','Suelto en kg'],['g','Suelto en g']].map(([k,l])=>`<button class="chip" style="border-radius:10px;min-height:56px;font-size:17px" data-b="${k}" aria-pressed="${bmode===k}">${l}</button>`).join('')}</div><div class="box on"><span class="muted">${bmode==='p0'?'Bolsas de 5 kg':bmode==='p1'?'Bolsas de 15 kg':'Suelto'}</span><b>${bval||'0'} ${bmode==='p0'||bmode==='p1'?'bolsas':bmode}</b></div>`;
+ if(opt==='C')left=`${[['p0','Bolsa · 5 kg','bolsas'],['p1','Bolsa · 15 kg','bolsas'],['loose','Suelto',unit]].map(([k,l,u])=>`<button class="box ${cact===k?'on':''}" data-c="${k}"><span>${l}</span><b>${cfields[k]||'0'} ${u}</b></button>`).join('')}<div style="display:flex;justify-content:flex-end"><div style="width:130px">${seg()}</div></div>`;
+ const m=`<div style="display:flex;align-items:center;gap:10px"><button class="btn">‹ Conteo</button><h2 style="margin:0;font-size:20px;flex:1">Hielo en bolsa <span class="muted" style="font-size:14px;font-weight:400">Refri</span></h2></div><div class="cw"><div class="card">${left}<div style="margin-top:auto;border-top:1px solid var(--line);padding-top:10px"><span class="muted">Total contado</span><div class="big">${show(g)}</div></div></div><div class="card">${keys()}<button class="btn primary" style="min-height:56px;font-size:18px" data-save="1">Guardar</button></div></div>`;
+ let sh='';
+ if(modal)sh=`<div class="sheet-bg" style="align-items:center"><div class="modal"><b style="font-size:18px">${modal==='mucho'?'¿Seguro? Es mucho para este artículo':'¿Seguro? Es muy poco para este artículo'}</b><div class="big" style="text-align:center;padding:10px 0">${show(g)}</div><p class="muted" style="margin:0">${modal==='mucho'?'Revisa si escribiste kg en lugar de g.':'Revisa si escribiste g en lugar de kg.'}</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close="1">Corregir</button><button class="btn primary" data-close="1" data-ok="1">Sí, guardar</button></div></div></div>`;
+ f.innerHTML=`<nav class="rail"><i>POS</i><i>Caja</i><i>Gastos</i><i class="on">Almacén</i><i>Negocio</i></nav><div class="main">${m}${sh}</div>`}
+function type(k){const ed=v=>k==='⌫'?v.slice(0,-1):(k==='.'&&v.includes('.'))?v:(v+k).replace(/^0(\d)/,'$1');
+ if(opt==='A')loose=ed(loose);else if(opt==='B')bval=ed(bval);else cfields[cact]=ed(cfields[cact])}
+document.getElementById('frame').addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;const d=t.dataset;
+ if(d.k)type(d.k);if(d.u)unit=d.u;if(d.p)packs[d.p]++;if(d.m)packs[d.m]=Math.max(0,packs[d.m]-1);if(d.b){bmode=d.b;}if(d.c)cact=d.c;
+ if(d.save){modal=check(totalG());if(!modal){render();const x=document.createElement('div');x.className='sheet-bg';x.style.alignItems='center';x.innerHTML='<div class="modal"><b>Guardado</b></div>';document.querySelector('.main').appendChild(x);setTimeout(()=>x.remove(),900);return}}
+ if(d.close)modal=null;render()});
+tabs(id=>{opt=id;modal=null;render()});
+</script>

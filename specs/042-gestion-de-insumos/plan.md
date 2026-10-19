@@ -107,11 +107,13 @@ propio de unas 60 líneas, sin librería nueva (principio VI).
 
 ### Maquetas
 
+El código de cada maqueta está en [maquetas/](maquetas/).
+
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|
-| Lista de artículos | (pendiente) | | |
-| Ficha del artículo | (pendiente) | | |
-| Teclado del conteo | (pendiente) | | |
+| Lista de artículos | https://claude.ai/artifact/XaiVPWAGVKzpU5eCtHvtRh | (por elegir) | |
+| Ficha del artículo | https://claude.ai/artifact/HnMD8yqMYLQTMpDhsYdAGe | (por elegir) | |
+| Teclado del conteo | https://claude.ai/artifact/QxfyGDwfrby4md58ACjE5c | (por elegir) | |
 
 ## Capas
 
