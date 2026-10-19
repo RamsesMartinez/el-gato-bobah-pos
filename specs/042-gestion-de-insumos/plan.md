@@ -101,7 +101,7 @@ propio de unas 60 líneas, sin librería nueva (principio VI).
 | Pantalla | Dónde vive | Cómo se reparte el alto de 1024×600 |
 |---|---|---|
 | **Lista de artículos** | Almacén › Artículos (pestaña que ya existe). Arriba, en una fila, el buscador (artículo o empaque) y «+ Nuevo artículo»; debajo, una fila de chips: «Lugar: Todos ›» (hoja con los lugares y «Sin lugar»), el par «Activos / Archivados», «Sin costo» y «Existencia negativa». La tabla tiene artículo (con «Se mide en…»), existencia (las negativas marcadas), lugar, costo («Sin costo» marcado) y empaques. «Nuevo artículo» abre una hoja con nombre * y en qué se mide * obligatorios; existencia inicial, costo, lugar, mínimo y empaques son opcionales. Si el nombre ya existe, avisa ahí mismo, con «Reactivar» cuando el artículo está archivado | Fila de búsqueda de 44 px y fila de chips de 44 px (~100 px con separaciones); caben 8 renglones de 50 px |
-| **Ficha del artículo** | Hoja que se abre al tocar un renglón de la lista | Ver la opción elegida en «Maquetas» |
+| **Ficha del artículo** | Hoja a pantalla completa al tocar un renglón. Encabezado: «‹ Artículos», nombre, «Archivar» (rojo, separado de Guardar) y «Guardar». **Columna izquierda**, desplazable: nombre, categoría ›, lugar ›, mínimo, «Se mide en … · Cambiar ›» y la sección Empaques con su explicación («Cómo lo compras…»), cada uno como «Bolsa · 5 kg = 5,000 g» con Editar, y «+ Agregar empaque» (hoja con sugerencias solo de la misma clase de unidad). **Columna derecha**: costo actual grande con «Corregir costo», la gráfica de tendencia (SVG, ~110 px de alto, las correcciones como punto hueco) y debajo el historial desplazable (fecha, proveedor o «Corrección a mano · quién», «$30 por Bolsa · 5 kg» y costo por kg), 20 renglones y «Ver más». Archivar abre la revisión: existencia, recetas activas y, si las hay, «Quítalo de esas recetas antes de archivar» | Encabezado de 44 px; dos columnas de ~430 px que llenan el resto; unas 6 compras visibles sin desplazar |
 | **Nuevo artículo** | Hoja desde «Nuevo artículo»; es la misma ficha vacía, sin historial | Igual que la ficha |
 | **Teclado del conteo** | Almacén › Conteo, al tocar un artículo | Ver la opción elegida en «Maquetas» |
 
@@ -112,7 +112,7 @@ El código de cada maqueta está en [maquetas/](maquetas/).
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|
 | Lista de artículos | https://claude.ai/artifact/XaiVPWAGVKzpU5eCtHvtRh | A: filtros en chips | Cada filtro es un toque y siempre se ve qué está puesto. Ajustes del dueño: empaques opcionales al crear, «Reactivar» si el nombre está archivado, obligatorios marcados, «Sin lugar» en el filtro de lugar y «Activos / Archivados» |
-| Ficha del artículo | https://claude.ai/artifact/HnMD8yqMYLQTMpDhsYdAGe | (por elegir) | |
+| Ficha del artículo | https://claude.ai/artifact/HnMD8yqMYLQTMpDhsYdAGe | A: dos columnas | El costo y su gráfica se ven mientras se edita; nada a más de cero toques |
 | Teclado del conteo | https://claude.ai/artifact/QxfyGDwfrby4md58ACjE5c | (por elegir) | |
 
 ## Capas
