@@ -40,7 +40,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 </script>
 <h1>Lista de artículos</h1>
-<p class="sub">Almacén › Artículos a 1024×600. Datos de ejemplo. Escribe en el buscador, toca los filtros y «Nuevo artículo». Toca un renglón para ver qué abre.</p>
+<p class="sub">Almacén › Artículos a 1024×600. Datos de ejemplo. Escribe en el buscador, toca los filtros y «Nuevo artículo». Para ver el aviso de un archivado, escribe «Cajeta» como nombre nuevo. Toca un renglón para ver qué abre.</p>
 <div class="tabs" role="tablist">
   <button class="tab" data-opt="A" role="tab">A · Filtros en chips</button>
   <button class="tab" data-opt="B" role="tab">B · Filtros en una hoja</button>
@@ -82,33 +82,54 @@ const ITEMS=[
  {n:'Cajeta',u:'ml',k:'líquido',on:0,c:0.11,p:null,e:['Frasco · 660 ml'],a:0},
 ];
 const PL=['Refri','Barra','Bodega'];
+const U={Peso:'kg',Líquido:'L',Longitud:'m',Piezas:'pz'};let nw={name:'',kind:'Líquido',packs:[]};
 let st={q:'',status:'active',place:null,noCost:false,neg:false},opt='A',sheet=null;
 const fmt=(v,u)=>{const a=Math.abs(v),s=v<0?'−':'';if(u==='g')return s+(a>=1000?(a/1000).toLocaleString('es-MX',{maximumFractionDigits:2})+' kg':a+' g');if(u==='ml')return s+(a>=1000?(a/1000).toLocaleString('es-MX',{maximumFractionDigits:2})+' L':a+' ml');return s+a+' pz'};
 const cost=i=>i.c?'$'+(i.u==='pz'?i.c.toFixed(2)+' / pz':(i.c*1000).toFixed(2)+(i.u==='g'?' / kg':' / L')):'<span class="tag neg">Sin costo</span>';
-function rows(){return ITEMS.filter(i=>(st.status==='active'?i.a:!i.a)&&(!st.q||norm(i.n+' '+i.e.join(' ')).includes(norm(st.q)))&&(!st.place||i.p===st.place)&&(!st.noCost||!i.c)&&(!st.neg||i.on<0))}
+function rows(){return ITEMS.filter(i=>(st.status==='active'?i.a:!i.a)&&(!st.q||norm(i.n+' '+i.e.join(' ')).includes(norm(st.q)))&&(!st.place||(st.place==='Sin lugar'?!i.p:i.p===st.place))&&(!st.noCost||!i.c)&&(!st.neg||i.on<0))}
 function table(narrow){const rs=rows();return `<div class="list"><div class="r h ${narrow?'narrow':''}"><span>Artículo</span><span>Existencia</span><span>Lugar</span><span>Costo</span>${narrow?'':'<span>Empaques</span>'}</div>`+(rs.length?rs.map((i,x)=>`<div class="r ${narrow?'narrow':''}" data-i="${ITEMS.indexOf(i)}"><span class="n">${esc(i.n)}<br><span class="muted" style="font-weight:400;font-size:12px">Se mide en ${i.k}</span></span><span>${i.on<0?'<span class="tag neg">'+fmt(i.on,i.u)+'</span>':fmt(i.on,i.u)}</span><span class="muted">${i.p||'Sin lugar'}</span><span>${cost(i)}</span>${narrow?'':`<span class="muted" style="font-size:13px">${i.e.join(' · ')||'Sin empaques'}</span>`}</div>`).join(''):`<p style="padding:20px" class="muted">Ningún artículo coincide. Revisa los filtros o crea uno con «Nuevo artículo».</p>`)+'</div>'}
 const search=()=>`<input class="input" id="q" placeholder="Buscar artículo o empaque" value="${esc(st.q)}">`;
-const chipsHtml=()=>`<button class="chip" data-f="status" aria-pressed="${st.status==='archived'}">Archivados</button><button class="chip" data-f="noCost" aria-pressed="${st.noCost}">Sin costo</button><button class="chip" data-f="neg" aria-pressed="${st.neg}">Existencia negativa</button>`;
+const chipsHtml=()=>`<span style="display:inline-flex;border:1px solid var(--line);border-radius:22px;overflow:hidden;flex:none">${[['active','Activos'],['archived','Archivados']].map(([k,l])=>`<button class="chip" style="border:0;border-radius:0" data-status="${k}" aria-pressed="${st.status===k}">${l}</button>`).join('')}</span><button class="chip" data-f="noCost" aria-pressed="${st.noCost}">Sin costo</button><button class="chip" data-f="neg" aria-pressed="${st.neg}">Existencia negativa</button>`;
 const placeChip=()=>`<button class="chip" data-f="place" aria-pressed="${!!st.place}">Lugar: ${st.place||'Todos'} ›</button>`;
 function render(){const f=document.getElementById('frame');let m='';
  const nfil=(st.status==='archived')+st.noCost+st.neg+!!st.place;
  if(opt==='A')m=`<div class="top">${search()}<button class="btn primary" data-a="new">+ Nuevo artículo</button></div><div class="row-chips">${placeChip()}${chipsHtml()}</div>${table(false)}`;
  if(opt==='B')m=`<div class="top">${search()}<button class="btn" data-a="filters">Filtros${nfil?' ('+nfil+')':''}</button><button class="btn primary" data-a="new">+ Nuevo artículo</button></div>${table(false)}`;
- if(opt==='C')m=`<div style="display:flex;gap:12px;flex:1;min-height:0"><div class="side"><button class="btn primary" data-a="new">+ Nuevo artículo</button><div class="lbl">LUGAR</div>${['Todos',...PL].map(p=>`<button class="chip" data-place="${p}" aria-pressed="${(st.place||'Todos')===p}">${p}</button>`).join('')}<div class="lbl">MOSTRAR</div>${chipsHtml()}</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">${search()}${table(true)}</div></div>`;
+ if(opt==='C')m=`<div style="display:flex;gap:12px;flex:1;min-height:0"><div class="side"><button class="btn primary" data-a="new">+ Nuevo artículo</button><div class="lbl">LUGAR</div>${['Todos',...PL,'Sin lugar'].map(p=>`<button class="chip" data-place="${p}" aria-pressed="${(st.place||'Todos')===p}">${p}</button>`).join('')}<div class="lbl">MOSTRAR</div>${chipsHtml()}</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">${search()}${table(true)}</div></div>`;
  let sh='';
- if(sheet==='filters')sh=`<div class="sheet-bg" data-close="1"><div class="sheet"><b style="font-size:18px">Filtros</b><div class="lbl">LUGAR</div><div style="display:flex;gap:6px">${['Todos',...PL].map(p=>`<button class="chip" data-place="${p}" aria-pressed="${(st.place||'Todos')===p}">${p}</button>`).join('')}</div><div class="lbl">MOSTRAR</div><div style="display:flex;gap:6px">${chipsHtml()}</div><button class="btn primary" data-close="1">Ver ${rows().length} artículos</button></div></div>`;
+ if(sheet==='filters')sh=`<div class="sheet-bg" data-close="1"><div class="sheet"><b style="font-size:18px">Filtros</b><div class="lbl">LUGAR</div><div style="display:flex;gap:6px">${['Todos',...PL,'Sin lugar'].map(p=>`<button class="chip" data-place="${p}" aria-pressed="${(st.place||'Todos')===p}">${p}</button>`).join('')}</div><div class="lbl">MOSTRAR</div><div style="display:flex;gap:6px">${chipsHtml()}</div><button class="btn primary" data-close="1">Ver ${rows().length} artículos</button></div></div>`;
  if(sheet==='place')sh=`<div class="sheet-bg" data-close="1"><div class="sheet"><b style="font-size:18px">Lugar</b>${['Todos',...PL,'Sin lugar'].map(p=>`<button class="btn" style="text-align:left" data-place="${p}">${p}</button>`).join('')}</div></div>`;
- if(sheet==='new')sh=`<div class="sheet-bg"><div class="sheet"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">Nuevo artículo</b><span><button class="btn" data-close="1">Cancelar</button> <button class="btn primary" data-a="save">Guardar</button></span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label>Nombre<br><input class="input" id="nn" style="width:100%" placeholder="Por ejemplo: Leche deslactosada"></label><div>En qué se mide<br><div style="display:flex;gap:6px">${['Peso','Líquido','Longitud','Piezas'].map((k,x)=>`<button class="chip" aria-pressed="${x===1}" data-k="1">${k}</button>`).join('')}</div></div><label>Existencia inicial (opcional)<br><input class="input" style="width:100%" placeholder="0 L"></label><label>Costo inicial (opcional)<br><input class="input" style="width:100%" placeholder="$ por L"></label><button class="btn" style="text-align:left">Lugar: Sin lugar ›</button><label>Mínimo (opcional)<br><input class="input" style="width:100%" placeholder="0 L"></label></div><p class="muted" style="margin:0">Empaques: se agregan desde la ficha una vez guardado. Nada se guarda hasta tocar «Guardar».</p></div></div>`;
+ if(sheet==='new'){const taken=ITEMS.find(i=>norm(i.n)===norm(nw.name.trim())&&nw.name.trim());
+ sh=`<div class="sheet-bg"><div class="sheet"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">Nuevo artículo</b><span><button class="btn" data-close="1">Cancelar</button> <button class="btn primary" data-a="save" ${taken||!nw.name.trim()?'disabled style="opacity:.45"':''}>Guardar</button></span></div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+ <label>Nombre <span style="color:var(--brand)">*</span><br><input class="input" id="nn" style="width:100%" placeholder="Por ejemplo: Leche deslactosada" value="${esc(nw.name)}"></label>
+ <div>En qué se mide <span style="color:var(--brand)">*</span><br><div style="display:flex;gap:6px">${['Peso','Líquido','Longitud','Piezas'].map(k=>`<button class="chip" aria-pressed="${nw.kind===k}" data-kind="${k}">${k}</button>`).join('')}</div></div>
+ ${taken?`<div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:var(--warn-soft)"><span style="flex:1">Ya existe «${esc(taken.n)}»${taken.a?'.':', archivado.'}</span>${taken.a?`<button class="btn" data-open="${ITEMS.indexOf(taken)}">Abrir ese</button>`:`<button class="btn primary" data-react="${ITEMS.indexOf(taken)}">Reactivar</button>`}</div>`:''}
+ <label>Existencia inicial <span class="muted">(opcional)</span><br><input class="input" style="width:100%" placeholder="0 ${U[nw.kind]}"></label>
+ <label>Costo inicial <span class="muted">(opcional)</span><br><input class="input" style="width:100%" placeholder="$ por ${U[nw.kind]}"></label>
+ <button class="btn" style="text-align:left;align-self:end">Lugar <span class="muted">(opcional)</span>: Sin lugar ›</button>
+ <label>Mínimo <span class="muted">(opcional)</span><br><input class="input" style="width:100%" placeholder="0 ${U[nw.kind]}"></label></div>
+ <div style="display:flex;justify-content:space-between;align-items:center"><span><b>Empaques</b> <span class="muted">(opcional) · cómo lo compras, por ejemplo: bolsa de 5 kg</span></span><button class="btn" data-a="addpack">+ Agregar empaque</button></div>
+ ${nw.packs.map((p,x)=>`<div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:center"><input class="input" placeholder="Nombre: Caja" value="${esc(p.n)}" data-pn="${x}"><input class="input" placeholder="Cuánto trae: 1 ${U[nw.kind]}" value="${esc(p.q)}" data-pq="${x}"><span class="muted">${p.q?'= '+esc(p.q):''}</span><button class="btn" data-rmp="${x}">Quitar</button></div>`).join('')}
+ <p class="muted" style="margin:0">* Obligatorio. Nada se guarda hasta tocar «Guardar».</p></div></div>`}
  f.innerHTML=`<nav class="rail"><i>POS</i><i>Caja</i><i>Gastos</i><i class="on">Almacén</i><i>Negocio</i></nav><div class="main">${m}${sh}</div>`;
+ const nn=f.querySelector('#nn');if(nn){nn.oninput=e=>{nw.name=e.target.value;const p=nn.selectionStart;render();const n=document.getElementById('nn');n.focus();n.setSelectionRange(p,p)}}
+ f.querySelectorAll('[data-pn],[data-pq]').forEach(el=>el.oninput=e=>{const d=e.target.dataset;if(d.pn)nw.packs[d.pn].n=e.target.value;else nw.packs[d.pq].q=e.target.value});
  const q=f.querySelector('#q');if(q){q.oninput=e=>{st.q=e.target.value;const p=q.selectionStart;render();const n=document.getElementById('q');n.focus();n.setSelectionRange(p,p)}}
 }
-document.getElementById('frame').addEventListener('click',e=>{const t=e.target.closest('[data-f],[data-a],[data-place],[data-close],[data-i],[data-k]');if(!t)return;
+document.getElementById('frame').addEventListener('click',e=>{const t=e.target.closest('[data-f],[data-a],[data-place],[data-close],[data-i],[data-k],[data-status],[data-kind],[data-rmp],[data-react],[data-open]');if(!t)return;
+ if(t.dataset.status){st.status=t.dataset.status;render();return}
+ if(t.dataset.kind){nw.kind=t.dataset.kind;render();return}
+ if(t.dataset.rmp){nw.packs.splice(+t.dataset.rmp,1);render();return}
+ if(t.dataset.a==='addpack'){nw.packs.push({n:'',q:''});render();return}
+ if(t.dataset.react){const it=ITEMS[t.dataset.react];it.a=1;sheet=null;st.status='active';render();toast('«'+it.n+'» volvió a estar activo');return}
+ if(t.dataset.open){sheet=null;render();toast('Abre la ficha de «'+ITEMS[t.dataset.open].n+'»');return}
  if(t.dataset.close&&e.target!==t&&!e.target.closest('button'))return;
  if(t.dataset.k){t.parentElement.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c===t));return}
- if(t.dataset.f){const f=t.dataset.f;if(f==='status')st.status=st.status==='active'?'archived':'active';else if(f==='place'){sheet='place'}else st[f]=!st[f]}
+ if(t.dataset.f){const f=t.dataset.f;if(f==='place'){sheet='place'}else st[f]=!st[f]}
  if(t.dataset.place){st.place=t.dataset.place==='Todos'?null:t.dataset.place;if(sheet==='place')sheet=null}
- if(t.dataset.a==='new')sheet='new';if(t.dataset.a==='filters')sheet='filters';
- if(t.dataset.a==='save'){const n=(document.getElementById('nn').value||'Leche deslactosada').trim();ITEMS.unshift({n,u:'ml',k:'líquido',on:0,c:0,p:null,e:[],a:1});sheet=null;render();toast('«'+n+'» quedó creado');return}
+ if(t.dataset.a==='new'){sheet='new';nw={name:'',kind:'Líquido',packs:[]}}if(t.dataset.a==='filters')sheet='filters';
+ if(t.dataset.a==='save'){const n=nw.name.trim();ITEMS.unshift({n,u:{Peso:'g',Líquido:'ml',Longitud:'cm',Piezas:'pz'}[nw.kind],k:nw.kind.toLowerCase(),on:0,c:0,p:null,e:nw.packs.filter(p=>p.n&&p.q).map(p=>p.n+' · '+p.q),a:1});sheet=null;render();toast('«'+n+'» quedó creado');return}
  if(t.dataset.close)sheet=null;
  if(t.dataset.i){toast('Abre la ficha de «'+ITEMS[t.dataset.i].n+'» (otra maqueta)');return}
  render()});
