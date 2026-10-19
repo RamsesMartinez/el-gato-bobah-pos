@@ -143,13 +143,18 @@ Un artículo dado de alta en piezas que en realidad se pesa se cambia a peso.
 
 **Acceptance Scenarios**:
 
-1. **Given** un artículo sin movimientos, **When** se cambia de piezas a peso, **Then** conserva su
-   nombre, su lugar y sus recetas, y se pide la cantidad nueva de cada receta y de cada empaque.
+1. **Given** un artículo sin compras, ventas ni mermas (los ajustes de conteo no cuentan), **When**
+   se cambia de piezas a peso con la equivalencia «1 pieza = 250 g», **Then** conserva su nombre, su
+   lugar y sus recetas; su existencia, sus ajustes de conteo, sus recetas y sus empaques se
+   convierten con esa equivalencia, y cada cantidad se puede revisar antes de confirmar.
 2. **Given** un artículo con movimientos, **When** se intenta cambiar su unidad, **Then** se ofrece
    «Crear uno nuevo en la otra unidad y archivar este», con la existencia actual convertida al
    nuevo según una equivalencia que se captura.
-3. **Given** ese reemplazo, **When** se confirma, **Then** las recetas activas pasan al nuevo y la
+3. **Given** ese reemplazo, **When** se confirma, **Then** las recetas activas pasan al nuevo con su
+   cantidad convertida por la misma equivalencia (revisable una por una antes de confirmar), y la
    historia del viejo queda intacta.
+4. **Given** un artículo cuyo único movimiento es el ajuste de su primer conteo, **When** se cambia
+   su unidad, **Then** el cambio es directo, no un reemplazo.
 
 ---
 
@@ -176,22 +181,27 @@ al error.
 
 ### User Story 7 - Contar sin equivocarse de unidad (Priority: P2)
 
-En el conteo, la unidad se ve grande junto al número, se elige el empaque cuando hay varios y se
-avisa antes de guardar una cifra muy lejos de lo esperado.
+En el conteo, la unidad se ve grande junto al número, se elige la unidad (g o kg, ml o L) y el
+empaque cuando hay varios, y se avisa antes de guardar una cifra fuera de lo razonable.
 
 **Why this priority**: 740 escrito en un artículo en kg guarda 740 kg y descuadra el inventario.
 
-**Independent Test**: en un artículo en kg con dos empaques, se ofrecen los dos; escribir 740 donde
-se esperaban unos 7 kg pide confirmar.
+**Independent Test**: en un artículo en gramos con existencia 0 y un empaque de 15 kg, escribir 740
+en kg pide confirmar; escribir 740 en g, no.
 
 **Acceptance Scenarios**:
 
-1. **Given** un artículo en kg, **When** se escribe 740, **Then** se ve «740 kg» con la unidad del
-   mismo tamaño que el número.
+1. **Given** un artículo en gramos, **When** se abre el teclado, **Then** la unidad elegida es «g»
+   y se puede cambiar a «kg» con un toque; al escribir 740 se ve «740 g» con la unidad del mismo
+   tamaño que el número.
 2. **Given** el hielo con bolsas de 5 kg y de 15 kg, **When** se captura, **Then** se puede elegir
    cualquiera de las dos, y buscar «bolsa» también lo encuentra.
-3. **Given** una cifra más de 10 veces mayor o menor que lo esperado, **When** se guarda, **Then**
-   se pide confirmar. El aviso no revela la cifra esperada: el conteo sigue siendo a ciegas.
+3. **Given** un artículo con existencia 0 o negativa y un empaque de 15 kg, **When** se guarda
+   740 kg, **Then** se pide confirmar mostrando «740 kg» en grande, porque pasa de 10 veces el
+   empaque más grande.
+4. **Given** un artículo con existencia positiva, **When** se guarda una cifra más de 10 veces mayor
+   o menor que lo esperado, **Then** se pide confirmar. Ningún aviso revela la cifra de referencia:
+   el conteo sigue siendo a ciegas.
 
 ### Edge Cases
 
@@ -205,6 +215,12 @@ se esperaban unos 7 kg pide confirmar.
   en ese momento (409), en vez de convertir a medias.
 - **Empaque con la misma cantidad que la unidad** (bolsa de 1 kg): se permite.
 - **Costo inicial o corregido negativo o absurdo**: 400, como cualquier dinero.
+- **Nombre repetido de un artículo archivado**: el aviso ofrece «Reactivar» ese artículo en vez de
+  crear otro.
+- **Existencia inicial con dos sucursales y sin selector**: se niega con el aviso de sucursal
+  ambigua, igual que un conteo; el artículo no se crea a medias.
+- **Productos de reventa** (una lata, una botella): son artículos como cualquier otro, con su
+  existencia, sus empaques y su costo; el producto que se vende los resta por su receta de 1 pieza.
 - **Un preparado**: su costo lo calcula la receta y no se captura a mano; la ficha lo dice.
 - **Artículo de otra empresa**: no se ve ni se edita.
 
@@ -216,8 +232,9 @@ se esperaban unos 7 kg pide confirmar.
   empaques, sin distinguir mayúsculas ni acentos, y filtros de activos o archivados, lugar, sin
   costo y existencia negativa.
 - **FR-002**: La lista MUST tener «Nuevo artículo», que abre una hoja con nombre y en qué se mide
-  (obligatorios) y lugar, mínimo, costo inicial y empaques (opcionales). Todo se guarda en una sola
-  operación al tocar «Guardar».
+  (obligatorios) y lugar, mínimo, costo inicial, existencia inicial y empaques (opcionales). La
+  existencia inicial entra como un ajuste de conteo. Todo se guarda en una sola operación al tocar
+  «Guardar». Si el nombre ya existe en un artículo archivado, se ofrece «Reactivar».
 - **FR-003**: Ninguna captura MUST dejar un artículo creado si se cancela o si su guardado falla. El
   artículo nuevo del gasto y de la receta se crea en la misma operación que guarda el gasto o la
   receta.
@@ -235,24 +252,37 @@ se esperaban unos 7 kg pide confirmar.
   devuelve tal como estaba.
 - **FR-008**: Un artículo archivado MUST dejar de ofrecerse en el gasto, la receta y el conteo, y
   MUST seguir visible en sus movimientos, compras y reportes pasados.
-- **FR-009**: Sin movimientos, la unidad base MUST poder cambiarse, pidiendo la cantidad nueva de
-  cada receta y de cada empaque. Con movimientos, MUST ofrecerse el reemplazo: un artículo nuevo
-  en la otra unidad, con la existencia convertida por una equivalencia capturada (una salida en el
-  viejo y una entrada en el nuevo, ligadas), las recetas activas pasadas al nuevo y el viejo
-  archivado. Todo en una sola operación.
+- **FR-009**: Para decidir el camino, solo cuentan como movimientos las compras, ventas, mermas y
+  cancelaciones; los ajustes de conteo no. Sin esos movimientos, la unidad base MUST poder
+  cambiarse directo con una equivalencia capturada («1 pieza = 250 g»; entre kg y g no se pide):
+  la existencia, los ajustes de conteo, las cantidades de las recetas y de los empaques se
+  convierten con ella. Con movimientos, MUST ofrecerse el reemplazo: un artículo nuevo en la otra
+  unidad, la existencia convertida por la equivalencia (una salida en el viejo y una entrada en el
+  nuevo, ligadas), las recetas activas pasadas al nuevo con su cantidad convertida por la misma
+  equivalencia, y el viejo archivado. En los dos caminos, cada cantidad convertida se muestra y se
+  puede corregir antes de confirmar, y todo es una sola operación.
 - **FR-010**: Los empaques MUST mostrarse siempre con su equivalencia en la unidad del artículo, y
   la sección MUST explicar qué son con un ejemplo.
 - **FR-011**: Las sugerencias de empaque MUST ser solo de artículos con el mismo tipo de unidad, y
   cada una MUST llevar su cantidad.
-- **FR-012**: El conteo MUST ofrecer todos los empaques activos y no aproximados del artículo,
-  mostrar la unidad del mismo tamaño que el número, buscar también por nombre de empaque y pedir
-  confirmación si la cifra es más de 10 veces mayor o menor que lo esperado, sin mostrar la cifra
-  esperada.
+- **FR-012**: El conteo MUST ofrecer todos los empaques activos y no aproximados del artículo, un
+  selector visible de unidad suelta (g o kg, ml o L, cm o m; en piezas no aplica) con la unidad
+  base elegida al abrir, mostrar la unidad del mismo tamaño que el número y buscar también por
+  nombre de empaque. Antes de guardar MUST pedir confirmación, mostrando la cifra con su unidad en
+  grande, cuando la cifra pase la referencia del artículo, en este orden:
+  1. Existencia esperada positiva: más de 10 veces mayor o menor que ella.
+  2. Si no: el último conteo cerrado del artículo con cifra positiva, con la misma regla.
+  3. Si no: más de 10 veces su empaque más grande.
+  4. Si no tiene empaques: un tope por unidad (50 kg, 50 L, 50 m o 500 piezas).
+  Ningún aviso muestra la cifra de referencia: el conteo sigue siendo a ciegas.
 - **FR-013**: Crear, editar, archivar, reactivar, corregir el costo y cambiar la unidad MUST pedir
   permiso en el servidor, nunca por nombre de rol: ver la lista y la ficha, `inventory.view`;
   crear desde un gasto o una receta, el permiso de esa captura; crear y editar desde la lista,
   archivar, reactivar, corregir el costo, cambiar la unidad y editar empaques,
-  `inventory.configure`.
+  `inventory.configure`. Los roles sugeridos MUST quedar así para que nadie pierda acceso:
+  administrador y gerente reciben `inventory.configure` e `inventory.view`, que son los dos roles
+  que hoy ven el almacén; cajero y mesero no reciben ninguno. Los roles viven en un mapa
+  del código, no en la base: no hay migración de datos.
 - **FR-014**: Cada una de esas acciones MUST escribir su evento en la bitácora dentro de su
   transacción: `ingredient.created`, `ingredient.updated` (con lo que cambió),
   `ingredient.archived`, `ingredient.reactivated`, `ingredient.cost_corrected`,
