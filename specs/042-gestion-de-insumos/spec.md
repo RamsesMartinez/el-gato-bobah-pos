@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-19
 
-**Status**: Draft
+**Status**: Aprobada por el dueño (2026-10-19)
 
 **Input**: Issue #113. Quien administra el almacén no tiene un camino directo para crear, editar,
 archivar ni entender los empaques de sus artículos. Relacionados, sin pisarlos: #100 (buscador en
@@ -202,6 +202,9 @@ en kg pide confirmar; escribir 740 en g, no.
 4. **Given** un artículo con existencia positiva, **When** se guarda una cifra más de 10 veces mayor
    o menor que lo esperado, **Then** se pide confirmar. Ningún aviso revela la cifra de referencia:
    el conteo sigue siendo a ciegas.
+5. **Given** un artículo con existencia positiva, **When** se cuenta 0, **Then** se guarda sin aviso.
+6. **Given** un artículo en gramos con empaque de 1 kg, **When** se guarda 5 g, **Then** se pide
+   confirmar mostrando «5 g» en grande.
 
 ### Edge Cases
 
@@ -256,7 +259,8 @@ en kg pide confirmar; escribir 740 en g, no.
   cancelaciones; los ajustes de conteo no. Sin esos movimientos, la unidad base MUST poder
   cambiarse directo con una equivalencia capturada («1 pieza = 250 g»; entre kg y g no se pide):
   la existencia, los ajustes de conteo, las cantidades de las recetas y de los empaques se
-  convierten con ella. Con movimientos, MUST ofrecerse el reemplazo: un artículo nuevo en la otra
+  convierten con ella, y la bitácora guarda cada valor y unidad originales para poder revertir el
+  cambio. Con movimientos, MUST ofrecerse el reemplazo: un artículo nuevo en la otra
   unidad, la existencia convertida por la equivalencia (una salida en el viejo y una entrada en el
   nuevo, ligadas), las recetas activas pasadas al nuevo con su cantidad convertida por la misma
   equivalencia, y el viejo archivado. En los dos caminos, cada cantidad convertida se muestra y se
@@ -273,8 +277,11 @@ en kg pide confirmar; escribir 740 en g, no.
   1. Existencia esperada positiva: más de 10 veces mayor o menor que ella.
   2. Si no: el último conteo cerrado del artículo con cifra positiva, con la misma regla.
   3. Si no: más de 10 veces su empaque más grande.
-  4. Si no tiene empaques: un tope por unidad (50 kg, 50 L, 50 m o 500 piezas).
-  Ningún aviso muestra la cifra de referencia: el conteo sigue siendo a ciegas.
+  4. Si no tiene empaques: un tope por unidad (50 kg, 50 L, 50 m o 5,000 piezas).
+  Contar 0 nunca dispara el aviso de «10 veces menor». Además MUST pedir confirmación cuando la
+  cifra, mayor que 0, sea menor a 1/100 de su empaque más pequeño (5 g en un artículo con bolsa de
+  1 kg: probablemente se quiso escribir kg). Ningún aviso muestra la cifra de referencia: el conteo
+  sigue siendo a ciegas.
 - **FR-013**: Crear, editar, archivar, reactivar, corregir el costo y cambiar la unidad MUST pedir
   permiso en el servidor, nunca por nombre de rol: ver la lista y la ficha, `inventory.view`;
   crear desde un gasto o una receta, el permiso de esa captura; crear y editar desde la lista,
@@ -286,7 +293,8 @@ en kg pide confirmar; escribir 740 en g, no.
 - **FR-014**: Cada una de esas acciones MUST escribir su evento en la bitácora dentro de su
   transacción: `ingredient.created`, `ingredient.updated` (con lo que cambió),
   `ingredient.archived`, `ingredient.reactivated`, `ingredient.cost_corrected`,
-  `ingredient.unit_changed`, `ingredient.replaced`, `presentation.created`, `presentation.updated`
+  `ingredient.unit_changed` (con la equivalencia y, por cada ajuste de conteo, receta y empaque
+  convertido, su valor y unidad originales), `ingredient.replaced`, `presentation.created`, `presentation.updated`
   y `presentation.retired`.
 - **FR-015**: Los textos MUST ser de quien opera («Artículo», «Empaque», «En qué se mide»,
   «Archivar»), sin nombres internos. Todo control táctil mide 44 px o más, y ningún selector es
