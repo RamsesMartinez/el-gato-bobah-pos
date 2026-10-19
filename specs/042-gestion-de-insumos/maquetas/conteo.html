@@ -40,60 +40,67 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 </script>
 <h1>Teclado del conteo</h1>
-<p class="sub">Almacén › Conteo, al tocar «Hielo en bolsa» (se mide en gramos, existencia 0, empaques de 5 kg y 15 kg), a 1024×600. Escribe 740, cambia g por kg y guarda para ver el aviso. Contar 0 no avisa.</p>
-<div class="tabs" role="tablist">
-  <button class="tab" data-opt="A" role="tab">A · Empaques con + y −</button>
-  <button class="tab" data-opt="B" role="tab">B · Elegir y teclear</button>
-  <button class="tab" data-opt="C" role="tab">C · Un renglón por forma</button>
-</div>
+<p class="sub">Opción elegida: A, empaques con + y −. Almacén › Conteo a 1024×600, con datos de ejemplo. Arriba de la tableta, elige un artículo de ejemplo para probar cada aviso y toca Guardar.</p>
+<div class="tabs" id="ex"></div>
 <div class="stage"><div class="scaler"><div class="frame" id="frame"></div></div></div>
-<div class="notes">
-  <p class="opt-note" data-opt="A"><b>A</b>Cada empaque tiene + y −, lo suelto va al teclado con su selector g o kg, y el total se ve grande. Privilegia: contar bolsas cerradas a toques, sin teclear. Cuesta: con más de 3 empaques, los contadores empujan el teclado hacia abajo.</p>
-  <p class="opt-note" data-opt="B"><b>B</b>Primero se elige en qué se cuenta (Bolsa 5 kg, Bolsa 15 kg, kg, g) y luego se teclea un solo número. Privilegia: una sola cifra en pantalla y la unidad imposible de pasar por alto. Cuesta: contar dos empaques distintos son dos capturas que se suman.</p>
-  <p class="opt-note" data-opt="C"><b>C</b>Un renglón por empaque y uno para lo suelto, cada uno con su casilla, y un teclado compartido. Privilegia: ver todo el desglose a la vez. Cuesta: hay que tocar la casilla correcta antes de teclear; es lo más parecido a la pantalla de hoy.</p>
-</div>
+<div class="notes" id="exnote"></div>
 <style>
 .cw{display:grid;grid-template-columns:1fr 340px;gap:14px;flex:1;min-height:0}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:0}
-.big{font-size:44px;font-weight:800;line-height:1}.big small{font-size:44px;font-weight:800;color:var(--brand)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.big{font-size:40px;font-weight:800;line-height:1}.big small{font-size:40px;font-weight:800;color:var(--brand)}
 .keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .keys button{min-height:60px;font:600 24px var(--font);border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .seg button{flex:1;min-height:48px;border:0;background:var(--surface);color:var(--fg);font:700 18px var(--font);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
-.ctr{display:flex;align-items:center;justify-content:space-between;min-height:56px;border-bottom:1px solid var(--line)}
+.ctr{display:flex;align-items:center;justify-content:space-between;min-height:56px;border-bottom:1px solid var(--line);flex:none}
 .ctr .q{font-size:26px;font-weight:800;min-width:48px;text-align:center}
 .pm{width:52px;height:52px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:700 24px var(--font);cursor:pointer}
-.box{min-height:56px;border:2px solid var(--line);border-radius:10px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;cursor:pointer;background:var(--surface);color:var(--fg);font:inherit;width:100%}
-.box.on{border-color:var(--brand)}
+.box{min-height:56px;border:2px solid var(--brand);border-radius:10px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:var(--surface)}
 .box b{font-size:26px}
+.total{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex:none}
 </style>
 <script>
-const P=[{n:'Bolsa',g:5000},{n:'Bolsa',g:15000}];
-let opt='A',packs=[0,0],loose='',unit='g',sel='loose',bmode='kg',bval='',cfields={p0:'',p1:'',loose:''},cact='loose',modal=null;
+// Ejemplos. La referencia del aviso vive en el servidor; aquí se simula con la misma regla de FR-012.
+const EX=[
+ {id:'hielo',label:'Hielo · sin conteo previo',name:'Hielo en bolsa',place:'Refri',base:'g',packs:[{n:'Bolsa',q:5000},{n:'Bolsa',q:15000}],expected:0,last:null,
+  note:'Se mide en gramos, existencia 0, nunca contado. La referencia es 10 veces el empaque más grande (150 kg). Prueba 740 en kg: avisa. 740 en g: no avisa, pero 20 g sí (menos de 1/100 de la bolsa de 5 kg).'},
+ {id:'leche',label:'Leche · con último conteo',name:'Leche entera',place:'Refri',base:'ml',packs:[{n:'Caja',q:1000}],expected:-1500,last:12000,
+  note:'Existencia −1.5 L, así que se usa el último conteo cerrado: 12 L. Avisa por encima de 120 L o por debajo de 1.2 L. Prueba 1 caja (1 L): avisa por «10 veces menor». Contar 0 no avisa.'},
+ {id:'vasos',label:'Vasos · piezas sin empaques',name:'Vasos de 16 oz',place:'Bodega',base:'pz',packs:[],expected:0,last:null,
+  note:'Se mide en piezas, sin empaques ni conteo previo. Se usa el tope fijo de 5,000 piezas. Prueba 6000: avisa. 4800: no avisa.'},
+ {id:'popotes',label:'Popotes · 5 empaques',name:'Popotes gruesos',place:'Barra',base:'pz',packs:[{n:'Paquete',q:100},{n:'Caja',q:500},{n:'Bolsa',q:250},{n:'Rollo',q:50},{n:'Bulto',q:2000}],expected:800,last:null,
+  note:'Tiene 5 empaques. El total queda fijo arriba y los contadores se desplazan debajo de él, sin empujar el total ni lo suelto fuera de la pantalla.'}
+];
+let ex=EX[0],cnt=[],loose='',unit='g',modal=null,saved=false;
+const big={g:'kg',ml:'L'};
+function reset(){cnt=ex.packs.map(()=>0);loose='';unit=ex.base;modal=null}
 const f1=n=>n.toLocaleString('es-MX',{maximumFractionDigits:3});
-function totalG(){if(opt==='A')return packs[0]*5000+packs[1]*15000+(parseFloat(loose)||0)*(unit==='kg'?1000:1);
- if(opt==='B'){const v=parseFloat(bval)||0;return bmode==='p0'?v*5000:bmode==='p1'?v*15000:v*(bmode==='kg'?1000:1)}
- return (parseFloat(cfields.p0)||0)*5000+(parseFloat(cfields.p1)||0)*15000+(parseFloat(cfields.loose)||0)*(unit==='kg'?1000:1)}
-const show=g=>g>=1000?f1(g/1000)+' <small>kg</small>':f1(g)+' <small>g</small>';
-// Referencia (solo en el servidor en la versión real): esperado 0 → sin último conteo → 10 × empaque más grande = 150 kg; menor a 1/100 del más chico = 50 g.
-function check(g){if(g===0)return null;if(g>150000)return 'mucho';if(g<50)return 'poco';return null}
-const keys=()=>`<div class="keys">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map(k=>`<button data-k="${k}">${k}</button>`).join('')}</div>`;
-const seg=()=>`<div class="seg">${['g','kg'].map(u=>`<button data-u="${u}" aria-pressed="${unit===u}">${u}</button>`).join('')}</div>`;
-function render(){const f=document.getElementById('frame');const g=totalG();
- let left='';
- if(opt==='A')left=`<b>Empaques cerrados</b>${P.map((p,i)=>`<div class="ctr"><span style="font-size:18px"><b>${p.n}</b> · ${p.g/1000} kg</span><span style="display:flex;align-items:center;gap:8px"><button class="pm" data-m="${i}">−</button><span class="q">${packs[i]}</span><button class="pm" data-p="${i}">+</button></span></div>`).join('')}<b>Abierto o suelto</b><div style="display:flex;gap:10px;align-items:center"><div class="box on" style="flex:1"><span class="muted">Suelto</span><b>${loose||'0'} ${unit}</b></div><div style="width:130px">${seg()}</div></div>`;
- if(opt==='B')left=`<b>¿En qué lo cuentas?</b><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${[['p0','Bolsa · 5 kg'],['p1','Bolsa · 15 kg'],['kg','Suelto en kg'],['g','Suelto en g']].map(([k,l])=>`<button class="chip" style="border-radius:10px;min-height:56px;font-size:17px" data-b="${k}" aria-pressed="${bmode===k}">${l}</button>`).join('')}</div><div class="box on"><span class="muted">${bmode==='p0'?'Bolsas de 5 kg':bmode==='p1'?'Bolsas de 15 kg':'Suelto'}</span><b>${bval||'0'} ${bmode==='p0'||bmode==='p1'?'bolsas':bmode}</b></div>`;
- if(opt==='C')left=`${[['p0','Bolsa · 5 kg','bolsas'],['p1','Bolsa · 15 kg','bolsas'],['loose','Suelto',unit]].map(([k,l,u])=>`<button class="box ${cact===k?'on':''}" data-c="${k}"><span>${l}</span><b>${cfields[k]||'0'} ${u}</b></button>`).join('')}<div style="display:flex;justify-content:flex-end"><div style="width:130px">${seg()}</div></div>`;
- const m=`<div style="display:flex;align-items:center;gap:10px"><button class="btn">‹ Conteo</button><h2 style="margin:0;font-size:20px;flex:1">Hielo en bolsa <span class="muted" style="font-size:14px;font-weight:400">Refri</span></h2></div><div class="cw"><div class="card">${left}<div style="margin-top:auto;border-top:1px solid var(--line);padding-top:10px"><span class="muted">Total contado</span><div class="big">${show(g)}</div></div></div><div class="card">${keys()}<button class="btn primary" style="min-height:56px;font-size:18px" data-save="1">Guardar</button></div></div>`;
+function total(){const l=(parseFloat(loose)||0)*(unit===big[ex.base]?1000:1);return ex.packs.reduce((s,p,i)=>s+cnt[i]*p.q,0)+l}
+function show(v){if(ex.base==='pz')return f1(v)+' <small>pz</small>';return v>=1000?f1(v/1000)+' <small>'+big[ex.base]+'</small>':f1(v)+' <small>'+ex.base+'</small>'}
+function check(v){if(v===0)return null;
+ const ref=ex.expected>0?ex.expected:(ex.last>0?ex.last:null);
+ if(ref){if(v>ref*10)return 'mucho';if(v<ref/10)return 'poco'}
+ else if(ex.packs.length){if(v>10*Math.max(...ex.packs.map(p=>p.q)))return 'mucho'}
+ else{const cap=ex.base==='pz'?5000:50000;if(v>cap)return 'mucho'}
+ if(ex.packs.length&&v<Math.min(...ex.packs.map(p=>p.q))/100)return 'poco';return null}
+function render(){const f=document.getElementById('frame');const v=total();const many=ex.packs.length>3;
+ const tot=`<div class="total"><span class="muted">Total contado</span><div class="big">${show(v)}</div></div>`;
+ const packs=ex.packs.length?`<b style="flex:none">Empaques cerrados</b><div style="${many?'flex:1;min-height:0;overflow:auto':''}">${ex.packs.map((p,i)=>`<div class="ctr"><span style="font-size:18px"><b>${p.n}</b> · ${ex.base==='pz'?p.q+' pz':f1(p.q/1000)+' '+big[ex.base]}</span><span style="display:flex;align-items:center;gap:8px"><button class="pm" data-m="${i}" aria-label="Quitar ${p.n}">−</button><span class="q">${cnt[i]}</span><button class="pm" data-p="${i}" aria-label="Agregar ${p.n}">+</button></span></div>`).join('')}</div>`:'';
+ const lo=`<b style="flex:none">${ex.packs.length?'Abierto o suelto':'Cuántos hay'}</b><div style="display:flex;gap:10px;align-items:center;flex:none"><div class="box" style="flex:1"><span class="muted">${ex.packs.length?'Suelto':'Piezas'}</span><b>${loose||'0'} ${unit}</b></div>${ex.base!=='pz'?`<div style="width:130px" class="seg">${[ex.base,big[ex.base]].map(u=>`<button data-u="${u}" aria-pressed="${unit===u}">${u}</button>`).join('')}</div>`:''}</div>`;
+ const left=many?`${tot}<div style="border-top:1px solid var(--line)"></div>${packs}${lo}`:`${packs}${lo}<div style="margin-top:auto;border-top:1px solid var(--line);padding-top:10px">${tot}</div>`;
  let sh='';
- if(modal)sh=`<div class="sheet-bg" style="align-items:center"><div class="modal"><b style="font-size:18px">${modal==='mucho'?'¿Seguro? Es mucho para este artículo':'¿Seguro? Es muy poco para este artículo'}</b><div class="big" style="text-align:center;padding:10px 0">${show(g)}</div><p class="muted" style="margin:0">${modal==='mucho'?'Revisa si escribiste kg en lugar de g.':'Revisa si escribiste g en lugar de kg.'}</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close="1">Corregir</button><button class="btn primary" data-close="1" data-ok="1">Sí, guardar</button></div></div></div>`;
- f.innerHTML=`<nav class="rail"><i>POS</i><i>Caja</i><i>Gastos</i><i class="on">Almacén</i><i>Negocio</i></nav><div class="main">${m}${sh}</div>`}
-function type(k){const ed=v=>k==='⌫'?v.slice(0,-1):(k==='.'&&v.includes('.'))?v:(v+k).replace(/^0(\d)/,'$1');
- if(opt==='A')loose=ed(loose);else if(opt==='B')bval=ed(bval);else cfields[cact]=ed(cfields[cact])}
+ if(modal)sh=`<div class="sheet-bg" style="align-items:center"><div class="modal"><b style="font-size:18px">${modal==='mucho'?'¿Seguro? Es mucho para este artículo':'¿Seguro? Es muy poco para este artículo'}</b><div class="big" style="text-align:center;padding:10px 0">${show(v)}</div><p class="muted" style="margin:0">${ex.base==='pz'?'Revisa la cifra antes de guardar.':modal==='mucho'?'Revisa si escribiste '+big[ex.base]+' en lugar de '+ex.base+'.':'Revisa si escribiste '+ex.base+' en lugar de '+big[ex.base]+'.'}</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close="1">Corregir</button><button class="btn primary" data-ok="1">Sí, guardar</button></div></div></div>`;
+ if(saved)sh=`<div class="sheet-bg" style="align-items:center"><div class="modal"><b>Guardado: ${show(v).replace(/<\/?small>/g,'')}</b></div></div>`;
+ f.innerHTML=`<nav class="rail"><i>POS</i><i>Caja</i><i>Gastos</i><i class="on">Almacén</i><i>Negocio</i></nav><div class="main"><div style="display:flex;align-items:center;gap:10px"><button class="btn">‹ Conteo</button><h2 style="margin:0;font-size:20px;flex:1">${ex.name} <span class="muted" style="font-size:14px;font-weight:400">${ex.place}</span></h2></div><div class="cw"><div class="card">${left}</div><div class="card">${'<div class="keys">'+['1','2','3','4','5','6','7','8','9','.','0','⌫'].map(k=>`<button data-k="${k}">${k}</button>`).join('')+'</div>'}<button class="btn primary" style="min-height:56px;font-size:18px" data-save="1">Guardar</button></div></div>${sh}</div>`;
+ document.getElementById('ex').innerHTML=EX.map(e=>`<button class="tab" data-ex="${e.id}" aria-selected="${e===ex}">${e.label}</button>`).join('');
+ document.getElementById('exnote').innerHTML=`<p>${ex.note}</p><p class="muted">En la versión real, la referencia no sale del servidor: la pantalla solo recibe «confirma». El conteo sigue a ciegas.</p>`;fit()}
+document.getElementById('ex').addEventListener('click',e=>{const t=e.target.closest('[data-ex]');if(!t)return;ex=EX.find(x=>x.id===t.dataset.ex);reset();render()});
 document.getElementById('frame').addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;const d=t.dataset;
- if(d.k)type(d.k);if(d.u)unit=d.u;if(d.p)packs[d.p]++;if(d.m)packs[d.m]=Math.max(0,packs[d.m]-1);if(d.b){bmode=d.b;}if(d.c)cact=d.c;
- if(d.save){modal=check(totalG());if(!modal){render();const x=document.createElement('div');x.className='sheet-bg';x.style.alignItems='center';x.innerHTML='<div class="modal"><b>Guardado</b></div>';document.querySelector('.main').appendChild(x);setTimeout(()=>x.remove(),900);return}}
+ if(d.k){const k=d.k;loose=k==='⌫'?loose.slice(0,-1):(k==='.'&&(loose.includes('.')||ex.base==='pz'))?loose:(loose+k).replace(/^0(\d)/,'$1')}
+ if(d.u)unit=d.u;if(d.p)cnt[d.p]++;if(d.m)cnt[d.m]=Math.max(0,cnt[d.m]-1);
+ if(d.save){modal=check(total());if(!modal){saved=true;render();setTimeout(()=>{saved=false;render()},1100);return}}
+ if(d.ok){modal=null;saved=true;render();setTimeout(()=>{saved=false;render()},1100);return}
  if(d.close)modal=null;render()});
-tabs(id=>{opt=id;modal=null;render()});
+reset();render();
 </script>
