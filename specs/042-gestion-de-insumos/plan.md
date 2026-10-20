@@ -102,7 +102,7 @@ propio de unas 60 líneas, sin librería nueva (principio VI).
 |---|---|---|
 | **Lista de artículos** | Almacén › Artículos (pestaña que ya existe). Arriba, en una fila, el buscador (artículo o empaque) y «+ Nuevo artículo»; debajo, una fila de chips: «Lugar: Todos ›» (hoja con los lugares y «Sin lugar»), el par «Activos / Archivados», «Sin costo» y «Existencia negativa». La tabla tiene artículo (con «Se mide en…»), existencia (las negativas marcadas), lugar, costo («Sin costo» marcado) y empaques. «Nuevo artículo» abre una hoja con nombre * y en qué se mide * obligatorios; existencia inicial, costo, lugar, mínimo y empaques son opcionales. Si el nombre ya existe, avisa ahí mismo, con «Reactivar» cuando el artículo está archivado | Fila de búsqueda de 44 px y fila de chips de 44 px (~100 px con separaciones); caben 8 renglones de 50 px |
 | **Ficha del artículo** | Hoja a pantalla completa al tocar un renglón. Encabezado: «‹ Artículos», nombre, «Archivar» (rojo, separado de Guardar) y «Guardar». **Columna izquierda**, desplazable: nombre, categoría ›, lugar ›, mínimo, «Se mide en … · Cambiar ›» y la sección Empaques con su explicación («Cómo lo compras…»), cada uno como «Bolsa · 5 kg = 5,000 g» con Editar, y «+ Agregar empaque» (hoja con sugerencias solo de la misma clase de unidad). **Columna derecha**: costo actual grande con «Corregir costo», un indicador de tendencia («▲ Sube 3 %» o «▼ Baja», contra la compra más vieja de las últimas 20), la gráfica de las últimas 20 (SVG de ~140 px de alto, etiquetas de 13 px y la última cifra en 14 px, las correcciones como punto hueco) y debajo el historial desplazable (fecha, proveedor o «Corrección a mano · quién», «$30 por Bolsa · 5 kg» y costo por kg). Muestra 20 y «Ver más» trae las 20 anteriores (FR-006); con menos de 2 compras no hay indicador de tendencia. En el encabezado, «Bitácora» abre los eventos del artículo (FR-016: quién, cuándo y qué cambió, de 20 en 20). «Se mide en … · Cambiar ›» lleva a dos pasos: (1) la clase de unidad nueva y la equivalencia, y si el artículo tiene compras o ventas avisa que se crea uno nuevo y este se archiva; (2) una tabla de existencia por sucursal, recetas y empaques con «hoy → en el nuevo», editable, y «Crear el nuevo y archivar este». Sin compras ni ventas, el paso 2 dice «Cambiar» y convierte el mismo artículo Archivar abre la revisión: existencia, recetas activas y, si las hay, «Quítalo de esas recetas antes de archivar» | Encabezado de 44 px; dos columnas de ~430 px que llenan el resto; unas 6 compras visibles sin desplazar |
-| **Nuevo artículo** | Hoja desde «Nuevo artículo»; es la misma ficha vacía, sin historial | Igual que la ficha |
+| **Nuevo artículo** | Hoja corta desde «Nuevo artículo» (la de la maqueta de la lista, sin empaques ni categoría): nombre *, en qué se mide *, existencia inicial, costo, lugar (`Picker`) y mínimo; encabezado fijo con Cancelar y Guardar. Al guardar abre la ficha con «Agregar empaque» a la vista | Hoja de ~360 px; el encabezado no se desplaza |
 | **Teclado del conteo** | Almacén › Conteo, al tocar un artículo. **Izquierda**: un renglón por empaque cerrado con «−», la cantidad y «+» (52 px); «Abierto o suelto» con su casilla y el selector de unidad (g o kg, ml o L, cm o m), que abre en la unidad base. Un artículo en piezas con empaque aproximado por peso ofrece pz, g y kg: lo pesado se ve «≈ N pz» junto a la casilla y el total sale con «≈»; se guarda en piezas; el total en 40 px con la unidad del mismo tamaño. **Derecha**: teclado de 60 px y «Guardar». Con más de 3 empaques, el total va fijo arriba y los contadores se desplazan debajo. Si el servidor responde `needsConfirm`, una ventana muestra la cifra en grande con «Corregir» y «Sí, guardar» | Encabezado de 44 px; contadores de 56 px; teclado de 4 × 60 px más Guardar de 56 px |
 
 ### Maquetas
@@ -150,8 +150,77 @@ El código de cada maqueta está en [maquetas/](maquetas/).
 | E12 | Existencia inicial con dos sucursales sin selector | `BRANCH_AMBIGUOUS` y no se crea nada | Integración |
 | E13 | Referencia del aviso con esperado ≤ 0 | Cae al último conteo, al empaque y al tope, en ese orden | Dominio, tabla con los cuatro casos más 0 y 1/100 |
 | E14 | Sugerencias de empaque | Filtradas por `unit_kind` del artículo, con su cantidad | Integración: el artículo en L no ve «Bolsa · 15 kg» |
-| E15 | Bajar la migración | Down borra las dos tablas (pierde correcciones y ligas; la bitácora conserva quién y cuánto) | Migración de ida y vuelta |
+| E15 | Bajar la migración | Down se niega si hay correcciones o reemplazos (como 0089, 0092 y 0094); la salida es el respaldo. Quita el índice de la bitácora y la columna de los movimientos | Migración de ida y vuelta; las pruebas que bajen la crean con empresas antes |
 | E16 | Gráfica con 1 compra o con 0 | Con 0 no se dibuja. Con 1 sale un punto con su cifra | vitest |
+
+## Revisión after_plan (2026-10-19)
+
+`/revision-de-arquitectura` con `db-architect` y `tablet-ui-reviewer`: cambios requeridos. Lo
+aplicado (decisiones del dueño marcadas):
+
+**Bloqueantes**
+- **B1 — versión anterior corriendo.** El aviso del conteo solo se evalúa si la petición trae
+  `confirmable: true`; sin él, el servidor guarda como hoy. Con él, la respuesta es 409
+  `NEEDS_CONFIRM`, que un cliente viejo trata como error. `POST /ingredients` se conserva una subida
+  más y se borra en la siguiente. Test: petición sin el campo y con cifra absurda, guarda.
+- **B2 — existencia contra movimientos.** Tras convertir, `stock_levels.on_hand` de cada sucursal se
+  fija a la suma de sus movimientos convertidos, dentro del mismo candado. Test con un factor que no
+  divide exacto (1/150 y 30 ajustes).
+- **B3 — qué convierte y qué bloquea.** Se convierten existencia, ajustes, renglones de conteo,
+  `recipe_items`, empaques, `min_stock`, `current_cost` (÷ factor) y `yield_qty`. Bloquean con 409
+  y lista de pendientes: renglones de compra por recibir y mermas `pending` (el aviso dice cuáles).
+  `supplier_items` no guarda cantidades en la base: no se toca. **Orden**: candado del artículo →
+  `ingredients.base_unit_id` → recetas (con su `unit_id` nuevo) → empaques (se recalcula
+  `is_approximate`; uno que deja de cuadrar se retira y se lista) → movimientos y conteo → existencia.
+  Test que recorre las FK hacia `ingredients` y truena si aparece una tabla no clasificada, y uno por
+  cambio de clase (masa↔pieza, volumen↔pieza). La conversión entre masa y volumen no se ofrece.
+  Excepción declarada en Complexity Tracking: reescribe movimientos, contra la regla de la 038.
+  `before` de la bitácora: un evento por tabla con `batch_id` común, para no crecer sin tope.
+- **B4 — Down.** Ver E15.
+
+**Alto y medio (base de datos)**
+- Índice `audit_events (company_id, entity_type, entity_id, occurred_at desc, id desc)` en la 0096.
+  La bitácora del artículo junta los eventos del artículo y de sus empaques por
+  `ingredient_presentations_by_ingredient`; se revisa con `explain`.
+- Historial de costos: solo `compra` con `quantity > 0`, `unit_cost` no nulo, `expense_item_id` no
+  nulo y sin regalos; manda la fecha del movimiento en las dos ramas. Índice parcial
+  `stock_movements (company_id, ingredient_id, created_at desc, id desc) where movement_type = 'compra'`.
+- `stock_movements.replacement_id` nullable con FK compuesta a `ingredient_replacements` e índice
+  parcial; los dos ajustes del reemplazo llevan `branch_id` explícito. `ingredient_replacements` con
+  `check (old <> new)`, `unique (id, company_id)` e índice por `new_ingredient_id`.
+- El artículo del reemplazo nace con `current_cost / factor` y deja una fila en
+  `ingredient_cost_corrections`.
+- FK de las tablas nuevas `no action`, no `restrict` (borrar una empresa en cascada no truena).
+  `user_id` con FK `(company_id, user_id)` a `users`. La corrección pone `cost_source = 'manual'` en
+  la misma transacción; una compra posterior lo sobrescribe.
+- Equivalencia con tope `ValidQty`; una que desborde la existencia convertida da 400.
+- `inTheThreeCases` por consulta nueva: lista, ficha, historial, bitácora, `archive-check` y
+  sugerencias.
+
+**Alto y medio (pantalla)**
+- La lista muestra ~6 renglones con el encabezado de Almacén: «Lugar» y «Activos / Archivados» suben
+  a la fila del buscador y en chips quedan «Sin costo» y «Existencia negativa» (~7 renglones). Se
+  mide a 1024×600 contra la pantalla real.
+- Conteo: tocar la cantidad de un empaque lleva el `NumericKeypad` a ese renglón; «+» y «−» ajustan
+  de uno en uno (decisión del dueño). «Guardar» sin captura no guarda y «No hay» registra el cero
+  (decisión del dueño). Tras guardar, aviso no bloqueante y regreso a la lista del conteo.
+- Cambio de unidad, paso 2: pie fijo con «‹ Atrás» y el botón de confirmar; renglones agrupados
+  (Existencia, Recetas con «N recetas convertidas» desplegable, Empaques), los que no convierten
+  exacto primero; «Revisar» deshabilitado sin clase y equivalencia > 0.
+- Archivar con recetas activas: cada receta abre su `CompositionSheet` y regresa a la revisión; sin
+  bloqueos, el mismo diálogo confirma.
+- «Archivar» pasa al pie de la columna izquierda de la ficha; el encabezado queda «‹ Artículos»,
+  «Bitácora» y «Guardar». Salir con cambios sin guardar pregunta «¿Descartar cambios?».
+- Ficha de pie (< 800 px de ancho): una columna con la gráfica arriba; el SVG con `viewBox` y
+  `width="100%"`; columnas con `Page fill` + `flex="1" minH={0}`.
+- Cantidades con número y selector de unidad (no texto «5 kg»), con `NumericKeypad` o
+  `inputMode="decimal"`. Lugar, categoría y filtro de lugar con `Picker`.
+- El servidor entrega costo por unidad, lo pagado por empaque, el porcentaje de tendencia (contra
+  la más vieja de las últimas 20) y las piezas de un peso; la pantalla no calcula.
+- «Corregir costo» no aparece en un preparado. La fila de costo envuelve en dos renglones si no cabe.
+- Se quita «También se ve en Negocio › Bitácora»: esa pantalla no filtra por artículo.
+- El empaque aproximado («Kilo ≈ 400 pz») se captura en la ficha, en Empaques, con «Se pesa
+  también» y su equivalencia.
 
 ## Project Structure
 
@@ -181,4 +250,4 @@ web/src/
 
 | Excepción | Por qué | Alternativa descartada |
 |---|---|---|
-| El cambio directo de unidad reescribe ajustes y renglones de conteo pasados | Decisión del dueño (2026-10-19). Los originales quedan en la bitácora | Solo el reemplazo: deja casi todos los artículos cargados en octubre sin cambio directo |
+| El cambio directo de unidad reescribe ajustes y renglones de conteo pasados: excepción a la regla de la 038 («el almacén se mueve por diferencia, nunca editando un movimiento») | Decisión del dueño (2026-10-19). Los originales quedan en la bitácora con `batch_id` | Solo el reemplazo: deja casi todos los artículos cargados en octubre sin cambio directo |

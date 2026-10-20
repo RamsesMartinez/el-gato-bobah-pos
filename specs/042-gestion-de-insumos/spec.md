@@ -78,7 +78,8 @@ exista un gasto. Abrir la hoja y cancelarla no crea nada.
 **Acceptance Scenarios**:
 
 1. **Given** la lista, **When** se toca «Nuevo artículo», se captura nombre y unidad y se guarda,
-   **Then** el artículo existe y aparece en la lista.
+   **Then** el artículo existe, aparece en la lista y se abre su ficha con «Agregar empaque» a la
+   vista.
 2. **Given** la hoja abierta con datos, **When** se cancela, **Then** no se crea ningún artículo.
 3. **Given** un gasto en captura, **When** se crea un artículo desde «Buscar o crear» y después se
    cancela el gasto, **Then** el artículo no existe.
@@ -202,7 +203,10 @@ en kg pide confirmar; escribir 740 en g, no.
 4. **Given** un artículo con existencia positiva, **When** se guarda una cifra más de 10 veces mayor
    o menor que lo esperado, **Then** se pide confirmar. Ningún aviso revela la cifra de referencia:
    el conteo sigue siendo a ciegas.
-5. **Given** un artículo con existencia positiva, **When** se cuenta 0, **Then** se guarda sin aviso.
+5. **Given** un artículo con existencia positiva, **When** se toca «No hay», **Then** se guarda 0
+   sin aviso. **When** se toca «Guardar» sin capturar nada, **Then** no se guarda.
+7. **Given** el hielo con bolsas de 5 kg, **When** se toca la cantidad de esa bolsa y se teclea 25,
+   **Then** quedan 25 bolsas en dos toques más las teclas.
 6. **Given** un artículo en gramos con empaque de 1 kg, **When** se guarda 5 g, **Then** se pide
    confirmar mostrando «5 g» en grande.
 
@@ -234,10 +238,12 @@ en kg pide confirmar; escribir 740 en g, no.
 - **FR-001**: La lista de artículos MUST tener un buscador por nombre del artículo y de sus
   empaques, sin distinguir mayúsculas ni acentos, y filtros de activos o archivados, lugar, sin
   costo y existencia negativa.
-- **FR-002**: La lista MUST tener «Nuevo artículo», que abre una hoja con nombre y en qué se mide
-  (obligatorios) y lugar, mínimo, costo inicial, existencia inicial y empaques (opcionales). La
+- **FR-002**: La lista MUST tener «Nuevo artículo», que abre una hoja corta con nombre y en qué se
+  mide (obligatorios) y lugar, mínimo, costo inicial y existencia inicial (opcionales). La
   existencia inicial entra como un ajuste de conteo. Todo se guarda en una sola operación al tocar
-  «Guardar». Si el nombre ya existe en un artículo archivado, se ofrece «Reactivar».
+  «Guardar», y al guardar se abre la ficha del artículo con «Agregar empaque» a la vista; categoría y
+  empaques se capturan ahí. Si el nombre ya existe, se avisa en la misma hoja, con «Reactivar»
+  cuando el que existe está archivado.
 - **FR-003**: Ninguna captura MUST dejar un artículo creado si se cancela o si su guardado falla. El
   artículo nuevo del gasto y de la receta se crea en la misma operación que guarda el gasto o la
   receta.
@@ -248,10 +254,11 @@ en kg pide confirmar; escribir 740 en g, no.
 - **FR-006**: La ficha MUST mostrar el historial de costos por compra: arriba, una línea de
   tendencia del costo por unidad; debajo, las últimas 20 compras recibidas y correcciones a mano,
   las más recientes primero, con «Ver más» para las anteriores. Cada compra lleva fecha, proveedor,
-  empaque en que se compró y costo por unidad («$30 por Bolsa de 5 kg · $0.006/g»); cada corrección,
+  empaque en que se compró y costo por unidad («$30 por Bolsa · 5 kg · $6.00/kg»); cada corrección,
   quién la hizo. La gráfica y la lista MUST caber y leerse a 1024×600 sin desplazar la ficha de lado.
-  Junto al costo, un indicador dice si sube o baja contra la compra más vieja de las mostradas; con
-  menos de 2 compras no se muestra.
+  Junto al costo, un indicador dice si sube o baja contra la compra más vieja de las últimas 20 (no
+  cambia al tocar «Ver más»); con menos de 2 compras no se muestra. El costo por unidad, lo pagado
+  por empaque y el porcentaje los calcula el servidor.
 - **FR-007**: Archivar MUST mostrar antes la existencia y las recetas activas que usan el artículo.
   Se niega mientras una receta activa lo use o un conteo abierto lo tenga capturado. Reactivar lo
   devuelve tal como estaba.
@@ -266,7 +273,12 @@ en kg pide confirmar; escribir 740 en g, no.
   unidad, la existencia convertida por la equivalencia (una salida en el viejo y una entrada en el
   nuevo, ligadas), las recetas activas pasadas al nuevo con su cantidad convertida por la misma
   equivalencia, y el viejo archivado. En los dos caminos, cada cantidad convertida se muestra y se
-  puede corregir antes de confirmar, y todo es una sola operación.
+  puede corregir antes de confirmar, y todo es una sola operación. También se convierten el
+  mínimo, el costo actual (÷ equivalencia) y el rendimiento de un preparado; al terminar, la
+  existencia de cada sucursal MUST ser igual a la suma de sus movimientos. El cambio MUST negarse
+  mientras haya compras por recibir o mermas pendientes de aprobar del artículo, y el aviso dice
+  cuáles faltan cerrar («Falta recibir la compra del 17 oct» o «Falta aprobar 1 merma»). En el
+  reemplazo, el artículo nuevo nace con el costo del viejo convertido.
 - **FR-010**: Los empaques MUST mostrarse siempre con su equivalencia en la unidad del artículo, y
   la sección MUST explicar qué son con un ejemplo.
 - **FR-011**: Las sugerencias de empaque MUST ser solo de artículos con el mismo tipo de unidad, y
@@ -276,7 +288,10 @@ en kg pide confirmar; escribir 740 en g, no.
   Un artículo en piezas con un empaque aproximado por peso («Kilo ≈ 400 pz») ofrece también g y kg
   para lo suelto; lo pesado se convierte a piezas con esa equivalencia, el total se muestra con «≈»
   y se guarda en piezas, sin tocar sus recetas. Sin ese empaque, en piezas no hay selector. MUST
-  mostrar la unidad del mismo tamaño que el número y buscar también por nombre de empaque. Antes de guardar MUST pedir confirmación, mostrando la cifra con su unidad en
+  mostrar la unidad del mismo tamaño que el número y buscar también por nombre de empaque. Tocar
+  la cantidad de un empaque lleva el teclado a ese renglón; «+» y «−» quedan para ajustes de uno en
+  uno. «Guardar» no guarda mientras no se haya capturado nada; el cero se registra con un botón
+  «No hay». Las piezas que salen de un peso las calcula el servidor. Antes de guardar MUST pedir confirmación, mostrando la cifra con su unidad en
   grande, cuando la cifra pase la referencia del artículo, en este orden:
   1. Existencia esperada positiva: más de 10 veces mayor o menor que ella.
   2. Si no: el último conteo cerrado del artículo con cifra positiva, con la misma regla.

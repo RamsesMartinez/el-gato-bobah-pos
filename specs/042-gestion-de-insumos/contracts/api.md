@@ -17,13 +17,14 @@ Todas las rutas van bajo `/api/v1` y piden sesión. **V** = `inventory.view` y *
 | `POST /stock/articles/{id}/unit/preview` | C | `{baseUnitId, factor}` → `{path: direct\|replace, conversions[]}` |
 | `POST /stock/articles/{id}/unit` | C | `{baseUnitId, factor, overrides[]}`: aplica el camino que devolvió la vista previa |
 | `GET /stock/presentation-suggestions?unitKind=` | V | `{name, qtyInBase}` de la misma clase de unidad |
-| `PUT /stock/counts/{id}/lines/{ingredientId}` (ya existe) | `inventory.count` | Acepta `confirmed`; puede responder `{needsConfirm: true}` sin guardar |
+| `PUT /stock/counts/{id}/lines/{ingredientId}` (ya existe) | `inventory.count` | Con `confirmable: true` evalúa el aviso y puede responder 409 `NEEDS_CONFIRM` sin guardar; con `confirmed: true` guarda. Sin `confirmable`, guarda como hoy. Puede traer peso crudo y unidad: el servidor convierte a piezas |
 | `POST/PUT /expenses`, `PUT …/composition` (ya existen) | los de hoy | Un renglón puede traer `newArticle {name, baseUnitId}` |
 
 **Errores:**
 - 409 `NAME_TAKEN` con `{id, archived}`.
 - 409 `STALE`: la ficha cambió mientras se veía.
-- 409 `IN_ACTIVE_RECIPES`, `OPEN_COUNT` y `PREP_COST`.
+- 409 `IN_ACTIVE_RECIPES`, `OPEN_COUNT`, `PREP_COST` y `UNIT_CHANGE_PENDING` (con las compras por recibir y las mermas pendientes).
+- `POST /ingredients` se conserva una subida más para las tabletas con la pantalla anterior.
 - 409 `BUSY`, de un `nowait`.
 - 409 `BRANCH_AMBIGUOUS`.
 - 400 por validación.

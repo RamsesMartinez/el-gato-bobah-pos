@@ -17,10 +17,10 @@
 |---|---|---|
 | id | bigint identity | pk |
 | company_id | bigint | default de la sesión; RLS |
-| ingredient_id | bigint | FK compuesta `(ingredient_id, company_id)` a `ingredients`, `on delete restrict` |
+| ingredient_id | bigint | FK compuesta `(ingredient_id, company_id)` a `ingredients`, `no action` |
 | previous_cost | numeric(12,6) | ≥ 0 |
 | new_cost | numeric(12,6) | ≥ 0 |
-| user_id | bigint | quién |
+| user_id | bigint | FK `(company_id, user_id)` a `users` |
 | created_at | timestamptz | `now()` de la base |
 
 Índice `(company_id, ingredient_id, created_at desc, id desc)` para el historial.
@@ -31,13 +31,22 @@
 |---|---|---|
 | id | bigint identity | pk |
 | company_id | bigint | RLS |
-| old_ingredient_id | bigint | FK compuesta, `restrict`, único: un artículo se reemplaza una vez |
-| new_ingredient_id | bigint | FK compuesta, `restrict` |
+| old_ingredient_id | bigint | FK compuesta, `no action`, único: un artículo se reemplaza una vez |
+| new_ingredient_id | bigint | FK compuesta, `no action`, con índice; `check (old_ingredient_id <> new_ingredient_id)` |
 | factor | numeric(14,6) | > 0: cuánto del nuevo vale 1 del viejo, en sus unidades base |
-| user_id | bigint | |
+| user_id | bigint | FK `(company_id, user_id)` a `users` |
 | created_at | timestamptz | |
 
-Los dos `ajuste` del traspaso llevan `note = 'reemplazo #<id>'` y `reason = 'reemplazo'`.
+`unique (id, company_id)`. Los dos `ajuste` del traspaso llevan `replacement_id` (columna nueva en
+`stock_movements`, nullable, FK compuesta, índice parcial), `reason = 'reemplazo'` y `branch_id`
+explícito.
+
+### Índices nuevos
+
+- `audit_events (company_id, entity_type, entity_id, occurred_at desc, id desc)`: bitácora del
+  artículo.
+- `stock_movements (company_id, ingredient_id, created_at desc, id desc) where movement_type =
+  'compra'`: historial de costos.
 
 Las dos tablas tienen RLS con `nullif`, `select, insert` para `gatobobah_app` y entran a
 `TestEveryCompanyTableIsIsolated`.
