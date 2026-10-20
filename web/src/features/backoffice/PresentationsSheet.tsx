@@ -30,6 +30,9 @@ interface Props {
   ingredient: PresentationsIngredient;
   presentations: Presentation[];
   units: Unit[];
+  // startNew abre con un empaque nuevo listo para capturar: desde la ficha, «+ Agregar empaque» se
+  // tocaba dos veces (prueba sin contexto, spec 042).
+  startNew?: boolean;
   onClose: () => void;
 }
 
@@ -62,11 +65,15 @@ interface Draft {
   approximate: boolean;
 }
 
-export function PresentationsSheet({ isOpen, ingredient, presentations, units, onClose }: Props) {
+export function PresentationsSheet({ isOpen, ingredient, presentations, units, startNew, onClose }: Props) {
   const qc = useQueryClient();
   const kind = ingredient.baseUnitKind;
   const byPiece = kind === 'pieza';
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(() => {
+    if (!startNew) return null;
+    const first = purchaseUnitsFor(kind, units)[0];
+    return { editing: null, name: '', other: false, qty: '', unitId: first?.id ?? null, approximate: false };
+  });
   const [error, setError] = useState('');
   // Lo que se sugiere son empaques que la empresa ya usa en artículos que se miden igual, con su
   // cantidad (spec 042, FR-011): antes «Bolsa de 15 kg» aparecía en un artículo en litros.

@@ -37,8 +37,9 @@ export function CostTrend({ items, baseUnitCode, day }: Props) {
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Costo en las últimas ${pts.length} compras y correcciones`}>
         <line x1={PAD.l} x2={W - PAD.r} y1={H - PAD.b} y2={H - PAD.b} stroke="var(--chakra-colors-border)" />
         <line x1={PAD.l} x2={W - PAD.r} y1={PAD.t} y2={PAD.t} stroke="var(--chakra-colors-border)" strokeDasharray="3 3" />
-        <text x={PAD.l - 6} y={PAD.t + 4} textAnchor="end" fontSize="13" fill="var(--chakra-colors-fg-muted)">{label(hi)}</text>
-        <text x={PAD.l - 6} y={H - PAD.b + 4} textAnchor="end" fontSize="13" fill="var(--chakra-colors-fg-muted)">{label(lo)}</text>
+        {/* Con un solo punto el eje saldría de inventar un margen: cifras que nadie capturó. */}
+        {pts.length > 1 && <text x={PAD.l - 6} y={PAD.t + 4} textAnchor="end" fontSize="13" fill="var(--chakra-colors-fg-muted)">{label(hi)}</text>}
+        {pts.length > 1 && <text x={PAD.l - 6} y={H - PAD.b + 4} textAnchor="end" fontSize="13" fill="var(--chakra-colors-fg-muted)">{label(lo)}</text>}
         {pts.length > 1 && <path d={path} fill="none" stroke="var(--chakra-colors-brand-solid)" strokeWidth="2" />}
         {pts.map((p, i) => (
           <circle key={`${p.kind}-${p.id}`} cx={x(i)} cy={y(Number(p.unitCost))} r={p.kind === 'correction' ? 4 : 3}
@@ -49,7 +50,7 @@ export function CostTrend({ items, baseUnitCode, day }: Props) {
         <text x={W - PAD.r} y={H - 4} textAnchor="end" fontSize="13" fill="var(--chakra-colors-fg-muted)">{day(last.at)}</text>
         <text x={W - PAD.r + 6} y={y(Number(last.unitCost)) + 5} fontSize="14" fontWeight="700" fill="var(--chakra-colors-fg)">{label(Number(last.unitCost))}</text>
       </svg>
-      {pts.length === 1 && <Text fontSize="xs" color="fg.muted">Una sola compra todavía: la tendencia sale con la segunda.</Text>}
+      {pts.length === 1 && <Text fontSize="xs" color="fg.muted">Un solo registro todavía: la tendencia sale con el segundo.</Text>}
     </Box>
   );
 }

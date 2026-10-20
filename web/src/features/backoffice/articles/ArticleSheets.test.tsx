@@ -31,6 +31,7 @@ const back = vi.hoisted(() => ({
   articleCostHistory: vi.fn(),
   articleAudit: vi.fn(),
   correctArticleCost: vi.fn(() => Promise.resolve()),
+  presentationSuggestions: vi.fn(() => Promise.resolve([])),
 }));
 vi.mock('../../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 const pos = vi.hoisted(() => ({ businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) }));
@@ -131,6 +132,34 @@ describe('Ficha del artículo', () => {
     await waitFor(() => expect(back.updateArticle).toHaveBeenCalledWith(7, expect.objectContaining({
       expectedUpdatedAt: '2026-10-19T10:00:00.123456Z', name: 'Hielo', minStock: '10000',
     })));
+  });
+
+  // Prueba sin contexto (2026-10-19): «Guardar» activo después de archivar o corregir el costo hacía
+  // dudar si faltaba confirmar algo.
+  it('«Guardar» solo aparece cuando hay cambios sin guardar', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
+    expect(screen.queryByRole('button', { name: 'Guardar' })).toBeNull();
+    fireEvent.change(nombre, { target: { value: 'Hielo' } });
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
+  });
+
+  // Con un solo registro, la gráfica pintaba en el eje cifras que nadie capturó ($23.10 y $20.90 para
+  // una corrección de $22) y decía «compra» a una corrección.
+  it('con un solo registro no inventa cifras en el eje ni lo llama compra', async () => {
+    back.articleCostHistory.mockResolvedValue({ items: [{ kind: 'correction', at: '2026-10-19T10:00:00Z', id: 1, unitCost: '0.022',
+      presentation: null, packQty: null, packCost: null, supplier: null, user: 'Ana' }], next: null, trendPct: null });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    await screen.findByText(/Corrección a mano/);
+    expect(screen.queryByText('$23.10')).toBeNull();
+    expect(screen.queryByText('$20.90')).toBeNull();
+    expect(screen.queryByText(/sola compra/)).toBeNull();
+  });
+
+  it('«+ Agregar empaque» abre directo el empaque nuevo', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(await screen.findByText('Nuevo empaque')).toBeInTheDocument();
   });
 
   it('recién creado, «Agregar empaque» va primero', async () => {

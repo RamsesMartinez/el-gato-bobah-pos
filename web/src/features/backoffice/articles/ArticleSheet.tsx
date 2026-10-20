@@ -131,8 +131,10 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
             <Text flex="1" fontSize="lg" fontWeight="700" truncate>{a?.name ?? ''}</Text>
             {a && !a.isActive && <Badge colorPalette="gray">Archivado</Badge>}
             {canView && <Button minH="44px" variant="outline" onClick={() => setPanel('audit')}>Bitácora</Button>}
-            {canConfigure && (
-              <Button minH="44px" colorPalette="brand" disabled={!dirty} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>
+            {/* Solo con cambios pendientes: siempre visible hacía dudar si faltaba confirmar algo que ya
+                se guardó (archivar, corregir el costo, un empaque), según la prueba sin contexto. */}
+            {canConfigure && dirty && (
+              <Button minH="44px" colorPalette="brand" loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>
             )}
           </HStack>
         </DrawerHeader>
@@ -235,7 +237,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
       {panel === 'archive' && a && <ArchiveSheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />}
       {panel === 'recipe' && a && <CompositionSheet kind="ingredient" id={id} name={a.name} open onClose={() => setPanel(null)} />}
       {panel === 'packs' && a && (
-        <PresentationsSheet isOpen ingredient={{ id, name: a.name, baseUnitCode: a.baseUnitCode, baseUnitKind: a.baseUnitKind }}
+        <PresentationsSheet isOpen startNew ingredient={{ id, name: a.name, baseUnitCode: a.baseUnitCode, baseUnitKind: a.baseUnitKind }}
           presentations={packs} units={units.data?.items ?? []}
           onClose={async () => { setPanel(null); await refresh(); }} />
       )}
