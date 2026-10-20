@@ -681,6 +681,16 @@ export interface CountItem {
   baseUnitCode: string;
   presentations: { name: string; qtyInBase: string }[];
   countedQty: string | null; // null = no contado
+  // Un artículo en piezas que se puede contar pesando (spec 042): el servidor convierte a piezas.
+  weighable?: boolean;
+}
+// Lo que se manda al capturar. confirmable pide el aviso de una cifra fuera de lo razonable.
+export interface CountCaptureBody {
+  countedQty: string;
+  weight?: string;
+  weightUnitId?: number;
+  confirmable: true;
+  confirmed?: boolean;
 }
 export interface StockCount {
   id: number;
@@ -928,8 +938,8 @@ export const backofficeApi = {
   // null sin conteo abierto (204): TanStack Query no acepta `undefined` como dato.
   currentCount: () => api.get<StockCount | undefined>('/stock/counts/current').then((c) => c ?? null),
   openCount: () => api.post<StockCount>('/stock/counts', {}),
-  captureCount: (id: number, ingredientId: number, countedQty: string) =>
-    api.put<void>(`/stock/counts/${id}/lines/${ingredientId}`, { countedQty }),
+  captureCount: (id: number, ingredientId: number, body: CountCaptureBody) =>
+    api.put<{ countedQty: string }>(`/stock/counts/${id}/lines/${ingredientId}`, body),
   uncaptureCount: (id: number, ingredientId: number) => api.del<void>(`/stock/counts/${id}/lines/${ingredientId}`),
   previewCount: (id: number) => api.get<CountClose>(`/stock/counts/${id}/preview`),
   closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),

@@ -190,7 +190,7 @@ func countedQty(ctx context.Context, q *db.Queries, ingredientID int64, in Count
 		}
 		return counted, nil
 	}
-	if in.WeightUnitID == nil || !domain.ValidStockQtyOrZero(*in.Weight) {
+	if in.WeightUnitID == nil || !domain.ValidStockQtyOrZero(*in.Weight) || !domain.ValidStockQtyOrZero(in.Qty) {
 		return decimal.Zero, fmt.Errorf("%w: el peso necesita su unidad", domain.ErrValidation)
 	}
 	wu, err := q.GetUnit(ctx, *in.WeightUnitID)
@@ -209,7 +209,8 @@ func countedQty(ctx context.Context, q *db.Queries, ingredientID int64, in Count
 		if err != nil || pu.Kind != wu.Kind {
 			continue
 		}
-		return domain.PiecesFromWeight(*in.Weight, wu.ToBase, pu.ToBase, p.QtyInBase), nil
+		// Lo contado en empaques (Qty) y lo pesado suelto se suman: «2 paquetes + 300 g sueltos».
+		return domain.Round4(in.Qty).Add(domain.PiecesFromWeight(*in.Weight, wu.ToBase, pu.ToBase, p.QtyInBase)), nil
 	}
 	return decimal.Zero, fmt.Errorf("%w: este artículo no tiene una equivalencia para contarlo pesando", domain.ErrValidation)
 }

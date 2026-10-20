@@ -105,6 +105,12 @@ func TestWeighingAPieceArticle(t *testing.T) {
 	if err != nil || !got.Equal(qty("120")) {
 		t.Fatalf("300 g con «Kilo ≈ 400 pz» = %s %v; quiere 120 piezas", got, err)
 	}
+	t.Run("empaques contados y lo suelto pesado se suman", func(t *testing.T) {
+		got, err := k.svc.CaptureCountChecked(k.ctx, c.ID, popotes, app.CountCapture{Qty: qty("200"), Weight: new(qty("300")), WeightUnitID: &g}, k.user)
+		if err != nil || !got.Equal(qty("320")) {
+			t.Fatalf("2 paquetes de 100 + 300 g = %s %v; quiere 320 piezas", got, err)
+		}
+	})
 	t.Run("sin empaque aproximado no se puede pesar", func(t *testing.T) {
 		vasos := ingredientIn(t, k.st, defaultCompanyID, "Vasos sin peso", "pieza")
 		if _, err := k.svc.CaptureCountChecked(k.ctx, c.ID, vasos, app.CountCapture{Weight: new(qty("300")), WeightUnitID: &g}, k.user); !errors.Is(err, domain.ErrValidation) {

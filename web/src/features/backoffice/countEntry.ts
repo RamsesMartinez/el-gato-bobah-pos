@@ -46,3 +46,32 @@ export function isBigDiff(delta: number, counted: number, system: number): boole
 export function countedWords(qty: string | number, baseCode: string): string {
   return formatBaseQty(round2(Number(qty)), baseCode);
 }
+
+// LooseUnit es una unidad para lo suelto del conteo. weightCode marca que lo capturado es un peso
+// que el servidor convierte a piezas (spec 042): la pantalla no hace esa cuenta.
+export interface LooseUnit { label: string; factor: number; decimals: boolean; weightCode?: 'g' | 'kg' }
+
+// looseUnitsOf son las unidades para lo suelto de un artículo, la base primero (abre en ella).
+export function looseUnitsOf(baseCode: string, weighable: boolean): LooseUnit[] {
+  switch (baseCode) {
+    case 'g': return [{ label: 'g', factor: 1, decimals: true }, { label: 'kg', factor: 1000, decimals: true }];
+    case 'ml': return [{ label: 'ml', factor: 1, decimals: true }, { label: 'L', factor: 1000, decimals: true }];
+    case 'cm': return [{ label: 'cm', factor: 1, decimals: true }, { label: 'm', factor: 100, decimals: true }];
+    default: return [
+      { label: 'piezas', factor: 1, decimals: false },
+      ...(weighable ? [{ label: 'g', factor: 1, decimals: true, weightCode: 'g' as const }, { label: 'kg', factor: 1, decimals: true, weightCode: 'kg' as const }] : []),
+    ];
+  }
+}
+
+// packsTotal suma lo contado en cada empaque, en la unidad base. null si todas están vacías.
+export function packsTotal(counts: string[], packQtys: string[]): number | null {
+  let any = false;
+  let total = 0;
+  for (let i = 0; i < counts.length; i++) {
+    const p = parseNumero(counts[i]);
+    if (p.estado === 'invalido') return null;
+    if (p.estado === 'valido') { any = true; total += p.valor * Number(packQtys[i]); }
+  }
+  return any ? Number(total.toFixed(4)) : null;
+}

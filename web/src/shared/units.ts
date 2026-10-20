@@ -42,7 +42,12 @@ export function formatUnitCost(cost: string | number, baseUnitCode: string): str
   const n = typeof cost === 'number' ? cost : Number(cost);
   if (!Number.isFinite(n) || n <= 0) return null;
   const big = BIG[baseUnitCode];
-  const value = big ? n * big.at : n;
   const per = big ? big.unit : baseUnitCode === 'pieza' ? 'pieza' : baseUnitCode;
-  return `$${value.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / ${per}`;
+  return `$${money(big ? n * big.at : n)} / ${per}`;
 }
+
+// Un número, no una fecha: no lleva zona (ver formateoUnico.test.ts).
+const money = (n: number) => n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// plainQty es una cantidad en la unidad base tal cual, con separador de miles: «5,000».
+export const plainQty = (v: string | number) => { const n = Number(v); return n.toLocaleString('es-MX', { maximumFractionDigits: 4 }); };

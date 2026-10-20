@@ -12,7 +12,7 @@ import { toaster } from '../../../components/ui/toaster';
 import { can } from '../../../app/permissions';
 import { useSessionStore } from '../../../stores/session';
 import { useHoraDelNegocio } from '../../../hooks/useHoraDelNegocio';
-import { formatBaseQty, formatUnitCost } from '../../../shared/units';
+import { formatBaseQty, formatUnitCost, plainQty } from '../../../shared/units';
 import { CompositionSheet } from '../../../shared/CompositionSheet';
 import { PresentationsSheet } from '../PresentationsSheet';
 import { CostTrend } from './CostTrend';
@@ -276,7 +276,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
           : (a?.presentations ?? []).map((p) => (
             <HStack key={p.id} minH="48px" borderBottomWidth="1px" justify="space-between">
               <Text><b>{p.name}</b> · {formatBaseQty(p.qtyInBase, a!.baseUnitCode)}</Text>
-              <Text color="fg.muted">= {Number(p.qtyInBase).toLocaleString('es-MX')} {a!.baseUnitCode === 'pieza' ? 'piezas' : a!.baseUnitCode}</Text>
+              <Text color="fg.muted">= {plainQty(p.qtyInBase)} {a!.baseUnitCode === 'pieza' ? 'piezas' : a!.baseUnitCode}</Text>
             </HStack>
           ))}
       </Stack>

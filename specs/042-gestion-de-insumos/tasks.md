@@ -249,14 +249,14 @@ guarda 0.
   - todos los empaques activos y no aproximados se ofrecen;
   - la búsqueda encuentra por nombre de empaque.
 - [X] T040 [US7] Cambios en `app/stock_counts.go` y `queries/stock_counts.sql`.
-- [ ] T041 [P] [US7] Tests vitest:
+- [X] T041 [P] [US7] Tests vitest:
   - tocar la cantidad de un empaque lleva el teclado a ese renglón;
   - «+» y «−» ajustan de uno en uno;
   - «Guardar» sin captura no guarda;
   - «No hay»;
   - selector g/kg (o pz/g/kg con empaque aproximado) que abre en la base;
   - total fijo arriba con más de 3 empaques.
-- [ ] T042 [US7] Teclado en `StockCountTab.tsx` y `countEntry.ts` con `NumericKeypad`. Sigue la fila
+- [X] T042 [US7] Teclado en `StockCountTab.tsx` y `countEntry.ts` con `NumericKeypad`. Sigue la fila
   «Teclado del conteo» de Maquetas, con aviso no bloqueante y regreso a la lista tras guardar.
 
 ## Phase 10: Polish & Cross-Cutting
