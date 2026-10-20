@@ -11,6 +11,68 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const findArticleByName = `-- name: FindArticleByName :one
+select id, is_active from ingredients
+ where regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+     = regexp_replace(translate(lower(trim($1::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+ order by is_active desc, id
+ limit 1
+`
+
+type FindArticleByNameRow struct {
+	ID       int64 `json:"id"`
+	IsActive bool  `json:"is_active"`
+}
+
+// El artículo de la empresa con ese nombre, sin distinguir mayúsculas, acentos ni espacios de más (la
+// normalización de IngredientNameTaken). Va después de LockIngredientNames.
+func (q *Queries) FindArticleByName(ctx context.Context, name string) (FindArticleByNameRow, error) {
+	row := q.db.QueryRow(ctx, findArticleByName, name)
+	var i FindArticleByNameRow
+	err := row.Scan(&i.ID, &i.IsActive)
+	return i, err
+}
+
+const insertCostCorrection = `-- name: InsertCostCorrection :exec
+insert into ingredient_cost_corrections (ingredient_id, previous_cost, new_cost, user_id)
+values ($1, $2, $3, $4)
+`
+
+type InsertCostCorrectionParams struct {
+	IngredientID int64           `json:"ingredient_id"`
+	PreviousCost decimal.Decimal `json:"previous_cost"`
+	NewCost      decimal.Decimal `json:"new_cost"`
+	UserID       int64           `json:"user_id"`
+}
+
+func (q *Queries) InsertCostCorrection(ctx context.Context, arg InsertCostCorrectionParams) error {
+	_, err := q.db.Exec(ctx, insertCostCorrection,
+		arg.IngredientID,
+		arg.PreviousCost,
+		arg.NewCost,
+		arg.UserID,
+	)
+	return err
+}
+
+const insertInitialStock = `-- name: InsertInitialStock :exec
+insert into stock_movements (item_type, ingredient_id, movement_type, quantity, user_id, reason)
+values ('ingrediente', $1, 'ajuste', $2, $3, 'existencia inicial')
+`
+
+type InsertInitialStockParams struct {
+	IngredientID *int64          `json:"ingredient_id"`
+	Quantity     decimal.Decimal `json:"quantity"`
+	UserID       *int64          `json:"user_id"`
+}
+
+// La existencia con la que nace un artículo: un ajuste. La sucursal la pone el trigger con la de la
+// empresa; con dos y sin selector truena con EGB01 y no se crea nada.
+func (q *Queries) InsertInitialStock(ctx context.Context, arg InsertInitialStockParams) error {
+	_, err := q.db.Exec(ctx, insertInitialStock, arg.IngredientID, arg.Quantity, arg.UserID)
+	return err
+}
+
 const listArticles = `-- name: ListArticles :many
 
 select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
@@ -107,4 +169,25 @@ func (q *Queries) ListArticles(ctx context.Context, arg ListArticlesParams) ([]L
 		return nil, err
 	}
 	return items, nil
+}
+
+const setArticleCostManual = `-- name: SetArticleCostManual :one
+update ingredients i set current_cost = $1, cost_source = 'manual', updated_at = now()
+  from (select p.id as prev_id, p.current_cost as prev_cost from ingredients p where p.id = $2 for update) prev
+ where i.id = prev.prev_id
+returning prev.prev_cost::numeric(12,6) as previous_cost
+`
+
+type SetArticleCostManualParams struct {
+	Cost decimal.Decimal `json:"cost"`
+	ID   int64           `json:"id"`
+}
+
+// Corrección a mano: el costo nuevo cuenta desde ahora y una compra posterior lo vuelve a fijar.
+// Devuelve el costo anterior para la corrección y la bitácora.
+func (q *Queries) SetArticleCostManual(ctx context.Context, arg SetArticleCostManualParams) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, setArticleCostManual, arg.Cost, arg.ID)
+	var previous_cost decimal.Decimal
+	err := row.Scan(&previous_cost)
+	return previous_cost, err
 }

@@ -95,20 +95,20 @@ funcionan solos y combinados.
 **Independent test**: crear «Leche entera» en líquido desde la lista. Cancelar cualquier captura no
 deja artículo.
 
-- [ ] T015 [P] [US2] Tests de integración de `POST /stock/articles`:
+- [X] T015 [P] [US2] Tests de integración de `POST /stock/articles`:
   - con existencia inicial: queda un `ajuste` con `reason = 'existencia inicial'` y la sucursal
     resuelta;
   - `BRANCH_AMBIGUOUS` con dos sucursales y sin selector (E12);
   - nombre repetido da 409 con `{id, archived}` (E2);
   - con costo inicial: queda `cost_source = 'manual'` y su fila en `ingredient_cost_corrections`;
   - deja el evento `ingredient.created`.
-- [ ] T016 [P] [US2] Tests de integración de FR-003, uno por camino (E1). En cada uno, cancelar o
+- [X] T016 [P] [US2] Tests de integración de FR-003, uno por camino (E1). En cada uno, cancelar o
   hacer fallar el guardado no deja artículo:
   - gasto con `newArticle`;
   - receta, «Agregar insumo»;
   - receta, «Crear una nueva».
   Aparte: `POST /ingredients` sigue respondiendo (Revisión B1).
-- [ ] T017 [US2] `createArticleTx` en `app/ingredients_admin.go`. `app/expenses.go` y
+- [X] T017 [US2] `createArticleTx` en `app/ingredients_admin.go`. `app/expenses.go` y
   `app/composition.go` aceptan `newArticle` dentro de su transacción.
 - [ ] T018 [P] [US2] Tests vitest: cancelar la hoja no llama a la API; el gasto y la receta mandan
   `newArticle` y ya no llaman a `createIngredient` (`ExpenseDialog.test.tsx` y

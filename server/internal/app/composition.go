@@ -139,9 +139,12 @@ type SameNameOption struct {
 
 // CompositionInputItem es un renglón capturado.
 type CompositionInputItem struct {
-	IngredientID int64           `json:"ingredientId"`
-	Quantity     decimal.Decimal `json:"quantity"`
-	UnitID       int16           `json:"unitId"`
+	IngredientID int64 `json:"ingredientId"`
+	// NewArticle: un insumo que se da de alta con esta receta (spec 042, FR-003): nace en la misma
+	// transacción, así que cancelar o fallar el guardado no deja nada creado.
+	NewArticle *NewArticle     `json:"newArticle"`
+	Quantity   decimal.Decimal `json:"quantity"`
+	UnitID     int16           `json:"unitId"`
 }
 
 // CompositionComponent es un producto capturado dentro de un paquete.
@@ -299,6 +302,9 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 			return err
 		}
 		if err := checkNotStale(ctx, q, kind, id, req.BasedOn); err != nil {
+			return err
+		}
+		if err := resolveNewArticles(ctx, q, req.Items); err != nil {
 			return err
 		}
 		names, err := validateComposition(ctx, q, kind, id, req)
@@ -743,6 +749,9 @@ func (s *AdminService) savePreparedIngredient(ctx context.Context, id int64, req
 		if err := checkNotStale(ctx, q, CompositionOfIngredient, id, req.BasedOn); err != nil {
 			return err
 		}
+		if err := resolveNewArticles(ctx, q, req.Items); err != nil {
+			return err
+		}
 		in, err := compositionInput(ctx, q, req)
 		if err != nil {
 			return err
@@ -854,4 +863,23 @@ func saleLineOf(l domain.BuiltLine) domain.SaleLine {
 		sl.Options = append(sl.Options, domain.SaleOption{OptionID: m.OptionID, Qty: decimal.NewFromInt(int64(m.Qty))})
 	}
 	return sl
+}
+
+// resolveNewArticles da de alta, dentro de la transacción de la receta, los insumos que nacen con ella
+// y deja su id en el renglón.
+func resolveNewArticles(ctx context.Context, q *db.Queries, items []CompositionInputItem) error {
+	for i, it := range items {
+		if it.NewArticle == nil {
+			continue
+		}
+		if it.IngredientID != 0 {
+			return fmt.Errorf("%w: un insumo nuevo no lleva id", domain.ErrValidation)
+		}
+		id, err := ensureArticleTx(ctx, q, *it.NewArticle)
+		if err != nil {
+			return err
+		}
+		items[i].IngredientID = id
+	}
+	return nil
 }

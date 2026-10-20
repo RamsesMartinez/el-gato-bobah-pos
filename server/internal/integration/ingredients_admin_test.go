@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
@@ -152,5 +154,218 @@ func TestArticlesHTTPNeedsInventoryView(t *testing.T) {
 	}
 	if w := do(t, r, http.MethodGet, "/api/v1/stock/articles?placeId=abc", admin, nil, ""); w.Code != http.StatusBadRequest {
 		t.Errorf("un lugar ilegible = %d, quiere 400", w.Code)
+	}
+}
+
+func gramos(t *testing.T, st *store.Store) int16 { return unitID(t, st, "g") }
+
+func articleCount(t *testing.T, st *store.Store, company int64, name string) int {
+	t.Helper()
+	var n int
+	if err := st.Pool.QueryRow(context.Background(), `select count(*) from ingredients where company_id = $1 and name = $2`, company, name).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func auditCount(t *testing.T, st *store.Store, action string, entity int64) int {
+	t.Helper()
+	var n int
+	if err := st.Pool.QueryRow(context.Background(), `select count(*) from audit_events where action = $1 and entity_id = $2`, action, entity).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// US2: crear un artículo desde la lista, sin gasto ni receta (FR-002). La existencia inicial entra
+// como un ajuste; el costo inicial, como una corrección a mano; todo en una sola operación.
+func TestCreatingAnArticleFromTheList(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	co := makeCompany(t, st, "articulos-crear")
+	user := makeUserIn(t, st, co, "crea_articulos", "admin")
+	svc, ctx := asWaste(t, co)
+	ctx = app.WithActorUser(ctx, user)
+	ml := unitID(t, st, "ml")
+	stock, cost := qty("2000"), qty("0.024")
+
+	id, err := svc.CreateArticle(ctx, app.ArticleCreate{Name: "  Leche   entera ", BaseUnitID: ml, InitialStock: &stock, InitialCost: &cost})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("queda con su nombre limpio, su existencia y su costo", func(t *testing.T) {
+		var name, source string
+		var onHand, current string
+		if err := st.Pool.QueryRow(context.Background(), `
+			select i.name, i.cost_source::text, i.current_cost::text, coalesce((select sum(on_hand) from stock_levels where ingredient_id = i.id), 0)::text
+			  from ingredients i where i.id = $1`, id).Scan(&name, &source, &current, &onHand); err != nil {
+			t.Fatal(err)
+		}
+		if name != "Leche entera" || source != "manual" || qty(current).Cmp(cost) != 0 || qty(onHand).Cmp(stock) != 0 {
+			t.Fatalf("nombre %q, origen %s, costo %s, existencia %s", name, source, current, onHand)
+		}
+		var reason string
+		if err := st.Pool.QueryRow(context.Background(), `select reason from stock_movements where ingredient_id = $1 and movement_type = 'ajuste'`, id).Scan(&reason); err != nil || reason != "existencia inicial" {
+			t.Fatalf("el ajuste de la existencia inicial: %q %v", reason, err)
+		}
+		var corrections int
+		if err := st.Pool.QueryRow(context.Background(), `select count(*) from ingredient_cost_corrections where ingredient_id = $1 and user_id = $2`, id, user).Scan(&corrections); err != nil || corrections != 1 {
+			t.Fatalf("correcciones del costo inicial = %d %v; quiere 1", corrections, err)
+		}
+	})
+	t.Run("deja un solo ingredient.created", func(t *testing.T) {
+		if n := auditCount(t, st, "ingredient.created", id); n != 1 {
+			t.Fatalf("eventos = %d", n)
+		}
+	})
+	t.Run("un nombre que ya existe sin mayúsculas ni acentos no crea otro y dice cuál es", func(t *testing.T) {
+		_, err := svc.CreateArticle(ctx, app.ArticleCreate{Name: "LECHE ENTERA", BaseUnitID: ml})
+		var taken domain.ArticleNameTaken
+		if !errors.As(err, &taken) || taken.ID != id || taken.Archived {
+			t.Fatalf("= %v; quiere el %d, activo", err, id)
+		}
+	})
+	t.Run("si el que existe está archivado lo dice, para ofrecer reactivarlo", func(t *testing.T) {
+		if _, err := st.Pool.Exec(context.Background(), `update ingredients set is_active = false where id = $1`, id); err != nil {
+			t.Fatal(err)
+		}
+		_, err := svc.CreateArticle(ctx, app.ArticleCreate{Name: "leche entera", BaseUnitID: ml})
+		var taken domain.ArticleNameTaken
+		if !errors.As(err, &taken) || !taken.Archived {
+			t.Fatalf("= %v; quiere el archivado", err)
+		}
+	})
+	t.Run("una unidad que no es base (kg) se rechaza", func(t *testing.T) {
+		if _, err := svc.CreateArticle(ctx, app.ArticleCreate{Name: "Harina kg", BaseUnitID: unitID(t, st, "kg")}); !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("= %v", err)
+		}
+	})
+	t.Run("con dos sucursales y sin selector, la existencia inicial se niega y no queda nada", func(t *testing.T) {
+		co2 := makeCompany(t, st, "articulos-dos-sucursales")
+		if _, err := st.Pool.Exec(context.Background(), `insert into branches (company_id, name, code) values ($1, 'Segunda', 'SEG')`, co2); err != nil {
+			t.Fatal(err)
+		}
+		u2 := makeUserIn(t, st, co2, "crea_dos_suc", "admin")
+		svc2, ctx2 := asWaste(t, co2)
+		ctx2 = app.WithActorUser(ctx2, u2)
+		_, err := svc2.CreateArticle(ctx2, app.ArticleCreate{Name: "Café en grano", BaseUnitID: gramos(t, st), InitialStock: &stock})
+		if !errors.Is(err, domain.ErrBranchAmbiguous) {
+			t.Fatalf("= %v; quiere sucursal ambigua", err)
+		}
+		if n := articleCount(t, st, co2, "Café en grano"); n != 0 {
+			t.Fatalf("quedaron %d artículos a medias", n)
+		}
+	})
+}
+
+// FR-003: ninguna captura deja un artículo creado si se cancela o si su guardado falla. El artículo
+// nuevo del gasto y de la receta viaja dentro de su guardado; cancelar no llama al servidor.
+func TestANewArticleOnlyExistsIfItsCaptureIsSaved(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	ctx := app.WithActorUser(k.ctx, k.user)
+	g := gramos(t, k.st)
+
+	t.Run("gasto que se guarda: el artículo nace con su renglón", func(t *testing.T) {
+		q := qty("2")
+		_, err := k.svc.CreateExpense(ctx, app.ExpenseInput{
+			CategoryID: k.category, Amount: qty("100"), Status: domain.ExpensePendiente, UserID: k.user,
+			Items: []app.ExpenseItemInput{{ItemType: "ingrediente", NewArticle: &app.NewArticle{Name: "Canela en raja", BaseUnitID: g},
+				Description: "Canela", Quantity: q, UnitID: &g, Amount: qty("100")}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := articleCount(t, k.st, defaultCompanyID, "Canela en raja"); n != 1 {
+			t.Fatalf("artículos = %d; quiere 1", n)
+		}
+	})
+	t.Run("gasto que falla al guardar: no queda el artículo", func(t *testing.T) {
+		q := qty("2")
+		_, err := k.svc.CreateExpense(ctx, app.ExpenseInput{
+			CategoryID: k.category, Amount: qty("100"), Status: domain.ExpensePendiente, UserID: k.user,
+			Items: []app.ExpenseItemInput{
+				{ItemType: "ingrediente", NewArticle: &app.NewArticle{Name: "Clavo de olor", BaseUnitID: g}, Description: "Clavo", Quantity: q, UnitID: &g, Amount: qty("50")},
+				// El segundo renglón apunta a un artículo que no existe: el guardado entero se cae.
+				{ItemType: "ingrediente", IngredientID: new(int64(999999)), Description: "Fantasma", Quantity: q, UnitID: &g, Amount: qty("50")},
+			},
+		})
+		if err == nil {
+			t.Fatal("el gasto con un renglón imposible se guardó")
+		}
+		if n := articleCount(t, k.st, defaultCompanyID, "Clavo de olor"); n != 0 {
+			t.Fatalf("quedó el artículo de un gasto que no se guardó (%d)", n)
+		}
+	})
+	t.Run("gasto con el nombre de uno que ya existe: usa ese, no crea otro", func(t *testing.T) {
+		q := qty("1")
+		if _, err := k.svc.CreateExpense(ctx, app.ExpenseInput{
+			CategoryID: k.category, Amount: qty("10"), Status: domain.ExpensePendiente, UserID: k.user,
+			Items: []app.ExpenseItemInput{{ItemType: "ingrediente", NewArticle: &app.NewArticle{Name: "AZÚCAR COMPRA", BaseUnitID: g},
+				Description: "Azúcar", Quantity: q, UnitID: &g, Amount: qty("10")}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var n int
+		if err := k.st.Pool.QueryRow(context.Background(), `select count(*) from ingredients where lower(name) like 'azúcar compra'`).Scan(&n); err != nil || n != 1 {
+			t.Fatalf("azúcares = %d %v", n, err)
+		}
+	})
+
+	as := appRoleStore(t)
+	admin := app.NewAdminService(as)
+	actx, release, err := as.AcquireTenant(context.Background(), defaultCompanyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release)
+	actx = app.WithActorUser(actx, k.user)
+	t.Run("receta que se guarda: el insumo nuevo nace con ella", func(t *testing.T) {
+		p := makeProduct(t, k.st, "Café con canela", qty("40"), false)
+		err := admin.SaveComposition(actx, app.CompositionOfProduct, p, app.CompositionRequest{Mode: "items",
+			Items: []app.CompositionInputItem{{NewArticle: &app.NewArticle{Name: "Cardamomo", BaseUnitID: g}, Quantity: qty("2"), UnitID: g}}}, k.user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := articleCount(t, k.st, defaultCompanyID, "Cardamomo"); n != 1 {
+			t.Fatalf("artículos = %d", n)
+		}
+	})
+	t.Run("receta que falla al guardar: no queda el insumo", func(t *testing.T) {
+		p := makeProduct(t, k.st, "Té fallido", qty("40"), false)
+		err := admin.SaveComposition(actx, app.CompositionOfProduct, p, app.CompositionRequest{Mode: "items",
+			Items: []app.CompositionInputItem{
+				{NewArticle: &app.NewArticle{Name: "Anís estrella", BaseUnitID: g}, Quantity: qty("2"), UnitID: g},
+				{IngredientID: 999999, Quantity: qty("1"), UnitID: g},
+			}}, k.user)
+		if err == nil {
+			t.Fatal("la receta imposible se guardó")
+		}
+		if n := articleCount(t, k.st, defaultCompanyID, "Anís estrella"); n != 0 {
+			t.Fatalf("quedó el insumo de una receta que no se guardó (%d)", n)
+		}
+	})
+}
+
+// La alta desde la lista pide `inventory.configure`; la ruta vieja POST /ingredients se conserva una
+// subida más para las tabletas que todavía corren la pantalla anterior (Revisión B1).
+func TestCreatingArticlesHTTP(t *testing.T) {
+	t.Parallel()
+	r, st, token := newStockAPI(t)
+	g := strconv.Itoa(int(gramos(t, st)))
+	body := []byte(`{"name":"Avena","baseUnitId":` + g + `}`)
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/articles", token("art_cajero_crea", "cajero"), body, "application/json"); w.Code != http.StatusForbidden {
+		t.Fatalf("cajero = %d, quiere 403", w.Code)
+	}
+	admin := token("art_admin_crea", "admin")
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/articles", admin, body, "application/json"); w.Code != http.StatusCreated {
+		t.Fatalf("admin = %d %s", w.Code, w.Body.String())
+	}
+	w := do(t, r, http.MethodPost, "/api/v1/stock/articles", admin, []byte(`{"name":"AVENA","baseUnitId":`+g+`}`), "application/json")
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"NAME_TAKEN"`) || !strings.Contains(w.Body.String(), `"existingId"`) {
+		t.Fatalf("repetido = %d %s; quiere 409 NAME_TAKEN con el que existe", w.Code, w.Body.String())
+	}
+	if w := do(t, r, http.MethodPost, "/api/v1/ingredients", admin, []byte(`{"name":"Linaza","baseUnitId":`+g+`}`), "application/json"); w.Code != http.StatusCreated && w.Code != http.StatusOK {
+		t.Fatalf("la ruta vieja = %d; debe seguir viva una subida más", w.Code)
 	}
 }

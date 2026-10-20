@@ -92,3 +92,17 @@ func ConvertQty(qty, factor decimal.Decimal) decimal.Decimal {
 func ConvertCost(cost, factor decimal.Decimal) decimal.Decimal {
 	return cost.Div(factor).Round(6)
 }
+
+// ErrArticleNameTaken: ya hay un artículo con ese nombre, sin distinguir mayúsculas, acentos ni
+// espacios. Es un conflicto (409) con código propio para que la pantalla ofrezca el que existe.
+var ErrArticleNameTaken = fmt.Errorf("%w: ya hay un artículo que se llama así", ErrConflict)
+
+// ArticleNameTaken lleva el artículo que ya existe y si está archivado: la pantalla ofrece abrirlo o
+// reactivarlo en vez de crear otro.
+type ArticleNameTaken struct {
+	ID       int64
+	Archived bool
+}
+
+func (e ArticleNameTaken) Error() string { return ErrArticleNameTaken.Error() }
+func (e ArticleNameTaken) Unwrap() error { return ErrArticleNameTaken }

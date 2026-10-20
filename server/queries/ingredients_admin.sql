@@ -26,3 +26,30 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
    and (not sqlc.arg(no_cost)::boolean or coalesce(i.current_cost, 0) = 0)
    and (not sqlc.arg(negative)::boolean or coalesce(sl.on_hand, 0) < 0)
  order by i.name, i.id;
+
+-- name: FindArticleByName :one
+-- El artículo de la empresa con ese nombre, sin distinguir mayúsculas, acentos ni espacios de más (la
+-- normalización de IngredientNameTaken). Va después de LockIngredientNames.
+select id, is_active from ingredients
+ where regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+     = regexp_replace(translate(lower(trim(sqlc.arg(name)::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+ order by is_active desc, id
+ limit 1;
+
+-- name: SetArticleCostManual :one
+-- Corrección a mano: el costo nuevo cuenta desde ahora y una compra posterior lo vuelve a fijar.
+-- Devuelve el costo anterior para la corrección y la bitácora.
+update ingredients i set current_cost = sqlc.arg(cost), cost_source = 'manual', updated_at = now()
+  from (select p.id as prev_id, p.current_cost as prev_cost from ingredients p where p.id = sqlc.arg(id) for update) prev
+ where i.id = prev.prev_id
+returning prev.prev_cost::numeric(12,6) as previous_cost;
+
+-- name: InsertCostCorrection :exec
+insert into ingredient_cost_corrections (ingredient_id, previous_cost, new_cost, user_id)
+values (sqlc.arg(ingredient_id), sqlc.arg(previous_cost), sqlc.arg(new_cost), sqlc.arg(user_id));
+
+-- name: InsertInitialStock :exec
+-- La existencia con la que nace un artículo: un ajuste. La sucursal la pone el trigger con la de la
+-- empresa; con dos y sin selector truena con EGB01 y no se crea nada.
+insert into stock_movements (item_type, ingredient_id, movement_type, quantity, user_id, reason)
+values ('ingrediente', sqlc.arg(ingredient_id), 'ajuste', sqlc.arg(quantity), sqlc.arg(user_id), 'existencia inicial');
