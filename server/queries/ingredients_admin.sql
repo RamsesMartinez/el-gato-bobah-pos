@@ -135,8 +135,8 @@ select a.id, a.occurred_at, a.action, a.entity_type, a.before, a.after, coalesce
  limit sqlc.arg(lim);
 
 -- name: ArticleOnHandByBranch :many
--- Lo que queda del artículo en cada sucursal, para la revisión de archivar.
-select b.name::text as branch, sl.on_hand
+-- Lo que queda del artículo en cada sucursal, para la revisión de archivar y el cambio de unidad.
+select b.id as branch_id, b.name::text as branch, sl.on_hand
   from stock_levels sl join branches b on b.id = sl.branch_id
  where sl.item_type = 'ingrediente' and sl.ingredient_id = sqlc.arg(ingredient_id) and sl.on_hand <> 0
  order by b.name;
@@ -189,3 +189,123 @@ select distinct p.name, p.qty_in_base
 
 -- name: GetPresentationForAudit :one
 select name, qty_in_base, active from ingredient_presentations where id = $1;
+
+-- ---- Cambio de unidad (spec 042, FR-009) ----
+
+-- name: LockArticleNowait :one
+-- El artículo sin esperar: una venta en curso lo tiene y el cambio se reintenta (E6).
+select id, is_active, name::text as name, base_unit_id, min_stock, current_cost, cost_source::text as cost_source,
+       yield_qty, is_prep, category_id, count_place_id, track_stock, is_packaging
+  from ingredients where id = sqlc.arg(id) for update nowait;
+
+-- name: LockArticleStockNowait :many
+select branch_id, on_hand from stock_levels
+ where item_type = 'ingrediente' and ingredient_id = sqlc.arg(ingredient_id)
+ order by branch_id
+   for update nowait;
+
+-- name: ArticleMovementTypes :many
+select distinct movement_type::text from stock_movements where ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: PendingWasteOf :one
+select count(*)::int from waste_records where ingredient_id = sqlc.arg(ingredient_id) and status = 'pending';
+
+-- name: OpenExpenseItemsOf :one
+-- Renglones de compra que todavía hablan en la unidad vieja: los no anulados. Con uno, el cambio
+-- directo no se hace (en el directo no hay compras recibidas, así que serían pendientes).
+select count(*)::int from expense_items where ingredient_id = sqlc.arg(ingredient_id) and voided_at is null;
+
+-- name: ArticleAdjustments :many
+select id, quantity, unit_cost from stock_movements
+ where ingredient_id = sqlc.arg(ingredient_id) and movement_type = 'ajuste' order by id;
+
+-- name: SetMovementQtyCost :exec
+update stock_movements set quantity = sqlc.arg(quantity), unit_cost = sqlc.narg(unit_cost) where id = sqlc.arg(id);
+
+-- name: ArticleCountLines :many
+select count_id, counted_qty, system_qty, unit_cost from stock_count_lines where ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: SetCountLineQty :exec
+update stock_count_lines set counted_qty = sqlc.arg(counted_qty), system_qty = sqlc.arg(system_qty), unit_cost = sqlc.narg(unit_cost)
+ where count_id = sqlc.arg(count_id) and ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: ArticleRecipeItems :many
+-- Los renglones de receta que restan el artículo, con si su receta está activa (de un producto, un
+-- extra o un preparado activos): el reemplazo solo pasa al nuevo las activas.
+select ri.id, ri.recipe_id, ri.quantity, ri.unit_id, u.to_base as unit_to_base, u.code as unit_code,
+       coalesce((select p.name::text from products p where p.recipe_id = ri.recipe_id limit 1),
+                (select mo.name::text from modifier_options mo where mo.recipe_id = ri.recipe_id limit 1),
+                (select i.name::text from ingredients i where i.recipe_id = ri.recipe_id limit 1), 'Receta')::text as owner,
+       (exists (select 1 from products p where p.recipe_id = ri.recipe_id and p.is_active)
+        or exists (select 1 from modifier_options mo where mo.recipe_id = ri.recipe_id and mo.is_active)
+        or exists (select 1 from ingredients i where i.recipe_id = ri.recipe_id and i.is_active))::bool as active
+  from recipe_items ri join units u on u.id = ri.unit_id
+ where ri.ingredient_id = sqlc.arg(ingredient_id)
+ order by ri.id;
+
+-- name: SetRecipeItem :exec
+update recipe_items set ingredient_id = sqlc.arg(ingredient_id), quantity = sqlc.arg(quantity), unit_id = sqlc.arg(unit_id)
+ where id = sqlc.arg(id);
+
+-- name: SetPresentationRaw :exec
+update ingredient_presentations
+   set name = sqlc.arg(name), qty_in_base = sqlc.arg(qty_in_base), purchase_unit_id = sqlc.narg(purchase_unit_id),
+       is_approximate = sqlc.arg(is_approximate), active = sqlc.arg(active)
+ where id = sqlc.arg(id);
+
+-- name: ArticlePurchaseFormats :many
+select id, qty_in_base from ingredient_purchase_formats where ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: SetPurchaseFormatQty :exec
+update ingredient_purchase_formats set qty_in_base = sqlc.arg(qty_in_base) where id = sqlc.arg(id);
+
+-- name: ArticleSupplierItems :many
+select id, pack_qty_in_base from supplier_items where ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: SetSupplierItem :exec
+update supplier_items set ingredient_id = sqlc.arg(ingredient_id), pack_qty_in_base = sqlc.narg(pack_qty_in_base) where id = sqlc.arg(id);
+
+-- name: ArticleWasteRecords :many
+select id, quantity, unit_cost from waste_records where ingredient_id = sqlc.arg(ingredient_id) and status <> 'pending';
+
+-- name: SetWasteQtyCost :exec
+update waste_records set quantity = sqlc.arg(quantity), unit_cost = sqlc.narg(unit_cost) where id = sqlc.arg(id);
+
+-- name: ArticleCostCorrections :many
+select id, previous_cost, new_cost from ingredient_cost_corrections where ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: SetCostCorrection :exec
+update ingredient_cost_corrections set previous_cost = sqlc.arg(previous_cost), new_cost = sqlc.arg(new_cost) where id = sqlc.arg(id);
+
+-- name: SetArticleUnit :exec
+update ingredients
+   set base_unit_id = sqlc.arg(base_unit_id), min_stock = sqlc.narg(min_stock), current_cost = sqlc.arg(current_cost),
+       yield_qty = sqlc.narg(yield_qty), updated_at = now()
+ where id = sqlc.arg(id);
+
+-- name: RecomputeArticleStock :exec
+-- Tras convertir, lo guardado de cada sucursal es la suma de sus movimientos: redondear cada ajuste por
+-- separado deja un residuo que el trigger (solo de insert) no corrige (Revisión B2).
+update stock_levels sl
+   set on_hand = coalesce((select sum(m.quantity) from stock_movements m
+                            where m.ingredient_id = sl.ingredient_id and m.branch_id = sl.branch_id), 0),
+       updated_at = now()
+ where sl.item_type = 'ingrediente' and sl.ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: RenameArticle :exec
+update ingredients set name = sqlc.arg(name), updated_at = now() where id = sqlc.arg(id);
+
+-- name: InsertReplacement :one
+insert into ingredient_replacements (old_ingredient_id, new_ingredient_id, factor, user_id)
+values (sqlc.arg(old_ingredient_id), sqlc.arg(new_ingredient_id), sqlc.arg(factor), sqlc.arg(user_id))
+returning id;
+
+-- name: InsertReplacementMove :exec
+-- Un lado del traspaso de un reemplazo, con su sucursal explícita: el trigger la tomaría de la empresa.
+insert into stock_movements (item_type, ingredient_id, movement_type, quantity, unit_cost, branch_id, user_id, reason, replacement_id)
+values ('ingrediente', sqlc.arg(ingredient_id), 'ajuste', sqlc.arg(quantity), sqlc.narg(unit_cost), sqlc.arg(branch_id),
+        sqlc.arg(user_id), 'reemplazo', sqlc.arg(replacement_id));
+
+-- name: SetArticleExtras :exec
+update ingredients set count_place_id = sqlc.narg(place_id), track_stock = sqlc.arg(track_stock), is_packaging = sqlc.arg(is_packaging)
+ where id = sqlc.arg(id);

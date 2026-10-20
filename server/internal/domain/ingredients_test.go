@@ -118,3 +118,17 @@ func TestTrendPct(t *testing.T) {
 		t.Fatalf("sin referencia = %v, quería nil", got)
 	}
 }
+
+// Una receta guarda la cantidad en su propia unidad (2 cucharadas, 0.5 kg): se pasa a la base vieja y
+// de ahí a la nueva. Un empaque en piezas trae piezas enteras: el que no cuadra se archiva.
+func TestConvertRecipeAndPresentation(t *testing.T) {
+	if got := ConvertRecipeQty(dec("0.5"), dec("1000"), dec("0.004")); !got.Equal(dec("2")) {
+		t.Fatalf("0.5 kg con 1 pz = 250 g = %s, quería 2 piezas", got)
+	}
+	if !PresentationFits("pieza", dec("3")) || PresentationFits("pieza", dec("2.5")) || !PresentationFits("masa", dec("2.5")) {
+		t.Fatal("un empaque en piezas trae piezas enteras; en peso, cualquier cantidad mayor que cero")
+	}
+	if PresentationFits("masa", dec("0")) {
+		t.Fatal("un empaque que se convierte en cero no cuadra")
+	}
+}

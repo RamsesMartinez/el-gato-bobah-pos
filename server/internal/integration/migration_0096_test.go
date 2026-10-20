@@ -58,7 +58,7 @@ func TestMigrationIngredientManagementOnARealBackup(t *testing.T) {
 		t.Fatal("el respaldo necesita dos empresas con artículos")
 	}
 
-	t.Run("las dos tablas nacen con RLS por nullif y solo select e insert para la app", func(t *testing.T) {
+	t.Run("las dos tablas nacen con RLS por nullif; la app no borra, y solo actualiza las correcciones", func(t *testing.T) {
 		for _, tbl := range []string{"ingredient_cost_corrections", "ingredient_replacements"} {
 			var rls, sel, ins, upd, del bool
 			var qual string
@@ -71,7 +71,8 @@ func TestMigrationIngredientManagementOnARealBackup(t *testing.T) {
 				Scan(&rls, &sel, &ins, &upd, &del, &qual); err != nil {
 				t.Fatalf("%s: %v", tbl, err)
 			}
-			if !rls || !sel || !ins || upd || del || !strings.Contains(strings.ToLower(qual), "nullif") {
+			wantUpd := tbl == "ingredient_cost_corrections" // el cambio directo de unidad las convierte
+			if !rls || !sel || !ins || upd != wantUpd || del || !strings.Contains(strings.ToLower(qual), "nullif") {
 				t.Fatalf("%s: rls %v select %v insert %v update %v delete %v política %q", tbl, rls, sel, ins, upd, del, qual)
 			}
 		}

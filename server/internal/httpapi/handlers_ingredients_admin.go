@@ -285,3 +285,44 @@ func (h *Handlers) PresentationSuggestions(w http.ResponseWriter, r *http.Reques
 	}
 	JSON(w, http.StatusOK, out)
 }
+
+// POST /stock/articles/{id}/unit/preview — qué pasaría al cambiar en qué se mide, sin cambiar nada.
+func (h *Handlers) PreviewUnitChange(w http.ResponseWriter, r *http.Request) {
+	id, req, ok := unitChangeBody(w, r)
+	if !ok {
+		return
+	}
+	out, err := h.backoffice.PreviewUnitChange(r.Context(), id, req)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, out)
+}
+
+// POST /stock/articles/{id}/unit — aplica el cambio por el camino que corresponda.
+func (h *Handlers) ChangeUnit(w http.ResponseWriter, r *http.Request) {
+	id, req, ok := unitChangeBody(w, r)
+	if !ok {
+		return
+	}
+	if err := h.backoffice.ChangeUnit(r.Context(), id, req); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func unitChangeBody(w http.ResponseWriter, r *http.Request) (int64, app.UnitChangeRequest, bool) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return 0, app.UnitChangeRequest{}, false
+	}
+	var req app.UnitChangeRequest
+	if err := Decode(r, &req); err != nil {
+		Error(w, err)
+		return 0, req, false
+	}
+	return id, req, true
+}

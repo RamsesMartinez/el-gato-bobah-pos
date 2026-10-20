@@ -187,7 +187,7 @@ historial muestra compras y correcciones.
 **Independent test**: un artículo solo con ajustes pasa de piezas a gramos y conserva sus recetas;
 uno con compras se reemplaza.
 
-- [ ] T030 [P] [US5] Tests de integración del cambio directo (E7, Revisión B2 y B3):
+- [X] T030 [P] [US5] Tests de integración del cambio directo (E7, Revisión B2 y B3):
   - convierte existencia, ajustes, renglones de conteo, recetas, empaques, mínimo, costo y
     rendimiento;
   - la existencia queda igual a la suma de movimientos con el factor 1/150 y 30 ajustes;
@@ -195,14 +195,14 @@ uno con compras se reemplaza.
   - un caso por cambio de clase (masa↔pieza, volumen↔pieza);
   - un empaque que no cuadra con la unidad nueva queda `active = false`, la fila sigue existiendo y
     el `before` guarda su nombre, cantidad y unidad originales.
-- [ ] T031 [P] [US5] Test que recorre las FK hacia `ingredients` y truena si una tabla no está
+- [X] T031 [P] [US5] Test que recorre las FK hacia `ingredients` y truena si una tabla no está
   clasificada como «convierte» o «bloquea».
-- [ ] T032 [P] [US5] Tests de los bloqueos:
+- [X] T032 [P] [US5] Tests de los bloqueos:
   - compra por recibir o merma pendiente da 409 `UNIT_CHANGE_PENDING` con lo que falta;
   - un conteo abierto da 409 (E9);
   - una venta concurrente con `nowait` da 409 `BUSY` (E6);
   - sin `inventory.configure`, la vista previa y el cambio dan 403.
-- [ ] T033 [P] [US5] Tests del reemplazo (E8):
+- [X] T033 [P] [US5] Tests del reemplazo (E8):
   - un `ajuste` de salida y otro de entrada por sucursal, con `replacement_id` y `branch_id`;
   - las recetas pasan con la cantidad convertida;
   - el nuevo nace con el costo convertido y su fila de corrección;
@@ -210,7 +210,7 @@ uno con compras se reemplaza.
   - un empaque que no cuadra con la unidad nueva no pasa al nuevo y queda archivado en el viejo, con
     su valor original en la bitácora;
   - deja el evento `ingredient.replaced`.
-- [ ] T034 [US5] Vista previa y aplicación en `app/ingredients_admin.go`, con el orden de escritura
+- [X] T034 [US5] Vista previa y aplicación en `app/ingredients_admin.go`, con el orden de escritura
   de la Revisión B3, hasta que T030 a T033 pasen.
 - [ ] T035 [US5] `UnitChangeSheet.tsx` en dos pasos:
   - pie fijo;

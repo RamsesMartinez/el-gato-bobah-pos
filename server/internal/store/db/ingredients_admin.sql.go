@@ -55,6 +55,37 @@ func (q *Queries) ActiveRecipesUsing(ctx context.Context, ingredientID int64) ([
 	return items, nil
 }
 
+const articleAdjustments = `-- name: ArticleAdjustments :many
+select id, quantity, unit_cost from stock_movements
+ where ingredient_id = $1 and movement_type = 'ajuste' order by id
+`
+
+type ArticleAdjustmentsRow struct {
+	ID       int64            `json:"id"`
+	Quantity decimal.Decimal  `json:"quantity"`
+	UnitCost *decimal.Decimal `json:"unit_cost"`
+}
+
+func (q *Queries) ArticleAdjustments(ctx context.Context, ingredientID *int64) ([]ArticleAdjustmentsRow, error) {
+	rows, err := q.db.Query(ctx, articleAdjustments, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArticleAdjustmentsRow{}
+	for rows.Next() {
+		var i ArticleAdjustmentsRow
+		if err := rows.Scan(&i.ID, &i.Quantity, &i.UnitCost); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const articleAudit = `-- name: ArticleAudit :many
 select a.id, a.occurred_at, a.action, a.entity_type, a.before, a.after, coalesce(u.name::text, a.actor_label) as actor
   from audit_events a
@@ -109,6 +140,36 @@ func (q *Queries) ArticleAudit(ctx context.Context, arg ArticleAuditParams) ([]A
 			&i.After,
 			&i.Actor,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const articleCostCorrections = `-- name: ArticleCostCorrections :many
+select id, previous_cost, new_cost from ingredient_cost_corrections where ingredient_id = $1
+`
+
+type ArticleCostCorrectionsRow struct {
+	ID           int64           `json:"id"`
+	PreviousCost decimal.Decimal `json:"previous_cost"`
+	NewCost      decimal.Decimal `json:"new_cost"`
+}
+
+func (q *Queries) ArticleCostCorrections(ctx context.Context, ingredientID int64) ([]ArticleCostCorrectionsRow, error) {
+	rows, err := q.db.Query(ctx, articleCostCorrections, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArticleCostCorrectionsRow{}
+	for rows.Next() {
+		var i ArticleCostCorrectionsRow
+		if err := rows.Scan(&i.ID, &i.PreviousCost, &i.NewCost); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -201,19 +262,80 @@ func (q *Queries) ArticleCostHistory(ctx context.Context, arg ArticleCostHistory
 	return items, nil
 }
 
+const articleCountLines = `-- name: ArticleCountLines :many
+select count_id, counted_qty, system_qty, unit_cost from stock_count_lines where ingredient_id = $1
+`
+
+type ArticleCountLinesRow struct {
+	CountID    int64            `json:"count_id"`
+	CountedQty decimal.Decimal  `json:"counted_qty"`
+	SystemQty  decimal.Decimal  `json:"system_qty"`
+	UnitCost   *decimal.Decimal `json:"unit_cost"`
+}
+
+func (q *Queries) ArticleCountLines(ctx context.Context, ingredientID int64) ([]ArticleCountLinesRow, error) {
+	rows, err := q.db.Query(ctx, articleCountLines, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArticleCountLinesRow{}
+	for rows.Next() {
+		var i ArticleCountLinesRow
+		if err := rows.Scan(
+			&i.CountID,
+			&i.CountedQty,
+			&i.SystemQty,
+			&i.UnitCost,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const articleMovementTypes = `-- name: ArticleMovementTypes :many
+select distinct movement_type::text from stock_movements where ingredient_id = $1
+`
+
+func (q *Queries) ArticleMovementTypes(ctx context.Context, ingredientID *int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, articleMovementTypes, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var movement_type string
+		if err := rows.Scan(&movement_type); err != nil {
+			return nil, err
+		}
+		items = append(items, movement_type)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const articleOnHandByBranch = `-- name: ArticleOnHandByBranch :many
-select b.name::text as branch, sl.on_hand
+select b.id as branch_id, b.name::text as branch, sl.on_hand
   from stock_levels sl join branches b on b.id = sl.branch_id
  where sl.item_type = 'ingrediente' and sl.ingredient_id = $1 and sl.on_hand <> 0
  order by b.name
 `
 
 type ArticleOnHandByBranchRow struct {
-	Branch string          `json:"branch"`
-	OnHand decimal.Decimal `json:"on_hand"`
+	BranchID int64           `json:"branch_id"`
+	Branch   string          `json:"branch"`
+	OnHand   decimal.Decimal `json:"on_hand"`
 }
 
-// Lo que queda del artículo en cada sucursal, para la revisión de archivar.
+// Lo que queda del artículo en cada sucursal, para la revisión de archivar y el cambio de unidad.
 func (q *Queries) ArticleOnHandByBranch(ctx context.Context, ingredientID *int64) ([]ArticleOnHandByBranchRow, error) {
 	rows, err := q.db.Query(ctx, articleOnHandByBranch, ingredientID)
 	if err != nil {
@@ -223,7 +345,150 @@ func (q *Queries) ArticleOnHandByBranch(ctx context.Context, ingredientID *int64
 	items := []ArticleOnHandByBranchRow{}
 	for rows.Next() {
 		var i ArticleOnHandByBranchRow
-		if err := rows.Scan(&i.Branch, &i.OnHand); err != nil {
+		if err := rows.Scan(&i.BranchID, &i.Branch, &i.OnHand); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const articlePurchaseFormats = `-- name: ArticlePurchaseFormats :many
+select id, qty_in_base from ingredient_purchase_formats where ingredient_id = $1
+`
+
+type ArticlePurchaseFormatsRow struct {
+	ID        int64           `json:"id"`
+	QtyInBase decimal.Decimal `json:"qty_in_base"`
+}
+
+func (q *Queries) ArticlePurchaseFormats(ctx context.Context, ingredientID int64) ([]ArticlePurchaseFormatsRow, error) {
+	rows, err := q.db.Query(ctx, articlePurchaseFormats, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArticlePurchaseFormatsRow{}
+	for rows.Next() {
+		var i ArticlePurchaseFormatsRow
+		if err := rows.Scan(&i.ID, &i.QtyInBase); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const articleRecipeItems = `-- name: ArticleRecipeItems :many
+select ri.id, ri.recipe_id, ri.quantity, ri.unit_id, u.to_base as unit_to_base, u.code as unit_code,
+       coalesce((select p.name::text from products p where p.recipe_id = ri.recipe_id limit 1),
+                (select mo.name::text from modifier_options mo where mo.recipe_id = ri.recipe_id limit 1),
+                (select i.name::text from ingredients i where i.recipe_id = ri.recipe_id limit 1), 'Receta')::text as owner,
+       (exists (select 1 from products p where p.recipe_id = ri.recipe_id and p.is_active)
+        or exists (select 1 from modifier_options mo where mo.recipe_id = ri.recipe_id and mo.is_active)
+        or exists (select 1 from ingredients i where i.recipe_id = ri.recipe_id and i.is_active))::bool as active
+  from recipe_items ri join units u on u.id = ri.unit_id
+ where ri.ingredient_id = $1
+ order by ri.id
+`
+
+type ArticleRecipeItemsRow struct {
+	ID         int64           `json:"id"`
+	RecipeID   int64           `json:"recipe_id"`
+	Quantity   decimal.Decimal `json:"quantity"`
+	UnitID     int16           `json:"unit_id"`
+	UnitToBase decimal.Decimal `json:"unit_to_base"`
+	UnitCode   string          `json:"unit_code"`
+	Owner      string          `json:"owner"`
+	Active     bool            `json:"active"`
+}
+
+// Los renglones de receta que restan el artículo, con si su receta está activa (de un producto, un
+// extra o un preparado activos): el reemplazo solo pasa al nuevo las activas.
+func (q *Queries) ArticleRecipeItems(ctx context.Context, ingredientID int64) ([]ArticleRecipeItemsRow, error) {
+	rows, err := q.db.Query(ctx, articleRecipeItems, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArticleRecipeItemsRow{}
+	for rows.Next() {
+		var i ArticleRecipeItemsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RecipeID,
+			&i.Quantity,
+			&i.UnitID,
+			&i.UnitToBase,
+			&i.UnitCode,
+			&i.Owner,
+			&i.Active,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const articleSupplierItems = `-- name: ArticleSupplierItems :many
+select id, pack_qty_in_base from supplier_items where ingredient_id = $1
+`
+
+type ArticleSupplierItemsRow struct {
+	ID            int64            `json:"id"`
+	PackQtyInBase *decimal.Decimal `json:"pack_qty_in_base"`
+}
+
+func (q *Queries) ArticleSupplierItems(ctx context.Context, ingredientID *int64) ([]ArticleSupplierItemsRow, error) {
+	rows, err := q.db.Query(ctx, articleSupplierItems, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArticleSupplierItemsRow{}
+	for rows.Next() {
+		var i ArticleSupplierItemsRow
+		if err := rows.Scan(&i.ID, &i.PackQtyInBase); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const articleWasteRecords = `-- name: ArticleWasteRecords :many
+select id, quantity, unit_cost from waste_records where ingredient_id = $1 and status <> 'pending'
+`
+
+type ArticleWasteRecordsRow struct {
+	ID       int64            `json:"id"`
+	Quantity decimal.Decimal  `json:"quantity"`
+	UnitCost *decimal.Decimal `json:"unit_cost"`
+}
+
+func (q *Queries) ArticleWasteRecords(ctx context.Context, ingredientID *int64) ([]ArticleWasteRecordsRow, error) {
+	rows, err := q.db.Query(ctx, articleWasteRecords, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArticleWasteRecordsRow{}
+	for rows.Next() {
+		var i ArticleWasteRecordsRow
+		if err := rows.Scan(&i.ID, &i.Quantity, &i.UnitCost); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -397,6 +662,59 @@ func (q *Queries) InsertInitialStock(ctx context.Context, arg InsertInitialStock
 	return err
 }
 
+const insertReplacement = `-- name: InsertReplacement :one
+insert into ingredient_replacements (old_ingredient_id, new_ingredient_id, factor, user_id)
+values ($1, $2, $3, $4)
+returning id
+`
+
+type InsertReplacementParams struct {
+	OldIngredientID int64           `json:"old_ingredient_id"`
+	NewIngredientID int64           `json:"new_ingredient_id"`
+	Factor          decimal.Decimal `json:"factor"`
+	UserID          int64           `json:"user_id"`
+}
+
+func (q *Queries) InsertReplacement(ctx context.Context, arg InsertReplacementParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertReplacement,
+		arg.OldIngredientID,
+		arg.NewIngredientID,
+		arg.Factor,
+		arg.UserID,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const insertReplacementMove = `-- name: InsertReplacementMove :exec
+insert into stock_movements (item_type, ingredient_id, movement_type, quantity, unit_cost, branch_id, user_id, reason, replacement_id)
+values ('ingrediente', $1, 'ajuste', $2, $3, $4,
+        $5, 'reemplazo', $6)
+`
+
+type InsertReplacementMoveParams struct {
+	IngredientID  *int64           `json:"ingredient_id"`
+	Quantity      decimal.Decimal  `json:"quantity"`
+	UnitCost      *decimal.Decimal `json:"unit_cost"`
+	BranchID      int64            `json:"branch_id"`
+	UserID        *int64           `json:"user_id"`
+	ReplacementID *int64           `json:"replacement_id"`
+}
+
+// Un lado del traspaso de un reemplazo, con su sucursal explícita: el trigger la tomaría de la empresa.
+func (q *Queries) InsertReplacementMove(ctx context.Context, arg InsertReplacementMoveParams) error {
+	_, err := q.db.Exec(ctx, insertReplacementMove,
+		arg.IngredientID,
+		arg.Quantity,
+		arg.UnitCost,
+		arg.BranchID,
+		arg.UserID,
+		arg.ReplacementID,
+	)
+	return err
+}
+
 const listArticles = `-- name: ListArticles :many
 
 select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
@@ -512,6 +830,84 @@ func (q *Queries) LockArticle(ctx context.Context, id int64) (LockArticleRow, er
 	return i, err
 }
 
+const lockArticleNowait = `-- name: LockArticleNowait :one
+
+select id, is_active, name::text as name, base_unit_id, min_stock, current_cost, cost_source::text as cost_source,
+       yield_qty, is_prep, category_id, count_place_id, track_stock, is_packaging
+  from ingredients where id = $1 for update nowait
+`
+
+type LockArticleNowaitRow struct {
+	ID           int64            `json:"id"`
+	IsActive     bool             `json:"is_active"`
+	Name         string           `json:"name"`
+	BaseUnitID   int16            `json:"base_unit_id"`
+	MinStock     *decimal.Decimal `json:"min_stock"`
+	CurrentCost  decimal.Decimal  `json:"current_cost"`
+	CostSource   string           `json:"cost_source"`
+	YieldQty     *decimal.Decimal `json:"yield_qty"`
+	IsPrep       bool             `json:"is_prep"`
+	CategoryID   *int64           `json:"category_id"`
+	CountPlaceID *int64           `json:"count_place_id"`
+	TrackStock   bool             `json:"track_stock"`
+	IsPackaging  bool             `json:"is_packaging"`
+}
+
+// ---- Cambio de unidad (spec 042, FR-009) ----
+// El artículo sin esperar: una venta en curso lo tiene y el cambio se reintenta (E6).
+func (q *Queries) LockArticleNowait(ctx context.Context, id int64) (LockArticleNowaitRow, error) {
+	row := q.db.QueryRow(ctx, lockArticleNowait, id)
+	var i LockArticleNowaitRow
+	err := row.Scan(
+		&i.ID,
+		&i.IsActive,
+		&i.Name,
+		&i.BaseUnitID,
+		&i.MinStock,
+		&i.CurrentCost,
+		&i.CostSource,
+		&i.YieldQty,
+		&i.IsPrep,
+		&i.CategoryID,
+		&i.CountPlaceID,
+		&i.TrackStock,
+		&i.IsPackaging,
+	)
+	return i, err
+}
+
+const lockArticleStockNowait = `-- name: LockArticleStockNowait :many
+select branch_id, on_hand from stock_levels
+ where item_type = 'ingrediente' and ingredient_id = $1
+ order by branch_id
+   for update nowait
+`
+
+type LockArticleStockNowaitRow struct {
+	BranchID int64           `json:"branch_id"`
+	OnHand   decimal.Decimal `json:"on_hand"`
+}
+
+func (q *Queries) LockArticleStockNowait(ctx context.Context, ingredientID *int64) ([]LockArticleStockNowaitRow, error) {
+	rows, err := q.db.Query(ctx, lockArticleStockNowait, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockArticleStockNowaitRow{}
+	for rows.Next() {
+		var i LockArticleStockNowaitRow
+		if err := rows.Scan(&i.BranchID, &i.OnHand); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const oldestOfLastPurchases = `-- name: OldestOfLastPurchases :one
 select count(*)::int as purchases,
        coalesce((array_agg(unit_cost order by created_at asc, id asc))[1], 0)::numeric(12,6) as oldest_cost
@@ -551,6 +947,19 @@ func (q *Queries) OpenCountHasArticle(ctx context.Context, ingredientID int64) (
 	return column_1, err
 }
 
+const openExpenseItemsOf = `-- name: OpenExpenseItemsOf :one
+select count(*)::int from expense_items where ingredient_id = $1 and voided_at is null
+`
+
+// Renglones de compra que todavía hablan en la unidad vieja: los no anulados. Con uno, el cambio
+// directo no se hace (en el directo no hay compras recibidas, así que serían pendientes).
+func (q *Queries) OpenExpenseItemsOf(ctx context.Context, ingredientID *int64) (int32, error) {
+	row := q.db.QueryRow(ctx, openExpenseItemsOf, ingredientID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const pendingReceiptsOf = `-- name: PendingReceiptsOf :one
 select count(*)::int from expense_items ei join expenses e on e.id = ei.expense_id
  where ei.ingredient_id = $1 and e.status <> 'cancelada' and ei.voided_at is null
@@ -560,6 +969,17 @@ select count(*)::int from expense_items ei join expenses e on e.id = ei.expense_
 // Cuántos renglones de compra del artículo faltan por llegar (la misma regla que «Por recibir»).
 func (q *Queries) PendingReceiptsOf(ctx context.Context, ingredientID *int64) (int32, error) {
 	row := q.db.QueryRow(ctx, pendingReceiptsOf, ingredientID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const pendingWasteOf = `-- name: PendingWasteOf :one
+select count(*)::int from waste_records where ingredient_id = $1 and status = 'pending'
+`
+
+func (q *Queries) PendingWasteOf(ctx context.Context, ingredientID *int64) (int32, error) {
+	row := q.db.QueryRow(ctx, pendingWasteOf, ingredientID)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -602,6 +1022,35 @@ func (q *Queries) PresentationSuggestions(ctx context.Context, kind UnitKind) ([
 	return items, nil
 }
 
+const recomputeArticleStock = `-- name: RecomputeArticleStock :exec
+update stock_levels sl
+   set on_hand = coalesce((select sum(m.quantity) from stock_movements m
+                            where m.ingredient_id = sl.ingredient_id and m.branch_id = sl.branch_id), 0),
+       updated_at = now()
+ where sl.item_type = 'ingrediente' and sl.ingredient_id = $1
+`
+
+// Tras convertir, lo guardado de cada sucursal es la suma de sus movimientos: redondear cada ajuste por
+// separado deja un residuo que el trigger (solo de insert) no corrige (Revisión B2).
+func (q *Queries) RecomputeArticleStock(ctx context.Context, ingredientID *int64) error {
+	_, err := q.db.Exec(ctx, recomputeArticleStock, ingredientID)
+	return err
+}
+
+const renameArticle = `-- name: RenameArticle :exec
+update ingredients set name = $1, updated_at = now() where id = $2
+`
+
+type RenameArticleParams struct {
+	Name string `json:"name"`
+	ID   int64  `json:"id"`
+}
+
+func (q *Queries) RenameArticle(ctx context.Context, arg RenameArticleParams) error {
+	_, err := q.db.Exec(ctx, renameArticle, arg.Name, arg.ID)
+	return err
+}
+
 const setArticleActive = `-- name: SetArticleActive :exec
 update ingredients set is_active = $1, updated_at = now() where id = $2
 `
@@ -635,6 +1084,202 @@ func (q *Queries) SetArticleCostManual(ctx context.Context, arg SetArticleCostMa
 	var previous_cost decimal.Decimal
 	err := row.Scan(&previous_cost)
 	return previous_cost, err
+}
+
+const setArticleExtras = `-- name: SetArticleExtras :exec
+update ingredients set count_place_id = $1, track_stock = $2, is_packaging = $3
+ where id = $4
+`
+
+type SetArticleExtrasParams struct {
+	PlaceID     *int64 `json:"place_id"`
+	TrackStock  bool   `json:"track_stock"`
+	IsPackaging bool   `json:"is_packaging"`
+	ID          int64  `json:"id"`
+}
+
+func (q *Queries) SetArticleExtras(ctx context.Context, arg SetArticleExtrasParams) error {
+	_, err := q.db.Exec(ctx, setArticleExtras,
+		arg.PlaceID,
+		arg.TrackStock,
+		arg.IsPackaging,
+		arg.ID,
+	)
+	return err
+}
+
+const setArticleUnit = `-- name: SetArticleUnit :exec
+update ingredients
+   set base_unit_id = $1, min_stock = $2, current_cost = $3,
+       yield_qty = $4, updated_at = now()
+ where id = $5
+`
+
+type SetArticleUnitParams struct {
+	BaseUnitID  int16            `json:"base_unit_id"`
+	MinStock    *decimal.Decimal `json:"min_stock"`
+	CurrentCost decimal.Decimal  `json:"current_cost"`
+	YieldQty    *decimal.Decimal `json:"yield_qty"`
+	ID          int64            `json:"id"`
+}
+
+func (q *Queries) SetArticleUnit(ctx context.Context, arg SetArticleUnitParams) error {
+	_, err := q.db.Exec(ctx, setArticleUnit,
+		arg.BaseUnitID,
+		arg.MinStock,
+		arg.CurrentCost,
+		arg.YieldQty,
+		arg.ID,
+	)
+	return err
+}
+
+const setCostCorrection = `-- name: SetCostCorrection :exec
+update ingredient_cost_corrections set previous_cost = $1, new_cost = $2 where id = $3
+`
+
+type SetCostCorrectionParams struct {
+	PreviousCost decimal.Decimal `json:"previous_cost"`
+	NewCost      decimal.Decimal `json:"new_cost"`
+	ID           int64           `json:"id"`
+}
+
+func (q *Queries) SetCostCorrection(ctx context.Context, arg SetCostCorrectionParams) error {
+	_, err := q.db.Exec(ctx, setCostCorrection, arg.PreviousCost, arg.NewCost, arg.ID)
+	return err
+}
+
+const setCountLineQty = `-- name: SetCountLineQty :exec
+update stock_count_lines set counted_qty = $1, system_qty = $2, unit_cost = $3
+ where count_id = $4 and ingredient_id = $5
+`
+
+type SetCountLineQtyParams struct {
+	CountedQty   decimal.Decimal  `json:"counted_qty"`
+	SystemQty    decimal.Decimal  `json:"system_qty"`
+	UnitCost     *decimal.Decimal `json:"unit_cost"`
+	CountID      int64            `json:"count_id"`
+	IngredientID int64            `json:"ingredient_id"`
+}
+
+func (q *Queries) SetCountLineQty(ctx context.Context, arg SetCountLineQtyParams) error {
+	_, err := q.db.Exec(ctx, setCountLineQty,
+		arg.CountedQty,
+		arg.SystemQty,
+		arg.UnitCost,
+		arg.CountID,
+		arg.IngredientID,
+	)
+	return err
+}
+
+const setMovementQtyCost = `-- name: SetMovementQtyCost :exec
+update stock_movements set quantity = $1, unit_cost = $2 where id = $3
+`
+
+type SetMovementQtyCostParams struct {
+	Quantity decimal.Decimal  `json:"quantity"`
+	UnitCost *decimal.Decimal `json:"unit_cost"`
+	ID       int64            `json:"id"`
+}
+
+func (q *Queries) SetMovementQtyCost(ctx context.Context, arg SetMovementQtyCostParams) error {
+	_, err := q.db.Exec(ctx, setMovementQtyCost, arg.Quantity, arg.UnitCost, arg.ID)
+	return err
+}
+
+const setPresentationRaw = `-- name: SetPresentationRaw :exec
+update ingredient_presentations
+   set name = $1, qty_in_base = $2, purchase_unit_id = $3,
+       is_approximate = $4, active = $5
+ where id = $6
+`
+
+type SetPresentationRawParams struct {
+	Name           string          `json:"name"`
+	QtyInBase      decimal.Decimal `json:"qty_in_base"`
+	PurchaseUnitID *int16          `json:"purchase_unit_id"`
+	IsApproximate  bool            `json:"is_approximate"`
+	Active         bool            `json:"active"`
+	ID             int64           `json:"id"`
+}
+
+func (q *Queries) SetPresentationRaw(ctx context.Context, arg SetPresentationRawParams) error {
+	_, err := q.db.Exec(ctx, setPresentationRaw,
+		arg.Name,
+		arg.QtyInBase,
+		arg.PurchaseUnitID,
+		arg.IsApproximate,
+		arg.Active,
+		arg.ID,
+	)
+	return err
+}
+
+const setPurchaseFormatQty = `-- name: SetPurchaseFormatQty :exec
+update ingredient_purchase_formats set qty_in_base = $1 where id = $2
+`
+
+type SetPurchaseFormatQtyParams struct {
+	QtyInBase decimal.Decimal `json:"qty_in_base"`
+	ID        int64           `json:"id"`
+}
+
+func (q *Queries) SetPurchaseFormatQty(ctx context.Context, arg SetPurchaseFormatQtyParams) error {
+	_, err := q.db.Exec(ctx, setPurchaseFormatQty, arg.QtyInBase, arg.ID)
+	return err
+}
+
+const setRecipeItem = `-- name: SetRecipeItem :exec
+update recipe_items set ingredient_id = $1, quantity = $2, unit_id = $3
+ where id = $4
+`
+
+type SetRecipeItemParams struct {
+	IngredientID int64           `json:"ingredient_id"`
+	Quantity     decimal.Decimal `json:"quantity"`
+	UnitID       int16           `json:"unit_id"`
+	ID           int64           `json:"id"`
+}
+
+func (q *Queries) SetRecipeItem(ctx context.Context, arg SetRecipeItemParams) error {
+	_, err := q.db.Exec(ctx, setRecipeItem,
+		arg.IngredientID,
+		arg.Quantity,
+		arg.UnitID,
+		arg.ID,
+	)
+	return err
+}
+
+const setSupplierItem = `-- name: SetSupplierItem :exec
+update supplier_items set ingredient_id = $1, pack_qty_in_base = $2 where id = $3
+`
+
+type SetSupplierItemParams struct {
+	IngredientID  *int64           `json:"ingredient_id"`
+	PackQtyInBase *decimal.Decimal `json:"pack_qty_in_base"`
+	ID            int64            `json:"id"`
+}
+
+func (q *Queries) SetSupplierItem(ctx context.Context, arg SetSupplierItemParams) error {
+	_, err := q.db.Exec(ctx, setSupplierItem, arg.IngredientID, arg.PackQtyInBase, arg.ID)
+	return err
+}
+
+const setWasteQtyCost = `-- name: SetWasteQtyCost :exec
+update waste_records set quantity = $1, unit_cost = $2 where id = $3
+`
+
+type SetWasteQtyCostParams struct {
+	Quantity decimal.Decimal  `json:"quantity"`
+	UnitCost *decimal.Decimal `json:"unit_cost"`
+	ID       int64            `json:"id"`
+}
+
+func (q *Queries) SetWasteQtyCost(ctx context.Context, arg SetWasteQtyCostParams) error {
+	_, err := q.db.Exec(ctx, setWasteQtyCost, arg.Quantity, arg.UnitCost, arg.ID)
+	return err
 }
 
 const updateArticle = `-- name: UpdateArticle :execrows

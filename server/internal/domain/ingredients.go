@@ -127,3 +127,40 @@ func TrendPct(current, reference decimal.Decimal) *decimal.Decimal {
 // ErrArticleInUse: el artículo no se archiva mientras una receta activa lo reste o un conteo abierto
 // lo tenga capturado (409 IN_USE): la pantalla dice cuáles.
 var ErrArticleInUse = fmt.Errorf("%w: el artículo todavía se usa", ErrConflict)
+
+// ConvertRecipeQty pasa la cantidad de un renglón de receta a la unidad base nueva: de su unidad a la
+// base vieja (unitToBase) y de ahí con la equivalencia.
+func ConvertRecipeQty(qty, unitToBase, factor decimal.Decimal) decimal.Decimal {
+	return Round4(qty.Mul(unitToBase).Mul(factor))
+}
+
+// PresentationFits dice si un empaque convertido sigue siendo válido en la clase nueva: más de cero y,
+// en piezas, piezas enteras (como exige la base, 0092 regla 16).
+func PresentationFits(kind string, qtyInBase decimal.Decimal) bool {
+	if !qtyInBase.IsPositive() {
+		return false
+	}
+	return kind != "pieza" || qtyInBase.Equal(qtyInBase.Truncate(0))
+}
+
+// UnitChangePending: el cambio de unidad espera a que se cierre lo que todavía habla en la unidad
+// vieja (409 UNIT_CHANGE_PENDING). El mensaje dice qué falta.
+type UnitChangePending struct {
+	Receipts int
+	Waste    int
+}
+
+// ErrUnitChangePending es el sentinel de UnitChangePending, para el código de error.
+var ErrUnitChangePending = fmt.Errorf("%w: falta cerrar lo pendiente del artículo", ErrConflict)
+
+func (e UnitChangePending) Error() string {
+	parts := []string{}
+	if e.Receipts > 0 {
+		parts = append(parts, fmt.Sprintf("recibir %d compra(s)", e.Receipts))
+	}
+	if e.Waste > 0 {
+		parts = append(parts, fmt.Sprintf("aprobar o rechazar %d merma(s)", e.Waste))
+	}
+	return "antes de cambiar en qué se mide, falta " + strings.Join(parts, " y ")
+}
+func (e UnitChangePending) Unwrap() error { return ErrUnitChangePending }

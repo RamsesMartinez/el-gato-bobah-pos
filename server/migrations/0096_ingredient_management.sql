@@ -60,8 +60,11 @@ alter table ingredient_replacements enable row level security;
 create policy tenant_isolation on ingredient_replacements
   using (company_id = nullif(current_setting('app.company_id', true), '')::bigint)
   with check (company_id = nullif(current_setting('app.company_id', true), '')::bigint);
--- Hechos: se registran y no se editan ni se borran.
-grant select, insert on ingredient_cost_corrections, ingredient_replacements to gatobobah_app;
+-- Hechos: se registran y no se borran. Las correcciones admiten update por una sola razón: el cambio
+-- directo de unidad (decisión del dueño, 2026-10-19) las pasa a la unidad nueva, con los originales en
+-- la bitácora. Los reemplazos no se editan.
+grant select, insert, update on ingredient_cost_corrections to gatobobah_app;
+grant select, insert on ingredient_replacements to gatobobah_app;
 
 -- Los dos ajustes del traspaso de un reemplazo (salida en el viejo, entrada en el nuevo, por sucursal)
 -- se ligan por columna y no por una nota de texto: reconstruir o revertir uno no exige parsear texto.
