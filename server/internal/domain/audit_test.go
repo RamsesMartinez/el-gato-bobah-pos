@@ -20,6 +20,9 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		"product.consumption_mode", "expense.received", "expense.stock_corrected", "stock.counted",
 		"settings.costing_method", "waste.recorded", "waste.approved", "waste.rejected", "waste.undone",
 		"settings.waste_threshold",
+		"ingredient.created", "ingredient.updated", "ingredient.archived", "ingredient.reactivated",
+		"ingredient.cost_corrected", "ingredient.unit_changed", "ingredient.unit_changed.detail",
+		"ingredient.replaced", "presentation.created", "presentation.updated", "presentation.retired",
 	}
 	got := AllAuditActions()
 	if len(got) != len(want) {
@@ -145,8 +148,9 @@ func TestAuditFilterActions(t *testing.T) {
 		t.Fatalf("sin filtro = %v, quiere nil", got)
 	}
 	// Tres de precio, qué resta un producto (spec 037), el costeo del almacén (spec 038) y el tope de
-	// aprobación de la merma (spec 039): todas son configuración de lo que cuesta o se resta.
-	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 6 {
+	// aprobación de la merma (spec 039): todas son configuración de lo que cuesta o se resta. Más las
+	// once de los artículos del almacén (spec 042).
+	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 17 {
 		t.Fatalf("grupo precios = %v", got)
 	}
 	if got := (AuditFilter{Group: "price", Action: "price.set"}).Actions(); len(got) != 1 || got[0] != "price.set" {

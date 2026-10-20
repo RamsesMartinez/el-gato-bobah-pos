@@ -80,7 +80,46 @@ var auditActions = []struct {
 	{AuditWasteRejected, AuditGroupCancel},
 	{AuditWasteUndone, AuditGroupCancel},
 	{AuditSettingsWasteThreshold, AuditGroupPrice},
+	// Artículos del almacén (spec 042): configuración, con los precios, como el costeo. El costo
+	// corregido también. Ningún grupo nuevo, por la misma razón que la 038.
+	{AuditIngredientCreated, AuditGroupPrice},
+	{AuditIngredientUpdated, AuditGroupPrice},
+	{AuditIngredientArchived, AuditGroupPrice},
+	{AuditIngredientReactivated, AuditGroupPrice},
+	{AuditIngredientCostCorrected, AuditGroupPrice},
+	{AuditIngredientUnitChanged, AuditGroupPrice},
+	{AuditIngredientUnitChangedDetail, AuditGroupPrice},
+	{AuditIngredientReplaced, AuditGroupPrice},
+	{AuditPresentationCreated, AuditGroupPrice},
+	{AuditPresentationUpdated, AuditGroupPrice},
+	{AuditPresentationRetired, AuditGroupPrice},
 }
+
+const (
+	// AuditIngredientCreated: se dio de alta un artículo del almacén.
+	AuditIngredientCreated AuditAction = "ingredient.created"
+	// AuditIngredientUpdated: cambió el nombre, la categoría, el lugar o el mínimo de un artículo.
+	AuditIngredientUpdated AuditAction = "ingredient.updated"
+	// AuditIngredientArchived: un artículo dejó de ofrecerse.
+	AuditIngredientArchived AuditAction = "ingredient.archived"
+	// AuditIngredientReactivated: un artículo archivado volvió a ofrecerse.
+	AuditIngredientReactivated AuditAction = "ingredient.reactivated"
+	// AuditIngredientCostCorrected: se corrigió a mano el costo de un artículo.
+	AuditIngredientCostCorrected AuditAction = "ingredient.cost_corrected"
+	// AuditIngredientUnitChanged: cambió en qué se mide un artículo, en el mismo artículo.
+	AuditIngredientUnitChanged AuditAction = "ingredient.unit_changed"
+	// AuditIngredientUnitChangedDetail: los valores originales de una tabla convertida por un cambio
+	// de unidad, ligados al evento principal por su batch_id. Partido para no crecer sin tope.
+	AuditIngredientUnitChangedDetail AuditAction = "ingredient.unit_changed.detail"
+	// AuditIngredientReplaced: un artículo se reemplazó por otro en otra unidad y quedó archivado.
+	AuditIngredientReplaced AuditAction = "ingredient.replaced"
+	// AuditPresentationCreated: se agregó un empaque a un artículo.
+	AuditPresentationCreated AuditAction = "presentation.created"
+	// AuditPresentationUpdated: cambió el nombre o la cantidad de un empaque.
+	AuditPresentationUpdated AuditAction = "presentation.updated"
+	// AuditPresentationRetired: un empaque dejó de llegar así, o volvió.
+	AuditPresentationRetired AuditAction = "presentation.retired"
+)
 
 // AuditProductConsumptionMode: cambió qué resta un producto al venderse.
 const AuditProductConsumptionMode AuditAction = "product.consumption_mode"
