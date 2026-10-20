@@ -51,3 +51,14 @@ const money = (n: number) => n.toLocaleString('es-MX', { minimumFractionDigits: 
 
 // plainQty es una cantidad en la unidad base tal cual, con separador de miles: «5,000».
 export const plainQty = (v: string | number) => { const n = Number(v); return n.toLocaleString('es-MX', { maximumFractionDigits: 4 }); };
+
+// packExample es el ejemplo de empaque que se da al explicar qué es uno, de la clase del artículo: un
+// líquido no se compra en bolsas de 5 kg.
+export function packExample(kind: string): string {
+  switch (kind) {
+    case 'masa': return 'bolsa de 5 kg';
+    case 'volumen': return 'garrafa de 4 L';
+    case 'longitud': return 'rollo de 50 m';
+    default: return 'caja de 12 piezas';
+  }
+}

@@ -262,9 +262,9 @@ guarda 0.
 ## Phase 10: Polish & Cross-Cutting
 
 - [X] T043 `TestEveryAuditActionIsProduced` en verde con las acciones nuevas.
-- [ ] T044 [P] `make api-build && make api-test`, `make test-integration`, `cd web && bun run lint
+- [X] T044 [P] `make api-build && make api-test`, `make test-integration`, `cd web && bun run lint
   && bun run vitest run && bun run build`, y `make ci-local`.
-- [ ] T045 [P] Playwright a 1024×600 en `web/e2e/gestion-de-articulos.spec.ts`:
+- [X] T045 [P] Playwright a 1024×600 en `web/e2e/gestion-de-articulos.spec.ts`:
   - lista con 6 o 7 renglones visibles;
   - ficha con la tableta de lado y de pie;
   - teclado del conteo;
@@ -274,7 +274,7 @@ guarda 0.
   La prueba con usuario sin contexto corre en local (constitución 1.23.0).
 - [X] T046 [P] Medición de uso, en los tres lugares: `pantallasMedibles` y `rolesPorPantalla` en
   `server/internal/domain/uso.go`, y `PANTALLAS` en `web/src/app/rutas-medidas.ts`.
-- [ ] T047 Correr [quickstart.md](quickstart.md) contra la base restaurada y anotar en el plan, en
+- [X] T047 Correr [quickstart.md](quickstart.md) contra la base restaurada y anotar en el plan, en
   «Al construir», lo que no se vio venir.
 - [ ] T048 En una subida posterior: borrar `POST /ingredients` (Revisión B1). Seguimiento en el issue
   #115, «Quitar POST /ingredients en la subida siguiente a la 042».

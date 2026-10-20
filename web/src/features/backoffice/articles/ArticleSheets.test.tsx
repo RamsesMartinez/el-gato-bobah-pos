@@ -150,7 +150,7 @@ describe('Ficha del artículo', () => {
     back.articleCostHistory.mockResolvedValue({ items: [{ kind: 'correction', at: '2026-10-19T10:00:00Z', id: 1, unitCost: '0.022',
       presentation: null, packQty: null, packCost: null, supplier: null, user: 'Ana' }], next: null, trendPct: null });
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
-    await screen.findByText(/Corrección a mano/);
+    await screen.findByText(/Capturado a mano/);
     expect(screen.queryByText('$23.10')).toBeNull();
     expect(screen.queryByText('$20.90')).toBeNull();
     expect(screen.queryByText(/sola compra/)).toBeNull();
@@ -160,6 +160,13 @@ describe('Ficha del artículo', () => {
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
     expect(await screen.findByText('Nuevo empaque')).toBeInTheDocument();
+  });
+
+  it('la ficha dice cuánto hay, sin repetir la unidad de las piezas', async () => {
+    back.article.mockResolvedValue({ ...ficha, baseUnitCode: 'pieza', baseUnitKind: 'pieza', onHand: '12' });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText(/Hay 12 piezas/)).toBeInTheDocument();
+    expect(screen.queryByText(/piezas \(piezas\)/)).toBeNull();
   });
 
   it('recién creado, «Agregar empaque» va primero', async () => {
@@ -177,15 +184,21 @@ describe('Bitácora del artículo', () => {
       items: [{ id: 1, at: '2026-10-19T21:14:00Z', action: 'ingredient.cost_corrected', entity: 'ingredient', actor: 'Ana', before: { cost: '0.03' }, after: { cost: '0.006' } }],
       next: 'c2',
     });
-    montar(<ArticleAuditSheet id={7} name="Hielo en bolsa" onClose={vi.fn()} />);
+    montar(<ArticleAuditSheet id={7} name="Hielo en bolsa" baseUnitCode="g" onClose={vi.fn()} />);
     expect(await screen.findByText('Ana')).toBeInTheDocument();
-    expect(screen.getByText('Costo: 0.03 → 0.006')).toBeInTheDocument();
+    expect(screen.getByText('Costo: $30.00 / kg → $6.00 / kg')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Ver más' }));
     await waitFor(() => expect(back.articleAudit).toHaveBeenCalledWith(7, 'c2'));
   });
 
   it('whatChanged solo habla de lo que quien opera reconoce', () => {
-    expect(whatChanged({ before: { name: 'A', placeId: 3 }, after: { name: 'B', placeId: 4 } })).toBe('Nombre: A → B');
+    expect(whatChanged({ before: { name: 'A', placeId: 3 }, after: { name: 'B', placeId: 4 } }, 'ml')).toBe('Nombre: A → B');
+  });
+
+  // Prueba de pantalla (2026-10-19): la bitácora decía «Costo: 0.024 → 0.026», el precio por ml.
+  it('el costo y el mínimo se dicen en la unidad en que se compra', () => {
+    expect(whatChanged({ before: { cost: '0.024' }, after: { cost: '0.026' } }, 'ml')).toBe('Costo: $24.00 / L → $26.00 / L');
+    expect(whatChanged({ before: { minStock: '5000' }, after: { minStock: '10000' } }, 'g')).toBe('Mínimo: 5 kg → 10 kg');
   });
 
   it('sin «ver el almacén» la ficha no ofrece la bitácora', async () => {

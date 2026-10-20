@@ -6,7 +6,7 @@ import {
 } from '../../components/ui/drawer';
 import { backofficeApi, type Presentation, type PresentationBody, type Unit } from '../../api/backoffice';
 import { ApiError } from '../../api/client';
-import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
+import { formatBaseQty, packExample, purchaseUnitsFor, unitLabel } from '../../shared/units';
 import { round2 } from '../../domain/numeros';
 import { CountPlaceField } from './CountPlaceField';
 
@@ -131,7 +131,7 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
         <DrawerHeader pb={1}>
           <Text fontSize="lg" fontWeight="700">Cómo llega {ingredient.name}</Text>
           <Text fontSize="sm" color="fg.muted">
-            Cómo lo compras, por ejemplo: bolsa de 5 kg. Cada empaque se convierte a {formatBaseQty(1, ingredient.baseUnitCode).replace(/^1 /, '')} al recibirlo.
+            Cómo lo compras, por ejemplo: {packExample(kind)}. Cada empaque se convierte a {formatBaseQty(1, ingredient.baseUnitCode).replace(/^1 /, '')} al recibirlo.
           </Text>
           {ingredient.countPlaceId !== undefined && <CountPlaceField ingredientId={ingredient.id} placeId={ingredient.countPlaceId} />}
         </DrawerHeader>

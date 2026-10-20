@@ -222,6 +222,26 @@ aplicado (decisiones del dueño marcadas):
 - El empaque aproximado («Kilo ≈ 400 pz») se captura en la ficha, en Empaques, con «Se pesa
   también» y su equivalencia.
 
+## Al construir (2026-10-19)
+
+- **La regla de la 038 «la unidad base no cambia»** tenía su prueba (`TestNoQueryRewritesTheBaseUnitOfAnIngredient`):
+  ahora admite una sola consulta, `SetArticleUnit`, la del cambio de unidad.
+- **Convertir las correcciones de costo en el cambio directo** pidió `update` sobre
+  `ingredient_cost_corrections` (la 0096 daba solo `select, insert`).
+- **El reemplazo de un preparado con movimientos no se hace**: responde 400 «cambia de unidad desde su
+  receta». Mover su receta al nuevo no estaba en el plan; queda pendiente si hace falta.
+- **En el cambio directo la existencia no se corrige a mano**: es la suma de su historia convertida.
+  Las correcciones se ofrecen en recetas y empaques; en el reemplazo, también en la existencia.
+- **Un empaque aproximado que deja de serlo** (su unidad de compra queda de la misma clase) no puede
+  llamarse como una unidad; se archiva con «(antes)» en el nombre.
+- **Contar pesando suma empaques y peso**: «2 paquetes + 300 g» va en una sola captura.
+- **Prueba con usuario sin contexto (local, 1024×600)**: hizo las cuatro tareas sin ayuda. Se corrigió
+  «Guardar» siempre visible, la gráfica de un solo registro que inventaba cifras en el eje y el doble
+  toque de «+ Agregar empaque». Queda abierto: el alta no pide el empaque (decisión del dueño: hoja corta).
+- **Medición a 1024×600**: la lista muestra **5** renglones completos, no los 6 o 7 del plan; todos los
+  controles miden 44 px o más; sin desplazamiento horizontal de lado ni de pie. La bitácora mostraba el
+  costo por ml («0.024»): ahora en la unidad de compra.
+
 ## Project Structure
 
 ```text

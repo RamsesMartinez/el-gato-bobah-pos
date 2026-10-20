@@ -13,7 +13,7 @@ import { toaster } from '../../../components/ui/toaster';
 import { can } from '../../../app/permissions';
 import { useSessionStore } from '../../../stores/session';
 import { useHoraDelNegocio } from '../../../hooks/useHoraDelNegocio';
-import { formatBaseQty, formatUnitCost, plainQty } from '../../../shared/units';
+import { formatBaseQty, formatUnitCost, packExample, plainQty } from '../../../shared/units';
 import { CompositionSheet } from '../../../shared/CompositionSheet';
 import { PresentationsSheet } from '../PresentationsSheet';
 import { CostTrend } from './CostTrend';
@@ -170,7 +170,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
                 </Field>
                 <QtyWithUnit label="Mínimo" kind={kind} value={form.min} onChange={(min) => setForm({ ...form, min })} />
                 <HStack justify="space-between" minH="44px">
-                  <Text>Se mide en <b>{KIND_WORD[kind]}</b> ({a.baseUnitCode === 'pieza' ? 'piezas' : a.baseUnitCode})</Text>
+                  <Text>Se mide en <b>{KIND_WORD[kind]}</b>{a.baseUnitCode === 'pieza' ? '' : ` (${a.baseUnitCode})`} · Hay {formatBaseQty(a.onHand, a.baseUnitCode)}</Text>
                   {canConfigure && a.isActive && <Button minH="44px" variant="outline" onClick={() => setPanel('unit')}>Cambiar ›</Button>}
                 </HStack>
                 {!justCreated && <PacksBlock />}
@@ -215,7 +215,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
                               <Text fontSize="xs" color="fg.muted">${Number(it.packCost).toFixed(2)} por {it.presentation} · {formatBaseQty(it.packQty ?? '0', a.baseUnitCode)}</Text>
                             )}
                           </>
-                        ) : <Text fontSize="sm" color="orange.fg">Corrección a mano · {it.user ?? ''}</Text>}
+                        ) : <Text fontSize="sm" color="orange.fg">Capturado a mano · {it.user ?? ''}</Text>}
                       </Box>
                       <Text fontWeight="700" flexShrink={0}>{formatUnitCost(it.unitCost, a.baseUnitCode)}</Text>
                     </HStack>
@@ -232,7 +232,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
         </DrawerBody>
       </DrawerContent>
 
-      {panel === 'audit' && <ArticleAuditSheet id={id} name={a?.name ?? ''} onClose={() => setPanel(null)} />}
+      {panel === 'audit' && <ArticleAuditSheet id={id} name={a?.name ?? ''} baseUnitCode={a?.baseUnitCode ?? 'pieza'} onClose={() => setPanel(null)} />}
       {panel === 'unit' && a && <UnitChangeSheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />}
       {panel === 'archive' && a && <ArchiveSheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />}
       {panel === 'recipe' && a && <CompositionSheet kind="ingredient" id={id} name={a.name} open onClose={() => setPanel(null)} />}
@@ -276,7 +276,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
           <Text fontWeight="700">Empaques</Text>
           {canConfigure && <Button minH="44px" variant="outline" onClick={() => setPanel('packs')}>+ Agregar empaque</Button>}
         </HStack>
-        <Text fontSize="sm" color="fg.muted">Cómo lo compras, por ejemplo: bolsa de 5 kg. Al recibirlo se cuenta en {a?.baseUnitCode === 'pieza' ? 'piezas' : a?.baseUnitCode}.</Text>
+        <Text fontSize="sm" color="fg.muted">Cómo lo compras, por ejemplo: {packExample(a?.baseUnitKind ?? 'pieza')}. Al recibirlo se cuenta en {a?.baseUnitCode === 'pieza' ? 'piezas' : a?.baseUnitCode}.</Text>
         {(a?.presentations ?? []).length === 0
           ? <Text fontSize="sm" color="fg.muted">Sin empaques.</Text>
           : (a?.presentations ?? []).map((p) => (

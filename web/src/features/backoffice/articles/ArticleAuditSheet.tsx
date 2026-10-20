@@ -10,7 +10,7 @@ import { whatChanged } from './articleAudit';
 
 // La bitácora de un artículo (spec 042, FR-016): quién, cuándo y qué cambió, de 20 en 20. Solo lectura.
 
-export function ArticleAuditSheet({ id, name, onClose }: { id: number; name: string; onClose: () => void }) {
+export function ArticleAuditSheet({ id, name, baseUnitCode, onClose }: { id: number; name: string; baseUnitCode: string; onClose: () => void }) {
   const hora = useHoraDelNegocio();
   const q = useInfiniteQuery({
     queryKey: ['article-audit', id],
@@ -38,7 +38,7 @@ export function ArticleAuditSheet({ id, name, onClose }: { id: number; name: str
                   <Text w="150px" flexShrink={0} fontSize="sm" color="fg.muted">{hora.fechaYHora(e.at)}</Text>
                   <Box flex="1" minW={0}>
                     <Text><b>{e.actor ?? 'Sistema'}</b> · {actionLabel(e.action)}</Text>
-                    {whatChanged(e) && <Text fontSize="sm" color="fg.muted">{whatChanged(e)}</Text>}
+                    {whatChanged(e, baseUnitCode) && <Text fontSize="sm" color="fg.muted">{whatChanged(e, baseUnitCode)}</Text>}
                   </Box>
                 </HStack>
               ))}
