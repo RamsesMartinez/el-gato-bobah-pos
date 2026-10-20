@@ -453,6 +453,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/archive-check", h.ArticleArchiveCheck)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/archive", h.ArchiveArticle)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/reactivate", h.ReactivateArticle)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/presentation-suggestions", h.PresentationSuggestions)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/ingredient-categories", h.ArticleCategories)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredient-categories", h.CreateArticleCategory)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health", h.GetInventoryHealth)

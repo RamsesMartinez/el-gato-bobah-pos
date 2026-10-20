@@ -160,7 +160,6 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const presList = presentations ?? [];
   const articleList = [...(articles?.items ?? []), ...created];
   const articleOptions = articleList.map((a) => ({ value: `${a.itemType}:${a.id}`, label: a.name, hint: a.unitCode }));
-  const usedNames = [...new Set(presList.map((p) => p.name))];
 
   const reset = () => {
     setStep('start'); setWithGoods(true);
@@ -627,7 +626,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         {packsOf && (
           <PresentationsSheet isOpen
             ingredient={{ id: packsOf.id, name: packsOf.name, baseUnitCode: packsOf.unitCode, baseUnitKind: packsOf.unitKind }}
-            presentations={presList.filter((p) => p.ingredientId === packsOf.id)} usedNames={usedNames}
+            presentations={presList.filter((p) => p.ingredientId === packsOf.id)}
             units={unitList} onClose={() => setPacksOf(null)} />
         )}
 

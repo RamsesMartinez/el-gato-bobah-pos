@@ -685,3 +685,93 @@ func TestArchivingHTTPPermissions(t *testing.T) {
 		t.Fatalf("categorías = %d %s", w.Code, w.Body.String())
 	}
 }
+
+// US6: los empaques sugeridos son de artículos que se miden igual, con su cantidad (FR-011), y cada
+// cambio de empaque queda en la bitácora sin tocar las compras pasadas.
+func TestPresentationSuggestionsAndAudit(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t) // el azúcar tiene «Bulto = 25 kg»
+	ctx := app.WithActorUser(k.ctx, k.user)
+	svc := k.svc
+	leche := ingredientIn(t, k.st, defaultCompanyID, "Leche sugerencias", "ml")
+	l := unitID(t, k.st, "l")
+	if _, err := svc.CreatePresentation(ctx, leche, app.PresentationInput{Name: "Garrafa", Qty: qty("4"), UnitID: l}); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("un artículo en líquido no ve el bulto de 25 kg, y uno en peso sí", func(t *testing.T) {
+		liquid, err := svc.PresentationSuggestions(ctx, "volumen")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(liquid) != 1 || liquid[0].Name != "Garrafa" || !liquid[0].QtyInBase.Equal(qty("4000")) {
+			t.Fatalf("en líquido = %+v; quiere solo «Garrafa · 4 L»", liquid)
+		}
+		weight, err := svc.PresentationSuggestions(ctx, "masa")
+		if err != nil || len(weight) != 1 || weight[0].Name != "Bulto" {
+			t.Fatalf("en peso = %+v %v", weight, err)
+		}
+	})
+	t.Run("una clase desconocida es 400", func(t *testing.T) {
+		if _, err := svc.PresentationSuggestions(ctx, "densidad"); !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("= %v", err)
+		}
+	})
+	t.Run("crear, editar y retirar dejan su evento", func(t *testing.T) {
+		p, err := svc.CreatePresentation(ctx, leche, app.PresentationInput{Name: "Caja", Qty: qty("1"), UnitID: l})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.UpdatePresentation(ctx, p.ID, app.PresentationInput{Name: "Caja", Qty: qty("2"), UnitID: l}); err != nil {
+			t.Fatal(err)
+		}
+		off := false
+		if _, err := svc.UpdatePresentation(ctx, p.ID, app.PresentationInput{Name: "Caja", Qty: qty("2"), UnitID: l, Active: &off}); err != nil {
+			t.Fatal(err)
+		}
+		for action, want := range map[string]int{"presentation.created": 1, "presentation.updated": 1, "presentation.retired": 1} {
+			if n := auditCount(t, k.st, action, p.ID); n != want {
+				t.Errorf("%s = %d, quiere %d", action, n, want)
+			}
+		}
+	})
+	t.Run("cambiar la cantidad de un empaque no cambia lo que ya se compró en él", func(t *testing.T) {
+		exp, err := svc.CreateExpense(ctx, k.bultos("1", "500"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.UpdatePresentation(ctx, k.bulto, app.PresentationInput{Name: "Bulto", Qty: qty("20"), UnitID: unitID(t, k.st, "kg")}); err != nil {
+			t.Fatal(err)
+		}
+		var pack string
+		if err := k.st.Pool.QueryRow(context.Background(), `select pack_qty_in_base::text from expense_items where expense_id = $1`, exp).Scan(&pack); err != nil || !qty(pack).Equal(qty("25000")) {
+			t.Fatalf("la compra quedó con %s; quiere 25000 (como se compró)", pack)
+		}
+	})
+	t.Run("las sugerencias de otra empresa no se ven, en los tres casos", func(t *testing.T) {
+		inTheThreeCases(t, defaultCompanyID, makeCompany(t, k.st, "sugerencias-ajena"), func(t *testing.T, st *store.Store, ctx context.Context) {
+			rows, err := app.NewBackofficeService(st, clock).PresentationSuggestions(ctx, "masa")
+			if err == nil && len(rows) > 0 {
+				t.Fatalf("se vieron empaques de otra empresa: %+v", rows)
+			}
+		})
+	})
+}
+
+func TestPresentationsHTTPNeedConfigure(t *testing.T) {
+	t.Parallel()
+	r, st, token := newStockAPI(t)
+	cajero := token("emp_cajero_042", "cajero")
+	id := strconv.FormatInt(ingredientIn(t, st, defaultCompanyID, "Leche empaques 042", "ml"), 10)
+	l := strconv.Itoa(int(unitID(t, st, "l")))
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/ingredients/"+id+"/presentations", cajero, []byte(`{"name":"Caja","qty":"1","unitId":`+l+`}`), "application/json"); w.Code != http.StatusForbidden {
+		t.Errorf("cajero crea = %d, quiere 403", w.Code)
+	}
+	if w := do(t, r, http.MethodGet, "/api/v1/stock/presentation-suggestions?unitKind=volumen", cajero, nil, ""); w.Code != http.StatusForbidden {
+		t.Errorf("cajero sugerencias = %d, quiere 403", w.Code)
+	}
+	admin := token("emp_admin_042", "admin")
+	if w := do(t, r, http.MethodGet, "/api/v1/stock/presentation-suggestions?unitKind=volumen", admin, nil, ""); w.Code != http.StatusOK {
+		t.Errorf("admin sugerencias = %d %s", w.Code, w.Body.String())
+	}
+}

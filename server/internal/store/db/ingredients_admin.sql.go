@@ -340,6 +340,23 @@ func (q *Queries) GetArticle(ctx context.Context, id int64) (GetArticleRow, erro
 	return i, err
 }
 
+const getPresentationForAudit = `-- name: GetPresentationForAudit :one
+select name, qty_in_base, active from ingredient_presentations where id = $1
+`
+
+type GetPresentationForAuditRow struct {
+	Name      string          `json:"name"`
+	QtyInBase decimal.Decimal `json:"qty_in_base"`
+	Active    bool            `json:"active"`
+}
+
+func (q *Queries) GetPresentationForAudit(ctx context.Context, id int64) (GetPresentationForAuditRow, error) {
+	row := q.db.QueryRow(ctx, getPresentationForAudit, id)
+	var i GetPresentationForAuditRow
+	err := row.Scan(&i.Name, &i.QtyInBase, &i.Active)
+	return i, err
+}
+
 const insertCostCorrection = `-- name: InsertCostCorrection :exec
 insert into ingredient_cost_corrections (ingredient_id, previous_cost, new_cost, user_id)
 values ($1, $2, $3, $4)
@@ -546,6 +563,43 @@ func (q *Queries) PendingReceiptsOf(ctx context.Context, ingredientID *int64) (i
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const presentationSuggestions = `-- name: PresentationSuggestions :many
+select distinct p.name, p.qty_in_base
+  from ingredient_presentations p
+  join ingredients i on i.id = p.ingredient_id
+  join units u on u.id = i.base_unit_id
+ where p.active and not p.is_approximate and u.kind = $1::unit_kind
+ order by p.name, p.qty_in_base
+ limit 60
+`
+
+type PresentationSuggestionsRow struct {
+	Name      string          `json:"name"`
+	QtyInBase decimal.Decimal `json:"qty_in_base"`
+}
+
+// Empaques que la empresa ya usa en artículos que se miden igual (spec 042, FR-011): el nombre y lo
+// que trae, para que «Bolsa · 15 kg» no aparezca en un artículo en litros.
+func (q *Queries) PresentationSuggestions(ctx context.Context, kind UnitKind) ([]PresentationSuggestionsRow, error) {
+	rows, err := q.db.Query(ctx, presentationSuggestions, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PresentationSuggestionsRow{}
+	for rows.Next() {
+		var i PresentationSuggestionsRow
+		if err := rows.Scan(&i.Name, &i.QtyInBase); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setArticleActive = `-- name: SetArticleActive :exec

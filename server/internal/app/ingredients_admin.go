@@ -660,3 +660,27 @@ func (s *BackofficeService) CreateArticleCategory(ctx context.Context, name stri
 	}
 	return ArticleCategory{ID: r.ID, Name: string(r.Name)}, nil
 }
+
+// PresentationSuggestion es un empaque que ya se usa: «Garrafa · 4 L».
+type PresentationSuggestion struct {
+	Name      string          `json:"name"`
+	QtyInBase decimal.Decimal `json:"qtyInBase"`
+}
+
+// PresentationSuggestions son los empaques de artículos que se miden igual (FR-011).
+func (s *BackofficeService) PresentationSuggestions(ctx context.Context, kind string) ([]PresentationSuggestion, error) {
+	switch kind {
+	case "masa", "volumen", "longitud", "pieza":
+	default:
+		return nil, fmt.Errorf("%w: clase de unidad desconocida", domain.ErrValidation)
+	}
+	rows, err := s.store.QC(ctx).PresentationSuggestions(ctx, db.UnitKind(kind))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PresentationSuggestion, len(rows))
+	for i, r := range rows {
+		out[i] = PresentationSuggestion{Name: r.Name, QtyInBase: r.QtyInBase}
+	}
+	return out, nil
+}

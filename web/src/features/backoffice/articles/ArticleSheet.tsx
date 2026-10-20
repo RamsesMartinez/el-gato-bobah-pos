@@ -232,7 +232,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
       {panel === 'recipe' && a && <CompositionSheet kind="ingredient" id={id} name={a.name} open onClose={() => setPanel(null)} />}
       {panel === 'packs' && a && (
         <PresentationsSheet isOpen ingredient={{ id, name: a.name, baseUnitCode: a.baseUnitCode, baseUnitKind: a.baseUnitKind }}
-          presentations={packs} usedNames={[]} units={units.data?.items ?? []}
+          presentations={packs} units={units.data?.items ?? []}
           onClose={async () => { setPanel(null); await refresh(); }} />
       )}
       {panel === 'cost' && a && (

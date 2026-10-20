@@ -175,3 +175,17 @@ select id, is_active from ingredients where id = sqlc.arg(id) for update;
 
 -- name: SetArticleActive :exec
 update ingredients set is_active = sqlc.arg(active), updated_at = now() where id = sqlc.arg(id);
+
+-- name: PresentationSuggestions :many
+-- Empaques que la empresa ya usa en artículos que se miden igual (spec 042, FR-011): el nombre y lo
+-- que trae, para que «Bolsa · 15 kg» no aparezca en un artículo en litros.
+select distinct p.name, p.qty_in_base
+  from ingredient_presentations p
+  join ingredients i on i.id = p.ingredient_id
+  join units u on u.id = i.base_unit_id
+ where p.active and not p.is_approximate and u.kind = sqlc.arg(kind)::unit_kind
+ order by p.name, p.qty_in_base
+ limit 60;
+
+-- name: GetPresentationForAudit :one
+select name, qty_in_base, active from ingredient_presentations where id = $1;

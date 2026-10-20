@@ -275,3 +275,13 @@ func (h *Handlers) CreateArticleCategory(w http.ResponseWriter, r *http.Request)
 	}
 	JSON(w, http.StatusCreated, out)
 }
+
+// GET /stock/presentation-suggestions?unitKind= — empaques de artículos que se miden igual.
+func (h *Handlers) PresentationSuggestions(w http.ResponseWriter, r *http.Request) {
+	out, err := h.backoffice.PresentationSuggestions(r.Context(), r.URL.Query().Get("unitKind"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, out)
+}

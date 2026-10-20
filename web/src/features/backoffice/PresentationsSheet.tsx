@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Box, Button, HStack, Input, Stack, Text } from '@chakra-ui/react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../components/ui/drawer';
@@ -29,8 +29,6 @@ interface Props {
   isOpen: boolean;
   ingredient: PresentationsIngredient;
   presentations: Presentation[];
-  // Los nombres que la empresa ya usa en sus empaques: lo que se sugiere, nunca una lista fija.
-  usedNames: string[];
   units: Unit[];
   onClose: () => void;
 }
@@ -64,12 +62,15 @@ interface Draft {
   approximate: boolean;
 }
 
-export function PresentationsSheet({ isOpen, ingredient, presentations, usedNames, units, onClose }: Props) {
+export function PresentationsSheet({ isOpen, ingredient, presentations, units, onClose }: Props) {
   const qc = useQueryClient();
   const kind = ingredient.baseUnitKind;
   const byPiece = kind === 'pieza';
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState('');
+  // Lo que se sugiere son empaques que la empresa ya usa en artículos que se miden igual, con su
+  // cantidad (spec 042, FR-011): antes «Bolsa de 15 kg» aparecía en un artículo en litros.
+  const sugg = useQuery({ queryKey: ['presentation-suggestions', kind], queryFn: () => backofficeApi.presentationSuggestions(kind), enabled: isOpen });
 
   const save = useMutation({
     mutationFn: ({ id, body }: { id: number | null; body: PresentationBody }) =>
@@ -91,7 +92,8 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, usedName
     : purchaseUnitsFor(kind, units);
   const unit = units.find((u) => u.id === draft?.unitId) ?? null;
   const taken = new Set(active.filter((p) => p.id !== draft?.editing?.id).map((p) => norm(p.name)));
-  const suggestions = usedNames.filter((n) => !taken.has(norm(n)));
+  const suggestions = (sugg.data ?? []).filter((s) => !taken.has(norm(s.name)));
+  const suggestedNames = (sugg.data ?? []).map((s) => s.name);
   const name = draft ? (draft.approximate && unit ? APPROX_NAME[unit.code] ?? unit.name : draft.name.trim()) : '';
   const qty = Number(draft?.qty);
   const qtyOk = draft !== null && draft.qty.trim() !== '' && Number.isFinite(qty) && qty > 0;
@@ -102,7 +104,7 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, usedName
     setError('');
     if (p) {
       const b = bodyOf(p, units, kind);
-      setDraft({ editing: p, name: b.name, other: !usedNames.includes(b.name), qty: b.qty, unitId: b.unitId, approximate: b.approximate });
+      setDraft({ editing: p, name: b.name, other: !suggestedNames.includes(b.name), qty: b.qty, unitId: b.unitId, approximate: b.approximate });
     } else {
       const first = purchaseUnitsFor(kind, units)[0];
       setDraft({ editing: null, name: '', other: false, qty: '', unitId: first?.id ?? null, approximate: false });
@@ -121,7 +123,9 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, usedName
       <DrawerContent borderTopRadius="l3" maxH="90dvh" display="flex" flexDirection="column">
         <DrawerHeader pb={1}>
           <Text fontSize="lg" fontWeight="700">Cómo llega {ingredient.name}</Text>
-          <Text fontSize="sm" color="fg.muted">Se cuenta en {formatBaseQty(1, ingredient.baseUnitCode).replace(/^1 /, '')}</Text>
+          <Text fontSize="sm" color="fg.muted">
+            Cómo lo compras, por ejemplo: bolsa de 5 kg. Cada empaque se convierte a {formatBaseQty(1, ingredient.baseUnitCode).replace(/^1 /, '')} al recibirlo.
+          </Text>
           {ingredient.countPlaceId !== undefined && <CountPlaceField ingredientId={ingredient.id} placeId={ingredient.countPlaceId} />}
         </DrawerHeader>
         <DrawerBody flex="1" minH={0} overflowY="auto" pb={2}>
@@ -164,12 +168,18 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, usedName
                 )}
                 {!draft.approximate && (
                   <Stack gap={2}>
-                    <Text fontSize="sm" color="fg.muted">¿Cómo llega?{suggestions.length > 0 ? ' Los que ya usas, u otro' : ''}</Text>
+                    <Text fontSize="sm" color="fg.muted">¿Cómo llega?{suggestions.length > 0 ? ' Los que ya usas en artículos parecidos, u otro' : ''}</Text>
                     <HStack gap={2} flexWrap="wrap">
-                      {suggestions.map((n) => (
-                        <Button key={n} minH="44px" variant={!draft.other && draft.name === n ? 'solid' : 'outline'} colorPalette="gray"
-                          onClick={() => setDraft({ ...draft, name: n, other: false })}>{n}</Button>
-                      ))}
+                      {suggestions.map((sg) => {
+                        const b = bodyOf({ name: sg.name, qtyInBase: sg.qtyInBase, approximate: false, purchaseUnitId: null } as Presentation, units, kind);
+                        const on = !draft.other && draft.name === sg.name && draft.qty === b.qty && draft.unitId === b.unitId;
+                        return (
+                          <Button key={`${sg.name}-${sg.qtyInBase}`} minH="44px" variant={on ? 'solid' : 'outline'} colorPalette="gray"
+                            onClick={() => setDraft({ ...draft, name: sg.name, other: false, qty: b.qty, unitId: b.unitId })}>
+                            {sg.name} · {formatBaseQty(sg.qtyInBase, ingredient.baseUnitCode)}
+                          </Button>
+                        );
+                      })}
                       <Button minH="44px" variant={draft.other || suggestions.length === 0 ? 'solid' : 'outline'} colorPalette="gray"
                         onClick={() => setDraft({ ...draft, name: '', other: true })}>Otro…</Button>
                     </HStack>

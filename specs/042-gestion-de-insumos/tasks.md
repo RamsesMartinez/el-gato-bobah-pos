@@ -222,15 +222,15 @@ uno con compras se reemplaza.
 
 **Independent test**: en un artículo en litros, las sugerencias no incluyen «Bolsa · 15 kg».
 
-- [ ] T036 [P] [US6] Tests de integración:
+- [X] T036 [P] [US6] Tests de integración:
   - sugerencias por clase de unidad (E14);
   - crear, editar y retirar un empaque deja su evento sin cambiar las compras pasadas;
   - un empaque archivado por un cambio de unidad aparece en «Ya no llega así» y se puede consultar,
     pero no reactivar si sigue sin cuadrar con la unidad (409);
   - sin `inventory.configure`, crear, editar y retirar un empaque dan 403;
   - las sugerencias en los tres casos (`inTheThreeCases`).
-- [ ] T037 [US6] Ruta de sugerencias y `recordAudit` en las rutas de empaques que ya existen.
-- [ ] T038 [US6] Sección Empaques de la ficha:
+- [X] T037 [US6] Ruta de sugerencias y `recordAudit` en las rutas de empaques que ya existen.
+- [X] T038 [US6] Sección Empaques de la ficha:
   - la explicación con ejemplo;
   - «Bolsa · 5 kg = 5,000 g»;
   - las sugerencias con su cantidad;
