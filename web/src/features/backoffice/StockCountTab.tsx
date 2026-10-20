@@ -284,6 +284,20 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
   return { save, confirming, setConfirming };
 }
 
+// NoHay registra el cero con una confirmación en el mismo lugar: con un toque, un dedazo junto a
+// «Guardar» dejaba la existencia en 0 al cerrar el conteo, y contar 0 nunca avisa (revisión de la 042).
+function NoHay({ item, onConfirm }: { item: CountItem; onConfirm: () => void }) {
+  const [asking, setAsking] = useState(false);
+  if (!asking) return <Button minH="44px" variant="outline" onClick={() => setAsking(true)}>No hay</Button>;
+  return (
+    <HStack gap={2}>
+      <Text>¿No hay nada de {item.name}?</Text>
+      <Button minH="44px" variant="ghost" onClick={() => setAsking(false)}>No</Button>
+      <Button minH="44px" variant="outline" colorPalette="red" onClick={() => { setAsking(false); onConfirm(); }}>Sí, no hay</Button>
+    </HStack>
+  );
+}
+
 // ConfirmFigure es el aviso de una cifra rara: la cifra con su unidad en grande, «Corregir» y «Sí, guardar».
 function ConfirmFigure({ item, e, c }: { item: CountItem; e: ReturnType<typeof useEntry>; c: ReturnType<typeof useCapture> }) {
   if (!c.confirming) return null;
@@ -387,8 +401,8 @@ function EntrySheet({ countId, item, onClose, onSaved }: {
             <Button minH="44px" variant="ghost" mr="auto" onClick={() => c.save.mutate(null)}>Quitar lo contado</Button>
           )}
           <Button minH="44px" variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button minH="44px" variant="outline" onClick={() => c.save.mutate({ countedQty: '0', confirmable: true })}>No hay</Button>
-          <Button minH="44px" colorPalette="red" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
+          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true })} />
+          <Button minH="56px" ml={8} colorPalette="red" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
             Guardar
           </Button>
         </DrawerFooter>
@@ -439,8 +453,8 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
           <Button minH="44px" variant="outline" disabled={!onPrev} onClick={onPrev}>‹ Anterior</Button>
           <Box flex="1" />
           <Button minH="44px" variant="outline" onClick={onNext}>Saltar (no contar hoy)</Button>
-          <Button minH="44px" variant="outline" onClick={() => c.save.mutate({ countedQty: '0', confirmable: true })}>No hay</Button>
-          <Button minH="44px" colorPalette="red" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
+          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true })} />
+          <Button minH="56px" ml={8} colorPalette="red" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
             Guardar y seguir ›
           </Button>
         </HStack>

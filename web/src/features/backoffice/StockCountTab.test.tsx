@@ -278,10 +278,13 @@ describe('Teclado del conteo (spec 042)', () => {
     fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[n]).getByRole('button', { name: 'Contar' }));
   };
 
-  test('Guardar no guarda sin captura; «No hay» guarda cero', async () => {
+  // Revisión de código: «No hay» guardaba cero con un toque, pegado a «Guardar». Ahora pide confirmar.
+  test('Guardar no guarda sin captura; «No hay» pide confirmar antes de guardar cero', async () => {
     await abrir();
     expect(await screen.findByRole('button', { name: 'Guardar' })).toBeDisabled();
     click('No hay');
+    expect(back.captureCount).not.toHaveBeenCalled();
+    click('Sí, no hay');
     await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, { countedQty: '0', confirmable: true }));
   });
 

@@ -27,7 +27,7 @@ const back = vi.hoisted(() => ({
   article: vi.fn(),
   updateArticle: vi.fn(() => Promise.resolve()),
   articleCategories: vi.fn(() => Promise.resolve([])),
-  presentations: vi.fn(() => Promise.resolve([])),
+  presentations: vi.fn(() => Promise.resolve([{ id: 3, ingredientId: 7, name: 'Bolsa', qtyInBase: '5000', baseUnitCode: 'g', active: true, approximate: false, purchaseUnitId: null }])),
   articleCostHistory: vi.fn(),
   articleAudit: vi.fn(),
   correctArticleCost: vi.fn(() => Promise.resolve()),
@@ -167,6 +167,19 @@ describe('Ficha del artículo', () => {
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
     expect(await screen.findByText(/Hay 12 piezas/)).toBeInTheDocument();
     expect(screen.queryByText(/piezas \(piezas\)/)).toBeNull();
+  });
+
+  // Revisión de código: el renglón de un empaque no se podía tocar para editarlo.
+  it('tocar un empaque lo abre para editarlo', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Bolsa · 5 kg/ }));
+    expect(await screen.findByText('Cambiar Bolsa')).toBeInTheDocument();
+  });
+
+  it('una receta estimada dice «por revisar»', async () => {
+    back.article.mockResolvedValue({ ...ficha, compositionStatus: 'estimated' });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText('por revisar')).toBeInTheDocument();
   });
 
   it('recién creado, «Agregar empaque» va primero', async () => {

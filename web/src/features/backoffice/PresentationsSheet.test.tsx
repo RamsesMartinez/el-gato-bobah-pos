@@ -73,6 +73,16 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
     await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(10, { name: 'Caja', qty: '12', unitId: 7, approximate: false }));
   });
 
+  // Revisión de código: con un empaque a medio capturar, «Listo» lo tiraba sin avisar y «Guardar
+  // empaque» quedaba abajo del contenido que se desplaza.
+  test('con un empaque a medio capturar, el pie dice Cancelar y Guardar empaque, no Listo', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(screen.queryByRole('button', { name: 'Listo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar empaque' })).toBeInTheDocument();
+  });
+
   test('«Otro…» deja escribir un nombre que la empresa no ha usado', async () => {
     montar(leche, [], false);
     fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));

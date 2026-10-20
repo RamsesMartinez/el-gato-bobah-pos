@@ -242,6 +242,29 @@ aplicado (decisiones del dueño marcadas):
   controles miden 44 px o más; sin desplazamiento horizontal de lado ni de pie. La bitácora mostraba el
   costo por ml («0.024»): ahora en la unidad de compra.
 
+## Revisión de código (2026-10-19)
+
+`/revision-de-codigo` (backend, seguridad, tableta y consultas): cambios requeridos, aplicados con su
+prueba de regresión primero (`review_fixes_042_test.go`, `migration_0097_test.go` y pruebas de pantalla):
+
+- **Categoría de otra empresa**: se valida bajo RLS (`categoryOfCompany`) y la 0097 pone la llave
+  `(category_id, company_id)`. La 0097 también agrega `stock_count_lines_by_ingredient`.
+- **Cambio de unidad**: toda cantidad convertida y toda corrección pasan por topes (400, no 500); una
+  corrección de llave desconocida, negativa o de existencia en el camino directo se rechaza; un costo
+  positivo que la conversión deja en cero se rechaza. El reemplazo pasa también las recetas de productos
+  inactivos y los formatos de compra viejos, y el nombre del viejo lleva número si ya existe.
+- **Alta**: existencia y costo iniciales se redondean antes de validar.
+- **Historial de costos**: un renglón por compra (una compra en dos entregas es una), sin renglones
+  anulados ni gastos cancelados.
+- **Conteo a ciegas**: riesgo aceptado por el dueño y cada aviso en la bitácora (ver spec, Assumptions).
+- **Pantalla**: «No hay» pide confirmar y «Guardar» del conteo mide 56 px y va separado; la existencia
+  del cambio directo se muestra sin editarse y las cifras van a 4 decimales; el empaque se edita tocando
+  su renglón y su hoja lleva «Cancelar» y «Guardar empaque» en el pie mientras se captura; vuelve la
+  marca «por revisar» de las recetas estimadas; los renglones de la lista miden 44 px; «Guardar» de la
+  ficha solo aparece con cambios (decisión de la prueba sin contexto).
+- **Buscar**: `strpos` en vez de `like`, para que un signo de porcentaje no sea comodín. Archivar no
+  espera detrás de una venta y la vista previa del cambio de unidad revisa que el artículo esté activo.
+
 ## Project Structure
 
 ```text

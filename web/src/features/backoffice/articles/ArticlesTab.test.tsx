@@ -62,6 +62,12 @@ describe('Almacén › Artículos', () => {
     await waitFor(() => expect(back.articles).toHaveBeenLastCalledWith(expect.objectContaining({ archived: true })));
   });
 
+  it('una receta estimada se marca «por revisar» en la lista', async () => {
+    back.articles.mockImplementation(() => Promise.resolve([row(1, 'Jarabe', { compositionStatus: 'estimated' })]));
+    montar();
+    expect(await screen.findByText('por revisar')).toBeTruthy();
+  });
+
   it('tocar un renglón abre su ficha', async () => {
     const onOpen = montar();
     fireEvent.click(await screen.findByRole('button', { name: /Hielo en bolsa/ }));

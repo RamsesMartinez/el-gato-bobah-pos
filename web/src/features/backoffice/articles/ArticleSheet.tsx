@@ -13,7 +13,7 @@ import { toaster } from '../../../components/ui/toaster';
 import { can } from '../../../app/permissions';
 import { useSessionStore } from '../../../stores/session';
 import { useHoraDelNegocio } from '../../../hooks/useHoraDelNegocio';
-import { formatBaseQty, formatUnitCost, packExample, plainQty } from '../../../shared/units';
+import { formatBaseQty, formatUnitCost, packExample } from '../../../shared/units';
 import { CompositionSheet } from '../../../shared/CompositionSheet';
 import { PresentationsSheet } from '../PresentationsSheet';
 import { CostTrend } from './CostTrend';
@@ -72,7 +72,8 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
     getNextPageParam: (p) => p.next ?? undefined,
   });
   const [form, setForm] = useState<Form | null>(null);
-  const [panel, setPanel] = useState<'audit' | 'archive' | 'packs' | 'recipe' | 'cost' | 'discard' | 'unit' | null>(null);
+  const [panel, setPanel] = useState<'audit' | 'archive' | 'packs' | 'recipe' | 'cost' | 'discard' | 'unit' | null>(null)
+  const [editPack, setEditPack] = useState<number | undefined>(undefined);
   const [cost, setCost] = useState('');
 
   useEffect(() => {
@@ -176,6 +177,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
                 {!justCreated && <PacksBlock />}
                 <Button minH="44px" variant="outline" justifyContent="flex-start" onClick={() => setPanel('recipe')}>
                   {a.isPrep ? 'Es un preparado · ver receta ›' : 'Se compra hecho ›'}
+                  {a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}
                 </Button>
                 {canConfigure && (
                   <Box pt={6}>
@@ -237,9 +239,9 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
       {panel === 'archive' && a && <ArchiveSheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />}
       {panel === 'recipe' && a && <CompositionSheet kind="ingredient" id={id} name={a.name} open onClose={() => setPanel(null)} />}
       {panel === 'packs' && a && (
-        <PresentationsSheet isOpen startNew ingredient={{ id, name: a.name, baseUnitCode: a.baseUnitCode, baseUnitKind: a.baseUnitKind }}
+        <PresentationsSheet isOpen startNew={editPack === undefined} editId={editPack} ingredient={{ id, name: a.name, baseUnitCode: a.baseUnitCode, baseUnitKind: a.baseUnitKind }}
           presentations={packs} units={units.data?.items ?? []}
-          onClose={async () => { setPanel(null); await refresh(); }} />
+          onClose={async () => { setPanel(null); setEditPack(undefined); await refresh(); }} />
       )}
       {panel === 'cost' && a && (
         <DrawerRoot open placement="bottom" onOpenChange={(e) => { if (!e.open) setPanel(null); }}>
@@ -274,16 +276,17 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
       <Stack gap={2}>
         <HStack justify="space-between">
           <Text fontWeight="700">Empaques</Text>
-          {canConfigure && <Button minH="44px" variant="outline" onClick={() => setPanel('packs')}>+ Agregar empaque</Button>}
+          {canConfigure && <Button minH="44px" variant="outline" onClick={() => { setEditPack(undefined); setPanel('packs'); }}>+ Agregar empaque</Button>}
         </HStack>
         <Text fontSize="sm" color="fg.muted">Cómo lo compras, por ejemplo: {packExample(a?.baseUnitKind ?? 'pieza')}. Al recibirlo se cuenta en {a?.baseUnitCode === 'pieza' ? 'piezas' : a?.baseUnitCode}.</Text>
         {(a?.presentations ?? []).length === 0
           ? <Text fontSize="sm" color="fg.muted">Sin empaques.</Text>
           : (a?.presentations ?? []).map((p) => (
-            <HStack key={p.id} minH="48px" borderBottomWidth="1px" justify="space-between">
+            <Button key={p.id} minH="48px" variant="ghost" justifyContent="space-between" borderBottomWidth="1px" borderRadius="0"
+              disabled={!canConfigure} onClick={() => { setEditPack(p.id); setPanel('packs'); }}>
               <Text><b>{p.name}</b> · {formatBaseQty(p.qtyInBase, a!.baseUnitCode)}</Text>
-              <Text color="fg.muted">= {plainQty(p.qtyInBase)} {a!.baseUnitCode === 'pieza' ? 'piezas' : a!.baseUnitCode}</Text>
-            </HStack>
+              {canConfigure && <Text color="fg.muted">Editar ›</Text>}
+            </Button>
           ))}
       </Stack>
     );

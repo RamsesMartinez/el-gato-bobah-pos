@@ -65,6 +65,20 @@ describe('Cambiar en qué se mide', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
 
+  // Revisión de código: en el cambio directo la existencia se editaba y el servidor la ignoraba.
+  it('en el cambio directo la existencia se muestra pero no se edita, y las cifras van redondeadas', async () => {
+    back.previewUnitChange.mockResolvedValue({ path: 'direct', fromUnit: 'g', toUnit: 'pieza', conversions: [
+      { key: 'stock:1', group: 'stock', label: 'Existencia · Matriz', from: '1000', to: '6.666666666666667', fits: true },
+      { key: 'recipe:2', group: 'recipe', label: 'Receta: Agua', from: '20', to: '0.1333333333', fits: true },
+    ] });
+    montar();
+    fireEvent.change(await screen.findByLabelText('¿Cuánto es 1 pieza?'), { target: { value: '150' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar cantidades ›' }));
+    await screen.findByText(/Se cambia el mismo artículo/);
+    expect(screen.queryByLabelText('Existencia · Matriz en la unidad nueva')).toBeNull();
+    expect(screen.getByText('6.6667 pz')).toBeInTheDocument();
+  });
+
   it('lo que falta cerrar se dice, y no avanza', async () => {
     back.previewUnitChange.mockRejectedValue(new ApiError(409, 'UNIT_CHANGE_PENDING', 'antes de cambiar en qué se mide, falta recibir 1 compra(s)', 'r'));
     montar();

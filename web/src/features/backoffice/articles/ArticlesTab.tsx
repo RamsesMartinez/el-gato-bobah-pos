@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { medirAccion } from '../../../api/uso';
-import { Box, Button, HStack, Input, Stack, Table, Text } from '@chakra-ui/react';
+import { Badge, Box, Button, HStack, Input, Stack, Table, Text } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { backofficeApi, type ArticleFilter, type ArticleRow } from '../../../api/backoffice';
 import { Picker } from '../../../components/Picker';
@@ -111,10 +111,10 @@ function ArticleLine({ a, onOpen }: { a: ArticleRow; onOpen: (id: number) => voi
   const cost = formatUnitCost(a.currentCost, a.baseUnitCode);
   const packs = a.presentations ?? [];
   return (
-    <Table.Row role="button" tabIndex={0} aria-label={a.name} cursor="pointer" h="50px"
+    <Table.Row role="button" tabIndex={0} aria-label={a.name} cursor="pointer" h="44px"
       onClick={() => onOpen(a.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(a.id); }}>
       <Table.Cell>
-        <Text fontWeight="600">{a.name}</Text>
+        <Text fontWeight="600">{a.name}{a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}</Text>
         <Text fontSize="xs" color="fg.muted">Se mide en {KIND_WORD[a.baseUnitKind] ?? a.baseUnitKind}</Text>
       </Table.Cell>
       <Table.Cell textAlign="end">

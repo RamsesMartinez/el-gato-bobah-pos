@@ -361,6 +361,10 @@ en kg pide confirmar; escribir 740 en g, no.
   originales en la bitácora; compras, ventas y mermas nunca.
 - Un artículo no se borra, se archiva.
 - El umbral del aviso del conteo (10 veces) es constante, no configurable.
+- **Conteo a ciegas y su aviso** (decisión del dueño, 2026-10-19): quien cuenta puede deducir lo que
+  el sistema espera probando cifras y mirando cuándo sale el aviso (unas 20 capturas). Se acepta ese
+  riesgo: no se limitan los intentos, y cada aviso queda en la bitácora (`stock.count_confirm_asked`)
+  con quién, cuándo y la cifra capturada, para que un sondeo deje rastro.
 - El lugar sigue siendo solo el orden del conteo (spec 040), no un almacén.
 - **Fuera de alcance**: marcas, proveedores y códigos de barras por artículo (#112); varios almacenes
   y traspasos entre ellos (#65); renglones excluidos y cajas (#111); caducidades.

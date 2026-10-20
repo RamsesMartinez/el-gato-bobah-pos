@@ -23,6 +23,8 @@ interface Props {
 
 // Las clases a las que se puede pasar: entre peso y líquido no, porque haría falta la densidad.
 const targetsOf = (k: Kind): Kind[] => (k === 'pieza' ? ['masa', 'volumen', 'longitud'] : ['pieza']);
+// round4 muestra una cifra convertida a 4 decimales, como la guarda la base (no 6.666666666666667).
+const round4 = (v: string) => String(Number(Number(v).toFixed(4)));
 const word = (k: Kind) => KINDS.find((x) => x.kind === k)!.label.toLowerCase();
 
 export function UnitChangeSheet({ article, onClose, onDone }: Props) {
@@ -169,12 +171,19 @@ function Group({ title, items, preview, edits, setEdits }: {
         <HStack key={c.key} minH="52px" borderBottomWidth="1px" gap={3}>
           <Text flex="1" minW={0} truncate>{c.label}</Text>
           {!c.fits && <Badge colorPalette="orange">No cuadra: se archiva</Badge>}
-          <Text w="110px" textAlign="end" color="fg.muted">{Number(c.from)} {unit(preview.fromUnit)}</Text>
+          <Text w="110px" textAlign="end" color="fg.muted">{round4(c.from)} {unit(preview.fromUnit)}</Text>
           <Text>→</Text>
-          <Input aria-label={`${c.label} en la unidad nueva`} w="120px" minH="44px" inputMode="decimal"
-            value={edits[c.key] ?? String(Number(c.to))}
-            onChange={(e) => setEdits({ ...edits, [c.key]: e.target.value.replace(',', '.') })} />
-          <Text w="28px">{unit(preview.toUnit)}</Text>
+          {/* En el cambio directo la existencia es la suma de su historia: se ve, no se corrige. */}
+          {c.group === 'stock' && preview.path === 'direct'
+            ? <Text w="152px" fontWeight="700">{round4(c.to)} {unit(preview.toUnit)}</Text>
+            : (
+              <>
+                <Input aria-label={`${c.label} en la unidad nueva`} w="120px" minH="44px" inputMode="decimal"
+                  value={edits[c.key] ?? round4(c.to)}
+                  onChange={(e) => setEdits({ ...edits, [c.key]: e.target.value.replace(',', '.') })} />
+                <Text w="28px">{unit(preview.toUnit)}</Text>
+              </>
+            )}
         </HStack>
       ))}
     </Stack>

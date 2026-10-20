@@ -1117,6 +1117,8 @@ export interface ArticleRow {
   onHand: string;
   // Opcional a propósito: el compilador obliga a la guarda aunque el servidor siempre mande [] (AGENTS §1).
   presentations?: PresentationLabel[];
+  // «estimated»: su receta vino estimada y está por revisar.
+  compositionStatus?: string;
 }
 export interface ArticleSheet extends ArticleRow {
   costSource: string;
