@@ -24,7 +24,8 @@ interface Props {
 
 export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Props) {
   const qc = useQueryClient();
-  const units = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units });
+  // Se piden al abrir para que al guardar ya estén casi siempre.
+  useQuery({ queryKey: ['units'], queryFn: backofficeApi.units });
   const places = useQuery({ queryKey: ['count-places'], queryFn: backofficeApi.countPlaces });
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Kind | null>(null);
@@ -34,17 +35,23 @@ export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Prop
   const [placeId, setPlaceId] = useState('');
   const [taken, setTaken] = useState<{ id: number; archived: boolean } | null>(null);
 
-  const baseUnit = (units.data?.items ?? []).find((u) => u.kind === kind && Number(u.toBase) === 1);
   const big = kind ? bigUnitOf(kind) : null;
   const save = useMutation({
-    mutationFn: () => backofficeApi.createArticle({
-      name, baseUnitId: baseUnit!.id,
-      placeId: placeId ? Number(placeId) : null,
-      initialStock: baseQty(stock.qty, kind!, stock.big),
-      minStock: baseQty(min.qty, kind!, min.big),
-      // El costo se captura por la unidad grande («$ por kg») y viaja por la base.
-      initialCost: cost.trim() === '' ? undefined : String(Number(cost) / (big?.factor ?? 1)),
-    }),
+    // Las unidades pueden no haber llegado al tocar «Guardar»: se esperan aquí en vez de dejar el
+    // botón apagado sin decir por qué.
+    mutationFn: async () => {
+      const all = await qc.ensureQueryData({ queryKey: ['units'], queryFn: backofficeApi.units });
+      const unit = all.items.find((u) => u.kind === kind && Number(u.toBase) === 1);
+      if (!unit) throw new Error('unit');
+      return backofficeApi.createArticle({
+        name, baseUnitId: unit.id,
+        placeId: placeId ? Number(placeId) : null,
+        initialStock: baseQty(stock.qty, kind!, stock.big),
+        minStock: baseQty(min.qty, kind!, min.big),
+        // El costo se captura por la unidad grande («$ por kg») y viaja por la base.
+        initialCost: cost.trim() === '' ? undefined : String(Number(cost) / (big?.factor ?? 1)),
+      });
+    },
     onSuccess: async ({ id }) => {
       medirAccion('inventario', 'crear-articulo');
       await qc.invalidateQueries({ queryKey: ['articles'] });
@@ -67,7 +74,7 @@ export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Prop
       onCreated(id);
     },
   });
-  const canSave = name.trim() !== '' && baseUnit !== undefined && !save.isPending;
+  const canSave = name.trim() !== '' && kind !== null && !save.isPending;
 
   return (
     <DrawerRoot open placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }}>

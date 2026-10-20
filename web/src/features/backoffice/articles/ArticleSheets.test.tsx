@@ -67,6 +67,23 @@ describe('Nuevo artículo', () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(9));
   });
 
+  // La prueba sin contexto tocó «Guardar» antes de que llegaran las unidades: el botón seguía
+  // apagado sin decir por qué y el toque se perdía.
+  it('Guardar funciona aunque las unidades todavía no hayan llegado', async () => {
+    let soltar: (v: unknown) => void = () => {};
+    const unidades = back.units.getMockImplementation()!;
+    back.units.mockImplementationOnce(() => new Promise((r) => { soltar = r; }) as never);
+    back.createArticle.mockResolvedValue({ id: 9 });
+    montar(<NewArticleSheet onClose={vi.fn()} onCreated={vi.fn()} />);
+    fireEvent.change(await screen.findByLabelText(/Nombre/), { target: { value: 'Leche entera' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Líquido' }));
+    const guardar = screen.getByRole('button', { name: 'Guardar' });
+    expect(guardar).not.toBeDisabled();
+    fireEvent.click(guardar);
+    soltar(await unidades());
+    await waitFor(() => expect(back.createArticle).toHaveBeenCalledWith(expect.objectContaining({ name: 'Leche entera', baseUnitId: 3 })));
+  });
+
   it('cancelar no llama al servidor', async () => {
     const onClose = vi.fn();
     montar(<NewArticleSheet onClose={onClose} onCreated={vi.fn()} />);
