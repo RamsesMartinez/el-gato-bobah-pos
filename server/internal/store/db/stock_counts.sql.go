@@ -294,6 +294,27 @@ func (q *Queries) InsertCountMovement(ctx context.Context, arg InsertCountMoveme
 	return err
 }
 
+const lastClosedCountedQty = `-- name: LastClosedCountedQty :one
+select l.counted_qty from stock_count_lines l join stock_counts c on c.id = l.count_id
+ where c.status = 'closed' and c.branch_id = $1 and l.ingredient_id = $2
+ order by c.closed_at desc, c.id desc
+ limit 1
+`
+
+type LastClosedCountedQtyParams struct {
+	BranchID     int64 `json:"branch_id"`
+	IngredientID int64 `json:"ingredient_id"`
+}
+
+// Lo contado del artículo en el último conteo cerrado de la sucursal: la referencia del aviso del
+// conteo cuando lo esperado no sirve (spec 042, FR-012).
+func (q *Queries) LastClosedCountedQty(ctx context.Context, arg LastClosedCountedQtyParams) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, lastClosedCountedQty, arg.BranchID, arg.IngredientID)
+	var counted_qty decimal.Decimal
+	err := row.Scan(&counted_qty)
+	return counted_qty, err
+}
+
 const lastClosedStockCount = `-- name: LastClosedStockCount :one
 select id, closed_at from stock_counts
  where status = 'closed' and branch_id = current_branch_id()

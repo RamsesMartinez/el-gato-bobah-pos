@@ -55,3 +55,14 @@ func TestCountNeedsConfirm(t *testing.T) {
 		})
 	}
 }
+
+func TestPiecesFromWeight(t *testing.T) {
+	// 300 g con «Kilo ≈ 400 pz»: 0.3 kg × 400 = 120 piezas.
+	if got := PiecesFromWeight(dec("300"), dec("1"), dec("1000"), dec("400")); !got.Equal(dec("120")) {
+		t.Fatalf("= %s, quería 120", got)
+	}
+	// 1.234 kg con «Kilo ≈ 400 pz»: 493.6 → 494.
+	if got := PiecesFromWeight(dec("1.234"), dec("1000"), dec("1000"), dec("400")); !got.Equal(dec("494")) {
+		t.Fatalf("= %s, quería 494", got)
+	}
+}

@@ -144,3 +144,11 @@ update stock_counts set previewed_at = coalesce(previewed_at, now()) where id = 
 select count(*)::int from stock_count_lines l
   join stock_counts c on c.id = l.count_id
  where l.count_id = $1 and c.previewed_at is not null and l.captured_at > c.previewed_at;
+
+-- name: LastClosedCountedQty :one
+-- Lo contado del artículo en el último conteo cerrado de la sucursal: la referencia del aviso del
+-- conteo cuando lo esperado no sirve (spec 042, FR-012).
+select l.counted_qty from stock_count_lines l join stock_counts c on c.id = l.count_id
+ where c.status = 'closed' and c.branch_id = sqlc.arg(branch_id) and l.ingredient_id = sqlc.arg(ingredient_id)
+ order by c.closed_at desc, c.id desc
+ limit 1;

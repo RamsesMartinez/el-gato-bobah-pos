@@ -1,6 +1,10 @@
 package domain
 
-import "github.com/shopspring/decimal"
+import (
+	"fmt"
+
+	"github.com/shopspring/decimal"
+)
 
 // CountReference es lo que el servidor sabe de un artículo para decidir si una cifra del conteo es
 // sospechosa. Nunca sale a la pantalla: el conteo es a ciegas.
@@ -68,4 +72,17 @@ func CountNeedsConfirm(captured decimal.Decimal, ref CountReference) bool {
 		return captured.GreaterThan(limit)
 	}
 	return false
+}
+
+// ErrCountNeedsConfirm: la cifra pasa la referencia del artículo y se pide confirmarla (409
+// NEEDS_CONFIRM). El mensaje no dice contra qué se comparó: el conteo es a ciegas.
+var ErrCountNeedsConfirm = fmt.Errorf("%w: ¿seguro? revisa la cifra y la unidad", ErrConflict)
+
+// PiecesFromWeight convierte lo pesado a piezas con un empaque aproximado («Kilo ≈ 400 pz»): el peso
+// en la unidad de ese empaque, por las piezas que trae, redondeado a piezas enteras.
+func PiecesFromWeight(weight, weightToBase, packUnitToBase, piecesPerPack decimal.Decimal) decimal.Decimal {
+	if !packUnitToBase.IsPositive() {
+		return decimal.Zero
+	}
+	return weight.Mul(weightToBase).Div(packUnitToBase).Mul(piecesPerPack).Round(0)
 }

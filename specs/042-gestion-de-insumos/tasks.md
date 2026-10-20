@@ -241,14 +241,14 @@ uno con compras se reemplaza.
 **Independent test**: 740 kg en un artículo en gramos sin existencia pide confirmar; «No hay»
 guarda 0.
 
-- [ ] T039 [P] [US7] Tests de integración de la captura:
+- [X] T039 [P] [US7] Tests de integración de la captura:
   - sin `confirmable` guarda aunque la cifra sea absurda (Revisión B1);
   - con `confirmable` da 409 `NEEDS_CONFIRM` sin revelar la referencia;
   - con `confirmed` guarda;
   - el peso crudo de un artículo en piezas con empaque aproximado lo convierte el servidor;
   - todos los empaques activos y no aproximados se ofrecen;
   - la búsqueda encuentra por nombre de empaque.
-- [ ] T040 [US7] Cambios en `app/stock_counts.go` y `queries/stock_counts.sql`.
+- [X] T040 [US7] Cambios en `app/stock_counts.go` y `queries/stock_counts.sql`.
 - [ ] T041 [P] [US7] Tests vitest:
   - tocar la cantidad de un empaque lleva el teclado a ese renglón;
   - «+» y «−» ajustan de uno en uno;
