@@ -53,7 +53,7 @@ Las reglas de la constitución que aplican a todas las tareas:
   - las dos tablas entran a `TestEveryCompanyTableIsIsolated`.
 - [X] T009 Migración `server/migrations/0096_ingredient_management.sql`, según
   [data-model.md](data-model.md), hasta que T008 pase. La revisa `db-architect` antes de aplicarla.
-- [ ] T010 Consultas en `server/queries/ingredients_admin.sql` y `make sqlc`. Sin nombrar
+- [X] T010 Consultas en `server/queries/ingredients_admin.sql` y `make sqlc`. Sin nombrar
   `company_id` en tablas de la 0023. Son:
   - lista con filtros;
   - ficha;
