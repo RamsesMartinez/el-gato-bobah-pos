@@ -100,6 +100,7 @@ deja artículo.
     resuelta;
   - `BRANCH_AMBIGUOUS` con dos sucursales y sin selector (E12);
   - nombre repetido da 409 con `{id, archived}` (E2);
+  - con costo inicial: queda `cost_source = 'manual'` y su fila en `ingredient_cost_corrections`;
   - deja el evento `ingredient.created`.
 - [ ] T016 [P] [US2] Tests de integración de FR-003, uno por camino (E1). En cada uno, cancelar o
   hacer fallar el guardado no deja artículo:
@@ -133,6 +134,8 @@ historial muestra compras y correcciones.
   - la corrección pone `cost_source = 'manual'` y deja su fila y su evento;
   - el historial excluye las diferencias negativas y los regalos, y pagina por llave;
   - la bitácora junta los eventos del artículo y de sus empaques;
+  - sin `inventory.configure`, editar y corregir el costo dan 403; sin `inventory.view`, la ficha,
+    el historial y la bitácora dan 403;
   - los tres `inTheThreeCases`.
 - [ ] T022 [US3] Servicio y rutas de ficha, editar, corregir costo, historial y bitácora (FR-004 a
   FR-006 y FR-016). El servidor entrega el costo por unidad, lo pagado por empaque y el porcentaje
@@ -153,6 +156,8 @@ historial muestra compras y correcciones.
   - pinta quién, cuándo y qué cambió;
   - «Ver más» de 20 en 20;
   - un usuario sin `inventory.view` no ve el botón.
+  Del lado del servidor, `GET /stock/articles/{id}/audit` sin `inventory.view` da 403 (en
+  `ingredients_admin_test.go`).
 - [ ] T026 [US3] Bitácora del artículo como pantalla de lectura (FR-016) en
   `web/src/features/backoffice/articles/ArticleAuditSheet.tsx`:
   - hoja con los eventos del artículo y de sus empaques, del más reciente al más viejo, con
@@ -170,7 +175,9 @@ historial muestra compras y correcciones.
   - con una compra por recibir se avisa y se archiva; recibirla después no lo reactiva (E5);
   - deja de ofrecerse en el gasto, la receta y el conteo (FR-008);
   - reactivar;
-  - los eventos.
+  - los eventos;
+  - sin `inventory.configure`, archivar y reactivar dan 403;
+  - `archive-check` en los tres casos (`inTheThreeCases`).
 - [ ] T028 [US4] Servicio y rutas de `archive-check`, archivar y reactivar.
 - [ ] T029 [US4] Diálogo de archivado: cada receta abre su `CompositionSheet` y regresa; sin
   bloqueos, confirma. Ajuste de la Revisión, en `ArticleSheet.tsx`.
@@ -193,7 +200,8 @@ uno con compras se reemplaza.
 - [ ] T032 [P] [US5] Tests de los bloqueos:
   - compra por recibir o merma pendiente da 409 `UNIT_CHANGE_PENDING` con lo que falta;
   - un conteo abierto da 409 (E9);
-  - una venta concurrente con `nowait` da 409 `BUSY` (E6).
+  - una venta concurrente con `nowait` da 409 `BUSY` (E6);
+  - sin `inventory.configure`, la vista previa y el cambio dan 403.
 - [ ] T033 [P] [US5] Tests del reemplazo (E8):
   - un `ajuste` de salida y otro de entrada por sucursal, con `replacement_id` y `branch_id`;
   - las recetas pasan con la cantidad convertida;
@@ -218,7 +226,9 @@ uno con compras se reemplaza.
   - sugerencias por clase de unidad (E14);
   - crear, editar y retirar un empaque deja su evento sin cambiar las compras pasadas;
   - un empaque archivado por un cambio de unidad aparece en «Ya no llega así» y se puede consultar,
-    pero no reactivar si sigue sin cuadrar con la unidad (409).
+    pero no reactivar si sigue sin cuadrar con la unidad (409);
+  - sin `inventory.configure`, crear, editar y retirar un empaque dan 403;
+  - las sugerencias en los tres casos (`inTheThreeCases`).
 - [ ] T037 [US6] Ruta de sugerencias y `recordAudit` en las rutas de empaques que ya existen.
 - [ ] T038 [US6] Sección Empaques de la ficha:
   - la explicación con ejemplo;
@@ -257,13 +267,17 @@ guarda 0.
 - [ ] T045 [P] Playwright a 1024×600 en `web/e2e/gestion-de-articulos.spec.ts`:
   - lista con 6 o 7 renglones visibles;
   - ficha con la tableta de lado y de pie;
-  - teclado del conteo.
+  - teclado del conteo;
+  - encontrar un artículo entre 400 toma 3 toques o menos más lo que se escribe (SC-001);
+  - todos los controles tocables miden 44 px o más, ningún selector es nativo y los textos no
+    nombran internos (FR-015).
   La prueba con usuario sin contexto corre en local (constitución 1.23.0).
-- [ ] T046 [P] Medición de uso: las pantallas nuevas van en `domain/uso.go` y
-  `web/src/app/rutas-medidas.ts`.
+- [ ] T046 [P] Medición de uso, en los tres lugares: `pantallasMedibles` y `rolesPorPantalla` en
+  `server/internal/domain/uso.go`, y `PANTALLAS` en `web/src/app/rutas-medidas.ts`.
 - [ ] T047 Correr [quickstart.md](quickstart.md) contra la base restaurada y anotar en el plan, en
   «Al construir», lo que no se vio venir.
-- [ ] T048 En una subida posterior: borrar `POST /ingredients` (Revisión B1).
+- [ ] T048 En una subida posterior: borrar `POST /ingredients` (Revisión B1). Seguimiento en el issue
+  #115, «Quitar POST /ingredients en la subida siguiente a la 042».
 
 ## Dependencies
 
@@ -279,11 +293,11 @@ guarda 0.
 
 - **Foundational:** T003, T004, T006 y T007 a la vez.
 - **US5:** T030, T031, T032 y T033 se escriben a la vez y después T034.
-- **US7** puede ir en paralelo con US2 a US6.
+- **US7** va en paralelo con US1 a US3, dentro de la primera entrega.
 
 ## Implementation strategy
 
-1. **MVP:** US1, US2 y US3. Con eso se puede encontrar, crear y editar sin pasar por un gasto, y ya
-   se pueden corregir los costos que pidió finanzas.
-2. **Después:** US7, el conteo, que es el que evita el error de 740 kg.
-3. **Al final:** US4, US5 y US6.
+1. **Primera entrega:** US1, US2 y US3, con US7 (el conteo) en paralelo. Con eso se puede
+   encontrar, crear y editar sin pasar por un gasto, corregir los costos que pidió finanzas, y
+   contar sin el error de 740 kg, que urge porque hay conteos pendientes.
+2. **Después:** US4, US5 y US6.

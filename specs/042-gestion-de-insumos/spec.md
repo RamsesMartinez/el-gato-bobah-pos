@@ -313,14 +313,15 @@ en kg pide confirmar; escribir 740 en g, no.
 - **FR-014**: Cada una de esas acciones MUST escribir su evento en la bitácora dentro de su
   transacción: `ingredient.created`, `ingredient.updated` (con lo que cambió),
   `ingredient.archived`, `ingredient.reactivated`, `ingredient.cost_corrected`,
-  `ingredient.unit_changed` (con la equivalencia y, por cada ajuste de conteo, receta y empaque
-  convertido, su valor y unidad originales), `ingredient.replaced`, `presentation.created`, `presentation.updated`
+  `ingredient.unit_changed` (con la equivalencia y el resumen; el valor y la unidad originales de
+  cada ajuste de conteo, receta y empaque convertido van en eventos hijos
+  `ingredient.unit_changed.detail`, ligados por un `batch_id`), `ingredient.replaced`, `presentation.created`, `presentation.updated`
   y `presentation.retired`.
-- **FR-016**: La ficha MUST ofrecer la bitácora del artículo: sus eventos de FR-014, del más
-  reciente al más viejo, con quién, cuándo y qué cambió, de 20 en 20. Leerla pide `inventory.view`.
 - **FR-015**: Los textos MUST ser de quien opera («Artículo», «Empaque», «En qué se mide»,
   «Archivar»), sin nombres internos. Todo control táctil mide 44 px o más, y ningún selector es
   nativo.
+- **FR-016**: La ficha MUST ofrecer la bitácora del artículo: sus eventos de FR-014, del más
+  reciente al más viejo, con quién, cuándo y qué cambió, de 20 en 20. Leerla pide `inventory.view`.
 
 ### Key Entities
 
@@ -343,7 +344,8 @@ en kg pide confirmar; escribir 740 en g, no.
 - **SC-003**: Las sugerencias de empaque de un artículo nunca incluyen uno de otro tipo de unidad.
 - **SC-004**: Una persona nueva crea un artículo con un empaque y archiva otro sin ayuda, en la
   prueba con usuario sin contexto.
-- **SC-005**: Cada acción de FR-014 deja exactamente un evento en la bitácora.
+- **SC-005**: Cada acción de FR-014 deja exactamente un evento principal en la bitácora; los
+  eventos hijos `ingredient.unit_changed.detail` no cuentan.
 
 ## Assumptions
 
@@ -354,9 +356,9 @@ en kg pide confirmar; escribir 740 en g, no.
   empaques y lugares, para todo lo que escribe, y se agrega `inventory.view` para leer. Cada
   corrección de costo, archivo, reactivación y cambio de unidad queda en la bitácora con quién y
   cuándo (FR-014).
-- **Cambio de unidad** (decisión del dueño, 2026-10-19): sin movimientos, directo en el mismo
-  artículo; con movimientos, reemplazo guiado y nunca conversión en el mismo artículo, para no
-  reescribir movimientos pasados (regla del 2026-10-13: el pasado no se recalcula).
+- **Cambio de unidad** (decisión del dueño, 2026-10-19): sin compras, ventas ni mermas, directo en
+  el mismo artículo; con ellas, reemplazo guiado. Se reescriben solo los ajustes, con los
+  originales en la bitácora; compras, ventas y mermas nunca.
 - Un artículo no se borra, se archiva.
 - El umbral del aviso del conteo (10 veces) es constante, no configurable.
 - El lugar sigue siendo solo el orden del conteo (spec 040), no un almacén.

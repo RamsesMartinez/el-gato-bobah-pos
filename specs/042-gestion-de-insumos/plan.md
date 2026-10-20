@@ -175,7 +175,7 @@ aplicado (decisiones del dueño marcadas):
   Test que recorre las FK hacia `ingredients` y truena si aparece una tabla no clasificada, y uno por
   cambio de clase (masa↔pieza, volumen↔pieza). La conversión entre masa y volumen no se ofrece.
   Excepción declarada en Complexity Tracking: reescribe movimientos, contra la regla de la 038.
-  `before` de la bitácora: un evento por tabla con `batch_id` común, para no crecer sin tope.
+  Bitácora: un evento `ingredient.unit_changed` con la equivalencia y el resumen, y eventos hijos `ingredient.unit_changed.detail` (uno por tabla convertida, con los originales en `before`) ligados por `batch_id`, para no crecer sin tope. SC-005 cuenta solo el principal.
 - **B4 — Down.** Ver E15.
 
 **Alto y medio (base de datos)**

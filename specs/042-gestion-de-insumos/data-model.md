@@ -68,6 +68,7 @@ activo ──reemplazo──▶ archivado (+ uno nuevo activo)
 | ingredient.updated | ingredient | campos cambiados |
 | ingredient.archived / reactivated | ingredient | is_active |
 | ingredient.cost_corrected | ingredient | costo anterior / nuevo |
-| ingredient.unit_changed | ingredient | unidad y factor; por cada ajuste, renglón de conteo, receta y empaque convertido: id, valor y unidad originales |
+| ingredient.unit_changed | ingredient | unidad, factor, `batch_id` y resumen |
+| ingredient.unit_changed.detail | ingredient | `batch_id`; por tabla convertida (ajustes, renglones de conteo, recetas, empaques, existencia): id, valor y unidad originales |
 | ingredient.replaced | ingredient | viejo / nuevo, factor, existencias traspasadas |
 | presentation.created / updated / retired | presentation | nombre, cantidad, activo |
