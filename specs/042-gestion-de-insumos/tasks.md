@@ -37,9 +37,9 @@ Las reglas de la constitución que aplican a todas las tareas:
 - [X] T005 Implementar `server/internal/domain/ingredients.go` y `count_sanity.go` hasta que T003 y
   T004 pasen.
 - [X] T006 [P] Permiso `inventory.view`:
-  - en `AllPermissions` y en el rol gerente, en `server/internal/domain/permission.go` (con su test);
+  - en `AllPermissions` (así lo recibe administrador) y en el rol gerente, en `server/internal/domain/permission.go` (con su test);
   - su espejo en `web/src/app/permissions.ts`.
-- [X] T007 [P] Las diez acciones de FR-014, más `ingredient.unit_changed.detail` y la lectura de FR-016:
+- [X] T007 [P] Las once acciones de FR-014 (sin `stock.count_confirm_asked`, que registra T049), más `ingredient.unit_changed.detail` y la lectura de FR-016:
   - en la lista blanca de `server/internal/domain/audit.go`;
   - con sus etiquetas en `web/src/shared/audit/labels.ts`.
 - [X] T008 Test de la migración 0096 en `server/internal/integration/migration_0096_test.go`, sobre
@@ -265,7 +265,7 @@ guarda 0.
 - [X] T044 [P] `make api-build && make api-test`, `make test-integration`, `cd web && bun run lint
   && bun run vitest run && bun run build`, y `make ci-local`.
 - [X] T045 [P] Playwright a 1024×600 en `web/e2e/gestion-de-articulos.spec.ts`:
-  - lista con 6 o 7 renglones visibles;
+  - lista con 6 renglones visibles;
   - ficha con la tableta de lado y de pie;
   - teclado del conteo;
   - encontrar un artículo entre 400 toma 3 toques o menos más lo que se escribe (SC-001);
@@ -276,6 +276,12 @@ guarda 0.
   `server/internal/domain/uso.go`, y `PANTALLAS` en `web/src/app/rutas-medidas.ts`.
 - [X] T047 Correr [quickstart.md](quickstart.md) contra la base restaurada y anotar en el plan, en
   «Al construir», lo que no se vio venir.
+- [X] T049 [P] `stock.count_confirm_asked` en la lista blanca de `server/internal/domain/audit.go`,
+  con su etiqueta en `web/src/shared/audit/labels.ts` y la prueba que la produce en
+  `server/internal/integration/review_fixes_042_test.go` (FR-014, Revisión de código).
+- [X] T050 Migración `server/migrations/0097_article_category_key.sql` (llave `(category_id,
+  company_id)` y el índice `stock_count_lines_by_ingredient`) con su prueba
+  `server/internal/integration/migration_0097_test.go`; la revisa `db-architect` (Revisión de código).
 - [ ] T048 En una subida posterior: borrar `POST /ingredients` (Revisión B1). Seguimiento en el issue
   #115, «Quitar POST /ingredients en la subida siguiente a la 042».
 

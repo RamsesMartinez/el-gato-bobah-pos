@@ -72,3 +72,4 @@ activo ──reemplazo──▶ archivado (+ uno nuevo activo)
 | ingredient.unit_changed.detail | ingredient | `batch_id`; por tabla convertida (ajustes, renglones de conteo, recetas, empaques, existencia): id, valor y unidad originales |
 | ingredient.replaced | ingredient | viejo / nuevo, factor, existencias traspasadas |
 | presentation.created / updated / retired | presentation | nombre, cantidad, activo |
+| stock.count_confirm_asked | ingredient | — / conteo y cifra capturada (nunca la referencia) |

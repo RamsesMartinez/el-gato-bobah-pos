@@ -203,11 +203,12 @@ en kg pide confirmar; escribir 740 en g, no.
 4. **Given** un artículo con existencia positiva, **When** se guarda una cifra más de 10 veces mayor
    o menor que lo esperado, **Then** se pide confirmar. Ningún aviso revela la cifra de referencia:
    el conteo sigue siendo a ciegas.
-5. **Given** un artículo con existencia positiva, **When** se toca «No hay», **Then** se guarda 0
-   sin aviso. **When** se toca «Guardar» sin capturar nada, **Then** no se guarda.
-7. **Given** el hielo con bolsas de 5 kg, **When** se toca la cantidad de esa bolsa y se teclea 25,
+5. **Given** un artículo con existencia positiva, **When** se toca «No hay», **Then** pregunta
+   «¿No hay nada de …?» y solo guarda 0 al confirmar, sin el aviso de cifra. **When** no se ha
+   capturado nada, **Then** «Guardar» está apagado.
+6. **Given** el hielo con bolsas de 5 kg, **When** se toca la cantidad de esa bolsa y se teclea 25,
    **Then** quedan 25 bolsas en dos toques más las teclas.
-6. **Given** un artículo en gramos con empaque de 1 kg, **When** se guarda 5 g, **Then** se pide
+7. **Given** un artículo en gramos con empaque de 1 kg, **When** se guarda 5 g, **Then** se pide
    confirmar mostrando «5 g» en grande.
 
 ### Edge Cases
@@ -275,7 +276,9 @@ en kg pide confirmar; escribir 740 en g, no.
   equivalencia, y el viejo archivado. En los dos caminos, cada cantidad convertida se muestra y se
   puede corregir antes de confirmar, y todo es una sola operación. También se convierten el
   mínimo, el costo actual (÷ equivalencia) y el rendimiento de un preparado; al terminar, la
-  existencia de cada sucursal MUST ser igual a la suma de sus movimientos. El cambio MUST negarse
+  existencia de cada sucursal MUST ser igual a la suma de sus movimientos. **Excepción:** un
+  preparado con movimientos no se reemplaza desde aquí; el cambio se rechaza con «cambia de unidad
+  desde su receta». El cambio MUST negarse
   mientras haya compras por recibir o mermas pendientes de aprobar del artículo, y el aviso dice
   cuáles faltan cerrar («Falta recibir la compra del 17 oct» o «Falta aprobar 1 merma»). En el
   reemplazo, el artículo nuevo nace con el costo del viejo convertido. Un empaque que no cuadra con
@@ -315,8 +318,9 @@ en kg pide confirmar; escribir 740 en g, no.
   `ingredient.archived`, `ingredient.reactivated`, `ingredient.cost_corrected`,
   `ingredient.unit_changed` (con la equivalencia y el resumen; el valor y la unidad originales de
   cada ajuste de conteo, receta y empaque convertido van en eventos hijos
-  `ingredient.unit_changed.detail`, ligados por un `batch_id`), `ingredient.replaced`, `presentation.created`, `presentation.updated`
-  y `presentation.retired`.
+  `ingredient.unit_changed.detail`, ligados por un `batch_id`), `ingredient.replaced`, `presentation.created`, `presentation.updated`,
+  `presentation.retired` y `stock.count_confirm_asked` (cada vez que el conteo pide confirmar una
+  cifra, con lo capturado y sin la referencia: el conteo a ciegas acepta ese riesgo y deja rastro).
 - **FR-015**: Los textos MUST ser de quien opera («Artículo», «Empaque», «En qué se mide»,
   «Archivar»), sin nombres internos. Todo control táctil mide 44 px o más, y ningún selector es
   nativo.

@@ -20,7 +20,7 @@ artículo», y cada artículo tendrá una ficha editable con:
   - `ingredient_replacements`: un artículo que se reemplaza por otro en otra unidad, con sus dos
     movimientos ligados.
 - **Un permiso**: `inventory.view`.
-- **Diez acciones de bitácora**, más los eventos hijos `ingredient.unit_changed.detail`.
+- **Doce acciones de bitácora**: once de FR-014 más los eventos hijos `ingredient.unit_changed.detail`.
 
 **Lo que se reutiliza:** `ingredients.is_active`, `ingredient_presentations`, `count_places` y los
 movimientos de compra, que ya guardan su costo.
@@ -45,7 +45,7 @@ propio de unas 60 líneas, sin librería nueva (principio VI).
   movimientos y validación de la ficha.
 - Integración bajo `appRoleStore` con `inTheThreeCases`.
 - Migración probada sobre el respaldo restaurado con dos empresas.
-- vitest de las tres pantallas.
+- vitest de las cinco pantallas: lista, alta, ficha, bitácora y teclado del conteo.
 - Playwright a 1024×600.
 
 **Target Platform**: tabletas de 7 a 10 pulgadas (1024×600)
@@ -70,7 +70,7 @@ propio de unas 60 líneas, sin librería nueva (principio VI).
 | I Layering | Reglas puras en `domain/ingredients.go` (validar ficha, `UnitChangePath`, `ConvertQty`) y en `domain/count_sanity.go`. Servicio en `app/ingredients_admin.go` con `store.WithTx`. Handlers finos y SQL en `queries/ingredients_admin.sql` |
 | II Errores | `ErrValidation` (nombre, unidad, equivalencia), `ErrConflict` (nombre repetido con id y si está archivado; ficha que cambió; receta activa; conteo abierto; venta en curso con `nowait`) y `ErrNotFound` (otra empresa) |
 | III Dinero | Costo inicial y corregido con `ValidMoney` y `Round4` por unidad base. La corrección no recalcula ventas pasadas. El historial declara qué incluye: compras recibidas y correcciones, no el costo calculado de un preparado |
-| IV Tests | Dominio primero. Integración en los tres casos para todas las lecturas nuevas. `TestEveryCompanyTableIsIsolated` recoge las dos tablas. La migración se prueba con dos empresas. `TestEveryAuditActionIsProduced` cubre las doce acciones nuevas, `ingredient.unit_changed.detail` incluida. Un test por cada camino de FR-003 (lista, gasto, receta al agregar insumo y «Crear una nueva») que falla si queda un artículo creado |
+| IV Tests | Dominio primero. Integración en los tres casos para todas las lecturas nuevas. `TestEveryCompanyTableIsIsolated` recoge las dos tablas. La migración se prueba con dos empresas. `TestEveryAuditActionIsProduced` cubre las doce acciones nuevas, `ingredient.unit_changed.detail` y `stock.count_confirm_asked` incluidas. Un test por cada camino de FR-003 (lista, gasto, receta al agregar insumo y «Crear una nueva») que falla si queda un artículo creado |
 | V Seguridad | `RequirePermission(inventory.view)` para leer e `inventory.configure` para escribir. Ningún `RequireRole` nuevo. El aviso del conteo no expone la referencia. Llaves compuestas con `company_id` en las tablas nuevas |
 | VI YAGNI | Sin librería de gráficas ni tabla de historial: el historial sale de `stock_movements` (compras) más las correcciones |
 | VII Idioma | Tablas, columnas, rutas y acciones en inglés. Texto de pantalla en español |
@@ -93,7 +93,7 @@ propio de unas 60 líneas, sin librería nueva (principio VI).
   porque `order_lines` guarda su propio nombre. Se acepta.
 - **Reversibilidad del cambio directo de unidad** (decisión del dueño, 2026-10-19). Reescribe los
   ajustes, los renglones de conteo, las recetas, los empaques y la existencia del artículo. El
-  evento `ingredient.unit_changed` guarda cada valor y unidad originales (`before`), lo bastante
+  evento `ingredient.unit_changed` y sus eventos hijos `.detail` guardan cada valor y unidad originales (`before`), lo bastante
   para revertir a mano o con una herramienta futura. No se construye el «deshacer».
 
 ## Pantallas y maquetas
@@ -101,7 +101,7 @@ propio de unas 60 líneas, sin librería nueva (principio VI).
 | Pantalla | Dónde vive | Cómo se reparte el alto de 1024×600 |
 |---|---|---|
 | **Lista de artículos** | Almacén › Artículos (pestaña que ya existe). Arriba, en una fila, el buscador (artículo o empaque) y «+ Nuevo artículo»; debajo, una fila de chips: «Lugar: Todos ›» (hoja con los lugares y «Sin lugar»), el par «Activos / Archivados», «Sin costo» y «Existencia negativa». La tabla tiene artículo (con «Se mide en…»), existencia (las negativas marcadas), lugar, costo («Sin costo» marcado) y empaques. «Nuevo artículo» abre una hoja con nombre * y en qué se mide * obligatorios; existencia inicial, costo, lugar, mínimo y empaques son opcionales. Si el nombre ya existe, avisa ahí mismo, con «Reactivar» cuando el artículo está archivado | Fila de búsqueda de 44 px y fila de chips de 44 px (~100 px con separaciones); caben 8 renglones de 50 px |
-| **Ficha del artículo** | Hoja a pantalla completa al tocar un renglón. Encabezado: «‹ Artículos», nombre, «Archivar» (rojo, separado de Guardar) y «Guardar». **Columna izquierda**, desplazable: nombre, categoría ›, lugar ›, mínimo, «Se mide en … · Cambiar ›» y la sección Empaques con su explicación («Cómo lo compras…»), cada uno como «Bolsa · 5 kg = 5,000 g» con Editar, y «+ Agregar empaque» (hoja con sugerencias solo de la misma clase de unidad). **Columna derecha**: costo actual grande con «Corregir costo», un indicador de tendencia («▲ Sube 3 %» o «▼ Baja», contra la compra más vieja de las últimas 20), la gráfica de las últimas 20 (SVG de ~140 px de alto, etiquetas de 13 px y la última cifra en 14 px, las correcciones como punto hueco) y debajo el historial desplazable (fecha, proveedor o «Corrección a mano · quién», «$30 por Bolsa · 5 kg» y costo por kg). Muestra 20 y «Ver más» trae las 20 anteriores (FR-006); con menos de 2 compras no hay indicador de tendencia. En el encabezado, «Bitácora» abre los eventos del artículo (FR-016: quién, cuándo y qué cambió, de 20 en 20). «Se mide en … · Cambiar ›» lleva a dos pasos: (1) la clase de unidad nueva y la equivalencia, y si el artículo tiene compras o ventas avisa que se crea uno nuevo y este se archiva; (2) una tabla de existencia por sucursal, recetas y empaques con «hoy → en el nuevo», editable, y «Crear el nuevo y archivar este». Sin compras ni ventas, el paso 2 dice «Cambiar» y convierte el mismo artículo Archivar abre la revisión: existencia, recetas activas y, si las hay, «Quítalo de esas recetas antes de archivar» | Encabezado de 44 px; dos columnas de ~430 px que llenan el resto; unas 6 compras visibles sin desplazar |
+| **Ficha del artículo** | Hoja a pantalla completa al tocar un renglón. Encabezado: «‹ Artículos», nombre, «Archivar» (rojo, separado de Guardar) y «Guardar». **Columna izquierda**, desplazable: nombre, categoría ›, lugar ›, mínimo, «Se mide en … · Cambiar ›» y la sección Empaques con su explicación («Cómo lo compras…»), cada uno como «Bolsa · 5 kg = 5,000 g» con Editar, y «+ Agregar empaque» (hoja con sugerencias solo de la misma clase de unidad). **Columna derecha**: costo actual grande con «Corregir costo», un indicador de tendencia («▲ Sube 3 %» o «▼ Baja», contra la compra más vieja de las últimas 20), la gráfica de las últimas 20 (SVG de ~140 px de alto, etiquetas de 13 px y la última cifra en 14 px, las correcciones como punto hueco) y debajo el historial desplazable (fecha, proveedor o «Corrección a mano · quién», «$30 por Bolsa · 5 kg» y costo por kg). Muestra 20 y «Ver más» trae las 20 anteriores (FR-006); con menos de 2 compras no hay indicador de tendencia. En el encabezado, «Bitácora» abre los eventos del artículo (FR-016: quién, cuándo y qué cambió, de 20 en 20). «Se mide en … · Cambiar ›» lleva a dos pasos: (1) la clase de unidad nueva y la equivalencia, y si el artículo tiene compras o ventas avisa que se crea uno nuevo y este se archiva; (2) una tabla de existencia por sucursal, recetas y empaques con «hoy → en el nuevo», editable, y «Crear el nuevo y archivar este». Sin compras ni ventas, el paso 2 dice «Cambiar» y convierte el mismo artículo. Archivar abre la revisión: existencia, recetas activas y, si las hay, «Quítalo de esas recetas antes de archivar» | Encabezado de 44 px; dos columnas de ~430 px que llenan el resto; unas 6 compras visibles sin desplazar |
 | **Nuevo artículo** | Hoja corta desde «Nuevo artículo» (la de la maqueta de la lista, sin empaques ni categoría): nombre *, en qué se mide *, existencia inicial, costo, lugar (`Picker`) y mínimo; encabezado fijo con Cancelar y Guardar. Al guardar abre la ficha con «Agregar empaque» a la vista | Hoja de ~360 px; el encabezado no se desplaza |
 | **Teclado del conteo** | Almacén › Conteo, al tocar un artículo. **Izquierda**: un renglón por empaque cerrado con «−», la cantidad y «+» (52 px); «Abierto o suelto» con su casilla y el selector de unidad (g o kg, ml o L, cm o m), que abre en la unidad base. Un artículo en piezas con empaque aproximado por peso ofrece pz, g y kg: lo pesado se ve «≈ N pz» junto a la casilla y el total sale con «≈»; se guarda en piezas; el total en 40 px con la unidad del mismo tamaño. **Derecha**: teclado de 60 px y «Guardar». Con más de 3 empaques, el total va fijo arriba y los contadores se desplazan debajo. Si el servidor responde `needsConfirm`, una ventana muestra la cifra en grande con «Corregir» y «Sí, guardar» | Encabezado de 44 px; contadores de 56 px; teclado de 4 × 60 px más Guardar de 56 px |
 
@@ -121,8 +121,8 @@ El código de cada maqueta está en [maquetas/](maquetas/).
 |---|---|---|
 | Validar ficha (nombre 1–60, mínimo ≥ 0, costo con `ValidMoney`); `UnitChangePath(movimientos) → direct \| replace`, donde solo `compra`, `venta`, `merma`, `produccion` y `cancelacion` bloquean y `ajuste` no; `ConvertQty(qty, factor)` | domain | `server/internal/domain/ingredients.go` |
 | `CountSanity(captured, ref)`: referencia en orden (esperado > 0, último conteo cerrado > 0, 10 × el empaque más grande, tope por unidad de 50 kg, 50 L, 50 m o 5,000 piezas). Contar 0 nunca avisa por «menor». Avisa también por debajo de 1/100 del empaque más chico | domain | `server/internal/domain/count_sanity.go` |
-| Permiso `inventory.view` en `AllPermissions` y en gerente | domain | `permission.go`, `web/src/app/permissions.ts` |
-| Diez acciones nuevas y `ingredient.unit_changed.detail` en la lista blanca, con sus etiquetas | domain + web | `domain/audit.go`, `web/src/shared/audit/labels.ts` |
+| Permiso `inventory.view` en gerente; administrador lo recibe por `AllPermissions` | domain | `permission.go`, `web/src/app/permissions.ts` |
+| Doce acciones nuevas (las once de FR-014 y `ingredient.unit_changed.detail`) en la lista blanca, con sus etiquetas | domain + web | `domain/audit.go`, `web/src/shared/audit/labels.ts` |
 | `ingredient_cost_corrections`, `ingredient_replacements`, RLS, grants y dos índices | migración | `server/migrations/0096_ingredient_management.sql` |
 | Lista con filtros, ficha, actualizar con `updated_at` esperado, archivar o reactivar, revisión de archivado, historial por llave, sugerencias de empaque por tipo de unidad y las conversiones del cambio de unidad | sqlc | `server/queries/ingredients_admin.sql` |
 | Servicio con crear, editar, corregir costo, archivar, reactivar, cambiar unidad (vista previa y confirmar) e historial | app | `server/internal/app/ingredients_admin.go` |
@@ -238,7 +238,8 @@ aplicado (decisiones del dueño marcadas):
 - **Prueba con usuario sin contexto (local, 1024×600)**: hizo las cuatro tareas sin ayuda. Se corrigió
   «Guardar» siempre visible, la gráfica de un solo registro que inventaba cifras en el eje y el doble
   toque de «+ Agregar empaque». Queda abierto: el alta no pide el empaque (decisión del dueño: hoja corta).
-- **Medición a 1024×600**: la lista muestra **5** renglones completos, no los 6 o 7 del plan; todos los
+- **Medición a 1024×600**: la lista muestra **6** renglones completos con renglones de 44 px (la primera
+  medición dio 5; se quitó el segundo renglón «Se mide en…» para llegar a 6); todos los
   controles miden 44 px o más; sin desplazamiento horizontal de lado ni de pie. La bitácora mostraba el
   costo por ml («0.024»): ahora en la unidad de compra.
 
@@ -249,6 +250,9 @@ prueba de regresión primero (`review_fixes_042_test.go`, `migration_0097_test.g
 
 - **Categoría de otra empresa**: se valida bajo RLS (`categoryOfCompany`) y la 0097 pone la llave
   `(category_id, company_id)`. La 0097 también agrega `stock_count_lines_by_ingredient`.
+  `db-architect` la revisó el 2026-10-20: aprobada. Dejó tres menores que no bloquean: a la prueba le
+  faltan el caso positivo (categoría de la misma empresa) y el de `category_id` nulo, y no afirma que la
+  bajada quite el índice; el índice se crea sin `concurrently`, que con estas tablas son milisegundos.
 - **Cambio de unidad**: toda cantidad convertida y toda corrección pasan por topes (400, no 500); una
   corrección de llave desconocida, negativa o de existencia en el camino directo se rechaza; un costo
   positivo que la conversión deja en cero se rechaza. El reemplazo pasa también las recetas de productos
@@ -273,12 +277,12 @@ specs/042-gestion-de-insumos/
 └── tasks.md            # /speckit-tasks
 
 server/
-├── migrations/0096_ingredient_management.sql
+├── migrations/0096_ingredient_management.sql, 0097_article_category_key.sql
 ├── queries/ingredients_admin.sql, stock_counts.sql, expenses.sql, composition.sql
 ├── internal/domain/ingredients.go, count_sanity.go, permission.go, audit.go (+ _test)
 ├── internal/app/ingredients_admin.go, expenses.go, composition.go, stock_counts.go
 ├── internal/httpapi/handlers_ingredients_admin.go, router.go
-└── internal/integration/ingredients_admin_test.go, migration_0096_test.go
+└── internal/integration/ingredients_admin_test.go, migration_0096_test.go, migration_0097_test.go
 
 web/src/
 ├── features/backoffice/articles/ (ArticlesTab, ArticleSheet, CostTrend, UnitChangeSheet)
