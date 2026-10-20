@@ -96,6 +96,9 @@ var accionesMedibles = map[string]map[string]struct{}{
 		"ver-por-recibir": {}, "recibir": {}, "ver-conteo": {}, "cerrar-conteo": {},
 		// Spec 039: la pestaña de lo que se echó a perder y el faltante de un conteo.
 		"ver-merma": {}, "ver-faltante": {},
+		// Spec 042: los artículos del almacén y su ficha.
+		"ver-articulos": {}, "crear-articulo": {}, "editar-articulo": {}, "corregir-costo": {},
+		"archivar-articulo": {}, "cambiar-unidad": {},
 	},
 	// Lo que se echó a perder (spec 039). Aprobar y rechazar se hacen en la hoja de la franja, que
 	// se abre sobre cualquier pantalla: se cuentan aquí para no repartirlas entre pantallas.

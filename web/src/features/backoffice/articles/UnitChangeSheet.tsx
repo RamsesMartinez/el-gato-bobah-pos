@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { medirAccion } from '../../../api/uso';
 import { Badge, Box, Button, HStack, Input, Stack, Text } from '@chakra-ui/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -57,6 +58,7 @@ export function UnitChangeSheet({ article, onClose, onDone }: Props) {
   const apply = useMutation({
     mutationFn: () => backofficeApi.changeUnit(article.id, { ...body(), overrides: edits }),
     onSuccess: () => {
+      medirAccion('inventario', 'cambiar-unidad');
       toaster.create({ title: preview?.path === 'replace' ? 'Se creó el nuevo y este quedó archivado' : 'Ya se mide en ' + (to ? word(to) : ''), type: 'success' });
       onDone();
     },

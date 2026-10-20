@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { medirAccion } from '../../../api/uso';
 import { Box, Button, HStack, Spinner, Stack, Text } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -28,6 +29,7 @@ export function ArchiveSheet({ article, onClose, onDone }: Props) {
   const act = useMutation({
     mutationFn: () => (article.isActive ? backofficeApi.archiveArticle(article.id) : backofficeApi.reactivateArticle(article.id)),
     onSuccess: () => {
+      medirAccion('inventario', 'archivar-articulo');
       toaster.create({ title: article.isActive ? 'Archivado' : 'Volvió a estar activo', type: 'success' });
       onDone();
     },

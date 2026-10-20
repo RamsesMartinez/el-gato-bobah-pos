@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { medirAccion } from '../../../api/uso';
 import { Badge, Box, Button, HStack, Input, SimpleGrid, Spinner, Stack, Text } from '@chakra-ui/react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -99,7 +100,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
       placeId: form!.placeId ? Number(form!.placeId) : null,
       minStock: baseQty(form!.min.qty, kind, form!.min.big) ?? null,
     }),
-    onSuccess: async () => { await refresh(); toaster.create({ title: 'Guardado', type: 'success' }); },
+    onSuccess: async () => { medirAccion('inventario', 'editar-articulo'); await refresh(); toaster.create({ title: 'Guardado', type: 'success' }); },
     onError: async (e) => {
       if (e instanceof ApiError && e.code === 'STALE') {
         toaster.create({ title: 'Cambió mientras la veías', description: 'Se volvió a cargar con lo último.', type: 'warning' });
@@ -111,7 +112,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
   });
   const correct = useMutation({
     mutationFn: () => backofficeApi.correctArticleCost(id, String(Number(cost) / (big?.factor ?? 1))),
-    onSuccess: async () => { setPanel(null); setCost(''); await refresh(); toaster.create({ title: 'Costo corregido', type: 'success' }); },
+    onSuccess: async () => { medirAccion('inventario', 'corregir-costo'); setPanel(null); setCost(''); await refresh(); toaster.create({ title: 'Costo corregido', type: 'success' }); },
     onError: (e) => toaster.create({ title: e instanceof ApiError && e.status !== 500 ? e.message : 'No se pudo corregir el costo', type: 'error' }),
   });
 

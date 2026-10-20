@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { medirAccion } from '../../../api/uso';
 import { Box, Button, HStack, Input, Stack, Table, Text } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { backofficeApi, type ArticleFilter, type ArticleRow } from '../../../api/backoffice';
@@ -42,6 +43,7 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
   const f: ArticleFilter = { ...filter, q: debounced };
   const list = useQuery({ queryKey: ['articles', f], queryFn: () => backofficeApi.articles(f) });
   const places = useQuery({ queryKey: ['count-places'], queryFn: backofficeApi.countPlaces });
+  useEffect(() => { medirAccion('inventario', 'ver-articulos'); }, []);
 
   const placeValue = filter.place === undefined ? '' : String(filter.place);
   const placeOptions = [

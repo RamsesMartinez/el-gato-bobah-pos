@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { medirAccion } from '../../../api/uso';
 import { Box, Button, HStack, Input, SimpleGrid, Stack, Text } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -45,6 +46,7 @@ export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Prop
       initialCost: cost.trim() === '' ? undefined : String(Number(cost) / (big?.factor ?? 1)),
     }),
     onSuccess: async ({ id }) => {
+      medirAccion('inventario', 'crear-articulo');
       await qc.invalidateQueries({ queryKey: ['articles'] });
       toaster.create({ title: `«${name.trim()}» quedó creado`, type: 'success' });
       onCreated(id);
