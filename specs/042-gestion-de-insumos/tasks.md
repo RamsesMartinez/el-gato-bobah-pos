@@ -39,7 +39,7 @@ Las reglas de la constitución que aplican a todas las tareas:
 - [X] T006 [P] Permiso `inventory.view`:
   - en `AllPermissions` (así lo recibe administrador) y en el rol gerente, en `server/internal/domain/permission.go` (con su test);
   - su espejo en `web/src/app/permissions.ts`.
-- [X] T007 [P] Las once acciones de FR-014 (sin `stock.count_confirm_asked`, que registra T049), más `ingredient.unit_changed.detail` y la lectura de FR-016:
+- [X] T007 [P] Las diez acciones de FR-014 (todas menos `stock.count_confirm_asked`, que registra T049), más `ingredient.unit_changed.detail` y la lectura de FR-016:
   - en la lista blanca de `server/internal/domain/audit.go`;
   - con sus etiquetas en `web/src/shared/audit/labels.ts`.
 - [X] T008 Test de la migración 0096 en `server/internal/integration/migration_0096_test.go`, sobre
