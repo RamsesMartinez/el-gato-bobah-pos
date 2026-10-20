@@ -171,7 +171,7 @@ aplicado (decisiones del dueño marcadas):
   y lista de pendientes: renglones de compra por recibir y mermas `pending` (el aviso dice cuáles).
   `supplier_items` no guarda cantidades en la base: no se toca. **Orden**: candado del artículo →
   `ingredients.base_unit_id` → recetas (con su `unit_id` nuevo) → empaques (se recalcula
-  `is_approximate`; uno que deja de cuadrar se retira y se lista) → movimientos y conteo → existencia.
+  `is_approximate`; uno que deja de cuadrar se archiva —`active = false`, nunca se borra— con su nombre y cantidad originales en la bitácora, y se lista en el paso 2) → movimientos y conteo → existencia.
   Test que recorre las FK hacia `ingredients` y truena si aparece una tabla no clasificada, y uno por
   cambio de clase (masa↔pieza, volumen↔pieza). La conversión entre masa y volumen no se ofrece.
   Excepción declarada en Complexity Tracking: reescribe movimientos, contra la regla de la 038.

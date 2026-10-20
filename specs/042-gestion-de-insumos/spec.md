@@ -278,7 +278,8 @@ en kg pide confirmar; escribir 740 en g, no.
   existencia de cada sucursal MUST ser igual a la suma de sus movimientos. El cambio MUST negarse
   mientras haya compras por recibir o mermas pendientes de aprobar del artículo, y el aviso dice
   cuáles faltan cerrar («Falta recibir la compra del 17 oct» o «Falta aprobar 1 merma»). En el
-  reemplazo, el artículo nuevo nace con el costo del viejo convertido.
+  reemplazo, el artículo nuevo nace con el costo del viejo convertido. Un empaque que no cuadra con
+  la unidad nueva se archiva, nunca se borra, y la bitácora guarda su valor original.
 - **FR-010**: Los empaques MUST mostrarse siempre con su equivalencia en la unidad del artículo, y
   la sección MUST explicar qué son con un ejemplo.
 - **FR-011**: Las sugerencias de empaque MUST ser solo de artículos con el mismo tipo de unidad, y

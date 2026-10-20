@@ -40,6 +40,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 </script>
 <h1>Lista de artículos</h1>
+<div class="example" style="margin-bottom:6px">Opción elegida: A, con los ajustes de la revisión</div>
 <p class="sub">Almacén › Artículos a 1024×600. Datos de ejemplo. Escribe en el buscador, toca los filtros y «Nuevo artículo». Para ver el aviso de un archivado, escribe «Cajeta» como nombre nuevo. Toca un renglón para ver qué abre.</p>
 <div class="tabs" role="tablist">
   <button class="tab" data-opt="A" role="tab">A · Filtros en chips</button>
@@ -89,11 +90,13 @@ const cost=i=>i.c?'$'+(i.u==='pz'?i.c.toFixed(2)+' / pz':(i.c*1000).toFixed(2)+(
 function rows(){return ITEMS.filter(i=>(st.status==='active'?i.a:!i.a)&&(!st.q||norm(i.n+' '+i.e.join(' ')).includes(norm(st.q)))&&(!st.place||(st.place==='Sin lugar'?!i.p:i.p===st.place))&&(!st.noCost||!i.c)&&(!st.neg||i.on<0))}
 function table(narrow){const rs=rows();return `<div class="list"><div class="r h ${narrow?'narrow':''}"><span>Artículo</span><span>Existencia</span><span>Lugar</span><span>Costo</span>${narrow?'':'<span>Empaques</span>'}</div>`+(rs.length?rs.map((i,x)=>`<div class="r ${narrow?'narrow':''}" data-i="${ITEMS.indexOf(i)}"><span class="n">${esc(i.n)}<br><span class="muted" style="font-weight:400;font-size:12px">Se mide en ${i.k}</span></span><span>${i.on<0?'<span class="tag neg">'+fmt(i.on,i.u)+'</span>':fmt(i.on,i.u)}</span><span class="muted">${i.p||'Sin lugar'}</span><span>${cost(i)}</span>${narrow?'':`<span class="muted" style="font-size:13px">${i.e.join(' · ')||'Sin empaques'}</span>`}</div>`).join(''):`<p style="padding:20px" class="muted">Ningún artículo coincide. Revisa los filtros o crea uno con «Nuevo artículo».</p>`)+'</div>'}
 const search=()=>`<input class="input" id="q" placeholder="Buscar artículo o empaque" value="${esc(st.q)}">`;
-const chipsHtml=()=>`<span style="display:inline-flex;border:1px solid var(--line);border-radius:22px;overflow:hidden;flex:none">${[['active','Activos'],['archived','Archivados']].map(([k,l])=>`<button class="chip" style="border:0;border-radius:0" data-status="${k}" aria-pressed="${st.status===k}">${l}</button>`).join('')}</span><button class="chip" data-f="noCost" aria-pressed="${st.noCost}">Sin costo</button><button class="chip" data-f="neg" aria-pressed="${st.neg}">Existencia negativa</button>`;
+const statusSeg=()=>`<span style="display:inline-flex;border:1px solid var(--line);border-radius:22px;overflow:hidden;flex:none">${[['active','Activos'],['archived','Archivados']].map(([k,l])=>`<button class="chip" style="border:0;border-radius:0" data-status="${k}" aria-pressed="${st.status===k}">${l}</button>`).join('')}</span>`;
+const flagChips=()=>`<button class="chip" data-f="noCost" aria-pressed="${st.noCost}">Sin costo</button><button class="chip" data-f="neg" aria-pressed="${st.neg}">Existencia negativa</button>`;
+const chipsHtml=()=>statusSeg()+flagChips();
 const placeChip=()=>`<button class="chip" data-f="place" aria-pressed="${!!st.place}">Lugar: ${st.place||'Todos'} ›</button>`;
 function render(){const f=document.getElementById('frame');let m='';
  const nfil=(st.status==='archived')+st.noCost+st.neg+!!st.place;
- if(opt==='A')m=`<div class="top">${search()}<button class="btn primary" data-a="new">+ Nuevo artículo</button></div><div class="row-chips">${placeChip()}${chipsHtml()}</div>${table(false)}`;
+ if(opt==='A')m=`<div class="top">${search()}${placeChip()}${statusSeg()}<button class="btn primary" data-a="new">+ Nuevo</button></div><div class="row-chips">${flagChips()}</div>${table(false)}`;
  if(opt==='B')m=`<div class="top">${search()}<button class="btn" data-a="filters">Filtros${nfil?' ('+nfil+')':''}</button><button class="btn primary" data-a="new">+ Nuevo artículo</button></div>${table(false)}`;
  if(opt==='C')m=`<div style="display:flex;gap:12px;flex:1;min-height:0"><div class="side"><button class="btn primary" data-a="new">+ Nuevo artículo</button><div class="lbl">LUGAR</div>${['Todos',...PL,'Sin lugar'].map(p=>`<button class="chip" data-place="${p}" aria-pressed="${(st.place||'Todos')===p}">${p}</button>`).join('')}<div class="lbl">MOSTRAR</div>${chipsHtml()}</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">${search()}${table(true)}</div></div>`;
  let sh='';

@@ -148,20 +148,31 @@ historial muestra compras y correcciones.
   - el SVG con `viewBox`;
   - «Archivar» al pie de la columna izquierda;
   - «Bitácora» en el encabezado.
+- [ ] T025 [P] [US3] Test vitest de la bitácora del artículo en
+  `web/src/features/backoffice/articles/ArticleAuditSheet.test.tsx`:
+  - pinta quién, cuándo y qué cambió;
+  - «Ver más» de 20 en 20;
+  - un usuario sin `inventory.view` no ve el botón.
+- [ ] T026 [US3] Bitácora del artículo como pantalla de lectura (FR-016) en
+  `web/src/features/backoffice/articles/ArticleAuditSheet.tsx`:
+  - hoja con los eventos del artículo y de sus empaques, del más reciente al más viejo, con
+    etiquetas de `shared/audit/labels.ts`;
+  - la ruta `GET /stock/articles/{id}/audit` con `RequirePermission(inventory.view)`;
+  - no promete otra pantalla de bitácora.
 
 ## Phase 6: User Story 4 — Archivar y reactivar (P2)
 
 **Independent test**: archivar un artículo sin recetas; deja de ofrecerse y sigue en su historia.
 
-- [ ] T025 [P] [US4] Tests de integración:
+- [ ] T027 [P] [US4] Tests de integración:
   - con receta activa da 409 con la lista (E4);
   - con un conteo abierto que lo capturó da 409;
   - con una compra por recibir se avisa y se archiva; recibirla después no lo reactiva (E5);
   - deja de ofrecerse en el gasto, la receta y el conteo (FR-008);
   - reactivar;
   - los eventos.
-- [ ] T026 [US4] Servicio y rutas de `archive-check`, archivar y reactivar.
-- [ ] T027 [US4] Diálogo de archivado: cada receta abre su `CompositionSheet` y regresa; sin
+- [ ] T028 [US4] Servicio y rutas de `archive-check`, archivar y reactivar.
+- [ ] T029 [US4] Diálogo de archivado: cada receta abre su `CompositionSheet` y regresa; sin
   bloqueos, confirma. Ajuste de la Revisión, en `ArticleSheet.tsx`.
 
 ## Phase 7: User Story 5 — Cambiar la unidad (P2)
@@ -169,27 +180,31 @@ historial muestra compras y correcciones.
 **Independent test**: un artículo solo con ajustes pasa de piezas a gramos y conserva sus recetas;
 uno con compras se reemplaza.
 
-- [ ] T028 [P] [US5] Tests de integración del cambio directo (E7, Revisión B2 y B3):
+- [ ] T030 [P] [US5] Tests de integración del cambio directo (E7, Revisión B2 y B3):
   - convierte existencia, ajustes, renglones de conteo, recetas, empaques, mínimo, costo y
     rendimiento;
   - la existencia queda igual a la suma de movimientos con el factor 1/150 y 30 ajustes;
   - el `before` guarda los originales por `batch_id`;
-  - un caso por cambio de clase (masa↔pieza, volumen↔pieza).
-- [ ] T029 [P] [US5] Test que recorre las FK hacia `ingredients` y truena si una tabla no está
+  - un caso por cambio de clase (masa↔pieza, volumen↔pieza);
+  - un empaque que no cuadra con la unidad nueva queda `active = false`, la fila sigue existiendo y
+    el `before` guarda su nombre, cantidad y unidad originales.
+- [ ] T031 [P] [US5] Test que recorre las FK hacia `ingredients` y truena si una tabla no está
   clasificada como «convierte» o «bloquea».
-- [ ] T030 [P] [US5] Tests de los bloqueos:
+- [ ] T032 [P] [US5] Tests de los bloqueos:
   - compra por recibir o merma pendiente da 409 `UNIT_CHANGE_PENDING` con lo que falta;
   - un conteo abierto da 409 (E9);
   - una venta concurrente con `nowait` da 409 `BUSY` (E6).
-- [ ] T031 [P] [US5] Tests del reemplazo (E8):
+- [ ] T033 [P] [US5] Tests del reemplazo (E8):
   - un `ajuste` de salida y otro de entrada por sucursal, con `replacement_id` y `branch_id`;
   - las recetas pasan con la cantidad convertida;
   - el nuevo nace con el costo convertido y su fila de corrección;
   - el viejo queda archivado;
+  - un empaque que no cuadra con la unidad nueva no pasa al nuevo y queda archivado en el viejo, con
+    su valor original en la bitácora;
   - deja el evento `ingredient.replaced`.
-- [ ] T032 [US5] Vista previa y aplicación en `app/ingredients_admin.go`, con el orden de escritura
-  de la Revisión B3, hasta que T028 a T031 pasen.
-- [ ] T033 [US5] `UnitChangeSheet.tsx` en dos pasos:
+- [ ] T034 [US5] Vista previa y aplicación en `app/ingredients_admin.go`, con el orden de escritura
+  de la Revisión B3, hasta que T030 a T033 pasen.
+- [ ] T035 [US5] `UnitChangeSheet.tsx` en dos pasos:
   - pie fijo;
   - grupos Existencia, Recetas y Empaques, con los que no convierten exacto primero;
   - «Revisar» deshabilitado sin clase o sin equivalencia;
@@ -199,11 +214,13 @@ uno con compras se reemplaza.
 
 **Independent test**: en un artículo en litros, las sugerencias no incluyen «Bolsa · 15 kg».
 
-- [ ] T034 [P] [US6] Tests de integración:
+- [ ] T036 [P] [US6] Tests de integración:
   - sugerencias por clase de unidad (E14);
-  - crear, editar y retirar un empaque deja su evento sin cambiar las compras pasadas.
-- [ ] T035 [US6] Ruta de sugerencias y `recordAudit` en las rutas de empaques que ya existen.
-- [ ] T036 [US6] Sección Empaques de la ficha:
+  - crear, editar y retirar un empaque deja su evento sin cambiar las compras pasadas;
+  - un empaque archivado por un cambio de unidad aparece en «Ya no llega así» y se puede consultar,
+    pero no reactivar si sigue sin cuadrar con la unidad (409).
+- [ ] T037 [US6] Ruta de sugerencias y `recordAudit` en las rutas de empaques que ya existen.
+- [ ] T038 [US6] Sección Empaques de la ficha:
   - la explicación con ejemplo;
   - «Bolsa · 5 kg = 5,000 g»;
   - las sugerencias con su cantidad;
@@ -214,39 +231,39 @@ uno con compras se reemplaza.
 **Independent test**: 740 kg en un artículo en gramos sin existencia pide confirmar; «No hay»
 guarda 0.
 
-- [ ] T037 [P] [US7] Tests de integración de la captura:
+- [ ] T039 [P] [US7] Tests de integración de la captura:
   - sin `confirmable` guarda aunque la cifra sea absurda (Revisión B1);
   - con `confirmable` da 409 `NEEDS_CONFIRM` sin revelar la referencia;
   - con `confirmed` guarda;
   - el peso crudo de un artículo en piezas con empaque aproximado lo convierte el servidor;
   - todos los empaques activos y no aproximados se ofrecen;
   - la búsqueda encuentra por nombre de empaque.
-- [ ] T038 [US7] Cambios en `app/stock_counts.go` y `queries/stock_counts.sql`.
-- [ ] T039 [P] [US7] Tests vitest:
+- [ ] T040 [US7] Cambios en `app/stock_counts.go` y `queries/stock_counts.sql`.
+- [ ] T041 [P] [US7] Tests vitest:
   - tocar la cantidad de un empaque lleva el teclado a ese renglón;
   - «+» y «−» ajustan de uno en uno;
   - «Guardar» sin captura no guarda;
   - «No hay»;
   - selector g/kg (o pz/g/kg con empaque aproximado) que abre en la base;
   - total fijo arriba con más de 3 empaques.
-- [ ] T040 [US7] Teclado en `StockCountTab.tsx` y `countEntry.ts` con `NumericKeypad`. Sigue la fila
+- [ ] T042 [US7] Teclado en `StockCountTab.tsx` y `countEntry.ts` con `NumericKeypad`. Sigue la fila
   «Teclado del conteo» de Maquetas, con aviso no bloqueante y regreso a la lista tras guardar.
 
 ## Phase 10: Polish & Cross-Cutting
 
-- [ ] T041 `TestEveryAuditActionIsProduced` en verde con las acciones nuevas.
-- [ ] T042 [P] `make api-build && make api-test`, `make test-integration`, `cd web && bun run lint
+- [ ] T043 `TestEveryAuditActionIsProduced` en verde con las acciones nuevas.
+- [ ] T044 [P] `make api-build && make api-test`, `make test-integration`, `cd web && bun run lint
   && bun run vitest run && bun run build`, y `make ci-local`.
-- [ ] T043 [P] Playwright a 1024×600 en `web/e2e/gestion-de-articulos.spec.ts`:
+- [ ] T045 [P] Playwright a 1024×600 en `web/e2e/gestion-de-articulos.spec.ts`:
   - lista con 6 o 7 renglones visibles;
   - ficha con la tableta de lado y de pie;
   - teclado del conteo.
   La prueba con usuario sin contexto corre en local (constitución 1.23.0).
-- [ ] T044 [P] Medición de uso: las pantallas nuevas van en `domain/uso.go` y
+- [ ] T046 [P] Medición de uso: las pantallas nuevas van en `domain/uso.go` y
   `web/src/app/rutas-medidas.ts`.
-- [ ] T045 Correr [quickstart.md](quickstart.md) contra la base restaurada y anotar en el plan, en
+- [ ] T047 Correr [quickstart.md](quickstart.md) contra la base restaurada y anotar en el plan, en
   «Al construir», lo que no se vio venir.
-- [ ] T046 En una subida posterior: borrar `POST /ingredients` (Revisión B1).
+- [ ] T048 En una subida posterior: borrar `POST /ingredients` (Revisión B1).
 
 ## Dependencies
 
@@ -261,7 +278,7 @@ guarda 0.
 ## Parallel examples
 
 - **Foundational:** T003, T004, T006 y T007 a la vez.
-- **US5:** T028, T029, T030 y T031 se escriben a la vez y después T032.
+- **US5:** T030, T031, T032 y T033 se escriben a la vez y después T034.
 - **US7** puede ir en paralelo con US2 a US6.
 
 ## Implementation strategy
