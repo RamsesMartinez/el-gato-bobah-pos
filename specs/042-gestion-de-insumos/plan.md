@@ -200,7 +200,7 @@ aplicado (decisiones del dueño marcadas):
 **Alto y medio (pantalla)**
 - La lista muestra ~6 renglones con el encabezado de Almacén: «Lugar» y «Activos / Archivados» suben
   a la fila del buscador y en chips quedan «Sin costo» y «Existencia negativa» (~7 renglones). Se
-  mide a 1024×600 contra la pantalla real.
+  mide a 1024×600 contra la pantalla real. Medido: 6 renglones de 44 px (ver «Al construir»).
 - Conteo: tocar la cantidad de un empaque lleva el `NumericKeypad` a ese renglón; «+» y «−» ajustan
   de uno en uno (decisión del dueño). «Guardar» sin captura no guarda y «No hay» registra el cero
   (decisión del dueño). Tras guardar, aviso no bloqueante y regreso a la lista del conteo.
