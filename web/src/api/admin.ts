@@ -73,7 +73,8 @@ export interface Composition {
   sameName?: { id: number; group: string; stamp?: string; today?: string }[];
 }
 export interface CompositionBody {
-  items: { ingredientId: number; quantity: string; unitId: number }[];
+  // Un insumo nuevo va con `newArticle` y sin id: el servidor lo crea al guardar la receta (spec 042).
+  items: { ingredientId?: number; newArticle?: { name: string; baseUnitId: number }; quantity: string; unitId: number }[];
   linkedProductId: number | null;
   components: { productId: number; quantity: number }[];
   yield?: string | null;

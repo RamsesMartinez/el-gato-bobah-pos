@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { formatBaseQty, purchaseUnitsFor } from './units';
+import { formatBaseQty, formatUnitCost, purchaseUnitsFor } from './units';
 import type { Unit } from '../api/backoffice';
 
 const units: Unit[] = [
@@ -48,5 +48,17 @@ describe('purchaseUnitsFor', () => {
   });
   test('pieza: piezas', () => {
     expect(purchaseUnitsFor('pieza', units).map((u) => u.code)).toEqual(['pieza']);
+  });
+});
+
+describe('formatUnitCost', () => {
+  test('dice el costo por la unidad en que se compra', () => {
+    expect(formatUnitCost('0.006', 'g')).toBe('$6.00 / kg');
+    expect(formatUnitCost('0.024', 'ml')).toBe('$24.00 / L');
+    expect(formatUnitCost('17.03', 'pieza')).toBe('$17.03 / pieza');
+    expect(formatUnitCost('0.5', 'cm')).toBe('$50.00 / m');
+  });
+  test('sin costo no inventa uno', () => {
+    expect(formatUnitCost('0', 'g')).toBeNull();
   });
 });

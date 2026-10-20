@@ -1,32 +1,28 @@
-import { describe, it, expect, vi } from 'vitest';
-import { ApiError } from '../api/client';
-import { createIngredientOrExisting } from './createIngredient';
+import { describe, it, expect } from 'vitest';
+import { existingByName, nextTempId } from './createIngredient';
 
-// Dar de alta un insumo que ya existe con otras mayúsculas o acentos (spec 037): el servidor lo
-// rechaza con 409, y quien captura —un gasto o una receta— recibe el que ya existe, con aviso, en
-// lugar de un error que se pierde.
-describe('createIngredientOrExisting', () => {
-  const existing = [{ id: 4, name: 'Lata Coca' }, { id: 5, name: 'Leche' }];
+// Un insumo que ya existe con otras mayúsculas o acentos se elige en vez de crear otro (spec 037), y
+// uno nuevo lleva un id provisional negativo hasta que su captura se guarda (spec 042, FR-003).
+describe('existingByName', () => {
+  const existing = [{ id: 4, name: 'Lata Coca' }, { id: 5, name: 'Leche' }, { id: -2, name: 'Jarabe' }];
 
-  it('sin conflicto, crea el insumo', async () => {
-    const create = vi.fn(() => Promise.resolve({ id: 9, name: 'Jarabe' }));
-    const r = await createIngredientOrExisting(create, { name: 'Jarabe', baseUnitId: 5 }, existing);
-    expect(r).toEqual({ ingredient: { id: 9, name: 'Jarabe' }, existed: false });
+  it('encuentra el que ya se llama así sin mayúsculas, acentos ni espacios de más', () => {
+    expect(existingByName('láta  coca', existing)).toEqual({ id: 4, name: 'Lata Coca' });
   });
-
-  it('con un 409, devuelve el que ya se llama así sin mayúsculas ni acentos', async () => {
-    const create = vi.fn(() => Promise.reject(new ApiError(409, 'CONFLICT', 'ya hay un insumo que se llama así', 'r1')));
-    const r = await createIngredientOrExisting(create, { name: 'láta  coca', baseUnitId: 5 }, existing);
-    expect(r).toEqual({ ingredient: { id: 4, name: 'Lata Coca' }, existed: true });
+  it('sin uno parecido no inventa', () => {
+    expect(existingByName('Otro', existing)).toBeUndefined();
   });
-
-  it('un 409 sin uno parecido en la lista se sigue reportando', async () => {
-    const create = vi.fn(() => Promise.reject(new ApiError(409, 'CONFLICT', 'ya hay un insumo que se llama así', 'r1')));
-    await expect(createIngredientOrExisting(create, { name: 'Otro', baseUnitId: 5 }, existing)).rejects.toThrow('ya hay un insumo');
+  it('uno provisional (todavía sin guardar) no cuenta como existente', () => {
+    expect(existingByName('Jarabe', existing)).toBeUndefined();
   });
+});
 
-  it('cualquier otro error no se disfraza de duplicado', async () => {
-    const create = vi.fn(() => Promise.reject(new ApiError(500, 'INTERNAL', 'falla', 'r1')));
-    await expect(createIngredientOrExisting(create, { name: 'Lata Coca', baseUnitId: 5 }, existing)).rejects.toThrow('falla');
+describe('nextTempId', () => {
+  it('da ids negativos y distintos', () => {
+    const a = nextTempId();
+    const b = nextTempId();
+    expect(a).toBeLessThan(0);
+    expect(b).toBeLessThan(0);
+    expect(a).not.toBe(b);
   });
 });

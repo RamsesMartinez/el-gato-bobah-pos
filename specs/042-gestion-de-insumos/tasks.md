@@ -82,10 +82,10 @@ funcionan solos y combinados.
 - [X] T012 [US1] Servicio `ListArticles` en `server/internal/app/ingredients_admin.go` y su handler
   en `server/internal/httpapi/handlers_ingredients_admin.go`. La ruta va con
   `RequirePermission(inventory.view)` en `router.go`.
-- [ ] T013 [P] [US1] Test vitest de la lista en
+- [X] T013 [P] [US1] Test vitest de la lista en
   `web/src/features/backoffice/articles/ArticlesTab.test.tsx`: buscador, chips, «Lugar» con
   «Sin lugar» y estado vacío.
-- [ ] T014 [US1] Lista en `web/src/features/backoffice/articles/ArticlesTab.tsx`. Reemplaza la
+- [X] T014 [US1] Lista en `web/src/features/backoffice/articles/ArticlesTab.tsx`. Reemplaza la
   pestaña de `StockPage.tsx`. Sigue la fila «Lista de artículos» de Maquetas y su ajuste: «Lugar»
   (`Picker`) y «Activos / Archivados» en la fila del buscador, y los chips «Sin costo» y
   «Existencia negativa». Se mide a 1024×600 con el encabezado real.
@@ -110,16 +110,16 @@ deja artículo.
   Aparte: `POST /ingredients` sigue respondiendo (Revisión B1).
 - [X] T017 [US2] `createArticleTx` en `app/ingredients_admin.go`. `app/expenses.go` y
   `app/composition.go` aceptan `newArticle` dentro de su transacción.
-- [ ] T018 [P] [US2] Tests vitest: cancelar la hoja no llama a la API; el gasto y la receta mandan
+- [X] T018 [P] [US2] Tests vitest: cancelar la hoja no llama a la API; el gasto y la receta mandan
   `newArticle` y ya no llaman a `createIngredient` (`ExpenseDialog.test.tsx` y
   `CompositionSheet.test.tsx`).
-- [ ] T019 [US2] Hoja «Nuevo artículo» en `web/src/features/backoffice/articles/NewArticleSheet.tsx`
+- [X] T019 [US2] Hoja «Nuevo artículo» en `web/src/features/backoffice/articles/NewArticleSheet.tsx`
   (Maquetas › Lista, ajuste del dueño):
   - hoja corta con encabezado fijo y los obligatorios marcados con *;
   - cantidades con número y selector de unidad;
   - «Reactivar» si el nombre está archivado;
   - al guardar, abre la ficha con «Agregar empaque» a la vista.
-- [ ] T020 [US2] Quitar en `ExpenseDialog.tsx` y `CompositionSheet.tsx` la creación al tocar la
+- [X] T020 [US2] Quitar en `ExpenseDialog.tsx` y `CompositionSheet.tsx` la creación al tocar la
   unidad, y mandar `newArticle` en su guardado.
 
 ## Phase 5: User Story 3 — Ver y editar la ficha (P1)
@@ -140,25 +140,25 @@ historial muestra compras y correcciones.
 - [X] T022 [US3] Servicio y rutas de ficha, editar, corregir costo, historial y bitácora (FR-004 a
   FR-006 y FR-016). El servidor entrega el costo por unidad, lo pagado por empaque y el porcentaje
   de tendencia contra la más vieja de las últimas 20, solo con 2 compras o más.
-- [ ] T023 [P] [US3] Tests vitest de la ficha:
+- [X] T023 [P] [US3] Tests vitest de la ficha:
   - «Ver más» de 20 en 20;
   - sin indicador con menos de 2 compras (E16);
   - «Corregir costo» oculto en un preparado;
   - «¿Descartar cambios?» al salir con cambios.
-- [ ] T024 [US3] Ficha en `web/src/features/backoffice/articles/ArticleSheet.tsx` y gráfica en
+- [X] T024 [US3] Ficha en `web/src/features/backoffice/articles/ArticleSheet.tsx` y gráfica en
   `CostTrend.tsx`. Sigue la fila «Ficha del artículo» de Maquetas, con:
   - dos columnas con `Page fill` y `minH={0}`, y una sola columna por debajo de 800 px;
   - el SVG con `viewBox`;
   - «Archivar» al pie de la columna izquierda;
   - «Bitácora» en el encabezado.
-- [ ] T025 [P] [US3] Test vitest de la bitácora del artículo en
+- [X] T025 [P] [US3] Test vitest de la bitácora del artículo en
   `web/src/features/backoffice/articles/ArticleAuditSheet.test.tsx`:
   - pinta quién, cuándo y qué cambió;
   - «Ver más» de 20 en 20;
   - un usuario sin `inventory.view` no ve el botón.
   Del lado del servidor, `GET /stock/articles/{id}/audit` sin `inventory.view` da 403 (en
   `ingredients_admin_test.go`).
-- [ ] T026 [US3] Bitácora del artículo como pantalla de lectura (FR-016) en
+- [X] T026 [US3] Bitácora del artículo como pantalla de lectura (FR-016) en
   `web/src/features/backoffice/articles/ArticleAuditSheet.tsx`:
   - hoja con los eventos del artículo y de sus empaques, del más reciente al más viejo, con
     etiquetas de `shared/audit/labels.ts`;
@@ -179,7 +179,7 @@ historial muestra compras y correcciones.
   - sin `inventory.configure`, archivar y reactivar dan 403;
   - `archive-check` en los tres casos (`inTheThreeCases`).
 - [X] T028 [US4] Servicio y rutas de `archive-check`, archivar y reactivar.
-- [ ] T029 [US4] Diálogo de archivado: cada receta abre su `CompositionSheet` y regresa; sin
+- [X] T029 [US4] Diálogo de archivado: cada receta abre su `CompositionSheet` y regresa; sin
   bloqueos, confirma. Ajuste de la Revisión, en `ArticleSheet.tsx`.
 
 ## Phase 7: User Story 5 — Cambiar la unidad (P2)

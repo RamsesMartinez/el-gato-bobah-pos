@@ -35,3 +35,14 @@ export function purchaseUnitsFor(kind: string, units: Unit[]): Unit[] {
     .filter((u) => u.kind === kind && !NOT_FOR_BUYING.has(u.code))
     .sort((a, b) => Number(b.toBase) - Number(a.toBase));
 }
+
+// formatUnitCost muestra un costo por unidad base («0.006», «g») como se compra: «$6.00 / kg».
+// Sin costo devuelve null: la pantalla decide cómo decirlo («Sin costo»).
+export function formatUnitCost(cost: string | number, baseUnitCode: string): string | null {
+  const n = typeof cost === 'number' ? cost : Number(cost);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const big = BIG[baseUnitCode];
+  const value = big ? n * big.at : n;
+  const per = big ? big.unit : baseUnitCode === 'pieza' ? 'pieza' : baseUnitCode;
+  return `$${value.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / ${per}`;
+}

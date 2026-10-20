@@ -632,6 +632,8 @@ export interface StockMovement {
 export interface ExpenseItemBody {
   itemType?: ItemType | '';
   ingredientId?: number;
+  // Un artículo que nace con este gasto (spec 042): se crea al guardar, no al elegir su unidad.
+  newArticle?: { name: string; baseUnitId: number };
   productId?: number;
   description: string;
   quantity: string;
@@ -949,6 +951,32 @@ export const backofficeApi = {
     return api.postForm<ParsedDoc>('/expenses/parse-doc', fd);
   },
 
+  // Artículos del almacén (spec 042): la lista con filtros, la ficha, su historial y su bitácora.
+  articles: (f: ArticleFilter = {}) => {
+    const qs = new URLSearchParams();
+    if (f.q?.trim()) qs.set('q', f.q.trim());
+    if (f.archived) qs.set('status', 'archived');
+    if (f.place === 'none') qs.set('placeId', 'none');
+    else if (typeof f.place === 'number') qs.set('placeId', String(f.place));
+    if (f.noCost) qs.set('noCost', '1');
+    if (f.negative) qs.set('negative', '1');
+    const q = qs.toString();
+    return api.get<ArticleRow[]>(`/stock/articles${q ? `?${q}` : ''}`);
+  },
+  createArticle: (b: ArticleCreate) => api.post<{ id: number }>('/stock/articles', b),
+  article: (id: number) => api.get<ArticleSheet>(`/stock/articles/${id}`),
+  updateArticle: (id: number, b: ArticleUpdate) => api.patch<void>(`/stock/articles/${id}`, b),
+  correctArticleCost: (id: number, cost: string) => api.post<void>(`/stock/articles/${id}/cost`, { cost }),
+  articleCostHistory: (id: number, before?: string) =>
+    api.get<CostHistoryPage>(`/stock/articles/${id}/cost-history${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+  articleArchiveCheck: (id: number) => api.get<ArchiveCheck>(`/stock/articles/${id}/archive-check`),
+  archiveArticle: (id: number) => api.post<void>(`/stock/articles/${id}/archive`, {}),
+  reactivateArticle: (id: number) => api.post<void>(`/stock/articles/${id}/reactivate`, {}),
+  articleCategories: () => api.get<{ id: number; name: string }[]>('/stock/ingredient-categories'),
+  createArticleCategory: (name: string) => api.post<{ id: number; name: string }>('/stock/ingredient-categories', { name }),
+  articleAudit: (id: number, before?: string) =>
+    api.get<ArticleAuditPage>(`/stock/articles/${id}/audit${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+
   // Catálogo de artículos (insumos) y buscador del detalle del gasto.
   units: () => api.get<{ items: Unit[] }>('/units'),
   ingredients: (onlyActive = false) =>
@@ -1047,4 +1075,80 @@ function qsReporte(q: ReportQuery): string {
     if (v !== undefined && v !== '') p.set(k, String(v));
   }
   return p.toString();
+}
+
+// Artículos del almacén (spec 042). Cantidades en la unidad base del artículo.
+export interface ArticleFilter {
+  q?: string;
+  archived?: boolean;
+  place?: number | 'none';
+  noCost?: boolean;
+  negative?: boolean;
+}
+export interface PresentationLabel { id: number; name: string; qtyInBase: string }
+export interface ArticleRow {
+  id: number;
+  name: string;
+  isActive: boolean;
+  baseUnitId: number;
+  baseUnitCode: string;
+  baseUnitKind: string;
+  currentCost: string;
+  minStock: string | null;
+  isPrep: boolean;
+  categoryId: number | null;
+  category: string | null;
+  countPlaceId: number | null;
+  countPlace: string | null;
+  onHand: string;
+  // Opcional a propósito: el compilador obliga a la guarda aunque el servidor siempre mande [] (AGENTS §1).
+  presentations?: PresentationLabel[];
+}
+export interface ArticleSheet extends ArticleRow {
+  costSource: string;
+  updatedAt: string;
+}
+export interface ArticleCreate {
+  name: string;
+  baseUnitId: number;
+  categoryId?: number | null;
+  placeId?: number | null;
+  minStock?: string;
+  initialCost?: string;
+  initialStock?: string;
+}
+export interface ArticleUpdate {
+  expectedUpdatedAt: string;
+  name: string;
+  categoryId: number | null;
+  placeId: number | null;
+  minStock: string | null;
+}
+export interface CostHistoryItem {
+  kind: 'purchase' | 'correction';
+  at: string;
+  id: number;
+  unitCost: string;
+  presentation: string | null;
+  packQty: string | null;
+  packCost: string | null;
+  supplier: string | null;
+  user: string | null;
+}
+export interface CostHistoryPage { items?: CostHistoryItem[]; next: string | null; trendPct: string | null }
+export interface ArticleAuditItem {
+  id: number;
+  at: string;
+  action: string;
+  entity: string;
+  actor: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}
+export interface ArticleAuditPage { items?: ArticleAuditItem[]; next: string | null }
+export interface ArchiveCheck {
+  onHand?: { branch: string; qty: string }[];
+  activeRecipes?: { kind: 'product' | 'option' | 'ingredient'; id: number; name: string }[];
+  openCount: boolean;
+  pendingReceipts: number;
 }
