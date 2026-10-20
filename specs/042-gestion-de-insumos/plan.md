@@ -45,7 +45,8 @@ propio de unas 60 líneas, sin librería nueva (principio VI).
   movimientos y validación de la ficha.
 - Integración bajo `appRoleStore` con `inTheThreeCases`.
 - Migración probada sobre el respaldo restaurado con dos empresas.
-- vitest de las cinco pantallas: lista, alta, ficha, bitácora y teclado del conteo.
+- vitest de las siete pantallas: lista, alta, ficha, archivar, cambio de unidad, bitácora y teclado
+  del conteo.
 - Playwright a 1024×600.
 
 **Target Platform**: tabletas de 7 a 10 pulgadas (1024×600)
@@ -111,7 +112,7 @@ El código de cada maqueta está en [maquetas/](maquetas/).
 
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|
-| Lista de artículos | https://claude.ai/artifact/XaiVPWAGVKzpU5eCtHvtRh | A: filtros en chips | Cada filtro es un toque y siempre se ve qué está puesto. Ajustes del dueño: empaques opcionales al crear, «Reactivar» si el nombre está archivado, obligatorios marcados, «Sin lugar» en el filtro de lugar y «Activos / Archivados» |
+| Lista de artículos | https://claude.ai/artifact/XaiVPWAGVKzpU5eCtHvtRh | A: filtros en chips | Cada filtro es un toque y siempre se ve qué está puesto. Ajustes del dueño: empaques opcionales al crear (superado después por la hoja corta: los empaques se capturan en la ficha), «Reactivar» si el nombre está archivado, obligatorios marcados, «Sin lugar» en el filtro de lugar y «Activos / Archivados» |
 | Ficha del artículo | https://claude.ai/artifact/HnMD8yqMYLQTMpDhsYdAGe | A: dos columnas | El costo y su gráfica se ven mientras se edita. Ajustes del dueño: indicador de tendencia, etiquetas legibles, historial de 20 con «Ver más» de 20 en 20, tendencia solo con 2 compras o más, bitácora del artículo y reemplazo guiado en dos pasos |
 | Teclado del conteo | https://claude.ai/artifact/QxfyGDwfrby4md58ACjE5c | A: empaques con + y − | Los empaques cerrados se cuentan a toques y la unidad de lo suelto está junto al número. Ajustes del dueño: ejemplos con último conteo y en piezas (tope 5,000); con más de 3 empaques, el total queda fijo arriba |
 
