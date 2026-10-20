@@ -979,6 +979,8 @@ export const backofficeApi = {
   correctArticleCost: (id: number, cost: string) => api.post<void>(`/stock/articles/${id}/cost`, { cost }),
   articleCostHistory: (id: number, before?: string) =>
     api.get<CostHistoryPage>(`/stock/articles/${id}/cost-history${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+  previewUnitChange: (id: number, b: UnitChangeBody) => api.post<UnitChangePreview>(`/stock/articles/${id}/unit/preview`, b),
+  changeUnit: (id: number, b: UnitChangeBody) => api.post<void>(`/stock/articles/${id}/unit`, b),
   articleArchiveCheck: (id: number) => api.get<ArchiveCheck>(`/stock/articles/${id}/archive-check`),
   archiveArticle: (id: number) => api.post<void>(`/stock/articles/${id}/archive`, {}),
   reactivateArticle: (id: number) => api.post<void>(`/stock/articles/${id}/reactivate`, {}),
@@ -1163,4 +1165,23 @@ export interface ArchiveCheck {
   activeRecipes?: { kind: 'product' | 'option' | 'ingredient'; id: number; name: string }[];
   openCount: boolean;
   pendingReceipts: number;
+}
+export interface UnitChangeBody {
+  baseUnitId: number;
+  factor: string;
+  overrides?: Record<string, string>;
+}
+export interface UnitConversion {
+  key: string;
+  group: 'stock' | 'recipe' | 'presentation';
+  label: string;
+  from: string;
+  to: string;
+  fits: boolean;
+}
+export interface UnitChangePreview {
+  path: 'direct' | 'replace';
+  fromUnit: string;
+  toUnit: string;
+  conversions?: UnitConversion[];
 }

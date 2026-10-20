@@ -18,6 +18,7 @@ import { PresentationsSheet } from '../PresentationsSheet';
 import { CostTrend } from './CostTrend';
 import { ArticleAuditSheet } from './ArticleAuditSheet';
 import { ArchiveSheet } from './ArchiveSheet';
+import { UnitChangeSheet } from './UnitChangeSheet';
 import { QtyWithUnit } from './qty';
 import { baseQty, bigUnitOf, KIND_WORD, type Kind } from './articleUnits';
 
@@ -70,7 +71,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
     getNextPageParam: (p) => p.next ?? undefined,
   });
   const [form, setForm] = useState<Form | null>(null);
-  const [panel, setPanel] = useState<'audit' | 'archive' | 'packs' | 'recipe' | 'cost' | 'discard' | null>(null);
+  const [panel, setPanel] = useState<'audit' | 'archive' | 'packs' | 'recipe' | 'cost' | 'discard' | 'unit' | null>(null);
   const [cost, setCost] = useState('');
 
   useEffect(() => {
@@ -167,6 +168,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
                 <QtyWithUnit label="Mínimo" kind={kind} value={form.min} onChange={(min) => setForm({ ...form, min })} />
                 <HStack justify="space-between" minH="44px">
                   <Text>Se mide en <b>{KIND_WORD[kind]}</b> ({a.baseUnitCode === 'pieza' ? 'piezas' : a.baseUnitCode})</Text>
+                  {canConfigure && a.isActive && <Button minH="44px" variant="outline" onClick={() => setPanel('unit')}>Cambiar ›</Button>}
                 </HStack>
                 {!justCreated && <PacksBlock />}
                 <Button minH="44px" variant="outline" justifyContent="flex-start" onClick={() => setPanel('recipe')}>
@@ -228,6 +230,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
       </DrawerContent>
 
       {panel === 'audit' && <ArticleAuditSheet id={id} name={a?.name ?? ''} onClose={() => setPanel(null)} />}
+      {panel === 'unit' && a && <UnitChangeSheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />}
       {panel === 'archive' && a && <ArchiveSheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />}
       {panel === 'recipe' && a && <CompositionSheet kind="ingredient" id={id} name={a.name} open onClose={() => setPanel(null)} />}
       {panel === 'packs' && a && (

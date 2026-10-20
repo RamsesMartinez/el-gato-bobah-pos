@@ -212,7 +212,7 @@ uno con compras se reemplaza.
   - deja el evento `ingredient.replaced`.
 - [X] T034 [US5] Vista previa y aplicación en `app/ingredients_admin.go`, con el orden de escritura
   de la Revisión B3, hasta que T030 a T033 pasen.
-- [ ] T035 [US5] `UnitChangeSheet.tsx` en dos pasos:
+- [X] T035 [US5] `UnitChangeSheet.tsx` en dos pasos:
   - pie fijo;
   - grupos Existencia, Recetas y Empaques, con los que no convierten exacto primero;
   - «Revisar» deshabilitado sin clase o sin equivalencia;
