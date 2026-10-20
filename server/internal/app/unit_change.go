@@ -120,7 +120,7 @@ func planUnitChange(ctx context.Context, q *db.Queries, art db.LockArticleNowait
 		return p, domain.UnitChangePending{Receipts: int(receipts), Waste: int(waste)}
 	}
 	if p.path == domain.UnitPathReplace && art.IsPrep {
-		return p, fmt.Errorf("%w: un preparado con movimientos cambia de unidad desde su receta", domain.ErrValidation)
+		return p, fmt.Errorf("%w: un preparado con movimientos cambia de unidad desde su receta", domain.ErrConflict)
 	}
 	if p.recipes, err = q.ArticleRecipeItems(ctx, id); err != nil {
 		return p, err

@@ -48,8 +48,17 @@ explícito.
 - `stock_movements (company_id, ingredient_id, created_at desc, id desc) where movement_type =
   'compra'`: historial de costos.
 
-Las dos tablas tienen RLS con `nullif`, `select, insert` para `gatobobah_app` y entran a
-`TestEveryCompanyTableIsIsolated`.
+Las dos tablas tienen RLS con `nullif` y entran a `TestEveryCompanyTableIsIsolated`. Grants para
+`gatobobah_app`: `select, insert` en `ingredient_replacements`, y `select, insert, update` en
+`ingredient_cost_corrections`: el cambio directo de unidad convierte las correcciones ya guardadas.
+
+## Migración 0097 (revisión de código)
+
+- `ingredients (category_id, company_id)` → `ingredient_categories (id, company_id)`: llave compuesta
+  que no deja ligar un artículo a la categoría de otra empresa; un artículo sin categoría sigue
+  valiendo. Reemplaza a `ingredients_category_id_fkey`, que la bajada regresa.
+- Índice `stock_count_lines_by_ingredient (company_id, ingredient_id)`: los renglones de conteo de
+  un artículo sin pasar por el conteo.
 
 ## Transiciones del artículo
 

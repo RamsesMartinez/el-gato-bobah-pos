@@ -44,7 +44,8 @@ Las reglas de la constitución que aplican a todas las tareas:
   - con sus etiquetas en `web/src/shared/audit/labels.ts`.
 - [X] T008 Test de la migración 0096 en `server/internal/integration/migration_0096_test.go`, sobre
   el respaldo restaurado con dos empresas:
-  - las dos tablas con RLS `nullif` y grants `select, insert`;
+  - las dos tablas con RLS `nullif`; grants `select, insert` en `ingredient_replacements` y
+    `select, insert, update` en `ingredient_cost_corrections` (el cambio directo convierte correcciones);
   - las FK compuestas `no action`, y que borrar una empresa en cascada no truena;
   - `check old <> new`;
   - `stock_movements.replacement_id`;
@@ -180,7 +181,8 @@ historial muestra compras y correcciones.
   - `archive-check` en los tres casos (`inTheThreeCases`).
 - [X] T028 [US4] Servicio y rutas de `archive-check`, archivar y reactivar.
 - [X] T029 [US4] Diálogo de archivado: cada receta abre su `CompositionSheet` y regresa; sin
-  bloqueos, confirma. Ajuste de la Revisión, en `ArticleSheet.tsx`.
+  bloqueos, confirma. Ajuste de la Revisión, en `ArticleSheet.tsx`. Prueba de pantalla: «Archivar»
+  en `web/src/features/backoffice/articles/ArticleSheets.test.tsx`.
 
 ## Phase 7: User Story 5 — Cambiar la unidad (P2)
 
@@ -235,6 +237,8 @@ uno con compras se reemplaza.
   - «Bolsa · 5 kg = 5,000 g»;
   - las sugerencias con su cantidad;
   - «Se pesa también» para el empaque aproximado («Kilo ≈ 400 pz»).
+  - Prueba de pantalla: `web/src/features/backoffice/PresentationsSheet.test.tsx` y los casos de
+    empaques de `articles/ArticleSheets.test.tsx`.
 
 ## Phase 9: User Story 7 — Contar sin equivocarse (P2)
 
@@ -253,7 +257,7 @@ guarda 0.
   - tocar la cantidad de un empaque lleva el teclado a ese renglón;
   - «+» y «−» ajustan de uno en uno;
   - «Guardar» sin captura no guarda;
-  - «No hay»;
+  - «No hay» pregunta «¿No hay nada de …?» y solo guarda 0 al confirmar, sin el aviso de cifra;
   - selector g/kg (o pz/g/kg con empaque aproximado) que abre en la base;
   - total fijo arriba con más de 3 empaques.
 - [X] T042 [US7] Teclado en `StockCountTab.tsx` y `countEntry.ts` con `NumericKeypad`. Sigue la fila
@@ -282,6 +286,11 @@ guarda 0.
 - [X] T050 Migración `server/migrations/0097_article_category_key.sql` (llave `(category_id,
   company_id)` y el índice `stock_count_lines_by_ingredient`) con su prueba
   `server/internal/integration/migration_0097_test.go`; la revisa `db-architect` (Revisión de código).
+  La prueba cubre los tres casos que pidió: categoría de la misma empresa, artículo sin categoría y
+  que la bajada quite el índice.
+- [X] T051 [US5] Un preparado con movimientos rechaza el cambio de unidad con 409 «cambia de unidad
+  desde su receta» (FR-009): `TestAPrepWithMovementsChangesUnitFromItsRecipe` en
+  `server/internal/integration/unit_change_test.go`, vista en rojo con el 400 de antes.
 - [ ] T048 En una subida posterior: borrar `POST /ingredients` (Revisión B1). Seguimiento en el issue
   #115, «Quitar POST /ingredients en la subida siguiente a la 042».
 

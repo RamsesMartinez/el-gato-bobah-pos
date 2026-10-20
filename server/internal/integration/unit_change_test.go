@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -381,5 +382,28 @@ func TestUnitChangeHTTPNeedsConfigure(t *testing.T) {
 	admin := token("unidad_admin", "admin")
 	if w := do(t, r, http.MethodPost, "/api/v1/stock/articles/"+id+"/unit", admin, body, "application/json"); w.Code != http.StatusNoContent {
 		t.Fatalf("admin = %d %s", w.Code, w.Body.String())
+	}
+}
+
+// Un preparado con movimientos no se reemplaza desde la ficha: su unidad cuelga del rendimiento de
+// su receta. Respondía 400, como si la equivalencia estuviera mal escrita; es un conflicto con el
+// estado del artículo, igual que corregir el costo de un preparado (FR-009).
+func TestAPrepWithMovementsChangesUnitFromItsRecipe(t *testing.T) {
+	t.Parallel()
+	r, st, token := newStockAPI(t)
+	base := ingredientIn(t, st, defaultCompanyID, "Azúcar para jarabe", "g")
+	prep := ingredientIn(t, st, defaultCompanyID, "Jarabe con historia", "pieza")
+	recipe := makeRecipe(t, st, map[int64]string{base: "10"})
+	if _, err := st.Pool.Exec(context.Background(), `update ingredients set is_prep = true, recipe_id = $2, yield_qty = 1000 where id = $1`, prep, recipe); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(context.Background(), `insert into stock_movements (company_id, item_type, ingredient_id, movement_type, quantity)
+		values ($1, 'ingrediente', $2, 'produccion', 1000)`, defaultCompanyID, prep); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"baseUnitId":` + strconv.Itoa(int(gramos(t, st))) + `,"factor":"250"}`)
+	w := do(t, r, http.MethodPost, "/api/v1/stock/articles/"+strconv.FormatInt(prep, 10)+"/unit", token("prep_admin", "admin"), body, "application/json")
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "cambia de unidad desde su receta") {
+		t.Fatalf("= %d %s; quiere 409 «cambia de unidad desde su receta»", w.Code, w.Body.String())
 	}
 }

@@ -68,6 +68,24 @@ func TestMigrationArticleCategoryKeyOnARealBackup(t *testing.T) {
 		_, err := st.Pool.Exec(ctx, `update ingredients set category_id = $2 where id = $1`, ingA, catB)
 		exigeViolacionDeRestriccion(t, err, "ligar un artículo a la categoría de otra empresa")
 	})
+	t.Run("sigue dejando ligar a una categoría de la misma empresa", func(t *testing.T) {
+		var catA int64
+		if err := st.Pool.QueryRow(ctx, `insert into ingredient_categories (company_id, name) values ($1, 'Categoría 0097 A') returning id`, coA).Scan(&catA); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			_, _ = st.Pool.Exec(context.Background(), `update ingredients set category_id = null where id = $1`, ingA)
+			_, _ = st.Pool.Exec(context.Background(), `delete from ingredient_categories where id = $1`, catA)
+		})
+		if _, err := st.Pool.Exec(ctx, `update ingredients set category_id = $2 where id = $1`, ingA, catA); err != nil {
+			t.Fatalf("una llave que lo rechaza todo también pasaría el caso de otra empresa: %v", err)
+		}
+	})
+	t.Run("un artículo sin categoría sigue siendo válido", func(t *testing.T) {
+		if _, err := st.Pool.Exec(ctx, `update ingredients set category_id = null where id = $1`, ingA); err != nil {
+			t.Fatalf("la llave compuesta no debe exigir categoría: %v", err)
+		}
+	})
 	t.Run("el índice de renglones de conteo por artículo existe y empieza por la empresa", func(t *testing.T) {
 		var def string
 		if err := st.Pool.QueryRow(ctx, `select indexdef from pg_indexes where indexname = 'stock_count_lines_by_ingredient'`).Scan(&def); err != nil {
@@ -82,6 +100,9 @@ func TestMigrationArticleCategoryKeyOnARealBackup(t *testing.T) {
 		var n int
 		if err := st.Pool.QueryRow(ctx, `select count(*) from pg_constraint where conname = 'ingredients_category_id_fkey'`).Scan(&n); err != nil || n != 1 {
 			t.Fatalf("tras el Down la llave de antes = %d %v", n, err)
+		}
+		if err := st.Pool.QueryRow(ctx, `select count(*) from pg_indexes where indexname = 'stock_count_lines_by_ingredient'`).Scan(&n); err != nil || n != 0 {
+			t.Fatalf("tras el Down el índice sigue = %d %v", n, err)
 		}
 		migrarArriba(t, st.Pool)
 	})

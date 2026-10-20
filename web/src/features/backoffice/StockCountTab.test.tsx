@@ -283,6 +283,7 @@ describe('Teclado del conteo (spec 042)', () => {
     await abrir();
     expect(await screen.findByRole('button', { name: 'Guardar' })).toBeDisabled();
     click('No hay');
+    expect(screen.getByText(/¿No hay nada de .+\?/)).toBeInTheDocument();
     expect(back.captureCount).not.toHaveBeenCalled();
     click('Sí, no hay');
     await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, { countedQty: '0', confirmable: true }));

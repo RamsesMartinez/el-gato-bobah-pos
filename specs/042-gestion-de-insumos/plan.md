@@ -228,7 +228,7 @@ aplicado (decisiones del dueño marcadas):
   ahora admite una sola consulta, `SetArticleUnit`, la del cambio de unidad.
 - **Convertir las correcciones de costo en el cambio directo** pidió `update` sobre
   `ingredient_cost_corrections` (la 0096 daba solo `select, insert`).
-- **El reemplazo de un preparado con movimientos no se hace**: responde 400 «cambia de unidad desde su
+- **El reemplazo de un preparado con movimientos no se hace**: responde 409 (era 400; corregido tras la revisión, con su prueba) «cambia de unidad desde su
   receta». Mover su receta al nuevo no estaba en el plan; queda pendiente si hace falta.
 - **En el cambio directo la existencia no se corrige a mano**: es la suma de su historia convertida.
   Las correcciones se ofrecen en recetas y empaques; en el reemplazo, también en la existencia.

@@ -6,6 +6,7 @@ import { useSessionStore } from '../../../stores/session';
 import { Provider } from '../../../components/ui/provider';
 import { ApiError } from '../../../api/client';
 import { NewArticleSheet } from './NewArticleSheet';
+import { ArchiveSheet } from './ArchiveSheet';
 import { ArticleSheet } from './ArticleSheet';
 import { ArticleAuditSheet } from './ArticleAuditSheet';
 import { whatChanged } from './articleAudit';
@@ -32,6 +33,8 @@ const back = vi.hoisted(() => ({
   articleAudit: vi.fn(),
   correctArticleCost: vi.fn(() => Promise.resolve()),
   presentationSuggestions: vi.fn(() => Promise.resolve([])),
+  articleArchiveCheck: vi.fn(),
+  archiveArticle: vi.fn(() => Promise.resolve()),
 }));
 vi.mock('../../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 const pos = vi.hoisted(() => ({ businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) }));
@@ -236,5 +239,25 @@ describe('Bitácora del artículo', () => {
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
     await screen.findByDisplayValue('Hielo en bolsa');
     expect(screen.queryByRole('button', { name: 'Bitácora' })).toBeNull();
+  });
+});
+
+// US4 (FR-007): una receta activa impide archivar, pero no es un callejón: cada una se abre desde aquí.
+describe('Archivar', () => {
+  it('con una receta activa no deja archivar y ofrece abrir esa receta', async () => {
+    back.articleArchiveCheck.mockResolvedValue({ activeRecipes: [{ kind: 'product', id: 5, name: 'Frappé de mango' }], onHand: [], pendingReceipts: 0, openCount: false });
+    montar(<ArchiveSheet article={ficha as never} onClose={vi.fn()} onDone={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: /Frappé de mango/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Archivar' })).toBeDisabled();
+  });
+
+  it('sin bloqueos, muestra lo que queda en existencia y archiva al confirmar', async () => {
+    back.articleArchiveCheck.mockResolvedValue({ activeRecipes: [], onHand: [{ branch: 'Matriz', qty: '27000' }], pendingReceipts: 0, openCount: false });
+    const onDone = vi.fn();
+    montar(<ArchiveSheet article={ficha as never} onClose={vi.fn()} onDone={onDone} />);
+    expect(await screen.findByText(/en Matriz/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Archivar' }));
+    await waitFor(() => expect(back.archiveArticle).toHaveBeenCalledWith(7));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
 });

@@ -277,8 +277,8 @@ en kg pide confirmar; escribir 740 en g, no.
   puede corregir antes de confirmar, y todo es una sola operación. También se convierten el
   mínimo, el costo actual (÷ equivalencia) y el rendimiento de un preparado; al terminar, la
   existencia de cada sucursal MUST ser igual a la suma de sus movimientos. **Excepción:** un
-  preparado con movimientos no se reemplaza desde aquí; el cambio se rechaza con «cambia de unidad
-  desde su receta». El cambio MUST negarse
+  preparado con movimientos no se reemplaza desde aquí; el cambio se rechaza con 409 y «cambia de
+  unidad desde su receta». El cambio MUST negarse
   mientras haya compras por recibir o mermas pendientes de aprobar del artículo, y el aviso dice
   cuáles faltan cerrar («Falta recibir la compra del 17 oct» o «Falta aprobar 1 merma»). En el
   reemplazo, el artículo nuevo nace con el costo del viejo convertido. Un empaque que no cuadra con

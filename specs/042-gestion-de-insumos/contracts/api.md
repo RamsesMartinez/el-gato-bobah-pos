@@ -26,5 +26,7 @@ Todas las rutas van bajo `/api/v1` y piden sesión. **V** = `inventory.view` y *
 - 409 `IN_ACTIVE_RECIPES`, `OPEN_COUNT`, `PREP_COST` y `UNIT_CHANGE_PENDING` (con las compras por recibir y las mermas pendientes).
 - `POST /ingredients` se conserva una subida más para las tabletas con la pantalla anterior.
 - 409 `BUSY`, de un `nowait`.
+- 409 `CONFLICT` «un preparado con movimientos cambia de unidad desde su receta», en
+  `/unit/preview` y `/unit` (FR-009).
 - 409 `BRANCH_AMBIGUOUS`.
 - 400 por validación.
