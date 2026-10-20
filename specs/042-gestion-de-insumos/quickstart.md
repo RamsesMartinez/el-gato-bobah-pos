@@ -16,8 +16,9 @@ sesión de administrador.
    directo (solo tiene ajustes), la existencia debe quedar en 2 piezas y la bitácora debe guardar
    los ml originales.
 6. **Conteo**: abre un conteo y escribe 740 kg en un artículo en gramos sin existencia. Debe pedir
-   confirmar mostrando «740 kg» en grande. Tocar «Guardar» sin capturar nada no debe guardar.
-   Tocar «No hay» debe guardar 0 sin pedir confirmación.
+   confirmar mostrando «740 kg» en grande. Sin nada capturado, «Guardar» debe estar apagado.
+   Tocar «No hay» debe preguntar «¿No hay nada de …?» y, al confirmar, guardar 0 sin el aviso
+   de cifra.
 7. **Archivar**: archiva «Leche prueba». Debe dejar de ofrecerse en el gasto, y el filtro
    «Archivados» debe mostrarlo.
 
