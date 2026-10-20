@@ -270,11 +270,9 @@ en kg pide confirmar; escribir 740 en g, no.
 - **FR-011**: Las sugerencias de empaque MUST ser solo de artículos con el mismo tipo de unidad, y
   cada una MUST llevar su cantidad.
 - **FR-012**: El conteo MUST ofrecer todos los empaques activos y no aproximados del artículo, un
-  selector visible de unidad suelta (g o kg, ml o L, cm o m) con la unidad base elegida al abrir.
-  Un artículo en piezas con un empaque aproximado por peso («Kilo ≈ 400 pz») ofrece también g y kg
-  para lo suelto; lo pesado se convierte a piezas con esa equivalencia, el total se muestra con «≈»
-  y se guarda en piezas, sin tocar sus recetas. Sin ese empaque, en piezas no hay selector. MUST
-  mostrar la unidad del mismo tamaño que el número y buscar también por nombre de empaque. Antes de guardar MUST pedir confirmación, mostrando la cifra con su unidad en
+  selector visible de unidad suelta (g o kg, ml o L, cm o m; en piezas no aplica) con la unidad
+  base elegida al abrir, mostrar la unidad del mismo tamaño que el número y buscar también por
+  nombre de empaque. Antes de guardar MUST pedir confirmación, mostrando la cifra con su unidad en
   grande, cuando la cifra pase la referencia del artículo, en este orden:
   1. Existencia esperada positiva: más de 10 veces mayor o menor que ella.
   2. Si no: el último conteo cerrado del artículo con cifra positiva, con la misma regla.
