@@ -106,3 +106,15 @@ func TestConvertQty(t *testing.T) {
 		t.Fatalf("costo convertido = %s, quería 30", got)
 	}
 }
+
+func TestTrendPct(t *testing.T) {
+	if got := TrendPct(dec("0.022"), dec("0.02")); got == nil || !got.Equal(dec("10")) {
+		t.Fatalf("0.022 contra 0.02 = %v, quería 10", got)
+	}
+	if got := TrendPct(dec("0.018"), dec("0.02")); got == nil || !got.Equal(dec("-10")) {
+		t.Fatalf("0.018 contra 0.02 = %v, quería -10", got)
+	}
+	if got := TrendPct(dec("1"), dec("0")); got != nil {
+		t.Fatalf("sin referencia = %v, quería nil", got)
+	}
+}

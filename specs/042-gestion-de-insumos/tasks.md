@@ -127,7 +127,7 @@ deja artículo.
 **Independent test**: renombrar y cambiar el mínimo. El nombre nuevo se ve en recetas y conteo. El
 historial muestra compras y correcciones.
 
-- [ ] T021 [P] [US3] Tests de integración:
+- [X] T021 [P] [US3] Tests de integración:
   - `PATCH` con `updated_at` viejo da 409 `STALE` (E3);
   - renombrar a un nombre que existe da 409;
   - `POST …/cost` en un preparado da 409 (E11);
@@ -137,7 +137,7 @@ historial muestra compras y correcciones.
   - sin `inventory.configure`, editar y corregir el costo dan 403; sin `inventory.view`, la ficha,
     el historial y la bitácora dan 403;
   - los tres `inTheThreeCases`.
-- [ ] T022 [US3] Servicio y rutas de ficha, editar, corregir costo, historial y bitácora (FR-004 a
+- [X] T022 [US3] Servicio y rutas de ficha, editar, corregir costo, historial y bitácora (FR-004 a
   FR-006 y FR-016). El servidor entrega el costo por unidad, lo pagado por empaque y el porcentaje
   de tendencia contra la más vieja de las últimas 20, solo con 2 compras o más.
 - [ ] T023 [P] [US3] Tests vitest de la ficha:

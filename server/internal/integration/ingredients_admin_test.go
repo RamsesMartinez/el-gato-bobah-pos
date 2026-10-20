@@ -369,3 +369,170 @@ func TestCreatingArticlesHTTP(t *testing.T) {
 		t.Fatalf("la ruta vieja = %d; debe seguir viva una subida más", w.Code)
 	}
 }
+
+// US3: la ficha se edita sin pisar lo que otra persona guardó; el costo se corrige a mano salvo en un
+// preparado; el historial es por compra y la bitácora junta lo del artículo y sus empaques.
+func TestEditingAnArticle(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	ctx := app.WithActorUser(k.ctx, k.user)
+	svc := k.svc
+
+	t.Run("editar con la versión vigente guarda y deja ingredient.updated con lo que cambió", func(t *testing.T) {
+		a, err := svc.GetArticle(ctx, k.azucar)
+		if err != nil {
+			t.Fatal(err)
+		}
+		min := qty("5000")
+		if err := svc.UpdateArticle(ctx, k.azucar, app.ArticleUpdate{ExpectedUpdatedAt: a.UpdatedAt, Name: "Azúcar estándar", MinStock: &min}); err != nil {
+			t.Fatal(err)
+		}
+		b, _ := svc.GetArticle(ctx, k.azucar)
+		if b.Name != "Azúcar estándar" || b.MinStock == nil || !b.MinStock.Equal(min) {
+			t.Fatalf("ficha = %+v", b)
+		}
+		if n := auditCount(t, k.st, "ingredient.updated", k.azucar); n != 1 {
+			t.Fatalf("eventos = %d", n)
+		}
+		t.Run("con la versión vieja: 409 y no pisa", func(t *testing.T) {
+			err := svc.UpdateArticle(ctx, k.azucar, app.ArticleUpdate{ExpectedUpdatedAt: a.UpdatedAt, Name: "Otro nombre"})
+			if !errors.Is(err, domain.ErrArticleStale) {
+				t.Fatalf("= %v; quiere ErrArticleStale", err)
+			}
+		})
+	})
+	t.Run("renombrar al nombre de otro artículo: 409 con cuál", func(t *testing.T) {
+		otro := ingredientIn(t, k.st, defaultCompanyID, "Piloncillo", "g")
+		a, _ := svc.GetArticle(ctx, otro)
+		err := svc.UpdateArticle(ctx, otro, app.ArticleUpdate{ExpectedUpdatedAt: a.UpdatedAt, Name: "AZUCAR ESTANDAR"})
+		var taken domain.ArticleNameTaken
+		if !errors.As(err, &taken) || taken.ID != k.azucar {
+			t.Fatalf("= %v", err)
+		}
+	})
+	t.Run("corregir el costo de un preparado: 409", func(t *testing.T) {
+		prep := ingredientIn(t, k.st, defaultCompanyID, "Jarabe de la casa", "ml")
+		recipe := makeRecipe(t, k.st, map[int64]string{k.azucar: "10"})
+		if _, err := k.st.Pool.Exec(context.Background(), `update ingredients set is_prep = true, recipe_id = $2, yield_qty = 1000 where id = $1`, prep, recipe); err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.CorrectArticleCost(ctx, prep, qty("0.05")); !errors.Is(err, domain.ErrPrepCost) {
+			t.Fatalf("= %v; quiere ErrPrepCost", err)
+		}
+	})
+
+	// Dos compras, un regalo y una corrección: el historial muestra las dos compras y la corrección, la
+	// más reciente arriba, con el empaque y lo pagado por empaque; el regalo no es un costo.
+	if _, err := svc.CreateExpense(ctx, k.bultos("2", "1000")); err != nil { // 0.02 por g
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateExpense(ctx, k.bultos("1", "600")); err != nil { // 0.024 por g
+		t.Fatal(err)
+	}
+	gift := qty("1")
+	if _, err := svc.CreateExpense(ctx, app.ExpenseInput{ReceivedAt: "2026-07-21", CategoryID: k.category, Amount: qty("1"), Status: domain.ExpensePendiente, UserID: k.user,
+		Items: []app.ExpenseItemInput{
+			{ItemType: "ingrediente", IngredientID: &k.azucar, Description: "Regalo", Quantity: gift, PresentationID: &k.bulto, QtyReceived: &gift, IsGift: true},
+			{Description: "Bolsa", Quantity: qty("1"), Amount: qty("1")},
+		}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.CorrectArticleCost(ctx, k.azucar, qty("0.022")); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("historial: compras y corrección, sin el regalo, la más reciente arriba", func(t *testing.T) {
+		page, err := svc.ArticleCostHistory(ctx, k.azucar, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		kinds := []string{}
+		for _, r := range page.Items {
+			kinds = append(kinds, r.Kind)
+		}
+		if !slices.Equal(kinds, []string{"correction", "purchase", "purchase"}) {
+			t.Fatalf("renglones = %v; quiere corrección y dos compras", kinds)
+		}
+		last := page.Items[1]
+		if last.Presentation == nil || *last.Presentation != "Bulto" || !last.UnitCost.Equal(qty("0.024")) || last.PackCost == nil || !last.PackCost.Equal(qty("600")) {
+			t.Fatalf("la última compra = %+v; quiere Bulto, 0.024 por g y $600 por bulto", last)
+		}
+		if page.Items[0].User == nil {
+			t.Fatal("la corrección no dice quién la hizo")
+		}
+		if page.TrendPct == nil || !page.TrendPct.Equal(qty("10")) {
+			t.Fatalf("tendencia = %v; quiere +10 %% (0.022 contra 0.02)", page.TrendPct)
+		}
+	})
+	t.Run("con una sola compra no hay tendencia", func(t *testing.T) {
+		solo := ingredientIn(t, k.st, defaultCompanyID, "Sal de grano", "g")
+		page, err := svc.ArticleCostHistory(ctx, solo, nil)
+		if err != nil || page.TrendPct != nil || page.Items == nil {
+			t.Fatalf("%+v %v; sin compras: sin tendencia y [] (no null)", page, err)
+		}
+	})
+	t.Run("la bitácora del artículo trae lo suyo, no lo de otros", func(t *testing.T) {
+		page, err := svc.ArticleAudit(ctx, k.azucar, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actions := map[string]bool{}
+		for _, e := range page.Items {
+			actions[e.Action] = true
+		}
+		if !actions["ingredient.updated"] || !actions["ingredient.cost_corrected"] || actions["ingredient.created"] {
+			t.Fatalf("acciones = %v", actions)
+		}
+	})
+	t.Run("ficha, historial y bitácora de otra empresa no se ven, en los tres casos", func(t *testing.T) {
+		inTheThreeCases(t, defaultCompanyID, makeCompany(t, k.st, "ficha-ajena"), func(t *testing.T, st *store.Store, ctx context.Context) {
+			other := app.NewBackofficeService(st, clock)
+			if _, err := other.GetArticle(ctx, k.azucar); err == nil {
+				t.Fatal("se vio la ficha de otra empresa")
+			}
+			if page, err := other.ArticleCostHistory(ctx, k.azucar, nil); err == nil && len(page.Items) > 0 {
+				t.Fatal("se vio el historial de otra empresa")
+			}
+			if page, err := other.ArticleAudit(ctx, k.azucar, nil); err == nil && len(page.Items) > 0 {
+				t.Fatal("se vio la bitácora de otra empresa")
+			}
+		})
+	})
+}
+
+// Leer la ficha pide `inventory.view`; editarla y corregir el costo, `inventory.configure` (FR-013).
+func TestArticleSheetHTTPPermissions(t *testing.T) {
+	t.Parallel()
+	r, st, token := newStockAPI(t)
+	id := strconv.FormatInt(ingredientIn(t, st, defaultCompanyID, "Leche permisos", "ml"), 10)
+	cajero := token("ficha_cajero", "cajero")
+	for _, c := range []struct{ method, path, body string }{
+		{http.MethodGet, "/api/v1/stock/articles/" + id, ""},
+		{http.MethodGet, "/api/v1/stock/articles/" + id + "/cost-history", ""},
+		{http.MethodGet, "/api/v1/stock/articles/" + id + "/audit", ""},
+		{http.MethodPatch, "/api/v1/stock/articles/" + id, `{"name":"x","expectedUpdatedAt":"2026-01-01T00:00:00Z"}`},
+		{http.MethodPost, "/api/v1/stock/articles/" + id + "/cost", `{"cost":"1"}`},
+	} {
+		if w := do(t, r, c.method, c.path, cajero, []byte(c.body), "application/json"); w.Code != http.StatusForbidden {
+			t.Errorf("cajero %s %s = %d, quiere 403", c.method, c.path, w.Code)
+		}
+	}
+	admin := token("ficha_admin", "admin")
+	w := do(t, r, http.MethodGet, "/api/v1/stock/articles/"+id, admin, nil, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("admin ficha = %d %s", w.Code, w.Body.String())
+	}
+	var sheet struct {
+		UpdatedAt string `json:"updatedAt"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &sheet)
+	if w := do(t, r, http.MethodPatch, "/api/v1/stock/articles/"+id, admin, []byte(`{"name":"Leche permisos 2","expectedUpdatedAt":"2020-01-01T00:00:00Z"}`), "application/json"); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "STALE") {
+		t.Fatalf("versión vieja = %d %s; quiere 409 STALE", w.Code, w.Body.String())
+	}
+	if w := do(t, r, http.MethodPatch, "/api/v1/stock/articles/"+id, admin, []byte(`{"name":"Leche permisos 2","expectedUpdatedAt":"`+sheet.UpdatedAt+`"}`), "application/json"); w.Code != http.StatusNoContent {
+		t.Fatalf("editar = %d %s", w.Code, w.Body.String())
+	}
+	if w := do(t, r, http.MethodGet, "/api/v1/stock/articles/"+id+"/cost-history?before=basura", admin, nil, ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("cursor ilegible = %d, quiere 400", w.Code)
+	}
+}

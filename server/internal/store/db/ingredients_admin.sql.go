@@ -7,9 +7,157 @@ package db
 
 import (
 	"context"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 )
+
+const articleAudit = `-- name: ArticleAudit :many
+select a.id, a.occurred_at, a.action, a.entity_type, a.before, a.after, coalesce(u.name::text, a.actor_label) as actor
+  from audit_events a
+  left join users u on u.id = a.actor_user_id
+ where ((a.entity_type = 'ingredient' and a.entity_id = $1)
+        or (a.entity_type = 'presentation' and a.entity_id in (select p.id from ingredient_presentations p where p.ingredient_id = $1)))
+   and a.action <> 'ingredient.unit_changed.detail'
+   and ($2::timestamptz is null or (a.occurred_at, a.id) < ($2::timestamptz, $3::bigint))
+ order by a.occurred_at desc, a.id desc
+ limit $4
+`
+
+type ArticleAuditParams struct {
+	IngredientID int64              `json:"ingredient_id"`
+	BeforeAt     pgtype.Timestamptz `json:"before_at"`
+	BeforeID     *int64             `json:"before_id"`
+	Lim          int32              `json:"lim"`
+}
+
+type ArticleAuditRow struct {
+	ID         int64     `json:"id"`
+	OccurredAt time.Time `json:"occurred_at"`
+	Action     string    `json:"action"`
+	EntityType string    `json:"entity_type"`
+	Before     []byte    `json:"before"`
+	After      []byte    `json:"after"`
+	Actor      *string   `json:"actor"`
+}
+
+// La bitácora del artículo y de sus empaques, sin los detalles de un cambio de unidad (son para
+// revertirlo, no para leerlos).
+func (q *Queries) ArticleAudit(ctx context.Context, arg ArticleAuditParams) ([]ArticleAuditRow, error) {
+	rows, err := q.db.Query(ctx, articleAudit,
+		arg.IngredientID,
+		arg.BeforeAt,
+		arg.BeforeID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArticleAuditRow{}
+	for rows.Next() {
+		var i ArticleAuditRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OccurredAt,
+			&i.Action,
+			&i.EntityType,
+			&i.Before,
+			&i.After,
+			&i.Actor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const articleCostHistory = `-- name: ArticleCostHistory :many
+select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name from (
+  -- Las correcciones van primero en el union a propósito: sqlc toma los tipos de la primera rama, y
+  -- con null::text ahí sabe que proveedor y empaque pueden faltar.
+  select 'correction'::text as kind, c.created_at as at, c.id, c.new_cost as unit_cost,
+         null::text as presentation, null::numeric(14,4) as pack_qty_in_base, null::text as supplier, u.name as user_name
+    from ingredient_cost_corrections c
+    left join users u on u.id = c.user_id
+   where c.ingredient_id = $1
+  union all
+  select 'purchase'::text, m.created_at, m.id, m.unit_cost::numeric(12,6),
+         p.name, ei.pack_qty_in_base, (select s.name::text from suppliers s where s.id = e.supplier_id), null::text
+    from stock_movements m
+    join expense_items ei on ei.id = m.expense_item_id
+    join expenses e on e.id = ei.expense_id
+    left join ingredient_presentations p on p.id = ei.presentation_id
+   where m.ingredient_id = $1 and m.movement_type = 'compra'
+     and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
+) h
+ where $2::timestamptz is null
+    or (h.at, h.kind, h.id) < ($2::timestamptz, $3::text, $4::bigint)
+ order by h.at desc, h.kind desc, h.id desc
+ limit $5
+`
+
+type ArticleCostHistoryParams struct {
+	IngredientID int64              `json:"ingredient_id"`
+	BeforeAt     pgtype.Timestamptz `json:"before_at"`
+	BeforeKind   *string            `json:"before_kind"`
+	BeforeID     *int64             `json:"before_id"`
+	Lim          int32              `json:"lim"`
+}
+
+type ArticleCostHistoryRow struct {
+	Kind          string           `json:"kind"`
+	At            time.Time        `json:"at"`
+	ID            int64            `json:"id"`
+	UnitCost      decimal.Decimal  `json:"unit_cost"`
+	Presentation  *string          `json:"presentation"`
+	PackQtyInBase *decimal.Decimal `json:"pack_qty_in_base"`
+	Supplier      *string          `json:"supplier"`
+	UserName      *string          `json:"user_name"`
+}
+
+// El historial de costos: cada compra recibida (solo lo que entró con costo: ni las diferencias de
+// corregir lo recibido ni los regalos son un precio) y cada corrección a mano. La más reciente arriba,
+// por llave (fecha, tipo, id) para que «Ver más» no repita ni salte renglones.
+func (q *Queries) ArticleCostHistory(ctx context.Context, arg ArticleCostHistoryParams) ([]ArticleCostHistoryRow, error) {
+	rows, err := q.db.Query(ctx, articleCostHistory,
+		arg.IngredientID,
+		arg.BeforeAt,
+		arg.BeforeKind,
+		arg.BeforeID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArticleCostHistoryRow{}
+	for rows.Next() {
+		var i ArticleCostHistoryRow
+		if err := rows.Scan(
+			&i.Kind,
+			&i.At,
+			&i.ID,
+			&i.UnitCost,
+			&i.Presentation,
+			&i.PackQtyInBase,
+			&i.Supplier,
+			&i.UserName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const findArticleByName = `-- name: FindArticleByName :one
 select id, is_active from ingredients
@@ -30,6 +178,90 @@ func (q *Queries) FindArticleByName(ctx context.Context, name string) (FindArtic
 	row := q.db.QueryRow(ctx, findArticleByName, name)
 	var i FindArticleByNameRow
 	err := row.Scan(&i.ID, &i.IsActive)
+	return i, err
+}
+
+const findOtherArticleByName = `-- name: FindOtherArticleByName :one
+select id, is_active from ingredients
+ where id <> $1
+   and regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+     = regexp_replace(translate(lower(trim($2::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+ order by is_active desc, id
+ limit 1
+`
+
+type FindOtherArticleByNameParams struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+type FindOtherArticleByNameRow struct {
+	ID       int64 `json:"id"`
+	IsActive bool  `json:"is_active"`
+}
+
+// Como FindArticleByName, sin contarse a sí mismo: renombrar a su propio nombre no es repetirlo.
+func (q *Queries) FindOtherArticleByName(ctx context.Context, arg FindOtherArticleByNameParams) (FindOtherArticleByNameRow, error) {
+	row := q.db.QueryRow(ctx, findOtherArticleByName, arg.ID, arg.Name)
+	var i FindOtherArticleByNameRow
+	err := row.Scan(&i.ID, &i.IsActive)
+	return i, err
+}
+
+const getArticle = `-- name: GetArticle :one
+select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
+       i.current_cost, i.cost_source::text as cost_source, i.min_stock, i.is_prep, i.category_id, ic.name as category,
+       i.count_place_id, cp.name as count_place, i.updated_at,
+       coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+  from ingredients i
+  join units u on u.id = i.base_unit_id
+  left join count_places cp on cp.id = i.count_place_id
+  left join ingredient_categories ic on ic.id = i.category_id
+  left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
+ where i.id = $1
+`
+
+type GetArticleRow struct {
+	ID           int64            `json:"id"`
+	Name         string           `json:"name"`
+	IsActive     bool             `json:"is_active"`
+	BaseUnitID   int16            `json:"base_unit_id"`
+	BaseUnitCode string           `json:"base_unit_code"`
+	BaseUnitKind UnitKind         `json:"base_unit_kind"`
+	CurrentCost  decimal.Decimal  `json:"current_cost"`
+	CostSource   string           `json:"cost_source"`
+	MinStock     *decimal.Decimal `json:"min_stock"`
+	IsPrep       bool             `json:"is_prep"`
+	CategoryID   *int64           `json:"category_id"`
+	Category     *string          `json:"category"`
+	CountPlaceID *int64           `json:"count_place_id"`
+	CountPlace   *string          `json:"count_place"`
+	UpdatedAt    time.Time        `json:"updated_at"`
+	OnHand       decimal.Decimal  `json:"on_hand"`
+}
+
+// La ficha. updated_at es la versión: editar exige la que se vio (STALE si cambió).
+func (q *Queries) GetArticle(ctx context.Context, id int64) (GetArticleRow, error) {
+	row := q.db.QueryRow(ctx, getArticle, id)
+	var i GetArticleRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.IsActive,
+		&i.BaseUnitID,
+		&i.BaseUnitCode,
+		&i.BaseUnitKind,
+		&i.CurrentCost,
+		&i.CostSource,
+		&i.MinStock,
+		&i.IsPrep,
+		&i.CategoryID,
+		&i.Category,
+		&i.CountPlaceID,
+		&i.CountPlace,
+		&i.UpdatedAt,
+		&i.OnHand,
+	)
 	return i, err
 }
 
@@ -171,6 +403,30 @@ func (q *Queries) ListArticles(ctx context.Context, arg ListArticlesParams) ([]L
 	return items, nil
 }
 
+const oldestOfLastPurchases = `-- name: OldestOfLastPurchases :one
+select count(*)::int as purchases,
+       coalesce((array_agg(unit_cost order by created_at asc, id asc))[1], 0)::numeric(12,6) as oldest_cost
+  from (select m.id, m.created_at, m.unit_cost
+          from stock_movements m join expense_items ei on ei.id = m.expense_item_id
+         where m.ingredient_id = $1 and m.movement_type = 'compra'
+           and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
+         order by m.created_at desc, m.id desc
+         limit 20) last
+`
+
+type OldestOfLastPurchasesRow struct {
+	Purchases  int32           `json:"purchases"`
+	OldestCost decimal.Decimal `json:"oldest_cost"`
+}
+
+// La compra más vieja de las últimas 20 y cuántas hay: la referencia del indicador de tendencia.
+func (q *Queries) OldestOfLastPurchases(ctx context.Context, ingredientID *int64) (OldestOfLastPurchasesRow, error) {
+	row := q.db.QueryRow(ctx, oldestOfLastPurchases, ingredientID)
+	var i OldestOfLastPurchasesRow
+	err := row.Scan(&i.Purchases, &i.OldestCost)
+	return i, err
+}
+
 const setArticleCostManual = `-- name: SetArticleCostManual :one
 update ingredients i set current_cost = $1, cost_source = 'manual', updated_at = now()
   from (select p.id as prev_id, p.current_cost as prev_cost from ingredients p where p.id = $2 for update) prev
@@ -190,4 +446,36 @@ func (q *Queries) SetArticleCostManual(ctx context.Context, arg SetArticleCostMa
 	var previous_cost decimal.Decimal
 	err := row.Scan(&previous_cost)
 	return previous_cost, err
+}
+
+const updateArticle = `-- name: UpdateArticle :execrows
+update ingredients
+   set name = $1, category_id = $2, count_place_id = $3,
+       min_stock = $4, updated_at = now()
+ where id = $5 and updated_at = $6
+`
+
+type UpdateArticleParams struct {
+	Name              string           `json:"name"`
+	CategoryID        *int64           `json:"category_id"`
+	PlaceID           *int64           `json:"place_id"`
+	MinStock          *decimal.Decimal `json:"min_stock"`
+	ID                int64            `json:"id"`
+	ExpectedUpdatedAt time.Time        `json:"expected_updated_at"`
+}
+
+// Solo si nadie la cambió desde que se vio: 0 filas es «cambió mientras la veías».
+func (q *Queries) UpdateArticle(ctx context.Context, arg UpdateArticleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateArticle,
+		arg.Name,
+		arg.CategoryID,
+		arg.PlaceID,
+		arg.MinStock,
+		arg.ID,
+		arg.ExpectedUpdatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

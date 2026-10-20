@@ -106,3 +106,20 @@ type ArticleNameTaken struct {
 
 func (e ArticleNameTaken) Error() string { return ErrArticleNameTaken.Error() }
 func (e ArticleNameTaken) Unwrap() error { return ErrArticleNameTaken }
+
+// ErrArticleStale: la ficha cambió mientras se veía. Es un conflicto (409 STALE): la pantalla vuelve a
+// cargar en vez de pisar lo que guardó otra persona.
+var ErrArticleStale = fmt.Errorf("%w: el artículo cambió mientras lo veías; vuelve a abrirlo", ErrConflict)
+
+// ErrPrepCost: el costo de un preparado lo calcula su receta, no se captura a mano (409 PREP_COST).
+var ErrPrepCost = fmt.Errorf("%w: el costo de un preparado sale de su receta", ErrConflict)
+
+// TrendPct es cuánto cambió el costo contra una referencia, en por ciento con un decimal. Sin
+// referencia positiva no hay tendencia.
+func TrendPct(current, reference decimal.Decimal) *decimal.Decimal {
+	if !reference.IsPositive() {
+		return nil
+	}
+	pct := current.Sub(reference).Div(reference).Mul(decimal.NewFromInt(100)).Round(1)
+	return &pct
+}

@@ -445,6 +445,11 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Artículos del almacén (spec 042): leer con «ver el almacén», cambiar con «configurar».
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles", h.ListArticles)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles", h.CreateArticle)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}", h.GetArticle)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/cost-history", h.ArticleCostHistory)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/audit", h.ArticleAudit)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Patch("/articles/{id}", h.UpdateArticle)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/cost", h.CorrectArticleCost)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health", h.GetInventoryHealth)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health.csv", h.ExportInventoryHealth)
 					// El faltante de un conteo (spec 039): lo lee quien ve la salud del inventario.

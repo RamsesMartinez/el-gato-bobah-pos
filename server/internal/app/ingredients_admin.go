@@ -2,11 +2,14 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -208,4 +211,298 @@ func ensureArticleTx(ctx context.Context, q *db.Queries, na NewArticle) (int64, 
 		return taken.ID, nil
 	}
 	return id, err
+}
+
+// ArticleSheet es la ficha de un artículo. UpdatedAt es su versión: editar la devuelve.
+type ArticleSheet struct {
+	ArticleRow
+	CostSource string    `json:"costSource"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// GetArticle es la ficha de un artículo, con sus empaques activos.
+func (s *BackofficeService) GetArticle(ctx context.Context, id int64) (ArticleSheet, error) {
+	q := s.store.QC(ctx)
+	r, err := q.GetArticle(ctx, id)
+	if err != nil {
+		return ArticleSheet{}, notFound(err)
+	}
+	pres, err := q.ListPresentations(ctx, &id)
+	if err != nil {
+		return ArticleSheet{}, err
+	}
+	ps := []PresentationLabel{}
+	for _, p := range pres {
+		if p.Active && !p.IsApproximate {
+			ps = append(ps, PresentationLabel{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase})
+		}
+	}
+	return ArticleSheet{
+		ArticleRow: ArticleRow{
+			ID: r.ID, Name: r.Name, IsActive: r.IsActive, BaseUnitID: r.BaseUnitID, BaseUnitCode: r.BaseUnitCode,
+			BaseUnitKind: string(r.BaseUnitKind), CurrentCost: r.CurrentCost, MinStock: r.MinStock, IsPrep: r.IsPrep,
+			CategoryID: r.CategoryID, Category: r.Category, CountPlaceID: r.CountPlaceID, CountPlace: r.CountPlace,
+			OnHand: r.OnHand, Presentations: ps,
+		},
+		CostSource: r.CostSource, UpdatedAt: r.UpdatedAt,
+	}, nil
+}
+
+// ArticleUpdate es lo que se edita en la ficha. Viaja completo: lo que no se cambió vuelve como estaba.
+type ArticleUpdate struct {
+	ExpectedUpdatedAt time.Time
+	Name              string
+	CategoryID        *int64
+	PlaceID           *int64
+	MinStock          *decimal.Decimal
+}
+
+// UpdateArticle guarda la ficha si nadie la cambió desde que se vio (FR-004) y deja en la bitácora lo
+// que cambió.
+func (s *BackofficeService) UpdateArticle(ctx context.Context, id int64, in ArticleUpdate) error {
+	in.Name = domain.CleanArticleName(in.Name)
+	if err := domain.ValidateArticle(domain.ArticleInput{Name: in.Name, MinStock: in.MinStock}); err != nil {
+		return err
+	}
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		before, err := q.GetArticle(ctx, id)
+		if err != nil {
+			return notFound(err)
+		}
+		if err := q.LockIngredientNames(ctx); err != nil {
+			return err
+		}
+		switch found, err := q.FindOtherArticleByName(ctx, db.FindOtherArticleByNameParams{ID: id, Name: in.Name}); {
+		case err == nil:
+			return domain.ArticleNameTaken{ID: found.ID, Archived: !found.IsActive}
+		case !errors.Is(err, pgx.ErrNoRows):
+			return err
+		}
+		if in.PlaceID != nil && (before.CountPlaceID == nil || *before.CountPlaceID != *in.PlaceID) {
+			if err := activePlace(ctx, q, *in.PlaceID); err != nil {
+				return err
+			}
+		}
+		var minStock *decimal.Decimal
+		if in.MinStock != nil {
+			v := domain.Round4(*in.MinStock)
+			minStock = &v
+		}
+		n, err := q.UpdateArticle(ctx, db.UpdateArticleParams{
+			ID: id, ExpectedUpdatedAt: in.ExpectedUpdatedAt, Name: in.Name,
+			CategoryID: in.CategoryID, PlaceID: in.PlaceID, MinStock: minStock,
+		})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return domain.ErrArticleStale
+		}
+		was, now := map[string]any{}, map[string]any{}
+		if before.Name != in.Name {
+			was["name"], now["name"] = before.Name, in.Name
+		}
+		if !samePtr(before.CategoryID, in.CategoryID) {
+			was["categoryId"], now["categoryId"] = before.CategoryID, in.CategoryID
+		}
+		if !samePtr(before.CountPlaceID, in.PlaceID) {
+			was["placeId"], now["placeId"] = before.CountPlaceID, in.PlaceID
+		}
+		if !sameDec(before.MinStock, minStock) {
+			was["minStock"], now["minStock"] = before.MinStock, minStock
+		}
+		if len(now) == 0 {
+			return nil
+		}
+		return recordAudit(ctx, q, domain.AuditEvent{
+			Action: domain.AuditIngredientUpdated, EntityType: "ingredient", EntityID: id, Before: was, After: now,
+		})
+	})
+}
+
+func samePtr(a, b *int64) bool { return (a == nil && b == nil) || (a != nil && b != nil && *a == *b) }
+
+func sameDec(a, b *decimal.Decimal) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && a.Equal(*b))
+}
+
+// CorrectArticleCost corrige a mano el costo de un artículo que se compra hecho (FR-005). Cuenta desde
+// ahora y no recalcula lo vendido; queda en el historial con quién lo hizo.
+func (s *BackofficeService) CorrectArticleCost(ctx context.Context, id int64, cost decimal.Decimal) error {
+	if !domain.ValidMoney(cost, true) {
+		return fmt.Errorf("%w: costo inválido", domain.ErrValidation)
+	}
+	actor, ok := ActorUserFrom(ctx)
+	if !ok {
+		return fmt.Errorf("%w: corregir un costo necesita a la persona que lo hace", domain.ErrForbidden)
+	}
+	cost = cost.Round(6)
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		a, err := q.GetArticle(ctx, id)
+		if err != nil {
+			return notFound(err)
+		}
+		if a.IsPrep {
+			return domain.ErrPrepCost
+		}
+		prev, err := q.SetArticleCostManual(ctx, db.SetArticleCostManualParams{ID: id, Cost: cost})
+		if err != nil {
+			return err
+		}
+		if err := q.InsertCostCorrection(ctx, db.InsertCostCorrectionParams{IngredientID: id, PreviousCost: prev, NewCost: cost, UserID: actor}); err != nil {
+			return err
+		}
+		return recordAudit(ctx, q, domain.AuditEvent{
+			Action: domain.AuditIngredientCostCorrected, EntityType: "ingredient", EntityID: id,
+			Before: map[string]any{"cost": prev}, After: map[string]any{"cost": cost},
+		})
+	})
+}
+
+// historyPage es cuántos renglones trae cada página del historial y de la bitácora.
+const historyPage = 20
+
+// CostHistoryItem es un renglón del historial: una compra o una corrección.
+type CostHistoryItem struct {
+	Kind         string           `json:"kind"` // purchase | correction
+	At           time.Time        `json:"at"`
+	ID           int64            `json:"id"`
+	UnitCost     decimal.Decimal  `json:"unitCost"`
+	Presentation *string          `json:"presentation"`
+	PackQty      *decimal.Decimal `json:"packQty"`
+	// PackCost es lo pagado por empaque («$30 por Bolsa · 5 kg»); lo calcula el servidor.
+	PackCost *decimal.Decimal `json:"packCost"`
+	Supplier *string          `json:"supplier"`
+	User     *string          `json:"user"`
+}
+
+// HistoryCursor es dónde sigue una página: el último renglón que ya se mostró.
+type HistoryCursor struct {
+	At   time.Time
+	Kind string
+	ID   int64
+}
+
+// CostHistoryPage es una página del historial. TrendPct va solo en la primera y solo con 2 compras o
+// más: compara el costo actual contra la compra más vieja de las últimas 20, y no cambia con «Ver más».
+type CostHistoryPage struct {
+	Items    []CostHistoryItem `json:"items"`
+	Next     *string           `json:"next"`
+	TrendPct *decimal.Decimal  `json:"trendPct"`
+}
+
+// ArticleCostHistory es el historial de costos de un artículo (FR-006).
+func (s *BackofficeService) ArticleCostHistory(ctx context.Context, id int64, before *HistoryCursor) (CostHistoryPage, error) {
+	q := s.store.QC(ctx)
+	arg := db.ArticleCostHistoryParams{IngredientID: id, Lim: historyPage + 1}
+	if before != nil {
+		arg.BeforeAt = pgtype.Timestamptz{Time: before.At, Valid: true}
+		arg.BeforeKind, arg.BeforeID = &before.Kind, &before.ID
+	}
+	rows, err := q.ArticleCostHistory(ctx, arg)
+	if err != nil {
+		return CostHistoryPage{}, err
+	}
+	page := CostHistoryPage{Items: []CostHistoryItem{}}
+	for i, r := range rows {
+		if i == historyPage {
+			last := rows[i-1]
+			next := EncodeHistoryCursor(HistoryCursor{At: last.At, Kind: last.Kind, ID: last.ID})
+			page.Next = &next
+			break
+		}
+		it := CostHistoryItem{Kind: r.Kind, At: r.At, ID: r.ID, UnitCost: r.UnitCost, Presentation: r.Presentation,
+			PackQty: r.PackQtyInBase, Supplier: r.Supplier, User: r.UserName}
+		if r.PackQtyInBase != nil {
+			v := domain.Round2(r.UnitCost.Mul(*r.PackQtyInBase))
+			it.PackCost = &v
+		}
+		page.Items = append(page.Items, it)
+	}
+	if before == nil {
+		ref, err := q.OldestOfLastPurchases(ctx, &id)
+		if err != nil {
+			return CostHistoryPage{}, err
+		}
+		if ref.Purchases >= 2 {
+			a, err := q.GetArticle(ctx, id)
+			if err != nil {
+				return CostHistoryPage{}, notFound(err)
+			}
+			page.TrendPct = domain.TrendPct(a.CurrentCost, ref.OldestCost)
+		}
+	}
+	return page, nil
+}
+
+// EncodeHistoryCursor y DecodeHistoryCursor viajan el cursor como texto opaco para la pantalla.
+func EncodeHistoryCursor(c HistoryCursor) string {
+	return c.At.UTC().Format(time.RFC3339Nano) + "|" + c.Kind + "|" + fmt.Sprint(c.ID)
+}
+
+// DecodeHistoryCursor rechaza un cursor malformado como 400: nunca cae a «la primera página».
+func DecodeHistoryCursor(s string) (*HistoryCursor, error) {
+	parts := strings.Split(s, "|")
+	bad := fmt.Errorf("%w: página inválida", domain.ErrValidation)
+	if len(parts) != 3 {
+		return nil, bad
+	}
+	at, err := time.Parse(time.RFC3339Nano, parts[0])
+	if err != nil {
+		return nil, bad
+	}
+	var id int64
+	if _, err := fmt.Sscan(parts[2], &id); err != nil || id <= 0 {
+		return nil, bad
+	}
+	return &HistoryCursor{At: at, Kind: parts[1], ID: id}, nil
+}
+
+// ArticleAuditItem es un evento de la bitácora del artículo.
+type ArticleAuditItem struct {
+	ID     int64           `json:"id"`
+	At     time.Time       `json:"at"`
+	Action string          `json:"action"`
+	Entity string          `json:"entity"`
+	Actor  *string         `json:"actor"`
+	Before json.RawMessage `json:"before"`
+	After  json.RawMessage `json:"after"`
+}
+
+// ArticleAuditPage es una página de la bitácora del artículo.
+type ArticleAuditPage struct {
+	Items []ArticleAuditItem `json:"items"`
+	Next  *string            `json:"next"`
+}
+
+// ArticleAudit es la bitácora de un artículo y de sus empaques (FR-016), de 20 en 20.
+func (s *BackofficeService) ArticleAudit(ctx context.Context, id int64, before *HistoryCursor) (ArticleAuditPage, error) {
+	arg := db.ArticleAuditParams{IngredientID: id, Lim: historyPage + 1}
+	if before != nil {
+		arg.BeforeAt = pgtype.Timestamptz{Time: before.At, Valid: true}
+		arg.BeforeID = &before.ID
+	}
+	rows, err := s.store.QC(ctx).ArticleAudit(ctx, arg)
+	if err != nil {
+		return ArticleAuditPage{}, err
+	}
+	page := ArticleAuditPage{Items: []ArticleAuditItem{}}
+	for i, r := range rows {
+		if i == historyPage {
+			last := rows[i-1]
+			next := EncodeHistoryCursor(HistoryCursor{At: last.OccurredAt, Kind: "audit", ID: last.ID})
+			page.Next = &next
+			break
+		}
+		page.Items = append(page.Items, ArticleAuditItem{ID: r.ID, At: r.OccurredAt, Action: r.Action, Entity: r.EntityType,
+			Actor: r.Actor, Before: rawOrNull(r.Before), After: rawOrNull(r.After)})
+	}
+	return page, nil
+}
+
+func rawOrNull(b []byte) json.RawMessage {
+	if len(b) == 0 {
+		return json.RawMessage("null")
+	}
+	return b
 }
