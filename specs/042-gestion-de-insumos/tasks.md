@@ -288,9 +288,11 @@ guarda 0.
   `server/internal/integration/migration_0097_test.go`; la revisa `db-architect` (Revisión de código).
   La prueba cubre los tres casos que pidió: categoría de la misma empresa, artículo sin categoría y
   que la bajada quite el índice.
-- [X] T051 [US5] Un preparado con movimientos rechaza el cambio de unidad con 409 «cambia de unidad
+- [X] T051 Un preparado con movimientos rechaza el cambio de unidad con 409 «cambia de unidad
   desde su receta» (FR-009): `TestAPrepWithMovementsChangesUnitFromItsRecipe` en
   `server/internal/integration/unit_change_test.go`, vista en rojo con el 400 de antes.
+T048 queda al final a propósito: es la única abierta y va en la subida siguiente, no en esta.
+
 - [ ] T048 En una subida posterior: borrar `POST /ingredients` (Revisión B1). Seguimiento en el issue
   #115, «Quitar POST /ingredients en la subida siguiente a la 042».
 

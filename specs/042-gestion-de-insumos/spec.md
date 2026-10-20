@@ -66,7 +66,8 @@ distinguir mayúsculas ni acentos.
 ### User Story 2 - Crear un artículo sin abrir un gasto ni una receta (Priority: P1)
 
 Desde Almacén › Artículos, «Nuevo artículo» abre una hoja con nombre y en qué se mide (peso,
-líquido, longitud o piezas). Son opcionales el lugar, el mínimo, el costo inicial y los empaques.
+líquido, longitud o piezas). Son opcionales el lugar, el mínimo, el costo inicial y la existencia inicial; los empaques
+se capturan después, en la ficha.
 Nada se guarda hasta tocar «Guardar».
 
 **Why this priority**: es la observación principal del issue y el arreglo de los artículos que
@@ -295,7 +296,7 @@ en kg pide confirmar; escribir 740 en g, no.
   mostrar la unidad del mismo tamaño que el número y buscar también por nombre de empaque. Tocar
   la cantidad de un empaque lleva el teclado a ese renglón; «+» y «−» quedan para ajustes de uno en
   uno. «Guardar» no guarda mientras no se haya capturado nada; el cero se registra con un botón
-  «No hay». Las piezas que salen de un peso las calcula el servidor. Antes de guardar MUST pedir confirmación, mostrando la cifra con su unidad en
+  «No hay», que pregunta «¿No hay nada de …?» antes de guardar. Las piezas que salen de un peso las calcula el servidor. Antes de guardar MUST pedir confirmación, mostrando la cifra con su unidad en
   grande, cuando la cifra pase la referencia del artículo, en este orden:
   1. Existencia esperada positiva: más de 10 veces mayor o menor que ella.
   2. Si no: el último conteo cerrado del artículo con cifra positiva, con la misma regla.
@@ -321,6 +322,7 @@ en kg pide confirmar; escribir 740 en g, no.
   `ingredient.unit_changed.detail`, ligados por un `batch_id`), `ingredient.replaced`, `presentation.created`, `presentation.updated`,
   `presentation.retired` y `stock.count_confirm_asked` (cada vez que el conteo pide confirmar una
   cifra, con lo capturado y sin la referencia: el conteo a ciegas acepta ese riesgo y deja rastro).
+  Son once acciones; con los eventos hijos `ingredient.unit_changed.detail`, doce en la lista blanca.
 - **FR-015**: Los textos MUST ser de quien opera («Artículo», «Empaque», «En qué se mide»,
   «Archivar»), sin nombres internos. Todo control táctil mide 44 px o más, y ningún selector es
   nativo.
