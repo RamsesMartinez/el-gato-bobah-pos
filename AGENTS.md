@@ -470,6 +470,23 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **La normalización de nombres junta espacios con `strings.Fields`, no con `\s` de regexp**: el de
     Go no ve el espacio duro y el de Postgres sí (lo encontró la prueba de paridad de la 0095; también
     afectaba a los motivos de merma). La Down de la 0095 pierde el orden y los lugares sin artículos.
+- **Artículos del almacén** (spec 042, 0096). Cinco cosas que no se ven:
+  - **Un artículo nace solo dentro de un guardado**: la lista (`createArticleTx`), el gasto y la receta
+    (`newArticle` dentro de su transacción). Nada lo crea al tocar una unidad; cancelar o fallar no
+    deja artículos sueltos. `POST /ingredients` sigue una subida más para la pantalla anterior (#115).
+  - **La unidad base solo la reescribe `SetArticleUnit`** (cambio de unidad), y lo vigila
+    `TestNoQueryRewritesTheBaseUnitOfAnIngredient`. Sin compras, ventas ni mermas el cambio es directo
+    y reescribe ajustes, renglones de conteo, recetas, empaques y correcciones con los originales en la
+    bitácora (`ingredient.unit_changed.detail`, un `batchId`); con ellas, se reemplaza por otro artículo
+    ligado en `ingredient_replacements` y el viejo se archiva. Toda tabla que apunte a `ingredients` va
+    en `app.UnitChangeTables` o truena `TestEveryTableThatPointsToAnArticleIsClassified`.
+  - **Tras convertir, la existencia es la suma de los movimientos** (`RecomputeArticleStock`): redondear
+    cada ajuste por separado deja residuo y el trigger de existencias es solo de insert.
+  - **El aviso del conteo lo decide el servidor y solo si la pantalla manda `confirmable`**: una tableta
+    con la pantalla anterior guarda como antes. Responde 409 `NEEDS_CONFIRM` sin decir la referencia
+    (`domain.CountNeedsConfirm`): el conteo sigue a ciegas.
+  - **Las sugerencias de empaque son por clase de unidad** (`PresentationSuggestions`), nunca por nombre
+    suelto: así «Bolsa de 15 kg» no aparece en un artículo en litros.
 - **Asistencia y bitácora de auditoría** (spec 033, 0089). Cinco cosas que no se ven:
   - **Todo camino nuevo que mueva dinero, caja, precios o asistencia escribe su evento** con
     `recordAudit` (o `auditOrder` / `auditCash`) **dentro de su transacción**, y su acción va en la
