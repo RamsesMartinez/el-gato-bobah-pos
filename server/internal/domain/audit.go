@@ -93,6 +93,8 @@ var auditActions = []struct {
 	{AuditPresentationCreated, AuditGroupPrice},
 	{AuditPresentationUpdated, AuditGroupPrice},
 	{AuditPresentationRetired, AuditGroupPrice},
+	// Un aviso del conteo (spec 042): con lo dado por perdido, como el conteo.
+	{AuditCountConfirmAsked, AuditGroupCancel},
 }
 
 const (
@@ -119,6 +121,9 @@ const (
 	AuditPresentationUpdated AuditAction = "presentation.updated"
 	// AuditPresentationRetired: un empaque dejó de llegar así, o volvió.
 	AuditPresentationRetired AuditAction = "presentation.retired"
+	// AuditCountConfirmAsked: el conteo pidió confirmar una cifra fuera de lo razonable. Deja rastro de
+	// quien prueba cifras para adivinar lo esperado (riesgo aceptado por el dueño, spec 042).
+	AuditCountConfirmAsked AuditAction = "stock.count_confirm_asked"
 )
 
 // AuditProductConsumptionMode: cambió qué resta un producto al venderse.

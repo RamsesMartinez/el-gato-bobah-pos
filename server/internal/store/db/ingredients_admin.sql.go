@@ -190,14 +190,21 @@ select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_n
     left join users u on u.id = c.user_id
    where c.ingredient_id = $1
   union all
-  select 'purchase'::text, m.created_at, m.id, m.unit_cost::numeric(12,6),
-         p.name, ei.pack_qty_in_base, (select s.name::text from suppliers s where s.id = e.supplier_id), null::text
-    from stock_movements m
-    join expense_items ei on ei.id = m.expense_item_id
-    join expenses e on e.id = ei.expense_id
-    left join ingredient_presentations p on p.id = ei.presentation_id
-   where m.ingredient_id = $1 and m.movement_type = 'compra'
-     and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
+  -- Un renglón por compra: la primera entrada de cada renglón (una compra recibida en dos entregas
+  -- es una compra), sin renglones anulados ni gastos cancelados, que no son un precio.
+  select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name from (
+    select distinct on (ei.id) 'purchase'::text as kind, m.created_at as at, m.id, m.unit_cost::numeric(12,6) as unit_cost,
+           p.name as presentation, ei.pack_qty_in_base, (select s.name::text from suppliers s where s.id = e.supplier_id) as supplier,
+           null::text as user_name
+      from stock_movements m
+      join expense_items ei on ei.id = m.expense_item_id
+      join expenses e on e.id = ei.expense_id
+      left join ingredient_presentations p on p.id = ei.presentation_id
+     where m.ingredient_id = $1 and m.movement_type = 'compra'
+       and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
+       and ei.voided_at is null and e.status <> 'cancelada'
+     order by ei.id, m.created_at, m.id
+  ) purchases
 ) h
  where $2::timestamptz is null
     or (h.at, h.kind, h.id) < ($2::timestamptz, $3::text, $4::bigint)
@@ -320,6 +327,19 @@ func (q *Queries) ArticleMovementTypes(ctx context.Context, ingredientID *int64)
 		return nil, err
 	}
 	return items, nil
+}
+
+const articleNameExists = `-- name: ArticleNameExists :one
+select exists (select 1 from ingredients where name = $1::citext)::bool
+`
+
+// ¿Ya hay un artículo con ese nombre exacto (sin distinguir mayúsculas)? Para elegir el nombre del
+// viejo en un reemplazo: el índice único (company_id, name) cuenta también los archivados.
+func (q *Queries) ArticleNameExists(ctx context.Context, name string) (bool, error) {
+	row := q.db.QueryRow(ctx, articleNameExists, name)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const articleOnHandByBranch = `-- name: ArticleOnHandByBranch :many
@@ -499,6 +519,20 @@ func (q *Queries) ArticleWasteRecords(ctx context.Context, ingredientID *int64) 
 	return items, nil
 }
 
+const categoryVisible = `-- name: CategoryVisible :one
+select id from ingredient_categories where id = $1
+`
+
+// La categoría, si es de la empresa de la sesión. La llave de ingredients.category_id no lleva la
+// empresa (0003) y una llave foránea salta RLS: sin esta lectura, un artículo podía ligarse a la
+// categoría de otra empresa.
+func (q *Queries) CategoryVisible(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, categoryVisible, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const findArticleByName = `-- name: FindArticleByName :one
 select id, is_active from ingredients
  where regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
@@ -551,7 +585,7 @@ func (q *Queries) FindOtherArticleByName(ctx context.Context, arg FindOtherArtic
 const getArticle = `-- name: GetArticle :one
 select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
        i.current_cost, i.cost_source::text as cost_source, i.min_stock, i.is_prep, i.category_id, ic.name as category,
-       i.count_place_id, cp.name as count_place, i.updated_at,
+       i.count_place_id, cp.name as count_place, i.updated_at, i.composition_status,
        coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
   from ingredients i
   join units u on u.id = i.base_unit_id
@@ -562,22 +596,23 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
 `
 
 type GetArticleRow struct {
-	ID           int64            `json:"id"`
-	Name         string           `json:"name"`
-	IsActive     bool             `json:"is_active"`
-	BaseUnitID   int16            `json:"base_unit_id"`
-	BaseUnitCode string           `json:"base_unit_code"`
-	BaseUnitKind UnitKind         `json:"base_unit_kind"`
-	CurrentCost  decimal.Decimal  `json:"current_cost"`
-	CostSource   string           `json:"cost_source"`
-	MinStock     *decimal.Decimal `json:"min_stock"`
-	IsPrep       bool             `json:"is_prep"`
-	CategoryID   *int64           `json:"category_id"`
-	Category     *string          `json:"category"`
-	CountPlaceID *int64           `json:"count_place_id"`
-	CountPlace   *string          `json:"count_place"`
-	UpdatedAt    time.Time        `json:"updated_at"`
-	OnHand       decimal.Decimal  `json:"on_hand"`
+	ID                int64            `json:"id"`
+	Name              string           `json:"name"`
+	IsActive          bool             `json:"is_active"`
+	BaseUnitID        int16            `json:"base_unit_id"`
+	BaseUnitCode      string           `json:"base_unit_code"`
+	BaseUnitKind      UnitKind         `json:"base_unit_kind"`
+	CurrentCost       decimal.Decimal  `json:"current_cost"`
+	CostSource        string           `json:"cost_source"`
+	MinStock          *decimal.Decimal `json:"min_stock"`
+	IsPrep            bool             `json:"is_prep"`
+	CategoryID        *int64           `json:"category_id"`
+	Category          *string          `json:"category"`
+	CountPlaceID      *int64           `json:"count_place_id"`
+	CountPlace        *string          `json:"count_place"`
+	UpdatedAt         time.Time        `json:"updated_at"`
+	CompositionStatus *string          `json:"composition_status"`
+	OnHand            decimal.Decimal  `json:"on_hand"`
 }
 
 // La ficha. updated_at es la versión: editar exige la que se vio (STALE si cambió).
@@ -600,6 +635,7 @@ func (q *Queries) GetArticle(ctx context.Context, id int64) (GetArticleRow, erro
 		&i.CountPlaceID,
 		&i.CountPlace,
 		&i.UpdatedAt,
+		&i.CompositionStatus,
 		&i.OnHand,
 	)
 	return i, err
@@ -719,7 +755,7 @@ const listArticles = `-- name: ListArticles :many
 
 select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
        i.current_cost, i.min_stock, i.is_prep, i.category_id, ic.name as category,
-       i.count_place_id, cp.name as count_place,
+       i.count_place_id, cp.name as count_place, i.composition_status,
        coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
   from ingredients i
   join units u on u.id = i.base_unit_id
@@ -729,10 +765,11 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
   left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
  where i.is_active = not $1::boolean
    and ($2::text is null
-        or translate(lower(i.name::text), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower($2::text), 'áéíóúüñ', 'aeiouun') || '%'
+        -- strpos y no like: lo que alguien escriba es texto, nunca un comodín.
+        or strpos(translate(lower(i.name::text), 'áéíóúüñ', 'aeiouun'), translate(lower($2::text), 'áéíóúüñ', 'aeiouun')) > 0
         or exists (select 1 from ingredient_presentations p
                     where p.ingredient_id = i.id and p.active
-                      and translate(lower(p.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower($2::text), 'áéíóúüñ', 'aeiouun') || '%'))
+                      and strpos(translate(lower(p.name), 'áéíóúüñ', 'aeiouun'), translate(lower($2::text), 'áéíóúüñ', 'aeiouun')) > 0))
    and ($3::bigint is null or i.count_place_id = $3)
    and (not $4::boolean or i.count_place_id is null)
    and (not $5::boolean or coalesce(i.current_cost, 0) = 0)
@@ -750,20 +787,21 @@ type ListArticlesParams struct {
 }
 
 type ListArticlesRow struct {
-	ID           int64            `json:"id"`
-	Name         string           `json:"name"`
-	IsActive     bool             `json:"is_active"`
-	BaseUnitID   int16            `json:"base_unit_id"`
-	BaseUnitCode string           `json:"base_unit_code"`
-	BaseUnitKind UnitKind         `json:"base_unit_kind"`
-	CurrentCost  decimal.Decimal  `json:"current_cost"`
-	MinStock     *decimal.Decimal `json:"min_stock"`
-	IsPrep       bool             `json:"is_prep"`
-	CategoryID   *int64           `json:"category_id"`
-	Category     *string          `json:"category"`
-	CountPlaceID *int64           `json:"count_place_id"`
-	CountPlace   *string          `json:"count_place"`
-	OnHand       decimal.Decimal  `json:"on_hand"`
+	ID                int64            `json:"id"`
+	Name              string           `json:"name"`
+	IsActive          bool             `json:"is_active"`
+	BaseUnitID        int16            `json:"base_unit_id"`
+	BaseUnitCode      string           `json:"base_unit_code"`
+	BaseUnitKind      UnitKind         `json:"base_unit_kind"`
+	CurrentCost       decimal.Decimal  `json:"current_cost"`
+	MinStock          *decimal.Decimal `json:"min_stock"`
+	IsPrep            bool             `json:"is_prep"`
+	CategoryID        *int64           `json:"category_id"`
+	Category          *string          `json:"category"`
+	CountPlaceID      *int64           `json:"count_place_id"`
+	CountPlace        *string          `json:"count_place"`
+	CompositionStatus *string          `json:"composition_status"`
+	OnHand            decimal.Decimal  `json:"on_hand"`
 }
 
 // Gestión de artículos del almacén (spec 042): la lista con buscador y filtros, la ficha, editar,
@@ -801,6 +839,7 @@ func (q *Queries) ListArticles(ctx context.Context, arg ListArticlesParams) ([]L
 			&i.Category,
 			&i.CountPlaceID,
 			&i.CountPlace,
+			&i.CompositionStatus,
 			&i.OnHand,
 		); err != nil {
 			return nil, err
@@ -911,11 +950,16 @@ func (q *Queries) LockArticleStockNowait(ctx context.Context, ingredientID *int6
 const oldestOfLastPurchases = `-- name: OldestOfLastPurchases :one
 select count(*)::int as purchases,
        coalesce((array_agg(unit_cost order by created_at asc, id asc))[1], 0)::numeric(12,6) as oldest_cost
-  from (select m.id, m.created_at, m.unit_cost
-          from stock_movements m join expense_items ei on ei.id = m.expense_item_id
-         where m.ingredient_id = $1 and m.movement_type = 'compra'
-           and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
-         order by m.created_at desc, m.id desc
+  from (select id, created_at, unit_cost from (
+          select distinct on (ei.id) m.id, m.created_at, m.unit_cost
+            from stock_movements m
+            join expense_items ei on ei.id = m.expense_item_id
+            join expenses e on e.id = ei.expense_id
+           where m.ingredient_id = $1 and m.movement_type = 'compra'
+             and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
+             and ei.voided_at is null and e.status <> 'cancelada'
+           order by ei.id, m.created_at, m.id) firsts
+         order by created_at desc, id desc
          limit 20) last
 `
 
@@ -1217,16 +1261,17 @@ func (q *Queries) SetPresentationRaw(ctx context.Context, arg SetPresentationRaw
 }
 
 const setPurchaseFormatQty = `-- name: SetPurchaseFormatQty :exec
-update ingredient_purchase_formats set qty_in_base = $1 where id = $2
+update ingredient_purchase_formats set ingredient_id = $1, qty_in_base = $2 where id = $3
 `
 
 type SetPurchaseFormatQtyParams struct {
-	QtyInBase decimal.Decimal `json:"qty_in_base"`
-	ID        int64           `json:"id"`
+	IngredientID int64           `json:"ingredient_id"`
+	QtyInBase    decimal.Decimal `json:"qty_in_base"`
+	ID           int64           `json:"id"`
 }
 
 func (q *Queries) SetPurchaseFormatQty(ctx context.Context, arg SetPurchaseFormatQtyParams) error {
-	_, err := q.db.Exec(ctx, setPurchaseFormatQty, arg.QtyInBase, arg.ID)
+	_, err := q.db.Exec(ctx, setPurchaseFormatQty, arg.IngredientID, arg.QtyInBase, arg.ID)
 	return err
 }
 

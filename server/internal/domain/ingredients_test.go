@@ -132,3 +132,12 @@ func TestConvertRecipeAndPresentation(t *testing.T) {
 		t.Fatal("un empaque que se convierte en cero no cuadra")
 	}
 }
+
+func TestConvertedLimits(t *testing.T) {
+	if ValidConvertedQty(dec("20000000000")) || !ValidConvertedQty(dec("-5000")) {
+		t.Fatal("una cantidad que desborda la columna debe rechazarse; una normal, con signo, no")
+	}
+	if ValidConvertedCost(dec("0.001"), dec("0")) || !ValidConvertedCost(dec("0"), dec("0")) || ValidConvertedCost(dec("1"), dec("2000000")) {
+		t.Fatal("un costo positivo no queda en cero, y uno enorme no cabe")
+	}
+}

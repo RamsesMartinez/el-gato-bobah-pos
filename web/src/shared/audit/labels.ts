@@ -55,6 +55,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'presentation.created': 'Agregó un empaque',
   'presentation.updated': 'Editó un empaque',
   'presentation.retired': 'Retiró o volvió un empaque',
+  'stock.count_confirm_asked': 'El conteo pidió confirmar una cifra',
 };
 
 // Qué resta un producto (spec 037), con las palabras de la hoja de receta.

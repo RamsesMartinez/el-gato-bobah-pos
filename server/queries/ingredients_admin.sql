@@ -7,7 +7,7 @@
 -- Archivados se ven solo cuando se piden: un archivado no es un artículo en uso.
 select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
        i.current_cost, i.min_stock, i.is_prep, i.category_id, ic.name as category,
-       i.count_place_id, cp.name as count_place,
+       i.count_place_id, cp.name as count_place, i.composition_status,
        coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
   from ingredients i
   join units u on u.id = i.base_unit_id
@@ -17,10 +17,11 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
   left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
  where i.is_active = not sqlc.arg(archived)::boolean
    and (sqlc.narg('q')::text is null
-        or translate(lower(i.name::text), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower(sqlc.narg('q')::text), 'áéíóúüñ', 'aeiouun') || '%'
+        -- strpos y no like: lo que alguien escriba es texto, nunca un comodín.
+        or strpos(translate(lower(i.name::text), 'áéíóúüñ', 'aeiouun'), translate(lower(sqlc.narg('q')::text), 'áéíóúüñ', 'aeiouun')) > 0
         or exists (select 1 from ingredient_presentations p
                     where p.ingredient_id = i.id and p.active
-                      and translate(lower(p.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower(sqlc.narg('q')::text), 'áéíóúüñ', 'aeiouun') || '%'))
+                      and strpos(translate(lower(p.name), 'áéíóúüñ', 'aeiouun'), translate(lower(sqlc.narg('q')::text), 'áéíóúüñ', 'aeiouun')) > 0))
    and (sqlc.narg('place_id')::bigint is null or i.count_place_id = sqlc.narg('place_id'))
    and (not sqlc.arg(no_place)::boolean or i.count_place_id is null)
    and (not sqlc.arg(no_cost)::boolean or coalesce(i.current_cost, 0) = 0)
@@ -58,7 +59,7 @@ values ('ingrediente', sqlc.arg(ingredient_id), 'ajuste', sqlc.arg(quantity), sq
 -- La ficha. updated_at es la versión: editar exige la que se vio (STALE si cambió).
 select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
        i.current_cost, i.cost_source::text as cost_source, i.min_stock, i.is_prep, i.category_id, ic.name as category,
-       i.count_place_id, cp.name as count_place, i.updated_at,
+       i.count_place_id, cp.name as count_place, i.updated_at, i.composition_status,
        coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
   from ingredients i
   join units u on u.id = i.base_unit_id
@@ -96,14 +97,21 @@ select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_n
     left join users u on u.id = c.user_id
    where c.ingredient_id = sqlc.arg(ingredient_id)
   union all
-  select 'purchase'::text, m.created_at, m.id, m.unit_cost::numeric(12,6),
-         p.name, ei.pack_qty_in_base, (select s.name::text from suppliers s where s.id = e.supplier_id), null::text
-    from stock_movements m
-    join expense_items ei on ei.id = m.expense_item_id
-    join expenses e on e.id = ei.expense_id
-    left join ingredient_presentations p on p.id = ei.presentation_id
-   where m.ingredient_id = sqlc.arg(ingredient_id) and m.movement_type = 'compra'
-     and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
+  -- Un renglón por compra: la primera entrada de cada renglón (una compra recibida en dos entregas
+  -- es una compra), sin renglones anulados ni gastos cancelados, que no son un precio.
+  select * from (
+    select distinct on (ei.id) 'purchase'::text as kind, m.created_at as at, m.id, m.unit_cost::numeric(12,6) as unit_cost,
+           p.name as presentation, ei.pack_qty_in_base, (select s.name::text from suppliers s where s.id = e.supplier_id) as supplier,
+           null::text as user_name
+      from stock_movements m
+      join expense_items ei on ei.id = m.expense_item_id
+      join expenses e on e.id = ei.expense_id
+      left join ingredient_presentations p on p.id = ei.presentation_id
+     where m.ingredient_id = sqlc.arg(ingredient_id) and m.movement_type = 'compra'
+       and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
+       and ei.voided_at is null and e.status <> 'cancelada'
+     order by ei.id, m.created_at, m.id
+  ) purchases
 ) h
  where sqlc.narg(before_at)::timestamptz is null
     or (h.at, h.kind, h.id) < (sqlc.narg(before_at)::timestamptz, sqlc.narg(before_kind)::text, sqlc.narg(before_id)::bigint)
@@ -114,11 +122,16 @@ select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_n
 -- La compra más vieja de las últimas 20 y cuántas hay: la referencia del indicador de tendencia.
 select count(*)::int as purchases,
        coalesce((array_agg(unit_cost order by created_at asc, id asc))[1], 0)::numeric(12,6) as oldest_cost
-  from (select m.id, m.created_at, m.unit_cost
-          from stock_movements m join expense_items ei on ei.id = m.expense_item_id
-         where m.ingredient_id = sqlc.arg(ingredient_id) and m.movement_type = 'compra'
-           and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
-         order by m.created_at desc, m.id desc
+  from (select * from (
+          select distinct on (ei.id) m.id, m.created_at, m.unit_cost
+            from stock_movements m
+            join expense_items ei on ei.id = m.expense_item_id
+            join expenses e on e.id = ei.expense_id
+           where m.ingredient_id = sqlc.arg(ingredient_id) and m.movement_type = 'compra'
+             and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
+             and ei.voided_at is null and e.status <> 'cancelada'
+           order by ei.id, m.created_at, m.id) firsts
+         order by created_at desc, id desc
          limit 20) last;
 
 -- name: ArticleAudit :many
@@ -257,7 +270,7 @@ update ingredient_presentations
 select id, qty_in_base from ingredient_purchase_formats where ingredient_id = sqlc.arg(ingredient_id);
 
 -- name: SetPurchaseFormatQty :exec
-update ingredient_purchase_formats set qty_in_base = sqlc.arg(qty_in_base) where id = sqlc.arg(id);
+update ingredient_purchase_formats set ingredient_id = sqlc.arg(ingredient_id), qty_in_base = sqlc.arg(qty_in_base) where id = sqlc.arg(id);
 
 -- name: ArticleSupplierItems :many
 select id, pack_qty_in_base from supplier_items where ingredient_id = sqlc.arg(ingredient_id);
@@ -309,3 +322,14 @@ values ('ingrediente', sqlc.arg(ingredient_id), 'ajuste', sqlc.arg(quantity), sq
 -- name: SetArticleExtras :exec
 update ingredients set count_place_id = sqlc.narg(place_id), track_stock = sqlc.arg(track_stock), is_packaging = sqlc.arg(is_packaging)
  where id = sqlc.arg(id);
+
+-- name: CategoryVisible :one
+-- La categoría, si es de la empresa de la sesión. La llave de ingredients.category_id no lleva la
+-- empresa (0003) y una llave foránea salta RLS: sin esta lectura, un artículo podía ligarse a la
+-- categoría de otra empresa.
+select id from ingredient_categories where id = sqlc.arg(id);
+
+-- name: ArticleNameExists :one
+-- ¿Ya hay un artículo con ese nombre exacto (sin distinguir mayúsculas)? Para elegir el nombre del
+-- viejo en un reemplazo: el índice único (company_id, name) cuenta también los archivados.
+select exists (select 1 from ingredients where name = sqlc.arg(name)::citext)::bool;

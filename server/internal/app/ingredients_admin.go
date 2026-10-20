@@ -53,6 +53,8 @@ type ArticleRow struct {
 	CountPlace    *string             `json:"countPlace"`
 	OnHand        decimal.Decimal     `json:"onHand"`
 	Presentations []PresentationLabel `json:"presentations"`
+	// CompositionStatus: "estimated" es una receta que vino estimada (de FUDO) y está por revisar.
+	CompositionStatus string `json:"compositionStatus"`
 }
 
 // ListArticles es la lista de Almacén › Artículos. Los empaques de cada artículo se juntan aparte, en
@@ -90,7 +92,7 @@ func (s *BackofficeService) ListArticles(ctx context.Context, f ArticleFilter) (
 			ID: r.ID, Name: r.Name, IsActive: r.IsActive, BaseUnitID: r.BaseUnitID, BaseUnitCode: r.BaseUnitCode,
 			BaseUnitKind: string(r.BaseUnitKind), CurrentCost: r.CurrentCost, MinStock: r.MinStock, IsPrep: r.IsPrep,
 			CategoryID: r.CategoryID, Category: r.Category, CountPlaceID: r.CountPlaceID, CountPlace: r.CountPlace,
-			OnHand: r.OnHand, Presentations: ps,
+			OnHand: r.OnHand, Presentations: ps, CompositionStatus: textoDe(r.CompositionStatus),
 		}
 	}
 	return out, nil
@@ -129,6 +131,16 @@ func (s *BackofficeService) CreateArticle(ctx context.Context, in ArticleCreate)
 // la misma regla de nombres repetidos, el mismo candado y el mismo evento de bitácora.
 func createArticleTx(ctx context.Context, q *db.Queries, in ArticleCreate) (int64, error) {
 	in.Name = domain.CleanArticleName(in.Name)
+	// Se redondea ANTES de validar y de decidir si hay existencia o costo: 0.00001 pasaba la validación
+	// y se volvía 0 al insertar, que la columna no admite (500).
+	if in.InitialStock != nil {
+		v := domain.Round4(*in.InitialStock)
+		in.InitialStock = &v
+	}
+	if in.InitialCost != nil {
+		v := in.InitialCost.Round(6)
+		in.InitialCost = &v
+	}
 	if err := domain.ValidateArticle(domain.ArticleInput{Name: in.Name, MinStock: in.MinStock, Cost: in.InitialCost, InitialStock: in.InitialStock}); err != nil {
 		return 0, err
 	}
@@ -142,6 +154,9 @@ func createArticleTx(ctx context.Context, q *db.Queries, in ArticleCreate) (int6
 	// Se cuenta en la unidad base de su clase (g, ml, cm, pieza); lo que llega en kg o L es un empaque.
 	if !u.ToBase.Equal(decimal.NewFromInt(1)) {
 		return 0, fmt.Errorf("%w: el artículo se mide en g, ml, cm o piezas; lo que llega en kg o L se captura como empaque", domain.ErrValidation)
+	}
+	if err := categoryOfCompany(ctx, q, in.CategoryID); err != nil {
+		return 0, err
 	}
 	if err := q.LockIngredientNames(ctx); err != nil {
 		return 0, err
@@ -242,7 +257,7 @@ func (s *BackofficeService) GetArticle(ctx context.Context, id int64) (ArticleSh
 			ID: r.ID, Name: r.Name, IsActive: r.IsActive, BaseUnitID: r.BaseUnitID, BaseUnitCode: r.BaseUnitCode,
 			BaseUnitKind: string(r.BaseUnitKind), CurrentCost: r.CurrentCost, MinStock: r.MinStock, IsPrep: r.IsPrep,
 			CategoryID: r.CategoryID, Category: r.Category, CountPlaceID: r.CountPlaceID, CountPlace: r.CountPlace,
-			OnHand: r.OnHand, Presentations: ps,
+			OnHand: r.OnHand, Presentations: ps, CompositionStatus: textoDe(r.CompositionStatus),
 		},
 		CostSource: r.CostSource, UpdatedAt: r.UpdatedAt,
 	}, nil
@@ -276,6 +291,9 @@ func (s *BackofficeService) UpdateArticle(ctx context.Context, id int64, in Arti
 		case err == nil:
 			return domain.ArticleNameTaken{ID: found.ID, Archived: !found.IsActive}
 		case !errors.Is(err, pgx.ErrNoRows):
+			return err
+		}
+		if err := categoryOfCompany(ctx, q, in.CategoryID); err != nil {
 			return err
 		}
 		if in.PlaceID != nil && (before.CountPlaceID == nil || *before.CountPlaceID != *in.PlaceID) {
@@ -565,9 +583,10 @@ func archiveCheck(ctx context.Context, q *db.Queries, id int64) (ArchiveCheck, e
 // compra por recibir no lo impide: cuando llegue, suma sin reactivarlo.
 func (s *BackofficeService) ArchiveArticle(ctx context.Context, id int64) error {
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		a, err := q.LockArticle(ctx, id)
+		// Sin esperar: una venta en curso responde «vuelve a intentar» en vez de dejar la pantalla colgada.
+		a, err := q.LockArticleNowait(ctx, id)
 		if err != nil {
-			return notFound(err)
+			return notFound(lockErr(err))
 		}
 		if !a.IsActive {
 			return nil
@@ -683,4 +702,19 @@ func (s *BackofficeService) PresentationSuggestions(ctx context.Context, kind st
 		out[i] = PresentationSuggestion{Name: r.Name, QtyInBase: r.QtyInBase}
 	}
 	return out, nil
+}
+
+// categoryOfCompany exige que la categoría sea de la empresa de la sesión: la lee bajo RLS. La llave
+// de ingredients.category_id no lleva la empresa y una llave foránea salta RLS (revisión de la 042).
+func categoryOfCompany(ctx context.Context, q *db.Queries, id *int64) error {
+	if id == nil {
+		return nil
+	}
+	if _, err := q.CategoryVisible(ctx, *id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: esa categoría no existe", domain.ErrValidation)
+		}
+		return err
+	}
+	return nil
 }

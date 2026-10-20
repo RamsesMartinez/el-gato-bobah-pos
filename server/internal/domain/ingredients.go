@@ -164,3 +164,24 @@ func (e UnitChangePending) Error() string {
 	return "antes de cambiar en qué se mide, falta " + strings.Join(parts, " y ")
 }
 func (e UnitChangePending) Unwrap() error { return ErrUnitChangePending }
+
+// maxConvertedQty es el tope de una cantidad convertida por un cambio de unidad: muy por debajo del
+// numeric(14,4) de las columnas, para que una equivalencia absurda responda 400 y no desborde (500).
+var maxConvertedQty = decimal.NewFromInt(1_000_000_000)
+
+// maxUnitCost es el tope de un costo por unidad convertido: el numeric(12,6) de las columnas.
+var maxUnitCost = decimal.NewFromInt(999_999)
+
+// ValidConvertedQty acepta una cantidad convertida que cabe en las columnas, con su signo.
+func ValidConvertedQty(v decimal.Decimal) bool {
+	return !v.Abs().GreaterThan(maxConvertedQty)
+}
+
+// ValidConvertedCost rechaza un costo que desborda, y uno positivo que la conversión dejó en cero: el
+// artículo se quedaría sin costo sin que nadie lo decidiera.
+func ValidConvertedCost(original, converted decimal.Decimal) bool {
+	if converted.GreaterThan(maxUnitCost) {
+		return false
+	}
+	return !original.IsPositive() || converted.IsPositive()
+}

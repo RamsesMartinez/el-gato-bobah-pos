@@ -178,6 +178,19 @@ func (s *BackofficeService) CaptureCountChecked(ctx context.Context, countID, in
 		}
 		return s.captureTx(ctx, q, countID, ingredientID, counted, in, userID)
 	})
+	if errors.Is(err, domain.ErrCountNeedsConfirm) {
+		// El aviso queda en la bitácora en su propia transacción (la de la captura se revirtió): el conteo
+		// a ciegas se puede sondear probando cifras, y el dueño aceptó ese riesgo a cambio de que quede
+		// rastro de cada aviso (spec 042, 2026-10-19).
+		if aerr := s.store.WithTx(ctx, func(q *db.Queries) error {
+			return recordAudit(ctx, q, domain.AuditEvent{
+				Action: domain.AuditCountConfirmAsked, EntityType: "ingredient", EntityID: ingredientID,
+				After: map[string]any{"countId": countID, "captured": counted},
+			})
+		}); aerr != nil {
+			return counted, aerr
+		}
+	}
 	return counted, err
 }
 
@@ -210,7 +223,11 @@ func countedQty(ctx context.Context, q *db.Queries, ingredientID int64, in Count
 			continue
 		}
 		// Lo contado en empaques (Qty) y lo pesado suelto se suman: «2 paquetes + 300 g sueltos».
-		return domain.Round4(in.Qty).Add(domain.PiecesFromWeight(*in.Weight, wu.ToBase, pu.ToBase, p.QtyInBase)), nil
+		total := domain.Round4(in.Qty).Add(domain.PiecesFromWeight(*in.Weight, wu.ToBase, pu.ToBase, p.QtyInBase))
+		if !domain.ValidStockQtyOrZero(total) {
+			return decimal.Zero, fmt.Errorf("%w: lo pesado da una cifra fuera de lo posible", domain.ErrValidation)
+		}
+		return total, nil
 	}
 	return decimal.Zero, fmt.Errorf("%w: este artículo no tiene una equivalencia para contarlo pesando", domain.ErrValidation)
 }

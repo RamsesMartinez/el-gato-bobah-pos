@@ -131,6 +131,12 @@ func planUnitChange(ctx context.Context, q *db.Queries, art db.LockArticleNowait
 	if p.stock, err = q.ArticleOnHandByBranch(ctx, &id); err != nil {
 		return p, err
 	}
+	if !domain.ValidConvertedCost(art.CurrentCost, domain.ConvertCost(art.CurrentCost, req.Factor)) {
+		return p, fmt.Errorf("%w: con esa equivalencia el costo quedaría en cero o no cabría; revisa la equivalencia", domain.ErrValidation)
+	}
+	if art.MinStock != nil && !domain.ValidConvertedQty(domain.ConvertQty(*art.MinStock, req.Factor)) {
+		return p, fmt.Errorf("%w: con esa equivalencia el mínimo no cabe", domain.ErrValidation)
+	}
 	p.preview = UnitChangePreview{Path: p.path, FromUnit: p.from.Code, ToUnit: p.to.Code, Conversions: []UnitConversion{}}
 	for _, s := range p.stock {
 		key := "stock:" + strconv.FormatInt(s.BranchID, 10)
@@ -139,9 +145,6 @@ func planUnitChange(ctx context.Context, q *db.Queries, art db.LockArticleNowait
 			From: s.OnHand, To: to, Fits: true})
 	}
 	for _, r := range p.recipes {
-		if p.path == domain.UnitPathReplace && !r.Active {
-			continue
-		}
 		key := "recipe:" + strconv.FormatInt(r.ID, 10)
 		to := override(req, key, domain.ConvertRecipeQty(r.Quantity, r.UnitToBase, req.Factor))
 		p.preview.Conversions = append(p.preview.Conversions, UnitConversion{Key: key, Group: "recipe", Label: "Receta: " + r.Owner,
@@ -156,7 +159,39 @@ func planUnitChange(ctx context.Context, q *db.Queries, art db.LockArticleNowait
 		p.preview.Conversions = append(p.preview.Conversions, UnitConversion{Key: key, Group: "presentation", Label: "Empaque: " + pr.Name,
 			From: pr.QtyInBase, To: to, Fits: presentationFits(ctx, q, pr, p.to, to)})
 	}
+	if err := checkConversions(p, req); err != nil {
+		return p, err
+	}
 	return p, nil
+}
+
+// checkConversions rechaza como 400 lo que no cabe o no tiene sentido: una cantidad que desborda la
+// columna, una corrección de una llave que no está en el plan, una existencia negativa, una receta o
+// un empaque en cero, y corregir la existencia en el cambio directo (ahí es la suma de su historia).
+func checkConversions(p unitPlan, req UnitChangeRequest) error {
+	known := map[string]string{}
+	for _, c := range p.preview.Conversions {
+		known[c.Key] = c.Group
+		if !domain.ValidConvertedQty(c.To) {
+			return fmt.Errorf("%w: %s no cabe con esa equivalencia", domain.ErrValidation, c.Label)
+		}
+	}
+	for key, v := range req.Overrides {
+		group, ok := known[key]
+		switch {
+		case !ok:
+			return fmt.Errorf("%w: esa cantidad no está en el cambio", domain.ErrValidation)
+		case group == "stock" && p.path == domain.UnitPathDirect:
+			return fmt.Errorf("%w: en este cambio la existencia sale de su historia; no se corrige a mano", domain.ErrValidation)
+		case group == "stock" && !domain.ValidStockQtyOrZero(v):
+			return fmt.Errorf("%w: la existencia no puede ser negativa", domain.ErrValidation)
+		case group != "stock" && !v.IsPositive():
+			return fmt.Errorf("%w: una cantidad de receta o de empaque va mayor que cero", domain.ErrValidation)
+		case !domain.ValidConvertedQty(v):
+			return fmt.Errorf("%w: esa cantidad no cabe", domain.ErrValidation)
+		}
+	}
+	return nil
 }
 
 func override(req UnitChangeRequest, key string, v decimal.Decimal) decimal.Decimal {
@@ -186,6 +221,9 @@ func (s *BackofficeService) PreviewUnitChange(ctx context.Context, id int64, req
 		art, err := q.LockArticleNowait(ctx, id)
 		if err != nil {
 			return notFound(lockErr(err))
+		}
+		if !art.IsActive {
+			return fmt.Errorf("%w: reactívalo antes de cambiar en qué se mide", domain.ErrConflict)
 		}
 		p, err := planUnitChange(ctx, q, art, req)
 		out = p.preview
@@ -319,6 +357,9 @@ func changeUnitDirect(ctx context.Context, q *db.Queries, p unitPlan, req UnitCh
 	adjOrig := []map[string]any{}
 	for _, a := range adj {
 		to := domain.ConvertQty(a.Quantity, f)
+		if !domain.ValidConvertedQty(to) {
+			return fmt.Errorf("%w: un ajuste de su historia no cabe con esa equivalencia", domain.ErrValidation)
+		}
 		if to.IsZero() { // la columna no admite cero; la diferencia la absorbe la existencia recalculada
 			to = decimal.New(1, -4)
 			if a.Quantity.IsNegative() {
@@ -372,10 +413,10 @@ func convertSideTables(ctx context.Context, q *db.Queries, from, to int64, f dec
 	}
 	orig := []map[string]any{}
 	for _, pf := range formats {
-		if err := q.SetPurchaseFormatQty(ctx, db.SetPurchaseFormatQtyParams{ID: pf.ID, QtyInBase: domain.ConvertQty(pf.QtyInBase, f)}); err != nil {
+		if err := q.SetPurchaseFormatQty(ctx, db.SetPurchaseFormatQtyParams{ID: pf.ID, IngredientID: to, QtyInBase: domain.ConvertQty(pf.QtyInBase, f)}); err != nil {
 			return err
 		}
-		orig = append(orig, map[string]any{"id": pf.ID, "qtyInBase": pf.QtyInBase})
+		orig = append(orig, map[string]any{"id": pf.ID, "ingredientId": from, "qtyInBase": pf.QtyInBase})
 	}
 	if err := detail("ingredient_purchase_formats", orig); err != nil {
 		return err
@@ -452,12 +493,14 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 	old := p.art
 	// El nombre es único por empresa: el viejo cede el suyo y dice en qué se medía.
 	oldName := domain.CleanArticleName(old.Name)
-	suffix := " (antes en " + p.from.Code + ")"
-	keep := []rune(oldName)
-	if len(keep)+len([]rune(suffix)) > domain.MaxArticleName {
-		keep = keep[:domain.MaxArticleName-len([]rune(suffix))]
+	if err := q.LockIngredientNames(ctx); err != nil {
+		return err
 	}
-	if err := q.RenameArticle(ctx, db.RenameArticleParams{ID: old.ID, Name: strings.TrimSpace(string(keep)) + suffix}); err != nil {
+	retired, err := retiredName(ctx, q, oldName, p.from.Code)
+	if err != nil {
+		return err
+	}
+	if err := q.RenameArticle(ctx, db.RenameArticleParams{ID: old.ID, Name: retired}); err != nil {
 		return err
 	}
 	var minStock *decimal.Decimal
@@ -506,10 +549,8 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 		}
 		moved = append(moved, map[string]any{"branchId": s.BranchID, "old": s.OnHand, "new": to})
 	}
+	// Todas, también las de productos inactivos: si se reactivan, venden del artículo nuevo.
 	for _, r := range p.recipes {
-		if !r.Active {
-			continue
-		}
 		to := override(req, "recipe:"+strconv.FormatInt(r.ID, 10), domain.ConvertRecipeQty(r.Quantity, r.UnitToBase, f))
 		if !to.IsPositive() {
 			return fmt.Errorf("%w: la receta de %s quedaría en cero; corrige su cantidad", domain.ErrValidation, r.Owner)
@@ -551,4 +592,27 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 		Before: map[string]any{"unit": p.from.Code, "name": oldName},
 		After:  map[string]any{"newIngredientId": newID, "unit": p.to.Code, "factor": f, "replacementId": repID, "moved": moved},
 	})
+}
+
+// retiredName es el nombre del artículo viejo de un reemplazo: «X (antes en g)», y si ya existe uno así
+// (un segundo reemplazo de la misma unidad), «X (antes en g 2)», «… 3». Va bajo el candado de nombres.
+func retiredName(ctx context.Context, q *db.Queries, name, unit string) (string, error) {
+	for n := 1; ; n++ {
+		suffix := " (antes en " + unit + ")"
+		if n > 1 {
+			suffix = fmt.Sprintf(" (antes en %s %d)", unit, n)
+		}
+		keep := []rune(name)
+		if len(keep)+len([]rune(suffix)) > domain.MaxArticleName {
+			keep = keep[:domain.MaxArticleName-len([]rune(suffix))]
+		}
+		candidate := strings.TrimSpace(string(keep)) + suffix
+		taken, err := q.ArticleNameExists(ctx, candidate)
+		if err != nil {
+			return "", err
+		}
+		if !taken {
+			return candidate, nil
+		}
+	}
 }

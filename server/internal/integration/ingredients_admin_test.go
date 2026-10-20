@@ -98,6 +98,16 @@ func TestFindingAnArticle(t *testing.T) {
 		})
 	}
 
+	// La revisión de código encontró que la lista perdió la marca de las recetas estimadas por revisar.
+	t.Run("una receta estimada se marca por revisar", func(t *testing.T) {
+		if _, err := st.Pool.Exec(context.Background(), `update ingredients set composition_status = 'estimated' where id = $1`, azucar); err != nil {
+			t.Fatal(err)
+		}
+		rows, err := svc.ListArticles(ctx, app.ArticleFilter{Q: "azucar"})
+		if err != nil || len(rows) != 1 || rows[0].CompositionStatus != "estimated" {
+			t.Fatalf("%+v %v", rows, err)
+		}
+	})
 	t.Run("cada renglón trae su existencia, su lugar y sus empaques", func(t *testing.T) {
 		rows, err := svc.ListArticles(ctx, app.ArticleFilter{Q: "leche"})
 		if err != nil || len(rows) != 1 {
