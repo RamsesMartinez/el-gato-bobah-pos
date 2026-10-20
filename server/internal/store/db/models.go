@@ -1152,6 +1152,16 @@ type IngredientCategory struct {
 	IsActive bool   `json:"is_active"`
 }
 
+type IngredientCostCorrection struct {
+	ID           int64           `json:"id"`
+	CompanyID    int64           `json:"company_id"`
+	IngredientID int64           `json:"ingredient_id"`
+	PreviousCost decimal.Decimal `json:"previous_cost"`
+	NewCost      decimal.Decimal `json:"new_cost"`
+	UserID       int64           `json:"user_id"`
+	CreatedAt    time.Time       `json:"created_at"`
+}
+
 type IngredientPresentation struct {
 	ID             int64           `json:"id"`
 	CompanyID      int64           `json:"company_id"`
@@ -1172,6 +1182,16 @@ type IngredientPurchaseFormat struct {
 	LastCost     *decimal.Decimal `json:"last_cost"`
 	SupplierID   *int64           `json:"supplier_id"`
 	IsDefault    bool             `json:"is_default"`
+}
+
+type IngredientReplacement struct {
+	ID              int64           `json:"id"`
+	CompanyID       int64           `json:"company_id"`
+	OldIngredientID int64           `json:"old_ingredient_id"`
+	NewIngredientID int64           `json:"new_ingredient_id"`
+	Factor          decimal.Decimal `json:"factor"`
+	UserID          int64           `json:"user_id"`
+	CreatedAt       time.Time       `json:"created_at"`
 }
 
 type LocalItemExclusion struct {
@@ -1853,6 +1873,7 @@ type StockMovement struct {
 	ExpenseItemID        *int64            `json:"expense_item_id"`
 	StockCountID         *int64            `json:"stock_count_id"`
 	WasteRecordID        *int64            `json:"waste_record_id"`
+	ReplacementID        *int64            `json:"replacement_id"`
 }
 
 type Supplier struct {

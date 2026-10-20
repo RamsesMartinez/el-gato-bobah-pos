@@ -442,6 +442,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Salud del inventario (spec 037): por permiso y FUERA del grupo por rol. Dentro, el
 					// RequireRole de abajo seguiría decidiendo antes que el permiso, y un rol propio de una
 					// empresa con el permiso rebotaría (constitución, «Roles: modelo híbrido»).
+					// Artículos del almacén (spec 042): leer con «ver el almacén», cambiar con «configurar».
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles", h.ListArticles)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health", h.GetInventoryHealth)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health.csv", h.ExportInventoryHealth)
 					// El faltante de un conteo (spec 039): lo lee quien ve la salud del inventario.

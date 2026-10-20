@@ -14,35 +14,35 @@ Las reglas de la constitución que aplican a todas las tareas:
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirmar que la migración `0096` es la siguiente libre en `server/migrations/` y que
+- [X] T001 Confirmar que la migración `0096` es la siguiente libre en `server/migrations/` y que
   ninguna rama abierta la usa.
-- [ ] T002 Confirmar que el worktree tiene la base restaurada de producción con dos empresas
+- [X] T002 Confirmar que el worktree tiene la base restaurada de producción con dos empresas
   (`make db-restaurar`). La base debe traer artículos con ajustes de conteo, compras, una compra
   por recibir y una merma pendiente.
 
 ## Phase 2: Foundational (bloquea a todas las historias)
 
-- [ ] T003 [P] Test de dominio en `server/internal/domain/ingredients_test.go`:
+- [X] T003 [P] Test de dominio en `server/internal/domain/ingredients_test.go`:
   - **Validar la ficha:** nombre de 1 a 60, mínimo ≥ 0 y costo con `ValidMoney`.
   - **`UnitChangePath`:** solo `ajuste` da `direct`; cualquier compra, venta, merma, producción o
     cancelación da `replace`.
   - **`ConvertQty`:** factor con tope `ValidQty`. Masa↔volumen se rechaza (E10).
-- [ ] T004 [P] Test de dominio de `CountSanity` en `server/internal/domain/count_sanity_test.go`.
+- [X] T004 [P] Test de dominio de `CountSanity` en `server/internal/domain/count_sanity_test.go`.
   Una tabla con:
   - las cuatro referencias, en orden: esperado > 0, último conteo, 10 × el empaque más grande y el
     tope de 50 kg, 50 L, 50 m o 5,000 pz;
   - contar 0 nunca avisa;
   - menos de 1/100 del empaque más chico avisa;
   - una referencia ≤ 0 pasa a la siguiente (E13).
-- [ ] T005 Implementar `server/internal/domain/ingredients.go` y `count_sanity.go` hasta que T003 y
+- [X] T005 Implementar `server/internal/domain/ingredients.go` y `count_sanity.go` hasta que T003 y
   T004 pasen.
-- [ ] T006 [P] Permiso `inventory.view`:
+- [X] T006 [P] Permiso `inventory.view`:
   - en `AllPermissions` y en el rol gerente, en `server/internal/domain/permission.go` (con su test);
   - su espejo en `web/src/app/permissions.ts`.
-- [ ] T007 [P] Las diez acciones de FR-014, más `ingredient.unit_changed.detail` y la lectura de FR-016:
+- [X] T007 [P] Las diez acciones de FR-014, más `ingredient.unit_changed.detail` y la lectura de FR-016:
   - en la lista blanca de `server/internal/domain/audit.go`;
   - con sus etiquetas en `web/src/shared/audit/labels.ts`.
-- [ ] T008 Test de la migración 0096 en `server/internal/integration/migration_0096_test.go`, sobre
+- [X] T008 Test de la migración 0096 en `server/internal/integration/migration_0096_test.go`, sobre
   el respaldo restaurado con dos empresas:
   - las dos tablas con RLS `nullif` y grants `select, insert`;
   - las FK compuestas `no action`, y que borrar una empresa en cascada no truena;
@@ -51,7 +51,7 @@ Las reglas de la constitución que aplican a todas las tareas:
   - el índice de bitácora por entidad y el índice parcial de compras;
   - el Down se niega con datos (E15) y funciona en vacío;
   - las dos tablas entran a `TestEveryCompanyTableIsIsolated`.
-- [ ] T009 Migración `server/migrations/0096_ingredient_management.sql`, según
+- [X] T009 Migración `server/migrations/0096_ingredient_management.sql`, según
   [data-model.md](data-model.md), hasta que T008 pase. La revisa `db-architect` antes de aplicarla.
 - [ ] T010 Consultas en `server/queries/ingredients_admin.sql` y `make sqlc`. Sin nombrar
   `company_id` en tablas de la 0023. Son:
@@ -73,13 +73,13 @@ Las reglas de la constitución que aplican a todas las tareas:
 **Independent test**: escribir «hie» deja solo los artículos o empaques con «hie»; los filtros
 funcionan solos y combinados.
 
-- [ ] T011 [P] [US1] Tests de integración de `GET /stock/articles` en
+- [X] T011 [P] [US1] Tests de integración de `GET /stock/articles` en
   `server/internal/integration/ingredients_admin_test.go`:
   - texto sin acentos ni mayúsculas, que busca también en los empaques;
   - activos o archivados, lugar, «Sin lugar», sin costo y existencia negativa;
   - `inTheThreeCases`;
   - sin `inventory.view` da 403.
-- [ ] T012 [US1] Servicio `ListArticles` en `server/internal/app/ingredients_admin.go` y su handler
+- [X] T012 [US1] Servicio `ListArticles` en `server/internal/app/ingredients_admin.go` y su handler
   en `server/internal/httpapi/handlers_ingredients_admin.go`. La ruta va con
   `RequirePermission(inventory.view)` en `router.go`.
 - [ ] T013 [P] [US1] Test vitest de la lista en
