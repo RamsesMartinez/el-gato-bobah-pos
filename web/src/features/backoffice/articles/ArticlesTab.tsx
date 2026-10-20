@@ -8,7 +8,6 @@ import { can } from '../../../app/permissions';
 import { useSessionStore } from '../../../stores/session';
 import { formatBaseQty, formatUnitCost } from '../../../shared/units';
 import { NewArticleSheet } from './NewArticleSheet';
-import { KIND_WORD } from './articleUnits';
 
 // Almacén › Artículos (spec 042, maqueta «Lista de artículos», opción A con los ajustes de la
 // revisión): en la fila del buscador van «Lugar», «Activos / Archivados» y «+ Nuevo»; en chips, los dos
@@ -111,11 +110,10 @@ function ArticleLine({ a, onOpen }: { a: ArticleRow; onOpen: (id: number) => voi
   const cost = formatUnitCost(a.currentCost, a.baseUnitCode);
   const packs = a.presentations ?? [];
   return (
-    <Table.Row role="button" tabIndex={0} aria-label={a.name} cursor="pointer" h="44px"
+    <Table.Row role="button" tabIndex={0} aria-label={a.name} cursor="pointer" h="44px" css={{ "& > td": { paddingBlock: "0" } }}
       onClick={() => onOpen(a.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(a.id); }}>
       <Table.Cell>
         <Text fontWeight="600">{a.name}{a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}</Text>
-        <Text fontSize="xs" color="fg.muted">Se mide en {KIND_WORD[a.baseUnitKind] ?? a.baseUnitKind}</Text>
       </Table.Cell>
       <Table.Cell textAlign="end">
         <Text as="span" color={negative ? 'red.600' : undefined} fontWeight={negative ? '700' : undefined}>
