@@ -13,6 +13,48 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const activeRecipesUsing = `-- name: ActiveRecipesUsing :many
+select 'product'::text as kind, p.id, p.name::text as name
+  from recipe_items ri join products p on p.recipe_id = ri.recipe_id
+ where ri.ingredient_id = $1 and p.is_active
+union all
+select 'option'::text, mo.id, mo.name::text
+  from recipe_items ri join modifier_options mo on mo.recipe_id = ri.recipe_id
+ where ri.ingredient_id = $1 and mo.is_active
+union all
+select 'ingredient'::text, i.id, i.name::text
+  from recipe_items ri join ingredients i on i.recipe_id = ri.recipe_id
+ where ri.ingredient_id = $1 and i.is_active
+ order by 3
+`
+
+type ActiveRecipesUsingRow struct {
+	Kind string `json:"kind"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// Las recetas activas que restan el artículo: de un producto, de un extra o de otro preparado.
+func (q *Queries) ActiveRecipesUsing(ctx context.Context, ingredientID int64) ([]ActiveRecipesUsingRow, error) {
+	rows, err := q.db.Query(ctx, activeRecipesUsing, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActiveRecipesUsingRow{}
+	for rows.Next() {
+		var i ActiveRecipesUsingRow
+		if err := rows.Scan(&i.Kind, &i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const articleAudit = `-- name: ArticleAudit :many
 select a.id, a.occurred_at, a.action, a.entity_type, a.before, a.after, coalesce(u.name::text, a.actor_label) as actor
   from audit_events a
@@ -149,6 +191,39 @@ func (q *Queries) ArticleCostHistory(ctx context.Context, arg ArticleCostHistory
 			&i.Supplier,
 			&i.UserName,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const articleOnHandByBranch = `-- name: ArticleOnHandByBranch :many
+select b.name::text as branch, sl.on_hand
+  from stock_levels sl join branches b on b.id = sl.branch_id
+ where sl.item_type = 'ingrediente' and sl.ingredient_id = $1 and sl.on_hand <> 0
+ order by b.name
+`
+
+type ArticleOnHandByBranchRow struct {
+	Branch string          `json:"branch"`
+	OnHand decimal.Decimal `json:"on_hand"`
+}
+
+// Lo que queda del artículo en cada sucursal, para la revisión de archivar.
+func (q *Queries) ArticleOnHandByBranch(ctx context.Context, ingredientID *int64) ([]ArticleOnHandByBranchRow, error) {
+	rows, err := q.db.Query(ctx, articleOnHandByBranch, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArticleOnHandByBranchRow{}
+	for rows.Next() {
+		var i ArticleOnHandByBranchRow
+		if err := rows.Scan(&i.Branch, &i.OnHand); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -403,6 +478,23 @@ func (q *Queries) ListArticles(ctx context.Context, arg ListArticlesParams) ([]L
 	return items, nil
 }
 
+const lockArticle = `-- name: LockArticle :one
+select id, is_active from ingredients where id = $1 for update
+`
+
+type LockArticleRow struct {
+	ID       int64 `json:"id"`
+	IsActive bool  `json:"is_active"`
+}
+
+// El artículo bloqueado para archivarlo, reactivarlo o cambiarle la unidad.
+func (q *Queries) LockArticle(ctx context.Context, id int64) (LockArticleRow, error) {
+	row := q.db.QueryRow(ctx, lockArticle, id)
+	var i LockArticleRow
+	err := row.Scan(&i.ID, &i.IsActive)
+	return i, err
+}
+
 const oldestOfLastPurchases = `-- name: OldestOfLastPurchases :one
 select count(*)::int as purchases,
        coalesce((array_agg(unit_cost order by created_at asc, id asc))[1], 0)::numeric(12,6) as oldest_cost
@@ -425,6 +517,49 @@ func (q *Queries) OldestOfLastPurchases(ctx context.Context, ingredientID *int64
 	var i OldestOfLastPurchasesRow
 	err := row.Scan(&i.Purchases, &i.OldestCost)
 	return i, err
+}
+
+const openCountHasArticle = `-- name: OpenCountHasArticle :one
+select exists (
+  select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id
+   where c.status = 'open' and l.ingredient_id = $1
+)::bool
+`
+
+// ¿Algún conteo abierto ya capturó el artículo? Archivarlo dejaría esa cifra sin artículo que ofrecer.
+func (q *Queries) OpenCountHasArticle(ctx context.Context, ingredientID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, openCountHasArticle, ingredientID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const pendingReceiptsOf = `-- name: PendingReceiptsOf :one
+select count(*)::int from expense_items ei join expenses e on e.id = ei.expense_id
+ where ei.ingredient_id = $1 and e.status <> 'cancelada' and ei.voided_at is null
+   and ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty > 0
+`
+
+// Cuántos renglones de compra del artículo faltan por llegar (la misma regla que «Por recibir»).
+func (q *Queries) PendingReceiptsOf(ctx context.Context, ingredientID *int64) (int32, error) {
+	row := q.db.QueryRow(ctx, pendingReceiptsOf, ingredientID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const setArticleActive = `-- name: SetArticleActive :exec
+update ingredients set is_active = $1, updated_at = now() where id = $2
+`
+
+type SetArticleActiveParams struct {
+	Active bool  `json:"active"`
+	ID     int64 `json:"id"`
+}
+
+func (q *Queries) SetArticleActive(ctx context.Context, arg SetArticleActiveParams) error {
+	_, err := q.db.Exec(ctx, setArticleActive, arg.Active, arg.ID)
+	return err
 }
 
 const setArticleCostManual = `-- name: SetArticleCostManual :one

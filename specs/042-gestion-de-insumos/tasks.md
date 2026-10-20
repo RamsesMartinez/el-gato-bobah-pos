@@ -169,7 +169,7 @@ historial muestra compras y correcciones.
 
 **Independent test**: archivar un artículo sin recetas; deja de ofrecerse y sigue en su historia.
 
-- [ ] T027 [P] [US4] Tests de integración:
+- [X] T027 [P] [US4] Tests de integración:
   - con receta activa da 409 con la lista (E4);
   - con un conteo abierto que lo capturó da 409;
   - con una compra por recibir se avisa y se archiva; recibirla después no lo reactiva (E5);
@@ -178,7 +178,7 @@ historial muestra compras y correcciones.
   - los eventos;
   - sin `inventory.configure`, archivar y reactivar dan 403;
   - `archive-check` en los tres casos (`inTheThreeCases`).
-- [ ] T028 [US4] Servicio y rutas de `archive-check`, archivar y reactivar.
+- [X] T028 [US4] Servicio y rutas de `archive-check`, archivar y reactivar.
 - [ ] T029 [US4] Diálogo de archivado: cada receta abre su `CompositionSheet` y regresa; sin
   bloqueos, confirma. Ajuste de la Revisión, en `ArticleSheet.tsx`.
 

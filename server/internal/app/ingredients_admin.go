@@ -506,3 +506,157 @@ func rawOrNull(b []byte) json.RawMessage {
 	}
 	return b
 }
+
+// ArchiveCheck es lo que se muestra antes de archivar (FR-007).
+type ArchiveCheck struct {
+	OnHand          []BranchQty `json:"onHand"`
+	ActiveRecipes   []RecipeUse `json:"activeRecipes"`
+	OpenCount       bool        `json:"openCount"`
+	PendingReceipts int         `json:"pendingReceipts"`
+}
+
+// BranchQty es lo que queda en una sucursal.
+type BranchQty struct {
+	Branch string          `json:"branch"`
+	Qty    decimal.Decimal `json:"qty"`
+}
+
+// RecipeUse es una receta activa que resta el artículo: de un producto, de un extra o de un preparado.
+type RecipeUse struct {
+	Kind string `json:"kind"` // product | option | ingredient
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// ArticleArchiveCheck dice qué queda y qué lo usa antes de archivar.
+func (s *BackofficeService) ArticleArchiveCheck(ctx context.Context, id int64) (ArchiveCheck, error) {
+	return archiveCheck(ctx, s.store.QC(ctx), id)
+}
+
+func archiveCheck(ctx context.Context, q *db.Queries, id int64) (ArchiveCheck, error) {
+	if _, err := q.GetArticle(ctx, id); err != nil {
+		return ArchiveCheck{}, notFound(err)
+	}
+	out := ArchiveCheck{OnHand: []BranchQty{}, ActiveRecipes: []RecipeUse{}}
+	stock, err := q.ArticleOnHandByBranch(ctx, &id)
+	if err != nil {
+		return out, err
+	}
+	for _, r := range stock {
+		out.OnHand = append(out.OnHand, BranchQty{Branch: r.Branch, Qty: r.OnHand})
+	}
+	uses, err := q.ActiveRecipesUsing(ctx, id)
+	if err != nil {
+		return out, err
+	}
+	for _, r := range uses {
+		out.ActiveRecipes = append(out.ActiveRecipes, RecipeUse{Kind: r.Kind, ID: r.ID, Name: r.Name})
+	}
+	if out.OpenCount, err = q.OpenCountHasArticle(ctx, id); err != nil {
+		return out, err
+	}
+	n, err := q.PendingReceiptsOf(ctx, &id)
+	out.PendingReceipts = int(n)
+	return out, err
+}
+
+// ArchiveArticle deja de ofrecer un artículo en el gasto, la receta y el conteo, sin tocar su historia.
+// Se niega mientras una receta activa lo use o un conteo abierto lo tenga capturado (FR-007). Una
+// compra por recibir no lo impide: cuando llegue, suma sin reactivarlo.
+func (s *BackofficeService) ArchiveArticle(ctx context.Context, id int64) error {
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		a, err := q.LockArticle(ctx, id)
+		if err != nil {
+			return notFound(err)
+		}
+		if !a.IsActive {
+			return nil
+		}
+		check, err := archiveCheck(ctx, q, id)
+		if err != nil {
+			return err
+		}
+		if len(check.ActiveRecipes) > 0 {
+			return fmt.Errorf("%w: lo usan %d recetas activas; quítalo de ellas antes de archivar", domain.ErrArticleInUse, len(check.ActiveRecipes))
+		}
+		if check.OpenCount {
+			return fmt.Errorf("%w: un conteo abierto ya lo capturó; ciérralo o descártalo antes", domain.ErrArticleInUse)
+		}
+		if err := q.SetArticleActive(ctx, db.SetArticleActiveParams{ID: id, Active: false}); err != nil {
+			return err
+		}
+		return recordAudit(ctx, q, domain.AuditEvent{
+			Action: domain.AuditIngredientArchived, EntityType: "ingredient", EntityID: id,
+			Before: map[string]any{"active": true}, After: map[string]any{"active": false, "onHand": check.OnHand, "pendingReceipts": check.PendingReceipts},
+		})
+	})
+}
+
+// ReactivateArticle vuelve a ofrecer un artículo archivado, tal como estaba.
+func (s *BackofficeService) ReactivateArticle(ctx context.Context, id int64) error {
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		a, err := q.LockArticle(ctx, id)
+		if err != nil {
+			return notFound(err)
+		}
+		if a.IsActive {
+			return nil
+		}
+		// Otro activo pudo tomar su nombre mientras estaba archivado.
+		art, err := q.GetArticle(ctx, id)
+		if err != nil {
+			return err
+		}
+		if err := q.LockIngredientNames(ctx); err != nil {
+			return err
+		}
+		switch found, err := q.FindOtherArticleByName(ctx, db.FindOtherArticleByNameParams{ID: id, Name: art.Name}); {
+		case err == nil && found.IsActive:
+			return domain.ArticleNameTaken{ID: found.ID}
+		case err != nil && !errors.Is(err, pgx.ErrNoRows):
+			return err
+		}
+		if err := q.SetArticleActive(ctx, db.SetArticleActiveParams{ID: id, Active: true}); err != nil {
+			return err
+		}
+		return recordAudit(ctx, q, domain.AuditEvent{
+			Action: domain.AuditIngredientReactivated, EntityType: "ingredient", EntityID: id,
+			Before: map[string]any{"active": false}, After: map[string]any{"active": true},
+		})
+	})
+}
+
+// ArticleCategory es una categoría de artículos.
+type ArticleCategory struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// ArticleCategories son las categorías de artículos de la empresa, para la ficha.
+func (s *BackofficeService) ArticleCategories(ctx context.Context) ([]ArticleCategory, error) {
+	rows, err := s.store.QC(ctx).ListIngredientCategories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ArticleCategory, len(rows))
+	for i, r := range rows {
+		out[i] = ArticleCategory{ID: r.ID, Name: string(r.Name)}
+	}
+	return out, nil
+}
+
+// CreateArticleCategory da de alta una categoría desde la ficha. Repetida es 409.
+func (s *BackofficeService) CreateArticleCategory(ctx context.Context, name string) (ArticleCategory, error) {
+	name = domain.CleanArticleName(name)
+	if name == "" || len([]rune(name)) > domain.MaxArticleName {
+		return ArticleCategory{}, fmt.Errorf("%w: la categoría lleva de 1 a %d letras", domain.ErrValidation, domain.MaxArticleName)
+	}
+	r, err := s.store.QC(ctx).CreateIngredientCategory(ctx, name)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return ArticleCategory{}, fmt.Errorf("%w: esa categoría ya existe", domain.ErrConflict)
+		}
+		return ArticleCategory{}, err
+	}
+	return ArticleCategory{ID: r.ID, Name: string(r.Name)}, nil
+}

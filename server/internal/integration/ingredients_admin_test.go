@@ -536,3 +536,152 @@ func TestArticleSheetHTTPPermissions(t *testing.T) {
 		t.Fatalf("cursor ilegible = %d, quiere 400", w.Code)
 	}
 }
+
+// US4: archivar quita el artículo de la captura sin borrar su historia (FR-007, FR-008).
+func TestArchivingAnArticle(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	ctx := app.WithActorUser(k.ctx, k.user)
+	svc := k.svc
+
+	t.Run("con una receta activa se niega y dice cuál", func(t *testing.T) {
+		check, err := svc.ArticleArchiveCheck(ctx, k.azucar)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(check.ActiveRecipes) != 1 || check.ActiveRecipes[0].Name != "Agua de azúcar" {
+			t.Fatalf("recetas = %+v", check.ActiveRecipes)
+		}
+		if err := svc.ArchiveArticle(ctx, k.azucar); !errors.Is(err, domain.ErrArticleInUse) {
+			t.Fatalf("= %v; quiere ErrArticleInUse", err)
+		}
+	})
+
+	suelto := ingredientIn(t, k.st, defaultCompanyID, "Colorante rojo", "ml")
+	stockAdjust(t, k.st, defaultCompanyID, suelto, "120")
+	t.Run("sin recetas: la revisión dice cuánto queda y archiva", func(t *testing.T) {
+		check, err := svc.ArticleArchiveCheck(ctx, suelto)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(check.OnHand) != 1 || !check.OnHand[0].Qty.Equal(qty("120")) || check.ActiveRecipes == nil {
+			t.Fatalf("revisión = %+v", check)
+		}
+		if err := svc.ArchiveArticle(ctx, suelto); err != nil {
+			t.Fatal(err)
+		}
+		if n := auditCount(t, k.st, "ingredient.archived", suelto); n != 1 {
+			t.Fatalf("eventos = %d", n)
+		}
+	})
+	t.Run("archivado deja de ofrecerse en el buscador del gasto y en el conteo", func(t *testing.T) {
+		arts, err := svc.SearchArticles(ctx, "colorante")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range arts {
+			if a.ID == suelto {
+				t.Fatal("el gasto sigue ofreciendo un archivado")
+			}
+		}
+	})
+	t.Run("sigue en sus movimientos pasados", func(t *testing.T) {
+		var n int
+		if err := k.st.Pool.QueryRow(context.Background(), `select count(*) from stock_movements where ingredient_id = $1`, suelto).Scan(&n); err != nil || n != 1 {
+			t.Fatalf("movimientos = %d %v", n, err)
+		}
+	})
+	t.Run("reactivar lo devuelve tal como estaba", func(t *testing.T) {
+		if err := svc.ReactivateArticle(ctx, suelto); err != nil {
+			t.Fatal(err)
+		}
+		a, err := svc.GetArticle(ctx, suelto)
+		if err != nil || !a.IsActive || !a.OnHand.Equal(qty("120")) {
+			t.Fatalf("%+v %v", a, err)
+		}
+		if n := auditCount(t, k.st, "ingredient.reactivated", suelto); n != 1 {
+			t.Fatalf("eventos = %d", n)
+		}
+	})
+	t.Run("con un conteo abierto que ya lo capturó se niega", func(t *testing.T) {
+		count, err := svc.OpenCount(ctx, k.user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.CaptureCount(ctx, count.ID, suelto, qty("100"), k.user); err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.ArchiveArticle(ctx, suelto); !errors.Is(err, domain.ErrArticleInUse) {
+			t.Fatalf("= %v; quiere ErrArticleInUse por el conteo abierto", err)
+		}
+		if err := svc.DiscardCount(ctx, count.ID, k.user); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("con una compra por recibir: avisa y archiva; recibirla después no lo reactiva", func(t *testing.T) {
+		q := qty("2")
+		g := gramos(t, k.st)
+		fresa := ingredientIn(t, k.st, defaultCompanyID, "Fresa congelada", "g")
+		exp, err := svc.CreateExpense(ctx, app.ExpenseInput{CategoryID: k.category, Amount: qty("80"), Status: domain.ExpensePendiente, UserID: k.user,
+			Items: []app.ExpenseItemInput{{ItemType: "ingrediente", IngredientID: &fresa, Description: "Fresa", Quantity: q, UnitID: &g, Amount: qty("80")}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check, err := svc.ArticleArchiveCheck(ctx, fresa)
+		if err != nil || check.PendingReceipts != 1 {
+			t.Fatalf("por recibir = %+v %v", check, err)
+		}
+		if err := svc.ArchiveArticle(ctx, fresa); err != nil {
+			t.Fatal(err)
+		}
+		var item int64
+		if err := k.st.Pool.QueryRow(context.Background(), `select id from expense_items where expense_id = $1`, exp).Scan(&item); err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.ReceiveItem(ctx, exp, item, app.ReceiveItemInput{Qty: q, SeenApplied: qty("0")}, k.user); err != nil {
+			t.Fatalf("recibir lo pendiente de un archivado: %v", err)
+		}
+		a, err := svc.GetArticle(ctx, fresa)
+		if err != nil || a.IsActive || !a.OnHand.Equal(qty("2")) {
+			t.Fatalf("tras recibir: activo %v, existencia %s, %v", a.IsActive, a.OnHand, err)
+		}
+	})
+	t.Run("archive-check de otra empresa no ve nada, en los tres casos", func(t *testing.T) {
+		inTheThreeCases(t, defaultCompanyID, makeCompany(t, k.st, "archivar-ajena"), func(t *testing.T, st *store.Store, ctx context.Context) {
+			check, err := app.NewBackofficeService(st, clock).ArticleArchiveCheck(ctx, k.azucar)
+			if err == nil && (len(check.ActiveRecipes) > 0 || len(check.OnHand) > 0) {
+				t.Fatalf("se vio la revisión de otra empresa: %+v", check)
+			}
+		})
+	})
+}
+
+// Archivar, reactivar y la lista de categorías por permiso (FR-013).
+func TestArchivingHTTPPermissions(t *testing.T) {
+	t.Parallel()
+	r, st, token := newStockAPI(t)
+	id := strconv.FormatInt(ingredientIn(t, st, defaultCompanyID, "Archivable http", "ml"), 10)
+	cajero := token("arch_cajero", "cajero")
+	for _, c := range []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/stock/articles/" + id + "/archive-check"},
+		{http.MethodPost, "/api/v1/stock/articles/" + id + "/archive"},
+		{http.MethodPost, "/api/v1/stock/articles/" + id + "/reactivate"},
+		{http.MethodGet, "/api/v1/stock/ingredient-categories"},
+		{http.MethodPost, "/api/v1/stock/ingredient-categories"},
+	} {
+		if w := do(t, r, c.method, c.path, cajero, []byte(`{"name":"x"}`), "application/json"); w.Code != http.StatusForbidden {
+			t.Errorf("cajero %s %s = %d, quiere 403", c.method, c.path, w.Code)
+		}
+	}
+	admin := token("arch_admin", "admin")
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/articles/"+id+"/archive", admin, nil, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("archivar = %d %s", w.Code, w.Body.String())
+	}
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/ingredient-categories", admin, []byte(`{"name":"Lácteos"}`), "application/json"); w.Code != http.StatusCreated {
+		t.Fatalf("crear categoría = %d %s", w.Code, w.Body.String())
+	}
+	w := do(t, r, http.MethodGet, "/api/v1/stock/ingredient-categories", admin, nil, "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Lácteos") {
+		t.Fatalf("categorías = %d %s", w.Code, w.Body.String())
+	}
+}

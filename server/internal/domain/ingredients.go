@@ -123,3 +123,7 @@ func TrendPct(current, reference decimal.Decimal) *decimal.Decimal {
 	pct := current.Sub(reference).Div(reference).Mul(decimal.NewFromInt(100)).Round(1)
 	return &pct
 }
+
+// ErrArticleInUse: el artículo no se archiva mientras una receta activa lo reste o un conteo abierto
+// lo tenga capturado (409 IN_USE): la pantalla dice cuáles.
+var ErrArticleInUse = fmt.Errorf("%w: el artículo todavía se usa", ErrConflict)

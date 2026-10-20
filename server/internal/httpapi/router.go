@@ -450,6 +450,11 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/audit", h.ArticleAudit)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Patch("/articles/{id}", h.UpdateArticle)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/cost", h.CorrectArticleCost)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/archive-check", h.ArticleArchiveCheck)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/archive", h.ArchiveArticle)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/reactivate", h.ReactivateArticle)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/ingredient-categories", h.ArticleCategories)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredient-categories", h.CreateArticleCategory)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health", h.GetInventoryHealth)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health.csv", h.ExportInventoryHealth)
 					// El faltante de un conteo (spec 039): lo lee quien ve la salud del inventario.

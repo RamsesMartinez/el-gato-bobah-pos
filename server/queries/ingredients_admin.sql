@@ -133,3 +133,45 @@ select a.id, a.occurred_at, a.action, a.entity_type, a.before, a.after, coalesce
    and (sqlc.narg(before_at)::timestamptz is null or (a.occurred_at, a.id) < (sqlc.narg(before_at)::timestamptz, sqlc.narg(before_id)::bigint))
  order by a.occurred_at desc, a.id desc
  limit sqlc.arg(lim);
+
+-- name: ArticleOnHandByBranch :many
+-- Lo que queda del artículo en cada sucursal, para la revisión de archivar.
+select b.name::text as branch, sl.on_hand
+  from stock_levels sl join branches b on b.id = sl.branch_id
+ where sl.item_type = 'ingrediente' and sl.ingredient_id = sqlc.arg(ingredient_id) and sl.on_hand <> 0
+ order by b.name;
+
+-- name: ActiveRecipesUsing :many
+-- Las recetas activas que restan el artículo: de un producto, de un extra o de otro preparado.
+select 'product'::text as kind, p.id, p.name::text as name
+  from recipe_items ri join products p on p.recipe_id = ri.recipe_id
+ where ri.ingredient_id = sqlc.arg(ingredient_id) and p.is_active
+union all
+select 'option'::text, mo.id, mo.name::text
+  from recipe_items ri join modifier_options mo on mo.recipe_id = ri.recipe_id
+ where ri.ingredient_id = sqlc.arg(ingredient_id) and mo.is_active
+union all
+select 'ingredient'::text, i.id, i.name::text
+  from recipe_items ri join ingredients i on i.recipe_id = ri.recipe_id
+ where ri.ingredient_id = sqlc.arg(ingredient_id) and i.is_active
+ order by 3;
+
+-- name: OpenCountHasArticle :one
+-- ¿Algún conteo abierto ya capturó el artículo? Archivarlo dejaría esa cifra sin artículo que ofrecer.
+select exists (
+  select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id
+   where c.status = 'open' and l.ingredient_id = sqlc.arg(ingredient_id)
+)::bool;
+
+-- name: PendingReceiptsOf :one
+-- Cuántos renglones de compra del artículo faltan por llegar (la misma regla que «Por recibir»).
+select count(*)::int from expense_items ei join expenses e on e.id = ei.expense_id
+ where ei.ingredient_id = sqlc.arg(ingredient_id) and e.status <> 'cancelada' and ei.voided_at is null
+   and ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty > 0;
+
+-- name: LockArticle :one
+-- El artículo bloqueado para archivarlo, reactivarlo o cambiarle la unidad.
+select id, is_active from ingredients where id = sqlc.arg(id) for update;
+
+-- name: SetArticleActive :exec
+update ingredients set is_active = sqlc.arg(active), updated_at = now() where id = sqlc.arg(id);

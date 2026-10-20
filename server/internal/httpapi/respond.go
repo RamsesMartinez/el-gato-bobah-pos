@@ -203,6 +203,8 @@ func Error(w http.ResponseWriter, err error) {
 		// 404 y no 422: el id viajó bien, simplemente no está en la última lectura. Sin este caso
 		// el PUT respondería 200 y la pantalla seguiría diciendo «sin pareja», sin error visible.
 		status, code = http.StatusNotFound, "PLATFORM_ITEM_NOT_FOUND"
+	case errors.Is(err, domain.ErrArticleInUse):
+		status, code = http.StatusConflict, "IN_USE"
 	case errors.Is(err, domain.ErrArticleStale):
 		status, code = http.StatusConflict, "STALE"
 	case errors.Is(err, domain.ErrPrepCost):

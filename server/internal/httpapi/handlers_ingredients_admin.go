@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -208,4 +209,69 @@ func (h *Handlers) ArticleAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, out)
+}
+
+// GET /stock/articles/{id}/archive-check — qué queda y qué lo usa, antes de archivar.
+func (h *Handlers) ArticleArchiveCheck(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	out, err := h.backoffice.ArticleArchiveCheck(r.Context(), id)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, out)
+}
+
+// POST /stock/articles/{id}/archive — 409 IN_USE con receta activa o conteo abierto.
+func (h *Handlers) ArchiveArticle(w http.ResponseWriter, r *http.Request) {
+	h.articleAction(w, r, h.backoffice.ArchiveArticle)
+}
+
+// POST /stock/articles/{id}/reactivate
+func (h *Handlers) ReactivateArticle(w http.ResponseWriter, r *http.Request) {
+	h.articleAction(w, r, h.backoffice.ReactivateArticle)
+}
+
+func (h *Handlers) articleAction(w http.ResponseWriter, r *http.Request, act func(context.Context, int64) error) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if err := act(r.Context(), id); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /stock/ingredient-categories
+func (h *Handlers) ArticleCategories(w http.ResponseWriter, r *http.Request) {
+	out, err := h.backoffice.ArticleCategories(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, out)
+}
+
+// POST /stock/ingredient-categories — `{ name }`.
+func (h *Handlers) CreateArticleCategory(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	out, err := h.backoffice.CreateArticleCategory(r.Context(), body.Name)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, out)
 }
