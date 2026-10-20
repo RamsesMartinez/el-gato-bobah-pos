@@ -20,7 +20,7 @@ artículo», y cada artículo tendrá una ficha editable con:
   - `ingredient_replacements`: un artículo que se reemplaza por otro en otra unidad, con sus dos
     movimientos ligados.
 - **Un permiso**: `inventory.view`.
-- **Diez acciones de bitácora.**
+- **Diez acciones de bitácora**, más los eventos hijos `ingredient.unit_changed.detail`.
 
 **Lo que se reutiliza:** `ingredients.is_active`, `ingredient_presentations`, `count_places` y los
 movimientos de compra, que ya guardan su costo.
@@ -122,7 +122,7 @@ El código de cada maqueta está en [maquetas/](maquetas/).
 | Validar ficha (nombre 1–60, mínimo ≥ 0, costo con `ValidMoney`); `UnitChangePath(movimientos) → direct \| replace`, donde solo `compra`, `venta`, `merma`, `produccion` y `cancelacion` bloquean y `ajuste` no; `ConvertQty(qty, factor)` | domain | `server/internal/domain/ingredients.go` |
 | `CountSanity(captured, ref)`: referencia en orden (esperado > 0, último conteo cerrado > 0, 10 × el empaque más grande, tope por unidad de 50 kg, 50 L, 50 m o 5,000 piezas). Contar 0 nunca avisa por «menor». Avisa también por debajo de 1/100 del empaque más chico | domain | `server/internal/domain/count_sanity.go` |
 | Permiso `inventory.view` en `AllPermissions` y en gerente | domain | `permission.go`, `web/src/app/permissions.ts` |
-| Diez acciones nuevas en la lista blanca, con sus etiquetas | domain + web | `domain/audit.go`, `web/src/shared/audit/labels.ts` |
+| Diez acciones nuevas y `ingredient.unit_changed.detail` en la lista blanca, con sus etiquetas | domain + web | `domain/audit.go`, `web/src/shared/audit/labels.ts` |
 | `ingredient_cost_corrections`, `ingredient_replacements`, RLS, grants y dos índices | migración | `server/migrations/0096_ingredient_management.sql` |
 | Lista con filtros, ficha, actualizar con `updated_at` esperado, archivar o reactivar, revisión de archivado, historial por llave, sugerencias de empaque por tipo de unidad y las conversiones del cambio de unidad | sqlc | `server/queries/ingredients_admin.sql` |
 | Servicio con crear, editar, corregir costo, archivar, reactivar, cambiar unidad (vista previa y confirmar) e historial | app | `server/internal/app/ingredients_admin.go` |
