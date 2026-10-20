@@ -11,6 +11,7 @@ Todas las rutas van bajo `/api/v1` y piden sesión. **V** = `inventory.view` y *
 | `PATCH /stock/articles/{id}` | C | `{expectedUpdatedAt, name?, categoryId?, placeId?, minStock?}` |
 | `POST /stock/articles/{id}/cost` | C | `{cost}`: corrección a mano |
 | `GET /stock/articles/{id}/cost-history?before=<cursor>` | V | 20 renglones `{kind: purchase\|correction, at, unitCost, presentation?, supplier?, user?}` y `next` |
+| `GET /stock/articles/{id}/audit?before=<cursor>` | V | 20 eventos del artículo y de sus empaques: `{at, actor, action, before, after}` y `next` |
 | `GET /stock/articles/{id}/archive-check` | V | `{onHand[], activeRecipes[], openCount, pendingReceipts}` |
 | `POST /stock/articles/{id}/archive` · `/reactivate` | C | |
 | `POST /stock/articles/{id}/unit/preview` | C | `{baseUnitId, factor}` → `{path: direct\|replace, conversions[]}` |

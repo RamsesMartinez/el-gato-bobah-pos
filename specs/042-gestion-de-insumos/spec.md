@@ -250,6 +250,8 @@ en kg pide confirmar; escribir 740 en g, no.
   las más recientes primero, con «Ver más» para las anteriores. Cada compra lleva fecha, proveedor,
   empaque en que se compró y costo por unidad («$30 por Bolsa de 5 kg · $0.006/g»); cada corrección,
   quién la hizo. La gráfica y la lista MUST caber y leerse a 1024×600 sin desplazar la ficha de lado.
+  Junto al costo, un indicador dice si sube o baja contra la compra más vieja de las mostradas; con
+  menos de 2 compras no se muestra.
 - **FR-007**: Archivar MUST mostrar antes la existencia y las recetas activas que usan el artículo.
   Se niega mientras una receta activa lo use o un conteo abierto lo tenga capturado. Reactivar lo
   devuelve tal como estaba.
@@ -298,6 +300,8 @@ en kg pide confirmar; escribir 740 en g, no.
   `ingredient.unit_changed` (con la equivalencia y, por cada ajuste de conteo, receta y empaque
   convertido, su valor y unidad originales), `ingredient.replaced`, `presentation.created`, `presentation.updated`
   y `presentation.retired`.
+- **FR-016**: La ficha MUST ofrecer la bitácora del artículo: sus eventos de FR-014, del más
+  reciente al más viejo, con quién, cuándo y qué cambió, de 20 en 20. Leerla pide `inventory.view`.
 - **FR-015**: Los textos MUST ser de quien opera («Artículo», «Empaque», «En qué se mide»,
   «Archivar»), sin nombres internos. Todo control táctil mide 44 px o más, y ningún selector es
   nativo.
