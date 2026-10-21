@@ -65,13 +65,22 @@
 - [ ] T030 [US8] Por cada defecto: su prueba que falla (vitest o el recorrido) y el arreglo con tokens del tema en el componente que lo causa; anotar la lista en plan › Al construir
 - [ ] T031 [US8] Correr el recorrido también contra `bun run build && bun run preview` (local) para acercarse al build de producción
 
-## Phase 11: Polish
+## Phase 11: US9 - CI más corto (P2)
 
-- [ ] T032 Playwright en local (:3044) a 1024×600: la lista conserva 6 renglones; la sección de límites con controles de 44 px y «Guardar límites» visible con el teclado del sistema simulado, en web/e2e/gestion-de-articulos.spec.ts
-- [ ] T033 `make api-build && make api-test`, `make test-integration`, `make web-test`, `make web-lint`
-- [ ] T034 AGENTS.md: renglón de «Límites del conteo» (tabla, defaults en la columna, solo el conteo los usa)
-- [ ] T035 Prueba con usuario sin contexto en local (:3044, 1024×600, claro y oscuro) y anotar en plan › Al construir
-- [ ] T036 Dejar la 044 corriendo en local para el dueño; PR #125 en borrador
+- [ ] T032 [US9] Prueba del script de reparto: 3 shards cubren la lista completa sin repetir; un shard vacío pasa; una prueba sin asignar hace fallar la verificación, en scripts/tests/ci-shard-tests-test.sh (enganchada en lefthook.yml como los demás)
+- [ ] T033 [US9] Script scripts/ci-shard-tests.sh (listar, repartir por turno, verificar la unión, imprimir el `-run` del shard N)
+- [ ] T034 [US9] Matriz de 3 en el job `integration` de .github/workflows/ci.yml usando el script, con `go test -json` guardado como artefacto para medir duraciones
+- [ ] T035 [US9] Imagen con binario precompilado: build en el job `image` con setup-go y `ARG PREBUILT` en server/Dockerfile; sin el argumento compila como hoy
+- [ ] T036 [US9] Medir las 10 pruebas de integración más lentas (en local con `make test-integration` y `-json`), corregir lo barato y anotarlo en plan › Al construir
+- [ ] T037 [US9] Medir el CI del PR de la 044 y el del merge contra SC-007 y anotarlo en plan › Al construir
+
+## Phase 12: Polish
+
+- [ ] T038 Playwright en local (:3044) a 1024×600: la lista conserva 6 renglones; la sección de límites con controles de 44 px y «Guardar límites» visible con el teclado del sistema simulado, en web/e2e/gestion-de-articulos.spec.ts
+- [ ] T039 `make api-build && make api-test`, `make test-integration`, `make web-test`, `make web-lint`
+- [ ] T040 AGENTS.md: renglón de «Límites del conteo» (tabla, defaults en la columna, solo el conteo los usa)
+- [ ] T041 Prueba con usuario sin contexto en local (:3044, 1024×600, claro y oscuro) y anotar en plan › Al construir
+- [ ] T042 Dejar la 044 corriendo en local para el dueño; PR #125 en borrador
 
 ## Dependencies
 

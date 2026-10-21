@@ -170,6 +170,24 @@ pestaña y hoja del almacén, con capturas; ninguna queda ilegible, cortada ni d
 2. **Given** un defecto encontrado, **Then** se corrige con colores del tema y deja su prueba.
 3. **Given** el recorrido, **Then** las capturas de claro y oscuro quedan como evidencia para el dueño.
 
+### User Story 9 - CI más corto (Priority: P2)
+
+**Why this priority**: el dueño quiere iterar sin esperar; hoy un PR tarda ~5 min y el merge a develop ~3
+(medido el 2026-10-21: integración 286 s, imagen de la API 102 s).
+
+**Independent Test**: un PR que toca `server/` termina su CI en ~2 min y un merge a develop construye la
+imagen en ~40 s, sin perder ninguna prueba.
+
+**Acceptance Scenarios**:
+
+1. **Given** un PR que toca `server/`, **Then** las pruebas de integración corren repartidas en 3 máquinas,
+   cada una con su Postgres, y entre las 3 corren exactamente las mismas pruebas que hoy (ninguna se
+   pierde ni se repite).
+2. **Given** un merge a develop, **Then** la imagen de la API reusa la compilación en vez de recompilar el
+   módulo entero.
+3. **Given** las pruebas de integración, **Then** queda medido cuáles son las 10 más lentas y por qué, y
+   se corrige lo que sea barato (correr en paralelo lo que hoy corre en serie sin necesidad).
+
 ### Edge Cases
 
 - **Coma decimal** del teclado físico: cuenta como punto.
@@ -216,6 +234,11 @@ pestaña y hoja del almacén, con capturas; ninguna queda ilegible, cortada ni d
   de los tokens del tema, no de colores fijos.
 - **FR-014**: Todas las pantallas del almacén MUST pasar el repaso visual de US8 en claro y oscuro a 1024×600,
   en local.
+- **FR-015**: El CI MUST repartir las pruebas de integración en 3 máquinas sin perder ni repetir ninguna,
+  con una verificación en el mismo CI que falle si el total repartido no coincide con la lista completa.
+- **FR-016**: La imagen de la API MUST reusar la compilación de Go entre corridas de CI.
+- **FR-017**: Las 10 pruebas de integración más lentas MUST quedar medidas y anotadas en el plan, con lo que
+  se corrigió y lo que no.
 
 ## Success Criteria *(mandatory)*
 
@@ -228,6 +251,8 @@ pestaña y hoja del almacén, con capturas; ninguna queda ilegible, cortada ni d
 - **SC-005**: Un conteo completo se puede capturar sin tocar la pantalla, con el teclado físico.
 - **SC-006**: Cambiar el máximo de una empresa cambia lo que su conteo acepta y su mensaje, sin tocar a
   las demás empresas.
+- **SC-007**: El CI de un PR que toca `server/` baja de ~5 min a ~2 min, y la imagen de la API de 102 s a
+  ~40 s (objetivos estimados; se miden en el PR de la 044 y en su merge).
 
 ## Assumptions
 

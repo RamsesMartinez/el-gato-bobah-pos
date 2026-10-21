@@ -126,6 +126,21 @@ El botón de volver, «Revisar», el teclado físico, Existencias en oscuro y lo
 - **«Revisar»**: celda con `whiteSpace="nowrap"` y ancho fijo; sin `title`.
 - **Volver**: se mide a 800 px; si no cabe, «← Artículos» con borde. Flecha con `aria-hidden`.
 
+### CI más corto (US9)
+
+- **Repartir la integración**: matriz de 3 en el job `integration` de `.github/workflows/ci.yml`. Un script
+  (`scripts/ci-shard-tests.sh`) lista las pruebas con `go test -list` y las asigna por turno al shard N;
+  cada shard corre `go test -run '^(…)$'` con su Postgres de servicio. El script también verifica que la
+  unión de los shards es la lista completa y que no hay repetidas: si no, el job falla. El paquete
+  `internal/httpapi` va entero en un shard. Prueba del script en `scripts/tests/ci-shard-tests-test.sh`.
+- **Imagen sin recompilar**: el caché de BuildKit (`type=gha`) no guarda los `--mount=type=cache` del
+  Dockerfile, por eso cada merge recompila todo. Se compila el binario en el job `image` con `setup-go` (su
+  caché sí persiste) y un `Dockerfile` con `ARG PREBUILT` copia ese binario; sin el argumento, el Dockerfile
+  compila como hoy (para `make deploy`). Sin acciones de terceros nuevas.
+- **Las pruebas lentas**: `go test -json` en el CI guarda la duración de cada prueba; las 10 más lentas van a
+  «Al construir» con su causa. Lo barato (`t.Parallel` donde no toca estado global) se corrige aquí.
+- **Lo que no cambia**: qué pruebas corren y cuándo; el pre-push; los despliegues.
+
 ## Bordes (se piensan antes del código)
 
 | # | Borde | Cómo se cierra | Test |
@@ -140,6 +155,9 @@ El botón de volver, «Revisar», el teclado físico, Existencias en oscuro y lo
 | E8 | Coma, letras, Enter con «Guardar» apagado, Enter con el aviso abierto, foco en otro input | Coma = punto; letras se ignoran; Enter no hace nada sin captura ni confirma el aviso; con foco en un input de texto el teclado no se apropia de las teclas | vitest |
 | E9 | Gráfica con 0, 1 o 20 puntos; tocar fuera de un punto | 0: nada; 1: un punto con su cifra; tocar fuera cierra la etiqueta | vitest |
 | E11 | Un color fijo que se ve en claro y desaparece en oscuro | Repaso con contraste medido (4.5:1 texto, 3:1 controles) en los dos temas | Playwright local |
+| E12 | Una prueba nueva que ningún shard toma, o que dos toman | El script compara la unión con `go test -list` y falla | Script con prueba |
+| E13 | Un shard sin pruebas (lista corta) | El shard termina en verde sin correr nada | Script con prueba |
+| E14 | La imagen con un binario de otra arquitectura | El binario se compila `GOOS=linux GOARCH=amd64 CGO_ENABLED=0`, igual que hoy | El job verifica `file` del binario |
 | E10 | Quien cuenta sin `inventory.configure` | Lee los límites (los necesita el aviso), no los cambia (403) | Integración |
 
 ## Al construir
