@@ -72,10 +72,10 @@ Reglas que aplican a todas las tareas:
 
 ## Phase 4: User Story 1 — Ubicación (P1)
 
-- [ ] T011 [P] [US1] Integración en `server/internal/integration/count_places_test.go`: crear una
+- [X] T011 [P] [US1] Integración en `server/internal/integration/count_places_test.go`: crear una
   ubicación sin `inventory.configure` da 403 y con él la crea; una repetida por acentos o mayúsculas
   devuelve la que existe (E8); los tres casos de aislamiento (`inTheThreeCases`) (E9).
-- [ ] T012 [US1] `router.go`: `POST /stock/count-places` pasa a `RequirePermission(inventory.configure)`.
+- [X] T012 [US1] `router.go`: `POST /stock/count-places` pasa a `RequirePermission(inventory.configure)`.
 - [ ] T013 [US1] vitest del campo en `CountPlaceField.test.tsx` y `ArticleSheets.test.tsx`
   (Maquetas › Ficha del artículo):
   - se llama «Ubicación» y su vacío «Sin definir»;
