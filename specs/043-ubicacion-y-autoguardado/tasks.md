@@ -10,18 +10,18 @@ Reglas que aplican a todas las tareas:
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirmar que el ambiente local tiene la base restaurada con dos empresas y artículos en
+- [X] T001 Confirmar que el ambiente local tiene la base restaurada con dos empresas y artículos en
   peso, volumen y piezas con mínimo capturado (para reproducir #120).
 
 ## Phase 2: Foundational (bloquea el autoguardado)
 
-- [ ] T002 Reproducir #120: guardar el mismo mínimo dos veces en un artículo de cada clase (g, ml,
+- [X] T002 Reproducir #120: guardar el mismo mínimo dos veces en un artículo de cada clase (g, ml,
   cm, piezas), con y sin unidad grande, desde la ficha y desde «Nuevo artículo». Anotar en el plan,
   en «Al construir», la causa y en qué capa vive.
-- [ ] T003 Prueba de regresión de #120 que falla: vitest de `ArticleSheet` si la causa es de pantalla,
+- [X] T003 Prueba de regresión de #120 que falla: vitest de `ArticleSheet` si la causa es de pantalla,
   integración en `server/internal/integration/ingredients_admin_test.go` si es del servidor. Nombre que
   diga qué se rompía («guardar el mismo mínimo dos veces deja el mismo valor»).
-- [ ] T004 Arreglo de #120 hasta que T003 pase. Cerrar #120 con la liga al commit.
+- [X] T004 Arreglo de #120 hasta que T003 pase. Cerrar #120 con la liga al commit.
 - [ ] T005 [P] Prueba de integración: `PATCH /stock/articles/{id}` con un solo campo cambia ese campo y
   deja los demás como estaban, y su evento `ingredient.updated` trae solo lo que cambió (FR-020). Bajo
   `appRoleStore` con `inTheThreeCases` (otra empresa, conexión reciclada y sin empresa).

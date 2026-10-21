@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useSessionStore } from '../../../stores/session';
@@ -152,6 +152,32 @@ describe('Ficha del artículo', () => {
     await waitFor(() => expect(back.updateArticle).toHaveBeenCalledWith(7, expect.objectContaining({
       expectedUpdatedAt: '2026-10-19T10:00:00.123456Z', name: 'Hielo', minStock: '10000',
     })));
+  });
+
+  // #120 y #119: tras guardar, la ficha se volvía a llenar con los datos viejos de la caché antes de
+  // que llegara la ficha nueva. El mínimo aparecía vacío, el guardado siguiente lo borraba, y salir
+  // preguntaba «¿Descartar cambios?» aunque todo estaba guardado.
+  it('tras guardar, la ficha muestra lo guardado y salir no pregunta (#120, #119)', async () => {
+    const sinMinimo = { ...ficha, minStock: null };
+    const conMinimo = { ...ficha, minStock: '750', updatedAt: '2026-10-19T10:05:00.000000Z' };
+    let guardado = false;
+    back.article.mockImplementation(() => new Promise((r) => setTimeout(() => r(guardado ? conMinimo : sinMinimo), 20)));
+    back.updateArticle.mockImplementation(() => { guardado = true; return Promise.resolve(); });
+    const onClose = vi.fn();
+    montar(<ArticleSheet id={7} onClose={onClose} />);
+    await screen.findByDisplayValue('Hielo en bolsa');
+    const minimo = within(screen.getByText('Mínimo', { exact: true }).parentElement!).getByRole('textbox');
+    fireEvent.change(minimo, { target: { value: '750' } });
+    fireEvent.click(screen.getByRole('button', { name: /^g$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(back.updateArticle).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(within(screen.getByText('Mínimo', { exact: true }).parentElement!).getByRole('textbox')).toHaveValue('750'));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(within(screen.getByText('Mínimo', { exact: true }).parentElement!).getByRole('textbox'), 'el mínimo volvió al valor viejo tras guardar').toHaveValue('750');
+    expect(screen.queryByRole('button', { name: 'Guardar' }), 'la ficha quedó «con cambios» después de guardar').toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '‹ Artículos' }));
+    expect(screen.queryByText('¿Descartar cambios?')).toBeNull();
+    expect(onClose).toHaveBeenCalled();
   });
 
   // Prueba sin contexto (2026-10-19): «Guardar» activo después de archivar o corregir el costo hacía

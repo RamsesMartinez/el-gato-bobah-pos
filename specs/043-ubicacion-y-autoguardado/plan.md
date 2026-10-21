@@ -187,7 +187,15 @@ cambiar esa regla. Se junta al **leer**, en `ArticleAudit`:
 
 ## Al construir
 
-(Se llena al implementar: causa de #120 y lo que no se vio venir.)
+- **#120 era de pantalla, no del servidor, y era la misma causa que #119.** Tras guardar, `refresh()`
+  vaciaba el formulario y el efecto que lo llena lo volvía a llenar en ese instante con la ficha vieja
+  de la caché, antes de que llegara la nueva. El mínimo regresaba a su valor anterior (vacío, en el
+  caso común), el guardado siguiente lo mandaba como `null`, y así alternaba en cada guardado, en
+  todas las clases de unidad. La ficha también quedaba «con cambios» contra lo recién guardado, de ahí
+  el «¿Descartar cambios?» falso de #119. Reproducido en local a 1024×600 con g, kg, ml y piezas. Se
+  arregla esperando la ficha nueva y llenando el formulario con ella; lo cubre la prueba «tras guardar,
+  la ficha muestra lo guardado y salir no pregunta (#120, #119)». «Nuevo artículo» no tiene el
+  defecto: abre la ficha ya creada.
 
 ## Project Structure
 

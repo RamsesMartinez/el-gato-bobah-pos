@@ -85,10 +85,13 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
   const big = bigUnitOf(kind);
   const dirty = useMemo(() => !!a && !!form && JSON.stringify(form) !== JSON.stringify(formOf(a)), [a, form]);
 
+  // refresh llena el formulario con la ficha que ya trae lo guardado. Vaciarlo antes dejaba que el
+  // efecto de arriba lo volviera a llenar con la caché vieja: el mínimo regresaba a su valor anterior
+  // y el siguiente guardado lo pisaba (#120), y la ficha quedaba «con cambios» (#119).
   const refresh = async () => {
-    setForm(null);
+    const fresh = await qc.fetchQuery({ queryKey: ['article', id], queryFn: () => backofficeApi.article(id), staleTime: 0 });
+    setForm(formOf(fresh));
     await Promise.all([
-      qc.invalidateQueries({ queryKey: ['article', id] }),
       qc.invalidateQueries({ queryKey: ['articles'] }),
       qc.invalidateQueries({ queryKey: ['article-cost-history', id] }),
       qc.invalidateQueries({ queryKey: ['article-audit', id] }),
