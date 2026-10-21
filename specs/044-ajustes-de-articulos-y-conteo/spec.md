@@ -7,7 +7,7 @@
 **Status**: Aprobada por el dueño (2026-10-21), con el cambio de alcance de #126; US7 y US8 agregadas el mismo día
 
 **Input**: Issues #124 y #126 (este cierra con el mismo PR, por decisión del dueño). Hallazgos de la prueba guiada del dueño en el ambiente de pruebas con la 042 y la
-043 desplegadas (2026-10-21), con sus decisiones. Seguimiento de las dos specs.
+043 desplegadas (2026-10-21), con sus decisiones. Seguimiento de las dos specs. La historia 9 (CI más corto) se agregó por decisión del dueño el 2026-10-21.
 
 ## Contexto
 
@@ -252,7 +252,8 @@ imagen en ~40 s, sin perder ninguna prueba.
 - **SC-006**: Cambiar el máximo de una empresa cambia lo que su conteo acepta y su mensaje, sin tocar a
   las demás empresas.
 - **SC-007**: El CI de un PR que toca `server/` baja de ~5 min a ~2 min, y la imagen de la API de 102 s a
-  ~40 s (objetivos estimados; se miden en el PR de la 044 y en su merge).
+  ~40 s (objetivos estimados; se miden en el PR de la 044 y en su merge, se reporta la cifra medida y no
+  alcanzarlos no bloquea el merge).
 
 ## Assumptions
 

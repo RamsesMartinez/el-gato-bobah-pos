@@ -87,6 +87,7 @@
 - Phase 2 bloquea US4 y US6. US1, US2, US3 y US5 son independientes.
 - T004 y T005 van en el mismo commit (hook de migración).
 - T017/T021 tocan el mismo archivo de prueba: en serie.
+- US9 (CI) es independiente de las pantallas; T037 se mide al final, tras el push y el merge.
 - US8 corre después de US1 a US7 (repasa las pantallas ya cambiadas). Nada se valida en el ambiente de pruebas.
 
 ## Implementation Strategy
@@ -94,4 +95,5 @@
 1. Phase 2 → US4 (cierra el «datos inválidos»).
 2. US1 y US2 en paralelo con lo anterior.
 3. US6, US3, US5.
-4. Polish y entrega al dueño.
+4. US9 (CI) en paralelo con lo anterior.
+5. Polish y entrega al dueño; T037 tras el push.

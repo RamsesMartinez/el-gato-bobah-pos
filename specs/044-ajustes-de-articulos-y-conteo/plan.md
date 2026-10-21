@@ -178,6 +178,8 @@ web/src/features/backoffice/StockCountTab.tsx
 web/src/features/backoffice/articles/ArticleSheet.tsx, ArticlesTab.tsx, CostTrend.tsx
 web/src/components/NumericKeypad.tsx
 web/src/shared/audit/labels.ts
+.github/workflows/ci.yml, server/Dockerfile
+scripts/ci-shard-tests.sh, scripts/tests/ci-shard-tests-test.sh, lefthook.yml
 ```
 
 **Structure Decision**: monorepo existente, sin paquetes nuevos.
