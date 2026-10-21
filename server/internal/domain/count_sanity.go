@@ -13,15 +13,7 @@ type CountReference struct {
 	LastCounted *decimal.Decimal  // el último conteo cerrado del artículo, si hay
 	PackQtys    []decimal.Decimal // lo que trae cada empaque activo y no aproximado
 	BaseKind    string            // masa | volumen | longitud | pieza
-}
-
-// countCaps son los topes por clase de unidad para un artículo sin ninguna otra referencia, en su
-// unidad base: 50 kg, 50 L, 50 m y 5,000 piezas.
-var countCaps = map[string]decimal.Decimal{
-	"masa":     decimal.NewFromInt(50_000),
-	"volumen":  decimal.NewFromInt(50_000),
-	"longitud": decimal.NewFromInt(5_000),
-	"pieza":    decimal.NewFromInt(5_000),
+	Confirm     decimal.Decimal   // la cifra para confirmar de la empresa en esta clase; cero = default
 }
 
 var ten = decimal.NewFromInt(10)
@@ -68,10 +60,17 @@ func CountNeedsConfirm(captured decimal.Decimal, ref CountReference) bool {
 		}
 		return captured.GreaterThan(largest.Mul(ten))
 	}
-	if limit, ok := countCaps[ref.BaseKind]; ok {
-		return captured.GreaterThan(limit)
+	// Sin otra referencia, la cifra que configuró la empresa (spec 044). Sin ella, la del default: una
+	// referencia armada sin límites no deja de avisar.
+	limit := ref.Confirm
+	if !limit.IsPositive() {
+		p, ok := DefaultCountLimits().ForKind(ref.BaseKind)
+		if !ok {
+			return false
+		}
+		limit = p.Confirm
 	}
-	return false
+	return captured.GreaterThan(limit)
 }
 
 // ErrCountNeedsConfirm: la cifra pasa la referencia del artículo y se pide confirmarla (409
