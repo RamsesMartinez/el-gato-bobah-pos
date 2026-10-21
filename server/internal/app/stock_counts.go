@@ -260,6 +260,8 @@ func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countI
 	if err != nil {
 		return err
 	}
+	// Va antes del aviso y sin importar Confirmable: confirmar solo acepta una cifra rara, nunca
+	// una que pasa el máximo.
 	if err := limits.CheckCountMax(kind, counted); err != nil {
 		return err
 	}

@@ -268,6 +268,24 @@ func TestCountLimitsHTTP(t *testing.T) {
 	if w := do(t, r, http.MethodPut, path, admin, []byte(bad), "application/json"); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "el máximo tiene que ser mayor") {
 		t.Fatalf("máximo = confirmar = %d %s; quiere 400 con el porqué", w.Code, w.Body.String())
 	}
+	// Lo absurdo en la frontera es 400, nunca 500 (constitución V): cada caso reemplaza el par de peso.
+	// Las cifras se redondean a 4 decimales antes de validar: 1000000000.00001 se guarda como el techo.
+	massPair := `"mass":{"max":2000000,"confirm":50000}`
+	for name, mass := range map[string]string{
+		"NaN entre comillas":                 `"mass":{"max":"NaN","confirm":50000}`,
+		"1e30":                               `"mass":{"max":1e30,"confirm":50000}`,
+		"sobre el techo por un diezmilésimo": `"mass":{"max":1000000000.0001,"confirm":50000}`,
+		"campo ausente":                      `"mass":{"max":2000000}`,
+		"campo null":                         `"mass":{"max":2000000,"confirm":null}`,
+		"campo vacío":                        `"mass":{"max":2000000,"confirm":""}`,
+		"negativo":                           `"mass":{"max":2000000,"confirm":-1}`,
+		"más de 4 decimales redondea a cero": `"mass":{"max":0.00002,"confirm":0.00001}`,
+	} {
+		b := strings.Replace(body, massPair, mass, 1)
+		if w := do(t, r, http.MethodPut, path, admin, []byte(b), "application/json"); w.Code != http.StatusBadRequest {
+			t.Errorf("%s = %d %s; quiere 400", name, w.Code, w.Body.String())
+		}
+	}
 	w = do(t, r, http.MethodPut, path, admin, []byte(body), "application/json")
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"max":2000000`) {
 		t.Fatalf("admin guarda = %d %s", w.Code, w.Body.String())
