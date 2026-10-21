@@ -144,7 +144,7 @@ export function WastePage() {
       {header}
       {message && (
         <Text role="status" px={3} py={2} fontWeight="600"
-          color={message.tone === 'error' ? 'red.600' : message.tone === 'warn' ? 'orange.600' : 'green.700'}>
+          color={message.tone === 'error' ? 'fg.error' : message.tone === 'warn' ? 'orange.fg' : 'fg.success'}>
           {message.text}
         </Text>
       )}
@@ -238,7 +238,7 @@ function NewReasonSheet({ open, onClose, onChosen }: { open: boolean; onClose: (
           <VStack align="stretch" gap={3}>
             <Input aria-label="Nombre del motivo" placeholder="Nombre del motivo" minH="44px" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
             <Input aria-label="Descripción" placeholder="Descripción: cuándo se usa" minH="44px" maxLength={200} value={description} onChange={(e) => setDescription(e.target.value)} />
-            {error && <Text color="red.600">{error}</Text>}
+            {error && <Text color="fg.error">{error}</Text>}
           </VStack>
         </DrawerBody>
         <DrawerFooter>

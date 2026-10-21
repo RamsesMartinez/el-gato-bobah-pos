@@ -74,3 +74,114 @@ for (const tema of ['light', 'dark'] as const) {
     expect(bajos, 'controles de menos de 44 px').toEqual([]);
   });
 }
+
+// RECORRIDO DEL ALMACÉN (spec 044, T029). Todas las pestañas en el orden de la pantalla, más la
+// ficha de un artículo, el teclado del conteo y Configuración del negocio › Almacén, en los dos temas:
+// contraste del texto (4.5:1) y del borde de los campos (3:1) contra su fondo real, desborde de lado y
+// alto de lo tocable. El conteo se abre solo si no había uno y se descarta al terminar.
+
+type Hallazgo = { tipo: string; texto: string; cifra: number; color?: string; fondo?: string };
+
+async function medir(page: Page): Promise<Hallazgo[]> {
+  return page.evaluate(() => {
+    const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
+    const lum = ([r, g, b]: number[]) => {
+      const f = (v: number) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const opaco = (c: string) => { const p = rgb(c); return p.length >= 3 && (p.length < 4 || p[3] > 0.5); };
+    const fondo = (e: Element | null): string => {
+      for (; e; e = e.parentElement) { const c = getComputedStyle(e).backgroundColor; if (opaco(c)) return c; }
+      return getComputedStyle(document.body).backgroundColor;
+    };
+    const ratio = (a: string, b: string) => { const [x, y] = [lum(rgb(a)), lum(rgb(b))]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    const visible = (e: Element) => {
+      const r = e.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight && getComputedStyle(e).visibility !== 'hidden';
+    };
+    const deshabilitado = (e: Element) => !!e.closest('[disabled],[aria-disabled="true"],[data-disabled]');
+    const out: { tipo: string; texto: string; cifra: number; color?: string; fondo?: string }[] = [];
+    for (const el of document.querySelectorAll('body *')) {
+      if (!visible(el) || deshabilitado(el) || el.closest('svg')) continue;
+      const s = getComputedStyle(el);
+      const propio = [...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim());
+      const texto = ((el as HTMLElement).innerText || (el as HTMLInputElement).value || (el as HTMLInputElement).placeholder || el.getAttribute('aria-label') || '').trim().slice(0, 40);
+      if (propio && opaco(s.color)) {
+        const r = ratio(s.color, fondo(el));
+        if (r < 4.5) out.push({ tipo: 'texto', texto, cifra: Math.round(r * 100) / 100, color: s.color, fondo: fondo(el) });
+      }
+      if (el.matches('input:not([type=checkbox]):not([type=radio]),textarea') && parseFloat(s.borderBottomWidth) > 0 && opaco(s.borderBottomColor)) {
+        const r = ratio(s.borderBottomColor, fondo(el.parentElement));
+        if (r < 3) out.push({ tipo: 'borde', texto, cifra: Math.round(r * 100) / 100, color: s.borderBottomColor, fondo: fondo(el.parentElement) });
+      }
+      if (el.matches('button,input,[role=button],[role=tab],[role=switch],textarea')) {
+        const h = Math.round(el.getBoundingClientRect().height);
+        if (h < 44 && !/^v[0-9a-f]{7}$/.test(texto)) out.push({ tipo: 'alto', texto, cifra: h });
+      }
+    }
+    const lado = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+    if (lado > 0) out.push({ tipo: 'de lado', texto: 'página', cifra: lado });
+    return out;
+  });
+}
+
+const DIR_CAPTURAS = process.env.E2E_CAPTURAS_044 ?? '../specs/044-ajustes-de-articulos-y-conteo/capturas';
+
+for (const tema of ['light', 'dark'] as const) {
+  const nombre = tema === 'dark' ? 'oscuro' : 'claro';
+  test(`recorrido del almacén en tema ${nombre}`, async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 1024, height: 600 });
+    await page.addInitScript((t) => { try { localStorage.setItem('theme', t); } catch { /* sin almacenamiento */ } }, tema);
+    await entrar(page);
+    const hallazgos: Record<string, Hallazgo[]> = {};
+    const paso = async (clave: string) => {
+      await page.waitForLoadState('networkidle');
+      await page.screenshot({ path: `${DIR_CAPTURAS}/${clave}-${nombre}.png` });
+      const h = await medir(page);
+      if (h.length) hallazgos[clave] = h;
+    };
+    const pestaña = async (tab: string, listo: () => Promise<unknown>) => {
+      await page.goto(`/almacen?tab=${tab}`);
+      await listo();
+    };
+    await pestaña('existencias', () => expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 15_000 }));
+    await paso('01-existencias');
+    await pestaña('movimientos', () => page.waitForTimeout(1500));
+    await paso('02-movimientos');
+    await pestaña('insumos', () => expect(page.locator('tr[role="button"]:visible').first()).toBeVisible({ timeout: 15_000 }));
+    await paso('03-articulos');
+    await page.locator('tr[role="button"]:visible').first().click();
+    await expect(page.getByRole('button', { name: /Volver a Artículos/ })).toBeVisible();
+    await paso('04-ficha');
+    await pestaña('por-recibir', () => page.waitForTimeout(1500));
+    await paso('05-por-recibir');
+    await pestaña('conteo', () => page.waitForTimeout(1500));
+    let abrimosConteo = false;
+    const empezar = page.getByRole('button', { name: /^Empezar (otro )?conteo$/ });
+    if (await empezar.isVisible().catch(() => false)) { await empezar.click(); abrimosConteo = true; }
+    await expect(page.getByTestId('avance')).toBeVisible({ timeout: 15_000 });
+    await paso('06-conteo');
+    await page.getByRole('button', { name: 'Lista', exact: true }).click();
+    await page.getByTestId('renglon-conteo').first().getByRole('button', { name: /^(Contar|Cambiar)$/ }).click();
+    const hoja = page.locator('[role="dialog"]').last();
+    await hoja.locator('input').first().click();
+    await paso('07-conteo-teclado');
+    await hoja.getByRole('button', { name: 'Cancelar' }).click();
+    if (abrimosConteo) {
+      await page.getByRole('button', { name: 'Descartar conteo' }).click();
+      await page.getByRole('button', { name: 'Sí, descartar' }).click();
+    }
+    await pestaña('merma', () => page.waitForTimeout(1500));
+    await paso('08-se-echo-a-perder');
+    await pestaña('salud', () => page.waitForTimeout(2500));
+    await paso('09-salud');
+    await page.goto('/negocio');
+    await expect(page.getByTestId('limites-conteo')).toBeAttached({ timeout: 15_000 });
+    await paso('10-negocio');
+    await page.getByTestId('limites-conteo').scrollIntoViewIfNeeded();
+    await paso('11-limites-del-conteo');
+    console.log(`[e2e] hallazgos ${nombre}:\n${JSON.stringify(hallazgos, null, 1)}`);
+    expect(hallazgos, `defectos del almacén en tema ${nombre}`).toEqual({});
+  });
+}
