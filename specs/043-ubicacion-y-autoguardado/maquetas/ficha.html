@@ -65,7 +65,7 @@ let UB=['Refri','Bodega','Barra'];
 const shown=()=>S.empty?[]:UB;
 function save(field,val,prev){S.status='saving';render();setTimeout(()=>{if(S.fail){S[field]=val;S.status='err';S.unsaved=field;S.retry=[field,val,prev]}else{S[field]=val;S.status='ok';S.unsaved=''}render()},900)}
 function render(){const f=document.getElementById('frame');const ind=S.dirty&&S.status!=='saving'&&S.status!=='err'?'<span class="ind" title="Cambios sin guardar" aria-label="Cambios sin guardar"><span style="width:10px;height:10px;border-radius:50%;background:var(--warn);display:inline-block"></span></span>':S.status==='saving'?'<span class="ind"><span class="sp"></span>Guardando…</span>':S.status==='ok'?'<span class="ind ok">Guardado ✓</span>':S.status==='err'?'<span class="ind err">No se pudo guardar · <button class="btn" data-a="retry" style="min-height:44px">Reintentar</button></span>':'';
- const ubiTxt=S.ubi?esc(S.ubi):(shown().length?'<span class="ph">Sin definir</span>':'<span class="ph">Ej. Refri, Bodega, Barra</span>');
+ const ubiTxt=S.ubi?esc(S.ubi):'<span class="ph">Sin definir</span>';
  let m=rail+'<div class="main"><div class="hdr"><button class="btn" data-a="back">‹ Artículos</button><h2>'+esc(S.name)+'</h2>'+ind+'<span style="flex:1"></span><button class="btn">Bitácora</button></div><div class="cols"><div class="card">'+
  '<div><div class="lbl">Nombre</div><input class="input'+(S.bad==='name'||S.unsaved==='name'?' bad':'')+'" id="f-name" style="width:100%" value="'+esc(S.name)+'">'+(S.bad==='name'?'<div class="bad-msg">El nombre no puede quedar vacío.</div>':'')+'</div>'+
  '<div><div class="lbl">Categoría</div><button class="btn fieldbtn" data-a="cat"><span>'+esc(S.cat)+'</span><span>⌄</span></button></div>'+
@@ -78,7 +78,7 @@ function render(){const f=document.getElementById('frame');const ind=S.dirty&&S.
  if(S.sheet){const list=shown().filter(x=>norm(x).includes(norm(S.q)));const exact=shown().some(x=>norm(x)===norm(S.q));
   const items=S.sheet==='cat'?['Desechables','Lácteos','Abarrotes']:list;
   m+='<div class="sheet-bg"><div class="sheet"><div class="row" style="justify-content:space-between"><b style="font-size:18px">'+(S.sheet==='cat'?'Categoría':'Ubicación')+'</b><button class="btn" data-a="close">Cerrar</button></div>'+
-  (S.sheet==='ubi'?'<input class="input" id="q" placeholder="Buscar o escribir una nueva" value="'+esc(S.q)+'">':'')+
+  (S.sheet==='ubi'?'<input class="input" id="q" placeholder="'+(shown().length?'Buscar o escribir una nueva':'Ej. Refri, Bodega, Barra')+'" value="'+esc(S.q)+'">':'')+
   (S.sheet==='ubi'?'<button class="opt" data-pick="">Sin definir</button>':'')+items.map(x=>'<button class="opt" data-pick="'+esc(x)+'">'+esc(x)+'</button>').join('')+
   (S.sheet==='ubi'&&S.q.trim()&&!exact?(S.canCreate?'<button class="opt" data-create="1" style="color:var(--brand);font-weight:600">Crear «'+esc(S.q.trim())+'»</button>':'<p class="muted" style="margin:8px">No existe «'+esc(S.q.trim())+'». Pídele a un administrador que la cree.</p>'):'')+
   (S.sheet==='ubi'&&!shown().length&&!S.q?'<p class="muted" style="margin:8px">Todavía no hay ubicaciones. Escribe una, por ejemplo Refri, Bodega o Barra.</p>':'')+'</div></div>'}

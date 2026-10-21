@@ -38,6 +38,8 @@ interface Props {
   // cannotCreateHint se muestra en lugar de «Crear» a quien no puede crear: sin él, escribir algo que
   // no existe no dice nada y parece que la hoja no responde.
   cannotCreateHint?: string;
+  // searchPlaceholder reemplaza «Buscar…»: con la lista vacía, un ejemplo de qué escribir.
+  searchPlaceholder?: string;
 }
 
 // Picker táctil: reemplaza al <select> nativo (malo en tablet con muchos ítems). Abre un
@@ -49,7 +51,7 @@ const comparable = (s: string) => normalize(s).trim().replace(/\s+/g, ' ');
 export function Picker({
   value, options, onChange, placeholder = 'Seleccionar', title, clearable,
   clearLabel = '— Ninguno —', searchThreshold = 6, disabled, size = 'md', onCreate, focusSearch = true, searchMaxLength,
-  createFirst, cannotCreateHint,
+  createFirst, cannotCreateHint, searchPlaceholder = 'Buscar…',
 }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -120,7 +122,7 @@ export function Picker({
               <Box px={4} pt={title ? 0 : 4} pb={2}>
                 <HStack px={3} borderWidth="1px" borderRadius="lg" bg="bg.subtle">
                   <LuSearch />
-                  <Input variant="flushed" border="none" placeholder="Buscar…" value={q}
+                  <Input variant="flushed" border="none" placeholder={searchPlaceholder} value={q}
                     onChange={(e) => setQ(e.target.value)} autoFocus={focusSearch} maxLength={searchMaxLength} />
                 </HStack>
               </Box>

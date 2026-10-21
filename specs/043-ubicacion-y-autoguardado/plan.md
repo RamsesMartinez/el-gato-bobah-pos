@@ -224,11 +224,13 @@ cambiar esa regla. Se junta al **leer**, en `ArticleAudit`:
   más allá de una decisión del dueño:
   - El punto de «cambios sin mandar» no tiene texto: salió del mínimo antes de los 2 s y no vio «Guardado
     ✓» (sí se guardó al salir; reproducido en local: con la pausa aparece).
-  - El campo vacío de ubicación dice «Ej. Refri, Bodega, Barra» mientras la lista dice «Sin definir», y
-    dudó si ya tenía algo puesto.
+  - El campo vacío de ubicación decía «Ej. Refri, Bodega, Barra» mientras la lista dice «Sin definir», y
+    dudó si ya tenía algo puesto. **Corregido por decisión del dueño (2026-10-20)**: el campo dice «Sin
+    definir» y el ejemplo va solo en el buscador, cuando no hay ninguna.
   - Al tocar un empaque de la ficha se abre su edición, y ahí mismo está «Ya no llega así»: dudó si
-    estaba editando o quitando. La hoja de empaques pide «Listo» para cerrar tras guardar. Los dos vienen
-    de la 042.
+    estaba editando o quitando. **Corregido por decisión del dueño (2026-10-20)**: «Quitar este empaque»,
+    aparte de «Editar» y con estilo secundario. La hoja de empaques sigue pidiendo «Listo» tras guardar
+    (viene de la 042).
 
 ## Revisión de código (2026-10-20)
 

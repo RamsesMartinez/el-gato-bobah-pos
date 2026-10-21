@@ -79,7 +79,7 @@ Reglas que aplican a todas las tareas:
 - [X] T013 [US1] vitest del campo en `CountPlaceField.test.tsx` y `ArticleSheets.test.tsx`
   (Maquetas › Ficha del artículo):
   - se llama «Ubicación» y su vacío «Sin definir»;
-  - sin ubicaciones muestra «Ej. Refri, Bodega, Barra»;
+  - el campo dice «Sin definir»; sin ubicaciones, el ejemplo «Ej. Refri, Bodega, Barra» va en el buscador;
   - buscar sin acentos ni mayúsculas;
   - «Crear "X"» con `inventory.configure`; sin él, «Pídele a un administrador que la cree»;
   - en el conteo, quien solo cuenta ya no ve «Crear» y lee el aviso (R8);
@@ -120,6 +120,8 @@ Reglas que aplican a todas las tareas:
   despliegue (T021).
 - [X] T025 [US5] e2e de la hoja de empaque con el alto reducido por el teclado: la frase y «Guardar
   empaque» quedan a la vista (R5), y todo control de la hoja mide 44 px o más (FR-019).
+- [X] T028 [US3] «Quitar este empaque» aparte de «Editar» y con estilo secundario (FR-023), con su
+  prueba en `PresentationsSheet.test.tsx`; y el ejemplo de ubicación solo en el buscador (FR-002).
 - [ ] T021 [US5] Correr la suite e2e completa contra el ambiente de pruebas con la 043 desplegada.
 
 ## Phase 8: Polish

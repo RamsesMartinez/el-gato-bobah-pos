@@ -42,7 +42,10 @@ export function useLocations() {
   return {
     options,
     pickerProps: {
-      title: 'Ubicación', placeholder: options.length ? NO_LOCATION : EXAMPLE, clearable: true, clearLabel: NO_LOCATION,
+      // El campo dice «Sin definir» siempre: el ejemplo en el campo parecía un valor ya puesto (prueba sin
+      // contexto). Va dentro del buscador, y solo cuando no hay ninguna (decisión del dueño, 2026-10-20).
+      title: 'Ubicación', placeholder: NO_LOCATION, clearable: true, clearLabel: NO_LOCATION,
+      searchPlaceholder: options.length ? undefined : EXAMPLE,
       focusSearch: false, searchMaxLength: 30, createFirst: true,
       onCreate: canCreate ? create : undefined,
       cannotCreateHint: canCreate ? undefined : 'Pídele a un administrador que la cree.',

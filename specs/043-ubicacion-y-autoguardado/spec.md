@@ -45,8 +45,9 @@ artículo y una palabra que no se entiende.
 
 1. **Given** la lista de artículos, **Then** la columna se llama «Ubicación» y un artículo sin ella
    dice «Sin definir». El renglón no lleva un botón de ubicación propio.
-2. **Given** la ficha de un artículo y ninguna ubicación creada en la empresa, **When** se mira el
-   campo «Ubicación», **Then** muestra «Ej. Refri, Bodega, Barra».
+2. **Given** la ficha de un artículo y ninguna ubicación creada en la empresa, **When** se abre el
+   campo «Ubicación», **Then** el campo dice «Sin definir» y el buscador muestra «Ej. Refri, Bodega,
+   Barra».
 3. **Given** el campo abierto, **When** se escribe «bod», **Then** quedan las ubicaciones que
    contienen «bod», sin distinguir mayúsculas ni acentos.
 4. **Given** que no existe «Bodega», **When** se escribe «Bodega», **Then** se ofrece
@@ -125,7 +126,9 @@ Bolsa, Caja, Costal, Paquete y «Otro»; al elegir Bolsa y escribir 5 kg se lee 
 7. **Given** «Bolsa» y 5 kg, **Then** debajo se lee «1 bolsa = 5 kg», y la frase cambia al cambiar el
    nombre, la cantidad o la unidad. «Se cuenta en g» deja de aparecer suelto.
 8. **Given** la hoja, **Then** ya no tiene la fila «Ubicación»: la ubicación se elige en la ficha.
-9. **Given** la hoja, **Then** el selector de unidad de «Trae» se ve y mide igual que el de «Mínimo»
+9. **Given** un empaque de la lista, **Then** «Quitar este empaque» va aparte de «Editar» y con estilo
+   secundario; quitarlo no lo borra (decisión del dueño, 2026-10-20).
+10. **Given** la hoja, **Then** el selector de unidad de «Trae» se ve y mide igual que el de «Mínimo»
    en la ficha.
 
 ---
@@ -188,8 +191,9 @@ prueba de la spec 040 quedó rota sin que nadie la corriera antes de mergear.
 
 - **FR-001**: La interfaz MUST llamar «Ubicación» al campo de la ficha, a la columna y al filtro de
   la lista de artículos, y «Sin definir» al valor vacío.
-- **FR-002**: Sin ninguna ubicación creada en la empresa, el campo MUST mostrar «Ej. Refri, Bodega,
-  Barra».
+- **FR-002**: El campo MUST decir «Sin definir» cuando el artículo no tiene ubicación. Sin ninguna
+  ubicación creada en la empresa, el ejemplo «Ej. Refri, Bodega, Barra» MUST ir dentro del buscador,
+  nunca en el campo (decisión del dueño, 2026-10-20: en el campo parecía un valor ya puesto).
 - **FR-003**: El campo MUST permitir escribir para buscar entre las ubicaciones, sin distinguir
   mayúsculas ni acentos, y ofrecer «Crear "X"» cuando lo escrito no existe, igual que la categoría.
   Lo creado queda elegido y guardado.
@@ -240,6 +244,8 @@ prueba de la spec 040 quedó rota sin que nadie la corriera antes de mergear.
 - **FR-022**: Lo que se está escribiendo MUST NOT guardarse a medias cuando todavía no es un valor:
   un número que termina en punto o en signo, o un campo vacío, no se manda por la pausa de 2
   segundos; se valida y se manda (o se marca) al salir del campo.
+- **FR-023**: «Quitar este empaque» MUST ir aparte de «Editar», con estilo secundario, y archivar el
+  empaque sin borrarlo.
 
 ### Key Entities
 

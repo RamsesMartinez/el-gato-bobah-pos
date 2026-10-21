@@ -163,8 +163,12 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
                 <Text flex="1" fontWeight="600">
                   {p.approximate ? `${p.name} ≈ ${formatBaseQty(p.qtyInBase, ingredient.baseUnitCode)}` : `${p.name} · ${formatBaseQty(p.qtyInBase, ingredient.baseUnitCode)}`}
                 </Text>
-                <Button minH="44px" variant="outline" mr={8} onClick={() => open(p)}>Editar</Button>
-                <Button minH="44px" variant="outline" onClick={() => toggle(p)} disabled={save.isPending}>Ya no llega así</Button>
+                <Button minH="44px" variant="outline" onClick={() => open(p)}>Editar</Button>
+                {/* Aparte de «Editar» y en segundo plano: juntos, quien quitaba dudaba si estaba editando
+                    (prueba sin contexto y decisión del dueño, 2026-10-20). No se borra: queda en «Ya no
+                    llega en» y se puede volver a usar. */}
+                <Box w={6} flexShrink={0} />
+                <Button minH="44px" variant="ghost" colorPalette="gray" data-secondary onClick={() => toggle(p)} disabled={save.isPending}>Quitar este empaque</Button>
               </HStack>
             ))}
             {inactive.length > 0 && (

@@ -120,10 +120,17 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
     await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(11, { name: 'Kilo', qty: '4', unitId: 2, approximate: true }));
   });
 
-  test('«Ya no llega así» la desactiva sin borrarla', async () => {
+  // Decisión del dueño (2026-10-20): «Ya no llega así» junto a «Editar» hacía dudar si se editaba o se
+  // quitaba. Ahora dice lo que hace, va aparte y con estilo secundario.
+  test('«Quitar este empaque» la desactiva sin borrarla, separado de editar y con estilo secundario', async () => {
     montar(leche, [pres({})]);
     const row = (await screen.findByText('Caja · 12 L')).closest('[data-row]') as HTMLElement;
-    fireEvent.click(within(row).getByRole('button', { name: 'Ya no llega así' }));
+    expect(within(row).queryByRole('button', { name: 'Ya no llega así' })).toBeNull();
+    const quitar = within(row).getByRole('button', { name: 'Quitar este empaque' });
+    expect(quitar).toHaveAttribute('data-secondary');
+    const editar = within(row).getByRole('button', { name: 'Editar' });
+    expect(editar.nextElementSibling, '«Quitar» va pegado a «Editar»').not.toBe(quitar);
+    fireEvent.click(quitar);
     await waitFor(() => expect(back.updatePresentation).toHaveBeenCalledWith(1, { name: 'Caja', qty: '12', unitId: 7, approximate: false, active: false }));
   });
 });

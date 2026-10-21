@@ -46,10 +46,19 @@ describe('ubicación del artículo (spec 040, renombrada en la 043)', () => {
     expect(await screen.findByRole('button', { name: /Sin definir/ })).toBeInTheDocument();
   });
 
-  test('sin ninguna ubicación en la empresa, el campo da el ejemplo', async () => {
+  // Decisión del dueño (2026-10-20): el campo dice «Sin definir» siempre; el ejemplo va solo dentro del
+  // buscador cuando no hay ninguna, porque en el campo parecía un valor ya puesto.
+  test('sin ninguna ubicación, el campo dice «Sin definir» y el ejemplo va en el buscador', async () => {
     back.countPlaces.mockResolvedValue([]);
     montar(null);
-    expect(await screen.findByRole('button', { name: /Ej\. Refri, Bodega, Barra/ })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /Sin definir/ }));
+    expect(screen.queryByRole('button', { name: /Ej\. Refri/ })).toBeNull();
+    expect(await screen.findByPlaceholderText('Ej. Refri, Bodega, Barra')).toBeInTheDocument();
+  });
+  test('con ubicaciones, el buscador no da el ejemplo', async () => {
+    montar(null);
+    fireEvent.click(await screen.findByRole('button', { name: /Sin definir/ }));
+    expect(await screen.findByPlaceholderText('Buscar…')).toBeInTheDocument();
   });
 
   test('la hoja ofrece «Sin definir» y las ubicaciones en su orden, sin abrir el teclado; elegir lo guarda', async () => {
@@ -100,7 +109,7 @@ describe('ubicación del artículo (spec 040, renombrada en la 043)', () => {
     back.countPlaces.mockResolvedValue([]);
     useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
     montar(null);
-    fireEvent.click(await screen.findByRole('button', { name: /Ej\. Refri/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Sin definir/ }));
     expect(await screen.findByText('Pídele a un administrador que la cree.')).toBeInTheDocument();
   });
 
