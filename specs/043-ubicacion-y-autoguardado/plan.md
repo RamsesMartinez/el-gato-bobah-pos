@@ -214,6 +214,9 @@ cambiar esa regla. Se junta al **leer**, en `ArticleAudit`:
   evento, que es la llave del cursor. Límite aceptado: un evento que se inserte con una hora vieja (una
   transacción larga) puede partir o unir una entrada ya vista. Cada página relee la historia del
   artículo (`ponytail:` en la consulta).
+- **La prueba de arrastrar de la 040 fallaba en una empresa sin ubicaciones**: buscaba «Mover E2E lugar 1»
+  sin coincidencia exacta y atrapaba también «E2E lugar 10», que solo existe cuando la prueba crea las
+  diez. Ya busca exacto. La de ubicación (T020) pasa en local con 3 toques.
 
 ## Project Structure
 

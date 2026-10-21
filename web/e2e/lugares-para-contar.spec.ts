@@ -63,7 +63,7 @@ test('desplazar la lista no mueve nada; 500 ms sobre ≡ levanta y arrastrar de 
 
   // Del último al primero: mantener, arrastrar hacia arriba y esperar el desplazamiento automático.
   const ultimo = antes[antes.length - 1];
-  const grip = page.getByRole('button', { name: `Mover ${ultimo}` });
+  const grip = page.getByRole('button', { name: `Mover ${ultimo}`, exact: true });
   await grip.scrollIntoViewIfNeeded();
   const g = (await grip.boundingBox())!;
   await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
@@ -73,7 +73,7 @@ test('desplazar la lista no mueve nada; 500 ms sobre ≡ levanta y arrastrar de 
   await page.screenshot({ path: `${CAPTURAS}/levantado.png` });
   // Como una persona: acerca el dedo a la orilla, deja que la lista suba un poco, lo regresa al
   // centro para frenar y mira si ya ve el primero. Sostenerlo en la orilla sube sin parar.
-  const primero = page.getByRole('button', { name: `Mover ${antes[0]}` });
+  const primero = page.getByRole('button', { name: `Mover ${antes[0]}`, exact: true });
   let p = await primero.boundingBox();
   for (let i = 0; i < 30 && !(p && p.y > 40 && p.y < 520); i++) {
     await page.mouse.move(g.x + g.width / 2, 10, { steps: 4 });
