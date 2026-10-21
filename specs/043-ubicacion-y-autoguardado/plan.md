@@ -218,6 +218,21 @@ cambiar esa regla. Se junta al **leer**, en `ArticleAudit`:
   sin coincidencia exacta y atrapaba también «E2E lugar 10», que solo existe cuando la prueba crea las
   diez. Ya busca exacto. La de ubicación (T020) pasa en local con 3 toques.
 
+## Revisión de código (2026-10-20)
+
+`/revision-de-codigo` (backend, seguridad y tableta): aprobada con ajustes, aplicados con su prueba
+primero. Seguridad no encontró evasiones.
+- **El nombre se revisaba aunque no cambiara**: como cada autoguardado manda la ficha completa, un
+  artículo heredado con nombre repetido por acentos no podía guardar ni su mínimo, y cada guardado tomaba
+  el candado de nombres de la empresa. Ahora solo si cambió.
+- **El 400 del PATCH no decía qué campo sobraba**, y faltaban pruebas adversariales del cuerpo (campo
+  desconocido, tipo equivocado, fuera de rango, negativo, sin versión): ya están.
+- **Volver de una hoja (costo, unidad, archivar, empaques) borraba un campo que quedó sin guardar**:
+  ahora lo conserva y toma la versión nueva de la ficha.
+- **Sin ubicaciones y sin permiso para crear, la hoja abría vacía**: ahora lo explica sin escribir.
+- La existencia negativa en la lista dice «· Revisar» en el mismo renglón (uno aparte subiría la fila de
+  44 px), y el nombre del encabezado guarda un ancho mínimo.
+
 ## Project Structure
 
 ```text

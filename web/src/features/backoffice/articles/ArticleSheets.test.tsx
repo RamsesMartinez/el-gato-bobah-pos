@@ -277,6 +277,34 @@ describe('Ficha del artículo', () => {
     await waitFor(() => expect(back.updateArticle).toHaveBeenLastCalledWith(7, expect.objectContaining({ placeId: 5 })), { timeout: 3000 });
   });
 
+  // Revisión de código: un rechazo con 500 mostraba al operador el mensaje crudo de la API.
+  it('un error del servidor no muestra su mensaje crudo', async () => {
+    back.updateArticle.mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'pq: relation does not exist', 'r'));
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
+    fireEvent.change(nombre, { target: { value: 'Hielo' } });
+    fireEvent.blur(nombre);
+    expect(await screen.findByText(/No se pudo guardar/, {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.queryByText(/relation does not exist/)).toBeNull();
+  });
+
+  // Revisión de código (R1): volver de una hoja (costo, unidad, archivar, empaques) rellenaba la
+  // ficha entera y borraba un campo marcado sin aviso.
+  it('volver de una hoja no borra un campo que quedó sin guardar', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
+    fireEvent.change(nombre, { target: { value: '   ' } });
+    fireEvent.blur(nombre);
+    await screen.findByText('El nombre no puede quedar vacío.');
+    fireEvent.click(screen.getByRole('button', { name: 'Corregir costo' }));
+    fireEvent.change(await screen.findByLabelText('Costo nuevo'), { target: { value: '7' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar costo' }));
+    await waitFor(() => expect(back.correctArticleCost).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByLabelText('Costo nuevo')).toBeNull(), { timeout: 3000 });
+    expect(screen.getByText('El nombre no puede quedar vacío.')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Hielo en bolsa')).toBeNull();
+  });
+
   // En la tableta, tocar un botón no siempre quita el foco del campo: salir guarda primero lo que
   // tiene el campo enfocado y espera a que termine (R2).
   it('salir con el foco en un campo cambiado lo guarda y después regresa, sin preguntar', async () => {

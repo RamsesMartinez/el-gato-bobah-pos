@@ -142,7 +142,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
     complete: (k, v) => k !== 'min' || NUMBER.test(v),
     onReject: (k, saved, e) => {
       setForm((f) => f && (k === 'min' ? { ...f, min: minDisplay(saved, kind) } : { ...f, [k === 'categoryId' ? 'categoryId' : k === 'placeId' ? 'placeId' : 'name']: saved }));
-      toaster.create({ title: e instanceof ApiError ? e.message : 'No se pudo guardar', type: 'error' });
+      toaster.create({ title: e instanceof ApiError && e.status < 500 ? e.message : 'No se pudo guardar', type: 'error' });
     },
     onStale: () => {
       toaster.create({ title: 'Cambió mientras la veías', description: 'Se volvió a cargar con lo último.', type: 'warning' });
@@ -161,10 +161,23 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
   // refresh llena el formulario con la ficha que ya trae lo guardado, después de una hoja que la cambió
   // (costo, unidad, archivar, empaques). Vaciarlo antes dejaba que el efecto de arriba lo volviera a
   // llenar con la caché vieja: el mínimo regresaba a su valor anterior (#120).
+  // Un campo que quedó sin guardar (marcado o fallido) conserva lo escrito: volver de una hoja no lo
+  // borra sin aviso (R1).
   const refresh = async () => {
     const fresh = await qc.fetchQuery({ queryKey: ['article', id], queryFn: () => backofficeApi.article(id), staleTime: 0 });
-    setForm(formOf(fresh));
-    auto.reset(savedOf(fresh), fresh.updatedAt);
+    const keep = new Set<string>(auto.unsaved as string[]);
+    setForm((prev) => {
+      const next = formOf(fresh);
+      if (!prev) return next;
+      return {
+        name: keep.has('name') ? prev.name : next.name,
+        categoryId: keep.has('categoryId') ? prev.categoryId : next.categoryId,
+        placeId: keep.has('placeId') ? prev.placeId : next.placeId,
+        min: keep.has('min') ? prev.min : next.min,
+      };
+    });
+    if (keep.size === 0) auto.reset(savedOf(fresh), fresh.updatedAt);
+    else auto.rebase(fresh.updatedAt);
     await Promise.all([
       qc.invalidateQueries({ queryKey: ['articles'] }),
       qc.invalidateQueries({ queryKey: ['article-cost-history', id] }),
@@ -202,7 +215,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
         <DrawerHeader py={2}>
           <HStack gap={2}>
             <Button minH="44px" variant="ghost" loading={leaving} onClick={() => void close()}>‹ Artículos</Button>
-            <Text fontSize="lg" fontWeight="700" truncate>{a?.name ?? ''}</Text>
+            <Text fontSize="lg" fontWeight="700" truncate minW="120px">{a?.name ?? ''}</Text>
             <SaveIndicator status={auto.status} onRetry={auto.retry} />
             <Box flex="1" />
             {a && !a.isActive && <Badge colorPalette="gray">Archivado</Badge>}

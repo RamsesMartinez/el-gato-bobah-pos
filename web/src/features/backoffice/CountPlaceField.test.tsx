@@ -95,6 +95,15 @@ describe('ubicación del artículo (spec 040, renombrada en la 043)', () => {
     expect(screen.queryByRole('button', { name: /Crear/ })).toBeNull();
   });
 
+  // Revisión de código: sin ubicaciones y sin permiso, la hoja abría vacía y sin explicación.
+  test('sin ubicaciones y sin permiso para crear, la hoja lo explica sin tener que escribir', async () => {
+    back.countPlaces.mockResolvedValue([]);
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
+    montar(null);
+    fireEvent.click(await screen.findByRole('button', { name: /Ej\. Refri/ }));
+    expect(await screen.findByText('Pídele a un administrador que la cree.')).toBeInTheDocument();
+  });
+
   test('un nombre que el servidor rechaza lo dice y no deja la hoja trabada; el tope es de 30', async () => {
     back.createCountPlace.mockRejectedValue(new ApiError(400, 'VALIDATION', 'largo', 'r'));
     montar(null);

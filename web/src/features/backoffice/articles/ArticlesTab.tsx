@@ -120,6 +120,8 @@ function ArticleLine({ a, onOpen }: { a: ArticleRow; onOpen: (id: number) => voi
         <Text as="span" color={negative ? 'red.600' : undefined} fontWeight={negative ? '700' : undefined}>
           {formatBaseQty(a.onHand, a.baseUnitCode)}
         </Text>
+        {/* En el mismo renglón: uno aparte subiría la fila de 44 px y la lista dejaría de mostrar 6. */}
+        {negative && <Text as="span" fontSize="xs" color="red.600" ml={1} title="Revisar con un conteo">· Revisar</Text>}
       </Table.Cell>
       <Table.Cell><Text color="fg.muted">{a.countPlace ?? NO_LOCATION}</Text></Table.Cell>
       <Table.Cell>{cost ?? <Text as="span" fontSize="sm" color="red.600" fontWeight="600">Sin costo</Text>}</Table.Cell>

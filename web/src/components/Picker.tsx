@@ -135,6 +135,8 @@ export function Picker({
               ))}
               {!createFirst && createRow}
               {filtered.length === 0 && !onCreate && !cannotCreateHint && <Text color="fg.muted" px={2} py={3}>Sin resultados.</Text>}
+              {/* Sin opciones y sin poder crear, la hoja lo explica sin tener que escribir. */}
+              {!onCreate && cannotCreateHint && options.length === 0 && q.trim() === '' && <Text color="fg.muted" px={2} py={3}>{cannotCreateHint}</Text>}
               {/* Sin esto el alta inline es invisible: el botón «Crear» solo aparece al escribir, así
                   que quien abre la hoja y no ve su proveedor asume que tiene que salirse a crearlo. */}
               {onCreate && q.trim() === '' && (

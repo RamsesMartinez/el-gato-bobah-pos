@@ -180,6 +180,10 @@ export class AutosaveQueue<F extends Record<string, string>> {
   // setOptions toma los callbacks del render más reciente: guardan sobre el estado vigente de la ficha.
   setOptions = (opts: AutosaveOptions<F>) => { this.opts = opts; };
 
+  // rebase toma la versión nueva de la ficha sin olvidar lo que quedó sin guardar: tras una hoja que
+  // la cambió (costo, unidad), el siguiente guardado no choca contra sí mismo.
+  rebase = (v: string) => { this.ver = v; };
+
   dispose = () => { this.timers.forEach((id) => clearTimeout(id)); };
 }
 
@@ -188,5 +192,5 @@ export function useAutosave<F extends Record<string, string>>(opts: AutosaveOpti
   useEffect(() => { q.setOptions(opts); });
   useEffect(() => q.dispose, [q]);
   const view = useSyncExternalStore(q.subscribe, q.snapshot);
-  return { ...view, commit: q.commit, type: q.type, retry: q.retry, busy: q.busy, whenIdle: q.whenIdle, reset: q.reset, version: q.version };
+  return { ...view, commit: q.commit, type: q.type, retry: q.retry, busy: q.busy, whenIdle: q.whenIdle, reset: q.reset, rebase: q.rebase, version: q.version };
 }

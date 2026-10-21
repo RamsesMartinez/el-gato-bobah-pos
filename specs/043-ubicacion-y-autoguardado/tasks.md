@@ -116,14 +116,15 @@ Reglas que aplican a todas las tareas:
   de 44 px y ficha sin desplazamiento de lado, acostada y de pie, a 1024×600. Pasa contra lo desplegado
   hoy (cierra T045 de la 042 cuando se mergee).
 - [X] T020 [US5] `web/e2e/lugares-para-contar.spec.ts`: la ubicación se elige en 3 toques desde la
-  ficha, sin teclado y sin «Guardar». Falla hasta que T010 y T014 estén desplegados.
+  ficha, sin teclado y sin «Guardar». Pasa en local (3 toques); en el ambiente de pruebas, cuando se
+  despliegue (T021).
 - [X] T025 [US5] e2e de la hoja de empaque con el alto reducido por el teclado: la frase y «Guardar
   empaque» quedan a la vista (R5), y todo control de la hoja mide 44 px o más (FR-019).
 - [ ] T021 [US5] Correr la suite e2e completa contra el ambiente de pruebas con la 043 desplegada.
 
 ## Phase 8: Polish
 
-- [ ] T022 `make ci-local` en verde.
+- [X] T022 `make ci-local` en verde.
 - [ ] T023 Prueba con usuario sin contexto en local a 1024×600: darle ubicación a un artículo y agregar
   un empaque sin ayuda (SC-006). Anotar lo encontrado en «Al construir».
 - [ ] T024 Cerrar en #103 los dos puntos que cubre esta spec («Lugar» y «Se cuenta en g»).
