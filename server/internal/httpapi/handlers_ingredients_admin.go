@@ -140,6 +140,8 @@ func (h *Handlers) UpdateArticle(w http.ResponseWriter, r *http.Request) {
 // un campo que no vino se borraría.
 type articleUpdateBody map[string]json.RawMessage
 
+// update traduce el cuerpo a los campos que cambian. Un campo que no existe se rechaza, no se ignora:
+// ignorarlo haría creer a quien lo manda que guardó algo (constitución V).
 func (b articleUpdateBody) update() (app.ArticleUpdate, error) {
 	var in app.ArticleUpdate
 	for k, raw := range b {
@@ -160,8 +162,11 @@ func (b articleUpdateBody) update() (app.ArticleUpdate, error) {
 			err = fmt.Errorf("campo desconocido %q", k)
 		}
 		if err != nil {
-			return in, domain.ErrValidation
+			return in, fmt.Errorf("%w: %v", domain.ErrValidation, err)
 		}
+	}
+	if in.Name != nil && *in.Name == "" {
+		return in, fmt.Errorf("%w: el nombre lleva de 1 a %d letras", domain.ErrValidation, domain.MaxArticleName)
 	}
 	if in.ExpectedUpdatedAt.IsZero() {
 		return in, fmt.Errorf("%w: falta la versión de la ficha", domain.ErrValidation)

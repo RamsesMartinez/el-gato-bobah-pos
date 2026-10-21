@@ -870,6 +870,42 @@ func TestSavingOneFieldOfAnArticle(t *testing.T) {
 			t.Fatalf("ficha = %v", f)
 		}
 	})
+	// Revisión de código: el nombre se revisaba aunque no cambiara, y un artículo heredado con nombre
+	// repetido no podía guardar ni su mínimo.
+	t.Run("un artículo heredado con nombre repetido guarda su mínimo", func(t *testing.T) {
+		// La base solo impide el repetido exacto; uno que difiere en acentos o mayúsculas pudo llegar
+		// de la carga de FUDO, antes de la regla de la 037.
+		gemelo := ingredientIn(t, st, defaultCompanyID, "Café de olla gemelo", "g")
+		if _, err := st.Pool.Exec(ctx, `update ingredients set name = upper(translate((select name from ingredients where id = $2), 'é', 'e')) where id = $1`, gemelo, id); err != nil {
+			t.Fatal(err)
+		}
+		w := do(t, r, http.MethodGet, "/api/v1/stock/articles/"+strconv.FormatInt(gemelo, 10), admin, nil, "")
+		var g map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &g)
+		body := `{"expectedUpdatedAt":"` + g["updatedAt"].(string) + `","name":` + strconv.Quote(g["name"].(string)) + `,"minStock":"20"}`
+		if w := do(t, r, http.MethodPatch, "/api/v1/stock/articles/"+strconv.FormatInt(gemelo, 10), admin, []byte(body), "application/json"); w.Code != http.StatusOK {
+			t.Fatalf("guardar el mínimo de un artículo con nombre heredado repetido = %d %s; quiere 200", w.Code, w.Body.String())
+		}
+	})
+	t.Run("un campo desconocido o un nombre nulo es 400 y dice cuál", func(t *testing.T) {
+		v := ficha()["updatedAt"].(string)
+		for _, body := range []string{
+			`{"expectedUpdatedAt":"` + v + `","color":"rojo"}`,     // campo que no existe: no se ignora
+			`{"expectedUpdatedAt":"` + v + `","isActive":false}`,   // ni uno que se guarda por otra ruta
+			`{"expectedUpdatedAt":"` + v + `","name":null}`,        // nombre vacío
+			`{"expectedUpdatedAt":"` + v + `","placeId":"x"}`,      // tipo equivocado
+			`{"expectedUpdatedAt":"` + v + `","minStock":"1e400"}`, // fuera de rango
+			`{"expectedUpdatedAt":"` + v + `","minStock":"-1"}`,    // negativo
+			`{"minStock":"5"}`, // sin la versión que se vio
+		} {
+			if w := do(t, r, http.MethodPatch, path, admin, []byte(body), "application/json"); w.Code != http.StatusBadRequest {
+				t.Errorf("%s = %d; quiere 400", body, w.Code)
+			}
+		}
+		if w := do(t, r, http.MethodPatch, path, admin, []byte(`{"expectedUpdatedAt":"`+v+`","color":"rojo"}`), "application/json"); !strings.Contains(w.Body.String(), "color") {
+			t.Errorf("el 400 no dice qué campo sobra: %s", w.Body.String())
+		}
+	})
 	t.Run("otra empresa no edita la ficha, en los tres casos", func(t *testing.T) {
 		inTheThreeCases(t, defaultCompanyID, makeCompany(t, st, "campo-ajeno"), func(t *testing.T, st *store.Store, ctx context.Context) {
 			other := app.NewBackofficeService(st, clock)

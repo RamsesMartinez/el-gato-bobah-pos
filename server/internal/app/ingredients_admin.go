@@ -263,7 +263,6 @@ func (s *BackofficeService) GetArticle(ctx context.Context, id int64) (ArticleSh
 	}, nil
 }
 
-// ArticleUpdate es lo que se edita en la ficha. Viaja completo: lo que no se cambió vuelve como estaba.
 // ArticleUpdate son los campos de la ficha que cambian. Desde el autoguardado (spec 043) llega uno a
 // la vez; lo que no viene se queda como estaba. Name nil es «no vino».
 type ArticleUpdate struct {
@@ -283,18 +282,25 @@ func (s *BackofficeService) UpdateArticle(ctx context.Context, id int64, in Arti
 		if err != nil {
 			return notFound(err)
 		}
-		in = mergeArticleUpdate(in, before)
-		if err := domain.ValidateArticle(domain.ArticleInput{Name: *in.Name, MinStock: in.MinStock.Value}); err != nil {
-			return err
-		}
-		if err := q.LockIngredientNames(ctx); err != nil {
-			return err
-		}
-		switch found, err := q.FindOtherArticleByName(ctx, db.FindOtherArticleByNameParams{ID: id, Name: *in.Name}); {
-		case err == nil:
-			return domain.ArticleNameTaken{ID: found.ID, Archived: !found.IsActive}
-		case !errors.Is(err, pgx.ErrNoRows):
-			return err
+		in := mergeArticleUpdate(in, before)
+		// El nombre se valida y se busca repetido solo si cambió: cada autoguardado manda la ficha
+		// completa, y un artículo heredado con un nombre que hoy no pasaría (repetido por acentos, de la
+		// carga de FUDO) no podría guardar ni su mínimo. Tampoco toma el candado de nombres de la empresa.
+		if *in.Name != before.Name {
+			if err := domain.ValidateArticle(domain.ArticleInput{Name: *in.Name, MinStock: in.MinStock.Value}); err != nil {
+				return err
+			}
+			if err := q.LockIngredientNames(ctx); err != nil {
+				return err
+			}
+			switch found, err := q.FindOtherArticleByName(ctx, db.FindOtherArticleByNameParams{ID: id, Name: *in.Name}); {
+			case err == nil:
+				return domain.ArticleNameTaken{ID: found.ID, Archived: !found.IsActive}
+			case !errors.Is(err, pgx.ErrNoRows):
+				return err
+			}
+		} else if m := in.MinStock.Value; m != nil && !domain.ValidStockQtyOrZero(*m) {
+			return fmt.Errorf("%w: el mínimo no puede ser negativo", domain.ErrValidation)
 		}
 		if err := categoryOfCompany(ctx, q, in.CategoryID.Value); err != nil {
 			return err
@@ -343,8 +349,9 @@ func (s *BackofficeService) UpdateArticle(ctx context.Context, id int64, in Arti
 }
 
 // mergeArticleUpdate llena lo que no vino con lo que la ficha ya tiene, y limpia el nombre que sí vino.
+// Un nombre que solo difiere del guardado en espacios es el mismo: se conserva tal cual.
 func mergeArticleUpdate(in ArticleUpdate, before db.GetArticleRow) ArticleUpdate {
-	if in.Name == nil {
+	if in.Name == nil || domain.CleanArticleName(*in.Name) == domain.CleanArticleName(before.Name) {
 		in.Name = &before.Name
 	} else {
 		name := domain.CleanArticleName(*in.Name)
