@@ -281,3 +281,8 @@ Anotado sin cambiar (cambia disposición o es decisión previa):
 - Límites del conteo vive en la columna angosta de Negocio, sin tarjeta (solo raya arriba), mientras
   «Lugares» y «Lo que se echó a perder» de la misma página van en tarjeta.
 - La gráfica nueva no se vio: bobah-pruebas no tiene registros en el periodo (no verificado).
+
+### CI medido (T037, PR #125, 2026-10-21)
+
+- PR completo: 212 s (antes ~300 s). Integración repartida: 124 s, 88 s y 201 s; la tercera marca el piso y es la que se lleva las pruebas pesadas (probablemente la de la bitácora de un año). Siguiente palanca: aislar esa prueba en su propio shard o repartir por duración medida.
+- Merge a develop: pendiente de medir al mergear.
