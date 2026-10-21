@@ -17,6 +17,8 @@ export interface ApiErrorDetails {
   lineId?: string;
   // El motivo de merma que ya existe con ese nombre (spec 039): la pantalla lo elige en vez de crear otro.
   existingId?: number;
+  // El artículo con ese nombre está archivado (spec 042): la pantalla ofrece reactivarlo.
+  archived?: boolean;
 }
 
 export class ApiError extends Error {

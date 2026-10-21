@@ -7,6 +7,7 @@ import { Provider } from '../../components/ui/provider';
 import { useSessionStore } from '../../stores/session';
 import type { StockCount } from '../../api/backoffice';
 import { StockCountTab } from './StockCountTab';
+import { ApiError } from '../../api/client';
 
 const back = vi.hoisted(() => ({
   currentCount: vi.fn(),
@@ -146,10 +147,12 @@ describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
     expect(screen.queryByRole('button', { name: 'punto' })).toBeNull();
     tecla('3');
     click(/Siguiente casilla/);
+    // Lo suelto abre en la unidad base (spec 042); 0.5 L se escribe eligiendo L.
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
     tecla('punto'); tecla('5');
-    expect(screen.getByText('= 2.75 L')).toBeInTheDocument();
+    expect(screen.getByTestId('total-contado')).toHaveTextContent('2.75 L');
     click('Guardar');
-    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, '2750'));
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, { countedQty: '2750', confirmable: true }));
     expect(await screen.findByText('✓ 2.75 L')).toBeInTheDocument();
     expect(screen.getByTestId('avance')).toHaveTextContent('1 de 3 contados');
   });
@@ -163,7 +166,7 @@ describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
     expect(back.captureCount).not.toHaveBeenCalled();
     tecla('1');
     click('Guardar y seguir ›');
-    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 2, '25000'));
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 2, { countedQty: '25000', confirmable: true }));
     expect(await screen.findByText('Limón')).toBeInTheDocument();
     expect(localStorage.getItem('egb:conteo:vista')).toBe('uno');
   });
@@ -252,9 +255,10 @@ test('al recargar o abrir en otra tableta, lo ya contado sigue ahí', async () =
   await screen.findByLabelText('Botella de Jarabe de vainilla');
   tecla('3');
   click(/Siguiente casilla/);
+  fireEvent.click(screen.getByRole('button', { name: 'L' }));
   tecla('punto'); tecla('5');
   click('Guardar');
-  await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, '2750'));
+  await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, { countedQty: '2750', confirmable: true }));
 
   // Otra tableta: sin caché de consultas ni almacenamiento local; solo lo que el servidor guardó.
   const guardado = conteo();
@@ -265,4 +269,75 @@ test('al recargar o abrir en otra tableta, lo ya contado sigue ahí', async () =
   montar();
   expect(await screen.findByText('✓ 2.75 L')).toBeInTheDocument();
   expect(screen.getByTestId('avance')).toHaveTextContent('1 de 3 contados');
+});
+
+// Spec 042, US7 (FR-012): contar sin equivocarse de unidad.
+describe('Teclado del conteo (spec 042)', () => {
+  const abrir = async (n = 0) => {
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[n]).getByRole('button', { name: 'Contar' }));
+  };
+
+  // Revisión de código: «No hay» guardaba cero con un toque, pegado a «Guardar». Ahora pide confirmar.
+  test('Guardar no guarda sin captura; «No hay» pide confirmar antes de guardar cero', async () => {
+    await abrir();
+    expect(await screen.findByRole('button', { name: 'Guardar' })).toBeDisabled();
+    click('No hay');
+    expect(screen.getByText(/¿No hay nada de .+\?/)).toBeInTheDocument();
+    expect(back.captureCount).not.toHaveBeenCalled();
+    click('Sí, no hay');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, { countedQty: '0', confirmable: true }));
+  });
+
+  test('+ y − ajustan de uno en uno; tocar la cantidad lleva el teclado ahí', async () => {
+    await abrir();
+    fireEvent.click(await screen.findByRole('button', { name: 'Agregar Botella' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar Botella' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar Botella' }));
+    expect(screen.getByLabelText('Botella de Jarabe de vainilla')).toHaveValue('1');
+    fireEvent.click(screen.getByLabelText('Botella de Jarabe de vainilla'));
+    tecla('2');
+    expect(screen.getByLabelText('Botella de Jarabe de vainilla')).toHaveValue('12');
+  });
+
+  test('una cifra rara pide confirmar mostrándola en grande, y «Sí, guardar» la confirma', async () => {
+    back.captureCount.mockRejectedValueOnce(new ApiError(409, 'NEEDS_CONFIRM', '¿seguro?', 'r'));
+    await abrir();
+    click(/Siguiente casilla/);
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
+    tecla('7'); tecla('4'); tecla('0');
+    click('Guardar');
+    expect(await screen.findByText('¿Seguro? Revisa la cifra y la unidad')).toBeInTheDocument();
+    expect(screen.getAllByText('740 L').length).toBeGreaterThan(0);
+    // Con las dos hojas abiertas getByRole no encuentra el botón en jsdom; se toca por su texto.
+    fireEvent.click(screen.getByText('Sí, guardar'));
+    await waitFor(() => expect(back.captureCount).toHaveBeenLastCalledWith(5, 1, { countedQty: '740000', confirmable: true, confirmed: true }));
+  });
+
+  test('el buscador también encuentra por nombre de empaque', async () => {
+    montar();
+    await screen.findAllByTestId('renglon-conteo');
+    fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: 'bulto' } });
+    const rows = screen.getAllByTestId('renglon-conteo');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('Azúcar');
+  });
+
+  test('con más de 3 empaques el total va arriba, antes de los contadores', async () => {
+    const c = conteo();
+    c.items[0].presentations = ['Caja', 'Bolsa', 'Paquete', 'Rollo', 'Bulto'].map((name, i) => ({ name, qtyInBase: String((i + 1) * 100) }));
+    back.currentCount.mockResolvedValue(c);
+    await abrir();
+    const total = await screen.findByTestId('total-contado');
+    const first = screen.getByLabelText('Caja de Jarabe de vainilla');
+    expect(total.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('un artículo en piezas que se puede pesar ofrece piezas, g y kg; sin eso, no hay selector', async () => {
+    const c = conteo();
+    c.items[2].weighable = true;
+    back.currentCount.mockResolvedValue(c);
+    await abrir(2);
+    for (const u of ['piezas', 'g', 'kg']) expect(await screen.findByRole('button', { name: u })).toBeInTheDocument();
+  });
 });

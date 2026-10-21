@@ -632,6 +632,8 @@ export interface StockMovement {
 export interface ExpenseItemBody {
   itemType?: ItemType | '';
   ingredientId?: number;
+  // Un artículo que nace con este gasto (spec 042): se crea al guardar, no al elegir su unidad.
+  newArticle?: { name: string; baseUnitId: number };
   productId?: number;
   description: string;
   quantity: string;
@@ -679,6 +681,16 @@ export interface CountItem {
   baseUnitCode: string;
   presentations: { name: string; qtyInBase: string }[];
   countedQty: string | null; // null = no contado
+  // Un artículo en piezas que se puede contar pesando (spec 042): el servidor convierte a piezas.
+  weighable?: boolean;
+}
+// Lo que se manda al capturar. confirmable pide el aviso de una cifra fuera de lo razonable.
+export interface CountCaptureBody {
+  countedQty: string;
+  weight?: string;
+  weightUnitId?: number;
+  confirmable: true;
+  confirmed?: boolean;
 }
 export interface StockCount {
   id: number;
@@ -926,8 +938,8 @@ export const backofficeApi = {
   // null sin conteo abierto (204): TanStack Query no acepta `undefined` como dato.
   currentCount: () => api.get<StockCount | undefined>('/stock/counts/current').then((c) => c ?? null),
   openCount: () => api.post<StockCount>('/stock/counts', {}),
-  captureCount: (id: number, ingredientId: number, countedQty: string) =>
-    api.put<void>(`/stock/counts/${id}/lines/${ingredientId}`, { countedQty }),
+  captureCount: (id: number, ingredientId: number, body: CountCaptureBody) =>
+    api.put<{ countedQty: string }>(`/stock/counts/${id}/lines/${ingredientId}`, body),
   uncaptureCount: (id: number, ingredientId: number) => api.del<void>(`/stock/counts/${id}/lines/${ingredientId}`),
   previewCount: (id: number) => api.get<CountClose>(`/stock/counts/${id}/preview`),
   closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),
@@ -948,6 +960,36 @@ export const backofficeApi = {
     fd.append('file', file);
     return api.postForm<ParsedDoc>('/expenses/parse-doc', fd);
   },
+
+  // Artículos del almacén (spec 042): la lista con filtros, la ficha, su historial y su bitácora.
+  articles: (f: ArticleFilter = {}) => {
+    const qs = new URLSearchParams();
+    if (f.q?.trim()) qs.set('q', f.q.trim());
+    if (f.archived) qs.set('status', 'archived');
+    if (f.place === 'none') qs.set('placeId', 'none');
+    else if (typeof f.place === 'number') qs.set('placeId', String(f.place));
+    if (f.noCost) qs.set('noCost', '1');
+    if (f.negative) qs.set('negative', '1');
+    const q = qs.toString();
+    return api.get<ArticleRow[]>(`/stock/articles${q ? `?${q}` : ''}`);
+  },
+  createArticle: (b: ArticleCreate) => api.post<{ id: number }>('/stock/articles', b),
+  article: (id: number) => api.get<ArticleSheet>(`/stock/articles/${id}`),
+  updateArticle: (id: number, b: ArticleUpdate) => api.patch<void>(`/stock/articles/${id}`, b),
+  correctArticleCost: (id: number, cost: string) => api.post<void>(`/stock/articles/${id}/cost`, { cost }),
+  articleCostHistory: (id: number, before?: string) =>
+    api.get<CostHistoryPage>(`/stock/articles/${id}/cost-history${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+  previewUnitChange: (id: number, b: UnitChangeBody) => api.post<UnitChangePreview>(`/stock/articles/${id}/unit/preview`, b),
+  changeUnit: (id: number, b: UnitChangeBody) => api.post<void>(`/stock/articles/${id}/unit`, b),
+  articleArchiveCheck: (id: number) => api.get<ArchiveCheck>(`/stock/articles/${id}/archive-check`),
+  archiveArticle: (id: number) => api.post<void>(`/stock/articles/${id}/archive`, {}),
+  reactivateArticle: (id: number) => api.post<void>(`/stock/articles/${id}/reactivate`, {}),
+  presentationSuggestions: (unitKind: string) =>
+    api.get<{ name: string; qtyInBase: string }[]>(`/stock/presentation-suggestions?unitKind=${encodeURIComponent(unitKind)}`),
+  articleCategories: () => api.get<{ id: number; name: string }[]>('/stock/ingredient-categories'),
+  createArticleCategory: (name: string) => api.post<{ id: number; name: string }>('/stock/ingredient-categories', { name }),
+  articleAudit: (id: number, before?: string) =>
+    api.get<ArticleAuditPage>(`/stock/articles/${id}/audit${before ? `?before=${encodeURIComponent(before)}` : ''}`),
 
   // Catálogo de artículos (insumos) y buscador del detalle del gasto.
   units: () => api.get<{ items: Unit[] }>('/units'),
@@ -1047,4 +1089,101 @@ function qsReporte(q: ReportQuery): string {
     if (v !== undefined && v !== '') p.set(k, String(v));
   }
   return p.toString();
+}
+
+// Artículos del almacén (spec 042). Cantidades en la unidad base del artículo.
+export interface ArticleFilter {
+  q?: string;
+  archived?: boolean;
+  place?: number | 'none';
+  noCost?: boolean;
+  negative?: boolean;
+}
+export interface PresentationLabel { id: number; name: string; qtyInBase: string }
+export interface ArticleRow {
+  id: number;
+  name: string;
+  isActive: boolean;
+  baseUnitId: number;
+  baseUnitCode: string;
+  baseUnitKind: string;
+  currentCost: string;
+  minStock: string | null;
+  isPrep: boolean;
+  categoryId: number | null;
+  category: string | null;
+  countPlaceId: number | null;
+  countPlace: string | null;
+  onHand: string;
+  // Opcional a propósito: el compilador obliga a la guarda aunque el servidor siempre mande [] (AGENTS §1).
+  presentations?: PresentationLabel[];
+  // «estimated»: su receta vino estimada y está por revisar.
+  compositionStatus?: string;
+}
+export interface ArticleSheet extends ArticleRow {
+  costSource: string;
+  updatedAt: string;
+}
+export interface ArticleCreate {
+  name: string;
+  baseUnitId: number;
+  categoryId?: number | null;
+  placeId?: number | null;
+  minStock?: string;
+  initialCost?: string;
+  initialStock?: string;
+}
+export interface ArticleUpdate {
+  expectedUpdatedAt: string;
+  name: string;
+  categoryId: number | null;
+  placeId: number | null;
+  minStock: string | null;
+}
+export interface CostHistoryItem {
+  kind: 'purchase' | 'correction';
+  at: string;
+  id: number;
+  unitCost: string;
+  presentation: string | null;
+  packQty: string | null;
+  packCost: string | null;
+  supplier: string | null;
+  user: string | null;
+}
+export interface CostHistoryPage { items?: CostHistoryItem[]; next: string | null; trendPct: string | null }
+export interface ArticleAuditItem {
+  id: number;
+  at: string;
+  action: string;
+  entity: string;
+  actor: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}
+export interface ArticleAuditPage { items?: ArticleAuditItem[]; next: string | null }
+export interface ArchiveCheck {
+  onHand?: { branch: string; qty: string }[];
+  activeRecipes?: { kind: 'product' | 'option' | 'ingredient'; id: number; name: string }[];
+  openCount: boolean;
+  pendingReceipts: number;
+}
+export interface UnitChangeBody {
+  baseUnitId: number;
+  factor: string;
+  overrides?: Record<string, string>;
+}
+export interface UnitConversion {
+  key: string;
+  group: 'stock' | 'recipe' | 'presentation';
+  label: string;
+  from: string;
+  to: string;
+  fits: boolean;
+}
+export interface UnitChangePreview {
+  path: 'direct' | 'replace';
+  fromUnit: string;
+  toUnit: string;
+  conversions?: UnitConversion[];
 }

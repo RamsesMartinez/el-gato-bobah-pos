@@ -40,6 +40,10 @@ const (
 	// que pasa el tope de la empresa, quien revisa.
 	PermInventoryWriteOff        Permission = "inventory.write_off"
 	PermInventoryWriteOffApprove Permission = "inventory.write_off_approve"
+
+	// Ver el catálogo de artículos, su ficha, su historial de costos y su bitácora (spec 042). Leer
+	// va aparte de configurar para que un rol propio pueda consultar sin poder cambiar nada.
+	PermInventoryView Permission = "inventory.view"
 )
 
 // AllPermissions devuelve todos los permisos que existen, en un orden fijo.
@@ -47,7 +51,7 @@ func AllPermissions() []Permission {
 	return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 		PermAttendanceConfigure, PermAttendanceReport, PermAttendanceCorrectOthers, PermAttendanceCorrectOwn,
 		PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure, PermInventoryHealthView, PermMenuConfigure,
-		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount, PermInventoryWriteOff, PermInventoryWriteOffApprove}
+		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount, PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -65,7 +69,7 @@ func PermissionsFor(role Role) []Permission {
 		return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 			PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
 			PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount,
-			PermInventoryWriteOff, PermInventoryWriteOffApprove}
+			PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView}
 	case RoleCajero, RoleMesero:
 		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}
 	}
@@ -112,6 +116,8 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede registrar lo que se echó a perder"
 	case PermInventoryWriteOffApprove:
 		return "Tu usuario no puede aprobar lo que se echó a perder"
+	case PermInventoryView:
+		return "Tu usuario no puede ver el almacén"
 	}
 	return "Tu usuario no puede hacer esto"
 }

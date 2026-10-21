@@ -44,6 +44,18 @@ export const ACTION_LABELS: Record<string, string> = {
   'waste.rejected': 'Rechazó lo que se echó a perder',
   'waste.undone': 'Deshizo lo que se echó a perder',
   'settings.waste_threshold': 'Cambió el tope de aprobación',
+  'ingredient.created': 'Creó el artículo',
+  'ingredient.updated': 'Editó el artículo',
+  'ingredient.archived': 'Archivó el artículo',
+  'ingredient.reactivated': 'Reactivó el artículo',
+  'ingredient.cost_corrected': 'Corrigió el costo',
+  'ingredient.unit_changed': 'Cambió en qué se mide',
+  'ingredient.unit_changed.detail': 'Detalle del cambio de unidad',
+  'ingredient.replaced': 'Reemplazó el artículo por otro',
+  'presentation.created': 'Agregó un empaque',
+  'presentation.updated': 'Editó un empaque',
+  'presentation.retired': 'Retiró o volvió un empaque',
+  'stock.count_confirm_asked': 'El conteo pidió confirmar una cifra',
 };
 
 // Qué resta un producto (spec 037), con las palabras de la hoja de receta.

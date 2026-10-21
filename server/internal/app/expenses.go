@@ -93,8 +93,11 @@ type ExpenseDetailView struct {
 // ---- Entradas ----
 
 type ExpenseItemInput struct {
-	ItemType      string // "" (no inventariable) | ingrediente | producto
-	IngredientID  *int64
+	ItemType     string // "" (no inventariable) | ingrediente | producto
+	IngredientID *int64
+	// NewArticle: un artículo que se da de alta con este gasto (spec 042, FR-003). Se crea en la misma
+	// transacción: si el gasto no se guarda, el artículo tampoco existe.
+	NewArticle    *NewArticle
 	ProductID     *int64
 	Description   string
 	Quantity      decimal.Decimal
@@ -226,6 +229,19 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 	var id int64
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		var err error
+		for i, it := range in.Items {
+			if it.NewArticle == nil {
+				continue
+			}
+			if it.IngredientID != nil || it.ProductID != nil || it.ItemType != "ingrediente" {
+				return fmt.Errorf("%w: un artículo nuevo va solo, como insumo", domain.ErrValidation)
+			}
+			aid, err := ensureArticleTx(ctx, q, *it.NewArticle)
+			if err != nil {
+				return err
+			}
+			in.Items[i].IngredientID = &aid
+		}
 		var ids []int64
 		for _, it := range in.Items {
 			if it.IngredientID != nil {

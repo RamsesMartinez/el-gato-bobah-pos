@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/shopspring/decimal"
+
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 )
 
 // Conteo de existencias (spec 038, historia 3). Las cifras van en la unidad base del insumo.
@@ -60,18 +62,34 @@ func (h *Handlers) CaptureCount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		CountedQty decimal.Decimal `json:"countedQty"`
+		CountedQty   decimal.Decimal  `json:"countedQty"`
+		Weight       *decimal.Decimal `json:"weight"`
+		WeightUnitID *int16           `json:"weightUnitId"`
+		// Confirmable pide el aviso de una cifra fuera de lo razonable (spec 042). Sin él se guarda como
+		// antes: una tableta con la pantalla anterior no recibe un aviso que no sabe mostrar.
+		Confirmable bool `json:"confirmable"`
+		Confirmed   bool `json:"confirmed"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	if err := h.backoffice.CaptureCount(r.Context(), id, ing, body.CountedQty, u.ID); err != nil {
+	counted, err := h.backoffice.CaptureCountChecked(r.Context(), id, ing, app.CountCapture{
+		Qty: body.CountedQty, Weight: body.Weight, WeightUnitID: body.WeightUnitID,
+		Confirmable: body.Confirmable, Confirmed: body.Confirmed,
+	}, u.ID)
+	if err != nil {
 		Error(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	// La pantalla anterior espera 204; la nueva (la que pide el aviso o pesa) lee lo que quedó, que en
+	// un peso son las piezas que calculó el servidor.
+	if !body.Confirmable && body.Weight == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]decimal.Decimal{"countedQty": counted})
 }
 
 // DELETE /stock/counts/{id}/lines/{ingredientId} — vuelve a «no contado».

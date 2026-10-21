@@ -7,11 +7,14 @@ import {
 } from '../../components/ui/drawer';
 import { NumericKeypad } from '../../components/NumericKeypad';
 import { pressKey } from '../../components/pressKey';
-import { backofficeApi, type CountClose, type CountItem, type StockCount } from '../../api/backoffice';
+import { backofficeApi, type CountCaptureBody, type CountClose, type CountItem, type StockCount } from '../../api/backoffice';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { normalize } from '../../utils/format';
 import { formatBaseQty } from '../../shared/units';
-import { countedWords, diffWords, entryTotal, isBigDiff, looseUnitOf } from './countEntry';
+import { countedWords, diffWords, isBigDiff, looseUnitsOf, packsTotal } from './countEntry';
+import { parseNumero } from '../../domain/numeros';
+import { ApiError } from '../../api/client';
+import { toaster } from '../../components/ui/toaster';
 import { CountLossReport } from './CountLossReport';
 import { PlaceChooser } from './CountPlaceField';
 import { useNavigate } from 'react-router';
@@ -164,59 +167,156 @@ export function StockCountTab() {
 
 // ---- Captura de una cifra ----
 
-// Entry son las casillas de un insumo: su primer empaque y lo suelto o abierto. Usan el teclado en
-// pantalla (`inputMode="none"`: el del sistema no se abre).
+// Entry son las casillas de un artículo (spec 042, maqueta «Teclado del conteo», opción A): un renglón
+// por empaque con − y + para ajustar de uno en uno, y lo suelto con su unidad elegida. Tocar una
+// casilla lleva el teclado en pantalla ahí (`inputMode="none"`: el del sistema no se abre).
+type Field = number | 'rest';
+
 function useEntry(item: CountItem) {
-  const pack = item.presentations[0] ?? null;
-  const loose = looseUnitOf(item.baseUnitCode);
+  const packs = item.presentations;
+  const units = looseUnitsOf(item.baseUnitCode, !!item.weighable);
+  // Los ids de g y kg, para mandar un peso: solo se piden si el artículo se puede pesar.
+  const unitList = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units, enabled: !!item.weighable });
+  const weightUnitId = (code: 'g' | 'kg') => unitList.data?.items.find((u) => u.code === code)?.id;
   const prev = item.countedQty !== null ? Number(item.countedQty) : null;
-  // Lo ya contado vuelve en la casilla de suelto: no se sabe cómo se repartió.
-  const [packs, setPacks] = useState('');
-  const [rest, setRest] = useState(prev !== null ? String(Number((prev / loose.factor).toFixed(4))) : '');
-  const [field, setField] = useState<'packs' | 'rest'>(pack ? 'packs' : 'rest');
-  const total = entryTotal(packs, pack?.qtyInBase ?? null, rest, loose.factor);
+  const [counts, setCounts] = useState<string[]>(() => packs.map(() => ''));
+  // Lo ya contado vuelve en lo suelto, en la unidad base: no se sabe cómo se repartió.
+  const [rest, setRest] = useState(prev !== null ? String(prev) : '');
+  const [unitIdx, setUnitIdx] = useState(0);
+  const [field, setField] = useState<Field>(packs.length ? 0 : 'rest');
+  const unit = units[unitIdx];
+  const restNum = parseNumero(rest);
+  const fromPacks = packsTotal(counts, packs.map((p) => p.qtyInBase));
+  const captured = fromPacks !== null || restNum.estado === 'valido';
+  const invalid = restNum.estado === 'invalido';
+  // Sin peso, el total se sabe aquí. Con peso lo calcula el servidor (no se adivina el redondeo).
+  const total = !captured || invalid || unit.weightCode ? null
+    : Number(((fromPacks ?? 0) + (restNum.estado === 'valido' ? restNum.valor * unit.factor : 0)).toFixed(4));
   const key = (k: string) => {
-    if (field === 'packs') setPacks((v) => pressKey(v, k, false));
-    else setRest((v) => pressKey(v, k, loose.decimals));
+    if (field === 'rest') setRest((v) => pressKey(v, k, unit.decimals));
+    else setCounts((cs) => cs.map((c, i) => (i === field ? pressKey(c, k, false) : c)));
   };
-  const next = () => setField((f) => (f === 'packs' ? 'rest' : pack ? 'packs' : 'rest'));
-  return { pack, loose, packs, rest, field, setField, total, key, next, allowDecimal: field === 'rest' && loose.decimals };
+  const bump = (i: number, d: 1 | -1) => setCounts((cs) => cs.map((c, j) => (j === i ? String(Math.max(0, (Number(c) || 0) + d)) : c)));
+  const next = () => setField((f) => (f === 'rest' ? (packs.length ? 0 : 'rest') : f + 1 < packs.length ? f + 1 : 'rest'));
+  const body = (): CountCaptureBody | null => {
+    if (!captured || invalid) return null;
+    if (unit.weightCode && restNum.estado === 'valido') {
+      const wu = weightUnitId(unit.weightCode);
+      return wu ? { countedQty: String(fromPacks ?? 0), weight: String(restNum.valor), weightUnitId: wu, confirmable: true } : null;
+    }
+    return { countedQty: String(total), confirmable: true };
+  };
+  return { packs, units, unit, unitIdx, setUnitIdx, counts, rest, field, setField, total, captured, key, bump, next, body,
+    weighed: !!unit.weightCode && restNum.estado === 'valido', fromPacks, allowDecimal: field === 'rest' && unit.decimals };
 }
 
 function EntryFields({ item, e }: { item: CountItem; e: ReturnType<typeof useEntry> }) {
   const box = (active: boolean) => ({
-    w: '96px', minH: '56px', fontSize: 'xl', textAlign: 'center' as const, inputMode: 'none' as const, readOnly: true,
-    placeholder: '—', borderColor: active ? 'red.500' : undefined, bg: active ? 'red.subtle' : undefined,
+    w: '96px', minH: '56px', fontSize: '2xl', fontWeight: '800', textAlign: 'center' as const, inputMode: 'none' as const, readOnly: true,
+    placeholder: '—', borderWidth: '2px', borderColor: active ? 'red.500' : undefined, bg: active ? 'red.subtle' : undefined,
   });
+  const many = e.packs.length > 3;
+  const totalLine = (
+    <HStack justify="space-between" align="baseline" data-testid="total-contado">
+      <Text color="fg.muted">Total contado</Text>
+      <Text fontSize="4xl" fontWeight="800" lineHeight="1">
+        {e.total !== null ? countedWords(e.total, item.baseUnitCode)
+          : e.weighed ? `${e.fromPacks !== null ? `${countedWords(e.fromPacks, item.baseUnitCode)} + ` : ''}${e.rest} ${e.unit.label} pesados`
+            : '—'}
+      </Text>
+    </HStack>
+  );
   return (
-    <VStack align="start" gap={2}>
-      <HStack gap={3} flexWrap="wrap">
-        {e.pack && (
-          <>
-            <Input aria-label={`${e.pack.name} de ${item.name}`} value={e.packs} {...box(e.field === 'packs')}
-              onFocus={() => e.setField('packs')} onClick={() => e.setField('packs')} />
-            <Text>{e.pack.name.toLowerCase()} <Text as="span" fontSize="xs" color="fg.muted">({formatBaseQty(e.pack.qtyInBase, item.baseUnitCode)})</Text></Text>
-            <Text fontWeight="700">+</Text>
-          </>
-        )}
-        <Input aria-label={`${e.loose.label} de ${item.name}`} value={e.rest} {...box(e.field === 'rest')}
+    <VStack align="stretch" gap={2} flex="1" minH={0}>
+      {many && totalLine}
+      {e.packs.length > 0 && (
+        <VStack align="stretch" gap={0} overflowY={many ? 'auto' : undefined} flex={many ? '1' : undefined} minH={0}>
+          <Text fontWeight="700">Empaques cerrados</Text>
+          {e.packs.map((p, i) => (
+            <HStack key={p.name} minH="56px" borderBottomWidth="1px" gap={3}>
+              <Text flex="1" fontSize="lg"><b>{p.name}</b> · {formatBaseQty(p.qtyInBase, item.baseUnitCode)}</Text>
+              <Button aria-label={`Quitar ${p.name}`} minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bump(i, -1)}>−</Button>
+              <Input aria-label={`${p.name} de ${item.name}`} value={e.counts[i]} {...box(e.field === i)}
+                onFocus={() => e.setField(i)} onClick={() => e.setField(i)} />
+              <Button aria-label={`Agregar ${p.name}`} minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bump(i, 1)}>+</Button>
+            </HStack>
+          ))}
+        </VStack>
+      )}
+      <Text fontWeight="700">{e.packs.length ? 'Abierto o suelto' : 'Cuánto hay'}</Text>
+      <HStack gap={3}>
+        <Input aria-label={`Suelto de ${item.name}`} value={e.rest} {...box(e.field === 'rest')} w="140px"
           onFocus={() => e.setField('rest')} onClick={() => e.setField('rest')} />
-        <Text>{e.loose.label}{e.pack ? ' abiertos o sueltos' : ''}</Text>
+        {e.units.length > 1 ? (
+          <HStack gap={0} borderWidth="1px" borderRadius="lg" overflow="hidden" role="group" aria-label="Unidad de lo suelto">
+            {e.units.map((u, i) => (
+              <Button key={u.label} minH="48px" minW="64px" borderRadius="0" fontSize="lg" fontWeight="700"
+                variant={e.unitIdx === i ? 'solid' : 'ghost'} colorPalette="gray" aria-pressed={e.unitIdx === i}
+                onClick={() => e.setUnitIdx(i)}>{u.label}</Button>
+            ))}
+          </HStack>
+        ) : <Text fontSize="2xl" fontWeight="800">{e.unit.label}</Text>}
       </HStack>
-      {e.total !== null && <Text fontWeight="700" color="green.700">= {countedWords(e.total, item.baseUnitCode)}</Text>}
+      {!many && <Box pt={2} borderTopWidth="1px">{totalLine}</Box>}
     </VStack>
   );
 }
 
+// useCapture guarda pidiendo el aviso (confirmable). Si el servidor dice que la cifra es rara, se pide
+// confirmar mostrándola en grande; el servidor no dice contra qué comparó.
 function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty: string | null) => void) {
-  return useMutation({
-    mutationFn: (total: number | null) => (total === null
-      ? backofficeApi.uncaptureCount(countId, item.ingredientId)
-      : backofficeApi.captureCount(countId, item.ingredientId, String(total))),
-    onSuccess: (_, total) => onSaved(item.ingredientId, total === null ? null : String(total)),
+  const [confirming, setConfirming] = useState<CountCaptureBody | null>(null);
+  const save = useMutation({
+    mutationFn: (b: CountCaptureBody | null) => (b === null
+      ? backofficeApi.uncaptureCount(countId, item.ingredientId).then(() => null)
+      : backofficeApi.captureCount(countId, item.ingredientId, b)),
+    onSuccess: (r, b) => {
+      setConfirming(null);
+      const qty = b === null ? null : r?.countedQty ?? b.countedQty;
+      if (qty !== null) toaster.create({ title: `Guardado: ${countedWords(qty, item.baseUnitCode)}`, type: 'success', duration: 1500 });
+      onSaved(item.ingredientId, qty);
+    },
+    onError: (err, b) => {
+      if (b && err instanceof ApiError && err.code === 'NEEDS_CONFIRM') { setConfirming(b); return; }
+      toaster.create({ title: err instanceof ApiError && err.status === 400 ? err.message : 'No se pudo guardar', type: 'error' });
+    },
   });
+  return { save, confirming, setConfirming };
 }
 
+// NoHay registra el cero con una confirmación en el mismo lugar: con un toque, un dedazo junto a
+// «Guardar» dejaba la existencia en 0 al cerrar el conteo, y contar 0 nunca avisa (revisión de la 042).
+function NoHay({ item, onConfirm }: { item: CountItem; onConfirm: () => void }) {
+  const [asking, setAsking] = useState(false);
+  if (!asking) return <Button minH="44px" variant="outline" onClick={() => setAsking(true)}>No hay</Button>;
+  return (
+    <HStack gap={2}>
+      <Text>¿No hay nada de {item.name}?</Text>
+      <Button minH="44px" variant="ghost" onClick={() => setAsking(false)}>No</Button>
+      <Button minH="44px" variant="outline" colorPalette="red" onClick={() => { setAsking(false); onConfirm(); }}>Sí, no hay</Button>
+    </HStack>
+  );
+}
+
+// ConfirmFigure es el aviso de una cifra rara: la cifra con su unidad en grande, «Corregir» y «Sí, guardar».
+function ConfirmFigure({ item, e, c }: { item: CountItem; e: ReturnType<typeof useEntry>; c: ReturnType<typeof useCapture> }) {
+  if (!c.confirming) return null;
+  const figure = e.total !== null ? countedWords(e.total, item.baseUnitCode) : `${e.rest} ${e.unit.label}`;
+  return (
+    <DrawerRoot open placement="bottom" onOpenChange={(x) => { if (!x.open) c.setConfirming(null); }}>
+      <DrawerBackdrop />
+      <DrawerContent borderTopRadius="2xl">
+        <DrawerHeader><Text fontWeight="700" fontSize="lg">¿Seguro? Revisa la cifra y la unidad</Text></DrawerHeader>
+        <DrawerBody><Text textAlign="center" fontSize="5xl" fontWeight="800" py={2}>{figure}</Text></DrawerBody>
+        <DrawerFooter>
+          <Button minH="52px" variant="outline" onClick={() => c.setConfirming(null)}>Corregir</Button>
+          <Button minH="52px" colorPalette="red" loading={c.save.isPending}
+            onClick={() => c.save.mutate({ ...c.confirming!, confirmed: true })}>Sí, guardar</Button>
+        </DrawerFooter>
+      </DrawerContent>
+    </DrawerRoot>
+  );
+}
 
 // PlacePicker pone el lugar del insumo desde el conteo (FR-015f, decisión del dueño del 14-oct):
 // nadie lo encontraba en la hoja «Cómo llega». Desde la 040 elige de la lista de lugares de la
@@ -238,7 +338,10 @@ function ListView({ count, onSaved }: { count: StockCount; onSaved: (id: number,
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<CountItem | null>(null);
   const needle = normalize(q.trim());
-  const shown = needle ? count.items.filter((i) => normalize(i.name).includes(needle)) : count.items;
+  // Buscar también por nombre de empaque (spec 042): quien busca «bolsa» encuentra el hielo.
+  const shown = needle
+    ? count.items.filter((i) => normalize(i.name).includes(needle) || i.presentations.some((p) => normalize(p.name).includes(needle)))
+    : count.items;
   const groups = new Map<string, CountItem[]>();
   for (const i of shown) groups.set(placeOf(i), [...(groups.get(placeOf(i)) ?? []), i]);
   return (
@@ -280,29 +383,34 @@ function EntrySheet({ countId, item, onClose, onSaved }: {
   countId: number; item: CountItem; onClose: () => void; onSaved: (id: number, qty: string | null) => void;
 }) {
   const e = useEntry(item);
-  const save = useCapture(countId, item, onSaved);
+  const c = useCapture(countId, item, onSaved);
   return (
+    <>
     <DrawerRoot open placement="bottom" size="full" onOpenChange={(x) => { if (!x.open) onClose(); }}>
       <DrawerBackdrop />
       <DrawerContent borderTopRadius="2xl">
-        <DrawerHeader><Text fontWeight="700" fontSize="lg">¿Cuánto hay de {item.name}?</Text></DrawerHeader>
-        <DrawerBody>
-          <HStack align="start" gap={6}>
-            <Box flex="1"><EntryFields item={item} e={e} /></Box>
-            <Box w="240px"><NumericKeypad allowDecimal={e.allowDecimal} onKey={e.key} onNext={e.pack ? e.next : undefined} /></Box>
+        <DrawerHeader py={2}><Text fontWeight="700" fontSize="lg">¿Cuánto hay de {item.name}?</Text></DrawerHeader>
+        <DrawerBody display="flex" minH={0}>
+          <HStack align="stretch" gap={6} flex="1" minH={0}>
+            <EntryFields item={item} e={e} />
+            <Box w="240px" flexShrink={0}><NumericKeypad allowDecimal={e.allowDecimal} onKey={e.key} onNext={e.packs.length ? e.next : undefined} /></Box>
           </HStack>
         </DrawerBody>
         <DrawerFooter>
           {item.countedQty !== null && (
-            <Button minH="44px" variant="ghost" mr="auto" onClick={() => save.mutate(null)}>Quitar lo contado</Button>
+            <Button minH="44px" variant="ghost" mr="auto" onClick={() => c.save.mutate(null)}>Quitar lo contado</Button>
           )}
           <Button minH="44px" variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button minH="44px" colorPalette="red" disabled={e.total === null} loading={save.isPending} onClick={() => save.mutate(e.total)}>
+          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true })} />
+          <Button minH="56px" ml={8} colorPalette="red" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
             Guardar
           </Button>
         </DrawerFooter>
       </DrawerContent>
     </DrawerRoot>
+    {/* El aviso es su propia hoja, encima de la del teclado. */}
+    <ConfirmFigure item={item} e={e} c={c} />
+    </>
   );
 }
 
@@ -331,27 +439,28 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
   onSaved: (id: number, qty: string | null) => void;
 }) {
   const e = useEntry(item);
-  const save = useCapture(countId, item, (id, qty) => { onSaved(id, qty); onNext(); });
+  const c = useCapture(countId, item, (id, qty) => { onSaved(id, qty); onNext(); });
   return (
     <HStack align="stretch" gap={3} flex="1" minH={0}>
-      <VStack align="stretch" justify="center" gap={4} flex="1" p={6} borderWidth="1px" borderRadius="lg" bg="bg.panel">
+      <VStack align="stretch" gap={3} flex="1" minH={0} p={4} borderWidth="1px" borderRadius="lg" bg="bg.panel">
         <Text fontSize="xs" color="fg.muted">{where}</Text>
         <HStack gap={3} flexWrap="wrap">
           <Text fontSize="2xl" fontWeight="700" flex="1">{item.name}</Text>
           <PlacePicker item={item} />
         </HStack>
-        <Text>¿Cuánto hay?</Text>
         <EntryFields item={item} e={e} />
         <HStack gap={3}>
           <Button minH="44px" variant="outline" disabled={!onPrev} onClick={onPrev}>‹ Anterior</Button>
           <Box flex="1" />
           <Button minH="44px" variant="outline" onClick={onNext}>Saltar (no contar hoy)</Button>
-          <Button minH="44px" colorPalette="red" disabled={e.total === null} loading={save.isPending} onClick={() => save.mutate(e.total)}>
+          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true })} />
+          <Button minH="56px" ml={8} colorPalette="red" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
             Guardar y seguir ›
           </Button>
         </HStack>
       </VStack>
-      <Box w="232px"><NumericKeypad allowDecimal={e.allowDecimal} onKey={e.key} onNext={e.pack ? e.next : undefined} /></Box>
+      <Box w="232px"><NumericKeypad allowDecimal={e.allowDecimal} onKey={e.key} onNext={e.packs.length ? e.next : undefined} /></Box>
+      <ConfirmFigure item={item} e={e} c={c} />
     </HStack>
   );
 }

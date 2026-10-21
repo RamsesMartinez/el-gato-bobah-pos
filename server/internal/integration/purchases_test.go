@@ -384,8 +384,10 @@ func TestPurchasesAreIsolated(t *testing.T) {
 	}
 }
 
-// Regla 4: la unidad de un insumo no cambia después de crearlo. Hoy ninguna consulta la reescribe;
-// si aparece una, lo guardado y las recetas se leerían en otra unidad sin un solo error.
+// Regla 4: la unidad de un insumo no se reescribe por cualquier camino. Desde la spec 042 hay uno,
+// y solo uno: SetArticleUnit, del cambio de unidad, que convierte en la misma transacción todo lo que
+// el artículo guarda en su unidad (ver UnitChangeTables). Cualquier otra consulta que la reescriba
+// dejaría lo guardado y las recetas leyéndose en otra unidad sin un solo error.
 func TestNoQueryRewritesTheBaseUnitOfAnIngredient(t *testing.T) {
 	t.Parallel()
 	files, err := filepath.Glob("../../queries/*.sql")
@@ -393,14 +395,25 @@ func TestNoQueryRewritesTheBaseUnitOfAnIngredient(t *testing.T) {
 		t.Fatalf("no encontré las consultas: %v", err)
 	}
 	stmt := regexp.MustCompile(`(?is)update\s+ingredients\b[^;]*;`)
+	name := regexp.MustCompile(`(?m)^-- name: (\w+)`)
+	allowed := map[string]bool{"ingredients_admin.sql/SetArticleUnit": true}
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, u := range stmt.FindAllString(string(b), -1) {
-			if regexp.MustCompile(`(?i)\bbase_unit_id\s*=`).MatchString(u) {
-				t.Errorf("%s reescribe la unidad de un insumo:\n%s", filepath.Base(f), u)
+		src := string(b)
+		for _, loc := range stmt.FindAllStringIndex(src, -1) {
+			u := src[loc[0]:loc[1]]
+			if !regexp.MustCompile(`(?i)\bbase_unit_id\s*=`).MatchString(u) {
+				continue
+			}
+			query := ""
+			if names := name.FindAllStringSubmatch(src[:loc[0]], -1); len(names) > 0 {
+				query = names[len(names)-1][1]
+			}
+			if !allowed[filepath.Base(f)+"/"+query] {
+				t.Errorf("%s (%s) reescribe la unidad de un insumo:\n%s", filepath.Base(f), query, u)
 			}
 		}
 	}

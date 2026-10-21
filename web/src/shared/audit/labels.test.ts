@@ -14,6 +14,10 @@ const FROM_SERVER = [
   'attendance.corrected', 'attendance.manual_entry', 'attendance.settings_changed',
   'attendance.schedule_set', 'user.tracks_attendance_changed', 'payment.terminal_changed',
   'product.consumption_mode',
+  'ingredient.created', 'ingredient.updated', 'ingredient.archived', 'ingredient.reactivated',
+  'ingredient.cost_corrected', 'ingredient.unit_changed', 'ingredient.unit_changed.detail',
+  'ingredient.replaced', 'presentation.created', 'presentation.updated', 'presentation.retired',
+  'stock.count_confirm_asked',
 ];
 
 test('cada acción del servidor tiene etiqueta en español', () => {

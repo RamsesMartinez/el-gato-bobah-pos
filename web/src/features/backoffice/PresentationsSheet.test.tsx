@@ -5,7 +5,7 @@ import { Provider } from '../../components/ui/provider';
 import type { Presentation, Unit } from '../../api/backoffice';
 import { PresentationsSheet, type PresentationsIngredient } from './PresentationsSheet';
 
-const back = vi.hoisted(() => ({ createPresentation: vi.fn(), updatePresentation: vi.fn(), setCountPlace: vi.fn(), countPlaces: vi.fn(), createCountPlace: vi.fn() }));
+const back = vi.hoisted(() => ({ createPresentation: vi.fn(), updatePresentation: vi.fn(), setCountPlace: vi.fn(), countPlaces: vi.fn(), createCountPlace: vi.fn(), presentationSuggestions: vi.fn() }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 
 const units: Unit[] = [
@@ -22,12 +22,21 @@ const pres = (over: Partial<Presentation>): Presentation => ({
   id: 1, ingredientId: 10, name: 'Caja', qtyInBase: '12000', baseUnitCode: 'ml', active: true, approximate: false, purchaseUnitId: null, ...over,
 });
 
-function montar(ingredient: PresentationsIngredient = leche, presentations: Presentation[] = [], usedNames = ['Caja', 'Bolsa', 'Bulto']) {
+// Las sugerencias las da el servidor por clase de unidad (spec 042, FR-011): aquí, las de la clase del
+// insumo, con su cantidad.
+const SUGGESTED: Record<string, { name: string; qtyInBase: string }[]> = {
+  volumen: [{ name: 'Caja', qtyInBase: '12000' }],
+  pieza: [{ name: 'Bolsa', qtyInBase: '10' }],
+  masa: [{ name: 'Bulto', qtyInBase: '25000' }],
+};
+
+function montar(ingredient: PresentationsIngredient = leche, presentations: Presentation[] = [], suggest = true) {
+  back.presentationSuggestions.mockImplementation((k: string) => Promise.resolve(suggest ? SUGGESTED[k] ?? [] : []));
   const onClose = vi.fn();
   render(
     <Provider>
       <QueryClientProvider client={new QueryClient()}>
-        <PresentationsSheet isOpen ingredient={ingredient} presentations={presentations} usedNames={usedNames}
+        <PresentationsSheet isOpen ingredient={ingredient} presentations={presentations}
           units={units} onClose={onClose} />
       </QueryClientProvider>
     </Provider>,
@@ -54,18 +63,28 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
   test('un empaque nuevo pide nombre, número y unidad, y muestra la equivalencia antes de guardar', async () => {
     montar();
     fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
-    // Los nombres que la empresa ya usa, no una lista fija; las cucharadas no se ofrecen.
-    fireEvent.click(screen.getByRole('button', { name: 'Caja' }));
+    // Lo que la empresa ya usa en artículos que se miden igual, con su cantidad; nada de otra clase.
+    fireEvent.click(await screen.findByRole('button', { name: 'Caja · 12 L' }));
+    expect(screen.queryByRole('button', { name: /Bulto/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'cda' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'L' }));
-    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '12' } });
+    expect(screen.getByLabelText('Cuánto trae')).toHaveValue('12');
     expect(screen.getByText('= 12 L')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
     await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(10, { name: 'Caja', qty: '12', unitId: 7, approximate: false }));
   });
 
+  // Revisión de código: con un empaque a medio capturar, «Listo» lo tiraba sin avisar y «Guardar
+  // empaque» quedaba abajo del contenido que se desplaza.
+  test('con un empaque a medio capturar, el pie dice Cancelar y Guardar empaque, no Listo', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(screen.queryByRole('button', { name: 'Listo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar empaque' })).toBeInTheDocument();
+  });
+
   test('«Otro…» deja escribir un nombre que la empresa no ha usado', async () => {
-    montar(leche, [], []);
+    montar(leche, [], false);
     fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
     fireEvent.click(screen.getByRole('button', { name: 'Otro…' }));
     fireEvent.change(screen.getByLabelText('Nombre del empaque'), { target: { value: 'Garrafa' } });
@@ -79,7 +98,7 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
   test('en un insumo por pieza, el contenido con decimales no se guarda', async () => {
     montar(aguacate);
     fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Bolsa' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Bolsa · 10 piezas' }));
     fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '12.5' } });
     expect(screen.getByRole('button', { name: 'Guardar empaque' })).toBeDisabled();
     expect(screen.getByText(/piezas enteras/)).toBeInTheDocument();
@@ -87,7 +106,7 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
 
   // Regla 18: lo que se compra por kilo y se usa por pieza lleva un empaque aproximado.
   test('un insumo por pieza puede tener un empaque aproximado por kilo', async () => {
-    montar(aguacate, [], []);
+    montar(aguacate, [], false);
     fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
     fireEvent.click(screen.getByRole('button', { name: 'Se compra por peso o líquido' }));
     fireEvent.click(screen.getByRole('button', { name: 'kg' }));

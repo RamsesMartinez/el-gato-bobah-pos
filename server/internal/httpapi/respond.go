@@ -34,6 +34,8 @@ type errorDetails struct {
 	// Ingredients: cuántos artículos tiene el lugar que se quiere archivar (spec 040), para preguntar
 	// a dónde pasan.
 	Ingredients int32 `json:"ingredients,omitempty"`
+	// Archived: el artículo con ese nombre está archivado (spec 042); la pantalla ofrece reactivarlo.
+	Archived bool `json:"archived,omitempty"`
 }
 
 // JSON writes v as JSON with the given status.
@@ -201,6 +203,18 @@ func Error(w http.ResponseWriter, err error) {
 		// 404 y no 422: el id viajó bien, simplemente no está en la última lectura. Sin este caso
 		// el PUT respondería 200 y la pantalla seguiría diciendo «sin pareja», sin error visible.
 		status, code = http.StatusNotFound, "PLATFORM_ITEM_NOT_FOUND"
+	case errors.Is(err, domain.ErrUnitChangePending):
+		status, code = http.StatusConflict, "UNIT_CHANGE_PENDING"
+	case errors.Is(err, domain.ErrCountNeedsConfirm):
+		status, code = http.StatusConflict, "NEEDS_CONFIRM"
+	case errors.Is(err, domain.ErrArticleInUse):
+		status, code = http.StatusConflict, "IN_USE"
+	case errors.Is(err, domain.ErrArticleStale):
+		status, code = http.StatusConflict, "STALE"
+	case errors.Is(err, domain.ErrPrepCost):
+		status, code = http.StatusConflict, "PREP_COST"
+	case errors.Is(err, domain.ErrArticleNameTaken):
+		status, code = http.StatusConflict, "NAME_TAKEN"
 	case errors.Is(err, domain.ErrConflict):
 		status, code = http.StatusConflict, "CONFLICT"
 	case errors.Is(err, domain.ErrTooManyRequests):
@@ -256,6 +270,10 @@ func Error(w http.ResponseWriter, err error) {
 	var place domain.CountPlaceExists
 	if errors.As(err, &place) {
 		details = &errorDetails{ExistingID: place.ID}
+	}
+	var article domain.ArticleNameTaken
+	if errors.As(err, &article) {
+		details = &errorDetails{ExistingID: article.ID, Archived: article.Archived}
 	}
 	var busy domain.CountPlaceHasIngredients
 	if errors.As(err, &busy) {

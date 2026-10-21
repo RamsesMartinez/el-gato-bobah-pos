@@ -882,6 +882,7 @@ func (h *Handlers) ExpenseDetail(w http.ResponseWriter, r *http.Request) {
 type expenseItemBody struct {
 	ItemType      string           `json:"itemType"` // "" = línea no inventariable
 	IngredientID  *int64           `json:"ingredientId"`
+	NewArticle    *app.NewArticle  `json:"newArticle"`
 	ProductID     *int64           `json:"productId"`
 	Description   string           `json:"description"`
 	Quantity      decimal.Decimal  `json:"quantity"`
@@ -912,7 +913,7 @@ func toItemInputs(in []expenseItemBody) []app.ExpenseItemInput {
 	out := make([]app.ExpenseItemInput, len(in))
 	for i, it := range in {
 		out[i] = app.ExpenseItemInput{
-			ItemType: it.ItemType, IngredientID: it.IngredientID, ProductID: it.ProductID,
+			ItemType: it.ItemType, IngredientID: it.IngredientID, NewArticle: it.NewArticle, ProductID: it.ProductID,
 			Description: it.Description, Quantity: it.Quantity, UnitID: it.UnitID,
 			QtyReceived: it.QtyReceived, Amount: it.Amount, PackQtyInBase: it.PackQtyInBase,
 			RawCode: it.RawCode, RawName: it.RawName, Personal: it.Personal,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { diffWords, entryTotal, isBigDiff, looseUnitOf } from './countEntry';
+import { diffWords, entryTotal, isBigDiff, looseUnitOf, looseUnitsOf, packsTotal } from './countEntry';
 
 describe('entryTotal', () => {
   test('empaques más suelto, en la unidad base', () => {
@@ -34,5 +34,29 @@ describe('diffWords e isBigDiff', () => {
     expect(isBigDiff(-300, 500, 800)).toBe(true);
     expect(isBigDiff(-20, 980, 1000)).toBe(false);
     expect(isBigDiff(4200, 3000, -1200)).toBe(true); // el sistema estaba en negativo
+  });
+});
+
+// Spec 042, FR-012: el conteo ofrece todos los empaques, un selector de unidad que abre en la base
+// y, en piezas con equivalencia de peso, g y kg para pesar lo suelto.
+describe('looseUnitsOf', () => {
+  it('abre en la unidad base y ofrece la grande', () => {
+    expect(looseUnitsOf('g', false).map((u) => u.label)).toEqual(['g', 'kg']);
+    expect(looseUnitsOf('ml', false).map((u) => u.label)).toEqual(['ml', 'L']);
+    expect(looseUnitsOf('cm', false).map((u) => u.label)).toEqual(['cm', 'm']);
+  });
+  it('en piezas no hay selector, salvo que se pueda pesar', () => {
+    expect(looseUnitsOf('pieza', false).map((u) => u.label)).toEqual(['piezas']);
+    const w = looseUnitsOf('pieza', true);
+    expect(w.map((u) => u.label)).toEqual(['piezas', 'g', 'kg']);
+    expect(w[1].weightCode).toBe('g');
+  });
+});
+
+describe('packsTotal', () => {
+  it('suma cada empaque por lo que trae; vacío es «no contado»', () => {
+    expect(packsTotal(['2', '', '1'], ['5000', '15000', '1000'])).toBe(11000);
+    expect(packsTotal(['', ''], ['5000', '15000'])).toBeNull();
+    expect(packsTotal(['0'], ['5000'])).toBe(0);
   });
 });

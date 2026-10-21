@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { Picker, type PickerOption } from '../../components/Picker';
 import { toaster } from '../../components/ui/toaster';
-import { createIngredientOrExisting } from '../../shared/createIngredient';
+import { existingByName, nextTempId } from '../../shared/createIngredient';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogCloseTrigger, DialogFooter,
 } from '../../components/ui/dialog';
@@ -144,6 +144,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const [payRegister, setPayRegister] = useState('');
   const [parsed, setParsed] = useState<ParsedDoc | null>(null);
   const [created, setCreated] = useState<Article[]>([]);
+  // Los artículos nuevos de este gasto, por su id provisional (negativo): viajan en el guardado y solo
+  // existen si el gasto se guarda (spec 042, FR-003).
+  const [pendingNew, setPendingNew] = useState<Record<number, { name: string; baseUnitId: number }>>({});
   const [packsOf, setPacksOf] = useState<Article | null>(null);
   const kindAsk = useRef<((k: Unit['kind'] | null) => void) | null>(null);
   const [askingKind, setAskingKind] = useState(false);
@@ -157,7 +160,6 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const presList = presentations ?? [];
   const articleList = [...(articles?.items ?? []), ...created];
   const articleOptions = articleList.map((a) => ({ value: `${a.itemType}:${a.id}`, label: a.name, hint: a.unitCode }));
-  const usedNames = [...new Set(presList.map((p) => p.name))];
 
   const reset = () => {
     setStep('start'); setWithGoods(true);
@@ -294,7 +296,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         const goods = isGoods(i);
         return {
           itemType: goods ? i.itemType : '',
-          ingredientId: goods && i.itemType === 'ingrediente' ? i.itemId! : undefined,
+          ingredientId: goods && i.itemType === 'ingrediente' && i.itemId! > 0 ? i.itemId! : undefined,
+          newArticle: goods && i.itemType === 'ingrediente' && i.itemId! < 0 ? pendingNew[i.itemId!] : undefined,
           productId: goods && i.itemType === 'producto' ? i.itemId! : undefined,
           description: i.description || i.itemName || i.rawName || 'Sin descripción',
           quantity: i.quantity || '1',
@@ -350,24 +353,28 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
     };
   };
 
-  // createArticle da de alta un insumo preguntando antes en qué se mide: la unidad base no
-  // cambia después (regla 4), y tomar la unidad de compra (kg) la dejaba mil veces mal.
+  // createArticle prepara un insumo nuevo preguntando antes en qué se mide: la unidad base no
+  // cambia después sin un cambio de unidad (regla 4). No llama al servidor: el insumo viaja con el
+  // gasto y solo existe si el gasto se guarda (spec 042, FR-003). Si ya hay uno con ese nombre, se
+  // elige ése.
   const createArticle = async (name: string): Promise<PickerOption | null> => {
+    const known = articleList.filter((a) => a.itemType === 'ingrediente');
+    const found = existingByName(name, known);
+    if (found) {
+      toaster.create({ title: `Ya hay un insumo que se llama así: se eligió «${found.name}»`, type: 'info' });
+      return { value: `ingrediente:${found.id}`, label: found.name };
+    }
     setAskingKind(true);
     const kind = await new Promise<Unit['kind'] | null>((resolve) => { kindAsk.current = resolve; });
     setAskingKind(false);
     if (!kind) return null;
     const base = unitList.find((u) => u.code === KINDS.find((k) => k.kind === kind)!.base);
     if (!base) return null;
-    const known = articleList.filter((a) => a.itemType === 'ingrediente').map((a) => ({ id: a.id, name: a.name }));
-    const { ingredient: ing, existed } = await createIngredientOrExisting(
-      (b) => backofficeApi.createIngredient(b).then((i) => ({ id: i.id, name: i.name })), { name, baseUnitId: base.id }, known);
-    if (existed) {
-      toaster.create({ title: `Ya hay un insumo que se llama así: se eligió «${ing.name}»`, type: 'info' });
-    } else {
-      setCreated((p) => [...p, { itemType: 'ingrediente', id: ing.id, name: ing.name, unitCode: base.code, unitKind: base.kind }]);
-    }
-    return { value: `ingrediente:${ing.id}`, label: ing.name };
+    const id = nextTempId();
+    const clean = name.trim().replace(/\s+/g, ' ');
+    setPendingNew((p) => ({ ...p, [id]: { name: clean, baseUnitId: base.id } }));
+    setCreated((p) => [...p, { itemType: 'ingrediente', id, name: clean, unitCode: base.code, unitKind: base.kind }]);
+    return { value: `ingrediente:${id}`, label: `${clean} (nuevo)` };
   };
 
   const goodsLines = counted.filter((i) => isGoods(i));
@@ -619,7 +626,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         {packsOf && (
           <PresentationsSheet isOpen
             ingredient={{ id: packsOf.id, name: packsOf.name, baseUnitCode: packsOf.unitCode, baseUnitKind: packsOf.unitKind }}
-            presentations={presList.filter((p) => p.ingredientId === packsOf.id)} usedNames={usedNames}
+            presentations={presList.filter((p) => p.ingredientId === packsOf.id)}
             units={unitList} onClose={() => setPacksOf(null)} />
         )}
 
