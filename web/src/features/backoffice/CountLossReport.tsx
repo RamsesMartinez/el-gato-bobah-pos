@@ -39,7 +39,7 @@ export function CountLossReport({ countId }: { countId: number }) {
 
 function Figure({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <Box borderWidth={strong ? '2px' : '1px'} borderColor={strong ? 'red.500' : 'border'} borderRadius="lg" px={3} py={2}>
+    <Box borderWidth={strong ? '2px' : '1px'} borderColor={strong ? 'border.error' : 'border'} borderRadius="lg" px={3} py={2}>
       <Text fontSize="sm" color="fg.muted">{label}</Text>
       <Text fontSize="xl" fontWeight="700" color={strong ? 'fg.error' : undefined} fontVariantNumeric="tabular-nums">{value}</Text>
     </Box>
@@ -63,7 +63,7 @@ function LossRow({ item, max }: { item: LossItem; max: number }) {
       <Text w="190px" flexShrink={0} lineClamp={2}>{item.name}</Text>
       <Flex flex="1" h="14px" borderRadius="sm" overflow="hidden" bg="bg.muted">
         {Number(item.registered) > 0 && <Box data-part="registrado" w={`${regW}%`} bg="gray.400" />}
-        {Number(item.unexplained) > 0 && <Box data-part="sin-explicar" w={`${unW}%`} bg="red.500" />}
+        {Number(item.unexplained) > 0 && <Box data-part="sin-explicar" w={`${unW}%`} bg="red.solid" />}
       </Flex>
       <Text w="240px" flexShrink={0} textAlign="right" fontSize="sm" fontVariantNumeric="tabular-nums">
         {qty(item.registered)} {item.unitCode} registrado · {qty(item.unexplained)} {item.unitCode} sin explicar

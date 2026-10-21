@@ -58,10 +58,10 @@ export function ArchiveSheet({ article, onClose, onDone }: Props) {
                   {(check.data?.pendingReceipts ?? 0) > 0 && (
                     <Text>Tiene {check.data!.pendingReceipts} compra(s) por recibir. Al llegar, sumarán aunque esté archivado.</Text>
                   )}
-                  {check.data?.openCount && <Text color="red.fg">Un conteo abierto ya lo contó. Ciérralo o descártalo antes de archivar.</Text>}
+                  {check.data?.openCount && <Text color="fg.error">Un conteo abierto ya lo contó. Ciérralo o descártalo antes de archivar.</Text>}
                   {recipes.length > 0 && (
                     <Stack gap={1}>
-                      <Text color="red.fg">Lo usan {recipes.length} receta(s) activa(s). Quítalo de cada una antes de archivar:</Text>
+                      <Text color="fg.error">Lo usan {recipes.length} receta(s) activa(s). Quítalo de cada una antes de archivar:</Text>
                       {recipes.map((r) => (
                         <Button key={`${r.kind}-${r.id}`} minH="48px" variant="outline" justifyContent="space-between"
                           onClick={() => setRecipe({ kind: r.kind, id: r.id, name: r.name })}>

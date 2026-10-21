@@ -109,16 +109,17 @@ export function CountLimitsSettings() {
                 <Text minW="48px">{BIG_UNIT[c].label}</Text>
               </HStack>
             ))}
-            {errors[c] && <><span /><Text gridColumn="2 / 4" fontSize="sm" color="red.fg">{errors[c]}</Text></>}
+            {errors[c] && <><span /><Text gridColumn="2 / 4" fontSize="sm" color="fg.error">{errors[c]}</Text></>}
           </Box>
         ))}
       </Grid>
       {/* Fijo al fondo de la sección: el teclado del sistema no tapa «Guardar límites». */}
       <HStack position="sticky" bottom={0} bg="bg.panel" py={2} mt={2} gap={3} justify="end" maxW="640px" flexWrap="wrap">
-        {error && <Text fontSize="sm" color="red.fg" mr="auto">{error}</Text>}
-        {saved && !dirty && <Text fontSize="sm" color="green.fg" mr="auto">Guardado ✓</Text>}
+        {error && <Text fontSize="sm" color="fg.error" mr="auto">{error}</Text>}
+        {dirty && !valid && !error && <Text fontSize="sm" color="fg.error" mr="auto">Corrige las cifras marcadas</Text>}
+        {saved && !dirty && <Text fontSize="sm" color="fg.success" mr="auto">Guardado ✓</Text>}
         <Button minH="44px" variant="outline" disabled={!dirty} onClick={() => { setDraft(null); setError(''); }}>Descartar</Button>
-        <Button minH="44px" colorPalette="red" disabled={!dirty || !valid} loading={save.isPending}
+        <Button minH="44px" colorPalette="brand" disabled={!dirty || !valid} loading={save.isPending}
           onClick={() => save.mutate(body())}>Guardar límites</Button>
       </HStack>
     </Box>

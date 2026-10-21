@@ -68,7 +68,7 @@ function ownsKeys(e: KeyboardEvent): boolean {
   if (e.ctrlKey || e.metaKey || e.altKey) return false;
   const el = e.target instanceof HTMLElement ? e.target : null;
   if (el) {
-    if (el.isContentEditable || el.tagName === 'BUTTON' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') return false;
+    if (el.isContentEditable || (el.tagName === 'BUTTON' && !el.closest('[data-keypad]')) || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') return false;
     if (el.tagName === 'INPUT' && !(el as HTMLInputElement).readOnly) return false;
   }
   const dialogs = [...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')];
@@ -164,7 +164,7 @@ export function StockCountTab() {
             )}
           </HStack>
         )}
-        <Button alignSelf="start" minH="44px" colorPalette="red" loading={open.isPending} onClick={() => open.mutate()}>
+        <Button alignSelf="start" minH="44px" colorPalette="brand" loading={open.isPending} onClick={() => open.mutate()}>
           {closed ? 'Empezar otro conteo' : 'Empezar conteo'}
         </Button>
       </VStack>
@@ -196,7 +196,7 @@ export function StockCountTab() {
         <HStack gap={0} borderWidth="1px" borderRadius="md" role="group" aria-label="Vista">
           {(['lista', 'uno'] as const).map((v) => (
             <Button key={v} minH="44px" aria-pressed={view === v} variant={view === v ? 'solid' : 'ghost'}
-              colorPalette={view === v ? 'red' : 'gray'} onClick={() => pickView(v)}>
+              colorPalette={view === v ? 'brand' : 'gray'} onClick={() => pickView(v)}>
               {v === 'lista' ? 'Lista' : 'Uno por uno'}
             </Button>
           ))}
@@ -211,7 +211,7 @@ export function StockCountTab() {
           <Button minH="44px" variant="outline" onClick={() => setConfirmDiscard(true)}>Descartar conteo</Button>
         )}
         <VStack gap={0} align="end">
-          <Button minH="44px" colorPalette="red" disabled={done === 0} onClick={() => setClosing(true)}>Cerrar conteo</Button>
+          <Button minH="44px" colorPalette="brand" disabled={done === 0} onClick={() => setClosing(true)}>Cerrar conteo</Button>
           {done === 0 && <Text fontSize="xs" color="fg.muted">Cuenta al menos uno para cerrar</Text>}
         </VStack>
       </HStack>
@@ -285,7 +285,7 @@ function useEntry(item: CountItem) {
 function EntryFields({ item, e, serverError }: { item: CountItem; e: ReturnType<typeof useEntry>; serverError?: string | null }) {
   const box = (active: boolean) => ({
     w: '96px', minH: '56px', fontSize: '2xl', fontWeight: '800', textAlign: 'center' as const, inputMode: 'none' as const, readOnly: true,
-    placeholder: '—', borderWidth: '2px', borderColor: active ? 'red.500' : undefined, bg: active ? 'red.subtle' : undefined,
+    placeholder: '—', borderWidth: '2px', borderColor: active ? 'brand.solid' : undefined, bg: active ? 'brand.subtle' : undefined,
   });
   const many = e.packs.length > 3;
   const totalLine = (
@@ -330,7 +330,7 @@ function EntryFields({ item, e, serverError }: { item: CountItem; e: ReturnType<
         ) : <Text fontSize="2xl" fontWeight="800">{e.unit.label}</Text>}
       </HStack>
       {!many && <Box pt={2} borderTopWidth="1px">{totalLine}</Box>}
-      {(e.overMax ?? serverError) && <Text color="red.fg" fontWeight="700" role="alert">{e.overMax ?? serverError}</Text>}
+      {(e.overMax ?? serverError) && <Text color="fg.error" fontWeight="700" role="alert">{e.overMax ?? serverError}</Text>}
     </VStack>
   );
 }
@@ -384,7 +384,7 @@ function NoHay({ item, onConfirm }: { item: CountItem; onConfirm: () => void }) 
     <HStack gap={2}>
       <Text>¿No hay nada de {item.name}?</Text>
       <Button minH="44px" variant="ghost" onClick={() => setAsking(false)}>No</Button>
-      <Button minH="44px" variant="outline" colorPalette="red" onClick={() => { setAsking(false); onConfirm(); }}>Sí, no hay</Button>
+      <Button minH="44px" variant="outline" colorPalette="brand" onClick={() => { setAsking(false); onConfirm(); }}>Sí, no hay</Button>
     </HStack>
   );
 }
@@ -401,7 +401,7 @@ function ConfirmFigure({ item, e, c }: { item: CountItem; e: ReturnType<typeof u
         <DrawerBody><Text textAlign="center" fontSize="5xl" fontWeight="800" py={2}>{figure}</Text></DrawerBody>
         <DrawerFooter>
           <Button minH="52px" variant="outline" onClick={() => c.setConfirming(null)}>Corregir</Button>
-          <Button minH="52px" colorPalette="red" loading={c.save.isPending}
+          <Button minH="52px" colorPalette="brand" loading={c.save.isPending}
             onClick={() => c.save.mutate({ ...c.confirming!, confirmed: true })}>Sí, guardar</Button>
         </DrawerFooter>
       </DrawerContent>
@@ -494,7 +494,7 @@ function EntrySheet({ countId, item, onClose, onSaved }: {
           )}
           <Button minH="44px" variant="outline" onClick={onClose}>Cancelar</Button>
           <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true })} />
-          <Button minH="56px" ml={8} colorPalette="red" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
+          <Button minH="56px" ml={8} colorPalette="brand" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
             Guardar
           </Button>
         </DrawerFooter>
@@ -547,7 +547,7 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
           <Box flex="1" />
           <Button minH="44px" variant="outline" onClick={onNext}>Saltar (no contar hoy)</Button>
           <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true })} />
-          <Button minH="56px" ml={8} colorPalette="red" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
+          <Button minH="56px" ml={8} colorPalette="brand" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
             Guardar y seguir ›
           </Button>
         </HStack>
@@ -576,7 +576,7 @@ function CloseSheet({ countId, onClose, onClosed }: { countId: number; onClose: 
         </DrawerBody>
         <DrawerFooter>
           <Button minH="44px" variant="outline" onClick={onClose}>Seguir contando</Button>
-          <Button minH="44px" colorPalette="red" disabled={!preview} loading={close.isPending} onClick={() => close.mutate()}>
+          <Button minH="44px" colorPalette="brand" disabled={!preview} loading={close.isPending} onClick={() => close.mutate()}>
             Sí, cerrar y corregir lo guardado
           </Button>
         </DrawerFooter>

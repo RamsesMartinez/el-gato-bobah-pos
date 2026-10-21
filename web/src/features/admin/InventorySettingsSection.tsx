@@ -45,7 +45,7 @@ export function InventorySettingsSection() {
       <HStack gap={2} flexWrap="wrap" mb={1} role="group" aria-label="Método de costeo">
         {METHODS.map((m) => (
           <Button key={m.value} minH="44px" aria-pressed={method === m.value}
-            variant={method === m.value ? 'solid' : 'outline'} colorPalette={method === m.value ? 'red' : 'gray'}
+            variant={method === m.value ? 'solid' : 'outline'} colorPalette={method === m.value ? 'brand' : 'gray'}
             loading={save.isPending && save.variables?.costingMethod === m.value && method !== m.value}
             onClick={() => method !== m.value && save.mutate({ costingMethod: m.value, stockItemLabel: current })}>
             {m.label}
@@ -64,7 +64,7 @@ export function InventorySettingsSection() {
         </Button>
       </HStack>
       <Text fontSize="sm" color="fg.muted" mt={1}>Se ve en la captura de compras: «Agregar {trimmed || current}».</Text>
-      {error && <Text fontSize="sm" color="red.600" mt={2}>{error}</Text>}
+      {error && <Text fontSize="sm" color="fg.error" mt={2}>{error}</Text>}
       <CountPlacesSettings />
       <CountLimitsSettings />
       <WasteSettings />

@@ -153,6 +153,12 @@ for (const tema of ['light', 'dark'] as const) {
     await paso('03-articulos');
     await page.locator('tr[role="button"]:visible').first().click();
     await expect(page.getByRole('button', { name: /Volver a Artículos/ })).toBeVisible();
+    // La captura a media entrada salía translúcida y parecía que la lista se veía a través de la hoja.
+    await page.locator('[role="dialog"]').last().evaluate((d) => Promise.all(d.getAnimations().map((a) => a.finished)));
+    expect(await page.locator('[role="dialog"]').last().evaluate((d) => {
+      const s = getComputedStyle(d);
+      return { opacidad: s.opacity, fondo: s.backgroundColor };
+    }), 'la ficha tapa la lista').toEqual({ opacidad: '1', fondo: expect.stringMatching(/^rgb\(/) });
     await paso('04-ficha');
     await pestaña('por-recibir', () => page.waitForTimeout(1500));
     await paso('05-por-recibir');

@@ -50,7 +50,7 @@ export function WasteTab() {
       <HStack gap={2} minH="44px" wrap="wrap">
         {(['semana', 'mes', 'fechas'] as const).map((p) => (
           <Button key={p} minH="44px" aria-pressed={preset === p} variant={preset === p ? 'solid' : 'outline'}
-            colorPalette={preset === p ? 'red' : 'gray'} onClick={() => choose(p)}>
+            colorPalette={preset === p ? 'brand' : 'gray'} onClick={() => choose(p)}>
             {p === 'semana' ? 'Esta semana' : p === 'mes' ? 'Este mes' : 'Elegir fechas'}
           </Button>
         ))}
@@ -62,7 +62,7 @@ export function WasteTab() {
         )}
         {canRecord && (
           // Se llama igual que la captura, y quien buscaba dónde registrar llegaba aquí.
-          <Button minH="44px" ms="auto" colorPalette="red" onClick={() => navigate('/merma')}>Registrar</Button>
+          <Button minH="44px" ms="auto" colorPalette="brand" onClick={() => navigate('/merma')}>Registrar</Button>
         )}
       </HStack>
       <Flex gap={2} overflowX="auto" flexShrink={0} pb={1}>

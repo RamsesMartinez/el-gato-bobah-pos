@@ -260,7 +260,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
                   <QtyWithUnit label="Mínimo" kind={kind} value={form.min} keepAmount
                     onChange={(min) => { setForm({ ...form, min }); if (min.qty !== form.min.qty) auto.type('min', minValue(min)); }}
                     onCommit={() => auto.commit('min', minValue(form.min))} />
-                  {auto.invalid.min && <Text fontSize="sm" color="red.fg">{auto.invalid.min}</Text>}
+                  {auto.invalid.min && <Text fontSize="sm" color="fg.error">{auto.invalid.min}</Text>}
                 </Stack>
                 <HStack justify="space-between" minH="44px">
                   <Text>Se mide en <b>{KIND_WORD[kind]}</b>{a.baseUnitCode === 'pieza' ? '' : ` (${a.baseUnitCode})`}{Number(a.onHand) < 0 ? '' : ` · Hay ${formatBaseQty(a.onHand, a.baseUnitCode)}`}</Text>
@@ -271,8 +271,8 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
                     No se recalcula nada del pasado. */}
                 {Number(a.onHand) < 0 && (
                   <HStack data-negative-stock gap={2} flexWrap="wrap" bg="red.subtle" borderRadius="md" px={3} py={2}>
-                    <Text color="red.fg" fontWeight="700">Hay {formatBaseQty(a.onHand, a.baseUnitCode)}</Text>
-                    <Text color="red.fg">Revisar con un conteo</Text>
+                    <Text color="fg.error" fontWeight="700">Hay {formatBaseQty(a.onHand, a.baseUnitCode)}</Text>
+                    <Text color="fg.error">Revisar con un conteo</Text>
                   </HStack>
                 )}
                 {!justCreated && <PacksBlock />}
@@ -399,7 +399,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
     <Stack gap={1}>
       <Text>{label}</Text>
       {children}
-      {error && <Text fontSize="sm" color="red.fg">{error}</Text>}
+      {error && <Text fontSize="sm" color="fg.error">{error}</Text>}
     </Stack>
   );
 }
@@ -409,12 +409,12 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 function SaveIndicator({ status, onRetry }: { status: AutosaveStatus; onRetry: () => void }) {
   if (status === 'dirty') return <Box aria-label="Cambios sin guardar" title="Cambios sin guardar" w="10px" h="10px" borderRadius="full" bg="orange.solid" flexShrink={0} />;
   if (status === 'saving') return <HStack gap={2} color="fg.muted" flexShrink={0}><Spinner size="sm" /><Text fontSize="sm">Guardando…</Text></HStack>;
-  if (status === 'saved') return <Text fontSize="sm" color="green.fg" flexShrink={0}>Guardado ✓</Text>;
+  if (status === 'saved') return <Text fontSize="sm" color="fg.success" flexShrink={0}>Guardado ✓</Text>;
   if (status === 'error') {
     return (
       <HStack gap={2} flexShrink={0}>
-        <Text fontSize="sm" color="red.fg">No se pudo guardar</Text>
-        <Button minH="44px" size="sm" variant="outline" colorPalette="red" onClick={onRetry}>Reintentar</Button>
+        <Text fontSize="sm" color="fg.error">No se pudo guardar</Text>
+        <Button minH="44px" size="sm" variant="outline" colorPalette="brand" onClick={onRetry}>Reintentar</Button>
       </HStack>
     );
   }

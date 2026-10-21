@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Provider } from '../../../components/ui/provider';
 import { CostTrend } from './CostTrend';
@@ -65,5 +65,32 @@ describe('Gráfica de costos', () => {
     const ys = [...container.querySelectorAll('[data-point]')].map((g) => Number((g.tagName === 'circle' ? g : g.querySelector('circle'))!.getAttribute('cy')));
     // El piso está en 160 (190 - 30): el punto más bajo queda al menos 20 px arriba.
     expect(Math.max(...ys)).toBeLessThanOrEqual(140);
+  });
+
+  // Spec 044: la ficha mide 480 px de ancho en 1024 y 368 px en 800. Con el viewBox fijo de 440 la
+  // gráfica se encogía y sus textos de 11 px quedaban en 9 px reales.
+  afterEach(() => vi.restoreAllMocks());
+  const ancho = (w: number) => vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(w);
+
+  it.each([368, 480])('a %i px de ancho, ningún texto mide menos de 13 px reales', (w) => {
+    ancho(w);
+    const { container } = montar([item(19, '0.060'), item(12, '0.070'), item(5, '0.057')]);
+    const svg = container.querySelector('svg')!;
+    const vbW = Number(svg.getAttribute('viewBox')!.split(' ')[2]);
+    const sizes = [...svg.querySelectorAll('text')].map((t) => (Number(t.getAttribute('font-size')) * w) / vbW);
+    expect(sizes.length).toBeGreaterThan(0);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(13);
+  });
+
+  it('la burbuja del último costo crece con la cifra y no se sale de la gráfica', () => {
+    ancho(368);
+    const { container } = montar([item(19, '1.25'), item(12, '0.070')]);
+    const etiqueta = screen.getAllByText('$1,250.00').find((t) => t.getAttribute('font-weight') === '700')!;
+    const burbuja = etiqueta.previousElementSibling!;
+    const vbW = Number(container.querySelector('svg')!.getAttribute('viewBox')!.split(' ')[2]);
+    const w = Number(burbuja.getAttribute('width'));
+    // Inter en negrita: ~0.62 em por dígito, más el relleno de los dos lados.
+    expect(w).toBeGreaterThanOrEqual('$1,250.00'.length * 0.62 * Number(etiqueta.getAttribute('font-size')) + 16);
+    expect(Number(burbuja.getAttribute('x')) + w).toBeLessThanOrEqual(vbW);
   });
 });

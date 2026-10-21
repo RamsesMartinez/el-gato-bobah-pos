@@ -198,7 +198,7 @@ function Alta({ onListo }: { onListo: () => void }) {
             minH="44px"
           />
         </VStack>
-        {error && <Text color="red.600">{error}</Text>}
+        {error && <Text color="fg.error">{error}</Text>}
         <Button
           minH="44px"
           onClick={guardar}
@@ -321,7 +321,7 @@ function PlatformConnection({ platformId, platformName }: { platformId: number; 
             onChange={(e) => setSecreto(e.target.value)}
             minH="44px"
           />
-          {error && <Text color="red.600">{error}</Text>}
+          {error && <Text color="fg.error">{error}</Text>}
           <HStack gap={2}>
             <Button minH="44px" variant="outline" onClick={cerrar}>
               Cancelar
@@ -493,7 +493,7 @@ function LlaveDePedidos({ platformId, platformName }: { platformId: number; plat
               La llave actual sigue sirviendo hasta que retires la anterior.
             </Text>
           )}
-          {error && <Text color="red.600">{error}</Text>}
+          {error && <Text color="fg.error">{error}</Text>}
           <HStack gap={2}>
             <Button minH="44px" variant="outline" onClick={cerrar}>
               Cancelar
@@ -627,7 +627,7 @@ export function PlataformasPage() {
         {!missingConnection && <PlatformConnections apps={apps} conexiones={conexiones} />}
 
         {porBorrar && (
-          <Box borderWidth="1px" borderColor="red.400" borderRadius="md" p={4}>
+          <Box borderWidth="1px" borderColor="border.error" borderRadius="md" p={4}>
             <Text fontWeight="semibold">
               ¿Desconectar {porBorrar.c.platformName} · {porBorrar.c.label}?
             </Text>

@@ -396,7 +396,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         {step === 'start' && (
           <DialogBody>
             <VStack gap={4} maxW="560px" mx="auto" py={6}>
-              <Button size="xl" w="100%" minH="88px" colorPalette="red" loading={parse.isPending}
+              <Button size="xl" w="100%" minH="88px" colorPalette="brand" loading={parse.isPending}
                 onClick={() => fileRef.current?.click()}>
                 <LuUpload /> Sube la foto del ticket
               </Button>
@@ -411,7 +411,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
           <DialogBody>
             <VStack gap={4} maxW="560px" mx="auto" py={6}>
               <Text fontWeight="700" fontSize="lg">¿Trae mercancía para el almacén?</Text>
-              <Button size="lg" w="100%" minH="56px" colorPalette="red"
+              <Button size="lg" w="100%" minH="56px" colorPalette="brand"
                 onClick={() => { setWithGoods(true); setItems([emptyItem()]); setStep('capture'); }}>
                 Sí
               </Button>
@@ -542,7 +542,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                   </VStack>
                 )}
                 {payments.length > 0 && (
-                  <Text fontSize="sm" mt={2} textAlign="end" color={paymentsSum >= total ? 'green.600' : 'fg.muted'}>
+                  <Text fontSize="sm" mt={2} textAlign="end" color={paymentsSum >= total ? 'fg.success' : 'fg.muted'}>
                     Pagado {money(paymentsSum.toFixed(2))} de {money(total.toFixed(2))}
                     {status === 'pagada' ? ' · queda pagada' : ' · queda pendiente'}
                   </Text>
@@ -561,13 +561,13 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 {methodList.filter((m) => m.isActive !== false && m.kind !== 'plataforma'
                   && (!m.affectsCashDrawer || openRegisters.length > 0)).map((m) => (
                   <Button key={m.id} minH="44px" size="sm" aria-pressed={payWith === String(m.id)}
-                    variant={payWith === String(m.id) ? 'solid' : 'outline'} colorPalette={payWith === String(m.id) ? 'red' : 'gray'}
+                    variant={payWith === String(m.id) ? 'solid' : 'outline'} colorPalette={payWith === String(m.id) ? 'brand' : 'gray'}
                     onClick={() => setPayWith(String(m.id))}>
                     {m.name}
                   </Button>
                 ))}
                 <Button minH="44px" size="sm" aria-pressed={payWith === 'later'}
-                  variant={payWith === 'later' ? 'solid' : 'outline'} colorPalette={payWith === 'later' ? 'red' : 'gray'}
+                  variant={payWith === 'later' ? 'solid' : 'outline'} colorPalette={payWith === 'later' ? 'brand' : 'gray'}
                   onClick={() => setPayWith('later')}>
                   Todavía no se paga
                 </Button>
@@ -604,7 +604,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 {payUnanswered && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo se pagó</Text>}
                 {payNeedsRegister && <Text as="span" fontWeight="700" color="orange.700"> · elige de qué caja sale</Text>}
                 {moneyCheck.over && (
-                  <Text as="span" fontWeight="700" color="red.600">
+                  <Text as="span" fontWeight="700" color="fg.error">
                     {' · '}los renglones suman {money(moneyCheck.linesSum.toFixed(2))} y el total es {money(total.toFixed(2))}
                   </Text>
                 )}
@@ -615,7 +615,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 )}
               </Text>
               <Button minH="44px" variant="outline" onClick={() => { onClose(); reset(); }}>Cancelar</Button>
-              <Button minH="44px" colorPalette="red" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate()}>
+              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate()}>
                 Guardar
               </Button>
             </HStack>
@@ -734,7 +734,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
             <Text fontSize="xs" color="fg.subtle">{item.rawCode && `${item.rawCode} · `}{item.rawName}</Text>
             {item.personal && <Badge colorPalette="purple" size="sm">de la casa</Badge>}
             {item.suggestion && (
-              <HStack gap={1}><LuSparkles size={12} /><Text fontSize="xs" color="green.600">reconocido de «{item.suggestion.matchedVia}»</Text></HStack>
+              <HStack gap={1}><LuSparkles size={12} /><Text fontSize="xs" color="fg.success">reconocido de «{item.suggestion.matchedVia}»</Text></HStack>
             )}
           </HStack>
         )}
@@ -787,7 +787,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
           <HStack gap={2} flexWrap="wrap" align="center">
             {packs.map((p) => (
               <Button key={p.id} minH="44px" size="sm" variant={item.presentationId === p.id ? 'subtle' : 'outline'}
-                colorPalette={item.presentationId === p.id ? 'red' : 'gray'} aria-pressed={item.presentationId === p.id}
+                colorPalette={item.presentationId === p.id ? 'brand' : 'gray'} aria-pressed={item.presentationId === p.id}
                 onClick={() => onChange({ presentationId: p.id, unitId: null })}>
                 {p.name} · {p.approximate ? '≈ ' : ''}{formatBaseQty(p.qtyInBase, p.baseUnitCode)}
               </Button>
@@ -795,7 +795,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
             {buyUnits.map((u) => (
               <Button key={u.id} minH="44px" size="sm" aria-pressed={!item.presentationId && item.unitId === u.id}
                 variant={!item.presentationId && item.unitId === u.id ? 'subtle' : 'outline'}
-                colorPalette={!item.presentationId && item.unitId === u.id ? 'red' : 'gray'}
+                colorPalette={!item.presentationId && item.unitId === u.id ? 'brand' : 'gray'}
                 onClick={() => onChange({ unitId: u.id, presentationId: null })}>
                 {unitLabel(u)}
               </Button>
@@ -809,7 +809,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
               <Input aria-label="¿Cuántos llegaron?" placeholder="¿Cuántos?" w="96px" minH="44px" inputMode="decimal"
                 value={item.partQty} onChange={(e) => onChange({ partQty: e.target.value })} />
             )}
-            {sums && <Text fontSize="sm" fontWeight="700" color="green.700">= {sums.split(' +').pop()}</Text>}
+            {sums && <Text fontSize="sm" fontWeight="700" color="fg.success">= {sums.split(' +').pop()}</Text>}
             <HStack gap={0} ml="auto" borderWidth="1px" borderRadius="md" role="group" aria-label="Estado">
               {(() => {
                 const full = item.arrived && item.partQty === null;
@@ -888,7 +888,7 @@ function PaymentRow({ payment, methods, registers, onChange, onRemove }: {
       </Field>
       <Field label={cash ? 'Caja (obligatoria)' : 'Caja (arqueo)'} flex="1" minW="160px">
         {registers.length === 0 ? (
-          <Text fontSize="sm" color={cash ? 'red.500' : 'fg.muted'}>
+          <Text fontSize="sm" color={cash ? 'fg.error' : 'fg.muted'}>
             {cash ? 'Abre una caja para pagar en efectivo.' : 'Sin cajas abiertas.'}
           </Text>
         ) : (

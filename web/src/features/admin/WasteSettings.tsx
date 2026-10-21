@@ -47,7 +47,7 @@ export function WasteSettings() {
         </Button>
       </HStack>
       <Text fontSize="sm" color="fg.muted" mt={1}>Vacío: nada espera aprobación y todo se resta al registrarse.</Text>
-      {error && <Text fontSize="sm" color="red.600" mt={1}>{error}</Text>}
+      {error && <Text fontSize="sm" color="fg.error" mt={1}>{error}</Text>}
 
       <Text fontWeight="600" mt={4} mb={1}>Motivos</Text>
       {active.map((r) => (
@@ -93,7 +93,7 @@ function EditReason({ reason, onClose, onSaved }: { reason: WasteReasonAdmin; on
             <Button alignSelf="start" minH="44px" aria-pressed={staff} variant={staff ? 'solid' : 'outline'} onClick={() => setStaff(!staff)}>
               No cuenta como pérdida del negocio
             </Button>
-            {error && <Text color="red.600">{error}</Text>}
+            {error && <Text color="fg.error">{error}</Text>}
           </VStack>
         </DrawerBody>
         <DrawerFooter>
