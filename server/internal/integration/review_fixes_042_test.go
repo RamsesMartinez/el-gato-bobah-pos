@@ -41,7 +41,7 @@ func TestAnArticleCannotTakeACategoryOfAnotherCompany(t *testing.T) {
 		t.Fatal(err)
 	}
 	a, _ := svc.GetArticle(ctx, id)
-	if err := svc.UpdateArticle(ctx, id, app.ArticleUpdate{ExpectedUpdatedAt: a.UpdatedAt, Name: "Queso propio", CategoryID: &foreign}); !errors.Is(err, domain.ErrValidation) {
+	if _, err := svc.UpdateArticle(ctx, id, app.ArticleUpdate{ExpectedUpdatedAt: a.UpdatedAt, Name: new("Queso propio"), CategoryID: app.Field[int64]{Set: true, Value: &foreign}}); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("editar con la categoría de otra empresa = %v; quiere ErrValidation", err)
 	}
 }

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -116,29 +117,56 @@ func (h *Handlers) UpdateArticle(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	var body struct {
-		ExpectedUpdatedAt time.Time        `json:"expectedUpdatedAt"`
-		Name              string           `json:"name"`
-		CategoryID        *int64           `json:"categoryId"`
-		PlaceID           *int64           `json:"placeId"`
-		MinStock          *decimal.Decimal `json:"minStock"`
-	}
+	var body articleUpdateBody
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	if body.ExpectedUpdatedAt.IsZero() {
-		Error(w, fmt.Errorf("%w: falta la versión de la ficha", domain.ErrValidation))
-		return
-	}
-	if err := h.backoffice.UpdateArticle(r.Context(), id, app.ArticleUpdate{
-		ExpectedUpdatedAt: body.ExpectedUpdatedAt, Name: body.Name, CategoryID: body.CategoryID,
-		PlaceID: body.PlaceID, MinStock: body.MinStock,
-	}); err != nil {
+	in, err := body.update()
+	if err != nil {
 		Error(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	updatedAt, err := h.backoffice.UpdateArticle(r.Context(), id, in)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]time.Time{"updatedAt": updatedAt})
+}
+
+// articleUpdateBody es la ficha tal como llega. Cada campo es crudo para distinguir AUSENTE (se
+// conserva) de `null` (se limpia): el autoguardado manda un campo a la vez (spec 043), y con punteros
+// un campo que no vino se borraría.
+type articleUpdateBody map[string]json.RawMessage
+
+func (b articleUpdateBody) update() (app.ArticleUpdate, error) {
+	var in app.ArticleUpdate
+	for k, raw := range b {
+		var err error
+		switch k {
+		case "expectedUpdatedAt":
+			err = json.Unmarshal(raw, &in.ExpectedUpdatedAt)
+		case "name":
+			in.Name = new(string)
+			err = json.Unmarshal(raw, in.Name)
+		case "categoryId":
+			in.CategoryID, err = fieldOf[int64](raw)
+		case "placeId":
+			in.PlaceID, err = fieldOf[int64](raw)
+		case "minStock":
+			in.MinStock, err = fieldOf[decimal.Decimal](raw)
+		default:
+			err = fmt.Errorf("campo desconocido %q", k)
+		}
+		if err != nil {
+			return in, domain.ErrValidation
+		}
+	}
+	if in.ExpectedUpdatedAt.IsZero() {
+		return in, fmt.Errorf("%w: falta la versión de la ficha", domain.ErrValidation)
+	}
+	return in, nil
 }
 
 // POST /stock/articles/{id}/cost — `{ cost }`: corrección a mano del costo por unidad base.

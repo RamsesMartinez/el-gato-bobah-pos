@@ -22,10 +22,10 @@ Reglas que aplican a todas las tareas:
   integración en `server/internal/integration/ingredients_admin_test.go` si es del servidor. Nombre que
   diga qué se rompía («guardar el mismo mínimo dos veces deja el mismo valor»).
 - [X] T004 Arreglo de #120 hasta que T003 pase. Cerrar #120 con la liga al commit.
-- [ ] T005 [P] Prueba de integración: `PATCH /stock/articles/{id}` con un solo campo cambia ese campo y
+- [X] T005 [P] Prueba de integración: `PATCH /stock/articles/{id}` con un solo campo cambia ese campo y
   deja los demás como estaban, y su evento `ingredient.updated` trae solo lo que cambió (FR-020). Bajo
   `appRoleStore` con `inTheThreeCases` (otra empresa, conexión reciclada y sin empresa).
-- [ ] T006 `app/ingredients_admin.go` y su handler aceptan un solo campo, también con `null` explícito,
+- [X] T006 `app/ingredients_admin.go` y su handler aceptan un solo campo, también con `null` explícito,
   y responden el `updatedAt` nuevo (Revisión R3), hasta que T005 pase.
 
 **Checkpoint**: #120 cerrado; el servidor acepta un guardado por campo.

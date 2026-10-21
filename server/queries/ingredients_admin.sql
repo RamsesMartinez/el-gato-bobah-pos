@@ -77,12 +77,14 @@ select id, is_active from ingredients
  order by is_active desc, id
  limit 1;
 
--- name: UpdateArticle :execrows
--- Solo si nadie la cambió desde que se vio: 0 filas es «cambió mientras la veías».
+-- name: UpdateArticle :one
+-- Solo si nadie la cambió desde que se vio: sin fila es «cambió mientras la veías». Devuelve la versión
+-- nueva para que el guardado siguiente de la misma ficha no choque contra este.
 update ingredients
    set name = sqlc.arg(name), category_id = sqlc.narg(category_id), count_place_id = sqlc.narg(place_id),
        min_stock = sqlc.narg(min_stock), updated_at = now()
- where id = sqlc.arg(id) and updated_at = sqlc.arg(expected_updated_at);
+ where id = sqlc.arg(id) and updated_at = sqlc.arg(expected_updated_at)
+returning updated_at;
 
 -- name: ArticleCostHistory :many
 -- El historial de costos: cada compra recibida (solo lo que entró con costo: ni las diferencias de

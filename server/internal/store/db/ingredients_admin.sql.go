@@ -1327,11 +1327,12 @@ func (q *Queries) SetWasteQtyCost(ctx context.Context, arg SetWasteQtyCostParams
 	return err
 }
 
-const updateArticle = `-- name: UpdateArticle :execrows
+const updateArticle = `-- name: UpdateArticle :one
 update ingredients
    set name = $1, category_id = $2, count_place_id = $3,
        min_stock = $4, updated_at = now()
  where id = $5 and updated_at = $6
+returning updated_at
 `
 
 type UpdateArticleParams struct {
@@ -1343,9 +1344,10 @@ type UpdateArticleParams struct {
 	ExpectedUpdatedAt time.Time        `json:"expected_updated_at"`
 }
 
-// Solo si nadie la cambió desde que se vio: 0 filas es «cambió mientras la veías».
-func (q *Queries) UpdateArticle(ctx context.Context, arg UpdateArticleParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateArticle,
+// Solo si nadie la cambió desde que se vio: sin fila es «cambió mientras la veías». Devuelve la versión
+// nueva para que el guardado siguiente de la misma ficha no choque contra este.
+func (q *Queries) UpdateArticle(ctx context.Context, arg UpdateArticleParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, updateArticle,
 		arg.Name,
 		arg.CategoryID,
 		arg.PlaceID,
@@ -1353,8 +1355,7 @@ func (q *Queries) UpdateArticle(ctx context.Context, arg UpdateArticleParams) (i
 		arg.ID,
 		arg.ExpectedUpdatedAt,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	var updated_at time.Time
+	err := row.Scan(&updated_at)
+	return updated_at, err
 }

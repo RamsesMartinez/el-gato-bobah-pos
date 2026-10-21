@@ -264,67 +264,70 @@ func (s *BackofficeService) GetArticle(ctx context.Context, id int64) (ArticleSh
 }
 
 // ArticleUpdate es lo que se edita en la ficha. Viaja completo: lo que no se cambió vuelve como estaba.
+// ArticleUpdate son los campos de la ficha que cambian. Desde el autoguardado (spec 043) llega uno a
+// la vez; lo que no viene se queda como estaba. Name nil es «no vino».
 type ArticleUpdate struct {
 	ExpectedUpdatedAt time.Time
-	Name              string
-	CategoryID        *int64
-	PlaceID           *int64
-	MinStock          *decimal.Decimal
+	Name              *string
+	CategoryID        Field[int64]
+	PlaceID           Field[int64]
+	MinStock          Field[decimal.Decimal]
 }
 
-// UpdateArticle guarda la ficha si nadie la cambió desde que se vio (FR-004) y deja en la bitácora lo
-// que cambió.
-func (s *BackofficeService) UpdateArticle(ctx context.Context, id int64, in ArticleUpdate) error {
-	in.Name = domain.CleanArticleName(in.Name)
-	if err := domain.ValidateArticle(domain.ArticleInput{Name: in.Name, MinStock: in.MinStock}); err != nil {
-		return err
-	}
-	return s.store.WithTx(ctx, func(q *db.Queries) error {
+// UpdateArticle guarda los campos que vienen si nadie cambió la ficha desde que se vio (FR-004), deja
+// en la bitácora solo lo que cambió y devuelve la versión nueva.
+func (s *BackofficeService) UpdateArticle(ctx context.Context, id int64, in ArticleUpdate) (time.Time, error) {
+	var updatedAt time.Time
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
 		before, err := q.GetArticle(ctx, id)
 		if err != nil {
 			return notFound(err)
 		}
+		in = mergeArticleUpdate(in, before)
+		if err := domain.ValidateArticle(domain.ArticleInput{Name: *in.Name, MinStock: in.MinStock.Value}); err != nil {
+			return err
+		}
 		if err := q.LockIngredientNames(ctx); err != nil {
 			return err
 		}
-		switch found, err := q.FindOtherArticleByName(ctx, db.FindOtherArticleByNameParams{ID: id, Name: in.Name}); {
+		switch found, err := q.FindOtherArticleByName(ctx, db.FindOtherArticleByNameParams{ID: id, Name: *in.Name}); {
 		case err == nil:
 			return domain.ArticleNameTaken{ID: found.ID, Archived: !found.IsActive}
 		case !errors.Is(err, pgx.ErrNoRows):
 			return err
 		}
-		if err := categoryOfCompany(ctx, q, in.CategoryID); err != nil {
+		if err := categoryOfCompany(ctx, q, in.CategoryID.Value); err != nil {
 			return err
 		}
-		if in.PlaceID != nil && (before.CountPlaceID == nil || *before.CountPlaceID != *in.PlaceID) {
-			if err := activePlace(ctx, q, *in.PlaceID); err != nil {
+		if p := in.PlaceID.Value; p != nil && (before.CountPlaceID == nil || *before.CountPlaceID != *p) {
+			if err := activePlace(ctx, q, *p); err != nil {
 				return err
 			}
 		}
 		var minStock *decimal.Decimal
-		if in.MinStock != nil {
-			v := domain.Round4(*in.MinStock)
+		if in.MinStock.Value != nil {
+			v := domain.Round4(*in.MinStock.Value)
 			minStock = &v
 		}
-		n, err := q.UpdateArticle(ctx, db.UpdateArticleParams{
-			ID: id, ExpectedUpdatedAt: in.ExpectedUpdatedAt, Name: in.Name,
-			CategoryID: in.CategoryID, PlaceID: in.PlaceID, MinStock: minStock,
+		updatedAt, err = q.UpdateArticle(ctx, db.UpdateArticleParams{
+			ID: id, ExpectedUpdatedAt: in.ExpectedUpdatedAt, Name: *in.Name,
+			CategoryID: in.CategoryID.Value, PlaceID: in.PlaceID.Value, MinStock: minStock,
 		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrArticleStale
+		}
 		if err != nil {
 			return err
 		}
-		if n == 0 {
-			return domain.ErrArticleStale
-		}
 		was, now := map[string]any{}, map[string]any{}
-		if before.Name != in.Name {
-			was["name"], now["name"] = before.Name, in.Name
+		if before.Name != *in.Name {
+			was["name"], now["name"] = before.Name, *in.Name
 		}
-		if !samePtr(before.CategoryID, in.CategoryID) {
-			was["categoryId"], now["categoryId"] = before.CategoryID, in.CategoryID
+		if !samePtr(before.CategoryID, in.CategoryID.Value) {
+			was["categoryId"], now["categoryId"] = before.CategoryID, in.CategoryID.Value
 		}
-		if !samePtr(before.CountPlaceID, in.PlaceID) {
-			was["placeId"], now["placeId"] = before.CountPlaceID, in.PlaceID
+		if !samePtr(before.CountPlaceID, in.PlaceID.Value) {
+			was["placeId"], now["placeId"] = before.CountPlaceID, in.PlaceID.Value
 		}
 		if !sameDec(before.MinStock, minStock) {
 			was["minStock"], now["minStock"] = before.MinStock, minStock
@@ -336,6 +339,27 @@ func (s *BackofficeService) UpdateArticle(ctx context.Context, id int64, in Arti
 			Action: domain.AuditIngredientUpdated, EntityType: "ingredient", EntityID: id, Before: was, After: now,
 		})
 	})
+	return updatedAt, err
+}
+
+// mergeArticleUpdate llena lo que no vino con lo que la ficha ya tiene, y limpia el nombre que sí vino.
+func mergeArticleUpdate(in ArticleUpdate, before db.GetArticleRow) ArticleUpdate {
+	if in.Name == nil {
+		in.Name = &before.Name
+	} else {
+		name := domain.CleanArticleName(*in.Name)
+		in.Name = &name
+	}
+	if !in.CategoryID.Set {
+		in.CategoryID.Value = before.CategoryID
+	}
+	if !in.PlaceID.Set {
+		in.PlaceID.Value = before.CountPlaceID
+	}
+	if !in.MinStock.Set {
+		in.MinStock.Value = before.MinStock
+	}
+	return in
 }
 
 func samePtr(a, b *int64) bool { return (a == nil && b == nil) || (a != nil && b != nil && *a == *b) }
