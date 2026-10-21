@@ -88,10 +88,17 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
   integration:
-    name: Backend integration (Postgres)
+    name: Backend integration (Postgres) ${{ matrix.shard }}/3
     needs: [changes]
     if: needs.changes.outputs.integration == 'true'
     runs-on: ubuntu-latest
+    # Tres shards en paralelo (spec 044): medido, la suite tomaba 223 s de los 286 s del job. Cada
+    # shard tiene su propio Postgres; scripts/ci-shard-tests.sh reparte por turno y verifica que
+    # la unión sea la lista completa. fail-fast apagado: un shard rojo no esconde lo de los otros.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     defaults:
       run:
         working-directory: server
@@ -124,16 +131,19 @@ jobs:
           cache-dependency-path: server/go.sum
       # Compilar sqlc desde fuente cuesta ~60s y da SIEMPRE el mismo binario para una versión
       # dada: se cachea por versión + sistema. En un miss cuesta lo de antes, nunca más.
+      # sqlc diff/vet miran el código, no las pruebas: con correrlos en un shard basta.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.shard == 1
         id: cache-sqlc
         with:
           path: ~/go/bin/sqlc
           key: sqlc-v1.31.1-${{ runner.os }}-${{ runner.arch }}
       # sqlc pinado (misma versión que el Makefile → codegen reproducible local/CI).
       - name: Instalar sqlc
-        if: steps.cache-sqlc.outputs.cache-hit != 'true'
+        if: matrix.shard == 1 && steps.cache-sqlc.outputs.cache-hit != 'true'
         run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
       - name: sqlc al PATH
+        if: matrix.shard == 1
         run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       # Esta base se tira entera al terminar el job: pagar durabilidad por cada escritura es
       # comprar una garantía que nadie va a cobrar. NO se toca el Postgres de producción, solo el
@@ -159,9 +169,11 @@ jobs:
           DATABASE_URL: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable
       # El código generado debe estar al día (nadie olvidó `make sqlc` tras tocar una query).
       - name: sqlc al día (sqlc diff)
+        if: matrix.shard == 1
         run: sqlc diff
       # Carga el esquema (migraciones embebidas) para que `sqlc vet` prepare contra la DB real.
       - name: Cargar esquema (migraciones)
+        if: matrix.shard == 1
         run: go run ./cmd/migrate
         env:
           DATABASE_URL: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable
@@ -169,6 +181,7 @@ jobs:
       # (columna inexistente en el WHERE, tipos, SQL inválido) que la generación no ve. Gatea el
       # deploy (deploy-backend needs [integration]).
       - name: sqlc vet (db-prepare)
+        if: matrix.shard == 1
         run: sqlc vet
         env:
           SQLC_DB_URI: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable
@@ -184,10 +197,41 @@ jobs:
         # Medido en local a 4 CPU contra un Postgres igual a éste: 115 s en serie, 36-42 s en
         # paralelo. `TestEveryIntegrationTestDeclaresHowItRuns` impide que una prueba nueva vuelva a
         # la serie sin decir por qué.
-        run: go test -timeout 10m -tags=integration ./internal/integration/... ./internal/httpapi/...
+        #
+        # Repartida en shards (spec 044): cada uno lista las pruebas, reparte por turno, verifica que
+        # los tres repartos juntos son la lista completa (una prueba que ningún shard tome no correría
+        # en ningún lado) y corre la suya. internal/httpapi va entero en el shard 1. La salida va en
+        # -json para guardar la duración de cada prueba; un shard sin pruebas termina en verde.
+        run: |
+          ../scripts/ci-shard-tests.sh list > /tmp/all-tests
+          for s in 1 2 3; do ../scripts/ci-shard-tests.sh shard "$s" 3 < /tmp/all-tests > "/tmp/shard-$s"; done
+          ../scripts/ci-shard-tests.sh verify /tmp/all-tests /tmp/shard-1 /tmp/shard-2 /tmp/shard-3
+          re=$(../scripts/ci-shard-tests.sh run-regex "${{ matrix.shard }}" 3 < /tmp/all-tests)
+          : > /tmp/go-test.json
+          rc=0
+          if [ -n "$re" ]; then
+            go test -json -timeout 10m -tags=integration -run "$re" ./internal/integration/... >> /tmp/go-test.json || rc=$?
+          fi
+          if [ "${{ matrix.shard }}" = 1 ]; then
+            go test -json -timeout 10m -tags=integration ./internal/httpapi/... >> /tmp/go-test.json || rc=$?
+          fi
+          # -json es verboso: al log va el resultado por paquete y la salida completa de lo que falló.
+          jq -rs '
+            (map(select(.Action=="output")) | group_by([.Package,.Test]) | map({key: "\(.[0].Package) \(.[0].Test)", value: (map(.Output)|join(""))}) | from_entries) as $out
+            | .[] | select(.Action=="fail" or .Action=="build-output" or (.Test==null and (.Action=="pass" or .Action=="skip")))
+            | if .Action=="build-output" then .Output elif .Action=="fail" then $out["\(.Package) \(.Test)"] // "" else "ok  \(.Package) \(.Elapsed)s\n" end
+          ' /tmp/go-test.json
+          exit $rc
         env:
           TEST_DATABASE_URL: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable
           TEST_REDIS_URL: redis://localhost:6379/0
+      # Duración de cada prueba, para medir las lentas sin volver a correr la suite.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: integration-go-test-json-${{ matrix.shard }}
+          path: /tmp/go-test.json
+          retention-days: 14
 
   frontend:
     name: Frontend (Vite)
@@ -439,6 +483,25 @@ jobs:
           # El tag móvil lleva el nombre de la rama: :main y :develop conviven sin pisarse.
           echo "moving=ghcr.io/${repo}/api:${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      # El binario se compila aquí y no dentro del docker build (spec 044): el caché type=gha no
+      # guarda los --mount=type=cache del Dockerfile y cada merge recompilaba todo (79 s de 102 s);
+      # el de setup-go sí persiste. Mismos flags que el Dockerfile; el Dockerfile lo copia con PREBUILT.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Compilar el binario (linux/amd64)
+        working-directory: server
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          go build -trimpath \
+            -ldflags="-s -w -X main.version=${{ github.sha }} -X main.builtAt=${{ steps.meta.outputs.built_at }}" \
+            -o .prebuilt/api ./cmd/api
+          # Un binario de otra arquitectura arrancaría en el VPS con "exec format error" (E14).
+          file .prebuilt/api | tee /dev/stderr | grep -q 'ELF 64-bit LSB executable, x86-64'
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: server
@@ -451,6 +514,7 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
             BUILT_AT=${{ steps.meta.outputs.built_at }}
+            PREBUILT=.prebuilt/api
           # Caché de capas entre corridas: sin esto cada push recompila el módulo entero.
           cache-from: type=gha
           cache-to: type=gha,mode=max

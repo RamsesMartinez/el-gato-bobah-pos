@@ -55,7 +55,7 @@ for (const [nombre, viewport] of [['de lado', { width: 1024, height: 600 }], ['d
     await page.setViewportSize(viewport);
     await abrirArticulos(page);
     await page.locator('tr[role="button"]').first().click();
-    await expect(page.getByRole('button', { name: '‹ Artículos' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Volver a Artículos/ })).toBeVisible();
     await page.screenshot({ path: `${CAPTURAS}/ficha-${nombre.replace(' ', '-')}.png` });
     expect(await chicos(page)).toEqual([]);
     expect(await deLado(page), `la ficha ${nombre} se desplaza de lado`).toBeLessThanOrEqual(0);
@@ -83,4 +83,25 @@ test('la hoja de empaque deja la frase y «Guardar empaque» a la vista con el t
   await expect(hoja.getByText(new RegExp(`^1 ${nombre.toLowerCase()} = 5 `))).toBeInViewport();
   await expect(hoja.getByRole('button', { name: 'Guardar empaque' })).toBeInViewport();
   await hoja.getByRole('button', { name: 'Cancelar' }).click();
+});
+
+// Límites del conteo (spec 044, T038): controles de 44 px y «Guardar límites» a la vista con el
+// teclado del sistema abierto (ventana encogida a 350 px). Escribe sin guardar y descarta.
+test('los límites del conteo dejan «Guardar límites» a la vista con el teclado abierto', async ({ page }) => {
+  await entrar(page);
+  await page.goto('/negocio');
+  const seccion = page.getByTestId('limites-conteo');
+  await seccion.scrollIntoViewIfNeeded({ timeout: 15_000 });
+  const bajos = await seccion.locator('input, button').evaluateAll((els) => els
+    .map((e) => Math.round(e.getBoundingClientRect().height)).filter((h) => h > 0 && h < 44));
+  expect(bajos, 'controles de menos de 44 px').toEqual([]);
+  await page.setViewportSize({ width: 1024, height: 350 });
+  const campo = seccion.getByLabel('Máximo por conteo de Peso (kg)');
+  const antes = await campo.inputValue();
+  await campo.fill('999');
+  await page.screenshot({ path: `${CAPTURAS}/limites-con-teclado.png` });
+  await expect(campo).toBeInViewport();
+  await expect(seccion.getByRole('button', { name: 'Guardar límites' })).toBeInViewport();
+  await seccion.getByRole('button', { name: 'Descartar' }).click();
+  await expect(campo).toHaveValue(antes);
 });

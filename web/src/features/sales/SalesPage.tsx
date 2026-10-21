@@ -213,7 +213,7 @@ export function SalesPage() {
                 <Table.Cell>
                   <Text lineHeight="1.2">{etiquetaEstado(v.status)}</Text>
                   {Number(v.refund) > 0 && (
-                    <Text fontSize="xs" color="red.600" whiteSpace="nowrap">
+                    <Text fontSize="xs" color="fg.error" whiteSpace="nowrap">
                       Devuelto {money(v.refund)}{v.lastRefundAt ? ` · ${diaCortoYHora(v.lastRefundAt, horaNegocio.zona)}` : ''}
                     </Text>
                   )}

@@ -44,6 +44,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'waste.rejected': 'Rechazó lo que se echó a perder',
   'waste.undone': 'Deshizo lo que se echó a perder',
   'settings.waste_threshold': 'Cambió el tope de aprobación',
+  'settings.count_limits_changed': 'Cambió los límites del conteo',
   'ingredient.created': 'Creó el artículo',
   'ingredient.updated': 'Editó el artículo',
   'ingredient.archived': 'Archivó el artículo',

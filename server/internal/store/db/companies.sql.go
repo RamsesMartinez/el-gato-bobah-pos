@@ -47,6 +47,9 @@ with company as (
     ('Prueba de receta',     'Lo que se usó para probar una receta',        false),
     ('Consumo del personal', 'Lo que se toma o se come el equipo',          true)
   ) as r(name, description, is_staff_meal)
+), count_limits_seed as (
+  -- Y con sus límites del conteo (spec 044), con los defaults de la columna, como la 0098.
+  insert into count_limits (company_id) select id from company
 )
 select id, slug, name, is_active, created_at, updated_at from company
 `

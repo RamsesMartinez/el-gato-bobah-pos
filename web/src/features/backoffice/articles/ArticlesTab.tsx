@@ -64,7 +64,8 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
         </Box>
         <HStack gap={0} borderWidth="1px" borderRadius="full" overflow="hidden" flexShrink={0}>
           {([['Activos', false], ['Archivados', true]] as const).map(([label, archived]) => (
-            <Button key={label} minH="44px" borderRadius="0" variant={!!filter.archived === archived ? 'solid' : 'ghost'} colorPalette="gray"
+            <Button key={label} minH="44px" borderRadius="0" variant={!!filter.archived === archived ? 'solid' : 'ghost'}
+              colorPalette={!!filter.archived === archived ? 'brand' : 'gray'}
               aria-pressed={!!filter.archived === archived} onClick={() => setFilter({ ...filter, archived })}>{label}</Button>
           ))}
         </HStack>
@@ -83,7 +84,7 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
           <Table.Header>
             <Table.Row>
               <Table.ColumnHeader>{Word}</Table.ColumnHeader>
-              <Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="end" w="190px">Existencia</Table.ColumnHeader>
               <Table.ColumnHeader>Ubicación</Table.ColumnHeader>
               <Table.ColumnHeader>Costo</Table.ColumnHeader>
               <Table.ColumnHeader>Empaques</Table.ColumnHeader>
@@ -116,15 +117,17 @@ function ArticleLine({ a, onOpen }: { a: ArticleRow; onOpen: (id: number) => voi
       <Table.Cell>
         <Text fontWeight="600">{a.name}{a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}</Text>
       </Table.Cell>
-      <Table.Cell textAlign="end">
-        <Text as="span" color={negative ? 'red.600' : undefined} fontWeight={negative ? '700' : undefined}>
+      <Table.Cell textAlign="end" whiteSpace="nowrap">
+        <Text as="span" color={negative ? 'fg.error' : undefined} fontWeight={negative ? '700' : undefined}>
           {formatBaseQty(a.onHand, a.baseUnitCode)}
         </Text>
         {/* En el mismo renglón: uno aparte subiría la fila de 44 px y la lista dejaría de mostrar 6. */}
-        {negative && <Text as="span" fontSize="xs" color="red.600" ml={1} title="Revisar con un conteo">· Revisar</Text>}
+        {negative && (
+          <Text as="span" ml={2} px={2} py="1px" borderRadius="md" fontWeight="700" color="fg.error" bg="bg.error">Revisar</Text>
+        )}
       </Table.Cell>
       <Table.Cell><Text color="fg.muted">{a.countPlace ?? NO_LOCATION}</Text></Table.Cell>
-      <Table.Cell>{cost ?? <Text as="span" fontSize="sm" color="red.600" fontWeight="600">Sin costo</Text>}</Table.Cell>
+      <Table.Cell>{cost ?? <Text as="span" fontSize="sm" color="fg.error" fontWeight="600">Sin costo</Text>}</Table.Cell>
       <Table.Cell>
         <Text fontSize="sm" color="fg.muted">
           {packs.length ? packs.map((p) => `${p.name} · ${formatBaseQty(p.qtyInBase, a.baseUnitCode)}`).join(' · ') : 'Sin empaques'}

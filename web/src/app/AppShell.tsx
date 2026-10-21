@@ -121,7 +121,7 @@ export function AppShell() {
         <VStack gap={0} flexShrink={0} borderTopWidth="1px" borderColor="whiteAlpha.300" pt={1}>
           <Text fontSize="10px" color="gray.400" lineClamp={1} px={1}>{user?.name}</Text>
           {/* 44 px: es un control táctil como cualquier otro, aunque se toque poco. */}
-          <Button size="xs" minH="44px" w="100%" variant="ghost" colorPalette="whiteAlpha" onClick={logout}>Salir</Button>
+          <Button size="xs" minH="44px" w="100%" variant="ghost" colorPalette="whiteAlpha" color="gray.100" onClick={logout}>Salir</Button>
           <SystemInfo />
         </VStack>
       </Flex>

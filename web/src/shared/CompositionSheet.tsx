@@ -426,7 +426,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
             </Text>
           )}
           {failure && (
-            <HStack role="alert" px={3} py={2} borderRadius="lg" bg="red.50" borderWidth="1px" borderColor="red.200" color="red.800" fontSize="sm">
+            <HStack role="alert" px={3} py={2} borderRadius="lg" bg="bg.error" borderWidth="1px" borderColor="border.error" color="fg.error" fontSize="sm">
               <Text flex="1">{failure.message}</Text>
               {failure.conflict && (
                 <Button size="sm" minH="44px" variant="outline" onClick={() => {
@@ -445,8 +445,8 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
             {modes.map((m) => (
               <Button key={m.k} h="auto" minH="64px" py={2} px={3} variant="outline" justifyContent="start" textAlign="left"
                 data-active={mode === m.k ? '' : undefined} aria-pressed={mode === m.k}
-                borderWidth={mode === m.k ? '2px' : '1px'} borderColor={mode === m.k ? 'red.600' : 'border'}
-                bg={mode === m.k ? 'red.50' : undefined}
+                borderWidth={mode === m.k ? '2px' : '1px'} borderColor={mode === m.k ? 'brand.solid' : 'border'}
+                bg={mode === m.k ? 'brand.subtle' : undefined}
                 onClick={() => edit(() => { setMode(m.k); setRemoved(null); })}>
                 <VStack align="start" gap={0}>
                   <Text fontWeight="600">{m.title}</Text>
@@ -465,7 +465,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
                 return (
                   <Button key={t.id} aria-pressed={on} onClick={() => togglePick(t.id)}
                     variant="outline" h="auto" minH="48px" py={1.5} px={3} justifyContent="start" textAlign="left" gap={3}
-                    borderColor={on ? 'red.600' : 'border'} bg={on ? 'red.50' : undefined}>
+                    borderColor={on ? 'brand.solid' : 'border'} bg={on ? 'brand.subtle' : undefined}>
                     <Text fontSize="lg" lineHeight="1" aria-hidden>{on ? '☑' : '☐'}</Text>
                     <VStack align="start" gap={0} minW={0} flex="1">
                       <Text fontWeight="600" truncate maxW="100%">También en «{t.group}»</Text>
@@ -503,8 +503,8 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
                 return (
                   <HStack key={`${r.ingredientId}-${i}`} data-row gap={2} pl={3} pr={1} py={1} borderWidth="1px" borderRadius="lg"
                     borderLeftWidth={change ? '4px' : '1px'}
-                    borderColor={bad ? 'red.300' : 'border.muted'} borderLeftColor={change === 'new' ? 'green.500' : change === 'changed' ? 'orange.400' : undefined}
-                    bg={bad ? 'red.50' : undefined}>
+                    borderColor={bad ? 'border.error' : 'border.muted'} borderLeftColor={change === 'new' ? 'border.success' : change === 'changed' ? 'orange.400' : undefined}
+                    bg={bad ? 'bg.error' : undefined}>
                     <VStack flex="1" minW={0} align="start" gap={0}>
                       <HStack gap={2} maxW="100%">
                         <Text truncate>{r.name}</Text>
@@ -515,7 +515,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
                       )}
                     </VStack>
                     <Input aria-label={`Cantidad de ${r.name}`} inputMode="decimal" w="96px" minH="44px" textAlign="end" fontWeight="600"
-                      borderColor={bad ? 'red.500' : undefined} value={r.text}
+                      borderColor={bad ? 'border.error' : undefined} value={r.text}
                       ref={(el) => { if (el) qtyInputs.current.set(r.ingredientId, el); else qtyInputs.current.delete(r.ingredientId); }}
                       onFocus={(e) => e.currentTarget.scrollIntoView?.({ block: 'center' })}
                       onChange={(e) => { const v = e.target.value.replace(/[^0-9.,]/g, ''); edit(() => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, text: v } : x)))); }} />
@@ -546,7 +546,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
               })}
               {dropped.map((o) => (
                 <HStack key={`quitado-${o.ingredientId}`} data-row gap={2} pl={3} pr={1} py={1} borderWidth="1px" borderLeftWidth="4px"
-                  borderRadius="lg" borderStyle="dashed" borderColor="border.muted" borderLeftColor="red.400" bg="bg.subtle" color="fg.muted">
+                  borderRadius="lg" borderStyle="dashed" borderColor="border.muted" borderLeftColor="border.error" bg="bg.subtle" color="fg.muted">
                   <VStack flex="1" minW={0} align="start" gap={0}>
                     <Text truncate textDecoration="line-through">{o.name}</Text>
                     <Text fontSize="xs">Antes {o.text} {unitLabel(unitById.get(o.unitId)?.code ?? '')} · se quita al guardar</Text>
@@ -558,7 +558,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
                 <HStack gap={2} pl={3} pr={1} py={1} borderRadius="lg" bg="blue.50" borderWidth="1px" borderColor="blue.200">
                   <Text flex="1">Con esto salen</Text>
                   <Input aria-label="Cuánto rinde" inputMode="decimal" w="96px" minH="44px" textAlign="end" fontWeight="600" bg="white"
-                    borderColor={dirty && !(yieldNum > 0) ? 'red.500' : undefined} value={yieldText}
+                    borderColor={dirty && !(yieldNum > 0) ? 'border.error' : undefined} value={yieldText}
                     onFocus={(e) => e.currentTarget.scrollIntoView?.({ block: 'center' })}
                     onChange={(e) => { const v = e.target.value.replace(/[^0-9.,]/g, ''); edit(() => setYieldText(v)); }} />
                   <Text w="58px">{unitLabel(data.yieldUnitCode ?? '')}</Text>
@@ -613,8 +613,8 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
                   <Grid templateColumns="repeat(2, minmax(0, 1fr))" gap={2}>
                     {([['product', `${productOnHand} · las que contaba el producto`], ['ingredient', `${ingredientOnHand} · las del insumo`],
                       ['both', `${productOnHand + ingredientOnHand} (las dos)`], ['other', 'Otra cifra']] as [Actual, string][]).map(([k, label]) => (
-                      <Button key={k} minH="48px" variant="outline" aria-pressed={actual === k} bg={actual === k ? 'red.50' : 'bg'}
-                        borderWidth={actual === k ? '2px' : '1px'} borderColor={actual === k ? 'red.600' : 'border'}
+                      <Button key={k} minH="48px" variant="outline" aria-pressed={actual === k} bg={actual === k ? 'brand.subtle' : 'bg'}
+                        borderWidth={actual === k ? '2px' : '1px'} borderColor={actual === k ? 'brand.solid' : 'border'}
                         onClick={() => edit(() => setActual(k))}>{label}</Button>
                     ))}
                   </Grid>
@@ -679,14 +679,14 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
 
       {/* Siempre a la vista: esconderla al teclear movía la hoja, y el botón que se iba a tocar
           quedaba en otro lugar bajo el dedo. */}
-      <HStack mx={6} px={3} py={2} borderRadius="lg" bg="green.50" borderWidth="1px" borderColor="green.200" fontSize="sm" align="baseline">
+      <HStack mx={6} px={3} py={2} borderRadius="lg" bg="bg.success" borderWidth="1px" borderColor="border.success" fontSize="sm" align="baseline">
         <Text fontWeight="700" flexShrink={0}>{isIng && mode === 'items' ? `Para ${yieldText || '…'} ${unitLabel(data.yieldUnitCode ?? '')}:` : mode === 'bought' ? 'Cada uso:' : 'Al vender 1:'}</Text>
         <Text truncate>{preview}</Text>
       </HStack>
       <DrawerFooter gap={2}>
         <Text flex="1" fontSize="sm" color={hint ? 'orange.700' : 'fg.muted'}>{hint || unsaved}</Text>
         <Button variant="ghost" minH="48px" onClick={requestClose}>Cancelar</Button>
-        <Button minH="48px" colorPalette="red" disabled={!confirmOnly && !valid} loading={save.isPending}
+        <Button minH="48px" colorPalette="brand" disabled={!confirmOnly && !valid} loading={save.isPending}
           onClick={() => (leavesStock && !confirmOnly ? setAskZero(true) : save.mutate())}>
           {failure && !failure.conflict ? 'Reintentar' : confirmOnly ? 'Está bien' : 'Guardar'}
         </Button>
