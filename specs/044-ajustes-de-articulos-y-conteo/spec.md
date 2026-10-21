@@ -4,9 +4,9 @@
 
 **Created**: 2026-10-21
 
-**Status**: Decisiones del dueño tomadas (2026-10-21); pendiente de plan
+**Status**: Aprobada por el dueño (2026-10-21), con el cambio de alcance de #126; US7 y US8 agregadas el mismo día
 
-**Input**: Issue #124. Hallazgos de la prueba guiada del dueño en el ambiente de pruebas con la 042 y la
+**Input**: Issues #124 y #126 (este cierra con el mismo PR, por decisión del dueño). Hallazgos de la prueba guiada del dueño en el ambiente de pruebas con la 042 y la
 043 desplegadas (2026-10-21), con sus decisiones. Seguimiento de las dos specs.
 
 ## Contexto
@@ -17,9 +17,11 @@ Lo que el dueño encontró al recorrer las pantallas en el ambiente de pruebas:
 2. En la lista, «· Revisar» junto a una existencia negativa es muy chico.
 3. La gráfica de costos de la ficha se ve poco profesional.
 4. En el conteo, una cifra que pasa el tope dice «datos inválidos» sin decir por qué.
-5. El tope por movimiento es 1,000,000 en la unidad base del artículo (1,000 kg en un artículo en
-   gramos). El dueño decide mantenerlo.
+5. El tope del conteo es 1,000,000 en la unidad base del artículo (1,000 kg en un artículo en gramos)
+   y los umbrales del aviso de cifra absurda (50 kg, 50 L, 50 m, 5,000 piezas) están fijos en el código.
+   El dueño decide hacerlos configurables por empresa (#126), con esos valores como default.
 6. El teclado del conteo solo acepta el teclado de la pantalla, no el teclado físico.
+7. En tema oscuro, la lista de Almacén › Existencias no se ve (agregado por el dueño el 2026-10-21).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -88,10 +90,11 @@ aviso dice «Máximo 1,000 kg por conteo».
 1. **Given** un artículo en peso, **When** se captura más del tope, **Then** el aviso dice «Máximo
    1,000 kg por conteo» y no se guarda.
 2. **Given** un artículo en líquido, **Then** dice «Máximo 1,000 L por conteo»; en longitud, «Máximo
-   10,000 m por conteo»; en piezas, «Máximo 1,000,000 piezas por conteo».
+   10,000 m por conteo»; en piezas, «Máximo 1,000,000 piezas por conteo» (con los límites por default).
+   Si la empresa cambió su límite, el mensaje dice el de la empresa.
 3. **Given** el aviso, **Then** se ve antes de mandar nada, y si la cifra llega al servidor por otro
    camino, el servidor responde con el mismo texto.
-4. **Given** el tope, **Then** sigue siendo 1,000,000 en la unidad base (decisión del dueño).
+4. **Given** una empresa que no ha cambiado su límite, **Then** el tope es 1,000,000 en la unidad base.
 
 ---
 
@@ -111,6 +114,62 @@ se guarda igual que con la pantalla.
 4. **When** se oprime Tab, **Then** pasa a la siguiente casilla, como «Siguiente casilla».
 5. **Given** el teclado de la pantalla, **Then** sigue funcionando igual.
 
+---
+
+### User Story 6 - Ajustar los límites del conteo de la empresa (Priority: P2)
+
+Quien configura el almacén cambia, por clase de unidad, el máximo que se puede registrar en un conteo y
+la cifra a partir de la cual el conteo pide confirmar.
+
+**Why this priority**: el producto es para negocios de comida de distinto volumen (#126).
+
+**Independent Test**: en Configuración del negocio › Almacén, cambiar el máximo de peso a 2,000 kg;
+en el conteo, 1,500 kg se guarda y 2,500 kg dice «Máximo 2,000 kg por conteo».
+
+**Acceptance Scenarios**:
+
+1. **Given** Configuración del negocio › Almacén, **Then** hay una sección «Límites del conteo» con, por
+   peso, líquido, longitud y piezas, el máximo por conteo y la cifra que pide confirmar, en la unidad
+   grande de cada clase (kg, L, m, piezas).
+2. **Given** una empresa existente o nueva, **Then** arranca con 1,000 kg, 1,000 L, 10,000 m y 1,000,000
+   piezas de máximo, y 50 kg, 50 L, 50 m y 5,000 piezas para pedir confirmar.
+3. **Given** un cambio, **When** se guarda, **Then** queda en la bitácora con quién, cuándo, lo de antes
+   y lo nuevo.
+4. **Given** un máximo menor o igual que su cifra de confirmar, un cero, un negativo o una cifra fuera de
+   lo que el sistema puede guardar, **Then** no se guarda y se dice por qué.
+5. **Given** quien no tiene permiso de configurar el almacén, **Then** no ve la sección ni puede cambiar
+   los límites por otro camino.
+6. **Given** dos empresas, **Then** cada una ve y cambia solo los suyos.
+7. **Given** el aviso de cifra absurda, **Then** usa la cifra de confirmar de la empresa cuando el artículo
+   no tiene otra referencia, y sigue sin revelar ninguna cifra.
+
+### User Story 7 - Ver la lista de existencias en tema oscuro (Priority: P1)
+
+**Why this priority**: con tema oscuro la pantalla queda inservible.
+
+**Independent Test**: con tema oscuro, abrir Almacén › Existencias a 1024×600: cada renglón se lee.
+
+**Acceptance Scenarios**:
+
+1. **Given** el tema oscuro, **Then** los renglones, encabezados y cifras de Existencias se leen con contraste
+   de 4.5:1 o más (texto) y 3:1 o más (bordes y controles).
+2. **Given** el tema claro, **Then** se ve igual que hoy.
+
+### User Story 8 - Repaso visual de todo el almacén (Priority: P1)
+
+**Why this priority**: el defecto de Existencias en oscuro apareció solo al usarlo; puede haber más.
+
+**Independent Test**: un recorrido con Playwright en local, a 1024×600, en tema claro y oscuro, por cada
+pestaña y hoja del almacén, con capturas; ninguna queda ilegible, cortada ni desbordada.
+
+**Acceptance Scenarios**:
+
+1. **Given** cada pestaña del almacén (Existencias, Movimientos, Artículos y su ficha, Por recibir, Conteo con
+   su teclado, Se echó a perder, Salud) y Configuración del negocio › Almacén, **Then** en claro y en oscuro el texto
+   cumple el contraste de US7, nada se sale del ancho y los controles miden 44 px o más.
+2. **Given** un defecto encontrado, **Then** se corrige con colores del tema y deja su prueba.
+3. **Given** el recorrido, **Then** las capturas de claro y oscuro quedan como evidencia para el dueño.
+
 ### Edge Cases
 
 - **Coma decimal** del teclado físico: cuenta como punto.
@@ -119,6 +178,10 @@ se guarda igual que con la pantalla.
 - **Enter mientras se muestra el aviso de cifra absurda**: no confirma; se confirma tocando el botón.
 - **Volver con un guardado en curso**: igual que hoy (043).
 - **Gráfica de pie (< 800 px)**: ocupa el ancho de la columna y se lee.
+- **Bajar el máximo con un conteo abierto**: lo ya capturado no se toca; la regla nueva aplica a la
+  siguiente captura.
+- **Una tableta con la pantalla anterior** durante una subida: el servidor aplica el límite de la empresa;
+  la pantalla vieja muestra su error genérico.
 
 ## Requirements *(mandatory)*
 
@@ -131,13 +194,28 @@ se guarda igual que con la pantalla.
 - **FR-003**: La gráfica de costos MUST rediseñarse con el dibujo propio del POS: línea suavizada, área
   con degradado, guía tenue, último punto destacado con su cifra, correcciones como punto hueco, y
   fecha y costo al tocar un punto. Sin librería de gráficas.
-- **FR-004**: El conteo MUST rechazar una cifra que pase el tope con «Máximo N <unidad> por conteo»,
-  en la unidad grande del artículo (1,000 kg, 1,000 L, 10,000 m, 1,000,000 piezas), antes de mandarla.
-- **FR-005**: El servidor MUST responder 400 con ese mismo texto cuando la cifra contada pase el tope.
-- **FR-006**: El tope por movimiento MUST seguir siendo 1,000,000 en la unidad base.
+- **FR-004**: El conteo MUST rechazar una cifra que pase el máximo de la empresa para la clase del
+  artículo con «Máximo N <unidad> por conteo», en la unidad grande (kg, L, m, piezas), antes de mandarla.
+- **FR-005**: El servidor MUST responder 400 con ese mismo texto cuando la cifra contada pase el máximo.
+- **FR-006**: Cada empresa MUST tener, por clase de unidad, un máximo por conteo y una cifra para pedir
+  confirmar. Default para empresas existentes (relleno al migrar) y nuevas: máximo 1,000,000 en la unidad
+  base (1,000 kg, 1,000 L, 10,000 m, 1,000,000 piezas) y confirmar a partir de 50 kg, 50 L, 50 m y 5,000
+  piezas.
 - **FR-007**: El teclado del conteo MUST aceptar el teclado físico: números, punto y coma como punto,
   Retroceso, Enter como «Guardar» y Tab como «Siguiente casilla». Otras teclas se ignoran.
 - **FR-008**: Todo control tocable MUST medir 44 px o más, y ningún selector es nativo.
+- **FR-009**: Los límites MUST editarse en Configuración del negocio › Almacén con `inventory.configure`,
+  validados en el servidor: positivos y el máximo mayor que la cifra de confirmar. El máximo puede subir o
+  bajar respecto al default; el único techo es lo que el sistema puede guardar (1,000,000,000 en unidad base).
+- **FR-010**: Cada cambio MUST dejar su evento en la bitácora dentro de su transacción, con lo de antes y
+  lo nuevo.
+- **FR-011**: Los límites MUST estar aislados por empresa (RLS), con su prueba en los tres casos.
+- **FR-012**: El aviso de cifra absurda MUST usar la cifra de confirmar de la empresa en lugar del valor
+  fijo de hoy; el resto de su regla no cambia.
+- **FR-013**: La lista de Existencias MUST leerse en tema claro y oscuro (contraste de US7); sus colores salen
+  de los tokens del tema, no de colores fijos.
+- **FR-014**: Todas las pantallas del almacén MUST pasar el repaso visual de US8 en claro y oscuro a 1024×600,
+  en local.
 
 ## Success Criteria *(mandatory)*
 
@@ -148,6 +226,8 @@ se guarda igual que con la pantalla.
 - **SC-003**: El dueño aprueba la gráfica en la prueba local; si no, se abre la opción de librería.
 - **SC-004**: Ninguna cifra fuera del tope muestra «datos inválidos» en el conteo.
 - **SC-005**: Un conteo completo se puede capturar sin tocar la pantalla, con el teclado físico.
+- **SC-006**: Cambiar el máximo de una empresa cambia lo que su conteo acepta y su mensaje, sin tocar a
+  las demás empresas.
 
 ## Assumptions
 
@@ -156,5 +236,14 @@ se guarda igual que con la pantalla.
   la decisión del dueño.
 - **La prueba la hace el dueño en local** (decisión del 2026-10-21): no se mergea ni se sube a develop
   hasta su visto bueno; el PR queda en borrador.
-- **Fuera de alcance**: cambiar el tope, una librería de gráficas (salvo que el SVG no baste) y el resto
-  de pantallas del almacén.
+- **Los límites son por clase de unidad**, no un solo número en unidad base: «1,000,000 g» no se lee en
+  pantalla, y los avisos ya eran por clase.
+- **El máximo sube o baja** (decisión del dueño, 2026-10-21): no queda fijo en el código; el default es solo el valor inicial.
+- **Solo el conteo** usa estos límites. Compras, recetas y ajustes siguen con el tope general del sistema.
+- **Fuera de alcance**: una librería de gráficas (salvo que el SVG no baste), cambiar la lógica del aviso
+  del conteo (solo su cifra de referencia) y cambios de disposición en el resto de pantallas del almacén.
+  Sí entra: corregir lo que el repaso visual del almacén (US8) encuentre ilegible o roto en claro u oscuro.
+- **Todo se prueba en local** (regla del repo desde la constitución 1.25.0, 2026-10-21): la 044 no se valida en el ambiente de
+  pruebas; las pruebas de pantalla, el repaso visual y la prueba del dueño corren contra el `make start`
+  del worktree (:3044). Lo que solo se ve desplegado (el build de producción, el CSP) queda sin verificar
+  hasta que llegue a develop.
