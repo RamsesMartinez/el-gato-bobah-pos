@@ -162,7 +162,36 @@ El botón de volver, «Revisar», el teclado físico, Existencias en oscuro y lo
 
 ## Al construir
 
-(Se llena al implementar.)
+### CI más corto (US9) — las 10 pruebas de integración más lentas (T036)
+
+Medido en local el 2026-10-21: `go test -json -count=1 -tags=integration ./internal/integration/...`
+contra el Postgres de pruebas del worktree (en memoria), 8 CPU, 917 pruebas, 80 s de pared. Tiempo
+de cada prueba según `Elapsed` del `-json` (para las paralelas cuenta desde que reanudan).
+
+| # | Prueba | s | Causa |
+|---|---|---|---|
+| 1 | TestTheAuditLogLoadsAYearWithinTheCeiling | ≥36 (no terminó) | Siembra 1,460,000 eventos de bitácora (un año, dos empresas) para medir el techo de 1.5 s. Es la que fija el piso del shard que la toque |
+| 2 | TestNoSequenceLeavesAnOrderWithoutAWayOut | 8–12 | Recorre secuencias de acciones de cuenta dividida, una base por secuencia |
+| 3 | TestElUsoDeUnAnoCabeEnElTecho | 3.6 | Siembra un año de medición de uso |
+| 4 | TestLiveAccountsStaysFast | 3.5 | Serial a propósito (`serialByDesign`: mide contra un techo de 30 ms) |
+| 5 | TestLosToquesDeUnTrimestreCabenEnElTecho | 2.4 | Siembra un trimestre de toques |
+| 6 | TestUnFolioOcupadoNoTumbaLaVenta | 1.5 | Muchas ventas para chocar folios |
+| 7 | TestLaMigracionDelFolioSeRevierteYSeReaplica | 1.2 | Serial: baja y sube migraciones con goose |
+| 8 | TestLosNombresNoSeRepitenHastaAgotarLaBolsa | 1.1 | Agota la bolsa de nombres de pedido |
+| 9 | TestMoveRejections | 1.1 | Muchos casos sobre la misma base |
+| 10 | TestADirectOrderNeverTakesTheNumberedNameOfALiveDraft | 1.0 | Inserta un borrador por cada nombre del esquema |
+
+- **No se corrigió nada.** Las 917 ya declaran cómo corren (`TestEveryIntegrationTestDeclaresHowItRuns`):
+  todas las que pueden ya llaman `t.Parallel()`, y las seriales tocan goose, roles o `slog` a propósito.
+  Lo que queda son pruebas de volumen cuyo tamaño ES lo que miden; achicarlas les quita el sentido.
+- **Lo que esto dice del reparto**: el job tarda lo que su shard más lento, y el shard que toma la de
+  bitácora tarda al menos lo que ella. Repartir por turno no la aísla; si después de medir el CI
+  (T037) ese shard es el cuello, la siguiente palanca es mandarla sola a un shard, no más shards.
+- **Sin verificar**: la duración completa de la #1. En las dos corridas la cortó un
+  `57P01 terminating connection due to administrator command` del Postgres de pruebas, compartido en
+  ese momento con otra corrida de la suite en el mismo worktree. El número real sale del artefacto
+  `integration-go-test-json-N` del primer CI.
+- `internal/httpapi` (con tag `integration`) no se midió aquí; va entero en el shard 1.
 
 ## Project Structure
 

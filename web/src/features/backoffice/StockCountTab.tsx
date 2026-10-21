@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { medirAccion } from '../../api/uso';
 import { Box, Button, Center, HStack, Input, Progress, Spinner, Text, VStack } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -20,6 +20,7 @@ import { PlaceChooser } from './CountPlaceField';
 import { NO_LOCATION } from './useLocations';
 import { useNavigate } from 'react-router';
 import { can } from '../../app/permissions';
+import { countLimitsApi, DEFAULT_COUNT_LIMITS, overMaxMessage } from '../../api/countLimits';
 
 // Conteo de existencias (spec 038, maqueta «Almacén › Conteo»: las dos vistas). A ciegas —no se ve
 // lo que el sistema tiene—, cada cifra se guarda al capturarla y el cierre dice qué no se contó y
@@ -36,6 +37,50 @@ function saveView(v: View) {
 }
 
 const placeOf = (i: CountItem) => i.place ?? NO_LOCATION;
+
+// ---- Teclado físico (spec 044) ----
+
+// KeyTarget es la captura que recibe las teclas: la hoja o la tarjeta abierta se registra al montar.
+// Un solo listener en StockCountTab, no uno por teclado: con dos montados cada tecla se escribiría dos veces.
+interface KeyTarget { key: (k: string) => void; next?: () => void; save: () => void }
+const KeyTargetContext = createContext<{ current: KeyTarget | null } | null>(null);
+
+function useKeyTarget(target: KeyTarget) {
+  const ref = useContext(KeyTargetContext);
+  const latest = useRef(target);
+  useEffect(() => { latest.current = target; });
+  useEffect(() => {
+    if (!ref) return;
+    const proxy: KeyTarget = {
+      key: (k) => latest.current.key(k),
+      get next() { return latest.current.next; },
+      save: () => latest.current.save(),
+    };
+    ref.current = proxy;
+    return () => { if (ref.current === proxy) ref.current = null; };
+  }, [ref]);
+}
+
+// ownsKeys decide si la tecla es del conteo. Las casillas del conteo son de solo lectura (las llena el
+// teclado); en otro campo o en un botón la tecla es de ellos (Enter sobre un botón ya hace su clic).
+// Otra hoja abierta (el aviso de cifra rara, el lugar) tampoco se la deja al conteo.
+function ownsKeys(e: KeyboardEvent): boolean {
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  const el = e.target instanceof HTMLElement ? e.target : null;
+  if (el) {
+    if (el.isContentEditable || el.tagName === 'BUTTON' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') return false;
+    if (el.tagName === 'INPUT' && !(el as HTMLInputElement).readOnly) return false;
+  }
+  const dialogs = [...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')];
+  return dialogs.every((d) => d.querySelector('[data-count-entry]') !== null);
+}
+
+function keyOf(e: KeyboardEvent): string | null {
+  if (/^\d$/.test(e.key)) return e.key;
+  if (e.key === '.' || e.key === ',') return '.';
+  if (e.key === 'Backspace') return 'back';
+  return null;
+}
 
 export function StockCountTab() {
   const qc = useQueryClient();
@@ -60,6 +105,26 @@ export function StockCountTab() {
   });
   const lossCountId = closedId ?? lastClosed?.id ?? null;
   useEffect(() => { medirAccion('inventario', 'ver-conteo'); }, []);
+  // Se vuelven a leer al abrir el conteo: un cambio de límites aplica a la siguiente captura.
+  useQuery({ queryKey: ['count-limits'], queryFn: countLimitsApi.get, refetchOnMount: 'always', retry: false });
+  const keyTarget = useRef<KeyTarget | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = keyTarget.current;
+      if (!t || !ownsKeys(e)) return;
+      if (e.key === 'Tab') {
+        if (e.shiftKey || !t.next) return;
+        e.preventDefault();
+        t.next();
+        return;
+      }
+      if (e.key === 'Enter') { e.preventDefault(); t.save(); return; }
+      const k = keyOf(e);
+      if (k) { e.preventDefault(); t.key(k); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const open = useMutation({
     mutationFn: backofficeApi.openCount,
@@ -116,6 +181,7 @@ export function StockCountTab() {
   const pickView = (v: View) => { setView(v); saveView(v); };
 
   return (
+    <KeyTargetContext.Provider value={keyTarget}>
     <VStack align="stretch" gap={3} h="100%" minH={0}>
       <HStack gap={3} flexWrap="wrap">
         <Box flex="1" minW="260px">
@@ -163,6 +229,7 @@ export function StockCountTab() {
           }} />
       )}
     </VStack>
+    </KeyTargetContext.Provider>
   );
 }
 
@@ -193,6 +260,10 @@ function useEntry(item: CountItem) {
   // Sin peso, el total se sabe aquí. Con peso lo calcula el servidor (no se adivina el redondeo).
   const total = !captured || invalid || unit.weightCode ? null
     : Number(((fromPacks ?? 0) + (restNum.estado === 'valido' ? restNum.valor * unit.factor : 0)).toFixed(4));
+  // Si no se pudieron leer, los de siempre; el servidor decide con los de la empresa.
+  const { data: limits = DEFAULT_COUNT_LIMITS } = useQuery({ queryKey: ['count-limits'], queryFn: countLimitsApi.get, retry: false });
+  // Con peso el total lo calcula el servidor: ahí el máximo lo dice su 400.
+  const overMax = total !== null ? overMaxMessage(limits, item.baseUnitCode, total) : null;
   const key = (k: string) => {
     if (field === 'rest') setRest((v) => pressKey(v, k, unit.decimals));
     else setCounts((cs) => cs.map((c, i) => (i === field ? pressKey(c, k, false) : c)));
@@ -200,7 +271,7 @@ function useEntry(item: CountItem) {
   const bump = (i: number, d: 1 | -1) => setCounts((cs) => cs.map((c, j) => (j === i ? String(Math.max(0, (Number(c) || 0) + d)) : c)));
   const next = () => setField((f) => (f === 'rest' ? (packs.length ? 0 : 'rest') : f + 1 < packs.length ? f + 1 : 'rest'));
   const body = (): CountCaptureBody | null => {
-    if (!captured || invalid) return null;
+    if (!captured || invalid || overMax) return null;
     if (unit.weightCode && restNum.estado === 'valido') {
       const wu = weightUnitId(unit.weightCode);
       return wu ? { countedQty: String(fromPacks ?? 0), weight: String(restNum.valor), weightUnitId: wu, confirmable: true } : null;
@@ -208,10 +279,10 @@ function useEntry(item: CountItem) {
     return { countedQty: String(total), confirmable: true };
   };
   return { packs, units, unit, unitIdx, setUnitIdx, counts, rest, field, setField, total, captured, key, bump, next, body,
-    weighed: !!unit.weightCode && restNum.estado === 'valido', fromPacks, allowDecimal: field === 'rest' && unit.decimals };
+    weighed: !!unit.weightCode && restNum.estado === 'valido', fromPacks, overMax, allowDecimal: field === 'rest' && unit.decimals };
 }
 
-function EntryFields({ item, e }: { item: CountItem; e: ReturnType<typeof useEntry> }) {
+function EntryFields({ item, e, serverError }: { item: CountItem; e: ReturnType<typeof useEntry>; serverError?: string | null }) {
   const box = (active: boolean) => ({
     w: '96px', minH: '56px', fontSize: '2xl', fontWeight: '800', textAlign: 'center' as const, inputMode: 'none' as const, readOnly: true,
     placeholder: '—', borderWidth: '2px', borderColor: active ? 'red.500' : undefined, bg: active ? 'red.subtle' : undefined,
@@ -228,7 +299,7 @@ function EntryFields({ item, e }: { item: CountItem; e: ReturnType<typeof useEnt
     </HStack>
   );
   return (
-    <VStack align="stretch" gap={2} flex="1" minH={0}>
+    <VStack align="stretch" gap={2} flex="1" minH={0} data-count-entry="">
       {many && totalLine}
       {e.packs.length > 0 && (
         <VStack align="stretch" gap={0} overflowY={many ? 'auto' : undefined} flex={many ? '1' : undefined} minH={0}>
@@ -259,6 +330,7 @@ function EntryFields({ item, e }: { item: CountItem; e: ReturnType<typeof useEnt
         ) : <Text fontSize="2xl" fontWeight="800">{e.unit.label}</Text>}
       </HStack>
       {!many && <Box pt={2} borderTopWidth="1px">{totalLine}</Box>}
+      {(e.overMax ?? serverError) && <Text color="red.fg" fontWeight="700" role="alert">{e.overMax ?? serverError}</Text>}
     </VStack>
   );
 }
@@ -267,10 +339,13 @@ function EntryFields({ item, e }: { item: CountItem; e: ReturnType<typeof useEnt
 // confirmar mostrándola en grande; el servidor no dice contra qué comparó.
 function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty: string | null) => void) {
   const [confirming, setConfirming] = useState<CountCaptureBody | null>(null);
+  // El 400 del servidor (p. ej. el máximo) se muestra tal cual junto a la cifra.
+  const [serverError, setServerError] = useState<string | null>(null);
   const save = useMutation({
     mutationFn: (b: CountCaptureBody | null) => (b === null
       ? backofficeApi.uncaptureCount(countId, item.ingredientId).then(() => null)
       : backofficeApi.captureCount(countId, item.ingredientId, b)),
+    onMutate: () => setServerError(null),
     onSuccess: (r, b) => {
       setConfirming(null);
       const qty = b === null ? null : r?.countedQty ?? b.countedQty;
@@ -279,10 +354,25 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
     },
     onError: (err, b) => {
       if (b && err instanceof ApiError && err.code === 'NEEDS_CONFIRM') { setConfirming(b); return; }
-      toaster.create({ title: err instanceof ApiError && err.status === 400 ? err.message : 'No se pudo guardar', type: 'error' });
+      if (err instanceof ApiError && err.status === 400) { setConfirming(null); setServerError(err.message); return; }
+      toaster.create({ title: 'No se pudo guardar', type: 'error' });
     },
   });
-  return { save, confirming, setConfirming };
+  return { save, confirming, setConfirming, serverError };
+}
+
+// useCountKeys conecta la captura abierta al teclado físico: Enter es «Guardar» solo si «Guardar» está
+// encendido y no hay aviso abierto (el aviso se confirma tocando su botón).
+function useCountKeys(e: ReturnType<typeof useEntry>, c: ReturnType<typeof useCapture>) {
+  useKeyTarget({
+    key: e.key,
+    next: e.packs.length ? e.next : undefined,
+    save: () => {
+      const b = e.body();
+      if (b === null || c.confirming || c.save.isPending) return;
+      c.save.mutate(b);
+    },
+  });
 }
 
 // NoHay registra el cero con una confirmación en el mismo lugar: con un toque, un dedazo junto a
@@ -385,6 +475,7 @@ function EntrySheet({ countId, item, onClose, onSaved }: {
 }) {
   const e = useEntry(item);
   const c = useCapture(countId, item, onSaved);
+  useCountKeys(e, c);
   return (
     <>
     <DrawerRoot open placement="bottom" size="full" onOpenChange={(x) => { if (!x.open) onClose(); }}>
@@ -393,7 +484,7 @@ function EntrySheet({ countId, item, onClose, onSaved }: {
         <DrawerHeader py={2}><Text fontWeight="700" fontSize="lg">¿Cuánto hay de {item.name}?</Text></DrawerHeader>
         <DrawerBody display="flex" minH={0}>
           <HStack align="stretch" gap={6} flex="1" minH={0}>
-            <EntryFields item={item} e={e} />
+            <EntryFields item={item} e={e} serverError={c.serverError} />
             <Box w="240px" flexShrink={0}><NumericKeypad allowDecimal={e.allowDecimal} onKey={e.key} onNext={e.packs.length ? e.next : undefined} /></Box>
           </HStack>
         </DrawerBody>
@@ -441,6 +532,7 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
 }) {
   const e = useEntry(item);
   const c = useCapture(countId, item, (id, qty) => { onSaved(id, qty); onNext(); });
+  useCountKeys(e, c);
   return (
     <HStack align="stretch" gap={3} flex="1" minH={0}>
       <VStack align="stretch" gap={3} flex="1" minH={0} p={4} borderWidth="1px" borderRadius="lg" bg="bg.panel">
@@ -449,7 +541,7 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
           <Text fontSize="2xl" fontWeight="700" flex="1">{item.name}</Text>
           <PlacePicker item={item} />
         </HStack>
-        <EntryFields item={item} e={e} />
+        <EntryFields item={item} e={e} serverError={c.serverError} />
         <HStack gap={3}>
           <Button minH="44px" variant="outline" disabled={!onPrev} onClick={onPrev}>‹ Anterior</Button>
           <Box flex="1" />

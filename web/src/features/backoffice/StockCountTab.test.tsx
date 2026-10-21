@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -22,6 +22,8 @@ const back = vi.hoisted(() => ({
   createCountPlace: vi.fn(),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
+const limits = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn() }));
+vi.mock('../../api/countLimits', async (orig) => ({ ...(await orig<object>()), countLimitsApi: limits }));
 vi.mock('../../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) } }));
 
 // Doble del Picker sin hoja animada (ver ExpenseDialog.test.tsx).
@@ -77,6 +79,7 @@ beforeEach(() => {
     notCounted: [{ ingredientId: 3, name: 'Limón' }],
   });
   back.closeCount.mockImplementation(() => back.previewCount());
+  limits.get.mockRejectedValue(new Error('sin límites'));
 });
 afterEach(() => {
   cleanup();
@@ -354,5 +357,130 @@ describe('Teclado del conteo (spec 042)', () => {
     back.currentCount.mockResolvedValue(c);
     await abrir(2);
     for (const u of ['piezas', 'g', 'kg']) expect(await screen.findByRole('button', { name: u })).toBeInTheDocument();
+  });
+});
+
+// Spec 044, US4: «datos inválidos» no decía qué corregir. El aviso dice el máximo de la empresa en la
+// unidad grande, antes de mandar nada.
+describe('máximo por conteo (spec 044)', () => {
+  const abrirAzucar = async () => {
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[1]).getByRole('button', { name: 'Contar' }));
+    click(/Siguiente casilla/);
+    fireEvent.click(await screen.findByRole('button', { name: 'kg' }));
+  };
+
+  test('con los límites de la empresa dice su máximo y no deja guardar', async () => {
+    limits.get.mockResolvedValue({
+      mass: { max: 2_000_000, confirm: 50_000 }, volume: { max: 1_000_000, confirm: 50_000 },
+      length: { max: 1_000_000, confirm: 5_000 }, piece: { max: 1_000_000, confirm: 5_000 },
+    });
+    await abrirAzucar();
+    tecla('1'); tecla('5'); tecla('0'); tecla('0');
+    expect(screen.queryByText(/Máximo .* por conteo/)).toBeNull();
+    tecla('borrar'); tecla('borrar'); tecla('borrar'); tecla('borrar');
+    tecla('2'); tecla('5'); tecla('0'); tecla('0');
+    expect(await screen.findByText('Máximo 2,000 kg por conteo')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    expect(back.captureCount).not.toHaveBeenCalled();
+  });
+
+  test('si no se pudieron leer los límites usa los de siempre', async () => {
+    await abrirAzucar();
+    tecla('1'); tecla('5'); tecla('0'); tecla('0');
+    expect(await screen.findByText('Máximo 1,000 kg por conteo')).toBeInTheDocument();
+  });
+
+  test('un 400 del servidor se muestra tal cual', async () => {
+    back.captureCount.mockRejectedValueOnce(new ApiError(400, 'VALIDATION', 'Máximo 3 kg por conteo', 'r'));
+    await abrirAzucar();
+    tecla('5');
+    click('Guardar');
+    expect(await screen.findByText('Máximo 3 kg por conteo')).toBeInTheDocument();
+  });
+});
+
+// Spec 044, US5: con un teclado conectado, tocar la pantalla cuesta tiempo. Un solo listener en el
+// conteo; no se apropia de las teclas cuando el foco está en otro control o hay otra hoja abierta.
+describe('teclado físico (spec 044)', () => {
+  const press = (key: string, target: Element | Window = document.body) => fireEvent.keyDown(target, { key });
+  const abrir = async (n = 0) => {
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[n]).getByRole('button', { name: 'Contar' }));
+    await screen.findByRole('button', { name: 'Guardar' });
+  };
+  const suelto = () => screen.getByLabelText('Suelto de Jarabe de vainilla');
+
+  test('números, punto y coma como punto, Retroceso; letras ignoradas; cada tecla una vez', async () => {
+    await abrir();
+    press('Tab'); // de la botella a lo suelto
+    for (const k of ['2', 'a', ',', '5', '7', 'Backspace']) press(k);
+    expect(suelto()).toHaveValue('2.5');
+    press('.');
+    expect(suelto()).toHaveValue('2.5');
+  });
+
+  test('Tab pasa a la siguiente casilla solo si la hay', async () => {
+    await abrir();
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    act(() => { document.body.dispatchEvent(tab); });
+    expect(tab.defaultPrevented).toBe(true);
+    press('3');
+    expect(suelto()).toHaveValue('3');
+    cleanup();
+    // Limón tiene una sola casilla; en «uno por uno» no hay hoja que atrape el Tab por su cuenta.
+    const c = conteo();
+    c.items = [c.items[2]];
+    back.currentCount.mockResolvedValue(c);
+    localStorage.setItem('egb:conteo:vista', 'uno');
+    montar();
+    await screen.findByRole('button', { name: /Guardar y seguir/ });
+    const tab2 = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    act(() => { document.body.dispatchEvent(tab2); });
+    expect(tab2.defaultPrevented).toBe(false);
+  });
+
+  test('Enter guarda; sin captura no hace nada', async () => {
+    await abrir();
+    press('Enter');
+    expect(back.captureCount).not.toHaveBeenCalled();
+    press('Tab'); press('2'); press('5');
+    press('Enter');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, { countedQty: '25', confirmable: true }));
+    expect(back.captureCount).toHaveBeenCalledTimes(1);
+  });
+
+  test('con el aviso de cifra rara abierto, Enter no confirma', async () => {
+    back.captureCount.mockRejectedValueOnce(new ApiError(409, 'NEEDS_CONFIRM', '¿seguro?', 'r'));
+    await abrir();
+    press('Tab'); press('9');
+    press('Enter');
+    expect(await screen.findByText('¿Seguro? Revisa la cifra y la unidad')).toBeInTheDocument();
+    press('Enter');
+    press('1');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(back.captureCount).toHaveBeenCalledTimes(1);
+    expect(suelto()).toHaveValue('9');
+  });
+
+  test('con el foco en un campo de texto o un botón no se apropia de las teclas', async () => {
+    montar();
+    const buscar = await screen.findByLabelText('Buscar');
+    buscar.focus();
+    press('2', buscar);
+    fireEvent.click(within(screen.getAllByTestId('renglon-conteo')[0]).getByRole('button', { name: 'Contar' }));
+    await screen.findByRole('button', { name: 'Guardar' });
+    press('Tab');
+    const cancelar = screen.getByRole('button', { name: 'Cancelar' });
+    cancelar.focus();
+    press('4', cancelar);
+    expect(suelto()).toHaveValue('');
+  });
+
+  test('el teclado de la pantalla sigue igual', async () => {
+    await abrir();
+    click(/Siguiente casilla/);
+    tecla('7');
+    expect(suelto()).toHaveValue('7');
   });
 });
