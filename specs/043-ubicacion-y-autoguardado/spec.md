@@ -62,24 +62,24 @@ artículo y una palabra que no se entiende.
 
 ### User Story 2 - La ficha guarda sola (Priority: P1)
 
-Cada cambio en la ficha se guarda en cuanto se termina de capturar: las listas al elegir, el texto
-y los números al salir del campo o con Enter. No hay botón «Guardar», y al salir solo se pregunta si
+Cada cambio en la ficha se guarda solo: las listas e interruptores al elegir; el texto y los números
+tras 2 segundos sin escribir y también al salir del campo. No hay botón «Guardar», y al salir solo se pregunta si
 algo quedó sin guardar.
 
 **Why this priority**: el botón aparecía y desaparecía, el aviso de salir mentía (#119) y cada
 cambio costaba un toque más.
 
-**Independent Test**: cambiar el nombre de un artículo, salir del campo y volver a la lista sin
-tocar nada más: el nombre nuevo está en la lista y no hubo pregunta al salir.
+**Independent Test**: cambiar el nombre de un artículo, esperar 2 segundos sin tocar nada y volver
+a la lista: el nombre nuevo está en la lista y no hubo pregunta al salir.
 
 **Acceptance Scenarios**:
 
 1. **Given** la ficha, **When** se elige una categoría o una ubicación, **Then** se guarda en ese
    momento.
-2. **Given** la ficha, **When** se cambia el nombre o el mínimo y se sale del campo o se oprime
-   Enter, **Then** se guarda.
-3. **Given** un guardado en curso, **Then** junto al título se ve «Guardando…» con un indicador de
-   espera; al terminar, «Guardado ✓».
+2. **Given** la ficha, **When** se cambia el nombre o el mínimo y pasan 2 segundos sin escribir, o se
+   sale del campo, **Then** se guarda. Enter también guarda, como atajo; nunca es necesario.
+3. **Given** un campo con cambios que todavía no se mandan, **Then** junto al título se ve un punto
+   discreto; mientras guarda, «Guardando…» con un indicador de espera; al terminar, «Guardado ✓».
 4. **Given** que el guardado falla por la red, **Then** se ve «No se pudo guardar · Reintentar» y el
    campo conserva lo escrito, marcado; «Reintentar» manda lo que se ve. Si el servidor lo rechaza
    (otra persona lo cambió o el dato no vale), el campo vuelve a lo guardado y se dice por qué.
@@ -168,6 +168,10 @@ prueba de la spec 040 quedó rota sin que nadie la corriera antes de mergear.
   elige la que existe.
 - **Nombre de ubicación demasiado largo**: no se puede escribir más allá del tope.
 - **Salir de un campo sin cambiar nada**: no se manda nada ni aparece «Guardando…».
+- **Una pausa a media cifra** («1» … «5»): puede guardar 1 y luego 15; la bitácora lo muestra como un
+  solo cambio al valor final.
+- **Borrar el campo para reescribirlo**: vacío no se manda por la pausa; si se sale del campo vacío,
+  el nombre se marca como inválido y el mínimo queda «sin mínimo».
 - **Otra persona cambió la ficha mientras se veía**: el guardado se rechaza, se avisa y la ficha se
   recarga con lo que hay; no se pisa.
 - **Se cae la red a media captura**: «No se pudo guardar · Reintentar» y el campo conserva lo escrito,
@@ -196,12 +200,14 @@ prueba de la spec 040 quedó rota sin que nadie la corriera antes de mergear.
   administrador que la cree».
 - **FR-006**: La lista de artículos MUST NOT llevar un botón de ubicación en el renglón.
 - **FR-007**: La ficha MUST guardar cada cambio sola: las listas al elegir, el texto y los números al
-  salir del campo o con Enter. MUST NOT tener botón «Guardar». Al salir MUST preguntar «¿Descartar
+  dejar de escribir 2 segundos y también al salir del campo; Enter es un atajo, nunca un requisito.
+  MUST NOT tener botón «Guardar». Al salir MUST preguntar «¿Descartar
   cambios?» solo si algo quedó sin guardar (un guardado fallido o un dato inválido).
 - **FR-008**: Los guardados de la ficha MUST ir en cola, uno a la vez y en el orden en que se
   hicieron. Ningún campo se deshabilita mientras guarda; lo que se escriba después entra a la cola. En
   listas e interruptores, un segundo toque mientras guardan se ignora.
-- **FR-009**: Junto al título MUST haber un solo indicador: «Guardando…» con indicador de espera,
+- **FR-009**: Junto al título MUST haber un solo indicador: un punto discreto mientras hay cambios sin
+  mandar, «Guardando…» con indicador de espera,
   «Guardado ✓» o «No se pudo guardar · Reintentar». Si falla por la red, el campo MUST conservar lo
   escrito, marcado, y «Reintentar» manda lo que se ve; si el servidor lo rechaza, MUST volver a lo
   guardado y decir por qué.
@@ -226,8 +232,14 @@ prueba de la spec 040 quedó rota sin que nadie la corriera antes de mergear.
   conteo». Nada del pasado se recalcula.
 - **FR-019**: Todo control tocable MUST medir 44 px o más, y ningún selector es nativo.
 - **FR-020**: Cada guardado de la ficha MUST dejar su evento en la bitácora como hoy
-  (`ingredient.updated`), uno por guardado.
+  (`ingredient.updated`), uno por guardado. La bitácora del artículo MUST mostrar como una sola
+  entrada los guardados seguidos del mismo campo, por el mismo usuario, separados por menos de un
+  minuto: con el valor de antes del primero y el valor final del último. Los eventos no se borran ni
+  se reescriben; solo se juntan al mostrarlos.
 - **FR-021**: La hoja de empaques MUST NOT tener la fila de ubicación; se elige en la ficha.
+- **FR-022**: Lo que se está escribiendo MUST NOT guardarse a medias cuando todavía no es un valor:
+  un número que termina en punto o en signo, o un campo vacío, no se manda por la pausa de 2
+  segundos; se valida y se manda (o se marca) al salir del campo.
 
 ### Key Entities
 
@@ -260,7 +272,11 @@ prueba de la spec 040 quedó rota sin que nadie la corriera antes de mergear.
   autoguardado se active; si su causa es del servidor, el arreglo vale también para «Nuevo
   artículo».
 - **Bitácora**: el autoguardado manda un cambio por guardado; la bitácora deja un evento por cada uno,
-  con solo lo que cambió.
+  con solo lo que cambió, y la pantalla los junta (FR-020). La bitácora no admite modificar ni borrar
+  registros (0089), así que juntarlos al guardar no es posible sin cambiar esa regla.
+- **Número a medias**: escribir «15» con una pausa entre el 1 y el 5 puede guardar 1 y después 15.
+  Se acepta: el valor final es el correcto y la bitácora los muestra juntos. Lo que no se acepta es
+  guardar algo que no es un número todavía («1.», «-», vacío), y eso lo impide FR-022.
 - **Ubicación es lo mismo que el «lugar para contar» de la spec 040**: solo cambia la palabra en las
   pantallas del almacén. No es un almacén (#65).
 - **Fuera de alcance**: catálogo de empaques editable (#121), mover varios artículos a una ubicación

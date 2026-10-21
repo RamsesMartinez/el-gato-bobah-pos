@@ -41,12 +41,17 @@ Reglas que aplican a todas las tareas:
   - salir de un campo sin cambiarlo no encola nada (E5);
   - un dato inválido se marca y no se encola (E6);
   - esperar a vaciar la cola resuelve cuando termina el último guardado (E4);
-  - escribir en un campo mientras otro guarda no pierde lo escrito ni cierra el teclado (R1).
+  - escribir en un campo mientras otro guarda no pierde lo escrito ni cierra el teclado (R1);
+  - con reloj simulado: cada tecla reinicia la pausa de 2 s; «1», pausa, «5» manda 1 y después 15, y
+    si el 1 todavía no sale, se reemplaza por 15 en vez de mandar dos (E12);
+  - «1.», «-» y vacío no se mandan por la pausa; al salir del campo se validan (FR-022, E12).
 - [ ] T008 [US2] `useAutosave.ts` hasta que T007 pase.
 - [ ] T009 [P] [US2] vitest de la ficha en `ArticleSheets.test.tsx` (Maquetas › Ficha del artículo):
   - no hay «Guardar»; «¿Descartar cambios?» solo aparece con algo sin guardar, nunca con todo
     guardado (cierra #119);
-  - categoría y ubicación guardan al elegir; nombre y mínimo al salir del campo o con Enter;
+  - categoría y ubicación guardan al elegir; nombre y mínimo tras 2 s sin escribir y al salir del
+    campo; Enter guarda pero nunca es necesario;
+  - el punto junto al título aparece con cambios sin mandar y cambia a «Guardando…» y «Guardado ✓»;
   - el indicador muestra «Guardando…», «Guardado ✓» y «No se pudo guardar · Reintentar»;
   - ningún campo se deshabilita mientras guarda;
   - «‹ Artículos», el fondo y Escape guardan el campo enfocado, esperan la cola y, si
@@ -57,6 +62,13 @@ Reglas que aplican a todas las tareas:
   - «Nuevo artículo» conserva «Guardar».
 - [ ] T010 [US2] `ArticleSheet.tsx` con autoguardado e indicador (Maquetas › Ficha del artículo).
   Cerrar #119.
+
+- [ ] T026 [P] [US2] Integración de `ArticleAudit` en `ingredients_admin_test.go` (E13): tres guardados
+  del mismo campo y usuario a menos de 60 s salen como una entrada con el antes del primero y el después
+  del último; un hueco de 60 s, otro usuario, otro campo o un evento de dos campos corta la cadena; la
+  paginación no parte una entrada; los tres casos de aislamiento (`inTheThreeCases`).
+- [ ] T027 [US2] `db-architect` revisa el cambio de `ArticleAudit` antes de escribirlo. `ArticleAudit` agrupa con funciones de ventana antes de paginar, y `ArticleAuditSheet.tsx`
+  muestra «N cambios» con el valor final, hasta que T026 pase.
 
 ## Phase 4: User Story 1 — Ubicación (P1)
 

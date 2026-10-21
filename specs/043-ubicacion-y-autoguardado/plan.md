@@ -73,7 +73,7 @@ caracteres (0095). Los empaques base no se guardan.
 | Pantalla | Qué cambia | Alto a 1024×600 |
 |---|---|---|
 | **Lista de artículos** | «Lugar» → «Ubicación» en columna y filtro; «Sin lugar» → «Sin definir». Sin botón en el renglón | Igual: 6 renglones de 44 px |
-| **Ficha del artículo** | Sin «Guardar». Junto al título, un indicador: «Guardando…» con spinner, «Guardado ✓» o «No se pudo guardar · Reintentar». Sin campo que se deshabilite al guardar. Campo «Ubicación» con buscador, «Crear "X"», ejemplo «Ej. Refri, Bodega, Barra» sin ubicaciones y «Pídele a un administrador que la cree» sin permiso. Existencia negativa en rojo con «Revisar con un conteo». Costo, unidad y archivar sin cambios de forma; su botón de confirmar con spinner | Encabezado de 44 px igual que hoy: el indicador ocupa el lugar de «Guardar» |
+| **Ficha del artículo** | Sin «Guardar». Texto y números guardan tras 2 s sin escribir y al salir del campo; Enter es atajo. Junto al título, un indicador: un punto discreto con cambios sin mandar, «Guardando…» con spinner, «Guardado ✓» o «No se pudo guardar · Reintentar». Sin campo que se deshabilite al guardar. Campo «Ubicación» con buscador, «Crear "X"», ejemplo «Ej. Refri, Bodega, Barra» sin ubicaciones y «Pídele a un administrador que la cree» sin permiso. Existencia negativa en rojo con «Revisar con un conteo». Costo, unidad y archivar sin cambios de forma; su botón de confirmar con spinner | Encabezado de 44 px igual que hoy: el indicador ocupa el lugar de «Guardar» |
 | **Hoja de empaque nuevo** | «¿En qué empaque lo compras?» con botones base por clase más los aprendidos, ninguno elegido, «Otro» abre el campo «Ej. Cubeta, Garrafa». Una línea de ayuda arriba. Sin la fila de ubicación. Debajo de «Trae», la frase «1 bolsa = 5 kg». Selector de unidad igual al de «Mínimo» | Hoja de ~420 px |
 
 ### Maquetas
@@ -94,8 +94,9 @@ El código de cada maqueta está en [maquetas/](maquetas/). La lista solo cambia
 | Crear ubicación pide `inventory.configure` | httpapi | `router.go` (`POST /stock/count-places`) |
 | `PATCH /stock/articles/{id}` acepta un solo campo sin tocar los demás y responde el `updatedAt` nuevo (R3) | app + httpapi | `app/ingredients_admin.go`, `handlers_ingredients_admin.go` |
 | Arreglo de #120 donde esté la causa | por determinar | prueba primero |
-| Cola de autoguardado (uno a la vez, en orden, revertir al fallar, esperar al salir) | web | `features/backoffice/articles/useAutosave.ts` |
-| Ficha con autoguardado, indicador, Ubicación y existencia negativa | web | `ArticleSheet.tsx` |
+| Cola de autoguardado: pausa de 2 s o salir del campo; uno a la vez, en orden; un campo con un guardado pendiente se reemplaza por su valor más nuevo en vez de mandar dos; al fallar por la red conserva lo escrito y revierte solo con un rechazo del servidor; esperar al salir | web | `features/backoffice/articles/useAutosave.ts` |
+| Ficha con autoguardado, indicador (punto, «Guardando…», «Guardado ✓»), Ubicación y existencia negativa | web | `ArticleSheet.tsx` |
+| Bitácora del artículo junta los guardados seguidos del mismo campo y usuario en menos de un minuto | sqlc + app + web | `queries/ingredients_admin.sql` (`ArticleAudit`), `app/ingredients_admin.go`, `ArticleAuditSheet.tsx` |
 | Campo de ubicación con alta según permiso y textos nuevos | web | `CountPlaceField.tsx` |
 | Lista: «Ubicación» y «Sin definir» | web | `ArticlesTab.tsx`, `NewArticleSheet.tsx` |
 | Empaques base por clase y hoja nueva | web | `shared/units.ts` o `articleUnits.ts`, `PresentationsSheet.tsx` |
@@ -108,7 +109,9 @@ El código de cada maqueta está en [maquetas/](maquetas/). La lista solo cambia
 | E1 | Dos cambios seguidos en campos distintos | Cola: el segundo sale cuando responde el primero, con el `updatedAt` que devolvió | vitest |
 | E2 | El guardado falla | Por la red: el campo conserva lo escrito, marcado, y «Reintentar» manda lo que se ve. Rechazo del servidor (409, 400): vuelve a lo guardado y dice por qué | vitest |
 | E3 | Otra persona cambió la ficha | 409 `STALE`: se avisa y se recarga; no se pisa | vitest e integración (ya existe) |
-| E4 | Salir con un guardado en curso, con el foco todavía en el campo, o con el último guardado fallido | Toda salida guarda el campo enfocado y espera la cola; con un fallo no sale (R2) | vitest |
+| E4 | Salir con un guardado en curso, con el foco todavía en el campo, o con el último guardado fallido | Toda salida guarda el campo enfocado y espera la cola; con algo sin guardar pregunta «¿Descartar cambios?» (R2) | vitest |
+| E12 | Pausa a media cifra o valor que todavía no es número («1.», «-», vacío) | La pausa de 2 s solo manda valores completos; lo incompleto se valida al salir del campo (FR-022) | vitest con reloj simulado |
+| E13 | Bitácora llena de guardados de un mismo campo | Se juntan al leer: mismo artículo, campo, usuario y acción, cada uno a menos de 60 s del anterior (reloj de la base), con el antes del primero y el después del último | integración de la consulta y vitest de la hoja |
 | E5 | Salir de un campo sin cambiarlo | No se encola nada | vitest |
 | E6 | Dato inválido | Se marca y no se encola | vitest |
 | E7 | El mismo mínimo dos veces (#120) | Prueba que guarda dos veces y compara | vitest e integración |
@@ -120,7 +123,8 @@ El código de cada maqueta está en [maquetas/](maquetas/). La lista solo cambia
 ## Revisión after_plan (2026-10-20)
 
 `/revision-de-arquitectura`: `tablet-ui-reviewer` aprobó con cambios; `db-architect` no corrió porque
-el plan no agrega tablas, columnas, índices ni consultas. Lo que se aplica:
+el plan no agregaba tablas, columnas, índices ni consultas. La segunda ronda de decisiones cambia la
+consulta `ArticleAudit` (E13): `db-architect` la revisa antes de implementarla (T027). Lo que se aplica:
 
 **Altos**
 - **R1 — el guardado no desmonta la ficha.** Hoy `refresh()` deja la ficha en espera y vuelve a llenar
@@ -159,6 +163,26 @@ el plan no agrega tablas, columnas, índices ni consultas. Lo que se aplica:
 - Ningún campo se deshabilita mientras guarda (cerraría el teclado): la cola cubre la concurrencia. En
   listas e interruptores, un segundo toque mientras guardan se ignora.
 - La hoja de empaques pierde la fila de ubicación.
+
+**Decisiones del dueño (2026-10-20, segunda ronda)**
+- Texto y números se guardan tras 2 segundos sin escribir y también al salir del campo. Enter es atajo,
+  nunca requisito: en tableta casi nadie lo usa y tocar una zona vacía no siempre quita el foco.
+- Un punto discreto junto al título mientras hay cambios sin mandar; luego «Guardando…» y «Guardado ✓».
+- La bitácora junta los guardados seguidos del mismo campo y usuario en menos de un minuto.
+
+### Cómo se junta la bitácora (propuesta)
+
+`audit_events` no admite `update` ni `delete` (trigger de la 0089), así que juntar al escribir exigiría
+cambiar esa regla. Se junta al **leer**, en `ArticleAudit`:
+- Dos eventos van en la misma entrada si son del mismo artículo, la misma acción (`ingredient.updated`),
+  el mismo usuario y el mismo y único campo cambiado, y cada uno ocurrió a menos de 60 segundos del
+  anterior según `occurred_at` (reloj de la base). Una cadena puede durar más de un minuto mientras no
+  haya un hueco de 60 s.
+- La entrada muestra el `before` del primero y el `after` del último, la hora del último y «N cambios».
+- Un evento que cambia dos campos, de otro usuario o de otra acción, corta la cadena.
+- Se agrupa en SQL con funciones de ventana (`lag` para marcar dónde empieza cada grupo), antes de
+  paginar, para que «Ver más» no parta una entrada en dos páginas.
+- Nada se pierde: Negocio › Bitácora sigue mostrando cada evento.
 
 ## Al construir
 
