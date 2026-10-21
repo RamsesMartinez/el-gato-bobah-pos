@@ -23,7 +23,8 @@ Reglas que aplican a todas las tareas:
   diga qué se rompía («guardar el mismo mínimo dos veces deja el mismo valor»).
 - [ ] T004 Arreglo de #120 hasta que T003 pase. Cerrar #120 con la liga al commit.
 - [ ] T005 [P] Prueba de integración: `PATCH /stock/articles/{id}` con un solo campo cambia ese campo y
-  deja los demás como estaban, y su evento `ingredient.updated` trae solo lo que cambió (FR-020).
+  deja los demás como estaban, y su evento `ingredient.updated` trae solo lo que cambió (FR-020). Bajo
+  `appRoleStore` con `inTheThreeCases` (otra empresa, conexión reciclada y sin empresa).
 - [ ] T006 `app/ingredients_admin.go` y su handler aceptan un solo campo, también con `null` explícito,
   y responden el `updatedAt` nuevo (Revisión R3), hasta que T005 pase.
 
@@ -60,15 +61,19 @@ Reglas que aplican a todas las tareas:
   ubicación sin `inventory.configure` da 403 y con él la crea; una repetida por acentos o mayúsculas
   devuelve la que existe (E8); los tres casos de aislamiento (`inTheThreeCases`) (E9).
 - [ ] T012 [US1] `router.go`: `POST /stock/count-places` pasa a `RequirePermission(inventory.configure)`.
-- [ ] T013 [P] [US1] vitest del campo en `CountPlaceField.test.tsx` y `ArticleSheets.test.tsx`
+- [ ] T013 [US1] vitest del campo en `CountPlaceField.test.tsx` y `ArticleSheets.test.tsx`
   (Maquetas › Ficha del artículo):
   - se llama «Ubicación» y su vacío «Sin definir»;
   - sin ubicaciones muestra «Ej. Refri, Bodega, Barra»;
   - buscar sin acentos ni mayúsculas;
   - «Crear "X"» con `inventory.configure`; sin él, «Pídele a un administrador que la cree»;
   - en el conteo, quien solo cuenta ya no ve «Crear» y lee el aviso (R8);
-  - «Crear "X"» va primero, debajo del buscador, cuando no hay coincidencia exacta (R4).
-- [ ] T014 [US1] `CountPlaceField.tsx`, `ArticleSheet.tsx`, `ArticlesTab.tsx` y `NewArticleSheet.tsx`:
+  - «Crear "X"» va primero, debajo del buscador, cuando no hay coincidencia exacta (R4);
+  - el filtro de la lista dice «Ubicación: Todas» y «Sin definir», y el conteo dice «ubicación»;
+  - el nombre no pasa del tope de 30 caracteres;
+  - un artículo con una ubicación archivada se ve «Sin definir».
+- [ ] T014 [US1] `CountPlaceField.tsx`, `ArticleSheet.tsx`, `ArticlesTab.tsx`, `NewArticleSheet.tsx` y
+  `StockCountTab.tsx`:
   «Ubicación», «Sin definir» y alta según permiso. La lista no lleva botón en el renglón.
 
 ## Phase 5: User Story 3 — Empaques sin adivinar (P2)
@@ -79,7 +84,8 @@ Reglas que aplican a todas las tareas:
   - «¿En qué empaque lo compras?» y la frase «1 bolsa = 5 kg» que cambia con lo capturado;
   - «Se cuenta en …» ya no aparece suelto;
   - con un empaque en captura se oculta la fila de ubicación y la frase va junto al pie (R5);
-  - el empaque aproximado de un artículo en piezas sigue disponible (R6).
+  - el empaque aproximado de un artículo en piezas sigue disponible (R6);
+  - el selector de unidad de «Trae» es el mismo componente que el de «Mínimo» (FR-017).
 - [ ] T016 [US3] Empaques base en `articleUnits.ts` y hoja en `PresentationsSheet.tsx`, con el selector
   de unidad de «Trae» igual al de «Mínimo».
 
@@ -96,9 +102,9 @@ Reglas que aplican a todas las tareas:
   hoy (cierra T045 de la 042 cuando se mergee).
 - [X] T020 [US5] `web/e2e/lugares-para-contar.spec.ts`: la ubicación se elige en 3 toques desde la
   ficha, sin teclado y sin «Guardar». Falla hasta que T010 y T014 estén desplegados.
-- [ ] T025 [US5] e2e de la hoja de empaque con el alto reducido por el teclado: la frase y «Guardar
-  empaque» quedan a la vista (R5).
 - [ ] T021 [US5] Correr la suite e2e completa contra el ambiente de pruebas con la 043 desplegada.
+- [ ] T025 [US5] e2e de la hoja de empaque con el alto reducido por el teclado: la frase y «Guardar
+  empaque» quedan a la vista (R5), y todo control de la hoja mide 44 px o más (FR-019).
 
 ## Phase 8: Polish
 

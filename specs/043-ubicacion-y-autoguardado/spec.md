@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-20
 
-**Status**: Decisiones del dueño tomadas (2026-10-20); pendiente de plan
+**Status**: Decisiones del dueño tomadas (2026-10-20); plan y tareas listos, sin implementar
 
 **Input**: Seguimiento de la spec 042 (gestión de artículos del almacén), con las decisiones del dueño
 tras probar la 042 en tableta el 2026-10-20. Cierra #119, depende de #120 y cubre la palabra

@@ -152,12 +152,19 @@ el plan no agrega tablas, columnas, índices ni consultas. Lo que se aplica:
 
 **Bajos**
 - La existencia negativa va en su propio renglón, con texto además del rojo.
-- El campo que guarda no se deshabilita (quitaría el teclado): la cola absorbe lo que se siga escribiendo.
 
 **Pendiente del dueño (choca con su decisión)**: si un guardado falla por la red, la decisión dice que
 el campo vuelve a su valor anterior. El revisor propone dejar lo escrito, marcado, con «Reintentar», y
 revertir solo cuando el servidor lo rechaza (otra persona lo cambió o el dato no vale): así
 «Reintentar» manda lo que se ve. Hasta que el dueño decida, el plan sigue su decisión.
+
+**Pendiente del dueño (2)**: la decisión dice que solo se bloquea el campo que guarda. El revisor advierte
+que deshabilitar el campo enfocado cierra el teclado de la tableta, y propone no deshabilitarlo y que
+la cola absorba lo que se siga escribiendo. Hasta que el dueño decida, el plan sigue su decisión.
+
+## Al construir
+
+(Se llena al implementar: causa de #120 y lo que no se vio venir.)
 
 ## Project Structure
 
