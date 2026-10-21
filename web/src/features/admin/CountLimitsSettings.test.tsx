@@ -87,4 +87,10 @@ describe('Límites del conteo (spec 044, US6)', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByText('Límites del conteo')).toBeNull();
   });
+  it('explica la sección sin jerga: sin «referencia»', async () => {
+    montar();
+    expect(await screen.findByText('Lo más que se puede registrar de un artículo en un conteo.')).toBeInTheDocument();
+    expect(screen.getByText('Si lo contado pasa de esta cifra, el conteo pide confirmar.')).toBeInTheDocument();
+    expect(screen.queryByText(/referencia/)).toBeNull();
+  });
 });

@@ -58,4 +58,12 @@ describe('Gráfica de costos', () => {
     fireEvent.pointerDown(document.body);
     expect(container.querySelector('[data-tip]')).toBeNull();
   });
+  it('rotula el costo mínimo y el máximo, y el mínimo no toca el piso', () => {
+    const { container } = montar([item(19, '0.060'), item(12, '0.070'), item(5, '0.057')]);
+    expect(container.querySelector('[data-axis="max"]')?.textContent).toBe('$70.00');
+    expect(container.querySelector('[data-axis="min"]')?.textContent).toBe('$57.00');
+    const ys = [...container.querySelectorAll('[data-point]')].map((g) => Number((g.tagName === 'circle' ? g : g.querySelector('circle'))!.getAttribute('cy')));
+    // El piso está en 160 (190 - 30): el punto más bajo queda al menos 20 px arriba.
+    expect(Math.max(...ys)).toBeLessThanOrEqual(140);
+  });
 });

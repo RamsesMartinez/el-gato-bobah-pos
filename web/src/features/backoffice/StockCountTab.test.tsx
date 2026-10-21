@@ -378,7 +378,7 @@ describe('máximo por conteo (spec 044)', () => {
     await abrirAzucar();
     tecla('1'); tecla('5'); tecla('0'); tecla('0');
     expect(screen.queryByText(/Máximo .* por conteo/)).toBeNull();
-    tecla('borrar'); tecla('borrar'); tecla('borrar'); tecla('borrar');
+    tecla('Borrar'); tecla('Borrar'); tecla('Borrar'); tecla('Borrar');
     tecla('2'); tecla('5'); tecla('0'); tecla('0');
     expect(await screen.findByText('Máximo 2,000 kg por conteo')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();

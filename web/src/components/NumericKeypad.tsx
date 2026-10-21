@@ -24,7 +24,7 @@ export function NumericKeypad({ allowDecimal, onKey, onNext }: {
       {KEYS.map((k) => key(k))}
       {allowDecimal ? key('.', 'punto') : <span />}
       {key('0')}
-      {key('back', 'borrar')}
+      {key('back', 'Borrar')}
       {onNext && (
         <Button gridColumn="span 3" minH="56px" variant="outline" onMouseDown={(e) => e.preventDefault()} onClick={onNext}>
           Siguiente casilla ›

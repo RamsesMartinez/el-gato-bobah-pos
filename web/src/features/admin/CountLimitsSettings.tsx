@@ -16,8 +16,8 @@ type Field = 'max' | 'confirm';
 type Draft = Record<UnitClass, Record<Field, string>>;
 
 const FIELDS: { f: Field; label: string; hint: string }[] = [
-  { f: 'max', label: 'Máximo por conteo', hint: 'Lo más que se puede registrar de un artículo en un conteo' },
-  { f: 'confirm', label: 'Pedir confirmar desde', hint: 'Si lo contado pasa de esta cifra, el conteo pide confirmar' },
+  { f: 'max', label: 'Máximo por conteo', hint: 'Una cifra mayor no se acepta.' },
+  { f: 'confirm', label: 'Pedir confirmar desde', hint: 'Si lo contado pasa de esta cifra, el conteo pide confirmar.' },
 ];
 
 const toDraft = (l: CountLimits): Draft => Object.fromEntries(UNIT_CLASSES.map((c) => [c, {
@@ -86,8 +86,7 @@ export function CountLimitsSettings() {
     <Box mt={6} pt={4} borderTopWidth="1px" data-testid="limites-conteo">
       <Text fontWeight="700" fontSize="lg">Límites del conteo</Text>
       <Text fontSize="sm" color="fg.muted" mb={3}>
-        Lo más que se puede registrar de un artículo en un conteo, y desde qué cifra se pide confirmar si el
-        artículo no tiene otra referencia.
+        Lo más que se puede registrar de un artículo en un conteo.
       </Text>
       <Grid templateColumns="minmax(90px, auto) 1fr 1fr" gap={2} alignItems="center" maxW="640px">
         <span />

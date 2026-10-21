@@ -79,7 +79,7 @@
 - [X] T038 Playwright en local (:3044) a 1024×600: la lista conserva 6 renglones; la sección de límites con controles de 44 px y «Guardar límites» visible con el teclado del sistema simulado, en web/e2e/gestion-de-articulos.spec.ts
 - [X] T039 `make api-build && make api-test`, `make test-integration`, `make web-test`, `make web-lint`
 - [X] T040 AGENTS.md: renglón de «Límites del conteo» (tabla, defaults en la columna, solo el conteo los usa)
-- [ ] T041 Prueba con usuario sin contexto en local (:3044, 1024×600, claro y oscuro) y anotar en plan › Al construir
+- [X] T041 Prueba con usuario sin contexto en local (:3044, 1024×600, claro y oscuro) y anotar en plan › Al construir
 - [ ] T042 Dejar la 044 corriendo en local para el dueño; PR #125 en borrador
 
 ## Dependencies
