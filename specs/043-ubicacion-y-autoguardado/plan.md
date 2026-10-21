@@ -92,7 +92,7 @@ El código de cada maqueta está en [maquetas/](maquetas/). La lista solo cambia
 | Pieza | Capa | Dónde |
 |---|---|---|
 | Crear ubicación pide `inventory.configure` | httpapi | `router.go` (`POST /stock/count-places`) |
-| `PATCH /stock/articles/{id}` acepta un solo campo sin tocar los demás (si hoy exige la ficha entera, se ajusta) | app + httpapi | `app/ingredients_admin.go`, `handlers_ingredients_admin.go` |
+| `PATCH /stock/articles/{id}` acepta un solo campo sin tocar los demás y responde el `updatedAt` nuevo (R3) | app + httpapi | `app/ingredients_admin.go`, `handlers_ingredients_admin.go` |
 | Arreglo de #120 donde esté la causa | por determinar | prueba primero |
 | Cola de autoguardado (uno a la vez, en orden, revertir al fallar, esperar al salir) | web | `features/backoffice/articles/useAutosave.ts` |
 | Ficha con autoguardado, indicador, Ubicación y existencia negativa | web | `ArticleSheet.tsx` |
@@ -108,7 +108,7 @@ El código de cada maqueta está en [maquetas/](maquetas/). La lista solo cambia
 | E1 | Dos cambios seguidos en campos distintos | Cola: el segundo sale cuando responde el primero, con el `updatedAt` que devolvió | vitest |
 | E2 | El guardado falla | El campo vuelve a lo último guardado; «Reintentar» manda lo mismo | vitest |
 | E3 | Otra persona cambió la ficha | 409 `STALE`: se avisa y se recarga; no se pisa | vitest e integración (ya existe) |
-| E4 | Salir con un guardado en curso | «‹ Artículos» espera a que la cola se vacíe | vitest |
+| E4 | Salir con un guardado en curso, con el foco todavía en el campo, o con el último guardado fallido | Toda salida guarda el campo enfocado y espera la cola; con un fallo no sale (R2) | vitest |
 | E5 | Salir de un campo sin cambiarlo | No se encola nada | vitest |
 | E6 | Dato inválido | Se marca y no se encola | vitest |
 | E7 | El mismo mínimo dos veces (#120) | Prueba que guarda dos veces y compara | vitest e integración |
@@ -116,6 +116,48 @@ El código de cada maqueta está en [maquetas/](maquetas/). La lista solo cambia
 | E9 | Crear ubicación sin permiso desde una pantalla vieja | 403 con aviso | integración en los tres casos |
 | E10 | Empaque aprendido igual a uno base | Se muestra una vez | vitest |
 | E11 | Recargar con un guardado en curso | Se pierde lo no guardado; la ficha muestra lo del servidor | aceptado, documentado |
+
+## Revisión after_plan (2026-10-20)
+
+`/revision-de-arquitectura`: `tablet-ui-reviewer` aprobó con cambios; `db-architect` no corrió porque
+el plan no agrega tablas, columnas, índices ni consultas. Lo que se aplica:
+
+**Altos**
+- **R1 — el guardado no desmonta la ficha.** Hoy `refresh()` deja la ficha en espera y vuelve a llenar
+  el formulario completo desde el servidor: el teclado se cierra y se pierde lo que se escribía en
+  otro campo. El éxito de un guardado solo actualiza `updatedAt` y lo guardado de ese campo; un campo
+  con borrador sin guardar no se sobrescribe. Se quita el aviso flotante «Guardado» (el indicador ya
+  lo dice). Prueba: «escribo en B mientras A guarda».
+- **R2 — salir sin perder.** En la tableta tocar un botón no siempre quita el foco del campo, así que
+  salir debe forzar el guardado del campo enfocado. «‹ Artículos», el fondo y Escape pasan por la misma
+  función: guarda el campo enfocado, espera la cola y, si el último guardado falló, no sale y deja el
+  aviso. Se agregan a E4 «foco todavía en el campo» y «la espera termina en error».
+
+**Medios**
+- **R3 — `PATCH` por campo es tarea fija**, con prueba: un campo no toca los demás, tampoco con `null`
+  explícito, y la respuesta trae el `updatedAt` nuevo (si no, el siguiente guardado da 409 contra sí
+  mismo).
+- **R4 — «Crear "X"» va primero**, debajo del buscador, cuando lo escrito no coincide con ninguna:
+  con el teclado abierto en 600 px quedaba tapado. El buscador no toma el foco al abrir.
+- **R5 — hoja de empaque con teclado**: mientras hay un empaque en captura se oculta la fila de
+  ubicación de esa hoja, y la frase viva va pegada al pie junto a «Guardar empaque». Se mide en e2e con
+  el alto reducido por el teclado. La fila de ubicación se queda en la hoja, con la misma regla de
+  permiso.
+- **R6 — el empaque aproximado se conserva**: un artículo en piezas sigue pudiendo decir «1 caja ≈ N
+  piezas» por peso o volumen. Los botones base no lo quitan.
+- **R7 — g/kg del mínimo guarda al tocarlo**, solo si el campo tiene número, y conserva la cantidad
+  base (cambia cómo se ve, no cuánto es).
+- **R8 — permiso en el conteo**: el mismo campo se usa al contar; sin `inventory.configure` tampoco
+  ofrece crear ahí y dice «Pídele a un administrador que la cree». Sus avisos dicen «ubicación».
+
+**Bajos**
+- La existencia negativa va en su propio renglón, con texto además del rojo.
+- El campo que guarda no se deshabilita (quitaría el teclado): la cola absorbe lo que se siga escribiendo.
+
+**Pendiente del dueño (choca con su decisión)**: si un guardado falla por la red, la decisión dice que
+el campo vuelve a su valor anterior. El revisor propone dejar lo escrito, marcado, con «Reintentar», y
+revertir solo cuando el servidor lo rechaza (otra persona lo cambió o el dato no vale): así
+«Reintentar» manda lo que se ve. Hasta que el dueño decida, el plan sigue su decisión.
 
 ## Project Structure
 
