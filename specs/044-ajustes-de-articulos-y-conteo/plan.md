@@ -216,3 +216,39 @@ scripts/ci-shard-tests.sh, scripts/tests/ci-shard-tests-test.sh, lefthook.yml
 ## Complexity Tracking
 
 Sin excepciones.
+
+### Recorrido del almacén en claro y oscuro (US8, T029–T031)
+
+Medido con `e2e/almacen-claro-oscuro.spec.ts` (recorrido) a 1024×600 contra local (:3044) y contra
+`bun run build` + `vite preview` (:4044, proxy a la API :8044): los dos en verde tras los arreglos.
+Capturas en `capturas/NN-pantalla-{claro,oscuro}.png`. El recorrido falló primero con:
+
+| Pantalla | Tema | Medido | Causa | Arreglo |
+| --- | --- | --- | --- | --- |
+| Todas (barra lateral, «Salir») | claro | 2.26:1 | `colorPalette="whiteAlpha"` no tiene `fg` y heredaba `brand.700` sobre la barra oscura | `color="gray.100"` en `AppShell` |
+| Campos de Artículos, ficha, Por recibir, Conteo, Negocio, Límites | ambos | borde 1.27:1 / 1.34:1 | gris `border` por omisión de Chakra | receta `input`/`textarea` outline con `gray.500` (provider) |
+| «+ Nuevo», «Esta semana», «Guardar» (Negocio) | ambos | 4.29:1 | `brand.solid` = `brand.500` con texto blanco | `brand.solid` → `brand.600` |
+| «Revisar», existencia negativa en Artículos | claro | 3.44:1 / 3.76:1 | `fg.error` de Chakra (`red.500`) | `fg.error` claro → `red.700`; `fg.success` → `green.700` |
+| Existencia negativa en Artículos | oscuro | 4.12:1 | `red.600` fijo | `fg.error` |
+| Nombre y slug de la empresa (Negocio) | ambos | 40 px | `Input` tamaño md | `minH="44px"` |
+
+Del mismo tipo, sin datos en bobah-pruebas para medirlos y corregidos igual: `green.700`/`red.600`/`red.700`
+fijos en Conteo, Por recibir, Faltante del conteo, Salud, Se echó a perder, Lugares y Artículo nuevo
+→ `fg.success`/`fg.error`/`bg.error`/`border.error`/`orange.fg`.
+
+#### Uniformidad entre pantallas
+
+Corregido (solo estilo):
+- Acción principal: «+ Nuevo» (Artículos) y los periodos de Se echó a perder usaban `brand`; el resto
+  del almacén usa `red` → `red`.
+- Selector de dos opciones: Activos/Archivados era negro (`gray` sólido) y Lista/Uno por uno rojo →
+  los dos rojo el elegido y gris el otro; los periodos de Se echó a perder, igual.
+
+Anotado sin cambiar (cambia disposición o es decisión previa):
+- Periodo: Se echó a perder usa botones sueltos; Salud usa un `Picker` («Últimos 30 días»).
+- Estado negativo: Existencias pinta el renglón entero de rojo; Artículos solo la cifra con chip «Revisar».
+- Existencias no tiene buscador ni filtros; Artículos y Por recibir sí.
+- Vacío: Por recibir centra «No hay nada por recibir»; Se echó a perder lo alinea a la izquierda.
+- Límites del conteo vive en la columna angosta de Negocio, sin tarjeta (solo raya arriba), mientras
+  «Lugares» y «Lo que se echó a perder» de la misma página van en tarjeta.
+- La gráfica nueva no se vio: bobah-pruebas no tiene registros en el periodo (no verificado).

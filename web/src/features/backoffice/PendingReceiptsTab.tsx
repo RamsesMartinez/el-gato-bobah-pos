@@ -137,7 +137,7 @@ function ReceiveSheet({ row, onClose, onDone }: { row: PendingReceipt; onClose: 
           <Text>Llegaron</Text>
           <Input aria-label="Llegaron" w="100px" minH="44px" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
           <Text>{unitWord(row, Number.isFinite(n) ? n : 2)}</Text>
-          {base !== null && <Text color="green.700" fontWeight="700">= {formatBaseQty(base, row.baseUnitCode ?? '')}</Text>}
+          {base !== null && <Text color="fg.success" fontWeight="700">= {formatBaseQty(base, row.baseUnitCode ?? '')}</Text>}
         </HStack>
         {over > 0 && (
           <HStack gap={2} p={3} borderRadius="lg" bg="orange.subtle" flexWrap="wrap">
@@ -149,7 +149,7 @@ function ReceiveSheet({ row, onClose, onDone }: { row: PendingReceipt; onClose: 
             <Text fontSize="sm">Sube el total pagado de esta compra.</Text>
           </HStack>
         )}
-        {save.isError && <Text color="red.600" fontSize="sm">{receiptError(save.error)}</Text>}
+        {save.isError && <Text color="fg.error" fontSize="sm">{receiptError(save.error)}</Text>}
       </VStack>
     </ReceiptSheet>
   );
@@ -174,7 +174,7 @@ function NotComingSheet({ row, onClose, onDone }: { row: PendingReceipt; onClose
         </HStack>
         {Number.isFinite(n) && n > missing && <Text color="orange.700" fontSize="sm">Solo faltan {qty(row.missing)}.</Text>}
         <Text fontSize="sm" color="fg.muted">No suma a lo guardado ni cambia lo pagado.</Text>
-        {save.isError && <Text color="red.600" fontSize="sm">{receiptError(save.error)}</Text>}
+        {save.isError && <Text color="fg.error" fontSize="sm">{receiptError(save.error)}</Text>}
       </VStack>
     </ReceiptSheet>
   );
@@ -193,7 +193,7 @@ function AllArrivedSheet({ rows, onClose, onDone }: { rows: PendingReceipt[]; on
         {rows.map((r) => (
           <Text key={r.itemId}>{r.itemName}: {qty(r.missing)} {unitWord(r, num(r.missing))}</Text>
         ))}
-        {save.isError && <Text color="red.600" fontSize="sm">{receiptError(save.error)}</Text>}
+        {save.isError && <Text color="fg.error" fontSize="sm">{receiptError(save.error)}</Text>}
       </VStack>
     </ReceiptSheet>
   );

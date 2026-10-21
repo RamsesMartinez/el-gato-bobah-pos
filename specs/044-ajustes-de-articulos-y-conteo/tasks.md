@@ -61,9 +61,9 @@
 
 ## Phase 10: US8 - Repaso visual del almacén (P1)
 
-- [ ] T029 [US8] Recorrido en web/e2e/almacen-claro-oscuro.spec.ts contra local (:3044) a 1024×600, en claro y oscuro: entrando como admin de bobah-pruebas (ve todas las pestañas), en el orden de la pantalla: Existencias, Movimientos, Artículos y ficha, Por recibir, Conteo con teclado, Se echó a perder, Salud, y Configuración del negocio › Almacén; mide contraste (4.5:1 texto, 3:1 controles), desborde horizontal y alto ≥ 44 px de controles; guarda capturas en specs/044-ajustes-de-articulos-y-conteo/capturas/
-- [ ] T030 [US8] Por cada defecto: su prueba que falla (vitest o el recorrido) y el arreglo con tokens del tema en el componente que lo causa; anotar la lista en plan › Al construir
-- [ ] T031 [US8] Correr el recorrido también contra `bun run build && bun run preview` (local) para acercarse al build de producción
+- [X] T029 [US8] Recorrido en web/e2e/almacen-claro-oscuro.spec.ts contra local (:3044) a 1024×600, en claro y oscuro: entrando como admin de bobah-pruebas (ve todas las pestañas), en el orden de la pantalla: Existencias, Movimientos, Artículos y ficha, Por recibir, Conteo con teclado, Se echó a perder, Salud, y Configuración del negocio › Almacén; mide contraste (4.5:1 texto, 3:1 controles), desborde horizontal y alto ≥ 44 px de controles; guarda capturas en specs/044-ajustes-de-articulos-y-conteo/capturas/
+- [X] T030 [US8] Por cada defecto: su prueba que falla (vitest o el recorrido) y el arreglo con tokens del tema en el componente que lo causa; anotar la lista en plan › Al construir
+- [X] T031 [US8] Correr el recorrido también contra `bun run build && bun run preview` (local) para acercarse al build de producción
 
 ## Phase 11: US9 - CI más corto (P2)
 
@@ -76,9 +76,9 @@
 
 ## Phase 12: Polish
 
-- [ ] T038 Playwright en local (:3044) a 1024×600: la lista conserva 6 renglones; la sección de límites con controles de 44 px y «Guardar límites» visible con el teclado del sistema simulado, en web/e2e/gestion-de-articulos.spec.ts
-- [ ] T039 `make api-build && make api-test`, `make test-integration`, `make web-test`, `make web-lint`
-- [ ] T040 AGENTS.md: renglón de «Límites del conteo» (tabla, defaults en la columna, solo el conteo los usa)
+- [X] T038 Playwright en local (:3044) a 1024×600: la lista conserva 6 renglones; la sección de límites con controles de 44 px y «Guardar límites» visible con el teclado del sistema simulado, en web/e2e/gestion-de-articulos.spec.ts
+- [X] T039 `make api-build && make api-test`, `make test-integration`, `make web-test`, `make web-lint`
+- [X] T040 AGENTS.md: renglón de «Límites del conteo» (tabla, defaults en la columna, solo el conteo los usa)
 - [ ] T041 Prueba con usuario sin contexto en local (:3044, 1024×600, claro y oscuro) y anotar en plan › Al construir
 - [ ] T042 Dejar la 044 corriendo en local para el dueño; PR #125 en borrador
 

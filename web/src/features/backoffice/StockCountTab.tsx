@@ -453,7 +453,7 @@ function ListView({ count, onSaved }: { count: StockCount; onSaved: (id: number,
                   )}
                 </VStack>
                 <PlacePicker item={i} />
-                <Text fontSize="sm" color={i.countedQty !== null ? 'green.700' : 'fg.muted'} minW="120px">
+                <Text fontSize="sm" color={i.countedQty !== null ? 'fg.success' : 'fg.muted'} minW="120px">
                   {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}` : 'Sin contar'}
                 </Text>
                 <Button minH="44px" minW="120px" variant="outline" onClick={() => setEditing(i)}>

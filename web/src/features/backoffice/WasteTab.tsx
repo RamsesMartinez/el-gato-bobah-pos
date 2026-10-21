@@ -49,7 +49,8 @@ export function WasteTab() {
     <VStack align="stretch" gap={2} flex="1" minH={0} py={2}>
       <HStack gap={2} minH="44px" wrap="wrap">
         {(['semana', 'mes', 'fechas'] as const).map((p) => (
-          <Button key={p} minH="44px" aria-pressed={preset === p} variant={preset === p ? 'solid' : 'outline'} onClick={() => choose(p)}>
+          <Button key={p} minH="44px" aria-pressed={preset === p} variant={preset === p ? 'solid' : 'outline'}
+            colorPalette={preset === p ? 'red' : 'gray'} onClick={() => choose(p)}>
             {p === 'semana' ? 'Esta semana' : p === 'mes' ? 'Este mes' : 'Elegir fechas'}
           </Button>
         ))}

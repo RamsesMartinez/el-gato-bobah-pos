@@ -64,12 +64,13 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
         </Box>
         <HStack gap={0} borderWidth="1px" borderRadius="full" overflow="hidden" flexShrink={0}>
           {([['Activos', false], ['Archivados', true]] as const).map(([label, archived]) => (
-            <Button key={label} minH="44px" borderRadius="0" variant={!!filter.archived === archived ? 'solid' : 'ghost'} colorPalette="gray"
+            <Button key={label} minH="44px" borderRadius="0" variant={!!filter.archived === archived ? 'solid' : 'ghost'}
+              colorPalette={!!filter.archived === archived ? 'red' : 'gray'}
               aria-pressed={!!filter.archived === archived} onClick={() => setFilter({ ...filter, archived })}>{label}</Button>
           ))}
         </HStack>
         {canConfigure && (
-          <Button minH="44px" colorPalette="brand" flexShrink={0} onClick={() => setCreating(true)}>+ Nuevo</Button>
+          <Button minH="44px" colorPalette="red" flexShrink={0} onClick={() => setCreating(true)}>+ Nuevo</Button>
         )}
       </HStack>
       <HStack gap={2} flexShrink={0}>
@@ -117,7 +118,7 @@ function ArticleLine({ a, onOpen }: { a: ArticleRow; onOpen: (id: number) => voi
         <Text fontWeight="600">{a.name}{a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}</Text>
       </Table.Cell>
       <Table.Cell textAlign="end" whiteSpace="nowrap">
-        <Text as="span" color={negative ? 'red.600' : undefined} fontWeight={negative ? '700' : undefined}>
+        <Text as="span" color={negative ? 'fg.error' : undefined} fontWeight={negative ? '700' : undefined}>
           {formatBaseQty(a.onHand, a.baseUnitCode)}
         </Text>
         {/* En el mismo renglón: uno aparte subiría la fila de 44 px y la lista dejaría de mostrar 6. */}
@@ -126,7 +127,7 @@ function ArticleLine({ a, onOpen }: { a: ArticleRow; onOpen: (id: number) => voi
         )}
       </Table.Cell>
       <Table.Cell><Text color="fg.muted">{a.countPlace ?? NO_LOCATION}</Text></Table.Cell>
-      <Table.Cell>{cost ?? <Text as="span" fontSize="sm" color="red.600" fontWeight="600">Sin costo</Text>}</Table.Cell>
+      <Table.Cell>{cost ?? <Text as="span" fontSize="sm" color="fg.error" fontWeight="600">Sin costo</Text>}</Table.Cell>
       <Table.Cell>
         <Text fontSize="sm" color="fg.muted">
           {packs.length ? packs.map((p) => `${p.name} · ${formatBaseQty(p.qtyInBase, a.baseUnitCode)}`).join(' · ') : 'Sin empaques'}

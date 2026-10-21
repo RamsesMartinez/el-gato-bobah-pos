@@ -152,10 +152,10 @@ export function InventoryHealthTab() {
         <Button minH="44px" variant="outline" loading={exporter.isPending} disabled={exporter.isPending} onClick={() => exporter.mutate()}>Exportar</Button>
       </HStack>
       {exporter.error && (
-        <Text fontSize="sm" color="red.700">{exporter.error instanceof ApiError ? exporter.error.message : 'No se pudo exportar. Intenta de nuevo.'}</Text>
+        <Text fontSize="sm" color="fg.error">{exporter.error instanceof ApiError ? exporter.error.message : 'No se pudo exportar. Intenta de nuevo.'}</Text>
       )}
       {error && (
-        <Text fontSize="sm" color="red.700" bg="red.50" borderWidth="1px" borderColor="red.200" borderRadius="md" px={3} py={2}>{error}</Text>
+        <Text fontSize="sm" color="fg.error" bg="bg.error" borderWidth="1px" borderColor="border.error" borderRadius="md" px={3} py={2}>{error}</Text>
       )}
 
       <DrawerRoot open={periodOpen} placement="bottom" onOpenChange={(e) => { if (!e.open) setPeriodOpen(false); }} size="md">
@@ -209,7 +209,7 @@ export function InventoryHealthTab() {
                   {negatives.map((n) => (
                     <Row key={`${n.ingredientId}-${n.branch ?? ''}`} onClick={() => go(n.fixAt, n.name)} title={n.name}
                       subtitle={`Lo usan ${n.usedBy} ${n.usedBy === 1 ? 'receta' : 'recetas'}${n.branch ? ` · ${n.branch}` : ''}`}
-                      right={<Text fontWeight="600" color="red.700">{Number(n.onHand)} {n.unit}</Text>} />
+                      right={<Text fontWeight="600" color="fg.error">{Number(n.onHand)} {n.unit}</Text>} />
                   ))}
                   {data.negativeStock.total > negatives.length && (
                     <MoreButton left={data.negativeStock.total - negatives.length} loading={moreNegative.isFetching}
