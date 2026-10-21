@@ -39,6 +39,8 @@ export function ArticleAuditSheet({ id, name, baseUnitCode, onClose }: { id: num
                   <Box flex="1" minW={0}>
                     <Text><b>{e.actor ?? 'Sistema'}</b> · {actionLabel(e.action)}</Text>
                     {whatChanged(e, baseUnitCode) && <Text fontSize="sm" color="fg.muted">{whatChanged(e, baseUnitCode)}</Text>}
+                    {/* Los guardados seguidos de un mismo campo llegan juntos (spec 043): se dice cuántos. */}
+                    {(e.changes ?? 1) > 1 && <Text fontSize="xs" color="fg.muted">{e.changes} cambios</Text>}
                   </Box>
                 </HStack>
               ))}

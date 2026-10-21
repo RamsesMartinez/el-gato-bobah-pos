@@ -387,6 +387,18 @@ describe('Bitácora del artículo', () => {
     await waitFor(() => expect(back.articleAudit).toHaveBeenCalledWith(7, 'c2'));
   });
 
+  // Spec 043 (E13): el servidor junta los guardados seguidos de un campo; la entrada dice cuántos son
+  // y va del valor de antes del primero al final.
+  it('una entrada que junta varios guardados dice cuántos y el valor final', async () => {
+    back.articleAudit.mockResolvedValueOnce({
+      items: [{ id: 9, at: '2026-10-20T16:00:00Z', action: 'ingredient.updated', entity: 'ingredient', actor: 'Ana', before: { name: 'Leche' }, after: { name: 'Leche entera' }, changes: 3 }],
+      next: null,
+    });
+    montar(<ArticleAuditSheet id={7} name="Leche" baseUnitCode="ml" onClose={vi.fn()} />);
+    expect(await screen.findByText('Nombre: Leche → Leche entera')).toBeInTheDocument();
+    expect(screen.getByText('3 cambios')).toBeInTheDocument();
+  });
+
   it('whatChanged solo habla de lo que quien opera reconoce', () => {
     expect(whatChanged({ before: { name: 'A', placeId: 3 }, after: { name: 'B', placeId: 4 } }, 'ml')).toBe('Nombre: A → B');
   });

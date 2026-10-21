@@ -1161,6 +1161,8 @@ export interface ArticleAuditItem {
   actor: string | null;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
+  // Cuántos guardados seguidos junta la entrada (spec 043); falta en una API anterior.
+  changes?: number;
 }
 export interface ArticleAuditPage { items?: ArticleAuditItem[]; next: string | null }
 export interface ArchiveCheck {

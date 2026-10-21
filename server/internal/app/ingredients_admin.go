@@ -509,6 +509,8 @@ type ArticleAuditItem struct {
 	Actor  *string         `json:"actor"`
 	Before json.RawMessage `json:"before"`
 	After  json.RawMessage `json:"after"`
+	// Changes cuenta los guardados seguidos que junta esta entrada (spec 043); 1 es un evento solo.
+	Changes int64 `json:"changes"`
 }
 
 // ArticleAuditPage es una página de la bitácora del artículo.
@@ -537,7 +539,7 @@ func (s *BackofficeService) ArticleAudit(ctx context.Context, id int64, before *
 			break
 		}
 		page.Items = append(page.Items, ArticleAuditItem{ID: r.ID, At: r.OccurredAt, Action: r.Action, Entity: r.EntityType,
-			Actor: r.Actor, Before: rawOrNull(r.Before), After: rawOrNull(r.After)})
+			Actor: r.Actor, Before: rawOrNull(r.Before), After: rawOrNull(r.After), Changes: r.Changes})
 	}
 	return page, nil
 }

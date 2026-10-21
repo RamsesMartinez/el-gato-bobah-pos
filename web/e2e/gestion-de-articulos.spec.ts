@@ -61,3 +61,26 @@ for (const [nombre, viewport] of [['de lado', { width: 1024, height: 600 }], ['d
     expect(await deLado(page), `la ficha ${nombre} se desplaza de lado`).toBeLessThanOrEqual(0);
   });
 }
+
+// Hoja de empaque nuevo (spec 043, R5): con el teclado abierto la tableta deja ~300 px de alto. La
+// frase de lo que se guarda y «Guardar empaque» tienen que quedar a la vista. El teclado se simula
+// encogiendo la ventana (Chromium no pinta el del sistema). No guarda nada: cancela al final.
+test('la hoja de empaque deja la frase y «Guardar empaque» a la vista con el teclado abierto', async ({ page }) => {
+  await abrirArticulos(page);
+  await page.locator('tr[role="button"]').first().click();
+  await page.getByRole('button', { name: '+ Agregar empaque' }).click();
+  const hoja = page.locator('[role="dialog"]').last();
+  await expect(hoja.getByText('¿En qué empaque lo compras?')).toBeVisible();
+  const primero = hoja.locator('[data-packs] button').first();
+  const nombre = (await primero.innerText()).trim();
+  await primero.click();
+  await hoja.getByLabel('Cuánto trae').fill('5');
+  await page.screenshot({ path: `${CAPTURAS}/empaque.png` });
+  expect(await chicos(page)).toEqual([]);
+  await page.setViewportSize({ width: 1024, height: 300 });
+  await hoja.getByLabel('Cuánto trae').focus();
+  await page.screenshot({ path: `${CAPTURAS}/empaque-con-teclado.png` });
+  await expect(hoja.getByText(new RegExp(`^1 ${nombre.toLowerCase()} = 5 `))).toBeInViewport();
+  await expect(hoja.getByRole('button', { name: 'Guardar empaque' })).toBeInViewport();
+  await hoja.getByRole('button', { name: 'Cancelar' }).click();
+});

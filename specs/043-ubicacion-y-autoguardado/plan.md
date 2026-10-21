@@ -207,6 +207,13 @@ cambiar esa regla. Se junta al **leer**, en `ArticleAudit`:
   cada guardado actualiza esa caché.
 - **Un error dentro del éxito de un guardado dejaba la cola en «Guardando…» para siempre**: ahora cae en
   el mismo manejador de fallos.
+- **`db-architect` revisó `ArticleAudit` agrupada antes de escribirla (T027): cambios requeridos, aplicados.**
+  `jsonb_object_keys` truena con un `after` que no es objeto, y eso tumbaba la bitácora entera del
+  artículo: ahora `jsonb_typeof` va primero, dentro de un `case`. Sin agregados (`row_number`,
+  `first_value`), para que sqlc tipe bien las columnas y la entrada lleve la hora y el id de su último
+  evento, que es la llave del cursor. Límite aceptado: un evento que se inserte con una hora vieja (una
+  transacción larga) puede partir o unir una entrada ya vista. Cada página relee la historia del
+  artículo (`ponytail:` en la consulta).
 
 ## Project Structure
 

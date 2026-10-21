@@ -138,15 +138,49 @@ select count(*)::int as purchases,
 
 -- name: ArticleAudit :many
 -- La bitácora del artículo y de sus empaques, sin los detalles de un cambio de unidad (son para
--- revertirlo, no para leerlos).
-select a.id, a.occurred_at, a.action, a.entity_type, a.before, a.after, coalesce(u.name::text, a.actor_label) as actor
-  from audit_events a
-  left join users u on u.id = a.actor_user_id
- where ((a.entity_type = 'ingredient' and a.entity_id = sqlc.arg(ingredient_id))
-        or (a.entity_type = 'presentation' and a.entity_id in (select p.id from ingredient_presentations p where p.ingredient_id = sqlc.arg(ingredient_id))))
-   and a.action <> 'ingredient.unit_changed.detail'
-   and (sqlc.narg(before_at)::timestamptz is null or (a.occurred_at, a.id) < (sqlc.narg(before_at)::timestamptz, sqlc.narg(before_id)::bigint))
- order by a.occurred_at desc, a.id desc
+-- revertirlo, no para leerlos). Junta al leer los guardados seguidos del autoguardado (spec 043, E13):
+-- `ingredient.updated` del mismo usuario y del mismo y único campo, cada uno a menos de 60 s del
+-- anterior, en una entrada con el antes del primero y el después del último. audit_events es solo de
+-- agregar, así que no se puede juntar al escribir. Se agrupa antes de paginar para que «Ver más» no
+-- parta una entrada; la entrada lleva la hora y el id de su último evento, que es la llave del cursor.
+-- jsonb_typeof va primero y en un case: jsonb_object_keys truena con un after que no es objeto, y en un
+-- AND Postgres no garantiza el orden.
+-- ponytail: relee y agrupa toda la historia del artículo en cada página; con cientos de eventos por
+-- artículo no pesa. Si llegara a miles, se agrupa en una tabla aparte al escribir.
+with ev as (
+  select a.id, a.occurred_at, a.action, a.entity_type, a.actor_user_id, a.before, a.after,
+         coalesce(u.name::text, a.actor_label) as actor,
+         case when a.action = 'ingredient.updated' and a.actor_user_id is not null
+                   and jsonb_typeof(a.after) = 'object'
+              then case when (select count(*) from jsonb_object_keys(a.after)) = 1
+                        then (select k from jsonb_object_keys(a.after) k) end
+         end as field
+    from audit_events a
+    left join users u on u.id = a.actor_user_id
+   where ((a.entity_type = 'ingredient' and a.entity_id = sqlc.arg(ingredient_id))
+          or (a.entity_type = 'presentation' and a.entity_id in (select p.id from ingredient_presentations p where p.ingredient_id = sqlc.arg(ingredient_id))))
+     and a.action <> 'ingredient.unit_changed.detail'
+), marked as (
+  select ev.*,
+         case when field is not null and field = lag(field) over w and actor_user_id = lag(actor_user_id) over w
+                   and occurred_at - lag(occurred_at) over w < interval '60 seconds'
+              then 0 else 1 end as starts
+    from ev window w as (order by occurred_at, id)
+), grouped as (
+  select marked.*, sum(starts) over (order by occurred_at, id) as grp from marked
+), spans as (
+  select grouped.*,
+         first_value(before) over g as first_before,
+         count(*) over (partition by grp) as changes,
+         row_number() over (partition by grp order by occurred_at desc, id desc) as rn
+    from grouped
+  window g as (partition by grp order by occurred_at, id rows between unbounded preceding and unbounded following)
+)
+select id, occurred_at, action, entity_type, first_before::jsonb as before, after, changes, actor
+  from spans
+ where rn = 1
+   and (sqlc.narg(before_at)::timestamptz is null or (occurred_at, id) < (sqlc.narg(before_at)::timestamptz, sqlc.narg(before_id)::bigint))
+ order by occurred_at desc, id desc
  limit sqlc.arg(lim);
 
 -- name: ArticleOnHandByBranch :many

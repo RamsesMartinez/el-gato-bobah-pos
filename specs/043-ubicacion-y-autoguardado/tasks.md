@@ -63,11 +63,11 @@ Reglas que aplican a todas las tareas:
 - [X] T010 [US2] `ArticleSheet.tsx` con autoguardado e indicador (Maquetas › Ficha del artículo).
   Cerrar #119.
 
-- [ ] T026 [P] [US2] Integración de `ArticleAudit` en `ingredients_admin_test.go` (E13): tres guardados
+- [X] T026 [P] [US2] Integración de `ArticleAudit` en `ingredients_admin_test.go` (E13): tres guardados
   del mismo campo y usuario a menos de 60 s salen como una entrada con el antes del primero y el después
   del último; un hueco de 60 s, otro usuario, otro campo o un evento de dos campos corta la cadena; la
   paginación no parte una entrada; los tres casos de aislamiento (`inTheThreeCases`).
-- [ ] T027 [US2] `db-architect` revisa el cambio de `ArticleAudit` antes de escribirlo. `ArticleAudit` agrupa con
+- [X] T027 [US2] `db-architect` revisa el cambio de `ArticleAudit` antes de escribirlo. `ArticleAudit` agrupa con
   funciones de ventana antes de paginar, y `ArticleAuditSheet.tsx` muestra «N cambios» con el valor final, hasta que T026 pase.
 
 ## Phase 4: User Story 1 — Ubicación (P1)
@@ -117,7 +117,7 @@ Reglas que aplican a todas las tareas:
   hoy (cierra T045 de la 042 cuando se mergee).
 - [X] T020 [US5] `web/e2e/lugares-para-contar.spec.ts`: la ubicación se elige en 3 toques desde la
   ficha, sin teclado y sin «Guardar». Falla hasta que T010 y T014 estén desplegados.
-- [ ] T025 [US5] e2e de la hoja de empaque con el alto reducido por el teclado: la frase y «Guardar
+- [X] T025 [US5] e2e de la hoja de empaque con el alto reducido por el teclado: la frase y «Guardar
   empaque» quedan a la vista (R5), y todo control de la hoja mide 44 px o más (FR-019).
 - [ ] T021 [US5] Correr la suite e2e completa contra el ambiente de pruebas con la 043 desplegada.
 

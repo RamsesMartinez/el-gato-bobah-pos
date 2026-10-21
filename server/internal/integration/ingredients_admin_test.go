@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -879,5 +880,101 @@ func TestSavingOneFieldOfAnArticle(t *testing.T) {
 		if f := ficha(); f["name"] != "Café" {
 			t.Fatalf("la ficha cambió: %v", f)
 		}
+	})
+}
+
+// BITÁCORA AGRUPADA (spec 043, E13): el autoguardado deja un evento por guardado; la bitácora del
+// artículo junta los seguidos del mismo campo y usuario, a menos de 60 s entre sí, en una entrada con
+// el antes del primero y el después del último. Los eventos no se tocan: se juntan al leer.
+func TestTheArticleAuditJoinsQuickSavesOfOneField(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	ctx := app.WithActorUser(k.ctx, k.user)
+	id := ingredientIn(t, k.st, defaultCompanyID, "Leche para la bitácora", "ml")
+	otro := makeUser(t, k.st, "bitacora_otro", "gerente")
+	t0 := time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC)
+	evento := func(seg int, user int64, field string, before, after any) {
+		t.Helper()
+		b, _ := json.Marshal(map[string]any{field: before})
+		a, _ := json.Marshal(map[string]any{field: after})
+		if _, err := k.st.Pool.Exec(context.Background(), `insert into audit_events (company_id, occurred_at, actor_kind, actor_user_id, action, entity_type, entity_id, before, after)
+			values ($1, $2, 'user', $3, 'ingredient.updated', 'ingredient', $4, $5, $6)`, defaultCompanyID, t0.Add(time.Duration(seg)*time.Second), user, id, b, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Una cadena de tres en el nombre (cada uno a menos de 60 s del anterior, 100 s en total).
+	evento(0, k.user, "name", "Leche", "Leche e")
+	evento(50, k.user, "name", "Leche e", "Leche en")
+	evento(100, k.user, "name", "Leche en", "Leche entera")
+	// Un hueco de 60 s corta.
+	evento(160, k.user, "name", "Leche entera", "Leche entera 1L")
+	// Otro campo corta.
+	evento(170, k.user, "minStock", nil, "1000")
+	// Otro usuario corta.
+	evento(175, otro, "minStock", "1000", "2000")
+	// Un evento de dos campos no se junta con nada.
+	b, _ := json.Marshal(map[string]any{"name": "Leche entera 1L", "minStock": "2000"})
+	a, _ := json.Marshal(map[string]any{"name": "Leche", "minStock": "3000"})
+	if _, err := k.st.Pool.Exec(context.Background(), `insert into audit_events (company_id, occurred_at, actor_kind, actor_user_id, action, entity_type, entity_id, before, after)
+		values ($1, $2, 'user', $3, 'ingredient.updated', 'ingredient', $4, $5, $6)`, defaultCompanyID, t0.Add(180*time.Second), k.user, id, b, a); err != nil {
+		t.Fatal(err)
+	}
+	evento(185, k.user, "minStock", "3000", "3500")
+
+	page, err := k.svc.ArticleAudit(ctx, id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cadena []string
+	for _, e := range page.Items {
+		cadena = append(cadena, fmt.Sprintf("%d:%s→%s", e.Changes, e.Before, e.After))
+	}
+	quiere := []string{
+		`1:{"minStock": "3000"}→{"minStock": "3500"}`,
+		`1:{"name": "Leche entera 1L", "minStock": "2000"}→{"name": "Leche", "minStock": "3000"}`,
+		`1:{"minStock": "1000"}→{"minStock": "2000"}`,
+		`1:{"minStock": null}→{"minStock": "1000"}`,
+		`1:{"name": "Leche entera"}→{"name": "Leche entera 1L"}`,
+		`3:{"name": "Leche"}→{"name": "Leche entera"}`,
+	}
+	if !slices.Equal(cadena, quiere) {
+		t.Fatalf("entradas =\n%s\nquiere\n%s", strings.Join(cadena, "\n"), strings.Join(quiere, "\n"))
+	}
+
+	t.Run("la paginación no parte una entrada", func(t *testing.T) {
+		for i := 0; i < 25; i++ {
+			evento(300+i*10, k.user, "name", fmt.Sprintf("v%d", i), fmt.Sprintf("v%d", i+1))
+		}
+		first, err := k.svc.ArticleAudit(ctx, id, nil)
+		if err != nil || len(first.Items) == 0 {
+			t.Fatalf("%+v %v", first, err)
+		}
+		if first.Items[0].Changes != 25 {
+			t.Fatalf("los 25 guardados seguidos salieron como %d en la primera entrada; quiere una de 25", first.Items[0].Changes)
+		}
+	})
+	t.Run("un after nulo o que no es objeto no tumba la bitácora; dos a la misma hora se ordenan por id", func(t *testing.T) {
+		raro := ingredientIn(t, k.st, defaultCompanyID, "Artículo de bitácora rara", "g")
+		for _, after := range []string{`'null'::jsonb`, `null`, `'"texto"'::jsonb`, `'{"name": "a"}'::jsonb`, `'{"name": "b"}'::jsonb`} {
+			if _, err := k.st.Pool.Exec(context.Background(), `insert into audit_events (company_id, occurred_at, actor_kind, actor_user_id, action, entity_type, entity_id, before, after)
+				values ($1, $2, 'user', $3, 'ingredient.updated', 'ingredient', $4, null, `+after+`)`, defaultCompanyID, t0, k.user, raro); err != nil {
+				t.Fatal(err)
+			}
+		}
+		p, err := k.svc.ArticleAudit(ctx, raro, nil)
+		if err != nil {
+			t.Fatalf("la bitácora tronó con un after raro: %v", err)
+		}
+		if len(p.Items) != 4 || p.Items[0].Changes != 2 || string(p.Items[0].After) != `{"name": "b"}` {
+			t.Fatalf("entradas = %+v; quiere 4, la primera con los dos del nombre y el último valor", p.Items)
+		}
+	})
+	t.Run("otra empresa no ve la bitácora agrupada, en los tres casos", func(t *testing.T) {
+		inTheThreeCases(t, defaultCompanyID, makeCompany(t, k.st, "bitacora-agrupada-ajena"), func(t *testing.T, st *store.Store, ctx context.Context) {
+			p, err := app.NewBackofficeService(st, clock).ArticleAudit(ctx, id, nil)
+			if err == nil && len(p.Items) > 0 {
+				t.Fatal("se vio la bitácora de otra empresa")
+			}
+		})
 	})
 }
