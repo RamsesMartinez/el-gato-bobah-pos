@@ -248,9 +248,18 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
                   {auto.invalid.min && <Text fontSize="sm" color="red.fg">{auto.invalid.min}</Text>}
                 </Stack>
                 <HStack justify="space-between" minH="44px">
-                  <Text>Se mide en <b>{KIND_WORD[kind]}</b>{a.baseUnitCode === 'pieza' ? '' : ` (${a.baseUnitCode})`} · Hay {formatBaseQty(a.onHand, a.baseUnitCode)}</Text>
+                  <Text>Se mide en <b>{KIND_WORD[kind]}</b>{a.baseUnitCode === 'pieza' ? '' : ` (${a.baseUnitCode})`}{Number(a.onHand) < 0 ? '' : ` · Hay ${formatBaseQty(a.onHand, a.baseUnitCode)}`}</Text>
                   {canConfigure && a.isActive && <Button minH="44px" variant="outline" onClick={() => setPanel('unit')}>Cambiar ›</Button>}
                 </HStack>
+                {/* Una existencia negativa no es un dato normal: dice qué hacer, en su propio renglón para
+                    no partir el de arriba en media pantalla, y con texto además del rojo (spec 043, FR-018).
+                    No se recalcula nada del pasado. */}
+                {Number(a.onHand) < 0 && (
+                  <HStack data-negative-stock gap={2} flexWrap="wrap" bg="red.subtle" borderRadius="md" px={3} py={2}>
+                    <Text color="red.fg" fontWeight="700">Hay {formatBaseQty(a.onHand, a.baseUnitCode)}</Text>
+                    <Text color="red.fg">Revisar con un conteo</Text>
+                  </HStack>
+                )}
                 {!justCreated && <PacksBlock />}
                 <Button minH="44px" variant="outline" justifyContent="flex-start" onClick={() => setPanel('recipe')}>
                   {a.isPrep ? 'Es un preparado · ver receta ›' : 'Se compra hecho ›'}

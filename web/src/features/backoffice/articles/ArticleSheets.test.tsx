@@ -344,6 +344,21 @@ describe('Ficha del artículo', () => {
     expect(await screen.findByText('Cambiar Bolsa')).toBeInTheDocument();
   });
 
+  // Spec 043, FR-018: «Hay -1.87 kg» se leía como un dato normal.
+  it('una existencia negativa va en rojo, en su renglón, con «Revisar con un conteo»', async () => {
+    back.article.mockResolvedValue({ ...ficha, onHand: '-1870' });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    const aviso = await screen.findByText('Revisar con un conteo');
+    expect(screen.getByText('Hay -1.87 kg')).toBeInTheDocument();
+    expect(aviso.closest('[data-negative-stock]')).not.toBeNull();
+  });
+
+  it('con existencia cero o positiva no hay aviso', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    await screen.findByDisplayValue('Hielo en bolsa');
+    expect(screen.queryByText('Revisar con un conteo')).toBeNull();
+  });
+
   it('una receta estimada dice «por revisar»', async () => {
     back.article.mockResolvedValue({ ...ficha, compositionStatus: 'estimated' });
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);

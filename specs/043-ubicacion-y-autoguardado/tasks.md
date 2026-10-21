@@ -106,9 +106,9 @@ Reglas que aplican a todas las tareas:
 
 ## Phase 6: User Story 4 — Existencia negativa (P2)
 
-- [ ] T017 [P] [US4] vitest: existencia menor que cero en su propio renglón, en rojo y con «Revisar con
+- [X] T017 [P] [US4] vitest: existencia menor que cero en su propio renglón, en rojo y con «Revisar con
   un conteo»; cero o positiva, sin aviso.
-- [ ] T018 [US4] `ArticleSheet.tsx`.
+- [X] T018 [US4] `ArticleSheet.tsx`.
 
 ## Phase 7: User Story 5 — Pruebas de pantalla (P1)
 
