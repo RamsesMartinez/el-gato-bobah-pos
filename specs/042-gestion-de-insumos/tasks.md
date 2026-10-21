@@ -268,7 +268,9 @@ guarda 0.
 - [X] T043 `TestEveryAuditActionIsProduced` en verde con las acciones nuevas.
 - [X] T044 [P] `make api-build && make api-test`, `make test-integration`, `cd web && bun run lint
   && bun run vitest run && bun run build`, y `make ci-local`.
-- [X] T045 [P] Playwright a 1024×600 en `web/e2e/gestion-de-articulos.spec.ts`:
+- [ ] T045 [P] Playwright a 1024×600 en `web/e2e/gestion-de-articulos.spec.ts` (estaba marcada como
+  hecha sin que el archivo existiera; la medición se hizo con scripts sueltos fuera del repo. Se
+  escribe en la spec 043):
   - lista con 6 renglones visibles;
   - ficha con la tableta de lado y de pie;
   - teclado del conteo;

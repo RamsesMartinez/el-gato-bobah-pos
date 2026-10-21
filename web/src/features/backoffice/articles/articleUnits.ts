@@ -31,3 +31,11 @@ export function baseQty(qty: string, kind: Kind, big: boolean): string | undefin
 
 // Cómo se dice la clase de unidad a quien opera.
 export const KIND_WORD: Record<string, string> = { masa: 'peso', volumen: 'líquido', longitud: 'longitud', pieza: 'piezas' };
+
+// Los empaques que se ofrecen siempre al agregar uno, por clase de unidad (spec 043, FR-014). Genéricos:
+// nada propio de un negocio. Editarlos por empresa es #121.
+export const BASE_PACKS: Partial<Record<string, string[]>> = {
+  masa: ['Bolsa', 'Caja', 'Costal', 'Paquete'],
+  volumen: ['Botella', 'Galón', 'Garrafa', 'Caja'],
+  pieza: ['Caja', 'Paquete', 'Bolsa'],
+};

@@ -975,7 +975,8 @@ export const backofficeApi = {
   },
   createArticle: (b: ArticleCreate) => api.post<{ id: number }>('/stock/articles', b),
   article: (id: number) => api.get<ArticleSheet>(`/stock/articles/${id}`),
-  updateArticle: (id: number, b: ArticleUpdate) => api.patch<void>(`/stock/articles/${id}`, b),
+  // Solo los campos que vienen cambian; uno en null se limpia (spec 043). Devuelve la versión nueva.
+  updateArticle: (id: number, b: ArticleUpdate) => api.patch<{ updatedAt: string }>(`/stock/articles/${id}`, b),
   correctArticleCost: (id: number, cost: string) => api.post<void>(`/stock/articles/${id}/cost`, { cost }),
   articleCostHistory: (id: number, before?: string) =>
     api.get<CostHistoryPage>(`/stock/articles/${id}/cost-history${before ? `?before=${encodeURIComponent(before)}` : ''}`),
@@ -1135,10 +1136,10 @@ export interface ArticleCreate {
 }
 export interface ArticleUpdate {
   expectedUpdatedAt: string;
-  name: string;
-  categoryId: number | null;
-  placeId: number | null;
-  minStock: string | null;
+  name?: string;
+  categoryId?: number | null;
+  placeId?: number | null;
+  minStock?: string | null;
 }
 export interface CostHistoryItem {
   kind: 'purchase' | 'correction';
@@ -1160,6 +1161,8 @@ export interface ArticleAuditItem {
   actor: string | null;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
+  // Cuántos guardados seguidos junta la entrada (spec 043); falta en una API anterior.
+  changes?: number;
 }
 export interface ArticleAuditPage { items?: ArticleAuditItem[]; next: string | null }
 export interface ArchiveCheck {

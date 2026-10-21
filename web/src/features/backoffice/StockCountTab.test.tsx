@@ -129,7 +129,7 @@ describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
     expect(rows.map((r) => r.textContent)).toEqual([
       expect.stringContaining('Jarabe de vainilla'), expect.stringContaining('Azúcar'), expect.stringContaining('Limón'),
     ]);
-    expect(screen.getAllByText('Sin lugar').some((e) => e.tagName !== 'BUTTON')).toBe(true); // el encabezado del grupo
+    expect(screen.getAllByText('Sin definir').some((e) => e.tagName !== 'BUTTON')).toBe(true); // el encabezado del grupo
     expect(rows[1]).toHaveTextContent('Bulto (25 kg)');
     expect(rows[1]).toHaveTextContent('Sin contar');
     expect(document.querySelector('select')).toBeNull();
@@ -205,13 +205,15 @@ test('dice por qué no se puede cerrar todavía', async () => {
   expect(screen.getByText('Cuenta al menos uno para cerrar')).toBeInTheDocument();
 });
 
-// Decisión del dueño tras la prueba sin contexto (FR-015f): el lugar se pone desde el conteo; nadie lo
-// encontró en la hoja «Cómo llega». Desde la 040 se elige de la lista de lugares de la empresa.
-describe('lugar desde el conteo (FR-015f)', () => {
+// Decisión del dueño tras la prueba sin contexto (FR-015f): la ubicación se pone desde el conteo; nadie
+// la encontró en la hoja «Cómo llega». Desde la 040 se elige de la lista de la empresa; desde la 043,
+// crear una pide configurar el almacén y quien solo cuenta elige entre las que hay.
+const quienConfigura = () => useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.count', 'inventory.configure'] } as never });
+describe('ubicación desde el conteo (FR-015f)', () => {
   test('ofrece los lugares de la empresa y guarda el elegido', async () => {
     montar();
-    const fila = (await screen.findAllByTestId('renglon-conteo'))[2]; // Limón, sin lugar
-    fireEvent.click(await within(fila).findByRole('button', { name: 'Sin lugar' }));
+    const fila = (await screen.findAllByTestId('renglon-conteo'))[2]; // Limón, sin ubicación
+    fireEvent.click(await within(fila).findByRole('button', { name: 'Sin definir' }));
     expect(await within(fila).findByRole('button', { name: 'Barra' })).toBeInTheDocument();
     expect(within(fila).getByRole('button', { name: 'Bodega' })).toBeInTheDocument();
     fireEvent.click(within(fila).getByRole('button', { name: 'Barra' }));
@@ -219,19 +221,32 @@ describe('lugar desde el conteo (FR-015f)', () => {
     await waitFor(() => expect(back.currentCount.mock.calls.length).toBeGreaterThan(1));
   });
 
-  test('un lugar nuevo se crea escribiéndolo', async () => {
+  test('quien configura crea una ubicación nueva escribiéndola', async () => {
+    quienConfigura();
     montar();
     const fila = (await screen.findAllByTestId('renglon-conteo'))[2];
-    fireEvent.click(await within(fila).findByRole('button', { name: 'Sin lugar' }));
+    fireEvent.click(await within(fila).findByRole('button', { name: 'Sin definir' }));
     fireEvent.change(within(fila).getByPlaceholderText('Buscar…'), { target: { value: 'Refri' } });
     fireEvent.click(within(fila).getByRole('button', { name: /Crear «Refri»/ }));
     await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(3, 9));
+  });
+
+  // El aviso «Pídele a un administrador» con el Picker de verdad lo cubre CountPlaceField.test.tsx;
+  // aquí el Picker es un doble y lo que se prueba es que el conteo no le pase el alta.
+  test('quien solo cuenta elige pero no crea', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
+    montar();
+    const fila = (await screen.findAllByTestId('renglon-conteo'))[2];
+    fireEvent.click(await within(fila).findByRole('button', { name: 'Sin definir' }));
+    expect(await within(fila).findByRole('button', { name: 'Barra' })).toBeInTheDocument();
+    expect(within(fila).queryByPlaceholderText('Buscar…')).toBeNull();
   });
 });
 
 // Poner un lugar reordena el conteo; en «Uno por uno» la tarjeta sigue en el mismo insumo y no salta
 // al que quedó en su posición.
 test('uno por uno sigue en el mismo insumo cuando el lugar lo reordena', async () => {
+  quienConfigura();
   montar();
   fireEvent.click(await screen.findByRole('button', { name: 'Uno por uno' }));
   expect(screen.getByText('Jarabe de vainilla')).toBeInTheDocument();

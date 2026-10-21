@@ -1,0 +1,87 @@
+<title>Hoja de empaque nuevo</title><meta name="claude:viewport-fit-sides" content="cover"><style>
+/* Marco fijo 1024x600 de la tableta, escalado al ancho disponible; riel de 76 px como el POS. */
+:root{--bg:#eef0f3;--surface:#fff;--fg:#1b1f24;--muted:#5d6670;--line:#d9dde3;--brand:#e23b2e;--brand-fg:#fff;--brand-soft:#fff1f0;--warn:#b45309;--warn-soft:#fff7e6;--ok:#15803d;--chip:#f3f4f6;
+--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;font-variant-numeric:tabular-nums}
+h1{font-size:22px;margin:0 0 4px;text-wrap:balance}.sub{color:var(--muted);margin:0 0 16px;max-width:70ch}
+.tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.tab{min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.stage{width:100%;max-width:1024px;overflow:hidden}
+.scaler{width:1024px;height:600px;transform-origin:0 0}
+.frame{width:1024px;height:600px;background:var(--bg);border:1px solid var(--line);border-radius:12px;display:flex;overflow:hidden;position:relative}
+.rail{width:76px;flex:none;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:10px}
+.rail i{width:52px;height:46px;border-radius:10px;background:var(--chip);display:grid;place-items:center;font:600 10px var(--font);font-style:normal;color:var(--muted)}
+.rail i.on{background:var(--brand-soft);color:var(--brand)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px 16px;gap:10px;position:relative}
+.btn{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--brand);color:var(--brand-fg);border-color:var(--brand)}
+.btn.danger{color:var(--brand);border-color:var(--brand)}
+.chip{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:500 14px var(--font);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+.input{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:16px var(--font);padding:0 12px}
+.notes{margin-top:14px;display:grid;gap:6px;max-width:1024px}.notes p{margin:0;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.notes b{display:inline-block;min-width:22px}
+.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+.sheet{background:var(--surface);width:100%;border-radius:16px 16px 0 0;padding:16px;display:flex;flex-direction:column;gap:10px;max-height:92%;overflow:auto}
+.modal{background:var(--surface);width:460px;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px;margin:auto}
+.muted{color:var(--muted)}.warn{color:var(--warn)}
+.tag{font:600 12px var(--font);padding:3px 8px;border-radius:6px;background:var(--chip);color:var(--muted)}
+.tag.neg{background:var(--brand-soft);color:var(--brand)}
+.example{font:600 12px var(--font);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+button:focus-visible,input:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+
+.hdr{display:flex;align-items:center;gap:10px}.hdr h2{font-size:20px;margin:0}
+.ind{display:flex;align-items:center;gap:6px;font:600 14px var(--font);min-height:44px}
+.ind.err{color:var(--brand)}.ind.ok{color:var(--ok)}.ind .sp{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:r 0.8s linear infinite}
+@keyframes r{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.ind .sp{animation:none}}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:0;overflow:auto}
+.lbl{font-size:14px;margin-bottom:4px}.fieldbtn{width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center}
+.ph{color:var(--muted)}.input.bad{border-color:var(--brand)}.bad-msg{color:var(--brand);font-size:13px}
+.row{display:flex;gap:8px;align-items:center}.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{min-height:44px;min-width:52px;border:0;background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer}.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.opt{min-height:52px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:var(--surface);color:var(--fg);font:16px var(--font);padding:0 8px;cursor:pointer}
+.neg{color:var(--brand);font-weight:700}
+.ctrl{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+</style>
+<script>
+function fit(){document.querySelectorAll('.stage').forEach(s=>{const k=Math.min(1,s.clientWidth/1024);const c=s.firstElementChild;c.style.transform='scale('+k+')';s.style.height=(600*k)+'px'})}
+addEventListener('resize',fit);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' ');
+const rail='<div class="rail">'+['Vender','Pedidos','Ventas','Caja','Menú','Almacén','Gastos'].map(x=>'<i class="'+(x==='Almacén'?'on':'')+'">'+x+'</i>').join('')+'</div>';
+</script>
+<h1>Hoja de empaque nuevo</h1>
+<p class="sub">Spec 043, opción única decidida por el dueño. Datos de ejemplo. Cambia el tipo del artículo, elige un empaque u «Otro» y escribe cuánto trae.</p>
+<div class="ctrl"><button class="chip" data-k="peso" aria-pressed="true">Artículo en peso</button><button class="chip" data-k="vol" aria-pressed="false">En líquido</button><button class="chip" data-k="pz" aria-pressed="false">En piezas</button><button class="chip" id="t-learn" aria-pressed="false">Empresa con empaques aprendidos</button></div>
+<div class="stage"><div class="scaler"><div class="frame" id="frame"></div></div></div>
+<div class="notes"><p><b>A</b> Única. Privilegia: una empresa nueva ya ve opciones y la frase dice lo que se va a guardar. Cuesta: los botones base son fijos en el código (editarlos es #121).</p></div>
+<script>
+const BASE={peso:['Bolsa','Caja','Costal','Paquete'],vol:['Botella','Galón','Garrafa','Caja'],pz:['Caja','Paquete','Bolsa']};
+const LEARN={peso:['Bulto','Bolsa'],vol:['Bidón'],pz:['Charola']};
+const UN={peso:['g','kg'],vol:['ml','L'],pz:['piezas']};
+const S={k:'peso',learn:false,pick:'',other:false,otherName:'',qty:'',unit:1};
+function render(){const opts=[...BASE[S.k]];if(S.learn)LEARN[S.k].forEach(x=>{if(!opts.some(o=>o.toLowerCase()===x.toLowerCase()))opts.push(x)});
+ const name=S.other?S.otherName.trim():S.pick;const u=UN[S.k][Math.min(S.unit,UN[S.k].length-1)];
+ const phrase=name&&S.qty?'1 '+esc(name.toLowerCase())+' = '+esc(S.qty)+' '+u:'Elige el empaque y cuánto trae';
+ const f=document.getElementById('frame');
+ f.innerHTML=rail+'<div class="main"><div class="hdr"><button class="btn">‹ Artículos</button><h2>Hielo en bolsa</h2></div><div class="card" style="opacity:.5;flex:1"></div>'+
+ '<div class="sheet-bg"><div class="sheet"><div class="row" style="justify-content:space-between"><b style="font-size:18px">Nuevo empaque</b></div>'+
+ '<div class="muted" style="font-size:13px">Así lo recibes del proveedor.</div>'+
+ '<div class="lbl" style="font-weight:600">¿En qué empaque lo compras?</div><div class="row" style="flex-wrap:wrap">'+opts.map(o=>'<button class="chip" data-p="'+esc(o)+'" aria-pressed="'+(!S.other&&S.pick===o)+'">'+esc(o)+'</button>').join('')+'<button class="chip" data-other="1" aria-pressed="'+S.other+'">Otro</button></div>'+
+ (S.other?'<input class="input" id="on" maxlength="40" placeholder="Ej. Cubeta, Garrafa" value="'+esc(S.otherName)+'">':'')+
+ '<div class="row"><span style="min-width:44px">Trae</span><input class="input" id="qty" inputmode="decimal" style="width:120px" placeholder="0" value="'+esc(S.qty)+'">'+
+ (UN[S.k].length>1?'<span class="seg">'+UN[S.k].map((x,i)=>'<button data-u="'+i+'" aria-pressed="'+(S.unit===i)+'">'+x+'</button>').join('')+'</span>':'<span>'+u+'</span>')+'</div>'+
+ '<div style="font-size:18px;font-weight:700">'+phrase+'</div>'+
+ '<div class="row" style="justify-content:flex-end"><button class="btn">Cancelar</button><button class="btn primary"'+(name&&S.qty?'':' disabled style="opacity:.5"')+'>Guardar empaque</button></div></div></div></div>';
+ f.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.pick=b.dataset.p;S.other=false;render()});
+ f.querySelectorAll('[data-other]').forEach(b=>b.onclick=()=>{S.other=true;S.pick='';render();document.getElementById('on').focus()});
+ f.querySelectorAll('[data-u]').forEach(b=>b.onclick=()=>{S.unit=Number(b.dataset.u);render()});
+ const keep=(id,k)=>{const e=document.getElementById(id);if(e)e.oninput=()=>{S[k]=e.value;render();const z=document.getElementById(id);z.focus();z.setSelectionRange(z.value.length,z.value.length)}};
+ keep('on','otherName');keep('qty','qty');fit()}
+document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{S.k=b.dataset.k;S.pick='';S.unit=1;document.querySelectorAll('[data-k]').forEach(x=>x.setAttribute('aria-pressed',x===b));render()});
+document.getElementById('t-learn').onclick=e=>{S.learn=!S.learn;e.currentTarget.setAttribute('aria-pressed',S.learn);render()};render();
+</script>

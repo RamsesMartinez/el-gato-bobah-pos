@@ -479,10 +479,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					})
 					// El lugar se pone al contar (FR-015f): lo decide quien cuenta, no quien configura el almacén.
 					r.With(RequirePermission(h.permissions, domain.PermInventoryCount)).Put("/ingredients/{id}/place", h.SetCountPlace)
-					// Lugares del recorrido (spec 040): elegir y dar de alta desde el artículo es de quien
-					// cuenta; renombrar, ordenar y archivar, de quien configura. Leer, de cualquiera de los dos.
+					// Ubicaciones del recorrido (spec 040): elegir desde el artículo es de quien cuenta; darlas de
+					// alta (desde la 043), renombrar, ordenar y archivar, de quien configura. Leer, de los dos.
 					r.With(RequireAnyPermission(h.permissions, domain.PermInventoryCount, domain.PermInventoryConfigure)).Get("/count-places", h.ListCountPlaces)
-					r.With(RequirePermission(h.permissions, domain.PermInventoryCount)).Post("/count-places", h.CreateCountPlace)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/count-places", h.CreateCountPlace)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/count-places/{id}", h.RenameCountPlace)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/count-places/{id}/move", h.MoveCountPlace)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/count-places/{id}/archive", h.ArchiveCountPlace)

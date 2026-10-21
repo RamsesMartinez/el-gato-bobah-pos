@@ -10,6 +10,7 @@ import { ApiError } from '../../../api/client';
 import { Picker } from '../../../components/Picker';
 import { toaster } from '../../../components/ui/toaster';
 import { QtyWithUnit } from './qty';
+import { useLocations } from '../useLocations';
 import { baseQty, KINDS, bigUnitOf, type Kind } from './articleUnits';
 
 // «Nuevo artículo» (spec 042, FR-002, decisión del dueño): una hoja corta con lo obligatorio marcado.
@@ -26,7 +27,7 @@ export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Prop
   const qc = useQueryClient();
   // Se piden al abrir para que al guardar ya estén casi siempre.
   useQuery({ queryKey: ['units'], queryFn: backofficeApi.units });
-  const places = useQuery({ queryKey: ['count-places'], queryFn: backofficeApi.countPlaces });
+  const locations = useLocations();
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Kind | null>(null);
   const [stock, setStock] = useState({ qty: '', big: true });
@@ -127,10 +128,9 @@ export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Prop
                   </HStack>
                 </Stack>
                 <Stack gap={1}>
-                  <Text>Lugar <Text as="span" color="fg.muted">(opcional)</Text></Text>
+                  <Text>Ubicación <Text as="span" color="fg.muted">(opcional)</Text></Text>
                   <Box>
-                    <Picker title="Lugar" placeholder="Sin lugar" clearable clearLabel="Sin lugar" value={placeId}
-                      options={(places.data ?? []).map((p) => ({ value: String(p.id), label: p.name }))} onChange={setPlaceId} />
+                    <Picker {...locations.pickerProps} value={placeId} options={locations.options} onChange={setPlaceId} />
                   </Box>
                 </Stack>
                 <QtyWithUnit label="Mínimo" optional kind={kind} value={min} onChange={setMin} />

@@ -42,6 +42,19 @@ describe('Almacén › Artículos', () => {
     expect(screen.getByText('Bolsa · 5 kg')).toBeTruthy();
     expect(screen.getByText('Sin costo', { selector: 'span' })).toBeTruthy();
     expect(screen.getByText('-250 g')).toBeTruthy();
+    // Spec 043: la negativa dice qué hacer, no solo va en rojo.
+    expect(screen.getByText('· Revisar')).toBeTruthy();
+  });
+
+  // Spec 043, FR-001 y FR-006: «Ubicación» y «Sin definir», y el renglón no lleva botón de ubicación.
+  it('la columna y el filtro dicen «Ubicación» y el vacío «Sin definir», sin botón en el renglón', async () => {
+    montar();
+    expect(await screen.findByText('Ubicación')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Ubicación: Todas/ })).toBeTruthy();
+    expect(await screen.findByText('Sin definir')).toBeTruthy();
+    expect(screen.queryByText(/Lugar|Sin lugar/)).toBeNull();
+    const fila = screen.getByRole('button', { name: 'Hielo en bolsa' });
+    expect(fila.querySelectorAll('button')).toHaveLength(0);
   });
 
   it('escribir en el buscador pide la lista filtrada al servidor', async () => {

@@ -6,11 +6,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -394,7 +398,7 @@ func TestEditingAnArticle(t *testing.T) {
 			t.Fatal(err)
 		}
 		min := qty("5000")
-		if err := svc.UpdateArticle(ctx, k.azucar, app.ArticleUpdate{ExpectedUpdatedAt: a.UpdatedAt, Name: "Azúcar estándar", MinStock: &min}); err != nil {
+		if _, err := svc.UpdateArticle(ctx, k.azucar, app.ArticleUpdate{ExpectedUpdatedAt: a.UpdatedAt, Name: new("Azúcar estándar"), MinStock: app.Field[decimal.Decimal]{Set: true, Value: &min}}); err != nil {
 			t.Fatal(err)
 		}
 		b, _ := svc.GetArticle(ctx, k.azucar)
@@ -405,7 +409,7 @@ func TestEditingAnArticle(t *testing.T) {
 			t.Fatalf("eventos = %d", n)
 		}
 		t.Run("con la versión vieja: 409 y no pisa", func(t *testing.T) {
-			err := svc.UpdateArticle(ctx, k.azucar, app.ArticleUpdate{ExpectedUpdatedAt: a.UpdatedAt, Name: "Otro nombre"})
+			_, err := svc.UpdateArticle(ctx, k.azucar, app.ArticleUpdate{ExpectedUpdatedAt: a.UpdatedAt, Name: new("Otro nombre")})
 			if !errors.Is(err, domain.ErrArticleStale) {
 				t.Fatalf("= %v; quiere ErrArticleStale", err)
 			}
@@ -414,7 +418,7 @@ func TestEditingAnArticle(t *testing.T) {
 	t.Run("renombrar al nombre de otro artículo: 409 con cuál", func(t *testing.T) {
 		otro := ingredientIn(t, k.st, defaultCompanyID, "Piloncillo", "g")
 		a, _ := svc.GetArticle(ctx, otro)
-		err := svc.UpdateArticle(ctx, otro, app.ArticleUpdate{ExpectedUpdatedAt: a.UpdatedAt, Name: "AZUCAR ESTANDAR"})
+		_, err := svc.UpdateArticle(ctx, otro, app.ArticleUpdate{ExpectedUpdatedAt: a.UpdatedAt, Name: new("AZUCAR ESTANDAR")})
 		var taken domain.ArticleNameTaken
 		if !errors.As(err, &taken) || taken.ID != k.azucar {
 			t.Fatalf("= %v", err)
@@ -539,7 +543,7 @@ func TestArticleSheetHTTPPermissions(t *testing.T) {
 	if w := do(t, r, http.MethodPatch, "/api/v1/stock/articles/"+id, admin, []byte(`{"name":"Leche permisos 2","expectedUpdatedAt":"2020-01-01T00:00:00Z"}`), "application/json"); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "STALE") {
 		t.Fatalf("versión vieja = %d %s; quiere 409 STALE", w.Code, w.Body.String())
 	}
-	if w := do(t, r, http.MethodPatch, "/api/v1/stock/articles/"+id, admin, []byte(`{"name":"Leche permisos 2","expectedUpdatedAt":"`+sheet.UpdatedAt+`"}`), "application/json"); w.Code != http.StatusNoContent {
+	if w := do(t, r, http.MethodPatch, "/api/v1/stock/articles/"+id, admin, []byte(`{"name":"Leche permisos 2","expectedUpdatedAt":"`+sheet.UpdatedAt+`"}`), "application/json"); w.Code != http.StatusOK {
 		t.Fatalf("editar = %d %s", w.Code, w.Body.String())
 	}
 	if w := do(t, r, http.MethodGet, "/api/v1/stock/articles/"+id+"/cost-history?before=basura", admin, nil, ""); w.Code != http.StatusBadRequest {
@@ -784,4 +788,229 @@ func TestPresentationsHTTPNeedConfigure(t *testing.T) {
 	if w := do(t, r, http.MethodGet, "/api/v1/stock/presentation-suggestions?unitKind=volumen", admin, nil, ""); w.Code != http.StatusOK {
 		t.Errorf("admin sugerencias = %d %s", w.Code, w.Body.String())
 	}
+}
+
+// AUTOGUARDADO (spec 043, R3): la ficha manda un campo a la vez. Un campo que no viene se conserva y
+// uno que viene en null se limpia; antes la petición traía la ficha entera y un campo omitido se
+// borraba. La respuesta trae la versión nueva: sin ella, el guardado siguiente daría 409 contra sí
+// mismo.
+func TestSavingOneFieldOfAnArticle(t *testing.T) {
+	t.Parallel()
+	r, st, token := newStockAPI(t)
+	admin := token("campo_admin", "admin")
+	id := ingredientIn(t, st, defaultCompanyID, "Café de olla", "g")
+	ctx := context.Background()
+	var cat, place int64
+	if err := st.Pool.QueryRow(ctx, `insert into ingredient_categories (company_id, name) values ($1, 'Abarrotes 043') returning id`, defaultCompanyID).Scan(&cat); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Pool.QueryRow(ctx, `insert into count_places (company_id, name, position) values ($1, 'Bodega 043', 99) returning id`, defaultCompanyID).Scan(&place); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `update ingredients set category_id = $2, count_place_id = $3, min_stock = 100 where id = $1`, id, cat, place); err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/v1/stock/articles/" + strconv.FormatInt(id, 10)
+	ficha := func() map[string]any {
+		w := do(t, r, http.MethodGet, path, admin, nil, "")
+		var m map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &m); err != nil {
+			t.Fatalf("%d %s", w.Code, w.Body.String())
+		}
+		return m
+	}
+	patch := func(body string) (int, map[string]any) {
+		w := do(t, r, http.MethodPatch, path, admin, []byte(body), "application/json")
+		var m map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &m)
+		return w.Code, m
+	}
+
+	v := ficha()["updatedAt"].(string)
+	code, res := patch(`{"expectedUpdatedAt":"` + v + `","minStock":"750"}`)
+	if code != http.StatusOK || res["updatedAt"] == nil || res["updatedAt"] == v {
+		t.Fatalf("solo el mínimo = %d %v; quiere 200 con la versión nueva", code, res)
+	}
+	f := ficha()
+	if f["name"] != "Café de olla" || f["categoryId"] != float64(cat) || f["countPlaceId"] != float64(place) || f["minStock"] != "750" {
+		t.Fatalf("mandar solo el mínimo tocó otros campos: %v", f)
+	}
+	var before, after string
+	if err := st.Pool.QueryRow(ctx, `select before::text, after::text from audit_events where action = 'ingredient.updated' and entity_id = $1 order by id desc limit 1`, id).Scan(&before, &after); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(after, "name") || strings.Contains(after, "categoryId") || !strings.Contains(after, "minStock") {
+		t.Fatalf("el evento trae más que lo que cambió: %s", after)
+	}
+
+	t.Run("el guardado siguiente usa la versión que devolvió el anterior", func(t *testing.T) {
+		code, _ := patch(`{"expectedUpdatedAt":"` + res["updatedAt"].(string) + `","name":"Café de olla molido"}`)
+		if code != http.StatusOK {
+			t.Fatalf("= %d; el segundo guardado chocó contra el primero", code)
+		}
+		if f := ficha(); f["name"] != "Café de olla molido" || f["minStock"] != "750" {
+			t.Fatalf("ficha = %v", f)
+		}
+	})
+	t.Run("null explícito limpia ese campo y solo ese", func(t *testing.T) {
+		code, _ := patch(`{"expectedUpdatedAt":"` + ficha()["updatedAt"].(string) + `","categoryId":null}`)
+		if code != http.StatusOK {
+			t.Fatalf("= %d", code)
+		}
+		if f := ficha(); f["categoryId"] != nil || f["countPlaceId"] != float64(place) || f["minStock"] != "750" {
+			t.Fatalf("limpiar la categoría tocó otros campos: %v", f)
+		}
+	})
+	t.Run("la ficha entera, como la manda la pantalla anterior, sigue funcionando", func(t *testing.T) {
+		body := `{"expectedUpdatedAt":"` + ficha()["updatedAt"].(string) + `","name":"Café","categoryId":null,"placeId":null,"minStock":"50"}`
+		if code, _ := patch(body); code != http.StatusOK {
+			t.Fatalf("= %d", code)
+		}
+		if f := ficha(); f["name"] != "Café" || f["countPlaceId"] != nil || f["minStock"] != "50" {
+			t.Fatalf("ficha = %v", f)
+		}
+	})
+	// Revisión de código: el nombre se revisaba aunque no cambiara, y un artículo heredado con nombre
+	// repetido no podía guardar ni su mínimo.
+	t.Run("un artículo heredado con nombre repetido guarda su mínimo", func(t *testing.T) {
+		// La base solo impide el repetido exacto; uno que difiere en acentos o mayúsculas pudo llegar
+		// de la carga de FUDO, antes de la regla de la 037.
+		gemelo := ingredientIn(t, st, defaultCompanyID, "Café de olla gemelo", "g")
+		if _, err := st.Pool.Exec(ctx, `update ingredients set name = upper(translate((select name from ingredients where id = $2), 'é', 'e')) where id = $1`, gemelo, id); err != nil {
+			t.Fatal(err)
+		}
+		w := do(t, r, http.MethodGet, "/api/v1/stock/articles/"+strconv.FormatInt(gemelo, 10), admin, nil, "")
+		var g map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &g)
+		body := `{"expectedUpdatedAt":"` + g["updatedAt"].(string) + `","name":` + strconv.Quote(g["name"].(string)) + `,"minStock":"20"}`
+		if w := do(t, r, http.MethodPatch, "/api/v1/stock/articles/"+strconv.FormatInt(gemelo, 10), admin, []byte(body), "application/json"); w.Code != http.StatusOK {
+			t.Fatalf("guardar el mínimo de un artículo con nombre heredado repetido = %d %s; quiere 200", w.Code, w.Body.String())
+		}
+	})
+	t.Run("un campo desconocido o un nombre nulo es 400 y dice cuál", func(t *testing.T) {
+		v := ficha()["updatedAt"].(string)
+		for _, body := range []string{
+			`{"expectedUpdatedAt":"` + v + `","color":"rojo"}`,     // campo que no existe: no se ignora
+			`{"expectedUpdatedAt":"` + v + `","isActive":false}`,   // ni uno que se guarda por otra ruta
+			`{"expectedUpdatedAt":"` + v + `","name":null}`,        // nombre vacío
+			`{"expectedUpdatedAt":"` + v + `","placeId":"x"}`,      // tipo equivocado
+			`{"expectedUpdatedAt":"` + v + `","minStock":"1e400"}`, // fuera de rango
+			`{"expectedUpdatedAt":"` + v + `","minStock":"-1"}`,    // negativo
+			`{"minStock":"5"}`, // sin la versión que se vio
+		} {
+			if w := do(t, r, http.MethodPatch, path, admin, []byte(body), "application/json"); w.Code != http.StatusBadRequest {
+				t.Errorf("%s = %d; quiere 400", body, w.Code)
+			}
+		}
+		if w := do(t, r, http.MethodPatch, path, admin, []byte(`{"expectedUpdatedAt":"`+v+`","color":"rojo"}`), "application/json"); !strings.Contains(w.Body.String(), "color") {
+			t.Errorf("el 400 no dice qué campo sobra: %s", w.Body.String())
+		}
+	})
+	t.Run("otra empresa no edita la ficha, en los tres casos", func(t *testing.T) {
+		inTheThreeCases(t, defaultCompanyID, makeCompany(t, st, "campo-ajeno"), func(t *testing.T, st *store.Store, ctx context.Context) {
+			other := app.NewBackofficeService(st, clock)
+			if _, err := other.UpdateArticle(ctx, id, app.ArticleUpdate{ExpectedUpdatedAt: time.Now(), Name: new("Ajeno")}); err == nil {
+				t.Fatal("otra empresa editó la ficha")
+			}
+		})
+		if f := ficha(); f["name"] != "Café" {
+			t.Fatalf("la ficha cambió: %v", f)
+		}
+	})
+}
+
+// BITÁCORA AGRUPADA (spec 043, E13): el autoguardado deja un evento por guardado; la bitácora del
+// artículo junta los seguidos del mismo campo y usuario, a menos de 60 s entre sí, en una entrada con
+// el antes del primero y el después del último. Los eventos no se tocan: se juntan al leer.
+func TestTheArticleAuditJoinsQuickSavesOfOneField(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	ctx := app.WithActorUser(k.ctx, k.user)
+	id := ingredientIn(t, k.st, defaultCompanyID, "Leche para la bitácora", "ml")
+	otro := makeUser(t, k.st, "bitacora_otro", "gerente")
+	t0 := time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC)
+	evento := func(seg int, user int64, field string, before, after any) {
+		t.Helper()
+		b, _ := json.Marshal(map[string]any{field: before})
+		a, _ := json.Marshal(map[string]any{field: after})
+		if _, err := k.st.Pool.Exec(context.Background(), `insert into audit_events (company_id, occurred_at, actor_kind, actor_user_id, action, entity_type, entity_id, before, after)
+			values ($1, $2, 'user', $3, 'ingredient.updated', 'ingredient', $4, $5, $6)`, defaultCompanyID, t0.Add(time.Duration(seg)*time.Second), user, id, b, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Una cadena de tres en el nombre (cada uno a menos de 60 s del anterior, 100 s en total).
+	evento(0, k.user, "name", "Leche", "Leche e")
+	evento(50, k.user, "name", "Leche e", "Leche en")
+	evento(100, k.user, "name", "Leche en", "Leche entera")
+	// Un hueco de 60 s corta.
+	evento(160, k.user, "name", "Leche entera", "Leche entera 1L")
+	// Otro campo corta.
+	evento(170, k.user, "minStock", nil, "1000")
+	// Otro usuario corta.
+	evento(175, otro, "minStock", "1000", "2000")
+	// Un evento de dos campos no se junta con nada.
+	b, _ := json.Marshal(map[string]any{"name": "Leche entera 1L", "minStock": "2000"})
+	a, _ := json.Marshal(map[string]any{"name": "Leche", "minStock": "3000"})
+	if _, err := k.st.Pool.Exec(context.Background(), `insert into audit_events (company_id, occurred_at, actor_kind, actor_user_id, action, entity_type, entity_id, before, after)
+		values ($1, $2, 'user', $3, 'ingredient.updated', 'ingredient', $4, $5, $6)`, defaultCompanyID, t0.Add(180*time.Second), k.user, id, b, a); err != nil {
+		t.Fatal(err)
+	}
+	evento(185, k.user, "minStock", "3000", "3500")
+
+	page, err := k.svc.ArticleAudit(ctx, id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cadena []string
+	for _, e := range page.Items {
+		cadena = append(cadena, fmt.Sprintf("%d:%s→%s", e.Changes, e.Before, e.After))
+	}
+	quiere := []string{
+		`1:{"minStock": "3000"}→{"minStock": "3500"}`,
+		`1:{"name": "Leche entera 1L", "minStock": "2000"}→{"name": "Leche", "minStock": "3000"}`,
+		`1:{"minStock": "1000"}→{"minStock": "2000"}`,
+		`1:{"minStock": null}→{"minStock": "1000"}`,
+		`1:{"name": "Leche entera"}→{"name": "Leche entera 1L"}`,
+		`3:{"name": "Leche"}→{"name": "Leche entera"}`,
+	}
+	if !slices.Equal(cadena, quiere) {
+		t.Fatalf("entradas =\n%s\nquiere\n%s", strings.Join(cadena, "\n"), strings.Join(quiere, "\n"))
+	}
+
+	t.Run("la paginación no parte una entrada", func(t *testing.T) {
+		for i := 0; i < 25; i++ {
+			evento(300+i*10, k.user, "name", fmt.Sprintf("v%d", i), fmt.Sprintf("v%d", i+1))
+		}
+		first, err := k.svc.ArticleAudit(ctx, id, nil)
+		if err != nil || len(first.Items) == 0 {
+			t.Fatalf("%+v %v", first, err)
+		}
+		if first.Items[0].Changes != 25 {
+			t.Fatalf("los 25 guardados seguidos salieron como %d en la primera entrada; quiere una de 25", first.Items[0].Changes)
+		}
+	})
+	t.Run("un after nulo o que no es objeto no tumba la bitácora; dos a la misma hora se ordenan por id", func(t *testing.T) {
+		raro := ingredientIn(t, k.st, defaultCompanyID, "Artículo de bitácora rara", "g")
+		for _, after := range []string{`'null'::jsonb`, `null`, `'"texto"'::jsonb`, `'{"name": "a"}'::jsonb`, `'{"name": "b"}'::jsonb`} {
+			if _, err := k.st.Pool.Exec(context.Background(), `insert into audit_events (company_id, occurred_at, actor_kind, actor_user_id, action, entity_type, entity_id, before, after)
+				values ($1, $2, 'user', $3, 'ingredient.updated', 'ingredient', $4, null, `+after+`)`, defaultCompanyID, t0, k.user, raro); err != nil {
+				t.Fatal(err)
+			}
+		}
+		p, err := k.svc.ArticleAudit(ctx, raro, nil)
+		if err != nil {
+			t.Fatalf("la bitácora tronó con un after raro: %v", err)
+		}
+		if len(p.Items) != 4 || p.Items[0].Changes != 2 || string(p.Items[0].After) != `{"name": "b"}` {
+			t.Fatalf("entradas = %+v; quiere 4, la primera con los dos del nombre y el último valor", p.Items)
+		}
+	})
+	t.Run("otra empresa no ve la bitácora agrupada, en los tres casos", func(t *testing.T) {
+		inTheThreeCases(t, defaultCompanyID, makeCompany(t, k.st, "bitacora-agrupada-ajena"), func(t *testing.T, st *store.Store, ctx context.Context) {
+			p, err := app.NewBackofficeService(st, clock).ArticleAudit(ctx, id, nil)
+			if err == nil && len(p.Items) > 0 {
+				t.Fatal("se vio la bitácora de otra empresa")
+			}
+		})
+	})
 }

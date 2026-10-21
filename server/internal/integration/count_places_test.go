@@ -4,12 +4,21 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
@@ -182,4 +191,63 @@ func TestAssigningWhileArchivingNeverLeavesAnArchivedPlace(t *testing.T) {
 	if err := st.Pool.QueryRow(context.Background(), `select count_place_id from ingredients where id = $1`, ing).Scan(&got); err != nil || got != nil {
 		t.Fatalf("el artículo quedó en %v, %v; quiere sin lugar", got, err)
 	}
+}
+
+// UBICACIONES (spec 043, FR-005): crear una pide configurar el almacén; quien solo cuenta elige entre
+// las que hay. Ningún rol sugerido de hoy tiene contar sin configurar, así que la prueba arma ese rol
+// con el mapa de permisos inyectado: con un rol propio por empresa ese caso existirá.
+func TestCreatingALocationNeedsConfigure(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
+	soloCuenta := func(r domain.Role) []domain.Permission {
+		if r == domain.RoleCajero {
+			return []domain.Permission{domain.PermInventoryCount}
+		}
+		return domain.PermissionsFor(r)
+	}
+	h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Backoffice: app.NewBackofficeService(st, nil), MenuCache: cache.NewMenuCache(""),
+		Broker: realtime.NewBroker(), Permissions: soloCuenta})
+	r := httpapi.Router(config.Config{}, jm, h, st)
+	token := func(username, role string) string {
+		id := makeUser(t, st, username, role)
+		tok, err := jm.Issue(domain.User{ID: id, CompanyID: defaultCompanyID, Name: username, Role: domain.Role(role)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tok
+	}
+	cuenta, admin := token("ubic_cuenta", "cajero"), token("ubic_admin", "admin")
+	const js = "application/json"
+
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/count-places", cuenta, []byte(`{"name":"Bodega de quien cuenta"}`), js); w.Code != http.StatusForbidden {
+		t.Fatalf("crear sin configurar = %d %s; quiere 403", w.Code, w.Body.String())
+	}
+	w := do(t, r, http.MethodPost, "/api/v1/stock/count-places", admin, []byte(`{"name":"Bodega 043 permisos"}`), js)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("crear con configurar = %d %s", w.Code, w.Body.String())
+	}
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/count-places", admin, []byte(`{"name":"  bódega 043 PERMISOS "}`), js); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"existingId"`) {
+		t.Fatalf("repetida por acentos y mayúsculas = %d %s; quiere 409 con la que existe", w.Code, w.Body.String())
+	}
+	var place struct{ ID int64 }
+	_ = json.Unmarshal(w.Body.Bytes(), &place)
+	item := placeIngredient(t, st, defaultCompanyID, "Artículo de quien cuenta")
+	if w := do(t, r, http.MethodPut, "/api/v1/stock/ingredients/"+strconv.FormatInt(item, 10)+"/place", cuenta, []byte(`{"placeId":`+strconv.FormatInt(place.ID, 10)+`}`), js); w.Code/100 != 2 {
+		t.Fatalf("quien cuenta asigna una que existe = %d %s", w.Code, w.Body.String())
+	}
+
+	t.Run("crear no ve ni toca las ubicaciones de otra empresa, en los tres casos", func(t *testing.T) {
+		inTheThreeCases(t, defaultCompanyID, makeCompany(t, st, "ubicacion-ajena"), func(t *testing.T, st *store.Store, ctx context.Context) {
+			_, err := app.NewBackofficeService(st, clock).CreateCountPlace(ctx, "Bodega 043 permisos")
+			var exists domain.CountPlaceExists
+			if errors.As(err, &exists) && exists.ID == place.ID {
+				t.Fatal("la ubicación de otra empresa contó como repetida: se vio entre empresas")
+			}
+		})
+		var n int
+		if err := st.Pool.QueryRow(context.Background(), `select count(*) from count_places where company_id = $1 and name ilike '%043 permisos%'`, defaultCompanyID).Scan(&n); err != nil || n != 1 {
+			t.Fatalf("la empresa dueña tiene %d ubicaciones con ese nombre %v; quiere 1", n, err)
+		}
+	})
 }
