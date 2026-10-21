@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -53,6 +54,26 @@ func TestCountNeedsConfirm(t *testing.T) {
 				t.Fatalf("CountNeedsConfirm(%s, %+v) = %v, quería %v", c.captured, c.ref, got, c.want)
 			}
 		})
+	}
+}
+
+// Sin otra referencia, el aviso usa la cifra para confirmar de la empresa (spec 044, E6), no un tope
+// fijo; sin cifra (pantalla o fila vieja), la del default.
+func TestCountNeedsConfirmUsesTheCompanyFigure(t *testing.T) {
+	ref := CountReference{BaseKind: "pieza", Confirm: dec("100")}
+	if !CountNeedsConfirm(dec("150"), ref) {
+		t.Fatal("150 piezas con confirmar en 100 no avisó")
+	}
+	if CountNeedsConfirm(dec("90"), ref) {
+		t.Fatal("90 piezas con confirmar en 100 avisó")
+	}
+	ref.Confirm = dec("10000")
+	if CountNeedsConfirm(dec("6000"), ref) {
+		t.Fatal("6,000 piezas con confirmar subido a 10,000 avisó: siguió usando el tope fijo")
+	}
+	// Lo que dice al rechazar no nombra la cifra: el conteo es a ciegas.
+	if strings.Contains(ErrCountNeedsConfirm.Error(), "10") {
+		t.Fatalf("el aviso revela una cifra: %q", ErrCountNeedsConfirm.Error())
 	}
 }
 

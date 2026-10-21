@@ -250,7 +250,7 @@ function PayDialog({ expense, methods, onClose, onPaid }: {
             </Field>
             <Field label={cash ? 'Caja (obligatoria en efectivo)' : 'Caja (para el arqueo)'}>
               {openRegisters.length === 0 ? (
-                <Text fontSize="sm" color={cash ? 'red.500' : 'fg.muted'}>
+                <Text fontSize="sm" color={cash ? 'fg.error' : 'fg.muted'}>
                   {cash ? 'No hay caja abierta. Abre una en Caja para poder pagar en efectivo.' : 'Sin cajas abiertas.'}
                 </Text>
               ) : (

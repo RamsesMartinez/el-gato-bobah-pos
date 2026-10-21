@@ -98,7 +98,7 @@ function Medio({ m }: { m: SalesSummary['byMethod'][number] }) {
   return (
     <Box borderWidth="1px" borderRadius="lg" px={3} py={2} minW="130px" bg="bg.subtle" flexShrink={0}>
       <Text fontSize="xs" color="fg.muted" whiteSpace="nowrap">{m.method}</Text>
-      <Text fontSize="lg" fontWeight="700" whiteSpace="nowrap" color={Number(m.total) < 0 ? 'red.600' : undefined}>
+      <Text fontSize="lg" fontWeight="700" whiteSpace="nowrap" color={Number(m.total) < 0 ? 'fg.error' : undefined}>
         {money(m.total)}
       </Text>
       {devuelto > 0 && (

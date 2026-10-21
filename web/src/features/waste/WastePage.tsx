@@ -135,7 +135,7 @@ export function WastePage() {
       )}
       {product && <Text color="fg.muted">En piezas</Text>}
       <NumericKeypad allowDecimal={allowDecimal} onKey={(k) => setQty((q) => pressKey(q, k, allowDecimal))} />
-      <Button minH="56px" position="sticky" bottom={0} zIndex={1} colorPalette="red" disabled={!ready || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
+      <Button minH="56px" position="sticky" bottom={0} zIndex={1} colorPalette="brand" disabled={!ready || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
     </VStack>
   );
 
@@ -144,7 +144,7 @@ export function WastePage() {
       {header}
       {message && (
         <Text role="status" px={3} py={2} fontWeight="600"
-          color={message.tone === 'error' ? 'red.600' : message.tone === 'warn' ? 'orange.600' : 'green.700'}>
+          color={message.tone === 'error' ? 'fg.error' : message.tone === 'warn' ? 'orange.fg' : 'fg.success'}>
           {message.text}
         </Text>
       )}
@@ -238,7 +238,7 @@ function NewReasonSheet({ open, onClose, onChosen }: { open: boolean; onClose: (
           <VStack align="stretch" gap={3}>
             <Input aria-label="Nombre del motivo" placeholder="Nombre del motivo" minH="44px" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
             <Input aria-label="Descripción" placeholder="Descripción: cuándo se usa" minH="44px" maxLength={200} value={description} onChange={(e) => setDescription(e.target.value)} />
-            {error && <Text color="red.600">{error}</Text>}
+            {error && <Text color="fg.error">{error}</Text>}
           </VStack>
         </DrawerBody>
         <DrawerFooter>
@@ -267,7 +267,7 @@ function TodayList({ rows }: { rows: WasteRow[] }) {
   if (rows.length === 0) return <Text p={3} color="fg.muted">Hoy no se ha registrado nada.</Text>;
   return (
     <Box flex="1" minH={0} overflowY="auto" px={3}>
-      {error && <Text role="alert" py={2} color="red.fg">{error}</Text>}
+      {error && <Text role="alert" py={2} color="fg.error">{error}</Text>}
       {rows.map((r) => (
         <Flex key={r.id} data-testid="renglon-merma" minH="56px" align="center" justify="space-between" gap={3} borderBottomWidth="1px" py={1}>
           <Box minW={0}>

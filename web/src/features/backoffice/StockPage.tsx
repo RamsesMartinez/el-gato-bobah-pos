@@ -85,11 +85,15 @@ export function StockPage() {
                 {(levels.data?.items ?? []).map((s, i) => {
                   const low = s.min_stock != null && Number(s.on_hand) <= Number(s.min_stock);
                   return (
-                    <Table.Row key={i} bg={Number(s.on_hand) < 0 ? 'red.50' : undefined}>
+                    <Table.Row key={i}>
                       <Table.Cell>{s.item_name}</Table.Cell>
                       <Table.Cell>{s.item_type}</Table.Cell>
-                      <Table.Cell textAlign="end" color={Number(s.on_hand) < 0 ? 'red.600' : undefined}>
+                      <Table.Cell textAlign="end" color={Number(s.on_hand) < 0 ? 'fg.error' : undefined}>
                         {s.on_hand} {s.unit_code}{low && <Badge ml={2} colorPalette="orange">bajo</Badge>}
+                        {/* Igual que en Artículos: la cifra en rojo y la etiqueta, no el renglón entero. */}
+                        {Number(s.on_hand) < 0 && (
+                          <Text as="span" ml={2} px={2} py="1px" borderRadius="md" fontWeight="700" color="fg.error" bg="bg.error">Revisar</Text>
+                        )}
                       </Table.Cell>
                       <Table.Cell textAlign="end">{s.min_stock ?? '—'}</Table.Cell>
                     </Table.Row>
@@ -109,7 +113,7 @@ export function StockPage() {
                     <Table.Cell>{horaNegocio.fechaYHora(m.created_at)}</Table.Cell>
                     <Table.Cell>{m.item_name}</Table.Cell>
                     <Table.Cell>{m.movement_type}</Table.Cell>
-                    <Table.Cell textAlign="end" color={Number(m.quantity) < 0 ? 'red.600' : 'green.600'}>{m.quantity}</Table.Cell>
+                    <Table.Cell textAlign="end" color={Number(m.quantity) < 0 ? 'fg.error' : 'fg.success'}>{m.quantity}</Table.Cell>
                     <Table.Cell>{m.reason ?? '—'}</Table.Cell>
                   </Table.Row>
                 ))}

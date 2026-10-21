@@ -80,6 +80,7 @@ var auditActions = []struct {
 	{AuditWasteRejected, AuditGroupCancel},
 	{AuditWasteUndone, AuditGroupCancel},
 	{AuditSettingsWasteThreshold, AuditGroupPrice},
+	{AuditSettingsCountLimits, AuditGroupPrice},
 	// Artículos del almacén (spec 042): configuración, con los precios, como el costeo. El costo
 	// corregido también. Ningún grupo nuevo, por la misma razón que la 038.
 	{AuditIngredientCreated, AuditGroupPrice},
@@ -148,6 +149,8 @@ const (
 	AuditWasteUndone AuditAction = "waste.undone"
 	// AuditSettingsWasteThreshold: cambió el tope a partir del cual una merma espera aprobación.
 	AuditSettingsWasteThreshold AuditAction = "settings.waste_threshold"
+	// AuditSettingsCountLimits: cambiaron los límites del conteo (máximo y cifra para confirmar).
+	AuditSettingsCountLimits AuditAction = "settings.count_limits_changed"
 )
 
 // AllAuditActions devuelve la lista blanca de acciones, en orden fijo.

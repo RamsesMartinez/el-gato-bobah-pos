@@ -110,7 +110,7 @@ export function RepartirPropinas({ isOpen, pendiente, currency, guardando, onEnt
                     onChange={(e) => setMontos((m) => ({ ...m, [id]: e.target.value }))} />
                 </HStack>
               ))}
-              {errorAjustado && <Text color="red.600" fontSize="sm">{errorAjustado}</Text>}
+              {errorAjustado && <Text color="fg.error" fontSize="sm">{errorAjustado}</Text>}
             </VStack>
           )}
 
