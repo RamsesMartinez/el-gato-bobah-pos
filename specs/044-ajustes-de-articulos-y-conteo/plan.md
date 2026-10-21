@@ -162,6 +162,15 @@ El botón de volver, «Revisar», el teclado físico, Existencias en oscuro y lo
 
 ## Al construir
 
+- **Prueba con usuario sin contexto (2026-10-21), arreglado con su prueba**: «Límites del conteo» sin
+  «referencia» (descripción y ayuda de la columna de confirmar); la tecla ⌫ del teclado del conteo se
+  llama «Borrar»; la gráfica de costo rotula su mínimo y su máximo junto a las guías y deja un cuarto del
+  rango de margen abajo, para que el mínimo no parezca casi cero.
+- **Pendientes de esa prueba, fuera de alcance**: la misma existencia sale «-3000 ml» en Existencias y
+  «-3 L» en Artículos («pieza» contra «piezas»); «Revisar con un conteo» en la ficha es texto y no lleva al
+  conteo; el buscador del conteo trae «Tapioca» al buscar «apio»; el tema oscuro no sigue al del sistema
+  (solo Interfaz › Tema); en la barra lateral con la página bajada, «Pedidos» queda medio cortado.
+
 ### CI más corto (US9) — las 10 pruebas de integración más lentas (T036)
 
 Medido en local el 2026-10-21: `go test -json -count=1 -tags=integration ./internal/integration/...`

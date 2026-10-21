@@ -12,7 +12,7 @@ import { formatUnitCost } from '../../../shared/units';
 
 const W = 440;
 const H = 190;
-const PAD = { l: 12, r: 78, t: 18, b: 30 };
+const PAD = { l: 52, r: 78, t: 18, b: 30 };
 const C = {
   brand: 'var(--chakra-colors-brand-solid)',
   line: 'var(--chakra-colors-border)',
@@ -58,9 +58,13 @@ export function CostTrend({ items, baseUnitCode, day }: Props) {
   const pts = items.slice(0, 20).slice().reverse();
   if (pts.length === 0) return null;
   const vals = pts.map((p) => Number(p.unitCost));
-  const lo = Math.min(...vals) * 0.97;
-  const hi = Math.max(...vals) * 1.03 || 1;
-  const span = hi - lo || hi;
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  // Margen abajo de un cuarto del rango: el mínimo pegado al piso se lee como si valiera casi cero.
+  const range = max - min || max * 0.1 || 1;
+  const lo = min - range * 0.25;
+  const hi = max + range * 0.1;
+  const span = hi - lo;
   const x = (i: number) => PAD.l + (pts.length === 1 ? (W - PAD.l - PAD.r) / 2 : ((W - PAD.l - PAD.r) * i) / (pts.length - 1));
   const y = (v: number) => PAD.t + (H - PAD.t - PAD.b) * (1 - (v - lo) / span);
   const P = pts.map((p, i) => [x(i), y(Number(p.unitCost))] as [number, number]);
@@ -106,10 +110,13 @@ export function CostTrend({ items, baseUnitCode, day }: Props) {
             <stop offset="1" stopColor={C.brand} stopOpacity="0" />
           </linearGradient>
         </defs>
-        {[0.25, 0.5, 0.75].map((f) => {
-          const gy = PAD.t + (H - PAD.t - PAD.b) * f;
-          return <line key={f} x1={PAD.l} x2={W - PAD.r} y1={gy} y2={gy} stroke={C.line} strokeDasharray="2 4" />;
-        })}
+        {/* Guías en el mínimo y el máximo, con su cifra: sin ellas la altura no dice cuánto costó. */}
+        {(min === max ? [['max', max]] as const : [['max', max], ['min', min]] as const).map(([k, v]) => (
+          <g key={k}>
+            <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} stroke={C.line} strokeDasharray="2 4" />
+            {pts.length > 1 && <text data-axis={k} x={PAD.l - 6} y={y(v) + 4} textAnchor="end" fontSize="11" fill={C.muted}>{money(v)}</text>}
+          </g>
+        ))}
         {pts.length > 1 && (
           <>
             <path data-area="" d={`${curve} L${lx.toFixed(1)} ${base} L${P[0][0].toFixed(1)} ${base}Z`} fill={`url(#${gradId})`} />
