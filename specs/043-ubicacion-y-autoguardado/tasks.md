@@ -32,7 +32,7 @@ Reglas que aplican a todas las tareas:
 
 ## Phase 3: User Story 2 — La ficha guarda sola (P1)
 
-- [ ] T007 [P] [US2] vitest de la cola en `web/src/features/backoffice/articles/useAutosave.test.ts`:
+- [X] T007 [P] [US2] vitest de la cola en `web/src/features/backoffice/articles/useAutosave.test.ts`:
   - dos cambios seguidos salen uno después del otro, en orden, con el `updatedAt` del anterior (E1);
   - al fallar por la red, el campo conserva lo escrito marcado y «Reintentar» manda lo que se ve; con
     un rechazo del servidor vuelve a lo guardado (E2);
@@ -45,7 +45,7 @@ Reglas que aplican a todas las tareas:
   - con reloj simulado: cada tecla reinicia la pausa de 2 s; «1», pausa, «5» manda 1 y después 15, y
     si el 1 todavía no sale, se reemplaza por 15 en vez de mandar dos (E12);
   - «1.», «-» y vacío no se mandan por la pausa; al salir del campo se validan (FR-022, E12).
-- [ ] T008 [US2] `useAutosave.ts` hasta que T007 pase.
+- [X] T008 [US2] `useAutosave.ts` hasta que T007 pase.
 - [ ] T009 [P] [US2] vitest de la ficha en `ArticleSheets.test.tsx` (Maquetas › Ficha del artículo):
   - no hay «Guardar»; «¿Descartar cambios?» solo aparece con algo sin guardar, nunca con todo
     guardado (cierra #119);
