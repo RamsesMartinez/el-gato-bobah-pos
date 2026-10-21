@@ -24,7 +24,7 @@ caracteres (0095). Los empaques base no se guardan.
 
 ## Technical Context
 
-**Language/Version**: Go 1.27.2 (server), TypeScript + React 19 (web)
+**Language/Version**: Go 1.27.3 (server), TypeScript + React 19 (web)
 
 **Primary Dependencies**: chi, pgx + sqlc; Chakra UI v3, TanStack Query. Sin dependencias nuevas.
 
@@ -196,7 +196,7 @@ specs/043-ubicacion-y-autoguardado/
 └── checklists/requirements.md
 
 server/internal/httpapi/router.go
-server/internal/app/ingredients_admin.go (si el PATCH parcial lo pide)
+server/internal/app/ingredients_admin.go (PATCH por campo, R3)
 server/internal/integration/count_places_test.go, ingredients_admin_test.go
 
 web/src/features/backoffice/

@@ -102,7 +102,7 @@ Reglas que aplican a todas las tareas:
   - el empaque aproximado de un artículo en piezas sigue disponible (R6);
   - el selector de unidad de «Trae» es el mismo componente que el de «Mínimo» (FR-017).
 - [ ] T016 [US3] Empaques base en `articleUnits.ts` y hoja en `PresentationsSheet.tsx`, con el selector
-  de unidad de «Trae» igual al de «Mínimo».
+  de unidad de «Trae» igual al de «Mínimo», y sin la fila de ubicación (FR-021).
 
 ## Phase 6: User Story 4 — Existencia negativa (P2)
 
@@ -117,9 +117,9 @@ Reglas que aplican a todas las tareas:
   hoy (cierra T045 de la 042 cuando se mergee).
 - [X] T020 [US5] `web/e2e/lugares-para-contar.spec.ts`: la ubicación se elige en 3 toques desde la
   ficha, sin teclado y sin «Guardar». Falla hasta que T010 y T014 estén desplegados.
-- [ ] T021 [US5] Correr la suite e2e completa contra el ambiente de pruebas con la 043 desplegada.
 - [ ] T025 [US5] e2e de la hoja de empaque con el alto reducido por el teclado: la frase y «Guardar
   empaque» quedan a la vista (R5), y todo control de la hoja mide 44 px o más (FR-019).
+- [ ] T021 [US5] Correr la suite e2e completa contra el ambiente de pruebas con la 043 desplegada.
 
 ## Phase 8: Polish
 
