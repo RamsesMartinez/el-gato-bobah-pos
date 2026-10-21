@@ -472,6 +472,14 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **La normalización de nombres junta espacios con `strings.Fields`, no con `\s` de regexp**: el de
     Go no ve el espacio duro y el de Postgres sí (lo encontró la prueba de paridad de la 0095; también
     afectaba a los motivos de merma). La Down de la 0095 pierde el orden y los lugares sin artículos.
+- **Límites del conteo** (spec 044, 0098). Tres cosas que no se ven:
+  - **Los defaults viven en la columna de `count_limits`, una sola vez**: el relleno y la siembra de
+    `CreateCompany` solo pasan el id, y una prueba compara la fila con `domain.DefaultCountLimits`.
+    Cambiar un default es una migración que cambia la columna, no una constante en Go.
+  - **Solo el conteo los usa**: compras, recetas y ajustes siguen con `MaxStockQty`. El máximo de una
+    empresa puede pasar de ese tope (hasta `MaxCountLimit`, 1e9 en unidad base).
+  - **Leer nunca escribe**: una empresa sin fila (respaldo viejo, alta a mano) recibe los defaults del
+    dominio; la fila se crea al guardar.
 - **Artículos del almacén** (spec 042, 0096). Cinco cosas que no se ven:
   - **Un artículo nace solo dentro de un guardado**: la lista (`createArticleTx`), el gasto y la receta
     (`newArticle` dentro de su transacción). Nada lo crea al tocar una unidad; cancelar o fallar no
