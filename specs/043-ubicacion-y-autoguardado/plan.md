@@ -218,6 +218,18 @@ cambiar esa regla. Se junta al **leer**, en `ArticleAudit`:
   sin coincidencia exacta y atrapaba también «E2E lugar 10», que solo existe cuando la prueba crea las
   diez. Ya busca exacto. La de ubicación (T020) pasa en local con 3 toques.
 
+- **Prueba con usuario sin contexto (local, 1024×600, persona de una taquería)**: hizo las tres tareas
+  sin ayuda (ubicación nueva en 4 toques más el texto, empaque en 5 más el número, mínimo en 2 más el
+  número) y todo quedó guardado tras recargar. Lo que la hizo dudar, sin corregir porque contradice o va
+  más allá de una decisión del dueño:
+  - El punto de «cambios sin mandar» no tiene texto: salió del mínimo antes de los 2 s y no vio «Guardado
+    ✓» (sí se guardó al salir; reproducido en local: con la pausa aparece).
+  - El campo vacío de ubicación dice «Ej. Refri, Bodega, Barra» mientras la lista dice «Sin definir», y
+    dudó si ya tenía algo puesto.
+  - Al tocar un empaque de la ficha se abre su edición, y ahí mismo está «Ya no llega así»: dudó si
+    estaba editando o quitando. La hoja de empaques pide «Listo» para cerrar tras guardar. Los dos vienen
+    de la 042.
+
 ## Revisión de código (2026-10-20)
 
 `/revision-de-codigo` (backend, seguridad y tableta): aprobada con ajustes, aplicados con su prueba

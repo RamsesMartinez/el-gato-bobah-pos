@@ -125,7 +125,7 @@ Reglas que aplican a todas las tareas:
 ## Phase 8: Polish
 
 - [X] T022 `make ci-local` en verde.
-- [ ] T023 Prueba con usuario sin contexto en local a 1024×600: darle ubicación a un artículo y agregar
+- [X] T023 Prueba con usuario sin contexto en local a 1024×600: darle ubicación a un artículo y agregar
   un empaque sin ayuda (SC-006). Anotar lo encontrado en «Al construir».
 - [ ] T024 Cerrar en #103 los dos puntos que cubre esta spec («Lugar» y «Se cuenta en g»).
 
