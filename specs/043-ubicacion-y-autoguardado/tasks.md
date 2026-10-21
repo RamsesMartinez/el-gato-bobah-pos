@@ -67,8 +67,8 @@ Reglas que aplican a todas las tareas:
   del mismo campo y usuario a menos de 60 s salen como una entrada con el antes del primero y el después
   del último; un hueco de 60 s, otro usuario, otro campo o un evento de dos campos corta la cadena; la
   paginación no parte una entrada; los tres casos de aislamiento (`inTheThreeCases`).
-- [ ] T027 [US2] `db-architect` revisa el cambio de `ArticleAudit` antes de escribirlo. `ArticleAudit` agrupa con funciones de ventana antes de paginar, y `ArticleAuditSheet.tsx`
-  muestra «N cambios» con el valor final, hasta que T026 pase.
+- [ ] T027 [US2] `db-architect` revisa el cambio de `ArticleAudit` antes de escribirlo. `ArticleAudit` agrupa con
+  funciones de ventana antes de paginar, y `ArticleAuditSheet.tsx` muestra «N cambios» con el valor final, hasta que T026 pase.
 
 ## Phase 4: User Story 1 — Ubicación (P1)
 

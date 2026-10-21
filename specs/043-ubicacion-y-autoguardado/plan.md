@@ -11,7 +11,7 @@ Seguimiento de la 042 con las decisiones del dueño del 2026-10-20. Casi todo es
 - **Ubicación**: el «lugar para contar» de la spec 040 se llama «Ubicación» en las pantallas del
   almacén, con «Sin definir» y alta desde el campo, como Categoría. En el servidor solo cambia un
   permiso: crear una ubicación pasa de `inventory.count` a `inventory.configure`.
-- **Autoguardado de la ficha**: cada campo manda su propio `PATCH` al terminar de capturarse, en una
+- **Autoguardado de la ficha**: cada campo manda su propio `PATCH` tras 2 segundos sin escribir o al salir del campo, en una
   cola de uno a la vez, con un indicador junto al título. Se quita «Guardar», y «¿Descartar
   cambios?» solo aparece si algo quedó sin guardar. Antes, #120 se arregla con su prueba.
 - **Hoja de empaque nuevo**: botones base fijos por clase de unidad, «Otro» sin preseleccionar,
@@ -33,7 +33,8 @@ caracteres (0095). Los empaques base no se guardan.
 **Testing**:
 - Integración: crear ubicación sin `inventory.configure` da 403; con él, una repetida devuelve la que
   existe; `PATCH` de un solo campo no toca los demás; el mismo mínimo dos veces deja el mismo valor.
-- vitest: cola de guardado (orden, uno a la vez, revertir al fallar, «‹ Artículos» espera), campo
+- vitest: cola de guardado (orden, uno a la vez, conservar lo escrito al fallar por la red y revertir con un
+  rechazo del servidor, «‹ Artículos» espera), campo
   Ubicación (búsqueda, «Crear "X"», aviso sin permiso, ejemplo sin ubicaciones), hoja de empaque
   (botones por clase, «Otro», frase viva) y existencia negativa.
 - Playwright a 1024×600 contra el ambiente de pruebas: `gestion-de-articulos.spec.ts` y
@@ -198,9 +199,10 @@ specs/043-ubicacion-y-autoguardado/
 server/internal/httpapi/router.go
 server/internal/app/ingredients_admin.go (PATCH por campo, R3)
 server/internal/integration/count_places_test.go, ingredients_admin_test.go
+server/queries/ingredients_admin.sql (ArticleAudit agrupada, E13)
 
 web/src/features/backoffice/
-├── articles/ (ArticleSheet, ArticlesTab, NewArticleSheet, useAutosave, articleUnits)
+├── articles/ (ArticleSheet, ArticlesTab, NewArticleSheet, ArticleAuditSheet, useAutosave, articleUnits)
 ├── CountPlaceField.tsx, PresentationsSheet.tsx
 web/e2e/gestion-de-articulos.spec.ts, lugares-para-contar.spec.ts
 ```
