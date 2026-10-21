@@ -100,7 +100,7 @@ function PlaceRow({ place, n, onEdit }: { place: CountPlace; n: number; onEdit: 
       style={{ transform: CSS.Transform.toString(transform), transition, touchAction: 'pan-y' }}
       boxShadow={isDragging ? 'lg' : undefined} position="relative" zIndex={isDragging ? 1 : undefined}>
       <Box as="button" ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label={`Mover ${place.name}`}
-        w="52px" h="52px" display="flex" alignItems="center" justifyContent="center" color={isDragging ? 'red.fg' : 'fg.muted'}
+        w="52px" h="52px" display="flex" alignItems="center" justifyContent="center" color={isDragging ? 'fg.error' : 'fg.muted'}
         borderRadius="lg" cursor="grab"
         style={{ touchAction: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}>
         {/* ≡, el mismo signo que dice la instrucción de arriba (T022: seis puntos no se reconocían). */}

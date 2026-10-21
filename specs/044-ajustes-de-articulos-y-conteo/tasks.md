@@ -80,7 +80,7 @@
 - [X] T039 `make api-build && make api-test`, `make test-integration`, `make web-test`, `make web-lint`
 - [X] T040 AGENTS.md: renglón de «Límites del conteo» (tabla, defaults en la columna, solo el conteo los usa)
 - [X] T041 Prueba con usuario sin contexto en local (:3044, 1024×600, claro y oscuro) y anotar en plan › Al construir
-- [ ] T042 Dejar la 044 corriendo en local para el dueño; PR #125 en borrador
+- [X] T042 Dejar la 044 corriendo en local para el dueño; PR #125 en borrador
 
 ## Dependencies
 

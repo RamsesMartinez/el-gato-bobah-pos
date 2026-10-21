@@ -165,19 +165,19 @@ export function Ticket(props: Props) {
               {vista.tipo === 'captura' && <MenuSeparator />}
               {/* Lejos de lo que se toca todo el día, y pregunta en una hoja de la app. */}
               {vista.tipo === 'captura' && (
-                <MenuItem value="descartar" minH="48px" mt={3} color="red.fg" onClick={onDescartar}>
+                <MenuItem value="descartar" minH="48px" mt={3} color="fg.error" onClick={onDescartar}>
                   <LuCircleX /> Descartar cuenta
                 </MenuItem>
               )}
               {!enCaptura && puedeCancelar && <MenuSeparator />}
               {!enCaptura && puedeCancelar && (
-                <MenuItem value="cancelar" minH="48px" mt={3} color="red.fg" onClick={onCancelarPedido}>
+                <MenuItem value="cancelar" minH="48px" mt={3} color="fg.error" onClick={onCancelarPedido}>
                   <LuBan /> Cancelar pedido
                 </MenuItem>
               )}
               {puedeCancelar && onCancelarResto && puedeCancelarLoQueFalta(vista) && <MenuSeparator />}
               {puedeCancelar && onCancelarResto && puedeCancelarLoQueFalta(vista) && (
-                <MenuItem value="cancelar-resto" minH="48px" color="red.fg" onClick={onCancelarResto}>
+                <MenuItem value="cancelar-resto" minH="48px" color="fg.error" onClick={onCancelarResto}>
                   <LuBan /> Cancelar lo que falta
                 </MenuItem>
               )}
@@ -222,7 +222,7 @@ export function Ticket(props: Props) {
         )}
         {vista.pagados.length > 0 && (
           <Seccion key={`pagado-${claveDeCuenta}-${hayNuevo}`}
-            titulo="Pagado" color="green.fg" plegable={hayNuevo} total={vista.pagados.length}>
+            titulo="Pagado" color="fg.success" plegable={hayNuevo} total={vista.pagados.length}>
             {vista.pagados.map((r) => <Pagado key={r.id} r={r} />)}
           </Seccion>
         )}
@@ -298,7 +298,7 @@ export function Ticket(props: Props) {
           </Button>
         </VStack>
         {(bloqueo || motivo) && (
-          <Text fontSize="xs" color={motivo ? 'red.fg' : 'fg.muted'} textAlign="right" mt={1} role="status">
+          <Text fontSize="xs" color={motivo ? 'fg.error' : 'fg.muted'} textAlign="right" mt={1} role="status">
             {motivo ?? bloqueo}
           </Text>
         )}
@@ -386,7 +386,7 @@ function EnCocina({ r, onQuitar }: { r: RenglonPedido; onQuitar: () => void }) {
         {r.detalle && <Text fontSize="2xs" color="fg.muted" truncate>{r.detalle}</Text>}
       </Box>
       {entregado ? (
-        <HStack gap={1} color="green.fg" flexShrink={0}><LuCheck size={14} /><Text fontSize="xs">entregado</Text></HStack>
+        <HStack gap={1} color="fg.success" flexShrink={0}><LuCheck size={14} /><Text fontSize="xs">entregado</Text></HStack>
       ) : r.delivered > 0 ? (
         <Text fontSize="xs" color="fg.muted" flexShrink={0}>{r.delivered} de {r.qty} entregados</Text>
       ) : null}
@@ -399,7 +399,7 @@ function EnCocina({ r, onQuitar }: { r: RenglonPedido; onQuitar: () => void }) {
           </IconButton>
         </MenuTrigger>
         <MenuContent>
-          <MenuItem value="quitar" minH="48px" color="red.fg" onClick={onQuitar}>
+          <MenuItem value="quitar" minH="48px" color="fg.error" onClick={onQuitar}>
             <LuTrash2 /> Quitar
           </MenuItem>
         </MenuContent>
@@ -411,7 +411,7 @@ function EnCocina({ r, onQuitar }: { r: RenglonPedido; onQuitar: () => void }) {
 function Pagado({ r }: { r: RenglonPedido }) {
   return (
     <HStack px={2} minH="40px" gap={2} borderBottomWidth="1px" borderColor="border.muted" color="fg.muted">
-      <Box color="green.fg" aria-label="Pagado" role="img" flexShrink={0}><LuLock size={14} /></Box>
+      <Box color="fg.success" aria-label="Pagado" role="img" flexShrink={0}><LuLock size={14} /></Box>
       <Text fontSize="sm" truncate flex="1">{r.qty > 1 ? `${r.name} ×${r.qty}` : r.name}</Text>
       <Text fontSize="sm" whiteSpace="nowrap">{money(r.lineTotal)}</Text>
     </HStack>
@@ -438,7 +438,7 @@ function CampoEnvio({ guardado, onMal, onGuardar }: {
           const v = leido.valor.toFixed(2);
           if (v !== Number(guardado).toFixed(2)) onGuardar(v);
         }} />
-      {mal && <Text fontSize="xs" color="red.fg">Solo números</Text>}
+      {mal && <Text fontSize="xs" color="fg.error">Solo números</Text>}
     </HStack>
   );
 }
@@ -495,8 +495,8 @@ function CampoDescuento({ subtotal, onMal, onListo }: {
         disabled={mal} onClick={listo}>Listo</Button>
     </HStack>
     {/* El aviso en su propia línea: junto al campo lo dejaba en ~10 px en el panel de 300. */}
-    {d.malEscrito && <Text fontSize="xs" color="red.fg">Solo números</Text>}
-    {d.excede && <Text fontSize="xs" color="red.fg">Máx {modo === 'pct' ? '100 %' : money(subtotal)}</Text>}
+    {d.malEscrito && <Text fontSize="xs" color="fg.error">Solo números</Text>}
+    {d.excede && <Text fontSize="xs" color="fg.error">Máx {modo === 'pct' ? '100 %' : money(subtotal)}</Text>}
     </VStack>
   );
 }

@@ -65,12 +65,12 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
         <HStack gap={0} borderWidth="1px" borderRadius="full" overflow="hidden" flexShrink={0}>
           {([['Activos', false], ['Archivados', true]] as const).map(([label, archived]) => (
             <Button key={label} minH="44px" borderRadius="0" variant={!!filter.archived === archived ? 'solid' : 'ghost'}
-              colorPalette={!!filter.archived === archived ? 'red' : 'gray'}
+              colorPalette={!!filter.archived === archived ? 'brand' : 'gray'}
               aria-pressed={!!filter.archived === archived} onClick={() => setFilter({ ...filter, archived })}>{label}</Button>
           ))}
         </HStack>
         {canConfigure && (
-          <Button minH="44px" colorPalette="red" flexShrink={0} onClick={() => setCreating(true)}>+ Nuevo</Button>
+          <Button minH="44px" colorPalette="brand" flexShrink={0} onClick={() => setCreating(true)}>+ Nuevo</Button>
         )}
       </HStack>
       <HStack gap={2} flexShrink={0}>

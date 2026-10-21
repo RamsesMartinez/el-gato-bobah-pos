@@ -480,7 +480,7 @@ export function POSPage() {
   if (isLoading) return <Center h="80vh"><Spinner size="xl" /></Center>;
   // Solo sin menú alguno: una revisión periódica que falla sin red deja el error puesto pero conserva
   // el menú anterior, y con él se sigue vendiendo.
-  if (error && !menu) return <Center h="80vh"><Text color="red.500">Error cargando el menú</Text></Center>;
+  if (error && !menu) return <Center h="80vh"><Text color="fg.error">Error cargando el menú</Text></Center>;
 
   // Sin turno abierto la pantalla de venta no se muestra.
   if (cashStatus.data && !cashStatus.data.open) {
@@ -789,7 +789,7 @@ export function POSPage() {
         <DialogBackdrop />
         <DialogContent colorPalette={palette} mx={4} borderRadius="2xl">
           <DialogBody py={6} textAlign="center">
-            <Center color={lastOrder?.paid ? 'green.500' : 'orange.500'} mb={2}>
+            <Center color={lastOrder?.paid ? 'fg.success' : 'orange.500'} mb={2}>
               {lastOrder?.paid ? <LuCircleCheck size={56} /> : <LuCircleAlert size={56} />}
             </Center>
             <Text fontSize="xl" fontWeight="800">

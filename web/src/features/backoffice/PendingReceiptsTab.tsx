@@ -130,7 +130,7 @@ function ReceiveSheet({ row, onClose, onDone }: { row: PendingReceipt; onClose: 
   });
   return (
     <ReceiptSheet title={`¿Cuánto llegó de ${row.itemName}?`} onClose={onClose}
-      footer={<Button minH="44px" colorPalette="red" disabled={!ok} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>}>
+      footer={<Button minH="44px" colorPalette="brand" disabled={!ok} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>}>
       <VStack align="stretch" gap={3}>
         <Text fontSize="sm" color="fg.muted">{row.supplier ?? 'Sin proveedor'} · compra del {dia(row.expenseDate)} · faltan {qty(row.missing)}</Text>
         <HStack gap={3}>
@@ -166,7 +166,7 @@ function NotComingSheet({ row, onClose, onDone }: { row: PendingReceipt; onClose
   });
   return (
     <ReceiptSheet title={`¿Cuántas ya no van a llegar de ${row.itemName}?`} onClose={onClose}
-      footer={<Button minH="44px" colorPalette="red" disabled={!ok} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>}>
+      footer={<Button minH="44px" colorPalette="brand" disabled={!ok} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>}>
       <VStack align="stretch" gap={3}>
         <HStack gap={3}>
           <Input aria-label="Ya no llegan" w="100px" minH="44px" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
@@ -188,7 +188,7 @@ function AllArrivedSheet({ rows, onClose, onDone }: { rows: PendingReceipt[]; on
   });
   return (
     <ReceiptSheet title={`¿Llegó todo de ${head.supplier ?? 'esta compra'}?`} onClose={onClose}
-      footer={<Button minH="44px" colorPalette="red" loading={save.isPending} onClick={() => save.mutate()}>Sí, llegó todo</Button>}>
+      footer={<Button minH="44px" colorPalette="brand" loading={save.isPending} onClick={() => save.mutate()}>Sí, llegó todo</Button>}>
       <VStack align="stretch" gap={1}>
         {rows.map((r) => (
           <Text key={r.itemId}>{r.itemName}: {qty(r.missing)} {unitWord(r, num(r.missing))}</Text>

@@ -63,6 +63,15 @@ describe('Límites del conteo (spec 044, US6)', () => {
     expect(screen.getByRole('button', { name: 'Guardar límites' })).toBeDisabled();
   });
 
+  test('con «Guardar límites» apagado por un error, junto al botón se dice por qué', async () => {
+    montar();
+    const peso = await screen.findByLabelText('Máximo por conteo de Peso (kg)');
+    expect(screen.queryByText('Corrige las cifras marcadas')).toBeNull();
+    fireEvent.change(peso, { target: { value: '0' } });
+    const aviso = screen.getByText('Corrige las cifras marcadas');
+    expect(aviso.parentElement).toContainElement(screen.getByRole('button', { name: 'Guardar límites' }));
+  });
+
   test('«Descartar» vuelve a lo guardado', async () => {
     montar();
     const peso = await screen.findByLabelText('Máximo por conteo de Peso (kg)');

@@ -88,7 +88,7 @@ export function StockPage() {
                     <Table.Row key={i} bg={Number(s.on_hand) < 0 ? 'red.subtle' : undefined}>
                       <Table.Cell>{s.item_name}</Table.Cell>
                       <Table.Cell>{s.item_type}</Table.Cell>
-                      <Table.Cell textAlign="end" color={Number(s.on_hand) < 0 ? 'red.fg' : undefined}>
+                      <Table.Cell textAlign="end" color={Number(s.on_hand) < 0 ? 'fg.error' : undefined}>
                         {s.on_hand} {s.unit_code}{low && <Badge ml={2} colorPalette="orange">bajo</Badge>}
                       </Table.Cell>
                       <Table.Cell textAlign="end">{s.min_stock ?? '—'}</Table.Cell>
@@ -109,7 +109,7 @@ export function StockPage() {
                     <Table.Cell>{horaNegocio.fechaYHora(m.created_at)}</Table.Cell>
                     <Table.Cell>{m.item_name}</Table.Cell>
                     <Table.Cell>{m.movement_type}</Table.Cell>
-                    <Table.Cell textAlign="end" color={Number(m.quantity) < 0 ? 'red.fg' : 'green.fg'}>{m.quantity}</Table.Cell>
+                    <Table.Cell textAlign="end" color={Number(m.quantity) < 0 ? 'fg.error' : 'fg.success'}>{m.quantity}</Table.Cell>
                     <Table.Cell>{m.reason ?? '—'}</Table.Cell>
                   </Table.Row>
                 ))}

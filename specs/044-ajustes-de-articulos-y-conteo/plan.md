@@ -170,6 +170,26 @@ El botón de volver, «Revisar», el teclado físico, Existencias en oscuro y lo
   «-3 L» en Artículos («pieza» contra «piezas»); «Revisar con un conteo» en la ficha es texto y no lleva al
   conteo; el buscador del conteo trae «Tapioca» al buscar «apio»; el tema oscuro no sigue al del sistema
   (solo Interfaz › Tema); en la barra lateral con la página bajada, «Pedidos» queda medio cortado.
+- **Botón principal en `brand`** (decisión del dueño, 2026-10-21). Pasaron de `red` a `brand` las
+  acciones principales y los selectores marcados: Por recibir (Guardar ×2, «Sí, llegó todo»), lo que llegó
+  (Guardar, empaque/unidad, «Lo pagué»/«Fue regalo»), Artículos («+ Nuevo», filtro), ficha («Reintentar»),
+  Se echó a perder (Registrar, presets, Guardar de `/merma`), detalle del gasto (agregar artículo, Guardar,
+  «Corregir lo que llegó», estado), nuevo gasto (subir foto, «Sí», método de pago, empaque/unidad, Guardar),
+  conteo (Empezar, vista, Cerrar conteo, «Sí, no hay», «Sí, guardar», Guardar ×2, confirmar cierre),
+  «Cerrar caja», Límites del conteo, método de inventario, Guardar de la receta y `ReasonSheet` cuando no es
+  destructivo. **Se quedan en rojo** porque borran, cancelan, devuelven o no tienen vuelta: Archivar
+  (artículo, opción, lugar, caja, terminal, motivo), «Sí, anular» y Cancelar gasto, «Olvidar», «Quitar
+  precio», quitar pareja, desconectar y borrar plataforma, Cancelar/Descartar en Caja, Rechazar y «Sí,
+  rechazar» merma, «Sí, deshacer», «Quitar fondo fijo», quitar renglón/pago/insumo/grupo (iconos de bote),
+  Devolver y su hoja, «Quitar lo que falta», `CancelarRenglonDialog`, anular pago, «Descartar» y «Sí,
+  dejar de contarla» de la receta, «Salir sin guardar», «Juntar»/«Sí, juntar» (no se separan después),
+  «Sí, descartar» el conteo, `ConfirmSheet` destructivo. También rojo por significado y no por acción: el
+  selector «Salida» de movimientos de caja, los motivos de quitar (`RemoveReasons`) y las insignias
+  «Devuelto» y de alza de costo. Texto blanco sobre `brand.solid` (brand.600): 5.57:1.
+- **Colores de estado**: texto `fg.error`/`fg.success`, fondo `bg.error`/`bg.success`, borde
+  `border.error`/`border.success` en todo `web/src`; la selección que usaba rojo fijo (receta, emparejar,
+  casilla activa del conteo) pasa a `brand.solid`/`brand.subtle`. Quedan con su paleta los puntos de color
+  por categoría de la bitácora (son categorías, no estados).
 
 ### CI más corto (US9) — las 10 pruebas de integración más lentas (T036)
 

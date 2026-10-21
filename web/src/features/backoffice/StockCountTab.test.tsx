@@ -477,6 +477,21 @@ describe('teclado físico (spec 044)', () => {
     expect(suelto()).toHaveValue('');
   });
 
+  test('tras tocar una tecla de la pantalla, el teclado físico sigue contando y Enter guarda sin repetirla', async () => {
+    await abrir();
+    click(/Siguiente casilla/);
+    const siete = within(screen.getByTestId('teclado')).getByRole('button', { name: '7' });
+    // En la tableta el toque puede dejar el foco en la tecla: el teclado físico no se pierde por eso.
+    siete.focus();
+    fireEvent.click(siete);
+    press('2', siete);
+    expect(suelto()).toHaveValue('72');
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    act(() => { siete.dispatchEvent(enter); });
+    expect(enter.defaultPrevented).toBe(true);
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, { countedQty: '72', confirmable: true }));
+  });
+
   test('el teclado de la pantalla sigue igual', async () => {
     await abrir();
     click(/Siguiente casilla/);

@@ -20,7 +20,7 @@ export function NumericKeypad({ allowDecimal, onKey, onNext }: {
     </Button>
   );
   return (
-    <Grid templateColumns="repeat(3, 1fr)" gap={2} data-testid="teclado">
+    <Grid templateColumns="repeat(3, 1fr)" gap={2} data-testid="teclado" data-keypad="">
       {KEYS.map((k) => key(k))}
       {allowDecimal ? key('.', 'punto') : <span />}
       {key('0')}
