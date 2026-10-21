@@ -43,7 +43,11 @@ describe('Almacén › Artículos', () => {
     expect(screen.getByText('Sin costo', { selector: 'span' })).toBeTruthy();
     expect(screen.getByText('-250 g')).toBeTruthy();
     // Spec 043: la negativa dice qué hacer, no solo va en rojo.
-    expect(screen.getByText('· Revisar')).toBeTruthy();
+    const tag = screen.getByText('Revisar');
+    expect(tag).not.toHaveAttribute('title');
+    expect(getComputedStyle(tag).fontSize, 'la etiqueta va del tamaño de la cifra').toBe(getComputedStyle(screen.getByText('-250 g')).fontSize);
+    expect(getComputedStyle(tag).backgroundColor, 'fondo rojo suave').not.toBe('');
+    expect(getComputedStyle(tag.closest('td')!).whiteSpace).toBe('nowrap');
   });
 
   // Spec 043, FR-001 y FR-006: «Ubicación» y «Sin definir», y el renglón no lleva botón de ubicación.

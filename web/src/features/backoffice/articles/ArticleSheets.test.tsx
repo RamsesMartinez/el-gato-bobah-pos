@@ -41,6 +41,8 @@ vi.mock('../../../api/backoffice', async (orig) => ({ ...(await orig<object>()),
 const pos = vi.hoisted(() => ({ businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) }));
 vi.mock('../../../api/pos', () => ({ posApi: pos }));
 
+const volver = () => screen.getByRole('button', { name: 'Volver a Artículos' });
+
 function montar(ui: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={qc}><Provider>{ui}</Provider></QueryClientProvider>);
@@ -195,7 +197,7 @@ describe('Ficha del artículo', () => {
     fireEvent.blur(nombre);
     expect(await screen.findByText(/No se pudo guardar/)).toBeInTheDocument();
     expect(nombre).toHaveValue('Hielo');
-    fireEvent.click(screen.getByRole('button', { name: '‹ Artículos' }));
+    fireEvent.click(volver());
     expect(await screen.findByText('¿Descartar cambios?')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Seguir editando' }));
@@ -223,7 +225,7 @@ describe('Ficha del artículo', () => {
     fireEvent.blur(nombre);
     expect(await screen.findByText('El nombre no puede quedar vacío.')).toBeInTheDocument();
     expect(back.updateArticle).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '‹ Artículos' }));
+    fireEvent.click(volver());
     expect(await screen.findByText('¿Descartar cambios?')).toBeInTheDocument();
   });
 
@@ -314,7 +316,7 @@ describe('Ficha del artículo', () => {
     const nombre = await screen.findByDisplayValue('Hielo en bolsa');
     nombre.focus();
     fireEvent.change(nombre, { target: { value: 'Hielo picado' } });
-    fireEvent.click(screen.getByRole('button', { name: '‹ Artículos' }));
+    fireEvent.click(volver());
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(back.updateArticle).toHaveBeenCalledWith(7, expect.objectContaining({ name: 'Hielo picado' }));
     expect(screen.queryByText('¿Descartar cambios?')).toBeNull();
@@ -335,7 +337,7 @@ describe('Ficha del artículo', () => {
     await screen.findByText('Guardado ✓', {}, { timeout: 3000 });
     await new Promise((r) => setTimeout(r, 60));
     expect(minimo(), 'el mínimo volvió al valor viejo tras guardar').toHaveValue('750');
-    fireEvent.click(screen.getByRole('button', { name: '‹ Artículos' }));
+    fireEvent.click(volver());
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(screen.queryByText('¿Descartar cambios?')).toBeNull();
   });
@@ -373,6 +375,18 @@ describe('Ficha del artículo', () => {
   });
 
   // Spec 043, FR-018: «Hay -1.87 kg» se leía como un dato normal.
+  it('«Volver a Artículos» tiene borde, 44 px, la flecha no se lee, y sale como close()', async () => {
+    const onClose = vi.fn();
+    montar(<ArticleSheet id={7} onClose={onClose} />);
+    await screen.findByDisplayValue('Hielo en bolsa');
+    const b = volver();
+    expect(b.textContent).toContain('←');
+    expect(within(b).getByText('←')).toHaveAttribute('aria-hidden', 'true');
+    expect(getComputedStyle(b).minHeight).toBe('44px');
+    fireEvent.click(b);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
   it('una existencia negativa va en rojo, en su renglón, con «Revisar con un conteo»', async () => {
     back.article.mockResolvedValue({ ...ficha, onHand: '-1870' });
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);

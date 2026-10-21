@@ -190,7 +190,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
     onError: (e) => toaster.create({ title: e instanceof ApiError && e.status !== 500 ? e.message : 'No se pudo corregir el costo', type: 'error' }),
   });
 
-  // close es la única salida («‹ Artículos», el fondo, Escape): guarda el campo que tiene el foco
+  // close es la única salida («Volver a Artículos», el fondo, Escape): guarda el campo que tiene el foco
   // (en la tableta tocar un botón no siempre lo quita), espera la cola y pregunta solo si algo quedó
   // sin guardar (R2).
   const [leaving, setLeaving] = useState(false);
@@ -214,7 +214,9 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
       <DrawerContent display="flex" flexDirection="column">
         <DrawerHeader py={2}>
           <HStack gap={2}>
-            <Button minH="44px" variant="ghost" loading={leaving} onClick={() => void close()}>‹ Artículos</Button>
+            <Button minH="44px" variant="outline" flexShrink={0} loading={leaving} onClick={() => void close()}>
+              <span aria-hidden="true">←</span>Volver a Artículos
+            </Button>
             <Text fontSize="lg" fontWeight="700" truncate minW="120px">{a?.name ?? ''}</Text>
             <SaveIndicator status={auto.status} onRetry={auto.retry} />
             <Box flex="1" />

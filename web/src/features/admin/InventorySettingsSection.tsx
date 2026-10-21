@@ -6,6 +6,7 @@ import { backofficeApi, type CostingMethod } from '../../api/backoffice';
 import { ApiError } from '../../api/client';
 import { WasteSettings } from './WasteSettings';
 import { CountPlacesSettings } from './CountPlacesSettings';
+import { CountLimitsSettings } from './CountLimitsSettings';
 
 const METHODS: { value: CostingMethod; label: string; hint: string }[] = [
   { value: 'last', label: 'Lo que costó la última compra', hint: 'El costo de cada insumo es el de su compra más reciente.' },
@@ -65,6 +66,7 @@ export function InventorySettingsSection() {
       <Text fontSize="sm" color="fg.muted" mt={1}>Se ve en la captura de compras: «Agregar {trimmed || current}».</Text>
       {error && <Text fontSize="sm" color="red.600" mt={2}>{error}</Text>}
       <CountPlacesSettings />
+      <CountLimitsSettings />
       <WasteSettings />
     </Box>
   );
