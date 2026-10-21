@@ -204,15 +204,17 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   gatobobah` a mano también es owner**: para ver lo que ve la API, `set role gatobobah_app; set
   app.company_id = '2';` antes de la consulta.
 - `make web-dev` · `make web-build` · `make web-test` (vitest).
-- **Vueltas con alguien sin contexto: en local mientras se itera** (constitución 1.23.0). El subagente
+- **Toda prueba corre en local** (constitución 1.25.0; el ambiente de pruebas solo si el dueño lo pide). El subagente
   usa `http://localhost:30NN` del worktree (el `FRONTEND_PORT` de `.env.worktree.local`), con
   `make start` arriba y una base restaurada (`make db-restaurar`), a 1024×600 y `hasTouch`. Corrige,
-  recarga (Vite lo hace solo) y vuelve a probar sin PR ni despliegue. En el ambiente de pruebas se
-  corre una sola vuelta final, junto con la suite e2e, antes de subir a `main`.
-- **`bun run e2e`** (en `web/`) — Playwright contra el **ambiente de pruebas desplegado**, a
-  1024×600. No monta un servidor local a propósito: lo que estas pruebas atrapan es el desacuerdo
-  entre lo que la pantalla calcula y lo que el servidor cobra, y con el backend simulado los dos
-  están de acuerdo por construcción. En Windows los binarios del navegador los bloquea Smart App
+  recarga (Vite lo hace solo) y vuelve a probar sin PR ni despliegue. La vuelta final corre además
+  contra el build servido en local (`bun run build && bun run preview`).
+- **`bun run e2e`** (en `web/`) — Playwright a 1024×600 contra el **`make start` del worktree**:
+  `E2E_BASE_URL=http://localhost:30NN E2E_API_URL=http://localhost:80NN/api/v1 E2E_SLUG=… E2E_PASSWORD=… bun run e2e`.
+  Sin esas variables apunta al ambiente de pruebas, que se usa solo cuando el dueño lo pide. No
+  simula el backend a propósito: lo que estas pruebas atrapan es el desacuerdo entre lo que la
+  pantalla calcula y lo que el servidor cobra, y con un backend simulado los dos están de acuerdo por
+  construcción; la API local es la real. En Windows los binarios del navegador los bloquea Smart App
   Control, así que corre en contenedor como el resto de los gates:
 
   ```bash
@@ -557,7 +559,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   público).
 - **En producción no se prueba; después de subir solo se revisa la salud** (decidido el
   2026-10-17). Las pruebas —e2e, quickstart, usuario sin contexto, scripts que escriben— corren en
-  el ambiente de pruebas (`app-dev`/`api-dev`), que es para eso; repetirlas en producción es
+  local, y en el ambiente de pruebas (`app-dev`/`api-dev`) solo si el dueño lo pide; repetirlas en producción es
   redundante y escribe en los datos de un negocio que está operando. Tras una subida a `main`, lo que
   se revisa es de solo lectura y sin sesión:
   - `GET https://api.elgatobobah.com/healthz` → `{"status":"ok"}` (el proceso vive) y
