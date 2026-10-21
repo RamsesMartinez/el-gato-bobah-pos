@@ -309,6 +309,11 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
     `input type="date"` o `type="time"` también (celdas de ~30 px). Va
     [`DatePickerButton`](../../web/src/components/DatePickerButton.tsx) o, para horas, un `Picker`
     de pasos de 15 minutos (decidido el 2026-10-11).
+  - **Todas las pantallas comparten un solo estilo** (decidido el 2026-10-21): títulos, botones,
+    tarjetas, tablas, etiquetas de estado y espaciados salen de los mismos componentes y tokens del tema
+    (`web/src/components/`, `web/src/theme/`). Una pantalla nueva no inventa su propio botón, su propia
+    caja ni sus propios colores: si lo que existe no alcanza, se amplía el componente común. Una pantalla
+    que se ve como de otro producto es un hallazgo de revisión, igual que un control de 30 px.
   - **Todo control tappable mide al menos 44 px de alto.** Es el mínimo con el que un dedo acierta a
     la primera; por debajo, el operador toca dos veces y la segunda cae en otra cosa.
   - **La pantalla la verifica el agente, no una persona con la tableta en la mano** (decidido el
@@ -425,4 +430,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.25.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-21
+**Version**: 1.26.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-21
