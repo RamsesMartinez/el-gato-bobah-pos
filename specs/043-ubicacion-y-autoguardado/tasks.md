@@ -76,7 +76,7 @@ Reglas que aplican a todas las tareas:
   ubicación sin `inventory.configure` da 403 y con él la crea; una repetida por acentos o mayúsculas
   devuelve la que existe (E8); los tres casos de aislamiento (`inTheThreeCases`) (E9).
 - [X] T012 [US1] `router.go`: `POST /stock/count-places` pasa a `RequirePermission(inventory.configure)`.
-- [ ] T013 [US1] vitest del campo en `CountPlaceField.test.tsx` y `ArticleSheets.test.tsx`
+- [X] T013 [US1] vitest del campo en `CountPlaceField.test.tsx` y `ArticleSheets.test.tsx`
   (Maquetas › Ficha del artículo):
   - se llama «Ubicación» y su vacío «Sin definir»;
   - sin ubicaciones muestra «Ej. Refri, Bodega, Barra»;
@@ -87,7 +87,7 @@ Reglas que aplican a todas las tareas:
   - el filtro de la lista dice «Ubicación: Todas» y «Sin definir», y el conteo dice «ubicación»;
   - el nombre no pasa del tope de 30 caracteres;
   - un artículo con una ubicación archivada se ve «Sin definir».
-- [ ] T014 [US1] `CountPlaceField.tsx`, `ArticleSheet.tsx`, `ArticlesTab.tsx`, `NewArticleSheet.tsx` y
+- [X] T014 [US1] `CountPlaceField.tsx`, `ArticleSheet.tsx`, `ArticlesTab.tsx`, `NewArticleSheet.tsx` y
   `StockCountTab.tsx`:
   «Ubicación», «Sin definir» y alta según permiso. La lista no lleva botón en el renglón.
 

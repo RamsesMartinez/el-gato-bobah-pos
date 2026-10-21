@@ -32,6 +32,12 @@ interface Props {
   // searchMaxLength: el tope de lo que se puede crear desde el buscador, el mismo del servidor; sin
   // él, un nombre largo volvía con 400 y la hoja se quedaba abierta sin decir por qué.
   searchMaxLength?: number;
+  // createFirst pone «Crear» debajo del buscador en vez de al final: con el teclado abierto en 600 px
+  // el final de la lista queda tapado (revisión de tableta de la 043, R4).
+  createFirst?: boolean;
+  // cannotCreateHint se muestra en lugar de «Crear» a quien no puede crear: sin él, escribir algo que
+  // no existe no dice nada y parece que la hoja no responde.
+  cannotCreateHint?: string;
 }
 
 // Picker táctil: reemplaza al <select> nativo (malo en tablet con muchos ítems). Abre un
@@ -43,13 +49,14 @@ const comparable = (s: string) => normalize(s).trim().replace(/\s+/g, ' ');
 export function Picker({
   value, options, onChange, placeholder = 'Seleccionar', title, clearable,
   clearLabel = '— Ninguno —', searchThreshold = 6, disabled, size = 'md', onCreate, focusSearch = true, searchMaxLength,
+  createFirst, cannotCreateHint,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
 
   const selected = options.find((o) => o.value === value);
-  const showSearch = options.length > searchThreshold || !!onCreate;
+  const showSearch = options.length > searchThreshold || !!onCreate || !!cannotCreateHint;
   const filtered = useMemo(() => {
     const n = comparable(q);
     return n ? options.filter((o) => comparable(o.label).includes(n)) : options;
@@ -81,6 +88,15 @@ export function Picker({
     }
   };
 
+  const createRow = q.trim() === '' || exact ? null
+    : onCreate ? (
+      <Button size="lg" minH="52px" variant="subtle" colorPalette="green" justifyContent="start"
+        loading={creating} onClick={create}>
+        <LuPlus /> Crear «{q.trim()}»
+      </Button>
+    )
+      : cannotCreateHint ? <Text color="fg.muted" px={2} py={3}>{cannotCreateHint}</Text> : null;
+
   return (
     <>
       {/* 44 px SIEMPRE, aunque el `size` sea sm: la receta del tema solo sube el piso en `md`, y
@@ -110,19 +126,15 @@ export function Picker({
               </Box>
             )}
             <VStack align="stretch" gap={1} overflowY="auto" px={3} pb={4} pt={1} flex="1">
+              {createFirst && createRow}
               {clearable && <ListRow label={clearLabel} muted selected={!value} onClick={() => pick('')} />}
               {filtered.map((o) => (
                 o.value === value
                   ? <Box key={o.value} ref={selectedRow} display="contents"><ListRow label={o.label} hint={o.hint} selected onClick={() => pick(o.value)} /></Box>
                   : <ListRow key={o.value} label={o.label} hint={o.hint} selected={false} onClick={() => pick(o.value)} />
               ))}
-              {onCreate && q.trim() !== '' && !exact && (
-                <Button size="lg" minH="52px" variant="subtle" colorPalette="green" justifyContent="start"
-                  loading={creating} onClick={create}>
-                  <LuPlus /> Crear «{q.trim()}»
-                </Button>
-              )}
-              {filtered.length === 0 && !onCreate && <Text color="fg.muted" px={2} py={3}>Sin resultados.</Text>}
+              {!createFirst && createRow}
+              {filtered.length === 0 && !onCreate && !cannotCreateHint && <Text color="fg.muted" px={2} py={3}>Sin resultados.</Text>}
               {/* Sin esto el alta inline es invisible: el botón «Crear» solo aparece al escribir, así
                   que quien abre la hoja y no ve su proveedor asume que tiene que salirse a crearlo. */}
               {onCreate && q.trim() === '' && (

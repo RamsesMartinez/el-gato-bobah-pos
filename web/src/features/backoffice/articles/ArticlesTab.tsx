@@ -7,6 +7,7 @@ import { Picker } from '../../../components/Picker';
 import { can } from '../../../app/permissions';
 import { useSessionStore } from '../../../stores/session';
 import { formatBaseQty, formatUnitCost } from '../../../shared/units';
+import { NO_LOCATION } from '../useLocations';
 import { NewArticleSheet } from './NewArticleSheet';
 
 // Almacén › Artículos (spec 042, maqueta «Lista de artículos», opción A con los ajustes de la
@@ -46,7 +47,7 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
 
   const placeValue = filter.place === undefined ? '' : String(filter.place);
   const placeOptions = [
-    { value: 'none', label: 'Sin lugar' },
+    { value: 'none', label: NO_LOCATION },
     ...(places.data ?? []).map((p) => ({ value: String(p.id), label: p.name })),
   ];
   const toggle = (k: 'noCost' | 'negative') => setFilter({ ...filter, [k]: !filter[k] });
@@ -58,7 +59,7 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
         <Input flex="1" minH="44px" aria-label={`Buscar ${word} o empaque`} placeholder={`Buscar ${word} o empaque`}
           value={q} onChange={(e) => setQ(e.target.value)} />
         <Box flexShrink={0}>
-          <Picker title="Lugar" placeholder="Lugar: Todos" clearable clearLabel="Todos" value={placeValue} options={placeOptions}
+          <Picker title="Ubicación" placeholder="Ubicación: Todas" clearable clearLabel="Todas" value={placeValue} options={placeOptions}
             onChange={(v) => setFilter({ ...filter, place: v === '' ? undefined : v === 'none' ? 'none' : Number(v) })} />
         </Box>
         <HStack gap={0} borderWidth="1px" borderRadius="full" overflow="hidden" flexShrink={0}>
@@ -83,7 +84,7 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
             <Table.Row>
               <Table.ColumnHeader>{Word}</Table.ColumnHeader>
               <Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader>
-              <Table.ColumnHeader>Lugar</Table.ColumnHeader>
+              <Table.ColumnHeader>Ubicación</Table.ColumnHeader>
               <Table.ColumnHeader>Costo</Table.ColumnHeader>
               <Table.ColumnHeader>Empaques</Table.ColumnHeader>
             </Table.Row>
@@ -120,7 +121,7 @@ function ArticleLine({ a, onOpen }: { a: ArticleRow; onOpen: (id: number) => voi
           {formatBaseQty(a.onHand, a.baseUnitCode)}
         </Text>
       </Table.Cell>
-      <Table.Cell><Text color="fg.muted">{a.countPlace ?? 'Sin lugar'}</Text></Table.Cell>
+      <Table.Cell><Text color="fg.muted">{a.countPlace ?? NO_LOCATION}</Text></Table.Cell>
       <Table.Cell>{cost ?? <Text as="span" fontSize="sm" color="red.600" fontWeight="600">Sin costo</Text>}</Table.Cell>
       <Table.Cell>
         <Text fontSize="sm" color="fg.muted">

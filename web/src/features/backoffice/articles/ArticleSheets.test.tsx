@@ -22,7 +22,8 @@ const back = vi.hoisted(() => ({
     { id: 1, code: 'g', name: 'Gramo', kind: 'masa', toBase: '1' }, { id: 2, code: 'kg', name: 'Kilo', kind: 'masa', toBase: '1000' },
     { id: 3, code: 'ml', name: 'Mililitro', kind: 'volumen', toBase: '1' },
   ] })),
-  countPlaces: vi.fn(() => Promise.resolve([])),
+  countPlaces: vi.fn(() => Promise.resolve([] as unknown[])),
+  createCountPlace: vi.fn(),
   createArticle: vi.fn(),
   reactivateArticle: vi.fn(() => Promise.resolve()),
   article: vi.fn(),
@@ -258,6 +259,22 @@ describe('Ficha del artículo', () => {
     abrir();
     expect(await screen.findByDisplayValue('Hielo picado', {}, { timeout: 3000 })).toBeInTheDocument();
     expect(screen.queryByDisplayValue('Hielo en bolsa')).toBeNull();
+  });
+
+  // Spec 043, FR-001 y FR-003: «Ubicación» se elige o se crea en la ficha y se guarda al elegirla.
+  it('«Ubicación» guarda al elegir y crea una nueva desde el buscador', async () => {
+    back.countPlaces.mockResolvedValue([{ id: 1, name: 'Refri', position: 0, ingredients: 1 }]);
+    back.createCountPlace.mockResolvedValue({ id: 5 });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    await screen.findByDisplayValue('Hielo en bolsa');
+    expect(screen.getByText('Ubicación')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Sin definir/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Refri' }));
+    await waitFor(() => expect(back.updateArticle).toHaveBeenCalledWith(7, expect.objectContaining({ placeId: 1 })));
+    fireEvent.click(await screen.findByRole('button', { name: /Refri/ }));
+    fireEvent.change(await screen.findByPlaceholderText('Buscar…'), { target: { value: 'Bodega' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Crear «Bodega»/ }));
+    await waitFor(() => expect(back.updateArticle).toHaveBeenLastCalledWith(7, expect.objectContaining({ placeId: 5 })), { timeout: 3000 });
   });
 
   // En la tableta, tocar un botón no siempre quita el foco del campo: salir guarda primero lo que

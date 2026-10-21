@@ -17,6 +17,7 @@ import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { CountLossReport } from './CountLossReport';
 import { PlaceChooser } from './CountPlaceField';
+import { NO_LOCATION } from './useLocations';
 import { useNavigate } from 'react-router';
 import { can } from '../../app/permissions';
 
@@ -34,7 +35,7 @@ function saveView(v: View) {
   try { localStorage.setItem(VIEW_KEY, v); } catch { /* la tableta sin almacenamiento cuenta igual */ }
 }
 
-const placeOf = (i: CountItem) => i.place ?? 'Sin lugar';
+const placeOf = (i: CountItem) => i.place ?? NO_LOCATION;
 
 export function StockCountTab() {
   const qc = useQueryClient();

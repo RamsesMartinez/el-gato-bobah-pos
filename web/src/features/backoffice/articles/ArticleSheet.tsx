@@ -10,6 +10,7 @@ import { ApiError } from '../../../api/client';
 import { Picker } from '../../../components/Picker';
 import { ConfirmSheet } from '../../../components/ConfirmSheet';
 import { useAutosave, type AutosaveStatus } from './useAutosave';
+import { useLocations } from '../useLocations';
 import { toaster } from '../../../components/ui/toaster';
 import { can } from '../../../app/permissions';
 import { useSessionStore } from '../../../stores/session';
@@ -85,7 +86,7 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
   const hora = useHoraDelNegocio();
   const art = useQuery({ queryKey: ['article', id], queryFn: () => backofficeApi.article(id) });
   const cats = useQuery({ queryKey: ['article-categories'], queryFn: backofficeApi.articleCategories });
-  const places = useQuery({ queryKey: ['count-places'], queryFn: backofficeApi.countPlaces });
+  const locations = useLocations();
   const units = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units, enabled: canConfigure });
   const allPres = useQuery({ queryKey: ['presentations'], queryFn: backofficeApi.presentations, enabled: canReceive });
   const history = useInfiniteQuery({
@@ -236,9 +237,8 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
                       }
                     }} />
                 </Field>
-                <Field label="Lugar">
-                  <Picker title="Lugar" placeholder="Sin lugar" clearable clearLabel="Sin lugar" disabled={!canConfigure}
-                    value={form.placeId} options={(places.data ?? []).map((p) => ({ value: String(p.id), label: p.name }))}
+                <Field label="Ubicación">
+                  <Picker {...locations.pickerProps} disabled={!canConfigure} value={form.placeId} options={locations.options}
                     onChange={(v) => { if (auto.busy('placeId')) return; setForm({ ...form, placeId: v }); auto.commit('placeId', v); }} />
                 </Field>
                 <Stack gap={1}>
