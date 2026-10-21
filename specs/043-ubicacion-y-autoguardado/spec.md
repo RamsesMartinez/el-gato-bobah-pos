@@ -63,7 +63,8 @@ artículo y una palabra que no se entiende.
 ### User Story 2 - La ficha guarda sola (Priority: P1)
 
 Cada cambio en la ficha se guarda en cuanto se termina de capturar: las listas al elegir, el texto
-y los números al salir del campo o con Enter. No hay botón «Guardar» ni pregunta al salir.
+y los números al salir del campo o con Enter. No hay botón «Guardar», y al salir solo se pregunta si
+algo quedó sin guardar.
 
 **Why this priority**: el botón aparecía y desaparecía, el aviso de salir mentía (#119) y cada
 cambio costaba un toque más.
@@ -79,20 +80,24 @@ tocar nada más: el nombre nuevo está en la lista y no hubo pregunta al salir.
    Enter, **Then** se guarda.
 3. **Given** un guardado en curso, **Then** junto al título se ve «Guardando…» con un indicador de
    espera; al terminar, «Guardado ✓».
-4. **Given** que el guardado falla, **Then** se ve «No se pudo guardar · Reintentar» y el campo
-   vuelve a su valor anterior; «Reintentar» vuelve a mandar el mismo cambio.
+4. **Given** que el guardado falla por la red, **Then** se ve «No se pudo guardar · Reintentar» y el
+   campo conserva lo escrito, marcado; «Reintentar» manda lo que se ve. Si el servidor lo rechaza
+   (otra persona lo cambió o el dato no vale), el campo vuelve a lo guardado y se dice por qué.
 5. **Given** dos cambios seguidos en campos distintos, **Then** se guardan uno después del otro,
    en el orden en que se hicieron, y el segundo no pisa al primero.
-6. **Given** un guardado en curso, **Then** solo el campo que se guarda queda bloqueado; los demás
-   se pueden seguir editando.
+6. **Given** un guardado en curso, **Then** ningún campo se deshabilita (en la tableta cerraría el
+   teclado): se puede seguir escribiendo en ese y en los demás, y la cola manda lo nuevo después. En
+   una lista o un interruptor que está guardando, un segundo toque se ignora hasta que termine.
 7. **Given** un guardado en curso, **When** se toca «‹ Artículos», **Then** espera a que termine y
    después regresa a la lista, sin preguntar.
-8. **Given** un dato inválido (nombre vacío, mínimo negativo), **Then** el campo se marca, se dice
+8. **Given** algo sin guardar (un guardado fallido o un dato inválido), **When** se sale de la ficha,
+   **Then** aparece «¿Descartar cambios?»; con todo guardado, nunca aparece (#119).
+9. **Given** un dato inválido (nombre vacío, mínimo negativo), **Then** el campo se marca, se dice
    qué está mal y no se manda.
-9. **Given** el mismo mínimo guardado dos veces seguidas, **Then** queda el mismo valor (#120).
-10. **Given** «Corregir costo», «Cambiar» la unidad y «Archivar artículo», **Then** conservan su hoja
+10. **Given** el mismo mínimo guardado dos veces seguidas, **Then** queda el mismo valor (#120).
+11. **Given** «Corregir costo», «Cambiar» la unidad y «Archivar artículo», **Then** conservan su hoja
     y su confirmación; su botón de confirmar muestra el indicador de espera mientras guarda.
-11. **Given** «Nuevo artículo», **Then** conserva su botón «Guardar»: nada se guarda hasta tocarlo.
+12. **Given** «Nuevo artículo», **Then** conserva su botón «Guardar»: nada se guarda hasta tocarlo.
 
 ---
 
@@ -119,7 +124,8 @@ Bolsa, Caja, Costal, Paquete y «Otro»; al elegir Bolsa y escribir 5 kg se lee 
    línea corta de ayuda.
 7. **Given** «Bolsa» y 5 kg, **Then** debajo se lee «1 bolsa = 5 kg», y la frase cambia al cambiar el
    nombre, la cantidad o la unidad. «Se cuenta en g» deja de aparecer suelto.
-8. **Given** la hoja, **Then** el selector de unidad de «Trae» se ve y mide igual que el de «Mínimo»
+8. **Given** la hoja, **Then** ya no tiene la fila «Ubicación»: la ubicación se elige en la ficha.
+9. **Given** la hoja, **Then** el selector de unidad de «Trae» se ve y mide igual que el de «Mínimo»
    en la ficha.
 
 ---
@@ -164,8 +170,8 @@ prueba de la spec 040 quedó rota sin que nadie la corriera antes de mergear.
 - **Salir de un campo sin cambiar nada**: no se manda nada ni aparece «Guardando…».
 - **Otra persona cambió la ficha mientras se veía**: el guardado se rechaza, se avisa y la ficha se
   recarga con lo que hay; no se pisa.
-- **Se cae la red a media captura**: «No se pudo guardar · Reintentar» y el campo vuelve a lo
-  anterior; nada se queda a medias.
+- **Se cae la red a media captura**: «No se pudo guardar · Reintentar» y el campo conserva lo escrito,
+  marcado; nada se queda a medias en el servidor. Salir en ese estado pregunta «¿Descartar cambios?».
 - **Recargar la página con un guardado en curso**: lo que no terminó de guardarse se pierde y la
   ficha muestra lo que hay en el servidor.
 - **Un campo inválido y otro válido**: el válido se guarda; el inválido se queda marcado.
@@ -190,12 +196,15 @@ prueba de la spec 040 quedó rota sin que nadie la corriera antes de mergear.
   administrador que la cree».
 - **FR-006**: La lista de artículos MUST NOT llevar un botón de ubicación en el renglón.
 - **FR-007**: La ficha MUST guardar cada cambio sola: las listas al elegir, el texto y los números al
-  salir del campo o con Enter. MUST NOT tener botón «Guardar» ni preguntar «¿Descartar cambios?».
+  salir del campo o con Enter. MUST NOT tener botón «Guardar». Al salir MUST preguntar «¿Descartar
+  cambios?» solo si algo quedó sin guardar (un guardado fallido o un dato inválido).
 - **FR-008**: Los guardados de la ficha MUST ir en cola, uno a la vez y en el orden en que se
-  hicieron. Mientras un campo guarda, solo ese campo se bloquea.
+  hicieron. Ningún campo se deshabilita mientras guarda; lo que se escriba después entra a la cola. En
+  listas e interruptores, un segundo toque mientras guardan se ignora.
 - **FR-009**: Junto al título MUST haber un solo indicador: «Guardando…» con indicador de espera,
-  «Guardado ✓» o «No se pudo guardar · Reintentar». Si un guardado falla, el campo MUST volver a su
-  valor anterior.
+  «Guardado ✓» o «No se pudo guardar · Reintentar». Si falla por la red, el campo MUST conservar lo
+  escrito, marcado, y «Reintentar» manda lo que se ve; si el servidor lo rechaza, MUST volver a lo
+  guardado y decir por qué.
 - **FR-010**: «‹ Artículos» MUST esperar a que termine un guardado en curso antes de regresar.
 - **FR-011**: Un dato inválido MUST marcarse en su campo y no mandarse.
 - **FR-012**: Guardar el mismo valor dos veces MUST dejar el mismo valor (#120). El autoguardado no
@@ -218,6 +227,7 @@ prueba de la spec 040 quedó rota sin que nadie la corriera antes de mergear.
 - **FR-019**: Todo control tocable MUST medir 44 px o más, y ningún selector es nativo.
 - **FR-020**: Cada guardado de la ficha MUST dejar su evento en la bitácora como hoy
   (`ingredient.updated`), uno por guardado.
+- **FR-021**: La hoja de empaques MUST NOT tener la fila de ubicación; se elige en la ficha.
 
 ### Key Entities
 
@@ -232,7 +242,7 @@ prueba de la spec 040 quedó rota sin que nadie la corriera antes de mergear.
 
 - **SC-001**: Darle ubicación a un artículo desde la lista toma 3 toques si ya existe, y 3 toques más
   lo que se escribe si hay que crearla.
-- **SC-002**: Cero preguntas «¿Descartar cambios?» al salir de la ficha.
+- **SC-002**: Cero preguntas «¿Descartar cambios?» al salir de la ficha con todo guardado.
 - **SC-003**: Guardar el mismo mínimo dos veces deja el mismo valor, en cada tipo de unidad.
 - **SC-004**: Una empresa sin empaques ve al menos 3 botones base al agregar el primero.
 - **SC-005**: La suite de pantalla corre completa contra el ambiente de pruebas sin fallas atribuibles

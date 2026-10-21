@@ -34,7 +34,9 @@ Reglas que aplican a todas las tareas:
 
 - [ ] T007 [P] [US2] vitest de la cola en `web/src/features/backoffice/articles/useAutosave.test.ts`:
   - dos cambios seguidos salen uno después del otro, en orden, con el `updatedAt` del anterior (E1);
-  - al fallar, el campo vuelve a lo último guardado y «Reintentar» manda lo mismo (E2);
+  - al fallar por la red, el campo conserva lo escrito marcado y «Reintentar» manda lo que se ve; con
+    un rechazo del servidor vuelve a lo guardado (E2);
+  - un segundo toque en una lista o un interruptor que guarda se ignora;
   - 409 `STALE` avisa y recarga la ficha (E3);
   - salir de un campo sin cambiarlo no encola nada (E5);
   - un dato inválido se marca y no se encola (E6);
@@ -42,12 +44,13 @@ Reglas que aplican a todas las tareas:
   - escribir en un campo mientras otro guarda no pierde lo escrito ni cierra el teclado (R1).
 - [ ] T008 [US2] `useAutosave.ts` hasta que T007 pase.
 - [ ] T009 [P] [US2] vitest de la ficha en `ArticleSheets.test.tsx` (Maquetas › Ficha del artículo):
-  - no hay «Guardar» ni «¿Descartar cambios?» (cierra #119);
+  - no hay «Guardar»; «¿Descartar cambios?» solo aparece con algo sin guardar, nunca con todo
+    guardado (cierra #119);
   - categoría y ubicación guardan al elegir; nombre y mínimo al salir del campo o con Enter;
   - el indicador muestra «Guardando…», «Guardado ✓» y «No se pudo guardar · Reintentar»;
-  - solo el campo que guarda queda bloqueado;
-  - «‹ Artículos», el fondo y Escape guardan el campo enfocado, esperan la cola y no salen si el
-    último guardado falló (R2);
+  - ningún campo se deshabilita mientras guarda;
+  - «‹ Artículos», el fondo y Escape guardan el campo enfocado, esperan la cola y, si
+    algo quedó sin guardar, preguntan «¿Descartar cambios?» (R2);
   - g/kg del mínimo guarda al tocarlo y conserva la cantidad (R7);
   - sin aviso flotante «Guardado» (R1);
   - «Corregir costo», «Cambiar» y «Archivar» conservan su hoja, con espera en el botón;
@@ -83,7 +86,7 @@ Reglas que aplican a todas las tareas:
   - ninguno elegido al abrir; «Otro» abre el campo con «Ej. Cubeta, Garrafa»;
   - «¿En qué empaque lo compras?» y la frase «1 bolsa = 5 kg» que cambia con lo capturado;
   - «Se cuenta en …» ya no aparece suelto;
-  - con un empaque en captura se oculta la fila de ubicación y la frase va junto al pie (R5);
+  - la hoja ya no tiene la fila de ubicación (FR-021), y la frase va junto al pie (R5);
   - el empaque aproximado de un artículo en piezas sigue disponible (R6);
   - el selector de unidad de «Trae» es el mismo componente que el de «Mínimo» (FR-017).
 - [ ] T016 [US3] Empaques base en `articleUnits.ts` y hoja en `PresentationsSheet.tsx`, con el selector

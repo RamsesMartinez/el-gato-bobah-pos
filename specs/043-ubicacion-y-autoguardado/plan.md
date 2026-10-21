@@ -12,8 +12,8 @@ Seguimiento de la 042 con las decisiones del dueño del 2026-10-20. Casi todo es
   almacén, con «Sin definir» y alta desde el campo, como Categoría. En el servidor solo cambia un
   permiso: crear una ubicación pasa de `inventory.count` a `inventory.configure`.
 - **Autoguardado de la ficha**: cada campo manda su propio `PATCH` al terminar de capturarse, en una
-  cola de uno a la vez, con un indicador junto al título. Se quitan «Guardar» y «¿Descartar
-  cambios?». Antes, #120 se arregla con su prueba.
+  cola de uno a la vez, con un indicador junto al título. Se quita «Guardar», y «¿Descartar
+  cambios?» solo aparece si algo quedó sin guardar. Antes, #120 se arregla con su prueba.
 - **Hoja de empaque nuevo**: botones base fijos por clase de unidad, «Otro» sin preseleccionar,
   frase viva «1 bolsa = 5 kg».
 - **Existencia negativa** en rojo con «Revisar con un conteo».
@@ -73,8 +73,8 @@ caracteres (0095). Los empaques base no se guardan.
 | Pantalla | Qué cambia | Alto a 1024×600 |
 |---|---|---|
 | **Lista de artículos** | «Lugar» → «Ubicación» en columna y filtro; «Sin lugar» → «Sin definir». Sin botón en el renglón | Igual: 6 renglones de 44 px |
-| **Ficha del artículo** | Sin «Guardar». Junto al título, un indicador: «Guardando…» con spinner, «Guardado ✓» o «No se pudo guardar · Reintentar». Campo «Ubicación» con buscador, «Crear "X"», ejemplo «Ej. Refri, Bodega, Barra» sin ubicaciones y «Pídele a un administrador que la cree» sin permiso. Existencia negativa en rojo con «Revisar con un conteo». Costo, unidad y archivar sin cambios de forma; su botón de confirmar con spinner | Encabezado de 44 px igual que hoy: el indicador ocupa el lugar de «Guardar» |
-| **Hoja de empaque nuevo** | «¿En qué empaque lo compras?» con botones base por clase más los aprendidos, ninguno elegido, «Otro» abre el campo «Ej. Cubeta, Garrafa». Una línea de ayuda arriba. Debajo de «Trae», la frase «1 bolsa = 5 kg». Selector de unidad igual al de «Mínimo» | Hoja de ~420 px |
+| **Ficha del artículo** | Sin «Guardar». Junto al título, un indicador: «Guardando…» con spinner, «Guardado ✓» o «No se pudo guardar · Reintentar». Sin campo que se deshabilite al guardar. Campo «Ubicación» con buscador, «Crear "X"», ejemplo «Ej. Refri, Bodega, Barra» sin ubicaciones y «Pídele a un administrador que la cree» sin permiso. Existencia negativa en rojo con «Revisar con un conteo». Costo, unidad y archivar sin cambios de forma; su botón de confirmar con spinner | Encabezado de 44 px igual que hoy: el indicador ocupa el lugar de «Guardar» |
+| **Hoja de empaque nuevo** | «¿En qué empaque lo compras?» con botones base por clase más los aprendidos, ninguno elegido, «Otro» abre el campo «Ej. Cubeta, Garrafa». Una línea de ayuda arriba. Sin la fila de ubicación. Debajo de «Trae», la frase «1 bolsa = 5 kg». Selector de unidad igual al de «Mínimo» | Hoja de ~420 px |
 
 ### Maquetas
 
@@ -106,7 +106,7 @@ El código de cada maqueta está en [maquetas/](maquetas/). La lista solo cambia
 | # | Borde | Cómo se cierra | Test |
 |---|---|---|---|
 | E1 | Dos cambios seguidos en campos distintos | Cola: el segundo sale cuando responde el primero, con el `updatedAt` que devolvió | vitest |
-| E2 | El guardado falla | El campo vuelve a lo último guardado; «Reintentar» manda lo mismo | vitest |
+| E2 | El guardado falla | Por la red: el campo conserva lo escrito, marcado, y «Reintentar» manda lo que se ve. Rechazo del servidor (409, 400): vuelve a lo guardado y dice por qué | vitest |
 | E3 | Otra persona cambió la ficha | 409 `STALE`: se avisa y se recarga; no se pisa | vitest e integración (ya existe) |
 | E4 | Salir con un guardado en curso, con el foco todavía en el campo, o con el último guardado fallido | Toda salida guarda el campo enfocado y espera la cola; con un fallo no sale (R2) | vitest |
 | E5 | Salir de un campo sin cambiarlo | No se encola nada | vitest |
@@ -130,8 +130,8 @@ el plan no agrega tablas, columnas, índices ni consultas. Lo que se aplica:
   lo dice). Prueba: «escribo en B mientras A guarda».
 - **R2 — salir sin perder.** En la tableta tocar un botón no siempre quita el foco del campo, así que
   salir debe forzar el guardado del campo enfocado. «‹ Artículos», el fondo y Escape pasan por la misma
-  función: guarda el campo enfocado, espera la cola y, si el último guardado falló, no sale y deja el
-  aviso. Se agregan a E4 «foco todavía en el campo» y «la espera termina en error».
+  función: guarda el campo enfocado, espera la cola y, si algo quedó sin guardar, pregunta
+  «¿Descartar cambios?». Se agregan a E4 «foco todavía en el campo» y «la espera termina en error».
 
 **Medios**
 - **R3 — `PATCH` por campo es tarea fija**, con prueba: un campo no toca los demás, tampoco con `null`
@@ -139,10 +139,9 @@ el plan no agrega tablas, columnas, índices ni consultas. Lo que se aplica:
   mismo).
 - **R4 — «Crear "X"» va primero**, debajo del buscador, cuando lo escrito no coincide con ninguna:
   con el teclado abierto en 600 px quedaba tapado. El buscador no toma el foco al abrir.
-- **R5 — hoja de empaque con teclado**: mientras hay un empaque en captura se oculta la fila de
-  ubicación de esa hoja, y la frase viva va pegada al pie junto a «Guardar empaque». Se mide en e2e con
-  el alto reducido por el teclado. La fila de ubicación se queda en la hoja, con la misma regla de
-  permiso.
+- **R5 — hoja de empaque con teclado**: la frase viva va pegada al pie junto a «Guardar empaque». Se
+  mide en e2e con el alto reducido por el teclado. La fila de ubicación sale de la hoja (decisión del
+  dueño, 2026-10-20): se elige en la ficha.
 - **R6 — el empaque aproximado se conserva**: un artículo en piezas sigue pudiendo decir «1 caja ≈ N
   piezas» por peso o volumen. Los botones base no lo quitan.
 - **R7 — g/kg del mínimo guarda al tocarlo**, solo si el campo tiene número, y conserva la cantidad
@@ -153,14 +152,13 @@ el plan no agrega tablas, columnas, índices ni consultas. Lo que se aplica:
 **Bajos**
 - La existencia negativa va en su propio renglón, con texto además del rojo.
 
-**Pendiente del dueño (choca con su decisión)**: si un guardado falla por la red, la decisión dice que
-el campo vuelve a su valor anterior. El revisor propone dejar lo escrito, marcado, con «Reintentar», y
-revertir solo cuando el servidor lo rechaza (otra persona lo cambió o el dato no vale): así
-«Reintentar» manda lo que se ve. Hasta que el dueño decida, el plan sigue su decisión.
-
-**Pendiente del dueño (2)**: la decisión dice que solo se bloquea el campo que guarda. El revisor advierte
-que deshabilitar el campo enfocado cierra el teclado de la tableta, y propone no deshabilitarlo y que
-la cola absorba lo que se siga escribiendo. Hasta que el dueño decida, el plan sigue su decisión.
+**Decisiones del dueño (2026-10-20, tras esta revisión)**
+- Si un guardado falla por la red, el campo conserva lo escrito, marcado, con «Reintentar»; vuelve a lo
+  guardado solo si el servidor lo rechaza. Al salir con algo sin guardar aparece «¿Descartar
+  cambios?»; con todo guardado, nunca.
+- Ningún campo se deshabilita mientras guarda (cerraría el teclado): la cola cubre la concurrencia. En
+  listas e interruptores, un segundo toque mientras guardan se ignora.
+- La hoja de empaques pierde la fila de ubicación.
 
 ## Al construir
 
