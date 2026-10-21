@@ -93,7 +93,7 @@ Reglas que aplican a todas las tareas:
 
 ## Phase 5: User Story 3 — Empaques sin adivinar (P2)
 
-- [ ] T015 [P] [US3] vitest de `PresentationsSheet.test.tsx` (Maquetas › Hoja de empaque nuevo):
+- [X] T015 [P] [US3] vitest de `PresentationsSheet.test.tsx` (Maquetas › Hoja de empaque nuevo):
   - botones base por clase (peso, volumen, piezas) y los aprendidos sin repetir (E10);
   - ninguno elegido al abrir; «Otro» abre el campo con «Ej. Cubeta, Garrafa»;
   - «¿En qué empaque lo compras?» y la frase «1 bolsa = 5 kg» que cambia con lo capturado;
@@ -101,7 +101,7 @@ Reglas que aplican a todas las tareas:
   - la hoja ya no tiene la fila de ubicación (FR-021), y la frase va junto al pie (R5);
   - el empaque aproximado de un artículo en piezas sigue disponible (R6);
   - el selector de unidad de «Trae» es el mismo componente que el de «Mínimo» (FR-017).
-- [ ] T016 [US3] Empaques base en `articleUnits.ts` y hoja en `PresentationsSheet.tsx`, con el selector
+- [X] T016 [US3] Empaques base en `articleUnits.ts` y hoja en `PresentationsSheet.tsx`, con el selector
   de unidad de «Trae» igual al de «Mínimo», y sin la fila de ubicación (FR-021).
 
 ## Phase 6: User Story 4 — Existencia negativa (P2)

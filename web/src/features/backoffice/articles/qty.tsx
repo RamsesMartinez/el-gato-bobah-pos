@@ -27,14 +27,10 @@ export function QtyWithUnit({ label, optional, kind, value, onChange, onCommit, 
           onChange={(e) => onChange({ ...value, qty: e.target.value.replace(',', '.') })}
           onBlur={onCommit} onKeyDown={(e) => { if (e.key === 'Enter') onCommit?.(); }} />
         {big ? (
-          <HStack gap={0} borderWidth="1px" borderRadius="lg" overflow="hidden" flexShrink={0}>
-            {[false, true].map((isBig) => (
-              <Button key={String(isBig)} minH="44px" borderRadius="0" variant={value.big === isBig ? 'solid' : 'ghost'} colorPalette="gray"
-                aria-pressed={value.big === isBig} onClick={() => onChange(keepAmount ? switchUnit(value, isBig, big.factor) : { ...value, big: isBig })}>
-                {isBig ? big.label : SMALL[kind]}
-              </Button>
-            ))}
-          </HStack>
+          <UnitSegment options={[false, true].map((isBig) => ({
+            key: String(isBig), label: isBig ? big.label : SMALL[kind], pressed: value.big === isBig,
+            onClick: () => onChange(keepAmount ? switchUnit(value, isBig, big.factor) : { ...value, big: isBig }),
+          }))} />
         ) : <Text flexShrink={0}>{SMALL[kind]}</Text>}
       </HStack>
     </Stack>
@@ -47,4 +43,19 @@ function switchUnit(v: { qty: string; big: boolean }, toBig: boolean, factor: nu
   if (v.big === toBig || !/^\d+(\.\d+)?$/.test(v.qty)) return { ...v, big: toBig };
   const n = Number(v.qty) * (toBig ? 1 / factor : factor);
   return { qty: String(Math.round(n * 10000) / 10000), big: toBig };
+}
+
+// UnitSegment es el selector de unidad junto a un número: el mismo en el mínimo de la ficha y en lo que
+// trae un empaque (spec 043, FR-017), para que se vea y mida igual.
+export function UnitSegment({ options }: { options: { key: string; label: string; pressed: boolean; onClick: () => void }[] }) {
+  return (
+    <HStack role="group" aria-label="Unidad" gap={0} borderWidth="1px" borderRadius="lg" overflow="hidden" flexShrink={0}>
+      {options.map((o) => (
+        <Button key={o.key} minH="44px" borderRadius="0" variant={o.pressed ? 'solid' : 'ghost'} colorPalette="gray"
+          aria-pressed={o.pressed} onClick={o.onClick}>
+          {o.label}
+        </Button>
+      ))}
+    </HStack>
+  );
 }
