@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { medirAccion } from '../../../api/uso';
 import { Badge, Box, Button, HStack, Input, SimpleGrid, Spinner, Stack, Text } from '@chakra-ui/react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader,
 } from '../../../components/ui/drawer';
-import { backofficeApi, type ArticleSheet as Sheet } from '../../../api/backoffice';
+import { backofficeApi, type ArticleSheet as Sheet, type ArticleUpdate } from '../../../api/backoffice';
 import { ApiError } from '../../../api/client';
 import { Picker } from '../../../components/Picker';
 import { ConfirmSheet } from '../../../components/ConfirmSheet';
+import { useAutosave, type AutosaveStatus } from './useAutosave';
 import { toaster } from '../../../components/ui/toaster';
 import { can } from '../../../app/permissions';
 import { useSessionStore } from '../../../stores/session';
@@ -26,6 +27,8 @@ import { baseQty, bigUnitOf, KIND_WORD, type Kind } from './articleUnits';
 // La ficha de un artículo (spec 042, maqueta «Ficha del artículo», opción A: dos columnas). A la
 // izquierda lo que se edita y los empaques; a la derecha el costo, su tendencia y el historial. De pie
 // (menos de 800 px de ancho) es una sola columna con el costo arriba (revisión de tableta, M2).
+// Guarda sola (spec 043, maqueta «Ficha del artículo»): cada campo al elegir, tras 2 s sin escribir o
+// al salir de él; un indicador junto al título dice en qué va.
 
 interface Props {
   id: number;
@@ -39,6 +42,26 @@ interface Form {
   categoryId: string;
   placeId: string;
   min: { qty: string; big: boolean };
+}
+
+// Saved son los valores tal como se guardan: el mínimo en la unidad base, '' para vacío.
+type Saved = { name: string; categoryId: string; placeId: string; min: string };
+
+function savedOf(a: Sheet): Saved {
+  return {
+    name: a.name,
+    categoryId: a.categoryId == null ? '' : String(a.categoryId),
+    placeId: a.countPlaceId == null ? '' : String(a.countPlaceId),
+    min: a.minStock == null ? '' : String(Number(a.minStock)),
+  };
+}
+
+const NUMBER = /^\d+(\.\d+)?$/;
+
+function minDisplay(base: string, kind: Kind): { qty: string; big: boolean } {
+  const big = bigUnitOf(kind);
+  if (base === '') return { qty: '', big: !!big };
+  return big && Number(base) >= big.factor ? { qty: String(Number(base) / big.factor), big: true } : { qty: base, big: false };
 }
 
 function formOf(a: Sheet): Form {
@@ -76,70 +99,113 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
   const [editPack, setEditPack] = useState<number | undefined>(undefined);
   const [cost, setCost] = useState('');
 
+  // El formulario se llena solo con la ficha pedida al abrir, nunca con la de la caché: la caché puede
+  // traer el nombre de antes de un guardado y el campo lo mostraría como si fuera lo vigente.
+  const fresh = art.isFetchedAfterMount ? art.data : undefined;
   useEffect(() => {
-    if (art.data && form === null) setForm(formOf(art.data));
-  }, [art.data, form]);
+    if (fresh && form === null) setForm(formOf(fresh));
+  }, [fresh, form]);
 
   const a = art.data;
   const kind = (a?.baseUnitKind ?? 'pieza') as Kind;
   const big = bigUnitOf(kind);
-  const dirty = useMemo(() => !!a && !!form && JSON.stringify(form) !== JSON.stringify(formOf(a)), [a, form]);
 
-  // refresh llena el formulario con la ficha que ya trae lo guardado. Vaciarlo antes dejaba que el
-  // efecto de arriba lo volviera a llenar con la caché vieja: el mínimo regresaba a su valor anterior
-  // y el siguiente guardado lo pisaba (#120), y la ficha quedaba «con cambios» (#119).
+  const auto = useAutosave<Saved>({
+    initial: a ? savedOf(a) : { name: '', categoryId: '', placeId: '', min: '' },
+    version: a?.updatedAt ?? '',
+    // Manda la ficha completa: lo que cambió más lo último guardado de lo demás. La API anterior, que
+    // atiende durante una subida, toma un campo ausente como vacío y lo borraría. La nueva compara
+    // contra lo que había y deja en la bitácora solo lo que cambió.
+    save: async (patch, version, saved) => {
+      const v = { ...saved, ...patch };
+      const body: ArticleUpdate = {
+        expectedUpdatedAt: version, name: v.name,
+        categoryId: v.categoryId ? Number(v.categoryId) : null,
+        placeId: v.placeId ? Number(v.placeId) : null,
+        minStock: v.min === '' ? null : v.min,
+      };
+      const r = await backofficeApi.updateArticle(id, body);
+      medirAccion('inventario', 'editar-articulo');
+      // La API anterior (durante una subida) responde sin la versión nueva: se pide la ficha.
+      const updatedAt = r?.updatedAt ?? (await qc.fetchQuery({ queryKey: ['article', id], queryFn: () => backofficeApi.article(id), staleTime: 0 })).updatedAt;
+      void qc.invalidateQueries({ queryKey: ['articles'] });
+      void qc.invalidateQueries({ queryKey: ['article', id] });
+      void qc.invalidateQueries({ queryKey: ['article-audit', id] });
+      return { updatedAt };
+    },
+    validate: (k, v) => {
+      if (k === 'name' && v.trim() === '') return 'El nombre no puede quedar vacío.';
+      if (k === 'min' && v !== '' && !(NUMBER.test(v))) return 'Escribe el mínimo con números.';
+      return null;
+    },
+    complete: (k, v) => k !== 'min' || NUMBER.test(v),
+    onReject: (k, saved, e) => {
+      setForm((f) => f && (k === 'min' ? { ...f, min: minDisplay(saved, kind) } : { ...f, [k === 'categoryId' ? 'categoryId' : k === 'placeId' ? 'placeId' : 'name']: saved }));
+      toaster.create({ title: e instanceof ApiError ? e.message : 'No se pudo guardar', type: 'error' });
+    },
+    onStale: () => {
+      toaster.create({ title: 'Cambió mientras la veías', description: 'Se volvió a cargar con lo último.', type: 'warning' });
+      void refresh();
+    },
+  });
+  const [synced, setSynced] = useState(false);
+  useEffect(() => {
+    if (fresh && !synced) { auto.reset(savedOf(fresh), fresh.updatedAt); setSynced(true); }
+  }, [fresh, synced, auto]);
+
+  // minValue es lo que el mínimo manda: la cantidad base si ya es un número, o lo escrito tal cual para
+  // que la cola lo valide (y no lo mande por la pausa).
+  const minValue = (m: { qty: string; big: boolean }) => (m.qty === '' ? '' : NUMBER.test(m.qty) ? baseQty(m.qty, kind, m.big) ?? m.qty : m.qty);
+
+  // refresh llena el formulario con la ficha que ya trae lo guardado, después de una hoja que la cambió
+  // (costo, unidad, archivar, empaques). Vaciarlo antes dejaba que el efecto de arriba lo volviera a
+  // llenar con la caché vieja: el mínimo regresaba a su valor anterior (#120).
   const refresh = async () => {
     const fresh = await qc.fetchQuery({ queryKey: ['article', id], queryFn: () => backofficeApi.article(id), staleTime: 0 });
     setForm(formOf(fresh));
+    auto.reset(savedOf(fresh), fresh.updatedAt);
     await Promise.all([
       qc.invalidateQueries({ queryKey: ['articles'] }),
       qc.invalidateQueries({ queryKey: ['article-cost-history', id] }),
       qc.invalidateQueries({ queryKey: ['article-audit', id] }),
     ]);
   };
-  const save = useMutation({
-    mutationFn: () => backofficeApi.updateArticle(id, {
-      expectedUpdatedAt: a!.updatedAt, name: form!.name,
-      categoryId: form!.categoryId ? Number(form!.categoryId) : null,
-      placeId: form!.placeId ? Number(form!.placeId) : null,
-      minStock: baseQty(form!.min.qty, kind, form!.min.big) ?? null,
-    }),
-    onSuccess: async () => { medirAccion('inventario', 'editar-articulo'); await refresh(); toaster.create({ title: 'Guardado', type: 'success' }); },
-    onError: async (e) => {
-      if (e instanceof ApiError && e.code === 'STALE') {
-        toaster.create({ title: 'Cambió mientras la veías', description: 'Se volvió a cargar con lo último.', type: 'warning' });
-        await refresh();
-        return;
-      }
-      toaster.create({ title: e instanceof ApiError && e.status !== 500 ? e.message : 'No se pudo guardar', type: 'error' });
-    },
-  });
   const correct = useMutation({
     mutationFn: () => backofficeApi.correctArticleCost(id, String(Number(cost) / (big?.factor ?? 1))),
     onSuccess: async () => { medirAccion('inventario', 'corregir-costo'); setPanel(null); setCost(''); await refresh(); toaster.create({ title: 'Costo corregido', type: 'success' }); },
     onError: (e) => toaster.create({ title: e instanceof ApiError && e.status !== 500 ? e.message : 'No se pudo corregir el costo', type: 'error' }),
   });
 
-  const close = () => (dirty ? setPanel('discard') : onClose());
+  // close es la única salida («‹ Artículos», el fondo, Escape): guarda el campo que tiene el foco
+  // (en la tableta tocar un botón no siempre lo quita), espera la cola y pregunta solo si algo quedó
+  // sin guardar (R2).
+  const [leaving, setLeaving] = useState(false);
+  const close = async () => {
+    if (leaving) return;
+    const el = document.activeElement;
+    if (el instanceof HTMLElement && el.tagName === 'INPUT') el.blur();
+    setLeaving(true);
+    const allSaved = await auto.whenIdle();
+    setLeaving(false);
+    if (allSaved) onClose();
+    else setPanel('discard');
+  };
   const items = history.data?.pages.flatMap((p) => p.items ?? []) ?? [];
   const trend = history.data?.pages[0]?.trendPct;
   const packs = (allPres.data ?? []).filter((p) => p.ingredientId === id);
 
   return (
-    <DrawerRoot open placement="bottom" size="full" onOpenChange={(e) => { if (!e.open) close(); }}>
+    <DrawerRoot open placement="bottom" size="full" onOpenChange={(e) => { if (!e.open) void close(); }}>
       <DrawerBackdrop />
       <DrawerContent display="flex" flexDirection="column">
         <DrawerHeader py={2}>
           <HStack gap={2}>
-            <Button minH="44px" variant="ghost" onClick={close}>‹ Artículos</Button>
-            <Text flex="1" fontSize="lg" fontWeight="700" truncate>{a?.name ?? ''}</Text>
+            <Button minH="44px" variant="ghost" loading={leaving} onClick={() => void close()}>‹ Artículos</Button>
+            <Text fontSize="lg" fontWeight="700" truncate>{a?.name ?? ''}</Text>
+            <SaveIndicator status={auto.status} onRetry={auto.retry} />
+            <Box flex="1" />
             {a && !a.isActive && <Badge colorPalette="gray">Archivado</Badge>}
             {canView && <Button minH="44px" variant="outline" onClick={() => setPanel('audit')}>Bitácora</Button>}
-            {/* Solo con cambios pendientes: siempre visible hacía dudar si faltaba confirmar algo que ya
-                se guardó (archivar, corregir el costo, un empaque), según la prueba sin contexto. */}
-            {canConfigure && dirty && (
-              <Button minH="44px" colorPalette="brand" loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>
-            )}
           </HStack>
         </DrawerHeader>
         <DrawerBody flex="1" minH={0} display="flex" pb={3}>
@@ -148,14 +214,17 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
               {/* Columna izquierda: lo que se edita. */}
               <Stack gap={3} borderWidth="1px" borderRadius="lg" p={3} minH={0} overflowY={{ md: 'auto' }} order={{ base: 2, md: 1 }}>
                 {justCreated && <PacksBlock />}
-                <Field label="Nombre">
+                <Field label="Nombre" error={auto.invalid.name}>
                   <Input minH="48px" maxLength={60} disabled={!canConfigure} value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                    aria-invalid={!!auto.invalid.name || auto.unsaved.includes('name')}
+                    onChange={(e) => { setForm({ ...form, name: e.target.value }); auto.type('name', e.target.value); }}
+                    onBlur={() => auto.commit('name', form.name)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') auto.commit('name', form.name); }} />
                 </Field>
                 <Field label="Categoría">
                   <Picker title="Categoría" placeholder="Sin categoría" clearable clearLabel="Sin categoría" disabled={!canConfigure}
                     value={form.categoryId} options={(cats.data ?? []).map((c) => ({ value: String(c.id), label: c.name }))}
-                    onChange={(v) => setForm({ ...form, categoryId: v })}
+                    onChange={(v) => { if (auto.busy('categoryId')) return; setForm({ ...form, categoryId: v }); auto.commit('categoryId', v); }}
                     onCreate={async (name) => {
                       try {
                         const c = await backofficeApi.createArticleCategory(name);
@@ -170,9 +239,14 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
                 <Field label="Lugar">
                   <Picker title="Lugar" placeholder="Sin lugar" clearable clearLabel="Sin lugar" disabled={!canConfigure}
                     value={form.placeId} options={(places.data ?? []).map((p) => ({ value: String(p.id), label: p.name }))}
-                    onChange={(v) => setForm({ ...form, placeId: v })} />
+                    onChange={(v) => { if (auto.busy('placeId')) return; setForm({ ...form, placeId: v }); auto.commit('placeId', v); }} />
                 </Field>
-                <QtyWithUnit label="Mínimo" kind={kind} value={form.min} onChange={(min) => setForm({ ...form, min })} />
+                <Stack gap={1}>
+                  <QtyWithUnit label="Mínimo" kind={kind} value={form.min} keepAmount
+                    onChange={(min) => { setForm({ ...form, min }); if (min.qty !== form.min.qty) auto.type('min', minValue(min)); }}
+                    onCommit={() => auto.commit('min', minValue(form.min))} />
+                  {auto.invalid.min && <Text fontSize="sm" color="red.fg">{auto.invalid.min}</Text>}
+                </Stack>
                 <HStack justify="space-between" minH="44px">
                   <Text>Se mide en <b>{KIND_WORD[kind]}</b>{a.baseUnitCode === 'pieza' ? '' : ` (${a.baseUnitCode})`} · Hay {formatBaseQty(a.onHand, a.baseUnitCode)}</Text>
                   {canConfigure && a.isActive && <Button minH="44px" variant="outline" onClick={() => setPanel('unit')}>Cambiar ›</Button>}
@@ -296,11 +370,29 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
   }
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <Stack gap={1}>
       <Text>{label}</Text>
       {children}
+      {error && <Text fontSize="sm" color="red.fg">{error}</Text>}
     </Stack>
   );
+}
+
+// SaveIndicator es el único aviso del autoguardado: un punto mientras hay cambios sin mandar, después
+// «Guardando…» y «Guardado ✓», o el fallo con «Reintentar».
+function SaveIndicator({ status, onRetry }: { status: AutosaveStatus; onRetry: () => void }) {
+  if (status === 'dirty') return <Box aria-label="Cambios sin guardar" title="Cambios sin guardar" w="10px" h="10px" borderRadius="full" bg="orange.solid" flexShrink={0} />;
+  if (status === 'saving') return <HStack gap={2} color="fg.muted" flexShrink={0}><Spinner size="sm" /><Text fontSize="sm">Guardando…</Text></HStack>;
+  if (status === 'saved') return <Text fontSize="sm" color="green.fg" flexShrink={0}>Guardado ✓</Text>;
+  if (status === 'error') {
+    return (
+      <HStack gap={2} flexShrink={0}>
+        <Text fontSize="sm" color="red.fg">No se pudo guardar</Text>
+        <Button minH="44px" size="sm" variant="outline" colorPalette="red" onClick={onRetry}>Reintentar</Button>
+      </HStack>
+    );
+  }
+  return null;
 }

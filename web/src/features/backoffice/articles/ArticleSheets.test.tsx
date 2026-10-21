@@ -26,7 +26,7 @@ const back = vi.hoisted(() => ({
   createArticle: vi.fn(),
   reactivateArticle: vi.fn(() => Promise.resolve()),
   article: vi.fn(),
-  updateArticle: vi.fn(() => Promise.resolve()),
+  updateArticle: vi.fn(() => Promise.resolve({ updatedAt: 'v2' })),
   articleCategories: vi.fn(() => Promise.resolve([])),
   presentations: vi.fn(() => Promise.resolve([{ id: 3, ingredientId: 7, name: 'Bolsa', qtyInBase: '5000', baseUnitCode: 'g', active: true, approximate: false, purchaseUnitId: null }])),
   articleCostHistory: vi.fn(),
@@ -138,56 +138,161 @@ describe('Ficha del artículo', () => {
     expect(screen.queryByRole('button', { name: 'Corregir costo' })).toBeNull();
   });
 
-  it('guardar manda la versión que se vio; salir con cambios pregunta antes', async () => {
-    const onClose = vi.fn();
-    montar(<ArticleSheet id={7} onClose={onClose} />);
-    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
-    fireEvent.change(nombre, { target: { value: 'Hielo' } });
-    fireEvent.click(screen.getByRole('button', { name: '‹ Artículos' }));
-    expect(await screen.findByText('¿Descartar cambios?')).toBeInTheDocument();
-    expect(onClose).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Seguir editando' }));
-    await waitFor(() => expect(screen.queryByText('¿Descartar cambios?')).toBeNull());
-    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(back.updateArticle).toHaveBeenCalledWith(7, expect.objectContaining({
-      expectedUpdatedAt: '2026-10-19T10:00:00.123456Z', name: 'Hielo', minStock: '10000',
-    })));
-  });
+  // Spec 043: la ficha guarda sola, campo por campo. Sin «Guardar» y sin preguntar al salir si todo
+  // quedó guardado (#119).
+  const minimo = () => within(screen.getByText('Mínimo', { exact: true }).parentElement!).getByRole('textbox');
 
-  // #120 y #119: tras guardar, la ficha se volvía a llenar con los datos viejos de la caché antes de
-  // que llegara la ficha nueva. El mínimo aparecía vacío, el guardado siguiente lo borraba, y salir
-  // preguntaba «¿Descartar cambios?» aunque todo estaba guardado.
-  it('tras guardar, la ficha muestra lo guardado y salir no pregunta (#120, #119)', async () => {
-    const sinMinimo = { ...ficha, minStock: null };
-    const conMinimo = { ...ficha, minStock: '750', updatedAt: '2026-10-19T10:05:00.000000Z' };
-    let guardado = false;
-    back.article.mockImplementation(() => new Promise((r) => setTimeout(() => r(guardado ? conMinimo : sinMinimo), 20)));
-    back.updateArticle.mockImplementation(() => { guardado = true; return Promise.resolve(); });
-    const onClose = vi.fn();
-    montar(<ArticleSheet id={7} onClose={onClose} />);
-    await screen.findByDisplayValue('Hielo en bolsa');
-    const minimo = within(screen.getByText('Mínimo', { exact: true }).parentElement!).getByRole('textbox');
-    fireEvent.change(minimo, { target: { value: '750' } });
-    fireEvent.click(screen.getByRole('button', { name: /^g$/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(back.updateArticle).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(within(screen.getByText('Mínimo', { exact: true }).parentElement!).getByRole('textbox')).toHaveValue('750'));
-    await new Promise((r) => setTimeout(r, 60));
-    expect(within(screen.getByText('Mínimo', { exact: true }).parentElement!).getByRole('textbox'), 'el mínimo volvió al valor viejo tras guardar').toHaveValue('750');
-    expect(screen.queryByRole('button', { name: 'Guardar' }), 'la ficha quedó «con cambios» después de guardar').toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '‹ Artículos' }));
-    expect(screen.queryByText('¿Descartar cambios?')).toBeNull();
-    expect(onClose).toHaveBeenCalled();
-  });
-
-  // Prueba sin contexto (2026-10-19): «Guardar» activo después de archivar o corregir el costo hacía
-  // dudar si faltaba confirmar algo.
-  it('«Guardar» solo aparece cuando hay cambios sin guardar', async () => {
+  it('salir del campo guarda solo ese campo con la versión que se vio; no hay «Guardar»', async () => {
+    back.updateArticle.mockResolvedValue({ updatedAt: 'v2' });
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
     const nombre = await screen.findByDisplayValue('Hielo en bolsa');
     expect(screen.queryByRole('button', { name: 'Guardar' })).toBeNull();
     fireEvent.change(nombre, { target: { value: 'Hielo' } });
-    expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Cambios sin guardar')).toBeInTheDocument();
+    fireEvent.blur(nombre);
+    // La ficha completa, con lo último guardado en lo que no cambió: la API anterior (durante una
+    // subida) toma un campo ausente como vacío y borraría la categoría, la ubicación y el mínimo.
+    await waitFor(() => expect(back.updateArticle).toHaveBeenCalledWith(7, {
+      expectedUpdatedAt: '2026-10-19T10:00:00.123456Z', name: 'Hielo', categoryId: null, placeId: null, minStock: '10000',
+    }));
+    expect(await screen.findByText('Guardado ✓', {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Guardar' })).toBeNull();
+  });
+
+  it('Enter en el mínimo lo guarda en la unidad base; cambiar g/kg no cambia la cantidad', async () => {
+    back.updateArticle.mockResolvedValue({ updatedAt: 'v2' });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    await screen.findByDisplayValue('Hielo en bolsa');
+    expect(minimo()).toHaveValue('10');
+    fireEvent.click(screen.getByRole('button', { name: /^g$/ }));
+    expect(minimo()).toHaveValue('10000');
+    fireEvent.click(screen.getByRole('button', { name: /^kg$/ }));
+    expect(minimo()).toHaveValue('10');
+    expect(back.updateArticle).not.toHaveBeenCalled();
+    fireEvent.change(minimo(), { target: { value: '12' } });
+    fireEvent.keyDown(minimo(), { key: 'Enter' });
+    await waitFor(() => expect(back.updateArticle).toHaveBeenCalledWith(7, expect.objectContaining({ minStock: '12000' })));
+  });
+
+  it('mientras guarda, ningún campo se deshabilita', async () => {
+    back.updateArticle.mockImplementation(() => new Promise(() => {}));
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
+    fireEvent.change(nombre, { target: { value: 'Hielo' } });
+    fireEvent.blur(nombre);
+    expect(await screen.findByText('Guardando…')).toBeInTheDocument();
+    expect(nombre).not.toBeDisabled();
+    expect(minimo()).not.toBeDisabled();
+  });
+
+  it('sin red conserva lo escrito y ofrece reintentar; salir así pregunta antes', async () => {
+    back.updateArticle.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce({ updatedAt: 'v2' });
+    const onClose = vi.fn();
+    montar(<ArticleSheet id={7} onClose={onClose} />);
+    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
+    fireEvent.change(nombre, { target: { value: 'Hielo' } });
+    fireEvent.blur(nombre);
+    expect(await screen.findByText(/No se pudo guardar/)).toBeInTheDocument();
+    expect(nombre).toHaveValue('Hielo');
+    fireEvent.click(screen.getByRole('button', { name: '‹ Artículos' }));
+    expect(await screen.findByText('¿Descartar cambios?')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Seguir editando' }));
+    await waitFor(() => expect(screen.queryByText('¿Descartar cambios?')).toBeNull(), { timeout: 3000 });
+    fireEvent.click(await screen.findByRole('button', { name: 'Reintentar' }));
+    await waitFor(() => expect(back.updateArticle).toHaveBeenCalledTimes(2));
+    expect(back.updateArticle).toHaveBeenLastCalledWith(7, expect.objectContaining({ expectedUpdatedAt: '2026-10-19T10:00:00.123456Z', name: 'Hielo', minStock: '10000' }));
+    expect(await screen.findByText('Guardado ✓', {}, { timeout: 3000 })).toBeInTheDocument();
+  });
+
+  it('si el servidor rechaza el nombre, el campo vuelve a lo guardado y dice por qué', async () => {
+    back.updateArticle.mockRejectedValueOnce(new ApiError(409, 'NAME_TAKEN', 'ya hay un artículo que se llama así', 'r', { existingId: 4 }));
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
+    fireEvent.change(nombre, { target: { value: 'Azúcar' } });
+    fireEvent.blur(nombre);
+    await waitFor(() => expect(nombre).toHaveValue('Hielo en bolsa'), { timeout: 3000 });
+  });
+
+  it('un nombre vacío se marca, no se manda, y salir pregunta antes', async () => {
+    const onClose = vi.fn();
+    montar(<ArticleSheet id={7} onClose={onClose} />);
+    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
+    fireEvent.change(nombre, { target: { value: '   ' } });
+    fireEvent.blur(nombre);
+    expect(await screen.findByText('El nombre no puede quedar vacío.')).toBeInTheDocument();
+    expect(back.updateArticle).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '‹ Artículos' }));
+    expect(await screen.findByText('¿Descartar cambios?')).toBeInTheDocument();
+  });
+
+  // Durante una subida azul/verde la API anterior responde 204 sin la versión nueva: la ficha la pide
+  // para que el guardado siguiente no choque contra el anterior.
+  it('si la respuesta no trae la versión, la pide antes del guardado siguiente', async () => {
+    back.updateArticle.mockResolvedValueOnce(undefined as never).mockResolvedValueOnce({ updatedAt: 'v3' });
+    back.article.mockResolvedValueOnce(ficha).mockResolvedValue({ ...ficha, name: 'Hielo', updatedAt: 'v-servidor' });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
+    fireEvent.change(nombre, { target: { value: 'Hielo' } });
+    fireEvent.blur(nombre);
+    await screen.findByText('Guardado ✓', {}, { timeout: 3000 });
+    fireEvent.change(minimo(), { target: { value: '12' } });
+    fireEvent.blur(minimo());
+    await waitFor(() => expect(back.updateArticle).toHaveBeenLastCalledWith(7, expect.objectContaining({ expectedUpdatedAt: 'v-servidor', minStock: '12000' })), { timeout: 3000 });
+  });
+
+  // Probado en local: tras guardar el nombre, cerrar y volver a abrir la ficha mostraba el nombre
+  // anterior. El formulario se llenaba con la ficha guardada en caché antes de que llegara la nueva.
+  it('al volver a abrir la ficha muestra lo último guardado, no la caché vieja', async () => {
+    let actual = { ...ficha };
+    back.article.mockImplementation(() => new Promise((r) => setTimeout(() => r(actual), 20)));
+    back.updateArticle.mockImplementation(((_id: number, b: { name?: string }) => { actual = { ...actual, name: b.name ?? actual.name, updatedAt: 'v2' }; return Promise.resolve({ updatedAt: 'v2' }); }) as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const abrir = () => render(<QueryClientProvider client={qc}><Provider><ArticleSheet id={7} onClose={vi.fn()} /></Provider></QueryClientProvider>);
+    const primera = abrir();
+    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
+    fireEvent.change(nombre, { target: { value: 'Hielo picado' } });
+    fireEvent.blur(nombre);
+    await screen.findByText('Guardado ✓', {}, { timeout: 3000 });
+    primera.unmount();
+    abrir();
+    expect(await screen.findByDisplayValue('Hielo picado', {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Hielo en bolsa')).toBeNull();
+  });
+
+  // En la tableta, tocar un botón no siempre quita el foco del campo: salir guarda primero lo que
+  // tiene el campo enfocado y espera a que termine (R2).
+  it('salir con el foco en un campo cambiado lo guarda y después regresa, sin preguntar', async () => {
+    back.updateArticle.mockResolvedValue({ updatedAt: 'v2' });
+    const onClose = vi.fn();
+    montar(<ArticleSheet id={7} onClose={onClose} />);
+    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
+    nombre.focus();
+    fireEvent.change(nombre, { target: { value: 'Hielo picado' } });
+    fireEvent.click(screen.getByRole('button', { name: '‹ Artículos' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(back.updateArticle).toHaveBeenCalledWith(7, expect.objectContaining({ name: 'Hielo picado' }));
+    expect(screen.queryByText('¿Descartar cambios?')).toBeNull();
+  });
+
+  // #120 y #119: tras guardar, la ficha se volvía a llenar con los datos viejos de la caché. El mínimo
+  // aparecía vacío, el guardado siguiente lo borraba, y salir preguntaba aunque todo estaba guardado.
+  it('tras guardar, la ficha conserva lo guardado y salir no pregunta (#120, #119)', async () => {
+    back.article.mockResolvedValue({ ...ficha, minStock: null });
+    back.updateArticle.mockResolvedValue({ updatedAt: 'v2' });
+    const onClose = vi.fn();
+    montar(<ArticleSheet id={7} onClose={onClose} />);
+    await screen.findByDisplayValue('Hielo en bolsa');
+    fireEvent.click(screen.getByRole('button', { name: /^g$/ }));
+    fireEvent.change(minimo(), { target: { value: '750' } });
+    fireEvent.blur(minimo());
+    await waitFor(() => expect(back.updateArticle).toHaveBeenCalledWith(7, expect.objectContaining({ minStock: '750' })));
+    await screen.findByText('Guardado ✓', {}, { timeout: 3000 });
+    await new Promise((r) => setTimeout(r, 60));
+    expect(minimo(), 'el mínimo volvió al valor viejo tras guardar').toHaveValue('750');
+    fireEvent.click(screen.getByRole('button', { name: '‹ Artículos' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(screen.queryByText('¿Descartar cambios?')).toBeNull();
   });
 
   // Con un solo registro, la gráfica pintaba en el eje cifras que nadie capturó ($23.10 y $20.90 para

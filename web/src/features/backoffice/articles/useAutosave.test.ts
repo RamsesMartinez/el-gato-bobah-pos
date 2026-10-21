@@ -37,11 +37,11 @@ describe('useAutosave', () => {
     const { hook } = montar({ save });
     act(() => { hook.result.current.commit('name', 'Hielo grande'); hook.result.current.commit('min', '20'); });
     expect(save).toHaveBeenCalledTimes(1);
-    expect(save).toHaveBeenLastCalledWith({ name: 'Hielo grande' }, 'v1');
+    expect(save).toHaveBeenLastCalledWith({ name: 'Hielo grande' }, 'v1', expect.anything());
     expect(hook.result.current.status).toBe('saving');
     await act(async () => { resolver({ updatedAt: 'v2' }); });
     expect(save).toHaveBeenCalledTimes(2);
-    expect(save).toHaveBeenLastCalledWith({ min: '20' }, 'v2');
+    expect(save).toHaveBeenLastCalledWith({ min: '20' }, 'v2', { name: 'Hielo grande', min: '10' });
     await espera(0);
     expect(hook.result.current.status).toBe('saved');
   });
@@ -54,7 +54,7 @@ describe('useAutosave', () => {
     expect(hook.result.current.unsaved).toEqual(['min']);
     expect(opts.onReject).not.toHaveBeenCalled();
     await act(async () => { hook.result.current.retry(); });
-    expect(save).toHaveBeenLastCalledWith({ min: '25' }, 'v1');
+    expect(save).toHaveBeenLastCalledWith({ min: '25' }, 'v1', expect.anything());
     expect(hook.result.current.status).toBe('saved');
     expect(hook.result.current.unsaved).toEqual([]);
   });
@@ -65,7 +65,7 @@ describe('useAutosave', () => {
     const { hook, opts } = montar({ save });
     await act(async () => { hook.result.current.commit('name', 'Azúcar'); hook.result.current.commit('min', '30'); });
     expect(opts.onReject).toHaveBeenCalledWith('name', 'Hielo', rechazo);
-    expect(save).toHaveBeenLastCalledWith({ min: '30' }, 'v1');
+    expect(save).toHaveBeenLastCalledWith({ min: '30' }, 'v1', expect.anything());
     expect(hook.result.current.unsaved).toEqual([]);
   });
 
@@ -124,7 +124,7 @@ describe('useAutosave', () => {
     await espera(1900);
     expect(save).not.toHaveBeenCalled();
     await espera(200);
-    expect(save).toHaveBeenLastCalledWith({ min: '1' }, 'v1');
+    expect(save).toHaveBeenLastCalledWith({ min: '1' }, 'v1', expect.anything());
     act(() => { hook.result.current.type('min', '15'); });
     await espera(2100);
     act(() => { hook.result.current.type('min', '150'); });
@@ -153,5 +153,14 @@ describe('useAutosave', () => {
     await act(async () => { hook.result.current.commit('name', 'Hielo frappé'); });
     await espera(2500);
     expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('si algo truena después de guardar, la cola no se queda en «Guardando…»', async () => {
+    const save = vi.fn().mockResolvedValueOnce(undefined as unknown as { updatedAt: string }).mockResolvedValueOnce({ updatedAt: 'v3' });
+    const { hook } = montar({ save });
+    await act(async () => { hook.result.current.commit('name', 'Uno'); });
+    expect(hook.result.current.status).not.toBe('saving');
+    await act(async () => { hook.result.current.commit('min', '3'); });
+    expect(save).toHaveBeenCalledTimes(2);
   });
 });

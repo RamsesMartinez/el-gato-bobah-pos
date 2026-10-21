@@ -196,6 +196,17 @@ cambiar esa regla. Se junta al **leer**, en `ArticleAudit`:
   arregla esperando la ficha nueva y llenando el formulario con ella; lo cubre la prueba «tras guardar,
   la ficha muestra lo guardado y salir no pregunta (#120, #119)». «Nuevo artículo» no tiene el
   defecto: abre la ficha ya creada.
+- **El guardado por campo podía borrar datos durante una subida.** El front (Cloudflare Pages) y la API
+  se despliegan por separado. Probado en local contra la API anterior: guardar solo el nombre dejó el
+  mínimo en nulo, porque la API anterior toma un campo ausente como vacío. Por eso la pantalla manda la
+  ficha completa en cada guardado (lo que cambió más lo último guardado de lo demás). La API nueva
+  sigue aceptando un solo campo (R3) y deja en la bitácora solo lo que cambió. Si la respuesta no trae
+  la versión nueva (la API anterior responde 204), la pantalla pide la ficha para seguir.
+- **Al volver a abrir la ficha aparecía el nombre de antes de guardar.** El formulario se llenaba con
+  la ficha en caché antes de que llegara la nueva. Ahora se llena solo con la que se pide al abrir, y
+  cada guardado actualiza esa caché.
+- **Un error dentro del éxito de un guardado dejaba la cola en «Guardando…» para siempre**: ahora cae en
+  el mismo manejador de fallos.
 
 ## Project Structure
 

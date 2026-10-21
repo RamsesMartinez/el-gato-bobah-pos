@@ -46,7 +46,7 @@ Reglas que aplican a todas las tareas:
     si el 1 todavía no sale, se reemplaza por 15 en vez de mandar dos (E12);
   - «1.», «-» y vacío no se mandan por la pausa; al salir del campo se validan (FR-022, E12).
 - [X] T008 [US2] `useAutosave.ts` hasta que T007 pase.
-- [ ] T009 [P] [US2] vitest de la ficha en `ArticleSheets.test.tsx` (Maquetas › Ficha del artículo):
+- [X] T009 [P] [US2] vitest de la ficha en `ArticleSheets.test.tsx` (Maquetas › Ficha del artículo):
   - no hay «Guardar»; «¿Descartar cambios?» solo aparece con algo sin guardar, nunca con todo
     guardado (cierra #119);
   - categoría y ubicación guardan al elegir; nombre y mínimo tras 2 s sin escribir y al salir del
@@ -60,7 +60,7 @@ Reglas que aplican a todas las tareas:
   - sin aviso flotante «Guardado» (R1);
   - «Corregir costo», «Cambiar» y «Archivar» conservan su hoja, con espera en el botón;
   - «Nuevo artículo» conserva «Guardar».
-- [ ] T010 [US2] `ArticleSheet.tsx` con autoguardado e indicador (Maquetas › Ficha del artículo).
+- [X] T010 [US2] `ArticleSheet.tsx` con autoguardado e indicador (Maquetas › Ficha del artículo).
   Cerrar #119.
 
 - [ ] T026 [P] [US2] Integración de `ArticleAudit` en `ingredients_admin_test.go` (E13): tres guardados

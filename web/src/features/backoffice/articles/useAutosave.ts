@@ -13,7 +13,8 @@ export type AutosaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 export interface AutosaveOptions<F extends Record<string, string>> {
   initial: F;
   version: string;
-  save: (patch: Partial<F>, version: string) => Promise<{ updatedAt: string }>;
+  // save recibe también lo último guardado de todos los campos, para mandar la ficha completa.
+  save: (patch: Partial<F>, version: string, saved: F) => Promise<{ updatedAt: string }>;
   // validate devuelve el mensaje de un valor que no se puede guardar, o null.
   validate: (field: keyof F, value: string) => string | null;
   // complete dice si lo escrito ya es un valor: «1.» o «-» no lo son y no se mandan por la pausa.
@@ -82,13 +83,15 @@ export class AutosaveQueue<F extends Record<string, string>> {
     if (!next) { this.refresh(); this.settle(); return; }
     this.inFlight = next;
     this.refresh();
-    this.opts.save({ [next.field]: next.value } as Partial<F>, this.ver).then((r) => {
-      this.ver = r.updatedAt;
+    // Un error dentro del éxito también cae en el manejador de abajo: si no, la cola se quedaría en
+    // «Guardando…» para siempre.
+    this.opts.save({ [next.field]: next.value } as Partial<F>, this.ver, this.saved).then((r) => {
+      this.ver = r?.updatedAt ?? this.ver;
       this.saved = { ...this.saved, [next.field]: next.value };
       this.savedOnce = true;
       this.inFlight = null;
       this.pump();
-    }, (e: unknown) => {
+    }).catch((e: unknown) => {
       this.inFlight = null;
       if (e instanceof ApiError && e.code === 'STALE') {
         this.queue = [];
