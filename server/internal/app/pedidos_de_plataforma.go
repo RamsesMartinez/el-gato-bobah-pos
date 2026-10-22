@@ -938,8 +938,9 @@ func productoGenerico(ctx context.Context, q *db.Queries) (int64, error) {
 }
 
 // PruneRawPayloads borra lo crudo que pasó su retención: el cuerpo de cada aviso y el detalle de
-// cada pedido. Las filas se quedan —deduplican reintentos y son el rastro del pedido—; solo se van
-// los datos del cliente.
+// cada pedido. Las filas se quedan —deduplican reintentos y son el rastro del pedido—; con lo crudo
+// se van el teléfono y la dirección del cliente, que solo viven ahí. El nombre se queda en su
+// columna: lo muestra la historia de pedidos.
 //
 // Usa la conexión del DUEÑO a propósito (`Q`, no `QC`): bajo el rol de la aplicación RLS dejaría
 // ver solo la empresa de la sesión, y la poda se quedaría a medias sin que nada fallara.
