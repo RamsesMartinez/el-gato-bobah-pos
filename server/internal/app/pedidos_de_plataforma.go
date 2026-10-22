@@ -936,21 +936,3 @@ func productoGenerico(ctx context.Context, q *db.Queries) (int64, error) {
 	}
 	return id, nil
 }
-
-// PruneRawPayloads borra lo crudo que pasó su retención: el cuerpo de cada aviso y el detalle de
-// cada pedido, y el nombre del cliente. Las filas se quedan —deduplican reintentos y son el rastro
-// del pedido—; la historia muestra esos pedidos por su folio. El nombre que ya se copió al pedido
-// del POS al aceptarlo no se toca: es dato de la venta.
-//
-// Usa la conexión del DUEÑO a propósito (`Q`, no `QC`): bajo el rol de la aplicación RLS dejaría
-// ver solo la empresa de la sesión, y la poda se quedaría a medias sin que nada fallara.
-func (s *PedidosDePlataformaService) PruneRawPayloads(ctx context.Context) (avisos, pedidos int64, err error) {
-	corte := s.ahora().AddDate(0, 0, -domain.RawPayloadRetentionDays)
-	if avisos, err = s.store.Q.PruneWebhookEventBodies(ctx, corte); err != nil {
-		return 0, 0, fmt.Errorf("podar el cuerpo de los avisos: %w", err)
-	}
-	if pedidos, err = s.store.Q.PruneIncomingOrderDetails(ctx, corte); err != nil {
-		return avisos, 0, fmt.Errorf("podar el detalle de los pedidos: %w", err)
-	}
-	return avisos, pedidos, nil
-}
