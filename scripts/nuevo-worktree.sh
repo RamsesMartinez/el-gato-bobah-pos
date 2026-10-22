@@ -10,7 +10,7 @@
 #
 # Por qué existe: arrancar la 041 a mano costó cinco vueltas — deploy/.env no existía, `vite` no
 # estaba porque node_modules no viaja con el worktree, y la API se negó a arrancar dos veces por
-# ADMIN_PASSWORD y ADMIN_PIN de ejemplo. Cada uno se veía solo al fallar el anterior.
+# la contraseña y el PIN del admin de ejemplo. Cada uno se veía solo al fallar el anterior.
 set -euo pipefail
 
 NUM="${1:-}"; SLUG="${2:-}"
@@ -43,20 +43,9 @@ make -s worktree-env n="$N"
 
 echo "▶ deploy/.env"
 make -s check-env >/dev/null 2>&1 || true   # la primera vez lo crea y avisa de lo que falta
-# check-env genera los secretos, pero deja el admin inicial con «cambia-esto»: la API se niega a
-# arrancar así (bootstrap admin). En local se ponen valores propios de este worktree.
 # POSTGRES_PASSWORD es la de producción; el compose de desarrollo usa «gatobobah» fijo.
 if grep -q '^POSTGRES_PASSWORD=cambia-esto' deploy/.env; then
   sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=gatobobah|" deploy/.env
-fi
-if grep -q '^ADMIN_PASSWORD=cambia-esto' deploy/.env; then
-  sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=Local-$NUM-$(openssl rand -hex 3)!|" deploy/.env
-fi
-if grep -q '^ADMIN_PIN=cambia-esto' deploy/.env; then
-  # Cuatro dígitos sin repetir ni ser secuencia: la API rechaza 1234, 0000 y parecidos.
-  PIN="$(shuf -i 0-9 -n 4 | tr -d '\n')"
-  while [[ "0123456789" == *"$PIN"* || "9876543210" == *"$PIN"* ]]; do PIN="$(shuf -i 0-9 -n 4 | tr -d '\n')"; done
-  sed -i "s|^ADMIN_PIN=.*|ADMIN_PIN=$PIN|" deploy/.env
 fi
 make -s check-env
 
@@ -76,11 +65,23 @@ if ! curl -fs "localhost:$API_PORT/readyz" >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "▶ Admin de este worktree"
+# La contraseña y el PIN ya no viven en deploy/.env: se generan aquí, se le pasan a -reset-admin
+# por la entrada (nunca por argv ni por un archivo) y se imprimen UNA vez. Si se pierden, se
+# cambian con make reset-admin.
+ADMIN_PW="Local-$NUM-$(openssl rand -hex 3)!"
+# Cuatro dígitos sin repetir ni ser secuencia: la API rechaza 1234, 0000 y parecidos.
+PIN="$(shuf -i 0-9 -n 4 | tr -d '\n')"
+while [[ "0123456789" == *"$PIN"* || "9876543210" == *"$PIN"* ]]; do PIN="$(shuf -i 0-9 -n 4 | tr -d '\n')"; done
+printf '%s\n%s\n%s\n%s\n' "$ADMIN_PW" "$ADMIN_PW" "$PIN" "$PIN" | make -s reset-admin >>"$LOG" 2>&1 || {
+  echo "✗ No se pudo crear el admin. Últimas líneas de $LOG:" >&2; tail -5 "$LOG" >&2; exit 1; }
+
 cat <<EOF
 ✅ Listo: $DEST
    API  http://localhost:$API_PORT   (readyz ok)
    Web  http://localhost:$((3000 + N))
-   Entrar: usuario admin · empresa $(grep '^COMPANY_SLUG=' deploy/.env | cut -d= -f2) · contraseña ADMIN_PASSWORD de $DEST/deploy/.env
+   Entrar: usuario admin · empresa $(grep '^COMPANY_SLUG=' deploy/.env | cut -d= -f2) · contraseña $ADMIN_PW · PIN $PIN
+           (no se guardan en ningún archivo; si los pierdes: make reset-admin)
    Detener: (cd $DEST && make stop)   · log: $LOG
    Datos de producción en local (opcional, con la API detenida): make db-restaurar dump=…
 Siguiente: cd $DEST && claude   y ahí /speckit-specify …
