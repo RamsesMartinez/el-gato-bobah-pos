@@ -32,6 +32,9 @@ type CountItem struct {
 	BaseUnitCode  string              `json:"baseUnitCode"`
 	Presentations []CountPresentation `json:"presentations"`
 	CountedQty    *decimal.Decimal    `json:"countedQty"`
+	// Weighable: un artículo en piezas con un empaque aproximado por peso o líquido se puede contar
+	// pesándolo (spec 042, FR-012); el servidor convierte a piezas.
+	Weighable bool `json:"weighable"`
 }
 
 // CountView es el conteo abierto con lo que hay que contar.
@@ -109,9 +112,13 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 		return CountView{}, err
 	}
 	byIng := map[int64][]CountPresentation{}
+	weighable := map[int64]bool{}
 	for _, p := range pres {
 		if p.Active && !p.IsApproximate {
 			byIng[p.IngredientID] = append(byIng[p.IngredientID], CountPresentation{Name: p.Name, QtyInBase: p.QtyInBase})
+		}
+		if p.Active && p.IsApproximate && p.BaseUnitKind == db.UnitKindPieza {
+			weighable[p.IngredientID] = true
 		}
 	}
 	v := CountView{ID: id, OpenedAt: openedAt, Items: make([]CountItem, len(rows))}
@@ -121,7 +128,7 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 			ps = []CountPresentation{}
 		}
 		v.Items[i] = CountItem{IngredientID: r.ID, Name: r.Name, Place: r.CountPlace, PlaceID: r.CountPlaceID, BaseUnitCode: r.BaseUnitCode,
-			Presentations: ps, CountedQty: r.CountedQty}
+			Presentations: ps, CountedQty: r.CountedQty, Weighable: weighable[r.ID]}
 	}
 	return v, nil
 }
@@ -144,35 +151,162 @@ func openCount(ctx context.Context, q *db.Queries, id int64) (db.LockStockCountR
 // CaptureCount guarda una cifra contada (en unidad base) con lo que el sistema tiene ahora en la
 // sucursal del conteo. Recapturar reemplaza las dos.
 func (s *BackofficeService) CaptureCount(ctx context.Context, countID, ingredientID int64, counted decimal.Decimal, userID int64) error {
-	counted = domain.Round4(counted)
-	if !domain.ValidStockQtyOrZero(counted) {
-		return domain.ErrValidation
-	}
-	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		c, err := openCount(ctx, q, countID)
-		if err != nil {
+	_, err := s.CaptureCountChecked(ctx, countID, ingredientID, CountCapture{Qty: counted}, userID)
+	return err
+}
+
+// CountCapture es una cifra del conteo. Qty va en la unidad base; Weight y WeightUnitID, en vez de
+// Qty, piden contar pesando un artículo en piezas. Confirmable pide el aviso de una cifra fuera de lo
+// razonable (spec 042, FR-012): sin él se guarda como antes, para la pantalla anterior.
+type CountCapture struct {
+	Qty          decimal.Decimal
+	Weight       *decimal.Decimal
+	WeightUnitID *int16
+	Confirmable  bool
+	Confirmed    bool
+}
+
+// CaptureCountChecked guarda una cifra del conteo y devuelve lo que quedó en la unidad base. Con
+// Confirmable y sin Confirmed, una cifra que pasa la referencia del artículo se rechaza con
+// ErrCountNeedsConfirm sin guardar; la referencia no sale del servidor.
+func (s *BackofficeService) CaptureCountChecked(ctx context.Context, countID, ingredientID int64, in CountCapture, userID int64) (decimal.Decimal, error) {
+	var counted decimal.Decimal
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		var err error
+		if counted, err = countedQty(ctx, q, ingredientID, in); err != nil {
 			return err
 		}
-		// Lo que el sistema tiene y el último movimiento que lo formó, leídos con la existencia tomada:
-		// una merma o una venta en curso termina antes, y las dos cifras hablan del mismo momento. El
-		// periodo del faltante se ancla por ese id (spec 039, R2); sin el candado, una merma que
-		// confirmara a media captura quedaría fuera de lo que el conteo vio y se restaría dos veces.
-		if err := q.LockStockLevelForCapture(ctx, db.LockStockLevelForCaptureParams{IngredientID: ingredientID, BranchID: c.BranchID}); err != nil {
-			return err
-		}
-		seen, err := q.OnHandForCapture(ctx, db.OnHandForCaptureParams{IngredientID: ingredientID, BranchID: c.BranchID})
-		if err != nil {
-			return err
-		}
-		err = q.UpsertCountLine(ctx, db.UpsertCountLineParams{
-			CountID: countID, IngredientID: ingredientID, CountedQty: counted, SystemQty: seen.OnHand, CapturedBy: userID,
-			LastMovementID: &seen.LastMovementID,
-		})
-		if isForeignKeyViolation(err) {
-			return domain.ErrNotFound // un insumo de otra empresa o que no existe
-		}
-		return err
+		return s.captureTx(ctx, q, countID, ingredientID, counted, in, userID)
 	})
+	if errors.Is(err, domain.ErrCountNeedsConfirm) {
+		// El aviso queda en la bitácora en su propia transacción (la de la captura se revirtió): el conteo
+		// a ciegas se puede sondear probando cifras, y el dueño aceptó ese riesgo a cambio de que quede
+		// rastro de cada aviso (spec 042, 2026-10-19).
+		if aerr := s.store.WithTx(ctx, func(q *db.Queries) error {
+			return recordAudit(ctx, q, domain.AuditEvent{
+				Action: domain.AuditCountConfirmAsked, EntityType: "ingredient", EntityID: ingredientID,
+				After: map[string]any{"countId": countID, "captured": counted},
+			})
+		}); aerr != nil {
+			return counted, aerr
+		}
+	}
+	return counted, err
+}
+
+// countedQty resuelve la cifra en la unidad base: la capturada o la que sale de un peso.
+func countedQty(ctx context.Context, q *db.Queries, ingredientID int64, in CountCapture) (decimal.Decimal, error) {
+	if in.Weight == nil {
+		counted := domain.Round4(in.Qty)
+		if !domain.ValidCountQty(counted) {
+			return counted, domain.ErrValidation
+		}
+		return counted, nil
+	}
+	if in.WeightUnitID == nil || !domain.ValidCountQty(*in.Weight) || !domain.ValidCountQty(in.Qty) {
+		return decimal.Zero, fmt.Errorf("%w: el peso necesita su unidad", domain.ErrValidation)
+	}
+	wu, err := q.GetUnit(ctx, *in.WeightUnitID)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("%w: unidad desconocida", domain.ErrValidation)
+	}
+	pres, err := q.ListPresentations(ctx, &ingredientID)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	for _, p := range pres {
+		if !p.Active || !p.IsApproximate || p.PurchaseUnitID == nil {
+			continue
+		}
+		pu, err := q.GetUnit(ctx, *p.PurchaseUnitID)
+		if err != nil || pu.Kind != wu.Kind {
+			continue
+		}
+		// Lo contado en empaques (Qty) y lo pesado suelto se suman: «2 paquetes + 300 g sueltos».
+		total := domain.Round4(in.Qty).Add(domain.PiecesFromWeight(*in.Weight, wu.ToBase, pu.ToBase, p.QtyInBase))
+		if !domain.ValidCountQty(total) {
+			return decimal.Zero, fmt.Errorf("%w: lo pesado da una cifra fuera de lo posible", domain.ErrValidation)
+		}
+		return total, nil
+	}
+	return decimal.Zero, fmt.Errorf("%w: este artículo no tiene una equivalencia para contarlo pesando", domain.ErrValidation)
+}
+
+func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countID, ingredientID int64, counted decimal.Decimal, in CountCapture, userID int64) error {
+	c, err := openCount(ctx, q, countID)
+	if err != nil {
+		return err
+	}
+	// Lo que el sistema tiene y el último movimiento que lo formó, leídos con la existencia tomada:
+	// una merma o una venta en curso termina antes, y las dos cifras hablan del mismo momento. El
+	// periodo del faltante se ancla por ese id (spec 039, R2); sin el candado, una merma que
+	// confirmara a media captura quedaría fuera de lo que el conteo vio y se restaría dos veces.
+	if err := q.LockStockLevelForCapture(ctx, db.LockStockLevelForCaptureParams{IngredientID: ingredientID, BranchID: c.BranchID}); err != nil {
+		return err
+	}
+	seen, err := q.OnHandForCapture(ctx, db.OnHandForCaptureParams{IngredientID: ingredientID, BranchID: c.BranchID})
+	if err != nil {
+		return err
+	}
+	// El máximo y la cifra para confirmar son de la empresa (spec 044) y se leen en cada captura:
+	// bajarlos no toca lo ya capturado y aplica a lo siguiente. Se compara en unidad base, así que un
+	// peso convertido a piezas cae en el máximo de piezas.
+	u, err := q.GetIngredientUnit(ctx, ingredientID)
+	if err != nil {
+		return notFound(err)
+	}
+	kind := string(u.BaseUnitKind)
+	limits, err := countLimits(ctx, q)
+	if err != nil {
+		return err
+	}
+	// Va antes del aviso y sin importar Confirmable: confirmar solo acepta una cifra rara, nunca
+	// una que pasa el máximo.
+	if err := limits.CheckCountMax(kind, counted); err != nil {
+		return err
+	}
+	if in.Confirmable && !in.Confirmed {
+		ref, err := countReference(ctx, q, ingredientID, c.BranchID, seen.OnHand, kind)
+		if err != nil {
+			return err
+		}
+		if p, ok := limits.ForKind(kind); ok {
+			ref.Confirm = p.Confirm
+		}
+		if domain.CountNeedsConfirm(counted, ref) {
+			return domain.ErrCountNeedsConfirm
+		}
+	}
+	err = q.UpsertCountLine(ctx, db.UpsertCountLineParams{
+		CountID: countID, IngredientID: ingredientID, CountedQty: counted, SystemQty: seen.OnHand, CapturedBy: userID,
+		LastMovementID: &seen.LastMovementID,
+	})
+	if isForeignKeyViolation(err) {
+		return domain.ErrNotFound // un insumo de otra empresa o que no existe
+	}
+	return err
+}
+
+// countReference junta lo que el servidor sabe del artículo para el aviso del conteo.
+func countReference(ctx context.Context, q *db.Queries, ingredientID, branchID int64, expected decimal.Decimal, kind string) (domain.CountReference, error) {
+	ref := domain.CountReference{Expected: expected, BaseKind: kind}
+	last, err := q.LastClosedCountedQty(ctx, db.LastClosedCountedQtyParams{BranchID: branchID, IngredientID: ingredientID})
+	switch {
+	case err == nil:
+		ref.LastCounted = &last
+	case !errors.Is(err, pgx.ErrNoRows):
+		return ref, err
+	}
+	pres, err := q.ListPresentations(ctx, &ingredientID)
+	if err != nil {
+		return ref, err
+	}
+	for _, p := range pres {
+		if p.Active && !p.IsApproximate {
+			ref.PackQtys = append(ref.PackQtys, p.QtyInBase)
+		}
+	}
+	return ref, nil
 }
 
 // UncaptureCount quita una cifra: el insumo vuelve a «no contado».

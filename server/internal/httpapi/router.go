@@ -291,6 +291,11 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// Costeo y palabra del almacén (spec 038): por permiso y aparte de los datos fiscales.
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/inventory", h.UpdateInventorySettings)
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/waste-threshold", h.SetWasteThreshold)
+				// Límites del conteo (spec 044): los lee quien cuenta (el aviso del máximo), los cambia
+				// solo quien configura el almacén.
+				r.With(RequireAnyPermission(h.permissions, domain.PermInventoryCount, domain.PermInventoryConfigure)).
+					Get("/settings/count-limits", h.CountLimits)
+				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/count-limits", h.SetCountLimits)
 				// ¿hay caja abierta? aviso del POS — cualquier rol autenticado (incl. mesero); no es dato sensible
 				r.Get("/cash-status", h.CashStatus)
 				// caja: la opera el cajero; excluye al mesero para que no cierre cortes ajenos
@@ -442,6 +447,22 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Salud del inventario (spec 037): por permiso y FUERA del grupo por rol. Dentro, el
 					// RequireRole de abajo seguiría decidiendo antes que el permiso, y un rol propio de una
 					// empresa con el permiso rebotaría (constitución, «Roles: modelo híbrido»).
+					// Artículos del almacén (spec 042): leer con «ver el almacén», cambiar con «configurar».
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles", h.ListArticles)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles", h.CreateArticle)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}", h.GetArticle)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/cost-history", h.ArticleCostHistory)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/audit", h.ArticleAudit)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Patch("/articles/{id}", h.UpdateArticle)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/cost", h.CorrectArticleCost)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/archive-check", h.ArticleArchiveCheck)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/archive", h.ArchiveArticle)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/reactivate", h.ReactivateArticle)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/unit/preview", h.PreviewUnitChange)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/unit", h.ChangeUnit)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/presentation-suggestions", h.PresentationSuggestions)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/ingredient-categories", h.ArticleCategories)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredient-categories", h.CreateArticleCategory)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health", h.GetInventoryHealth)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health.csv", h.ExportInventoryHealth)
 					// El faltante de un conteo (spec 039): lo lee quien ve la salud del inventario.
@@ -463,10 +484,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					})
 					// El lugar se pone al contar (FR-015f): lo decide quien cuenta, no quien configura el almacén.
 					r.With(RequirePermission(h.permissions, domain.PermInventoryCount)).Put("/ingredients/{id}/place", h.SetCountPlace)
-					// Lugares del recorrido (spec 040): elegir y dar de alta desde el artículo es de quien
-					// cuenta; renombrar, ordenar y archivar, de quien configura. Leer, de cualquiera de los dos.
+					// Ubicaciones del recorrido (spec 040): elegir desde el artículo es de quien cuenta; darlas de
+					// alta (desde la 043), renombrar, ordenar y archivar, de quien configura. Leer, de los dos.
 					r.With(RequireAnyPermission(h.permissions, domain.PermInventoryCount, domain.PermInventoryConfigure)).Get("/count-places", h.ListCountPlaces)
-					r.With(RequirePermission(h.permissions, domain.PermInventoryCount)).Post("/count-places", h.CreateCountPlace)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/count-places", h.CreateCountPlace)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/count-places/{id}", h.RenameCountPlace)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/count-places/{id}/move", h.MoveCountPlace)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/count-places/{id}/archive", h.ArchiveCountPlace)

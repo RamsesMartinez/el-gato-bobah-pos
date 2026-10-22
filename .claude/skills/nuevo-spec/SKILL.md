@@ -43,8 +43,10 @@ La sesión que trabaja la feature corre los comandos locales ella misma (`make s
 
 Cuando la feature ya está mergeada en develop:
 ```bash
-make cerrar-worktree dir=../egb-041-subidas-sin-corte        # datos=1 borra también su base
+make cerrar-worktree                                          # desde dentro del worktree; datos=1 borra también su base
+make cerrar-worktree dir=../egb-041-subidas-sin-corte         # desde otro worktree
 ```
+Nunca desde `~/git/el-gato-bobah-pos`: es un repositorio bare y no tiene `Makefile`.
 Se niega si hay cambios sin commit o commits que no están en origin. Nunca toca el proyecto
 `deploy` de la carpeta principal. Borra la rama local solo si ya está en develop.
 

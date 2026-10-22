@@ -139,7 +139,7 @@ export function LockScreen({ onDesbloqueado }: { onDesbloqueado: () => void }) {
           </>
         )}
 
-        {error && <Text color="red.500" fontWeight="600">{error}</Text>}
+        {error && <Text color="fg.error" fontWeight="600">{error}</Text>}
 
         {/* La salida de quien olvidó su PIN. Va VISIBLE y no escondida detrás de un menú: si no se
             ve, la única persona con acceso a media noche queda encerrada fuera con el local

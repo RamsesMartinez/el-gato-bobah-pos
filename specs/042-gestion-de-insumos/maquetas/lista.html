@@ -1,0 +1,141 @@
+<title>Maqueta lista de artículos</title><meta name="claude:viewport-fit-sides" content="cover"><style>
+/* Marco fijo 1024x600 de la tableta, escalado al ancho disponible; riel de 76 px como el POS. */
+:root{--bg:#eef0f3;--surface:#fff;--fg:#1b1f24;--muted:#5d6670;--line:#d9dde3;--brand:#e23b2e;--brand-fg:#fff;--brand-soft:#fff1f0;--warn:#b45309;--warn-soft:#fff7e6;--ok:#15803d;--chip:#f3f4f6;
+--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;font-variant-numeric:tabular-nums}
+h1{font-size:22px;margin:0 0 4px;text-wrap:balance}.sub{color:var(--muted);margin:0 0 16px;max-width:70ch}
+.tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.tab{min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.stage{width:100%;max-width:1024px;overflow:hidden}
+.scaler{width:1024px;height:600px;transform-origin:0 0}
+.frame{width:1024px;height:600px;background:var(--bg);border:1px solid var(--line);border-radius:12px;display:flex;overflow:hidden;position:relative}
+.rail{width:76px;flex:none;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:10px}
+.rail i{width:52px;height:46px;border-radius:10px;background:var(--chip);display:grid;place-items:center;font:600 10px var(--font);font-style:normal;color:var(--muted)}
+.rail i.on{background:var(--brand-soft);color:var(--brand)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px 16px;gap:10px;position:relative}
+.btn{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--brand);color:var(--brand-fg);border-color:var(--brand)}
+.btn.danger{color:var(--brand);border-color:var(--brand)}
+.chip{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:500 14px var(--font);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+.input{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:16px var(--font);padding:0 12px}
+.notes{margin-top:14px;display:grid;gap:6px;max-width:1024px}.notes p{margin:0;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.notes b{display:inline-block;min-width:22px}
+.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+.sheet{background:var(--surface);width:100%;border-radius:16px 16px 0 0;padding:16px;display:flex;flex-direction:column;gap:10px;max-height:92%;overflow:auto}
+.modal{background:var(--surface);width:460px;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px;margin:auto}
+.muted{color:var(--muted)}.warn{color:var(--warn)}
+.tag{font:600 12px var(--font);padding:3px 8px;border-radius:6px;background:var(--chip);color:var(--muted)}
+.tag.neg{background:var(--brand-soft);color:var(--brand)}
+.example{font:600 12px var(--font);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+button:focus-visible,input:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+</style><script>
+function fit(){document.querySelectorAll('.stage').forEach(s=>{const k=Math.min(1,s.clientWidth/1024);const c=s.firstElementChild;c.style.transform='scale('+k+')';s.style.height=(600*k)+'px'})}
+addEventListener('resize',fit);
+function tabs(render){const bs=[...document.querySelectorAll('.tab')];const pick=id=>{bs.forEach(b=>b.setAttribute('aria-selected',b.dataset.opt===id));document.querySelectorAll('.opt-note').forEach(n=>n.style.fontWeight=n.dataset.opt===id?'600':'400');render(id);fit()};bs.forEach(b=>b.onclick=()=>pick(b.dataset.opt));const h=(location.hash||'').slice(1).toUpperCase();pick(['A','B','C'].includes(h)?h:'A')}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+</script>
+<h1>Lista de artículos</h1>
+<div class="example" style="margin-bottom:6px">Opción elegida: A, con los ajustes de la revisión</div>
+<p class="sub">Almacén › Artículos a 1024×600. Datos de ejemplo. Escribe en el buscador, toca los filtros y «Nuevo artículo». Para ver el aviso de un archivado, escribe «Cajeta» como nombre nuevo. Toca un renglón para ver qué abre.</p>
+<div class="tabs" role="tablist">
+  <button class="tab" data-opt="A" role="tab">A · Filtros en chips</button>
+  <button class="tab" data-opt="B" role="tab">B · Filtros en una hoja</button>
+  <button class="tab" data-opt="C" role="tab">C · Columna de filtros</button>
+</div>
+<div class="stage"><div class="scaler"><div class="frame" id="frame"></div></div></div>
+<div class="notes">
+  <p class="opt-note" data-opt="A"><b>A</b>El buscador y los filtros quedan a la vista, en una fila de chips. Privilegia: un toque por filtro y saber siempre qué está aplicado. Cuesta: unos 56 px de alto, así que caben 8 renglones.</p>
+  <p class="opt-note" data-opt="B"><b>B</b>Un botón «Filtros» abre una hoja. Privilegia: la lista, con 9 renglones visibles. Cuesta: dos toques por filtro, y lo aplicado solo se ve como un número en el botón.</p>
+  <p class="opt-note" data-opt="C"><b>C</b>Una columna de 200 px a la izquierda con todos los filtros, incluido el lugar. Privilegia: el filtro por lugar sin abrir nada. Cuesta: 200 px de ancho, así que la tabla pierde la columna de empaques.</p>
+</div>
+<style>
+.top{display:flex;gap:8px;align-items:center}
+.top .input{flex:1}
+.row-chips{display:flex;gap:6px;flex-wrap:nowrap;overflow:hidden}
+.list{flex:1;min-height:0;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.r{display:grid;grid-template-columns:1.6fr .9fr .8fr .9fr 1.2fr;align-items:center;min-height:50px;padding:0 14px;border-bottom:1px solid var(--line);cursor:pointer;gap:8px}
+.r.h{min-height:34px;font:600 12px var(--font);color:var(--muted);cursor:default;position:sticky;top:0;background:var(--surface)}
+.r.narrow{grid-template-columns:1.6fr .9fr .8fr .9fr}
+.r .n{font-weight:600}
+.side{width:200px;flex:none;display:flex;flex-direction:column;gap:6px}
+.side .chip{text-align:left;border-radius:10px}
+.lbl{font:600 12px var(--font);color:var(--muted);margin-top:6px}
+.toast{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:12px 18px;border-radius:10px;font-weight:600;z-index:9}
+</style>
+<script>
+const ITEMS=[
+ {n:'Hielo en bolsa',u:'g',k:'peso',on:27000,c:0.006,p:'Refri',e:['Bolsa · 5 kg','Bolsa · 15 kg'],a:1},
+ {n:'Leche entera',u:'ml',k:'líquido',on:-1500,c:0.024,p:'Refri',e:['Caja · 1 L','Garrafa · 4 L'],a:1},
+ {n:'Crema para batir',u:'ml',k:'líquido',on:2000,c:0,p:'Refri',e:['Cartón · 1 L'],a:1},
+ {n:'Harina de trigo',u:'g',k:'peso',on:8500,c:0.021,p:'Bodega',e:['Bolsa · 5 kg'],a:1},
+ {n:'Refresco de cola en lata',u:'pz',k:'piezas',on:19,c:17.03,p:'Barra',e:['Caja · 12 pz'],a:1},
+ {n:'Vasos de 16 oz',u:'pz',k:'piezas',on:340,c:1.8,p:'Bodega',e:['Paquete · 50 pz'],a:1},
+ {n:'Azúcar',u:'g',k:'peso',on:-250,c:0.028,p:'Bodega',e:['Bolsa · 2 kg'],a:1},
+ {n:'Jarabe de vainilla',u:'ml',k:'líquido',on:640,c:0,p:'Barra',e:[],a:1},
+ {n:'Perlas de tapioca',u:'g',k:'peso',on:3000,c:0.09,p:'Bodega',e:['Bolsa · 3 kg'],a:1},
+ {n:'Popotes gruesos',u:'pz',k:'piezas',on:800,c:0.35,p:'Barra',e:['Paquete · 100 pz'],a:1},
+ {n:'Queso manchego',u:'g',k:'peso',on:1200,c:0.19,p:'Refri',e:['Barra · 1 kg'],a:1},
+ {n:'Cajeta',u:'ml',k:'líquido',on:0,c:0.11,p:null,e:['Frasco · 660 ml'],a:0},
+];
+const PL=['Refri','Barra','Bodega'];
+const U={Peso:'kg',Líquido:'L',Longitud:'m',Piezas:'pz'};let nw={name:'',kind:'Líquido',packs:[]};
+let st={q:'',status:'active',place:null,noCost:false,neg:false},opt='A',sheet=null;
+const fmt=(v,u)=>{const a=Math.abs(v),s=v<0?'−':'';if(u==='g')return s+(a>=1000?(a/1000).toLocaleString('es-MX',{maximumFractionDigits:2})+' kg':a+' g');if(u==='ml')return s+(a>=1000?(a/1000).toLocaleString('es-MX',{maximumFractionDigits:2})+' L':a+' ml');return s+a+' pz'};
+const cost=i=>i.c?'$'+(i.u==='pz'?i.c.toFixed(2)+' / pz':(i.c*1000).toFixed(2)+(i.u==='g'?' / kg':' / L')):'<span class="tag neg">Sin costo</span>';
+function rows(){return ITEMS.filter(i=>(st.status==='active'?i.a:!i.a)&&(!st.q||norm(i.n+' '+i.e.join(' ')).includes(norm(st.q)))&&(!st.place||(st.place==='Sin lugar'?!i.p:i.p===st.place))&&(!st.noCost||!i.c)&&(!st.neg||i.on<0))}
+function table(narrow){const rs=rows();return `<div class="list"><div class="r h ${narrow?'narrow':''}"><span>Artículo</span><span>Existencia</span><span>Lugar</span><span>Costo</span>${narrow?'':'<span>Empaques</span>'}</div>`+(rs.length?rs.map((i,x)=>`<div class="r ${narrow?'narrow':''}" data-i="${ITEMS.indexOf(i)}"><span class="n">${esc(i.n)}<br><span class="muted" style="font-weight:400;font-size:12px">Se mide en ${i.k}</span></span><span>${i.on<0?'<span class="tag neg">'+fmt(i.on,i.u)+'</span>':fmt(i.on,i.u)}</span><span class="muted">${i.p||'Sin lugar'}</span><span>${cost(i)}</span>${narrow?'':`<span class="muted" style="font-size:13px">${i.e.join(' · ')||'Sin empaques'}</span>`}</div>`).join(''):`<p style="padding:20px" class="muted">Ningún artículo coincide. Revisa los filtros o crea uno con «Nuevo artículo».</p>`)+'</div>'}
+const search=()=>`<input class="input" id="q" placeholder="Buscar artículo o empaque" value="${esc(st.q)}">`;
+const statusSeg=()=>`<span style="display:inline-flex;border:1px solid var(--line);border-radius:22px;overflow:hidden;flex:none">${[['active','Activos'],['archived','Archivados']].map(([k,l])=>`<button class="chip" style="border:0;border-radius:0" data-status="${k}" aria-pressed="${st.status===k}">${l}</button>`).join('')}</span>`;
+const flagChips=()=>`<button class="chip" data-f="noCost" aria-pressed="${st.noCost}">Sin costo</button><button class="chip" data-f="neg" aria-pressed="${st.neg}">Existencia negativa</button>`;
+const chipsHtml=()=>statusSeg()+flagChips();
+const placeChip=()=>`<button class="chip" data-f="place" aria-pressed="${!!st.place}">Lugar: ${st.place||'Todos'} ›</button>`;
+function render(){const f=document.getElementById('frame');let m='';
+ const nfil=(st.status==='archived')+st.noCost+st.neg+!!st.place;
+ if(opt==='A')m=`<div class="top">${search()}${placeChip()}${statusSeg()}<button class="btn primary" data-a="new">+ Nuevo</button></div><div class="row-chips">${flagChips()}</div>${table(false)}`;
+ if(opt==='B')m=`<div class="top">${search()}<button class="btn" data-a="filters">Filtros${nfil?' ('+nfil+')':''}</button><button class="btn primary" data-a="new">+ Nuevo artículo</button></div>${table(false)}`;
+ if(opt==='C')m=`<div style="display:flex;gap:12px;flex:1;min-height:0"><div class="side"><button class="btn primary" data-a="new">+ Nuevo artículo</button><div class="lbl">LUGAR</div>${['Todos',...PL,'Sin lugar'].map(p=>`<button class="chip" data-place="${p}" aria-pressed="${(st.place||'Todos')===p}">${p}</button>`).join('')}<div class="lbl">MOSTRAR</div>${chipsHtml()}</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">${search()}${table(true)}</div></div>`;
+ let sh='';
+ if(sheet==='filters')sh=`<div class="sheet-bg" data-close="1"><div class="sheet"><b style="font-size:18px">Filtros</b><div class="lbl">LUGAR</div><div style="display:flex;gap:6px">${['Todos',...PL,'Sin lugar'].map(p=>`<button class="chip" data-place="${p}" aria-pressed="${(st.place||'Todos')===p}">${p}</button>`).join('')}</div><div class="lbl">MOSTRAR</div><div style="display:flex;gap:6px">${chipsHtml()}</div><button class="btn primary" data-close="1">Ver ${rows().length} artículos</button></div></div>`;
+ if(sheet==='place')sh=`<div class="sheet-bg" data-close="1"><div class="sheet"><b style="font-size:18px">Lugar</b>${['Todos',...PL,'Sin lugar'].map(p=>`<button class="btn" style="text-align:left" data-place="${p}">${p}</button>`).join('')}</div></div>`;
+ if(sheet==='new'){const taken=ITEMS.find(i=>norm(i.n)===norm(nw.name.trim())&&nw.name.trim());
+ sh=`<div class="sheet-bg"><div class="sheet"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">Nuevo artículo</b><span><button class="btn" data-close="1">Cancelar</button> <button class="btn primary" data-a="save" ${taken||!nw.name.trim()?'disabled style="opacity:.45"':''}>Guardar</button></span></div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+ <label>Nombre <span style="color:var(--brand)">*</span><br><input class="input" id="nn" style="width:100%" placeholder="Por ejemplo: Leche deslactosada" value="${esc(nw.name)}"></label>
+ <div>En qué se mide <span style="color:var(--brand)">*</span><br><div style="display:flex;gap:6px">${['Peso','Líquido','Longitud','Piezas'].map(k=>`<button class="chip" aria-pressed="${nw.kind===k}" data-kind="${k}">${k}</button>`).join('')}</div></div>
+ ${taken?`<div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:var(--warn-soft)"><span style="flex:1">Ya existe «${esc(taken.n)}»${taken.a?'.':', archivado.'}</span>${taken.a?`<button class="btn" data-open="${ITEMS.indexOf(taken)}">Abrir ese</button>`:`<button class="btn primary" data-react="${ITEMS.indexOf(taken)}">Reactivar</button>`}</div>`:''}
+ <label>Existencia inicial <span class="muted">(opcional)</span><br><input class="input" style="width:100%" placeholder="0 ${U[nw.kind]}"></label>
+ <label>Costo inicial <span class="muted">(opcional)</span><br><input class="input" style="width:100%" placeholder="$ por ${U[nw.kind]}"></label>
+ <button class="btn" style="text-align:left;align-self:end">Lugar <span class="muted">(opcional)</span>: Sin lugar ›</button>
+ <label>Mínimo <span class="muted">(opcional)</span><br><input class="input" style="width:100%" placeholder="0 ${U[nw.kind]}"></label></div>
+ <div style="display:flex;justify-content:space-between;align-items:center"><span><b>Empaques</b> <span class="muted">(opcional) · cómo lo compras, por ejemplo: bolsa de 5 kg</span></span><button class="btn" data-a="addpack">+ Agregar empaque</button></div>
+ ${nw.packs.map((p,x)=>`<div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:center"><input class="input" placeholder="Nombre: Caja" value="${esc(p.n)}" data-pn="${x}"><input class="input" placeholder="Cuánto trae: 1 ${U[nw.kind]}" value="${esc(p.q)}" data-pq="${x}"><span class="muted">${p.q?'= '+esc(p.q):''}</span><button class="btn" data-rmp="${x}">Quitar</button></div>`).join('')}
+ <p class="muted" style="margin:0">* Obligatorio. Nada se guarda hasta tocar «Guardar».</p></div></div>`}
+ f.innerHTML=`<nav class="rail"><i>POS</i><i>Caja</i><i>Gastos</i><i class="on">Almacén</i><i>Negocio</i></nav><div class="main">${m}${sh}</div>`;
+ const nn=f.querySelector('#nn');if(nn){nn.oninput=e=>{nw.name=e.target.value;const p=nn.selectionStart;render();const n=document.getElementById('nn');n.focus();n.setSelectionRange(p,p)}}
+ f.querySelectorAll('[data-pn],[data-pq]').forEach(el=>el.oninput=e=>{const d=e.target.dataset;if(d.pn)nw.packs[d.pn].n=e.target.value;else nw.packs[d.pq].q=e.target.value});
+ const q=f.querySelector('#q');if(q){q.oninput=e=>{st.q=e.target.value;const p=q.selectionStart;render();const n=document.getElementById('q');n.focus();n.setSelectionRange(p,p)}}
+}
+document.getElementById('frame').addEventListener('click',e=>{const t=e.target.closest('[data-f],[data-a],[data-place],[data-close],[data-i],[data-k],[data-status],[data-kind],[data-rmp],[data-react],[data-open]');if(!t)return;
+ if(t.dataset.status){st.status=t.dataset.status;render();return}
+ if(t.dataset.kind){nw.kind=t.dataset.kind;render();return}
+ if(t.dataset.rmp){nw.packs.splice(+t.dataset.rmp,1);render();return}
+ if(t.dataset.a==='addpack'){nw.packs.push({n:'',q:''});render();return}
+ if(t.dataset.react){const it=ITEMS[t.dataset.react];it.a=1;sheet=null;st.status='active';render();toast('«'+it.n+'» volvió a estar activo');return}
+ if(t.dataset.open){sheet=null;render();toast('Abre la ficha de «'+ITEMS[t.dataset.open].n+'»');return}
+ if(t.dataset.close&&e.target!==t&&!e.target.closest('button'))return;
+ if(t.dataset.k){t.parentElement.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c===t));return}
+ if(t.dataset.f){const f=t.dataset.f;if(f==='place'){sheet='place'}else st[f]=!st[f]}
+ if(t.dataset.place){st.place=t.dataset.place==='Todos'?null:t.dataset.place;if(sheet==='place')sheet=null}
+ if(t.dataset.a==='new'){sheet='new';nw={name:'',kind:'Líquido',packs:[]}}if(t.dataset.a==='filters')sheet='filters';
+ if(t.dataset.a==='save'){const n=nw.name.trim();ITEMS.unshift({n,u:{Peso:'g',Líquido:'ml',Longitud:'cm',Piezas:'pz'}[nw.kind],k:nw.kind.toLowerCase(),on:0,c:0,p:null,e:nw.packs.filter(p=>p.n&&p.q).map(p=>p.n+' · '+p.q),a:1});sheet=null;render();toast('«'+n+'» quedó creado');return}
+ if(t.dataset.close)sheet=null;
+ if(t.dataset.i){toast('Abre la ficha de «'+ITEMS[t.dataset.i].n+'» (otra maqueta)');return}
+ render()});
+function toast(m){const d=document.createElement('div');d.className='toast';d.textContent=m;document.querySelector('.main').appendChild(d);setTimeout(()=>d.remove(),1800)}
+tabs(id=>{opt=id;sheet=null;render()});
+</script>

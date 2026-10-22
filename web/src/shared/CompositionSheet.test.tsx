@@ -124,13 +124,20 @@ describe('la receta', () => {
     expect(await screen.findByText('Leche ya está en la receta.')).toBeInTheDocument();
   });
 
-  it('un insumo que no existe se crea ahí mismo, diciendo en qué se mide', async () => {
+  // Spec 042, FR-003: el insumo nuevo nace al guardar la receta, no al tocar su unidad.
+  it('un insumo que no existe se agrega diciendo en qué se mide y viaja en el guardado', async () => {
     montar();
     fireEvent.click(await screen.findByRole('button', { name: /Agregar insumo/ }));
     fireEvent.change(await screen.findByLabelText('Buscar'), { target: { value: 'Leche de coco' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Mililitros (ml)' }));
-    await waitFor(() => expect(back.createIngredient).toHaveBeenCalledWith({ name: 'Leche de coco', baseUnitId: 3 }));
-    expect(await screen.findByLabelText('Cantidad de Leche de coco')).toBeInTheDocument();
+    const cantidad = await screen.findByLabelText('Cantidad de Leche de coco (nuevo)');
+    expect(back.createIngredient).not.toHaveBeenCalled();
+    fireEvent.change(cantidad, { target: { value: '30' } });
+    await guardar();
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55, expect.objectContaining({
+      items: [{ newArticle: { name: 'Leche de coco', baseUnitId: 3 }, quantity: '30', unitId: 3 }],
+    })));
+    expect(back.createIngredient).not.toHaveBeenCalled();
   });
 
   it('copiar la receta de otro parecido', async () => {
@@ -421,14 +428,13 @@ describe('se compra hecho', () => {
 
   it('sin uno parecido, se crea con el nombre del producto y por pieza', async () => {
     back.ingredients.mockResolvedValueOnce({ items: [conLata().items[0]] });
-    back.createIngredient.mockResolvedValueOnce({ id: 70, name: 'Chai Latte G', baseUnitId: 5, baseUnitCode: 'pieza', baseUnitKind: 'pieza', recipeUses: 0 });
     montar();
     fireEvent.click(await screen.findByText('Se compra hecho'));
     expect(await screen.findByText(/se crea uno nuevo con este nombre/)).toBeInTheDocument();
     await guardar();
-    await waitFor(() => expect(back.createIngredient).toHaveBeenCalledWith({ name: 'Chai Latte G', baseUnitId: 5 }));
     await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55,
-      expect.objectContaining({ mode: 'items', items: [{ ingredientId: 70, quantity: '1', unitId: 5 }] })));
+      expect.objectContaining({ mode: 'items', items: [{ newArticle: { name: 'Chai Latte G', baseUnitId: 5 }, quantity: '1', unitId: 5 }] })));
+    expect(back.createIngredient).not.toHaveBeenCalled();
   });
 
   it('el buscador marca el elegido y deja «Crear una nueva» al final', async () => {

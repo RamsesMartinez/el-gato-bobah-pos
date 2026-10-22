@@ -121,7 +121,8 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   el servidor de Postgres— dejaron «db_down» la API local que usaba ese servidor.
 
   **Cada feature arranca en su propio worktree, con un solo comando** (decidido el 2026-10-17). Desde
-  cualquier carpeta del repo: **`make nuevo-worktree n=041 slug=subidas-sin-corte`**
+  cualquier worktree (**no desde `~/git/el-gato-bobah-pos`**: es un repositorio bare, solo guarda la
+  historia y no tiene `Makefile`): **`make nuevo-worktree n=041 slug=subidas-sin-corte`**
   ([nuevo-worktree.sh](scripts/nuevo-worktree.sh)). Crea `../egb-041-subidas-sin-corte` con la rama
   `041-subidas-sin-corte` desde `origin/develop`, corre `worktree-env`, crea `deploy/.env` con
   secretos nuevos y valores locales para lo que `check-env` deja de ejemplo (`ADMIN_PASSWORD`,
@@ -129,9 +130,11 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   dependencias de `web/` (`node_modules` no viaja con el worktree), levanta `make start` en segundo
   plano (log en `/tmp/egbNN-start.log`) y espera `/readyz`. Arrancar la 041 a mano costó cinco
   vueltas, cada error visible solo al fallar el anterior. Al terminar la feature:
-  **`make cerrar-worktree dir=../egb-041-subidas-sin-corte`** ([cerrar-worktree.sh](scripts/cerrar-worktree.sh);
-  `datos=1` borra también sus volúmenes). Se niega con cambios sin commit o commits que no están en
-  origin, y nunca toca el proyecto `deploy` de la carpeta principal. La skill `/nuevo-spec` los usa.
+  **`make cerrar-worktree`** desde dentro de ese worktree, o `make cerrar-worktree dir=../egb-041-…` desde
+  otro ([cerrar-worktree.sh](scripts/cerrar-worktree.sh); `datos=1` borra también sus volúmenes). Baja
+  también el Postgres de pruebas (perfil `test`). Se niega con cambios sin commit o commits que no
+  están en origin, y nunca toca el proyecto `deploy` de la carpeta principal. Lo cubre
+  [cerrar-worktree-test.sh](scripts/tests/cerrar-worktree-test.sh). La skill `/nuevo-spec` los usa.
 
   Lo que hace por dentro, si hay que hacerlo a mano: antes del primer `make start`, **`make worktree-env n=NN`**, con NN el número
   de la feature (035 → 35). Escribe `.env.worktree.local` (ignorado por git), que leen el Makefile,
@@ -201,15 +204,17 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   gatobobah` a mano también es owner**: para ver lo que ve la API, `set role gatobobah_app; set
   app.company_id = '2';` antes de la consulta.
 - `make web-dev` · `make web-build` · `make web-test` (vitest).
-- **Vueltas con alguien sin contexto: en local mientras se itera** (constitución 1.23.0). El subagente
+- **Toda prueba corre en local** (constitución 1.25.0; el ambiente de pruebas solo si el dueño lo pide). El subagente
   usa `http://localhost:30NN` del worktree (el `FRONTEND_PORT` de `.env.worktree.local`), con
   `make start` arriba y una base restaurada (`make db-restaurar`), a 1024×600 y `hasTouch`. Corrige,
-  recarga (Vite lo hace solo) y vuelve a probar sin PR ni despliegue. En el ambiente de pruebas se
-  corre una sola vuelta final, junto con la suite e2e, antes de subir a `main`.
-- **`bun run e2e`** (en `web/`) — Playwright contra el **ambiente de pruebas desplegado**, a
-  1024×600. No monta un servidor local a propósito: lo que estas pruebas atrapan es el desacuerdo
-  entre lo que la pantalla calcula y lo que el servidor cobra, y con el backend simulado los dos
-  están de acuerdo por construcción. En Windows los binarios del navegador los bloquea Smart App
+  recarga (Vite lo hace solo) y vuelve a probar sin PR ni despliegue. La vuelta final corre además
+  contra el build servido en local (`bun run build && bun run preview`).
+- **`bun run e2e`** (en `web/`) — Playwright a 1024×600 contra el **`make start` del worktree**:
+  `E2E_BASE_URL=http://localhost:30NN E2E_API_URL=http://localhost:80NN/api/v1 E2E_SLUG=… E2E_PASSWORD=… bun run e2e`.
+  Sin esas variables apunta al ambiente de pruebas, que se usa solo cuando el dueño lo pide. No
+  simula el backend a propósito: lo que estas pruebas atrapan es el desacuerdo entre lo que la
+  pantalla calcula y lo que el servidor cobra, y con un backend simulado los dos están de acuerdo por
+  construcción; la API local es la real. En Windows los binarios del navegador los bloquea Smart App
   Control, así que corre en contenedor como el resto de los gates:
 
   ```bash
@@ -240,7 +245,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   que cree pedidos, ciérralos tú: entregar (`POST /orders/:id/deliver`) y cobrar
   (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
   plataforma.
-- **`make ci-local`** — lo mismo que los jobs de CI que gatean el despliegue (backend con lint y govulncheck, integración con `sqlc diff`/`sqlc vet` contra un Postgres desechable en `:5510`, y frontend), en paralelo y en ~2 min. **Se corre antes de empujar**: CI tarda ~10 min en avisar. No cubre el entorno de GitHub (versiones de las actions, el Go que instala `setup-go`), que es justo lo que se rompió el día de go1.27.2; CI sigue siendo el que despliega.
+- **`make ci-local`** — lo mismo que los jobs de CI que gatean el despliegue (backend con lint y govulncheck, integración con `sqlc diff`/`sqlc vet` contra un Postgres desechable en `:5510`, y frontend), en paralelo y en ~2 min. **Ya no es paso obligatorio** (decidido el 2026-10-21): cuando termina el flujo de spec-kit de una feature, se empuja y el CI del PR es el gate —un PR no se mergea sin CI verde—. Mientras se implementa, los commits se quedan locales. **Si el CI del PR falla, las correcciones se validan en local**: se arregla, se corre `make ci-local` y solo con verde se vuelve a empujar, en vez de una vuelta de CI por intento. Medido el 2026-10-21 sobre las últimas 10 corridas: el CI de un PR tarda de 2 a 5 min y el de develop (imagen y despliegue al ambiente de pruebas) de 2 a 3 min. El pre-push de lefthook sigue corriendo (`go test`, `govulncheck`, `bun run build`). No cubre el entorno de GitHub (versiones de las actions, el Go que instala `setup-go`), que es justo lo que se rompió el día de go1.27.2; CI sigue siendo el que despliega.
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
 - **El precio de `product_platform_prices` NO es el precio al que se vende en la plataforma.** Es
   una copia que se captura **después**, a mano, para que el ticket del POS cuadre con lo que la
@@ -467,6 +472,31 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **La normalización de nombres junta espacios con `strings.Fields`, no con `\s` de regexp**: el de
     Go no ve el espacio duro y el de Postgres sí (lo encontró la prueba de paridad de la 0095; también
     afectaba a los motivos de merma). La Down de la 0095 pierde el orden y los lugares sin artículos.
+- **Límites del conteo** (spec 044, 0098). Tres cosas que no se ven:
+  - **Los defaults viven en la columna de `count_limits`, una sola vez**: el relleno y la siembra de
+    `CreateCompany` solo pasan el id, y una prueba compara la fila con `domain.DefaultCountLimits`.
+    Cambiar un default es una migración que cambia la columna, no una constante en Go.
+  - **Solo el conteo los usa**: compras, recetas y ajustes siguen con `MaxStockQty`. El máximo de una
+    empresa puede pasar de ese tope (hasta `MaxCountLimit`, 1e9 en unidad base).
+  - **Leer nunca escribe**: una empresa sin fila (respaldo viejo, alta a mano) recibe los defaults del
+    dominio; la fila se crea al guardar.
+- **Artículos del almacén** (spec 042, 0096). Cinco cosas que no se ven:
+  - **Un artículo nace solo dentro de un guardado**: la lista (`createArticleTx`), el gasto y la receta
+    (`newArticle` dentro de su transacción). Nada lo crea al tocar una unidad; cancelar o fallar no
+    deja artículos sueltos. `POST /ingredients` sigue una subida más para la pantalla anterior (#115).
+  - **La unidad base solo la reescribe `SetArticleUnit`** (cambio de unidad), y lo vigila
+    `TestNoQueryRewritesTheBaseUnitOfAnIngredient`. Sin compras, ventas ni mermas el cambio es directo
+    y reescribe ajustes, renglones de conteo, recetas, empaques y correcciones con los originales en la
+    bitácora (`ingredient.unit_changed.detail`, un `batchId`); con ellas, se reemplaza por otro artículo
+    ligado en `ingredient_replacements` y el viejo se archiva. Toda tabla que apunte a `ingredients` va
+    en `app.UnitChangeTables` o truena `TestEveryTableThatPointsToAnArticleIsClassified`.
+  - **Tras convertir, la existencia es la suma de los movimientos** (`RecomputeArticleStock`): redondear
+    cada ajuste por separado deja residuo y el trigger de existencias es solo de insert.
+  - **El aviso del conteo lo decide el servidor y solo si la pantalla manda `confirmable`**: una tableta
+    con la pantalla anterior guarda como antes. Responde 409 `NEEDS_CONFIRM` sin decir la referencia
+    (`domain.CountNeedsConfirm`): el conteo sigue a ciegas.
+  - **Las sugerencias de empaque son por clase de unidad** (`PresentationSuggestions`), nunca por nombre
+    suelto: así «Bolsa de 15 kg» no aparece en un artículo en litros.
 - **Asistencia y bitácora de auditoría** (spec 033, 0089). Cinco cosas que no se ven:
   - **Todo camino nuevo que mueva dinero, caja, precios o asistencia escribe su evento** con
     `recordAudit` (o `auditOrder` / `auditCash`) **dentro de su transacción**, y su acción va en la
@@ -537,7 +567,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   público).
 - **En producción no se prueba; después de subir solo se revisa la salud** (decidido el
   2026-10-17). Las pruebas —e2e, quickstart, usuario sin contexto, scripts que escriben— corren en
-  el ambiente de pruebas (`app-dev`/`api-dev`), que es para eso; repetirlas en producción es
+  local, y en el ambiente de pruebas (`app-dev`/`api-dev`) solo si el dueño lo pide; repetirlas en producción es
   redundante y escribe en los datos de un negocio que está operando. Tras una subida a `main`, lo que
   se revisa es de solo lectura y sin sesión:
   - `GET https://api.elgatobobah.com/healthz` → `{"status":"ok"}` (el proceso vive) y
@@ -568,8 +598,8 @@ mecánica:
 
 - **Frescura ≠ pre-commit.** Actualizar deps al día lo maneja **Dependabot** ([.github/dependabot.yml](.github/dependabot.yml)): github-actions, gomod (`/server`), **bun** (`/web`, no `npm`: es lo único que actualiza `bun.lock`) y docker (`/server`+`/deploy`), semanal. Chequeo manual: `go list -u -m all` (Go), `bun outdated` (web). **No** añadas un pre-commit de "deps desactualizadas" (ruidoso, bloquea cambios ajenos).
 - **Dónde corre cada scanner**: Go → `govulncheck` (pre-push lefthook **+** CI). Frontend → `bun audit --audit-level=high` en CI, sin `|| true`.
-- **Runtimes**: con línea LTS → la última LTS (Node = 24, `.nvmrc`); Go no tiene LTS → el último minor estable (hoy `go1.27.2`).
-- **Pin fuerte**: imágenes base por **digest** (`server/Dockerfile`, `deploy/docker-compose.yml`), GitHub Actions por **SHA** ([ci.yml](.github/workflows/ci.yml)), toolchain Go fijado en `go.mod` (hoy `go 1.27.2`). **No agregues una línea `toolchain` igual al `go` directive**: `go mod tidy` la borra por redundante en cada corrida — cuando coinciden, el `go` directive ES el pin.
+- **Runtimes**: con línea LTS → la última LTS (Node = 24, `.nvmrc`); Go no tiene LTS → el último minor estable (hoy `go1.27.3`).
+- **Pin fuerte**: imágenes base por **digest** (`server/Dockerfile`, `deploy/docker-compose.yml`), GitHub Actions por **SHA** ([ci.yml](.github/workflows/ci.yml)), toolchain Go fijado en `go.mod` (hoy `go 1.27.3`). **No agregues una línea `toolchain` igual al `go` directive**: `go mod tidy` la borra por redundante en cada corrida — cuando coinciden, el `go` directive ES el pin.
 - **El backend NO se compila en el VPS.** La VM es un e2-micro (1 vCPU, 1 GB): compilar el módulo
   ahí tarda ~30 min y puede morir por OOM — se vio al subir a Go 1.27, que invalidó todas las capas
   cacheadas. El job `image` de [ci.yml](.github/workflows/ci.yml) construye y publica

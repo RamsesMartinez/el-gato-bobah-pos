@@ -29,7 +29,7 @@ describe('NumericKeypad', () => {
       expect(parseInt(getComputedStyle(b).minHeight || '0', 10)).toBeGreaterThanOrEqual(56);
     }
     fireEvent.click(screen.getByRole('button', { name: '7' }));
-    fireEvent.click(screen.getByRole('button', { name: 'borrar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Borrar' }));
     fireEvent.click(screen.getByRole('button', { name: /Siguiente casilla/ }));
     expect(onKey.mock.calls).toEqual([['7'], ['back']]);
     expect(onNext).toHaveBeenCalled();

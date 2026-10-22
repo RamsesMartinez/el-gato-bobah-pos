@@ -5,7 +5,7 @@ import { Provider } from '../../components/ui/provider';
 import type { Presentation, Unit } from '../../api/backoffice';
 import { PresentationsSheet, type PresentationsIngredient } from './PresentationsSheet';
 
-const back = vi.hoisted(() => ({ createPresentation: vi.fn(), updatePresentation: vi.fn(), setCountPlace: vi.fn(), countPlaces: vi.fn(), createCountPlace: vi.fn() }));
+const back = vi.hoisted(() => ({ createPresentation: vi.fn(), updatePresentation: vi.fn(), setCountPlace: vi.fn(), countPlaces: vi.fn(), createCountPlace: vi.fn(), presentationSuggestions: vi.fn() }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 
 const units: Unit[] = [
@@ -22,12 +22,21 @@ const pres = (over: Partial<Presentation>): Presentation => ({
   id: 1, ingredientId: 10, name: 'Caja', qtyInBase: '12000', baseUnitCode: 'ml', active: true, approximate: false, purchaseUnitId: null, ...over,
 });
 
-function montar(ingredient: PresentationsIngredient = leche, presentations: Presentation[] = [], usedNames = ['Caja', 'Bolsa', 'Bulto']) {
+// Las sugerencias las da el servidor por clase de unidad (spec 042, FR-011): aquí, las de la clase del
+// insumo, con su cantidad.
+const SUGGESTED: Record<string, { name: string; qtyInBase: string }[]> = {
+  volumen: [{ name: 'Caja', qtyInBase: '12000' }],
+  pieza: [{ name: 'Bolsa', qtyInBase: '10' }],
+  masa: [{ name: 'Bulto', qtyInBase: '25000' }],
+};
+
+function montar(ingredient: PresentationsIngredient = leche, presentations: Presentation[] = [], suggest = true) {
+  back.presentationSuggestions.mockImplementation((k: string) => Promise.resolve(suggest ? SUGGESTED[k] ?? [] : []));
   const onClose = vi.fn();
   render(
     <Provider>
       <QueryClientProvider client={new QueryClient()}>
-        <PresentationsSheet isOpen ingredient={ingredient} presentations={presentations} usedNames={usedNames}
+        <PresentationsSheet isOpen ingredient={ingredient} presentations={presentations}
           units={units} onClose={onClose} />
       </QueryClientProvider>
     </Provider>,
@@ -54,20 +63,34 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
   test('un empaque nuevo pide nombre, número y unidad, y muestra la equivalencia antes de guardar', async () => {
     montar();
     fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
-    // Los nombres que la empresa ya usa, no una lista fija; las cucharadas no se ofrecen.
-    fireEvent.click(screen.getByRole('button', { name: 'Caja' }));
+    // «Caja» es base y la empresa ya la usa con 12 L: un solo botón, que trae su cantidad; nada de
+    // otra clase de unidad.
+    await waitFor(() => expect(back.presentationSuggestions).toHaveBeenCalled());
+    expect(screen.getAllByRole('button', { name: /^Caja/ })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: /^Caja/ }));
+    expect(screen.queryByRole('button', { name: /Bulto/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'cda' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'L' }));
-    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '12' } });
-    expect(screen.getByText('= 12 L')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Cuánto trae')).toHaveValue('12'));
+    expect(screen.getByText('1 caja = 12 L')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
     await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(10, { name: 'Caja', qty: '12', unitId: 7, approximate: false }));
   });
 
-  test('«Otro…» deja escribir un nombre que la empresa no ha usado', async () => {
-    montar(leche, [], []);
+  // Revisión de código: con un empaque a medio capturar, «Listo» lo tiraba sin avisar y «Guardar
+  // empaque» quedaba abajo del contenido que se desplaza.
+  test('con un empaque a medio capturar, el pie dice Cancelar y Guardar empaque, no Listo', async () => {
+    montar();
     fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Otro…' }));
+    expect(screen.queryByRole('button', { name: 'Listo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar empaque' })).toBeInTheDocument();
+  });
+
+  test('«Otro» deja escribir un nombre que no está entre los botones', async () => {
+    montar(leche, [], false);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Otro' }));
+    expect(screen.getByLabelText('Nombre del empaque')).toHaveAttribute('placeholder', 'Ej. Cubeta, Garrafa');
     fireEvent.change(screen.getByLabelText('Nombre del empaque'), { target: { value: 'Garrafa' } });
     fireEvent.click(screen.getByRole('button', { name: 'L' }));
     fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '5' } });
@@ -79,7 +102,7 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
   test('en un insumo por pieza, el contenido con decimales no se guarda', async () => {
     montar(aguacate);
     fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Bolsa' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Bolsa/ }));
     fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '12.5' } });
     expect(screen.getByRole('button', { name: 'Guardar empaque' })).toBeDisabled();
     expect(screen.getByText(/piezas enteras/)).toBeInTheDocument();
@@ -87,7 +110,7 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
 
   // Regla 18: lo que se compra por kilo y se usa por pieza lleva un empaque aproximado.
   test('un insumo por pieza puede tener un empaque aproximado por kilo', async () => {
-    montar(aguacate, [], []);
+    montar(aguacate, [], false);
     fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
     fireEvent.click(screen.getByRole('button', { name: 'Se compra por peso o líquido' }));
     fireEvent.click(screen.getByRole('button', { name: 'kg' }));
@@ -97,23 +120,68 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
     await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(11, { name: 'Kilo', qty: '4', unitId: 2, approximate: true }));
   });
 
-  test('«Ya no llega así» la desactiva sin borrarla', async () => {
+  // Decisión del dueño (2026-10-20): «Ya no llega así» junto a «Editar» hacía dudar si se editaba o se
+  // quitaba. Ahora dice lo que hace, va aparte y con estilo secundario.
+  test('«Quitar este empaque» la desactiva sin borrarla, separado de editar y con estilo secundario', async () => {
     montar(leche, [pres({})]);
     const row = (await screen.findByText('Caja · 12 L')).closest('[data-row]') as HTMLElement;
-    fireEvent.click(within(row).getByRole('button', { name: 'Ya no llega así' }));
+    expect(within(row).queryByRole('button', { name: 'Ya no llega así' })).toBeNull();
+    const quitar = within(row).getByRole('button', { name: 'Quitar este empaque' });
+    expect(quitar).toHaveAttribute('data-secondary');
+    const editar = within(row).getByRole('button', { name: 'Editar' });
+    expect(editar.nextElementSibling, '«Quitar» va pegado a «Editar»').not.toBe(quitar);
+    fireEvent.click(quitar);
     await waitFor(() => expect(back.updatePresentation).toHaveBeenCalledWith(1, { name: 'Caja', qty: '12', unitId: 7, approximate: false, active: false }));
   });
 });
 
-describe('lugar para contar (spec 040)', () => {
-  test('desde Almacén se ofrece el lugar de la lista', async () => {
-    back.countPlaces.mockResolvedValue([{ id: 3, name: 'Barra', position: 0, ingredients: 1 }]);
-    montar({ ...leche, countPlaceId: 3 });
-    expect(await screen.findByRole('button', { name: /Barra/ })).toBeInTheDocument();
+// Spec 043 (maqueta «Hoja de empaque nuevo»): botones base por clase de unidad, nada elegido al abrir,
+// una frase que dice lo que se va a guardar y sin la ubicación.
+describe('empaque nuevo sin adivinar (spec 043)', () => {
+  const masa = { id: 12, name: 'Azúcar', baseUnitCode: 'g', baseUnitKind: 'masa' };
+  const botones = () => screen.getAllByRole('button').filter((b) => b.closest('[data-packs]')).map((b) => b.textContent);
+
+  test.each([
+    [masa, ['Bolsa', 'Caja', 'Costal', 'Paquete', 'Otro']],
+    [leche, ['Botella', 'Galón', 'Garrafa', 'Caja', 'Otro']],
+    [aguacate, ['Caja', 'Paquete', 'Bolsa', 'Otro']],
+  ])('una empresa sin empaques ve los base de su clase (%#)', async (ing, esperado) => {
+    montar(ing, [], false);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(botones()).toEqual(esperado);
   });
-  test('desde la captura de una compra no se ofrece', async () => {
-    montar();
+
+  test('los que la empresa ya usa se suman sin repetir los base, y nada viene elegido', async () => {
+    montar(masa);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    await waitFor(() => expect(botones()).toEqual(['Bolsa', 'Caja', 'Costal', 'Paquete', 'Bulto · 25 kg', 'Otro']));
+    expect(screen.getAllByRole('button').filter((b) => b.closest('[data-packs]') && b.getAttribute('aria-pressed') === 'true')).toHaveLength(0);
+    expect(screen.queryByLabelText('Nombre del empaque')).toBeNull();
+  });
+
+  test('pregunta «¿En qué empaque lo compras?» y la frase dice lo que se guarda, junto al pie', async () => {
+    montar(masa, [], false);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(screen.getByText('¿En qué empaque lo compras?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Bolsa' }));
+    fireEvent.click(screen.getByRole('button', { name: 'kg' }));
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '5' } });
+    const frase = screen.getByText('1 bolsa = 5 kg');
+    expect(frase.closest('.chakra-drawer__footer'), 'la frase no está junto al pie').not.toBeNull();
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '15' } });
+    expect(screen.getByText('1 bolsa = 15 kg')).toBeInTheDocument();
+    expect(screen.queryByText(/Se cuenta en|se convierte a/)).toBeNull();
+  });
+
+  test('el selector de unidad de «Trae» es el mismo que el del mínimo', async () => {
+    montar(masa, [], false);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(screen.getByRole('group', { name: 'Unidad' })).toBeInTheDocument();
+  });
+
+  test('no ofrece la ubicación, aunque venga del almacén', async () => {
+    montar(masa, [], false);
     await screen.findByRole('dialog');
-    expect(screen.queryByText('Lugar')).toBeNull();
+    expect(screen.queryByText(/Ubicación|Lugar/)).toBeNull();
   });
 });

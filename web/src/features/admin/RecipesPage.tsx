@@ -193,7 +193,7 @@ export function RecipesPage() {
                 <Text fontSize="sm" color={r.status === 'pending' ? 'fg.subtle' : 'fg.muted'} fontStyle={r.status === 'pending' ? 'italic' : undefined} truncate maxW="100%">{summaryOf(r)}</Text>
               </VStack>
               {kind !== 'prep' && <Text fontSize="sm" color="fg.muted" w="80px" textAlign="end">{Number(r.soldPerMonth) > 0 ? `${Number(r.soldPerMonth)} al mes` : ''}</Text>}
-              <Text fontSize="sm" fontWeight="600" w="88px" textAlign="end" color={r.status === 'pending' ? 'fg.muted' : r.status === 'review' ? 'orange.700' : 'green.700'}>
+              <Text fontSize="sm" fontWeight="600" w="88px" textAlign="end" color={r.status === 'pending' ? 'fg.muted' : r.status === 'review' ? 'orange.700' : 'fg.success'}>
                 {r.status === 'pending' ? 'Pendiente' : r.status === 'review' ? 'Por revisar' : 'Lista'}
               </Text>
               <LuChevronRight />

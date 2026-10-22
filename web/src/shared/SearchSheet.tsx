@@ -49,7 +49,7 @@ export function SearchSheet({ open, title, options, onPick, onClose, error, rend
           <VStack align="stretch" gap={2}>
             <Input aria-label="Buscar" placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} minH="44px" />
             {error && (
-              <Box role="alert" px={3} py={2} borderRadius="md" bg="red.50" borderWidth="1px" borderColor="red.200" color="red.800" fontSize="sm">{error}</Box>
+              <Box role="alert" px={3} py={2} borderRadius="md" bg="bg.error" borderWidth="1px" borderColor="border.error" color="fg.error" fontSize="sm">{error}</Box>
             )}
             <Box>
               {shown.map((o) => (

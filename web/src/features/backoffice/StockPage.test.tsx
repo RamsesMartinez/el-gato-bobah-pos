@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 
@@ -26,6 +26,13 @@ const back = vi.hoisted(() => ({
       { id: 2, name: 'Jarabe natural', onHand: '0', baseUnitCode: 'ml', baseUnitKind: 'volumen', baseUnitId: 3, isPrep: true, compositionStatus: 'estimated', countPlaceId: 4, countPlace: 'Barra' },
     ],
   })),
+  articles: vi.fn(() => Promise.resolve([
+    { id: 1, name: 'Azúcar', isActive: true, baseUnitId: 1, baseUnitCode: 'g', baseUnitKind: 'masa', currentCost: '0', minStock: null, isPrep: false, categoryId: null, category: null, countPlaceId: null, countPlace: null, onHand: '1200', presentations: [] },
+    { id: 2, name: 'Jarabe natural', isActive: true, baseUnitId: 3, baseUnitCode: 'ml', baseUnitKind: 'volumen', currentCost: '0.05', minStock: null, isPrep: true, categoryId: null, category: null, countPlaceId: 4, countPlace: 'Barra', onHand: '0', presentations: [] },
+  ])),
+  article: vi.fn(() => Promise.resolve({ id: 2, name: 'Jarabe natural', isActive: true, baseUnitId: 3, baseUnitCode: 'ml', baseUnitKind: 'volumen', currentCost: '0.05', minStock: null, isPrep: true, categoryId: null, category: null, countPlaceId: 4, countPlace: 'Barra', onHand: '0', presentations: [], costSource: 'receta', updatedAt: '2026-10-19T10:00:00Z' })),
+  articleCostHistory: vi.fn(() => Promise.resolve({ items: [], next: null, trendPct: null })),
+  articleCategories: vi.fn(() => Promise.resolve([])),
   inventoryHealth: vi.fn(() => Promise.resolve({
     from: '2026-09-14', to: '2026-10-13', multipleBranches: false, salesInPeriod: 0,
     unsoldDeduction: { total: 0, items: [], unpairedPlatformLines: 0 }, comboChoices: { total: 0, items: [] },
@@ -54,26 +61,19 @@ function sesion(permissions: string[]) {
   useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions } as never });
 }
 
-// LOS INSUMOS QUE SE PREPARAN EN EL LOCAL SE VEN Y SE CORRIGEN AQUÍ (spec 028).
-//
-// Hasta ahora un insumo preparado —el que cargaba FUDO como estimado— no tenía dónde verse: si venía
-// mal, descontaba mal para siempre.
-describe('Almacén › Insumos', () => {
+// ARTÍCULOS (spec 042): la pestaña es la lista con buscador y filtros; cada renglón abre su ficha, y
+// desde la ficha se llega a la receta. Lo que antes vivía en columnas (empaques, lugar, receta) está
+// en la ficha.
+describe('Almacén › Artículos', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('dice cuáles se preparan aquí y cuáles faltan por revisar', async () => {
-    montar();
-    fireEvent.click(await screen.findByRole('tab', { name: 'Insumos' }));
-    const jarabe = (await screen.findByText('Jarabe natural')).closest('tr')!;
-    expect(jarabe).toHaveTextContent('Es un preparado');
-    expect(jarabe).toHaveTextContent('por revisar');
-    expect((await screen.findByText('Azúcar')).closest('tr')!).toHaveTextContent('Se compra hecho');
-  });
-
-  it('tocar el insumo abre su receta', async () => {
-    montar();
-    fireEvent.click(await screen.findByRole('tab', { name: 'Insumos' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Receta de Jarabe natural' }));
+  it('tocar un artículo abre su ficha, y desde ahí su receta', async () => {
+    sesion(['inventory.view', 'inventory.configure']);
+    montar('/almacen?tab=insumos');
+    fireEvent.click(await screen.findByRole('button', { name: /Jarabe natural/ }));
+    expect(await screen.findByRole('button', { name: 'Bitácora' })).toBeInTheDocument();
+    expect(back.article).toHaveBeenCalledWith(2);
+    fireEvent.click(await screen.findByRole('button', { name: /Es un preparado · ver receta/ }));
     expect(await screen.findByText('Para prepararlo se usa:')).toBeInTheDocument();
     expect(admin.composition).toHaveBeenCalledWith('ingredient', 2);
   });
@@ -95,7 +95,7 @@ describe('Almacén › pestañas', () => {
   });
 
   it('las pestañas miden al menos 44 px y las de antes siguen funcionando', async () => {
-    sesion(['inventory.health_view']);
+    sesion(['inventory.health_view', 'inventory.view']);
     montar();
     for (const name of ['Existencias', 'Movimientos', 'Insumos', 'Salud']) {
       const tab = await screen.findByRole('tab', { name });
@@ -105,38 +105,11 @@ describe('Almacén › pestañas', () => {
     expect(await screen.findByText('Jarabe natural')).toBeInTheDocument();
   });
 
-  it('la dirección abre la pestaña y el insumo que pide Salud', async () => {
-    sesion(['inventory.health_view']);
+  it('la dirección abre la pestaña y la ficha que pide Salud', async () => {
+    sesion(['inventory.health_view', 'inventory.view']);
     montar('/almacen?tab=insumos&open=2');
-    expect(await screen.findByText('Para prepararlo se usa:')).toBeInTheDocument();
-    expect(admin.composition).toHaveBeenCalledWith('ingredient', 2);
-  });
-
-  // Cómo llega cada insumo (spec 038, maqueta «Cómo llega un insumo», opción B): a la vista en la
-  // lista, para ver de un vistazo cuál no tiene empaque.
-  it('con el permiso de compras, cada insumo dice cómo llega y se puede cambiar', async () => {
-    sesion(['inventory.receive', 'inventory.configure', 'inventory.count']);
-    montar('/almacen?tab=insumos');
-    const jarabe = (await screen.findByText('Jarabe natural')).closest('tr')!;
-    expect(await screen.findByText('Botella · 750 ml')).toBeInTheDocument();
-    expect(jarabe).toHaveTextContent('Ya no llega en: Garrafa');
-    const azucar = screen.getByText('Azúcar').closest('tr')!;
-    expect(azucar).toHaveTextContent('Sin empaques');
-    // La prueba sin contexto (040, T022) no encontró dónde está el lugar, y «+ Empaque o lugar» juntaba
-    // dos cosas: el lugar tiene su propio botón en el renglón y el de empaques solo habla de empaques.
-    expect(await within(jarabe).findByRole('button', { name: /Barra/ })).toBeInTheDocument();
-    expect(within(azucar).getByRole('button', { name: /Sin lugar/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cómo llega Jarabe natural' })).toHaveTextContent('Empaques ›');
-    fireEvent.click(screen.getByRole('button', { name: 'Cómo llega Jarabe natural' }));
-    expect(await screen.findByRole('dialog')).toHaveTextContent('Cómo llega Jarabe natural');
-  });
-
-  it('sin el permiso de compras no se pide ni se muestra la columna', async () => {
-    sesion([]);
-    montar('/almacen?tab=insumos');
-    await screen.findByText('Jarabe natural');
-    expect(screen.queryByText('Cómo llega')).toBeNull();
-    expect(back.presentations).not.toHaveBeenCalled();
+    expect(await screen.findByRole('button', { name: 'Bitácora' })).toBeInTheDocument();
+    expect(back.article).toHaveBeenCalledWith(2);
   });
 });
 
@@ -147,4 +120,27 @@ it('la columna usa la misma palabra que la pestaña', async () => {
   montar('/almacen?tab=insumos');
   expect(await screen.findByRole('tab', { name: 'Artículos' })).toBeInTheDocument();
   expect(await screen.findByRole('columnheader', { name: 'Artículo' })).toBeInTheDocument();
+});
+
+it('la lista usa la palabra de la empresa en la columna y en el alta', async () => {
+  sesion(['inventory.view', 'inventory.configure']);
+  pos.businessSettings.mockResolvedValueOnce({ timezone: 'America/Mexico_City', stockItemLabel: 'insumo' });
+  montar('/almacen?tab=insumos');
+  expect(await screen.findByRole('columnheader', { name: 'Insumo' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Buscar insumo o empaque')).toBeInTheDocument();
+});
+
+// Existencias marca un negativo igual que Artículos: la cifra en rojo y la etiqueta «Revisar». El
+// renglón entero en rojo era otro diseño para lo mismo (decisión del dueño, 2026-10-21).
+it('Existencias marca un negativo con «Revisar» y sin pintar el renglón entero', async () => {
+  back.stockLevels.mockResolvedValueOnce({ items: [
+    { item_name: 'Leche', item_type: 'insumo', on_hand: '-3000', unit_code: 'ml', min_stock: null },
+    { item_name: 'Azúcar', item_type: 'insumo', on_hand: '1200', unit_code: 'g', min_stock: null },
+  ] } as never);
+  sesion(['inventory.configure']);
+  montar('/almacen');
+  const fila = (await screen.findByText('Leche')).closest('tr')!;
+  expect(fila.textContent).toContain('Revisar');
+  expect(getComputedStyle(fila).backgroundColor).toBe(getComputedStyle((await screen.findByText('Azúcar')).closest('tr')!).backgroundColor);
+  expect((await screen.findByText('Azúcar')).closest('tr')!.textContent).not.toContain('Revisar');
 });

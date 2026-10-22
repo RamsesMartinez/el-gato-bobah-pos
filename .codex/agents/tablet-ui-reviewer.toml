@@ -34,6 +34,10 @@ Revisa los archivos indicados (o el diff) y reporta solo hallazgos accionables, 
    alguien que leyó el código, no va.*
 8. **Un dato que la pantalla muestra y el servidor calcula distinto.** Un total, un precio o un
    estado que el cliente deriva por su cuenta se desincroniza; señala dónde y contra qué.
+9. **Una pantalla con estilo propio** (constitución, *Todas las pantallas comparten un solo estilo*).
+   Botones, cajas, tablas, etiquetas de estado, títulos o colores escritos a mano en vez de los
+   componentes de `web/src/components/` y los tokens del tema; un color fijo que en tema oscuro se
+   pierde. Compara con la pantalla hermana más cercana y di qué difiere.
 
 ## Cómo reportas
 

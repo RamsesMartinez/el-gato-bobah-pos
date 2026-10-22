@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -237,4 +238,82 @@ func orStr(v *string, actual string) string {
 		return actual
 	}
 	return *v
+}
+
+// countLimitPairJSON viaja como números (no como texto, que es como decimal se serializa solo): la
+// pantalla los usa para el aviso y los muestra con miles.
+type countLimitPairJSON struct {
+	Max     json.Number `json:"max"`
+	Confirm json.Number `json:"confirm"`
+}
+
+type countLimitsJSON struct {
+	Mass   countLimitPairJSON `json:"mass"`
+	Volume countLimitPairJSON `json:"volume"`
+	Length countLimitPairJSON `json:"length"`
+	Piece  countLimitPairJSON `json:"piece"`
+}
+
+func countLimitsOut(l domain.CountLimits) countLimitsJSON {
+	pair := func(p domain.CountLimitPair) countLimitPairJSON {
+		return countLimitPairJSON{Max: json.Number(p.Max.String()), Confirm: json.Number(p.Confirm.String())}
+	}
+	return countLimitsJSON{Mass: pair(l.Mass), Volume: pair(l.Volume), Length: pair(l.Length), Piece: pair(l.Piece)}
+}
+
+func (b countLimitsJSON) toDomain() (domain.CountLimits, error) {
+	pair := func(p countLimitPairJSON) (domain.CountLimitPair, error) {
+		max, err1 := decimal.NewFromString(string(p.Max))
+		confirm, err2 := decimal.NewFromString(string(p.Confirm))
+		if err1 != nil || err2 != nil {
+			return domain.CountLimitPair{}, fmt.Errorf("%w: faltan cifras en los límites", domain.ErrValidation)
+		}
+		return domain.CountLimitPair{Max: max, Confirm: confirm}, nil
+	}
+	var out domain.CountLimits
+	var err error
+	for _, x := range []struct {
+		dst *domain.CountLimitPair
+		src countLimitPairJSON
+	}{{&out.Mass, b.Mass}, {&out.Volume, b.Volume}, {&out.Length, b.Length}, {&out.Piece, b.Piece}} {
+		if *x.dst, err = pair(x.src); err != nil {
+			return out, err
+		}
+	}
+	return out, nil
+}
+
+// GET /settings/count-limits — los límites del conteo en unidad base; sin fila, los defaults.
+func (h *Handlers) CountLimits(w http.ResponseWriter, r *http.Request) {
+	l, err := h.backoffice.CountLimits(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, countLimitsOut(l))
+}
+
+// PUT /settings/count-limits — guarda los cuatro pares y responde lo guardado.
+func (h *Handlers) SetCountLimits(w http.ResponseWriter, r *http.Request) {
+	var body countLimitsJSON
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	l, err := body.toDomain()
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.SetCountLimits(r.Context(), l, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	saved, err := h.backoffice.CountLimits(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, countLimitsOut(saved))
 }

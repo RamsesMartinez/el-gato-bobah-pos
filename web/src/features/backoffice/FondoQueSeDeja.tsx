@@ -24,7 +24,7 @@ export function FondoQueSeDeja({ value, onChange, contado = null, fijo = null, r
   const fila = personasDelRetiro(personas, quienCierra);
   return (
     // Rojo solo con «Sí»: con «No» se queda lo contado y no hay fondo que rebase nada.
-    <Box borderWidth="1px" borderRadius="lg" p={3} borderColor={alerta ? 'red.400' : undefined} data-alerta={alerta || undefined}>
+    <Box borderWidth="1px" borderRadius="lg" p={3} borderColor={alerta ? 'border.error' : undefined} data-alerta={alerta || undefined}>
       <HStack justify="space-between" gap={3} wrap="wrap">
         <Text fontWeight="700">¿Se retira dinero del cajón?</Text>
         <HStack gap={2}>
@@ -52,12 +52,12 @@ export function FondoQueSeDeja({ value, onChange, contado = null, fijo = null, r
               value={value} onChange={(e) => onChange(e.target.value)} />
             {soloHoy && <Badge colorPalette="orange">Solo hoy</Badge>}
             {retiro !== null && (
-              <Text fontWeight="700" color="green.600" _dark={{ color: 'green.300' }}>→ Retiro {money(retiro, currency)}</Text>
+              <Text fontWeight="700" color="fg.success">→ Retiro {money(retiro, currency)}</Text>
             )}
           </HStack>
           {fijo !== null && !soloHoy && <Text mt={1} fontSize="sm" color="fg.muted">Fondo fijo de esta caja</Text>}
           {excede && contado !== null && (
-            <Text mt={2} fontSize="sm" color="red.600" _dark={{ color: 'red.300' }}>
+            <Text mt={2} fontSize="sm" color="fg.error">
               Es más de lo contado en el cajón ({money(contado, currency)}).
             </Text>
           )}

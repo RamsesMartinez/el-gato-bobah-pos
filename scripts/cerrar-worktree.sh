@@ -3,6 +3,10 @@
 #
 #   bash scripts/cerrar-worktree.sh ../egb-041-subidas-sin-corte          # deja sus volúmenes
 #   bash scripts/cerrar-worktree.sh ../egb-041-subidas-sin-corte --datos  # borra también su base
+#   make cerrar-worktree [datos=1]           # desde DENTRO del worktree que se cierra
+#
+# La carpeta principal (~/git/el-gato-bobah-pos) es un repositorio bare: no tiene Makefile ni
+# scripts, así que `make` ahí no existe. Se corre desde el propio worktree o desde otro.
 #
 # Se niega si el worktree tiene cambios sin commit o commits que no están en origin: cerrar no
 # puede tirar trabajo. Baja SOLO la infraestructura de ese worktree (su proyecto de compose), por
@@ -11,6 +15,18 @@
 set -euo pipefail
 
 DEST="${1:-}"; DATOS="${2:-}"
+# Sin carpeta: el worktree al que pertenece este script.
+[[ -n "$DEST" ]] || DEST="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Corriendo desde la carpeta que se va a borrar, el script se borraría a sí mismo a media lectura
+# (bash lo lee por partes). Se vuelve a lanzar desde una copia, fuera de esa carpeta.
+if [[ -z "${CERRAR_WORKTREE_COPIA:-}" && -d "$DEST" ]]; then
+  aqui="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  dest_abs="$(cd "$DEST" && pwd)"
+  case "$aqui/" in "$dest_abs"/*)
+    copia="$(mktemp)"; cp "${BASH_SOURCE[0]}" "$copia"
+    cd /; CERRAR_WORKTREE_COPIA=1 exec bash "$copia" "$dest_abs" "$DATOS" ;;
+  esac
+fi
 [[ -d "$DEST" && -f "$DEST/.env.worktree.local" ]] || { echo "Uso: bash scripts/cerrar-worktree.sh <carpeta del worktree> [--datos]" >&2; exit 2; }
 DEST="$(cd "$DEST" && pwd)"
 BRANCH="$(git -C "$DEST" rev-parse --abbrev-ref HEAD)"
@@ -43,3 +59,5 @@ if git -C "$MAIN" merge-base --is-ancestor "$BRANCH" origin/develop 2>/dev/null;
   git -C "$MAIN" branch -D "$BRANCH" >/dev/null && echo "  rama $BRANCH borrada (ya está en develop)"
 fi
 echo "✅ Cerrado: $DEST"
+# La copia temporal de la que se relanzó (ver arriba) ya no hace falta.
+[[ -z "${CERRAR_WORKTREE_COPIA:-}" ]] || rm -f "${BASH_SOURCE[0]}"

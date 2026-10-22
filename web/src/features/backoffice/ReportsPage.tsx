@@ -160,7 +160,7 @@ function ReportesDeVentas() {
                   <Table.Cell textAlign="end">{money(m.revenue)}</Table.Cell>
                   {/* Sin costo capturado no hay margen que mostrar: restarle cero presentaba la venta
                       entera como ganancia (spec 029). */}
-                  <Table.Cell textAlign="end" color={Number(m.margin) < 0 ? 'red.600' : 'green.600'}>
+                  <Table.Cell textAlign="end" color={Number(m.margin) < 0 ? 'fg.error' : 'fg.success'}>
                     {Number(m.uncosted_revenue ?? 0) >= Number(m.revenue) && Number(m.revenue) > 0
                       ? <Text as="span" color="fg.muted" fontSize="xs">sin costo capturado</Text>
                       : money(m.margin)}

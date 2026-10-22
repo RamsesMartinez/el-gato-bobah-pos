@@ -4,9 +4,9 @@ import { entrar } from './pos';
 
 // LUGARES PARA CONTAR (spec 040, T018): lo que jsdom no puede medir, porque ahí todo mide 0 px.
 // Que desplazar la lista con el dedo no mueva un lugar, que mantener 500 ms sobre la agarradera sí,
-// que arrastrar de la fila 10 a la 1 desplace solo, y que el lugar del artículo se elija en dos
-// toques sin abrir el teclado. El ambiente lo usa una persona: los lugares que crea esta prueba se
-// archivan y el artículo vuelve al lugar que tenía.
+// que arrastrar de la fila 10 a la 1 desplace solo, y que la ubicación del artículo se elija en tres
+// toques desde la ficha sin abrir el teclado (spec 043). El ambiente lo usa una persona: lo que crea
+// esta prueba se archiva y el artículo vuelve a la ubicación que tenía.
 
 test.describe.configure({ mode: 'serial', retries: 0 });
 test.use({ hasTouch: true, viewport: { width: 1024, height: 600 } });
@@ -63,7 +63,7 @@ test('desplazar la lista no mueve nada; 500 ms sobre ≡ levanta y arrastrar de 
 
   // Del último al primero: mantener, arrastrar hacia arriba y esperar el desplazamiento automático.
   const ultimo = antes[antes.length - 1];
-  const grip = page.getByRole('button', { name: `Mover ${ultimo}` });
+  const grip = page.getByRole('button', { name: `Mover ${ultimo}`, exact: true });
   await grip.scrollIntoViewIfNeeded();
   const g = (await grip.boundingBox())!;
   await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
@@ -73,7 +73,7 @@ test('desplazar la lista no mueve nada; 500 ms sobre ≡ levanta y arrastrar de 
   await page.screenshot({ path: `${CAPTURAS}/levantado.png` });
   // Como una persona: acerca el dedo a la orilla, deja que la lista suba un poco, lo regresa al
   // centro para frenar y mira si ya ve el primero. Sostenerlo en la orilla sube sin parar.
-  const primero = page.getByRole('button', { name: `Mover ${antes[0]}` });
+  const primero = page.getByRole('button', { name: `Mover ${antes[0]}`, exact: true });
   let p = await primero.boundingBox();
   for (let i = 0; i < 30 && !(p && p.y > 40 && p.y < 520); i++) {
     await page.mouse.move(g.x + g.width / 2, 10, { steps: 4 });
@@ -101,25 +101,32 @@ test('desplazar la lista no mueve nada; 500 ms sobre ≡ levanta y arrastrar de 
   }
 });
 
-test('el lugar del artículo se elige en dos toques y sin teclado', async ({ page, request }) => {
+// Spec 043: la ubicación se elige en la ficha y se guarda sola. Tres toques desde la lista (abrir
+// la ficha, tocar «Ubicación», elegir), sin abrir el teclado y sin botón «Guardar».
+test('la ubicación del artículo se elige en tres toques, sin teclado y sin «Guardar»', async ({ page, request }) => {
   await entrar(page);
   await page.goto('/almacen');
   await page.getByRole('tab', { name: 'Artículos' }).click();
-  // T025/T027: el lugar tiene su propio botón en el renglón del artículo, aparte de los empaques.
-  const fila = page.getByRole('row').filter({ has: page.getByRole('button', { name: `Cómo llega ${articulo!.name}` }) });
-  await expect(page.getByRole('button', { name: `Cómo llega ${articulo!.name}` })).toContainText('Empaques');
-  const renglon = fila.getByText('Lugar', { exact: true }).locator('..').getByRole('button').first();
-  await expect(renglon).toBeVisible();
+  const fila = page.getByRole('button', { name: articulo!.name, exact: true });
+  await expect(fila).toBeVisible();
   const destino: string = (await nombres(request))[1];
   let toques = 0;
-  await renglon.click(); toques++;
+  await fila.click(); toques++;
+  const ficha = page.locator('[role="dialog"]').last();
+  await expect(ficha.getByRole('button', { name: 'Guardar', exact: true }), 'la ficha guarda sola: no lleva «Guardar»').toHaveCount(0);
+  const campo = ficha.getByText('Ubicación', { exact: true }).locator('xpath=..').getByRole('button').first();
+  await expect(campo).toBeVisible();
+  await campo.click(); toques++;
   await expect(page.getByRole('button', { name: destino, exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.activeElement?.tagName), 'el teclado del sistema se abrió solo').not.toBe('INPUT');
-  await page.screenshot({ path: `${CAPTURAS}/hoja-del-lugar.png` });
+  await page.screenshot({ path: `${CAPTURAS}/hoja-de-la-ubicacion.png` });
   await page.getByRole('button', { name: destino, exact: true }).click(); toques++;
-  await expect(renglon).toContainText(destino);
-  console.log(`[e2e] toques para elegir lugar=${toques}`);
-  expect(toques).toBe(2);
+  await expect(ficha.getByText('Guardado ✓')).toBeVisible();
+  await expect(campo).toContainText(destino);
+  const guardado = await api(request, 'get', `/stock/articles/${articulo!.id}`);
+  expect(guardado.countPlace, 'la ubicación elegida no quedó guardada').toBe(destino);
+  console.log(`[e2e] toques para elegir la ubicación=${toques}`);
+  expect(toques).toBe(3);
 });
 
 // T026: desde el conteo, sin conteo abierto, se ve el orden del recorrido y se llega a cambiarlo.

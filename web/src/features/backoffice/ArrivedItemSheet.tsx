@@ -73,7 +73,7 @@ export function ArrivedItemSheet({ expenseId, supplier, onClose, onDone }: {
 
   return (
     <ReceiptSheet title={`Llegó algo más de ${supplier ?? 'esta compra'}`} onClose={onClose}
-      footer={<Button minH="44px" colorPalette="red" disabled={!ok} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>}>
+      footer={<Button minH="44px" colorPalette="brand" disabled={!ok} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>}>
       <VStack align="stretch" gap={3}>
         <Picker value={pick} onChange={choose} placeholder="¿Qué llegó?" title="¿Qué llegó?"
           options={list.map((a) => ({ value: `${a.itemType}:${a.id}`, label: a.name, hint: a.unitCode }))} />
@@ -83,14 +83,14 @@ export function ArrivedItemSheet({ expenseId, supplier, onClose, onDone }: {
             <Input aria-label="Cantidad" w="90px" minH="44px" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
             {packs.map((p) => (
               <Button key={p.id} minH="44px" size="sm" aria-pressed={how.presentationId === p.id}
-                variant={how.presentationId === p.id ? 'subtle' : 'outline'} colorPalette={how.presentationId === p.id ? 'red' : 'gray'}
+                variant={how.presentationId === p.id ? 'subtle' : 'outline'} colorPalette={how.presentationId === p.id ? 'brand' : 'gray'}
                 onClick={() => setHow({ presentationId: p.id })}>
                 {p.name} · {formatBaseQty(p.qtyInBase, p.baseUnitCode)}
               </Button>
             ))}
             {buyUnits.map((u) => (
               <Button key={u.id} minH="44px" size="sm" aria-pressed={how.unitId === u.id}
-                variant={how.unitId === u.id ? 'subtle' : 'outline'} colorPalette={how.unitId === u.id ? 'red' : 'gray'}
+                variant={how.unitId === u.id ? 'subtle' : 'outline'} colorPalette={how.unitId === u.id ? 'brand' : 'gray'}
                 onClick={() => setHow({ unitId: u.id })}>
                 {unitLabel(u)}
               </Button>
@@ -98,8 +98,8 @@ export function ArrivedItemSheet({ expenseId, supplier, onClose, onDone }: {
           </HStack>
         )}
         <HStack gap={0} borderWidth="1px" borderRadius="md" alignSelf="start" role="group" aria-label="¿Se pagó?">
-          <Button minH="44px" aria-pressed={!gift} variant={!gift ? 'solid' : 'ghost'} colorPalette={!gift ? 'red' : 'gray'} onClick={() => setGift(false)}>Lo pagué</Button>
-          <Button minH="44px" aria-pressed={gift} variant={gift ? 'solid' : 'ghost'} colorPalette={gift ? 'red' : 'gray'} onClick={() => setGift(true)}>Fue regalo</Button>
+          <Button minH="44px" aria-pressed={!gift} variant={!gift ? 'solid' : 'ghost'} colorPalette={!gift ? 'brand' : 'gray'} onClick={() => setGift(false)}>Lo pagué</Button>
+          <Button minH="44px" aria-pressed={gift} variant={gift ? 'solid' : 'ghost'} colorPalette={gift ? 'brand' : 'gray'} onClick={() => setGift(true)}>Fue regalo</Button>
         </HStack>
         {gift
           ? <Text p={3} borderRadius="lg" bg="orange.subtle" fontSize="sm">Suma a lo guardado. No cambia lo pagado ni el costo del artículo.</Text>
@@ -110,7 +110,7 @@ export function ArrivedItemSheet({ expenseId, supplier, onClose, onDone }: {
               <Text fontSize="sm" color="fg.muted">Sube el total pagado de esta compra.</Text>
             </HStack>
           )}
-        {save.isError && <Text color="red.600" fontSize="sm">{receiptError(save.error)}</Text>}
+        {save.isError && <Text color="fg.error" fontSize="sm">{receiptError(save.error)}</Text>}
       </VStack>
     </ReceiptSheet>
   );

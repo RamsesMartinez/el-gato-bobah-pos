@@ -608,10 +608,10 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
                 <Input flex="1" minW={0} minH="44px" inputMode="decimal" autoFocus aria-label="Descuento"
                   value={descuentoTecleado} onChange={(e) => setDescuentoTecleado(e.target.value)} />
                 {descuentoTeclado.malEscrito && (
-                  <Text fontSize="xs" color="red.fg" flexShrink={0}>Solo números</Text>
+                  <Text fontSize="xs" color="fg.error" flexShrink={0}>Solo números</Text>
                 )}
                 {descuentoTeclado.excede && (
-                  <Text fontSize="xs" color="red.fg" flexShrink={0}>
+                  <Text fontSize="xs" color="fg.error" flexShrink={0}>
                     Máx {modoDescuento === 'pct' ? '100 %' : money(String(baseDelDescuento), moneda)}
                   </Text>
                 )}
@@ -750,7 +750,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
           <DrawerFooter borderTopWidth="1px" flexDirection="column" gap={2} alignItems="stretch" data-testid="pie-de-cobro">
             {rebote && (
               <Box borderWidth="1px" borderColor="red.emphasized" bg="red.subtle" borderRadius="md" px={3} py={2}>
-                <Text fontWeight="700" color="red.fg">{rebote.titulo}</Text>
+                <Text fontWeight="700" color="fg.error">{rebote.titulo}</Text>
                 {rebote.detalle && <Text fontSize="sm" color="fg.muted">{rebote.detalle}</Text>}
               </Box>
             )}

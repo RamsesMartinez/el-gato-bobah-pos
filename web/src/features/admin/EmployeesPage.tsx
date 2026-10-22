@@ -77,7 +77,7 @@ export function EmployeesPage() {
           <HStack flexWrap="wrap" gap={3} align="end">
             <Box>
               <Input minH="44px" type="password" placeholder={`Contraseña (mín. ${MIN_LEN}, sin @)`} value={password} onChange={(e) => setPassword(e.target.value)} maxW="220px" />
-              {password !== '' && (password.length < MIN_LEN || password.includes('@')) && <Text color="red.500" fontSize="xs" mt={1}>Mín. {MIN_LEN} caracteres, sin @</Text>}
+              {password !== '' && (password.length < MIN_LEN || password.includes('@')) && <Text color="fg.error" fontSize="xs" mt={1}>Mín. {MIN_LEN} caracteres, sin @</Text>}
             </Box>
             <Input minH="44px" placeholder="PIN opcional" value={pin} onChange={(e) => setPin(e.target.value)} maxW="130px" inputMode="numeric" />
             <Input minH="44px" placeholder="Email de recuperación (opcional)" value={email} onChange={(e) => setEmail(e.target.value)} maxW="260px" type="email" />

@@ -105,7 +105,13 @@ func (s *BackofficeService) CreatePresentation(ctx context.Context, ingredientID
 			IngredientID: ingredientID, Name: plan.Name, QtyInBase: plan.QtyInBase,
 			PurchaseUnitID: approxUnit(plan.Approximate, in.UnitID), IsApproximate: plan.Approximate,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		return recordAudit(ctx, q, domain.AuditEvent{
+			Action: domain.AuditPresentationCreated, EntityType: "presentation", EntityID: id,
+			After: map[string]any{"name": plan.Name, "qtyInBase": plan.QtyInBase, "approximate": plan.Approximate},
+		})
 	})
 	if err != nil {
 		return PresentationView{}, presentationErr(err)
@@ -135,14 +141,37 @@ func (s *BackofficeService) UpdatePresentation(ctx context.Context, id int64, in
 		if in.Active != nil {
 			active = *in.Active
 		}
+		before, err := q.GetPresentationForAudit(ctx, id)
+		if err != nil {
+			return err
+		}
 		n, err := q.UpdatePresentation(ctx, db.UpdatePresentationParams{
 			ID: id, Name: plan.Name, QtyInBase: plan.QtyInBase,
 			PurchaseUnitID: approxUnit(plan.Approximate, in.UnitID), IsApproximate: plan.Approximate, Active: active,
 		})
-		if err == nil && n == 0 {
+		if err != nil {
+			return err
+		}
+		if n == 0 {
 			return domain.ErrNotFound
 		}
-		return err
+		// Un cambio de estado (deja de llegar así o vuelve) es «retiró»; uno de nombre o cantidad, «editó».
+		if before.Active != active {
+			if err := recordAudit(ctx, q, domain.AuditEvent{
+				Action: domain.AuditPresentationRetired, EntityType: "presentation", EntityID: id,
+				Before: map[string]any{"active": before.Active, "name": before.Name}, After: map[string]any{"active": active},
+			}); err != nil {
+				return err
+			}
+		}
+		if before.Name != plan.Name || !before.QtyInBase.Equal(plan.QtyInBase) {
+			return recordAudit(ctx, q, domain.AuditEvent{
+				Action: domain.AuditPresentationUpdated, EntityType: "presentation", EntityID: id,
+				Before: map[string]any{"name": before.Name, "qtyInBase": before.QtyInBase},
+				After:  map[string]any{"name": plan.Name, "qtyInBase": plan.QtyInBase},
+			})
+		}
+		return nil
 	})
 	if err != nil {
 		return PresentationView{}, presentationErr(err)

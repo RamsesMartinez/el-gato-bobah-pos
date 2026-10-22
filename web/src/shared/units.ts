@@ -35,3 +35,30 @@ export function purchaseUnitsFor(kind: string, units: Unit[]): Unit[] {
     .filter((u) => u.kind === kind && !NOT_FOR_BUYING.has(u.code))
     .sort((a, b) => Number(b.toBase) - Number(a.toBase));
 }
+
+// formatUnitCost muestra un costo por unidad base («0.006», «g») como se compra: «$6.00 / kg».
+// Sin costo devuelve null: la pantalla decide cómo decirlo («Sin costo»).
+export function formatUnitCost(cost: string | number, baseUnitCode: string): string | null {
+  const n = typeof cost === 'number' ? cost : Number(cost);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const big = BIG[baseUnitCode];
+  const per = big ? big.unit : baseUnitCode === 'pieza' ? 'pieza' : baseUnitCode;
+  return `$${money(big ? n * big.at : n)} / ${per}`;
+}
+
+// Un número, no una fecha: no lleva zona (ver formateoUnico.test.ts).
+const money = (n: number) => n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// plainQty es una cantidad en la unidad base tal cual, con separador de miles: «5,000».
+export const plainQty = (v: string | number) => { const n = Number(v); return n.toLocaleString('es-MX', { maximumFractionDigits: 4 }); };
+
+// packExample es el ejemplo de empaque que se da al explicar qué es uno, de la clase del artículo: un
+// líquido no se compra en bolsas de 5 kg.
+export function packExample(kind: string): string {
+  switch (kind) {
+    case 'masa': return 'bolsa de 5 kg';
+    case 'volumen': return 'garrafa de 4 L';
+    case 'longitud': return 'rollo de 50 m';
+    default: return 'caja de 12 piezas';
+  }
+}

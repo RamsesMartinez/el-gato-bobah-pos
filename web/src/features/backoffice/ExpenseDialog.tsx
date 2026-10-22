@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { Picker, type PickerOption } from '../../components/Picker';
 import { toaster } from '../../components/ui/toaster';
-import { createIngredientOrExisting } from '../../shared/createIngredient';
+import { existingByName, nextTempId } from '../../shared/createIngredient';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogCloseTrigger, DialogFooter,
 } from '../../components/ui/dialog';
@@ -144,6 +144,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const [payRegister, setPayRegister] = useState('');
   const [parsed, setParsed] = useState<ParsedDoc | null>(null);
   const [created, setCreated] = useState<Article[]>([]);
+  // Los artículos nuevos de este gasto, por su id provisional (negativo): viajan en el guardado y solo
+  // existen si el gasto se guarda (spec 042, FR-003).
+  const [pendingNew, setPendingNew] = useState<Record<number, { name: string; baseUnitId: number }>>({});
   const [packsOf, setPacksOf] = useState<Article | null>(null);
   const kindAsk = useRef<((k: Unit['kind'] | null) => void) | null>(null);
   const [askingKind, setAskingKind] = useState(false);
@@ -157,7 +160,6 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const presList = presentations ?? [];
   const articleList = [...(articles?.items ?? []), ...created];
   const articleOptions = articleList.map((a) => ({ value: `${a.itemType}:${a.id}`, label: a.name, hint: a.unitCode }));
-  const usedNames = [...new Set(presList.map((p) => p.name))];
 
   const reset = () => {
     setStep('start'); setWithGoods(true);
@@ -294,7 +296,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         const goods = isGoods(i);
         return {
           itemType: goods ? i.itemType : '',
-          ingredientId: goods && i.itemType === 'ingrediente' ? i.itemId! : undefined,
+          ingredientId: goods && i.itemType === 'ingrediente' && i.itemId! > 0 ? i.itemId! : undefined,
+          newArticle: goods && i.itemType === 'ingrediente' && i.itemId! < 0 ? pendingNew[i.itemId!] : undefined,
           productId: goods && i.itemType === 'producto' ? i.itemId! : undefined,
           description: i.description || i.itemName || i.rawName || 'Sin descripción',
           quantity: i.quantity || '1',
@@ -350,24 +353,28 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
     };
   };
 
-  // createArticle da de alta un insumo preguntando antes en qué se mide: la unidad base no
-  // cambia después (regla 4), y tomar la unidad de compra (kg) la dejaba mil veces mal.
+  // createArticle prepara un insumo nuevo preguntando antes en qué se mide: la unidad base no
+  // cambia después sin un cambio de unidad (regla 4). No llama al servidor: el insumo viaja con el
+  // gasto y solo existe si el gasto se guarda (spec 042, FR-003). Si ya hay uno con ese nombre, se
+  // elige ése.
   const createArticle = async (name: string): Promise<PickerOption | null> => {
+    const known = articleList.filter((a) => a.itemType === 'ingrediente');
+    const found = existingByName(name, known);
+    if (found) {
+      toaster.create({ title: `Ya hay un insumo que se llama así: se eligió «${found.name}»`, type: 'info' });
+      return { value: `ingrediente:${found.id}`, label: found.name };
+    }
     setAskingKind(true);
     const kind = await new Promise<Unit['kind'] | null>((resolve) => { kindAsk.current = resolve; });
     setAskingKind(false);
     if (!kind) return null;
     const base = unitList.find((u) => u.code === KINDS.find((k) => k.kind === kind)!.base);
     if (!base) return null;
-    const known = articleList.filter((a) => a.itemType === 'ingrediente').map((a) => ({ id: a.id, name: a.name }));
-    const { ingredient: ing, existed } = await createIngredientOrExisting(
-      (b) => backofficeApi.createIngredient(b).then((i) => ({ id: i.id, name: i.name })), { name, baseUnitId: base.id }, known);
-    if (existed) {
-      toaster.create({ title: `Ya hay un insumo que se llama así: se eligió «${ing.name}»`, type: 'info' });
-    } else {
-      setCreated((p) => [...p, { itemType: 'ingrediente', id: ing.id, name: ing.name, unitCode: base.code, unitKind: base.kind }]);
-    }
-    return { value: `ingrediente:${ing.id}`, label: ing.name };
+    const id = nextTempId();
+    const clean = name.trim().replace(/\s+/g, ' ');
+    setPendingNew((p) => ({ ...p, [id]: { name: clean, baseUnitId: base.id } }));
+    setCreated((p) => [...p, { itemType: 'ingrediente', id, name: clean, unitCode: base.code, unitKind: base.kind }]);
+    return { value: `ingrediente:${id}`, label: `${clean} (nuevo)` };
   };
 
   const goodsLines = counted.filter((i) => isGoods(i));
@@ -389,7 +396,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         {step === 'start' && (
           <DialogBody>
             <VStack gap={4} maxW="560px" mx="auto" py={6}>
-              <Button size="xl" w="100%" minH="88px" colorPalette="red" loading={parse.isPending}
+              <Button size="xl" w="100%" minH="88px" colorPalette="brand" loading={parse.isPending}
                 onClick={() => fileRef.current?.click()}>
                 <LuUpload /> Sube la foto del ticket
               </Button>
@@ -404,7 +411,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
           <DialogBody>
             <VStack gap={4} maxW="560px" mx="auto" py={6}>
               <Text fontWeight="700" fontSize="lg">¿Trae mercancía para el almacén?</Text>
-              <Button size="lg" w="100%" minH="56px" colorPalette="red"
+              <Button size="lg" w="100%" minH="56px" colorPalette="brand"
                 onClick={() => { setWithGoods(true); setItems([emptyItem()]); setStep('capture'); }}>
                 Sí
               </Button>
@@ -535,7 +542,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                   </VStack>
                 )}
                 {payments.length > 0 && (
-                  <Text fontSize="sm" mt={2} textAlign="end" color={paymentsSum >= total ? 'green.600' : 'fg.muted'}>
+                  <Text fontSize="sm" mt={2} textAlign="end" color={paymentsSum >= total ? 'fg.success' : 'fg.muted'}>
                     Pagado {money(paymentsSum.toFixed(2))} de {money(total.toFixed(2))}
                     {status === 'pagada' ? ' · queda pagada' : ' · queda pendiente'}
                   </Text>
@@ -554,13 +561,13 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 {methodList.filter((m) => m.isActive !== false && m.kind !== 'plataforma'
                   && (!m.affectsCashDrawer || openRegisters.length > 0)).map((m) => (
                   <Button key={m.id} minH="44px" size="sm" aria-pressed={payWith === String(m.id)}
-                    variant={payWith === String(m.id) ? 'solid' : 'outline'} colorPalette={payWith === String(m.id) ? 'red' : 'gray'}
+                    variant={payWith === String(m.id) ? 'solid' : 'outline'} colorPalette={payWith === String(m.id) ? 'brand' : 'gray'}
                     onClick={() => setPayWith(String(m.id))}>
                     {m.name}
                   </Button>
                 ))}
                 <Button minH="44px" size="sm" aria-pressed={payWith === 'later'}
-                  variant={payWith === 'later' ? 'solid' : 'outline'} colorPalette={payWith === 'later' ? 'red' : 'gray'}
+                  variant={payWith === 'later' ? 'solid' : 'outline'} colorPalette={payWith === 'later' ? 'brand' : 'gray'}
                   onClick={() => setPayWith('later')}>
                   Todavía no se paga
                 </Button>
@@ -597,7 +604,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 {payUnanswered && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo se pagó</Text>}
                 {payNeedsRegister && <Text as="span" fontWeight="700" color="orange.700"> · elige de qué caja sale</Text>}
                 {moneyCheck.over && (
-                  <Text as="span" fontWeight="700" color="red.600">
+                  <Text as="span" fontWeight="700" color="fg.error">
                     {' · '}los renglones suman {money(moneyCheck.linesSum.toFixed(2))} y el total es {money(total.toFixed(2))}
                   </Text>
                 )}
@@ -608,7 +615,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 )}
               </Text>
               <Button minH="44px" variant="outline" onClick={() => { onClose(); reset(); }}>Cancelar</Button>
-              <Button minH="44px" colorPalette="red" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate()}>
+              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate()}>
                 Guardar
               </Button>
             </HStack>
@@ -619,7 +626,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         {packsOf && (
           <PresentationsSheet isOpen
             ingredient={{ id: packsOf.id, name: packsOf.name, baseUnitCode: packsOf.unitCode, baseUnitKind: packsOf.unitKind }}
-            presentations={presList.filter((p) => p.ingredientId === packsOf.id)} usedNames={usedNames}
+            presentations={presList.filter((p) => p.ingredientId === packsOf.id)}
             units={unitList} onClose={() => setPacksOf(null)} />
         )}
 
@@ -727,7 +734,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
             <Text fontSize="xs" color="fg.subtle">{item.rawCode && `${item.rawCode} · `}{item.rawName}</Text>
             {item.personal && <Badge colorPalette="purple" size="sm">de la casa</Badge>}
             {item.suggestion && (
-              <HStack gap={1}><LuSparkles size={12} /><Text fontSize="xs" color="green.600">reconocido de «{item.suggestion.matchedVia}»</Text></HStack>
+              <HStack gap={1}><LuSparkles size={12} /><Text fontSize="xs" color="fg.success">reconocido de «{item.suggestion.matchedVia}»</Text></HStack>
             )}
           </HStack>
         )}
@@ -780,7 +787,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
           <HStack gap={2} flexWrap="wrap" align="center">
             {packs.map((p) => (
               <Button key={p.id} minH="44px" size="sm" variant={item.presentationId === p.id ? 'subtle' : 'outline'}
-                colorPalette={item.presentationId === p.id ? 'red' : 'gray'} aria-pressed={item.presentationId === p.id}
+                colorPalette={item.presentationId === p.id ? 'brand' : 'gray'} aria-pressed={item.presentationId === p.id}
                 onClick={() => onChange({ presentationId: p.id, unitId: null })}>
                 {p.name} · {p.approximate ? '≈ ' : ''}{formatBaseQty(p.qtyInBase, p.baseUnitCode)}
               </Button>
@@ -788,7 +795,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
             {buyUnits.map((u) => (
               <Button key={u.id} minH="44px" size="sm" aria-pressed={!item.presentationId && item.unitId === u.id}
                 variant={!item.presentationId && item.unitId === u.id ? 'subtle' : 'outline'}
-                colorPalette={!item.presentationId && item.unitId === u.id ? 'red' : 'gray'}
+                colorPalette={!item.presentationId && item.unitId === u.id ? 'brand' : 'gray'}
                 onClick={() => onChange({ unitId: u.id, presentationId: null })}>
                 {unitLabel(u)}
               </Button>
@@ -802,7 +809,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
               <Input aria-label="¿Cuántos llegaron?" placeholder="¿Cuántos?" w="96px" minH="44px" inputMode="decimal"
                 value={item.partQty} onChange={(e) => onChange({ partQty: e.target.value })} />
             )}
-            {sums && <Text fontSize="sm" fontWeight="700" color="green.700">= {sums.split(' +').pop()}</Text>}
+            {sums && <Text fontSize="sm" fontWeight="700" color="fg.success">= {sums.split(' +').pop()}</Text>}
             <HStack gap={0} ml="auto" borderWidth="1px" borderRadius="md" role="group" aria-label="Estado">
               {(() => {
                 const full = item.arrived && item.partQty === null;
@@ -881,7 +888,7 @@ function PaymentRow({ payment, methods, registers, onChange, onRemove }: {
       </Field>
       <Field label={cash ? 'Caja (obligatoria)' : 'Caja (arqueo)'} flex="1" minW="160px">
         {registers.length === 0 ? (
-          <Text fontSize="sm" color={cash ? 'red.500' : 'fg.muted'}>
+          <Text fontSize="sm" color={cash ? 'fg.error' : 'fg.muted'}>
             {cash ? 'Abre una caja para pagar en efectivo.' : 'Sin cajas abiertas.'}
           </Text>
         ) : (

@@ -163,7 +163,7 @@ export function ContadorDeEfectivo({
                 <Grupo titulo="Monedas" piezas={monedas} currency={currency}
                   tecleadas={tecleadas} onChange={setTecleadas} />
                 {conteo.invalidas.length > 0 && (
-                  <Text fontSize="sm" color="red.fg">
+                  <Text fontSize="sm" color="fg.error">
                     Revisa las piezas de {conteo.invalidas
                       .map((id) => etiqueta(catalogo.find((d) => d.id === id)!, currency))
                       .join(', ')}: escribe solo el número de piezas.
@@ -185,7 +185,7 @@ export function ContadorDeEfectivo({
                   autoComplete="off" onChange={(e) => setMotivo(e.target.value)} />
               </Box>
               {falta === 'total' && totalAMano.trim() !== '' && (
-                <Text fontSize="sm" color="red.fg">Escribe el efectivo con números, sin comas.</Text>
+                <Text fontSize="sm" color="fg.error">Escribe el efectivo con números, sin comas.</Text>
               )}
               {falta === 'motivo' && (
                 <Text fontSize="sm" color="fg.muted">

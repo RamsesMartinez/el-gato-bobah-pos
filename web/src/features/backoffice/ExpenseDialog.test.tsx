@@ -209,7 +209,9 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
     expect(back.createExpense.mock.calls[0][0].items[0]).toMatchObject({ isGift: true, amount: '0' });
   });
 
-  test('crear un insumo pregunta en qué se mide y lo da de alta en su unidad base', async () => {
+  // Spec 042, FR-003: el insumo nuevo no se crea al elegir su unidad sino al guardar el gasto, así que
+  // cancelar el gasto no deja nada creado.
+  test('crear un insumo pregunta en qué se mide y no llama al servidor hasta guardar el gasto', async () => {
     await capturaConMercancia();
     fireEvent.click(await screen.findByRole('button', { name: 'Buscar o crear' }));
     fireEvent.change(await screen.findByPlaceholderText('Buscar…'), { target: { value: 'Canela' } });
@@ -219,7 +221,8 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
       expect(screen.getByText(k)).toBeInTheDocument();
     }
     fireEvent.click(screen.getByText('Peso (g, kg)'));
-    await waitFor(() => expect(back.createIngredient).toHaveBeenCalledWith({ name: 'Canela', baseUnitId: 1 }));
+    expect((await screen.findAllByText(/Canela/)).length).toBeGreaterThan(0);
+    expect(back.createIngredient).not.toHaveBeenCalled();
   });
 
   test('quitar un renglón capturado pide confirmación', async () => {
