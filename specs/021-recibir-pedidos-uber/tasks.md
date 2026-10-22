@@ -222,8 +222,8 @@ comprueban con la plataforma al guardar (4-A) con mensaje entendible y log en el
 
 - [ ] T093 Escribir en `web/src/features/backoffice/CashPage.test.tsx` el test de la señal de FR-023 al abrir turno. **Verlo en rojo**
 - [ ] T094 Escribir esa señal en `web/src/features/backoffice/CashPage.tsx`: **UNA línea** con conteo y monto, nunca una tabla — esa pantalla ya mide 1,494 px en 1024×600
-- [X] T095 Escribir en `server/internal/integration/pedidos_de_plataforma_test.go` el test de la poda: a los **60 días** se borra el cuerpo y **la fila se queda**. **Verlo en rojo**
-- [X] T096 Escribir la poda de `raw_body` y `raw_detail` en `server/internal/app/pedidos_de_plataforma.go`
+- [X] ~~T095~~ **Descartada el 2026-10-22**: lo crudo se conserva (el POS lo va a mostrar en un spec futuro); se construyó en #130 y se revirtió. Escribir en `server/internal/integration/pedidos_de_plataforma_test.go` el test de la poda: a los **60 días** se borra el cuerpo y **la fila se queda**. **Verlo en rojo**
+- [X] ~~T096~~ **Descartada el 2026-10-22**, por lo mismo. Escribir la poda de `raw_body` y `raw_detail` en `server/internal/app/pedidos_de_plataforma.go`
 - [ ] T097 [P] Documentar en `AGENTS.md` las trampas de esta feature: la consulta que no usa `QC` y por qué, que el aviso no trae el pedido, que el detalle crudo es lo único desde lo cual se corrige un mapeo, que `platform_order_ref` no sustituye a `daily_number`, y que instrumentar la pantalla nueva son tres lugares
 - [ ] T098 [P] Agregar la llave de firma al respaldo de variables y secretos **fuera del repositorio** (`~/.gatobobah-backups/`, modo 600) — el repositorio es público
 - [ ] T099 Correr `specs/021-recibir-pedidos-uber/quickstart.md` completo contra el ambiente de pruebas, incluido el caso de dos empresas con el mismo id de tienda

@@ -493,14 +493,6 @@ func RecortarPeriodicamente(ctx context.Context, cada time.Duration, abrir func(
 		if _, err := menus.PodarLecturas(ctx); err != nil && ctx.Err() == nil {
 			slog.Error("no se pudieron podar las lecturas de menú", "error", err)
 		}
-		// Lo crudo de los pedidos de plataforma (spec 021), en la misma pasada y por la misma razón:
-		// cruza empresas. La 0073 prometió esta poda desde que nació y nadie la disparaba.
-		avisos, pedidos, err := NewPedidosDePlataformaService(st, nil, nil, "", nil).PruneRawPayloads(ctx)
-		if err != nil && ctx.Err() == nil {
-			slog.Error("no se pudo podar lo crudo de los pedidos de plataforma", "error", err)
-		} else if avisos+pedidos > 0 {
-			slog.Info("datos crudos de plataforma podados", "avisos", avisos, "pedidos", pedidos)
-		}
 	}
 	recortar()
 

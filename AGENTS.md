@@ -392,6 +392,10 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `rolesPorPantalla` en [uso.go](server/internal/domain/uso.go), más `PANTALLAS` en
     [rutas-medidas.ts](web/src/app/rutas-medidas.ts). Falta el mapa de roles y los eventos se
     descartan todos, en silencio.
+- **Lo que llega crudo de una plataforma NO se poda** (decidido el 2026-10-22). El aviso y el
+  detalle de cada pedido (`raw_body`, `raw_detail`) y el nombre del cliente se guardan para
+  siempre: el POS los va a mostrar. Una poda se construyó (#130) y se revirtió, porque lo borrado no
+  se recupera. Fuera de producción los quita `scripts/respaldo-anonimo.sh`, que trunca esas tablas.
 - **Credenciales de las plataformas** (0075, ampliación de la 021): el Client ID y el Client Secret
   de la app de Uber **ya no van en el entorno**. Se capturan en Plataformas → «Acceso a la app», por
   empresa, y se guardan solo si Uber entrega un token con ellas. Cuatro cosas que cuestan caro:
