@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
@@ -700,6 +701,43 @@ type MarkWebhookEventDoneParams struct {
 func (q *Queries) MarkWebhookEventDone(ctx context.Context, arg MarkWebhookEventDoneParams) error {
 	_, err := q.db.Exec(ctx, markWebhookEventDone, arg.ID, arg.Outcome, arg.FailureKind)
 	return err
+}
+
+const pruneIncomingOrderDetails = `-- name: PruneIncomingOrderDetails :execrows
+update platform_incoming_orders
+   set raw_detail = null
+ where created_at < $1
+   and raw_detail is not null
+`
+
+// Igual que los avisos: el pedido, sus renglones y quién lo decidió se quedan; solo se va lo crudo.
+func (q *Queries) PruneIncomingOrderDetails(ctx context.Context, createdAt time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneIncomingOrderDetails, createdAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const pruneWebhookEventBodies = `-- name: PruneWebhookEventBodies :execrows
+
+update platform_webhook_events
+   set raw_body = null
+ where received_at < $1
+   and raw_body is not null
+`
+
+// ---------------------------------------------------------------------------------------------
+// La poda de lo crudo
+// ---------------------------------------------------------------------------------------------
+// Se borra el cuerpo y la FILA SE QUEDA: el `event_id` es lo que deduplica un reintento de la
+// plataforma, y sin la fila un aviso repetido volvería a entrar como pedido nuevo.
+func (q *Queries) PruneWebhookEventBodies(ctx context.Context, receivedAt time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneWebhookEventBodies, receivedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const rotateWebhookKey = `-- name: RotateWebhookKey :execrows

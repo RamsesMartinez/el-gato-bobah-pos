@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
@@ -1050,5 +1051,103 @@ func TestUnPedidoRecibidoAvisaASuEmpresa(t *testing.T) {
 	}
 	if n := recibidos(suyo); n != 0 {
 		t.Fatalf("sonaron %d eventos de más: reintento, aviso repetido del pedido u otro tipo", n)
+	}
+}
+
+// LO QUE TRAE DATOS DEL CLIENTE SE PODA A LOS 60 DÍAS, Y LA FILA SE QUEDA.
+//
+// La 0073 lo prometía en dos comentarios y no había una sola consulta que lo hiciera: el cuerpo del
+// aviso y el detalle crudo del pedido —nombre, teléfono y dirección— crecían para siempre, en
+// producción, en cada respaldo nocturno y en cada base restaurada en una laptop.
+//
+// Se prueba por la pasada diaria real y no llamando a la poda directamente: el defecto que se
+// cierra es justo una promesa que nadie disparaba. Y con dos empresas, porque esa pasada corre como
+// dueño; bajo el rol de la aplicación podaría solo la de la sesión y la otra seguiría creciendo sin
+// que nada fallara.
+func TestRawPayloadsArePrunedAfterSixtyDaysAndRowsStay(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	svc := servicioDePedidos(st)
+
+	recibir := func(slug string) int64 {
+		empresa := makeCompany(t, st, slug)
+		tienda, llave := "tienda-"+slug, "llave-de-"+slug+"-bastante-larga"
+		tiendaConLlave(t, st, empresa, tienda, llave)
+		cuerpo := avisoDePedido("evt-"+slug, tienda)
+		if _, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+			Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llave), Ambiente: "sandbox",
+		}); err != nil {
+			t.Fatalf("recibir el aviso de %s: %v", slug, err)
+		}
+		return empresa
+	}
+	vieja, otraVieja, reciente := recibir("poda-a"), recibir("poda-b"), recibir("poda-c")
+
+	// 61 días queda del lado viejo del corte y 59 del nuevo: el borde, no el caso cómodo.
+	envejecer := func(empresa int64, dias int) {
+		for _, q := range []string{
+			`update platform_webhook_events set received_at = now() - make_interval(days => $2) where company_id = $1`,
+			`update platform_incoming_orders set created_at = now() - make_interval(days => $2) where company_id = $1`,
+		} {
+			if _, err := st.Pool.Exec(ctx, q, empresa, dias); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	envejecer(vieja, 61)
+	envejecer(otraVieja, 61)
+	envejecer(reciente, 59)
+
+	type estado struct{ filas, cuerpos int }
+	contar := func(empresa int64) (avisos, pedidos estado) {
+		t.Helper()
+		if err := st.Pool.QueryRow(ctx, `select count(*), count(raw_body) from platform_webhook_events where company_id = $1`,
+			empresa).Scan(&avisos.filas, &avisos.cuerpos); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Pool.QueryRow(ctx, `select count(*), count(raw_detail) from platform_incoming_orders where company_id = $1`,
+			empresa).Scan(&pedidos.filas, &pedidos.cuerpos); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	for _, e := range []int64{vieja, otraVieja, reciente} {
+		if a, p := contar(e); a != (estado{1, 1}) || p != (estado{1, 1}) {
+			t.Fatalf("antes de podar, la empresa %d debía tener un aviso y un pedido con su cuerpo: avisos %+v, pedidos %+v", e, a, p)
+		}
+	}
+
+	pasada, apagar := context.WithCancel(ctx)
+	termino := make(chan struct{})
+	go func() {
+		defer close(termino)
+		app.RecortarPeriodicamente(pasada, time.Hour, func(c context.Context) (*store.Store, error) {
+			return store.New(c, testURL(t))
+		})
+	}()
+	t.Cleanup(func() { apagar(); <-termino })
+
+	limite := time.Now().Add(10 * time.Second)
+	for {
+		a1, p1 := contar(vieja)
+		a2, p2 := contar(otraVieja)
+		if a1.cuerpos == 0 && p1.cuerpos == 0 && a2.cuerpos == 0 && p2.cuerpos == 0 {
+			break
+		}
+		if time.Now().After(limite) {
+			t.Fatalf("la pasada diaria no podó lo de más de 60 días: empresa A avisos %+v pedidos %+v, empresa B avisos %+v pedidos %+v "+
+				"— el nombre, teléfono y dirección del cliente siguen en la base, y en cada respaldo", a1, p1, a2, p2)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	for _, e := range []int64{vieja, otraVieja} {
+		if a, p := contar(e); a.filas != 1 || p.filas != 1 {
+			t.Fatalf("la poda borró FILAS de la empresa %d (avisos %+v, pedidos %+v): se pierde la deduplicación del aviso y el rastro del pedido", e, a, p)
+		}
+	}
+	if a, p := contar(reciente); a != (estado{1, 1}) || p != (estado{1, 1}) {
+		t.Fatalf("la poda se llevó cuerpos de 59 días (avisos %+v, pedidos %+v): todavía sirven para conciliar el documento de pago del mes", a, p)
 	}
 }
