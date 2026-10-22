@@ -125,10 +125,10 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   historia y no tiene `Makefile`): **`make nuevo-worktree n=041 slug=subidas-sin-corte`**
   ([nuevo-worktree.sh](scripts/nuevo-worktree.sh)). Crea `../egb-041-subidas-sin-corte` con la rama
   `041-subidas-sin-corte` desde `origin/develop`, corre `worktree-env`, crea `deploy/.env` con
-  secretos nuevos y valores locales para lo que `check-env` deja de ejemplo (`ADMIN_PASSWORD`,
-  `ADMIN_PIN`, y `POSTGRES_PASSWORD=gatobobah`, la del compose de desarrollo), instala las
+  secretos nuevos y `POSTGRES_PASSWORD=gatobobah` (la del compose de desarrollo), instala las
   dependencias de `web/` (`node_modules` no viaja con el worktree), levanta `make start` en segundo
-  plano (log en `/tmp/egbNN-start.log`) y espera `/readyz`. Arrancar la 041 a mano costó cinco
+  plano (log en `/tmp/egbNN-start.log`), espera `/readyz` y crea el admin con contraseña y PIN
+  nuevos que imprime una sola vez: no quedan en ningún archivo. Arrancar la 041 a mano costó cinco
   vueltas, cada error visible solo al fallar el anterior. Al terminar la feature:
   **`make cerrar-worktree`** desde dentro de ese worktree, o `make cerrar-worktree dir=../egb-041-…` desde
   otro ([cerrar-worktree.sh](scripts/cerrar-worktree.sh); `datos=1` borra también sus volúmenes). Baja

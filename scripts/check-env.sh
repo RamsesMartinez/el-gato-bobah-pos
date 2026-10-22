@@ -16,7 +16,9 @@ GREEN='\033[0;32m'; RED='\033[0;31m'; YEL='\033[0;33m'; NC='\033[0m'
 # gatobobah_app y gatobobah_platform, igual que producción (scripts/dev-api.sh arma las URLs con
 # ellas). Servir como owner en local salta RLS y los GRANT, y lo que se desarrolla ahí no es lo que
 # corre allá.
-REQUIRED=(POSTGRES_PASSWORD JWT_SECRET PLATFORM_JWT_SECRET APP_DB_PASSWORD PLATFORM_DB_PASSWORD ADMIN_PASSWORD ADMIN_PIN)
+# ADMIN_PASSWORD y ADMIN_PIN ya NO van: el admin se crea con `-reset-admin`, que los pide al
+# momento. Exigirlos aquí obligaba a dejarlos escritos en el .env de cada servidor para siempre.
+REQUIRED=(POSTGRES_PASSWORD JWT_SECRET PLATFORM_JWT_SECRET APP_DB_PASSWORD PLATFORM_DB_PASSWORD)
 
 gen_secret() {
   openssl rand -hex 32 2>/dev/null || (head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
@@ -50,8 +52,7 @@ if [ ! -f "$ENV_FILE" ]; then
   printf "${YEL}Se creó deploy/.env desde el ejemplo (con JWT_SECRET, PLATFORM_JWT_SECRET y los passwords de los roles generados).${NC}\n"
   printf "${RED}Falta configurarlo antes de continuar.${NC} Edita deploy/.env y define:\n"
   printf "  - POSTGRES_PASSWORD  (contraseña de la base de datos)\n"
-  printf "  - ADMIN_PASSWORD     (contraseña del usuario admin inicial)\n"
-  printf "Luego vuelve a correr el comando.\n"
+  printf "Luego vuelve a correr el comando. El admin se crea aparte, con make reset-admin.\n"
   exit 1
 fi
 
