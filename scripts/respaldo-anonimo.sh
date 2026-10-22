@@ -15,7 +15,8 @@
 # Se borran AL RESTAURAR, en la misma transacción, no en un paso posterior que se puede olvidar.
 #
 # LO QUE NO SE TOCA, A PROPÓSITO: importes, fechas, estados, sesiones de caja, plataformas, folios y
-# llaves foráneas. Ese es justo el material que estos tests vienen a probar; anonimizarlo sería
+# llaves foráneas. La excepción son los pedidos que llegan de las plataformas, que se tiran enteros
+# (ver el paso 4). Ese es justo el material que estos tests vienen a probar; anonimizarlo sería
 # volver a la base sembrada por otro camino.
 set -euo pipefail
 
@@ -155,6 +156,14 @@ update users set
   pin_hash       = null,
   pin_lookup     = null;
 
+-- Pedidos que llegan de las plataformas: se tiran enteros. El aviso y el detalle se guardan
+-- CRUDOS, tal como los mandó la plataforma —nombre, teléfono y dirección del cliente adentro de un
+-- texto— y no hay columna que anular: habría que reescribir JSON de otro. Nada fuera de estas tres
+-- tablas las referencia, así que van sin CASCADE: si un día alguien las referencia, el truncate
+-- falla aquí en vez de arrastrar en silencio una tabla que no se pidió. El pedido que ya entró al
+-- POS se queda en `orders`, con el cliente anulado arriba.
+truncate platform_webhook_events, platform_incoming_order_lines, platform_incoming_orders;
+
 -- Sesiones vivas: no se anonimizan, se tiran. Un refresh token restaurado es una credencial
 -- funcional de producción viviendo en una base de pruebas.
 truncate refresh_tokens, password_reset_tokens;
@@ -210,7 +219,10 @@ FUGAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "
        + (select count(*) from cash_transfers where note is not null)
        + (select count(*) from stock_movements where reason is not null or note is not null)
        + (select count(*) from order_payments where reference is not null)
-       + (select count(*) from expense_payments where reference is not null)")
+       + (select count(*) from expense_payments where reference is not null)
+       + (select count(*) from platform_webhook_events)
+       + (select count(*) from platform_incoming_orders)
+       + (select count(*) from platform_incoming_order_lines)")
 
 echo
 echo "Base restaurada: $NOMBRE_BASE"
