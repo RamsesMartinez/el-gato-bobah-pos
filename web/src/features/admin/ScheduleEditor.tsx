@@ -73,7 +73,7 @@ export function ScheduleEditor({ userId, name, people, onClose }: {
             </HStack>
           </HStack>
         )}
-        {error && <Text color="red.500" fontWeight="600" mb={2}>{error}</Text>}
+        {error && <Text color="fg.error" fontWeight="600" mb={2}>{error}</Text>}
         <HStack gap={2} mb={2}>
           <Button variant="outline" minH="44px" onClick={() => setWeek(copyToWeekdays(displayedWeek))}>Copiar lunes a martes–viernes</Button>
           <Box w="240px">

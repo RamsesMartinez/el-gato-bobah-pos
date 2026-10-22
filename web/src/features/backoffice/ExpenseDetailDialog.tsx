@@ -193,7 +193,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                     ))}
                   </VStack>
                   {editing && (
-                    <Button minH="44px" variant="outline" borderStyle="dashed" colorPalette="red" onClick={() => setAddingMore(true)}>
+                    <Button minH="44px" variant="outline" borderStyle="dashed" colorPalette="brand" onClick={() => setAddingMore(true)}>
                       + Agregar un {settings?.stockItemLabel || 'artículo'} que faltó
                     </Button>
                   )}
@@ -259,7 +259,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                     }).join(' · ')}
                 </Text>
                 <Button minH="44px" variant="outline" onClick={() => { setEditing(false); setEdits({}); }}>Cancelar</Button>
-                <Button minH="44px" colorPalette="red" disabled={changed.length === 0 || !fresh} loading={save.isPending}
+                <Button minH="44px" colorPalette="brand" disabled={changed.length === 0 || !fresh} loading={save.isPending}
                   onClick={() => save.mutate()}>
                   Guardar
                 </Button>
@@ -275,7 +275,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                     Llegó todo
                   </Button>
                 )}
-                <Button minH="44px" colorPalette="red" onClick={() => { setEditing(true); void refetch(); }}>
+                <Button minH="44px" colorPalette="brand" onClick={() => { setEditing(true); void refetch(); }}>
                   Corregir lo que llegó
                 </Button>
               </HStack>
@@ -342,7 +342,7 @@ function GoodsRow({ item, edit, editing, presentations, desired, onEdit }: {
           <HStack gap={0} borderWidth="1px" borderRadius="md" role="group" aria-label="Estado">
             {states.map((s) => (
               <Button key={s.v} minH="44px" size="sm" aria-pressed={edit.state === s.v}
-                variant={edit.state === s.v ? 'solid' : 'ghost'} colorPalette={edit.state === s.v ? 'red' : 'gray'}
+                variant={edit.state === s.v ? 'solid' : 'ghost'} colorPalette={edit.state === s.v ? 'brand' : 'gray'}
                 onClick={() => onEdit({ state: s.v })}>
                 {s.label}
               </Button>
@@ -364,7 +364,7 @@ function CancelConfirm({ data, pending, onYes, onNo }: {
 }) {
   const goods = data.items.filter((i) => i.itemType !== null && num(i.applied) !== 0);
   return (
-    <VStack align="stretch" gap={2} p={4} borderWidth="2px" borderColor="red.500" borderRadius="lg" data-testid="confirmar-anular">
+    <VStack align="stretch" gap={2} p={4} borderWidth="2px" borderColor="border.error" borderRadius="lg" data-testid="confirmar-anular">
       <Text fontWeight="700">¿Anular esta compra?</Text>
       {goods.length > 0 ? goods.map((i) => (
         <Text key={i.id} fontSize="sm">

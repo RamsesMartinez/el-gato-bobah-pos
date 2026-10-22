@@ -8,8 +8,8 @@ import { actionLabel, summarizeChange } from './labels';
 
 // El color del punto dice de un vistazo qué fue: entra dinero, sale dinero, o lo demás.
 function dotColor(action: string): string {
-  if (action === 'payment.charged') return 'green.500';
-  if (['payment.voided', 'payment.refunded', 'order.cancelled', 'order.line_removed', 'stock.written_off'].includes(action)) return 'red.500';
+  if (action === 'payment.charged') return 'green.solid';
+  if (['payment.voided', 'payment.refunded', 'order.cancelled', 'order.line_removed', 'stock.written_off'].includes(action)) return 'red.solid';
   return 'gray.400';
 }
 
@@ -61,7 +61,7 @@ function Timeline({ orderId, onOpenOrder }: { orderId: number; onOpenOrder: (id:
     queryFn: () => auditApi.orderHistory(orderId),
   });
   if (isLoading) return <HStack><Spinner size="sm" /><Text color="fg.muted">Cargando historial…</Text></HStack>;
-  if (isError) return <Text color="red.fg">No se pudo cargar el historial.</Text>;
+  if (isError) return <Text color="fg.error">No se pudo cargar el historial.</Text>;
   const events = data ?? [];
   if (events.length === 0) {
     return <Text color="fg.muted">No hay acciones registradas de este pedido.</Text>;

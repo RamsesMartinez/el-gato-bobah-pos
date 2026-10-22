@@ -134,7 +134,7 @@ export function SaleDetailDialog({ venta: sale, isOpen, onClose }: {
                   </HStack>
                 </HStack>
               )}
-              {error && <Text fontSize="sm" color="red.fg">{error}</Text>}
+              {error && <Text fontSize="sm" color="fg.error">{error}</Text>}
               {/* La liquidación: lo que la plataforma se quedó. NO se suma ni se resta de ninguna
                   cifra de arriba — es dinero que el negocio vendió y no recibió, y mezclarlo con el
                   total reescribiría lo que el POS cobró. */}

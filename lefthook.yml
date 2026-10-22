@@ -29,11 +29,19 @@ pre-commit:
     cerrar-worktree-test:
       glob: "{scripts/{cerrar-worktree,stop,guard-shared-compose,worktree-env-load}.sh,scripts/tests/cerrar-worktree-test.sh,Makefile}"
       run: bash scripts/tests/cerrar-worktree-test.sh
+    nuevo-worktree-test:
+      glob: "{scripts/nuevo-worktree.sh,scripts/tests/nuevo-worktree-test.sh,Makefile}"
+      run: bash scripts/tests/nuevo-worktree-test.sh
     # El que mueve el tráfico de producción entre los dos lados de la API (spec 041): sus caminos de
     # falla no se ven en una subida que sale bien.
     deploy-azul-verde-test:
       glob: "scripts/{deploy-azul-verde.sh,tests/deploy-azul-verde-test.sh}"
       run: bash scripts/tests/deploy-azul-verde-test.sh
+    # Reparte la integración entre los shards de CI (spec 044): una prueba que ningún shard tome no
+    # corre en ningún lado y el CI queda verde.
+    ci-shard-tests-test:
+      glob: "scripts/{ci-shard-tests.sh,tests/ci-shard-tests-test.sh}"
+      run: bash scripts/tests/ci-shard-tests-test.sh
 
 pre-push:
   parallel: true

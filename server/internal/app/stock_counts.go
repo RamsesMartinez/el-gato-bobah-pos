@@ -198,12 +198,12 @@ func (s *BackofficeService) CaptureCountChecked(ctx context.Context, countID, in
 func countedQty(ctx context.Context, q *db.Queries, ingredientID int64, in CountCapture) (decimal.Decimal, error) {
 	if in.Weight == nil {
 		counted := domain.Round4(in.Qty)
-		if !domain.ValidStockQtyOrZero(counted) {
+		if !domain.ValidCountQty(counted) {
 			return counted, domain.ErrValidation
 		}
 		return counted, nil
 	}
-	if in.WeightUnitID == nil || !domain.ValidStockQtyOrZero(*in.Weight) || !domain.ValidStockQtyOrZero(in.Qty) {
+	if in.WeightUnitID == nil || !domain.ValidCountQty(*in.Weight) || !domain.ValidCountQty(in.Qty) {
 		return decimal.Zero, fmt.Errorf("%w: el peso necesita su unidad", domain.ErrValidation)
 	}
 	wu, err := q.GetUnit(ctx, *in.WeightUnitID)
@@ -224,7 +224,7 @@ func countedQty(ctx context.Context, q *db.Queries, ingredientID int64, in Count
 		}
 		// Lo contado en empaques (Qty) y lo pesado suelto se suman: «2 paquetes + 300 g sueltos».
 		total := domain.Round4(in.Qty).Add(domain.PiecesFromWeight(*in.Weight, wu.ToBase, pu.ToBase, p.QtyInBase))
-		if !domain.ValidStockQtyOrZero(total) {
+		if !domain.ValidCountQty(total) {
 			return decimal.Zero, fmt.Errorf("%w: lo pesado da una cifra fuera de lo posible", domain.ErrValidation)
 		}
 		return total, nil
@@ -248,10 +248,30 @@ func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countI
 	if err != nil {
 		return err
 	}
+	// El máximo y la cifra para confirmar son de la empresa (spec 044) y se leen en cada captura:
+	// bajarlos no toca lo ya capturado y aplica a lo siguiente. Se compara en unidad base, así que un
+	// peso convertido a piezas cae en el máximo de piezas.
+	u, err := q.GetIngredientUnit(ctx, ingredientID)
+	if err != nil {
+		return notFound(err)
+	}
+	kind := string(u.BaseUnitKind)
+	limits, err := countLimits(ctx, q)
+	if err != nil {
+		return err
+	}
+	// Va antes del aviso y sin importar Confirmable: confirmar solo acepta una cifra rara, nunca
+	// una que pasa el máximo.
+	if err := limits.CheckCountMax(kind, counted); err != nil {
+		return err
+	}
 	if in.Confirmable && !in.Confirmed {
-		ref, err := countReference(ctx, q, ingredientID, c.BranchID, seen.OnHand)
+		ref, err := countReference(ctx, q, ingredientID, c.BranchID, seen.OnHand, kind)
 		if err != nil {
 			return err
+		}
+		if p, ok := limits.ForKind(kind); ok {
+			ref.Confirm = p.Confirm
 		}
 		if domain.CountNeedsConfirm(counted, ref) {
 			return domain.ErrCountNeedsConfirm
@@ -268,13 +288,8 @@ func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countI
 }
 
 // countReference junta lo que el servidor sabe del artículo para el aviso del conteo.
-func countReference(ctx context.Context, q *db.Queries, ingredientID, branchID int64, expected decimal.Decimal) (domain.CountReference, error) {
-	ref := domain.CountReference{Expected: expected}
-	u, err := q.GetIngredientUnit(ctx, ingredientID)
-	if err != nil {
-		return ref, notFound(err)
-	}
-	ref.BaseKind = string(u.BaseUnitKind)
+func countReference(ctx context.Context, q *db.Queries, ingredientID, branchID int64, expected decimal.Decimal, kind string) (domain.CountReference, error) {
+	ref := domain.CountReference{Expected: expected, BaseKind: kind}
 	last, err := q.LastClosedCountedQty(ctx, db.LastClosedCountedQtyParams{BranchID: branchID, IngredientID: ingredientID})
 	switch {
 	case err == nil:

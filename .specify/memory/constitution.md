@@ -309,23 +309,30 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
     `input type="date"` o `type="time"` también (celdas de ~30 px). Va
     [`DatePickerButton`](../../web/src/components/DatePickerButton.tsx) o, para horas, un `Picker`
     de pasos de 15 minutos (decidido el 2026-10-11).
+  - **Todas las pantallas comparten un solo estilo** (decidido el 2026-10-21): títulos, botones,
+    tarjetas, tablas, etiquetas de estado y espaciados salen de los mismos componentes y tokens del tema
+    (`web/src/components/`, `web/src/theme/`). Una pantalla nueva no inventa su propio botón, su propia
+    caja ni sus propios colores: si lo que existe no alcanza, se amplía el componente común. Una pantalla
+    que se ve como de otro producto es un hallazgo de revisión, igual que un control de 30 px.
   - **Todo control tappable mide al menos 44 px de alto.** Es el mínimo con el que un dedo acierta a
     la primera; por debajo, el operador toca dos veces y la segunda cae en otra cosa.
   - **La pantalla la verifica el agente, no una persona con la tableta en la mano** (decidido el
     2026-10-11). No hay paso manual «en tableta real» ni se deja como pendiente: se mide con
-    Playwright a 1024×600 contra el ambiente de pruebas, con capturas, y con subagentes que usan la
+    Playwright a 1024×600 en local, con capturas, y con subagentes que usan la
     pantalla como alguien nuevo y reportan dónde se atoran. Lo que Chromium no reproduce (el teclado
     del sistema, la densidad de una Surface) se simula —ventana encogida, `deviceScaleFactor`— y se
     nombra como simulado, no como pendiente para alguien más.
-  - **Dónde corre cada prueba de pantalla** (decidido el 2026-10-17). Las vueltas con alguien sin
-    contexto y los ajustes de pantalla que salen de ellas se iteran **en local**, contra el
-    `make start` del worktree (API como `gatobobah_app`, datos restaurados), a 1024×600: lo que miden
-    es si la pantalla se entiende, y la pantalla local es el mismo código. Pasar cada corrección de
-    una palabra por PR, CI y despliegue para volver a probar costó, en la 040, seis ciclos de 10 a
-    15 minutos. **El ambiente de pruebas desplegado** se usa una vez con la versión final, antes de
-    subir a producción: la suite e2e (lo que solo se ve desplegado: el build, el CSP, el desacuerdo
-    entre pantalla y servidor) y una última vuelta con alguien sin contexto. **En producción no se
-    prueba**: después de subir solo se revisa la salud (ver `AGENTS.md`).
+  - **Toda prueba corre en local; el ambiente de pruebas solo cuando el dueño lo pide** (decidido el
+    2026-10-17, ampliado el 2026-10-21). Las vueltas con alguien sin contexto, los ajustes de pantalla,
+    la suite e2e, los repasos visuales y la prueba del dueño corren contra el `make start` del worktree
+    (API como `gatobobah_app`, datos restaurados), a 1024×600: la pantalla local es el mismo código, y
+    pasar cada corrección por PR, CI y despliegue para volver a probar costó, en la 040, seis ciclos de
+    10 a 15 minutos. Para acercarse a lo desplegado, la vuelta final corre además contra el build de
+    producción servido en local (`bun run build && bun run preview`). **El ambiente de pruebas
+    desplegado** ya no es un paso obligatorio: se usa solo cuando el dueño lo pide para una feature, y el
+    plan de esa feature lo dice. Lo que solo se ve desplegado —la política de seguridad que pone Caddy, la
+    red hacia KMS— queda sin verificar hasta que llega a develop, y el reporte lo nombra así. **En
+    producción no se prueba**: después de subir solo se revisa la salud (ver `AGENTS.md`).
 - **El texto de la interfaz es para quien opera el negocio, no para quien lo programa.** Este producto se vende. Una pantalla que justifica *por qué* una decisión técnica es la correcta, o que argumenta contra la alternativa, delata al desarrollador y resta confianza en el producto. En pantalla va lo que el operador necesita para decidir; el porqué vive en el comentario del código o en `docs/`.
   - **Prohibido en la UI**: justificar un tradeoff ("peor que el toque que esto viene a quitar"), nombrar internals (flags del navegador, endpoints, columnas) o advertir de algo que el usuario no puede accionar desde ahí.
   - **El detalle operativo que sí sirve** —cómo dejar la tablet lista, qué formato de imagen se acepta— se guarda detrás de un icono de ayuda y se redacta como instrucción en pasos, no como explicación. Ej.: el interruptor de impresión automática en [`PrintSettingsPage`](../../web/src/features/admin/PrintSettingsPage.tsx) dice qué hace en un renglón y deja el "cómo configurarlo" en un diálogo de ayuda.
@@ -423,4 +430,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.24.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-18
+**Version**: 1.26.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-21

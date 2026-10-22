@@ -58,8 +58,8 @@ const VENTAS_POR_PAGINA = 20;
 function diffColor(v: string) {
   // Del servidor, no de un teclado: Number() alcanza y no hay formato que validar.
   const n = Number(v);
-  if (n > 0.005) return 'green.500';
-  if (n < -0.005) return 'red.500';
+  if (n > 0.005) return 'fg.success';
+  if (n < -0.005) return 'fg.error';
   return 'fg.muted';
 }
 
@@ -166,7 +166,7 @@ export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE, o
                 <Table.Cell><Text lineClamp={2}>{m.recipientName ? `${m.concept} · ${m.recipientName}` : m.concept}</Text></Table.Cell>
                 <Table.Cell color="fg.muted" whiteSpace="nowrap">{m.userName}</Table.Cell>
                 <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap"
-                  color={m.kind === 'entrada' || m.kind === 'reverso' ? 'green.500' : 'red.500'}
+                  color={m.kind === 'entrada' || m.kind === 'reverso' ? 'fg.success' : 'fg.error'}
                   textDecoration={m.reversed ? 'line-through' : undefined}>
                   {m.kind === 'entrada' || m.kind === 'reverso' ? '+' : '−'}{money(m.amount, currency)}
                 </Table.Cell>
@@ -237,7 +237,7 @@ function SummaryLine({ label, amount, indent = 0, weight = '400', color, top, ne
       borderTopWidth={top ? '1px' : undefined} borderColor="border.muted">
       <Text fontSize="sm" fontWeight={weight} color={color}>{label}</Text>
       {amount !== undefined && (
-        <Text fontSize="sm" fontWeight={weight} color={negative ? 'red.600' : color} whiteSpace="nowrap"
+        <Text fontSize="sm" fontWeight={weight} color={negative ? 'fg.error' : color} whiteSpace="nowrap"
           data-negative={negative ? 'true' : undefined}>{amount}</Text>
       )}
     </HStack>
@@ -253,7 +253,7 @@ export function IngresosEgresosCard({ openingCash, breakdown, currency }: { open
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflow="hidden">
       <SummaryLine label="Monto inicial" amount={money(openingCash, currency)} weight="600" />
-      <SummaryLine label="Ingresos" amount={money(breakdown?.ingresosTotal ?? '0', currency)} weight="700" color="green.600" top />
+      <SummaryLine label="Ingresos" amount={money(breakdown?.ingresosTotal ?? '0', currency)} weight="700" color="fg.success" top />
       {ingresos.map((m) => (
         <Fragment key={m.method}>
           <SummaryLine label={m.method} amount={money(m.total, currency)} indent={1} weight="600" />
@@ -267,7 +267,7 @@ export function IngresosEgresosCard({ openingCash, breakdown, currency }: { open
         </Fragment>
       ))}
       {ingresos.length === 0 && <SummaryLine label="Sin ingresos" indent={1} color="fg.muted" />}
-      <SummaryLine label="Egresos" amount={`−${money(breakdown?.egresosTotal ?? '0', currency)}`} weight="700" color="red.600" top />
+      <SummaryLine label="Egresos" amount={`−${money(breakdown?.egresosTotal ?? '0', currency)}`} weight="700" color="fg.error" top />
       {egresos.map((it) => (
         <SummaryLine key={it.concept} label={it.concept} amount={`−${money(it.amount, currency)}`} indent={1} color="fg.muted" />
       ))}
@@ -795,7 +795,7 @@ export function DiferenciaDelCierre({ diferencias, cajon, conteo, currency }: {
   const cuadra = Math.abs(total) < 0.005;
   return (
     <Box borderWidth="1px" borderRadius="lg" p={3} bg="bg.panel"
-      borderColor={cuadra ? 'border' : 'red.400'}>
+      borderColor={cuadra ? 'border' : 'border.error'}>
       <HStack justify="space-between" flexWrap="wrap" gap={2}>
         <Text fontWeight="700">{cuadra ? 'El arqueo cuadra' : (total < 0 ? 'Faltante' : 'Sobrante')}</Text>
         <Text fontSize="xl" fontWeight="700" color={diffColor(String(total))}
@@ -1125,9 +1125,9 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
               declarado, así que sin esta línea un turno con ventas sin cobrar cierra en cero y el
               faltante solo aparece restando dos cifras de dos pantallas. */}
           {Number(session.uncollected) > 0 && (
-            <Box borderWidth="1px" borderColor="red.300" bg="red.50"
-              _dark={{ bg: 'red.950' }} borderRadius="lg" p={3}>
-              <Text fontWeight="700" color="red.700" _dark={{ color: 'red.200' }}>
+            <Box borderWidth="1px" borderColor="border.error" bg="bg.error"
+ borderRadius="lg" p={3}>
+              <Text fontWeight="700" color="fg.error">
                 Sin cobrar: {money(session.uncollected)}
                 {' en '}
                 {session.uncollectedCount === 1 ? '1 pedido' : `${session.uncollectedCount} pedidos`}
@@ -1752,9 +1752,9 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
   return (
     <VStack align="stretch" gap={2}>
       {owing.length > 0 && (
-        <Box borderWidth="1px" borderColor="red.300" bg="red.50"
-          _dark={{ bg: 'red.950' }} borderRadius="lg" p={3}>
-          <Text fontWeight="700" color="red.700" _dark={{ color: 'red.200' }} mb={1}>
+        <Box borderWidth="1px" borderColor="border.error" bg="bg.error"
+ borderRadius="lg" p={3}>
+          <Text fontWeight="700" color="fg.error" mb={1}>
             Falta cobrar {owing.length === 1 ? '1 pedido' : `${owing.length} pedidos`}
           </Text>
           <Text fontSize="sm" color="fg.muted" mb={2}>
@@ -1894,7 +1894,7 @@ export function BotonCerrarCaja({ nombre, disabled, loading, onCerrar, descripci
   const [preguntando, setPreguntando] = useState(false);
   return (
     <>
-      <Button colorPalette="red" size="lg" minH="52px" loading={loading} disabled={disabled}
+      <Button colorPalette="brand" size="lg" minH="52px" loading={loading} disabled={disabled}
         onClick={() => setPreguntando(true)}>
         Cerrar caja
       </Button>
