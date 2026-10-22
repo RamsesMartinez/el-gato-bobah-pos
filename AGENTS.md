@@ -125,10 +125,10 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   historia y no tiene `Makefile`): **`make nuevo-worktree n=041 slug=subidas-sin-corte`**
   ([nuevo-worktree.sh](scripts/nuevo-worktree.sh)). Crea `../egb-041-subidas-sin-corte` con la rama
   `041-subidas-sin-corte` desde `origin/develop`, corre `worktree-env`, crea `deploy/.env` con
-  secretos nuevos y valores locales para lo que `check-env` deja de ejemplo (`ADMIN_PASSWORD`,
-  `ADMIN_PIN`, y `POSTGRES_PASSWORD=gatobobah`, la del compose de desarrollo), instala las
+  secretos nuevos y `POSTGRES_PASSWORD=gatobobah` (la del compose de desarrollo), instala las
   dependencias de `web/` (`node_modules` no viaja con el worktree), levanta `make start` en segundo
-  plano (log en `/tmp/egbNN-start.log`) y espera `/readyz`. Arrancar la 041 a mano costó cinco
+  plano (log en `/tmp/egbNN-start.log`), espera `/readyz` y crea el admin con contraseña y PIN
+  nuevos que imprime una sola vez: no quedan en ningún archivo. Arrancar la 041 a mano costó cinco
   vueltas, cada error visible solo al fallar el anterior. Al terminar la feature:
   **`make cerrar-worktree`** desde dentro de ese worktree, o `make cerrar-worktree dir=../egb-041-…` desde
   otro ([cerrar-worktree.sh](scripts/cerrar-worktree.sh); `datos=1` borra también sus volúmenes). Baja
@@ -392,6 +392,10 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `rolesPorPantalla` en [uso.go](server/internal/domain/uso.go), más `PANTALLAS` en
     [rutas-medidas.ts](web/src/app/rutas-medidas.ts). Falta el mapa de roles y los eventos se
     descartan todos, en silencio.
+- **Lo que llega crudo de una plataforma NO se poda** (decidido el 2026-10-22). El aviso y el
+  detalle de cada pedido (`raw_body`, `raw_detail`) y el nombre del cliente se guardan para
+  siempre: el POS los va a mostrar. Una poda se construyó (#130) y se revirtió, porque lo borrado no
+  se recupera. Fuera de producción los quita `scripts/respaldo-anonimo.sh`, que trunca esas tablas.
 - **Credenciales de las plataformas** (0075, ampliación de la 021): el Client ID y el Client Secret
   de la app de Uber **ya no van en el entorno**. Se capturan en Plataformas → «Acceso a la app», por
   empresa, y se guardan solo si Uber entrega un token con ellas. Cuatro cosas que cuestan caro:

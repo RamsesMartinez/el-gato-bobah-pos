@@ -283,7 +283,7 @@ cortar YA, además se reinicia la API (`docker compose restart api` en la VM). L
 **Secretos y config (antes del primer arranque):**
 - [ ] `JWT_SECRET`: `openssl rand -base64 48` (≥32; la API rechaza débiles/placeholder).
 - [ ] `POSTGRES_PASSWORD`: `openssl rand -hex 24`.
-- [ ] `ADMIN_PASSWORD` y `ADMIN_PIN` reales (no `cambia-esto`, no `1234` — la API los rechaza).
+- [ ] El admin se crea con `api -reset-admin`, que pide contraseña y PIN al momento: ya no van en `deploy/.env`.
 - [ ] **`CORS_ORIGIN=https://tu-dominio,https://staff.tu-dominio`** (exactos, separados por coma).
   Con `*` en producción —aunque sea una entrada más de la lista— la API NO arranca.
 - [ ] `PLATFORM_JWT_SECRET`: `openssl rand -base64 48`, **distinto de `JWT_SECRET`** (si son iguales
@@ -297,7 +297,7 @@ cortar YA, además se reinicia la API (`docker compose restart api` en la VM). L
 **Hardening del host:**
 - [ ] `ufw`: permitir 22/80/443, denegar el resto. Postgres/Redis **no** publican puertos (ya es así en compose — mantenerlo).
 - [ ] SSH: solo con llave; deshabilitar root y password auth.
-- [ ] Rotar `ADMIN_PASSWORD`/`ADMIN_PIN` tras el primer login (`make reset-admin`).
+- [ ] Rotar la contraseña y el PIN del admin tras el primer login (`-reset-admin`, los pide al momento).
 
 **Durabilidad (día uno):**
 - [x] Backup nocturno (2026-09-29): dump verificado a las 00:45, 14 en la VM y 90 días en un bucket
