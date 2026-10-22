@@ -122,14 +122,16 @@ Reglas que aplican a todas las tareas:
   empaque» quedan a la vista (R5), y todo control de la hoja mide 44 px o más (FR-019).
 - [X] T028 [US3] «Quitar este empaque» aparte de «Editar» y con estilo secundario (FR-023), con su
   prueba en `PresentationsSheet.test.tsx`; y el ejemplo de ubicación solo en el buscador (FR-002).
-- [ ] T021 [US5] Correr la suite e2e completa contra el ambiente de pruebas con la 043 desplegada.
+- [X] T021 [US5] Correr la suite e2e completa contra el ambiente de pruebas con la 043 desplegada. Resultado
+  (2026-10-20): 108 pasan, 4 saltadas por datos del ambiente, 1 falla ajena a la 043
+  (`presupuesto-del-cierre.spec.ts` P2 mide antes de que cargue la tabla de métodos).
 
 ## Phase 8: Polish
 
 - [X] T022 `make ci-local` en verde.
 - [X] T023 Prueba con usuario sin contexto en local a 1024×600: darle ubicación a un artículo y agregar
   un empaque sin ayuda (SC-006). Anotar lo encontrado en «Al construir».
-- [ ] T024 Cerrar en #103 los dos puntos que cubre esta spec («Lugar» y «Se cuenta en g»).
+- [X] T024 Cerrar en #103 los dos puntos que cubre esta spec («Lugar» y «Se cuenta en g»).
 
 ## Dependencies
 
