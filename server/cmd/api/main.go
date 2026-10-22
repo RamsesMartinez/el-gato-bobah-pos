@@ -110,7 +110,7 @@ func main() {
 	}
 
 	if *resetAdmin {
-		if err := resetAdminUser(ctx, admin, cfg.PinPepper); err != nil {
+		if err := resetAdminUser(ctx, admin, cfg); err != nil {
 			slog.Error("reset admin", "error", err)
 			admin.Close()
 			os.Exit(1)
@@ -454,9 +454,6 @@ func provisionCompany(ctx context.Context, st *store.Store, pepper string) error
 	if err != nil {
 		return err
 	}
-	if err := domain.ValidatePassword(password); err != nil {
-		return err
-	}
 	if existing, err := st.Q.ResolveCompanyBySlug(ctx, slug); err != nil {
 		return err
 	} else if existing != 0 {
@@ -529,6 +526,11 @@ func askAdminSecrets(ask func(label string) (string, error)) (password, pin stri
 		return "", "", fmt.Errorf("la contraseña del admin no puede ir vacía")
 	}
 	if err := checkAdminSecrets(password, ""); err != nil {
+		return "", "", err
+	}
+	// La misma vara que cualquier contraseña del producto. Solo -create-company la pasaba; -reset-admin
+	// —el camino con el que nace el primer admin— aceptaba «aaaaaaaa».
+	if err := domain.ValidatePassword(password); err != nil {
 		return "", "", err
 	}
 	if pin, err = ask("PIN del admin (vacío = sin PIN): "); err != nil {
@@ -696,10 +698,14 @@ func resetPlatformOperator(ctx context.Context, st *store.Store) error {
 	return err
 }
 
-// resetAdminUser actualiza la contraseña/PIN del admin (por ADMIN_USERNAME), pidiéndolos al
-// momento, o lo crea si no existe. No borra datos. Para cuando cambias credenciales
-// después del primer arranque (el bootstrap solo corre con la base vacía).
-func resetAdminUser(ctx context.Context, st *store.Store, pepper string) error {
+// resetAdminUser actualiza la contraseña/PIN del admin (por ADMIN_USERNAME) de la empresa
+// COMPANY_SLUG, pidiéndolos al momento, o lo crea si no existe. No borra datos. Es el camino con el
+// que nace el primer admin de una instalación nueva.
+//
+// La empresa se resuelve como dueño (puede tener que crearla), pero el admin se escribe con el ROL
+// DE LA APLICACIÓN: ver app.ResetCompanyAdmin, que como dueño reescribía el admin de todas las
+// empresas.
+func resetAdminUser(ctx context.Context, owner *store.Store, cfg config.Config) error {
 	username := os.Getenv("ADMIN_USERNAME")
 	if username == "" {
 		return fmt.Errorf("define ADMIN_USERNAME")
@@ -712,29 +718,28 @@ func resetAdminUser(ctx context.Context, st *store.Store, pepper string) error {
 	if err != nil {
 		return err
 	}
-	pinHash, pinLookup, err := pinDeAdmin(pin, pepper)
+	pinHash, pinLookup, err := pinDeAdmin(pin, cfg.PinPepper)
 	if err != nil {
 		return err
 	}
-	companyID, err := defaultCompany(ctx, st)
+	companyID, err := defaultCompany(ctx, owner)
 	if err != nil {
 		return err
 	}
-	// Scopeado a la empresa por defecto. ponytail: SetUserSecretsByUsername filtra solo por
-	// username; como owner (admin store) RLS no acota, pero en el arranque hay una sola empresa.
-	// Si algún día se resetea admin con multi-empresa poblada, añadir company_id al WHERE.
-	return st.WithTenant(ctx, companyID, func(q *db.Queries) error {
-		n, err := q.SetUserSecretsByUsername(ctx, db.SetUserSecretsByUsernameParams{
-			Username: &username, PasswordHash: &pwHash, PinHash: pinHash, PinLookup: pinLookup,
-		})
-		if err != nil {
-			return err
-		}
-		if n == 0 { // no existía → crear
-			_, err = q.CreateUser(ctx, newAdminParams(username, pwHash, pinHash, pinLookup))
-		}
+	// Sin el rol de la aplicación no hay RLS que acote a la empresa, y caer en silencio a la conexión
+	// del dueño es justo lo que reescribía el admin de todas.
+	if cfg.AppDatabaseURL == "" {
+		return fmt.Errorf("define APP_DATABASE_URL: el admin se escribe con el rol de la aplicación")
+	}
+	st, err := store.New(ctx, cfg.AppDatabaseURL)
+	if err != nil {
 		return err
-	})
+	}
+	defer st.Close()
+	if err := assertRLSEnforced(ctx, st); err != nil {
+		return err
+	}
+	return app.ResetCompanyAdmin(ctx, st, companyID, newAdminParams(username, pwHash, pinHash, pinLookup))
 }
 
 // runResetPassword resetea la contraseña de username@slug pidiéndola por terminal (oculta, con
