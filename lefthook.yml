@@ -29,6 +29,11 @@ pre-commit:
     cerrar-worktree-test:
       glob: "{scripts/{cerrar-worktree,stop,guard-shared-compose,worktree-env-load}.sh,scripts/tests/cerrar-worktree-test.sh,Makefile}"
       run: bash scripts/tests/cerrar-worktree-test.sh
+    # El anonimizador se quedó atrás cuando llegaron los pedidos de plataforma: sus cuerpos crudos
+    # pasaban a la base de pruebas con la verificación diciendo «0 datos personales».
+    respaldo-anonimo-test:
+      glob: "{scripts/respaldo-anonimo.sh,scripts/tests/respaldo-anonimo-test.sh,server/migrations/*.sql}"
+      run: bash scripts/tests/respaldo-anonimo-test.sh
     nuevo-worktree-test:
       glob: "{scripts/nuevo-worktree.sh,scripts/tests/nuevo-worktree-test.sh,Makefile}"
       run: bash scripts/tests/nuevo-worktree-test.sh
