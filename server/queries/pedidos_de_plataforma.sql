@@ -269,8 +269,9 @@ update platform_webhook_events
    and raw_body is not null;
 
 -- name: PruneIncomingOrderDetails :execrows
--- Igual que los avisos: el pedido, sus renglones y quién lo decidió se quedan; solo se va lo crudo.
+-- Igual que los avisos: el pedido, sus renglones y quién lo decidió se quedan. Se va lo crudo
+-- —teléfono y dirección— y también el nombre: dejarlo sería conservar a quién pertenecían.
 update platform_incoming_orders
-   set raw_detail = null
+   set raw_detail = null, customer_name = null
  where created_at < $1
-   and raw_detail is not null;
+   and (raw_detail is not null or customer_name is not null);
