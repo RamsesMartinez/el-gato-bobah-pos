@@ -1147,6 +1147,23 @@ func TestRawPayloadsArePrunedAfterSixtyDaysAndRowsStay(t *testing.T) {
 			t.Fatalf("la poda borró FILAS de la empresa %d (avisos %+v, pedidos %+v): se pierde la deduplicación del aviso y el rastro del pedido", e, a, p)
 		}
 	}
+	nombres := func(empresa int64) int {
+		t.Helper()
+		var n int
+		if err := st.Pool.QueryRow(ctx, `select count(customer_name) from platform_incoming_orders where company_id = $1`,
+			empresa).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	for _, e := range []int64{vieja, otraVieja} {
+		if nombres(e) != 0 {
+			t.Fatalf("el nombre del cliente de la empresa %d sobrevivió a los 60 días: la poda se llevó el teléfono y la dirección y dejó a quién pertenecían", e)
+		}
+	}
+	if nombres(reciente) != 1 {
+		t.Fatal("la poda se llevó el nombre de un pedido de 59 días")
+	}
 	if a, p := contar(reciente); a != (estado{1, 1}) || p != (estado{1, 1}) {
 		t.Fatalf("la poda se llevó cuerpos de 59 días (avisos %+v, pedidos %+v): todavía sirven para conciliar el documento de pago del mes", a, p)
 	}
