@@ -38,6 +38,7 @@ func TestAdminSecretsAreAskedNotRead(t *testing.T) {
 		{"la confirmación del PIN no coincide", []string{"Contrasena-Larga-1!", "Contrasena-Larga-1!", "482715", "482716"}, "", "no coinciden"},
 		{"contraseña vacía", []string{"", ""}, "", "vacía"},
 		{"el valor de ejemplo del repo público", []string{"cambia-esto", "cambia-esto"}, "", "ejemplo"},
+		{"contraseña corta: -reset-admin la aceptaba", []string{"aaaaaaa", "aaaaaaa"}, "", "caracteres"},
 		{"PIN de secuencia", []string{"Contrasena-Larga-1!", "Contrasena-Larga-1!", "1234", "1234"}, "", "débil"},
 	}
 	for _, c := range cases {
