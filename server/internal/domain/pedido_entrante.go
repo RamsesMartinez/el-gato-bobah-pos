@@ -166,3 +166,9 @@ func tipoDeServicio(t string) string {
 func deCentavos(c int64) decimal.Decimal {
 	return decimal.NewFromInt(c).Div(decimal.NewFromInt(100)).Round(2)
 }
+
+// RawPayloadRetentionDays es cuánto se guarda lo crudo que llega de la plataforma —el cuerpo del
+// aviso y el detalle del pedido—, que trae nombre, teléfono y dirección del cliente. El documento de
+// pago llega mensual y una discrepancia se descubre al conciliarlo: pasado ese ciclo, lo crudo ya no
+// sirve para corregir nada y solo carga riesgo, en la base y en cada respaldo.
+const RawPayloadRetentionDays = 60
