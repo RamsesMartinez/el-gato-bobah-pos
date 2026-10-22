@@ -119,7 +119,7 @@ ci-local: ## Lo mismo que CI (backend, integración, frontend) en paralelo y en 
 sec: lint vuln web-lint web-audit ## Todos los chequeos de seguridad/calidad
 	@echo "\n✅ Chequeos de seguridad completados"
 
-reset-admin: deps-up ## Actualiza contraseña/PIN del admin desde deploy/.env (sin borrar datos)
+reset-admin: deps-up ## Crea el admin o le cambia contraseña/PIN, pidiéndolos al momento (sin borrar datos)
 	@bash scripts/dev-api.sh reset-admin
 reset-password: deps-up ## Resetea password de un usuario (prompt oculto): make reset-password user=admin@gatobobah
 	@bash scripts/dev-api.sh reset-password "$(user)"

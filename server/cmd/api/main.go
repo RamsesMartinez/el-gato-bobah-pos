@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -51,8 +53,8 @@ var (
 func main() {
 	healthcheck := flag.Bool("healthcheck", false, "ping local /healthz and exit (for Docker HEALTHCHECK)")
 	readycheck := flag.Bool("readycheck", false, "ping local /readyz (incluye la base) and exit (despliegue azul/verde)")
-	resetAdmin := flag.Bool("reset-admin", false, "actualiza/crea el admin con ADMIN_* y sale (sin borrar datos)")
-	createCompany := flag.Bool("create-company", false, "provisiona una empresa nueva (COMPANY_SLUG/NAME) + su admin (ADMIN_*) y sale")
+	resetAdmin := flag.Bool("reset-admin", false, "actualiza/crea el admin (ADMIN_USERNAME; contraseña y PIN se piden al momento) y sale, sin borrar datos")
+	createCompany := flag.Bool("create-company", false, "provisiona una empresa nueva (COMPANY_SLUG/NAME) + su admin (contraseña y PIN se piden al momento) y sale")
 	resetPassword := flag.String("reset-password", "", "resetea la contraseña de username@slug (prompt interactivo, oculto) y sale")
 	resetOperador := flag.Bool("reset-platform-operator", false, "crea/actualiza al operador de la consola con PLATFORM_OPERATOR_* y sale")
 	flag.Parse()
@@ -139,8 +141,8 @@ func main() {
 		return
 	}
 
-	if err := bootstrapAdmin(ctx, admin, cfg.PinPepper); err != nil {
-		slog.Error("bootstrap admin", "error", err)
+	if err := warnWhenNoUsers(ctx, admin); err != nil {
+		slog.Error("contar usuarios al arrancar", "error", err)
 		admin.Close()
 		os.Exit(1)
 	}
@@ -436,21 +438,20 @@ func envOr(key, def string) string {
 }
 
 // provisionCompany crea una empresa NUEVA (COMPANY_SLUG/COMPANY_NAME) y su admin inicial
-// (ADMIN_*), para onboarding de un tenant adicional. Operación de plataforma → corre como owner.
+// (ADMIN_USERNAME; contraseña y PIN se piden al momento), para onboarding de un tenant adicional. Operación de plataforma → corre como owner.
 // Falla si el slug ya existe.
 func provisionCompany(ctx context.Context, st *store.Store, pepper string) error {
 	slug := os.Getenv("COMPANY_SLUG")
 	name := envOr("COMPANY_NAME", slug)
 	username := os.Getenv("ADMIN_USERNAME")
-	password := os.Getenv("ADMIN_PASSWORD")
-	pin := os.Getenv("ADMIN_PIN")
 	if !domain.ValidSlug(slug) {
 		return fmt.Errorf("COMPANY_SLUG inválido (2-40, minúsculas/dígitos/guiones): %q", slug)
 	}
-	if username == "" || password == "" {
-		return fmt.Errorf("define ADMIN_USERNAME/ADMIN_PASSWORD para el admin de la empresa")
+	if username == "" {
+		return fmt.Errorf("define ADMIN_USERNAME para el admin de la empresa")
 	}
-	if err := checkAdminSecrets(password, pin); err != nil {
+	password, pin, err := askAdminSecrets(secretPrompt())
+	if err != nil {
 		return err
 	}
 	if err := domain.ValidatePassword(password); err != nil {
@@ -472,14 +473,11 @@ func provisionCompany(ctx context.Context, st *store.Store, pepper string) error
 	if err != nil {
 		return err
 	}
-	params := db.CreateUserParams{
-		Name: "Administrador", Username: &username, Role: string(domain.RoleAdmin), PasswordHash: &pwHash,
-	}
 	pinHash, pinLookup, err := pinDeAdmin(pin, pepper)
 	if err != nil {
 		return err
 	}
-	params.PinHash, params.PinLookup = pinHash, pinLookup
+	params := newAdminParams(username, pwHash, pinHash, pinLookup)
 	if err := st.WithTenant(ctx, co.ID, func(q *db.Queries) error {
 		if _, err := q.CreateUser(ctx, params); err != nil {
 			return err
@@ -505,53 +503,98 @@ func provisionCompany(ctx context.Context, st *store.Store, pepper string) error
 	return nil
 }
 
-// bootstrapAdmin creates the first admin (en la empresa por defecto) if the users table is
-// empty, using ADMIN_USERNAME / ADMIN_PASSWORD (required) and ADMIN_PIN (optional).
-func bootstrapAdmin(ctx context.Context, st *store.Store, pepper string) error {
-	n, err := st.Q.CountUsers(ctx) // owner: RLS bypassed → cuenta global (arranque = BD vacía)
+// warnWhenNoUsers avisa cuando la base no tiene un solo usuario y dice cómo crear el primero.
+//
+// Antes el arranque lo creaba con ADMIN_PASSWORD y ADMIN_PIN del .env, y por eso esos dos valores
+// vivían para siempre en el disco de cada servidor y cada laptop aunque solo se usaran una vez. Una
+// base sin usuarios no es un riesgo —no hay con qué entrar—, así que se arranca y se avisa.
+func warnWhenNoUsers(ctx context.Context, st *store.Store) error {
+	n, err := st.Q.CountUsers(ctx) // owner: RLS bypassed → cuenta global
 	if err != nil {
 		return err
 	}
-	if n > 0 {
-		return nil
+	if n == 0 {
+		slog.Warn("no hay usuarios: crea el admin con `api -reset-admin` (en local, make reset-admin)")
 	}
-	username := os.Getenv("ADMIN_USERNAME")
-	password := os.Getenv("ADMIN_PASSWORD")
-	pin := os.Getenv("ADMIN_PIN")
-	if username == "" || password == "" {
-		return fmt.Errorf("no hay usuarios y faltan ADMIN_USERNAME/ADMIN_PASSWORD para crear el admin inicial (defínelos en deploy/.env)")
+	return nil
+}
+
+// askAdminSecrets pide la contraseña y el PIN del admin, cada uno con confirmación. Un PIN vacío es
+// válido: el admin entra con usuario y contraseña.
+func askAdminSecrets(ask func(label string) (string, error)) (password, pin string, err error) {
+	if password, err = askConfirmed(ask, "Contraseña del admin: "); err != nil {
+		return "", "", err
+	}
+	if password == "" {
+		return "", "", fmt.Errorf("la contraseña del admin no puede ir vacía")
+	}
+	if err := checkAdminSecrets(password, ""); err != nil {
+		return "", "", err
+	}
+	if pin, err = ask("PIN del admin (vacío = sin PIN): "); err != nil {
+		return "", "", err
+	}
+	if pin != "" {
+		confirm, err := ask("Confirma el PIN: ")
+		if err != nil {
+			return "", "", err
+		}
+		if pin != confirm {
+			return "", "", fmt.Errorf("los PIN no coinciden")
+		}
 	}
 	if err := checkAdminSecrets(password, pin); err != nil {
-		return err
+		return "", "", err
 	}
-	companyID, err := defaultCompany(ctx, st)
+	return password, pin, nil
+}
+
+func askConfirmed(ask func(string) (string, error), label string) (string, error) {
+	v, err := ask(label)
 	if err != nil {
-		return err
+		return "", err
 	}
-	pwHash, err := auth.HashSecret(password)
+	confirm, err := ask("Confirma: ")
 	if err != nil {
-		return err
+		return "", err
 	}
-	params := db.CreateUserParams{
-		Name:         "Administrador",
-		Username:     &username,
-		Role:         string(domain.RoleAdmin),
-		PasswordHash: &pwHash,
+	if v != confirm {
+		return "", fmt.Errorf("las contraseñas no coinciden")
 	}
-	pinHash, pinLookup, err := pinDeAdmin(pin, pepper)
-	if err != nil {
-		return err
+	return v, nil
+}
+
+// secretPrompt pide por terminal sin eco; sin terminal, lee un renglón por respuesta. Lo segundo
+// es lo que deja a un script crear el admin de un ambiente nuevo pasándolo por la entrada, sin
+// escribirlo en un archivo, en argv ni en el historial.
+func secretPrompt() func(string) (string, error) {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		return promptPassword
 	}
-	params.PinHash, params.PinLookup = pinHash, pinLookup
-	// WithTenant fija app.company_id → el DEFAULT de users.company_id lo auto-sella al insertar.
-	if err := st.WithTenant(ctx, companyID, func(q *db.Queries) error {
-		_, err := q.CreateUser(ctx, params)
-		return err
-	}); err != nil {
-		return err
+	return linePrompt(os.Stdin)
+}
+
+// linePrompt lee una respuesta por renglón. Se queda sin renglones → error: devolver vacío dejaría
+// al admin sin PIN sin que nadie lo hubiera pedido.
+func linePrompt(r io.Reader) func(string) (string, error) {
+	br := bufio.NewReader(r)
+	return func(string) (string, error) {
+		line, err := br.ReadString('\n')
+		if err != nil && (err != io.EOF || line == "") {
+			return "", fmt.Errorf("faltan respuestas en la entrada: %w", err)
+		}
+		return strings.TrimRight(line, "\r\n"), nil
 	}
-	slog.Info("admin inicial creado", "username", username, "company_id", companyID)
-	return nil
+}
+
+// newAdminParams son los datos con que nace un admin. Es la única forma de armarlos: cuando cada
+// camino los armaba a mano, el de -reset-admin olvidó la huella del PIN y su admin no podía
+// desbloquear en modo solo-PIN.
+func newAdminParams(username, pwHash string, pinHash, pinLookup *string) db.CreateUserParams {
+	return db.CreateUserParams{
+		Name: "Administrador", Username: &username, Role: string(domain.RoleAdmin),
+		PasswordHash: &pwHash, PinHash: pinHash, PinLookup: pinLookup,
+	}
 }
 
 // pinDeAdmin prepara el PIN del admin como lo hace la pantalla: valida y calcula su huella.
@@ -588,7 +631,7 @@ func pinDeAdmin(pin, pepper string) (*string, *string, error) {
 // directly (bypassing scripts/check-env.sh), so the guard must live in code.
 func checkAdminSecrets(password, pin string) error {
 	if config.IsPlaceholder(password) {
-		return fmt.Errorf("ADMIN_PASSWORD es un valor de ejemplo; define una contraseña real en deploy/.env")
+		return fmt.Errorf("la contraseña del admin es un valor de ejemplo; usa una real")
 	}
 	if pin == "" {
 		return nil // sin PIN: el admin entra con usuario y contraseña, que es válido
@@ -596,15 +639,15 @@ func checkAdminSecrets(password, pin string) error {
 	// El de ejemplo pasaba: `IsWeakPin` mira secuencias y repeticiones, no valores publicados, y
 	// "cambia-esto" no es ninguna de las dos. El PIN se revisa contra lo mismo que la contraseña.
 	if config.IsPlaceholder(pin) {
-		return fmt.Errorf("ADMIN_PIN es un valor de ejemplo; define un PIN real en deploy/.env")
+		return fmt.Errorf("el PIN del admin es un valor de ejemplo; usa uno real")
 	}
 	// El PIN se teclea en un teclado numérico: uno con letras no se puede escribir en la pantalla
 	// de bloqueo, así que aceptarlo dejaba al admin sin desbloqueo y sin nada que lo dijera.
 	if strings.IndexFunc(pin, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
-		return fmt.Errorf("ADMIN_PIN solo lleva números: se teclea en un teclado numérico")
+		return fmt.Errorf("el PIN del admin solo lleva números: se teclea en un teclado numérico")
 	}
 	if auth.IsWeakPin(pin) {
-		return fmt.Errorf("ADMIN_PIN es demasiado débil (evita 1234/0000/secuencias); usa uno menos obvio en deploy/.env")
+		return fmt.Errorf("el PIN del admin es demasiado débil (evita 1234/0000/secuencias)")
 	}
 	return nil
 }
@@ -653,17 +696,16 @@ func resetPlatformOperator(ctx context.Context, st *store.Store) error {
 	return err
 }
 
-// resetAdminUser actualiza la contraseña/PIN del admin (por ADMIN_USERNAME) desde el
-// entorno, o lo crea si no existe. No borra datos. Para cuando cambias credenciales
+// resetAdminUser actualiza la contraseña/PIN del admin (por ADMIN_USERNAME), pidiéndolos al
+// momento, o lo crea si no existe. No borra datos. Para cuando cambias credenciales
 // después del primer arranque (el bootstrap solo corre con la base vacía).
 func resetAdminUser(ctx context.Context, st *store.Store, pepper string) error {
 	username := os.Getenv("ADMIN_USERNAME")
-	password := os.Getenv("ADMIN_PASSWORD")
-	pin := os.Getenv("ADMIN_PIN")
-	if username == "" || password == "" {
-		return fmt.Errorf("define ADMIN_USERNAME/ADMIN_PASSWORD")
+	if username == "" {
+		return fmt.Errorf("define ADMIN_USERNAME")
 	}
-	if err := checkAdminSecrets(password, pin); err != nil {
+	password, pin, err := askAdminSecrets(secretPrompt())
+	if err != nil {
 		return err
 	}
 	pwHash, err := auth.HashSecret(password)
@@ -689,10 +731,7 @@ func resetAdminUser(ctx context.Context, st *store.Store, pepper string) error {
 			return err
 		}
 		if n == 0 { // no existía → crear
-			_, err = q.CreateUser(ctx, db.CreateUserParams{
-				Name: "Administrador", Username: &username, Role: string(domain.RoleAdmin),
-				PasswordHash: &pwHash, PinHash: pinHash,
-			})
+			_, err = q.CreateUser(ctx, newAdminParams(username, pwHash, pinHash, pinLookup))
 		}
 		return err
 	})
