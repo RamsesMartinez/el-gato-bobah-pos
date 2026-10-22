@@ -430,7 +430,7 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             onQuitar={() => acciones.quitarRenglon(o.id, l)} />
         ))}
         {listo && !sinProductos && (
-          <HStack color="green.600" py={1} gap={1}>
+          <HStack color="fg.success" py={1} gap={1}>
             <LuCheck size={16} />
             <Text fontSize="sm" fontWeight="600">Todo entregado</Text>
           </HStack>
@@ -506,7 +506,7 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             )}
             {ofreceQuitarFaltante && ofreceCancelar && <MenuSeparator />}
             {ofreceCancelar && (
-              <MenuItem value="cancel" minH={TAP} px={3} mt={1} color="red.500"
+              <MenuItem value="cancel" minH={TAP} px={3} mt={1} color="fg.error"
                 onClick={() => acciones.cancelar(o)}>Cancelar pedido</MenuItem>
             )}
           </MenuContent>

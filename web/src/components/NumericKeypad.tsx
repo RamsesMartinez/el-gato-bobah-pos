@@ -20,11 +20,11 @@ export function NumericKeypad({ allowDecimal, onKey, onNext }: {
     </Button>
   );
   return (
-    <Grid templateColumns="repeat(3, 1fr)" gap={2} data-testid="teclado">
+    <Grid templateColumns="repeat(3, 1fr)" gap={2} data-testid="teclado" data-keypad="">
       {KEYS.map((k) => key(k))}
       {allowDecimal ? key('.', 'punto') : <span />}
       {key('0')}
-      {key('back', 'borrar')}
+      {key('back', 'Borrar')}
       {onNext && (
         <Button gridColumn="span 3" minH="56px" variant="outline" onMouseDown={(e) => e.preventDefault()} onClick={onNext}>
           Siguiente casilla ›

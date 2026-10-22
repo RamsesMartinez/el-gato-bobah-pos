@@ -50,7 +50,7 @@ export function PedidosEntrantesSheet({ abierta, pedidos, aceptandoId, onCerrar,
               return (
                 <Flex key={p.id} borderWidth="1px" borderRadius="lg" px={3} py={2} align="center"
                   justify="space-between" gap={3}
-                  borderColor={urgencia === 'por_expirar' ? 'red.400' : urgencia === 'sonando' ? 'orange.400' : 'green.400'}>
+                  borderColor={urgencia === 'por_expirar' ? 'border.error' : urgencia === 'sonando' ? 'orange.400' : 'border.success'}>
                   <Box minW={0}>
                     <HStack gap={2}>
                       <Text fontWeight="700" lineClamp={1}>{p.platformName} · {folio}</Text>

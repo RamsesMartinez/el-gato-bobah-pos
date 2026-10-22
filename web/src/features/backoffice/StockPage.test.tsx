@@ -129,3 +129,18 @@ it('la lista usa la palabra de la empresa en la columna y en el alta', async () 
   expect(await screen.findByRole('columnheader', { name: 'Insumo' })).toBeInTheDocument();
   expect(screen.getByLabelText('Buscar insumo o empaque')).toBeInTheDocument();
 });
+
+// Existencias marca un negativo igual que Artículos: la cifra en rojo y la etiqueta «Revisar». El
+// renglón entero en rojo era otro diseño para lo mismo (decisión del dueño, 2026-10-21).
+it('Existencias marca un negativo con «Revisar» y sin pintar el renglón entero', async () => {
+  back.stockLevels.mockResolvedValueOnce({ items: [
+    { item_name: 'Leche', item_type: 'insumo', on_hand: '-3000', unit_code: 'ml', min_stock: null },
+    { item_name: 'Azúcar', item_type: 'insumo', on_hand: '1200', unit_code: 'g', min_stock: null },
+  ] } as never);
+  sesion(['inventory.configure']);
+  montar('/almacen');
+  const fila = (await screen.findByText('Leche')).closest('tr')!;
+  expect(fila.textContent).toContain('Revisar');
+  expect(getComputedStyle(fila).backgroundColor).toBe(getComputedStyle((await screen.findByText('Azúcar')).closest('tr')!).backgroundColor);
+  expect((await screen.findByText('Azúcar')).closest('tr')!.textContent).not.toContain('Revisar');
+});

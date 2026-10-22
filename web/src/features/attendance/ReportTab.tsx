@@ -332,7 +332,7 @@ function CorrectionForm({ personName, date, entry, field, onDone, onCancel }: {
         <Box w="136px"><Picker title="Hora" placeholder="Hora" value={timeValue} options={QUARTERS} onChange={setTimeValue} /></Box>
         <Input minH="44px" flex="1" placeholder="Motivo (obligatorio)" value={reason} onChange={(e) => setReason(e.target.value)} />
       </HStack>
-      {error && <Text color="red.500" fontWeight="600">{error}</Text>}
+      {error && <Text color="fg.error" fontWeight="600">{error}</Text>}
       <HStack justify="flex-end" gap={2}>
         <Button variant="ghost" minH="44px" onClick={onCancel}>Cancelar</Button>
         <Button minH="44px" disabled={!timeValue || reason.trim().length < 3} loading={save.isPending} onClick={() => save.mutate()}>Guardar corrección</Button>
@@ -383,7 +383,7 @@ function ManualEntrySheet({ people, onClose }: { people: Array<{ id: number; nam
           <Box w="136px"><Picker title="Salida" placeholder="Salida" value={outTime} options={QUARTERS} onChange={setOutTime} /></Box>
         </HStack>
         <Input minH="44px" placeholder="Motivo (obligatorio)" value={reason} onChange={(e) => setReason(e.target.value)} />
-        {error && <Text color="red.500" fontWeight="600">{error}</Text>}
+        {error && <Text color="fg.error" fontWeight="600">{error}</Text>}
         <Button minH="44px" alignSelf="flex-end" loading={save.isPending}
           disabled={!personFilter || !inTime || !outTime || reason.trim().length < 3} onClick={() => save.mutate()}>
           Guardar registro

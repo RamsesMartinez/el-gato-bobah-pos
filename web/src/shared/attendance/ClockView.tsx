@@ -109,10 +109,10 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
   const personButton = (p: RosterPerson) => (
     <Button key={p.userId} minH="64px" h="auto" py={2} variant="outline" disabled={!p.hasPin}
       flexDirection="column" alignItems="flex-start" justifyContent="center" whiteSpace="normal"
-      bg={p.openSince ? 'green.50' : undefined} borderColor={p.openSince ? 'green.300' : undefined}
+      bg={p.openSince ? 'bg.success' : undefined} borderColor={p.openSince ? 'border.success' : undefined}
       onClick={() => void choose(p)}>
       <Text fontWeight="700" fontSize="md">{p.name}</Text>
-      <Text fontSize="xs" color={p.openSince ? 'green.700' : 'fg.muted'}>
+      <Text fontSize="xs" color={p.openSince ? 'fg.success' : 'fg.muted'}>
         {!p.hasPin ? 'Aún no tiene PIN' : p.openSince ? `Dentro desde ${soloHora(p.openSince, zone)}`
           : p.leftAt ? `Salió a las ${soloHora(p.leftAt, zone)}` : 'Sin entrada hoy'}
       </Text>
@@ -128,7 +128,7 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
           {onCerrar && <Button variant="ghost" minH="44px" onClick={onCerrar}>Cerrar</Button>}
         </Flex>
       </Flex>
-      {error && !chosen && <Text color="red.500" fontWeight="600">{error}</Text>}
+      {error && !chosen && <Text color="fg.error" fontWeight="600">{error}</Text>}
       {unavailable ? (
         <LoadError error={rosterError} offline={offline} onRetry={() => void refetch()} retrying={isFetching} />
       ) : (
@@ -161,7 +161,7 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
                 canSubmit={pin.length >= 4} loading={clockMutation.isPending}
                 actionLabel={expected === 'out' ? 'Salida' : 'Entrada'}
                 actionColor={expected === 'out' ? 'red' : 'green'} />
-              {error && <Text color="red.500" fontWeight="600">{error}</Text>}
+              {error && <Text color="fg.error" fontWeight="600">{error}</Text>}
             </VStack>
           </Box>
         </Flex>
@@ -174,7 +174,7 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
           <Text fontSize="5xl" fontWeight="800">
             {done.kind === 'in' ? 'Entrada' : 'Salida'} {soloHora(done.at, zone)}
           </Text>
-          {done.workedMinutes !== undefined && <Text fontSize="lg" color="green.700">Trabajaste {hoursLabel(done.workedMinutes)}</Text>}
+          {done.workedMinutes !== undefined && <Text fontSize="lg" color="fg.success">Trabajaste {hoursLabel(done.workedMinutes)}</Text>}
         </Flex>
       )}
     </Flex>

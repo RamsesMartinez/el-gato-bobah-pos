@@ -57,6 +57,10 @@ const system = createSystem(
       // Los tamaños por encima del piso viven en theme/ui.ts (TAP_LG, TAP_XL).
       recipes: {
         button: { variants: { size: { md: { minH: "44px" } } } },
+        // El borde de un campo se tiene que ver (3:1 contra el fondo, spec 044): el gris por omisión
+        // de Chakra queda en 1.3:1 en los dos temas y en la tableta el campo parece texto suelto.
+        input: { variants: { variant: { outline: { borderColor: "gray.500" } } } },
+        textarea: { variants: { variant: { outline: { borderColor: "gray.500" } } } },
       },
       semanticTokens: {
         radii: {
@@ -66,8 +70,15 @@ const system = createSystem(
         // Roles del colorPalette "brand" para que colorPalette="brand" funcione
         // igual que las paletas nativas (solid/fg/muted/subtle… en claro y oscuro).
         colors: {
+          // Texto de error y de éxito legible (4.5:1) sobre blanco y sobre su fondo suave: los de
+          // Chakra (red.500, green.600) se quedan en 3.4:1 y 3.3:1 en tema claro (spec 044).
+          fg: {
+            error: { value: { _light: "{colors.red.700}", _dark: "{colors.red.400}" } },
+            success: { value: { _light: "{colors.green.700}", _dark: "{colors.green.400}" } },
+          },
           brand: {
-            solid: { value: "{colors.brand.500}" },
+            // 600 y no 500: con el 500 el texto blanco del botón queda en 4.29:1 (spec 044).
+            solid: { value: "{colors.brand.600}" },
             contrast: { value: "white" },
             fg: { value: { base: "{colors.brand.700}", _dark: "{colors.brand.300}" } },
             muted: { value: { base: "{colors.brand.100}", _dark: "{colors.brand.900}" } },

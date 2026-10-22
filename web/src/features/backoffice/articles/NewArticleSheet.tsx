@@ -94,12 +94,12 @@ export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Prop
           <Stack gap={3}>
             <SimpleGrid columns={2} gap={3}>
               <Stack gap={1}>
-                <Text asChild><label htmlFor="new-article-name">Nombre <Text as="span" color="red.600">*</Text></label></Text>
+                <Text asChild><label htmlFor="new-article-name">Nombre <Text as="span" color="fg.error">*</Text></label></Text>
                 <Input id="new-article-name" minH="48px" maxLength={60} placeholder="Por ejemplo: Leche deslactosada"
                   value={name} onChange={(e) => { setName(e.target.value); setTaken(null); }} />
               </Stack>
               <Stack gap={1}>
-                <Text>En qué se mide <Text as="span" color="red.600">*</Text></Text>
+                <Text>En qué se mide <Text as="span" color="fg.error">*</Text></Text>
                 <HStack gap={2} flexWrap="wrap">
                   {KINDS.map((k) => (
                     <Button key={k.kind} minH="44px" variant={kind === k.kind ? 'solid' : 'outline'} colorPalette="gray"
@@ -136,7 +136,7 @@ export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Prop
                 <QtyWithUnit label="Mínimo" optional kind={kind} value={min} onChange={setMin} />
               </SimpleGrid>
             )}
-            <Text fontSize="sm" color="fg.muted"><Text as="span" color="red.600">*</Text> Obligatorio. Nada se guarda hasta tocar «Guardar».</Text>
+            <Text fontSize="sm" color="fg.muted"><Text as="span" color="fg.error">*</Text> Obligatorio. Nada se guarda hasta tocar «Guardar».</Text>
           </Stack>
         </DrawerBody>
       </DrawerContent>

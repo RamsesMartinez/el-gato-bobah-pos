@@ -291,6 +291,11 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// Costeo y palabra del almacén (spec 038): por permiso y aparte de los datos fiscales.
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/inventory", h.UpdateInventorySettings)
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/waste-threshold", h.SetWasteThreshold)
+				// Límites del conteo (spec 044): los lee quien cuenta (el aviso del máximo), los cambia
+				// solo quien configura el almacén.
+				r.With(RequireAnyPermission(h.permissions, domain.PermInventoryCount, domain.PermInventoryConfigure)).
+					Get("/settings/count-limits", h.CountLimits)
+				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/count-limits", h.SetCountLimits)
 				// ¿hay caja abierta? aviso del POS — cualquier rol autenticado (incl. mesero); no es dato sensible
 				r.Get("/cash-status", h.CashStatus)
 				// caja: la opera el cajero; excluye al mesero para que no cierre cortes ajenos

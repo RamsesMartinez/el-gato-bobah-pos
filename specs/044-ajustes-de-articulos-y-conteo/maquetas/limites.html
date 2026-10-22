@@ -1,0 +1,80 @@
+<title>Límites del conteo</title><meta name="claude:viewport-fit-sides" content="cover"><style>
+/* Marco fijo 1024x600 de la tableta, escalado al ancho disponible; riel de 76 px como el POS. */
+:root{--bg:#eef0f3;--surface:#fff;--fg:#1b1f24;--muted:#5d6670;--line:#d9dde3;--brand:#e23b2e;--brand-fg:#fff;--brand-soft:#fff1f0;--warn:#b45309;--warn-soft:#fff7e6;--ok:#15803d;--chip:#f3f4f6;
+--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;font-variant-numeric:tabular-nums}
+h1{font-size:22px;margin:0 0 4px;text-wrap:balance}.sub{color:var(--muted);margin:0 0 16px;max-width:70ch}
+.tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.tab{min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.stage{width:100%;max-width:1024px;overflow:hidden}
+.scaler{width:1024px;height:600px;transform-origin:0 0}
+.frame{width:1024px;height:600px;background:var(--bg);border:1px solid var(--line);border-radius:12px;display:flex;overflow:hidden;position:relative}
+.rail{width:76px;flex:none;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:10px}
+.rail i{width:52px;height:46px;border-radius:10px;background:var(--chip);display:grid;place-items:center;font:600 10px var(--font);font-style:normal;color:var(--muted)}
+.rail i.on{background:var(--brand-soft);color:var(--brand)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px 16px;gap:10px;position:relative}
+.btn{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--brand);color:var(--brand-fg);border-color:var(--brand)}
+.btn.danger{color:var(--brand);border-color:var(--brand)}
+.chip{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:500 14px var(--font);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+.input{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:16px var(--font);padding:0 12px}
+.notes{margin-top:14px;display:grid;gap:6px;max-width:1024px}.notes p{margin:0;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.notes b{display:inline-block;min-width:22px}
+.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+.sheet{background:var(--surface);width:100%;border-radius:16px 16px 0 0;padding:16px;display:flex;flex-direction:column;gap:10px;max-height:92%;overflow:auto}
+.modal{background:var(--surface);width:460px;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px;margin:auto}
+.muted{color:var(--muted)}.warn{color:var(--warn)}
+.tag{font:600 12px var(--font);padding:3px 8px;border-radius:6px;background:var(--chip);color:var(--muted)}
+.tag.neg{background:var(--brand-soft);color:var(--brand)}
+.example{font:600 12px var(--font);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+button:focus-visible,input:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+
+.hdr{display:flex;align-items:center;gap:10px}.hdr h2{font-size:20px;margin:0}
+.ind{display:flex;align-items:center;gap:6px;font:600 14px var(--font);min-height:44px}
+.ind.err{color:var(--brand)}.ind.ok{color:var(--ok)}.ind .sp{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:r 0.8s linear infinite}
+@keyframes r{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.ind .sp{animation:none}}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:0;overflow:auto}
+.lbl{font-size:14px;margin-bottom:4px}.fieldbtn{width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center}
+.ph{color:var(--muted)}.input.bad{border-color:var(--brand)}.bad-msg{color:var(--brand);font-size:13px}
+.row{display:flex;gap:8px;align-items:center}.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{min-height:44px;min-width:52px;border:0;background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer}.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.opt{min-height:52px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:var(--surface);color:var(--fg);font:16px var(--font);padding:0 8px;cursor:pointer}
+.neg{color:var(--brand);font-weight:700}
+.ctrl{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+
+.page{flex:1;min-width:0;overflow:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.grid{display:grid;grid-template-columns:120px 1fr 1fr;gap:8px 12px;align-items:center}
+.cell{display:flex;align-items:center;gap:8px}.cell .input{width:130px;text-align:right}
+.hdr{font:600 13px var(--font);color:var(--muted)}
+.err{color:var(--brand);font-size:13px}.ok{color:var(--ok);font:600 14px var(--font)}
+.input.bad{border-color:var(--brand)}
+</style>
+<h1>Límites del conteo</h1>
+<p class="sub">Spec 044, opción única: en Configuración del negocio › Almacén, quien configura el almacén cambia por clase de unidad el máximo de un conteo y desde dónde se pide confirmar. Datos de ejemplo. Prueba poner el máximo de peso por debajo de su cifra de confirmar, y luego guardar.</p>
+<div class="stage"><div class="scaler"><div class="frame" id="frame"></div></div></div>
+<div class="notes"><p><b>A</b> Única. Privilegia: las 4 clases a la vista en una tabla, en la unidad que se usa (kg, L, m, piezas), con un solo «Guardar límites». Cuesta: unos 260 px de alto; la sección Almacén se desplaza dentro de la página.</p></div>
+<script>
+function fit(){document.querySelectorAll('.stage').forEach(s=>{const k=Math.min(1,s.clientWidth/1024);const c=s.firstElementChild;c.style.transform='scale('+k+')';s.style.height=(600*k)+'px'})}
+addEventListener('resize',fit);
+const rail='<div class="rail">'+['Vender','Pedidos','Ventas','Caja','Menú','Almacén','Negocio'].map(x=>'<i class="'+(x==='Negocio'?'on':'')+'">'+x+'</i>').join('')+'</div>';
+const CL=[['peso','Peso','kg',1000,50],['liq','Líquido','L',1000,50],['lon','Longitud','m',10000,50],['pz','Piezas','piezas',1000000,5000]];
+let V={};CL.forEach(c=>V[c[0]]={max:String(c[3]),warn:String(c[4])});let saved=JSON.stringify(V),msg='';
+const fmt=s=>Number(s).toLocaleString('es-MX');
+function errs(){const e={};CL.forEach(c=>{const m=Number(V[c[0]].max),w=Number(V[c[0]].warn);if(!(m>0)||!(w>0))e[c[0]]='Escribe cifras mayores que cero.';else if(m<=w)e[c[0]]='El máximo tiene que ser mayor que la cifra de confirmar.'});return e}
+function render(){const E=errs();const dirty=JSON.stringify(V)!==saved;const f=document.getElementById('frame');
+ f.innerHTML=rail+'<div class="page"><h2 style="margin:0;font-size:22px">Configuración del negocio</h2><div class="box"><b style="font-size:18px">Almacén</b><div class="muted">¿Cómo se calcula el costo de un insumo al comprarlo? · ¿Cómo le dices a lo que guardas? (sin cambios)</div></div>'+
+ '<div class="box"><b style="font-size:16px">Límites del conteo</b><div class="muted" style="font-size:13px">Lo más que se puede registrar de un artículo en un conteo, y desde qué cifra se pide confirmar si el artículo no tiene otra referencia.</div>'+
+ '<div class="grid"><span></span><span class="hdr">Máximo por conteo</span><span class="hdr">Pedir confirmar desde</span>'+
+ CL.map(c=>'<span style="font-weight:600">'+c[1]+'</span><span class="cell"><input class="input'+(E[c[0]]?' bad':'')+'" inputmode="decimal" data-k="'+c[0]+'" data-f="max" value="'+V[c[0]].max+'"><span>'+c[2]+'</span></span><span class="cell"><input class="input'+(E[c[0]]?' bad':'')+'" inputmode="decimal" data-k="'+c[0]+'" data-f="warn" value="'+V[c[0]].warn+'"><span>'+c[2]+'</span></span>'+(E[c[0]]?'<span></span><span class="err" style="grid-column:2/4">'+E[c[0]]+'</span>':'')).join('')+'</div>'+
+ '<div class="row" style="justify-content:flex-end;gap:10px">'+(msg?'<span class="ok">'+msg+'</span>':'')+'<button class="btn" data-a="reset"'+(dirty?'':' disabled style="opacity:.5"')+'>Descartar</button><button class="btn primary" data-a="save"'+(dirty&&!Object.keys(E).length?'':' disabled style="opacity:.5"')+'>Guardar límites</button></div>'+
+ '<div class="muted" style="font-size:12px">En el conteo: «Máximo '+fmt(V.peso.max)+' kg por conteo».</div></div></div>';
+ f.querySelectorAll('input').forEach(i=>i.oninput=()=>{V[i.dataset.k][i.dataset.f]=i.value.replace(',','.');msg='';const p=i.selectionStart,k=i.dataset.k,fl=i.dataset.f;render();const z=f.querySelector('[data-k="'+k+'"][data-f="'+fl+'"]');z.focus();z.setSelectionRange(p,p)});
+ f.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{if(b.dataset.a==='save'){saved=JSON.stringify(V);msg='Guardado ✓'}else{V=JSON.parse(saved);msg=''}render()});fit()}
+render();
+</script>

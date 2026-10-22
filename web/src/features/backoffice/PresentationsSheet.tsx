@@ -243,7 +243,7 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
                 {byPiece && !draft.approximate && (
                   <Text fontSize="sm" color="fg.muted">Si es otro tamaño de pieza (un sobre más grande, otra lata), créalo como otro insumo.</Text>
                 )}
-                {error && <Text color="red.fg">{error}</Text>}
+                {error && <Text color="fg.error">{error}</Text>}
               </Stack>
             ) : (
               <Box>

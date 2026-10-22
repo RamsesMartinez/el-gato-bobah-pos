@@ -1006,6 +1006,19 @@ type Company struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type CountLimit struct {
+	CompanyID     int64           `json:"company_id"`
+	MaxMass       decimal.Decimal `json:"max_mass"`
+	MaxVolume     decimal.Decimal `json:"max_volume"`
+	MaxLength     decimal.Decimal `json:"max_length"`
+	MaxPiece      decimal.Decimal `json:"max_piece"`
+	ConfirmMass   decimal.Decimal `json:"confirm_mass"`
+	ConfirmVolume decimal.Decimal `json:"confirm_volume"`
+	ConfirmLength decimal.Decimal `json:"confirm_length"`
+	ConfirmPiece  decimal.Decimal `json:"confirm_piece"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+}
+
 type CountPlace struct {
 	ID         int64              `json:"id"`
 	CompanyID  int64              `json:"company_id"`
