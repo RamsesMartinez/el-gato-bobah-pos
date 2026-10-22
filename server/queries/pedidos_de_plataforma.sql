@@ -255,3 +255,23 @@ values
   ($1, sqlc.arg(nombre_en_linea)::text,  'plataforma', $2, false, false, true, 400, false),
   ($1, sqlc.arg(nombre_efectivo)::text, 'plataforma', $2, true,  true,  true, 410, false)
 on conflict (company_id, name) do nothing;
+
+-- ---------------------------------------------------------------------------------------------
+-- La poda de lo crudo
+-- ---------------------------------------------------------------------------------------------
+
+-- name: PruneWebhookEventBodies :execrows
+-- Se borra el cuerpo y la FILA SE QUEDA: el `event_id` es lo que deduplica un reintento de la
+-- plataforma, y sin la fila un aviso repetido volvería a entrar como pedido nuevo.
+update platform_webhook_events
+   set raw_body = null
+ where received_at < $1
+   and raw_body is not null;
+
+-- name: PruneIncomingOrderDetails :execrows
+-- Igual que los avisos: el pedido, sus renglones y quién lo decidió se quedan. Se va lo crudo
+-- —teléfono y dirección— y también el nombre: dejarlo sería conservar a quién pertenecían.
+update platform_incoming_orders
+   set raw_detail = null, customer_name = null
+ where created_at < $1
+   and (raw_detail is not null or customer_name is not null);
