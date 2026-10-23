@@ -2,13 +2,13 @@ import { Box, Flex, Grid, Spinner, Text, VStack } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { wasteApi, type LossItem } from '../../api/waste';
 import { moneyExact } from '../../utils/format';
+import { formatBaseQty } from '../../shared/units';
 
 // Lo que se perdió desde el conteo anterior (spec 039, maqueta B): tres cifras arriba y una barra por
 // artículo, en gris lo registrado como merma y en rojo lo que el conteo encontró de menos. Los pesos
 // son al costo de cuando se cerró el conteo. Lo que sobraba se dice así, sin barra.
 
 const money = (v: string) => moneyExact(v);
-const qty = (v: string) => String(Number(Number(v).toFixed(2)));
 
 export function CountLossReport({ countId }: { countId: number }) {
   const { data, isLoading } = useQuery({ queryKey: ['merma', 'faltante', countId], queryFn: () => wasteApi.countLoss(countId) });
@@ -51,7 +51,7 @@ function LossRow({ item, max }: { item: LossItem; max: number }) {
     return (
       <Flex data-testid={`faltante-${item.ingredientId}`} minH="48px" align="center" justify="space-between" borderBottomWidth="1px">
         <Text>{item.name}</Text>
-        <Text color="fg.success">Sobraba {qty(item.surplus)} {item.unitCode}</Text>
+        <Text color="fg.success">Sobraba {formatBaseQty(item.surplus, item.unitCode)}</Text>
       </Flex>
     );
   }
@@ -66,7 +66,7 @@ function LossRow({ item, max }: { item: LossItem; max: number }) {
         {Number(item.unexplained) > 0 && <Box data-part="sin-explicar" w={`${unW}%`} bg="red.solid" />}
       </Flex>
       <Text w="240px" flexShrink={0} textAlign="right" fontSize="sm" fontVariantNumeric="tabular-nums">
-        {qty(item.registered)} {item.unitCode} registrado · {qty(item.unexplained)} {item.unitCode} sin explicar
+        {formatBaseQty(item.registered, item.unitCode)} registrado · {formatBaseQty(item.unexplained, item.unitCode)} sin explicar
         {' · '}<b>{item.unexplainedCost ? money(item.unexplainedCost) : 'sin costo'}</b>
       </Text>
     </Flex>

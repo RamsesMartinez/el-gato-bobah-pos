@@ -6,9 +6,9 @@ import { RADIUS } from '../../theme/ui';
 import { Page } from '../../components/Page';
 
 const THEMES = [
+  { id: 'system', label: 'Como el sistema', icon: LuMonitor },
   { id: 'light', label: 'Claro', icon: LuSun },
   { id: 'dark', label: 'Oscuro', icon: LuMoon },
-  { id: 'system', label: 'Sistema', icon: LuMonitor },
 ];
 
 export function AppearancePage() {
@@ -35,6 +35,7 @@ export function AppearancePage() {
               key={t.id}
               colorPalette={active ? palette : 'gray'}
               variant={active ? 'solid' : 'outline'}
+              aria-pressed={active}
               onClick={() => setTheme(t.id)}
             >
               <Icon /> {t.label}

@@ -9,7 +9,7 @@ import { NumericKeypad } from '../../components/NumericKeypad';
 import { pressKey } from '../../components/pressKey';
 import { backofficeApi, type CountCaptureBody, type CountClose, type CountItem, type StockCount } from '../../api/backoffice';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
-import { normalize } from '../../utils/format';
+import { matchesWords } from '../../utils/format';
 import { formatBaseQty } from '../../shared/units';
 import { countedWords, diffWords, isBigDiff, looseUnitsOf, packsTotal } from './countEntry';
 import { parseNumero } from '../../domain/numeros';
@@ -18,7 +18,7 @@ import { toaster } from '../../components/ui/toaster';
 import { CountLossReport } from './CountLossReport';
 import { PlaceChooser } from './CountPlaceField';
 import { NO_LOCATION } from './useLocations';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { can } from '../../app/permissions';
 import { countLimitsApi, DEFAULT_COUNT_LIMITS, overMaxMessage } from '../../api/countLimits';
 
@@ -86,7 +86,11 @@ export function StockCountTab() {
   const qc = useQueryClient();
   const hora = useHoraDelNegocio();
   const { data: count, isLoading } = useQuery({ queryKey: ['stock', 'count'], queryFn: backofficeApi.currentCount });
-  const [view, setView] = useState<View>(readView);
+  // ?q= llega de la ficha del artículo (spec 045): la lista ya buscada. Uno por uno no tiene buscador,
+  // así que con búsqueda se abre la lista sin cambiar la vista recordada.
+  const [params] = useSearchParams();
+  const initialQuery = params.get('q') ?? '';
+  const [view, setView] = useState<View>(() => (initialQuery ? 'lista' : readView()));
   const [closed, setClosed] = useState<CountClose | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -164,6 +168,7 @@ export function StockCountTab() {
             )}
           </HStack>
         )}
+        {initialQuery && <Text fontWeight="600">Al empezar, la lista ya estará buscando «{initialQuery}».</Text>}
         <Button alignSelf="start" minH="44px" colorPalette="brand" loading={open.isPending} onClick={() => open.mutate()}>
           {closed ? 'Empezar otro conteo' : 'Empezar conteo'}
         </Button>
@@ -217,7 +222,7 @@ export function StockCountTab() {
       </HStack>
 
       {view === 'lista'
-        ? <ListView count={count} onSaved={onSaved} />
+        ? <ListView count={count} onSaved={onSaved} initialQuery={initialQuery} />
         : <OneByOne count={count} onSaved={onSaved} />}
 
       {closing && (
@@ -425,13 +430,13 @@ function PlacePicker({ item }: { item: CountItem }) {
 
 // ---- Lista ----
 
-function ListView({ count, onSaved }: { count: StockCount; onSaved: (id: number, qty: string | null) => void }) {
-  const [q, setQ] = useState('');
+function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; onSaved: (id: number, qty: string | null) => void; initialQuery?: string }) {
+  const [q, setQ] = useState(initialQuery);
   const [editing, setEditing] = useState<CountItem | null>(null);
-  const needle = normalize(q.trim());
+  const needle = q.trim();
   // Buscar también por nombre de empaque (spec 042): quien busca «bolsa» encuentra el hielo.
   const shown = needle
-    ? count.items.filter((i) => normalize(i.name).includes(needle) || i.presentations.some((p) => normalize(p.name).includes(needle)))
+    ? count.items.filter((i) => matchesWords(i.name, needle) || i.presentations.some((p) => matchesWords(p.name, needle)))
     : count.items;
   const groups = new Map<string, CountItem[]>();
   for (const i of shown) groups.set(placeOf(i), [...(groups.get(placeOf(i)) ?? []), i]);

@@ -16,6 +16,7 @@ import { RADIUS } from '../theme/ui';
 import { SystemInfo } from './SystemInfo';
 import { NAV } from './nav';
 import { PendingWasteBar } from '../features/waste/PendingWasteBar';
+import { railScrollFor } from './railScroll';
 
 export function AppShell() {
   const user = useSessionStore((s) => s.user);
@@ -45,7 +46,9 @@ export function AppShell() {
   // El ítem de la pantalla abierta siempre a la vista: a 600 px «Reportes» quedaba partido bajo el
   // pliegue, y no se veía en qué pantalla estaba uno.
   useEffect(() => {
-    navList.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest' });
+    const list = navList.current;
+    const active = list?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (list && active) list.scrollTop = railScrollFor(list, active);
   }, [pathname, nav.length]);
   useEffect(() => {
     measureRail();
@@ -83,12 +86,14 @@ export function AppShell() {
         <VStack
           ref={navList} onScroll={measureRail}
           flex="1" minH={0} overflowY="auto" gap={1} w="100%"
-          css={{ scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}
+          // Se detiene siempre al inicio de una opción (spec 045): al llevar a la vista la opción de
+          // la pantalla abierta, o al soltar el dedo, la de arriba quedaba partida a la mitad.
+          css={{ scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' }, scrollSnapType: 'y mandatory' }}
         >
           {nav.map((n) => {
             const Icon = n.icon;
             return (
-              <NavLink key={n.to} to={n.to} style={{ width: '100%' }}>
+              <NavLink key={n.to} to={n.to} style={{ width: '100%', scrollSnapAlign: 'start' }}>
                 {({ isActive }) => (
                   <VStack
                     gap={1} py={1.5} minH="44px" borderRadius={RADIUS} mx={1}
