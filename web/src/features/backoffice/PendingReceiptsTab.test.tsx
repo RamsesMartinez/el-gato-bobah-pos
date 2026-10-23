@@ -74,6 +74,16 @@ describe('Por recibir (spec 038, maqueta A con buscador)', () => {
     expect(screen.getAllByTestId('renglon-por-recibir')).toHaveLength(2);
   });
 
+  // Spec 045: la misma regla que el conteo; «ema» no es el inicio de ninguna palabra de «Crema».
+  test('el buscador coincide al inicio de una palabra', async () => {
+    montar();
+    await screen.findAllByTestId('compra-por-recibir');
+    fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: 'ema' } });
+    expect(screen.queryAllByTestId('renglon-por-recibir')).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: 'crema bat' } });
+    expect(screen.getAllByTestId('renglon-por-recibir')).toHaveLength(1);
+  });
+
   test('«Recibir…» abre vacío y manda lo tecleado con lo aplicado que se vio', async () => {
     montar();
     fireEvent.click(within(await renglon('Azúcar')).getByRole('button', { name: 'Recibir…' }));

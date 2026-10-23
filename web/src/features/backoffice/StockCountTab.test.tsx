@@ -88,9 +88,9 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function montar() {
+function montar(url = '/almacen') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={['/almacen']}>
+  render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={[url]}>
     <Routes><Route path="/almacen" element={<StockCountTab />} /><Route path="/negocio" element={<p>Negocio</p>} /></Routes>
   </MemoryRouter></Provider></QueryClientProvider>);
 }
@@ -212,6 +212,57 @@ test('dice por qué no se puede cerrar todavía', async () => {
 // la encontró en la hoja «Cómo llega». Desde la 040 se elige de la lista de la empresa; desde la 043,
 // crear una pide configurar el almacén y quien solo cuenta elige entre las que hay.
 const quienConfigura = () => useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.count', 'inventory.configure'] } as never });
+// Spec 045 (US2): la ficha del artículo lleva aquí con ?q=<nombre>; la lista llega ya buscada, aunque
+// la vista recordada fuera «Uno por uno», que no tiene buscador.
+// Spec 045 (US3): buscar «apio» traía «Tapioca». Coincide al inicio de una palabra del nombre o del empaque.
+describe('buscador del conteo (spec 045)', () => {
+  const items = () => [
+    { ingredientId: 1, name: 'Apio', place: null, placeId: null, baseUnitCode: 'g', presentations: [], countedQty: null },
+    { ingredientId: 2, name: 'Perlas de tapioca', place: null, placeId: null, baseUnitCode: 'g', presentations: [], countedQty: null },
+    { ingredientId: 3, name: 'Hielo', place: null, placeId: null, baseUnitCode: 'g', presentations: [{ name: 'Bolsa de hielo', qtyInBase: '5000' }], countedQty: null },
+  ];
+  const buscar = async (q: string) => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: items() });
+    montar();
+    fireEvent.change(await screen.findByLabelText('Buscar'), { target: { value: q } });
+    return screen.queryAllByTestId('renglon-conteo').map((r) => r.textContent);
+  };
+  test('«apio» no trae «Tapioca»', async () => {
+    expect(await buscar('apio')).toEqual([expect.stringContaining('Apio')]);
+  });
+  test('«bols» encuentra el hielo por su empaque', async () => {
+    expect(await buscar('bols')).toEqual([expect.stringContaining('Hielo')]);
+  });
+});
+
+describe('llegar desde la ficha con ?q= (spec 045)', () => {
+  test('con conteo abierto, la lista llega buscada', async () => {
+    montar('/almacen?tab=conteo&q=Az%C3%BAcar');
+    expect(await screen.findByLabelText('Buscar')).toHaveValue('Azúcar');
+    const rows = await screen.findAllByTestId('renglon-conteo');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('Azúcar');
+  });
+  test('aunque la vista recordada sea uno por uno', async () => {
+    try { localStorage.setItem('egb:conteo:vista', 'uno'); } catch { /* sin almacenamiento */ }
+    montar('/almacen?tab=conteo&q=Lim%C3%B3n');
+    expect(await screen.findByLabelText('Buscar')).toHaveValue('Limón');
+  });
+  test('un artículo que no está en el conteo deja la lista vacía con la búsqueda a la vista', async () => {
+    montar('/almacen?tab=conteo&q=Canela');
+    expect(await screen.findByLabelText('Buscar')).toHaveValue('Canela');
+    expect(screen.queryAllByTestId('renglon-conteo')).toHaveLength(0);
+  });
+  test('sin conteo abierto, al empezar la lista llega buscada', async () => {
+    back.currentCount.mockResolvedValueOnce(null);
+    montar('/almacen?tab=conteo&q=Lim%C3%B3n');
+    // Antes de empezar dice para qué se llegó: la prueba sin contexto no supo si el conteo traería el artículo.
+    expect(await screen.findByText('Al empezar, la lista ya estará buscando «Limón».')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Empezar conteo' }));
+    expect(await screen.findByLabelText('Buscar')).toHaveValue('Limón');
+  });
+});
+
 describe('ubicación desde el conteo (FR-015f)', () => {
   test('ofrece los lugares de la empresa y guarda el elegido', async () => {
     montar();
