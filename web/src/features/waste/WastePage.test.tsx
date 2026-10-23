@@ -112,6 +112,17 @@ describe('Se echó a perder (spec 039, maqueta D)', () => {
     expect(orden()).toEqual(antes);
   });
 
+  // Spec 045: «Hoy» dice la cantidad con la misma regla que Existencias: 2000 ml es «2 L».
+  test('«Hoy» dice la cantidad en la unidad legible', async () => {
+    waste.today.mockResolvedValue([
+      { id: 5, itemType: 'ingrediente', itemName: 'Leche entera', quantity: '2000', unitCode: 'ml', totalCost: '48.00', status: 'applied', reason: 'Caducó', recordedBy: 'Ana', recordedAt: '2026-10-15T15:00:00Z', canUndo: true },
+    ]);
+    montar();
+    await screen.findByRole('button', { name: /^Hoy/ });
+    click(/^Hoy/);
+    expect(await screen.findByText('Leche entera · 2 L')).toBeInTheDocument();
+  });
+
   test('«Hoy» dice «Ya se descontó» y «No se aprobó», no «Restó» ni «Rechazada»', async () => {
     waste.today.mockResolvedValue([
       { id: 5, itemType: 'ingrediente', itemName: 'Leche entera', quantity: '1', unitCode: 'L', totalCost: '24.00', status: 'applied', reason: 'Caducó', recordedBy: 'Ana', recordedAt: '2026-10-15T15:00:00Z', canUndo: true },

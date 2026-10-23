@@ -9,6 +9,7 @@ import { medirAccion } from '../../api/uso';
 import { WASTE_STATUS_WORDS as STATUS_WORDS, wasteApi } from '../../api/waste';
 import { moneyExact } from '../../utils/format';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
+import { formatBaseQty } from '../../shared/units';
 
 // Lo que se echó a perder, por motivo (spec 039, maqueta B): fichas con el total de cada motivo en
 // una sola fila que se desplaza a lo ancho, y debajo los registros del periodo. Tocar una ficha
@@ -82,7 +83,7 @@ export function WasteTab() {
         {rows.map((r) => (
           <Flex key={r.id} minH="52px" align="center" justify="space-between" gap={3} borderBottomWidth="1px">
             <Box minW={0}>
-              <Text fontWeight="600">{r.itemName} · {r.quantity} {r.unitCode}</Text>
+              <Text fontWeight="600">{r.itemName} · {formatBaseQty(r.quantity, r.unitCode)}</Text>
               <Text fontSize="sm" color="fg.muted">
                 {r.reason} · {r.recordedBy} · {hora.fechaYHora(r.recordedAt)}
                 {' · '}{STATUS_WORDS[r.status] ?? r.status}

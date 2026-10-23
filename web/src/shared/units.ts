@@ -17,7 +17,8 @@ const num = (v: number) => { const n = round2(v); return n.toLocaleString('es-MX
 // («12 L»). Los negativos se muestran tal cual: quien decide cómo decirlos es la pantalla.
 export function formatBaseQty(qty: string | number, baseUnitCode: string): string {
   const n = typeof qty === 'number' ? qty : Number(qty);
-  if (baseUnitCode === 'pieza') return `${num(n)} ${round2(Math.abs(n)) === 1 ? 'pieza' : 'piezas'}`;
+  // «pza» es como llega la merma de un producto, que no tiene unidad base.
+  if (baseUnitCode === 'pieza' || baseUnitCode === 'pza') return `${num(n)} ${round2(Math.abs(n)) === 1 ? 'pieza' : 'piezas'}`;
   const big = BIG[baseUnitCode];
   if (big && Math.abs(n) >= big.at) return `${num(n / big.at)} ${big.unit}`;
   return `${num(n)} ${baseUnitCode}`;
