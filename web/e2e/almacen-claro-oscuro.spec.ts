@@ -126,7 +126,10 @@ async function medir(page: Page): Promise<Hallazgo[]> {
   });
 }
 
-const DIR_CAPTURAS = process.env.E2E_CAPTURAS_044 ?? '../specs/044-ajustes-de-articulos-y-conteo/capturas';
+// Las capturas no se versionan: corridas contra una base restaurada traen el catálogo, las existencias y
+// los costos del negocio, y el repositorio es público. Van a test-results/ (ignorado por git) y se
+// adjuntan al PR. Escribir en otra carpeta exige nombrarla en E2E_CAPTURAS_044.
+const DIR_CAPTURAS = process.env.E2E_CAPTURAS_044 ?? 'test-results/almacen-claro-oscuro/recorrido';
 
 for (const tema of ['light', 'dark'] as const) {
   const nombre = tema === 'dark' ? 'oscuro' : 'claro';
