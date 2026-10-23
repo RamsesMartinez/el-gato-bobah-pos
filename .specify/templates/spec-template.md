@@ -22,9 +22,9 @@
   - Deployed independently
   - Demonstrated to users independently
 
-  CAPTURAS: la evidencia visual de una prueba (e2e, recorrido, usuario sin contexto) se adjunta al
-  PR o queda en web/test-results/. Nunca se pide guardarla en specs/ ni en otra carpeta del repo:
-  puede traer datos del negocio y el repositorio es público (AGENTS.md, «Las capturas …»).
+  CAPTURAS: las capturas de pantalla no se versionan; las e2e las guardan en test-results/. Lo
+  observado en una prueba se escribe en texto. Ninguna historia pide guardarlas en el repo
+  (AGENTS.md, «Las capturas …»).
 -->
 
 ### User Story 1 - [Brief Title] (Priority: P1)

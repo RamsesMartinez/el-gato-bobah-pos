@@ -168,9 +168,8 @@ pestaña y hoja del almacén; ninguna queda ilegible, cortada ni desbordada.
    su teclado, Se echó a perder, Salud) y Configuración del negocio › Almacén, **Then** en claro y en oscuro el texto
    cumple el contraste de US7, nada se sale del ancho y los controles miden 44 px o más.
 2. **Given** un defecto encontrado, **Then** se corrige con colores del tema y deja su prueba.
-3. **Given** el recorrido, **Then** las capturas de claro y oscuro se adjuntan al PR como evidencia para el
-   dueño; no se versionan (decisión del dueño, 2026-10-22: el repositorio es público y traen datos del
-   negocio).
+3. **Given** el recorrido, **Then** lo encontrado queda escrito en el plan; las capturas no se versionan
+   (las e2e las guardan en test-results/; decisión del dueño, 2026-10-22).
 
 ### User Story 9 - CI más corto (Priority: P2)
 

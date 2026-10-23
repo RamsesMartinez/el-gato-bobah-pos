@@ -158,8 +158,8 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] TXXX Security hardening
 - [ ] TXXX Run quickstart.md validation
 
-<!-- Capturas de pruebas: a web/test-results/ o adjuntas al PR, nunca a specs/ ni a otra carpeta
-     del repo (AGENTS.md, «Las capturas …»). Una tarea que pida versionarlas está mal escrita. -->
+<!-- Las capturas de pantalla no se versionan; las e2e las guardan en test-results/. Lo observado
+     se escribe en texto (AGENTS.md, «Las capturas …»). Una tarea que pida versionarlas está mal escrita. -->
 
 ---
 
