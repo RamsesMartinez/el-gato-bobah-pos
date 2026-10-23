@@ -55,13 +55,13 @@
 
 ## Phase 9: US7 - Existencias en tema oscuro (P1)
 
-- [X] T026 [US7] Reproducir en local (:3044) con Playwright a 1024×600 en tema oscuro (Almacén › Existencias), con captura adjunta al PR, y encontrar los colores fijos que lo causan, en web/e2e/almacen-claro-oscuro.spec.ts
+- [X] T026 [US7] Reproducir en local (:3044) con Playwright a 1024×600 en tema oscuro (Almacén › Existencias), con captura en test-results/, y encontrar los colores fijos que lo causan, en web/e2e/almacen-claro-oscuro.spec.ts
 - [X] T027 [US7] Prueba que falla: contraste ≥ 4.5:1 de renglones, encabezados y cifras en tema oscuro (Playwright local, misma spec) y vitest si el color sale de un componente
-- [X] T028 [US7] Cambiar los colores fijos por tokens del tema en web/src/features/backoffice/StockPage.tsx (y el componente de la lista que corresponda); capturas en claro y oscuro, adjuntas al PR
+- [X] T028 [US7] Cambiar los colores fijos por tokens del tema en web/src/features/backoffice/StockPage.tsx (y el componente de la lista que corresponda); capturas en claro y oscuro, en test-results/
 
 ## Phase 10: US8 - Repaso visual del almacén (P1)
 
-- [X] T029 [US8] Recorrido en web/e2e/almacen-claro-oscuro.spec.ts contra local (:3044) a 1024×600, en claro y oscuro: entrando como admin de bobah-pruebas (ve todas las pestañas), en el orden de la pantalla: Existencias, Movimientos, Artículos y ficha, Por recibir, Conteo con teclado, Se echó a perder, Salud, y Configuración del negocio › Almacén; mide contraste (4.5:1 texto, 3:1 controles), desborde horizontal y alto ≥ 44 px de controles; guarda capturas en web/test-results/ para adjuntarlas al PR (al principio iban en specs/044-…/capturas/; se quitaron del repo el 2026-10-22)
+- [X] T029 [US8] Recorrido en web/e2e/almacen-claro-oscuro.spec.ts contra local (:3044) a 1024×600, en claro y oscuro: entrando como admin de bobah-pruebas (ve todas las pestañas), en el orden de la pantalla: Existencias, Movimientos, Artículos y ficha, Por recibir, Conteo con teclado, Se echó a perder, Salud, y Configuración del negocio › Almacén; mide contraste (4.5:1 texto, 3:1 controles), desborde horizontal y alto ≥ 44 px de controles; guarda capturas en web/test-results/ (al principio iban en specs/044-…/capturas/; se quitaron del repo el 2026-10-22)
 - [X] T030 [US8] Por cada defecto: su prueba que falla (vitest o el recorrido) y el arreglo con tokens del tema en el componente que lo causa; anotar la lista en plan › Al construir
 - [X] T031 [US8] Correr el recorrido también contra `bun run build && bun run preview` (local) para acercarse al build de producción
 

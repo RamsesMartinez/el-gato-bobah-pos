@@ -60,7 +60,7 @@
 
 - [X] T022 Correr `cd server && go build ./... && go test ./...` y `cd web && bun run lint && bun run vitest run && bun run build`
 - [X] T023 [P] Documentar en `AGENTS.md` (sección de caja): `retiro` no es salida ni entra al neto, y toda suma de movimientos lo excluye; el rollback de esta feature es solo hacia adelante
-- [X] T024 Recorrer [quickstart.md](quickstart.md) contra la API local como `gatobobah_app` — resultado y capturas a 1024×600 en [validacion.md](validacion.md); los pasos 4 y 5 de la guía quedaron cubiertos por las pruebas de integración y no por la pantalla
+- [X] T024 Recorrer [quickstart.md](quickstart.md) contra la API local como `gatobobah_app` — resultado a 1024×600 en [validacion.md](validacion.md), en texto; los pasos 4 y 5 de la guía quedaron cubiertos por las pruebas de integración y no por la pantalla
 
 ## Phase 7: Revisión de código (2026-10-12)
 

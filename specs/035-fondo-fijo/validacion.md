@@ -1,6 +1,6 @@
 # Validación a 1024×600 (T024)
 
-Se corrió el 2026-10-12 contra la API local de esta rama, con la migración 0090, y se probó en Playwright a 1024×600.
+Se corrió el 2026-10-12 contra la API local de esta rama, con la migración 0090, y se probó en Playwright a 1024×600. Lo observado queda en texto: las capturas no se versionan (AGENTS.md).
 
 **Entorno**
 - **API**: sirve como `gatobobah_app` y `gatobobah_platform`, nunca como owner (`scripts/dev-api.sh`). La base es un Postgres desechable con dos cajas.
@@ -9,16 +9,16 @@ Se corrió el 2026-10-12 contra la API local de esta rama, con la migración 009
 - **Usuarios de prueba**: una gerente, la cajera «Ana Cajera» y el cajero «Luis Turno».
 - **Datos**: no hay ventas, porque no se creó ningún pedido; solo se abre y se cierra el turno. Los nombres son inventados.
 
-| # | Paso | Resultado | Captura |
-|---|---|---|---|
-| 1 | Ajustes › Caja como gerente: bloque «Fondo fijo». | Un renglón por caja: «Caja principal $1,000 ›» y «Caja fuerte · Sin configurar ›». | [01](capturas/01-ajustes-fondo-fijo.png) |
-| 2 | Tocar la caja principal. | Hoja inferior fija al borde de la pantalla, con el campo de solo lectura, el teclado de 52 px, «Quitar fondo fijo» a la izquierda, y «Cancelar» y «Guardar» a la vista. **La primera corrida encontró un defecto**, descrito abajo. | [02](capturas/02-ajustes-hoja-teclado.png) |
-| 3 | Como cajera, contar el cajón (5×$1,000 + $200 + $100 = $5,300) y bajar al cierre. | «¿Se retira dinero del cajón?» abre en «Sí». El campo trae **$1,000**, el fijo, sin teclearlo, y al lado dice «→ Retiro $4,300». «Se lo lleva» muestra una fila de personas con quien cierra marcada. | [03](capturas/03-cierre-si.png) |
-| 4 | Tocar «No, todo se queda». | «Se queda de fondo todo lo contado: $5,300. Sin retiro. (el fijo es $1,000)». Sin campo, sin personas y sin borde rojo. | [04](capturas/04-cierre-no.png) |
-| 5 | Volver a «Sí», elegir a Luis y tocar «Cerrar caja». | La confirmación dice: «Se retiran $4,300 · se los lleva Luis Turno. No podrás modificarla después.» | [05](capturas/05-confirmacion.png) |
-| 6 | Confirmar. | El turno queda cerrado. | [06](capturas/06-cerrado.png) |
-| 7 | Histórico y corte, como gerente. | El corte muestra «Retiro al cierre −$4,300» en egresos y, en el arqueo, contado $5,300. | [07](capturas/07-historico-gerente.png), [08](capturas/08-corte-gerente.png) |
-| 8 | Histórico y corte, como cajera, con la caja todavía sin reabrir. | En el histórico la diferencia dice «Oculto». El corte dice «Arqueo oculto · Se ve cuando se vuelva a abrir la caja.» No aparece el retiro, ni lo contado, ni el esperado, ni las diferencias. «Efectivo contado» muestra solo la apertura, que capturó ella misma. | [07](capturas/07-historico-cajero.png), [08](capturas/08-corte-cajero.png) |
+| # | Paso | Resultado |
+|---|---|---|
+| 1 | Ajustes › Caja como gerente: bloque «Fondo fijo». | Un renglón por caja: «Caja principal $1,000 ›» y «Caja fuerte · Sin configurar ›». |
+| 2 | Tocar la caja principal. | Hoja inferior fija al borde de la pantalla, con el campo de solo lectura, el teclado de 52 px, «Quitar fondo fijo» a la izquierda, y «Cancelar» y «Guardar» a la vista. Bajo el campo: «El cierre lo trae escrito y se puede cambiar solo ese día.» **La primera corrida encontró un defecto**, descrito abajo. |
+| 3 | Como cajera, contar el cajón (5×$1,000 + $200 + $100 = $5,300) y bajar al cierre. | «¿Se retira dinero del cajón?» abre en «Sí». El campo trae **$1,000**, el fijo, sin teclearlo, y al lado dice «→ Retiro $4,300». «Se lo lleva» muestra una fila de personas con quien cierra marcada. |
+| 4 | Tocar «No, todo se queda». | «Se queda de fondo todo lo contado: $5,300. Sin retiro. (el fijo es $1,000)». Sin campo, sin personas y sin borde rojo. |
+| 5 | Volver a «Sí», elegir a Luis y tocar «Cerrar caja». | La confirmación dice: «Se retiran $4,300 · se los lleva Luis Turno. No podrás modificarla después.» |
+| 6 | Confirmar. | El turno queda cerrado. |
+| 7 | Histórico y corte, como gerente. | El corte muestra «Retiro al cierre −$4,300» en egresos y, en el arqueo, contado $5,300. |
+| 8 | Histórico y corte, como cajera, con la caja todavía sin reabrir. | En el histórico la diferencia dice «Oculto». El corte dice «Arqueo oculto · Se ve cuando se vuelva a abrir la caja.» No aparece el retiro, ni lo contado, ni el esperado, ni las diferencias. «Efectivo contado» muestra solo la apertura, que capturó ella misma. |
 
 ## Defecto encontrado y corregido
 
