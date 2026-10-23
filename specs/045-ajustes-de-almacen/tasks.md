@@ -61,7 +61,7 @@ Ninguna: las cinco historias son independientes.
 - [X] T021 Vuelta de quickstart.md completa contra el `make start` y contra `bun run build && bun run preview`, a 1024×600 con `hasTouch`
 - [X] T022 Comparación completa (SC-001): script de Playwright contra el `make start` local con la base restaurada que lee el texto de existencia de cada artículo en Existencias, en Artículos y en su ficha y falla listando los que difieran; resultado esperado 0 diferencias, anotado en plan.md › «Al construir» con el número de artículos revisados
 - [X] T023 Prueba con usuario sin contexto (subagente) sobre Almacén y la barra lateral; lo que encuentre va a plan.md › «Al construir»
-- [ ] T024 Marcar las casillas del issue #127 en la descripción del PR (`Closes #127`)
+- [X] T024 Marcar las casillas del issue #127 en la descripción del PR (`Closes #127`)
 
 ## Dependencies
 
