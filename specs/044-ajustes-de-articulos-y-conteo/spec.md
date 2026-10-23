@@ -160,7 +160,7 @@ en el conteo, 1,500 kg se guarda y 2,500 kg dice «Máximo 2,000 kg por conteo»
 **Why this priority**: el defecto de Existencias en oscuro apareció solo al usarlo; puede haber más.
 
 **Independent Test**: un recorrido con Playwright en local, a 1024×600, en tema claro y oscuro, por cada
-pestaña y hoja del almacén, con capturas; ninguna queda ilegible, cortada ni desbordada.
+pestaña y hoja del almacén; ninguna queda ilegible, cortada ni desbordada.
 
 **Acceptance Scenarios**:
 
@@ -168,7 +168,8 @@ pestaña y hoja del almacén, con capturas; ninguna queda ilegible, cortada ni d
    su teclado, Se echó a perder, Salud) y Configuración del negocio › Almacén, **Then** en claro y en oscuro el texto
    cumple el contraste de US7, nada se sale del ancho y los controles miden 44 px o más.
 2. **Given** un defecto encontrado, **Then** se corrige con colores del tema y deja su prueba.
-3. **Given** el recorrido, **Then** las capturas de claro y oscuro quedan como evidencia para el dueño.
+3. **Given** el recorrido, **Then** lo encontrado queda escrito en el plan; las capturas no se versionan
+   (las e2e las guardan en test-results/; decisión del dueño, 2026-10-22).
 
 ### User Story 9 - CI más corto (Priority: P2)
 

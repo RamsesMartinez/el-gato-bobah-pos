@@ -95,7 +95,9 @@ const system = createSystem(
 export function Provider(props: ColorModeProviderProps) {
   return (
     <ChakraProvider value={system}>
-      <ColorModeProvider {...props} />
+      {/* Sin elección guardada manda el tema del sistema (spec 045): con «light» por omisión, pedir modo
+          oscuro al sistema no cambiaba nada. Una elección guardada en el aparato sigue ganando. */}
+      <ColorModeProvider defaultTheme="system" enableSystem {...props} />
     </ChakraProvider>
   )
 }

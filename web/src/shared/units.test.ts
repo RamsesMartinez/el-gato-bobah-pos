@@ -30,6 +30,18 @@ describe('formatBaseQty (regla 10 de unidades)', () => {
     ['1', 'pieza', '1 pieza'],
     ['-200', 'ml', '-200 ml'],
     ['11399.999999999999', 'ml', '11.4 L'],
+    // Spec 045: la misma cifra se dice igual en todas las pantallas del almacén.
+    ['-3000', 'ml', '-3 L'],
+    ['0', 'pieza', '0 piezas'],
+    ['-1', 'pieza', '-1 pieza'],
+    ['1.5', 'pieza', '1.5 piezas'],
+    ['999', 'g', '999 g'],
+    ['333.3', 'ml', '333.3 ml'],
+    ['0', 'ml', '0 ml'],
+    ['5', 'caja', '5 caja'],
+    // La merma de un producto llega con «pza» (sin unidad base): se dice como pieza.
+    ['2', 'pza', '2 piezas'],
+    ['1', 'pza', '1 pieza'],
   ])('%s %s → %s', (qty, unit, want) => {
     expect(formatBaseQty(qty, unit)).toBe(want);
   });

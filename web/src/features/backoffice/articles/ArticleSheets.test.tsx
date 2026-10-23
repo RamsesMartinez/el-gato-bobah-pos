@@ -390,15 +390,72 @@ describe('Ficha del artículo', () => {
   it('una existencia negativa va en rojo, en su renglón, con «Revisar con un conteo»', async () => {
     back.article.mockResolvedValue({ ...ficha, onHand: '-1870' });
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
-    const aviso = await screen.findByText('Revisar con un conteo');
+    const aviso = await screen.findByText(/Revisar con un conteo/);
     expect(screen.getByText('Hay -1.87 kg')).toBeInTheDocument();
     expect(aviso.closest('[data-negative-stock]')).not.toBeNull();
+  });
+
+  // Spec 045 (US2): el aviso lleva al conteo con un toque, solo a quien puede contar, y no se va con
+  // un cambio a medias: primero termina el guardado de la ficha (B12).
+  describe('«Revisar con un conteo»', () => {
+    const contar = () => screen.findByRole('button', { name: /Revisar con un conteo/ });
+    const conPermiso = (perms: string[]) => useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: perms } as never });
+
+    it('con permiso de contar es un botón de 44 px en el renglón del aviso y lleva al conteo con el nombre', async () => {
+      conPermiso(['inventory.view', 'inventory.configure', 'inventory.count']);
+      back.article.mockResolvedValue({ ...ficha, onHand: '-1870' });
+      const onCount = vi.fn();
+      montar(<ArticleSheet id={7} onClose={vi.fn()} onCount={onCount} />);
+      const boton = await contar();
+      expect(boton.closest('[data-negative-stock]')).not.toBeNull();
+      expect(boton).toHaveStyle({ minHeight: '44px' });
+      fireEvent.click(boton);
+      await waitFor(() => expect(onCount).toHaveBeenCalledWith('Hielo en bolsa'));
+    });
+
+    it('sin permiso de contar sigue siendo solo el aviso, sin botón', async () => {
+      conPermiso(['inventory.view', 'inventory.configure']);
+      back.article.mockResolvedValue({ ...ficha, onHand: '-1870' });
+      montar(<ArticleSheet id={7} onClose={vi.fn()} onCount={vi.fn()} />);
+      expect(await screen.findByText(/Revisar con un conteo/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Revisar con un conteo/ })).toBeNull();
+    });
+
+    it('con el mínimo recién escrito, primero lo guarda y después lleva al conteo', async () => {
+      conPermiso(['inventory.view', 'inventory.configure', 'inventory.count']);
+      back.article.mockResolvedValue({ ...ficha, onHand: '-1870' });
+      const onCount = vi.fn();
+      montar(<ArticleSheet id={7} onClose={vi.fn()} onCount={onCount} />);
+      const boton = await contar();
+      // Con el dedo en el campo: tocar el botón es lo que lo saca de ahí.
+      minimo().focus();
+      fireEvent.change(minimo(), { target: { value: '12' } });
+      fireEvent.click(boton);
+      await waitFor(() => expect(onCount).toHaveBeenCalled());
+      expect(back.updateArticle).toHaveBeenCalledWith(7, expect.objectContaining({ minStock: '12000' }));
+      expect(back.updateArticle.mock.invocationCallOrder[0]).toBeLessThan(onCount.mock.invocationCallOrder[0]);
+    });
+
+    it('si el guardado falla no se va: se queda con el error a la vista', async () => {
+      conPermiso(['inventory.view', 'inventory.configure', 'inventory.count']);
+      back.article.mockResolvedValue({ ...ficha, onHand: '-1870' });
+      back.updateArticle.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      const onCount = vi.fn();
+      montar(<ArticleSheet id={7} onClose={vi.fn()} onCount={onCount} />);
+      const boton = await contar();
+      // Con el dedo en el campo: tocar el botón es lo que lo saca de ahí.
+      minimo().focus();
+      fireEvent.change(minimo(), { target: { value: '12' } });
+      fireEvent.click(boton);
+      expect(await screen.findByText(/No se pudo guardar/)).toBeInTheDocument();
+      expect(onCount).not.toHaveBeenCalled();
+    });
   });
 
   it('con existencia cero o positiva no hay aviso', async () => {
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
     await screen.findByDisplayValue('Hielo en bolsa');
-    expect(screen.queryByText('Revisar con un conteo')).toBeNull();
+    expect(screen.queryByText(/Revisar con un conteo/)).toBeNull();
   });
 
   it('una receta estimada dice «por revisar»', async () => {
