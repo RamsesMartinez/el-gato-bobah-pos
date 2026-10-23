@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { tokenDeApi } from './ambiente';
+import { iniciarSesion } from './sesion';
 import {
   abrirTicket, alto, botonCobrar, botonEnviar, crearCuentaPorApi, cuentaNueva, entrar, fichas, fila,
   ponerUnProducto, productoPorNombre,
@@ -243,4 +244,37 @@ test('F6 · el cierre de caja con cuentas vivas deja ver «Cerrar caja»', async
   const cerrar = page.getByRole('button', { name: 'Cerrar caja' });
   await cerrar.scrollIntoViewIfNeeded();
   await expect(cerrar).toBeInViewport();
+});
+
+// Spec 045 (US4) · LA BARRA LATERAL NUNCA DEJA UNA OPCIÓN PARTIDA.
+//
+// Al abrir una pantalla cuya opción queda bajo el pliegue (Asistencia, a 600 px), la barra se
+// desplazaba lo justo para mostrarla —111 px medidos— y la primera opción visible quedaba partida
+// arriba. Se mide la caja de cada opción contra la de la lista: ninguna a medias, todas de 44 px.
+test('B10 · la barra lateral no parte opciones y la activa queda a la vista', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await iniciarSesion(page);
+  await page.getByRole('link', { name: 'Asistencia' }).waitFor();
+  for (const ruta of ['/asistencia', '/almacen']) {
+    await page.goto(ruta);
+    await page.getByRole('link', { name: 'Asistencia' }).waitFor();
+    await page.waitForTimeout(800); // el desplazamiento suave y el ajuste terminan
+    const m = await page.evaluate(() => {
+      const links = [...document.querySelectorAll<HTMLAnchorElement>('a[href]')].filter((a) => a.getBoundingClientRect().left < 80);
+      let list = links[0].parentElement!;
+      while (list && getComputedStyle(list).overflowY !== 'auto') list = list.parentElement!;
+      const box = list.getBoundingClientRect();
+      const items = links.map((a) => {
+        const r = (a.firstElementChild ?? a).getBoundingClientRect();
+        return { name: a.textContent, top: r.top, bottom: r.bottom, h: r.height, active: a.getAttribute('aria-current') === 'page' };
+      });
+      return { top: box.top, bottom: box.bottom, items };
+    });
+    const partidas = m.items.filter((i) => (i.top < m.top - 1 && i.bottom > m.top + 1) || (i.top < m.bottom - 1 && i.bottom > m.bottom + 1));
+    expect(partidas.filter((i) => i.top < m.top).map((i) => i.name), `${ruta}: opción partida arriba`).toEqual([]);
+    const activa = m.items.find((i) => i.active)!;
+    expect(activa.top >= m.top - 1 && activa.bottom <= m.bottom + 1, `${ruta}: la opción activa no se ve completa`).toBe(true);
+    for (const i of m.items) expect(i.h, `«${i.name}» mide ${i.h}px y el piso es 44`).toBeGreaterThanOrEqual(44);
+  }
 });
