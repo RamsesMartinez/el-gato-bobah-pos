@@ -43,6 +43,13 @@ describe('faltante sin explicar (spec 039, maqueta B)', () => {
     expect(azucar.querySelector('[data-part="sin-explicar"]')).toBeNull();
   });
 
+  // Spec 045: la cifra en unidad base se dice como en Existencias y Artículos, no «3000 ml».
+  test('las cantidades salen en la unidad legible', async () => {
+    waste.countLoss.mockResolvedValue({ firstCount: false, items: [item({ unitCode: 'ml', registered: '3000', unexplained: '1500' })], totals: { lost: '50', registered: '30', unexplained: '20', withoutCost: 0 } });
+    montar();
+    expect(await screen.findByText(/3 L registrado · 1.5 L sin explicar/)).toBeInTheDocument();
+  });
+
   test('el primer conteo no inventa cifras', async () => {
     waste.countLoss.mockResolvedValue({ firstCount: true, items: [item({ hasPrevious: false })], totals: { lost: '0', registered: '0', unexplained: '0', withoutCost: 0 } });
     montar();

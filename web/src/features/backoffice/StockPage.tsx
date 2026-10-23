@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { formatBaseQty } from '../../shared/units';
 import {
   Box, Heading, Table, Center, Spinner, Badge, Tabs, Text,
 } from '@chakra-ui/react';
@@ -89,13 +90,13 @@ export function StockPage() {
                       <Table.Cell>{s.item_name}</Table.Cell>
                       <Table.Cell>{s.item_type}</Table.Cell>
                       <Table.Cell textAlign="end" color={Number(s.on_hand) < 0 ? 'fg.error' : undefined}>
-                        {s.on_hand} {s.unit_code}{low && <Badge ml={2} colorPalette="orange">bajo</Badge>}
+                        {formatBaseQty(s.on_hand, s.unit_code)}{low && <Badge ml={2} colorPalette="orange">bajo</Badge>}
                         {/* Igual que en Artículos: la cifra en rojo y la etiqueta, no el renglón entero. */}
                         {Number(s.on_hand) < 0 && (
                           <Text as="span" ml={2} px={2} py="1px" borderRadius="md" fontWeight="700" color="fg.error" bg="bg.error">Revisar</Text>
                         )}
                       </Table.Cell>
-                      <Table.Cell textAlign="end">{s.min_stock ?? '—'}</Table.Cell>
+                      <Table.Cell textAlign="end">{s.min_stock == null ? '—' : formatBaseQty(s.min_stock, s.unit_code)}</Table.Cell>
                     </Table.Row>
                   );
                 })}
@@ -146,7 +147,8 @@ export function StockPage() {
           </Tabs.Content>
         )}
       </Tabs.Root>
-      {article && <ArticleSheet id={article.id} justCreated={article.justCreated} onClose={closeArticle} />}
+      {article && <ArticleSheet id={article.id} justCreated={article.justCreated} onClose={closeArticle}
+        onCount={canCount ? (name) => { setOpened(null); setParams({ tab: 'conteo', q: name }); } : undefined} />}
     </Page>
   );
 }
