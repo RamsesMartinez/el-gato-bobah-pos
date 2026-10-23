@@ -54,16 +54,16 @@ describe('el menú lateral', () => {
     expect(lista.contains(flecha)).toBe(false);
   });
 
-  // Con «Reportes» abierto a 600 px, su ítem quedaba partido bajo el pliegue del menú.
+  // Con «Reportes» abierto a 600 px, su ítem quedaba partido bajo el pliegue del menú. Cómo se calcula
+  // el desplazamiento lo prueba railScroll.test.ts; aquí, que la pantalla abierta lo pide.
   test('el ítem de la pantalla abierta se lleva a la vista', async () => {
-    const spy = vi.fn();
-    Element.prototype.scrollIntoView = spy;
+    const spy = vi.spyOn(await import('./railScroll'), 'railScrollFor');
     useSessionStore.setState({ user: { id: 1, name: 'Administrador', role: 'admin', permissions: [] } as never });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={['/reportes']}><AppShell /></MemoryRouter></Provider></QueryClientProvider>);
     await screen.findByText('Reportes');
     await vi.waitFor(() => expect(spy).toHaveBeenCalled());
-    expect((spy.mock.contexts.at(-1) as HTMLElement).textContent).toContain('Reportes');
+    expect((spy.mock.calls.at(-1)![1] as HTMLElement).textContent).toContain('Reportes');
   });
 
   // Lo que se echó a perder (spec 039): el renglón sale por PERMISO y no por rol, porque lo usan
