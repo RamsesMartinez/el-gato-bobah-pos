@@ -30,7 +30,7 @@ empresa (#126):
   subir el máximo; una empresa nueva nace con su fila.
 - vitest: volver, «Revisar», la gráfica (0, 1 y varios puntos, tocar), el teclado físico, el aviso del
   máximo antes de mandar, la sección de límites.
-- Playwright **en local** (:3044) a 1024×600: la lista sigue con 6 renglones; la sección de límites mide 44 px por control; recorrido del almacén en claro y oscuro con contraste medido y capturas.
+- Playwright **en local** (:3044) a 1024×600: la lista sigue con 6 renglones; la sección de límites mide 44 px por control; recorrido del almacén en claro y oscuro con contraste medido; capturas adjuntas al PR, no en el repo.
 - **Todo se prueba en local** (constitución 1.25.0); el dueño no pidió ambiente de pruebas para la 044, así que no se valida en el ambiente de pruebas. Lo que solo se ve desplegado (build de producción, CSP) queda sin verificar hasta develop; para acercarse, la prueba local corre también contra `bun run build && bun run preview`.
 
 **Target Platform**: tabletas de 7 a 10 pulgadas (1024×600)
@@ -250,7 +250,9 @@ Sin excepciones.
 
 Medido con `e2e/almacen-claro-oscuro.spec.ts` (recorrido) a 1024×600 contra local (:3044) y contra
 `bun run build` + `vite preview` (:4044, proxy a la API :8044): los dos en verde tras los arreglos.
-Capturas en `capturas/NN-pantalla-{claro,oscuro}.png`. El recorrido falló primero con:
+Las capturas (`NN-pantalla-{claro,oscuro}.png`) se versionaron al principio en `capturas/` y se quitaron el
+2026-10-22 (decisión del dueño): corridas contra una base restaurada traen datos del negocio y el repositorio
+es público. Ahora van a `web/test-results/` y se adjuntan al PR. El recorrido falló primero con:
 
 | Pantalla | Tema | Medido | Causa | Arreglo |
 | --- | --- | --- | --- | --- |
