@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { entrar } from './pos';
+import { iniciarSesion } from './sesion';
 
 // ALMACÉN EN CLARO Y EN OSCURO (spec 044, US7). En tema oscuro la lista de Existencias no se leía:
 // los renglones con existencia negativa llevaban un fondo fijo claro (`red.50`) con el texto del tema
@@ -191,3 +192,20 @@ for (const tema of ['light', 'dark'] as const) {
     expect(hallazgos, `defectos del almacén en tema ${nombre}`).toEqual({});
   });
 }
+
+// Spec 045 (US5) · SIN ELECCIÓN GUARDADA, MANDA EL SISTEMA. Con «light» por omisión, pedir modo
+// oscuro al sistema no cambiaba nada. Se prueba con el navegador limpio y también que siga en vivo
+// cuando el sistema cambia con la app abierta (B9).
+test.describe('tema del sistema', () => {
+  test.use({ colorScheme: 'dark' });
+  test('sin elección guardada, abre en oscuro y sigue al sistema en vivo', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await iniciarSesion(page);
+    await page.getByRole('link', { name: 'Almacén' }).waitFor();
+    expect(await page.evaluate(() => localStorage.getItem('theme'))).toBeNull();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(page.locator('html')).not.toHaveClass(/dark/);
+  });
+});
