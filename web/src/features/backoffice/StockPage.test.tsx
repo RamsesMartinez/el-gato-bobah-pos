@@ -33,6 +33,10 @@ const back = vi.hoisted(() => ({
   article: vi.fn(() => Promise.resolve({ id: 2, name: 'Jarabe natural', isActive: true, baseUnitId: 3, baseUnitCode: 'ml', baseUnitKind: 'volumen', currentCost: '0.05', minStock: null, isPrep: true, categoryId: null, category: null, countPlaceId: 4, countPlace: 'Barra', onHand: '0', presentations: [], costSource: 'receta', updatedAt: '2026-10-19T10:00:00Z' })),
   articleCostHistory: vi.fn(() => Promise.resolve({ items: [], next: null, trendPct: null })),
   articleCategories: vi.fn(() => Promise.resolve([])),
+  currentCount: vi.fn(() => Promise.resolve({ id: 5, openedAt: '2026-10-14T13:40:00Z', items: [
+    { ingredientId: 2, name: 'Jarabe natural', place: 'Barra', placeId: 4, baseUnitCode: 'ml', presentations: [], countedQty: null },
+    { ingredientId: 1, name: 'Azúcar', place: null, placeId: null, baseUnitCode: 'g', presentations: [], countedQty: null },
+  ] })),
   inventoryHealth: vi.fn(() => Promise.resolve({
     from: '2026-09-14', to: '2026-10-13', multipleBranches: false, salesInPeriod: 0,
     unsoldDeduction: { total: 0, items: [], unpairedPlatformLines: 0 }, comboChoices: { total: 0, items: [] },
@@ -143,4 +147,31 @@ it('Existencias marca un negativo con «Revisar» y sin pintar el renglón enter
   expect(fila.textContent).toContain('Revisar');
   expect(getComputedStyle(fila).backgroundColor).toBe(getComputedStyle((await screen.findByText('Azúcar')).closest('tr')!).backgroundColor);
   expect((await screen.findByText('Azúcar')).closest('tr')!.textContent).not.toContain('Revisar');
+});
+
+// Spec 045: Existencias decía «-3000 ml» y Artículos «-3 L» para el mismo artículo; las dos pantallas
+// dicen la cifra con la misma regla, también el mínimo y el plural de pieza.
+it('Existencias dice la cantidad igual que Artículos: -3 L, 1 pieza', async () => {
+  back.stockLevels.mockResolvedValueOnce({ items: [
+    { item_name: 'Leche', item_type: 'insumo', on_hand: '-3000', unit_code: 'ml', min_stock: '2000' },
+    { item_name: 'Vaso', item_type: 'insumo', on_hand: '1', unit_code: 'pieza', min_stock: null },
+  ] } as never);
+  sesion(['inventory.configure']);
+  montar('/almacen');
+  const leche = (await screen.findByText('Leche')).closest('tr')!;
+  expect(leche.textContent).toContain('-3 L');
+  expect(leche.textContent).not.toContain('-3000');
+  expect(leche.textContent).toContain('2 L');
+  expect((await screen.findByText('Vaso')).closest('tr')!.textContent).toContain('1 pieza');
+});
+
+// Spec 045 (US2): desde la ficha de un artículo en negativo, un toque abre el conteo ya buscado.
+it('«Revisar con un conteo» cierra la ficha y abre la pestaña Conteo con el artículo buscado', async () => {
+  back.article.mockResolvedValueOnce({ id: 2, name: 'Jarabe natural', isActive: true, baseUnitId: 3, baseUnitCode: 'ml', baseUnitKind: 'volumen', currentCost: '0.05', minStock: null, isPrep: true, categoryId: null, category: null, countPlaceId: 4, countPlace: 'Barra', onHand: '-3000', presentations: [], costSource: 'receta', updatedAt: '2026-10-19T10:00:00Z' } as never);
+  sesion(['inventory.view', 'inventory.count']);
+  montar('/almacen?tab=insumos&open=2');
+  fireEvent.click(await screen.findByRole('button', { name: /Revisar con un conteo/ }));
+  expect(await screen.findByLabelText('Buscar')).toHaveValue('Jarabe natural');
+  expect(screen.getByRole('tab', { name: 'Conteo' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.queryByRole('button', { name: /Revisar con un conteo/ })).toBeNull();
 });

@@ -36,6 +36,8 @@ interface Props {
   // Recién creado: «Agregar empaque» va primero, a la vista (decisión del dueño, FR-002).
   justCreated?: boolean;
   onClose: () => void;
+  // onCount lleva al conteo de este artículo (spec 045); sin él, el aviso de negativo es solo texto.
+  onCount?: (name: string) => void;
 }
 
 interface Form {
@@ -77,12 +79,13 @@ function formOf(a: Sheet): Form {
   };
 }
 
-export function ArticleSheet({ id, justCreated, onClose }: Props) {
+export function ArticleSheet({ id, justCreated, onClose, onCount }: Props) {
   const qc = useQueryClient();
   const user = useSessionStore((s) => s.user);
   const canConfigure = can('inventory.configure', user);
   const canReceive = can('inventory.receive', user);
   const canView = can('inventory.view', user);
+  const canCount = can('inventory.count', user);
   const hora = useHoraDelNegocio();
   const art = useQuery({ queryKey: ['article', id], queryFn: () => backofficeApi.article(id) });
   const cats = useQuery({ queryKey: ['article-categories'], queryFn: backofficeApi.articleCategories });
@@ -194,15 +197,25 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
   // (en la tableta tocar un botón no siempre lo quita), espera la cola y pregunta solo si algo quedó
   // sin guardar (R2).
   const [leaving, setLeaving] = useState(false);
-  const close = async () => {
-    if (leaving) return;
+  // settle saca el foco del campo (eso lo manda a guardar) y espera a que la cola termine.
+  const settle = async () => {
     const el = document.activeElement;
     if (el instanceof HTMLElement && el.tagName === 'INPUT') el.blur();
     setLeaving(true);
     const allSaved = await auto.whenIdle();
     setLeaving(false);
-    if (allSaved) onClose();
+    return allSaved;
+  };
+  const close = async () => {
+    if (leaving) return;
+    if (await settle()) onClose();
     else setPanel('discard');
+  };
+  // Ir al conteo no pregunta si descartar: si algo no se guardó, se queda con el error a la vista (B12).
+  const goCount = async () => {
+    if (leaving) return;
+    // El nombre de la ficha, ya guardado: si se acaba de renombrar, el conteo lo busca con el nuevo.
+    if (form && await settle()) onCount?.(form.name.trim());
   };
   const items = history.data?.pages.flatMap((p) => p.items ?? []) ?? [];
   const trend = history.data?.pages[0]?.trendPct;
@@ -270,9 +283,12 @@ export function ArticleSheet({ id, justCreated, onClose }: Props) {
                     no partir el de arriba en media pantalla, y con texto además del rojo (spec 043, FR-018).
                     No se recalcula nada del pasado. */}
                 {Number(a.onHand) < 0 && (
-                  <HStack data-negative-stock gap={2} flexWrap="wrap" bg="red.subtle" borderRadius="md" px={3} py={2}>
-                    <Text color="fg.error" fontWeight="700">Hay {formatBaseQty(a.onHand, a.baseUnitCode)}</Text>
-                    <Text color="fg.error">Revisar con un conteo</Text>
+                  <HStack data-negative-stock gap={2} bg="red.subtle" borderRadius="md" pl={3} minH="44px">
+                    <Text flex="1" color="fg.error" fontWeight="700">Hay {formatBaseQty(a.onHand, a.baseUnitCode)}</Text>
+                    {canCount && onCount ? (
+                      <Button size="sm" minH="44px" variant="outline" colorPalette="brand" bg="bg" flexShrink={0}
+                        loading={leaving} onClick={() => void goCount()}>Revisar con un conteo ›</Button>
+                    ) : <Text color="fg.error" pr={3}>Revisar con un conteo</Text>}
                   </HStack>
                 )}
                 {!justCreated && <PacksBlock />}

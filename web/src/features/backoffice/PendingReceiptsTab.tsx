@@ -3,7 +3,7 @@ import { medirAccion } from '../../api/uso';
 import { Box, Button, HStack, Input, Text, VStack, Center, Spinner } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { backofficeApi, type PendingReceipt } from '../../api/backoffice';
-import { money, normalize } from '../../utils/format';
+import { matchesWords, money } from '../../utils/format';
 import { parseMonto, parseNumero } from '../../domain/numeros';
 import { formatBaseQty } from '../../shared/units';
 import { ArrivedItemSheet, ReceiptSheet } from './ArrivedItemSheet';
@@ -53,9 +53,9 @@ export function PendingReceiptsTab() {
 
   if (isLoading) return <Center py={16}><Spinner size="xl" /></Center>;
   const rows = data ?? [];
-  const needle = normalize(q.trim());
+  const needle = q.trim();
   const shown = needle
-    ? rows.filter((r) => normalize(r.itemName).includes(needle) || normalize(r.supplier ?? '').includes(needle))
+    ? rows.filter((r) => matchesWords(r.itemName, needle) || matchesWords(r.supplier ?? '', needle))
     : rows;
   const groups = new Map<number, PendingReceipt[]>();
   for (const r of shown) groups.set(r.expenseId, [...(groups.get(r.expenseId) ?? []), r]);
