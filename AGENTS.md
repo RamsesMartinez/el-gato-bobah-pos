@@ -245,6 +245,16 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   que cree pedidos, ciérralos tú: entregar (`POST /orders/:id/deliver`) y cobrar
   (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
   plataforma.
+
+  **Las capturas de pantalla de e2e o de cualquier prueba nunca se versionan.** Van a
+  `web/test-results/` (ignorado por git) o adjuntas al PR; ningún spec, plan ni task pide guardarlas
+  en `specs/` ni en otra carpeta del repo. Una prueba corrida contra una base restaurada pinta el
+  catálogo, las existencias y los costos del negocio, y este repositorio es público. Pasó el
+  2026-10-22: el recorrido de la 044 escribía por omisión en `specs/044-…/capturas/`, se versionaron
+  29 PNG con costos de compra reales y hubo que reescribir la historia de 12 ramas, `main` incluida.
+  Una e2e nueva toma su carpeta de capturas de una variable de entorno con `test-results/` por
+  omisión, como las que ya existen. Las 10 de `specs/035-fondo-fijo/capturas/` son anteriores a la
+  regla y de una base desechable con nombres inventados; no se agregan más.
 - **`make ci-local`** — lo mismo que los jobs de CI que gatean el despliegue (backend con lint y govulncheck, integración con `sqlc diff`/`sqlc vet` contra un Postgres desechable en `:5510`, y frontend), en paralelo y en ~2 min. **Ya no es paso obligatorio** (decidido el 2026-10-21): cuando termina el flujo de spec-kit de una feature, se empuja y el CI del PR es el gate —un PR no se mergea sin CI verde—. Mientras se implementa, los commits se quedan locales. **Si el CI del PR falla, las correcciones se validan en local**: se arregla, se corre `make ci-local` y solo con verde se vuelve a empujar, en vez de una vuelta de CI por intento. Medido el 2026-10-21 sobre las últimas 10 corridas: el CI de un PR tarda de 2 a 5 min y el de develop (imagen y despliegue al ambiente de pruebas) de 2 a 3 min. El pre-push de lefthook sigue corriendo (`go test`, `govulncheck`, `bun run build`). No cubre el entorno de GitHub (versiones de las actions, el Go que instala `setup-go`), que es justo lo que se rompió el día de go1.27.2; CI sigue siendo el que despliega.
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
 - **El precio de `product_platform_prices` NO es el precio al que se vende en la plataforma.** Es
