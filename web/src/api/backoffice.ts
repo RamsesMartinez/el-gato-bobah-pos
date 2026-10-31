@@ -170,6 +170,19 @@ export interface ConteosDelTurno {
   cierre: Conteo | null;
 }
 
+// Lo que la asistencia pide para la acción que toca en una caja (spec 046): abrirla si está
+// cerrada, cerrarla si está abierta. `person` es quien abre (`open`) o quien abrió (`close`).
+export interface CashAttendanceGate {
+  stage: 'open' | 'close';
+  applies: boolean;
+  ready: boolean;
+  person: { id: number; name: string; active: boolean };
+  openSince?: string;
+  stale: boolean;
+  isSelf: boolean;
+  canAuthorize: boolean;
+}
+
 export interface CashSession {
   id: number;
   registerId: number;
@@ -823,7 +836,14 @@ export const backofficeApi = {
     floatLeft?: number;
     fixedFloatShown?: number;
     withdrawalUserId?: number;
+    // Cerrar sin la salida de quien abrió (spec 046). Solo con el permiso; el servidor lo ignora si
+    // ya no hace falta.
+    authorizedClose?: { reason: string };
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
+  // Qué pide la asistencia para abrir o cerrar esa caja (spec 046). Lo calcula el servidor con la
+  // misma regla que aplica al confirmar.
+  cashAttendance: (registerId: number) =>
+    api.get<CashAttendanceGate>(`/cash-sessions/attendance?registerId=${registerId}`),
   cashTips: (registerId: number) => api.get<TipsPending>(`/cash-sessions/tips?registerId=${registerId}`),
   cashTipPayout: (registerId: number, input: TipPayoutInput) =>
     api.post<{ items: { movementId: number; recipientName: string; amount: string }[] }>(

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Badge, Box, Button, Flex, HStack, Text, VStack } from '@chakra-ui/react';
+import { Badge, Box, Button, Flex, HStack, IconButton, Text, VStack } from '@chakra-ui/react';
+import { LuCircleHelp } from 'react-icons/lu';
 import { attendanceAdminApi } from '../../api/attendance';
 import { ApiError } from '../../api/client';
 import { Picker } from '../../components/Picker';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { Switch } from '../../components/ui/switch';
+import { DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import { QUARTERS, WEEK, copyToWeekdays, crossesMidnight, emptyWeek, shiftsFromWeek, weekFromShifts, type Week } from '../../shared/attendance/schedule';
 
 // ScheduleEditor es el horario de una persona (maqueta A, ronda 2): un renglón por día con hasta
@@ -24,6 +26,7 @@ export function ScheduleEditor({ userId, name, people, onClose }: {
   const [tracks, setTracks] = useState<boolean | null>(null);
   const [error, setError] = useState('');
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [help, setHelp] = useState(false);
   const displayedWeek = week ?? (existing.data?.versions[0] ? weekFromShifts(existing.data.versions[0].days) : emptyWeek());
   const tracksValue = tracks ?? existing.data?.tracksAttendance ?? true;
   const unsaved = week !== null || tracks !== null;
@@ -61,7 +64,11 @@ export function ScheduleEditor({ userId, name, people, onClose }: {
           </HStack>
         </Flex>
         <HStack justify="space-between" mb={2}>
-          <Text fontWeight="600">Lleva asistencia</Text>
+          <HStack gap={1}>
+            <Text fontWeight="600">Lleva asistencia</Text>
+            <IconButton aria-label="Quién lleva asistencia" variant="ghost" minW="44px" minH="44px"
+              onClick={() => setHelp(true)}><LuCircleHelp /></IconButton>
+          </HStack>
           <Switch size="lg" py="10px" checked={tracksValue} onCheckedChange={(e) => setTracks(e.checked)} aria-label="Lleva asistencia" />
         </HStack>
         {confirmDiscard && (
@@ -114,6 +121,22 @@ export function ScheduleEditor({ userId, name, people, onClose }: {
           Se aplica desde la fecha elegida; los días anteriores conservan su horario.
         </Text>
       </Box>
+      {/* Spec 046: quien lleva asistencia marca su entrada antes de abrir la caja. Una cuenta que
+          comparten varias personas no es una persona y nunca podría hacerlo. */}
+      <DialogRoot open={help} onOpenChange={(e) => setHelp(e.open)} placement="center" size="sm">
+        <DialogBackdrop />
+        <DialogContent>
+          <DialogHeader><DialogTitle>Quién lleva asistencia</DialogTitle></DialogHeader>
+          <DialogBody>
+            <VStack as="ol" align="stretch" gap={2} pl={5} listStyleType="decimal">
+              <li>Prende «Lleva asistencia» a cada persona que marca su entrada y su salida.</li>
+              <li>La caja se abre con la entrada marcada, y se cierra cuando quien la abrió ya marcó su salida.</li>
+              <li>Si varias personas abren la caja con la misma cuenta, apágale «Lleva asistencia» a esa cuenta: si no, no podrá abrirla.</li>
+            </VStack>
+          </DialogBody>
+          <DialogFooter><Button minH="44px" onClick={() => setHelp(false)}>Entendido</Button></DialogFooter>
+        </DialogContent>
+      </DialogRoot>
     </Flex>
   );
 }
