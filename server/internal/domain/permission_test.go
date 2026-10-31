@@ -21,10 +21,12 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 	// Registrar lo que se echó a perder (spec 039) lo hace cualquiera del local (decisión del 9-oct);
 	// aprobar la merma que pasa el tope, solo quien revisa.
 	// Ver el catálogo de artículos (spec 042) es de quien hoy ve el almacén: administrador y gerente.
+	// Cerrar la caja sin la salida de quien la abrió (spec 046) deja horas «sin salida»: lo autoriza
+	// quien revisa; un cajero solo puede pedir que alguien lo haga.
 	gerente := []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 		PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
 		PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount,
-		PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView}
+		PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut}
 	cases := []struct {
 		role Role
 		want []Permission
@@ -78,6 +80,7 @@ func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 		PermInventoryWriteOff:        "Tu usuario no puede registrar lo que se echó a perder",
 		PermInventoryWriteOffApprove: "Tu usuario no puede aprobar lo que se echó a perder",
 		PermInventoryView:            "Tu usuario no puede ver el almacén",
+		PermCashCloseWithoutClockOut: "Tu usuario no puede cerrar la caja sin la salida de quien la abrió",
 	}
 	for _, p := range AllPermissions() {
 		msg := PermissionDeniedMessage(p)

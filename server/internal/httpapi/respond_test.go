@@ -428,3 +428,26 @@ func TestMenuChangedCarriesTheRejectedLine(t *testing.T) {
 		})
 	}
 }
+
+// La caja con asistencia (spec 046): tres 409 con su propio código, porque la hoja ofrece cosas
+// distintas en cada uno. El de quien abrió nombra a la persona y llega sin el prefijo del sentinel.
+func TestCashAttendanceErrorsHaveTheirOwnCode(t *testing.T) {
+	for _, c := range []struct {
+		err       error
+		code, msg string
+	}{
+		{domain.ErrCashClockInRequired, "CLOCK_IN_REQUIRED", "Para abrir la caja, primero marca tu entrada"},
+		{domain.CashOpenerClockedIn{Name: "Ana"}, "OPENER_NOT_CLOCKED_OUT", "Ana abrió esta caja y no ha marcado su salida"},
+		{domain.ErrCashClockOutWithPIN, "CLOCK_OUT_WITH_PIN", "Marca tu salida con tu PIN para cerrar la caja"},
+	} {
+		w := httptest.NewRecorder()
+		Error(w, c.err)
+		var body errorEnvelope
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if w.Code != 409 || body.Error.Code != c.code || body.Error.Message != c.msg {
+			t.Errorf("%v → %d %+v; quería 409 %s «%s»", c.err, w.Code, body.Error, c.code, c.msg)
+		}
+	}
+}

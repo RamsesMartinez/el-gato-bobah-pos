@@ -90,6 +90,14 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "ATTENDANCE_STATE_CHANGED"
 	case errors.Is(err, domain.ErrAttendanceOverlap):
 		status, code = http.StatusConflict, "ATTENDANCE_OVERLAP"
+	// Caja con asistencia (spec 046): la hoja ofrece marcar entrada, marcar la salida de quien abrió
+	// o pedir el PIN propio según el código.
+	case errors.Is(err, domain.ErrCashClockInRequired):
+		status, code = http.StatusConflict, "CLOCK_IN_REQUIRED"
+	case errors.Is(err, domain.ErrCashOpenerClockedIn):
+		status, code = http.StatusConflict, "OPENER_NOT_CLOCKED_OUT"
+	case errors.Is(err, domain.ErrCashClockOutWithPIN):
+		status, code = http.StatusConflict, "CLOCK_OUT_WITH_PIN"
 	case errors.Is(err, domain.ErrValidation):
 		status, code = http.StatusBadRequest, "VALIDATION"
 	case errors.Is(err, domain.ErrPlatformNotFound):
