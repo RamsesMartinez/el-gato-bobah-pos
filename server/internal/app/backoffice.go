@@ -1172,6 +1172,9 @@ type AperturaCmd struct {
 	// Reason y ReasonNote: por qué lo contado no coincide con el cierre anterior (spec 032).
 	Reason     string
 	ReasonNote string
+	// OpenedAt: abrir desde una hora anterior para incluir los gastos sin corte (spec 048). nil =
+	// ahora. El permiso lo revisa el handler; aquí se valida la hora.
+	OpenedAt *time.Time
 }
 
 func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, cmd AperturaCmd, userID int64) (*SessionView, error) {
@@ -1211,6 +1214,15 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
+	if cmd.OpenedAt != nil {
+		last, err := lastCloseOf(ctx, s.store.QC(ctx), registerID)
+		if err != nil {
+			return nil, err
+		}
+		if err := domain.ValidBackdatedOpening(*cmd.OpenedAt, s.now(), last); err != nil {
+			return nil, err
+		}
+	}
 	var reason, note *string
 	if domain.OpeningNeedsReason(prev, total) {
 		if err := domain.ValidOpeningReason(cmd.Reason, cmd.ReasonNote); err != nil {
@@ -1246,16 +1258,34 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 		if !cr.CountsCash {
 			return domain.ErrRegisterNotCounted
 		}
+		var openedAt pgtype.Timestamptz
+		if cmd.OpenedAt != nil {
+			openedAt = pgtype.Timestamptz{Time: *cmd.OpenedAt, Valid: true}
+		}
 		abierta, err := q.OpenSession(ctx, db.OpenSessionParams{
 			BusinessDate: pgtype.Date{Time: s.businessDate(ctx), Valid: true},
 			OpeningCash:  total,
 			OpenedBy:     userID,
 			RegisterID:   registerID,
+			OpenedAt:     openedAt,
 		})
 		if err != nil {
 			return err
 		}
 		sess = abierta
+		// LOS GASTOS SIN CORTE CON HORA DENTRO DE ESTE CORTE ENTRAN A ÉL (spec 048). Abrir «ahora» no
+		// tiene ventana hacia atrás: solo la hora movida barre. La caja está tomada FOR UPDATE, así que
+		// un pago que se registra a la vez espera y se decide contra este turno ya abierto.
+		if cmd.OpenedAt != nil {
+			swept, err := sweepPendingExpenses(ctx, q, abierta.ID, registerID, *cmd.OpenedAt, s.now())
+			if err != nil {
+				return err
+			}
+			if err := auditCash(ctx, q, domain.AuditCashOpeningBackdated, abierta.ID, &userID, nil,
+				map[string]any{"openedAt": *cmd.OpenedAt, "sweptPayments": swept}); err != nil {
+				return err
+			}
+		}
 		// El modo de tarjeta lo copia este update; la fila de OpenSession todavía trae el default.
 		if sess.CardCountMode, err = q.SetOpeningExtras(ctx, db.SetOpeningExtrasParams{ID: abierta.ID, Reason: reason, Note: note}); err != nil {
 			return err
@@ -1772,6 +1802,21 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 	// lo que ya lo tenía termina antes de que se lea nada, y lo que llega después espera y lo ve
 	// cerrado. Las lecturas de abajo van después del candado aunque usen otra conexión: lo que
 	// confirmó ya está, y lo que no, no puede escribir en este turno.
+	// EL BARRIDO DEL CIERRE (spec 048), en su propia transacción y antes de la del cierre: el
+	// esperado se calcula con otra conexión, que no vería lo pegado en una transacción sin confirmar.
+	// Si el cierre falla después, los pendientes se quedan en este turno abierto, que es donde caen.
+	if err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		if _, err := q.LockSessionForClose(ctx, sess.ID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		_, err := sweepPendingExpenses(ctx, q, sess.ID, registerID, sess.OpenedAt, s.now())
+		return err
+	}); err != nil {
+		return nil, err
+	}
 	var view *SessionView
 	var conteo *conteoResuelto
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
