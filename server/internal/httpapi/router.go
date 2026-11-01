@@ -375,6 +375,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				})
 				// El fondo fijo (spec 035) cambia cuánto se retira en cada cierre: por permiso, no por rol.
 				r.With(RequirePermission(h.permissions, domain.PermCashConfigure)).Put("/cash-registers/{id}/fixed-float", h.SetFixedFloat)
+				// Qué caja vende (spec 049): por permiso, como el fondo fijo.
+				r.With(RequirePermission(h.permissions, domain.PermCashConfigure)).Post("/cash-registers/{id}/sells", h.MoveSales)
 				// Lista de categorías (para el formulario de gasto): cualquier autenticado.
 				r.Get("/expense-categories", h.ExpenseCategories)
 				// Gastos, proveedores y catálogo de categorías = gestión/contabilidad → admin/gerente.

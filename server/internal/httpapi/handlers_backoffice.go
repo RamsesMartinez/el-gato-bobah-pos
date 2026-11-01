@@ -127,6 +127,22 @@ func (h *Handlers) CreateCashRegister(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, v)
 }
 
+// MoveSales — POST /cash-registers/{id}/sells, permiso cash.configure. Pasa la venta a esa caja y
+// responde las cajas como /cash-registers/all, para que la pantalla pinte el cambio (spec 049).
+func (h *Handlers) MoveSales(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.MoveSales(r.Context(), id, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	h.AllCashRegisters(w, r)
+}
+
 func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {

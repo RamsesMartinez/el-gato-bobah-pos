@@ -1636,7 +1636,8 @@ func (q *Queries) LockPaymentMethod(ctx context.Context, id int16) (LockPaymentM
 }
 
 const lockRegistersForSalesMove = `-- name: LockRegistersForSalesMove :many
-select r.id, r.branch_id, r.is_active, r.is_primary,
+select r.id, r.branch_id, r.is_active,
+       (r.is_primary and r.branch_id = current_branch_id())::bool as sells_here,
        exists (select 1 from register_sessions s where s.register_id = r.id and s.status = 'abierta')::bool as has_open_shift
   from cash_registers r
  where r.id = $1 or (r.is_primary and r.branch_id = current_branch_id())
@@ -1648,7 +1649,7 @@ type LockRegistersForSalesMoveRow struct {
 	ID           int64 `json:"id"`
 	BranchID     int64 `json:"branch_id"`
 	IsActive     bool  `json:"is_active"`
-	IsPrimary    bool  `json:"is_primary"`
+	SellsHere    bool  `json:"sells_here"`
 	HasOpenShift bool  `json:"has_open_shift"`
 }
 
@@ -1669,7 +1670,7 @@ func (q *Queries) LockRegistersForSalesMove(ctx context.Context, targetID int64)
 			&i.ID,
 			&i.BranchID,
 			&i.IsActive,
-			&i.IsPrimary,
+			&i.SellsHere,
 			&i.HasOpenShift,
 		); err != nil {
 			return nil, err

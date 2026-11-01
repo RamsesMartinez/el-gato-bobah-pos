@@ -760,7 +760,8 @@ select not exists (select 1 from register_sessions o
 -- bloqueadas en orden de id para que dos cambios a la vez no se esperen en ciclo. Abrir turno toma
 -- la caja con GetCashRegisterForUpdate, así que no puede colarse entre la validación y el cambio.
 -- La sucursal y el turno abierto se leen de cada fila, no de la sesión.
-select r.id, r.branch_id, r.is_active, r.is_primary,
+select r.id, r.branch_id, r.is_active,
+       (r.is_primary and r.branch_id = current_branch_id())::bool as sells_here,
        exists (select 1 from register_sessions s where s.register_id = r.id and s.status = 'abierta')::bool as has_open_shift
   from cash_registers r
  where r.id = sqlc.arg(target_id) or (r.is_primary and r.branch_id = current_branch_id())
