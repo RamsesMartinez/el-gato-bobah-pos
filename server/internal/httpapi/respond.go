@@ -98,6 +98,12 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "OPENER_NOT_CLOCKED_OUT"
 	case errors.Is(err, domain.ErrCashClockOutWithPIN):
 		status, code = http.StatusConflict, "CLOCK_OUT_WITH_PIN"
+	// Editar un gasto (spec 053): antes de ErrValidation y ErrConflict, que los envuelven. La pantalla
+	// vuelve a pedir la vista previa con el primero y señala la decisión que falta con el segundo.
+	case errors.Is(err, domain.ErrDecisionRequired):
+		status, code = http.StatusBadRequest, "DECISION_REQUIRED"
+	case errors.Is(err, domain.ErrExpenseEditStale):
+		status, code = http.StatusConflict, "EXPENSE_EDIT_STALE"
 	// Lo que salió de la caja (spec 050): antes de ErrValidation, que lo envuelve.
 	case errors.Is(err, domain.ErrDrawerExtraTooHigh):
 		status, code = http.StatusBadRequest, "DRAWER_EXTRA_TOO_HIGH"

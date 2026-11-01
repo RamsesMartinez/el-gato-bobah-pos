@@ -106,7 +106,11 @@ where (sqlc.narg('status')::expense_status is null or e.status = sqlc.narg('stat
 
 -- name: CancelExpense :execrows
 update expenses set status = 'cancelada', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
-where id = $1 and status = 'pendiente';
+where expenses.id = $1 and expenses.status = 'pendiente'
+  -- Con un pago ya dentro de un corte no se anula (spec 053, A1): el corte seguiría contando la salida
+  -- de un gasto anulado y el arqueo dejaría de cuadrar.
+  and not exists (select 1 from expense_payments ep where ep.expense_id = expenses.id
+                                                     and ep.register_session_id is not null);
 
 -- ==== Líneas del gasto (mercancía) ====
 

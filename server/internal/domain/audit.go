@@ -105,6 +105,8 @@ var auditActions = []struct {
 	// Renglones excluidos y caja que vende (spec 049): con los demás gastos y cajas.
 	{AuditExpenseItemExcluded, AuditGroupCash},
 	{AuditCashSellingRegisterChanged, AuditGroupCash},
+	// Editar un gasto ya guardado (spec 053): con los demás gastos.
+	{AuditExpenseEdited, AuditGroupCash},
 }
 
 const (
@@ -112,6 +114,9 @@ const (
 	AuditExpenseItemExcluded AuditAction = "expense.item_excluded"
 	// AuditCashSellingRegisterChanged: la venta pasó a otra caja.
 	AuditCashSellingRegisterChanged AuditAction = "cash.selling_register_changed"
+	// AuditExpenseEdited: se corrigió un gasto ya guardado: su encabezado, renglones agregados o
+	// quitados, su importe y las decisiones ante un conteo.
+	AuditExpenseEdited AuditAction = "expense.edited"
 )
 
 const (

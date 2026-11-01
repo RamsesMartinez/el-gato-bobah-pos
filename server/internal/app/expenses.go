@@ -69,6 +69,14 @@ type ExpenseItemView struct {
 	Excluded bool `json:"excluded"`
 	// OnHand: lo guardado hoy del artículo, en unidad base (solo renglones de almacén).
 	OnHand *decimal.Decimal `json:"onHand"`
+	// Deliveries: lo que sumó cada día de entrega, en unidad base (spec 053). Siempre un arreglo.
+	Deliveries []DeliveryView `json:"deliveries"`
+}
+
+// DeliveryView es lo que un renglón sumó al almacén en un día de entrega, correcciones incluidas.
+type DeliveryView struct {
+	On      string          `json:"on"`
+	QtyBase decimal.Decimal `json:"qtyBase"`
 }
 
 type ExpensePaymentView struct {
@@ -1041,18 +1049,23 @@ func (s *BackofficeService) learnSupplierItems(ctx context.Context, q *db.Querie
 
 // ---- Cancelación ----
 
-// CancelExpense anula una pendiente (una pagada es terminal — ver domain.CanCancelExpense).
+// CancelExpense anula una pendiente sin pagos (ver domain.CanCancelExpense).
 func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason string, userID int64) error {
 	exp, err := s.getExpense(ctx, id)
 	if err != nil {
 		return err
 	}
-	if !domain.CanCancelExpense(string(exp.Status)) {
-		return domain.ErrConflict
-	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		if _, err := q.LockExpenseForStock(ctx, id); err != nil {
+		locked, err := q.LockExpenseForEdit(ctx, id)
+		if err != nil {
 			return err
+		}
+		// Con el gasto tomado: un pago que entra a un corte mientras tanto no deja anularlo (spec 053, A1).
+		if !domain.CanCancelExpense(string(locked.Status), locked.CountedPaymentCount > 0) {
+			if locked.CountedPaymentCount > 0 && locked.Status == db.ExpenseStatusPendiente {
+				return fmt.Errorf("%w: un pago de este gasto ya está en un corte de caja; no se puede anular", domain.ErrConflict)
+			}
+			return domain.ErrConflict
 		}
 		// Lo que la compra sumó al almacén se revierte con movimientos nuevos, en la misma tx:
 		// anular el gasto y dejar la mercancía sumada haría que el almacén contara algo que no
@@ -1146,6 +1159,17 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 	}
 	out.Paid = paid
 	out.DocumentTotal = exp.DocumentTotal
+	history, err := s.store.QC(ctx).ExpenseDeliveryHistory(ctx, &id)
+	if err != nil {
+		return out, err
+	}
+	deliveries := map[int64][]DeliveryView{}
+	for _, h := range history {
+		if h.Qty.IsZero() || !h.Day.Valid {
+			continue
+		}
+		deliveries[h.ItemID] = append(deliveries[h.ItemID], DeliveryView{On: h.Day.Time.Format(dateFmt), QtyBase: h.Qty})
+	}
 	// Un renglón quitado en una corrección no se muestra: su rastro son sus movimientos.
 	out.Items = make([]ExpenseItemView, 0, len(items))
 	for _, r := range items {
@@ -1159,6 +1183,10 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 			Amount: r.Amount, PackQtyInBase: r.PackQtyInBase,
 			Applied: r.AppliedQtyBase, BaseUnitCode: r.BaseUnitCode, NotComing: r.NotComingQty,
 			IsGift: r.IsGift, PresentationID: r.PresentationID, Excluded: r.Excluded,
+			Deliveries: deliveries[r.ID],
+		}
+		if v.Deliveries == nil {
+			v.Deliveries = []DeliveryView{}
 		}
 		if r.ItemType != nil {
 			t := string(*r.ItemType)
