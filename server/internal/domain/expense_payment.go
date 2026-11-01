@@ -19,6 +19,14 @@ var (
 	// ErrPrimaryRegisterCounts: la caja principal vende en efectivo; sin arqueo sus ventas no
 	// tendrían corte.
 	ErrPrimaryRegisterCounts = fmt.Errorf("%w: la caja principal siempre lleva arqueo", ErrConflict)
+	// ErrExpenseBeforeLastClose: un pago incluido en el arqueo cuya hora cae en o antes del último
+	// cierre de su caja (o antes de la apertura del turno abierto): ningún corte puede tomarlo. Solo
+	// se puede guardar sin incluir (spec 048).
+	ErrExpenseBeforeLastClose = fmt.Errorf("%w: este gasto es de antes del último corte de la caja; solo se puede registrar sin incluir en el arqueo", ErrConflict)
+	// ErrPaymentInClosedCount: se intentó cambiar la casilla de un pago cuyo corte ya se cerró.
+	ErrPaymentInClosedCount = fmt.Errorf("%w: el corte de este pago ya se cerró", ErrConflict)
+	// ErrInvalidOpeningTime: la hora de apertura movida es futura o no es posterior al último cierre.
+	ErrInvalidOpeningTime = fmt.Errorf("%w: hora de apertura inválida", ErrValidation)
 )
 
 // PaymentRegister es lo que importa de una caja para decidir a dónde va un pago de gasto.
@@ -26,32 +34,111 @@ type PaymentRegister struct {
 	CountsCash bool
 	// OpenShiftDay es el día de negocio del turno abierto; nil si la caja está cerrada.
 	OpenShiftDay *time.Time
+	// OpenShiftOpenedAt es la hora de apertura del turno abierto (spec 048); nil si está cerrada.
+	OpenShiftOpenedAt *time.Time
+	// LastClose es la hora del último cierre de la caja; nil si nunca cerró.
+	LastClose *time.Time
 }
 
-// ExpensePaymentTarget dice si un pago de gasto entra al turno abierto de su caja.
+// PaymentChoice es lo que decidió quien captura. IncludeInCount nil es una tableta con la versión
+// de la 047, que no conoce la casilla: se decide con las reglas de entonces.
+type PaymentChoice struct {
+	IncludeInCount *bool
+	// OutsideCount confirma el aviso: con la casilla, «Registrar» (pendiente); sin ella, «fuera».
+	OutsideCount bool
+}
+
+// PaymentTarget es a dónde va un pago de gasto respecto al arqueo.
+type PaymentTarget int
+
+const (
+	// TargetOutside: fuera de todo corte.
+	TargetOutside PaymentTarget = iota
+	// TargetShift: al turno abierto de su caja.
+	TargetShift
+	// TargetPending: incluido, sin corte todavía; lo toma el siguiente corte cuya ventana cubra su
+	// hora (spec 048).
+	TargetPending
+)
+
+// PaymentTime es la hora del pago: la del reloj si se paga el día de negocio de hoy; si no, la
+// medianoche de su día en la zona del negocio. No existe la hora real de un pago capturado días
+// después, y la medianoche lo deja casi siempre antes del último cierre, fuera de todo corte.
+func PaymentTime(paidOn, now time.Time, loc *time.Location) time.Time {
+	if BusinessDate(now, loc).Equal(paidOn) {
+		return now
+	}
+	if loc == nil {
+		loc = time.UTC
+	}
+	y, m, d := paidOn.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, loc)
+}
+
+// ExpensePaymentTarget dice a dónde va un pago de gasto.
 //
-// Efectivo entra solo si su caja se cuenta, tiene turno y el pago es del día de ese turno: un pago
-// de otro día no salió del cajón que hoy se va a contar. Cualquier otro efectivo de una caja que se
-// cuenta queda fuera de corte, y eso exige outsideCount. Tarjeta y transferencia no mueven el cajón:
-// se atribuyen al turno abierto si lo hay, como siempre, y si no quedan fuera sin preguntar.
-func ExpensePaymentTarget(isCash bool, reg *PaymentRegister, paidOn time.Time, outsideCount bool) (bool, error) {
+// Tarjeta y transferencia no mueven el cajón: se atribuyen al turno abierto si lo hay, como siempre.
+// El efectivo de una caja sin arqueo queda fuera sin preguntar. El de una caja con arqueo:
+//   - desmarcado → fuera, sin preguntar;
+//   - con turno abierto y del día del turno, o con hora dentro de él → al corte;
+//   - con hora en o antes del último cierre, o antes de la apertura del turno abierto → no hay corte
+//     que lo pueda tomar: ErrExpenseBeforeLastClose;
+//   - si no, pendiente, pero solo tras confirmar el aviso.
+//
+// Sin casilla (IncludeInCount nil) rigen las reglas de la 047 tal cual: solo el día del turno entra,
+// y confirmar es «fuera». Así una tableta vieja durante la subida nunca deja un pendiente.
+func ExpensePaymentTarget(isCash bool, reg *PaymentRegister, paidOn, paidAt time.Time, choice PaymentChoice) (PaymentTarget, error) {
 	if reg == nil {
 		if isCash {
-			return false, ErrPaymentNeedsRegister
+			return TargetOutside, ErrPaymentNeedsRegister
 		}
-		return false, nil
+		return TargetOutside, nil
 	}
 	if !isCash {
-		return reg.OpenShiftDay != nil, nil
+		if reg.OpenShiftDay != nil {
+			return TargetShift, nil
+		}
+		return TargetOutside, nil
 	}
 	if !reg.CountsCash {
-		return false, nil
+		return TargetOutside, nil
 	}
-	if reg.OpenShiftDay != nil && reg.OpenShiftDay.Equal(paidOn) {
-		return true, nil
+	if choice.IncludeInCount == nil {
+		if reg.OpenShiftDay != nil && reg.OpenShiftDay.Equal(paidOn) {
+			return TargetShift, nil
+		}
+		if choice.OutsideCount {
+			return TargetOutside, nil
+		}
+		return TargetOutside, ErrExpenseOutsideCount
 	}
-	if outsideCount {
-		return false, nil
+	if !*choice.IncludeInCount {
+		return TargetOutside, nil
 	}
-	return false, ErrExpenseOutsideCount
+	if reg.OpenShiftDay != nil && (reg.OpenShiftDay.Equal(paidOn) ||
+		(reg.OpenShiftOpenedAt != nil && !paidAt.Before(*reg.OpenShiftOpenedAt))) {
+		return TargetShift, nil
+	}
+	if reg.LastClose != nil && !paidAt.After(*reg.LastClose) {
+		return TargetOutside, ErrExpenseBeforeLastClose
+	}
+	if reg.OpenShiftOpenedAt != nil && paidAt.Before(*reg.OpenShiftOpenedAt) {
+		return TargetOutside, ErrExpenseBeforeLastClose
+	}
+	if !choice.OutsideCount {
+		return TargetOutside, ErrExpenseOutsideCount
+	}
+	return TargetPending, nil
+}
+
+// ValidBackdatedOpening valida la hora de apertura movida hacia atrás: nunca futura y siempre
+// después del último cierre de la caja, para que dos cortes no se repartan el mismo efectivo.
+func ValidBackdatedOpening(openedAt, now time.Time, lastClose *time.Time) error {
+	if openedAt.After(now) {
+		return fmt.Errorf("%w: la hora de apertura no puede ser futura", ErrInvalidOpeningTime)
+	}
+	if lastClose != nil && !openedAt.After(*lastClose) {
+		return fmt.Errorf("%w: la hora de apertura tiene que ser después del último cierre de la caja", ErrInvalidOpeningTime)
+	}
+	return nil
 }

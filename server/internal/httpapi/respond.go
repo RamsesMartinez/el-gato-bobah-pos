@@ -150,6 +150,11 @@ func Error(w http.ResponseWriter, err error) {
 	// gasto pregunta con el primero, y la de cajas dice qué hacer con los otros tres.
 	case errors.Is(err, domain.ErrExpenseOutsideCount):
 		status, code = http.StatusConflict, "EXPENSE_OUTSIDE_COUNT"
+	// El arqueo por hora (spec 048): el primero cambia lo que ofrece el aviso del gasto.
+	case errors.Is(err, domain.ErrExpenseBeforeLastClose):
+		status, code = http.StatusConflict, "EXPENSE_BEFORE_LAST_CLOSE"
+	case errors.Is(err, domain.ErrPaymentInClosedCount):
+		status, code = http.StatusConflict, "PAYMENT_IN_CLOSED_COUNT"
 	case errors.Is(err, domain.ErrRegisterNotCounted):
 		status, code = http.StatusConflict, "REGISTER_NOT_COUNTED"
 	case errors.Is(err, domain.ErrRegisterHasOpenShift):
