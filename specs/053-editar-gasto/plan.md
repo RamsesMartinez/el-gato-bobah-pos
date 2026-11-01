@@ -49,7 +49,7 @@ durante la subida; nada de `<select>` ni calendario nativo
 | III. Dinero | `Round2` en importes, `ValidMoney` antes de escribir; el importe lo calcula el servidor (R4); cada cifra de la vista previa declara qué es (importe, pagado, saldo, pagado de más) | OK |
 | IV. Test-first | Unitarios table-driven de R4, R5 (lógica de la ventana), FR-017, FR-018, fecha y huella; integración de la migración (dos empresas), de cada criterio de aceptación, de la reversión de la vista previa y de aislamiento con `inTheThreeCases` | OK |
 | IV. Migración tolerante | Solo agrega una columna nullable; la API vieja inserta sin ella | OK |
-| V. Seguridad | `RequirePermission(expenses.edit)` y `RequirePermission(inventory.receive)` en el router; `arrivedOn` revalida `inventory.receive` en el handler (`domain.EditNeedsReceive`); parámetros inválidos se rechazan (decisión, `shortfall`, fecha); `preview` solo acepta `1`/ausente | OK |
+| V. Seguridad | `RequirePermission(expenses.edit)` y `RequirePermission(inventory.receive)` en el router; mover el almacén desde la edición («Ya llegó», quitar lo recibido) exige también `inventory.receive`, decidido en el servicio con `EditInput.CanReceive`; parámetros inválidos se rechazan (decisión, `shortfall`, fecha); `preview` solo acepta `1`/ausente | OK |
 | VI. YAGNI | Sin tabla de entregas, sin tabla de decisiones (van en movimientos y bitácora), sin pantalla de permisos | OK |
 | VII. Comentarios / idioma | Identificadores en inglés; textos y comentarios en español | OK |
 | VIII. Puertas | Ver abajo | OK |
@@ -95,7 +95,8 @@ describe la opción que eligió el dueño (tabla «Maquetas»).
    todo»). Si queda menos de lo que falta: «⚠ Faltarán N» en la misma línea que el nombre (14 px,
    600), para que todo renglón mida 60 px. El cuerpo es `flex="1" minH={0}` con scroll (patrón de
    `Page fill`). Pie: «N de M renglones» (o «Nada llegó todavía» con todo en 0) · «Cancelar» · «Ver
-   efectos» → vista previa. Se abre desde el detalle, desde el atajo
+   efectos» → vista previa. El mismo teclado en pantalla se usa en «Agregar renglón» y en «Corregir lo
+   que llegó» del detalle. Se abre desde el detalle, desde el atajo
    «Recibir» de la lista de gastos y desde «Por recibir».
 3. **Vista previa** (nueva, `EditPreviewSheet`, opción B «Tabla antes/después», componente único):
    hoja inferior con una tabla Qué / Antes / Después / Cambio; los grupos Inventario, Dinero y Costos
