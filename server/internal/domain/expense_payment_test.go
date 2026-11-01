@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 func TestExpensePaymentTarget(t *testing.T) {
@@ -161,5 +163,39 @@ func TestValidBackdatedOpening(t *testing.T) {
 				t.Fatal("una hora inválida tiene que ser 400, no otra cosa")
 			}
 		})
+	}
+}
+
+// Lo que salió de la caja además del importe no pasa de lo excluido del gasto que otros pagos no
+// hayan usado ya (spec 050, R1), ni deja la salida por encima de MaxMoney (R6).
+func TestValidDrawerExtra(t *testing.T) {
+	d := decimal.RequireFromString
+	cases := []struct {
+		name                      string
+		amount, extra, excl, used string
+		wantErr                   error
+	}{
+		{"sin extra siempre vale, aunque no haya excluidos", "380", "0", "0", "0", nil},
+		{"igual al tope", "380", "120", "120", "0", nil},
+		{"un centavo sobre el tope", "380", "120.01", "120", "0", ErrDrawerExtraTooHigh},
+		{"negativo", "380", "-1", "120", "0", ErrValidation},
+		{"sin excluidos no hay de dónde", "380", "1", "0", "0", ErrDrawerExtraTooHigh},
+		{"otro pago ya usó una parte", "380", "100", "120", "30", ErrDrawerExtraTooHigh},
+		{"lo que queda tras otro pago", "380", "90", "120", "30", nil},
+		{"importe más extra sobre MaxMoney", "9999990", "20", "100", "0", ErrValidation},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := ValidDrawerExtra(d(c.amount), d(c.extra), d(c.excl), d(c.used))
+			if c.wantErr == nil && err != nil {
+				t.Fatalf("quería válido; dio %v", err)
+			}
+			if c.wantErr != nil && !errors.Is(err, c.wantErr) {
+				t.Fatalf("quería %v; dio %v", c.wantErr, err)
+			}
+		})
+	}
+	if !errors.Is(ErrDrawerExtraTooHigh, ErrValidation) {
+		t.Fatal("pasar el tope es un 400, no un 409")
 	}
 }

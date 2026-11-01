@@ -98,6 +98,9 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "OPENER_NOT_CLOCKED_OUT"
 	case errors.Is(err, domain.ErrCashClockOutWithPIN):
 		status, code = http.StatusConflict, "CLOCK_OUT_WITH_PIN"
+	// Lo que salió de la caja (spec 050): antes de ErrValidation, que lo envuelve.
+	case errors.Is(err, domain.ErrDrawerExtraTooHigh):
+		status, code = http.StatusBadRequest, "DRAWER_EXTRA_TOO_HIGH"
 	case errors.Is(err, domain.ErrValidation):
 		status, code = http.StatusBadRequest, "VALIDATION"
 	case errors.Is(err, domain.ErrPlatformNotFound):
