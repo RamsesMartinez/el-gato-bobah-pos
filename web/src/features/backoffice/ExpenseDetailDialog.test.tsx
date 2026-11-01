@@ -162,7 +162,20 @@ describe('renglones excluidos (spec 049)', () => {
     await waitFor(() => expect(back.setItemExcluded).toHaveBeenCalledWith(9, 42, false));
   });
 
-  test('uno incluido lleva «Excluir» en su fila', async () => {
+  test('uno incluido lleva «Excluir» con texto; si ya entró al almacén, pide confirmar (spec 050)', async () => {
+    montar();
+    const fila = await screen.findByTestId('renglon-recibido');
+    const boton = within(fila).getByRole('button', { name: 'Excluir' });
+    expect(boton).toHaveTextContent('Excluir');
+    fireEvent.click(boton);
+    expect(back.setItemExcluded).not.toHaveBeenCalled();
+    expect(await screen.findByText('Sacar del almacén lo que llegó de Leche entera')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir y sacar del almacén' }));
+    await waitFor(() => expect(back.setItemExcluded).toHaveBeenCalledWith(9, 41, true));
+  });
+
+  test('si todavía no entró nada al almacén, «Excluir» no pregunta', async () => {
+    back.expenseDetail.mockResolvedValue(detail([leche({ applied: '0', qtyReceived: null })]));
     montar();
     const fila = await screen.findByTestId('renglon-recibido');
     fireEvent.click(within(fila).getByRole('button', { name: 'Excluir' }));

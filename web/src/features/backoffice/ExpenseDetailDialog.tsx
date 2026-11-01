@@ -21,6 +21,7 @@ import { mensajeDeError } from '../../api/mensajes';
 import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
 import { Switch } from '../../components/ui/switch';
+import { ConfirmSheet } from '../../components/ConfirmSheet';
 
 // Detalle del gasto y «Corregir lo que llegó» (spec 038, maqueta B: editar todo y ver la
 // diferencia). El almacén se mueve solo por la diferencia contra lo que cada renglón ya sumó, así
@@ -79,6 +80,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
   const user = useSessionStore((s) => s.user);
   const canReceive = can('inventory.receive', user);
   const [excludeError, setExcludeError] = useState('');
+  const [toExclude, setToExclude] = useState<ExpenseItem | null>(null);
   const goods = (data?.items ?? []).filter((i) => i.itemType !== null && !i.excluded);
   const excludedItems = (data?.items ?? []).filter((i) => i.excluded);
   const editOf = (i: ExpenseItem): Edit => edits[i.id] ?? { qty: i.qtyReceived && num(i.qtyReceived) > 0 ? i.qtyReceived : i.quantity, state: stateOf(i) };
@@ -234,9 +236,19 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                     {goods.map((i) => (
                       <GoodsRow key={i.id} item={i} edit={editOf(i)} editing={editing} presentations={presList}
                         desired={desiredBase(i)} onEdit={(patch) => setEdit(i, patch)}
-                        onExclude={canReceive && !cancelled ? () => toggleExcluded.mutate({ itemId: i.id, excluded: true }) : undefined} />
+                        onExclude={canReceive && !cancelled ? () => {
+                          // Lo que ya entró al almacén sale con la exclusión: eso se confirma (spec 050).
+                          if (num(i.applied) !== 0) setToExclude(i);
+                          else toggleExcluded.mutate({ itemId: i.id, excluded: true });
+                        } : undefined} />
                     ))}
                   </VStack>
+                  <ConfirmSheet isOpen={toExclude !== null}
+                    title={`Sacar del almacén lo que llegó de ${toExclude?.itemName ?? toExclude?.description ?? ''}`}
+                    description="No es del negocio: se guarda en la compra, pero sale del almacén y del costo."
+                    cancelLabel="Volver" confirmLabel="Excluir y sacar del almacén" loading={toggleExcluded.isPending}
+                    onCancel={() => setToExclude(null)}
+                    onConfirm={() => { const i = toExclude; setToExclude(null); if (i) toggleExcluded.mutate({ itemId: i.id, excluded: true }); }} />
                   {editing && (
                     <Button minH="44px" variant="outline" borderStyle="dashed" colorPalette="brand" onClick={() => setAddingMore(true)}>
                       + Agregar un {settings?.stockItemLabel || 'artículo'} que faltó
@@ -427,9 +439,9 @@ function GoodsRow({ item, edit, editing, presentations, desired, onEdit, onExclu
         <Text fontSize="sm" color="fg.muted">{formatBaseQty(item.applied, base)} en el almacén</Text>
       )}
       {!editing && onExclude && (
-        <IconButton aria-label="Excluir" title="Excluir: no es del local" variant="outline" minH="44px" minW="44px" onClick={onExclude}>
-          <LuBan />
-        </IconButton>
+        <Button title="Excluir: no es del local" variant="outline" minH="44px" onClick={onExclude}>
+          <LuBan /> Excluir
+        </Button>
       )}
     </HStack>
   );

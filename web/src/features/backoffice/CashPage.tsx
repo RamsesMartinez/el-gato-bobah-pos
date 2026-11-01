@@ -189,6 +189,9 @@ export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE, o
   );
 }
 
+// TOQUE_44: la zona de un interruptor de tabla, del tamaño que un dedo acierta a la primera.
+const TOQUE_44 = { minH: '44px', minW: '44px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' } as const;
+
 // Gastos del corte en tabla + total. No renderiza nada si no hay gastos (ahorra espacio).
 export function ExpensesTable({ expenses, currency }: { expenses: CashExpenseLine[]; currency: string }) {
   if (!expenses?.length) return null;
@@ -208,7 +211,13 @@ export function ExpensesTable({ expenses, currency }: { expenses: CashExpenseLin
               <Table.Cell>{e.category}</Table.Cell>
               <Table.Cell color="fg.muted">{e.supplier ?? '—'}</Table.Cell>
               <Table.Cell color="fg.muted">{e.paymentMethod ?? '—'}</Table.Cell>
-              <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap">{money(e.amount, currency)}</Table.Cell>
+              <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap">
+                {money(e.amount, currency)}
+                {/* Salió del cajón con este gasto, pero no es del negocio (spec 050): no suma al total. */}
+                {Number(e.drawerExtra) > 0 && (
+                  <Text fontSize="xs" fontWeight="400" color="fg.muted">+ {money(e.drawerExtra!, currency)} no es del negocio</Text>
+                )}
+              </Table.Cell>
             </Table.Row>
           ))}
           <Table.Row fontWeight="700">
@@ -1516,21 +1525,21 @@ export function ManageRegistersTab() {
             {(data?.items ?? []).map((r) => (
               <Table.Row key={r.id}>
                 <Table.Cell>{r.name}</Table.Cell>
-                <Table.Cell minH="44px">
-                  <HStack gap={2}>
-                    <Switch checked={r.isPrimary} disabled={r.isPrimary || !r.isActive}
-                      inputProps={{ 'aria-label': `Vende: ${r.name}` }}
-                      onCheckedChange={(e) => { if (e.checked) setToSell(r); }} />
-                    {r.isPrimary && <Text fontSize="xs" color="fg.muted">Para cambiarla, enciende otra</Text>}
-                  </HStack>
+                {/* Cada interruptor ocupa una zona de 44 px que también recibe el toque (spec 050). */}
+                <Table.Cell>
+                  <Switch {...TOQUE_44} checked={r.isPrimary} disabled={r.isPrimary || !r.isActive}
+                    title={r.isPrimary ? 'Para cambiarla, enciende otra' : undefined}
+                    inputProps={{ 'aria-label': `Vende: ${r.name}` }}
+                    onCheckedChange={(e) => { if (e.checked) setToSell(r); }} />
                 </Table.Cell>
                 <Table.Cell>
                   {/* La caja principal no se puede desactivar (el POS necesita dónde cuadrar). */}
-                  <Switch checked={r.isActive} disabled={r.isPrimary}
+                  <Switch {...TOQUE_44} checked={r.isActive} disabled={r.isPrimary}
+                    inputProps={{ 'aria-label': `Activa: ${r.name}` }}
                     onCheckedChange={(e) => update.mutate({ ...r, isActive: e.checked })} />
                 </Table.Cell>
                 <Table.Cell>
-                  <Switch checked={r.countsCash !== false} disabled={r.isPrimary}
+                  <Switch {...TOQUE_44} checked={r.countsCash !== false} disabled={r.isPrimary}
                     inputProps={{ 'aria-label': `Lleva arqueo: ${r.name}` }}
                     onCheckedChange={(e) => setCounts.mutate({ id: r.id, name: r.name, isActive: r.isActive, countsCash: e.checked })} />
                 </Table.Cell>
@@ -1542,7 +1551,7 @@ export function ManageRegistersTab() {
       </Box>
 
       <ConfirmSheet isOpen={toSell !== null} title={`¿Pasar las ventas a ${toSell?.name ?? ''}?`}
-        cancelLabel="Volver" confirmLabel={`Pasar las ventas a ${toSell?.name ?? ''}`}
+        cancelLabel="Volver" confirmLabel={`Pasar las ventas a ${toSell?.name ?? ''}`} confirmPalette="brand"
         onCancel={() => setToSell(null)}
         onConfirm={() => { const r = toSell; setToSell(null); if (r) sell.mutate(r.id); }} />
 
