@@ -184,19 +184,34 @@ func recipeCounts(ctx context.Context, q *db.Queries, kind domain.RecipeKind, ca
 
 // ConfirmRecipes confirma de una vez las recetas estimadas de la lista que se ve. Solo las
 // estimadas: una pendiente confirmada sin receta diría «no gasta insumos», y eso lo decide una
-// persona abriéndola.
+// persona abriéndola. Recalcula el costo, como confirmar una sola.
 func (s *AdminService) ConfirmRecipes(ctx context.Context, kind domain.RecipeKind, ids []int64, actor int64) (int64, error) {
 	if err := domain.ValidConfirmIDs(ids); err != nil {
 		return 0, err
 	}
-	q := s.store.QC(ctx)
-	switch kind {
-	case domain.RecipeKindProduct:
-		return q.ConfirmEstimatedProducts(ctx, db.ConfirmEstimatedProductsParams{Ids: ids, Actor: &actor})
-	case domain.RecipeKindExtra:
-		return q.ConfirmEstimatedOptions(ctx, db.ConfirmEstimatedOptionsParams{Ids: ids, Actor: &actor})
-	case domain.RecipeKindPrep:
-		return q.ConfirmEstimatedIngredients(ctx, db.ConfirmEstimatedIngredientsParams{Ids: ids, Actor: &actor})
+	var n int64
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := q.LockCompositionEdits(ctx); err != nil {
+			return err
+		}
+		var err error
+		switch kind {
+		case domain.RecipeKindProduct:
+			n, err = q.ConfirmEstimatedProducts(ctx, db.ConfirmEstimatedProductsParams{Ids: ids, Actor: &actor})
+		case domain.RecipeKindExtra:
+			n, err = q.ConfirmEstimatedOptions(ctx, db.ConfirmEstimatedOptionsParams{Ids: ids, Actor: &actor})
+		case domain.RecipeKindPrep:
+			n, err = q.ConfirmEstimatedIngredients(ctx, db.ConfirmEstimatedIngredientsParams{Ids: ids, Actor: &actor})
+		default:
+			return domain.ErrValidation
+		}
+		if err != nil || n == 0 {
+			return err
+		}
+		return recomputeCosts(ctx, q)
+	})
+	if err != nil {
+		return 0, err
 	}
-	return 0, domain.ErrValidation
+	return n, nil
 }

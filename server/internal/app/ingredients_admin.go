@@ -376,7 +376,7 @@ func sameDec(a, b *decimal.Decimal) bool {
 }
 
 // CorrectArticleCost corrige a mano el costo de un artículo que se compra hecho (FR-005). Cuenta desde
-// ahora y no recalcula lo vendido; queda en el historial con quién lo hizo.
+// ahora y no recalcula lo vendido (order_lines.unit_cost es copia); queda en el historial con quién lo hizo.
 func (s *BackofficeService) CorrectArticleCost(ctx context.Context, id int64, cost decimal.Decimal) error {
 	if !domain.ValidMoney(cost, true) {
 		return fmt.Errorf("%w: costo inválido", domain.ErrValidation)
@@ -387,6 +387,11 @@ func (s *BackofficeService) CorrectArticleCost(ctx context.Context, id int64, co
 	}
 	cost = cost.Round(6)
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El candado del recálculo antes que la fila del insumo: al revés, una captura de receta que
+		// ya lo tiene y cuya llave foránea pide el insumo se esperaban una a la otra.
+		if err := q.LockCompositionEdits(ctx); err != nil {
+			return err
+		}
 		a, err := q.GetArticle(ctx, id)
 		if err != nil {
 			return notFound(err)
@@ -401,10 +406,14 @@ func (s *BackofficeService) CorrectArticleCost(ctx context.Context, id int64, co
 		if err := q.InsertCostCorrection(ctx, db.InsertCostCorrectionParams{IngredientID: id, PreviousCost: prev, NewCost: cost, UserID: actor}); err != nil {
 			return err
 		}
-		return recordAudit(ctx, q, domain.AuditEvent{
+		if err := recordAudit(ctx, q, domain.AuditEvent{
 			Action: domain.AuditIngredientCostCorrected, EntityType: "ingredient", EntityID: id,
 			Before: map[string]any{"cost": prev}, After: map[string]any{"cost": cost},
-		})
+		}); err != nil {
+			return err
+		}
+		// Los preparados, productos, paquetes y extras que lo llevan cambian de costo con él.
+		return recomputeCosts(ctx, q)
 	})
 }
 
