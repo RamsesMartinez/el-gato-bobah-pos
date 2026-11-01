@@ -1,6 +1,7 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
-import { randomBytes, randomInt } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { API, EMPRESA, tokenDeApi } from './ambiente';
+import { pinNuevo } from './personas';
 
 // La caja exige la asistencia de quien la abre (spec 046): los escenarios Q1, Q2, Q5, Q6, Q7 y Q8
 // del quickstart, a 1024×600 con pantalla táctil.
@@ -29,14 +30,6 @@ async function ok<T>(jwt: string, method: string, ruta: string, body?: unknown):
   const r = await api<T>(jwt, method, ruta, body);
   if (r.status >= 300) throw new Error(`${method} ${ruta}: ${r.status} ${JSON.stringify(r.json)}`);
   return r.json;
-}
-
-// Un PIN que el servidor no rechaza por débil: sin dígitos repetidos ni consecutivos.
-function pinNuevo(): string {
-  for (;;) {
-    const d = [0, 1, 2, 3].map(() => randomInt(10));
-    if (new Set(d).size === 4 && d.every((x, i) => i === 0 || Math.abs(x - d[i - 1]) !== 1)) return d.join('');
-  }
 }
 
 async function crearPersona(admin: string, nombre: string, role: string): Promise<Persona> {

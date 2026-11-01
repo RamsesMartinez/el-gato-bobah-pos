@@ -248,6 +248,12 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
   plataforma.
 
+  **Contra la base local, la suite abre la caja principal si la encuentra cerrada y la cierra al
+  terminar** ([caja-principal.ts](web/e2e/caja-principal.ts)): un respaldo restaurado la trae
+  cerrada, y las pruebas de caja dan por hecho un turno abierto. Las personas que una prueba
+  necesita las crea y las da de baja ella ([personas.ts](web/e2e/personas.ts)); ningún id ni nombre
+  de la base es fijo.
+
   **Las capturas de pantalla no se versionan; las e2e las guardan en `test-results/`** (ignorado por
   git). Sin excepciones, con datos reales o inventados: en el repo no tienen uso, y lo observado en una
   prueba se escribe en texto. Ningún spec, plan ni task pide guardarlas en `specs/` ni en otra carpeta

@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { vi, expect, test, describe, beforeEach } from 'vitest';
+import { vi, expect, test, describe, beforeEach, afterEach } from 'vitest';
 import type { ReactElement } from 'react';
 import { Provider } from '../../components/ui/provider';
 import type { CashAttendanceGate } from '../../api/backoffice';
@@ -88,6 +88,15 @@ describe('la tarjeta de caja cerrada', () => {
 });
 
 describe('el cierre', () => {
+  // Una hora fija del negocio: «hace dos horas» corrido entre la medianoche y las 2 a.m. cae en el día
+  // anterior, y el aviso dice la fecha («desde el 31 oct…») en lugar de solo la hora. Solo el reloj:
+  // las consultas y los efectos siguen con temporizadores reales.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-30T13:00:00-06:00'));
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
   const BLOQUE = 'bloque del cierre (tabla, terminales, fondo, notas y «Cerrar caja»)';
   type Extra = Partial<{ autorizacion: string | null; onAutorizar: (r: string) => void; onQuitarAutorizacion: () => void; onActualizar: () => void }>;
   // Como en CashPage: el aviso arriba de la caja abierta y el bloque del cierre más abajo.
