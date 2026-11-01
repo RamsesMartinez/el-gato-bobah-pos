@@ -213,7 +213,7 @@ describe('renglones excluidos (spec 049)', () => {
 });
 
 // Spec 048, R12: en el detalle, quien puede ajustar el arqueo cambia la casilla de un pago en efectivo.
-describe('«En el arqueo» en el detalle del gasto', () => {
+describe('«Incluir en el arqueo» en el detalle del gasto', () => {
   const pago = (over: Record<string, unknown> = {}) => ({
     id: 31, methodId: 1, method: 'Efectivo', amount: '200.00', paidOn: '2026-10-12', inCashCount: true,
     reference: null, affectsCashDrawer: true, includeInCount: true, paidAt: '2026-10-12T15:00:00Z', sessionClosed: false, ...over,
@@ -222,7 +222,7 @@ describe('«En el arqueo» en el detalle del gasto', () => {
     back.expenseDetail.mockResolvedValue(detail([], { payments, status: 'pagada' } as never));
   const quien = (permissions: string[]) =>
     useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'gerente', permissions } as never });
-  const interruptor = () => screen.queryByRole('checkbox', { name: /En el arqueo|Corte cerrado/ });
+  const interruptor = () => screen.queryByRole('checkbox', { name: /Incluir en el arqueo|Corte cerrado/ });
 
   test('con el permiso: interruptor encendido y apagarlo manda includeInCount false', async () => {
     quien(['cash.adjust_count']);
@@ -231,9 +231,16 @@ describe('«En el arqueo» en el detalle del gasto', () => {
     montar();
     await screen.findByText('Efectivo');
     expect(interruptor()).toBeChecked();
-    expect(interruptor()).toHaveAccessibleName('En el arqueo');
+    expect(interruptor()).toHaveAccessibleName('Incluir en el arqueo');
     await userEvent.click(interruptor()!);
     await waitFor(() => expect(back.setPaymentInCount).toHaveBeenCalledWith(9, 31, false));
+  });
+
+  test('un pago con diferencia dice cuánto salió de la caja (spec 050)', async () => {
+    quien([]);
+    conPagos(pago({ amount: '380.00', drawerExtra: '120.00' }));
+    montar();
+    expect(await screen.findByText('$380 · salieron $500 de la caja')).toBeInTheDocument();
   });
 
   test('corte cerrado: se ve «Corte cerrado» y no se puede cambiar', async () => {

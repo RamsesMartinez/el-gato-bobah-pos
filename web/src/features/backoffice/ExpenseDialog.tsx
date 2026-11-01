@@ -780,7 +780,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
                 <LuPlus />
               </IconButton>
             </HStack>
-          ) : !item.excluded && (
+          ) : (
             <Input aria-label="Descripción" placeholder="Qué es (gas, envío…)" w="220px" minH="44px" value={item.description}
               onChange={(e) => onChange({ description: e.target.value })} />
           )}
@@ -789,12 +789,12 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
               value={item.isGift ? '0' : item.amount} disabled={item.isGift}
               onChange={(e) => onChange({ amount: e.target.value })} />
           </Field>
-          <IconButton aria-label="Excluir" aria-pressed={item.excluded} minH="44px" minW="44px"
+          <Button aria-pressed={item.excluded} minH="44px"
             variant={item.excluded ? 'subtle' : 'outline'} colorPalette={item.excluded ? 'purple' : 'gray'}
             title={item.excluded ? 'Excluido: no es del local' : 'Excluir: no es del local'}
             onClick={() => onChange({ excluded: !item.excluded })}>
-            <LuBan />
-          </IconButton>
+            <LuBan /> Excluir
+          </Button>
           {/* Separado del importe: quitar no se deshace y el dedo es gordo. */}
           <Box ml={4}>
             {confirmRemove ? (

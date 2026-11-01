@@ -333,6 +333,16 @@ describe('desde el ticket', () => {
     expect(b.rawName).toBeUndefined();
   });
 
+  test('«Excluir» de la captura se lee y no borra la descripción del renglón (spec 050)', async () => {
+    await capturaConMercancia();
+    const renglon = screen.getByTestId('renglon');
+    fireEvent.change(within(renglon).getByLabelText('Descripción'), { target: { value: 'Shampoo' } });
+    const boton = within(renglon).getByRole('button', { name: 'Excluir' });
+    expect(boton).toHaveTextContent('Excluir');
+    fireEvent.click(boton);
+    expect(within(renglon).getByLabelText('Descripción')).toHaveValue('Shampoo');
+  });
+
   test('«Excluir» conserva el artículo, no suma y se manda marcado (spec 049)', async () => {
     const dudoso = await subirTicket();
     fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));

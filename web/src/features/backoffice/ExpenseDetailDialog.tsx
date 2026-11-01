@@ -22,6 +22,7 @@ import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
 import { Switch } from '../../components/ui/switch';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
+import { INCLUDE_IN_COUNT_LABEL } from './cajaDelGasto';
 
 // Detalle del gasto y «Corregir lo que llegó» (spec 038, maqueta B: editar todo y ver la
 // diferencia). El almacén se mueve solo por la diferencia contra lo que cada renglón ya sumó, así
@@ -304,14 +305,18 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                           {canAdjustCount && p.affectsCashDrawer && p.includeInCount !== undefined && !cancelled && (
                             <Switch minH="44px" checked={p.includeInCount} disabled={p.sessionClosed || setInCount.isPending}
                               onCheckedChange={(e) => setInCount.mutate({ paymentId: p.id, include: e.checked })}>
-                              {p.sessionClosed ? 'Corte cerrado' : 'En el arqueo'}
+                              {p.sessionClosed ? 'Corte cerrado' : INCLUDE_IN_COUNT_LABEL}
                             </Switch>
                           )}
                           <Text>{p.method}</Text>
                           <Text fontSize="xs" color="fg.subtle">{p.paidOn}</Text>
                           {!canAdjustCount && p.inCashCount && <Badge size="sm" colorPalette="blue">en arqueo</Badge>}
                         </HStack>
-                        <Text fontWeight="600">{money(p.amount, data.currency)}</Text>
+                        <Text fontWeight="600">
+                          {money(p.amount, data.currency)}
+                          {/* Del cajón salió también lo que no es del negocio (spec 050). */}
+                          {Number(p.drawerExtra) > 0 && ` · salieron ${money(round2(num(p.amount) + num(p.drawerExtra)), data.currency)} de la caja`}
+                        </Text>
                       </HStack>
                     ))}
                   </VStack>
