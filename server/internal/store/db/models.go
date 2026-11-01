@@ -1048,27 +1048,28 @@ type DeliveryPlatform struct {
 }
 
 type Expense struct {
-	ID           int64              `json:"id"`
-	ExpenseDate  pgtype.Date        `json:"expense_date"`
-	CategoryID   int64              `json:"category_id"`
-	SupplierID   *int64             `json:"supplier_id"`
-	Amount       decimal.Decimal    `json:"amount"`
-	Description  *string            `json:"description"`
-	CreatedBy    int64              `json:"created_by"`
-	CreatedAt    time.Time          `json:"created_at"`
-	Currency     string             `json:"currency"`
-	Status       ExpenseStatus      `json:"status"`
-	PaidAt       pgtype.Timestamptz `json:"paid_at"`
-	PaidBy       *int64             `json:"paid_by"`
-	CancelledAt  pgtype.Timestamptz `json:"cancelled_at"`
-	CancelledBy  *int64             `json:"cancelled_by"`
-	CancelReason *string            `json:"cancel_reason"`
-	ReceivedAt   pgtype.Date        `json:"received_at"`
-	DocKind      *string            `json:"doc_kind"`
-	DocFolio     *string            `json:"doc_folio"`
-	DocRaw       []byte             `json:"doc_raw"`
-	BranchID     *int64             `json:"branch_id"`
-	DocumentDate pgtype.Date        `json:"document_date"`
+	ID            int64              `json:"id"`
+	ExpenseDate   pgtype.Date        `json:"expense_date"`
+	CategoryID    int64              `json:"category_id"`
+	SupplierID    *int64             `json:"supplier_id"`
+	Amount        decimal.Decimal    `json:"amount"`
+	Description   *string            `json:"description"`
+	CreatedBy     int64              `json:"created_by"`
+	CreatedAt     time.Time          `json:"created_at"`
+	Currency      string             `json:"currency"`
+	Status        ExpenseStatus      `json:"status"`
+	PaidAt        pgtype.Timestamptz `json:"paid_at"`
+	PaidBy        *int64             `json:"paid_by"`
+	CancelledAt   pgtype.Timestamptz `json:"cancelled_at"`
+	CancelledBy   *int64             `json:"cancelled_by"`
+	CancelReason  *string            `json:"cancel_reason"`
+	ReceivedAt    pgtype.Date        `json:"received_at"`
+	DocKind       *string            `json:"doc_kind"`
+	DocFolio      *string            `json:"doc_folio"`
+	DocRaw        []byte             `json:"doc_raw"`
+	BranchID      *int64             `json:"branch_id"`
+	DocumentDate  pgtype.Date        `json:"document_date"`
+	DocumentTotal *decimal.Decimal   `json:"document_total"`
 }
 
 type ExpenseCategory struct {
@@ -1099,6 +1100,7 @@ type ExpenseItem struct {
 	NotComingQty   decimal.Decimal    `json:"not_coming_qty"`
 	VoidedAt       pgtype.Timestamptz `json:"voided_at"`
 	IsGift         bool               `json:"is_gift"`
+	Excluded       bool               `json:"excluded"`
 }
 
 type ExpensePayment struct {
