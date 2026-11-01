@@ -459,6 +459,8 @@ export interface ExpenseItem {
   isGift: boolean;
   presentationId: number | null;
   onHand?: string | null;
+  // Venía en el ticket pero no es del local (spec 049): no suma ni toca el almacén.
+  excluded?: boolean;
 }
 export interface ExpensePayment {
   id: number;
@@ -474,6 +476,8 @@ export interface ExpenseDetail extends Expense {
   items: ExpenseItem[];
   payments: ExpensePayment[];
   paid: string;
+  // El total que decía el documento leído (spec 049); ausente en lo capturado a mano.
+  documentTotal?: string;
 }
 
 // ---- Catálogo de artículos ----
@@ -942,6 +946,10 @@ export const backofficeApi = {
     documentTotal?: string;
   }) => api.post<{ id: number }>('/expenses', b),
   expenseDetail: (id: number) => api.get<ExpenseDetail>(`/expenses/${id}`),
+  // Excluye o vuelve a incluir un renglón (spec 049). 400 si rompe la regla del total; 409 si otro
+  // cambio tiene tomados sus artículos.
+  setItemExcluded: (id: number, itemId: number, excluded: boolean) =>
+    api.patch<void>(`/expenses/${id}/items/${itemId}`, { excluded }),
   // Agrega UN pago. Si con él los pagos cubren el importe, el gasto pasa a pagado.
   payExpense: (id: number, b: ExpensePaymentBody) => api.post<void>(`/expenses/${id}/pay`, b),
   // Marca la mercancía recibida y genera los movimientos de almacén. `received` mapea
