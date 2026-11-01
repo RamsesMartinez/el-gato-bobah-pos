@@ -6,6 +6,8 @@ import { Provider } from '../../components/ui/provider';
 import { ApiError } from '../../api/client';
 import type { ExpenseDetail, ExpenseItem } from '../../api/backoffice';
 import { ExpenseDetailDialog } from './ExpenseDetailDialog';
+import { useSessionStore } from '../../stores/session';
+import userEvent from '@testing-library/user-event';
 
 const back = vi.hoisted(() => ({
   expenseDetail: vi.fn(),
@@ -15,6 +17,7 @@ const back = vi.hoisted(() => ({
   receiveExpense: vi.fn(),
   cancelExpense: vi.fn(),
   searchArticles: vi.fn(() => Promise.resolve({ items: [] })),
+  setPaymentInCount: vi.fn(),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 vi.mock('../../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ stockItemLabel: 'artículo' })) } }));
@@ -140,4 +143,66 @@ test('una sola pieza se dice en singular', async () => {
   click(await screen.findByRole('button', { name: 'Corregir lo que llegó' }).then((b) => b.textContent!));
   fireEvent.click(within(await screen.findByTestId('renglon-recibido')).getByRole('button', { name: 'Llegó' }));
   expect(screen.getByTestId('tendras')).toHaveTextContent('Tendrás 1 pieza (hoy 0 piezas)');
+});
+
+// Spec 048, R12: en el detalle, quien puede ajustar el arqueo cambia la casilla de un pago en efectivo.
+describe('«En el arqueo» en el detalle del gasto', () => {
+  const pago = (over: Record<string, unknown> = {}) => ({
+    id: 31, methodId: 1, method: 'Efectivo', amount: '200.00', paidOn: '2026-10-12', inCashCount: true,
+    reference: null, affectsCashDrawer: true, includeInCount: true, paidAt: '2026-10-12T15:00:00Z', sessionClosed: false, ...over,
+  });
+  const conPagos = (...payments: ReturnType<typeof pago>[]) =>
+    back.expenseDetail.mockResolvedValue(detail([], { payments, status: 'pagada' } as never));
+  const quien = (permissions: string[]) =>
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'gerente', permissions } as never });
+  const interruptor = () => screen.queryByRole('checkbox', { name: /En el arqueo|Corte cerrado/ });
+
+  test('con el permiso: interruptor encendido y apagarlo manda includeInCount false', async () => {
+    quien(['cash.adjust_count']);
+    conPagos(pago());
+    back.setPaymentInCount.mockResolvedValue(undefined);
+    montar();
+    await screen.findByText('Efectivo');
+    expect(interruptor()).toBeChecked();
+    expect(interruptor()).toHaveAccessibleName('En el arqueo');
+    await userEvent.click(interruptor()!);
+    await waitFor(() => expect(back.setPaymentInCount).toHaveBeenCalledWith(9, 31, false));
+  });
+
+  test('corte cerrado: se ve «Corte cerrado» y no se puede cambiar', async () => {
+    quien(['cash.adjust_count']);
+    conPagos(pago({ sessionClosed: true }));
+    montar();
+    await screen.findByText('Efectivo');
+    expect(interruptor()).toHaveAccessibleName('Corte cerrado');
+    expect(interruptor()).toBeDisabled();
+  });
+
+  test('sin el permiso no hay interruptor', async () => {
+    quien([]);
+    conPagos(pago());
+    montar();
+    await screen.findByText('Efectivo');
+    expect(interruptor()).toBeNull();
+  });
+
+  test('una tarjeta no lleva interruptor', async () => {
+    quien(['cash.adjust_count']);
+    conPagos(pago({ method: 'Tarjeta', affectsCashDrawer: false, includeInCount: false, inCashCount: false }));
+    montar();
+    await screen.findByText('Tarjeta');
+    expect(interruptor()).toBeNull();
+  });
+
+  test('si el corte se cerró mientras tanto, lo dice y recarga', async () => {
+    quien(['cash.adjust_count']);
+    conPagos(pago({ includeInCount: false, inCashCount: false }));
+    back.setPaymentInCount.mockRejectedValue(new ApiError(409, 'PAYMENT_IN_CLOSED_COUNT', 'cerrado', 'r1'));
+    montar();
+    await screen.findByText('Efectivo');
+    const antes = back.expenseDetail.mock.calls.length;
+    await userEvent.click(interruptor()!);
+    await waitFor(() => expect(back.setPaymentInCount).toHaveBeenCalledWith(9, 31, true));
+    await waitFor(() => expect(back.expenseDetail.mock.calls.length).toBeGreaterThan(antes));
+  });
 });

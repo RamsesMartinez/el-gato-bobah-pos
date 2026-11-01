@@ -23,10 +23,10 @@ import {
   backofficeApi, type ExpenseCategory, type Supplier, type ArticleSuggestion, type Article, type Unit,
   type Presentation, type ExpenseItemBody, type ExpensePaymentBody, type ParsedDoc, type DocLine, type CashRegister,
 } from '../../api/backoffice';
-import { ConfirmSheet } from '../../components/ConfirmSheet';
 import {
-  activeRegisters, registerLabel, isOutsideCount, outsideTitle, OUTSIDE_COUNT_TEXT, OUTSIDE_COUNT_CONFIRM,
+  activeRegisters, registerLabel, outsideAskOf, countsInDrawer, withCountChoice, type CountChoice, type OutsideAsk,
 } from './cajaDelGasto';
+import { IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
 import { montoTecleado, parseNumero, round2 } from '../../domain/numeros';
 import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
 import { PresentationsSheet } from './PresentationsSheet';
@@ -79,6 +79,7 @@ interface DraftPayment {
   paidOn: string;
   registerId: string;
   reference: string;
+  includeInCount: boolean;
 }
 
 let seq = 0;
@@ -91,7 +92,7 @@ const emptyItem = (): DraftItem => ({
 });
 
 const emptyPayment = (paidOn: string): DraftPayment => ({
-  key: nextKey(), methodId: '', amount: '', paidOn, registerId: '', reference: '',
+  key: nextKey(), methodId: '', amount: '', paidOn, registerId: '', reference: '', includeInCount: true,
 });
 
 // En qué se mide un insumo nuevo, y la unidad base que le toca (regla 4: se elige al crearlo).
@@ -161,7 +162,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const activeSups = (sups?.items ?? []).filter((s) => s.isActive);
   const cashRegisters = activeRegisters(registers?.items);
   // Si el servidor dice que el pago no entra a ningún corte, se pregunta antes de reenviar.
-  const [outsideAsk, setOutsideAsk] = useState<string | null>(null);
+  const [outsideAsk, setOutsideAsk] = useState<OutsideAsk | null>(null);
   const unitList = units?.items ?? [];
   const methodList = methods?.items ?? [];
   const presList = presentations ?? [];
@@ -258,6 +259,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const quickPayment: ExpensePaymentBody | null = quickMethod ? {
     methodId: quickMethod.id, amount, paidOn: today(),
     registerId: quickRegister ? Number(quickRegister) : undefined,
+    includeInCount: countsInDrawer(!!quickMethod.affectsCashDrawer, cashRegisters, Number(quickRegister)) || undefined,
   } : null;
   const paymentsSum = payments.reduce((a, p) => a + (montoTecleado(p.amount) ?? 0), 0) + (quickPayment ? total : 0);
   const status: 'pendiente' | 'pagada' = paymentsSum > 0 && paymentsSum >= total ? 'pagada' : 'pendiente';
@@ -285,7 +287,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   };
 
   const create = useMutation({
-    mutationFn: (outsideCount: boolean) => backofficeApi.createExpense({
+    mutationFn: (choice?: CountChoice) => backofficeApi.createExpense({
       expenseDate,
       expenseDay: turno ? undefined : expenseDay,
       receivedAt: withGoods ? today() : undefined,
@@ -325,7 +327,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         paidOn: p.paidOn || undefined,
         registerId: p.registerId ? Number(p.registerId) : undefined,
         reference: p.reference || undefined,
-      }))).map((p) => (outsideCount && p.registerId ? { ...p, outsideCount } : p)),
+        includeInCount: countsInDrawer(needsRegister(p, methodList), cashRegisters, Number(p.registerId)) ? p.includeInCount : undefined,
+      }))).map((p) => withCountChoice(p, choice)),
     }),
     onSuccess: () => {
       if (withGoods) medirAccion('gastos', 'registrar-compra');
@@ -335,11 +338,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
       onSaved();
     },
     onError: (e) => {
-      if (isOutsideCount(e)) {
-        const all = quickPayment ? [quickPayment] : payments.map((p) => ({ registerId: p.registerId ? Number(p.registerId) : undefined }));
-        setOutsideAsk(outsideTitle(cashRegisters, all.map((p) => p.registerId)));
-        return;
-      }
+      const all = quickPayment ? [quickPayment] : payments.map((p) => ({ registerId: p.registerId ? Number(p.registerId) : undefined }));
+      const ask = outsideAskOf(e, cashRegisters, all.map((p) => p.registerId));
+      if (ask) { setOutsideAsk(ask); return; }
       toaster.create({ title: 'No se pudo registrar', description: String(e), type: 'error' });
     },
   });
@@ -629,7 +630,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 )}
               </Text>
               <Button minH="44px" variant="outline" onClick={() => { onClose(); reset(); }}>Cancelar</Button>
-              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate(false)}>
+              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate(undefined)}>
                 Guardar
               </Button>
             </HStack>
@@ -661,10 +662,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
             </DrawerBody>
           </DrawerContent>
         </DrawerRoot>
-        <ConfirmSheet isOpen={outsideAsk !== null} title={outsideAsk ?? ''} description={OUTSIDE_COUNT_TEXT}
-          confirmLabel={OUTSIDE_COUNT_CONFIRM} cancelLabel="Cancelar" loading={create.isPending}
-          onCancel={() => setOutsideAsk(null)}
-          onConfirm={() => { setOutsideAsk(null); create.mutate(true); }} />
+        <OutsideCountSheet ask={outsideAsk} loading={create.isPending} onCancel={() => setOutsideAsk(null)}
+          onChoose={(c) => { setOutsideAsk(null); create.mutate(c); }} />
       </DialogContent>
     </DialogRoot>
   );
@@ -916,9 +915,14 @@ function PaymentRow({ payment, methods, registers, onChange, onRemove }: {
             options={registers.map((r) => ({ value: String(r.id), label: registerLabel(r) }))} />
         )}
       </Field>
-      <IconButton mt={5} minH="44px" minW="44px" variant="ghost" colorPalette="red" aria-label="Quitar pago" onClick={onRemove}>
-        <LuTrash2 />
-      </IconButton>
+      <HStack mt={5} gap={2}>
+        {countsInDrawer(cash, registers, Number(payment.registerId)) && (
+          <IncludeInCountCheckbox checked={payment.includeInCount} onChange={(v) => onChange({ includeInCount: v })} />
+        )}
+        <IconButton minH="44px" minW="44px" variant="ghost" colorPalette="red" aria-label="Quitar pago" onClick={onRemove}>
+          <LuTrash2 />
+        </IconButton>
+      </HStack>
     </HStack>
   );
 }

@@ -37,6 +37,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'payment.terminal_changed': 'Terminal cambiada',
   'product.consumption_mode': 'Cambió qué resta',
   'expense.received': 'Llegó mercancía',
+  'expense.count_changed': 'Cambió “En el arqueo” de un pago',
+  'cash.opening_backdated': 'Abrió la caja con hora anterior',
   'expense.stock_corrected': 'Corrigió lo que llegó',
   'stock.counted': 'Cerró un conteo',
   'settings.costing_method': 'Cambió el costeo del almacén',

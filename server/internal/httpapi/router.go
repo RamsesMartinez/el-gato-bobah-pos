@@ -304,6 +304,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/", h.CashHistory)
 					r.Get("/current", h.CurrentCashSession)
 					r.Get("/attendance", h.CashSessionAttendance) // asistencia para abrir o cerrar (spec 046)
+					r.Get("/pending-expenses", h.PendingExpenses) // gastos sin corte de la caja (spec 048)
 					r.Get("/{id}", h.CashSessionDetail)
 					r.Get("/{id}/sales", h.CashSessionSales)
 					r.Post("/close", h.CloseCashSession)
@@ -387,6 +388,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items", h.AddArrivedItem)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items/{itemId}/receive", h.ReceiveItem)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items/{itemId}/not-coming", h.MarkNotComing)
+					// La casilla del arqueo de un pago ya registrado (spec 048): por permiso, fuera del grupo por rol.
+					r.With(RequirePermission(h.permissions, domain.PermCashAdjustCount)).Patch("/{id}/payments/{paymentId}", h.SetPaymentInCount)
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
 						r.Get("/", h.ListExpenses)
 						r.Post("/", h.CreateExpense)
