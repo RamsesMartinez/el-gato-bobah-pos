@@ -877,8 +877,14 @@ Los principios de la constitución son la vara con la que `analyze` mide spec, p
 Cuando el dueño encarga un issue o una feature «hasta producción» (con `/goal` o con esas palabras),
 la sesión que lo recibe hace TODO esto por su cuenta, en este orden:
 
-1. **Worktree propio**: `/nuevo-spec NNN slug` (o `scripts/nuevo-worktree.sh NNN slug`). Nunca se
-   trabaja en el checkout principal, que se queda en `develop` y limpio.
+1. **Worktree propio, creado ANTES de abrir la sesión que trabaja**: la sesión que orquesta (la del
+   checkout principal) corre `/nuevo-spec NNN slug` y le entrega al dueño `cd <worktree> && claude`
+   más el prompt, que dice «ya estás en tu worktree, no crees otro». La sesión que trabaja nace
+   dentro de él. Solo si nadie orquesta, la propia sesión lo crea antes de tocar código. Nunca se
+   trabaja en el checkout principal, que se queda en `develop` y limpio. **Varias specs a la vez**
+   son varios worktrees, uno por spec, cada uno con su número `NNN` libre (revisa `specs/`, las ramas
+   remotas y `../egb-NNN-*`) y su número de migración; la que llegue primero a `develop` se queda con
+   el número de migración y la otra renumera.
 2. **Feature** → ciclo de spec-kit completo, invocando cada `/speckit-*` con la herramienta Skill
    (no leyéndola) y con sus hooks (`/maquetas`, `/revision-de-arquitectura`), hasta que
    `/speckit-analyze` quede sin CRITICAL ni HIGH. **Defecto** → rama `fix/slug`, test que falla por
