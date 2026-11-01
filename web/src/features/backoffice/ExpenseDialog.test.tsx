@@ -629,7 +629,7 @@ describe('efectivo sin turno abierto (spec 047)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
     fireEvent.click(await screen.findByRole('button', { name: /¿De qué caja sale\?/ }));
     expect(screen.getByRole('button', { name: 'Caja 1' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Caja 2 · sin turno' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Caja 2 · cerrada' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Caja fuerte · sin arqueo' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Vieja/ })).toBeNull();
   });
@@ -663,7 +663,7 @@ describe('efectivo sin turno abierto (spec 047)', () => {
     // Con turno abierto, el 409 solo puede ser por la fecha.
     expect(await screen.findByText('El pago es de otro día')).toBeInTheDocument();
     expect(screen.getByText(OUTSIDE_COUNT_TEXT)).toBeInTheDocument();
-    click('Registrar');
+    click('Registrar para el siguiente corte');
     await waitFor(() => expect(back.createExpense).toHaveBeenCalledTimes(2));
     expect(back.createExpense.mock.calls[0][0].payments[0]).toMatchObject({ includeInCount: true });
     expect(back.createExpense.mock.calls[0][0].payments[0].outsideCount).toBeUndefined();
@@ -679,7 +679,7 @@ describe('efectivo sin turno abierto (spec 047)', () => {
     click('Guardar');
     const fuera = await screen.findByRole('button', { name: 'Registrar sin incluir en el arqueo' });
     expect(parseInt(getComputedStyle(fuera).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
-    expect(fuera.parentElement).not.toBe(screen.getByRole('button', { name: 'Registrar' }).parentElement);
+    expect(fuera.parentElement).not.toBe(screen.getByRole('button', { name: 'Registrar para el siguiente corte' }).parentElement);
     fireEvent.click(fuera);
     await waitFor(() => expect(back.createExpense).toHaveBeenCalledTimes(2));
     expect(back.createExpense.mock.calls[1][0].payments[0]).toMatchObject({ registerId: 7, includeInCount: false });
@@ -693,7 +693,7 @@ describe('efectivo sin turno abierto (spec 047)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
     click('Guardar');
     expect(await screen.findByText(BEFORE_LAST_CLOSE_TEXT)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Registrar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Registrar para el siguiente corte' })).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Registrar sin incluir en el arqueo' })).toHaveLength(1);
     click('Registrar sin incluir en el arqueo');
     await waitFor(() => expect(back.createExpense).toHaveBeenCalledTimes(2));
@@ -706,10 +706,10 @@ describe('efectivo sin turno abierto (spec 047)', () => {
     const onPaid = vi.fn();
     montarPago(onPaid);
     await elegir('Método de pago', 'Efectivo');
-    await elegir('Elegir caja', 'Caja 1 · sin turno');
+    await elegir('Elegir caja', 'Caja 1 · cerrada');
     click('Confirmar pago');
     expect(await screen.findByText('Caja 1 no tiene turno abierto')).toBeInTheDocument();
-    click('Registrar');
+    click('Registrar para el siguiente corte');
     await waitFor(() => expect(back.payExpense).toHaveBeenCalledTimes(2));
     expect(back.payExpense.mock.calls[0][1]).toMatchObject({ includeInCount: true });
     expect(back.payExpense.mock.calls[0][1].outsideCount).toBeUndefined();
@@ -722,10 +722,10 @@ describe('efectivo sin turno abierto (spec 047)', () => {
     back.payExpense.mockRejectedValueOnce(new ApiError(409, 'EXPENSE_BEFORE_LAST_CLOSE', 'x', 'r1')).mockResolvedValueOnce(undefined);
     montarPago(vi.fn());
     await elegir('Método de pago', 'Efectivo');
-    await elegir('Elegir caja', 'Caja 1 · sin turno');
+    await elegir('Elegir caja', 'Caja 1 · cerrada');
     click('Confirmar pago');
     expect(await screen.findByText(BEFORE_LAST_CLOSE_TEXT)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Registrar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Registrar para el siguiente corte' })).toBeNull();
     click('Registrar sin incluir en el arqueo');
     await waitFor(() => expect(back.payExpense).toHaveBeenCalledTimes(2));
     expect(back.payExpense.mock.calls[1][1]).toMatchObject({ includeInCount: false });

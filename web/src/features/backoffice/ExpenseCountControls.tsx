@@ -18,7 +18,7 @@ export function OutsideCountSheet({ ask, loading, onCancel, onChoose }: {
   return (
     <ConfirmSheet isOpen={ask !== null} title={ask?.title ?? ''}
       description={canInclude ? OUTSIDE_COUNT_TEXT : BEFORE_LAST_CLOSE_TEXT}
-      confirmLabel={canInclude ? 'Registrar' : OUTSIDE_COUNT_CONFIRM} cancelLabel="Cancelar" loading={loading}
+      confirmLabel={canInclude ? 'Registrar para el siguiente corte' : OUTSIDE_COUNT_CONFIRM} cancelLabel="Cancelar" loading={loading}
       onCancel={onCancel} onConfirm={() => onChoose(canInclude ? 'pending' : 'exclude')}>
       {canInclude && (
         <Button mt={3} minH="44px" variant="ghost" disabled={loading} onClick={() => onChoose('exclude')}>

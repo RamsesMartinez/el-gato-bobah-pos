@@ -10,7 +10,7 @@ export function activeRegisters(items: CashRegister[] | undefined): CashRegister
 // registerLabel nombra la caja con lo que le pasará al efectivo: sin sufijo entra al corte abierto.
 export function registerLabel(r: CashRegister): string {
   if (r.countsCash === false) return `${r.name} · sin arqueo`;
-  if (r.openSessionId === null) return `${r.name} · sin turno`;
+  if (r.openSessionId === null) return `${r.name} · cerrada`;
   return r.name;
 }
 

@@ -275,7 +275,7 @@ function PendingExpensesLine({ items, currency, first, canInclude, include, onIn
         <VStack align="stretch" gap={1} pb={2} maxH="20dvh" overflowY="auto">
           {sorted.map((p) => (
             <HStack key={p.paymentId} justify="space-between" fontSize="sm">
-              <Text>{hora.soloHora(p.paidAt)} · {p.description}</Text>
+              <Text>{p.description ? `${hora.soloHora(p.paidAt)} · ${p.description}` : hora.soloHora(p.paidAt)}</Text>
               <Text>{money(p.amount, currency)}</Text>
             </HStack>
           ))}
