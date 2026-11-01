@@ -189,6 +189,59 @@ func (q *Queries) ListRecipeItemsForCosting(ctx context.Context) ([]ListRecipeIt
 	return items, nil
 }
 
+const setOptionCosts = `-- name: SetOptionCosts :exec
+update modifier_options o set current_cost = v.cost::numeric
+  from (select unnest($1::bigint[]) as id, unnest($2::text[]) as cost) v
+ where o.id = v.id and o.current_cost is distinct from v.cost::numeric
+`
+
+type SetOptionCostsParams struct {
+	Ids   []int64  `json:"ids"`
+	Costs []string `json:"costs"`
+}
+
+func (q *Queries) SetOptionCosts(ctx context.Context, arg SetOptionCostsParams) error {
+	_, err := q.db.Exec(ctx, setOptionCosts, arg.Ids, arg.Costs)
+	return err
+}
+
+const setPrepIngredientCosts = `-- name: SetPrepIngredientCosts :exec
+
+update ingredients i set current_cost = v.cost::numeric, updated_at = now()
+  from (select unnest($1::bigint[]) as id, unnest($2::text[]) as cost) v
+ where i.id = v.id and i.current_cost is distinct from v.cost::numeric
+`
+
+type SetPrepIngredientCostsParams struct {
+	Ids   []int64  `json:"ids"`
+	Costs []string `json:"costs"`
+}
+
+// El recálculo escribe en una sentencia por tabla y solo lo que cambió: una fila reescrita con el
+// mismo costo sube la versión del catálogo (0093) y obliga a las tabletas a volver a bajar el menú,
+// y en ingredients mueve updated_at, que es la versión con la que se edita la ficha del artículo.
+// Los costos viajan como texto: es el decimal exacto y no depende de cómo pgx codifique numeric[].
+func (q *Queries) SetPrepIngredientCosts(ctx context.Context, arg SetPrepIngredientCostsParams) error {
+	_, err := q.db.Exec(ctx, setPrepIngredientCosts, arg.Ids, arg.Costs)
+	return err
+}
+
+const setProductCosts = `-- name: SetProductCosts :exec
+update products p set current_cost = v.cost::numeric, updated_at = now()
+  from (select unnest($1::bigint[]) as id, unnest($2::text[]) as cost) v
+ where p.id = v.id and p.current_cost is distinct from v.cost::numeric
+`
+
+type SetProductCostsParams struct {
+	Ids   []int64  `json:"ids"`
+	Costs []string `json:"costs"`
+}
+
+func (q *Queries) SetProductCosts(ctx context.Context, arg SetProductCostsParams) error {
+	_, err := q.db.Exec(ctx, setProductCosts, arg.Ids, arg.Costs)
+	return err
+}
+
 const updateIngredientCost = `-- name: UpdateIngredientCost :exec
 
 update ingredients set current_cost = $2, updated_at = now() where id = $1
@@ -199,36 +252,8 @@ type UpdateIngredientCostParams struct {
 	CurrentCost decimal.Decimal `json:"current_cost"`
 }
 
-// Escrituras de costo (una por fila; el motor las agrupa en una tx).
+// El costo de un insumo que se compra hecho, al recibir una compra.
 func (q *Queries) UpdateIngredientCost(ctx context.Context, arg UpdateIngredientCostParams) error {
 	_, err := q.db.Exec(ctx, updateIngredientCost, arg.ID, arg.CurrentCost)
-	return err
-}
-
-const updateOptionCost = `-- name: UpdateOptionCost :exec
-update modifier_options set current_cost = $2 where id = $1
-`
-
-type UpdateOptionCostParams struct {
-	ID          int64           `json:"id"`
-	CurrentCost decimal.Decimal `json:"current_cost"`
-}
-
-func (q *Queries) UpdateOptionCost(ctx context.Context, arg UpdateOptionCostParams) error {
-	_, err := q.db.Exec(ctx, updateOptionCost, arg.ID, arg.CurrentCost)
-	return err
-}
-
-const updateProductCost = `-- name: UpdateProductCost :exec
-update products set current_cost = $2, updated_at = now() where id = $1
-`
-
-type UpdateProductCostParams struct {
-	ID          int64           `json:"id"`
-	CurrentCost decimal.Decimal `json:"current_cost"`
-}
-
-func (q *Queries) UpdateProductCost(ctx context.Context, arg UpdateProductCostParams) error {
-	_, err := q.db.Exec(ctx, updateProductCost, arg.ID, arg.CurrentCost)
 	return err
 }

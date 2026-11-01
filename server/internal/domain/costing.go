@@ -1,5 +1,11 @@
 package domain
 
+import (
+	"math"
+
+	"github.com/shopspring/decimal"
+)
+
 // Motor de costeo: roll-up recursivo ingrediente → prep → receta → producto/opción/combo,
 // con merma (%) y empaque incluidos, memoización y guard de ciclos.
 //
@@ -161,4 +167,25 @@ func (g *CostGraph) OptionCost(id int64) float64 {
 		return g.ProductCost(*o.LinkedProductID)
 	}
 	return 0
+}
+
+// Topes de las columnas current_cost: products y modifier_options son numeric(12,4), ingredients
+// numeric(12,6). Un valor que llega al tope no se puede guardar.
+const (
+	MaxProductCost    = 1e8
+	MaxOptionCost     = 1e8
+	MaxIngredientCost = 1e6
+)
+
+// StorableCost redondea un costo calculado a 4 decimales y dice si cabe en una columna de tope limit.
+// NaN e infinito no caben (convertirlos a decimal es un panic); el tope se mide ya redondeado.
+func StorableCost(x, limit float64) (decimal.Decimal, bool) {
+	if math.IsNaN(x) || math.IsInf(x, 0) || math.Abs(x) >= limit {
+		return decimal.Zero, false
+	}
+	d := decimal.NewFromFloat(x).Round(4)
+	if d.Abs().GreaterThanOrEqual(decimal.NewFromFloat(limit)) {
+		return decimal.Zero, false
+	}
+	return d, true
 }
