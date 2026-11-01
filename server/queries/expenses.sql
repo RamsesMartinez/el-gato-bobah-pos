@@ -71,7 +71,7 @@ select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.fi
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from expense_payments ep join payment_methods pm on pm.id = ep.payment_method_id
          where ep.expense_id = e.id) as payment_method,
-       (select count(*) from expense_items ei where ei.expense_id = e.id) as item_count
+       (select count(*) from expense_items ei where ei.expense_id = e.id and not ei.excluded) as item_count
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id

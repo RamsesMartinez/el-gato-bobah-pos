@@ -240,6 +240,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const counted = withGoods ? items : [];
   const hasArticle = (i: DraftItem) => !!i.itemId && !i.doubtful;
   const isGoods = (i: DraftItem) => hasArticle(i) && !i.excluded;
+  // Lo excluido que, por el total escrito, termina como «otros»: el pie lo dice para que no pase sin verse.
+  const excludedSum = items.filter((i) => i.excluded).reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const receivedOf = (i: DraftItem) => (i.partQty !== null ? i.partQty : i.quantity || '1');
   // Una parte es más que cero y menos que lo pedido: «todo» y «nada» ya tienen su botón.
   const partBad = (i: DraftItem) => {
@@ -628,6 +630,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 {!moneyCheck.over && moneyCheck.others > 0 && counted.length > 0 && total > 0 && (
                   <Text as="span" color="fg.muted">
                     {' · '}renglones {money(moneyCheck.linesSum.toFixed(2))} de {money(total.toFixed(2))}: el resto queda como «otros» del gasto
+                    {excludedSum > 0 && ` (incluye ${money(Math.min(excludedSum, moneyCheck.others).toFixed(2))} de lo excluido)`}
                   </Text>
                 )}
               </Text>

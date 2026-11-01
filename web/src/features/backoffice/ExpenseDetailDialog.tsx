@@ -253,9 +253,9 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
               {excludedItems.length > 0 && !editing && (
                 <VStack align="stretch" gap={1}>
                   {excludedItems.map((i) => (
-                    <HStack key={i.id} gap={3} opacity={0.6} data-testid="renglon-excluido">
-                      <Text flex="1">{i.itemName ?? i.description} · no es del local</Text>
-                      <Text>{money(i.amount, data.currency)}</Text>
+                    <HStack key={i.id} gap={3} data-testid="renglon-excluido">
+                      <Text flex="1" opacity={0.6}>{i.itemName ?? i.description} · no es del local</Text>
+                      <Text opacity={0.6}>{money(i.amount, data.currency)}</Text>
                       {canReceive && !cancelled && (
                         <Button minH="44px" size="sm" variant="outline" loading={toggleExcluded.isPending}
                           onClick={() => toggleExcluded.mutate({ itemId: i.id, excluded: false })}>
