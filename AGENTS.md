@@ -677,7 +677,13 @@ mecánica:
     integración). Ojo: `uuid.Nil` es **función** (`uuid.Nil()`) y no existe `NewString()`.
   - `strings.CutLast` es lo que usa `rateKeyIP` para tomar el último XFF.
   - `new(expr)` ya acepta un valor: `new(x)` en vez de `v := x; &v`.
-- **`overrides` en `web/package.json`: hoy NO hay ninguno, y así debe quedar.** Existieron para
+- **`overrides` en `web/package.json`: hoy hay UNO, `zod: "^4.6.6"`** (2026-10-31, GHSA-mrhx-c7xc-m3w5,
+  *high*). Lo trae `eslint-plugin-react-hooks`, que ya va en su última versión (7.1.1) y acepta
+  `^3.25.0 || ^4.0.0`; el rango alcanza el parche, pero bun conserva el 4.4.3 del lockfile y no hay
+  forma de re-resolver una transitiva sin agregarla como dependencia directa. Se borra en cuanto el
+  lockfile resuelva ≥ 4.6.6 sin él (al subir ese plugin). En el mismo cambio, `jsdom` → `undici` se
+  arregló subiendo el padre a 30.1.3 (pide `undici ^8.12.1`), sin override. Antes de éste existieron
+  otros para
   forzar la versión parcheada de un CVE *high* que vivía en una transitiva de desarrollo cuando el
   padre pineaba un rango que no alcanzaba el parche (`eslint`→`ajv`→`fast-uri`,
   `vite-plugin-pwa`→`workbox-build`→`glob`→`brace-expansion`, `jsdom`→`undici`,
