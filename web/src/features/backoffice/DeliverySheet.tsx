@@ -8,7 +8,7 @@ import {
 } from '../../components/ui/drawer';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { NumericKeypad } from '../../components/NumericKeypad';
-import { pressKey } from '../../components/pressKey';
+import { useKeypadField } from '../../components/useKeypadField';
 import { backofficeApi, type DeliveryBody, type EditResult, type ExpenseDetail, type ExpenseItem } from '../../api/backoffice';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { medirAccion } from '../../api/uso';
@@ -33,7 +33,7 @@ function unitWord(i: ExpenseItem, n: number): string {
   return i.unitCode ?? '';
 }
 
-type Field = { id: number; kind: 'qty' | 'extra' };
+type FieldKey = `${'qty' | 'extra'}:${number}`;
 
 export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
   expense: ExpenseDetail;
@@ -51,7 +51,9 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
   const [qty, setQty] = useState<Record<number, string>>(() => Object.fromEntries(lines.map((l) =>
     [l.id, onlyItemId === undefined || onlyItemId === l.id ? String(missingOf(l)) : '0'])));
   const [extra, setExtra] = useState<Record<number, string>>({});
-  const [field, setField] = useState<Field | null>(null);
+  const { field: activeKey, setField: setActive, apply, ref } = useKeypadField<FieldKey>();
+  const field = activeKey ? { kind: activeKey.split(':')[0] as 'qty' | 'extra', id: Number(activeKey.split(':')[1]) } : null;
+  const setField = (f: { id: number; kind: 'qty' | 'extra' } | null) => setActive(f ? `${f.kind}:${f.id}` : null);
   const [reviewing, setReviewing] = useState(false);
 
   const arrived = lines.filter((l) => num(qty[l.id]) > 0);
@@ -63,8 +65,8 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
     if (!field) return;
     const l = lines.find((x) => x.id === field.id);
     if (!l) return;
-    if (field.kind === 'qty') setQty((p) => ({ ...p, [l.id]: pressKey(p[l.id] ?? '', k, allowDecimal(l)) }));
-    else setExtra((p) => ({ ...p, [l.id]: pressKey(p[l.id] ?? '', k, true) }));
+    if (field.kind === 'qty') { const v = apply(qty[l.id] ?? '', k, allowDecimal(l)); setQty((p) => ({ ...p, [l.id]: v })); }
+    else { const v = apply(extra[l.id] ?? '', k, true); setExtra((p) => ({ ...p, [l.id]: v })); }
   };
   const bump = (l: ExpenseItem, d: 1 | -1) => setQty((p) => ({ ...p, [l.id]: String(round2(Math.max(0, num(p[l.id]) + d))) }));
 
@@ -104,7 +106,7 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
                 const missing = missingOf(l);
                 const left = round2(missing - n);
                 const name = l.itemName ?? l.description;
-                const active = (k: Field['kind']) => field?.id === l.id && field.kind === k;
+                const active = (k: 'qty' | 'extra') => field?.id === l.id && field.kind === k;
                 return (
                   <HStack key={l.id} borderWidth="1px" borderRadius="lg" px={3} py={2} gap={3} minH="60px" flexWrap="wrap"
                     borderColor={n > 0 ? 'green.muted' : undefined} bg={n > 0 ? 'green.subtle' : undefined} data-testid="renglon-entrega">
@@ -112,7 +114,7 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
                       <Text fontWeight="600">{name}</Text>
                       <Text fontSize="sm" color="fg.muted">Falta{missing === 1 ? '' : 'n'} {missing} {unitWord(l, missing)}</Text>
                       {n > 0 && left > 0 && (
-                        <Text fontSize="sm" fontWeight="600" color="fg.warning">⚠ Faltarán {left} {unitWord(l, left)}</Text>
+                        <Text fontSize="sm" fontWeight="600" color="fg.warning">⚠ {left === 1 ? 'Faltará' : 'Faltarán'} {left} {unitWord(l, left)}</Text>
                       )}
                     </HStack>
                     {perLine && (
@@ -121,7 +123,7 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
                     )}
                     <HStack gap={0} borderWidth="1px" borderRadius="md">
                       <IconButton aria-label={`Menos ${name}`} variant="ghost" minH="44px" minW="44px" onClick={() => bump(l, -1)}><LuMinus /></IconButton>
-                      <Input aria-label={`Cuántos llegaron de ${name}`} w="72px" minH="44px" textAlign="center" fontWeight="700"
+                      <Input ref={ref(`qty:${l.id}`)} aria-label={`Cuántos llegaron de ${name}`} w="72px" minH="44px" textAlign="center" fontWeight="700"
                         inputMode="none" readOnly value={qty[l.id] ?? ''}
                         borderColor={active('qty') ? 'brand.solid' : 'transparent'} borderWidth="2px"
                         onClick={() => setField({ id: l.id, kind: 'qty' })} onFocus={() => setField({ id: l.id, kind: 'qty' })} />
@@ -134,7 +136,7 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
                       <HStack w="100%" gap={2}>
                         <Text fontSize="sm">Llegó de más. ¿Cuánto pagaste por lo de más?</Text>
                         <Text fontWeight="700">$</Text>
-                        <Input aria-label={`Importe de lo de más de ${name}`} w="110px" minH="44px" inputMode="none" readOnly
+                        <Input ref={ref(`extra:${l.id}`)} aria-label={`Importe de lo de más de ${name}`} w="110px" minH="44px" inputMode="none" readOnly
                           value={extra[l.id] ?? ''} borderColor={active('extra') ? 'brand.solid' : undefined} borderWidth="2px"
                           onClick={() => setField({ id: l.id, kind: 'extra' })} onFocus={() => setField({ id: l.id, kind: 'extra' })} />
                       </HStack>

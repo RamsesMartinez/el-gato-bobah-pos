@@ -19,13 +19,15 @@ import { dia } from './expenseEdit';
 const OPTION_LABEL: Record<string, string> = {
   adjust: 'Ajustar el inventario',
   keep: 'No mover',
-  pay: 'Registrar pago',
+  pay: 'Pagar al confirmar',
   leave: 'Dejar pendiente',
   pending: 'Sigue pendiente de entrega',
   'shortfall:adjust': 'Ajustar el importe a lo recibido',
 };
 
-const optionLabel = (d: EditDecision, o: string) => (d.kind === 'shortfall' && o === 'adjust' ? OPTION_LABEL['shortfall:adjust'] : OPTION_LABEL[o] ?? o);
+// Una opción o un campo que el servidor agregue después sale con un texto genérico, nunca con su
+// clave interna.
+const optionLabel = (d: EditDecision, o: string) => (d.kind === 'shortfall' && o === 'adjust' ? OPTION_LABEL['shortfall:adjust'] : OPTION_LABEL[o] ?? 'Otra opción');
 
 const FIELD_LABEL: Record<string, string> = {
   supplier: 'Proveedor', category: 'Categoría', description: 'Comentario', expenseDate: 'Fecha del gasto',
@@ -94,7 +96,7 @@ export function EditPreviewSheet({ request, onClose, onDone, title = 'Antes de c
           <Text flex="1" minW="220px" fontSize="sm" fontWeight="600">⚠ {question}</Text>
           {d.options.map((o) => (
             <Button key={o} minH="44px" size="sm" aria-pressed={d.chosen === o}
-              variant={d.chosen === o ? 'solid' : 'outline'} colorPalette={d.chosen === o ? 'orange' : 'gray'}
+              variant={d.chosen === o ? 'subtle' : 'outline'} colorPalette={d.chosen === o ? 'brand' : 'gray'}
               onClick={() => choose(d, o)}>
               {optionLabel(d, o)}
             </Button>
@@ -136,7 +138,7 @@ export function EditPreviewSheet({ request, onClose, onDone, title = 'Antes de c
                   {preview.header.length > 0 && <Group label="Datos del gasto" />}
                   {preview.header.map((h) => (
                     <Table.Row key={h.field}>
-                      <Table.Cell>{FIELD_LABEL[h.field] ?? h.field}</Table.Cell>
+                      <Table.Cell>{FIELD_LABEL[h.field] ?? 'Otro dato'}</Table.Cell>
                       <Table.Cell textAlign="end">{h.field === 'expenseDate' && h.before ? dia(h.before) : h.before ?? '—'}</Table.Cell>
                       <Table.Cell textAlign="end" fontWeight="600">{h.field === 'expenseDate' && h.after ? dia(h.after) : h.after ?? '—'}</Table.Cell>
                       <Table.Cell />
@@ -180,7 +182,7 @@ export function EditPreviewSheet({ request, onClose, onDone, title = 'Antes de c
                   {moneyChanged && <Group label="Dinero" />}
                   {moneyChanged && (
                     <>
-                      {decisionRow(decisionOf(preview.money.decisionKey), `Falta pagar ${money(preview.money.due)}.`)}
+                      {decisionRow(decisionOf(preview.money.decisionKey), `Falta pagar ${money(preview.money.due)}. Puedes pagarlo en cuanto confirmes.`)}
                       <Table.Row>
                         <Table.Cell>Importe</Table.Cell>
                         <Table.Cell textAlign="end">{money(preview.money.amountBefore)}</Table.Cell>
@@ -204,12 +206,14 @@ export function EditPreviewSheet({ request, onClose, onDone, title = 'Antes de c
                   {preview.costs.length > 0 && <Group label="Costos" />}
                   {preview.costs.map((c) => {
                     const diff = n(c.after) - n(c.before);
+                    const unit = preview.inventory.find((i) => i.ingredientId === c.ingredientId)?.baseUnit;
+                    // El costo sale de la compra: ni bajar ni subir es un error, así que va sin rojo ni verde.
                     return (
                       <Table.Row key={`c-${c.ingredientId}`}>
-                        <Table.Cell>{c.name}, por unidad</Table.Cell>
+                        <Table.Cell>Costo de {c.name}{unit ? ` por ${formatBaseQty(1, unit).replace(/^1 /, '')}` : ''}</Table.Cell>
                         <Table.Cell textAlign="end">{money(c.before)}</Table.Cell>
                         <Table.Cell textAlign="end" fontWeight="600">{money(c.after)}</Table.Cell>
-                        <Table.Cell textAlign="end" color={tone(diff)}>{diff === 0 ? 'se queda igual' : signed(diff, (v) => money(v))}</Table.Cell>
+                        <Table.Cell textAlign="end" color="fg.muted">{diff === 0 ? 'se queda igual' : signed(diff, (v) => money(v))}</Table.Cell>
                       </Table.Row>
                     );
                   })}

@@ -82,7 +82,7 @@ describe('Corregir lo que llegó (spec 038, maqueta B)', () => {
   test('dice cómo llegó cada renglón y cuánto suma', async () => {
     montar();
     expect(await screen.findByText(/Llegaron 3 cajas \(12 L c\/u\)/)).toBeInTheDocument();
-    expect(screen.getByText('36 L en el almacén')).toBeInTheDocument();
+    expect(screen.getByText('Sumó 36 L al almacén')).toBeInTheDocument();
   });
 
   test('tres estados por renglón, «Tendrás X (hoy Y)» y el resumen de la diferencia', async () => {
@@ -353,7 +353,7 @@ describe('Editar un gasto guardado (spec 053)', () => {
     expect(back.editExpense.mock.calls[0][1].header).toEqual({ categoryId: 5, description: 'Pedido semanal' });
   });
 
-  test('«Registrar pago» en la vista previa abre el pago con el saldo puesto', async () => {
+  test('«Pagar al confirmar» en la vista previa abre el pago con el saldo puesto', async () => {
     back.editExpense.mockImplementation(async (_id: number, b: { decisions?: Record<string, string> }) => ({
       preview: preview({
         money: { amountBefore: '67.50', amountAfter: '80', paid: '67.50', statusBefore: 'pagada', statusAfter: 'pendiente', due: '12.50', overpaid: '0', decisionKey: 'money' },
@@ -367,7 +367,7 @@ describe('Editar un gasto guardado (spec 053)', () => {
     click(await screen.findByRole('button', { name: 'Editar gasto' }).then((b) => b.textContent!));
     fireEvent.click(await screen.findByRole('button', { name: 'Quitar Leche entera' }));
     click('Revisar cambios');
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrar pago' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Pagar al confirmar' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Confirmar' })).toBeEnabled());
     click('Confirmar');
     expect(await screen.findByDisplayValue('12.50')).toBeInTheDocument();

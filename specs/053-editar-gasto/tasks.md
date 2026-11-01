@@ -122,7 +122,7 @@ fundacional: todas las historias la usan.
 - [X] T040 [P] `TestEveryAuditActionIsProduced` cubre `expense.edited` (la prueba de T019 la produce); correr `go test ./internal/domain/...`
 - [X] T041 [P] e2e `web/e2e/editar-gasto.spec.ts` a 1024×600 contra el `make start` del worktree: criterios 1, 2, 4 y 5, y una vista previa con 2 decisiones donde «Confirmar» y «Falta decidir» se ven sin desplazar (U2); capturas a `test-results/`
 - [X] T042 [P] `AGENTS.md` §2: párrafo de la spec 053 con lo que no se ve (`effective_on` y su trigger, «No mover» como ajuste ligado al conteo con la sucursal del conteo, la vista previa como transacción revertida con huella, anular exige cero pagos)
-- [ ] T043 Prueba con usuario nuevo a 1024×600 (subagente sin contexto) sobre la base restaurada: quickstart escenarios 1 y 4; lo observado en texto
+- [X] T043 Prueba con usuario nuevo a 1024×600 (subagente sin contexto) sobre la base restaurada: quickstart escenarios 1 y 4; lo observado en texto
 - [X] T044 Aplicar la 0103 sobre la base restaurada del 1-nov (`make start` del worktree, dos empresas): `select count(*) from stock_movements where movement_type = 'compra' and effective_on is null` = 0 y el día rellenado coincide con el de `created_at` en la zona de cada empresa (constitución IV)
 - [ ] T044b Gates: `cd server && go build ./... && go test ./...`, `make test-integration`, `cd web && bun run lint && bun run vitest run && bun run build`, `make ci-local`
 - [X] T045 Issue nuevo para la entrega 2 del #167 (#175) (devoluciones, anular con pagos y mercancía, mover fechas juntas, «fechas por separado») con liga a esta spec

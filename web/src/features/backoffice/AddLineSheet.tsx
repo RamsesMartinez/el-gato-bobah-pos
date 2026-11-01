@@ -8,7 +8,7 @@ import {
 import { Picker } from '../../components/Picker';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { NumericKeypad } from '../../components/NumericKeypad';
-import { pressKey } from '../../components/pressKey';
+import { useKeypadField } from '../../components/useKeypadField';
 import { backofficeApi, type Article, type EditLineBody } from '../../api/backoffice';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { parseMonto, parseNumero } from '../../domain/numeros';
@@ -45,7 +45,7 @@ export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose,
   const [amount, setAmount] = useState('');
   const [arrived, setArrived] = useState(false);
   const [arrivedOn, setArrivedOn] = useState(today);
-  const [field, setField] = useState<Field | null>(null);
+  const { field, setField, apply, ref } = useKeypadField<Field>();
 
   const list: Article[] = articles?.items ?? [];
   const art = list.find((a) => `${a.itemType}:${a.id}` === pick);
@@ -67,8 +67,8 @@ export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose,
     setHow(first ? { presentationId: first.id } : { unitId: baseUnit?.id });
   };
   const key = (k: string) => {
-    if (field === 'qty') setQty((v) => pressKey(v, k, !how.presentationId && art?.unitCode !== 'pieza'));
-    if (field === 'amount') setAmount((v) => pressKey(v, k, true));
+    if (field === 'qty') setQty(apply(qty, k, !how.presentationId && art?.unitCode !== 'pieza'));
+    if (field === 'amount') setAmount(apply(amount, k, true));
   };
 
   const add = () => {
@@ -88,7 +88,7 @@ export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose,
   };
 
   const numberBox = (f: Field, value: string, label: string, w: string) => (
-    <Input aria-label={label} w={w} minH="44px" inputMode="none" readOnly value={value} textAlign="center" fontWeight="700"
+    <Input ref={ref(f)} aria-label={label} w={w} minH="44px" inputMode="none" readOnly value={value} textAlign="center" fontWeight="700"
       borderWidth="2px" borderColor={field === f ? 'brand.solid' : undefined}
       onClick={() => setField(f)} onFocus={() => setField(f)} />
   );
@@ -146,7 +146,7 @@ export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose,
                     <Button minH="44px" aria-pressed={!gift} variant={!gift ? 'solid' : 'ghost'} colorPalette={!gift ? 'brand' : 'gray'} onClick={() => setGift(false)}>Lo pagué</Button>
                     <Button minH="44px" aria-pressed={gift} variant={gift ? 'solid' : 'ghost'} colorPalette={gift ? 'brand' : 'gray'} onClick={() => { setGift(true); setField(null); }}>Fue regalo</Button>
                   </HStack>
-                  {!gift && <><Text>Importe</Text>{numberBox('amount', amount, 'Importe', '120px')}</>}
+                  {!gift && <><Text>Importe del renglón (total)</Text>{numberBox('amount', amount, 'Importe', '120px')}</>}
                 </HStack>
                 {canReceive && (
                   <HStack gap={3} flexWrap="wrap">

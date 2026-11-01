@@ -180,7 +180,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
         setConflict(true);
         return;
       }
-      toaster.create({ title: 'No se pudo corregir', description: String(e), type: 'error' });
+      toaster.create({ title: 'No se pudo corregir', description: mensajeDeError(e), type: 'error' });
     },
   });
 
@@ -193,7 +193,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
         setExcludeError('Alguien más está moviendo estos artículos. Intenta de nuevo en un momento.');
         return;
       }
-      setExcludeError(e instanceof ApiError && e.status === 400 ? e.message : `No se pudo cambiar: ${String(e)}`);
+      setExcludeError(e instanceof ApiError && e.status === 400 ? e.message : `No se pudo cambiar: ${mensajeDeError(e)}`);
     },
   });
 
@@ -247,6 +247,10 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
   const fresh = freshSeq >= editSeq;
   const due = data ? round2(num(data.amount) - num(data.paid)) : 0;
   const pendingToReceive = data ? pendingGoods(data) : [];
+  // Lo que suman los renglones que quedarían (sin los quitados, con los nuevos): el importe no baja de
+  // lo que tenía sin desglosar.
+  const linesTotal = round2([...goods, ...others].filter((i) => !removed.has(i.id)).reduce((s, i) => s + num(i.amount), 0)
+    + added.reduce((s, l) => s + num(l.amount), 0));
   const nameOf = (i: ExpenseItem) => i.itemName ?? i.description;
 
   return (
@@ -286,6 +290,11 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                     <Input aria-label="Comentario" minH="44px" value={header.description}
                       onChange={(e) => setHeader({ ...header, description: e.target.value })} />
                   </Field>
+                  {/* Prueba con usuario nuevo: sin esto no se sabía si agregar renglones duplicaba el gasto. */}
+                  <Text fontSize="sm" color="fg.muted" data-testid="importe-en-edicion">
+                    Importe {money(data.amount, data.currency)} · pagado {money(data.paid, data.currency)} · los renglones suman {money(linesTotal, data.currency)}.
+                    {' '}Lo que agregues ocupa primero lo que el importe no tiene en renglones.
+                  </Text>
                 </VStack>
               ) : (
                 <>
@@ -469,6 +478,9 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                 {canReceive && pendingToReceive.length > 0 && (
                   <Button minH="44px" variant="outline" onClick={() => setReceiving(true)}>Recibir</Button>
                 )}
+                {due > 0 && data.status === 'pendiente' && (
+                  <Button minH="44px" variant="outline" onClick={() => setPayDue(String(due))}>Registrar pago</Button>
+                )}
                 {canEdit && (
                   <Button minH="44px" colorPalette="brand" onClick={startEdit}>Editar gasto</Button>
                 )}
@@ -591,7 +603,7 @@ function GoodsRow({ item, edit, correcting, presentations, desired, onEdit, onEx
                 onClick={() => { const n = num(edit.qty); if (n > 0) onEdit({ qty: String(round2(Math.max(0, n - 1))) }); }}>
                 <LuMinus />
               </IconButton>
-              <Input aria-label="Cuántos llegaron" w="64px" textAlign="center" border="none" inputMode="decimal" value={edit.qty}
+              <Input aria-label="Cuántos llegaron" w="64px" minH="44px" textAlign="center" border="none" inputMode="decimal" value={edit.qty}
                 disabled={edit.state !== 'llego'} onChange={(e) => onEdit({ qty: e.target.value })} />
               <IconButton aria-label="Más" variant="ghost" minH="44px" minW="44px" disabled={edit.state !== 'llego'}
                 onClick={() => onEdit({ qty: String(round2(num(edit.qty) + 1)) })}>
@@ -610,7 +622,7 @@ function GoodsRow({ item, edit, correcting, presentations, desired, onEdit, onEx
           </>
         )}
         {!correcting && !removal && (
-          <Text fontSize="sm" color="fg.muted">{formatBaseQty(item.applied, base)} en el almacén</Text>
+          <Text fontSize="sm" color="fg.muted">Sumó {formatBaseQty(item.applied, base)} al almacén</Text>
         )}
         {!correcting && deliveries.length > 0 && (
           <Button minH="44px" variant="ghost" size="sm" onClick={onHistory}>

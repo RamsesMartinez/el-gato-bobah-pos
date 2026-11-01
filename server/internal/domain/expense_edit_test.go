@@ -229,3 +229,27 @@ func TestPreviewFingerprint(t *testing.T) {
 		t.Fatal("la huella no cambió con la cifra")
 	}
 }
+
+// Prueba con usuario nuevo (spec 053): pagar desde la lista con el importe vacío pagaba el total otra
+// vez sobre un gasto que solo debía $10. Un pago nuevo no puede pasar de lo que falta.
+func TestPaymentFitsWhatIsDue(t *testing.T) {
+	cases := []struct {
+		pay, amount, paid string
+		ok                bool
+	}{
+		{"10", "77.50", "67.50", true},
+		{"77.50", "77.50", "67.50", false},
+		{"10.01", "77.50", "67.50", false},
+		{"100", "100", "0", true},
+		{"1", "60", "100", false}, // ya pagado de más: nada más que pagar
+	}
+	for _, c := range cases {
+		err := PaymentFitsDue(d(c.pay), d(c.amount), d(c.paid))
+		if c.ok != (err == nil) {
+			t.Errorf("pagar %s de un gasto de %s con %s pagado: err=%v", c.pay, c.amount, c.paid, err)
+		}
+		if err != nil && !errors.Is(err, ErrValidation) {
+			t.Errorf("debía ser validación: %v", err)
+		}
+	}
+}

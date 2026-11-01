@@ -112,7 +112,7 @@ test('agregar la mercancía a un gasto guardado sin ella y recibirla', async ({ 
   await expect(page.getByText('Listo para confirmar')).toBeVisible();
   await page.waitForTimeout(600);
   await page.screenshot({ path: `${CAPTURAS}/vista-previa-agregar.png` });
-  await page.getByRole('button', { name: 'Confirmar' }).click();
+  await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
   await expect(page.getByText('Listo: el gasto quedó corregido')).toBeVisible();
 
   await page.getByRole('button', { name: 'Recibir' }).click();
@@ -123,7 +123,7 @@ test('agregar la mercancía a un gasto guardado sin ella y recibirla', async ({ 
   await expect(page.getByRole('cell', { name: tapas!.name, exact: true })).toBeVisible();
   await page.waitForTimeout(600); // la hoja termina de entrar
   await page.screenshot({ path: `${CAPTURAS}/vista-previa-recibir.png` });
-  await page.getByRole('button', { name: 'Confirmar' }).click();
+  await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
   await expect(page.getByText('Listo: quedó registrado lo que llegó').first()).toBeVisible();
   const segundos = Math.round((Date.now() - inicio) / 1000);
   console.log(`[e2e] caso del 1-nov corregido en ${segundos} s`);
@@ -151,13 +151,13 @@ test('recibir en dos entregas, cada una con su fecha', async ({ page, request })
   await pickDate(page, 'Día de la entrega', diasAtras(1));
   await page.getByRole('button', { name: 'Ver efectos' }).click();
   await expect(page.getByRole('button', { name: 'Sigue pendiente de entrega' })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Confirmar' }).click();
+  await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
   await expect(page.getByText('Listo: quedó registrado lo que llegó').first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Recibir' }).click();
   await expect(page.getByLabel(/Cuántos llegaron de/)).toHaveValue('2');
   await page.getByRole('button', { name: 'Ver efectos' }).click();
-  await page.getByRole('button', { name: 'Confirmar' }).click();
+  await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
   await expect(page.getByText('Listo: quedó registrado lo que llegó').first()).toBeVisible();
   await page.getByRole('button', { name: 'Entregas (2)' }).click();
   await expect(page.getByTestId('historial-entregas')).toContainText('3 piezas');
@@ -188,7 +188,7 @@ test('vista previa con dos decisiones cabe en la tableta', async ({ page, reques
   await page.getByRole('button', { name: 'Listo' }).click();
   await page.getByRole('button', { name: 'Ver efectos' }).click();
   await expect(page.getByTestId('fila-decision')).toHaveCount(2);
-  const confirmar = page.getByRole('button', { name: 'Confirmar' });
+  const confirmar = page.getByRole('button', { name: 'Confirmar', exact: true });
   await expect(confirmar).toBeInViewport();
   await expect(page.getByRole('button', { name: /Falta decidir 1/ })).toBeInViewport();
   await page.waitForTimeout(600);

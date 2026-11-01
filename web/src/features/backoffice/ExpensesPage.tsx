@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { round2 } from '../../domain/numeros';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import {
   Box, Heading, Text, Button, HStack, VStack, Table, Input, Textarea,
@@ -135,7 +136,7 @@ function GastosTab() {
             </Table.Row></Table.Header>
             <Table.Body>
               {items.map((e) => (
-                <Table.Row key={e.id}>
+                <Table.Row key={e.id} cursor="pointer" onClick={() => setDetailId(e.id)}>
                   <Table.Cell whiteSpace="nowrap">{e.expenseDate}</Table.Cell>
                   <Table.Cell><Badge colorPalette={STATUS_COLOR[e.status]}>{STATUS_LABEL[e.status]}</Badge></Table.Cell>
                   <Table.Cell>{e.category}</Table.Cell>
@@ -148,24 +149,25 @@ function GastosTab() {
                     ) : e.receivedAt ? (
                       <Badge colorPalette="green">recibida {e.receivedAt}</Badge>
                     ) : (
-                      <HStack gap={2}>
-                        <Badge colorPalette="orange">{e.itemCount} por recibir</Badge>
-                        {/* Atajo de la spec 053: la hoja de entrega sin pasar por el detalle. */}
-                        {canReceive && e.status !== 'cancelada' && (
-                          <Button size="xs" minH="44px" px={3} variant="outline" onClick={() => setReceiveId(e.id)}>Recibir</Button>
-                        )}
-                      </HStack>
+                      // Atajo de la spec 053: la etiqueta misma abre la hoja de entrega. Un botón aparte
+                      // ensanchaba la fila y sacaba «Ver» y «Pagar» de la pantalla de 1024 px.
+                      canReceive && e.status !== 'cancelada' ? (
+                        <Button size="sm" minH="44px" px={2} variant="subtle" colorPalette="orange"
+                          onClick={(ev) => { ev.stopPropagation(); setReceiveId(e.id); }}>
+                          {e.itemCount} por recibir ›
+                        </Button>
+                      ) : <Badge colorPalette="orange">{e.itemCount} por recibir</Badge>
                     )}
                   </Table.Cell>
                   <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap">{money(e.amount, e.currency)}</Table.Cell>
                   <Table.Cell>
                     <HStack gap={1} justify="end">
-                      <Button size="xs" variant="ghost" onClick={() => setDetailId(e.id)}>Ver</Button>
+                      <Button size="xs" variant="ghost" onClick={(ev) => { ev.stopPropagation(); setDetailId(e.id); }}>Ver</Button>
                       {e.status === 'pendiente' && (
                         <>
                           {/* 44 px y separados: «Cancelar» es destructivo y vive junto a «Pagar». */}
-                          <Box><Button size="xs" minH="44px" px={3} colorPalette="green" onClick={() => setPayTarget(e)}>Pagar</Button></Box>
-                          <Box pl={4}><Button size="xs" minH="44px" px={3} variant="outline" colorPalette="red" onClick={() => setCancelando(e)}>Cancelar</Button></Box>
+                          <Box><Button size="xs" minH="44px" px={3} colorPalette="green" onClick={(ev) => { ev.stopPropagation(); setPayTarget(e); }}>Pagar</Button></Box>
+                          <Box pl={4}><Button size="xs" minH="44px" px={3} variant="outline" colorPalette="red" onClick={(ev) => { ev.stopPropagation(); setCancelando(e); }}>Cancelar</Button></Box>
                         </>
                       )}
                     </HStack>
@@ -248,8 +250,11 @@ export function PayDialog({ expense, methods, onClose, onPaid, defaultAmount }: 
   // sale sin movimiento de caja descuadra el corte.
   const cash = !!methods.find((m) => String(m.id) === methodId)?.affectsCashDrawer;
   const withCheckbox = countsInDrawer(cash, cashRegisters, Number(registerId));
-  // Por omisión sigue al importe que se va a usar: el total del gasto si el campo está vacío (R9).
-  const usedAmount = amount || expense?.amount || '';
+  // Por omisión, lo que falta pagar (spec 053): con un abono previo, «el total» pagaba de nuevo lo
+  // ya pagado. Sin el detalle todavía, el total (R9).
+  const saldo = detail ? round2(Number(detail.amount) - Number(detail.paid)) : NaN;
+  const due = Number.isFinite(saldo) ? String(Math.max(0, saldo)) : expense?.amount;
+  const usedAmount = amount || due || '';
   const withDrawerOut = withCheckbox && includeInCount && excludedAvail > 0.004;
   const drawer = withDrawerOut ? drawerExtraOf(usedAmount, drawerOut, excludedAvail) : { bad: false };
 
@@ -257,7 +262,7 @@ export function PayDialog({ expense, methods, onClose, onPaid, defaultAmount }: 
   const pay = useMutation({
     mutationFn: (choice?: CountChoice) => backofficeApi.payExpense(expense!.id, withCountChoice({
       methodId: Number(methodId),
-      amount: amount || expense!.amount,
+      amount: usedAmount,
       paidOn,
       registerId: registerId ? Number(registerId) : undefined,
       includeInCount: withCheckbox ? includeInCount : undefined,
@@ -283,8 +288,8 @@ export function PayDialog({ expense, methods, onClose, onPaid, defaultAmount }: 
               <Picker value={methodId} onChange={setMethodId} placeholder="Método de pago" title="Método de pago"
                 options={methods.map((m) => ({ value: String(m.id), label: m.name }))} />
             </Field>
-            <Field label="Importe (vacío = el total del gasto)">
-              <Input type="number" inputMode="decimal" placeholder={expense?.amount ?? '0'} value={amount}
+            <Field label="Importe (vacío = lo que falta pagar)">
+              <Input type="number" inputMode="decimal" placeholder={due ?? '0'} value={amount}
                 onChange={(e) => setAmount(e.target.value)} />
             </Field>
             {withDrawerOut && <DrawerOutField amount={usedAmount} value={drawerOut} bad={drawer.bad} onChange={setDrawerOut} />}

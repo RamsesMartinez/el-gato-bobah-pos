@@ -99,3 +99,15 @@ describe('DeliverySheet', () => {
     expect(screen.queryByText('Tapas')).toBeNull();
   });
 });
+
+// Revisión de tableta y prueba con usuario nuevo: teclear sobre lo precargado lo reemplaza; antes
+// «12» + 8 daba «128».
+test('la primera tecla reemplaza lo que trae la casilla', () => {
+  setup([item({ quantity: '12' })]);
+  const input = screen.getByLabelText('Cuántos llegaron de Vasos 16 oz') as HTMLInputElement;
+  fireEvent.click(input);
+  fireEvent.click(within(screen.getByTestId('teclado')).getByRole('button', { name: '8' }));
+  expect(input.value).toBe('8');
+  fireEvent.click(within(screen.getByTestId('teclado')).getByRole('button', { name: '0' }));
+  expect(input.value).toBe('80');
+});

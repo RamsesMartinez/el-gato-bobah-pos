@@ -444,6 +444,14 @@ func (s *BackofficeService) AddExpensePayment(ctx context.Context, expenseID int
 		return err
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Con el gasto tomado: dos tabletas que pagan el mismo saldo no lo pagan dos veces.
+		locked, err := q.LockExpenseForEdit(ctx, expenseID)
+		if err != nil {
+			return err
+		}
+		if err := domain.PaymentFitsDue(domain.Round2(in.Amount), locked.Amount, locked.Paid); err != nil {
+			return err
+		}
 		if err := s.insertPayments(ctx, q, expenseID, derefStr(exp.Description), userID, payments); err != nil {
 			return err
 		}

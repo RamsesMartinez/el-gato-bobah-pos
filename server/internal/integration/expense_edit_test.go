@@ -814,3 +814,24 @@ func TestEditRejectsReferencesFromAnotherCompany(t *testing.T) {
 		t.Fatal("entró un renglón con una referencia ajena")
 	}
 }
+
+// Prueba con usuario nuevo (spec 053): un gasto de $67.50 pagado que sube a $77.50 debe $10. Pagar
+// el total otra vez se rechaza; pagar el saldo lo deja pagado con un solo peso de más: ninguno.
+func TestPayingAnEditedExpensePaysOnlyWhatIsDue(t *testing.T) {
+	t.Parallel()
+	k := newEditKit(t)
+	id := k.paidWithoutGoods(t, "67.50", k.day(-2))
+	k.confirmEdit(t, id, app.EditInput{Add: []app.EditLineInput{k.line(k.tapas, "Tapas", "5", "77.50", "")}}, map[string]string{"money": "leave"})
+	if err := k.svc.AddExpensePayment(k.ctx, id, app.ExpensePaymentInput{MethodID: k.transfer, Amount: dd("77.50")}, k.user); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("pagar el total otra vez = %v, quiere validación", err)
+	}
+	if err := k.svc.AddExpensePayment(k.ctx, id, app.ExpensePaymentInput{MethodID: k.transfer, Amount: dd("10")}, k.user); err != nil {
+		t.Fatal(err)
+	}
+	if amount, status, _ := k.expenseRow(t, id); !amount.Equal(dd("77.50")) || status != "pagada" {
+		t.Fatalf("gasto %s %s, quiere 77.50 pagada", amount, status)
+	}
+	if p := k.payments(t, id); len(p) != 2 || p[1] != "10.00" {
+		t.Fatalf("pagos = %v", p)
+	}
+}

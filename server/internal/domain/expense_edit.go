@@ -208,3 +208,17 @@ func PreviewFingerprint(v any) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
+
+// PaymentFitsDue: un pago nuevo no pasa de lo que falta pagar. Desde que una edición puede dejar un
+// gasto pagado con saldo (spec 053), pagar «el total» otra vez lo duplicaba en caja; lo pagado de más
+// se resuelve con una devolución (entrega 2 del #167), no con otro pago.
+func PaymentFitsDue(pay, amount, paid decimal.Decimal) error {
+	due := Round2(amount.Sub(paid))
+	if pay.GreaterThan(due) {
+		if !due.IsPositive() {
+			return fmt.Errorf("%w: este gasto ya está pagado", ErrValidation)
+		}
+		return fmt.Errorf("%w: el pago pasa de lo que falta pagar ($%s)", ErrValidation, due.StringFixed(2))
+	}
+	return nil
+}
