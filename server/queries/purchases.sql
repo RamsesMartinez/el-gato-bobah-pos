@@ -11,7 +11,7 @@ select id, status, amount, received_at from expenses where id = $1 for update;
 -- para saber cuánto falta: la unidad de compra, la base del artículo y lo ya aplicado.
 select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description, ei.quantity,
        ei.qty_received, ei.amount, ei.pack_qty_in_base, ei.presentation_id, ei.is_gift,
-       ei.applied_qty_base, ei.not_coming_qty, ei.unit_id, ei.position,
+       ei.applied_qty_base, ei.not_coming_qty, ei.unit_id, ei.position, ei.excluded,
        bu.kind as buy_kind, bu.to_base as buy_to_base,
        coalesce(iu.kind, 'pieza'::unit_kind) as base_kind
 from expense_items ei
@@ -88,9 +88,10 @@ select id from units where code = 'pieza';
 
 -- name: FillMissingReceived :exec
 -- «Llegó todo» sobre un gasto capturado antes: lo que no tenía cantidad recibida llega completo,
--- menos lo que ya se dijo que no va a llegar.
+-- menos lo que ya se dijo que no va a llegar. Un excluido no llega: no es del negocio (spec 049).
 update expense_items set qty_received = quantity - not_coming_qty
- where expense_id = $1 and item_type is not null and voided_at is null and qty_received is null;
+ where expense_id = $1 and item_type is not null and voided_at is null and qty_received is null
+   and not excluded;
 
 -- name: LockIngredientsNowait :many
 -- Los insumos de una compra, ANTES de escribir un solo renglón: la llave foránea del renglón toma
@@ -120,7 +121,7 @@ select e.id as expense_id, e.expense_date, s.name as supplier, e.amount as expen
   left join units iu on iu.id = i.base_unit_id
   left join ingredient_presentations pr on pr.id = ei.presentation_id
  where cb.branch_id is not null and e.status <> 'cancelada'
-   and ei.item_type is not null and ei.voided_at is null
+   and ei.item_type is not null and ei.voided_at is null and not ei.excluded
    and ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty > 0
  order by e.expense_date, e.id, ei.position, ei.id;
 
@@ -129,7 +130,7 @@ select e.id as expense_id, e.expense_date, s.name as supplier, e.amount as expen
 -- que tiene ahora, no contra lo que leyó la pantalla.
 select id, quantity, qty_received, not_coming_qty, amount, applied_qty_base, ingredient_id, is_gift
   from expense_items
- where id = $1 and expense_id = $2 and item_type is not null and voided_at is null
+ where id = $1 and expense_id = $2 and item_type is not null and voided_at is null and not excluded
    for update;
 
 -- name: SetLineArrival :exec
@@ -163,3 +164,12 @@ update expenses
 
 -- name: NextItemPosition :one
 select (coalesce(max(position), -1) + 1)::int as position from expense_items where expense_id = $1;
+
+-- name: LockExpenseItemForExclusion :one
+-- El renglón vivo de un gasto, bloqueado, para excluirlo o incluirlo (spec 049).
+select id, ingredient_id, excluded, amount, is_gift from expense_items
+ where id = sqlc.arg(id) and expense_id = sqlc.arg(expense_id) and voided_at is null
+   for update;
+
+-- name: SetExpenseItemExcluded :exec
+update expense_items set excluded = sqlc.arg(excluded) where id = sqlc.arg(id);

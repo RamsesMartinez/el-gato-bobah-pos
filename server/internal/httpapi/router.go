@@ -376,6 +376,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				})
 				// El fondo fijo (spec 035) cambia cuánto se retira en cada cierre: por permiso, no por rol.
 				r.With(RequirePermission(h.permissions, domain.PermCashConfigure)).Put("/cash-registers/{id}/fixed-float", h.SetFixedFloat)
+				// Qué caja vende (spec 049): por permiso, como el fondo fijo.
+				r.With(RequirePermission(h.permissions, domain.PermCashConfigure)).Post("/cash-registers/{id}/sells", h.MoveSales)
 				// Lista de categorías (para el formulario de gasto): cualquier autenticado.
 				r.Get("/expense-categories", h.ExpenseCategories)
 				// Gastos, proveedores y catálogo de categorías = gestión/contabilidad → admin/gerente.
@@ -388,6 +390,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items", h.AddArrivedItem)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items/{itemId}/receive", h.ReceiveItem)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items/{itemId}/not-coming", h.MarkNotComing)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Patch("/{id}/items/{itemId}", h.SetExpenseItemExcluded)
 					// La casilla del arqueo de un pago ya registrado (spec 048): por permiso, fuera del grupo por rol.
 					r.With(RequirePermission(h.permissions, domain.PermCashAdjustCount)).Patch("/{id}/payments/{paymentId}", h.SetPaymentInCount)
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {

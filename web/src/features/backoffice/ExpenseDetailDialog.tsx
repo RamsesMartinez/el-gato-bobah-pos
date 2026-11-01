@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Box, Button, HStack, VStack, Text, Input, Badge, Center, Spinner, Separator, IconButton,
 } from '@chakra-ui/react';
-import { LuMinus, LuPlus } from 'react-icons/lu';
+import { LuBan, LuMinus, LuPlus } from 'react-icons/lu';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { toaster } from '../../components/ui/toaster';
@@ -76,7 +76,11 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
 
   const unitList = units?.items ?? [];
   const presList = presentations ?? [];
-  const goods = (data?.items ?? []).filter((i) => i.itemType !== null);
+  const user = useSessionStore((s) => s.user);
+  const canReceive = can('inventory.receive', user);
+  const [excludeError, setExcludeError] = useState('');
+  const goods = (data?.items ?? []).filter((i) => i.itemType !== null && !i.excluded);
+  const excludedItems = (data?.items ?? []).filter((i) => i.excluded);
   const editOf = (i: ExpenseItem): Edit => edits[i.id] ?? { qty: i.qtyReceived && num(i.qtyReceived) > 0 ? i.qtyReceived : i.quantity, state: stateOf(i) };
 
   const desiredBase = (i: ExpenseItem) => {
@@ -129,6 +133,24 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
     },
   });
 
+  const toggleExcluded = useMutation({
+    mutationFn: ({ itemId, excluded }: { itemId: number; excluded: boolean }) =>
+      backofficeApi.setItemExcluded(id!, itemId, excluded),
+    onSuccess: async () => {
+      setExcludeError('');
+      await refetch();
+      void qc.invalidateQueries({ queryKey: ['stock'] });
+      onChanged();
+    },
+    onError: (e) => {
+      if (e instanceof ApiError && e.status === 409) {
+        setExcludeError('Alguien más está moviendo estos artículos. Intenta de nuevo en un momento.');
+        return;
+      }
+      setExcludeError(e instanceof ApiError && e.status === 400 ? e.message : `No se pudo cambiar: ${String(e)}`);
+    },
+  });
+
   const receiveAll = useMutation({
     mutationFn: () => backofficeApi.receiveExpense(id!, {}),
     onSuccess: async () => { await refetch(); void qc.invalidateQueries({ queryKey: ['stock'] }); onChanged(); },
@@ -146,7 +168,6 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
     onError: (e) => toaster.create({ title: 'No se pudo anular', description: String(e), type: 'error' }),
   });
 
-  const user = useSessionStore((s) => s.user);
   const canAdjustCount = can('cash.adjust_count', user);
   const setInCount = useMutation({
     mutationFn: ({ paymentId, include }: { paymentId: number; include: boolean }) =>
@@ -190,7 +211,12 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                 {data.description ? ` · ${data.description}` : ''}
               </Text>
               <HStack gap={6} flexWrap="wrap">
-                <Stat label="Total pagado" value={money(data.amount, data.currency)} />
+                <Box>
+                  <Stat label="Total pagado" value={money(data.amount, data.currency)} />
+                  {data.documentTotal && (
+                    <Text fontSize="xs" color="fg.muted">Total del ticket {money(data.documentTotal, data.currency)}</Text>
+                  )}
+                </Box>
                 <Stat label="Pagado" value={money(data.paid, data.currency)}
                   tone={Number(data.paid) >= Number(data.amount) ? 'green' : 'orange'} />
               </HStack>
@@ -207,7 +233,8 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                   <VStack align="stretch" gap={2}>
                     {goods.map((i) => (
                       <GoodsRow key={i.id} item={i} edit={editOf(i)} editing={editing} presentations={presList}
-                        desired={desiredBase(i)} onEdit={(patch) => setEdit(i, patch)} />
+                        desired={desiredBase(i)} onEdit={(patch) => setEdit(i, patch)}
+                        onExclude={canReceive && !cancelled ? () => toggleExcluded.mutate({ itemId: i.id, excluded: true }) : undefined} />
                     ))}
                   </VStack>
                   {editing && (
@@ -219,11 +246,32 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                 </>
               )}
 
-              {data.items.some((i) => i.itemType === null) && !editing && (
+              {excludeError && (
+                <Text p={3} borderRadius="lg" bg="red.subtle" fontSize="sm" role="alert">{excludeError}</Text>
+              )}
+
+              {excludedItems.length > 0 && !editing && (
+                <VStack align="stretch" gap={1}>
+                  {excludedItems.map((i) => (
+                    <HStack key={i.id} gap={3} data-testid="renglon-excluido">
+                      <Text flex="1" opacity={0.6}>{i.itemName ?? i.description} · no es del local</Text>
+                      <Text opacity={0.6}>{money(i.amount, data.currency)}</Text>
+                      {canReceive && !cancelled && (
+                        <Button minH="44px" size="sm" variant="outline" loading={toggleExcluded.isPending}
+                          onClick={() => toggleExcluded.mutate({ itemId: i.id, excluded: false })}>
+                          Incluir
+                        </Button>
+                      )}
+                    </HStack>
+                  ))}
+                </VStack>
+              )}
+
+              {data.items.some((i) => i.itemType === null && !i.excluded) && !editing && (
                 <>
                   <Separator />
                   <Text fontWeight="700">Otros del gasto</Text>
-                  {data.items.filter((i) => i.itemType === null).map((i) => (
+                  {data.items.filter((i) => i.itemType === null && !i.excluded).map((i) => (
                     <HStack key={i.id} justify="space-between">
                       <Text>{i.description}</Text>
                       <Text>{money(i.amount, data.currency)}</Text>
@@ -324,9 +372,9 @@ function howItCame(i: ExpenseItem, qty: string, presentations: Presentation[]): 
   return `${qty} ${i.unitCode ?? ''}`.trim();
 }
 
-function GoodsRow({ item, edit, editing, presentations, desired, onEdit }: {
+function GoodsRow({ item, edit, editing, presentations, desired, onEdit, onExclude }: {
   item: ExpenseItem; edit: Edit; editing: boolean; presentations: Presentation[];
-  desired: number; onEdit: (patch: Partial<Edit>) => void;
+  desired: number; onEdit: (patch: Partial<Edit>) => void; onExclude?: () => void;
 }) {
   const base = item.baseUnitCode ?? '';
   const onHand = num(item.onHand);
@@ -377,6 +425,11 @@ function GoodsRow({ item, edit, editing, presentations, desired, onEdit }: {
       )}
       {!editing && (
         <Text fontSize="sm" color="fg.muted">{formatBaseQty(item.applied, base)} en el almacén</Text>
+      )}
+      {!editing && onExclude && (
+        <IconButton aria-label="Excluir" title="Excluir: no es del local" variant="outline" minH="44px" minW="44px" onClick={onExclude}>
+          <LuBan />
+        </IconButton>
       )}
     </HStack>
   );

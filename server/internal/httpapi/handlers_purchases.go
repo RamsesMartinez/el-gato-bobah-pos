@@ -25,6 +25,8 @@ type stockLineBody struct {
 	UnitID         *int16           `json:"unitId"`
 	Amount         decimal.Decimal  `json:"amount"`
 	IsGift         bool             `json:"isGift"`
+	// Excluded: solo en un renglón nuevo; uno que ya existe conserva su marca (spec 049).
+	Excluded bool `json:"excluded"`
 }
 
 // PUT /expenses/{id}/stock-lines — permiso inventory.receive. El conjunto deseado de renglones de
@@ -49,7 +51,7 @@ func (h *Handlers) SaveStockLines(w http.ResponseWriter, r *http.Request) {
 			ID: l.ID, SeenApplied: l.SeenApplied, ItemType: l.ItemType, IngredientID: l.IngredientID,
 			ProductID: l.ProductID, Description: l.Description, Quantity: l.Quantity, Received: l.Received,
 			NotComing: l.NotComing, PresentationID: l.PresentationID, UnitID: l.UnitID, Amount: l.Amount,
-			IsGift: l.IsGift,
+			IsGift: l.IsGift, Excluded: l.Excluded,
 		}
 	}
 	v, err := h.backoffice.SaveStockLines(r.Context(), id, lines, u.ID)
@@ -183,4 +185,37 @@ func (h *Handlers) AddArrivedItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+// PATCH /expenses/{id}/items/{itemId} — permiso inventory.receive. Excluye o vuelve a incluir un
+// renglón (spec 049). `excluded` es obligatorio: ausente no cae a un default.
+func (h *Handlers) SetExpenseItemExcluded(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	itemID, err := idParam(r, "itemId")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		Excluded *bool `json:"excluded"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.Excluded == nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	v, err := h.backoffice.SetItemExcluded(r.Context(), id, itemID, *body.Excluded, u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
 }

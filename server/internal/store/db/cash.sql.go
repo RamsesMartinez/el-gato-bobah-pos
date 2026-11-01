@@ -52,12 +52,16 @@ func (q *Queries) AnyOpenSession(ctx context.Context) (bool, error) {
 
 const cerroLaCajaPrincipal = `-- name: CerroLaCajaPrincipal :one
 select s.closed_at from register_sessions s
-join cash_registers r on r.id = s.register_id
-where r.is_primary and s.closed_at is not null
+where s.closed_at is not null
+  and exists (select 1 from orders o where o.register_session_id = s.id)
 order by s.closed_at desc limit 1
 `
 
-// Cuándo se cerró por última vez la caja principal. Sin filas si nunca se ha cerrado.
+// Cuándo cerró por última vez un turno que vendió (uno con pedidos). Sin filas si nunca.
+//
+// No lee `is_primary`: esa columna dice qué caja vende HOY, y la venta se puede pasar a otra caja
+// (spec 049). Preguntarle por un turno pasado haría que pasar la venta moviera este instante y
+// volviera a mostrar los entregados de días cerrados.
 func (q *Queries) CerroLaCajaPrincipal(ctx context.Context) (pgtype.Timestamptz, error) {
 	row := q.db.QueryRow(ctx, cerroLaCajaPrincipal)
 	var closed_at pgtype.Timestamptz
@@ -1681,6 +1685,51 @@ func (q *Queries) LockPaymentMethod(ctx context.Context, id int16) (LockPaymentM
 	return i, err
 }
 
+const lockRegistersForSalesMove = `-- name: LockRegistersForSalesMove :many
+select r.id, r.branch_id, r.is_active, r.is_primary
+  from cash_registers r
+ where r.id = $1
+    or (r.is_primary and r.branch_id = (select t.branch_id from cash_registers t where t.id = $1))
+ order by r.id
+   for update of r
+`
+
+type LockRegistersForSalesMoveRow struct {
+	ID        int64 `json:"id"`
+	BranchID  int64 `json:"branch_id"`
+	IsActive  bool  `json:"is_active"`
+	IsPrimary bool  `json:"is_primary"`
+}
+
+// Pasar la venta (spec 049): la caja que va a vender y la que vende hoy en SU sucursal, bloqueadas
+// en orden de id para que dos cambios a la vez no se esperen en ciclo. La sucursal sale de la fila
+// de la caja destino y no de la sesión: con dos sucursales y sin selector, la sesión no la sabe.
+// Abrir turno toma la caja con GetCashRegisterForUpdate, así que no se cuela entre esto y el cambio.
+func (q *Queries) LockRegistersForSalesMove(ctx context.Context, targetID int64) ([]LockRegistersForSalesMoveRow, error) {
+	rows, err := q.db.Query(ctx, lockRegistersForSalesMove, targetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockRegistersForSalesMoveRow{}
+	for rows.Next() {
+		var i LockRegistersForSalesMoveRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BranchID,
+			&i.IsActive,
+			&i.IsPrimary,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockSessionForClose = `-- name: LockSessionForClose :one
 select id from register_sessions where id = $1 and status = 'abierta' for update
 `
@@ -1860,6 +1909,34 @@ func (q *Queries) OwingDeliveredOrders(ctx context.Context) ([]OwingDeliveredOrd
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const registersWithOpenShift = `-- name: RegistersWithOpenShift :many
+select register_id from register_sessions
+ where register_id = any($1::bigint[]) and status = 'abierta'
+`
+
+// Qué cajas tienen turno abierto. Va en su propio statement DESPUÉS del candado: dentro del mismo
+// SELECT ... FOR UPDATE se leería con la foto de antes de esperar, y no vería el turno que la
+// apertura confirmó mientras este cambio esperaba.
+func (q *Queries) RegistersWithOpenShift(ctx context.Context, ids []int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, registersWithOpenShift, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var register_id int64
+		if err := rows.Scan(&register_id); err != nil {
+			return nil, err
+		}
+		items = append(items, register_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -2235,6 +2312,22 @@ func (q *Queries) SetRegisterFixedFloat(ctx context.Context, arg SetRegisterFixe
 		&i.CountsCash,
 	)
 	return i, err
+}
+
+const setRegisterSells = `-- name: SetRegisterSells :exec
+update cash_registers set is_primary = $1, counts_cash = counts_cash or $1
+ where id = $2
+`
+
+type SetRegisterSellsParams struct {
+	Sells bool  `json:"sells"`
+	ID    int64 `json:"id"`
+}
+
+// La que deja de vender va primero: el índice de una principal por sucursal no admite dos.
+func (q *Queries) SetRegisterSells(ctx context.Context, arg SetRegisterSellsParams) error {
+	_, err := q.db.Exec(ctx, setRegisterSells, arg.Sells, arg.ID)
+	return err
 }
 
 const uncollectedInSession = `-- name: UncollectedInSession :one

@@ -442,6 +442,17 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **La AAD de cada cifrado es `credential|company|platform|kind`** ([domain](server/internal/domain/platform_credentials.go)).
     No se cambia su formato: todo lo ya guardado se cifró con él. La llave de firma usa el mismo
     tipo para la primaria y la secundaria porque rotar mueve el cifrado entre columnas.
+- **Renglones excluidos y caja que vende** (spec 049, 0101). Tres cosas que no se ven:
+  - **Un excluido (`expense_items.excluded`) se guarda y no cuenta en ningún lado**: ni existencias
+    (`PlanStockLines` le pone objetivo cero), ni costo, ni «Por recibir», ni «recibir todo», ni el
+    historial de precios, ni la suma contra el total. Una consulta nueva sobre `expense_items` que
+    hable de mercancía o de dinero filtra `not excluded`. Lo «personal» de la lectura es lo mismo.
+  - **«Corregir lo que llegó» no manda los excluidos y eso NO los quita**: `SaveStockLines` los
+    conserva. La marca se cambia solo con `PATCH /expenses/{id}/items/{itemId}`, que corrige
+    existencias por diferencia.
+  - **`is_primary` dice qué caja vende HOY**, y se mueve con `POST /cash-registers/{id}/sells` (las
+    dos cerradas). Nada que hable de un turno pasado puede leerla: `CerroLaCajaPrincipal` ya pregunta
+    por «el último turno con pedidos». La lista de cada uso está en specs/049/research.md.
 - **El arqueo por hora de los gastos** (spec 048, 0100). Tres cosas que no se ven en la pantalla:
   - **Un pago en efectivo tiene tres estados**: en un corte (`register_session_id`), pendiente
     (`include_in_count` sin corte) o fuera. La regla vive en `domain.ExpensePaymentTarget`, contra

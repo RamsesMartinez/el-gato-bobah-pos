@@ -331,6 +331,54 @@ describe('desde el ticket', () => {
     expect(b.rawName).toBeUndefined();
   });
 
+  test('«Excluir» conserva el artículo, no suma y se manda marcado (spec 049)', async () => {
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    await elegir(/Elegir categoría/, 'Mercancía');
+    const renglon = screen.getByTestId('renglon');
+    fireEvent.click(within(renglon).getByRole('button', { name: 'Excluir' }));
+    expect(within(renglon).getByRole('button', { name: 'Excluir' })).toHaveAttribute('aria-pressed', 'true');
+    expect(renglon).toHaveAttribute('data-excluded', 'true');
+    expect(within(renglon).getByRole('button', { name: /Azúcar/ })).toBeInTheDocument();
+    expect(screen.getByTestId('pie-compra')).not.toHaveTextContent('Azúcar +');
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const body = back.createExpense.mock.calls[0][0];
+    expect(body.items[0]).toMatchObject({ ingredientId: 11, amount: '600', excluded: true });
+    expect(body.items[0].personal).toBeUndefined();
+    expect(body.documentTotal).toBe('1140.00');
+  });
+
+  test('lo que la lectura reconoce como de la casa llega con «Excluir» marcado', async () => {
+    back.suggestArticles.mockResolvedValue({ items: [
+      { itemType: '', itemId: 0, itemName: '', source: 'personal', score: 1, matchedVia: 'AZUCAR', packQtyInBase: '', unitId: null },
+    ] });
+    montar();
+    fireEvent.change(screen.getByTestId('ticket-file'), { target: { files: [new File(['x'], 't.jpg', { type: 'image/jpeg' })] } });
+    const renglon = await screen.findByTestId('renglon');
+    expect(within(renglon).getByRole('button', { name: 'Excluir' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('un ticket sin excluidos no agrega pasos ni manda la marca (SC-003)', async () => {
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    await elegir(/Elegir categoría/, 'Mercancía');
+    expect(screen.queryByText(/De la casa/)).toBeNull();
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].items[0].excluded).toBeUndefined();
+  });
+
+  test('capturado a mano no manda total del documento', async () => {
+    await capturaConMercancia();
+    click('Todavía no se paga');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].documentTotal).toBeUndefined();
+  });
+
   test('si el total capturado no es el del ticket, pregunta cuál', async () => {
     await subirTicket();
     fireEvent.change(screen.getByLabelText('Total de la compra'), { target: { value: '1000' } });

@@ -476,6 +476,8 @@ export interface ExpenseItem {
   isGift: boolean;
   presentationId: number | null;
   onHand?: string | null;
+  // Venía en el ticket pero no es del local (spec 049): no suma ni toca el almacén.
+  excluded?: boolean;
 }
 export interface ExpensePayment {
   id: number;
@@ -495,6 +497,8 @@ export interface ExpenseDetail extends Expense {
   items: ExpenseItem[];
   payments: ExpensePayment[];
   paid: string;
+  // El total que decía el documento leído (spec 049); ausente en lo capturado a mano.
+  documentTotal?: string;
 }
 
 // ---- Catálogo de artículos ----
@@ -680,9 +684,9 @@ export interface ExpenseItemBody {
   packQtyInBase?: string;
   rawCode?: string;
   rawName?: string;
-  // personal: venía en el ticket pero no es del local. El backend lo aprende y no lo guarda
-  // como línea del gasto.
-  personal?: boolean;
+  // excluded: venía en el ticket pero no es del local. Se guarda con su artículo, no suma a la
+  // regla del total ni toca el almacén, y el proveedor lo aprende (spec 049).
+  excluded?: boolean;
   // El empaque del insumo: el servidor copia su contenido y fija la unidad (spec 038).
   presentationId?: number;
   // Llegó sin costo: importe 0, suma a lo guardado y no mueve el costo.
@@ -838,6 +842,8 @@ export const backofficeApi = {
   // null quita el fondo fijo: el cierre vuelve a pedir teclearlo.
   setFixedFloat: (id: number, fixedFloat: number | null) =>
     api.put<CashRegisterConfig>(`/cash-registers/${id}/fixed-float`, { fixedFloat }),
+  // Pasa las ventas a esta caja (spec 049). 409 REGISTERS_MUST_BE_CLOSED con un turno abierto.
+  makeRegisterSell: (id: number) => api.post<void>(`/cash-registers/${id}/sells`),
   createCashRegister: (name: string) => api.post<CashRegister>('/cash-registers', { name }),
   updateCashRegister: (id: number, b: { name?: string; isActive?: boolean; countsCash?: boolean }) =>
     api.patch<CashRegister>(`/cash-registers/${id}`, b),
@@ -965,8 +971,14 @@ export const backofficeApi = {
     docKind?: string;
     docFolio?: string;
     docRaw?: unknown;
+    // El total que dice el documento leído (spec 049): se guarda aparte del total pagado.
+    documentTotal?: string;
   }) => api.post<{ id: number }>('/expenses', b),
   expenseDetail: (id: number) => api.get<ExpenseDetail>(`/expenses/${id}`),
+  // Excluye o vuelve a incluir un renglón (spec 049). 400 si rompe la regla del total; 409 si otro
+  // cambio tiene tomados sus artículos.
+  setItemExcluded: (id: number, itemId: number, excluded: boolean) =>
+    api.patch<void>(`/expenses/${id}/items/${itemId}`, { excluded }),
   // Agrega UN pago. Si con él los pagos cubren el importe, el gasto pasa a pagado.
   payExpense: (id: number, b: ExpensePaymentBody) => api.post<void>(`/expenses/${id}/pay`, b),
   // Cambia «Incluir en el arqueo» de un pago ya guardado (spec 048). Exige `cash.adjust_count`.

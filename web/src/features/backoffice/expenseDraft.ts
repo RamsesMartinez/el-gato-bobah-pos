@@ -86,8 +86,8 @@ export interface PurchaseMoneyLine {
   amount: string;
   goods: boolean; // renglón de almacén
   gift: boolean;
-  // Fuera del gasto: lo de la casa no suma al importe del negocio.
-  personal?: boolean;
+  // Fuera del gasto: lo excluido (de la casa) no suma al importe del negocio.
+  excluded?: boolean;
 }
 export interface PurchaseMoney {
   linesSum: number;
@@ -99,7 +99,7 @@ export function purchaseMoney(lines: PurchaseMoneyLine[], total: number): Purcha
   let sum = 0;
   let missingAmount = 0;
   for (const l of lines) {
-    if (l.personal) continue;
+    if (l.excluded) continue;
     const m = parseMonto(l.amount);
     const v = m.estado === 'valido' ? m.valor : 0;
     if (l.goods && !l.gift && !(v > 0)) missingAmount++;

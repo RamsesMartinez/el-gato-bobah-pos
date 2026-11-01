@@ -38,7 +38,7 @@ where ($1::expense_status is null or e.status = $1)
   and ($2::boolean is not true or (
         e.received_at is null and e.status <> 'cancelada'
         and exists (select 1 from expense_items pi where pi.expense_id = e.id
-                     and pi.item_type is not null and pi.voided_at is null)))
+                     and pi.item_type is not null and pi.voided_at is null and not pi.excluded)))
 `
 
 type CountExpensesParams struct {
@@ -57,26 +57,27 @@ const createExpense = `-- name: CreateExpense :one
 
 insert into expenses (
   expense_date, category_id, supplier_id, amount, description, created_by,
-  status, paid_at, paid_by, received_at, doc_kind, doc_folio, doc_raw, document_date
-) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+  status, paid_at, paid_by, received_at, doc_kind, doc_folio, doc_raw, document_date, document_total
+) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 returning id
 `
 
 type CreateExpenseParams struct {
-	ExpenseDate  pgtype.Date        `json:"expense_date"`
-	CategoryID   int64              `json:"category_id"`
-	SupplierID   *int64             `json:"supplier_id"`
-	Amount       decimal.Decimal    `json:"amount"`
-	Description  *string            `json:"description"`
-	CreatedBy    int64              `json:"created_by"`
-	Status       ExpenseStatus      `json:"status"`
-	PaidAt       pgtype.Timestamptz `json:"paid_at"`
-	PaidBy       *int64             `json:"paid_by"`
-	ReceivedAt   pgtype.Date        `json:"received_at"`
-	DocKind      *string            `json:"doc_kind"`
-	DocFolio     *string            `json:"doc_folio"`
-	DocRaw       []byte             `json:"doc_raw"`
-	DocumentDate pgtype.Date        `json:"document_date"`
+	ExpenseDate   pgtype.Date        `json:"expense_date"`
+	CategoryID    int64              `json:"category_id"`
+	SupplierID    *int64             `json:"supplier_id"`
+	Amount        decimal.Decimal    `json:"amount"`
+	Description   *string            `json:"description"`
+	CreatedBy     int64              `json:"created_by"`
+	Status        ExpenseStatus      `json:"status"`
+	PaidAt        pgtype.Timestamptz `json:"paid_at"`
+	PaidBy        *int64             `json:"paid_by"`
+	ReceivedAt    pgtype.Date        `json:"received_at"`
+	DocKind       *string            `json:"doc_kind"`
+	DocFolio      *string            `json:"doc_folio"`
+	DocRaw        []byte             `json:"doc_raw"`
+	DocumentDate  pgtype.Date        `json:"document_date"`
+	DocumentTotal *decimal.Decimal   `json:"document_total"`
 }
 
 // ==== Gastos ====
@@ -98,6 +99,7 @@ func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (i
 		arg.DocFolio,
 		arg.DocRaw,
 		arg.DocumentDate,
+		arg.DocumentTotal,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -131,8 +133,8 @@ const createExpenseItem = `-- name: CreateExpenseItem :one
 insert into expense_items (
   expense_id, item_type, ingredient_id, product_id, description,
   quantity, unit_id, qty_received, unit_cost, amount, pack_qty_in_base, position,
-  presentation_id, is_gift
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+  presentation_id, is_gift, excluded
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 returning id
 `
 
@@ -151,6 +153,7 @@ type CreateExpenseItemParams struct {
 	Position       int32            `json:"position"`
 	PresentationID *int64           `json:"presentation_id"`
 	IsGift         bool             `json:"is_gift"`
+	Excluded       bool             `json:"excluded"`
 }
 
 // ==== Líneas del gasto (mercancía) ====
@@ -170,6 +173,7 @@ func (q *Queries) CreateExpenseItem(ctx context.Context, arg CreateExpenseItemPa
 		arg.Position,
 		arg.PresentationID,
 		arg.IsGift,
+		arg.Excluded,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -299,7 +303,7 @@ func (q *Queries) ExcludePendingBefore(ctx context.Context, arg ExcludePendingBe
 }
 
 const getExpense = `-- name: GetExpense :one
-select id, expense_date, category_id, supplier_id, amount, description, created_by, created_at, currency, status, paid_at, paid_by, cancelled_at, cancelled_by, cancel_reason, received_at, doc_kind, doc_folio, doc_raw, branch_id, document_date from expenses where id = $1
+select id, expense_date, category_id, supplier_id, amount, description, created_by, created_at, currency, status, paid_at, paid_by, cancelled_at, cancelled_by, cancel_reason, received_at, doc_kind, doc_folio, doc_raw, branch_id, document_date, document_total from expenses where id = $1
 `
 
 func (q *Queries) GetExpense(ctx context.Context, id int64) (Expense, error) {
@@ -327,6 +331,7 @@ func (q *Queries) GetExpense(ctx context.Context, id int64) (Expense, error) {
 		&i.DocRaw,
 		&i.BranchID,
 		&i.DocumentDate,
+		&i.DocumentTotal,
 	)
 	return i, err
 }
@@ -412,7 +417,7 @@ func (q *Queries) GetExpensePaymentRegister(ctx context.Context, arg GetExpenseP
 const getExpenseView = `-- name: GetExpenseView :one
 select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.financial_group,
        s.name as supplier, e.amount, e.currency, e.description, e.doc_kind, e.doc_folio,
-       e.paid_at, ub.name as created_by_name, e.document_date
+       e.paid_at, ub.name as created_by_name, e.document_date, e.document_total
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
@@ -436,6 +441,7 @@ type GetExpenseViewRow struct {
 	PaidAt         pgtype.Timestamptz `json:"paid_at"`
 	CreatedByName  *string            `json:"created_by_name"`
 	DocumentDate   pgtype.Date        `json:"document_date"`
+	DocumentTotal  *decimal.Decimal   `json:"document_total"`
 }
 
 // El encabezado ya resuelto (categoría, proveedor, quién lo capturó) para la pantalla de
@@ -459,6 +465,7 @@ func (q *Queries) GetExpenseView(ctx context.Context, id int64) (GetExpenseViewR
 		&i.PaidAt,
 		&i.CreatedByName,
 		&i.DocumentDate,
+		&i.DocumentTotal,
 	)
 	return i, err
 }
@@ -505,7 +512,7 @@ from expense_items ei
 join units bu on bu.id = ei.unit_id
 left join ingredients i on i.id = ei.ingredient_id
 left join units iu on iu.id = i.base_unit_id
-where ei.expense_id = $1 and ei.item_type is not null
+where ei.expense_id = $1 and ei.item_type is not null and not ei.excluded
   and ei.qty_received is not null and ei.qty_received > 0
 order by ei.position, ei.id
 `
@@ -665,7 +672,7 @@ select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description,
        ei.quantity, ei.unit_id, u.code as unit_code, u.kind as unit_kind,
        ei.qty_received, ei.unit_cost, ei.amount, ei.pack_qty_in_base, ei.position,
        i.name as ingredient_name, p.name as product_name,
-       ei.applied_qty_base, ei.not_coming_qty, ei.voided_at, ei.is_gift, ei.presentation_id,
+       ei.applied_qty_base, ei.not_coming_qty, ei.voided_at, ei.is_gift, ei.presentation_id, ei.excluded,
        iu.code as base_unit_code,
        -- Lo guardado hoy del insumo, para «Tendrás X (hoy Y)» al corregir (spec 038). En toda la
        -- empresa y no por sucursal: con dos sucursales y sin selector, ver el detalle no debe
@@ -704,6 +711,7 @@ type ListExpenseItemsRow struct {
 	VoidedAt       pgtype.Timestamptz `json:"voided_at"`
 	IsGift         bool               `json:"is_gift"`
 	PresentationID *int64             `json:"presentation_id"`
+	Excluded       bool               `json:"excluded"`
 	BaseUnitCode   *string            `json:"base_unit_code"`
 	OnHand         decimal.Decimal    `json:"on_hand"`
 }
@@ -739,6 +747,7 @@ func (q *Queries) ListExpenseItems(ctx context.Context, expenseID int64) ([]List
 			&i.VoidedAt,
 			&i.IsGift,
 			&i.PresentationID,
+			&i.Excluded,
 			&i.BaseUnitCode,
 			&i.OnHand,
 		); err != nil {
@@ -822,7 +831,7 @@ select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.fi
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from expense_payments ep join payment_methods pm on pm.id = ep.payment_method_id
          where ep.expense_id = e.id) as payment_method,
-       (select count(*) from expense_items ei where ei.expense_id = e.id) as item_count
+       (select count(*) from expense_items ei where ei.expense_id = e.id and not ei.excluded) as item_count
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
@@ -831,7 +840,7 @@ where ($1::expense_status is null or e.status = $1)
   and ($2::boolean is not true or (
         e.received_at is null and e.status <> 'cancelada'
         and exists (select 1 from expense_items pi where pi.expense_id = e.id
-                     and pi.item_type is not null and pi.voided_at is null)))
+                     and pi.item_type is not null and pi.voided_at is null and not pi.excluded)))
 order by
   case when $3::text = 'amount'      and $4::text = 'asc'  then e.amount end asc  nulls last,
   case when $3::text = 'amount'      and $4::text <> 'asc' then e.amount end desc nulls last,

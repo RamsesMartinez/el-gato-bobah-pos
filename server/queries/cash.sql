@@ -567,10 +567,14 @@ where r.is_primary and s.status = 'abierta'
 order by s.opened_at desc limit 1;
 
 -- name: CerroLaCajaPrincipal :one
--- Cuándo se cerró por última vez la caja principal. Sin filas si nunca se ha cerrado.
+-- Cuándo cerró por última vez un turno que vendió (uno con pedidos). Sin filas si nunca.
+--
+-- No lee `is_primary`: esa columna dice qué caja vende HOY, y la venta se puede pasar a otra caja
+-- (spec 049). Preguntarle por un turno pasado haría que pasar la venta moviera este instante y
+-- volviera a mostrar los entregados de días cerrados.
 select s.closed_at from register_sessions s
-join cash_registers r on r.id = s.register_id
-where r.is_primary and s.closed_at is not null
+where s.closed_at is not null
+  and exists (select 1 from orders o where o.register_session_id = s.id)
 order by s.closed_at desc limit 1;
 
 -- name: SessionSales :many
@@ -768,3 +772,27 @@ returning s.card_count_mode;
 -- esperado de la siguiente apertura (spec 035, R8).
 select not exists (select 1 from register_sessions o
                    where o.register_id = sqlc.arg(register_id) and o.id > sqlc.arg(session_id)::bigint) as latest;
+
+-- name: LockRegistersForSalesMove :many
+-- Pasar la venta (spec 049): la caja que va a vender y la que vende hoy en SU sucursal, bloqueadas
+-- en orden de id para que dos cambios a la vez no se esperen en ciclo. La sucursal sale de la fila
+-- de la caja destino y no de la sesión: con dos sucursales y sin selector, la sesión no la sabe.
+-- Abrir turno toma la caja con GetCashRegisterForUpdate, así que no se cuela entre esto y el cambio.
+select r.id, r.branch_id, r.is_active, r.is_primary
+  from cash_registers r
+ where r.id = sqlc.arg(target_id)
+    or (r.is_primary and r.branch_id = (select t.branch_id from cash_registers t where t.id = sqlc.arg(target_id)))
+ order by r.id
+   for update of r;
+
+-- name: RegistersWithOpenShift :many
+-- Qué cajas tienen turno abierto. Va en su propio statement DESPUÉS del candado: dentro del mismo
+-- SELECT ... FOR UPDATE se leería con la foto de antes de esperar, y no vería el turno que la
+-- apertura confirmó mientras este cambio esperaba.
+select register_id from register_sessions
+ where register_id = any(sqlc.arg(ids)::bigint[]) and status = 'abierta';
+
+-- name: SetRegisterSells :exec
+-- La que deja de vender va primero: el índice de una principal por sucursal no admite dos.
+update cash_registers set is_primary = sqlc.arg(sells), counts_cash = counts_cash or sqlc.arg(sells)
+ where id = sqlc.arg(id);

@@ -1326,7 +1326,9 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 		// Solo la caja PRINCIPAL reclama lo huérfano: es la única que vende, y el esperado de una
 		// secundaria ignora ventas y devoluciones. Si la barra abría primero se quedaba con ellas y
 		// no restaban ni sumaban en ningún corte (spec 031, revisión de D7).
-		if reg.IsPrimary {
+		// Con la fila tomada y no con la lectura de antes de la transacción: pasar la venta a otra caja
+		// a la vez (spec 049) espera a este candado, y esta caja pudo dejar de vender mientras tanto.
+		if cr.IsPrimary {
 			// LOS PEDIDOS DE PLATAFORMA QUE SE ACEPTARON SIN TURNO ENTRAN A ÉSTE (spec 021).
 			//
 			// Aceptar no exige turno abierto: la cocina no puede esperar a que alguien abra caja. Lo
@@ -3070,4 +3072,52 @@ func (s *BackofficeService) liveAccountsForClosing(ctx context.Context, isPrimar
 		}
 	}
 	return out, nil
+}
+
+// MoveSales pasa la venta de la caja que vende en la sucursal a `targetID` (spec 049, R6). Las dos
+// cajas se toman en orden de id y se valida bajo candado: abrir turno toma la caja con el mismo
+// FOR UPDATE, así que no se cuela un turno entre la validación y el cambio.
+func (s *BackofficeService) MoveSales(ctx context.Context, targetID, userID int64) error {
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		rows, err := q.LockRegistersForSalesMove(ctx, targetID)
+		if err != nil {
+			return err
+		}
+		var current, target *db.LockRegistersForSalesMoveRow
+		ids := make([]int64, 0, len(rows))
+		for i := range rows {
+			ids = append(ids, rows[i].ID)
+			if rows[i].IsPrimary {
+				current = &rows[i]
+			}
+			if rows[i].ID == targetID {
+				target = &rows[i]
+			}
+		}
+		if target == nil {
+			return domain.ErrNotFound
+		}
+		if current == nil {
+			return fmt.Errorf("%w: esta sucursal no tiene caja que venda", domain.ErrConflict)
+		}
+		open, err := q.RegistersWithOpenShift(ctx, ids)
+		if err != nil {
+			return err
+		}
+		reg := func(r *db.LockRegistersForSalesMoveRow) domain.SellingRegister {
+			return domain.SellingRegister{ID: r.ID, BranchID: r.BranchID, Active: r.IsActive, HasOpenShift: slices.Contains(open, r.ID)}
+		}
+		changes, err := domain.CanMoveSales(reg(current), reg(target))
+		if err != nil || !changes {
+			return err
+		}
+		if err := q.SetRegisterSells(ctx, db.SetRegisterSellsParams{ID: current.ID, Sells: false}); err != nil {
+			return err
+		}
+		if err := q.SetRegisterSells(ctx, db.SetRegisterSellsParams{ID: target.ID, Sells: true}); err != nil {
+			return err
+		}
+		return auditEntity(ctx, q, domain.AuditCashSellingRegisterChanged, "cash_register", target.ID, &target.BranchID, &userID,
+			map[string]any{"registerId": current.ID}, map[string]any{"registerId": target.ID})
+	})
 }

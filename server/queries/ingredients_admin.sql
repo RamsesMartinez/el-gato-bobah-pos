@@ -111,7 +111,7 @@ select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_n
       left join ingredient_presentations p on p.id = ei.presentation_id
      where m.ingredient_id = sqlc.arg(ingredient_id) and m.movement_type = 'compra'
        and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
-       and ei.voided_at is null and e.status <> 'cancelada'
+       and ei.voided_at is null and not ei.excluded and e.status <> 'cancelada'
      order by ei.id, m.created_at, m.id
   ) purchases
 ) h
@@ -131,7 +131,7 @@ select count(*)::int as purchases,
             join expenses e on e.id = ei.expense_id
            where m.ingredient_id = sqlc.arg(ingredient_id) and m.movement_type = 'compra'
              and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
-             and ei.voided_at is null and e.status <> 'cancelada'
+             and ei.voided_at is null and not ei.excluded and e.status <> 'cancelada'
            order by ei.id, m.created_at, m.id) firsts
          order by created_at desc, id desc
          limit 20) last;
@@ -215,7 +215,7 @@ select exists (
 -- name: PendingReceiptsOf :one
 -- Cuántos renglones de compra del artículo faltan por llegar (la misma regla que «Por recibir»).
 select count(*)::int from expense_items ei join expenses e on e.id = ei.expense_id
- where ei.ingredient_id = sqlc.arg(ingredient_id) and e.status <> 'cancelada' and ei.voided_at is null
+ where ei.ingredient_id = sqlc.arg(ingredient_id) and e.status <> 'cancelada' and ei.voided_at is null and not ei.excluded
    and ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty > 0;
 
 -- name: LockArticle :one
