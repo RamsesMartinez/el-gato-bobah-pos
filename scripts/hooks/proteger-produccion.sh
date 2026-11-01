@@ -31,8 +31,9 @@ fi
 # Lecturas de salud tras una subida (decidido el 2026-11-01, para dejar un encargo corriendo de
 # noche): bitácora, estado de contenedores, disco y memoria. Pasan solas SOLO si el comando no trae
 # nada que escriba, reinicie, entre a la base o lea secretos; ante la duda, se pregunta. Subir a
-# producción no necesita esta puerta: lo hace CI.
-escribe='(^|[^a-z_-])(rm|mv|cp|tee|dd|kill|pkill|reboot|shutdown|apt|apt-get|chmod|chown|psql|sed +-i|truncate|install)([^a-z_-]|$)|>|docker +(compose|restart|stop|start|rm|kill|exec|run|pull|system|volume|network)|systemctl +(restart|stop|start|reload|enable|disable)|\.env|deploy-|make |scp|-L |--ssh-flag|tunnel'
+# producción no necesita esta puerta: lo hace CI. `2>&1` no escribe en ningún archivo: no cuenta
+# como redirección.
+escribe='(^|[^a-z_-])(rm|mv|cp|tee|dd|kill|pkill|reboot|shutdown|apt|apt-get|chmod|chown|psql|sed +-i|truncate|install)([^a-z_-]|$)|(^|[^0-9])>|>[^&]|docker +(compose|restart|stop|start|rm|kill|exec|run|pull|system|volume|network)|systemctl +(restart|stop|start|reload|enable|disable)|\.env|deploy-|make |scp|-L |--ssh-flag|tunnel'
 lee='journalctl|docker +(ps|logs|inspect|images|stats +--no-stream)|df |free |uptime|systemctl +status|curl |readyz|healthz'
 if ! printf '%s' "$comando" | grep -qE "$escribe" && printf '%s' "$comando" | grep -qE "$lee"; then
   printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"Lectura de salud de produccion: autorizada sin preguntar."}}'
