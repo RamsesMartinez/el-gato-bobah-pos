@@ -23,7 +23,7 @@ if ! printf '%s' "$comando" | grep -qE 'pos-vps([^-]|$)|34\.68\.178\.107'; then
 fi
 
 # La excepción autorizada: respaldar. `pg_dump` y traerse el archivo que dejó.
-if printf '%s' "$comando" | grep -qE 'pg_dump|compute scp +pos-vps:'; then
+if printf '%s' "$comando" | grep -qE 'pg_dump|respaldo-gatobobah\.sh|compute scp +pos-vps:'; then
   printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"Respaldo de produccion: autorizado sin preguntar."}}'
   exit 0
 fi

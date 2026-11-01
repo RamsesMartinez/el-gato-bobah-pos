@@ -25,6 +25,10 @@ pre-commit:
     scripts-test:
       glob: "scripts/{restaurar-respaldo,worktree-env-load}.sh"
       run: bash scripts/tests/restaurar-respaldo-test.sh
+    # El hook de producción deja pasar solos los respaldos y las lecturas de salud; lo demás pregunta.
+    proteger-produccion-test:
+      glob: "scripts/{hooks/proteger-produccion,tests/proteger-produccion-test}.sh"
+      run: bash scripts/tests/proteger-produccion-test.sh
     # Cerrar un worktree borra su carpeta, su rama y (con datos=1) su base.
     cerrar-worktree-test:
       glob: "{scripts/{cerrar-worktree,stop,guard-shared-compose,worktree-env-load}.sh,scripts/tests/cerrar-worktree-test.sh,Makefile}"

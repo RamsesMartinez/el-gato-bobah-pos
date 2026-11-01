@@ -859,6 +859,12 @@ disco a las 02:00; desde el 2026-10-05 ya no se apaga de noche. Runbook:
 `pos-vps-dev` **no** está gateado: ahí se prueba, y frenar cada comando volvería inútil la
 verificación contra el ambiente desplegado.
 
+Pasan solos también el script de respaldo de la VM (`respaldo-gatobobah.sh`) y las **lecturas de
+salud** (`journalctl`, `docker ps`/`logs`, `curl` a `readyz`, `df`, `uptime`) cuando el comando no
+trae nada que escriba, reinicie, entre a la base o lea el `.env` (decidido el 2026-11-01: un encargo
+de punta a punta se detuvo 9 horas esperando aprobar el respaldo previo a subir). Lo cubre
+[proteger-produccion-test.sh](scripts/tests/proteger-produccion-test.sh).
+
 **Por qué es un hook y no una nota.** El 2026-09-19 hubo que auditar doce transcripciones de sesión
 a mano para responder «¿algún agente escribió en producción?». La respuesta fue que no —solo
 lecturas del `.env` y respaldos—, pero nada impedía que la siguiente vez sí. Un recordatorio se
