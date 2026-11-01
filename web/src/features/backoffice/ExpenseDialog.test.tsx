@@ -34,6 +34,7 @@ const back = vi.hoisted(() => ({
   suggestArticles: vi.fn(),
   lastClosedCount: vi.fn(),
   payExpense: vi.fn(),
+  expenseDetail: vi.fn(),
 }));
 const pos = vi.hoisted(() => ({
   paymentMethods: vi.fn(() => Promise.resolve({ items: [] as unknown[] })),
@@ -91,6 +92,7 @@ beforeEach(() => {
   back.createExpense.mockResolvedValue({ id: 99 });
   back.createIngredient.mockResolvedValue({ id: 50, name: 'Canela' });
   back.lastClosedCount.mockResolvedValue({ closedAt: null });
+  back.expenseDetail.mockResolvedValue({ items: [], payments: [] });
   pos.businessSettings.mockResolvedValue({ stockItemLabel: 'artículo', timezone: 'America/Mexico_City' });
 });
 // Las hojas dejan en `body` el bloqueo de scroll y el `aria-hidden` de lo que tapan; sin limpiarlo,
@@ -331,6 +333,16 @@ describe('desde el ticket', () => {
     expect(b.rawName).toBeUndefined();
   });
 
+  test('«Excluir» de la captura se lee y no borra la descripción del renglón (spec 050)', async () => {
+    await capturaConMercancia();
+    const renglon = screen.getByTestId('renglon');
+    fireEvent.change(within(renglon).getByLabelText('Descripción'), { target: { value: 'Shampoo' } });
+    const boton = within(renglon).getByRole('button', { name: 'Excluir' });
+    expect(boton).toHaveTextContent('Excluir');
+    fireEvent.click(boton);
+    expect(within(renglon).getByLabelText('Descripción')).toHaveValue('Shampoo');
+  });
+
   test('«Excluir» conserva el artículo, no suma y se manda marcado (spec 049)', async () => {
     const dudoso = await subirTicket();
     fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
@@ -348,6 +360,56 @@ describe('desde el ticket', () => {
     expect(body.items[0]).toMatchObject({ ingredientId: 11, amount: '600', excluded: true });
     expect(body.items[0].personal).toBeUndefined();
     expect(body.documentTotal).toBe('1140.00');
+  });
+
+  // Spec 050: del cajón salió el ticket entero aunque una parte no sea del negocio.
+  test('«Salió de la caja» aparece con lo excluido, sigue al importe y viaja como drawerExtra', async () => {
+    pos.paymentMethods.mockResolvedValue({ items: [
+      { id: 1, name: 'Efectivo', affectsCashDrawer: true, isActive: true },
+      { id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true },
+    ] });
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 }] });
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    await elegir(/Elegir categoría/, 'Mercancía');
+    fireEvent.change(screen.getByLabelText('Total de la compra'), { target: { value: '540' } });
+    click('Agregar pago');
+    fireEvent.change(screen.getAllByPlaceholderText('0.00').at(-1)!, { target: { value: '540' } });
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1');
+    // Sin excluidos no hay nada nuevo.
+    expect(screen.queryByLabelText('Salió de la caja')).toBeNull();
+    fireEvent.click(within(screen.getByTestId('renglon')).getByRole('button', { name: 'Excluir' }));
+    const salio = await screen.findByLabelText('Salió de la caja');
+    expect(salio).toHaveValue('540');
+    fireEvent.change(salio, { target: { value: '1140.01' } });
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    fireEvent.change(salio, { target: { value: '539' } });
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    fireEvent.change(salio, { target: { value: '1140' } });
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments[0]).toMatchObject({ amount: '540', drawerExtra: '600.00', includeInCount: true });
+  });
+
+  test('«Salió de la caja» no aparece con tarjeta ni sin incluir en el arqueo', async () => {
+    pos.paymentMethods.mockResolvedValue({ items: [
+      { id: 1, name: 'Efectivo', affectsCashDrawer: true, isActive: true },
+      { id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true },
+    ] });
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 }] });
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    await elegir(/Elegir categoría/, 'Mercancía');
+    fireEvent.click(within(screen.getByTestId('renglon')).getByRole('button', { name: 'Excluir' }));
+    click('Agregar pago');
+    await elegir('Método de pago', 'Tarjeta');
+    expect(screen.queryByLabelText('Salió de la caja')).toBeNull();
+    await elegir('Tarjeta', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1');
+    expect(await screen.findByLabelText('Salió de la caja')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Incluir en el arqueo' }));
+    expect(screen.queryByLabelText('Salió de la caja')).toBeNull();
   });
 
   test('lo que la lectura reconoce como de la casa llega con «Excluir» marcado', async () => {
@@ -777,6 +839,41 @@ describe('efectivo sin turno abierto (spec 047)', () => {
     click('Registrar sin incluir en el arqueo');
     await waitFor(() => expect(back.payExpense).toHaveBeenCalledTimes(2));
     expect(back.payExpense.mock.calls[1][1]).toMatchObject({ includeInCount: false });
+  });
+});
+
+describe('«Salió de la caja» al pagar (spec 050)', () => {
+  test('con lo excluido disponible, sigue al importe que se usa y viaja como drawerExtra', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 }] });
+    // $120 excluidos, $30 ya usados por otro pago: quedan $90.
+    back.expenseDetail.mockResolvedValue({
+      items: [{ id: 1, amount: '120', excluded: true }, { id: 2, amount: '100', excluded: false }],
+      payments: [{ id: 3, amount: '10', drawerExtra: '30' }],
+    });
+    back.payExpense.mockResolvedValue(undefined);
+    montarPago(vi.fn());
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1');
+    const salio = await screen.findByLabelText('Salió de la caja');
+    expect(salio).toHaveValue('100');
+    fireEvent.change(salio, { target: { value: '190.01' } });
+    expect(screen.getByRole('button', { name: 'Confirmar pago' })).toBeDisabled();
+    fireEvent.change(salio, { target: { value: '190' } });
+    click('Confirmar pago');
+    await waitFor(() => expect(back.payExpense).toHaveBeenCalled());
+    expect(back.payExpense.mock.calls[0][1]).toMatchObject({ amount: '100', drawerExtra: '90.00' });
+  });
+
+  test('sin excluidos no aparece y no se manda', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 }] });
+    back.payExpense.mockResolvedValue(undefined);
+    montarPago(vi.fn());
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1');
+    expect(screen.queryByLabelText('Salió de la caja')).toBeNull();
+    click('Confirmar pago');
+    await waitFor(() => expect(back.payExpense).toHaveBeenCalled());
+    expect(back.payExpense.mock.calls[0][1].drawerExtra).toBeUndefined();
   });
 });
 

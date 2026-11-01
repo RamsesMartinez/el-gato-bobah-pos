@@ -300,6 +300,10 @@ func ocultarElArqueoDelUltimoCierre(view *SessionDetailView) {
 	view.Breakdown.Plataformas = []CortePlatformSubtotal{}
 }
 
+// conceptoNoEsDelNegocio es el renglón de egresos de lo que salió del cajón con un gasto y no era
+// del negocio (spec 050).
+const conceptoNoEsDelNegocio = "No es del negocio"
+
 // conceptoRetiro es el renglón del retiro en los egresos del corte.
 const conceptoRetiro = "Retiro al cierre"
 
@@ -332,6 +336,8 @@ type CashExpenseView struct {
 	Amount        decimal.Decimal `json:"amount"`
 	Currency      domain.Currency `json:"currency"`
 	Status        string          `json:"status"`
+	// DrawerExtra: lo que salió del cajón además del importe del pago (spec 050).
+	DrawerExtra decimal.Decimal `json:"drawerExtra"`
 }
 
 // Descomposición del corte en ingresos/egresos → método → concepto, para el resumen jerárquico
@@ -395,7 +401,7 @@ type methodExpected struct {
 // ventas se derivan del esperado restando propinas y (en efectivo) fondo + neto de movimientos, así
 // una caja secundaria (esperado = fondo + neto) da 0 ventas sola. Propinas se listan aparte.
 func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []db.ListCashMovementsRow) CorteBreakdown {
-	var entradas, traspasosIn, salidas, traspasosOut, gastos, propinas, retiro, net decimal.Decimal
+	var entradas, traspasosIn, salidas, traspasosOut, gastos, noNegocio, propinas, retiro, net decimal.Decimal
 	for _, m := range moves {
 		// El retiro al cierre se registra DESPUÉS de contar: ni es parte del esperado ni salida del
 		// negocio. Restarlo del neto inflaba «Ventas» por el monto del retiro (spec 035).
@@ -419,7 +425,10 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 			// La salida de caja de una devolución se presenta en «Devoluciones» de su medio, como la
 			// de tarjeta (spec 029). Sigue en el neto: el esperado no cambia.
 		case m.ExpenseID != nil: // gasto en efectivo (siempre salida)
-			gastos = gastos.Add(m.Amount)
+			// La parte del ticket que no es del negocio salió del cajón pero no es gasto (spec 050):
+			// contarla en «Gastos» reportaría un gasto mayor que el registrado.
+			gastos = gastos.Add(m.Amount.Sub(m.DrawerExtra))
+			noNegocio = noNegocio.Add(m.DrawerExtra)
 		case m.TransferID != nil:
 			if m.Kind == domain.CashEntrada {
 				traspasosIn = traspasosIn.Add(m.Amount)
@@ -484,6 +493,7 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 	}
 	for _, b := range []CorteBucket{
 		{Concept: "Gastos", Amount: domain.Round2(gastos)},
+		{Concept: conceptoNoEsDelNegocio, Amount: domain.Round2(noNegocio)},
 		{Concept: "Salidas de efectivo", Amount: domain.Round2(salidas)},
 		{Concept: "Traspasos enviados", Amount: domain.Round2(traspasosOut)},
 		{Concept: "Propinas entregadas", Amount: domain.Round2(propinas)},
@@ -1511,6 +1521,7 @@ func (s *BackofficeService) sessionExpenses(ctx context.Context, sessionID int64
 			ID: e.ID, ExpenseID: e.ExpenseID, Category: e.Category, Supplier: e.Supplier,
 			PaymentMethod: e.PaymentMethod,
 			Amount:        e.Amount, Currency: domain.Currency(e.Currency), Status: string(e.Status),
+			DrawerExtra: e.DrawerExtra,
 		})
 	}
 	return out, nil

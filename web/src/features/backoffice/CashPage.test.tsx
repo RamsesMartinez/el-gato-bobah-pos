@@ -964,7 +964,6 @@ describe('«Vende» en la gestión de cajas', () => {
     montarGestion();
     expect(await screen.findByLabelText('Vende: Mostrador')).toBeChecked();
     expect(screen.getByLabelText('Vende: Mostrador')).toBeDisabled();
-    expect(screen.getByText('Para cambiarla, enciende otra')).toBeInTheDocument();
     expect(screen.getByLabelText('Vende: Barra')).not.toBeChecked();
     expect(screen.queryByText('Tipo')).toBeNull();
   });
@@ -988,4 +987,57 @@ describe('«Vende» en la gestión de cajas', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Pasar las ventas a Barra' }));
     await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Cierra los turnos de las dos cajas primero.' })));
   });
+});
+
+// Spec 050 (US2): los interruptores de Administrar se aciertan con el dedo, y el botón que pasa las
+// ventas es del color de las acciones principales.
+describe('tacto en la gestión de cajas (spec 050)', () => {
+  const cajas = [
+    { id: 1, name: 'Mostrador', isPrimary: true, isActive: true, countsCash: true },
+    { id: 2, name: 'Barra', isPrimary: false, isActive: true, countsCash: true },
+  ];
+  function montarGestion() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(<QueryClientProvider client={qc}><Provider><ManageRegistersTab /></Provider></QueryClientProvider>);
+  }
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  test('cada interruptor tiene su nombre y una zona de toque de 44 px', async () => {
+    vi.spyOn(backofficeApi, 'allCashRegisters').mockResolvedValue({ items: cajas });
+    montarGestion();
+    await screen.findByLabelText('Vende: Barra');
+    for (const nombre of ['Vende: Barra', 'Activa: Barra', 'Lleva arqueo: Barra']) {
+      const zona = screen.getByLabelText(nombre).closest('label')!;
+      expect(getComputedStyle(zona).minHeight, nombre).toBe('44px');
+      expect(getComputedStyle(zona).minWidth, nombre).toBe('44px');
+    }
+    expect(screen.queryByText('Para cambiarla, enciende otra')).toBeNull();
+    expect(screen.getByLabelText('Vende: Mostrador').closest('label')).toHaveAttribute('title', 'Para cambiarla, enciende otra');
+  });
+
+  test('«Pasar las ventas a…» usa el color de las acciones principales', async () => {
+    vi.spyOn(backofficeApi, 'allCashRegisters').mockResolvedValue({ items: cajas });
+    montarGestion();
+    await userEvent.click(await screen.findByLabelText('Vende: Barra'));
+    const boton = await screen.findByRole('button', { name: 'Pasar las ventas a Barra' });
+    expect(getComputedStyle(boton).getPropertyValue('--chakra-colors-color-palette-solid')).toContain('brand');
+  });
+});
+
+// Spec 050 (R4): lo que salió del cajón y no es del negocio es su propio renglón de egresos.
+test('el desglose del corte muestra «No es del negocio» aparte de «Gastos»', () => {
+  render(<Provider><IngresosEgresosCard openingCash="500" currency="MXN" breakdown={{
+    ingresos: [], ingresosTotal: '0', plataformas: [], egresosTotal: '500',
+    egresos: [{ concept: 'Gastos', amount: '380' }, { concept: 'No es del negocio', amount: '120' }],
+  }} /></Provider>);
+  expect(screen.getByText('No es del negocio')).toBeInTheDocument();
+  expect(screen.getByText('−$120')).toBeInTheDocument();
+  expect(screen.getByText('−$380')).toBeInTheDocument();
+});
+
+test('la tabla de gastos del corte dice cuánto del pago no era del negocio', () => {
+  render(<Provider><ExpensesTable currency="MXN" expenses={[
+    { id: 1, expenseId: 9, category: 'Insumos', supplier: null, paymentMethod: 'Efectivo', amount: '380', currency: 'MXN', status: 'pagada', drawerExtra: '120' },
+  ]} /></Provider>);
+  expect(screen.getByText('+ $120 no es del negocio')).toBeInTheDocument();
 });

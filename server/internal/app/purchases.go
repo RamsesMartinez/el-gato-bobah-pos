@@ -346,6 +346,9 @@ func (s *BackofficeService) SaveStockLines(ctx context.Context, expenseID int64,
 		if err := checkLinesFitTotal(amounts, exp.Amount); err != nil {
 			return err
 		}
+		if err := excludedStillCovers(ctx, q, expenseID); err != nil {
+			return err
+		}
 		if _, err := s.applyStockLines(ctx, q, expenseID, userID, &today); err != nil {
 			return err
 		}
@@ -557,6 +560,9 @@ func (s *BackofficeService) SetItemExcluded(ctx context.Context, expenseID, item
 			return err
 		}
 		if err := checkLinesFitTotal(includedAmounts(items), exp.Amount); err != nil {
+			return err
+		}
+		if err := excludedStillCovers(ctx, q, expenseID); err != nil {
 			return err
 		}
 		if _, err := s.applyStockLines(ctx, q, expenseID, userID, &today); err != nil {

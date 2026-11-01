@@ -24,9 +24,9 @@ import {
   type Presentation, type ExpenseItemBody, type ExpensePaymentBody, type ParsedDoc, type DocLine, type CashRegister,
 } from '../../api/backoffice';
 import {
-  activeRegisters, registerLabel, outsideAskOf, countsInDrawer, withCountChoice, type CountChoice, type OutsideAsk,
+  activeRegisters, registerLabel, outsideAskOf, countsInDrawer, withCountChoice, drawerExtraOf, type CountChoice, type OutsideAsk,
 } from './cajaDelGasto';
-import { IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
+import { DrawerOutField, IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
 import { montoTecleado, parseNumero, round2 } from '../../domain/numeros';
 import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
 import { PresentationsSheet } from './PresentationsSheet';
@@ -80,6 +80,8 @@ interface DraftPayment {
   registerId: string;
   reference: string;
   includeInCount: boolean;
+  // drawerOut: «Salió de la caja» (spec 050); null = no lo tocaron, salió lo mismo que el importe.
+  drawerOut: string | null;
 }
 
 let seq = 0;
@@ -92,7 +94,7 @@ const emptyItem = (): DraftItem => ({
 });
 
 const emptyPayment = (paidOn: string): DraftPayment => ({
-  key: nextKey(), methodId: '', amount: '', paidOn, registerId: '', reference: '', includeInCount: true,
+  key: nextKey(), methodId: '', amount: '', paidOn, registerId: '', reference: '', includeInCount: true, drawerOut: null,
 });
 
 // En qué se mide un insumo nuevo, y la unidad base que le toca (regla 4: se elige al crearlo).
@@ -332,6 +334,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         registerId: p.registerId ? Number(p.registerId) : undefined,
         reference: p.reference || undefined,
         includeInCount: countsInDrawer(needsRegister(p, methodList), cashRegisters, Number(p.registerId)) ? p.includeInCount : undefined,
+        drawerExtra: drawerOf(p).extra,
       }))).map((p) => withCountChoice(p, choice)),
     }),
     onSuccess: () => {
@@ -350,10 +353,15 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   });
 
   const missingUnit = counted.some((i) => isGoods(i) && !i.presentationId && !i.unitId);
+  // «Salió de la caja» solo en efectivo que entra al arqueo y con algo excluido en el ticket (spec 050).
+  const drawerOutShown = (p: DraftPayment) =>
+    excludedSum > 0 && p.includeInCount && countsInDrawer(needsRegister(p, methodList), cashRegisters, Number(p.registerId));
+  const drawerOf = (p: DraftPayment) => (drawerOutShown(p) ? drawerExtraOf(p.amount, p.drawerOut, excludedSum) : { bad: false });
   const badPayment = payments.find((p) => !p.methodId || !((montoTecleado(p.amount) ?? 0) > 0) || (needsRegister(p, methodList) && !p.registerId));
+  const badDrawerOut = payments.some((p) => drawerOf(p).bad);
   const anyPartBad = counted.some(partBad);
   const canSave = !!categoryId && total > 0 && moneyCheck.missingAmount === 0 && !moneyCheck.over && !missingUnit && !badPayment
-    && !payUnanswered && !payNeedsRegister && !anyPartBad;
+    && !payUnanswered && !payNeedsRegister && !anyPartBad && !badDrawerOut;
 
   const setItem = (key: string, patch: Partial<DraftItem>) =>
     setItems((prev) => prev.map((i) => (i.key === key ? { ...i, ...patch } : i)));
@@ -555,6 +563,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                   <VStack align="stretch" gap={3}>
                     {payments.map((p) => (
                       <PaymentRow key={p.key} payment={p} methods={methodList} registers={cashRegisters}
+                        drawerOut={drawerOutShown(p) ? drawerOf(p) : null}
                         onChange={(patch) => setPayments((prev) => prev.map((x) => (x.key === p.key ? { ...x, ...patch } : x)))}
                         onRemove={() => setPayments((prev) => prev.filter((x) => x.key !== p.key))} />
                     ))}
@@ -567,6 +576,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                   </Text>
                 )}
                 {badPayment && <Warn>Cada pago necesita método e importe; en efectivo además la caja de la que sale.</Warn>}
+                {badDrawerOut && <Warn>«Salió de la caja» va del importe del pago al importe más lo excluido ({money(excludedSum.toFixed(2))}).</Warn>}
               </Section>
             </VStack>
           </DialogBody>
@@ -770,7 +780,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
                 <LuPlus />
               </IconButton>
             </HStack>
-          ) : !item.excluded && (
+          ) : (
             <Input aria-label="Descripción" placeholder="Qué es (gas, envío…)" w="220px" minH="44px" value={item.description}
               onChange={(e) => onChange({ description: e.target.value })} />
           )}
@@ -779,12 +789,12 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
               value={item.isGift ? '0' : item.amount} disabled={item.isGift}
               onChange={(e) => onChange({ amount: e.target.value })} />
           </Field>
-          <IconButton aria-label="Excluir" aria-pressed={item.excluded} minH="44px" minW="44px"
+          <Button aria-pressed={item.excluded} minH="44px"
             variant={item.excluded ? 'subtle' : 'outline'} colorPalette={item.excluded ? 'purple' : 'gray'}
             title={item.excluded ? 'Excluido: no es del local' : 'Excluir: no es del local'}
             onClick={() => onChange({ excluded: !item.excluded })}>
-            <LuBan />
-          </IconButton>
+            <LuBan /> Excluir
+          </Button>
           {/* Separado del importe: quitar no se deshace y el dedo es gordo. */}
           <Box ml={4}>
             {confirmRemove ? (
@@ -882,8 +892,9 @@ function Suggestions({ list, onPick }: { list: ArticleSuggestion[]; onPick: (s: 
 
 // ---- Renglón de pago ----
 
-function PaymentRow({ payment, methods, registers, onChange, onRemove }: {
+function PaymentRow({ payment, methods, registers, drawerOut, onChange, onRemove }: {
   payment: DraftPayment;
+  drawerOut: { bad: boolean } | null;
   methods: { id: number; name: string; affectsCashDrawer?: boolean }[];
   registers: CashRegister[];
   onChange: (patch: Partial<DraftPayment>) => void;
@@ -901,6 +912,10 @@ function PaymentRow({ payment, methods, registers, onChange, onRemove }: {
         <Input inputMode="decimal" placeholder="0.00" value={payment.amount} minH="44px"
           onChange={(e) => onChange({ amount: e.target.value })} />
       </Field>
+      {drawerOut && (
+        <DrawerOutField amount={payment.amount} value={payment.drawerOut} bad={drawerOut.bad}
+          onChange={(v) => onChange({ drawerOut: v })} />
+      )}
       <Field label="Fecha del pago" w="160px">
         <DatePickerButton label="Fecha del pago" value={payment.paidOn} onChange={(v) => onChange({ paidOn: v })} />
       </Field>
