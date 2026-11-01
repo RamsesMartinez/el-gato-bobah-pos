@@ -49,7 +49,8 @@ returning id, name, kind, affects_cash_drawer, auto_declare, is_active;
 
 -- name: InsertExpenseCashMovement :exec
 -- Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte). Lleva su pago
--- (spec 048): la base no deja una segunda salida del mismo pago.
+-- (spec 048): la base no deja una segunda salida del mismo pago. El monto lo fija el trigger de la
+-- 0102 con importe + drawer_extra del pago; el que se manda aquí se ignora.
 insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id, expense_payment_id)
 values ($1, 'salida', $2, $3, $4, $5, $6);
 
@@ -217,6 +218,9 @@ values ($1, $2, $3, $4, $5)
 returning *;
 
 -- name: ListCashMovements :many
+-- drawer_extra: de la salida de un pago de gasto, la parte que no es del negocio (spec 050). El
+-- corte la presenta en «No es del negocio» y no en «Gastos».
+--
 -- expense_id: no-null si el movimiento es la salida de un gasto → el front lo excluye de la tabla
 -- de efectivo (los gastos van en su propia sección) para no contarlos dos veces.
 --
@@ -226,9 +230,11 @@ returning *;
 select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id, m.reverses_id,
        m.recipient_name,
        exists (select 1 from register_cash_movements x where x.reverses_id = m.id) as reversed,
-       exists (select 1 from order_refunds r where r.cash_movement_id = m.id) as is_refund
+       exists (select 1 from order_refunds r where r.cash_movement_id = m.id) as is_refund,
+       coalesce(ep.drawer_extra, 0)::numeric(10,2) as drawer_extra
 from register_cash_movements m
 join users u on u.id = m.user_id
+left join expense_payments ep on ep.id = m.expense_payment_id and m.kind = 'salida'
 where m.session_id = $1
 order by m.created_at;
 
@@ -239,7 +245,7 @@ order by m.created_at;
 -- partido puede tocar dos cortes distintos, así que lo que se lista es el PAGO, y el importe
 -- que se muestra es el del pago, no el del gasto completo.
 select ep.id, e.id as expense_id, ec.name as category, s.name as supplier,
-       pm.name as payment_method, ep.amount, e.currency, e.status
+       pm.name as payment_method, ep.amount, e.currency, e.status, ep.drawer_extra
 from expense_payments ep
 join expenses e on e.id = ep.expense_id
 join expense_categories ec on ec.id = e.category_id

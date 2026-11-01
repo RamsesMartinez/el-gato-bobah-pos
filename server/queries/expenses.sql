@@ -181,15 +181,24 @@ insert into stock_movements (
 -- paid_at con el reloj del servicio (spec 048): es la hora contra la que se decide a qué corte entra.
 insert into expense_payments (
   expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by, register_id,
-  include_in_count, paid_at
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+  include_in_count, paid_at, drawer_extra
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 returning id;
+
+-- name: SumDrawerExtraOfExpense :one
+-- Lo que los pagos de un gasto ya usaron como «no es del negocio» (spec 050): el tope es por gasto.
+select coalesce(sum(drawer_extra), 0)::numeric(10,2) as used from expense_payments where expense_id = $1;
+
+-- name: SumExcludedOfExpense :one
+-- Lo excluido vivo de un gasto: lo más que puede salir del cajón además de sus pagos (spec 050).
+select coalesce(sum(amount), 0)::numeric(10,2) as excluded from expense_items
+where expense_id = $1 and excluded and voided_at is null;
 
 -- name: ListExpensePayments :many
 -- session_closed: el corte del pago ya se cerró, y su casilla del arqueo ya no se puede cambiar.
 select ep.id, ep.payment_method_id, pm.name as method, pm.affects_cash_drawer,
        ep.amount, ep.paid_on, ep.register_session_id, ep.register_id, ep.reference, ep.created_at,
-       ep.include_in_count, ep.paid_at,
+       ep.include_in_count, ep.paid_at, ep.drawer_extra,
        coalesce(s.status = 'cerrada', false)::boolean as session_closed
 from expense_payments ep
 join payment_methods pm on pm.id = ep.payment_method_id
@@ -201,7 +210,7 @@ order by ep.paid_on, ep.id;
 -- El pago cuya casilla del arqueo se cambia, tomado para actualizar (spec 048, R3): dos cambios a la
 -- vez deciden uno después del otro, con lo que de verdad quedó.
 select ep.id, ep.expense_id, ep.amount, ep.paid_on, ep.paid_at, ep.register_id, ep.register_session_id,
-       ep.include_in_count, ep.paid_by
+       ep.include_in_count, ep.paid_by, ep.drawer_extra
 from expense_payments ep
 where ep.id = $1 and ep.expense_id = $2
 for update;
@@ -235,7 +244,7 @@ returning ep.id, ep.expense_id, ep.amount, ep.paid_by, e.description;
 
 -- name: ListPendingExpensePayments :many
 -- Los gastos sin corte de una caja desde su último cierre: los que una apertura puede incluir.
-select ep.id, ep.expense_id, e.description, ep.amount, ep.paid_at
+select ep.id, ep.expense_id, e.description, ep.amount, ep.paid_at, ep.drawer_extra
 from expense_payments ep
 join payment_methods pm on pm.id = ep.payment_method_id
 join expenses e on e.id = ep.expense_id

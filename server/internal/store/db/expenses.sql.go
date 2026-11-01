@@ -184,8 +184,8 @@ const createExpensePayment = `-- name: CreateExpensePayment :one
 
 insert into expense_payments (
   expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by, register_id,
-  include_in_count, paid_at
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+  include_in_count, paid_at, drawer_extra
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 returning id
 `
 
@@ -200,6 +200,7 @@ type CreateExpensePaymentParams struct {
 	RegisterID        *int64          `json:"register_id"`
 	IncludeInCount    bool            `json:"include_in_count"`
 	PaidAt            time.Time       `json:"paid_at"`
+	DrawerExtra       decimal.Decimal `json:"drawer_extra"`
 }
 
 // ==== Pagos del gasto ====
@@ -216,6 +217,7 @@ func (q *Queries) CreateExpensePayment(ctx context.Context, arg CreateExpensePay
 		arg.RegisterID,
 		arg.IncludeInCount,
 		arg.PaidAt,
+		arg.DrawerExtra,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -338,7 +340,7 @@ func (q *Queries) GetExpense(ctx context.Context, id int64) (Expense, error) {
 
 const getExpensePaymentForUpdate = `-- name: GetExpensePaymentForUpdate :one
 select ep.id, ep.expense_id, ep.amount, ep.paid_on, ep.paid_at, ep.register_id, ep.register_session_id,
-       ep.include_in_count, ep.paid_by
+       ep.include_in_count, ep.paid_by, ep.drawer_extra
 from expense_payments ep
 where ep.id = $1 and ep.expense_id = $2
 for update
@@ -359,6 +361,7 @@ type GetExpensePaymentForUpdateRow struct {
 	RegisterSessionID *int64          `json:"register_session_id"`
 	IncludeInCount    bool            `json:"include_in_count"`
 	PaidBy            int64           `json:"paid_by"`
+	DrawerExtra       decimal.Decimal `json:"drawer_extra"`
 }
 
 // El pago cuya casilla del arqueo se cambia, tomado para actualizar (spec 048, R3): dos cambios a la
@@ -376,6 +379,7 @@ func (q *Queries) GetExpensePaymentForUpdate(ctx context.Context, arg GetExpense
 		&i.RegisterSessionID,
 		&i.IncludeInCount,
 		&i.PaidBy,
+		&i.DrawerExtra,
 	)
 	return i, err
 }
@@ -764,7 +768,7 @@ func (q *Queries) ListExpenseItems(ctx context.Context, expenseID int64) ([]List
 const listExpensePayments = `-- name: ListExpensePayments :many
 select ep.id, ep.payment_method_id, pm.name as method, pm.affects_cash_drawer,
        ep.amount, ep.paid_on, ep.register_session_id, ep.register_id, ep.reference, ep.created_at,
-       ep.include_in_count, ep.paid_at,
+       ep.include_in_count, ep.paid_at, ep.drawer_extra,
        coalesce(s.status = 'cerrada', false)::boolean as session_closed
 from expense_payments ep
 join payment_methods pm on pm.id = ep.payment_method_id
@@ -786,6 +790,7 @@ type ListExpensePaymentsRow struct {
 	CreatedAt         time.Time       `json:"created_at"`
 	IncludeInCount    bool            `json:"include_in_count"`
 	PaidAt            time.Time       `json:"paid_at"`
+	DrawerExtra       decimal.Decimal `json:"drawer_extra"`
 	SessionClosed     bool            `json:"session_closed"`
 }
 
@@ -812,6 +817,7 @@ func (q *Queries) ListExpensePayments(ctx context.Context, expenseID int64) ([]L
 			&i.CreatedAt,
 			&i.IncludeInCount,
 			&i.PaidAt,
+			&i.DrawerExtra,
 			&i.SessionClosed,
 		); err != nil {
 			return nil, err
@@ -935,7 +941,7 @@ func (q *Queries) ListExpenses(ctx context.Context, arg ListExpensesParams) ([]L
 }
 
 const listPendingExpensePayments = `-- name: ListPendingExpensePayments :many
-select ep.id, ep.expense_id, e.description, ep.amount, ep.paid_at
+select ep.id, ep.expense_id, e.description, ep.amount, ep.paid_at, ep.drawer_extra
 from expense_payments ep
 join payment_methods pm on pm.id = ep.payment_method_id
 join expenses e on e.id = ep.expense_id
@@ -957,6 +963,7 @@ type ListPendingExpensePaymentsRow struct {
 	Description *string         `json:"description"`
 	Amount      decimal.Decimal `json:"amount"`
 	PaidAt      time.Time       `json:"paid_at"`
+	DrawerExtra decimal.Decimal `json:"drawer_extra"`
 }
 
 // Los gastos sin corte de una caja desde su último cierre: los que una apertura puede incluir.
@@ -975,6 +982,7 @@ func (q *Queries) ListPendingExpensePayments(ctx context.Context, arg ListPendin
 			&i.Description,
 			&i.Amount,
 			&i.PaidAt,
+			&i.DrawerExtra,
 		); err != nil {
 			return nil, err
 		}
@@ -1092,6 +1100,31 @@ type SetPaymentCountParams struct {
 func (q *Queries) SetPaymentCount(ctx context.Context, arg SetPaymentCountParams) error {
 	_, err := q.db.Exec(ctx, setPaymentCount, arg.SessionID, arg.IncludeInCount, arg.ID)
 	return err
+}
+
+const sumDrawerExtraOfExpense = `-- name: SumDrawerExtraOfExpense :one
+select coalesce(sum(drawer_extra), 0)::numeric(10,2) as used from expense_payments where expense_id = $1
+`
+
+// Lo que los pagos de un gasto ya usaron como «no es del negocio» (spec 050): el tope es por gasto.
+func (q *Queries) SumDrawerExtraOfExpense(ctx context.Context, expenseID int64) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, sumDrawerExtraOfExpense, expenseID)
+	var used decimal.Decimal
+	err := row.Scan(&used)
+	return used, err
+}
+
+const sumExcludedOfExpense = `-- name: SumExcludedOfExpense :one
+select coalesce(sum(amount), 0)::numeric(10,2) as excluded from expense_items
+where expense_id = $1 and excluded and voided_at is null
+`
+
+// Lo excluido vivo de un gasto: lo más que puede salir del cajón además de sus pagos (spec 050).
+func (q *Queries) SumExcludedOfExpense(ctx context.Context, expenseID int64) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, sumExcludedOfExpense, expenseID)
+	var excluded decimal.Decimal
+	err := row.Scan(&excluded)
+	return excluded, err
 }
 
 const sumExpensePayments = `-- name: SumExpensePayments :one
