@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"strconv"
 	"testing"
 )
 
@@ -95,4 +96,24 @@ func TestMigrationEffectiveOn(t *testing.T) {
 		t.Fatal("el Down dejó la columna")
 	}
 	migrarArriba(t, st.Pool)
+
+	// Revisión de seguridad (4): la API anterior inserta como gatobobah_app, bajo RLS. El trigger lee
+	// la zona de la empresa con esos mismos permisos y la fecha sale del día de Tokio.
+	as := appRoleStore(t)
+	tx, err := as.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `select set_config('app.company_id', $1, true)`, strconv.FormatInt(coB, 10)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.QueryRow(ctx, `insert into stock_movements (item_type, ingredient_id, movement_type, quantity)
+		values ('ingrediente', $1, 'compra', 1) returning effective_on::text, (now() at time zone 'Asia/Tokyo')::date::text`,
+		ingB).Scan(&got, &want); err != nil {
+		t.Fatalf("una compra sin fecha como gatobobah_app: %v", err)
+	}
+	if got != want {
+		t.Fatalf("como gatobobah_app, la compra quedó del %s; el día del negocio en Tokio es %s", got, want)
+	}
 }

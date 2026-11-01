@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -75,6 +76,7 @@ func (k *editKit) line(ing int64, desc, qty, amount, arrived string) app.EditLin
 func (k *editKit) confirmEdit(t *testing.T, id int64, in app.EditInput, decide map[string]string) app.EditResult {
 	t.Helper()
 	in.Decisions = decide
+	in.CanReceive = true // el usuario del kit es admin: edita y recibe
 	pre, err := k.svc.EditExpense(k.ctx, id, in, k.user, true)
 	if err != nil {
 		t.Fatalf("vista previa: %v", err)
@@ -238,7 +240,7 @@ func TestEditPreviewWritesNothing(t *testing.T) {
 	costBefore := k.ingredientCost(t)
 	azucar := app.EditLineInput{ItemType: "ingrediente", IngredientID: &k.azucar, Description: "Azúcar", Quantity: dd("1"),
 		PresentationID: &k.bulto, Amount: dd("150"), ArrivedOn: k.day(0)}
-	pre, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Add: []app.EditLineInput{azucar}}, k.user, true)
+	pre, err := k.svc.EditExpense(k.ctx, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{azucar}}, k.user, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +338,7 @@ func TestEditAddingAnArrivedLineReceivesItWithItsDate(t *testing.T) {
 	}
 	// Una entrega del futuro o anterior al gasto no existe.
 	for _, bad := range []string{k.day(1), k.day(-4)} {
-		_, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Add: []app.EditLineInput{k.line(k.tapas, "Otra", "1", "1", bad)}}, k.user, true)
+		_, err := k.svc.EditExpense(k.ctx, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{k.line(k.tapas, "Otra", "1", "1", bad)}}, k.user, true)
 		if !errors.Is(err, domain.ErrValidation) {
 			t.Fatalf("una entrega del %s = %v, quiere validación", bad, err)
 		}
@@ -501,7 +503,7 @@ func TestRemovingAReceivedLineAfterACountAsksAndKeep(t *testing.T) {
 	countID := k.closedCount(t, k.tapas, time.Now().Add(-48*time.Hour))
 	k.confirmEdit(t, id, app.EditInput{Add: []app.EditLineInput{k.line(k.fajillas, "Fajillas", "1", "1", "")}}, map[string]string{"money": "leave"})
 
-	in := app.EditInput{Remove: []int64{item}}
+	in := app.EditInput{CanReceive: true, Remove: []int64{item}}
 	pre, err := k.svc.EditExpense(k.ctx, id, in, k.user, true)
 	if err != nil {
 		t.Fatal(err)
@@ -537,7 +539,7 @@ func TestReceivingTodayNeverAsksAboutACount(t *testing.T) {
 	k := newEditKit(t)
 	id := k.paidWithoutGoods(t, "10", k.day(-3))
 	k.closedCount(t, k.tapas, time.Now().Add(-time.Hour))
-	pre, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Add: []app.EditLineInput{k.line(k.tapas, "Tapas", "1", "10", k.day(0))}}, k.user, true)
+	pre, err := k.svc.EditExpense(k.ctx, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{k.line(k.tapas, "Tapas", "1", "10", k.day(0))}}, k.user, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -547,7 +549,7 @@ func TestReceivingTodayNeverAsksAboutACount(t *testing.T) {
 		}
 	}
 	// Con fecha anterior al conteo, sí pregunta, y «ajustar» suma.
-	pre, err = k.svc.EditExpense(k.ctx, id, app.EditInput{Add: []app.EditLineInput{k.line(k.tapas, "Tapas", "1", "10", k.day(-2))}}, k.user, true)
+	pre, err = k.svc.EditExpense(k.ctx, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{k.line(k.tapas, "Tapas", "1", "10", k.day(-2))}}, k.user, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -574,7 +576,8 @@ func TestEditingTheHeader(t *testing.T) {
 	if err := k.st.Pool.QueryRow(ctx, `insert into suppliers (company_id, name) values ($1, 'Plásticos 53') returning id`, defaultCompanyID).Scan(&supplier); err != nil {
 		t.Fatal(err)
 	}
-	newDate, comment := k.day(-1), "Pedido semanal"
+	// Más temprano: no puede quedar después de la entrega del día -2.
+	newDate, comment := k.day(-4), "Pedido semanal"
 	res := k.confirmEdit(t, id, app.EditInput{Header: &app.EditHeaderInput{SupplierSet: true, SupplierID: &supplier,
 		CategoryID: &otherCat, Description: &comment, ExpenseDate: &newDate}}, nil)
 	if len(res.Preview.Header) != 4 {
@@ -647,14 +650,167 @@ func TestEditingAnotherCompanysExpenseIsIsolated(t *testing.T) {
 	other := makeCompany(t, k.st, "editar-gasto-ajena")
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, as *store.Store, ctx context.Context) {
 		svc := app.NewBackofficeService(as, nil)
-		if _, err := svc.EditExpense(ctx, id, app.EditInput{Remove: []int64{item}}, k.user, true); err == nil {
-			t.Fatal("previsualizó una edición de un gasto de otra empresa")
+		// No existe para quien no es de la empresa: el mismo 404 que un id que no existe (sin oráculo).
+		if _, err := svc.EditExpense(ctx, id, app.EditInput{CanReceive: true, Remove: []int64{item}}, k.user, true); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("editar un gasto ajeno = %v, quiere no encontrado", err)
 		}
-		if _, err := svc.DeliverExpense(ctx, id, app.DeliveryInput{Lines: []app.DeliveryLineInput{{ItemID: item, Qty: dd("1")}}}, k.user, false); err == nil {
-			t.Fatal("recibió en un gasto de otra empresa")
+		if _, err := svc.DeliverExpense(ctx, id, app.DeliveryInput{Lines: []app.DeliveryLineInput{{ItemID: item, Qty: dd("1")}}}, k.user, false); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("recibir en un gasto ajeno = %v, quiere no encontrado", err)
 		}
 	})
 	if n := k.count(t, `select count(*) from stock_movements where expense_id = $1`, id); n != 0 {
 		t.Fatal("otra empresa movió el almacén de este gasto")
+	}
+}
+
+// Revisión de código (go-backend-reviewer, 1): quitar un renglón que ya llegó mueve el almacén, así
+// que exige también el permiso de recibir, no solo el de editar.
+func TestRemovingAReceivedLineNeedsTheReceivePermission(t *testing.T) {
+	t.Parallel()
+	k := newEditKit(t)
+	id := k.paidWithoutGoods(t, "120", k.day(-5))
+	k.confirmEdit(t, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{k.line(k.tapas, "Tapas", "5", "100", k.day(-3)), k.line(k.fajillas, "Fajillas", "1", "20", "")}}, nil)
+	it := k.items(t, id)
+	_, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Remove: []int64{it["Tapas"]}}, k.user, true)
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("quitar lo recibido sin permiso de recibir = %v, quiere prohibido", err)
+	}
+	// Lo que no llegó sí se quita con solo editar: no mueve nada.
+	if _, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Remove: []int64{it["Fajillas"]}}, k.user, true); err != nil {
+		t.Fatalf("quitar lo no recibido con solo editar: %v", err)
+	}
+	// Agregar algo que «ya llegó» tampoco pasa sin el permiso, aunque el handler no lo filtre.
+	if _, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Add: []app.EditLineInput{k.line(k.tapas, "Otra", "1", "1", k.day(0))}}, k.user, true); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("agregar «ya llegó» sin permiso de recibir = %v", err)
+	}
+}
+
+// Revisión de código (go-backend-reviewer, 2): anular un gasto con un «No mover» deshace también la
+// compensación, o las existencias quedarían por debajo de lo que dejó el conteo.
+func TestCancellingAfterKeepLeavesTheCountedStock(t *testing.T) {
+	t.Parallel()
+	k := newEditKit(t)
+	k.closedCount(t, k.tapas, time.Now().Add(-48*time.Hour))
+	before := onHandIngredient(t, k.st, k.tapas)
+	id, err := k.svc.CreateExpense(k.ctx, app.ExpenseInput{ExpenseDay: k.day(-5), CategoryID: k.category, Amount: dd("100"),
+		Status: domain.ExpensePendiente, Description: "Por pagar", UserID: k.user})
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.confirmEdit(t, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{k.line(k.tapas, "Tapas", "50", "100", k.day(-4))}},
+		map[string]string{"count:" + strconv.FormatInt(k.tapas, 10): "keep"})
+	if got := onHandIngredient(t, k.st, k.tapas); !got.Equal(before) {
+		t.Fatalf("con «No mover» lo guardado cambió de %s a %s", before, got)
+	}
+	if err := k.svc.CancelExpense(k.ctx, id, "prueba", k.user); err != nil {
+		t.Fatal(err)
+	}
+	if got := onHandIngredient(t, k.st, k.tapas); !got.Equal(before) {
+		t.Fatalf("anular dejó lo guardado en %s; el conteo lo había dejado en %s", got, before)
+	}
+}
+
+// Revisión de código (go-backend-reviewer, 3, 4 y 8): parámetros presentes y malformados se rechazan.
+func TestEditRejectsMalformedValues(t *testing.T) {
+	t.Parallel()
+	k := newEditKit(t)
+	id := k.paidWithoutGoods(t, "30", k.day(-5))
+	k.confirmEdit(t, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{k.line(k.tapas, "Tapas", "3", "30", k.day(-3))}}, nil)
+	empty := ""
+	if _, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Header: &app.EditHeaderInput{ExpenseDate: &empty}}, k.user, true); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("fecha del gasto vacía = %v, quiere validación (no cae a hoy)", err)
+	}
+	after := k.day(-1)
+	if _, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Header: &app.EditHeaderInput{ExpenseDate: &after}}, k.user, true); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("fecha del gasto posterior a su entrega = %v, quiere validación", err)
+	}
+	k.confirmEdit(t, id, app.EditInput{Add: []app.EditLineInput{k.line(k.fajillas, "Fajillas", "5", "1", "")}}, map[string]string{"money": "leave"})
+	item := k.items(t, id)["Fajillas"]
+	if _, err := k.svc.DeliverExpense(k.ctx, id, app.DeliveryInput{Lines: []app.DeliveryLineInput{{ItemID: item, Qty: dd("2"), ExtraAmount: ptrDec(dd("5"))}}}, k.user, true); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("importe de lo de más sin que llegara de más = %v, quiere validación", err)
+	}
+	if _, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Remove: []int64{item}, Decisions: map[string]string{"count:1": "quizas"}}, k.user, true); err != nil {
+		// Una llave de decisión que la vista previa no pidió se ignora; un valor desconocido para una
+		// que sí pide, se rechaza (TestEditDecisionsRejectUnknown).
+		t.Fatalf("decisión que no aplica: %v", err)
+	}
+}
+
+// Revisión de código (go-backend-reviewer, 5): un renglón cuyos movimientos suman más que lo aplicado
+// no se «revierte» sumando mercancía: es una inconsistencia y se rechaza.
+func TestRemovingALineWithInconsistentMovementsNeverAddsStock(t *testing.T) {
+	t.Parallel()
+	k := newEditKit(t)
+	id := k.paidWithoutGoods(t, "120", k.day(-5))
+	k.confirmEdit(t, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{k.line(k.tapas, "Tapas", "5", "100", k.day(-3))}}, map[string]string{})
+	item := k.items(t, id)["Tapas"]
+	if _, err := k.st.Pool.Exec(context.Background(), `update expense_items set applied_qty_base = 2 where id = $1`, item); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.svc.EditExpense(k.ctx, id, app.EditInput{CanReceive: true, Remove: []int64{item}}, k.user, true); err == nil {
+		t.Fatal("quitó un renglón cuyos movimientos no cuadran con lo aplicado")
+	}
+	if n := k.count(t, `select count(*) from stock_movements where expense_item_id = $1 and quantity > 0 and reason like 'renglón quitado%'`, item); n != 0 {
+		t.Fatal("un borrado sumó mercancía")
+	}
+}
+
+// Revisión de código (go-backend-reviewer, 6): una edición solo de encabezado no toma los insumos, así
+// que no choca con una venta en curso.
+func TestEditingOnlyTheHeaderDoesNotLockIngredients(t *testing.T) {
+	t.Parallel()
+	k := newEditKit(t)
+	id := k.paidWithoutGoods(t, "30", k.day(-5))
+	k.confirmEdit(t, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{k.line(k.tapas, "Tapas", "3", "30", k.day(-3))}}, nil)
+	ctx := context.Background()
+	tx, err := k.st.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `select 1 from ingredients where id = $1 for update`, k.tapas); err != nil {
+		t.Fatal(err)
+	}
+	comment := "Solo el comentario"
+	if _, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Header: &app.EditHeaderInput{Description: &comment}}, k.user, true); err != nil {
+		t.Fatalf("editar solo el comentario chocó con una venta en curso: %v", err)
+	}
+}
+
+// Revisión de seguridad (1 y 3): una referencia de otra empresa o inexistente es un 400/404, nunca un
+// 500, y nunca entra. La llave foránea salta RLS por diseño; el servicio pregunta bajo RLS.
+func TestEditRejectsReferencesFromAnotherCompany(t *testing.T) {
+	t.Parallel()
+	k := newEditKit(t)
+	id := k.paidWithoutGoods(t, "100", k.day(-2))
+	coB := makeCompany(t, k.st, "editar-gasto-refs-b")
+	ctx := context.Background()
+	ingB := ingredientIn(t, k.st, coB, "Ajeno", "pieza")
+	var prodB, supB int64
+	if err := k.st.Pool.QueryRow(ctx, `insert into products (company_id, name, price, category_id)
+		select $1, 'Ajeno', 10, (select id from categories where company_id = $1 limit 1) returning id`, coB).Scan(&prodB); err != nil {
+		t.Logf("sin producto ajeno: %v", err)
+	}
+	if err := k.st.Pool.QueryRow(ctx, `insert into suppliers (company_id, name) values ($1, 'Ajeno') returning id`, coB).Scan(&supB); err != nil {
+		t.Fatal(err)
+	}
+	bad := func(name string, in app.EditInput) {
+		t.Helper()
+		_, err := k.svc.EditExpense(k.ctx, id, in, k.user, true)
+		if !errors.Is(err, domain.ErrValidation) && !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("%s = %v, quiere 400 o 404", name, err)
+		}
+	}
+	bad("insumo ajeno", app.EditInput{Add: []app.EditLineInput{k.line(ingB, "Ajeno", "1", "10", "")}})
+	if prodB != 0 {
+		bad("producto ajeno", app.EditInput{Add: []app.EditLineInput{{ItemType: "producto", ProductID: &prodB, Description: "Ajeno",
+			Quantity: dd("1"), UnitID: &k.pieza, Amount: dd("10")}}})
+	}
+	nope := int16(32000)
+	bad("unidad que no existe", app.EditInput{Add: []app.EditLineInput{{ItemType: "ingrediente", IngredientID: &k.tapas, Description: "Tapas",
+		Quantity: dd("1"), UnitID: &nope, Amount: dd("10")}}})
+	bad("proveedor ajeno", app.EditInput{Header: &app.EditHeaderInput{SupplierSet: true, SupplierID: &supB}})
+	if n := k.count(t, `select count(*) from expense_items where expense_id = $1`, id); n != 0 {
+		t.Fatal("entró un renglón con una referencia ajena")
 	}
 }

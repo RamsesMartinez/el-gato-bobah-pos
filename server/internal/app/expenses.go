@@ -928,6 +928,9 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 		if err != nil {
 			return err
 		}
+		if err := checkLineRefs(ctx, q, it.ProductID, it.UnitID); err != nil {
+			return err
+		}
 		if itemType != nil {
 			if !excluded {
 				if err := checkLineMoney(amount, it.IsGift); err != nil {
@@ -1074,6 +1077,11 @@ func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason 
 		// anular el gasto y dejar la mercancía sumada haría que el almacén contara algo que no
 		// se compró (spec 038; antes se respondía 409).
 		if err := s.reverseStockLines(ctx, q, id, userID); err != nil {
+			return err
+		}
+		// Un «No mover» (spec 053) dejó un ajuste ligado al conteo que no es del renglón: anular revierte
+		// la compra del renglón y, sin esto, las existencias quedarían por debajo de lo que dejó el conteo.
+		if err := undoKeepCompensations(ctx, q, id, userID); err != nil {
 			return err
 		}
 		n, err := q.CancelExpense(ctx, db.CancelExpenseParams{
@@ -1304,4 +1312,24 @@ func bytesPtr(b []byte) *string {
 	}
 	s := string(b)
 	return &s
+}
+
+// undoKeepCompensations deshace las compensaciones de «No mover» que siguen vivas en un gasto, con
+// la misma fecha, conteo y sucursal que las dejó.
+func undoKeepCompensations(ctx context.Context, q *db.Queries, expenseID, userID int64) error {
+	rows, err := q.OpenKeepCompensations(ctx, &expenseID)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		ing, cnt, exp, uid := r.IngredientID, r.StockCountID, expenseID, userID
+		reason := fmt.Sprintf("compra anulada: deshace «ya contado en el conteo %d»", cnt)
+		if err := q.InsertCompensationMovement(ctx, db.InsertCompensationMovementParams{
+			IngredientID: &ing, Quantity: r.Qty.Neg(), ExpenseID: &exp, StockCountID: &cnt, UserID: &uid,
+			Reason: &reason, BranchID: r.BranchID, EffectiveOn: r.Day,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -281,3 +281,31 @@ update expense_items
    set qty_received = sqlc.arg(qty), quantity = sqlc.arg(qty), amount = sqlc.arg(amount),
        unit_cost = sqlc.arg(unit_cost), not_coming_qty = 0
  where id = sqlc.arg(id);
+
+-- name: MinDeliveryDate :one
+-- El día de la primera entrega de los renglones vivos: la fecha del gasto no puede quedar después.
+select min(sm.effective_on)::date as day
+  from stock_movements sm
+  join expense_items ei on ei.id = sm.expense_item_id
+ where ei.expense_id = sqlc.arg(expense_id) and ei.voided_at is null and sm.movement_type = 'compra'
+   and sm.quantity > 0;
+
+-- name: OpenKeepCompensations :many
+-- Las compensaciones de «No mover» de un gasto que siguen vivas (spec 053): al anularlo se deshacen,
+-- o las existencias quedarían por debajo de lo que dejó el conteo.
+select ingredient_id::bigint as ingredient_id, stock_count_id::bigint as stock_count_id, branch_id,
+       effective_on::date as day, sum(quantity)::numeric(14,4) as qty
+  from stock_movements
+ where expense_id = sqlc.arg(expense_id) and movement_type = 'ajuste' and stock_count_id is not null
+   and expense_item_id is null
+ group by ingredient_id, stock_count_id, branch_id, effective_on
+having sum(quantity) <> 0
+ order by ingredient_id;
+
+-- name: ProductVisible :one
+-- Pertenencia bajo RLS de un producto de un renglón: la llave foránea salta RLS y el de otra empresa
+-- reventaba como 500 (revisión de seguridad de la spec 053).
+select exists (select 1 from products where id = $1)::bool;
+
+-- name: UnitExists :one
+select exists (select 1 from units where id = $1)::bool;

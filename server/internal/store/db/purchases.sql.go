@@ -665,6 +665,22 @@ func (q *Queries) MaxDeliveryDate(ctx context.Context, expenseID int64) (pgtype.
 	return day, err
 }
 
+const minDeliveryDate = `-- name: MinDeliveryDate :one
+select min(sm.effective_on)::date as day
+  from stock_movements sm
+  join expense_items ei on ei.id = sm.expense_item_id
+ where ei.expense_id = $1 and ei.voided_at is null and sm.movement_type = 'compra'
+   and sm.quantity > 0
+`
+
+// El día de la primera entrega de los renglones vivos: la fecha del gasto no puede quedar después.
+func (q *Queries) MinDeliveryDate(ctx context.Context, expenseID int64) (pgtype.Date, error) {
+	row := q.db.QueryRow(ctx, minDeliveryDate, expenseID)
+	var day pgtype.Date
+	err := row.Scan(&day)
+	return day, err
+}
+
 const nextItemPosition = `-- name: NextItemPosition :one
 select (coalesce(max(position), -1) + 1)::int as position from expense_items where expense_id = $1
 `
@@ -674,6 +690,53 @@ func (q *Queries) NextItemPosition(ctx context.Context, expenseID int64) (int32,
 	var position int32
 	err := row.Scan(&position)
 	return position, err
+}
+
+const openKeepCompensations = `-- name: OpenKeepCompensations :many
+select ingredient_id::bigint as ingredient_id, stock_count_id::bigint as stock_count_id, branch_id,
+       effective_on::date as day, sum(quantity)::numeric(14,4) as qty
+  from stock_movements
+ where expense_id = $1 and movement_type = 'ajuste' and stock_count_id is not null
+   and expense_item_id is null
+ group by ingredient_id, stock_count_id, branch_id, effective_on
+having sum(quantity) <> 0
+ order by ingredient_id
+`
+
+type OpenKeepCompensationsRow struct {
+	IngredientID int64           `json:"ingredient_id"`
+	StockCountID int64           `json:"stock_count_id"`
+	BranchID     int64           `json:"branch_id"`
+	Day          pgtype.Date     `json:"day"`
+	Qty          decimal.Decimal `json:"qty"`
+}
+
+// Las compensaciones de «No mover» de un gasto que siguen vivas (spec 053): al anularlo se deshacen,
+// o las existencias quedarían por debajo de lo que dejó el conteo.
+func (q *Queries) OpenKeepCompensations(ctx context.Context, expenseID *int64) ([]OpenKeepCompensationsRow, error) {
+	rows, err := q.db.Query(ctx, openKeepCompensations, expenseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OpenKeepCompensationsRow{}
+	for rows.Next() {
+		var i OpenKeepCompensationsRow
+		if err := rows.Scan(
+			&i.IngredientID,
+			&i.StockCountID,
+			&i.BranchID,
+			&i.Day,
+			&i.Qty,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const pendingReceipts = `-- name: PendingReceipts :many
@@ -767,6 +830,19 @@ func (q *Queries) PieceUnitID(ctx context.Context) (int16, error) {
 	var id int16
 	err := row.Scan(&id)
 	return id, err
+}
+
+const productVisible = `-- name: ProductVisible :one
+select exists (select 1 from products where id = $1)::bool
+`
+
+// Pertenencia bajo RLS de un producto de un renglón: la llave foránea salta RLS y el de otra empresa
+// reventaba como 500 (revisión de seguridad de la spec 053).
+func (q *Queries) ProductVisible(ctx context.Context, id int64) (bool, error) {
+	row := q.db.QueryRow(ctx, productVisible, id)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const raiseExpenseAmount = `-- name: RaiseExpenseAmount :exec
@@ -933,6 +1009,17 @@ func (q *Queries) SupplierName(ctx context.Context, id int64) (string, error) {
 	var name string
 	err := row.Scan(&name)
 	return name, err
+}
+
+const unitExists = `-- name: UnitExists :one
+select exists (select 1 from units where id = $1)::bool
+`
+
+func (q *Queries) UnitExists(ctx context.Context, id int16) (bool, error) {
+	row := q.db.QueryRow(ctx, unitExists, id)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const updateExpenseHeader = `-- name: UpdateExpenseHeader :exec

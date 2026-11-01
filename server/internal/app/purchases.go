@@ -73,6 +73,31 @@ func lineUnit(ctx context.Context, q *db.Queries, ingredientID *int64, presentat
 
 // checkLineMoney: cada renglón lleva importe mayor que cero, salvo un regalo, que va en 0 (FR-004a,
 // FR-007d). El check de la 0092 lo repite como defensa.
+// checkLineRefs pregunta bajo RLS por el producto y la unidad de un renglón antes de escribirlo: la
+// llave foránea salta RLS por diseño, y uno de otra empresa o inexistente respondía 500. El insumo lo
+// cubre lockIngredients y el empaque GetPresentationForLine.
+func checkLineRefs(ctx context.Context, q *db.Queries, productID *int64, unitID *int16) error {
+	if productID != nil {
+		ok, err := q.ProductVisible(ctx, *productID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("%w: el producto no existe", domain.ErrNotFound)
+		}
+	}
+	if unitID != nil {
+		ok, err := q.UnitExists(ctx, *unitID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("%w: la unidad no existe", domain.ErrValidation)
+		}
+	}
+	return nil
+}
+
 func checkLineMoney(amount decimal.Decimal, gift bool) error {
 	if gift {
 		if !amount.IsZero() {

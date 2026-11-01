@@ -56,13 +56,24 @@ type EditInput struct {
 	Remove      []int64
 	Decisions   map[string]string
 	Fingerprint string
+	// CanReceive: quien edita también puede recibir mercancía (R8). Agregar algo que «ya llegó» o
+	// quitar un renglón que ya sumó al almacén mueven existencias: sin este permiso se rechazan. Lo
+	// pone el handler con el mismo resolvedor que el router; depende del estado del renglón, que solo
+	// el servicio conoce.
+	CanReceive bool
 }
 
-// NeedsReceive: agregar algo que «ya llegó» mueve el almacén y exige también el permiso de recibir
-// (R8). El handler lo verifica con el mismo resolvedor que el router.
-func (in EditInput) NeedsReceive() bool {
+// errNeedsReceive es el 403 de mover el almacén desde una edición sin el permiso de recibir.
+var errNeedsReceive = fmt.Errorf("%w: %s", domain.ErrForbidden, domain.PermissionDeniedMessage(domain.PermInventoryReceive))
+
+// touchesStock: la edición puede mover el almacén (agrega un artículo o quita algo). Solo entonces
+// se toman los insumos: editar el comentario no tiene por qué chocar con una venta en curso.
+func (in EditInput) touchesStock() bool {
+	if len(in.Remove) > 0 {
+		return true
+	}
 	for _, a := range in.Add {
-		if a.ArrivedOn != "" {
+		if a.IngredientID != nil || a.ProductID != nil {
 			return true
 		}
 	}
@@ -172,12 +183,16 @@ type EditResult struct {
 
 // editRun es el estado de una edición dentro de su transacción.
 type editRun struct {
-	q        *db.Queries
-	exp      db.LockExpenseForEditRow
-	userID   int64
-	loc      *time.Location
-	today    time.Time
-	now      time.Time
+	q      *db.Queries
+	exp    db.LockExpenseForEditRow
+	userID int64
+	loc    *time.Location
+	today  time.Time
+	now    time.Time
+	// dbNow es la hora de la base dentro de la transacción: la de `created_at` de los movimientos que
+	// inserta. El conteo posterior se compara con `captured_at`, que también pone la base; con el
+	// reloj de la API se mezclarían dos relojes (como en la merma, spec 039).
+	dbNow    time.Time
 	removed  decimal.Decimal // importe de los renglones quitados (FR-009)
 	adjusted decimal.Decimal // lo que bajó un renglón ajustado a lo recibido
 	extra    decimal.Decimal // lo pagado por lo que llegó de más
@@ -188,6 +203,8 @@ type editRun struct {
 	header   []FieldChange
 	pending  []EditDecision // decisiones que no son de conteo ni de dinero (lo que falta)
 	audit    map[string]any
+	// canReceive: quien edita puede mover el almacén (EditInput.CanReceive).
+	canReceive bool
 }
 
 // editMove es un movimiento de la edición que un conteo posterior pudo haber contado ya.
@@ -257,7 +274,7 @@ func readCosts(ctx context.Context, q *db.Queries, ings []int64) (map[int64]db.I
 // `ings`/`prods` son los artículos de los renglones nuevos: se toman junto con los del gasto antes de
 // leer el «antes» y de escribir nada.
 func (s *BackofficeService) runExpenseEdit(ctx context.Context, id, userID int64, preview bool,
-	decisions map[string]string, fingerprint string, ings, prods []int64,
+	decisions map[string]string, fingerprint string, lockStock bool, ings, prods []int64,
 	work func(ctx context.Context, r *editRun) error) (EditResult, error) {
 	loc := s.businessLocation(ctx)
 	now := s.now()
@@ -273,21 +290,27 @@ func (s *BackofficeService) runExpenseEdit(ctx context.Context, id, userID int64
 		if exp.Status == db.ExpenseStatusCancelada {
 			return fmt.Errorf("%w: el gasto está anulado", domain.ErrConflict)
 		}
-		r := &editRun{q: q, exp: exp, userID: userID, loc: loc, today: domain.BusinessDate(now, loc), now: now,
-			ings: map[int64]bool{}, prods: map[int64]bool{}, lines: []LineEffect{}, header: []FieldChange{},
-			pending: []EditDecision{}, audit: map[string]any{}}
-		current, err := q.ListStockLines(ctx, id)
+		dbNow, err := q.DBNow(ctx)
 		if err != nil {
 			return err
 		}
-		for _, l := range current {
-			r.touch(l.IngredientID, l.ProductID)
-		}
-		for i := range ings {
-			r.touch(&ings[i], nil)
-		}
-		for i := range prods {
-			r.touch(nil, &prods[i])
+		r := &editRun{dbNow: dbNow, q: q, exp: exp, userID: userID, loc: loc, today: domain.BusinessDate(now, loc), now: now,
+			ings: map[int64]bool{}, prods: map[int64]bool{}, lines: []LineEffect{}, header: []FieldChange{},
+			pending: []EditDecision{}, audit: map[string]any{}}
+		if lockStock {
+			current, err := q.ListStockLines(ctx, id)
+			if err != nil {
+				return err
+			}
+			for _, l := range current {
+				r.touch(l.IngredientID, l.ProductID)
+			}
+			for i := range ings {
+				r.touch(&ings[i], nil)
+			}
+			for i := range prods {
+				r.touch(nil, &prods[i])
+			}
 		}
 		// Los insumos se toman en orden y sin esperar a una venta, ANTES de escribir (spec 038).
 		if err := lockIngredients(ctx, q, sortedKeys(r.ings)); err != nil {
@@ -563,8 +586,9 @@ func (s *BackofficeService) EditExpense(ctx context.Context, id int64, in EditIn
 			prods = append(prods, *a.ProductID)
 		}
 	}
-	return s.runExpenseEdit(ctx, id, userID, preview, in.Decisions, in.Fingerprint, ings, prods,
+	return s.runExpenseEdit(ctx, id, userID, preview, in.Decisions, in.Fingerprint, in.touchesStock(), ings, prods,
 		func(ctx context.Context, r *editRun) error {
+			r.canReceive = in.CanReceive
 			if in.Header != nil {
 				if err := r.editHeader(ctx, *in.Header); err != nil {
 					return err
@@ -581,7 +605,7 @@ func (s *BackofficeService) EditExpense(ctx context.Context, id int64, in EditIn
 			if err != nil {
 				return err
 			}
-			r.recordMoves(moves, r.now)
+			r.recordMoves(moves, r.dbNow)
 			return nil
 		})
 }
@@ -659,12 +683,23 @@ func (r *editRun) editHeader(ctx context.Context, h EditHeaderInput) error {
 		}
 	}
 	if h.ExpenseDate != nil {
+		// Presente y vacía es un error, no «hoy»: re-fecharía el gasto en silencio (constitución V).
+		if *h.ExpenseDate == "" {
+			return fmt.Errorf("%w: falta la fecha del gasto", domain.ErrValidation)
+		}
 		d, err := r.parseDay(*h.ExpenseDate)
 		if err != nil {
 			return err
 		}
 		if d.After(r.today) {
 			return fmt.Errorf("%w: la fecha del gasto no puede ser de un día que no ha pasado", domain.ErrValidation)
+		}
+		first, err := q.MinDeliveryDate(ctx, exp.ID)
+		if err != nil {
+			return err
+		}
+		if first.Valid && d.After(first.Time) {
+			return fmt.Errorf("%w: ya hay mercancía que llegó el %s; la fecha del gasto no puede ser posterior", domain.ErrValidation, dayStr(first.Time))
 		}
 		if !d.Equal(date) {
 			b, a := dayStr(date), dayStr(d)
@@ -710,6 +745,9 @@ func (r *editRun) removeLines(ctx context.Context, ids []int64) error {
 			return fmt.Errorf("%w: un renglón que no es del negocio no se quita; vuelve a incluirlo primero", domain.ErrValidation)
 		}
 		if it.ItemType != nil && !it.AppliedQtyBase.IsZero() {
+			if !r.canReceive {
+				return errNeedsReceive
+			}
 			if err := r.reverseDeliveries(ctx, it); err != nil {
 				return err
 			}
@@ -752,8 +790,13 @@ func (r *editRun) reverseDeliveries(ctx context.Context, it db.ListExpenseItemsR
 	for _, p := range plan {
 		left = left.Add(p.Qty)
 	}
-	if !left.IsZero() {
-		plan = append(plan, domain.DeliveryDay{Day: r.today, Qty: left.Neg(), RegisteredAt: r.now})
+	if left.IsNegative() {
+		// Los movimientos del renglón suman más que lo aplicado: revertir sumaría mercancía. Es un
+		// renglón inconsistente y se rechaza en vez de adivinar.
+		return fmt.Errorf("renglón %d: sus movimientos no cuadran con lo que sumó (%s)", it.ID, left)
+	}
+	if left.IsPositive() {
+		plan = append(plan, domain.DeliveryDay{Day: r.today, Qty: left.Neg(), RegisteredAt: r.dbNow})
 	}
 	expenseID, uid := r.exp.ID, r.userID
 	reason := "renglón quitado: " + it.Description
@@ -793,6 +836,9 @@ func (r *editRun) addLines(ctx context.Context, lines []EditLineInput) (map[int6
 		if err != nil {
 			return nil, err
 		}
+		if err := checkLineRefs(ctx, r.q, l.ProductID, l.UnitID); err != nil {
+			return nil, err
+		}
 		var unit *int16
 		var pack *decimal.Decimal
 		if itemType != nil {
@@ -813,6 +859,9 @@ func (r *editRun) addLines(ctx context.Context, lines []EditLineInput) (map[int6
 		var on *string
 		var arrived *time.Time
 		if l.ArrivedOn != "" {
+			if !r.canReceive {
+				return nil, errNeedsReceive
+			}
 			day, err := r.parseDay(l.ArrivedOn)
 			if err != nil {
 				return nil, err
@@ -875,7 +924,7 @@ func (s *BackofficeService) DeliverExpense(ctx context.Context, id int64, in Del
 			}
 		}
 	}
-	return s.runExpenseEdit(ctx, id, userID, preview, in.Decisions, in.Fingerprint, nil, nil,
+	return s.runExpenseEdit(ctx, id, userID, preview, in.Decisions, in.Fingerprint, true, nil, nil,
 		func(ctx context.Context, r *editRun) error {
 			def, err := r.parseDay(in.On)
 			if err != nil {
@@ -916,7 +965,7 @@ func (s *BackofficeService) DeliverExpense(ctx context.Context, id int64, in Del
 			if err != nil {
 				return err
 			}
-			r.recordMoves(moves, r.now)
+			r.recordMoves(moves, r.dbNow)
 			r.audit["delivery"] = true
 			r.audit["lines"] = got
 			return nil
@@ -937,7 +986,11 @@ func (r *editRun) deliverLine(ctx context.Context, l DeliveryLineInput, info db.
 	missing := missingOf(line)
 	quantity, amount := line.Quantity, line.Amount
 	extra := decimal.Zero
-	if over := qty.Sub(missing); over.IsPositive() {
+	over := qty.Sub(missing)
+	if l.ExtraAmount != nil && !over.IsPositive() {
+		return nil, fmt.Errorf("%w: el importe de lo de más va solo si llegó más de lo que faltaba", domain.ErrValidation)
+	}
+	if over.IsPositive() {
 		if line.IsGift {
 			quantity = quantity.Add(over) // un regalo de más sigue siendo regalo
 		} else {

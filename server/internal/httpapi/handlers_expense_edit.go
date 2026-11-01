@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -102,16 +103,16 @@ func (h *Handlers) EditExpense(w http.ResponseWriter, r *http.Request) {
 			Amount: a.Amount, IsGift: a.IsGift, ArrivedOn: a.ArrivedOn})
 	}
 	u, _ := userFrom(r.Context())
-	// Agregar algo que «ya llegó» mueve el almacén: además del permiso de editar, el de recibir. El
-	// router no lo puede decidir porque depende del cuerpo.
-	if in.NeedsReceive() && !slices.Contains(h.permissions(u.Role), domain.PermInventoryReceive) {
-		logging.SecurityEvent(r.Context(), "forbidden", "user_id", u.ID, "role", string(u.Role),
-			"permission", string(domain.PermInventoryReceive), "method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
-		Error(w, fmt.Errorf("%w: %s", domain.ErrForbidden, domain.PermissionDeniedMessage(domain.PermInventoryReceive)))
-		return
-	}
+	// Agregar algo que «ya llegó» o quitar lo que ya sumó al almacén mueven existencias: además del
+	// permiso de editar, el de recibir. Depende del estado del renglón, así que lo decide el servicio;
+	// aquí se le dice si la persona lo tiene, con el mismo resolvedor que el router.
+	in.CanReceive = slices.Contains(h.permissions(u.Role), domain.PermInventoryReceive)
 	res, err := h.backoffice.EditExpense(r.Context(), id, in, u.ID, preview)
 	if err != nil {
+		if errors.Is(err, domain.ErrForbidden) {
+			logging.SecurityEvent(r.Context(), "forbidden", "user_id", u.ID, "role", string(u.Role),
+				"permission", string(domain.PermInventoryReceive), "method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
+		}
 		Error(w, err)
 		return
 	}
