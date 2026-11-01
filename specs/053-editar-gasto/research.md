@@ -74,8 +74,12 @@ Lo que ya existe y se reusa (medido en el código el 2026-11-01):
   Una `pagada` **sin ningún pago** (de antes de la 0029) no se degrada (revisión M5). El check
   `expenses_paid_requires_date` se respeta.
 - **Anular**: como un gasto pagado ahora puede volver a pendiente, `CanCancelExpense` y la consulta
-  `CancelExpense` exigen además que no tenga pagos (409); anular con pagos es la entrega 2
-  (revisión A1).
+  `CancelExpense` exigen además que ningún pago esté ya dentro de un corte (409); anular con
+  devolución es la entrega 2 (revisión A1). Un pago que espera corte no lo impide: lo anulado no
+  entra a ningún corte (comportamiento de la spec 050, `TestAnularUnPendienteConDiferencia`). Anular
+  deshace también las compensaciones de «No mover» (`undoKeepCompensations`).
+- **Pago nuevo**: no pasa de lo que falta pagar (`domain.PaymentFitsDue`, con el gasto tomado); el
+  importe vacío del pago es el saldo (FR-032).
 - **Spec 050**: un importe nuevo cambia el tope de `drawer_extra`; se valida con
   `excludedStillCovers` dentro de la misma transacción (400 `DRAWER_EXTRA_TOO_HIGH`).
 
@@ -124,9 +128,10 @@ Lo que ya existe y se reusa (medido en el código el 2026-11-01):
 
 - **Decision**: `POST /expenses/{id}/edit` (permiso nuevo `expenses.edit`: encabezado, agregar, borrar)
   y `POST /expenses/{id}/deliveries` (permiso `inventory.receive`: entregas). Las dos con
-  `?preview=1` y el mismo servicio. Agregar un renglón con «Ya llegó» exige además
-  `inventory.receive`: lo decide `domain.EditNeedsReceive` y el handler lo verifica con el mismo
-  resolvedor de permisos del router.
+  `?preview=1` y el mismo servicio. Agregar un renglón con «Ya llegó» o quitar uno que ya sumó al
+  almacén exige además `inventory.receive`. Depende del estado del renglón, así que lo decide el
+  servicio: el handler le pasa `EditInput.CanReceive` con el mismo resolvedor de permisos del router
+  y registra el `forbidden` si el servicio lo rechaza (revisión de código).
 - **Rationale**: FR-031; quien recibe (gerente, hoy) no edita importes, y el issue fija «por omisión
   admin» para editar.
 - `expenses.edit` se agrega a `AllPermissions` (admin) y no a gerente; su mensaje en

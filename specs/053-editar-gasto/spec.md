@@ -174,8 +174,9 @@ solo al decidir; lo que se confirma es exactamente lo que se vio.
 ### Edge Cases
 
 - **Gasto anulado**: no se edita, no se recibe, no se le agregan renglones.
-- **Anular un gasto con pagos**: no se permite en esta entrega, aunque una edición lo haya dejado
-  pendiente (anular con pagos y devolución es la entrega 2).
+- **Anular un gasto con un pago ya dentro de un corte**: no se permite en esta entrega, aunque una
+  edición lo haya dejado pendiente: el corte seguiría contando la salida de un gasto anulado (anular
+  con devolución es la entrega 2). Un pago que todavía espera corte no lo impide (spec 050).
 - **Renglón excluido** («no es del local», spec 049): no se borra desde esta edición ni cuenta para
   el importe; sigue con su propio botón «Incluir».
 - **Renglón «otros» (sin artículo de inventario)**: se agrega y se borra igual, sin efectos de
@@ -310,7 +311,15 @@ solo al decidir; lo que se confirma es exactamente lo que se vio.
   cuándo, el gasto, y el antes y después de lo que cambió (campos del encabezado, renglones agregados
   y borrados, entregas con su fecha, importe, decisiones de conteo).
 - **FR-031**: Editar encabezado y renglones MUST requerir un permiso propio, que por omisión tiene
-  solo el rol admin. Recibir MUST seguir con el permiso de recibir mercancía que ya existe.
+  solo el rol admin. Recibir MUST seguir con el permiso de recibir mercancía que ya existe. Lo que
+  desde la edición mueve el almacén —agregar un renglón «Ya llegó» o quitar uno que ya sumó— MUST
+  exigir los dos permisos.
+
+**Pagos nuevos** (de la prueba con usuario nuevo)
+
+- **FR-032**: Un pago nuevo MUST NOT pasar de lo que falta pagar (importe menos lo pagado); el
+  importe que se propone al pagar es ese saldo, no el total del gasto.
+- **FR-033**: El detalle de un gasto pendiente con saldo MUST ofrecer «Registrar pago» por ese saldo.
 
 ### Key Entities
 

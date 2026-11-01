@@ -26,6 +26,8 @@ import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { Picker } from '../../components/Picker';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
+import { NumericKeypad } from '../../components/NumericKeypad';
+import { useKeypadField } from '../../components/useKeypadField';
 import { INCLUDE_IN_COUNT_LABEL } from './cajaDelGasto';
 import { AddLineSheet, type DraftLine } from './AddLineSheet';
 import { DeliverySheet } from './DeliverySheet';
@@ -106,6 +108,10 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
   const [receiving, setReceiving] = useState(false);
   const [history, setHistory] = useState<Record<number, boolean>>({});
   const [payDue, setPayDue] = useState<string | null>(null);
+  // La casilla de «Corregir lo que llegó» que escribe el teclado en pantalla (revisión de tableta).
+  const keypad = useKeypadField<string>();
+  const keypadItem = (data?.items ?? []).find((g) => String(g.id) === keypad.field && g.itemType !== null);
+  const keypadDecimal = !!keypadItem && !keypadItem.presentationId && keypadItem.unitCode !== 'pieza';
 
   const unitList = units?.items ?? [];
   const presList = presentations ?? [];
@@ -335,7 +341,14 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
               <VStack align="stretch" gap={2}>
                 {goods.map((i) => (
                   <GoodsRow key={i.id} item={i} edit={editOf(i)} correcting={correcting} presentations={presList}
-                    desired={desiredBase(i)} onEdit={(patch) => setEdit(i, patch)}
+                    qtyRef={keypad.ref(String(i.id))} qtyActive={keypad.field === String(i.id)}
+                    onQtyFocus={() => keypad.setField(String(i.id))}
+                    desired={desiredBase(i)} onEdit={(patch) => {
+                      // Un renglón que ya no «llegó» apaga su casilla: el teclado deja de escribir en ella.
+                      if (patch.state && patch.state !== 'llego' && keypad.field === String(i.id)) keypad.setField(null);
+                      else if (patch.qty !== undefined) keypad.keep();
+                      setEdit(i, patch);
+                    }}
                     showHistory={!!history[i.id]} onHistory={() => setHistory((h) => ({ ...h, [i.id]: !h[i.id] }))}
                     removal={editing ? { removed: removed.has(i.id), toggle: () => setRemoved((s) => toggled(s, i.id)) } : undefined}
                     onExclude={canReceive && !cancelled && mode === 'view' ? () => {
@@ -436,7 +449,16 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
 
         {data && !cancelled && (
           <DialogFooter borderTopWidth="1px">
-            {correcting ? (
+            {correcting && keypadItem ? (
+              <HStack w="100%" gap={3} align="end">
+                <Box flex="1" maxW="320px">
+                  <NumericKeypad allowDecimal={keypadDecimal}
+                    onKey={(k) => setEdit(keypadItem, { qty: keypad.apply(editOf(keypadItem).qty, k, keypadDecimal) })} />
+                </Box>
+                <Box flex="1" />
+                <Button minH="56px" colorPalette="brand" onClick={() => keypad.setField(null)}>Listo</Button>
+              </HStack>
+            ) : correcting ? (
               <HStack w="100%" gap={3}>
                 <Text fontSize="sm" flex="1" data-testid="resumen-correccion">
                   {changed.length === 0
@@ -558,11 +580,12 @@ function howItCame(i: ExpenseItem, qty: string, presentations: Presentation[]): 
   return `${qty} ${i.unitCode ?? ''}`.trim();
 }
 
-function GoodsRow({ item, edit, correcting, presentations, desired, onEdit, onExclude, showHistory, onHistory, removal }: {
+function GoodsRow({ item, edit, correcting, presentations, desired, onEdit, onExclude, showHistory, onHistory, removal, qtyRef, qtyActive, onQtyFocus }: {
   item: ExpenseItem; edit: Edit; correcting: boolean; presentations: Presentation[];
   desired: number; onEdit: (patch: Partial<Edit>) => void; onExclude?: () => void;
   showHistory: boolean; onHistory: () => void;
   removal?: { removed: boolean; toggle: () => void };
+  qtyRef?: (el: HTMLElement | null) => void; qtyActive?: boolean; onQtyFocus?: () => void;
 }) {
   const base = item.baseUnitCode ?? '';
   const onHand = num(item.onHand);
@@ -603,8 +626,10 @@ function GoodsRow({ item, edit, correcting, presentations, desired, onEdit, onEx
                 onClick={() => { const n = num(edit.qty); if (n > 0) onEdit({ qty: String(round2(Math.max(0, n - 1))) }); }}>
                 <LuMinus />
               </IconButton>
-              <Input aria-label="Cuántos llegaron" w="64px" minH="44px" textAlign="center" border="none" inputMode="decimal" value={edit.qty}
-                disabled={edit.state !== 'llego'} onChange={(e) => onEdit({ qty: e.target.value })} />
+              {/* Teclado en pantalla: el del sistema tapaba «Guardar» en la tableta (revisión de la 053). */}
+              <Input ref={qtyRef} aria-label="Cuántos llegaron" w="64px" minH="44px" textAlign="center" inputMode="none" readOnly
+                value={edit.qty} disabled={edit.state !== 'llego'} borderWidth="2px"
+                borderColor={qtyActive ? 'brand.solid' : 'transparent'} onClick={onQtyFocus} onFocus={onQtyFocus} />
               <IconButton aria-label="Más" variant="ghost" minH="44px" minW="44px" disabled={edit.state !== 'llego'}
                 onClick={() => onEdit({ qty: String(round2(num(edit.qty) + 1)) })}>
                 <LuPlus />
