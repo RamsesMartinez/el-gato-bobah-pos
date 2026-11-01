@@ -239,6 +239,10 @@ func (s *BackofficeService) ChangeUnit(ctx context.Context, id int64, req UnitCh
 		return fmt.Errorf("%w: cambiar la unidad necesita a la persona que lo hace", domain.ErrForbidden)
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El candado del recálculo antes que cualquier fila (ver recomputeCosts).
+		if err := q.LockCompositionEdits(ctx); err != nil {
+			return err
+		}
 		// Artículo y existencias sin esperar: una venta en curso responde «vuelve a intentar» (E6).
 		art, err := q.LockArticleNowait(ctx, id)
 		if err != nil {
@@ -256,9 +260,15 @@ func (s *BackofficeService) ChangeUnit(ctx context.Context, id int64, req UnitCh
 			return err
 		}
 		if p.path == domain.UnitPathDirect {
-			return changeUnitDirect(ctx, q, p, req)
+			err = changeUnitDirect(ctx, q, p, req)
+		} else {
+			err = replaceArticle(ctx, q, p, req, locked, actor)
 		}
-		return replaceArticle(ctx, q, p, req, locked, actor)
+		if err != nil {
+			return err
+		}
+		// Las recetas quedaron convertidas (y a veces corregidas a mano): lo que las lleva cambia de costo.
+		return recomputeCosts(ctx, q)
 	})
 }
 

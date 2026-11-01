@@ -106,6 +106,11 @@ update modifier_options set composition_status = 'confirmed', composition_confir
 -- milisegundos no le cuesta nada a nadie.
 select pg_advisory_xact_lock(28028, coalesce(nullif(current_setting('app.company_id', true), '')::int, 0));
 
+-- name: TryLockCompositionEdits :one
+-- El mismo candado sin esperar, para quien llega al recálculo de costos con filas ya tomadas (una
+-- compra): esperarlo con ellas en la mano cruza los candados con una captura que las necesita.
+select pg_try_advisory_xact_lock(28028, coalesce(nullif(current_setting('app.company_id', true), '')::int, 0))::bool as locked;
+
 -- name: PackageHasChoices :one
 -- Un paquete armado fuera de «Qué lleva» puede dejar elegir (un hueco con varios productos o con
 -- mínimo distinto del máximo) o tener un hueco sin producto por omisión, que «Qué lleva» no muestra.

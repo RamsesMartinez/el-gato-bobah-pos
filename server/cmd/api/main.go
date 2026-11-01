@@ -223,6 +223,7 @@ func main() {
 		return errors.Join(errs...)
 	})
 	broker := realtime.NewBroker()
+	costing := app.NewCostingService(st)
 	menusPlataforma := app.NewMenusDePlataformaService(st, credentials, nil)
 	handlers := httpapi.NewHandlers(httpapi.Deps{
 		Cfg:             cfg,
@@ -234,7 +235,7 @@ func main() {
 		Menu:            app.NewMenuService(st, nil),
 		MenuCache:       cache.NewMenuCache(cfg.RedisURL),
 		Suggest:         app.NewSuggestService(st, nil),
-		Costing:         app.NewCostingService(st),
+		Costing:         costing,
 		Orders:          orders,
 		Drafts:          app.NewDraftsService(st, orders),
 		Accounts:        app.NewAccountsService(st, orders),
@@ -293,20 +294,36 @@ func main() {
 		})
 	})
 
+	activeCompanies := func(c context.Context) ([]int64, error) {
+		rows, err := plataforma.QC(c).ListCompaniesForPlatform(c)
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]int64, 0, len(rows))
+		for _, r := range rows {
+			if r.IsActive {
+				ids = append(ids, r.ID)
+			}
+		}
+		return ids, nil
+	}
 	fondo.Go(func() {
-		app.SendSummariesPeriodically(ctxRecorte, 15*time.Minute, resumen, func(c context.Context) ([]int64, error) {
-			rows, err := plataforma.QC(c).ListCompaniesForPlatform(c)
-			if err != nil {
-				return nil, err
-			}
-			ids := make([]int64, 0, len(rows))
-			for _, r := range rows {
-				if r.IsActive {
-					ids = append(ids, r.ID)
-				}
-			}
-			return ids, nil
-		})
+		app.SendSummariesPeriodically(ctxRecorte, 15*time.Minute, resumen, activeCompanies)
+	})
+	// Una vez por arranque, el costo vigente de cada empresa se recalcula desde sus recetas: corrige
+	// lo que quedó mal antes de que guardar una receta lo recalculara (issue #145) y lo que deje
+	// cualquier script. Solo escribe lo que cambió. En segundo plano: un costo de margen no es razón
+	// para tardar en atender, y si falla el negocio sigue operando con el costo anterior.
+	fondo.Go(func() {
+		ids, err := activeCompanies(ctxRecorte)
+		if err == nil {
+			err = costing.RecomputeCompanies(ctxRecorte, ids)
+		}
+		if err != nil {
+			slog.Error("cost_recompute_on_boot_failed", "error", err)
+			return
+		}
+		slog.Info("cost_recompute_on_boot", "companies", len(ids))
 	})
 
 	srv := &http.Server{
