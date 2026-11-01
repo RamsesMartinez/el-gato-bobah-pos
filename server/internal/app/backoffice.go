@@ -1172,6 +1172,11 @@ type AperturaCmd struct {
 	// Reason y ReasonNote: por qué lo contado no coincide con el cierre anterior (spec 032).
 	Reason     string
 	ReasonNote string
+	// OpenedAt: abrir desde una hora anterior (spec 048). nil = la del primer gasto sin corte, o
+	// ahora si no hay. El permiso lo revisa el handler; aquí se valida la hora.
+	OpenedAt *time.Time
+	// ExcludePending: abrir «ahora» dejando sin incluir los gastos sin corte (R13). Exige permiso.
+	ExcludePending bool
 }
 
 func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, cmd AperturaCmd, userID int64) (*SessionView, error) {
@@ -1211,6 +1216,9 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
+	if cmd.OpenedAt != nil && cmd.ExcludePending {
+		return nil, fmt.Errorf("%w: una apertura con hora no excluye los gastos sin corte", domain.ErrValidation)
+	}
 	var reason, note *string
 	if domain.OpeningNeedsReason(prev, total) {
 		if err := domain.ValidOpeningReason(cmd.Reason, cmd.ReasonNote); err != nil {
@@ -1246,16 +1254,71 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 		if !cr.CountsCash {
 			return domain.ErrRegisterNotCounted
 		}
+		// LA HORA DE APERTURA (spec 048, R13), con la caja tomada: lo que se valida es lo que queda.
+		// Sin hora explicita, la apertura incluye sola los gastos sin corte desde el último cierre
+		// tomando la hora del primero; excluirlos o mover la hora a mano exige el permiso, que revisa
+		// el handler. Un solo reloj, el del servicio: la hora de los pagos sale de él.
+		now := s.now()
+		last, err := lastCloseOf(ctx, q, registerID)
+		if err != nil {
+			return err
+		}
+		openedAt, backdate := now, ""
+		switch {
+		case cmd.OpenedAt != nil:
+			if err := domain.ValidBackdatedOpening(*cmd.OpenedAt, now, last); err != nil {
+				return err
+			}
+			openedAt, backdate = *cmd.OpenedAt, "manual"
+		case !cmd.ExcludePending:
+			since := pgtype.Timestamptz{}
+			if last != nil {
+				since = pgtype.Timestamptz{Time: *last, Valid: true}
+			}
+			pend, err := q.ListPendingExpensePayments(ctx, db.ListPendingExpensePaymentsParams{RegisterID: &registerID, Since: since})
+			if err != nil {
+				return err
+			}
+			if len(pend) > 0 && pend[0].PaidAt.Before(now) {
+				openedAt, backdate = pend[0].PaidAt, "automatic"
+			}
+		}
 		abierta, err := q.OpenSession(ctx, db.OpenSessionParams{
-			BusinessDate: pgtype.Date{Time: s.businessDate(ctx), Valid: true},
+			BusinessDate: pgtype.Date{Time: domain.BusinessDate(openedAt, s.businessLocation(ctx)), Valid: true},
 			OpeningCash:  total,
 			OpenedBy:     userID,
 			RegisterID:   registerID,
+			OpenedAt:     pgtype.Timestamptz{Time: openedAt, Valid: true},
 		})
 		if err != nil {
 			return err
 		}
 		sess = abierta
+		// LOS GASTOS SIN CORTE CON HORA DENTRO DE ESTE CORTE ENTRAN A ÉL. La caja está tomada FOR
+		// UPDATE, así que un pago que se registra a la vez espera y se decide contra este turno.
+		if backdate != "" {
+			swept, err := sweepPendingExpenses(ctx, q, abierta.ID, registerID, openedAt, now)
+			if err != nil {
+				return err
+			}
+			if err := auditCash(ctx, q, domain.AuditCashOpeningBackdated, abierta.ID, &userID, nil,
+				map[string]any{"openedAt": openedAt, "reason": backdate, "sweptPayments": swept}); err != nil {
+				return err
+			}
+		}
+		// LO QUE QUEDÓ ANTES DE ESTA APERTURA YA NO ENTRA A NINGÚN CORTE: abrir sin incluirlo es
+		// elegir «sin incluir», y así se guarda. Si no, quedaría pendiente para siempre.
+		dropped, err := q.ExcludePendingBefore(ctx, db.ExcludePendingBeforeParams{RegisterID: &registerID, Before: abierta.OpenedAt})
+		if err != nil {
+			return err
+		}
+		for _, d := range dropped {
+			if err := auditEntity(ctx, q, domain.AuditExpenseCountChanged, "expense", d.ExpenseID, nil, &userID,
+				map[string]any{"includeInCount": true, "sessionId": nil},
+				map[string]any{"paymentId": d.ID, "includeInCount": false, "reason": "opened_without_it", "sessionId": abierta.ID}); err != nil {
+				return err
+			}
+		}
 		// El modo de tarjeta lo copia este update; la fila de OpenSession todavía trae el default.
 		if sess.CardCountMode, err = q.SetOpeningExtras(ctx, db.SetOpeningExtrasParams{ID: abierta.ID, Reason: reason, Note: note}); err != nil {
 			return err

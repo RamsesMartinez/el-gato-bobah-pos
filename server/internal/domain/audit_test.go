@@ -18,7 +18,7 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		"price.set", "price.deleted", "price.synced", "attendance.clock_in", "attendance.clock_out",
 		"attendance.corrected", "attendance.manual_entry", "attendance.settings_changed",
 		"attendance.schedule_set", "user.tracks_attendance_changed", "payment.terminal_changed",
-		"product.consumption_mode", "expense.received", "expense.stock_corrected", "stock.counted",
+		"product.consumption_mode", "expense.received", "expense.count_changed", "cash.opening_backdated", "expense.stock_corrected", "stock.counted",
 		"settings.costing_method", "waste.recorded", "waste.approved", "waste.rejected", "waste.undone",
 		"settings.waste_threshold", "settings.count_limits_changed",
 		"ingredient.created", "ingredient.updated", "ingredient.archived", "ingredient.reactivated",

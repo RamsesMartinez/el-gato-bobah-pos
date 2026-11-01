@@ -16,9 +16,9 @@ import {
 } from '../../api/backoffice';
 import { SortHead } from '../../components/SortHead';
 import { ExpenseDialog } from './ExpenseDialog';
-import { ConfirmSheet } from '../../components/ConfirmSheet';
+import { IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
-import { activeRegisters, registerLabel, isOutsideCount, outsideTitle, OUTSIDE_COUNT_TEXT, OUTSIDE_COUNT_CONFIRM } from './cajaDelGasto';
+import { activeRegisters, registerLabel, outsideAskOf, countsInDrawer, withCountChoice, type CountChoice, type OutsideAsk } from './cajaDelGasto';
 import { ExpenseDetailDialog } from './ExpenseDetailDialog';
 import { posApi } from '../../api/pos';
 import { money } from '../../utils/format';
@@ -216,24 +216,27 @@ export function PayDialog({ expense, methods, onClose, onPaid }: {
   const [paidOn, setPaidOn] = useState(() => hora.diaDelNegocio(new Date()));
   const { data: registers } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });
   const cashRegisters = activeRegisters(registers?.items);
-  const [outsideAsk, setOutsideAsk] = useState<string | null>(null);
+  const [outsideAsk, setOutsideAsk] = useState<OutsideAsk | null>(null);
+  const [includeInCount, setIncludeInCount] = useState(true);
 
   // Un método que mueve el cajón EXIGE caja: el backend lo rechaza si no, porque efectivo que
   // sale sin movimiento de caja descuadra el corte.
   const cash = !!methods.find((m) => String(m.id) === methodId)?.affectsCashDrawer;
+  const withCheckbox = countsInDrawer(cash, cashRegisters, Number(registerId));
 
-  const reset = () => { setMethodId(''); setRegisterId(''); setAmount(''); };
+  const reset = () => { setMethodId(''); setRegisterId(''); setAmount(''); setIncludeInCount(true); };
   const pay = useMutation({
-    mutationFn: (outsideCount: boolean) => backofficeApi.payExpense(expense!.id, {
+    mutationFn: (choice?: CountChoice) => backofficeApi.payExpense(expense!.id, withCountChoice({
       methodId: Number(methodId),
       amount: amount || expense!.amount,
       paidOn,
       registerId: registerId ? Number(registerId) : undefined,
-      outsideCount: outsideCount || undefined,
-    }),
+      includeInCount: withCheckbox ? includeInCount : undefined,
+    }, choice)),
     onSuccess: () => { onPaid(); onClose(); reset(); },
     onError: (e) => {
-      if (isOutsideCount(e)) { setOutsideAsk(outsideTitle(cashRegisters, [Number(registerId)])); return; }
+      const ask = outsideAskOf(e, cashRegisters, [Number(registerId)]);
+      if (ask) { setOutsideAsk(ask); return; }
       toaster.create({ title: 'No se pudo pagar', description: String(e), type: 'error' });
     },
   });
@@ -267,15 +270,16 @@ export function PayDialog({ expense, methods, onClose, onPaid }: {
               )}
             </Field>
           </VStack>
+          {withCheckbox && (
+            <HStack mb={2}><IncludeInCountCheckbox checked={includeInCount} onChange={setIncludeInCount} /></HStack>
+          )}
           <Button w="100%" colorPalette="green" disabled={!methodId || (cash && !registerId)}
-            loading={pay.isPending} onClick={() => pay.mutate(false)}>
+            loading={pay.isPending} onClick={() => pay.mutate(undefined)}>
             Confirmar pago
           </Button>
         </DialogBody>
-        <ConfirmSheet isOpen={outsideAsk !== null} title={outsideAsk ?? ''} description={OUTSIDE_COUNT_TEXT}
-          confirmLabel={OUTSIDE_COUNT_CONFIRM} cancelLabel="Cancelar" loading={pay.isPending}
-          onCancel={() => setOutsideAsk(null)}
-          onConfirm={() => { setOutsideAsk(null); pay.mutate(true); }} />
+        <OutsideCountSheet ask={outsideAsk} loading={pay.isPending} onCancel={() => setOutsideAsk(null)}
+          onChoose={(c) => { setOutsideAsk(null); pay.mutate(c); }} />
       </DialogContent>
     </DialogRoot>
   );

@@ -1115,6 +1115,8 @@ type ExpensePayment struct {
 	CreatedAt         time.Time       `json:"created_at"`
 	CompanyID         int64           `json:"company_id"`
 	RegisterID        *int64          `json:"register_id"`
+	IncludeInCount    bool            `json:"include_in_count"`
+	PaidAt            time.Time       `json:"paid_at"`
 }
 
 type FolioConsumido struct {
@@ -1759,19 +1761,20 @@ type RefreshToken struct {
 }
 
 type RegisterCashMovement struct {
-	ID              int64           `json:"id"`
-	SessionID       int64           `json:"session_id"`
-	Kind            string          `json:"kind"`
-	Amount          decimal.Decimal `json:"amount"`
-	Concept         string          `json:"concept"`
-	ExpenseID       *int64          `json:"expense_id"`
-	UserID          int64           `json:"user_id"`
-	CreatedAt       time.Time       `json:"created_at"`
-	TransferID      *int64          `json:"transfer_id"`
-	RecipientUserID *int64          `json:"recipient_user_id"`
-	RecipientName   *string         `json:"recipient_name"`
-	ConceptID       *int64          `json:"concept_id"`
-	ReversesID      *int64          `json:"reverses_id"`
+	ID               int64           `json:"id"`
+	SessionID        int64           `json:"session_id"`
+	Kind             string          `json:"kind"`
+	Amount           decimal.Decimal `json:"amount"`
+	Concept          string          `json:"concept"`
+	ExpenseID        *int64          `json:"expense_id"`
+	UserID           int64           `json:"user_id"`
+	CreatedAt        time.Time       `json:"created_at"`
+	TransferID       *int64          `json:"transfer_id"`
+	RecipientUserID  *int64          `json:"recipient_user_id"`
+	RecipientName    *string         `json:"recipient_name"`
+	ConceptID        *int64          `json:"concept_id"`
+	ReversesID       *int64          `json:"reverses_id"`
+	ExpensePaymentID *int64          `json:"expense_payment_id"`
 }
 
 type RegisterSession struct {

@@ -183,8 +183,9 @@ func (q *Queries) CreateExpenseItem(ctx context.Context, arg CreateExpenseItemPa
 const createExpensePayment = `-- name: CreateExpensePayment :one
 
 insert into expense_payments (
-  expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by, register_id
-) values ($1,$2,$3,$4,$5,$6,$7,$8)
+  expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by, register_id,
+  include_in_count, paid_at
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 returning id
 `
 
@@ -197,9 +198,12 @@ type CreateExpensePaymentParams struct {
 	Reference         *string         `json:"reference"`
 	PaidBy            int64           `json:"paid_by"`
 	RegisterID        *int64          `json:"register_id"`
+	IncludeInCount    bool            `json:"include_in_count"`
+	PaidAt            time.Time       `json:"paid_at"`
 }
 
 // ==== Pagos del gasto ====
+// paid_at con el reloj del servicio (spec 048): es la hora contra la que se decide a qué corte entra.
 func (q *Queries) CreateExpensePayment(ctx context.Context, arg CreateExpensePaymentParams) (int64, error) {
 	row := q.db.QueryRow(ctx, createExpensePayment,
 		arg.ExpenseID,
@@ -210,6 +214,8 @@ func (q *Queries) CreateExpensePayment(ctx context.Context, arg CreateExpensePay
 		arg.Reference,
 		arg.PaidBy,
 		arg.RegisterID,
+		arg.IncludeInCount,
+		arg.PaidAt,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -257,6 +263,45 @@ func (q *Queries) DeleteExpenseItems(ctx context.Context, expenseID int64) error
 	return err
 }
 
+const excludePendingBefore = `-- name: ExcludePendingBefore :many
+update expense_payments set include_in_count = false
+where register_id = $1 and register_session_id is null and include_in_count
+  and paid_at < $2::timestamptz
+returning id, expense_id
+`
+
+type ExcludePendingBeforeParams struct {
+	RegisterID *int64    `json:"register_id"`
+	Before     time.Time `json:"before"`
+}
+
+type ExcludePendingBeforeRow struct {
+	ID        int64 `json:"id"`
+	ExpenseID int64 `json:"expense_id"`
+}
+
+// Los pendientes de una caja con hora anterior a la apertura de su turno pasan a «sin incluir»
+// (spec 048): después de esa apertura ningún corte puede tomarlos.
+func (q *Queries) ExcludePendingBefore(ctx context.Context, arg ExcludePendingBeforeParams) ([]ExcludePendingBeforeRow, error) {
+	rows, err := q.db.Query(ctx, excludePendingBefore, arg.RegisterID, arg.Before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExcludePendingBeforeRow{}
+	for rows.Next() {
+		var i ExcludePendingBeforeRow
+		if err := rows.Scan(&i.ID, &i.ExpenseID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getExpense = `-- name: GetExpense :one
 select id, expense_date, category_id, supplier_id, amount, description, created_by, created_at, currency, status, paid_at, paid_by, cancelled_at, cancelled_by, cancel_reason, received_at, doc_kind, doc_folio, doc_raw, branch_id, document_date, document_total from expenses where id = $1
 `
@@ -287,6 +332,84 @@ func (q *Queries) GetExpense(ctx context.Context, id int64) (Expense, error) {
 		&i.BranchID,
 		&i.DocumentDate,
 		&i.DocumentTotal,
+	)
+	return i, err
+}
+
+const getExpensePaymentForUpdate = `-- name: GetExpensePaymentForUpdate :one
+select ep.id, ep.expense_id, ep.amount, ep.paid_on, ep.paid_at, ep.register_id, ep.register_session_id,
+       ep.include_in_count, ep.paid_by
+from expense_payments ep
+where ep.id = $1 and ep.expense_id = $2
+for update
+`
+
+type GetExpensePaymentForUpdateParams struct {
+	ID        int64 `json:"id"`
+	ExpenseID int64 `json:"expense_id"`
+}
+
+type GetExpensePaymentForUpdateRow struct {
+	ID                int64           `json:"id"`
+	ExpenseID         int64           `json:"expense_id"`
+	Amount            decimal.Decimal `json:"amount"`
+	PaidOn            pgtype.Date     `json:"paid_on"`
+	PaidAt            time.Time       `json:"paid_at"`
+	RegisterID        *int64          `json:"register_id"`
+	RegisterSessionID *int64          `json:"register_session_id"`
+	IncludeInCount    bool            `json:"include_in_count"`
+	PaidBy            int64           `json:"paid_by"`
+}
+
+// El pago cuya casilla del arqueo se cambia, tomado para actualizar (spec 048, R3): dos cambios a la
+// vez deciden uno después del otro, con lo que de verdad quedó.
+func (q *Queries) GetExpensePaymentForUpdate(ctx context.Context, arg GetExpensePaymentForUpdateParams) (GetExpensePaymentForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getExpensePaymentForUpdate, arg.ID, arg.ExpenseID)
+	var i GetExpensePaymentForUpdateRow
+	err := row.Scan(
+		&i.ID,
+		&i.ExpenseID,
+		&i.Amount,
+		&i.PaidOn,
+		&i.PaidAt,
+		&i.RegisterID,
+		&i.RegisterSessionID,
+		&i.IncludeInCount,
+		&i.PaidBy,
+	)
+	return i, err
+}
+
+const getExpensePaymentRegister = `-- name: GetExpensePaymentRegister :one
+select ep.register_id, pm.affects_cash_drawer, e.status as expense_status, e.description
+from expense_payments ep
+join payment_methods pm on pm.id = ep.payment_method_id
+join expenses e on e.id = ep.expense_id
+where ep.id = $1 and ep.expense_id = $2
+`
+
+type GetExpensePaymentRegisterParams struct {
+	ID        int64 `json:"id"`
+	ExpenseID int64 `json:"expense_id"`
+}
+
+type GetExpensePaymentRegisterRow struct {
+	RegisterID        *int64        `json:"register_id"`
+	AffectsCashDrawer bool          `json:"affects_cash_drawer"`
+	ExpenseStatus     ExpenseStatus `json:"expense_status"`
+	Description       *string       `json:"description"`
+}
+
+// La caja y el método de un pago, sin candado: lo que hay que tomar ANTES que el pago para no cruzar
+// candados con la apertura y el cierre (ver SetPaymentInCount).
+func (q *Queries) GetExpensePaymentRegister(ctx context.Context, arg GetExpensePaymentRegisterParams) (GetExpensePaymentRegisterRow, error) {
+	row := q.db.QueryRow(ctx, getExpensePaymentRegister, arg.ID, arg.ExpenseID)
+	var i GetExpensePaymentRegisterRow
+	err := row.Scan(
+		&i.RegisterID,
+		&i.AffectsCashDrawer,
+		&i.ExpenseStatus,
+		&i.Description,
 	)
 	return i, err
 }
@@ -640,9 +763,12 @@ func (q *Queries) ListExpenseItems(ctx context.Context, expenseID int64) ([]List
 
 const listExpensePayments = `-- name: ListExpensePayments :many
 select ep.id, ep.payment_method_id, pm.name as method, pm.affects_cash_drawer,
-       ep.amount, ep.paid_on, ep.register_session_id, ep.register_id, ep.reference, ep.created_at
+       ep.amount, ep.paid_on, ep.register_session_id, ep.register_id, ep.reference, ep.created_at,
+       ep.include_in_count, ep.paid_at,
+       coalesce(s.status = 'cerrada', false)::boolean as session_closed
 from expense_payments ep
 join payment_methods pm on pm.id = ep.payment_method_id
+left join register_sessions s on s.id = ep.register_session_id
 where ep.expense_id = $1
 order by ep.paid_on, ep.id
 `
@@ -658,8 +784,12 @@ type ListExpensePaymentsRow struct {
 	RegisterID        *int64          `json:"register_id"`
 	Reference         *string         `json:"reference"`
 	CreatedAt         time.Time       `json:"created_at"`
+	IncludeInCount    bool            `json:"include_in_count"`
+	PaidAt            time.Time       `json:"paid_at"`
+	SessionClosed     bool            `json:"session_closed"`
 }
 
+// session_closed: el corte del pago ya se cerró, y su casilla del arqueo ya no se puede cambiar.
 func (q *Queries) ListExpensePayments(ctx context.Context, expenseID int64) ([]ListExpensePaymentsRow, error) {
 	rows, err := q.db.Query(ctx, listExpensePayments, expenseID)
 	if err != nil {
@@ -680,6 +810,9 @@ func (q *Queries) ListExpensePayments(ctx context.Context, expenseID int64) ([]L
 			&i.RegisterID,
 			&i.Reference,
 			&i.CreatedAt,
+			&i.IncludeInCount,
+			&i.PaidAt,
+			&i.SessionClosed,
 		); err != nil {
 			return nil, err
 		}
@@ -801,6 +934,58 @@ func (q *Queries) ListExpenses(ctx context.Context, arg ListExpensesParams) ([]L
 	return items, nil
 }
 
+const listPendingExpensePayments = `-- name: ListPendingExpensePayments :many
+select ep.id, ep.expense_id, e.description, ep.amount, ep.paid_at
+from expense_payments ep
+join payment_methods pm on pm.id = ep.payment_method_id
+join expenses e on e.id = ep.expense_id
+where ep.register_id = $1
+  and ep.register_session_id is null and ep.include_in_count
+  and pm.affects_cash_drawer and e.status <> 'cancelada'
+  and ($2::timestamptz is null or ep.paid_at > $2::timestamptz)
+order by ep.paid_at, ep.id
+`
+
+type ListPendingExpensePaymentsParams struct {
+	RegisterID *int64             `json:"register_id"`
+	Since      pgtype.Timestamptz `json:"since"`
+}
+
+type ListPendingExpensePaymentsRow struct {
+	ID          int64           `json:"id"`
+	ExpenseID   int64           `json:"expense_id"`
+	Description *string         `json:"description"`
+	Amount      decimal.Decimal `json:"amount"`
+	PaidAt      time.Time       `json:"paid_at"`
+}
+
+// Los gastos sin corte de una caja desde su último cierre: los que una apertura puede incluir.
+func (q *Queries) ListPendingExpensePayments(ctx context.Context, arg ListPendingExpensePaymentsParams) ([]ListPendingExpensePaymentsRow, error) {
+	rows, err := q.db.Query(ctx, listPendingExpensePayments, arg.RegisterID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPendingExpensePaymentsRow{}
+	for rows.Next() {
+		var i ListPendingExpensePaymentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExpenseID,
+			&i.Description,
+			&i.Amount,
+			&i.PaidAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSuppliers = `-- name: ListSuppliers :many
 
 select id, name from suppliers where is_active order by name
@@ -892,6 +1077,23 @@ func (q *Queries) SetExpenseItemReceived(ctx context.Context, arg SetExpenseItem
 	return result.RowsAffected(), nil
 }
 
+const setPaymentCount = `-- name: SetPaymentCount :exec
+update expense_payments set register_session_id = $1, include_in_count = $2
+where id = $3
+`
+
+type SetPaymentCountParams struct {
+	SessionID      *int64 `json:"session_id"`
+	IncludeInCount bool   `json:"include_in_count"`
+	ID             int64  `json:"id"`
+}
+
+// La casilla del arqueo de un pago y su corte. El trigger de la 0099 rellena la caja desde el turno.
+func (q *Queries) SetPaymentCount(ctx context.Context, arg SetPaymentCountParams) error {
+	_, err := q.db.Exec(ctx, setPaymentCount, arg.SessionID, arg.IncludeInCount, arg.ID)
+	return err
+}
+
 const sumExpensePayments = `-- name: SumExpensePayments :one
 select coalesce(sum(amount), 0)::numeric(10,2) as paid from expense_payments where expense_id = $1
 `
@@ -901,6 +1103,66 @@ func (q *Queries) SumExpensePayments(ctx context.Context, expenseID int64) (deci
 	var paid decimal.Decimal
 	err := row.Scan(&paid)
 	return paid, err
+}
+
+const sweepPendingExpensePayments = `-- name: SweepPendingExpensePayments :many
+update expense_payments ep set register_session_id = $1
+from payment_methods pm, expenses e
+where pm.id = ep.payment_method_id and pm.affects_cash_drawer
+  and e.id = ep.expense_id and e.status <> 'cancelada'
+  and ep.register_id = $2
+  and ep.register_session_id is null and ep.include_in_count
+  and ep.paid_at between $3::timestamptz and $4::timestamptz
+returning ep.id, ep.expense_id, ep.amount, ep.paid_by, e.description
+`
+
+type SweepPendingExpensePaymentsParams struct {
+	SessionID  *int64    `json:"session_id"`
+	RegisterID *int64    `json:"register_id"`
+	Since      time.Time `json:"since"`
+	Until      time.Time `json:"until"`
+}
+
+type SweepPendingExpensePaymentsRow struct {
+	ID          int64           `json:"id"`
+	ExpenseID   int64           `json:"expense_id"`
+	Amount      decimal.Decimal `json:"amount"`
+	PaidBy      int64           `json:"paid_by"`
+	Description *string         `json:"description"`
+}
+
+// EL BARRIDO (spec 048): los pendientes de una caja cuya hora cae en la ventana de un corte pasan a
+// ese corte. `register_session_id is null` en el where es lo que hace imposible pegarlos dos veces:
+// el segundo barrido no los ve. Los de un gasto cancelado no salen de ningún cajón.
+func (q *Queries) SweepPendingExpensePayments(ctx context.Context, arg SweepPendingExpensePaymentsParams) ([]SweepPendingExpensePaymentsRow, error) {
+	rows, err := q.db.Query(ctx, sweepPendingExpensePayments,
+		arg.SessionID,
+		arg.RegisterID,
+		arg.Since,
+		arg.Until,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SweepPendingExpensePaymentsRow{}
+	for rows.Next() {
+		var i SweepPendingExpensePaymentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExpenseID,
+			&i.Amount,
+			&i.PaidBy,
+			&i.Description,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateExpenseCategory = `-- name: UpdateExpenseCategory :one

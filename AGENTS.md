@@ -453,6 +453,21 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **`is_primary` dice qué caja vende HOY**, y se mueve con `POST /cash-registers/{id}/sells` (las
     dos cerradas). Nada que hable de un turno pasado puede leerla: `CerroLaCajaPrincipal` ya pregunta
     por «el último turno con pedidos». La lista de cada uso está en specs/049/research.md.
+- **El arqueo por hora de los gastos** (spec 048, 0100). Tres cosas que no se ven en la pantalla:
+  - **Un pago en efectivo tiene tres estados**: en un corte (`register_session_id`), pendiente
+    (`include_in_count` sin corte) o fuera. La regla vive en `domain.ExpensePaymentTarget`, contra
+    `paid_at` (`domain.PaymentTime`: la hora del reloj si es de hoy, la medianoche de su día si no).
+    Sin `includeInCount` en el cuerpo rigen las reglas de la 047: una tableta vieja nunca deja un
+    pendiente.
+  - **Un pendiente entra a un corte SOLO por `sweepPendingExpenses`** (`app/expenses.go`), y solo al
+    abrir: la apertura los incluye sola desde la hora del primero (sin permiso) y lo que queda antes
+    de la apertura pasa a «sin incluir»; excluirlos o elegir la hora exige `cash.adjust_count`. Un camino nuevo
+    que pegue pagos a un corte lo llama, no lo copia; el `where register_session_id is null` es lo
+    que impide pegarlo dos veces.
+  - **Cada salida de caja de un gasto lleva su pago** (`register_cash_movements.expense_payment_id`,
+    única por pago en las salidas). Una salida nueva sin él no truena, pero desmarcar ese pago
+    después responde 409 porque no encuentra qué borrar. Los candados van caja → turno → pago, el
+    orden de la apertura y el cierre; tomar el pago primero los cruza.
 - **Dividir la cuenta** (spec 027). Cinco cosas que cuestan caro si se olvidan:
   - **Un pago devuelto SALE de `order_payments`** a la bitácora `order_payment_voids`, con su
     cobertura en `covered` y el número que lleva su ticket. Por eso las ~32 consultas que suman pagos

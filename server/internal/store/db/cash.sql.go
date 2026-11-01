@@ -251,6 +251,20 @@ func (q *Queries) CurrentBranch(ctx context.Context) (int64, error) {
 	return column_1, err
 }
 
+const deleteExpenseSalidaOfPayment = `-- name: DeleteExpenseSalidaOfPayment :execrows
+delete from register_cash_movements where expense_payment_id = $1 and kind = 'salida'
+`
+
+// Quitar un pago del arqueo de un corte ABIERTO borra su salida (spec 048, R2b): el corte no se ha
+// contado, y la bitácora guarda el cambio. Así volver a marcarlo no choca con la unique.
+func (q *Queries) DeleteExpenseSalidaOfPayment(ctx context.Context, expensePaymentID *int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpenseSalidaOfPayment, expensePaymentID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const expectedByMethodForSession = `-- name: ExpectedByMethodForSession :many
 with pagos as (
   -- Por register_session_id y no por ` + "`" + `created_at >= apertura` + "`" + `. La ventana de tiempo daba el
@@ -452,6 +466,24 @@ func (q *Queries) GetCashRegister(ctx context.Context, id int64) (GetCashRegiste
 		&i.FixedFloat,
 		&i.CountsCash,
 	)
+	return i, err
+}
+
+const getCashRegisterForShare = `-- name: GetCashRegisterForShare :one
+select id, counts_cash from cash_registers where id = $1 for share
+`
+
+type GetCashRegisterForShareRow struct {
+	ID         int64 `json:"id"`
+	CountsCash bool  `json:"counts_cash"`
+}
+
+// La caja de un pago de gasto, con candado compartido (spec 048, R4): una apertura, que la toma FOR
+// UPDATE, termina antes —y el pago la ve abierta— o espera a que el pago confirme y lo barre.
+func (q *Queries) GetCashRegisterForShare(ctx context.Context, id int64) (GetCashRegisterForShareRow, error) {
+	row := q.db.QueryRow(ctx, getCashRegisterForShare, id)
+	var i GetCashRegisterForShareRow
+	err := row.Scan(&i.ID, &i.CountsCash)
 	return i, err
 }
 
@@ -668,7 +700,7 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, erro
 const insertCashMovement = `-- name: InsertCashMovement :one
 insert into register_cash_movements (session_id, kind, amount, concept, user_id)
 values ($1, $2, $3, $4, $5)
-returning id, session_id, kind, amount, concept, expense_id, user_id, created_at, transfer_id, recipient_user_id, recipient_name, concept_id, reverses_id
+returning id, session_id, kind, amount, concept, expense_id, user_id, created_at, transfer_id, recipient_user_id, recipient_name, concept_id, reverses_id, expense_payment_id
 `
 
 type InsertCashMovementParams struct {
@@ -703,24 +735,27 @@ func (q *Queries) InsertCashMovement(ctx context.Context, arg InsertCashMovement
 		&i.RecipientName,
 		&i.ConceptID,
 		&i.ReversesID,
+		&i.ExpensePaymentID,
 	)
 	return i, err
 }
 
 const insertExpenseCashMovement = `-- name: InsertExpenseCashMovement :exec
-insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id)
-values ($1, 'salida', $2, $3, $4, $5)
+insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id, expense_payment_id)
+values ($1, 'salida', $2, $3, $4, $5, $6)
 `
 
 type InsertExpenseCashMovementParams struct {
-	SessionID int64           `json:"session_id"`
-	Amount    decimal.Decimal `json:"amount"`
-	Concept   string          `json:"concept"`
-	ExpenseID *int64          `json:"expense_id"`
-	UserID    int64           `json:"user_id"`
+	SessionID        int64           `json:"session_id"`
+	Amount           decimal.Decimal `json:"amount"`
+	Concept          string          `json:"concept"`
+	ExpenseID        *int64          `json:"expense_id"`
+	UserID           int64           `json:"user_id"`
+	ExpensePaymentID *int64          `json:"expense_payment_id"`
 }
 
-// Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte).
+// Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte). Lleva su pago
+// (spec 048): la base no deja una segunda salida del mismo pago.
 func (q *Queries) InsertExpenseCashMovement(ctx context.Context, arg InsertExpenseCashMovementParams) error {
 	_, err := q.db.Exec(ctx, insertExpenseCashMovement,
 		arg.SessionID,
@@ -728,6 +763,7 @@ func (q *Queries) InsertExpenseCashMovement(ctx context.Context, arg InsertExpen
 		arg.Concept,
 		arg.ExpenseID,
 		arg.UserID,
+		arg.ExpensePaymentID,
 	)
 	return err
 }
@@ -808,6 +844,20 @@ func (q *Queries) IsLatestSessionOfRegister(ctx context.Context, arg IsLatestSes
 	var latest bool
 	err := row.Scan(&latest)
 	return latest, err
+}
+
+const lastCloseOfRegister = `-- name: LastCloseOfRegister :one
+select closed_at from register_sessions
+where register_id = $1 and status = 'cerrada' and closed_at is not null
+order by closed_at desc limit 1
+`
+
+// La hora del último cierre de una caja. Ninguna fila = nunca cerró.
+func (q *Queries) LastCloseOfRegister(ctx context.Context, registerID int64) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, lastCloseOfRegister, registerID)
+	var closed_at pgtype.Timestamptz
+	err := row.Scan(&closed_at)
+	return closed_at, err
 }
 
 const lastClosingCountOfRegister = `-- name: LastClosingCountOfRegister :one
@@ -1765,24 +1815,27 @@ func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *in
 }
 
 const openSession = `-- name: OpenSession :one
-insert into register_sessions (business_date, opening_cash, opened_by, register_id)
-values ($1, $2, $3, $4)
+insert into register_sessions (business_date, opening_cash, opened_by, register_id, opened_at)
+values ($1, $2, $3, $4, coalesce($5::timestamptz, now()))
 returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id, tips_carried_over, opening_reason, opening_reason_note, card_count_mode, float_left, fixed_float_at_close
 `
 
 type OpenSessionParams struct {
-	BusinessDate pgtype.Date     `json:"business_date"`
-	OpeningCash  decimal.Decimal `json:"opening_cash"`
-	OpenedBy     int64           `json:"opened_by"`
-	RegisterID   int64           `json:"register_id"`
+	BusinessDate pgtype.Date        `json:"business_date"`
+	OpeningCash  decimal.Decimal    `json:"opening_cash"`
+	OpenedBy     int64              `json:"opened_by"`
+	RegisterID   int64              `json:"register_id"`
+	OpenedAt     pgtype.Timestamptz `json:"opened_at"`
 }
 
+// opened_at: la hora movida hacia atrás (spec 048); ausente = ahora.
 func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (RegisterSession, error) {
 	row := q.db.QueryRow(ctx, openSession,
 		arg.BusinessDate,
 		arg.OpeningCash,
 		arg.OpenedBy,
 		arg.RegisterID,
+		arg.OpenedAt,
 	)
 	var i RegisterSession
 	err := row.Scan(

@@ -48,9 +48,15 @@ where id = $1
 returning id, name, kind, affects_cash_drawer, auto_declare, is_active;
 
 -- name: InsertExpenseCashMovement :exec
--- Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte).
-insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id)
-values ($1, 'salida', $2, $3, $4, $5);
+-- Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte). Lleva su pago
+-- (spec 048): la base no deja una segunda salida del mismo pago.
+insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id, expense_payment_id)
+values ($1, 'salida', $2, $3, $4, $5, $6);
+
+-- name: DeleteExpenseSalidaOfPayment :execrows
+-- Quitar un pago del arqueo de un corte ABIERTO borra su salida (spec 048, R2b): el corte no se ha
+-- contado, y la bitácora guarda el cambio. Así volver a marcarlo no choca con la unique.
+delete from register_cash_movements where expense_payment_id = $1 and kind = 'salida';
 
 -- Cajas (registros físicos con nombre; la primaria recibe las ventas del POS)
 
@@ -71,6 +77,17 @@ select id, name, is_primary, is_active, fixed_float, counts_cash from cash_regis
 
 -- name: GetCashRegister :one
 select id, name, is_primary, is_active, fixed_float, counts_cash from cash_registers where id = $1;
+
+-- name: GetCashRegisterForShare :one
+-- La caja de un pago de gasto, con candado compartido (spec 048, R4): una apertura, que la toma FOR
+-- UPDATE, termina antes —y el pago la ve abierta— o espera a que el pago confirme y lo barre.
+select id, counts_cash from cash_registers where id = $1 for share;
+
+-- name: LastCloseOfRegister :one
+-- La hora del último cierre de una caja. Ninguna fila = nunca cerró.
+select closed_at from register_sessions
+where register_id = $1 and status = 'cerrada' and closed_at is not null
+order by closed_at desc limit 1;
 
 -- name: GetCashRegisterForUpdate :one
 -- Bajo candado: quitar el arqueo y abrir un turno a la vez dejarían un turno abierto en una caja
@@ -111,8 +128,9 @@ order by r.is_primary desc, r.name;
 select exists(select 1 from register_sessions where status = 'abierta');
 
 -- name: OpenSession :one
-insert into register_sessions (business_date, opening_cash, opened_by, register_id)
-values ($1, $2, $3, $4)
+-- opened_at: la hora movida hacia atrás (spec 048); ausente = ahora.
+insert into register_sessions (business_date, opening_cash, opened_by, register_id, opened_at)
+values ($1, $2, $3, $4, coalesce(sqlc.narg('opened_at')::timestamptz, now()))
 returning *;
 
 -- name: CloseSession :exec

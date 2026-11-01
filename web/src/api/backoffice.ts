@@ -149,7 +149,24 @@ export interface Denomination {
 export type AperturaInput = (
   | { counts: { denominationId: number; pieces: number }[] }
   | { openingCash: number; manualReason: string }
-) & { openingReason?: string; openingReasonNote?: string }; // spec 032: si no coincide con el cierre anterior
+) & {
+  openingReason?: string; openingReasonNote?: string; // spec 032: si no coincide con el cierre anterior
+  // Spec 048: abrir desde una hora anterior para que el corte cubra los gastos sin corte. Exige
+  // `cash.adjust_count`; RFC3339.
+  openedAt?: string;
+  // Spec 048: por omisión el servidor incluye los gastos sin corte; esto los deja fuera. Exige
+  // `cash.adjust_count`.
+  excludePending?: boolean;
+};
+
+// Un pago en efectivo que salió con la caja cerrada y espera al corte que cubra su hora (spec 048).
+export interface PendingExpense {
+  paymentId: number;
+  expenseId: number;
+  description: string;
+  amount: string;
+  paidAt: string;
+}
 
 // Un renglón del desglose. `subtotal` viene calculado del servidor aunque sea derivable: lo lee un
 // humano comparando contra su cajón, y dos multiplicaciones del mismo dato pueden diferir.
@@ -471,6 +488,10 @@ export interface ExpensePayment {
   inCashCount: boolean; // atribuido a un corte
   reference: string | null;
   affectsCashDrawer: boolean;
+  // Spec 048. Opcionales mientras convive la API anterior.
+  includeInCount?: boolean;
+  paidAt?: string;
+  sessionClosed?: boolean; // su corte ya se cerró: la casilla no se puede cambiar
 }
 export interface ExpenseDetail extends Expense {
   items: ExpenseItem[];
@@ -759,6 +780,9 @@ export interface ExpensePaymentBody {
   reference?: string;
   // Confirma que el efectivo sale de una caja sin turno (o de otro día) y no entra a ningún corte.
   outsideCount?: boolean;
+  // Casilla «Incluir en el arqueo» (spec 048): solo en efectivo de una caja con arqueo. Con
+  // outsideCount en true y esto en true, el pago queda pendiente del corte que cubra su hora.
+  includeInCount?: boolean;
 }
 
 // Salud del inventario (spec 037). Las listas se declaran opcionales a propósito: un `null` del
@@ -830,6 +854,9 @@ export const backofficeApi = {
   cashDenominations: (currency?: string) =>
     api.get<{ items: Denomination[] }>(
       currency ? `/cash/denominations?currency=${encodeURIComponent(currency)}` : '/cash/denominations'),
+  // Los gastos sin corte de la caja desde su último cierre (spec 048).
+  cashPendingExpenses: (registerId: number) =>
+    api.get<{ items?: PendingExpense[] }>(`/cash-sessions/pending-expenses?registerId=${registerId}`),
   cashOpen: (registerId: number, apertura: AperturaInput) =>
     api.post<CashSession>('/cash-sessions', { registerId, ...apertura }),
   // El efectivo va contado (`counts`) o como cifra en `declared` con su `manualReason`, nunca las
@@ -954,6 +981,9 @@ export const backofficeApi = {
     api.patch<void>(`/expenses/${id}/items/${itemId}`, { excluded }),
   // Agrega UN pago. Si con él los pagos cubren el importe, el gasto pasa a pagado.
   payExpense: (id: number, b: ExpensePaymentBody) => api.post<void>(`/expenses/${id}/pay`, b),
+  // Cambia «Incluir en el arqueo» de un pago ya guardado (spec 048). Exige `cash.adjust_count`.
+  setPaymentInCount: (id: number, paymentId: number, includeInCount: boolean) =>
+    api.patch<void>(`/expenses/${id}/payments/${paymentId}`, { includeInCount }),
   // Marca la mercancía recibida y genera los movimientos de almacén. `received` mapea
   // idLínea → cantidad que llegó (0 = no llegó).
   receiveExpense: (id: number, b: { receivedAt?: string; received?: Record<string, string> }) =>
