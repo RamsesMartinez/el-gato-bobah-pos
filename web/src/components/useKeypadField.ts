@@ -28,6 +28,9 @@ export function useKeypadField<K extends string>() {
     return pressKey(value, key, allowDecimal);
   };
 
+  // keep: la casilla cambió por otro control (− y +): la siguiente tecla ya no reemplaza ese ajuste.
+  const keep = () => { fresh.current = false; };
+
   const ref = (k: K) => (el: HTMLElement | null) => { boxes.current[k] = el; };
-  return { field, setField, apply, ref };
+  return { field, setField, apply, keep, ref };
 }

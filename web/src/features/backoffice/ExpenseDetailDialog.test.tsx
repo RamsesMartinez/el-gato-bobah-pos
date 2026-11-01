@@ -392,3 +392,17 @@ test('«Corregir lo que llegó» escribe la cantidad con el teclado en pantalla'
   fireEvent.click(screen.getByRole('button', { name: 'Listo' }));
   expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
 });
+
+// Revisión de tableta del arreglo: con el teclado abierto, «No va a llegar» apagaba la casilla pero
+// el teclado seguía escribiendo en ella.
+test('cambiar el renglón a «No va a llegar» cierra el teclado de su casilla', async () => {
+  sesion(['inventory.receive']);
+  montar();
+  click(await screen.findByRole('button', { name: 'Corregir lo que llegó' }).then((b) => b.textContent!));
+  const row = await screen.findByTestId('renglon-recibido');
+  fireEvent.click(within(row).getByLabelText('Cuántos llegaron'));
+  await screen.findByTestId('teclado');
+  fireEvent.click(within(row).getByRole('button', { name: 'No va a llegar' }));
+  expect(screen.queryByTestId('teclado')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
+});
