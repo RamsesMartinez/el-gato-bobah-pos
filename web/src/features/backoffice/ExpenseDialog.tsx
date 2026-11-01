@@ -21,8 +21,12 @@ import { money } from '../../utils/format';
 import { packToBase, lineAmount, purchaseMoney, baseOfLine } from './expenseDraft';
 import {
   backofficeApi, type ExpenseCategory, type Supplier, type ArticleSuggestion, type Article, type Unit,
-  type Presentation, type ExpenseItemBody, type ExpensePaymentBody, type ParsedDoc, type DocLine,
+  type Presentation, type ExpenseItemBody, type ExpensePaymentBody, type ParsedDoc, type DocLine, type CashRegister,
 } from '../../api/backoffice';
+import { ConfirmSheet } from '../../components/ConfirmSheet';
+import {
+  activeRegisters, registerLabel, isOutsideCount, outsideTitle, OUTSIDE_COUNT_TEXT, OUTSIDE_COUNT_CONFIRM,
+} from './cajaDelGasto';
 import { montoTecleado, parseNumero, round2 } from '../../domain/numeros';
 import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
 import { PresentationsSheet } from './PresentationsSheet';
@@ -77,7 +81,6 @@ interface DraftPayment {
   reference: string;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
 let seq = 0;
 const nextKey = () => `k${++seq}`;
 
@@ -87,8 +90,8 @@ const emptyItem = (): DraftItem => ({
   arrived: true, partQty: null, isGift: false, doubtful: false, suggestion: null, suggestions: [], docStatus: '', personal: false,
 });
 
-const emptyPayment = (): DraftPayment => ({
-  key: nextKey(), methodId: '', amount: '', paidOn: today(), registerId: '', reference: '',
+const emptyPayment = (paidOn: string): DraftPayment => ({
+  key: nextKey(), methodId: '', amount: '', paidOn, registerId: '', reference: '',
 });
 
 // En qué se mide un insumo nuevo, y la unidad base que le toca (regla 4: se elige al crearlo).
@@ -120,6 +123,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const { data: articles } = useQuery({ queryKey: ['articles'], queryFn: () => backofficeApi.searchArticles(''), enabled: open });
   const { data: lastCount } = useQuery({ queryKey: ['stock', 'count', 'last-closed'], queryFn: backofficeApi.lastClosedCount, enabled: open });
   const hora = useHoraDelNegocio();
+  // El día del negocio, no el de UTC: a las 11:30 pm en México `toISOString` ya dice mañana.
+  const today = () => hora.diaDelNegocio(new Date());
 
   const [step, setStep] = useState<Step>('start');
   const [withGoods, setWithGoods] = useState(true);
@@ -154,7 +159,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const label = settings?.stockItemLabel || 'artículo';
   const activeCats = (cats?.items ?? []).filter((c) => c.isActive);
   const activeSups = (sups?.items ?? []).filter((s) => s.isActive);
-  const openRegisters = (registers?.items ?? []).filter((r) => r.openSessionId !== null);
+  const cashRegisters = activeRegisters(registers?.items);
+  // Si el servidor dice que el pago no entra a ningún corte, se pregunta antes de reenviar.
+  const [outsideAsk, setOutsideAsk] = useState<string | null>(null);
   const unitList = units?.items ?? [];
   const methodList = methods?.items ?? [];
   const presList = presentations ?? [];
@@ -247,7 +254,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const quickMethod = payments.length === 0 && payWith && payWith !== 'later'
     ? methodList.find((m) => String(m.id) === payWith) : undefined;
   const quickRegister = quickMethod?.affectsCashDrawer
-    ? (openRegisters.length === 1 ? String(openRegisters[0].id) : payRegister) : '';
+    ? (cashRegisters.length === 1 ? String(cashRegisters[0].id) : payRegister) : '';
   const quickPayment: ExpensePaymentBody | null = quickMethod ? {
     methodId: quickMethod.id, amount, paidOn: today(),
     registerId: quickRegister ? Number(quickRegister) : undefined,
@@ -278,7 +285,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   };
 
   const create = useMutation({
-    mutationFn: () => backofficeApi.createExpense({
+    mutationFn: (outsideCount: boolean) => backofficeApi.createExpense({
       expenseDate,
       expenseDay: turno ? undefined : expenseDay,
       receivedAt: withGoods ? today() : undefined,
@@ -312,13 +319,13 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
           personal: i.personal || undefined,
         };
       }),
-      payments: quickPayment ? [quickPayment] : payments.map((p): ExpensePaymentBody => ({
+      payments: (quickPayment ? [quickPayment] : payments.map((p): ExpensePaymentBody => ({
         methodId: Number(p.methodId),
         amount: p.amount,
         paidOn: p.paidOn || undefined,
         registerId: p.registerId ? Number(p.registerId) : undefined,
         reference: p.reference || undefined,
-      })),
+      }))).map((p) => (outsideCount && p.registerId ? { ...p, outsideCount } : p)),
     }),
     onSuccess: () => {
       if (withGoods) medirAccion('gastos', 'registrar-compra');
@@ -327,7 +334,14 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
       reset();
       onSaved();
     },
-    onError: (e) => toaster.create({ title: 'No se pudo registrar', description: String(e), type: 'error' }),
+    onError: (e) => {
+      if (isOutsideCount(e)) {
+        const all = quickPayment ? [quickPayment] : payments.map((p) => ({ registerId: p.registerId ? Number(p.registerId) : undefined }));
+        setOutsideAsk(outsideTitle(cashRegisters, all.map((p) => p.registerId)));
+        return;
+      }
+      toaster.create({ title: 'No se pudo registrar', description: String(e), type: 'error' });
+    },
   });
 
   const missingUnit = counted.some((i) => isGoods(i) && !i.presentationId && !i.unitId);
@@ -526,7 +540,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
 
               {/* ---- Pagos ---- */}
               <Section title="Pagos" action={
-                <Button minH="44px" variant="outline" onClick={() => setPayments((p) => [...p, emptyPayment()])}>
+                <Button minH="44px" variant="outline" onClick={() => setPayments((p) => [...p, emptyPayment(today())])}>
                   <LuPlus /> Agregar pago
                 </Button>
               }>
@@ -535,7 +549,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 ) : (
                   <VStack align="stretch" gap={3}>
                     {payments.map((p) => (
-                      <PaymentRow key={p.key} payment={p} methods={methodList} registers={openRegisters}
+                      <PaymentRow key={p.key} payment={p} methods={methodList} registers={cashRegisters}
                         onChange={(patch) => setPayments((prev) => prev.map((x) => (x.key === p.key ? { ...x, ...patch } : x)))}
                         onRemove={() => setPayments((prev) => prev.filter((x) => x.key !== p.key))} />
                     ))}
@@ -559,7 +573,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 <Text fontSize="sm" fontWeight="600">¿Cómo se pagó?</Text>
                 {/* Los métodos de las plataformas (Uber, Didi, Rappi) cobran ventas, no pagan compras. */}
                 {methodList.filter((m) => m.isActive !== false && m.kind !== 'plataforma'
-                  && (!m.affectsCashDrawer || openRegisters.length > 0)).map((m) => (
+                  && (!m.affectsCashDrawer || cashRegisters.length > 0)).map((m) => (
                   <Button key={m.id} minH="44px" size="sm" aria-pressed={payWith === String(m.id)}
                     variant={payWith === String(m.id) ? 'solid' : 'outline'} colorPalette={payWith === String(m.id) ? 'brand' : 'gray'}
                     onClick={() => setPayWith(String(m.id))}>
@@ -571,10 +585,10 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                   onClick={() => setPayWith('later')}>
                   Todavía no se paga
                 </Button>
-                {quickMethod?.affectsCashDrawer && openRegisters.length > 1 && (
+                {quickMethod?.affectsCashDrawer && cashRegisters.length > 1 && (
                   <Box minW="200px">
                     <Picker value={payRegister} onChange={setPayRegister} placeholder="¿De qué caja sale?" title="¿De qué caja sale?"
-                      options={openRegisters.map((r) => ({ value: String(r.id), label: r.name }))} />
+                      options={cashRegisters.map((r) => ({ value: String(r.id), label: registerLabel(r) }))} />
                   </Box>
                 )}
               </HStack>
@@ -615,7 +629,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 )}
               </Text>
               <Button minH="44px" variant="outline" onClick={() => { onClose(); reset(); }}>Cancelar</Button>
-              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate()}>
+              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate(false)}>
                 Guardar
               </Button>
             </HStack>
@@ -647,6 +661,10 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
             </DrawerBody>
           </DrawerContent>
         </DrawerRoot>
+        <ConfirmSheet isOpen={outsideAsk !== null} title={outsideAsk ?? ''} description={OUTSIDE_COUNT_TEXT}
+          confirmLabel={OUTSIDE_COUNT_CONFIRM} cancelLabel="Cancelar" loading={create.isPending}
+          onCancel={() => setOutsideAsk(null)}
+          onConfirm={() => { setOutsideAsk(null); create.mutate(true); }} />
       </DialogContent>
     </DialogRoot>
   );
@@ -867,7 +885,7 @@ function Suggestions({ list, onPick }: { list: ArticleSuggestion[]; onPick: (s: 
 function PaymentRow({ payment, methods, registers, onChange, onRemove }: {
   payment: DraftPayment;
   methods: { id: number; name: string; affectsCashDrawer?: boolean }[];
-  registers: { id: number; name: string }[];
+  registers: CashRegister[];
   onChange: (patch: Partial<DraftPayment>) => void;
   onRemove: () => void;
 }) {
@@ -889,13 +907,13 @@ function PaymentRow({ payment, methods, registers, onChange, onRemove }: {
       <Field label={cash ? 'Caja (obligatoria)' : 'Caja (arqueo)'} flex="1" minW="160px">
         {registers.length === 0 ? (
           <Text fontSize="sm" color={cash ? 'fg.error' : 'fg.muted'}>
-            {cash ? 'Abre una caja para pagar en efectivo.' : 'Sin cajas abiertas.'}
+            Sin cajas.
           </Text>
         ) : (
           <Picker value={payment.registerId} onChange={(v) => onChange({ registerId: v })}
             placeholder={cash ? 'Elegir caja' : '— Sin arqueo —'} title="Caja"
             clearable={!cash} clearLabel="— No entra al arqueo —"
-            options={registers.map((r) => ({ value: String(r.id), label: r.name }))} />
+            options={registers.map((r) => ({ value: String(r.id), label: registerLabel(r) }))} />
         )}
       </Field>
       <IconButton mt={5} minH="44px" minW="44px" variant="ghost" colorPalette="red" aria-label="Quitar pago" onClick={onRemove}>

@@ -1,3 +1,4 @@
+import { cajasConTurno } from './cajaDelGasto';
 import { useState, Fragment, type ReactNode } from 'react';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { useNavigate } from 'react-router';
@@ -552,7 +553,8 @@ export function CashPage() {
 // ---- Tab: cajas (selector + operar la caja elegida + traspaso) ----
 function RegistersTab() {
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });
-  const registers = data?.items ?? [];
+  // Una caja sin arqueo no tiene turno que abrir ni contar: aquí solo se vería «Cerrada» para siempre.
+  const registers = cajasConTurno(data?.items ?? []);
   // Selección derivada: sin elección explícita (o si la caja elegida desaparece) cae en la primera
   // (la primaria). Evita un useEffect+setState solo para inicializar el default.
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -1435,7 +1437,12 @@ function TransferDialog({ open, onClose, from, openRegisters, onDone }: {
 }
 
 // ---- Tab: administrar cajas (admin/gerente) ----
-function ManageRegistersTab() {
+const COUNTS_CASH_ERRORS: Record<string, string> = {
+  REGISTER_HAS_OPEN_SHIFT: 'Cierra el turno de esta caja primero.',
+  PRIMARY_REGISTER_COUNTS: 'La caja principal siempre lleva arqueo.',
+};
+
+export function ManageRegistersTab() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'registers', 'all'], queryFn: backofficeApi.allCashRegisters });
   const [name, setName] = useState('');
@@ -1451,6 +1458,16 @@ function ManageRegistersTab() {
     mutationFn: (r: CashRegisterConfig) => backofficeApi.updateCashRegister(r.id, { name: r.name.trim(), isActive: r.isActive }),
     onSuccess: () => { invalidate(); setEdit(null); },
     onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
+  });
+  // Nombre y «activa» viajan tal cual: el servidor los exige, y uno vacío desactivaría la caja.
+  const setCounts = useMutation({
+    mutationFn: (v: { id: number; name: string; isActive: boolean; countsCash: boolean }) =>
+      backofficeApi.updateCashRegister(v.id, { name: v.name, isActive: v.isActive, countsCash: v.countsCash }),
+    onSuccess: invalidate,
+    onError: (e) => {
+      const known = e instanceof ApiError ? COUNTS_CASH_ERRORS[e.code] : undefined;
+      toaster.create(known ? { title: known, type: 'error' } : { title: 'No se pudo cambiar', description: String(e), type: 'error' });
+    },
   });
 
   if (isLoading) return <Center h="40vh"><Spinner size="xl" /></Center>;
@@ -1470,6 +1487,7 @@ function ManageRegistersTab() {
             <Table.ColumnHeader>Nombre</Table.ColumnHeader>
             <Table.ColumnHeader>Tipo</Table.ColumnHeader>
             <Table.ColumnHeader>Activa</Table.ColumnHeader>
+            <Table.ColumnHeader>Lleva arqueo</Table.ColumnHeader>
             <Table.ColumnHeader></Table.ColumnHeader>
           </Table.Row></Table.Header>
           <Table.Body>
@@ -1481,6 +1499,11 @@ function ManageRegistersTab() {
                   {/* La caja principal no se puede desactivar (el POS necesita dónde cuadrar). */}
                   <Switch checked={r.isActive} disabled={r.isPrimary}
                     onCheckedChange={(e) => update.mutate({ ...r, isActive: e.checked })} />
+                </Table.Cell>
+                <Table.Cell>
+                  <Switch checked={r.countsCash !== false} disabled={r.isPrimary}
+                    inputProps={{ 'aria-label': `Lleva arqueo: ${r.name}` }}
+                    onCheckedChange={(e) => setCounts.mutate({ id: r.id, name: r.name, isActive: r.isActive, countsCash: e.checked })} />
                 </Table.Cell>
                 <Table.Cell textAlign="end"><Button size="sm" minH="44px" variant="outline" onClick={() => setEdit(r)}>Editar</Button></Table.Cell>
               </Table.Row>

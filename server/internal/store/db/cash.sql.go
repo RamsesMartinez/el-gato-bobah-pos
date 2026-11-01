@@ -425,7 +425,7 @@ func (q *Queries) GetCashCount(ctx context.Context, arg GetCashCountParams) (Get
 }
 
 const getCashRegister = `-- name: GetCashRegister :one
-select id, name, is_primary, is_active, fixed_float from cash_registers where id = $1
+select id, name, is_primary, is_active, fixed_float, counts_cash from cash_registers where id = $1
 `
 
 type GetCashRegisterRow struct {
@@ -434,6 +434,7 @@ type GetCashRegisterRow struct {
 	IsPrimary  bool             `json:"is_primary"`
 	IsActive   bool             `json:"is_active"`
 	FixedFloat *decimal.Decimal `json:"fixed_float"`
+	CountsCash bool             `json:"counts_cash"`
 }
 
 func (q *Queries) GetCashRegister(ctx context.Context, id int64) (GetCashRegisterRow, error) {
@@ -445,7 +446,27 @@ func (q *Queries) GetCashRegister(ctx context.Context, id int64) (GetCashRegiste
 		&i.IsPrimary,
 		&i.IsActive,
 		&i.FixedFloat,
+		&i.CountsCash,
 	)
+	return i, err
+}
+
+const getCashRegisterForUpdate = `-- name: GetCashRegisterForUpdate :one
+select id, is_primary, counts_cash from cash_registers where id = $1 for update
+`
+
+type GetCashRegisterForUpdateRow struct {
+	ID         int64 `json:"id"`
+	IsPrimary  bool  `json:"is_primary"`
+	CountsCash bool  `json:"counts_cash"`
+}
+
+// Bajo candado: quitar el arqueo y abrir un turno a la vez dejarían un turno abierto en una caja
+// que no se cuenta (spec 047). Las dos operaciones leen la caja con este FOR UPDATE.
+func (q *Queries) GetCashRegisterForUpdate(ctx context.Context, id int64) (GetCashRegisterForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getCashRegisterForUpdate, id)
+	var i GetCashRegisterForUpdateRow
+	err := row.Scan(&i.ID, &i.IsPrimary, &i.CountsCash)
 	return i, err
 }
 
@@ -805,7 +826,7 @@ func (q *Queries) LastClosingCountOfRegister(ctx context.Context, registerID int
 }
 
 const listAllCashRegisters = `-- name: ListAllCashRegisters :many
-select id, name, is_primary, is_active, fixed_float from cash_registers order by is_primary desc, name
+select id, name, is_primary, is_active, fixed_float, counts_cash from cash_registers order by is_primary desc, name
 `
 
 type ListAllCashRegistersRow struct {
@@ -814,6 +835,7 @@ type ListAllCashRegistersRow struct {
 	IsPrimary  bool             `json:"is_primary"`
 	IsActive   bool             `json:"is_active"`
 	FixedFloat *decimal.Decimal `json:"fixed_float"`
+	CountsCash bool             `json:"counts_cash"`
 }
 
 // fixed_float va aquí (configuración) y NO en ListCashRegisters, la que lee el cajero para abrir: el
@@ -833,6 +855,7 @@ func (q *Queries) ListAllCashRegisters(ctx context.Context) ([]ListAllCashRegist
 			&i.IsPrimary,
 			&i.IsActive,
 			&i.FixedFloat,
+			&i.CountsCash,
 		); err != nil {
 			return nil, err
 		}
@@ -1013,7 +1036,7 @@ func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]Lis
 
 const listCashRegisters = `-- name: ListCashRegisters :many
 
-select r.id, r.name, r.is_primary, r.is_active, s.id as open_session_id
+select r.id, r.name, r.is_primary, r.is_active, r.counts_cash, s.id as open_session_id
 from cash_registers r
 left join register_sessions s on s.register_id = r.id and s.status = 'abierta'
 where r.is_active
@@ -1025,6 +1048,7 @@ type ListCashRegistersRow struct {
 	Name          string `json:"name"`
 	IsPrimary     bool   `json:"is_primary"`
 	IsActive      bool   `json:"is_active"`
+	CountsCash    bool   `json:"counts_cash"`
 	OpenSessionID *int64 `json:"open_session_id"`
 }
 
@@ -1046,6 +1070,7 @@ func (q *Queries) ListCashRegisters(ctx context.Context) ([]ListCashRegistersRow
 			&i.Name,
 			&i.IsPrimary,
 			&i.IsActive,
+			&i.CountsCash,
 			&i.OpenSessionID,
 		); err != nil {
 			return nil, err
@@ -2128,7 +2153,7 @@ func (q *Queries) SetOpeningExtras(ctx context.Context, arg SetOpeningExtrasPara
 
 const setRegisterFixedFloat = `-- name: SetRegisterFixedFloat :one
 update cash_registers set fixed_float = $1 where id = $2
-returning id, name, is_primary, is_active, fixed_float
+returning id, name, is_primary, is_active, fixed_float, counts_cash
 `
 
 type SetRegisterFixedFloatParams struct {
@@ -2142,6 +2167,7 @@ type SetRegisterFixedFloatRow struct {
 	IsPrimary  bool             `json:"is_primary"`
 	IsActive   bool             `json:"is_active"`
 	FixedFloat *decimal.Decimal `json:"fixed_float"`
+	CountsCash bool             `json:"counts_cash"`
 }
 
 func (q *Queries) SetRegisterFixedFloat(ctx context.Context, arg SetRegisterFixedFloatParams) (SetRegisterFixedFloatRow, error) {
@@ -2153,6 +2179,7 @@ func (q *Queries) SetRegisterFixedFloat(ctx context.Context, arg SetRegisterFixe
 		&i.IsPrimary,
 		&i.IsActive,
 		&i.FixedFloat,
+		&i.CountsCash,
 	)
 	return i, err
 }
@@ -2204,31 +2231,43 @@ func (q *Queries) UncollectedInSession(ctx context.Context, registerSessionID *i
 }
 
 const updateCashRegister = `-- name: UpdateCashRegister :one
-update cash_registers set name = $2, is_active = $3 where id = $1
-returning id, name, is_primary, is_active
+update cash_registers set name = $1, is_active = $2,
+       counts_cash = coalesce($3, counts_cash)
+where id = $4
+returning id, name, is_primary, is_active, counts_cash
 `
 
 type UpdateCashRegisterParams struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	IsActive bool   `json:"is_active"`
+	Name       string `json:"name"`
+	IsActive   bool   `json:"is_active"`
+	CountsCash *bool  `json:"counts_cash"`
+	ID         int64  `json:"id"`
 }
 
 type UpdateCashRegisterRow struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	IsPrimary bool   `json:"is_primary"`
-	IsActive  bool   `json:"is_active"`
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	IsPrimary  bool   `json:"is_primary"`
+	IsActive   bool   `json:"is_active"`
+	CountsCash bool   `json:"counts_cash"`
 }
 
+// counts_cash con coalesce: renombrar una caja desde una pantalla que no conoce el ajuste no se lo
+// quita (el mismo defecto que ya costó affects_cash_drawer).
 func (q *Queries) UpdateCashRegister(ctx context.Context, arg UpdateCashRegisterParams) (UpdateCashRegisterRow, error) {
-	row := q.db.QueryRow(ctx, updateCashRegister, arg.ID, arg.Name, arg.IsActive)
+	row := q.db.QueryRow(ctx, updateCashRegister,
+		arg.Name,
+		arg.IsActive,
+		arg.CountsCash,
+		arg.ID,
+	)
 	var i UpdateCashRegisterRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.IsPrimary,
 		&i.IsActive,
+		&i.CountsCash,
 	)
 	return i, err
 }

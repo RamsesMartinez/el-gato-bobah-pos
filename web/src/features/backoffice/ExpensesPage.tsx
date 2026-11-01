@@ -16,6 +16,9 @@ import {
 } from '../../api/backoffice';
 import { SortHead } from '../../components/SortHead';
 import { ExpenseDialog } from './ExpenseDialog';
+import { ConfirmSheet } from '../../components/ConfirmSheet';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
+import { activeRegisters, registerLabel, isOutsideCount, outsideTitle, OUTSIDE_COUNT_TEXT, OUTSIDE_COUNT_CONFIRM } from './cajaDelGasto';
 import { ExpenseDetailDialog } from './ExpenseDetailDialog';
 import { posApi } from '../../api/pos';
 import { money } from '../../utils/format';
@@ -200,7 +203,7 @@ function GastosTab() {
 // PayDialog agrega UN pago al gasto. Si con él los pagos cubren el importe, el gasto pasa a
 // pagado; si no, queda pendiente con un abono registrado (así el pago partido no necesita un
 // estado "parcial" aparte).
-function PayDialog({ expense, methods, onClose, onPaid }: {
+export function PayDialog({ expense, methods, onClose, onPaid }: {
   expense: Expense | null;
   methods: Array<{ id: number; name: string; affectsCashDrawer?: boolean }>;
   onClose: () => void;
@@ -209,9 +212,11 @@ function PayDialog({ expense, methods, onClose, onPaid }: {
   const [methodId, setMethodId] = useState('');
   const [registerId, setRegisterId] = useState('');
   const [amount, setAmount] = useState('');
-  const [paidOn, setPaidOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const hora = useHoraDelNegocio();
+  const [paidOn, setPaidOn] = useState(() => hora.diaDelNegocio(new Date()));
   const { data: registers } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });
-  const openRegisters = (registers?.items ?? []).filter((r) => r.openSessionId !== null);
+  const cashRegisters = activeRegisters(registers?.items);
+  const [outsideAsk, setOutsideAsk] = useState<string | null>(null);
 
   // Un método que mueve el cajón EXIGE caja: el backend lo rechaza si no, porque efectivo que
   // sale sin movimiento de caja descuadra el corte.
@@ -219,14 +224,18 @@ function PayDialog({ expense, methods, onClose, onPaid }: {
 
   const reset = () => { setMethodId(''); setRegisterId(''); setAmount(''); };
   const pay = useMutation({
-    mutationFn: () => backofficeApi.payExpense(expense!.id, {
+    mutationFn: (outsideCount: boolean) => backofficeApi.payExpense(expense!.id, {
       methodId: Number(methodId),
       amount: amount || expense!.amount,
       paidOn,
       registerId: registerId ? Number(registerId) : undefined,
+      outsideCount: outsideCount || undefined,
     }),
     onSuccess: () => { onPaid(); onClose(); reset(); },
-    onError: (e) => toaster.create({ title: 'No se pudo pagar', description: String(e), type: 'error' }),
+    onError: (e) => {
+      if (isOutsideCount(e)) { setOutsideAsk(outsideTitle(cashRegisters, [Number(registerId)])); return; }
+      toaster.create({ title: 'No se pudo pagar', description: String(e), type: 'error' });
+    },
   });
   return (
     <DialogRoot open={expense !== null} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }} placement="center" size="sm">
@@ -249,22 +258,24 @@ function PayDialog({ expense, methods, onClose, onPaid }: {
               <DatePickerButton label="Fecha del pago" value={paidOn} onChange={setPaidOn} />
             </Field>
             <Field label={cash ? 'Caja (obligatoria en efectivo)' : 'Caja (para el arqueo)'}>
-              {openRegisters.length === 0 ? (
-                <Text fontSize="sm" color={cash ? 'fg.error' : 'fg.muted'}>
-                  {cash ? 'No hay caja abierta. Abre una en Caja para poder pagar en efectivo.' : 'Sin cajas abiertas.'}
-                </Text>
+              {cashRegisters.length === 0 ? (
+                <Text fontSize="sm" color={cash ? 'fg.error' : 'fg.muted'}>Sin cajas.</Text>
               ) : (
                 <Picker value={registerId} onChange={setRegisterId} placeholder={cash ? 'Elegir caja' : '— Sin arqueo —'}
                   title="Caja" clearable={!cash} clearLabel="— No entra al arqueo —"
-                  options={openRegisters.map((r) => ({ value: String(r.id), label: r.name }))} />
+                  options={cashRegisters.map((r) => ({ value: String(r.id), label: registerLabel(r) }))} />
               )}
             </Field>
           </VStack>
           <Button w="100%" colorPalette="green" disabled={!methodId || (cash && !registerId)}
-            loading={pay.isPending} onClick={() => pay.mutate()}>
+            loading={pay.isPending} onClick={() => pay.mutate(false)}>
             Confirmar pago
           </Button>
         </DialogBody>
+        <ConfirmSheet isOpen={outsideAsk !== null} title={outsideAsk ?? ''} description={OUTSIDE_COUNT_TEXT}
+          confirmLabel={OUTSIDE_COUNT_CONFIRM} cancelLabel="Cancelar" loading={pay.isPending}
+          onCancel={() => setOutsideAsk(null)}
+          onConfirm={() => { setOutsideAsk(null); pay.mutate(true); }} />
       </DialogContent>
     </DialogRoot>
   );

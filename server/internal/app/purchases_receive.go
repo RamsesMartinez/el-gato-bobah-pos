@@ -133,7 +133,7 @@ func (s *BackofficeService) ReceiveItem(ctx context.Context, expenseID, itemID i
 	if !qty.IsPositive() || !domain.ValidQty(qty, domain.MaxStockQty, false) {
 		return domain.ErrValidation
 	}
-	day, err := s.parseDayOrToday("")
+	day, err := s.parseDayOrToday(ctx, "")
 	if err != nil {
 		return err
 	}
@@ -195,7 +195,7 @@ func (s *BackofficeService) MarkNotComing(ctx context.Context, expenseID, itemID
 	if !qty.IsPositive() || !domain.ValidQty(qty, domain.MaxStockQty, false) {
 		return domain.ErrValidation
 	}
-	day, err := s.parseDayOrToday("")
+	day, err := s.parseDayOrToday(ctx, "")
 	if err != nil {
 		return err
 	}
@@ -246,7 +246,7 @@ func (s *BackofficeService) AddArrivedItem(ctx context.Context, expenseID int64,
 	if err != nil || itemType == nil {
 		return domain.ErrValidation
 	}
-	day, err := s.parseDayOrToday("")
+	day, err := s.parseDayOrToday(ctx, "")
 	if err != nil {
 		return err
 	}
