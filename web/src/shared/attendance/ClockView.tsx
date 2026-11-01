@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Flex, Heading, SimpleGrid, Text, VStack } from '@chakra-ui/react';
 import { attendanceApi, type ClockKind, type ClockResult, type RosterPerson } from '../../api/attendance';
-import { ApiError } from '../../api/client';
-import { isOffline } from '../../api/mensajes';
+import { clockError } from './clockErrors';
 import { LoadError } from '../LoadError';
 import { PinPad } from '../../components/PinPad';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
@@ -75,18 +74,11 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
     },
     onError: (e) => {
       setPin('');
-      if (e instanceof ApiError && e.status === 429) {
-        const min = Math.max(1, Math.ceil((e.retryAfter ?? 60) / 60));
-        setError(`Demasiados intentos. Intenta de nuevo en ${min} min.`);
-      } else if (e instanceof ApiError && e.code === 'ATTENDANCE_STATE_CHANGED') {
-        setError('Tu registro cambió en otra tableta. Vuelve a tocar tu nombre.');
+      const { kind, message } = clockError(e);
+      setError(message);
+      if (kind === 'state_changed') {
         setChosen(null);
         void qc.invalidateQueries({ queryKey: ROSTER });
-      } else if (isOffline(e)) {
-        setError('Sin conexión. Checa cuando vuelva la red.');
-      } else {
-        // No dice si falló la persona o el PIN, igual que el bloqueo: distinguirlos enumera usuarios.
-        setError('No coincide. Inténtalo de nuevo.');
       }
     },
   });

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { marcarEntrada, marcarSalidaEnElCierre } from './asistencia';
 import { iniciarSesion } from './sesion';
 import { API, tokenDeApi } from './ambiente';
 
@@ -24,6 +25,8 @@ async function entrar(page: Page) {
 // Devuelve null si no hay ninguna cerrada: el ambiente es compartido y una caja abierta por alguien
 // más no se toca. Un test que "arregla" el ambiente para poder correr es un test que miente.
 async function abrirLaHojaDeConteo(page: Page): Promise<string | null> {
+  // Con la asistencia encendida, contar para abrir pide la entrada de quien abre (spec 046).
+  await marcarEntrada();
   await page.goto('/caja');
   await page.waitForLoadState('networkidle');
   // La pantalla arranca en la caja PRIMARIA, que en un ambiente vivo suele estar abierta. El chip de
@@ -125,7 +128,7 @@ test('C4 · contar 40 monedas se teclea, y el total es el que suma el servidor',
   // EL SERVIDOR TIENE QUE HABER GUARDADO LA MISMA CIFRA. Es lo único que esta suite puede probar y
   // los tests de pantalla no: la hoja suma en el cliente y el servidor recalcula desde las piezas —
   // si los dos no coinciden, el arqueo del turno se compara contra un fondo que nadie contó.
-  await expect(page.getByText('Monto inicial')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Fondo inicial', { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('text=$550').first()).toBeVisible();
 
   // Y SE DEJA COMO ESTABA: la caja se abrió para probar, así que se cierra contando lo mismo. Un
@@ -136,9 +139,14 @@ test('C4 · contar 40 monedas se teclea, y el total es el que suma el servidor',
   await page.getByLabel('Piezas de $50', { exact: true }).fill('3');
   await page.getByRole('button', { name: 'Usar este conteo' }).click();
 
-  // La diferencia se ve ANTES de cerrar, que es FR-005.
-  await expect(page.getByLabel('Diferencia del arqueo')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText('El arqueo cuadra')).toBeVisible();
+  // La diferencia se ve ANTES de cerrar, que es FR-005. Con el arqueo ciego, al contrario: no se ve
+  // hasta confirmar (el esperado no viaja), y aparece en el resumen del cierre.
+  if (await arqueoCiego()) {
+    await expect(page.getByLabel('Diferencia del arqueo')).toHaveCount(0);
+  } else {
+    await expect(page.getByLabel('Diferencia del arqueo')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('El arqueo cuadra')).toBeVisible();
+  }
 
   await cerrarLaCaja(page);
   await expect(page.getByText('Caja cerrada')).toBeVisible({ timeout: 30_000 });
@@ -158,7 +166,7 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
   // Se abre con $500 contados y se cierra declarando $450: faltan $50.
   await page.getByLabel('Piezas de $500', { exact: true }).fill('1');
   await abrirLaCaja(page);
-  await expect(page.getByText('Monto inicial')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Fondo inicial', { exact: true })).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole('button', { name: 'Contar efectivo' }).click();
   await expect(page.getByLabel('Piezas de $100', { exact: true })).toBeVisible({ timeout: 30_000 });
@@ -168,8 +176,14 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
 
   // SIN TOCAR «Cerrar caja»: el faltante ya está a la vista. Es FR-005, y antes solo se veía en el
   // diálogo POSTERIOR al cierre, cuando el corte ya estaba firmado.
-  await expect(page.getByLabel('Diferencia del arqueo')).toHaveText('-$50');
-  await expect(page.getByText('Faltante')).toBeVisible();
+  // Con el arqueo ciego el faltante no se ve antes de confirmar: aparece en el corte cerrado.
+  const ciego = await arqueoCiego();
+  if (ciego) {
+    await expect(page.getByLabel('Diferencia del arqueo')).toHaveCount(0);
+  } else {
+    await expect(page.getByLabel('Diferencia del arqueo')).toHaveText('-$50');
+    await expect(page.getByText('Faltante')).toBeVisible();
+  }
 
   // Y un faltante NO bloquea el cierre: si bloqueara, el operador se queda con la caja abierta toda
   // la noche por $50 que no aparecen.
@@ -185,6 +199,9 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
   await page.getByRole('tab', { name: 'Histórico' }).click();
   await page.getByRole('row').nth(1).click();
   await expect(page.getByText('Efectivo contado')).toBeVisible({ timeout: 30_000 });
+  // El faltante queda en el corte cerrado, con o sin arqueo ciego: con el ciego es el primer lugar
+  // donde se ve.
+  await expect(page.getByRole('dialog').last().getByText(/-\$50/).first()).toBeVisible();
   await page.getByText('Efectivo contado').click();
   await expect(page.getByText('Al cerrar')).toBeVisible();
   await expect(page.getByText('Al abrir')).toBeVisible();
@@ -211,7 +228,7 @@ test('C6 · el total a mano exige motivo, y cambiar de camino avisa antes de bor
   await page.getByLabel('Por qué no se contó pieza por pieza').fill('billete que no está en la lista');
   await abrirLaCaja(page);
 
-  await expect(page.getByText('Monto inicial')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Fondo inicial', { exact: true })).toBeVisible({ timeout: 30_000 });
 
   // Y se deja como estaba.
   await page.getByRole('button', { name: 'Contar efectivo' }).click();
@@ -285,18 +302,32 @@ async function cerrarLaCaja(page: Page) {
   await page.getByRole('dialog').last().getByRole('button', { name: 'Cerrar caja' }).click();
 }
 
+// arqueoCiego: si la empresa cuenta a ciegas. Cambia lo que el cierre puede mostrar antes de confirmar,
+// así que las pruebas que lo miran preguntan en vez de suponer.
+async function arqueoCiego(): Promise<boolean> {
+  const jwt = await tokenDeApi();
+  const r = await fetch(`${API}/business-settings`, { headers: { Authorization: `Bearer ${jwt}` } });
+  if (!r.ok) throw new Error(`GET /business-settings: ${r.status}`);
+  return (await r.json()).blindCashCount === true;
+}
+
 // Abrir con una cifra distinta de la que dejó el cierre anterior pregunta el motivo (apertura a
 // ciegas, spec 033). En un ambiente compartido el cierre anterior lo hizo otra prueba u otra
 // persona, así que la diferencia es lo normal: se responde y se sigue.
 async function abrirLaCaja(page: Page) {
   await page.getByRole('button', { name: 'Abrir caja' }).click();
   const pregunta = page.getByText('Lo contado no coincide con el cierre anterior');
-  const abierta = page.getByText('Monto inicial');
+  // «Fondo inicial» y no «Monto inicial»: con el arqueo ciego el resumen no se pinta.
+  const abierta = page.getByText('Fondo inicial', { exact: true });
   await expect(pregunta.or(abierta).first()).toBeVisible({ timeout: 30_000 });
   if (await pregunta.isVisible()) {
     await page.getByRole('button', { name: 'Cambié el fondo' }).click();
     await page.getByRole('dialog').last().getByRole('button', { name: 'Abrir caja' }).click();
   }
+  // El cierre pide la salida de quien abrió, que en esta prueba es quien la corre (spec 046): se marca
+  // desde el aviso, como lo haría el cajero, y el resto de la prueba ve el cierre de siempre.
+  await expect(abierta).toBeVisible({ timeout: 30_000 });
+  await marcarSalidaEnElCierre(page);
 }
 
 // Desde el fondo fijo (spec 035) el cierre propone retirar y pide el fondo y quién se lo lleva. Estas

@@ -246,6 +246,23 @@ func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, sess)
 }
 
+// GET /cash-sessions/attendance?registerId= — qué pide la asistencia para abrir o cerrar esa caja
+// (spec 046). Un registerId ausente o malformado se rechaza: no hay caja «por omisión».
+func (h *Handlers) CashSessionAttendance(w http.ResponseWriter, r *http.Request) {
+	registerID, err := strconv.ParseInt(r.URL.Query().Get("registerId"), 10, 64)
+	if err != nil || registerID <= 0 {
+		Error(w, fmt.Errorf("%w: falta la caja", domain.ErrValidation))
+		return
+	}
+	u, _ := userFrom(r.Context())
+	state, err := h.backoffice.CashAttendanceState(r.Context(), registerID, u.ID, h.permissionsOf(u.Role))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, state)
+}
+
 // GET /cash-sessions/current?registerId= — sesión abierta de una caja (null si está cerrada).
 func (h *Handlers) CurrentCashSession(w http.ResponseWriter, r *http.Request) {
 	registerID, err := strconv.ParseInt(r.URL.Query().Get("registerId"), 10, 64)
@@ -284,6 +301,11 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		// a quien cierra.
 		FixedFloatShown  *decimal.Decimal `json:"fixedFloatShown"`
 		WithdrawalUserID *int64           `json:"withdrawalUserId"`
+		// AuthorizedClose (spec 046): cerrar sin la salida de quien abrió. Una tableta con el front
+		// anterior no lo manda y recibe el 409 de siempre.
+		AuthorizedClose *struct {
+			Reason string `json:"reason"`
+		} `json:"authorizedClose"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -311,7 +333,12 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		terminales[id] = v
 	}
 	u, _ := userFrom(r.Context())
+	var authorized *string
+	if body.AuthorizedClose != nil {
+		authorized = &body.AuthorizedClose.Reason
+	}
 	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
+		Perms: h.permissionsOf(u.Role), AuthorizedReason: authorized,
 		TerminalCounts: terminales, FloatLeft: body.FloatLeft,
 		FixedFloatShown: body.FixedFloatShown, WithdrawalUserID: body.WithdrawalUserID,
 		Declarado: declared, Piezas: piezasDelBody(body.Counts),

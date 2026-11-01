@@ -7,6 +7,7 @@ const FROM_SERVER = [
   'order.created', 'order.lines_added', 'order.line_removed', 'order.lines_moved', 'order.delivered',
   'order.cancelled', 'order.discount_set', 'order.platform_ref_set', 'payment.charged',
   'payment.voided', 'payment.refunded', 'stock.written_off', 'cash.opened', 'cash.closed',
+  'cash.closed_without_opener_clock_out',
   'cash.movement', 'cash.movement_corrected', 'expense.created', 'expense.paid', 'expense.cancelled', 'tip.paid_out',
   'expense.received', 'expense.stock_corrected', 'stock.counted', 'settings.costing_method',
   'waste.recorded', 'waste.approved', 'waste.rejected', 'waste.undone', 'settings.waste_threshold',

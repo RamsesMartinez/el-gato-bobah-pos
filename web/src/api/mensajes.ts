@@ -33,4 +33,10 @@ const MENSAJES_DE_CUENTA: Record<string, string> = {
   DRAFT_SENT: 'Esa cuenta ya se mandó a cocina. Para quitarla hay que cancelar el pedido.',
   ORDER_CLOSED: 'Esa cuenta ya está pagada y entregada. Lo que pidan ahora va en una cuenta nueva.',
   PLATFORM_ORDER_NO_LINES: 'A un pedido de plataforma no se le agregan productos.',
+  // Caja con asistencia (spec 046). OPENER_NOT_CLOCKED_OUT no va aquí: el del servidor nombra a la
+  // persona («Ana abrió esta caja…»), y una frase fija la perdería.
+  CLOCK_IN_REQUIRED: 'Para abrir la caja, primero marca tu entrada.',
+  CLOCK_OUT_WITH_PIN: 'Marca tu salida con tu PIN para cerrar la caja.',
+  // Al cerrar: otro cierre autorizado ya dejó la entrada «sin salida». Al reintentar, cierra.
+  ATTENDANCE_STATE_CHANGED: 'La asistencia cambió en otra tableta. Vuelve a intentarlo.',
 };

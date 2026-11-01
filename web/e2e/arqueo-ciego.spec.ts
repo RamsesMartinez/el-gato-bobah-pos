@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { marcarSalida } from './asistencia';
 import { API, tokenDeApi } from './ambiente';
 import { iniciarSesion } from './sesion';
 
@@ -95,10 +96,20 @@ async function esperadoDelCajon(): Promise<number | null> {
 
 let comoEstaba = false;
 
+// cierreOCajaCerrada espera a que la caja termine de pintarse. El bloque del cierre se monta hasta que
+// responde la consulta de asistencia (spec 046): preguntar por él en cuanto aparece la pestaña lo
+// daba por ausente y la prueba se saltaba sola, en verde.
+async function cierreOCajaCerrada(page: Page) {
+  await expect(page.getByText('Cierre — declarado por método').or(page.getByText(/está cerrada\./)).first())
+    .toBeVisible({ timeout: 30_000 });
+}
+
 test.beforeEach(async () => { comoEstaba = await ponerElCiego(false); });
 test.afterEach(async () => { await ponerElCiego(comoEstaba); });
 
 test('B1 · con el arqueo ciego la pantalla del cierre no tiene columna de esperado, y la respuesta tampoco trae la cifra', async ({ page }) => {
+  // Con la asistencia encendida, el cierre se ve cuando quien abrió ya marcó su salida (spec 046).
+  await marcarSalida();
   // Se lee ANTES de encender el ciego: es la cifra contra la que se comprueba que nada la
   // reconstruya después. Con el ciego ya puesto no habría contra qué comparar.
   const esperado = await esperadoDelCajon();
@@ -113,6 +124,7 @@ test('B1 · con el arqueo ciego la pantalla del cierre no tiene columna de esper
   await page.goto('/caja');
   await expect(page.getByRole('tab', { name: 'Cajas' })).toBeVisible({ timeout: 30_000 });
   const tabla = page.getByText('Cierre — declarado por método');
+  await cierreOCajaCerrada(page);
   test.skip(!(await tabla.isVisible().catch(() => false)), 'no hay una caja abierta en el ambiente: no se abre la de alguien más');
 
   // NI LA COLUMNA. Con todos los esperados en null la columna entera sobra, y una de rayas invita
@@ -145,6 +157,8 @@ test('B1 · con el arqueo ciego la pantalla del cierre no tiene columna de esper
 });
 
 test('B2 · y el botón de cerrar sigue bloqueado mientras no se cuente el cajón', async ({ page }) => {
+  // Con la asistencia encendida, el cierre se ve cuando quien abrió ya marcó su salida (spec 046).
+  await marcarSalida();
   const esperado = await esperadoDelCajon();
   test.skip(esperado === null, 'no hay una caja abierta en el ambiente: no se abre la de alguien más');
   test.skip(esperado === 0, 'el cajón de este turno no espera dinero: no hay nada que obligue a contar');
@@ -153,6 +167,7 @@ test('B2 · y el botón de cerrar sigue bloqueado mientras no se cuente el cajó
   await page.goto('/caja');
   await expect(page.getByRole('tab', { name: 'Cajas' })).toBeVisible({ timeout: 30_000 });
   const cerrar = page.getByRole('button', { name: 'Cerrar caja' });
+  await cierreOCajaCerrada(page);
   test.skip(!(await cerrar.isVisible().catch(() => false)), 'no hay una caja abierta en el ambiente: no se abre la de alguien más');
 
   // El botón del cajón dice «Contar efectivo» mientras no haya conteo: si dijera un monto, ya se

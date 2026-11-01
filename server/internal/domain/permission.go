@@ -23,6 +23,9 @@ const (
 	// PermCashConfigure: el fondo fijo de cada caja (spec 035). Cambia lo que el cierre propone dejar
 	// y, con eso, cuánto se retira; por eso no es de quien opera la caja.
 	PermCashConfigure Permission = "cash.configure"
+	// PermCashCloseWithoutClockOut: cerrar la caja cuando quien la abrió se fue sin marcar su salida
+	// (spec 046). Deja esa entrada «sin salida», que mueve horas pagadas: no es de quien opera la caja.
+	PermCashCloseWithoutClockOut Permission = "cash.close_without_clock_out"
 
 	// Salud del inventario (spec 037): ver qué no cuadra y exportarlo.
 	PermInventoryHealthView Permission = "inventory.health_view"
@@ -51,7 +54,7 @@ func AllPermissions() []Permission {
 	return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 		PermAttendanceConfigure, PermAttendanceReport, PermAttendanceCorrectOthers, PermAttendanceCorrectOwn,
 		PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure, PermInventoryHealthView, PermMenuConfigure,
-		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount, PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView}
+		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount, PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -69,7 +72,7 @@ func PermissionsFor(role Role) []Permission {
 		return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 			PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
 			PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount,
-			PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView}
+			PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut}
 	case RoleCajero, RoleMesero:
 		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}
 	}
@@ -118,6 +121,8 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede aprobar lo que se echó a perder"
 	case PermInventoryView:
 		return "Tu usuario no puede ver el almacén"
+	case PermCashCloseWithoutClockOut:
+		return "Tu usuario no puede cerrar la caja sin la salida de quien la abrió"
 	}
 	return "Tu usuario no puede hacer esto"
 }

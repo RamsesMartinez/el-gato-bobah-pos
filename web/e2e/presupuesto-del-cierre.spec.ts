@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { marcarSalida } from './asistencia';
 import { iniciarSesion } from './sesion';
 
 // CUÁNTO ALTO Y CUÁNTOS TOQUES CUESTAN LAS DOS PANTALLAS QUE TOCA LA SPEC 015, medido en un
@@ -63,6 +64,8 @@ function elScroller(): Element {
 }
 
 test('P1 · la tabla del cierre no creció y no pide más capturas (SC-006)', async ({ page }) => {
+  // Con la asistencia encendida, el cierre se ve cuando quien abrió ya marcó su salida (spec 046).
+  await marcarSalida();
   await entrar(page);
   await page.goto('/caja');
   await expect(page.getByRole('tab', { name: 'Cajas' })).toBeVisible({ timeout: 30_000 });

@@ -52,3 +52,14 @@ test('sin cambios no se puede guardar', async () => {
   await screen.findByText('Lunes');
   expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
 });
+
+// Spec 046: una cuenta que comparten varias personas para abrir caja tiene que llevar «Lleva
+// asistencia» apagado. El aviso va detrás del icono de ayuda, como instrucción, no a la vista.
+test('la ayuda de «Lleva asistencia» dice qué hacer con una cuenta compartida', async () => {
+  renderView();
+  expect(screen.queryByText(/misma cuenta/)).not.toBeInTheDocument();
+  const ayuda = await screen.findByRole('button', { name: 'Quién lleva asistencia' });
+  expect(ayuda).toHaveStyle({ minHeight: '44px' });
+  fireEvent.click(ayuda);
+  expect(await screen.findByText(/Si varias personas abren la caja con la misma cuenta, apágale «Lleva asistencia» a esa cuenta/)).toBeInTheDocument();
+});

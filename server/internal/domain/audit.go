@@ -46,6 +46,9 @@ var auditActions = []struct {
 	{"stock.written_off", AuditGroupCancel},
 	{"cash.opened", AuditGroupCash},
 	{"cash.closed", AuditGroupCash},
+	// Spec 046: quien abrió se fue sin marcar su salida y alguien con permiso cerró la caja; su
+	// entrada quedó «sin salida».
+	{"cash.closed_without_opener_clock_out", AuditGroupCash},
 	{"cash.movement", AuditGroupCash},
 	{"cash.movement_corrected", AuditGroupCash},
 	{"expense.created", AuditGroupCash},

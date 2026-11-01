@@ -1199,6 +1199,15 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 	// SIN CONTEO Y SIN MOTIVO, que es justo lo que FR-016 prohíbe. Peor: la caja queda bloqueada,
 	// porque `one_open_session_per_register` no deja abrir otra hasta resolver la huérfana a mano.
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		// LA ASISTENCIA DE QUIEN ABRE (spec 046), con su fila tomada y antes de escribir el turno: una
+		// salida que confirma a la vez en otra tableta espera, y se decide con lo que de verdad quedó.
+		p, err := cashAttendanceOf(ctx, q, userID)
+		if err != nil {
+			return err
+		}
+		if err := domain.RequireCashOpenAttendance(p.Attendance, s.now()); err != nil {
+			return err
+		}
 		abierta, err := q.OpenSession(ctx, db.OpenSessionParams{
 			BusinessDate: pgtype.Date{Time: s.businessDate(ctx), Valid: true},
 			OpeningCash:  total,
@@ -1644,6 +1653,46 @@ type CierreCmd struct {
 	WithdrawalUserID *int64
 	// TerminalCounts: terminal → total de su corte, con arqueo por terminal (spec 032, punto 9).
 	TerminalCounts map[int64]decimal.Decimal
+	// Perms: los permisos de quien cierra. Solo los pide el cierre autorizado.
+	Perms []domain.Permission
+	// AuthorizedReason: cerrar sin la salida de quien abrió, y por qué (spec 046). Ausente = cierre
+	// normal; se ignora si quien abrió ya no tiene entrada abierta.
+	AuthorizedReason *string
+}
+
+// closeAttendance aplica la regla de la salida de quien abrió dentro de la transacción del cierre.
+// Con el cierre autorizado, la entrada queda «sin salida» y el evento dice quién lo autorizó y por
+// qué, con el mismo `q`: si el cierre falla después, nada de esto queda.
+func (s *BackofficeService) closeAttendance(ctx context.Context, q *db.Queries, sess db.RegisterSession, userID int64, cmd CierreCmd) error {
+	opener, err := cashAttendanceOf(ctx, q, sess.OpenedBy)
+	if err != nil {
+		return err
+	}
+	decision, err := domain.CashCloseAttendance(domain.CashCloseInput{Opener: opener.Attendance,
+		OpenerID: sess.OpenedBy, OpenerName: opener.Name, CloserID: userID, Perms: cmd.Perms,
+		AuthorizedReason: cmd.AuthorizedReason}, s.now())
+	if err != nil || !decision.Authorized {
+		return err
+	}
+	// Exactamente una fila. Con 0, otro cierre autorizado (de otra caja de la misma persona) la marcó
+	// entre la lectura y este update: el `for share` no choca consigo mismo. No queda evento de algo
+	// que no pasó, y se pide volver a intentar: al releer, la entrada ya no está abierta y cierra.
+	n, err := q.MarkAttendanceMissingOut(ctx, opener.EntryID)
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return domain.ErrAttendanceStateChanged
+	}
+	branch, err := q.GetRegisterSessionBranch(ctx, sess.ID)
+	if err != nil {
+		return err
+	}
+	actor, subject := userID, sess.OpenedBy
+	return recordAudit(ctx, q, domain.AuditEvent{Action: "cash.closed_without_opener_clock_out",
+		ActorKind: domain.ActorUser, ActorUserID: &actor, SubjectUserID: &subject,
+		EntityType: "register_session", EntityID: sess.ID, BranchID: &branch,
+		After: map[string]any{"entryId": opener.EntryID, "reason": decision.Reason}})
 }
 
 func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, userID int64, cmd CierreCmd) (*SessionView, error) {
@@ -1692,6 +1741,12 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 			if errors.Is(err, pgx.ErrNoRows) {
 				return domain.ErrNotFound
 			}
+			return err
+		}
+		// LA SALIDA DE QUIEN ABRIÓ (spec 046), después del candado del turno y antes de todo lo demás:
+		// sin resolverla no hay nada que revisar. Turno → persona; checar solo toma la persona, así
+		// que no hay ciclo.
+		if err := s.closeAttendance(ctx, q, sess, userID, cmd); err != nil {
 			return err
 		}
 		// Ningún pedido sin terminar sobrevive al cierre. Va ANTES de calcular nada: si el turno se
