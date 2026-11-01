@@ -1179,6 +1179,11 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 	if err != nil {
 		return nil, err
 	}
+	// Antes que el conteo: a quien abre una caja que no se cuenta no se le pide motivo ni piezas.
+	// La transacción lo vuelve a revisar con la caja tomada.
+	if !reg.CountsCash {
+		return nil, domain.ErrRegisterNotCounted
+	}
 	if _, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, registerID); err == nil {
 		return nil, domain.ErrConflict // esa caja ya está abierta
 	} else if !errors.Is(err, pgx.ErrNoRows) {

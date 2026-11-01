@@ -27,6 +27,10 @@ language plpgsql as $$
 begin
   if new.register_session_id is not null then
     select register_id into new.register_id from register_sessions where id = new.register_session_id;
+    -- Bajo RLS una sesión de otra empresa no se ve: sin esto el pago quedaría con corte y sin caja.
+    if not found then
+      raise exception 'el turno % no existe para esta empresa', new.register_session_id;
+    end if;
   end if;
   return new;
 end;

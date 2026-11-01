@@ -5,12 +5,21 @@ package integration
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
 // gastoSinTurno arma lo que comparten las pruebas de la spec 047: una categoría, el método en
@@ -241,4 +250,158 @@ func TestUnPagoNoUsaLaCajaDeOtraEmpresa(t *testing.T) {
 			t.Fatal("se leyó la caja de otra empresa: un pago podría apuntarle")
 		}
 	})
+}
+
+// QUITAR EL ARQUEO ES POR PERMISO (FR-010, principio V). El control vive en el handler y no en el
+// router: sin esta prueba, un refactor lo pierde en silencio y un rol sin el permiso deja una caja
+// fuera de todo corte.
+func TestLlevaArqueoExigeElPermisoDeConfigurarCaja(t *testing.T) {
+	t.Parallel()
+	sinConfigurar := func(r domain.Role) []domain.Permission {
+		var out []domain.Permission
+		for _, p := range domain.PermissionsFor(r) {
+			if p != domain.PermCashConfigure {
+				out = append(out, p)
+			}
+		}
+		return out
+	}
+	for _, c := range []struct {
+		name   string
+		perms  httpapi.PermissionResolver
+		body   string
+		denied bool
+	}{
+		{"un gerente sin el permiso no apaga el arqueo", sinConfigurar, `{"name":"Sec","isActive":true,"countsCash":false}`, true},
+		{"ni lo prende", sinConfigurar, `{"name":"Sec","isActive":true,"countsCash":true}`, true},
+		{"sin tocar el arqueo, renombrar sigue igual", sinConfigurar, `{"name":"Sec 2","isActive":true}`, false},
+		{"con el permiso sí", nil, `{"name":"Sec","isActive":true,"countsCash":false}`, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			st := newTestStore(t)
+			jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
+			h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Backoffice: app.NewBackofficeService(st, clock), MenuCache: cache.NewMenuCache(""),
+				Broker: realtime.NewBroker(), Permissions: c.perms})
+			r := httpapi.Router(config.Config{}, jm, h, st)
+			id := makeUser(t, st, "gerente_arqueo", "gerente")
+			tok, err := jm.Issue(domain.User{ID: id, CompanyID: defaultCompanyID, Name: "g", Role: domain.RoleGerente})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var sec int64
+			if err := st.Pool.QueryRow(context.Background(), `insert into cash_registers (name) values ('Sec') returning id`).Scan(&sec); err != nil {
+				t.Fatal(err)
+			}
+			w := do(t, r, http.MethodPatch, "/api/v1/cash-registers/"+itoa(int(sec)), tok, []byte(c.body), "application/json")
+			if c.denied && w.Code != http.StatusForbidden {
+				t.Fatalf("PATCH = %d; quería 403", w.Code)
+			}
+			if !c.denied && w.Code != http.StatusOK {
+				t.Fatalf("PATCH = %d: %s", w.Code, w.Body.String())
+			}
+			var counts bool
+			_ = st.Pool.QueryRow(context.Background(), `select counts_cash from cash_registers where id = $1`, sec).Scan(&counts)
+			if c.denied && !counts {
+				t.Fatal("el arqueo se apagó sin el permiso")
+			}
+		})
+	}
+}
+
+// Un pago no puede apuntar a la caja de otra empresa aunque el servicio se equivoque: la FK
+// compuesta es la barrera real, porque la FK salta RLS (R8).
+func TestLaFKNoDejaPagarDeLaCajaDeOtraEmpresa(t *testing.T) {
+	t.Parallel()
+	g := nuevoGastoSinTurno(t, fixedNow)
+	st := g.st
+	ctx := context.Background()
+	company := makeCompany(t, st, "fk-caja-047")
+	var ajena int64
+	if err := st.Pool.QueryRow(ctx, `insert into cash_registers (company_id, name) values ($1, 'Ajena') returning id`, company).Scan(&ajena); err != nil {
+		t.Fatal(err)
+	}
+	appSt := appRoleStore(t)
+	actx, release, err := appSt.AcquireTenant(ctx, defaultCompanyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	var exp int64
+	if err := g.st.Pool.QueryRow(ctx, `insert into expenses (category_id, amount, expense_date, created_by) values ($1, 10, current_date, $2) returning id`, g.cat, g.admin).Scan(&exp); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := appSt.QC(actx).CreateExpensePayment(actx, db.CreateExpensePaymentParams{
+		ExpenseID: exp, PaymentMethodID: g.cash, Amount: dec("10"), PaidOn: pgtype.Date{Time: fixedNow, Valid: true},
+		RegisterID: &ajena, PaidBy: g.admin,
+	}); err == nil {
+		t.Fatal("un pago de la empresa por omisión quedó apuntando a la caja de otra empresa")
+	}
+}
+
+// CON LA PRINCIPAL ABIERTA, UN GASTO PASADO DE OTRA CAJA CONSERVA SU DÍA. El día del turno manda
+// solo si el pago entra a ese turno; antes se imponía el de la principal y se rechazaba el día elegido.
+func TestUnGastoPasadoDeOtraCajaNoTomaElDiaDeLaPrincipal(t *testing.T) {
+	t.Parallel()
+	g := nuevoGastoSinTurno(t, fixedNow)
+	abrirCajaPrincipal(t, g.st, g.admin)
+	ext := g.caja(t, "Caja externa", false)
+	in := g.pagar(ext, "2026-07-01", false)
+	in.ExpenseDay = "2026-07-01"
+	id, err := g.back.CreateExpense(context.Background(), in)
+	if err != nil {
+		t.Fatalf("el gasto pasado de otra caja se rechazó con la principal abierta: %v", err)
+	}
+	var dia time.Time
+	_ = g.st.Pool.QueryRow(context.Background(), `select expense_date from expenses where id = $1`, id).Scan(&dia)
+	if dia.Format("2006-01-02") != "2026-07-01" {
+		t.Fatalf("día del gasto %s; quería el elegido 2026-07-01", dia.Format("2006-01-02"))
+	}
+}
+
+// PAGAR HOY UN GASTO DE AYER, CON LA CAJA ABIERTA, ENTRA AL CORTE. Sin fecha de pago, el día es el
+// del negocio, no el del gasto: si no, el efectivo sale del cajón de hoy y ningún corte lo ve.
+func TestPagarHoyUnGastoDeAyerEntraAlCorte(t *testing.T) {
+	t.Parallel()
+	g := nuevoGastoSinTurno(t, fixedNow)
+	ctx := context.Background()
+	sess := abrirCajaPrincipal(t, g.st, g.admin)
+	if _, err := g.st.Pool.Exec(ctx, `update register_sessions set status = 'cerrada', closed_at = now(), closed_by = $2 where id = $1`, sess, g.admin); err != nil {
+		t.Fatal(err)
+	}
+	pend, err := g.back.CreateExpense(ctx, app.ExpenseInput{ExpenseDay: fixedNow.AddDate(0, 0, -1).Format("2006-01-02"),
+		CategoryID: g.cat, Amount: dec("80"), Status: domain.ExpensePendiente, UserID: g.admin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hoy := abrirCajaPrincipal(t, g.st, g.admin)
+	reg := g.primar
+	if err := g.back.AddExpensePayment(ctx, pend, app.ExpensePaymentInput{MethodID: g.cash, Amount: dec("80"), RegisterID: &reg}, g.admin); err != nil {
+		t.Fatalf("pagar hoy un gasto de ayer con la caja abierta: %v", err)
+	}
+	if g.movimientosDe(t, hoy) != 1 {
+		t.Fatal("el pago de hoy no salió del cajón de hoy")
+	}
+}
+
+// LA CARRERA: apagar el arqueo y abrir turno a la vez nunca dejan un turno abierto en una caja que
+// no se cuenta (R2). Cada lado toma la caja con FOR UPDATE.
+func TestApagarArqueoYAbrirTurnoALaVezNoDejaTurnoSinArqueo(t *testing.T) {
+	t.Parallel()
+	g := nuevoGastoSinTurno(t, fixedNow)
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		sec := g.caja(t, "Carrera "+itoa(i), true)
+		no := false
+		done := make(chan struct{}, 2)
+		go func() { _, _ = g.back.UpdateCashRegister(ctx, sec, "Carrera", true, &no); done <- struct{}{} }()
+		go func() { _, _ = g.back.OpenSession(ctx, sec, app.AperturaCmd{}, g.admin); done <- struct{}{} }()
+		<-done
+		<-done
+		var counts bool
+		var abiertos int
+		_ = g.st.Pool.QueryRow(ctx, `select counts_cash, (select count(*) from register_sessions where register_id = $1 and status = 'abierta') from cash_registers where id = $1`, sec).Scan(&counts, &abiertos)
+		if !counts && abiertos > 0 {
+			t.Fatalf("vuelta %d: la caja quedó sin arqueo con un turno abierto", i)
+		}
+	}
 }

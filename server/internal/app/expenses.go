@@ -395,7 +395,9 @@ func (s *BackofficeService) AddExpensePayment(ctx context.Context, expenseID int
 	if !domain.CanPayExpense(string(exp.Status)) {
 		return domain.ErrConflict // ya pagada o cancelada
 	}
-	payments, err := s.validatePayments(ctx, []ExpensePaymentInput{in}, exp.ExpenseDate.Time)
+	// Sin fecha de pago, el día del NEGOCIO y no el del gasto: pagar hoy un gasto de ayer saca el
+	// efectivo del cajón de hoy, y tiene que entrar a su corte.
+	payments, err := s.validatePayments(ctx, []ExpensePaymentInput{in}, s.businessDate(ctx))
 	if err != nil {
 		return err
 	}
@@ -884,10 +886,12 @@ func (s *BackofficeService) parseDayOrToday(ctx context.Context, v string) (time
 // que la nombre) o, si no nombra caja, el de la caja principal.
 func (s *BackofficeService) openShiftDay(ctx context.Context, payments []ExpensePaymentInput) (time.Time, bool, error) {
 	q := s.store.QC(ctx)
+	namesRegister := false
 	for _, p := range payments {
 		if p.RegisterID == nil {
 			continue
 		}
+		namesRegister = true
 		sess, err := q.GetOpenSessionByRegister(ctx, *p.RegisterID)
 		if err == nil {
 			return sess.BusinessDate.Time, true, nil
@@ -895,6 +899,11 @@ func (s *BackofficeService) openShiftDay(ctx context.Context, payments []Expense
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return time.Time{}, false, err
 		}
+	}
+	// La principal solo manda si ningún pago nombra caja. Un pago de otra caja sin turno —un
+	// tercero, un gasto de otro día— no es de ese turno, y su día lo elige quien captura (spec 047).
+	if namesRegister {
+		return time.Time{}, false, nil
 	}
 	sess, err := q.GetOpenPrimarySession(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
