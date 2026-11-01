@@ -448,8 +448,9 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `paid_at` (`domain.PaymentTime`: la hora del reloj si es de hoy, la medianoche de su día si no).
     Sin `includeInCount` en el cuerpo rigen las reglas de la 047: una tableta vieja nunca deja un
     pendiente.
-  - **Un pendiente entra a un corte SOLO por `sweepPendingExpenses`** (`app/expenses.go`): al abrir
-    con hora anterior y al cerrar, en la transacción que tiene la caja o el turno. Un camino nuevo
+  - **Un pendiente entra a un corte SOLO por `sweepPendingExpenses`** (`app/expenses.go`), y solo al
+    abrir: la apertura los incluye sola desde la hora del primero (sin permiso) y lo que queda antes
+    de la apertura pasa a «sin incluir»; excluirlos o elegir la hora exige `cash.adjust_count`. Un camino nuevo
     que pegue pagos a un corte lo llama, no lo copia; el `where register_session_id is null` es lo
     que impide pegarlo dos veces.
   - **Cada salida de caja de un gasto lleva su pago** (`register_cash_movements.expense_payment_id`,

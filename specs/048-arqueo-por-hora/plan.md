@@ -113,3 +113,15 @@ Ver R9–R12 (reemplazan la versión anterior de esta sección).
   `openedAt`. Solo en la apertura (prop del `ContadorDeEfectivo`), nunca en el cierre.
 - R12. Detalle del gasto: el badge «en arqueo» se reemplaza por el `Switch` (a la izquierda, lejos del
   monto), con etiqueta «En el arqueo» o «Corte cerrado».
+
+**Decisión del 2026-11-01 (coordinación, dueño ausente)**
+- R13. Al abrir, los pendientes de la caja desde su último cierre se INCLUYEN solos: la apertura toma
+  la hora del primero (posterior al último cierre), sin pedir permiso, con bitácora
+  `cash.opening_backdated` y `reason: "automatic"`. Excluirlos (abrir «ahora» dejándolos «sin
+  incluir») exige `cash.adjust_count` vía `excludePending: true` (403 sin permiso); `openedAt`
+  explícito también. Tabletas de la 047 (sin campos) → automático. Así un cajero nunca saca dinero
+  del arqueo en silencio y nadie decide a media operación. Con esto se quita el barrido del cierre
+  (YAGNI): la apertura usa siempre el reloj del servicio, deriva `business_date` de su hora, y la
+  hora se valida dentro de la transacción con la caja tomada; una caja que nunca cerró no abre más de
+  24 h atrás. Con la casilla, el corte lo decide solo `paid_at ≥ apertura`: dos cortes del mismo día
+  no comparten pagos por el día.

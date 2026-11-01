@@ -42,14 +42,15 @@ esperado del corte.
 Con la caja cerrada y la casilla marcada, aparece el aviso: «Este gasto no saldrá en ningún corte,
 salvo que el siguiente corte se abra con una hora de apertura que lo incluya.», con **Registrar** y **Cancelar**
 y, aparte, **Registrar sin incluir en el arqueo**. «Registrar» lo deja pendiente. Al abrir el
-siguiente corte, la apertura lista los «gastos sin corte desde el último cierre» y ofrece, con un
-toque, incluirlos abriendo desde la hora del primero; así ese corte lo descuenta del esperado.
+siguiente corte, la apertura los incluye sola: abre desde la hora del primero «gasto sin corte desde
+el último cierre», sin pedir nada, y ese corte lo descuenta del esperado. Dejarlos fuera es la
+excepción y exige permiso (R13).
 
 **Why this priority**: es el caso del gasto de madrugada o del dinero que salió con la caja
 cerrada: hoy queda fuera del arqueo aunque sí salió de ese cajón.
 
-**Independent Test**: caja cerrada, gasto de $200 «Registrar»; al abrir, encender «Incluirlos (desde las
-HH:MM)» y abrir; el esperado del corte es $200 menor; y al cerrarlo el corte lista el gasto.
+**Independent Test**: caja cerrada, gasto de $200 «Registrar»; abrir sin tocar nada; el esperado del
+corte es $200 menor; y al cerrarlo el corte lista el gasto.
 
 **Acceptance Scenarios**:
 
@@ -57,13 +58,13 @@ HH:MM)» y abrir; el esperado del corte es $200 menor; y al cerrarlo el corte li
    aviso; «Cancelar» no guarda; «Registrar sin incluir» lo deja fuera para
    siempre; «Registrar» lo deja pendiente de corte.
 2. **Given** gastos pendientes de esa caja desde su último cierre, **When** se va a abrir, **Then** la
-   apertura los lista con hora e importe y ofrece incluirlos abriendo desde la hora del primero.
+   apertura los lista con hora e importe y abre desde la hora del primero, sin pedir permiso; queda
+   en bitácora como apertura con hora anterior «automática».
 3. **Given** el corte se abre desde esa hora, **Then** los pendientes con hora dentro del corte se
-   descuentan de su esperado en ese momento, y también los que se registren pendientes después con hora
-   dentro del corte se descuentan al cerrarlo.
+   descuentan de su esperado en ese momento.
 4. **Given** un gasto pendiente con hora anterior al último cierre de su caja, **Then** no puede entrar
    a ningún corte: el aviso lo dice y solo ofrece «Registrar sin incluir en el arqueo» y «Cancelar».
-5. **Given** se abre sin incluirlos (sin mover la hora, o desde una hora posterior a ellos),
+5. **Given** quien tiene el permiso abre excluyéndolos (o desde una hora posterior a ellos),
    **Then** los pendientes con hora anterior a la apertura quedan «sin incluir», como si se hubiera
    elegido así al registrarlos, dejan de listarse y queda un evento en la bitácora por cada uno.
 
@@ -71,16 +72,18 @@ HH:MM)» y abrir; el esperado del corte es $200 menor; y al cerrarlo el corte li
 
 ### User Story 3 - Mover la hora de apertura (Priority: P2)
 
-Quien tiene permiso puede abrir un corte con una hora anterior a la actual, nunca antes del cierre
-del corte anterior de esa caja. Queda en bitácora quién y desde qué hora.
+Quien tiene permiso puede abrir un corte con una hora elegida, nunca antes del cierre del corte
+anterior de esa caja (si nunca cerró, no más de 24 h atrás), o abrir «ahora» excluyendo los gastos
+sin corte. Queda en bitácora quién y desde qué hora. Sin permiso, la apertura incluye sola los
+pendientes (US2) y no puede excluirlos.
 
-**Independent Test**: un cajero sin permiso no ve «Incluirlos (desde las HH:MM)»; un gerente sí, y el
-evento aparece en la bitácora.
+**Independent Test**: un cajero sin permiso abre y los pendientes entran solos; no puede excluirlos
+(403); un gerente sí, y el evento aparece en la bitácora.
 
 **Acceptance Scenarios**:
 
-1. **Given** quien no tiene el permiso, **Then** la apertura solo abre «ahora» y el servidor rechaza
-   una hora anterior.
+1. **Given** quien no tiene el permiso, **Then** el servidor rechaza una hora elegida y excluir los
+   pendientes (403); la apertura automática sí la puede hacer.
 2. **Given** una hora anterior al último cierre o futura, **Then** se rechaza.
 3. **Given** se abre desde una hora anterior, **Then** queda un evento de bitácora con la hora.
 
