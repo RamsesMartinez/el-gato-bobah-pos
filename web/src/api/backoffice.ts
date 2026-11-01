@@ -755,6 +755,9 @@ export interface ExpensePaymentBody {
   reference?: string;
   // Confirma que el efectivo sale de una caja sin turno (o de otro día) y no entra a ningún corte.
   outsideCount?: boolean;
+  // Casilla «Incluir en el arqueo» (spec 048): solo en efectivo de una caja con arqueo. Con
+  // outsideCount en true y esto en true, el pago queda pendiente del corte que cubra su hora.
+  includeInCount?: boolean;
 }
 
 // Salud del inventario (spec 037). Las listas se declaran opcionales a propósito: un `null` del

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Box, Button, HStack, Text } from '@chakra-ui/react';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
@@ -15,6 +16,8 @@ interface Props {
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  // children va en el cuerpo, bajo la descripción: una acción secundaria que no compite con el pie.
+  children?: ReactNode;
 }
 
 // ConfirmSheet reemplaza al `confirm()` del navegador.
@@ -27,7 +30,7 @@ interface Props {
 // Cerrar la hoja de cualquier forma —fondo, Escape, arrastrar— es cancelar.
 export function ConfirmSheet({
   isOpen, title, description, confirmLabel, cancelLabel = 'Volver', destructive, loading,
-  onConfirm, onCancel,
+  onConfirm, onCancel, children,
 }: Props) {
   const seguro = (
     <Button flex="1" minH="52px" variant={destructive ? 'solid' : 'outline'}
@@ -49,9 +52,10 @@ export function ConfirmSheet({
         <DrawerHeader pb={1}>
           <Text fontSize="lg" fontWeight="700">{title}</Text>
         </DrawerHeader>
-        {description && (
+        {(description || children) && (
           <DrawerBody flex="1" minH={0} overflowY="auto" pb={2}>
-            <Text color="fg.muted">{description}</Text>
+            {description && <Text color="fg.muted">{description}</Text>}
+            {children}
           </DrawerBody>
         )}
         <DrawerFooter borderTopWidth="1px" pt={3}>
