@@ -73,6 +73,31 @@ func lineUnit(ctx context.Context, q *db.Queries, ingredientID *int64, presentat
 
 // checkLineMoney: cada renglón lleva importe mayor que cero, salvo un regalo, que va en 0 (FR-004a,
 // FR-007d). El check de la 0092 lo repite como defensa.
+// checkLineRefs pregunta bajo RLS por el producto y la unidad de un renglón antes de escribirlo: la
+// llave foránea salta RLS por diseño, y uno de otra empresa o inexistente respondía 500. El insumo lo
+// cubre lockIngredients y el empaque GetPresentationForLine.
+func checkLineRefs(ctx context.Context, q *db.Queries, productID *int64, unitID *int16) error {
+	if productID != nil {
+		ok, err := q.ProductVisible(ctx, *productID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("%w: el producto no existe", domain.ErrNotFound)
+		}
+	}
+	if unitID != nil {
+		ok, err := q.UnitExists(ctx, *unitID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("%w: la unidad no existe", domain.ErrValidation)
+		}
+	}
+	return nil
+}
+
 func checkLineMoney(amount decimal.Decimal, gift bool) error {
 	if gift {
 		if !amount.IsZero() {
@@ -164,19 +189,37 @@ func stockStates(rows []db.ListStockLinesRow) []domain.StockLineState {
 	return out
 }
 
+// appliedMove es un movimiento que applyStockLines insertó: lo que la edición necesita para decidir
+// si un conteo posterior ya lo había contado (spec 053, R5).
+type appliedMove struct {
+	ItemID       int64
+	IngredientID *int64
+	ProductID    *int64
+	Description  string
+	Qty          decimal.Decimal
+	Day          time.Time
+}
+
 // applyStockLines lleva lo sumado de cada renglón vivo del gasto a lo que llegó, actualiza el
-// costo de los insumos que recibieron algo y fija `received_at` (la fecha en que ya no quedó nada
-// pendiente). `day` es la fecha de lo que llega hoy; nil = hoy.
+// costo de los insumos que recibieron algo y fija `received_at` (el día de la última entrega, cuando
+// ya no quedó nada pendiente). `day` es la fecha de lo que llega; nil = hoy.
 //
 // Corre con el gasto y sus insumos ya bloqueados (LockExpenseForStock, lockIngredients).
 func (s *BackofficeService) applyStockLines(ctx context.Context, q *db.Queries, expenseID, userID int64, day *time.Time) (applied bool, err error) {
+	moves, err := s.applyStockLinesOn(ctx, q, expenseID, userID, day, nil)
+	return len(moves) > 0, err
+}
+
+// applyStockLinesOn es applyStockLines con una fecha de entrega por renglón (spec 053): `perLine`
+// gana sobre `day` para los renglones que nombra. Cada movimiento lleva su día en `effective_on`.
+func (s *BackofficeService) applyStockLinesOn(ctx context.Context, q *db.Queries, expenseID, userID int64, day *time.Time, perLine map[int64]time.Time) ([]appliedMove, error) {
 	rows, err := q.ListStockLines(ctx, expenseID)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	moves, pending, err := domain.PlanStockLines(stockStates(rows))
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	byID := make(map[int64]db.ListStockLinesRow, len(rows))
 	var ids []int64
@@ -191,28 +234,33 @@ func (s *BackofficeService) applyStockLines(ctx context.Context, q *db.Queries, 
 	method := domain.CostingLast
 	if len(ids) > 0 {
 		if _, err := q.LockIngredientStockNowait(ctx, ids); err != nil {
-			return false, lockErr(err)
+			return nil, lockErr(err)
 		}
 		m, err := q.CostingMethod(ctx)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
 		if method, err = domain.ParseCostingMethod(m); err != nil {
-			return false, err
+			return nil, err
 		}
+	}
+	today := domain.BusinessDate(s.now(), s.businessLocation(ctx))
+	if day != nil {
+		today = *day
 	}
 
 	costChanged := false
+	out := make([]appliedMove, 0, len(moves))
 	for _, m := range moves {
 		r := byID[m.ID]
 		if !domain.ValidQty(m.Delta.Abs(), domain.MaxStockQty, false) {
-			return false, domain.ErrValidation
+			return nil, domain.ErrValidation
 		}
 		unitCost := domain.UnitCost(r.Amount, m.Ordered)
 		if r.IngredientID != nil && m.Delta.IsPositive() && !r.IsGift {
 			changed, err := s.applyPurchaseCost(ctx, q, *r.IngredientID, method, m.Delta, unitCost)
 			if err != nil {
-				return false, err
+				return nil, err
 			}
 			costChanged = costChanged || changed
 		}
@@ -220,34 +268,42 @@ func (s *BackofficeService) applyStockLines(ctx context.Context, q *db.Queries, 
 		if m.Delta.IsNegative() {
 			reason = "corrección de compra: " + r.Description
 		}
+		on := today
+		if d, ok := perLine[r.ID]; ok {
+			on = d
+		}
 		id := r.ID
 		if err := q.InsertLineMovement(ctx, db.InsertLineMovementParams{
 			ItemType: *r.ItemType, IngredientID: r.IngredientID, ProductID: r.ProductID,
 			Quantity: m.Delta, UnitCost: &unitCost, ExpenseID: &expenseID, ExpenseItemID: &id,
-			UserID: &userID, Reason: &reason,
+			UserID: &userID, Reason: &reason, EffectiveOn: pgtype.Date{Time: on, Valid: true},
 		}); err != nil {
-			return false, err
+			return nil, err
 		}
 		if err := q.AddAppliedQty(ctx, db.AddAppliedQtyParams{ID: r.ID, Delta: m.Delta}); err != nil {
-			return false, err
+			return nil, err
 		}
-		applied = true
+		out = append(out, appliedMove{ItemID: r.ID, IngredientID: r.IngredientID, ProductID: r.ProductID,
+			Description: r.Description, Qty: m.Delta, Day: on})
 	}
 	if costChanged {
 		if err := recomputeCosts(ctx, q); err != nil {
-			return false, err
+			return nil, err
 		}
 	}
 
 	received := pgtype.Date{}
 	if !pending {
-		at := s.now()
-		if day != nil {
-			at = *day
+		last, err := q.MaxDeliveryDate(ctx, expenseID)
+		if err != nil {
+			return nil, err
 		}
-		received = pgtype.Date{Time: at, Valid: true}
+		received = pgtype.Date{Time: today, Valid: true}
+		if last.Valid {
+			received = last
+		}
 	}
-	return applied, q.SetExpenseReceivedAt(ctx, db.SetExpenseReceivedAtParams{ID: expenseID, ReceivedAt: received})
+	return out, q.SetExpenseReceivedAt(ctx, db.SetExpenseReceivedAtParams{ID: expenseID, ReceivedAt: received})
 }
 
 // applyPurchaseCost recalcula el costo de un insumo con el método de la empresa. El insumo se toma

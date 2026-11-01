@@ -4,11 +4,11 @@ import { Box, Button, HStack, Input, Text, VStack, Center, Spinner } from '@chak
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { backofficeApi, type PendingReceipt } from '../../api/backoffice';
 import { matchesWords, money } from '../../utils/format';
-import { parseMonto, parseNumero } from '../../domain/numeros';
+import { parseNumero } from '../../domain/numeros';
 import { formatBaseQty } from '../../shared/units';
 import { ArrivedItemSheet, ReceiptSheet } from './ArrivedItemSheet';
+import { DeliveryForExpense } from './DeliverySheet';
 import { receiptError } from './receiptError';
-import { baseOfLine } from './expenseDraft';
 
 // «Por recibir» (spec 038, maqueta «Almacén › Por recibir», opción A con buscador): lo pagado que
 // no ha llegado, agrupado por compra. Se recibe por partes con la cantidad tecleada, de más con su
@@ -29,10 +29,10 @@ function unitWord(r: Pick<PendingReceipt, 'presentationName' | 'packQtyInBase' |
 
 const qty = (s: string) => String(Number(Number(s).toFixed(4)));
 
+// «Recibir» abre la hoja de entrega de la compra (spec 053): con su fecha y su vista previa.
 type Action =
-  | { kind: 'receive'; row: PendingReceipt }
+  | { kind: 'deliver'; expenseId: number; itemId?: number }
   | { kind: 'notComing'; row: PendingReceipt }
-  | { kind: 'all'; rows: PendingReceipt[] }
   | { kind: 'more'; rows: PendingReceipt[] };
 
 export function PendingReceiptsTab() {
@@ -76,7 +76,7 @@ export function PendingReceiptsTab() {
                 compra del {dia(head.expenseDate)} · {head.paid ? 'pagado' : 'por pagar'} {money(head.expenseAmount)}
               </Text>
               <Button minH="44px" variant="outline" onClick={() => setAction({ kind: 'more', rows: g })}>Llegó algo más…</Button>
-              <Button minH="44px" variant="outline" onClick={() => setAction({ kind: 'all', rows: g })}>Llegó todo…</Button>
+              <Button minH="44px" variant="outline" onClick={() => setAction({ kind: 'deliver', expenseId: head.expenseId })}>Recibir</Button>
             </HStack>
             {g.map((r) => {
               const got = num(r.received);
@@ -94,7 +94,7 @@ export function PendingReceiptsTab() {
                     <Text fontSize="xs" color="fg.muted">Falta</Text>
                     <Text fontWeight="700">{qty(r.missing)} {unitWord(r, num(r.missing))}</Text>
                   </VStack>
-                  <Button minH="44px" variant="outline" onClick={() => setAction({ kind: 'receive', row: r })}>Recibir…</Button>
+                  <Button minH="44px" variant="outline" onClick={() => setAction({ kind: 'deliver', expenseId: r.expenseId, itemId: r.itemId })}>Recibir…</Button>
                   <Button minH="44px" variant="outline" onClick={() => setAction({ kind: 'notComing', row: r })}>Ya no va a llegar…</Button>
                 </HStack>
               );
@@ -103,57 +103,16 @@ export function PendingReceiptsTab() {
         );
       })}
 
-      {action?.kind === 'receive' && <ReceiveSheet row={action.row} onClose={() => setAction(null)} onDone={refresh} />}
+      {action?.kind === 'deliver' && (
+        <DeliveryForExpense expenseId={action.expenseId} onlyItemId={action.itemId} onClose={() => setAction(null)}
+          onDone={() => { medirAccion('inventario', 'recibir'); refresh('Listo: quedó registrado lo que llegó.'); }} />
+      )}
       {action?.kind === 'notComing' && <NotComingSheet row={action.row} onClose={() => setAction(null)} onDone={refresh} />}
-      {action?.kind === 'all' && <AllArrivedSheet rows={action.rows} onClose={() => setAction(null)} onDone={refresh} />}
       {action?.kind === 'more' && <ArrivedItemSheet expenseId={action.rows[0].expenseId} supplier={action.rows[0].supplier} onClose={() => setAction(null)} onDone={refresh} />}
     </VStack>
   );
 }
 
-
-function ReceiveSheet({ row, onClose, onDone }: { row: PendingReceipt; onClose: () => void; onDone: (m: string) => void }) {
-  const [value, setValue] = useState(''); // vacía al abrir: se teclea lo que llegó, no se confirma lo pedido
-  const [extra, setExtra] = useState('');
-  const n = num(value);
-  const missing = num(row.missing);
-  const over = n > missing ? Number((n - missing).toFixed(4)) : 0;
-  const extraMoney = parseMonto(extra);
-  const factor = row.packQtyInBase ?? (row.unitCode === row.baseUnitCode ? '1' : null);
-  const base = Number.isFinite(n) && n > 0 ? baseOfLine(value, factor) : null;
-  const ok = Number.isFinite(n) && n > 0 && (over === 0 || (extraMoney.estado === 'valido' && extraMoney.valor > 0));
-  const save = useMutation({
-    mutationFn: () => backofficeApi.receiveItem(row.expenseId, row.itemId, {
-      qty: value, seenApplied: row.applied, extraAmount: over > 0 ? extra : undefined,
-    }),
-    onSuccess: () => { medirAccion('inventario', 'recibir'); onDone(`Listo. ${row.itemName}: llegaron ${qty(value)} ${unitWord(row, n)}.`); },
-  });
-  return (
-    <ReceiptSheet title={`¿Cuánto llegó de ${row.itemName}?`} onClose={onClose}
-      footer={<Button minH="44px" colorPalette="brand" disabled={!ok} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>}>
-      <VStack align="stretch" gap={3}>
-        <Text fontSize="sm" color="fg.muted">{row.supplier ?? 'Sin proveedor'} · compra del {dia(row.expenseDate)} · faltan {qty(row.missing)}</Text>
-        <HStack gap={3}>
-          <Text>Llegaron</Text>
-          <Input aria-label="Llegaron" w="100px" minH="44px" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
-          <Text>{unitWord(row, Number.isFinite(n) ? n : 2)}</Text>
-          {base !== null && <Text color="fg.success" fontWeight="700">= {formatBaseQty(base, row.baseUnitCode ?? '')}</Text>}
-        </HStack>
-        {over > 0 && (
-          <HStack gap={2} p={3} borderRadius="lg" bg="orange.subtle" flexWrap="wrap">
-            <Text fontSize="sm">Llegaron {qty(String(over))} de más. ¿Cuánto pagaste por lo de más?</Text>
-            <HStack gap={1}>
-              <Text fontWeight="700">$</Text>
-              <Input aria-label="Importe de lo de más" w="120px" minH="44px" inputMode="decimal" value={extra} onChange={(e) => setExtra(e.target.value)} />
-            </HStack>
-            <Text fontSize="sm">Sube el total pagado de esta compra.</Text>
-          </HStack>
-        )}
-        {save.isError && <Text color="fg.error" fontSize="sm">{receiptError(save.error)}</Text>}
-      </VStack>
-    </ReceiptSheet>
-  );
-}
 
 function NotComingSheet({ row, onClose, onDone }: { row: PendingReceipt; onClose: () => void; onDone: (m: string) => void }) {
   const [value, setValue] = useState('');
@@ -179,23 +138,3 @@ function NotComingSheet({ row, onClose, onDone }: { row: PendingReceipt; onClose
     </ReceiptSheet>
   );
 }
-
-function AllArrivedSheet({ rows, onClose, onDone }: { rows: PendingReceipt[]; onClose: () => void; onDone: (m: string) => void }) {
-  const head = rows[0];
-  const save = useMutation({
-    mutationFn: () => backofficeApi.receiveExpense(head.expenseId, {}),
-    onSuccess: () => onDone(`Listo. Llegó todo lo de ${head.supplier ?? 'la compra'}.`),
-  });
-  return (
-    <ReceiptSheet title={`¿Llegó todo de ${head.supplier ?? 'esta compra'}?`} onClose={onClose}
-      footer={<Button minH="44px" colorPalette="brand" loading={save.isPending} onClick={() => save.mutate()}>Sí, llegó todo</Button>}>
-      <VStack align="stretch" gap={1}>
-        {rows.map((r) => (
-          <Text key={r.itemId}>{r.itemName}: {qty(r.missing)} {unitWord(r, num(r.missing))}</Text>
-        ))}
-        {save.isError && <Text color="fg.error" fontSize="sm">{receiptError(save.error)}</Text>}
-      </VStack>
-    </ReceiptSheet>
-  );
-}
-

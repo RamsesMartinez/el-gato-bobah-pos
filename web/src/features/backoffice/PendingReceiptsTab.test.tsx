@@ -12,6 +12,8 @@ const back = vi.hoisted(() => ({
   markNotComing: vi.fn(),
   receiveExpense: vi.fn(),
   addArrivedItem: vi.fn(),
+  expenseDetail: vi.fn(),
+  deliverExpense: vi.fn(),
   searchArticles: vi.fn(),
   presentations: vi.fn(),
   units: vi.fn(),
@@ -84,29 +86,6 @@ describe('Por recibir (spec 038, maqueta A con buscador)', () => {
     expect(screen.getAllByTestId('renglon-por-recibir')).toHaveLength(1);
   });
 
-  test('«Recibir…» abre vacío y manda lo tecleado con lo aplicado que se vio', async () => {
-    montar();
-    fireEvent.click(within(await renglon('Azúcar')).getByRole('button', { name: 'Recibir…' }));
-    const input = await screen.findByLabelText('Llegaron');
-    expect(input).toHaveValue('');
-    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
-    fireEvent.change(input, { target: { value: '1' } });
-    expect(screen.getByText('= 25 kg')).toBeInTheDocument();
-    click('Guardar');
-    await waitFor(() => expect(back.receiveItem).toHaveBeenCalledWith(10, 50, { qty: '1', seenApplied: '25000', extraAmount: undefined }));
-  });
-
-  test('recibir de más pide el importe de lo de más', async () => {
-    montar();
-    fireEvent.click(within(await renglon('Leche entera')).getByRole('button', { name: 'Recibir…' }));
-    fireEvent.change(await screen.findByLabelText('Llegaron'), { target: { value: '4' } });
-    expect(screen.getByText(/Llegaron 1 de más/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Importe de lo de más'), { target: { value: '180' } });
-    click('Guardar');
-    await waitFor(() => expect(back.receiveItem).toHaveBeenCalledWith(9, 41, { qty: '4', seenApplied: '0', extraAmount: '180' }));
-  });
-
   test('«Ya no va a llegar…» pide cuántas, hasta lo que falta', async () => {
     montar();
     fireEvent.click(within(await renglon('Leche entera')).getByRole('button', { name: 'Ya no va a llegar…' }));
@@ -117,16 +96,6 @@ describe('Por recibir (spec 038, maqueta A con buscador)', () => {
     fireEvent.change(input, { target: { value: '1' } });
     click('Guardar');
     await waitFor(() => expect(back.markNotComing).toHaveBeenCalledWith(9, 41, '1'));
-  });
-
-  test('«Llegó todo…» confirma con lo que falta', async () => {
-    montar();
-    const [lacteos] = await screen.findAllByTestId('compra-por-recibir');
-    fireEvent.click(within(lacteos).getByRole('button', { name: 'Llegó todo…' }));
-    expect(await screen.findByText('Leche entera: 3 cajas de 12 L')).toBeInTheDocument();
-    expect(back.receiveExpense).not.toHaveBeenCalled();
-    click('Sí, llegó todo');
-    await waitFor(() => expect(back.receiveExpense).toHaveBeenCalledWith(9, {}));
   });
 
   test('«Llegó algo más…»: lo pagué pide importe; fue regalo va en 0', async () => {
@@ -153,10 +122,51 @@ describe('Por recibir (spec 038, maqueta A con buscador)', () => {
   });
 });
 
-// Prueba con usuarios sin contexto (T065): la casilla del importe de lo de más no decía que era dinero.
-test('el importe de lo de más dice que es dinero', async () => {
-  montar();
-  fireEvent.click(within(await renglon('Leche entera')).getByRole('button', { name: 'Recibir…' }));
-  fireEvent.change(await screen.findByLabelText('Llegaron'), { target: { value: '4' } });
-  expect(screen.getByLabelText('Importe de lo de más').closest('div')!.parentElement).toHaveTextContent('$');
+// Spec 053: «Recibir» abre la hoja de entrega de la compra, con su fecha y su vista previa.
+describe('Recibir desde «Por recibir» (spec 053)', () => {
+  const item = (over: Record<string, unknown>) => ({
+    itemType: 'ingrediente', ingredientId: 7, productId: null, description: 'x', unitCode: 'pieza', qtyReceived: null,
+    unitCost: '1', amount: '100', packQtyInBase: '12000', applied: '0', baseUnitCode: 'ml', notComing: '0', isGift: false,
+    presentationId: 2, deliveries: [], ...over,
+  });
+  beforeEach(() => {
+    back.expenseDetail.mockResolvedValue({
+      id: 9, expenseDate: '2026-10-10', receivedAt: null, status: 'pagada', category: 'Mercancía', financialGroup: 'operacional',
+      supplier: 'Lácteos del Centro', amount: '1140', currency: 'MXN', description: null, docKind: null, docFolio: null,
+      paymentMethod: null, paidAt: null, createdBy: null, itemCount: 2, payments: [], paid: '1140',
+      items: [item({ id: 41, itemName: 'Leche entera', quantity: '3' }), item({ id: 42, itemName: 'Crema para batir', quantity: '1' })],
+    });
+    back.deliverExpense.mockResolvedValue({ preview: { header: [], lines: [], inventory: [], costs: [], decisions: [],
+      money: { amountBefore: '1', amountAfter: '1', paid: '1', statusBefore: 'pagada', statusAfter: 'pagada', due: '0', overpaid: '0', decisionKey: null },
+      fingerprint: 'f' }, expense: null });
+  });
+
+  test('«Recibir…» de un renglón precarga solo ése', async () => {
+    montar();
+    fireEvent.click(within(await renglon('Leche entera')).getByRole('button', { name: 'Recibir…' }));
+    expect(await screen.findByLabelText('Cuántos llegaron de Leche entera')).toHaveValue('3');
+    expect(screen.getByLabelText('Cuántos llegaron de Crema para batir')).toHaveValue('0');
+    click('Ver efectos');
+    await waitFor(() => expect(back.deliverExpense).toHaveBeenCalled());
+    expect(back.deliverExpense.mock.calls[0][1].lines).toEqual([{ itemId: 41, qty: '3' }]);
+  });
+
+  test('«Recibir» de la compra precarga todo lo que falta', async () => {
+    montar();
+    const [lacteos] = await screen.findAllByTestId('compra-por-recibir');
+    fireEvent.click(within(lacteos).getByRole('button', { name: 'Recibir' }));
+    expect(await screen.findByLabelText('Cuántos llegaron de Crema para batir')).toHaveValue('1');
+    expect(screen.getByText('2 de 2 renglones')).toBeInTheDocument();
+  });
+
+  // Prueba con usuarios sin contexto (T065 de la 038): la casilla del importe de lo de más no decía
+  // que era dinero.
+  test('llegó de más: pide el importe, con «$»', async () => {
+    montar();
+    fireEvent.click(within(await renglon('Leche entera')).getByRole('button', { name: 'Recibir…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Más Leche entera' }));
+    const extra = screen.getByLabelText('Importe de lo de más de Leche entera');
+    expect(extra.parentElement).toHaveTextContent('$');
+    expect(screen.getByRole('button', { name: 'Ver efectos' })).toBeDisabled();
+  });
 });

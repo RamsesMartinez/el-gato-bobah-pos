@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
@@ -41,6 +42,32 @@ func (q *Queries) AddNotComing(ctx context.Context, arg AddNotComingParams) erro
 	return err
 }
 
+const adjustLineToReceived = `-- name: AdjustLineToReceived :exec
+update expense_items
+   set qty_received = $1, quantity = $1, amount = $2,
+       unit_cost = $3, not_coming_qty = 0
+ where id = $4
+`
+
+type AdjustLineToReceivedParams struct {
+	Qty      *decimal.Decimal `json:"qty"`
+	Amount   decimal.Decimal  `json:"amount"`
+	UnitCost decimal.Decimal  `json:"unit_cost"`
+	ID       int64            `json:"id"`
+}
+
+// «Ajustar el importe a lo recibido» (FR-018): el renglón se cierra en lo que llegó, con el mismo
+// precio por unidad. Lo que se había dicho que no llegaría queda dentro del ajuste.
+func (q *Queries) AdjustLineToReceived(ctx context.Context, arg AdjustLineToReceivedParams) error {
+	_, err := q.db.Exec(ctx, adjustLineToReceived,
+		arg.Qty,
+		arg.Amount,
+		arg.UnitCost,
+		arg.ID,
+	)
+	return err
+}
+
 const costingMethod = `-- name: CostingMethod :one
 select coalesce((select costing_method from business_settings limit 1), 'last')::text as costing_method
 `
@@ -51,6 +78,54 @@ func (q *Queries) CostingMethod(ctx context.Context) (string, error) {
 	var costing_method string
 	err := row.Scan(&costing_method)
 	return costing_method, err
+}
+
+const expenseCategoryName = `-- name: ExpenseCategoryName :one
+select name from expense_categories where id = $1
+`
+
+// Pertenencia bajo RLS: la llave foránea salta RLS por diseño y aceptaría la categoría de otra
+// empresa; sin fila, no es de esta empresa.
+func (q *Queries) ExpenseCategoryName(ctx context.Context, id int64) (string, error) {
+	row := q.db.QueryRow(ctx, expenseCategoryName, id)
+	var name string
+	err := row.Scan(&name)
+	return name, err
+}
+
+const expenseDeliveryHistory = `-- name: ExpenseDeliveryHistory :many
+select sm.expense_item_id::bigint as item_id, sm.effective_on::date as day, sum(sm.quantity)::numeric(14,4) as qty
+  from stock_movements sm
+ where sm.expense_id = $1 and sm.expense_item_id is not null and sm.movement_type = 'compra'
+ group by sm.expense_item_id, sm.effective_on
+ order by sm.expense_item_id, sm.effective_on
+`
+
+type ExpenseDeliveryHistoryRow struct {
+	ItemID int64           `json:"item_id"`
+	Day    pgtype.Date     `json:"day"`
+	Qty    decimal.Decimal `json:"qty"`
+}
+
+// El historial de entregas de cada renglón de un gasto, en unidad base (FR-016).
+func (q *Queries) ExpenseDeliveryHistory(ctx context.Context, expenseID *int64) ([]ExpenseDeliveryHistoryRow, error) {
+	rows, err := q.db.Query(ctx, expenseDeliveryHistory, expenseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExpenseDeliveryHistoryRow{}
+	for rows.Next() {
+		var i ExpenseDeliveryHistoryRow
+		if err := rows.Scan(&i.ItemID, &i.Day, &i.Qty); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const fillMissingReceived = `-- name: FillMissingReceived :exec
@@ -84,6 +159,36 @@ func (q *Queries) GetPresentationForLine(ctx context.Context, id int64) (GetPres
 	return i, err
 }
 
+const ingredientCostsFor = `-- name: IngredientCostsFor :many
+select id, name, current_cost from ingredients where id = any($1::bigint[]) order by id
+`
+
+type IngredientCostsForRow struct {
+	ID          int64           `json:"id"`
+	Name        string          `json:"name"`
+	CurrentCost decimal.Decimal `json:"current_cost"`
+}
+
+func (q *Queries) IngredientCostsFor(ctx context.Context, ids []int64) ([]IngredientCostsForRow, error) {
+	rows, err := q.db.Query(ctx, ingredientCostsFor, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IngredientCostsForRow{}
+	for rows.Next() {
+		var i IngredientCostsForRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.CurrentCost); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ingredientOnHandTotal = `-- name: IngredientOnHandTotal :one
 select coalesce(sum(on_hand), 0)::numeric(14,4) as on_hand from stock_levels where ingredient_id = $1
 `
@@ -96,14 +201,54 @@ func (q *Queries) IngredientOnHandTotal(ctx context.Context, ingredientID *int64
 	return on_hand, err
 }
 
+const insertCompensationMovement = `-- name: InsertCompensationMovement :exec
+insert into stock_movements (
+  item_type, ingredient_id, movement_type, quantity, expense_id, stock_count_id, user_id, reason,
+  branch_id, effective_on
+) values (
+  'ingrediente', $1, 'ajuste', $2, $3,
+  $4, $5, $6, $7, $8
+)
+`
+
+type InsertCompensationMovementParams struct {
+	IngredientID *int64          `json:"ingredient_id"`
+	Quantity     decimal.Decimal `json:"quantity"`
+	ExpenseID    *int64          `json:"expense_id"`
+	StockCountID *int64          `json:"stock_count_id"`
+	UserID       *int64          `json:"user_id"`
+	Reason       *string         `json:"reason"`
+	BranchID     int64           `json:"branch_id"`
+	EffectiveOn  pgtype.Date     `json:"effective_on"`
+}
+
+// «No mover» (spec 053, R6): el movimiento del renglón ya se registró; éste, de signo contrario, deja
+// las existencias como las dejó el conteo que ya lo había contado. Va ligado al conteo y al gasto pero
+// NO al renglón: lo aplicado del renglón sigue siendo la suma de SUS movimientos, y el historial de
+// precios de compra no lo ve. La sucursal es la del conteo, explícita (con dos sucursales, el trigger
+// tomaría la de la empresa y truena).
+func (q *Queries) InsertCompensationMovement(ctx context.Context, arg InsertCompensationMovementParams) error {
+	_, err := q.db.Exec(ctx, insertCompensationMovement,
+		arg.IngredientID,
+		arg.Quantity,
+		arg.ExpenseID,
+		arg.StockCountID,
+		arg.UserID,
+		arg.Reason,
+		arg.BranchID,
+		arg.EffectiveOn,
+	)
+	return err
+}
+
 const insertLineMovement = `-- name: InsertLineMovement :exec
 insert into stock_movements (
   item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, expense_id, expense_item_id,
-  user_id, reason, branch_id
+  user_id, reason, branch_id, effective_on
 ) values (
   $1, $2, $3, 'compra', $4,
   $5, $6, $7, $8,
-  $9, current_branch_id()
+  $9, current_branch_id(), $10
 )
 `
 
@@ -117,10 +262,12 @@ type InsertLineMovementParams struct {
 	ExpenseItemID *int64           `json:"expense_item_id"`
 	UserID        *int64           `json:"user_id"`
 	Reason        *string          `json:"reason"`
+	EffectiveOn   pgtype.Date      `json:"effective_on"`
 }
 
 // Un movimiento de compra ligado a su gasto y a su RENGLÓN, con la sucursal de la sesión: con dos
 // sucursales y sin selector, `current_branch_id()` truena (EGB01) en vez de adivinar.
+// `effective_on` es el día de la entrega (spec 053); nula, la pone el trigger de la 0103 con hoy.
 func (q *Queries) InsertLineMovement(ctx context.Context, arg InsertLineMovementParams) error {
 	_, err := q.db.Exec(ctx, insertLineMovement,
 		arg.ItemType,
@@ -132,8 +279,75 @@ func (q *Queries) InsertLineMovement(ctx context.Context, arg InsertLineMovement
 		arg.ExpenseItemID,
 		arg.UserID,
 		arg.Reason,
+		arg.EffectiveOn,
 	)
 	return err
+}
+
+const latestPosteriorCount = `-- name: LatestPosteriorCount :one
+select c.id, c.branch_id, scl.captured_at
+  from stock_count_lines scl
+  join stock_counts c on c.id = scl.count_id
+ where scl.ingredient_id = $1 and c.status = 'closed'
+   and c.branch_id = current_branch_id() and scl.captured_at > $2::timestamptz
+ order by scl.captured_at desc
+ limit 1
+`
+
+type LatestPosteriorCountParams struct {
+	IngredientID int64     `json:"ingredient_id"`
+	Cutoff       time.Time `json:"cutoff"`
+}
+
+type LatestPosteriorCountRow struct {
+	ID         int64     `json:"id"`
+	BranchID   int64     `json:"branch_id"`
+	CapturedAt time.Time `json:"captured_at"`
+}
+
+// El conteo cerrado más reciente de ESTA sucursal que contó el insumo después de `cutoff` (R5): ya vio
+// lo que la entrega o el borrado movería. Un conteo abierto no cuenta.
+func (q *Queries) LatestPosteriorCount(ctx context.Context, arg LatestPosteriorCountParams) (LatestPosteriorCountRow, error) {
+	row := q.db.QueryRow(ctx, latestPosteriorCount, arg.IngredientID, arg.Cutoff)
+	var i LatestPosteriorCountRow
+	err := row.Scan(&i.ID, &i.BranchID, &i.CapturedAt)
+	return i, err
+}
+
+const lineDeliveryDays = `-- name: LineDeliveryDays :many
+select effective_on::date as day, sum(quantity)::numeric(14,4) as qty, max(created_at)::timestamptz as registered_at
+  from stock_movements
+ where expense_item_id = $1 and movement_type = 'compra'
+ group by effective_on
+ order by effective_on
+`
+
+type LineDeliveryDaysRow struct {
+	Day          pgtype.Date     `json:"day"`
+	Qty          decimal.Decimal `json:"qty"`
+	RegisteredAt time.Time       `json:"registered_at"`
+}
+
+// Lo que un renglón sumó, por día de entrega, y el último instante en que se registró algo de ese día:
+// de aquí sale el contra-movimiento de un borrado (R7).
+func (q *Queries) LineDeliveryDays(ctx context.Context, expenseItemID *int64) ([]LineDeliveryDaysRow, error) {
+	rows, err := q.db.Query(ctx, lineDeliveryDays, expenseItemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LineDeliveryDaysRow{}
+	for rows.Next() {
+		var i LineDeliveryDaysRow
+		if err := rows.Scan(&i.Day, &i.Qty, &i.RegisteredAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listStockLines = `-- name: ListStockLines :many
@@ -212,6 +426,53 @@ func (q *Queries) ListStockLines(ctx context.Context, expenseID int64) ([]ListSt
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockExpenseForEdit = `-- name: LockExpenseForEdit :one
+
+select e.id, e.status, e.amount, e.expense_date, e.supplier_id, e.category_id, e.description,
+       e.received_at,
+       (select count(*) from expense_payments ep where ep.expense_id = e.id)::int as payment_count,
+       (select count(*) from expense_payments ep where ep.expense_id = e.id
+                                                and ep.register_session_id is not null)::int as counted_payment_count,
+       (select coalesce(sum(ep.amount), 0) from expense_payments ep where ep.expense_id = e.id)::numeric(10,2) as paid
+  from expenses e where e.id = $1 for update
+`
+
+type LockExpenseForEditRow struct {
+	ID                  int64           `json:"id"`
+	Status              ExpenseStatus   `json:"status"`
+	Amount              decimal.Decimal `json:"amount"`
+	ExpenseDate         pgtype.Date     `json:"expense_date"`
+	SupplierID          *int64          `json:"supplier_id"`
+	CategoryID          int64           `json:"category_id"`
+	Description         *string         `json:"description"`
+	ReceivedAt          pgtype.Date     `json:"received_at"`
+	PaymentCount        int32           `json:"payment_count"`
+	CountedPaymentCount int32           `json:"counted_payment_count"`
+	Paid                decimal.Decimal `json:"paid"`
+}
+
+// ---- Editar un gasto ya guardado (spec 053) ----
+// El encabezado del gasto, bloqueado: lo que una edición compara y cambia. Mismo candado que
+// LockExpenseForStock (el gasto primero, después sus insumos).
+func (q *Queries) LockExpenseForEdit(ctx context.Context, id int64) (LockExpenseForEditRow, error) {
+	row := q.db.QueryRow(ctx, lockExpenseForEdit, id)
+	var i LockExpenseForEditRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.Amount,
+		&i.ExpenseDate,
+		&i.SupplierID,
+		&i.CategoryID,
+		&i.Description,
+		&i.ReceivedAt,
+		&i.PaymentCount,
+		&i.CountedPaymentCount,
+		&i.Paid,
+	)
+	return i, err
 }
 
 const lockExpenseForStock = `-- name: LockExpenseForStock :one
@@ -388,6 +649,38 @@ func (q *Queries) LockStockLine(ctx context.Context, arg LockStockLineParams) (L
 	return i, err
 }
 
+const maxDeliveryDate = `-- name: MaxDeliveryDate :one
+select max(sm.effective_on)::date as day
+  from stock_movements sm
+  join expense_items ei on ei.id = sm.expense_item_id
+ where ei.expense_id = $1 and ei.voided_at is null and sm.movement_type = 'compra'
+   and sm.quantity > 0
+`
+
+// El día de la última entrega de los renglones vivos: la fecha en que el gasto quedó recibido (FR-019).
+func (q *Queries) MaxDeliveryDate(ctx context.Context, expenseID int64) (pgtype.Date, error) {
+	row := q.db.QueryRow(ctx, maxDeliveryDate, expenseID)
+	var day pgtype.Date
+	err := row.Scan(&day)
+	return day, err
+}
+
+const minDeliveryDate = `-- name: MinDeliveryDate :one
+select min(sm.effective_on)::date as day
+  from stock_movements sm
+  join expense_items ei on ei.id = sm.expense_item_id
+ where ei.expense_id = $1 and ei.voided_at is null and sm.movement_type = 'compra'
+   and sm.quantity > 0
+`
+
+// El día de la primera entrega de los renglones vivos: la fecha del gasto no puede quedar después.
+func (q *Queries) MinDeliveryDate(ctx context.Context, expenseID int64) (pgtype.Date, error) {
+	row := q.db.QueryRow(ctx, minDeliveryDate, expenseID)
+	var day pgtype.Date
+	err := row.Scan(&day)
+	return day, err
+}
+
 const nextItemPosition = `-- name: NextItemPosition :one
 select (coalesce(max(position), -1) + 1)::int as position from expense_items where expense_id = $1
 `
@@ -397,6 +690,53 @@ func (q *Queries) NextItemPosition(ctx context.Context, expenseID int64) (int32,
 	var position int32
 	err := row.Scan(&position)
 	return position, err
+}
+
+const openKeepCompensations = `-- name: OpenKeepCompensations :many
+select ingredient_id::bigint as ingredient_id, stock_count_id::bigint as stock_count_id, branch_id,
+       effective_on::date as day, sum(quantity)::numeric(14,4) as qty
+  from stock_movements
+ where expense_id = $1 and movement_type = 'ajuste' and stock_count_id is not null
+   and expense_item_id is null
+ group by ingredient_id, stock_count_id, branch_id, effective_on
+having sum(quantity) <> 0
+ order by ingredient_id
+`
+
+type OpenKeepCompensationsRow struct {
+	IngredientID int64           `json:"ingredient_id"`
+	StockCountID int64           `json:"stock_count_id"`
+	BranchID     int64           `json:"branch_id"`
+	Day          pgtype.Date     `json:"day"`
+	Qty          decimal.Decimal `json:"qty"`
+}
+
+// Las compensaciones de «No mover» de un gasto que siguen vivas (spec 053): al anularlo se deshacen,
+// o las existencias quedarían por debajo de lo que dejó el conteo.
+func (q *Queries) OpenKeepCompensations(ctx context.Context, expenseID *int64) ([]OpenKeepCompensationsRow, error) {
+	rows, err := q.db.Query(ctx, openKeepCompensations, expenseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OpenKeepCompensationsRow{}
+	for rows.Next() {
+		var i OpenKeepCompensationsRow
+		if err := rows.Scan(
+			&i.IngredientID,
+			&i.StockCountID,
+			&i.BranchID,
+			&i.Day,
+			&i.Qty,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const pendingReceipts = `-- name: PendingReceipts :many
@@ -492,6 +832,19 @@ func (q *Queries) PieceUnitID(ctx context.Context) (int16, error) {
 	return id, err
 }
 
+const productVisible = `-- name: ProductVisible :one
+select exists (select 1 from products where id = $1)::bool
+`
+
+// Pertenencia bajo RLS de un producto de un renglón: la llave foránea salta RLS y el de otra empresa
+// reventaba como 500 (revisión de seguridad de la spec 053).
+func (q *Queries) ProductVisible(ctx context.Context, id int64) (bool, error) {
+	row := q.db.QueryRow(ctx, productVisible, id)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const raiseExpenseAmount = `-- name: RaiseExpenseAmount :exec
 with owed as (
   select e.id, (e.status = 'pagada'
@@ -519,6 +872,35 @@ type RaiseExpenseAmountParams struct {
 // no la cubre es un dato que un reporte de cuentas por pagar tomaría por cierto.
 func (q *Queries) RaiseExpenseAmount(ctx context.Context, arg RaiseExpenseAmountParams) error {
 	_, err := q.db.Exec(ctx, raiseExpenseAmount, arg.Extra, arg.ID)
+	return err
+}
+
+const setExpenseAmountStatus = `-- name: SetExpenseAmountStatus :exec
+update expenses
+   set amount = $1, status = $2,
+       paid_at = case when $2::expense_status = 'pagada'
+                      then coalesce(paid_at, now()) else null end,
+       paid_by = case when $2::expense_status = 'pagada'
+                      then coalesce(paid_by, $3::bigint) else null end
+ where id = $4
+`
+
+type SetExpenseAmountStatusParams struct {
+	Amount decimal.Decimal `json:"amount"`
+	Status ExpenseStatus   `json:"status"`
+	UserID int64           `json:"user_id"`
+	ID     int64           `json:"id"`
+}
+
+// El importe y el estado después de una edición (FR-009, FR-011). Al volver a deberse, la fecha y quién
+// pagó se borran (como RaiseExpenseAmount); al quedar pagado, quedan con quien editó.
+func (q *Queries) SetExpenseAmountStatus(ctx context.Context, arg SetExpenseAmountStatusParams) error {
+	_, err := q.db.Exec(ctx, setExpenseAmountStatus,
+		arg.Amount,
+		arg.Status,
+		arg.UserID,
+		arg.ID,
+	)
 	return err
 }
 
@@ -573,6 +955,94 @@ func (q *Queries) SetLineArrival(ctx context.Context, arg SetLineArrivalParams) 
 		arg.Quantity,
 		arg.Amount,
 		arg.UnitCost,
+		arg.ID,
+	)
+	return err
+}
+
+const stockOnHandFor = `-- name: StockOnHandFor :many
+select sl.ingredient_id, sl.product_id, sl.on_hand
+  from stock_levels sl
+ where sl.branch_id = current_branch_id()
+   and (sl.ingredient_id = any($1::bigint[]) or sl.product_id = any($2::bigint[]))
+`
+
+type StockOnHandForParams struct {
+	IngredientIds []int64 `json:"ingredient_ids"`
+	ProductIds    []int64 `json:"product_ids"`
+}
+
+type StockOnHandForRow struct {
+	IngredientID *int64          `json:"ingredient_id"`
+	ProductID    *int64          `json:"product_id"`
+	OnHand       decimal.Decimal `json:"on_hand"`
+}
+
+// Lo guardado en la sucursal de la sesión de los artículos que toca una edición: el antes y el después
+// de la vista previa.
+func (q *Queries) StockOnHandFor(ctx context.Context, arg StockOnHandForParams) ([]StockOnHandForRow, error) {
+	rows, err := q.db.Query(ctx, stockOnHandFor, arg.IngredientIds, arg.ProductIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StockOnHandForRow{}
+	for rows.Next() {
+		var i StockOnHandForRow
+		if err := rows.Scan(&i.IngredientID, &i.ProductID, &i.OnHand); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const supplierName = `-- name: SupplierName :one
+select name from suppliers where id = $1
+`
+
+func (q *Queries) SupplierName(ctx context.Context, id int64) (string, error) {
+	row := q.db.QueryRow(ctx, supplierName, id)
+	var name string
+	err := row.Scan(&name)
+	return name, err
+}
+
+const unitExists = `-- name: UnitExists :one
+select exists (select 1 from units where id = $1)::bool
+`
+
+func (q *Queries) UnitExists(ctx context.Context, id int16) (bool, error) {
+	row := q.db.QueryRow(ctx, unitExists, id)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const updateExpenseHeader = `-- name: UpdateExpenseHeader :exec
+update expenses
+   set supplier_id = $1, category_id = $2,
+       description = $3, expense_date = $4
+ where id = $5
+`
+
+type UpdateExpenseHeaderParams struct {
+	SupplierID  *int64      `json:"supplier_id"`
+	CategoryID  int64       `json:"category_id"`
+	Description *string     `json:"description"`
+	ExpenseDate pgtype.Date `json:"expense_date"`
+	ID          int64       `json:"id"`
+}
+
+func (q *Queries) UpdateExpenseHeader(ctx context.Context, arg UpdateExpenseHeaderParams) error {
+	_, err := q.db.Exec(ctx, updateExpenseHeader,
+		arg.SupplierID,
+		arg.CategoryID,
+		arg.Description,
+		arg.ExpenseDate,
 		arg.ID,
 	)
 	return err

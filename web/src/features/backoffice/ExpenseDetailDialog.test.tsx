@@ -19,9 +19,25 @@ const back = vi.hoisted(() => ({
   searchArticles: vi.fn(() => Promise.resolve({ items: [] })),
   setItemExcluded: vi.fn(),
   setPaymentInCount: vi.fn(),
+  editExpense: vi.fn(),
+  deliverExpense: vi.fn(),
+  expenseCategories: vi.fn(() => Promise.resolve({ items: [{ id: 4, name: 'Mercancía' }, { id: 5, name: 'Desechables' }] })),
+  suppliers: vi.fn(() => Promise.resolve({ items: [{ id: 6, name: 'Lácteos del Centro' }] })),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
-vi.mock('../../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ stockItemLabel: 'artículo' })) } }));
+vi.mock('../../api/pos', () => ({ posApi: {
+  businessSettings: vi.fn(() => Promise.resolve({ stockItemLabel: 'artículo' })),
+  paymentMethods: vi.fn(() => Promise.resolve({ items: [{ id: 1, name: 'Transferencia', affectsCashDrawer: false }] })),
+} }));
+// Doble del Picker sin hoja animada (ver ExpenseDialog.test.tsx).
+vi.mock('../../components/Picker', () => ({
+  Picker: ({ options, onChange, placeholder }: { options: { value: string; label: string }[]; onChange: (v: string) => void; placeholder?: string }) => (
+    <div>
+      <span>{placeholder}</span>
+      {options.map((o) => <button key={o.value} type="button" onClick={() => onChange(o.value)}>{o.label}</button>)}
+    </div>
+  ),
+}));
 
 const leche = (over: Partial<ExpenseItem> = {}): ExpenseItem => ({
   id: 41, itemType: 'ingrediente', ingredientId: 7, productId: null, itemName: 'Leche entera', description: 'Leche',
@@ -50,6 +66,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.clearAllMocks());
 
+const sesion = (permissions: string[]) =>
+  useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'admin', permissions } as never });
+
 function montar() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={qc}><Provider>
@@ -59,10 +78,11 @@ function montar() {
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
 
 describe('Corregir lo que llegó (spec 038, maqueta B)', () => {
+  beforeEach(() => sesion(['inventory.receive']));
   test('dice cómo llegó cada renglón y cuánto suma', async () => {
     montar();
     expect(await screen.findByText(/Llegaron 3 cajas \(12 L c\/u\)/)).toBeInTheDocument();
-    expect(screen.getByText('36 L en el almacén')).toBeInTheDocument();
+    expect(screen.getByText('Sumó 36 L al almacén')).toBeInTheDocument();
   });
 
   test('tres estados por renglón, «Tendrás X (hoy Y)» y el resumen de la diferencia', async () => {
@@ -120,23 +140,21 @@ describe('Corregir lo que llegó (spec 038, maqueta B)', () => {
     expect(screen.queryByRole('button', { name: 'Corregir lo que llegó' })).toBeNull();
   });
 
-  test('una compra que no ha llegado ofrece «Llegó todo»', async () => {
+  // Spec 053: «Recibir» abre la hoja de entrega con lo que falta ya puesto (antes, «Llegó todo»
+  // recibía sin vista previa).
+  test('una compra que no ha llegado ofrece «Recibir», que abre la hoja de entrega', async () => {
     back.expenseDetail.mockResolvedValue(detail([leche({ qtyReceived: '0', applied: '0' })], { receivedAt: null }));
     montar();
     expect(await screen.findByText(/Se pidieron 3 cajas \(12 L c\/u\); no ha llegado/)).toBeInTheDocument();
-    click(await screen.findByRole('button', { name: 'Llegó todo' }).then((b) => b.textContent!));
-    await waitFor(() => expect(back.receiveExpense).toHaveBeenCalledWith(9, {}));
-  });
-  test('«+ Agregar un artículo que faltó» abre «Llegó algo más» de esta compra', async () => {
-    montar();
-    click(await screen.findByRole('button', { name: 'Corregir lo que llegó' }).then((b) => b.textContent!));
-    click(await screen.findByRole('button', { name: /Agregar un artículo que faltó/ }).then((b) => b.textContent!));
-    expect(await screen.findByText('Llegó algo más de Lácteos del Centro')).toBeInTheDocument();
+    click(await screen.findByRole('button', { name: 'Recibir' }).then((b) => b.textContent!));
+    expect(await screen.findByText('Recibir · Gasto 9')).toBeInTheDocument();
+    expect(screen.getByLabelText('Cuántos llegaron de Leche entera')).toHaveValue('3');
   });
 });
 
 // Capturas del 038 en el ambiente de pruebas: «Tendrás 1 pieza guardados» y «Se pidieron 1 pieza».
 test('una sola pieza se dice en singular', async () => {
+  sesion(['inventory.receive']);
   back.expenseDetail.mockResolvedValue(detail([leche({ quantity: '1', qtyReceived: '0', applied: '0', presentationId: null,
     packQtyInBase: null, unitCode: 'pieza', baseUnitCode: 'pieza', onHand: '0' })], { receivedAt: null }));
   montar();
@@ -278,5 +296,80 @@ describe('«Incluir en el arqueo» en el detalle del gasto', () => {
     await userEvent.click(interruptor()!);
     await waitFor(() => expect(back.setPaymentInCount).toHaveBeenCalledWith(9, 31, true));
     await waitFor(() => expect(back.expenseDetail.mock.calls.length).toBeGreaterThan(antes));
+  });
+});
+
+// Spec 053, maqueta «Detalle del gasto», opción A: ver y editar son dos estados.
+describe('Editar un gasto guardado (spec 053)', () => {
+  const preview = (over: Record<string, unknown> = {}) => ({
+    header: [], lines: [], inventory: [], costs: [], decisions: [],
+    money: { amountBefore: '67.50', amountAfter: '67.50', paid: '67.50', statusBefore: 'pagada', statusAfter: 'pagada', due: '0', overpaid: '0', decisionKey: null },
+    fingerprint: 'f1', ...over,
+  });
+  beforeEach(() => {
+    sesion(['expenses.edit', 'inventory.receive']);
+    back.expenseDetail.mockResolvedValue(detail([], { amount: '67.50', paid: '67.50', status: 'pagada', supplierId: 6, categoryId: 4,
+      payments: [{ id: 1, methodId: 1, method: 'Transferencia', amount: '67.50', paidOn: '2026-10-12', inCashCount: false,
+        reference: null, affectsCashDrawer: false, paidAt: '2026-10-12T15:00:00Z', sessionClosed: false }] } as never));
+    back.editExpense.mockResolvedValue({ preview: preview(), expense: null });
+  });
+
+  test('un gasto sin mercancía (el caso del 1-nov) ofrece «Editar gasto»', async () => {
+    montar();
+    expect(await screen.findByRole('button', { name: 'Editar gasto' })).toBeInTheDocument();
+  });
+
+  test('sin el permiso de editar no aparece «Editar gasto»', async () => {
+    sesion(['inventory.receive']);
+    montar();
+    await screen.findByText(/Mercancía/);
+    expect(screen.queryByRole('button', { name: 'Editar gasto' })).toBeNull();
+  });
+
+  test('quitar un renglón lo marca con «Deshacer» y lo manda al revisar', async () => {
+    back.expenseDetail.mockResolvedValue(detail([leche({ qtyReceived: '0', applied: '0' })], { supplierId: 6, categoryId: 4 } as never));
+    montar();
+    click(await screen.findByRole('button', { name: 'Editar gasto' }).then((b) => b.textContent!));
+    fireEvent.click(await screen.findByRole('button', { name: 'Quitar Leche entera' }));
+    expect(screen.getByRole('button', { name: 'Deshacer' })).toBeInTheDocument();
+    expect(screen.getByText('1 cambio sin confirmar')).toBeInTheDocument();
+    click('Revisar cambios');
+    await waitFor(() => expect(back.editExpense).toHaveBeenCalled());
+    expect(back.editExpense.mock.calls[0][1]).toMatchObject({ remove: [41] });
+    expect(back.editExpense.mock.calls[0][2]).toBe(true);
+    click(await screen.findByRole('button', { name: 'Confirmar' }).then((b) => b.textContent!));
+    await waitFor(() => expect(back.editExpense.mock.calls.at(-1)![2]).toBe(false));
+    expect(back.editExpense.mock.calls.at(-1)![1]).toMatchObject({ remove: [41], fingerprint: 'f1' });
+  });
+
+  test('el encabezado se edita en línea y solo manda lo que cambió', async () => {
+    montar();
+    click(await screen.findByRole('button', { name: 'Editar gasto' }).then((b) => b.textContent!));
+    fireEvent.click(await screen.findByRole('button', { name: 'Desechables' }));
+    fireEvent.change(screen.getByLabelText('Comentario'), { target: { value: 'Pedido semanal' } });
+    expect(screen.getByText('2 cambios sin confirmar')).toBeInTheDocument();
+    click('Revisar cambios');
+    await waitFor(() => expect(back.editExpense).toHaveBeenCalled());
+    expect(back.editExpense.mock.calls[0][1].header).toEqual({ categoryId: 5, description: 'Pedido semanal' });
+  });
+
+  test('«Pagar al confirmar» en la vista previa abre el pago con el saldo puesto', async () => {
+    back.editExpense.mockImplementation(async (_id: number, b: { decisions?: Record<string, string> }) => ({
+      preview: preview({
+        money: { amountBefore: '67.50', amountAfter: '80', paid: '67.50', statusBefore: 'pagada', statusAfter: 'pendiente', due: '12.50', overpaid: '0', decisionKey: 'money' },
+        decisions: [{ key: 'money', kind: 'money', itemId: null, countId: null, countedOn: null, options: ['pay', 'leave'], chosen: b.decisions?.money ?? null }],
+        fingerprint: JSON.stringify(b.decisions ?? {}),
+      }),
+      expense: null,
+    }));
+    back.expenseDetail.mockResolvedValue(detail([leche({ qtyReceived: '0', applied: '0' })], { supplierId: 6, categoryId: 4 } as never));
+    montar();
+    click(await screen.findByRole('button', { name: 'Editar gasto' }).then((b) => b.textContent!));
+    fireEvent.click(await screen.findByRole('button', { name: 'Quitar Leche entera' }));
+    click('Revisar cambios');
+    fireEvent.click(await screen.findByRole('button', { name: 'Pagar al confirmar' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirmar' })).toBeEnabled());
+    click('Confirmar');
+    expect(await screen.findByDisplayValue('12.50')).toBeInTheDocument();
   });
 });

@@ -366,3 +366,32 @@ func TestLaSalidaDeUnPagoLaFijaLaBase(t *testing.T) {
 		}
 	}
 }
+
+// Spec 053, revisión A1: una edición puede dejar pendiente un gasto pagado cuya salida ya entró a un
+// corte. Anularlo dejaría el corte contando la salida de un gasto anulado.
+func TestAnExpenseWithAPaymentInACountCannotBeCancelled(t *testing.T) {
+	t.Parallel()
+	g := nuevoArqueoPorHora(t)
+	ctx := context.Background()
+	g.turno(t, g.primar, time.Now().Add(-time.Hour))
+	id, err := g.back.CreateExpense(ctx, g.gasto(g.primar, hoyDelNegocio(), incluir(true), false, "100"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := g.pago(t, id); p.session == nil {
+		t.Fatal("el pago debía entrar al corte abierto")
+	}
+	in := app.EditInput{Add: []app.EditLineInput{{Description: "Bolsa", Quantity: dec("1"), Amount: dec("20")}},
+		Decisions: map[string]string{"money": "leave"}}
+	pre, err := g.back.EditExpense(ctx, id, in, g.admin, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Fingerprint = pre.Preview.Fingerprint
+	if _, err := g.back.EditExpense(ctx, id, in, g.admin, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.back.CancelExpense(ctx, id, "prueba", g.admin); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("anular con un pago en un corte = %v, quiere conflicto", err)
+	}
+}

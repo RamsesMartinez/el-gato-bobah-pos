@@ -391,6 +391,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items/{itemId}/receive", h.ReceiveItem)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/items/{itemId}/not-coming", h.MarkNotComing)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Patch("/{id}/items/{itemId}", h.SetExpenseItemExcluded)
+					// Editar un gasto guardado y registrar una entrega con su fecha (spec 053): por permiso,
+					// fuera del grupo por rol. Agregar algo que «ya llegó» revalida el de recibir en el handler.
+					r.With(RequirePermission(h.permissions, domain.PermExpensesEdit)).Post("/{id}/edit", h.EditExpense)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/deliveries", h.DeliverExpense)
 					// La casilla del arqueo de un pago ya registrado (spec 048): por permiso, fuera del grupo por rol.
 					r.With(RequirePermission(h.permissions, domain.PermCashAdjustCount)).Patch("/{id}/payments/{paymentId}", h.SetPaymentInCount)
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {

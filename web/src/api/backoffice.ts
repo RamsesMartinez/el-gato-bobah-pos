@@ -481,6 +481,9 @@ export interface ExpenseItem {
   onHand?: string | null;
   // Venía en el ticket pero no es del local (spec 049): no suma ni toca el almacén.
   excluded?: boolean;
+  // Lo que sumó cada día de entrega, en `baseUnitCode` (spec 053). Opcional para que el compilador
+  // obligue a la guarda: una API anterior no lo manda.
+  deliveries?: { on: string; qtyBase: string }[];
 }
 export interface ExpensePayment {
   id: number;
@@ -503,6 +506,62 @@ export interface ExpenseDetail extends Expense {
   paid: string;
   // El total que decía el documento leído (spec 049); ausente en lo capturado a mano.
   documentTotal?: string;
+  // Lo que preselecciona la edición del encabezado (spec 053).
+  supplierId?: number | null;
+  categoryId?: number;
+}
+
+// ---- Editar un gasto guardado (spec 053) ----
+
+export interface EditLineBody {
+  itemType: ItemType | '';
+  ingredientId?: number;
+  productId?: number;
+  description: string;
+  quantity: string;
+  presentationId?: number;
+  unitId?: number;
+  amount: string;
+  isGift?: boolean;
+  arrivedOn?: string; // «Ya llegó» ese día
+}
+export interface EditExpenseBody {
+  header?: { supplierId?: number | null; categoryId?: number; description?: string; expenseDate?: string };
+  add?: EditLineBody[];
+  remove?: number[];
+  decisions?: Record<string, string>;
+  fingerprint?: string;
+}
+export interface DeliveryBody {
+  on?: string;
+  lines: { itemId: number; qty: string; on?: string; shortfall?: 'pending' | 'adjust'; extraAmount?: string }[];
+  decisions?: Record<string, string>;
+  fingerprint?: string;
+}
+export interface EditDecision {
+  key: string;
+  kind: 'count' | 'money' | 'shortfall';
+  itemId: number | null;
+  countId: number | null;
+  countedOn: string | null;
+  options: string[];
+  chosen: string | null;
+}
+export interface EditPreview {
+  header: { field: 'supplier' | 'category' | 'description' | 'expenseDate'; before: string | null; after: string | null }[];
+  lines: { kind: 'added' | 'removed' | 'received' | 'adjusted'; itemId: number | null; name: string; qty: string | null;
+    amount: string | null; on: string | null; missingAfter: string | null; amountBefore: string | null; amountAfter: string | null }[];
+  inventory: { ingredientId: number | null; productId: number | null; name: string; baseUnit: string; before: string;
+    after: string; negativeAfter: boolean; decisionKey: string | null }[];
+  money: { amountBefore: string; amountAfter: string; paid: string; statusBefore: string; statusAfter: string;
+    due: string; overpaid: string; decisionKey: string | null };
+  costs: { ingredientId: number; name: string; before: string; after: string }[];
+  decisions: EditDecision[];
+  fingerprint: string;
+}
+export interface EditResult {
+  preview: EditPreview;
+  expense: ExpenseDetail | null;
 }
 
 // ---- Catálogo de artículos ----
@@ -981,6 +1040,12 @@ export const backofficeApi = {
     documentTotal?: string;
   }) => api.post<{ id: number }>('/expenses', b),
   expenseDetail: (id: number) => api.get<ExpenseDetail>(`/expenses/${id}`),
+  // Editar un gasto guardado y registrar una entrega (spec 053). `preview` no escribe nada; confirmar
+  // manda la huella de la última vista previa (409 EXPENSE_EDIT_STALE si algo cambió).
+  editExpense: (id: number, b: EditExpenseBody, preview: boolean) =>
+    api.post<EditResult>(`/expenses/${id}/edit${preview ? '?preview=1' : ''}`, b),
+  deliverExpense: (id: number, b: DeliveryBody, preview: boolean) =>
+    api.post<EditResult>(`/expenses/${id}/deliveries${preview ? '?preview=1' : ''}`, b),
   // Excluye o vuelve a incluir un renglón (spec 049). 400 si rompe la regla del total; 409 si otro
   // cambio tiene tomados sus artículos.
   setItemExcluded: (id: number, itemId: number, excluded: boolean) =>
