@@ -422,6 +422,13 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   detalle de cada pedido (`raw_body`, `raw_detail`) y el nombre del cliente se guardan para
   siempre: el POS los va a mostrar. Una poda se construyó (#130) y se revirtió, porque lo borrado no
   se recupera. Fuera de producción los quita `scripts/respaldo-anonimo.sh`, que trunca esas tablas.
+- **Toda columna nueva que no sea número, fecha, booleano o enum se clasifica para el respaldo
+  anónimo** (#133, #134). `TestEveryColumnIsCoveredByTheAnonymousBackup` recorre el catálogo de la
+  base migrada: cada columna de texto, json, binario, IP, uuid o arreglo la borra el paso 5 de
+  `scripts/respaldo-anonimo.sh` (y la cuenta su verificación `FUGAS`), o está en `noPersonalData`
+  con el porqué. Una que no está en ninguno truena en la integración, se haya creado con
+  `create table` o con `alter table`. El paso que borra corre después de migrar, y si algo falla
+  antes de que `FUGAS` diga 0, el script tira la base restaurada entera.
 - **Credenciales de las plataformas** (0075, ampliación de la 021): el Client ID y el Client Secret
   de la app de Uber **ya no van en el entorno**. Se capturan en Plataformas → «Acceso a la app», por
   empresa, y se guardan solo si Uber entrega un token con ellas. Cuatro cosas que cuestan caro:
