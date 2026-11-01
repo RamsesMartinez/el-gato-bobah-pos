@@ -178,18 +178,72 @@ insert into stock_movements (
 -- ==== Pagos del gasto ====
 
 -- name: CreateExpensePayment :one
+-- paid_at con el reloj del servicio (spec 048): es la hora contra la que se decide a qué corte entra.
 insert into expense_payments (
-  expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by, register_id
-) values ($1,$2,$3,$4,$5,$6,$7,$8)
+  expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by, register_id,
+  include_in_count, paid_at
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 returning id;
 
 -- name: ListExpensePayments :many
+-- session_closed: el corte del pago ya se cerró, y su casilla del arqueo ya no se puede cambiar.
 select ep.id, ep.payment_method_id, pm.name as method, pm.affects_cash_drawer,
-       ep.amount, ep.paid_on, ep.register_session_id, ep.register_id, ep.reference, ep.created_at
+       ep.amount, ep.paid_on, ep.register_session_id, ep.register_id, ep.reference, ep.created_at,
+       ep.include_in_count, ep.paid_at,
+       coalesce(s.status = 'cerrada', false)::boolean as session_closed
 from expense_payments ep
 join payment_methods pm on pm.id = ep.payment_method_id
+left join register_sessions s on s.id = ep.register_session_id
 where ep.expense_id = $1
 order by ep.paid_on, ep.id;
+
+-- name: GetExpensePaymentForUpdate :one
+-- El pago cuya casilla del arqueo se cambia, tomado para actualizar (spec 048, R3): dos cambios a la
+-- vez deciden uno después del otro, con lo que de verdad quedó.
+select ep.id, ep.expense_id, ep.amount, ep.paid_on, ep.paid_at, ep.register_id, ep.register_session_id,
+       ep.include_in_count, ep.paid_by
+from expense_payments ep
+where ep.id = $1 and ep.expense_id = $2
+for update;
+
+-- name: GetExpensePaymentRegister :one
+-- La caja y el método de un pago, sin candado: lo que hay que tomar ANTES que el pago para no cruzar
+-- candados con la apertura y el cierre (ver SetPaymentInCount).
+select ep.register_id, pm.affects_cash_drawer, e.status as expense_status, e.description
+from expense_payments ep
+join payment_methods pm on pm.id = ep.payment_method_id
+join expenses e on e.id = ep.expense_id
+where ep.id = $1 and ep.expense_id = $2;
+
+-- name: SetPaymentCount :exec
+-- La casilla del arqueo de un pago y su corte. El trigger de la 0099 rellena la caja desde el turno.
+update expense_payments set register_session_id = sqlc.narg('session_id'), include_in_count = sqlc.arg('include_in_count')
+where id = sqlc.arg('id');
+
+-- name: SweepPendingExpensePayments :many
+-- EL BARRIDO (spec 048): los pendientes de una caja cuya hora cae en la ventana de un corte pasan a
+-- ese corte. `register_session_id is null` en el where es lo que hace imposible pegarlos dos veces:
+-- el segundo barrido no los ve. Los de un gasto cancelado no salen de ningún cajón.
+update expense_payments ep set register_session_id = sqlc.arg('session_id')
+from payment_methods pm, expenses e
+where pm.id = ep.payment_method_id and pm.affects_cash_drawer
+  and e.id = ep.expense_id and e.status <> 'cancelada'
+  and ep.register_id = sqlc.arg('register_id')
+  and ep.register_session_id is null and ep.include_in_count
+  and ep.paid_at between sqlc.arg('since')::timestamptz and sqlc.arg('until')::timestamptz
+returning ep.id, ep.expense_id, ep.amount, ep.paid_by, e.description;
+
+-- name: ListPendingExpensePayments :many
+-- Los gastos sin corte de una caja desde su último cierre: los que una apertura puede incluir.
+select ep.id, ep.expense_id, e.description, ep.amount, ep.paid_at
+from expense_payments ep
+join payment_methods pm on pm.id = ep.payment_method_id
+join expenses e on e.id = ep.expense_id
+where ep.register_id = sqlc.arg('register_id')
+  and ep.register_session_id is null and ep.include_in_count
+  and pm.affects_cash_drawer and e.status <> 'cancelada'
+  and (sqlc.narg('since')::timestamptz is null or ep.paid_at > sqlc.narg('since')::timestamptz)
+order by ep.paid_at, ep.id;
 
 -- name: SumExpensePayments :one
 select coalesce(sum(amount), 0)::numeric(10,2) as paid from expense_payments where expense_id = $1;
