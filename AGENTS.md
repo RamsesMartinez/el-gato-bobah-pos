@@ -468,6 +468,18 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     única por pago en las salidas). Una salida nueva sin él no truena, pero desmarcar ese pago
     después responde 409 porque no encuentra qué borrar. Los candados van caja → turno → pago, el
     orden de la apertura y el cierre; tomar el pago primero los cruza.
+- **Lo que salió de la caja** (spec 050, 0102). Un pago en efectivo de un gasto con renglones
+  excluidos guarda en `expense_payments.drawer_extra` lo que salió del cajón además de su importe.
+  Tres cosas que no se ven:
+  - **El monto de la salida de caja de un pago lo pone la base**, no Go: un trigger en
+    `register_cash_movements` lo fija en `amount + drawer_extra` del pago, sea cual sea el monto
+    que mande el INSERT. Un camino nuevo que registre la salida de un pago no suma nada.
+  - **El tope es por gasto** (lo excluido vivo, y si el ticket traía total, tampoco más de
+    `document_total − amount`; menos lo que otros pagos ya usaron) y se valida con
+    el gasto tomado (`LockExpenseForStock`). Volver a incluir un renglón, o corregir renglones, que
+    dejaría lo excluido por debajo de lo usado responde 400 `DRAWER_EXTRA_TOO_HIGH`.
+  - **El corte la presenta en «No es del negocio», no en «Gastos»** (`ListCashMovements` trae
+    `drawer_extra`). Sumarla a Gastos reportaría un gasto mayor que el registrado.
 - **Dividir la cuenta** (spec 027). Cinco cosas que cuestan caro si se olvidan:
   - **Un pago devuelto SALE de `order_payments`** a la bitácora `order_payment_voids`, con su
     cobertura en `covered` y el número que lleva su ticket. Por eso las ~32 consultas que suman pagos

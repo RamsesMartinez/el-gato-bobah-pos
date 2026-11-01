@@ -99,6 +99,8 @@ export interface CashExpenseLine {
   amount: string;
   currency: string;
   status: string;
+  // Spec 050: lo que salió del cajón además del importe. Opcional mientras convive la API anterior.
+  drawerExtra?: string;
 }
 // Descomposición jerárquica del corte: ingresos por método→concepto y egresos de efectivo.
 export interface CorteBucket { concept: string; amount: string }
@@ -166,6 +168,7 @@ export interface PendingExpense {
   description: string;
   amount: string;
   paidAt: string;
+  drawerExtra?: string; // spec 050
 }
 
 // Un renglón del desglose. `subtotal` viene calculado del servidor aunque sea derivable: lo lee un
@@ -492,6 +495,7 @@ export interface ExpensePayment {
   includeInCount?: boolean;
   paidAt?: string;
   sessionClosed?: boolean; // su corte ya se cerró: la casilla no se puede cambiar
+  drawerExtra?: string; // spec 050: lo que salió del cajón además del importe
 }
 export interface ExpenseDetail extends Expense {
   items: ExpenseItem[];
@@ -783,6 +787,8 @@ export interface ExpensePaymentBody {
   // Casilla «Incluir en el arqueo» (spec 048): solo en efectivo de una caja con arqueo. Con
   // outsideCount en true y esto en true, el pago queda pendiente del corte que cubra su hora.
   includeInCount?: boolean;
+  // drawerExtra: lo que salió del cajón además de amount, la parte que no es del negocio (spec 050).
+  drawerExtra?: string;
 }
 
 // Salud del inventario (spec 037). Las listas se declaran opcionales a propósito: un `null` del

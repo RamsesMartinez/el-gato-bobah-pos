@@ -1117,6 +1117,7 @@ type ExpensePayment struct {
 	RegisterID        *int64          `json:"register_id"`
 	IncludeInCount    bool            `json:"include_in_count"`
 	PaidAt            time.Time       `json:"paid_at"`
+	DrawerExtra       decimal.Decimal `json:"drawer_extra"`
 }
 
 type FolioConsumido struct {

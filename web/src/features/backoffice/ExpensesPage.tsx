@@ -16,9 +16,9 @@ import {
 } from '../../api/backoffice';
 import { SortHead } from '../../components/SortHead';
 import { ExpenseDialog } from './ExpenseDialog';
-import { IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
+import { DrawerOutField, IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
-import { activeRegisters, registerLabel, outsideAskOf, countsInDrawer, withCountChoice, type CountChoice, type OutsideAsk } from './cajaDelGasto';
+import { activeRegisters, registerLabel, outsideAskOf, countsInDrawer, drawerExtraOf, withCountChoice, type CountChoice, type OutsideAsk } from './cajaDelGasto';
 import { ExpenseDetailDialog } from './ExpenseDetailDialog';
 import { posApi } from '../../api/pos';
 import { money } from '../../utils/format';
@@ -218,13 +218,25 @@ export function PayDialog({ expense, methods, onClose, onPaid }: {
   const cashRegisters = activeRegisters(registers?.items);
   const [outsideAsk, setOutsideAsk] = useState<OutsideAsk | null>(null);
   const [includeInCount, setIncludeInCount] = useState(true);
+  const [drawerOut, setDrawerOut] = useState<string | null>(null);
+  // Lo excluido del gasto que otros pagos no han usado: el tope de «Salió de la caja» (spec 050).
+  const { data: detail } = useQuery({
+    queryKey: ['expense', expense?.id], enabled: expense !== null,
+    queryFn: () => backofficeApi.expenseDetail(expense!.id),
+  });
+  const excludedAvail = (detail?.items ?? []).filter((i) => i.excluded).reduce((s, i) => s + (Number(i.amount) || 0), 0)
+    - (detail?.payments ?? []).reduce((s, p) => s + (Number(p.drawerExtra) || 0), 0);
 
   // Un método que mueve el cajón EXIGE caja: el backend lo rechaza si no, porque efectivo que
   // sale sin movimiento de caja descuadra el corte.
   const cash = !!methods.find((m) => String(m.id) === methodId)?.affectsCashDrawer;
   const withCheckbox = countsInDrawer(cash, cashRegisters, Number(registerId));
+  // Por omisión sigue al importe que se va a usar: el total del gasto si el campo está vacío (R9).
+  const usedAmount = amount || expense?.amount || '';
+  const withDrawerOut = withCheckbox && includeInCount && excludedAvail > 0.004;
+  const drawer = withDrawerOut ? drawerExtraOf(usedAmount, drawerOut, excludedAvail) : { bad: false };
 
-  const reset = () => { setMethodId(''); setRegisterId(''); setAmount(''); setIncludeInCount(true); };
+  const reset = () => { setMethodId(''); setRegisterId(''); setAmount(''); setIncludeInCount(true); setDrawerOut(null); };
   const pay = useMutation({
     mutationFn: (choice?: CountChoice) => backofficeApi.payExpense(expense!.id, withCountChoice({
       methodId: Number(methodId),
@@ -232,6 +244,7 @@ export function PayDialog({ expense, methods, onClose, onPaid }: {
       paidOn,
       registerId: registerId ? Number(registerId) : undefined,
       includeInCount: withCheckbox ? includeInCount : undefined,
+      drawerExtra: drawer.extra,
     }, choice)),
     onSuccess: () => { onPaid(); onClose(); reset(); },
     onError: (e) => {
@@ -257,6 +270,7 @@ export function PayDialog({ expense, methods, onClose, onPaid }: {
               <Input type="number" inputMode="decimal" placeholder={expense?.amount ?? '0'} value={amount}
                 onChange={(e) => setAmount(e.target.value)} />
             </Field>
+            {withDrawerOut && <DrawerOutField amount={usedAmount} value={drawerOut} bad={drawer.bad} onChange={setDrawerOut} />}
             <Field label="Fecha del pago">
               <DatePickerButton label="Fecha del pago" value={paidOn} onChange={setPaidOn} />
             </Field>
@@ -273,7 +287,7 @@ export function PayDialog({ expense, methods, onClose, onPaid }: {
           {withCheckbox && (
             <HStack mb={2}><IncludeInCountCheckbox checked={includeInCount} onChange={setIncludeInCount} /></HStack>
           )}
-          <Button w="100%" colorPalette="green" disabled={!methodId || (cash && !registerId)}
+          <Button w="100%" colorPalette="green" disabled={!methodId || (cash && !registerId) || drawer.bad}
             loading={pay.isPending} onClick={() => pay.mutate(undefined)}>
             Confirmar pago
           </Button>

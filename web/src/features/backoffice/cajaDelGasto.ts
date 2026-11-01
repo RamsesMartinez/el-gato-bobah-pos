@@ -62,3 +62,17 @@ export const OUTSIDE_COUNT_CONFIRM = 'Registrar sin incluir en el arqueo';
 export function cajasConTurno<T extends { countsCash?: boolean }>(cajas: T[]): T[] {
   return cajas.filter((c) => c.countsCash !== false);
 }
+
+export const DRAWER_OUT_LABEL = 'Salió de la caja';
+
+// drawerExtraOf traduce «Salió de la caja» a la diferencia que viaja al servidor (spec 050). `out`
+// null = no lo tocaron: salió lo mismo que el importe. Vacío no es cero: es un campo sin llenar, y
+// no se guarda. Va entre el importe y el importe más lo excluido disponible; el servidor lo repite.
+export function drawerExtraOf(amount: string, out: string | null, available: number): { extra?: string; bad: boolean } {
+  if (out === null) return { bad: false };
+  const a = Number(amount) || 0;
+  const o = out.trim() === '' ? NaN : Number(out);
+  if (!Number.isFinite(o) || o < a - 0.001 || o > a + available + 0.001) return { bad: true };
+  const extra = o - a;
+  return extra >= 0.005 ? { extra: extra.toFixed(2), bad: false } : { bad: false };
+}

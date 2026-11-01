@@ -1000,6 +1000,8 @@ type expensePaymentBody struct {
 	OutsideCount bool            `json:"outsideCount"`
 	// IncludeInCount: la casilla «Incluir en el arqueo» (spec 048); ausente = tableta de la 047.
 	IncludeInCount *bool `json:"includeInCount"`
+	// DrawerExtra: lo que salió del cajón además del importe (spec 050); ausente = 0.
+	DrawerExtra decimal.Decimal `json:"drawerExtra"`
 }
 
 func toItemInputs(in []expenseItemBody) []app.ExpenseItemInput {
@@ -1022,7 +1024,7 @@ func toPaymentInputs(in []expensePaymentBody) []app.ExpensePaymentInput {
 		out[i] = app.ExpensePaymentInput{
 			MethodID: p.MethodID, Amount: p.Amount, PaidOn: p.PaidOn,
 			RegisterID: p.RegisterID, Reference: p.Reference, OutsideCount: p.OutsideCount,
-			IncludeInCount: p.IncludeInCount,
+			IncludeInCount: p.IncludeInCount, DrawerExtra: p.DrawerExtra,
 		}
 	}
 	return out

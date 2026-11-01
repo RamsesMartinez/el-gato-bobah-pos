@@ -1,8 +1,8 @@
-import { Button, Checkbox } from '@chakra-ui/react';
+import { Box, Button, Checkbox, Input, Text } from '@chakra-ui/react';
 
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import {
-  BEFORE_LAST_CLOSE_TEXT, INCLUDE_IN_COUNT_LABEL, OUTSIDE_COUNT_CONFIRM, OUTSIDE_COUNT_TEXT, type CountChoice, type OutsideAsk,
+  BEFORE_LAST_CLOSE_TEXT, DRAWER_OUT_LABEL, INCLUDE_IN_COUNT_LABEL, OUTSIDE_COUNT_CONFIRM, OUTSIDE_COUNT_TEXT, type CountChoice, type OutsideAsk,
 } from './cajaDelGasto';
 
 // OutsideCountSheet es el aviso de un pago en efectivo que no entra al corte (spec 048, R9). Conserva
@@ -38,5 +38,23 @@ export function IncludeInCountCheckbox({ checked, onChange }: { checked: boolean
       <Checkbox.Control />
       <Checkbox.Label>{INCLUDE_IN_COUNT_LABEL}</Checkbox.Label>
     </Checkbox.Root>
+  );
+}
+
+// DrawerOutField es «Salió de la caja» (spec 050): por omisión el importe; se escribe más cuando
+// del cajón salió también lo que no es del negocio.
+export function DrawerOutField({ amount, value, bad, onChange }: {
+  amount: string;
+  value: string | null;
+  bad: boolean;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <Box w="120px">
+      <Text fontSize="xs" color="fg.muted" mb={1}>{DRAWER_OUT_LABEL}</Text>
+      <Input aria-label={DRAWER_OUT_LABEL} inputMode="decimal" placeholder="0.00" minH="44px" value={value ?? amount}
+        aria-invalid={bad || undefined} borderColor={bad ? 'border.error' : undefined}
+        onChange={(e) => onChange(e.target.value)} />
+    </Box>
   );
 }

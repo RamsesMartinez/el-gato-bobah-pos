@@ -742,24 +742,24 @@ func (q *Queries) InsertCashMovement(ctx context.Context, arg InsertCashMovement
 
 const insertExpenseCashMovement = `-- name: InsertExpenseCashMovement :exec
 insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id, expense_payment_id)
-values ($1, 'salida', $2, $3, $4, $5, $6)
+values ($1, 'salida', 0, $2, $3, $4, $5)
 `
 
 type InsertExpenseCashMovementParams struct {
-	SessionID        int64           `json:"session_id"`
-	Amount           decimal.Decimal `json:"amount"`
-	Concept          string          `json:"concept"`
-	ExpenseID        *int64          `json:"expense_id"`
-	UserID           int64           `json:"user_id"`
-	ExpensePaymentID *int64          `json:"expense_payment_id"`
+	SessionID        int64  `json:"session_id"`
+	Concept          string `json:"concept"`
+	ExpenseID        *int64 `json:"expense_id"`
+	UserID           int64  `json:"user_id"`
+	ExpensePaymentID *int64 `json:"expense_payment_id"`
 }
 
 // Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte). Lleva su pago
-// (spec 048): la base no deja una segunda salida del mismo pago.
+// (spec 048): la base no deja una segunda salida del mismo pago. El monto lo fija el trigger de la
+// 0102 con importe + drawer_extra del pago; el que se manda aquí se ignora.
+// El 0 nunca queda: el trigger lo reemplaza, y si no corriera, el check de monto lo rechazaría.
 func (q *Queries) InsertExpenseCashMovement(ctx context.Context, arg InsertExpenseCashMovementParams) error {
 	_, err := q.db.Exec(ctx, insertExpenseCashMovement,
 		arg.SessionID,
-		arg.Amount,
 		arg.Concept,
 		arg.ExpenseID,
 		arg.UserID,
@@ -1027,9 +1027,11 @@ const listCashMovements = `-- name: ListCashMovements :many
 select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id, m.reverses_id,
        m.recipient_name,
        exists (select 1 from register_cash_movements x where x.reverses_id = m.id) as reversed,
-       exists (select 1 from order_refunds r where r.cash_movement_id = m.id) as is_refund
+       exists (select 1 from order_refunds r where r.cash_movement_id = m.id) as is_refund,
+       coalesce(ep.drawer_extra, 0)::numeric(10,2) as drawer_extra
 from register_cash_movements m
 join users u on u.id = m.user_id
+left join expense_payments ep on ep.id = m.expense_payment_id and m.kind = 'salida'
 where m.session_id = $1
 order by m.created_at
 `
@@ -1047,8 +1049,12 @@ type ListCashMovementsRow struct {
 	RecipientName *string         `json:"recipient_name"`
 	Reversed      bool            `json:"reversed"`
 	IsRefund      bool            `json:"is_refund"`
+	DrawerExtra   decimal.Decimal `json:"drawer_extra"`
 }
 
+// drawer_extra: de la salida de un pago de gasto, la parte que no es del negocio (spec 050). El
+// corte la presenta en «No es del negocio» y no en «Gastos».
+//
 // expense_id: no-null si el movimiento es la salida de un gasto → el front lo excluye de la tabla
 // de efectivo (los gastos van en su propia sección) para no contarlos dos veces.
 //
@@ -1077,6 +1083,7 @@ func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]Lis
 			&i.RecipientName,
 			&i.Reversed,
 			&i.IsRefund,
+			&i.DrawerExtra,
 		); err != nil {
 			return nil, err
 		}
@@ -1182,7 +1189,7 @@ func (q *Queries) ListDenominations(ctx context.Context, currency string) ([]Lis
 
 const listExpensesBySession = `-- name: ListExpensesBySession :many
 select ep.id, e.id as expense_id, ec.name as category, s.name as supplier,
-       pm.name as payment_method, ep.amount, e.currency, e.status
+       pm.name as payment_method, ep.amount, e.currency, e.status, ep.drawer_extra
 from expense_payments ep
 join expenses e on e.id = ep.expense_id
 join expense_categories ec on ec.id = e.category_id
@@ -1201,6 +1208,7 @@ type ListExpensesBySessionRow struct {
 	Amount        decimal.Decimal `json:"amount"`
 	Currency      string          `json:"currency"`
 	Status        ExpenseStatus   `json:"status"`
+	DrawerExtra   decimal.Decimal `json:"drawer_extra"`
 }
 
 // Gastos atribuidos a un corte (efectivo y no-efectivo): sección "Gastos" del resumen del corte.
@@ -1226,6 +1234,7 @@ func (q *Queries) ListExpensesBySession(ctx context.Context, registerSessionID *
 			&i.Amount,
 			&i.Currency,
 			&i.Status,
+			&i.DrawerExtra,
 		); err != nil {
 			return nil, err
 		}

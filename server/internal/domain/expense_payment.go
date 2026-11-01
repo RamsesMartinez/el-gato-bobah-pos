@@ -3,6 +3,8 @@ package domain
 import (
 	"fmt"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 var (
@@ -30,7 +32,30 @@ var (
 	// ErrPaymentNotLinked: un pago en un corte cuya salida de caja es de antes de la 0100 y no dice
 	// de qué pago es: no hay forma segura de saber cuál borrar.
 	ErrPaymentNotLinked = fmt.Errorf("%w: Este pago es de antes del cambio: no se puede quitar del arqueo", ErrConflict)
+	// ErrDrawerExtraTooHigh: lo que salió de la caja pasa del importe más lo excluido del gasto que
+	// otros pagos no han usado (spec 050), o un renglón excluido en uso se quiso volver a incluir.
+	ErrDrawerExtraTooHigh = fmt.Errorf("%w: lo que salió de la caja pasa de lo que no es del negocio en este gasto", ErrValidation)
 )
+
+// ValidDrawerExtra decide si un pago de `amount` puede declarar que del cajón salieron además
+// `extra` pesos (spec 050). El tope es por GASTO: la suma de sus renglones excluidos menos lo que
+// otros pagos ya usaron; así dos pagos no sacan dos veces la misma parte que no es del negocio.
+// Con total del ticket (`ticketRoom` = total del documento − importe del gasto), lo usado tampoco
+// pasa de lo que el ticket deja: no salió del cajón más de lo que decía el papel. Sin él queda solo
+// el de excluidos. La salida completa (importe + extra) tampoco puede pasar de MaxMoney.
+func ValidDrawerExtra(amount, extra, excludedSum, alreadyUsed decimal.Decimal, ticketRoom *decimal.Decimal) error {
+	if !ValidMoney(extra, true) || !ValidMoney(amount.Add(extra), true) {
+		return ErrValidation
+	}
+	limit := excludedSum
+	if ticketRoom != nil && ticketRoom.LessThan(limit) {
+		limit = *ticketRoom
+	}
+	if extra.GreaterThan(limit.Sub(alreadyUsed)) {
+		return ErrDrawerExtraTooHigh
+	}
+	return nil
+}
 
 // PaymentRegister es lo que importa de una caja para decidir a dónde va un pago de gasto.
 type PaymentRegister struct {

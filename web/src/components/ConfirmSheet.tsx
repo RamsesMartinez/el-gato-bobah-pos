@@ -13,6 +13,8 @@ interface Props {
   // Destructiva: la acción segura es la principal y la que borra va roja y aparte. No destructiva
   // (cerrar caja): la principal es confirmar.
   destructive?: boolean;
+  // confirmPalette: el color de la acción principal cuando no es destructiva (por omisión, gris).
+  confirmPalette?: string;
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -29,7 +31,7 @@ interface Props {
 //
 // Cerrar la hoja de cualquier forma —fondo, Escape, arrastrar— es cancelar.
 export function ConfirmSheet({
-  isOpen, title, description, confirmLabel, cancelLabel = 'Volver', destructive, loading,
+  isOpen, title, description, confirmLabel, cancelLabel = 'Volver', destructive, confirmPalette, loading,
   onConfirm, onCancel, children,
 }: Props) {
   const seguro = (
@@ -40,7 +42,7 @@ export function ConfirmSheet({
   );
   const accion = (
     <Button flex={destructive ? undefined : '1'} minH="52px" px={6}
-      variant={destructive ? 'outline' : 'solid'} colorPalette={destructive ? 'red' : undefined}
+      variant={destructive ? 'outline' : 'solid'} colorPalette={destructive ? 'red' : confirmPalette}
       data-destructive={destructive ? 'true' : 'false'} loading={loading} onClick={onConfirm}>
       {confirmLabel}
     </Button>
