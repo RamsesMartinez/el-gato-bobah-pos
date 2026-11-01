@@ -58,7 +58,7 @@ values ($1, 'salida', $2, $3, $4, $5);
 -- Cajas activas + el id de su sesión abierta (null si está cerrada). Para pickers y la vista de caja.
 -- LEFT JOIN (no subquery escalar) para que sqlc infiera open_session_id como nullable; el índice
 -- único one_open_session_per_register garantiza ≤1 sesión abierta por caja (sin duplicar filas).
-select r.id, r.name, r.is_primary, r.is_active, s.id as open_session_id
+select r.id, r.name, r.is_primary, r.is_active, r.counts_cash, s.id as open_session_id
 from cash_registers r
 left join register_sessions s on s.register_id = r.id and s.status = 'abierta'
 where r.is_active
@@ -67,14 +67,19 @@ order by r.is_primary desc, r.name;
 -- name: ListAllCashRegisters :many
 -- fixed_float va aquí (configuración) y NO en ListCashRegisters, la que lee el cajero para abrir: el
 -- fijo es casi siempre el esperado de la apertura y la apertura se cuenta a ciegas (spec 035).
-select id, name, is_primary, is_active, fixed_float from cash_registers order by is_primary desc, name;
+select id, name, is_primary, is_active, fixed_float, counts_cash from cash_registers order by is_primary desc, name;
 
 -- name: GetCashRegister :one
-select id, name, is_primary, is_active, fixed_float from cash_registers where id = $1;
+select id, name, is_primary, is_active, fixed_float, counts_cash from cash_registers where id = $1;
+
+-- name: GetCashRegisterForUpdate :one
+-- Bajo candado: quitar el arqueo y abrir un turno a la vez dejarían un turno abierto en una caja
+-- que no se cuenta (spec 047). Las dos operaciones leen la caja con este FOR UPDATE.
+select id, is_primary, counts_cash from cash_registers where id = $1 for update;
 
 -- name: SetRegisterFixedFloat :one
 update cash_registers set fixed_float = sqlc.narg(fixed_float) where id = sqlc.arg(id)
-returning id, name, is_primary, is_active, fixed_float;
+returning id, name, is_primary, is_active, fixed_float, counts_cash;
 
 -- name: CreateCashRegister :one
 -- is_primary/is_active toman su default (secundaria, activa): la primaria la fija la migración.
@@ -82,8 +87,12 @@ insert into cash_registers (name) values ($1)
 returning id, name, is_primary, is_active;
 
 -- name: UpdateCashRegister :one
-update cash_registers set name = $2, is_active = $3 where id = $1
-returning id, name, is_primary, is_active;
+-- counts_cash con coalesce: renombrar una caja desde una pantalla que no conoce el ajuste no se lo
+-- quita (el mismo defecto que ya costó affects_cash_drawer).
+update cash_registers set name = sqlc.arg(name), is_active = sqlc.arg(is_active),
+       counts_cash = coalesce(sqlc.narg(counts_cash), counts_cash)
+where id = sqlc.arg(id)
+returning id, name, is_primary, is_active, counts_cash;
 
 -- Cortes de caja (sesiones de una caja)
 

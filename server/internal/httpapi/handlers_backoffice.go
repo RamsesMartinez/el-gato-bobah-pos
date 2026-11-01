@@ -134,14 +134,27 @@ func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name     string `json:"name"`
-		IsActive bool   `json:"isActive"`
+		Name       string `json:"name"`
+		IsActive   bool   `json:"isActive"`
+		CountsCash *bool  `json:"countsCash"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	v, err := h.backoffice.UpdateCashRegister(r.Context(), id, body.Name, body.IsActive)
+	// «Lleva arqueo» decide qué efectivo se cuenta: por permiso, como el fondo fijo, y no por el rol
+	// que protege el resto de esta ruta (spec 047).
+	if body.CountsCash != nil {
+		u, ok := userFrom(r.Context())
+		if !ok || !slices.Contains(h.permissions(u.Role), domain.PermCashConfigure) {
+			logging.SecurityEvent(r.Context(), "forbidden",
+				"user_id", u.ID, "role", string(u.Role), "permission", string(domain.PermCashConfigure),
+				"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
+			Error(w, fmt.Errorf("%w: %s", domain.ErrForbidden, domain.PermissionDeniedMessage(domain.PermCashConfigure)))
+			return
+		}
+	}
+	v, err := h.backoffice.UpdateCashRegister(r.Context(), id, body.Name, body.IsActive, body.CountsCash)
 	if err != nil {
 		Error(w, err)
 		return
@@ -926,14 +939,15 @@ type expenseItemBody struct {
 	Personal bool `json:"personal"`
 }
 
-// expensePaymentBody es un pago. registerId no-nil = entra al arqueo de esa caja; para métodos
-// que mueven el cajón el servicio lo EXIGE.
+// expensePaymentBody es un pago. registerId es la caja de la que salió; para métodos que mueven el
+// cajón el servicio lo EXIGE. outsideCount confirma que quede fuera de todo corte (spec 047).
 type expensePaymentBody struct {
-	MethodID   int16           `json:"methodId"`
-	Amount     decimal.Decimal `json:"amount"`
-	PaidOn     string          `json:"paidOn"`
-	RegisterID *int64          `json:"registerId"`
-	Reference  string          `json:"reference"`
+	MethodID     int16           `json:"methodId"`
+	Amount       decimal.Decimal `json:"amount"`
+	PaidOn       string          `json:"paidOn"`
+	RegisterID   *int64          `json:"registerId"`
+	Reference    string          `json:"reference"`
+	OutsideCount bool            `json:"outsideCount"`
 }
 
 func toItemInputs(in []expenseItemBody) []app.ExpenseItemInput {
@@ -955,7 +969,7 @@ func toPaymentInputs(in []expensePaymentBody) []app.ExpensePaymentInput {
 	for i, p := range in {
 		out[i] = app.ExpensePaymentInput{
 			MethodID: p.MethodID, Amount: p.Amount, PaidOn: p.PaidOn,
-			RegisterID: p.RegisterID, Reference: p.Reference,
+			RegisterID: p.RegisterID, Reference: p.Reference, OutsideCount: p.OutsideCount,
 		}
 	}
 	return out

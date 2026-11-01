@@ -7,7 +7,10 @@ import { Text } from '@chakra-ui/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, CorteSummary, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
 import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
-import { CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico, TerminalesYPropinasDelCorte } from './CashPage';
+import { CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico, TerminalesYPropinasDelCorte, ManageRegistersTab } from './CashPage';
+import { backofficeApi } from '../../api/backoffice';
+import { ApiError } from '../../api/client';
+import { toaster } from '../../components/ui/toaster';
 import { diferenciaDelHistorico } from './historicoDeCaja';
 import type { AccountItem } from '../../types/pos';
 import { diferenciasDelCierre } from './cierreDeCaja';
@@ -898,5 +901,47 @@ describe('el último cierre con el arqueo oculto', () => {
     expect(diferenciaDelHistorico(fila)).toBe('Oculto');
     expect(diferenciaDelHistorico({ ...fila, arqueoHidden: false, totalDifference: '-50' })).toBe(money('-50', 'MXN'));
     expect(diferenciaDelHistorico({ ...fila, status: 'abierta' })).toBe('—');
+  });
+});
+
+// Spec 047 (US2): «Lleva arqueo» decide si el efectivo de una caja se cuenta en un turno. La
+// principal recibe las ventas y siempre lo lleva; los 409 del servidor se dicen en su idioma.
+describe('«Lleva arqueo» en la gestión de cajas', () => {
+  const cajas = [
+    { id: 1, name: 'Mostrador', isPrimary: true, isActive: true, countsCash: true },
+    { id: 2, name: 'Caja fuerte', isPrimary: false, isActive: true, countsCash: true },
+  ];
+  function montarGestion() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(<QueryClientProvider client={qc}><Provider><ManageRegistersTab /></Provider></QueryClientProvider>);
+  }
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  test('la columna existe y en la principal no se puede apagar', async () => {
+    vi.spyOn(backofficeApi, 'allCashRegisters').mockResolvedValue({ items: cajas });
+    montarGestion();
+    expect(await screen.findByText('Lleva arqueo')).toBeInTheDocument();
+    expect(screen.getByLabelText('Lleva arqueo: Mostrador')).toBeDisabled();
+    expect(screen.getByLabelText('Lleva arqueo: Caja fuerte')).toBeEnabled();
+  });
+
+  test('apagarlo manda el arqueo sin cambiar nombre ni estado', async () => {
+    vi.spyOn(backofficeApi, 'allCashRegisters').mockResolvedValue({ items: cajas });
+    const update = vi.spyOn(backofficeApi, 'updateCashRegister').mockResolvedValue(cajas[1] as never);
+    montarGestion();
+    await userEvent.click(await screen.findByLabelText('Lleva arqueo: Caja fuerte'));
+    await waitFor(() => expect(update).toHaveBeenCalledWith(2, { name: 'Caja fuerte', isActive: true, countsCash: false }));
+  });
+
+  test.each([
+    ['REGISTER_HAS_OPEN_SHIFT', 'Cierra el turno de esta caja primero.'],
+    ['PRIMARY_REGISTER_COUNTS', 'La caja principal siempre lleva arqueo.'],
+  ])('el 409 %s se dice como «%s»', async (code, texto) => {
+    vi.spyOn(backofficeApi, 'allCashRegisters').mockResolvedValue({ items: cajas });
+    vi.spyOn(backofficeApi, 'updateCashRegister').mockRejectedValue(new ApiError(409, code, 'conflict', 'r1'));
+    const toast = vi.spyOn(toaster, 'create');
+    montarGestion();
+    await userEvent.click(await screen.findByLabelText('Lleva arqueo: Caja fuerte'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: texto })));
   });
 });

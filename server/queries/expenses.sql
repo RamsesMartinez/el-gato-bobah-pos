@@ -179,13 +179,13 @@ insert into stock_movements (
 
 -- name: CreateExpensePayment :one
 insert into expense_payments (
-  expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by
-) values ($1,$2,$3,$4,$5,$6,$7)
+  expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by, register_id
+) values ($1,$2,$3,$4,$5,$6,$7,$8)
 returning id;
 
 -- name: ListExpensePayments :many
 select ep.id, ep.payment_method_id, pm.name as method, pm.affects_cash_drawer,
-       ep.amount, ep.paid_on, ep.register_session_id, ep.reference, ep.created_at
+       ep.amount, ep.paid_on, ep.register_session_id, ep.register_id, ep.reference, ep.created_at
 from expense_payments ep
 join payment_methods pm on pm.id = ep.payment_method_id
 where ep.expense_id = $1

@@ -683,6 +683,7 @@ type CashRegisterView struct {
 	Name          string `json:"name"`
 	IsPrimary     bool   `json:"isPrimary"`
 	IsActive      bool   `json:"isActive"`
+	CountsCash    bool   `json:"countsCash"`
 	OpenSessionID *int64 `json:"openSessionId"`
 }
 
@@ -693,6 +694,7 @@ type CashRegisterConfigView struct {
 	Name       string           `json:"name"`
 	IsPrimary  bool             `json:"isPrimary"`
 	IsActive   bool             `json:"isActive"`
+	CountsCash bool             `json:"countsCash"`
 	FixedFloat *decimal.Decimal `json:"fixedFloat"`
 }
 
@@ -799,7 +801,7 @@ func (s *BackofficeService) CashRegisters(ctx context.Context) ([]CashRegisterVi
 	}
 	out := make([]CashRegisterView, len(rows))
 	for i, r := range rows {
-		out[i] = CashRegisterView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive, OpenSessionID: r.OpenSessionID}
+		out[i] = CashRegisterView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive, CountsCash: r.CountsCash, OpenSessionID: r.OpenSessionID}
 	}
 	return out, nil
 }
@@ -812,7 +814,7 @@ func (s *BackofficeService) AllCashRegisters(ctx context.Context) ([]CashRegiste
 	}
 	out := make([]CashRegisterConfigView, len(rows))
 	for i, r := range rows {
-		out[i] = CashRegisterConfigView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive, FixedFloat: r.FixedFloat}
+		out[i] = CashRegisterConfigView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive, CountsCash: r.CountsCash, FixedFloat: r.FixedFloat}
 	}
 	return out, nil
 }
@@ -834,7 +836,7 @@ func (s *BackofficeService) SetFixedFloat(ctx context.Context, id int64, fixed *
 		}
 		return CashRegisterConfigView{}, err
 	}
-	return CashRegisterConfigView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive, FixedFloat: r.FixedFloat}, nil
+	return CashRegisterConfigView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive, CountsCash: r.CountsCash, FixedFloat: r.FixedFloat}, nil
 }
 
 func (s *BackofficeService) CreateCashRegister(ctx context.Context, name string) (CashRegisterView, error) {
@@ -845,10 +847,11 @@ func (s *BackofficeService) CreateCashRegister(ctx context.Context, name string)
 	if err != nil {
 		return CashRegisterView{}, err
 	}
-	return CashRegisterView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive}, nil
+	return CashRegisterView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive, CountsCash: true}, nil
 }
 
-func (s *BackofficeService) UpdateCashRegister(ctx context.Context, id int64, name string, isActive bool) (CashRegisterView, error) {
+// UpdateCashRegister renombra, activa o cambia «lleva arqueo». countsCash nil = no se toca.
+func (s *BackofficeService) UpdateCashRegister(ctx context.Context, id int64, name string, isActive bool, countsCash *bool) (CashRegisterView, error) {
 	if name == "" {
 		return CashRegisterView{}, domain.ErrValidation
 	}
@@ -864,14 +867,35 @@ func (s *BackofficeService) UpdateCashRegister(ctx context.Context, id int64, na
 	if reg.IsPrimary && !isActive {
 		return CashRegisterView{}, domain.ErrValidation
 	}
-	r, err := s.store.QC(ctx).UpdateCashRegister(ctx, db.UpdateCashRegisterParams{ID: id, Name: name, IsActive: isActive})
+	var r db.UpdateCashRegisterRow
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Quitar el arqueo, con la caja tomada: una apertura simultánea espera y se decide con lo que
+		// quedó, en vez de dejar un turno abierto en una caja que ya no se cuenta.
+		if countsCash != nil && !*countsCash {
+			locked, err := q.GetCashRegisterForUpdate(ctx, id)
+			if err != nil {
+				return err
+			}
+			if locked.IsPrimary {
+				return domain.ErrPrimaryRegisterCounts
+			}
+			if _, err := q.GetOpenSessionByRegister(ctx, id); err == nil {
+				return domain.ErrRegisterHasOpenShift
+			} else if !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+		}
+		var err error
+		r, err = q.UpdateCashRegister(ctx, db.UpdateCashRegisterParams{ID: id, Name: name, IsActive: isActive, CountsCash: countsCash})
+		return err
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return CashRegisterView{}, domain.ErrNotFound
 		}
 		return CashRegisterView{}, err
 	}
-	return CashRegisterView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive}, nil
+	return CashRegisterView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive, CountsCash: r.CountsCash}, nil
 }
 
 // activeRegister carga una caja y exige que exista y esté activa (una caja inactiva no opera).
@@ -1155,6 +1179,11 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 	if err != nil {
 		return nil, err
 	}
+	// Antes que el conteo: a quien abre una caja que no se cuenta no se le pide motivo ni piezas.
+	// La transacción lo vuelve a revisar con la caja tomada.
+	if !reg.CountsCash {
+		return nil, domain.ErrRegisterNotCounted
+	}
 	if _, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, registerID); err == nil {
 		return nil, domain.ErrConflict // esa caja ya está abierta
 	} else if !errors.Is(err, pgx.ErrNoRows) {
@@ -1207,6 +1236,15 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 		}
 		if err := domain.RequireCashOpenAttendance(p.Attendance, s.now()); err != nil {
 			return err
+		}
+		// Una caja que no lleva arqueo no abre turno (spec 047). Con su fila tomada: quitarle el
+		// arqueo a la vez espera a que este turno exista, y entonces se rechaza.
+		cr, err := q.GetCashRegisterForUpdate(ctx, registerID)
+		if err != nil {
+			return err
+		}
+		if !cr.CountsCash {
+			return domain.ErrRegisterNotCounted
 		}
 		abierta, err := q.OpenSession(ctx, db.OpenSessionParams{
 			BusinessDate: pgtype.Date{Time: s.businessDate(ctx), Valid: true},

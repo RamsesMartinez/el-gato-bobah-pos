@@ -121,6 +121,8 @@ export interface CashRegister {
   isPrimary: boolean;
   isActive: boolean;
   openSessionId: number | null; // no-null si la caja tiene una sesión abierta
+  // Si su efectivo se cuenta en un turno (spec 047). Opcional mientras conviven API vieja y nueva.
+  countsCash?: boolean;
 }
 // Caja para la gestión (`/cash-registers/all`): trae el fondo fijo, que la lista del cajero no lleva
 // porque la apertura se cuenta a ciegas (spec 035).
@@ -130,6 +132,7 @@ export interface CashRegisterConfig {
   isPrimary: boolean;
   isActive: boolean;
   fixedFloat?: string | null;
+  countsCash?: boolean;
 }
 // Una pieza que se puede contar. `value` es string por lo mismo que el resto del dinero: es una
 // columna `numeric(10,2)` y convertirla a número en la frontera pierde exactitud.
@@ -750,6 +753,8 @@ export interface ExpensePaymentBody {
   paidOn?: string;
   registerId?: number;
   reference?: string;
+  // Confirma que el efectivo sale de una caja sin turno (o de otro día) y no entra a ningún corte.
+  outsideCount?: boolean;
 }
 
 // Salud del inventario (spec 037). Las listas se declaran opcionales a propósito: un `null` del
@@ -810,7 +815,7 @@ export const backofficeApi = {
   setFixedFloat: (id: number, fixedFloat: number | null) =>
     api.put<CashRegisterConfig>(`/cash-registers/${id}/fixed-float`, { fixedFloat }),
   createCashRegister: (name: string) => api.post<CashRegister>('/cash-registers', { name }),
-  updateCashRegister: (id: number, b: { name: string; isActive: boolean }) =>
+  updateCashRegister: (id: number, b: { name?: string; isActive?: boolean; countsCash?: boolean }) =>
     api.patch<CashRegister>(`/cash-registers/${id}`, b),
 
   cashCurrent: (registerId: number) => api.get<CashSession | null>(`/cash-sessions/current?registerId=${registerId}`),

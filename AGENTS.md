@@ -315,6 +315,14 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     comanda) recibe los renglones de pedidos de plataforma sin pareja. Se resuelve con
     `ensure_platform_unpaired_product(empresa)`, que filtra por la empresa explícita: con un
     `where system_kind = …` a secas, como owner devolvía el de otra empresa.
+- **Un pago de gasto en efectivo ya no exige turno** (spec 047, 0099). Tres cosas que no se ven:
+  - **La caja y el corte son columnas distintas**: `expense_payments.register_id` dice de qué caja
+    salió y `register_session_id` a qué corte entra. Entra solo si la caja «lleva arqueo», tiene turno
+    y el pago es del día de ese turno; lo decide `domain.ExpensePaymentTarget`, y un pago fuera de
+    corte de una caja que se cuenta exige `outsideCount` (si no, 409 `EXPENSE_OUTSIDE_COUNT`).
+  - **Un trigger deriva `register_id` de la sesión**: la API vieja, durante la subida, no lo manda.
+  - **El Down de la 0099 se niega** en cuanto hay un pago con caja y sin corte: perdería la caja.
+    Desde ahí, el rollback es restaurar el respaldo.
 - **El almacén descuenta lo que de verdad se vendió** (spec 028, 0078). Cuatro cosas que no se ven:
   - **Una sola función decide qué sale**: `domain.ExpandSale` (receta o existencias propias, cada
     extra, lo que lleva un paquete, y los insumos preparados por su rendimiento). La usan crear

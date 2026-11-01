@@ -129,6 +129,9 @@ type ExpensePaymentInput struct {
 	// el corte, y eso no puede quedar a criterio de quien captura.
 	RegisterID *int64
 	Reference  string
+	// OutsideCount confirma que un pago en efectivo de una caja que se cuenta quede fuera de todo
+	// corte (spec 047): sin ella, el servidor responde ErrExpenseOutsideCount y la pantalla pregunta.
+	OutsideCount bool
 }
 
 type ExpenseInput struct {
@@ -193,7 +196,7 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 			return 0, fmt.Errorf("%w: con la caja abierta el día del gasto es el del turno", domain.ErrValidation)
 		}
 	}
-	expenseDay := domain.ExpenseDay(shiftDay, s.now(), chosenPtr)
+	expenseDay := domain.ExpenseDay(shiftDay, s.businessDate(ctx), chosenPtr)
 	received, hasReceived, err := s.parseOptionalDay(in.ReceivedAt)
 	if err != nil {
 		return 0, err
@@ -291,7 +294,7 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 // ReceiveExpense da por llegado todo lo que faltaba de un gasto («Llegó todo») y lo suma al
 // almacén por diferencia: un doble toque no duplica nada, porque la segunda vez no hay diferencia.
 func (s *BackofficeService) ReceiveExpense(ctx context.Context, id int64, receivedAt string, userID int64) error {
-	date, err := s.parseDayOrToday(receivedAt)
+	date, err := s.parseDayOrToday(ctx, receivedAt)
 	if err != nil {
 		return err
 	}
@@ -375,10 +378,11 @@ func (s *BackofficeService) SetItemsReceived(ctx context.Context, expenseID int6
 // resolvedPayment es un pago ya validado contra la caja y el método: lleva resuelto lo que la
 // transacción necesita para no volver a consultar.
 type resolvedPayment struct {
-	in        ExpensePaymentInput
-	paidOn    time.Time
-	sessionID *int64 // no-nil = entra al arqueo de ese corte
-	isCash    bool
+	in         ExpensePaymentInput
+	paidOn     time.Time
+	sessionID  *int64 // no-nil = entra al arqueo de ese corte
+	registerID *int64 // de qué caja salió, aunque no entre a ningún corte
+	isCash     bool
 }
 
 // AddExpensePayment registra un pago adicional sobre un gasto (el "+1 nuevo pago"), y si con él
@@ -391,7 +395,9 @@ func (s *BackofficeService) AddExpensePayment(ctx context.Context, expenseID int
 	if !domain.CanPayExpense(string(exp.Status)) {
 		return domain.ErrConflict // ya pagada o cancelada
 	}
-	payments, err := s.validatePayments(ctx, []ExpensePaymentInput{in}, exp.ExpenseDate.Time)
+	// Sin fecha de pago, el día del NEGOCIO y no el del gasto: pagar hoy un gasto de ayer saca el
+	// efectivo del cajón de hoy, y tiene que entrar a su corte.
+	payments, err := s.validatePayments(ctx, []ExpensePaymentInput{in}, s.businessDate(ctx))
 	if err != nil {
 		return err
 	}
@@ -452,22 +458,34 @@ func (s *BackofficeService) validatePayments(ctx context.Context, in []ExpensePa
 			}
 			paidOn = d.Time
 		}
-		r := resolvedPayment{in: p, paidOn: paidOn, isCash: m.AffectsCashDrawer}
-		// Para un método que mueve el cajón el arqueo NO es opcional: el efectivo salió de una
-		// caja concreta y el corte tiene que verlo. Para los demás (transferencia, tarjeta) sí
-		// es decisión del operador atribuirlo o no a un corte.
-		if m.AffectsCashDrawer && p.RegisterID == nil {
-			return nil, domain.ErrPaymentNeedsRegister
-		}
+		r := resolvedPayment{in: p, paidOn: paidOn, isCash: m.AffectsCashDrawer, registerID: p.RegisterID}
+		var reg *domain.PaymentRegister
+		var openSession *int64
 		if p.RegisterID != nil {
-			sess, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, *p.RegisterID)
+			cr, err := s.store.QC(ctx).GetCashRegister(ctx, *p.RegisterID)
 			if err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					return nil, domain.ErrConflict // la caja elegida no está abierta
+					return nil, domain.ErrValidation // caja inexistente o de otra empresa
 				}
 				return nil, err
 			}
-			r.sessionID = &sess.ID
+			reg = &domain.PaymentRegister{CountsCash: cr.CountsCash}
+			sess, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, *p.RegisterID)
+			switch {
+			case err == nil:
+				day := sess.BusinessDate.Time
+				reg.OpenShiftDay = &day
+				openSession = &sess.ID
+			case !errors.Is(err, pgx.ErrNoRows):
+				return nil, err
+			}
+		}
+		toShift, err := domain.ExpensePaymentTarget(m.AffectsCashDrawer, reg, paidOn, p.OutsideCount)
+		if err != nil {
+			return nil, err
+		}
+		if toShift {
+			r.sessionID = openSession
 		}
 		r.in.Amount = amount
 		out = append(out, r)
@@ -483,6 +501,7 @@ func (s *BackofficeService) insertPayments(ctx context.Context, q *db.Queries, e
 			Amount:            p.in.Amount,
 			PaidOn:            pgtype.Date{Time: p.paidOn, Valid: true},
 			RegisterSessionID: p.sessionID,
+			RegisterID:        p.registerID,
 			Reference:         strPtr(p.in.Reference),
 			PaidBy:            userID,
 		}); err != nil {
@@ -493,6 +512,11 @@ func (s *BackofficeService) insertPayments(ctx context.Context, q *db.Queries, e
 		if p.sessionID != nil {
 			if _, err := q.LockOpenSessionForShare(ctx, *p.sessionID); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
+					// La caja se cerró entre que se leyó y ahora. El efectivo ya no entraría a ningún
+					// corte: la pantalla tiene que preguntar, no guardarlo fuera en silencio.
+					if p.isCash {
+						return domain.ErrExpenseOutsideCount
+					}
 					return domain.ErrConflict // la caja elegida se cerró
 				}
 				return err
@@ -846,9 +870,10 @@ func (s *BackofficeService) getExpense(ctx context.Context, id int64) (db.Expens
 // parseDayOrToday: una fecha del formulario, cayendo a hoy cuando no viene. Las fechas del gasto
 // son DÍAS (no instantes): la del documento y la de recepción las decide una persona mirando un
 // papel, no el reloj del servidor.
-func (s *BackofficeService) parseDayOrToday(v string) (time.Time, error) {
+func (s *BackofficeService) parseDayOrToday(ctx context.Context, v string) (time.Time, error) {
 	if v == "" {
-		return s.now(), nil
+		// El día del NEGOCIO: en UTC, después de las 18:00 de México ya sería mañana (spec 047).
+		return s.businessDate(ctx), nil
 	}
 	d, err := parseDate(&v)
 	if err != nil {
@@ -861,10 +886,12 @@ func (s *BackofficeService) parseDayOrToday(v string) (time.Time, error) {
 // que la nombre) o, si no nombra caja, el de la caja principal.
 func (s *BackofficeService) openShiftDay(ctx context.Context, payments []ExpensePaymentInput) (time.Time, bool, error) {
 	q := s.store.QC(ctx)
+	namesRegister := false
 	for _, p := range payments {
 		if p.RegisterID == nil {
 			continue
 		}
+		namesRegister = true
 		sess, err := q.GetOpenSessionByRegister(ctx, *p.RegisterID)
 		if err == nil {
 			return sess.BusinessDate.Time, true, nil
@@ -872,6 +899,11 @@ func (s *BackofficeService) openShiftDay(ctx context.Context, payments []Expense
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return time.Time{}, false, err
 		}
+	}
+	// La principal solo manda si ningún pago nombra caja. Un pago de otra caja sin turno —un
+	// tercero, un gasto de otro día— no es de ese turno, y su día lo elige quien captura (spec 047).
+	if namesRegister {
+		return time.Time{}, false, nil
 	}
 	sess, err := q.GetOpenPrimarySession(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -888,8 +920,11 @@ func (s *BackofficeService) parseOptionalDay(v string) (time.Time, bool, error) 
 	if v == "" {
 		return time.Time{}, false, nil
 	}
-	t, err := s.parseDayOrToday(v)
-	return t, err == nil, err
+	d, err := parseDate(&v)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return d.Time, true, nil
 }
 
 // firstName elige el nombre del artículo entre los dos posibles orígenes (ingrediente o
