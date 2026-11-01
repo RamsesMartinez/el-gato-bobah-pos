@@ -271,9 +271,9 @@ func TestAbrirDesdeUnaHoraAnteriorBarreLosPendientes(t *testing.T) {
 	}
 }
 
-// ABRIR SIN INCLUIRLOS DEJA LOS PENDIENTES ANTERIORES «SIN INCLUIR» (US2, escenario 5). Después de
-// esa apertura ningún corte podría tomarlos: quedarían pendientes para siempre y trabarían el Down.
-func TestAbrirAhoraDejaSinIncluirLosPendientesAnteriores(t *testing.T) {
+// EXCLUIRLOS DEJA LOS PENDIENTES ANTERIORES «SIN INCLUIR» (US2, escenario 5). Después de esa
+// apertura ningún corte podría tomarlos: quedarían pendientes para siempre y trabarían el Down.
+func TestAbrirExcluyendoDejaSinIncluirLosPendientesAnteriores(t *testing.T) {
 	t.Parallel()
 	g := nuevoArqueoPorHora(t)
 	ctx := context.Background()
@@ -283,7 +283,9 @@ func TestAbrirAhoraDejaSinIncluirLosPendientesAnteriores(t *testing.T) {
 		t.Fatal(err)
 	}
 	antes := g.eventos(t, "expense.count_changed")
-	vista, err := g.back.OpenSession(ctx, g.primar, aperturaAMano(dec("500")), g.admin)
+	excluir := aperturaAMano(dec("500"))
+	excluir.ExcludePending = true
+	vista, err := g.back.OpenSession(ctx, g.primar, excluir, g.admin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,42 +330,6 @@ func TestAbrirDesdeUnaHoraPosteriorDejaSinIncluirElPendiente(t *testing.T) {
 	}
 	if p := g.pago(t, id); p.session != nil || p.include || g.neto(t, vista.ID) != "0.00" {
 		t.Fatalf("un pendiente anterior a la hora de apertura quedó %+v, neto %s; quería «sin incluir»", p, g.neto(t, vista.ID))
-	}
-}
-
-// EL CIERRE BARRE LO QUE QUEDÓ PENDIENTE CON HORA DENTRO DEL CORTE (US2, escenario 3).
-func TestElCierreBarreLosPendientesDeSuVentana(t *testing.T) {
-	t.Parallel()
-	g := nuevoArqueoPorHora(t)
-	ctx := context.Background()
-	sess := g.turno(t, g.primar, time.Now().Add(-2*time.Hour))
-	// Un pendiente dentro de la ventana: lo que deja una tableta que decidió con la caja cerrada
-	// justo antes de que se abriera desde una hora anterior.
-	var exp, pay int64
-	if err := g.st.Pool.QueryRow(ctx, `insert into expenses (category_id, amount, expense_date, created_by, description) values ($1, 120, current_date, $2, 'Hielo') returning id`, g.cat, g.admin).Scan(&exp); err != nil {
-		t.Fatal(err)
-	}
-	if err := g.st.Pool.QueryRow(ctx, `insert into expense_payments (expense_id, payment_method_id, amount, paid_on, register_id, paid_by, include_in_count, paid_at)
-		values ($1, $2, 120, current_date, $3, $4, true, now() - interval '1 hour') returning id`, exp, g.cash, g.primar, g.admin).Scan(&pay); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := g.back.CloseSession(ctx, g.primar, g.admin, app.CierreCmd{Total: new(dec("380")), Motivo: "conteo de prueba"}); err != nil {
-		t.Fatalf("cerrar: %v", err)
-	}
-	if g.salidas(t, pay) != 1 {
-		t.Fatal("el cierre no descontó el pendiente que caía en su ventana")
-	}
-	var at *int64
-	_ = g.st.Pool.QueryRow(ctx, `select register_session_id from expense_payments where id = $1`, pay).Scan(&at)
-	if at == nil || *at != sess {
-		t.Fatalf("el pendiente quedó con corte %v; quería el que se cerró (%d)", at, sess)
-	}
-	var esperado string
-	if err := g.st.Pool.QueryRow(ctx, `select expected::text from session_cash_counts where session_id = $1 and moment = 'cierre'`, sess).Scan(&esperado); err != nil {
-		t.Fatal(err)
-	}
-	if esperado != "380.00" {
-		t.Fatalf("el esperado firmado del cierre es %s; quería 380.00 (500 de fondo − 120 del pendiente)", esperado)
 	}
 }
 
@@ -657,5 +623,152 @@ func TestCambiarLaCasillaExigeElPermiso(t *testing.T) {
 	w = do(t, r, http.MethodGet, "/api/v1/expenses/"+itoa(int(id)), tok, nil, "")
 	if !strings.Contains(w.Body.String(), `"includeInCount":false`) || !strings.Contains(w.Body.String(), `"sessionClosed":false`) || !strings.Contains(w.Body.String(), `"paidAt"`) {
 		t.Fatalf("el detalle del gasto no trae la casilla del pago: %s", w.Body.String())
+	}
+}
+
+// ABRIR INCLUYE SOLOS LOS PENDIENTES (R13): la apertura toma la hora del primero, sin pedir
+// permiso, y lo deja en la bitácora como automático. Un cajero no saca dinero del arqueo sin querer.
+func TestAbrirIncluyeSolosLosPendientes(t *testing.T) {
+	t.Parallel()
+	g := nuevoArqueoPorHora(t)
+	ctx := context.Background()
+	g.cerrar(t, g.turno(t, g.primar, time.Now().Add(-6*time.Hour)), time.Now().Add(-5*time.Hour))
+	id, err := g.back.CreateExpense(ctx, g.gasto(g.primar, hoyDelNegocio(), incluir(true), true, "200"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	vista, err := g.back.OpenSession(ctx, g.primar, aperturaAMano(dec("500")), g.admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := g.pago(t, id); p.session == nil || *p.session != vista.ID {
+		t.Fatalf("abrir no incluyó el pendiente: corte %v", p.session)
+	}
+	if n := g.neto(t, vista.ID); n != "-200.00" {
+		t.Fatalf("el esperado no bajó $200: neto %s", n)
+	}
+	var mismo bool
+	if err := g.st.Pool.QueryRow(ctx, `select s.opened_at = p.paid_at from register_sessions s, expense_payments p where s.id = $1 and p.expense_id = $2`, vista.ID, id).Scan(&mismo); err != nil || !mismo {
+		t.Fatalf("la apertura automática no tomó la hora del primer pendiente (%v)", err)
+	}
+	var reason string
+	if err := g.st.Pool.QueryRow(ctx, `select after->>'reason' from audit_events where action = 'cash.opening_backdated'`).Scan(&reason); err != nil || reason != "automatic" {
+		t.Fatalf("la apertura automática no dejó su evento con reason automatic: %q, %v", reason, err)
+	}
+}
+
+// DOS CORTES DEL MISMO DÍA NO SE COMPARTEN PAGOS: uno desmarcado en el primero no entra al segundo
+// por ser del mismo día; su hora es de antes del último cierre.
+func TestUnPagoDelPrimerCorteNoEntraAlSegundoDelMismoDia(t *testing.T) {
+	t.Parallel()
+	g := nuevoArqueoPorHora(t)
+	ctx := context.Background()
+	primero := g.turno(t, g.primar, time.Now().Add(-3*time.Hour))
+	id, err := g.back.CreateExpense(ctx, g.gasto(g.primar, hoyDelNegocio(), incluir(false), false, "80"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.cerrar(t, primero, time.Now())
+	segundo := g.turno(t, g.primar, time.Now().Add(time.Millisecond))
+	if err := g.back.SetPaymentInCount(ctx, id, g.pago(t, id).id, true, g.admin); !errors.Is(err, domain.ErrExpenseBeforeLastClose) {
+		t.Fatalf("marcar en el segundo corte un pago del primero: %v; quería EXPENSE_BEFORE_LAST_CLOSE", err)
+	}
+	if n := g.neto(t, segundo); n != "0.00" {
+		t.Fatalf("el segundo corte descontó un pago del primero: neto %s", n)
+	}
+}
+
+// Tableta de la 047: confirmar sin casilla con la caja cerrada deja el pago fuera, como antes.
+func TestUnaTabletaDeLa047ConfirmaFuera(t *testing.T) {
+	t.Parallel()
+	g := nuevoArqueoPorHora(t)
+	g.cerrar(t, g.turno(t, g.primar, time.Now().Add(-6*time.Hour)), time.Now().Add(-5*time.Hour))
+	id, err := g.back.CreateExpense(context.Background(), g.gasto(g.primar, hoyDelNegocio(), nil, true, "50"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := g.pago(t, id); p.session != nil || p.include {
+		t.Fatalf("la confirmación de la 047 dejó el pago con corte %v e incluido %v; quería fuera", p.session, p.include)
+	}
+}
+
+// Una salida vieja sin ligar no se borra a ciegas: se responde con un mensaje para quien opera.
+func TestDesmarcarUnPagoConSalidaSinLigar(t *testing.T) {
+	t.Parallel()
+	g := nuevoArqueoPorHora(t)
+	ctx := context.Background()
+	sess := g.turno(t, g.primar, time.Now().Add(-time.Hour))
+	id, err := g.back.CreateExpense(ctx, g.gasto(g.primar, hoyDelNegocio(), incluir(true), false, "150"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.st.Pool.Exec(ctx, `update register_cash_movements set expense_payment_id = null where session_id = $1`, sess); err != nil {
+		t.Fatal(err)
+	}
+	err = g.back.SetPaymentInCount(ctx, id, g.pago(t, id).id, false, g.admin)
+	if !errors.Is(err, domain.ErrPaymentNotLinked) || !strings.Contains(err.Error(), "Este pago es de antes del cambio") {
+		t.Fatalf("desmarcar con la salida sin ligar: %v; quería PAYMENT_NOT_LINKED con su mensaje", err)
+	}
+	if p := g.pago(t, id); p.session == nil || g.neto(t, sess) != "-150.00" {
+		t.Fatal("el rechazo dejó el pago o su salida a medias")
+	}
+}
+
+// La casilla no alcanza el pago de otra empresa, en los tres casos donde RLS ya falló.
+func TestLaCasillaNoAlcanzaElPagoDeOtraEmpresa(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	coB := makeCompany(t, st, "casilla-048-b")
+	userB := makeUserIn(t, st, coB, "admin_048_casilla", "admin")
+	var regB, catB, expB, cashB, payB int64
+	_ = st.Pool.QueryRow(ctx, `insert into cash_registers (company_id, name) values ($1, 'Caja B') returning id`, coB).Scan(&regB)
+	_ = st.Pool.QueryRow(ctx, `insert into expense_categories (company_id, name, financial_group) values ($1, 'B', 'operacional') returning id`, coB).Scan(&catB)
+	_ = st.Pool.QueryRow(ctx, `insert into expenses (company_id, category_id, amount, expense_date, created_by) values ($1, $2, 10, current_date, $3) returning id`, coB, catB, userB).Scan(&expB)
+	_ = st.Pool.QueryRow(ctx, `select id from payment_methods where company_id = $1 and affects_cash_drawer limit 1`, coB).Scan(&cashB)
+	if err := st.Pool.QueryRow(ctx, `insert into expense_payments (company_id, expense_id, payment_method_id, amount, paid_on, register_id, paid_by, include_in_count)
+		values ($1, $2, $3, 10, current_date, $4, $5, true) returning id`, coB, expB, cashB, regB, userB).Scan(&payB); err != nil {
+		t.Fatal(err)
+	}
+	inTheThreeCases(t, coB, defaultCompanyID, func(t *testing.T, ast *store.Store, actx context.Context) {
+		if err := app.NewBackofficeService(ast, time.Now).SetPaymentInCount(actx, expB, payB, false, userB); err == nil {
+			t.Fatal("la casilla aceptó un pago de otra empresa")
+		}
+		var include bool
+		if err := st.Pool.QueryRow(ctx, `select include_in_count from expense_payments where id = $1`, payB).Scan(&include); err != nil || !include {
+			t.Fatalf("la casilla cambió el pago de otra empresa (incluido %v, %v)", include, err)
+		}
+	})
+}
+
+// LA APERTURA POR HTTP (R13): excluir exige el permiso; una hora sin zona es 400; un cajero sin el
+// permiso abre y los pendientes entran solos.
+func TestAperturaExcluirPendientesYHoraSinZona(t *testing.T) {
+	t.Parallel()
+	g := nuevoArqueoPorHora(t)
+	g.cerrar(t, g.turno(t, g.primar, time.Now().Add(-6*time.Hour)), time.Now().Add(-5*time.Hour))
+	id, err := g.back.CreateExpense(context.Background(), g.gasto(g.primar, hoyDelNegocio(), incluir(true), true, "200"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cajero := makeUser(t, g.st, "cajero_048", "cajero")
+	base := `{"registerId":` + itoa(int(g.primar)) + `,"openingCash":500,"manualReason":"prueba"`
+	r, jm := routerDeArqueo(t, g.st, nil)
+	tok, err := jm.Issue(domain.User{ID: cajero, CompanyID: defaultCompanyID, Name: "c", Role: domain.RoleCajero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := do(t, r, http.MethodPost, "/api/v1/cash-sessions", tok, []byte(base+`,"excludePending":true}`), "application/json"); w.Code != http.StatusForbidden {
+		t.Fatalf("excluir sin el permiso = %d; quería 403", w.Code)
+	}
+	adminTok, _ := jm.Issue(domain.User{ID: g.admin, CompanyID: defaultCompanyID, Name: "a", Role: domain.RoleAdmin})
+	if w := do(t, r, http.MethodPost, "/api/v1/cash-sessions", adminTok, []byte(base+`,"openedAt":"2026-11-01T10:00:00"}`), "application/json"); w.Code != http.StatusBadRequest {
+		t.Fatalf("hora sin zona = %d; quería 400", w.Code)
+	}
+	if w := do(t, r, http.MethodPost, "/api/v1/cash-sessions", tok, []byte(base+`}`), "application/json"); w.Code != http.StatusCreated {
+		t.Fatalf("el cajero no pudo abrir: %d %s", w.Code, w.Body.String())
+	}
+	if p := g.pago(t, id); p.session == nil {
+		t.Fatal("el cajero abrió y el pendiente quedó fuera: sacó dinero del arqueo sin decidirlo")
 	}
 }

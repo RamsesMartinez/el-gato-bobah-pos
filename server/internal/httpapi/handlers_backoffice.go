@@ -238,20 +238,22 @@ func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 		OpeningReasonNote string `json:"openingReasonNote"`
 		// OpenedAt: abrir desde una hora anterior (spec 048), RFC3339. Exige cash.adjust_count.
 		OpenedAt *time.Time `json:"openedAt"`
+		// ExcludePending: abrir dejando sin incluir los gastos sin corte (R13). Exige cash.adjust_count.
+		ExcludePending bool `json:"excludePending"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	// Mover la hora mueve el esperado del corte: por permiso, aquí y no en el router, porque abrir
-	// «ahora» lo sigue pudiendo hacer el cajero.
-	if body.OpenedAt != nil && !h.requirePermission(w, r, domain.PermCashAdjustCount) {
+	// Mover la hora o excluir los gastos sin corte mueven el esperado del corte: por permiso, aquí y
+	// no en el router, porque abrir sin tocar nada lo sigue pudiendo hacer el cajero (R13).
+	if (body.OpenedAt != nil || body.ExcludePending) && !h.requirePermission(w, r, domain.PermCashAdjustCount) {
 		return
 	}
 	apertura := aperturaDelBody(body.Counts, body.OpeningCash, body.ManualReason)
 	apertura.Reason, apertura.ReasonNote = body.OpeningReason, body.OpeningReasonNote
-	apertura.OpenedAt = body.OpenedAt
+	apertura.OpenedAt, apertura.ExcludePending = body.OpenedAt, body.ExcludePending
 	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID, apertura, u.ID)
 	if err != nil {
 		Error(w, err)
