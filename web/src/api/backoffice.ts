@@ -818,6 +818,8 @@ export const backofficeApi = {
   // null quita el fondo fijo: el cierre vuelve a pedir teclearlo.
   setFixedFloat: (id: number, fixedFloat: number | null) =>
     api.put<CashRegisterConfig>(`/cash-registers/${id}/fixed-float`, { fixedFloat }),
+  // Pasa las ventas a esta caja (spec 049). 409 REGISTERS_MUST_BE_CLOSED con un turno abierto.
+  makeRegisterSell: (id: number) => api.post<void>(`/cash-registers/${id}/sells`),
   createCashRegister: (name: string) => api.post<CashRegister>('/cash-registers', { name }),
   updateCashRegister: (id: number, b: { name?: string; isActive?: boolean; countsCash?: boolean }) =>
     api.patch<CashRegister>(`/cash-registers/${id}`, b),

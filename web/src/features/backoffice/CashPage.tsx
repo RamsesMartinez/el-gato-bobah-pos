@@ -1470,6 +1470,19 @@ export function ManageRegistersTab() {
     },
   });
 
+  const [toSell, setToSell] = useState<CashRegisterConfig | null>(null);
+  const sell = useMutation({
+    mutationFn: (id: number) => backofficeApi.makeRegisterSell(id),
+    onSuccess: invalidate,
+    onError: (e) => {
+      if (e instanceof ApiError && e.code === 'REGISTERS_MUST_BE_CLOSED') {
+        toaster.create({ title: 'Cierra los turnos de las dos cajas primero.', type: 'error' });
+        return;
+      }
+      toaster.create({ title: 'No se pudo cambiar', description: e instanceof ApiError ? e.message : String(e), type: 'error' });
+    },
+  });
+
   if (isLoading) return <Center h="40vh"><Spinner size="xl" /></Center>;
 
   return (
@@ -1485,7 +1498,7 @@ export function ManageRegistersTab() {
         <Table.Root size="sm">
           <Table.Header><Table.Row>
             <Table.ColumnHeader>Nombre</Table.ColumnHeader>
-            <Table.ColumnHeader>Tipo</Table.ColumnHeader>
+            <Table.ColumnHeader>Vende</Table.ColumnHeader>
             <Table.ColumnHeader>Activa</Table.ColumnHeader>
             <Table.ColumnHeader>Lleva arqueo</Table.ColumnHeader>
             <Table.ColumnHeader></Table.ColumnHeader>
@@ -1494,7 +1507,14 @@ export function ManageRegistersTab() {
             {(data?.items ?? []).map((r) => (
               <Table.Row key={r.id}>
                 <Table.Cell>{r.name}</Table.Cell>
-                <Table.Cell>{r.isPrimary ? <Badge colorPalette="purple">Principal</Badge> : 'Secundaria'}</Table.Cell>
+                <Table.Cell minH="44px">
+                  <HStack gap={2}>
+                    <Switch checked={r.isPrimary} disabled={r.isPrimary || !r.isActive}
+                      inputProps={{ 'aria-label': `Vende: ${r.name}` }}
+                      onCheckedChange={(e) => { if (e.checked) setToSell(r); }} />
+                    {r.isPrimary && <Text fontSize="xs" color="fg.muted">Para cambiarla, enciende otra</Text>}
+                  </HStack>
+                </Table.Cell>
                 <Table.Cell>
                   {/* La caja principal no se puede desactivar (el POS necesita dónde cuadrar). */}
                   <Switch checked={r.isActive} disabled={r.isPrimary}
@@ -1511,6 +1531,11 @@ export function ManageRegistersTab() {
           </Table.Body>
         </Table.Root>
       </Box>
+
+      <ConfirmSheet isOpen={toSell !== null} title={`¿Pasar las ventas a ${toSell?.name ?? ''}?`}
+        cancelLabel="Volver" confirmLabel={`Pasar las ventas a ${toSell?.name ?? ''}`}
+        onCancel={() => setToSell(null)}
+        onConfirm={() => { const r = toSell; setToSell(null); if (r) sell.mutate(r.id); }} />
 
       <DialogRoot open={edit !== null} onOpenChange={(e) => { if (!e.open) setEdit(null); }} placement="center" size="sm">
         <DialogBackdrop />

@@ -549,10 +549,14 @@ where r.is_primary and s.status = 'abierta'
 order by s.opened_at desc limit 1;
 
 -- name: CerroLaCajaPrincipal :one
--- Cuándo se cerró por última vez la caja principal. Sin filas si nunca se ha cerrado.
+-- Cuándo cerró por última vez un turno que vendió (uno con pedidos). Sin filas si nunca.
+--
+-- No lee `is_primary`: esa columna dice qué caja vende HOY, y la venta se puede pasar a otra caja
+-- (spec 049). Preguntarle por un turno pasado haría que pasar la venta moviera este instante y
+-- volviera a mostrar los entregados de días cerrados.
 select s.closed_at from register_sessions s
-join cash_registers r on r.id = s.register_id
-where r.is_primary and s.closed_at is not null
+where s.closed_at is not null
+  and exists (select 1 from orders o where o.register_session_id = s.id)
 order by s.closed_at desc limit 1;
 
 -- name: SessionSales :many
