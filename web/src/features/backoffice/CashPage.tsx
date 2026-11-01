@@ -1,3 +1,4 @@
+import { cajasConTurno } from './cajaDelGasto';
 import { useState, Fragment, type ReactNode } from 'react';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { useNavigate } from 'react-router';
@@ -552,7 +553,8 @@ export function CashPage() {
 // ---- Tab: cajas (selector + operar la caja elegida + traspaso) ----
 function RegistersTab() {
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });
-  const registers = data?.items ?? [];
+  // Una caja sin arqueo no tiene turno que abrir ni contar: aquí solo se vería «Cerrada» para siempre.
+  const registers = cajasConTurno(data?.items ?? []);
   // Selección derivada: sin elección explícita (o si la caja elegida desaparece) cae en la primera
   // (la primaria). Evita un useEffect+setState solo para inicializar el default.
   const [selectedId, setSelectedId] = useState<number | null>(null);

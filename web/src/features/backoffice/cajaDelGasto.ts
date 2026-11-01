@@ -24,3 +24,8 @@ export function outsideTitle(registers: CashRegister[], ids: (number | undefined
 
 export const OUTSIDE_COUNT_TEXT = 'Este gasto no entrará a ningún corte.';
 export const OUTSIDE_COUNT_CONFIRM = 'Registrar sin incluir en el arqueo';
+
+// cajasConTurno deja las cajas que se cuentan: una caja sin arqueo nunca abre turno.
+export function cajasConTurno<T extends { countsCash?: boolean }>(cajas: T[]): T[] {
+  return cajas.filter((c) => c.countsCash !== false);
+}
