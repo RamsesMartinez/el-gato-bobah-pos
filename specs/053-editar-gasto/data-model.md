@@ -1,6 +1,6 @@
 # Data Model: Editar un gasto ya guardado (entrega 1)
 
-## Migración 0104 (`0104_stock_movement_effective_on.sql`)
+## Migración 0103 (`0103_stock_movement_effective_on.sql`)
 
 Una sola columna. Nada se borra ni se renombra: la API anterior sigue funcionando durante la subida
 (constitución IV, «Toda migración tolera a la versión anterior»).

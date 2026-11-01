@@ -10,7 +10,7 @@ Un gasto guardado se corrige desde su detalle: encabezado editable, renglones qu
 borran, y entregas parciales con su fecha. Todo pasa por una vista previa que calcula el servidor
 corriendo **la misma transacción** que confirma y revirtiéndola (R1); una huella garantiza que lo
 confirmado es lo que se vio (R2). La fecha de cada entrega vive en una columna nueva de
-`stock_movements` (`effective_on`, migración 0104, R3); el contra-movimiento de un borrado lleva la
+`stock_movements` (`effective_on`, migración 0103, R3); el contra-movimiento de un borrado lleva la
 fecha de cada entrega original (R7), y ante un conteo cerrado posterior quien edita decide «Ajustar
 el inventario» o «No mover», que se registra como un movimiento de compensación ligado al conteo
 (R5, R6). El importe sigue la regla de R4 y el estado de pago se recalcula; los pagos nunca se tocan.
@@ -21,7 +21,7 @@ el inventario» o «No mover», que se registra como un movimiento de compensaci
 
 **Primary Dependencies**: chi, pgx + sqlc, goose, shopspring/decimal · Chakra UI v3, TanStack Query
 
-**Storage**: PostgreSQL con RLS (`gatobobah_app`); migración 0104
+**Storage**: PostgreSQL con RLS (`gatobobah_app`); migración 0103
 
 **Testing**: `go test` (unitarios en `domain`, integración bajo `appRoleStore` con
 `inTheThreeCases`), vitest, Playwright a 1024×600 contra el `make start` del worktree
@@ -135,7 +135,7 @@ specs/053-editar-gasto/
 
 ```text
 server/
-├── migrations/0104_stock_movement_effective_on.sql
+├── migrations/0103_stock_movement_effective_on.sql
 ├── queries/purchases.sql                  # effective_on en InsertLineMovement, historial por
 │                                          # renglón, conteo posterior, compensación, encabezado,
 │                                          # importe y estado
@@ -151,7 +151,7 @@ server/
 ├── internal/httpapi/
 │   ├── handlers_expense_edit.go           # POST /expenses/{id}/edit, /deliveries
 │   └── router.go
-└── internal/integration/expense_edit_test.go (+ migración 0104)
+└── internal/integration/expense_edit_test.go (+ migración 0103)
 
 web/src/
 ├── api/backoffice.ts                      # editExpense, deliverExpense, tipos de la vista previa
@@ -183,7 +183,7 @@ research.md y en data-model.md.
 | A2 · La compensación tomaría la sucursal por trigger (EGB01 con dos) | `branch_id` explícito, el del conteo (R6) |
 | M1 · Conteo posterior sin sucursal | Solo conteos de `current_branch_id()` (R5); test con dos sucursales |
 | M2 · Borrar tras «Corregir lo que llegó» emitía una compra positiva | `domain.PlanDeliveryReversal` netea los días; un borrado nunca suma (R7) |
-| M3 · `effective_on` nula se reinterpretaría si cambia la zona | Trigger que la llena en cada `compra` (y en la compensación) con la zona vigente de la empresa + relleno de lo existente en la 0104 (R3) |
+| M3 · `effective_on` nula se reinterpretaría si cambia la zona | Trigger que la llena en cada `compra` (y en la compensación) con la zona vigente de la empresa + relleno de lo existente en la 0103 (R3) |
 | M4 · El Down tiraba fechas de entrega | El Down se niega si alguna fecha difiere del día de `created_at` |
 | M5 · Una `pagada` sin pagos se degradaría | El estado se recalcula solo si cambió el importe y nunca degrada una pagada sin pagos (R4). Medido sobre el respaldo de producción del 1-nov: 80 gastos, 0 descuadrados |
 | U1 · El teclado del sistema tapa «Ver efectos» | `NumericKeypad` en lugar del pie |

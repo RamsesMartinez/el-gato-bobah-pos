@@ -45,7 +45,7 @@ Lo que ya existe y se reusa (medido en el código el 2026-11-01):
 - **Decision**: columna nueva `stock_movements.effective_on date` (nullable). Un trigger `before
   insert` la llena cuando llega nula en un movimiento `compra` o en uno con `expense_id`, con el día
   de `now()` en la zona de la empresa (`business_settings.timezone`, `America/Mexico_City` si no hay
-  fila): así la API vieja durante la subida también deja fecha. La 0104 rellena los `compra`
+  fila): así la API vieja durante la subida también deja fecha. La 0103 rellena los `compra`
   existentes con el día de su `created_at` en la zona vigente (revisión M3: si la zona cambia
   después, un nulo se reinterpretaría y el hecho quedaría cerrado). La API nueva la manda explícita
   en las entregas con otra fecha y en los contra-movimientos.
