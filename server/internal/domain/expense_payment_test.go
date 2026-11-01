@@ -99,6 +99,7 @@ func TestExpensePaymentTargetWithCountBox(t *testing.T) {
 		{"desmarcada con la caja abierta queda fuera sin preguntar", true, open, day, later, PaymentChoice{IncludeInCount: &no}, TargetOutside, nil},
 		{"desmarcada con la caja cerrada queda fuera sin preguntar", true, closed, day, later, PaymentChoice{IncludeInCount: &no}, TargetOutside, nil},
 		{"marcada del día del turno entra al corte", true, open, day, later, PaymentChoice{IncludeInCount: &yes}, TargetShift, nil},
+		{"marcada del día del turno pero con hora antes de su apertura no entra: es de otro corte del mismo día", true, open, day, beforeOpen, PaymentChoice{IncludeInCount: &yes, OutsideCount: true}, TargetOutside, ErrExpenseBeforeLastClose},
 		{"marcada de otro día con hora dentro del turno entra al corte", true, open, nextDay, later, PaymentChoice{IncludeInCount: &yes}, TargetShift, nil},
 		{"marcada con hora antes de la apertura del turno abierto: ese corte ya tiene ventana", true, open, day.AddDate(0, 0, -1), beforeOpen, PaymentChoice{IncludeInCount: &yes, OutsideCount: true}, TargetOutside, ErrExpenseBeforeLastClose},
 		{"marcada con la caja cerrada pide confirmación", true, closed, day, later, PaymentChoice{IncludeInCount: &yes}, TargetOutside, ErrExpenseOutsideCount},
@@ -144,7 +145,8 @@ func TestValidBackdatedOpening(t *testing.T) {
 		{"futura", now.Add(time.Minute), &lastClose, false},
 		{"igual al último cierre", lastClose, &lastClose, false},
 		{"antes del último cierre", lastClose.Add(-time.Minute), &lastClose, false},
-		{"caja que nunca cerró acepta cualquier hora pasada", now.AddDate(0, 0, -3), nil, true},
+		{"caja que nunca cerró acepta hasta 24 h atrás", now.Add(-23 * time.Hour), nil, true},
+		{"caja que nunca cerró no acepta más de 24 h atrás", now.Add(-25 * time.Hour), nil, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

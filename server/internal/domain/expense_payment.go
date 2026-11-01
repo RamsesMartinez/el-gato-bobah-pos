@@ -27,6 +27,9 @@ var (
 	ErrPaymentInClosedCount = fmt.Errorf("%w: el corte de este pago ya se cerró", ErrConflict)
 	// ErrInvalidOpeningTime: la hora de apertura movida es futura o no es posterior al último cierre.
 	ErrInvalidOpeningTime = fmt.Errorf("%w: hora de apertura inválida", ErrValidation)
+	// ErrPaymentNotLinked: un pago en un corte cuya salida de caja es de antes de la 0100 y no dice
+	// de qué pago es: no hay forma segura de saber cuál borrar.
+	ErrPaymentNotLinked = fmt.Errorf("%w: Este pago es de antes del cambio: no se puede quitar del arqueo", ErrConflict)
 )
 
 // PaymentRegister es lo que importa de una caja para decidir a dónde va un pago de gasto.
@@ -80,7 +83,7 @@ func PaymentTime(paidOn, now time.Time, loc *time.Location) time.Time {
 // Tarjeta y transferencia no mueven el cajón: se atribuyen al turno abierto si lo hay, como siempre.
 // El efectivo de una caja sin arqueo queda fuera sin preguntar. El de una caja con arqueo:
 //   - desmarcado → fuera, sin preguntar;
-//   - con turno abierto y del día del turno, o con hora dentro de él → al corte;
+//   - con turno abierto y hora en o después de su apertura → al corte;
 //   - con hora en o antes del último cierre, o antes de la apertura del turno abierto → no hay corte
 //     que lo pueda tomar: ErrExpenseBeforeLastClose;
 //   - si no, pendiente, pero solo tras confirmar el aviso.
@@ -115,8 +118,9 @@ func ExpensePaymentTarget(isCash bool, reg *PaymentRegister, paidOn, paidAt time
 	if !*choice.IncludeInCount {
 		return TargetOutside, nil
 	}
-	if reg.OpenShiftDay != nil && (reg.OpenShiftDay.Equal(paidOn) ||
-		(reg.OpenShiftOpenedAt != nil && !paidAt.Before(*reg.OpenShiftOpenedAt))) {
+	// Con la casilla decide SOLO la hora: dos cortes del mismo día comparten el día, y el atajo por
+	// día metería al segundo un pago que salió del cajón del primero.
+	if reg.OpenShiftOpenedAt != nil && !paidAt.Before(*reg.OpenShiftOpenedAt) {
 		return TargetShift, nil
 	}
 	if reg.LastClose != nil && !paidAt.After(*reg.LastClose) {
@@ -131,9 +135,16 @@ func ExpensePaymentTarget(isCash bool, reg *PaymentRegister, paidOn, paidAt time
 	return TargetPending, nil
 }
 
+// MaxOpeningBackdate es el piso de la hora de apertura de una caja que nunca cerró: sin cierre
+// anterior no hay otro límite, y un corte que empieza días atrás se llevaría gastos de otro arqueo.
+const MaxOpeningBackdate = 24 * time.Hour
+
 // ValidBackdatedOpening valida la hora de apertura movida hacia atrás: nunca futura y siempre
 // después del último cierre de la caja, para que dos cortes no se repartan el mismo efectivo.
 func ValidBackdatedOpening(openedAt, now time.Time, lastClose *time.Time) error {
+	if lastClose == nil && openedAt.Before(now.Add(-MaxOpeningBackdate)) {
+		return fmt.Errorf("%w: la hora de apertura no puede ser de hace más de 24 horas", ErrInvalidOpeningTime)
+	}
 	if openedAt.After(now) {
 		return fmt.Errorf("%w: la hora de apertura no puede ser futura", ErrInvalidOpeningTime)
 	}

@@ -153,6 +153,8 @@ func Error(w http.ResponseWriter, err error) {
 	// El arqueo por hora (spec 048): el primero cambia lo que ofrece el aviso del gasto.
 	case errors.Is(err, domain.ErrExpenseBeforeLastClose):
 		status, code = http.StatusConflict, "EXPENSE_BEFORE_LAST_CLOSE"
+	case errors.Is(err, domain.ErrPaymentNotLinked):
+		status, code = http.StatusConflict, "PAYMENT_NOT_LINKED"
 	case errors.Is(err, domain.ErrPaymentInClosedCount):
 		status, code = http.StatusConflict, "PAYMENT_IN_CLOSED_COUNT"
 	case errors.Is(err, domain.ErrRegisterNotCounted):
