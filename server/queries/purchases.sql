@@ -167,7 +167,7 @@ select (coalesce(max(position), -1) + 1)::int as position from expense_items whe
 
 -- name: LockExpenseItemForExclusion :one
 -- El renglón vivo de un gasto, bloqueado, para excluirlo o incluirlo (spec 049).
-select id, ingredient_id, excluded from expense_items
+select id, ingredient_id, excluded, amount, is_gift from expense_items
  where id = sqlc.arg(id) and expense_id = sqlc.arg(expense_id) and voided_at is null
    for update;
 

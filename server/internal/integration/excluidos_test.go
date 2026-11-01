@@ -397,3 +397,120 @@ func TestExcludedItemsHTTP(t *testing.T) {
 		t.Errorf("renglones «personal» guardados como excluidos = %d (%v); quiere 1", n, err)
 	}
 }
+
+// «Corregir lo que llegó» con un renglón nuevo excluido de importe 0 y con lo recibido puesto: se
+// guarda (es evidencia) y no mete nada al almacén.
+func TestSaveStockLinesAcceptsANewExcludedLine(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	id, err := k.svc.CreateExpense(k.ctx, k.bultos("1", "500"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, applied := k.itemOf(t, id)
+	one := dd("1")
+	lines := []app.StockLineInput{
+		{ID: &item, SeenApplied: &applied, ItemType: "ingrediente", IngredientID: &k.azucar, Description: "Azúcar",
+			Quantity: one, Received: one, PresentationID: &k.bulto, Amount: dd("500")},
+		{ItemType: "ingrediente", IngredientID: &k.azucar, Description: "Muestra", Quantity: one, Received: one,
+			PresentationID: &k.bulto, Amount: dd("0"), Excluded: true},
+	}
+	if _, err := k.svc.SaveStockLines(k.ctx, id, lines, k.user); err != nil {
+		t.Fatalf("renglón nuevo excluido de $0: %v", err)
+	}
+	if got := k.onHand(t); !got.Equal(dd("25000")) {
+		t.Fatalf("lo guardado = %s; el excluido nuevo metió mercancía", got)
+	}
+	var recv *decimal.Decimal
+	if err := k.st.Pool.QueryRow(context.Background(), `select qty_received from expense_items where expense_id = $1 and description = 'Muestra'`, id).Scan(&recv); err != nil {
+		t.Fatal(err)
+	}
+	if recv != nil {
+		t.Errorf("el excluido guardó %s como recibido; no es del negocio", recv)
+	}
+}
+
+// Un importe negativo en un excluido es 400 por los dos caminos, no un 500 de la base.
+func TestNegativeExcludedAmountIsRejected(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	in := k.bultos("1", "500")
+	in.Items = append(in.Items, app.ExpenseItemInput{Description: "Negativo", Quantity: dd("1"), Amount: dd("-1"), Excluded: true})
+	if _, err := k.svc.CreateExpense(k.ctx, in); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("alta con excluido negativo = %v; quiere ErrValidation", err)
+	}
+	id, err := k.svc.CreateExpense(k.ctx, k.bultos("1", "500"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, applied := k.itemOf(t, id)
+	one := dd("1")
+	if _, err := k.svc.SaveStockLines(k.ctx, id, []app.StockLineInput{
+		{ID: &item, SeenApplied: &applied, ItemType: "ingrediente", IngredientID: &k.azucar, Description: "Azúcar",
+			Quantity: one, Received: one, PresentationID: &k.bulto, Amount: dd("500")},
+		{ItemType: "ingrediente", IngredientID: &k.azucar, Description: "Negativo", Quantity: one,
+			PresentationID: &k.bulto, Amount: dd("-1"), Excluded: true},
+	}, k.user); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("corregir con excluido negativo = %v; quiere ErrValidation", err)
+	}
+	if _, err := k.st.Pool.Exec(context.Background(), `update expense_items set excluded = true, amount = -1 where id = $1`, item); err == nil {
+		t.Error("la base aceptó un excluido con importe negativo")
+	}
+}
+
+// Incluir un excluido de $0 que no es regalo: es 400 con el mensaje del importe, no un 500 por el
+// check de la base (23514).
+func TestIncludingAZeroExcludedLineIsAValidationError(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	in := k.bultos("1", "500")
+	in.Items = append(in.Items, app.ExpenseItemInput{Description: "Muestra", Quantity: dd("1"), Amount: dd("0"), Excluded: true})
+	id, err := k.svc.CreateExpense(k.ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, _ := k.itemByDescription(t, id, "Muestra")
+	_, err = k.svc.SetItemExcluded(k.ctx, id, item, false, k.user)
+	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "importe") {
+		t.Fatalf("incluir un excluido de $0 = %v; quiere ErrValidation que hable del importe", err)
+	}
+	if _, _, excluded := k.itemByDescription(t, id, "Muestra"); !excluded {
+		t.Fatal("el rechazo dejó el renglón incluido")
+	}
+}
+
+// Decisión (spec 049): lo recibido de un excluido se ignora, también con «llegó todo». Al incluirlo
+// después queda por recibir y entra con «Recibir» o «Llegó todo»: no se inventa que llegó.
+func TestIncludingAnExcludedLineFromAReceivedPurchaseLeavesItPending(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	leche := ingredientIn(t, k.st, defaultCompanyID, "Leche llegó todo", "ml")
+	in := k.mixto(t, leche, nil)
+	in.Items[1].Amount = dd("400")
+	id, err := k.svc.CreateExpense(k.ctx, in) // ReceivedAt puesto: «llegó todo»
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, _ := k.itemByDescription(t, id, "Leche de la casa")
+	d, err := k.svc.SetItemExcluded(k.ctx, id, item, false, k.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := onHandIngredient(t, k.st, leche); !got.IsZero() {
+		t.Errorf("incluir metió %s ml sin que nadie dijera que llegó", got)
+	}
+	if d.ReceivedAt != nil {
+		t.Error("la compra sigue como recibida con un renglón incluido que no ha llegado")
+	}
+	pend, err := k.svc.PendingReceipts(k.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen bool
+	for _, p := range pend {
+		seen = seen || p.ItemID == item
+	}
+	if !seen {
+		t.Error("el renglón incluido no aparece en «Por recibir»")
+	}
+}

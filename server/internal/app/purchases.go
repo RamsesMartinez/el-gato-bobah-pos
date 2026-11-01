@@ -374,7 +374,14 @@ func lineKeepsPresentation(l StockLineInput, current map[int64]db.ListStockLines
 
 func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, expenseID, userID int64, pos int, l StockLineInput, current map[int64]db.ListStockLinesRow, kept map[int64]bool) error {
 	amount := domain.Round2(l.Amount)
-	if err := checkLineMoney(amount, l.IsGift); err != nil {
+	// Un excluido (nuevo, o uno guardado que se reenvía) es evidencia: su importe puede ser 0 y lo
+	// que diga de recibido se ignora.
+	excluded := l.Excluded && l.ID == nil || l.ID != nil && current[*l.ID].Excluded
+	if excluded {
+		if !domain.ValidMoney(amount, true) {
+			return fmt.Errorf("%w: el importe no es válido", domain.ErrValidation)
+		}
+	} else if err := checkLineMoney(amount, l.IsGift); err != nil {
 		return err
 	}
 	qty := domain.Round4(l.Quantity)
@@ -405,7 +412,7 @@ func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, ex
 		return domain.ErrValidation
 	}
 	var recv *decimal.Decimal
-	if received.IsPositive() {
+	if received.IsPositive() && !excluded {
 		recv = &received
 	}
 	if l.ID == nil {
@@ -529,6 +536,13 @@ func (s *BackofficeService) SetItemExcluded(ctx context.Context, expenseID, item
 		}
 		if item.Excluded == excluded {
 			return nil
+		}
+		// Un excluido pudo guardarse en $0 sin ser regalo; incluido, ese importe ya no vale y la base
+		// lo rechazaría como 500.
+		if !excluded {
+			if err := checkLineMoney(item.Amount, item.IsGift); err != nil {
+				return err
+			}
 		}
 		if item.IngredientID != nil {
 			if err := lockIngredients(ctx, q, []int64{*item.IngredientID}); err != nil {

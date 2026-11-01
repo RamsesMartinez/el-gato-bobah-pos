@@ -243,7 +243,7 @@ func (q *Queries) LockExpenseForStock(ctx context.Context, id int64) (LockExpens
 }
 
 const lockExpenseItemForExclusion = `-- name: LockExpenseItemForExclusion :one
-select id, ingredient_id, excluded from expense_items
+select id, ingredient_id, excluded, amount, is_gift from expense_items
  where id = $1 and expense_id = $2 and voided_at is null
    for update
 `
@@ -254,16 +254,24 @@ type LockExpenseItemForExclusionParams struct {
 }
 
 type LockExpenseItemForExclusionRow struct {
-	ID           int64  `json:"id"`
-	IngredientID *int64 `json:"ingredient_id"`
-	Excluded     bool   `json:"excluded"`
+	ID           int64           `json:"id"`
+	IngredientID *int64          `json:"ingredient_id"`
+	Excluded     bool            `json:"excluded"`
+	Amount       decimal.Decimal `json:"amount"`
+	IsGift       bool            `json:"is_gift"`
 }
 
 // El renglón vivo de un gasto, bloqueado, para excluirlo o incluirlo (spec 049).
 func (q *Queries) LockExpenseItemForExclusion(ctx context.Context, arg LockExpenseItemForExclusionParams) (LockExpenseItemForExclusionRow, error) {
 	row := q.db.QueryRow(ctx, lockExpenseItemForExclusion, arg.ID, arg.ExpenseID)
 	var i LockExpenseItemForExclusionRow
-	err := row.Scan(&i.ID, &i.IngredientID, &i.Excluded)
+	err := row.Scan(
+		&i.ID,
+		&i.IngredientID,
+		&i.Excluded,
+		&i.Amount,
+		&i.IsGift,
+	)
 	return i, err
 }
 

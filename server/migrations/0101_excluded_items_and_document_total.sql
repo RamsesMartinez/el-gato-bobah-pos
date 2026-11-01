@@ -17,9 +17,12 @@
 set local lock_timeout = '3s';
 
 alter table expense_items add column excluded boolean not null default false;
--- Un excluido es evidencia, no gasto: con importe 0 se guarda igual.
+-- Un excluido es evidencia, no gasto: con importe 0 se guarda igual. Sigue `not valid` como en la
+-- 0092 y no se valida aquí: los renglones heredados con importe 0 (medidos el 14-oct) no cumplen ni
+-- la regla vieja, y validar haría que la subida truene en producción.
 alter table expense_items drop constraint expense_items_amount_positive;
-alter table expense_items add constraint expense_items_amount_positive check (amount > 0 or is_gift or excluded) not valid;
+alter table expense_items add constraint expense_items_amount_positive
+  check (amount > 0 or is_gift or (excluded and amount >= 0)) not valid;
 
 -- Mismo tipo que expenses.amount.
 alter table expenses add column document_total numeric(10,2);
