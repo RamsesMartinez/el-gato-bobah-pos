@@ -149,7 +149,21 @@ export interface Denomination {
 export type AperturaInput = (
   | { counts: { denominationId: number; pieces: number }[] }
   | { openingCash: number; manualReason: string }
-) & { openingReason?: string; openingReasonNote?: string }; // spec 032: si no coincide con el cierre anterior
+) & {
+  openingReason?: string; openingReasonNote?: string; // spec 032: si no coincide con el cierre anterior
+  // Spec 048: abrir desde una hora anterior para que el corte cubra los gastos sin corte. Exige
+  // `cash.adjust_count`; RFC3339.
+  openedAt?: string;
+};
+
+// Un pago en efectivo que salió con la caja cerrada y espera al corte que cubra su hora (spec 048).
+export interface PendingExpense {
+  paymentId: number;
+  expenseId: number;
+  description: string;
+  amount: string;
+  paidAt: string;
+}
 
 // Un renglón del desglose. `subtotal` viene calculado del servidor aunque sea derivable: lo lee un
 // humano comparando contra su cajón, y dos multiplicaciones del mismo dato pueden diferir.
@@ -827,6 +841,9 @@ export const backofficeApi = {
   cashDenominations: (currency?: string) =>
     api.get<{ items: Denomination[] }>(
       currency ? `/cash/denominations?currency=${encodeURIComponent(currency)}` : '/cash/denominations'),
+  // Los gastos sin corte de la caja desde su último cierre (spec 048).
+  cashPendingExpenses: (registerId: number) =>
+    api.get<{ items?: PendingExpense[] }>(`/cash-sessions/pending-expenses?registerId=${registerId}`),
   cashOpen: (registerId: number, apertura: AperturaInput) =>
     api.post<CashSession>('/cash-sessions', { registerId, ...apertura }),
   // El efectivo va contado (`counts`) o como cifra en `declared` con su `manualReason`, nunca las

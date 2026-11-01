@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { Box, Button, Grid, HStack, Input, Tabs, Text, VStack } from '@chakra-ui/react';
+import { LuChevronDown, LuChevronRight } from 'react-icons/lu';
 import { useQuery } from '@tanstack/react-query';
 
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../components/ui/drawer';
-import { backofficeApi, type Denomination } from '../../api/backoffice';
+import { backofficeApi, type Denomination, type PendingExpense } from '../../api/backoffice';
+import { Switch } from '../../components/ui/switch';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { montoTecleado, round2 } from '../../domain/numeros';
 import { money } from '../../utils/format';
 import {
@@ -19,7 +22,11 @@ interface Props {
   currency: string;
   etiquetaConfirmar: string;
   guardando: boolean;
-  onConfirmar: (r: ResultadoDelConteo) => void;
+  // openedAt solo llega cuando se decidió abrir desde la hora del primer gasto sin corte.
+  onConfirmar: (r: ResultadoDelConteo, openedAt?: string) => void;
+  // Solo en la apertura (spec 048, R11): los gastos sin corte de la caja. El cierre no los pasa.
+  pendingExpenses?: PendingExpense[];
+  canIncludePending?: boolean;
 }
 
 type Camino = 'contar' | 'total';
@@ -40,7 +47,12 @@ type Pendiente = { que: 'camino'; a: Camino } | { que: 'cerrar' };
 // los 2 minutos de SC-003.
 export function ContadorDeEfectivo({
   isOpen, onClose, titulo, currency, etiquetaConfirmar, guardando, onConfirmar,
+  pendingExpenses = [], canIncludePending = false,
 }: Props) {
+  const [includePending, setIncludePending] = useState(false);
+  const firstPending = pendingExpenses.reduce<string | undefined>(
+    (min, p) => (min === undefined || Date.parse(p.paidAt) < Date.parse(min) ? p.paidAt : min), undefined);
+  const openedAt = canIncludePending && includePending ? firstPending : undefined;
   const { data, isLoading } = useQuery({
     queryKey: ['cash', 'denominations', currency],
     queryFn: () => backofficeApi.cashDenominations(currency),
@@ -74,6 +86,7 @@ export function ContadorDeEfectivo({
     setTotalAMano('');
     setMotivo('');
     setPendiente(null);
+    setIncludePending(false);
   };
 
   const pedirCamino = (c: Camino) => {
@@ -110,9 +123,11 @@ export function ContadorDeEfectivo({
 
   const confirmar = () => {
     if (falta !== null) return;
-    onConfirmar(camino === 'contar'
+    const r: ResultadoDelConteo = camino === 'contar'
       ? { counts: conteo.renglones, total: conteo.total }
-      : { total: totalManual ?? 0, manualReason: motivo.trim() });
+      : { total: totalManual ?? 0, manualReason: motivo.trim() };
+    if (openedAt) onConfirmar(r, openedAt);
+    else onConfirmar(r);
   };
 
   const billetes = catalogo.filter((d) => !d.isCoin);
@@ -196,6 +211,11 @@ export function ContadorDeEfectivo({
           )}
         </DrawerBody>
 
+        {pendingExpenses.length > 0 && (
+          <PendingExpensesLine items={pendingExpenses} currency={currency} first={firstPending!}
+            canInclude={canIncludePending} include={includePending} onInclude={setIncludePending} />
+        )}
+
         {/* Footer FIJO: es lo único que mantiene el total y el botón a la vista con el teclado
             abierto, que es justo cuando se está capturando. */}
         <DrawerFooter borderTopWidth="1px" pt={3}>
@@ -217,6 +237,47 @@ export function ContadorDeEfectivo({
         </DrawerFooter>
       </DrawerContent>
     </DrawerRoot>
+  );
+}
+
+// PendingExpensesLine es una sola línea sobre el pie: cuántos gastos salieron con la caja cerrada y
+// cuánto suman. El detalle se despliega al tocarla; incluirlos mueve la hora de apertura al primero.
+function PendingExpensesLine({ items, currency, first, canInclude, include, onInclude }: {
+  items: PendingExpense[];
+  currency: string;
+  first: string;
+  canInclude: boolean;
+  include: boolean;
+  onInclude: (v: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const hora = useHoraDelNegocio();
+  const sum = round2(items.reduce((a, p) => a + Number(p.amount), 0));
+  const sorted = [...items].sort((a, b) => Date.parse(a.paidAt) - Date.parse(b.paidAt));
+  return (
+    <Box px={6} borderTopWidth="1px">
+      <HStack justify="space-between" gap={3} flexWrap="wrap">
+        <Button minH="44px" variant="ghost" px={0} onClick={() => setOpen((v) => !v)}>
+          {open ? <LuChevronDown /> : <LuChevronRight />}
+          {items.length === 1 ? '1 gasto sin corte' : `${items.length} gastos sin corte`} · {money(sum, currency)}
+        </Button>
+        {canInclude && (
+          <Switch minH="44px" checked={include} onCheckedChange={(e) => onInclude(e.checked)}>
+            Incluirlos (desde las {hora.soloHora(first)})
+          </Switch>
+        )}
+      </HStack>
+      {open && (
+        <VStack align="stretch" gap={1} pb={2} maxH="20dvh" overflowY="auto">
+          {sorted.map((p) => (
+            <HStack key={p.paymentId} justify="space-between" fontSize="sm">
+              <Text>{hora.soloHora(p.paidAt)} · {p.description}</Text>
+              <Text>{money(p.amount, currency)}</Text>
+            </HStack>
+          ))}
+        </VStack>
+      )}
+    </Box>
   );
 }
 

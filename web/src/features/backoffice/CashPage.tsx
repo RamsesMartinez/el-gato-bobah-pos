@@ -43,6 +43,7 @@ import {
 } from './cierreDeCaja';
 import { Page } from '../../components/Page';
 import { useSessionStore } from '../../stores/session';
+import { can } from '../../app/permissions';
 import { soloHora } from '../../utils/horaDelNegocio';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { DEFAULT_TIMEZONE } from '../../utils/zonaPorDefecto';
@@ -828,6 +829,13 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
     queryFn: () => backofficeApi.cashCurrent(register.id),
   });
   const [contando, setContando] = useState(false);
+  const user = useSessionStore((s) => s.user);
+  // Los gastos sin corte se piden solo al ir a abrir: es el único lugar donde se muestran (R11).
+  const { data: pendingExpenses } = useQuery({
+    queryKey: ['cash', 'pending-expenses', register.id],
+    queryFn: () => backofficeApi.cashPendingExpenses(register.id),
+    enabled: !session && contando && register.countsCash !== false,
+  });
   const [declared, setDeclared] = useState<Record<string, string>>({});
   // El conteo del cajón para ESTE cierre, tal como lo entregó la hoja. Vive aquí y no en `declared`
   // porque no es una cifra tecleada: es el arqueo, con sus renglones o con su motivo.
@@ -1216,7 +1224,8 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           currency="MXN" etiquetaConfirmar="Abrir caja" guardando={openMut.isPending}
           // Contar el cajón se mide aquí, donde de verdad ocurre, y no en el onSuccess de la
           // mutación: el de abrir mide «abrir-turno», que es otro hecho.
-          onConfirmar={(r) => { medirAccion('caja', 'contar-efectivo'); openMut.mutate(aperturaDelConteo(r)); }} />
+          pendingExpenses={pendingExpenses?.items ?? []} canIncludePending={can('cash.adjust_count', user)}
+          onConfirmar={(r, openedAt) => { medirAccion('caja', 'contar-efectivo'); openMut.mutate({ ...aperturaDelConteo(r), openedAt }); }} />
       )}
 
       {session && (

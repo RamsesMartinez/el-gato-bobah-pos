@@ -16,7 +16,6 @@ import {
 } from '../../api/backoffice';
 import { SortHead } from '../../components/SortHead';
 import { ExpenseDialog } from './ExpenseDialog';
-import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { activeRegisters, registerLabel, outsideAskOf, countsInDrawer, withCountChoice, type CountChoice, type OutsideAsk } from './cajaDelGasto';
