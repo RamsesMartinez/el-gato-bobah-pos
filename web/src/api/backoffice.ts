@@ -659,9 +659,9 @@ export interface ExpenseItemBody {
   packQtyInBase?: string;
   rawCode?: string;
   rawName?: string;
-  // personal: venía en el ticket pero no es del local. El backend lo aprende y no lo guarda
-  // como línea del gasto.
-  personal?: boolean;
+  // excluded: venía en el ticket pero no es del local. Se guarda con su artículo, no suma a la
+  // regla del total ni toca el almacén, y el proveedor lo aprende (spec 049).
+  excluded?: boolean;
   // El empaque del insumo: el servidor copia su contenido y fija la unidad (spec 038).
   presentationId?: number;
   // Llegó sin costo: importe 0, suma a lo guardado y no mueve el costo.
@@ -938,6 +938,8 @@ export const backofficeApi = {
     docKind?: string;
     docFolio?: string;
     docRaw?: unknown;
+    // El total que dice el documento leído (spec 049): se guarda aparte del total pagado.
+    documentTotal?: string;
   }) => api.post<{ id: number }>('/expenses', b),
   expenseDetail: (id: number) => api.get<ExpenseDetail>(`/expenses/${id}`),
   // Agrega UN pago. Si con él los pagos cubren el importe, el gasto pasa a pagado.
