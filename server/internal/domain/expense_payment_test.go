@@ -173,20 +173,30 @@ func TestValidDrawerExtra(t *testing.T) {
 	cases := []struct {
 		name                      string
 		amount, extra, excl, used string
+		room                      string // documentTotal − importe del gasto; "" = sin total del ticket
 		wantErr                   error
 	}{
-		{"sin extra siempre vale, aunque no haya excluidos", "380", "0", "0", "0", nil},
-		{"igual al tope", "380", "120", "120", "0", nil},
-		{"un centavo sobre el tope", "380", "120.01", "120", "0", ErrDrawerExtraTooHigh},
-		{"negativo", "380", "-1", "120", "0", ErrValidation},
-		{"sin excluidos no hay de dónde", "380", "1", "0", "0", ErrDrawerExtraTooHigh},
-		{"otro pago ya usó una parte", "380", "100", "120", "30", ErrDrawerExtraTooHigh},
-		{"lo que queda tras otro pago", "380", "90", "120", "30", nil},
-		{"importe más extra sobre MaxMoney", "9999990", "20", "100", "0", ErrValidation},
+		{"sin extra siempre vale, aunque no haya excluidos", "380", "0", "0", "0", "", nil},
+		{"igual al tope", "380", "120", "120", "0", "", nil},
+		{"un centavo sobre el tope", "380", "120.01", "120", "0", "", ErrDrawerExtraTooHigh},
+		{"negativo", "380", "-1", "120", "0", "", ErrValidation},
+		{"sin excluidos no hay de dónde", "380", "1", "0", "0", "", ErrDrawerExtraTooHigh},
+		{"otro pago ya usó una parte", "380", "100", "120", "30", "", ErrDrawerExtraTooHigh},
+		{"lo que queda tras otro pago", "380", "90", "120", "30", "", nil},
+		{"con total del ticket, el tope es lo que el ticket deja", "380", "100", "120", "0", "100", nil},
+		{"con total del ticket, un centavo de más", "380", "100.01", "120", "0", "100", ErrDrawerExtraTooHigh},
+		{"el total del ticket cuenta lo ya usado", "380", "80", "120", "30", "100", ErrDrawerExtraTooHigh},
+		{"el ticket no amplía el tope de excluidos", "380", "121", "120", "0", "500", ErrDrawerExtraTooHigh},
+		{"importe más extra sobre MaxMoney", "9999990", "20", "100", "0", "", ErrValidation},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := ValidDrawerExtra(d(c.amount), d(c.extra), d(c.excl), d(c.used))
+			var room *decimal.Decimal
+			if c.room != "" {
+				r := d(c.room)
+				room = &r
+			}
+			err := ValidDrawerExtra(d(c.amount), d(c.extra), d(c.excl), d(c.used), room)
 			if c.wantErr == nil && err != nil {
 				t.Fatalf("quería válido; dio %v", err)
 			}

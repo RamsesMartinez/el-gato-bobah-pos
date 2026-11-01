@@ -185,14 +185,15 @@ insert into expense_payments (
 ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 returning id;
 
--- name: SumDrawerExtraOfExpense :one
--- Lo que los pagos de un gasto ya usaron como «no es del negocio» (spec 050): el tope es por gasto.
-select coalesce(sum(drawer_extra), 0)::numeric(10,2) as used from expense_payments where expense_id = $1;
-
--- name: SumExcludedOfExpense :one
--- Lo excluido vivo de un gasto: lo más que puede salir del cajón además de sus pagos (spec 050).
-select coalesce(sum(amount), 0)::numeric(10,2) as excluded from expense_items
-where expense_id = $1 and excluded and voided_at is null;
+-- name: DrawerExtraLimits :one
+-- Los topes de lo que sale del cajón además de los pagos de un gasto (spec 050): lo excluido vivo,
+-- lo que sus pagos ya usaron, y el total del documento (si lo traía) con el importe del gasto.
+select (select coalesce(sum(ei.amount), 0) from expense_items ei
+         where ei.expense_id = e.id and ei.excluded and ei.voided_at is null)::numeric(10,2) as excluded,
+       (select coalesce(sum(ep.drawer_extra), 0) from expense_payments ep where ep.expense_id = e.id)::numeric(10,2) as used,
+       e.document_total, e.amount
+from expenses e
+where e.id = $1;
 
 -- name: ListExpensePayments :many
 -- session_closed: el corte del pago ya se cerró, y su casilla del arqueo ya no se puede cambiar.

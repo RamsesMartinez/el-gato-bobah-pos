@@ -51,8 +51,9 @@ returning id, name, kind, affects_cash_drawer, auto_declare, is_active;
 -- Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte). Lleva su pago
 -- (spec 048): la base no deja una segunda salida del mismo pago. El monto lo fija el trigger de la
 -- 0102 con importe + drawer_extra del pago; el que se manda aquí se ignora.
+-- El 0 nunca queda: el trigger lo reemplaza, y si no corriera, el check de monto lo rechazaría.
 insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id, expense_payment_id)
-values ($1, 'salida', $2, $3, $4, $5, $6);
+values ($1, 'salida', 0, $2, $3, $4, $5);
 
 -- name: DeleteExpenseSalidaOfPayment :execrows
 -- Quitar un pago del arqueo de un corte ABIERTO borra su salida (spec 048, R2b): el corte no se ha

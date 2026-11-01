@@ -78,3 +78,6 @@ del gasto`.
   «Excluir» con texto corto; captura a 1024×600 para revisar que la fila no desborde.
 - R10. Puerta: el movimiento único por pago no permite atribuir la diferencia a una persona; aceptado
   (principio VI).
+  Tope (revisión de código): con total del ticket, la suma de `drawer_extra` del gasto tampoco pasa
+  de `document_total − amount`. Sin total del ticket queda solo el tope de excluidos: lo que se
+  declare ahí es responsabilidad de admin/gerente (quien registra el pago) y queda en la bitácora.

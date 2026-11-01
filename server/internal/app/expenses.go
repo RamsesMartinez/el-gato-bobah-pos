@@ -634,8 +634,8 @@ func (s *BackofficeService) insertPayments(ctx context.Context, q *db.Queries, e
 		// fantasma en ningún lado.
 		if p.isCash && p.sessionID != nil {
 			if err := q.InsertExpenseCashMovement(ctx, db.InsertExpenseCashMovementParams{
-				SessionID: *p.sessionID, Amount: p.in.Amount,
-				Concept: expenseConcept(desc), ExpenseID: &expenseID, UserID: userID, ExpensePaymentID: &payID,
+				SessionID: *p.sessionID,
+				Concept:   expenseConcept(desc), ExpenseID: &expenseID, UserID: userID, ExpensePaymentID: &payID,
 			}); err != nil {
 				return err
 			}
@@ -650,7 +650,8 @@ func checkDrawerExtraAllowed(p resolvedPayment) error {
 	if p.in.DrawerExtra.IsZero() {
 		return nil
 	}
-	if p.in.DrawerExtra.IsNegative() {
+	// Dinero válido antes de abrir la transacción; el tope por gasto lo pone insertPayments.
+	if !domain.ValidMoney(p.in.DrawerExtra, true) || !domain.ValidMoney(p.in.Amount.Add(p.in.DrawerExtra), true) {
 		return domain.ErrValidation
 	}
 	if !p.isCash || !p.include {
@@ -662,15 +663,16 @@ func checkDrawerExtraAllowed(p resolvedPayment) error {
 // drawerExtraFits aplica el tope por gasto con el gasto ya tomado: lo excluido vivo menos lo que
 // otros pagos ya usaron.
 func drawerExtraFits(ctx context.Context, q *db.Queries, expenseID int64, amount, extra decimal.Decimal) error {
-	excluded, err := q.SumExcludedOfExpense(ctx, expenseID)
+	l, err := q.DrawerExtraLimits(ctx, expenseID)
 	if err != nil {
 		return err
 	}
-	used, err := q.SumDrawerExtraOfExpense(ctx, expenseID)
-	if err != nil {
-		return err
+	var room *decimal.Decimal
+	if l.DocumentTotal != nil {
+		r := l.DocumentTotal.Sub(l.Amount)
+		room = &r
 	}
-	return domain.ValidDrawerExtra(amount, extra, excluded, used)
+	return domain.ValidDrawerExtra(amount, extra, l.Excluded, l.Used, room)
 }
 
 // excludedStillCovers vuelve a revisar, tras cambiar los renglones de un gasto tomado, que lo
@@ -691,7 +693,7 @@ func sweepPendingExpenses(ctx context.Context, q *db.Queries, sessionID, registe
 	}
 	for _, r := range rows {
 		if err := q.InsertExpenseCashMovement(ctx, db.InsertExpenseCashMovementParams{
-			SessionID: sessionID, Amount: r.Amount, Concept: expenseConcept(derefStr(r.Description)),
+			SessionID: sessionID, Concept: expenseConcept(derefStr(r.Description)),
 			ExpenseID: &r.ExpenseID, UserID: r.PaidBy, ExpensePaymentID: &r.ID,
 		}); err != nil {
 			return 0, err
@@ -831,7 +833,7 @@ func (s *BackofficeService) SetPaymentInCount(ctx context.Context, expenseID, pa
 		}
 		if session != nil {
 			if err := q.InsertExpenseCashMovement(ctx, db.InsertExpenseCashMovementParams{
-				SessionID: *session, Amount: p.Amount, Concept: expenseConcept(derefStr(info.Description)),
+				SessionID: *session, Concept: expenseConcept(derefStr(info.Description)),
 				ExpenseID: &expenseID, UserID: userID, ExpensePaymentID: &p.ID,
 			}); err != nil {
 				return err

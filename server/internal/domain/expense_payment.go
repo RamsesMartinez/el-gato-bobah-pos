@@ -40,12 +40,18 @@ var (
 // ValidDrawerExtra decide si un pago de `amount` puede declarar que del cajón salieron además
 // `extra` pesos (spec 050). El tope es por GASTO: la suma de sus renglones excluidos menos lo que
 // otros pagos ya usaron; así dos pagos no sacan dos veces la misma parte que no es del negocio.
-// La salida completa (importe + extra) tampoco puede pasar de MaxMoney.
-func ValidDrawerExtra(amount, extra, excludedSum, alreadyUsed decimal.Decimal) error {
+// Con total del ticket (`ticketRoom` = total del documento − importe del gasto), lo usado tampoco
+// pasa de lo que el ticket deja: no salió del cajón más de lo que decía el papel. Sin él queda solo
+// el de excluidos. La salida completa (importe + extra) tampoco puede pasar de MaxMoney.
+func ValidDrawerExtra(amount, extra, excludedSum, alreadyUsed decimal.Decimal, ticketRoom *decimal.Decimal) error {
 	if !ValidMoney(extra, true) || !ValidMoney(amount.Add(extra), true) {
 		return ErrValidation
 	}
-	if extra.GreaterThan(excludedSum.Sub(alreadyUsed)) {
+	limit := excludedSum
+	if ticketRoom != nil && ticketRoom.LessThan(limit) {
+		limit = *ticketRoom
+	}
+	if extra.GreaterThan(limit.Sub(alreadyUsed)) {
 		return ErrDrawerExtraTooHigh
 	}
 	return nil

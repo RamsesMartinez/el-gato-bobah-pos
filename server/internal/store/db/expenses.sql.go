@@ -265,6 +265,36 @@ func (q *Queries) DeleteExpenseItems(ctx context.Context, expenseID int64) error
 	return err
 }
 
+const drawerExtraLimits = `-- name: DrawerExtraLimits :one
+select (select coalesce(sum(ei.amount), 0) from expense_items ei
+         where ei.expense_id = e.id and ei.excluded and ei.voided_at is null)::numeric(10,2) as excluded,
+       (select coalesce(sum(ep.drawer_extra), 0) from expense_payments ep where ep.expense_id = e.id)::numeric(10,2) as used,
+       e.document_total, e.amount
+from expenses e
+where e.id = $1
+`
+
+type DrawerExtraLimitsRow struct {
+	Excluded      decimal.Decimal  `json:"excluded"`
+	Used          decimal.Decimal  `json:"used"`
+	DocumentTotal *decimal.Decimal `json:"document_total"`
+	Amount        decimal.Decimal  `json:"amount"`
+}
+
+// Los topes de lo que sale del cajón además de los pagos de un gasto (spec 050): lo excluido vivo,
+// lo que sus pagos ya usaron, y el total del documento (si lo traía) con el importe del gasto.
+func (q *Queries) DrawerExtraLimits(ctx context.Context, id int64) (DrawerExtraLimitsRow, error) {
+	row := q.db.QueryRow(ctx, drawerExtraLimits, id)
+	var i DrawerExtraLimitsRow
+	err := row.Scan(
+		&i.Excluded,
+		&i.Used,
+		&i.DocumentTotal,
+		&i.Amount,
+	)
+	return i, err
+}
+
 const excludePendingBefore = `-- name: ExcludePendingBefore :many
 update expense_payments set include_in_count = false
 where register_id = $1 and register_session_id is null and include_in_count
@@ -1100,31 +1130,6 @@ type SetPaymentCountParams struct {
 func (q *Queries) SetPaymentCount(ctx context.Context, arg SetPaymentCountParams) error {
 	_, err := q.db.Exec(ctx, setPaymentCount, arg.SessionID, arg.IncludeInCount, arg.ID)
 	return err
-}
-
-const sumDrawerExtraOfExpense = `-- name: SumDrawerExtraOfExpense :one
-select coalesce(sum(drawer_extra), 0)::numeric(10,2) as used from expense_payments where expense_id = $1
-`
-
-// Lo que los pagos de un gasto ya usaron como «no es del negocio» (spec 050): el tope es por gasto.
-func (q *Queries) SumDrawerExtraOfExpense(ctx context.Context, expenseID int64) (decimal.Decimal, error) {
-	row := q.db.QueryRow(ctx, sumDrawerExtraOfExpense, expenseID)
-	var used decimal.Decimal
-	err := row.Scan(&used)
-	return used, err
-}
-
-const sumExcludedOfExpense = `-- name: SumExcludedOfExpense :one
-select coalesce(sum(amount), 0)::numeric(10,2) as excluded from expense_items
-where expense_id = $1 and excluded and voided_at is null
-`
-
-// Lo excluido vivo de un gasto: lo más que puede salir del cajón además de sus pagos (spec 050).
-func (q *Queries) SumExcludedOfExpense(ctx context.Context, expenseID int64) (decimal.Decimal, error) {
-	row := q.db.QueryRow(ctx, sumExcludedOfExpense, expenseID)
-	var excluded decimal.Decimal
-	err := row.Scan(&excluded)
-	return excluded, err
 }
 
 const sumExpensePayments = `-- name: SumExpensePayments :one

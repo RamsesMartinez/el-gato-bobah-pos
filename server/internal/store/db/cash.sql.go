@@ -742,25 +742,24 @@ func (q *Queries) InsertCashMovement(ctx context.Context, arg InsertCashMovement
 
 const insertExpenseCashMovement = `-- name: InsertExpenseCashMovement :exec
 insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id, expense_payment_id)
-values ($1, 'salida', $2, $3, $4, $5, $6)
+values ($1, 'salida', 0, $2, $3, $4, $5)
 `
 
 type InsertExpenseCashMovementParams struct {
-	SessionID        int64           `json:"session_id"`
-	Amount           decimal.Decimal `json:"amount"`
-	Concept          string          `json:"concept"`
-	ExpenseID        *int64          `json:"expense_id"`
-	UserID           int64           `json:"user_id"`
-	ExpensePaymentID *int64          `json:"expense_payment_id"`
+	SessionID        int64  `json:"session_id"`
+	Concept          string `json:"concept"`
+	ExpenseID        *int64 `json:"expense_id"`
+	UserID           int64  `json:"user_id"`
+	ExpensePaymentID *int64 `json:"expense_payment_id"`
 }
 
 // Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte). Lleva su pago
 // (spec 048): la base no deja una segunda salida del mismo pago. El monto lo fija el trigger de la
 // 0102 con importe + drawer_extra del pago; el que se manda aquí se ignora.
+// El 0 nunca queda: el trigger lo reemplaza, y si no corriera, el check de monto lo rechazaría.
 func (q *Queries) InsertExpenseCashMovement(ctx context.Context, arg InsertExpenseCashMovementParams) error {
 	_, err := q.db.Exec(ctx, insertExpenseCashMovement,
 		arg.SessionID,
-		arg.Amount,
 		arg.Concept,
 		arg.ExpenseID,
 		arg.UserID,

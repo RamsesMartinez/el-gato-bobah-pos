@@ -292,3 +292,77 @@ func TestLaDiferenciaPorHTTP(t *testing.T) {
 		t.Fatalf("el detalle no trae drawerExtra: %s", w.Body.String())
 	}
 }
+
+// CON TOTAL DEL TICKET, LO QUE SALIÓ NO PASA DE ÉL: un ticket de $450 con $380 del negocio deja $70
+// de diferencia, aunque los excluidos sumen $120.
+func TestElTotalDelTicketTopaLaDiferencia(t *testing.T) {
+	t.Parallel()
+	g := nuevoArqueoPorHora(t)
+	ctx := context.Background()
+	g.turno(t, g.primar, time.Now().Add(-time.Hour))
+	ticket := dec("450")
+	in := g.mixto(g.primar, incluir(true), false, "380", "70.01")
+	in.DocumentTotal = &ticket
+	if _, err := g.back.CreateExpense(ctx, in); !errors.Is(err, domain.ErrDrawerExtraTooHigh) {
+		t.Fatalf("pasar del total del ticket: %v; quería DRAWER_EXTRA_TOO_HIGH", err)
+	}
+	in.Payments[0].DrawerExtra = dec("70")
+	if _, err := g.back.CreateExpense(ctx, in); err != nil {
+		t.Fatalf("justo en el total del ticket: %v", err)
+	}
+}
+
+// CORREGIR LOS RENGLONES NO DEJA LO USADO SIN RESPALDO (R2): bajar el importe de un excluido ya
+// usado como diferencia se rechaza igual que volver a incluirlo.
+func TestCorregirRenglonesRespetaLaDiferencia(t *testing.T) {
+	t.Parallel()
+	g := nuevoArqueoPorHora(t)
+	ctx := context.Background()
+	g.turno(t, g.primar, time.Now().Add(-time.Hour))
+	ing := ingredientIn(t, g.st, defaultCompanyID, "Despensa 050", "g")
+	unit := unitID(t, g.st, "g")
+	in := g.mixto(g.primar, incluir(true), false, "380", "120")
+	in.Items[1] = app.ExpenseItemInput{ItemType: "ingrediente", IngredientID: &ing, UnitID: &unit, Description: "Despensa de la casa",
+		Quantity: dec("1000"), Amount: dec("120"), Excluded: true}
+	id, err := g.back.CreateExpense(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var item int64
+	if err := g.st.Pool.QueryRow(ctx, `select id from expense_items where expense_id = $1 and excluded`, id).Scan(&item); err != nil {
+		t.Fatal(err)
+	}
+	zero := dec("0")
+	_, err = g.back.SaveStockLines(ctx, id, []app.StockLineInput{{ID: &item, SeenApplied: &zero, ItemType: "ingrediente",
+		IngredientID: &ing, Description: "Despensa de la casa", Quantity: dec("1000"), UnitID: &unit, Amount: dec("50")}}, g.admin)
+	if !errors.Is(err, domain.ErrDrawerExtraTooHigh) {
+		t.Fatalf("bajar el excluido por debajo de lo usado: %v; quería DRAWER_EXTRA_TOO_HIGH", err)
+	}
+}
+
+// EL MONTO DE LA SALIDA LO PONE EL PAGO (R3): un INSERT que manda otro monto queda en importe +
+// diferencia; sin diferencia, en el importe.
+func TestLaSalidaDeUnPagoLaFijaLaBase(t *testing.T) {
+	t.Parallel()
+	g := nuevoArqueoPorHora(t)
+	ctx := context.Background()
+	sess := g.turno(t, g.primar, time.Now().Add(-time.Hour))
+	for _, c := range []struct{ extra, want string }{{"0", "380.00"}, {"120", "500.00"}} {
+		id, err := g.back.CreateExpense(ctx, g.mixto(g.primar, incluir(true), false, "380", c.extra))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pay := g.pago(t, id).id
+		if _, err := g.st.Pool.Exec(ctx, `delete from register_cash_movements where expense_payment_id = $1`, pay); err != nil {
+			t.Fatal(err)
+		}
+		var amount string
+		if err := g.st.Pool.QueryRow(ctx, `insert into register_cash_movements (session_id, kind, amount, concept, user_id, expense_payment_id)
+			values ($1, 'salida', 9999, 'a mano', $2, $3) returning amount::text`, sess, g.admin, pay).Scan(&amount); err != nil {
+			t.Fatal(err)
+		}
+		if amount != c.want {
+			t.Fatalf("con diferencia %s la salida quedó en %s; quería %s: el monto del INSERT no manda", c.extra, amount, c.want)
+		}
+	}
+}
