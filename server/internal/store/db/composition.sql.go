@@ -615,3 +615,16 @@ func (q *Queries) SetProductComposition(ctx context.Context, arg SetProductCompo
 	}
 	return result.RowsAffected(), nil
 }
+
+const tryLockCompositionEdits = `-- name: TryLockCompositionEdits :one
+select pg_try_advisory_xact_lock(28028, coalesce(nullif(current_setting('app.company_id', true), '')::int, 0))::bool as locked
+`
+
+// El mismo candado sin esperar, para quien llega al recálculo de costos con filas ya tomadas (una
+// compra): esperarlo con ellas en la mano cruza los candados con una captura que las necesita.
+func (q *Queries) TryLockCompositionEdits(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, tryLockCompositionEdits)
+	var locked bool
+	err := row.Scan(&locked)
+	return locked, err
+}

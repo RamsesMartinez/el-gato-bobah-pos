@@ -368,6 +368,28 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Un insumo preparado se captura en Almacén → Insumos** (qué lleva y cuánto rinde, en su unidad
     base). Los ciclos se rechazan con `StockGraph.ValidatePrepIngredient` contra todo el catálogo,
     en la captura **y** en la carga de FUDO: una sola regla para los dos caminos.
+- **El costo vigente (`current_cost` de insumos preparados, productos y extras) es un caché que
+  escribe solo el motor** (`recomputeCosts`, con la regla de `domain.CostGraph`). Lo que no se ve
+  (issue #145):
+  - **Todo camino que cambie algo de lo que sale un costo lo llama dentro de su transacción**: una
+    compra, guardar o confirmar una receta (producto, extra o preparado), corregir el costo de un
+    insumo y cambiar su unidad. Antes guardar la receta de un extra no lo hacía, y el extra se
+    quedaba en $0 o con el costo de su receta anterior: el margen salía mal sin que nada fallara.
+  - **Necesita el candado de captura de la empresa** (`LockCompositionEdits`), y **siempre antes
+    que cualquier fila**: dos correcciones a la vez escribían cada una su cálculo sin el cambio de la
+    otra. Quien no tiene filas tomadas lo pide al empezar su transacción (receta, confirmar, corregir
+    costo, cambiar unidad). Quien llega con filas tomadas (la compra, con el almacén del insumo) solo
+    lo intenta (`TryLockCompositionEdits`) y responde «vuelve a intentar»: esperarlo con filas en la
+    mano se cruzaba con una captura de receta y Postgres abortaba una con `deadlock detected`. Lo
+    cubren `TestTwoConcurrentCostCorrectionsDoNotOverwriteEachOther`,
+    `TestCorrectingACostWhileARecipeIsSavedDoesNotDeadlock` y
+    `TestAPurchaseDoesNotWaitForTheCompositionLockHoldingStock`.
+  - **Un costo que no cabe en su columna se deja como estaba** (`domain.StorableCost`, log
+    `cost_out_of_range`): con el recálculo en cada guardado, una sola receta absurda dejaba a toda la
+    empresa sin poder guardar recetas.
+  - **La API recalcula todas las empresas activas al arrancar**, en segundo plano, y solo escribe lo
+    que cambió (así no sube la versión del catálogo en balde). Lo que deje un script se corrige en
+    la siguiente subida. Las ventas pasadas no cambian: `order_lines.unit_cost` es copia.
 - **Un cambio de catálogo por SQL directo ya NO necesita borrar el menú guardado** (spec 034).
   Diez tablas —las que lee el menú del POS: `products`, `categories`, `modifier_groups`,
   `modifier_options`, `product_modifier_groups`, `product_channels`, `channels`,

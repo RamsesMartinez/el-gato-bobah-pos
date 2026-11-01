@@ -86,3 +86,34 @@ func TestCostingCycleGuard(t *testing.T) {
 	g := NewCostGraph(ings, recipes, nil, nil, nil)
 	_ = g.IngredientCost(1) // debe terminar sin deadlock/stack overflow
 }
+
+// Un costo que no cabe en su columna tumbaba el recálculo entero, y con él cualquier captura de
+// receta de la empresa (issue #145). NaN e Inf hacían panic al convertirlos a decimal.
+func TestStorableCost(t *testing.T) {
+	cases := []struct {
+		name  string
+		x     float64
+		limit float64
+		want  string
+		ok    bool
+	}{
+		{"redondea a 4 decimales", 2.123456, MaxProductCost, "2.1235", true},
+		{"cero", 0, MaxProductCost, "0", true},
+		{"justo debajo del tope", 99999999.9999, MaxProductCost, "99999999.9999", true},
+		{"redondear lo lleva al tope", 99999999.99996, MaxProductCost, "", false},
+		{"no cabe en un producto", 1.8e9, MaxProductCost, "", false},
+		{"cabe en un producto pero no en un insumo", 2e6, MaxIngredientCost, "", false},
+		{"insumo dentro del tope", 90000.01, MaxIngredientCost, "90000.01", true},
+		{"NaN", math.NaN(), MaxProductCost, "", false},
+		{"infinito", math.Inf(1), MaxProductCost, "", false},
+		{"negativo enorme", -1.8e9, MaxProductCost, "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, ok := StorableCost(c.x, c.limit)
+			if ok != c.ok || (ok && got.String() != c.want) {
+				t.Fatalf("StorableCost(%v) = %s, %v; quiere %s, %v", c.x, got, ok, c.want, c.ok)
+			}
+		})
+	}
+}

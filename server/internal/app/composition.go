@@ -387,7 +387,10 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 		if err == nil && change != nil {
 			err = change.record(ctx, q, id, actor)
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		return recomputeCosts(ctx, q)
 	})
 }
 
@@ -706,25 +709,33 @@ func validateComposition(ctx context.Context, q *db.Queries, kind CompositionKin
 	return names, nil
 }
 
-// ConfirmComposition marca como confirmada una composición estimada, con quién y cuándo.
+// ConfirmComposition marca como confirmada una composición estimada, con quién y cuándo. Recalcula
+// el costo: lo confirmado no debe traer el costo de cuando se cargó como estimado.
 func (s *AdminService) ConfirmComposition(ctx context.Context, kind CompositionKind, id, actor int64) error {
-	q := s.store.QC(ctx)
-	var n int64
-	var err error
-	switch kind {
-	case CompositionOfProduct:
-		n, err = q.ConfirmProductComposition(ctx, db.ConfirmProductCompositionParams{ID: id, CompositionConfirmedBy: &actor})
-	case CompositionOfOption:
-		n, err = q.ConfirmOptionComposition(ctx, db.ConfirmOptionCompositionParams{ID: id, CompositionConfirmedBy: &actor})
-	case CompositionOfIngredient:
-		n, err = q.ConfirmIngredientComposition(ctx, db.ConfirmIngredientCompositionParams{ID: id, CompositionConfirmedBy: &actor})
-	default:
-		return domain.ErrValidation
-	}
-	if err == nil && n == 0 {
-		return fmt.Errorf("%w: no hay una composición estimada que confirmar", domain.ErrConflict)
-	}
-	return err
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := q.LockCompositionEdits(ctx); err != nil {
+			return err
+		}
+		var n int64
+		var err error
+		switch kind {
+		case CompositionOfProduct:
+			n, err = q.ConfirmProductComposition(ctx, db.ConfirmProductCompositionParams{ID: id, CompositionConfirmedBy: &actor})
+		case CompositionOfOption:
+			n, err = q.ConfirmOptionComposition(ctx, db.ConfirmOptionCompositionParams{ID: id, CompositionConfirmedBy: &actor})
+		case CompositionOfIngredient:
+			n, err = q.ConfirmIngredientComposition(ctx, db.ConfirmIngredientCompositionParams{ID: id, CompositionConfirmedBy: &actor})
+		default:
+			return domain.ErrValidation
+		}
+		if err == nil && n == 0 {
+			return fmt.Errorf("%w: no hay una composición estimada que confirmar", domain.ErrConflict)
+		}
+		if err != nil {
+			return err
+		}
+		return recomputeCosts(ctx, q)
+	})
 }
 
 // savePreparedIngredient guarda un insumo que se prepara en el local: qué insumos lleva y cuánto
@@ -795,7 +806,10 @@ func (s *AdminService) savePreparedIngredient(ctx context.Context, id int64, req
 		if err == nil && n == 0 {
 			return domain.ErrNotFound
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		return recomputeCosts(ctx, q)
 	})
 }
 
