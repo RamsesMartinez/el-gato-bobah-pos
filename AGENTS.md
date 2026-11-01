@@ -474,7 +474,8 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **El monto de la salida de caja de un pago lo pone la base**, no Go: un trigger en
     `register_cash_movements` lo fija en `amount + drawer_extra` del pago, sea cual sea el monto
     que mande el INSERT. Un camino nuevo que registre la salida de un pago no suma nada.
-  - **El tope es por gasto** (lo excluido vivo menos lo que otros pagos ya usaron) y se valida con
+  - **El tope es por gasto** (lo excluido vivo, y si el ticket traía total, tampoco más de
+    `document_total − amount`; menos lo que otros pagos ya usaron) y se valida con
     el gasto tomado (`LockExpenseForStock`). Volver a incluir un renglón, o corregir renglones, que
     dejaría lo excluido por debajo de lo usado responde 400 `DRAWER_EXTRA_TOO_HIGH`.
   - **El corte la presenta en «No es del negocio», no en «Gastos»** (`ListCashMovements` trae
