@@ -451,3 +451,18 @@ func TestCashAttendanceErrorsHaveTheirOwnCode(t *testing.T) {
 		}
 	}
 }
+
+// Pasar la venta con una caja abierta es el estado del negocio, no un dato mal escrito: la pantalla
+// lo distingue por el código para decir «cierra las dos cajas primero».
+func TestMovingSalesWithAnOpenRegisterHasItsOwnCode(t *testing.T) {
+	w := httptest.NewRecorder()
+	Error(w, domain.ErrRegistersMustBeClosed)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), `"code":"REGISTERS_MUST_BE_CLOSED"`) {
+		t.Fatalf("→ %d %s; quería 409 REGISTERS_MUST_BE_CLOSED", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	Error(w, domain.ErrOtherBranch)
+	if w.Code != 400 {
+		t.Fatalf("otra sucursal → %d; quería 400", w.Code)
+	}
+}

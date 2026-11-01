@@ -148,6 +148,17 @@ func TestPlanStockLines(t *testing.T) {
 			map[int64]string{1: "600"}, false},
 		{"llegó de más: suma lo que llegó", []StockLineState{{ID: 1, IngredientID: 7, Unit: gram, Ordered: d("1000"), Received: d("1200")}},
 			map[int64]string{1: "1200"}, false},
+		// Excluidos (spec 049): no son del negocio, así que su objetivo es cero.
+		{"un excluido que llegó no suma", []StockLineState{{ID: 1, IngredientID: 7, Unit: gram, Ordered: d("1000"), Received: d("1000"), Excluded: true}},
+			map[int64]string{}, true},
+		{"un excluido que no ha llegado no deja la compra pendiente",
+			[]StockLineState{
+				{ID: 1, IngredientID: 7, Unit: gram, Ordered: d("1000"), Received: d("1000")},
+				{ID: 2, IngredientID: 8, Unit: gram, Ordered: d("500"), Excluded: true},
+			},
+			map[int64]string{1: "1000"}, false},
+		{"excluir uno que ya entró lo saca con corrección", []StockLineState{{ID: 1, IngredientID: 7, Unit: gram, Ordered: d("1000"), Received: d("1000"), Applied: d("1000"), Excluded: true}},
+			map[int64]string{1: "-1000"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -196,5 +207,18 @@ func TestValidLineUnitCost(t *testing.T) {
 		if ValidLineUnitCost(decimal.RequireFromString(c)) != ok {
 			t.Errorf("%s: quiere %v", c, ok)
 		}
+	}
+}
+
+// Un gasto cuyos renglones de almacén son todos excluidos no tiene mercancía que esperar; queda
+// pendiente igual que uno sin renglones (R0): nunca «recibido» por algo que no entró.
+func TestPlanStockLinesAllExcludedIsLikeNoGoods(t *testing.T) {
+	gram := PurchaseUnit{Kind: "masa", ToBase: decimal.NewFromInt(1), BaseKind: "masa"}
+	_, pending, err := PlanStockLines([]StockLineState{{ID: 1, IngredientID: 7, Unit: gram, Ordered: decimal.NewFromInt(5), Received: decimal.NewFromInt(5), Excluded: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pending {
+		t.Fatal("una compra con todo excluido quedó recibida: nada entró al almacén")
 	}
 }

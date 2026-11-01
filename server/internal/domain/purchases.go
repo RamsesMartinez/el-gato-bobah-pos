@@ -144,6 +144,8 @@ type StockLineState struct {
 	Received     decimal.Decimal
 	NotComing    decimal.Decimal
 	Applied      decimal.Decimal
+	// Excluded: venía en el ticket pero no es del negocio (spec 049). Su objetivo es cero.
+	Excluded bool
 }
 
 // StockLineMove es lo que hay que sumar (o restar) a un renglón para que lo aplicado sea lo que
@@ -158,9 +160,16 @@ type StockLineMove struct {
 // PlanStockLines compara lo que llegó contra lo ya sumado y devuelve solo las diferencias, en
 // orden de insumo: dos escrituras que tocan los mismos insumos los toman en el mismo orden y no se
 // esperan en ciclo. `pending` dice si algo sigue por llegar; sin renglones también es pendiente,
-// porque un gasto sin mercancía nunca queda «recibido» (R0).
+// porque un gasto sin mercancía nunca queda «recibido» (R0). Un excluido no espera nada y debe
+// haber sumado cero: si ya entró, sale con su corrección; si todos lo son, es como no tener renglones.
 func PlanStockLines(lines []StockLineState) (moves []StockLineMove, pending bool, err error) {
-	pending = len(lines) == 0
+	pending = true
+	for _, l := range lines {
+		if !l.Excluded {
+			pending = false
+			break
+		}
+	}
 	for _, l := range lines {
 		base := func(q decimal.Decimal) (decimal.Decimal, error) {
 			if !q.IsPositive() {
@@ -176,7 +185,9 @@ func PlanStockLines(lines []StockLineState) (moves []StockLineMove, pending bool
 		if err != nil {
 			return nil, false, err
 		}
-		if l.Ordered.Sub(l.Received).Sub(l.NotComing).IsPositive() {
+		if l.Excluded {
+			received = decimal.Zero
+		} else if l.Ordered.Sub(l.Received).Sub(l.NotComing).IsPositive() {
 			pending = true
 		}
 		delta := Round4(received.Sub(l.Applied))

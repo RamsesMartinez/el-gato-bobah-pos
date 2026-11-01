@@ -99,7 +99,17 @@ var auditActions = []struct {
 	{AuditPresentationRetired, AuditGroupPrice},
 	// Un aviso del conteo (spec 042): con lo dado por perdido, como el conteo.
 	{AuditCountConfirmAsked, AuditGroupCancel},
+	// Renglones excluidos y caja que vende (spec 049): con los demás gastos y cajas.
+	{AuditExpenseItemExcluded, AuditGroupCash},
+	{AuditCashSellingRegisterChanged, AuditGroupCash},
 }
+
+const (
+	// AuditExpenseItemExcluded: un renglón de compra se excluyó o se volvió a incluir.
+	AuditExpenseItemExcluded AuditAction = "expense.item_excluded"
+	// AuditCashSellingRegisterChanged: la venta pasó a otra caja.
+	AuditCashSellingRegisterChanged AuditAction = "cash.selling_register_changed"
+)
 
 const (
 	// AuditIngredientCreated: se dio de alta un artículo del almacén.

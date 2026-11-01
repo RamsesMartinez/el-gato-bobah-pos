@@ -156,6 +156,9 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "REGISTER_HAS_OPEN_SHIFT"
 	case errors.Is(err, domain.ErrPrimaryRegisterCounts):
 		status, code = http.StatusConflict, "PRIMARY_REGISTER_COUNTS"
+	// Pasar la venta (spec 049): antes de ErrConflict, que lo envuelve.
+	case errors.Is(err, domain.ErrRegistersMustBeClosed):
+		status, code = http.StatusConflict, "REGISTERS_MUST_BE_CLOSED"
 	// Una sola puerta para cobrar (spec 030). Todos ANTES de ErrConflict, que los envuelve: la
 	// pantalla decide por el código qué ofrecer — recargar la cuenta, empezar una nueva, o nada.
 	case errors.Is(err, domain.ErrDraftChanged):
