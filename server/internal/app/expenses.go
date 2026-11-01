@@ -665,7 +665,7 @@ func (s *BackofficeService) PendingExpenses(ctx context.Context, registerID int6
 // SetPaymentInCount cambia la casilla «Incluir en el arqueo» de un pago en efectivo ya registrado
 // (spec 048, US4). El permiso lo revisa la ruta.
 //
-// Los candados van en el orden de la apertura y el cierre —caja, turno, pago— para no cruzarse con
+// Los candados van en el orden de la apertura y el cierre —caja, turno, gasto, pago— para no cruzarse con
 // ellos: el barrido toma los pagos después de tener la caja o el turno, y si aquí se tomara el pago
 // primero, los dos se esperarían mutuamente.
 func (s *BackofficeService) SetPaymentInCount(ctx context.Context, expenseID, paymentID int64, include bool, userID int64) error {
@@ -678,9 +678,6 @@ func (s *BackofficeService) SetPaymentInCount(ctx context.Context, expenseID, pa
 	}
 	if !info.AffectsCashDrawer || info.RegisterID == nil {
 		return fmt.Errorf("%w: solo un pago en efectivo de una caja entra al arqueo", domain.ErrValidation)
-	}
-	if info.ExpenseStatus == db.ExpenseStatusCancelada {
-		return domain.ErrConflict
 	}
 	registerID := *info.RegisterID
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
@@ -708,6 +705,14 @@ func (s *BackofficeService) SetPaymentInCount(ctx context.Context, expenseID, pa
 				}
 			}
 		}
+		// El gasto bajo candado: una cancelación a la vez termina antes y aquí se ve cancelado.
+		exp, err := q.LockExpenseForStock(ctx, expenseID)
+		if err != nil {
+			return err
+		}
+		if exp.Status == db.ExpenseStatusCancelada {
+			return domain.ErrConflict
+		}
 		p, err := q.GetExpensePaymentForUpdate(ctx, db.GetExpensePaymentForUpdateParams{ID: paymentID, ExpenseID: expenseID})
 		if err != nil {
 			return err
@@ -728,7 +733,7 @@ func (s *BackofficeService) SetPaymentInCount(ctx context.Context, expenseID, pa
 				return err
 			}
 			if n != 1 {
-				return fmt.Errorf("%w: la salida de caja de este pago no está ligada a él", domain.ErrConflict)
+				return domain.ErrPaymentNotLinked
 			}
 		case include:
 			target, err := domain.ExpensePaymentTarget(true, reg, p.PaidOn.Time, p.PaidAt,
