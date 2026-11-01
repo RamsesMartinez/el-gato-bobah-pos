@@ -146,6 +146,16 @@ func Error(w http.ResponseWriter, err error) {
 		// negocio. El front lo necesita distinguible para bloquear la pantalla de venta y mandar a
 		// abrir turno, en vez de mostrar un mensaje que el operador no puede accionar desde ahí.
 		status, code = http.StatusConflict, "NO_OPEN_REGISTER"
+	// Gastos y cajas sin turno (spec 047). Antes de ErrConflict, que los envuelve: la pantalla del
+	// gasto pregunta con el primero, y la de cajas dice qué hacer con los otros tres.
+	case errors.Is(err, domain.ErrExpenseOutsideCount):
+		status, code = http.StatusConflict, "EXPENSE_OUTSIDE_COUNT"
+	case errors.Is(err, domain.ErrRegisterNotCounted):
+		status, code = http.StatusConflict, "REGISTER_NOT_COUNTED"
+	case errors.Is(err, domain.ErrRegisterHasOpenShift):
+		status, code = http.StatusConflict, "REGISTER_HAS_OPEN_SHIFT"
+	case errors.Is(err, domain.ErrPrimaryRegisterCounts):
+		status, code = http.StatusConflict, "PRIMARY_REGISTER_COUNTS"
 	// Una sola puerta para cobrar (spec 030). Todos ANTES de ErrConflict, que los envuelve: la
 	// pantalla decide por el código qué ofrecer — recargar la cuenta, empezar una nueva, o nada.
 	case errors.Is(err, domain.ErrDraftChanged):

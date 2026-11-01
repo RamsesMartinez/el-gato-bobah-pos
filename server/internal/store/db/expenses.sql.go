@@ -179,8 +179,8 @@ func (q *Queries) CreateExpenseItem(ctx context.Context, arg CreateExpenseItemPa
 const createExpensePayment = `-- name: CreateExpensePayment :one
 
 insert into expense_payments (
-  expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by
-) values ($1,$2,$3,$4,$5,$6,$7)
+  expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by, register_id
+) values ($1,$2,$3,$4,$5,$6,$7,$8)
 returning id
 `
 
@@ -192,6 +192,7 @@ type CreateExpensePaymentParams struct {
 	RegisterSessionID *int64          `json:"register_session_id"`
 	Reference         *string         `json:"reference"`
 	PaidBy            int64           `json:"paid_by"`
+	RegisterID        *int64          `json:"register_id"`
 }
 
 // ==== Pagos del gasto ====
@@ -204,6 +205,7 @@ func (q *Queries) CreateExpensePayment(ctx context.Context, arg CreateExpensePay
 		arg.RegisterSessionID,
 		arg.Reference,
 		arg.PaidBy,
+		arg.RegisterID,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -629,7 +631,7 @@ func (q *Queries) ListExpenseItems(ctx context.Context, expenseID int64) ([]List
 
 const listExpensePayments = `-- name: ListExpensePayments :many
 select ep.id, ep.payment_method_id, pm.name as method, pm.affects_cash_drawer,
-       ep.amount, ep.paid_on, ep.register_session_id, ep.reference, ep.created_at
+       ep.amount, ep.paid_on, ep.register_session_id, ep.register_id, ep.reference, ep.created_at
 from expense_payments ep
 join payment_methods pm on pm.id = ep.payment_method_id
 where ep.expense_id = $1
@@ -644,6 +646,7 @@ type ListExpensePaymentsRow struct {
 	Amount            decimal.Decimal `json:"amount"`
 	PaidOn            pgtype.Date     `json:"paid_on"`
 	RegisterSessionID *int64          `json:"register_session_id"`
+	RegisterID        *int64          `json:"register_id"`
 	Reference         *string         `json:"reference"`
 	CreatedAt         time.Time       `json:"created_at"`
 }
@@ -665,6 +668,7 @@ func (q *Queries) ListExpensePayments(ctx context.Context, expenseID int64) ([]L
 			&i.Amount,
 			&i.PaidOn,
 			&i.RegisterSessionID,
+			&i.RegisterID,
 			&i.Reference,
 			&i.CreatedAt,
 		); err != nil {

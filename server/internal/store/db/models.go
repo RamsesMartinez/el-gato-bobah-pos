@@ -940,6 +940,7 @@ type CashRegister struct {
 	CompanyID  int64            `json:"company_id"`
 	BranchID   int64            `json:"branch_id"`
 	FixedFloat *decimal.Decimal `json:"fixed_float"`
+	CountsCash bool             `json:"counts_cash"`
 }
 
 type CashTransfer struct {
@@ -1111,6 +1112,7 @@ type ExpensePayment struct {
 	PaidBy            int64           `json:"paid_by"`
 	CreatedAt         time.Time       `json:"created_at"`
 	CompanyID         int64           `json:"company_id"`
+	RegisterID        *int64          `json:"register_id"`
 }
 
 type FolioConsumido struct {

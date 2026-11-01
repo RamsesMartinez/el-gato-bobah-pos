@@ -271,7 +271,7 @@ func (s *BackofficeService) SaveStockLines(ctx context.Context, expenseID int64,
 	if len(lines) > maxExpenseItems {
 		return ExpenseDetailView{}, domain.ErrValidation
 	}
-	today, err := s.parseDayOrToday("")
+	today, err := s.parseDayOrToday(ctx, "")
 	if err != nil {
 		return ExpenseDetailView{}, err
 	}
