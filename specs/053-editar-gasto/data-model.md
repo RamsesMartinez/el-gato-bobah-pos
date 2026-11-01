@@ -82,11 +82,12 @@ devuelve el `count_id` del más reciente.
 - `CountDecision` (`adjust`/`keep`) y `MoneyDecision` (`pay`/`leave`) con `Parse…` que rechaza lo
   desconocido (constitución V: nunca cae a un default).
 - `ValidDeliveryDate(day, expenseDate, today time.Time) error` — FR-015.
-- `EditNeedsReceive(in EditInput) bool` — R8.
+- `PaymentFitsDue(pay, amount, paid decimal) error` — FR-032.
 - `PreviewFingerprint(p EditPreview) string` — R2 (sha256 del JSON canónico).
 - `PlanDeliveryReversal(days []DeliveryDay) []DeliveryDay` — R7: netea los días negativos contra los
   positivos más recientes y devuelve solo cantidades a restar, que suman `−aplicado`.
-- `CanCancelExpense(status string, hasPayments bool) bool` — revisión A1.
+- `CanCancelExpense(status string, hasPaymentsInCount bool) bool` — revisión A1: un pago ya dentro de
+  un corte impide anular.
 - `CountPosteriorCutoff(registeredAt time.Time, day time.Time, loc *time.Location) time.Time` — R5:
   `least(R, fin del día D en la zona)`.
 
