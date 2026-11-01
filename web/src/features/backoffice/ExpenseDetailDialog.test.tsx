@@ -373,3 +373,22 @@ describe('Editar un gasto guardado (spec 053)', () => {
     expect(await screen.findByDisplayValue('12.50')).toBeInTheDocument();
   });
 });
+
+// Revisión de tableta (spec 053): «Corregir lo que llegó» abría el teclado del sistema, que tapa el
+// pie con «Guardar» en la tableta. Ahora usa el teclado en pantalla, como la hoja de entrega.
+test('«Corregir lo que llegó» escribe la cantidad con el teclado en pantalla', async () => {
+  sesion(['inventory.receive']);
+  montar();
+  click(await screen.findByRole('button', { name: 'Corregir lo que llegó' }).then((b) => b.textContent!));
+  const row = await screen.findByTestId('renglon-recibido');
+  const input = within(row).getByLabelText('Cuántos llegaron');
+  expect(input).toHaveAttribute('inputmode', 'none');
+  fireEvent.click(input);
+  const pad = await screen.findByTestId('teclado');
+  expect(screen.queryByRole('button', { name: 'Guardar' })).toBeNull(); // el teclado ocupa el pie
+  fireEvent.click(within(pad).getByRole('button', { name: '2' }));
+  expect(input).toHaveValue('2');
+  expect(within(row).getByTestId('tendras')).toHaveTextContent('Tendrás 28 L (hoy 40 L)');
+  fireEvent.click(screen.getByRole('button', { name: 'Listo' }));
+  expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
+});
