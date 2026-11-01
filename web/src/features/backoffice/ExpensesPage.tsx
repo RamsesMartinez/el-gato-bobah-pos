@@ -20,6 +20,9 @@ import { DrawerOutField, IncludeInCountCheckbox, OutsideCountSheet } from './Exp
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { activeRegisters, registerLabel, outsideAskOf, countsInDrawer, drawerExtraOf, withCountChoice, type CountChoice, type OutsideAsk } from './cajaDelGasto';
 import { ExpenseDetailDialog } from './ExpenseDetailDialog';
+import { DeliveryForExpense } from './DeliverySheet';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
 import { posApi } from '../../api/pos';
 import { money } from '../../utils/format';
 import { Page } from '../../components/Page';
@@ -73,6 +76,8 @@ function GastosTab() {
   const [newOpen, setNewOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<Expense | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [receiveId, setReceiveId] = useState<number | null>(null);
+  const canReceive = can('inventory.receive', useSessionStore((st) => st.user));
   // El gasto que se está cancelando. El motivo se pide en una hoja de la app, no con el `prompt()`
   // del navegador (spec 030, caso 10).
   const [cancelando, setCancelando] = useState<Expense | null>(null);
@@ -143,7 +148,13 @@ function GastosTab() {
                     ) : e.receivedAt ? (
                       <Badge colorPalette="green">recibida {e.receivedAt}</Badge>
                     ) : (
-                      <Badge colorPalette="orange">{e.itemCount} por recibir</Badge>
+                      <HStack gap={2}>
+                        <Badge colorPalette="orange">{e.itemCount} por recibir</Badge>
+                        {/* Atajo de la spec 053: la hoja de entrega sin pasar por el detalle. */}
+                        {canReceive && e.status !== 'cancelada' && (
+                          <Button size="xs" minH="44px" px={3} variant="outline" onClick={() => setReceiveId(e.id)}>Recibir</Button>
+                        )}
+                      </HStack>
                     )}
                   </Table.Cell>
                   <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap">{money(e.amount, e.currency)}</Table.Cell>
@@ -196,6 +207,10 @@ function GastosTab() {
         }} />
       <PayDialog expense={payTarget} methods={methods?.items ?? []}
         onClose={() => setPayTarget(null)} onPaid={invalidate} />
+      {receiveId !== null && (
+        <DeliveryForExpense expenseId={receiveId} onClose={() => setReceiveId(null)}
+          onDone={() => { setReceiveId(null); invalidate(); void qc.invalidateQueries({ queryKey: ['stock'] }); }} />
+      )}
     </VStack>
   );
 }
@@ -203,15 +218,17 @@ function GastosTab() {
 // PayDialog agrega UN pago al gasto. Si con él los pagos cubren el importe, el gasto pasa a
 // pagado; si no, queda pendiente con un abono registrado (así el pago partido no necesita un
 // estado "parcial" aparte).
-export function PayDialog({ expense, methods, onClose, onPaid }: {
+export function PayDialog({ expense, methods, onClose, onPaid, defaultAmount }: {
   expense: Expense | null;
   methods: Array<{ id: number; name: string; affectsCashDrawer?: boolean }>;
   onClose: () => void;
   onPaid: () => void;
+  // Lo que falta pagar después de editar el gasto (spec 053): el pago nuevo sale por el saldo.
+  defaultAmount?: string;
 }) {
   const [methodId, setMethodId] = useState('');
   const [registerId, setRegisterId] = useState('');
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(defaultAmount ?? '');
   const hora = useHoraDelNegocio();
   const [paidOn, setPaidOn] = useState(() => hora.diaDelNegocio(new Date()));
   const { data: registers } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });

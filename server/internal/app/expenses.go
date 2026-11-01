@@ -107,6 +107,9 @@ type ExpenseDetailView struct {
 	Paid decimal.Decimal `json:"paid"`
 	// DocumentTotal: el total impreso en el documento leído; null si no hubo (spec 049).
 	DocumentTotal *decimal.Decimal `json:"documentTotal"`
+	// SupplierID y CategoryID: lo que preselecciona la edición del encabezado (spec 053).
+	SupplierID *int64 `json:"supplierId"`
+	CategoryID int64  `json:"categoryId"`
 }
 
 // ---- Entradas ----
@@ -1159,6 +1162,7 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 	}
 	out.Paid = paid
 	out.DocumentTotal = exp.DocumentTotal
+	out.SupplierID, out.CategoryID = exp.SupplierID, exp.CategoryID
 	history, err := s.store.QC(ctx).ExpenseDeliveryHistory(ctx, &id)
 	if err != nil {
 		return out, err

@@ -52,7 +52,8 @@ select * from expenses where id = $1;
 -- detalle. GetExpense devuelve la fila cruda y la usa el servicio para decidir transiciones.
 select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.financial_group,
        s.name as supplier, e.amount, e.currency, e.description, e.doc_kind, e.doc_folio,
-       e.paid_at, ub.name as created_by_name, e.document_date, e.document_total
+       e.paid_at, ub.name as created_by_name, e.document_date, e.document_total,
+       e.supplier_id, e.category_id
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
