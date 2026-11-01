@@ -22,8 +22,9 @@ interface Props {
   currency: string;
   etiquetaConfirmar: string;
   guardando: boolean;
-  // openedAt solo llega cuando se decidió abrir desde la hora del primer gasto sin corte.
-  onConfirmar: (r: ResultadoDelConteo, openedAt?: string) => void;
+  // excludePending llega en true solo si quien tiene el permiso decidió dejar fuera los gastos sin
+  // corte; sin él, el servidor los incluye solo, abriendo desde la hora del primero.
+  onConfirmar: (r: ResultadoDelConteo, excludePending?: boolean) => void;
   // Solo en la apertura (spec 048, R11): los gastos sin corte de la caja. El cierre no los pasa.
   pendingExpenses?: PendingExpense[];
   canIncludePending?: boolean;
@@ -49,10 +50,10 @@ export function ContadorDeEfectivo({
   isOpen, onClose, titulo, currency, etiquetaConfirmar, guardando, onConfirmar,
   pendingExpenses = [], canIncludePending = false,
 }: Props) {
-  const [includePending, setIncludePending] = useState(false);
+  const [includePending, setIncludePending] = useState(true);
   const firstPending = pendingExpenses.reduce<string | undefined>(
     (min, p) => (min === undefined || Date.parse(p.paidAt) < Date.parse(min) ? p.paidAt : min), undefined);
-  const openedAt = canIncludePending && includePending ? firstPending : undefined;
+  const excludePending = canIncludePending && pendingExpenses.length > 0 && !includePending;
   const { data, isLoading } = useQuery({
     queryKey: ['cash', 'denominations', currency],
     queryFn: () => backofficeApi.cashDenominations(currency),
@@ -86,7 +87,7 @@ export function ContadorDeEfectivo({
     setTotalAMano('');
     setMotivo('');
     setPendiente(null);
-    setIncludePending(false);
+    setIncludePending(true);
   };
 
   const pedirCamino = (c: Camino) => {
@@ -126,7 +127,7 @@ export function ContadorDeEfectivo({
     const r: ResultadoDelConteo = camino === 'contar'
       ? { counts: conteo.renglones, total: conteo.total }
       : { total: totalManual ?? 0, manualReason: motivo.trim() };
-    if (openedAt) onConfirmar(r, openedAt);
+    if (excludePending) onConfirmar(r, true);
     else onConfirmar(r);
   };
 
@@ -241,7 +242,8 @@ export function ContadorDeEfectivo({
 }
 
 // PendingExpensesLine es una sola línea sobre el pie: cuántos gastos salieron con la caja cerrada y
-// cuánto suman. El detalle se despliega al tocarla; incluirlos mueve la hora de apertura al primero.
+// cuánto suman. El detalle se despliega al tocarla. Entran solos al corte; solo quien puede ajustar
+// el arqueo los puede dejar fuera.
 function PendingExpensesLine({ items, currency, first, canInclude, include, onInclude }: {
   items: PendingExpense[];
   currency: string;
@@ -261,10 +263,12 @@ function PendingExpensesLine({ items, currency, first, canInclude, include, onIn
           {open ? <LuChevronDown /> : <LuChevronRight />}
           {items.length === 1 ? '1 gasto sin corte' : `${items.length} gastos sin corte`} · {money(sum, currency)}
         </Button>
-        {canInclude && (
+        {canInclude ? (
           <Switch minH="44px" checked={include} onCheckedChange={(e) => onInclude(e.checked)}>
             Incluirlos (desde las {hora.soloHora(first)})
           </Switch>
+        ) : (
+          <Text fontSize="sm" color="fg.muted">Se incluyen en este corte</Text>
         )}
       </HStack>
       {open && (

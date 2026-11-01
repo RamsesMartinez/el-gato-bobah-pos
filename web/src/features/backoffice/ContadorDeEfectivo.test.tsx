@@ -230,11 +230,12 @@ describe('gastos sin corte en la apertura', () => {
     expect(screen.getByText(/Hielo$/)).toBeInTheDocument();
   });
 
-  test('sin el permiso no se ofrece incluirlos y se abre sin hora', async () => {
+  test('sin el permiso dice que se incluyen, sin interruptor, y abre sin excluir', async () => {
     const onConfirmar = apertura(false);
     const u = userEvent.setup();
     await waitFor(() => expect(screen.getByLabelText('Piezas de $50')).toBeInTheDocument());
     expect(linea()).not.toBeNull();
+    expect(screen.getByText('Se incluyen en este corte')).toBeInTheDocument();
     expect(interruptor()).toBeNull();
     await u.type(screen.getByLabelText('Piezas de $50'), '1');
     await u.click(screen.getByText('Abrir caja'));
@@ -242,17 +243,27 @@ describe('gastos sin corte en la apertura', () => {
     expect(onConfirmar.mock.calls[0][1]).toBeUndefined();
   });
 
-  test('con el permiso, el interruptor va apagado; encendido abre desde la hora del primero', async () => {
+  test('con el permiso, el interruptor va encendido y abre sin excluir', async () => {
     const onConfirmar = apertura(true);
     const u = userEvent.setup();
     await waitFor(() => expect(screen.getByLabelText('Piezas de $50')).toBeInTheDocument());
     // 14:05 UTC son las 08:05 en la Ciudad de México.
     expect(interruptor()).toHaveAccessibleName(/08:05/);
-    expect(interruptor()).not.toBeChecked();
+    expect(interruptor()).toBeChecked();
+    expect(screen.queryByText('Se incluyen en este corte')).toBeNull();
+    await u.type(screen.getByLabelText('Piezas de $50'), '1');
+    await u.click(screen.getByText('Abrir caja'));
+    expect(onConfirmar.mock.calls[0][1]).toBeUndefined();
+  });
+
+  test('con el permiso, apagarlo manda excludePending', async () => {
+    const onConfirmar = apertura(true);
+    const u = userEvent.setup();
+    await waitFor(() => expect(screen.getByLabelText('Piezas de $50')).toBeInTheDocument());
     await u.click(interruptor()!);
     await u.type(screen.getByLabelText('Piezas de $50'), '1');
     await u.click(screen.getByText('Abrir caja'));
-    expect(onConfirmar).toHaveBeenCalledWith(expect.anything(), '2026-11-01T14:05:00Z');
+    expect(onConfirmar).toHaveBeenCalledWith(expect.anything(), true);
   });
 
   test('en el cierre no aparece: sin la prop no hay línea', async () => {

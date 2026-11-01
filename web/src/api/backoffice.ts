@@ -154,6 +154,9 @@ export type AperturaInput = (
   // Spec 048: abrir desde una hora anterior para que el corte cubra los gastos sin corte. Exige
   // `cash.adjust_count`; RFC3339.
   openedAt?: string;
+  // Spec 048: por omisión el servidor incluye los gastos sin corte; esto los deja fuera. Exige
+  // `cash.adjust_count`.
+  excludePending?: boolean;
 };
 
 // Un pago en efectivo que salió con la caja cerrada y espera al corte que cubra su hora (spec 048).

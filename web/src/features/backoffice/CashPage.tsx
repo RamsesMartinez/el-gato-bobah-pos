@@ -1225,7 +1225,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           // Contar el cajón se mide aquí, donde de verdad ocurre, y no en el onSuccess de la
           // mutación: el de abrir mide «abrir-turno», que es otro hecho.
           pendingExpenses={pendingExpenses?.items ?? []} canIncludePending={can('cash.adjust_count', user)}
-          onConfirmar={(r, openedAt) => { medirAccion('caja', 'contar-efectivo'); openMut.mutate({ ...aperturaDelConteo(r), openedAt }); }} />
+          onConfirmar={(r, excludePending) => { medirAccion('caja', 'contar-efectivo'); openMut.mutate({ ...aperturaDelConteo(r), excludePending }); }} />
       )}
 
       {session && (
