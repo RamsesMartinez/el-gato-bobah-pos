@@ -88,10 +88,15 @@ describe('la tarjeta de caja cerrada', () => {
 });
 
 describe('el cierre', () => {
-  // Al mediodía del negocio: «hace dos horas» con el reloj real cae en el día anterior entre las 00:00
-  // y las 02:00, y el aviso dice «desde el …» en vez de «desde las …». La prueba fallaba de noche.
-  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-31T18:00:00Z')); });
+  // Una hora fija del negocio: «hace dos horas» corrido entre la medianoche y las 2 a.m. cae en el día
+  // anterior, y el aviso dice la fecha («desde el 31 oct…») en lugar de solo la hora. Solo el reloj:
+  // las consultas y los efectos siguen con temporizadores reales.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-30T13:00:00-06:00'));
+  });
   afterEach(() => { vi.useRealTimers(); });
+
   const BLOQUE = 'bloque del cierre (tabla, terminales, fondo, notas y «Cerrar caja»)';
   type Extra = Partial<{ autorizacion: string | null; onAutorizar: (r: string) => void; onQuitarAutorizacion: () => void; onActualizar: () => void }>;
   // Como en CashPage: el aviso arriba de la caja abierta y el bloque del cierre más abajo.
