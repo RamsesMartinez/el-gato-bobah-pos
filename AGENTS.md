@@ -422,6 +422,13 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   detalle de cada pedido (`raw_body`, `raw_detail`) y el nombre del cliente se guardan para
   siempre: el POS los va a mostrar. Una poda se construyó (#130) y se revirtió, porque lo borrado no
   se recupera. Fuera de producción los quita `scripts/respaldo-anonimo.sh`, que trunca esas tablas.
+- **Toda columna nueva que no sea número, fecha, booleano o enum se clasifica para el respaldo
+  anónimo** (#133, #134). `TestEveryColumnIsCoveredByTheAnonymousBackup` recorre el catálogo de la
+  base migrada: cada columna de texto, json, binario, IP, uuid o arreglo la borra el paso 5 de
+  `scripts/respaldo-anonimo.sh` (y la cuenta su verificación `FUGAS`), o está en `noPersonalData`
+  con el porqué. Una que no está en ninguno truena en la integración, se haya creado con
+  `create table` o con `alter table`. El paso que borra corre después de migrar, y si algo falla
+  antes de que `FUGAS` diga 0, el script tira la base restaurada entera.
 - **Credenciales de las plataformas** (0075, ampliación de la 021): el Client ID y el Client Secret
   de la app de Uber **ya no van en el entorno**. Se capturan en Plataformas → «Acceso a la app», por
   empresa, y se guardan solo si Uber entrega un token con ellas. Cuatro cosas que cuestan caro:
@@ -864,6 +871,41 @@ Las features nuevas pasan por spec-kit: `/speckit-specify` → `/speckit-plan` �
 `/speckit-analyze` → `/speckit-implement`. Cada una crea rama `NNN-slug` desde `develop` y su
 directorio `specs/NNN-slug/`. El paso `analyze` **no es opcional** aquí (ver *Quality gates*).
 Los principios de la constitución son la vara con la que `analyze` mide spec, plan y tasks.
+
+### De punta a punta, sin que el dueño lo pida paso por paso
+
+Cuando el dueño encarga un issue o una feature «hasta producción» (con `/goal` o con esas palabras),
+la sesión que lo recibe hace TODO esto por su cuenta, en este orden:
+
+1. **Worktree propio, creado ANTES de abrir la sesión que trabaja**: la sesión que orquesta (la del
+   checkout principal) corre `/nuevo-spec NNN slug` y le entrega al dueño `cd <worktree> && claude`
+   más el prompt, que dice «ya estás en tu worktree, no crees otro». La sesión que trabaja nace
+   dentro de él. Solo si nadie orquesta, la propia sesión lo crea antes de tocar código. Nunca se
+   trabaja en el checkout principal, que se queda en `develop` y limpio. **Varias specs a la vez**
+   son varios worktrees, uno por spec, cada uno con su número `NNN` libre (revisa `specs/`, las ramas
+   remotas y `../egb-NNN-*`) y su número de migración; la que llegue primero a `develop` se queda con
+   el número de migración y la otra renumera.
+2. **Feature** → ciclo de spec-kit completo, invocando cada `/speckit-*` con la herramienta Skill
+   (no leyéndola) y con sus hooks (`/maquetas`, `/revision-de-arquitectura`), hasta que
+   `/speckit-analyze` quede sin CRITICAL ni HIGH. **Defecto** → rama `fix/slug`, test que falla por
+   la razón correcta, y el arreglo.
+3. **Implementar con TDD** y después `/revision-de-codigo`; lo que encuentre se corrige con su test.
+4. **Prueba con usuario nuevo** a 1024×600 contra el `make start` del worktree, si hay pantalla.
+5. **Gates**: `make ci-local` verde antes de empujar.
+6. **PR a `develop`**, esperar su CI y mergear en verde; luego **PR de release `develop` → `main`**,
+   esperar su CI, mergear y seguir el deploy hasta `readyz` 200 en producción. Con autorización del
+   dueño para aprobar PR, no se le vuelve a preguntar.
+7. **Cerrar**: `make cerrar-worktree dir=… datos=1`, borrar la rama remota ya mergeada, y comentar y
+   cerrar el issue con lo que entró y lo que quedó fuera.
+
+Las dudas se resuelven con la mejor recomendación (un subagente que puntúe opciones si hace falta) y
+se escriben en el spec o el plan; solo se le pregunta al dueño lo que cruza una puerta del principio
+VIII o pierde datos.
+
+**Si git dice «this operation must be run in a work tree» en el checkout principal**, alguien le
+puso `core.bare = true` (git lo trata como un repositorio sin archivos): se quita con
+`git config --local core.bare false`. Así fue como el script del worktree dejó de correr ahí el
+2026-11-01.
 
 ## 6. Documentación — dónde vive qué
 
