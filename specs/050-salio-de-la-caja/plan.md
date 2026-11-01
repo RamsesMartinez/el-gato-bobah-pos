@@ -4,6 +4,9 @@
 
 ## Summary
 
+> Ver R1–R10 al final: corrigen el tope (por gasto, bajo candado), el monto (lo fija un trigger), el
+> desglose del corte («No es del negocio»), el motivo y la pantalla. Lo de abajo es la versión inicial.
+
 `expense_payments.drawer_extra` (≥ 0): lo que salió del cajón además del importe. La salida de caja de
 ese pago (una sola, la de la 048, ligada por `expense_payment_id`) se registra por `amount +
 drawer_extra`, con el concepto «… (incluye $X que no es del negocio)». Así siguen valiendo la unique
