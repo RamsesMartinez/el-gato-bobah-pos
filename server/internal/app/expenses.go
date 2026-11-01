@@ -65,6 +65,8 @@ type ExpenseItemView struct {
 	NotComing      decimal.Decimal `json:"notComing"`
 	IsGift         bool            `json:"isGift"`
 	PresentationID *int64          `json:"presentationId"`
+	// Excluded: venía en el ticket pero no es del negocio; no cuenta (spec 049).
+	Excluded bool `json:"excluded"`
 	// OnHand: lo guardado hoy del artículo, en unidad base (solo renglones de almacén).
 	OnHand *decimal.Decimal `json:"onHand"`
 }
@@ -88,6 +90,8 @@ type ExpenseDetailView struct {
 	// Paid: suma de pagos. Se calcula en vez de guardarse para que no pueda desincronizarse
 	// del detalle.
 	Paid decimal.Decimal `json:"paid"`
+	// DocumentTotal: el total impreso en el documento leído; null si no hubo (spec 049).
+	DocumentTotal *decimal.Decimal `json:"documentTotal"`
 }
 
 // ---- Entradas ----
@@ -114,10 +118,12 @@ type ExpenseItemInput struct {
 	// porque son la LLAVE con la que se aprende el mapeo (ver learnSupplierItems).
 	RawCode string
 	RawName string
-	// Personal: el renglón no es del local (venía en el mismo ticket pero es de la casa). No se
-	// guarda como línea del gasto —su importe no es gasto del negocio— pero SÍ se aprende, para
-	// que la próxima compra a ese proveedor lo marque solo.
+	// Personal: el renglón no es del local (venía en el mismo ticket pero es de la casa). Se
+	// aprende, para que la próxima compra a ese proveedor lo marque solo, y se guarda excluido.
 	Personal bool
+	// Excluded: venía en el ticket pero no es del negocio (spec 049). Se guarda como evidencia y no
+	// entra a existencias, ni al costo, ni a la suma contra el total. Personal implica Excluded.
+	Excluded bool
 }
 
 type ExpensePaymentInput struct {
@@ -150,7 +156,10 @@ type ExpenseInput struct {
 	DocKind     string
 	DocFolio    string
 	DocRaw      json.RawMessage // extracción cruda del documento, si vino de uno
-	UserID      int64
+	// DocumentTotal: el total impreso en el documento leído (spec 049). Informativo: el total del
+	// gasto es Amount. nil = no hubo documento o no traía total.
+	DocumentTotal *decimal.Decimal
+	UserID        int64
 }
 
 // maxExpenseItems acota el detalle: el ticket más largo que hemos visto trae ~30 renglones.
@@ -174,6 +183,14 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 	}
 	if len(in.Items) > maxExpenseItems {
 		return 0, domain.ErrValidation
+	}
+	var docTotal *decimal.Decimal
+	if in.DocumentTotal != nil {
+		v := domain.Round2(*in.DocumentTotal)
+		if !domain.ValidMoney(v, true) {
+			return 0, fmt.Errorf("%w: el total del ticket no es válido", domain.ErrValidation)
+		}
+		docTotal = &v
 	}
 	docDate, hasDoc, err := s.parseOptionalDay(in.ExpenseDate)
 	if err != nil {
@@ -222,7 +239,7 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 		Status:   db.ExpenseStatus(in.Status),
 		DocKind:  strPtr(in.DocKind),
 		DocFolio: strPtr(in.DocFolio),
-		DocRaw:   in.DocRaw,
+		DocRaw:   in.DocRaw, DocumentTotal: docTotal,
 	}
 	if in.Status == domain.ExpensePagada {
 		params.PaidAt = pgtype.Timestamptz{Time: s.now(), Valid: true}
@@ -558,7 +575,7 @@ func checkPaymentsCover(payments []resolvedPayment, amount decimal.Decimal) erro
 // Sin artículo se recuerda como 'ignorado' y no como 'pendiente': el operador ya lo revisó y
 // decidió que no es inventariable (bolsa, envío, IVA), así que no vuelve a la cola de revisión.
 func learnedStatus(it ExpenseItemInput) (string, error) {
-	if it.Personal {
+	if it.Personal || it.Excluded {
 		return domain.SupplierItemPersonal, nil
 	}
 	itemType, err := itemTypeParam(it)
@@ -579,10 +596,11 @@ func learnedStatus(it ExpenseItemInput) (string, error) {
 func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expenseID int64, items []ExpenseItemInput, total decimal.Decimal, receivedAll bool) error {
 	amounts := make([]decimal.Decimal, 0, len(items))
 	for i, it := range items {
-		// Un renglón de la casa no es una línea del gasto: se descarta aquí (ya se aprendió en
-		// learnSupplierItems) para que no sume al importe ni toque el almacén.
-		if it.Personal {
-			continue
+		// Un renglón de la casa se guarda excluido: queda como evidencia, sin sumar al importe ni
+		// tocar el almacén (spec 049). Lo que diga de recibido se ignora: no es del negocio.
+		excluded := it.Personal || it.Excluded
+		if excluded {
+			it.QtyReceived = nil
 		}
 		qty := domain.Round4(it.Quantity)
 		if !domain.ValidQty(qty, domain.MaxStockQty, false) {
@@ -600,19 +618,25 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 			return err
 		}
 		if itemType != nil {
-			if err := checkLineMoney(amount, it.IsGift); err != nil {
-				return err
+			if !excluded {
+				if err := checkLineMoney(amount, it.IsGift); err != nil {
+					return err
+				}
+			} else if it.IsGift && !amount.IsZero() {
+				return fmt.Errorf("%w: un regalo va con importe 0", domain.ErrValidation)
 			}
 			if it.UnitID, it.PackQtyInBase, err = lineUnit(ctx, q, it.IngredientID, it.PresentationID, it.UnitID, it.PackQtyInBase); err != nil {
 				return err
 			}
-			if it.QtyReceived == nil && receivedAll {
+			if it.QtyReceived == nil && receivedAll && !excluded {
 				it.QtyReceived = &qty
 			}
 		} else if it.IsGift || it.PresentationID != nil {
 			return domain.ErrValidation
 		}
-		amounts = append(amounts, amount)
+		if !excluded {
+			amounts = append(amounts, amount)
+		}
 		// Una línea inventariable exige unidad: sin ella no hay conversión a unidad de almacén
 		// (el CHECK de la tabla lo repite como defensa en profundidad).
 		if itemType != nil && it.UnitID == nil {
@@ -637,7 +661,7 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 			Description: it.Description, Quantity: qty, UnitID: it.UnitID,
 			QtyReceived: it.QtyReceived, UnitCost: unitCost, Amount: amount,
 			PackQtyInBase: it.PackQtyInBase, Position: int32(i),
-			PresentationID: it.PresentationID, IsGift: it.IsGift,
+			PresentationID: it.PresentationID, IsGift: it.IsGift, Excluded: excluded,
 		}); err != nil {
 			return err
 		}
@@ -821,6 +845,7 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 		CreatedBy: exp.CreatedByName,
 	}
 	out.Paid = paid
+	out.DocumentTotal = exp.DocumentTotal
 	// Un renglón quitado en una corrección no se muestra: su rastro son sus movimientos.
 	out.Items = make([]ExpenseItemView, 0, len(items))
 	for _, r := range items {
@@ -833,7 +858,7 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 			UnitCode: r.UnitCode, QtyReceived: r.QtyReceived, UnitCost: r.UnitCost,
 			Amount: r.Amount, PackQtyInBase: r.PackQtyInBase,
 			Applied: r.AppliedQtyBase, BaseUnitCode: r.BaseUnitCode, NotComing: r.NotComingQty,
-			IsGift: r.IsGift, PresentationID: r.PresentationID,
+			IsGift: r.IsGift, PresentationID: r.PresentationID, Excluded: r.Excluded,
 		}
 		if r.ItemType != nil {
 			t := string(*r.ItemType)

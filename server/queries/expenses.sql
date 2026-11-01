@@ -40,8 +40,8 @@ returning id, name, phone, notes, is_active;
 -- turno. La fecha del documento va en document_date y no lo mueve. received_at va aparte.
 insert into expenses (
   expense_date, category_id, supplier_id, amount, description, created_by,
-  status, paid_at, paid_by, received_at, doc_kind, doc_folio, doc_raw, document_date
-) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+  status, paid_at, paid_by, received_at, doc_kind, doc_folio, doc_raw, document_date, document_total
+) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 returning id;
 
 -- name: GetExpense :one
@@ -52,7 +52,7 @@ select * from expenses where id = $1;
 -- detalle. GetExpense devuelve la fila cruda y la usa el servicio para decidir transiciones.
 select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.financial_group,
        s.name as supplier, e.amount, e.currency, e.description, e.doc_kind, e.doc_folio,
-       e.paid_at, ub.name as created_by_name, e.document_date
+       e.paid_at, ub.name as created_by_name, e.document_date, e.document_total
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
@@ -80,7 +80,7 @@ where (sqlc.narg('status')::expense_status is null or e.status = sqlc.narg('stat
   and (sqlc.narg('pending_receipt')::boolean is not true or (
         e.received_at is null and e.status <> 'cancelada'
         and exists (select 1 from expense_items pi where pi.expense_id = e.id
-                     and pi.item_type is not null and pi.voided_at is null)))
+                     and pi.item_type is not null and pi.voided_at is null and not pi.excluded)))
 order by
   case when @sort::text = 'amount'      and @dir::text = 'asc'  then e.amount end asc  nulls last,
   case when @sort::text = 'amount'      and @dir::text <> 'asc' then e.amount end desc nulls last,
@@ -102,7 +102,7 @@ where (sqlc.narg('status')::expense_status is null or e.status = sqlc.narg('stat
   and (sqlc.narg('pending_receipt')::boolean is not true or (
         e.received_at is null and e.status <> 'cancelada'
         and exists (select 1 from expense_items pi where pi.expense_id = e.id
-                     and pi.item_type is not null and pi.voided_at is null)));
+                     and pi.item_type is not null and pi.voided_at is null and not pi.excluded)));
 
 -- name: CancelExpense :execrows
 update expenses set status = 'cancelada', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
@@ -114,8 +114,8 @@ where id = $1 and status = 'pendiente';
 insert into expense_items (
   expense_id, item_type, ingredient_id, product_id, description,
   quantity, unit_id, qty_received, unit_cost, amount, pack_qty_in_base, position,
-  presentation_id, is_gift
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+  presentation_id, is_gift, excluded
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 returning id;
 
 -- name: ListExpenseItems :many
@@ -123,7 +123,7 @@ select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description,
        ei.quantity, ei.unit_id, u.code as unit_code, u.kind as unit_kind,
        ei.qty_received, ei.unit_cost, ei.amount, ei.pack_qty_in_base, ei.position,
        i.name as ingredient_name, p.name as product_name,
-       ei.applied_qty_base, ei.not_coming_qty, ei.voided_at, ei.is_gift, ei.presentation_id,
+       ei.applied_qty_base, ei.not_coming_qty, ei.voided_at, ei.is_gift, ei.presentation_id, ei.excluded,
        iu.code as base_unit_code,
        -- Lo guardado hoy del insumo, para «Tendrás X (hoy Y)» al corregir (spec 038). En toda la
        -- empresa y no por sucursal: con dos sucursales y sin selector, ver el detalle no debe
@@ -164,7 +164,7 @@ from expense_items ei
 join units bu on bu.id = ei.unit_id
 left join ingredients i on i.id = ei.ingredient_id
 left join units iu on iu.id = i.base_unit_id
-where ei.expense_id = $1 and ei.item_type is not null
+where ei.expense_id = $1 and ei.item_type is not null and not ei.excluded
   and ei.qty_received is not null and ei.qty_received > 0
 order by ei.position, ei.id;
 

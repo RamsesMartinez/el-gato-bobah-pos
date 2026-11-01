@@ -1635,6 +1635,53 @@ func (q *Queries) LockPaymentMethod(ctx context.Context, id int16) (LockPaymentM
 	return i, err
 }
 
+const lockRegistersForSalesMove = `-- name: LockRegistersForSalesMove :many
+select r.id, r.branch_id, r.is_active, r.is_primary,
+       exists (select 1 from register_sessions s where s.register_id = r.id and s.status = 'abierta')::bool as has_open_shift
+  from cash_registers r
+ where r.id = $1 or (r.is_primary and r.branch_id = current_branch_id())
+ order by r.id
+   for update of r
+`
+
+type LockRegistersForSalesMoveRow struct {
+	ID           int64 `json:"id"`
+	BranchID     int64 `json:"branch_id"`
+	IsActive     bool  `json:"is_active"`
+	IsPrimary    bool  `json:"is_primary"`
+	HasOpenShift bool  `json:"has_open_shift"`
+}
+
+// Pasar la venta (spec 049): la caja que vende en la sucursal de la sesión y la que va a vender,
+// bloqueadas en orden de id para que dos cambios a la vez no se esperen en ciclo. Abrir turno toma
+// la caja con GetCashRegisterForUpdate, así que no puede colarse entre la validación y el cambio.
+// La sucursal y el turno abierto se leen de cada fila, no de la sesión.
+func (q *Queries) LockRegistersForSalesMove(ctx context.Context, targetID int64) ([]LockRegistersForSalesMoveRow, error) {
+	rows, err := q.db.Query(ctx, lockRegistersForSalesMove, targetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockRegistersForSalesMoveRow{}
+	for rows.Next() {
+		var i LockRegistersForSalesMoveRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BranchID,
+			&i.IsActive,
+			&i.IsPrimary,
+			&i.HasOpenShift,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockSessionForClose = `-- name: LockSessionForClose :one
 select id from register_sessions where id = $1 and status = 'abierta' for update
 `
@@ -2186,6 +2233,22 @@ func (q *Queries) SetRegisterFixedFloat(ctx context.Context, arg SetRegisterFixe
 		&i.CountsCash,
 	)
 	return i, err
+}
+
+const setRegisterSells = `-- name: SetRegisterSells :exec
+update cash_registers set is_primary = $1, counts_cash = counts_cash or $1
+ where id = $2
+`
+
+type SetRegisterSellsParams struct {
+	Sells bool  `json:"sells"`
+	ID    int64 `json:"id"`
+}
+
+// La que deja de vender va primero: el índice de una principal por sucursal no admite dos.
+func (q *Queries) SetRegisterSells(ctx context.Context, arg SetRegisterSellsParams) error {
+	_, err := q.db.Exec(ctx, setRegisterSells, arg.Sells, arg.ID)
+	return err
 }
 
 const uncollectedInSession = `-- name: UncollectedInSession :one

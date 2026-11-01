@@ -935,8 +935,9 @@ type expenseItemBody struct {
 	IsGift         bool   `json:"isGift"`
 	RawCode        string `json:"rawCode"`
 	RawName        string `json:"rawName"`
-	// Personal: venía en el ticket pero no es del local. No se guarda como línea del gasto.
+	// Personal: el nombre viejo de Excluded; la API vieja lo mandaba y se trata igual (spec 049).
 	Personal bool `json:"personal"`
+	Excluded bool `json:"excluded"`
 }
 
 // expensePaymentBody es un pago. registerId es la caja de la que salió; para métodos que mueven el
@@ -957,7 +958,7 @@ func toItemInputs(in []expenseItemBody) []app.ExpenseItemInput {
 			ItemType: it.ItemType, IngredientID: it.IngredientID, NewArticle: it.NewArticle, ProductID: it.ProductID,
 			Description: it.Description, Quantity: it.Quantity, UnitID: it.UnitID,
 			QtyReceived: it.QtyReceived, Amount: it.Amount, PackQtyInBase: it.PackQtyInBase,
-			RawCode: it.RawCode, RawName: it.RawName, Personal: it.Personal,
+			RawCode: it.RawCode, RawName: it.RawName, Personal: it.Personal, Excluded: it.Excluded,
 			PresentationID: it.PresentationID, IsGift: it.IsGift,
 		}
 	}
@@ -990,6 +991,8 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 		DocKind     string               `json:"docKind"`
 		DocFolio    string               `json:"docFolio"`
 		DocRaw      json.RawMessage      `json:"docRaw"`
+		// DocumentTotal: el total impreso en el ticket leído (spec 049); informativo.
+		DocumentTotal *decimal.Decimal `json:"documentTotal"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -1002,7 +1005,7 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 		Description: body.Description, Status: body.Status,
 		Items: toItemInputs(body.Items), Payments: toPaymentInputs(body.Payments),
 		DocKind: body.DocKind, DocFolio: body.DocFolio, DocRaw: body.DocRaw,
-		UserID: u.ID,
+		DocumentTotal: body.DocumentTotal, UserID: u.ID,
 	})
 	if err != nil {
 		Error(w, err)

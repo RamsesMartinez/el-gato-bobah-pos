@@ -754,3 +754,20 @@ returning s.card_count_mode;
 -- esperado de la siguiente apertura (spec 035, R8).
 select not exists (select 1 from register_sessions o
                    where o.register_id = sqlc.arg(register_id) and o.id > sqlc.arg(session_id)::bigint) as latest;
+
+-- name: LockRegistersForSalesMove :many
+-- Pasar la venta (spec 049): la caja que vende en la sucursal de la sesión y la que va a vender,
+-- bloqueadas en orden de id para que dos cambios a la vez no se esperen en ciclo. Abrir turno toma
+-- la caja con GetCashRegisterForUpdate, así que no puede colarse entre la validación y el cambio.
+-- La sucursal y el turno abierto se leen de cada fila, no de la sesión.
+select r.id, r.branch_id, r.is_active, r.is_primary,
+       exists (select 1 from register_sessions s where s.register_id = r.id and s.status = 'abierta')::bool as has_open_shift
+  from cash_registers r
+ where r.id = sqlc.arg(target_id) or (r.is_primary and r.branch_id = current_branch_id())
+ order by r.id
+   for update of r;
+
+-- name: SetRegisterSells :exec
+-- La que deja de vender va primero: el índice de una principal por sucursal no admite dos.
+update cash_registers set is_primary = sqlc.arg(sells), counts_cash = counts_cash or sqlc.arg(sells)
+ where id = sqlc.arg(id);

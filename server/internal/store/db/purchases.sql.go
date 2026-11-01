@@ -56,10 +56,11 @@ func (q *Queries) CostingMethod(ctx context.Context) (string, error) {
 const fillMissingReceived = `-- name: FillMissingReceived :exec
 update expense_items set qty_received = quantity - not_coming_qty
  where expense_id = $1 and item_type is not null and voided_at is null and qty_received is null
+   and not excluded
 `
 
 // «Llegó todo» sobre un gasto capturado antes: lo que no tenía cantidad recibida llega completo,
-// menos lo que ya se dijo que no va a llegar.
+// menos lo que ya se dijo que no va a llegar. Un excluido no llega: no es del negocio (spec 049).
 func (q *Queries) FillMissingReceived(ctx context.Context, expenseID int64) error {
 	_, err := q.db.Exec(ctx, fillMissingReceived, expenseID)
 	return err
@@ -138,7 +139,7 @@ func (q *Queries) InsertLineMovement(ctx context.Context, arg InsertLineMovement
 const listStockLines = `-- name: ListStockLines :many
 select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description, ei.quantity,
        ei.qty_received, ei.amount, ei.pack_qty_in_base, ei.presentation_id, ei.is_gift,
-       ei.applied_qty_base, ei.not_coming_qty, ei.unit_id, ei.position,
+       ei.applied_qty_base, ei.not_coming_qty, ei.unit_id, ei.position, ei.excluded,
        bu.kind as buy_kind, bu.to_base as buy_to_base,
        coalesce(iu.kind, 'pieza'::unit_kind) as base_kind
 from expense_items ei
@@ -165,6 +166,7 @@ type ListStockLinesRow struct {
 	NotComingQty   decimal.Decimal  `json:"not_coming_qty"`
 	UnitID         *int16           `json:"unit_id"`
 	Position       int32            `json:"position"`
+	Excluded       bool             `json:"excluded"`
 	BuyKind        UnitKind         `json:"buy_kind"`
 	BuyToBase      decimal.Decimal  `json:"buy_to_base"`
 	BaseKind       UnitKind         `json:"base_kind"`
@@ -197,6 +199,7 @@ func (q *Queries) ListStockLines(ctx context.Context, expenseID int64) ([]ListSt
 			&i.NotComingQty,
 			&i.UnitID,
 			&i.Position,
+			&i.Excluded,
 			&i.BuyKind,
 			&i.BuyToBase,
 			&i.BaseKind,
@@ -236,6 +239,31 @@ func (q *Queries) LockExpenseForStock(ctx context.Context, id int64) (LockExpens
 		&i.Amount,
 		&i.ReceivedAt,
 	)
+	return i, err
+}
+
+const lockExpenseItemForExclusion = `-- name: LockExpenseItemForExclusion :one
+select id, ingredient_id, excluded from expense_items
+ where id = $1 and expense_id = $2 and voided_at is null
+   for update
+`
+
+type LockExpenseItemForExclusionParams struct {
+	ID        int64 `json:"id"`
+	ExpenseID int64 `json:"expense_id"`
+}
+
+type LockExpenseItemForExclusionRow struct {
+	ID           int64  `json:"id"`
+	IngredientID *int64 `json:"ingredient_id"`
+	Excluded     bool   `json:"excluded"`
+}
+
+// El renglón vivo de un gasto, bloqueado, para excluirlo o incluirlo (spec 049).
+func (q *Queries) LockExpenseItemForExclusion(ctx context.Context, arg LockExpenseItemForExclusionParams) (LockExpenseItemForExclusionRow, error) {
+	row := q.db.QueryRow(ctx, lockExpenseItemForExclusion, arg.ID, arg.ExpenseID)
+	var i LockExpenseItemForExclusionRow
+	err := row.Scan(&i.ID, &i.IngredientID, &i.Excluded)
 	return i, err
 }
 
@@ -314,7 +342,7 @@ func (q *Queries) LockIngredientsNowait(ctx context.Context, ids []int64) ([]int
 const lockStockLine = `-- name: LockStockLine :one
 select id, quantity, qty_received, not_coming_qty, amount, applied_qty_base, ingredient_id, is_gift
   from expense_items
- where id = $1 and expense_id = $2 and item_type is not null and voided_at is null
+ where id = $1 and expense_id = $2 and item_type is not null and voided_at is null and not excluded
    for update
 `
 
@@ -381,7 +409,7 @@ select e.id as expense_id, e.expense_date, s.name as supplier, e.amount as expen
   left join units iu on iu.id = i.base_unit_id
   left join ingredient_presentations pr on pr.id = ei.presentation_id
  where cb.branch_id is not null and e.status <> 'cancelada'
-   and ei.item_type is not null and ei.voided_at is null
+   and ei.item_type is not null and ei.voided_at is null and not ei.excluded
    and ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty > 0
  order by e.expense_date, e.id, ei.position, ei.id
 `
@@ -483,6 +511,20 @@ type RaiseExpenseAmountParams struct {
 // no la cubre es un dato que un reporte de cuentas por pagar tomaría por cierto.
 func (q *Queries) RaiseExpenseAmount(ctx context.Context, arg RaiseExpenseAmountParams) error {
 	_, err := q.db.Exec(ctx, raiseExpenseAmount, arg.Extra, arg.ID)
+	return err
+}
+
+const setExpenseItemExcluded = `-- name: SetExpenseItemExcluded :exec
+update expense_items set excluded = $1 where id = $2
+`
+
+type SetExpenseItemExcludedParams struct {
+	Excluded bool  `json:"excluded"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) SetExpenseItemExcluded(ctx context.Context, arg SetExpenseItemExcludedParams) error {
+	_, err := q.db.Exec(ctx, setExpenseItemExcluded, arg.Excluded, arg.ID)
 	return err
 }
 
