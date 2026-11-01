@@ -1172,6 +1172,11 @@ type AperturaCmd struct {
 	// Reason y ReasonNote: por qué lo contado no coincide con el cierre anterior (spec 032).
 	Reason     string
 	ReasonNote string
+	// OpenedAt: abrir desde una hora anterior (spec 048). nil = la del primer gasto sin corte, o
+	// ahora si no hay. El permiso lo revisa el handler; aquí se valida la hora.
+	OpenedAt *time.Time
+	// ExcludePending: abrir «ahora» dejando sin incluir los gastos sin corte (R13). Exige permiso.
+	ExcludePending bool
 }
 
 func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, cmd AperturaCmd, userID int64) (*SessionView, error) {
@@ -1211,6 +1216,9 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
+	if cmd.OpenedAt != nil && cmd.ExcludePending {
+		return nil, fmt.Errorf("%w: una apertura con hora no excluye los gastos sin corte", domain.ErrValidation)
+	}
 	var reason, note *string
 	if domain.OpeningNeedsReason(prev, total) {
 		if err := domain.ValidOpeningReason(cmd.Reason, cmd.ReasonNote); err != nil {
@@ -1246,16 +1254,71 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 		if !cr.CountsCash {
 			return domain.ErrRegisterNotCounted
 		}
+		// LA HORA DE APERTURA (spec 048, R13), con la caja tomada: lo que se valida es lo que queda.
+		// Sin hora explicita, la apertura incluye sola los gastos sin corte desde el último cierre
+		// tomando la hora del primero; excluirlos o mover la hora a mano exige el permiso, que revisa
+		// el handler. Un solo reloj, el del servicio: la hora de los pagos sale de él.
+		now := s.now()
+		last, err := lastCloseOf(ctx, q, registerID)
+		if err != nil {
+			return err
+		}
+		openedAt, backdate := now, ""
+		switch {
+		case cmd.OpenedAt != nil:
+			if err := domain.ValidBackdatedOpening(*cmd.OpenedAt, now, last); err != nil {
+				return err
+			}
+			openedAt, backdate = *cmd.OpenedAt, "manual"
+		case !cmd.ExcludePending:
+			since := pgtype.Timestamptz{}
+			if last != nil {
+				since = pgtype.Timestamptz{Time: *last, Valid: true}
+			}
+			pend, err := q.ListPendingExpensePayments(ctx, db.ListPendingExpensePaymentsParams{RegisterID: &registerID, Since: since})
+			if err != nil {
+				return err
+			}
+			if len(pend) > 0 && pend[0].PaidAt.Before(now) {
+				openedAt, backdate = pend[0].PaidAt, "automatic"
+			}
+		}
 		abierta, err := q.OpenSession(ctx, db.OpenSessionParams{
-			BusinessDate: pgtype.Date{Time: s.businessDate(ctx), Valid: true},
+			BusinessDate: pgtype.Date{Time: domain.BusinessDate(openedAt, s.businessLocation(ctx)), Valid: true},
 			OpeningCash:  total,
 			OpenedBy:     userID,
 			RegisterID:   registerID,
+			OpenedAt:     pgtype.Timestamptz{Time: openedAt, Valid: true},
 		})
 		if err != nil {
 			return err
 		}
 		sess = abierta
+		// LOS GASTOS SIN CORTE CON HORA DENTRO DE ESTE CORTE ENTRAN A ÉL. La caja está tomada FOR
+		// UPDATE, así que un pago que se registra a la vez espera y se decide contra este turno.
+		if backdate != "" {
+			swept, err := sweepPendingExpenses(ctx, q, abierta.ID, registerID, openedAt, now)
+			if err != nil {
+				return err
+			}
+			if err := auditCash(ctx, q, domain.AuditCashOpeningBackdated, abierta.ID, &userID, nil,
+				map[string]any{"openedAt": openedAt, "reason": backdate, "sweptPayments": swept}); err != nil {
+				return err
+			}
+		}
+		// LO QUE QUEDÓ ANTES DE ESTA APERTURA YA NO ENTRA A NINGÚN CORTE: abrir sin incluirlo es
+		// elegir «sin incluir», y así se guarda. Si no, quedaría pendiente para siempre.
+		dropped, err := q.ExcludePendingBefore(ctx, db.ExcludePendingBeforeParams{RegisterID: &registerID, Before: abierta.OpenedAt})
+		if err != nil {
+			return err
+		}
+		for _, d := range dropped {
+			if err := auditEntity(ctx, q, domain.AuditExpenseCountChanged, "expense", d.ExpenseID, nil, &userID,
+				map[string]any{"includeInCount": true, "sessionId": nil},
+				map[string]any{"paymentId": d.ID, "includeInCount": false, "reason": "opened_without_it", "sessionId": abierta.ID}); err != nil {
+				return err
+			}
+		}
 		// El modo de tarjeta lo copia este update; la fila de OpenSession todavía trae el default.
 		if sess.CardCountMode, err = q.SetOpeningExtras(ctx, db.SetOpeningExtrasParams{ID: abierta.ID, Reason: reason, Note: note}); err != nil {
 			return err
@@ -1263,7 +1326,9 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 		// Solo la caja PRINCIPAL reclama lo huérfano: es la única que vende, y el esperado de una
 		// secundaria ignora ventas y devoluciones. Si la barra abría primero se quedaba con ellas y
 		// no restaban ni sumaban en ningún corte (spec 031, revisión de D7).
-		if reg.IsPrimary {
+		// Con la fila tomada y no con la lectura de antes de la transacción: pasar la venta a otra caja
+		// a la vez (spec 049) espera a este candado, y esta caja pudo dejar de vender mientras tanto.
+		if cr.IsPrimary {
 			// LOS PEDIDOS DE PLATAFORMA QUE SE ACEPTARON SIN TURNO ENTRAN A ÉSTE (spec 021).
 			//
 			// Aceptar no exige turno abierto: la cocina no puede esperar a que alguien abra caja. Lo
@@ -3007,4 +3072,52 @@ func (s *BackofficeService) liveAccountsForClosing(ctx context.Context, isPrimar
 		}
 	}
 	return out, nil
+}
+
+// MoveSales pasa la venta de la caja que vende en la sucursal a `targetID` (spec 049, R6). Las dos
+// cajas se toman en orden de id y se valida bajo candado: abrir turno toma la caja con el mismo
+// FOR UPDATE, así que no se cuela un turno entre la validación y el cambio.
+func (s *BackofficeService) MoveSales(ctx context.Context, targetID, userID int64) error {
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		rows, err := q.LockRegistersForSalesMove(ctx, targetID)
+		if err != nil {
+			return err
+		}
+		var current, target *db.LockRegistersForSalesMoveRow
+		ids := make([]int64, 0, len(rows))
+		for i := range rows {
+			ids = append(ids, rows[i].ID)
+			if rows[i].IsPrimary {
+				current = &rows[i]
+			}
+			if rows[i].ID == targetID {
+				target = &rows[i]
+			}
+		}
+		if target == nil {
+			return domain.ErrNotFound
+		}
+		if current == nil {
+			return fmt.Errorf("%w: esta sucursal no tiene caja que venda", domain.ErrConflict)
+		}
+		open, err := q.RegistersWithOpenShift(ctx, ids)
+		if err != nil {
+			return err
+		}
+		reg := func(r *db.LockRegistersForSalesMoveRow) domain.SellingRegister {
+			return domain.SellingRegister{ID: r.ID, BranchID: r.BranchID, Active: r.IsActive, HasOpenShift: slices.Contains(open, r.ID)}
+		}
+		changes, err := domain.CanMoveSales(reg(current), reg(target))
+		if err != nil || !changes {
+			return err
+		}
+		if err := q.SetRegisterSells(ctx, db.SetRegisterSellsParams{ID: current.ID, Sells: false}); err != nil {
+			return err
+		}
+		if err := q.SetRegisterSells(ctx, db.SetRegisterSellsParams{ID: target.ID, Sells: true}); err != nil {
+			return err
+		}
+		return auditEntity(ctx, q, domain.AuditCashSellingRegisterChanged, "cash_register", target.ID, &target.BranchID, &userID,
+			map[string]any{"registerId": current.ID}, map[string]any{"registerId": target.ID})
+	})
 }

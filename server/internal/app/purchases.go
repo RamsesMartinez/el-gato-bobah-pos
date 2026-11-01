@@ -42,6 +42,9 @@ type StockLineInput struct {
 	UnitID         *int16
 	Amount         decimal.Decimal
 	IsGift         bool
+	// Excluded solo cuenta en un renglón nuevo; uno que ya existe conserva su marca, que se cambia
+	// con SetItemExcluded (R5).
+	Excluded bool
 }
 
 // lineUnit resuelve el empaque elegido: el renglón se guarda en «piezas de compra» con el contenido
@@ -155,6 +158,7 @@ func stockStates(rows []db.ListStockLinesRow) []domain.StockLineState {
 				Kind: string(r.BuyKind), ToBase: r.BuyToBase, BaseKind: string(r.BaseKind), PackQtyInBase: r.PackQtyInBase,
 			},
 			Ordered: r.Quantity, Received: received, NotComing: r.NotComingQty, Applied: r.AppliedQtyBase,
+			Excluded: r.Excluded,
 		})
 	}
 	return out
@@ -312,10 +316,13 @@ func (s *BackofficeService) SaveStockLines(ctx context.Context, expenseID int64,
 			if err := s.saveStockLine(ctx, q, expenseID, userID, i, l, current, kept); err != nil {
 				return err
 			}
-			amounts = append(amounts, domain.Round2(l.Amount))
+			if l.ID == nil && !l.Excluded || l.ID != nil && !current[*l.ID].Excluded {
+				amounts = append(amounts, domain.Round2(l.Amount))
+			}
 		}
 		for id := range current {
-			if kept[id] {
+			// La pantalla no manda los excluidos: no mandarlos no es quitarlos (R5).
+			if kept[id] || current[id].Excluded {
 				continue
 			}
 			// Lo que sumó se revierte antes de marcarlo: un renglón quitado deja de contar.
@@ -332,7 +339,7 @@ func (s *BackofficeService) SaveStockLines(ctx context.Context, expenseID int64,
 			return err
 		}
 		for _, o := range others {
-			if o.ItemType == nil && !o.VoidedAt.Valid {
+			if o.ItemType == nil && !o.VoidedAt.Valid && !o.Excluded {
 				amounts = append(amounts, o.Amount)
 			}
 		}
@@ -367,7 +374,14 @@ func lineKeepsPresentation(l StockLineInput, current map[int64]db.ListStockLines
 
 func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, expenseID, userID int64, pos int, l StockLineInput, current map[int64]db.ListStockLinesRow, kept map[int64]bool) error {
 	amount := domain.Round2(l.Amount)
-	if err := checkLineMoney(amount, l.IsGift); err != nil {
+	// Un excluido (nuevo, o uno guardado que se reenvía) es evidencia: su importe puede ser 0 y lo
+	// que diga de recibido se ignora.
+	excluded := l.Excluded && l.ID == nil || l.ID != nil && current[*l.ID].Excluded
+	if excluded {
+		if !domain.ValidMoney(amount, true) {
+			return fmt.Errorf("%w: el importe no es válido", domain.ErrValidation)
+		}
+	} else if err := checkLineMoney(amount, l.IsGift); err != nil {
 		return err
 	}
 	qty := domain.Round4(l.Quantity)
@@ -398,7 +412,7 @@ func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, ex
 		return domain.ErrValidation
 	}
 	var recv *decimal.Decimal
-	if received.IsPositive() {
+	if received.IsPositive() && !excluded {
 		recv = &received
 	}
 	if l.ID == nil {
@@ -406,7 +420,7 @@ func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, ex
 			ExpenseID: expenseID, ItemType: itemType, IngredientID: l.IngredientID, ProductID: l.ProductID,
 			Description: l.Description, Quantity: qty, UnitID: unit, QtyReceived: recv,
 			UnitCost: domain.UnitCost(amount, qty), Amount: amount, PackQtyInBase: pack,
-			Position: int32(pos), PresentationID: l.PresentationID, IsGift: l.IsGift,
+			Position: int32(pos), PresentationID: l.PresentationID, IsGift: l.IsGift, Excluded: l.Excluded,
 		})
 		return err
 	}
@@ -480,4 +494,79 @@ func reverseLine(ctx context.Context, q *db.Queries, expenseID, userID int64, r 
 		return err
 	}
 	return q.AddAppliedQty(ctx, db.AddAppliedQtyParams{ID: r.ID, Delta: delta})
+}
+
+// includedAmounts son los importes de los renglones vivos que cuentan contra el total: los
+// excluidos no son gasto del negocio (spec 049).
+func includedAmounts(items []db.ListExpenseItemsRow) []decimal.Decimal {
+	out := []decimal.Decimal{}
+	for _, it := range items {
+		if !it.VoidedAt.Valid && !it.Excluded {
+			out = append(out, it.Amount)
+		}
+	}
+	return out
+}
+
+// SetItemExcluded excluye o vuelve a incluir un renglón de un gasto ya guardado (spec 049, R4).
+// Lo que ya había entrado sale con una corrección; lo que vuelve a contar entra por diferencia, y
+// la suma de los incluidos no puede pasar del total (la regla de la 038).
+func (s *BackofficeService) SetItemExcluded(ctx context.Context, expenseID, itemID int64, excluded bool, userID int64) (ExpenseDetailView, error) {
+	today, err := s.parseDayOrToday(ctx, "")
+	if err != nil {
+		return ExpenseDetailView{}, err
+	}
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		exp, err := q.LockExpenseForStock(ctx, expenseID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if exp.Status == db.ExpenseStatusCancelada {
+			return fmt.Errorf("%w: la compra está anulada", domain.ErrConflict)
+		}
+		item, err := q.LockExpenseItemForExclusion(ctx, db.LockExpenseItemForExclusionParams{ID: itemID, ExpenseID: expenseID})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if item.Excluded == excluded {
+			return nil
+		}
+		// Un excluido pudo guardarse en $0 sin ser regalo; incluido, ese importe ya no vale y la base
+		// lo rechazaría como 500.
+		if !excluded {
+			if err := checkLineMoney(item.Amount, item.IsGift); err != nil {
+				return err
+			}
+		}
+		if item.IngredientID != nil {
+			if err := lockIngredients(ctx, q, []int64{*item.IngredientID}); err != nil {
+				return err
+			}
+		}
+		if err := q.SetExpenseItemExcluded(ctx, db.SetExpenseItemExcludedParams{ID: itemID, Excluded: excluded}); err != nil {
+			return err
+		}
+		items, err := q.ListExpenseItems(ctx, expenseID)
+		if err != nil {
+			return err
+		}
+		if err := checkLinesFitTotal(includedAmounts(items), exp.Amount); err != nil {
+			return err
+		}
+		if _, err := s.applyStockLines(ctx, q, expenseID, userID, &today); err != nil {
+			return err
+		}
+		return auditEntity(ctx, q, domain.AuditExpenseItemExcluded, "expense", expenseID, nil, &userID,
+			map[string]any{"itemId": itemID, "excluded": item.Excluded}, map[string]any{"itemId": itemID, "excluded": excluded})
+	})
+	if err != nil {
+		return ExpenseDetailView{}, err
+	}
+	return s.ExpenseDetail(ctx, expenseID)
 }

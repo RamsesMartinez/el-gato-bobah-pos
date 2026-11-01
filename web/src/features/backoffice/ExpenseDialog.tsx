@@ -4,7 +4,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import {
   Box, Button, HStack, VStack, Text, Input, Badge, IconButton, Separator,
 } from '@chakra-ui/react';
-import { LuPlus, LuTrash2, LuUpload, LuTriangleAlert, LuSparkles, LuMinus, LuScissors, LuGift } from 'react-icons/lu';
+import { LuPlus, LuTrash2, LuUpload, LuTriangleAlert, LuSparkles, LuMinus, LuScissors, LuGift, LuBan } from 'react-icons/lu';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { Picker, type PickerOption } from '../../components/Picker';
@@ -23,10 +23,10 @@ import {
   backofficeApi, type ExpenseCategory, type Supplier, type ArticleSuggestion, type Article, type Unit,
   type Presentation, type ExpenseItemBody, type ExpensePaymentBody, type ParsedDoc, type DocLine, type CashRegister,
 } from '../../api/backoffice';
-import { ConfirmSheet } from '../../components/ConfirmSheet';
 import {
-  activeRegisters, registerLabel, isOutsideCount, outsideTitle, OUTSIDE_COUNT_TEXT, OUTSIDE_COUNT_CONFIRM,
+  activeRegisters, registerLabel, outsideAskOf, countsInDrawer, withCountChoice, type CountChoice, type OutsideAsk,
 } from './cajaDelGasto';
+import { IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
 import { montoTecleado, parseNumero, round2 } from '../../domain/numeros';
 import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
 import { PresentationsSheet } from './PresentationsSheet';
@@ -67,9 +67,9 @@ interface DraftItem {
   suggestion: ArticleSuggestion | null;
   suggestions: ArticleSuggestion[];
   docStatus: DocLine['status'];
-  // personal: venía en el ticket pero no es del local (el shampoo de la casa). No suma al gasto
-  // ni toca el almacén; se manda igual para que el proveedor lo recuerde la próxima vez.
-  personal: boolean;
+  // excluded: venía en el ticket pero no es del local (el shampoo de la casa). Conserva su artículo,
+  // no suma al gasto ni toca el almacén; se manda para que el proveedor lo recuerde (spec 049).
+  excluded: boolean;
 }
 
 interface DraftPayment {
@@ -79,6 +79,7 @@ interface DraftPayment {
   paidOn: string;
   registerId: string;
   reference: string;
+  includeInCount: boolean;
 }
 
 let seq = 0;
@@ -87,11 +88,11 @@ const nextKey = () => `k${++seq}`;
 const emptyItem = (): DraftItem => ({
   key: nextKey(), rawCode: '', rawName: '', description: '', itemType: '', itemId: null,
   itemName: '', quantity: '1', unitId: null, presentationId: null, amount: '', packQtyInBase: '',
-  arrived: true, partQty: null, isGift: false, doubtful: false, suggestion: null, suggestions: [], docStatus: '', personal: false,
+  arrived: true, partQty: null, isGift: false, doubtful: false, suggestion: null, suggestions: [], docStatus: '', excluded: false,
 });
 
 const emptyPayment = (paidOn: string): DraftPayment => ({
-  key: nextKey(), methodId: '', amount: '', paidOn, registerId: '', reference: '',
+  key: nextKey(), methodId: '', amount: '', paidOn, registerId: '', reference: '', includeInCount: true,
 });
 
 // En qué se mide un insumo nuevo, y la unidad base que le toca (regla 4: se elige al crearlo).
@@ -161,7 +162,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const activeSups = (sups?.items ?? []).filter((s) => s.isActive);
   const cashRegisters = activeRegisters(registers?.items);
   // Si el servidor dice que el pago no entra a ningún corte, se pregunta antes de reenviar.
-  const [outsideAsk, setOutsideAsk] = useState<string | null>(null);
+  const [outsideAsk, setOutsideAsk] = useState<OutsideAsk | null>(null);
   const unitList = units?.items ?? [];
   const methodList = methods?.items ?? [];
   const presList = presentations ?? [];
@@ -214,7 +215,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
           });
           const best = s[0];
           if (best?.source === 'personal') {
-            return { ...base, personal: true, suggestion: best, suggestions: [] };
+            return { ...base, excluded: true, suggestion: best, suggestions: [] };
           }
           if (best?.source === 'aprendido') {
             return {
@@ -237,7 +238,10 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   // ---- Dinero ----
   const total = montoTecleado(amount) ?? 0;
   const counted = withGoods ? items : [];
-  const isGoods = (i: DraftItem) => !!i.itemId && !i.doubtful && !i.personal;
+  const hasArticle = (i: DraftItem) => !!i.itemId && !i.doubtful;
+  const isGoods = (i: DraftItem) => hasArticle(i) && !i.excluded;
+  // Lo excluido que, por el total escrito, termina como «otros»: el pie lo dice para que no pase sin verse.
+  const excludedSum = items.filter((i) => i.excluded).reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const receivedOf = (i: DraftItem) => (i.partQty !== null ? i.partQty : i.quantity || '1');
   // Una parte es más que cero y menos que lo pedido: «todo» y «nada» ya tienen su botón.
   const partBad = (i: DraftItem) => {
@@ -247,7 +251,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
     return got.estado !== 'valido' || asked.estado !== 'valido' || got.valor <= 0 || got.valor >= asked.valor;
   };
   const moneyCheck = purchaseMoney(counted.map((i) => ({
-    amount: i.isGift ? '0' : i.amount, goods: isGoods(i), gift: i.isGift, personal: i.personal,
+    amount: i.isGift ? '0' : i.amount, goods: isGoods(i), gift: i.isGift, excluded: i.excluded,
   })), total);
   // ¿Cómo se pagó? (FR-004d): sin pagos capturados abajo, se pregunta al guardar. Un método registra
   // un pago por el total; el efectivo sale de una caja abierta (si hay una sola, ésa).
@@ -258,6 +262,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const quickPayment: ExpensePaymentBody | null = quickMethod ? {
     methodId: quickMethod.id, amount, paidOn: today(),
     registerId: quickRegister ? Number(quickRegister) : undefined,
+    includeInCount: countsInDrawer(!!quickMethod.affectsCashDrawer, cashRegisters, Number(quickRegister)) || undefined,
   } : null;
   const paymentsSum = payments.reduce((a, p) => a + (montoTecleado(p.amount) ?? 0), 0) + (quickPayment ? total : 0);
   const status: 'pendiente' | 'pagada' = paymentsSum > 0 && paymentsSum >= total ? 'pagada' : 'pendiente';
@@ -285,7 +290,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   };
 
   const create = useMutation({
-    mutationFn: (outsideCount: boolean) => backofficeApi.createExpense({
+    mutationFn: (choice?: CountChoice) => backofficeApi.createExpense({
       expenseDate,
       expenseDay: turno ? undefined : expenseDay,
       receivedAt: withGoods ? today() : undefined,
@@ -297,10 +302,11 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
       docKind: docKind || undefined,
       docFolio: docFolio || undefined,
       docRaw,
+      documentTotal: parsed?.doc.total || undefined,
       items: counted.map((i): ExpenseItemBody => {
         // Un renglón dudoso se guarda como gasto sin tocar el almacén y sin su texto del ticket:
         // mandarlo con el texto haría que el proveedor «aprenda» que no es del almacén.
-        const goods = isGoods(i);
+        const goods = hasArticle(i);
         return {
           itemType: goods ? i.itemType : '',
           ingredientId: goods && i.itemType === 'ingrediente' && i.itemId! > 0 ? i.itemId! : undefined,
@@ -310,13 +316,13 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
           quantity: i.quantity || '1',
           unitId: goods && !i.presentationId ? i.unitId ?? undefined : undefined,
           presentationId: goods ? i.presentationId ?? undefined : undefined,
-          qtyReceived: goods ? (i.arrived ? receivedOf(i) : '0') : undefined,
+          qtyReceived: goods ? (i.arrived && !i.excluded ? receivedOf(i) : '0') : undefined,
           amount: i.isGift ? '0' : i.amount || '0',
           isGift: goods && i.isGift ? true : undefined,
           packQtyInBase: goods && !i.presentationId ? i.packQtyInBase || undefined : undefined,
           rawCode: i.doubtful ? undefined : i.rawCode || undefined,
           rawName: i.doubtful ? undefined : i.rawName || undefined,
-          personal: i.personal || undefined,
+          excluded: i.excluded || undefined,
         };
       }),
       payments: (quickPayment ? [quickPayment] : payments.map((p): ExpensePaymentBody => ({
@@ -325,7 +331,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         paidOn: p.paidOn || undefined,
         registerId: p.registerId ? Number(p.registerId) : undefined,
         reference: p.reference || undefined,
-      }))).map((p) => (outsideCount && p.registerId ? { ...p, outsideCount } : p)),
+        includeInCount: countsInDrawer(needsRegister(p, methodList), cashRegisters, Number(p.registerId)) ? p.includeInCount : undefined,
+      }))).map((p) => withCountChoice(p, choice)),
     }),
     onSuccess: () => {
       if (withGoods) medirAccion('gastos', 'registrar-compra');
@@ -335,11 +342,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
       onSaved();
     },
     onError: (e) => {
-      if (isOutsideCount(e)) {
-        const all = quickPayment ? [quickPayment] : payments.map((p) => ({ registerId: p.registerId ? Number(p.registerId) : undefined }));
-        setOutsideAsk(outsideTitle(cashRegisters, all.map((p) => p.registerId)));
-        return;
-      }
+      const all = quickPayment ? [quickPayment] : payments.map((p) => ({ registerId: p.registerId ? Number(p.registerId) : undefined }));
+      const ask = outsideAskOf(e, cashRegisters, all.map((p) => p.registerId));
+      if (ask) { setOutsideAsk(ask); return; }
       toaster.create({ title: 'No se pudo registrar', description: String(e), type: 'error' });
     },
   });
@@ -625,11 +630,12 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 {!moneyCheck.over && moneyCheck.others > 0 && counted.length > 0 && total > 0 && (
                   <Text as="span" color="fg.muted">
                     {' · '}renglones {money(moneyCheck.linesSum.toFixed(2))} de {money(total.toFixed(2))}: el resto queda como «otros» del gasto
+                    {excludedSum > 0 && ` (incluye ${money(Math.min(excludedSum, moneyCheck.others).toFixed(2))} de lo excluido)`}
                   </Text>
                 )}
               </Text>
               <Button minH="44px" variant="outline" onClick={() => { onClose(); reset(); }}>Cancelar</Button>
-              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate(false)}>
+              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate(undefined)}>
                 Guardar
               </Button>
             </HStack>
@@ -661,10 +667,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
             </DrawerBody>
           </DrawerContent>
         </DrawerRoot>
-        <ConfirmSheet isOpen={outsideAsk !== null} title={outsideAsk ?? ''} description={OUTSIDE_COUNT_TEXT}
-          confirmLabel={OUTSIDE_COUNT_CONFIRM} cancelLabel="Cancelar" loading={create.isPending}
-          onCancel={() => setOutsideAsk(null)}
-          onConfirm={() => { setOutsideAsk(null); create.mutate(true); }} />
+        <OutsideCountSheet ask={outsideAsk} loading={create.isPending} onCancel={() => setOutsideAsk(null)}
+          onChoose={(c) => { setOutsideAsk(null); create.mutate(c); }} />
       </DialogContent>
     </DialogRoot>
   );
@@ -701,14 +705,6 @@ function DoubtfulRow({ item, presentations, onYes, onOther, onNotArrived }: {
 
 // ---- Renglón de mercancía ----
 
-// La marca "es de la casa" es una opción MÁS del picker del artículo, no un control aparte: ese
-// picker ya contesta "¿qué es este renglón?".
-const CASA = 'casa';
-
-function withCasa(options: PickerOption[]): PickerOption[] {
-  return [{ value: CASA, label: 'De la casa (no es del local)' }, ...options];
-}
-
 function ItemRow({ item, units, articles, articleList, presentations, sums, howItArrives, onChange, onSplit, onPacks, onCreate, onRemove }: {
   item: DraftItem;
   howItArrives: (type: string, id: number, unitId: number | null) => { presentationId: number | null; unitId: number | null };
@@ -730,38 +726,36 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
   const buyUnits = art ? purchaseUnitsFor(art.unitKind, units) : [];
 
   const pick = (v: string) => {
-    if (v === CASA) { onChange({ personal: true, itemType: '', itemId: null, itemName: '' }); return; }
-    if (!v) { onChange({ personal: false, itemType: '', itemId: null, itemName: '', presentationId: null }); return; }
+    if (!v) { onChange({ itemType: '', itemId: null, itemName: '', presentationId: null }); return; }
     const [type, id] = v.split(':');
     const a = articleList.find((x) => x.itemType === type && x.id === Number(id));
     onChange({
       itemType: type as 'ingrediente' | 'producto', itemId: Number(id), itemName: a?.name ?? '',
-      suggestion: null, personal: false, ...howItArrives(type, Number(id), item.unitId),
+      suggestion: null, ...howItArrives(type, Number(id), item.unitId),
     });
   };
 
   const hasContent = !!item.itemId || !!item.amount;
-  const goods = !!item.itemId && !item.personal;
+  const goods = !!item.itemId && !item.excluded;
 
   return (
-    <Box borderWidth="1px" borderRadius="lg" p={3} bg="bg.panel" borderStyle={item.personal ? 'dashed' : 'solid'}
-      data-testid="renglon">
+    <Box borderWidth="1px" borderRadius="lg" p={3} bg="bg.panel" borderStyle={item.excluded ? 'dashed' : 'solid'}
+      data-testid="renglon" data-excluded={item.excluded || undefined}>
       <VStack align="stretch" gap={2}>
         {item.rawName && (
           <HStack gap={2} flexWrap="wrap">
             <Text fontSize="xs" color="fg.subtle">{item.rawCode && `${item.rawCode} · `}{item.rawName}</Text>
-            {item.personal && <Badge colorPalette="purple" size="sm">de la casa</Badge>}
             {item.suggestion && (
               <HStack gap={1}><LuSparkles size={12} /><Text fontSize="xs" color="fg.success">reconocido de «{item.suggestion.matchedVia}»</Text></HStack>
             )}
           </HStack>
         )}
         <HStack gap={2} align="center" flexWrap="wrap">
-          <Box flex="1" minW="200px">
-            <Picker value={item.personal ? CASA : (item.itemId ? `${item.itemType}:${item.itemId}` : '')}
+          <Box flex="1" minW="200px" opacity={item.excluded ? 0.6 : 1}>
+            <Picker value={item.itemId ? `${item.itemType}:${item.itemId}` : ''}
               onChange={pick} placeholder="Buscar o crear" title="¿Qué llegó?"
               clearable clearLabel="— No es del almacén (solo gasto) —"
-              options={withCasa(articles)} searchThreshold={0} onCreate={onCreate} />
+              options={articles} searchThreshold={0} onCreate={onCreate} />
           </Box>
           {goods ? (
             <HStack gap={0} borderWidth="1px" borderRadius="md">
@@ -776,15 +770,21 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
                 <LuPlus />
               </IconButton>
             </HStack>
-          ) : !item.personal && (
+          ) : !item.excluded && (
             <Input aria-label="Descripción" placeholder="Qué es (gas, envío…)" w="220px" minH="44px" value={item.description}
               onChange={(e) => onChange({ description: e.target.value })} />
           )}
-          <Field label={item.personal ? 'Importe (no suma al gasto)' : 'Importe'} w="120px">
+          <Field label={item.excluded ? 'Importe (no suma al gasto)' : 'Importe'} w="120px" opacity={item.excluded ? 0.6 : 1}>
             <Input aria-label="Importe" inputMode="decimal" textAlign="end" minH="44px" placeholder="0.00"
               value={item.isGift ? '0' : item.amount} disabled={item.isGift}
               onChange={(e) => onChange({ amount: e.target.value })} />
           </Field>
+          <IconButton aria-label="Excluir" aria-pressed={item.excluded} minH="44px" minW="44px"
+            variant={item.excluded ? 'subtle' : 'outline'} colorPalette={item.excluded ? 'purple' : 'gray'}
+            title={item.excluded ? 'Excluido: no es del local' : 'Excluir: no es del local'}
+            onClick={() => onChange({ excluded: !item.excluded })}>
+            <LuBan />
+          </IconButton>
           {/* Separado del importe: quitar no se deshace y el dedo es gordo. */}
           <Box ml={4}>
             {confirmRemove ? (
@@ -853,7 +853,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
             )}
           </HStack>
         )}
-        {!goods && !item.personal && item.suggestions.length > 0 && !item.itemId && (
+        {!goods && !item.excluded && item.suggestions.length > 0 && !item.itemId && (
           <Suggestions list={item.suggestions} onPick={(s) => onChange({
             itemType: s.itemType, itemId: s.itemId, itemName: s.itemName,
             packQtyInBase: item.packQtyInBase || s.packQtyInBase || '',
@@ -916,9 +916,14 @@ function PaymentRow({ payment, methods, registers, onChange, onRemove }: {
             options={registers.map((r) => ({ value: String(r.id), label: registerLabel(r) }))} />
         )}
       </Field>
-      <IconButton mt={5} minH="44px" minW="44px" variant="ghost" colorPalette="red" aria-label="Quitar pago" onClick={onRemove}>
-        <LuTrash2 />
-      </IconButton>
+      <HStack mt={5} gap={2}>
+        {countsInDrawer(cash, registers, Number(payment.registerId)) && (
+          <IncludeInCountCheckbox checked={payment.includeInCount} onChange={(v) => onChange({ includeInCount: v })} />
+        )}
+        <IconButton minH="44px" minW="44px" variant="ghost" colorPalette="red" aria-label="Quitar pago" onClick={onRemove}>
+          <LuTrash2 />
+        </IconButton>
+      </HStack>
     </HStack>
   );
 }

@@ -52,12 +52,16 @@ func (q *Queries) AnyOpenSession(ctx context.Context) (bool, error) {
 
 const cerroLaCajaPrincipal = `-- name: CerroLaCajaPrincipal :one
 select s.closed_at from register_sessions s
-join cash_registers r on r.id = s.register_id
-where r.is_primary and s.closed_at is not null
+where s.closed_at is not null
+  and exists (select 1 from orders o where o.register_session_id = s.id)
 order by s.closed_at desc limit 1
 `
 
-// Cuándo se cerró por última vez la caja principal. Sin filas si nunca se ha cerrado.
+// Cuándo cerró por última vez un turno que vendió (uno con pedidos). Sin filas si nunca.
+//
+// No lee `is_primary`: esa columna dice qué caja vende HOY, y la venta se puede pasar a otra caja
+// (spec 049). Preguntarle por un turno pasado haría que pasar la venta moviera este instante y
+// volviera a mostrar los entregados de días cerrados.
 func (q *Queries) CerroLaCajaPrincipal(ctx context.Context) (pgtype.Timestamptz, error) {
 	row := q.db.QueryRow(ctx, cerroLaCajaPrincipal)
 	var closed_at pgtype.Timestamptz
@@ -245,6 +249,20 @@ func (q *Queries) CurrentBranch(ctx context.Context) (int64, error) {
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const deleteExpenseSalidaOfPayment = `-- name: DeleteExpenseSalidaOfPayment :execrows
+delete from register_cash_movements where expense_payment_id = $1 and kind = 'salida'
+`
+
+// Quitar un pago del arqueo de un corte ABIERTO borra su salida (spec 048, R2b): el corte no se ha
+// contado, y la bitácora guarda el cambio. Así volver a marcarlo no choca con la unique.
+func (q *Queries) DeleteExpenseSalidaOfPayment(ctx context.Context, expensePaymentID *int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpenseSalidaOfPayment, expensePaymentID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const expectedByMethodForSession = `-- name: ExpectedByMethodForSession :many
@@ -448,6 +466,24 @@ func (q *Queries) GetCashRegister(ctx context.Context, id int64) (GetCashRegiste
 		&i.FixedFloat,
 		&i.CountsCash,
 	)
+	return i, err
+}
+
+const getCashRegisterForShare = `-- name: GetCashRegisterForShare :one
+select id, counts_cash from cash_registers where id = $1 for share
+`
+
+type GetCashRegisterForShareRow struct {
+	ID         int64 `json:"id"`
+	CountsCash bool  `json:"counts_cash"`
+}
+
+// La caja de un pago de gasto, con candado compartido (spec 048, R4): una apertura, que la toma FOR
+// UPDATE, termina antes —y el pago la ve abierta— o espera a que el pago confirme y lo barre.
+func (q *Queries) GetCashRegisterForShare(ctx context.Context, id int64) (GetCashRegisterForShareRow, error) {
+	row := q.db.QueryRow(ctx, getCashRegisterForShare, id)
+	var i GetCashRegisterForShareRow
+	err := row.Scan(&i.ID, &i.CountsCash)
 	return i, err
 }
 
@@ -664,7 +700,7 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, erro
 const insertCashMovement = `-- name: InsertCashMovement :one
 insert into register_cash_movements (session_id, kind, amount, concept, user_id)
 values ($1, $2, $3, $4, $5)
-returning id, session_id, kind, amount, concept, expense_id, user_id, created_at, transfer_id, recipient_user_id, recipient_name, concept_id, reverses_id
+returning id, session_id, kind, amount, concept, expense_id, user_id, created_at, transfer_id, recipient_user_id, recipient_name, concept_id, reverses_id, expense_payment_id
 `
 
 type InsertCashMovementParams struct {
@@ -699,24 +735,27 @@ func (q *Queries) InsertCashMovement(ctx context.Context, arg InsertCashMovement
 		&i.RecipientName,
 		&i.ConceptID,
 		&i.ReversesID,
+		&i.ExpensePaymentID,
 	)
 	return i, err
 }
 
 const insertExpenseCashMovement = `-- name: InsertExpenseCashMovement :exec
-insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id)
-values ($1, 'salida', $2, $3, $4, $5)
+insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id, expense_payment_id)
+values ($1, 'salida', $2, $3, $4, $5, $6)
 `
 
 type InsertExpenseCashMovementParams struct {
-	SessionID int64           `json:"session_id"`
-	Amount    decimal.Decimal `json:"amount"`
-	Concept   string          `json:"concept"`
-	ExpenseID *int64          `json:"expense_id"`
-	UserID    int64           `json:"user_id"`
+	SessionID        int64           `json:"session_id"`
+	Amount           decimal.Decimal `json:"amount"`
+	Concept          string          `json:"concept"`
+	ExpenseID        *int64          `json:"expense_id"`
+	UserID           int64           `json:"user_id"`
+	ExpensePaymentID *int64          `json:"expense_payment_id"`
 }
 
-// Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte).
+// Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte). Lleva su pago
+// (spec 048): la base no deja una segunda salida del mismo pago.
 func (q *Queries) InsertExpenseCashMovement(ctx context.Context, arg InsertExpenseCashMovementParams) error {
 	_, err := q.db.Exec(ctx, insertExpenseCashMovement,
 		arg.SessionID,
@@ -724,6 +763,7 @@ func (q *Queries) InsertExpenseCashMovement(ctx context.Context, arg InsertExpen
 		arg.Concept,
 		arg.ExpenseID,
 		arg.UserID,
+		arg.ExpensePaymentID,
 	)
 	return err
 }
@@ -804,6 +844,20 @@ func (q *Queries) IsLatestSessionOfRegister(ctx context.Context, arg IsLatestSes
 	var latest bool
 	err := row.Scan(&latest)
 	return latest, err
+}
+
+const lastCloseOfRegister = `-- name: LastCloseOfRegister :one
+select closed_at from register_sessions
+where register_id = $1 and status = 'cerrada' and closed_at is not null
+order by closed_at desc limit 1
+`
+
+// La hora del último cierre de una caja. Ninguna fila = nunca cerró.
+func (q *Queries) LastCloseOfRegister(ctx context.Context, registerID int64) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, lastCloseOfRegister, registerID)
+	var closed_at pgtype.Timestamptz
+	err := row.Scan(&closed_at)
+	return closed_at, err
 }
 
 const lastClosingCountOfRegister = `-- name: LastClosingCountOfRegister :one
@@ -1631,6 +1685,51 @@ func (q *Queries) LockPaymentMethod(ctx context.Context, id int16) (LockPaymentM
 	return i, err
 }
 
+const lockRegistersForSalesMove = `-- name: LockRegistersForSalesMove :many
+select r.id, r.branch_id, r.is_active, r.is_primary
+  from cash_registers r
+ where r.id = $1
+    or (r.is_primary and r.branch_id = (select t.branch_id from cash_registers t where t.id = $1))
+ order by r.id
+   for update of r
+`
+
+type LockRegistersForSalesMoveRow struct {
+	ID        int64 `json:"id"`
+	BranchID  int64 `json:"branch_id"`
+	IsActive  bool  `json:"is_active"`
+	IsPrimary bool  `json:"is_primary"`
+}
+
+// Pasar la venta (spec 049): la caja que va a vender y la que vende hoy en SU sucursal, bloqueadas
+// en orden de id para que dos cambios a la vez no se esperen en ciclo. La sucursal sale de la fila
+// de la caja destino y no de la sesión: con dos sucursales y sin selector, la sesión no la sabe.
+// Abrir turno toma la caja con GetCashRegisterForUpdate, así que no se cuela entre esto y el cambio.
+func (q *Queries) LockRegistersForSalesMove(ctx context.Context, targetID int64) ([]LockRegistersForSalesMoveRow, error) {
+	rows, err := q.db.Query(ctx, lockRegistersForSalesMove, targetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockRegistersForSalesMoveRow{}
+	for rows.Next() {
+		var i LockRegistersForSalesMoveRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BranchID,
+			&i.IsActive,
+			&i.IsPrimary,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockSessionForClose = `-- name: LockSessionForClose :one
 select id from register_sessions where id = $1 and status = 'abierta' for update
 `
@@ -1716,24 +1815,27 @@ func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *in
 }
 
 const openSession = `-- name: OpenSession :one
-insert into register_sessions (business_date, opening_cash, opened_by, register_id)
-values ($1, $2, $3, $4)
+insert into register_sessions (business_date, opening_cash, opened_by, register_id, opened_at)
+values ($1, $2, $3, $4, coalesce($5::timestamptz, now()))
 returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id, tips_carried_over, opening_reason, opening_reason_note, card_count_mode, float_left, fixed_float_at_close
 `
 
 type OpenSessionParams struct {
-	BusinessDate pgtype.Date     `json:"business_date"`
-	OpeningCash  decimal.Decimal `json:"opening_cash"`
-	OpenedBy     int64           `json:"opened_by"`
-	RegisterID   int64           `json:"register_id"`
+	BusinessDate pgtype.Date        `json:"business_date"`
+	OpeningCash  decimal.Decimal    `json:"opening_cash"`
+	OpenedBy     int64              `json:"opened_by"`
+	RegisterID   int64              `json:"register_id"`
+	OpenedAt     pgtype.Timestamptz `json:"opened_at"`
 }
 
+// opened_at: la hora movida hacia atrás (spec 048); ausente = ahora.
 func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (RegisterSession, error) {
 	row := q.db.QueryRow(ctx, openSession,
 		arg.BusinessDate,
 		arg.OpeningCash,
 		arg.OpenedBy,
 		arg.RegisterID,
+		arg.OpenedAt,
 	)
 	var i RegisterSession
 	err := row.Scan(
@@ -1807,6 +1909,34 @@ func (q *Queries) OwingDeliveredOrders(ctx context.Context) ([]OwingDeliveredOrd
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const registersWithOpenShift = `-- name: RegistersWithOpenShift :many
+select register_id from register_sessions
+ where register_id = any($1::bigint[]) and status = 'abierta'
+`
+
+// Qué cajas tienen turno abierto. Va en su propio statement DESPUÉS del candado: dentro del mismo
+// SELECT ... FOR UPDATE se leería con la foto de antes de esperar, y no vería el turno que la
+// apertura confirmó mientras este cambio esperaba.
+func (q *Queries) RegistersWithOpenShift(ctx context.Context, ids []int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, registersWithOpenShift, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var register_id int64
+		if err := rows.Scan(&register_id); err != nil {
+			return nil, err
+		}
+		items = append(items, register_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -2182,6 +2312,22 @@ func (q *Queries) SetRegisterFixedFloat(ctx context.Context, arg SetRegisterFixe
 		&i.CountsCash,
 	)
 	return i, err
+}
+
+const setRegisterSells = `-- name: SetRegisterSells :exec
+update cash_registers set is_primary = $1, counts_cash = counts_cash or $1
+ where id = $2
+`
+
+type SetRegisterSellsParams struct {
+	Sells bool  `json:"sells"`
+	ID    int64 `json:"id"`
+}
+
+// La que deja de vender va primero: el índice de una principal por sucursal no admite dos.
+func (q *Queries) SetRegisterSells(ctx context.Context, arg SetRegisterSellsParams) error {
+	_, err := q.db.Exec(ctx, setRegisterSells, arg.Sells, arg.ID)
+	return err
 }
 
 const uncollectedInSession = `-- name: UncollectedInSession :one

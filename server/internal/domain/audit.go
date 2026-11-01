@@ -73,6 +73,9 @@ var auditActions = []struct {
 	// dado por perdido, que también reescribe lo guardado; el método de costeo con los precios. Ningún
 	// grupo nuevo: la rejilla de la bitácora es una disposición de tableta.
 	{AuditExpenseReceived, AuditGroupCash},
+	// El arqueo por hora (spec 048): con los demás movimientos de caja.
+	{AuditExpenseCountChanged, AuditGroupCash},
+	{AuditCashOpeningBackdated, AuditGroupCash},
 	{AuditExpenseStockCorrected, AuditGroupCash},
 	{AuditStockCounted, AuditGroupCancel},
 	{AuditSettingsCostingMethod, AuditGroupPrice},
@@ -99,7 +102,17 @@ var auditActions = []struct {
 	{AuditPresentationRetired, AuditGroupPrice},
 	// Un aviso del conteo (spec 042): con lo dado por perdido, como el conteo.
 	{AuditCountConfirmAsked, AuditGroupCancel},
+	// Renglones excluidos y caja que vende (spec 049): con los demás gastos y cajas.
+	{AuditExpenseItemExcluded, AuditGroupCash},
+	{AuditCashSellingRegisterChanged, AuditGroupCash},
 }
+
+const (
+	// AuditExpenseItemExcluded: un renglón de compra se excluyó o se volvió a incluir.
+	AuditExpenseItemExcluded AuditAction = "expense.item_excluded"
+	// AuditCashSellingRegisterChanged: la venta pasó a otra caja.
+	AuditCashSellingRegisterChanged AuditAction = "cash.selling_register_changed"
+)
 
 const (
 	// AuditIngredientCreated: se dio de alta un artículo del almacén.
@@ -134,6 +147,10 @@ const (
 const AuditProductConsumptionMode AuditAction = "product.consumption_mode"
 
 const (
+	// AuditExpenseCountChanged: alguien cambió si un pago de gasto ya registrado entra al arqueo.
+	AuditExpenseCountChanged AuditAction = "expense.count_changed"
+	// AuditCashOpeningBackdated: un corte se abrió desde una hora anterior a la actual.
+	AuditCashOpeningBackdated AuditAction = "cash.opening_backdated"
 	// AuditExpenseReceived: llegó mercancía de una compra y sumó a lo guardado.
 	AuditExpenseReceived AuditAction = "expense.received"
 	// AuditExpenseStockCorrected: se corrigió, agregó, cerró o revirtió lo que llegó de una compra.

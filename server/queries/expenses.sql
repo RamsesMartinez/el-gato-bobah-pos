@@ -40,8 +40,8 @@ returning id, name, phone, notes, is_active;
 -- turno. La fecha del documento va en document_date y no lo mueve. received_at va aparte.
 insert into expenses (
   expense_date, category_id, supplier_id, amount, description, created_by,
-  status, paid_at, paid_by, received_at, doc_kind, doc_folio, doc_raw, document_date
-) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+  status, paid_at, paid_by, received_at, doc_kind, doc_folio, doc_raw, document_date, document_total
+) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 returning id;
 
 -- name: GetExpense :one
@@ -52,7 +52,7 @@ select * from expenses where id = $1;
 -- detalle. GetExpense devuelve la fila cruda y la usa el servicio para decidir transiciones.
 select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.financial_group,
        s.name as supplier, e.amount, e.currency, e.description, e.doc_kind, e.doc_folio,
-       e.paid_at, ub.name as created_by_name, e.document_date
+       e.paid_at, ub.name as created_by_name, e.document_date, e.document_total
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
@@ -71,7 +71,7 @@ select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.fi
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from expense_payments ep join payment_methods pm on pm.id = ep.payment_method_id
          where ep.expense_id = e.id) as payment_method,
-       (select count(*) from expense_items ei where ei.expense_id = e.id) as item_count
+       (select count(*) from expense_items ei where ei.expense_id = e.id and not ei.excluded) as item_count
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
@@ -80,7 +80,7 @@ where (sqlc.narg('status')::expense_status is null or e.status = sqlc.narg('stat
   and (sqlc.narg('pending_receipt')::boolean is not true or (
         e.received_at is null and e.status <> 'cancelada'
         and exists (select 1 from expense_items pi where pi.expense_id = e.id
-                     and pi.item_type is not null and pi.voided_at is null)))
+                     and pi.item_type is not null and pi.voided_at is null and not pi.excluded)))
 order by
   case when @sort::text = 'amount'      and @dir::text = 'asc'  then e.amount end asc  nulls last,
   case when @sort::text = 'amount'      and @dir::text <> 'asc' then e.amount end desc nulls last,
@@ -102,7 +102,7 @@ where (sqlc.narg('status')::expense_status is null or e.status = sqlc.narg('stat
   and (sqlc.narg('pending_receipt')::boolean is not true or (
         e.received_at is null and e.status <> 'cancelada'
         and exists (select 1 from expense_items pi where pi.expense_id = e.id
-                     and pi.item_type is not null and pi.voided_at is null)));
+                     and pi.item_type is not null and pi.voided_at is null and not pi.excluded)));
 
 -- name: CancelExpense :execrows
 update expenses set status = 'cancelada', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
@@ -114,8 +114,8 @@ where id = $1 and status = 'pendiente';
 insert into expense_items (
   expense_id, item_type, ingredient_id, product_id, description,
   quantity, unit_id, qty_received, unit_cost, amount, pack_qty_in_base, position,
-  presentation_id, is_gift
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+  presentation_id, is_gift, excluded
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 returning id;
 
 -- name: ListExpenseItems :many
@@ -123,7 +123,7 @@ select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description,
        ei.quantity, ei.unit_id, u.code as unit_code, u.kind as unit_kind,
        ei.qty_received, ei.unit_cost, ei.amount, ei.pack_qty_in_base, ei.position,
        i.name as ingredient_name, p.name as product_name,
-       ei.applied_qty_base, ei.not_coming_qty, ei.voided_at, ei.is_gift, ei.presentation_id,
+       ei.applied_qty_base, ei.not_coming_qty, ei.voided_at, ei.is_gift, ei.presentation_id, ei.excluded,
        iu.code as base_unit_code,
        -- Lo guardado hoy del insumo, para «Tendrás X (hoy Y)» al corregir (spec 038). En toda la
        -- empresa y no por sucursal: con dos sucursales y sin selector, ver el detalle no debe
@@ -164,7 +164,7 @@ from expense_items ei
 join units bu on bu.id = ei.unit_id
 left join ingredients i on i.id = ei.ingredient_id
 left join units iu on iu.id = i.base_unit_id
-where ei.expense_id = $1 and ei.item_type is not null
+where ei.expense_id = $1 and ei.item_type is not null and not ei.excluded
   and ei.qty_received is not null and ei.qty_received > 0
 order by ei.position, ei.id;
 
@@ -178,18 +178,72 @@ insert into stock_movements (
 -- ==== Pagos del gasto ====
 
 -- name: CreateExpensePayment :one
+-- paid_at con el reloj del servicio (spec 048): es la hora contra la que se decide a qué corte entra.
 insert into expense_payments (
-  expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by, register_id
-) values ($1,$2,$3,$4,$5,$6,$7,$8)
+  expense_id, payment_method_id, amount, paid_on, register_session_id, reference, paid_by, register_id,
+  include_in_count, paid_at
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 returning id;
 
 -- name: ListExpensePayments :many
+-- session_closed: el corte del pago ya se cerró, y su casilla del arqueo ya no se puede cambiar.
 select ep.id, ep.payment_method_id, pm.name as method, pm.affects_cash_drawer,
-       ep.amount, ep.paid_on, ep.register_session_id, ep.register_id, ep.reference, ep.created_at
+       ep.amount, ep.paid_on, ep.register_session_id, ep.register_id, ep.reference, ep.created_at,
+       ep.include_in_count, ep.paid_at,
+       coalesce(s.status = 'cerrada', false)::boolean as session_closed
 from expense_payments ep
 join payment_methods pm on pm.id = ep.payment_method_id
+left join register_sessions s on s.id = ep.register_session_id
 where ep.expense_id = $1
 order by ep.paid_on, ep.id;
+
+-- name: GetExpensePaymentForUpdate :one
+-- El pago cuya casilla del arqueo se cambia, tomado para actualizar (spec 048, R3): dos cambios a la
+-- vez deciden uno después del otro, con lo que de verdad quedó.
+select ep.id, ep.expense_id, ep.amount, ep.paid_on, ep.paid_at, ep.register_id, ep.register_session_id,
+       ep.include_in_count, ep.paid_by
+from expense_payments ep
+where ep.id = $1 and ep.expense_id = $2
+for update;
+
+-- name: GetExpensePaymentRegister :one
+-- La caja y el método de un pago, sin candado: lo que hay que tomar ANTES que el pago para no cruzar
+-- candados con la apertura y el cierre (ver SetPaymentInCount).
+select ep.register_id, pm.affects_cash_drawer, e.status as expense_status, e.description
+from expense_payments ep
+join payment_methods pm on pm.id = ep.payment_method_id
+join expenses e on e.id = ep.expense_id
+where ep.id = $1 and ep.expense_id = $2;
+
+-- name: SetPaymentCount :exec
+-- La casilla del arqueo de un pago y su corte. El trigger de la 0099 rellena la caja desde el turno.
+update expense_payments set register_session_id = sqlc.narg('session_id'), include_in_count = sqlc.arg('include_in_count')
+where id = sqlc.arg('id');
+
+-- name: SweepPendingExpensePayments :many
+-- EL BARRIDO (spec 048): los pendientes de una caja cuya hora cae en la ventana de un corte pasan a
+-- ese corte. `register_session_id is null` en el where es lo que hace imposible pegarlos dos veces:
+-- el segundo barrido no los ve. Los de un gasto cancelado no salen de ningún cajón.
+update expense_payments ep set register_session_id = sqlc.arg('session_id')
+from payment_methods pm, expenses e
+where pm.id = ep.payment_method_id and pm.affects_cash_drawer
+  and e.id = ep.expense_id and e.status <> 'cancelada'
+  and ep.register_id = sqlc.arg('register_id')
+  and ep.register_session_id is null and ep.include_in_count
+  and ep.paid_at between sqlc.arg('since')::timestamptz and sqlc.arg('until')::timestamptz
+returning ep.id, ep.expense_id, ep.amount, ep.paid_by, e.description;
+
+-- name: ListPendingExpensePayments :many
+-- Los gastos sin corte de una caja desde su último cierre: los que una apertura puede incluir.
+select ep.id, ep.expense_id, e.description, ep.amount, ep.paid_at
+from expense_payments ep
+join payment_methods pm on pm.id = ep.payment_method_id
+join expenses e on e.id = ep.expense_id
+where ep.register_id = sqlc.arg('register_id')
+  and ep.register_session_id is null and ep.include_in_count
+  and pm.affects_cash_drawer and e.status <> 'cancelada'
+  and (sqlc.narg('since')::timestamptz is null or ep.paid_at > sqlc.narg('since')::timestamptz)
+order by ep.paid_at, ep.id;
 
 -- name: SumExpensePayments :one
 select coalesce(sum(amount), 0)::numeric(10,2) as paid from expense_payments where expense_id = $1;
@@ -199,3 +253,11 @@ select coalesce(sum(amount), 0)::numeric(10,2) as paid from expense_payments whe
 -- estado sigue siendo la carrera entre el GET y el UPDATE.
 update expenses set status = 'pagada', paid_at = now(), paid_by = $2
 where id = $1 and status = 'pendiente';
+
+-- name: ExcludePendingBefore :many
+-- Los pendientes de una caja con hora anterior a la apertura de su turno pasan a «sin incluir»
+-- (spec 048): después de esa apertura ningún corte puede tomarlos.
+update expense_payments set include_in_count = false
+where register_id = sqlc.arg('register_id') and register_session_id is null and include_in_count
+  and paid_at < sqlc.arg('before')::timestamptz
+returning id, expense_id;

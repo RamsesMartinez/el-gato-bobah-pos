@@ -127,6 +127,22 @@ func (h *Handlers) CreateCashRegister(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, v)
 }
 
+// MoveSales — POST /cash-registers/{id}/sells, permiso cash.configure. Pasa la venta a esa caja y
+// responde las cajas como /cash-registers/all, para que la pantalla pinte el cambio (spec 049).
+func (h *Handlers) MoveSales(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.MoveSales(r.Context(), id, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	h.AllCashRegisters(w, r)
+}
+
 func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -144,15 +160,8 @@ func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	// «Lleva arqueo» decide qué efectivo se cuenta: por permiso, como el fondo fijo, y no por el rol
 	// que protege el resto de esta ruta (spec 047).
-	if body.CountsCash != nil {
-		u, ok := userFrom(r.Context())
-		if !ok || !slices.Contains(h.permissions(u.Role), domain.PermCashConfigure) {
-			logging.SecurityEvent(r.Context(), "forbidden",
-				"user_id", u.ID, "role", string(u.Role), "permission", string(domain.PermCashConfigure),
-				"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
-			Error(w, fmt.Errorf("%w: %s", domain.ErrForbidden, domain.PermissionDeniedMessage(domain.PermCashConfigure)))
-			return
-		}
+	if body.CountsCash != nil && !h.requirePermission(w, r, domain.PermCashConfigure) {
+		return
 	}
 	v, err := h.backoffice.UpdateCashRegister(r.Context(), id, body.Name, body.IsActive, body.CountsCash)
 	if err != nil {
@@ -243,20 +252,60 @@ func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 		// Motivo de una apertura distinta del cierre anterior (spec 032, punto 6).
 		OpeningReason     string `json:"openingReason"`
 		OpeningReasonNote string `json:"openingReasonNote"`
+		// OpenedAt: abrir desde una hora anterior (spec 048), RFC3339. Exige cash.adjust_count.
+		OpenedAt *time.Time `json:"openedAt"`
+		// ExcludePending: abrir dejando sin incluir los gastos sin corte (R13). Exige cash.adjust_count.
+		ExcludePending bool `json:"excludePending"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
+	// Mover la hora o excluir los gastos sin corte mueven el esperado del corte: por permiso, aquí y
+	// no en el router, porque abrir sin tocar nada lo sigue pudiendo hacer el cajero (R13).
+	if (body.OpenedAt != nil || body.ExcludePending) && !h.requirePermission(w, r, domain.PermCashAdjustCount) {
+		return
+	}
 	apertura := aperturaDelBody(body.Counts, body.OpeningCash, body.ManualReason)
 	apertura.Reason, apertura.ReasonNote = body.OpeningReason, body.OpeningReasonNote
+	apertura.OpenedAt, apertura.ExcludePending = body.OpenedAt, body.ExcludePending
 	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID, apertura, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
 	}
 	JSON(w, http.StatusCreated, sess)
+}
+
+// requirePermission es RequirePermission dentro de un handler, para lo que solo exige permiso según
+// lo que trae el cuerpo. Responde el 403 y deja el evento de seguridad; false = ya respondió.
+func (h *Handlers) requirePermission(w http.ResponseWriter, r *http.Request, p domain.Permission) bool {
+	u, ok := userFrom(r.Context())
+	if ok && slices.Contains(h.permissions(u.Role), p) {
+		return true
+	}
+	logging.SecurityEvent(r.Context(), "forbidden",
+		"user_id", u.ID, "role", string(u.Role), "permission", string(p),
+		"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
+	Error(w, fmt.Errorf("%w: %s", domain.ErrForbidden, domain.PermissionDeniedMessage(p)))
+	return false
+}
+
+// GET /cash-sessions/pending-expenses?registerId= — los gastos sin corte de la caja desde su último
+// cierre, que la apertura ofrece incluir (spec 048). registerId ausente o malformado = 400.
+func (h *Handlers) PendingExpenses(w http.ResponseWriter, r *http.Request) {
+	reg, err := strconv.ParseInt(r.URL.Query().Get("registerId"), 10, 64)
+	if err != nil || reg <= 0 {
+		Error(w, fmt.Errorf("%w: registerId", domain.ErrValidation))
+		return
+	}
+	items, err := h.backoffice.PendingExpenses(r.Context(), reg)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 // GET /cash-sessions/attendance?registerId= — qué pide la asistencia para abrir o cerrar esa caja
@@ -935,8 +984,9 @@ type expenseItemBody struct {
 	IsGift         bool   `json:"isGift"`
 	RawCode        string `json:"rawCode"`
 	RawName        string `json:"rawName"`
-	// Personal: venía en el ticket pero no es del local. No se guarda como línea del gasto.
+	// Personal: el nombre viejo de Excluded; la API vieja lo mandaba y se trata igual (spec 049).
 	Personal bool `json:"personal"`
+	Excluded bool `json:"excluded"`
 }
 
 // expensePaymentBody es un pago. registerId es la caja de la que salió; para métodos que mueven el
@@ -948,6 +998,8 @@ type expensePaymentBody struct {
 	RegisterID   *int64          `json:"registerId"`
 	Reference    string          `json:"reference"`
 	OutsideCount bool            `json:"outsideCount"`
+	// IncludeInCount: la casilla «Incluir en el arqueo» (spec 048); ausente = tableta de la 047.
+	IncludeInCount *bool `json:"includeInCount"`
 }
 
 func toItemInputs(in []expenseItemBody) []app.ExpenseItemInput {
@@ -957,7 +1009,7 @@ func toItemInputs(in []expenseItemBody) []app.ExpenseItemInput {
 			ItemType: it.ItemType, IngredientID: it.IngredientID, NewArticle: it.NewArticle, ProductID: it.ProductID,
 			Description: it.Description, Quantity: it.Quantity, UnitID: it.UnitID,
 			QtyReceived: it.QtyReceived, Amount: it.Amount, PackQtyInBase: it.PackQtyInBase,
-			RawCode: it.RawCode, RawName: it.RawName, Personal: it.Personal,
+			RawCode: it.RawCode, RawName: it.RawName, Personal: it.Personal, Excluded: it.Excluded,
 			PresentationID: it.PresentationID, IsGift: it.IsGift,
 		}
 	}
@@ -970,6 +1022,7 @@ func toPaymentInputs(in []expensePaymentBody) []app.ExpensePaymentInput {
 		out[i] = app.ExpensePaymentInput{
 			MethodID: p.MethodID, Amount: p.Amount, PaidOn: p.PaidOn,
 			RegisterID: p.RegisterID, Reference: p.Reference, OutsideCount: p.OutsideCount,
+			IncludeInCount: p.IncludeInCount,
 		}
 	}
 	return out
@@ -990,6 +1043,8 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 		DocKind     string               `json:"docKind"`
 		DocFolio    string               `json:"docFolio"`
 		DocRaw      json.RawMessage      `json:"docRaw"`
+		// DocumentTotal: el total impreso en el ticket leído (spec 049); informativo.
+		DocumentTotal *decimal.Decimal `json:"documentTotal"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -1002,7 +1057,7 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 		Description: body.Description, Status: body.Status,
 		Items: toItemInputs(body.Items), Payments: toPaymentInputs(body.Payments),
 		DocKind: body.DocKind, DocFolio: body.DocFolio, DocRaw: body.DocRaw,
-		UserID: u.ID,
+		DocumentTotal: body.DocumentTotal, UserID: u.ID,
 	})
 	if err != nil {
 		Error(w, err)
@@ -1027,6 +1082,38 @@ func (h *Handlers) PayExpense(w http.ResponseWriter, r *http.Request) {
 	u, _ := userFrom(r.Context())
 	in := toPaymentInputs([]expensePaymentBody{body})[0]
 	if err := h.backoffice.AddExpensePayment(r.Context(), id, in, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// SetPaymentInCount: PATCH /expenses/{id}/payments/{paymentId} {includeInCount} — la casilla del
+// arqueo de un pago ya registrado (spec 048). El permiso lo pone la ruta.
+func (h *Handlers) SetPaymentInCount(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	pid, err := strconv.ParseInt(chi.URLParam(r, "paymentId"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		IncludeInCount *bool `json:"includeInCount"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.IncludeInCount == nil {
+		Error(w, fmt.Errorf("%w: falta includeInCount", domain.ErrValidation))
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.SetPaymentInCount(r.Context(), id, pid, *body.IncludeInCount, u.ID); err != nil {
 		Error(w, err)
 		return
 	}

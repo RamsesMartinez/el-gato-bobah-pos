@@ -945,3 +945,47 @@ describe('«Lleva arqueo» en la gestión de cajas', () => {
     await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: texto })));
   });
 });
+
+// Spec 049 (R11): «Tipo» se vuelve «Vende». La que vende va encendida y fija; encender otra pide
+// confirmación y pasa las ventas.
+describe('«Vende» en la gestión de cajas', () => {
+  const cajas = [
+    { id: 1, name: 'Mostrador', isPrimary: true, isActive: true, countsCash: true },
+    { id: 2, name: 'Barra', isPrimary: false, isActive: true, countsCash: true },
+  ];
+  function montarGestion() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(<QueryClientProvider client={qc}><Provider><ManageRegistersTab /></Provider></QueryClientProvider>);
+  }
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  test('la que vende va encendida y fija; ya no hay columna «Tipo»', async () => {
+    vi.spyOn(backofficeApi, 'allCashRegisters').mockResolvedValue({ items: cajas });
+    montarGestion();
+    expect(await screen.findByLabelText('Vende: Mostrador')).toBeChecked();
+    expect(screen.getByLabelText('Vende: Mostrador')).toBeDisabled();
+    expect(screen.getByText('Para cambiarla, enciende otra')).toBeInTheDocument();
+    expect(screen.getByLabelText('Vende: Barra')).not.toBeChecked();
+    expect(screen.queryByText('Tipo')).toBeNull();
+  });
+
+  test('encender otra confirma y pasa las ventas', async () => {
+    vi.spyOn(backofficeApi, 'allCashRegisters').mockResolvedValue({ items: cajas });
+    const sells = vi.spyOn(backofficeApi, 'makeRegisterSell').mockResolvedValue(undefined);
+    montarGestion();
+    await userEvent.click(await screen.findByLabelText('Vende: Barra'));
+    expect(sells).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole('button', { name: 'Pasar las ventas a Barra' }));
+    await waitFor(() => expect(sells).toHaveBeenCalledWith(2));
+  });
+
+  test('con un turno abierto lo dice en su idioma', async () => {
+    vi.spyOn(backofficeApi, 'allCashRegisters').mockResolvedValue({ items: cajas });
+    vi.spyOn(backofficeApi, 'makeRegisterSell').mockRejectedValue(new ApiError(409, 'REGISTERS_MUST_BE_CLOSED', 'x', 'r1'));
+    const toast = vi.spyOn(toaster, 'create');
+    montarGestion();
+    await userEvent.click(await screen.findByLabelText('Vende: Barra'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Pasar las ventas a Barra' }));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Cierra los turnos de las dos cajas primero.' })));
+  });
+});

@@ -139,7 +139,7 @@ describe('purchaseMoney (FR-004a)', () => {
     expect(m).toMatchObject({ linesSum: 730, over: false, others: 410 });
   });
   test('lo de la casa no suma al gasto', () => {
-    expect(purchaseMoney([goods('100'), { amount: '50', goods: false, gift: false, personal: true }], 100).over).toBe(false);
+    expect(purchaseMoney([goods('100'), { amount: '50', goods: false, gift: false, excluded: true }], 100).over).toBe(false);
   });
   test('sin centavos fantasma al sumar', () => {
     expect(purchaseMoney([goods('0.1'), goods('0.2')], 0.3).over).toBe(false);

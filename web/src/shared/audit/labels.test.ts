@@ -9,7 +9,7 @@ const FROM_SERVER = [
   'payment.voided', 'payment.refunded', 'stock.written_off', 'cash.opened', 'cash.closed',
   'cash.closed_without_opener_clock_out',
   'cash.movement', 'cash.movement_corrected', 'expense.created', 'expense.paid', 'expense.cancelled', 'tip.paid_out',
-  'expense.received', 'expense.stock_corrected', 'stock.counted', 'settings.costing_method',
+  'expense.received', 'expense.count_changed', 'cash.opening_backdated', 'expense.stock_corrected', 'stock.counted', 'settings.costing_method',
   'waste.recorded', 'waste.approved', 'waste.rejected', 'waste.undone', 'settings.waste_threshold',
   'price.set', 'price.deleted', 'price.synced', 'attendance.clock_in', 'attendance.clock_out',
   'attendance.corrected', 'attendance.manual_entry', 'attendance.settings_changed',

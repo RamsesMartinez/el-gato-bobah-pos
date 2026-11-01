@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { Provider } from '../../components/ui/provider';
 import { ExpenseDialog } from './ExpenseDialog';
 import { PayDialog } from './ExpensesPage';
 import { ApiError } from '../../api/client';
+import { OUTSIDE_COUNT_TEXT, BEFORE_LAST_CLOSE_TEXT } from './cajaDelGasto';
 
 const units = [
   { id: 1, code: 'g', name: 'Gramo', kind: 'masa', toBase: '1' },
@@ -329,6 +331,54 @@ describe('desde el ticket', () => {
     expect(b.rawName).toBeUndefined();
   });
 
+  test('«Excluir» conserva el artículo, no suma y se manda marcado (spec 049)', async () => {
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    await elegir(/Elegir categoría/, 'Mercancía');
+    const renglon = screen.getByTestId('renglon');
+    fireEvent.click(within(renglon).getByRole('button', { name: 'Excluir' }));
+    expect(within(renglon).getByRole('button', { name: 'Excluir' })).toHaveAttribute('aria-pressed', 'true');
+    expect(renglon).toHaveAttribute('data-excluded', 'true');
+    expect(within(renglon).getByRole('button', { name: /Azúcar/ })).toBeInTheDocument();
+    expect(screen.getByTestId('pie-compra')).not.toHaveTextContent('Azúcar +');
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const body = back.createExpense.mock.calls[0][0];
+    expect(body.items[0]).toMatchObject({ ingredientId: 11, amount: '600', excluded: true });
+    expect(body.items[0].personal).toBeUndefined();
+    expect(body.documentTotal).toBe('1140.00');
+  });
+
+  test('lo que la lectura reconoce como de la casa llega con «Excluir» marcado', async () => {
+    back.suggestArticles.mockResolvedValue({ items: [
+      { itemType: '', itemId: 0, itemName: '', source: 'personal', score: 1, matchedVia: 'AZUCAR', packQtyInBase: '', unitId: null },
+    ] });
+    montar();
+    fireEvent.change(screen.getByTestId('ticket-file'), { target: { files: [new File(['x'], 't.jpg', { type: 'image/jpeg' })] } });
+    const renglon = await screen.findByTestId('renglon');
+    expect(within(renglon).getByRole('button', { name: 'Excluir' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('un ticket sin excluidos no agrega pasos ni manda la marca (SC-003)', async () => {
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    await elegir(/Elegir categoría/, 'Mercancía');
+    expect(screen.queryByText(/De la casa/)).toBeNull();
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].items[0].excluded).toBeUndefined();
+  });
+
+  test('capturado a mano no manda total del documento', async () => {
+    await capturaConMercancia();
+    click('Todavía no se paga');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].documentTotal).toBeUndefined();
+  });
+
   test('si el total capturado no es el del ticket, pregunta cuál', async () => {
     await subirTicket();
     fireEvent.change(screen.getByLabelText('Total de la compra'), { target: { value: '1000' } });
@@ -627,7 +677,7 @@ describe('efectivo sin turno abierto (spec 047)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
     fireEvent.click(await screen.findByRole('button', { name: /¿De qué caja sale\?/ }));
     expect(screen.getByRole('button', { name: 'Caja 1' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Caja 2 · sin turno' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Caja 2 · cerrada' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Caja fuerte · sin arqueo' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Vieja/ })).toBeNull();
   });
@@ -646,13 +696,13 @@ describe('efectivo sin turno abierto (spec 047)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
     click('Guardar');
     expect(await screen.findByText('Caja 1 no tiene turno abierto')).toBeInTheDocument();
-    expect(screen.getByText('Este gasto no entrará a ningún corte.')).toBeInTheDocument();
+    expect(screen.getByText(OUTSIDE_COUNT_TEXT)).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: 'Cancelar' }).at(-1)!);
     await waitFor(() => expect(screen.queryByText('Caja 1 no tiene turno abierto')).toBeNull());
     expect(back.createExpense).toHaveBeenCalledTimes(1);
   });
 
-  test('confirmar reenvía el gasto con outsideCount', async () => {
+  test('«Registrar» lo deja pendiente: reenvía con outsideCount e includeInCount', async () => {
     back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 }] });
     back.createExpense.mockRejectedValueOnce(outside());
     const { onSaved } = (await (async () => { const r = montar(); click(/Capturar sin ticket/); click('No, solo el gasto'); await encabezado('640'); return r; })());
@@ -660,30 +710,160 @@ describe('efectivo sin turno abierto (spec 047)', () => {
     click('Guardar');
     // Con turno abierto, el 409 solo puede ser por la fecha.
     expect(await screen.findByText('El pago es de otro día')).toBeInTheDocument();
-    click('Registrar sin incluir en el arqueo');
+    expect(screen.getByText(OUTSIDE_COUNT_TEXT)).toBeInTheDocument();
+    click('Registrar para el siguiente corte');
     await waitFor(() => expect(back.createExpense).toHaveBeenCalledTimes(2));
+    expect(back.createExpense.mock.calls[0][0].payments[0]).toMatchObject({ includeInCount: true });
     expect(back.createExpense.mock.calls[0][0].payments[0].outsideCount).toBeUndefined();
-    expect(back.createExpense.mock.calls[1][0].payments[0]).toMatchObject({ registerId: 7, outsideCount: true });
+    expect(back.createExpense.mock.calls[1][0].payments[0]).toMatchObject({ registerId: 7, outsideCount: true, includeInCount: true });
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
-  test('«Pagar gasto» (/pay) pregunta igual y reenvía con outsideCount', async () => {
+  test('«Registrar sin incluir en el arqueo» va aparte, mide 44 px y reenvía con includeInCount false', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    back.createExpense.mockRejectedValueOnce(outside());
+    await gastoListo();
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    click('Guardar');
+    const fuera = await screen.findByRole('button', { name: 'Registrar sin incluir en el arqueo' });
+    expect(parseInt(getComputedStyle(fuera).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
+    expect(fuera.parentElement).not.toBe(screen.getByRole('button', { name: 'Registrar para el siguiente corte' }).parentElement);
+    fireEvent.click(fuera);
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalledTimes(2));
+    expect(back.createExpense.mock.calls[1][0].payments[0]).toMatchObject({ registerId: 7, includeInCount: false });
+    expect(back.createExpense.mock.calls[1][0].payments[0].outsideCount).toBeUndefined();
+  });
+
+  test('antes del último cierre no se puede registrar: el principal es «sin incluir»', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    back.createExpense.mockRejectedValueOnce(new ApiError(409, 'EXPENSE_BEFORE_LAST_CLOSE', 'antes del cierre', 'r1'));
+    await gastoListo();
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    click('Guardar');
+    expect(await screen.findByText(BEFORE_LAST_CLOSE_TEXT)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar para el siguiente corte' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Registrar sin incluir en el arqueo' })).toHaveLength(1);
+    click('Registrar sin incluir en el arqueo');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalledTimes(2));
+    expect(back.createExpense.mock.calls[1][0].payments[0]).toMatchObject({ includeInCount: false });
+  });
+
+  test('«Pagar gasto» (/pay) pregunta igual y «Registrar» lo deja pendiente', async () => {
     back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
     back.payExpense.mockRejectedValueOnce(outside()).mockResolvedValueOnce(undefined);
     const onPaid = vi.fn();
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={qc}><Provider>
-      <PayDialog expense={{ id: 5, amount: '100', currency: 'MXN', category: 'Insumos' } as never}
-        methods={[{ id: 1, name: 'Efectivo', affectsCashDrawer: true }]} onClose={vi.fn()} onPaid={onPaid} />
-    </Provider></QueryClientProvider>);
+    montarPago(onPaid);
     await elegir('Método de pago', 'Efectivo');
-    await elegir('Elegir caja', 'Caja 1 · sin turno');
+    await elegir('Elegir caja', 'Caja 1 · cerrada');
     click('Confirmar pago');
     expect(await screen.findByText('Caja 1 no tiene turno abierto')).toBeInTheDocument();
-    click('Registrar sin incluir en el arqueo');
+    click('Registrar para el siguiente corte');
     await waitFor(() => expect(back.payExpense).toHaveBeenCalledTimes(2));
+    expect(back.payExpense.mock.calls[0][1]).toMatchObject({ includeInCount: true });
     expect(back.payExpense.mock.calls[0][1].outsideCount).toBeUndefined();
-    expect(back.payExpense.mock.calls[1][1]).toMatchObject({ registerId: 7, outsideCount: true });
+    expect(back.payExpense.mock.calls[1][1]).toMatchObject({ registerId: 7, outsideCount: true, includeInCount: true });
     await waitFor(() => expect(onPaid).toHaveBeenCalled());
   });
+
+  test('«Pagar gasto» antes del último cierre solo ofrece «sin incluir»', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    back.payExpense.mockRejectedValueOnce(new ApiError(409, 'EXPENSE_BEFORE_LAST_CLOSE', 'x', 'r1')).mockResolvedValueOnce(undefined);
+    montarPago(vi.fn());
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1 · cerrada');
+    click('Confirmar pago');
+    expect(await screen.findByText(BEFORE_LAST_CLOSE_TEXT)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar para el siguiente corte' })).toBeNull();
+    click('Registrar sin incluir en el arqueo');
+    await waitFor(() => expect(back.payExpense).toHaveBeenCalledTimes(2));
+    expect(back.payExpense.mock.calls[1][1]).toMatchObject({ includeInCount: false });
+  });
+});
+
+function montarPago(onPaid: () => void) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={qc}><Provider>
+    <PayDialog expense={{ id: 5, amount: '100', currency: 'MXN', category: 'Insumos' } as never}
+      methods={[{ id: 1, name: 'Efectivo', affectsCashDrawer: true }, { id: 2, name: 'Tarjeta', affectsCashDrawer: false }]}
+      onClose={vi.fn()} onPaid={onPaid} />
+  </Provider></QueryClientProvider>);
+}
+
+// Spec 048, R10: la casilla va en el renglón del pago, solo para efectivo de una caja con arqueo.
+describe('casilla «Incluir en el arqueo» (spec 048)', () => {
+  beforeEach(() => {
+    pos.paymentMethods.mockResolvedValue({ items: [
+      { id: 1, name: 'Efectivo', affectsCashDrawer: true, isActive: true },
+      { id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true },
+    ] });
+    back.cashRegisters.mockResolvedValue({ items: [
+      { id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 },
+      { id: 9, name: 'Caja fuerte', isActive: true, countsCash: false, openSessionId: null },
+    ] });
+  });
+
+  async function conPago() {
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    await encabezado('640');
+    click('Agregar pago');
+    fireEvent.change(screen.getAllByPlaceholderText('0.00').at(-1)!, { target: { value: '640' } });
+  }
+  const casilla = () => screen.queryByRole('checkbox', { name: 'Incluir en el arqueo' });
+
+  test('efectivo de caja con arqueo: aparece marcada y viaja como includeInCount', async () => {
+    await conPago();
+    await elegir('Método de pago', 'Efectivo');
+    expect(casilla()).toBeNull();
+    await elegir('Elegir caja', 'Caja 1');
+    expect(casilla()).toBeChecked();
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments[0]).toMatchObject({ registerId: 7, includeInCount: true });
+  });
+
+  test('desmarcada viaja como includeInCount false', async () => {
+    await conPago();
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1');
+    await userEvent.click(casilla()!);
+    expect(casilla()).not.toBeChecked();
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments[0]).toMatchObject({ includeInCount: false });
+  });
+
+  test('caja sin arqueo o tarjeta: no aparece y no se manda', async () => {
+    await conPago();
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja fuerte · sin arqueo');
+    expect(casilla()).toBeNull();
+    await elegir('Efectivo', 'Tarjeta');
+    expect(casilla()).toBeNull();
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments[0].includeInCount).toBeUndefined();
+  });
+
+  test('«Pagar gasto»: la casilla aparece con efectivo y caja con arqueo, y desmarcada viaja en false', async () => {
+    back.payExpense.mockResolvedValue(undefined);
+    montarPago(vi.fn());
+    await elegir('Método de pago', 'Efectivo');
+    expect(casilla()).toBeNull();
+    await elegir('Elegir caja', 'Caja 1');
+    expect(casilla()).toBeChecked();
+    await userEvent.click(casilla()!);
+    click('Confirmar pago');
+    await waitFor(() => expect(back.payExpense).toHaveBeenCalled());
+    expect(back.payExpense.mock.calls[0][1]).toMatchObject({ registerId: 7, includeInCount: false });
+  });
+
+  test('«Pagar gasto» con tarjeta no la muestra', async () => {
+    montarPago(vi.fn());
+    await elegir('Método de pago', 'Tarjeta');
+    await elegir('— Sin arqueo —', 'Caja 1');
+    expect(casilla()).toBeNull();
+  });
+
 });

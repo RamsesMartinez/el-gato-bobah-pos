@@ -48,9 +48,15 @@ where id = $1
 returning id, name, kind, affects_cash_drawer, auto_declare, is_active;
 
 -- name: InsertExpenseCashMovement :exec
--- Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte).
-insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id)
-values ($1, 'salida', $2, $3, $4, $5);
+-- Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte). Lleva su pago
+-- (spec 048): la base no deja una segunda salida del mismo pago.
+insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id, expense_payment_id)
+values ($1, 'salida', $2, $3, $4, $5, $6);
+
+-- name: DeleteExpenseSalidaOfPayment :execrows
+-- Quitar un pago del arqueo de un corte ABIERTO borra su salida (spec 048, R2b): el corte no se ha
+-- contado, y la bitácora guarda el cambio. Así volver a marcarlo no choca con la unique.
+delete from register_cash_movements where expense_payment_id = $1 and kind = 'salida';
 
 -- Cajas (registros físicos con nombre; la primaria recibe las ventas del POS)
 
@@ -71,6 +77,17 @@ select id, name, is_primary, is_active, fixed_float, counts_cash from cash_regis
 
 -- name: GetCashRegister :one
 select id, name, is_primary, is_active, fixed_float, counts_cash from cash_registers where id = $1;
+
+-- name: GetCashRegisterForShare :one
+-- La caja de un pago de gasto, con candado compartido (spec 048, R4): una apertura, que la toma FOR
+-- UPDATE, termina antes —y el pago la ve abierta— o espera a que el pago confirme y lo barre.
+select id, counts_cash from cash_registers where id = $1 for share;
+
+-- name: LastCloseOfRegister :one
+-- La hora del último cierre de una caja. Ninguna fila = nunca cerró.
+select closed_at from register_sessions
+where register_id = $1 and status = 'cerrada' and closed_at is not null
+order by closed_at desc limit 1;
 
 -- name: GetCashRegisterForUpdate :one
 -- Bajo candado: quitar el arqueo y abrir un turno a la vez dejarían un turno abierto en una caja
@@ -111,8 +128,9 @@ order by r.is_primary desc, r.name;
 select exists(select 1 from register_sessions where status = 'abierta');
 
 -- name: OpenSession :one
-insert into register_sessions (business_date, opening_cash, opened_by, register_id)
-values ($1, $2, $3, $4)
+-- opened_at: la hora movida hacia atrás (spec 048); ausente = ahora.
+insert into register_sessions (business_date, opening_cash, opened_by, register_id, opened_at)
+values ($1, $2, $3, $4, coalesce(sqlc.narg('opened_at')::timestamptz, now()))
 returning *;
 
 -- name: CloseSession :exec
@@ -549,10 +567,14 @@ where r.is_primary and s.status = 'abierta'
 order by s.opened_at desc limit 1;
 
 -- name: CerroLaCajaPrincipal :one
--- Cuándo se cerró por última vez la caja principal. Sin filas si nunca se ha cerrado.
+-- Cuándo cerró por última vez un turno que vendió (uno con pedidos). Sin filas si nunca.
+--
+-- No lee `is_primary`: esa columna dice qué caja vende HOY, y la venta se puede pasar a otra caja
+-- (spec 049). Preguntarle por un turno pasado haría que pasar la venta moviera este instante y
+-- volviera a mostrar los entregados de días cerrados.
 select s.closed_at from register_sessions s
-join cash_registers r on r.id = s.register_id
-where r.is_primary and s.closed_at is not null
+where s.closed_at is not null
+  and exists (select 1 from orders o where o.register_session_id = s.id)
 order by s.closed_at desc limit 1;
 
 -- name: SessionSales :many
@@ -750,3 +772,27 @@ returning s.card_count_mode;
 -- esperado de la siguiente apertura (spec 035, R8).
 select not exists (select 1 from register_sessions o
                    where o.register_id = sqlc.arg(register_id) and o.id > sqlc.arg(session_id)::bigint) as latest;
+
+-- name: LockRegistersForSalesMove :many
+-- Pasar la venta (spec 049): la caja que va a vender y la que vende hoy en SU sucursal, bloqueadas
+-- en orden de id para que dos cambios a la vez no se esperen en ciclo. La sucursal sale de la fila
+-- de la caja destino y no de la sesión: con dos sucursales y sin selector, la sesión no la sabe.
+-- Abrir turno toma la caja con GetCashRegisterForUpdate, así que no se cuela entre esto y el cambio.
+select r.id, r.branch_id, r.is_active, r.is_primary
+  from cash_registers r
+ where r.id = sqlc.arg(target_id)
+    or (r.is_primary and r.branch_id = (select t.branch_id from cash_registers t where t.id = sqlc.arg(target_id)))
+ order by r.id
+   for update of r;
+
+-- name: RegistersWithOpenShift :many
+-- Qué cajas tienen turno abierto. Va en su propio statement DESPUÉS del candado: dentro del mismo
+-- SELECT ... FOR UPDATE se leería con la foto de antes de esperar, y no vería el turno que la
+-- apertura confirmó mientras este cambio esperaba.
+select register_id from register_sessions
+ where register_id = any(sqlc.arg(ids)::bigint[]) and status = 'abierta';
+
+-- name: SetRegisterSells :exec
+-- La que deja de vender va primero: el índice de una principal por sucursal no admite dos.
+update cash_registers set is_primary = sqlc.arg(sells), counts_cash = counts_cash or sqlc.arg(sells)
+ where id = sqlc.arg(id);
