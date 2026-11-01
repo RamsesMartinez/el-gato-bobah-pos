@@ -497,6 +497,30 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     única por pago en las salidas). Una salida nueva sin él no truena, pero desmarcar ese pago
     después responde 409 porque no encuentra qué borrar. Los candados van caja → turno → pago, el
     orden de la apertura y el cierre; tomar el pago primero los cruza.
+- **Editar un gasto ya guardado** (spec 053, 0103). Encabezado, agregar y quitar renglones
+  (`POST /expenses/{id}/edit`, permiso `expenses.edit`, solo admin) y entregas con su fecha
+  (`POST /expenses/{id}/deliveries`, `inventory.receive`). Cinco cosas que no se ven:
+  - **La vista previa es la misma transacción, revertida** (`runExpenseEdit`): con `?preview=1` corre
+    todo y devuelve `errPreviewRollback`; confirmar repite la `fingerprint` de la última vista previa
+    (409 `EXPENSE_EDIT_STALE` si algo cambió) y exige sus decisiones (400 `DECISION_REQUIRED`). Una
+    cifra de la vista previa que dependa de algo volátil (un id recién insertado) rompe la huella: la
+    vista previa revertida consume otro id que la confirmación.
+  - **`stock_movements.effective_on` es el día de la entrega**, no el de la captura. La llena un
+    trigger en cada compra o movimiento de un gasto (`business_day_of`, con la zona de la EMPRESA de la
+    fila), así que la API vieja también deja fecha; los reportes por periodo siguen con `created_at`.
+    El Down de la 0103 se niega en cuanto hay una fecha capturada distinta del día de su captura.
+  - **«No mover» ante un conteo posterior es un movimiento más, no la ausencia de uno**: el del renglón
+    se registra igual (lo aplicado sigue siendo la suma de sus movimientos) y otro `ajuste` contrario
+    lleva `stock_count_id`, `expense_id`, SIN `expense_item_id` y la sucursal del conteo explícita.
+    «Conteo posterior» = renglón de un conteo cerrado de la sucursal capturado después de
+    `least(registro, fin del día de la entrega)`; recibir hoy nunca pregunta.
+  - **El importe se mueve con `domain.ExpenseAmountAfterEdit`**: lo agregado ocupa primero lo que el
+    importe tenía sin desglosar; borrar lo baja por su renglón. El estado se recalcula solo si cambió
+    el importe y una `pagada` sin ningún pago no se degrada. Los pagos nunca se tocan.
+  - **Anular se niega con un pago ya dentro de un corte** (`CanCancelExpense`): una edición puede
+    volver pendiente un gasto pagado, y anularlo dejaría el corte contando la salida de un gasto
+    anulado. Un pago que todavía espera corte no lo impide (spec 050). Anular con devolución es la
+    entrega 2 del #167.
 - **Lo que salió de la caja** (spec 050, 0102). Un pago en efectivo de un gasto con renglones
   excluidos guarda en `expense_payments.drawer_extra` lo que salió del cajón además de su importe.
   Tres cosas que no se ven:

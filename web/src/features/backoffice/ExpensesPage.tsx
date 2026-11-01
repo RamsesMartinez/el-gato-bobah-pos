@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { round2 } from '../../domain/numeros';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import {
   Box, Heading, Text, Button, HStack, VStack, Table, Input, Textarea,
@@ -20,6 +21,9 @@ import { DrawerOutField, IncludeInCountCheckbox, OutsideCountSheet } from './Exp
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { activeRegisters, registerLabel, outsideAskOf, countsInDrawer, drawerExtraOf, withCountChoice, type CountChoice, type OutsideAsk } from './cajaDelGasto';
 import { ExpenseDetailDialog } from './ExpenseDetailDialog';
+import { DeliveryForExpense } from './DeliverySheet';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
 import { posApi } from '../../api/pos';
 import { money } from '../../utils/format';
 import { Page } from '../../components/Page';
@@ -73,6 +77,8 @@ function GastosTab() {
   const [newOpen, setNewOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<Expense | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [receiveId, setReceiveId] = useState<number | null>(null);
+  const canReceive = can('inventory.receive', useSessionStore((st) => st.user));
   // El gasto que se está cancelando. El motivo se pide en una hoja de la app, no con el `prompt()`
   // del navegador (spec 030, caso 10).
   const [cancelando, setCancelando] = useState<Expense | null>(null);
@@ -130,7 +136,7 @@ function GastosTab() {
             </Table.Row></Table.Header>
             <Table.Body>
               {items.map((e) => (
-                <Table.Row key={e.id}>
+                <Table.Row key={e.id} cursor="pointer" onClick={() => setDetailId(e.id)}>
                   <Table.Cell whiteSpace="nowrap">{e.expenseDate}</Table.Cell>
                   <Table.Cell><Badge colorPalette={STATUS_COLOR[e.status]}>{STATUS_LABEL[e.status]}</Badge></Table.Cell>
                   <Table.Cell>{e.category}</Table.Cell>
@@ -143,18 +149,25 @@ function GastosTab() {
                     ) : e.receivedAt ? (
                       <Badge colorPalette="green">recibida {e.receivedAt}</Badge>
                     ) : (
-                      <Badge colorPalette="orange">{e.itemCount} por recibir</Badge>
+                      // Atajo de la spec 053: la etiqueta misma abre la hoja de entrega. Un botón aparte
+                      // ensanchaba la fila y sacaba «Ver» y «Pagar» de la pantalla de 1024 px.
+                      canReceive && e.status !== 'cancelada' ? (
+                        <Button size="sm" minH="44px" px={2} variant="subtle" colorPalette="orange"
+                          onClick={(ev) => { ev.stopPropagation(); setReceiveId(e.id); }}>
+                          {e.itemCount} por recibir ›
+                        </Button>
+                      ) : <Badge colorPalette="orange">{e.itemCount} por recibir</Badge>
                     )}
                   </Table.Cell>
                   <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap">{money(e.amount, e.currency)}</Table.Cell>
                   <Table.Cell>
                     <HStack gap={1} justify="end">
-                      <Button size="xs" variant="ghost" onClick={() => setDetailId(e.id)}>Ver</Button>
+                      <Button size="xs" variant="ghost" onClick={(ev) => { ev.stopPropagation(); setDetailId(e.id); }}>Ver</Button>
                       {e.status === 'pendiente' && (
                         <>
                           {/* 44 px y separados: «Cancelar» es destructivo y vive junto a «Pagar». */}
-                          <Box><Button size="xs" minH="44px" px={3} colorPalette="green" onClick={() => setPayTarget(e)}>Pagar</Button></Box>
-                          <Box pl={4}><Button size="xs" minH="44px" px={3} variant="outline" colorPalette="red" onClick={() => setCancelando(e)}>Cancelar</Button></Box>
+                          <Box><Button size="xs" minH="44px" px={3} colorPalette="green" onClick={(ev) => { ev.stopPropagation(); setPayTarget(e); }}>Pagar</Button></Box>
+                          <Box pl={4}><Button size="xs" minH="44px" px={3} variant="outline" colorPalette="red" onClick={(ev) => { ev.stopPropagation(); setCancelando(e); }}>Cancelar</Button></Box>
                         </>
                       )}
                     </HStack>
@@ -196,6 +209,10 @@ function GastosTab() {
         }} />
       <PayDialog expense={payTarget} methods={methods?.items ?? []}
         onClose={() => setPayTarget(null)} onPaid={invalidate} />
+      {receiveId !== null && (
+        <DeliveryForExpense expenseId={receiveId} onClose={() => setReceiveId(null)}
+          onDone={() => { setReceiveId(null); invalidate(); void qc.invalidateQueries({ queryKey: ['stock'] }); }} />
+      )}
     </VStack>
   );
 }
@@ -203,15 +220,17 @@ function GastosTab() {
 // PayDialog agrega UN pago al gasto. Si con él los pagos cubren el importe, el gasto pasa a
 // pagado; si no, queda pendiente con un abono registrado (así el pago partido no necesita un
 // estado "parcial" aparte).
-export function PayDialog({ expense, methods, onClose, onPaid }: {
+export function PayDialog({ expense, methods, onClose, onPaid, defaultAmount }: {
   expense: Expense | null;
   methods: Array<{ id: number; name: string; affectsCashDrawer?: boolean }>;
   onClose: () => void;
   onPaid: () => void;
+  // Lo que falta pagar después de editar el gasto (spec 053): el pago nuevo sale por el saldo.
+  defaultAmount?: string;
 }) {
   const [methodId, setMethodId] = useState('');
   const [registerId, setRegisterId] = useState('');
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(defaultAmount ?? '');
   const hora = useHoraDelNegocio();
   const [paidOn, setPaidOn] = useState(() => hora.diaDelNegocio(new Date()));
   const { data: registers } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });
@@ -231,8 +250,11 @@ export function PayDialog({ expense, methods, onClose, onPaid }: {
   // sale sin movimiento de caja descuadra el corte.
   const cash = !!methods.find((m) => String(m.id) === methodId)?.affectsCashDrawer;
   const withCheckbox = countsInDrawer(cash, cashRegisters, Number(registerId));
-  // Por omisión sigue al importe que se va a usar: el total del gasto si el campo está vacío (R9).
-  const usedAmount = amount || expense?.amount || '';
+  // Por omisión, lo que falta pagar (spec 053): con un abono previo, «el total» pagaba de nuevo lo
+  // ya pagado. Sin el detalle todavía, el total (R9).
+  const saldo = detail ? round2(Number(detail.amount) - Number(detail.paid)) : NaN;
+  const due = Number.isFinite(saldo) ? String(Math.max(0, saldo)) : expense?.amount;
+  const usedAmount = amount || due || '';
   const withDrawerOut = withCheckbox && includeInCount && excludedAvail > 0.004;
   const drawer = withDrawerOut ? drawerExtraOf(usedAmount, drawerOut, excludedAvail) : { bad: false };
 
@@ -240,7 +262,7 @@ export function PayDialog({ expense, methods, onClose, onPaid }: {
   const pay = useMutation({
     mutationFn: (choice?: CountChoice) => backofficeApi.payExpense(expense!.id, withCountChoice({
       methodId: Number(methodId),
-      amount: amount || expense!.amount,
+      amount: usedAmount,
       paidOn,
       registerId: registerId ? Number(registerId) : undefined,
       includeInCount: withCheckbox ? includeInCount : undefined,
@@ -266,8 +288,8 @@ export function PayDialog({ expense, methods, onClose, onPaid }: {
               <Picker value={methodId} onChange={setMethodId} placeholder="Método de pago" title="Método de pago"
                 options={methods.map((m) => ({ value: String(m.id), label: m.name }))} />
             </Field>
-            <Field label="Importe (vacío = el total del gasto)">
-              <Input type="number" inputMode="decimal" placeholder={expense?.amount ?? '0'} value={amount}
+            <Field label="Importe (vacío = lo que falta pagar)">
+              <Input type="number" inputMode="decimal" placeholder={due ?? '0'} value={amount}
                 onChange={(e) => setAmount(e.target.value)} />
             </Field>
             {withDrawerOut && <DrawerOutField amount={usedAmount} value={drawerOut} bad={drawer.bad} onChange={setDrawerOut} />}

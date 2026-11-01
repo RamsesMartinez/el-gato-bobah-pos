@@ -964,3 +964,16 @@ describe('casilla «Incluir en el arqueo» (spec 048)', () => {
   });
 
 });
+
+// Prueba con usuario nuevo (spec 053): con un abono previo, el importe vacío pagaba el total otra vez.
+test('«Pagar gasto» con un abono previo paga lo que falta, no el total', async () => {
+  back.cashRegisters.mockResolvedValue({ items: [] });
+  back.expenseDetail.mockResolvedValue({ amount: '100', paid: '90', items: [], payments: [{ id: 3, amount: '90', drawerExtra: '0' }] });
+  back.payExpense.mockResolvedValue(undefined);
+  montarPago(vi.fn());
+  await elegir('Método de pago', 'Tarjeta');
+  expect(await screen.findByPlaceholderText('10')).toBeInTheDocument();
+  click('Confirmar pago');
+  await waitFor(() => expect(back.payExpense).toHaveBeenCalled());
+  expect(back.payExpense.mock.calls[0][1]).toMatchObject({ amount: '10' });
+});

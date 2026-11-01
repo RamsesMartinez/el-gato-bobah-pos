@@ -15,7 +15,11 @@ import (
 
 const cancelExpense = `-- name: CancelExpense :execrows
 update expenses set status = 'cancelada', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
-where id = $1 and status = 'pendiente'
+where expenses.id = $1 and expenses.status = 'pendiente'
+  -- Con un pago ya dentro de un corte no se anula (spec 053, A1): el corte seguiría contando la salida
+  -- de un gasto anulado y el arqueo dejaría de cuadrar.
+  and not exists (select 1 from expense_payments ep where ep.expense_id = expenses.id
+                                                     and ep.register_session_id is not null)
 `
 
 type CancelExpenseParams struct {
@@ -451,7 +455,8 @@ func (q *Queries) GetExpensePaymentRegister(ctx context.Context, arg GetExpenseP
 const getExpenseView = `-- name: GetExpenseView :one
 select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.financial_group,
        s.name as supplier, e.amount, e.currency, e.description, e.doc_kind, e.doc_folio,
-       e.paid_at, ub.name as created_by_name, e.document_date, e.document_total
+       e.paid_at, ub.name as created_by_name, e.document_date, e.document_total,
+       e.supplier_id, e.category_id
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
@@ -476,6 +481,8 @@ type GetExpenseViewRow struct {
 	CreatedByName  *string            `json:"created_by_name"`
 	DocumentDate   pgtype.Date        `json:"document_date"`
 	DocumentTotal  *decimal.Decimal   `json:"document_total"`
+	SupplierID     *int64             `json:"supplier_id"`
+	CategoryID     int64              `json:"category_id"`
 }
 
 // El encabezado ya resuelto (categoría, proveedor, quién lo capturó) para la pantalla de
@@ -500,6 +507,8 @@ func (q *Queries) GetExpenseView(ctx context.Context, id int64) (GetExpenseViewR
 		&i.CreatedByName,
 		&i.DocumentDate,
 		&i.DocumentTotal,
+		&i.SupplierID,
+		&i.CategoryID,
 	)
 	return i, err
 }

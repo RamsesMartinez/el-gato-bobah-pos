@@ -47,13 +47,14 @@ select coalesce((select costing_method from business_settings limit 1), 'last'):
 -- name: InsertLineMovement :exec
 -- Un movimiento de compra ligado a su gasto y a su RENGLÓN, con la sucursal de la sesión: con dos
 -- sucursales y sin selector, `current_branch_id()` truena (EGB01) en vez de adivinar.
+-- `effective_on` es el día de la entrega (spec 053); nula, la pone el trigger de la 0103 con hoy.
 insert into stock_movements (
   item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, expense_id, expense_item_id,
-  user_id, reason, branch_id
+  user_id, reason, branch_id, effective_on
 ) values (
   sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id), 'compra', sqlc.arg(quantity),
   sqlc.narg(unit_cost), sqlc.arg(expense_id), sqlc.arg(expense_item_id), sqlc.arg(user_id),
-  sqlc.arg(reason), current_branch_id()
+  sqlc.arg(reason), current_branch_id(), sqlc.narg(effective_on)
 );
 
 -- name: AddAppliedQty :exec
@@ -173,3 +174,138 @@ select id, ingredient_id, excluded, amount, is_gift from expense_items
 
 -- name: SetExpenseItemExcluded :exec
 update expense_items set excluded = sqlc.arg(excluded) where id = sqlc.arg(id);
+
+-- ---- Editar un gasto ya guardado (spec 053) ----
+
+-- name: LockExpenseForEdit :one
+-- El encabezado del gasto, bloqueado: lo que una edición compara y cambia. Mismo candado que
+-- LockExpenseForStock (el gasto primero, después sus insumos).
+select e.id, e.status, e.amount, e.expense_date, e.supplier_id, e.category_id, e.description,
+       e.received_at,
+       (select count(*) from expense_payments ep where ep.expense_id = e.id)::int as payment_count,
+       (select count(*) from expense_payments ep where ep.expense_id = e.id
+                                                and ep.register_session_id is not null)::int as counted_payment_count,
+       (select coalesce(sum(ep.amount), 0) from expense_payments ep where ep.expense_id = e.id)::numeric(10,2) as paid
+  from expenses e where e.id = $1 for update;
+
+-- name: InsertCompensationMovement :exec
+-- «No mover» (spec 053, R6): el movimiento del renglón ya se registró; éste, de signo contrario, deja
+-- las existencias como las dejó el conteo que ya lo había contado. Va ligado al conteo y al gasto pero
+-- NO al renglón: lo aplicado del renglón sigue siendo la suma de SUS movimientos, y el historial de
+-- precios de compra no lo ve. La sucursal es la del conteo, explícita (con dos sucursales, el trigger
+-- tomaría la de la empresa y truena).
+insert into stock_movements (
+  item_type, ingredient_id, movement_type, quantity, expense_id, stock_count_id, user_id, reason,
+  branch_id, effective_on
+) values (
+  'ingrediente', sqlc.arg(ingredient_id), 'ajuste', sqlc.arg(quantity), sqlc.arg(expense_id),
+  sqlc.arg(stock_count_id), sqlc.arg(user_id), sqlc.arg(reason), sqlc.arg(branch_id), sqlc.arg(effective_on)
+);
+
+-- name: LatestPosteriorCount :one
+-- El conteo cerrado más reciente de ESTA sucursal que contó el insumo después de `cutoff` (R5): ya vio
+-- lo que la entrega o el borrado movería. Un conteo abierto no cuenta.
+select c.id, c.branch_id, scl.captured_at
+  from stock_count_lines scl
+  join stock_counts c on c.id = scl.count_id
+ where scl.ingredient_id = sqlc.arg(ingredient_id) and c.status = 'closed'
+   and c.branch_id = current_branch_id() and scl.captured_at > sqlc.arg(cutoff)::timestamptz
+ order by scl.captured_at desc
+ limit 1;
+
+-- name: LineDeliveryDays :many
+-- Lo que un renglón sumó, por día de entrega, y el último instante en que se registró algo de ese día:
+-- de aquí sale el contra-movimiento de un borrado (R7).
+select effective_on::date as day, sum(quantity)::numeric(14,4) as qty, max(created_at)::timestamptz as registered_at
+  from stock_movements
+ where expense_item_id = sqlc.arg(expense_item_id) and movement_type = 'compra'
+ group by effective_on
+ order by effective_on;
+
+-- name: ExpenseDeliveryHistory :many
+-- El historial de entregas de cada renglón de un gasto, en unidad base (FR-016).
+select sm.expense_item_id::bigint as item_id, sm.effective_on::date as day, sum(sm.quantity)::numeric(14,4) as qty
+  from stock_movements sm
+ where sm.expense_id = sqlc.arg(expense_id) and sm.expense_item_id is not null and sm.movement_type = 'compra'
+ group by sm.expense_item_id, sm.effective_on
+ order by sm.expense_item_id, sm.effective_on;
+
+-- name: MaxDeliveryDate :one
+-- El día de la última entrega de los renglones vivos: la fecha en que el gasto quedó recibido (FR-019).
+select max(sm.effective_on)::date as day
+  from stock_movements sm
+  join expense_items ei on ei.id = sm.expense_item_id
+ where ei.expense_id = sqlc.arg(expense_id) and ei.voided_at is null and sm.movement_type = 'compra'
+   and sm.quantity > 0;
+
+-- name: StockOnHandFor :many
+-- Lo guardado en la sucursal de la sesión de los artículos que toca una edición: el antes y el después
+-- de la vista previa.
+select sl.ingredient_id, sl.product_id, sl.on_hand
+  from stock_levels sl
+ where sl.branch_id = current_branch_id()
+   and (sl.ingredient_id = any(sqlc.arg(ingredient_ids)::bigint[]) or sl.product_id = any(sqlc.arg(product_ids)::bigint[]));
+
+-- name: IngredientCostsFor :many
+select id, name, current_cost from ingredients where id = any(sqlc.arg(ids)::bigint[]) order by id;
+
+-- name: UpdateExpenseHeader :exec
+update expenses
+   set supplier_id = sqlc.narg(supplier_id), category_id = sqlc.arg(category_id),
+       description = sqlc.narg(description), expense_date = sqlc.arg(expense_date)
+ where id = sqlc.arg(id);
+
+-- name: SetExpenseAmountStatus :exec
+-- El importe y el estado después de una edición (FR-009, FR-011). Al volver a deberse, la fecha y quién
+-- pagó se borran (como RaiseExpenseAmount); al quedar pagado, quedan con quien editó.
+update expenses
+   set amount = sqlc.arg(amount), status = sqlc.arg(status),
+       paid_at = case when sqlc.arg(status)::expense_status = 'pagada'
+                      then coalesce(paid_at, now()) else null end,
+       paid_by = case when sqlc.arg(status)::expense_status = 'pagada'
+                      then coalesce(paid_by, sqlc.arg(user_id)::bigint) else null end
+ where id = sqlc.arg(id);
+
+-- name: ExpenseCategoryName :one
+-- Pertenencia bajo RLS: la llave foránea salta RLS por diseño y aceptaría la categoría de otra
+-- empresa; sin fila, no es de esta empresa.
+select name from expense_categories where id = $1;
+
+-- name: SupplierName :one
+select name from suppliers where id = $1;
+
+-- name: AdjustLineToReceived :exec
+-- «Ajustar el importe a lo recibido» (FR-018): el renglón se cierra en lo que llegó, con el mismo
+-- precio por unidad. Lo que se había dicho que no llegaría queda dentro del ajuste.
+update expense_items
+   set qty_received = sqlc.arg(qty), quantity = sqlc.arg(qty), amount = sqlc.arg(amount),
+       unit_cost = sqlc.arg(unit_cost), not_coming_qty = 0
+ where id = sqlc.arg(id);
+
+-- name: MinDeliveryDate :one
+-- El día de la primera entrega de los renglones vivos: la fecha del gasto no puede quedar después.
+select min(sm.effective_on)::date as day
+  from stock_movements sm
+  join expense_items ei on ei.id = sm.expense_item_id
+ where ei.expense_id = sqlc.arg(expense_id) and ei.voided_at is null and sm.movement_type = 'compra'
+   and sm.quantity > 0;
+
+-- name: OpenKeepCompensations :many
+-- Las compensaciones de «No mover» de un gasto que siguen vivas (spec 053): al anularlo se deshacen,
+-- o las existencias quedarían por debajo de lo que dejó el conteo.
+select ingredient_id::bigint as ingredient_id, stock_count_id::bigint as stock_count_id, branch_id,
+       effective_on::date as day, sum(quantity)::numeric(14,4) as qty
+  from stock_movements
+ where expense_id = sqlc.arg(expense_id) and movement_type = 'ajuste' and stock_count_id is not null
+   and expense_item_id is null
+ group by ingredient_id, stock_count_id, branch_id, effective_on
+having sum(quantity) <> 0
+ order by ingredient_id;
+
+-- name: ProductVisible :one
+-- Pertenencia bajo RLS de un producto de un renglón: la llave foránea salta RLS y el de otra empresa
+-- reventaba como 500 (revisión de seguridad de la spec 053).
+select exists (select 1 from products where id = $1)::bool;
+
+-- name: UnitExists :one
+select exists (select 1 from units where id = $1)::bool;

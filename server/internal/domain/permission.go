@@ -51,6 +51,10 @@ const (
 	// PermCashAdjustCount: abrir un corte desde una hora anterior y cambiar si un pago de gasto ya
 	// registrado entra al arqueo (spec 048). Los dos mueven el esperado de un corte.
 	PermCashAdjustCount Permission = "cash.adjust_count"
+	// PermExpensesEdit: corregir un gasto ya guardado: su encabezado y agregar o quitar renglones
+	// (spec 053). Mueve el importe y lo que la compra sumó al almacén; por omisión solo el
+	// administrador (#167).
+	PermExpensesEdit Permission = "expenses.edit"
 )
 
 // AllPermissions devuelve todos los permisos que existen, en un orden fijo.
@@ -58,7 +62,8 @@ func AllPermissions() []Permission {
 	return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 		PermAttendanceConfigure, PermAttendanceReport, PermAttendanceCorrectOthers, PermAttendanceCorrectOwn,
 		PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure, PermInventoryHealthView, PermMenuConfigure,
-		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount, PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount}
+		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount, PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount,
+		PermExpensesEdit}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -127,6 +132,8 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede ver el almacén"
 	case PermCashCloseWithoutClockOut:
 		return "Tu usuario no puede cerrar la caja sin la salida de quien la abrió"
+	case PermExpensesEdit:
+		return "Tu usuario no puede editar gastos"
 	case PermCashAdjustCount:
 		return "Tu usuario no puede cambiar lo que entra al arqueo"
 	}

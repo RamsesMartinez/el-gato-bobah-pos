@@ -88,7 +88,7 @@ var accionesMedibles = map[string]map[string]struct{}{
 	"caja":     {"abrir-turno": {}, "cerrar-turno": {}, "contar-efectivo": {}, "traspaso": {}},
 	"catalogo": {"editar-producto": {}},
 	// Compras que suman al almacén (spec 038).
-	"gastos": {"registrar-compra": {}, "corregir-compra": {}},
+	"gastos": {"registrar-compra": {}, "corregir-compra": {}, "editar-gasto": {}, "recibir-entrega": {}},
 	// Salud del inventario (spec 037), Por recibir y Conteo (spec 038) son pestañas de Almacén, no
 	// rutas: se miden como acciones.
 	"inventario": {

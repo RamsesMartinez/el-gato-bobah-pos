@@ -69,6 +69,14 @@ type ExpenseItemView struct {
 	Excluded bool `json:"excluded"`
 	// OnHand: lo guardado hoy del artículo, en unidad base (solo renglones de almacén).
 	OnHand *decimal.Decimal `json:"onHand"`
+	// Deliveries: lo que sumó cada día de entrega, en unidad base (spec 053). Siempre un arreglo.
+	Deliveries []DeliveryView `json:"deliveries"`
+}
+
+// DeliveryView es lo que un renglón sumó al almacén en un día de entrega, correcciones incluidas.
+type DeliveryView struct {
+	On      string          `json:"on"`
+	QtyBase decimal.Decimal `json:"qtyBase"`
 }
 
 type ExpensePaymentView struct {
@@ -99,6 +107,9 @@ type ExpenseDetailView struct {
 	Paid decimal.Decimal `json:"paid"`
 	// DocumentTotal: el total impreso en el documento leído; null si no hubo (spec 049).
 	DocumentTotal *decimal.Decimal `json:"documentTotal"`
+	// SupplierID y CategoryID: lo que preselecciona la edición del encabezado (spec 053).
+	SupplierID *int64 `json:"supplierId"`
+	CategoryID int64  `json:"categoryId"`
 }
 
 // ---- Entradas ----
@@ -433,6 +444,14 @@ func (s *BackofficeService) AddExpensePayment(ctx context.Context, expenseID int
 		return err
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Con el gasto tomado: dos tabletas que pagan el mismo saldo no lo pagan dos veces.
+		locked, err := q.LockExpenseForEdit(ctx, expenseID)
+		if err != nil {
+			return err
+		}
+		if err := domain.PaymentFitsDue(domain.Round2(in.Amount), locked.Amount, locked.Paid); err != nil {
+			return err
+		}
 		if err := s.insertPayments(ctx, q, expenseID, derefStr(exp.Description), userID, payments); err != nil {
 			return err
 		}
@@ -917,6 +936,9 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 		if err != nil {
 			return err
 		}
+		if err := checkLineRefs(ctx, q, it.ProductID, it.UnitID); err != nil {
+			return err
+		}
 		if itemType != nil {
 			if !excluded {
 				if err := checkLineMoney(amount, it.IsGift); err != nil {
@@ -1041,23 +1063,33 @@ func (s *BackofficeService) learnSupplierItems(ctx context.Context, q *db.Querie
 
 // ---- Cancelación ----
 
-// CancelExpense anula una pendiente (una pagada es terminal — ver domain.CanCancelExpense).
+// CancelExpense anula una pendiente sin pagos (ver domain.CanCancelExpense).
 func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason string, userID int64) error {
 	exp, err := s.getExpense(ctx, id)
 	if err != nil {
 		return err
 	}
-	if !domain.CanCancelExpense(string(exp.Status)) {
-		return domain.ErrConflict
-	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		if _, err := q.LockExpenseForStock(ctx, id); err != nil {
+		locked, err := q.LockExpenseForEdit(ctx, id)
+		if err != nil {
 			return err
+		}
+		// Con el gasto tomado: un pago que entra a un corte mientras tanto no deja anularlo (spec 053, A1).
+		if !domain.CanCancelExpense(string(locked.Status), locked.CountedPaymentCount > 0) {
+			if locked.CountedPaymentCount > 0 && locked.Status == db.ExpenseStatusPendiente {
+				return fmt.Errorf("%w: un pago de este gasto ya está en un corte de caja; no se puede anular", domain.ErrConflict)
+			}
+			return domain.ErrConflict
 		}
 		// Lo que la compra sumó al almacén se revierte con movimientos nuevos, en la misma tx:
 		// anular el gasto y dejar la mercancía sumada haría que el almacén contara algo que no
 		// se compró (spec 038; antes se respondía 409).
 		if err := s.reverseStockLines(ctx, q, id, userID); err != nil {
+			return err
+		}
+		// Un «No mover» (spec 053) dejó un ajuste ligado al conteo que no es del renglón: anular revierte
+		// la compra del renglón y, sin esto, las existencias quedarían por debajo de lo que dejó el conteo.
+		if err := undoKeepCompensations(ctx, q, id, userID); err != nil {
 			return err
 		}
 		n, err := q.CancelExpense(ctx, db.CancelExpenseParams{
@@ -1146,6 +1178,18 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 	}
 	out.Paid = paid
 	out.DocumentTotal = exp.DocumentTotal
+	out.SupplierID, out.CategoryID = exp.SupplierID, exp.CategoryID
+	history, err := s.store.QC(ctx).ExpenseDeliveryHistory(ctx, &id)
+	if err != nil {
+		return out, err
+	}
+	deliveries := map[int64][]DeliveryView{}
+	for _, h := range history {
+		if h.Qty.IsZero() || !h.Day.Valid {
+			continue
+		}
+		deliveries[h.ItemID] = append(deliveries[h.ItemID], DeliveryView{On: h.Day.Time.Format(dateFmt), QtyBase: h.Qty})
+	}
 	// Un renglón quitado en una corrección no se muestra: su rastro son sus movimientos.
 	out.Items = make([]ExpenseItemView, 0, len(items))
 	for _, r := range items {
@@ -1159,6 +1203,10 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 			Amount: r.Amount, PackQtyInBase: r.PackQtyInBase,
 			Applied: r.AppliedQtyBase, BaseUnitCode: r.BaseUnitCode, NotComing: r.NotComingQty,
 			IsGift: r.IsGift, PresentationID: r.PresentationID, Excluded: r.Excluded,
+			Deliveries: deliveries[r.ID],
+		}
+		if v.Deliveries == nil {
+			v.Deliveries = []DeliveryView{}
 		}
 		if r.ItemType != nil {
 			t := string(*r.ItemType)
@@ -1272,4 +1320,24 @@ func bytesPtr(b []byte) *string {
 	}
 	s := string(b)
 	return &s
+}
+
+// undoKeepCompensations deshace las compensaciones de «No mover» que siguen vivas en un gasto, con
+// la misma fecha, conteo y sucursal que las dejó.
+func undoKeepCompensations(ctx context.Context, q *db.Queries, expenseID, userID int64) error {
+	rows, err := q.OpenKeepCompensations(ctx, &expenseID)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		ing, cnt, exp, uid := r.IngredientID, r.StockCountID, expenseID, userID
+		reason := fmt.Sprintf("compra anulada: deshace «ya contado en el conteo %d»", cnt)
+		if err := q.InsertCompensationMovement(ctx, db.InsertCompensationMovementParams{
+			IngredientID: &ing, Quantity: r.Qty.Neg(), ExpenseID: &exp, StockCountID: &cnt, UserID: &uid,
+			Reason: &reason, BranchID: r.BranchID, EffectiveOn: r.Day,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

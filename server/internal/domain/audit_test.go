@@ -25,6 +25,7 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		"ingredient.cost_corrected", "ingredient.unit_changed", "ingredient.unit_changed.detail",
 		"ingredient.replaced", "presentation.created", "presentation.updated", "presentation.retired",
 		"stock.count_confirm_asked", "expense.item_excluded", "cash.selling_register_changed",
+		"expense.edited",
 	}
 	got := AllAuditActions()
 	if len(got) != len(want) {

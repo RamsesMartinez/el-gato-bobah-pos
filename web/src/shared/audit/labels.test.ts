@@ -18,7 +18,7 @@ const FROM_SERVER = [
   'ingredient.created', 'ingredient.updated', 'ingredient.archived', 'ingredient.reactivated',
   'ingredient.cost_corrected', 'ingredient.unit_changed', 'ingredient.unit_changed.detail',
   'ingredient.replaced', 'presentation.created', 'presentation.updated', 'presentation.retired',
-  'stock.count_confirm_asked', 'settings.count_limits_changed',
+  'stock.count_confirm_asked', 'settings.count_limits_changed', 'expense.edited',
 ];
 
 test('cada acción del servidor tiene etiqueta en español', () => {

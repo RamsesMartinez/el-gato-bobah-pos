@@ -1895,6 +1895,7 @@ type StockMovement struct {
 	StockCountID         *int64            `json:"stock_count_id"`
 	WasteRecordID        *int64            `json:"waste_record_id"`
 	ReplacementID        *int64            `json:"replacement_id"`
+	EffectiveOn          pgtype.Date       `json:"effective_on"`
 }
 
 type Supplier struct {
