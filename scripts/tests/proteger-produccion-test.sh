@@ -14,6 +14,7 @@ caso allow "${ssh}'sudo journalctl SYSLOG_IDENTIFIER=api --since \"-30 min\" -o 
 caso allow "${ssh}'docker ps --format {{.Names}}'"
 caso allow "${ssh}'curl -s localhost:8080/readyz'"
 caso allow "${ssh}'sudo -u postgres pg_dump gatobobah'"
+caso allow "gcloud compute ssh ramses_mtz96@pos-vps --zone=us-central1-a --quiet --command \"sudo /usr/local/bin/respaldo-gatobobah.sh 2>&1 | tail -2\""
 caso ask   "${ssh}'docker compose -f deploy/docker-compose.yml up -d'"
 caso ask   "${ssh}'docker restart deploy-api-1'"
 caso ask   "${ssh}'journalctl -n 5; rm -rf /srv'"
