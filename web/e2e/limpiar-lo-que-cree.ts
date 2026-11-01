@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { API, MARCA, cuentasVivas, pedidosEnCurso, tokenDeApi } from './ambiente';
 import { randomUUID } from 'node:crypto';
+import { cerrarLaPrincipal } from './caja-principal';
 
 // La suite cobra y cierra lo que ella misma abrió.
 //
@@ -32,10 +33,11 @@ export default async function limpiarLoQueCree() {
   // preferible a cerrarle a alguien una cuenta viva.
   let yaEstaban: Set<number>;
   let cuentasQueYaEstaban: Set<string>;
+  let cajaAbierta: number | null = null;
   try {
     const crudo = readFileSync(MARCA, 'utf8').trim();
     if (crudo === '') throw new Error('la marca está vacía');
-    const marca = JSON.parse(crudo) as number[] | { pedidos: number[]; cuentas: string[] };
+    const marca = JSON.parse(crudo) as number[] | { pedidos: number[]; cuentas: string[]; cajaAbierta?: number };
     // La marca de antes de la 030 era solo la lista de pedidos: sin cuentas anotadas no se descarta
     // ninguna, porque no hay forma de saber cuáles eran de la suite.
     if (Array.isArray(marca)) {
@@ -44,6 +46,7 @@ export default async function limpiarLoQueCree() {
     } else {
       yaEstaban = new Set(marca.pedidos);
       cuentasQueYaEstaban = new Set(marca.cuentas);
+      cajaAbierta = marca.cajaAbierta ?? null;
     }
   } catch (e) {
     console.error(`[e2e] la marca de inicio no se pudo leer (${e instanceof Error ? e.message : e}): `
@@ -107,5 +110,15 @@ export default async function limpiarLoQueCree() {
   // porque nadie vuelve a revisar la barra.
   if (quedaron.length) {
     console.error(`[e2e] QUEDARON ABIERTOS: ${quedaron.join(', ')} — hay que cerrarlos a mano.`);
+  }
+
+  // Al final: un pedido de la suite sin entregar bloquearía el cierre.
+  if (cajaAbierta !== null) {
+    try {
+      await cerrarLaPrincipal(cajaAbierta);
+      console.log('[e2e] la caja principal que abrió la suite quedó cerrada.');
+    } catch (e) {
+      console.error(`[e2e] LA CAJA PRINCIPAL QUEDÓ ABIERTA (${e instanceof Error ? e.message : e}) — hay que cerrarla a mano.`);
+    }
   }
 }
