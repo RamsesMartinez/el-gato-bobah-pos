@@ -253,3 +253,11 @@ select coalesce(sum(amount), 0)::numeric(10,2) as paid from expense_payments whe
 -- estado sigue siendo la carrera entre el GET y el UPDATE.
 update expenses set status = 'pagada', paid_at = now(), paid_by = $2
 where id = $1 and status = 'pendiente';
+
+-- name: ExcludePendingBefore :many
+-- Los pendientes de una caja con hora anterior a la apertura de su turno pasan a «sin incluir»
+-- (spec 048): después de esa apertura ningún corte puede tomarlos.
+update expense_payments set include_in_count = false
+where register_id = sqlc.arg('register_id') and register_session_id is null and include_in_count
+  and paid_at < sqlc.arg('before')::timestamptz
+returning id, expense_id;

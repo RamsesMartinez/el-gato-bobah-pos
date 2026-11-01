@@ -259,6 +259,45 @@ func (q *Queries) DeleteExpenseItems(ctx context.Context, expenseID int64) error
 	return err
 }
 
+const excludePendingBefore = `-- name: ExcludePendingBefore :many
+update expense_payments set include_in_count = false
+where register_id = $1 and register_session_id is null and include_in_count
+  and paid_at < $2::timestamptz
+returning id, expense_id
+`
+
+type ExcludePendingBeforeParams struct {
+	RegisterID *int64    `json:"register_id"`
+	Before     time.Time `json:"before"`
+}
+
+type ExcludePendingBeforeRow struct {
+	ID        int64 `json:"id"`
+	ExpenseID int64 `json:"expense_id"`
+}
+
+// Los pendientes de una caja con hora anterior a la apertura de su turno pasan a «sin incluir»
+// (spec 048): después de esa apertura ningún corte puede tomarlos.
+func (q *Queries) ExcludePendingBefore(ctx context.Context, arg ExcludePendingBeforeParams) ([]ExcludePendingBeforeRow, error) {
+	rows, err := q.db.Query(ctx, excludePendingBefore, arg.RegisterID, arg.Before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExcludePendingBeforeRow{}
+	for rows.Next() {
+		var i ExcludePendingBeforeRow
+		if err := rows.Scan(&i.ID, &i.ExpenseID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getExpense = `-- name: GetExpense :one
 select id, expense_date, category_id, supplier_id, amount, description, created_by, created_at, currency, status, paid_at, paid_by, cancelled_at, cancelled_by, cancel_reason, received_at, doc_kind, doc_folio, doc_raw, branch_id, document_date from expenses where id = $1
 `

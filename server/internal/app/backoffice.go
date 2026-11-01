@@ -1286,6 +1286,19 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 				return err
 			}
 		}
+		// LO QUE QUEDÓ ANTES DE ESTA APERTURA YA NO ENTRA A NINGÚN CORTE: abrir sin incluirlo es
+		// elegir «sin incluir», y así se guarda. Si no, quedaría pendiente para siempre.
+		dropped, err := q.ExcludePendingBefore(ctx, db.ExcludePendingBeforeParams{RegisterID: &registerID, Before: abierta.OpenedAt})
+		if err != nil {
+			return err
+		}
+		for _, d := range dropped {
+			if err := auditEntity(ctx, q, domain.AuditExpenseCountChanged, "expense", d.ExpenseID, nil, &userID,
+				map[string]any{"includeInCount": true, "sessionId": nil},
+				map[string]any{"paymentId": d.ID, "includeInCount": false, "reason": "opened_without_it", "sessionId": abierta.ID}); err != nil {
+				return err
+			}
+		}
 		// El modo de tarjeta lo copia este update; la fila de OpenSession todavía trae el default.
 		if sess.CardCountMode, err = q.SetOpeningExtras(ctx, db.SetOpeningExtrasParams{ID: abierta.ID, Reason: reason, Note: note}); err != nil {
 			return err

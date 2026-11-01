@@ -63,8 +63,9 @@ HH:MM)» y abrir; el esperado del corte es $200 menor; y al cerrarlo el corte li
    dentro del corte se descuentan al cerrarlo.
 4. **Given** un gasto pendiente con hora anterior al último cierre de su caja, **Then** no puede entrar
    a ningún corte: el aviso lo dice y solo ofrece «Registrar sin incluir en el arqueo» y «Cancelar».
-5. **Given** se abre sin mover la hora, **Then** los pendientes anteriores se quedan pendientes y
-   siguen listados en la siguiente apertura hasta que alguien decida.
+5. **Given** se abre sin incluirlos (sin mover la hora, o desde una hora posterior a ellos),
+   **Then** los pendientes con hora anterior a la apertura quedan «sin incluir», como si se hubiera
+   elegido así al registrarlos, dejan de listarse y queda un evento en la bitácora por cada uno.
 
 ---
 

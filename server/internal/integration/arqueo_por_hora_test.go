@@ -271,8 +271,9 @@ func TestAbrirDesdeUnaHoraAnteriorBarreLosPendientes(t *testing.T) {
 	}
 }
 
-// Abrir sin mover la hora no barre: el pendiente se queda pendiente (US2, escenario 5).
-func TestAbrirAhoraNoBarreLosPendientesAnteriores(t *testing.T) {
+// ABRIR SIN INCLUIRLOS DEJA LOS PENDIENTES ANTERIORES «SIN INCLUIR» (US2, escenario 5). Después de
+// esa apertura ningún corte podría tomarlos: quedarían pendientes para siempre y trabarían el Down.
+func TestAbrirAhoraDejaSinIncluirLosPendientesAnteriores(t *testing.T) {
 	t.Parallel()
 	g := nuevoArqueoPorHora(t)
 	ctx := context.Background()
@@ -281,15 +282,52 @@ func TestAbrirAhoraNoBarreLosPendientesAnteriores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	antes := g.eventos(t, "expense.count_changed")
 	vista, err := g.back.OpenSession(ctx, g.primar, aperturaAMano(dec("500")), g.admin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p := g.pago(t, id); p.session != nil || !p.include {
-		t.Fatalf("abrir sin mover la hora cambió el pendiente: corte %v, incluido %v", p.session, p.include)
+	if p := g.pago(t, id); p.session != nil || p.include {
+		t.Fatalf("abrir sin incluirlo dejó el pendiente con corte %v e incluido %v; quería «sin incluir»", p.session, p.include)
 	}
 	if n := g.neto(t, vista.ID); n != "0.00" {
 		t.Fatalf("abrir ahora descontó un pendiente anterior a la apertura: neto %s", n)
+	}
+	if pend, _ := g.back.PendingExpenses(ctx, g.primar); len(pend) != 0 {
+		t.Fatalf("el pago sigue en la lista de pendientes: %+v", pend)
+	}
+	if g.eventos(t, "expense.count_changed") != antes+1 {
+		t.Fatal("dejarlo sin incluir no quedó en la bitácora (audit_events)")
+	}
+	var pendientes int
+	_ = g.st.Pool.QueryRow(ctx, `select count(*) from expense_payments where register_session_id is null and include_in_count`).Scan(&pendientes)
+	if pendientes != 0 {
+		t.Fatalf("quedan %d pendientes: el Down de la 0100 se negaría por ellos", pendientes)
+	}
+}
+
+// Abrir desde una hora posterior al pendiente tampoco lo incluye: queda «sin incluir».
+func TestAbrirDesdeUnaHoraPosteriorDejaSinIncluirElPendiente(t *testing.T) {
+	t.Parallel()
+	g := nuevoArqueoPorHora(t)
+	ctx := context.Background()
+	g.cerrar(t, g.turno(t, g.primar, time.Now().Add(-6*time.Hour)), time.Now().Add(-5*time.Hour))
+	id, err := g.back.CreateExpense(ctx, g.gasto(g.primar, hoyDelNegocio(), incluir(true), true, "200"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.st.Pool.Exec(ctx, `update expense_payments set paid_at = now() - interval '4 hours' where expense_id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	desde := time.Now().Add(-2 * time.Hour)
+	cmd := aperturaAMano(dec("500"))
+	cmd.OpenedAt = &desde
+	vista, err := g.back.OpenSession(ctx, g.primar, cmd, g.admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := g.pago(t, id); p.session != nil || p.include || g.neto(t, vista.ID) != "0.00" {
+		t.Fatalf("un pendiente anterior a la hora de apertura quedó %+v, neto %s; quería «sin incluir»", p, g.neto(t, vista.ID))
 	}
 }
 
