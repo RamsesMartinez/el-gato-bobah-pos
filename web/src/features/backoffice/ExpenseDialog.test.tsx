@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { Provider } from '../../components/ui/provider';
 import { ExpenseDialog } from './ExpenseDialog';
+import { PayDialog } from './ExpensesPage';
+import { ApiError } from '../../api/client';
 
 const units = [
   { id: 1, code: 'g', name: 'Gramo', kind: 'masa', toBase: '1' },
@@ -29,6 +31,7 @@ const back = vi.hoisted(() => ({
   parseDoc: vi.fn(),
   suggestArticles: vi.fn(),
   lastClosedCount: vi.fn(),
+  payExpense: vi.fn(),
 }));
 const pos = vi.hoisted(() => ({
   paymentMethods: vi.fn(() => Promise.resolve({ items: [] as unknown[] })),
@@ -539,4 +542,148 @@ test('«¿Cómo se pagó?» no ofrece los métodos de las plataformas', async ()
   click('No, solo el gasto');
   expect(await screen.findByRole('button', { name: 'Tarjeta' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Uber Eats en línea' })).toBeNull();
+});
+
+// Spec 047 (US1): pasada la medianoche UTC, en México sigue siendo el día anterior. Antes cada fecha
+// salía de `toISOString` y un gasto de las 11:30 pm caía al día siguiente.
+describe('las fechas del gasto son del día del negocio', () => {
+  afterEach(() => { vi.useRealTimers(); });
+  beforeEach(() => {
+    pos.paymentMethods.mockResolvedValue({ items: [{ id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true }] });
+  });
+
+  async function guardarConTodo() {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
+    click('Tarjeta');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    return back.createExpense.mock.calls[0][0];
+  }
+
+  test.each([
+    ['2026-11-01T05:30:00Z', '2026-10-31'],
+    ['2026-11-01T06:30:00Z', '2026-11-01'],
+  ])('a las %s el gasto es del %s (ticket, día, pago rápido y recepción)', async (ahora, dia) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(ahora));
+    const body = await guardarConTodo();
+    expect(body).toMatchObject({ expenseDate: dia, expenseDay: dia, receivedAt: dia });
+    expect(body.payments[0].paidOn).toBe(dia);
+  });
+
+  test('el pago capturado abajo nace con el día del negocio', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-01T05:30:00Z'));
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    await encabezado('640');
+    click('Agregar pago');
+    await elegir('Método de pago', 'Tarjeta');
+    fireEvent.change(screen.getAllByPlaceholderText('0.00').at(-1)!, { target: { value: '640' } });
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments[0].paidOn).toBe('2026-10-31');
+  });
+});
+
+// Spec 047 (US3): el efectivo sale de cualquier caja activa, tenga turno o no. Si el servidor dice
+// que el pago no entra a ningún corte, se pregunta en una hoja antes de reenviar.
+describe('efectivo sin turno abierto (spec 047)', () => {
+  const outside = () => new ApiError(409, 'EXPENSE_OUTSIDE_COUNT', 'fuera de corte', 'r1');
+  beforeEach(() => {
+    pos.paymentMethods.mockResolvedValue({ items: [
+      { id: 1, name: 'Efectivo', affectsCashDrawer: true, isActive: true },
+      { id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true },
+    ] });
+  });
+
+  async function gastoListo() {
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    await encabezado('640');
+  }
+
+  test('sin turno se ofrece el chip «Efectivo» y la caja cerrada se toma sola', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    await gastoListo();
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments).toEqual([expect.objectContaining({ methodId: 1, registerId: 7 })]);
+  });
+
+  test('el selector lista las cajas cerradas con su sufijo, y no las inactivas', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [
+      { id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 },
+      { id: 8, name: 'Caja 2', isActive: true, countsCash: true, openSessionId: null },
+      { id: 9, name: 'Caja fuerte', isActive: true, countsCash: false, openSessionId: null },
+      { id: 10, name: 'Vieja', isActive: false, countsCash: true, openSessionId: null },
+    ] });
+    await gastoListo();
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    fireEvent.click(await screen.findByRole('button', { name: /¿De qué caja sale\?/ }));
+    expect(screen.getByRole('button', { name: 'Caja 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Caja 2 · sin turno' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Caja fuerte · sin arqueo' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Vieja/ })).toBeNull();
+  });
+
+  test('sin ninguna caja el renglón de pago dice «Sin cajas.»', async () => {
+    await gastoListo();
+    click('Agregar pago');
+    await elegir('Método de pago', 'Efectivo');
+    expect(screen.getByText('Sin cajas.')).toBeInTheDocument();
+  });
+
+  test('ante EXPENSE_OUTSIDE_COUNT pregunta; «Cancelar» no reenvía', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    back.createExpense.mockRejectedValueOnce(outside());
+    await gastoListo();
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    click('Guardar');
+    expect(await screen.findByText('Caja 1 no tiene turno abierto')).toBeInTheDocument();
+    expect(screen.getByText('Este gasto no entrará a ningún corte.')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Cancelar' }).at(-1)!);
+    await waitFor(() => expect(screen.queryByText('Caja 1 no tiene turno abierto')).toBeNull());
+    expect(back.createExpense).toHaveBeenCalledTimes(1);
+  });
+
+  test('confirmar reenvía el gasto con outsideCount', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 }] });
+    back.createExpense.mockRejectedValueOnce(outside());
+    const { onSaved } = (await (async () => { const r = montar(); click(/Capturar sin ticket/); click('No, solo el gasto'); await encabezado('640'); return r; })());
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    click('Guardar');
+    // Con turno abierto, el 409 solo puede ser por la fecha.
+    expect(await screen.findByText('El pago es de otro día')).toBeInTheDocument();
+    click('Registrar sin incluir en el arqueo');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalledTimes(2));
+    expect(back.createExpense.mock.calls[0][0].payments[0].outsideCount).toBeUndefined();
+    expect(back.createExpense.mock.calls[1][0].payments[0]).toMatchObject({ registerId: 7, outsideCount: true });
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  test('«Pagar gasto» (/pay) pregunta igual y reenvía con outsideCount', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    back.payExpense.mockRejectedValueOnce(outside()).mockResolvedValueOnce(undefined);
+    const onPaid = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><Provider>
+      <PayDialog expense={{ id: 5, amount: '100', currency: 'MXN', category: 'Insumos' } as never}
+        methods={[{ id: 1, name: 'Efectivo', affectsCashDrawer: true }]} onClose={vi.fn()} onPaid={onPaid} />
+    </Provider></QueryClientProvider>);
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1 · sin turno');
+    click('Confirmar pago');
+    expect(await screen.findByText('Caja 1 no tiene turno abierto')).toBeInTheDocument();
+    click('Registrar sin incluir en el arqueo');
+    await waitFor(() => expect(back.payExpense).toHaveBeenCalledTimes(2));
+    expect(back.payExpense.mock.calls[0][1].outsideCount).toBeUndefined();
+    expect(back.payExpense.mock.calls[1][1]).toMatchObject({ registerId: 7, outsideCount: true });
+    await waitFor(() => expect(onPaid).toHaveBeenCalled());
+  });
 });
