@@ -3021,8 +3021,10 @@ func (s *BackofficeService) MoveSales(ctx context.Context, targetID, userID int6
 			return err
 		}
 		var current, target *db.LockRegistersForSalesMoveRow
+		ids := make([]int64, 0, len(rows))
 		for i := range rows {
-			if rows[i].SellsHere {
+			ids = append(ids, rows[i].ID)
+			if rows[i].IsPrimary {
 				current = &rows[i]
 			}
 			if rows[i].ID == targetID {
@@ -3035,8 +3037,12 @@ func (s *BackofficeService) MoveSales(ctx context.Context, targetID, userID int6
 		if current == nil {
 			return fmt.Errorf("%w: esta sucursal no tiene caja que venda", domain.ErrConflict)
 		}
+		open, err := q.RegistersWithOpenShift(ctx, ids)
+		if err != nil {
+			return err
+		}
 		reg := func(r *db.LockRegistersForSalesMoveRow) domain.SellingRegister {
-			return domain.SellingRegister{ID: r.ID, BranchID: r.BranchID, Active: r.IsActive, HasOpenShift: r.HasOpenShift}
+			return domain.SellingRegister{ID: r.ID, BranchID: r.BranchID, Active: r.IsActive, HasOpenShift: slices.Contains(open, r.ID)}
 		}
 		changes, err := domain.CanMoveSales(reg(current), reg(target))
 		if err != nil || !changes {

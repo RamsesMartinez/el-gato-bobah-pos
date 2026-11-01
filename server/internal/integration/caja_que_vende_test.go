@@ -8,8 +8,8 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"sync"
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 	"uuid"
@@ -192,28 +192,37 @@ func TestMoveSales(t *testing.T) {
 	}
 }
 
-// Otra sucursal: la caja de una sucursal no recibe las ventas de otra.
-func TestMoveSalesRejectsAnotherBranch(t *testing.T) {
+// Dos sucursales y sin selector: la caja que deja de vender es la de la sucursal de la caja destino,
+// no «la de la sesión» (que con dos sucursales no se puede resolver).
+func TestMoveSalesWithTwoBranches(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
 	svc, ctx := asTenant(t, defaultCompanyID)
 	admin := makeUser(t, st, "admin_049_sucursal", "admin")
-	// Sucursal inactiva: «la sucursal» de la sesión sigue siendo la matriz, sin selector.
-	var branch, reg int64
-	if err := st.Pool.QueryRow(context.Background(), `insert into branches (company_id, name, code, is_active)
-		values ($1, 'Norte 049', 'NORTE049', false) returning id`, defaultCompanyID).Scan(&branch); err != nil {
+	regMatriz := principalRegister(t, st)
+	var branch, norteA, norteB int64
+	if err := st.Pool.QueryRow(context.Background(), `insert into branches (company_id, name, code)
+		values ($1, 'Norte 049', 'NORTE049') returning id`, defaultCompanyID).Scan(&branch); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Pool.QueryRow(context.Background(), `insert into cash_registers (name, branch_id) values ('Caja norte', $1) returning id`, branch).Scan(&reg); err != nil {
+	if err := st.Pool.QueryRow(context.Background(), `insert into cash_registers (name, branch_id, is_primary) values ('Norte A', $1, true) returning id`, branch).Scan(&norteA); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.MoveSales(ctx, reg, admin); !errors.Is(err, domain.ErrOtherBranch) {
-		t.Fatalf("caja de otra sucursal = %v; quiere ErrOtherBranch", err)
+	if err := st.Pool.QueryRow(context.Background(), `insert into cash_registers (name, branch_id, counts_cash) values ('Norte B', $1, false) returning id`, branch).Scan(&norteB); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.MoveSales(ctx, norteB, admin); err != nil {
+		t.Fatalf("pasar la venta dentro de la sucursal norte: %v", err)
+	}
+	got := primarias(t, st)
+	if len(got) != 2 || !(got[0] == regMatriz || got[1] == regMatriz) || !(got[0] == norteB || got[1] == norteB) {
+		t.Fatalf("cajas que venden = %v; quiere la matriz %d y norte B %d", got, regMatriz, norteB)
 	}
 }
 
-// Pasar la venta y abrir turno a la vez: nunca dos ni ninguna, y si la apertura gana, el cambio se
-// rechaza en vez de dejar un turno abierto en una caja que ya no vende.
+// Pasar la venta y abrir turno a la vez, con el orden forzado: la apertura tiene la caja tomada,
+// el cambio espera, la apertura confirma. El cambio tiene que ver ese turno y rechazarse: si lo
+// leyera con la foto de antes del candado, la venta pasaría con un turno abierto.
 func TestMoveSalesRacesOpeningAShift(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
@@ -221,29 +230,51 @@ func TestMoveSalesRacesOpeningAShift(t *testing.T) {
 	cajero := makeUser(t, st, "cajero_049_carrera", "cajero")
 	regA := principalRegister(t, st)
 	regB := otraCaja(t, st, "Barra 049 carrera")
-	var moveErr, openErr error
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		svc, ctx := asTenant(t, defaultCompanyID)
-		moveErr = svc.MoveSales(ctx, regB, admin)
-	}()
-	go func() {
-		defer wg.Done()
-		_, openErr = app.NewBackofficeService(st, clock).OpenSession(context.Background(), regA, app.AperturaCmd{}, cajero)
-	}()
-	wg.Wait()
-	if openErr != nil {
-		t.Fatalf("abrir: %v", openErr)
+	ctx := context.Background()
+	tx, err := st.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `select id from cash_registers where id = $1 for update`, regA); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		svc, sctx := asTenant(t, defaultCompanyID)
+		done <- svc.MoveSales(sctx, regB, admin)
+	}()
+	// Espera a que el cambio esté formado detrás del candado.
+	for i := 0; ; i++ {
+		var waiting int
+		if err := st.Pool.QueryRow(ctx, `select count(*) from pg_stat_activity where wait_event_type = 'Lock' and datname = current_database()`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting > 0 {
+			break
+		}
+		if i > 500 {
+			t.Fatal("el cambio nunca esperó el candado de la caja")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err := tx.Exec(ctx, `insert into register_sessions (business_date, opening_cash, opened_by, register_id) values ($3, 0, $1, $2)`, cajero, regA, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	moveErr := <-done
 	got := primarias(t, st)
-	if len(got) != 1 {
-		t.Fatalf("cajas que venden = %v; quiere una", got)
+	var abiertos int
+	if err := st.Pool.QueryRow(ctx, `select count(*) from register_sessions where register_id = any($1) and status = 'abierta'`, []int64{regA, regB}).Scan(&abiertos); err != nil {
+		t.Fatal(err)
 	}
-	// Si el cambio ganó, A abrió ya como secundaria; si perdió, se rechazó por el turno abierto.
-	if moveErr == nil && got[0] != regB || moveErr != nil && (!errors.Is(moveErr, domain.ErrRegistersMustBeClosed) || got[0] != regA) {
-		t.Fatalf("cambio = %v con la venta en %d", moveErr, got[0])
+	if moveErr == nil && abiertos > 0 {
+		t.Fatalf("la venta pasó a %v con %d turno(s) abierto(s) en las cajas", got, abiertos)
+	}
+	if !errors.Is(moveErr, domain.ErrRegistersMustBeClosed) || len(got) != 1 || got[0] != regA {
+		t.Fatalf("cambio = %v con la venta en %v; quiere REGISTERS_MUST_BE_CLOSED y la venta en %d", moveErr, got, regA)
 	}
 }
 

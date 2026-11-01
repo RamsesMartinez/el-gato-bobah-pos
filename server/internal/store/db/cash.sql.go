@@ -1636,27 +1636,25 @@ func (q *Queries) LockPaymentMethod(ctx context.Context, id int16) (LockPaymentM
 }
 
 const lockRegistersForSalesMove = `-- name: LockRegistersForSalesMove :many
-select r.id, r.branch_id, r.is_active,
-       (r.is_primary and r.branch_id = current_branch_id())::bool as sells_here,
-       exists (select 1 from register_sessions s where s.register_id = r.id and s.status = 'abierta')::bool as has_open_shift
+select r.id, r.branch_id, r.is_active, r.is_primary
   from cash_registers r
- where r.id = $1 or (r.is_primary and r.branch_id = current_branch_id())
+ where r.id = $1
+    or (r.is_primary and r.branch_id = (select t.branch_id from cash_registers t where t.id = $1))
  order by r.id
    for update of r
 `
 
 type LockRegistersForSalesMoveRow struct {
-	ID           int64 `json:"id"`
-	BranchID     int64 `json:"branch_id"`
-	IsActive     bool  `json:"is_active"`
-	SellsHere    bool  `json:"sells_here"`
-	HasOpenShift bool  `json:"has_open_shift"`
+	ID        int64 `json:"id"`
+	BranchID  int64 `json:"branch_id"`
+	IsActive  bool  `json:"is_active"`
+	IsPrimary bool  `json:"is_primary"`
 }
 
-// Pasar la venta (spec 049): la caja que vende en la sucursal de la sesión y la que va a vender,
-// bloqueadas en orden de id para que dos cambios a la vez no se esperen en ciclo. Abrir turno toma
-// la caja con GetCashRegisterForUpdate, así que no puede colarse entre la validación y el cambio.
-// La sucursal y el turno abierto se leen de cada fila, no de la sesión.
+// Pasar la venta (spec 049): la caja que va a vender y la que vende hoy en SU sucursal, bloqueadas
+// en orden de id para que dos cambios a la vez no se esperen en ciclo. La sucursal sale de la fila
+// de la caja destino y no de la sesión: con dos sucursales y sin selector, la sesión no la sabe.
+// Abrir turno toma la caja con GetCashRegisterForUpdate, así que no se cuela entre esto y el cambio.
 func (q *Queries) LockRegistersForSalesMove(ctx context.Context, targetID int64) ([]LockRegistersForSalesMoveRow, error) {
 	rows, err := q.db.Query(ctx, lockRegistersForSalesMove, targetID)
 	if err != nil {
@@ -1670,8 +1668,7 @@ func (q *Queries) LockRegistersForSalesMove(ctx context.Context, targetID int64)
 			&i.ID,
 			&i.BranchID,
 			&i.IsActive,
-			&i.SellsHere,
-			&i.HasOpenShift,
+			&i.IsPrimary,
 		); err != nil {
 			return nil, err
 		}
@@ -1859,6 +1856,34 @@ func (q *Queries) OwingDeliveredOrders(ctx context.Context) ([]OwingDeliveredOrd
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const registersWithOpenShift = `-- name: RegistersWithOpenShift :many
+select register_id from register_sessions
+ where register_id = any($1::bigint[]) and status = 'abierta'
+`
+
+// Qué cajas tienen turno abierto. Va en su propio statement DESPUÉS del candado: dentro del mismo
+// SELECT ... FOR UPDATE se leería con la foto de antes de esperar, y no vería el turno que la
+// apertura confirmó mientras este cambio esperaba.
+func (q *Queries) RegistersWithOpenShift(ctx context.Context, ids []int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, registersWithOpenShift, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var register_id int64
+		if err := rows.Scan(&register_id); err != nil {
+			return nil, err
+		}
+		items = append(items, register_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
