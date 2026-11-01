@@ -17,6 +17,10 @@ import { formatBaseQty } from '../../shared/units';
 import { posApi } from '../../api/pos';
 import { ArrivedItemSheet } from './ArrivedItemSheet';
 import { medirAccion } from '../../api/uso';
+import { mensajeDeError } from '../../api/mensajes';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
+import { Switch } from '../../components/ui/switch';
 
 // Detalle del gasto y «Corregir lo que llegó» (spec 038, maqueta B: editar todo y ver la
 // diferencia). El almacén se mueve solo por la diferencia contra lo que cada renglón ya sumó, así
@@ -142,6 +146,20 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
     onError: (e) => toaster.create({ title: 'No se pudo anular', description: String(e), type: 'error' }),
   });
 
+  const user = useSessionStore((s) => s.user);
+  const canAdjustCount = can('cash.adjust_count', user);
+  const setInCount = useMutation({
+    mutationFn: ({ paymentId, include }: { paymentId: number; include: boolean }) =>
+      backofficeApi.setPaymentInCount(id!, paymentId, include),
+    onSuccess: async () => { await refetch(); void qc.invalidateQueries({ queryKey: ['cash'] }); onChanged(); },
+    // Lo que el servidor rechaza (el corte se cerró en otra tableta) se dice y se recarga, para que
+    // el interruptor muestre lo que de verdad quedó.
+    onError: async (e) => {
+      toaster.create({ title: 'No se pudo cambiar', description: mensajeDeError(e), type: 'error' });
+      await refetch();
+    },
+  });
+
   const cancelled = data?.status === 'cancelada';
   const fresh = freshSeq >= editSeq;
 
@@ -221,10 +239,17 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                   <VStack align="stretch" gap={1}>
                     {data.payments.map((p) => (
                       <HStack key={p.id} justify="space-between" py={1}>
-                        <HStack gap={2}>
+                        <HStack gap={3}>
+                          {/* A la izquierda y lejos del monto (R12): un toque que cambia el esperado del corte. */}
+                          {canAdjustCount && p.affectsCashDrawer && p.includeInCount !== undefined && !cancelled && (
+                            <Switch minH="44px" checked={p.includeInCount} disabled={p.sessionClosed || setInCount.isPending}
+                              onCheckedChange={(e) => setInCount.mutate({ paymentId: p.id, include: e.checked })}>
+                              {p.sessionClosed ? 'Corte cerrado' : 'En el arqueo'}
+                            </Switch>
+                          )}
                           <Text>{p.method}</Text>
                           <Text fontSize="xs" color="fg.subtle">{p.paidOn}</Text>
-                          {p.inCashCount && <Badge size="sm" colorPalette="blue">en arqueo</Badge>}
+                          {!canAdjustCount && p.inCashCount && <Badge size="sm" colorPalette="blue">en arqueo</Badge>}
                         </HStack>
                         <Text fontWeight="600">{money(p.amount, data.currency)}</Text>
                       </HStack>

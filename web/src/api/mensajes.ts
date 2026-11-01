@@ -36,6 +36,9 @@ const MENSAJES_DE_CUENTA: Record<string, string> = {
   // Caja con asistencia (spec 046). OPENER_NOT_CLOCKED_OUT no va aquí: el del servidor nombra a la
   // persona («Ana abrió esta caja…»), y una frase fija la perdería.
   CLOCK_IN_REQUIRED: 'Para abrir la caja, primero marca tu entrada.',
+  // «En el arqueo» de un pago ya guardado (spec 048).
+  PAYMENT_IN_CLOSED_COUNT: 'El corte de ese pago ya se cerró: ya no se puede cambiar.',
+  EXPENSE_BEFORE_LAST_CLOSE: 'La caja ya se cerró después de este pago: no puede entrar a ningún corte.',
   CLOCK_OUT_WITH_PIN: 'Marca tu salida con tu PIN para cerrar la caja.',
   // Al cerrar: otro cierre autorizado ya dejó la entrada «sin salida». Al reintentar, cierra.
   ATTENDANCE_STATE_CHANGED: 'La asistencia cambió en otra tableta. Vuelve a intentarlo.',

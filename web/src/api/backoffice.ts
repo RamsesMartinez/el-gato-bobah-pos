@@ -483,6 +483,10 @@ export interface ExpensePayment {
   inCashCount: boolean; // atribuido a un corte
   reference: string | null;
   affectsCashDrawer: boolean;
+  // Spec 048. Opcionales mientras convive la API anterior.
+  includeInCount?: boolean;
+  paidAt?: string;
+  sessionClosed?: boolean; // su corte ya se cerró: la casilla no se puede cambiar
 }
 export interface ExpenseDetail extends Expense {
   items: ExpenseItem[];
@@ -962,6 +966,9 @@ export const backofficeApi = {
   expenseDetail: (id: number) => api.get<ExpenseDetail>(`/expenses/${id}`),
   // Agrega UN pago. Si con él los pagos cubren el importe, el gasto pasa a pagado.
   payExpense: (id: number, b: ExpensePaymentBody) => api.post<void>(`/expenses/${id}/pay`, b),
+  // Cambia «Incluir en el arqueo» de un pago ya guardado (spec 048). Exige `cash.adjust_count`.
+  setPaymentInCount: (id: number, paymentId: number, includeInCount: boolean) =>
+    api.patch<void>(`/expenses/${id}/payments/${paymentId}`, { includeInCount }),
   // Marca la mercancía recibida y genera los movimientos de almacén. `received` mapea
   // idLínea → cantidad que llegó (0 = no llegó).
   receiveExpense: (id: number, b: { receivedAt?: string; received?: Record<string, string> }) =>
