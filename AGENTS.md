@@ -210,7 +210,9 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   recarga (Vite lo hace solo) y vuelve a probar sin PR ni despliegue. La vuelta final corre además
   contra el build servido en local (`bun run build && bun run preview`).
 - **`bun run e2e`** (en `web/`) — Playwright a 1024×600 contra el **`make start` del worktree**:
-  `E2E_BASE_URL=http://localhost:30NN E2E_API_URL=http://localhost:80NN/api/v1 E2E_SLUG=… E2E_PASSWORD=… bun run e2e`.
+  `E2E_BASE_URL=http://localhost:30NN E2E_API_URL=http://localhost:80NN/api/v1 E2E_SLUG=… E2E_PASSWORD=… E2E_PIN=… bun run e2e`.
+  `E2E_PIN` es el PIN de `E2E_USER`: con la asistencia encendida, las pruebas de caja marcan su
+  entrada y su salida ([asistencia.ts](web/e2e/asistencia.ts)) y sin él fallan diciendo que falta.
   Sin esas variables apunta al ambiente de pruebas, que se usa solo cuando el dueño lo pide. No
   simula el backend a propósito: lo que estas pruebas atrapan es el desacuerdo entre lo que la
   pantalla calcula y lo que el servidor cobra, y con un backend simulado los dos están de acuerdo por
@@ -529,6 +531,26 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     tumba todas las peticiones desde otro dominio.
   - **Corregir asistencia propia es otro permiso** (`attendance.correct_own`). El router no puede
     decidirlo —depende de quién es el dueño del registro— y lo decide `domain.CanCorrect`.
+- **Caja y asistencia** (spec 046). Abrir caja pide una entrada de 16 h o menos de quien abre;
+  cerrarla, que quien la abrió no tenga ninguna entrada abierta, salvo el cierre autorizado (permiso
+  `cash.close_without_clock_out`, con motivo). Cinco cosas que no se ven:
+  - **Una sola regla para tres puertas**: `domain.CashOpenAttendance` / `CashCloseGate` /
+    `CashCloseAttendance`. El `GET /cash-sessions/attendance` que pinta la hoja, abrir y cerrar las
+    usan; una pantalla que deduzca «ya marcó» por su cuenta dirá un día otra cosa que el servidor.
+  - **La persona se toma `for share` (`LockUserAttendanceForCash`) dentro de la transacción**, y todas
+    las lecturas de asistencia van con ese mismo `q`, nunca con `s.store.QC`. Choca con el `for update`
+    de checar, así que una entrada o salida en otra tableta espera; `for update` frenaría además las
+    ventas de esa persona (el `for key share` de `orders.opened_by`). Orden: turno → persona.
+  - **El cierre autorizado deja la entrada `missing_out`** con `MarkAttendanceMissingOut`, que tiene
+    que afectar exactamente una fila (con 0, 409 sin evento), y escribe
+    `cash.closed_without_opener_clock_out` con sujeto = quien abrió, en la misma transacción: si el
+    cierre falla después, ni la marca ni el evento quedan. No inventa una hora de salida.
+  - **Marcar desde la caja reusa `POST /attendance/clock`** (`ClockPinSheet`): mismo límite, mismo
+    bloqueo por PIN y mismos textos (`clockErrors.ts`). No hay un endpoint de checar propio de la caja.
+  - **Una cuenta que comparten varias personas para abrir caja necesita «Lleva asistencia» apagado**,
+    o nunca podrá abrir. Lo dice la ayuda del horario, no una regla. El grupo `/cash-sessions` sigue
+    con `RequireRole` por exención firmada (plan de la 046): la siguiente feature que lo toque lo
+    migra completo a permisos.
 - **Terminales de tarjeta** (spec 032, corrección en la 036). Tres cosas que no se ven:
   - **Con dos o más terminales activas, la terminal se elige en CADA cobro; nada llega marcado.**
     Antes llegaba puesta la última con la que cobró el usuario, y así un débito quedó registrado en
@@ -677,7 +699,13 @@ mecánica:
     integración). Ojo: `uuid.Nil` es **función** (`uuid.Nil()`) y no existe `NewString()`.
   - `strings.CutLast` es lo que usa `rateKeyIP` para tomar el último XFF.
   - `new(expr)` ya acepta un valor: `new(x)` en vez de `v := x; &v`.
-- **`overrides` en `web/package.json`: hoy NO hay ninguno, y así debe quedar.** Existieron para
+- **`overrides` en `web/package.json`: hoy hay UNO, `zod: "^4.6.6"`** (2026-10-31, GHSA-mrhx-c7xc-m3w5,
+  *high*). Lo trae `eslint-plugin-react-hooks`, que ya va en su última versión (7.1.1) y acepta
+  `^3.25.0 || ^4.0.0`; el rango alcanza el parche, pero bun conserva el 4.4.3 del lockfile y no hay
+  forma de re-resolver una transitiva sin agregarla como dependencia directa. Se borra en cuanto el
+  lockfile resuelva ≥ 4.6.6 sin él (al subir ese plugin). En el mismo cambio, `jsdom` → `undici` se
+  arregló subiendo el padre a 30.1.3 (pide `undici ^8.12.1`), sin override. Antes de éste existieron
+  otros para
   forzar la versión parcheada de un CVE *high* que vivía en una transitiva de desarrollo cuando el
   padre pineaba un rango que no alcanzaba el parche (`eslint`→`ajv`→`fast-uri`,
   `vite-plugin-pwa`→`workbox-build`→`glob`→`brace-expansion`, `jsdom`→`undici`,

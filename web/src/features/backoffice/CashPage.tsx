@@ -26,6 +26,7 @@ import { Switch } from '../../components/ui/switch';
 import { money } from '../../utils/format';
 import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
 import { MotivoDeApertura } from './MotivoDeApertura';
+import { AperturaConAsistencia, AvisoDelCierre, CierreConAsistencia } from './AsistenciaDeCaja';
 import { AvisosDeCaja } from './AvisosDeCaja';
 import { FondoQueSeDeja } from './FondoQueSeDeja';
 import { diferenciaDelHistorico } from './historicoDeCaja';
@@ -873,8 +874,31 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const faltaQuien = (session?.drawer ?? null) !== null && retirar && (retiro ?? 0) > 0 && quien === null;
   const avisoQuien = avisoDeQuienSeLoLleva(faltaQuien, retiro, session?.currency ?? 'MXN');
   const terminalesSinCifra = faltanTerminales(session?.terminalsToCount ?? [], conteoTerminales);
+  // Lo que pide la asistencia para abrir o cerrar (spec 046). Cuelga de ['cash'], así que se vuelve
+  // a pedir con todo lo demás al abrir o cerrar. Un estado de la otra etapa (la caja cambió y la
+  // consulta no ha vuelto) se trata como «cargando», no como cierto.
+  const asistencia = useQuery({
+    queryKey: ['cash', 'attendance', register.id],
+    queryFn: () => backofficeApi.cashAttendance(register.id),
+    retry: false,
+    enabled: !isLoading,
+  });
+  const etapa = session ? 'close' : 'open';
+  const estadoDeAsistencia = {
+    gate: asistencia.data?.stage === etapa ? asistencia.data : undefined,
+    failed: asistencia.isError,
+  };
+  // El motivo del cierre autorizado: se decide en la hoja y viaja con el cierre.
+  const [autorizacion, setAutorizacion] = useState<string | null>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
+  const actualizarAsistencia = () => qc.invalidateQueries({ queryKey: ['cash', 'attendance', register.id] });
+  // El cierre autorizado se recuerda al confirmar: es lo último que se lee antes de firmar.
+  const conAvisoDeAutorizacion = (descripcion: string | undefined) => {
+    const g = estadoDeAsistencia.gate;
+    if (autorizacion === null || !g || g.ready) return descripcion;
+    return `La entrada de ${g.person.name} quedará «sin salida». ${descripcion ?? 'No podrás modificarla después.'}`;
+  };
   const navigate = useNavigate();
   // Descartar una cuenta que se capturaba y nadie mandó. No bloquea el cierre, pero quien cierra
   // puede limpiarla desde aquí (D-8).
@@ -908,6 +932,11 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
       if (e instanceof ApiError && e.code === 'OPENING_REASON_REQUIRED') {
         setContando(false); setAperturaPendiente(apertura);
         return;
+      }
+      // La entrada cambió en otra tableta mientras se contaba: se vuelve a la tarjeta, que ya pide
+      // marcarla.
+      if (e instanceof ApiError && e.code === 'CLOCK_IN_REQUIRED') {
+        setContando(false); setAperturaPendiente(null); void actualizarAsistencia();
       }
       toaster.create({ title: 'No se pudo abrir la caja', description: mensajeDeError(e), type: 'error' });
     },
@@ -945,19 +974,32 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
         fixedFloatShown: fijo ?? undefined,
         withdrawalUserId: retirar && (retiro ?? 0) > 0 ? quien ?? undefined : undefined,
         terminalCounts: Object.fromEntries((session?.terminalsToCount ?? []).map((t) => [String(t.terminalId), Number(conteoTerminales[t.terminalId])])),
+        authorizedClose: autorizacion !== null ? { reason: autorizacion } : undefined,
       });
     },
     onSuccess: (s) => {
       medirAccion('caja', 'cerrar-turno');
-      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); setDecisionPropinas(null); setConteoTerminales({}); setFondo(null); setRetirar(true); setQuien(null); invalidate();
+      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); setDecisionPropinas(null); setConteoTerminales({}); setFondo(null); setRetirar(true); setQuien(null); setAutorizacion(null); invalidate();
     },
     // El servidor distingue "hay pedidos sin terminar" de cualquier otro fallo y manda los folios
     // en el mensaje. Se pinta con su propio título porque no es un error del cierre: es una tarea
     // pendiente, y el operador tiene que saber que la puede resolver y volver.
-    onError: (e) => toaster.create({
+    onError: (e) => {
+      // Quien abrió volvió a marcar entrada en otra tableta, o la autorización ya no aplica: el aviso
+      // del cierre se vuelve a pintar con lo que hay ahora.
+      if (e instanceof ApiError && (e.code === 'OPENER_NOT_CLOCKED_OUT' || e.code === 'CLOCK_OUT_WITH_PIN')) {
+        setAutorizacion(null); void actualizarAsistencia();
+      }
+      // Otro cierre autorizado dejó la entrada «sin salida» mientras tanto: al volver a preguntar ya
+      // no hace falta autorizar y el siguiente intento cierra.
+      if (e instanceof ApiError && e.code === 'ATTENDANCE_STATE_CHANGED') void actualizarAsistencia();
+      avisarDelCierre(e);
+    },
+  });
+  const avisarDelCierre = (e: unknown) => toaster.create({
       title: e instanceof ApiError && e.code === 'OPEN_ORDERS' ? 'Faltan pedidos por terminar'
         : e instanceof ApiError && e.code === 'UNPAID_ORDERS' ? 'Faltan pedidos por cobrar' : 'No se pudo cerrar la caja',
-      description: e instanceof ApiError ? e.message : String(e),
+      description: mensajeDeError(e),
       type: 'error',
       duration: 8000,
       // Un CONFLICT al cerrar es "alguien más ya cerró o ya guardó su conteo", y las dos tabletas
@@ -966,23 +1008,15 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
       action: e instanceof ApiError && e.code === 'CONFLICT'
         ? { label: 'Recargar', onClick: () => invalidate() }
         : undefined,
-    }),
-  });
+    });
 
   if (isLoading) return <Center h="30vh"><Spinner size="xl" /></Center>;
 
   return (
     <>
       {!session ? (
-        <VStack align="stretch" gap={4} bg="bg.panel" p={6} borderRadius="lg" borderWidth="1px" maxW="420px">
-          <Text fontWeight="600">«{register.name}» está cerrada.</Text>
-          <Text fontSize="sm" color="fg.muted">Cuenta el efectivo con el que arranca el cajón.</Text>
-          {/* El conteo NO va aquí. Medido a 1024×600, esta pantalla mide 1,494 px de alto: una
-              rejilla de once denominaciones en este punto nace 200 px debajo del fold. */}
-          <Button minH="52px" onClick={() => setContando(true)} loading={openMut.isPending}>
-            Contar el efectivo
-          </Button>
-        </VStack>
+        <AperturaConAsistencia nombreCaja={register.name} estado={estadoDeAsistencia} abriendo={openMut.isPending}
+          onContar={() => setContando(true)} onActualizar={() => void actualizarAsistencia()} />
       ) : (
         <VStack align="stretch" gap={5}>
           <HStack justify="space-between" flexWrap="wrap" gap={2}>
@@ -992,6 +1026,10 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
               <LuArrowLeftRight /> Traspaso
             </Button>
           </HStack>
+
+          <AvisoDelCierre estado={estadoDeAsistencia} autorizacion={autorizacion}
+            onAutorizar={setAutorizacion} onQuitarAutorizacion={() => setAutorizacion(null)}
+            onActualizar={() => void actualizarAsistencia()} />
 
           <SimpleGrid columns={{ base: 1, sm: 3 }} gap={3}>
             <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px">
@@ -1049,120 +1087,122 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
 
           <VoidedPaymentsList payments={session.voidedPayments} currency={session.currency} zona={horaNegocio.zona} />
 
-          <TablaDelCierre totals={session.totals ?? []} currency={session.currency}
-            declared={declared} onDeclared={setDeclared}
-            cajon={cajon} conteo={conteoDelCierre} onContar={() => setContando(true)}
-            diferencias={diferencias} />
+          <CierreConAsistencia estado={estadoDeAsistencia} autorizacion={autorizacion}>
+            <TablaDelCierre totals={session.totals ?? []} currency={session.currency}
+              declared={declared} onDeclared={setDeclared}
+              cajon={cajon} conteo={conteoDelCierre} onContar={() => setContando(true)}
+              diferencias={diferencias} />
 
-          {/* Después de la tabla del cierre y no antes: es lo que se viene a llenar, y la lista
-              abierta la empujaría fuera de los 600 px de la tableta. */}
-          <RefundsList refunds={session.refunds} currency={session.currency} zona={horaNegocio.zona} />
+            {/* Después de la tabla del cierre y no antes: es lo que se viene a llenar, y la lista
+                abierta la empujaría fuera de los 600 px de la tableta. */}
+            <RefundsList refunds={session.refunds} currency={session.currency} zona={horaNegocio.zona} />
 
-          <Textarea rows={2} resize="none" placeholder="Notas del cierre (opcional)"
-            value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <Textarea rows={2} resize="none" placeholder="Notas del cierre (opcional)"
+              value={notes} onChange={(e) => setNotes(e.target.value)} />
 
-          {/* Un campo en blanco se guardaba como cero declarado y quedaba registrado un faltante
-              que no existía: pasó con un corte real de $1,662. Escribir 0 sigue siendo válido —
-              puede no haber efectivo—; lo que no vale es dejarlo vacío. */}
-          <ConteoDeTerminales terminales={session.terminalsToCount ?? []} valores={conteoTerminales} onChange={setConteoTerminales} />
+            {/* Un campo en blanco se guardaba como cero declarado y quedaba registrado un faltante
+                que no existía: pasó con un corte real de $1,662. Escribir 0 sigue siendo válido —
+                puede no haber efectivo—; lo que no vale es dejarlo vacío. */}
+            <ConteoDeTerminales terminales={session.terminalsToCount ?? []} valores={conteoTerminales} onChange={setConteoTerminales} />
 
-          {cajon && <FondoQueSeDeja value={fondo} onChange={setFondo} contado={contadoAlCerrar} fijo={fijo}
-            retirar={retirar} onRetirar={setRetirar} personas={personas} quien={quien} onQuien={setQuien}
-            quienCierra={yo} currency={session.currency} />}
+            {cajon && <FondoQueSeDeja value={fondo} onChange={setFondo} contado={contadoAlCerrar} fijo={fijo}
+              retirar={retirar} onRetirar={setRetirar} personas={personas} quien={quien} onQuien={setQuien}
+              quienCierra={yo} currency={session.currency} />}
 
-          {(porContar.length > 0 || faltaElCajon || terminalesSinCifra.length > 0 || faltaFondo) && (
-            <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
-              <Text fontSize="sm" fontWeight="600">
-                Falta capturar lo contado en: {[...(faltaElCajon ? ['el cajón'] : []), ...porContar.map((m) => m.name), ...terminalesSinCifra, ...(faltaFondo ? ['el fondo que se queda'] : [])].join(', ')}
-              </Text>
-            </Box>
-          )}
-          {avisoQuien && (
-            <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
-              <Text fontSize="sm" fontWeight="600">{avisoQuien}</Text>
-            </Box>
-          )}
+            {(porContar.length > 0 || faltaElCajon || terminalesSinCifra.length > 0 || faltaFondo) && (
+              <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
+                <Text fontSize="sm" fontWeight="600">
+                  Falta capturar lo contado en: {[...(faltaElCajon ? ['el cajón'] : []), ...porContar.map((m) => m.name), ...terminalesSinCifra, ...(faltaFondo ? ['el fondo que se queda'] : [])].join(', ')}
+                </Text>
+              </Box>
+            )}
+            {avisoQuien && (
+              <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
+                <Text fontSize="sm" fontWeight="600">{avisoQuien}</Text>
+              </Box>
+            )}
 
-          {/* Quién cobró qué. Con dos estaciones contra el mismo cajón, es lo único que separa la
-              responsabilidad: partir la caja daría dos arqueos contando el mismo dinero. Solo se
-              pinta si hubo más de una persona — con una sola, repite el total de arriba. */}
-          {/* Con el arqueo ciego tampoco: lo cobrado en efectivo por cada persona suma lo mismo
-              que el desglose por método. */}
-          {!session.blind && session.cashiers.length > 1 && (
-            <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3}>
-              <Text fontWeight="700" mb={2}>Cobrado por</Text>
-              <Table.Root size="sm">
-                <Table.Header>
-                  <Table.Row>
-                    <Table.ColumnHeader>Persona</Table.ColumnHeader>
-                    <Table.ColumnHeader textAlign="end">Efectivo</Table.ColumnHeader>
-                    <Table.ColumnHeader textAlign="end">Otros</Table.ColumnHeader>
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
-                  {session.cashiers.map((c) => (
-                    <Table.Row key={c.name}>
-                      <Table.Cell>{c.name}</Table.Cell>
-                      {/* El efectivo con más peso: es lo que está en el cajón y lo único de donde
-                          puede salir una diferencia. */}
-                      <Table.Cell textAlign="end" fontWeight="700">{money(c.cash)}</Table.Cell>
-                      <Table.Cell textAlign="end" color="fg.muted">{money(c.other)}</Table.Cell>
+            {/* Quién cobró qué. Con dos estaciones contra el mismo cajón, es lo único que separa la
+                responsabilidad: partir la caja daría dos arqueos contando el mismo dinero. Solo se
+                pinta si hubo más de una persona — con una sola, repite el total de arriba. */}
+            {/* Con el arqueo ciego tampoco: lo cobrado en efectivo por cada persona suma lo mismo
+                que el desglose por método. */}
+            {!session.blind && session.cashiers.length > 1 && (
+              <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3}>
+                <Text fontWeight="700" mb={2}>Cobrado por</Text>
+                <Table.Root size="sm">
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.ColumnHeader>Persona</Table.ColumnHeader>
+                      <Table.ColumnHeader textAlign="end">Efectivo</Table.ColumnHeader>
+                      <Table.ColumnHeader textAlign="end">Otros</Table.ColumnHeader>
                     </Table.Row>
-                  ))}
-                </Table.Body>
-              </Table.Root>
-            </Box>
-          )}
+                  </Table.Header>
+                  <Table.Body>
+                    {session.cashiers.map((c) => (
+                      <Table.Row key={c.name}>
+                        <Table.Cell>{c.name}</Table.Cell>
+                        {/* El efectivo con más peso: es lo que está en el cajón y lo único de donde
+                            puede salir una diferencia. */}
+                        <Table.Cell textAlign="end" fontWeight="700">{money(c.cash)}</Table.Cell>
+                        <Table.Cell textAlign="end" color="fg.muted">{money(c.other)}</Table.Cell>
+                      </Table.Row>
+                    ))}
+                  </Table.Body>
+                </Table.Root>
+              </Box>
+            )}
 
-          {/* Lo que falta por entregar (bloquea) y las cuentas que siguen vivas (no bloquean), ANTES
-              de intentar cerrar: antes solo se sabía al presionar el botón y recibir el error. */}
-          <CuentasDelCierre pending={session.pending} owing={session.owing ?? []} cuentas={session.liveAccounts ?? []}
-            onAbrir={(ruta) => navigate(ruta)} onDescartar={descartarDelCierre} onCancelar={cancelarDelCierre}
-            onCancelarResto={(id, motivo) => cancelarDelCierre(id, motivo, true)} />
+            {/* Lo que falta por entregar (bloquea) y las cuentas que siguen vivas (no bloquean), ANTES
+                de intentar cerrar: antes solo se sabía al presionar el botón y recibir el error. */}
+            <CuentasDelCierre pending={session.pending} owing={session.owing ?? []} cuentas={session.liveAccounts ?? []}
+              onAbrir={(ruta) => navigate(ruta)} onDescartar={descartarDelCierre} onCancelar={cancelarDelCierre}
+              onCancelarResto={(id, motivo) => cancelarDelCierre(id, motivo, true)} />
 
-          {/* Lo que se vendió y nadie pagó. NO bloquea el cierre —fiar o cobrar por fuera son
-              decisiones del negocio— pero el arqueo tiene que decirlo: solo compara pagos contra
-              declarado, así que sin esta línea un turno con ventas sin cobrar cierra en cero y el
-              faltante solo aparece restando dos cifras de dos pantallas. */}
-          {Number(session.uncollected) > 0 && (
-            <Box borderWidth="1px" borderColor="border.error" bg="bg.error"
- borderRadius="lg" p={3}>
-              <Text fontWeight="700" color="fg.error">
-                Sin cobrar: {money(session.uncollected)}
-                {' en '}
-                {session.uncollectedCount === 1 ? '1 pedido' : `${session.uncollectedCount} pedidos`}
-              </Text>
+            {/* Lo que se vendió y nadie pagó. NO bloquea el cierre —fiar o cobrar por fuera son
+                decisiones del negocio— pero el arqueo tiene que decirlo: solo compara pagos contra
+                declarado, así que sin esta línea un turno con ventas sin cobrar cierra en cero y el
+                faltante solo aparece restando dos cifras de dos pantallas. */}
+            {Number(session.uncollected) > 0 && (
+              <Box borderWidth="1px" borderColor="border.error" bg="bg.error"
+   borderRadius="lg" p={3}>
+                <Text fontWeight="700" color="fg.error">
+                  Sin cobrar: {money(session.uncollected)}
+                  {' en '}
+                  {session.uncollectedCount === 1 ? '1 pedido' : `${session.uncollectedCount} pedidos`}
+                </Text>
+                <Text fontSize="sm" color="fg.muted">
+                  Este dinero no está en el arqueo. Cóbralo antes de cerrar o el corte va a cuadrar
+                  sin él.
+                </Text>
+              </Box>
+            )}
+
+            {/* Lo dado por perdido («cancelar lo que falta»): ni cobrado ni sin cobrar. */}
+            {Number(session.writtenOff ?? 0) > 0 && (
               <Text fontSize="sm" color="fg.muted">
-                Este dinero no está en el arqueo. Cóbralo antes de cerrar o el corte va a cuadrar
-                sin él.
+                Perdido: {money(session.writtenOff ?? '0')} (se canceló lo que faltaba)
               </Text>
+            )}
+
+            <DiferenciaDelCierre diferencias={diferencias} cajon={cajon} conteo={conteoDelCierre}
+              currency={session.currency} />
+
+            {(session.cashOutsWithoutConcept ?? 0) > 0 && (
+              <AvisosDeCaja tipsPending="0" cashOutsWithoutConcept={session.cashOutsWithoutConcept ?? 0} />
+            )}
+
+            <Box ref={refDelCierre}>
+              <PropinasDelCierre pendiente={session.tipsPending} currency={session.currency} decision={decisionPropinas}
+                onEntregarAhora={() => { marcarVueltaAlCierre(); setRepartiendo(true); }} onDecidir={setDecisionPropinas} />
             </Box>
-          )}
 
-          {/* Lo dado por perdido («cancelar lo que falta»): ni cobrado ni sin cobrar. */}
-          {Number(session.writtenOff ?? 0) > 0 && (
-            <Text fontSize="sm" color="fg.muted">
-              Perdido: {money(session.writtenOff ?? '0')} (se canceló lo que faltaba)
-            </Text>
-          )}
-
-          <DiferenciaDelCierre diferencias={diferencias} cajon={cajon} conteo={conteoDelCierre}
-            currency={session.currency} />
-
-          {(session.cashOutsWithoutConcept ?? 0) > 0 && (
-            <AvisosDeCaja tipsPending="0" cashOutsWithoutConcept={session.cashOutsWithoutConcept ?? 0} />
-          )}
-
-          <Box ref={refDelCierre}>
-            <PropinasDelCierre pendiente={session.tipsPending} currency={session.currency} decision={decisionPropinas}
-              onEntregarAhora={() => { marcarVueltaAlCierre(); setRepartiendo(true); }} onDecidir={setDecisionPropinas} />
-          </Box>
-
-          <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
-            descripcion={cajon ? resumenDelRetiro({ retirar, retiro, quien: personas.find((p) => p.id === quien)?.name ?? null,
-              contado: contadoAlCerrar, currency: session.currency }) : undefined}
-            disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || faltaFondo || faltaQuien || (retirar && fondoExcedeLoContado(fondo, contadoAlCerrar)) || terminalesSinCifra.length > 0 || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
-            onCerrar={() => closeMut.mutate()} />
+            <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
+              descripcion={conAvisoDeAutorizacion(cajon ? resumenDelRetiro({ retirar, retiro, quien: personas.find((p) => p.id === quien)?.name ?? null,
+                contado: contadoAlCerrar, currency: session.currency }) : undefined)}
+              disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || faltaFondo || faltaQuien || (retirar && fondoExcedeLoContado(fondo, contadoAlCerrar)) || terminalesSinCifra.length > 0 || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
+              onCerrar={() => closeMut.mutate()} />
+          </CierreConAsistencia>
         </VStack>
       )}
 

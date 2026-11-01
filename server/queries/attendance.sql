@@ -26,6 +26,14 @@ select u.id, u.name, (u.pin_hash is not null)::boolean as has_pin, e.clock_in_at
 -- vez del mismo turno quedarían duplicadas.
 select id, name, is_active, tracks_attendance, pin_hash from users where id = $1 for update;
 
+-- name: LockUserAttendanceForCash :one
+-- Abrir y cerrar caja leen la asistencia de una persona con su fila tomada (spec 046). `for share`
+-- choca con el `for update` de LockUserForAttendance, así que una entrada o salida en otra tableta
+-- espera a que la caja termine (o al revés) y la regla se decide con lo que de verdad quedó. No
+-- `for update`: ése choca también con el `for key share` de cada insert que la referencia
+-- (`orders.opened_by`) y frenaría las ventas de esa persona.
+select id, name, is_active, tracks_attendance from users where id = $1 for share;
+
 -- name: GetOpenAttendance :one
 select id, clock_in_at from attendance_entries where user_id = $1 and status = 'open';
 

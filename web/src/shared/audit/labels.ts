@@ -17,6 +17,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'stock.written_off': 'Dado por perdido',
   'cash.opened': 'Caja abierta',
   'cash.closed': 'Caja cerrada',
+  'cash.closed_without_opener_clock_out': 'Caja cerrada sin la salida de quien la abrió',
   'cash.movement': 'Movimiento de efectivo',
   'cash.movement_corrected': 'Salida corregida',
   'expense.created': 'Gasto registrado',

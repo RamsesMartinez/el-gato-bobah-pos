@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { marcarSalida } from './asistencia';
 import { randomUUID } from 'node:crypto';
 import { API, tokenDeApi } from './ambiente';
 import { iniciarSesion } from './sesion';
@@ -61,7 +62,12 @@ async function entrar(page: Page, ruta: string) {
   await page.goto(ruta);
 }
 
+// DEUDA DE DATOS DEL AMBIENTE (anotada el 2026-10-30, spec 046): contra el respaldo de producción
+// restaurado en local falla porque busca a una persona llamada «Usuario 5» que ese respaldo no tiene,
+// y con el arqueo ciego encendido el desglose por concepto no viaja. No depende de la asistencia.
 test('la propina no es venta, se reparte en pesos enteros y sale del cajón una sola vez', async ({ page }) => {
+  // Con la asistencia encendida, el cierre se ve cuando quien abrió ya marcó su salida (spec 046).
+  await marcarSalida();
   const jwt = await tokenDeApi();
   const antes = await turnoDeLaPrincipal(jwt);
   test.skip(antes === null, 'no hay caja abierta en el ambiente: no se abre la de alguien más');
@@ -118,6 +124,9 @@ test('la propina no es venta, se reparte en pesos enteros y sale del cajón una 
   expect(repetida.status).toBe(400);
 });
 
+// DEUDA DE DATOS DEL AMBIENTE (anotada el 2026-10-30, spec 046): en una empresa con dos o más
+// terminales activas el cobro con tarjeta exige elegir terminal (spec 036) y esta prueba no la manda:
+// responde 422. Pasa donde hay una sola terminal. No depende de la asistencia.
 test('la devolución de un cobro con tarjeta no se registra sin el folio de la terminal', async ({ page }) => {
   const jwt = await tokenDeApi();
   test.skip((await turnoDeLaPrincipal(jwt)) === null, 'no hay caja abierta en el ambiente');

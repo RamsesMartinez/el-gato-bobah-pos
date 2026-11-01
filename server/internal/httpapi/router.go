@@ -303,6 +303,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Post("/", h.OpenCashSession)
 					r.Get("/", h.CashHistory)
 					r.Get("/current", h.CurrentCashSession)
+					r.Get("/attendance", h.CashSessionAttendance) // asistencia para abrir o cerrar (spec 046)
 					r.Get("/{id}", h.CashSessionDetail)
 					r.Get("/{id}/sales", h.CashSessionSales)
 					r.Post("/close", h.CloseCashSession)

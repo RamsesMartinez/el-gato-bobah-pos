@@ -499,6 +499,34 @@ func (q *Queries) ListUserAttendanceNear(ctx context.Context, arg ListUserAttend
 	return items, nil
 }
 
+const lockUserAttendanceForCash = `-- name: LockUserAttendanceForCash :one
+select id, name, is_active, tracks_attendance from users where id = $1 for share
+`
+
+type LockUserAttendanceForCashRow struct {
+	ID               int64  `json:"id"`
+	Name             string `json:"name"`
+	IsActive         bool   `json:"is_active"`
+	TracksAttendance bool   `json:"tracks_attendance"`
+}
+
+// Abrir y cerrar caja leen la asistencia de una persona con su fila tomada (spec 046). `for share`
+// choca con el `for update` de LockUserForAttendance, así que una entrada o salida en otra tableta
+// espera a que la caja termine (o al revés) y la regla se decide con lo que de verdad quedó. No
+// `for update`: ése choca también con el `for key share` de cada insert que la referencia
+// (`orders.opened_by`) y frenaría las ventas de esa persona.
+func (q *Queries) LockUserAttendanceForCash(ctx context.Context, id int64) (LockUserAttendanceForCashRow, error) {
+	row := q.db.QueryRow(ctx, lockUserAttendanceForCash, id)
+	var i LockUserAttendanceForCashRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.IsActive,
+		&i.TracksAttendance,
+	)
+	return i, err
+}
+
 const lockUserForAttendance = `-- name: LockUserForAttendance :one
 select id, name, is_active, tracks_attendance, pin_hash from users where id = $1 for update
 `
