@@ -265,7 +265,11 @@ ciego no pinta; ahora esperan «Fondo inicial» y buscan el faltante en el corte
 `caja-propinas-tarjeta`, dos pruebas fallan por datos del ambiente y quedan anotadas como deuda en
 el propio archivo: una cobra con tarjeta sin elegir terminal en una empresa con varias (422, regla de la 036) y
 la otra busca a una persona llamada «Usuario 5» que el respaldo no tiene. Ninguna de las cuatro
-depende de la asistencia después del ayudante `web/e2e/asistencia.ts`.
+depende de la asistencia después del ayudante `web/e2e/asistencia.ts`. **Resuelto el 2026-11-01:**
+la devolución manda la terminal, la propina crea a su propia persona (`web/e2e/personas.ts`), y en
+la base local la suite abre la caja principal si está cerrada y la cierra al terminar
+(`web/e2e/caja-principal.ts`); con el respaldo recién restaurado la mitad de la suite se saltaba o
+fallaba porque daba por hecho un turno abierto.
 
 ## Riesgos
 

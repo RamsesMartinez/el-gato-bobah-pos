@@ -1,7 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 import { marcarSalida } from './asistencia';
 import { API, tokenDeApi } from './ambiente';
 import { iniciarSesion } from './sesion';
+import { pedidoPorApi, entregarPorApi } from './pos';
 
 // ARQUEO CIEGO EN LA TABLETA (spec 015, US3).
 //
@@ -94,6 +96,20 @@ async function esperadoDelCajon(): Promise<number | null> {
   return null;
 }
 
+// venderEnEfectivo cobra y entrega un pedido en efectivo en la caja que vende.
+async function venderEnEfectivo() {
+  const jwt = await tokenDeApi();
+  const cab = { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' };
+  const metodos = await (await fetch(`${API}/payment-methods`, { headers: cab })).json();
+  const efectivo = ((metodos.items ?? metodos) as Array<{ id: number; name: string }>).find((m) => m.name === 'Efectivo');
+  if (!efectivo) throw new Error('el ambiente no tiene el método «Efectivo»');
+  const pedido = await pedidoPorApi(jwt);
+  const r = await fetch(`${API}/orders/${pedido.id}/pay`, { method: 'POST', headers: cab,
+    body: JSON.stringify({ methodId: efectivo.id, amount: Number(pedido.total), tip: 0, clientUuid: randomUUID() }) });
+  if (!r.ok) throw new Error(`cobrar en efectivo: ${r.status}`);
+  await entregarPorApi(jwt, pedido.id);
+}
+
 let comoEstaba = false;
 
 // cierreOCajaCerrada espera a que la caja termine de pintarse. El bloque del cierre se monta hasta que
@@ -110,6 +126,9 @@ test.afterEach(async () => { await ponerElCiego(comoEstaba); });
 test('B1 · con el arqueo ciego la pantalla del cierre no tiene columna de esperado, y la respuesta tampoco trae la cifra', async ({ page }) => {
   // Con la asistencia encendida, el cierre se ve cuando quien abrió ya marcó su salida (spec 046).
   await marcarSalida();
+  // Una venta en efectivo propia: en un turno recién abierto el cajón espera solo el fondo, que está
+  // a la vista, y la comprobación de que nada reconstruye la cifra no tendría nada que atrapar.
+  await venderEnEfectivo();
   // Se lee ANTES de encender el ciego: es la cifra contra la que se comprueba que nada la
   // reconstruya después. Con el ciego ya puesto no habría contra qué comparar.
   const esperado = await esperadoDelCajon();

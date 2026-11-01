@@ -4,16 +4,18 @@ import { randomUUID } from 'node:crypto';
 import { API, tokenDeApi } from './ambiente';
 import { iniciarSesion } from './sesion';
 import { pedidoPorApi, entregarPorApi } from './pos';
+import { altaDePrueba, bajaDePrueba } from './personas';
 
-// CAJA, PROPINAS Y TARJETA (spec 032), contra el ambiente desplegado.
+// CAJA, PROPINAS Y TARJETA (spec 032).
 //
 // Lo que aquí se ve y en los tests de integración no: que la hoja de reparto, la de cobro y la de
-// devolución digan lo mismo que el servidor. Los casos NO cierran ni abren la caja: el ambiente lo
-// comparte una persona, y un cierre a media corrida le deja un corte que no hizo. El cierre y la
-// apertura a ciegas se probaron a mano el 2026-10-10.
+// devolución digan lo mismo que el servidor. Los casos NO cierran ni abren la caja: trabajan sobre
+// el turno abierto de la principal, que en la base local abre y cierra la suite
+// (caja-principal.ts). El cierre y la apertura a ciegas se probaron a mano el 2026-10-10.
 //
-// Cada caso deja el ambiente como lo encontró: la propina que cobra la reparte completa, la
-// terminal que crea la archiva y la preferencia que mueve la devuelve.
+// Nada depende de datos fijos de la empresa: la persona que recibe la propina la crea la prueba, y
+// la terminal se toma de las activas. Cada caso deja el ambiente como lo encontró: la propina que
+// cobra la reparte completa, la persona que crea la da de baja y la terminal que crea la archiva.
 
 const cab = (jwt: string) => ({ Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' });
 
@@ -37,6 +39,8 @@ async function metodo(jwt: string, nombre: string): Promise<Metodo> {
 
 type Turno = {
   id: number;
+  // blind: con el arqueo ciego el cajón y el desglose no viajan, para nadie, hasta cerrar.
+  blind: boolean;
   tipsPending: { total: string };
   drawer: { expected: string };
   breakdown: { ingresos: Array<{ method: string; items: Array<{ concept: string; amount: string }> }> };
@@ -62,9 +66,9 @@ async function entrar(page: Page, ruta: string) {
   await page.goto(ruta);
 }
 
-// DEUDA DE DATOS DEL AMBIENTE (anotada el 2026-10-30, spec 046): contra el respaldo de producción
-// restaurado en local falla porque busca a una persona llamada «Usuario 5» que ese respaldo no tiene,
-// y con el arqueo ciego encendido el desglose por concepto no viaja. No depende de la asistencia.
+// Con el arqueo ciego encendido, lo que no es venta y lo que sale del cajón no se puede leer del
+// turno: esas dos comprobaciones las hace la corrida con el ciego apagado. La hoja, lo pendiente y
+// las reglas del servidor se prueban en las dos.
 test('la propina no es venta, se reparte en pesos enteros y sale del cajón una sola vez', async ({ page }) => {
   // Con la asistencia encendida, el cierre se ve cuando quien abrió ya marcó su salida (spec 046).
   await marcarSalida();
@@ -82,17 +86,48 @@ test('la propina no es venta, se reparte en pesos enteros y sale del cajón una 
   await entregarPorApi(jwt, pedido.id);
 
   const cobrado = (await turnoDeLaPrincipal(jwt))!.turno;
+  const ciego = cobrado.blind;
   // Si la propina se contara como venta, «Ventas» subiría por el total más la propina.
-  expect(concepto(cobrado, 'Efectivo', 'Ventas') - concepto(antes!.turno, 'Efectivo', 'Ventas'),
-    'la propina entró como venta').toBeCloseTo(Number(pedido.total), 2);
+  if (!ciego) {
+    expect(concepto(cobrado, 'Efectivo', 'Ventas') - concepto(antes!.turno, 'Efectivo', 'Ventas'),
+      'la propina entró como venta').toBeCloseTo(Number(pedido.total), 2);
+  }
   expect(n(cobrado.tipsPending.total) - n(antes!.turno.tipsPending.total)).toBeCloseTo(PROPINA, 2);
 
+  const ana = await altaDePrueba(jwt, 'Ana', 'cajero');
+  try {
+    await entregarLaPropina(page, ana.name, PROPINA, n(cobrado.tipsPending.total));
+
+    const despues = (await turnoDeLaPrincipal(jwt))!.turno;
+    expect(n(despues.tipsPending.total), 'el pendiente no bajó por lo entregado').toBeCloseTo(n(antes!.turno.tipsPending.total), 2);
+    if (!ciego) {
+      // EB-03: la propina en efectivo entra una vez al cobrar y sale una vez al entregarla.
+      expect(n(despues.drawer.expected) - n(antes!.turno.drawer.expected),
+        'el cajón no quedó con exactamente lo vendido').toBeCloseTo(Number(pedido.total), 2);
+      expect(concepto(despues, 'Efectivo', 'Ventas'), 'entregar la propina movió las ventas').toBeCloseTo(concepto(cobrado, 'Efectivo', 'Ventas'), 2);
+    }
+
+    // Las mismas reglas en el servidor, no solo en la hoja.
+    const centavos = await enviar(jwt, 'POST', '/cash-sessions/tips/payouts',
+      { registerId, mode: 'ajustado', recipients: [{ userId: ana.id, amount: 1.5 }] });
+    expect(centavos.status).toBe(400);
+    const repetida = await enviar(jwt, 'POST', '/cash-sessions/tips/payouts',
+      { registerId, mode: 'parejo', recipients: [{ userId: ana.id }, { userId: ana.id }] });
+    expect(repetida.status).toBe(400);
+  } finally {
+    await bajaDePrueba(jwt, ana);
+  }
+});
+
+// entregarLaPropina reparte desde la hoja `propina` pesos a una persona, pasando antes por los dos
+// montos que la hoja tiene que rechazar.
+async function entregarLaPropina(page: Page, persona: string, propina: number, pendiente: number) {
   await entrar(page, '/caja');
   await page.getByRole('button', { name: 'Entregar propina' }).first().click();
   const hoja = page.getByRole('dialog').last();
-  await hoja.getByRole('button', { name: 'Usuario 5', exact: true }).click();
+  await hoja.getByRole('button', { name: persona, exact: true }).click();
   await hoja.getByRole('button', { name: 'Ajustar montos' }).click();
-  const monto = hoja.getByLabel('Monto para Usuario 5');
+  const monto = hoja.getByLabel(`Monto para ${persona}`);
   const entregar = hoja.getByRole('button', { name: /^Entregar a 1 persona/ });
 
   // D-B: los centavos no se reparten.
@@ -100,40 +135,31 @@ test('la propina no es venta, se reparte en pesos enteros y sale del cajón una 
   await expect(hoja.getByText('La propina se entrega en pesos enteros')).toBeVisible();
   await expect(entregar).toBeDisabled();
   // EB-06: más que lo pendiente deja al cajón pagando con dinero del negocio.
-  await monto.fill(String(Math.floor(n(cobrado.tipsPending.total)) + 100));
+  await monto.fill(String(Math.floor(pendiente) + 100));
   await expect(hoja.getByText('No hay tanta propina por entregar')).toBeVisible();
   await expect(entregar).toBeDisabled();
 
-  await monto.fill(String(PROPINA));
+  await monto.fill(String(propina));
   await entregar.click();
   await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 15_000 });
+}
 
-  const despues = (await turnoDeLaPrincipal(jwt))!.turno;
-  expect(n(despues.tipsPending.total), 'el pendiente no bajó por lo entregado').toBeCloseTo(n(antes!.turno.tipsPending.total), 2);
-  // EB-03: la propina en efectivo entra una vez al cobrar y sale una vez al entregarla.
-  expect(n(despues.drawer.expected) - n(antes!.turno.drawer.expected),
-    'el cajón no quedó con exactamente lo vendido').toBeCloseTo(Number(pedido.total), 2);
-  expect(concepto(despues, 'Efectivo', 'Ventas'), 'entregar la propina movió las ventas').toBeCloseTo(concepto(cobrado, 'Efectivo', 'Ventas'), 2);
+type Terminal = { id: number; branchId: number; name: string; archived: boolean };
+const terminalesActivas = async (jwt: string) =>
+  (await get<{ items: Terminal[] }>(jwt, '/card-terminals')).items.filter((t) => !t.archived);
 
-  // Las mismas reglas en el servidor, no solo en la hoja.
-  const centavos = await enviar(jwt, 'POST', '/cash-sessions/tips/payouts',
-    { registerId, mode: 'ajustado', recipients: [{ userId: 5, amount: 1.5 }] });
-  expect(centavos.status).toBe(400);
-  const repetida = await enviar(jwt, 'POST', '/cash-sessions/tips/payouts',
-    { registerId, mode: 'parejo', recipients: [{ userId: 5 }, { userId: 5 }] });
-  expect(repetida.status).toBe(400);
-});
-
-// DEUDA DE DATOS DEL AMBIENTE (anotada el 2026-10-30, spec 046): en una empresa con dos o más
-// terminales activas el cobro con tarjeta exige elegir terminal (spec 036) y esta prueba no la manda:
-// responde 422. Pasa donde hay una sola terminal. No depende de la asistencia.
 test('la devolución de un cobro con tarjeta no se registra sin el folio de la terminal', async ({ page }) => {
   const jwt = await tokenDeApi();
   test.skip((await turnoDeLaPrincipal(jwt)) === null, 'no hay caja abierta en el ambiente');
   const pedido = await pedidoPorApi(jwt);
   const debito = await metodo(jwt, 'Tarjeta débito');
-  const r = await enviar(jwt, 'POST', `/orders/${pedido.id}/pay`,
-    { methodId: debito.id, amount: Number(pedido.total), tip: 0, clientUuid: randomUUID() });
+  // Con dos o más terminales activas el cobro con tarjeta exige la terminal (spec 036): se manda la
+  // primera de las que ofrece la hoja de cobro. Con una sola, o sin ninguna, el servidor no la pide.
+  const [terminal] = await terminalesActivas(jwt);
+  const r = await enviar(jwt, 'POST', `/orders/${pedido.id}/pay`, {
+    methodId: debito.id, amount: Number(pedido.total), tip: 0, clientUuid: randomUUID(),
+    ...(terminal ? { terminalId: terminal.id } : {}),
+  });
   expect(r.ok, `cobrar con tarjeta: ${r.status}`).toBe(true);
   await entregarPorApi(jwt, pedido.id);
 
@@ -164,8 +190,7 @@ test('la devolución de un cobro con tarjeta no se registra sin el folio de la t
 test('con varias terminales ninguna llega marcada y Cobrar espera a que se elija', async ({ page }) => {
   const jwt = await tokenDeApi();
   test.skip((await turnoDeLaPrincipal(jwt)) === null, 'no hay caja abierta en el ambiente');
-  type Terminal = { id: number; branchId: number; name: string; archived: boolean };
-  const terminales = (await get<{ items: Terminal[] }>(jwt, '/card-terminals')).items.filter((t) => !t.archived);
+  const terminales = await terminalesActivas(jwt);
   test.skip(terminales.length === 0, 'el ambiente no tiene terminales');
 
   const creada = await enviar(jwt, 'POST', '/card-terminals', { branchId: terminales[0].branchId, name: `E2E ${Date.now() % 100000}` });

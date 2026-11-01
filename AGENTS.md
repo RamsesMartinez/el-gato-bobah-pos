@@ -220,7 +220,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   Control, así que corre en contenedor como el resto de los gates:
 
   ```bash
-  MSYS_NO_PATHCONV=1 docker run --rm --network host -v "d:/git/el-gato-bobah-pos/web:/w"     -v gatobobah_e2e_modules:/w/node_modules -w /w -e CI=1     mcr.microsoft.com/playwright:v1.63.0-noble     sh -c "bun install --frozen-lockfile --silent; npx playwright test"
+  MSYS_NO_PATHCONV=1 docker run --rm --network host -v "d:/git/el-gato-bobah-pos/web:/w"     -v gatobobah_e2e_modules:/w/node_modules -w /w -e CI=1     mcr.microsoft.com/playwright:v1.64.1-noble     sh -c "bun install --frozen-lockfile --silent; npx playwright test"
   ```
 
   Un fallo en el primer `goto` casi siempre es la VM spot apagada, no el código: revísalo antes de
@@ -247,6 +247,12 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   que cree pedidos, ciérralos tú: entregar (`POST /orders/:id/deliver`) y cobrar
   (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
   plataforma.
+
+  **Contra la base local, la suite abre la caja principal si la encuentra cerrada y la cierra al
+  terminar** ([caja-principal.ts](web/e2e/caja-principal.ts)): un respaldo restaurado la trae
+  cerrada, y las pruebas de caja dan por hecho un turno abierto. Las personas que una prueba
+  necesita las crea y las da de baja ella ([personas.ts](web/e2e/personas.ts)); ningún id ni nombre
+  de la base es fijo.
 
   **Las capturas de pantalla no se versionan; las e2e las guardan en `test-results/`** (ignorado por
   git). Sin excepciones, con datos reales o inventados: en el repo no tienen uso, y lo observado en una
@@ -699,13 +705,28 @@ mecánica:
     integración). Ojo: `uuid.Nil` es **función** (`uuid.Nil()`) y no existe `NewString()`.
   - `strings.CutLast` es lo que usa `rateKeyIP` para tomar el último XFF.
   - `new(expr)` ya acepta un valor: `new(x)` en vez de `v := x; &v`.
-- **`overrides` en `web/package.json`: hoy hay UNO, `zod: "^4.6.6"`** (2026-10-31, GHSA-mrhx-c7xc-m3w5,
-  *high*). Lo trae `eslint-plugin-react-hooks`, que ya va en su última versión (7.1.1) y acepta
-  `^3.25.0 || ^4.0.0`; el rango alcanza el parche, pero bun conserva el 4.4.3 del lockfile y no hay
-  forma de re-resolver una transitiva sin agregarla como dependencia directa. Se borra en cuanto el
-  lockfile resuelva ≥ 4.6.6 sin él (al subir ese plugin). En el mismo cambio, `jsdom` → `undici` se
-  arregló subiendo el padre a 30.1.3 (pide `undici ^8.12.1`), sin override. Antes de éste existieron
-  otros para
+- **`overrides` en `web/package.json`: hoy hay DOS, y los dos cruzan un major que el padre no
+  acepta** (2026-10-31). Los arreglos de `minimatch` (GHSA-g3hv-75wg-m249) y de `glob`
+  (GHSA-3g3m-2fjr-6pw4) solo existen en un major que sus padres, ya en su última versión, todavía no
+  piden:
+  - `minimatch: "^11.0.1"`: `eslint` (`@eslint/config-array`) y `typescript-eslint` piden `^10`.
+    Verificado que `eslint .` sigue encontrando archivos y que la barrera entre la consola y el POS
+    sigue tronando.
+  - `glob: "^14.0.2"`: `workbox-build` 7.4.1 pide `^11`. Verificado que el service worker precarga
+    los mismos 16 archivos que antes, y que en Chromium se instala y avisa de la versión nueva.
+
+  Se borra cada uno en cuanto su padre pida el major corregido. **Cuando el padre SÍ acepta la
+  versión corregida y bun conserva la vieja en el lockfile** (pasó con `zod`, `fast-uri` y
+  `serialize-javascript`), no se deja override: se pone un momento para mover el lockfile, se quita,
+  y se comprueba que `bun install --frozen-lockfile` instala y que `bun audit` sigue limpio. Una
+  resolución desde cero tomaría la misma versión, porque está dentro del rango del padre.
+
+  **Lo que ningún override arregla**: `deepmerge` ≤ 4.3.1 (GHSA-gcqx-w48m-w2h4, *low*), que entra por
+  `vite-plugin-pwa` → `workbox-build` → `@rollup/plugin-node-resolve`, no tiene versión corregida y
+  solo corre al construir. Y en Go, GO-2026-5932 (`x/crypto/openpgp` sin mantenimiento) tampoco
+  tiene arreglo; `govulncheck` lo reporta solo por módulo, porque el código no importa ese paquete.
+
+  Antes de éstos existieron otros para
   forzar la versión parcheada de un CVE *high* que vivía en una transitiva de desarrollo cuando el
   padre pineaba un rango que no alcanzaba el parche (`eslint`→`ajv`→`fast-uri`,
   `vite-plugin-pwa`→`workbox-build`→`glob`→`brace-expansion`, `jsdom`→`undici`,
