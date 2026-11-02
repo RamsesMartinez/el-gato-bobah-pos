@@ -160,6 +160,12 @@ incorporado en este plan, en [data-model.md](data-model.md) y en [research.md](r
 - Prueba pedida: la unión toma primero y la venta llega después (orden inverso), dos uniones a la vez,
   y un movimiento histórico del origen no se redirige al restaurar un respaldo.
 
+**Límite aceptado durante la subida**: mientras la API anterior siga atendiendo, no traduce `EGB02`.
+Si en esos segundos alguien reactiva un origen unido o una venta cae justo en la carrera, la versión
+vieja responde 500 en vez de 409; la base ya impidió el daño y el reintento entra por la versión
+nueva. No hay uniones hasta que la API nueva las crea, así que el caso solo existe si se une durante
+el traslape.
+
 ## Complexity Tracking
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |

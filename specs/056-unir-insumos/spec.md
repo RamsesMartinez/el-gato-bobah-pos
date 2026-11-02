@@ -29,7 +29,7 @@ existencia baja sin control y la otra crece aunque se esté usando.
 
 ### User Story 1 - Unir dos marcas del mismo insumo (Priority: P1)
 
-Quien configura el almacén abre «Leche entera» en Almacén › Artículos, elige «Unir otros insumos
+Quien configura el almacén abre «Leche entera» en Almacén › Artículos, elige «Unir otros
 aquí» y escoge «Leche entera Marca B». Antes de confirmar ve qué pasa: cuánto queda en cada sucursal
 antes y después, qué recetas dejan de usar la Marca B para usar «Leche entera», qué presentaciones
 llegan y con qué costo queda. Al confirmar, la Marca B queda archivada como «unida a Leche entera»,
@@ -249,7 +249,7 @@ grupo desaparece. Marcar «No son lo mismo» en «Vaso 12 oz · Vaso 16 oz» lo 
 - **FR-003**: Al confirmar, el sistema DEBE, en una sola operación que se aplica completa o no se
   aplica: traspasar la existencia de cada origen al destino por sucursal; cambiar al destino toda
   receta que llevaba un origen (juntando en un renglón la cantidad si la receta ya llevaba el
-  destino); pasar al destino las presentaciones, los formatos de compra y los artículos de proveedor
+  destino); pasar al destino las presentaciones activas, los formatos de compra y los artículos de proveedor
   del origen; archivar cada origen ligado a la unión; recostear lo que cambió; y registrar el evento
   en la bitácora.
 - **FR-004**: Después de unir, ninguna receta (de producto activo o inactivo, extra o preparado) DEBE
@@ -331,7 +331,7 @@ grupo desaparece. Marcar «No son lo mismo» en «Vaso 12 oz · Vaso 16 oz» lo 
 
 - **SC-001**: Unir dos insumos, de abrir la ficha a confirmar, toma menos de 1 minuto y no más de 6
   toques cuando se miden igual.
-- **SC-002**: Después de cualquier unión, 0 recetas apuntan a un insumo archivado.
+- **SC-002**: Después de cualquier unión, 0 recetas apuntan a un insumo unido.
 - **SC-003**: La suma de existencias del destino después de unir es igual, por sucursal, a la suma de
   destino y orígenes antes (convertida si hubo equivalencia), sin diferencias de redondeo mayores a
   la precisión de la existencia.
