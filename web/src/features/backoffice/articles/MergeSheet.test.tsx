@@ -234,4 +234,21 @@ describe('Unir insumos · lo que dijo el usuario nuevo', () => {
     const cell = await screen.findByText('+175 ml');
     expect(cell).toHaveAttribute('data-tone', 'muted');
   });
+
+  // Spec 058: la unión copia la densidad cuando los orígenes coinciden, y lo dice; si difieren, no.
+  it('dice de quién recibe la densidad, o que traen densidades distintas', async () => {
+    back.mergeArticles.mockResolvedValue(preview({ densityFrom: 'Leche entera Marca B' }));
+    montar();
+    await verVistaPrevia();
+    expect(await screen.findByText('Recibe la densidad de Leche entera Marca B')).toBeInTheDocument();
+    expect(screen.queryByText(/densidades distintas/)).toBeNull();
+  });
+
+  it('con densidades distintas pide capturarla después en la ficha', async () => {
+    back.mergeArticles.mockResolvedValue(preview({ densityConflict: true }));
+    montar();
+    await verVistaPrevia();
+    expect(await screen.findByText('Los insumos traen densidades distintas; captúrala después en la ficha')).toBeInTheDocument();
+    expect(screen.queryByText(/Recibe la densidad/)).toBeNull();
+  });
 });

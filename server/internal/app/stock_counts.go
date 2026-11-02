@@ -24,6 +24,8 @@ type CountPresentation struct {
 	QtyInBase decimal.Decimal `json:"qtyInBase"`
 	// Brand distingue dos empaques del mismo nombre (spec 056).
 	Brand *string `json:"brand"`
+	// TareG: lo que pesa vacío (spec 058); con él se puede contar pesando con el empaque.
+	TareG *decimal.Decimal `json:"tareG"`
 }
 
 // CountItem es un insumo por contar. Sin lo que el sistema tiene: el conteo es a ciegas.
@@ -38,6 +40,11 @@ type CountItem struct {
 	// Weighable: un artículo en piezas con un empaque aproximado por peso o líquido se puede contar
 	// pesándolo (spec 042, FR-012); el servidor convierte a piezas.
 	Weighable bool `json:"weighable"`
+	// GrossWeighable: un artículo en g o ml con un empaque que dice cuánto pesa vacío (y densidad si
+	// se guarda en ml) se puede contar pesando con el empaque (spec 058). DensityGPerMl es la que la
+	// pantalla usa para mostrar la cuenta; el servidor la vuelve a exigir al guardar.
+	GrossWeighable bool             `json:"grossWeighable"`
+	DensityGPerMl  *decimal.Decimal `json:"densityGPerMl"`
 }
 
 // CountView es el conteo abierto con lo que hay que contar.
@@ -118,7 +125,7 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 	weighable := map[int64]bool{}
 	for _, p := range pres {
 		if p.Active && !p.IsApproximate {
-			byIng[p.IngredientID] = append(byIng[p.IngredientID], CountPresentation{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase, Brand: p.Brand})
+			byIng[p.IngredientID] = append(byIng[p.IngredientID], CountPresentation{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase, Brand: p.Brand, TareG: p.TareG})
 		}
 		if p.Active && p.IsApproximate && p.BaseUnitKind == db.UnitKindPieza {
 			weighable[p.IngredientID] = true
@@ -131,9 +138,24 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 			ps = []CountPresentation{}
 		}
 		v.Items[i] = CountItem{IngredientID: r.ID, Name: r.Name, Place: r.CountPlace, PlaceID: r.CountPlaceID, BaseUnitCode: r.BaseUnitCode,
-			Presentations: ps, CountedQty: r.CountedQty, Weighable: weighable[r.ID]}
+			Presentations: ps, CountedQty: r.CountedQty, Weighable: weighable[r.ID], DensityGPerMl: r.DensityGPerMl,
+			GrossWeighable: grossWeighable(r.BaseUnitKind, r.DensityGPerMl, ps)}
 	}
 	return v, nil
+}
+
+// grossWeighable: se puede contar pesando con empaque si alguno dice cuánto pesa vacío, y si el
+// artículo se guarda en ml, con su densidad.
+func grossWeighable(kind db.UnitKind, density *decimal.Decimal, ps []CountPresentation) bool {
+	if kind != db.UnitKindMasa && (kind != db.UnitKindVolumen || density == nil) {
+		return false
+	}
+	for _, p := range ps {
+		if p.TareG != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // openCount bloquea el conteo y exige que siga abierto.
@@ -165,8 +187,29 @@ type CountCapture struct {
 	Qty          decimal.Decimal
 	Weight       *decimal.Decimal
 	WeightUnitID *int16
-	Confirmable  bool
-	Confirmed    bool
+	// Gross: lo abierto pesado con su empaque (spec 058); se suma a Qty (lo cerrado).
+	Gross       *GrossCapture
+	Confirmable bool
+	Confirmed   bool
+}
+
+// GrossCapture es una pesada con empaque: lo que marcó la báscula, en qué unidad, de qué empaque y
+// cuántos. SeenTareG y SeenDensity son lo que la pantalla usó para mostrar la cuenta: si ya no son los
+// vigentes, se rechaza en vez de guardar una cifra distinta de la que se vio.
+type GrossCapture struct {
+	Weight         decimal.Decimal
+	WeightUnitID   int16
+	PresentationID int64
+	Containers     int
+	SeenTareG      *decimal.Decimal
+	SeenDensity    *decimal.Decimal
+}
+
+// grossUsed es lo que se guarda en el renglón del conteo de una pesada con empaque (puerta VIII).
+type grossUsed struct {
+	grossG, tareG decimal.Decimal
+	containers    int16
+	density       *decimal.Decimal
 }
 
 // CaptureCountChecked guarda una cifra del conteo y devuelve lo que quedó en la unidad base. Con
@@ -176,10 +219,16 @@ func (s *BackofficeService) CaptureCountChecked(ctx context.Context, countID, in
 	var counted decimal.Decimal
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
 		var err error
-		if counted, err = countedQty(ctx, q, ingredientID, in); err != nil {
+		var gross *grossUsed
+		if in.Gross != nil {
+			counted, gross, err = grossQty(ctx, q, ingredientID, in)
+		} else {
+			counted, err = countedQty(ctx, q, ingredientID, in)
+		}
+		if err != nil {
 			return err
 		}
-		return s.captureTx(ctx, q, countID, ingredientID, counted, in, userID)
+		return s.captureTx(ctx, q, countID, ingredientID, counted, in, userID, gross)
 	})
 	if errors.Is(err, domain.ErrCountNeedsConfirm) {
 		// El aviso queda en la bitácora en su propia transacción (la de la captura se revirtió): el conteo
@@ -235,7 +284,59 @@ func countedQty(ctx context.Context, q *db.Queries, ingredientID int64, in Count
 	return decimal.Zero, fmt.Errorf("%w: este artículo no tiene una equivalencia para contarlo pesando", domain.ErrValidation)
 }
 
-func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countID, ingredientID int64, counted decimal.Decimal, in CountCapture, userID int64) error {
+// grossQty resuelve una pesada con empaque: lo cerrado (Qty) más lo pesado ya sin los empaques y en la
+// unidad base, con la tara y la densidad vigentes, que tienen que ser las que vio la pantalla.
+func grossQty(ctx context.Context, q *db.Queries, ingredientID int64, in CountCapture) (decimal.Decimal, *grossUsed, error) {
+	g := in.Gross
+	if in.Weight != nil || in.WeightUnitID != nil {
+		return decimal.Zero, nil, fmt.Errorf("%w: pesar con empaque no se combina con pesar piezas", domain.ErrValidation)
+	}
+	if !domain.ValidCountQty(domain.Round4(in.Qty)) {
+		return decimal.Zero, nil, domain.ErrValidation
+	}
+	wu, err := q.GetUnit(ctx, g.WeightUnitID)
+	if err != nil || wu.Kind != db.UnitKindMasa {
+		return decimal.Zero, nil, fmt.Errorf("%w: el peso de la báscula va en g o kg", domain.ErrValidation)
+	}
+	ing, err := q.GetIngredientUnit(ctx, ingredientID)
+	if err != nil {
+		return decimal.Zero, nil, notFound(err)
+	}
+	pres, err := q.ListPresentations(ctx, &ingredientID)
+	if err != nil {
+		return decimal.Zero, nil, err
+	}
+	var tare *decimal.Decimal
+	for _, p := range pres {
+		if p.ID == g.PresentationID && p.Active && !p.IsApproximate {
+			tare = p.TareG
+		}
+	}
+	if tare == nil {
+		return decimal.Zero, nil, fmt.Errorf("%w: ese empaque no dice cuánto pesa vacío", domain.ErrValidation)
+	}
+	if !sameDec(tare, g.SeenTareG) || (ing.BaseUnitKind == db.UnitKindVolumen && !sameDec(ing.DensityGPerMl, g.SeenDensity)) {
+		return decimal.Zero, nil, domain.ErrCountInputsChanged
+	}
+	net, err := domain.NetFromGross(domain.GrossInput{
+		GrossG: g.Weight.Mul(wu.ToBase), TareG: *tare, Containers: g.Containers,
+		BaseKind: string(ing.BaseUnitKind), Density: ing.DensityGPerMl,
+	})
+	if err != nil {
+		return decimal.Zero, nil, err
+	}
+	total := domain.Round4(in.Qty).Add(net)
+	if !domain.ValidCountQty(total) {
+		return decimal.Zero, nil, fmt.Errorf("%w: lo pesado da una cifra fuera de lo posible", domain.ErrValidation)
+	}
+	used := &grossUsed{grossG: domain.Round4(g.Weight.Mul(wu.ToBase)), tareG: *tare, containers: int16(g.Containers)}
+	if ing.BaseUnitKind == db.UnitKindVolumen {
+		used.density = ing.DensityGPerMl
+	}
+	return total, used, nil
+}
+
+func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countID, ingredientID int64, counted decimal.Decimal, in CountCapture, userID int64, gross *grossUsed) error {
 	c, err := openCount(ctx, q, countID)
 	if err != nil {
 		return err
@@ -280,10 +381,14 @@ func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countI
 			return domain.ErrCountNeedsConfirm
 		}
 	}
-	err = q.UpsertCountLine(ctx, db.UpsertCountLineParams{
+	params := db.UpsertCountLineParams{
 		CountID: countID, IngredientID: ingredientID, CountedQty: counted, SystemQty: seen.OnHand, CapturedBy: userID,
 		LastMovementID: &seen.LastMovementID,
-	})
+	}
+	if gross != nil {
+		params.GrossG, params.GrossContainers, params.TareGUsed, params.DensityUsed = &gross.grossG, &gross.containers, &gross.tareG, gross.density
+	}
+	err = q.UpsertCountLine(ctx, params)
 	if isForeignKeyViolation(err) {
 		return domain.ErrNotFound // un insumo de otra empresa o que no existe
 	}

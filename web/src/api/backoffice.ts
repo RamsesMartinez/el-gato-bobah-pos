@@ -484,6 +484,8 @@ export interface ExpenseItem {
   // Lo que sumó cada día de entrega, en `baseUnitCode` (spec 053). Opcional para que el compilador
   // obligue a la guarda: una API anterior no lo manda.
   deliveries?: { on: string; qtyBase: string }[];
+  // Spec 058: con la que el renglón convierte entre peso y líquido (la fija o la vigente).
+  densityGPerMl?: string | null;
 }
 export interface ExpensePayment {
   id: number;
@@ -589,6 +591,8 @@ export interface Presentation {
   purchaseUnitId: number | null;
   // La marca o el proveedor (spec 056). Opcional: falta en una API anterior.
   brand?: string | null;
+  // Lo que pesa vacío, en g (spec 058).
+  tareG?: string | null;
 }
 export interface PresentationBody {
   name: string;
@@ -598,6 +602,8 @@ export interface PresentationBody {
   active?: boolean;
   // Sin mandarla, se conserva la que tiene; vacía, se quita.
   brand?: string;
+  // Lo que pesa vacío (spec 058): sin mandarla se conserva; null la quita.
+  tareG?: string | null;
 }
 export interface CountPlace {
   id: number;
@@ -635,6 +641,8 @@ export interface Article {
   name: string;
   unitCode: string;
   unitKind: string;
+  // Spec 058: para convertir en pantalla una compra entre peso y líquido.
+  densityGPerMl?: string | null;
 }
 // Sugerencia de mapeo. source dice cuánto confiar: "aprendido" ya se confirmó con ese
 // proveedor (autollenar); los otros son parecidos y esperan confirmación.
@@ -780,6 +788,7 @@ export interface PendingReceipt {
   presentationName: string | null;
   unitCode: string | null;
   baseUnitCode: string | null;
+  densityGPerMl?: string | null;
 }
 // Conteo (spec 038). A ciegas: lo que el sistema tiene no viene mientras se cuenta.
 export interface CountItem {
@@ -789,10 +798,14 @@ export interface CountItem {
   placeId?: number | null;
   baseUnitCode: string;
   // id y brand faltan en una API anterior a la 056.
-  presentations: { id?: number; name: string; qtyInBase: string; brand?: string | null }[];
+  presentations: { id?: number; name: string; qtyInBase: string; brand?: string | null; tareG?: string | null }[];
   countedQty: string | null; // null = no contado
   // Un artículo en piezas que se puede contar pesando (spec 042): el servidor convierte a piezas.
   weighable?: boolean;
+  // Spec 058: se puede contar pesando con el empaque (alguno dice cuánto pesa vacío, y con densidad
+  // si se guarda en ml). La densidad es la que se usa para mostrar la cuenta.
+  grossWeighable?: boolean;
+  densityGPerMl?: string | null;
 }
 // Lo que se manda al capturar. confirmable pide el aviso de una cifra fuera de lo razonable.
 export interface CountCaptureBody {
@@ -801,6 +814,9 @@ export interface CountCaptureBody {
   weightUnitId?: number;
   confirmable: true;
   confirmed?: boolean;
+  // Spec 058: lo abierto pesado con su empaque; se suma a countedQty (lo cerrado). seenTareG y
+  // seenDensity son los números con que la pantalla hizo la cuenta.
+  gross?: { weight: string; weightUnitId: number; presentationId: number; containers: number; seenTareG: string; seenDensity?: string | null };
 }
 export interface StockCount {
   id: number;
@@ -1083,7 +1099,7 @@ export const backofficeApi = {
   currentCount: () => api.get<StockCount | undefined>('/stock/counts/current').then((c) => c ?? null),
   openCount: () => api.post<StockCount>('/stock/counts', {}),
   captureCount: (id: number, ingredientId: number, body: CountCaptureBody) =>
-    api.put<{ countedQty: string }>(`/stock/counts/${id}/lines/${ingredientId}`, body),
+    api.put<{ countedQty: string; grossNet?: string }>(`/stock/counts/${id}/lines/${ingredientId}`, body),
   uncaptureCount: (id: number, ingredientId: number) => api.del<void>(`/stock/counts/${id}/lines/${ingredientId}`),
   previewCount: (id: number) => api.get<CountClose>(`/stock/counts/${id}/preview`),
   closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),
@@ -1126,6 +1142,8 @@ export const backofficeApi = {
     api.get<CostHistoryPage>(`/stock/articles/${id}/cost-history${before ? `?before=${encodeURIComponent(before)}` : ''}`),
   previewUnitChange: (id: number, b: UnitChangeBody) => api.post<UnitChangePreview>(`/stock/articles/${id}/unit/preview`, b),
   changeUnit: (id: number, b: UnitChangeBody) => api.post<void>(`/stock/articles/${id}/unit`, b),
+  setDensity: (id: number, b: DensityBody) => api.put<{ density: DensityView }>(`/stock/articles/${id}/density`, b),
+  clearDensity: (id: number) => api.del<void>(`/stock/articles/${id}/density`),
   mergeArticles: (targetId: number, b: MergeBody, preview: boolean) =>
     api.post<MergePreview>(`/stock/articles/${targetId}/merge${preview ? '?preview=1' : ''}`, b),
   duplicateGroups: () => api.get<{ groups?: DuplicateGroup[] }>('/stock/articles/duplicate-groups'),
@@ -1276,7 +1294,14 @@ export interface ArticleSheet extends ArticleRow {
   // A qué insumo se unió (spec 056); falta en una API anterior.
   mergedInto?: { id: number; name: string; at: string } | null;
   mergedSources?: number;
+  // Spec 058. method: weighing (pesada) | label (etiqueta) | manual (escrita).
+  density?: DensityView | null;
 }
+export interface DensityView { value: string; method: 'weighing' | 'label' | 'manual'; setByName: string; setAt: string }
+export type DensityBody =
+  | { method: 'weighing'; fullG: string; emptyG: string; contentMl: string }
+  | { method: 'label'; netG: string; contentMl: string }
+  | { method: 'manual'; density: string };
 export interface ArticleCreate {
   name: string;
   baseUnitId: number;
@@ -1328,7 +1353,8 @@ export interface ArchiveCheck {
 }
 export interface UnitChangeBody {
   baseUnitId: number;
-  factor: string;
+  // Entre peso y líquido la pone la densidad (spec 058): la vista previa va sin ella.
+  factor?: string;
   overrides?: Record<string, string>;
 }
 export interface UnitConversion {
@@ -1367,6 +1393,9 @@ export interface MergePreview {
   costAfter: string;
   minStockBefore: string | null;
   minStockAfter: string | null;
+  // Spec 058: el destino recibe la densidad de este origen; o los orígenes traen distintas.
+  densityFrom?: string | null;
+  densityConflict?: boolean;
   fingerprint: string;
 }
 export interface DuplicateItem { id: number; name: string; baseUnitId: number; baseUnitCode: string; onHand: string }
@@ -1376,4 +1405,7 @@ export interface UnitChangePreview {
   fromUnit: string;
   toUnit: string;
   conversions?: UnitConversion[];
+  // Spec 058: entre peso y líquido la equivalencia sale de la densidad.
+  density?: string | null;
+  factor?: string;
 }

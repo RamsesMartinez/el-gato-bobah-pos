@@ -7,6 +7,7 @@ import {
 } from '../../../components/ui/drawer';
 import { backofficeApi, type ArticleSheet as Sheet, type ArticleUpdate } from '../../../api/backoffice';
 import { ApiError } from '../../../api/client';
+import { InfoButton } from '../../../components/InfoButton';
 import { Picker } from '../../../components/Picker';
 import { ConfirmSheet } from '../../../components/ConfirmSheet';
 import { useAutosave, type AutosaveStatus } from './useAutosave';
@@ -23,6 +24,8 @@ import { ArticleAuditSheet } from './ArticleAuditSheet';
 import { ArchiveSheet } from './ArchiveSheet';
 import { UnitChangeSheet } from './UnitChangeSheet';
 import { MergeSheet } from './MergeSheet';
+import { DensitySheet } from './DensitySheet';
+import { densityWords } from '../expenseDraft';
 import { presentationLabel } from '../../../shared/presentationLabel';
 import { QtyWithUnit } from './qty';
 import { baseQty, bigUnitOf, KIND_WORD, type Kind } from './articleUnits';
@@ -103,7 +106,7 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
     getNextPageParam: (p) => p.next ?? undefined,
   });
   const [form, setForm] = useState<Form | null>(null);
-  const [panel, setPanel] = useState<'audit' | 'archive' | 'packs' | 'recipe' | 'cost' | 'discard' | 'unit' | 'merge' | null>(null)
+  const [panel, setPanel] = useState<'audit' | 'archive' | 'packs' | 'recipe' | 'cost' | 'discard' | 'unit' | 'merge' | 'density' | null>(null)
   const [editPack, setEditPack] = useState<number | undefined>(undefined);
   const [cost, setCost] = useState('');
 
@@ -283,6 +286,10 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                   <Text>Se mide en <b>{KIND_WORD[kind]}</b>{a.baseUnitCode === 'pieza' ? '' : ` (${a.baseUnitCode})`}{Number(a.onHand) < 0 ? '' : ` · Hay ${formatBaseQty(a.onHand, a.baseUnitCode)}`}</Text>
                   {canConfigure && a.isActive && <Button minH="44px" variant="outline" onClick={() => setPanel('unit')}>Cambiar ›</Button>}
                 </HStack>
+                {(kind === 'masa' || kind === 'volumen') && (
+                  <DensityRow density={a.density ?? null} day={(s) => hora.soloFecha(s)}
+                    canEdit={canConfigure && a.isActive} onEdit={() => setPanel('density')} />
+                )}
                 {/* Una existencia negativa no es un dato normal: dice qué hacer, en su propio renglón para
                     no partir el de arriba en media pantalla, y con texto además del rojo (spec 043, FR-018).
                     No se recalcula nada del pasado. */}
@@ -367,7 +374,13 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
       </DrawerContent>
 
       {panel === 'audit' && <ArticleAuditSheet id={id} name={a?.name ?? ''} baseUnitCode={a?.baseUnitCode ?? 'pieza'} onClose={() => setPanel(null)} />}
-      {panel === 'unit' && a && <UnitChangeSheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />}
+      {panel === 'unit' && a && (
+        <UnitChangeSheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }}
+          onNeedDensity={() => setPanel('density')} />
+      )}
+      {panel === 'density' && a && (
+        <DensitySheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />
+      )}
       {panel === 'merge' && a && (
         <MergeSheet target={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />
       )}
@@ -426,6 +439,43 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
       </Stack>
     );
   }
+}
+
+const METHOD_WORDS: Record<string, string> = { weighing: 'por pesada', label: 'de la etiqueta', manual: 'escrita' };
+
+// DensityRow es la densidad en la ficha (spec 058): opcional, pegada a «Se mide en». El (i) despliega
+// debajo para no mover el botón.
+function DensityRow({ density, day, canEdit, onEdit }: {
+  density: Sheet['density'] | null; day: (s: string) => string; canEdit: boolean; onEdit: () => void;
+}) {
+  const [help, setHelp] = useState(false);
+  return (
+    <Stack gap={1} data-density-row>
+      <HStack justify="space-between" minH="44px" gap={2}>
+        <HStack gap={1} minW={0} flexWrap="wrap">
+          <Text>Densidad</Text>
+          <Badge colorPalette="gray">Opcional</Badge>
+          <InfoButton label="¿Para qué sirve la densidad?" open={help} onToggle={() => setHelp((h) => !h)} />
+          <Text color={density ? undefined : 'fg.muted'}>
+            {density
+              ? `${densityWords(Number(density.value))} gramos por ml · ${METHOD_WORDS[density.method] ?? ''} · ${density.setByName}, ${day(density.setAt)}`
+              : 'Sin capturar'}
+          </Text>
+        </HStack>
+        {canEdit && (
+          <Button minH="44px" variant="outline" flexShrink={0} aria-label={density ? 'Cambiar la densidad' : 'Capturar la densidad'} onClick={onEdit}>
+            {density ? 'Cambiar' : 'Capturar'}
+          </Button>
+        )}
+      </HStack>
+      {help && (
+        <Text fontSize="sm" color="fg.muted" p={2} borderRadius="md" bg="bg.subtle">
+          Sirve para comprar en peso algo que guardas en líquido, o al revés. Por ejemplo, el galón dice 4.3 kg y lo guardas en ml;
+          con la densidad 1.10 entra solo como 4,300 g ÷ 1.10 = 3,909 ml. Sin ella todo funciona igual que hoy.
+        </Text>
+      )}
+    </Stack>
+  );
 }
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {

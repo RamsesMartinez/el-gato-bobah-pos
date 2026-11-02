@@ -117,3 +117,69 @@ export function baseOfLine(qty: string, factor: string | null | undefined): numb
   if (q.estado !== 'valido' || f.estado !== 'valido' || q.valor <= 0 || f.valor <= 0) return null;
   return Number((q.valor * f.valor).toFixed(4));
 }
+
+// Spec 058. densityFactor es cuánto suma en la unidad base UNA unidad de compra de la otra clase
+// (kg de un artículo en ml): la misma regla que domain.BaseQty — masa → volumen divide entre la
+// densidad, volumen → masa multiplica. null cuando no aplica (misma clase, pieza, longitud) o falta
+// la densidad: sin ella el servidor rechaza el renglón y la pantalla no debe inventar un número.
+export function densityFactor(buyKind: string, baseKind: string, toBase: string, density: string | null | undefined): number | null {
+  const d = parseNumero(density ?? '');
+  const f = parseNumero(toBase);
+  if (d.estado !== 'valido' || f.estado !== 'valido' || d.valor <= 0 || f.valor <= 0) return null;
+  if (buyKind === 'masa' && baseKind === 'volumen') return f.valor / d.valor;
+  if (buyKind === 'volumen' && baseKind === 'masa') return f.valor * d.valor;
+  return null;
+}
+
+const SMALLEST: Record<string, string> = { masa: 'g', volumen: 'ml' };
+// Un número, no una fecha: no lleva zona. Lo grande sin decimales («3,909»), lo chico con dos.
+const qtyWords = (n: number) => n.toLocaleString('es-MX', { maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 2 });
+export const densityWords = (n: number) => n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+
+// conversionWords dice en palabras cómo se convirtió un renglón entre peso y líquido (FR-009):
+// «4,300 g ÷ 1.10 = 3,909 ml». null si no aplica o falta algo.
+export function conversionWords(qty: string, buy: { kind: string; toBase: string }, baseKind: string, density: string | null | undefined): string | null {
+  const factor = densityFactor(buy.kind, baseKind, buy.toBase, density);
+  const result = baseOfLine(qty, factor === null ? null : String(factor));
+  const q = parseNumero(qty);
+  if (result === null || q.estado !== 'valido') return null;
+  const d = parseNumero(density ?? '');
+  if (d.estado !== 'valido') return null;
+  const smallest = q.valor * Number(buy.toBase);
+  const op = buy.kind === 'masa' ? '÷' : '×';
+  return `${qtyWords(smallest)} ${SMALLEST[buy.kind]} ${op} ${densityWords(d.valor)} = ${qtyWords(result)} ${SMALLEST[baseKind]}`;
+}
+
+const CODE_WORD: Record<string, string> = { l: 'L' };
+export interface CrossConversion {
+  factor: number | null; // cuánto suma una unidad comprada en la base; null sin densidad
+  words: string | null; // «4,300 g ÷ 1.10 = 3,909 ml», si hay cantidad y densidad
+  missing: string; // «Falta la densidad para pasar kg a ml», o '' si no falta
+}
+
+// crossConversion es lo que un renglón de compra entre peso y líquido le dice a quien captura: su
+// conversión o lo que falta para hacerla. null cuando el renglón no cruza de clase (o es pieza, o
+// longitud): ahí la cuenta es la de siempre y no hay nada que decir.
+export function crossConversion(
+  qty: string, buy: { code: string; kind: string; toBase: string }, baseKind: string, baseCode: string, density: string | null | undefined,
+): CrossConversion | null {
+  const cross = (buy.kind === 'masa' && baseKind === 'volumen') || (buy.kind === 'volumen' && baseKind === 'masa');
+  if (!cross) return null;
+  const factor = densityFactor(buy.kind, baseKind, buy.toBase, density);
+  if (factor === null) return { factor: null, words: null, missing: `Falta la densidad para pasar ${CODE_WORD[buy.code] ?? buy.code} a ${baseCode}` };
+  return { factor, words: conversionWords(qty, buy, baseKind, density), missing: '' };
+}
+
+const BASE_KIND: Record<string, string> = { g: 'masa', ml: 'volumen', cm: 'longitud', pieza: 'pieza' };
+
+// lineConversion es crossConversion para las pantallas que solo tienen el código de la unidad del
+// renglón y de la base (por recibir, detalle del gasto).
+export function lineConversion(
+  qty: string, unitCode: string | null | undefined, baseUnitCode: string | null | undefined, density: string | null | undefined,
+  units: { code: string; kind: string; toBase: string }[],
+): CrossConversion | null {
+  const buy = units.find((u) => u.code === unitCode);
+  const baseKind = BASE_KIND[baseUnitCode ?? ''];
+  if (!buy || !baseKind || !baseUnitCode) return null;
+  return crossConversion(qty, buy, baseKind, baseUnitCode, density);
+}

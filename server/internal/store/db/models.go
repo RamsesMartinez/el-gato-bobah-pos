@@ -1102,6 +1102,7 @@ type ExpenseItem struct {
 	IsGift            bool               `json:"is_gift"`
 	Excluded          bool               `json:"excluded"`
 	PresentationBrand *string            `json:"presentation_brand"`
+	DensityGPerMl     *decimal.Decimal   `json:"density_g_per_ml"`
 }
 
 type ExpensePayment struct {
@@ -1165,6 +1166,10 @@ type Ingredient struct {
 	CompositionConfirmedBy *int64             `json:"composition_confirmed_by"`
 	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
 	CountPlaceID           *int64             `json:"count_place_id"`
+	DensityGPerMl          *decimal.Decimal   `json:"density_g_per_ml"`
+	DensityMethod          *string            `json:"density_method"`
+	DensitySetBy           *int64             `json:"density_set_by"`
+	DensitySetAt           pgtype.Timestamptz `json:"density_set_at"`
 }
 
 type IngredientCategory struct {
@@ -1193,16 +1198,17 @@ type IngredientDistinctPair struct {
 }
 
 type IngredientPresentation struct {
-	ID             int64           `json:"id"`
-	CompanyID      int64           `json:"company_id"`
-	IngredientID   int64           `json:"ingredient_id"`
-	Name           string          `json:"name"`
-	QtyInBase      decimal.Decimal `json:"qty_in_base"`
-	Active         bool            `json:"active"`
-	PurchaseUnitID *int16          `json:"purchase_unit_id"`
-	IsApproximate  bool            `json:"is_approximate"`
-	CreatedAt      time.Time       `json:"created_at"`
-	Brand          *string         `json:"brand"`
+	ID             int64            `json:"id"`
+	CompanyID      int64            `json:"company_id"`
+	IngredientID   int64            `json:"ingredient_id"`
+	Name           string           `json:"name"`
+	QtyInBase      decimal.Decimal  `json:"qty_in_base"`
+	Active         bool             `json:"active"`
+	PurchaseUnitID *int16           `json:"purchase_unit_id"`
+	IsApproximate  bool             `json:"is_approximate"`
+	CreatedAt      time.Time        `json:"created_at"`
+	Brand          *string          `json:"brand"`
+	TareG          *decimal.Decimal `json:"tare_g"`
 }
 
 type IngredientPurchaseFormat struct {
@@ -1865,15 +1871,19 @@ type StockCount struct {
 }
 
 type StockCountLine struct {
-	CountID        int64            `json:"count_id"`
-	CompanyID      int64            `json:"company_id"`
-	IngredientID   int64            `json:"ingredient_id"`
-	CountedQty     decimal.Decimal  `json:"counted_qty"`
-	SystemQty      decimal.Decimal  `json:"system_qty"`
-	CapturedBy     int64            `json:"captured_by"`
-	CapturedAt     time.Time        `json:"captured_at"`
-	LastMovementID *int64           `json:"last_movement_id"`
-	UnitCost       *decimal.Decimal `json:"unit_cost"`
+	CountID         int64            `json:"count_id"`
+	CompanyID       int64            `json:"company_id"`
+	IngredientID    int64            `json:"ingredient_id"`
+	CountedQty      decimal.Decimal  `json:"counted_qty"`
+	SystemQty       decimal.Decimal  `json:"system_qty"`
+	CapturedBy      int64            `json:"captured_by"`
+	CapturedAt      time.Time        `json:"captured_at"`
+	LastMovementID  *int64           `json:"last_movement_id"`
+	UnitCost        *decimal.Decimal `json:"unit_cost"`
+	GrossG          *decimal.Decimal `json:"gross_g"`
+	GrossContainers *int16           `json:"gross_containers"`
+	TareGUsed       *decimal.Decimal `json:"tare_g_used"`
+	DensityUsed     *decimal.Decimal `json:"density_used"`
 }
 
 type StockLevel struct {

@@ -62,9 +62,11 @@ values ('ingrediente', sqlc.arg(ingredient_id), 'ajuste', sqlc.arg(quantity), sq
 select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
        i.current_cost, i.cost_source::text as cost_source, i.min_stock, i.is_prep, i.category_id, ic.name as category,
        i.count_place_id, cp.name as count_place, i.updated_at, i.composition_status,
-       coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+       coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
+       i.density_g_per_ml, i.density_method, i.density_set_at, du.name as density_set_by_name
   from ingredients i
   join units u on u.id = i.base_unit_id
+  left join users du on du.id = i.density_set_by
   left join count_places cp on cp.id = i.count_place_id
   left join ingredient_categories ic on ic.id = i.category_id
   left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
@@ -261,14 +263,15 @@ select distinct p.name, p.qty_in_base
  limit 60;
 
 -- name: GetPresentationForAudit :one
-select name, qty_in_base, active, brand from ingredient_presentations where id = $1;
+select name, qty_in_base, active, brand, tare_g from ingredient_presentations where id = $1;
 
 -- ---- Cambio de unidad (spec 042, FR-009) ----
 
 -- name: LockArticleNowait :one
 -- El artículo sin esperar: una venta en curso lo tiene y el cambio se reintenta (E6).
 select id, is_active, name::text as name, base_unit_id, min_stock, current_cost, cost_source::text as cost_source,
-       yield_qty, is_prep, category_id, count_place_id, track_stock, is_packaging
+       yield_qty, is_prep, category_id, count_place_id, track_stock, is_packaging,
+       density_g_per_ml, density_method, density_set_by, density_set_at
   from ingredients where id = sqlc.arg(id) for update nowait;
 
 -- name: LockArticleStockNowait :many
@@ -329,6 +332,43 @@ update ingredient_presentations
    set name = sqlc.arg(name), qty_in_base = sqlc.arg(qty_in_base), purchase_unit_id = sqlc.narg(purchase_unit_id),
        is_approximate = sqlc.arg(is_approximate), active = sqlc.arg(active)
  where id = sqlc.arg(id);
+
+-- name: SetArticleDensity :exec
+-- La densidad vigente con quién y cómo (spec 058). Su historia va en la bitácora, en la misma
+-- transacción.
+update ingredients
+   set density_g_per_ml = sqlc.arg(density), density_method = sqlc.arg(method)::text,
+       density_set_by = sqlc.arg(user_id), density_set_at = now()
+ where id = sqlc.arg(id);
+
+-- name: CopyArticleDensity :exec
+-- El artículo de un reemplazo (cambio de unidad) o el destino de una unión recibe la densidad tal
+-- como estaba: no es una pesada nueva.
+update ingredients d
+   set density_g_per_ml = s.density_g_per_ml, density_method = s.density_method,
+       density_set_by = s.density_set_by, density_set_at = s.density_set_at
+  from ingredients s
+ where d.id = sqlc.arg(to_id) and s.id = sqlc.arg(from_id) and s.density_g_per_ml is not null;
+
+-- name: ClearArticleDensity :execrows
+update ingredients
+   set density_g_per_ml = null, density_method = null, density_set_by = null, density_set_at = null
+ where id = sqlc.arg(id) and density_g_per_ml is not null;
+
+-- name: PendingDensityLinesOf :one
+-- Renglones de compra vivos del artículo entre peso y líquido que todavía no fijaron su densidad:
+-- quitarla los dejaría sin poder convertirse y el gasto entero sin poder tocarse (revisión A1).
+select count(*) from expense_items ei
+  join units bu on bu.id = ei.unit_id
+  join ingredients i on i.id = ei.ingredient_id
+  join units iu on iu.id = i.base_unit_id
+ where ei.ingredient_id = sqlc.arg(ingredient_id) and ei.voided_at is null and ei.presentation_id is null
+   and ei.density_g_per_ml is null
+   and bu.kind in ('masa', 'volumen') and iu.kind in ('masa', 'volumen') and bu.kind <> iu.kind;
+
+-- name: SetPresentationTare :exec
+-- Lo que pesa vacío un empaque, aparte del resto: un PUT que no la manda no la toca.
+update ingredient_presentations set tare_g = sqlc.narg(tare_g) where id = sqlc.arg(id);
 
 -- name: ArticlePurchaseFormats :many
 select id, qty_in_base from ingredient_purchase_formats where ingredient_id = sqlc.arg(ingredient_id);

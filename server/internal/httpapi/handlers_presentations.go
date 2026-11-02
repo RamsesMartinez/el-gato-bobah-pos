@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -30,10 +31,20 @@ type presentationBody struct {
 	Approximate bool            `json:"approximate"`
 	Active      *bool           `json:"active"`
 	Brand       *string         `json:"brand"`
+	// TareG distingue ausente (no cambia) de null (se quita), por eso llega crudo.
+	TareG json.RawMessage `json:"tareG"`
 }
 
-func (b presentationBody) input() app.PresentationInput {
-	return app.PresentationInput{Name: b.Name, Qty: b.Qty, UnitID: b.UnitID, Approximate: b.Approximate, Active: b.Active, Brand: b.Brand}
+func (b presentationBody) input() (app.PresentationInput, error) {
+	in := app.PresentationInput{Name: b.Name, Qty: b.Qty, UnitID: b.UnitID, Approximate: b.Approximate, Active: b.Active, Brand: b.Brand}
+	if len(b.TareG) > 0 {
+		f, err := fieldOf[decimal.Decimal](b.TareG)
+		if err != nil {
+			return in, domain.ErrValidation
+		}
+		in.Tare = f
+	}
+	return in, nil
 }
 
 // GET /stock/presentations — todos los empaques de la empresa (la columna «Cómo llega»).
@@ -73,7 +84,12 @@ func (h *Handlers) CreatePresentation(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	v, err := h.backoffice.CreatePresentation(r.Context(), id, body.input())
+	in, err := body.input()
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.CreatePresentation(r.Context(), id, in)
 	if err != nil {
 		Error(w, err)
 		return
@@ -93,7 +109,12 @@ func (h *Handlers) UpdatePresentation(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	v, err := h.backoffice.UpdatePresentation(r.Context(), id, body.input())
+	in, err := body.input()
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.UpdatePresentation(r.Context(), id, in)
 	if err != nil {
 		Error(w, err)
 		return

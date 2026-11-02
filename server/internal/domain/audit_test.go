@@ -23,6 +23,7 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		"settings.waste_threshold", "settings.count_limits_changed",
 		"ingredient.created", "ingredient.updated", "ingredient.archived", "ingredient.reactivated",
 		"ingredient.cost_corrected", "ingredient.unit_changed", "ingredient.unit_changed.detail",
+		"ingredient.density_set", "ingredient.density_cleared", "presentation.tare_set",
 		"ingredient.replaced", "presentation.created", "presentation.updated", "presentation.retired",
 		"stock.count_confirm_asked", "expense.item_excluded", "cash.selling_register_changed",
 		"expense.edited", "ingredient.merged", "ingredient.merged_into",
@@ -153,8 +154,8 @@ func TestAuditFilterActions(t *testing.T) {
 	// Tres de precio, qué resta un producto (spec 037), el costeo del almacén (spec 038) y el tope de
 	// aprobación de la merma (spec 039): todas son configuración de lo que cuesta o se resta. Más las
 	// once de los artículos del almacén (spec 042), los límites del conteo (spec 044) y las dos de
-	// unir insumos (spec 056).
-	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 20 {
+	// unir insumos (spec 056), y las tres de densidad y tara (spec 058).
+	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 23 {
 		t.Fatalf("grupo precios = %v", got)
 	}
 	if got := (AuditFilter{Group: "price", Action: "price.set"}).Actions(); len(got) != 1 || got[0] != "price.set" {

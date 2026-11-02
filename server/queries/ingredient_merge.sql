@@ -65,6 +65,16 @@ update ingredient_presentations
 -- name: ArchivePresentation :exec
 update ingredient_presentations set active = false where id = sqlc.arg(id);
 
+-- name: InheritTare :exec
+-- El empaque igual del destino que no sabe cuánto pesa vacío recibe lo del duplicado que se archiva
+-- (spec 058): es el mismo envase.
+update ingredient_presentations t set tare_g = s.tare_g
+  from ingredient_presentations s
+ where s.id = sqlc.arg(archived_id) and s.tare_g is not null
+   and t.ingredient_id = sqlc.arg(target_id) and t.active and t.tare_g is null and t.qty_in_base = sqlc.arg(qty_in_base)
+   and regexp_replace(translate(lower(btrim(t.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+     = regexp_replace(translate(lower(btrim(s.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g');
+
 -- name: BranchNames :many
 select id, name::text as name from branches order by name;
 

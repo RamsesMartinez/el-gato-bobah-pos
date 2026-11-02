@@ -110,15 +110,16 @@ func (q *Queries) CreatePresentation(ctx context.Context, arg CreatePresentation
 }
 
 const getIngredientUnit = `-- name: GetIngredientUnit :one
-select i.id, u.kind as base_unit_kind, u.to_base as base_to_base
+select i.id, u.kind as base_unit_kind, u.to_base as base_to_base, i.density_g_per_ml
 from ingredients i join units u on u.id = i.base_unit_id
 where i.id = $1
 `
 
 type GetIngredientUnitRow struct {
-	ID           int64           `json:"id"`
-	BaseUnitKind UnitKind        `json:"base_unit_kind"`
-	BaseToBase   decimal.Decimal `json:"base_to_base"`
+	ID            int64            `json:"id"`
+	BaseUnitKind  UnitKind         `json:"base_unit_kind"`
+	BaseToBase    decimal.Decimal  `json:"base_to_base"`
+	DensityGPerMl *decimal.Decimal `json:"density_g_per_ml"`
 }
 
 // El kind y el factor de la unidad base de un artículo: lo que domain.BaseQty necesita para
@@ -126,7 +127,12 @@ type GetIngredientUnitRow struct {
 func (q *Queries) GetIngredientUnit(ctx context.Context, id int64) (GetIngredientUnitRow, error) {
 	row := q.db.QueryRow(ctx, getIngredientUnit, id)
 	var i GetIngredientUnitRow
-	err := row.Scan(&i.ID, &i.BaseUnitKind, &i.BaseToBase)
+	err := row.Scan(
+		&i.ID,
+		&i.BaseUnitKind,
+		&i.BaseToBase,
+		&i.DensityGPerMl,
+	)
 	return i, err
 }
 
@@ -289,7 +295,7 @@ func (q *Queries) ListIngredients(ctx context.Context, onlyActive *bool) ([]List
 
 const listPresentations = `-- name: ListPresentations :many
 select p.id, p.ingredient_id, p.name, p.qty_in_base, p.active, p.is_approximate, p.purchase_unit_id,
-       u.code as base_unit_code, u.kind as base_unit_kind, p.brand
+       u.code as base_unit_code, u.kind as base_unit_kind, p.brand, p.tare_g
 from ingredient_presentations p
 join ingredients i on i.id = p.ingredient_id
 join units u on u.id = i.base_unit_id
@@ -298,16 +304,17 @@ order by p.ingredient_id, p.active desc, p.name, p.id
 `
 
 type ListPresentationsRow struct {
-	ID             int64           `json:"id"`
-	IngredientID   int64           `json:"ingredient_id"`
-	Name           string          `json:"name"`
-	QtyInBase      decimal.Decimal `json:"qty_in_base"`
-	Active         bool            `json:"active"`
-	IsApproximate  bool            `json:"is_approximate"`
-	PurchaseUnitID *int16          `json:"purchase_unit_id"`
-	BaseUnitCode   string          `json:"base_unit_code"`
-	BaseUnitKind   UnitKind        `json:"base_unit_kind"`
-	Brand          *string         `json:"brand"`
+	ID             int64            `json:"id"`
+	IngredientID   int64            `json:"ingredient_id"`
+	Name           string           `json:"name"`
+	QtyInBase      decimal.Decimal  `json:"qty_in_base"`
+	Active         bool             `json:"active"`
+	IsApproximate  bool             `json:"is_approximate"`
+	PurchaseUnitID *int16           `json:"purchase_unit_id"`
+	BaseUnitCode   string           `json:"base_unit_code"`
+	BaseUnitKind   UnitKind         `json:"base_unit_kind"`
+	Brand          *string          `json:"brand"`
+	TareG          *decimal.Decimal `json:"tare_g"`
 }
 
 // Empaques de compra (spec 038), los activos primero. Sin filtro, todos los de la empresa: la
@@ -332,6 +339,7 @@ func (q *Queries) ListPresentations(ctx context.Context, ingredientID *int64) ([
 			&i.BaseUnitCode,
 			&i.BaseUnitKind,
 			&i.Brand,
+			&i.TareG,
 		); err != nil {
 			return nil, err
 		}
@@ -396,14 +404,14 @@ func (q *Queries) LockIngredientNames(ctx context.Context) error {
 
 const searchArticles = `-- name: SearchArticles :many
 select 'ingrediente' as item_type, i.id, i.name::text as name,
-       u.code as unit_code, u.kind as unit_kind
+       u.code as unit_code, u.kind as unit_kind, i.density_g_per_ml
 from ingredients i
 join units u on u.id = i.base_unit_id
 where i.is_active
   and ($2::text is null or i.name::text ilike '%' || $2::text || '%')
 union all
 select 'producto' as item_type, p.id, p.name::text as name,
-       'pieza' as unit_code, 'pieza'::unit_kind as unit_kind
+       'pieza' as unit_code, 'pieza'::unit_kind as unit_kind, null::numeric(8,4) as density_g_per_ml
 from products p
 where p.is_active and p.track_stock
   and ($2::text is null or p.name::text ilike '%' || $2::text || '%')
@@ -417,11 +425,12 @@ type SearchArticlesParams struct {
 }
 
 type SearchArticlesRow struct {
-	ItemType string   `json:"item_type"`
-	ID       int64    `json:"id"`
-	Name     string   `json:"name"`
-	UnitCode string   `json:"unit_code"`
-	UnitKind UnitKind `json:"unit_kind"`
+	ItemType      string           `json:"item_type"`
+	ID            int64            `json:"id"`
+	Name          string           `json:"name"`
+	UnitCode      string           `json:"unit_code"`
+	UnitKind      UnitKind         `json:"unit_kind"`
+	DensityGPerMl *decimal.Decimal `json:"density_g_per_ml"`
 }
 
 // Buscador ÚNICO sobre los dos catálogos que el almacén sabe mover: ingredientes y productos
@@ -442,6 +451,7 @@ func (q *Queries) SearchArticles(ctx context.Context, arg SearchArticlesParams) 
 			&i.Name,
 			&i.UnitCode,
 			&i.UnitKind,
+			&i.DensityGPerMl,
 		); err != nil {
 			return nil, err
 		}

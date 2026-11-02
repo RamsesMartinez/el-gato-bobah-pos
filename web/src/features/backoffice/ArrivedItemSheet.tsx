@@ -9,7 +9,8 @@ import { Picker } from '../../components/Picker';
 import { backofficeApi, type Article } from '../../api/backoffice';
 import { receiptError } from './receiptError';
 import { parseMonto, parseNumero } from '../../domain/numeros';
-import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
+import { crossBuyUnits, formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
+import { crossConversion } from './expenseDraft';
 
 const num = (s: string | null | undefined) => { const n = parseNumero(s ?? ''); return n.estado === 'valido' ? n.valor : NaN; };
 
@@ -47,10 +48,14 @@ export function ArrivedItemSheet({ expenseId, supplier, onClose, onDone }: {
   const list: Article[] = articles?.items ?? [];
   const art = list.find((a) => `${a.itemType}:${a.id}` === pick);
   const packs = art?.itemType === 'ingrediente' ? (presentations ?? []).filter((p) => p.ingredientId === art.id && p.active) : [];
-  const buyUnits = art ? purchaseUnitsFor(art.unitKind, units?.items ?? []) : [];
+  const buyUnits = art ? [...purchaseUnitsFor(art.unitKind, units?.items ?? []),
+    ...(art.itemType === 'ingrediente' ? crossBuyUnits(art.unitKind, units?.items ?? []) : [])] : [];
+  // Entre peso y líquido (spec 058): la cuenta con la densidad del artículo, o lo que falta.
+  const buyUnit = (units?.items ?? []).find((u) => u.id === how.unitId);
+  const cross = art && buyUnit && !how.presentationId ? crossConversion(value, buyUnit, art.unitKind, art.unitCode, art.densityGPerMl) : null;
   const n = num(value);
   const money = parseMonto(amount);
-  const ok = !!art && Number.isFinite(n) && n > 0 && (how.presentationId || how.unitId)
+  const ok = !!art && Number.isFinite(n) && n > 0 && (how.presentationId || how.unitId) && !cross?.missing
     && (gift || (money.estado === 'valido' && money.valor > 0));
 
   const choose = (v: string) => {
@@ -96,6 +101,8 @@ export function ArrivedItemSheet({ expenseId, supplier, onClose, onDone }: {
                 {unitLabel(u)}
               </Button>
             ))}
+            {cross?.words && <Text fontSize="sm" fontWeight="700" color="fg.success">{cross.words}</Text>}
+            {cross?.missing && <Text fontSize="sm" fontWeight="700" color="orange.700">{cross.missing}</Text>}
           </HStack>
         )}
         <HStack gap={0} borderWidth="1px" borderRadius="md" alignSelf="start" role="group" aria-label="¿Se pagó?">

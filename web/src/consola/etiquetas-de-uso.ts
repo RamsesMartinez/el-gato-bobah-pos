@@ -53,6 +53,8 @@ const ACCIONES: Record<string, string> = {
   'archivar-articulo': 'Archivar o reactivar un artículo',
   'cambiar-unidad': 'Cambiar en qué se mide un artículo',
   'unir-insumos': 'Unir insumos duplicados',
+  'capturar-densidad': 'Capturar la densidad de un artículo',
+  'pesar-con-empaque': 'Contar pesando con el empaque',
   'no-son-lo-mismo': 'Descartar un posible duplicado',
   registrar: 'Registrar lo que se echó a perder',
   deshacer: 'Deshacer lo que se echó a perder',

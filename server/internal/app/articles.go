@@ -61,6 +61,8 @@ type ArticleView struct {
 	Name     string `json:"name"`
 	UnitCode string `json:"unitCode"`
 	UnitKind string `json:"unitKind"`
+	// DensityGPerMl: para convertir en pantalla una compra entre peso y líquido (spec 058).
+	DensityGPerMl *decimal.Decimal `json:"densityGPerMl"`
 }
 
 type IngredientInput struct {
@@ -196,7 +198,7 @@ func (s *BackofficeService) SearchArticles(ctx context.Context, q string) ([]Art
 	for i, r := range rows {
 		out[i] = ArticleView{
 			ItemType: r.ItemType, ID: r.ID, Name: r.Name,
-			UnitCode: r.UnitCode, UnitKind: string(r.UnitKind),
+			UnitCode: r.UnitCode, UnitKind: string(r.UnitKind), DensityGPerMl: r.DensityGPerMl,
 		}
 	}
 	return out, nil

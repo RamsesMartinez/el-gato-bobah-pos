@@ -6,6 +6,7 @@ import { backofficeApi, type PendingReceipt } from '../../api/backoffice';
 import { matchesWords, money } from '../../utils/format';
 import { parseNumero } from '../../domain/numeros';
 import { formatBaseQty } from '../../shared/units';
+import { lineConversion } from './expenseDraft';
 import { ArrivedItemSheet, ReceiptSheet } from './ArrivedItemSheet';
 import { DeliveryForExpense } from './DeliverySheet';
 import { receiptError } from './receiptError';
@@ -38,6 +39,7 @@ type Action =
 export function PendingReceiptsTab() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['stock', 'pending-receipts'], queryFn: backofficeApi.pendingReceipts });
+  const { data: units } = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units });
   const [q, setQ] = useState('');
   const [action, setAction] = useState<Action | null>(null);
   const [done, setDone] = useState('');
@@ -80,6 +82,8 @@ export function PendingReceiptsTab() {
             </HStack>
             {g.map((r) => {
               const got = num(r.received);
+              // Entre peso y líquido, con la densidad del renglón (spec 058).
+              const cross = r.presentationName ? null : lineConversion(r.quantity, r.unitCode, r.baseUnitCode, r.densityGPerMl, units?.items ?? []);
               return (
                 <HStack key={r.itemId} p={3} gap={3} flexWrap="wrap" data-testid="renglon-por-recibir">
                   <VStack align="start" gap={0} flex="1" minW="200px">
@@ -89,6 +93,7 @@ export function PendingReceiptsTab() {
                       {got > 0 && ` · ya llegaron ${qty(r.received)}`}
                       {num(r.notComing) > 0 && ` · ${qty(r.notComing)} ya no llegan`}
                     </Text>
+                    {cross && <Text fontSize="xs" color={cross.missing ? 'orange.700' : 'fg.muted'}>{cross.words ?? cross.missing}</Text>}
                   </VStack>
                   <VStack align="start" gap={0} minW="120px">
                     <Text fontSize="xs" color="fg.muted">Falta</Text>

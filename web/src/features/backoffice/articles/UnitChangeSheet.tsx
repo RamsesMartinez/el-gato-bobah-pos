@@ -5,7 +5,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../../components/ui/drawer';
-import { backofficeApi, type ArticleSheet, type UnitChangePreview, type UnitConversion } from '../../../api/backoffice';
+import { backofficeApi, type ArticleSheet, type UnitChangeBody, type UnitChangePreview, type UnitConversion } from '../../../api/backoffice';
+import { densityWords } from '../expenseDraft';
 import { ApiError } from '../../../api/client';
 import { toaster } from '../../../components/ui/toaster';
 import { BIG, KINDS, SMALL, type Kind } from './articleUnits';
@@ -19,16 +20,24 @@ interface Props {
   article: ArticleSheet;
   onClose: () => void;
   onDone: () => void;
+  // onNeedDensity cierra esta hoja y abre la de densidad desde la ficha: dos capas como máximo.
+  onNeedDensity?: () => void;
 }
 
-// Las clases a las que se puede pasar: entre peso y líquido no, porque haría falta la densidad.
-const targetsOf = (k: Kind): Kind[] => (k === 'pieza' ? ['masa', 'volumen', 'longitud'] : ['pieza']);
+// Las clases a las que se puede pasar. Entre peso y líquido solo con la densidad del artículo (spec
+// 058): sin ella el destino se ve pero no se elige, y la hoja ofrece capturarla.
+const MASS_VOLUME: Partial<Record<Kind, Kind>> = { masa: 'volumen', volumen: 'masa' };
+const targetsOf = (k: Kind): Kind[] => (k === 'pieza' ? ['masa', 'volumen', 'longitud'] : MASS_VOLUME[k] ? ['pieza', MASS_VOLUME[k]!] : ['pieza']);
+// La equivalencia entre peso y líquido como la diría alguien: «1 g = 0.7692 ml · sale de la densidad…».
+const densityEq = (from: Kind, to: Kind, factor: number, density: number) =>
+  `1 ${SMALL[from]} = ${String(Number(factor.toFixed(4)))} ${SMALL[to]} · sale de la densidad ${densityWords(density)} gramos por ml`;
 // round4 muestra una cifra convertida a 4 decimales, como la guarda la base (no 6.666666666666667).
 const round4 = (v: string) => String(Number(Number(v).toFixed(4)));
 const word = (k: Kind) => KINDS.find((x) => x.kind === k)!.label.toLowerCase();
 
-export function UnitChangeSheet({ article, onClose, onDone }: Props) {
+export function UnitChangeSheet({ article, onClose, onDone, onNeedDensity }: Props) {
   const from = article.baseUnitKind as Kind;
+  const density = article.density ? Number(article.density.value) : null;
   const units = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units });
   const [to, setTo] = useState<Kind | null>(targetsOf(from).length === 1 ? targetsOf(from)[0] : null);
   // La equivalencia se captura como la diría alguien: «1 pieza = 250 g» (la clase que no es pieza).
@@ -41,16 +50,21 @@ export function UnitChangeSheet({ article, onClose, onDone }: Props) {
   // mismo, no en un aviso que se va solo: es lo que hay que ir a resolver.
   const [blocked, setBlocked] = useState('');
 
-  const other: Kind | null = to === null ? null : from === 'pieza' ? to : from;
+  const massVolume = to !== null && MASS_VOLUME[from] === to;
+  const other: Kind | null = to === null || massVolume ? null : from === 'pieza' ? to : from;
   const eqNum = Number(eq.qty);
   const perPiece = other && Number.isFinite(eqNum) && eqNum > 0 ? eqNum * (eq.big ? BIG[other]?.factor ?? 1 : 1) : 0;
   // El servidor quiere cuánto de la base nueva vale una de la vieja.
   const factor = perPiece > 0 ? (from === 'pieza' ? perPiece : 1 / perPiece) : 0;
   const baseUnitId = (units.data?.items ?? []).find((u) => u.kind === to && Number(u.toBase) === 1)?.id;
-  const body = () => ({ baseUnitId: baseUnitId!, factor: String(Number(factor.toPrecision(12))) });
+  // Entre peso y líquido no se manda equivalencia: el servidor la saca de la densidad, y al confirmar
+  // se devuelve la de la vista previa para que note si alguien rehízo la pesada mientras se revisaba.
+  const body = (): UnitChangeBody => (massVolume
+    ? (preview?.factor && step === 2 ? { baseUnitId: baseUnitId!, factor: preview.factor } : { baseUnitId: baseUnitId! })
+    : { baseUnitId: baseUnitId!, factor: String(Number(factor.toPrecision(12))) });
 
   const review = useMutation({
-    mutationFn: () => backofficeApi.previewUnitChange(article.id, body()),
+    mutationFn: () => backofficeApi.previewUnitChange(article.id, massVolume ? { baseUnitId: baseUnitId! } : body()),
     onSuccess: (p) => { setPreview(p); setEdits({}); setBlocked(''); setStep(2); },
     onError: (e) => {
       if (e instanceof ApiError && (e.code === 'UNIT_CHANGE_PENDING' || e.code === 'IN_USE')) { setBlocked(e.message); return; }
@@ -64,14 +78,23 @@ export function UnitChangeSheet({ article, onClose, onDone }: Props) {
       toaster.create({ title: preview?.path === 'replace' ? 'Se creó el nuevo y este quedó archivado' : 'Ya se mide en ' + (to ? word(to) : ''), type: 'success' });
       onDone();
     },
-    onError: (e) => toaster.create({ title: e instanceof ApiError && e.status !== 500 ? e.message : 'No se pudo cambiar', type: 'error' }),
+    onError: (e) => {
+      if (e instanceof ApiError && e.code === 'DENSITY_CHANGED') {
+        toaster.create({ title: 'La densidad cambió mientras revisabas: revisa otra vez las cantidades', type: 'warning' });
+        review.mutate();
+        return;
+      }
+      toaster.create({ title: e instanceof ApiError && e.status !== 500 ? e.message : 'No se pudo cambiar', type: 'error' });
+    },
   });
 
   const conversions = preview?.conversions ?? [];
   // Primero lo que no cuadra, para que se vea antes de confirmar.
   const sorted = [...conversions].sort((a, b) => Number(a.fits) - Number(b.fits));
   const group = (g: UnitConversion['group']) => sorted.filter((c) => c.group === g);
-  const canReview = to !== null && factor > 0 && baseUnitId !== undefined && !review.isPending;
+  const canReview = to !== null && (massVolume ? density !== null : factor > 0) && baseUnitId !== undefined && !review.isPending;
+  const target = MASS_VOLUME[from];
+  const previewEq = preview?.density && preview.factor && to ? densityEq(from, to, Number(preview.factor), Number(preview.density)) : null;
 
   return (
     <DrawerRoot open placement="bottom" size="full" onOpenChange={(e) => { if (!e.open) onClose(); }}>
@@ -90,10 +113,20 @@ export function UnitChangeSheet({ article, onClose, onDone }: Props) {
                 <HStack gap={2}>
                   {targetsOf(from).map((k) => (
                     <Button key={k} minH="48px" variant={to === k ? 'solid' : 'outline'} colorPalette="gray" aria-pressed={to === k}
+                      disabled={k === target && density === null}
                       onClick={() => setTo(k)}>{KINDS.find((x) => x.kind === k)!.label}</Button>
                   ))}
                 </HStack>
               </Stack>
+              {target && density === null && (
+                <HStack gap={3} p={3} borderRadius="lg" bg="bg.subtle" flexWrap="wrap">
+                  <Text flex="1" minW="200px">Primero captura la densidad para pasarlo a {word(target)}.</Text>
+                  {onNeedDensity && <Button minH="44px" variant="outline" onClick={onNeedDensity}>Capturar la densidad</Button>}
+                </HStack>
+              )}
+              {massVolume && density !== null && to && (
+                <Text fontSize="lg" fontWeight="700">{densityEq(from, to, from === 'masa' ? 1 / density : density, density)}</Text>
+              )}
               {blocked && <Box p={3} borderRadius="lg" bg="orange.subtle"><Text>{blocked.charAt(0).toUpperCase() + blocked.slice(1)}.</Text></Box>}
               {other && (
                 <Stack gap={1}>
@@ -121,6 +154,7 @@ export function UnitChangeSheet({ article, onClose, onDone }: Props) {
                   ? <Text>Como ya tiene compras o ventas, se crea «{article.name}» en {to ? word(to) : ''} con lo de abajo, y este se archiva con su historia.</Text>
                   : <Text>Se cambia el mismo artículo. Revisa cada cantidad; puedes corregir la que no cuadre.</Text>}
               </Box>
+              {previewEq && <Text fontWeight="700">{previewEq}</Text>}
               <Group title="Existencia" items={group('stock')} preview={preview} edits={edits} setEdits={setEdits} />
               {group('recipe').length > 0 && (
                 <Stack gap={1}>

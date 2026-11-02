@@ -471,6 +471,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/reactivate", h.ReactivateArticle)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/unit/preview", h.PreviewUnitChange)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/unit", h.ChangeUnit)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/articles/{id}/density", h.SetDensity)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Delete("/articles/{id}/density", h.ClearDensity)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/merge", h.MergeIngredients)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Get("/articles/duplicate-groups", h.DuplicateGroups)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/distinct-pairs", h.MarkDistinct)

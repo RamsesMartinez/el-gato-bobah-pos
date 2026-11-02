@@ -69,27 +69,46 @@ func (h *Handlers) CaptureCount(w http.ResponseWriter, r *http.Request) {
 		// antes: una tableta con la pantalla anterior no recibe un aviso que no sabe mostrar.
 		Confirmable bool `json:"confirmable"`
 		Confirmed   bool `json:"confirmed"`
+		// Gross: lo abierto pesado con su empaque (spec 058), que se suma a countedQty (lo cerrado).
+		Gross *struct {
+			Weight         decimal.Decimal  `json:"weight"`
+			WeightUnitID   int16            `json:"weightUnitId"`
+			PresentationID int64            `json:"presentationId"`
+			Containers     int              `json:"containers"`
+			SeenTareG      *decimal.Decimal `json:"seenTareG"`
+			SeenDensity    *decimal.Decimal `json:"seenDensity"`
+		} `json:"gross"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	counted, err := h.backoffice.CaptureCountChecked(r.Context(), id, ing, app.CountCapture{
+	in := app.CountCapture{
 		Qty: body.CountedQty, Weight: body.Weight, WeightUnitID: body.WeightUnitID,
 		Confirmable: body.Confirmable, Confirmed: body.Confirmed,
-	}, u.ID)
+	}
+	if g := body.Gross; g != nil {
+		in.Gross = &app.GrossCapture{Weight: g.Weight, WeightUnitID: g.WeightUnitID, PresentationID: g.PresentationID,
+			Containers: g.Containers, SeenTareG: g.SeenTareG, SeenDensity: g.SeenDensity}
+	}
+	counted, err := h.backoffice.CaptureCountChecked(r.Context(), id, ing, in, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
 	}
 	// La pantalla anterior espera 204; la nueva (la que pide el aviso o pesa) lee lo que quedó, que en
 	// un peso son las piezas que calculó el servidor.
-	if !body.Confirmable && body.Weight == nil {
+	if !body.Confirmable && body.Weight == nil && body.Gross == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]decimal.Decimal{"countedQty": counted})
+	out := map[string]decimal.Decimal{"countedQty": counted}
+	if body.Gross != nil {
+		// Lo pesado ya convertido, para que la pantalla muestre la cifra del servidor y no la suya.
+		out["grossNet"] = counted.Sub(body.CountedQty.Round(4))
+	}
+	JSON(w, http.StatusOK, out)
 }
 
 // DELETE /stock/counts/{id}/lines/{ingredientId} — vuelve a «no contado».

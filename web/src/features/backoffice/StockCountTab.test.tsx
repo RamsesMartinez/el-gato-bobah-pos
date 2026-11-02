@@ -20,7 +20,10 @@ const back = vi.hoisted(() => ({
   setCountPlace: vi.fn(),
   countPlaces: vi.fn(),
   createCountPlace: vi.fn(),
+  units: vi.fn(),
 }));
+const uso = vi.hoisted(() => ({ medirAccion: vi.fn(), medirPantalla: vi.fn() }));
+vi.mock('../../api/uso', async (orig) => ({ ...(await orig<object>()), ...uso }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 const limits = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn() }));
 vi.mock('../../api/countLimits', async (orig) => ({ ...(await orig<object>()), countLimitsApi: limits }));
@@ -570,5 +573,147 @@ describe('dos empaques con el mismo nombre y distinta marca', () => {
     tecla('1');
     expect(a).toHaveValue('2');
     expect(b).toHaveValue('1');
+  });
+});
+
+// Spec 058 (US4, maqueta Conteo A): contar pesando con el empaque, forma avanzada y opcional.
+describe('pesar con empaque (spec 058)', () => {
+  const jarabe = (over: Partial<StockCount['items'][number]> = {}): StockCount => {
+    const c = conteo();
+    c.items[0] = {
+      ...c.items[0], grossWeighable: true, densityGPerMl: '1.1',
+      presentations: [{ id: 7, name: 'Botella', qtyInBase: '750', tareG: '120' }], ...over,
+    };
+    return c;
+  };
+  beforeEach(() => {
+    back.units.mockResolvedValue({ items: [
+      { id: 1, code: 'g', name: 'Gramo', kind: 'masa', toBase: '1' },
+      { id: 2, code: 'kg', name: 'Kilogramo', kind: 'masa', toBase: '1000' },
+    ] });
+  });
+  const abrir = async (c: StockCount = jarabe()) => {
+    back.currentCount.mockResolvedValue(c);
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[0]).getByRole('button', { name: 'Contar' }));
+    await screen.findByLabelText('Botella de Jarabe de vainilla');
+  };
+  const pesar = () => click(/Pesar con empaque/);
+
+  test('sin un empaque que diga cuánto pesa vacío, el renglón no existe', async () => {
+    await abrir(conteo());
+    expect(screen.queryByRole('button', { name: /Pesar con empaque/ })).toBeNull();
+  });
+
+  test('plegado y marcado «Opcional», con su (i) que pide no sumarlo como suelto', async () => {
+    await abrir();
+    const row = screen.getByRole('button', { name: /Pesar con empaque/ });
+    expect(row).toHaveTextContent('▸ Pesar con empaque');
+    expect(row).toHaveTextContent('Opcional');
+    expect(screen.queryByLabelText('Peso en la báscula de Jarabe de vainilla')).toBeNull();
+    click('Para qué sirve pesar con empaque');
+    expect(screen.getByText(/No lo sumes también como suelto/)).toBeInTheDocument();
+  });
+
+  test('al abrirlo, lo suelto se oculta y se limpia: lo abierto se pesa o se teclea', async () => {
+    await abrir();
+    click(/Siguiente casilla/);
+    tecla('5'); // 5 ml sueltos
+    pesar();
+    expect(screen.queryByLabelText('Suelto de Jarabe de vainilla')).toBeNull();
+    expect(screen.getByTestId('total-contado')).toHaveTextContent('—');
+    click(/Pesar con empaque/); // se pliega: lo suelto vuelve, vacío
+    expect(screen.getByLabelText('Suelto de Jarabe de vainilla')).toHaveValue('');
+  });
+
+  test('la cuenta en palabras, el total con lo cerrado, y se guarda lo que respondió el servidor', async () => {
+    back.captureCount.mockResolvedValue({ countedQty: '3000', grossNet: '750' });
+    await abrir();
+    tecla('3'); // 3 botellas cerradas
+    pesar();
+    tecla('8'); tecla('5'); tecla('0');
+    click('Agregar un empaque pesado');
+    expect(screen.getByLabelText('Empaques pesados de Jarabe de vainilla')).toHaveValue('2');
+    expect(screen.getByTestId('cuenta-pesada')).toHaveTextContent('850 g − 2 × 120 g = 610 g ÷ 1.10 = 554.5 ml');
+    // 2,250 ml cerrados + 554.5 ml pesados.
+    expect(screen.getByTestId('total-contado')).toHaveTextContent('2.8 L');
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, {
+      countedQty: '2250', confirmable: true,
+      gross: { weight: '850', weightUnitId: 1, presentationId: 7, containers: 2, seenTareG: '120', seenDensity: '1.1' },
+    }));
+    // Lo contado es la cifra del servidor, no la de la pantalla.
+    expect(await screen.findByText('✓ 3 L')).toBeInTheDocument();
+    expect(uso.medirAccion).toHaveBeenCalledWith('inventario', 'pesar-con-empaque');
+  });
+
+  test('el peso en kg se manda con su unidad', async () => {
+    await abrir();
+    pesar();
+    click('kg');
+    tecla('1');
+    expect(screen.getByTestId('cuenta-pesada')).toHaveTextContent('1,000 g − 1 × 120 g = 880 g ÷ 1.10 = 800 ml');
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, expect.objectContaining({
+      countedQty: '0', gross: expect.objectContaining({ weight: '1', weightUnitId: 2, containers: 1 }),
+    })));
+  });
+
+  test('pesar menos que los empaques vacíos se dice y no deja guardar', async () => {
+    await abrir();
+    pesar();
+    tecla('1'); tecla('0'); tecla('0');
+    expect(screen.getByRole('alert')).toHaveTextContent('Pesa menos que 1 empaque vacío');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+  });
+
+  test('con varios empaques que dicen cuánto pesan vacíos, se elige con el Picker', async () => {
+    await abrir(jarabe({ presentations: [
+      { id: 7, name: 'Botella', qtyInBase: '750', tareG: '120' },
+      { id: 8, name: 'Galón', qtyInBase: '3785', tareG: '200' },
+      { id: 9, name: 'Caja', qtyInBase: '12000' },
+    ] }));
+    pesar();
+    fireEvent.click(screen.getByRole('button', { name: 'Botella' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Galón' }));
+    tecla('5'); tecla('0'); tecla('0');
+    expect(screen.getByTestId('cuenta-pesada')).toHaveTextContent('500 g − 1 × 200 g = 300 g');
+    expect(screen.queryByRole('button', { name: 'Caja' })).toBeNull(); // sin «pesa vacío», no se ofrece
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, expect.objectContaining({
+      gross: expect.objectContaining({ presentationId: 8, seenTareG: '200' }),
+    })));
+  });
+
+  test('si cambió lo que pesa vacío o la densidad, recarga el conteo y lo dice', async () => {
+    back.captureCount.mockRejectedValueOnce(new ApiError(409, 'COUNT_INPUTS_CHANGED', 'cambiaron', 'req'));
+    await abrir();
+    pesar();
+    tecla('5'); tecla('0'); tecla('0');
+    const calls = back.currentCount.mock.calls.length;
+    click('Guardar');
+    expect(await screen.findByText(/Ya se actualizó la cuenta/)).toBeInTheDocument();
+    await waitFor(() => expect(back.currentCount.mock.calls.length).toBeGreaterThan(calls));
+  });
+
+  test('en «Uno por uno» el renglón abre la hoja completa del artículo', async () => {
+    back.currentCount.mockResolvedValue(jarabe());
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Uno por uno' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    click(/Pesar con empaque/);
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByText('¿Cuánto hay de Jarabe de vainilla?')).toBeInTheDocument();
+    expect(within(sheet).getByLabelText('Peso en la báscula de Jarabe de vainilla')).toBeInTheDocument();
+    expect(within(sheet).queryByLabelText('Suelto de Jarabe de vainilla')).toBeNull();
+  });
+
+  test('los campos se desplazan y el total queda fuera del desplazamiento', async () => {
+    await abrir(jarabe({ presentations: ['Caja', 'Bolsa', 'Paquete', 'Botella'].map((name, i) => ({ id: i + 1, name, qtyInBase: '750', tareG: '120' })) }));
+    pesar();
+    const campos = screen.getByTestId('campos-conteo');
+    expect(getComputedStyle(campos).overflowY).toBe('auto');
+    expect(campos.contains(screen.getByTestId('total-contado'))).toBe(false);
+    expect(campos.contains(screen.getByLabelText('Peso en la báscula de Jarabe de vainilla'))).toBe(true);
   });
 });

@@ -34,6 +34,9 @@ type PurchaseUnit struct {
 	// FromPresentation: el renglón se compró en una presentación del artículo («Caja de 12 latas»).
 	// Lo que trae una presentación ya está en la base del artículo, sea cual sea su unidad (#182).
 	FromPresentation bool
+	// Density: g por ml del artículo, solo para el salto entre peso y líquido (spec 058). En un renglón
+	// ya convertido es la copia fija de cuando sumó por primera vez, no la vigente.
+	Density *decimal.Decimal
 }
 
 // BaseQty convierte qty a unidad base del artículo.
@@ -46,7 +49,8 @@ type PurchaseUnit struct {
 //  2. pieza → masa/volumen: qty × PackQtyInBase. Aquí ToBase no sirve — "una pieza" no son N
 //     gramos en general, depende del producto — y sin el formato del proveedor no se puede
 //     convertir sin inventar el dato.
-//  3. masa ↔ volumen: se rechaza.
+//  3. masa ↔ volumen: con la densidad del artículo (g ÷ densidad = ml, ml × densidad = g); sin ella
+//     se rechaza.
 func BaseQty(qty decimal.Decimal, u PurchaseUnit) (decimal.Decimal, error) {
 	if !qty.IsPositive() {
 		return decimal.Zero, fmt.Errorf("%w: la cantidad comprada debe ser mayor a cero", ErrValidation)
@@ -65,9 +69,18 @@ func BaseQty(qty decimal.Decimal, u PurchaseUnit) (decimal.Decimal, error) {
 		return packQty(qty, u.PackQtyInBase)
 
 	default:
-		// Comprar en kg algo que se almacena en ml (o al revés) necesitaría densidad. Antes de
-		// asumir 1 g = 1 ml —cierto para el agua y falso para el aceite y la miel— es mejor
-		// rechazar y que el operador corrija la unidad.
+		// Antes de asumir 1 g = 1 ml —cierto para el agua y falso para el aceite y la miel— se
+		// rechaza; con la densidad que alguien pesó, se convierte.
+		if u.Density == nil || !u.Density.IsPositive() || !u.ToBase.IsPositive() {
+			return decimal.Zero, ErrUnitKindMismatch
+		}
+		inSmallest := qty.Mul(u.ToBase)
+		switch {
+		case u.Kind == "masa" && u.BaseKind == "volumen":
+			return inSmallest.DivRound(*u.Density, 4), nil
+		case u.Kind == "volumen" && u.BaseKind == "masa":
+			return Round4(inSmallest.Mul(*u.Density)), nil
+		}
 		return decimal.Zero, ErrUnitKindMismatch
 	}
 }

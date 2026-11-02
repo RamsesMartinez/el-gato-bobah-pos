@@ -61,6 +61,10 @@ type UnitChangePreview struct {
 	FromUnit    string           `json:"fromUnit"`
 	ToUnit      string           `json:"toUnit"`
 	Conversions []UnitConversion `json:"conversions"`
+	// Density y Factor: entre peso y líquido la equivalencia sale de la densidad (spec 058); la
+	// pantalla la muestra y la devuelve al confirmar. Density es nula en los demás cambios.
+	Density *decimal.Decimal `json:"density"`
+	Factor  decimal.Decimal  `json:"factor"`
 }
 
 type unitPlan struct {
@@ -89,8 +93,17 @@ func planUnitChange(ctx context.Context, q *db.Queries, art db.LockArticleNowait
 	if !p.to.ToBase.Equal(decimal.NewFromInt(1)) {
 		return p, fmt.Errorf("%w: elige la unidad base de la clase (g, ml, cm o pieza)", domain.ErrValidation)
 	}
-	if err := domain.ValidUnitChange(string(p.from.Kind), string(p.to.Kind), req.Factor); err != nil {
+	factor, err := domain.UnitChangeFactor(string(p.from.Kind), string(p.to.Kind), req.Factor, art.DensityGPerMl)
+	if err != nil {
 		return p, err
+	}
+	// De aquí en adelante todo convierte con la equivalencia resuelta (la derivada de la densidad entre
+	// peso y líquido), no con la que mandó la pantalla.
+	req.Factor = factor
+	p.factor = factor
+	var usedDensity *decimal.Decimal
+	if string(p.from.Kind) != "pieza" && string(p.to.Kind) != "pieza" {
+		usedDensity = art.DensityGPerMl
 	}
 	id := art.ID
 	// Un destino con insumos unidos no cambia de unidad (spec 056): la equivalencia de cada unión habla
@@ -145,7 +158,8 @@ func planUnitChange(ctx context.Context, q *db.Queries, art db.LockArticleNowait
 	if art.MinStock != nil && !domain.ValidConvertedQty(domain.ConvertQty(*art.MinStock, req.Factor)) {
 		return p, fmt.Errorf("%w: con esa equivalencia el mínimo no cabe", domain.ErrValidation)
 	}
-	p.preview = UnitChangePreview{Path: p.path, FromUnit: p.from.Code, ToUnit: p.to.Code, Conversions: []UnitConversion{}}
+	p.preview = UnitChangePreview{Path: p.path, FromUnit: p.from.Code, ToUnit: p.to.Code, Conversions: []UnitConversion{},
+		Density: usedDensity, Factor: factor}
 	for _, s := range p.stock {
 		key := "stock:" + strconv.FormatInt(s.BranchID, 10)
 		to := override(req, key, domain.ConvertQty(s.OnHand, req.Factor))
@@ -267,6 +281,7 @@ func (s *BackofficeService) ChangeUnit(ctx context.Context, id int64, req UnitCh
 		if err != nil {
 			return err
 		}
+		req.Factor = p.factor
 		if p.path == domain.UnitPathDirect {
 			err = changeUnitDirect(ctx, q, p, req)
 		} else {
@@ -417,7 +432,7 @@ func changeUnitDirect(ctx context.Context, q *db.Queries, p unitPlan, req UnitCh
 		Action: domain.AuditIngredientUnitChanged, EntityType: "ingredient", EntityID: id,
 		Before: map[string]any{"unit": p.from.Code},
 		After: map[string]any{"unit": p.to.Code, "factor": f, "batchId": batch, "adjustments": len(adj),
-			"recipes": len(p.recipes), "presentations": len(p.pres), "countLines": len(lines)},
+			"recipes": len(p.recipes), "presentations": len(p.pres), "countLines": len(lines), "density": p.preview.Density},
 	})
 }
 
@@ -594,13 +609,27 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 		if pr.IsApproximate {
 			purchase = pr.PurchaseUnitID
 		}
-		if _, err := q.CreatePresentation(ctx, db.CreatePresentationParams{IngredientID: newID, Name: pr.Name, QtyInBase: to,
-			PurchaseUnitID: purchase, IsApproximate: pr.IsApproximate, Brand: pr.Brand}); err != nil {
+		created, err := q.CreatePresentation(ctx, db.CreatePresentationParams{IngredientID: newID, Name: pr.Name, QtyInBase: to,
+			PurchaseUnitID: purchase, IsApproximate: pr.IsApproximate, Brand: pr.Brand})
+		if err != nil {
 			return err
+		}
+		// Lo que pesa vacío es del envase, no del contenido: pasa igual (la base la limpia si el nuevo
+		// se mide en piezas).
+		if pr.TareG != nil {
+			if err := q.SetPresentationTare(ctx, db.SetPresentationTareParams{ID: created, TareG: pr.TareG}); err != nil {
+				return err
+			}
 		}
 	}
 	if err := convertSideTables(ctx, q, old.ID, newID, f, func(string, any) error { return nil }); err != nil {
 		return err
+	}
+	// La densidad es del producto, no de la unidad: el nuevo la conserva si se mide en g o ml (spec 058).
+	if p.to.Kind == db.UnitKindMasa || p.to.Kind == db.UnitKindVolumen {
+		if err := q.CopyArticleDensity(ctx, db.CopyArticleDensityParams{ToID: newID, FromID: old.ID}); err != nil {
+			return err
+		}
 	}
 	if err := q.SetArticleActive(ctx, db.SetArticleActiveParams{ID: old.ID, Active: false}); err != nil {
 		return err
@@ -608,7 +637,8 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 	return recordAudit(ctx, q, domain.AuditEvent{
 		Action: domain.AuditIngredientReplaced, EntityType: "ingredient", EntityID: old.ID,
 		Before: map[string]any{"unit": p.from.Code, "name": oldName},
-		After:  map[string]any{"newIngredientId": newID, "unit": p.to.Code, "factor": f, "replacementId": repID, "moved": moved},
+		After: map[string]any{"newIngredientId": newID, "unit": p.to.Code, "factor": f, "replacementId": repID, "moved": moved,
+			"density": p.preview.Density},
 	})
 }
 

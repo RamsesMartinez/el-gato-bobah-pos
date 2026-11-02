@@ -71,6 +71,9 @@ type ExpenseItemView struct {
 	OnHand *decimal.Decimal `json:"onHand"`
 	// Deliveries: lo que sumó cada día de entrega, en unidad base (spec 053). Siempre un arreglo.
 	Deliveries []DeliveryView `json:"deliveries"`
+	// DensityGPerMl: con la que el renglón convierte entre peso y líquido (la fija o la vigente), para
+	// decir la conversión en palabras (spec 058).
+	DensityGPerMl *decimal.Decimal `json:"densityGPerMl"`
 }
 
 // DeliveryView es lo que un renglón sumó al almacén en un día de entrega, correcciones incluidas.
@@ -1203,7 +1206,7 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 			Amount: r.Amount, PackQtyInBase: r.PackQtyInBase,
 			Applied: r.AppliedQtyBase, BaseUnitCode: r.BaseUnitCode, NotComing: r.NotComingQty,
 			IsGift: r.IsGift, PresentationID: r.PresentationID, Excluded: r.Excluded,
-			Deliveries: deliveries[r.ID],
+			Deliveries: deliveries[r.ID], DensityGPerMl: r.DensityGPerMl,
 		}
 		if v.Deliveries == nil {
 			v.Deliveries = []DeliveryView{}

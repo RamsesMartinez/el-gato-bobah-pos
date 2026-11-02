@@ -628,3 +628,51 @@ describe('Nuevo artículo · aviso de parecido', () => {
     await waitFor(() => expect(back.createArticle).toHaveBeenCalled());
   });
 });
+
+// US1 (FR-001, FR-004): la densidad es opcional, solo en g o ml, y dice quién la puso y cómo, sin
+// los nombres internos del método.
+describe('Ficha · densidad', () => {
+  it('en g sin densidad dice «Sin capturar» y «Capturar» abre la hoja', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText('Sin capturar')).toBeInTheDocument();
+    expect(screen.getByText('Densidad')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Capturar la densidad' }));
+    expect(await screen.findByText('Densidad · Hielo en bolsa')).toBeInTheDocument();
+  });
+
+  it('con densidad dice el valor, el método en palabras, quién y cuándo, y ofrece «Cambiar»', async () => {
+    back.article.mockResolvedValue({ ...ficha, baseUnitCode: 'ml', baseUnitKind: 'volumen',
+      density: { value: '1.1', method: 'weighing', setByName: 'Ana', setAt: '2026-11-02T18:00:00Z' } });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText(/1\.10 gramos por ml · por pesada · Ana, 2 nov/)).toBeInTheDocument();
+    expect(screen.queryByText(/weighing/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Cambiar la densidad' })).toBeInTheDocument();
+  });
+
+  it.each([['label', 'de la etiqueta'], ['manual', 'escrita']])('el método %s se lee «%s»', async (method, words) => {
+    back.article.mockResolvedValue({ ...ficha, density: { value: '0.92', method, setByName: 'Luis', setAt: '2026-11-02T18:00:00Z' } });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText(new RegExp(`0\\.92 gramos por ml · ${words} · Luis`))).toBeInTheDocument();
+  });
+
+  it('el (i) despliega para qué sirve, debajo', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '¿Para qué sirve la densidad?' }));
+    expect(screen.getByText(/4,300 g ÷ 1.10 = 3,909 ml/)).toBeInTheDocument();
+  });
+
+  it('en piezas no hay renglón de densidad', async () => {
+    back.article.mockResolvedValue({ ...ficha, baseUnitCode: 'pieza', baseUnitKind: 'pieza', onHand: '12' });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    await screen.findByText(/Hay 12 piezas/);
+    expect(screen.queryByText('Sin capturar')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
+  });
+
+  it('sin permiso de configurar se ve, pero no se captura', async () => {
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.view'] } as never });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText('Sin capturar')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
+  });
+});

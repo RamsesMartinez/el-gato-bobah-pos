@@ -170,3 +170,47 @@ describe('Recibir desde «Por recibir» (spec 053)', () => {
     expect(screen.getByRole('button', { name: 'Ver efectos' })).toBeDisabled();
   });
 });
+
+// US2 (FR-009): por recibir dice cómo se convierte un renglón entre peso y líquido, con la densidad
+// del renglón (la fija si ya sumó, la vigente si no).
+describe('entre peso y líquido (spec 058)', () => {
+  const kgYMl = { items: [
+    { id: 2, code: 'kg', name: 'Kilo', kind: 'masa', toBase: '1000' }, { id: 7, code: 'l', name: 'Litro', kind: 'volumen', toBase: '1000' },
+    { id: 3, code: 'ml', name: 'Mililitro', kind: 'volumen', toBase: '1' },
+  ] };
+  beforeEach(() => back.units.mockResolvedValue(kgYMl));
+
+  test('un renglón en kg de algo en ml dice la cuenta con su densidad', async () => {
+    back.pendingReceipts.mockResolvedValue([row({ itemName: 'Salsa de chocolate', quantity: '4.3', missing: '4.3', unitCode: 'kg',
+      presentationName: null, packQtyInBase: null, densityGPerMl: '1.1' })]);
+    montar();
+    expect(await renglon('Salsa de chocolate')).toHaveTextContent('pediste 4.3 kg');
+    await waitFor(async () => expect(await renglon('Salsa de chocolate')).toHaveTextContent('4,300 g ÷ 1.10 = 3,909 ml'));
+  });
+
+  test('«Llegó algo más» en kg de algo en ml: sin densidad avisa y no deja guardar', async () => {
+    montar();
+    const [lacteos] = await screen.findAllByTestId('compra-por-recibir');
+    fireEvent.click(within(lacteos).getByRole('button', { name: 'Llegó algo más…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Yogurt natural' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'kg' }));
+    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '2' } });
+    click('Fue regalo');
+    expect(screen.getByText('Falta la densidad para pasar kg a ml')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+  });
+
+  test('«Llegó algo más» con densidad dice la cuenta y guarda en kg', async () => {
+    back.searchArticles.mockResolvedValue({ items: [{ itemType: 'ingrediente', id: 7, name: 'Yogurt natural', unitCode: 'ml', unitKind: 'volumen', densityGPerMl: '1.05' }] });
+    montar();
+    const [lacteos] = await screen.findAllByTestId('compra-por-recibir');
+    fireEvent.click(within(lacteos).getByRole('button', { name: 'Llegó algo más…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Yogurt natural' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'kg' }));
+    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '2' } });
+    expect(screen.getByText('2,000 g ÷ 1.05 = 1,905 ml')).toBeInTheDocument();
+    click('Fue regalo');
+    click('Guardar');
+    await waitFor(() => expect(back.addArrivedItem).toHaveBeenCalledWith(9, expect.objectContaining({ ingredientId: 7, unitId: 2, quantity: '2' })));
+  });
+});

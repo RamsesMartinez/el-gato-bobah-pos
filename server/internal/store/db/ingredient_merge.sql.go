@@ -100,6 +100,28 @@ func (q *Queries) DistinctPairs(ctx context.Context) ([]DistinctPairsRow, error)
 	return items, nil
 }
 
+const inheritTare = `-- name: InheritTare :exec
+update ingredient_presentations t set tare_g = s.tare_g
+  from ingredient_presentations s
+ where s.id = $1 and s.tare_g is not null
+   and t.ingredient_id = $2 and t.active and t.tare_g is null and t.qty_in_base = $3
+   and regexp_replace(translate(lower(btrim(t.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+     = regexp_replace(translate(lower(btrim(s.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+`
+
+type InheritTareParams struct {
+	ArchivedID int64           `json:"archived_id"`
+	TargetID   int64           `json:"target_id"`
+	QtyInBase  decimal.Decimal `json:"qty_in_base"`
+}
+
+// El empaque igual del destino que no sabe cuánto pesa vacío recibe lo del duplicado que se archiva
+// (spec 058): es el mismo envase.
+func (q *Queries) InheritTare(ctx context.Context, arg InheritTareParams) error {
+	_, err := q.db.Exec(ctx, inheritTare, arg.ArchivedID, arg.TargetID, arg.QtyInBase)
+	return err
+}
+
 const insertDistinctPair = `-- name: InsertDistinctPair :exec
 insert into ingredient_distinct_pairs (low_ingredient_id, high_ingredient_id, user_id)
 values ($1, $2, $3)
