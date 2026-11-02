@@ -27,7 +27,6 @@ const api = vi.hoisted(() => ({
 const back = vi.hoisted(() => ({
   ingredients: vi.fn(() => Promise.resolve({ items: [{ id: 3, name: 'Vaso 16 oz', baseUnitId: 5, baseUnitCode: 'pieza', baseUnitKind: 'pieza', recipeUses: 5 }] })),
   units: vi.fn(() => Promise.resolve({ items: [{ id: 5, code: 'pieza', name: 'Pieza', kind: 'pieza', toBase: '1' }] })),
-  createIngredient: vi.fn(),
 }));
 vi.mock('../../api/admin', () => ({ adminApi: api }));
 vi.mock('../../api/backoffice', () => ({ backofficeApi: back }));

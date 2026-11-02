@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -63,15 +62,6 @@ type ArticleView struct {
 	UnitKind string `json:"unitKind"`
 }
 
-type IngredientInput struct {
-	Name        string
-	BaseUnitID  int16
-	CategoryID  *int64
-	MinStock    *decimal.Decimal
-	TrackStock  *bool
-	IsPackaging *bool
-}
-
 // maxArticleResults es un techo defensivo, no una paginación: el front carga el catálogo una
 // vez al abrir el diálogo del gasto y el picker filtra en local (así el buscador responde sin
 // round-trip por tecla). Un local maneja cientos de insumos, no miles.
@@ -110,75 +100,6 @@ func (s *BackofficeService) Ingredients(ctx context.Context, onlyActive bool) ([
 		}
 	}
 	return out, nil
-}
-
-// CreateIngredient da de alta un insumo con lo mínimo: nombre y unidad base. Receta, merma y
-// proveedor se editan después — el alta tiene que caber en el diálogo del gasto sin sacar al
-// operador del flujo de captura.
-func (s *BackofficeService) CreateIngredient(ctx context.Context, in IngredientInput) (IngredientView, error) {
-	name := strings.TrimSpace(in.Name)
-	if name == "" || in.BaseUnitID == 0 {
-		return IngredientView{}, domain.ErrValidation
-	}
-	if in.MinStock != nil {
-		v := domain.Round4(*in.MinStock)
-		if v.IsNegative() || v.GreaterThan(domain.MaxStockQty) {
-			return IngredientView{}, domain.ErrValidation
-		}
-		in.MinStock = &v
-	}
-	var r db.CreateIngredientRow
-	err := s.store.WithTx(ctx, func(q *db.Queries) error {
-		// Un insumo se cuenta en la unidad base de su tipo (g, ml, cm, pieza). Antes el alta rápida
-		// tomaba la unidad de compra (kg) y lo guardado se leía mil veces mal (spec 038, R0); lo
-		// que llega en kg se captura como empaque o unidad de compra.
-		u, err := q.GetUnit(ctx, in.BaseUnitID)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return domain.ErrValidation
-			}
-			return err
-		}
-		if !u.ToBase.Equal(decimal.NewFromInt(1)) {
-			return fmt.Errorf("%w: el insumo se cuenta en g, ml, cm o piezas; lo que llega en kg o L se captura como empaque", domain.ErrValidation)
-		}
-		// Mismo nombre sin mayúsculas, acentos ni espacios de más: dos cuentas de las mismas latas se
-		// contarían dos veces (spec 037). El candado es por empresa, para que dos altas casi
-		// simultáneas no pasen las dos.
-		if err := q.LockIngredientNames(ctx); err != nil {
-			return err
-		}
-		taken, err := q.IngredientNameTaken(ctx, name)
-		if err != nil {
-			return err
-		}
-		if taken {
-			return fmt.Errorf("%w: ya hay un insumo que se llama así", domain.ErrConflict)
-		}
-		r, err = q.CreateIngredient(ctx, db.CreateIngredientParams{
-			Name: name, BaseUnitID: in.BaseUnitID, CategoryID: in.CategoryID,
-			MinStock: in.MinStock, TrackStock: in.TrackStock, IsPackaging: in.IsPackaging,
-		})
-		return err
-	})
-	if err != nil {
-		if errors.Is(err, domain.ErrConflict) {
-			return IngredientView{}, err
-		}
-		// El unique (company_id, name) protege contra dos "Leche entera" en la misma empresa;
-		// llega como 409 accionable en vez de un 500 opaco.
-		if isUniqueViolation(err) {
-			return IngredientView{}, domain.ErrConflict
-		}
-		return IngredientView{}, err
-	}
-	// Los campos de join (unidad, categoría, existencia) quedan vacíos a propósito: el alta no
-	// los consulta y el picker solo necesita id+nombre para agregar la opción recién creada.
-	return IngredientView{
-		ID: r.ID, Name: string(r.Name), BaseUnitID: r.BaseUnitID, IsActive: r.IsActive,
-		TrackStock: r.TrackStock, IsPackaging: r.IsPackaging,
-		MinStock: r.MinStock, CurrentCost: r.CurrentCost,
-	}, nil
 }
 
 // SearchArticles alimenta el picker del gasto. q vacío devuelve el inicio del catálogo (para que
