@@ -165,8 +165,8 @@ código y se ve fallar por la razón correcta antes de implementar.
 ## Phase 9: Polish & Cross-Cutting
 
 - [X] T057 Medición de uso: acciones `unir-insumos` y `no-son-lo-mismo` en `web/src/api/uso.ts`/`medirAccion` y la lista blanca de `server/internal/domain/uso.go` si son acciones nuevas
-- [ ] T058 [P] E2E `web/e2e/unir-insumos.spec.ts` a 1024×600 contra el `make start` del worktree: unir dos insumos creados por la prueba (no los reales), vender, ver la existencia; los crea y los deja archivados; capturas solo en `test-results/`
-- [ ] T059 Documentar en `AGENTS.md` §2 «Unir insumos (spec 056)»: las guardas de la base (redirige movimientos, rechaza lo demás, diferido para la carrera), que un camino nuevo que escriba en una tabla que apunta a `ingredients` se clasifica en `MergeTables`, la marca copiada en la compra y que un destino con unidos no cambia de unidad
+- [X] T058 [P] E2E `web/e2e/unir-insumos.spec.ts` a 1024×600 contra el `make start` del worktree: unir dos insumos creados por la prueba (no los reales), vender, ver la existencia; los crea y los deja archivados; capturas solo en `test-results/`
+- [X] T059 Documentar en `AGENTS.md` §2 «Unir insumos (spec 056)»: las guardas de la base (redirige movimientos, rechaza lo demás, diferido para la carrera), que un camino nuevo que escriba en una tabla que apunta a `ingredients` se clasifica en `MergeTables`, la marca copiada en la compra y que un destino con unidos no cambia de unidad
 - [ ] T060 `/revision-de-codigo` (hook `after_implement`) y corregir lo que encuentre con su prueba
 - [ ] T061 Prueba con usuario nuevo (subagente sin contexto) a 1024×600 con datos reales restaurados: escenarios Q1–Q12 de [quickstart.md](quickstart.md); lo observado en texto
 - [ ] T062 `make ci-local` verde; `cd server && go build ./... && go test ./...`; `cd web && bun run lint && bun run vitest run && bun run build`
