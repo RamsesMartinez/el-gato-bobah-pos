@@ -55,6 +55,15 @@ describe('Posibles duplicados', () => {
     expect(screen.queryByRole('button', { name: /Posibles duplicados/ })).toBeNull();
   });
 
+  it('si no se pueden cargar, lo dice y ofrece reintentar; no dice que no hay duplicados', async () => {
+    back.duplicateGroups.mockRejectedValueOnce(new Error('sin red'));
+    montar(<DuplicatesSheet onClose={vi.fn()} onMerged={vi.fn()} />);
+    expect(await screen.findByText(/No se pudieron cargar/)).toBeInTheDocument();
+    expect(screen.queryByText(/No hay insumos con nombres parecidos/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(await screen.findByRole('button', { name: /Leche entera · Leche entera Marca B/ })).toBeInTheDocument();
+  });
+
   it('tocar un grupo lo abre en su lugar: cuál se queda, y «No son lo mismo» por par', async () => {
     montar(<DuplicatesSheet onClose={vi.fn()} onMerged={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: /Vaso 16 oz · Vaso 16 oz \(caja\)/ }));

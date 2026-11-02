@@ -83,7 +83,13 @@ export function DuplicatesSheet({ onClose, onMerged }: Props) {
             <Text fontSize="sm" color="fg.muted">Insumos con nombres parecidos. Revisa si son lo mismo con otra marca.</Text>
           </DrawerHeader>
           <DrawerBody flex="1" minH={0} overflowY="auto">
-            {groups.isLoading ? <Center py={8}><Spinner /></Center> : list.length === 0 ? (
+            {groups.isLoading ? <Center py={8}><Spinner /></Center> : groups.isError ? (
+              // Sin esto, una caída de red se leía como «no hay duplicados» y se dejaba de revisar.
+              <HStack gap={3} bg="red.subtle" borderRadius="lg" p={3}>
+                <Text flex="1" role="alert">No se pudieron cargar los posibles duplicados.</Text>
+                <Button minH="44px" variant="outline" bg="bg" onClick={() => void groups.refetch()}>Reintentar</Button>
+              </HStack>
+            ) : list.length === 0 ? (
               <Text color="fg.muted" py={4}>No hay insumos con nombres parecidos.</Text>
             ) : (
               <Stack gap={2}>

@@ -179,3 +179,24 @@ describe('Unir insumos', () => {
     await waitFor(() => expect(back.mergeArticles).toHaveBeenCalledWith(1, { sources: [{ id: 2 }] }, true));
   });
 });
+
+describe('Unir insumos · equivalencia', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    back.articles.mockResolvedValue([row(1, 'Tapa 16 oz', 'pieza', 'pieza'), row(2, 'Tapas en bolsa', 'ml', 'volumen')]);
+    back.similarArticles.mockResolvedValue({ items: [] });
+    back.mergeArticles.mockResolvedValue(preview());
+  });
+
+  it('se manda con seis decimales, lo que guarda la base', async () => {
+    const tapa = { ...row(1, 'Tapa 16 oz', 'pieza', 'pieza'), costSource: 'compra', updatedAt: '' };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><Provider><MergeSheet target={tapa} onClose={vi.fn()} onDone={vi.fn()} /></Provider></QueryClientProvider>);
+    fireEvent.click(within(await screen.findByRole('group', { name: 'Todos' })).getByRole('checkbox', { name: /Tapas en bolsa/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente ›' }));
+    fireEvent.click(await screen.findByLabelText('1 pieza de Tapa 16 oz en ml de Tapas en bolsa'));
+    fireEvent.click(screen.getByRole('button', { name: '3' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver qué cambia ›' }));
+    await waitFor(() => expect(back.mergeArticles).toHaveBeenCalledWith(1, { sources: [{ id: 2, factor: '0.333333' }] }, true));
+  });
+});

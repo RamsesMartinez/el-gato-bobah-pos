@@ -17,6 +17,13 @@ const MaxMergeSources = 20
 // MaxPresentationBrand es el largo de la marca de una presentación, en letras (el check de la 0104).
 const MaxPresentationBrand = 40
 
+// maxMergeFactor y mergeFactorDecimals son lo que cabe en ingredient_replacements.factor,
+// numeric(14,6). Más, la base respondía 500; más decimales, guardaba otra equivalencia que la que se
+// aplicó al traspaso, y la redirección y el historial usaban esa otra (revisión de seguridad, M1).
+var maxMergeFactor = decimal.NewFromInt(100_000_000)
+
+const mergeFactorDecimals = 6
+
 // ValidMergeRequest rechaza una unión sin orígenes, con demasiados, con repetidos o con el destino
 // entre ellos: un origen repetido traspasaría su existencia dos veces.
 func ValidMergeRequest(target int64, sources []int64) error {
@@ -55,8 +62,8 @@ func MergeFactor(sameUnit bool, given *decimal.Decimal) (decimal.Decimal, error)
 	if given == nil || !given.IsPositive() {
 		return decimal.Zero, fmt.Errorf("%w: se miden distinto; escribe cuánto equivale", ErrValidation)
 	}
-	if !ValidConvertedQty(*given) {
-		return decimal.Zero, fmt.Errorf("%w: esa equivalencia no cabe", ErrValidation)
+	if given.GreaterThanOrEqual(maxMergeFactor) || given.Exponent() < -mergeFactorDecimals && !given.Equal(given.Round(mergeFactorDecimals)) {
+		return decimal.Zero, fmt.Errorf("%w: esa equivalencia no cabe; usa hasta %d decimales", ErrValidation, mergeFactorDecimals)
 	}
 	return *given, nil
 }

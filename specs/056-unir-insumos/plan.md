@@ -160,11 +160,37 @@ incorporado en este plan, en [data-model.md](data-model.md) y en [research.md](r
 - Prueba pedida: la unión toma primero y la venta llega después (orden inverso), dos uniones a la vez,
   y un movimiento histórico del origen no se redirige al restaurar un respaldo.
 
+**Índice de presentaciones en una sola subida**: la 0104 crea el índice único con marca y suelta el
+viejo en la misma migración. No contradice «primero se agrega, después se quita»: el viejo es una
+restricción más estricta que el nuevo, y la API anterior (que inserta sin marca) choca exactamente igual
+con los dos; lo que se quita no lo lee ninguna versión.
+
 **Límite aceptado durante la subida**: mientras la API anterior siga atendiendo, no traduce `EGB02`.
 Si en esos segundos alguien reactiva un origen unido o una venta cae justo en la carrera, la versión
 vieja responde 500 en vez de 409; la base ya impidió el daño y el reintento entra por la versión
 nueva. No hay uniones hasta que la API nueva las crea, así que el caso solo existe si se une durante
 el traslape.
+
+## Revisión de código (2026-11-01)
+
+`go-backend-reviewer`, `security-auditor`, `tablet-ui-reviewer` y `db-architect` (solo consultas)
+sobre el diff. Sin bloqueantes. Corregido, cada uno con su prueba:
+
+- Equivalencia fuera de `numeric(14,6)` respondía 500 o se guardaba distinta de la aplicada:
+  `MergeFactor` rechaza ≥ 1e8 y más de 6 decimales; la hoja manda 6 decimales.
+- «Posibles duplicados» era O(n²) con distancia completa (2,000 nombres largos = 24 s de CPU): cotas por
+  largo, cifras e histograma, distancia con banda y salida temprana (0.87 s), corte por `ctx` y tope de
+  3,000 candidatos. Mismos 7 grupos sobre los insumos reales.
+- Con dos sucursales sin selector, duplicados y aviso tronaban con `BRANCH_AMBIGUOUS`: existencia sumada.
+- Existencia o costo que la equivalencia dejaba en cero, contenidos de formatos y proveedor sin validar,
+  historial que desbordaba con un factor chico y cadena de más de 15 uniones: rechazados antes de escribir.
+- Colisión al mover una presentación → 409; `moved` nunca `null` en la bitácora.
+- Duplicados sin red ya no dice «no hay»; teclado de equivalencias a la vista; encabezado fijo de la tabla;
+  la segunda fila de Artículos envuelve de pie.
+- Pruebas agregadas: `distinct-pairs` como cajero, destino de otra empresa y los tres casos de RLS en la unión.
+
+No corregido, a propósito: las funciones `security definer` confían en `new.company_id` (ninguna consulta
+pasa `company_id` explícito; hoy no es explotable, según el auditor).
 
 ## Complexity Tracking
 

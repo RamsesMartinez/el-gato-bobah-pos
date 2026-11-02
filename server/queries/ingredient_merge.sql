@@ -78,12 +78,13 @@ with recursive src (ingredient_id, depth) as (
 select i.id, i.name::text as name from src join ingredients i on i.id = src.ingredient_id where src.depth > 0;
 
 -- name: MergeCandidates :many
--- Los insumos que se pueden proponer como duplicados: activos y no preparados, con su existencia en la
--- sucursal (para que quien revisa vea cuál tiene más).
+-- Los insumos que se pueden proponer como duplicados: activos y no preparados, con su existencia (para
+-- que quien revisa vea cuál tiene más). La de la empresa y no la de «la» sucursal: con dos sucursales
+-- y sin selector, current_branch_id() truena y tumbaba la lista entera por un dato de apoyo.
 select i.id, i.name::text as name, i.base_unit_id, u.code as base_unit_code, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
   from ingredients i
   join units u on u.id = i.base_unit_id
-  left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
+  left join (select ingredient_id, sum(on_hand) as on_hand from stock_levels group by ingredient_id) sl on sl.ingredient_id = i.id
  where i.is_active and not i.is_prep
  order by i.name, i.id;
 
@@ -95,3 +96,22 @@ select low_ingredient_id, high_ingredient_id from ingredient_distinct_pairs;
 insert into ingredient_distinct_pairs (low_ingredient_id, high_ingredient_id, user_id)
 values (sqlc.arg(low_ingredient_id), sqlc.arg(high_ingredient_id), sqlc.arg(user_id))
 on conflict (company_id, low_ingredient_id, high_ingredient_id) do nothing;
+
+-- name: MergeSubtree :one
+-- Lo que la unión hereda de un origen y de lo que ya se le había unido: qué tan larga es su cadena y
+-- el costo por unidad más alto de su historia, en la unidad del origen. Con eso se sabe, antes de
+-- escribir, si con la equivalencia el historial del destino seguiría cabiendo en numeric(12,6).
+with recursive src (ingredient_id, factor, depth) as (
+  select sqlc.arg(id)::bigint, 1::numeric, 0
+  union all
+  select r.old_ingredient_id, src.factor * r.factor, src.depth + 1
+    from ingredient_replacements r join src on r.new_ingredient_id = src.ingredient_id
+   where r.kind = 'merge' and src.depth < 16
+)
+select coalesce(max(src.depth), 0)::int as depth,
+       coalesce(max(greatest(
+         (select max(m.unit_cost) from stock_movements m where m.ingredient_id = src.ingredient_id and m.movement_type = 'compra'),
+         (select max(c.new_cost) from ingredient_cost_corrections c where c.ingredient_id = src.ingredient_id),
+         (select i.current_cost from ingredients i where i.id = src.ingredient_id)
+       ) / src.factor), 0)::numeric as max_unit_cost
+  from src;

@@ -700,3 +700,82 @@ func TestMergeWithAnEquivalenceConvertsEverything(t *testing.T) {
 		t.Fatalf("quedó en %s; quiere -0.0001", moved)
 	}
 }
+
+// Una equivalencia que deja en cero lo que sí había no se aplica: la existencia del origen saldría y
+// la del destino no entraría, o el costo quedaría en cero sin que nadie lo decidiera (revisión de
+// código).
+func TestAnEquivalenceThatErasesSomethingIsRejected(t *testing.T) {
+	t.Parallel()
+	k := newMergeKit(t)
+	ctx := context.Background()
+	t.Run("existencia que redondea a cero", func(t *testing.T) {
+		tiny := ingredientIn(t, k.st, defaultCompanyID, "Esencia unir", "pieza")
+		adjust(t, k.st, "ingrediente", tiny, "1")
+		f := qty("0.00001")
+		_, err := k.svc.MergeIngredients(k.ctx, k.a, app.MergeRequest{Sources: []app.MergeSourceInput{{ID: tiny, Factor: &f}}}, true)
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("1 pieza × 0.00001 = 0 g; quería 400, llegó %v", err)
+		}
+	})
+	t.Run("costo que redondea a cero", func(t *testing.T) {
+		cheap := ingredientIn(t, k.st, defaultCompanyID, "Popote unir", "pieza")
+		if _, err := k.st.Pool.Exec(ctx, `update ingredients set current_cost = 0.000002 where id = $1`, cheap); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := k.st.Pool.Exec(ctx, `update ingredients set current_cost = 0 where id = $1`, k.a); err != nil {
+			t.Fatal(err)
+		}
+		f := qty("1000000")
+		_, err := k.svc.MergeIngredients(k.ctx, k.a, app.MergeRequest{Sources: []app.MergeSourceInput{{ID: cheap, Factor: &f}}}, true)
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("$0.000002 ÷ 1,000,000 = $0; quería 400, llegó %v", err)
+		}
+	})
+}
+
+// Una cadena de uniones más larga que lo que recorren el historial y la redirección se rechaza antes
+// de escribir (revisión de seguridad, B3).
+func TestAMergeChainCannotGrowPastItsLimit(t *testing.T) {
+	t.Parallel()
+	k := newMergeKit(t)
+	ctx := context.Background()
+	chain := make([]int64, 16)
+	for i := range chain {
+		chain[i] = ingredientIn(t, k.st, defaultCompanyID, "Cadena unir "+strconv.Itoa(i), "g")
+	}
+	for i := 0; i < len(chain)-1; i++ {
+		if _, err := k.st.Pool.Exec(ctx, `insert into ingredient_replacements (company_id, old_ingredient_id, new_ingredient_id, factor, user_id, kind)
+			values ($1, $2, $3, 1, $4, 'merge')`, defaultCompanyID, chain[i], chain[i+1], k.admin); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := k.st.Pool.Exec(ctx, `update ingredients set is_active = false where id = $1`, chain[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := k.svc.MergeIngredients(k.ctx, k.a, k.req(chain[len(chain)-1]), true)
+	if !errors.Is(err, domain.ErrMergeBlocked) {
+		t.Fatalf("unir el final de una cadena de 15 = %v; quiere MERGE_BLOCKED", err)
+	}
+}
+
+// El destino de otra empresa no existe para ésta, y la unión no alcanza nada de la dueña desde otra
+// empresa, una conexión reciclada o sin empresa (los tres casos).
+func TestMergeIsIsolatedInTheThreeCases(t *testing.T) {
+	t.Parallel()
+	k := newMergeKit(t)
+	other := makeCompany(t, k.st, "unir-tres-casos")
+	foreignTarget := ingredientIn(t, k.st, other, "Leche ajena", "g")
+	if _, err := k.svc.MergeIngredients(k.ctx, foreignTarget, k.req(k.b), true); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("destino de otra empresa = %v; quiere 404", err)
+	}
+	inTheThreeCases(t, int64(defaultCompanyID), other, func(t *testing.T, st *store.Store, ctx context.Context) {
+		svc := app.NewBackofficeService(st, nil)
+		_, err := svc.MergeIngredients(app.WithActorUser(ctx, k.admin), k.a, k.req(k.b), true)
+		if err == nil {
+			t.Fatal("se pudo pedir la unión de insumos de otra empresa")
+		}
+	})
+	if !isActive(t, k.st, k.b) {
+		t.Fatal("algún caso unió de verdad")
+	}
+}

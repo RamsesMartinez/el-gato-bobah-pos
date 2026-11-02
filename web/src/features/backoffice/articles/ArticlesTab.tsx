@@ -78,7 +78,7 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
           <Button minH="44px" colorPalette="brand" flexShrink={0} onClick={() => setCreating(true)}>+ Nuevo</Button>
         )}
       </HStack>
-      <HStack gap={2} flexShrink={0}>
+      <HStack gap={2} flexShrink={0} flexWrap="wrap">
         {([['noCost', 'Sin costo'], ['negative', 'Existencia negativa']] as const).map(([k, label]) => (
           <Button key={k} minH="44px" borderRadius="full" variant={filter[k] ? 'subtle' : 'outline'} colorPalette={filter[k] ? 'brand' : 'gray'}
             aria-pressed={!!filter[k]} onClick={() => toggle(k)}>{label}</Button>

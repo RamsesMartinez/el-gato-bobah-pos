@@ -248,6 +248,9 @@ func (m *mergeRun) check(ctx context.Context) error {
 			return fmt.Errorf("%w (%s)", err, src.Name)
 		}
 		m.factors = append(m.factors, f)
+		if err := m.checkConversion(ctx, src, f); err != nil {
+			return err
+		}
 		if _, err := unit(src.BaseUnitID); err != nil {
 			return err
 		}
@@ -273,6 +276,33 @@ func (m *mergeRun) check(ctx context.Context) error {
 		}
 		if open {
 			return blocked("un conteo abierto ya capturó %s; ciérralo o descártalo antes", a.Name)
+		}
+	}
+	return nil
+}
+
+// maxMergeDepth es lo más larga que puede quedar una cadena de uniones (A en B, B en C…): el historial
+// y la redirección la recorren hasta 16 niveles, y una más larga se cortaría sin avisar.
+const maxMergeDepth = 15
+
+// checkConversion rechaza, antes de escribir nada, la equivalencia que borraría algo o no cabría:
+// existencia que redondea a cero (saldría del origen y no entraría al destino), un costo que queda en
+// cero o desborda, y una cadena de uniones demasiado larga (revisión de código y de seguridad).
+func (m *mergeRun) checkConversion(ctx context.Context, src db.LockArticleNowaitRow, f decimal.Decimal) error {
+	sub, err := m.q.MergeSubtree(ctx, src.ID)
+	if err != nil {
+		return err
+	}
+	if sub.Depth+1 > maxMergeDepth {
+		return fmt.Errorf("%w: %s ya junta demasiadas uniones; únelo en otro insumo", domain.ErrMergeBlocked, src.Name)
+	}
+	if !domain.ValidConvertedCost(sub.MaxUnitCost, domain.ConvertCost(sub.MaxUnitCost, f)) {
+		return fmt.Errorf("%w: con esa equivalencia el costo de %s quedaría en cero o no cabría; revisa la equivalencia", domain.ErrValidation, src.Name)
+	}
+	for _, row := range m.stock[src.ID] {
+		to := domain.ConvertQty(row.OnHand, f)
+		if !row.OnHand.IsZero() && (to.IsZero() || !domain.ValidConvertedQty(to)) {
+			return fmt.Errorf("%w: con esa equivalencia la existencia de %s quedaría en cero o no cabría; revisa la equivalencia", domain.ErrValidation, src.Name)
 		}
 	}
 	return nil
@@ -304,6 +334,7 @@ func (m *mergeRun) apply(ctx context.Context) error {
 	for i, src := range m.sources {
 		f := m.factors[i]
 		m.out.Sources = append(m.out.Sources, MergeArticle{ID: src.ID, Name: src.Name, BaseUnit: m.units[src.BaseUnitID], Factor: f})
+		m.moved[src.ID] = []map[string]any{}
 		repID, err := q.InsertMerge(ctx, db.InsertMergeParams{OldIngredientID: src.ID, NewIngredientID: m.targetID, Factor: f, UserID: m.actor})
 		if err != nil {
 			return err
@@ -342,7 +373,11 @@ func (m *mergeRun) apply(ctx context.Context) error {
 			return err
 		}
 		for _, pf := range formats {
-			if err := q.SetPurchaseFormatQty(ctx, db.SetPurchaseFormatQtyParams{ID: pf.ID, IngredientID: m.targetID, QtyInBase: domain.ConvertQty(pf.QtyInBase, f)}); err != nil {
+			qty := domain.ConvertQty(pf.QtyInBase, f)
+			if !qty.IsPositive() || !domain.ValidConvertedQty(qty) {
+				return fmt.Errorf("%w: con esa equivalencia un formato de compra de %s quedaría en cero o no cabría", domain.ErrValidation, src.Name)
+			}
+			if err := q.SetPurchaseFormatQty(ctx, db.SetPurchaseFormatQtyParams{ID: pf.ID, IngredientID: m.targetID, QtyInBase: qty}); err != nil {
 				return err
 			}
 		}
@@ -355,6 +390,9 @@ func (m *mergeRun) apply(ctx context.Context) error {
 			var pack *decimal.Decimal
 			if si.PackQtyInBase != nil {
 				v := domain.ConvertQty(*si.PackQtyInBase, f)
+				if !v.IsPositive() || !domain.ValidConvertedQty(v) {
+					return fmt.Errorf("%w: con esa equivalencia lo aprendido de un ticket de %s quedaría en cero o no cabría", domain.ErrValidation, src.Name)
+				}
 				pack = &v
 			}
 			if err := q.SetSupplierItem(ctx, db.SetSupplierItemParams{ID: si.ID, IngredientID: &m.target.ID, PackQtyInBase: pack}); err != nil {
@@ -475,8 +513,10 @@ func (m *mergeRun) movePresentations(ctx context.Context, src db.LockArticleNowa
 		switch d.Action {
 		case domain.MergeMove:
 			brand := d.Brand
+			// Una presentación que otra persona creó en el destino mientras tanto choca con el índice
+			// único: 409 «ya hay un empaque que se llama así», no 500.
 			if err := m.q.MovePresentation(ctx, db.MovePresentationParams{ID: d.ID, IngredientID: m.targetID, QtyInBase: d.QtyInBase, Brand: &brand}); err != nil {
-				return err
+				return presentationErr(err)
 			}
 		case domain.MergeArchive:
 			if err := m.q.ArchivePresentation(ctx, d.ID); err != nil {
@@ -509,12 +549,17 @@ func (m *mergeRun) mergeCost(ctx context.Context) error {
 	}
 	cost, from := domain.MergedCost(cands)
 	costSource := source[from]
+	original := cost
 	for _, c := range cands {
-		if c.ID == from && c.LastPurchaseAt != nil {
-			costSource = "compra"
+		if c.ID != from {
+			continue
+		}
+		original = c.Current
+		if c.LastPurchaseAt != nil {
+			costSource, original = "compra", *c.LastPurchaseCost
 		}
 	}
-	if !domain.ValidConvertedCost(cost, cost) {
+	if !domain.ValidConvertedCost(original, cost) {
 		return fmt.Errorf("%w: con esa equivalencia el costo no cabe; revisa la equivalencia", domain.ErrValidation)
 	}
 	mins := make([]domain.MinStockSource, len(m.sources))
@@ -559,6 +604,12 @@ const maxSimilar = 5
 // maxSimilarQuery es el largo del nombre que se compara: el de un insumo, con margen.
 const maxSimilarQuery = 80
 
+// maxDuplicateCandidates es el tope de insumos activos para buscar posibles duplicados. Comparar todos
+// contra todos es cuadrático: medido, 2,000 nombres largos cuestan ~0.9 s de CPU en un núcleo, y la VM
+// de producción atiende a todas las empresas (revisión de seguridad, M2). Un negocio de comida tiene
+// cientos; más que esto pide otra forma de buscarlos.
+const maxDuplicateCandidates = 3000
+
 // DuplicateItem es un insumo de un grupo de posibles duplicados.
 type DuplicateItem struct {
 	ID           int64           `json:"id"`
@@ -596,6 +647,9 @@ func (s *BackofficeService) DuplicateGroups(ctx context.Context) ([]DuplicateGro
 	if err != nil {
 		return nil, err
 	}
+	if len(named) > maxDuplicateCandidates {
+		return nil, fmt.Errorf("%w: hay más de %d insumos activos; busca los duplicados desde la ficha de cada uno", domain.ErrValidation, maxDuplicateCandidates)
+	}
 	pairs, err := q.DistinctPairs(ctx)
 	if err != nil {
 		return nil, err
@@ -604,8 +658,12 @@ func (s *BackofficeService) DuplicateGroups(ctx context.Context) ([]DuplicateGro
 	for i, p := range pairs {
 		distinct[i] = domain.DistinctPair{Low: p.LowIngredientID, High: p.HighIngredientID}
 	}
+	groups, done := domain.DuplicateGroups(named, distinct, func() bool { return ctx.Err() != nil })
+	if !done {
+		return nil, ctx.Err()
+	}
 	out := []DuplicateGroup{}
-	for _, g := range domain.DuplicateGroups(named, distinct) {
+	for _, g := range groups {
 		items := make([]DuplicateItem, len(g))
 		for i, it := range g {
 			items[i] = views[it.ID]

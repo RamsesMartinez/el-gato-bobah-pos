@@ -30,34 +30,75 @@ func similarKey(name string) []string {
 	return strings.FieldsFunc(n, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 }
 
+// prepared es un nombre listo para compararse muchas veces: se normaliza una sola vez por insumo.
+type prepared struct {
+	words  []string
+	runes  []rune
+	digits string
+	hist   [128]int // letras y cifras ASCII; lo demás cae en la casilla 127
+}
+
+func prepare(name string) prepared {
+	p := prepared{words: similarKey(name)}
+	p.runes = []rune(strings.Join(p.words, " "))
+	p.digits = digitsOf(string(p.runes))
+	for _, r := range p.runes {
+		if r < 127 {
+			p.hist[r]++
+		} else {
+			p.hist[127]++
+		}
+	}
+	return p
+}
+
 // similarity dice si dos nombres se parecen y qué tanto (0 es lo más parecido). Parecidos: uno es el
 // inicio del otro, con dos palabras o más («Leche entera» y «Leche entera Lala 1L»; en medio no cuenta:
 // «Frutos rojos» está en concentrados y tés distintos), o difieren en una letra (dos si es largo),
 // contando dos letras invertidas como una. Las cifras tienen que ser las mismas: «Vaso 12 oz» y
 // «Vaso 16 oz» son medidas distintas, no un dedazo.
-func similarity(a, b []string) (int, bool) {
-	sa, sb := strings.Join(a, " "), strings.Join(b, " ")
-	if sa == "" || sb == "" {
+//
+// Antes de la distancia de edición van cotas que la acotan por abajo (largo y letras de más o de
+// menos): con un catálogo grande casi todos los pares se descartan ahí. Medido sin ellas, 2,000
+// nombres de 60 letras costaban 24 s de CPU por cada vez que se abría la hoja (revisión de seguridad).
+func similarity(a, b *prepared) (int, bool) {
+	if len(a.runes) == 0 || len(b.runes) == 0 {
 		return 0, false
 	}
-	if sa == sb {
+	if string(a.runes) == string(b.runes) {
 		return 0, true
 	}
 	short, long := a, b
-	if len([]rune(sa)) > len([]rune(sb)) {
+	if len(a.runes) > len(b.runes) {
 		short, long = b, a
 	}
-	if len(short) >= minPrefixWords && startsWith(long, short) {
+	if len(short.words) >= minPrefixWords && startsWith(long.words, short.words) {
 		return 1, true
 	}
-	if digitsOf(sa) != digitsOf(sb) {
+	if a.digits != b.digits {
 		return 0, false
 	}
 	limit := 1
-	if max(len([]rune(sa)), len([]rune(sb))) > 10 {
+	if max(len(a.runes), len(b.runes)) > 10 {
 		limit = 2
 	}
-	d := editDistance([]rune(sa), []rune(sb))
+	if len(long.runes)-len(short.runes) > limit {
+		return 0, false
+	}
+	// Cada operación agrega, quita o cambia una letra: la distancia nunca es menor que las letras que a
+	// uno le sobran respecto del otro.
+	plus, minus := 0, 0
+	for i := range a.hist {
+		if d := a.hist[i] - b.hist[i]; d > 0 {
+			plus += d
+		} else {
+			minus -= d
+		}
+	}
+	if max(plus, minus) > limit {
+		return 0, false
+	}
+	d := boundedDistance(a.runes, b.runes, limit)
 	return d, d <= limit
 }
 
@@ -83,42 +124,67 @@ func digitsOf(s string) string {
 	return b.String()
 }
 
-// editDistance es la distancia de Damerau-Levenshtein restringida: dos letras invertidas cuentan uno.
-func editDistance(a, b []rune) int {
-	d := make([][]int, len(a)+1)
-	for i := range d {
-		d[i] = make([]int, len(b)+1)
-		d[i][0] = i
+// boundedDistance es la distancia de Damerau-Levenshtein restringida (dos letras invertidas cuentan
+// uno), calculada solo en la franja |i-j| <= k y con salida temprana: si un renglón entero ya pasa de
+// k, el resultado es k+1. Lo que importa es saber si es <= k, no cuánto vale más allá.
+func boundedDistance(a, b []rune, k int) int {
+	const inf = 1 << 30
+	n, m := len(a), len(b)
+	if n-m > k || m-n > k {
+		return k + 1
 	}
-	for j := range d[0] {
-		d[0][j] = j
+	prev2 := make([]int, m+1)
+	prev := make([]int, m+1)
+	cur := make([]int, m+1)
+	for j := range prev {
+		prev[j] = j
+		if j > k {
+			prev[j] = inf
+		}
 	}
-	for i := 1; i <= len(a); i++ {
-		for j := 1; j <= len(b); j++ {
+	for j := range prev2 {
+		prev2[j] = inf
+	}
+	for i := 1; i <= n; i++ {
+		for j := range cur {
+			cur[j] = inf
+		}
+		if i <= k {
+			cur[0] = i
+		}
+		rowMin := cur[0]
+		for j := max(1, i-k); j <= min(m, i+k); j++ {
 			cost := 1
 			if a[i-1] == b[j-1] {
 				cost = 0
 			}
-			d[i][j] = min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+cost)
+			v := min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
 			if i > 1 && j > 1 && a[i-1] == b[j-2] && a[i-2] == b[j-1] {
-				d[i][j] = min(d[i][j], d[i-2][j-2]+1)
+				v = min(v, prev2[j-2]+1)
 			}
+			cur[j] = v
+			rowMin = min(rowMin, v)
 		}
+		if rowMin > k {
+			return k + 1
+		}
+		prev2, prev, cur = prev, cur, prev2
 	}
-	return d[len(a)][len(b)]
+	return min(prev[m], k+1)
 }
 
 // SimilarNames son hasta `limit` candidatos con nombre parecido a `name`, los más parecidos primero.
 // Nunca nil.
 func SimilarNames(name string, candidates []NamedItem, limit int) []NamedItem {
-	key := similarKey(name)
+	key := prepare(name)
 	type hit struct {
 		item  NamedItem
 		score int
 	}
 	hits := []hit{}
 	for _, c := range candidates {
-		if score, ok := similarity(key, similarKey(c.Name)); ok {
+		cp := prepare(c.Name)
+		if score, ok := similarity(&key, &cp); ok {
 			hits = append(hits, hit{c, score})
 		}
 	}
@@ -140,8 +206,9 @@ func SimilarNames(name string, candidates []NamedItem, limit int) []NamedItem {
 
 // DuplicateGroups junta los insumos con nombres parecidos, por transitividad (si A se parece a B y B a
 // C, son un grupo), sin los pares marcados «No son lo mismo». Solo grupos de dos o más; cada uno
-// ordenado por nombre y los grupos por su primer nombre. Nunca nil.
-func DuplicateGroups(items []NamedItem, distinct []DistinctPair) [][]NamedItem {
+// ordenado por nombre y los grupos por su primer nombre. Nunca nil. stop se consulta en cada renglón:
+// si dice que ya no, regresa false sin terminar (el request se canceló).
+func DuplicateGroups(items []NamedItem, distinct []DistinctPair, stop func() bool) ([][]NamedItem, bool) {
 	skip := make(map[DistinctPair]bool, len(distinct))
 	for _, p := range distinct {
 		skip[p] = true
@@ -157,11 +224,14 @@ func DuplicateGroups(items []NamedItem, distinct []DistinctPair) [][]NamedItem {
 		}
 		return i
 	}
-	keys := make([][]string, len(items))
+	keys := make([]prepared, len(items))
 	for i, it := range items {
-		keys[i] = similarKey(it.Name)
+		keys[i] = prepare(it.Name)
 	}
 	for i := range items {
+		if stop() {
+			return nil, false
+		}
 		for j := i + 1; j < len(items); j++ {
 			lo, hi := items[i].ID, items[j].ID
 			if lo > hi {
@@ -170,7 +240,7 @@ func DuplicateGroups(items []NamedItem, distinct []DistinctPair) [][]NamedItem {
 			if skip[DistinctPair{lo, hi}] {
 				continue
 			}
-			if _, ok := similarity(keys[i], keys[j]); ok {
+			if _, ok := similarity(&keys[i], &keys[j]); ok {
 				parent[find(i)] = find(j)
 			}
 		}
@@ -189,5 +259,5 @@ func DuplicateGroups(items []NamedItem, distinct []DistinctPair) [][]NamedItem {
 		out = append(out, g)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i][0].Name < out[j][0].Name })
-	return out
+	return out, true
 }

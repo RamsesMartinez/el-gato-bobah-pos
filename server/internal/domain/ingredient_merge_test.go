@@ -64,6 +64,10 @@ func TestMergeFactor(t *testing.T) {
 		{"equivalencia en cero", false, mdp("0"), "", false},
 		{"equivalencia negativa", false, mdp("-3"), "", false},
 		{"equivalencia que no cabe", false, mdp("100000000000"), "", false},
+		{"cien millones ya no cabe en la columna (numeric(14,6))", false, mdp("100000000"), "", false},
+		{"siete decimales: la base lo redondearía a cero", false, mdp("0.0000001"), "", false},
+		{"siete decimales: la base guardaría otra equivalencia que la aplicada", false, mdp("0.0000006"), "", false},
+		{"seis decimales sí", false, mdp("0.000001"), "0.000001", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

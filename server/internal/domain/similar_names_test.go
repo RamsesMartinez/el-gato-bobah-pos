@@ -1,8 +1,10 @@
 package domain
 
 import (
+	"math/rand/v2"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestSimilarNames(t *testing.T) {
@@ -64,24 +66,24 @@ func TestDuplicateGroups(t *testing.T) {
 		{ID: 4, Name: "Vaso 16 oz"}, {ID: 5, Name: "Vaso 16 oz (caja)"},
 		{ID: 6, Name: "Azúcar"},
 	}
-	got := DuplicateGroups(items, nil)
+	got := dupGroups(items, nil)
 	// «Queso» no junta a todos los quesos: una palabra suelta no basta.
 	if len(got) != 2 || !slices.Equal(ids(got[0]), []int64{1, 2, 3}) || !slices.Equal(ids(got[1]), []int64{4, 5}) {
 		t.Fatalf("grupos = %v; quiere {1,2,3} por transitividad y {4,5}", got)
 	}
 	t.Run("un par descartado parte el grupo", func(t *testing.T) {
-		got := DuplicateGroups(items, []DistinctPair{{Low: 4, High: 5}})
+		got := dupGroups(items, []DistinctPair{{Low: 4, High: 5}})
 		if len(got) != 1 {
 			t.Fatalf("grupos = %v; el de vasos ya no debe salir", got)
 		}
 	})
 	t.Run("descartar un par de un grupo de tres deja los otros", func(t *testing.T) {
-		got := DuplicateGroups(items[3:6], []DistinctPair{{Low: 1, High: 2}})
+		got := dupGroups(items[3:6], []DistinctPair{{Low: 1, High: 2}})
 		if len(got) != 1 || len(got[0]) != 3 {
 			t.Fatalf("grupos = %v; 1~3 y 2~3 siguen juntando a los tres", got)
 		}
 	})
-	if got := DuplicateGroups(nil, nil); got == nil {
+	if got := dupGroups(nil, nil); got == nil {
 		t.Fatal("sin insumos es una lista vacía, no nil: el JSON prometió un arreglo")
 	}
 }
@@ -92,4 +94,44 @@ func ids(g []NamedItem) []int64 {
 		out = append(out, it.ID)
 	}
 	return out
+}
+
+// Un catálogo grande no puede costar segundos de CPU por cada vez que se abre la hoja: la VM de
+// producción tiene un núcleo y atiende a todas las empresas (revisión de seguridad, M2). Medido antes
+// del arreglo: 2,000 nombres de 60 letras tardaban 24 s.
+func TestDuplicateGroupsStaysCheapOnABigCatalog(t *testing.T) {
+	if testing.Short() {
+		t.Skip("mide tiempo")
+	}
+	rng := rand.New(rand.NewPCG(1, 2))
+	letters := []rune("abcdefghijklmnopqrstuvwxyz ")
+	items := make([]NamedItem, 2000)
+	for i := range items {
+		name := make([]rune, 60)
+		for j := range name {
+			name[j] = letters[rng.IntN(len(letters))]
+		}
+		items[i] = NamedItem{ID: int64(i + 1), Name: string(name)}
+	}
+	start := time.Now()
+	if _, ok := DuplicateGroups(items, nil, func() bool { return false }); !ok {
+		t.Fatal("se cortó sin que nadie lo pidiera")
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("2,000 nombres de 60 letras tardaron %s; el presupuesto es 2 s", d)
+	}
+}
+
+// Si el request se cancela, la búsqueda se detiene en vez de seguir quemando CPU.
+func TestDuplicateGroupsStopsWhenAsked(t *testing.T) {
+	items := []NamedItem{{ID: 1, Name: "Leche entera"}, {ID: 2, Name: "Leche entera lala"}}
+	if _, ok := DuplicateGroups(items, nil, func() bool { return true }); ok {
+		t.Fatal("no se detuvo")
+	}
+}
+
+// dupGroups es DuplicateGroups sin corte, para las pruebas de la regla.
+func dupGroups(items []NamedItem, distinct []DistinctPair) [][]NamedItem {
+	g, _ := DuplicateGroups(items, distinct, func() bool { return false })
+	return g
 }

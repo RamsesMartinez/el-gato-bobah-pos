@@ -107,6 +107,10 @@ func TestDuplicatesHTTP(t *testing.T) {
 			t.Fatalf("cajero %s = %d; quiere 403", p, w.Code)
 		}
 	}
+	body0 := []byte(`{"a":` + strconv.FormatInt(a, 10) + `,"b":` + strconv.FormatInt(b, 10) + `}`)
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/articles/distinct-pairs", cajero, body0, "application/json"); w.Code != http.StatusForbidden {
+		t.Fatalf("cajero marcando «no son lo mismo» = %d; quiere 403", w.Code)
+	}
 	admin := token("dup_admin_http", "admin")
 	w := do(t, r, http.MethodGet, "/api/v1/stock/articles/similar?name=", admin, nil, "")
 	if w.Code != http.StatusBadRequest {
@@ -123,5 +127,37 @@ func TestDuplicatesHTTP(t *testing.T) {
 	w = do(t, r, http.MethodGet, "/api/v1/stock/articles/duplicate-groups", admin, nil, "")
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"groups":[]`) {
 		t.Fatalf("grupos = %d %s; quiere groups: [] (no null)", w.Code, w.Body.String())
+	}
+}
+
+// Con dos sucursales y sin selector, la lista de duplicados y el aviso de alta no truenan: la
+// existencia que muestran es la suma de la empresa, no la de «la» sucursal (revisión de código).
+func TestDuplicatesWorkWithTwoBranches(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	ingredientIn(t, st, defaultCompanyID, "Polvo chocolate", "g")
+	b := ingredientIn(t, st, defaultCompanyID, "Polvo chocolate Monjita", "g")
+	var second int64
+	if err := st.Pool.QueryRow(ctx, `insert into branches (company_id, branch_number, code, name) values ($1, 2, 'S2', 'Sucursal 2') returning id`,
+		defaultCompanyID).Scan(&second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `insert into stock_movements (company_id, item_type, ingredient_id, movement_type, quantity, branch_id)
+		values ($1, 'ingrediente', $2, 'ajuste', 70, $3)`, defaultCompanyID, b, second); err != nil {
+		t.Fatal(err)
+	}
+	svc, tctx := asTenant(t, defaultCompanyID)
+	groups, err := svc.DuplicateGroups(tctx)
+	if err != nil || len(groups) != 1 {
+		t.Fatalf("grupos con dos sucursales = %+v %v", groups, err)
+	}
+	for _, it := range groups[0].Items {
+		if it.ID == b && !it.OnHand.Equal(qty("70")) {
+			t.Fatalf("existencia de Monjita = %s; quiere 70 (la de la empresa)", it.OnHand)
+		}
+	}
+	if got, err := svc.SimilarArticles(tctx, "Polvo chocolat"); err != nil || len(got) == 0 {
+		t.Fatalf("aviso con dos sucursales = %+v %v", got, err)
 	}
 }

@@ -90,15 +90,17 @@ export function MergeSheet({ target, initialSources = [], onClose, onDone }: Pro
 
   const chosen = selected.map((id) => byId.get(id)).filter((a): a is ArticleRow => !!a);
   const differing = chosen.filter((a) => a.baseUnitId !== target.baseUnitId);
-  const equivReady = differing.every((a) => Number(equiv[a.id]) > 0);
+  // Una equivalencia que a seis decimales queda en cero no se puede guardar.
+  const equivReady = differing.every((a) => Number(equiv[a.id]) > 0 && Number(equivalence(a, target).factor(Number(equiv[a.id])).toFixed(6)) > 0);
 
   const toggle = (id: number) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const body = () => ({
     sources: chosen.map((a) => {
       if (a.baseUnitId === target.baseUnitId) return { id: a.id };
+      // Seis decimales: es lo que guarda la base (numeric(14,6)); la vista previa muestra lo que resulta.
       const f = equivalence(a, target).factor(Number(equiv[a.id]));
-      return { id: a.id, factor: String(Number(f.toPrecision(12))) };
+      return { id: a.id, factor: String(Number(f.toFixed(6))) };
     }),
   });
 
@@ -221,7 +223,8 @@ export function MergeSheet({ target, initialSources = [], onClose, onDone }: Pro
                 );
               })}
               {keypad.field && (
-                <Box maxW="320px">
+                // Con varios renglones de equivalencia el teclado queda abajo: se trae a la vista al abrirse.
+                <Box maxW="320px" ref={(el: HTMLDivElement | null) => { el?.scrollIntoView?.({ block: 'nearest' }); }}>
                   <NumericKeypad allowDecimal onKey={(k) => {
                     const id = Number(keypad.field);
                     setEquiv((e) => ({ ...e, [id]: keypad.apply(e[id] ?? '', k, true) }));
@@ -232,7 +235,7 @@ export function MergeSheet({ target, initialSources = [], onClose, onDone }: Pro
           )}
 
           {step === 'preview' && (!preview ? <Center py={10}><Spinner size="lg" /></Center> : (
-            <Box opacity={loading ? 0.6 : 1} overflowX="auto">
+            <Box opacity={loading ? 0.6 : 1}>
               {conflicts.length > 0 && (
                 <Text p={3} mb={3} borderRadius="lg" bg="red.subtle" fontSize="sm">
                   {conflicts.map((c) => `«${c.name} · ${c.brand}»`).join(', ')} se llama igual que una de {target.name} y trae distinto.
