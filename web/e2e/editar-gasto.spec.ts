@@ -14,6 +14,7 @@ test.describe.configure({ mode: 'serial', retries: 0 });
 let jwt = '';
 let category = 0;
 let transfer = 0;
+let cajaSinTurno: number | null = null;
 let tapas: { id: number; name: string } | null = null;
 let fajillas: { id: number; name: string } | null = null;
 let pieza = 0;
@@ -33,10 +34,14 @@ const diasAtras = (n: number) => {
   return d.toISOString().slice(0, 10);
 };
 
+// Los gastos de prueba son de ayer, para registrar entregas de ayer. Con la caja principal abierta
+// (la abre la suite) el día del gasto lo pone el turno y otro se rechaza (spec 047); el pago nombra
+// una caja SIN turno, que es el camino de «un gasto de otro día»: así la prueba no depende de cómo
+// esté la caja principal (#193). Con un pago que no toca el cajón, nombrar la caja no mueve ningún corte.
 async function gastoSinMercancia(request: APIRequestContext, description: string, amount: string): Promise<number> {
   const { id } = await api(request, 'post', '/expenses', {
     categoryId: category, amount, status: 'pagada', description, expenseDay: diasAtras(1),
-    payments: [{ methodId: transfer, amount }],
+    payments: [{ methodId: transfer, amount, ...(cajaSinTurno ? { registerId: cajaSinTurno } : {}) }],
   });
   return id;
 }
@@ -89,6 +94,12 @@ test.beforeAll(async ({ request }) => {
   jwt = await tokenDeRequest(request);
   category = (await api(request, 'get', '/expense-categories')).items[0].id;
   transfer = (await api(request, 'get', '/payment-methods')).items.find((m: { affectsCashDrawer: boolean }) => !m.affectsCashDrawer).id;
+  const cajas = (await api(request, 'get', '/cash-registers')).items as Array<{ id: number; isPrimary: boolean; openSessionId: number | null }>;
+  cajaSinTurno = cajas.find((c) => !c.isPrimary && c.openSessionId === null)?.id ?? null;
+  // Sin otra caja, un gasto de ayer solo se puede capturar con la principal cerrada.
+  if (cajaSinTurno === null && cajas.some((c) => c.isPrimary && c.openSessionId !== null)) {
+    throw new Error('hace falta una caja sin turno además de la principal para capturar gastos de ayer');
+  }
   pieza = (await api(request, 'get', '/units')).items.find((u: { code: string }) => u.code === 'pieza').id;
   const { items } = await api(request, 'get', '/ingredients?onlyActive=true');
   const enPiezas = items.filter((i: { baseUnitCode: string }) => i.baseUnitCode === 'pieza');
