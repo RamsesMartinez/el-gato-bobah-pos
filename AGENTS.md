@@ -636,7 +636,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 - **Artículos del almacén** (spec 042, 0096). Cinco cosas que no se ven:
   - **Un artículo nace solo dentro de un guardado**: la lista (`createArticleTx`), el gasto y la receta
     (`newArticle` dentro de su transacción). Nada lo crea al tocar una unidad; cancelar o fallar no
-    deja artículos sueltos. `POST /ingredients` sigue una subida más para la pantalla anterior (#115).
+    deja artículos sueltos. `POST /ingredients` ya no existe (#115): toda alta pasa por `createArticleTx`.
   - **La unidad base solo la reescribe `SetArticleUnit`** (cambio de unidad), y lo vigila
     `TestNoQueryRewritesTheBaseUnitOfAnIngredient`. Sin compras, ventas ni mermas el cambio es directo
     y reescribe ajustes, renglones de conteo, recetas, empaques y correcciones con los originales en la

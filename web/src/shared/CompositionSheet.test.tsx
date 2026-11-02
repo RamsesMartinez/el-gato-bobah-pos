@@ -44,7 +44,6 @@ const back = vi.hoisted(() => ({
       { id: 5, code: 'pieza', name: 'Pieza', kind: 'pieza', toBase: '1' },
     ],
   })),
-  createIngredient: vi.fn((b: { name: string; baseUnitId: number }) => Promise.resolve({ id: 99, name: b.name, baseUnitId: b.baseUnitId, baseUnitCode: 'ml', baseUnitKind: 'volumen', recipeUses: 0 })),
 }));
 vi.mock('../api/admin', () => ({ adminApi: api }));
 vi.mock('../api/backoffice', () => ({ backofficeApi: back }));
@@ -131,13 +130,11 @@ describe('la receta', () => {
     fireEvent.change(await screen.findByLabelText('Buscar'), { target: { value: 'Leche de coco' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Mililitros (ml)' }));
     const cantidad = await screen.findByLabelText('Cantidad de Leche de coco (nuevo)');
-    expect(back.createIngredient).not.toHaveBeenCalled();
     fireEvent.change(cantidad, { target: { value: '30' } });
     await guardar();
     await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55, expect.objectContaining({
       items: [{ newArticle: { name: 'Leche de coco', baseUnitId: 3 }, quantity: '30', unitId: 3 }],
     })));
-    expect(back.createIngredient).not.toHaveBeenCalled();
   });
 
   it('copiar la receta de otro parecido', async () => {
@@ -434,7 +431,6 @@ describe('se compra hecho', () => {
     await guardar();
     await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55,
       expect.objectContaining({ mode: 'items', items: [{ newArticle: { name: 'Chai Latte G', baseUnitId: 5 }, quantity: '1', unitId: 5 }] })));
-    expect(back.createIngredient).not.toHaveBeenCalled();
   });
 
   it('el buscador marca el elegido y deja «Crear una nueva» al final', async () => {
