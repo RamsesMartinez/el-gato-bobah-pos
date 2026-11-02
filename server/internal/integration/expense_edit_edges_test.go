@@ -72,10 +72,27 @@ func TestAConfirmationWaitsForAnotherEditAndThenIsStale(t *testing.T) {
 		_, err := k.svc.EditExpense(k.ctx, id, in, k.user, false)
 		done <- err
 	}()
-	select {
-	case err := <-done:
-		t.Fatalf("confirmó sin esperar a la otra edición: %v", err)
-	case <-time.After(300 * time.Millisecond):
+	// Espera a VER la confirmación bloqueada por el candado, en vez de dormir: con un tiempo fijo, un
+	// CI lento daría por buena una confirmación que nunca esperó.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		select {
+		case err := <-done:
+			t.Fatalf("confirmó sin esperar a la otra edición: %v", err)
+		default:
+		}
+		var waiting int
+		if err := k.st.Pool.QueryRow(ctx, `select count(*) from pg_stat_activity
+			where datname = current_database() and wait_event_type = 'Lock'`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("la confirmación ni terminó ni quedó esperando el candado")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	if _, err := tx.Exec(ctx, `update expenses set amount = amount + 10 where id = $1`, id); err != nil {
 		t.Fatal(err)

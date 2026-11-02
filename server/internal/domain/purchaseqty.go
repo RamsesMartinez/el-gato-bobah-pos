@@ -39,9 +39,8 @@ type PurchaseUnit struct {
 // BaseQty convierte qty a unidad base del artículo.
 //
 // Una presentación va primero: lo que trae ya está en la base del artículo, así que es
-// qty × PackQtyInBase sin importar la unidad base. Antes caía en «pieza → pieza» y una caja de 12
-// latas sumaba una lata (#182). Sin presentación, tres caminos, y el tercero es la razón de ser
-// de la función:
+// qty × PackQtyInBase sin importar la unidad base; el atajo «pieza → pieza» no le puede ganar.
+// Sin presentación, tres caminos, y el segundo es la razón de ser de la función:
 //  1. mismo kind (kg → g, l → ml, pieza → pieza): qty × ToBase. Un contenido aprendido de un
 //     ticket («355 ml») no aplica aquí: no es de piezas.
 //  2. pieza → masa/volumen: qty × PackQtyInBase. Aquí ToBase no sirve — "una pieza" no son N
@@ -73,6 +72,8 @@ func BaseQty(qty decimal.Decimal, u PurchaseUnit) (decimal.Decimal, error) {
 	}
 }
 
+// packQty multiplica por lo que trae una unidad de compra. Sin ese contenido no se adivina: la línea
+// espera a que se registre el formato (ErrPackUnknown).
 func packQty(qty decimal.Decimal, pack *decimal.Decimal) (decimal.Decimal, error) {
 	if pack == nil || !pack.IsPositive() {
 		return decimal.Zero, ErrPackUnknown
