@@ -21,8 +21,8 @@ código y se ve fallar por la razón correcta antes de implementar.
 
 ## Phase 1: Setup
 
-- [ ] T001 Traer `origin/develop` a la rama `056-unir-insumos` (merge firmado) y resolver; si la 055 ya llegó, revisar que nada de este plan choque con sus cambios en `server/internal/app/purchases.go` y `purchaseqty.go`; `cd server && go build ./...` en verde
-- [ ] T002 Verificar que la base local restaurada (`make db-restaurar`, respaldo del 2026-11-01) y la de pruebas (`make test-integration` con `TEST_RESTORED_DATABASE_URL` de `make respaldo-anonimo`) existen para las pruebas de migración contra respaldo real con dos empresas
+- [X] T001 Traer `origin/develop` a la rama `056-unir-insumos` (merge firmado) y resolver; si la 055 ya llegó, revisar que nada de este plan choque con sus cambios en `server/internal/app/purchases.go` y `purchaseqty.go`; `cd server && go build ./...` en verde
+- [X] T002 Verificar que la base local restaurada (`make db-restaurar`, respaldo del 2026-11-01) y la de pruebas (`make test-integration` con `TEST_RESTORED_DATABASE_URL` de `make respaldo-anonimo`) existen para las pruebas de migración contra respaldo real con dos empresas
 
 ---
 
@@ -30,24 +30,24 @@ código y se ve fallar por la razón correcta antes de implementar.
 
 **Migración 0104 y su prueba (pasa por el db-architect antes de aplicarse)**
 
-- [ ] T003 Escribir la prueba de la migración en `server/internal/integration/migration_0104_test.go` contra respaldo real con dos empresas: columnas `kind` (default `unit_change` en los reemplazos existentes), `brand`, `presentation_brand` con el relleno; índice de presentaciones con nombre+marca; tabla `ingredient_distinct_pairs` con RLS; triggers presentes; Down que se niega con una unión, una marca o un par, y que con la limpieza baja y vuelve a subir
-- [ ] T004 Agregar el renglón `104` a `guardedDownCleanup` en `server/internal/integration/harness_restaurado_test.go` en el orden de [data-model.md](data-model.md) «Down de la 0104»
-- [ ] T005 Escribir `server/migrations/0104_ingredient_merge.sql` según [data-model.md](data-model.md): `kind` + `check_ingredient_merge`; `brand` + índice nuevo (crear antes de borrar el viejo, `lock_timeout`); `expense_items.presentation_brand` + `snapshot_presentation_brand`; `ingredient_distinct_pairs` (RLS `nullif`, grants `select, insert`, índice por el lado alto); `redirect_merged_ingredient_movement` (before insert, `exists` primero, CTE con tope 16, piso ±0.0001); `reject_movement_on_merged_ingredient` (constraint diferido); `reject_merged_ingredient` en las 8 tablas, inmediato y diferido; `reject_reactivating_merged_ingredient`; solo las de trigger `security definer` con `search_path` fijo, `revoke execute from public`; Down con guarda
-- [ ] T006 Pasar la 0104 por el subagente `db-architect` y corregir lo que encuentre ANTES de aplicarla en la base local
-- [ ] T007 Clasificar `ingredient_replacements.kind`, `ingredient_presentations.brand` y `expense_items.presentation_brand` en `noPersonalData` («catálogo») en `server/internal/integration/respaldo_anonimo_test.go`
+- [X] T003 Escribir la prueba de la migración en `server/internal/integration/migration_0104_test.go` contra respaldo real con dos empresas: columnas `kind` (default `unit_change` en los reemplazos existentes), `brand`, `presentation_brand` con el relleno; índice de presentaciones con nombre+marca; tabla `ingredient_distinct_pairs` con RLS; triggers presentes; Down que se niega con una unión, una marca o un par, y que con la limpieza baja y vuelve a subir
+- [X] T004 Agregar el renglón `104` a `guardedDownCleanup` en `server/internal/integration/harness_restaurado_test.go` en el orden de [data-model.md](data-model.md) «Down de la 0104»
+- [X] T005 Escribir `server/migrations/0104_ingredient_merge.sql` según [data-model.md](data-model.md): `kind` + `check_ingredient_merge`; `brand` + índice nuevo (crear antes de borrar el viejo, `lock_timeout`); `expense_items.presentation_brand` + `snapshot_presentation_brand`; `ingredient_distinct_pairs` (RLS `nullif`, grants `select, insert`, índice por el lado alto); `redirect_merged_ingredient_movement` (before insert, `exists` primero, CTE con tope 16, piso ±0.0001); `reject_movement_on_merged_ingredient` (constraint diferido); `reject_merged_ingredient` en las 8 tablas, inmediato y diferido; `reject_reactivating_merged_ingredient`; solo las de trigger `security definer` con `search_path` fijo, `revoke execute from public`; Down con guarda
+- [X] T006 Pasar la 0104 por el subagente `db-architect` y corregir lo que encuentre ANTES de aplicarla en la base local
+- [X] T007 Clasificar `ingredient_replacements.kind`, `ingredient_presentations.brand` y `expense_items.presentation_brand` en `noPersonalData` («catálogo») en `server/internal/integration/respaldo_anonimo_test.go`
 - [ ] T008 Prueba de aislamiento de `ingredient_distinct_pairs` bajo `appRoleStore` con `inTheThreeCases` en `server/internal/integration/ingredient_merge_rls_test.go` (además de que `TestEveryCompanyTableIsIsolated` la recorra)
 - [ ] T009 `make sqlc` con la 0104 aplicada (sqlc lee el esquema de las migraciones) y `cd server && go build ./...` en verde
 
 **Errores y traducción de la base**
 
-- [ ] T010 [P] Prueba en `server/internal/store/errors_test.go`: `EGB02` → `domain.ErrIngredientMerged`, también envuelto; prueba de integración de que un `EGB02` nacido en el commit (trigger diferido) sale como 409 y no 500
-- [ ] T011 [P] Centinelas en `server/internal/domain/ingredients.go`: `ErrIngredientMerged`, `ErrMergeBlocked` (con mensaje de qué falta), `ErrMergeStale`, `ErrMergePresentationConflict`; mapeo en `server/internal/httpapi/respond.go` a 409 `INGREDIENT_MERGED`, `MERGE_BLOCKED`, `MERGE_STALE`, `MERGE_PRESENTATION_CONFLICT`
-- [ ] T012 `EGB02` en `DomainError` (`server/internal/store/errors.go`) y `DomainError(tx.Commit(ctx))` en los tres commits de `server/internal/store/store.go`
+- [X] T010 [P] Prueba en `server/internal/store/errors_test.go`: `EGB02` → `domain.ErrIngredientMerged`, también envuelto; prueba de integración de que un `EGB02` nacido en el commit (trigger diferido) sale como 409 y no 500
+- [X] T011 [P] Centinelas en `server/internal/domain/ingredients.go`: `ErrIngredientMerged`, `ErrMergeBlocked` (con mensaje de qué falta), `ErrMergeStale`, `ErrMergePresentationConflict`; mapeo en `server/internal/httpapi/respond.go` a 409 `INGREDIENT_MERGED`, `MERGE_BLOCKED`, `MERGE_STALE`, `MERGE_PRESENTATION_CONFLICT`
+- [X] T012 `EGB02` en `DomainError` (`server/internal/store/errors.go`) y `DomainError(tx.Commit(ctx))` en los tres commits de `server/internal/store/store.go`
 
 **Clasificación de tablas**
 
-- [ ] T013 Prueba: `TestEveryTableThatPointsToAnArticleIsClassified` revisa también `app.MergeTables`, y `TestEveryRejectingTableHasTheMergeGuard` revisa en `pg_trigger` que cada tabla clasificada «rechaza» tiene la guarda inmediata y la diferida, en `server/internal/integration/unit_change_test.go`
-- [ ] T014 `app.MergeTables` en `server/internal/app/ingredient_merge.go` y `ingredient_distinct_pairs` en `app.UnitChangeTables` (`server/internal/app/unit_change.go`)
+- [X] T013 Prueba: `TestEveryTableThatPointsToAnArticleIsClassified` revisa también `app.MergeTables`, y `TestEveryRejectingTableHasTheMergeGuard` revisa en `pg_trigger` que cada tabla clasificada «rechaza» tiene la guarda inmediata y la diferida, en `server/internal/integration/unit_change_test.go`
+- [X] T014 `app.MergeTables` en `server/internal/app/ingredient_merge.go` y `ingredient_distinct_pairs` en `app.UnitChangeTables` (`server/internal/app/unit_change.go`)
 
 **Bitácora**
 
@@ -69,7 +69,7 @@ código y se ve fallar por la razón correcta antes de implementar.
 
 ### Tests (primero, en rojo)
 
-- [ ] T017 [P] [US1] Unitarios table-driven en `server/internal/domain/ingredient_merge_test.go`: `ValidMergeRequest` (sin orígenes, más de 20, repetidos, destino entre orígenes, factor ≤ 0 o que no cabe, factor ≠ 1 con la misma unidad); `PlanMergedRecipe` (cambia de insumo conservando unidad; suma en la base del destino si la receta ya lo lleva); `MergedCost` (última compra entre todos, sin compras conserva el del destino, destino en cero toma el de un origen, convertido por factor)
+- [X] T017 [P] [US1] Unitarios table-driven en `server/internal/domain/ingredient_merge_test.go`: `ValidMergeRequest` (sin orígenes, más de 20, repetidos, destino entre orígenes, factor ≤ 0 o que no cabe, factor ≠ 1 con la misma unidad); `PlanMergedRecipe` (cambia de insumo conservando unidad; suma en la base del destino si la receta ya lo lleva); `MergedCost` (última compra entre todos, sin compras conserva el del destino, destino en cero toma el de un origen, convertido por factor)
 - [ ] T018 [US1] Integración en `server/internal/integration/ingredient_merge_test.go` — `TestMergeMovesEverythingAndLeavesNoRecipeOnTheSource`: existencia por sucursal (dos sucursales), recetas de producto activo, inactivo, extra y preparado, receta que ya llevaba los dos, costo, mínimo, origen archivado, ninguna `recipe_items` en el origen, eventos de bitácora en destino y orígenes; origen en negativo se traspasa tal cual y la vista previa marca `negativeAfter` si el destino queda en negativo; venta posterior descuenta del destino; conteo nuevo incluye la suma y no el origen; tres orígenes a la vez
 - [ ] T019 [US1] Integración de bloqueos y concurrencia en el mismo archivo: conteo abierto, compra por recibir, merma pendiente, preparado, origen archivado o ya unido → 409 `MERGE_BLOCKED` con mensaje; `TestASaleRacingTheMergeNeverLosesStock` (venta con el insumo tomado → unión 409; unión primero y venta después → la venta truena 409 al confirmar y el reintento descuenta del destino; la suma de movimientos cuadra con `stock_levels`); dos uniones a la vez se serializan; `TestALateMovementOnAMergedSourceGoesToTheTarget` (cancelar un pedido vendido antes de unir repone en el destino); un movimiento histórico del origen no se redirige al restaurar
 - [ ] T020 [US1] Integración de la huella: vista previa → venta → confirmar con la huella vieja = 409 `MERGE_STALE`; la vista previa no deja nada escrito (ni ids consumidos que cambien la huella)
@@ -78,7 +78,7 @@ código y se ve fallar por la razón correcta antes de implementar.
 
 ### Implementation
 
-- [ ] T023 [P] [US1] `server/internal/domain/ingredient_merge.go`: `ValidMergeRequest`, `PlanMergedRecipe`, `MergedCost`, `MergeMinStock` (hasta que T017 pase)
+- [X] T023 [P] [US1] `server/internal/domain/ingredient_merge.go`: `ValidMergeRequest`, `PlanMergedRecipe`, `MergedCost`, `MergeMinStock` (hasta que T017 pase)
 - [ ] T024 [US1] Consultas en `server/queries/ingredient_merge.sql`: candado ordenado de insumos (`for update nowait` por id), recetas del origen con su dueño, borrar renglón de receta, sumar a renglón existente, insertar unión (`kind = 'merge'`), última compra con costo por insumo, fijar costo resultante, orígenes de un destino con CTE recursivo; `make sqlc`
 - [ ] T025 [US1] `MergeIngredients(ctx, targetID, req, preview, fingerprint)` en `server/internal/app/ingredient_merge.go`: `LockCompositionEdits` → insumos ordenados `nowait` → existencias `nowait` → validar y bloqueos → recetas → traspaso por sucursal (`InsertReplacementMove` con la unión) → presentaciones/formatos/proveedor (US2) → costo y mínimo → archivar → `recomputeCosts` → bitácora → huella; con `preview` revierte con `errPreviewRollback`
 - [ ] T026 [US1] `planUnitChange` se niega con orígenes unidos y reactivar se niega para un origen unido en `server/internal/app/unit_change.go` y el servicio de archivar/reactivar

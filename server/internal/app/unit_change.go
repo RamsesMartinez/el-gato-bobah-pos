@@ -33,6 +33,7 @@ var UnitChangeTables = map[string]string{
 	"expense_items":               "uno sin anular bloquea (compra por recibir)",
 	"ingredient_cost_corrections": "convierte el costo",
 	"ingredient_replacements":     "no guarda cantidades del artículo",
+	"ingredient_distinct_pairs":   "no guarda cantidades del artículo",
 }
 
 // UnitChangeRequest es la clase nueva (su unidad base) y la equivalencia: cuánto de la base nueva vale

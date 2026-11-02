@@ -365,6 +365,34 @@ func TestEveryTableThatPointsToAnArticleIsClassified(t *testing.T) {
 		if _, ok := app.UnitChangeTables[tbl]; !ok {
 			t.Errorf("la tabla %s apunta a artículos y el cambio de unidad no dice qué hace con ella", tbl)
 		}
+		if _, ok := app.MergeTables[tbl]; !ok {
+			t.Errorf("la tabla %s apunta a artículos y la unión de insumos no dice qué hace con ella", tbl)
+		}
+	}
+}
+
+// Toda tabla que la unión clasifica como «después, rechaza» lleva las dos guardas de la 0104: la
+// inmediata y la diferida, que atrapa la fila que esperó la llave foránea mientras la unión
+// confirmaba. Sin la diferida, esa fila aterriza en un origen unido sin error.
+func TestEveryRejectingTableHasTheMergeGuard(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	for tbl, what := range app.MergeTables {
+		if !strings.Contains(what, "rechaza") {
+			continue
+		}
+		var immediate, deferred bool
+		if err := st.Pool.QueryRow(context.Background(), `
+			select exists (select 1 from pg_trigger g join pg_proc p on p.oid = g.tgfoid
+			                where g.tgrelid = $1::regclass and p.proname = 'reject_merged_ingredient' and not g.tgdeferrable),
+			       exists (select 1 from pg_trigger g join pg_proc p on p.oid = g.tgfoid
+			                where g.tgrelid = $1::regclass and p.proname = 'reject_merged_ingredient' and g.tginitdeferred)`,
+			tbl).Scan(&immediate, &deferred); err != nil {
+			t.Fatal(err)
+		}
+		if !immediate || !deferred {
+			t.Errorf("%s: guarda inmediata=%v diferida=%v; necesita las dos", tbl, immediate, deferred)
+		}
 	}
 }
 

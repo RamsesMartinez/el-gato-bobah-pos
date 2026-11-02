@@ -244,6 +244,14 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "UNIT_CHANGE_PENDING"
 	case errors.Is(err, domain.ErrCountNeedsConfirm):
 		status, code = http.StatusConflict, "NEEDS_CONFIRM"
+	case errors.Is(err, domain.ErrIngredientMerged):
+		status, code = http.StatusConflict, "INGREDIENT_MERGED"
+	case errors.Is(err, domain.ErrMergeBlocked):
+		status, code = http.StatusConflict, "MERGE_BLOCKED"
+	case errors.Is(err, domain.ErrMergeStale):
+		status, code = http.StatusConflict, "MERGE_STALE"
+	case errors.Is(err, domain.ErrMergePresentationConflict):
+		status, code = http.StatusConflict, "MERGE_PRESENTATION_CONFLICT"
 	case errors.Is(err, domain.ErrArticleInUse):
 		status, code = http.StatusConflict, "IN_USE"
 	case errors.Is(err, domain.ErrArticleStale):
