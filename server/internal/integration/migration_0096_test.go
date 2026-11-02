@@ -6,17 +6,7 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/pressly/goose/v3"
 )
-
-// migrarAbajoHastaErr es migrarAbajoHasta que devuelve el error en vez de tronar el test: el Down
-// que se niega es lo que se está probando.
-func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error {
-	t.Helper()
-	return goose.DownToContext(context.Background(), prepararGoose(t, pool), ".", version)
-}
 
 // ingredientManagementVersion es la migración de la gestión de artículos (spec 042).
 const ingredientManagementVersion = 96
