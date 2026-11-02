@@ -57,6 +57,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'ingredient.unit_changed': 'Cambió en qué se mide',
   'ingredient.unit_changed.detail': 'Detalle del cambio de unidad',
   'ingredient.replaced': 'Reemplazó el artículo por otro',
+  'ingredient.merged': 'Unió otros artículos en éste',
+  'ingredient.merged_into': 'Se unió a otro artículo',
   'presentation.created': 'Agregó un empaque',
   'presentation.updated': 'Editó un empaque',
   'presentation.retired': 'Retiró o volvió un empaque',

@@ -87,7 +87,7 @@ select exists (
 -- Empaques de compra (spec 038), los activos primero. Sin filtro, todos los de la empresa: la
 -- columna «Cómo llega» los pinta de una vez en vez de pedirlos insumo por insumo.
 select p.id, p.ingredient_id, p.name, p.qty_in_base, p.active, p.is_approximate, p.purchase_unit_id,
-       u.code as base_unit_code, u.kind as base_unit_kind
+       u.code as base_unit_code, u.kind as base_unit_kind, p.brand
 from ingredient_presentations p
 join ingredients i on i.id = p.ingredient_id
 join units u on u.id = i.base_unit_id

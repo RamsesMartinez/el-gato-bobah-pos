@@ -471,6 +471,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/reactivate", h.ReactivateArticle)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/unit/preview", h.PreviewUnitChange)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/unit", h.ChangeUnit)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/merge", h.MergeIngredients)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/presentation-suggestions", h.PresentationSuggestions)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/ingredient-categories", h.ArticleCategories)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredient-categories", h.CreateArticleCategory)

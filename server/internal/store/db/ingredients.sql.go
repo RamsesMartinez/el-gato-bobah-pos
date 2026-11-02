@@ -286,7 +286,7 @@ func (q *Queries) ListIngredients(ctx context.Context, onlyActive *bool) ([]List
 
 const listPresentations = `-- name: ListPresentations :many
 select p.id, p.ingredient_id, p.name, p.qty_in_base, p.active, p.is_approximate, p.purchase_unit_id,
-       u.code as base_unit_code, u.kind as base_unit_kind
+       u.code as base_unit_code, u.kind as base_unit_kind, p.brand
 from ingredient_presentations p
 join ingredients i on i.id = p.ingredient_id
 join units u on u.id = i.base_unit_id
@@ -304,6 +304,7 @@ type ListPresentationsRow struct {
 	PurchaseUnitID *int16          `json:"purchase_unit_id"`
 	BaseUnitCode   string          `json:"base_unit_code"`
 	BaseUnitKind   UnitKind        `json:"base_unit_kind"`
+	Brand          *string         `json:"brand"`
 }
 
 // Empaques de compra (spec 038), los activos primero. Sin filtro, todos los de la empresa: la
@@ -327,6 +328,7 @@ func (q *Queries) ListPresentations(ctx context.Context, ingredientID *int64) ([
 			&i.PurchaseUnitID,
 			&i.BaseUnitCode,
 			&i.BaseUnitKind,
+			&i.Brand,
 		); err != nil {
 			return nil, err
 		}

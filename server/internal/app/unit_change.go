@@ -93,6 +93,13 @@ func planUnitChange(ctx context.Context, q *db.Queries, art db.LockArticleNowait
 		return p, err
 	}
 	id := art.ID
+	// Un destino con insumos unidos no cambia de unidad (spec 056): la equivalencia de cada unión habla
+	// de la unidad de hoy, y el historial de sus orígenes dejaría de leerse bien.
+	if merged, err := q.CountMergedSources(ctx, id); err != nil {
+		return p, err
+	} else if merged > 0 {
+		return p, fmt.Errorf("%w: tiene %d insumo(s) unido(s); su unidad ya no se cambia", domain.ErrMergeBlocked, merged)
+	}
 	if open, err := q.OpenCountHasArticle(ctx, id); err != nil {
 		return p, err
 	} else if open {

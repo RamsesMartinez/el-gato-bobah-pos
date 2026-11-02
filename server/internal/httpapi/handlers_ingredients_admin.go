@@ -359,3 +359,29 @@ func unitChangeBody(w http.ResponseWriter, r *http.Request) (int64, app.UnitChan
 	}
 	return id, req, true
 }
+
+// POST /stock/articles/{id}/merge?preview=1 — une otros insumos en éste (spec 056). Con preview
+// responde lo que pasaría sin cambiar nada; sin él, confirma con la huella de la última vista previa.
+func (h *Handlers) MergeIngredients(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	preview, err := previewParam(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var req app.MergeRequest
+	if err := Decode(r, &req); err != nil {
+		Error(w, err)
+		return
+	}
+	out, err := h.backoffice.MergeIngredients(r.Context(), id, req, preview)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, out)
+}
