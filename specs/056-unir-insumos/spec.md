@@ -156,8 +156,10 @@ modos» crea «leche entera lala».
 
 **Acceptance Scenarios**:
 
-1. **Given** un insumo activo cuyo nombre contiene el que se guarda, o al revés, **When** se toca
-   «Guardar», **Then** aparece el aviso con el existente y no se crea nada todavía.
+1. **Given** un insumo activo cuyo nombre empieza con el que se guarda, o al revés, con dos palabras o
+   más en común al inicio («Leche entera» y «leche entera lala»), **When** se toca «Guardar», **Then**
+   aparece el aviso con el existente y no se crea nada todavía; una sola palabra en común («Leche») no
+   basta.
 2. **Given** un nombre con una letra cambiada o dos letras invertidas respecto de uno activo, **When**
    se toca «Guardar», **Then** aparece el aviso.
 3. **Given** el aviso, **When** se toca el insumo sugerido, **Then** se abre su ficha y no se crea
@@ -184,8 +186,8 @@ grupo desaparece. Marcar «No son lo mismo» en «Vaso 12 oz · Vaso 16 oz» lo 
 
 1. **Given** insumos activos con nombres parecidos (la regla de FR-017), **When** se abre «Posibles
    duplicados», **Then** aparecen agrupados (si A se parece a B y B a C, es un grupo de tres).
-2. **Given** un grupo, **When** se elige cuál se queda, **Then** se abre la vista previa de unir los
-   demás en ése, con la posibilidad de quitar alguno antes de confirmar.
+2. **Given** un grupo, **When** se elige cuál se queda y se toca «Revisar unión», **Then** se abre la
+   unión con los demás ya marcados, se puede quitar alguno, y de ahí la misma vista previa.
 3. **Given** un grupo marcado «No son lo mismo», **When** se vuelve a abrir la pantalla, **Then** ese
    par ya no se propone; si el grupo tenía tres y solo un par se descartó, los otros siguen.
 4. **Given** quien no tiene permiso de configurar el almacén, **Then** no ve la pantalla.

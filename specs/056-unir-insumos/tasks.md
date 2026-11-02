@@ -140,7 +140,7 @@ código y se ve fallar por la razón correcta antes de implementar.
 
 **Independent Test**: «Leche entera · Leche entera Marca B» aparece; elegir cuál se queda lleva a la vista previa; «No son lo mismo» en un par lo quita para siempre.
 
-- [X] T047 [P] [US6] Unitarios de `SimilarNames` y `DuplicateGroups` en `server/internal/domain/similar_names_test.go`: contiene como palabras completas (más corto ≥ 4 letras), una letra cambiada, dos invertidas, acentos/mayúsculas/signos, «Azúcar» contra «Leche entera» no; transitividad A~B~C en un grupo; un par descartado parte el grupo
+- [X] T047 [P] [US6] Unitarios de `SimilarNames` y `DuplicateGroups` en `server/internal/domain/similar_names_test.go`: uno es el inicio del otro con dos palabras o más (una palabra suelta no cuenta), una letra cambiada, dos invertidas, acentos/mayúsculas/signos, «Azúcar» contra «Leche entera» no; transitividad A~B~C en un grupo; un par descartado parte el grupo
 - [X] T048 [US6] `SimilarNames`, `DuplicateGroups` en `server/internal/domain/similar_names.go` (normalización de `NormalizeReasonName` más signos)
 - [X] T049 [US6] Integración en `server/internal/integration/duplicates_test.go`: `GET /stock/articles/duplicate-groups` (solo activos no preparados, sin pares descartados, `[]` y no `null` en el JSON crudo); `POST /stock/articles/distinct-pairs` idempotente, ordena el par, 400 con `a == b`, 404 con id de otra empresa; cajero → 403
 - [X] T050 [US6] Consultas (`server/queries/ingredient_merge.sql`), servicio y handlers de los dos endpoints, rutas con `inventory.configure`
@@ -169,7 +169,7 @@ código y se ve fallar por la razón correcta antes de implementar.
 - [X] T059 Documentar en `AGENTS.md` §2 «Unir insumos (spec 056)»: las guardas de la base (redirige movimientos, rechaza lo demás, diferido para la carrera), que un camino nuevo que escriba en una tabla que apunta a `ingredients` se clasifica en `MergeTables`, la marca copiada en la compra y que un destino con unidos no cambia de unidad
 - [X] T060 `/revision-de-codigo` (hook `after_implement`) y corregir lo que encuentre con su prueba
 - [X] T061 Prueba con usuario nuevo (subagente sin contexto) a 1024×600 con datos reales restaurados: escenarios Q1–Q12 de [quickstart.md](quickstart.md); lo observado en texto
-- [ ] T062 `make ci-local` verde; `cd server && go build ./... && go test ./...`; `cd web && bun run lint && bun run vitest run && bun run build`
+- [X] T062 `make ci-local` verde; `cd server && go build ./... && go test ./...`; `cd web && bun run lint && bun run vitest run && bun run build`
 
 ---
 
