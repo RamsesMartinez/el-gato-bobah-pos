@@ -9,6 +9,8 @@ import { useSessionStore } from '../../../stores/session';
 import { formatBaseQty, formatUnitCost } from '../../../shared/units';
 import { NO_LOCATION } from '../useLocations';
 import { NewArticleSheet } from './NewArticleSheet';
+import { presentationLabel } from '../../../shared/presentationLabel';
+import { DuplicatesSheet } from './DuplicatesSheet';
 
 // Almacén › Artículos (spec 042, maqueta «Lista de artículos», opción A con los ajustes de la
 // revisión): en la fila del buscador van «Lugar», «Activos / Archivados» y «+ Nuevo»; en chips, los dos
@@ -39,10 +41,14 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Omit<ArticleFilter, 'q'>>({});
   const [creating, setCreating] = useState(false);
+  const [duplicates, setDuplicates] = useState(false);
   const debounced = useDebounced(q, SEARCH_DELAY_MS);
   const f: ArticleFilter = { ...filter, q: debounced };
   const list = useQuery({ queryKey: ['articles', f], queryFn: () => backofficeApi.articles(f) });
   const places = useQuery({ queryKey: ['count-places'], queryFn: backofficeApi.countPlaces });
+  // Posibles duplicados (spec 056): el botón solo aparece con grupos y para quien puede unir.
+  const groups = useQuery({ queryKey: ['duplicate-groups'], queryFn: backofficeApi.duplicateGroups, enabled: canConfigure });
+  const groupCount = (groups.data?.groups ?? []).length;
   useEffect(() => { medirAccion('inventario', 'ver-articulos'); }, []);
 
   const placeValue = filter.place === undefined ? '' : String(filter.place);
@@ -73,11 +79,17 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
           <Button minH="44px" colorPalette="brand" flexShrink={0} onClick={() => setCreating(true)}>+ Nuevo</Button>
         )}
       </HStack>
-      <HStack gap={2} flexShrink={0}>
+      <HStack gap={2} flexShrink={0} flexWrap="wrap">
         {([['noCost', 'Sin costo'], ['negative', 'Existencia negativa']] as const).map(([k, label]) => (
           <Button key={k} minH="44px" borderRadius="full" variant={filter[k] ? 'subtle' : 'outline'} colorPalette={filter[k] ? 'brand' : 'gray'}
             aria-pressed={!!filter[k]} onClick={() => toggle(k)}>{label}</Button>
         ))}
+        <Box flex="1" />
+        {canConfigure && groupCount > 0 && (
+          <Button minH="44px" variant="outline" onClick={() => setDuplicates(true)}>
+            Posibles duplicados <Badge colorPalette="orange">{groupCount}</Badge>
+          </Button>
+        )}
       </HStack>
       <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" flex="1" minH={0} overflowY="auto">
         <Table.Root size="sm" stickyHeader>
@@ -100,6 +112,9 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
           </Table.Body>
         </Table.Root>
       </Box>
+      {duplicates && (
+        <DuplicatesSheet onClose={() => setDuplicates(false)} onMerged={() => { void list.refetch(); }} />
+      )}
       {creating && (
         <NewArticleSheet word={word} onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); onOpen(id); }} />
       )}
@@ -130,7 +145,7 @@ function ArticleLine({ a, onOpen }: { a: ArticleRow; onOpen: (id: number) => voi
       <Table.Cell>{cost ?? <Text as="span" fontSize="sm" color="fg.error" fontWeight="600">Sin costo</Text>}</Table.Cell>
       <Table.Cell>
         <Text fontSize="sm" color="fg.muted">
-          {packs.length ? packs.map((p) => `${p.name} · ${formatBaseQty(p.qtyInBase, a.baseUnitCode)}`).join(' · ') : 'Sin empaques'}
+          {packs.length ? packs.map((p) => `${presentationLabel(p)} · ${formatBaseQty(p.qtyInBase, a.baseUnitCode)}`).join(' · ') : 'Sin empaques'}
         </Text>
       </Table.Cell>
     </Table.Row>

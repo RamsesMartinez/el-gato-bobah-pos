@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { presentationLabel } from '../../shared/presentationLabel';
 import { medirAccion } from '../../api/uso';
 import { Box, Button, Center, HStack, Input, Progress, Spinner, Text, VStack } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -310,12 +311,12 @@ function EntryFields({ item, e, serverError }: { item: CountItem; e: ReturnType<
         <VStack align="stretch" gap={0} overflowY={many ? 'auto' : undefined} flex={many ? '1' : undefined} minH={0}>
           <Text fontWeight="700">Empaques cerrados</Text>
           {e.packs.map((p, i) => (
-            <HStack key={p.name} minH="56px" borderBottomWidth="1px" gap={3}>
-              <Text flex="1" fontSize="lg"><b>{p.name}</b> · {formatBaseQty(p.qtyInBase, item.baseUnitCode)}</Text>
-              <Button aria-label={`Quitar ${p.name}`} minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bump(i, -1)}>−</Button>
-              <Input aria-label={`${p.name} de ${item.name}`} value={e.counts[i]} {...box(e.field === i)}
+            <HStack key={p.id ?? `${p.name}-${i}`} minH="56px" borderBottomWidth="1px" gap={3}>
+              <Text flex="1" fontSize="lg"><b>{presentationLabel(p)}</b> · {formatBaseQty(p.qtyInBase, item.baseUnitCode)}</Text>
+              <Button aria-label={`Quitar ${presentationLabel(p)}`} minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bump(i, -1)}>−</Button>
+              <Input aria-label={`${presentationLabel(p)} de ${item.name}`} value={e.counts[i]} {...box(e.field === i)}
                 onFocus={() => e.setField(i)} onClick={() => e.setField(i)} />
-              <Button aria-label={`Agregar ${p.name}`} minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bump(i, 1)}>+</Button>
+              <Button aria-label={`Agregar ${presentationLabel(p)}`} minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bump(i, 1)}>+</Button>
             </HStack>
           ))}
         </VStack>
@@ -436,7 +437,7 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
   const needle = q.trim();
   // Buscar también por nombre de empaque (spec 042): quien busca «bolsa» encuentra el hielo.
   const shown = needle
-    ? count.items.filter((i) => matchesWords(i.name, needle) || i.presentations.some((p) => matchesWords(p.name, needle)))
+    ? count.items.filter((i) => matchesWords(i.name, needle) || i.presentations.some((p) => matchesWords(presentationLabel(p), needle)))
     : count.items;
   const groups = new Map<string, CountItem[]>();
   for (const i of shown) groups.set(placeOf(i), [...(groups.get(placeOf(i)) ?? []), i]);
@@ -453,7 +454,7 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
                   <Text fontWeight="600">{i.name}</Text>
                   {i.presentations.length > 0 && (
                     <Text fontSize="xs" color="fg.muted">
-                      {i.presentations.map((p) => `${p.name} (${formatBaseQty(p.qtyInBase, i.baseUnitCode)})`).join(' · ')}
+                      {i.presentations.map((p) => `${presentationLabel(p)} (${formatBaseQty(p.qtyInBase, i.baseUnitCode)})`).join(' · ')}
                     </Text>
                   )}
                 </VStack>

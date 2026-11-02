@@ -33,6 +33,7 @@ var UnitChangeTables = map[string]string{
 	"expense_items":               "uno sin anular bloquea (compra por recibir)",
 	"ingredient_cost_corrections": "convierte el costo",
 	"ingredient_replacements":     "no guarda cantidades del artículo",
+	"ingredient_distinct_pairs":   "no guarda cantidades del artículo",
 }
 
 // UnitChangeRequest es la clase nueva (su unidad base) y la equivalencia: cuánto de la base nueva vale
@@ -92,6 +93,13 @@ func planUnitChange(ctx context.Context, q *db.Queries, art db.LockArticleNowait
 		return p, err
 	}
 	id := art.ID
+	// Un destino con insumos unidos no cambia de unidad (spec 056): la equivalencia de cada unión habla
+	// de la unidad de hoy, y el historial de sus orígenes dejaría de leerse bien.
+	if merged, err := q.CountMergedSources(ctx, id); err != nil {
+		return p, err
+	} else if merged > 0 {
+		return p, fmt.Errorf("%w: tiene %d insumo(s) unido(s); su unidad ya no se cambia", domain.ErrMergeBlocked, merged)
+	}
 	if open, err := q.OpenCountHasArticle(ctx, id); err != nil {
 		return p, err
 	} else if open {
@@ -587,7 +595,7 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 			purchase = pr.PurchaseUnitID
 		}
 		if _, err := q.CreatePresentation(ctx, db.CreatePresentationParams{IngredientID: newID, Name: pr.Name, QtyInBase: to,
-			PurchaseUnitID: purchase, IsApproximate: pr.IsApproximate}); err != nil {
+			PurchaseUnitID: purchase, IsApproximate: pr.IsApproximate, Brand: pr.Brand}); err != nil {
 			return err
 		}
 	}

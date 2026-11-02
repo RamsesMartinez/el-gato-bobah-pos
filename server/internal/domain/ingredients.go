@@ -128,6 +128,30 @@ func TrendPct(current, reference decimal.Decimal) *decimal.Decimal {
 // lo tenga capturado (409 IN_USE): la pantalla dice cuáles.
 var ErrArticleInUse = fmt.Errorf("%w: el artículo todavía se usa", ErrConflict)
 
+// ErrIngredientMerged: algo nuevo apunta a un insumo que ya se unió a otro (la base lo rechaza con
+// EGB02, 0104). 409 INGREDIENT_MERGED: la pantalla tenía el insumo de antes y hay que volver a elegir.
+var ErrIngredientMerged = fmt.Errorf("%w: ese insumo se unió a otro; vuelve a elegirlo", ErrConflict)
+
+// IngredientMergedInto es ErrIngredientMerged con el nombre del destino, para que la pantalla diga a
+// cuál elegir.
+type IngredientMergedInto struct{ Target string }
+
+func (e IngredientMergedInto) Error() string {
+	return "ese insumo se unió a " + e.Target + "; vuelve a elegirlo"
+}
+func (e IngredientMergedInto) Unwrap() error { return ErrIngredientMerged }
+
+// ErrMergeBlocked: la unión espera a que se resuelva algo de un origen o del destino (409
+// MERGE_BLOCKED). El mensaje dice qué y de cuál.
+var ErrMergeBlocked = fmt.Errorf("%w: falta resolver algo antes de unir", ErrConflict)
+
+// ErrMergeStale: lo que se vio en la vista previa ya no es lo que pasaría (409 MERGE_STALE).
+var ErrMergeStale = fmt.Errorf("%w: algo cambió mientras revisabas", ErrConflict)
+
+// ErrMergePresentationConflict: dos presentaciones con el mismo nombre y marca traen cantidades
+// distintas; hay que renombrar una antes de unir (409 MERGE_PRESENTATION_CONFLICT).
+var ErrMergePresentationConflict = fmt.Errorf("%w: dos presentaciones se llaman igual y traen distinto", ErrConflict)
+
 // ConvertRecipeQty pasa la cantidad de un renglón de receta a la unidad base nueva: de su unidad a la
 // base vieja (unitToBase) y de ahí con la equivalencia.
 func ConvertRecipeQty(qty, unitToBase, factor decimal.Decimal) decimal.Decimal {

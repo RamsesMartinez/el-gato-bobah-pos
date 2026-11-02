@@ -509,6 +509,26 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     única por pago en las salidas). Una salida nueva sin él no truena, pero desmarcar ese pago
     después responde 409 porque no encuentra qué borrar. Los candados van caja → turno → pago, el
     orden de la apertura y el cierre; tomar el pago primero los cruza.
+- **Unir insumos** (spec 056, 0104). Varios insumos que son lo mismo con otra marca pasan a uno
+  (`POST /stock/articles/{id}/merge`, `?preview=1` es la misma transacción revertida, con huella). Cada
+  origen queda en `ingredient_replacements` con `kind = 'merge'` y se archiva. Cuatro cosas que no se ven:
+  - **Nada nuevo cuelga de un insumo unido, y lo garantiza la base**: un movimiento de existencia que
+    llega a un origen (la cancelación de un pedido vendido antes de unir, una pantalla abierta desde
+    antes, la API anterior durante la subida) se redirige al destino con la equivalencia
+    (`redirect_merged_ingredient_movement`); cualquier otra fila que apunte a un origen se rechaza con
+    `EGB02` → 409 `INGREDIENT_MERGED` nombrando el destino. Cada guarda va dos veces: inmediata y como
+    constraint trigger diferido, que atrapa la fila que esperó la llave foránea mientras la unión
+    confirmaba. **Una tabla nueva que apunte a `ingredients`** va en `app.MergeTables` (y en
+    `app.UnitChangeTables`); si la clasificas como «rechaza», lleva las dos guardas o truena
+    `TestEveryRejectingTableHasTheMergeGuard`.
+  - **`EGB02` puede nacer en `tx.Commit`**: por eso los commits de `store.go` pasan por `DomainError`.
+    Sin eso, la venta que pierde la carrera contra una unión respondía 500.
+  - **La marca de la presentación se copia en la compra** (`expense_items.presentation_brand`, por
+    trigger): editarla después no reescribe de qué marca fue cada compra. La presentación pasa al
+    destino conservando su id por la misma razón.
+  - **Un destino con insumos unidos no cambia de unidad**: la equivalencia de cada unión habla de la
+    unidad de hoy. Unir no reescribe ventas, compras ni conteos pasados; el historial de costos y la
+    bitácora del destino leen los de sus orígenes con un CTE recursivo dentro de la consulta (bajo RLS).
 - **Editar un gasto ya guardado** (spec 053, 0103). Encabezado, agregar y quitar renglones
   (`POST /expenses/{id}/edit`, permiso `expenses.edit`, solo admin) y entregas con su fecha
   (`POST /expenses/{id}/deliveries`, `inventory.receive`). Cinco cosas que no se ven:

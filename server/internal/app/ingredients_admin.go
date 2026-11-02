@@ -34,6 +34,7 @@ type PresentationLabel struct {
 	ID        int64           `json:"id"`
 	Name      string          `json:"name"`
 	QtyInBase decimal.Decimal `json:"qtyInBase"`
+	Brand     *string         `json:"brand"`
 }
 
 // ArticleRow es un renglón de la lista de artículos.
@@ -78,7 +79,7 @@ func (s *BackofficeService) ListArticles(ctx context.Context, f ArticleFilter) (
 	byArticle := map[int64][]PresentationLabel{}
 	for _, p := range pres {
 		if p.Active && !p.IsApproximate {
-			byArticle[p.IngredientID] = append(byArticle[p.IngredientID], PresentationLabel{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase})
+			byArticle[p.IngredientID] = append(byArticle[p.IngredientID], PresentationLabel{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase, Brand: p.Brand})
 		}
 	}
 	out := make([]ArticleRow, len(rows))
@@ -233,6 +234,17 @@ type ArticleSheet struct {
 	ArticleRow
 	CostSource string    `json:"costSource"`
 	UpdatedAt  time.Time `json:"updatedAt"`
+	// MergedInto: a qué insumo se unió (spec 056); nulo si no es origen de una unión.
+	MergedInto *MergedInto `json:"mergedInto"`
+	// MergedSources: cuántos insumos se unieron en éste.
+	MergedSources int `json:"mergedSources"`
+}
+
+// MergedInto es el destino de una unión, para la ficha del origen.
+type MergedInto struct {
+	ID   int64     `json:"id"`
+	Name string    `json:"name"`
+	At   time.Time `json:"at"`
 }
 
 // GetArticle es la ficha de un artículo, con sus empaques activos.
@@ -249,8 +261,19 @@ func (s *BackofficeService) GetArticle(ctx context.Context, id int64) (ArticleSh
 	ps := []PresentationLabel{}
 	for _, p := range pres {
 		if p.Active && !p.IsApproximate {
-			ps = append(ps, PresentationLabel{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase})
+			ps = append(ps, PresentationLabel{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase, Brand: p.Brand})
 		}
+	}
+	var into *MergedInto
+	switch t, err := q.MergeTargetOf(ctx, id); {
+	case err == nil:
+		into = &MergedInto{ID: t.ID, Name: t.Name, At: t.CreatedAt}
+	case !errors.Is(err, pgx.ErrNoRows):
+		return ArticleSheet{}, err
+	}
+	sources, err := q.CountMergedSources(ctx, id)
+	if err != nil {
+		return ArticleSheet{}, err
 	}
 	return ArticleSheet{
 		ArticleRow: ArticleRow{
@@ -259,7 +282,7 @@ func (s *BackofficeService) GetArticle(ctx context.Context, id int64) (ArticleSh
 			CategoryID: r.CategoryID, Category: r.Category, CountPlaceID: r.CountPlaceID, CountPlace: r.CountPlace,
 			OnHand: r.OnHand, Presentations: ps, CompositionStatus: textoDe(r.CompositionStatus),
 		},
-		CostSource: r.CostSource, UpdatedAt: r.UpdatedAt,
+		CostSource: r.CostSource, UpdatedAt: r.UpdatedAt, MergedInto: into, MergedSources: int(sources),
 	}, nil
 }
 
@@ -432,6 +455,10 @@ type CostHistoryItem struct {
 	PackCost *decimal.Decimal `json:"packCost"`
 	Supplier *string          `json:"supplier"`
 	User     *string          `json:"user"`
+	// Brand es la marca con la que se compró (copiada en la compra, 0104).
+	Brand *string `json:"brand"`
+	// FromName es el insumo unido del que viene el renglón (spec 056); nulo si es del propio.
+	FromName *string `json:"fromName"`
 }
 
 // HistoryCursor es dónde sigue una página: el último renglón que ya se mostró.
@@ -461,6 +488,14 @@ func (s *BackofficeService) ArticleCostHistory(ctx context.Context, id int64, be
 	if err != nil {
 		return CostHistoryPage{}, err
 	}
+	merged, err := q.MergedSourceNames(ctx, id)
+	if err != nil {
+		return CostHistoryPage{}, err
+	}
+	sourceNames := make(map[int64]string, len(merged))
+	for _, m := range merged {
+		sourceNames[m.ID] = m.Name
+	}
 	page := CostHistoryPage{Items: []CostHistoryItem{}}
 	for i, r := range rows {
 		if i == historyPage {
@@ -470,7 +505,10 @@ func (s *BackofficeService) ArticleCostHistory(ctx context.Context, id int64, be
 			break
 		}
 		it := CostHistoryItem{Kind: r.Kind, At: r.At, ID: r.ID, UnitCost: r.UnitCost, Presentation: r.Presentation,
-			PackQty: r.PackQtyInBase, Supplier: r.Supplier, User: r.UserName}
+			PackQty: r.PackQtyInBase, Supplier: r.Supplier, User: r.UserName, Brand: r.Brand}
+		if name, ok := sourceNames[r.SourceID]; ok {
+			it.FromName = &name
+		}
 		if r.PackQtyInBase != nil {
 			v := domain.Round2(r.UnitCost.Mul(*r.PackQtyInBase))
 			it.PackCost = &v
@@ -662,6 +700,13 @@ func (s *BackofficeService) ReactivateArticle(ctx context.Context, id int64) err
 		}
 		if a.IsActive {
 			return nil
+		}
+		// Un insumo unido a otro no se reactiva (spec 056, FR-011); la base también lo impide.
+		switch t, err := q.MergeTargetOf(ctx, id); {
+		case err == nil:
+			return domain.IngredientMergedInto{Target: t.Name}
+		case !errors.Is(err, pgx.ErrNoRows):
+			return err
 		}
 		// Otro activo pudo tomar su nombre mientras estaba archivado.
 		art, err := q.GetArticle(ctx, id)

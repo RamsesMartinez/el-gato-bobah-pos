@@ -1,4 +1,5 @@
 import { DiaDelGasto } from './DiaDelGasto';
+import { presentationLabel } from '../../shared/presentationLabel';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { useRef, useState, type ReactNode } from 'react';
 import {
@@ -817,7 +818,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
               <Button key={p.id} minH="44px" size="sm" variant={item.presentationId === p.id ? 'subtle' : 'outline'}
                 colorPalette={item.presentationId === p.id ? 'brand' : 'gray'} aria-pressed={item.presentationId === p.id}
                 onClick={() => onChange({ presentationId: p.id, unitId: null })}>
-                {p.name} · {p.approximate ? '≈ ' : ''}{formatBaseQty(p.qtyInBase, p.baseUnitCode)}
+                {presentationLabel(p)} · {p.approximate ? '≈ ' : ''}{formatBaseQty(p.qtyInBase, p.baseUnitCode)}
               </Button>
             ))}
             {buyUnits.map((u) => (

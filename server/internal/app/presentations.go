@@ -27,6 +27,8 @@ type PresentationView struct {
 	// Approximate: se compra en otro tipo de unidad que el insumo («Kilo ≈ 4 piezas»).
 	Approximate    bool   `json:"approximate"`
 	PurchaseUnitID *int16 `json:"purchaseUnitId"`
+	// Brand es la marca o el proveedor (spec 056), opcional.
+	Brand *string `json:"brand"`
 }
 
 // PresentationInput es un empaque tal como se captura: cuánto trae y en qué unidad. Active nulo
@@ -37,6 +39,8 @@ type PresentationInput struct {
 	UnitID      int16
 	Approximate bool
 	Active      *bool
+	// Brand nulo crea sin marca y, al editar, conserva la que tiene; vacío la quita.
+	Brand *string
 }
 
 // Presentations lista los empaques de un insumo, o los de toda la empresa sin filtro. Nunca nil:
@@ -51,7 +55,7 @@ func (s *BackofficeService) Presentations(ctx context.Context, ingredientID *int
 		out = append(out, PresentationView{
 			ID: r.ID, IngredientID: r.IngredientID, Name: r.Name, QtyInBase: r.QtyInBase,
 			BaseUnitCode: r.BaseUnitCode, Active: r.Active, Approximate: r.IsApproximate,
-			PurchaseUnitID: r.PurchaseUnitID,
+			PurchaseUnitID: r.PurchaseUnitID, Brand: r.Brand,
 		})
 	}
 	return out, nil
@@ -101,16 +105,20 @@ func (s *BackofficeService) CreatePresentation(ctx context.Context, ingredientID
 		if err != nil {
 			return err
 		}
+		brand, err := domain.CleanPresentationBrand(in.Brand)
+		if err != nil {
+			return err
+		}
 		id, err = q.CreatePresentation(ctx, db.CreatePresentationParams{
 			IngredientID: ingredientID, Name: plan.Name, QtyInBase: plan.QtyInBase,
-			PurchaseUnitID: approxUnit(plan.Approximate, in.UnitID), IsApproximate: plan.Approximate,
+			PurchaseUnitID: approxUnit(plan.Approximate, in.UnitID), IsApproximate: plan.Approximate, Brand: brand,
 		})
 		if err != nil {
 			return err
 		}
 		return recordAudit(ctx, q, domain.AuditEvent{
 			Action: domain.AuditPresentationCreated, EntityType: "presentation", EntityID: id,
-			After: map[string]any{"name": plan.Name, "qtyInBase": plan.QtyInBase, "approximate": plan.Approximate},
+			After: map[string]any{"name": plan.Name, "qtyInBase": plan.QtyInBase, "approximate": plan.Approximate, "brand": brand},
 		})
 	})
 	if err != nil {
@@ -141,13 +149,21 @@ func (s *BackofficeService) UpdatePresentation(ctx context.Context, id int64, in
 		if in.Active != nil {
 			active = *in.Active
 		}
+		// Sin marca en el cuerpo se queda la que tiene: una pantalla anterior a la 056 no la manda y,
+		// al editar el nombre, la borraría.
+		brand := cur.Brand
+		if in.Brand != nil {
+			if brand, err = domain.CleanPresentationBrand(in.Brand); err != nil {
+				return err
+			}
+		}
 		before, err := q.GetPresentationForAudit(ctx, id)
 		if err != nil {
 			return err
 		}
 		n, err := q.UpdatePresentation(ctx, db.UpdatePresentationParams{
 			ID: id, Name: plan.Name, QtyInBase: plan.QtyInBase,
-			PurchaseUnitID: approxUnit(plan.Approximate, in.UnitID), IsApproximate: plan.Approximate, Active: active,
+			PurchaseUnitID: approxUnit(plan.Approximate, in.UnitID), IsApproximate: plan.Approximate, Active: active, Brand: brand,
 		})
 		if err != nil {
 			return err
@@ -164,11 +180,11 @@ func (s *BackofficeService) UpdatePresentation(ctx context.Context, id int64, in
 				return err
 			}
 		}
-		if before.Name != plan.Name || !before.QtyInBase.Equal(plan.QtyInBase) {
+		if before.Name != plan.Name || !before.QtyInBase.Equal(plan.QtyInBase) || textoDe(before.Brand) != textoDe(brand) {
 			return recordAudit(ctx, q, domain.AuditEvent{
 				Action: domain.AuditPresentationUpdated, EntityType: "presentation", EntityID: id,
-				Before: map[string]any{"name": before.Name, "qtyInBase": before.QtyInBase},
-				After:  map[string]any{"name": plan.Name, "qtyInBase": plan.QtyInBase},
+				Before: map[string]any{"name": before.Name, "qtyInBase": before.QtyInBase, "brand": before.Brand},
+				After:  map[string]any{"name": plan.Name, "qtyInBase": plan.QtyInBase, "brand": brand},
 			})
 		}
 		return nil

@@ -556,6 +556,7 @@ type WastePack struct {
 	ID        int64           `json:"id"`
 	Name      string          `json:"name"`
 	QtyInBase decimal.Decimal `json:"qtyInBase"`
+	Brand     *string         `json:"brand"`
 }
 
 // WasteIngredient es un artículo que se puede registrar.
@@ -612,7 +613,7 @@ func (s *BackofficeService) WasteItemsForCapture(ctx context.Context) (WasteItem
 	}
 	byIng := map[int64][]WastePack{}
 	for _, p := range packs {
-		byIng[p.IngredientID] = append(byIng[p.IngredientID], WastePack{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase})
+		byIng[p.IngredientID] = append(byIng[p.IngredientID], WastePack{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase, Brand: p.Brand})
 	}
 	out := WasteItems{Ingredients: make([]WasteIngredient, 0, len(ings)), Products: make([]WasteProduct, 0, len(prods)),
 		Recent: make([]WasteRecent, 0, len(recent))}

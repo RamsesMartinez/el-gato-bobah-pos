@@ -323,6 +323,23 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
+	// Primero se sueltan los movimientos del traspaso, después las uniones; las presentaciones que
+	// quedarían repetidas por nombre al quitar la marca se desactivan antes de borrarla, o el índice
+	// único viejo no se podría volver a crear.
+	104: {
+		`update stock_movements set replacement_id = null
+		  where replacement_id in (select id from ingredient_replacements where kind = 'merge')`,
+		`delete from ingredient_replacements where kind = 'merge'`,
+		`delete from ingredient_distinct_pairs`,
+		`update ingredient_presentations p set active = false
+		  where p.active and p.brand is not null and exists (
+		    select 1 from ingredient_presentations o
+		     where o.active and o.id < p.id and o.company_id = p.company_id and o.ingredient_id = p.ingredient_id
+		       and regexp_replace(translate(lower(btrim(o.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+		         = regexp_replace(translate(lower(btrim(p.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g'))`,
+		`update ingredient_presentations set brand = null where brand is not null`,
+		`update expense_items set presentation_brand = null where presentation_brand is not null`,
+	},
 	103: {`update stock_movements set effective_on = business_day_of(company_id, created_at)
 	        where effective_on is not null and effective_on <> business_day_of(company_id, created_at)`},
 	102: {`update expense_payments set drawer_extra = 0 where drawer_extra > 0`},
