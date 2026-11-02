@@ -484,6 +484,15 @@ func TestRemovingAReceivedLineReversesEachDeliveryOnItsDay(t *testing.T) {
 	if !sum.IsZero() {
 		t.Fatalf("los movimientos del renglón suman %s, no 0", sum)
 	}
+	// Lo aplicado es la suma de SUS movimientos: si se queda en 30, la siguiente corrección del
+	// gasto calcula su diferencia contra mercancía que ya salió.
+	var applied decimal.Decimal
+	if err := k.st.Pool.QueryRow(context.Background(), `select applied_qty_base from expense_items where id = $1`, item).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if !applied.IsZero() {
+		t.Fatalf("el renglón quitado dice que aplicó %s; sus movimientos suman 0", applied)
+	}
 	if after := onHandIngredient(t, k.st, k.tapas); !after.Equal(before.Sub(dd("30"))) {
 		t.Fatalf("existencias %s, quiere %s", after, before.Sub(dd("30")))
 	}

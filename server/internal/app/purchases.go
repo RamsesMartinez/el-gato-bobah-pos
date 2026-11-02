@@ -181,6 +181,7 @@ func stockStates(rows []db.ListStockLinesRow) []domain.StockLineState {
 			ID: r.ID, IngredientID: derefID(r.IngredientID),
 			Unit: domain.PurchaseUnit{
 				Kind: string(r.BuyKind), ToBase: r.BuyToBase, BaseKind: string(r.BaseKind), PackQtyInBase: r.PackQtyInBase,
+				FromPresentation: r.PresentationID != nil,
 			},
 			Ordered: r.Quantity, Received: received, NotComing: r.NotComingQty, Applied: r.AppliedQtyBase,
 			Excluded: r.Excluded,
