@@ -26,5 +26,7 @@ caso ask   "${ssh}'journalctl -n 5 2>/tmp/x'"
 caso ask   "${ssh}'sudo systemctl restart docker'"
 caso ask   "gcloud compute ssh pos-vps --zone=us-central1-a -- -N -L 5434:10.0.0.2:5432"
 caso ask   "${ssh}'ls /srv'"
+caso none  "grep -n -A5 -i \"pos-vps\\|34.68\" ~/.ssh/config | head -20; which gcloud"
+caso ask   "ssh 34.68.178.107 uptime; rm -rf /"
 caso none  "gcloud compute ssh pos-vps-dev --command='docker restart api'"
 [ $fallas -eq 0 ] && echo "✓ proteger-produccion: todos los casos" || exit 1
