@@ -31,7 +31,13 @@ export async function abrirLaPrincipalSiEstaCerrada(): Promise<number | null> {
   if (!principal || principal.openSessionId !== null) return null;
   // Con la asistencia encendida, abrir pide la entrada de quien abre (spec 046).
   await marcarEntrada(jwt);
-  await pedir(jwt, 'POST', '/cash-sessions', { registerId: principal.id, openingCash: FONDO, manualReason: 'apertura de la suite e2e' });
+  // Con datos reales, lo contado casi nunca coincide con el último cierre y la apertura pide motivo
+  // (OPENING_REASON_REQUIRED). Sin él la caja no se abría, en silencio, y toda prueba que entra por
+  // Vender esperaba 30 s a «No hay caja abierta» (#193). El motivo solo se valida cuando hace falta.
+  await pedir(jwt, 'POST', '/cash-sessions', {
+    registerId: principal.id, openingCash: FONDO, manualReason: 'apertura de la suite e2e',
+    openingReason: 'other', openingReasonNote: 'apertura de la suite e2e',
+  });
   return principal.id;
 }
 
