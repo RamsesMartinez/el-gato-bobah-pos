@@ -91,6 +91,9 @@ describe('EditPreviewSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
     expect(await screen.findByText(/Algo cambió mientras revisabas/)).toBeTruthy();
     expect(onDone).not.toHaveBeenCalled();
+    // El aviso sale en el mismo render que pide la vista previa nueva; la petición sale después, en
+    // el efecto de la consulta. Revisarla sin esperar fallaba 1 de cada 5 corridas.
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
     expect(request.mock.calls.at(-1)![0]).toBe(true);
   });
 });
