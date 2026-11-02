@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/shopspring/decimal"
@@ -132,6 +133,22 @@ func NextIngredientCost(method CostingMethod, onHand, cost, qty, unitCost decima
 	}
 	total := onHand.Mul(cost).Add(qty.Mul(unitCost))
 	return total.Div(onHand.Add(qty)).Round(6)
+}
+
+// LastPriceApplies dice si una compra que llegó el día `arrived` pone el costo con «último precio»:
+// sí, salvo que otra compra haya llegado un día después (#187). Capturar tarde una compra olvidada no
+// la vuelve la más reciente. El mismo día manda la que se captura al último. Solo cuenta la fecha que
+// dice cada valor, no su hora ni su zona: las dos son días de negocio.
+func LastPriceApplies(arrived time.Time, newest *time.Time) bool {
+	if newest == nil {
+		return true
+	}
+	return calendarDay(arrived) >= calendarDay(*newest)
+}
+
+func calendarDay(t time.Time) int {
+	y, m, d := t.Date()
+	return y*10000 + int(m)*100 + d
 }
 
 // StockLineState es un renglón de compra tal como está guardado: lo pedido, lo que llegó y lo que

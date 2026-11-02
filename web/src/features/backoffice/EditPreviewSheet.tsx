@@ -196,12 +196,17 @@ export function EditPreviewSheet({ request, onClose, onDone, title = 'Antes de c
                     const unit = preview.inventory.find((i) => i.ingredientId === c.ingredientId)?.baseUnit;
                     // El costo sale de la compra: ni bajar ni subir es un error, así que va sin rojo ni verde.
                     return (
-                      <Table.Row key={`c-${c.ingredientId}`}>
-                        <Table.Cell>Costo de {c.name}{unit ? ` por ${formatBaseQty(1, unit).replace(/^1 /, '')}` : ''}</Table.Cell>
-                        <Table.Cell textAlign="end">{money(c.before)}</Table.Cell>
-                        <Table.Cell textAlign="end" fontWeight="600">{money(c.after)}</Table.Cell>
-                        <Table.Cell textAlign="end" color="fg.muted">{diff === 0 ? 'se queda igual' : signed(diff, (v) => money(v))}</Table.Cell>
-                      </Table.Row>
+                      <Fragment key={`c-${c.ingredientId}`}>
+                        <Table.Row>
+                          <Table.Cell>Costo de {c.name}{unit ? ` por ${formatBaseQty(1, unit).replace(/^1 /, '')}` : ''}</Table.Cell>
+                          <Table.Cell textAlign="end">{money(c.before)}</Table.Cell>
+                          <Table.Cell textAlign="end" fontWeight="600">{money(c.after)}</Table.Cell>
+                          <Table.Cell textAlign="end" color="fg.muted">{diff === 0 ? 'se queda igual' : signed(diff, (v) => money(v))}</Table.Cell>
+                        </Table.Row>
+                        {c.newerPurchaseOn && (
+                          <Table.Row><Table.Cell colSpan={4} color="fg.muted">Sin cambio de costo: hay una compra más reciente ({dia(c.newerPurchaseOn)})</Table.Cell></Table.Row>
+                        )}
+                      </Fragment>
                     );
                   })}
               </PreviewTable>

@@ -71,6 +71,19 @@ describe('EditPreviewSheet', () => {
     expect(screen.getByText(/Falta pagar \$60/)).toBeTruthy();
   });
 
+  // #187: una compra que llegó antes que la más reciente no cambia el costo, y la vista previa dice por qué.
+  test('el costo que no cambia por una compra más reciente lo dice con su fecha', async () => {
+    const preview = base({
+      costs: [
+        { ingredientId: 7, name: 'Tapas', before: '2.5', after: '2.5', newerPurchaseOn: '2026-10-31' },
+        { ingredientId: 8, name: 'Popotes', before: '1', after: '1.2', newerPurchaseOn: null },
+      ],
+    });
+    setup(async () => ({ preview, expense: null }));
+    expect(await screen.findByText('Sin cambio de costo: hay una compra más reciente (31 oct)')).toBeTruthy();
+    expect(screen.getAllByText(/compra más reciente/)).toHaveLength(1);
+  });
+
   test('sin avisos ni decisiones es compacta y se confirma de inmediato', async () => {
     setup(async () => ({ preview: base({ header: [{ field: 'supplier', before: 'Desechables del Centro', after: 'Plásticos del Norte' }] }), expense: null }));
     expect(await screen.findByText('Plásticos del Norte')).toBeTruthy();

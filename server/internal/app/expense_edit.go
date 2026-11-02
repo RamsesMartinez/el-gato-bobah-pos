@@ -156,12 +156,14 @@ type MoneyEffect struct {
 	DecisionKey  *string         `json:"decisionKey"`
 }
 
-// CostEffect es el costo por unidad base de un insumo, antes y después.
+// CostEffect es el costo por unidad base de un insumo, antes y después. NewerPurchaseOn
+// (AAAA-MM-DD) dice por qué no cambió: hay una compra que llegó después (#187).
 type CostEffect struct {
-	IngredientID int64           `json:"ingredientId"`
-	Name         string          `json:"name"`
-	Before       decimal.Decimal `json:"before"`
-	After        decimal.Decimal `json:"after"`
+	IngredientID    int64           `json:"ingredientId"`
+	Name            string          `json:"name"`
+	Before          decimal.Decimal `json:"before"`
+	After           decimal.Decimal `json:"after"`
+	NewerPurchaseOn *string         `json:"newerPurchaseOn"`
 }
 
 // EditDecision es una pregunta de la vista previa: Chosen nil = falta decidir.
@@ -214,6 +216,8 @@ type editMove struct {
 	Day          time.Time
 	RegisteredAt time.Time
 	Description  string
+	// NewerPurchaseOn: el costo no cambió por una compra que llegó después (#187).
+	NewerPurchaseOn *time.Time
 }
 
 func (r *editRun) touch(ing, prod *int64) {
@@ -487,15 +491,25 @@ func (s *BackofficeService) finishEdit(ctx context.Context, r *editRun, stockBef
 	}
 	costs := []CostEffect{}
 	movedIng := map[int64]bool{}
+	newer := map[int64]time.Time{}
 	for _, m := range r.moves {
 		movedIng[m.IngredientID] = true
+		if n := m.NewerPurchaseOn; n != nil && n.After(newer[m.IngredientID]) {
+			newer[m.IngredientID] = *n
+		}
 	}
 	for _, ing := range sortedKeys(r.ings) {
 		b, a := costsBefore[ing], costsAfter[ing]
 		if !movedIng[ing] && b.CurrentCost.Equal(a.CurrentCost) {
 			continue
 		}
-		costs = append(costs, CostEffect{IngredientID: ing, Name: a.Name, Before: b.CurrentCost, After: a.CurrentCost})
+		e := CostEffect{IngredientID: ing, Name: a.Name, Before: b.CurrentCost, After: a.CurrentCost}
+		// Solo si de verdad no cambió: otro renglón del mismo insumo, de un día más reciente, sí lo mueve.
+		if n, ok := newer[ing]; ok && b.CurrentCost.Equal(a.CurrentCost) {
+			on := n.Format(time.DateOnly)
+			e.NewerPurchaseOn = &on
+		}
+		costs = append(costs, e)
 	}
 
 	*out = EditPreview{Header: r.header, Lines: r.lines, Inventory: inv, Money: money, Costs: costs, Decisions: decided}
@@ -614,7 +628,7 @@ func (r *editRun) recordMoves(moves []appliedMove, at time.Time) {
 	for _, m := range moves {
 		if m.IngredientID != nil {
 			r.moves = append(r.moves, editMove{IngredientID: *m.IngredientID, Qty: m.Qty, Day: m.Day,
-				RegisteredAt: at, Description: m.Description})
+				RegisteredAt: at, Description: m.Description, NewerPurchaseOn: m.NewerPurchaseOn})
 		}
 	}
 }

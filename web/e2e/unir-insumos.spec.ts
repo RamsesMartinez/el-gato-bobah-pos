@@ -1,5 +1,5 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
-import { entrar } from './pos';
+import { iniciarSesion } from './sesion';
 import { API, tokenDeRequest } from './ambiente';
 
 // UNIR INSUMOS (spec 056): lo que jsdom no mide. A 1024×600 y con toque: la hoja de unir y la de
@@ -29,6 +29,15 @@ async function chicos(page: Page) {
     .filter((c) => c.alto < 44));
 }
 
+// entrarAlAlmacen inicia sesión sin pasar por Vender: el almacén no necesita caja abierta, y entrar
+// por Vender hacía que estas pruebas fallaran cuando la caja estaba cerrada.
+async function entrarAlAlmacen(page: Page, ruta = '/almacen?tab=insumos') {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await iniciarSesion(page);
+  await page.goto(ruta);
+}
+
 const deLado = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
 test('unir dos marcas desde la ficha: vista previa, confirmar y la existencia queda sumada', async ({ page, request }) => {
@@ -38,8 +47,7 @@ test('unir dos marcas desde la ficha: vista previa, confirmar y la existencia qu
   const a = await crear(request, token, destino, '500');
   await crear(request, token, origen, '300');
 
-  await entrar(page);
-  await page.goto(`/almacen?tab=insumos&open=${a}`);
+  await entrarAlAlmacen(page, `/almacen?tab=insumos&open=${a}`);
   await expect(page.getByRole('button', { name: /Volver a Artículos/ })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Unir otros aquí' }).click();
   const hoja = page.locator('[role="dialog"]').last();
@@ -69,8 +77,7 @@ test('al dar de alta un nombre parecido, pregunta antes de crear y deja abrir el
   const token = await tokenDeRequest(request);
   const existente = `Polvo e2e ${corrida}`;
   const id = await crear(request, token, existente, '0');
-  await entrar(page);
-  await page.goto('/almacen?tab=insumos');
+  await entrarAlAlmacen(page);
   await page.getByRole('button', { name: '+ Nuevo' }).click();
   const hoja = page.locator('[role="dialog"]').last();
   await hoja.getByLabel(/Nombre/).fill(`${existente} chocolate`);
@@ -85,8 +92,7 @@ test('al dar de alta un nombre parecido, pregunta antes de crear y deja abrir el
 });
 
 test('posibles duplicados: el botón cabe en la barra y el grupo abierto mide 44 px (solo lee)', async ({ page }) => {
-  await entrar(page);
-  await page.goto('/almacen?tab=insumos');
+  await entrarAlAlmacen(page);
   const boton = page.getByRole('button', { name: /Posibles duplicados/ });
   test.skip(!(await boton.waitFor({ timeout: 10_000 }).then(() => true, () => false)), 'la base no tiene posibles duplicados');
   expect(await deLado(page), 'la barra de Artículos se desplaza de lado').toBeLessThanOrEqual(0);

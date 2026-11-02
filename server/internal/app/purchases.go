@@ -199,6 +199,8 @@ type appliedMove struct {
 	Description  string
 	Qty          decimal.Decimal
 	Day          time.Time
+	// NewerPurchaseOn: el costo no cambió porque otra compra del insumo llegó después (#187).
+	NewerPurchaseOn *time.Time
 }
 
 // applyStockLines lleva lo sumado de cada renglón vivo del gasto a lo que llegó, actualiza el
@@ -258,20 +260,22 @@ func (s *BackofficeService) applyStockLinesOn(ctx context.Context, q *db.Queries
 			return nil, domain.ErrValidation
 		}
 		unitCost := domain.UnitCost(r.Amount, m.Ordered)
+		on := today
+		if d, ok := perLine[r.ID]; ok {
+			on = d
+		}
+		var newer *time.Time
 		if r.IngredientID != nil && m.Delta.IsPositive() && !r.IsGift {
-			changed, err := s.applyPurchaseCost(ctx, q, *r.IngredientID, method, m.Delta, unitCost)
+			changed, kept, err := s.applyPurchaseCost(ctx, q, *r.IngredientID, method, m.Delta, unitCost, on)
 			if err != nil {
 				return nil, err
 			}
 			costChanged = costChanged || changed
+			newer = kept
 		}
 		reason := "compra: " + r.Description
 		if m.Delta.IsNegative() {
 			reason = "corrección de compra: " + r.Description
-		}
-		on := today
-		if d, ok := perLine[r.ID]; ok {
-			on = d
 		}
 		id := r.ID
 		if err := q.InsertLineMovement(ctx, db.InsertLineMovementParams{
@@ -285,7 +289,7 @@ func (s *BackofficeService) applyStockLinesOn(ctx context.Context, q *db.Queries
 			return nil, err
 		}
 		out = append(out, appliedMove{ItemID: r.ID, IngredientID: r.IngredientID, ProductID: r.ProductID,
-			Description: r.Description, Qty: m.Delta, Day: on})
+			Description: r.Description, Qty: m.Delta, Day: on, NewerPurchaseOn: newer})
 	}
 	if costChanged {
 		if err := recomputeCosts(ctx, q); err != nil {
@@ -307,22 +311,33 @@ func (s *BackofficeService) applyStockLinesOn(ctx context.Context, q *db.Queries
 	return out, q.SetExpenseReceivedAt(ctx, db.SetExpenseReceivedAtParams{ID: expenseID, ReceivedAt: received})
 }
 
-// applyPurchaseCost recalcula el costo de un insumo con el método de la empresa. El insumo se toma
-// sin esperar: si lo tiene una venta, la compra se reintenta.
-func (s *BackofficeService) applyPurchaseCost(ctx context.Context, q *db.Queries, ingredientID int64, method domain.CostingMethod, qty, unitCost decimal.Decimal) (bool, error) {
+// applyPurchaseCost recalcula el costo de un insumo con el método de la empresa por una compra que
+// llegó el día `arrived`. El insumo se toma sin esperar: si lo tiene una venta, la compra se
+// reintenta. Con «último precio», una compra que llegó antes que la más reciente no cambia el costo
+// y devuelve el día de esa más reciente (#187).
+func (s *BackofficeService) applyPurchaseCost(ctx context.Context, q *db.Queries, ingredientID int64, method domain.CostingMethod, qty, unitCost decimal.Decimal, arrived time.Time) (changed bool, newer *time.Time, err error) {
 	cost, err := q.LockIngredientCostNowait(ctx, ingredientID)
 	if err != nil {
-		return false, lockErr(err)
+		return false, nil, lockErr(err)
+	}
+	if method == domain.CostingLast {
+		newest, err := q.NewestPurchaseArrival(ctx, ingredientID)
+		if err != nil {
+			return false, nil, err
+		}
+		if newest.Valid && !domain.LastPriceApplies(arrived, &newest.Time) {
+			return false, &newest.Time, nil
+		}
 	}
 	onHand, err := q.IngredientOnHandTotal(ctx, &ingredientID)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	next := domain.NextIngredientCost(method, onHand, cost, qty, unitCost, false)
 	if next.Equal(cost) {
-		return false, nil
+		return false, nil, nil
 	}
-	return true, q.UpdateIngredientCost(ctx, db.UpdateIngredientCostParams{ID: ingredientID, CurrentCost: next})
+	return true, nil, q.UpdateIngredientCost(ctx, db.UpdateIngredientCostParams{ID: ingredientID, CurrentCost: next})
 }
 
 // SaveStockLines deja los renglones de almacén de un gasto como los pide la pantalla de «Corregir

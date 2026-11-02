@@ -555,7 +555,8 @@ export interface EditPreview {
     after: string; negativeAfter: boolean; decisionKey: string | null }[];
   money: { amountBefore: string; amountAfter: string; paid: string; statusBefore: string; statusAfter: string;
     due: string; overpaid: string; decisionKey: string | null };
-  costs: { ingredientId: number; name: string; before: string; after: string }[];
+  // newerPurchaseOn: el costo no cambió porque otra compra llegó después (#187); falta en una API anterior.
+  costs: { ingredientId: number; name: string; before: string; after: string; newerPurchaseOn?: string | null }[];
   decisions: EditDecision[];
   fingerprint: string;
 }

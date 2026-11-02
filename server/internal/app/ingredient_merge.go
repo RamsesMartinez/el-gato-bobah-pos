@@ -544,6 +544,9 @@ func (m *mergeRun) mergeCost(ctx context.Context) error {
 		switch {
 		case err == nil:
 			c.LastPurchaseAt, c.LastPurchaseCost = &last.CreatedAt, &last.UnitCost
+			if last.EffectiveOn.Valid {
+				c.LastPurchaseOn = &last.EffectiveOn.Time
+			}
 		case !errors.Is(err, pgx.ErrNoRows):
 			return err
 		}
