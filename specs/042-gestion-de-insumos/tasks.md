@@ -295,8 +295,9 @@ guarda 0.
   `server/internal/integration/unit_change_test.go`, vista en rojo con el 400 de antes.
 T048 queda al final a propósito: es la única abierta y va en la subida siguiente, no en esta.
 
-- [ ] T048 En una subida posterior: borrar `POST /ingredients` (Revisión B1). Seguimiento en el issue
-  #115, «Quitar POST /ingredients en la subida siguiente a la 042».
+- [X] T048 En una subida posterior: borrar `POST /ingredients` (Revisión B1). Seguimiento en el issue
+  #115, «Quitar POST /ingredients en la subida siguiente a la 042». Hecho en el #115: sin ruta,
+  handler ni servicio; `TestCreatingArticlesHTTP` exige 405 y que no se cree nada.
 
 ## Dependencies
 

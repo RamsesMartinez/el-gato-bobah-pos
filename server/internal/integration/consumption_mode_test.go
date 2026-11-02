@@ -343,11 +343,11 @@ func TestIngredientNamesAreUniqueIgnoringCaseAndAccents(t *testing.T) {
 	bo := app.NewBackofficeService(st, clock)
 	pieza := unitID(t, st, "pieza")
 	for _, name := range []string{"lata coca", "LATA COCA", "Láta Cóca", "  Lata   Coca "} {
-		if _, err := bo.CreateIngredient(ctx, app.IngredientInput{Name: name, BaseUnitID: pieza}); !errors.Is(err, domain.ErrConflict) {
+		if _, err := bo.CreateArticle(ctx, app.ArticleCreate{Name: name, BaseUnitID: pieza}); !errors.Is(err, domain.ErrConflict) {
 			t.Errorf("alta de %q = %v, quiere ErrConflict", name, err)
 		}
 	}
-	if _, err := bo.CreateIngredient(ctx, app.IngredientInput{Name: "Lata Coca Light", BaseUnitID: pieza}); err != nil {
+	if _, err := bo.CreateArticle(ctx, app.ArticleCreate{Name: "Lata Coca Light", BaseUnitID: pieza}); err != nil {
 		t.Errorf("otro nombre sí se da de alta: %v", err)
 	}
 
@@ -358,7 +358,7 @@ func TestIngredientNamesAreUniqueIgnoringCaseAndAccents(t *testing.T) {
 		wg.Add(1)
 		go func(i int, name string) {
 			defer wg.Done()
-			_, errs[i] = bo.CreateIngredient(ctx, app.IngredientInput{Name: name, BaseUnitID: pieza})
+			_, errs[i] = bo.CreateArticle(ctx, app.ArticleCreate{Name: name, BaseUnitID: pieza})
 		}(i, name)
 	}
 	wg.Wait()

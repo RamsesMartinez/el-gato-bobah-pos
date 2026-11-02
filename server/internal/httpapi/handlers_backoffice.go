@@ -1390,30 +1390,6 @@ func (h *Handlers) ListIngredients(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-func (h *Handlers) CreateIngredient(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Name        string           `json:"name"`
-		BaseUnitID  int16            `json:"baseUnitId"`
-		CategoryID  *int64           `json:"categoryId"`
-		MinStock    *decimal.Decimal `json:"minStock"`
-		TrackStock  *bool            `json:"trackStock"`
-		IsPackaging *bool            `json:"isPackaging"`
-	}
-	if err := Decode(r, &body); err != nil {
-		Error(w, err)
-		return
-	}
-	v, err := h.backoffice.CreateIngredient(r.Context(), app.IngredientInput{
-		Name: body.Name, BaseUnitID: body.BaseUnitID, CategoryID: body.CategoryID,
-		MinStock: body.MinStock, TrackStock: body.TrackStock, IsPackaging: body.IsPackaging,
-	})
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	JSON(w, http.StatusCreated, v)
-}
-
 // SearchArticles alimenta el picker de artículo del gasto (ingredientes + productos con stock).
 func (h *Handlers) SearchArticles(w http.ResponseWriter, r *http.Request) {
 	items, err := h.backoffice.SearchArticles(r.Context(), r.URL.Query().Get("q"))

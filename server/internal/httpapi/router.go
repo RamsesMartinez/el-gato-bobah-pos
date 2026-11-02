@@ -418,7 +418,6 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// tiene contra qué buscar (los ingredientes solo entraban por el importador).
 					r.Get("/units", h.Units)
 					r.Get("/ingredients", h.ListIngredients)
-					r.Post("/ingredients", h.CreateIngredient)
 					r.Get("/articles", h.SearchArticles)
 					// Sugerencias de mapeo proveedor→inventario. Solo sugiere.
 					r.Get("/articles/suggest", h.SuggestArticles)

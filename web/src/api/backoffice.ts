@@ -1145,8 +1145,6 @@ export const backofficeApi = {
   units: () => api.get<{ items: Unit[] }>('/units'),
   ingredients: (onlyActive = false) =>
     api.get<{ items: Ingredient[] }>(`/ingredients${onlyActive ? '?onlyActive=true' : ''}`),
-  createIngredient: (b: { name: string; baseUnitId: number; minStock?: string }) =>
-    api.post<Ingredient>('/ingredients', b),
   presentations: () => api.get<Presentation[]>('/stock/presentations'),
   createPresentation: (ingredientId: number, b: PresentationBody) =>
     api.post<Presentation>(`/stock/ingredients/${ingredientId}/presentations`, b),
