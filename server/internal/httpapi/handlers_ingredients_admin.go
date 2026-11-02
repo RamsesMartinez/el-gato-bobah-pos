@@ -385,3 +385,40 @@ func (h *Handlers) MergeIngredients(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, out)
 }
+
+// GET /stock/articles/duplicate-groups — los grupos de posibles duplicados (spec 056).
+func (h *Handlers) DuplicateGroups(w http.ResponseWriter, r *http.Request) {
+	groups, err := h.backoffice.DuplicateGroups(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"groups": groups})
+}
+
+// POST /stock/articles/distinct-pairs — `{ a, b }`: «No son lo mismo».
+func (h *Handlers) MarkDistinct(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		A int64 `json:"a"`
+		B int64 `json:"b"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.backoffice.MarkDistinct(r.Context(), body.A, body.B); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /stock/articles/similar?name= — los insumos con nombre parecido, antes de dar de alta uno.
+func (h *Handlers) SimilarArticles(w http.ResponseWriter, r *http.Request) {
+	items, err := h.backoffice.SimilarArticles(r.Context(), r.URL.Query().Get("name"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}

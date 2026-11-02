@@ -143,9 +143,11 @@ consulta, RLS aplica.
 ## R9. Aviso de posible duplicado
 
 **Decisión**: lógica pura en `domain.SimilarNames(name, candidates)`, con la normalización de
-`NormalizeReasonName` (la misma de `IngredientNameTaken`) más signos fuera. Parecido = (a) uno contiene
-al otro como palabras completas y el más corto tiene al menos 4 letras, o (b) distancia de
-Damerau-Levenshtein ≤ 1 con nombres de hasta 8 letras y ≤ 2 con más largos. Hasta 5, los más
+`NormalizeReasonName` (la misma de `IngredientNameTaken`) más signos fuera. Parecido = (a) uno es el
+inicio del otro con dos palabras o más, o (b) distancia de Damerau-Levenshtein ≤ 1 con nombres de
+hasta 10 letras y ≤ 2 con más largos, con las mismas cifras. Calibrado contra los 449 insumos activos
+de la empresa real (2026-11-01): con «contiene» y una palabra suelta salían 18 grupos, uno de 24
+insumos distintos unidos por «Queso»/«Crema»; con esta regla salen 7, todos duplicados plausibles. Hasta 5, los más
 parecidos primero. Endpoint `GET /stock/articles/similar?name=` con los activos de la empresa
 (cientos de nombres: compararlos en Go es trivial y queda probado table-driven).
 

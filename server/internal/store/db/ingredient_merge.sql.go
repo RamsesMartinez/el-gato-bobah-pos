@@ -70,6 +70,53 @@ func (q *Queries) DeleteRecipeItem(ctx context.Context, id int64) error {
 	return err
 }
 
+const distinctPairs = `-- name: DistinctPairs :many
+select low_ingredient_id, high_ingredient_id from ingredient_distinct_pairs
+`
+
+type DistinctPairsRow struct {
+	LowIngredientID  int64 `json:"low_ingredient_id"`
+	HighIngredientID int64 `json:"high_ingredient_id"`
+}
+
+func (q *Queries) DistinctPairs(ctx context.Context) ([]DistinctPairsRow, error) {
+	rows, err := q.db.Query(ctx, distinctPairs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DistinctPairsRow{}
+	for rows.Next() {
+		var i DistinctPairsRow
+		if err := rows.Scan(&i.LowIngredientID, &i.HighIngredientID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const insertDistinctPair = `-- name: InsertDistinctPair :exec
+insert into ingredient_distinct_pairs (low_ingredient_id, high_ingredient_id, user_id)
+values ($1, $2, $3)
+on conflict (company_id, low_ingredient_id, high_ingredient_id) do nothing
+`
+
+type InsertDistinctPairParams struct {
+	LowIngredientID  int64 `json:"low_ingredient_id"`
+	HighIngredientID int64 `json:"high_ingredient_id"`
+	UserID           int64 `json:"user_id"`
+}
+
+// Marcar dos veces el mismo par no es un error: la pantalla lo puede mandar al cerrar y al deshacer.
+func (q *Queries) InsertDistinctPair(ctx context.Context, arg InsertDistinctPairParams) error {
+	_, err := q.db.Exec(ctx, insertDistinctPair, arg.LowIngredientID, arg.HighIngredientID, arg.UserID)
+	return err
+}
+
 const insertMerge = `-- name: InsertMerge :one
 insert into ingredient_replacements (old_ingredient_id, new_ingredient_id, factor, user_id, kind)
 values ($1, $2, $3, $4, 'merge')
@@ -148,6 +195,49 @@ func (q *Queries) LastPurchaseCost(ctx context.Context, ingredientID *int64) (La
 	var i LastPurchaseCostRow
 	err := row.Scan(&i.CreatedAt, &i.UnitCost)
 	return i, err
+}
+
+const mergeCandidates = `-- name: MergeCandidates :many
+select i.id, i.name::text as name, u.code as base_unit_code, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+  from ingredients i
+  join units u on u.id = i.base_unit_id
+  left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
+ where i.is_active and not i.is_prep
+ order by i.name, i.id
+`
+
+type MergeCandidatesRow struct {
+	ID           int64           `json:"id"`
+	Name         string          `json:"name"`
+	BaseUnitCode string          `json:"base_unit_code"`
+	OnHand       decimal.Decimal `json:"on_hand"`
+}
+
+// Los insumos que se pueden proponer como duplicados: activos y no preparados, con su existencia en la
+// sucursal (para que quien revisa vea cuál tiene más).
+func (q *Queries) MergeCandidates(ctx context.Context) ([]MergeCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, mergeCandidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MergeCandidatesRow{}
+	for rows.Next() {
+		var i MergeCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.BaseUnitCode,
+			&i.OnHand,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const mergeTargetOf = `-- name: MergeTargetOf :one

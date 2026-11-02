@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
@@ -550,4 +551,100 @@ func (m *mergeRun) audit(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// maxSimilar es cuántos parecidos se ofrecen al dar de alta un insumo (FR-017).
+const maxSimilar = 5
+
+// maxSimilarQuery es el largo del nombre que se compara: el de un insumo, con margen.
+const maxSimilarQuery = 80
+
+// DuplicateItem es un insumo de un grupo de posibles duplicados.
+type DuplicateItem struct {
+	ID           int64           `json:"id"`
+	Name         string          `json:"name"`
+	BaseUnitCode string          `json:"baseUnitCode"`
+	OnHand       decimal.Decimal `json:"onHand"`
+}
+
+// DuplicateGroup son insumos activos con nombres parecidos.
+type DuplicateGroup struct {
+	Items []DuplicateItem `json:"items"`
+}
+
+// candidates son los insumos que se pueden proponer, con su vista para la pantalla.
+func (s *BackofficeService) candidates(ctx context.Context, q *db.Queries) ([]domain.NamedItem, map[int64]DuplicateItem, error) {
+	rows, err := q.MergeCandidates(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	named := make([]domain.NamedItem, len(rows))
+	views := make(map[int64]DuplicateItem, len(rows))
+	for i, r := range rows {
+		named[i] = domain.NamedItem{ID: r.ID, Name: r.Name}
+		views[r.ID] = DuplicateItem{ID: r.ID, Name: r.Name, BaseUnitCode: r.BaseUnitCode, OnHand: r.OnHand}
+	}
+	return named, views, nil
+}
+
+// DuplicateGroups son los grupos de posibles duplicados de la empresa, sin los pares descartados (FR-021).
+// Nunca nil.
+func (s *BackofficeService) DuplicateGroups(ctx context.Context) ([]DuplicateGroup, error) {
+	q := s.store.QC(ctx)
+	named, views, err := s.candidates(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	pairs, err := q.DistinctPairs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	distinct := make([]domain.DistinctPair, len(pairs))
+	for i, p := range pairs {
+		distinct[i] = domain.DistinctPair{Low: p.LowIngredientID, High: p.HighIngredientID}
+	}
+	out := []DuplicateGroup{}
+	for _, g := range domain.DuplicateGroups(named, distinct) {
+		items := make([]DuplicateItem, len(g))
+		for i, it := range g {
+			items[i] = views[it.ID]
+		}
+		out = append(out, DuplicateGroup{Items: items})
+	}
+	return out, nil
+}
+
+// MarkDistinct guarda que dos insumos no son lo mismo: el par ya no se propone (FR-023).
+func (s *BackofficeService) MarkDistinct(ctx context.Context, a, b int64) error {
+	actor, ok := ActorUserFrom(ctx)
+	if !ok {
+		return fmt.Errorf("%w: marcar necesita a la persona que lo hace", domain.ErrForbidden)
+	}
+	if a <= 0 || b <= 0 || a == b {
+		return fmt.Errorf("%w: elige dos insumos distintos", domain.ErrValidation)
+	}
+	err := s.store.QC(ctx).InsertDistinctPair(ctx, db.InsertDistinctPairParams{LowIngredientID: min(a, b), HighIngredientID: max(a, b), UserID: actor})
+	if isForeignKeyViolation(err) {
+		// La llave compuesta por empresa: un insumo de otra empresa no existe para ésta.
+		return domain.ErrNotFound
+	}
+	return err
+}
+
+// SimilarArticles son los insumos activos con nombre parecido a uno que se va a dar de alta (FR-017).
+// Nunca nil.
+func (s *BackofficeService) SimilarArticles(ctx context.Context, name string) ([]DuplicateItem, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || len([]rune(name)) > maxSimilarQuery {
+		return nil, fmt.Errorf("%w: el nombre va de 1 a %d letras", domain.ErrValidation, maxSimilarQuery)
+	}
+	named, views, err := s.candidates(ctx, s.store.QC(ctx))
+	if err != nil {
+		return nil, err
+	}
+	out := []DuplicateItem{}
+	for _, it := range domain.SimilarNames(name, named, maxSimilar) {
+		out = append(out, views[it.ID])
+	}
+	return out, nil
 }

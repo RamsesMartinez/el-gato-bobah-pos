@@ -638,3 +638,65 @@ func TestMergeWithClashingPresentationsIsBlocked(t *testing.T) {
 		t.Fatalf("confirmar con un conflicto = %v; quiere MERGE_PRESENTATION_CONFLICT", err)
 	}
 }
+
+// US3: unir un insumo medido distinto con su equivalencia. Todo lo que guarda cantidades se convierte,
+// y un movimiento tardío diminuto no truena por el check de cero.
+func TestMergeWithAnEquivalenceConvertsEverything(t *testing.T) {
+	t.Parallel()
+	k := newMergeKit(t)
+	ctx := context.Background()
+	bag := ingredientIn(t, k.st, defaultCompanyID, "Tapas en bolsa unir", "g") // 4 g por tapa
+	caps := ingredientIn(t, k.st, defaultCompanyID, "Tapas unir", "pieza")
+	adjust(t, k.st, "ingrediente", bag, "400")
+	adjust(t, k.st, "ingrediente", caps, "10")
+	cup := makeProduct(t, k.st, "Vaso con tapa unir", qty("20"), false)
+	if _, err := k.st.Pool.Exec(ctx, `update products set recipe_id = $2 where id = $1`, cup, makeRecipe(t, k.st, map[int64]string{bag: "4"})); err != nil {
+		t.Fatal(err)
+	}
+	var supplier int64
+	if err := k.st.Pool.QueryRow(ctx, `insert into suppliers (company_id, name) values ($1, 'Desechables unir') returning id`, defaultCompanyID).Scan(&supplier); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.st.Pool.Exec(ctx, `insert into ingredient_presentations (company_id, ingredient_id, name, qty_in_base) values ($1, $2, 'Paquete', 200)`,
+		defaultCompanyID, bag); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.st.Pool.Exec(ctx, `insert into supplier_items (company_id, supplier_id, raw_name, norm_name, status, item_type, ingredient_id, pack_qty_in_base)
+		values ($1, $2, 'TAPAS BOLSA', 'tapas bolsa', 'mapeado', 'ingrediente', $3, 400)`, defaultCompanyID, supplier, bag); err != nil {
+		t.Fatal(err)
+	}
+	f := qty("0.25")
+	k.merge(t, caps, app.MergeRequest{Sources: []app.MergeSourceInput{{ID: bag, Factor: &f}}})
+
+	if got := onHandIngredient(t, k.st, caps); !got.Equal(qty("110")) {
+		t.Fatalf("tapas = %s; quiere 10 + 400 g / 4 = 110", got)
+	}
+	var recipeQty decimal.Decimal
+	var unit string
+	if err := k.st.Pool.QueryRow(ctx, `select ri.quantity, u.code from recipe_items ri join units u on u.id = ri.unit_id
+		join products p on p.recipe_id = ri.recipe_id where p.id = $1`, cup).Scan(&recipeQty, &unit); err != nil {
+		t.Fatal(err)
+	}
+	if !recipeQty.Equal(qty("1")) || unit != "pieza" {
+		t.Fatalf("la receta lleva %s %s; quiere 1 pieza", recipeQty, unit)
+	}
+	var pack, learned decimal.Decimal
+	if err := k.st.Pool.QueryRow(ctx, `select qty_in_base from ingredient_presentations where name = 'Paquete' and ingredient_id = $1`, caps).Scan(&pack); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.st.Pool.QueryRow(ctx, `select pack_qty_in_base from supplier_items where supplier_id = $1`, supplier).Scan(&learned); err != nil {
+		t.Fatal(err)
+	}
+	if !pack.Equal(qty("50")) || !learned.Equal(qty("100")) {
+		t.Fatalf("paquete = %s, aprendido = %s; quiere 50 y 100 piezas", pack, learned)
+	}
+	// Un movimiento tardío diminuto en gramos: 0.0001 g × 0.25 redondea a cero, y la columna no lo admite.
+	var moved decimal.Decimal
+	if err := k.st.Pool.QueryRow(ctx, `insert into stock_movements (company_id, item_type, ingredient_id, movement_type, quantity)
+		values ($1, 'ingrediente', $2, 'ajuste', -0.0001) returning quantity`, defaultCompanyID, bag).Scan(&moved); err != nil {
+		t.Fatalf("un movimiento diminuto redirigido: %v", err)
+	}
+	if !moved.Equal(qty("-0.0001")) {
+		t.Fatalf("quedó en %s; quiere -0.0001", moved)
+	}
+}

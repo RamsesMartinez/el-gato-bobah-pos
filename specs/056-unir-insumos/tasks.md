@@ -113,9 +113,9 @@ código y se ve fallar por la razón correcta antes de implementar.
 
 **Independent Test**: B en g (400 g) en A en piezas (10): sin equivalencia se niega; con «1 g = 0.25 piezas» → A 110 piezas y la receta de 4 g pasa a 1 pieza.
 
-- [ ] T038 [P] [US3] Unitarios en `ingredient_merge_test.go` (domain): conversión de receta, existencia, presentación y costo con factor; cantidad que queda en cero → error; factor que no cabe → error
-- [ ] T039 [US3] Integración: unión con factor convierte existencias, recetas, presentaciones, formatos y contenido aprendido del proveedor; el movimiento tardío redirigido se convierte (y uno diminuto no truena por el `check` de cero); el historial de costos del destino muestra el del origen convertido
-- [ ] T040 [US3] Aplicar el factor en `MergeIngredients` (`server/internal/app/ingredient_merge.go`)
+- [X] T038 [P] [US3] Unitarios en `ingredient_merge_test.go` (domain): conversión de receta, existencia, presentación y costo con factor; cantidad que queda en cero → error; factor que no cabe → error
+- [X] T039 [US3] Integración: unión con factor convierte existencias, recetas, presentaciones, formatos y contenido aprendido del proveedor; el movimiento tardío redirigido se convierte (y uno diminuto no truena por el `check` de cero); el historial de costos del destino muestra el del origen convertido
+- [X] T040 [US3] Aplicar el factor en `MergeIngredients` (`server/internal/app/ingredient_merge.go`)
 - [ ] T041 [US3] Prueba primero en `MergeSheet.test.tsx` y luego el paso 2 «¿Cuánto equivale?» en `MergeSheet.tsx` (un renglón por elegido de otra medida, «1 pieza = ___ ml», teclado numérico de la app; sin todos los valores no avanza) — fila «Unir insumos» de Maquetas
 
 ---
@@ -140,10 +140,10 @@ código y se ve fallar por la razón correcta antes de implementar.
 
 **Independent Test**: «Leche entera · Leche entera Marca B» aparece; elegir cuál se queda lleva a la vista previa; «No son lo mismo» en un par lo quita para siempre.
 
-- [ ] T047 [P] [US6] Unitarios de `SimilarNames` y `DuplicateGroups` en `server/internal/domain/similar_names_test.go`: contiene como palabras completas (más corto ≥ 4 letras), una letra cambiada, dos invertidas, acentos/mayúsculas/signos, «Azúcar» contra «Leche entera» no; transitividad A~B~C en un grupo; un par descartado parte el grupo
-- [ ] T048 [US6] `SimilarNames`, `DuplicateGroups` en `server/internal/domain/similar_names.go` (normalización de `NormalizeReasonName` más signos)
-- [ ] T049 [US6] Integración en `server/internal/integration/duplicates_test.go`: `GET /stock/articles/duplicate-groups` (solo activos no preparados, sin pares descartados, `[]` y no `null` en el JSON crudo); `POST /stock/articles/distinct-pairs` idempotente, ordena el par, 400 con `a == b`, 404 con id de otra empresa; cajero → 403
-- [ ] T050 [US6] Consultas (`server/queries/ingredient_merge.sql`), servicio y handlers de los dos endpoints, rutas con `inventory.configure`
+- [X] T047 [P] [US6] Unitarios de `SimilarNames` y `DuplicateGroups` en `server/internal/domain/similar_names_test.go`: contiene como palabras completas (más corto ≥ 4 letras), una letra cambiada, dos invertidas, acentos/mayúsculas/signos, «Azúcar» contra «Leche entera» no; transitividad A~B~C en un grupo; un par descartado parte el grupo
+- [X] T048 [US6] `SimilarNames`, `DuplicateGroups` en `server/internal/domain/similar_names.go` (normalización de `NormalizeReasonName` más signos)
+- [X] T049 [US6] Integración en `server/internal/integration/duplicates_test.go`: `GET /stock/articles/duplicate-groups` (solo activos no preparados, sin pares descartados, `[]` y no `null` en el JSON crudo); `POST /stock/articles/distinct-pairs` idempotente, ordena el par, 400 con `a == b`, 404 con id de otra empresa; cajero → 403
+- [X] T050 [US6] Consultas (`server/queries/ingredient_merge.sql`), servicio y handlers de los dos endpoints, rutas con `inventory.configure`
 - [ ] T051 [US6] Pruebas primero en `web/src/features/backoffice/articles/DuplicatesSheet.test.tsx` — fila «Unir insumos» de Maquetas (C): botón con badge en la segunda fila de `ArticlesTab.tsx`, ausente con N = 0 o sin permiso; tocar un grupo lo expande en su lugar; «Se queda» por radio de 52 px; «No son lo mismo» por par con «Deshacer» 5 s (no se manda si se deshace; se manda al cerrar la hoja); «Revisar unión» abre la hoja de unir montada cerrada y abierta en el render siguiente, con los demás del grupo marcados y desmarcables antes de confirmar (FR-022)
 - [ ] T052 [US6] `DuplicatesSheet.tsx` y el botón en `web/src/features/backoffice/articles/ArticlesTab.tsx`; `MergeSheet` acepta orígenes ya elegidos
 
@@ -155,8 +155,8 @@ código y se ve fallar por la razón correcta antes de implementar.
 
 **Independent Test**: guardar «leche entera lala» pregunta; «Azúcar» crea directo; «Crear de todos modos» crea.
 
-- [ ] T053 [US5] Integración: `GET /stock/articles/similar?name=` (1–80, vacío o largo → 400; hasta 5; `[]` no `null`; solo activos de la empresa) en `server/internal/integration/duplicates_test.go`; medir la respuesta con los ~450 insumos de la base restaurada (meta < 300 ms)
-- [ ] T054 [US5] Servicio y handler de `similar` (reusa `SimilarNames`) y ruta con `inventory.configure`
+- [X] T053 [US5] Integración: `GET /stock/articles/similar?name=` (1–80, vacío o largo → 400; hasta 5; `[]` no `null`; solo activos de la empresa) en `server/internal/integration/duplicates_test.go`; medir la respuesta con los ~450 insumos de la base restaurada (meta < 300 ms)
+- [X] T054 [US5] Servicio y handler de `similar` (reusa `SimilarNames`) y ruta con `inventory.configure`
 - [ ] T055 [US5] Pruebas primero en `web/src/features/backoffice/articles/NewArticleSheet.test.tsx` — fila «Aviso de insumo parecido» de Maquetas (B): sin parecidos crea directo; con parecidos muestra la lista (máx. 5, scroll interno), «Abrir» abre la ficha sin crear, «Volver» conserva lo escrito, «Crear de todos modos» crea; nombre idéntico sigue respondiendo 409 como hoy
 - [ ] T056 [US5] Implementación en `web/src/features/backoffice/articles/NewArticleSheet.tsx`
 

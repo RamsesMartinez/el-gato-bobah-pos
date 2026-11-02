@@ -298,8 +298,12 @@ grupo desaparece. Marcar «No son lo mismo» en «Vaso 12 oz · Vaso 16 oz» lo 
 **Aviso de posible duplicado**
 
 - **FR-017**: Al guardar en la hoja de alta de un insumo, el sistema DEBE mostrar, antes de crear,
-  hasta 5 insumos activos de la empresa con nombre parecido: uno contiene al otro, o difieren en una o dos
-  letras, sin distinguir mayúsculas, acentos, signos ni espacios.
+  hasta 5 insumos activos de la empresa con nombre parecido: uno es el inicio del otro con dos
+  palabras o más («Leche entera» y «Leche entera Lala 1L»), o difieren en una letra (dos si el nombre
+  pasa de 10 letras), contando dos letras invertidas como una; sin distinguir mayúsculas, acentos,
+  signos ni espacios, y con las mismas cifras («Vaso 12 oz» y «Vaso 16 oz» no se parecen). Una sola
+  palabra contenida en otro nombre no cuenta: medido contra una empresa real, «Queso» o «Crema» juntaban
+  24 insumos distintos.
 - **FR-018**: El aviso NO DEBE impedir crear el insumo, y DEBE permitir abrir el existente en lugar de
   crear.
 - **FR-019**: El rechazo de un nombre idéntico (sin mayúsculas, acentos ni espacios) DEBE seguir como

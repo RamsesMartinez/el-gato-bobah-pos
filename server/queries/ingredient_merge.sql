@@ -76,3 +76,22 @@ with recursive src (ingredient_id, depth) as (
    where r.kind = 'merge' and src.depth < 16
 )
 select i.id, i.name::text as name from src join ingredients i on i.id = src.ingredient_id where src.depth > 0;
+
+-- name: MergeCandidates :many
+-- Los insumos que se pueden proponer como duplicados: activos y no preparados, con su existencia en la
+-- sucursal (para que quien revisa vea cuál tiene más).
+select i.id, i.name::text as name, u.code as base_unit_code, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+  from ingredients i
+  join units u on u.id = i.base_unit_id
+  left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
+ where i.is_active and not i.is_prep
+ order by i.name, i.id;
+
+-- name: DistinctPairs :many
+select low_ingredient_id, high_ingredient_id from ingredient_distinct_pairs;
+
+-- name: InsertDistinctPair :exec
+-- Marcar dos veces el mismo par no es un error: la pantalla lo puede mandar al cerrar y al deshacer.
+insert into ingredient_distinct_pairs (low_ingredient_id, high_ingredient_id, user_id)
+values (sqlc.arg(low_ingredient_id), sqlc.arg(high_ingredient_id), sqlc.arg(user_id))
+on conflict (company_id, low_ingredient_id, high_ingredient_id) do nothing;
