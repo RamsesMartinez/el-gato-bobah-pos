@@ -270,6 +270,8 @@ solo al decidir; lo que se confirma es exactamente lo que se vio.
 - **FR-018**: «Ajustar el importe a lo recibido» MUST cerrar lo que falta del renglón, bajar el
   importe del renglón en proporción a lo que no llegó y bajar el importe del gasto por esa diferencia
   (con los avisos de FR-012 y FR-013).
+  Lo puede hacer quien solo tiene el permiso de recibir (hoy, el gerente), sin el de editar el gasto:
+  ajustar al recibir es parte de recibir (confirmado por el dueño el 2026-11-01).
 - **FR-019**: El gasto MUST quedar «recibido» con la fecha de la última entrega cuando ya no queda
   nada pendiente en ningún renglón vivo no excluido.
 - **FR-020**: La lista de gastos MUST ofrecer el atajo «Recibir» en cada gasto con algo por recibir,
