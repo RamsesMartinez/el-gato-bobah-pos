@@ -563,6 +563,7 @@ const maxSimilarQuery = 80
 type DuplicateItem struct {
 	ID           int64           `json:"id"`
 	Name         string          `json:"name"`
+	BaseUnitID   int16           `json:"baseUnitId"`
 	BaseUnitCode string          `json:"baseUnitCode"`
 	OnHand       decimal.Decimal `json:"onHand"`
 }
@@ -582,7 +583,7 @@ func (s *BackofficeService) candidates(ctx context.Context, q *db.Queries) ([]do
 	views := make(map[int64]DuplicateItem, len(rows))
 	for i, r := range rows {
 		named[i] = domain.NamedItem{ID: r.ID, Name: r.Name}
-		views[r.ID] = DuplicateItem{ID: r.ID, Name: r.Name, BaseUnitCode: r.BaseUnitCode, OnHand: r.OnHand}
+		views[r.ID] = DuplicateItem{ID: r.ID, Name: r.Name, BaseUnitID: r.BaseUnitID, BaseUnitCode: r.BaseUnitCode, OnHand: r.OnHand}
 	}
 	return named, views, nil
 }

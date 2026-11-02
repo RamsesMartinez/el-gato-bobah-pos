@@ -1368,7 +1368,7 @@ export interface MergePreview {
   minStockAfter: string | null;
   fingerprint: string;
 }
-export interface DuplicateItem { id: number; name: string; baseUnitCode: string; onHand: string }
+export interface DuplicateItem { id: number; name: string; baseUnitId: number; baseUnitCode: string; onHand: string }
 export interface DuplicateGroup { items?: DuplicateItem[] }
 export interface UnitChangePreview {
   path: 'direct' | 'replace';

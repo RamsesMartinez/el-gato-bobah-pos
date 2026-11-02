@@ -144,8 +144,8 @@ código y se ve fallar por la razón correcta antes de implementar.
 - [X] T048 [US6] `SimilarNames`, `DuplicateGroups` en `server/internal/domain/similar_names.go` (normalización de `NormalizeReasonName` más signos)
 - [X] T049 [US6] Integración en `server/internal/integration/duplicates_test.go`: `GET /stock/articles/duplicate-groups` (solo activos no preparados, sin pares descartados, `[]` y no `null` en el JSON crudo); `POST /stock/articles/distinct-pairs` idempotente, ordena el par, 400 con `a == b`, 404 con id de otra empresa; cajero → 403
 - [X] T050 [US6] Consultas (`server/queries/ingredient_merge.sql`), servicio y handlers de los dos endpoints, rutas con `inventory.configure`
-- [ ] T051 [US6] Pruebas primero en `web/src/features/backoffice/articles/DuplicatesSheet.test.tsx` — fila «Unir insumos» de Maquetas (C): botón con badge en la segunda fila de `ArticlesTab.tsx`, ausente con N = 0 o sin permiso; tocar un grupo lo expande en su lugar; «Se queda» por radio de 52 px; «No son lo mismo» por par con «Deshacer» 5 s (no se manda si se deshace; se manda al cerrar la hoja); «Revisar unión» abre la hoja de unir montada cerrada y abierta en el render siguiente, con los demás del grupo marcados y desmarcables antes de confirmar (FR-022)
-- [ ] T052 [US6] `DuplicatesSheet.tsx` y el botón en `web/src/features/backoffice/articles/ArticlesTab.tsx`; `MergeSheet` acepta orígenes ya elegidos
+- [X] T051 [US6] Pruebas primero en `web/src/features/backoffice/articles/DuplicatesSheet.test.tsx` — fila «Unir insumos» de Maquetas (C): botón con badge en la segunda fila de `ArticlesTab.tsx`, ausente con N = 0 o sin permiso; tocar un grupo lo expande en su lugar; «Se queda» por radio de 52 px; «No son lo mismo» por par con «Deshacer» 5 s (no se manda si se deshace; se manda al cerrar la hoja); «Revisar unión» abre la hoja de unir montada cerrada y abierta en el render siguiente, con los demás del grupo marcados y desmarcables antes de confirmar (FR-022)
+- [X] T052 [US6] `DuplicatesSheet.tsx` y el botón en `web/src/features/backoffice/articles/ArticlesTab.tsx`; `MergeSheet` acepta orígenes ya elegidos
 
 ---
 

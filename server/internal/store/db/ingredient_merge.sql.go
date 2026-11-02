@@ -198,7 +198,7 @@ func (q *Queries) LastPurchaseCost(ctx context.Context, ingredientID *int64) (La
 }
 
 const mergeCandidates = `-- name: MergeCandidates :many
-select i.id, i.name::text as name, u.code as base_unit_code, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+select i.id, i.name::text as name, i.base_unit_id, u.code as base_unit_code, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
@@ -209,6 +209,7 @@ select i.id, i.name::text as name, u.code as base_unit_code, coalesce(sl.on_hand
 type MergeCandidatesRow struct {
 	ID           int64           `json:"id"`
 	Name         string          `json:"name"`
+	BaseUnitID   int16           `json:"base_unit_id"`
 	BaseUnitCode string          `json:"base_unit_code"`
 	OnHand       decimal.Decimal `json:"on_hand"`
 }
@@ -227,6 +228,7 @@ func (q *Queries) MergeCandidates(ctx context.Context) ([]MergeCandidatesRow, er
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.BaseUnitID,
 			&i.BaseUnitCode,
 			&i.OnHand,
 		); err != nil {

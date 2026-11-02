@@ -80,7 +80,7 @@ select i.id, i.name::text as name from src join ingredients i on i.id = src.ingr
 -- name: MergeCandidates :many
 -- Los insumos que se pueden proponer como duplicados: activos y no preparados, con su existencia en la
 -- sucursal (para que quien revisa vea cuál tiene más).
-select i.id, i.name::text as name, u.code as base_unit_code, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+select i.id, i.name::text as name, i.base_unit_id, u.code as base_unit_code, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
