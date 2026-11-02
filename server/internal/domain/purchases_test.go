@@ -130,6 +130,8 @@ func TestPlanStockLines(t *testing.T) {
 	gram := PurchaseUnit{Kind: "masa", ToBase: decimal.NewFromInt(1), BaseKind: "masa"}
 	bulto := decimal.NewFromInt(25000)
 	pack := PurchaseUnit{Kind: "pieza", ToBase: decimal.NewFromInt(1), BaseKind: "masa", PackQtyInBase: &bulto}
+	doce := decimal.NewFromInt(12)
+	caja12 := PurchaseUnit{Kind: "pieza", ToBase: decimal.NewFromInt(1), BaseKind: "pieza", PackQtyInBase: &doce, FromPresentation: true}
 	d := decimal.RequireFromString
 	tests := []struct {
 		name    string
@@ -148,6 +150,9 @@ func TestPlanStockLines(t *testing.T) {
 			map[int64]string{1: "600"}, false},
 		{"llegó de más: suma lo que llegó", []StockLineState{{ID: 1, IngredientID: 7, Unit: gram, Ordered: d("1000"), Received: d("1200")}},
 			map[int64]string{1: "1200"}, false},
+		// #182: una caja de 12 latas sobre un artículo por pieza suma 12 y su costo se reparte en 12.
+		{"una presentación sobre un artículo por pieza suma lo que trae", []StockLineState{{ID: 1, IngredientID: 7, Unit: caja12, Ordered: d("1"), Received: d("1")}},
+			map[int64]string{1: "12"}, false},
 		// Excluidos (spec 049): no son del negocio, así que su objetivo es cero.
 		{"un excluido que llegó no suma", []StockLineState{{ID: 1, IngredientID: 7, Unit: gram, Ordered: d("1000"), Received: d("1000"), Excluded: true}},
 			map[int64]string{}, true},
