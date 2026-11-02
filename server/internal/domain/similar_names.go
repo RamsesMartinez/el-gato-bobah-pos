@@ -35,7 +35,19 @@ type prepared struct {
 	words  []string
 	runes  []rune
 	digits string
-	hist   [128]int // letras y cifras ASCII; lo demás cae en la casilla 127
+	hist   [38]int16 // a-z, 0-9, espacio y «otra»: ya normalizado no queda nada más
+}
+
+func histSlot(r rune) int {
+	switch {
+	case r >= 'a' && r <= 'z':
+		return int(r - 'a')
+	case r >= '0' && r <= '9':
+		return 26 + int(r-'0')
+	case r == ' ':
+		return 36
+	}
+	return 37
 }
 
 func prepare(name string) prepared {
@@ -43,11 +55,7 @@ func prepare(name string) prepared {
 	p.runes = []rune(strings.Join(p.words, " "))
 	p.digits = digitsOf(string(p.runes))
 	for _, r := range p.runes {
-		if r < 127 {
-			p.hist[r]++
-		} else {
-			p.hist[127]++
-		}
+		p.hist[histSlot(r)]++
 	}
 	return p
 }
@@ -75,29 +83,10 @@ func similarity(a, b *prepared) (int, bool) {
 	if len(short.words) >= minPrefixWords && startsWith(long.words, short.words) {
 		return 1, true
 	}
-	if a.digits != b.digits {
+	if cheapReject(a, b) {
 		return 0, false
 	}
-	limit := 1
-	if max(len(a.runes), len(b.runes)) > 10 {
-		limit = 2
-	}
-	if len(long.runes)-len(short.runes) > limit {
-		return 0, false
-	}
-	// Cada operación agrega, quita o cambia una letra: la distancia nunca es menor que las letras que a
-	// uno le sobran respecto del otro.
-	plus, minus := 0, 0
-	for i := range a.hist {
-		if d := a.hist[i] - b.hist[i]; d > 0 {
-			plus += d
-		} else {
-			minus -= d
-		}
-	}
-	if max(plus, minus) > limit {
-		return 0, false
-	}
+	limit := distanceLimit(a, b)
 	d := boundedDistance(a.runes, b.runes, limit)
 	return d, d <= limit
 }
@@ -122,6 +111,37 @@ func digitsOf(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// distanceLimit es cuántas letras de diferencia todavía son un dedazo: una, dos si el nombre es largo.
+func distanceLimit(a, b *prepared) int {
+	if max(len(a.runes), len(b.runes)) > 10 {
+		return 2
+	}
+	return 1
+}
+
+// cheapReject descarta sin la distancia de edición un par que no puede quedar a una o dos letras: otras
+// cifras, demasiada diferencia de largo, o más letras de más o de menos que el límite (cada operación
+// agrega, quita o cambia una letra, así que la distancia nunca es menor). Con un catálogo grande casi
+// todos los pares terminan aquí.
+func cheapReject(a, b *prepared) bool {
+	if a.digits != b.digits {
+		return true
+	}
+	limit := distanceLimit(a, b)
+	if d := len(a.runes) - len(b.runes); d > limit || -d > limit {
+		return true
+	}
+	plus, minus := 0, 0
+	for i := range a.hist {
+		if d := int(a.hist[i]) - int(b.hist[i]); d > 0 {
+			plus += d
+		} else {
+			minus -= d
+		}
+	}
+	return max(plus, minus) > limit
 }
 
 // boundedDistance es la distancia de Damerau-Levenshtein restringida (dos letras invertidas cuentan

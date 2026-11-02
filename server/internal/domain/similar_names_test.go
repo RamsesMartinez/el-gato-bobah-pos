@@ -98,11 +98,10 @@ func ids(g []NamedItem) []int64 {
 
 // Un catálogo grande no puede costar segundos de CPU por cada vez que se abre la hoja: la VM de
 // producción tiene un núcleo y atiende a todas las empresas (revisión de seguridad, M2). Medido antes
-// del arreglo: 2,000 nombres de 60 letras tardaban 24 s.
+// del arreglo: 2,000 nombres de 60 letras tardaban 24 s. Lo que se exige es determinista —casi ningún
+// par llega a la distancia de edición— y el reloj solo como tope holgado: en el runner de CI, con el
+// detector de carreras, la misma corrida tarda el triple que en local.
 func TestDuplicateGroupsStaysCheapOnABigCatalog(t *testing.T) {
-	if testing.Short() {
-		t.Skip("mide tiempo")
-	}
 	rng := rand.New(rand.NewPCG(1, 2))
 	letters := []rune("abcdefghijklmnopqrstuvwxyz ")
 	items := make([]NamedItem, 2000)
@@ -113,12 +112,31 @@ func TestDuplicateGroupsStaysCheapOnABigCatalog(t *testing.T) {
 		}
 		items[i] = NamedItem{ID: int64(i + 1), Name: string(name)}
 	}
+	keys := make([]prepared, len(items))
+	for i, it := range items {
+		keys[i] = prepare(it.Name)
+	}
+	reached, pairs := 0, 0
+	for i := range keys {
+		for j := i + 1; j < len(keys); j++ {
+			pairs++
+			if !cheapReject(&keys[i], &keys[j]) {
+				reached++
+			}
+		}
+	}
+	if reached*1000 > pairs {
+		t.Fatalf("%d de %d pares llegaron a la distancia de edición; las cotas baratas deben descartar casi todos", reached, pairs)
+	}
+	if testing.Short() {
+		return
+	}
 	start := time.Now()
 	if _, ok := DuplicateGroups(items, nil, func() bool { return false }); !ok {
 		t.Fatal("se cortó sin que nadie lo pidiera")
 	}
-	if d := time.Since(start); d > 2*time.Second {
-		t.Fatalf("2,000 nombres de 60 letras tardaron %s; el presupuesto es 2 s", d)
+	if d := time.Since(start); d > 15*time.Second {
+		t.Fatalf("2,000 nombres de 60 letras tardaron %s; antes del arreglo eran 24 s", d)
 	}
 }
 
