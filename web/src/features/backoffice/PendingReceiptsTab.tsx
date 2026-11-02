@@ -93,7 +93,7 @@ export function PendingReceiptsTab() {
                       {got > 0 && ` · ya llegaron ${qty(r.received)}`}
                       {num(r.notComing) > 0 && ` · ${qty(r.notComing)} ya no llegan`}
                     </Text>
-                    {cross && <Text fontSize="xs" color={cross.missing ? 'orange.700' : 'fg.muted'}>{cross.words ?? cross.missing}</Text>}
+                    {cross && <Text fontSize="xs" color={cross.missing ? 'orange.fg' : 'fg.muted'}>{cross.words ?? cross.missing}</Text>}
                   </VStack>
                   <VStack align="start" gap={0} minW="120px">
                     <Text fontSize="xs" color="fg.muted">Falta</Text>

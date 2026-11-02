@@ -1015,24 +1015,25 @@ describe('compras entre peso y líquido (spec 058)', () => {
     await elegir('Buscar o crear', /Salsa de chocolate/);
     click('L');
     expect(screen.queryByText(/÷ 1.10/)).toBeNull();
-    expect(screen.queryByText(/Falta la densidad/)).toBeNull();
+    expect(screen.queryByText(/Sin densidad/)).toBeNull();
   });
 
-  test('sin densidad avisa, no se guarda, y «Capturar la pesada» la pide sin perder el renglón', async () => {
+  test('sin densidad avisa, no se guarda, y «Capturar la densidad» la pide sin perder el renglón', async () => {
     back.searchArticles.mockResolvedValue({ items: [salsa] });
     await renglonEnKg();
-    expect(await screen.findByText('Falta la densidad para pasar kg a ml')).toBeInTheDocument();
+    expect(await screen.findByText('Sin densidad para pasar kg a ml')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '500' } });
     click('Todavía no se paga');
     expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
     back.searchArticles.mockResolvedValue({ items: [{ ...salsa, densityGPerMl: '1.1' }] });
-    click('Capturar la pesada');
+    click('Capturar la densidad');
     expect(await screen.findByText('Densidad · Salsa de chocolate')).toBeInTheDocument();
     click('Escribir el valor');
     fireEvent.click(screen.getByLabelText('Gramos por mililitro'));
     for (const k of ['1', 'punto', '1']) click(k);
     click('Listo');
-    click('Guardar');
+    // La hoja de abajo puede seguir expuesta: se guarda en la de la densidad.
+    fireEvent.click(within(screen.getByText('Densidad · Salsa de chocolate').closest('[role=dialog]') as HTMLElement).getByRole('button', { name: 'Guardar' }));
     await waitFor(() => expect(back.setDensity).toHaveBeenCalledWith(12, { method: 'manual', density: '1.1' }));
     expect(await screen.findByText('4,300 g ÷ 1.10 = 3,909 ml')).toBeInTheDocument();
     expect(screen.getByLabelText('Cantidad')).toHaveValue('4.3');
@@ -1047,16 +1048,39 @@ describe('compras entre peso y líquido (spec 058)', () => {
     fireEvent.click(within(segundo).getByRole('button', { name: 'Buscar o crear' }));
     fireEvent.click(within(segundo).getByRole('button', { name: /Salsa de chocolate/ }));
     fireEvent.click(within(segundo).getByRole('button', { name: 'kg' }));
-    expect(screen.getAllByText('Falta la densidad para pasar kg a ml')).toHaveLength(2);
-    expect(screen.getAllByRole('button', { name: 'Capturar la pesada' })).toHaveLength(1);
+    expect(screen.getAllByText('Sin densidad para pasar kg a ml')).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Capturar la densidad' })).toHaveLength(1);
   });
 
-  test('sin permiso de configurar solo avisa', async () => {
+  test('sin permiso de configurar avisa y dice qué hacer', async () => {
     useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: [] } as never });
     back.searchArticles.mockResolvedValue({ items: [salsa] });
     await renglonEnKg();
-    expect(await screen.findByText('Falta la densidad para pasar kg a ml')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Capturar la pesada' })).toBeNull();
+    expect(await screen.findByText('Sin densidad para pasar kg a ml')).toBeInTheDocument();
+    expect(screen.getByText(/Pídele a quien configura el almacén que capture la densidad, o elige otra unidad/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
+  });
+
+  // El aviso con su botón crecía el renglón una línea entera dentro de la fila de unidades y estados:
+  // va en una sola línea propia, texto a la izquierda y botón a la derecha (revisión de tableta de la 058).
+  test('el aviso y su botón van juntos en una línea propia, fuera de la fila de unidades y estado', async () => {
+    back.searchArticles.mockResolvedValue({ items: [salsa] });
+    await renglonEnKg();
+    const linea = await screen.findByTestId('sin-densidad');
+    expect(within(linea).getByText('Sin densidad para pasar kg a ml')).toBeInTheDocument();
+    expect(within(linea).getByRole('button', { name: 'Capturar la densidad' })).toBeInTheDocument();
+    expect(within(linea).queryByRole('group', { name: 'Estado' })).toBeNull();
+    expect(within(linea).queryByRole('button', { name: 'kg' })).toBeNull();
+    expect(linea.children).toHaveLength(2);
+    expect(getComputedStyle(within(linea).getByText('Sin densidad para pasar kg a ml')).color).toContain('orange-fg');
+  });
+
+  test('un artículo recién creado, todavía sin guardar, no ofrece el atajo y dice qué hacer', async () => {
+    back.searchArticles.mockResolvedValue({ items: [{ ...salsa, id: -1 }] });
+    await renglonEnKg();
+    expect(await screen.findByText('Sin densidad para pasar kg a ml')).toBeInTheDocument();
+    expect(screen.getByText(/Pídele a quien configura el almacén/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
   });
 
   test('si el servidor dice que falta la densidad, ofrece el mismo atajo', async () => {
@@ -1066,7 +1090,7 @@ describe('compras entre peso y líquido (spec 058)', () => {
     fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '500' } });
     click('Todavía no se paga');
     click('Guardar');
-    fireEvent.click(await screen.findByRole('button', { name: 'Capturar la pesada' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Capturar la densidad' }));
     expect(await screen.findByText('Densidad · Salsa de chocolate')).toBeInTheDocument();
   });
 });

@@ -266,11 +266,6 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
                     value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value.replace(',', '.') })} />
                   {draft.approximate ? <Text>piezas</Text> : <UnitSegment options={unitOptions} />}
                 </HStack>
-                <Stack gap={1}>
-                  <Text fontWeight="600">Marca o proveedor (opcional)</Text>
-                  <Input aria-label="Marca o proveedor (opcional)" minH="48px" maxLength={40} placeholder="Ej. Lala, Costco"
-                    value={draft.brand} onChange={(e) => setDraft({ ...draft, brand: e.target.value })} />
-                </Stack>
                 {tareApplies && !draft.approximate && (
                   <Stack gap={1}>
                     <HStack gap={2}>
@@ -289,6 +284,11 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
                     {!tareOk && <Text color="orange.fg">Escribe cuántos gramos pesa vacío, por ejemplo 120, o déjalo en blanco.</Text>}
                   </Stack>
                 )}
+                <Stack gap={1}>
+                  <Text fontWeight="600">Marca o proveedor (opcional)</Text>
+                  <Input aria-label="Marca o proveedor (opcional)" minH="48px" maxLength={40} placeholder="Ej. Lala, Costco"
+                    value={draft.brand} onChange={(e) => setDraft({ ...draft, brand: e.target.value })} />
+                </Stack>
                 {!wholeOk && <Text color="orange.fg">Un empaque trae piezas enteras: escribe cuántas dice la etiqueta.</Text>}
                 {byPiece && !draft.approximate && (
                   <Text fontSize="sm" color="fg.muted">Si es otro tamaño de pieza (un sobre más grande, otra lata), créalo como otro insumo.</Text>

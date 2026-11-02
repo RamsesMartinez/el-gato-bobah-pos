@@ -63,3 +63,36 @@ func TestDensityAndGrossCountHTTP(t *testing.T) {
 		t.Errorf("con otra tara = %d %s; quiere 409 COUNT_INPUTS_CHANGED", w.Code, w.Body.String())
 	}
 }
+
+// Revisión de seguridad: quitar la densidad y cambiar lo que pesa vacío un empaque también son de
+// quien configura el almacén. Si mañana una ruta se mueve a un grupo más laxo, esto truena.
+func TestOnlyWhoConfiguresTheStockChangesDensityOrTare(t *testing.T) {
+	t.Parallel()
+	r, st, token := newStockAPI(t)
+	admin, cajero := token("admin_tara", "admin"), token("cajero_tara", "cajero")
+	salsa := ingredientIn(t, st, defaultCompanyID, "Salsa http tara", "ml")
+	density := "/api/v1/stock/articles/" + strconv.FormatInt(salsa, 10) + "/density"
+	if w := do(t, r, http.MethodPut, density, admin, []byte(`{"method":"manual","density":"1.1"}`), "application/json"); w.Code != http.StatusOK {
+		t.Fatalf("admin = %d", w.Code)
+	}
+	if w := do(t, r, http.MethodDelete, density, cajero, nil, ""); w.Code != http.StatusForbidden {
+		t.Errorf("cajero quita la densidad = %d; quiere 403", w.Code)
+	}
+	var bottle int64
+	if err := st.Pool.QueryRow(t.Context(), `insert into ingredient_presentations (company_id, ingredient_id, name, qty_in_base, tare_g)
+		values ($1, $2, 'Botella', 1000, 120) returning id`, defaultCompanyID, salsa).Scan(&bottle); err != nil {
+		t.Fatal(err)
+	}
+	ml := strconv.Itoa(int(unitID(t, st, "ml")))
+	body := `{"name":"Botella","qty":"1000","unitId":` + ml + `,"approximate":false,"tareG":"50"}`
+	if w := do(t, r, http.MethodPut, "/api/v1/stock/presentations/"+strconv.FormatInt(bottle, 10), cajero, []byte(body), "application/json"); w.Code != http.StatusForbidden {
+		t.Errorf("cajero cambia lo que pesa vacío = %d; quiere 403", w.Code)
+	}
+	var tare string
+	if err := st.Pool.QueryRow(t.Context(), `select tare_g::text from ingredient_presentations where id = $1`, bottle).Scan(&tare); err != nil {
+		t.Fatal(err)
+	}
+	if tare != "120.00" {
+		t.Fatalf("la tara quedó en %s", tare)
+	}
+}

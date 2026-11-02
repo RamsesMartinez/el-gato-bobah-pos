@@ -14,7 +14,7 @@ import { backofficeApi, type Article, type EditLineBody } from '../../api/backof
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { parseMonto, parseNumero } from '../../domain/numeros';
 import { crossBuyUnits, formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
-import { crossConversion } from './expenseDraft';
+import { ASK_FOR_DENSITY, crossConversion } from './expenseDraft';
 
 // Agregar un renglón a un gasto guardado (spec 053). No escribe nada: devuelve el renglón a la
 // edición, que lo junta con los demás cambios y pasa por la vista previa. «Ya llegó» lo recibe en la
@@ -147,8 +147,10 @@ export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose,
                       </Button>
                     ))}
                     {cross?.words && <Text fontSize="sm" fontWeight="700" color="fg.success">{cross.words}</Text>}
-                    {cross?.missing && <Text fontSize="sm" fontWeight="700" color="orange.700">{cross.missing}</Text>}
                   </HStack>
+                )}
+                {cross?.missing && (
+                  <Text fontSize="sm"><Text as="span" fontWeight="700" color="orange.fg">{cross.missing}</Text>. {ASK_FOR_DENSITY}</Text>
                 )}
                 <HStack gap={3} flexWrap="wrap">
                   <HStack gap={0} borderWidth="1px" borderRadius="md" role="group" aria-label="¿Se pagó?">

@@ -204,3 +204,25 @@ datos y tres de pantalla. Todo queda resuelto aquí (manda sobre research y data
 - **Ficha**: el renglón de densidad va pegado a «Se mide en», solo en g/ml; el (i) despliega debajo sin
   mover el botón. Se lee «1.10 gramos por ml»; nada de `weighing`/`label`/`manual` en pantalla ni en la
   bitácora. «Quitar densidad» con confirmación en línea («¿Quitar? Sí / No»), como `NoHay`.
+
+## Revisión de código (2026-11-02)
+
+`go-backend-reviewer`, `security-auditor`, `tablet-ui-reviewer` y `db-architect` (solo consultas) sobre
+el diff. Sin bloqueantes. Corregido, cada uno con su prueba:
+
+- Quitar la densidad quedaba bloqueado para siempre por un gasto anulado, un renglón excluido o uno
+  que ya no va a llegar: `PendingDensityLinesOf` usa ahora el predicado de «Por recibir».
+- «Llegó todo» (`ReceiveExpense`) leía los renglones sin el candado de sus insumos: ya lo toma antes.
+- La pesada en ml sin densidad respondía el código de las compras (que abre la hoja de densidad); un
+  error de base al leer la unidad de la báscula salía como 400. La vista previa del cambio de unidad
+  decía una densidad también en cambios que no la usan. El neto pesado lo calcula el servicio.
+- `CopyArticleDensity` solo escribe en artículos en g o ml. «1.10000» es 1.1; un exponente absurdo no
+  se repite en el mensaje. Pruebas de 403 para quitar la densidad y cambiar lo que pesa vacío.
+- Tableta: la casilla activa del conteo se desplaza a la vista al abrir la pesada o pasar de casilla;
+  el resultado de la hoja de densidad queda fijo sobre el teclado; el aviso «sin densidad» va en una
+  línea con su botón y, sin atajo, dice a quién pedírsela; «¿Cuál empaque?» y «Cuántos pesaste»;
+  «Capturar la densidad» en todos los atajos; al guardar la densidad desde el cambio de unidad regresa
+  a él con el destino elegido.
+
+No corregido, a propósito: un renglón con densidad fija al que después se le pone un empaque conserva
+la copia; no se lee (sin uso) y no recalcula nada.

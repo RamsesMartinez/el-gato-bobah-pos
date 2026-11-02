@@ -154,8 +154,12 @@ const CODE_WORD: Record<string, string> = { l: 'L' };
 export interface CrossConversion {
   factor: number | null; // cuánto suma una unidad comprada en la base; null sin densidad
   words: string | null; // «4,300 g ÷ 1.10 = 3,909 ml», si hay cantidad y densidad
-  missing: string; // «Falta la densidad para pasar kg a ml», o '' si no falta
+  missing: string; // «Sin densidad para pasar kg a ml», o '' si no falta
 }
+
+// ASK_FOR_DENSITY acompaña al aviso donde no hay atajo a la densidad (sin permiso, o un artículo que
+// todavía no existe): sin él, quien captura se queda sin saber cómo seguir.
+export const ASK_FOR_DENSITY = 'Pídele a quien configura el almacén que capture la densidad, o elige otra unidad.';
 
 // crossConversion es lo que un renglón de compra entre peso y líquido le dice a quien captura: su
 // conversión o lo que falta para hacerla. null cuando el renglón no cruza de clase (o es pieza, o
@@ -166,7 +170,7 @@ export function crossConversion(
   const cross = (buy.kind === 'masa' && baseKind === 'volumen') || (buy.kind === 'volumen' && baseKind === 'masa');
   if (!cross) return null;
   const factor = densityFactor(buy.kind, baseKind, buy.toBase, density);
-  if (factor === null) return { factor: null, words: null, missing: `Falta la densidad para pasar ${CODE_WORD[buy.code] ?? buy.code} a ${baseCode}` };
+  if (factor === null) return { factor: null, words: null, missing: `Sin densidad para pasar ${CODE_WORD[buy.code] ?? buy.code} a ${baseCode}` };
   return { factor, words: conversionWords(qty, buy, baseKind, density), missing: '' };
 }
 

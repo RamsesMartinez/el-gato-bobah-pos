@@ -170,19 +170,26 @@ func TestCountingByWeighingWithThePresentation(t *testing.T) {
 
 	t.Run("lo que no tiene sentido se rechaza sin guardar", func(t *testing.T) {
 		vasos := ingredientIn(t, k.st, defaultCompanyID, "Vasos bruto", "pieza")
+		sinDensidad := ingredientIn(t, k.st, defaultCompanyID, "Jarabe sin densidad bruto", "ml")
+		if _, err := k.st.Pool.Exec(context.Background(), `insert into ingredient_presentations (company_id, ingredient_id, name, qty_in_base, tare_g)
+			values ($1, $2, 'Botella', 1000, 120)`, defaultCompanyID, sinDensidad); err != nil {
+			t.Fatal(err)
+		}
 		cases := map[string]struct {
 			ing int64
 			in  app.CountCapture
 			err error
 		}{
-			"pesa menos que los empaques vacíos": {k.salsa, app.CountCapture{Gross: k.gross("200", k.g, 2)}, domain.ErrGrossBelowTare},
-			"pesar y pesar piezas a la vez":      {k.salsa, app.CountCapture{Gross: k.gross("850", k.g, 2), Weight: decp("1"), WeightUnitID: &k.g}, domain.ErrValidation},
-			"en ml como unidad de la báscula":    {k.salsa, app.CountCapture{Gross: k.gross("850", unitID(t, k.st, "ml"), 2)}, domain.ErrValidation},
-			"un empaque de otro artículo":        {vasos, app.CountCapture{Gross: k.gross("850", k.g, 2)}, domain.ErrValidation},
-			"cero empaques":                      {k.salsa, app.CountCapture{Gross: k.gross("850", k.g, 0)}, domain.ErrValidation},
+			"pesa menos que los empaques vacíos":                 {k.salsa, app.CountCapture{Gross: k.gross("200", k.g, 2)}, domain.ErrGrossBelowTare},
+			"pesar y pesar piezas a la vez":                      {k.salsa, app.CountCapture{Gross: k.gross("850", k.g, 2), Weight: decp("1"), WeightUnitID: &k.g}, domain.ErrValidation},
+			"en ml como unidad de la báscula":                    {k.salsa, app.CountCapture{Gross: k.gross("850", unitID(t, k.st, "ml"), 2)}, domain.ErrValidation},
+			"un empaque de otro artículo":                        {vasos, app.CountCapture{Gross: k.gross("850", k.g, 2)}, domain.ErrValidation},
+			"cero empaques":                                      {k.salsa, app.CountCapture{Gross: k.gross("850", k.g, 0)}, domain.ErrValidation},
+			"en ml sin densidad (no es el error de las compras)": {sinDensidad, app.CountCapture{Gross: k.gross("850", k.g, 2)}, domain.ErrValidation},
 		}
 		for name, tc := range cases {
-			if _, err := k.svc.CaptureCountChecked(k.ctx, c.ID, tc.ing, tc.in, k.user); !errors.Is(err, tc.err) {
+			_, err := k.svc.CaptureCountChecked(k.ctx, c.ID, tc.ing, tc.in, k.user)
+			if !errors.Is(err, tc.err) || errors.Is(err, domain.ErrUnitKindMismatch) {
 				t.Errorf("%s = %v; quería %v", name, err, tc.err)
 			}
 		}

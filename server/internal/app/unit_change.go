@@ -102,7 +102,7 @@ func planUnitChange(ctx context.Context, q *db.Queries, art db.LockArticleNowait
 	req.Factor = factor
 	p.factor = factor
 	var usedDensity *decimal.Decimal
-	if string(p.from.Kind) != "pieza" && string(p.to.Kind) != "pieza" {
+	if (p.from.Kind == db.UnitKindMasa && p.to.Kind == db.UnitKindVolumen) || (p.from.Kind == db.UnitKindVolumen && p.to.Kind == db.UnitKindMasa) {
 		usedDensity = art.DensityGPerMl
 	}
 	id := art.ID

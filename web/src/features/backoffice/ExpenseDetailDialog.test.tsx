@@ -425,6 +425,15 @@ describe('entre peso y líquido (spec 058)', () => {
     expect(await screen.findByText(/Llegaron 4.3 kg \(4,300 g ÷ 1.10 = 3,909 ml\)/)).toBeInTheDocument();
   });
 
+  // Con la cuenta en las dos mitades el renglón ocupaba dos líneas y repetía la densidad: va solo en lo que llegó.
+  test('si llegó una parte, la cuenta va solo en «llegaron», no en «Se pidieron»', async () => {
+    back.expenseDetail.mockResolvedValue(detail([{ ...salsa, qtyReceived: '2', applied: '1818.1818' }]));
+    montar();
+    const status = await screen.findByText(/^Se pidieron 4.3 kg · llegaron 2 kg/);
+    expect(status).toHaveTextContent(/^Se pidieron 4.3 kg · llegaron 2 kg \(2,000 g ÷ 1.10 = 1,818/);
+    expect(status.textContent).not.toContain('4,300 g');
+  });
+
   test('al corregir, «Tendrás» convierte con la densidad del renglón', async () => {
     montar();
     click(await screen.findByRole('button', { name: 'Corregir lo que llegó' }).then((b) => b.textContent!));

@@ -621,6 +621,8 @@ update ingredients d
        density_set_by = s.density_set_by, density_set_at = s.density_set_at
   from ingredients s
  where d.id = $1 and s.id = $2 and s.density_g_per_ml is not null
+   -- Solo a un artículo en g o ml: el trigger limpia al cambiar de unidad, pero no ve esta escritura.
+   and exists (select 1 from units u where u.id = d.base_unit_id and u.kind in ('masa', 'volumen'))
 `
 
 type CopyArticleDensityParams struct {
@@ -1137,16 +1139,20 @@ func (q *Queries) OpenExpenseItemsOf(ctx context.Context, ingredientID *int64) (
 
 const pendingDensityLinesOf = `-- name: PendingDensityLinesOf :one
 select count(*) from expense_items ei
+  join expenses e on e.id = ei.expense_id
   join units bu on bu.id = ei.unit_id
   join ingredients i on i.id = ei.ingredient_id
   join units iu on iu.id = i.base_unit_id
  where ei.ingredient_id = $1 and ei.voided_at is null and ei.presentation_id is null
-   and ei.density_g_per_ml is null
+   and ei.density_g_per_ml is null and e.status <> 'cancelada' and not ei.excluded
+   and ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty > 0
    and bu.kind in ('masa', 'volumen') and iu.kind in ('masa', 'volumen') and bu.kind <> iu.kind
 `
 
-// Renglones de compra vivos del artículo entre peso y líquido que todavía no fijaron su densidad:
-// quitarla los dejaría sin poder convertirse y el gasto entero sin poder tocarse (revisión A1).
+// Renglones de compra del artículo entre peso y líquido que todavía esperan algo y no fijaron su
+// densidad: quitarla los dejaría sin poder convertirse y el gasto entero sin poder tocarse (revisión
+// A1). Uno anulado, excluido o que ya no va a llegar no espera nada: con el mismo predicado que «Por
+// recibir», o un gasto muerto bloquearía quitarla para siempre.
 func (q *Queries) PendingDensityLinesOf(ctx context.Context, ingredientID *int64) (int64, error) {
 	row := q.db.QueryRow(ctx, pendingDensityLinesOf, ingredientID)
 	var count int64

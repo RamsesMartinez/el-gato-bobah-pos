@@ -59,8 +59,11 @@ describe('Agregar renglón entre peso y líquido (spec 058)', () => {
     back.searchArticles.mockResolvedValue({ items: [salsa] });
     montar();
     await enKg(['4']);
-    expect(screen.getByText('Falta la densidad para pasar kg a ml')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Capturar la pesada' })).toBeNull();
+    const aviso = screen.getByText('Sin densidad para pasar kg a ml');
+    // Sin atajo, el aviso dice qué hacer: no es un callejón sin salida.
+    expect(screen.getByText(/Pídele a quien configura el almacén que capture la densidad, o elige otra unidad\./)).toBeInTheDocument();
+    expect(getComputedStyle(aviso).color).toContain('orange-fg');
+    expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Fue regalo' }));
     expect(screen.getByRole('button', { name: 'Agregar' })).toBeDisabled();
   });

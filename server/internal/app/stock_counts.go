@@ -216,12 +216,21 @@ type grossUsed struct {
 // Confirmable y sin Confirmed, una cifra que pasa la referencia del artículo se rechaza con
 // ErrCountNeedsConfirm sin guardar; la referencia no sale del servidor.
 func (s *BackofficeService) CaptureCountChecked(ctx context.Context, countID, ingredientID int64, in CountCapture, userID int64) (decimal.Decimal, error) {
-	var counted decimal.Decimal
-	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+	counted, _, err := s.CaptureCountWeighed(ctx, countID, ingredientID, in, userID)
+	return counted, err
+}
+
+// CaptureCountWeighed es CaptureCountChecked que además devuelve lo pesado con empaque ya convertido
+// (spec 058), para que la pantalla muestre la cifra del servidor y no la suya. Sin pesada, net es cero.
+func (s *BackofficeService) CaptureCountWeighed(ctx context.Context, countID, ingredientID int64, in CountCapture, userID int64) (counted, net decimal.Decimal, err error) {
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		var err error
 		var gross *grossUsed
 		if in.Gross != nil {
 			counted, gross, err = grossQty(ctx, q, ingredientID, in)
+			if err == nil {
+				net = counted.Sub(domain.Round4(in.Qty))
+			}
 		} else {
 			counted, err = countedQty(ctx, q, ingredientID, in)
 		}
@@ -240,10 +249,10 @@ func (s *BackofficeService) CaptureCountChecked(ctx context.Context, countID, in
 				After: map[string]any{"countId": countID, "captured": counted},
 			})
 		}); aerr != nil {
-			return counted, aerr
+			return counted, net, aerr
 		}
 	}
-	return counted, err
+	return counted, net, err
 }
 
 // countedQty resuelve la cifra en la unidad base: la capturada o la que sale de un peso.
@@ -295,6 +304,9 @@ func grossQty(ctx context.Context, q *db.Queries, ingredientID int64, in CountCa
 		return decimal.Zero, nil, domain.ErrValidation
 	}
 	wu, err := q.GetUnit(ctx, g.WeightUnitID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return decimal.Zero, nil, err
+	}
 	if err != nil || wu.Kind != db.UnitKindMasa {
 		return decimal.Zero, nil, fmt.Errorf("%w: el peso de la báscula va en g o kg", domain.ErrValidation)
 	}
@@ -314,6 +326,11 @@ func grossQty(ctx context.Context, q *db.Queries, ingredientID int64, in CountCa
 	}
 	if tare == nil {
 		return decimal.Zero, nil, fmt.Errorf("%w: ese empaque no dice cuánto pesa vacío", domain.ErrValidation)
+	}
+	// En ml sin densidad no hay cuenta posible. No es el UNIT_KIND_MISMATCH de las compras, que abre la
+	// hoja de densidad: aquí quien cuenta no la configura (revisión de código).
+	if ing.BaseUnitKind == db.UnitKindVolumen && ing.DensityGPerMl == nil {
+		return decimal.Zero, nil, fmt.Errorf("%w: este artículo no tiene densidad para contarlo pesando", domain.ErrValidation)
 	}
 	if !sameDec(tare, g.SeenTareG) || (ing.BaseUnitKind == db.UnitKindVolumen && !sameDec(ing.DensityGPerMl, g.SeenDensity)) {
 		return decimal.Zero, nil, domain.ErrCountInputsChanged

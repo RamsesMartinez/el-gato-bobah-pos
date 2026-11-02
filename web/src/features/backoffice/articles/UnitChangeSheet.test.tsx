@@ -123,7 +123,7 @@ describe('Cambiar en qué se mide', () => {
       expect(await screen.findByRole('button', { name: 'Líquido' })).toBeDisabled();
       expect(screen.getByText(/Primero captura la densidad/)).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'Capturar la densidad' }));
-      expect(onNeedDensity).toHaveBeenCalled();
+      expect(onNeedDensity).toHaveBeenCalledWith('volumen');
     });
 
     it('si la densidad cambió mientras se revisaba, vuelve a pedir la vista previa', async () => {

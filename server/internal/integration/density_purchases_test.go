@@ -205,3 +205,42 @@ func TestEditingAnExpenseSeesTheDensityInItsFingerprint(t *testing.T) {
 		t.Fatalf("la confirmación rechazada movió la salsa a %s", got)
 	}
 }
+
+// Revisión de código: un gasto anulado (o un renglón excluido o que ya no va a llegar) que nunca sumó
+// dejaba el renglón entre peso y líquido sin densidad fija, y quitar la densidad respondía 409 para
+// siempre: ese gasto ya no se puede recibir ni editar.
+func TestACancelledPurchaseNeverBlocksClearingTheDensity(t *testing.T) {
+	t.Parallel()
+	k := newDensityPurchaseKit(t)
+	k.setDensity(t, k.salsa, "1.1")
+	id, err := k.svc.CreateExpense(k.ctx, k.galon("4.3", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := k.svc.ClearDensity(k.ctx, k.salsa); !errors.Is(err, domain.ErrDensityInUse) {
+		t.Fatalf("con la compra por recibir = %v; quería 409", err)
+	}
+	if err := k.svc.CancelExpense(k.ctx, id, "", k.user); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.svc.ClearDensity(k.ctx, k.salsa); err != nil {
+		t.Fatalf("con la compra anulada = %v; ya nada la necesita", err)
+	}
+}
+
+func TestALineThatWillNotArriveNeverBlocksClearingTheDensity(t *testing.T) {
+	t.Parallel()
+	k := newDensityPurchaseKit(t)
+	k.setDensity(t, k.salsa, "1.1")
+	id, err := k.svc.CreateExpense(k.ctx, k.galon("4.3", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := k.itemOf(t, id)
+	if _, err := k.st.Pool.Exec(context.Background(), `update expense_items set not_coming_qty = quantity where id = $1`, item); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.svc.ClearDensity(k.ctx, k.salsa); err != nil {
+		t.Fatalf("con lo que ya no va a llegar = %v", err)
+	}
+}

@@ -20,8 +20,11 @@ interface Props {
   article: ArticleSheet;
   onClose: () => void;
   onDone: () => void;
-  // onNeedDensity cierra esta hoja y abre la de densidad desde la ficha: dos capas como máximo.
-  onNeedDensity?: () => void;
+  // onNeedDensity cierra esta hoja y abre la de densidad desde la ficha: dos capas como máximo. Recibe
+  // la clase a la que se quería pasar, para volver con ella elegida.
+  onNeedDensity?: (to: Kind) => void;
+  // initialTo es el destino ya elegido al volver de capturar la densidad.
+  initialTo?: Kind;
 }
 
 // Las clases a las que se puede pasar. Entre peso y líquido solo con la densidad del artículo (spec
@@ -35,11 +38,11 @@ const densityEq = (from: Kind, to: Kind, factor: number, density: number) =>
 const round4 = (v: string) => String(Number(Number(v).toFixed(4)));
 const word = (k: Kind) => KINDS.find((x) => x.kind === k)!.label.toLowerCase();
 
-export function UnitChangeSheet({ article, onClose, onDone, onNeedDensity }: Props) {
+export function UnitChangeSheet({ article, onClose, onDone, onNeedDensity, initialTo }: Props) {
   const from = article.baseUnitKind as Kind;
   const density = article.density ? Number(article.density.value) : null;
   const units = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units });
-  const [to, setTo] = useState<Kind | null>(targetsOf(from).length === 1 ? targetsOf(from)[0] : null);
+  const [to, setTo] = useState<Kind | null>(initialTo && targetsOf(from).includes(initialTo) ? initialTo : targetsOf(from).length === 1 ? targetsOf(from)[0] : null);
   // La equivalencia se captura como la diría alguien: «1 pieza = 250 g» (la clase que no es pieza).
   const [eq, setEq] = useState({ qty: '', big: false });
   const [step, setStep] = useState<1 | 2>(1);
@@ -121,7 +124,7 @@ export function UnitChangeSheet({ article, onClose, onDone, onNeedDensity }: Pro
               {target && density === null && (
                 <HStack gap={3} p={3} borderRadius="lg" bg="bg.subtle" flexWrap="wrap">
                   <Text flex="1" minW="200px">Primero captura la densidad para pasarlo a {word(target)}.</Text>
-                  {onNeedDensity && <Button minH="44px" variant="outline" onClick={onNeedDensity}>Capturar la densidad</Button>}
+                  {onNeedDensity && <Button minH="44px" variant="outline" onClick={() => onNeedDensity(target)}>Capturar la densidad</Button>}
                 </HStack>
               )}
               {massVolume && density !== null && to && (

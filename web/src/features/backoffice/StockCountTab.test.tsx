@@ -615,6 +615,26 @@ describe('pesar con empaque (spec 058)', () => {
     expect(screen.getByText(/No lo sumes también como suelto/)).toBeInTheDocument();
   });
 
+  test('las etiquetas de la pesada dicen qué empaque y cuántos se pesaron', async () => {
+    await abrir();
+    pesar();
+    const pesada = screen.getByTestId('pesar-con-empaque');
+    expect(within(pesada).getByText('¿Cuál empaque?')).toBeInTheDocument();
+    expect(within(pesada).getByText('Cuántos pesaste')).toBeInTheDocument();
+    expect(within(pesada).queryByText('Empaques')).toBeNull();
+  });
+
+  test('el (i) dice que se convierte a ml solo si el artículo se guarda en ml', async () => {
+    await abrir();
+    click('Para qué sirve pesar con empaque');
+    expect(screen.getByText(/y se convierte a ml/)).toBeInTheDocument();
+    cleanup();
+    await abrir(jarabe({ baseUnitCode: 'g', densityGPerMl: null }));
+    click('Para qué sirve pesar con empaque');
+    expect(screen.getByText(/Se resta lo que pesan vacíos/)).toBeInTheDocument();
+    expect(screen.queryByText(/se convierte a ml/)).toBeNull();
+  });
+
   test('al abrirlo, lo suelto se oculta y se limpia: lo abierto se pesa o se teclea', async () => {
     await abrir();
     click(/Siguiente casilla/);
@@ -706,6 +726,45 @@ describe('pesar con empaque (spec 058)', () => {
     expect(within(sheet).getByText('¿Cuánto hay de Jarabe de vainilla?')).toBeInTheDocument();
     expect(within(sheet).getByLabelText('Peso en la báscula de Jarabe de vainilla')).toBeInTheDocument();
     expect(within(sheet).queryByLabelText('Suelto de Jarabe de vainilla')).toBeNull();
+  });
+
+  // Con varios empaques la casilla activa queda debajo del área con scroll: el teclado escribía en una
+  // casilla que no se veía (revisión de tableta de la 058).
+  test('al abrir la pesada y al pasar de casilla, la casilla activa se trae a la vista', async () => {
+    const scroll = vi.fn();
+    const orig = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      await abrir(jarabe({ presentations: ['Caja', 'Bolsa', 'Paquete', 'Botella'].map((name, i) => ({ id: i + 1, name, qtyInBase: '750', tareG: '120' })) }));
+      scroll.mockClear();
+      pesar();
+      const bascula = screen.getByLabelText('Peso en la báscula de Jarabe de vainilla');
+      await waitFor(() => expect(scroll.mock.contexts).toContain(bascula));
+      expect(scroll).toHaveBeenLastCalledWith({ block: 'nearest' });
+      scroll.mockClear();
+      click(/Siguiente casilla/);
+      const cuantos = screen.getByLabelText('Empaques pesados de Jarabe de vainilla');
+      await waitFor(() => expect(scroll.mock.contexts).toContain(cuantos));
+    } finally {
+      Element.prototype.scrollIntoView = orig;
+    }
+  });
+
+  test('en «Uno por uno», la hoja de la pesada abre con la báscula a la vista', async () => {
+    const scroll = vi.fn();
+    const orig = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      back.currentCount.mockResolvedValue(jarabe());
+      montar();
+      fireEvent.click(await screen.findByRole('button', { name: 'Uno por uno' }));
+      click(/Pesar con empaque/);
+      const sheet = await screen.findByRole('dialog');
+      const bascula = within(sheet).getByLabelText('Peso en la báscula de Jarabe de vainilla');
+      await waitFor(() => expect(scroll.mock.contexts).toContain(bascula));
+    } finally {
+      Element.prototype.scrollIntoView = orig;
+    }
   });
 
   test('los campos se desplazan y el total queda fuera del desplazamiento', async () => {

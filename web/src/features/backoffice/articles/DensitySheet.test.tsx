@@ -32,7 +32,7 @@ const guardar = () => screen.getByRole('button', { name: 'Guardar' });
 
 async function pesada(full: string, empty: string, content: string) {
   await teclear('Pesa lleno (g)', full);
-  await teclear('Pesa vacío (g)', empty);
+  await teclear('Pesa la botella vacía (g)', empty);
   await teclear('Contiene (ml, según la etiqueta)', content);
   listo();
 }
@@ -49,6 +49,27 @@ describe('Hoja de densidad', () => {
     fireEvent.click(guardar());
     await waitFor(() => expect(back.setDensity).toHaveBeenCalledWith(7, { method: 'weighing', fullG: '1250', emptyG: '150', contentMl: '1000' }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
+  });
+
+  // Con el teclado abierto el cuerpo se encoge y lo de abajo queda fuera de la vista: el resultado y el
+  // error de rango van fijos entre el cuerpo y el pie (revisión de tableta de la 058).
+  it('el resultado y el error de rango quedan fuera del cuerpo con scroll, con el teclado abierto', async () => {
+    montar();
+    await teclear('Pesa lleno (g)', '1250');
+    await teclear('Pesa la botella vacía (g)', '150');
+    await teclear('Contiene (ml, según la etiqueta)', '1000');
+    const cuerpo = screen.getByTestId('cuerpo-densidad');
+    expect(screen.getByRole('button', { name: 'Listo' })).toBeInTheDocument(); // el teclado sigue abierto
+    expect(cuerpo.contains(screen.getByTestId('resultado'))).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: '0' }));
+    const rango = screen.getByText(/va de 0.30 a 3.00/);
+    expect(cuerpo.contains(rango)).toBe(false);
+  });
+
+  it('la pesada dice «la botella vacía», para no confundirla con lo que pesa vacío el empaque', async () => {
+    montar();
+    expect(await screen.findByLabelText('Pesa la botella vacía (g)')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Pesa vacío (g)')).toBeNull();
   });
 
   it('el (i) dice para qué sirve con el ejemplo del galón', async () => {
@@ -80,12 +101,12 @@ describe('Hoja de densidad', () => {
   it('borrar «Pesa vacío» lo deja vacío, no en cero', async () => {
     montar();
     await teclear('Pesa lleno (g)', '1100');
-    await teclear('Pesa vacío (g)', '15');
+    await teclear('Pesa la botella vacía (g)', '15');
     fireEvent.click(screen.getByRole('button', { name: 'Borrar' }));
     fireEvent.click(screen.getByRole('button', { name: 'Borrar' }));
     await teclear('Contiene (ml, según la etiqueta)', '1000');
     listo();
-    expect(screen.getByLabelText('Pesa vacío (g)')).toHaveValue('');
+    expect(screen.getByLabelText('Pesa la botella vacía (g)')).toHaveValue('');
     expect(screen.queryByText(/gramos por mililitro$/)).toBeNull();
     expect(guardar()).toBeDisabled();
   });

@@ -92,7 +92,7 @@ func (h *Handlers) CaptureCount(w http.ResponseWriter, r *http.Request) {
 		in.Gross = &app.GrossCapture{Weight: g.Weight, WeightUnitID: g.WeightUnitID, PresentationID: g.PresentationID,
 			Containers: g.Containers, SeenTareG: g.SeenTareG, SeenDensity: g.SeenDensity}
 	}
-	counted, err := h.backoffice.CaptureCountChecked(r.Context(), id, ing, in, u.ID)
+	counted, net, err := h.backoffice.CaptureCountWeighed(r.Context(), id, ing, in, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -106,7 +106,7 @@ func (h *Handlers) CaptureCount(w http.ResponseWriter, r *http.Request) {
 	out := map[string]decimal.Decimal{"countedQty": counted}
 	if body.Gross != nil {
 		// Lo pesado ya convertido, para que la pantalla muestre la cifra del servidor y no la suya.
-		out["grossNet"] = counted.Sub(body.CountedQty.Round(4))
+		out["grossNet"] = net
 	}
 	JSON(w, http.StatusOK, out)
 }

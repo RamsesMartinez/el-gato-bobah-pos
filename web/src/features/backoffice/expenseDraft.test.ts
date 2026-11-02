@@ -203,7 +203,7 @@ describe('crossConversion / lineConversion', () => {
     expect(crossConversion('4.3', kg, 'volumen', 'ml', '1.1')!.factor).toBeCloseTo(909.0909, 4);
   });
   test('sin densidad dice qué falta, sin factor', () => {
-    expect(crossConversion('2', l, 'masa', 'g', null)).toEqual({ factor: null, words: null, missing: 'Falta la densidad para pasar L a g' });
+    expect(crossConversion('2', l, 'masa', 'g', null)).toEqual({ factor: null, words: null, missing: 'Sin densidad para pasar L a g' });
   });
   test('misma clase o pieza: no aplica', () => {
     expect(crossConversion('2', kg, 'masa', 'g', '1.1')).toBeNull();

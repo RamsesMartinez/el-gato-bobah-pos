@@ -573,8 +573,9 @@ function RemoveButton({ removed, name, onToggle }: { removed: boolean; name: str
 }
 
 // howItCame dice en palabras cómo llegó el renglón: «3 cajas (12 L c/u)», «2 kg», o entre peso y
-// líquido con la densidad del renglón: «4.3 kg (4,300 g ÷ 1.10 = 3,909 ml)».
-function howItCame(i: ExpenseItem, qty: string, presentations: Presentation[], units: Unit[]): string {
+// líquido con la densidad del renglón: «4.3 kg (4,300 g ÷ 1.10 = 3,909 ml)». Sin `withCount` no lleva la
+// cuenta: en «Se pidieron … · llegaron …» va solo en lo que llegó, que es lo que sumó.
+function howItCame(i: ExpenseItem, qty: string, presentations: Presentation[], units: Unit[], withCount = true): string {
   const p = presentations.find((x) => x.id === i.presentationId);
   if (p && i.packQtyInBase) {
     const n = num(qty);
@@ -584,7 +585,7 @@ function howItCame(i: ExpenseItem, qty: string, presentations: Presentation[], u
   if (i.unitCode === 'pieza') return `${qty} ${num(qty) === 1 ? 'pieza' : 'piezas'}`;
   const cross = lineConversion(qty, i.unitCode, i.baseUnitCode, i.densityGPerMl, units);
   const said = `${qty} ${i.unitCode === 'l' ? 'L' : i.unitCode ?? ''}`.trim();
-  return cross?.words ? `${said} (${cross.words})` : said;
+  return withCount && cross?.words ? `${said} (${cross.words})` : said;
 }
 
 function GoodsRow({ item, edit, correcting, presentations, units, desired, onEdit, onExclude, showHistory, onHistory, removal, qtyRef, qtyActive, onQtyFocus }: {
@@ -606,7 +607,7 @@ function GoodsRow({ item, edit, correcting, presentations, units, desired, onEdi
   const got = num(item.qtyReceived);
   const status = stateOf(item) === 'no_llega' ? 'No va a llegar'
     : got > 0 && missing > 0
-      ? `Se pidieron ${howItCame(item, item.quantity, presentations, units)} · llegaron ${howItCame(item, item.qtyReceived ?? '0', presentations, units)}`
+      ? `Se pidieron ${howItCame(item, item.quantity, presentations, units, false)} · llegaron ${howItCame(item, item.qtyReceived ?? '0', presentations, units)}`
       : got > 0
         ? `${got === 1 ? 'Llegó' : 'Llegaron'} ${howItCame(item, item.qtyReceived ?? item.quantity, presentations, units)}`
         : `${num(item.quantity) === 1 ? 'Se pidió' : 'Se pidieron'} ${howItCame(item, item.quantity, presentations, units)}; no ha llegado`;

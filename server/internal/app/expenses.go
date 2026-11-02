@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -351,6 +352,22 @@ func (s *BackofficeService) ReceiveExpense(ctx context.Context, id int64, receiv
 		}
 		if exp.ReceivedAt.Valid || exp.Status == db.ExpenseStatusCancelada {
 			return domain.ErrConflict
+		}
+		// Los insumos de sus renglones, sin esperar y antes de leerlos para convertir: así la densidad
+		// que usa un renglón entre peso y líquido no cambia a media recepción (spec 058, revisión M1).
+		lines, err := q.ListStockLines(ctx, id)
+		if err != nil {
+			return err
+		}
+		var ings []int64
+		for _, l := range lines {
+			if l.IngredientID != nil {
+				ings = append(ings, *l.IngredientID)
+			}
+		}
+		slices.Sort(ings)
+		if err := lockIngredients(ctx, q, slices.Compact(ings)); err != nil {
+			return err
 		}
 		if err := q.FillMissingReceived(ctx, id); err != nil {
 			return err

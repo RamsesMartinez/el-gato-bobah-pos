@@ -108,6 +108,9 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
   const [form, setForm] = useState<Form | null>(null);
   const [panel, setPanel] = useState<'audit' | 'archive' | 'packs' | 'recipe' | 'cost' | 'discard' | 'unit' | 'merge' | 'density' | null>(null)
   const [editPack, setEditPack] = useState<number | undefined>(undefined);
+  // La clase a la que se quería pasar cuando la densidad se pidió desde el cambio de unidad: al
+  // guardarla se vuelve ahí con ese destino elegido, en vez de cerrar las dos hojas.
+  const [unitTarget, setUnitTarget] = useState<Kind | null>(null);
   const [cost, setCost] = useState('');
 
   // El formulario se llena solo con la ficha pedida al abrir, nunca con la de la caché: la caché puede
@@ -375,11 +378,18 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
 
       {panel === 'audit' && <ArticleAuditSheet id={id} name={a?.name ?? ''} baseUnitCode={a?.baseUnitCode ?? 'pieza'} onClose={() => setPanel(null)} />}
       {panel === 'unit' && a && (
-        <UnitChangeSheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }}
-          onNeedDensity={() => setPanel('density')} />
+        <UnitChangeSheet article={a} initialTo={unitTarget ?? undefined}
+          onClose={() => { setUnitTarget(null); setPanel(null); }}
+          onDone={async () => { setUnitTarget(null); setPanel(null); await refresh(); }}
+          onNeedDensity={(to) => { setUnitTarget(to); setPanel('density'); }} />
       )}
       {panel === 'density' && a && (
-        <DensitySheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />
+        <DensitySheet article={a} onClose={() => { setUnitTarget(null); setPanel(null); }}
+          onDone={async () => {
+            // Primero la ficha con la densidad nueva: el cambio de unidad la necesita para dejar elegir el destino.
+            setPanel(null); await refresh();
+            if (unitTarget) setPanel('unit');
+          }} />
       )}
       {panel === 'merge' && a && (
         <MergeSheet target={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />

@@ -343,12 +343,13 @@ type Entry = ReturnType<typeof useEntry>;
 const entryBox = (active: boolean) => ({
   w: '96px', minH: '56px', fontSize: '2xl', fontWeight: '800', textAlign: 'center' as const, inputMode: 'none' as const, readOnly: true,
   placeholder: '—', borderWidth: '2px', borderColor: active ? 'brand.solid' : undefined, bg: active ? 'brand.subtle' : undefined,
+  'data-active': active ? '' : undefined,
 });
 
 // WeighRow es el renglón plegado «Pesar con empaque» (spec 058, maqueta Conteo A): una forma
 // avanzada y opcional, así que plegado no le estorba a quien no pesa. onOpen decide dónde se abre:
 // en su lugar en la hoja, o la hoja completa desde «Uno por uno».
-function WeighRow({ open, onOpen, onClose }: { open: boolean; onOpen: () => void; onClose: () => void }) {
+function WeighRow({ open, onOpen, onClose, toMl }: { open: boolean; onOpen: () => void; onClose: () => void; toMl: boolean }) {
   const [info, setInfo] = useState(false);
   return (
     <VStack align="stretch" gap={1}>
@@ -361,7 +362,7 @@ function WeighRow({ open, onOpen, onClose }: { open: boolean; onOpen: () => void
       </HStack>
       {info && (
         <Text fontSize="sm" color="fg.muted">
-          Pon en la báscula los empaques abiertos con lo que traen. Se resta lo que pesan vacíos y se convierte a ml. No lo sumes también como suelto.
+          Pon en la báscula los empaques abiertos con lo que traen. Se resta lo que pesan vacíos{toMl ? ' y se convierte a ml' : ''}. No lo sumes también como suelto.
         </Text>
       )}
     </VStack>
@@ -387,7 +388,7 @@ function WeighFields({ item, e }: { item: CountItem; e: Entry }) {
         </HStack>
       </HStack>
       <HStack gap={3}>
-        <Text minW="110px">Empaque</Text>
+        <Text minW="110px">¿Cuál empaque?</Text>
         {e.tared.length > 1 ? (
           <Box flex="1" maxW="320px">
             <Picker title="¿Qué empaque pesaste?" value={String(pack.id)} onChange={(v) => e.setGrossPackId(Number(v))}
@@ -398,7 +399,7 @@ function WeighFields({ item, e }: { item: CountItem; e: Entry }) {
         )}
       </HStack>
       <HStack gap={3}>
-        <Text minW="110px">Empaques</Text>
+        <Text minW="110px">Cuántos pesaste</Text>
         <Button aria-label="Quitar un empaque pesado" minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bumpContainers(-1)}>−</Button>
         <Input aria-label={`Empaques pesados de ${item.name}`} value={e.containers} {...entryBox(e.field === 'containers')}
           onFocus={() => e.setField('containers')} onClick={() => e.setField('containers')} />
@@ -417,6 +418,12 @@ function EntryFields({ item, e, serverError, onWeigh }: {
   onWeigh?: () => void;
 }) {
   const many = e.packs.length > 3;
+  // La casilla activa se trae a la vista al cambiar: con varios empaques y la pesada abierta queda
+  // debajo del área con scroll, y el teclado escribiría en una casilla que no se ve.
+  const fieldsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    fieldsRef.current?.querySelector('[data-active]')?.scrollIntoView?.({ block: 'nearest' });
+  }, [e.field, e.weighing]);
   const totalLine = (
     <HStack justify="space-between" align="baseline" data-testid="total-contado" flexShrink={0}>
       <Text color="fg.muted">Total contado</Text>
@@ -432,7 +439,7 @@ function EntryFields({ item, e, serverError, onWeigh }: {
       {many && totalLine}
       {/* Lo capturable se desplaza y el total se queda fijo: con la pesada abierta y varios empaques no
           cabe en 600 px, y «Guardar» no puede salirse de la pantalla. */}
-      <VStack align="stretch" gap={2} flex="1" minH={0} overflowY="auto" data-testid="campos-conteo">
+      <VStack ref={fieldsRef} align="stretch" gap={2} flex="1" minH={0} overflowY="auto" data-testid="campos-conteo">
         {e.packs.length > 0 && (
           <VStack align="stretch" gap={0} flexShrink={0}>
             <Text fontWeight="700">Empaques cerrados</Text>
@@ -467,7 +474,7 @@ function EntryFields({ item, e, serverError, onWeigh }: {
         )}
         {e.tared.length > 0 && (
           <Box borderTopWidth="1px" pt={1} flexShrink={0}>
-            <WeighRow open={e.weighing} onOpen={onWeigh ?? e.openWeighing} onClose={e.closeWeighing} />
+            <WeighRow open={e.weighing} onOpen={onWeigh ?? e.openWeighing} onClose={e.closeWeighing} toMl={item.baseUnitCode === 'ml'} />
             {e.weighing && <WeighFields item={item} e={e} />}
           </Box>
         )}

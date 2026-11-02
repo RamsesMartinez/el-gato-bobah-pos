@@ -51,7 +51,12 @@ func (e UnitKindMismatch) Unwrap() error { return ErrUnitKindMismatch }
 // ValidDensity acepta una densidad en g/ml dentro de lo posible y con 4 decimales a lo más (los de la
 // columna: uno más se guardaría distinto de lo que se capturó).
 func ValidDensity(d decimal.Decimal) error {
-	if !escalaSana(d) || d.Exponent() < -4 || d.LessThan(minDensity) || d.GreaterThan(maxDensity) {
+	if !escalaSana(d) {
+		// Sin repetir la cifra: un exponente absurdo volvía el mensaje de varios KB.
+		return fmt.Errorf("%w: la densidad va de 0.30 a 3.00 gramos por ml", ErrValidation)
+	}
+	// «1.10000» es 1.1: los ceros de más no son decimales que se pierdan.
+	if !d.Equal(d.Round(4)) || d.LessThan(minDensity) || d.GreaterThan(maxDensity) {
 		return fmt.Errorf("%w: la densidad va de 0.30 a 3.00 gramos por ml; revisa la pesada: da %s", ErrValidation, d.String())
 	}
 	return nil
@@ -100,7 +105,7 @@ func DensityFactor(fromKind, toKind string, d decimal.Decimal) (decimal.Decimal,
 
 // ValidTare acepta lo que pesa vacío un empaque: mayor que cero, hasta 100 kg, a 2 decimales.
 func ValidTare(g decimal.Decimal) error {
-	if !escalaSana(g) || g.Exponent() < -2 || !g.IsPositive() || g.GreaterThan(MaxTareG) {
+	if !escalaSana(g) || !g.Equal(g.Round(2)) || !g.IsPositive() || g.GreaterThan(MaxTareG) {
 		return fmt.Errorf("%w: lo que pesa vacío va de 0.01 g a 100 kg", ErrValidation)
 	}
 	return nil

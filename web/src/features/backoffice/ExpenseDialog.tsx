@@ -19,7 +19,7 @@ import {
 } from '../../components/ui/drawer';
 import { posApi } from '../../api/pos';
 import { money } from '../../utils/format';
-import { packToBase, lineAmount, purchaseMoney, baseOfLine, crossConversion, type CrossConversion } from './expenseDraft';
+import { packToBase, lineAmount, purchaseMoney, baseOfLine, crossConversion, ASK_FOR_DENSITY, type CrossConversion } from './expenseDraft';
 import { DensitySheet } from './articles/DensitySheet';
 import { ApiError } from '../../api/client';
 import { can } from '../../app/permissions';
@@ -573,6 +573,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                       presentations={presList} sums={sumsLine(it)} howItArrives={howItArrives} cross={crossOf(it)}
                       onDensity={canDensity && densityShortcutRow.get(it.itemId ?? 0) === it.key
                         ? () => setDensityFor({ id: it.itemId!, name: it.itemName }) : undefined}
+                      askForDensity={!canDensity || !((it.itemId ?? 0) > 0)}
                       onChange={(patch) => setItem(it.key, patch)}
                       onSplit={() => setItems((p) => {
                         const at = p.findIndex((x) => x.key === it.key);
@@ -646,8 +647,10 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
             )}
             {mismatch && (
               <HStack gap={2} flexWrap="wrap" p={2} borderRadius="lg" bg="orange.subtle">
-                <Text fontSize="sm" flex="1">Falta la densidad de {mismatch.name || `este ${label}`} para convertir su renglón.</Text>
-                {canDensity && <Button minH="44px" variant="outline" bg="bg" onClick={() => setDensityFor(mismatch)}>Capturar la pesada</Button>}
+                <Text fontSize="sm" flex="1">
+                  Falta la densidad de {mismatch.name || `este ${label}`} para convertir su renglón.{!canDensity && ` ${ASK_FOR_DENSITY}`}
+                </Text>
+                {canDensity && <Button minH="44px" variant="outline" bg="bg" onClick={() => setDensityFor(mismatch)}>Capturar la densidad</Button>}
               </HStack>
             )}
             <HStack w="100%" gap={3} align="center">
@@ -672,7 +675,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 )}
                 {missingUnit && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo llegó cada {label}</Text>}
                 {anyPartBad && <Text as="span" fontWeight="700" color="orange.700"> · di cuántos llegaron (menos de lo pedido)</Text>}
-                {missingDensity && <Text as="span" fontWeight="700" color="orange.700"> · falta la densidad para convertir un renglón</Text>}
+                {missingDensity && <Text as="span" fontWeight="700" color="orange.fg"> · falta la densidad para convertir un renglón</Text>}
                 {payUnanswered && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo se pagó</Text>}
                 {payNeedsRegister && <Text as="span" fontWeight="700" color="orange.700"> · elige de qué caja sale</Text>}
                 {moneyCheck.over && (
@@ -762,11 +765,13 @@ function DoubtfulRow({ item, presentations, onYes, onOther, onNotArrived }: {
 
 // ---- Renglón de mercancía ----
 
-function ItemRow({ item, units, articles, articleList, presentations, sums, cross, onDensity, howItArrives, onChange, onSplit, onPacks, onCreate, onRemove }: {
+function ItemRow({ item, units, articles, articleList, presentations, sums, cross, onDensity, askForDensity, howItArrives, onChange, onSplit, onPacks, onCreate, onRemove }: {
   item: DraftItem;
   // Spec 058: la conversión entre peso y líquido del renglón, o lo que le falta, y el atajo a la densidad.
   cross: CrossConversion | null;
   onDensity?: () => void;
+  // askForDensity: no hay atajo posible (sin permiso, o el artículo aún no existe) y el aviso dice qué hacer.
+  askForDensity?: boolean;
   howItArrives: (type: string, id: number, unitId: number | null) => { presentationId: number | null; unitId: number | null };
   units: Unit[];
   articles: PickerOption[];
@@ -889,8 +894,6 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, cros
             )}
             {cross?.words ? <Text fontSize="sm" fontWeight="700" color="fg.success">{cross.words}</Text>
               : sums && <Text fontSize="sm" fontWeight="700" color="fg.success">= {sums.split(' +').pop()}</Text>}
-            {cross?.missing && <Text fontSize="sm" fontWeight="700" color="orange.700">{cross.missing}</Text>}
-            {cross?.missing && onDensity && <Button minH="44px" size="sm" variant="outline" colorPalette="brand" onClick={onDensity}>Capturar la pesada</Button>}
             <HStack gap={0} ml="auto" borderWidth="1px" borderRadius="md" role="group" aria-label="Estado">
               {(() => {
                 const full = item.arrived && item.partQty === null;
@@ -914,6 +917,13 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, cros
                 <LuScissors /> Partir
               </Button>
             )}
+          </HStack>
+        )}
+        {/* Una línea propia: dentro de la fila de unidades y estado la hacía crecer una línea entera. */}
+        {goods && art && cross?.missing && (
+          <HStack gap={2} justify="space-between" data-testid="sin-densidad">
+            <Text fontSize="sm"><Text as="span" fontWeight="700" color="orange.fg">{cross.missing}</Text>{askForDensity && `. ${ASK_FOR_DENSITY}`}</Text>
+            {onDensity && <Button minH="44px" size="sm" variant="outline" colorPalette="brand" flexShrink={0} onClick={onDensity}>Capturar la densidad</Button>}
           </HStack>
         )}
         {!goods && !item.excluded && item.suggestions.length > 0 && !item.itemId && (

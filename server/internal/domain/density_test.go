@@ -17,6 +17,10 @@ func TestValidDensity(t *testing.T) {
 		{"0", false}, {"-1", false},
 		// Cinco decimales no caben en la columna: se rechazan en vez de guardarse distintos.
 		{"1.10001", false},
+		// Ceros de más no cambian el valor: «1.10000» es 1.1.
+		{"1.10000", true},
+		// Exponentes absurdos de la frontera (revisión de seguridad): 400, nunca 500.
+		{"1e21", false}, {"1e-21", false}, {"1e10000", false},
 	}
 	for _, tt := range tests {
 		err := ValidDensity(dec(tt.in))
@@ -129,8 +133,17 @@ func TestNetFromGross(t *testing.T) {
 	}
 }
 
+// Un valor con un exponente absurdo no se repite en el mensaje: con 1e10000 la respuesta pesaba 10 KB.
+func TestValidDensityDoesNotEchoAnAbsurdValue(t *testing.T) {
+	err := ValidDensity(dec("1e10000"))
+	if err == nil || len(err.Error()) > 200 {
+		t.Fatalf("mensaje de %d letras: %v", len(err.Error()), err)
+	}
+}
+
 func TestValidTare(t *testing.T) {
-	for in, ok := range map[string]bool{"0": false, "-1": false, "0.01": true, "100000": true, "100000.01": false, "1.001": false} {
+	for in, ok := range map[string]bool{"0": false, "-1": false, "0.01": true, "100000": true, "100000.01": false, "1.001": false,
+		"120.00": true, "1e21": false, "1e-21": false, "1e10000": false} {
 		if err := ValidTare(dec(in)); (err == nil) != ok {
 			t.Errorf("ValidTare(%s) = %v; quería ok=%v", in, err, ok)
 		}

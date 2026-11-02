@@ -157,7 +157,7 @@ export function DensitySheet({ article, onClose, onDone }: {
             <InfoButton label="¿Para qué sirve la densidad?" open={help} onToggle={() => setHelp((h) => !h)} />
           </HStack>
         </DrawerHeader>
-        <DrawerBody flex="1" minH={0} overflowY="auto">
+        <DrawerBody flex="1" minH={0} overflowY="auto" data-testid="cuerpo-densidad">
           <Stack gap={3}>
             {help && (
               <Box p={3} borderRadius="lg" bg="bg.subtle">
@@ -171,7 +171,7 @@ export function DensitySheet({ article, onClose, onDone }: {
             {mode === 'weighing' ? (
               <Stack gap={2}>
                 {box('fullG', 'Pesa lleno (g)')}
-                {box('emptyG', 'Pesa vacío (g)')}
+                {box('emptyG', 'Pesa la botella vacía (g)')}
                 {box('contentMl', 'Contiene (ml, según la etiqueta)')}
               </Stack>
             ) : (
@@ -185,11 +185,17 @@ export function DensitySheet({ article, onClose, onDone }: {
                 )}
               </Stack>
             )}
+          </Stack>
+        </DrawerBody>
+        {/* Fuera del cuerpo con scroll: con el teclado abierto el cuerpo se encoge, y la cuenta y lo que
+            impide guardar tienen que seguir a la vista mientras se teclea. */}
+        {(out.words || out.problem || error) && (
+          <Stack gap={1} px={6} py={2} flexShrink={0} borderTopWidth="1px">
             {out.words && <Text fontSize="xl" fontWeight="800" textAlign="center" data-testid="resultado">{out.words}</Text>}
             {out.problem && <Text color="fg.error">{out.problem}</Text>}
             {error && <Text color="fg.error">{error}</Text>}
           </Stack>
-        </DrawerBody>
+        )}
         <DrawerFooter borderTopWidth="1px">
           {field ? (
             <HStack w="100%" gap={3} align="end">

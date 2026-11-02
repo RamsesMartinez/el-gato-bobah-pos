@@ -258,6 +258,15 @@ describe('pesa vacío', () => {
     expect(screen.queryByLabelText('Pesa vacío (g)')).toBeNull();
   });
 
+  // Va junto a «Cuánto trae», que es de lo que habla: después de la marca se leía como dato de la marca.
+  test('«Pesa vacío» va antes de «Marca o proveedor»', async () => {
+    montar(azucar);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    const tare = screen.getByLabelText('Pesa vacío (g)');
+    const brand = screen.getByLabelText('Marca o proveedor (opcional)');
+    expect(tare.compareDocumentPosition(brand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   test('un empaque nuevo manda lo que pesa vacío si se escribió, y nada si no', async () => {
     montar(azucar);
     fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
