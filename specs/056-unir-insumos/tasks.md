@@ -157,14 +157,14 @@ código y se ve fallar por la razón correcta antes de implementar.
 
 - [X] T053 [US5] Integración: `GET /stock/articles/similar?name=` (1–80, vacío o largo → 400; hasta 5; `[]` no `null`; solo activos de la empresa) en `server/internal/integration/duplicates_test.go`; medir la respuesta con los ~450 insumos de la base restaurada (meta < 300 ms)
 - [X] T054 [US5] Servicio y handler de `similar` (reusa `SimilarNames`) y ruta con `inventory.configure`
-- [ ] T055 [US5] Pruebas primero en `web/src/features/backoffice/articles/NewArticleSheet.test.tsx` — fila «Aviso de insumo parecido» de Maquetas (B): sin parecidos crea directo; con parecidos muestra la lista (máx. 5, scroll interno), «Abrir» abre la ficha sin crear, «Volver» conserva lo escrito, «Crear de todos modos» crea; nombre idéntico sigue respondiendo 409 como hoy
-- [ ] T056 [US5] Implementación en `web/src/features/backoffice/articles/NewArticleSheet.tsx`
+- [X] T055 [US5] Pruebas primero en `web/src/features/backoffice/articles/NewArticleSheet.test.tsx` — fila «Aviso de insumo parecido» de Maquetas (B): sin parecidos crea directo; con parecidos muestra la lista (máx. 5, scroll interno), «Abrir» abre la ficha sin crear, «Volver» conserva lo escrito, «Crear de todos modos» crea; nombre idéntico sigue respondiendo 409 como hoy
+- [X] T056 [US5] Implementación en `web/src/features/backoffice/articles/NewArticleSheet.tsx`
 
 ---
 
 ## Phase 9: Polish & Cross-Cutting
 
-- [ ] T057 Medición de uso: acciones `unir-insumos` y `no-son-lo-mismo` en `web/src/api/uso.ts`/`medirAccion` y la lista blanca de `server/internal/domain/uso.go` si son acciones nuevas
+- [X] T057 Medición de uso: acciones `unir-insumos` y `no-son-lo-mismo` en `web/src/api/uso.ts`/`medirAccion` y la lista blanca de `server/internal/domain/uso.go` si son acciones nuevas
 - [ ] T058 [P] E2E `web/e2e/unir-insumos.spec.ts` a 1024×600 contra el `make start` del worktree: unir dos insumos creados por la prueba (no los reales), vender, ver la existencia; los crea y los deja archivados; capturas solo en `test-results/`
 - [ ] T059 Documentar en `AGENTS.md` §2 «Unir insumos (spec 056)»: las guardas de la base (redirige movimientos, rechaza lo demás, diferido para la carrera), que un camino nuevo que escriba en una tabla que apunta a `ingredients` se clasifica en `MergeTables`, la marca copiada en la compra y que un destino con unidos no cambia de unidad
 - [ ] T060 `/revision-de-codigo` (hook `after_implement`) y corregir lo que encuentre con su prueba

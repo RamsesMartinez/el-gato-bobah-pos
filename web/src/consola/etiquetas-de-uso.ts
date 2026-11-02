@@ -52,6 +52,8 @@ const ACCIONES: Record<string, string> = {
   'corregir-costo': 'Corregir el costo de un artículo',
   'archivar-articulo': 'Archivar o reactivar un artículo',
   'cambiar-unidad': 'Cambiar en qué se mide un artículo',
+  'unir-insumos': 'Unir insumos duplicados',
+  'no-son-lo-mismo': 'Descartar un posible duplicado',
   registrar: 'Registrar lo que se echó a perder',
   deshacer: 'Deshacer lo que se echó a perder',
   aprobar: 'Aprobar lo que se echó a perder',
