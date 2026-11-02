@@ -10,6 +10,7 @@ import { formatBaseQty, packExample, purchaseUnitsFor, unitLabel } from '../../s
 import { round2 } from '../../domain/numeros';
 import { UnitSegment } from './articles/qty';
 import { BASE_PACKS } from './articles/articleUnits';
+import { presentationLabel } from '../../shared/presentationLabel';
 
 // «Cómo llega» un insumo (spec 038, maqueta «Cómo llega un insumo», opción B): sus empaques de
 // compra. Cada empaque se captura con número Y unidad, y se ve su equivalencia antes de guardar:
@@ -62,6 +63,8 @@ interface Draft {
   qty: string;
   unitId: number | null;
   approximate: boolean;
+  // La marca o el proveedor (spec 056), opcional.
+  brand: string;
 }
 
 export function PresentationsSheet({ isOpen, ingredient, presentations, units, startNew, editId, onClose }: Props) {
@@ -72,11 +75,11 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
     const editing = editId === undefined ? undefined : presentations.find((p) => p.id === editId);
     if (editing) {
       const b = bodyOf(editing, units, kind);
-      return { editing, name: b.name, other: true, qty: b.qty, unitId: b.unitId, approximate: b.approximate };
+      return { editing, name: b.name, other: true, qty: b.qty, unitId: b.unitId, approximate: b.approximate, brand: editing.brand ?? '' };
     }
     if (!startNew) return null;
     const first = purchaseUnitsFor(kind, units)[0];
-    return { editing: null, name: '', other: false, qty: '', unitId: first?.id ?? null, approximate: false };
+    return { editing: null, name: '', other: false, qty: '', unitId: first?.id ?? null, approximate: false, brand: '' };
   });
   const [error, setError] = useState('');
   // Lo que se sugiere son empaques que la empresa ya usa en artículos que se miden igual, con su
@@ -92,8 +95,9 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
       void qc.invalidateQueries({ queryKey: ['presentations'] });
     },
     onError: (e) => setError(e instanceof ApiError && e.status === 409
-      ? 'Ya hay un empaque que se llama así'
-      : 'No se pudo guardar el empaque'),
+      ? 'Ya hay un empaque que se llama así con esa marca'
+      // Un 400 dice qué está mal (prueba con usuario nuevo: «1212 L» salía solo como «No se pudo»).
+      : e instanceof ApiError && e.status === 400 ? e.message : 'No se pudo guardar el empaque'),
   });
 
   const active = presentations.filter((p) => p.active);
@@ -132,16 +136,17 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
     setError('');
     if (p) {
       const b = bodyOf(p, units, kind);
-      setDraft({ editing: p, name: b.name, other: !suggestedNames.includes(b.name), qty: b.qty, unitId: b.unitId, approximate: b.approximate });
+      setDraft({ editing: p, name: b.name, other: !suggestedNames.includes(b.name), qty: b.qty, unitId: b.unitId, approximate: b.approximate, brand: p.brand ?? '' });
     } else {
       const first = purchaseUnitsFor(kind, units)[0];
-      setDraft({ editing: null, name: '', other: false, qty: '', unitId: first?.id ?? null, approximate: false });
+      setDraft({ editing: null, name: '', other: false, qty: '', unitId: first?.id ?? null, approximate: false, brand: '' });
     }
   };
   const toggle = (p: Presentation) => save.mutate({ id: p.id, body: { ...bodyOf(p, units, kind), active: !p.active } });
   const submit = () => {
     if (!draft || !unit || !canSave) return;
-    const body: PresentationBody = { name, qty: draft.qty.trim(), unitId: unit.id, approximate: draft.approximate };
+    // La marca va siempre: vacía la quita al editar (sin mandarla, el servidor la conserva).
+    const body: PresentationBody = { name, qty: draft.qty.trim(), unitId: unit.id, approximate: draft.approximate, brand: draft.brand.trim() };
     save.mutate({ id: draft.editing?.id ?? null, body: draft.editing ? { ...body, active: true } : body });
   };
 
@@ -161,7 +166,7 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
             {active.map((p) => (
               <HStack key={p.id} data-row borderWidth="1px" borderRadius="lg" px={3} minH="56px" gap={3}>
                 <Text flex="1" fontWeight="600">
-                  {p.approximate ? `${p.name} ≈ ${formatBaseQty(p.qtyInBase, ingredient.baseUnitCode)}` : `${p.name} · ${formatBaseQty(p.qtyInBase, ingredient.baseUnitCode)}`}
+                  {p.approximate ? `${presentationLabel(p)} ≈ ${formatBaseQty(p.qtyInBase, ingredient.baseUnitCode)}` : `${presentationLabel(p)} · ${formatBaseQty(p.qtyInBase, ingredient.baseUnitCode)}`}
                 </Text>
                 <Button minH="44px" variant="outline" onClick={() => open(p)}>Editar</Button>
                 {/* Aparte de «Editar» y en segundo plano: juntos, quien quitaba dudaba si estaba editando
@@ -173,9 +178,9 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
             ))}
             {inactive.length > 0 && (
               <HStack gap={2} flexWrap="wrap">
-                <Text color="fg.muted">Ya no llega en: {inactive.map((p) => p.name).join(', ')}</Text>
+                <Text color="fg.muted">Ya no llega en: {inactive.map((p) => presentationLabel(p)).join(', ')}</Text>
                 {inactive.map((p) => (
-                  <Button key={p.id} size="sm" minH="44px" variant="ghost" onClick={() => toggle(p)}>Vuelve a llegar en {p.name}</Button>
+                  <Button key={p.id} size="sm" minH="44px" variant="ghost" onClick={() => toggle(p)}>Vuelve a llegar en {presentationLabel(p)}</Button>
                 ))}
               </HStack>
             )}
@@ -235,10 +240,18 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
                   <Text>{draft.approximate ? 'Por cada' : 'Trae'}</Text>
                   {draft.approximate && <UnitSegment options={unitOptions} />}
                   {draft.approximate && <Text>trae aproximadamente</Text>}
+                  {/* Al tocarla se selecciona: la cantidad llega precargada de un empaque conocido y escribir
+                      encima daba «1212» (prueba con usuario nuevo). */}
                   <Input w="110px" minH="48px" inputMode="decimal" aria-label="Cuánto trae" placeholder="0"
+                    onFocus={(e) => e.currentTarget.select()}
                     value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value.replace(',', '.') })} />
                   {draft.approximate ? <Text>piezas</Text> : <UnitSegment options={unitOptions} />}
                 </HStack>
+                <Stack gap={1}>
+                  <Text fontWeight="600">Marca o proveedor (opcional)</Text>
+                  <Input aria-label="Marca o proveedor (opcional)" minH="48px" maxLength={40} placeholder="Ej. Lala, Costco"
+                    value={draft.brand} onChange={(e) => setDraft({ ...draft, brand: e.target.value })} />
+                </Stack>
                 {!wholeOk && <Text color="orange.fg">Un empaque trae piezas enteras: escribe cuántas dice la etiqueta.</Text>}
                 {byPiece && !draft.approximate && (
                   <Text fontSize="sm" color="fg.muted">Si es otro tamaño de pieza (un sobre más grande, otra lata), créalo como otro insumo.</Text>

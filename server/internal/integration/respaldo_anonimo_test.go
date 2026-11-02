@@ -75,6 +75,7 @@ var noPersonalData = map[string]string{
 	"ingredient_categories.name":                    "catálogo",
 	"ingredient_presentations.name":                 "catálogo",
 	"ingredient_purchase_formats.name":              "catálogo",
+	"ingredient_replacements.kind":                  "tipo de reemplazo (cambio de unidad o unión)",
 	"ingredients.composition_status":                "estado",
 	"ingredients.name":                              "catálogo",
 	"modifier_groups.name":                          "catálogo",

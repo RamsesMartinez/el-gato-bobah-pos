@@ -262,6 +262,11 @@ update suppliers set phone = null, notes = null where phone is not null or notes
 -- El nombre también: un proveedor puede ser una persona física, y con los gastos queda cuánto se le
 -- pagó y cuándo.
 update suppliers set name = 'Proveedor ' || id;
+-- La marca de una presentación (0104) suele ser el proveedor, y su copia en la compra también. Una por
+-- presentación y no en nulo: dos «Caja» del mismo insumo con marca distinta chocarían en el índice
+-- único al quedar sin marca.
+update ingredient_presentations set brand = 'Marca ' || id where brand is not null;
+update expense_items set presentation_brand = 'Marca ' || coalesce(presentation_id, id) where presentation_brand is not null;
 -- Preferencias de pantalla: la API acepta cualquier clave y cualquier JSON de quien tenga sesión, así
 -- que no se puede prometer qué hay adentro. Ninguna prueba las necesita.
 truncate user_preferences;
@@ -313,6 +318,8 @@ FUGAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "
        + (select count(*) from refresh_tokens)
        + (select count(*) from password_reset_tokens)
        + (select count(*) from suppliers where phone is not null or notes is not null or name !~ '^Proveedor [0-9]+\$')
+       + (select count(*) from ingredient_presentations where brand !~ '^Marca [0-9]+\$')
+       + (select count(*) from expense_items where presentation_brand !~ '^Marca [0-9]+\$')
        + (select count(*) from user_preferences)
        + (select count(*) from business_settings where phone is not null or address is not null or header_note is not null or footer_note is not null or daily_summary_emails <> '{}' or logo_bytes is not null or logo_mime is not null)
        + (select count(*) from branches where address is not null or phone is not null or postal_code is not null)

@@ -1080,27 +1080,28 @@ type ExpenseCategory struct {
 }
 
 type ExpenseItem struct {
-	ID             int64              `json:"id"`
-	ExpenseID      int64              `json:"expense_id"`
-	ItemType       *StockItemType     `json:"item_type"`
-	IngredientID   *int64             `json:"ingredient_id"`
-	ProductID      *int64             `json:"product_id"`
-	Description    string             `json:"description"`
-	Quantity       decimal.Decimal    `json:"quantity"`
-	UnitID         *int16             `json:"unit_id"`
-	QtyReceived    *decimal.Decimal   `json:"qty_received"`
-	UnitCost       decimal.Decimal    `json:"unit_cost"`
-	Amount         decimal.Decimal    `json:"amount"`
-	PackQtyInBase  *decimal.Decimal   `json:"pack_qty_in_base"`
-	Position       int32              `json:"position"`
-	CreatedAt      time.Time          `json:"created_at"`
-	CompanyID      int64              `json:"company_id"`
-	PresentationID *int64             `json:"presentation_id"`
-	AppliedQtyBase decimal.Decimal    `json:"applied_qty_base"`
-	NotComingQty   decimal.Decimal    `json:"not_coming_qty"`
-	VoidedAt       pgtype.Timestamptz `json:"voided_at"`
-	IsGift         bool               `json:"is_gift"`
-	Excluded       bool               `json:"excluded"`
+	ID                int64              `json:"id"`
+	ExpenseID         int64              `json:"expense_id"`
+	ItemType          *StockItemType     `json:"item_type"`
+	IngredientID      *int64             `json:"ingredient_id"`
+	ProductID         *int64             `json:"product_id"`
+	Description       string             `json:"description"`
+	Quantity          decimal.Decimal    `json:"quantity"`
+	UnitID            *int16             `json:"unit_id"`
+	QtyReceived       *decimal.Decimal   `json:"qty_received"`
+	UnitCost          decimal.Decimal    `json:"unit_cost"`
+	Amount            decimal.Decimal    `json:"amount"`
+	PackQtyInBase     *decimal.Decimal   `json:"pack_qty_in_base"`
+	Position          int32              `json:"position"`
+	CreatedAt         time.Time          `json:"created_at"`
+	CompanyID         int64              `json:"company_id"`
+	PresentationID    *int64             `json:"presentation_id"`
+	AppliedQtyBase    decimal.Decimal    `json:"applied_qty_base"`
+	NotComingQty      decimal.Decimal    `json:"not_coming_qty"`
+	VoidedAt          pgtype.Timestamptz `json:"voided_at"`
+	IsGift            bool               `json:"is_gift"`
+	Excluded          bool               `json:"excluded"`
+	PresentationBrand *string            `json:"presentation_brand"`
 }
 
 type ExpensePayment struct {
@@ -1182,6 +1183,15 @@ type IngredientCostCorrection struct {
 	CreatedAt    time.Time       `json:"created_at"`
 }
 
+type IngredientDistinctPair struct {
+	ID               int64     `json:"id"`
+	CompanyID        int64     `json:"company_id"`
+	LowIngredientID  int64     `json:"low_ingredient_id"`
+	HighIngredientID int64     `json:"high_ingredient_id"`
+	UserID           int64     `json:"user_id"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
 type IngredientPresentation struct {
 	ID             int64           `json:"id"`
 	CompanyID      int64           `json:"company_id"`
@@ -1192,6 +1202,7 @@ type IngredientPresentation struct {
 	PurchaseUnitID *int16          `json:"purchase_unit_id"`
 	IsApproximate  bool            `json:"is_approximate"`
 	CreatedAt      time.Time       `json:"created_at"`
+	Brand          *string         `json:"brand"`
 }
 
 type IngredientPurchaseFormat struct {
@@ -1212,6 +1223,7 @@ type IngredientReplacement struct {
 	Factor          decimal.Decimal `json:"factor"`
 	UserID          int64           `json:"user_id"`
 	CreatedAt       time.Time       `json:"created_at"`
+	Kind            string          `json:"kind"`
 }
 
 type LocalItemExclusion struct {

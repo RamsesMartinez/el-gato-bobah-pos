@@ -550,3 +550,25 @@ describe('teclado físico (spec 044)', () => {
     expect(suelto()).toHaveValue('7');
   });
 });
+
+// Marca en la presentación (spec 056): dos «Caja» del mismo insumo con marca distinta son dos casillas
+// distintas, cada una con su nombre completo.
+describe('dos empaques con el mismo nombre y distinta marca', () => {
+  test('se cuentan por separado y se distinguen por su marca', async () => {
+    const c = conteo();
+    c.items[0] = { ...c.items[0], presentations: [
+      { id: 1, name: 'Caja', qtyInBase: '12000', brand: 'Marca A' }, { id: 2, name: 'Caja', qtyInBase: '8000', brand: 'Marca B' },
+    ] };
+    back.currentCount.mockResolvedValue(c);
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[0]).getByRole('button', { name: 'Contar' }));
+    const a = await screen.findByLabelText('Caja · Marca A de Jarabe de vainilla');
+    const b = screen.getByLabelText('Caja · Marca B de Jarabe de vainilla');
+    fireEvent.click(a);
+    tecla('2');
+    fireEvent.click(b);
+    tecla('1');
+    expect(a).toHaveValue('2');
+    expect(b).toHaveValue('1');
+  });
+});

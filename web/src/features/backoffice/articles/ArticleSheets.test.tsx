@@ -25,6 +25,7 @@ const back = vi.hoisted(() => ({
   countPlaces: vi.fn(() => Promise.resolve([] as unknown[])),
   createCountPlace: vi.fn(),
   createArticle: vi.fn(),
+  similarArticles: vi.fn(() => Promise.resolve({ items: [] as unknown[] })),
   reactivateArticle: vi.fn(() => Promise.resolve()),
   article: vi.fn(),
   updateArticle: vi.fn(() => Promise.resolve({ updatedAt: 'v2' })),
@@ -533,5 +534,97 @@ describe('Archivar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Archivar' }));
     await waitFor(() => expect(back.archiveArticle).toHaveBeenCalledWith(7));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
+  });
+});
+
+// Unir insumos (spec 056, maqueta «Unir insumos»).
+describe('Ficha · unir insumos', () => {
+  it('con permiso de configurar, un insumo activo ofrece «Unir otros aquí»', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'Unir otros aquí' })).toBeInTheDocument();
+  });
+
+  it('un preparado no ofrece unir', async () => {
+    back.article.mockResolvedValue({ ...ficha, isPrep: true });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    await screen.findByText(/Es un preparado/);
+    expect(screen.queryByRole('button', { name: 'Unir otros aquí' })).toBeNull();
+  });
+
+  it('sin permiso de configurar no se ofrece', async () => {
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.view'] } as never });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    await screen.findByText('Hielo en bolsa');
+    expect(screen.queryByRole('button', { name: 'Unir otros aquí' })).toBeNull();
+  });
+
+  it('un insumo unido dice a cuál y lleva a él, sin ofrecer reactivarlo', async () => {
+    back.article.mockResolvedValue({ ...ficha, isActive: false, mergedInto: { id: 3, name: 'Hielo', at: '2026-11-03T18:00:00Z' } });
+    const onOpen = vi.fn();
+    montar(<ArticleSheet id={7} onClose={vi.fn()} onOpenArticle={onOpen} />);
+    const band = await screen.findByText((_, el) => el?.tagName === 'P' && /^Unido a Hielo el /.test(el.textContent ?? ''));
+    expect(band).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reactivar' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir Hielo' }));
+    expect(onOpen).toHaveBeenCalledWith(3);
+  });
+
+  it('el historial dice de qué insumo unido viene una compra y con qué marca', async () => {
+    back.articleCostHistory.mockResolvedValue({ items: [{ ...compra(18, '0.006'), fromName: 'Hielo Marca B', brand: 'Polar' }], next: null, trendPct: null });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText(/de Hielo Marca B/)).toBeInTheDocument();
+    expect(screen.getByText(/Bolsa · Polar/)).toBeInTheDocument();
+  });
+});
+
+// Aviso de insumo parecido (spec 056, maqueta «Aviso de insumo parecido», opción B: al guardar).
+describe('Nuevo artículo · aviso de parecido', () => {
+  const llenar = async (nombre: string) => {
+    fireEvent.change(await screen.findByLabelText(/Nombre/), { target: { value: nombre } });
+    fireEvent.click(screen.getByRole('button', { name: 'Líquido' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+  };
+
+  it('sin parecidos crea directo', async () => {
+    back.createArticle.mockResolvedValue({ id: 9 });
+    const onCreated = vi.fn();
+    montar(<NewArticleSheet onClose={vi.fn()} onCreated={onCreated} />);
+    await llenar('Aceite de oliva');
+    await waitFor(() => expect(back.createArticle).toHaveBeenCalled());
+    expect(back.similarArticles).toHaveBeenCalledWith('Aceite de oliva');
+  });
+
+  it('con parecidos pregunta antes de crear; «Abrir» abre el existente sin crear', async () => {
+    back.similarArticles.mockResolvedValue({ items: [{ id: 3, name: 'Leche entera', baseUnitId: 3, baseUnitCode: 'ml', onHand: '8400' }] });
+    const onCreated = vi.fn();
+    montar(<NewArticleSheet onClose={vi.fn()} onCreated={onCreated} />);
+    await llenar('leche entera lala');
+    expect(await screen.findByText('¿Es alguno de estos?')).toBeInTheDocument();
+    expect(back.createArticle).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir Leche entera' }));
+    expect(onCreated).toHaveBeenCalledWith(3);
+    expect(back.createArticle).not.toHaveBeenCalled();
+  });
+
+  it('«Volver» regresa con lo escrito y «Crear de todos modos» crea', async () => {
+    back.similarArticles.mockResolvedValue({ items: [{ id: 3, name: 'Leche entera', baseUnitId: 3, baseUnitCode: 'ml', onHand: '8400' }] });
+    back.createArticle.mockResolvedValue({ id: 9 });
+    const onCreated = vi.fn();
+    montar(<NewArticleSheet onClose={vi.fn()} onCreated={onCreated} />);
+    await llenar('leche entera lala');
+    fireEvent.click(await screen.findByRole('button', { name: 'Volver' }));
+    expect(screen.getByLabelText(/Nombre/)).toHaveValue('leche entera lala');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear de todos modos' }));
+    await waitFor(() => expect(back.createArticle).toHaveBeenCalledWith(expect.objectContaining({ name: 'leche entera lala' })));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(9));
+  });
+
+  it('si no se pueden pedir los parecidos, no se queda atorado: crea', async () => {
+    back.similarArticles.mockRejectedValue(new Error('sin red'));
+    back.createArticle.mockResolvedValue({ id: 9 });
+    montar(<NewArticleSheet onClose={vi.fn()} onCreated={vi.fn()} />);
+    await llenar('Leche entera lala');
+    await waitFor(() => expect(back.createArticle).toHaveBeenCalled());
   });
 });

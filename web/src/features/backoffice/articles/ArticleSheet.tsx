@@ -22,6 +22,8 @@ import { CostTrend } from './CostTrend';
 import { ArticleAuditSheet } from './ArticleAuditSheet';
 import { ArchiveSheet } from './ArchiveSheet';
 import { UnitChangeSheet } from './UnitChangeSheet';
+import { MergeSheet } from './MergeSheet';
+import { presentationLabel } from '../../../shared/presentationLabel';
 import { QtyWithUnit } from './qty';
 import { baseQty, bigUnitOf, KIND_WORD, type Kind } from './articleUnits';
 
@@ -38,6 +40,8 @@ interface Props {
   onClose: () => void;
   // onCount lleva al conteo de este artículo (spec 045); sin él, el aviso de negativo es solo texto.
   onCount?: (name: string) => void;
+  // onOpenArticle abre otra ficha: la del insumo al que se unió éste (spec 056).
+  onOpenArticle?: (id: number) => void;
 }
 
 interface Form {
@@ -79,7 +83,7 @@ function formOf(a: Sheet): Form {
   };
 }
 
-export function ArticleSheet({ id, justCreated, onClose, onCount }: Props) {
+export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle }: Props) {
   const qc = useQueryClient();
   const user = useSessionStore((s) => s.user);
   const canConfigure = can('inventory.configure', user);
@@ -99,7 +103,7 @@ export function ArticleSheet({ id, justCreated, onClose, onCount }: Props) {
     getNextPageParam: (p) => p.next ?? undefined,
   });
   const [form, setForm] = useState<Form | null>(null);
-  const [panel, setPanel] = useState<'audit' | 'archive' | 'packs' | 'recipe' | 'cost' | 'discard' | 'unit' | null>(null)
+  const [panel, setPanel] = useState<'audit' | 'archive' | 'packs' | 'recipe' | 'cost' | 'discard' | 'unit' | 'merge' | null>(null)
   const [editPack, setEditPack] = useState<number | undefined>(undefined);
   const [cost, setCost] = useState('');
 
@@ -296,12 +300,23 @@ export function ArticleSheet({ id, justCreated, onClose, onCount }: Props) {
                   {a.isPrep ? 'Es un preparado · ver receta ›' : 'Se compra hecho ›'}
                   {a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}
                 </Button>
-                {canConfigure && (
-                  <Box pt={6}>
+                {a.mergedInto ? (
+                  // Unido a otro (spec 056): no se reactiva; lleva al que se quedó.
+                  <HStack gap={2} bg="bg.muted" borderRadius="md" pl={3} minH="44px" data-merged-into>
+                    <Text flex="1">Unido a <b>{a.mergedInto.name}</b> el {hora.soloFecha(a.mergedInto.at)}</Text>
+                    {onOpenArticle && (
+                      <Button minH="44px" variant="outline" bg="bg" aria-label={`Abrir ${a.mergedInto.name}`}
+                        onClick={() => onOpenArticle(a.mergedInto!.id)}>Abrir ›</Button>
+                    )}
+                  </HStack>
+                ) : canConfigure && (
+                  <HStack pt={6} gap={3} flexWrap="wrap">
+                    {a.isActive && !a.isPrep && <Button minH="44px" variant="outline" onClick={() => setPanel('merge')}>Unir otros aquí</Button>}
+                    <Box flex="1" />
                     {a.isActive
                       ? <Button minH="44px" variant="outline" colorPalette="red" onClick={() => setPanel('archive')}>Archivar artículo</Button>
                       : <Button minH="44px" variant="outline" onClick={() => setPanel('archive')}>Reactivar</Button>}
-                  </Box>
+                  </HStack>
                 )}
               </Stack>
 
@@ -329,12 +344,12 @@ export function ArticleSheet({ id, justCreated, onClose, onCount }: Props) {
                       <Box flex="1" minW={0}>
                         {it.kind === 'purchase' ? (
                           <>
-                            <Text fontSize="sm" truncate>{it.supplier ?? 'Compra'}</Text>
+                            <Text fontSize="sm" truncate>{it.supplier ?? 'Compra'}{it.fromName ? ` · de ${it.fromName}` : ''}</Text>
                             {it.presentation && it.packCost && (
-                              <Text fontSize="xs" color="fg.muted">${Number(it.packCost).toFixed(2)} por {it.presentation} · {formatBaseQty(it.packQty ?? '0', a.baseUnitCode)}</Text>
+                              <Text fontSize="xs" color="fg.muted">${Number(it.packCost).toFixed(2)} por {it.presentation}{it.brand ? ` · ${it.brand}` : ''} · {formatBaseQty(it.packQty ?? '0', a.baseUnitCode)}</Text>
                             )}
                           </>
-                        ) : <Text fontSize="sm" color="orange.fg">Capturado a mano · {it.user ?? ''}</Text>}
+                        ) : <Text fontSize="sm" color="orange.fg">Capturado a mano · {it.user ?? ''}{it.fromName ? ` · de ${it.fromName}` : ''}</Text>}
                       </Box>
                       <Text fontWeight="700" flexShrink={0}>{formatUnitCost(it.unitCost, a.baseUnitCode)}</Text>
                     </HStack>
@@ -353,6 +368,9 @@ export function ArticleSheet({ id, justCreated, onClose, onCount }: Props) {
 
       {panel === 'audit' && <ArticleAuditSheet id={id} name={a?.name ?? ''} baseUnitCode={a?.baseUnitCode ?? 'pieza'} onClose={() => setPanel(null)} />}
       {panel === 'unit' && a && <UnitChangeSheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />}
+      {panel === 'merge' && a && (
+        <MergeSheet target={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />
+      )}
       {panel === 'archive' && a && <ArchiveSheet article={a} onClose={() => setPanel(null)} onDone={async () => { setPanel(null); await refresh(); }} />}
       {panel === 'recipe' && a && <CompositionSheet kind="ingredient" id={id} name={a.name} open onClose={() => setPanel(null)} />}
       {panel === 'packs' && a && (
@@ -401,7 +419,7 @@ export function ArticleSheet({ id, justCreated, onClose, onCount }: Props) {
           : (a?.presentations ?? []).map((p) => (
             <Button key={p.id} minH="48px" variant="ghost" justifyContent="space-between" borderBottomWidth="1px" borderRadius="0"
               disabled={!canConfigure} onClick={() => { setEditPack(p.id); setPanel('packs'); }}>
-              <Text><b>{p.name}</b> · {formatBaseQty(p.qtyInBase, a!.baseUnitCode)}</Text>
+              <Text><b>{presentationLabel(p)}</b> · {formatBaseQty(p.qtyInBase, a!.baseUnitCode)}</Text>
               {canConfigure && <Text color="fg.muted">Editar ›</Text>}
             </Button>
           ))}

@@ -3,9 +3,10 @@ import { medirAccion } from '../../../api/uso';
 import { Box, Button, HStack, Input, SimpleGrid, Stack, Text } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader,
+  DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../../components/ui/drawer';
-import { backofficeApi } from '../../../api/backoffice';
+import { backofficeApi, type DuplicateItem } from '../../../api/backoffice';
+import { formatBaseQty } from '../../../shared/units';
 import { ApiError } from '../../../api/client';
 import { Picker } from '../../../components/Picker';
 import { toaster } from '../../../components/ui/toaster';
@@ -16,6 +17,9 @@ import { baseQty, KINDS, bigUnitOf, type Kind } from './articleUnits';
 // «Nuevo artículo» (spec 042, FR-002, decisión del dueño): una hoja corta con lo obligatorio marcado.
 // Nada se guarda hasta tocar «Guardar»; al guardar se abre la ficha con «Agregar empaque» a la vista.
 // Categoría y empaques se capturan ahí.
+// Al guardar, si ya hay insumos con nombre parecido, pregunta «¿Es alguno de estos?» antes de crear
+// (spec 056, maqueta «Aviso de insumo parecido», opción B): mientras se escribe no hay alto para un
+// aviso con el teclado de la tableta abierto. El aviso no impide crear.
 
 interface Props {
   word?: string;
@@ -35,6 +39,8 @@ export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Prop
   const [cost, setCost] = useState('');
   const [placeId, setPlaceId] = useState('');
   const [taken, setTaken] = useState<{ id: number; archived: boolean } | null>(null);
+  const [similar, setSimilar] = useState<DuplicateItem[] | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const big = kind ? bigUnitOf(kind) : null;
   const save = useMutation({
@@ -75,18 +81,62 @@ export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Prop
       onCreated(id);
     },
   });
-  const canSave = name.trim() !== '' && kind !== null && !save.isPending;
+  const canSave = name.trim() !== '' && kind !== null && !save.isPending && !checking;
+  // ask pregunta por parecidos antes de crear. Si no se pueden pedir, crea: el aviso ayuda, no estorba.
+  const ask = async () => {
+    setChecking(true);
+    try {
+      const r = await backofficeApi.similarArticles(name.trim());
+      const items = r.items ?? [];
+      if (items.length > 0) {
+        setSimilar(items);
+        return;
+      }
+    } catch {
+      // sin parecidos que mostrar
+    } finally {
+      setChecking(false);
+    }
+    save.mutate();
+  };
 
   return (
     <DrawerRoot open placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }}>
       <DrawerBackdrop />
       <DrawerContent borderTopRadius="l3" maxH="92dvh" display="flex" flexDirection="column">
+        {similar ? (
+          <>
+            <DrawerHeader pb={2}>
+              <Text fontSize="lg" fontWeight="700">¿Es alguno de estos?</Text>
+              <Text fontSize="sm" color="fg.muted">Ya hay insumos con un nombre parecido a «{name.trim()}».</Text>
+            </DrawerHeader>
+            <DrawerBody flex="1" minH={0} overflowY="auto" pb={2}>
+              <Stack gap={2}>
+                {similar.map((it) => (
+                  <HStack key={it.id} borderWidth="1px" borderRadius="lg" px={3} minH="52px" gap={3}>
+                    <Text flex="1" minW={0}>{it.name}</Text>
+                    <Text color="fg.muted">{formatBaseQty(it.onHand, it.baseUnitCode)}</Text>
+                    <Button minH="44px" variant="outline" aria-label={`Abrir ${it.name}`} onClick={() => onCreated(it.id)}>Abrir</Button>
+                  </HStack>
+                ))}
+              </Stack>
+            </DrawerBody>
+            <DrawerFooter>
+              <HStack w="100%" gap={3}>
+                <Button minH="44px" variant="outline" onClick={() => setSimilar(null)}>Volver</Button>
+                <Box flex="1" />
+                <Button minH="44px" variant="outline" loading={save.isPending} onClick={() => save.mutate()}>Crear de todos modos</Button>
+              </HStack>
+            </DrawerFooter>
+          </>
+        ) : (
+        <>
         <DrawerHeader pb={2}>
           <HStack justify="space-between">
             <Text fontSize="lg" fontWeight="700">Nuevo {word}</Text>
             <HStack gap={2}>
               <Button minH="44px" variant="outline" onClick={onClose}>Cancelar</Button>
-              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>
+              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={save.isPending || checking} onClick={() => void ask()}>Guardar</Button>
             </HStack>
           </HStack>
         </DrawerHeader>
@@ -139,6 +189,8 @@ export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Prop
             <Text fontSize="sm" color="fg.muted"><Text as="span" color="fg.error">*</Text> Obligatorio. Nada se guarda hasta tocar «Guardar».</Text>
           </Stack>
         </DrawerBody>
+        </>
+        )}
       </DrawerContent>
     </DrawerRoot>
   );

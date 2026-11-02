@@ -81,8 +81,8 @@ func (q *Queries) CreateIngredientCategory(ctx context.Context, name string) (Cr
 }
 
 const createPresentation = `-- name: CreatePresentation :one
-insert into ingredient_presentations (ingredient_id, name, qty_in_base, purchase_unit_id, is_approximate)
-values ($1, $2, $3, $4, $5)
+insert into ingredient_presentations (ingredient_id, name, qty_in_base, purchase_unit_id, is_approximate, brand)
+values ($1, $2, $3, $4, $5, $6)
 returning id
 `
 
@@ -92,6 +92,7 @@ type CreatePresentationParams struct {
 	QtyInBase      decimal.Decimal `json:"qty_in_base"`
 	PurchaseUnitID *int16          `json:"purchase_unit_id"`
 	IsApproximate  bool            `json:"is_approximate"`
+	Brand          *string         `json:"brand"`
 }
 
 func (q *Queries) CreatePresentation(ctx context.Context, arg CreatePresentationParams) (int64, error) {
@@ -101,6 +102,7 @@ func (q *Queries) CreatePresentation(ctx context.Context, arg CreatePresentation
 		arg.QtyInBase,
 		arg.PurchaseUnitID,
 		arg.IsApproximate,
+		arg.Brand,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -129,19 +131,20 @@ func (q *Queries) GetIngredientUnit(ctx context.Context, id int64) (GetIngredien
 }
 
 const getPresentationIngredient = `-- name: GetPresentationIngredient :one
-select ingredient_id, active from ingredient_presentations where id = $1
+select ingredient_id, active, brand from ingredient_presentations where id = $1
 `
 
 type GetPresentationIngredientRow struct {
-	IngredientID int64 `json:"ingredient_id"`
-	Active       bool  `json:"active"`
+	IngredientID int64   `json:"ingredient_id"`
+	Active       bool    `json:"active"`
+	Brand        *string `json:"brand"`
 }
 
-// El insumo y el estado actual: editar sin mandar `active` conserva el que tiene.
+// El insumo, el estado y la marca actuales: editar sin mandar `active` o `brand` conserva lo que tiene.
 func (q *Queries) GetPresentationIngredient(ctx context.Context, id int64) (GetPresentationIngredientRow, error) {
 	row := q.db.QueryRow(ctx, getPresentationIngredient, id)
 	var i GetPresentationIngredientRow
-	err := row.Scan(&i.IngredientID, &i.Active)
+	err := row.Scan(&i.IngredientID, &i.Active, &i.Brand)
 	return i, err
 }
 
@@ -286,7 +289,7 @@ func (q *Queries) ListIngredients(ctx context.Context, onlyActive *bool) ([]List
 
 const listPresentations = `-- name: ListPresentations :many
 select p.id, p.ingredient_id, p.name, p.qty_in_base, p.active, p.is_approximate, p.purchase_unit_id,
-       u.code as base_unit_code, u.kind as base_unit_kind
+       u.code as base_unit_code, u.kind as base_unit_kind, p.brand
 from ingredient_presentations p
 join ingredients i on i.id = p.ingredient_id
 join units u on u.id = i.base_unit_id
@@ -304,6 +307,7 @@ type ListPresentationsRow struct {
 	PurchaseUnitID *int16          `json:"purchase_unit_id"`
 	BaseUnitCode   string          `json:"base_unit_code"`
 	BaseUnitKind   UnitKind        `json:"base_unit_kind"`
+	Brand          *string         `json:"brand"`
 }
 
 // Empaques de compra (spec 038), los activos primero. Sin filtro, todos los de la empresa: la
@@ -327,6 +331,7 @@ func (q *Queries) ListPresentations(ctx context.Context, ingredientID *int64) ([
 			&i.PurchaseUnitID,
 			&i.BaseUnitCode,
 			&i.BaseUnitKind,
+			&i.Brand,
 		); err != nil {
 			return nil, err
 		}
@@ -450,7 +455,7 @@ func (q *Queries) SearchArticles(ctx context.Context, arg SearchArticlesParams) 
 
 const updatePresentation = `-- name: UpdatePresentation :execrows
 update ingredient_presentations
-set name = $2, qty_in_base = $3, purchase_unit_id = $4, is_approximate = $5, active = $6
+set name = $2, qty_in_base = $3, purchase_unit_id = $4, is_approximate = $5, active = $6, brand = $7
 where id = $1
 `
 
@@ -461,6 +466,7 @@ type UpdatePresentationParams struct {
 	PurchaseUnitID *int16          `json:"purchase_unit_id"`
 	IsApproximate  bool            `json:"is_approximate"`
 	Active         bool            `json:"active"`
+	Brand          *string         `json:"brand"`
 }
 
 func (q *Queries) UpdatePresentation(ctx context.Context, arg UpdatePresentationParams) (int64, error) {
@@ -471,6 +477,7 @@ func (q *Queries) UpdatePresentation(ctx context.Context, arg UpdatePresentation
 		arg.PurchaseUnitID,
 		arg.IsApproximate,
 		arg.Active,
+		arg.Brand,
 	)
 	if err != nil {
 		return 0, err

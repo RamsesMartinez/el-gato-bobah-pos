@@ -87,7 +87,13 @@ func (q *Queries) ArticleAdjustments(ctx context.Context, ingredientID *int64) (
 }
 
 const articleAudit = `-- name: ArticleAudit :many
-with ev as (
+with recursive src (ingredient_id, depth) as (
+  select $4::bigint, 0
+  union all
+  select r.old_ingredient_id, src.depth + 1
+    from ingredient_replacements r join src on r.new_ingredient_id = src.ingredient_id
+   where r.kind = 'merge' and src.depth < 16
+), ev as (
   select a.id, a.occurred_at, a.action, a.entity_type, a.actor_user_id, a.before, a.after,
          coalesce(u.name::text, a.actor_label) as actor,
          case when a.action = 'ingredient.updated' and a.actor_user_id is not null
@@ -97,8 +103,8 @@ with ev as (
          end as field
     from audit_events a
     left join users u on u.id = a.actor_user_id
-   where ((a.entity_type = 'ingredient' and a.entity_id = $4)
-          or (a.entity_type = 'presentation' and a.entity_id in (select p.id from ingredient_presentations p where p.ingredient_id = $4)))
+   where ((a.entity_type = 'ingredient' and a.entity_id in (select ingredient_id from src))
+          or (a.entity_type = 'presentation' and a.entity_id in (select p.id from ingredient_presentations p where p.ingredient_id in (select ingredient_id from src))))
      and a.action <> 'ingredient.unit_changed.detail'
 ), marked as (
   select ev.id, ev.occurred_at, ev.action, ev.entity_type, ev.actor_user_id, ev.before, ev.after, ev.actor, ev.field,
@@ -152,6 +158,8 @@ type ArticleAuditRow struct {
 // AND Postgres no garantiza el orden.
 // ponytail: relee y agrupa toda la historia del artículo en cada página; con cientos de eventos por
 // artículo no pesa. Si llegara a miles, se agrupa en una tabla aparte al escribir.
+// Incluye la de los insumos que se unieron en éste (spec 056), por la misma cadena de uniones que el
+// historial de costos.
 func (q *Queries) ArticleAudit(ctx context.Context, arg ArticleAuditParams) ([]ArticleAuditRow, error) {
 	rows, err := q.db.Query(ctx, articleAudit,
 		arg.BeforeAt,
@@ -217,43 +225,54 @@ func (q *Queries) ArticleCostCorrections(ctx context.Context, ingredientID int64
 }
 
 const articleCostHistory = `-- name: ArticleCostHistory :many
-select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name from (
+with recursive src (ingredient_id, factor, depth) as (
+  select $5::bigint, 1::numeric, 0
+  union all
+  select r.old_ingredient_id, src.factor * r.factor, src.depth + 1
+    from ingredient_replacements r join src on r.new_ingredient_id = src.ingredient_id
+   where r.kind = 'merge' and src.depth < 16
+)
+select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name, brand, source_id from (
   -- Las correcciones van primero en el union a propósito: sqlc toma los tipos de la primera rama, y
   -- con null::text ahí sabe que proveedor y empaque pueden faltar.
-  select 'correction'::text as kind, c.created_at as at, c.id, c.new_cost as unit_cost,
-         null::text as presentation, null::numeric(14,4) as pack_qty_in_base, null::text as supplier, u.name as user_name
+  select 'correction'::text as kind, c.created_at as at, c.id, round(c.new_cost / src.factor, 6)::numeric(12,6) as unit_cost,
+         null::text as presentation, null::numeric(14,4) as pack_qty_in_base, null::text as supplier, u.name as user_name,
+         null::text as brand, c.ingredient_id as source_id
     from ingredient_cost_corrections c
+    join src on src.ingredient_id = c.ingredient_id
     left join users u on u.id = c.user_id
-   where c.ingredient_id = $1
   union all
   -- Un renglón por compra: la primera entrada de cada renglón (una compra recibida en dos entregas
   -- es una compra), sin renglones anulados ni gastos cancelados, que no son un precio.
-  select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name from (
-    select distinct on (ei.id) 'purchase'::text as kind, m.created_at as at, m.id, m.unit_cost::numeric(12,6) as unit_cost,
-           p.name as presentation, ei.pack_qty_in_base, (select s.name::text from suppliers s where s.id = e.supplier_id) as supplier,
-           null::text as user_name
+  select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name, brand, source_id from (
+    select distinct on (ei.id) 'purchase'::text as kind, m.created_at as at, m.id,
+           round(m.unit_cost / src.factor, 6)::numeric(12,6) as unit_cost,
+           p.name as presentation, round(ei.pack_qty_in_base * src.factor, 4)::numeric(14,4) as pack_qty_in_base,
+           (select s.name::text from suppliers s where s.id = e.supplier_id) as supplier,
+           null::text as user_name, ei.presentation_brand as brand, m.ingredient_id as source_id
       from stock_movements m
+      join src on src.ingredient_id = m.ingredient_id
       join expense_items ei on ei.id = m.expense_item_id
       join expenses e on e.id = ei.expense_id
       left join ingredient_presentations p on p.id = ei.presentation_id
-     where m.ingredient_id = $1 and m.movement_type = 'compra'
+     where m.movement_type = 'compra'
        and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
        and ei.voided_at is null and not ei.excluded and e.status <> 'cancelada'
      order by ei.id, m.created_at, m.id
   ) purchases
 ) h
- where $2::timestamptz is null
-    or (h.at, h.kind, h.id) < ($2::timestamptz, $3::text, $4::bigint)
+ where $1::timestamptz is null
+    or (h.at, h.kind, h.id) < ($1::timestamptz, $2::text, $3::bigint)
  order by h.at desc, h.kind desc, h.id desc
- limit $5
+ limit $4
 `
 
 type ArticleCostHistoryParams struct {
-	IngredientID int64              `json:"ingredient_id"`
 	BeforeAt     pgtype.Timestamptz `json:"before_at"`
 	BeforeKind   *string            `json:"before_kind"`
 	BeforeID     *int64             `json:"before_id"`
 	Lim          int32              `json:"lim"`
+	IngredientID int64              `json:"ingredient_id"`
 }
 
 type ArticleCostHistoryRow struct {
@@ -265,18 +284,23 @@ type ArticleCostHistoryRow struct {
 	PackQtyInBase *decimal.Decimal `json:"pack_qty_in_base"`
 	Supplier      *string          `json:"supplier"`
 	UserName      *string          `json:"user_name"`
+	Brand         *string          `json:"brand"`
+	SourceID      int64            `json:"source_id"`
 }
 
 // El historial de costos: cada compra recibida (solo lo que entró con costo: ni las diferencias de
 // corregir lo recibido ni los regalos son un precio) y cada corrección a mano. La más reciente arriba,
 // por llave (fecha, tipo, id) para que «Ver más» no repita ni salte renglones.
+// Incluye los de los insumos que se unieron en éste (spec 056), con su nombre y el costo convertido a
+// la unidad de éste: `src` sigue las uniones hacia atrás, con el producto de las equivalencias. Va
+// dentro de la consulta y no en una función de la base para que RLS aplique.
 func (q *Queries) ArticleCostHistory(ctx context.Context, arg ArticleCostHistoryParams) ([]ArticleCostHistoryRow, error) {
 	rows, err := q.db.Query(ctx, articleCostHistory,
-		arg.IngredientID,
 		arg.BeforeAt,
 		arg.BeforeKind,
 		arg.BeforeID,
 		arg.Lim,
+		arg.IngredientID,
 	)
 	if err != nil {
 		return nil, err
@@ -294,6 +318,8 @@ func (q *Queries) ArticleCostHistory(ctx context.Context, arg ArticleCostHistory
 			&i.PackQtyInBase,
 			&i.Supplier,
 			&i.UserName,
+			&i.Brand,
+			&i.SourceID,
 		); err != nil {
 			return nil, err
 		}
@@ -446,6 +472,10 @@ select ri.id, ri.recipe_id, ri.quantity, ri.unit_id, u.to_base as unit_to_base, 
        coalesce((select p.name::text from products p where p.recipe_id = ri.recipe_id limit 1),
                 (select mo.name::text from modifier_options mo where mo.recipe_id = ri.recipe_id limit 1),
                 (select i.name::text from ingredients i where i.recipe_id = ri.recipe_id limit 1), 'Receta')::text as owner,
+       (case when exists (select 1 from products p where p.recipe_id = ri.recipe_id) then 'product'
+             when exists (select 1 from modifier_options mo where mo.recipe_id = ri.recipe_id) then 'option'
+             when exists (select 1 from ingredients i where i.recipe_id = ri.recipe_id) then 'ingredient'
+             else 'recipe' end)::text as owner_kind,
        (exists (select 1 from products p where p.recipe_id = ri.recipe_id and p.is_active)
         or exists (select 1 from modifier_options mo where mo.recipe_id = ri.recipe_id and mo.is_active)
         or exists (select 1 from ingredients i where i.recipe_id = ri.recipe_id and i.is_active))::bool as active
@@ -462,6 +492,7 @@ type ArticleRecipeItemsRow struct {
 	UnitToBase decimal.Decimal `json:"unit_to_base"`
 	UnitCode   string          `json:"unit_code"`
 	Owner      string          `json:"owner"`
+	OwnerKind  string          `json:"owner_kind"`
 	Active     bool            `json:"active"`
 }
 
@@ -484,6 +515,7 @@ func (q *Queries) ArticleRecipeItems(ctx context.Context, ingredientID int64) ([
 			&i.UnitToBase,
 			&i.UnitCode,
 			&i.Owner,
+			&i.OwnerKind,
 			&i.Active,
 		); err != nil {
 			return nil, err
@@ -678,19 +710,25 @@ func (q *Queries) GetArticle(ctx context.Context, id int64) (GetArticleRow, erro
 }
 
 const getPresentationForAudit = `-- name: GetPresentationForAudit :one
-select name, qty_in_base, active from ingredient_presentations where id = $1
+select name, qty_in_base, active, brand from ingredient_presentations where id = $1
 `
 
 type GetPresentationForAuditRow struct {
 	Name      string          `json:"name"`
 	QtyInBase decimal.Decimal `json:"qty_in_base"`
 	Active    bool            `json:"active"`
+	Brand     *string         `json:"brand"`
 }
 
 func (q *Queries) GetPresentationForAudit(ctx context.Context, id int64) (GetPresentationForAuditRow, error) {
 	row := q.db.QueryRow(ctx, getPresentationForAudit, id)
 	var i GetPresentationForAuditRow
-	err := row.Scan(&i.Name, &i.QtyInBase, &i.Active)
+	err := row.Scan(
+		&i.Name,
+		&i.QtyInBase,
+		&i.Active,
+		&i.Brand,
+	)
 	return i, err
 }
 
@@ -803,9 +841,11 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
    and ($2::text is null
         -- strpos y no like: lo que alguien escriba es texto, nunca un comodín.
         or strpos(translate(lower(i.name::text), 'áéíóúüñ', 'aeiouun'), translate(lower($2::text), 'áéíóúüñ', 'aeiouun')) > 0
+        -- La marca también (spec 056): quien busca «lala» quiere la leche que llega en «Caja · Lala».
         or exists (select 1 from ingredient_presentations p
                     where p.ingredient_id = i.id and p.active
-                      and strpos(translate(lower(p.name), 'áéíóúüñ', 'aeiouun'), translate(lower($2::text), 'áéíóúüñ', 'aeiouun')) > 0))
+                      and (strpos(translate(lower(p.name), 'áéíóúüñ', 'aeiouun'), translate(lower($2::text), 'áéíóúüñ', 'aeiouun')) > 0
+                           or strpos(translate(lower(coalesce(p.brand, '')), 'áéíóúüñ', 'aeiouun'), translate(lower($2::text), 'áéíóúüñ', 'aeiouun')) > 0)))
    and ($3::bigint is null or i.count_place_id = $3)
    and (not $4::boolean or i.count_place_id is null)
    and (not $5::boolean or coalesce(i.current_cost, 0) = 0)

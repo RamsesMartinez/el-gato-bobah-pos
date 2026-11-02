@@ -107,6 +107,9 @@ var auditActions = []struct {
 	{AuditCashSellingRegisterChanged, AuditGroupCash},
 	// Editar un gasto ya guardado (spec 053): con los demás gastos.
 	{AuditExpenseEdited, AuditGroupCash},
+	// Unir insumos (spec 056): configuración del almacén, con el reemplazo.
+	{AuditIngredientMerged, AuditGroupPrice},
+	{AuditIngredientMergedInto, AuditGroupPrice},
 }
 
 const (
@@ -137,6 +140,10 @@ const (
 	AuditIngredientUnitChangedDetail AuditAction = "ingredient.unit_changed.detail"
 	// AuditIngredientReplaced: un artículo se reemplazó por otro en otra unidad y quedó archivado.
 	AuditIngredientReplaced AuditAction = "ingredient.replaced"
+	// AuditIngredientMerged: se unieron otros insumos en éste (el destino).
+	AuditIngredientMerged AuditAction = "ingredient.merged"
+	// AuditIngredientMergedInto: este insumo se unió a otro y quedó archivado (cada origen).
+	AuditIngredientMergedInto AuditAction = "ingredient.merged_into"
 	// AuditPresentationCreated: se agregó un empaque a un artículo.
 	AuditPresentationCreated AuditAction = "presentation.created"
 	// AuditPresentationUpdated: cambió el nombre o la cantidad de un empaque.

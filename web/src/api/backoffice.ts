@@ -586,6 +586,8 @@ export interface Presentation {
   // Se compra en otro tipo de unidad que el insumo («Kilo ≈ 4 piezas»).
   approximate: boolean;
   purchaseUnitId: number | null;
+  // La marca o el proveedor (spec 056). Opcional: falta en una API anterior.
+  brand?: string | null;
 }
 export interface PresentationBody {
   name: string;
@@ -593,6 +595,8 @@ export interface PresentationBody {
   unitId: number;
   approximate: boolean;
   active?: boolean;
+  // Sin mandarla, se conserva la que tiene; vacía, se quita.
+  brand?: string;
 }
 export interface CountPlace {
   id: number;
@@ -783,7 +787,8 @@ export interface CountItem {
   place: string | null;
   placeId?: number | null;
   baseUnitCode: string;
-  presentations: { name: string; qtyInBase: string }[];
+  // id y brand faltan en una API anterior a la 056.
+  presentations: { id?: number; name: string; qtyInBase: string; brand?: string | null }[];
   countedQty: string | null; // null = no contado
   // Un artículo en piezas que se puede contar pesando (spec 042): el servidor convierte a piezas.
   weighable?: boolean;
@@ -1120,6 +1125,11 @@ export const backofficeApi = {
     api.get<CostHistoryPage>(`/stock/articles/${id}/cost-history${before ? `?before=${encodeURIComponent(before)}` : ''}`),
   previewUnitChange: (id: number, b: UnitChangeBody) => api.post<UnitChangePreview>(`/stock/articles/${id}/unit/preview`, b),
   changeUnit: (id: number, b: UnitChangeBody) => api.post<void>(`/stock/articles/${id}/unit`, b),
+  mergeArticles: (targetId: number, b: MergeBody, preview: boolean) =>
+    api.post<MergePreview>(`/stock/articles/${targetId}/merge${preview ? '?preview=1' : ''}`, b),
+  duplicateGroups: () => api.get<{ groups?: DuplicateGroup[] }>('/stock/articles/duplicate-groups'),
+  markDistinct: (a: number, b: number) => api.post<void>('/stock/articles/distinct-pairs', { a, b }),
+  similarArticles: (name: string) => api.get<{ items?: DuplicateItem[] }>(`/stock/articles/similar?name=${encodeURIComponent(name)}`),
   articleArchiveCheck: (id: number) => api.get<ArchiveCheck>(`/stock/articles/${id}/archive-check`),
   archiveArticle: (id: number) => api.post<void>(`/stock/articles/${id}/archive`, {}),
   reactivateArticle: (id: number) => api.post<void>(`/stock/articles/${id}/reactivate`, {}),
@@ -1238,7 +1248,7 @@ export interface ArticleFilter {
   noCost?: boolean;
   negative?: boolean;
 }
-export interface PresentationLabel { id: number; name: string; qtyInBase: string }
+export interface PresentationLabel { id: number; name: string; qtyInBase: string; brand?: string | null }
 export interface ArticleRow {
   id: number;
   name: string;
@@ -1262,6 +1272,9 @@ export interface ArticleRow {
 export interface ArticleSheet extends ArticleRow {
   costSource: string;
   updatedAt: string;
+  // A qué insumo se unió (spec 056); falta en una API anterior.
+  mergedInto?: { id: number; name: string; at: string } | null;
+  mergedSources?: number;
 }
 export interface ArticleCreate {
   name: string;
@@ -1289,6 +1302,9 @@ export interface CostHistoryItem {
   packCost: string | null;
   supplier: string | null;
   user: string | null;
+  // La marca con la que se compró y el insumo unido del que viene el renglón (spec 056).
+  brand?: string | null;
+  fromName?: string | null;
 }
 export interface CostHistoryPage { items?: CostHistoryItem[]; next: string | null; trendPct: string | null }
 export interface ArticleAuditItem {
@@ -1322,6 +1338,38 @@ export interface UnitConversion {
   to: string;
   fits: boolean;
 }
+// Unir insumos (spec 056). factor: cuánto del destino vale una unidad base del origen; solo si se
+// miden distinto.
+export interface MergeSourceInput { id: number; factor?: string }
+export interface MergeBody { sources: MergeSourceInput[]; fingerprint?: string }
+export interface MergeArticle { id: number; name: string; baseUnit: string; factor: string }
+export interface MergeStock {
+  branchId: number; branch: string; ingredientId: number; name: string; baseUnit: string;
+  before: string; after: string; negativeAfter: boolean;
+}
+export interface MergeRecipe {
+  owner: string; ownerKind?: 'product' | 'option' | 'ingredient' | 'recipe'; sourceId: number; beforeQty: string; beforeUnit: string; afterQty: string; afterUnit: string; merged: boolean;
+}
+export interface MergePresentation {
+  id: number; sourceId: number; name: string; brand: string; qtyInBase: string; baseUnit: string;
+  action: 'move' | 'archive' | 'conflict';
+}
+export interface MergePreview {
+  target: MergeArticle;
+  sources?: MergeArticle[];
+  stock?: MergeStock[];
+  recipes?: MergeRecipe[];
+  presentations?: MergePresentation[];
+  supplierItems: number;
+  purchaseFormats: number;
+  costBefore: string;
+  costAfter: string;
+  minStockBefore: string | null;
+  minStockAfter: string | null;
+  fingerprint: string;
+}
+export interface DuplicateItem { id: number; name: string; baseUnitId: number; baseUnitCode: string; onHand: string }
+export interface DuplicateGroup { items?: DuplicateItem[] }
 export interface UnitChangePreview {
   path: 'direct' | 'replace';
   fromUnit: string;

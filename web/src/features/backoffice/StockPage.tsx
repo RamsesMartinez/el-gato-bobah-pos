@@ -147,7 +147,8 @@ export function StockPage() {
           </Tabs.Content>
         )}
       </Tabs.Root>
-      {article && <ArticleSheet id={article.id} justCreated={article.justCreated} onClose={closeArticle}
+      {article && <ArticleSheet key={article.id} id={article.id} justCreated={article.justCreated} onClose={closeArticle}
+        onOpenArticle={(id) => openArticle(id)}
         onCount={canCount ? (name) => { setOpened(null); setParams({ tab: 'conteo', q: name }); } : undefined} />}
     </Page>
   );

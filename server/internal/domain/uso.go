@@ -99,6 +99,8 @@ var accionesMedibles = map[string]map[string]struct{}{
 		// Spec 042: los artículos del almacén y su ficha.
 		"ver-articulos": {}, "crear-articulo": {}, "editar-articulo": {}, "corregir-costo": {},
 		"archivar-articulo": {}, "cambiar-unidad": {},
+		// Spec 056: unir insumos y descartar un par de posibles duplicados.
+		"unir-insumos": {}, "no-son-lo-mismo": {},
 	},
 	// Lo que se echó a perder (spec 039). Aprobar y rechazar se hacen en la hoja de la franja, que
 	// se abre sobre cualquier pantalla: se cuentan aquí para no repartirlas entre pantallas.
