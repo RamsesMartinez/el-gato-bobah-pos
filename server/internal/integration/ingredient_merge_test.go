@@ -532,3 +532,109 @@ func TestTheTargetCostHistoryShowsItsSources(t *testing.T) {
 		}
 	})
 }
+
+// US2: lo que se compraba de la marca unida sigue entrando al insumo. La presentación pasa con su id
+// y su marca, el renglón aprendido del ticket propone el destino, y nada nuevo puede apuntar al origen.
+func TestWhatWasBoughtFromTheMergedBrandKeepsComingIn(t *testing.T) {
+	t.Parallel()
+	k := newMergeKit(t)
+	ctx := context.Background()
+	var box, supplier, category int64
+	if err := k.st.Pool.QueryRow(ctx, `insert into ingredient_presentations (company_id, ingredient_id, name, qty_in_base)
+		values ($1, $2, 'Caja', 12000) returning id`, defaultCompanyID, k.b).Scan(&box); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.st.Pool.QueryRow(ctx, `insert into suppliers (company_id, name) values ($1, 'Lácteos unir') returning id`, defaultCompanyID).Scan(&supplier); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.st.Pool.Exec(ctx, `insert into supplier_items (company_id, supplier_id, raw_name, norm_name, status, item_type, ingredient_id)
+		values ($1, $2, 'LECHE MARCA B 1L', $3, 'mapeado', 'ingrediente', $4)`, defaultCompanyID, supplier, domain.SupplierItemKey("", "LECHE MARCA B 1L"), k.b); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.st.Pool.QueryRow(ctx, `insert into expense_categories (company_id, name, financial_group) values ($1, 'Compras unir', 'operacional') returning id`,
+		defaultCompanyID).Scan(&category); err != nil {
+		t.Fatal(err)
+	}
+	k.merge(t, k.a, k.req(k.b))
+
+	t.Run("la presentación es del destino, con su id y el nombre del origen como marca", func(t *testing.T) {
+		var ing int64
+		var brand *string
+		if err := k.st.Pool.QueryRow(ctx, `select ingredient_id, brand from ingredient_presentations where id = $1`, box).Scan(&ing, &brand); err != nil {
+			t.Fatal(err)
+		}
+		if ing != k.a || brand == nil || *brand != "Leche unir marca B" {
+			t.Fatalf("la caja quedó en %d con marca %v", ing, brand)
+		}
+	})
+	t.Run("una compra con esa presentación sube el destino y guarda la marca", func(t *testing.T) {
+		before := onHandIngredient(t, k.st, k.a)
+		one := qty("1")
+		if _, err := k.svc.CreateExpense(k.ctx, app.ExpenseInput{
+			ReceivedAt: "2026-07-20", CategoryID: category, Amount: qty("300"), Status: domain.ExpensePendiente, Description: "Leche", UserID: k.admin,
+			Items: []app.ExpenseItemInput{{ItemType: "ingrediente", IngredientID: &k.a, Description: "Leche", Quantity: one,
+				PresentationID: &box, QtyReceived: &one, Amount: qty("300")}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if got := onHandIngredient(t, k.st, k.a).Sub(before); !got.Equal(qty("12000")) {
+			t.Fatalf("la compra subió %s; quiere 12000", got)
+		}
+		var brand *string
+		if err := k.st.Pool.QueryRow(ctx, `select presentation_brand from expense_items where presentation_id = $1`, box).Scan(&brand); err != nil {
+			t.Fatal(err)
+		}
+		if brand == nil || *brand != "Leche unir marca B" {
+			t.Fatalf("la compra no guardó la marca: %v", brand)
+		}
+	})
+	t.Run("el renglón aprendido del ticket propone el destino", func(t *testing.T) {
+		got, err := k.svc.SuggestForLine(k.ctx, supplier, "", "LECHE MARCA B 1L")
+		if err != nil || len(got) == 0 || got[0].ItemID != k.a {
+			t.Fatalf("sugerencias = %+v %v; quiere el destino %d", got, err, k.a)
+		}
+	})
+	t.Run("nada nuevo puede apuntar al origen unido", func(t *testing.T) {
+		_, err := k.st.Pool.Exec(ctx, `insert into ingredient_presentations (company_id, ingredient_id, name, qty_in_base) values ($1, $2, 'Bolsa', 1000)`,
+			defaultCompanyID, k.b)
+		exigeUnido(t, err, "Leche unir")
+		_, err = k.st.Pool.Exec(ctx, `insert into ingredient_purchase_formats (company_id, ingredient_id, name, qty_in_base) values ($1, $2, 'Bolsa', 1000)`,
+			defaultCompanyID, k.b)
+		exigeUnido(t, err, "Leche unir")
+		_, err = k.st.Pool.Exec(ctx, `update supplier_items set ingredient_id = $2 where supplier_id = $1`, supplier, k.b)
+		exigeUnido(t, err, "Leche unir")
+		grams := gramos(t, k.st)
+		_, err = k.svc.CreateExpense(k.ctx, app.ExpenseInput{
+			ReceivedAt: "2026-07-20", CategoryID: category, Amount: qty("10"), Status: domain.ExpensePendiente, Description: "Leche vieja", UserID: k.admin,
+			Items: []app.ExpenseItemInput{{ItemType: "ingrediente", IngredientID: &k.b, Description: "Leche", Quantity: qty("1"), UnitID: &grams, Amount: qty("10")}},
+		})
+		if !errors.Is(err, domain.ErrIngredientMerged) {
+			t.Fatalf("una compra con el origen desde una pantalla vieja = %v; quiere 409 INGREDIENT_MERGED", err)
+		}
+	})
+}
+
+// Dos presentaciones con el mismo nombre y marca que traen distinto: la unión no adivina cuál vale.
+func TestMergeWithClashingPresentationsIsBlocked(t *testing.T) {
+	t.Parallel()
+	k := newMergeKit(t)
+	ctx := context.Background()
+	for ing, q := range map[int64]int{k.a: 12000, k.b: 8000} {
+		if _, err := k.st.Pool.Exec(ctx, `insert into ingredient_presentations (company_id, ingredient_id, name, qty_in_base, brand)
+			values ($1, $2, 'Caja', $3, 'Lala')`, defaultCompanyID, ing, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prev, err := k.svc.MergeIngredients(k.ctx, k.a, k.req(k.b), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prev.Presentations) != 1 || prev.Presentations[0].Action != domain.MergeConflict {
+		t.Fatalf("presentaciones = %+v; quiere un conflicto", prev.Presentations)
+	}
+	r := k.req(k.b)
+	r.Fingerprint = prev.Fingerprint
+	if _, err := k.svc.MergeIngredients(k.ctx, k.a, r, false); !errors.Is(err, domain.ErrMergePresentationConflict) {
+		t.Fatalf("confirmar con un conflicto = %v; quiere MERGE_PRESENTATION_CONFLICT", err)
+	}
+}
