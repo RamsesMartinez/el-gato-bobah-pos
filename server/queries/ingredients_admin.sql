@@ -19,9 +19,11 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
    and (sqlc.narg('q')::text is null
         -- strpos y no like: lo que alguien escriba es texto, nunca un comodín.
         or strpos(translate(lower(i.name::text), 'áéíóúüñ', 'aeiouun'), translate(lower(sqlc.narg('q')::text), 'áéíóúüñ', 'aeiouun')) > 0
+        -- La marca también (spec 056): quien busca «lala» quiere la leche que llega en «Caja · Lala».
         or exists (select 1 from ingredient_presentations p
                     where p.ingredient_id = i.id and p.active
-                      and strpos(translate(lower(p.name), 'áéíóúüñ', 'aeiouun'), translate(lower(sqlc.narg('q')::text), 'áéíóúüñ', 'aeiouun')) > 0))
+                      and (strpos(translate(lower(p.name), 'áéíóúüñ', 'aeiouun'), translate(lower(sqlc.narg('q')::text), 'áéíóúüñ', 'aeiouun')) > 0
+                           or strpos(translate(lower(coalesce(p.brand, '')), 'áéíóúüñ', 'aeiouun'), translate(lower(sqlc.narg('q')::text), 'áéíóúüñ', 'aeiouun')) > 0)))
    and (sqlc.narg('place_id')::bigint is null or i.count_place_id = sqlc.narg('place_id'))
    and (not sqlc.arg(no_place)::boolean or i.count_place_id is null)
    and (not sqlc.arg(no_cost)::boolean or coalesce(i.current_cost, 0) = 0)
@@ -307,6 +309,10 @@ select ri.id, ri.recipe_id, ri.quantity, ri.unit_id, u.to_base as unit_to_base, 
        coalesce((select p.name::text from products p where p.recipe_id = ri.recipe_id limit 1),
                 (select mo.name::text from modifier_options mo where mo.recipe_id = ri.recipe_id limit 1),
                 (select i.name::text from ingredients i where i.recipe_id = ri.recipe_id limit 1), 'Receta')::text as owner,
+       (case when exists (select 1 from products p where p.recipe_id = ri.recipe_id) then 'product'
+             when exists (select 1 from modifier_options mo where mo.recipe_id = ri.recipe_id) then 'option'
+             when exists (select 1 from ingredients i where i.recipe_id = ri.recipe_id) then 'ingredient'
+             else 'recipe' end)::text as owner_kind,
        (exists (select 1 from products p where p.recipe_id = ri.recipe_id and p.is_active)
         or exists (select 1 from modifier_options mo where mo.recipe_id = ri.recipe_id and mo.is_active)
         or exists (select 1 from ingredients i where i.recipe_id = ri.recipe_id and i.is_active))::bool as active

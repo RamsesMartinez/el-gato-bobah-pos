@@ -95,7 +95,9 @@ export function DuplicatesSheet({ onClose, onMerged }: Props) {
               <Stack gap={2}>
                 {list.map((items, gi) => {
                   const expanded = open === gi;
-                  const kept = keep[gi] ?? items[0].id;
+                  // Por omisión se queda el que tiene más existencia: el primero en orden alfabético podía ser
+                  // uno en negativo (prueba con usuario nuevo).
+                  const kept = keep[gi] ?? items.reduce((a, b) => (Number(b.onHand) > Number(a.onHand) ? b : a)).id;
                   const pairs = pairsOf(items).filter(([a, b]) => !hidden.has(pairKey([a.id, b.id])));
                   return (
                     <Box key={items.map((i) => i.id).join('-')} borderWidth="1px" borderRadius="lg" overflow="hidden">
@@ -117,6 +119,12 @@ export function DuplicatesSheet({ onClose, onMerged }: Props) {
                               <Text color="fg.muted">{formatBaseQty(it.onHand, it.baseUnitCode)}</Text>
                             </HStack>
                           ))}
+                          <Box pt={3}>
+                            <Button minH="44px" colorPalette="brand" onClick={() => {
+                              const target = items.find((i) => i.id === kept)!;
+                              setMerging({ target, sources: items.filter((i) => i.id !== kept).map((i) => i.id) });
+                            }}>Revisar unión</Button>
+                          </Box>
                           {pairs.map(([a, b]) => (
                             <HStack key={pairKey([a.id, b.id])} minH="48px" gap={4}>
                               <Text flex="1" fontSize="sm" color="fg.muted" minW={0}>{a.name} · {b.name}</Text>
@@ -124,12 +132,6 @@ export function DuplicatesSheet({ onClose, onMerged }: Props) {
                                 onClick={() => distinct(a, b)}>No son lo mismo</Button>
                             </HStack>
                           ))}
-                          <Box pt={3}>
-                            <Button minH="44px" colorPalette="brand" onClick={() => {
-                              const target = items.find((i) => i.id === kept)!;
-                              setMerging({ target, sources: items.filter((i) => i.id !== kept).map((i) => i.id) });
-                            }}>Revisar unión</Button>
-                          </Box>
                         </Stack>
                       )}
                     </Box>

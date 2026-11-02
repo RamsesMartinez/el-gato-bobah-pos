@@ -9,7 +9,8 @@ import { Table, Text } from '@chakra-ui/react';
 export function PreviewTable({ children }: { children: ReactNode }) {
   return (
     <Table.Root size="sm" stickyHeader>
-      <Table.Header>
+      {/* Con fondo: fijo y transparente, los renglones se leían a través del encabezado al desplazar. */}
+      <Table.Header bg="bg.panel">
         <Table.Row>
           <Table.ColumnHeader>Qué</Table.ColumnHeader>
           <Table.ColumnHeader textAlign="end">Antes</Table.ColumnHeader>

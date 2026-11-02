@@ -75,3 +75,22 @@ func TestPresentationBrand(t *testing.T) {
 		}
 	})
 }
+
+// Buscar en Artículos encuentra el insumo por la marca de su empaque (prueba con usuario nuevo: «lala»
+// daba «Nada coincide» con una «Caja · Lala»), y la lista trae la marca de cada empaque.
+func TestArticlesAreFoundByPresentationBrand(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	leche := ingredientIn(t, st, defaultCompanyID, "Leche busca marca", "ml")
+	svc, tctx := asTenant(t, defaultCompanyID)
+	if _, err := svc.CreatePresentation(tctx, leche, app.PresentationInput{Name: "Caja", Qty: qty("12"), UnitID: unitID(t, st, "l"), Brand: strp("Lala")}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := svc.ListArticles(tctx, app.ArticleFilter{Q: "lala"})
+	if err != nil || len(rows) != 1 || rows[0].ID != leche {
+		t.Fatalf("buscar «lala» = %+v %v", rows, err)
+	}
+	if len(rows[0].Presentations) != 1 || rows[0].Presentations[0].Brand == nil || *rows[0].Presentations[0].Brand != "Lala" {
+		t.Fatalf("la lista no trae la marca del empaque: %+v", rows[0].Presentations)
+	}
+}

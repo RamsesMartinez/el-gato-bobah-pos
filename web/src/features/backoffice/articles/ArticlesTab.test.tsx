@@ -112,3 +112,14 @@ describe('Almacén › Artículos', () => {
     }
   });
 });
+
+describe('Almacén › Artículos · marca', () => {
+  it('dos empaques del mismo nombre se distinguen por su marca', async () => {
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.view'] } as never });
+    back.articles.mockResolvedValue([row(1, 'Leche', { presentations: [
+      { id: 9, name: 'Caja', qtyInBase: '12000', brand: 'Lala' }, { id: 10, name: 'Caja', qtyInBase: '12000', brand: 'Alpura' },
+    ] })]);
+    montar();
+    expect(await screen.findByText(/Caja · Lala · 12 kg · Caja · Alpura · 12 kg/)).toBeInTheDocument();
+  });
+});

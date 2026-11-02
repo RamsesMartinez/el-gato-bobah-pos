@@ -36,6 +36,9 @@ type Step = 'pick' | 'equiv' | 'preview';
 
 const MAX_SIMILAR = 3;
 
+// De qué es cada receta: hay productos y extras que se llaman igual («Chocolate»).
+const OWNER_KIND: Record<string, string> = { product: '', option: ' (extra)', ingredient: ' (preparado)', recipe: '' };
+
 // La equivalencia se pregunta como la diría alguien: siempre «1 pieza = …» si una de las dos se cuenta
 // por pieza; si no, «1 <unidad del otro> = … <unidad de éste>». El servidor quiere cuánto del destino
 // vale una unidad base del origen.
@@ -148,6 +151,7 @@ export function MergeSheet({ target, initialSources = [], onClose, onDone }: Pro
   };
 
   const conflicts = (preview?.presentations ?? []).filter((p) => p.action === 'conflict');
+  const sourceNames = (preview?.sources ?? []).map((s) => s.name).join(', ');
 
   const row = (a: ArticleRow) => {
     const on = selected.includes(a.id);
@@ -257,23 +261,32 @@ export function MergeSheet({ target, initialSources = [], onClose, onDone }: Pro
                       </Table.Cell>
                       <Table.Cell textAlign="end">{formatBaseQty(s.before, s.baseUnit)}</Table.Cell>
                       <Table.Cell textAlign="end" fontWeight="600">{formatBaseQty(s.after, s.baseUnit)}</Table.Cell>
-                      <Table.Cell textAlign="end" color={tone(diff)}>{signed(diff, (v) => formatBaseQty(v, s.baseUnit))}</Table.Cell>
+                      {/* Lo de un origen solo sale de ahí: no es ganancia ni pérdida, aunque estuviera en negativo. */}
+                      <Table.Cell textAlign="end" color={source ? 'fg.muted' : tone(diff)} data-tone={source ? 'muted' : undefined}>
+                        {signed(diff, (v) => formatBaseQty(v, s.baseUnit))}
+                      </Table.Cell>
                     </Table.Row>
                   );
                 })}
-                {(preview.recipes ?? []).length > 0 && <PreviewGroup label={`Recetas que pasan a ${preview.target.name}`} />}
+                <PreviewGroup label={`Recetas que pasan a ${preview.target.name}`} />
+                {(preview.recipes ?? []).length === 0 && (
+                  <Table.Row><Table.Cell colSpan={4} color="fg.muted">Ninguna receta lleva {sourceNames}.</Table.Cell></Table.Row>
+                )}
                 {(preview.recipes ?? []).map((r, i) => {
                   const from = preview.sources?.find((s) => s.id === r.sourceId)?.name ?? '';
                   return (
                     <Table.Row key={`r-${i}`}>
-                      <Table.Cell>{r.owner}</Table.Cell>
+                      <Table.Cell>{r.owner}{OWNER_KIND[r.ownerKind ?? ''] ?? ''}</Table.Cell>
                       <Table.Cell textAlign="end">{Number(r.beforeQty)} {r.beforeUnit} de {from}</Table.Cell>
                       <Table.Cell textAlign="end" fontWeight="600">{Number(r.afterQty)} {r.afterUnit}</Table.Cell>
                       <Table.Cell textAlign="end" color="fg.muted">{r.merged ? 'se juntan' : 'cambia de insumo'}</Table.Cell>
                     </Table.Row>
                   );
                 })}
-                {(preview.presentations ?? []).length > 0 && <PreviewGroup label="Presentaciones" />}
+                <PreviewGroup label="Presentaciones" />
+                {(preview.presentations ?? []).length === 0 && (
+                  <Table.Row><Table.Cell colSpan={4} color="fg.muted">Ninguna presentación pasa a {preview.target.name}.</Table.Cell></Table.Row>
+                )}
                 {(preview.presentations ?? []).map((p) => (
                   <Table.Row key={`p-${p.id}`}>
                     <Table.Cell colSpan={3} color={p.action === 'conflict' ? 'fg.error' : undefined}>
@@ -284,12 +297,12 @@ export function MergeSheet({ target, initialSources = [], onClose, onDone }: Pro
                     </Table.Cell>
                   </Table.Row>
                 ))}
-                <PreviewGroup label={`Costo por ${preview.target.baseUnit}`} />
+                <PreviewGroup label="Costo" />
                 <Table.Row>
                   <Table.Cell>{preview.target.name}</Table.Cell>
                   <Table.Cell textAlign="end">{formatUnitCost(preview.costBefore, preview.target.baseUnit) ?? 'Sin costo'}</Table.Cell>
                   <Table.Cell textAlign="end" fontWeight="600">{formatUnitCost(preview.costAfter, preview.target.baseUnit) ?? 'Sin costo'}</Table.Cell>
-                  <Table.Cell textAlign="end" color="fg.muted">{num(preview.costBefore) === num(preview.costAfter) ? 'se queda igual' : 'la compra más reciente'}</Table.Cell>
+                  <Table.Cell textAlign="end" color="fg.muted">{num(preview.costBefore) === num(preview.costAfter) ? `se queda el de ${preview.target.name}` : 'la compra más reciente'}</Table.Cell>
                 </Table.Row>
                 {preview.supplierItems > 0 && (
                   <Table.Row>
@@ -299,6 +312,7 @@ export function MergeSheet({ target, initialSources = [], onClose, onDone }: Pro
                   </Table.Row>
                 )}
               </PreviewTable>
+              <Text fontSize="sm" color="fg.muted" pt={3}>Unir no se puede deshacer: los que se unen quedan archivados.</Text>
             </Box>
           ))}
         </DrawerBody>

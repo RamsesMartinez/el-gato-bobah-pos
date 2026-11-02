@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from '../../components/ui/provider';
+import { ApiError } from '../../api/client';
 import type { Presentation, Unit } from '../../api/backoffice';
 import { PresentationsSheet, type PresentationsIngredient } from './PresentationsSheet';
 
@@ -224,5 +225,19 @@ describe('marca o proveedor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'L' }));
     fireEvent.change(screen.getByLabelText('Marca o proveedor (opcional)'), { target: { value: 'Marca B' } });
     expect(screen.getByRole('button', { name: 'Guardar empaque' })).not.toBeDisabled();
+  });
+});
+
+describe('un empaque rechazado', () => {
+  test('un 400 dice por qué, no solo «No se pudo»', async () => {
+    back.createPresentation.mockRejectedValueOnce(new ApiError(400, 'VALIDATION', 'escribe cuánto trae el empaque', 'req'));
+    montar(leche, []);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Otro' }));
+    fireEvent.change(screen.getByLabelText('Nombre del empaque'), { target: { value: 'Garrafa' } });
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    expect(await screen.findByText('escribe cuánto trae el empaque')).toBeInTheDocument();
   });
 });

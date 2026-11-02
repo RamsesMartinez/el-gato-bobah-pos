@@ -192,6 +192,27 @@ sobre el diff. Sin bloqueantes. Corregido, cada uno con su prueba:
 No corregido, a propósito: las funciones `security definer` confían en `new.company_id` (ninguna consulta
 pasa `company_id` explícito; hoy no es explotable, según el auditor).
 
+## Prueba con usuario nuevo (2026-11-01)
+
+Un subagente sin contexto, a 1024×600 con toque, contra la base local restaurada de producción. Logró las
+cinco tareas sin ayuda (revisar duplicados hasta la vista previa, crear y unir dos marcas, empaques con
+marca, aviso de parecido, archivar lo suyo) y explicó la vista previa correctamente: «la marca B se
+archiva, sus 3 L pasan y queda en 8 L; no hay recetas ni empaques; el costo se queda en el del que se
+queda».
+
+Corregido con su prueba: la marca no se veía en la lista ni en la ficha y buscarla no encontraba nada;
+encabezado transparente de la vista previa; «Costo por g» con cifras en $/kg; en un grupo, «Revisar
+unión» quedaba bajo seis renglones de «No son lo mismo» y venía elegido el primero alfabético (uno en
+negativo); un origen en negativo se pintaba como ganancia; recetas homónimas sin decir si son producto o
+extra; secciones vacías que no aparecían; no decía que unir no se deshace; la cantidad precargada de un
+empaque se volvía «1212» al escribir y el 400 no decía por qué.
+
+Visto y no corregido aquí: «Unir otros aquí» está al fondo de la ficha (junto a «Archivar», como dice la
+maqueta); el costo resultante sigue la regla de hoy («último precio» de compras) y una corrección a mano
+más reciente de un origen no cuenta, lo que el usuario leyó como contradicción en el historial — la regla
+configurable es la entrega 2; la palabra de la empresa («insumo»/«artículo») no se usa en las hojas
+nuevas; avisos de consola y controles chicos del login que ya existían.
+
 ## Complexity Tracking
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |

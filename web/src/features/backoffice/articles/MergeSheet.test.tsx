@@ -27,7 +27,7 @@ const preview = (over = {}) => ({
     { branchId: 1, branch: 'Centro', ingredientId: 2, name: 'Leche entera Marca B', baseUnit: 'ml', before: '3000', after: '0', negativeAfter: false },
     { branchId: 1, branch: 'Centro', ingredientId: 1, name: 'Leche entera', baseUnit: 'ml', before: '8400', after: '11400', negativeAfter: false },
   ],
-  recipes: [{ owner: 'Frappé de taro', sourceId: 2, beforeQty: '180', beforeUnit: 'ml', afterQty: '180', afterUnit: 'ml', merged: false }],
+  recipes: [{ owner: 'Frappé de taro', ownerKind: 'product', sourceId: 2, beforeQty: '180', beforeUnit: 'ml', afterQty: '180', afterUnit: 'ml', merged: false }],
   presentations: [{ id: 9, sourceId: 2, name: 'Caja 12 × 1 L', brand: 'Marca B', qtyInBase: '12000', baseUnit: 'ml', action: 'move' }],
   supplierItems: 1, purchaseFormats: 0, costBefore: '0.023', costAfter: '0.0215', minStockBefore: null, minStockAfter: null,
   fingerprint: 'huella-1',
@@ -198,5 +198,40 @@ describe('Unir insumos · equivalencia', () => {
     fireEvent.click(screen.getByRole('button', { name: '3' }));
     fireEvent.click(screen.getByRole('button', { name: 'Ver qué cambia ›' }));
     await waitFor(() => expect(back.mergeArticles).toHaveBeenCalledWith(1, { sources: [{ id: 2, factor: '0.333333' }] }, true));
+  });
+});
+
+describe('Unir insumos · lo que dijo el usuario nuevo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    back.articles.mockResolvedValue([row(1, 'Leche entera'), row(2, 'Leche entera Marca B')]);
+    back.similarArticles.mockResolvedValue({ items: [{ id: 2, name: 'Leche entera Marca B', baseUnitId: 5, baseUnitCode: 'ml', onHand: '3000' }] });
+  });
+  const verVistaPrevia = async () => {
+    const similar = await screen.findByRole('group', { name: 'Parecidos' });
+    fireEvent.click(within(similar).getByRole('checkbox', { name: /Leche entera Marca B/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente ›' }));
+  };
+
+  it('dice de qué es cada receta y «Ninguna» cuando no hay recetas ni presentaciones', async () => {
+    back.mergeArticles.mockResolvedValue(preview({ recipes: [
+      { owner: 'Chocolate', ownerKind: 'option', sourceId: 2, beforeQty: '10', beforeUnit: 'ml', afterQty: '10', afterUnit: 'ml', merged: false },
+    ], presentations: [] }));
+    montar();
+    await verVistaPrevia();
+    expect(await screen.findByText('Chocolate (extra)')).toBeInTheDocument();
+    expect(screen.getByText(/Ninguna presentación pasa/)).toBeInTheDocument();
+    expect(screen.getByText(/Unir no se puede deshacer/)).toBeInTheDocument();
+  });
+
+  it('un origen con existencia negativa no se pinta como ganancia', async () => {
+    back.mergeArticles.mockResolvedValue(preview({ stock: [
+      { branchId: 1, branch: 'Centro', ingredientId: 2, name: 'Leche entera Marca B', baseUnit: 'ml', before: '-175', after: '0', negativeAfter: false },
+      { branchId: 1, branch: 'Centro', ingredientId: 1, name: 'Leche entera', baseUnit: 'ml', before: '8400', after: '8225', negativeAfter: false },
+    ] }));
+    montar();
+    await verVistaPrevia();
+    const cell = await screen.findByText('+175 ml');
+    expect(cell).toHaveAttribute('data-tone', 'muted');
   });
 });

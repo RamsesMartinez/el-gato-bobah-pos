@@ -1348,7 +1348,7 @@ export interface MergeStock {
   before: string; after: string; negativeAfter: boolean;
 }
 export interface MergeRecipe {
-  owner: string; sourceId: number; beforeQty: string; beforeUnit: string; afterQty: string; afterUnit: string; merged: boolean;
+  owner: string; ownerKind?: 'product' | 'option' | 'ingredient' | 'recipe'; sourceId: number; beforeQty: string; beforeUnit: string; afterQty: string; afterUnit: string; merged: boolean;
 }
 export interface MergePresentation {
   id: number; sourceId: number; name: string; brand: string; qtyInBase: string; baseUnit: string;

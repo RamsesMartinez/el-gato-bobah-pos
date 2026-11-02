@@ -23,6 +23,7 @@ import { ArticleAuditSheet } from './ArticleAuditSheet';
 import { ArchiveSheet } from './ArchiveSheet';
 import { UnitChangeSheet } from './UnitChangeSheet';
 import { MergeSheet } from './MergeSheet';
+import { presentationLabel } from '../../../shared/presentationLabel';
 import { QtyWithUnit } from './qty';
 import { baseQty, bigUnitOf, KIND_WORD, type Kind } from './articleUnits';
 
@@ -418,7 +419,7 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
           : (a?.presentations ?? []).map((p) => (
             <Button key={p.id} minH="48px" variant="ghost" justifyContent="space-between" borderBottomWidth="1px" borderRadius="0"
               disabled={!canConfigure} onClick={() => { setEditPack(p.id); setPanel('packs'); }}>
-              <Text><b>{p.name}</b> · {formatBaseQty(p.qtyInBase, a!.baseUnitCode)}</Text>
+              <Text><b>{presentationLabel(p)}</b> · {formatBaseQty(p.qtyInBase, a!.baseUnitCode)}</Text>
               {canConfigure && <Text color="fg.muted">Editar ›</Text>}
             </Button>
           ))}

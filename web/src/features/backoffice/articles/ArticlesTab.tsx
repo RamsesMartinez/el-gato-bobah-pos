@@ -9,6 +9,7 @@ import { useSessionStore } from '../../../stores/session';
 import { formatBaseQty, formatUnitCost } from '../../../shared/units';
 import { NO_LOCATION } from '../useLocations';
 import { NewArticleSheet } from './NewArticleSheet';
+import { presentationLabel } from '../../../shared/presentationLabel';
 import { DuplicatesSheet } from './DuplicatesSheet';
 
 // Almacén › Artículos (spec 042, maqueta «Lista de artículos», opción A con los ajustes de la
@@ -144,7 +145,7 @@ function ArticleLine({ a, onOpen }: { a: ArticleRow; onOpen: (id: number) => voi
       <Table.Cell>{cost ?? <Text as="span" fontSize="sm" color="fg.error" fontWeight="600">Sin costo</Text>}</Table.Cell>
       <Table.Cell>
         <Text fontSize="sm" color="fg.muted">
-          {packs.length ? packs.map((p) => `${p.name} · ${formatBaseQty(p.qtyInBase, a.baseUnitCode)}`).join(' · ') : 'Sin empaques'}
+          {packs.length ? packs.map((p) => `${presentationLabel(p)} · ${formatBaseQty(p.qtyInBase, a.baseUnitCode)}`).join(' · ') : 'Sin empaques'}
         </Text>
       </Table.Cell>
     </Table.Row>

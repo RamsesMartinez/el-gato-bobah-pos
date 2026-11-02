@@ -70,7 +70,10 @@ type MergeStock struct {
 // MergeRecipe es un renglón de receta que pasa al destino. Merged: se sumó al renglón que la receta ya
 // tenía del destino.
 type MergeRecipe struct {
-	Owner      string          `json:"owner"`
+	Owner string `json:"owner"`
+	// OwnerKind dice de qué es la receta (product, option, ingredient): hay productos y extras que se
+	// llaman igual («Chocolate»).
+	OwnerKind  string          `json:"ownerKind"`
 	SourceID   int64           `json:"sourceId"`
 	BeforeQty  decimal.Decimal `json:"beforeQty"`
 	BeforeUnit string          `json:"beforeUnit"`
@@ -467,7 +470,7 @@ func (m *mergeRun) moveRecipes(ctx context.Context, src db.LockArticleNowaitRow,
 		} else if err := m.q.SetRecipeItem(ctx, db.SetRecipeItemParams{ID: r.ID, IngredientID: m.targetID, Quantity: plan.Qty, UnitID: plan.UnitID}); err != nil {
 			return err
 		}
-		m.out.Recipes = append(m.out.Recipes, MergeRecipe{Owner: r.Owner, SourceID: src.ID, BeforeQty: r.Quantity, BeforeUnit: r.UnitCode,
+		m.out.Recipes = append(m.out.Recipes, MergeRecipe{Owner: r.Owner, OwnerKind: r.OwnerKind, SourceID: src.ID, BeforeQty: r.Quantity, BeforeUnit: r.UnitCode,
 			AfterQty: plan.Qty, AfterUnit: afterUnit, Merged: plan.Sum})
 	}
 	return nil

@@ -102,3 +102,22 @@ describe('Posibles duplicados', () => {
     expect(await screen.findByText('Unir en Leche entera Marca B')).toBeInTheDocument();
   });
 });
+
+describe('Posibles duplicados · lo que dijo el usuario nuevo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'admin', permissions: ['inventory.view', 'inventory.configure'] } as never });
+    back.duplicateGroups.mockResolvedValue({ groups: [
+      { items: [item(1, 'Polvo Chocolate', '-175'), item(2, 'Polvo chocolate italiano', '1570'), item(3, 'Polvo chocolate Monjita', '200')] },
+    ] });
+  });
+
+  it('se queda por omisión el que tiene más existencia, y «Revisar unión» va antes de los pares', async () => {
+    montar(<DuplicatesSheet onClose={vi.fn()} onMerged={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Polvo Chocolate · Polvo chocolate italiano/ }));
+    expect(screen.getByRole('radio', { name: 'Se queda Polvo chocolate italiano' })).toBeChecked();
+    const group = screen.getByRole('group', { name: 'Polvo Chocolate' });
+    const buttons = within(group).getAllByRole('button').map((b) => b.textContent);
+    expect(buttons.indexOf('Revisar unión')).toBeLessThan(buttons.indexOf('No son lo mismo'));
+  });
+});

@@ -95,8 +95,9 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
       void qc.invalidateQueries({ queryKey: ['presentations'] });
     },
     onError: (e) => setError(e instanceof ApiError && e.status === 409
-      ? 'Ya hay un empaque que se llama así'
-      : 'No se pudo guardar el empaque'),
+      ? 'Ya hay un empaque que se llama así con esa marca'
+      // Un 400 dice qué está mal (prueba con usuario nuevo: «1212 L» salía solo como «No se pudo»).
+      : e instanceof ApiError && e.status === 400 ? e.message : 'No se pudo guardar el empaque'),
   });
 
   const active = presentations.filter((p) => p.active);
@@ -239,7 +240,10 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
                   <Text>{draft.approximate ? 'Por cada' : 'Trae'}</Text>
                   {draft.approximate && <UnitSegment options={unitOptions} />}
                   {draft.approximate && <Text>trae aproximadamente</Text>}
+                  {/* Al tocarla se selecciona: la cantidad llega precargada de un empaque conocido y escribir
+                      encima daba «1212» (prueba con usuario nuevo). */}
                   <Input w="110px" minH="48px" inputMode="decimal" aria-label="Cuánto trae" placeholder="0"
+                    onFocus={(e) => e.currentTarget.select()}
                     value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value.replace(',', '.') })} />
                   {draft.approximate ? <Text>piezas</Text> : <UnitSegment options={unitOptions} />}
                 </HStack>
