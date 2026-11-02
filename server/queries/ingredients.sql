@@ -95,18 +95,18 @@ where (sqlc.narg('ingredient_id')::bigint is null or p.ingredient_id = sqlc.narg
 order by p.ingredient_id, p.active desc, p.name, p.id;
 
 -- name: CreatePresentation :one
-insert into ingredient_presentations (ingredient_id, name, qty_in_base, purchase_unit_id, is_approximate)
-values ($1, $2, $3, $4, $5)
+insert into ingredient_presentations (ingredient_id, name, qty_in_base, purchase_unit_id, is_approximate, brand)
+values ($1, $2, $3, $4, $5, $6)
 returning id;
 
 -- name: UpdatePresentation :execrows
 update ingredient_presentations
-set name = $2, qty_in_base = $3, purchase_unit_id = $4, is_approximate = $5, active = $6
+set name = $2, qty_in_base = $3, purchase_unit_id = $4, is_approximate = $5, active = $6, brand = $7
 where id = $1;
 
 -- name: GetPresentationIngredient :one
--- El insumo y el estado actual: editar sin mandar `active` conserva el que tiene.
-select ingredient_id, active from ingredient_presentations where id = $1;
+-- El insumo, el estado y la marca actuales: editar sin mandar `active` o `brand` conserva lo que tiene.
+select ingredient_id, active, brand from ingredient_presentations where id = $1;
 
 -- name: GetUnit :one
 select id, code, name, kind, to_base from units where id = $1;

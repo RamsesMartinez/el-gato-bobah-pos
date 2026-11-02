@@ -259,7 +259,7 @@ select distinct p.name, p.qty_in_base
  limit 60;
 
 -- name: GetPresentationForAudit :one
-select name, qty_in_base, active from ingredient_presentations where id = $1;
+select name, qty_in_base, active, brand from ingredient_presentations where id = $1;
 
 -- ---- Cambio de unidad (spec 042, FR-009) ----
 

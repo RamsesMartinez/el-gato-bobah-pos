@@ -595,7 +595,7 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 			purchase = pr.PurchaseUnitID
 		}
 		if _, err := q.CreatePresentation(ctx, db.CreatePresentationParams{IngredientID: newID, Name: pr.Name, QtyInBase: to,
-			PurchaseUnitID: purchase, IsApproximate: pr.IsApproximate}); err != nil {
+			PurchaseUnitID: purchase, IsApproximate: pr.IsApproximate, Brand: pr.Brand}); err != nil {
 			return err
 		}
 	}

@@ -29,10 +29,11 @@ type presentationBody struct {
 	UnitID      int16           `json:"unitId"`
 	Approximate bool            `json:"approximate"`
 	Active      *bool           `json:"active"`
+	Brand       *string         `json:"brand"`
 }
 
 func (b presentationBody) input() app.PresentationInput {
-	return app.PresentationInput{Name: b.Name, Qty: b.Qty, UnitID: b.UnitID, Approximate: b.Approximate, Active: b.Active}
+	return app.PresentationInput{Name: b.Name, Qty: b.Qty, UnitID: b.UnitID, Approximate: b.Approximate, Active: b.Active, Brand: b.Brand}
 }
 
 // GET /stock/presentations — todos los empaques de la empresa (la columna «Cómo llega»).

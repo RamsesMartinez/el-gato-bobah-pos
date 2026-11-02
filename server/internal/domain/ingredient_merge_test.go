@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -203,3 +204,28 @@ func TestPlanMergedPresentations(t *testing.T) {
 		}
 	})
 }
+
+func TestCleanPresentationBrand(t *testing.T) {
+	long := strings.Repeat("x", MaxPresentationBrand+1)
+	cases := []struct {
+		in   *string
+		want *string
+		ok   bool
+	}{
+		{nil, nil, true},
+		{strPtr("  Marca   A "), strPtr("Marca A"), true},
+		{strPtr("   "), nil, true},
+		{strPtr(long), nil, false},
+	}
+	for _, c := range cases {
+		got, err := CleanPresentationBrand(c.in)
+		if (err == nil) != c.ok {
+			t.Fatalf("CleanPresentationBrand(%v) = %v", c.in, err)
+		}
+		if (got == nil) != (c.want == nil) || (got != nil && *got != *c.want) {
+			t.Fatalf("CleanPresentationBrand(%v) = %v; quiere %v", c.in, got, c.want)
+		}
+	}
+}
+
+func strPtr(s string) *string { return &s }

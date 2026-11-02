@@ -241,3 +241,19 @@ func truncateRunes(s string, n int) string {
 	}
 	return strings.TrimSpace(string(r[:n]))
 }
+
+// CleanPresentationBrand es la marca opcional de una presentación (spec 056): sin espacios de orilla
+// ni repetidos; vacía es sin marca (nil). Más de MaxPresentationBrand letras es 400.
+func CleanPresentationBrand(brand *string) (*string, error) {
+	if brand == nil {
+		return nil, nil
+	}
+	b := CleanArticleName(*brand)
+	if b == "" {
+		return nil, nil
+	}
+	if len([]rune(b)) > MaxPresentationBrand {
+		return nil, fmt.Errorf("%w: la marca va de 1 a %d letras", ErrValidation, MaxPresentationBrand)
+	}
+	return &b, nil
+}

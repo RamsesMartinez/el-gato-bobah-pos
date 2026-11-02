@@ -704,19 +704,25 @@ func (q *Queries) GetArticle(ctx context.Context, id int64) (GetArticleRow, erro
 }
 
 const getPresentationForAudit = `-- name: GetPresentationForAudit :one
-select name, qty_in_base, active from ingredient_presentations where id = $1
+select name, qty_in_base, active, brand from ingredient_presentations where id = $1
 `
 
 type GetPresentationForAuditRow struct {
 	Name      string          `json:"name"`
 	QtyInBase decimal.Decimal `json:"qty_in_base"`
 	Active    bool            `json:"active"`
+	Brand     *string         `json:"brand"`
 }
 
 func (q *Queries) GetPresentationForAudit(ctx context.Context, id int64) (GetPresentationForAuditRow, error) {
 	row := q.db.QueryRow(ctx, getPresentationForAudit, id)
 	var i GetPresentationForAuditRow
-	err := row.Scan(&i.Name, &i.QtyInBase, &i.Active)
+	err := row.Scan(
+		&i.Name,
+		&i.QtyInBase,
+		&i.Active,
+		&i.Brand,
+	)
 	return i, err
 }
 
