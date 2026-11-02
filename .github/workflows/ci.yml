@@ -88,19 +88,17 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
   integration:
-    name: Backend integration (Postgres) ${{ matrix.shard }}/4
+    name: Backend integration (Postgres) ${{ matrix.shard }}/3
     needs: [changes]
     if: needs.changes.outputs.integration == 'true'
     runs-on: ubuntu-latest
-    # Shards en paralelo (spec 044): medido, la suite tomaba 223 s de los 286 s del job. Cada
+    # Tres shards en paralelo (spec 044): medido, la suite tomaba 223 s de los 286 s del job. Cada
     # shard tiene su propio Postgres; scripts/ci-shard-tests.sh reparte por turno y verifica que
     # la unión sea la lista completa. fail-fast apagado: un shard rojo no esconde lo de los otros.
-    # El 4 es el carril de las pruebas pesadas (la bitácora de un año, 59-102 s sola): por turno caía
-    # en cualquier shard y ése llegaba a 249 s (medición en scripts/ci-shard-tests.sh).
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3]
     defaults:
       run:
         working-directory: server
@@ -201,14 +199,14 @@ jobs:
         # la serie sin decir por qué.
         #
         # Repartida en shards (spec 044): cada uno lista las pruebas, reparte por turno, verifica que
-        # los cuatro repartos juntos son la lista completa (una prueba que ningún shard tome no correría
+        # los tres repartos juntos son la lista completa (una prueba que ningún shard tome no correría
         # en ningún lado) y corre la suya. internal/httpapi va entero en el shard 1. La salida va en
         # -json para guardar la duración de cada prueba; un shard sin pruebas termina en verde.
         run: |
           ../scripts/ci-shard-tests.sh list > /tmp/all-tests
-          for s in 1 2 3 4; do ../scripts/ci-shard-tests.sh shard "$s" 4 < /tmp/all-tests > "/tmp/shard-$s"; done
-          ../scripts/ci-shard-tests.sh verify /tmp/all-tests /tmp/shard-1 /tmp/shard-2 /tmp/shard-3 /tmp/shard-4
-          re=$(../scripts/ci-shard-tests.sh run-regex "${{ matrix.shard }}" 4 < /tmp/all-tests)
+          for s in 1 2 3; do ../scripts/ci-shard-tests.sh shard "$s" 3 < /tmp/all-tests > "/tmp/shard-$s"; done
+          ../scripts/ci-shard-tests.sh verify /tmp/all-tests /tmp/shard-1 /tmp/shard-2 /tmp/shard-3
+          re=$(../scripts/ci-shard-tests.sh run-regex "${{ matrix.shard }}" 3 < /tmp/all-tests)
           : > /tmp/go-test.json
           rc=0
           if [ -n "$re" ]; then
