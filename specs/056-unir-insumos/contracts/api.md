@@ -26,7 +26,7 @@ Permiso: `inventory.configure`. `{id}` es el destino.
 | 409 | `MERGE_BLOCKED` | conteo abierto, compras por recibir o mermas pendientes de un origen, preparado, origen archivado o ya unido, destino archivado; el mensaje dice qué y de cuál |
 | 409 | `MERGE_PRESENTATION_CONFLICT` | dos presentaciones con mismo nombre y marca y distinto contenido |
 | 409 | `MERGE_STALE` | la huella no coincide: algo cambió desde la vista previa |
-| 409 | `BUSY` | una venta, compra, merma o ajuste en curso sobre alguno (nowait); «vuelve a intentar» |
+| 409 | `CONFLICT` | una venta, compra, merma o ajuste en curso sobre alguno (nowait); el mensaje dice «vuelve a intentar en un momento» |
 
 ## `GET /stock/articles/similar?name=…`
 
@@ -59,9 +59,9 @@ empresa o inexistentes → 400/404.
 
 ## Cambios a contratos existentes
 
-- `GET /presentations`, `GET /ingredients/{id}/presentations` y las presentaciones de la ficha: cada una trae
+- `GET /stock/presentations`, `GET /stock/ingredients/{id}/presentations` y las presentaciones de la ficha: cada una trae
   `"brand": string | null`.
-- `POST /ingredients/{id}/presentations` y `PUT /presentations/{id}`: aceptan
+- `POST /stock/ingredients/{id}/presentations` y `PUT /stock/presentations/{id}`: aceptan
   `"brand"` opcional (vacío o solo espacios = sin marca; más de 40 → 400). Choque de nombre+marca →
   409 como hoy.
 - `GET /stock/articles/{id}`: trae `"mergedInto": { "id", "name" } | null` (si es un origen unido)
