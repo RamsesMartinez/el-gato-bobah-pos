@@ -73,7 +73,7 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
     await waitFor(() => expect(screen.getByLabelText('Cuánto trae')).toHaveValue('12'));
     expect(screen.getByText('1 caja = 12 L')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
-    await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(10, { name: 'Caja', qty: '12', unitId: 7, approximate: false }));
+    await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(10, { name: 'Caja', qty: '12', unitId: 7, approximate: false, brand: '' }));
   });
 
   // Revisión de código: con un empaque a medio capturar, «Listo» lo tiraba sin avisar y «Guardar
@@ -117,7 +117,7 @@ describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
     fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '4' } });
     expect(screen.getByText(/≈ 4 piezas/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
-    await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(11, { name: 'Kilo', qty: '4', unitId: 2, approximate: true }));
+    await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(11, { name: 'Kilo', qty: '4', unitId: 2, approximate: true, brand: '' }));
   });
 
   // Decisión del dueño (2026-10-20): «Ya no llega así» junto a «Editar» hacía dudar si se editaba o se
@@ -183,5 +183,46 @@ describe('empaque nuevo sin adivinar (spec 043)', () => {
     montar(masa, [], false);
     await screen.findByRole('dialog');
     expect(screen.queryByText(/Ubicación|Lugar/)).toBeNull();
+  });
+});
+
+// Marca en la presentación (spec 056, US4).
+describe('marca o proveedor', () => {
+  test('se ve junto al nombre y dos «Caja» con marca distinta se distinguen', async () => {
+    montar(leche, [pres({ id: 1, brand: 'Marca A' }), pres({ id: 2, brand: 'Marca B', qtyInBase: '8000' })]);
+    expect(await screen.findByText(/Caja · Marca A · 12 L/)).toBeInTheDocument();
+    expect(screen.getByText(/Caja · Marca B · 8 L/)).toBeInTheDocument();
+  });
+
+  test('se captura opcional y se manda con el empaque nuevo', async () => {
+    montar(leche, []);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Otro' }));
+    fireEvent.change(screen.getByLabelText('Nombre del empaque'), { target: { value: 'Garrafa' } });
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
+    fireEvent.change(screen.getByLabelText('Marca o proveedor (opcional)'), { target: { value: 'Lala' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(10, expect.objectContaining({ name: 'Garrafa', brand: 'Lala' })));
+  });
+
+  test('editar trae la marca y borrarla la quita', async () => {
+    montar(leche, [pres({ id: 1, brand: 'Marca A' })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar' }));
+    const box = screen.getByLabelText('Marca o proveedor (opcional)');
+    expect(box).toHaveValue('Marca A');
+    fireEvent.change(box, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.updatePresentation).toHaveBeenCalledWith(1, expect.objectContaining({ brand: '' })));
+  });
+
+  test('la misma «Caja» con otra marca no se marca como repetida', async () => {
+    montar(leche, [pres({ id: 1, brand: 'Marca A' })]);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Caja' }));
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
+    fireEvent.change(screen.getByLabelText('Marca o proveedor (opcional)'), { target: { value: 'Marca B' } });
+    expect(screen.getByRole('button', { name: 'Guardar empaque' })).not.toBeDisabled();
   });
 });

@@ -220,7 +220,7 @@ select i.id, i.name, u.id as unit_id, u.code as unit_code, u.kind::text as unit_
  order by i.name, i.id;
 
 -- name: WastePresentations :many
-select id, ingredient_id, name, qty_in_base from ingredient_presentations where active order by ingredient_id, name;
+select id, ingredient_id, name, qty_in_base, brand from ingredient_presentations where active order by ingredient_id, name, brand nulls first;
 
 -- name: WasteUnits :many
 select id, code, kind::text as kind, to_base from units order by kind, to_base;

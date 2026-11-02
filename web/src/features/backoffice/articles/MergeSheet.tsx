@@ -12,7 +12,8 @@ import { medirAccion } from '../../../api/uso';
 import { toaster } from '../../../components/ui/toaster';
 import { NumericKeypad } from '../../../components/NumericKeypad';
 import { useKeypadField } from '../../../components/useKeypadField';
-import { PreviewGroup, PreviewTable, StaleNotice, num, signed, tone } from '../../../shared/preview/PreviewTable';
+import { PreviewGroup, PreviewTable, StaleNotice } from '../../../shared/preview/PreviewTable';
+import { num, signed, tone } from '../../../shared/preview/changes';
 import { formatBaseQty, formatUnitCost } from '../../../shared/units';
 import { matchesWords } from '../../../utils/format';
 
@@ -119,7 +120,7 @@ export function MergeSheet({ target, initialSources = [], onClose, onDone }: Pro
     else void ask();
   };
 
-  const confirm = async () => {
+  const applyMerge = async () => {
     if (!preview) return;
     setLoading(true);
     setError('');
@@ -317,7 +318,7 @@ export function MergeSheet({ target, initialSources = [], onClose, onDone }: Pro
                 <Button minH="44px" variant="outline" onClick={() => { setStale(false); setStep(differing.length > 0 ? 'equiv' : 'pick'); }}>Volver</Button>
                 <Box flex="1" />
                 <Button minH="44px" colorPalette="brand" disabled={!preview || loading || conflicts.length > 0} loading={loading}
-                  onClick={() => void confirm()}>Unir</Button>
+                  onClick={() => void applyMerge()}>Unir</Button>
               </>
             )}
           </HStack>

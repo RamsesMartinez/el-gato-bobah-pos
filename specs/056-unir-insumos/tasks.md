@@ -128,9 +128,9 @@ código y se ve fallar por la razón correcta antes de implementar.
 
 - [X] T042 [P] [US4] Integración en `server/internal/integration/presentations_brand_test.go`: crear/editar con marca; vacío o espacios = sin marca; > 40 → 400; mismo nombre y distinta marca conviven; misma marca (o ambas sin) → 409; `expense_items.presentation_brand` copia la marca al comprar (también con un insert sin la columna, como la API vieja) y editar la marca después no cambia la de compras pasadas
 - [X] T043 [US4] `brand` en `ListPresentations`, `CreatePresentation`, `UpdatePresentation` (`server/queries/ingredients.sql`), `PresentationView`/`PresentationInput` y bitácora en `server/internal/app/presentations.go`, handler en `server/internal/httpapi`
-- [ ] T044 [P] [US4] Prueba y función `presentationLabel` en `web/src/shared/presentationLabel.ts` (+ `.test.ts`)
-- [ ] T045 [US4] Campo «Marca (opcional)» y etiqueta en `web/src/features/backoffice/PresentationsSheet.tsx` con prueba en `PresentationsSheet.test.tsx` (fila «Unir insumos» de Maquetas, pantalla «Presentaciones» del plan)
-- [ ] T046 [US4] `presentationLabel` en `ExpenseDialog.tsx`, `AddLineSheet.tsx`, `ArrivedItemSheet.tsx`, `StockCountTab.tsx` (y `key` por id en lugar de `p.name`), `web/src/features/waste/WastePage.tsx`; prueba en `StockCountTab.test.tsx` con dos presentaciones del mismo nombre y distinta marca
+- [X] T044 [P] [US4] Prueba y función `presentationLabel` en `web/src/shared/presentationLabel.ts` (+ `.test.ts`)
+- [X] T045 [US4] Campo «Marca (opcional)» y etiqueta en `web/src/features/backoffice/PresentationsSheet.tsx` con prueba en `PresentationsSheet.test.tsx` (fila «Unir insumos» de Maquetas, pantalla «Presentaciones» del plan)
+- [X] T046 [US4] `presentationLabel` en `ExpenseDialog.tsx`, `AddLineSheet.tsx`, `ArrivedItemSheet.tsx`, `StockCountTab.tsx` (y `key` por id en lugar de `p.name`), `web/src/features/waste/WastePage.tsx`; prueba en `StockCountTab.test.tsx` con dos presentaciones del mismo nombre y distinta marca
 
 ---
 

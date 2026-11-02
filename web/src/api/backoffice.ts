@@ -787,7 +787,8 @@ export interface CountItem {
   place: string | null;
   placeId?: number | null;
   baseUnitCode: string;
-  presentations: { name: string; qtyInBase: string }[];
+  // id y brand faltan en una API anterior a la 056.
+  presentations: { id?: number; name: string; qtyInBase: string; brand?: string | null }[];
   countedQty: string | null; // null = no contado
   // Un artículo en piezas que se puede contar pesando (spec 042): el servidor convierte a piezas.
   weighable?: boolean;
@@ -1247,7 +1248,7 @@ export interface ArticleFilter {
   noCost?: boolean;
   negative?: boolean;
 }
-export interface PresentationLabel { id: number; name: string; qtyInBase: string }
+export interface PresentationLabel { id: number; name: string; qtyInBase: string; brand?: string | null }
 export interface ArticleRow {
   id: number;
   name: string;

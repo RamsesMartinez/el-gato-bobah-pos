@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { presentationLabel } from '../../shared/presentationLabel';
 import { Box, Button, Flex, Grid, HStack, Input, Text, VStack } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -128,7 +129,7 @@ export function WastePage() {
             return (
               <Button key={`p${p.id}`} minH="44px" aria-pressed={active} variant={active ? 'solid' : 'outline'}
                 onClick={() => { setMeasure({ kind: 'pack', id: p.id }); setQty((q) => q.replace(/\..*$/, '')); }}>
-                {p.name}
+                {presentationLabel(p)}
               </Button>
             );
           })}

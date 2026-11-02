@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { presentationLabel } from '../../shared/presentationLabel';
 import { Button, HStack, Input, Text, VStack } from '@chakra-ui/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -85,7 +86,7 @@ export function ArrivedItemSheet({ expenseId, supplier, onClose, onDone }: {
               <Button key={p.id} minH="44px" size="sm" aria-pressed={how.presentationId === p.id}
                 variant={how.presentationId === p.id ? 'subtle' : 'outline'} colorPalette={how.presentationId === p.id ? 'brand' : 'gray'}
                 onClick={() => setHow({ presentationId: p.id })}>
-                {p.name} · {formatBaseQty(p.qtyInBase, p.baseUnitCode)}
+                {presentationLabel(p)} · {formatBaseQty(p.qtyInBase, p.baseUnitCode)}
               </Button>
             ))}
             {buyUnits.map((u) => (

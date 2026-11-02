@@ -2,7 +2,8 @@ import { Fragment, useRef, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Box, Button, Center, HStack, Spinner, Table, Text } from '@chakra-ui/react';
 
-import { PreviewGroup as Group, PreviewTable, StaleNotice, num as n, signed, tone } from '../../shared/preview/PreviewTable';
+import { PreviewGroup as Group, PreviewTable, StaleNotice } from '../../shared/preview/PreviewTable';
+import { num as n, signed, tone } from '../../shared/preview/changes';
 
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,

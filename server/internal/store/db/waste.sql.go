@@ -980,7 +980,7 @@ func (q *Queries) WasteOfDay(ctx context.Context, since time.Time) ([]WasteOfDay
 }
 
 const wastePresentations = `-- name: WastePresentations :many
-select id, ingredient_id, name, qty_in_base from ingredient_presentations where active order by ingredient_id, name
+select id, ingredient_id, name, qty_in_base, brand from ingredient_presentations where active order by ingredient_id, name, brand nulls first
 `
 
 type WastePresentationsRow struct {
@@ -988,6 +988,7 @@ type WastePresentationsRow struct {
 	IngredientID int64           `json:"ingredient_id"`
 	Name         string          `json:"name"`
 	QtyInBase    decimal.Decimal `json:"qty_in_base"`
+	Brand        *string         `json:"brand"`
 }
 
 func (q *Queries) WastePresentations(ctx context.Context) ([]WastePresentationsRow, error) {
@@ -1004,6 +1005,7 @@ func (q *Queries) WastePresentations(ctx context.Context) ([]WastePresentationsR
 			&i.IngredientID,
 			&i.Name,
 			&i.QtyInBase,
+			&i.Brand,
 		); err != nil {
 			return nil, err
 		}

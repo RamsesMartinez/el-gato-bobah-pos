@@ -5,14 +5,6 @@ import { Table, Text } from '@chakra-ui/react';
 // también la edición de gastos y la unión de insumos, spec 056). La cifra la calcula el servidor con
 // la misma transacción que confirma, revertida; aquí solo se pinta.
 
-export const num = (s: string | null | undefined) => Number(s ?? 0);
-
-// signed pinta un cambio con su signo; cero es «sin cambio».
-export const signed = (v: number, fmt: (abs: number) => string) => (v > 0 ? `+${fmt(v)}` : v < 0 ? `−${fmt(-v)}` : 'sin cambio');
-
-// tone: lo que sube en verde, lo que baja en rojo, lo que no cambia apagado.
-export const tone = (v: number) => (v > 0 ? 'fg.success' : v < 0 ? 'fg.error' : 'fg.muted');
-
 // PreviewTable es la tabla de cuatro columnas con el encabezado fijo.
 export function PreviewTable({ children }: { children: ReactNode }) {
   return (

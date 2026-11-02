@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { presentationLabel } from '../../shared/presentationLabel';
 import { Box, Button, HStack, Input, Text, VStack } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 
@@ -129,7 +130,7 @@ export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose,
                       <Button key={p.id} minH="44px" size="sm" aria-pressed={how.presentationId === p.id}
                         variant={how.presentationId === p.id ? 'subtle' : 'outline'} colorPalette={how.presentationId === p.id ? 'brand' : 'gray'}
                         onClick={() => setHow({ presentationId: p.id })}>
-                        {p.name} · {formatBaseQty(p.qtyInBase, p.baseUnitCode)}
+                        {presentationLabel(p)} · {formatBaseQty(p.qtyInBase, p.baseUnitCode)}
                       </Button>
                     ))}
                     {buyUnits.map((u) => (

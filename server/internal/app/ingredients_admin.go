@@ -34,6 +34,7 @@ type PresentationLabel struct {
 	ID        int64           `json:"id"`
 	Name      string          `json:"name"`
 	QtyInBase decimal.Decimal `json:"qtyInBase"`
+	Brand     *string         `json:"brand"`
 }
 
 // ArticleRow es un renglón de la lista de artículos.
@@ -78,7 +79,7 @@ func (s *BackofficeService) ListArticles(ctx context.Context, f ArticleFilter) (
 	byArticle := map[int64][]PresentationLabel{}
 	for _, p := range pres {
 		if p.Active && !p.IsApproximate {
-			byArticle[p.IngredientID] = append(byArticle[p.IngredientID], PresentationLabel{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase})
+			byArticle[p.IngredientID] = append(byArticle[p.IngredientID], PresentationLabel{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase, Brand: p.Brand})
 		}
 	}
 	out := make([]ArticleRow, len(rows))
@@ -260,7 +261,7 @@ func (s *BackofficeService) GetArticle(ctx context.Context, id int64) (ArticleSh
 	ps := []PresentationLabel{}
 	for _, p := range pres {
 		if p.Active && !p.IsApproximate {
-			ps = append(ps, PresentationLabel{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase})
+			ps = append(ps, PresentationLabel{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase, Brand: p.Brand})
 		}
 	}
 	var into *MergedInto

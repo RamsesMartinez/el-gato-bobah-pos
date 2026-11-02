@@ -29,7 +29,7 @@ export interface WasteRow {
 }
 
 export interface WasteItems {
-  ingredients: { id: number; name: string; unitCode: string; units: { id: number; code: string }[]; packs: { id: number; name: string; qtyInBase: string }[] }[];
+  ingredients: { id: number; name: string; unitCode: string; units: { id: number; code: string }[]; packs: { id: number; name: string; qtyInBase: string; brand?: string | null }[] }[];
   products: { id: number; name: string }[];
   recent: { itemType: 'ingrediente' | 'producto'; id: number }[];
 }

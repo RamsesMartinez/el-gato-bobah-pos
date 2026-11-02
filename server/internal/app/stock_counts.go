@@ -19,8 +19,11 @@ import (
 
 // CountPresentation es un empaque del insumo, para ayudar a contar «3 cajas + 2 L».
 type CountPresentation struct {
+	ID        int64           `json:"id"`
 	Name      string          `json:"name"`
 	QtyInBase decimal.Decimal `json:"qtyInBase"`
+	// Brand distingue dos empaques del mismo nombre (spec 056).
+	Brand *string `json:"brand"`
 }
 
 // CountItem es un insumo por contar. Sin lo que el sistema tiene: el conteo es a ciegas.
@@ -115,7 +118,7 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 	weighable := map[int64]bool{}
 	for _, p := range pres {
 		if p.Active && !p.IsApproximate {
-			byIng[p.IngredientID] = append(byIng[p.IngredientID], CountPresentation{Name: p.Name, QtyInBase: p.QtyInBase})
+			byIng[p.IngredientID] = append(byIng[p.IngredientID], CountPresentation{ID: p.ID, Name: p.Name, QtyInBase: p.QtyInBase, Brand: p.Brand})
 		}
 		if p.Active && p.IsApproximate && p.BaseUnitKind == db.UnitKindPieza {
 			weighable[p.IngredientID] = true
