@@ -133,11 +133,11 @@ func TestAnExpenseWithoutGoodsIsNotMarkedReceived(t *testing.T) {
 func TestAnIngredientIsCreatedOnlyInTheBaseUnitOfItsKind(t *testing.T) {
 	t.Parallel()
 	k := newPurchaseKit(t)
-	if _, err := k.svc.CreateIngredient(k.ctx, app.IngredientInput{Name: "Harina kg", BaseUnitID: unitID(t, k.st, "kg")}); !errors.Is(err, domain.ErrValidation) {
+	if _, err := k.svc.CreateArticle(k.ctx, app.ArticleCreate{Name: "Harina kg", BaseUnitID: unitID(t, k.st, "kg")}); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("insumo en kg = %v, quiere ErrValidation", err)
 	}
 	for _, code := range []string{"g", "ml", "pieza", "cm"} {
-		if _, err := k.svc.CreateIngredient(k.ctx, app.IngredientInput{Name: "Insumo en " + code, BaseUnitID: unitID(t, k.st, code)}); err != nil {
+		if _, err := k.svc.CreateArticle(k.ctx, app.ArticleCreate{Name: "Insumo en " + code, BaseUnitID: unitID(t, k.st, code)}); err != nil {
 			t.Errorf("insumo en %s: %v", code, err)
 		}
 	}
