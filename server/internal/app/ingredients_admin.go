@@ -238,6 +238,8 @@ type ArticleSheet struct {
 	MergedInto *MergedInto `json:"mergedInto"`
 	// MergedSources: cuántos insumos se unieron en éste.
 	MergedSources int `json:"mergedSources"`
+	// Density: la densidad vigente (spec 058); nula si no tiene.
+	Density *DensityView `json:"density"`
 }
 
 // MergedInto es el destino de una unión, para la ficha del origen.
@@ -283,7 +285,20 @@ func (s *BackofficeService) GetArticle(ctx context.Context, id int64) (ArticleSh
 			OnHand: r.OnHand, Presentations: ps, CompositionStatus: textoDe(r.CompositionStatus),
 		},
 		CostSource: r.CostSource, UpdatedAt: r.UpdatedAt, MergedInto: into, MergedSources: int(sources),
+		Density: densityView(r),
 	}, nil
+}
+
+// densityView es la densidad vigente de la ficha; nula si el artículo no tiene.
+func densityView(r db.GetArticleRow) *DensityView {
+	if r.DensityGPerMl == nil || r.DensityMethod == nil {
+		return nil
+	}
+	v := &DensityView{Value: *r.DensityGPerMl, Method: *r.DensityMethod, SetAt: r.DensitySetAt.Time}
+	if r.DensitySetByName != nil {
+		v.SetByName = *r.DensitySetByName
+	}
+	return v
 }
 
 // ArticleUpdate son los campos de la ficha que cambian. Desde el autoguardado (spec 043) llega uno a

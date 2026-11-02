@@ -35,6 +35,7 @@ type PendingReceipt struct {
 	PresentationName *string          `json:"presentationName"`
 	UnitCode         *string          `json:"unitCode"`
 	BaseUnitCode     *string          `json:"baseUnitCode"`
+	DensityGPerMl    *decimal.Decimal `json:"densityGPerMl"`
 }
 
 // PendingReceipts lista lo que falta por llegar. Siempre un arreglo, aunque vacío.
@@ -50,7 +51,7 @@ func (s *BackofficeService) PendingReceipts(ctx context.Context) ([]PendingRecei
 			ExpenseAmount: r.ExpenseAmount, Paid: r.Paid, ItemID: r.ItemID, ItemName: r.ItemName,
 			Quantity: r.Quantity, Received: r.Received, NotComing: r.NotComingQty, Missing: r.Missing,
 			Applied: r.AppliedQtyBase, PackQtyInBase: r.PackQtyInBase, PresentationName: r.PresentationName,
-			UnitCode: r.UnitCode, BaseUnitCode: r.BaseUnitCode,
+			UnitCode: r.UnitCode, BaseUnitCode: r.BaseUnitCode, DensityGPerMl: r.DensityGPerMl,
 		}
 	}
 	return out, nil

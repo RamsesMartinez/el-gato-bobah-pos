@@ -44,7 +44,7 @@ returning id, name, base_unit_id, is_active, track_stock, is_packaging, min_stoc
 -- name: GetIngredientUnit :one
 -- El kind y el factor de la unidad base de un artículo: lo que domain.BaseQty necesita para
 -- decidir si la unidad de compra es convertible.
-select i.id, u.kind as base_unit_kind, u.to_base as base_to_base
+select i.id, u.kind as base_unit_kind, u.to_base as base_to_base, i.density_g_per_ml
 from ingredients i join units u on u.id = i.base_unit_id
 where i.id = $1;
 
@@ -53,14 +53,14 @@ where i.id = $1;
 -- con control de stock (una bebida que se compra y se revende tal cual). Un solo picker sobre
 -- un union en vez de obligar al operador a elegir primero "¿es ingrediente o producto?".
 select 'ingrediente' as item_type, i.id, i.name::text as name,
-       u.code as unit_code, u.kind as unit_kind
+       u.code as unit_code, u.kind as unit_kind, i.density_g_per_ml
 from ingredients i
 join units u on u.id = i.base_unit_id
 where i.is_active
   and (sqlc.narg('q')::text is null or i.name::text ilike '%' || sqlc.narg('q')::text || '%')
 union all
 select 'producto' as item_type, p.id, p.name::text as name,
-       'pieza' as unit_code, 'pieza'::unit_kind as unit_kind
+       'pieza' as unit_code, 'pieza'::unit_kind as unit_kind, null::numeric(8,4) as density_g_per_ml
 from products p
 where p.is_active and p.track_stock
   and (sqlc.narg('q')::text is null or p.name::text ilike '%' || sqlc.narg('q')::text || '%')
@@ -87,7 +87,7 @@ select exists (
 -- Empaques de compra (spec 038), los activos primero. Sin filtro, todos los de la empresa: la
 -- columna «Cómo llega» los pinta de una vez en vez de pedirlos insumo por insumo.
 select p.id, p.ingredient_id, p.name, p.qty_in_base, p.active, p.is_approximate, p.purchase_unit_id,
-       u.code as base_unit_code, u.kind as base_unit_kind, p.brand
+       u.code as base_unit_code, u.kind as base_unit_kind, p.brand, p.tare_g
 from ingredient_presentations p
 join ingredients i on i.id = p.ingredient_id
 join units u on u.id = i.base_unit_id

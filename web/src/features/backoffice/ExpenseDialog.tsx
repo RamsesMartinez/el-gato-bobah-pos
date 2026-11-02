@@ -19,7 +19,11 @@ import {
 } from '../../components/ui/drawer';
 import { posApi } from '../../api/pos';
 import { money } from '../../utils/format';
-import { packToBase, lineAmount, purchaseMoney, baseOfLine } from './expenseDraft';
+import { packToBase, lineAmount, purchaseMoney, baseOfLine, crossConversion, ASK_FOR_DENSITY, type CrossConversion } from './expenseDraft';
+import { DensitySheet } from './articles/DensitySheet';
+import { ApiError } from '../../api/client';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
 import {
   backofficeApi, type ExpenseCategory, type Supplier, type ArticleSuggestion, type Article, type Unit,
   type Presentation, type ExpenseItemBody, type ExpensePaymentBody, type ParsedDoc, type DocLine, type CashRegister,
@@ -29,7 +33,7 @@ import {
 } from './cajaDelGasto';
 import { DrawerOutField, IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
 import { montoTecleado, parseNumero, round2 } from '../../domain/numeros';
-import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
+import { crossBuyUnits, formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
 import { PresentationsSheet } from './PresentationsSheet';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { medirAccion } from '../../api/uso';
@@ -127,6 +131,11 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const { data: articles } = useQuery({ queryKey: ['articles'], queryFn: () => backofficeApi.searchArticles(''), enabled: open });
   const { data: lastCount } = useQuery({ queryKey: ['stock', 'count', 'last-closed'], queryFn: backofficeApi.lastClosedCount, enabled: open });
   const hora = useHoraDelNegocio();
+  const canDensity = can('inventory.configure', useSessionStore((s) => s.user));
+  // La hoja de densidad de un artículo, encima del gasto (dos capas como máximo, spec 058).
+  const [densityFor, setDensityFor] = useState<{ id: number; name: string } | null>(null);
+  // El artículo que el servidor rechazó por falta de densidad al guardar (UNIT_KIND_MISMATCH).
+  const [mismatch, setMismatch] = useState<{ id: number; name: string } | null>(null);
   // El día del negocio, no el de UTC: a las 11:30 pm en México `toISOString` ya dice mañana.
   const today = () => hora.diaDelNegocio(new Date());
 
@@ -282,8 +291,20 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
     }
     const u = unitList.find((x) => x.id === i.unitId);
     if (!u) return { factor: null, base };
-    if (art && u.kind !== art.unitKind) return { factor: i.packQtyInBase || null, base };
+    if (art && u.kind !== art.unitKind) {
+      // Entre peso y líquido convierte la densidad del artículo, con la regla del servidor (spec 058).
+      const cross = crossConversion('1', u, art.unitKind, art.unitCode, art.densityGPerMl);
+      if (cross) return { factor: cross.factor === null ? null : String(cross.factor), base };
+      return { factor: i.packQtyInBase || null, base };
+    }
     return { factor: u.toBase, base };
+  };
+  // crossOf es la conversión entre peso y líquido de un renglón, o lo que le falta; null si no cruza.
+  const crossOf = (i: DraftItem): CrossConversion | null => {
+    if (!hasArticle(i) || i.presentationId) return null;
+    const art = articleList.find((a) => a.itemType === i.itemType && a.id === i.itemId);
+    const u = unitList.find((x) => x.id === i.unitId);
+    return art && u ? crossConversion(i.quantity || '1', u, art.unitKind, art.unitCode, art.densityGPerMl) : null;
   };
   const sumsLine = (i: DraftItem) => {
     if (!isGoods(i) || !i.arrived) return null;
@@ -346,6 +367,11 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
       onSaved();
     },
     onError: (e) => {
+      if (e instanceof ApiError && e.code === 'UNIT_KIND_MISMATCH' && e.details?.ingredientId) {
+        const id = e.details.ingredientId;
+        setMismatch({ id, name: articleList.find((a) => a.itemType === 'ingrediente' && a.id === id)?.name ?? '' });
+        return;
+      }
       const all = quickPayment ? [quickPayment] : payments.map((p) => ({ registerId: p.registerId ? Number(p.registerId) : undefined }));
       const ask = outsideAskOf(e, cashRegisters, all.map((p) => p.registerId));
       if (ask) { setOutsideAsk(ask); return; }
@@ -361,8 +387,15 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const badPayment = payments.find((p) => !p.methodId || !((montoTecleado(p.amount) ?? 0) > 0) || (needsRegister(p, methodList) && !p.registerId));
   const badDrawerOut = payments.some((p) => drawerOf(p).bad);
   const anyPartBad = counted.some(partBad);
+  const missingDensity = counted.some((i) => isGoods(i) && !!crossOf(i)?.missing);
+  // El atajo va una vez por artículo aunque tenga varios renglones: en el primero que lo necesita. Un
+  // artículo nuevo (id provisional) todavía no existe y no puede llevar densidad.
+  const densityShortcutRow = new Map<number, string>();
+  for (const i of counted) {
+    if (isGoods(i) && i.itemId! > 0 && crossOf(i)?.missing && !densityShortcutRow.has(i.itemId!)) densityShortcutRow.set(i.itemId!, i.key);
+  }
   const canSave = !!categoryId && total > 0 && moneyCheck.missingAmount === 0 && !moneyCheck.over && !missingUnit && !badPayment
-    && !payUnanswered && !payNeedsRegister && !anyPartBad && !badDrawerOut;
+    && !payUnanswered && !payNeedsRegister && !anyPartBad && !badDrawerOut && !missingDensity;
 
   const setItem = (key: string, patch: Partial<DraftItem>) =>
     setItems((prev) => prev.map((i) => (i.key === key ? { ...i, ...patch } : i)));
@@ -537,7 +570,10 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                   </Button>
                   {items.filter((i) => !i.doubtful).map((it) => (
                     <ItemRow key={it.key} item={it} units={unitList} articles={articleOptions} articleList={articleList}
-                      presentations={presList} sums={sumsLine(it)} howItArrives={howItArrives}
+                      presentations={presList} sums={sumsLine(it)} howItArrives={howItArrives} cross={crossOf(it)}
+                      onDensity={canDensity && densityShortcutRow.get(it.itemId ?? 0) === it.key
+                        ? () => setDensityFor({ id: it.itemId!, name: it.itemName }) : undefined}
+                      askForDensity={!canDensity || !((it.itemId ?? 0) > 0)}
                       onChange={(patch) => setItem(it.key, patch)}
                       onSplit={() => setItems((p) => {
                         const at = p.findIndex((x) => x.key === it.key);
@@ -609,6 +645,14 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 )}
               </HStack>
             )}
+            {mismatch && (
+              <HStack gap={2} flexWrap="wrap" p={2} borderRadius="lg" bg="orange.subtle">
+                <Text fontSize="sm" flex="1">
+                  Falta la densidad de {mismatch.name || `este ${label}`} para convertir su renglón.{!canDensity && ` ${ASK_FOR_DENSITY}`}
+                </Text>
+                {canDensity && <Button minH="44px" variant="outline" bg="bg" onClick={() => setDensityFor(mismatch)}>Capturar la densidad</Button>}
+              </HStack>
+            )}
             <HStack w="100%" gap={3} align="center">
               <Text fontSize="sm" flex="1" data-testid="pie-compra">
                 {doubtfulCount > 0 && (
@@ -631,6 +675,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 )}
                 {missingUnit && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo llegó cada {label}</Text>}
                 {anyPartBad && <Text as="span" fontWeight="700" color="orange.700"> · di cuántos llegaron (menos de lo pedido)</Text>}
+                {missingDensity && <Text as="span" fontWeight="700" color="orange.fg"> · falta la densidad para convertir un renglón</Text>}
                 {payUnanswered && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo se pagó</Text>}
                 {payNeedsRegister && <Text as="span" fontWeight="700" color="orange.700"> · elige de qué caja sale</Text>}
                 {moneyCheck.over && (
@@ -678,6 +723,10 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
             </DrawerBody>
           </DrawerContent>
         </DrawerRoot>
+        {densityFor && (
+          <DensitySheet article={{ ...densityFor, density: null }} onClose={() => setDensityFor(null)}
+            onDone={() => { setDensityFor(null); setMismatch(null); }} />
+        )}
         <OutsideCountSheet ask={outsideAsk} loading={create.isPending} onCancel={() => setOutsideAsk(null)}
           onChoose={(c) => { setOutsideAsk(null); create.mutate(c); }} />
       </DialogContent>
@@ -716,8 +765,13 @@ function DoubtfulRow({ item, presentations, onYes, onOther, onNotArrived }: {
 
 // ---- Renglón de mercancía ----
 
-function ItemRow({ item, units, articles, articleList, presentations, sums, howItArrives, onChange, onSplit, onPacks, onCreate, onRemove }: {
+function ItemRow({ item, units, articles, articleList, presentations, sums, cross, onDensity, askForDensity, howItArrives, onChange, onSplit, onPacks, onCreate, onRemove }: {
   item: DraftItem;
+  // Spec 058: la conversión entre peso y líquido del renglón, o lo que le falta, y el atajo a la densidad.
+  cross: CrossConversion | null;
+  onDensity?: () => void;
+  // askForDensity: no hay atajo posible (sin permiso, o el artículo aún no existe) y el aviso dice qué hacer.
+  askForDensity?: boolean;
   howItArrives: (type: string, id: number, unitId: number | null) => { presentationId: number | null; unitId: number | null };
   units: Unit[];
   articles: PickerOption[];
@@ -734,7 +788,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
   const art = articleList.find((a) => a.itemType === item.itemType && a.id === item.itemId);
   const packs = art && art.itemType === 'ingrediente'
     ? presentations.filter((p) => p.ingredientId === art.id && p.active) : [];
-  const buyUnits = art ? purchaseUnitsFor(art.unitKind, units) : [];
+  const buyUnits = art ? [...purchaseUnitsFor(art.unitKind, units), ...(art.itemType === 'ingrediente' ? crossBuyUnits(art.unitKind, units) : [])] : [];
 
   const pick = (v: string) => {
     if (!v) { onChange({ itemType: '', itemId: null, itemName: '', presentationId: null }); return; }
@@ -838,7 +892,8 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
               <Input aria-label="¿Cuántos llegaron?" placeholder="¿Cuántos?" w="96px" minH="44px" inputMode="decimal"
                 value={item.partQty} onChange={(e) => onChange({ partQty: e.target.value })} />
             )}
-            {sums && <Text fontSize="sm" fontWeight="700" color="fg.success">= {sums.split(' +').pop()}</Text>}
+            {cross?.words ? <Text fontSize="sm" fontWeight="700" color="fg.success">{cross.words}</Text>
+              : sums && <Text fontSize="sm" fontWeight="700" color="fg.success">= {sums.split(' +').pop()}</Text>}
             <HStack gap={0} ml="auto" borderWidth="1px" borderRadius="md" role="group" aria-label="Estado">
               {(() => {
                 const full = item.arrived && item.partQty === null;
@@ -862,6 +917,13 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, howI
                 <LuScissors /> Partir
               </Button>
             )}
+          </HStack>
+        )}
+        {/* Una línea propia: dentro de la fila de unidades y estado la hacía crecer una línea entera. */}
+        {goods && art && cross?.missing && (
+          <HStack gap={2} justify="space-between" data-testid="sin-densidad">
+            <Text fontSize="sm"><Text as="span" fontWeight="700" color="orange.fg">{cross.missing}</Text>{askForDensity && `. ${ASK_FOR_DENSITY}`}</Text>
+            {onDensity && <Button minH="44px" size="sm" variant="outline" colorPalette="brand" flexShrink={0} onClick={onDensity}>Capturar la densidad</Button>}
           </HStack>
         )}
         {!goods && !item.excluded && item.suggestions.length > 0 && !item.itemId && (

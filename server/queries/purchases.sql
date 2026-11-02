@@ -13,7 +13,10 @@ select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description, ei.
        ei.qty_received, ei.amount, ei.pack_qty_in_base, ei.presentation_id, ei.is_gift,
        ei.applied_qty_base, ei.not_coming_qty, ei.unit_id, ei.position, ei.excluded,
        bu.kind as buy_kind, bu.to_base as buy_to_base,
-       coalesce(iu.kind, 'pieza'::unit_kind) as base_kind
+       coalesce(iu.kind, 'pieza'::unit_kind) as base_kind,
+       -- La densidad fija del renglón gana a la vigente: lo ya convertido no se recalcula (spec 058).
+       coalesce(ei.density_g_per_ml, i.density_g_per_ml) as density_g_per_ml,
+       (ei.density_g_per_ml is not null)::bool as density_fixed
 from expense_items ei
 join units bu on bu.id = ei.unit_id
 left join ingredients i on i.id = ei.ingredient_id
@@ -73,8 +76,16 @@ update expense_items
        description = sqlc.arg(description), quantity = sqlc.arg(quantity), unit_id = sqlc.arg(unit_id),
        qty_received = sqlc.narg(qty_received), amount = sqlc.arg(amount), unit_cost = sqlc.arg(unit_cost),
        pack_qty_in_base = sqlc.narg(pack_qty_in_base), presentation_id = sqlc.narg(presentation_id),
-       is_gift = sqlc.arg(is_gift), not_coming_qty = sqlc.arg(not_coming_qty)
+       is_gift = sqlc.arg(is_gift), not_coming_qty = sqlc.arg(not_coming_qty),
+       -- La densidad fija es del artículo con que se convirtió: otro artículo convierte con la suya.
+       density_g_per_ml = case when ingredient_id is not distinct from sqlc.narg(ingredient_id) then density_g_per_ml end
  where id = sqlc.arg(id) and expense_id = sqlc.arg(expense_id) and voided_at is null;
+
+-- name: SetExpenseItemDensity :exec
+-- Fija, una sola vez, la densidad con que el renglón sumó por primera vez al almacén. Recibe el valor
+-- exacto que usó la conversión, nunca lo relee: entre las dos lecturas alguien pudo rehacer la pesada.
+update expense_items set density_g_per_ml = sqlc.arg(density)
+ where id = sqlc.arg(id) and density_g_per_ml is null;
 
 -- name: VoidStockLine :execrows
 -- Quitar un renglón en una corrección: se marca, no se borra (sus movimientos lo referencian).
@@ -111,7 +122,7 @@ select e.id as expense_id, e.expense_date, s.name as supplier, e.amount as expen
        ei.quantity, coalesce(ei.qty_received, 0)::numeric(14,4) as received, ei.not_coming_qty,
        (ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty)::numeric(14,4) as missing,
        ei.applied_qty_base, ei.pack_qty_in_base, pr.name as presentation_name, u.code as unit_code,
-       iu.code as base_unit_code
+       iu.code as base_unit_code, coalesce(ei.density_g_per_ml, i.density_g_per_ml) as density_g_per_ml
   from expense_items ei
   join expenses e on e.id = ei.expense_id
   cross join (select current_branch_id() as branch_id) cb

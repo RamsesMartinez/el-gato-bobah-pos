@@ -101,6 +101,39 @@ func TestBaseQty(t *testing.T) {
 			err:  ErrUnitKindMismatch,
 		},
 		{
+			// Spec 058: el galón de salsa dice 4.3 kg y se guarda en ml; con densidad 1.10 entra solo.
+			name: "kg a ml con densidad divide",
+			qty:  "4.3",
+			unit: PurchaseUnit{Kind: "masa", ToBase: dec("1000"), BaseKind: "volumen", Density: decPtr("1.1")},
+			want: "3909.0909",
+		},
+		{
+			name: "litros a gramos con densidad multiplica",
+			qty:  "2",
+			unit: PurchaseUnit{Kind: "volumen", ToBase: dec("1000"), BaseKind: "masa", Density: decPtr("0.92")},
+			want: "1840",
+		},
+		{
+			name: "una densidad en cero no convierte",
+			qty:  "2",
+			unit: PurchaseUnit{Kind: "volumen", ToBase: dec("1000"), BaseKind: "masa", Density: decPtr("0")},
+			err:  ErrUnitKindMismatch,
+		},
+		{
+			// La densidad solo salva el salto entre peso y líquido: un metro no pesa nada en general.
+			name: "longitud contra masa sigue rechazada aunque haya densidad",
+			qty:  "2",
+			unit: PurchaseUnit{Kind: "longitud", ToBase: dec("100"), BaseKind: "masa", Density: decPtr("1.1")},
+			err:  ErrUnitKindMismatch,
+		},
+		{
+			// Una presentación ya trae su contenido en la base: la densidad no se aplica dos veces.
+			name: "una presentación no usa densidad",
+			qty:  "1",
+			unit: PurchaseUnit{Kind: "masa", ToBase: dec("1000"), BaseKind: "volumen", PackQtyInBase: decPtr("3800"), FromPresentation: true, Density: decPtr("1.1")},
+			want: "3800",
+		},
+		{
 			name: "cantidad cero",
 			qty:  "0",
 			unit: PurchaseUnit{Kind: "masa", ToBase: dec("1000"), BaseKind: "masa"},

@@ -77,6 +77,7 @@ var noPersonalData = map[string]string{
 	"ingredient_purchase_formats.name":              "catálogo",
 	"ingredient_replacements.kind":                  "tipo de reemplazo (cambio de unidad o unión)",
 	"ingredients.composition_status":                "estado",
+	"ingredients.density_method":                    "cómo se obtuvo la densidad: pesada, etiqueta o escrita (enum con check)",
 	"ingredients.name":                              "catálogo",
 	"modifier_groups.name":                          "catálogo",
 	"modifier_option_platform_prices.source":        "estado",

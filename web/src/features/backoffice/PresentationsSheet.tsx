@@ -7,7 +7,8 @@ import {
 import { backofficeApi, type Presentation, type PresentationBody, type Unit } from '../../api/backoffice';
 import { ApiError } from '../../api/client';
 import { formatBaseQty, packExample, purchaseUnitsFor, unitLabel } from '../../shared/units';
-import { round2 } from '../../domain/numeros';
+import { parseNumero, round2 } from '../../domain/numeros';
+import { InfoButton } from '../../components/InfoButton';
 import { UnitSegment } from './articles/qty';
 import { BASE_PACKS } from './articles/articleUnits';
 import { presentationLabel } from '../../shared/presentationLabel';
@@ -65,7 +66,14 @@ interface Draft {
   approximate: boolean;
   // La marca o el proveedor (spec 056), opcional.
   brand: string;
+  // Lo que pesa vacío, en g (spec 058), opcional; vacío = sin dato.
+  tare: string;
 }
+
+// tareText es lo que pesa vacío como se edita: «120», no «120.00».
+const tareText = (p: Presentation | null) => (p?.tareG ? String(Number(p.tareG)) : '');
+// Tope de la columna y de domain.MaxTareG.
+const MAX_TARE_G = 100000;
 
 export function PresentationsSheet({ isOpen, ingredient, presentations, units, startNew, editId, onClose }: Props) {
   const qc = useQueryClient();
@@ -75,12 +83,15 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
     const editing = editId === undefined ? undefined : presentations.find((p) => p.id === editId);
     if (editing) {
       const b = bodyOf(editing, units, kind);
-      return { editing, name: b.name, other: true, qty: b.qty, unitId: b.unitId, approximate: b.approximate, brand: editing.brand ?? '' };
+      return { editing, name: b.name, other: true, qty: b.qty, unitId: b.unitId, approximate: b.approximate, brand: editing.brand ?? '', tare: tareText(editing) };
     }
     if (!startNew) return null;
     const first = purchaseUnitsFor(kind, units)[0];
-    return { editing: null, name: '', other: false, qty: '', unitId: first?.id ?? null, approximate: false, brand: '' };
+    return { editing: null, name: '', other: false, qty: '', unitId: first?.id ?? null, approximate: false, brand: '', tare: '' };
   });
+  const [tareInfo, setTareInfo] = useState(false);
+  // Pesar con el empaque solo tiene sentido si el artículo se guarda en peso o en líquido.
+  const tareApplies = kind === 'masa' || kind === 'volumen';
   const [error, setError] = useState('');
   // Lo que se sugiere son empaques que la empresa ya usa en artículos que se miden igual, con su
   // cantidad (spec 042, FR-011): antes «Bolsa de 15 kg» aparecía en un artículo en litros.
@@ -118,7 +129,9 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
   const qty = Number(draft?.qty);
   const qtyOk = draft !== null && draft.qty.trim() !== '' && Number.isFinite(qty) && qty > 0;
   const wholeOk = !byPiece || Number.isInteger(qty);
-  const canSave = draft !== null && name !== '' && unit !== null && qtyOk && wholeOk && !save.isPending;
+  const tareNum = parseNumero(draft?.tare ?? '');
+  const tareOk = !tareApplies || tareNum.estado === 'ausente' || (tareNum.estado === 'valido' && tareNum.valor > 0 && tareNum.valor <= MAX_TARE_G);
+  const canSave = draft !== null && name !== '' && unit !== null && qtyOk && wholeOk && tareOk && !save.isPending;
 
   const unitOptions = units4draft.map((u) => ({
     key: String(u.id), label: unitLabel(u), pressed: draft?.unitId === u.id,
@@ -136,10 +149,10 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
     setError('');
     if (p) {
       const b = bodyOf(p, units, kind);
-      setDraft({ editing: p, name: b.name, other: !suggestedNames.includes(b.name), qty: b.qty, unitId: b.unitId, approximate: b.approximate, brand: p.brand ?? '' });
+      setDraft({ editing: p, name: b.name, other: !suggestedNames.includes(b.name), qty: b.qty, unitId: b.unitId, approximate: b.approximate, brand: p.brand ?? '', tare: tareText(p) });
     } else {
       const first = purchaseUnitsFor(kind, units)[0];
-      setDraft({ editing: null, name: '', other: false, qty: '', unitId: first?.id ?? null, approximate: false, brand: '' });
+      setDraft({ editing: null, name: '', other: false, qty: '', unitId: first?.id ?? null, approximate: false, brand: '', tare: '' });
     }
   };
   const toggle = (p: Presentation) => save.mutate({ id: p.id, body: { ...bodyOf(p, units, kind), active: !p.active } });
@@ -147,6 +160,9 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
     if (!draft || !unit || !canSave) return;
     // La marca va siempre: vacía la quita al editar (sin mandarla, el servidor la conserva).
     const body: PresentationBody = { name, qty: draft.qty.trim(), unitId: unit.id, approximate: draft.approximate, brand: draft.brand.trim() };
+    // Lo que pesa vacío va solo si cambió: sin mandarlo el servidor lo conserva, y null lo quita.
+    const tare = draft.tare.trim();
+    if (tareApplies && tare !== tareText(draft.editing)) body.tareG = tare === '' ? null : tare;
     save.mutate({ id: draft.editing?.id ?? null, body: draft.editing ? { ...body, active: true } : body });
   };
 
@@ -167,6 +183,9 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
               <HStack key={p.id} data-row borderWidth="1px" borderRadius="lg" px={3} minH="56px" gap={3}>
                 <Text flex="1" fontWeight="600">
                   {p.approximate ? `${presentationLabel(p)} ≈ ${formatBaseQty(p.qtyInBase, ingredient.baseUnitCode)}` : `${presentationLabel(p)} · ${formatBaseQty(p.qtyInBase, ingredient.baseUnitCode)}`}
+                  {tareApplies && p.tareG && (
+                    <Text as="span" fontWeight="400" color="fg.muted"> · pesa vacío {formatBaseQty(p.tareG, 'g')}</Text>
+                  )}
                 </Text>
                 <Button minH="44px" variant="outline" onClick={() => open(p)}>Editar</Button>
                 {/* Aparte de «Editar» y en segundo plano: juntos, quien quitaba dudaba si estaba editando
@@ -247,6 +266,24 @@ export function PresentationsSheet({ isOpen, ingredient, presentations, units, s
                     value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value.replace(',', '.') })} />
                   {draft.approximate ? <Text>piezas</Text> : <UnitSegment options={unitOptions} />}
                 </HStack>
+                {tareApplies && !draft.approximate && (
+                  <Stack gap={1}>
+                    <HStack gap={2}>
+                      <Text fontWeight="600">Pesa vacío (g)</Text>
+                      <Text fontSize="sm" color="fg.muted">Opcional</Text>
+                      <InfoButton label="Para qué sirve «Pesa vacío»" open={tareInfo} onToggle={() => setTareInfo((v) => !v)} />
+                    </HStack>
+                    {tareInfo && (
+                      <Text fontSize="sm" color="fg.muted">
+                        Solo si cuentan pesando el empaque con el producto adentro. Con este dato, el conteo resta lo que pesa el empaque.
+                      </Text>
+                    )}
+                    <Input w="140px" minH="48px" inputMode="decimal" aria-label="Pesa vacío (g)" placeholder="—"
+                      onFocus={(e) => e.currentTarget.select()}
+                      value={draft.tare} onChange={(e) => setDraft({ ...draft, tare: e.target.value.replace(',', '.') })} />
+                    {!tareOk && <Text color="orange.fg">Escribe cuántos gramos pesa vacío, por ejemplo 120, o déjalo en blanco.</Text>}
+                  </Stack>
+                )}
                 <Stack gap={1}>
                   <Text fontWeight="600">Marca o proveedor (opcional)</Text>
                   <Input aria-label="Marca o proveedor (opcional)" minH="48px" maxLength={40} placeholder="Ej. Lala, Costco"

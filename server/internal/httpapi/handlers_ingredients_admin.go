@@ -319,6 +319,41 @@ func (h *Handlers) PresentationSuggestions(w http.ResponseWriter, r *http.Reques
 	JSON(w, http.StatusOK, out)
 }
 
+// PUT /stock/articles/{id}/density — pone o rehace la densidad (spec 058): una pesada, la etiqueta o el
+// valor escrito. Un campo desconocido es un cuerpo que no se entiende: 400, nunca un default.
+func (h *Handlers) SetDensity(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var in app.DensityInput
+	if err := DecodeStrict(r, &in); err != nil {
+		Error(w, err)
+		return
+	}
+	out, err := h.backoffice.SetDensity(r.Context(), id, in)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"density": out})
+}
+
+// DELETE /stock/articles/{id}/density — la quita; sin densidad no hace nada.
+func (h *Handlers) ClearDensity(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.backoffice.ClearDensity(r.Context(), id); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // POST /stock/articles/{id}/unit/preview — qué pasaría al cambiar en qué se mide, sin cambiar nada.
 func (h *Handlers) PreviewUnitChange(w http.ResponseWriter, r *http.Request) {
 	id, req, ok := unitChangeBody(w, r)

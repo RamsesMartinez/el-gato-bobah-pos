@@ -406,3 +406,40 @@ test('cambiar el renglón a «No va a llegar» cierra el teclado de su casilla',
   expect(screen.queryByTestId('teclado')).toBeNull();
   expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
 });
+
+// US2 (FR-008, FR-009): el detalle dice con qué densidad entró un renglón en kg de algo en ml, y
+// «Tendrás» convierte con esa misma: con el factor del kg (1000) decía 300 ml de más.
+describe('entre peso y líquido (spec 058)', () => {
+  const salsa = leche({ id: 42, ingredientId: 12, itemName: 'Salsa de chocolate', quantity: '4.3', qtyReceived: '4.3', unitCode: 'kg',
+    presentationId: null, packQtyInBase: null, applied: '3909.0909', onHand: '5000', amount: '500.00', densityGPerMl: '1.1' });
+  beforeEach(() => {
+    sesion(['inventory.receive']);
+    back.expenseDetail.mockResolvedValue(detail([salsa]));
+    back.units.mockResolvedValue({ items: [
+      { id: 2, code: 'kg', name: 'Kilo', kind: 'masa', toBase: '1000' }, { id: 3, code: 'ml', name: 'Mililitro', kind: 'volumen', toBase: '1' },
+    ] });
+  });
+
+  test('dice la conversión con la densidad del renglón', async () => {
+    montar();
+    expect(await screen.findByText(/Llegaron 4.3 kg \(4,300 g ÷ 1.10 = 3,909 ml\)/)).toBeInTheDocument();
+  });
+
+  // Con la cuenta en las dos mitades el renglón ocupaba dos líneas y repetía la densidad: va solo en lo que llegó.
+  test('si llegó una parte, la cuenta va solo en «llegaron», no en «Se pidieron»', async () => {
+    back.expenseDetail.mockResolvedValue(detail([{ ...salsa, qtyReceived: '2', applied: '1818.1818' }]));
+    montar();
+    const status = await screen.findByText(/^Se pidieron 4.3 kg · llegaron 2 kg/);
+    expect(status).toHaveTextContent(/^Se pidieron 4.3 kg · llegaron 2 kg \(2,000 g ÷ 1.10 = 1,818/);
+    expect(status.textContent).not.toContain('4,300 g');
+  });
+
+  test('al corregir, «Tendrás» convierte con la densidad del renglón', async () => {
+    montar();
+    click(await screen.findByRole('button', { name: 'Corregir lo que llegó' }).then((b) => b.textContent!));
+    const row = await screen.findByTestId('renglon-recibido');
+    fireEvent.click(within(row).getByRole('button', { name: 'Menos' }));
+    // 3.3 kg ÷ 1.10 = 3,000 ml; hoy 5 L, la compra había sumado 3,909.0909 → quedarán 4,090.91 ml.
+    expect(within(row).getByTestId('tendras')).toHaveTextContent('Tendrás 4.09 L (hoy 5 L)');
+  });
+});

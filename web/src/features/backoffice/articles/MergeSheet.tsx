@@ -311,6 +311,15 @@ export function MergeSheet({ target, initialSources = [], onClose, onDone }: Pro
                     </Table.Cell>
                   </Table.Row>
                 )}
+                {(preview.densityFrom || preview.densityConflict) && (
+                  <Table.Row>
+                    <Table.Cell colSpan={4} color={preview.densityConflict ? 'orange.fg' : 'fg.muted'}>
+                      {preview.densityFrom
+                        ? `Recibe la densidad de ${preview.densityFrom}`
+                        : 'Los insumos traen densidades distintas; captúrala después en la ficha'}
+                    </Table.Cell>
+                  </Table.Row>
+                )}
               </PreviewTable>
               <Text fontSize="sm" color="fg.muted" pt={3}>Unir no se puede deshacer: los que se unen quedan archivados.</Text>
             </Box>

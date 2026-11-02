@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -71,6 +72,9 @@ type ExpenseItemView struct {
 	OnHand *decimal.Decimal `json:"onHand"`
 	// Deliveries: lo que sumó cada día de entrega, en unidad base (spec 053). Siempre un arreglo.
 	Deliveries []DeliveryView `json:"deliveries"`
+	// DensityGPerMl: con la que el renglón convierte entre peso y líquido (la fija o la vigente), para
+	// decir la conversión en palabras (spec 058).
+	DensityGPerMl *decimal.Decimal `json:"densityGPerMl"`
 }
 
 // DeliveryView es lo que un renglón sumó al almacén en un día de entrega, correcciones incluidas.
@@ -348,6 +352,22 @@ func (s *BackofficeService) ReceiveExpense(ctx context.Context, id int64, receiv
 		}
 		if exp.ReceivedAt.Valid || exp.Status == db.ExpenseStatusCancelada {
 			return domain.ErrConflict
+		}
+		// Los insumos de sus renglones, sin esperar y antes de leerlos para convertir: así la densidad
+		// que usa un renglón entre peso y líquido no cambia a media recepción (spec 058, revisión M1).
+		lines, err := q.ListStockLines(ctx, id)
+		if err != nil {
+			return err
+		}
+		var ings []int64
+		for _, l := range lines {
+			if l.IngredientID != nil {
+				ings = append(ings, *l.IngredientID)
+			}
+		}
+		slices.Sort(ings)
+		if err := lockIngredients(ctx, q, slices.Compact(ings)); err != nil {
+			return err
 		}
 		if err := q.FillMissingReceived(ctx, id); err != nil {
 			return err
@@ -1203,7 +1223,7 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 			Amount: r.Amount, PackQtyInBase: r.PackQtyInBase,
 			Applied: r.AppliedQtyBase, BaseUnitCode: r.BaseUnitCode, NotComing: r.NotComingQty,
 			IsGift: r.IsGift, PresentationID: r.PresentationID, Excluded: r.Excluded,
-			Deliveries: deliveries[r.ID],
+			Deliveries: deliveries[r.ID], DensityGPerMl: r.DensityGPerMl,
 		}
 		if v.Deliveries == nil {
 			v.Deliveries = []DeliveryView{}

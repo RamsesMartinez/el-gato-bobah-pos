@@ -19,6 +19,8 @@ export interface ApiErrorDetails {
   existingId?: number;
   // El artículo con ese nombre está archivado (spec 042): la pantalla ofrece reactivarlo.
   archived?: boolean;
+  // El artículo sin densidad de una compra entre peso y líquido (spec 058): la pantalla ofrece capturarla.
+  ingredientId?: number;
 }
 
 export class ApiError extends Error {

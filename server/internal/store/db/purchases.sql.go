@@ -355,7 +355,10 @@ select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description, ei.
        ei.qty_received, ei.amount, ei.pack_qty_in_base, ei.presentation_id, ei.is_gift,
        ei.applied_qty_base, ei.not_coming_qty, ei.unit_id, ei.position, ei.excluded,
        bu.kind as buy_kind, bu.to_base as buy_to_base,
-       coalesce(iu.kind, 'pieza'::unit_kind) as base_kind
+       coalesce(iu.kind, 'pieza'::unit_kind) as base_kind,
+       -- La densidad fija del renglón gana a la vigente: lo ya convertido no se recalcula (spec 058).
+       coalesce(ei.density_g_per_ml, i.density_g_per_ml) as density_g_per_ml,
+       (ei.density_g_per_ml is not null)::bool as density_fixed
 from expense_items ei
 join units bu on bu.id = ei.unit_id
 left join ingredients i on i.id = ei.ingredient_id
@@ -384,6 +387,8 @@ type ListStockLinesRow struct {
 	BuyKind        UnitKind         `json:"buy_kind"`
 	BuyToBase      decimal.Decimal  `json:"buy_to_base"`
 	BaseKind       UnitKind         `json:"base_kind"`
+	DensityGPerMl  *decimal.Decimal `json:"density_g_per_ml"`
+	DensityFixed   bool             `json:"density_fixed"`
 }
 
 // Los renglones de almacén vivos de un gasto, con lo que hace falta para convertir a unidad base y
@@ -417,6 +422,8 @@ func (q *Queries) ListStockLines(ctx context.Context, expenseID int64) ([]ListSt
 			&i.BuyKind,
 			&i.BuyToBase,
 			&i.BaseKind,
+			&i.DensityGPerMl,
+			&i.DensityFixed,
 		); err != nil {
 			return nil, err
 		}
@@ -776,7 +783,7 @@ select e.id as expense_id, e.expense_date, s.name as supplier, e.amount as expen
        ei.quantity, coalesce(ei.qty_received, 0)::numeric(14,4) as received, ei.not_coming_qty,
        (ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty)::numeric(14,4) as missing,
        ei.applied_qty_base, ei.pack_qty_in_base, pr.name as presentation_name, u.code as unit_code,
-       iu.code as base_unit_code
+       iu.code as base_unit_code, coalesce(ei.density_g_per_ml, i.density_g_per_ml) as density_g_per_ml
   from expense_items ei
   join expenses e on e.id = ei.expense_id
   cross join (select current_branch_id() as branch_id) cb
@@ -809,6 +816,7 @@ type PendingReceiptsRow struct {
 	PresentationName *string          `json:"presentation_name"`
 	UnitCode         *string          `json:"unit_code"`
 	BaseUnitCode     *string          `json:"base_unit_code"`
+	DensityGPerMl    *decimal.Decimal `json:"density_g_per_ml"`
 }
 
 // Lo pagado que no ha llegado, renglón por renglón (spec 038, «Por recibir»). Las compras no
@@ -840,6 +848,7 @@ func (q *Queries) PendingReceipts(ctx context.Context) ([]PendingReceiptsRow, er
 			&i.PresentationName,
 			&i.UnitCode,
 			&i.BaseUnitCode,
+			&i.DensityGPerMl,
 		); err != nil {
 			return nil, err
 		}
@@ -931,6 +940,23 @@ func (q *Queries) SetExpenseAmountStatus(ctx context.Context, arg SetExpenseAmou
 		arg.UserID,
 		arg.ID,
 	)
+	return err
+}
+
+const setExpenseItemDensity = `-- name: SetExpenseItemDensity :exec
+update expense_items set density_g_per_ml = $1
+ where id = $2 and density_g_per_ml is null
+`
+
+type SetExpenseItemDensityParams struct {
+	Density *decimal.Decimal `json:"density"`
+	ID      int64            `json:"id"`
+}
+
+// Fija, una sola vez, la densidad con que el renglón sumó por primera vez al almacén. Recibe el valor
+// exacto que usó la conversión, nunca lo relee: entre las dos lecturas alguien pudo rehacer la pesada.
+func (q *Queries) SetExpenseItemDensity(ctx context.Context, arg SetExpenseItemDensityParams) error {
+	_, err := q.db.Exec(ctx, setExpenseItemDensity, arg.Density, arg.ID)
 	return err
 }
 
@@ -1084,7 +1110,9 @@ update expense_items
        description = $4, quantity = $5, unit_id = $6,
        qty_received = $7, amount = $8, unit_cost = $9,
        pack_qty_in_base = $10, presentation_id = $11,
-       is_gift = $12, not_coming_qty = $13
+       is_gift = $12, not_coming_qty = $13,
+       -- La densidad fija es del artículo con que se convirtió: otro artículo convierte con la suya.
+       density_g_per_ml = case when ingredient_id is not distinct from $2 then density_g_per_ml end
  where id = $14 and expense_id = $15 and voided_at is null
 `
 

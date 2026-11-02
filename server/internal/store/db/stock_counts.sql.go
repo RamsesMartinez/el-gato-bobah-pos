@@ -27,7 +27,8 @@ func (q *Queries) CountChangedAfterPreview(ctx context.Context, countID int64) (
 }
 
 const countItems = `-- name: CountItems :many
-select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at
+select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at,
+       u.kind as base_unit_kind, i.density_g_per_ml
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join count_places cp on cp.id = i.count_place_id
@@ -37,13 +38,15 @@ select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_un
 `
 
 type CountItemsRow struct {
-	ID           int64              `json:"id"`
-	Name         string             `json:"name"`
-	CountPlace   *string            `json:"count_place"`
-	CountPlaceID *int64             `json:"count_place_id"`
-	BaseUnitCode string             `json:"base_unit_code"`
-	CountedQty   *decimal.Decimal   `json:"counted_qty"`
-	CapturedAt   pgtype.Timestamptz `json:"captured_at"`
+	ID            int64              `json:"id"`
+	Name          string             `json:"name"`
+	CountPlace    *string            `json:"count_place"`
+	CountPlaceID  *int64             `json:"count_place_id"`
+	BaseUnitCode  string             `json:"base_unit_code"`
+	CountedQty    *decimal.Decimal   `json:"counted_qty"`
+	CapturedAt    pgtype.Timestamptz `json:"captured_at"`
+	BaseUnitKind  UnitKind           `json:"base_unit_kind"`
+	DensityGPerMl *decimal.Decimal   `json:"density_g_per_ml"`
 }
 
 // Lo que se cuenta: los insumos activos que llevan existencia, por lugar (los sin lugar al final)
@@ -65,6 +68,8 @@ func (q *Queries) CountItems(ctx context.Context, countID int64) ([]CountItemsRo
 			&i.BaseUnitCode,
 			&i.CountedQty,
 			&i.CapturedAt,
+			&i.BaseUnitKind,
+			&i.DensityGPerMl,
 		); err != nil {
 			return nil, err
 		}
@@ -546,25 +551,34 @@ func (q *Queries) SetCountPlace(ctx context.Context, arg SetCountPlaceParams) (i
 }
 
 const upsertCountLine = `-- name: UpsertCountLine :exec
-insert into stock_count_lines (count_id, ingredient_id, counted_qty, system_qty, captured_by, last_movement_id)
+insert into stock_count_lines (count_id, ingredient_id, counted_qty, system_qty, captured_by, last_movement_id,
+                               gross_g, gross_containers, tare_g_used, density_used)
 values ($1, $2, $3, $4, $5,
-        $6)
+        $6, $7, $8, $9,
+        $10)
 on conflict (count_id, ingredient_id) do update
    set counted_qty = excluded.counted_qty, system_qty = excluded.system_qty,
-       captured_by = excluded.captured_by, captured_at = now(), last_movement_id = excluded.last_movement_id
+       captured_by = excluded.captured_by, captured_at = now(), last_movement_id = excluded.last_movement_id,
+       gross_g = excluded.gross_g, gross_containers = excluded.gross_containers,
+       tare_g_used = excluded.tare_g_used, density_used = excluded.density_used
 `
 
 type UpsertCountLineParams struct {
-	CountID        int64           `json:"count_id"`
-	IngredientID   int64           `json:"ingredient_id"`
-	CountedQty     decimal.Decimal `json:"counted_qty"`
-	SystemQty      decimal.Decimal `json:"system_qty"`
-	CapturedBy     int64           `json:"captured_by"`
-	LastMovementID *int64          `json:"last_movement_id"`
+	CountID         int64            `json:"count_id"`
+	IngredientID    int64            `json:"ingredient_id"`
+	CountedQty      decimal.Decimal  `json:"counted_qty"`
+	SystemQty       decimal.Decimal  `json:"system_qty"`
+	CapturedBy      int64            `json:"captured_by"`
+	LastMovementID  *int64           `json:"last_movement_id"`
+	GrossG          *decimal.Decimal `json:"gross_g"`
+	GrossContainers *int16           `json:"gross_containers"`
+	TareGUsed       *decimal.Decimal `json:"tare_g_used"`
+	DensityUsed     *decimal.Decimal `json:"density_used"`
 }
 
 // Recapturar manda: la lectura nueva reemplaza cifra, lo que había en el sistema y su último
 // movimiento.
+// Lo pesado con empaque (spec 058) viaja con la cifra: recapturar sin pesar lo deja en nulo.
 func (q *Queries) UpsertCountLine(ctx context.Context, arg UpsertCountLineParams) error {
 	_, err := q.db.Exec(ctx, upsertCountLine,
 		arg.CountID,
@@ -573,6 +587,10 @@ func (q *Queries) UpsertCountLine(ctx context.Context, arg UpsertCountLineParams
 		arg.SystemQty,
 		arg.CapturedBy,
 		arg.LastMovementID,
+		arg.GrossG,
+		arg.GrossContainers,
+		arg.TareGUsed,
+		arg.DensityUsed,
 	)
 	return err
 }

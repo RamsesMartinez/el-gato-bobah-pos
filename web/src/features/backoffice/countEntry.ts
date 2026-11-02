@@ -1,4 +1,4 @@
-import { parseNumero, round2 } from '../../domain/numeros';
+import { parseNumero, round2, round4 } from '../../domain/numeros';
 import { formatBaseQty } from '../../shared/units';
 
 // Reglas puras de la captura del conteo (spec 038). Se cuenta como se ve en el anaquel —«3
@@ -74,4 +74,45 @@ export function packsTotal(counts: string[], packQtys: string[]): number | null 
     if (p.estado === 'valido') { any = true; total += p.valor * Number(packQtys[i]); }
   }
   return any ? Number(total.toFixed(4)) : null;
+}
+
+// ---- Pesar con empaque (spec 058) ----
+
+export interface GrossEntry {
+  weight: string; // lo que marca la báscula, como se tecleó
+  weightFactor: number; // g por unidad de la báscula: 1 (g) o 1000 (kg)
+  tareG: string; // lo que pesa vacío el empaque
+  containers: number;
+  baseCode: string; // g o ml
+  density?: string | null; // g por ml; solo cuenta en ml
+}
+export type GrossResult = { ok: true; net: number; words: string } | { ok: false; error: string };
+
+const fmtQty = (n: number) => n.toLocaleString('es-MX', { maximumFractionDigits: 1 });
+const fmtDensity = (n: number) => n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+
+// grossNet repite la regla del servidor (domain.NetFromGross) para mostrar la cuenta en palabras:
+// bruto − vacío × empaques, en g, y ÷ densidad si se guarda en ml, a 4 decimales. Lo que se guarda es
+// lo que responde el servidor. null mientras falte algo para hacer la cuenta.
+export function grossNet(in_: GrossEntry): GrossResult | null {
+  const w = parseNumero(in_.weight);
+  const tare = Number(in_.tareG);
+  if (w.estado !== 'valido' || !(tare > 0) || !Number.isInteger(in_.containers) || in_.containers < 1) return null;
+  const density = in_.density ? Number(in_.density) : NaN;
+  const toMl = in_.baseCode === 'ml';
+  if (toMl && !(density > 0)) return null;
+  const grossG = round4(w.valor * in_.weightFactor);
+  const netG = round4(grossG - tare * in_.containers);
+  if (netG < 0) {
+    return { ok: false, error: `Pesa menos que ${in_.containers} ${in_.containers === 1 ? 'empaque vacío' : 'empaques vacíos'}` };
+  }
+  const head = `${fmtQty(grossG)} g − ${in_.containers} × ${fmtQty(tare)} g = ${fmtQty(netG)} g`;
+  if (!toMl) return { ok: true, net: netG, words: head };
+  const net = round4(netG / density);
+  return { ok: true, net, words: `${head} ÷ ${fmtDensity(density)} = ${fmtQty(net)} ml` };
+}
+
+// withGross es el total contado: lo cerrado (empaques) más lo pesado, en la unidad base.
+export function withGross(closed: number | null, net: number): number {
+  return round4((closed ?? 0) + net);
 }

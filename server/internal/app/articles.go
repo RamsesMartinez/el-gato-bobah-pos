@@ -60,12 +60,16 @@ type ArticleView struct {
 	Name     string `json:"name"`
 	UnitCode string `json:"unitCode"`
 	UnitKind string `json:"unitKind"`
+	// DensityGPerMl: para convertir en pantalla una compra entre peso y líquido (spec 058).
+	DensityGPerMl *decimal.Decimal `json:"densityGPerMl"`
 }
 
 // maxArticleResults es un techo defensivo, no una paginación: el front carga el catálogo una
 // vez al abrir el diálogo del gasto y el picker filtra en local (así el buscador responde sin
-// round-trip por tecla). Un local maneja cientos de insumos, no miles.
-const maxArticleResults = 500
+// round-trip por tecla). Con 500 se cortaba el catálogo real (532 medidos el 2026-11-02: 453 insumos y
+// 79 productos con existencia) y lo del final del abecedario no se podía comprar. El mismo techo que
+// los posibles duplicados (maxDuplicateCandidates).
+const maxArticleResults = 3000
 
 func (s *BackofficeService) Units(ctx context.Context) ([]UnitView, error) {
 	rows, err := s.store.QC(ctx).ListUnits(ctx)
@@ -117,7 +121,7 @@ func (s *BackofficeService) SearchArticles(ctx context.Context, q string) ([]Art
 	for i, r := range rows {
 		out[i] = ArticleView{
 			ItemType: r.ItemType, ID: r.ID, Name: r.Name,
-			UnitCode: r.UnitCode, UnitKind: string(r.UnitKind),
+			UnitCode: r.UnitCode, UnitKind: string(r.UnitKind), DensityGPerMl: r.DensityGPerMl,
 		}
 	}
 	return out, nil

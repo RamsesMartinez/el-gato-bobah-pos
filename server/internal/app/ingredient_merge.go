@@ -106,7 +106,11 @@ type MergePreview struct {
 	CostAfter       decimal.Decimal         `json:"costAfter"`
 	MinStockBefore  *decimal.Decimal        `json:"minStockBefore"`
 	MinStockAfter   *decimal.Decimal        `json:"minStockAfter"`
-	Fingerprint     string                  `json:"fingerprint"`
+	// DensityFrom: el destino no tenía densidad y recibe la de este origen (spec 058).
+	// DensityConflict: los orígenes traen densidades distintas y no se copia ninguna.
+	DensityFrom     *string `json:"densityFrom"`
+	DensityConflict bool    `json:"densityConflict"`
+	Fingerprint     string  `json:"fingerprint"`
 }
 
 // MergeIngredients une los orígenes en el destino. Con preview corre todo y lo revierte: lo que se ve
@@ -421,6 +425,9 @@ func (m *mergeRun) apply(ctx context.Context) error {
 			BaseUnit: targetUnit, Before: before[id], After: after, NegativeAfter: after.IsNegative()})
 	}
 
+	if err := m.mergeDensity(ctx); err != nil {
+		return err
+	}
 	if err := m.mergeCost(ctx); err != nil {
 		return err
 	}
@@ -525,11 +532,41 @@ func (m *mergeRun) movePresentations(ctx context.Context, src db.LockArticleNowa
 			if err := m.q.ArchivePresentation(ctx, d.ID); err != nil {
 				return err
 			}
+			if err := m.q.InheritTare(ctx, db.InheritTareParams{ArchivedID: d.ID, TargetID: m.targetID, QtyInBase: d.QtyInBase}); err != nil {
+				return err
+			}
 		case domain.MergeConflict:
 			m.conflict = true
 		}
 	}
 	return nil
+}
+
+// mergeDensity: un destino sin densidad recibe la de sus orígenes si todos los que tienen coinciden;
+// si difieren no se adivina cuál es la buena, y la vista previa lo dice (spec 058).
+func (m *mergeRun) mergeDensity(ctx context.Context) error {
+	if m.target.DensityGPerMl != nil {
+		return nil
+	}
+	var from *db.LockArticleNowaitRow
+	for i := range m.sources {
+		src := &m.sources[i]
+		if src.DensityGPerMl == nil {
+			continue
+		}
+		if from != nil && !from.DensityGPerMl.Equal(*src.DensityGPerMl) {
+			m.out.DensityConflict = true
+			return nil
+		}
+		if from == nil {
+			from = src
+		}
+	}
+	if from == nil {
+		return nil
+	}
+	m.out.DensityFrom = &from.Name
+	return m.q.CopyArticleDensity(ctx, db.CopyArticleDensityParams{ToID: m.targetID, FromID: from.ID})
 }
 
 // mergeCost fija el costo y el mínimo del destino con las reglas de domain (FR-012).

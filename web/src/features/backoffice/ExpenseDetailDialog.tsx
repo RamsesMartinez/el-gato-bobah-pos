@@ -34,6 +34,7 @@ import { DeliverySheet } from './DeliverySheet';
 import { EditPreviewSheet } from './EditPreviewSheet';
 import { PayDialog } from './ExpensesPage';
 import { dia, missingOf, pendingGoods } from './expenseEdit';
+import { lineConversion } from './expenseDraft';
 
 // Detalle del gasto (spec 038) con su edición (spec 053, maqueta «Detalle del gasto», opción A: ver y
 // cambiar son dos estados). En *Ver* se lee el gasto, sus entregas y sus pagos; «Editar gasto» abre
@@ -67,9 +68,12 @@ function stateOf(i: ExpenseItem): State {
 }
 
 // Lo que trae una unidad del renglón en la unidad base del artículo: el contenido copiado del
-// empaque, o el factor de la unidad.
+// empaque, el factor de la unidad, o entre peso y líquido la densidad del renglón (spec 058: la fija
+// si ya sumó, como la usa el servidor al corregir). Sin densidad no se adivina: 0.
 function factorOf(i: ExpenseItem, units: Unit[]): number {
   if (i.packQtyInBase) return num(i.packQtyInBase);
+  const cross = i.presentationId ? null : lineConversion('1', i.unitCode, i.baseUnitCode, i.densityGPerMl, units);
+  if (cross) return cross.factor ?? 0;
   return num(units.find((u) => u.code === i.unitCode)?.toBase ?? '1');
 }
 
@@ -340,7 +344,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
               )}
               <VStack align="stretch" gap={2}>
                 {goods.map((i) => (
-                  <GoodsRow key={i.id} item={i} edit={editOf(i)} correcting={correcting} presentations={presList}
+                  <GoodsRow key={i.id} item={i} edit={editOf(i)} correcting={correcting} presentations={presList} units={unitList}
                     qtyRef={keypad.ref(String(i.id))} qtyActive={keypad.field === String(i.id)}
                     onQtyFocus={() => keypad.setField(String(i.id))}
                     desired={desiredBase(i)} onEdit={(patch) => {
@@ -568,8 +572,10 @@ function RemoveButton({ removed, name, onToggle }: { removed: boolean; name: str
     : <Button minH="44px" variant="outline" colorPalette="red" aria-label={`Quitar ${name}`} onClick={onToggle}><LuX /> Quitar</Button>;
 }
 
-// howItCame dice en palabras cómo llegó el renglón: «3 cajas (12 L c/u)» o «2 kg».
-function howItCame(i: ExpenseItem, qty: string, presentations: Presentation[]): string {
+// howItCame dice en palabras cómo llegó el renglón: «3 cajas (12 L c/u)», «2 kg», o entre peso y
+// líquido con la densidad del renglón: «4.3 kg (4,300 g ÷ 1.10 = 3,909 ml)». Sin `withCount` no lleva la
+// cuenta: en «Se pidieron … · llegaron …» va solo en lo que llegó, que es lo que sumó.
+function howItCame(i: ExpenseItem, qty: string, presentations: Presentation[], units: Unit[], withCount = true): string {
   const p = presentations.find((x) => x.id === i.presentationId);
   if (p && i.packQtyInBase) {
     const n = num(qty);
@@ -577,11 +583,13 @@ function howItCame(i: ExpenseItem, qty: string, presentations: Presentation[]): 
     return `${qty} ${n === 1 ? name : `${name}s`} (${formatBaseQty(i.packQtyInBase, i.baseUnitCode ?? '')} c/u)`;
   }
   if (i.unitCode === 'pieza') return `${qty} ${num(qty) === 1 ? 'pieza' : 'piezas'}`;
-  return `${qty} ${i.unitCode ?? ''}`.trim();
+  const cross = lineConversion(qty, i.unitCode, i.baseUnitCode, i.densityGPerMl, units);
+  const said = `${qty} ${i.unitCode === 'l' ? 'L' : i.unitCode ?? ''}`.trim();
+  return withCount && cross?.words ? `${said} (${cross.words})` : said;
 }
 
-function GoodsRow({ item, edit, correcting, presentations, desired, onEdit, onExclude, showHistory, onHistory, removal, qtyRef, qtyActive, onQtyFocus }: {
-  item: ExpenseItem; edit: Edit; correcting: boolean; presentations: Presentation[];
+function GoodsRow({ item, edit, correcting, presentations, units, desired, onEdit, onExclude, showHistory, onHistory, removal, qtyRef, qtyActive, onQtyFocus }: {
+  item: ExpenseItem; edit: Edit; correcting: boolean; presentations: Presentation[]; units: Unit[];
   desired: number; onEdit: (patch: Partial<Edit>) => void; onExclude?: () => void;
   showHistory: boolean; onHistory: () => void;
   removal?: { removed: boolean; toggle: () => void };
@@ -599,10 +607,10 @@ function GoodsRow({ item, edit, correcting, presentations, desired, onEdit, onEx
   const got = num(item.qtyReceived);
   const status = stateOf(item) === 'no_llega' ? 'No va a llegar'
     : got > 0 && missing > 0
-      ? `Se pidieron ${howItCame(item, item.quantity, presentations)} · llegaron ${howItCame(item, item.qtyReceived ?? '0', presentations)}`
+      ? `Se pidieron ${howItCame(item, item.quantity, presentations, units, false)} · llegaron ${howItCame(item, item.qtyReceived ?? '0', presentations, units)}`
       : got > 0
-        ? `${got === 1 ? 'Llegó' : 'Llegaron'} ${howItCame(item, item.qtyReceived ?? item.quantity, presentations)}`
-        : `${num(item.quantity) === 1 ? 'Se pidió' : 'Se pidieron'} ${howItCame(item, item.quantity, presentations)}; no ha llegado`;
+        ? `${got === 1 ? 'Llegó' : 'Llegaron'} ${howItCame(item, item.qtyReceived ?? item.quantity, presentations, units)}`
+        : `${num(item.quantity) === 1 ? 'Se pidió' : 'Se pidieron'} ${howItCame(item, item.quantity, presentations, units)}; no ha llegado`;
   return (
     <VStack align="stretch" gap={1} borderWidth="1px" borderRadius="lg" p={3} data-testid="renglon-recibido"
       opacity={removal?.removed ? 0.5 : 1}>

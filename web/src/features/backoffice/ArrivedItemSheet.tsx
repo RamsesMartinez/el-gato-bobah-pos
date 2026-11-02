@@ -2,6 +2,9 @@ import { useState, type ReactNode } from 'react';
 import { presentationLabel } from '../../shared/presentationLabel';
 import { Button, HStack, Input, Text, VStack } from '@chakra-ui/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
+import { DensitySheet } from './articles/DensitySheet';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../components/ui/drawer';
@@ -9,7 +12,8 @@ import { Picker } from '../../components/Picker';
 import { backofficeApi, type Article } from '../../api/backoffice';
 import { receiptError } from './receiptError';
 import { parseMonto, parseNumero } from '../../domain/numeros';
-import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
+import { crossBuyUnits, formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
+import { ASK_FOR_DENSITY, crossConversion } from './expenseDraft';
 
 const num = (s: string | null | undefined) => { const n = parseNumero(s ?? ''); return n.estado === 'valido' ? n.valor : NaN; };
 
@@ -44,13 +48,20 @@ export function ArrivedItemSheet({ expenseId, supplier, onClose, onDone }: {
   const [how, setHow] = useState<{ presentationId?: number; unitId?: number }>({});
   const [gift, setGift] = useState(false);
   const [amount, setAmount] = useState('');
+  // La hoja de densidad encima de ésta (dos capas como máximo, spec 058), igual que en la captura del gasto.
+  const canDensity = can('inventory.configure', useSessionStore((s) => s.user));
+  const [densityOpen, setDensityOpen] = useState(false);
   const list: Article[] = articles?.items ?? [];
   const art = list.find((a) => `${a.itemType}:${a.id}` === pick);
   const packs = art?.itemType === 'ingrediente' ? (presentations ?? []).filter((p) => p.ingredientId === art.id && p.active) : [];
-  const buyUnits = art ? purchaseUnitsFor(art.unitKind, units?.items ?? []) : [];
+  const buyUnits = art ? [...purchaseUnitsFor(art.unitKind, units?.items ?? []),
+    ...(art.itemType === 'ingrediente' ? crossBuyUnits(art.unitKind, units?.items ?? []) : [])] : [];
+  // Entre peso y líquido (spec 058): la cuenta con la densidad del artículo, o lo que falta.
+  const buyUnit = (units?.items ?? []).find((u) => u.id === how.unitId);
+  const cross = art && buyUnit && !how.presentationId ? crossConversion(value, buyUnit, art.unitKind, art.unitCode, art.densityGPerMl) : null;
   const n = num(value);
   const money = parseMonto(amount);
-  const ok = !!art && Number.isFinite(n) && n > 0 && (how.presentationId || how.unitId)
+  const ok = !!art && Number.isFinite(n) && n > 0 && (how.presentationId || how.unitId) && !cross?.missing
     && (gift || (money.estado === 'valido' && money.valor > 0));
 
   const choose = (v: string) => {
@@ -96,8 +107,17 @@ export function ArrivedItemSheet({ expenseId, supplier, onClose, onDone }: {
                 {unitLabel(u)}
               </Button>
             ))}
+            {cross?.words && <Text fontSize="sm" fontWeight="700" color="fg.success">{cross.words}</Text>}
           </HStack>
         )}
+        {cross?.missing && (canDensity ? (
+          <HStack gap={2} justify="space-between" data-testid="sin-densidad">
+            <Text fontSize="sm" fontWeight="700" color="orange.fg">{cross.missing}</Text>
+            <Button minH="44px" size="sm" variant="outline" colorPalette="brand" onClick={() => setDensityOpen(true)}>Capturar la densidad</Button>
+          </HStack>
+        ) : (
+          <Text fontSize="sm"><Text as="span" fontWeight="700" color="orange.fg">{cross.missing}</Text>. {ASK_FOR_DENSITY}</Text>
+        ))}
         <HStack gap={0} borderWidth="1px" borderRadius="md" alignSelf="start" role="group" aria-label="¿Se pagó?">
           <Button minH="44px" aria-pressed={!gift} variant={!gift ? 'solid' : 'ghost'} colorPalette={!gift ? 'brand' : 'gray'} onClick={() => setGift(false)}>Lo pagué</Button>
           <Button minH="44px" aria-pressed={gift} variant={gift ? 'solid' : 'ghost'} colorPalette={gift ? 'brand' : 'gray'} onClick={() => setGift(true)}>Fue regalo</Button>
@@ -113,6 +133,10 @@ export function ArrivedItemSheet({ expenseId, supplier, onClose, onDone }: {
           )}
         {save.isError && <Text color="fg.error" fontSize="sm">{receiptError(save.error)}</Text>}
       </VStack>
+      {densityOpen && art && (
+        <DensitySheet article={{ id: art.id, name: art.name, density: null }} onClose={() => setDensityOpen(false)}
+          onDone={() => setDensityOpen(false)} />
+      )}
     </ReceiptSheet>
   );
 }

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from '../../components/ui/provider';
 import type { PendingReceipt } from '../../api/backoffice';
 import { PendingReceiptsTab } from './PendingReceiptsTab';
+import { useSessionStore } from '../../stores/session';
 
 const back = vi.hoisted(() => ({
   pendingReceipts: vi.fn(),
@@ -17,6 +18,7 @@ const back = vi.hoisted(() => ({
   searchArticles: vi.fn(),
   presentations: vi.fn(),
   units: vi.fn(),
+  setDensity: vi.fn(),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 // Doble del Picker sin hoja animada (ver ExpenseDialog.test.tsx).
@@ -168,5 +170,80 @@ describe('Recibir desde «Por recibir» (spec 053)', () => {
     const extra = screen.getByLabelText('Importe de lo de más de Leche entera');
     expect(extra.parentElement).toHaveTextContent('$');
     expect(screen.getByRole('button', { name: 'Ver efectos' })).toBeDisabled();
+  });
+});
+
+// US2 (FR-009): por recibir dice cómo se convierte un renglón entre peso y líquido, con la densidad
+// del renglón (la fija si ya sumó, la vigente si no).
+describe('entre peso y líquido (spec 058)', () => {
+  const kgYMl = { items: [
+    { id: 2, code: 'kg', name: 'Kilo', kind: 'masa', toBase: '1000' }, { id: 7, code: 'l', name: 'Litro', kind: 'volumen', toBase: '1000' },
+    { id: 3, code: 'ml', name: 'Mililitro', kind: 'volumen', toBase: '1' },
+  ] };
+  beforeEach(() => back.units.mockResolvedValue(kgYMl));
+
+  test('un renglón en kg de algo en ml dice la cuenta con su densidad', async () => {
+    back.pendingReceipts.mockResolvedValue([row({ itemName: 'Salsa de chocolate', quantity: '4.3', missing: '4.3', unitCode: 'kg',
+      presentationName: null, packQtyInBase: null, densityGPerMl: '1.1' })]);
+    montar();
+    expect(await renglon('Salsa de chocolate')).toHaveTextContent('pediste 4.3 kg');
+    await waitFor(async () => expect(await renglon('Salsa de chocolate')).toHaveTextContent('4,300 g ÷ 1.10 = 3,909 ml'));
+  });
+
+  test('«Llegó algo más» en kg de algo en ml: sin densidad avisa y no deja guardar', async () => {
+    montar();
+    const [lacteos] = await screen.findAllByTestId('compra-por-recibir');
+    fireEvent.click(within(lacteos).getByRole('button', { name: 'Llegó algo más…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Yogurt natural' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'kg' }));
+    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '2' } });
+    click('Fue regalo');
+    expect(screen.getByText('Sin densidad para pasar kg a ml')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    // Sin permiso de configurar, el aviso dice qué hacer.
+    expect(screen.getByText(/Pídele a quien configura el almacén que capture la densidad, o elige otra unidad\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
+  });
+
+  test('«Llegó algo más» sin densidad, con permiso: «Capturar la densidad» la pide y deja guardar', async () => {
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'admin', permissions: ['inventory.configure'] } as never });
+    back.setDensity.mockResolvedValue({ density: { value: '1.05', method: 'manual', setByName: 'Ana', setAt: '2026-11-02T10:00:00Z' } });
+    try {
+      montar();
+      const [lacteos] = await screen.findAllByTestId('compra-por-recibir');
+      fireEvent.click(within(lacteos).getByRole('button', { name: 'Llegó algo más…' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Yogurt natural' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'kg' }));
+      fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '2' } });
+      expect(screen.queryByText(/Pídele a quien configura/)).toBeNull();
+      back.searchArticles.mockResolvedValue({ items: [{ itemType: 'ingrediente', id: 7, name: 'Yogurt natural', unitCode: 'ml', unitKind: 'volumen', densityGPerMl: '1.05' }] });
+      click('Capturar la densidad');
+      expect(await screen.findByText('Densidad · Yogurt natural')).toBeInTheDocument();
+      click('Escribir el valor');
+      fireEvent.click(screen.getByLabelText('Gramos por mililitro'));
+      for (const k of ['1', 'punto', '0', '5']) click(k);
+      click('Listo');
+      // La hoja de abajo puede seguir expuesta: se guarda en la de la densidad.
+      fireEvent.click(within(screen.getByText('Densidad · Yogurt natural').closest('[role=dialog]') as HTMLElement).getByRole('button', { name: 'Guardar' }));
+      await waitFor(() => expect(back.setDensity).toHaveBeenCalledWith(7, { method: 'manual', density: '1.05' }));
+      expect(await screen.findByText('2,000 g ÷ 1.05 = 1,905 ml')).toBeInTheDocument();
+      expect(screen.getByLabelText('Cantidad')).toHaveValue('2');
+    } finally {
+      useSessionStore.setState({ user: null } as never);
+    }
+  });
+
+  test('«Llegó algo más» con densidad dice la cuenta y guarda en kg', async () => {
+    back.searchArticles.mockResolvedValue({ items: [{ itemType: 'ingrediente', id: 7, name: 'Yogurt natural', unitCode: 'ml', unitKind: 'volumen', densityGPerMl: '1.05' }] });
+    montar();
+    const [lacteos] = await screen.findAllByTestId('compra-por-recibir');
+    fireEvent.click(within(lacteos).getByRole('button', { name: 'Llegó algo más…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Yogurt natural' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'kg' }));
+    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '2' } });
+    expect(screen.getByText('2,000 g ÷ 1.05 = 1,905 ml')).toBeInTheDocument();
+    click('Fue regalo');
+    click('Guardar');
+    await waitFor(() => expect(back.addArrivedItem).toHaveBeenCalledWith(9, expect.objectContaining({ ingredientId: 7, unitId: 2, quantity: '2' })));
   });
 });

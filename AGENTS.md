@@ -529,6 +529,25 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Un destino con insumos unidos no cambia de unidad**: la equivalencia de cada unión habla de la
     unidad de hoy. Unir no reescribe ventas, compras ni conteos pasados; el historial de costos y la
     bitácora del destino leen los de sus orígenes con un CTE recursivo dentro de la consulta (bajo RLS).
+- **Densidad y tara** (spec 058, 0105). La densidad (g por ml) del artículo es lo único que pasa
+  entre peso y líquido; nunca se asume 1 g = 1 ml. Cuatro cosas que no se ven:
+  - **Cada renglón de compra fija la densidad con que convirtió la primera vez**
+    (`expense_items.density_g_per_ml`, en `applyStockLinesOn` con el valor exacto que usó `BaseQty`).
+    `PlanStockLines` recalcula lo que el renglón debió sumar en cada escritura: sin esa copia, rehacer
+    la pesada y luego corregir o editar el gasto movería la existencia (decisión del dueño,
+    2026-11-02: «de aquí en adelante»). `ListStockLines` lee `coalesce(fija, vigente)`; cambiar el
+    artículo del renglón la vuelve a nulo.
+  - **Quitar la densidad se niega con una compra pendiente entre peso y líquido** sin densidad fija
+    (409 `DENSITY_IN_USE`): `PlanStockLines` convierte también lo pedido y el gasto entero dejaría de
+    poder tocarse. Durante la subida, la API anterior responde 400 a ese gasto (anular sí funciona).
+  - **«Solo g o ml tiene densidad y tara» lo impone la base**: pasar un artículo a pieza o cm limpia
+    su densidad y las taras de sus empaques (trigger en `ingredients`), y un empaque que llega a un
+    artículo en piezas (una unión) pierde la tara en vez de tronar.
+  - **Entre peso y líquido la equivalencia del cambio de unidad la pone la densidad**
+    (`domain.UnitChangeFactor`); un factor distinto del derivado es 409 `DENSITY_CHANGED`. El conteo
+    pesando con empaque guarda lo pesado (`stock_count_lines.gross_g`, empaques, tara y densidad
+    usadas) y responde 409 `COUNT_INPUTS_CHANGED` si la tara o la densidad ya no son las que usó la
+    pantalla.
 - **Editar un gasto ya guardado** (spec 053, 0103). Encabezado, agregar y quitar renglones
   (`POST /expenses/{id}/edit`, permiso `expenses.edit`, solo admin) y entregas con su fecha
   (`POST /expenses/{id}/deliveries`, `inventory.receive`). Cinco cosas que no se ven:
