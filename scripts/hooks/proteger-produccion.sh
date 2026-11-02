@@ -22,6 +22,12 @@ if ! printf '%s' "$comando" | grep -qE 'pos-vps([^-]|$)|34\.68\.178\.107'; then
   exit 0
 fi
 
+# Nombrar la VM sin conectarse a ella (buscarla en ~/.ssh/config, en un log o en un documento) no la
+# toca: solo pregunta lo que de verdad abre una conexión.
+if ! printf '%s' "$comando" | grep -qE '(^|[^.a-z_-])(ssh|scp|rsync|curl|nc|psql|sftp)([^a-z_-]|$)|gcloud +compute +(ssh|scp)'; then
+  exit 0
+fi
+
 # La excepción autorizada: respaldar. `pg_dump` y traerse el archivo que dejó.
 if printf '%s' "$comando" | grep -qE 'pg_dump|respaldo-gatobobah\.sh|compute scp +pos-vps:'; then
   printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"Respaldo de produccion: autorizado sin preguntar."}}'
