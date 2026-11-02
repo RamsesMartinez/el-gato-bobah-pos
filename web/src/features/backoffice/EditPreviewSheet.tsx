@@ -2,6 +2,8 @@ import { Fragment, useRef, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Box, Button, Center, HStack, Spinner, Table, Text } from '@chakra-ui/react';
 
+import { PreviewGroup as Group, PreviewTable, StaleNotice, num as n, signed, tone } from '../../shared/preview/PreviewTable';
+
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../components/ui/drawer';
@@ -33,9 +35,6 @@ const FIELD_LABEL: Record<string, string> = {
   supplier: 'Proveedor', category: 'Categoría', description: 'Comentario', expenseDate: 'Fecha del gasto',
 };
 
-const n = (s: string | null | undefined) => Number(s ?? 0);
-const signed = (v: number, fmt: (abs: number) => string) => (v > 0 ? `+${fmt(v)}` : v < 0 ? `−${fmt(-v)}` : 'sin cambio');
-const tone = (v: number) => (v > 0 ? 'fg.success' : v < 0 ? 'fg.error' : 'fg.muted');
 
 export function EditPreviewSheet({ request, onClose, onDone, title = 'Antes de confirmar' }: {
   // request pide la vista previa (preview=true) o confirma con la huella de la última que se vio.
@@ -115,26 +114,13 @@ export function EditPreviewSheet({ request, onClose, onDone, title = 'Antes de c
       <DrawerContent borderTopRadius="2xl" maxH="90dvh">
         <DrawerHeader><Text fontWeight="700" fontSize="lg">{title}</Text></DrawerHeader>
         <DrawerBody>
-          {stale && (
-            <Text p={3} mb={3} borderRadius="lg" bg="orange.subtle" fontSize="sm" role="status">
-              Algo cambió mientras revisabas. Esto es lo que pasaría ahora.
-            </Text>
-          )}
+          {stale && <StaleNotice />}
           {error && <Text p={3} mb={3} borderRadius="lg" bg="red.subtle" fontSize="sm" role="alert">{error}</Text>}
           {!preview ? (
             <Center py={10}><Spinner size="lg" /></Center>
           ) : (
             <Box opacity={loading ? 0.6 : 1}>
-              <Table.Root size="sm" stickyHeader>
-                <Table.Header>
-                  <Table.Row>
-                    <Table.ColumnHeader>Qué</Table.ColumnHeader>
-                    <Table.ColumnHeader textAlign="end">Antes</Table.ColumnHeader>
-                    <Table.ColumnHeader textAlign="end">Después</Table.ColumnHeader>
-                    <Table.ColumnHeader textAlign="end">Cambio</Table.ColumnHeader>
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
+              <PreviewTable>
                   {preview.header.length > 0 && <Group label="Datos del gasto" />}
                   {preview.header.map((h) => (
                     <Table.Row key={h.field}>
@@ -217,8 +203,7 @@ export function EditPreviewSheet({ request, onClose, onDone, title = 'Antes de c
                       </Table.Row>
                     );
                   })}
-                </Table.Body>
-              </Table.Root>
+              </PreviewTable>
             </Box>
           )}
         </DrawerBody>
@@ -241,14 +226,6 @@ export function EditPreviewSheet({ request, onClose, onDone, title = 'Antes de c
         </DrawerFooter>
       </DrawerContent>
     </DrawerRoot>
-  );
-}
-
-function Group({ label }: { label: string }) {
-  return (
-    <Table.Row bg="bg.muted">
-      <Table.Cell colSpan={4} fontSize="xs" fontWeight="700" textTransform="uppercase" letterSpacing="wide" color="fg.muted">{label}</Table.Cell>
-    </Table.Row>
   );
 }
 

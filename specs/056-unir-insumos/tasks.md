@@ -55,7 +55,7 @@ código y se ve fallar por la razón correcta antes de implementar.
 
 **Vista previa compartida (front)**
 
-- [ ] T016 [P] Extraer de `web/src/features/backoffice/EditPreviewSheet.tsx` las piezas genéricas a `web/src/shared/preview/` (`PreviewGroup`, renglón antes/después/cambio, `signed`, `tone`, aviso «Algo cambió mientras revisabas»); `EditPreviewSheet` las usa y pinta idéntico: `EditPreviewSheet.test.tsx` y `ExpenseDetailDialog.test.tsx` en verde sin cambiarlos
+- [X] T016 [P] Extraer de `web/src/features/backoffice/EditPreviewSheet.tsx` las piezas genéricas a `web/src/shared/preview/` (`PreviewGroup`, renglón antes/después/cambio, `signed`, `tone`, aviso «Algo cambió mientras revisabas»); `EditPreviewSheet` las usa y pinta idéntico: `EditPreviewSheet.test.tsx` y `ExpenseDetailDialog.test.tsx` en verde sin cambiarlos
 
 **Checkpoint**: 0104 aplicada en local y en pruebas, `go build` y `go test ./internal/store ./internal/domain` verdes.
 
@@ -84,11 +84,11 @@ código y se ve fallar por la razón correcta antes de implementar.
 - [X] T026 [US1] `planUnitChange` se niega con orígenes unidos y reactivar se niega para un origen unido en `server/internal/app/unit_change.go` y el servicio de archivar/reactivar
 - [X] T027 [US1] Handler `POST /stock/articles/{id}/merge` (`?preview=1`) en `server/internal/httpapi/handlers_ingredients_admin.go` y ruta con `RequirePermission(inventory.configure)` en `server/internal/httpapi/router.go`; `GetArticle` devuelve `mergedInto` y `mergedSources`
 - [X] T028 [US1] `ArticleCostHistory` y `ArticleAudit` leen también los orígenes (CTE), con `fromName` y el costo dividido entre el factor, en `server/queries/ingredients_admin.sql` y `server/internal/app/ingredients_admin.go`; prueba en `ingredient_merge_test.go` (FR-006)
-- [ ] T029 [P] [US1] Cliente en `web/src/api/backoffice.ts`: `previewMerge`, `merge`, tipos `MergePreview`, `mergedInto`, `fromName`
-- [ ] T030 [US1] Pruebas primero en `web/src/features/backoffice/articles/MergeSheet.test.tsx` — fila «Unir insumos» de Maquetas (A): «Unir otros aquí» solo con permiso y en activos no preparados; parecidos máx. 3 con «Ver todos»; renglón entero de 52 px como área de toque; «Siguiente» deshabilitado sin elegidos; «Volver» desde la vista previa conserva lo elegido; 409 `BUSY` dice «vuelve a intentar» sin perder nada; `MERGE_STALE` pide la vista previa de nuevo
-- [ ] T031 [US1] `web/src/features/backoffice/articles/MergeSheet.tsx` (pasos 1 y 3 de la maqueta A, vista previa con `shared/preview/`, pie fijo «Volver»/«Unir») y el botón en `ArticleSheet.tsx`; un destino que queda en negativo se marca «⚠ quedará en negativo» como en la 053
-- [ ] T032 [US1] Ficha de un origen unido: franja «Unido a <destino> el <fecha> · Abrir» en lugar de «Reactivar», en `web/src/features/backoffice/articles/ArticleSheet.tsx`, con prueba en `ArticleSheets.test.tsx` (fila «Unir insumos» de Maquetas)
-- [ ] T033 [US1] Historial de costos muestra «de <origen>» en los renglones que vienen de un origen, en `web/src/features/backoffice/articles/ArticleSheet.tsx`/`CostTrend.tsx`, con prueba
+- [X] T029 [P] [US1] Cliente en `web/src/api/backoffice.ts`: `previewMerge`, `merge`, tipos `MergePreview`, `mergedInto`, `fromName`
+- [X] T030 [US1] Pruebas primero en `web/src/features/backoffice/articles/MergeSheet.test.tsx` — fila «Unir insumos» de Maquetas (A): «Unir otros aquí» solo con permiso y en activos no preparados; parecidos máx. 3 con «Ver todos»; renglón entero de 52 px como área de toque; «Siguiente» deshabilitado sin elegidos; «Volver» desde la vista previa conserva lo elegido; 409 `BUSY` dice «vuelve a intentar» sin perder nada; `MERGE_STALE` pide la vista previa de nuevo
+- [X] T031 [US1] `web/src/features/backoffice/articles/MergeSheet.tsx` (pasos 1 y 3 de la maqueta A, vista previa con `shared/preview/`, pie fijo «Volver»/«Unir») y el botón en `ArticleSheet.tsx`; un destino que queda en negativo se marca «⚠ quedará en negativo» como en la 053
+- [X] T032 [US1] Ficha de un origen unido: franja «Unido a <destino> el <fecha> · Abrir» en lugar de «Reactivar», en `web/src/features/backoffice/articles/ArticleSheet.tsx`, con prueba en `ArticleSheets.test.tsx` (fila «Unir insumos» de Maquetas)
+- [X] T033 [US1] Historial de costos muestra «de <origen>» en los renglones que vienen de un origen, en `web/src/features/backoffice/articles/ArticleSheet.tsx`/`CostTrend.tsx`, con prueba
 
 **Checkpoint**: US1 completa y probable sola (Q1–Q4, Q6, Q8, Q11 del quickstart).
 
@@ -103,7 +103,7 @@ código y se ve fallar por la razón correcta antes de implementar.
 - [X] T034 [P] [US2] Unitarios de `PlanMergedPresentations` en `server/internal/domain/ingredient_merge_test.go`: sin marca toma el nombre del origen (recortado a 40); choque nombre+marca+contenido → archiva la del origen; choque con contenido distinto → conflicto; aproximado que deja de cuadrar → se queda archivado en el origen; inactivas se quedan
 - [X] T035 [US2] Integración en `ingredient_merge_test.go`: la presentación se mueve conservando su id (las compras viejas la siguen nombrando); compra nueva con ella sube el destino; `supplier_items` y `ingredient_purchase_formats` ligados al destino; crear una receta, renglón de compra, presentación, artículo de proveedor, formato, merma, renglón de conteo o corrección de costo con el origen → 409 `INGREDIENT_MERGED` (inmediato y en la carrera diferida); choque con contenido distinto → 409 `MERGE_PRESENTATION_CONFLICT`; la lectura de un ticket con un renglón aprendido del origen propone el destino (escenario 3 de US2)
 - [X] T036 [US2] `PlanMergedPresentations` en `server/internal/domain/ingredient_merge.go` y su aplicación en `MergeIngredients` (mover presentación, formatos con `SetPurchaseFormatQty`, proveedor con `SetSupplierItem`), consultas nuevas en `server/queries/ingredient_merge.sql`
-- [ ] T037 [US2] La vista previa lista presentaciones (`move|archive|conflict`), artículos de proveedor y formatos; el front pinta el grupo «Presentaciones» y bloquea «Unir» con un conflicto, en `MergeSheet.tsx` con su prueba
+- [X] T037 [US2] La vista previa lista presentaciones (`move|archive|conflict`), artículos de proveedor y formatos; el front pinta el grupo «Presentaciones» y bloquea «Unir» con un conflicto, en `MergeSheet.tsx` con su prueba
 
 ---
 
@@ -116,7 +116,7 @@ código y se ve fallar por la razón correcta antes de implementar.
 - [X] T038 [P] [US3] Unitarios en `ingredient_merge_test.go` (domain): conversión de receta, existencia, presentación y costo con factor; cantidad que queda en cero → error; factor que no cabe → error
 - [X] T039 [US3] Integración: unión con factor convierte existencias, recetas, presentaciones, formatos y contenido aprendido del proveedor; el movimiento tardío redirigido se convierte (y uno diminuto no truena por el `check` de cero); el historial de costos del destino muestra el del origen convertido
 - [X] T040 [US3] Aplicar el factor en `MergeIngredients` (`server/internal/app/ingredient_merge.go`)
-- [ ] T041 [US3] Prueba primero en `MergeSheet.test.tsx` y luego el paso 2 «¿Cuánto equivale?» en `MergeSheet.tsx` (un renglón por elegido de otra medida, «1 pieza = ___ ml», teclado numérico de la app; sin todos los valores no avanza) — fila «Unir insumos» de Maquetas
+- [X] T041 [US3] Prueba primero en `MergeSheet.test.tsx` y luego el paso 2 «¿Cuánto equivale?» en `MergeSheet.tsx` (un renglón por elegido de otra medida, «1 pieza = ___ ml», teclado numérico de la app; sin todos los valores no avanza) — fila «Unir insumos» de Maquetas
 
 ---
 

@@ -535,3 +535,43 @@ describe('Archivar', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
 });
+
+// Unir insumos (spec 056, maqueta «Unir insumos»).
+describe('Ficha · unir insumos', () => {
+  it('con permiso de configurar, un insumo activo ofrece «Unir otros aquí»', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'Unir otros aquí' })).toBeInTheDocument();
+  });
+
+  it('un preparado no ofrece unir', async () => {
+    back.article.mockResolvedValue({ ...ficha, isPrep: true });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    await screen.findByText(/Es un preparado/);
+    expect(screen.queryByRole('button', { name: 'Unir otros aquí' })).toBeNull();
+  });
+
+  it('sin permiso de configurar no se ofrece', async () => {
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.view'] } as never });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    await screen.findByText('Hielo en bolsa');
+    expect(screen.queryByRole('button', { name: 'Unir otros aquí' })).toBeNull();
+  });
+
+  it('un insumo unido dice a cuál y lleva a él, sin ofrecer reactivarlo', async () => {
+    back.article.mockResolvedValue({ ...ficha, isActive: false, mergedInto: { id: 3, name: 'Hielo', at: '2026-11-03T18:00:00Z' } });
+    const onOpen = vi.fn();
+    montar(<ArticleSheet id={7} onClose={vi.fn()} onOpenArticle={onOpen} />);
+    const band = await screen.findByText((_, el) => el?.tagName === 'P' && /^Unido a Hielo el /.test(el.textContent ?? ''));
+    expect(band).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reactivar' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir Hielo' }));
+    expect(onOpen).toHaveBeenCalledWith(3);
+  });
+
+  it('el historial dice de qué insumo unido viene una compra y con qué marca', async () => {
+    back.articleCostHistory.mockResolvedValue({ items: [{ ...compra(18, '0.006'), fromName: 'Hielo Marca B', brand: 'Polar' }], next: null, trendPct: null });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText(/de Hielo Marca B/)).toBeInTheDocument();
+    expect(screen.getByText(/Bolsa · Polar/)).toBeInTheDocument();
+  });
+});
