@@ -108,15 +108,30 @@ func PlanMergedRecipe(src MergeRecipeLine, existing *MergeRecipeLine, factor dec
 // CostCandidate es lo que se sabe del costo de un insumo de la unión: el vigente y su última compra
 // (con costo, sin regalos ni anulados). Factor convierte a la unidad del destino (1 en el destino).
 type CostCandidate struct {
-	ID               int64
-	Factor           decimal.Decimal
-	Current          decimal.Decimal
+	ID      int64
+	Factor  decimal.Decimal
+	Current decimal.Decimal
+	// LastPurchaseOn es el día en que llegó la compra más reciente; LastPurchaseAt, cuándo se capturó.
+	// Manda la llegada (#187); la captura solo desempata el mismo día.
+	LastPurchaseOn   *time.Time
 	LastPurchaseAt   *time.Time
 	LastPurchaseCost *decimal.Decimal
 }
 
-// MergedCost es el costo del destino con la regla de hoy, «último precio»: el de la compra más
-// reciente entre todos, convertido; sin compras, el del destino; si es cero, el primer origen con
+// purchasedAfter dice si la compra de a es más reciente que la de b: la que llegó un día después, y
+// el mismo día, la capturada después. Sin día de llegada (no pasa: el trigger de la 0103 lo llena en
+// toda compra) compara solo la captura.
+func purchasedAfter(a, b *CostCandidate) bool {
+	if a.LastPurchaseOn != nil && b.LastPurchaseOn != nil {
+		if da, db := calendarDay(*a.LastPurchaseOn), calendarDay(*b.LastPurchaseOn); da != db {
+			return da > db
+		}
+	}
+	return a.LastPurchaseAt.After(*b.LastPurchaseAt)
+}
+
+// MergedCost es el costo del destino con la regla de hoy, «último precio»: el de la compra que llegó
+// más recientemente entre todos, convertido; sin compras, el del destino; si es cero, el primer origen con
 // costo. El primero de la lista es el destino. Devuelve de qué insumo salió.
 //
 // ponytail: la regla configurable por empresa (promedio ponderado) es la entrega 2 del #185 y sustituye
@@ -131,7 +146,7 @@ func MergedCost(cands []CostCandidate) (decimal.Decimal, int64) {
 		if c.LastPurchaseAt == nil || c.LastPurchaseCost == nil {
 			continue
 		}
-		if best == nil || c.LastPurchaseAt.After(*best.LastPurchaseAt) {
+		if best == nil || purchasedAfter(c, best) {
 			best = c
 		}
 	}

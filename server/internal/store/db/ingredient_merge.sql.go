@@ -9,6 +9,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 )
 
@@ -172,28 +173,32 @@ func (q *Queries) InsertMergeMove(ctx context.Context, arg InsertMergeMoveParams
 }
 
 const lastPurchaseCost = `-- name: LastPurchaseCost :one
-select m.created_at, m.unit_cost::numeric(12,6) as unit_cost
+select m.effective_on, m.created_at, m.unit_cost::numeric(12,6) as unit_cost
   from stock_movements m
   join expense_items ei on ei.id = m.expense_item_id
   join expenses e on e.id = ei.expense_id
  where m.ingredient_id = $1 and m.movement_type = 'compra'
    and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
    and ei.voided_at is null and not ei.excluded and e.status <> 'cancelada'
- order by m.created_at desc, m.id desc
+   and ei.applied_qty_base > 0
+ order by m.effective_on desc nulls last, m.created_at desc, m.id desc
  limit 1
 `
 
 type LastPurchaseCostRow struct {
-	CreatedAt time.Time       `json:"created_at"`
-	UnitCost  decimal.Decimal `json:"unit_cost"`
+	EffectiveOn pgtype.Date     `json:"effective_on"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UnitCost    decimal.Decimal `json:"unit_cost"`
 }
 
 // La compra más reciente con costo del insumo (sin regalos, renglones anulados o excluidos, ni gastos
-// cancelados): la misma regla que el historial de costos.
+// cancelados, ni renglones corregidos a «no llegó»). «Más reciente» es la que llegó después, no la que
+// se capturó después (#187); el mismo día desempata la captura. Solo mira el insumo que recibe: se
+// llama por cada candidato antes de unir; NewestPurchaseArrival es la que recorre las uniones.
 func (q *Queries) LastPurchaseCost(ctx context.Context, ingredientID *int64) (LastPurchaseCostRow, error) {
 	row := q.db.QueryRow(ctx, lastPurchaseCost, ingredientID)
 	var i LastPurchaseCostRow
-	err := row.Scan(&i.CreatedAt, &i.UnitCost)
+	err := row.Scan(&i.EffectiveOn, &i.CreatedAt, &i.UnitCost)
 	return i, err
 }
 

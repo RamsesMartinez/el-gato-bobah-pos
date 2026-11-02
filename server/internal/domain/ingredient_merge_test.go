@@ -132,6 +132,15 @@ func TestMergedCost(t *testing.T) {
 			{ID: 1, Factor: md("1"), Current: md("0.0230"), LastPurchaseAt: at(jan), LastPurchaseCost: mdp("0.0230")},
 			{ID: 2, Factor: md("1"), Current: md("0.0215"), LastPurchaseAt: at(feb), LastPurchaseCost: mdp("0.0215")},
 		}, "0.0215", 2},
+		// #187: manda el día de llegada, no el orden de captura.
+		{"manda la que llegó después aunque se haya capturado antes", []CostCandidate{
+			{ID: 1, Factor: md("1"), Current: md("0.02"), LastPurchaseOn: at(jan), LastPurchaseAt: at(mar), LastPurchaseCost: mdp("0.02")},
+			{ID: 2, Factor: md("1"), Current: md("0.03"), LastPurchaseOn: at(feb), LastPurchaseAt: at(jan), LastPurchaseCost: mdp("0.03")},
+		}, "0.03", 2},
+		{"el mismo día de llegada manda la última capturada", []CostCandidate{
+			{ID: 1, Factor: md("1"), Current: md("0.02"), LastPurchaseOn: at(feb), LastPurchaseAt: at(mar), LastPurchaseCost: mdp("0.02")},
+			{ID: 2, Factor: md("1"), Current: md("0.03"), LastPurchaseOn: at(feb), LastPurchaseAt: at(feb), LastPurchaseCost: mdp("0.03")},
+		}, "0.02", 1},
 		{"la de un origen medido distinto se convierte", []CostCandidate{
 			{ID: 1, Factor: md("1"), Current: md("3"), LastPurchaseAt: at(jan), LastPurchaseCost: mdp("3")},
 			{ID: 2, Factor: md("0.25"), Current: md("0.5"), LastPurchaseAt: at(mar), LastPurchaseCost: mdp("0.5")},

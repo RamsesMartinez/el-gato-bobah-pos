@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -108,6 +109,34 @@ func TestNextIngredientCost(t *testing.T) {
 			got := NextIngredientCost(tt.method, dec(tt.onHand), dec(tt.cost), dec(tt.qty), dec(tt.unitCost), tt.gift)
 			if !got.Equal(dec(tt.want)) {
 				t.Errorf("NextIngredientCost = %s, quiere %s", got, tt.want)
+			}
+		})
+	}
+}
+
+// #187: con «último precio», una compra que llegó antes que la más reciente no cambia el costo,
+// aunque se capture después. El mismo día manda la última capturada; la hora no cuenta.
+func TestLastPriceApplies(t *testing.T) {
+	day := func(d, h int) time.Time { return time.Date(2026, 7, d, h, 0, 0, 0, time.UTC) }
+	ptr := func(t time.Time) *time.Time { return &t }
+	cases := []struct {
+		name    string
+		arrived time.Time
+		newest  *time.Time
+		want    bool
+	}{
+		{"sin compras antes", day(5, 0), nil, true},
+		{"llegó después de la más reciente", day(25, 0), ptr(day(20, 0)), true},
+		{"llegó el mismo día", day(20, 0), ptr(day(20, 0)), true},
+		{"el mismo día a otra hora sigue siendo el mismo día", day(20, 0), ptr(day(20, 23)), true},
+		{"llegó antes de la más reciente", day(5, 0), ptr(day(20, 0)), false},
+		{"un día antes", day(19, 23), ptr(day(20, 0)), false},
+		{"en otra zona, el día que dice la fecha", time.Date(2026, 7, 20, 0, 0, 0, 0, time.FixedZone("CST", -6*3600)), ptr(day(20, 0)), true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := LastPriceApplies(c.arrived, c.newest); got != c.want {
+				t.Fatalf("LastPriceApplies(%s, %v) = %v; quiere %v", c.arrived, c.newest, got, c.want)
 			}
 		})
 	}

@@ -309,3 +309,25 @@ select exists (select 1 from products where id = $1)::bool;
 
 -- name: UnitExists :one
 select exists (select 1 from units where id = $1)::bool;
+
+-- name: NewestPurchaseArrival :one
+-- El día en que llegó la compra más reciente del insumo o de los insumos que se le unieron (spec 056):
+-- con «último precio», una compra que llegó antes no cambia el costo vigente (#187). La misma regla
+-- de qué cuenta como compra que LastPurchaseCost: sin regalos, renglones anulados o excluidos, gastos
+-- cancelados ni renglones corregidos a «no llegó» (su movimiento positivo sigue en la tabla). Nula si
+-- nunca hubo compra.
+with recursive src (ingredient_id, depth) as (
+  select sqlc.arg(ingredient_id)::bigint, 0
+  union all
+  select r.old_ingredient_id, src.depth + 1
+    from ingredient_replacements r join src on r.new_ingredient_id = src.ingredient_id
+   where r.kind = 'merge' and src.depth < 16
+)
+select max(m.effective_on)::date as arrived_on
+  from src
+  join stock_movements m on m.ingredient_id = src.ingredient_id
+  join expense_items ei on ei.id = m.expense_item_id
+  join expenses e on e.id = ei.expense_id
+ where m.movement_type = 'compra' and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
+   and ei.voided_at is null and not ei.excluded and e.status <> 'cancelada'
+   and ei.applied_qty_base > 0;
