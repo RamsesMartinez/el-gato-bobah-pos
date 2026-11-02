@@ -226,3 +226,29 @@ el diff. Sin bloqueantes. Corregido, cada uno con su prueba:
 
 No corregido, a propósito: un renglón con densidad fija al que después se le pone un empaque conserva
 la copia; no se lee (sin uso) y no recalcula nada.
+
+## Prueba con usuario nuevo (2026-11-02)
+
+Un subagente sin contexto, a 1024×600 con toque, contra el stack local con la base restaurada de
+producción. Logró las cuatro tareas sin ayuda: capturar la densidad por pesada (1.1026 g/ml), comprar
+dos galones, pasar un artículo de g a ml con la etiqueta (sin báscula) y contar 1 galón cerrado más uno
+abierto pesado con el empaque (5.67 L, la cuenta le cuadró a mano).
+
+Encontró y quedó corregido, con su prueba:
+
+- **Defecto que ya existía y bloqueaba esta feature**: el buscador del gasto cargaba el catálogo con un
+  tope de 500 renglones y la empresa real tiene 532 (453 insumos y 79 productos con existencia). Lo que
+  va después de «Té…» en el abecedario no se podía comprar, y la compra en kg de algo en ml no se podía
+  capturar. El tope pasa a 3,000 (`TestTheExpenseSearchOffersTheWholeCatalogOfARealBusiness`).
+- En la hoja de densidad, con el teclado abierto «Guardar» no se ve: el botón del teclado dice
+  «Siguiente ›» y lleva a la casilla que falta; solo la última dice «Listo». La ayuda ya no dice «igual
+  que hoy».
+
+Observado y no corregido, a propósito (fuera del alcance, para otro issue si el dueño lo pide):
+
+- Un gasto pagado no se puede anular desde la pantalla (regla existente).
+- Archivar un artículo con existencia no avisa (comportamiento de la 042).
+- Al volver a abrir lo contado se pierde el desglose (cerrado + pesado) y la cifra sale como suelto con
+  cuatro decimales; lo pesado sí queda guardado en el renglón del conteo.
+- La cantidad del renglón de compra usa el teclado del sistema; la densidad y el conteo, el de la app
+  (inconsistencia que ya existía en la captura del gasto).

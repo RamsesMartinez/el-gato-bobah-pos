@@ -244,3 +244,28 @@ func TestALineThatWillNotArriveNeverBlocksClearingTheDensity(t *testing.T) {
 		t.Fatalf("con lo que ya no va a llegar = %v", err)
 	}
 }
+
+// Prueba con usuario nuevo de la 058: el buscador de la compra carga el catálogo de una vez y lo cortaba
+// en 500 renglones. La empresa real tiene 532 (453 insumos y 79 productos con existencia): todo lo que
+// va después de «Té…» en el abecedario no se podía elegir en un gasto, y la compra en kg de algo en ml
+// —lo que esta spec resuelve— no se podía capturar.
+func TestTheExpenseSearchOffersTheWholeCatalogOfARealBusiness(t *testing.T) {
+	t.Parallel()
+	k := newDensityPurchaseKit(t)
+	if _, err := k.st.Pool.Exec(context.Background(), `insert into ingredients (company_id, name, base_unit_id)
+		select $1, 'Insumo catálogo ' || lpad(n::text, 4, '0'), (select id from units where code = 'g')
+		  from generate_series(1, 600) n`, defaultCompanyID); err != nil {
+		t.Fatal(err)
+	}
+	last := ingredientIn(t, k.st, defaultCompanyID, "Zarzamora catálogo", "ml")
+	got, err := k.svc.SearchArticles(k.ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range got {
+		if a.ItemType == "ingrediente" && a.ID == last {
+			return
+		}
+	}
+	t.Fatalf("con %d artículos, «Zarzamora catálogo» no está en la búsqueda del gasto", len(got))
+}

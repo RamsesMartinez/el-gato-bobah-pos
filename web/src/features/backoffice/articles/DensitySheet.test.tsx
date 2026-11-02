@@ -41,6 +41,21 @@ async function pesada(full: string, empty: string, content: string) {
 describe('Hoja de densidad', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  // Prueba con usuario nuevo: con el teclado abierto «Guardar» no se ve; «Siguiente ›» lleva a la
+  // casilla que falta y solo la última dice «Listo».
+  it('el botón del teclado pasa a la siguiente casilla vacía y en la última cierra', async () => {
+    montar();
+    await teclear('Pesa lleno (g)', '1250');
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente ›' }));
+    for (const ch of '150') fireEvent.click(screen.getByRole('button', { name: ch }));
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente ›' }));
+    for (const ch of '1000') fireEvent.click(screen.getByRole('button', { name: ch }));
+    expect(screen.getByLabelText('Pesa la botella vacía (g)')).toHaveValue('150');
+    expect(screen.getByLabelText('Contiene (ml, según la etiqueta)')).toHaveValue('1000');
+    listo();
+    expect(guardar()).toBeEnabled();
+  });
+
   it('con una pesada muestra la cuenta y guarda lo pesado', async () => {
     const onDone = montar();
     expect(await screen.findByText('Opcional')).toBeInTheDocument();
@@ -76,7 +91,7 @@ describe('Hoja de densidad', () => {
     montar();
     fireEvent.click(await screen.findByRole('button', { name: '¿Para qué sirve la densidad?' }));
     expect(screen.getByText(/4,300 g ÷ 1.10 = 3,909 ml/)).toBeInTheDocument();
-    expect(screen.getByText(/Sin ella todo funciona igual que hoy/)).toBeInTheDocument();
+    expect(screen.getByText(/Sin ella, la compra se captura en la unidad del artículo/)).toBeInTheDocument();
   });
 
   it.each([
@@ -105,10 +120,10 @@ describe('Hoja de densidad', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Borrar' }));
     fireEvent.click(screen.getByRole('button', { name: 'Borrar' }));
     await teclear('Contiene (ml, según la etiqueta)', '1000');
-    listo();
+    // Queda una casilla vacía: el teclado ofrece ir a ella, no cerrar.
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente ›' }));
     expect(screen.getByLabelText('Pesa la botella vacía (g)')).toHaveValue('');
     expect(screen.queryByText(/gramos por mililitro$/)).toBeNull();
-    expect(guardar()).toBeDisabled();
   });
 
   it('escrita a mano manda el valor', async () => {

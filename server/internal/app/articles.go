@@ -76,8 +76,10 @@ type IngredientInput struct {
 
 // maxArticleResults es un techo defensivo, no una paginación: el front carga el catálogo una
 // vez al abrir el diálogo del gasto y el picker filtra en local (así el buscador responde sin
-// round-trip por tecla). Un local maneja cientos de insumos, no miles.
-const maxArticleResults = 500
+// round-trip por tecla). Con 500 se cortaba el catálogo real (532 medidos el 2026-11-02: 453 insumos y
+// 79 productos con existencia) y lo del final del abecedario no se podía comprar. El mismo techo que
+// los posibles duplicados (maxDuplicateCandidates).
+const maxArticleResults = 3000
 
 func (s *BackofficeService) Units(ctx context.Context) ([]UnitView, error) {
 	rows, err := s.store.QC(ctx).ListUnits(ctx)

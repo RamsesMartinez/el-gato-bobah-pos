@@ -104,8 +104,8 @@ ve fallar por la razón correcta.
 - [X] T037 [P] E2E `web/e2e/densidad-y-tara.spec.ts` a 1024×600 contra el `make start` del worktree: crea sus artículos, captura densidad, compra 4.3 kg, cambia de unidad otro, cuenta pesando con empaque; cierra lo que abre (conteo y gasto); capturas solo en `test-results/`; medir que la hoja de captura del conteo con la sección abierta y 1 y 4 empaques no saca «Guardar» de la pantalla
 - [X] T038 Documentar en `AGENTS.md` §2 «Densidad y tara (spec 058)»: densidad fija por renglón y por qué, el trigger que limpia al cambiar a pieza/cm, quitar con compra pendiente → 409, lo pesado guardado en el conteo
 - [X] T039 `/revision-de-codigo` (hook `after_implement`) y corregir lo que encuentre con su prueba
-- [ ] T040 Prueba con usuario nuevo (subagente sin contexto) a 1024×600 con datos restaurados, recorrido de [quickstart.md](quickstart.md); lo observado en texto en el plan
-- [ ] T041 `make ci-local` verde; `cd server && go build ./... && go test ./...`; `cd web && bun run lint && bun run vitest run && bun run build`
+- [X] T040 Prueba con usuario nuevo (subagente sin contexto) a 1024×600 con datos restaurados, recorrido de [quickstart.md](quickstart.md); lo observado en texto en el plan
+- [X] T041 `make ci-local` verde; `cd server && go build ./... && go test ./...`; `cd web && bun run lint && bun run vitest run && bun run build`
 
 ---
 

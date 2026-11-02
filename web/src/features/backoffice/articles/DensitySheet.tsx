@@ -122,6 +122,14 @@ export function DensitySheet({ article, onClose, onDone }: {
     onError: (e) => { setAsking(false); fail(e, 'No se pudo quitar la densidad'); },
   });
 
+  // Las casillas del modo que se ve, en orden: «Listo» pasa a la siguiente vacía y solo cierra el
+  // teclado cuando ya no queda ninguna (prueba con usuario nuevo: con el teclado abierto «Guardar» no se
+  // ve, y había que tocar cada casilla).
+  const shown: Field[] = mode === 'weighing' ? ['fullG', 'emptyG', 'contentMl'] : manual === 'label' ? ['netG', 'labelMl'] : ['density'];
+  const next = () => {
+    const rest = shown.slice(shown.indexOf(field as Field) + 1).concat(shown).find((f) => f !== field && values[f] === '');
+    setField(rest ?? null);
+  };
   const key = (k: string) => {
     if (!field) return;
     setError('');
@@ -163,7 +171,7 @@ export function DensitySheet({ article, onClose, onDone }: {
               <Box p={3} borderRadius="lg" bg="bg.subtle">
                 <Text fontSize="sm">
                   Sirve para comprar en peso algo que guardas en líquido, o al revés. Por ejemplo, el galón dice 4.3 kg y lo
-                  guardas en ml; con la densidad 1.10 entra solo como 4,300 g ÷ 1.10 = 3,909 ml. Sin ella todo funciona igual que hoy.
+                  guardas en ml; con la densidad 1.10 entra solo como 4,300 g ÷ 1.10 = 3,909 ml. Sin ella, la compra se captura en la unidad del artículo.
                 </Text>
               </Box>
             )}
@@ -201,7 +209,7 @@ export function DensitySheet({ article, onClose, onDone }: {
             <HStack w="100%" gap={3} align="end">
               <Box flex="1" maxW="320px"><NumericKeypad allowDecimal onKey={key} /></Box>
               <Box flex="1" />
-              <Button minH="56px" colorPalette="brand" onClick={() => setField(null)}>Listo</Button>
+              <Button minH="56px" colorPalette="brand" onClick={next}>{shown.some((f) => f !== field && values[f] === '') ? 'Siguiente ›' : 'Listo'}</Button>
             </HStack>
           ) : (
             <HStack w="100%" gap={3}>
