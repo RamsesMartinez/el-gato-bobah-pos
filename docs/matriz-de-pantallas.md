@@ -665,5 +665,7 @@ se ve en la lista.
 | D7 | La base y el servidor normalizan igual | Mismo resultado con «Ñandú», espacios dobles y espacio duro | `migration_0095_test.go` | Postgres |
 
 **Lo que D no cubre:** el arrastre con el dedo (mantener 500 ms, desplazar la lista sin mover nada,
-desplazamiento automático al borde) solo se puede medir en Chromium táctil a 1024×600 contra el
-ambiente de pruebas (`web/e2e/lugares-para-contar.spec.ts`); jsdom mide todo en 0 px.
+desplazamiento automático al borde, que la página no se recorra después de soltar) solo se puede
+medir en Chromium táctil a 1024×600 contra el `make start` local (`web/e2e/lugares-para-contar.spec.ts`);
+jsdom mide todo en 0 px. La de soltar (#101) va con toques por CDP y mide el contenedor desde el
+`pointerup`: lo que se mueve antes es el desplazamiento automático, y eso sí es intencional.

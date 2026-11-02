@@ -101,6 +101,52 @@ test('desplazar la lista no mueve nada; 500 ms sobre ≡ levanta y arrastrar de 
   }
 });
 
+// #101: se reportó que al soltar un lugar la página se recorría sola ~113 px. No se reprodujo con el
+// código de entonces (ratón y toques reales, arrastres cortos y largos, soltando a media pantalla y en
+// la franja de la orilla): lo medido fue el desplazamiento automático de ANTES de soltar, con el dedo
+// cerca de la orilla. Esta prueba vigila lo que sí sería un defecto: que el contenedor se mueva
+// DESPUÉS de levantar el dedo. Va con toques por CDP, no con el ratón: es lo que hace la tableta.
+test('soltar un lugar no recorre la página', async ({ page, request }) => {
+  await entrar(page);
+  await page.goto('/negocio');
+  const antes: string[] = await nombres(request);
+  const grip = page.getByRole('button', { name: `Mover ${antes[5]}`, exact: true });
+  await grip.scrollIntoViewIfNeeded();
+  // Lo que se mueve no es la ventana: es el contenedor de la página. Se anota cada desplazamiento.
+  await page.evaluate(() => {
+    let el: HTMLElement | null = document.getElementById('lugares');
+    while (el && !(el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+    const box = el ?? (document.scrollingElement as HTMLElement);
+    const w = window as unknown as { recorrido: { soltado: number | null; despues: number } };
+    w.recorrido = { soltado: null, despues: 0 };
+    window.addEventListener('pointerup', () => { w.recorrido.soltado = box.scrollTop; }, true);
+    box.addEventListener('scroll', () => { if (w.recorrido.soltado !== null) w.recorrido.despues = box.scrollTop - w.recorrido.soltado; });
+  });
+  const cdp = await page.context().newCDPSession(page);
+  const g = (await grip.boundingBox())!;
+  const d = (await page.getByRole('button', { name: `Mover ${antes[2]}`, exact: true }).boundingBox())!;
+  const x = g.x + g.width / 2;
+  const y0 = g.y + g.height / 2;
+  const y1 = d.y + d.height / 2 - 10;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: y0 }] });
+  await page.waitForTimeout(650);
+  for (let k = 1; k <= 10; k++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y0 + ((y1 - y0) * k) / 10 }] });
+    await page.waitForTimeout(16);
+  }
+  await page.waitForTimeout(300);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect.poll(async () => (await nombres(request))[2], { timeout: 10_000 }).toBe(antes[5]);
+  await page.waitForTimeout(800);
+  const r = await page.evaluate(() => (window as unknown as { recorrido: { soltado: number | null; despues: number } }).recorrido);
+  expect(r.soltado, 'el arrastre no llegó a soltarse').not.toBeNull();
+  expect(Math.abs(r.despues), `la página se recorrió ${Math.round(r.despues)} px después de soltar`).toBeLessThan(4);
+  const ids = (await api(request, 'get', '/stock/count-places')) as { id: number; name: string }[];
+  for (const [pos, name] of antes.entries()) {
+    await api(request, 'post', `/stock/count-places/${ids.find((x2) => x2.name === name)!.id}/move`, { toPosition: pos });
+  }
+});
+
 // Spec 043: la ubicación se elige en la ficha y se guarda sola. Tres toques desde la lista (abrir
 // la ficha, tocar «Ubicación», elegir), sin abrir el teclado y sin botón «Guardar».
 test('la ubicación del artículo se elige en tres toques, sin teclado y sin «Guardar»', async ({ page, request }) => {
