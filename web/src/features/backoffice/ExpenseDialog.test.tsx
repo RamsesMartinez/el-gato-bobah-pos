@@ -28,7 +28,6 @@ const back = vi.hoisted(() => ({
   presentations: vi.fn(),
   searchArticles: vi.fn(),
   createExpense: vi.fn(),
-  createIngredient: vi.fn(),
   createExpenseCategory: vi.fn(),
   createSupplier: vi.fn(),
   parseDoc: vi.fn(),
@@ -92,7 +91,6 @@ beforeEach(() => {
     { itemType: 'ingrediente', id: 11, name: 'Azúcar', unitCode: 'g', unitKind: 'masa' },
   ] });
   back.createExpense.mockResolvedValue({ id: 99 });
-  back.createIngredient.mockResolvedValue({ id: 50, name: 'Canela' });
   back.lastClosedCount.mockResolvedValue({ closedAt: null });
   back.expenseDetail.mockResolvedValue({ items: [], payments: [] });
   pos.businessSettings.mockResolvedValue({ stockItemLabel: 'artículo', timezone: 'America/Mexico_City' });
@@ -231,7 +229,6 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
     }
     fireEvent.click(screen.getByText('Peso (g, kg)'));
     expect((await screen.findAllByText(/Canela/)).length).toBeGreaterThan(0);
-    expect(back.createIngredient).not.toHaveBeenCalled();
   });
 
   test('quitar un renglón capturado pide confirmación', async () => {

@@ -361,8 +361,8 @@ func TestANewArticleOnlyExistsIfItsCaptureIsSaved(t *testing.T) {
 	})
 }
 
-// La alta desde la lista pide `inventory.configure`; la ruta vieja POST /ingredients se conserva una
-// subida más para las tabletas que todavía corren la pantalla anterior (Revisión B1).
+// La alta desde la lista pide `inventory.configure`. La ruta vieja POST /ingredients ya no existe
+// (#115): daba de alta insumos sin el permiso de la lista y sin el evento de bitácora de la alta nueva.
 func TestCreatingArticlesHTTP(t *testing.T) {
 	t.Parallel()
 	r, st, token := newStockAPI(t)
@@ -379,8 +379,15 @@ func TestCreatingArticlesHTTP(t *testing.T) {
 	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"NAME_TAKEN"`) || !strings.Contains(w.Body.String(), `"existingId"`) {
 		t.Fatalf("repetido = %d %s; quiere 409 NAME_TAKEN con el que existe", w.Code, w.Body.String())
 	}
-	if w := do(t, r, http.MethodPost, "/api/v1/ingredients", admin, []byte(`{"name":"Linaza","baseUnitId":`+g+`}`), "application/json"); w.Code != http.StatusCreated && w.Code != http.StatusOK {
-		t.Fatalf("la ruta vieja = %d; debe seguir viva una subida más", w.Code)
+	if w := do(t, r, http.MethodPost, "/api/v1/ingredients", admin, []byte(`{"name":"Linaza","baseUnitId":`+g+`}`), "application/json"); w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST /ingredients = %d %s; quiere 405: la alta sin permiso ni bitácora volvió a existir", w.Code, w.Body.String())
+	}
+	if n := articleCount(t, st, defaultCompanyID, "Linaza"); n != 0 {
+		t.Fatalf("la ruta vieja dio de alta %d artículos", n)
+	}
+	// Quitar el POST no debe sacar al GET de su grupo: el catálogo con costos no es para la caja.
+	if w := do(t, r, http.MethodGet, "/api/v1/ingredients", token("art_cajero_lee", "cajero"), nil, ""); w.Code != http.StatusForbidden {
+		t.Fatalf("cajero en GET /ingredients = %d, quiere 403", w.Code)
 	}
 }
 
