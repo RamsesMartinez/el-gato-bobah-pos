@@ -31,19 +31,29 @@ type PurchaseUnit struct {
 	// (una pieza de "Harina … 432 g" → 432). nil cuando no se conoce. Solo se usa para salvar
 	// el salto pieza → masa/volumen; en los demás casos el factor de la unidad basta.
 	PackQtyInBase *decimal.Decimal
+	// FromPresentation: el renglón se compró en una presentación del artículo («Caja de 12 latas»).
+	// Lo que trae una presentación ya está en la base del artículo, sea cual sea su unidad (#182).
+	FromPresentation bool
 }
 
 // BaseQty convierte qty a unidad base del artículo.
 //
-// Tres caminos, y el tercero es la razón de ser de la función:
-//  1. mismo kind (kg → g, l → ml): qty × ToBase.
-//  2. pieza → pieza: qty tal cual.
-//  3. pieza → masa/volumen: qty × PackQtyInBase. Aquí ToBase no sirve — "una pieza" no son N
+// Una presentación va primero: lo que trae ya está en la base del artículo, así que es
+// qty × PackQtyInBase sin importar la unidad base. Antes caía en «pieza → pieza» y una caja de 12
+// latas sumaba una lata (#182). Sin presentación, tres caminos, y el tercero es la razón de ser
+// de la función:
+//  1. mismo kind (kg → g, l → ml, pieza → pieza): qty × ToBase. Un contenido aprendido de un
+//     ticket («355 ml») no aplica aquí: no es de piezas.
+//  2. pieza → masa/volumen: qty × PackQtyInBase. Aquí ToBase no sirve — "una pieza" no son N
 //     gramos en general, depende del producto — y sin el formato del proveedor no se puede
 //     convertir sin inventar el dato.
+//  3. masa ↔ volumen: se rechaza.
 func BaseQty(qty decimal.Decimal, u PurchaseUnit) (decimal.Decimal, error) {
 	if !qty.IsPositive() {
 		return decimal.Zero, fmt.Errorf("%w: la cantidad comprada debe ser mayor a cero", ErrValidation)
+	}
+	if u.FromPresentation {
+		return packQty(qty, u.PackQtyInBase)
 	}
 	switch u.Kind {
 	case u.BaseKind:
@@ -53,10 +63,7 @@ func BaseQty(qty decimal.Decimal, u PurchaseUnit) (decimal.Decimal, error) {
 		return Round4(qty.Mul(u.ToBase)), nil
 
 	case "pieza":
-		if u.PackQtyInBase == nil || !u.PackQtyInBase.IsPositive() {
-			return decimal.Zero, ErrPackUnknown
-		}
-		return Round4(qty.Mul(*u.PackQtyInBase)), nil
+		return packQty(qty, u.PackQtyInBase)
 
 	default:
 		// Comprar en kg algo que se almacena en ml (o al revés) necesitaría densidad. Antes de
@@ -64,6 +71,13 @@ func BaseQty(qty decimal.Decimal, u PurchaseUnit) (decimal.Decimal, error) {
 		// rechazar y que el operador corrija la unidad.
 		return decimal.Zero, ErrUnitKindMismatch
 	}
+}
+
+func packQty(qty decimal.Decimal, pack *decimal.Decimal) (decimal.Decimal, error) {
+	if pack == nil || !pack.IsPositive() {
+		return decimal.Zero, ErrPackUnknown
+	}
+	return Round4(qty.Mul(*pack)), nil
 }
 
 // UnitCost reparte el importe de la línea entre las unidades base recibidas, para guardar el
