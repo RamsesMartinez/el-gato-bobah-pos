@@ -451,6 +451,18 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   con el porqué. Una que no está en ninguno truena en la integración, se haya creado con
   `create table` o con `alter table`. El paso que borra corre después de migrar, y si algo falla
   antes de que `FUGAS` diga 0, el script tira la base restaurada entera.
+- **Un Down que se niega con datos lleva su limpieza de prueba** (#116). Las pruebas de migración
+  bajan un respaldo real hasta antes de su migración, y con datos de producción cada guarda de
+  Down (`raise exception`) que cruzan se niega: ocho pruebas de la 0064 a la 0082 morían en la 0088
+  por los cobros con terminal. `migrarAbajoHasta` baja una migración a la vez y antes de cada Down
+  aplica su renglón de `guardedDownCleanup` (en
+  [harness_restaurado_test.go](server/internal/integration/harness_restaurado_test.go)): borra o
+  pone en neutro exactamente lo que nombra la guarda, solo en la copia de prueba.
+  `TestEveryGuardedDownHasItsTestCleanup` truena si un Down nuevo se niega y no tiene su renglón, o
+  su razón en `guardedDownWithoutCleanup` (hoy solo la 0076). Un Down que pierde un dato que su Up
+  no vuelve a aceptar también lleva renglón aunque no se niegue (la 0072, con los descuentos). Cada
+  prueba trabaja sobre su propia copia de `TEST_RESTORED_DATABASE_URL`, así que la base restaurada
+  no cambia entre pruebas ni entre corridas.
 - **Credenciales de las plataformas** (0075, ampliación de la 021): el Client ID y el Client Secret
   de la app de Uber **ya no van en el entorno**. Se capturan en Plataformas → «Acceso a la app», por
   empresa, y se guardan solo si Uber entrega un token con ellas. Cuatro cosas que cuestan caro:
@@ -626,8 +638,8 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     dejarlo. `TestEveryAuditActionIsProduced` falla si una acción de la lista no tiene prueba que la
     produzca.
   - **La bitácora no se borra, ni como owner.** Un test que revierte migraciones por debajo de la
-    0089 con pedidos creados pasa por `migrarAbajoHasta`, que la vacía antes (solo en pruebas); el
-    Down de la 0089 se niega con datos, igual que en producción.
+    0089 con pedidos creados pasa por `migrarAbajoHasta`, que la vacía antes (solo en pruebas, por
+    `guardedDownCleanup`); el Down de la 0089 se niega con datos, igual que en producción.
   - **`attendance_entries.branch_id` queda nulo con varias sucursales y no se rellena después**: es
     lo que el selector de sucursal tendrá que resolver. Los eventos de pedido y caja sí guardan la
     sucursal del pedido o de la caja.

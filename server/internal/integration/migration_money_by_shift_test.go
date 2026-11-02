@@ -4,12 +4,10 @@ package integration
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/pressly/goose/v3"
 	"github.com/shopspring/decimal"
 )
 
@@ -256,8 +254,7 @@ func TestMigrationMoneyByShiftOnARealBackup(t *testing.T) {
 			values ($1, $2, $3, 0, 5, 'solo propina', $4) returning id`, a.id, a.order, a.method, a.user).Scan(&tipOnly); err != nil {
 			t.Fatal(err)
 		}
-		db := prepararGoose(t, st.Pool)
-		if err := gooseDownTo(db, before); err == nil {
+		if err := migrarAbajoHastaErr(t, st.Pool, before); err == nil {
 			t.Fatal("el Down borró una devolución de solo propina: ese dinero salió del cajón y ya no habría rastro")
 		}
 		if _, err := st.Pool.Exec(ctx, `delete from order_refunds where id = $1`, tipOnly); err != nil {
@@ -284,10 +281,4 @@ func TestMigrationMoneyByShiftOnARealBackup(t *testing.T) {
 		}
 		migrarArriba(t, st.Pool)
 	})
-}
-
-// gooseDownTo es migrarAbajoHasta devolviendo el error en vez de fallar: un Down que DEBE negarse
-// se prueba viendo ese error.
-func gooseDownTo(db *sql.DB, version int64) error {
-	return goose.DownToContext(context.Background(), db, ".", version)
 }
