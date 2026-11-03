@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Box, Button, HStack, Input, Text } from '@chakra-ui/react';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
@@ -22,11 +22,13 @@ interface Props {
   description?: string;
   // Motivos frecuentes que se eligen sin teclear; el texto libre sigue disponible.
   atajos?: string[];
+  // Lo que pasa al confirmar cuando es una lista (cada pago, cada artículo): va arriba del motivo.
+  children?: ReactNode;
 }
 
 // ReasonSheet reemplaza al `prompt()` del navegador para pedir un motivo.
 export function ReasonSheet({
-  isOpen, title, label, placeholder, confirmLabel, required, destructive, loading, onDone, description, atajos,
+  isOpen, title, label, placeholder, confirmLabel, required, destructive, loading, onDone, description, atajos, children,
 }: Props) {
   const [texto, setTexto] = useState('');
   const limpio = texto.trim();
@@ -42,6 +44,7 @@ export function ReasonSheet({
           {description && <Text fontSize="sm" color="fg.muted">{description}</Text>}
         </DrawerHeader>
         <DrawerBody flex="1" minH={0} overflowY="auto" pb={2}>
+          {children}
           <Input autoFocus size="lg" minH="52px" aria-label={label}
             placeholder={placeholder ?? (required ? label : `${label} (opcional)`)}
             value={texto} onChange={(e) => setTexto(e.target.value)}

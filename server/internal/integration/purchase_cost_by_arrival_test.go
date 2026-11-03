@@ -80,7 +80,7 @@ func TestACancelledNewerPurchaseDoesNotHoldTheCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := k.svc.CancelExpense(k.ctx, id, "prueba", k.user); err != nil {
+	if err := k.svc.CancelExpense(k.ctx, id, "prueba", k.user, true); err != nil {
 		t.Fatalf("anular: %v", err)
 	}
 	old := k.bultos("2", "750")

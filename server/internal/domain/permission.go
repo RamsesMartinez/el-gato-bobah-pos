@@ -55,6 +55,9 @@ const (
 	// (spec 053). Mueve el importe y lo que la compra sumó al almacén; por omisión solo el
 	// administrador (#167).
 	PermExpensesEdit Permission = "expenses.edit"
+	// PermExpensesCancel: anular un gasto capturado por error, aunque esté pagado (#216). Lo saca de
+	// los reportes y, si su pago está en un corte abierto, cambia el esperado del cajón.
+	PermExpensesCancel Permission = "expenses.cancel"
 )
 
 // AllPermissions devuelve todos los permisos que existen, en un orden fijo.
@@ -63,7 +66,7 @@ func AllPermissions() []Permission {
 		PermAttendanceConfigure, PermAttendanceReport, PermAttendanceCorrectOthers, PermAttendanceCorrectOwn,
 		PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure, PermInventoryHealthView, PermMenuConfigure,
 		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount, PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount,
-		PermExpensesEdit}
+		PermExpensesEdit, PermExpensesCancel}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -81,7 +84,8 @@ func PermissionsFor(role Role) []Permission {
 		return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 			PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
 			PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount,
-			PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount}
+			PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount,
+			PermExpensesCancel}
 	case RoleCajero, RoleMesero:
 		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}
 	}
@@ -136,6 +140,8 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede editar gastos"
 	case PermCashAdjustCount:
 		return "Tu usuario no puede cambiar lo que entra al arqueo"
+	case PermExpensesCancel:
+		return "Tu usuario no puede anular gastos"
 	}
 	return "Tu usuario no puede hacer esto"
 }

@@ -15,9 +15,7 @@ import (
 
 const cancelExpense = `-- name: CancelExpense :execrows
 update expenses set status = 'cancelada', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
-where expenses.id = $1 and expenses.status = 'pendiente'
-  -- Con un pago ya dentro de un corte no se anula (spec 053, A1): el corte seguiría contando la salida
-  -- de un gasto anulado y el arqueo dejaría de cuadrar.
+where expenses.id = $1 and expenses.status in ('pendiente', 'pagada')
   and not exists (select 1 from expense_payments ep where ep.expense_id = expenses.id
                                                      and ep.register_session_id is not null)
 `
@@ -28,6 +26,9 @@ type CancelExpenseParams struct {
 	CancelReason *string `json:"cancel_reason"`
 }
 
+// Pendiente o pagada (#216: un gasto capturado por error se anula aunque esté pagado). El servicio
+// saca antes los pagos de un corte ABIERTO; uno que siga en un corte —uno cerrado— lo impide: el corte
+// seguiría contando la salida de un gasto anulado y el arqueo dejaría de cuadrar (spec 053, A1).
 func (q *Queries) CancelExpense(ctx context.Context, arg CancelExpenseParams) (int64, error) {
 	result, err := q.db.Exec(ctx, cancelExpense, arg.ID, arg.CancelledBy, arg.CancelReason)
 	if err != nil {
@@ -456,33 +457,38 @@ const getExpenseView = `-- name: GetExpenseView :one
 select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.financial_group,
        s.name as supplier, e.amount, e.currency, e.description, e.doc_kind, e.doc_folio,
        e.paid_at, ub.name as created_by_name, e.document_date, e.document_total,
-       e.supplier_id, e.category_id
+       e.supplier_id, e.category_id,
+       e.cancelled_at, uc.name as cancelled_by_name, e.cancel_reason
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
 left join users ub on ub.id = e.created_by
+left join users uc on uc.id = e.cancelled_by
 where e.id = $1
 `
 
 type GetExpenseViewRow struct {
-	ID             int64              `json:"id"`
-	ExpenseDate    pgtype.Date        `json:"expense_date"`
-	ReceivedAt     pgtype.Date        `json:"received_at"`
-	Status         ExpenseStatus      `json:"status"`
-	Category       string             `json:"category"`
-	FinancialGroup FinancialGroup     `json:"financial_group"`
-	Supplier       *string            `json:"supplier"`
-	Amount         decimal.Decimal    `json:"amount"`
-	Currency       string             `json:"currency"`
-	Description    *string            `json:"description"`
-	DocKind        *string            `json:"doc_kind"`
-	DocFolio       *string            `json:"doc_folio"`
-	PaidAt         pgtype.Timestamptz `json:"paid_at"`
-	CreatedByName  *string            `json:"created_by_name"`
-	DocumentDate   pgtype.Date        `json:"document_date"`
-	DocumentTotal  *decimal.Decimal   `json:"document_total"`
-	SupplierID     *int64             `json:"supplier_id"`
-	CategoryID     int64              `json:"category_id"`
+	ID              int64              `json:"id"`
+	ExpenseDate     pgtype.Date        `json:"expense_date"`
+	ReceivedAt      pgtype.Date        `json:"received_at"`
+	Status          ExpenseStatus      `json:"status"`
+	Category        string             `json:"category"`
+	FinancialGroup  FinancialGroup     `json:"financial_group"`
+	Supplier        *string            `json:"supplier"`
+	Amount          decimal.Decimal    `json:"amount"`
+	Currency        string             `json:"currency"`
+	Description     *string            `json:"description"`
+	DocKind         *string            `json:"doc_kind"`
+	DocFolio        *string            `json:"doc_folio"`
+	PaidAt          pgtype.Timestamptz `json:"paid_at"`
+	CreatedByName   *string            `json:"created_by_name"`
+	DocumentDate    pgtype.Date        `json:"document_date"`
+	DocumentTotal   *decimal.Decimal   `json:"document_total"`
+	SupplierID      *int64             `json:"supplier_id"`
+	CategoryID      int64              `json:"category_id"`
+	CancelledAt     pgtype.Timestamptz `json:"cancelled_at"`
+	CancelledByName *string            `json:"cancelled_by_name"`
+	CancelReason    *string            `json:"cancel_reason"`
 }
 
 // El encabezado ya resuelto (categoría, proveedor, quién lo capturó) para la pantalla de
@@ -509,6 +515,9 @@ func (q *Queries) GetExpenseView(ctx context.Context, id int64) (GetExpenseViewR
 		&i.DocumentTotal,
 		&i.SupplierID,
 		&i.CategoryID,
+		&i.CancelledAt,
+		&i.CancelledByName,
+		&i.CancelReason,
 	)
 	return i, err
 }

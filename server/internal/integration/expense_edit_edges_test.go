@@ -29,7 +29,7 @@ func TestACancelledExpenseIsNeitherEditedNorReceived(t *testing.T) {
 		t.Fatal(err)
 	}
 	item := k.items(t, id)["Tapas"]
-	if err := k.svc.CancelExpense(k.ctx, id, "prueba", k.user); err != nil {
+	if err := k.svc.CancelExpense(k.ctx, id, "prueba", k.user, true); err != nil {
 		t.Fatal(err)
 	}
 	comment := "después de anular"

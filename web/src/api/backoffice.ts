@@ -511,6 +511,10 @@ export interface ExpenseDetail extends Expense {
   // Lo que preselecciona la edición del encabezado (spec 053).
   supplierId?: number | null;
   categoryId?: number;
+  // Quién anuló, cuándo y por qué (#216); solo en un gasto anulado.
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
 }
 
 // ---- Editar un gasto guardado (spec 053) ----

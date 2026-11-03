@@ -123,6 +123,8 @@ const (
 	// AuditExpenseEdited: se corrigió un gasto ya guardado: su encabezado, renglones agregados o
 	// quitados, su importe y las decisiones ante un conteo.
 	AuditExpenseEdited AuditAction = "expense.edited"
+	// AuditExpenseCancelled: se anuló un gasto, con su motivo y dónde estaba cada pago (#216).
+	AuditExpenseCancelled AuditAction = "expense.cancelled"
 )
 
 const (
