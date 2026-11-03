@@ -100,6 +100,7 @@ function montar(url = '/almacen') {
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
 const tecla = (k: string) => fireEvent.click(screen.getByRole('button', { name: k }));
 
+// #103: el botón dice que lleva a Negocio; «Cambiar el orden ›» cambiaba de sección sin avisar.
 // La segunda prueba sin contexto (040, T022) no encontró cómo cambiar el orden del recorrido: antes
 // de empezar, el conteo dice en qué orden va y quien configura llega a ordenarlo desde ahí.
 describe('orden del recorrido (spec 040)', () => {
@@ -108,7 +109,7 @@ describe('orden del recorrido (spec 040)', () => {
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.count', 'inventory.configure'] } as never });
     montar();
     expect(await screen.findByText('Se recorre en este orden: Barra → Bodega')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Cambiar el orden ›' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ordenar lugares en Negocio ›' }));
     expect(await screen.findByText('Negocio')).toBeInTheDocument();
   });
   test('sin permiso de configurar no ofrece cambiarlo', async () => {
@@ -116,7 +117,7 @@ describe('orden del recorrido (spec 040)', () => {
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
     montar();
     expect(await screen.findByText('Se recorre en este orden: Barra → Bodega')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cambiar el orden ›' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ordenar lugares en Negocio ›' })).toBeNull();
   });
 });
 
@@ -660,11 +661,45 @@ describe('pesar con empaque (spec 058)', () => {
     click('Guardar');
     await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, {
       countedQty: '2250', confirmable: true,
-      gross: { weight: '850', weightUnitId: 1, presentationId: 7, containers: 2, seenTareG: '120', seenDensity: '1.1' },
+      gross: { weight: '850', weightUnitId: 1, presentationId: 7, containers: 2, seenTareG: '120', seenDensity: '1.1',
+        closedPacks: [{ presentationId: 7, qty: 3 }] },
     }));
     // Lo contado es la cifra del servidor, no la de la pantalla.
     expect(await screen.findByText('✓ 3 L')).toBeInTheDocument();
     expect(uso.medirAccion).toHaveBeenCalledWith('inventario', 'pesar-con-empaque');
+  });
+
+  // #204: reabrir lo contado pesando mostraba solo el total en lo suelto; el desglose se perdía.
+  test('al volver a abrir lo contado pesando, vuelven los cerrados, la báscula y los empaques', async () => {
+    back.currentCount.mockResolvedValue(jarabe({
+      countedQty: '2804.5455', weighed: { closedQty: '2250', grossG: '850', containers: 2, tareG: '120' },
+    }));
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[0]).getByRole('button', { name: 'Cambiar' }));
+    expect(await screen.findByLabelText('Botella de Jarabe de vainilla')).toHaveValue('3');
+    expect(screen.getByLabelText('Peso en la báscula de Jarabe de vainilla')).toHaveValue('850');
+    expect(screen.getByLabelText('Empaques pesados de Jarabe de vainilla')).toHaveValue('2');
+    expect(screen.queryByLabelText('Suelto de Jarabe de vainilla')).toBeNull();
+    expect(screen.getByTestId('cuenta-pesada')).toHaveTextContent('850 g − 2 × 120 g = 610 g ÷ 1.10 = 554.5 ml');
+    expect(screen.getByTestId('total-contado')).toHaveTextContent('2.8 L');
+  });
+
+  // #204, prueba con usuario nuevo: tras corregir y guardar, reabrir traía el desglose de antes, y
+  // «Guardar» sin tocar nada deshacía la corrección.
+  test('tras guardar una corrección, reabrir muestra lo recién guardado, no lo de antes', async () => {
+    const antes = jarabe({ countedQty: '2804.5455', weighed: { closedQty: '2250', grossG: '850', containers: 2, tareG: '120' } });
+    const despues = jarabe({ countedQty: '2054.5455', weighed: { closedQty: '1500', grossG: '850', containers: 2, tareG: '120' } });
+    back.currentCount.mockResolvedValueOnce(antes).mockResolvedValue(despues);
+    back.captureCount.mockResolvedValue({ countedQty: '2054.5455', grossNet: '554.5455', weighed: despues.items[0].weighed });
+    montar();
+    const cambiar = async () => fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[0]).getByRole('button', { name: 'Cambiar' }));
+    await cambiar();
+    expect(await screen.findByLabelText('Botella de Jarabe de vainilla')).toHaveValue('3');
+    click('Quitar Botella');
+    click('Guardar');
+    await waitFor(() => expect(screen.queryByLabelText('Botella de Jarabe de vainilla')).toBeNull());
+    await cambiar();
+    expect(await screen.findByLabelText('Botella de Jarabe de vainilla')).toHaveValue('2');
   });
 
   test('el peso en kg se manda con su unidad', async () => {

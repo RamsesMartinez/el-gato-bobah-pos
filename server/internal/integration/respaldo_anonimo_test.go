@@ -142,6 +142,7 @@ var noPersonalData = map[string]string{
 	"register_sessions.opening_reason":      "valor de una lista cerrada (check)",
 	"session_terminal_counts.terminal_name": "copia del nombre de la terminal",
 	"stock_counts.status":                   "estado",
+	"stock_count_lines.closed_packs":        "ids de empaque y cantidades contadas",
 	"waste_records.status":                  "estado",
 	"expenses.currency":                     "código de moneda",
 	"expenses.doc_folio":                    "folio del ticket del proveedor",

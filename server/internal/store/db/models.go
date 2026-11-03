@@ -1884,6 +1884,7 @@ type StockCountLine struct {
 	GrossContainers *int16           `json:"gross_containers"`
 	TareGUsed       *decimal.Decimal `json:"tare_g_used"`
 	DensityUsed     *decimal.Decimal `json:"density_used"`
+	ClosedPacks     []byte           `json:"closed_packs"`
 }
 
 type StockLevel struct {

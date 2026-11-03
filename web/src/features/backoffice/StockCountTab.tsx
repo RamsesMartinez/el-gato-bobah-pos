@@ -12,7 +12,7 @@ import { backofficeApi, type CountCaptureBody, type CountClose, type CountItem, 
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { matchesWords } from '../../utils/format';
 import { formatBaseQty } from '../../shared/units';
-import { countedWords, diffWords, grossNet, isBigDiff, looseUnitsOf, packsTotal, withGross } from './countEntry';
+import { countedWords, diffWords, grossNet, isBigDiff, looseUnitsOf, packsTotal, restoreWeighed, withGross, closedPacksOf } from './countEntry';
 import { InfoButton } from '../../components/InfoButton';
 import { Picker } from '../../components/Picker';
 import { parseNumero } from '../../domain/numeros';
@@ -170,7 +170,7 @@ export function StockCountTab() {
           <HStack gap={3} flexWrap="wrap">
             <Text fontSize="sm">Se recorre en este orden: {places.map((p) => p.name).join(' → ')}</Text>
             {canOrder && (
-              <Button minH="44px" variant="outline" onClick={() => navigate('/negocio#lugares')}>Cambiar el orden ›</Button>
+              <Button minH="44px" variant="outline" onClick={() => navigate('/negocio#lugares')}>Ordenar lugares en Negocio ›</Button>
             )}
           </HStack>
         )}
@@ -258,24 +258,27 @@ const GROSS_UNITS = [{ label: 'g', factor: 1, code: 'g' as const }, { label: 'kg
 // taredPacks son los empaques con los que se puede pesar: los que dicen cuánto pesan vacíos.
 const taredPacks = (item: CountItem) => item.presentations.filter((p) => p.id !== undefined && !!p.tareG);
 
-function useEntry(item: CountItem, opts: { startWeighing?: boolean } = {}) {
+function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: boolean } = {}) {
   const packs = item.presentations;
   const units = looseUnitsOf(item.baseUnitCode, !!item.weighable);
   const tared = item.grossWeighable ? taredPacks(item) : [];
+  // Lo contado pesando vuelve con su desglose (#204), solo en la hoja: crecer la tarjeta de «Uno por
+  // uno» sacaría sus botones de la pantalla.
+  const [restored] = useState(() => (opts.restore && item.countedQty !== null && tared.length > 0 ? restoreWeighed(item.weighed, packs) : null));
   // Los ids de g y kg, para mandar un peso: solo se piden si el artículo se puede pesar.
   const unitList = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units, enabled: !!item.weighable || tared.length > 0 });
   const weightUnitId = (code: 'g' | 'kg') => unitList.data?.items.find((u) => u.code === code)?.id;
   const prev = item.countedQty !== null ? Number(item.countedQty) : null;
-  const [counts, setCounts] = useState<string[]>(() => packs.map(() => ''));
-  // Lo ya contado vuelve en lo suelto, en la unidad base: no se sabe cómo se repartió.
-  const [rest, setRest] = useState(() => (opts.startWeighing && tared.length > 0 ? '' : prev !== null ? String(prev) : ''));
+  const [counts, setCounts] = useState<string[]>(() => restored?.counts ?? packs.map(() => ''));
+  // Sin pesada, lo ya contado vuelve en lo suelto, en la unidad base: no se sabe cómo se repartió.
+  const [rest, setRest] = useState(() => ((opts.startWeighing && tared.length > 0) || restored ? '' : prev !== null ? String(prev) : ''));
   const [unitIdx, setUnitIdx] = useState(0);
   // Pesar con empaque y teclear lo suelto son excluyentes: lo abierto se pesa o se teclea.
-  const [grossOpen, setGrossOpen] = useState(!!opts.startWeighing);
-  const [grossWeight, setGrossWeight] = useState('');
+  const [grossOpen, setGrossOpen] = useState(!!opts.startWeighing || !!restored);
+  const [grossWeight, setGrossWeight] = useState(restored?.grossWeight ?? '');
   const [grossUnitIdx, setGrossUnitIdx] = useState(0);
-  const [grossPackId, setGrossPackId] = useState<number | null>(null);
-  const [containers, setContainers] = useState('1');
+  const [grossPackId, setGrossPackId] = useState<number | null>(restored?.packId ?? null);
+  const [containers, setContainers] = useState(restored?.containers ?? '1');
   const weighing = grossOpen && tared.length > 0;
   const [field, setField] = useState<Field>(weighing ? 'gross' : packs.length ? 0 : 'rest');
   const unit = units[unitIdx];
@@ -321,7 +324,7 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean } = {}) {
       return wu ? {
         countedQty: String(fromPacks ?? 0), confirmable: true,
         gross: { weight: grossWeight.trim(), weightUnitId: wu, presentationId: grossPack.id!, containers: Number(containers),
-          seenTareG: grossPack.tareG!, seenDensity: item.densityGPerMl ?? null },
+          seenTareG: grossPack.tareG!, seenDensity: item.densityGPerMl ?? null, closedPacks: closedPacksOf(counts, packs) },
       } : null;
     }
     if (!weighing && unit.weightCode && restNum.estado === 'valido') {
@@ -502,6 +505,11 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
       if (b?.gross) medirAccion('inventario', 'pesar-con-empaque');
       // Lo contado que se muestra es lo que guardó el servidor: con una pesada, su cuenta manda.
       const qty = b === null ? null : r?.countedQty ?? b.countedQty;
+      // El desglose que quedó guardado reemplaza al de antes (#204): sin esto, reabrir mostraba la
+      // captura anterior y «Guardar» sin tocar nada deshacía la corrección.
+      qc.setQueryData(['stock', 'count'], (old: StockCount | null | undefined) => old && {
+        ...old, items: old.items.map((i) => (i.ingredientId === item.ingredientId ? { ...i, weighed: r?.weighed ?? null } : i)),
+      });
       if (qty !== null) toaster.create({ title: `Guardado: ${countedWords(qty, item.baseUnitCode)}`, type: 'success', duration: 1500 });
       onSaved(item.ingredientId, qty);
     },
@@ -638,7 +646,7 @@ function EntrySheet({ countId, item, onClose, onSaved, startWeighing }: {
   // startWeighing abre con «Pesar con empaque» desplegado (desde «Uno por uno»).
   startWeighing?: boolean;
 }) {
-  const e = useEntry(item, { startWeighing });
+  const e = useEntry(item, { startWeighing, restore: true });
   const c = useCapture(countId, item, onSaved);
   useCountKeys(e, c);
   return (

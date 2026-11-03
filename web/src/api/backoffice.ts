@@ -806,6 +806,14 @@ export interface CountItem {
   // si se guarda en ml). La densidad es la que se usa para mostrar la cuenta.
   grossWeighable?: boolean;
   densityGPerMl?: string | null;
+  // #204: cómo se capturó lo contado pesando con empaque; falta o es null si no se pesó.
+  weighed?: CountWeighed | null;
+}
+// CountWeighed es cómo se capturó una pesada con empaque (#204). closedPacks falta o es null si no se
+// sabe cómo se repartió lo cerrado entre empaques.
+export interface CountWeighed {
+  closedQty: string; grossG: string; containers: number; tareG: string;
+  closedPacks?: { presentationId: number; qty: number }[] | null;
 }
 // Lo que se manda al capturar. confirmable pide el aviso de una cifra fuera de lo razonable.
 export interface CountCaptureBody {
@@ -816,7 +824,8 @@ export interface CountCaptureBody {
   confirmed?: boolean;
   // Spec 058: lo abierto pesado con su empaque; se suma a countedQty (lo cerrado). seenTareG y
   // seenDensity son los números con que la pantalla hizo la cuenta.
-  gross?: { weight: string; weightUnitId: number; presentationId: number; containers: number; seenTareG: string; seenDensity?: string | null };
+  gross?: { weight: string; weightUnitId: number; presentationId: number; containers: number; seenTareG: string; seenDensity?: string | null;
+    closedPacks?: { presentationId: number; qty: number }[] };
 }
 export interface StockCount {
   id: number;
@@ -1099,7 +1108,8 @@ export const backofficeApi = {
   currentCount: () => api.get<StockCount | undefined>('/stock/counts/current').then((c) => c ?? null),
   openCount: () => api.post<StockCount>('/stock/counts', {}),
   captureCount: (id: number, ingredientId: number, body: CountCaptureBody) =>
-    api.put<{ countedQty: string; grossNet?: string }>(`/stock/counts/${id}/lines/${ingredientId}`, body),
+    // weighed: el desglose que quedó guardado (#204); falta en una API anterior.
+    api.put<{ countedQty: string; grossNet?: string; weighed?: CountWeighed | null }>(`/stock/counts/${id}/lines/${ingredientId}`, body),
   uncaptureCount: (id: number, ingredientId: number) => api.del<void>(`/stock/counts/${id}/lines/${ingredientId}`),
   previewCount: (id: number) => api.get<CountClose>(`/stock/counts/${id}/preview`),
   closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),
@@ -1150,7 +1160,8 @@ export const backofficeApi = {
   markDistinct: (a: number, b: number) => api.post<void>('/stock/articles/distinct-pairs', { a, b }),
   similarArticles: (name: string) => api.get<{ items?: DuplicateItem[] }>(`/stock/articles/similar?name=${encodeURIComponent(name)}`),
   articleArchiveCheck: (id: number) => api.get<ArchiveCheck>(`/stock/articles/${id}/archive-check`),
-  archiveArticle: (id: number) => api.post<void>(`/stock/articles/${id}/archive`, {}),
+  // confirmOnHand: quien archiva vio la existencia y la deja así (#203); sin él, con existencia es 409.
+  archiveArticle: (id: number, confirmOnHand: boolean) => api.post<void>(`/stock/articles/${id}/archive`, { confirmOnHand }),
   reactivateArticle: (id: number) => api.post<void>(`/stock/articles/${id}/reactivate`, {}),
   presentationSuggestions: (unitKind: string) =>
     api.get<{ name: string; qtyInBase: string }[]>(`/stock/presentation-suggestions?unitKind=${encodeURIComponent(unitKind)}`),

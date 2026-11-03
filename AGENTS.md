@@ -913,7 +913,11 @@ verificación contra el ambiente desplegado.
 Pasan solos también el script de respaldo de la VM (`respaldo-gatobobah.sh`) y las **lecturas de
 salud** (`journalctl`, `docker ps`/`logs`, `curl` a `readyz`, `df`, `uptime`) cuando el comando no
 trae nada que escriba, reinicie, entre a la base o lea el `.env` (decidido el 2026-11-01: un encargo
-de punta a punta se detuvo 9 horas esperando aprobar el respaldo previo a subir). Lo cubre
+de punta a punta se detuvo 9 horas esperando aprobar el respaldo previo a subir). Tampoco pregunta
+un comando que solo **nombra** la VM o `ssh` entre comillas, como el patrón de un `grep`: solo
+cuenta el programa que conecta en posición de comando, salvo que algo vuelva a ejecutar el texto
+(`bash -c`, `eval`, `xargs`), y entonces se revisa completo (decidido el 2026-11-02: un `grep
+"ssh\|pos-vps"` frenó un `/goal`). Lo cubre
 [proteger-produccion-test.sh](scripts/tests/proteger-produccion-test.sh).
 
 **Por qué es un hook y no una nota.** El 2026-09-19 hubo que auditar doce transcripciones de sesión
