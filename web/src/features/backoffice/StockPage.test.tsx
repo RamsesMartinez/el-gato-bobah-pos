@@ -77,7 +77,7 @@ describe('Almacén › Artículos', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Jarabe natural/ }));
     expect(await screen.findByRole('button', { name: 'Bitácora' })).toBeInTheDocument();
     expect(back.article).toHaveBeenCalledWith(2);
-    fireEvent.click(await screen.findByRole('button', { name: /Es un preparado · ver receta/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver receta ›' }));
     expect(await screen.findByText('Para prepararlo se usa:')).toBeInTheDocument();
     expect(admin.composition).toHaveBeenCalledWith('ingredient', 2);
   });
