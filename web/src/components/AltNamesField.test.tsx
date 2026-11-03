@@ -89,3 +89,22 @@ test('si el texto cambió mientras se consultaban los parecidos, no agrega lo vi
   await waitFor(() => expect(campo).toHaveValue('café frío'));
   expect(value()).toBe('');
 });
+
+// Prueba con usuario nuevo: «Baileys» (el nombre de otro producto) entraba como chip y el rechazo
+// llegaba hasta «Guardar». El mismo nombre no es un aviso: no se agrega y se dice de quién es.
+test('el nombre de otro producto no se agrega y dice de cuál', async () => {
+  const u = userEvent.setup();
+  render(<Harness similar={async () => [{ id: 3, name: 'Baileys', exact: true }, { id: 4, name: 'Baileys Light' }]} />);
+  await u.type(screen.getByRole('textbox', { name: /otro nombre/i }), 'baileys');
+  await u.click(screen.getByRole('button', { name: 'Agregar' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('«baileys» ya es el nombre de otro producto: «Baileys»');
+  expect(screen.queryByRole('button', { name: 'Agregar de todos modos' })).not.toBeInTheDocument();
+  await u.click(screen.getByRole('button', { name: 'Agregar' }));
+  expect(value()).toBe('');
+});
+
+test('con muchos nombres, los chips se acomodan en renglones y ninguno queda fuera', () => {
+  render(<Harness initial={['Uno', 'Dos', 'Tres', 'Cuatro', 'Cinco']} />);
+  const fila = screen.getByRole('button', { name: 'Quitar «Uno»' }).parentElement!.parentElement!;
+  expect(getComputedStyle(fila).flexWrap).toBe('wrap');
+});

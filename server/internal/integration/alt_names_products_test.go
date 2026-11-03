@@ -91,7 +91,7 @@ func TestProductAltNames(t *testing.T) {
 		}
 		_, err := admin.SetProductAltNames(ctx, capu, []string{"Frappé de café"})
 		taken := requireAltTaken(t, err, "Frappé de café", "Frappé de café")
-		if !taken.OwnerArchived || taken.Error() != "«Frappé de café» ya es el nombre de «Frappé de café» (inactivo)" {
+		if !taken.OwnerArchived || taken.Error() != "«Frappé de café» ya es el nombre de otro producto: «Frappé de café» (inactivo)" {
 			t.Fatalf("no dice inactivo: %q", taken.Error())
 		}
 	})
@@ -366,4 +366,51 @@ func TestProductListSearchesAltNames(t *testing.T) {
 			}
 		}
 	})
+}
+
+// Prueba con usuario nuevo: Menú › Recetas dice «busca por nombre o por un insumo» y no encontraba un
+// producto por su otro nombre ni por el otro nombre de un insumo de su receta. La lista y su conteo
+// salen del mismo where.
+func TestRecipeListSearchesAltNames(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	admin := app.NewAdminService(st)
+	ice := makeProduct(t, st, "Ice Coffee receta", decimal.RequireFromString("60"), false)
+	if _, err := admin.SetProductAltNames(ctx, ice, []string{"Café de olla receta"}); err != nil {
+		t.Fatal(err)
+	}
+	crepa := makeProduct(t, st, "Crepa receta", decimal.RequireFromString("80"), false)
+	azucar := ingredientIn(t, st, defaultCompanyID, "Azúcar glass receta", "g")
+	if _, err := st.Pool.Exec(ctx, `update ingredients set alt_names = array['Zulka receta'] where id = $1`, azucar); err != nil {
+		t.Fatal(err)
+	}
+	var recipe int64
+	if err := st.Pool.QueryRow(ctx, `insert into recipes default values returning id`).Scan(&recipe); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `insert into recipe_items (recipe_id, ingredient_id, quantity, unit_id, position)
+		values ($1, $2, 10, (select id from units where code = 'g'), 0)`, recipe, azucar); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `update products set recipe_id = $1 where id = $2`, recipe, crepa); err != nil {
+		t.Fatal(err)
+	}
+	for q, want := range map[string]int64{"olla receta": ice, "ZULKA receta": crepa} {
+		found := false
+		total := 0
+		for _, status := range []domain.RecipeStatus{domain.RecipeStatusPending, domain.RecipeStatusReview, domain.RecipeStatusDone} {
+			page, err := admin.ListRecipes(ctx, domain.RecipeFilter{Kind: domain.RecipeKindProduct, Status: status, Sort: domain.RecipeSortSales, Query: q, Limit: 25}, fixedNow)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range page.Items {
+				found = found || r.ID == want
+			}
+			total += page.Total
+		}
+		if !found || total == 0 {
+			t.Fatalf("«%s» no encontró la receta %d (total %d)", q, want, total)
+		}
+	}
 }

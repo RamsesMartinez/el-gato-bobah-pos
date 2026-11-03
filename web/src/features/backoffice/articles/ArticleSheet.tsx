@@ -330,7 +330,7 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                   <Picker {...locations.pickerProps} disabled={!canConfigure} value={form.placeId} options={locations.options}
                     onChange={(v) => { if (auto.busy('placeId')) return; setForm({ ...form, placeId: v }); auto.commit('placeId', v); }} />
                 </Field>
-                <AltNamesField ownName={form.name} value={form.alts} onChange={changeAlts} disabled={!canConfigure}
+                <AltNamesField kind="article" ownName={form.name} value={form.alts} onChange={changeAlts} disabled={!canConfigure}
                   draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similarAlts} error={altError} />
                 <Stack gap={1}>
                   <QtyWithUnit label="Mínimo" kind={kind} value={form.min} keepAmount

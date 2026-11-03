@@ -80,8 +80,9 @@ Dos piezas de interfaz, las dos dentro de pantallas que ya existen:
    su botón) y en la ficha del artículo (`ArticleSheet`, se guarda al agregar o quitar, como el
    resto de la ficha). Un componente, `AltNamesField`: título «Otros nombres (n de 10)», chips de
    44 px con «×» de 40 px para quitar, y debajo un campo de 44 px con «Agregar» (Enter también
-   agrega). Va después de Categoría; los chips en una sola línea con scroll horizontal; «×» de
-   44×44. Con 10 el campo se reemplaza por «Ya tiene 10. Quita uno para agregar otro.». Un choque
+   agrega). Va después de Categoría; los chips se acomodan en renglones (en una sola línea con
+   scroll, el 4.º quedaba fuera de la hoja en la prueba con usuario nuevo); «×» de 44×44. Un nombre
+   igual al de otro no se agrega y dice de quién es; uno parecido avisa. Con 10 el campo se reemplaza por «Ya tiene 10. Quita uno para agregar otro.». Un choque
    se muestra en rojo bajo el campo con el texto del servidor. **Aviso de parecidos** (pedido del
    dueño al elegir): mientras se escribe (300 ms de pausa) se consultan parecidos; «Agregar» espera
    esa consulta, y si hay parecidos el primer toque muestra «Se parece a: «X», «Y»» en color de
@@ -96,7 +97,8 @@ Dos piezas de interfaz, las dos dentro de pantallas que ya existen:
    frío», `Badge` outline gris) junto al nombre en la fila de Productos, la de Artículos, la de
    Conteo y las filas de `Picker` (`ListRow`, prop `match`) y `SearchSheet`, truncada a `maxW` 45%
    con el nombre con prioridad. En el tile de Vender ocupa la línea de la descripción mientras el
-   resultado salió por alternativo, para no hacer crecer el tile (R14).
+   resultado salió por alternativo, para no hacer crecer el tile (R14). En Conteo va en su propio
+   renglón bajo el nombre (revisión de código: junto a un nombre largo se quedaba sin ancho).
 
 Presupuesto de alto: la ficha del producto ya hace scroll dentro de su diálogo; el editor ocupa una
 fila de chips + un campo de 44 px + una línea de aviso. La etiqueta va en la misma línea del nombre:
@@ -151,6 +153,15 @@ elementos nulos o vacíos; listas vacías nunca nil; `matched_alt` con orden cap
 exentos del candado enumerados; orígenes de unión fuera del choque; texto pendiente al guardar,
 aviso de parecidos antes de agregar, alto acotado, «×» de 44 px, etiqueta y chip comunes, tile sin
 crecer. Ninguno cruzaba una puerta del principio VIII.
+
+## Prueba con usuario nuevo (2026-11-03)
+
+Ticket y comanda salen con el nombre principal (HTML del iframe de impresión). Corregido de lo que
+encontró: el choque con el nombre de otro producto se ve al agregar y no al guardar, con un mensaje
+que dice «de otro producto»; los chips en renglones; la lista de Menú › Recetas busca por otros
+nombres del producto y de sus insumos; textos del campo por catálogo (en un artículo, «otro nombre o
+marca»). Queda como está: el editor abajo de Categoría en la ficha del producto (decisión de la
+revisión de tableta), y el aviso de parecidos con la regla de unir insumos (no tolera dos dedazos).
 
 ## Riesgos
 

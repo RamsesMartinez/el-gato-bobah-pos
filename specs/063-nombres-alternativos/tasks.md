@@ -150,9 +150,9 @@ Va antes que la US1 porque la US1 necesita algo que buscar; las dos son P1.
 - [X] T055 Revisar los escritores de nombres de R13 contra el código (`grep` de `insert into products|ingredients` y `set name`) y dejar en el reporte que los exentos siguen exentos; confirmar con grep que reportes, exportaciones y lo que se manda a plataformas no leen `alt_names` (FR-013)
 - [X] T056 Agregar a AGENTS.md §2 el renglón de la feature (alternativos: candados 28063/28037, `catalog_name_key`, ruta propia para no borrar desde una tableta vieja, orígenes de unión fuera del choque)
 - [X] T057 `cd server && go build ./... && go test ./...`, `make test-integration`, `cd web && bun run lint && bun run vitest run && bun run build`
-- [ ] T058 `/revision-de-codigo` sobre el diff; corregir lo que encuentre con su prueba
-- [ ] T059 Prueba con usuario nuevo a 1024×600 (`hasTouch`) contra `http://localhost:3063` con los buscadores de Vender, Productos, Artículos, Conteo, gastos y recetas, siguiendo [quickstart.md](quickstart.md); verificar ticket y comanda con el nombre principal; cobrar y cerrar lo que se cree; capturas solo en `test-results/`
-- [ ] T060 Vuelta final contra el build servido en local (`bun run build && bun run preview`)
+- [X] T058 `/revision-de-codigo` sobre el diff; corregir lo que encuentre con su prueba
+- [X] T059 Prueba con usuario nuevo a 1024×600 (`hasTouch`) contra `http://localhost:3063` con los buscadores de Vender, Productos, Artículos, Conteo, gastos y recetas, siguiendo [quickstart.md](quickstart.md); verificar ticket y comanda con el nombre principal; cobrar y cerrar lo que se cree; capturas solo en `test-results/`
+- [X] T060 Vuelta final contra el build servido en local (`bun run build && bun run preview`)
 
 ---
 

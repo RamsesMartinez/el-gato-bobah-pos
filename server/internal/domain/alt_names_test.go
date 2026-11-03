@@ -94,9 +94,9 @@ func TestAltNameTakenMessage(t *testing.T) {
 		want string
 	}{
 		{AltNameTaken{Name: "café frío", OwnerName: "Latte", OwnerAlt: true}, "«café frío» ya es otro nombre de «Latte»"},
-		{AltNameTaken{Name: "frappe de cafe", OwnerName: "Frappé de café"}, "«frappe de cafe» ya es el nombre de «Frappé de café»"},
-		{AltNameTaken{Name: "x", OwnerName: "Y", OwnerArchived: true, Article: true}, "«x» ya es el nombre de «Y» (archivado)"},
-		{AltNameTaken{Name: "x", OwnerName: "Y", OwnerArchived: true}, "«x» ya es el nombre de «Y» (inactivo)"},
+		{AltNameTaken{Name: "frappe de cafe", OwnerName: "Frappé de café"}, "«frappe de cafe» ya es el nombre de otro producto: «Frappé de café»"},
+		{AltNameTaken{Name: "x", OwnerName: "Y", OwnerArchived: true, Article: true}, "«x» ya es el nombre de otro artículo: «Y» (archivado)"},
+		{AltNameTaken{Name: "x", OwnerName: "Y", OwnerArchived: true}, "«x» ya es el nombre de otro producto: «Y» (inactivo)"},
 	}
 	for _, c := range cases {
 		if got := c.err.Error(); got != c.want {
@@ -114,7 +114,7 @@ func TestSimilarAltNames(t *testing.T) {
 		{ID: 2, Name: "Frappé de café", Alt: "Café frío batido"},
 		{ID: 2, Name: "Frappé de café", Alt: "Frappé"},
 		{ID: 3, Name: "Ice Coffee"}, // el propio
-		{ID: 4, Name: "café  FRIO"}, // idéntico: ése es el bloqueo, no un aviso
+		{ID: 4, Name: "café  FRIO"}, // idéntico: va primero y marcado, es el choque
 		{ID: 5, Name: "Té verde"},
 	}
 	got := SimilarAltNames("Café frío", 3, cands, 5)
@@ -122,8 +122,16 @@ func TestSimilarAltNames(t *testing.T) {
 	for _, g := range got {
 		ids = append(ids, g.ID)
 	}
-	if slices.Contains(ids, 3) || slices.Contains(ids, 4) || slices.Contains(ids, 5) {
-		t.Fatalf("trae el propio, el idéntico o uno que no se parece: %v", got)
+	if slices.Contains(ids, 3) || slices.Contains(ids, 5) {
+		t.Fatalf("trae el propio o uno que no se parece: %v", got)
+	}
+	if len(got) == 0 || got[0].ID != 4 || !got[0].Exact {
+		t.Fatalf("el idéntico tiene que ir primero y marcado como choque: %+v", got)
+	}
+	for _, g := range got[1:] {
+		if g.Exact {
+			t.Fatalf("un parecido marcado como idéntico: %+v", g)
+		}
 	}
 	if !slices.Contains(ids, 1) || !slices.Contains(ids, 2) {
 		t.Fatalf("no trae «Café frío de olla» ni «Frappé de café» por su «Café frío batido»: %v", got)

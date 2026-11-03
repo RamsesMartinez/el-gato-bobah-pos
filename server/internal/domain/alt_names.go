@@ -93,11 +93,15 @@ type AltNameTaken struct {
 }
 
 func (e AltNameTaken) Error() string {
-	what := "el nombre"
-	if e.OwnerAlt {
-		what = "otro nombre"
+	catalog := "producto"
+	if e.Article {
+		catalog = "artículo"
 	}
-	msg := fmt.Sprintf("«%s» ya es %s de «%s»", e.Name, what, e.OwnerName)
+	// «"Baileys" ya es el nombre de "Baileys"» no decía que es OTRO producto (prueba con usuario nuevo).
+	msg := fmt.Sprintf("«%s» ya es el nombre de otro %s: «%s»", e.Name, catalog, e.OwnerName)
+	if e.OwnerAlt {
+		msg = fmt.Sprintf("«%s» ya es otro nombre de «%s»", e.Name, e.OwnerName)
+	}
 	if e.OwnerArchived {
 		if e.Article {
 			msg += " (archivado)"
@@ -118,32 +122,45 @@ type AltCandidate struct {
 	Alt  string
 }
 
-// SimilarAlt es un parecido para el aviso: con quién y, si fue por su alternativo, cuál.
+// SimilarAlt es un parecido para el aviso: con quién y, si fue por su alternativo, cuál. Exact: es el
+// mismo nombre; ése no es un aviso sino el choque, y la pantalla no deja agregarlo.
 type SimilarAlt struct {
 	ID     int64  `json:"id"`
 	Name   string `json:"name"`
 	ViaAlt string `json:"viaAlt,omitempty"`
+	Exact  bool   `json:"exact,omitempty"`
 }
 
 // SimilarAltNames son hasta `limit` productos o artículos con un nombre parecido a `name`, sin el
-// propio (`self`) ni los idénticos (ése es el choque, no un aviso). Uno por producto, por su nombre
-// más parecido. «Parecido» es la regla de SimilarNames (spec 056). Nunca nil.
+// propio (`self`). Uno por producto, por su nombre más parecido. «Parecido» es la regla de
+// SimilarNames (spec 056). Los idénticos van primero y marcados: así la pantalla dice el choque al
+// agregar y no hasta guardar (prueba con usuario nuevo). Nunca nil.
 func SimilarAltNames(name string, self int64, cands []AltCandidate, limit int) []SimilarAlt {
 	key := CatalogNameKey(name)
+	out := []SimilarAlt{}
+	seen := map[int64]bool{}
 	named := make([]NamedItem, 0, len(cands))
 	for i, c := range cands {
 		text := c.Name
 		if c.Alt != "" {
 			text = c.Alt
 		}
-		if c.ID == self || CatalogNameKey(text) == key {
+		if c.ID == self {
+			continue
+		}
+		if CatalogNameKey(text) == key {
+			if !seen[c.ID] && len(out) < limit {
+				seen[c.ID] = true
+				out = append(out, SimilarAlt{ID: c.ID, Name: c.Name, ViaAlt: c.Alt, Exact: true})
+			}
 			continue
 		}
 		named = append(named, NamedItem{ID: int64(i), Name: text})
 	}
+	if len(out) == limit {
+		return out
+	}
 	hits := SimilarNames(name, named, len(named))
-	out := []SimilarAlt{}
-	seen := map[int64]bool{}
 	for _, h := range hits {
 		c := cands[h.ID]
 		if seen[c.ID] {

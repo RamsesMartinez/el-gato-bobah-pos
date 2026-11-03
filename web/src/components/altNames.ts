@@ -10,6 +10,8 @@ export interface SimilarAlt {
   id: number;
   name: string;
   viaAlt?: string;
+  // El mismo nombre: no es un aviso, es el choque (el servidor lo rechazaría al guardar).
+  exact?: boolean;
 }
 
 // La llave con que dos nombres son el mismo: la de domain.CatalogNameKey (sin mayúsculas, acentos ni

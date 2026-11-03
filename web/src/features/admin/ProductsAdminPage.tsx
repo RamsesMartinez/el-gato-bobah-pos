@@ -179,7 +179,7 @@ export function ProductsAdminPage() {
                     <Box as="span" color="yellow.500" mr={1} display="inline-flex" verticalAlign="middle"><LuStar size={12} /></Box>
                   )}
                   {p.name}
-                  {p.matchedAlt && <Box as="span" ml={2} display="inline-flex" verticalAlign="middle" maxW="40%"><AltMatchTag name={p.matchedAlt} /></Box>}
+                  {p.matchedAlt && <Box as="span" ml={2} display="inline-flex" verticalAlign="middle" maxW="260px"><AltMatchTag name={p.matchedAlt} /></Box>}
                   {p.overrideCount > 0 && (
                     <Badge ml={2} colorPalette="purple" title={`${p.overrideCount} grupo(s) con min/máx personalizado`}>
                       <LuSettings2 /> {p.overrideCount}

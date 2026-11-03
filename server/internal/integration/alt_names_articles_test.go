@@ -111,7 +111,7 @@ func TestArticleAltNames(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := svc.SetArticleAltNames(ctx, crema, []string{"Crema vieja"}, articleVersion(t, st, crema))
-		if taken := requireAltTaken(t, err, "Crema vieja", "Crema vieja"); taken.Error() != "«Crema vieja» ya es el nombre de «Crema vieja» (archivado)" {
+		if taken := requireAltTaken(t, err, "Crema vieja", "Crema vieja"); taken.Error() != "«Crema vieja» ya es el nombre de otro artículo: «Crema vieja» (archivado)" {
 			t.Fatalf("mensaje: %q", taken.Error())
 		}
 		if _, err := svc.SetArticleAltNames(ctx, old, []string{"Crema de antes"}, articleVersion(t, st, old)); err != nil {

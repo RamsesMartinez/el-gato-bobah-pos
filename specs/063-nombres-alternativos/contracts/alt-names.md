@@ -26,8 +26,9 @@ también sobre un archivado.
 
 ## GET /api/v1/admin/products/{id}/alt-names/similar?name=…
 
-Permiso: `menu.configure`. Hasta 5 parecidos, sin el propio ni los idénticos. 400 si `name` está
-vacío o pasa de 60 letras.
+Permiso: `menu.configure`. Hasta 5, sin el propio. Los idénticos van primero con `"exact": true`:
+la pantalla no deja agregarlos y dice de quién son (antes el choque llegaba hasta «Guardar»). 400 si
+`name` está vacío, pasa de 60 letras o trae caracteres que no se ven.
 
 ```json
 [{ "id": 12, "name": "Café frío de olla" }, { "id": 40, "name": "Frappé de café", "viaAlt": "Café frío batido" }]

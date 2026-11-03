@@ -16,12 +16,15 @@ interface Props {
   // El choque que respondió el servidor (409 ALT_NAME_TAKEN), con su texto para quien opera.
   error?: string;
   disabled?: boolean;
+  // De qué catálogo es: cambia cómo se dice el choque y qué se sugiere escribir.
+  kind?: 'product' | 'article';
 }
 
 // AltNamesField captura los otros nombres de un producto o artículo (spec 063, maqueta «Editor «Otros
 // nombres»», opción A): chips que se quitan con una «×» y un campo con «Agregar». Antes de agregar
 // avisa si ya hay otros con nombre parecido, sin impedirlo (pedido del dueño al elegir la maqueta).
-export function AltNamesField({ ownName, value, onChange, draft, onDraftChange, similar, error, disabled }: Props) {
+export function AltNamesField({ ownName, value, onChange, draft, onDraftChange, similar, error, disabled, kind = 'product' }: Props) {
+  const word = kind === 'article' ? 'artículo' : 'producto';
   const [help, setHelp] = useState(false);
   const [localError, setLocalError] = useState('');
   // Los parecidos de un texto exacto: así «Agregar» sabe si el aviso que se ve es del texto de hoy.
@@ -71,6 +74,12 @@ export function AltNamesField({ ownName, value, onChange, draft, onDraftChange, 
       // Si siguió escribiendo, lo que se consultó ya no es lo que quiere agregar.
       if (clean(draftRef.current) !== text) return;
     }
+    // El mismo nombre que otro no es un aviso: no se agrega (prueba con usuario nuevo).
+    const same = items.find((i) => i.exact);
+    if (same) {
+      setLocalError(same.viaAlt ? `«${text}» ya es otro nombre de «${same.name}».` : `«${text}» ya es el nombre de otro ${word}: «${same.name}».`);
+      return;
+    }
     if (items.length > 0 && warnedFor !== text) {
       setWarnedFor(text);
       return;
@@ -80,7 +89,7 @@ export function AltNamesField({ ownName, value, onChange, draft, onDraftChange, 
     setWarnedFor('');
   };
 
-  const shown = found?.text === text ? found.items : [];
+  const shown = (found?.text === text ? found.items : []).filter((i) => !i.exact);
   const confirming = warnedFor !== '' && warnedFor === text && shown.length > 0;
   const message = localError || error;
 
@@ -91,12 +100,14 @@ export function AltNamesField({ ownName, value, onChange, draft, onDraftChange, 
         <InfoButton label="¿Para qué sirven los otros nombres?" open={help} onToggle={() => setHelp((h) => !h)} />
       </HStack>
       {help && (
-        <Text fontSize="sm" color="fg.muted">Sirven para encontrarlo al buscar. No salen en el ticket ni en la comanda.</Text>
+        <Text fontSize="sm" color="fg.muted">{kind === 'article'
+          ? 'Sirven para encontrarlo al buscar, por ejemplo por su marca o por como lo llama el proveedor.'
+          : 'Sirven para encontrarlo al buscar. No salen en el ticket ni en la comanda.'}</Text>
       )}
       {value.length > 0 && (
-        // Una sola línea con scroll horizontal: con 10 nombres, varias filas de chips se comían la ficha
-        // en 600 px (revisión de tableta, A3).
-        <HStack gap={2} overflowX="auto" flexWrap="nowrap" pb={1}>
+        // En renglones: en una sola línea con scroll horizontal, el 4.º quedaba fuera de la hoja y nadie
+        // lo encontraba (prueba con usuario nuevo); la ficha ya se desliza.
+        <HStack gap={2} flexWrap="wrap">
           {value.map((v) => (
             <AltNameChip key={v} name={v} disabled={disabled} onRemove={() => onChange(value.filter((x) => x !== v))} />
           ))}
@@ -106,7 +117,7 @@ export function AltNamesField({ ownName, value, onChange, draft, onDraftChange, 
         <Text fontSize="sm" color="fg.muted">Ya tiene {MAX_ALT_NAMES}. Quita uno para agregar otro.</Text>
       ) : (
         <HStack gap={2}>
-          <Input ref={inputRef} aria-label="Otro nombre" placeholder="Otro nombre con el que lo piden" minH="44px"
+          <Input ref={inputRef} aria-label="Otro nombre" placeholder={kind === 'article' ? 'Otro nombre o marca' : 'Otro nombre con el que lo piden'} minH="44px"
             value={draft} maxLength={MAX_ALT_NAME} disabled={disabled}
             onFocus={() => inputRef.current?.scrollIntoView?.({ block: 'center' })}
             onChange={(e) => { onDraftChange(e.target.value); setLocalError(''); }}
