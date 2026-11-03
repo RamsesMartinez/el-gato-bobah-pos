@@ -19,13 +19,15 @@ jobs:
   #   corre todo.
   # - Al mergear a develop, ninguna: el PR ya las pasó, y se mergea al día con develop (AGENTS.md
   #   §4). Solo se construye y se despliega.
-  # - Al mergear a main, tampoco (decidido el 2026-11-02): el PR de release develop → main y el de
-  #   un hotfix ya corrieron las pruebas sobre el commit de merge, y repetirlas solo atrasaba la
-  #   subida. Lo que gatea producción es ese PR en verde y al día; por eso a main no se empuja
-  #   directo. Solo se construye y se despliega.
+  # - Al mergear a main (decidido el 2026-11-02), ninguna SI un PR en verde ya probó el mismo
+  #   ÁRBOL de archivos (scripts/ci-tree-tested.sh: el SHA del merge es nuevo, el árbol no). Si no
+  #   hay PR que lo respalde —un push directo, un PR que no estaba al día— corre la suite completa.
   changes:
     name: Qué toca el cambio
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # leer las corridas de los PR para saber si este árbol ya pasó
     outputs:
       go: ${{ steps.f.outputs.go }}
       integration: ${{ steps.f.outputs.integration }}
@@ -40,9 +42,21 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$EVENT" = push ]; then
-            for k in go integration web; do echo "$k=false" >> "$GITHUB_OUTPUT"; done
+            all=false
+            if [ "$REF" = refs/heads/main ]; then
+              tree=$(git rev-parse 'HEAD^{tree}')
+              if run=$(bash scripts/ci-tree-tested.sh "$REPO" "$tree"); then
+                echo "El árbol $tree ya pasó en $run: no se repiten las pruebas."
+              else
+                echo "Ningún PR en verde probó el árbol $tree: corre la suite completa."
+                all=true
+              fi
+            fi
+            for k in go integration web; do echo "$k=$all" >> "$GITHUB_OUTPUT"; done
             exit 0
           fi
           files="$(git diff --name-only HEAD^1 HEAD)"
@@ -487,14 +501,36 @@ jobs:
           # El tag móvil lleva el nombre de la rama: :main y :develop conviven sin pisarse.
           echo "moving=ghcr.io/${repo}/api:${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          # La llave del binario es el ÁRBOL, no el commit: el merge de develop a main es un commit
+          # nuevo con los mismos archivos, y lo que va a producción debe ser el binario que ya corrió
+          # en el ambiente de pruebas, no uno recompilado.
+          echo "tree=ghcr.io/${repo}/api:tree-$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+      # Con la imagen de este árbol ya publicada (la construyó el push a develop), solo se le ponen
+      # las etiquetas de este commit y de esta rama: segundos en vez de compilar. Consecuencia que no
+      # se ve: `main.version` y `/api/v1/version` dicen el SHA de develop que la construyó, no el del
+      # merge; los archivos son los mismos. Un hotfix trae un árbol nuevo y sí se construye.
+      - name: ¿Ya existe la imagen de este árbol?
+        id: prev
+        run: |
+          if docker buildx imagetools inspect "${{ steps.meta.outputs.tree }}" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Promover la imagen ya construida
+        if: steps.prev.outputs.found == 'true'
+        run: |
+          docker buildx imagetools create \
+            -t "${{ steps.meta.outputs.image }}" -t "${{ steps.meta.outputs.moving }}" \
+            "${{ steps.meta.outputs.tree }}"
       # El binario se compila aquí y no dentro del docker build (spec 044): el caché type=gha no
       # guarda los --mount=type=cache del Dockerfile y cada merge recompilaba todo (79 s de 102 s);
       # el de setup-go sí persiste. Mismos flags que el Dockerfile; el Dockerfile lo copia con PREBUILT.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.prev.outputs.found != 'true'
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
       - name: Compilar el binario (linux/amd64)
+        if: steps.prev.outputs.found != 'true'
         working-directory: server
         env:
           CGO_ENABLED: "0"
@@ -507,6 +543,7 @@ jobs:
           # Un binario de otra arquitectura arrancaría en el VPS con "exec format error" (E14).
           file .prebuilt/api | tee /dev/stderr | grep -q 'ELF 64-bit LSB executable, x86-64'
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        if: steps.prev.outputs.found != 'true'
         with:
           context: server
           push: true
@@ -515,6 +552,7 @@ jobs:
           tags: |
             ${{ steps.meta.outputs.image }}
             ${{ steps.meta.outputs.moving }}
+            ${{ steps.meta.outputs.tree }}
           build-args: |
             GIT_SHA=${{ github.sha }}
             BUILT_AT=${{ steps.meta.outputs.built_at }}
