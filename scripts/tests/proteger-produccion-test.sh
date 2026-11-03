@@ -28,5 +28,13 @@ caso ask   "gcloud compute ssh pos-vps --zone=us-central1-a -- -N -L 5434:10.0.0
 caso ask   "${ssh}'ls /srv'"
 caso none  "grep -n -A5 -i \"pos-vps\\|34.68\" ~/.ssh/config | head -20; which gcloud"
 caso ask   "ssh 34.68.178.107 uptime; rm -rf /"
+# Un patrón de búsqueda que nombra ssh y la VM no se conecta a nada (2026-11-02: frenó un /goal).
+caso none  "cd /tmp && sed -n 1,80p scripts/respaldo-anonimo.sh | grep -n \"dump\\|DUMP\\|ssh\\|pos-vps\\|usage\" | head -20"
+caso none  "grep -rn 'gcloud compute ssh pos-vps' docs/ | head"
+# Lo que sí se conecta sigue preguntando, aunque vaya detrás de otro comando o envuelto.
+caso ask   "cd /tmp && ssh pos-vps ls"
+caso ask   "sudo ssh pos-vps ls"
+caso ask   "bash -c \"ssh pos-vps ls\""
+caso ask   "echo hola | xargs -I{} ssh pos-vps {}"
 caso none  "gcloud compute ssh pos-vps-dev --command='docker restart api'"
 [ $fallas -eq 0 ] && echo "✓ proteger-produccion: todos los casos" || exit 1

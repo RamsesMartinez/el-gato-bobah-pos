@@ -23,8 +23,18 @@ if ! printf '%s' "$comando" | grep -qE 'pos-vps([^-]|$)|34\.68\.178\.107'; then
 fi
 
 # Nombrar la VM sin conectarse a ella (buscarla en ~/.ssh/config, en un log o en un documento) no la
-# toca: solo pregunta lo que de verdad abre una conexión.
-if ! printf '%s' "$comando" | grep -qE '(^|[^.a-z_-])(ssh|scp|rsync|curl|nc|psql|sftp)([^a-z_-]|$)|gcloud +compute +(ssh|scp)'; then
+# toca: solo pregunta lo que de verdad abre una conexión. Lo que va entre comillas es un argumento
+# —el patrón de un grep que busca «ssh\|pos-vps»— y no se ejecuta, así que se quita antes de buscar
+# un programa que conecte en posición de comando. El 2026-11-02 un grep así frenó un /goal entero.
+# Excepción: si algo vuelve a ejecutar texto (`bash -c`, `eval`, `xargs`), lo entrecomillado sí
+# corre y se revisa completo, como antes.
+revisar=$comando
+conecta='(^|[^.a-z_-])(ssh|scp|rsync|curl|nc|psql|sftp)([^a-z_-]|$)|gcloud +compute +(ssh|scp)'
+if ! printf '%s' "$comando" | grep -qE '(^|[^a-z_-])(bash|sh|zsh) +-[a-z]*c|(^|[^a-z_-])(eval|xargs)([^a-z_-]|$)'; then
+  revisar=$(printf '%s' "$comando" | sed -E "s/\"([^\"\\\\]|\\\\.)*\"//g; s/'[^']*'//g")
+  conecta='(^|[;&|(`{]|\$\()[[:space:]]*((sudo|nohup|env|timeout +[0-9a-z.]+|[A-Z_]+=[^ ]*) +)*(ssh|scp|rsync|curl|nc|psql|sftp)([^a-z_-]|$)|gcloud +compute +(ssh|scp)'
+fi
+if ! printf '%s' "$revisar" | grep -qE "$conecta"; then
   exit 0
 fi
 
