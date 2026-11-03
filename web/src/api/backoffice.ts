@@ -1160,7 +1160,8 @@ export const backofficeApi = {
   markDistinct: (a: number, b: number) => api.post<void>('/stock/articles/distinct-pairs', { a, b }),
   similarArticles: (name: string) => api.get<{ items?: DuplicateItem[] }>(`/stock/articles/similar?name=${encodeURIComponent(name)}`),
   articleArchiveCheck: (id: number) => api.get<ArchiveCheck>(`/stock/articles/${id}/archive-check`),
-  archiveArticle: (id: number) => api.post<void>(`/stock/articles/${id}/archive`, {}),
+  // confirmOnHand: quien archiva vio la existencia y la deja así (#203); sin él, con existencia es 409.
+  archiveArticle: (id: number, confirmOnHand: boolean) => api.post<void>(`/stock/articles/${id}/archive`, { confirmOnHand }),
   reactivateArticle: (id: number) => api.post<void>(`/stock/articles/${id}/reactivate`, {}),
   presentationSuggestions: (unitKind: string) =>
     api.get<{ name: string; qtyInBase: string }[]>(`/stock/presentation-suggestions?unitKind=${encodeURIComponent(unitKind)}`),

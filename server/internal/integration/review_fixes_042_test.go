@@ -278,7 +278,7 @@ func TestReviewSmallFixes(t *testing.T) {
 		if _, err := tx.Exec(context.Background(), `select 1 from ingredients where id = $1 for update`, art); err != nil {
 			t.Fatal(err)
 		}
-		if err := k.svc.ArchiveArticle(ctx, art); !errors.Is(err, domain.ErrConflict) {
+		if err := k.svc.ArchiveArticle(ctx, art, true); !errors.Is(err, domain.ErrConflict) {
 			t.Fatalf("= %v; quiere un conflicto inmediato", err)
 		}
 	})

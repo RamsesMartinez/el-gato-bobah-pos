@@ -128,6 +128,23 @@ func TrendPct(current, reference decimal.Decimal) *decimal.Decimal {
 // lo tenga capturado (409 IN_USE): la pantalla dice cuáles.
 var ErrArticleInUse = fmt.Errorf("%w: el artículo todavía se usa", ErrConflict)
 
+// ErrArchiveHasStock: el artículo tiene existencia en alguna sucursal y quien archiva no lo confirmó
+// (#203, 409 ARCHIVE_HAS_STOCK). La pantalla vuelve a pedir la revisión y la muestra.
+var ErrArchiveHasStock = fmt.Errorf("%w: todavía tiene existencia; confirma que lo archivas así", ErrConflict)
+
+// ArchiveStockGate decide si se archiva un artículo con lo que tiene en cada sucursal: sin existencia,
+// sí; con existencia (también negativa), solo confirmado. Archivar no ajusta nada: la existencia se
+// queda como estaba y vuelve igual al reactivar (decisión del #203). Llevarla a cero es un conteo o una
+// merma, que dejan motivo; un ajuste escondido en archivar contaría como pérdida sin que nadie contara.
+func ArchiveStockGate(onHand []decimal.Decimal, confirmed bool) error {
+	for _, q := range onHand {
+		if !q.IsZero() && !confirmed {
+			return ErrArchiveHasStock
+		}
+	}
+	return nil
+}
+
 // ErrIngredientMerged: algo nuevo apunta a un insumo que ya se unió a otro (la base lo rechaza con
 // EGB02, 0104). 409 INGREDIENT_MERGED: la pantalla tenía el insumo de antes y hay que volver a elegir.
 var ErrIngredientMerged = fmt.Errorf("%w: ese insumo se unió a otro; vuelve a elegirlo", ErrConflict)

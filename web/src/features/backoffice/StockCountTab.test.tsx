@@ -100,6 +100,7 @@ function montar(url = '/almacen') {
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
 const tecla = (k: string) => fireEvent.click(screen.getByRole('button', { name: k }));
 
+// #103: el botón dice que lleva a Negocio; «Cambiar el orden ›» cambiaba de sección sin avisar.
 // La segunda prueba sin contexto (040, T022) no encontró cómo cambiar el orden del recorrido: antes
 // de empezar, el conteo dice en qué orden va y quien configura llega a ordenarlo desde ahí.
 describe('orden del recorrido (spec 040)', () => {
@@ -108,7 +109,7 @@ describe('orden del recorrido (spec 040)', () => {
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.count', 'inventory.configure'] } as never });
     montar();
     expect(await screen.findByText('Se recorre en este orden: Barra → Bodega')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Cambiar el orden ›' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ordenar lugares en Negocio ›' }));
     expect(await screen.findByText('Negocio')).toBeInTheDocument();
   });
   test('sin permiso de configurar no ofrece cambiarlo', async () => {
@@ -116,7 +117,7 @@ describe('orden del recorrido (spec 040)', () => {
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
     montar();
     expect(await screen.findByText('Se recorre en este orden: Barra → Bodega')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cambiar el orden ›' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ordenar lugares en Negocio ›' })).toBeNull();
   });
 });
 
