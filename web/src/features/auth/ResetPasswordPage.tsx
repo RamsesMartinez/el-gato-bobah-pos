@@ -53,9 +53,9 @@ export function ResetPasswordPage() {
             <>
               <Input size="lg" type="password" placeholder="Nueva contraseña (mín. 12)" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
               <Input size="lg" type="password" placeholder="Repetir contraseña" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-              {tooShort && <Text color="red.500" fontSize="sm">Usa al menos {MIN_LEN} caracteres.</Text>}
-              {hasAt && <Text color="red.500" fontSize="sm">La contraseña no puede contener @.</Text>}
-              {mismatch && <Text color="red.500" fontSize="sm">Las contraseñas no coinciden.</Text>}
+              {tooShort && <Text color="fg.error" fontSize="sm">Usa al menos {MIN_LEN} caracteres.</Text>}
+              {hasAt && <Text color="fg.error" fontSize="sm">La contraseña no puede contener @.</Text>}
+              {mismatch && <Text color="fg.error" fontSize="sm">Las contraseñas no coinciden.</Text>}
               <Button size="lg" type="submit" loading={loading} disabled={!valid}>Guardar contraseña</Button>
             </>
           )}

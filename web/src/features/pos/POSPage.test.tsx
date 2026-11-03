@@ -44,8 +44,9 @@ vi.mock('../../api/pos', () => ({
     ...api,
   },
 }));
+const menuQ = vi.hoisted(() => ({ error: null as Error | null }));
 vi.mock('../../hooks/useMenu', () => ({
-  useMenu: () => ({ data: { categories: [], products: [], platforms: [] }, isLoading: false, error: null }),
+  useMenu: () => ({ data: { categories: [], products: [], platforms: [] }, isLoading: false, error: menuQ.error }),
 }));
 vi.mock('../../hooks/usePopular', () => ({ usePopular: () => ({ data: [] }) }));
 // EL ANCHO SE MOCKEA PORQUE JSDOM NO HACE LAYOUT: sin esto `wide` sería siempre false y la rama
@@ -96,6 +97,7 @@ beforeEach(() => {
   anchoDelPos.width = 500;
   tabletaBaja(false);
   cashStatus.current = { open: true };
+  menuQ.error = null;
   pendientes.current = [];
   vivas.current = [];
   usePosStore.setState({ selected: null });
@@ -285,4 +287,14 @@ describe('descartar la cuenta', () => {
     expect(usePosStore.getState().selected).toEqual({ kind: 'draft', id: 'd-1' });
     expect(avisos).toHaveBeenCalledWith(expect.objectContaining({ title: 'La cuenta cambió en otra tableta' }));
   });
+});
+
+// La tableta revisa el menú cada minuto. Si una revisión falla sin red, React Query conserva el
+// menú pero también reporta el error: la pantalla de venta no puede caerse a «Error cargando el
+// menú» con un menú perfectamente usable en memoria.
+test('una revisión del menú que falla no tumba la pantalla de venta si ya hay menú', async () => {
+  menuQ.error = new Error('sin red');
+  montar();
+  expect(await screen.findByPlaceholderText(/buscar/i)).toBeInTheDocument();
+  expect(screen.queryByText(/error cargando el menú/i)).not.toBeInTheDocument();
 });

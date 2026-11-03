@@ -112,6 +112,67 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 
 - `make install` — setup completo (valida entorno, instala deps y herramientas). `make check` solo verifica prereqs.
 - `make start` — levanta todo: Postgres (default **:5490**), Redis (**:6390**), mailpit (**:8095**/**:1095**), API (default **:8080**) y web (Vite default **:3000**). **Ningún puerto es fijo**: un default, por raro que sea, choca con el postgres/redis de otro compose local. `start.sh` reusa el puerto que ya publica el contenedor vivo o toma el primero libre desde el default, y exporta `PG_PORT`/`REDIS_PORT`/`MAILPIT_*` para el compose y `dev-api.sh`; el `Makefile` los lee igual (`PG_PORT=… make db-migrate`). Pregunta los puertos de API/web (defaults auto-ajustados al primer libre) y **detecta puertos ocupados** antes de levantar. Fíjalos sin preguntar con `BACKEND_PORT=… FRONTEND_PORT=… make start`. El binario Go lee `PORT`; `vite.config.ts` lee `BACKEND_PORT` (proxy `/api`) y `FRONTEND_PORT`.
+- **Varios worktrees a la vez: cada uno con su propia infraestructura** (decidido el 2026-10-12).
+  `docker compose` toma el nombre del proyecto de la carpeta del compose (`deploy/`), que es la
+  misma en todos los worktrees: sin esto, cada `make start` cae en los MISMOS `deploy-postgres-1` y
+  `deploy-redis-1`. Lo que costaba, medido: una rama migra la base de otra (dos ramas con la misma
+  migración 0089 dejan a la otra API sin arrancar), el caché del menú y los bloqueos de login se
+  comparten en Redis, y las pruebas de integración —que fijan las contraseñas de los roles de TODO
+  el servidor de Postgres— dejaron «db_down» la API local que usaba ese servidor.
+
+  **Cada feature arranca en su propio worktree, con un solo comando** (decidido el 2026-10-17). Desde
+  cualquier worktree (**no desde `~/git/el-gato-bobah-pos`**: es un repositorio bare, solo guarda la
+  historia y no tiene `Makefile`): **`make nuevo-worktree n=041 slug=subidas-sin-corte`**
+  ([nuevo-worktree.sh](scripts/nuevo-worktree.sh)). Crea `../egb-041-subidas-sin-corte` con la rama
+  `041-subidas-sin-corte` desde `origin/develop`, corre `worktree-env`, crea `deploy/.env` con
+  secretos nuevos y `POSTGRES_PASSWORD=gatobobah` (la del compose de desarrollo), instala las
+  dependencias de `web/` (`node_modules` no viaja con el worktree), levanta `make start` en segundo
+  plano (log en `/tmp/egbNN-start.log`), espera `/readyz` y crea el admin con contraseña y PIN
+  nuevos que imprime una sola vez: no quedan en ningún archivo. Arrancar la 041 a mano costó cinco
+  vueltas, cada error visible solo al fallar el anterior. Al terminar la feature:
+  **`make cerrar-worktree`** desde dentro de ese worktree, o `make cerrar-worktree dir=../egb-041-…` desde
+  otro ([cerrar-worktree.sh](scripts/cerrar-worktree.sh); `datos=1` borra también sus volúmenes). Baja
+  también el Postgres de pruebas (perfil `test`). Se niega con cambios sin commit o commits que no
+  están en origin, y nunca toca el proyecto `deploy` de la carpeta principal. Lo cubre
+  [cerrar-worktree-test.sh](scripts/tests/cerrar-worktree-test.sh). La skill `/nuevo-spec` los usa.
+
+  Lo que hace por dentro, si hay que hacerlo a mano: antes del primer `make start`, **`make worktree-env n=NN`**, con NN el número
+  de la feature (035 → 35). Escribe `.env.worktree.local` (ignorado por git), que leen el Makefile,
+  `start.sh`, `stop.sh`, `dev-api.sh` y `ci-local.sh`:
+
+  | Pieza | Puerto | Nota |
+  | --- | --- | --- |
+  | Proyecto de compose | `egbNN` | Contenedores y volúmenes propios |
+  | Postgres de la API | 5500+NN | |
+  | Postgres de pruebas | 5600+NN | Servicio `postgres-test` (perfil `test`, en memoria); lo usa `make test-integration` |
+  | Postgres de `make ci-local` | 5700+NN | Antes fijo en 5510: dos `ci-local` a la vez chocaban |
+  | Redis | 6400+NN | |
+  | API · web | 8000+NN · 3000+NN | |
+  | mailpit (web · SMTP) | 8200+NN · 1100+NN | |
+
+  Reglas:
+  - **Las credenciales son las del `deploy/.env` de ese worktree**; si no existe, `make check-env`
+    lo crea con contraseñas nuevas. Como cada worktree tiene su propio servidor de Postgres, los
+    roles y sus contraseñas ya no se pisan.
+  - **Las pruebas de integración van contra el Postgres de pruebas, nunca contra el de la API**:
+    `make test-integration`, no `TEST_DATABASE_URL=<la base de la API>`.
+  - **Un worktree que ya trabaja se cambia solo entre tareas**, nunca a media corrida de pruebas:
+    cambiar el proyecto de compose deja su base anterior fuera de su alcance (los datos siguen en el
+    contenedor viejo; se traen con `make db-restaurar` si hacen falta).
+  - **La carpeta principal no se toca**: el script se niega a correr ahí, y sin el archivo todo
+    sigue con los puertos de siempre (5490, 6390, 8080, 3000). Producción, por supuesto, tampoco.
+  - **Nunca `docker compose down` (y menos `down -v`) directo en la terminal: siempre `make stop` o
+    `make deps-down`.** El proyecto de cada worktree vive en `.env.worktree.local`, que solo cargan
+    el Makefile y los scripts; un `docker compose` a mano cae en el proyecto `deploy`, el de la
+    carpeta principal. Pasó el 2026-10-12: un `down -v` así borró `deploy_pgdata_dev` y hubo que
+    restaurarla de un respaldo. `make stop` y `make deps-down` se niegan a bajar `deploy` desde un
+    worktree ([guard-shared-compose.sh](scripts/guard-shared-compose.sh)).
+  - **`make db-restaurar` restaura en la base del worktree, y desde un worktree se niega a tocar la
+    de la carpeta principal**, aunque se le pase `PG_CONTAINER=deploy-postgres-1`. Pasó el
+    2026-10-13: el script tenía el contenedor fijo y un restore desde un worktree borró la base de
+    la carpeta principal. Lo vigila
+    [restaurar-respaldo-test.sh](scripts/tests/restaurar-respaldo-test.sh), que corre en el
+    pre-commit cuando cambia el script. Para restaurar la carpeta principal, se corre desde ahí.
 - `make api-dev` (hot reload con air) · `make api-build` (= `cd server && go build ./...`) · `make api-test` (= `cd server && go test ./...`).
 - **La base local se comporta como producción: RLS y GRANT aplican también en dev.** La regla vive
   en la constitución (IV, *La base local niega lo mismo que producción*); esto es la mecánica, y
@@ -143,14 +204,23 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   gatobobah` a mano también es owner**: para ver lo que ve la API, `set role gatobobah_app; set
   app.company_id = '2';` antes de la consulta.
 - `make web-dev` · `make web-build` · `make web-test` (vitest).
-- **`bun run e2e`** (en `web/`) — Playwright contra el **ambiente de pruebas desplegado**, a
-  1024×600. No monta un servidor local a propósito: lo que estas pruebas atrapan es el desacuerdo
-  entre lo que la pantalla calcula y lo que el servidor cobra, y con el backend simulado los dos
-  están de acuerdo por construcción. En Windows los binarios del navegador los bloquea Smart App
+- **Toda prueba corre en local** (constitución 1.25.0; el ambiente de pruebas solo si el dueño lo pide). El subagente
+  usa `http://localhost:30NN` del worktree (el `FRONTEND_PORT` de `.env.worktree.local`), con
+  `make start` arriba y una base restaurada (`make db-restaurar`), a 1024×600 y `hasTouch`. Corrige,
+  recarga (Vite lo hace solo) y vuelve a probar sin PR ni despliegue. La vuelta final corre además
+  contra el build servido en local (`bun run build && bun run preview`).
+- **`bun run e2e`** (en `web/`) — Playwright a 1024×600 contra el **`make start` del worktree**:
+  `E2E_BASE_URL=http://localhost:30NN E2E_API_URL=http://localhost:80NN/api/v1 E2E_SLUG=… E2E_PASSWORD=… E2E_PIN=… bun run e2e`.
+  `E2E_PIN` es el PIN de `E2E_USER`: con la asistencia encendida, las pruebas de caja marcan su
+  entrada y su salida ([asistencia.ts](web/e2e/asistencia.ts)) y sin él fallan diciendo que falta.
+  Sin esas variables apunta al ambiente de pruebas, que se usa solo cuando el dueño lo pide. No
+  simula el backend a propósito: lo que estas pruebas atrapan es el desacuerdo entre lo que la
+  pantalla calcula y lo que el servidor cobra, y con un backend simulado los dos están de acuerdo por
+  construcción; la API local es la real. En Windows los binarios del navegador los bloquea Smart App
   Control, así que corre en contenedor como el resto de los gates:
 
   ```bash
-  MSYS_NO_PATHCONV=1 docker run --rm --network host -v "d:/git/el-gato-bobah-pos/web:/w"     -v gatobobah_e2e_modules:/w/node_modules -w /w -e CI=1     mcr.microsoft.com/playwright:v1.63.0-noble     sh -c "bun install --frozen-lockfile --silent; npx playwright test"
+  MSYS_NO_PATHCONV=1 docker run --rm --network host -v "d:/git/el-gato-bobah-pos/web:/w"     -v gatobobah_e2e_modules:/w/node_modules -w /w -e CI=1     mcr.microsoft.com/playwright:v1.64.1-noble     sh -c "bun install --frozen-lockfile --silent; npx playwright test"
   ```
 
   Un fallo en el primer `goto` casi siempre es la VM spot apagada, no el código: revísalo antes de
@@ -177,7 +247,23 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   que cree pedidos, ciérralos tú: entregar (`POST /orders/:id/deliver`) y cobrar
   (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
   plataforma.
-- **`make ci-local`** — lo mismo que los jobs de CI que gatean el despliegue (backend con lint y govulncheck, integración con `sqlc diff`/`sqlc vet` contra un Postgres desechable en `:5510`, y frontend), en paralelo y en ~2 min. **Se corre antes de empujar**: CI tarda ~10 min en avisar. No cubre el entorno de GitHub (versiones de las actions, el Go que instala `setup-go`), que es justo lo que se rompió el día de go1.27.2; CI sigue siendo el que despliega.
+
+  **Contra la base local, la suite abre la caja principal si la encuentra cerrada y la cierra al
+  terminar** ([caja-principal.ts](web/e2e/caja-principal.ts)): un respaldo restaurado la trae
+  cerrada, y las pruebas de caja dan por hecho un turno abierto. Las personas que una prueba
+  necesita las crea y las da de baja ella ([personas.ts](web/e2e/personas.ts)); ningún id ni nombre
+  de la base es fijo.
+
+  **Las capturas de pantalla no se versionan; las e2e las guardan en `test-results/`** (ignorado por
+  git). Sin excepciones, con datos reales o inventados: en el repo no tienen uso, y lo observado en una
+  prueba se escribe en texto. Ningún spec, plan ni task pide guardarlas en `specs/` ni en otra carpeta
+  del repo. Una prueba corrida contra una base restaurada pinta el catálogo, las existencias y los
+  costos del negocio, y este repositorio es público. Pasó el
+  2026-10-22: el recorrido de la 044 escribía por omisión en `specs/044-…/capturas/`, se versionaron
+  29 PNG con costos de compra reales y hubo que reescribir la historia de 12 ramas, `main` incluida.
+  Una e2e nueva toma su carpeta de capturas de una variable de entorno con `test-results/` por
+  omisión, como las que ya existen.
+- **`make ci-local`** — lo mismo que los jobs de CI que gatean el despliegue (backend con lint y govulncheck, integración con `sqlc diff`/`sqlc vet` contra un Postgres desechable en `:5510`, y frontend), en paralelo y en ~2 min. **Ya no es paso obligatorio** (decidido el 2026-10-21): cuando termina el flujo de spec-kit de una feature, se empuja y el CI del PR es el gate —un PR no se mergea sin CI verde—. Mientras se implementa, los commits se quedan locales. **Si el CI del PR falla, las correcciones se validan en local**: se arregla, se corre `make ci-local` y solo con verde se vuelve a empujar, en vez de una vuelta de CI por intento. Medido el 2026-10-21 sobre las últimas 10 corridas: el CI de un PR tarda de 2 a 5 min y el de develop (imagen y despliegue al ambiente de pruebas) de 2 a 3 min. El pre-push de lefthook sigue corriendo (`go test`, `govulncheck`, `bun run build`). No cubre el entorno de GitHub (versiones de las actions, el Go que instala `setup-go`), que es justo lo que se rompió el día de go1.27.2; CI sigue siendo el que despliega.
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
 - **El precio de `product_platform_prices` NO es el precio al que se vende en la plataforma.** Es
   una copia que se captura **después**, a mano, para que el ticket del POS cuadre con lo que la
@@ -229,6 +315,14 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     comanda) recibe los renglones de pedidos de plataforma sin pareja. Se resuelve con
     `ensure_platform_unpaired_product(empresa)`, que filtra por la empresa explícita: con un
     `where system_kind = …` a secas, como owner devolvía el de otra empresa.
+- **Un pago de gasto en efectivo ya no exige turno** (spec 047, 0099). Tres cosas que no se ven:
+  - **La caja y el corte son columnas distintas**: `expense_payments.register_id` dice de qué caja
+    salió y `register_session_id` a qué corte entra. Entra solo si la caja «lleva arqueo», tiene turno
+    y el pago es del día de ese turno; lo decide `domain.ExpensePaymentTarget`, y un pago fuera de
+    corte de una caja que se cuenta exige `outsideCount` (si no, 409 `EXPENSE_OUTSIDE_COUNT`).
+  - **Un trigger deriva `register_id` de la sesión**: la API vieja, durante la subida, no lo manda.
+  - **El Down de la 0099 se niega** en cuanto hay un pago con caja y sin corte: perdería la caja.
+    Desde ahí, el rollback es restaurar el respaldo.
 - **El almacén descuenta lo que de verdad se vendió** (spec 028, 0078). Cuatro cosas que no se ven:
   - **Una sola función decide qué sale**: `domain.ExpandSale` (receta o existencias propias, cada
     extra, lo que lleva un paquete, y los insumos preparados por su rendimiento). La usan crear
@@ -240,6 +334,29 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Cada movimiento guarda su origen** (`modifier_option_id`, `component_of_product_id`) y las
     cancelaciones reponen con el mismo origen. Los componentes vendidos se copian en
     `order_line_components`, que es de donde sale «unidades por producto» en Reportes.
+  - **Cancelar repone solo lo que no se gastó** (decisión del dueño, 2026-10-11): lo que se prepara
+    y ya salió a cocina se da por gastado y no vuelve; lo que no se ha mandado, sí. Lo que no se
+    prepara (una lata) se repone aunque ya se haya mandado. Una sola regla para quitar un renglón y
+    cancelar el pedido entero: `domain.ReponeInventario`. Un pedido entregado no repone nada.
+  - **«Salud del inventario» mide lo que la venta dejó, no la configuración** (spec 037): un renglón
+    «se vendió sin restar» si no dejó ningún movimiento `venta` con su `order_line_id` (y su
+    `modifier_option_id`, en un extra). La excepción son las piezas de un paquete: el movimiento
+    guarda en `component_of_product_id` el **paquete**, no la pieza, así que una pieza se marca por
+    lo que tiene para restar. La pantalla y la exportación salen del mismo `report()`.
+  - **Un producto con existencia propia ya puede recibir receta o volverse paquete** (spec 037): su
+    existencia pasa al insumo (receta de un insumo) o se cierra en cero (lo demás), con las filas de
+    `stock_levels` bloqueadas (`FOR UPDATE`) dentro de `SaveComposition`. El trigger de existencias
+    suma deltas sin releer, y sin ese bloqueo una venta simultánea perdería o inventaría piezas. La
+    hoja manda las cifras que mostró (`seenProductOnHand`, `seenIngredientOnHand`); si ya no son las
+    bloqueadas, 409. La existencia propia ya no se ofrece en pantalla: solo se sale de ella.
+  - **Un insumo no se da de alta con un nombre que ya existe** sin distinguir mayúsculas, acentos ni
+    espacios (`IngredientNameTaken`, con candado por empresa 28037). El gasto y la receta reciben el
+    que ya existe (`web/src/shared/createIngredient.ts`). Hoy ninguna ruta renombra insumos; la que
+    se agregue aplica la misma regla.
+  - **Corregir una receta no recalcula lo ya vendido** (decisión del dueño, 2026-10-13): el
+    inventario de la empresa en producción es un histórico heredado de FUDO y se corrige de aquí en
+    adelante, no hacia atrás. La diferencia acumulada la ajusta un conteo, nunca un script que
+    reescriba `stock_movements` de ventas pasadas.
   - **La carga de FUDO** es `make fudo-composiciones empresa=gatobobah` (con `prueba=1` solo
     reporta). Llena solo lo que no tiene composición y lo marca **estimado**, que descuenta desde
     ese momento (decisión del dueño, 2026-10-07). No arma paquetes —sus cantidades en FUDO no
@@ -251,6 +368,44 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Un insumo preparado se captura en Almacén → Insumos** (qué lleva y cuánto rinde, en su unidad
     base). Los ciclos se rechazan con `StockGraph.ValidatePrepIngredient` contra todo el catálogo,
     en la captura **y** en la carga de FUDO: una sola regla para los dos caminos.
+- **El costo vigente (`current_cost` de insumos preparados, productos y extras) es un caché que
+  escribe solo el motor** (`recomputeCosts`, con la regla de `domain.CostGraph`). Lo que no se ve
+  (issue #145):
+  - **Todo camino que cambie algo de lo que sale un costo lo llama dentro de su transacción**: una
+    compra, guardar o confirmar una receta (producto, extra o preparado), corregir el costo de un
+    insumo y cambiar su unidad. Antes guardar la receta de un extra no lo hacía, y el extra se
+    quedaba en $0 o con el costo de su receta anterior: el margen salía mal sin que nada fallara.
+  - **Necesita el candado de captura de la empresa** (`LockCompositionEdits`), y **siempre antes
+    que cualquier fila**: dos correcciones a la vez escribían cada una su cálculo sin el cambio de la
+    otra. Quien no tiene filas tomadas lo pide al empezar su transacción (receta, confirmar, corregir
+    costo, cambiar unidad). Quien llega con filas tomadas (la compra, con el almacén del insumo) solo
+    lo intenta (`TryLockCompositionEdits`) y responde «vuelve a intentar»: esperarlo con filas en la
+    mano se cruzaba con una captura de receta y Postgres abortaba una con `deadlock detected`. Lo
+    cubren `TestTwoConcurrentCostCorrectionsDoNotOverwriteEachOther`,
+    `TestCorrectingACostWhileARecipeIsSavedDoesNotDeadlock` y
+    `TestAPurchaseDoesNotWaitForTheCompositionLockHoldingStock`.
+  - **Un costo que no cabe en su columna se deja como estaba** (`domain.StorableCost`, log
+    `cost_out_of_range`): con el recálculo en cada guardado, una sola receta absurda dejaba a toda la
+    empresa sin poder guardar recetas.
+  - **La API recalcula todas las empresas activas al arrancar**, en segundo plano, y solo escribe lo
+    que cambió (así no sube la versión del catálogo en balde). Lo que deje un script se corrige en
+    la siguiente subida. Las ventas pasadas no cambian: `order_lines.unit_cost` es copia.
+- **Un cambio de catálogo por SQL directo ya NO necesita borrar el menú guardado** (spec 034).
+  Diez tablas —las que lee el menú del POS: `products`, `categories`, `modifier_groups`,
+  `modifier_options`, `product_modifier_groups`, `product_channels`, `channels`,
+  `delivery_platforms` y los dos precios por plataforma— tienen triggers de sentencia que suben
+  `catalog_versions` de cada empresa tocada, sin importar quién escribe ni si puso
+  `app.company_id`. La llave del menú en Redis y su `ETag` llevan esa versión, y la tableta revisa
+  cada minuto y al volver al frente (304 si no cambió). No hagas `DEL pos:menu:*` ni
+  `POST /admin/reload` para el menú: ya no hace falta.
+
+  Origen: el 2026-10-10 un script desligó un grupo de extras de un producto; el menú guardado solo
+  se borraba desde las pantallas de administración, la tableta siguió ofreciendo el grupo y el
+  servidor rechazó la venta una y otra vez hasta que alguien borró el caché a mano. Si el menú
+  llega a leer **otra tabla**, agrégala a la lista de la migración 0093 (en una migración nueva) y
+  a `TestEveryMenuTableBumpsTheVersion`: una tabla sin trigger es exactamente ese camino. Y si
+  aun así una tableta manda algo que ya no vale, el servidor responde `MENU_CHANGED` y la tableta
+  recarga y pide elegir de nuevo.
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
   «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,
@@ -285,6 +440,29 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `rolesPorPantalla` en [uso.go](server/internal/domain/uso.go), más `PANTALLAS` en
     [rutas-medidas.ts](web/src/app/rutas-medidas.ts). Falta el mapa de roles y los eventos se
     descartan todos, en silencio.
+- **Lo que llega crudo de una plataforma NO se poda** (decidido el 2026-10-22). El aviso y el
+  detalle de cada pedido (`raw_body`, `raw_detail`) y el nombre del cliente se guardan para
+  siempre: el POS los va a mostrar. Una poda se construyó (#130) y se revirtió, porque lo borrado no
+  se recupera. Fuera de producción los quita `scripts/respaldo-anonimo.sh`, que trunca esas tablas.
+- **Toda columna nueva que no sea número, fecha, booleano o enum se clasifica para el respaldo
+  anónimo** (#133, #134). `TestEveryColumnIsCoveredByTheAnonymousBackup` recorre el catálogo de la
+  base migrada: cada columna de texto, json, binario, IP, uuid o arreglo la borra el paso 5 de
+  `scripts/respaldo-anonimo.sh` (y la cuenta su verificación `FUGAS`), o está en `noPersonalData`
+  con el porqué. Una que no está en ninguno truena en la integración, se haya creado con
+  `create table` o con `alter table`. El paso que borra corre después de migrar, y si algo falla
+  antes de que `FUGAS` diga 0, el script tira la base restaurada entera.
+- **Un Down que se niega con datos lleva su limpieza de prueba** (#116). Las pruebas de migración
+  bajan un respaldo real hasta antes de su migración, y con datos de producción cada guarda de
+  Down (`raise exception`) que cruzan se niega: ocho pruebas de la 0064 a la 0082 morían en la 0088
+  por los cobros con terminal. `migrarAbajoHasta` baja una migración a la vez y antes de cada Down
+  aplica su renglón de `guardedDownCleanup` (en
+  [harness_restaurado_test.go](server/internal/integration/harness_restaurado_test.go)): borra o
+  pone en neutro exactamente lo que nombra la guarda, solo en la copia de prueba.
+  `TestEveryGuardedDownHasItsTestCleanup` truena si un Down nuevo se niega y no tiene su renglón, o
+  su razón en `guardedDownWithoutCleanup` (hoy solo la 0076). Un Down que pierde un dato que su Up
+  no vuelve a aceptar también lleva renglón aunque no se niegue (la 0072, con los descuentos). Cada
+  prueba trabaja sobre su propia copia de `TEST_RESTORED_DATABASE_URL`, así que la base restaurada
+  no cambia entre pruebas ni entre corridas.
 - **Credenciales de las plataformas** (0075, ampliación de la 021): el Client ID y el Client Secret
   de la app de Uber **ya no van en el entorno**. Se capturan en Plataformas → «Acceso a la app», por
   empresa, y se guardan solo si Uber entrega un token con ellas. Cuatro cosas que cuestan caro:
@@ -305,6 +483,107 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **La AAD de cada cifrado es `credential|company|platform|kind`** ([domain](server/internal/domain/platform_credentials.go)).
     No se cambia su formato: todo lo ya guardado se cifró con él. La llave de firma usa el mismo
     tipo para la primaria y la secundaria porque rotar mueve el cifrado entre columnas.
+- **Renglones excluidos y caja que vende** (spec 049, 0101). Tres cosas que no se ven:
+  - **Un excluido (`expense_items.excluded`) se guarda y no cuenta en ningún lado**: ni existencias
+    (`PlanStockLines` le pone objetivo cero), ni costo, ni «Por recibir», ni «recibir todo», ni el
+    historial de precios, ni la suma contra el total. Una consulta nueva sobre `expense_items` que
+    hable de mercancía o de dinero filtra `not excluded`. Lo «personal» de la lectura es lo mismo.
+  - **«Corregir lo que llegó» no manda los excluidos y eso NO los quita**: `SaveStockLines` los
+    conserva. La marca se cambia solo con `PATCH /expenses/{id}/items/{itemId}`, que corrige
+    existencias por diferencia.
+  - **`is_primary` dice qué caja vende HOY**, y se mueve con `POST /cash-registers/{id}/sells` (las
+    dos cerradas). Nada que hable de un turno pasado puede leerla: `CerroLaCajaPrincipal` ya pregunta
+    por «el último turno con pedidos». La lista de cada uso está en specs/049/research.md.
+- **El arqueo por hora de los gastos** (spec 048, 0100). Tres cosas que no se ven en la pantalla:
+  - **Un pago en efectivo tiene tres estados**: en un corte (`register_session_id`), pendiente
+    (`include_in_count` sin corte) o fuera. La regla vive en `domain.ExpensePaymentTarget`, contra
+    `paid_at` (`domain.PaymentTime`: la hora del reloj si es de hoy, la medianoche de su día si no).
+    Sin `includeInCount` en el cuerpo rigen las reglas de la 047: una tableta vieja nunca deja un
+    pendiente.
+  - **Un pendiente entra a un corte SOLO por `sweepPendingExpenses`** (`app/expenses.go`), y solo al
+    abrir: la apertura los incluye sola desde la hora del primero (sin permiso) y lo que queda antes
+    de la apertura pasa a «sin incluir»; excluirlos o elegir la hora exige `cash.adjust_count`. Un camino nuevo
+    que pegue pagos a un corte lo llama, no lo copia; el `where register_session_id is null` es lo
+    que impide pegarlo dos veces.
+  - **Cada salida de caja de un gasto lleva su pago** (`register_cash_movements.expense_payment_id`,
+    única por pago en las salidas). Una salida nueva sin él no truena, pero desmarcar ese pago
+    después responde 409 porque no encuentra qué borrar. Los candados van caja → turno → pago, el
+    orden de la apertura y el cierre; tomar el pago primero los cruza.
+- **Unir insumos** (spec 056, 0104). Varios insumos que son lo mismo con otra marca pasan a uno
+  (`POST /stock/articles/{id}/merge`, `?preview=1` es la misma transacción revertida, con huella). Cada
+  origen queda en `ingredient_replacements` con `kind = 'merge'` y se archiva. Cuatro cosas que no se ven:
+  - **Nada nuevo cuelga de un insumo unido, y lo garantiza la base**: un movimiento de existencia que
+    llega a un origen (la cancelación de un pedido vendido antes de unir, una pantalla abierta desde
+    antes, la API anterior durante la subida) se redirige al destino con la equivalencia
+    (`redirect_merged_ingredient_movement`); cualquier otra fila que apunte a un origen se rechaza con
+    `EGB02` → 409 `INGREDIENT_MERGED` nombrando el destino. Cada guarda va dos veces: inmediata y como
+    constraint trigger diferido, que atrapa la fila que esperó la llave foránea mientras la unión
+    confirmaba. **Una tabla nueva que apunte a `ingredients`** va en `app.MergeTables` (y en
+    `app.UnitChangeTables`); si la clasificas como «rechaza», lleva las dos guardas o truena
+    `TestEveryRejectingTableHasTheMergeGuard`.
+  - **`EGB02` puede nacer en `tx.Commit`**: por eso los commits de `store.go` pasan por `DomainError`.
+    Sin eso, la venta que pierde la carrera contra una unión respondía 500.
+  - **La marca de la presentación se copia en la compra** (`expense_items.presentation_brand`, por
+    trigger): editarla después no reescribe de qué marca fue cada compra. La presentación pasa al
+    destino conservando su id por la misma razón.
+  - **Un destino con insumos unidos no cambia de unidad**: la equivalencia de cada unión habla de la
+    unidad de hoy. Unir no reescribe ventas, compras ni conteos pasados; el historial de costos y la
+    bitácora del destino leen los de sus orígenes con un CTE recursivo dentro de la consulta (bajo RLS).
+- **Densidad y tara** (spec 058, 0105). La densidad (g por ml) del artículo es lo único que pasa
+  entre peso y líquido; nunca se asume 1 g = 1 ml. Cuatro cosas que no se ven:
+  - **Cada renglón de compra fija la densidad con que convirtió la primera vez**
+    (`expense_items.density_g_per_ml`, en `applyStockLinesOn` con el valor exacto que usó `BaseQty`).
+    `PlanStockLines` recalcula lo que el renglón debió sumar en cada escritura: sin esa copia, rehacer
+    la pesada y luego corregir o editar el gasto movería la existencia (decisión del dueño,
+    2026-11-02: «de aquí en adelante»). `ListStockLines` lee `coalesce(fija, vigente)`; cambiar el
+    artículo del renglón la vuelve a nulo.
+  - **Quitar la densidad se niega con una compra pendiente entre peso y líquido** sin densidad fija
+    (409 `DENSITY_IN_USE`): `PlanStockLines` convierte también lo pedido y el gasto entero dejaría de
+    poder tocarse. Durante la subida, la API anterior responde 400 a ese gasto (anular sí funciona).
+  - **«Solo g o ml tiene densidad y tara» lo impone la base**: pasar un artículo a pieza o cm limpia
+    su densidad y las taras de sus empaques (trigger en `ingredients`), y un empaque que llega a un
+    artículo en piezas (una unión) pierde la tara en vez de tronar.
+  - **Entre peso y líquido la equivalencia del cambio de unidad la pone la densidad**
+    (`domain.UnitChangeFactor`); un factor distinto del derivado es 409 `DENSITY_CHANGED`. El conteo
+    pesando con empaque guarda lo pesado (`stock_count_lines.gross_g`, empaques, tara y densidad
+    usadas) y responde 409 `COUNT_INPUTS_CHANGED` si la tara o la densidad ya no son las que usó la
+    pantalla.
+- **Editar un gasto ya guardado** (spec 053, 0103). Encabezado, agregar y quitar renglones
+  (`POST /expenses/{id}/edit`, permiso `expenses.edit`, solo admin) y entregas con su fecha
+  (`POST /expenses/{id}/deliveries`, `inventory.receive`). Cinco cosas que no se ven:
+  - **La vista previa es la misma transacción, revertida** (`runExpenseEdit`): con `?preview=1` corre
+    todo y devuelve `errPreviewRollback`; confirmar repite la `fingerprint` de la última vista previa
+    (409 `EXPENSE_EDIT_STALE` si algo cambió) y exige sus decisiones (400 `DECISION_REQUIRED`). Una
+    cifra de la vista previa que dependa de algo volátil (un id recién insertado) rompe la huella: la
+    vista previa revertida consume otro id que la confirmación.
+  - **`stock_movements.effective_on` es el día de la entrega**, no el de la captura. La llena un
+    trigger en cada compra o movimiento de un gasto (`business_day_of`, con la zona de la EMPRESA de la
+    fila), así que la API vieja también deja fecha; los reportes por periodo siguen con `created_at`.
+    El Down de la 0103 se niega en cuanto hay una fecha capturada distinta del día de su captura.
+  - **«No mover» ante un conteo posterior es un movimiento más, no la ausencia de uno**: el del renglón
+    se registra igual (lo aplicado sigue siendo la suma de sus movimientos) y otro `ajuste` contrario
+    lleva `stock_count_id`, `expense_id`, SIN `expense_item_id` y la sucursal del conteo explícita.
+    «Conteo posterior» = renglón de un conteo cerrado de la sucursal capturado después de
+    `least(registro, fin del día de la entrega)`; recibir hoy nunca pregunta.
+  - **El importe se mueve con `domain.ExpenseAmountAfterEdit`**: lo agregado ocupa primero lo que el
+    importe tenía sin desglosar; borrar lo baja por su renglón. El estado se recalcula solo si cambió
+    el importe y una `pagada` sin ningún pago no se degrada. Los pagos nunca se tocan.
+  - **Anular se niega con un pago ya dentro de un corte** (`CanCancelExpense`): una edición puede
+    volver pendiente un gasto pagado, y anularlo dejaría el corte contando la salida de un gasto
+    anulado. Un pago que todavía espera corte no lo impide (spec 050). Anular con devolución es la
+    entrega 2 del #167.
+- **Lo que salió de la caja** (spec 050, 0102). Un pago en efectivo de un gasto con renglones
+  excluidos guarda en `expense_payments.drawer_extra` lo que salió del cajón además de su importe.
+  Tres cosas que no se ven:
+  - **El monto de la salida de caja de un pago lo pone la base**, no Go: un trigger en
+    `register_cash_movements` lo fija en `amount + drawer_extra` del pago, sea cual sea el monto
+    que mande el INSERT. Un camino nuevo que registre la salida de un pago no suma nada.
+  - **El tope es por gasto** (lo excluido vivo, y si el ticket traía total, tampoco más de
+    `document_total − amount`; menos lo que otros pagos ya usaron) y se valida con
+    el gasto tomado (`LockExpenseForStock`). Volver a incluir un renglón, o corregir renglones, que
+    dejaría lo excluido por debajo de lo usado responde 400 `DRAWER_EXTRA_TOO_HIGH`.
+  - **El corte la presenta en «No es del negocio», no en «Gastos»** (`ListCashMovements` trae
+    `drawer_extra`). Sumarla a Gastos reportaría un gasto mayor que el registrado.
 - **Dividir la cuenta** (spec 027). Cinco cosas que cuestan caro si se olvidan:
   - **Un pago devuelto SALE de `order_payments`** a la bitácora `order_payment_voids`, con su
     cobertura en `covered` y el número que lleva su ticket. Por eso las ~32 consultas que suman pagos
@@ -326,6 +605,134 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `can()` en el front), no por nombre de rol: los roles serán de cada empresa (constitución,
     principio VIII). La migración 0079 se niega a bajar en cuanto hay un cobro nuevo; tras
     desplegarla, el rollback es restaurar el respaldo.
+- **Compras al almacén, por recibir y conteo** (spec 038, 0091/0092). Cinco cosas que no se ven:
+  - **El almacén se mueve por diferencia, nunca editando un movimiento.** Cada renglón de compra
+    guarda en `applied_qty_base` lo que ya sumó; recibir, corregir, quitar (`voided_at`) y anular
+    calculan lo que debería haber sumado e insertan solo la diferencia (`domain.PlanStockLines`).
+    Un camino nuevo que toque lo recibido pasa por `applyStockLines`, o duplica o pierde mercancía.
+  - **Los insumos se toman sin esperar, ANTES de escribir** (`lockIngredients`, `for no key update
+    nowait`): la llave foránea del renglón tomaría el insumo y esperaría a una venta. Una venta en
+    curso responde 409 «vuelve a intentar», no una espera. `no key update` y no `update`: así la
+    compra no frena la llave foránea de los movimientos de la venta.
+  - **`ValidQty` rechaza el cero**, y lo recibido («todavía no llega») y lo contado («no hay») lo
+    usan a menudo: para eso está `domain.ValidStockQtyOrZero`. Usar `ValidQty` ahí responde 400.
+  - **El conteo ajusta contra lo que había AL CAPTURAR**, no al cerrar: lo vendido mientras se cuenta
+    queda restado. Lo no contado no se toca. Mientras está abierto, lo que el sistema tiene no viaja.
+  - **El «lugar» de un insumo no es un almacén**: solo ordena el conteo. Más de un almacén por
+    sucursal es una puerta del principio VIII (issue #65). Las compras todavía no guardan sucursal:
+    con dos y sin selector, «Por recibir» responde `BRANCH_AMBIGUOUS`.
+- **Lo que se echó a perder** (spec 039, 0094). Cuatro cosas que no se ven:
+  - **El periodo del faltante se cuenta por id de movimiento, no por hora.** Al capturar un artículo,
+    el conteo toma su existencia (`for share`) y DESPUÉS, en otra sentencia, lee lo que había y el
+    último movimiento (`last_movement_id`). En una sola consulta, Postgres relee la fila esperada pero
+    el resto sale de la foto vieja, y una merma que confirmaba a media captura se restaba dos veces.
+  - **La merma registrada YA restó de lo que el sistema tenía**: lo que el conteo encuentra de menos es
+    lo sin explicar tal cual (`domain.SplitLoss`). Restarle otra vez la merma la cuenta dos veces.
+  - **Juntar motivos no reescribe `reason_id`**: el reporte sigue `merged_into_id` (un nivel). La marca
+    «no cuenta como pérdida» se copia al registro; cambiarla en el motivo no reclasifica el pasado.
+  - **Las horas de la merma son de la base** (`recorded_at`, `DBNow`): se comparan con `captured_at`
+    del conteo, que también pone la base. Con el reloj de la API se mezclarían dos relojes. Y
+    `CreateCompany` siembra los motivos: una prueba que baje el esquema debajo de la 0094 crea sus
+    empresas ANTES de bajarlo.
+- **Lugares para contar** (spec 040, 0095). Tres cosas que no se ven:
+  - **El lugar es una liga a `count_places`, no texto.** Ordena el recorrido del conteo y nada más:
+    no es un almacén (#65) y no guarda existencias. La pantalla no lo llama «almacén».
+  - **Crear, mover y archivar toman primero `pg_advisory_xact_lock(28040, empresa)`** y después, en
+    otra sentencia, leen los activos y renumeran 0..n-1. Asignar toma el lugar `for share` y archivar
+    `for update`: así ningún artículo queda en un lugar archivado. Un camino nuevo que toque el orden
+    o archive pasa por el mismo candado.
+  - **La normalización de nombres junta espacios con `strings.Fields`, no con `\s` de regexp**: el de
+    Go no ve el espacio duro y el de Postgres sí (lo encontró la prueba de paridad de la 0095; también
+    afectaba a los motivos de merma). La Down de la 0095 pierde el orden y los lugares sin artículos.
+- **Límites del conteo** (spec 044, 0098). Tres cosas que no se ven:
+  - **Los defaults viven en la columna de `count_limits`, una sola vez**: el relleno y la siembra de
+    `CreateCompany` solo pasan el id, y una prueba compara la fila con `domain.DefaultCountLimits`.
+    Cambiar un default es una migración que cambia la columna, no una constante en Go.
+  - **Solo el conteo los usa**: compras, recetas y ajustes siguen con `MaxStockQty`. El máximo de una
+    empresa puede pasar de ese tope (hasta `MaxCountLimit`, 1e9 en unidad base).
+  - **Leer nunca escribe**: una empresa sin fila (respaldo viejo, alta a mano) recibe los defaults del
+    dominio; la fila se crea al guardar.
+- **Artículos del almacén** (spec 042, 0096). Cinco cosas que no se ven:
+  - **Un artículo nace solo dentro de un guardado**: la lista (`createArticleTx`), el gasto y la receta
+    (`newArticle` dentro de su transacción). Nada lo crea al tocar una unidad; cancelar o fallar no
+    deja artículos sueltos. `POST /ingredients` ya no existe (#115): toda alta pasa por `createArticleTx`.
+  - **La unidad base solo la reescribe `SetArticleUnit`** (cambio de unidad), y lo vigila
+    `TestNoQueryRewritesTheBaseUnitOfAnIngredient`. Sin compras, ventas ni mermas el cambio es directo
+    y reescribe ajustes, renglones de conteo, recetas, empaques y correcciones con los originales en la
+    bitácora (`ingredient.unit_changed.detail`, un `batchId`); con ellas, se reemplaza por otro artículo
+    ligado en `ingredient_replacements` y el viejo se archiva. Toda tabla que apunte a `ingredients` va
+    en `app.UnitChangeTables` o truena `TestEveryTableThatPointsToAnArticleIsClassified`.
+  - **Tras convertir, la existencia es la suma de los movimientos** (`RecomputeArticleStock`): redondear
+    cada ajuste por separado deja residuo y el trigger de existencias es solo de insert.
+  - **El aviso del conteo lo decide el servidor y solo si la pantalla manda `confirmable`**: una tableta
+    con la pantalla anterior guarda como antes. Responde 409 `NEEDS_CONFIRM` sin decir la referencia
+    (`domain.CountNeedsConfirm`): el conteo sigue a ciegas.
+  - **Las sugerencias de empaque son por clase de unidad** (`PresentationSuggestions`), nunca por nombre
+    suelto: así «Bolsa de 15 kg» no aparece en un artículo en litros.
+- **Asistencia y bitácora de auditoría** (spec 033, 0089). Cinco cosas que no se ven:
+  - **Todo camino nuevo que mueva dinero, caja, precios o asistencia escribe su evento** con
+    `recordAudit` (o `auditOrder` / `auditCash`) **dentro de su transacción**, y su acción va en la
+    lista blanca de `domain/audit.go` y en las etiquetas de `web/src/shared/audit/labels.ts`. Sin la
+    misma transacción, una acción que se revierte deja evento y una que se confirma puede no
+    dejarlo. `TestEveryAuditActionIsProduced` falla si una acción de la lista no tiene prueba que la
+    produzca.
+  - **La bitácora no se borra, ni como owner.** Un test que revierte migraciones por debajo de la
+    0089 con pedidos creados pasa por `migrarAbajoHasta`, que la vacía antes (solo en pruebas, por
+    `guardedDownCleanup`); el Down de la 0089 se niega con datos, igual que en producción.
+  - **`attendance_entries.branch_id` queda nulo con varias sucursales y no se rellena después**: es
+    lo que el selector de sucursal tendrá que resolver. Los eventos de pedido y caja sí guardan la
+    sucursal del pedido o de la caja.
+  - **La clave del aparato (`X-Device-Key`) la genera el navegador**: sirve para auditar, no
+    identifica. CORS la anuncia junto con `X-Device-Info`; un header propio que CORS no anuncia
+    tumba todas las peticiones desde otro dominio.
+  - **Corregir asistencia propia es otro permiso** (`attendance.correct_own`). El router no puede
+    decidirlo —depende de quién es el dueño del registro— y lo decide `domain.CanCorrect`.
+- **Caja y asistencia** (spec 046). Abrir caja pide una entrada de 16 h o menos de quien abre;
+  cerrarla, que quien la abrió no tenga ninguna entrada abierta, salvo el cierre autorizado (permiso
+  `cash.close_without_clock_out`, con motivo). Cinco cosas que no se ven:
+  - **Una sola regla para tres puertas**: `domain.CashOpenAttendance` / `CashCloseGate` /
+    `CashCloseAttendance`. El `GET /cash-sessions/attendance` que pinta la hoja, abrir y cerrar las
+    usan; una pantalla que deduzca «ya marcó» por su cuenta dirá un día otra cosa que el servidor.
+  - **La persona se toma `for share` (`LockUserAttendanceForCash`) dentro de la transacción**, y todas
+    las lecturas de asistencia van con ese mismo `q`, nunca con `s.store.QC`. Choca con el `for update`
+    de checar, así que una entrada o salida en otra tableta espera; `for update` frenaría además las
+    ventas de esa persona (el `for key share` de `orders.opened_by`). Orden: turno → persona.
+  - **El cierre autorizado deja la entrada `missing_out`** con `MarkAttendanceMissingOut`, que tiene
+    que afectar exactamente una fila (con 0, 409 sin evento), y escribe
+    `cash.closed_without_opener_clock_out` con sujeto = quien abrió, en la misma transacción: si el
+    cierre falla después, ni la marca ni el evento quedan. No inventa una hora de salida.
+  - **Marcar desde la caja reusa `POST /attendance/clock`** (`ClockPinSheet`): mismo límite, mismo
+    bloqueo por PIN y mismos textos (`clockErrors.ts`). No hay un endpoint de checar propio de la caja.
+  - **Una cuenta que comparten varias personas para abrir caja necesita «Lleva asistencia» apagado**,
+    o nunca podrá abrir. Lo dice la ayuda del horario, no una regla. El grupo `/cash-sessions` sigue
+    con `RequireRole` por exención firmada (plan de la 046): la siguiente feature que lo toque lo
+    migra completo a permisos.
+- **Terminales de tarjeta** (spec 032, corrección en la 036). Tres cosas que no se ven:
+  - **Con dos o más terminales activas, la terminal se elige en CADA cobro; nada llega marcado.**
+    Antes llegaba puesta la última con la que cobró el usuario, y así un débito quedó registrado en
+    una terminal cuando se pasó en otra. Es una excepción decidida por el dueño a la
+    regla de la constitución «quien opera no decide en el momento»: la terminal es un hecho físico
+    (dónde se pasó la tarjeta), no algo que la configuración pueda saber. Con una sola activa, va
+    sola. En cuenta dividida se limpia tras cada cobro. No la vuelvas a recordar por usuario, en el
+    servidor (`resolveTerminal`) ni en la hoja (`terminalEfectiva`).
+  - **Corregir la terminal de un pago ya cobrado** es `POST /orders/{id}/payments/{paymentId}/terminal`
+    (permiso `payments.change_terminal`) y deja `payment.terminal_changed` en la bitácora en la misma
+    transacción. Manda `fromTerminalId`, la terminal que vio la pantalla: si ya no es la del pago,
+    responde 409 en vez de pisar otro cambio.
+  - **El arqueo de un turno cerrado no se reescribe.** El corte compara al pintarse lo firmado contra
+    lo esperado hoy (`expectedNow`), sobre la unión de los renglones guardados y lo cobrado por
+    terminal, y avisa por terminal. Solo hay aviso donde hubo arqueo por terminal: con arqueo
+    automático no se firmó nada por terminal. Límite que ya existía: una devolución con tarjeta se
+    atribuye a la terminal del último pago con tarjeta de su pedido, así que cambiar ese pago mueve
+    también la devolución (que puede ser de otro turno), y si la terminal nueva no cobró nada en el
+    turno de la devolución, la devolución no aparece en la lista por terminal de ese turno.
+- **Fondo fijo y retiro al cierre** (spec 035). Dos cosas que no se ven:
+  - **El retiro (`register_cash_movements.kind = 'retiro'`) no es una salida ni entra al neto del
+    cajón**: se registra DESPUÉS de contar. Toda suma de movimientos nombra cada tipo con su signo
+    (`NetCashMovements`, `corteBreakdown`); una suma «todo lo que no es entrada resta» lo cuenta y
+    el corte cerrado reporta ventas infladas por el monto del retiro.
+  - **El rollback de la API es solo hacia adelante** en cuanto existe un retiro: la API anterior lo
+    resta como salida. El fondo fijo no viaja en `GET /cash-registers` (la apertura es a ciegas).
 - **Mapa de toques por zona** (spec 019): los toques viajan en el MISMO request, en un arreglo
   `toques` aparte, y la consola los lee en `GET /api/v1/platform/touches`. **Instrumentar una
   pantalla también son dos lugares**: `pantallasConToque` en
@@ -350,12 +757,27 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   crea con `PLATFORM_OPERATOR_USERNAME=… PLATFORM_OPERATOR_PASSWORD=… ./api -reset-platform-operator`
   (la tabla nace vacía: una credencial sembrada por una migración vive en este repositorio, que es
   público).
-- `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y hace `up -d`. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído.
+- **En producción no se prueba; después de subir solo se revisa la salud** (decidido el
+  2026-10-17). Las pruebas —e2e, quickstart, usuario sin contexto, scripts que escriben— corren en
+  local, y en el ambiente de pruebas (`app-dev`/`api-dev`) solo si el dueño lo pide; repetirlas en producción es
+  redundante y escribe en los datos de un negocio que está operando. Tras una subida a `main`, lo que
+  se revisa es de solo lectura y sin sesión:
+  - `GET https://api.elgatobobah.com/healthz` → `{"status":"ok"}` (el proceso vive) y
+    `GET /readyz` → `{"status":"ready"}` (además alcanza la base; 503 `db_down` si no).
+  - El job de despliegue de CI en verde: la imagen lleva el SHA del commit, así que eso dice qué
+    versión corre. (`/api/v1/version` también lo dice, pero pide sesión.)
+  - Los logs de la API en el journal, sin errores ni 5xx desde la subida.
+  Antes de subir se toma el respaldo (`/usr/local/bin/respaldo-gatobobah.sh` en la VM): solo lee la
+  base y guarda una copia aparte; no la detiene ni la sobrescribe.
+- `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y la sube **azul/verde** con [deploy-azul-verde.sh](scripts/deploy-azul-verde.sh) (spec 041): la nueva arranca junto a la vieja, Caddy cambia de lado con un reload cuando la nueva responde `/readyz`, y la vieja termina lo que traía. Si la nueva no queda lista, el tráfico no se mueve y el deploy falla. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído y pasa por el mismo script. Runbook: [docs/despliegue-sin-corte.md](docs/despliegue-sin-corte.md).
+  - **Nunca `docker compose -f deploy/docker-compose.yml up -d` sin nombrar servicio**: levanta los dos lados de la API.
+  - **Una migración tolera a la versión anterior corriendo** (constitución IV): durante la subida las dos versiones usan la misma base.
 - **La bitácora de la API se guarda 30 días en el journal de la VM**, no en el archivo del
   contenedor: ése se borra en cada deploy y llegaba a ~5 días. `make deploy-image` instala
   [deploy/journald.conf](deploy/journald.conf) (necesita `sudo` sin password en la VM). Ahí queda la
   IP y el usuario de cada request; se lee con
-  `sudo journalctl CONTAINER_NAME=deploy-api-1 --since "…" -o cat`, **en hora UTC**. Lo demás
+  `sudo journalctl SYSLOG_IDENTIFIER=api --since "…" -o cat`, **en hora UTC** — los dos lados (azul y
+  verde) escriben con esa etiqueta. Lo anterior a la spec 041 está bajo `CONTAINER_NAME=deploy-api-1`. Lo demás
   (postgres, redis, caddy) sigue en el archivo del contenedor: cambiarles el driver los recrea, y
   postgres se reinicia a media operación.
 - `make sqlc` (regenera código de queries) · `make migrate-new name=xxx` (nueva migración goose).
@@ -368,8 +790,8 @@ mecánica:
 
 - **Frescura ≠ pre-commit.** Actualizar deps al día lo maneja **Dependabot** ([.github/dependabot.yml](.github/dependabot.yml)): github-actions, gomod (`/server`), **bun** (`/web`, no `npm`: es lo único que actualiza `bun.lock`) y docker (`/server`+`/deploy`), semanal. Chequeo manual: `go list -u -m all` (Go), `bun outdated` (web). **No** añadas un pre-commit de "deps desactualizadas" (ruidoso, bloquea cambios ajenos).
 - **Dónde corre cada scanner**: Go → `govulncheck` (pre-push lefthook **+** CI). Frontend → `bun audit --audit-level=high` en CI, sin `|| true`.
-- **Runtimes**: con línea LTS → la última LTS (Node = 24, `.nvmrc`); Go no tiene LTS → el último minor estable (hoy `go1.27.2`).
-- **Pin fuerte**: imágenes base por **digest** (`server/Dockerfile`, `deploy/docker-compose.yml`), GitHub Actions por **SHA** ([ci.yml](.github/workflows/ci.yml)), toolchain Go fijado en `go.mod` (hoy `go 1.27.2`). **No agregues una línea `toolchain` igual al `go` directive**: `go mod tidy` la borra por redundante en cada corrida — cuando coinciden, el `go` directive ES el pin.
+- **Runtimes**: con línea LTS → la última LTS (Node = 24, `.nvmrc`); Go no tiene LTS → el último minor estable (hoy `go1.27.3`).
+- **Pin fuerte**: imágenes base por **digest** (`server/Dockerfile`, `deploy/docker-compose.yml`), GitHub Actions por **SHA** ([ci.yml](.github/workflows/ci.yml)), toolchain Go fijado en `go.mod` (hoy `go 1.27.3`). **No agregues una línea `toolchain` igual al `go` directive**: `go mod tidy` la borra por redundante en cada corrida — cuando coinciden, el `go` directive ES el pin.
 - **El backend NO se compila en el VPS.** La VM es un e2-micro (1 vCPU, 1 GB): compilar el módulo
   ahí tarda ~30 min y puede morir por OOM — se vio al subir a Go 1.27, que invalidó todas las capas
   cacheadas. El job `image` de [ci.yml](.github/workflows/ci.yml) construye y publica
@@ -433,7 +855,28 @@ mecánica:
     integración). Ojo: `uuid.Nil` es **función** (`uuid.Nil()`) y no existe `NewString()`.
   - `strings.CutLast` es lo que usa `rateKeyIP` para tomar el último XFF.
   - `new(expr)` ya acepta un valor: `new(x)` en vez de `v := x; &v`.
-- **`overrides` en `web/package.json`: hoy NO hay ninguno, y así debe quedar.** Existieron para
+- **`overrides` en `web/package.json`: hoy hay DOS, y los dos cruzan un major que el padre no
+  acepta** (2026-10-31). Los arreglos de `minimatch` (GHSA-g3hv-75wg-m249) y de `glob`
+  (GHSA-3g3m-2fjr-6pw4) solo existen en un major que sus padres, ya en su última versión, todavía no
+  piden:
+  - `minimatch: "^11.0.1"`: `eslint` (`@eslint/config-array`) y `typescript-eslint` piden `^10`.
+    Verificado que `eslint .` sigue encontrando archivos y que la barrera entre la consola y el POS
+    sigue tronando.
+  - `glob: "^14.0.2"`: `workbox-build` 7.4.1 pide `^11`. Verificado que el service worker precarga
+    los mismos 16 archivos que antes, y que en Chromium se instala y avisa de la versión nueva.
+
+  Se borra cada uno en cuanto su padre pida el major corregido. **Cuando el padre SÍ acepta la
+  versión corregida y bun conserva la vieja en el lockfile** (pasó con `zod`, `fast-uri` y
+  `serialize-javascript`), no se deja override: se pone un momento para mover el lockfile, se quita,
+  y se comprueba que `bun install --frozen-lockfile` instala y que `bun audit` sigue limpio. Una
+  resolución desde cero tomaría la misma versión, porque está dentro del rango del padre.
+
+  **Lo que ningún override arregla**: `deepmerge` ≤ 4.3.1 (GHSA-gcqx-w48m-w2h4, *low*), que entra por
+  `vite-plugin-pwa` → `workbox-build` → `@rollup/plugin-node-resolve`, no tiene versión corregida y
+  solo corre al construir. Y en Go, GO-2026-5932 (`x/crypto/openpgp` sin mantenimiento) tampoco
+  tiene arreglo; `govulncheck` lo reporta solo por módulo, porque el código no importa ese paquete.
+
+  Antes de éstos existieron otros para
   forzar la versión parcheada de un CVE *high* que vivía en una transitiva de desarrollo cuando el
   padre pineaba un rango que no alcanzaba el parche (`eslint`→`ajv`→`fast-uri`,
   `vite-plugin-pwa`→`workbox-build`→`glob`→`brace-expansion`, `jsdom`→`undici`,
@@ -467,6 +910,16 @@ disco a las 02:00; desde el 2026-10-05 ya no se apaga de noche. Runbook:
 `pos-vps-dev` **no** está gateado: ahí se prueba, y frenar cada comando volvería inútil la
 verificación contra el ambiente desplegado.
 
+Pasan solos también el script de respaldo de la VM (`respaldo-gatobobah.sh`) y las **lecturas de
+salud** (`journalctl`, `docker ps`/`logs`, `curl` a `readyz`, `df`, `uptime`) cuando el comando no
+trae nada que escriba, reinicie, entre a la base o lea el `.env` (decidido el 2026-11-01: un encargo
+de punta a punta se detuvo 9 horas esperando aprobar el respaldo previo a subir). Tampoco pregunta
+un comando que solo **nombra** la VM o `ssh` entre comillas, como el patrón de un `grep`: solo
+cuenta el programa que conecta en posición de comando, salvo que algo vuelva a ejecutar el texto
+(`bash -c`, `eval`, `xargs`), y entonces se revisa completo (decidido el 2026-11-02: un `grep
+"ssh\|pos-vps"` frenó un `/goal`). Lo cubre
+[proteger-produccion-test.sh](scripts/tests/proteger-produccion-test.sh).
+
 **Por qué es un hook y no una nota.** El 2026-09-19 hubo que auditar doce transcripciones de sesión
 a mano para responder «¿algún agente escribió en producción?». La respuesta fue que no —solo
 lecturas del `.env` y respaldos—, pero nada impedía que la siguiente vez sí. Un recordatorio se
@@ -481,6 +934,23 @@ Qué corre cada hook de **lefthook** ([lefthook.yml](lefthook.yml)):
 - **pre-push**: `go test ./...`, `govulncheck`, `bun run build`.
 
 Que deban quedar verdes y que `--no-verify` no se use son quality gates de la constitución.
+
+**Un PR hacia `develop` se mergea en cuanto su CI termina en verde, sin pedir OK** (decidido el
+2026-10-14): develop solo despliega al ambiente de pruebas, y detenerse ahí frena las capturas y las
+pruebas que vienen después. Si CI falla, se arregla; no se mergea. **Producción (`main`, `pos-vps`)
+sigue pidiendo OK explícito del dueño.**
+
+**Las pruebas corren en el PR, no al mergear a develop** (decidido el 2026-10-15; el job `changes`
+de [ci.yml](.github/workflows/ci.yml) lo decide). Un PR corre solo lo que su cambio toca —uno de
+puros `specs/` o `docs/` no corre nada— y el push a develop solo construye y despliega. Lo que lo
+hace seguro: el PR se mergea **al día** con develop y con sus checks en verde, así que lo probado es
+lo que queda. Hoy lo cuida quien mergea; la protección de develop que lo exige (checks requeridos y
+«al día») la activa el dueño. Si el PR va atrás, se trae develop **en local** (commit firmado),
+`make ci-local`, se empuja y se espera el CI de nuevo; no se mergea sin eso. **No** con
+`gh pr update-branch` ni el botón «Update branch»: ese merge lo firma GitHub y no el dueño, y rompe la
+autoría única de la constitución. `main` corre todo siempre.
+Un test que lea archivos de otra carpeta (como los de nombres de empresa, que leen `web/src`) se
+agrega también al filtro de su job, o un PR de esa carpeta lo deja de correr.
 
 ### Identidad, firma y autoría
 
@@ -508,6 +978,41 @@ Las features nuevas pasan por spec-kit: `/speckit-specify` → `/speckit-plan` �
 `/speckit-analyze` → `/speckit-implement`. Cada una crea rama `NNN-slug` desde `develop` y su
 directorio `specs/NNN-slug/`. El paso `analyze` **no es opcional** aquí (ver *Quality gates*).
 Los principios de la constitución son la vara con la que `analyze` mide spec, plan y tasks.
+
+### De punta a punta, sin que el dueño lo pida paso por paso
+
+Cuando el dueño encarga un issue o una feature «hasta producción» (con `/goal` o con esas palabras),
+la sesión que lo recibe hace TODO esto por su cuenta, en este orden:
+
+1. **Worktree propio, creado ANTES de abrir la sesión que trabaja**: la sesión que orquesta (la del
+   checkout principal) corre `/nuevo-spec NNN slug` y le entrega al dueño `cd <worktree> && claude`
+   más el prompt, que dice «ya estás en tu worktree, no crees otro». La sesión que trabaja nace
+   dentro de él. Solo si nadie orquesta, la propia sesión lo crea antes de tocar código. Nunca se
+   trabaja en el checkout principal, que se queda en `develop` y limpio. **Varias specs a la vez**
+   son varios worktrees, uno por spec, cada uno con su número `NNN` libre (revisa `specs/`, las ramas
+   remotas y `../egb-NNN-*`) y su número de migración; la que llegue primero a `develop` se queda con
+   el número de migración y la otra renumera.
+2. **Feature** → ciclo de spec-kit completo, invocando cada `/speckit-*` con la herramienta Skill
+   (no leyéndola) y con sus hooks (`/maquetas`, `/revision-de-arquitectura`), hasta que
+   `/speckit-analyze` quede sin CRITICAL ni HIGH. **Defecto** → rama `fix/slug`, test que falla por
+   la razón correcta, y el arreglo.
+3. **Implementar con TDD** y después `/revision-de-codigo`; lo que encuentre se corrige con su test.
+4. **Prueba con usuario nuevo** a 1024×600 contra el `make start` del worktree, si hay pantalla.
+5. **Gates**: `make ci-local` verde antes de empujar.
+6. **PR a `develop`**, esperar su CI y mergear en verde; luego **PR de release `develop` → `main`**,
+   esperar su CI, mergear y seguir el deploy hasta `readyz` 200 en producción. Con autorización del
+   dueño para aprobar PR, no se le vuelve a preguntar.
+7. **Cerrar**: `make cerrar-worktree dir=… datos=1`, borrar la rama remota ya mergeada, y comentar y
+   cerrar el issue con lo que entró y lo que quedó fuera.
+
+Las dudas se resuelven con la mejor recomendación (un subagente que puntúe opciones si hace falta) y
+se escriben en el spec o el plan; solo se le pregunta al dueño lo que cruza una puerta del principio
+VIII o pierde datos.
+
+**Si git dice «this operation must be run in a work tree» en el checkout principal**, alguien le
+puso `core.bare = true` (git lo trata como un repositorio sin archivos): se quita con
+`git config --local core.bare false`. Así fue como el script del worktree dejó de correr ahí el
+2026-11-01.
 
 ## 6. Documentación — dónde vive qué
 

@@ -12,8 +12,9 @@ type Event struct {
 // pedidos) solo llegan a los suscriptores del MISMO tenant, nunca a otra empresa. Suficiente para
 // 1 réplica; la interfaz permite migrar a Redis pub/sub (con el company_id en el canal) si crece.
 type Broker struct {
-	mu   sync.RWMutex
-	subs map[int64]map[chan Event]struct{} // companyID → suscriptores
+	mu     sync.RWMutex
+	subs   map[int64]map[chan Event]struct{} // companyID → suscriptores
+	closed bool
 }
 
 func NewBroker() *Broker {
@@ -24,6 +25,11 @@ func NewBroker() *Broker {
 func (b *Broker) Subscribe(companyID int64) (<-chan Event, func()) {
 	ch := make(chan Event, 16)
 	b.mu.Lock()
+	if b.closed {
+		b.mu.Unlock()
+		close(ch)
+		return ch, func() {}
+	}
 	if b.subs[companyID] == nil {
 		b.subs[companyID] = map[chan Event]struct{}{}
 	}
@@ -31,14 +37,17 @@ func (b *Broker) Subscribe(companyID int64) (<-chan Event, func()) {
 	b.mu.Unlock()
 	return ch, func() {
 		b.mu.Lock()
-		if m := b.subs[companyID]; m != nil {
-			delete(m, ch)
-			if len(m) == 0 {
-				delete(b.subs, companyID)
-			}
+		defer b.mu.Unlock()
+		// Si ya no está, Close lo cerró: cerrarlo otra vez entra en pánico.
+		m := b.subs[companyID]
+		if _, ok := m[ch]; !ok {
+			return
+		}
+		delete(m, ch)
+		if len(m) == 0 {
+			delete(b.subs, companyID)
 		}
 		close(ch)
-		b.mu.Unlock()
 	}
 }
 
@@ -53,4 +62,21 @@ func (b *Broker) Publish(companyID int64, ev Event) {
 		default:
 		}
 	}
+}
+
+// Close cierra el canal de todos los suscriptores, y los que se suscriban después nacen cerrados.
+//
+// Es lo que deja apagar sin esperar: `http.Server.Shutdown` no cancela el contexto de las
+// peticiones, y un stream SSE solo termina cuando su canal se cierra. Sin esto cada subida
+// esperaba el plazo completo del apagado y dejaba «context deadline exceeded» en el log (spec 041).
+func (b *Broker) Close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.closed = true
+	for _, m := range b.subs {
+		for ch := range m {
+			close(ch)
+		}
+	}
+	b.subs = map[int64]map[chan Event]struct{}{}
 }

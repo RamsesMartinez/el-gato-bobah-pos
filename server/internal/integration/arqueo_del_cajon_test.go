@@ -175,8 +175,8 @@ func TestUnFaltanteDelCajonEsUnoSoloYLlegaAlHistorico(t *testing.T) {
 			continue
 		}
 		visto = true
-		if !fila.TotalDifference.Equal(decimal.RequireFromString("-50")) {
-			t.Fatalf("el histórico reporta %s de diferencia y el faltante es -50", fila.TotalDifference)
+		if fila.TotalDifference == nil || !fila.TotalDifference.Equal(decimal.RequireFromString("-50")) {
+			t.Fatalf("el histórico reporta %v de diferencia y el faltante es -50", fila.TotalDifference)
 		}
 	}
 	if !visto {

@@ -45,3 +45,11 @@ export function normalize(s: string): string {
     .toLowerCase();
 }
 
+// matchesWords dice si cada palabra de query empieza alguna palabra de text, sin acentos ni
+// mayúsculas: «almen» encuentra «Leche de almendra» y «apio» no encuentra «Tapioca» (spec 045).
+export function matchesWords(text: string, query: string): boolean {
+  const words = normalize(text).split(/[^\p{L}\p{N}]+/u);
+  return normalize(query).split(/\s+/).filter(Boolean)
+    .every((q) => words.some((w) => w.startsWith(q)));
+}
+

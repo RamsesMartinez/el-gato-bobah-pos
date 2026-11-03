@@ -11,6 +11,10 @@ const opciones = vi.hoisted(() => ({
 const pinSwitch = vi.hoisted(() => vi.fn());
 const logout = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
+const attendanceRoster = vi.hoisted(() => vi.fn(() => Promise.resolve({ enabled: false, people: [] as unknown[] })));
+vi.mock('../../api/attendance', () => ({ attendanceApi: { roster: () => attendanceRoster(), clock: vi.fn() } }));
+vi.mock('../../hooks/useHoraDelNegocio', () => ({ useHoraDelNegocio: () => ({ zona: 'America/Mexico_City' }) }));
+
 vi.mock('../../api/pos', () => ({
   posApi: {
     unlockOptions: () => Promise.resolve(opciones.current),
@@ -31,7 +35,7 @@ vi.mock('../../stores/session', () => ({
   useSessionStore: (sel: (s: unknown) => unknown) => sel({ clear: salir, setSession: vi.fn() }),
 }));
 
-function pintar() {
+function renderView() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -68,9 +72,9 @@ async function noIntentoEntrar() {
 // Va como test y no como revisión visual porque es exactamente la clase de salida que se cae en un
 // refactor sin que nadie lo note hasta esa noche.
 test('ofrece entrar con usuario y contraseña a quien olvidó su PIN', async () => {
-  pintar();
-  const salida = await screen.findByRole('button', { name: /usuario y contraseña/i });
-  fireEvent.click(salida);
+  renderView();
+  const outTime = await screen.findByRole('button', { name: /usuario y contraseña/i });
+  fireEvent.click(outTime);
   // Cerrar la sesión es lo que devuelve a la pantalla de login: la salida existe y funciona.
   await waitFor(() => expect(salir).toHaveBeenCalled());
   // Y REVOCA la cookie en el servidor. Con solo limpiar en memoria, una recarga entre el tap y el
@@ -82,7 +86,7 @@ test('ofrece entrar con usuario y contraseña a quien olvidó su PIN', async () 
 // FR-004: por default se elige a la persona y después se teclea el PIN. Elegir primero es lo que
 // hace imposible atribuir la venta a quien no fue.
 test('por default pide elegir a la persona antes del PIN', async () => {
-  pintar();
+  renderView();
   expect(await screen.findByRole('button', { name: 'Ana' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Luis' })).toBeTruthy();
 });
@@ -91,7 +95,7 @@ test('por default pide elegir a la persona antes del PIN', async () => {
 // modo perdería su única ventaja y expondría la plantilla sin necesidad.
 test('con solo-PIN no muestra a nadie', async () => {
   opciones.current = { pinOnly: true, users: [] };
-  pintar();
+  renderView();
   await screen.findByRole('button', { name: /usuario y contraseña/i });
   expect(screen.queryByRole('button', { name: 'Ana' })).toBeNull();
 });
@@ -102,13 +106,13 @@ test('con solo-PIN no muestra a nadie', async () => {
 // Varias tabletas del local trabajan con teclado conectado, y el PIN solo se podía marcar con el
 // dedo: quien tenía las manos en el teclado tenía que soltarlo y apuntarle a la pantalla.
 test('los números del teclado marcan el PIN y Enter entra', async () => {
-  pintar();
+  renderView();
   await elegirYTeclear('Ana', ['1', '2', '3', '4', 'Enter']);
   await waitFor(() => expect(pinSwitch).toHaveBeenCalledWith(1, '1234'));
 });
 
 test('Backspace borra el último dígito', async () => {
-  pintar();
+  renderView();
   await elegirYTeclear('Ana', ['1', '2', '3', '9', 'Backspace', '4', 'Enter']);
   await waitFor(() => expect(pinSwitch).toHaveBeenCalledWith(1, '1234'));
 });
@@ -119,7 +123,7 @@ test('Backspace borra el último dígito', async () => {
 // inofensivo: acerca al operador al lockout por una tecla de más. El botón ya está apagado con el
 // PIN corto y el teclado tiene que respetar la misma condición.
 test('Enter con el PIN corto no intenta entrar', async () => {
-  pintar();
+  renderView();
   await elegirYTeclear('Ana', ['1', '2', 'Enter']);
   await noIntentoEntrar();
 });
@@ -127,7 +131,7 @@ test('Enter con el PIN corto no intenta entrar', async () => {
 // Antes de elegir persona no hay PIN que llenar. Acumular dígitos ahí los mandaría con la persona
 // que se elija DESPUÉS, y en esta pantalla eso es atribuirle una venta a quien no fue.
 test('antes de elegir a la persona el teclado no acumula nada', async () => {
-  pintar();
+  renderView();
   const ana = await screen.findByRole('button', { name: 'Ana' });
   for (const k of ['1', '2', '3', '4']) fireEvent.keyDown(window, { key: k });
   fireEvent.click(ana);
@@ -137,7 +141,7 @@ test('antes de elegir a la persona el teclado no acumula nada', async () => {
 // Ctrl+1 cambia de pestaña y Alt+F4 cierra: una combinación no es teclear un PIN, y tomarla como
 // dígito deja al operador con un PIN que no escribió y un intento fallido.
 test('una combinación con Ctrl no teclea', async () => {
-  pintar();
+  renderView();
   fireEvent.click(await screen.findByRole('button', { name: 'Ana' }));
   fireEvent.keyDown(window, { key: '1', ctrlKey: true });
   expect(screen.queryByText('•')).toBeNull();
@@ -149,7 +153,7 @@ test('una combinación con Ctrl no teclea', async () => {
 // su PIN a media noche. Robarle la tecla al botón enfocado la dejaría sin camino de teclado y, peor,
 // mandaría el PIN cuando el operador creía estar activando otra cosa.
 test('Enter con el foco en un botón no manda el PIN', async () => {
-  pintar();
+  renderView();
   await elegirYTeclear('Ana', ['1', '2', '3', '4']);
   screen.getByRole('button', { name: /usuario y contraseña/i }).focus();
   fireEvent.keyDown(window, { key: 'Enter' });
@@ -164,7 +168,7 @@ test('Enter con el foco en un botón no manda el PIN', async () => {
 // desbloqueo suma cuatro toques a la pantalla de abajo SIEMPRE EN EL MISMO SITIO —el teclado del
 // PIN está centrado— y la rejilla acaba mostrando una zona caliente que nadie tocó ahí.
 test('se anuncia como modal, y por eso sus toques no se cuentan en la pantalla de abajo', () => {
-  pintar();
+  renderView();
   const modal = document.querySelector('[role="dialog"]');
   expect(modal, 'sin role="dialog" el teclado del PIN contamina la rejilla de la pantalla de abajo').not.toBeNull();
   expect(modal!.getAttribute('aria-modal')).toBe('true');
@@ -189,4 +193,23 @@ test('mientras bloquea, lo de abajo queda fuera del alcance del dedo y del tabul
   );
   const envoltura = screen.getByRole('button', { name: 'Cobrar' }).closest('[inert]');
   expect(envoltura, 'sin inert, aria-modal es una etiqueta que el bloqueo no cumple').not.toBeNull();
+});
+
+test('sin asistencia activa no ofrece registrarla', async () => {
+  renderView();
+  await screen.findByText('Ana');
+  expect(screen.queryByRole('button', { name: 'Registrar asistencia' })).toBeNull();
+});
+
+// Checar encima del bloqueo: el teclado del bloqueo se desmonta. Con los dos montados, un Enter del
+// teclado físico mandaba DOS intentos de PIN, que cuentan doble para el bloqueo por intentos.
+test('con checar abierto encima, el teclado físico no le llega al bloqueo', async () => {
+  attendanceRoster.mockResolvedValue({ enabled: true, people: [{ userId: 2, name: 'Luis', hasPin: true }] });
+  renderView();
+  fireEvent.click(await screen.findByText('Ana'));
+  fireEvent.click(await screen.findByRole('button', { name: 'Registrar asistencia' }));
+  expect(await screen.findByText('Por entrar')).toBeInTheDocument();
+  for (const d of '1234') fireEvent.keyDown(window, { key: d });
+  fireEvent.keyDown(window, { key: 'Enter' });
+  expect(pinSwitch).not.toHaveBeenCalled();
 });

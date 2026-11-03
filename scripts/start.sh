@@ -6,6 +6,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Infraestructura propia del worktree, si la tiene (make worktree-env).
+source "$(dirname "${BASH_SOURCE[0]}")/worktree-env-load.sh"
 cd "$ROOT"
 
 bash scripts/check.sh || exit 1

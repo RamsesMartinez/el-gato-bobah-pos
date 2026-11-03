@@ -13,7 +13,22 @@
 # Borra la base de desarrollo entera. No toca producción: solo habla con el contenedor local.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONTENEDOR="${PG_CONTAINER:-deploy-postgres-1}"
+# shellcheck source=worktree-env-load.sh
+source "$ROOT/scripts/worktree-env-load.sh"
+
+# Un worktree restaura en SU base, nunca en la de la carpeta principal. Pasó el 2026-10-13: el
+# contenedor estaba fijo en deploy-postgres-1 y un `make db-restaurar` desde un worktree borró la
+# base de la carpeta principal. Desde un worktree se rechaza ese contenedor aunque se pida a mano.
+git_dir="$(git -C "$ROOT" rev-parse --git-dir 2>/dev/null || echo x)"
+common="$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null || echo x)"
+PROYECTO="${COMPOSE_PROJECT_NAME:-deploy}"
+CONTENEDOR="${PG_CONTAINER:-${PROYECTO}-postgres-1}"
+if [ "$git_dir" != "$common" ] && { [ "$PROYECTO" = "deploy" ] || [ "$CONTENEDOR" = "deploy-postgres-1" ]; }; then
+  echo "Este worktree no tiene base propia (o se pidió la de la carpeta principal): restaurar aquí" >&2
+  echo "borraría la base de la carpeta principal. Corre antes make worktree-env n=NN, o restaura" >&2
+  echo "desde la carpeta principal." >&2
+  exit 1
+fi
 BASE="${POSTGRES_DB:-gatobobah}"
 DUENO="${POSTGRES_USER:-gatobobah}"
 

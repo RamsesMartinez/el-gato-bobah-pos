@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Box, Button, HStack, Text } from '@chakra-ui/react';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
@@ -12,9 +13,13 @@ interface Props {
   // Destructiva: la acción segura es la principal y la que borra va roja y aparte. No destructiva
   // (cerrar caja): la principal es confirmar.
   destructive?: boolean;
+  // confirmPalette: el color de la acción principal cuando no es destructiva (por omisión, gris).
+  confirmPalette?: string;
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  // children va en el cuerpo, bajo la descripción: una acción secundaria que no compite con el pie.
+  children?: ReactNode;
 }
 
 // ConfirmSheet reemplaza al `confirm()` del navegador.
@@ -26,8 +31,8 @@ interface Props {
 //
 // Cerrar la hoja de cualquier forma —fondo, Escape, arrastrar— es cancelar.
 export function ConfirmSheet({
-  isOpen, title, description, confirmLabel, cancelLabel = 'Volver', destructive, loading,
-  onConfirm, onCancel,
+  isOpen, title, description, confirmLabel, cancelLabel = 'Volver', destructive, confirmPalette, loading,
+  onConfirm, onCancel, children,
 }: Props) {
   const seguro = (
     <Button flex="1" minH="52px" variant={destructive ? 'solid' : 'outline'}
@@ -37,7 +42,7 @@ export function ConfirmSheet({
   );
   const accion = (
     <Button flex={destructive ? undefined : '1'} minH="52px" px={6}
-      variant={destructive ? 'outline' : 'solid'} colorPalette={destructive ? 'red' : undefined}
+      variant={destructive ? 'outline' : 'solid'} colorPalette={destructive ? 'red' : confirmPalette}
       data-destructive={destructive ? 'true' : 'false'} loading={loading} onClick={onConfirm}>
       {confirmLabel}
     </Button>
@@ -49,9 +54,10 @@ export function ConfirmSheet({
         <DrawerHeader pb={1}>
           <Text fontSize="lg" fontWeight="700">{title}</Text>
         </DrawerHeader>
-        {description && (
+        {(description || children) && (
           <DrawerBody flex="1" minH={0} overflowY="auto" pb={2}>
-            <Text color="fg.muted">{description}</Text>
+            {description && <Text color="fg.muted">{description}</Text>}
+            {children}
           </DrawerBody>
         )}
         <DrawerFooter borderTopWidth="1px" pt={3}>

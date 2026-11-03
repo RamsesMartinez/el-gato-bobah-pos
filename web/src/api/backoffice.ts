@@ -33,7 +33,7 @@ export interface ArqueoDelCajon {
 }
 export interface CashMovement {
   id: number;
-  kind: 'entrada' | 'salida' | 'propina' | 'reverso';
+  kind: 'entrada' | 'salida' | 'propina' | 'reverso' | 'retiro';
   amount: string;
   concept: string;
   createdAt: string;
@@ -45,6 +45,14 @@ export interface CashMovement {
   // Corrección por reverso (spec 032): `reversesId` en el reverso, `reversed` en la salida corregida.
   reversesId?: number | null;
   reversed?: boolean;
+  // A quién se le dio: propina entregada o retiro al cierre (spec 035).
+  recipientName?: string | null;
+}
+
+// El retiro al cierre (spec 035): lo contado menos el fondo que se dejó, y quién se lo llevó.
+export interface Withdrawal {
+  amount: string;
+  userName: string;
 }
 
 export interface CashConcept {
@@ -54,6 +62,19 @@ export interface CashConcept {
   categoryName: string | null;
   supplierId: number | null;
   supplierName: string | null;
+}
+
+// TerminalCount es el arqueo de una terminal en un turno. `expectedNow`/`differenceNow` (spec 036):
+// lo que se espera hoy, distinto de lo firmado si alguien cambió la terminal de un pago después del
+// arqueo. Opcionales: un backend anterior no los manda.
+export interface TerminalCount {
+  terminalId: number;
+  name: string;
+  expected: string;
+  declared: string;
+  difference: string;
+  expectedNow?: string;
+  differenceNow?: string;
 }
 
 export interface CardTerminal {
@@ -78,6 +99,8 @@ export interface CashExpenseLine {
   amount: string;
   currency: string;
   status: string;
+  // Spec 050: lo que salió del cajón además del importe. Opcional mientras convive la API anterior.
+  drawerExtra?: string;
 }
 // Descomposición jerárquica del corte: ingresos por método→concepto y egresos de efectivo.
 export interface CorteBucket { concept: string; amount: string }
@@ -100,6 +123,18 @@ export interface CashRegister {
   isPrimary: boolean;
   isActive: boolean;
   openSessionId: number | null; // no-null si la caja tiene una sesión abierta
+  // Si su efectivo se cuenta en un turno (spec 047). Opcional mientras conviven API vieja y nueva.
+  countsCash?: boolean;
+}
+// Caja para la gestión (`/cash-registers/all`): trae el fondo fijo, que la lista del cajero no lleva
+// porque la apertura se cuenta a ciegas (spec 035).
+export interface CashRegisterConfig {
+  id: number;
+  name: string;
+  isPrimary: boolean;
+  isActive: boolean;
+  fixedFloat?: string | null;
+  countsCash?: boolean;
 }
 // Una pieza que se puede contar. `value` es string por lo mismo que el resto del dinero: es una
 // columna `numeric(10,2)` y convertirla a número en la frontera pierde exactitud.
@@ -116,7 +151,25 @@ export interface Denomination {
 export type AperturaInput = (
   | { counts: { denominationId: number; pieces: number }[] }
   | { openingCash: number; manualReason: string }
-) & { openingReason?: string; openingReasonNote?: string }; // spec 032: si no coincide con el cierre anterior
+) & {
+  openingReason?: string; openingReasonNote?: string; // spec 032: si no coincide con el cierre anterior
+  // Spec 048: abrir desde una hora anterior para que el corte cubra los gastos sin corte. Exige
+  // `cash.adjust_count`; RFC3339.
+  openedAt?: string;
+  // Spec 048: por omisión el servidor incluye los gastos sin corte; esto los deja fuera. Exige
+  // `cash.adjust_count`.
+  excludePending?: boolean;
+};
+
+// Un pago en efectivo que salió con la caja cerrada y espera al corte que cubra su hora (spec 048).
+export interface PendingExpense {
+  paymentId: number;
+  expenseId: number;
+  description: string;
+  amount: string;
+  paidAt: string;
+  drawerExtra?: string; // spec 050
+}
 
 // Un renglón del desglose. `subtotal` viene calculado del servidor aunque sea derivable: lo lee un
 // humano comparando contra su cajón, y dos multiplicaciones del mismo dato pueden diferir.
@@ -138,6 +191,19 @@ export interface Conteo {
 export interface ConteosDelTurno {
   apertura: Conteo | null;
   cierre: Conteo | null;
+}
+
+// Lo que la asistencia pide para la acción que toca en una caja (spec 046): abrirla si está
+// cerrada, cerrarla si está abierta. `person` es quien abre (`open`) o quien abrió (`close`).
+export interface CashAttendanceGate {
+  stage: 'open' | 'close';
+  applies: boolean;
+  ready: boolean;
+  person: { id: number; name: string; active: boolean };
+  openSince?: string;
+  stale: boolean;
+  isSelf: boolean;
+  canAuthorize: boolean;
 }
 
 export interface CashSession {
@@ -190,9 +256,15 @@ export interface CashSession {
   cardCountMode?: 'auto' | 'per_terminal';
   cashOutsWithoutConcept?: number;
   terminalsToCount?: { terminalId: number; name: string }[];
-  terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
+  terminalCounts?: TerminalCount[];
   tipsPaidOut?: string;
   cardTipsPaidInCash?: string;
+  // Fondo fijo y retiro (spec 035). `fixedFloat` solo en el turno abierto: lo que la hoja de cierre
+  // pone en el campo. Opcionales: un servidor anterior no los manda.
+  fixedFloat?: string | null;
+  floatLeft?: string | null;
+  fixedFloatAtClose?: string | null;
+  withdrawal?: Withdrawal | null;
 }
 
 // Propina por entregar del turno abierto y a quién se le puede entregar.
@@ -275,8 +347,12 @@ export interface CashSessionRow {
   closedAt: string | null;
   openedByName: string;
   closedByName: string | null;
-  totalDifference: string;
+  // Null con el arqueo oculto (spec 035, R8).
+  totalDifference: string | null;
   notes: string | null;
+  // Con arqueo ciego, el último cierre de una caja no reabierta no muestra su arqueo a quien no
+  // configura la caja. Opcional: un backend viejo no lo manda.
+  arqueoHidden?: boolean;
 }
 // Detalle de un corte (totales GUARDADOS al cerrar + movimientos).
 export interface CashSessionDetail {
@@ -294,6 +370,8 @@ export interface CashSessionDetail {
   movements: CashMovement[];
   expenses: CashExpenseLine[];
   breakdown: CorteBreakdown;
+  // Ver CashSession.arqueoHidden: con él, totales, arqueo, conteo de cierre e ingresos vienen vacíos.
+  arqueoHidden?: boolean;
   // Las ventas que este corte cobró. Viven en el corte y no como filtro de la pantalla de Ventas:
   // ahí convivirían con el filtro de fechas y bastaría un rango que no toque el corte para llegar a
   // una pantalla vacía sin explicación.
@@ -314,11 +392,15 @@ export interface CashSessionDetail {
   refunds?: SessionRefund[];
   // Arqueo por terminal y propinas del turno (spec 032). Opcionales: un backend viejo no los manda.
   cardCountMode?: string;
-  terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
+  terminalCounts?: TerminalCount[];
   tipsPaidOut?: string;
   cardTipsPaidInCash?: string;
   // La propina pendiente que el cierre dejó en caja para el siguiente turno.
   tipsCarriedOver?: string;
+  // Lo que se dejó de fondo, contra qué fijo, y el retiro (spec 035). Nulos en cierres de antes.
+  floatLeft?: string | null;
+  fixedFloatAtClose?: string | null;
+  withdrawal?: Withdrawal | null;
 }
 
 export interface CorteSale {
@@ -373,6 +455,9 @@ export interface Expense {
 
 export type ItemType = 'ingrediente' | 'producto';
 
+// Cómo cambia el costo de un insumo al comprarlo: el de la última compra o el promedio ponderado.
+export type CostingMethod = 'last' | 'weighted';
+
 export interface ExpenseItem {
   id: number;
   itemType: ItemType | null; // null = línea no inventariable (bolsa, envío, IVA)
@@ -386,6 +471,21 @@ export interface ExpenseItem {
   unitCost: string;
   amount: string;
   packQtyInBase: string | null;
+  // Spec 038. `applied`: lo que el renglón ya sumó al almacén, en `baseUnitCode`; se devuelve como
+  // `seenApplied` al corregir. `onHand`: lo guardado hoy del artículo (null fuera del almacén).
+  applied: string;
+  baseUnitCode: string | null;
+  notComing: string;
+  isGift: boolean;
+  presentationId: number | null;
+  onHand?: string | null;
+  // Venía en el ticket pero no es del local (spec 049): no suma ni toca el almacén.
+  excluded?: boolean;
+  // Lo que sumó cada día de entrega, en `baseUnitCode` (spec 053). Opcional para que el compilador
+  // obligue a la guarda: una API anterior no lo manda.
+  deliveries?: { on: string; qtyBase: string }[];
+  // Spec 058: con la que el renglón convierte entre peso y líquido (la fija o la vigente).
+  densityGPerMl?: string | null;
 }
 export interface ExpensePayment {
   id: number;
@@ -396,11 +496,75 @@ export interface ExpensePayment {
   inCashCount: boolean; // atribuido a un corte
   reference: string | null;
   affectsCashDrawer: boolean;
+  // Spec 048. Opcionales mientras convive la API anterior.
+  includeInCount?: boolean;
+  paidAt?: string;
+  sessionClosed?: boolean; // su corte ya se cerró: la casilla no se puede cambiar
+  drawerExtra?: string; // spec 050: lo que salió del cajón además del importe
 }
 export interface ExpenseDetail extends Expense {
   items: ExpenseItem[];
   payments: ExpensePayment[];
   paid: string;
+  // El total que decía el documento leído (spec 049); ausente en lo capturado a mano.
+  documentTotal?: string;
+  // Lo que preselecciona la edición del encabezado (spec 053).
+  supplierId?: number | null;
+  categoryId?: number;
+}
+
+// ---- Editar un gasto guardado (spec 053) ----
+
+export interface EditLineBody {
+  itemType: ItemType | '';
+  ingredientId?: number;
+  productId?: number;
+  description: string;
+  quantity: string;
+  presentationId?: number;
+  unitId?: number;
+  amount: string;
+  isGift?: boolean;
+  arrivedOn?: string; // «Ya llegó» ese día
+}
+export interface EditExpenseBody {
+  header?: { supplierId?: number | null; categoryId?: number; description?: string; expenseDate?: string };
+  add?: EditLineBody[];
+  remove?: number[];
+  decisions?: Record<string, string>;
+  fingerprint?: string;
+}
+export interface DeliveryBody {
+  on?: string;
+  lines: { itemId: number; qty: string; on?: string; shortfall?: 'pending' | 'adjust'; extraAmount?: string }[];
+  decisions?: Record<string, string>;
+  fingerprint?: string;
+}
+export interface EditDecision {
+  key: string;
+  kind: 'count' | 'money' | 'shortfall';
+  itemId: number | null;
+  countId: number | null;
+  countedOn: string | null;
+  options: string[];
+  chosen: string | null;
+}
+export interface EditPreview {
+  header: { field: 'supplier' | 'category' | 'description' | 'expenseDate'; before: string | null; after: string | null }[];
+  lines: { kind: 'added' | 'removed' | 'received' | 'adjusted'; itemId: number | null; name: string; qty: string | null;
+    amount: string | null; on: string | null; missingAfter: string | null; amountBefore: string | null; amountAfter: string | null }[];
+  inventory: { ingredientId: number | null; productId: number | null; name: string; baseUnit: string; before: string;
+    after: string; negativeAfter: boolean; decisionKey: string | null }[];
+  money: { amountBefore: string; amountAfter: string; paid: string; statusBefore: string; statusAfter: string;
+    due: string; overpaid: string; decisionKey: string | null };
+  // newerPurchaseOn: el costo no cambió porque otra compra llegó después (#187); falta en una API anterior.
+  costs: { ingredientId: number; name: string; before: string; after: string; newerPurchaseOn?: string | null }[];
+  decisions: EditDecision[];
+  fingerprint: string;
+}
+export interface EditResult {
+  preview: EditPreview;
+  expense: ExpenseDetail | null;
 }
 
 // ---- Catálogo de artículos ----
@@ -409,9 +573,45 @@ export interface Unit {
   id: number;
   code: string;
   name: string;
-  kind: 'masa' | 'volumen' | 'pieza';
+  kind: 'masa' | 'volumen' | 'pieza' | 'longitud';
   toBase: string;
 }
+
+// Un empaque de compra de un insumo (spec 038): «Caja = 12 L». `qtyInBase` va en la unidad base
+// del insumo (ml); el contenido se copia a cada compra, así que editarlo no toca las pasadas.
+export interface Presentation {
+  id: number;
+  ingredientId: number;
+  name: string;
+  qtyInBase: string;
+  baseUnitCode: string;
+  active: boolean;
+  // Se compra en otro tipo de unidad que el insumo («Kilo ≈ 4 piezas»).
+  approximate: boolean;
+  purchaseUnitId: number | null;
+  // La marca o el proveedor (spec 056). Opcional: falta en una API anterior.
+  brand?: string | null;
+  // Lo que pesa vacío, en g (spec 058).
+  tareG?: string | null;
+}
+export interface PresentationBody {
+  name: string;
+  qty: string;
+  unitId: number;
+  approximate: boolean;
+  active?: boolean;
+  // Sin mandarla, se conserva la que tiene; vacía, se quita.
+  brand?: string;
+  // Lo que pesa vacío (spec 058): sin mandarla se conserva; null la quita.
+  tareG?: string | null;
+}
+export interface CountPlace {
+  id: number;
+  name: string;
+  position: number;
+  ingredients: number;
+}
+
 export interface Ingredient {
   id: number;
   name: string;
@@ -428,6 +628,9 @@ export interface Ingredient {
   compositionStatus?: '' | 'estimated' | 'confirmed';
   // En cuántas recetas aparece: los más usados van arriba en el buscador.
   recipeUses?: number;
+  // Dónde está, para ordenar el conteo (spec 038).
+  countPlace?: string | null;
+  countPlaceId?: number | null;
   category: string | null;
   onHand: string;
 }
@@ -438,6 +641,8 @@ export interface Article {
   name: string;
   unitCode: string;
   unitKind: string;
+  // Spec 058: para convertir en pantalla una compra entre peso y líquido.
+  densityGPerMl?: string | null;
 }
 // Sugerencia de mapeo. source dice cuánto confiar: "aprendido" ya se confirmó con ese
 // proveedor (autollenar); los otros son parecidos y esperan confirmación.
@@ -544,6 +749,8 @@ export interface StockMovement {
 export interface ExpenseItemBody {
   itemType?: ItemType | '';
   ingredientId?: number;
+  // Un artículo que nace con este gasto (spec 042): se crea al guardar, no al elegir su unidad.
+  newArticle?: { name: string; baseUnitId: number };
   productId?: number;
   description: string;
   quantity: string;
@@ -553,9 +760,111 @@ export interface ExpenseItemBody {
   packQtyInBase?: string;
   rawCode?: string;
   rawName?: string;
-  // personal: venía en el ticket pero no es del local. El backend lo aprende y no lo guarda
-  // como línea del gasto.
-  personal?: boolean;
+  // excluded: venía en el ticket pero no es del local. Se guarda con su artículo, no suma a la
+  // regla del total ni toca el almacén, y el proveedor lo aprende (spec 049).
+  excluded?: boolean;
+  // El empaque del insumo: el servidor copia su contenido y fija la unidad (spec 038).
+  presentationId?: number;
+  // Llegó sin costo: importe 0, suma a lo guardado y no mueve el costo.
+  isGift?: boolean;
+}
+
+// Un renglón que falta por llegar (spec 038). Cantidades en la unidad del renglón: el empaque
+// (`presentationName`, con `packQtyInBase` en `baseUnitCode`) o la unidad (`unitCode`).
+export interface PendingReceipt {
+  expenseId: number;
+  expenseDate: string;
+  supplier: string | null;
+  expenseAmount: string;
+  paid: boolean;
+  itemId: number;
+  itemName: string;
+  quantity: string;
+  received: string;
+  notComing: string;
+  missing: string;
+  applied: string;
+  packQtyInBase: string | null;
+  presentationName: string | null;
+  unitCode: string | null;
+  baseUnitCode: string | null;
+  densityGPerMl?: string | null;
+}
+// Conteo (spec 038). A ciegas: lo que el sistema tiene no viene mientras se cuenta.
+export interface CountItem {
+  ingredientId: number;
+  name: string;
+  place: string | null;
+  placeId?: number | null;
+  baseUnitCode: string;
+  // id y brand faltan en una API anterior a la 056.
+  presentations: { id?: number; name: string; qtyInBase: string; brand?: string | null; tareG?: string | null }[];
+  countedQty: string | null; // null = no contado
+  // Un artículo en piezas que se puede contar pesando (spec 042): el servidor convierte a piezas.
+  weighable?: boolean;
+  // Spec 058: se puede contar pesando con el empaque (alguno dice cuánto pesa vacío, y con densidad
+  // si se guarda en ml). La densidad es la que se usa para mostrar la cuenta.
+  grossWeighable?: boolean;
+  densityGPerMl?: string | null;
+  // #204: cómo se capturó lo contado pesando con empaque; falta o es null si no se pesó.
+  weighed?: CountWeighed | null;
+}
+// CountWeighed es cómo se capturó una pesada con empaque (#204). closedPacks falta o es null si no se
+// sabe cómo se repartió lo cerrado entre empaques.
+export interface CountWeighed {
+  closedQty: string; grossG: string; containers: number; tareG: string;
+  closedPacks?: { presentationId: number; qty: number }[] | null;
+}
+// Lo que se manda al capturar. confirmable pide el aviso de una cifra fuera de lo razonable.
+export interface CountCaptureBody {
+  countedQty: string;
+  weight?: string;
+  weightUnitId?: number;
+  confirmable: true;
+  confirmed?: boolean;
+  // Spec 058: lo abierto pesado con su empaque; se suma a countedQty (lo cerrado). seenTareG y
+  // seenDensity son los números con que la pantalla hizo la cuenta.
+  gross?: { weight: string; weightUnitId: number; presentationId: number; containers: number; seenTareG: string; seenDensity?: string | null;
+    closedPacks?: { presentationId: number; qty: number }[] };
+}
+export interface StockCount {
+  id: number;
+  openedAt: string;
+  items: CountItem[];
+}
+export interface CountClose {
+  adjusted: { ingredientId: number; name: string; baseUnitCode: string; system: string; counted: string; delta: string }[];
+  notCounted: { ingredientId: number; name: string }[];
+}
+
+// «Llegó algo más»: un renglón que no venía y ya llegó. Con `isGift`, `amount` va en 0.
+export interface ArrivedItemBody {
+  itemType: ItemType;
+  ingredientId?: number;
+  productId?: number;
+  description: string;
+  quantity: string;
+  presentationId?: number;
+  unitId?: number;
+  amount: string;
+  isGift: boolean;
+}
+
+// Un renglón de «Corregir lo que llegó» (spec 038). Cantidades en la unidad del renglón.
+export interface StockLineBody {
+  id?: number;
+  seenApplied?: string;
+  itemType: ItemType;
+  ingredientId?: number;
+  productId?: number;
+  description: string;
+  quantity: string;
+  received: string;
+  notComing: string;
+  presentationId?: number;
+  unitId?: number;
+  amount: string;
+  isGift?: boolean;
 }
 export interface ExpensePaymentBody {
   methodId: number;
@@ -563,14 +872,76 @@ export interface ExpensePaymentBody {
   paidOn?: string;
   registerId?: number;
   reference?: string;
+  // Confirma que el efectivo sale de una caja sin turno (o de otro día) y no entra a ningún corte.
+  outsideCount?: boolean;
+  // Casilla «Incluir en el arqueo» (spec 048): solo en efectivo de una caja con arqueo. Con
+  // outsideCount en true y esto en true, el pago queda pendiente del corte que cubra su hora.
+  includeInCount?: boolean;
+  // drawerExtra: lo que salió del cajón además de amount, la parte que no es del negocio (spec 050).
+  drawerExtra?: string;
+}
+
+// Salud del inventario (spec 037). Las listas se declaran opcionales a propósito: un `null` del
+// servidor tumbaría la pantalla sin un solo error, y así el compilador obliga a la guarda.
+export type HealthSection = 'unsold_deduction' | 'negative_stock' | 'no_purchases' | 'malformed_recipe' | 'pending_recipe';
+export interface HealthUnsoldItem {
+  kind: 'product' | 'extra';
+  id: number;
+  name: string;
+  group: string;
+  // own_stock | recipe | package | none | undecided en un producto; 'extra' en un extra.
+  status: string;
+  units?: { channel: string; units: string }[];
+  pieces: string;
+  linesWithoutDeduction: number;
+  // null cuando nadie ha capturado el costo: no es «$0».
+  estimatedCost: string | null;
+  fixAt: string;
+}
+export interface HealthComboChoice { productId: number; name: string; slot: string; options: number; fixAt: string }
+export interface HealthNegative { ingredientId: number; name: string; unit: string; onHand: string; branch: string | null; usedBy: number; fixAt: string }
+export interface HealthNoPurchase { ingredientId: number; name: string; unit: string; fixAt: string }
+export interface HealthMalformed {
+  ownerKind: 'product' | 'extra' | 'prep';
+  ownerId: number;
+  ownerName: string;
+  ingredient: string;
+  problem: 'zero_quantity' | 'unit_mismatch' | 'archived_ingredient' | 'duplicate_ingredient';
+  fixAt: string;
+}
+export interface HealthPendingCount { products: number; extras: number; fixAt: string }
+export interface InventoryHealth {
+  from: string;
+  to: string;
+  multipleBranches: boolean;
+  salesInPeriod: number;
+  unsoldDeduction: { total: number; items?: HealthUnsoldItem[]; unpairedPlatformLines: number };
+  comboChoices: { total: number; items?: HealthComboChoice[] };
+  negativeStock: { total: number; collapsed: boolean; items?: HealthNegative[] };
+  noPurchases: { total: number; of: number; items?: HealthNoPurchase[] };
+  malformedRecipes: { total: number; items?: HealthMalformed[] };
+  pendingRecipes: { undecided: HealthPendingCount; review: HealthPendingCount };
+}
+export interface HealthQuery {
+  from?: string;
+  to?: string;
+  section?: HealthSection;
+  limit?: number;
+  offset?: number;
+  noPurchasesSince?: string;
 }
 
 export const backofficeApi = {
   // Cajas (catálogo). `cashRegisters` = activas + estado de sesión; `allCashRegisters` = gestión.
   cashRegisters: () => api.get<{ items: CashRegister[] }>('/cash-registers'),
-  allCashRegisters: () => api.get<{ items: CashRegister[] }>('/cash-registers/all'),
+  allCashRegisters: () => api.get<{ items: CashRegisterConfig[] }>('/cash-registers/all'),
+  // null quita el fondo fijo: el cierre vuelve a pedir teclearlo.
+  setFixedFloat: (id: number, fixedFloat: number | null) =>
+    api.put<CashRegisterConfig>(`/cash-registers/${id}/fixed-float`, { fixedFloat }),
+  // Pasa las ventas a esta caja (spec 049). 409 REGISTERS_MUST_BE_CLOSED con un turno abierto.
+  makeRegisterSell: (id: number) => api.post<void>(`/cash-registers/${id}/sells`),
   createCashRegister: (name: string) => api.post<CashRegister>('/cash-registers', { name }),
-  updateCashRegister: (id: number, b: { name: string; isActive: boolean }) =>
+  updateCashRegister: (id: number, b: { name?: string; isActive?: boolean; countsCash?: boolean }) =>
     api.patch<CashRegister>(`/cash-registers/${id}`, b),
 
   cashCurrent: (registerId: number) => api.get<CashSession | null>(`/cash-sessions/current?registerId=${registerId}`),
@@ -579,6 +950,9 @@ export const backofficeApi = {
   cashDenominations: (currency?: string) =>
     api.get<{ items: Denomination[] }>(
       currency ? `/cash/denominations?currency=${encodeURIComponent(currency)}` : '/cash/denominations'),
+  // Los gastos sin corte de la caja desde su último cierre (spec 048).
+  cashPendingExpenses: (registerId: number) =>
+    api.get<{ items?: PendingExpense[] }>(`/cash-sessions/pending-expenses?registerId=${registerId}`),
   cashOpen: (registerId: number, apertura: AperturaInput) =>
     api.post<CashSession>('/cash-sessions', { registerId, ...apertura }),
   // El efectivo va contado (`counts`) o como cifra en `declared` con su `manualReason`, nunca las
@@ -594,7 +968,16 @@ export const backofficeApi = {
     tipsDecision?: TipsDecision;
     terminalCounts?: Record<string, number>;
     floatLeft?: number;
+    fixedFloatShown?: number;
+    withdrawalUserId?: number;
+    // Cerrar sin la salida de quien abrió (spec 046). Solo con el permiso; el servidor lo ignora si
+    // ya no hace falta.
+    authorizedClose?: { reason: string };
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
+  // Qué pide la asistencia para abrir o cerrar esa caja (spec 046). Lo calcula el servidor con la
+  // misma regla que aplica al confirmar.
+  cashAttendance: (registerId: number) =>
+    api.get<CashAttendanceGate>(`/cash-sessions/attendance?registerId=${registerId}`),
   cashTips: (registerId: number) => api.get<TipsPending>(`/cash-sessions/tips?registerId=${registerId}`),
   cashTipPayout: (registerId: number, input: TipPayoutInput) =>
     api.post<{ items: { movementId: number; recipientName: string; amount: string }[] }>(
@@ -658,9 +1041,12 @@ export const backofficeApi = {
   // Gastos (paginado; el orden lo aplica el backend para que abarque todas las páginas)
   expenses: (params?: {
     status?: ExpenseStatus; page?: number; pageSize?: number; sort?: ExpenseSort; dir?: 'asc' | 'desc';
+    // Solo compras con algo que no ha llegado (spec 038).
+    pending?: boolean;
   }) => {
     const q = new URLSearchParams();
     if (params?.status) q.set('status', params.status);
+    if (params?.pending) q.set('pending', 'true');
     if (params?.page != null) q.set('page', String(params.page));
     if (params?.pageSize != null) q.set('pageSize', String(params.pageSize));
     if (params?.sort) { q.set('sort', params.sort); q.set('dir', params.dir ?? 'asc'); }
@@ -681,15 +1067,62 @@ export const backofficeApi = {
     docKind?: string;
     docFolio?: string;
     docRaw?: unknown;
+    // El total que dice el documento leído (spec 049): se guarda aparte del total pagado.
+    documentTotal?: string;
   }) => api.post<{ id: number }>('/expenses', b),
   expenseDetail: (id: number) => api.get<ExpenseDetail>(`/expenses/${id}`),
+  // Editar un gasto guardado y registrar una entrega (spec 053). `preview` no escribe nada; confirmar
+  // manda la huella de la última vista previa (409 EXPENSE_EDIT_STALE si algo cambió).
+  editExpense: (id: number, b: EditExpenseBody, preview: boolean) =>
+    api.post<EditResult>(`/expenses/${id}/edit${preview ? '?preview=1' : ''}`, b),
+  deliverExpense: (id: number, b: DeliveryBody, preview: boolean) =>
+    api.post<EditResult>(`/expenses/${id}/deliveries${preview ? '?preview=1' : ''}`, b),
+  // Excluye o vuelve a incluir un renglón (spec 049). 400 si rompe la regla del total; 409 si otro
+  // cambio tiene tomados sus artículos.
+  setItemExcluded: (id: number, itemId: number, excluded: boolean) =>
+    api.patch<void>(`/expenses/${id}/items/${itemId}`, { excluded }),
   // Agrega UN pago. Si con él los pagos cubren el importe, el gasto pasa a pagado.
   payExpense: (id: number, b: ExpensePaymentBody) => api.post<void>(`/expenses/${id}/pay`, b),
+  // Cambia «Incluir en el arqueo» de un pago ya guardado (spec 048). Exige `cash.adjust_count`.
+  setPaymentInCount: (id: number, paymentId: number, includeInCount: boolean) =>
+    api.patch<void>(`/expenses/${id}/payments/${paymentId}`, { includeInCount }),
   // Marca la mercancía recibida y genera los movimientos de almacén. `received` mapea
   // idLínea → cantidad que llegó (0 = no llegó).
   receiveExpense: (id: number, b: { receivedAt?: string; received?: Record<string, string> }) =>
     api.post<void>(`/expenses/${id}/receive`, b),
   cancelExpense: (id: number, reason: string) => api.post<void>(`/expenses/${id}/cancel`, { reason }),
+  // El conjunto deseado de renglones de almacén: el servidor mueve el almacén por la diferencia.
+  saveStockLines: (id: number, lines: StockLineBody[]) =>
+    api.put<ExpenseDetail>(`/expenses/${id}/stock-lines`, { lines }),
+  updateInventorySettings: (b: { costingMethod: CostingMethod; stockItemLabel: string }) =>
+    api.put<unknown>('/settings/inventory', b),
+  // «Por recibir» (spec 038): lo pagado que no ha llegado, renglón por renglón.
+  pendingReceipts: () => api.get<PendingReceipt[]>('/stock/pending-receipts'),
+  receiveItem: (expenseId: number, itemId: number, b: { qty: string; seenApplied: string; extraAmount?: string }) =>
+    api.post<void>(`/expenses/${expenseId}/items/${itemId}/receive`, b),
+  markNotComing: (expenseId: number, itemId: number, qty: string) =>
+    api.post<void>(`/expenses/${expenseId}/items/${itemId}/not-coming`, { qty }),
+  addArrivedItem: (expenseId: number, b: ArrivedItemBody) => api.post<void>(`/expenses/${expenseId}/items`, b),
+  // Conteo (spec 038). Las cifras van en la unidad base del insumo.
+  // null sin conteo abierto (204): TanStack Query no acepta `undefined` como dato.
+  currentCount: () => api.get<StockCount | undefined>('/stock/counts/current').then((c) => c ?? null),
+  openCount: () => api.post<StockCount>('/stock/counts', {}),
+  captureCount: (id: number, ingredientId: number, body: CountCaptureBody) =>
+    // weighed: el desglose que quedó guardado (#204); falta en una API anterior.
+    api.put<{ countedQty: string; grossNet?: string; weighed?: CountWeighed | null }>(`/stock/counts/${id}/lines/${ingredientId}`, body),
+  uncaptureCount: (id: number, ingredientId: number) => api.del<void>(`/stock/counts/${id}/lines/${ingredientId}`),
+  previewCount: (id: number) => api.get<CountClose>(`/stock/counts/${id}/preview`),
+  closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),
+  discardCount: (id: number) => api.post<void>(`/stock/counts/${id}/discard`, {}),
+  lastClosedCount: () => api.get<{ closedAt: string | null; id: number | null }>('/stock/counts/last-closed'),
+  // Lugares del recorrido del conteo (spec 040): una lista por empresa en vez de texto libre.
+  setCountPlace: (ingredientId: number, placeId: number | null) => api.put<void>(`/stock/ingredients/${ingredientId}/place`, { placeId }),
+  countPlaces: () => api.get<CountPlace[]>('/stock/count-places'),
+  createCountPlace: (name: string) => api.post<{ id: number }>('/stock/count-places', { name }),
+  renameCountPlace: (id: number, name: string) => api.put<void>(`/stock/count-places/${id}`, { name }),
+  moveCountPlace: (id: number, toPosition: number) => api.post<void>(`/stock/count-places/${id}/move`, { toPosition }),
+  archiveCountPlace: (id: number, moveTo?: number | null) =>
+    api.post<void>(`/stock/count-places/${id}/archive`, moveTo === undefined ? {} : { moveTo }),
 
   // Extracción del documento → borrador. NO escribe nada: el operador confirma.
   parseDoc: (file: File) => {
@@ -698,12 +1131,53 @@ export const backofficeApi = {
     return api.postForm<ParsedDoc>('/expenses/parse-doc', fd);
   },
 
+  // Artículos del almacén (spec 042): la lista con filtros, la ficha, su historial y su bitácora.
+  articles: (f: ArticleFilter = {}) => {
+    const qs = new URLSearchParams();
+    if (f.q?.trim()) qs.set('q', f.q.trim());
+    if (f.archived) qs.set('status', 'archived');
+    if (f.place === 'none') qs.set('placeId', 'none');
+    else if (typeof f.place === 'number') qs.set('placeId', String(f.place));
+    if (f.noCost) qs.set('noCost', '1');
+    if (f.negative) qs.set('negative', '1');
+    const q = qs.toString();
+    return api.get<ArticleRow[]>(`/stock/articles${q ? `?${q}` : ''}`);
+  },
+  createArticle: (b: ArticleCreate) => api.post<{ id: number }>('/stock/articles', b),
+  article: (id: number) => api.get<ArticleSheet>(`/stock/articles/${id}`),
+  // Solo los campos que vienen cambian; uno en null se limpia (spec 043). Devuelve la versión nueva.
+  updateArticle: (id: number, b: ArticleUpdate) => api.patch<{ updatedAt: string }>(`/stock/articles/${id}`, b),
+  correctArticleCost: (id: number, cost: string) => api.post<void>(`/stock/articles/${id}/cost`, { cost }),
+  articleCostHistory: (id: number, before?: string) =>
+    api.get<CostHistoryPage>(`/stock/articles/${id}/cost-history${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+  previewUnitChange: (id: number, b: UnitChangeBody) => api.post<UnitChangePreview>(`/stock/articles/${id}/unit/preview`, b),
+  changeUnit: (id: number, b: UnitChangeBody) => api.post<void>(`/stock/articles/${id}/unit`, b),
+  setDensity: (id: number, b: DensityBody) => api.put<{ density: DensityView }>(`/stock/articles/${id}/density`, b),
+  clearDensity: (id: number) => api.del<void>(`/stock/articles/${id}/density`),
+  mergeArticles: (targetId: number, b: MergeBody, preview: boolean) =>
+    api.post<MergePreview>(`/stock/articles/${targetId}/merge${preview ? '?preview=1' : ''}`, b),
+  duplicateGroups: () => api.get<{ groups?: DuplicateGroup[] }>('/stock/articles/duplicate-groups'),
+  markDistinct: (a: number, b: number) => api.post<void>('/stock/articles/distinct-pairs', { a, b }),
+  similarArticles: (name: string) => api.get<{ items?: DuplicateItem[] }>(`/stock/articles/similar?name=${encodeURIComponent(name)}`),
+  articleArchiveCheck: (id: number) => api.get<ArchiveCheck>(`/stock/articles/${id}/archive-check`),
+  // confirmOnHand: quien archiva vio la existencia y la deja así (#203); sin él, con existencia es 409.
+  archiveArticle: (id: number, confirmOnHand: boolean) => api.post<void>(`/stock/articles/${id}/archive`, { confirmOnHand }),
+  reactivateArticle: (id: number) => api.post<void>(`/stock/articles/${id}/reactivate`, {}),
+  presentationSuggestions: (unitKind: string) =>
+    api.get<{ name: string; qtyInBase: string }[]>(`/stock/presentation-suggestions?unitKind=${encodeURIComponent(unitKind)}`),
+  articleCategories: () => api.get<{ id: number; name: string }[]>('/stock/ingredient-categories'),
+  createArticleCategory: (name: string) => api.post<{ id: number; name: string }>('/stock/ingredient-categories', { name }),
+  articleAudit: (id: number, before?: string) =>
+    api.get<ArticleAuditPage>(`/stock/articles/${id}/audit${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+
   // Catálogo de artículos (insumos) y buscador del detalle del gasto.
   units: () => api.get<{ items: Unit[] }>('/units'),
   ingredients: (onlyActive = false) =>
     api.get<{ items: Ingredient[] }>(`/ingredients${onlyActive ? '?onlyActive=true' : ''}`),
-  createIngredient: (b: { name: string; baseUnitId: number; minStock?: string }) =>
-    api.post<Ingredient>('/ingredients', b),
+  presentations: () => api.get<Presentation[]>('/stock/presentations'),
+  createPresentation: (ingredientId: number, b: PresentationBody) =>
+    api.post<Presentation>(`/stock/ingredients/${ingredientId}/presentations`, b),
+  updatePresentation: (id: number, b: PresentationBody) => api.put<Presentation>(`/stock/presentations/${id}`, b),
   searchArticles: (q: string) =>
     api.get<{ items: Article[] }>(`/articles?q=${encodeURIComponent(q)}`),
   // Catálogo aprendido: revisar qué mapeó el sistema y deshacer un mapeo equivocado.
@@ -728,6 +1202,13 @@ export const backofficeApi = {
 
   stockLevels: () => api.get<{ items: StockLevel[] }>('/stock/levels'),
   stockMovements: () => api.get<{ items: StockMovement[] }>('/stock/movements'),
+  inventoryHealth: (q: HealthQuery = {}) => api.get<InventoryHealth>(`/stock/health?${qsReporte(q as ReportQuery)}`),
+  // El archivo de la misma pantalla. El nombre viene del servidor (Content-Disposition), con el periodo.
+  exportInventoryHealth: async (q: Pick<HealthQuery, 'from' | 'to'>) => {
+    const res = await api.getRaw(`/stock/health.csv?${qsReporte(q as ReportQuery)}`);
+    const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'salud-del-inventario.csv';
+    return { blob: await res.blob(), filename: name };
+  },
   createMovement: (b: {
     itemType: string;
     ingredientId?: number;
@@ -785,4 +1266,155 @@ function qsReporte(q: ReportQuery): string {
     if (v !== undefined && v !== '') p.set(k, String(v));
   }
   return p.toString();
+}
+
+// Artículos del almacén (spec 042). Cantidades en la unidad base del artículo.
+export interface ArticleFilter {
+  q?: string;
+  archived?: boolean;
+  place?: number | 'none';
+  noCost?: boolean;
+  negative?: boolean;
+}
+export interface PresentationLabel { id: number; name: string; qtyInBase: string; brand?: string | null }
+export interface ArticleRow {
+  id: number;
+  name: string;
+  isActive: boolean;
+  baseUnitId: number;
+  baseUnitCode: string;
+  baseUnitKind: string;
+  currentCost: string;
+  minStock: string | null;
+  isPrep: boolean;
+  categoryId: number | null;
+  category: string | null;
+  countPlaceId: number | null;
+  countPlace: string | null;
+  onHand: string;
+  // Opcional a propósito: el compilador obliga a la guarda aunque el servidor siempre mande [] (AGENTS §1).
+  presentations?: PresentationLabel[];
+  // «estimated»: su receta vino estimada y está por revisar.
+  compositionStatus?: string;
+}
+export interface ArticleSheet extends ArticleRow {
+  costSource: string;
+  updatedAt: string;
+  // A qué insumo se unió (spec 056); falta en una API anterior.
+  mergedInto?: { id: number; name: string; at: string } | null;
+  mergedSources?: number;
+  // Spec 058. method: weighing (pesada) | label (etiqueta) | manual (escrita).
+  density?: DensityView | null;
+}
+export interface DensityView { value: string; method: 'weighing' | 'label' | 'manual'; setByName: string; setAt: string }
+export type DensityBody =
+  | { method: 'weighing'; fullG: string; emptyG: string; contentMl: string }
+  | { method: 'label'; netG: string; contentMl: string }
+  | { method: 'manual'; density: string };
+export interface ArticleCreate {
+  name: string;
+  baseUnitId: number;
+  categoryId?: number | null;
+  placeId?: number | null;
+  minStock?: string;
+  initialCost?: string;
+  initialStock?: string;
+}
+export interface ArticleUpdate {
+  expectedUpdatedAt: string;
+  name?: string;
+  categoryId?: number | null;
+  placeId?: number | null;
+  minStock?: string | null;
+}
+export interface CostHistoryItem {
+  kind: 'purchase' | 'correction';
+  at: string;
+  id: number;
+  unitCost: string;
+  presentation: string | null;
+  packQty: string | null;
+  packCost: string | null;
+  supplier: string | null;
+  user: string | null;
+  // La marca con la que se compró y el insumo unido del que viene el renglón (spec 056).
+  brand?: string | null;
+  fromName?: string | null;
+}
+export interface CostHistoryPage { items?: CostHistoryItem[]; next: string | null; trendPct: string | null }
+export interface ArticleAuditItem {
+  id: number;
+  at: string;
+  action: string;
+  entity: string;
+  actor: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  // Cuántos guardados seguidos junta la entrada (spec 043); falta en una API anterior.
+  changes?: number;
+}
+export interface ArticleAuditPage { items?: ArticleAuditItem[]; next: string | null }
+export interface ArchiveCheck {
+  onHand?: { branch: string; qty: string }[];
+  activeRecipes?: { kind: 'product' | 'option' | 'ingredient'; id: number; name: string }[];
+  openCount: boolean;
+  pendingReceipts: number;
+}
+export interface UnitChangeBody {
+  baseUnitId: number;
+  // Entre peso y líquido la pone la densidad (spec 058): la vista previa va sin ella.
+  factor?: string;
+  overrides?: Record<string, string>;
+}
+export interface UnitConversion {
+  key: string;
+  group: 'stock' | 'recipe' | 'presentation';
+  label: string;
+  from: string;
+  to: string;
+  fits: boolean;
+}
+// Unir insumos (spec 056). factor: cuánto del destino vale una unidad base del origen; solo si se
+// miden distinto.
+export interface MergeSourceInput { id: number; factor?: string }
+export interface MergeBody { sources: MergeSourceInput[]; fingerprint?: string }
+export interface MergeArticle { id: number; name: string; baseUnit: string; factor: string }
+export interface MergeStock {
+  branchId: number; branch: string; ingredientId: number; name: string; baseUnit: string;
+  before: string; after: string; negativeAfter: boolean;
+}
+export interface MergeRecipe {
+  owner: string; ownerKind?: 'product' | 'option' | 'ingredient' | 'recipe'; sourceId: number; beforeQty: string; beforeUnit: string; afterQty: string; afterUnit: string; merged: boolean;
+}
+export interface MergePresentation {
+  id: number; sourceId: number; name: string; brand: string; qtyInBase: string; baseUnit: string;
+  action: 'move' | 'archive' | 'conflict';
+}
+export interface MergePreview {
+  target: MergeArticle;
+  sources?: MergeArticle[];
+  stock?: MergeStock[];
+  recipes?: MergeRecipe[];
+  presentations?: MergePresentation[];
+  supplierItems: number;
+  purchaseFormats: number;
+  costBefore: string;
+  costAfter: string;
+  minStockBefore: string | null;
+  minStockAfter: string | null;
+  // Spec 058: el destino recibe la densidad de este origen; o los orígenes traen distintas.
+  densityFrom?: string | null;
+  densityConflict?: boolean;
+  fingerprint: string;
+}
+export interface DuplicateItem { id: number; name: string; baseUnitId: number; baseUnitCode: string; onHand: string }
+export interface DuplicateGroup { items?: DuplicateItem[] }
+export interface UnitChangePreview {
+  path: 'direct' | 'replace';
+  fromUnit: string;
+  toUnit: string;
+  conversions?: UnitConversion[];
+  // Spec 058: entre peso y líquido la equivalencia sale de la densidad.
+  density?: string | null;
+  factor?: string;
 }

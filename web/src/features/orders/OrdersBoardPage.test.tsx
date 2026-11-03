@@ -308,8 +308,8 @@ test('en el menú, «Cancelar pedido» va separado de «Quitar lo que falta» y 
     (quitar.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 &&
     (s.compareDocumentPosition(cancelar) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0);
   expect(entreLosDos, 'no hay separador entre «Quitar lo que falta» y «Cancelar pedido»').toHaveLength(1);
-  expect(getComputedStyle(cancelar).color).toMatch(/red/);
-  expect(getComputedStyle(quitar).color, '«Quitar lo que falta» no es destructivo y salió en rojo').not.toMatch(/red/);
+  expect(getComputedStyle(cancelar).color).toMatch(/red|error/);
+  expect(getComputedStyle(quitar).color, '«Quitar lo que falta» no es destructivo y salió en rojo').not.toMatch(/red|error/);
 });
 
 // Un segundo toque mientras la primera petición viaja mandaba otra: con la red lenta, el operador

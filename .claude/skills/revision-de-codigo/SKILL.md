@@ -11,8 +11,10 @@ documento está `/revision-de-arquitectura`, que corre después de `/speckit-pla
 
 ## Qué diff revisas
 
-Sin argumento: `git diff develop...HEAD --stat` más los archivos completos que cambiaron. Con
-argumento, el rango que te den.
+Sin argumento: `git diff origin/develop...HEAD --stat` más los archivos completos que cambiaron.
+**En una rama `hotfix/` la base es `origin/main`**, porque salió de ahí: contra develop el diff
+arrastra lo que develop trae y main no, y se revisa un cambio que no es el tuyo. Con argumento, el
+rango que te den.
 
 Si el diff está vacío, dilo en una línea y termina.
 
@@ -26,7 +28,15 @@ cambio no tocó produce hallazgos inventados, y correr de menos deja pasar el qu
 | `go-backend-reviewer` | Cualquier `.go` bajo `server/` |
 | `security-auditor` | `internal/auth/`, `internal/config/`, `internal/httpapi/middleware.go`, `internal/httpapi/router.go`, `internal/httpapi/ratelimit.go`, `internal/logging/`, o cualquier cosa que decida quién puede hacer qué |
 | `tablet-ui-reviewer` | Una pantalla nueva o un cambio de disposición en `web/src/` |
+| Revisor de lógica del front (`general-purpose`) | Código de `web/src/` que no es disposición: cálculo de montos, qué se imprime o se manda al servidor, filtros, estado (`utils/`, `domain/`, `api/`, `shared/tickets/`, hooks). Dale la constitución (III, IV, VII) y el diff, no tu conclusión |
 | `db-architect` | `server/migrations/` o `server/queries/` — **solo si no corrió ya** en `/revision-de-arquitectura` sobre este mismo cambio; si ya corrió, no lo repitas |
+
+**Ningún diff con código sale sin revisor.** Si cambió un `.go`, un `.ts`, un `.tsx` o un `.sql`
+que no sea solo test, corre al menos uno; si la tabla no te da ninguno, el que aplica es el de
+lógica del front o el `go-backend-reviewer`, según la carpeta. Pasó el 2026-11-02: un hotfix del
+ticket (renglones cancelados impresos, en `web/src/utils/printReceipt.ts`) no tocaba Go, auth ni
+disposición, la revisión no lanzó a nadie y el PR llegó a producción sin revisar. «Ningún revisor
+aplica» solo vale para un diff de puros documentos.
 
 El `security-auditor` no es negociable cuando el diff toca esa lista: el principio V lo exige antes
 de mergear, y el hook no puede decidirlo por ti porque depende de qué cambió.

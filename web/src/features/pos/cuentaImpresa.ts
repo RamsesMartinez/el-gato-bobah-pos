@@ -1,5 +1,6 @@
 import { round2 } from '../../domain/numeros';
 import type { ReceiptLine, ReceiptOrder } from '../../types/pos';
+import { printableLines } from '../../utils/printableLines';
 import type { RenglonNuevo, VistaCuenta } from './cuentaEnPantalla';
 
 // EL PAPEL DE LA CUENTA (spec 012), desde el ticket (spec 030).
@@ -25,7 +26,7 @@ function renglonImpreso(l: RenglonNuevo): ReceiptLine {
 export function cuentaImpresa(v: VistaCuenta, ahora: Date): { order: ReceiptOrder; preCuenta: boolean } | null {
   // Lo que el servidor no confirmó o ya no vende no se cobra: no va en el papel.
   const nuevos = v.nuevos.filter((l) => !l.guardando && l.available).map(renglonImpreso);
-  const enviados = (v.pedido?.lines ?? []).filter((l) => !l.cancelled);
+  const enviados = printableLines(v.pedido?.lines);
   if (nuevos.length + enviados.length === 0) return null;
 
   const descuento = round2(Number(v.pedido?.discount ?? 0) + v.descuentoNuevo);

@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 // Reinicia el borrador local cuando se abre para otro producto (patrón legítimo).
 import { useEffect, useState, type ReactNode } from 'react';
+import { DatePickerButton } from '../components/DatePickerButton';
 import { Box, VStack, HStack, Text, Button, Input } from '@chakra-ui/react';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter,
@@ -153,12 +154,12 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                   <Text fontSize="xs" color="fg.muted" mb={2}>Con fechas, el producto solo aparece en el POS dentro del rango. Vacío = siempre.</Text>
                   <HStack>
                     <Field label="Desde">
-                      <Input type="date" value={edit.availableFrom ?? ''}
-                        onChange={(e) => setEdit({ ...edit, availableFrom: e.target.value || null })} />
+                      <DatePickerButton label="Desde" clearable value={edit.availableFrom ?? ''}
+                        onChange={(v) => setEdit({ ...edit, availableFrom: v || null })} />
                     </Field>
                     <Field label="Hasta">
-                      <Input type="date" value={edit.availableUntil ?? ''}
-                        onChange={(e) => setEdit({ ...edit, availableUntil: e.target.value || null })} />
+                      <DatePickerButton label="Hasta" clearable value={edit.availableUntil ?? ''}
+                        onChange={(v) => setEdit({ ...edit, availableUntil: v || null })} />
                     </Field>
                   </HStack>
                 </Box>

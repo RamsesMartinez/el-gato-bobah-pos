@@ -80,16 +80,46 @@ func (q *Queries) CreateIngredientCategory(ctx context.Context, name string) (Cr
 	return i, err
 }
 
+const createPresentation = `-- name: CreatePresentation :one
+insert into ingredient_presentations (ingredient_id, name, qty_in_base, purchase_unit_id, is_approximate, brand)
+values ($1, $2, $3, $4, $5, $6)
+returning id
+`
+
+type CreatePresentationParams struct {
+	IngredientID   int64           `json:"ingredient_id"`
+	Name           string          `json:"name"`
+	QtyInBase      decimal.Decimal `json:"qty_in_base"`
+	PurchaseUnitID *int16          `json:"purchase_unit_id"`
+	IsApproximate  bool            `json:"is_approximate"`
+	Brand          *string         `json:"brand"`
+}
+
+func (q *Queries) CreatePresentation(ctx context.Context, arg CreatePresentationParams) (int64, error) {
+	row := q.db.QueryRow(ctx, createPresentation,
+		arg.IngredientID,
+		arg.Name,
+		arg.QtyInBase,
+		arg.PurchaseUnitID,
+		arg.IsApproximate,
+		arg.Brand,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getIngredientUnit = `-- name: GetIngredientUnit :one
-select i.id, u.kind as base_unit_kind, u.to_base as base_to_base
+select i.id, u.kind as base_unit_kind, u.to_base as base_to_base, i.density_g_per_ml
 from ingredients i join units u on u.id = i.base_unit_id
 where i.id = $1
 `
 
 type GetIngredientUnitRow struct {
-	ID           int64           `json:"id"`
-	BaseUnitKind UnitKind        `json:"base_unit_kind"`
-	BaseToBase   decimal.Decimal `json:"base_to_base"`
+	ID            int64            `json:"id"`
+	BaseUnitKind  UnitKind         `json:"base_unit_kind"`
+	BaseToBase    decimal.Decimal  `json:"base_to_base"`
+	DensityGPerMl *decimal.Decimal `json:"density_g_per_ml"`
 }
 
 // El kind y el factor de la unidad base de un artículo: lo que domain.BaseQty necesita para
@@ -97,8 +127,65 @@ type GetIngredientUnitRow struct {
 func (q *Queries) GetIngredientUnit(ctx context.Context, id int64) (GetIngredientUnitRow, error) {
 	row := q.db.QueryRow(ctx, getIngredientUnit, id)
 	var i GetIngredientUnitRow
-	err := row.Scan(&i.ID, &i.BaseUnitKind, &i.BaseToBase)
+	err := row.Scan(
+		&i.ID,
+		&i.BaseUnitKind,
+		&i.BaseToBase,
+		&i.DensityGPerMl,
+	)
 	return i, err
+}
+
+const getPresentationIngredient = `-- name: GetPresentationIngredient :one
+select ingredient_id, active, brand from ingredient_presentations where id = $1
+`
+
+type GetPresentationIngredientRow struct {
+	IngredientID int64   `json:"ingredient_id"`
+	Active       bool    `json:"active"`
+	Brand        *string `json:"brand"`
+}
+
+// El insumo, el estado y la marca actuales: editar sin mandar `active` o `brand` conserva lo que tiene.
+func (q *Queries) GetPresentationIngredient(ctx context.Context, id int64) (GetPresentationIngredientRow, error) {
+	row := q.db.QueryRow(ctx, getPresentationIngredient, id)
+	var i GetPresentationIngredientRow
+	err := row.Scan(&i.IngredientID, &i.Active, &i.Brand)
+	return i, err
+}
+
+const getUnit = `-- name: GetUnit :one
+select id, code, name, kind, to_base from units where id = $1
+`
+
+func (q *Queries) GetUnit(ctx context.Context, id int16) (Unit, error) {
+	row := q.db.QueryRow(ctx, getUnit, id)
+	var i Unit
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Kind,
+		&i.ToBase,
+	)
+	return i, err
+}
+
+const ingredientNameTaken = `-- name: IngredientNameTaken :one
+select exists (
+  select 1 from ingredients
+   where regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+       = regexp_replace(translate(lower(trim($1::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+)::bool
+`
+
+// ¿Hay otro insumo de la empresa con el mismo nombre sin distinguir mayúsculas, acentos ni espacios
+// de más? La misma normalización que «duplicado» en Salud del inventario.
+func (q *Queries) IngredientNameTaken(ctx context.Context, name string) (bool, error) {
+	row := q.db.QueryRow(ctx, ingredientNameTaken, name)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const listIngredientCategories = `-- name: ListIngredientCategories :many
@@ -135,9 +222,11 @@ select i.id, i.name, i.is_active, i.track_stock, i.is_packaging, i.min_stock,
        i.current_cost, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
        ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
        i.is_prep, i.composition_status,
-       (select count(*) from recipe_items ri where ri.ingredient_id = i.id)::int as recipe_uses
+       (select count(*) from recipe_items ri where ri.ingredient_id = i.id)::int as recipe_uses,
+       i.count_place_id, cp.name as count_place
 from ingredients i
 join units u on u.id = i.base_unit_id
+left join count_places cp on cp.id = i.count_place_id
 left join ingredient_categories ic on ic.id = i.category_id
 left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
 where ($1::boolean is not true or i.is_active)
@@ -160,6 +249,8 @@ type ListIngredientsRow struct {
 	IsPrep            bool             `json:"is_prep"`
 	CompositionStatus *string          `json:"composition_status"`
 	RecipeUses        int32            `json:"recipe_uses"`
+	CountPlaceID      *int64           `json:"count_place_id"`
+	CountPlace        *string          `json:"count_place"`
 }
 
 // Existencias de la sucursal (0076): sin el filtro, con dos sucursales cada insumo saldría dos
@@ -189,6 +280,66 @@ func (q *Queries) ListIngredients(ctx context.Context, onlyActive *bool) ([]List
 			&i.IsPrep,
 			&i.CompositionStatus,
 			&i.RecipeUses,
+			&i.CountPlaceID,
+			&i.CountPlace,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPresentations = `-- name: ListPresentations :many
+select p.id, p.ingredient_id, p.name, p.qty_in_base, p.active, p.is_approximate, p.purchase_unit_id,
+       u.code as base_unit_code, u.kind as base_unit_kind, p.brand, p.tare_g
+from ingredient_presentations p
+join ingredients i on i.id = p.ingredient_id
+join units u on u.id = i.base_unit_id
+where ($1::bigint is null or p.ingredient_id = $1)
+order by p.ingredient_id, p.active desc, p.name, p.id
+`
+
+type ListPresentationsRow struct {
+	ID             int64            `json:"id"`
+	IngredientID   int64            `json:"ingredient_id"`
+	Name           string           `json:"name"`
+	QtyInBase      decimal.Decimal  `json:"qty_in_base"`
+	Active         bool             `json:"active"`
+	IsApproximate  bool             `json:"is_approximate"`
+	PurchaseUnitID *int16           `json:"purchase_unit_id"`
+	BaseUnitCode   string           `json:"base_unit_code"`
+	BaseUnitKind   UnitKind         `json:"base_unit_kind"`
+	Brand          *string          `json:"brand"`
+	TareG          *decimal.Decimal `json:"tare_g"`
+}
+
+// Empaques de compra (spec 038), los activos primero. Sin filtro, todos los de la empresa: la
+// columna «Cómo llega» los pinta de una vez en vez de pedirlos insumo por insumo.
+func (q *Queries) ListPresentations(ctx context.Context, ingredientID *int64) ([]ListPresentationsRow, error) {
+	rows, err := q.db.Query(ctx, listPresentations, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPresentationsRow{}
+	for rows.Next() {
+		var i ListPresentationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.IngredientID,
+			&i.Name,
+			&i.QtyInBase,
+			&i.Active,
+			&i.IsApproximate,
+			&i.PurchaseUnitID,
+			&i.BaseUnitCode,
+			&i.BaseUnitKind,
+			&i.Brand,
+			&i.TareG,
 		); err != nil {
 			return nil, err
 		}
@@ -238,16 +389,29 @@ func (q *Queries) ListUnits(ctx context.Context) ([]Unit, error) {
 	return items, nil
 }
 
+const lockIngredientNames = `-- name: LockIngredientNames :exec
+select pg_advisory_xact_lock(28037, coalesce(nullif(current_setting('app.company_id', true), '')::int, 0))
+`
+
+// Un alta de insumo a la vez por empresa, hasta el fin de la transacción (spec 037, research R7d).
+// Llave propia, distinta de la 28028 de las recetas: guardar una receta y dar de alta un insumo no
+// tienen por qué esperarse. Sin el candado, dos altas casi simultáneas de «Lata» y «lata» pasaban las
+// dos: el `unique (company_id, name)` solo atrapa el nombre idéntico.
+func (q *Queries) LockIngredientNames(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockIngredientNames)
+	return err
+}
+
 const searchArticles = `-- name: SearchArticles :many
 select 'ingrediente' as item_type, i.id, i.name::text as name,
-       u.code as unit_code, u.kind as unit_kind
+       u.code as unit_code, u.kind as unit_kind, i.density_g_per_ml
 from ingredients i
 join units u on u.id = i.base_unit_id
 where i.is_active
   and ($2::text is null or i.name::text ilike '%' || $2::text || '%')
 union all
 select 'producto' as item_type, p.id, p.name::text as name,
-       'pieza' as unit_code, 'pieza'::unit_kind as unit_kind
+       'pieza' as unit_code, 'pieza'::unit_kind as unit_kind, null::numeric(8,4) as density_g_per_ml
 from products p
 where p.is_active and p.track_stock
   and ($2::text is null or p.name::text ilike '%' || $2::text || '%')
@@ -261,11 +425,12 @@ type SearchArticlesParams struct {
 }
 
 type SearchArticlesRow struct {
-	ItemType string   `json:"item_type"`
-	ID       int64    `json:"id"`
-	Name     string   `json:"name"`
-	UnitCode string   `json:"unit_code"`
-	UnitKind UnitKind `json:"unit_kind"`
+	ItemType      string           `json:"item_type"`
+	ID            int64            `json:"id"`
+	Name          string           `json:"name"`
+	UnitCode      string           `json:"unit_code"`
+	UnitKind      UnitKind         `json:"unit_kind"`
+	DensityGPerMl *decimal.Decimal `json:"density_g_per_ml"`
 }
 
 // Buscador ÚNICO sobre los dos catálogos que el almacén sabe mover: ingredientes y productos
@@ -286,6 +451,7 @@ func (q *Queries) SearchArticles(ctx context.Context, arg SearchArticlesParams) 
 			&i.Name,
 			&i.UnitCode,
 			&i.UnitKind,
+			&i.DensityGPerMl,
 		); err != nil {
 			return nil, err
 		}
@@ -297,49 +463,34 @@ func (q *Queries) SearchArticles(ctx context.Context, arg SearchArticlesParams) 
 	return items, nil
 }
 
-const updateIngredient = `-- name: UpdateIngredient :one
-update ingredients
-set name = $2, base_unit_id = $3, category_id = $4, min_stock = $5,
-    track_stock = $6, is_packaging = $7, is_active = $8, updated_at = now()
+const updatePresentation = `-- name: UpdatePresentation :execrows
+update ingredient_presentations
+set name = $2, qty_in_base = $3, purchase_unit_id = $4, is_approximate = $5, active = $6, brand = $7
 where id = $1
-returning id, name, base_unit_id, is_active
 `
 
-type UpdateIngredientParams struct {
-	ID          int64            `json:"id"`
-	Name        string           `json:"name"`
-	BaseUnitID  int16            `json:"base_unit_id"`
-	CategoryID  *int64           `json:"category_id"`
-	MinStock    *decimal.Decimal `json:"min_stock"`
-	TrackStock  bool             `json:"track_stock"`
-	IsPackaging bool             `json:"is_packaging"`
-	IsActive    bool             `json:"is_active"`
+type UpdatePresentationParams struct {
+	ID             int64           `json:"id"`
+	Name           string          `json:"name"`
+	QtyInBase      decimal.Decimal `json:"qty_in_base"`
+	PurchaseUnitID *int16          `json:"purchase_unit_id"`
+	IsApproximate  bool            `json:"is_approximate"`
+	Active         bool            `json:"active"`
+	Brand          *string         `json:"brand"`
 }
 
-type UpdateIngredientRow struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	BaseUnitID int16  `json:"base_unit_id"`
-	IsActive   bool   `json:"is_active"`
-}
-
-func (q *Queries) UpdateIngredient(ctx context.Context, arg UpdateIngredientParams) (UpdateIngredientRow, error) {
-	row := q.db.QueryRow(ctx, updateIngredient,
+func (q *Queries) UpdatePresentation(ctx context.Context, arg UpdatePresentationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updatePresentation,
 		arg.ID,
 		arg.Name,
-		arg.BaseUnitID,
-		arg.CategoryID,
-		arg.MinStock,
-		arg.TrackStock,
-		arg.IsPackaging,
-		arg.IsActive,
+		arg.QtyInBase,
+		arg.PurchaseUnitID,
+		arg.IsApproximate,
+		arg.Active,
+		arg.Brand,
 	)
-	var i UpdateIngredientRow
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.BaseUnitID,
-		&i.IsActive,
-	)
-	return i, err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

@@ -21,7 +21,11 @@
 		-Server
 	}
 
-	reverse_proxy api:8080 {
+	# El lado activo de la API (spec 041) lo escribe scripts/deploy-azul-verde.sh en
+	# upstream/activo.caddy («to api-blue:8080»). Por patrón y no por nombre: con un nombre fijo, si
+	# el archivo falta Caddy no arranca y la API queda sin proxy.
+	reverse_proxy {
+		import /etc/caddy/upstream/activo*.caddy
 		flush_interval -1  # streaming inmediato para SSE
 	}
 	encode gzip

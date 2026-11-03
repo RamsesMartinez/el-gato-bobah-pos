@@ -1,0 +1,111 @@
+<title>Maqueta teclado del conteo</title><meta name="claude:viewport-fit-sides" content="cover"><style>
+/* Marco fijo 1024x600 de la tableta, escalado al ancho disponible; riel de 76 px como el POS. */
+:root{--bg:#eef0f3;--surface:#fff;--fg:#1b1f24;--muted:#5d6670;--line:#d9dde3;--brand:#e23b2e;--brand-fg:#fff;--brand-soft:#fff1f0;--warn:#b45309;--warn-soft:#fff7e6;--ok:#15803d;--chip:#f3f4f6;
+--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;font-variant-numeric:tabular-nums}
+h1{font-size:22px;margin:0 0 4px;text-wrap:balance}.sub{color:var(--muted);margin:0 0 16px;max-width:70ch}
+.tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.tab{min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.stage{width:100%;max-width:1024px;overflow:hidden}
+.scaler{width:1024px;height:600px;transform-origin:0 0}
+.frame{width:1024px;height:600px;background:var(--bg);border:1px solid var(--line);border-radius:12px;display:flex;overflow:hidden;position:relative}
+.rail{width:76px;flex:none;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:10px}
+.rail i{width:52px;height:46px;border-radius:10px;background:var(--chip);display:grid;place-items:center;font:600 10px var(--font);font-style:normal;color:var(--muted)}
+.rail i.on{background:var(--brand-soft);color:var(--brand)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px 16px;gap:10px;position:relative}
+.btn{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--brand);color:var(--brand-fg);border-color:var(--brand)}
+.btn.danger{color:var(--brand);border-color:var(--brand)}
+.chip{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:500 14px var(--font);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+.input{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:16px var(--font);padding:0 12px}
+.notes{margin-top:14px;display:grid;gap:6px;max-width:1024px}.notes p{margin:0;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.notes b{display:inline-block;min-width:22px}
+.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+.sheet{background:var(--surface);width:100%;border-radius:16px 16px 0 0;padding:16px;display:flex;flex-direction:column;gap:10px;max-height:92%;overflow:auto}
+.modal{background:var(--surface);width:460px;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px;margin:auto}
+.muted{color:var(--muted)}.warn{color:var(--warn)}
+.tag{font:600 12px var(--font);padding:3px 8px;border-radius:6px;background:var(--chip);color:var(--muted)}
+.tag.neg{background:var(--brand-soft);color:var(--brand)}
+.example{font:600 12px var(--font);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+button:focus-visible,input:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+</style><script>
+function fit(){document.querySelectorAll('.stage').forEach(s=>{const k=Math.min(1,s.clientWidth/1024);const c=s.firstElementChild;c.style.transform='scale('+k+')';s.style.height=(600*k)+'px'})}
+addEventListener('resize',fit);
+function tabs(render){const bs=[...document.querySelectorAll('.tab')];const pick=id=>{bs.forEach(b=>b.setAttribute('aria-selected',b.dataset.opt===id));document.querySelectorAll('.opt-note').forEach(n=>n.style.fontWeight=n.dataset.opt===id?'600':'400');render(id);fit()};bs.forEach(b=>b.onclick=()=>pick(b.dataset.opt));const h=(location.hash||'').slice(1).toUpperCase();pick(['A','B','C'].includes(h)?h:'A')}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+</script>
+<h1>Teclado del conteo</h1>
+<p class="sub">Opción elegida: A, empaques con + y −. Almacén › Conteo a 1024×600, con datos de ejemplo. Arriba de la tableta, elige un artículo de ejemplo para probar cada aviso y toca Guardar.</p>
+<div class="tabs" id="ex"></div>
+<div class="stage"><div class="scaler"><div class="frame" id="frame"></div></div></div>
+<div class="notes" id="exnote"></div>
+<style>
+.cw{display:grid;grid-template-columns:1fr 340px;gap:14px;flex:1;min-height:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.big{font-size:40px;font-weight:800;line-height:1}.big small{font-size:40px;font-weight:800;color:var(--brand)}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.keys button{min-height:60px;font:600 24px var(--font);border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;min-height:48px;border:0;background:var(--surface);color:var(--fg);font:700 18px var(--font);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.ctr{display:flex;align-items:center;justify-content:space-between;min-height:56px;border-bottom:1px solid var(--line);flex:none}
+.ctr .q{font-size:26px;font-weight:800;min-width:48px;text-align:center}
+.pm{width:52px;height:52px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:700 24px var(--font);cursor:pointer}
+.box{min-height:56px;border:2px solid var(--brand);border-radius:10px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:var(--surface)}
+.box b{font-size:26px}
+.total{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex:none}
+</style>
+<script>
+// Ejemplos. La referencia del aviso vive en el servidor; aquí se simula con la misma regla de FR-012.
+const EX=[
+ {id:'hielo',label:'Hielo · sin conteo previo',name:'Hielo en bolsa',place:'Refri',base:'g',packs:[{n:'Bolsa',q:5000},{n:'Bolsa',q:15000}],expected:0,last:null,
+  note:'Se mide en gramos, existencia 0, nunca contado. La referencia es 10 veces el empaque más grande (150 kg). Prueba 740 en kg: avisa. 740 en g: no avisa, pero 20 g sí (menos de 1/100 de la bolsa de 5 kg).'},
+ {id:'leche',label:'Leche · con último conteo',name:'Leche entera',place:'Refri',base:'ml',packs:[{n:'Caja',q:1000}],expected:-1500,last:12000,
+  note:'Existencia −1.5 L, así que se usa el último conteo cerrado: 12 L. Avisa por encima de 120 L o por debajo de 1.2 L. Prueba 1 caja (1 L): avisa por «10 veces menor». Contar 0 no avisa.'},
+ {id:'vasos',label:'Vasos · piezas sin empaques',name:'Vasos de 16 oz',place:'Bodega',base:'pz',packs:[],expected:0,last:null,
+  note:'Se mide en piezas, sin empaques ni conteo previo. Se usa el tope fijo de 5,000 piezas. Prueba 6000: avisa. 4800: no avisa.'},
+ {id:'pesados',label:'Popotes · se pesan',name:'Popotes delgados',place:'Barra',base:'pz',packs:[{n:'Paquete de 100',q:100,approxG:250}],expected:0,last:3000,gPerPz:2.5,
+  note:'Se mide en piezas, pero lo suelto se cuenta pesándolo. Tiene el empaque «Paquete de 100» (100 pz exactas, pesa ≈ 250 g) y un empaque aproximado «Kilo ≈ 400 pz» que da la equivalencia. Lo suelto se captura en pz, g o kg; si se pesa, el total sale con «≈» porque viene de un peso. Lo que se guarda son piezas: las recetas que gastan 1 pieza por bebida no cambian. Sin «Kilo ≈ …», el selector solo ofrece pz.',
+  recipes:'Recetas que lo gastan: Frappé (1 pz), Té de la casa (1 pz). Contar pesando no las toca: el artículo sigue midiéndose en piezas. Solo si se cambia «Se mide en» a peso (FR-009), cada receta pasa por la equivalencia: 1 pz → 2.5 g, y se revisa una por una antes de confirmar.'},
+ {id:'popotes',label:'Popotes · 5 empaques',name:'Popotes gruesos',place:'Barra',base:'pz',packs:[{n:'Paquete',q:100},{n:'Caja',q:500},{n:'Bolsa',q:250},{n:'Rollo',q:50},{n:'Bulto',q:2000}],expected:800,last:null,
+  note:'Tiene 5 empaques. El total queda fijo arriba y los contadores se desplazan debajo de él, sin empujar el total ni lo suelto fuera de la pantalla.'}
+];
+let ex=EX[0],cnt=[],loose='',unit='g',modal=null,saved=false;
+const big={g:'kg',ml:'L'};
+function reset(){cnt=ex.packs.map(()=>0);loose='';unit=ex.base;modal=null}
+const units=()=>ex.gPerPz?['pz','g','kg']:ex.base==='pz'?[]:[ex.base,big[ex.base]];
+const weighed=()=>ex.gPerPz&&unit!=='pz'&&(parseFloat(loose)||0)>0;
+const f1=n=>n.toLocaleString('es-MX',{maximumFractionDigits:3});
+function total(){const raw=parseFloat(loose)||0;const l=ex.gPerPz?(unit==='pz'?raw:Math.round(raw*(unit==='kg'?1000:1)/ex.gPerPz)):raw*(unit===big[ex.base]?1000:1);return ex.packs.reduce((s,p,i)=>s+cnt[i]*p.q,0)+l}
+function show(v){if(ex.base==='pz')return (weighed()?'≈ ':'')+f1(v)+' <small>pz</small>';return v>=1000?f1(v/1000)+' <small>'+big[ex.base]+'</small>':f1(v)+' <small>'+ex.base+'</small>'}
+function check(v){if(v===0)return null;
+ const ref=ex.expected>0?ex.expected:(ex.last>0?ex.last:null);
+ if(ref){if(v>ref*10)return 'mucho';if(v<ref/10)return 'poco'}
+ else if(ex.packs.length){if(v>10*Math.max(...ex.packs.map(p=>p.q)))return 'mucho'}
+ else{const cap=ex.base==='pz'?5000:50000;if(v>cap)return 'mucho'}
+ if(ex.packs.length&&v<Math.min(...ex.packs.map(p=>p.q))/100)return 'poco';return null}
+function render(){const f=document.getElementById('frame');const v=total();const many=ex.packs.length>3;
+ const tot=`<div class="total"><span class="muted">Total contado</span><div class="big">${show(v)}</div></div>`;
+ const packs=ex.packs.length?`<b style="flex:none">Empaques cerrados</b><div style="${many?'flex:1;min-height:0;overflow:auto':''}">${ex.packs.map((p,i)=>`<div class="ctr"><span style="font-size:18px"><b>${p.n}</b> · ${ex.base==='pz'?p.q+' pz':f1(p.q/1000)+' '+big[ex.base]}${p.approxG?' <span class="muted" style="font-size:14px">(pesa ≈ '+p.approxG+' g)</span>':''}</span><span style="display:flex;align-items:center;gap:8px"><button class="pm" data-m="${i}" aria-label="Quitar ${p.n}">−</button><span class="q">${cnt[i]}</span><button class="pm" data-p="${i}" aria-label="Agregar ${p.n}">+</button></span></div>`).join('')}</div>`:'';
+ const lo=`<b style="flex:none">${ex.gPerPz?'Suelto · cuéntalo o pésalo':ex.packs.length?'Abierto o suelto':'Cuántos hay'}</b><div style="display:flex;gap:10px;align-items:center;flex:none"><div class="box" style="flex:1"><span class="muted">${ex.packs.length?'Suelto':'Piezas'}${weighed()?' <span style="font-size:13px">≈ '+f1(Math.round((parseFloat(loose)||0)*(unit==='kg'?1000:1)/ex.gPerPz))+' pz</span>':''}</span><b>${loose||'0'} ${unit}</b></div>${units().length?`<div style="width:${units().length*65}px" class="seg">${units().map(u=>`<button data-u="${u}" aria-pressed="${unit===u}">${u}</button>`).join('')}</div>`:''}</div>`;
+ const left=many?`${tot}<div style="border-top:1px solid var(--line)"></div>${packs}${lo}`:`${packs}${lo}<div style="margin-top:auto;border-top:1px solid var(--line);padding-top:10px">${tot}</div>`;
+ let sh='';
+ if(modal)sh=`<div class="sheet-bg" style="align-items:center"><div class="modal"><b style="font-size:18px">${modal==='mucho'?'¿Seguro? Es mucho para este artículo':'¿Seguro? Es muy poco para este artículo'}</b><div class="big" style="text-align:center;padding:10px 0">${show(v)}</div><p class="muted" style="margin:0">${ex.base==='pz'?'Revisa la cifra antes de guardar.':modal==='mucho'?'Revisa si escribiste '+big[ex.base]+' en lugar de '+ex.base+'.':'Revisa si escribiste '+ex.base+' en lugar de '+big[ex.base]+'.'}</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close="1">Corregir</button><button class="btn primary" data-ok="1">Sí, guardar</button></div></div></div>`;
+ if(saved)sh=`<div class="sheet-bg" style="align-items:center"><div class="modal"><b>Guardado: ${show(v).replace(/<\/?small>/g,'')}</b></div></div>`;
+ f.innerHTML=`<nav class="rail"><i>POS</i><i>Caja</i><i>Gastos</i><i class="on">Almacén</i><i>Negocio</i></nav><div class="main"><div style="display:flex;align-items:center;gap:10px"><button class="btn">‹ Conteo</button><h2 style="margin:0;font-size:20px;flex:1">${ex.name} <span class="muted" style="font-size:14px;font-weight:400">${ex.place}</span></h2></div><div class="cw"><div class="card">${left}</div><div class="card">${'<div class="keys">'+['1','2','3','4','5','6','7','8','9','.','0','⌫'].map(k=>`<button data-k="${k}">${k}</button>`).join('')+'</div>'}<button class="btn primary" style="min-height:56px;font-size:18px" data-save="1">Guardar</button></div></div>${sh}</div>`;
+ document.getElementById('ex').innerHTML=EX.map(e=>`<button class="tab" data-ex="${e.id}" aria-selected="${e===ex}">${e.label}</button>`).join('');
+ document.getElementById('exnote').innerHTML=`<p>${ex.note}</p>${ex.recipes?'<p>'+ex.recipes+'</p>':''}<p class="muted">En la versión real, la referencia no sale del servidor: la pantalla solo recibe «confirma». El conteo sigue a ciegas.</p>`;fit()}
+document.getElementById('ex').addEventListener('click',e=>{const t=e.target.closest('[data-ex]');if(!t)return;ex=EX.find(x=>x.id===t.dataset.ex);reset();render()});
+document.getElementById('frame').addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;const d=t.dataset;
+ if(d.k){const k=d.k;loose=k==='⌫'?loose.slice(0,-1):(k==='.'&&(loose.includes('.')||unit==='pz'))?loose:(loose+k).replace(/^0(\d)/,'$1')}
+ if(d.u){unit=d.u;if(unit==='pz')loose=loose.split('.')[0]}if(d.p)cnt[d.p]++;if(d.m)cnt[d.m]=Math.max(0,cnt[d.m]-1);
+ if(d.save){modal=check(total());if(!modal){saved=true;render();setTimeout(()=>{saved=false;render()},1100);return}}
+ if(d.ok){modal=null;saved=true;render();setTimeout(()=>{saved=false;render()},1100);return}
+ if(d.close)modal=null;render()});
+reset();render();
+</script>

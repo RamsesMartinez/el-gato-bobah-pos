@@ -27,7 +27,7 @@ registrarLimpiezaDeTenant(() => {
 createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <Provider defaultTheme="light" enableSystem>
+      <Provider>
         {/* La barrera envuelve a <App/> y NO al árbol entero: por dentro del Provider, para que la
             pantalla de salida se pinte con el tema y los tokens de siempre; y sin envolver al
             <Toaster/>, que es lo único que puede seguir hablando si App se cayó. */}

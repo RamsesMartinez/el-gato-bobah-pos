@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -58,6 +59,28 @@ type ExpenseItemView struct {
 	UnitCost      decimal.Decimal  `json:"unitCost"`
 	Amount        decimal.Decimal  `json:"amount"`
 	PackQtyInBase *decimal.Decimal `json:"packQtyInBase"`
+	// Lo que este renglón ya sumó al almacén, en la unidad base del artículo: es el `seenApplied`
+	// que la pantalla devuelve al corregir (spec 038).
+	Applied        decimal.Decimal `json:"applied"`
+	BaseUnitCode   *string         `json:"baseUnitCode"`
+	NotComing      decimal.Decimal `json:"notComing"`
+	IsGift         bool            `json:"isGift"`
+	PresentationID *int64          `json:"presentationId"`
+	// Excluded: venía en el ticket pero no es del negocio; no cuenta (spec 049).
+	Excluded bool `json:"excluded"`
+	// OnHand: lo guardado hoy del artículo, en unidad base (solo renglones de almacén).
+	OnHand *decimal.Decimal `json:"onHand"`
+	// Deliveries: lo que sumó cada día de entrega, en unidad base (spec 053). Siempre un arreglo.
+	Deliveries []DeliveryView `json:"deliveries"`
+	// DensityGPerMl: con la que el renglón convierte entre peso y líquido (la fija o la vigente), para
+	// decir la conversión en palabras (spec 058).
+	DensityGPerMl *decimal.Decimal `json:"densityGPerMl"`
+}
+
+// DeliveryView es lo que un renglón sumó al almacén en un día de entrega, correcciones incluidas.
+type DeliveryView struct {
+	On      string          `json:"on"`
+	QtyBase decimal.Decimal `json:"qtyBase"`
 }
 
 type ExpensePaymentView struct {
@@ -69,6 +92,13 @@ type ExpensePaymentView struct {
 	InCashCount bool            `json:"inCashCount"` // atribuido a un corte
 	Reference   *string         `json:"reference"`
 	AffectsCash bool            `json:"affectsCashDrawer"`
+	// IncludeInCount: la casilla «Incluir en el arqueo»; con corte, siempre true (spec 048).
+	IncludeInCount bool      `json:"includeInCount"`
+	PaidAt         time.Time `json:"paidAt"`
+	// SessionClosed: su corte ya se cerró; la casilla ya no se puede cambiar.
+	SessionClosed bool `json:"sessionClosed"`
+	// DrawerExtra: lo que salió del cajón además del importe (spec 050).
+	DrawerExtra decimal.Decimal `json:"drawerExtra"`
 }
 
 // ExpenseDetailView es el gasto completo, para la pantalla de detalle/edición.
@@ -79,13 +109,21 @@ type ExpenseDetailView struct {
 	// Paid: suma de pagos. Se calcula en vez de guardarse para que no pueda desincronizarse
 	// del detalle.
 	Paid decimal.Decimal `json:"paid"`
+	// DocumentTotal: el total impreso en el documento leído; null si no hubo (spec 049).
+	DocumentTotal *decimal.Decimal `json:"documentTotal"`
+	// SupplierID y CategoryID: lo que preselecciona la edición del encabezado (spec 053).
+	SupplierID *int64 `json:"supplierId"`
+	CategoryID int64  `json:"categoryId"`
 }
 
 // ---- Entradas ----
 
 type ExpenseItemInput struct {
-	ItemType      string // "" (no inventariable) | ingrediente | producto
-	IngredientID  *int64
+	ItemType     string // "" (no inventariable) | ingrediente | producto
+	IngredientID *int64
+	// NewArticle: un artículo que se da de alta con este gasto (spec 042, FR-003). Se crea en la misma
+	// transacción: si el gasto no se guarda, el artículo tampoco existe.
+	NewArticle    *NewArticle
 	ProductID     *int64
 	Description   string
 	Quantity      decimal.Decimal
@@ -93,14 +131,21 @@ type ExpenseItemInput struct {
 	QtyReceived   *decimal.Decimal // nil = no recibido aún
 	Amount        decimal.Decimal
 	PackQtyInBase *decimal.Decimal
+	// PresentationID: el empaque del insumo («Bulto = 25 kg»). Con él, la unidad es pieza y el
+	// contenido se copia al renglón (spec 038).
+	PresentationID *int64
+	// IsGift: llegó sin costo. Va con importe 0, suma a lo guardado y no mueve el costo.
+	IsGift bool
 	// RawCode/RawName: el texto del documento del proveedor. Se guardan aparte del Description
 	// porque son la LLAVE con la que se aprende el mapeo (ver learnSupplierItems).
 	RawCode string
 	RawName string
-	// Personal: el renglón no es del local (venía en el mismo ticket pero es de la casa). No se
-	// guarda como línea del gasto —su importe no es gasto del negocio— pero SÍ se aprende, para
-	// que la próxima compra a ese proveedor lo marque solo.
+	// Personal: el renglón no es del local (venía en el mismo ticket pero es de la casa). Se
+	// aprende, para que la próxima compra a ese proveedor lo marque solo, y se guarda excluido.
 	Personal bool
+	// Excluded: venía en el ticket pero no es del negocio (spec 049). Se guarda como evidencia y no
+	// entra a existencias, ni al costo, ni a la suma contra el total. Personal implica Excluded.
+	Excluded bool
 }
 
 type ExpensePaymentInput struct {
@@ -112,6 +157,14 @@ type ExpensePaymentInput struct {
 	// el corte, y eso no puede quedar a criterio de quien captura.
 	RegisterID *int64
 	Reference  string
+	// OutsideCount confirma el aviso de un pago en efectivo que no entra al corte abierto: con la
+	// casilla marcada lo deja pendiente; sin casilla (tableta de la 047), fuera de todo corte.
+	OutsideCount bool
+	// IncludeInCount es la casilla «Incluir en el arqueo» (spec 048). nil = la tableta no la conoce.
+	IncludeInCount *bool
+	// DrawerExtra: lo que salió del cajón además de Amount, la parte del ticket que no es del
+	// negocio (spec 050). Solo efectivo incluido en el arqueo; el tope lo pone insertPayments.
+	DrawerExtra decimal.Decimal
 }
 
 type ExpenseInput struct {
@@ -130,7 +183,10 @@ type ExpenseInput struct {
 	DocKind     string
 	DocFolio    string
 	DocRaw      json.RawMessage // extracción cruda del documento, si vino de uno
-	UserID      int64
+	// DocumentTotal: el total impreso en el documento leído (spec 049). Informativo: el total del
+	// gasto es Amount. nil = no hubo documento o no traía total.
+	DocumentTotal *decimal.Decimal
+	UserID        int64
 }
 
 // maxExpenseItems acota el detalle: el ticket más largo que hemos visto trae ~30 renglones.
@@ -155,6 +211,14 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 	if len(in.Items) > maxExpenseItems {
 		return 0, domain.ErrValidation
 	}
+	var docTotal *decimal.Decimal
+	if in.DocumentTotal != nil {
+		v := domain.Round2(*in.DocumentTotal)
+		if !domain.ValidMoney(v, true) {
+			return 0, fmt.Errorf("%w: el total del ticket no es válido", domain.ErrValidation)
+		}
+		docTotal = &v
+	}
 	docDate, hasDoc, err := s.parseOptionalDay(in.ExpenseDate)
 	if err != nil {
 		return 0, err
@@ -176,7 +240,7 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 			return 0, fmt.Errorf("%w: con la caja abierta el día del gasto es el del turno", domain.ErrValidation)
 		}
 	}
-	expenseDay := domain.ExpenseDay(shiftDay, s.now(), chosenPtr)
+	expenseDay := domain.ExpenseDay(shiftDay, s.businessDate(ctx), chosenPtr)
 	received, hasReceived, err := s.parseOptionalDay(in.ReceivedAt)
 	if err != nil {
 		return 0, err
@@ -202,10 +266,7 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 		Status:   db.ExpenseStatus(in.Status),
 		DocKind:  strPtr(in.DocKind),
 		DocFolio: strPtr(in.DocFolio),
-		DocRaw:   in.DocRaw,
-	}
-	if hasReceived {
-		params.ReceivedAt = pgtype.Date{Time: received, Valid: true}
+		DocRaw:   in.DocRaw, DocumentTotal: docTotal,
 	}
 	if in.Status == domain.ExpensePagada {
 		params.PaidAt = pgtype.Timestamptz{Time: s.now(), Valid: true}
@@ -215,54 +276,107 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 	var id int64
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		var err error
+		for i, it := range in.Items {
+			if it.NewArticle == nil {
+				continue
+			}
+			if it.IngredientID != nil || it.ProductID != nil || it.ItemType != "ingrediente" {
+				return fmt.Errorf("%w: un artículo nuevo va solo, como insumo", domain.ErrValidation)
+			}
+			aid, err := ensureArticleTx(ctx, q, *it.NewArticle)
+			if err != nil {
+				return err
+			}
+			in.Items[i].IngredientID = &aid
+		}
+		var ids []int64
+		for _, it := range in.Items {
+			if it.IngredientID != nil {
+				ids = append(ids, *it.IngredientID)
+			}
+		}
+		if err := lockIngredients(ctx, q, ids); err != nil {
+			return err
+		}
 		if id, err = q.CreateExpense(ctx, params); err != nil {
 			return err
 		}
-		if err := s.insertItems(ctx, q, id, in.Items); err != nil {
+		if err := s.insertItems(ctx, q, id, in.Items, amount, hasReceived); err != nil {
 			return err
 		}
 		if err := s.insertPayments(ctx, q, id, in.Description, in.UserID, payments); err != nil {
 			return err
 		}
-		// Si ya llegó la mercancía, se descuenta en la misma tx: el caso normal es volver de la
-		// tienda con las cosas y capturar una sola vez.
+		// Lo que llegó suma en la misma tx: el caso normal es volver de la tienda con las cosas y
+		// capturar una sola vez. `received_at` lo fija applyStockLines, y solo si el gasto trae
+		// mercancía y ya no falta nada (R0: antes un gasto sin mercancía quedaba «recibido»).
+		var day *time.Time
 		if hasReceived {
-			if err := s.depleteReceived(ctx, q, id, in.UserID); err != nil {
+			day = &received
+		}
+		applied, err := s.applyStockLines(ctx, q, id, in.UserID, day)
+		if err != nil {
+			return err
+		}
+		if applied {
+			if err := auditEntity(ctx, q, domain.AuditExpenseReceived, "expense", id, nil, &in.UserID, nil,
+				map[string]any{"receivedAt": in.ReceivedAt}); err != nil {
 				return err
 			}
 		}
-		return s.learnSupplierItems(ctx, q, in.SupplierID, in.Items)
+		if err := s.learnSupplierItems(ctx, q, in.SupplierID, in.Items); err != nil {
+			return err
+		}
+		return auditEntity(ctx, q, "expense.created", "expense", id, nil, &in.UserID, nil,
+			map[string]any{"amount": params.Amount, "reason": in.Description, "status": in.Status})
 	})
 	return id, err
 }
 
 // ---- Recepción ----
 
-// ReceiveExpense marca la mercancía como recibida en la fecha dada y genera los movimientos de
-// almacén de las líneas que llegaron.
-//
-// Idempotente por el guard `received_at is null` de la query: un doble-tap no puede duplicar el
-// inventario. Las cantidades recibidas (qty_received) se fijan antes con SetItemsReceived —
-// aquí solo se consume lo que llegó.
+// ReceiveExpense da por llegado todo lo que faltaba de un gasto («Llegó todo») y lo suma al
+// almacén por diferencia: un doble toque no duplica nada, porque la segunda vez no hay diferencia.
 func (s *BackofficeService) ReceiveExpense(ctx context.Context, id int64, receivedAt string, userID int64) error {
-	date, err := s.parseDayOrToday(receivedAt)
+	date, err := s.parseDayOrToday(ctx, receivedAt)
 	if err != nil {
 		return err
 	}
-	if _, err := s.getExpense(ctx, id); err != nil {
-		return err
-	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		n, err := q.MarkExpenseReceived(ctx, db.MarkExpenseReceivedParams{
-			ID: id, ReceivedAt: pgtype.Date{Time: date, Valid: true},
-		})
+		exp, err := q.LockExpenseForStock(ctx, id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if exp.ReceivedAt.Valid || exp.Status == db.ExpenseStatusCancelada {
+			return domain.ErrConflict
+		}
+		// Los insumos de sus renglones, sin esperar y antes de leerlos para convertir: así la densidad
+		// que usa un renglón entre peso y líquido no cambia a media recepción (spec 058, revisión M1).
+		lines, err := q.ListStockLines(ctx, id)
 		if err != nil {
 			return err
 		}
-		if n == 0 {
-			return domain.ErrConflict // ya estaba recibido
+		var ings []int64
+		for _, l := range lines {
+			if l.IngredientID != nil {
+				ings = append(ings, *l.IngredientID)
+			}
 		}
-		return s.depleteReceived(ctx, q, id, userID)
+		slices.Sort(ings)
+		if err := lockIngredients(ctx, q, slices.Compact(ings)); err != nil {
+			return err
+		}
+		if err := q.FillMissingReceived(ctx, id); err != nil {
+			return err
+		}
+		if _, err := s.applyStockLines(ctx, q, id, userID, &date); err != nil {
+			return err
+		}
+		return auditEntity(ctx, q, domain.AuditExpenseReceived, "expense", id, nil, &userID, nil,
+			map[string]any{"receivedAt": date.Format(time.DateOnly)})
 	})
 }
 
@@ -273,16 +387,37 @@ func (s *BackofficeService) SetItemsReceived(ctx context.Context, expenseID int6
 	if err != nil {
 		return err
 	}
-	// Después de recibido las cantidades ya generaron movimientos de almacén; cambiarlas dejaría
-	// el ledger mintiendo. La corrección es un ajuste de inventario, no una edición del gasto.
+	// Después de recibido las cantidades ya generaron movimientos de almacén; cambiarlas por aquí
+	// saltaría la comparación contra lo aplicado. Eso se corrige con SaveStockLines.
 	if exp.ReceivedAt.Valid {
 		return domain.ErrConflict
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		if _, err := q.LockExpenseForStock(ctx, expenseID); err != nil {
+			return err
+		}
+		lines, err := q.ListStockLines(ctx, expenseID)
+		if err != nil {
+			return err
+		}
+		byID := make(map[int64]db.ListStockLinesRow, len(lines))
+		for _, l := range lines {
+			byID[l.ID] = l
+		}
 		for itemID, qty := range got {
 			v := domain.Round4(qty)
-			if v.IsNegative() || v.GreaterThan(domain.MaxStockQty) {
+			if !domain.ValidStockQtyOrZero(v) {
 				return domain.ErrValidation
+			}
+			if l, ok := byID[itemID]; ok {
+				// Lo de más entra por «Recibir…» con su importe (spec 038), y un renglón que ya sumó
+				// algo se corrige comparando contra lo aplicado.
+				if v.Add(l.NotComingQty).GreaterThan(l.Quantity) {
+					return fmt.Errorf("%w: llegó más de lo pedido; recíbelo con su importe", domain.ErrValidation)
+				}
+				if !l.AppliedQtyBase.IsZero() {
+					return fmt.Errorf("%w: ya llegó una parte; corrígelo desde la compra", domain.ErrConflict)
+				}
 			}
 			n, err := q.SetExpenseItemReceived(ctx, db.SetExpenseItemReceivedParams{
 				ID: itemID, ExpenseID: expenseID, QtyReceived: &v,
@@ -298,59 +433,18 @@ func (s *BackofficeService) SetItemsReceived(ctx context.Context, expenseID int6
 	})
 }
 
-// depleteReceived inserta un movimiento 'compra' por cada línea inventariable que llegó.
-// El trigger de stock_movements actualiza stock_levels (0009), así que aquí no se toca el nivel.
-func (s *BackofficeService) depleteReceived(ctx context.Context, q *db.Queries, expenseID, userID int64) error {
-	rows, err := q.ItemsToDeplete(ctx, expenseID)
-	if err != nil {
-		return err
-	}
-	for _, r := range rows {
-		if r.QtyReceived == nil {
-			continue
-		}
-		baseQty, err := domain.BaseQty(*r.QtyReceived, domain.PurchaseUnit{
-			Kind:          string(r.BuyKind),
-			ToBase:        r.BuyToBase,
-			BaseKind:      string(r.BaseKind),
-			PackQtyInBase: r.PackQtyInBase,
-		})
-		if err != nil {
-			// Falta el formato del proveedor o la unidad no es compatible: se devuelve tal cual
-			// (envuelve ErrValidation → 422 con mensaje accionable) en vez de meter al almacén
-			// una cantidad inventada.
-			return err
-		}
-		if !domain.ValidQty(baseQty, domain.MaxStockQty, false) {
-			return domain.ErrValidation
-		}
-		cost := domain.UnitCost(r.Amount, baseQty)
-		reason := "compra: " + r.Description
-		if err := q.InsertPurchaseMovement(ctx, db.InsertPurchaseMovementParams{
-			ItemType:     *r.ItemType,
-			IngredientID: r.IngredientID,
-			ProductID:    r.ProductID,
-			Quantity:     baseQty,
-			UnitCost:     &cost,
-			ExpenseID:    &expenseID,
-			UserID:       &userID,
-			Reason:       &reason,
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // ---- Pagos ----
 
 // resolvedPayment es un pago ya validado contra la caja y el método: lleva resuelto lo que la
 // transacción necesita para no volver a consultar.
 type resolvedPayment struct {
-	in        ExpensePaymentInput
-	paidOn    time.Time
-	sessionID *int64 // no-nil = entra al arqueo de ese corte
-	isCash    bool
+	in         ExpensePaymentInput
+	paidOn     time.Time
+	paidAt     time.Time // la hora contra la que se decide el corte (domain.PaymentTime)
+	sessionID  *int64    // no-nil = entra al arqueo de ese corte
+	registerID *int64    // de qué caja salió, aunque no entre a ningún corte
+	isCash     bool
+	include    bool // incluido en el arqueo: en un corte o pendiente de uno
 }
 
 // AddExpensePayment registra un pago adicional sobre un gasto (el "+1 nuevo pago"), y si con él
@@ -363,12 +457,26 @@ func (s *BackofficeService) AddExpensePayment(ctx context.Context, expenseID int
 	if !domain.CanPayExpense(string(exp.Status)) {
 		return domain.ErrConflict // ya pagada o cancelada
 	}
-	payments, err := s.validatePayments(ctx, []ExpensePaymentInput{in}, exp.ExpenseDate.Time)
+	// Sin fecha de pago, el día del NEGOCIO y no el del gasto: pagar hoy un gasto de ayer saca el
+	// efectivo del cajón de hoy, y tiene que entrar a su corte.
+	payments, err := s.validatePayments(ctx, []ExpensePaymentInput{in}, s.businessDate(ctx))
 	if err != nil {
 		return err
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Con el gasto tomado: dos tabletas que pagan el mismo saldo no lo pagan dos veces.
+		locked, err := q.LockExpenseForEdit(ctx, expenseID)
+		if err != nil {
+			return err
+		}
+		if err := domain.PaymentFitsDue(domain.Round2(in.Amount), locked.Amount, locked.Paid); err != nil {
+			return err
+		}
 		if err := s.insertPayments(ctx, q, expenseID, derefStr(exp.Description), userID, payments); err != nil {
+			return err
+		}
+		if err := auditEntity(ctx, q, "expense.paid", "expense", expenseID, nil, &userID, nil,
+			map[string]any{"amount": in.Amount, "reason": derefStr(exp.Description)}); err != nil {
 			return err
 		}
 		paid, err := q.SumExpensePayments(ctx, expenseID)
@@ -392,9 +500,10 @@ func (s *BackofficeService) AddExpensePayment(ctx context.Context, expenseID int
 }
 
 // validatePayments resuelve cada pago contra su método y su caja. Es la frontera donde se
-// aplica la regla que protege el corte.
+// aplica la regla que protege el corte; insertPayments la vuelve a aplicar con la caja tomada.
 func (s *BackofficeService) validatePayments(ctx context.Context, in []ExpensePaymentInput, fallbackDate time.Time) ([]resolvedPayment, error) {
 	out := make([]resolvedPayment, 0, len(in))
+	loc := s.businessLocation(ctx)
 	for _, p := range in {
 		amount := domain.Round2(p.Amount)
 		if !domain.ValidMoney(amount, false) {
@@ -420,64 +529,367 @@ func (s *BackofficeService) validatePayments(ctx context.Context, in []ExpensePa
 			}
 			paidOn = d.Time
 		}
-		r := resolvedPayment{in: p, paidOn: paidOn, isCash: m.AffectsCashDrawer}
-		// Para un método que mueve el cajón el arqueo NO es opcional: el efectivo salió de una
-		// caja concreta y el corte tiene que verlo. Para los demás (transferencia, tarjeta) sí
-		// es decisión del operador atribuirlo o no a un corte.
-		if m.AffectsCashDrawer && p.RegisterID == nil {
-			return nil, domain.ErrPaymentNeedsRegister
-		}
-		if p.RegisterID != nil {
-			sess, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, *p.RegisterID)
-			if err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					return nil, domain.ErrConflict // la caja elegida no está abierta
-				}
-				return nil, err
-			}
-			r.sessionID = &sess.ID
-		}
+		r := resolvedPayment{in: p, paidOn: paidOn, paidAt: domain.PaymentTime(paidOn, s.now(), loc),
+			isCash: m.AffectsCashDrawer, registerID: p.RegisterID}
 		r.in.Amount = amount
+		r.in.DrawerExtra = domain.Round2(p.DrawerExtra)
+		// Una primera decisión sin candados, para rechazar antes de abrir la transacción.
+		if err := s.decidePayment(ctx, s.store.QC(ctx), &r); err != nil {
+			return nil, err
+		}
+		if err := checkDrawerExtraAllowed(r); err != nil {
+			return nil, err
+		}
 		out = append(out, r)
 	}
 	return out, nil
 }
 
+// decidePayment fija el corte y la casilla de un pago según el estado de su caja leído con q.
+func (s *BackofficeService) decidePayment(ctx context.Context, q *db.Queries, r *resolvedPayment) error {
+	var reg *domain.PaymentRegister
+	var openSession *int64
+	if r.registerID != nil {
+		var err error
+		reg, openSession, err = paymentRegisterState(ctx, q, *r.registerID)
+		if err != nil {
+			return err
+		}
+	}
+	target, err := domain.ExpensePaymentTarget(r.isCash, reg, r.paidOn, r.paidAt,
+		domain.PaymentChoice{IncludeInCount: r.in.IncludeInCount, OutsideCount: r.in.OutsideCount})
+	if err != nil {
+		return err
+	}
+	r.sessionID = nil
+	if target == domain.TargetShift {
+		r.sessionID = openSession
+	}
+	r.include = target != domain.TargetOutside
+	return nil
+}
+
+// paymentRegisterState lee lo que decide a dónde va un pago de una caja: si se cuenta, su turno
+// abierto y su último cierre.
+func paymentRegisterState(ctx context.Context, q *db.Queries, registerID int64) (*domain.PaymentRegister, *int64, error) {
+	cr, err := q.GetCashRegister(ctx, registerID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, domain.ErrValidation // caja inexistente o de otra empresa
+		}
+		return nil, nil, err
+	}
+	reg := &domain.PaymentRegister{CountsCash: cr.CountsCash}
+	var open *int64
+	sess, err := q.GetOpenSessionByRegister(ctx, registerID)
+	switch {
+	case err == nil:
+		day, at := sess.BusinessDate.Time, sess.OpenedAt
+		reg.OpenShiftDay, reg.OpenShiftOpenedAt = &day, &at
+		open = &sess.ID
+	case !errors.Is(err, pgx.ErrNoRows):
+		return nil, nil, err
+	}
+	if reg.LastClose, err = lastCloseOf(ctx, q, registerID); err != nil {
+		return nil, nil, err
+	}
+	return reg, open, nil
+}
+
+// lastCloseOf es la hora del último cierre de una caja; nil si nunca cerró.
+func lastCloseOf(ctx context.Context, q *db.Queries, registerID int64) (*time.Time, error) {
+	c, err := q.LastCloseOfRegister(ctx, registerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c.Time, nil
+}
+
 func (s *BackofficeService) insertPayments(ctx context.Context, q *db.Queries, expenseID int64, desc string, userID int64, payments []resolvedPayment) error {
 	for _, p := range payments {
-		if _, err := q.CreateExpensePayment(ctx, db.CreateExpensePaymentParams{
-			ExpenseID:         expenseID,
-			PaymentMethodID:   p.in.MethodID,
-			Amount:            p.in.Amount,
-			PaidOn:            pgtype.Date{Time: p.paidOn, Valid: true},
-			RegisterSessionID: p.sessionID,
-			Reference:         strPtr(p.in.Reference),
-			PaidBy:            userID,
-		}); err != nil {
-			return err
+		if p.registerID != nil {
+			// LA CAJA, Y LUEGO EL TURNO (R4). Con la caja tomada en compartido, una apertura a la vez
+			// termina antes —y aquí se ve abierta— o espera a que este pago confirme y lo barre. Lo
+			// decidido antes de la transacción se vuelve a decidir con lo que de verdad quedó.
+			if _, err := q.GetCashRegisterForShare(ctx, *p.registerID); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return domain.ErrValidation
+				}
+				return err
+			}
+			if err := s.decidePayment(ctx, q, &p); err != nil {
+				return err
+			}
+			if err := checkDrawerExtraAllowed(p); err != nil {
+				return err
+			}
 		}
 		// El turno se bloquea en compartido, como un cobro: un cierre que corre a la vez termina
 		// antes —y aquí se ve cerrado— o espera a que este pago confirme y lo cuenta (spec 031, D8).
 		if p.sessionID != nil {
 			if _, err := q.LockOpenSessionForShare(ctx, *p.sessionID); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
+					// La caja se cerró entre que se leyó y ahora. El efectivo ya no entraría a ningún
+					// corte: la pantalla tiene que preguntar, no guardarlo fuera en silencio.
+					if p.isCash {
+						return domain.ErrExpenseOutsideCount
+					}
 					return domain.ErrConflict // la caja elegida se cerró
 				}
 				return err
 			}
 		}
+		if !p.in.DrawerExtra.IsZero() {
+			// El tope es por GASTO (R1): con el gasto tomado, dos pagos a la vez deciden uno después
+			// del otro, con lo que de verdad usó el primero. Va después de la caja y el turno, en el
+			// orden de SetPaymentInCount.
+			if _, err := q.LockExpenseForStock(ctx, expenseID); err != nil {
+				return err
+			}
+			if err := drawerExtraFits(ctx, q, expenseID, p.in.Amount, p.in.DrawerExtra); err != nil {
+				return err
+			}
+		}
+		payID, err := q.CreateExpensePayment(ctx, db.CreateExpensePaymentParams{
+			ExpenseID:         expenseID,
+			PaymentMethodID:   p.in.MethodID,
+			Amount:            p.in.Amount,
+			PaidOn:            pgtype.Date{Time: p.paidOn, Valid: true},
+			RegisterSessionID: p.sessionID,
+			RegisterID:        p.registerID,
+			Reference:         strPtr(p.in.Reference),
+			PaidBy:            userID,
+			IncludeInCount:    p.include,
+			PaidAt:            p.paidAt,
+			DrawerExtra:       p.in.DrawerExtra,
+		})
+		if err != nil {
+			return err
+		}
 		// La salida del cajón va en la MISMA tx que el pago: si una falla no queda dinero
 		// fantasma en ningún lado.
 		if p.isCash && p.sessionID != nil {
 			if err := q.InsertExpenseCashMovement(ctx, db.InsertExpenseCashMovementParams{
-				SessionID: *p.sessionID, Amount: p.in.Amount,
-				Concept: expenseConcept(desc), ExpenseID: &expenseID, UserID: userID,
+				SessionID: *p.sessionID,
+				Concept:   expenseConcept(desc), ExpenseID: &expenseID, UserID: userID, ExpensePaymentID: &payID,
 			}); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// checkDrawerExtraAllowed: una diferencia solo tiene sentido en efectivo que entra al arqueo (R5).
+// En tarjeta o fuera del arqueo ningún corte la vería, y guardarla mentiría sobre el cajón.
+func checkDrawerExtraAllowed(p resolvedPayment) error {
+	if p.in.DrawerExtra.IsZero() {
+		return nil
+	}
+	// Dinero válido antes de abrir la transacción; el tope por gasto lo pone insertPayments.
+	if !domain.ValidMoney(p.in.DrawerExtra, true) || !domain.ValidMoney(p.in.Amount.Add(p.in.DrawerExtra), true) {
+		return domain.ErrValidation
+	}
+	if !p.isCash || !p.include {
+		return fmt.Errorf("%w: solo el efectivo que entra al arqueo puede incluir lo que no es del negocio", domain.ErrValidation)
+	}
+	return nil
+}
+
+// drawerExtraFits aplica el tope por gasto con el gasto ya tomado: lo excluido vivo menos lo que
+// otros pagos ya usaron.
+func drawerExtraFits(ctx context.Context, q *db.Queries, expenseID int64, amount, extra decimal.Decimal) error {
+	l, err := q.DrawerExtraLimits(ctx, expenseID)
+	if err != nil {
+		return err
+	}
+	var room *decimal.Decimal
+	if l.DocumentTotal != nil {
+		r := l.DocumentTotal.Sub(l.Amount)
+		room = &r
+	}
+	return domain.ValidDrawerExtra(amount, extra, l.Excluded, l.Used, room)
+}
+
+// excludedStillCovers vuelve a revisar, tras cambiar los renglones de un gasto tomado, que lo
+// excluido siga cubriendo lo que sus pagos ya sacaron del cajón como «no es del negocio» (R2).
+func excludedStillCovers(ctx context.Context, q *db.Queries, expenseID int64) error {
+	return drawerExtraFits(ctx, q, expenseID, decimal.Zero, decimal.Zero)
+}
+
+// sweepPendingExpenses es el ÚNICO camino por el que un pago pendiente entra a un corte (spec 048):
+// pega al turno los pendientes de su caja con hora en [since, until] y saca su efectivo del cajón,
+// en la transacción de quien lo llama, que ya tiene la caja o el turno tomados. Devuelve cuántos.
+func sweepPendingExpenses(ctx context.Context, q *db.Queries, sessionID, registerID int64, since, until time.Time) (int, error) {
+	rows, err := q.SweepPendingExpensePayments(ctx, db.SweepPendingExpensePaymentsParams{
+		SessionID: &sessionID, RegisterID: &registerID, Since: since, Until: until,
+	})
+	if err != nil {
+		return 0, err
+	}
+	for _, r := range rows {
+		if err := q.InsertExpenseCashMovement(ctx, db.InsertExpenseCashMovementParams{
+			SessionID: sessionID, Concept: expenseConcept(derefStr(r.Description)),
+			ExpenseID: &r.ExpenseID, UserID: r.PaidBy, ExpensePaymentID: &r.ID,
+		}); err != nil {
+			return 0, err
+		}
+	}
+	return len(rows), nil
+}
+
+// PendingExpenseView es un gasto sin corte de una caja: la apertura lo ofrece para incluirlo.
+type PendingExpenseView struct {
+	PaymentID   int64           `json:"paymentId"`
+	ExpenseID   int64           `json:"expenseId"`
+	Description *string         `json:"description"`
+	Amount      decimal.Decimal `json:"amount"`
+	PaidAt      time.Time       `json:"paidAt"`
+	// DrawerExtra: lo que sale del cajón además del importe (spec 050).
+	DrawerExtra decimal.Decimal `json:"drawerExtra"`
+}
+
+// PendingExpenses lista los gastos sin corte de una caja desde su último cierre: los únicos que una
+// apertura con hora anterior todavía puede incluir.
+func (s *BackofficeService) PendingExpenses(ctx context.Context, registerID int64) ([]PendingExpenseView, error) {
+	q := s.store.QC(ctx)
+	if _, err := q.GetCashRegister(ctx, registerID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	last, err := lastCloseOf(ctx, q, registerID)
+	if err != nil {
+		return nil, err
+	}
+	since := pgtype.Timestamptz{}
+	if last != nil {
+		since = pgtype.Timestamptz{Time: *last, Valid: true}
+	}
+	rows, err := q.ListPendingExpensePayments(ctx, db.ListPendingExpensePaymentsParams{RegisterID: &registerID, Since: since})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PendingExpenseView, len(rows))
+	for i, r := range rows {
+		out[i] = PendingExpenseView{PaymentID: r.ID, ExpenseID: r.ExpenseID, Description: r.Description, Amount: r.Amount, PaidAt: r.PaidAt, DrawerExtra: r.DrawerExtra}
+	}
+	return out, nil
+}
+
+// SetPaymentInCount cambia la casilla «Incluir en el arqueo» de un pago en efectivo ya registrado
+// (spec 048, US4). El permiso lo revisa la ruta.
+//
+// Los candados van en el orden de la apertura y el cierre —caja, turno, gasto, pago— para no cruzarse con
+// ellos: el barrido toma los pagos después de tener la caja o el turno, y si aquí se tomara el pago
+// primero, los dos se esperarían mutuamente.
+func (s *BackofficeService) SetPaymentInCount(ctx context.Context, expenseID, paymentID int64, include bool, userID int64) error {
+	info, err := s.store.QC(ctx).GetExpensePaymentRegister(ctx, db.GetExpensePaymentRegisterParams{ID: paymentID, ExpenseID: expenseID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		return err
+	}
+	if !info.AffectsCashDrawer || info.RegisterID == nil {
+		return fmt.Errorf("%w: solo un pago en efectivo de una caja entra al arqueo", domain.ErrValidation)
+	}
+	registerID := *info.RegisterID
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		cr, err := q.GetCashRegisterForShare(ctx, registerID)
+		if err != nil {
+			return err
+		}
+		if !cr.CountsCash {
+			return fmt.Errorf("%w: esta caja no lleva arqueo", domain.ErrValidation)
+		}
+		reg, open, err := paymentRegisterState(ctx, q, registerID)
+		if err != nil {
+			return err
+		}
+		if open != nil {
+			if _, err := q.LockOpenSessionForShare(ctx, *open); err != nil {
+				if !errors.Is(err, pgx.ErrNoRows) {
+					return err
+				}
+				// Se cerró mientras esperaba: se decide como caja cerrada.
+				open = nil
+				reg.OpenShiftDay, reg.OpenShiftOpenedAt = nil, nil
+				if reg.LastClose, err = lastCloseOf(ctx, q, registerID); err != nil {
+					return err
+				}
+			}
+		}
+		// El gasto bajo candado: una cancelación a la vez termina antes y aquí se ve cancelado.
+		exp, err := q.LockExpenseForStock(ctx, expenseID)
+		if err != nil {
+			return err
+		}
+		if exp.Status == db.ExpenseStatusCancelada {
+			return domain.ErrConflict
+		}
+		p, err := q.GetExpensePaymentForUpdate(ctx, db.GetExpensePaymentForUpdateParams{ID: paymentID, ExpenseID: expenseID})
+		if err != nil {
+			return err
+		}
+		before := map[string]any{"includeInCount": p.IncludeInCount, "sessionId": p.RegisterSessionID}
+		var session *int64
+		switch {
+		case p.RegisterSessionID != nil:
+			if open == nil || *p.RegisterSessionID != *open {
+				return domain.ErrPaymentInClosedCount
+			}
+			if include {
+				return nil
+			}
+			// R2b: el corte sigue abierto y no se ha contado; su salida se borra.
+			n, err := q.DeleteExpenseSalidaOfPayment(ctx, &p.ID)
+			if err != nil {
+				return err
+			}
+			if n != 1 {
+				return domain.ErrPaymentNotLinked
+			}
+		case include:
+			target, err := domain.ExpensePaymentTarget(true, reg, p.PaidOn.Time, p.PaidAt,
+				domain.PaymentChoice{IncludeInCount: &include, OutsideCount: true})
+			if err != nil {
+				return err
+			}
+			if target == domain.TargetShift {
+				session = open
+			}
+		}
+		if p.RegisterSessionID == nil && p.IncludeInCount == include {
+			return nil
+		}
+		if err := q.SetPaymentCount(ctx, db.SetPaymentCountParams{ID: p.ID, SessionID: session, IncludeInCount: include}); err != nil {
+			return err
+		}
+		if session != nil {
+			if err := q.InsertExpenseCashMovement(ctx, db.InsertExpenseCashMovementParams{
+				SessionID: *session, Concept: expenseConcept(derefStr(info.Description)),
+				ExpenseID: &expenseID, UserID: userID, ExpensePaymentID: &p.ID,
+			}); err != nil {
+				return err
+			}
+		}
+		return auditEntity(ctx, q, domain.AuditExpenseCountChanged, "expense", expenseID, nil, &userID, before,
+			map[string]any{"paymentId": p.ID, "includeInCount": include, "sessionId": session})
+	})
+}
+
+// businessLocation es la zona del negocio, con el mismo fallback que businessDate.
+func (s *BackofficeService) businessLocation(ctx context.Context) *time.Location {
+	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
+	if err != nil {
+		tz = domain.DefaultTimezone
+	}
+	return domain.LoadBusinessLocation(tz)
 }
 
 // checkPaymentsCover exige que los pagos cubran el importe antes de dar el gasto por pagado.
@@ -502,7 +914,7 @@ func checkPaymentsCover(payments []resolvedPayment, amount decimal.Decimal) erro
 // Sin artículo se recuerda como 'ignorado' y no como 'pendiente': el operador ya lo revisó y
 // decidió que no es inventariable (bolsa, envío, IVA), así que no vuelve a la cola de revisión.
 func learnedStatus(it ExpenseItemInput) (string, error) {
-	if it.Personal {
+	if it.Personal || it.Excluded {
 		return domain.SupplierItemPersonal, nil
 	}
 	itemType, err := itemTypeParam(it)
@@ -517,19 +929,24 @@ func learnedStatus(it ExpenseItemInput) (string, error) {
 
 // ---- Líneas ----
 
-func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expenseID int64, items []ExpenseItemInput) error {
+// insertItems guarda los renglones con las reglas de dinero de la compra (FR-004a): cada renglón de
+// mercancía lleva importe, salvo un regalo, y entre todos no pasan del total pagado. Con
+// `receivedAll`, un renglón de mercancía sin cantidad recibida se da por llegado completo.
+func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expenseID int64, items []ExpenseItemInput, total decimal.Decimal, receivedAll bool) error {
+	amounts := make([]decimal.Decimal, 0, len(items))
 	for i, it := range items {
-		// Un renglón de la casa no es una línea del gasto: se descarta aquí (ya se aprendió en
-		// learnSupplierItems) para que no sume al importe ni toque el almacén.
-		if it.Personal {
-			continue
+		// Un renglón de la casa se guarda excluido: queda como evidencia, sin sumar al importe ni
+		// tocar el almacén (spec 049). Lo que diga de recibido se ignora: no es del negocio.
+		excluded := it.Personal || it.Excluded
+		if excluded {
+			it.QtyReceived = nil
 		}
 		qty := domain.Round4(it.Quantity)
 		if !domain.ValidQty(qty, domain.MaxStockQty, false) {
 			return domain.ErrValidation
 		}
 		amount := domain.Round2(it.Amount)
-		if !domain.ValidMoney(amount, true) { // 0 permitido: una cortesía o un renglón sin costo
+		if !domain.ValidMoney(amount, true) { // 0 permitido fuera de la mercancía: un renglón sin costo
 			return domain.ErrValidation
 		}
 		if it.Description == "" {
@@ -539,6 +956,29 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 		if err != nil {
 			return err
 		}
+		if err := checkLineRefs(ctx, q, it.ProductID, it.UnitID); err != nil {
+			return err
+		}
+		if itemType != nil {
+			if !excluded {
+				if err := checkLineMoney(amount, it.IsGift); err != nil {
+					return err
+				}
+			} else if it.IsGift && !amount.IsZero() {
+				return fmt.Errorf("%w: un regalo va con importe 0", domain.ErrValidation)
+			}
+			if it.UnitID, it.PackQtyInBase, err = lineUnit(ctx, q, it.IngredientID, it.PresentationID, it.UnitID, it.PackQtyInBase); err != nil {
+				return err
+			}
+			if it.QtyReceived == nil && receivedAll && !excluded {
+				it.QtyReceived = &qty
+			}
+		} else if it.IsGift || it.PresentationID != nil {
+			return domain.ErrValidation
+		}
+		if !excluded {
+			amounts = append(amounts, amount)
+		}
 		// Una línea inventariable exige unidad: sin ella no hay conversión a unidad de almacén
 		// (el CHECK de la tabla lo repite como defensa en profundidad).
 		if itemType != nil && it.UnitID == nil {
@@ -546,23 +986,29 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 		}
 		if it.QtyReceived != nil {
 			v := domain.Round4(*it.QtyReceived)
-			if v.IsNegative() || v.GreaterThan(domain.MaxStockQty) {
+			// Lo que llega de más entra por «Recibir…» con su importe: recibido > pedido dividiría el
+			// costo entre lo que no entró.
+			if !domain.ValidStockQtyOrZero(v) || v.GreaterThan(qty) {
 				return domain.ErrValidation
 			}
 			it.QtyReceived = &v
 		}
 		unitCost := domain.UnitCost(amount, qty)
+		if !domain.ValidLineUnitCost(unitCost) {
+			return fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
+		}
 		if _, err := q.CreateExpenseItem(ctx, db.CreateExpenseItemParams{
 			ExpenseID: expenseID, ItemType: itemType,
 			IngredientID: it.IngredientID, ProductID: it.ProductID,
 			Description: it.Description, Quantity: qty, UnitID: it.UnitID,
 			QtyReceived: it.QtyReceived, UnitCost: unitCost, Amount: amount,
 			PackQtyInBase: it.PackQtyInBase, Position: int32(i),
+			PresentationID: it.PresentationID, IsGift: it.IsGift, Excluded: excluded,
 		}); err != nil {
 			return err
 		}
 	}
-	return nil
+	return checkLinesFitTotal(amounts, total)
 }
 
 // itemTypeParam valida la coherencia tipo↔referencia antes de que el CHECK de la tabla la
@@ -637,30 +1083,47 @@ func (s *BackofficeService) learnSupplierItems(ctx context.Context, q *db.Querie
 
 // ---- Cancelación ----
 
-// CancelExpense anula una pendiente (una pagada es terminal — ver domain.CanCancelExpense).
+// CancelExpense anula una pendiente sin pagos (ver domain.CanCancelExpense).
 func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason string, userID int64) error {
 	exp, err := s.getExpense(ctx, id)
 	if err != nil {
 		return err
 	}
-	if !domain.CanCancelExpense(string(exp.Status)) {
-		return domain.ErrConflict
-	}
-	// Una compra ya recibida movió el almacén: anular el gasto no puede devolver la mercancía
-	// sola, y dejar el movimiento sin gasto rompe la trazabilidad del ledger.
-	if exp.ReceivedAt.Valid {
-		return domain.ErrConflict
-	}
-	n, err := s.store.QC(ctx).CancelExpense(ctx, db.CancelExpenseParams{
-		ID: id, CancelledBy: &userID, CancelReason: strPtr(reason),
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		locked, err := q.LockExpenseForEdit(ctx, id)
+		if err != nil {
+			return err
+		}
+		// Con el gasto tomado: un pago que entra a un corte mientras tanto no deja anularlo (spec 053, A1).
+		if !domain.CanCancelExpense(string(locked.Status), locked.CountedPaymentCount > 0) {
+			if locked.CountedPaymentCount > 0 && locked.Status == db.ExpenseStatusPendiente {
+				return fmt.Errorf("%w: un pago de este gasto ya está en un corte de caja; no se puede anular", domain.ErrConflict)
+			}
+			return domain.ErrConflict
+		}
+		// Lo que la compra sumó al almacén se revierte con movimientos nuevos, en la misma tx:
+		// anular el gasto y dejar la mercancía sumada haría que el almacén contara algo que no
+		// se compró (spec 038; antes se respondía 409).
+		if err := s.reverseStockLines(ctx, q, id, userID); err != nil {
+			return err
+		}
+		// Un «No mover» (spec 053) dejó un ajuste ligado al conteo que no es del renglón: anular revierte
+		// la compra del renglón y, sin esto, las existencias quedarían por debajo de lo que dejó el conteo.
+		if err := undoKeepCompensations(ctx, q, id, userID); err != nil {
+			return err
+		}
+		n, err := q.CancelExpense(ctx, db.CancelExpenseParams{
+			ID: id, CancelledBy: &userID, CancelReason: strPtr(reason),
+		})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return domain.ErrConflict
+		}
+		return auditEntity(ctx, q, "expense.cancelled", "expense", id, nil, &userID,
+			map[string]any{"amount": exp.Amount, "status": exp.Status}, map[string]any{"status": "cancelada", "reason": reason})
 	})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return domain.ErrConflict
-	}
-	return nil
 }
 
 // ---- Consultas ----
@@ -734,19 +1197,43 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 		CreatedBy: exp.CreatedByName,
 	}
 	out.Paid = paid
-	out.Items = make([]ExpenseItemView, len(items))
-	for i, r := range items {
+	out.DocumentTotal = exp.DocumentTotal
+	out.SupplierID, out.CategoryID = exp.SupplierID, exp.CategoryID
+	history, err := s.store.QC(ctx).ExpenseDeliveryHistory(ctx, &id)
+	if err != nil {
+		return out, err
+	}
+	deliveries := map[int64][]DeliveryView{}
+	for _, h := range history {
+		if h.Qty.IsZero() || !h.Day.Valid {
+			continue
+		}
+		deliveries[h.ItemID] = append(deliveries[h.ItemID], DeliveryView{On: h.Day.Time.Format(dateFmt), QtyBase: h.Qty})
+	}
+	// Un renglón quitado en una corrección no se muestra: su rastro son sus movimientos.
+	out.Items = make([]ExpenseItemView, 0, len(items))
+	for _, r := range items {
+		if r.VoidedAt.Valid {
+			continue
+		}
 		v := ExpenseItemView{
 			ID: r.ID, IngredientID: r.IngredientID, ProductID: r.ProductID,
 			ItemName: firstName(r.IngredientName, r.ProductName), Description: r.Description, Quantity: r.Quantity,
 			UnitCode: r.UnitCode, QtyReceived: r.QtyReceived, UnitCost: r.UnitCost,
 			Amount: r.Amount, PackQtyInBase: r.PackQtyInBase,
+			Applied: r.AppliedQtyBase, BaseUnitCode: r.BaseUnitCode, NotComing: r.NotComingQty,
+			IsGift: r.IsGift, PresentationID: r.PresentationID, Excluded: r.Excluded,
+			Deliveries: deliveries[r.ID], DensityGPerMl: r.DensityGPerMl,
+		}
+		if v.Deliveries == nil {
+			v.Deliveries = []DeliveryView{}
 		}
 		if r.ItemType != nil {
 			t := string(*r.ItemType)
 			v.ItemType = &t
+			v.OnHand = &r.OnHand
 		}
-		out.Items[i] = v
+		out.Items = append(out.Items, v)
 	}
 	out.Payments = make([]ExpensePaymentView, len(pays))
 	for i, r := range pays {
@@ -754,6 +1241,8 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 			ID: r.ID, MethodID: r.PaymentMethodID, Method: r.Method, Amount: r.Amount,
 			PaidOn: r.PaidOn.Time.Format(dateFmt), InCashCount: r.RegisterSessionID != nil,
 			Reference: r.Reference, AffectsCash: r.AffectsCashDrawer,
+			IncludeInCount: r.IncludeInCount, PaidAt: r.PaidAt, SessionClosed: r.SessionClosed,
+			DrawerExtra: r.DrawerExtra,
 		}
 	}
 	return out, nil
@@ -776,9 +1265,10 @@ func (s *BackofficeService) getExpense(ctx context.Context, id int64) (db.Expens
 // parseDayOrToday: una fecha del formulario, cayendo a hoy cuando no viene. Las fechas del gasto
 // son DÍAS (no instantes): la del documento y la de recepción las decide una persona mirando un
 // papel, no el reloj del servidor.
-func (s *BackofficeService) parseDayOrToday(v string) (time.Time, error) {
+func (s *BackofficeService) parseDayOrToday(ctx context.Context, v string) (time.Time, error) {
 	if v == "" {
-		return s.now(), nil
+		// El día del NEGOCIO: en UTC, después de las 18:00 de México ya sería mañana (spec 047).
+		return s.businessDate(ctx), nil
 	}
 	d, err := parseDate(&v)
 	if err != nil {
@@ -791,10 +1281,12 @@ func (s *BackofficeService) parseDayOrToday(v string) (time.Time, error) {
 // que la nombre) o, si no nombra caja, el de la caja principal.
 func (s *BackofficeService) openShiftDay(ctx context.Context, payments []ExpensePaymentInput) (time.Time, bool, error) {
 	q := s.store.QC(ctx)
+	namesRegister := false
 	for _, p := range payments {
 		if p.RegisterID == nil {
 			continue
 		}
+		namesRegister = true
 		sess, err := q.GetOpenSessionByRegister(ctx, *p.RegisterID)
 		if err == nil {
 			return sess.BusinessDate.Time, true, nil
@@ -802,6 +1294,11 @@ func (s *BackofficeService) openShiftDay(ctx context.Context, payments []Expense
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return time.Time{}, false, err
 		}
+	}
+	// La principal solo manda si ningún pago nombra caja. Un pago de otra caja sin turno —un
+	// tercero, un gasto de otro día— no es de ese turno, y su día lo elige quien captura (spec 047).
+	if namesRegister {
+		return time.Time{}, false, nil
 	}
 	sess, err := q.GetOpenPrimarySession(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -818,8 +1315,11 @@ func (s *BackofficeService) parseOptionalDay(v string) (time.Time, bool, error) 
 	if v == "" {
 		return time.Time{}, false, nil
 	}
-	t, err := s.parseDayOrToday(v)
-	return t, err == nil, err
+	d, err := parseDate(&v)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return d.Time, true, nil
 }
 
 // firstName elige el nombre del artículo entre los dos posibles orígenes (ingrediente o
@@ -840,4 +1340,24 @@ func bytesPtr(b []byte) *string {
 	}
 	s := string(b)
 	return &s
+}
+
+// undoKeepCompensations deshace las compensaciones de «No mover» que siguen vivas en un gasto, con
+// la misma fecha, conteo y sucursal que las dejó.
+func undoKeepCompensations(ctx context.Context, q *db.Queries, expenseID, userID int64) error {
+	rows, err := q.OpenKeepCompensations(ctx, &expenseID)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		ing, cnt, exp, uid := r.IngredientID, r.StockCountID, expenseID, userID
+		reason := fmt.Sprintf("compra anulada: deshace «ya contado en el conteo %d»", cnt)
+		if err := q.InsertCompensationMovement(ctx, db.InsertCompensationMovementParams{
+			IngredientID: &ing, Quantity: r.Qty.Neg(), ExpenseID: &exp, StockCountID: &cnt, UserID: &uid,
+			Reason: &reason, BranchID: r.BranchID, EffectiveOn: r.Day,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

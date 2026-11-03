@@ -10,6 +10,8 @@
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+# Infraestructura propia del worktree, si la tiene (make worktree-env).
+source "$(dirname "${BASH_SOURCE[0]}")/worktree-env-load.sh"
 logs="$(mktemp -d)"
 port="${CI_PG_PORT:-5510}"
 pg="egb-ci-local-pg-$$"

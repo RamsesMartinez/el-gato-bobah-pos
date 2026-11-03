@@ -119,7 +119,7 @@ export function LiquidacionSheet({ orderId, plataforma, isOpen, onClose }: Props
                   cero, escribe 0.
                 </Text>
               )}
-              {error && <Text fontSize="sm" color="red.fg">{error}</Text>}
+              {error && <Text fontSize="sm" color="fg.error">{error}</Text>}
               {/* La fecha va en la zona del NEGOCIO, como el resto de las de esta pantalla.
                   Recortar el ISO crudo muestra el día de UTC, que cerca de medianoche es otro. */}
               {data && (

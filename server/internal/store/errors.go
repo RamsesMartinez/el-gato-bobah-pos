@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -16,11 +17,24 @@ import (
 // para no confundirlo con cualquier otro `raise exception`.
 const branchAmbiguousCode = "EGB01"
 
+// mergedIngredientCode es el SQLSTATE de las guardas de la 0104: algo nuevo apunta a un insumo que se
+// unió a otro. El mensaje trae «ingredient_merged|<destino>».
+const mergedIngredientCode = "EGB02"
+
 // DomainError traduce a un sentinel de domain los errores que la base lanza a propósito.
 func DomainError(err error) error {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == branchAmbiguousCode {
+	if !errors.As(err, &pgErr) {
+		return err
+	}
+	switch pgErr.Code {
+	case branchAmbiguousCode:
 		return fmt.Errorf("%w (%s)", domain.ErrBranchAmbiguous, pgErr.Message)
+	case mergedIngredientCode:
+		if _, target, ok := strings.Cut(pgErr.Message, "|"); ok && target != "" {
+			return domain.IngredientMergedInto{Target: target}
+		}
+		return domain.ErrIngredientMerged
 	}
 	return err
 }

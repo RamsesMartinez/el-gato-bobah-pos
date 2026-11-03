@@ -258,12 +258,32 @@ sin responder hasta **24 h** desde el último descifrado bueno (`secrets.Cache`,
 cortar YA, además se reinicia la API (`docker compose restart api` en la VM). Lo vigila
 `TestTheStaleCopyExpiresAfterTheMaxAge`.
 
+## Asistencia y bitácora de auditoría (spec 033) — lo que guarda y quién lo ve
+
+- **Checar comparte el bloqueo del desbloqueo.** `POST /attendance/clock` cuenta los PIN fallidos en
+  la misma llave `pin:<persona>` que `/auth/pin-switch`, y además se limita por IP. Con una llave
+  propia, quien agota los intentos en la pantalla de bloqueo seguiría probando en la de asistencia.
+  Lo vigila `TestClockSharesTheUnlockLockoutAndNeverLogsThePIN`.
+- **La IP que se guarda como evidencia sale de `rateKeyIP`, no de `clientIP`.** Las dos toman el
+  último `X-Forwarded-For` detrás de Caddy; la diferencia es sin proxy (desarrollo): `clientIP` lo
+  sigue leyendo y un cliente puede escribirlo, `rateKeyIP` lo ignora. Para un log da igual; para una
+  bitácora que responde «¿desde dónde se cobró?», no. Lo vigila `TestTheStoredIPIsTheOneTheClientCannotForge`.
+- **La clave del aparato es una pista, no una prueba.** La genera el navegador (`X-Device-Key`), se
+  renueva si se borran sus datos y se puede falsificar. Se valida por forma (32 hex) y una clave mal
+  formada se guarda vacía sin rechazar la acción. No autentica nada.
+- **IP, aparato y clave solo con permiso.** La tableta que checa nunca los recibe
+  (`TestWhatTheTabletSeesNeverCarriesTheOrigin`); el historial, la bitácora y el reporte piden
+  `audit.view` o `attendance.report`.
+- **La bitácora es de solo agregar también para el owner.** El rol de la app no tiene `update` ni
+  `delete`, y un trigger rechaza editar, borrar o vaciar eventos salvo el cascade de una empresa que
+  ya se borró (`TestTheAuditLogCannotBeEditedOrDeleted`).
+
 ## Checklist de lanzamiento en el VPS (operador)
 
 **Secretos y config (antes del primer arranque):**
 - [ ] `JWT_SECRET`: `openssl rand -base64 48` (≥32; la API rechaza débiles/placeholder).
 - [ ] `POSTGRES_PASSWORD`: `openssl rand -hex 24`.
-- [ ] `ADMIN_PASSWORD` y `ADMIN_PIN` reales (no `cambia-esto`, no `1234` — la API los rechaza).
+- [ ] El admin se crea con `api -reset-admin`, que pide contraseña y PIN al momento: ya no van en `deploy/.env`.
 - [ ] **`CORS_ORIGIN=https://tu-dominio,https://staff.tu-dominio`** (exactos, separados por coma).
   Con `*` en producción —aunque sea una entrada más de la lista— la API NO arranca.
 - [ ] `PLATFORM_JWT_SECRET`: `openssl rand -base64 48`, **distinto de `JWT_SECRET`** (si son iguales
@@ -277,7 +297,7 @@ cortar YA, además se reinicia la API (`docker compose restart api` en la VM). L
 **Hardening del host:**
 - [ ] `ufw`: permitir 22/80/443, denegar el resto. Postgres/Redis **no** publican puertos (ya es así en compose — mantenerlo).
 - [ ] SSH: solo con llave; deshabilitar root y password auth.
-- [ ] Rotar `ADMIN_PASSWORD`/`ADMIN_PIN` tras el primer login (`make reset-admin`).
+- [ ] Rotar la contraseña y el PIN del admin tras el primer login (`-reset-admin`, los pide al momento).
 
 **Durabilidad (día uno):**
 - [x] Backup nocturno (2026-09-29): dump verificado a las 00:45, 14 en la VM y 90 días en un bucket

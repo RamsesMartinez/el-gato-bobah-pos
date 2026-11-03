@@ -42,7 +42,7 @@ export function SystemInfo() {
         display="flex" alignItems="center" gap={1} opacity={0.45} _hover={{ opacity: 0.95 }}
         transition="opacity 0.15s"
       >
-        {needRefresh && <Circle size="6px" bg="green.400" flexShrink={0} />}
+        {needRefresh && <Circle size="6px" bg="green.solid" flexShrink={0} />}
         <Text fontSize="9px" color="gray.400" lineClamp={1}>v{short(frontendVersion.version)}</Text>
       </Box>
 
@@ -54,7 +54,7 @@ export function SystemInfo() {
           <DialogBody pb={6}>
             <VStack align="stretch" gap={4}>
               {needRefresh && (
-                <Box borderWidth="1px" borderColor="green.400" borderRadius="md" p={3}>
+                <Box borderWidth="1px" borderColor="border.success" borderRadius="md" p={3}>
                   <Text fontSize="sm" fontWeight="600" mb={2}>Hay una versión nueva de la app.</Text>
                   <Button size="sm" colorPalette="green" w="100%" onClick={apply}>Actualizar ahora</Button>
                 </Box>

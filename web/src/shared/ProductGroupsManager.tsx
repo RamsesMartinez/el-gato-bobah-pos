@@ -203,7 +203,7 @@ function RowEditor({ g, saving, onSave, onReset, onCancel }: {
             <Field label="Orden"><Input size="sm" type="number" min={0} value={position} onChange={(e) => setPosition(e.target.value)} maxW="90px" /></Field>
           </HStack>
         )}
-        {!valid && <Text fontSize="xs" color="red.500">El máximo debe ser ≥ 1 y el mínimo no puede superarlo.</Text>}
+        {!valid && <Text fontSize="xs" color="fg.error">El máximo debe ser ≥ 1 y el mínimo no puede superarlo.</Text>}
         <HStack justify="end" gap={2}>
           {g.overridden && (
             <Button size="sm" variant="ghost" onClick={onReset}><LuRotateCcw /> Usar default</Button>

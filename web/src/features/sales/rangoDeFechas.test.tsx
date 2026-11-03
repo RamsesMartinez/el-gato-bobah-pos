@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { pickDate } from '../../testing/pickDate';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
@@ -17,7 +18,7 @@ vi.mock('../../api/pos', () => ({
   },
 }));
 
-const pagina: SalesPageData = {
+const samplePage: SalesPageData = {
   range: { from: '2026-08-30', to: '2026-08-30' },
   total: 0,
   items: [],
@@ -52,7 +53,7 @@ const seAsienta = () => waitFor(() => expect(api.list).toHaveBeenCalled());
 describe('el rango libre de fechas en Ventas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    api.list.mockResolvedValue(pagina);
+    api.list.mockResolvedValue(samplePage);
     api.summary.mockResolvedValue(resumen);
   });
 
@@ -68,7 +69,7 @@ describe('el rango libre de fechas en Ventas', () => {
     api.list.mockClear();
 
     await u.click(screen.getByRole('button', { name: 'Rango' }));
-    await u.type(screen.getByLabelText('Desde'), '2026-08-01');
+    await pickDate('Desde', '2026-08-01');
 
     expect(await screen.findByText(/Elige las dos fechas/)).toBeInTheDocument();
     await waitFor(() => expect(api.list).not.toHaveBeenCalled());
@@ -82,8 +83,8 @@ describe('el rango libre de fechas en Ventas', () => {
     api.list.mockClear();
 
     await u.click(screen.getByRole('button', { name: 'Rango' }));
-    await u.type(screen.getByLabelText('Desde'), '2026-08-31');
-    await u.type(screen.getByLabelText('Hasta'), '2026-08-01');
+    await pickDate('Desde', '2026-08-31');
+    await pickDate('Hasta', '2026-08-01');
 
     expect(await screen.findByText(/La fecha de inicio va antes que la de fin/)).toBeInTheDocument();
     await waitFor(() => expect(api.list).not.toHaveBeenCalled());
@@ -96,8 +97,8 @@ describe('el rango libre de fechas en Ventas', () => {
     api.list.mockClear();
 
     await u.click(screen.getByRole('button', { name: 'Rango' }));
-    await u.type(screen.getByLabelText('Desde'), '2026-08-01');
-    await u.type(screen.getByLabelText('Hasta'), '2026-08-15');
+    await pickDate('Desde', '2026-08-01');
+    await pickDate('Hasta', '2026-08-15');
 
     await waitFor(() => expect(api.list).toHaveBeenCalledWith(
       expect.objectContaining({ preset: 'rango', from: '2026-08-01', to: '2026-08-15' }),
@@ -115,8 +116,8 @@ describe('el rango libre de fechas en Ventas', () => {
     await seAsienta();
 
     await u.click(screen.getByRole('button', { name: 'Rango' }));
-    await u.type(screen.getByLabelText('Desde'), '2026-08-01');
-    await u.type(screen.getByLabelText('Hasta'), '2026-08-15');
+    await pickDate('Desde', '2026-08-01');
+    await pickDate('Hasta', '2026-08-15');
     await waitFor(() => expect(api.list).toHaveBeenCalledWith(
       expect.objectContaining({ from: '2026-08-01' }),
     ));
@@ -138,53 +139,34 @@ describe('el rango libre de fechas en Ventas', () => {
   // no son del filtro que se está capturando.
   it('con el rango a medias el paginador queda apagado', async () => {
     const u = userEvent.setup();
-    api.list.mockResolvedValue({ ...pagina, total: 100 });
+    api.list.mockResolvedValue({ ...samplePage, total: 100 });
     montar();
     await seAsienta();
 
     await u.click(screen.getByRole('button', { name: 'Rango' }));
-    await u.type(screen.getByLabelText('Desde'), '2026-08-01');
+    await pickDate('Desde', '2026-08-01');
 
     expect(await screen.findByText(/Elige las dos fechas/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
   });
 
-  // Un día que no ha pasado no tiene ventas: el rango se rechaza antes de mandarlo, y no solo con el
-  // `max` del calendario, que no impide teclear la fecha.
-  it('un rango que termina en el futuro no consulta', async () => {
-    const u = userEvent.setup();
-    montar();
-    await seAsienta();
-    api.list.mockClear();
-
-    await u.click(screen.getByRole('button', { name: 'Rango' }));
-    // MAÑANA, no un año lejano: con una fecha muy lejana el rechazo lo daría el tope de 366 días y
-    // el test pasaría verde sin haber tocado el caso. Un día después de hoy es el borde exacto.
-    const hoy = new Date();
-    const manana = new Date(hoy.getTime() + 86_400_000)
-      .toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
-    fireEvent.change(screen.getByLabelText('Desde'), {
-      target: { value: hoy.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) },
-    });
-    // `fireEvent` y no `type`: el punto del caso es la fecha TECLEADA, la que el `max` del
-    // calendario no frena. Escribirla a mano es lo único que reproduce ese camino.
-    fireEvent.change(screen.getByLabelText('Hasta'), { target: { value: manana } });
-
-    expect(await screen.findByText(/todavía no llega/)).toBeInTheDocument();
-    await waitFor(() => expect(api.list).not.toHaveBeenCalled());
-  });
-
-  // El tope de los campos es el día del NEGOCIO. Un rango que incluye un día que no ha pasado
-  // devuelve una pantalla vacía que se lee como "no vendimos nada".
+  // Un día que no ha pasado no tiene ventas: en el calendario los días posteriores a hoy (del
+  // NEGOCIO) no se pueden tocar, así que un rango que termina en el futuro no se puede armar. La
+  // validación del dominio sigue ahí por si llega por otro camino (domain/rangoDeFechas).
   it('no deja elegir un día que no ha pasado', async () => {
     const u = userEvent.setup();
     montar();
     await seAsienta();
 
     await u.click(screen.getByRole('button', { name: 'Rango' }));
-    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
-    expect(screen.getByLabelText('Desde')).toHaveAttribute('max', hoy);
-    expect(screen.getByLabelText('Hasta')).toHaveAttribute('max', hoy);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+    const tomorrow = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+    fireEvent.click(screen.getByRole('button', { name: 'Hasta' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Hasta' });
+    if (tomorrow.slice(0, 7) === today.slice(0, 7)) {
+      expect(within(sheet).getByRole('button', { name: String(Number(tomorrow.slice(8))) })).toBeDisabled();
+    }
+    expect(within(sheet).getByRole('button', { name: String(Number(today.slice(8))) })).toBeEnabled();
   });
 });

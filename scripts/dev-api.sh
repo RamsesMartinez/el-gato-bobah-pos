@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lanza la API en dev. Los SECRETOS (JWT_SECRET, ADMIN_*) los carga el binario desde
+# Lanza la API en dev. Los SECRETOS (JWT_SECRET y demás) los carga el binario desde
 # deploy/.env con parseo LITERAL (godotenv) — soporta #, $, espacios, comillas sin que
 # el shell los interprete. Este script solo fija la CONEXIÓN local (postgres/redis del
 # compose dev, puertos en PG_PORT/REDIS_PORT) y la ruta del .env.
@@ -7,6 +7,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Infraestructura propia del worktree, si la tiene (make worktree-env).
+source "$(dirname "${BASH_SOURCE[0]}")/worktree-env-load.sh"
 
 if [ ! -f "$ROOT/deploy/.env" ]; then
   echo "Falta deploy/.env — corre 'make check-env' para crearlo y configúralo." >&2
@@ -22,7 +24,7 @@ export SMTP_HOST="${SMTP_HOST:-localhost}"
 export SMTP_PORT="${SMTP_PORT:-${MAILPIT_SMTP_PORT:-1095}}"  # SMTP del Mailpit del compose dev
 export MAIL_FROM="${MAIL_FROM:-no-reply@gatobobah.local}"
 export APP_BASE_URL="${APP_BASE_URL:-http://localhost:${FRONTEND_PORT:-3000}}"
-# el binario carga los secretos de aquí (JWT_SECRET, ADMIN_*, etc.) de forma literal
+# el binario carga los secretos de aquí (JWT_SECRET, etc.) de forma literal
 export ENV_FILE="$ROOT/deploy/.env"
 
 # La API de dev sirve con los MISMOS roles que producción, no como owner. El owner salta RLS y

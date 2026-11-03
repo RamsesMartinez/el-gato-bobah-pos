@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { pedidosPendientes } from '../../api/pedidosDePlataforma';
 import { useSessionStore } from '../../stores/session';
+import { alReconectar } from '../../hooks/alReconectar';
 
 const BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -39,6 +40,7 @@ export function usePedidosDePlataforma() {
     // Cuando OTRA tableta ya lo atendió. Sin esto, la segunda sigue mostrando la alarma y quien la
     // toque encuentra un botón que ya no hace nada.
     es.addEventListener('platform.order.decided', refrescar);
+    alReconectar(es, refrescar);
     return () => es.close();
   }, [token, refrescar]);
 

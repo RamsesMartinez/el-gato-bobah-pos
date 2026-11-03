@@ -21,13 +21,27 @@ where csp.is_default;
 -- name: ListModifierOptionsForCosting :many
 select id, recipe_id, linked_product_id from modifier_options;
 
--- Escrituras de costo (una por fila; el motor las agrupa en una tx).
+-- El costo de un insumo que se compra hecho, al recibir una compra.
 
 -- name: UpdateIngredientCost :exec
 update ingredients set current_cost = $2, updated_at = now() where id = $1;
 
--- name: UpdateProductCost :exec
-update products set current_cost = $2, updated_at = now() where id = $1;
+-- El recálculo escribe en una sentencia por tabla y solo lo que cambió: una fila reescrita con el
+-- mismo costo sube la versión del catálogo (0093) y obliga a las tabletas a volver a bajar el menú,
+-- y en ingredients mueve updated_at, que es la versión con la que se edita la ficha del artículo.
+-- Los costos viajan como texto: es el decimal exacto y no depende de cómo pgx codifique numeric[].
 
--- name: UpdateOptionCost :exec
-update modifier_options set current_cost = $2 where id = $1;
+-- name: SetPrepIngredientCosts :exec
+update ingredients i set current_cost = v.cost::numeric, updated_at = now()
+  from (select unnest(sqlc.arg(ids)::bigint[]) as id, unnest(sqlc.arg(costs)::text[]) as cost) v
+ where i.id = v.id and i.current_cost is distinct from v.cost::numeric;
+
+-- name: SetProductCosts :exec
+update products p set current_cost = v.cost::numeric, updated_at = now()
+  from (select unnest(sqlc.arg(ids)::bigint[]) as id, unnest(sqlc.arg(costs)::text[]) as cost) v
+ where p.id = v.id and p.current_cost is distinct from v.cost::numeric;
+
+-- name: SetOptionCosts :exec
+update modifier_options o set current_cost = v.cost::numeric
+  from (select unnest(sqlc.arg(ids)::bigint[]) as id, unnest(sqlc.arg(costs)::text[]) as cost) v
+ where o.id = v.id and o.current_cost is distinct from v.cost::numeric;

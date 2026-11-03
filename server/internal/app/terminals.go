@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,10 +12,6 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
-
-// prefDefaultTerminal es la preferencia de usuario con su terminal por omisión (punto 8). Vive en
-// user_preferences: si se archiva o es de otra sucursal, se ignora al cobrar.
-const prefDefaultTerminal = "card_terminal"
 
 // TerminalsService administra las terminales de tarjeta por sucursal (spec 032, puntos 8 y 9).
 type TerminalsService struct{ store *store.Store }
@@ -99,36 +94,6 @@ func (s *TerminalsService) Archive(ctx context.Context, id int64) error {
 	return err
 }
 
-// SetUserDefault guarda (o borra, con nil) la terminal por omisión de un usuario.
-func (s *TerminalsService) SetUserDefault(ctx context.Context, userID int64, terminalID *int64) error {
-	v, err := json.Marshal(terminalID)
-	if err != nil {
-		return err
-	}
-	return s.store.QC(ctx).SetUserPreference(ctx, db.SetUserPreferenceParams{UserID: userID, Key: prefDefaultTerminal, Value: v})
-}
-
-// UserDefault lee la terminal por omisión de un usuario, o nil.
-func userDefaultTerminal(ctx context.Context, q *db.Queries, userID int64) (*int64, error) {
-	raw, err := q.GetUserPreference(ctx, db.GetUserPreferenceParams{UserID: userID, Key: prefDefaultTerminal})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var id *int64
-	if json.Unmarshal(raw, &id) != nil {
-		return nil, nil
-	}
-	return id, nil
-}
-
-// UserDefault devuelve la terminal por omisión del usuario.
-func (s *TerminalsService) UserDefault(ctx context.Context, userID int64) (*int64, error) {
-	return userDefaultTerminal(ctx, s.store.QC(ctx), userID)
-}
-
 // SetCardCountMode fija cómo se arquea la tarjeta en una sucursal (punto 9). Aplica desde el
 // siguiente turno que se abra.
 func (s *TerminalsService) SetCardCountMode(ctx context.Context, branchID int64, mode string) error {
@@ -164,9 +129,10 @@ func (s *TerminalsService) CardCountModes(ctx context.Context) ([]BranchModeView
 }
 
 // resolveTerminal decide la terminal de un cobro con tarjeta: la elegida, si es activa y de la
-// sucursal de la caja; si no se eligió, la del usuario con la misma condición; si no, la única
-// activa de la sucursal. Con varias y ninguna válida, se pide (punto 8).
-func resolveTerminal(ctx context.Context, q *db.Queries, registerID, userID int64, chosen *int64) (db.ActiveTerminalsOfRegisterBranchRow, error) {
+// sucursal de la caja; si no se eligió, la única activa de la sucursal. Con varias, se pide siempre:
+// recordar la del usuario dejó un débito en Terminal A cuando se cobró en Terminal B, y la
+// terminal es un hecho físico del momento, no algo que se pueda decidir al configurar (spec 036).
+func resolveTerminal(ctx context.Context, q *db.Queries, registerID int64, chosen *int64) (db.ActiveTerminalsOfRegisterBranchRow, error) {
 	activas, err := q.ActiveTerminalsOfRegisterBranch(ctx, registerID)
 	if err != nil {
 		return db.ActiveTerminalsOfRegisterBranchRow{}, err
@@ -185,17 +151,87 @@ func resolveTerminal(ctx context.Context, q *db.Queries, registerID, userID int6
 		}
 		return db.ActiveTerminalsOfRegisterBranchRow{}, fmt.Errorf("%w: esa terminal no está disponible en esta sucursal", domain.ErrValidation)
 	}
-	def, err := userDefaultTerminal(ctx, q, userID)
-	if err != nil {
-		return db.ActiveTerminalsOfRegisterBranchRow{}, err
-	}
-	if def != nil {
-		if t, ok := find(*def); ok {
-			return t, nil
-		}
-	}
 	if len(activas) == 1 {
 		return activas[0], nil
 	}
 	return db.ActiveTerminalsOfRegisterBranchRow{}, domain.ErrCardTerminalRequired
+}
+
+// ChangeTerminalCmd corrige en qué terminal se cobró un pago con tarjeta (spec 036).
+// FromTerminalID es la terminal que vio la pantalla: nil si el pago no tenía.
+type ChangeTerminalCmd struct {
+	OrderID, PaymentID, ActorID int64
+	FromTerminalID              *int64
+	TerminalID                  int64
+	Reason                      string
+}
+
+// ChangePaymentTerminal mueve un pago con tarjeta a otra terminal activa de la sucursal donde se
+// cobró y deja el evento en la bitácora en la misma transacción: sin evento no hay cambio.
+//
+// No toca el arqueo guardado de un turno cerrado: lo que se firmó se queda como se firmó, y el corte
+// compara contra lo esperado de hoy al pintarse (ver terminalCounts).
+func (s *OrdersService) ChangePaymentTerminal(ctx context.Context, cmd ChangeTerminalCmd) (*OrderView, error) {
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El candado del pedido antes de leer el pago, el mismo de cobrar y devolver: dos cambios a
+		// la vez se forman y el segundo ve la terminal que dejó el primero.
+		o, err := q.GetOrderForUpdate(ctx, cmd.OrderID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: Ese pedido no existe", domain.ErrNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		p, err := q.GetPaymentForTerminalChange(ctx, db.GetPaymentForTerminalChangeParams{ID: cmd.PaymentID, OrderID: cmd.OrderID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: Ese pago no es de este pedido", domain.ErrNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		active := []domain.TerminalOption{}
+		if p.RegisterID != nil {
+			rows, err := q.ActiveTerminalsOfRegisterBranch(ctx, *p.RegisterID)
+			if err != nil {
+				return err
+			}
+			for _, r := range rows {
+				active = append(active, domain.TerminalOption{ID: r.ID, Name: r.Name})
+			}
+		}
+		to, reason, err := domain.ValidateTerminalChange(domain.TerminalChange{
+			MethodKind: p.MethodKind, OrderStatus: string(o.Status), Current: p.CardTerminalID,
+			From: cmd.FromTerminalID, To: cmd.TerminalID, Active: active, Reason: cmd.Reason,
+		})
+		if err != nil {
+			return err
+		}
+		if err := q.SetPaymentTerminal(ctx, db.SetPaymentTerminalParams{ID: p.ID, CardTerminalID: &to.ID, CardTerminalName: &to.Name}); err != nil {
+			return err
+		}
+		side := func(id *int64, name *string) map[string]any {
+			return map[string]any{"terminalId": id, "terminalName": name, "amount": p.Amount,
+				"sessionId": p.RegisterSessionID, "branchId": p.BranchID}
+		}
+		after := side(&to.ID, &to.Name)
+		after["reason"] = reason
+		branch := p.BranchID
+		if branch == nil {
+			b, err := q.GetOrderBranch(ctx, cmd.OrderID)
+			if err != nil {
+				return err
+			}
+			branch = &b
+		}
+		ev := domain.AuditEvent{Action: "payment.terminal_changed", EntityType: "order_payment", EntityID: p.ID,
+			OrderID: &cmd.OrderID, BranchID: branch, Before: side(p.CardTerminalID, p.CardTerminalName), After: after}
+		if cmd.ActorID > 0 {
+			ev.ActorKind, ev.ActorUserID = domain.ActorUser, &cmd.ActorID
+		}
+		return recordAudit(ctx, q, ev)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.Detail(ctx, cmd.OrderID)
 }

@@ -23,11 +23,22 @@ type errorBody struct {
 	Details *errorDetails `json:"details,omitempty"`
 }
 
-// errorDetails son los campos estructurados que un error puede aportar. Hoy solo el producto que
-// tumbó el cobro; se agregan campos cuando otro error los necesite, no antes.
+// errorDetails son los campos estructurados que un error puede aportar: el producto que tumbó el
+// cobro y, si el rechazo fue de un renglón de la cuenta, cuál (para señalarlo en la tableta).
 type errorDetails struct {
 	ProductID   int64  `json:"productId,omitempty"`
 	ProductName string `json:"productName,omitempty"`
+	LineID      string `json:"lineId,omitempty"`
+	// ExistingID: el motivo de merma que ya existe con ese nombre (spec 039), para ofrecerlo.
+	ExistingID int64 `json:"existingId,omitempty"`
+	// Ingredients: cuántos artículos tiene el lugar que se quiere archivar (spec 040), para preguntar
+	// a dónde pasan.
+	Ingredients int32 `json:"ingredients,omitempty"`
+	// Archived: el artículo con ese nombre está archivado (spec 042); la pantalla ofrece reactivarlo.
+	Archived bool `json:"archived,omitempty"`
+	// IngredientID: el artículo de una compra entre peso y líquido sin densidad (spec 058), para
+	// abrir su hoja de densidad.
+	IngredientID int64 `json:"ingredientId,omitempty"`
 }
 
 // JSON writes v as JSON with the given status.
@@ -76,6 +87,29 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusUnprocessableEntity, "CARD_TERMINAL_REQUIRED"
 	case errors.Is(err, domain.ErrTerminalCountRequired):
 		status, code = http.StatusUnprocessableEntity, "TERMINAL_COUNT_REQUIRED"
+	case errors.Is(err, domain.ErrAttendanceDisabled):
+		status, code = http.StatusConflict, "ATTENDANCE_DISABLED"
+	case errors.Is(err, domain.ErrAttendanceStateChanged):
+		status, code = http.StatusConflict, "ATTENDANCE_STATE_CHANGED"
+	case errors.Is(err, domain.ErrAttendanceOverlap):
+		status, code = http.StatusConflict, "ATTENDANCE_OVERLAP"
+	// Caja con asistencia (spec 046): la hoja ofrece marcar entrada, marcar la salida de quien abrió
+	// o pedir el PIN propio según el código.
+	case errors.Is(err, domain.ErrCashClockInRequired):
+		status, code = http.StatusConflict, "CLOCK_IN_REQUIRED"
+	case errors.Is(err, domain.ErrCashOpenerClockedIn):
+		status, code = http.StatusConflict, "OPENER_NOT_CLOCKED_OUT"
+	case errors.Is(err, domain.ErrCashClockOutWithPIN):
+		status, code = http.StatusConflict, "CLOCK_OUT_WITH_PIN"
+	// Editar un gasto (spec 053): antes de ErrValidation y ErrConflict, que los envuelven. La pantalla
+	// vuelve a pedir la vista previa con el primero y señala la decisión que falta con el segundo.
+	case errors.Is(err, domain.ErrDecisionRequired):
+		status, code = http.StatusBadRequest, "DECISION_REQUIRED"
+	case errors.Is(err, domain.ErrExpenseEditStale):
+		status, code = http.StatusConflict, "EXPENSE_EDIT_STALE"
+	// Lo que salió de la caja (spec 050): antes de ErrValidation, que lo envuelve.
+	case errors.Is(err, domain.ErrDrawerExtraTooHigh):
+		status, code = http.StatusBadRequest, "DRAWER_EXTRA_TOO_HIGH"
 	case errors.Is(err, domain.ErrValidation):
 		status, code = http.StatusBadRequest, "VALIDATION"
 	case errors.Is(err, domain.ErrPlatformNotFound):
@@ -88,11 +122,14 @@ func Error(w http.ResponseWriter, err error) {
 		// El front lo necesita distinguible para decir con cuál sí se puede cobrar, en vez de un
 		// "datos inválidos" que no dice qué corregir.
 		status, code = http.StatusUnprocessableEntity, "PAYMENT_METHOD_PLATFORM"
-	case errors.Is(err, domain.ErrOptionOverMax):
-		// 422 y código propio: los ids son válidos y lo que no cuadra es cuántas veces se pidió una
-		// opción. El mensaje trae el nombre y los dos números para que la pantalla diga qué
-		// corregir en vez de un "datos inválidos" que no dice nada.
-		status, code = http.StatusUnprocessableEntity, "OPTION_OVER_MAX"
+	case errors.Is(err, domain.ErrOptionOverMax),
+		errors.Is(err, domain.ErrOptionNotFound),
+		errors.Is(err, domain.ErrProductNotSell):
+		// Un producto que ya no se vende, un extra que ya no es del producto o más piezas de las
+		// que hoy se permiten: la tableta armó la línea con un menú viejo (respeta los topes del
+		// que tiene). Un solo código para que recargue el menú y pida elegir de nuevo sin
+		// escarbar el texto (2026-10-10: se rechazó 18 veces la misma venta con un error rojo).
+		status, code = http.StatusUnprocessableEntity, "MENU_CHANGED"
 	case errors.Is(err, domain.ErrUnpaidOrders):
 		// 409 con código propio, como OPEN_ORDERS: el cierre lista esos pedidos con «Cobrar» y
 		// «Cancelar», y el mensaje nombra cada uno con lo que debe (no hay fiados, 2026-10-09).
@@ -121,6 +158,26 @@ func Error(w http.ResponseWriter, err error) {
 		// negocio. El front lo necesita distinguible para bloquear la pantalla de venta y mandar a
 		// abrir turno, en vez de mostrar un mensaje que el operador no puede accionar desde ahí.
 		status, code = http.StatusConflict, "NO_OPEN_REGISTER"
+	// Gastos y cajas sin turno (spec 047). Antes de ErrConflict, que los envuelve: la pantalla del
+	// gasto pregunta con el primero, y la de cajas dice qué hacer con los otros tres.
+	case errors.Is(err, domain.ErrExpenseOutsideCount):
+		status, code = http.StatusConflict, "EXPENSE_OUTSIDE_COUNT"
+	// El arqueo por hora (spec 048): el primero cambia lo que ofrece el aviso del gasto.
+	case errors.Is(err, domain.ErrExpenseBeforeLastClose):
+		status, code = http.StatusConflict, "EXPENSE_BEFORE_LAST_CLOSE"
+	case errors.Is(err, domain.ErrPaymentNotLinked):
+		status, code = http.StatusConflict, "PAYMENT_NOT_LINKED"
+	case errors.Is(err, domain.ErrPaymentInClosedCount):
+		status, code = http.StatusConflict, "PAYMENT_IN_CLOSED_COUNT"
+	case errors.Is(err, domain.ErrRegisterNotCounted):
+		status, code = http.StatusConflict, "REGISTER_NOT_COUNTED"
+	case errors.Is(err, domain.ErrRegisterHasOpenShift):
+		status, code = http.StatusConflict, "REGISTER_HAS_OPEN_SHIFT"
+	case errors.Is(err, domain.ErrPrimaryRegisterCounts):
+		status, code = http.StatusConflict, "PRIMARY_REGISTER_COUNTS"
+	// Pasar la venta (spec 049): antes de ErrConflict, que lo envuelve.
+	case errors.Is(err, domain.ErrRegistersMustBeClosed):
+		status, code = http.StatusConflict, "REGISTERS_MUST_BE_CLOSED"
 	// Una sola puerta para cobrar (spec 030). Todos ANTES de ErrConflict, que los envuelve: la
 	// pantalla decide por el código qué ofrecer — recargar la cuenta, empezar una nueva, o nada.
 	case errors.Is(err, domain.ErrDraftChanged):
@@ -155,6 +212,10 @@ func Error(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrCredentialsMissingScopes):
 		status, code = http.StatusUnprocessableEntity, "PLATFORM_CREDENTIALS_MISSING_SCOPES"
 		msg = domain.ErrCredentialsMissingScopes.Error()
+	case errors.Is(err, domain.ErrShuttingDown):
+		// 503: la copia que se apaga; el reintento cae en la que ya atiende.
+		status, code = http.StatusServiceUnavailable, "SHUTTING_DOWN"
+		msg = domain.ErrShuttingDown.Error()
 	case errors.Is(err, domain.ErrPlatformUnavailable):
 		// 503: no es culpa de quien captura y reintentar más tarde es lo correcto.
 		status, code = http.StatusServiceUnavailable, "PLATFORM_UNAVAILABLE"
@@ -182,6 +243,39 @@ func Error(w http.ResponseWriter, err error) {
 		// 404 y no 422: el id viajó bien, simplemente no está en la última lectura. Sin este caso
 		// el PUT respondería 200 y la pantalla seguiría diciendo «sin pareja», sin error visible.
 		status, code = http.StatusNotFound, "PLATFORM_ITEM_NOT_FOUND"
+	case errors.Is(err, domain.ErrUnitChangePending):
+		status, code = http.StatusConflict, "UNIT_CHANGE_PENDING"
+	// Densidad y tara (spec 058): cada uno dice algo distinto en pantalla, así que va antes de
+	// ErrConflict y ErrValidation, que los envuelven.
+	case errors.Is(err, domain.ErrDensityChanged):
+		status, code = http.StatusConflict, "DENSITY_CHANGED"
+	case errors.Is(err, domain.ErrDensityInUse):
+		status, code = http.StatusConflict, "DENSITY_IN_USE"
+	case errors.Is(err, domain.ErrCountInputsChanged):
+		status, code = http.StatusConflict, "COUNT_INPUTS_CHANGED"
+	case errors.Is(err, domain.ErrUnitKindMismatch):
+		// 400 con código propio: la pantalla de la compra ofrece capturar la densidad ahí mismo.
+		status, code = http.StatusBadRequest, "UNIT_KIND_MISMATCH"
+	case errors.Is(err, domain.ErrCountNeedsConfirm):
+		status, code = http.StatusConflict, "NEEDS_CONFIRM"
+	case errors.Is(err, domain.ErrIngredientMerged):
+		status, code = http.StatusConflict, "INGREDIENT_MERGED"
+	case errors.Is(err, domain.ErrMergeBlocked):
+		status, code = http.StatusConflict, "MERGE_BLOCKED"
+	case errors.Is(err, domain.ErrMergeStale):
+		status, code = http.StatusConflict, "MERGE_STALE"
+	case errors.Is(err, domain.ErrMergePresentationConflict):
+		status, code = http.StatusConflict, "MERGE_PRESENTATION_CONFLICT"
+	case errors.Is(err, domain.ErrArchiveHasStock):
+		status, code = http.StatusConflict, "ARCHIVE_HAS_STOCK"
+	case errors.Is(err, domain.ErrArticleInUse):
+		status, code = http.StatusConflict, "IN_USE"
+	case errors.Is(err, domain.ErrArticleStale):
+		status, code = http.StatusConflict, "STALE"
+	case errors.Is(err, domain.ErrPrepCost):
+		status, code = http.StatusConflict, "PREP_COST"
+	case errors.Is(err, domain.ErrArticleNameTaken):
+		status, code = http.StatusConflict, "NAME_TAKEN"
 	case errors.Is(err, domain.ErrConflict):
 		status, code = http.StatusConflict, "CONFLICT"
 	case errors.Is(err, domain.ErrTooManyRequests):
@@ -191,9 +285,7 @@ func Error(w http.ResponseWriter, err error) {
 		// se vendió. El código propio deja que la pantalla ponga el máximo donde el operador lo
 		// está tecleando, en vez de un aviso genérico de "datos inválidos".
 		status, code = http.StatusUnprocessableEntity, "DISCOUNT_OVER_SUBTOTAL"
-	case errors.Is(err, domain.ErrProductNotSell),
-		errors.Is(err, domain.ErrOptionNotFound),
-		errors.Is(err, domain.ErrEmptyOrder):
+	case errors.Is(err, domain.ErrEmptyOrder):
 		// reglas de negocio del armado del pedido: 422 con el mensaje real (no 500 opaco)
 		status, code = http.StatusUnprocessableEntity, "UNPROCESSABLE"
 	case errors.Is(err, domain.ErrWeakPassword):
@@ -224,6 +316,33 @@ func Error(w http.ResponseWriter, err error) {
 	var pu domain.ProductUnavailable
 	if errors.As(err, &pu) {
 		details = &errorDetails{ProductID: pu.ProductID, ProductName: pu.Name}
+	}
+	var lr domain.LineRejected
+	if errors.As(err, &lr) && lr.LineID != "" {
+		if details == nil {
+			details = &errorDetails{ProductID: lr.ProductID}
+		}
+		details.LineID = lr.LineID
+	}
+	var exists domain.WasteReasonExists
+	if errors.As(err, &exists) {
+		details = &errorDetails{ExistingID: exists.ID}
+	}
+	var place domain.CountPlaceExists
+	if errors.As(err, &place) {
+		details = &errorDetails{ExistingID: place.ID}
+	}
+	var article domain.ArticleNameTaken
+	if errors.As(err, &article) {
+		details = &errorDetails{ExistingID: article.ID, Archived: article.Archived}
+	}
+	var mismatch domain.UnitKindMismatch
+	if errors.As(err, &mismatch) {
+		details = &errorDetails{IngredientID: mismatch.IngredientID, ProductName: mismatch.Name}
+	}
+	var busy domain.CountPlaceHasIngredients
+	if errors.As(err, &busy) {
+		details = &errorDetails{Ingredients: busy.Ingredients}
 	}
 	JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: operatorMessage(msg), Details: details}})
 }
@@ -258,6 +377,17 @@ func operatorMessage(msg string) string {
 // Decode parses a JSON request body into v, returning a validation error on failure.
 func Decode(r *http.Request, v any) error {
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		return domain.ErrValidation
+	}
+	return nil
+}
+
+// DecodeStrict es Decode que rechaza un campo que el cuerpo no conoce: donde un dato de más cambia lo
+// que se entiende (la forma de capturar una densidad), ignorarlo sería caer a un default en silencio.
+func DecodeStrict(r *http.Request, v any) error {
+	d := json.NewDecoder(r.Body)
+	d.DisallowUnknownFields()
+	if err := d.Decode(v); err != nil {
 		return domain.ErrValidation
 	}
 	return nil

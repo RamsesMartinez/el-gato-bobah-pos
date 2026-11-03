@@ -4,6 +4,10 @@ import { isInstalled, onInstallAvailable, promptInstall } from './installPrompt'
 
 // Sección de Configuración > Negocio para instalar la PWA como app de pantalla completa
 // en la tablet, sin depender de que el operador vea el toast automático a tiempo.
+//
+// El POS se sirve por HTTPS con dominio, así que Chrome ofrece instalar. Por IP local (http://) no
+// lo ofrece, y se habilitaba con chrome://flags/#unsafely-treat-insecure-origin-as-secure; eso no va
+// en pantalla: es un detalle del navegador que quien opera no necesita (constitución).
 export function InstallAppSection() {
   const [installed, setInstalled] = useState(isInstalled);
   const [available, setAvailable] = useState(false);
@@ -23,10 +27,7 @@ export function InstallAppSection() {
       <Text fontWeight="700" mb={1}>Instalar en esta tablet</Text>
       <Text fontSize="sm" color="fg.muted" mb={3}>
         La agrega a la pantalla de inicio como app de pantalla completa, sin barra del
-        navegador. Si se accede por IP de red local (http://) en vez de un dominio con
-        HTTPS, Chrome puede no ofrecer instalar automáticamente — en ese caso, activa
-        una vez por tablet: chrome://flags/#unsafely-treat-insecure-origin-as-secure,
-        agrega la URL y reinicia Chrome.
+        navegador.
       </Text>
       {installed ? (
         <Text fontSize="sm" fontWeight="600">✓ Ya está instalada en este dispositivo.</Text>

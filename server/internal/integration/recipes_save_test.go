@@ -125,4 +125,23 @@ func TestSavingARecipeForTwinsAndAgainstAStaleCopy(t *testing.T) {
 			t.Fatal("la receta de Ana se pisó")
 		}
 	})
+
+	// Lo encontró producción (2026-10-11): la casilla copiaba la receta de la salsa «Lemon Pepper» al
+	// sazonador en polvo del mismo nombre sin que se viera que era otra cosa. Cada gemelo dice ahora
+	// lo que lleva hoy, para que la pantalla lo muestre antes de copiar.
+	t.Run("cada extra del mismo nombre dice lo que lleva hoy", func(t *testing.T) {
+		powder := makeIngredient(t, owner, "Polvo gemelos")
+		if err := svc.SaveComposition(tctx, app.CompositionOfOption, twin, app.CompositionRequest{
+			Items: []app.CompositionInputItem{{IngredientID: powder, Quantity: decimal.RequireFromString("5"), UnitID: g}},
+		}, admin); err != nil {
+			t.Fatal(err)
+		}
+		opened, err := svc.Composition(tctx, app.CompositionOfOption, topping)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(opened.SameName) != 1 || opened.SameName[0].Today != "5 g Polvo gemelos" {
+			t.Fatalf("el gemelo debe decir lo que lleva hoy: %+v", opened.SameName)
+		}
+	})
 }

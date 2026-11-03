@@ -1,4 +1,5 @@
 import { useSessionStore, type SessionUser } from '../stores/session';
+import { deviceHeaders } from './origin';
 import { uuid } from '../utils/uuid';
 
 // En dev, Vite hace proxy de /api → localhost:8080. En prod, mismo origen tras Caddy.
@@ -12,6 +13,14 @@ const DEBUG = import.meta.env.DEV;
 export interface ApiErrorDetails {
   productId?: number;
   productName?: string;
+  // El renglón de la cuenta que el servidor rechazó por menú viejo (MENU_CHANGED al mandar o cobrar).
+  lineId?: string;
+  // El motivo de merma que ya existe con ese nombre (spec 039): la pantalla lo elige en vez de crear otro.
+  existingId?: number;
+  // El artículo con ese nombre está archivado (spec 042): la pantalla ofrece reactivarlo.
+  archived?: boolean;
+  // El artículo sin densidad de una compra entre peso y líquido (spec 058): la pantalla ofrece capturarla.
+  ingredientId?: number;
 }
 
 export class ApiError extends Error {
@@ -19,12 +28,15 @@ export class ApiError extends Error {
   status: number;
   requestId: string;
   details?: ApiErrorDetails;
-  constructor(status: number, code: string, message: string, requestId: string, details?: ApiErrorDetails) {
+  // Segundos que pide esperar un 429 (header Retry-After), para decir en cuánto reintentar.
+  retryAfter?: number;
+  constructor(status: number, code: string, message: string, requestId: string, details?: ApiErrorDetails, retryAfter?: number) {
     super(message);
     this.status = status;
     this.code = code;
     this.requestId = requestId;
     this.details = details;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -76,7 +88,10 @@ export async function restoreSession(): Promise<boolean> {
 // raw devuelve el Response sin parsear: no toda respuesta es JSON (el logo del ticket es un binario).
 // Se resuelve aquí y no con un fetch aparte para no abrir una segunda ruta que se olvide del token,
 // del refresh ante 401, de la traza o del sobre de error.
-async function request<T>(method: string, path: string, body?: unknown, retry = true, raw = false): Promise<T> {
+// `extra` son encabezados propios de una petición; hoy solo If-None-Match del menú.
+async function request<T>(
+  method: string, path: string, body?: unknown, retry = true, raw = false, extra?: Record<string, string>,
+): Promise<T> {
   const token = useSessionStore.getState().token;
   // trazabilidad: mismo id en el header, en la consola y en logs/app.log del backend
   const requestId = uuid();
@@ -94,7 +109,9 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
       headers: {
         ...(isForm ? {} : { 'Content-Type': 'application/json' }),
         'X-Request-Id': requestId,
+        ...deviceHeaders(),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...extra,
       },
       credentials: 'include',
       body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
@@ -112,9 +129,10 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
   if (res.status === 401 && retry && !path.startsWith('/auth/') && (await tryRefresh())) {
     // No se reintenta sobre los propios endpoints de auth (un 401 ahí es real: credenciales malas
     // o refresh vencido) ni si ya se reintentó una vez.
-    return request<T>(method, path, body, false, raw);
+    return request<T>(method, path, body, false, raw, extra);
   }
-  if (!res.ok) {
+  // 304 no es un error: es «lo que ya tienes sigue vigente», y solo llega si se pidió condicional.
+  if (!res.ok && res.status !== 304) {
     // El cuerpo se lee UNA sola vez y antes de decidir qué hacer con el 401: el código del error es
     // lo que distingue un 401 de otro, y `res.json()` no se puede volver a leer.
     let code = 'ERROR';
@@ -139,7 +157,8 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
       useSessionStore.getState().clear('caducada');
     }
     console.error(`[api] ✗ ${label} · ${res.status} ${code} · ${ms}ms · id=${traceId}`);
-    throw new ApiError(res.status, code, message, traceId, details);
+    const retryAfter = Number(res.headers.get('Retry-After')) || undefined;
+    throw new ApiError(res.status, code, message, traceId, details, retryAfter);
   }
 
   if (DEBUG) {
@@ -153,6 +172,12 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   getRaw: (path: string) => request<Response>('GET', path, undefined, true, true),
+  // GET condicional: con el ETag de lo que ya se tiene, un 304 dice que sigue vigente sin cuerpo.
+  getConditional: async <T>(path: string, etag: string | null): Promise<{ notModified: true } | { notModified: false; data: T; etag: string | null }> => {
+    const res = await request<Response>('GET', path, undefined, true, true, etag ? { 'If-None-Match': etag } : undefined);
+    if (res.status === 304) return { notModified: true };
+    return { notModified: false, data: (await res.json()) as T, etag: res.headers.get('ETag') };
+  },
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   postForm: <T>(path: string, form: FormData) => request<T>('POST', path, form),
   putForm: <T>(path: string, form: FormData) => request<T>('PUT', path, form),

@@ -209,7 +209,7 @@ func (q *Queries) EnsurePlatformUnpairedProduct(ctx context.Context, companyID i
 const failMenuRead = `-- name: FailMenuRead :exec
 update platform_menu_reads
    set status = 'fallida', finished_at = now(), failure_kind = $2
- where id = $1
+ where id = $1 and status = 'en_curso'
 `
 
 type FailMenuReadParams struct {
@@ -218,6 +218,8 @@ type FailMenuReadParams struct {
 }
 
 // `failure_kind` es una clase cerrada, nunca el mensaje de la plataforma: ahí cabe un secreto.
+// Solo la que sigue en curso: el apagado toma la lista de vivas y después las cierra, y una que
+// terminó bien entre las dos cosas no puede quedar como «falló» (spec 041).
 func (q *Queries) FailMenuRead(ctx context.Context, arg FailMenuReadParams) error {
 	_, err := q.db.Exec(ctx, failMenuRead, arg.ID, arg.FailureKind)
 	return err

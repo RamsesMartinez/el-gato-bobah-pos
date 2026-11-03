@@ -22,9 +22,37 @@ if ! printf '%s' "$comando" | grep -qE 'pos-vps([^-]|$)|34\.68\.178\.107'; then
   exit 0
 fi
 
+# Nombrar la VM sin conectarse a ella (buscarla en ~/.ssh/config, en un log o en un documento) no la
+# toca: solo pregunta lo que de verdad abre una conexión. Lo que va entre comillas es un argumento
+# —el patrón de un grep que busca «ssh\|pos-vps»— y no se ejecuta, así que se quita antes de buscar
+# un programa que conecte en posición de comando. El 2026-11-02 un grep así frenó un /goal entero.
+# Excepción: si algo vuelve a ejecutar texto (`bash -c`, `eval`, `xargs`), lo entrecomillado sí
+# corre y se revisa completo, como antes.
+revisar=$comando
+conecta='(^|[^.a-z_-])(ssh|scp|rsync|curl|nc|psql|sftp)([^a-z_-]|$)|gcloud +compute +(ssh|scp)'
+if ! printf '%s' "$comando" | grep -qE '(^|[^a-z_-])(bash|sh|zsh) +-[a-z]*c|(^|[^a-z_-])(eval|xargs)([^a-z_-]|$)'; then
+  revisar=$(printf '%s' "$comando" | sed -E "s/\"([^\"\\\\]|\\\\.)*\"//g; s/'[^']*'//g")
+  conecta='(^|[;&|(`{]|\$\()[[:space:]]*((sudo|nohup|env|timeout +[0-9a-z.]+|[A-Z_]+=[^ ]*) +)*(ssh|scp|rsync|curl|nc|psql|sftp)([^a-z_-]|$)|gcloud +compute +(ssh|scp)'
+fi
+if ! printf '%s' "$revisar" | grep -qE "$conecta"; then
+  exit 0
+fi
+
 # La excepción autorizada: respaldar. `pg_dump` y traerse el archivo que dejó.
-if printf '%s' "$comando" | grep -qE 'pg_dump|compute scp +pos-vps:'; then
+if printf '%s' "$comando" | grep -qE 'pg_dump|respaldo-gatobobah\.sh|compute scp +pos-vps:'; then
   printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"Respaldo de produccion: autorizado sin preguntar."}}'
+  exit 0
+fi
+
+# Lecturas de salud tras una subida (decidido el 2026-11-01, para dejar un encargo corriendo de
+# noche): bitácora, estado de contenedores, disco y memoria. Pasan solas SOLO si el comando no trae
+# nada que escriba, reinicie, entre a la base o lea secretos; ante la duda, se pregunta. Subir a
+# producción no necesita esta puerta: lo hace CI. `2>&1` no escribe en ningún archivo: no cuenta
+# como redirección.
+escribe='(^|[^a-z_-])(rm|mv|cp|tee|dd|kill|pkill|reboot|shutdown|apt|apt-get|chmod|chown|psql|sed +-i|truncate|install)([^a-z_-]|$)|(^|[^0-9])>|>[^&]|docker +(compose|restart|stop|start|rm|kill|exec|run|pull|system|volume|network)|systemctl +(restart|stop|start|reload|enable|disable)|\.env|deploy-|make |scp|-L |--ssh-flag|tunnel'
+lee='journalctl|docker +(ps|logs|inspect|images|stats +--no-stream)|df |free |uptime|systemctl +status|curl |readyz|healthz'
+if ! printf '%s' "$comando" | grep -qE "$escribe" && printf '%s' "$comando" | grep -qE "$lee"; then
+  printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"Lectura de salud de produccion: autorizada sin preguntar."}}'
   exit 0
 fi
 

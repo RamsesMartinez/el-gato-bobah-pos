@@ -1,0 +1,308 @@
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Provider } from '../../components/ui/provider';
+import { ApiError } from '../../api/client';
+import type { Presentation, Unit } from '../../api/backoffice';
+import { PresentationsSheet, type PresentationsIngredient } from './PresentationsSheet';
+
+const back = vi.hoisted(() => ({ createPresentation: vi.fn(), updatePresentation: vi.fn(), setCountPlace: vi.fn(), countPlaces: vi.fn(), createCountPlace: vi.fn(), presentationSuggestions: vi.fn() }));
+vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
+
+const units: Unit[] = [
+  { id: 1, code: 'g', name: 'Gramo', kind: 'masa', toBase: '1' },
+  { id: 2, code: 'kg', name: 'Kilogramo', kind: 'masa', toBase: '1000' },
+  { id: 3, code: 'ml', name: 'Mililitro', kind: 'volumen', toBase: '1' },
+  { id: 5, code: 'cda', name: 'Cucharada', kind: 'volumen', toBase: '15' },
+  { id: 7, code: 'l', name: 'Litro', kind: 'volumen', toBase: '1000' },
+  { id: 8, code: 'pieza', name: 'Pieza', kind: 'pieza', toBase: '1' },
+];
+const leche = { id: 10, name: 'Leche entera', baseUnitCode: 'ml', baseUnitKind: 'volumen' };
+const aguacate = { id: 11, name: 'Aguacate', baseUnitCode: 'pieza', baseUnitKind: 'pieza' };
+const pres = (over: Partial<Presentation>): Presentation => ({
+  id: 1, ingredientId: 10, name: 'Caja', qtyInBase: '12000', baseUnitCode: 'ml', active: true, approximate: false, purchaseUnitId: null, ...over,
+});
+
+// Las sugerencias las da el servidor por clase de unidad (spec 042, FR-011): aquí, las de la clase del
+// insumo, con su cantidad.
+const SUGGESTED: Record<string, { name: string; qtyInBase: string }[]> = {
+  volumen: [{ name: 'Caja', qtyInBase: '12000' }],
+  pieza: [{ name: 'Bolsa', qtyInBase: '10' }],
+  masa: [{ name: 'Bulto', qtyInBase: '25000' }],
+};
+
+function montar(ingredient: PresentationsIngredient = leche, presentations: Presentation[] = [], suggest = true) {
+  back.presentationSuggestions.mockImplementation((k: string) => Promise.resolve(suggest ? SUGGESTED[k] ?? [] : []));
+  const onClose = vi.fn();
+  render(
+    <Provider>
+      <QueryClientProvider client={new QueryClient()}>
+        <PresentationsSheet isOpen ingredient={ingredient} presentations={presentations}
+          units={units} onClose={onClose} />
+      </QueryClientProvider>
+    </Provider>,
+  );
+  return { onClose };
+}
+
+beforeEach(() => {
+  back.createPresentation.mockReset().mockResolvedValue(pres({ id: 99 }));
+  back.updatePresentation.mockReset().mockResolvedValue(pres({}));
+});
+
+describe('Cómo llega un insumo (spec 038, maqueta B)', () => {
+  test('lista los empaques con su contenido y los que ya no llegan aparte', async () => {
+    montar(leche, [pres({}), pres({ id: 2, name: 'Galón', qtyInBase: '3785.4' }), pres({ id: 3, name: 'Tira', active: false })]);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Caja · 12 L');
+    expect(dialog).toHaveTextContent('Galón · 3.79 L');
+    expect(dialog).toHaveTextContent('Ya no llega en: Tira');
+    expect(dialog.querySelector('select')).toBeNull();
+  });
+
+  // Caso borde 1: «25» a secas en un insumo en gramos sería un error de 1,000 veces.
+  test('un empaque nuevo pide nombre, número y unidad, y muestra la equivalencia antes de guardar', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    // «Caja» es base y la empresa ya la usa con 12 L: un solo botón, que trae su cantidad; nada de
+    // otra clase de unidad.
+    await waitFor(() => expect(back.presentationSuggestions).toHaveBeenCalled());
+    expect(screen.getAllByRole('button', { name: /^Caja/ })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: /^Caja/ }));
+    expect(screen.queryByRole('button', { name: /Bulto/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'cda' })).toBeNull();
+    await waitFor(() => expect(screen.getByLabelText('Cuánto trae')).toHaveValue('12'));
+    expect(screen.getByText('1 caja = 12 L')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(10, { name: 'Caja', qty: '12', unitId: 7, approximate: false, brand: '' }));
+  });
+
+  // Revisión de código: con un empaque a medio capturar, «Listo» lo tiraba sin avisar y «Guardar
+  // empaque» quedaba abajo del contenido que se desplaza.
+  test('con un empaque a medio capturar, el pie dice Cancelar y Guardar empaque, no Listo', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(screen.queryByRole('button', { name: 'Listo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar empaque' })).toBeInTheDocument();
+  });
+
+  test('«Otro» deja escribir un nombre que no está entre los botones', async () => {
+    montar(leche, [], false);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Otro' }));
+    expect(screen.getByLabelText('Nombre del empaque')).toHaveAttribute('placeholder', 'Ej. Cubeta, Garrafa');
+    fireEvent.change(screen.getByLabelText('Nombre del empaque'), { target: { value: 'Garrafa' } });
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(10, expect.objectContaining({ name: 'Garrafa' })));
+  });
+
+  // Regla 16: un empaque de un insumo por pieza trae piezas enteras.
+  test('en un insumo por pieza, el contenido con decimales no se guarda', async () => {
+    montar(aguacate);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Bolsa/ }));
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '12.5' } });
+    expect(screen.getByRole('button', { name: 'Guardar empaque' })).toBeDisabled();
+    expect(screen.getByText(/piezas enteras/)).toBeInTheDocument();
+  });
+
+  // Regla 18: lo que se compra por kilo y se usa por pieza lleva un empaque aproximado.
+  test('un insumo por pieza puede tener un empaque aproximado por kilo', async () => {
+    montar(aguacate, [], false);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Se compra por peso o líquido' }));
+    fireEvent.click(screen.getByRole('button', { name: 'kg' }));
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '4' } });
+    expect(screen.getByText(/≈ 4 piezas/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(11, { name: 'Kilo', qty: '4', unitId: 2, approximate: true, brand: '' }));
+  });
+
+  // Decisión del dueño (2026-10-20): «Ya no llega así» junto a «Editar» hacía dudar si se editaba o se
+  // quitaba. Ahora dice lo que hace, va aparte y con estilo secundario.
+  test('«Quitar este empaque» la desactiva sin borrarla, separado de editar y con estilo secundario', async () => {
+    montar(leche, [pres({})]);
+    const row = (await screen.findByText('Caja · 12 L')).closest('[data-row]') as HTMLElement;
+    expect(within(row).queryByRole('button', { name: 'Ya no llega así' })).toBeNull();
+    const quitar = within(row).getByRole('button', { name: 'Quitar este empaque' });
+    expect(quitar).toHaveAttribute('data-secondary');
+    const editar = within(row).getByRole('button', { name: 'Editar' });
+    expect(editar.nextElementSibling, '«Quitar» va pegado a «Editar»').not.toBe(quitar);
+    fireEvent.click(quitar);
+    await waitFor(() => expect(back.updatePresentation).toHaveBeenCalledWith(1, { name: 'Caja', qty: '12', unitId: 7, approximate: false, active: false }));
+  });
+});
+
+// Spec 043 (maqueta «Hoja de empaque nuevo»): botones base por clase de unidad, nada elegido al abrir,
+// una frase que dice lo que se va a guardar y sin la ubicación.
+describe('empaque nuevo sin adivinar (spec 043)', () => {
+  const masa = { id: 12, name: 'Azúcar', baseUnitCode: 'g', baseUnitKind: 'masa' };
+  const botones = () => screen.getAllByRole('button').filter((b) => b.closest('[data-packs]')).map((b) => b.textContent);
+
+  test.each([
+    [masa, ['Bolsa', 'Caja', 'Costal', 'Paquete', 'Otro']],
+    [leche, ['Botella', 'Galón', 'Garrafa', 'Caja', 'Otro']],
+    [aguacate, ['Caja', 'Paquete', 'Bolsa', 'Otro']],
+  ])('una empresa sin empaques ve los base de su clase (%#)', async (ing, esperado) => {
+    montar(ing, [], false);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(botones()).toEqual(esperado);
+  });
+
+  test('los que la empresa ya usa se suman sin repetir los base, y nada viene elegido', async () => {
+    montar(masa);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    await waitFor(() => expect(botones()).toEqual(['Bolsa', 'Caja', 'Costal', 'Paquete', 'Bulto · 25 kg', 'Otro']));
+    expect(screen.getAllByRole('button').filter((b) => b.closest('[data-packs]') && b.getAttribute('aria-pressed') === 'true')).toHaveLength(0);
+    expect(screen.queryByLabelText('Nombre del empaque')).toBeNull();
+  });
+
+  test('pregunta «¿En qué empaque lo compras?» y la frase dice lo que se guarda, junto al pie', async () => {
+    montar(masa, [], false);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(screen.getByText('¿En qué empaque lo compras?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Bolsa' }));
+    fireEvent.click(screen.getByRole('button', { name: 'kg' }));
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '5' } });
+    const frase = screen.getByText('1 bolsa = 5 kg');
+    expect(frase.closest('.chakra-drawer__footer'), 'la frase no está junto al pie').not.toBeNull();
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '15' } });
+    expect(screen.getByText('1 bolsa = 15 kg')).toBeInTheDocument();
+    expect(screen.queryByText(/Se cuenta en|se convierte a/)).toBeNull();
+  });
+
+  test('el selector de unidad de «Trae» es el mismo que el del mínimo', async () => {
+    montar(masa, [], false);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(screen.getByRole('group', { name: 'Unidad' })).toBeInTheDocument();
+  });
+
+  test('no ofrece la ubicación, aunque venga del almacén', async () => {
+    montar(masa, [], false);
+    await screen.findByRole('dialog');
+    expect(screen.queryByText(/Ubicación|Lugar/)).toBeNull();
+  });
+});
+
+// Marca en la presentación (spec 056, US4).
+describe('marca o proveedor', () => {
+  test('se ve junto al nombre y dos «Caja» con marca distinta se distinguen', async () => {
+    montar(leche, [pres({ id: 1, brand: 'Marca A' }), pres({ id: 2, brand: 'Marca B', qtyInBase: '8000' })]);
+    expect(await screen.findByText(/Caja · Marca A · 12 L/)).toBeInTheDocument();
+    expect(screen.getByText(/Caja · Marca B · 8 L/)).toBeInTheDocument();
+  });
+
+  test('se captura opcional y se manda con el empaque nuevo', async () => {
+    montar(leche, []);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Otro' }));
+    fireEvent.change(screen.getByLabelText('Nombre del empaque'), { target: { value: 'Garrafa' } });
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
+    fireEvent.change(screen.getByLabelText('Marca o proveedor (opcional)'), { target: { value: 'Lala' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(10, expect.objectContaining({ name: 'Garrafa', brand: 'Lala' })));
+  });
+
+  test('editar trae la marca y borrarla la quita', async () => {
+    montar(leche, [pres({ id: 1, brand: 'Marca A' })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar' }));
+    const box = screen.getByLabelText('Marca o proveedor (opcional)');
+    expect(box).toHaveValue('Marca A');
+    fireEvent.change(box, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.updatePresentation).toHaveBeenCalledWith(1, expect.objectContaining({ brand: '' })));
+  });
+
+  test('la misma «Caja» con otra marca no se marca como repetida', async () => {
+    montar(leche, [pres({ id: 1, brand: 'Marca A' })]);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Caja' }));
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
+    fireEvent.change(screen.getByLabelText('Marca o proveedor (opcional)'), { target: { value: 'Marca B' } });
+    expect(screen.getByRole('button', { name: 'Guardar empaque' })).not.toBeDisabled();
+  });
+});
+
+describe('un empaque rechazado', () => {
+  test('un 400 dice por qué, no solo «No se pudo»', async () => {
+    back.createPresentation.mockRejectedValueOnce(new ApiError(400, 'VALIDATION', 'escribe cuánto trae el empaque', 'req'));
+    montar(leche, []);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Otro' }));
+    fireEvent.change(screen.getByLabelText('Nombre del empaque'), { target: { value: 'Garrafa' } });
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    expect(await screen.findByText('escribe cuánto trae el empaque')).toBeInTheDocument();
+  });
+});
+
+// Spec 058 (US4): lo que pesa vacío el empaque, para contar pesando con el producto adentro.
+describe('pesa vacío', () => {
+  const azucar = { id: 12, name: 'Azúcar', baseUnitCode: 'g', baseUnitKind: 'masa' };
+
+  test('en la lista se ve junto al contenido', async () => {
+    montar(leche, [pres({ id: 1, name: 'Galón', qtyInBase: '3785.4', tareG: '120' })]);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Galón · 3.79 L · pesa vacío 120 g');
+  });
+
+  test('solo en artículos en g o ml, marcado «Opcional» y con su (i)', async () => {
+    montar(aguacate);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(screen.queryByLabelText('Pesa vacío (g)')).toBeNull();
+  });
+
+  // Va junto a «Cuánto trae», que es de lo que habla: después de la marca se leía como dato de la marca.
+  test('«Pesa vacío» va antes de «Marca o proveedor»', async () => {
+    montar(azucar);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    const tare = screen.getByLabelText('Pesa vacío (g)');
+    const brand = screen.getByLabelText('Marca o proveedor (opcional)');
+    expect(tare.compareDocumentPosition(brand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('un empaque nuevo manda lo que pesa vacío si se escribió, y nada si no', async () => {
+    montar(azucar);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(screen.getByText('Opcional')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Para qué sirve «Pesa vacío»' }));
+    expect(screen.getByText(/el conteo resta lo que pesa el empaque/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Otro' }));
+    fireEvent.change(screen.getByLabelText('Nombre del empaque'), { target: { value: 'Tarro' } });
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'kg' }));
+    fireEvent.change(screen.getByLabelText('Pesa vacío (g)'), { target: { value: '150' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(12, expect.objectContaining({ name: 'Tarro', tareG: '150' })));
+  });
+
+  test('editar sin tocarlo no lo manda; borrarlo manda null', async () => {
+    montar(leche, [pres({ id: 1, tareG: '120.00' })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar' }));
+    expect(screen.getByLabelText('Pesa vacío (g)')).toHaveValue('120');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.updatePresentation).toHaveBeenCalledTimes(1));
+    expect(back.updatePresentation.mock.calls[0][1]).not.toHaveProperty('tareG');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar' }));
+    fireEvent.change(screen.getByLabelText('Pesa vacío (g)'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.updatePresentation).toHaveBeenCalledTimes(2));
+    expect(back.updatePresentation.mock.calls[1][1]).toMatchObject({ tareG: null });
+  });
+
+  test('un peso que no es número no deja guardar', async () => {
+    montar(leche, [pres({ id: 1 })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar' }));
+    fireEvent.change(screen.getByLabelText('Pesa vacío (g)'), { target: { value: '0' } });
+    expect(screen.getByRole('button', { name: 'Guardar empaque' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Pesa vacío (g)'), { target: { value: '120' } });
+    expect(screen.getByRole('button', { name: 'Guardar empaque' })).not.toBeDisabled();
+  });
+});

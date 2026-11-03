@@ -127,7 +127,7 @@ func (s *Store) WithTx(ctx context.Context, fn func(q *db.Queries) error) error 
 		if err := fn(queriesOn(tx)); err != nil {
 			return err
 		}
-		return tx.Commit(ctx)
+		return commit(ctx, tx)
 	}
 	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -137,7 +137,7 @@ func (s *Store) WithTx(ctx context.Context, fn func(q *db.Queries) error) error 
 	if err := fn(queriesOn(tx)); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return commit(ctx, tx)
 }
 
 // WithTenant runs fn in a transaction bound to a single company by fijando el GUC de sesión
@@ -157,5 +157,12 @@ func (s *Store) WithTenant(ctx context.Context, companyID int64, fn func(q *db.Q
 	if err := fn(queriesOn(tx)); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return commit(ctx, tx)
+}
+
+// commit confirma y traduce: un constraint trigger diferido (las guardas de la 0104) truena justo al
+// confirmar, donde `translating` no mira; sin esto, una venta que perdió la carrera contra una unión
+// respondía 500 en vez de 409 «vuelve a intentar».
+func commit(ctx context.Context, tx pgx.Tx) error {
+	return DomainError(tx.Commit(ctx))
 }

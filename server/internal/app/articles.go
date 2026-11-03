@@ -46,6 +46,9 @@ type IngredientView struct {
 	CompositionStatus string `json:"compositionStatus"`
 	// RecipeUses: en cuántas recetas aparece; ordena el buscador de insumos con los más usados arriba.
 	RecipeUses int `json:"recipeUses"`
+	// CountPlace: dónde está, para ordenar el conteo (spec 038). No es un almacén.
+	CountPlace   *string `json:"countPlace"`
+	CountPlaceID *int64  `json:"countPlaceId"`
 }
 
 // ArticleView es una entrada del buscador único: ingredientes y productos con control de stock
@@ -57,21 +60,16 @@ type ArticleView struct {
 	Name     string `json:"name"`
 	UnitCode string `json:"unitCode"`
 	UnitKind string `json:"unitKind"`
-}
-
-type IngredientInput struct {
-	Name        string
-	BaseUnitID  int16
-	CategoryID  *int64
-	MinStock    *decimal.Decimal
-	TrackStock  *bool
-	IsPackaging *bool
+	// DensityGPerMl: para convertir en pantalla una compra entre peso y líquido (spec 058).
+	DensityGPerMl *decimal.Decimal `json:"densityGPerMl"`
 }
 
 // maxArticleResults es un techo defensivo, no una paginación: el front carga el catálogo una
 // vez al abrir el diálogo del gasto y el picker filtra en local (así el buscador responde sin
-// round-trip por tecla). Un local maneja cientos de insumos, no miles.
-const maxArticleResults = 500
+// round-trip por tecla). Con 500 se cortaba el catálogo real (532 medidos el 2026-11-02: 453 insumos y
+// 79 productos con existencia) y lo del final del abecedario no se podía comprar. El mismo techo que
+// los posibles duplicados (maxDuplicateCandidates).
+const maxArticleResults = 3000
 
 func (s *BackofficeService) Units(ctx context.Context) ([]UnitView, error) {
 	rows, err := s.store.QC(ctx).ListUnits(ctx)
@@ -102,45 +100,10 @@ func (s *BackofficeService) Ingredients(ctx context.Context, onlyActive bool) ([
 			BaseUnitID: r.BaseUnitID, BaseUnitCode: r.BaseUnitCode, BaseUnitKind: string(r.BaseUnitKind),
 			Category: r.Category, OnHand: r.OnHand,
 			IsPrep: r.IsPrep, CompositionStatus: textoDe(r.CompositionStatus), RecipeUses: int(r.RecipeUses),
+			CountPlace: r.CountPlace, CountPlaceID: r.CountPlaceID,
 		}
 	}
 	return out, nil
-}
-
-// CreateIngredient da de alta un insumo con lo mínimo: nombre y unidad base. Receta, merma y
-// proveedor se editan después — el alta tiene que caber en el diálogo del gasto sin sacar al
-// operador del flujo de captura.
-func (s *BackofficeService) CreateIngredient(ctx context.Context, in IngredientInput) (IngredientView, error) {
-	name := strings.TrimSpace(in.Name)
-	if name == "" || in.BaseUnitID == 0 {
-		return IngredientView{}, domain.ErrValidation
-	}
-	if in.MinStock != nil {
-		v := domain.Round4(*in.MinStock)
-		if v.IsNegative() || v.GreaterThan(domain.MaxStockQty) {
-			return IngredientView{}, domain.ErrValidation
-		}
-		in.MinStock = &v
-	}
-	r, err := s.store.QC(ctx).CreateIngredient(ctx, db.CreateIngredientParams{
-		Name: name, BaseUnitID: in.BaseUnitID, CategoryID: in.CategoryID,
-		MinStock: in.MinStock, TrackStock: in.TrackStock, IsPackaging: in.IsPackaging,
-	})
-	if err != nil {
-		// El unique (company_id, name) protege contra dos "Leche entera" en la misma empresa;
-		// llega como 409 accionable en vez de un 500 opaco.
-		if isUniqueViolation(err) {
-			return IngredientView{}, domain.ErrConflict
-		}
-		return IngredientView{}, err
-	}
-	// Los campos de join (unidad, categoría, existencia) quedan vacíos a propósito: el alta no
-	// los consulta y el picker solo necesita id+nombre para agregar la opción recién creada.
-	return IngredientView{
-		ID: r.ID, Name: string(r.Name), BaseUnitID: r.BaseUnitID, IsActive: r.IsActive,
-		TrackStock: r.TrackStock, IsPackaging: r.IsPackaging,
-		MinStock: r.MinStock, CurrentCost: r.CurrentCost,
-	}, nil
 }
 
 // SearchArticles alimenta el picker del gasto. q vacío devuelve el inicio del catálogo (para que
@@ -158,7 +121,7 @@ func (s *BackofficeService) SearchArticles(ctx context.Context, q string) ([]Art
 	for i, r := range rows {
 		out[i] = ArticleView{
 			ItemType: r.ItemType, ID: r.ID, Name: r.Name,
-			UnitCode: r.UnitCode, UnitKind: string(r.UnitKind),
+			UnitCode: r.UnitCode, UnitKind: string(r.UnitKind), DensityGPerMl: r.DensityGPerMl,
 		}
 	}
 	return out, nil

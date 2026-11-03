@@ -70,11 +70,11 @@ const FRONTERAS = [
             // `..`, así que ese patrón prohibía '../../api/pos' y todo lo demás que sí es legítimo.
             // La lista explícita además se lee como lo que es — el mapa de pantallas del producto.
             group: [
-              '../admin/*', '../auth/*', '../backoffice/*', '../orders/*', '../pos/*',
-              '../pwa/*', '../sales/*', '../tickets/*',
-              '**/features/admin/*', '**/features/auth/*', '**/features/backoffice/*',
+              '../admin/*', '../attendance/*', '../auth/*', '../backoffice/*', '../orders/*', '../pos/*',
+              '../pwa/*', '../sales/*', '../tickets/*', '../waste/*',
+              '**/features/admin/*', '**/features/attendance/*', '**/features/auth/*', '**/features/backoffice/*',
               '**/features/orders/*', '**/features/pos/*', '**/features/pwa/*',
-              '**/features/sales/*', '**/features/tickets/*',
+              '**/features/sales/*', '**/features/tickets/*', '**/features/waste/*',
             ],
             message:
               'Una pantalla no importa de otra pantalla. Si las dos necesitan lo mismo, bájalo a ' +

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -126,6 +127,22 @@ func (h *Handlers) CreateCashRegister(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, v)
 }
 
+// MoveSales — POST /cash-registers/{id}/sells, permiso cash.configure. Pasa la venta a esa caja y
+// responde las cajas como /cash-registers/all, para que la pantalla pinte el cambio (spec 049).
+func (h *Handlers) MoveSales(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.MoveSales(r.Context(), id, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	h.AllCashRegisters(w, r)
+}
+
 func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -133,14 +150,42 @@ func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name     string `json:"name"`
-		IsActive bool   `json:"isActive"`
+		Name       string `json:"name"`
+		IsActive   bool   `json:"isActive"`
+		CountsCash *bool  `json:"countsCash"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	v, err := h.backoffice.UpdateCashRegister(r.Context(), id, body.Name, body.IsActive)
+	// «Lleva arqueo» decide qué efectivo se cuenta: por permiso, como el fondo fijo, y no por el rol
+	// que protege el resto de esta ruta (spec 047).
+	if body.CountsCash != nil && !h.requirePermission(w, r, domain.PermCashConfigure) {
+		return
+	}
+	v, err := h.backoffice.UpdateCashRegister(r.Context(), id, body.Name, body.IsActive, body.CountsCash)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
+// PUT /cash-registers/{id}/fixed-float — el fondo que se queda al cerrar (spec 035); null lo quita.
+func (h *Handlers) SetFixedFloat(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		FixedFloat *decimal.Decimal `json:"fixedFloat"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.SetFixedFloat(r.Context(), id, body.FixedFloat)
 	if err != nil {
 		Error(w, err)
 		return
@@ -207,20 +252,77 @@ func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 		// Motivo de una apertura distinta del cierre anterior (spec 032, punto 6).
 		OpeningReason     string `json:"openingReason"`
 		OpeningReasonNote string `json:"openingReasonNote"`
+		// OpenedAt: abrir desde una hora anterior (spec 048), RFC3339. Exige cash.adjust_count.
+		OpenedAt *time.Time `json:"openedAt"`
+		// ExcludePending: abrir dejando sin incluir los gastos sin corte (R13). Exige cash.adjust_count.
+		ExcludePending bool `json:"excludePending"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
+	// Mover la hora o excluir los gastos sin corte mueven el esperado del corte: por permiso, aquí y
+	// no en el router, porque abrir sin tocar nada lo sigue pudiendo hacer el cajero (R13).
+	if (body.OpenedAt != nil || body.ExcludePending) && !h.requirePermission(w, r, domain.PermCashAdjustCount) {
+		return
+	}
 	apertura := aperturaDelBody(body.Counts, body.OpeningCash, body.ManualReason)
 	apertura.Reason, apertura.ReasonNote = body.OpeningReason, body.OpeningReasonNote
+	apertura.OpenedAt, apertura.ExcludePending = body.OpenedAt, body.ExcludePending
 	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID, apertura, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
 	}
 	JSON(w, http.StatusCreated, sess)
+}
+
+// requirePermission es RequirePermission dentro de un handler, para lo que solo exige permiso según
+// lo que trae el cuerpo. Responde el 403 y deja el evento de seguridad; false = ya respondió.
+func (h *Handlers) requirePermission(w http.ResponseWriter, r *http.Request, p domain.Permission) bool {
+	u, ok := userFrom(r.Context())
+	if ok && slices.Contains(h.permissions(u.Role), p) {
+		return true
+	}
+	logging.SecurityEvent(r.Context(), "forbidden",
+		"user_id", u.ID, "role", string(u.Role), "permission", string(p),
+		"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
+	Error(w, fmt.Errorf("%w: %s", domain.ErrForbidden, domain.PermissionDeniedMessage(p)))
+	return false
+}
+
+// GET /cash-sessions/pending-expenses?registerId= — los gastos sin corte de la caja desde su último
+// cierre, que la apertura ofrece incluir (spec 048). registerId ausente o malformado = 400.
+func (h *Handlers) PendingExpenses(w http.ResponseWriter, r *http.Request) {
+	reg, err := strconv.ParseInt(r.URL.Query().Get("registerId"), 10, 64)
+	if err != nil || reg <= 0 {
+		Error(w, fmt.Errorf("%w: registerId", domain.ErrValidation))
+		return
+	}
+	items, err := h.backoffice.PendingExpenses(r.Context(), reg)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// GET /cash-sessions/attendance?registerId= — qué pide la asistencia para abrir o cerrar esa caja
+// (spec 046). Un registerId ausente o malformado se rechaza: no hay caja «por omisión».
+func (h *Handlers) CashSessionAttendance(w http.ResponseWriter, r *http.Request) {
+	registerID, err := strconv.ParseInt(r.URL.Query().Get("registerId"), 10, 64)
+	if err != nil || registerID <= 0 {
+		Error(w, fmt.Errorf("%w: falta la caja", domain.ErrValidation))
+		return
+	}
+	u, _ := userFrom(r.Context())
+	state, err := h.backoffice.CashAttendanceState(r.Context(), registerID, u.ID, h.permissionsOf(u.Role))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, state)
 }
 
 // GET /cash-sessions/current?registerId= — sesión abierta de una caja (null si está cerrada).
@@ -256,6 +358,16 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		TerminalCounts map[string]decimal.Decimal `json:"terminalCounts"`
 		// FloatLeft: el fondo que se queda para el siguiente turno (2026-10-10).
 		FloatLeft *decimal.Decimal `json:"floatLeft"`
+		// FixedFloatShown y WithdrawalUserID (spec 035): el fijo que la hoja mostró y quién se lleva
+		// el retiro. Ausentes en una tableta con el front anterior: el servidor usa el fijo vigente y
+		// a quien cierra.
+		FixedFloatShown  *decimal.Decimal `json:"fixedFloatShown"`
+		WithdrawalUserID *int64           `json:"withdrawalUserId"`
+		// AuthorizedClose (spec 046): cerrar sin la salida de quien abrió. Una tableta con el front
+		// anterior no lo manda y recibe el 409 de siempre.
+		AuthorizedClose *struct {
+			Reason string `json:"reason"`
+		} `json:"authorizedClose"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -283,8 +395,14 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		terminales[id] = v
 	}
 	u, _ := userFrom(r.Context())
+	var authorized *string
+	if body.AuthorizedClose != nil {
+		authorized = &body.AuthorizedClose.Reason
+	}
 	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
+		Perms: h.permissionsOf(u.Role), AuthorizedReason: authorized,
 		TerminalCounts: terminales, FloatLeft: body.FloatLeft,
+		FixedFloatShown: body.FixedFloatShown, WithdrawalUserID: body.WithdrawalUserID,
 		Declarado: declared, Piezas: piezasDelBody(body.Counts),
 		Total: body.CountedCash, Motivo: body.ManualReason, Notas: body.Notes, Propinas: body.TipsDecision,
 	})
@@ -379,7 +497,8 @@ func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
 			*p.dst = &d
 		}
 	}
-	rows, total, err := h.backoffice.SessionHistory(r.Context(), f)
+	u, _ := userFrom(r.Context())
+	rows, total, err := h.backoffice.SessionHistoryFor(r.Context(), f, slices.Contains(h.permissions(u.Role), domain.PermCashConfigure))
 	if err != nil {
 		Error(w, err)
 		return
@@ -394,7 +513,8 @@ func (h *Handlers) CashSessionDetail(w http.ResponseWriter, r *http.Request) {
 		Error(w, domain.ErrValidation)
 		return
 	}
-	view, err := h.backoffice.SessionDetail(r.Context(), id)
+	u, _ := userFrom(r.Context())
+	view, err := h.backoffice.SessionDetailFor(r.Context(), id, slices.Contains(h.permissions(u.Role), domain.PermCashConfigure))
 	if err != nil {
 		Error(w, err)
 		return
@@ -794,8 +914,26 @@ func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
 	if n, err := strconv.Atoi(r.URL.Query().Get("pageSize")); err == nil && n >= 1 && n <= 100 {
 		pageSize = n
 	}
-	// pendingReceipt: la bandeja de "mercancía por llegar" (un pedido pagado que aún no entra).
-	pending := r.URL.Query().Get("pendingReceipt") == "true"
+	// pending: la bandeja de mercancía por llegar. Ausente = todos; un valor que no es true/false se
+	// rechaza en vez de mostrar «todos» como si fuera el filtro. `pendingReceipt` es el nombre viejo.
+	var pending bool
+	seen := map[string]bool{}
+	for _, name := range []string{"pending", "pendingReceipt"} {
+		switch v := r.URL.Query().Get(name); v {
+		case "":
+		case "true", "false":
+			seen[v] = true
+			pending = v == "true"
+		default:
+			Error(w, fmt.Errorf("%w: %s inválido", domain.ErrValidation, name))
+			return
+		}
+	}
+	// Los dos nombres en desacuerdo: no se escoge uno en silencio.
+	if seen["true"] && seen["false"] {
+		Error(w, fmt.Errorf("%w: pending y pendingReceipt dicen cosas distintas", domain.ErrValidation))
+		return
+	}
 	// Orden por columna: solo valores conocidos (lo demás → fecha desc, el default del query).
 	sort := r.URL.Query().Get("sort")
 	switch sort {
@@ -833,6 +971,7 @@ func (h *Handlers) ExpenseDetail(w http.ResponseWriter, r *http.Request) {
 type expenseItemBody struct {
 	ItemType      string           `json:"itemType"` // "" = línea no inventariable
 	IngredientID  *int64           `json:"ingredientId"`
+	NewArticle    *app.NewArticle  `json:"newArticle"`
 	ProductID     *int64           `json:"productId"`
 	Description   string           `json:"description"`
 	Quantity      decimal.Decimal  `json:"quantity"`
@@ -840,30 +979,40 @@ type expenseItemBody struct {
 	QtyReceived   *decimal.Decimal `json:"qtyReceived"`
 	Amount        decimal.Decimal  `json:"amount"`
 	PackQtyInBase *decimal.Decimal `json:"packQtyInBase"`
-	RawCode       string           `json:"rawCode"`
-	RawName       string           `json:"rawName"`
-	// Personal: venía en el ticket pero no es del local. No se guarda como línea del gasto.
+	// PresentationID: el empaque del insumo; el servidor copia su contenido (spec 038).
+	PresentationID *int64 `json:"presentationId"`
+	IsGift         bool   `json:"isGift"`
+	RawCode        string `json:"rawCode"`
+	RawName        string `json:"rawName"`
+	// Personal: el nombre viejo de Excluded; la API vieja lo mandaba y se trata igual (spec 049).
 	Personal bool `json:"personal"`
+	Excluded bool `json:"excluded"`
 }
 
-// expensePaymentBody es un pago. registerId no-nil = entra al arqueo de esa caja; para métodos
-// que mueven el cajón el servicio lo EXIGE.
+// expensePaymentBody es un pago. registerId es la caja de la que salió; para métodos que mueven el
+// cajón el servicio lo EXIGE. outsideCount confirma que quede fuera de todo corte (spec 047).
 type expensePaymentBody struct {
-	MethodID   int16           `json:"methodId"`
-	Amount     decimal.Decimal `json:"amount"`
-	PaidOn     string          `json:"paidOn"`
-	RegisterID *int64          `json:"registerId"`
-	Reference  string          `json:"reference"`
+	MethodID     int16           `json:"methodId"`
+	Amount       decimal.Decimal `json:"amount"`
+	PaidOn       string          `json:"paidOn"`
+	RegisterID   *int64          `json:"registerId"`
+	Reference    string          `json:"reference"`
+	OutsideCount bool            `json:"outsideCount"`
+	// IncludeInCount: la casilla «Incluir en el arqueo» (spec 048); ausente = tableta de la 047.
+	IncludeInCount *bool `json:"includeInCount"`
+	// DrawerExtra: lo que salió del cajón además del importe (spec 050); ausente = 0.
+	DrawerExtra decimal.Decimal `json:"drawerExtra"`
 }
 
 func toItemInputs(in []expenseItemBody) []app.ExpenseItemInput {
 	out := make([]app.ExpenseItemInput, len(in))
 	for i, it := range in {
 		out[i] = app.ExpenseItemInput{
-			ItemType: it.ItemType, IngredientID: it.IngredientID, ProductID: it.ProductID,
+			ItemType: it.ItemType, IngredientID: it.IngredientID, NewArticle: it.NewArticle, ProductID: it.ProductID,
 			Description: it.Description, Quantity: it.Quantity, UnitID: it.UnitID,
 			QtyReceived: it.QtyReceived, Amount: it.Amount, PackQtyInBase: it.PackQtyInBase,
-			RawCode: it.RawCode, RawName: it.RawName, Personal: it.Personal,
+			RawCode: it.RawCode, RawName: it.RawName, Personal: it.Personal, Excluded: it.Excluded,
+			PresentationID: it.PresentationID, IsGift: it.IsGift,
 		}
 	}
 	return out
@@ -874,7 +1023,8 @@ func toPaymentInputs(in []expensePaymentBody) []app.ExpensePaymentInput {
 	for i, p := range in {
 		out[i] = app.ExpensePaymentInput{
 			MethodID: p.MethodID, Amount: p.Amount, PaidOn: p.PaidOn,
-			RegisterID: p.RegisterID, Reference: p.Reference,
+			RegisterID: p.RegisterID, Reference: p.Reference, OutsideCount: p.OutsideCount,
+			IncludeInCount: p.IncludeInCount, DrawerExtra: p.DrawerExtra,
 		}
 	}
 	return out
@@ -895,6 +1045,8 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 		DocKind     string               `json:"docKind"`
 		DocFolio    string               `json:"docFolio"`
 		DocRaw      json.RawMessage      `json:"docRaw"`
+		// DocumentTotal: el total impreso en el ticket leído (spec 049); informativo.
+		DocumentTotal *decimal.Decimal `json:"documentTotal"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -907,7 +1059,7 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 		Description: body.Description, Status: body.Status,
 		Items: toItemInputs(body.Items), Payments: toPaymentInputs(body.Payments),
 		DocKind: body.DocKind, DocFolio: body.DocFolio, DocRaw: body.DocRaw,
-		UserID: u.ID,
+		DocumentTotal: body.DocumentTotal, UserID: u.ID,
 	})
 	if err != nil {
 		Error(w, err)
@@ -932,6 +1084,38 @@ func (h *Handlers) PayExpense(w http.ResponseWriter, r *http.Request) {
 	u, _ := userFrom(r.Context())
 	in := toPaymentInputs([]expensePaymentBody{body})[0]
 	if err := h.backoffice.AddExpensePayment(r.Context(), id, in, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// SetPaymentInCount: PATCH /expenses/{id}/payments/{paymentId} {includeInCount} — la casilla del
+// arqueo de un pago ya registrado (spec 048). El permiso lo pone la ruta.
+func (h *Handlers) SetPaymentInCount(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	pid, err := strconv.ParseInt(chi.URLParam(r, "paymentId"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		IncludeInCount *bool `json:"includeInCount"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.IncludeInCount == nil {
+		Error(w, fmt.Errorf("%w: falta includeInCount", domain.ErrValidation))
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.SetPaymentInCount(r.Context(), id, pid, *body.IncludeInCount, u.ID); err != nil {
 		Error(w, err)
 		return
 	}
@@ -1204,30 +1388,6 @@ func (h *Handlers) ListIngredients(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]any{"items": items})
-}
-
-func (h *Handlers) CreateIngredient(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Name        string           `json:"name"`
-		BaseUnitID  int16            `json:"baseUnitId"`
-		CategoryID  *int64           `json:"categoryId"`
-		MinStock    *decimal.Decimal `json:"minStock"`
-		TrackStock  *bool            `json:"trackStock"`
-		IsPackaging *bool            `json:"isPackaging"`
-	}
-	if err := Decode(r, &body); err != nil {
-		Error(w, err)
-		return
-	}
-	v, err := h.backoffice.CreateIngredient(r.Context(), app.IngredientInput{
-		Name: body.Name, BaseUnitID: body.BaseUnitID, CategoryID: body.CategoryID,
-		MinStock: body.MinStock, TrackStock: body.TrackStock, IsPackaging: body.IsPackaging,
-	})
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	JSON(w, http.StatusCreated, v)
 }
 
 // SearchArticles alimenta el picker de artículo del gasto (ingredientes + productos con stock).

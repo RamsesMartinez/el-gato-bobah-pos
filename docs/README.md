@@ -9,6 +9,7 @@ mecánica del repo en [`AGENTS.md`](../AGENTS.md).
 | Documento | Para qué |
 |---|---|
 | [security-owasp.md](security-owasp.md) | Auditoría OWASP + ronda adversarial (2026-07-19) y los controles que dejó. Es el respaldo del **principio V** de la constitución y la vara del subagente `security-auditor`. Léelo antes de tocar auth, config, middleware o logging. |
+| [despliegue-sin-corte.md](despliegue-sin-corte.md) | Runbook de la subida azul/verde de la API (spec 041): qué lado atiende, cómo regresar a la versión anterior, qué hacer si un despliegue se quedó a la mitad y cómo medir el corte. |
 | [respaldos-produccion.md](respaldos-produccion.md) | Runbook de los respaldos de producción: dump verificado a las 00:45 (en la VM y en un bucket que la VM no puede borrar) y snapshot del disco a las 02:00. Cómo saber si corrió y cómo restaurar. |
 | [email-zoho.md](email-zoho.md) | Runbook de SMTP: Mailpit en local, Zoho en producción, y qué pasa cuando `SMTP_HOST` está vacío (hoy en prod lo está: la recuperación por correo está apagada). |
 | [impresion-tickets.md](impresion-tickets.md) | Runbook de impresión: ajustes del driver térmico, navegador en modo impresión directa y el catálogo de síntomas cuando el papel sale mal (en blanco, tenido, hoja larguísima). El contenido del ticket se configura dentro del sistema, en **Impresión**. |

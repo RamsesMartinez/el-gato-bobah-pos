@@ -22,6 +22,9 @@ select delivery_fee,
        lock_after_seconds,
        session_hours,
        folio_scheme,
+       costing_method,
+       stock_item_label,
+       waste_approval_threshold,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -99,3 +102,12 @@ set logo_bytes = null, logo_mime = null, logo_updated_at = null, updated_at = no
 insert into business_settings (business_name, delivery_fee)
 values ($1, 0)
 on conflict do nothing;
+
+-- name: UpdateInventorySettings :one
+-- Cómo se costea un insumo al comprarlo y cómo se le dice a lo que se guarda en el almacén (spec
+-- 038). Devuelve el método anterior para la bitácora.
+update business_settings b
+   set costing_method = sqlc.arg(costing_method), stock_item_label = sqlc.arg(stock_item_label),
+       updated_at = now(), updated_by = sqlc.arg(updated_by)
+  from (select costing_method from business_settings limit 1) old
+returning old.costing_method as previous_method;

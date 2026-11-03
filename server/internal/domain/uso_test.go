@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -238,5 +239,37 @@ func TestElBaldeSinCorteNoPuedeSerUnaSolaPersona(t *testing.T) {
 				t.Fatalf("CortarPorRol(%v, %q) = %v, quiere %v", c.activos, c.rol, got, c.quiere)
 			}
 		})
+	}
+}
+
+// Salud del inventario (spec 037) es una pestaña de Almacén, no una ruta: se cuenta como acciones de
+// «inventario». Si alguien la saca de la lista, la medición de la pestaña sale en cero sin un error.
+func TestInventoryHealthIsMeasuredInsideInventory(t *testing.T) {
+	for _, a := range []string{"ver-salud", "exportar-salud"} {
+		if !EventoDeUsoValido("inventario", a) {
+			t.Errorf("la acción %q de inventario se descarta: la pestaña Salud no se mediría", a)
+		}
+	}
+	// Quien puede ver la pestaña puede abrir la pantalla que la contiene; si no, sus aperturas se
+	// descartarían por rol.
+	for _, r := range []Role{RoleAdmin, RoleGerente, RoleCajero, RoleMesero} {
+		if slices.Contains(PermissionsFor(r), PermInventoryHealthView) && !PantallaPermitidaParaRol("inventario", r) {
+			t.Errorf("el rol %q ve la salud del inventario pero su medición se descarta por rol", r)
+		}
+	}
+}
+
+// Las pestañas y acciones de compras y conteo (spec 038): si alguna sale de la lista blanca, su
+// medición se descarta en el servidor sin un solo error.
+func TestPurchasesAndCountsAreMeasured(t *testing.T) {
+	for pantalla, acciones := range map[string][]string{
+		"gastos":     {"registrar-compra", "corregir-compra"},
+		"inventario": {"ver-por-recibir", "recibir", "ver-conteo", "cerrar-conteo"},
+	} {
+		for _, a := range acciones {
+			if !EventoDeUsoValido(pantalla, a) {
+				t.Errorf("la acción %q de %q se descarta", a, pantalla)
+			}
+		}
 	}
 }

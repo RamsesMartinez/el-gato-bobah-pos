@@ -65,9 +65,15 @@ type BusinessSettings struct {
 	LockAfterSeconds int  `json:"lockAfterSeconds"`
 	SessionHours     int  `json:"sessionHours"`
 	// FolioScheme: con qué se nombran los pedidos. `razas` (default) o `animales`.
-	FolioScheme   string     `json:"folioScheme"`
-	HasLogo       bool       `json:"hasLogo"`
-	LogoUpdatedAt *time.Time `json:"logoUpdatedAt"`
+	FolioScheme string `json:"folioScheme"`
+	// CostingMethod: cómo cambia el costo de un insumo al comprarlo (`last` por omisión o
+	// `weighted`). StockItemLabel: cómo se le dice a lo que se guarda en el almacén (spec 038).
+	CostingMethod  string `json:"costingMethod"`
+	StockItemLabel string `json:"stockItemLabel"`
+	// WasteApprovalThreshold: a partir de cuánto una merma espera aprobación; nulo, ninguna (spec 039).
+	WasteApprovalThreshold *decimal.Decimal `json:"wasteApprovalThreshold"`
+	HasLogo                bool             `json:"hasLogo"`
+	LogoUpdatedAt          *time.Time       `json:"logoUpdatedAt"`
 }
 
 func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
@@ -90,29 +96,34 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 				SessionHours:     ident.SessionHours,
 				// El MISMO default que la columna. Con dos, un negocio sin fila vería un esquema en
 				// la pantalla y su ticket saldría con el otro.
-				FolioScheme: string(domain.EsquemaPorDefecto),
+				FolioScheme:    string(domain.EsquemaPorDefecto),
+				CostingMethod:  string(domain.CostingLast),
+				StockItemLabel: domain.DefaultStockItemLabel,
 			}, nil
 		}
 		return BusinessSettings{}, err
 	}
 	bs := BusinessSettings{
-		DeliveryFee:        row.DeliveryFee,
-		BusinessName:       row.BusinessName,
-		Address:            derefStr(row.Address),
-		Phone:              derefStr(row.Phone),
-		FooterNote:         derefStr(row.FooterNote),
-		HeaderNote:         derefStr(row.HeaderNote),
-		AutoPrintOnClose:   row.AutoPrintOnClose,
-		Timezone:           row.Timezone,
-		PrintFreeModifiers: row.PrintFreeModifiers,
-		PrintKitchenTicket: row.PrintKitchenTicket,
-		CorteDeVista:       row.CorteDeVista,
-		BlindCashCount:     row.BlindCashCount,
-		PinOnlyUnlock:      row.PinOnlyUnlock,
-		LockAfterSeconds:   int(row.LockAfterSeconds),
-		SessionHours:       int(row.SessionHours),
-		FolioScheme:        string(row.FolioScheme),
-		HasLogo:            row.HasLogo,
+		DeliveryFee:            row.DeliveryFee,
+		BusinessName:           row.BusinessName,
+		Address:                derefStr(row.Address),
+		Phone:                  derefStr(row.Phone),
+		FooterNote:             derefStr(row.FooterNote),
+		HeaderNote:             derefStr(row.HeaderNote),
+		AutoPrintOnClose:       row.AutoPrintOnClose,
+		Timezone:               row.Timezone,
+		PrintFreeModifiers:     row.PrintFreeModifiers,
+		PrintKitchenTicket:     row.PrintKitchenTicket,
+		CorteDeVista:           row.CorteDeVista,
+		BlindCashCount:         row.BlindCashCount,
+		PinOnlyUnlock:          row.PinOnlyUnlock,
+		LockAfterSeconds:       int(row.LockAfterSeconds),
+		SessionHours:           int(row.SessionHours),
+		FolioScheme:            string(row.FolioScheme),
+		CostingMethod:          row.CostingMethod,
+		WasteApprovalThreshold: row.WasteApprovalThreshold,
+		StockItemLabel:         row.StockItemLabel,
+		HasLogo:                row.HasLogo,
 	}
 	if row.LogoUpdatedAt.Valid {
 		bs.LogoUpdatedAt = &row.LogoUpdatedAt.Time
@@ -280,6 +291,37 @@ func (s *SettingsService) SetLogo(ctx context.Context, data []byte, userID int64
 // es un error, el operador quiere el estado final y no una lección sobre el estado previo.
 func (s *SettingsService) ClearLogo(ctx context.Context, userID int64) (BusinessSettings, error) {
 	if err := s.store.QC(ctx).ClearTicketLogo(ctx, &userID); err != nil {
+		return BusinessSettings{}, err
+	}
+	return s.Get(ctx)
+}
+
+// SetInventory guarda el método de costeo y la palabra del almacén. Va aparte de SetBusinessInfo
+// porque lo decide quien configura el almacén, no quien puede cambiar el nombre fiscal.
+func (s *SettingsService) SetInventory(ctx context.Context, method, label string, userID int64) (BusinessSettings, error) {
+	m, err := domain.ParseCostingMethod(method)
+	if err != nil {
+		return BusinessSettings{}, err
+	}
+	label, err = domain.ValidStockItemLabel(label)
+	if err != nil {
+		return BusinessSettings{}, err
+	}
+	company, _ := store.CompanyFrom(ctx)
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		prev, err := q.UpdateInventorySettings(ctx, db.UpdateInventorySettingsParams{
+			CostingMethod: string(m), StockItemLabel: label, UpdatedBy: &userID,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: captura primero los datos del negocio", domain.ErrConflict)
+		}
+		if err != nil || prev == string(m) {
+			return err
+		}
+		return auditEntity(ctx, q, domain.AuditSettingsCostingMethod, "business_settings", company, nil, &userID,
+			map[string]any{"costingMethod": prev}, map[string]any{"costingMethod": string(m)})
+	})
+	if err != nil {
 		return BusinessSettings{}, err
 	}
 	return s.Get(ctx)

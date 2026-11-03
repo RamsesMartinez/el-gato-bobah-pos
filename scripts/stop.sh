@@ -7,9 +7,14 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Infraestructura propia del worktree, si la tiene (make worktree-env).
+source "$(dirname "${BASH_SOURCE[0]}")/worktree-env-load.sh"
 
 echo "▶ Bajando postgres + redis (docker)…"
-docker compose -f "$ROOT/deploy/docker-compose.dev.yml" down 2>/dev/null || true
+# Desde un worktree sin infraestructura propia esto bajaría la de la carpeta principal.
+bash "$ROOT/scripts/guard-shared-compose.sh" || exit 1
+# --profile test: sin él, `down` deja vivo el Postgres de pruebas (perfil test) y la red ocupada.
+docker compose -f "$ROOT/deploy/docker-compose.dev.yml" --profile test down 2>/dev/null || true
 
 if ! command -v lsof >/dev/null 2>&1; then
   echo "⚠ 'lsof' no disponible: no puedo detectar API/web por puerto — ciérralos a mano (Ctrl-C en 'make start')."

@@ -11,6 +11,8 @@ const api = vi.hoisted(() => ({ sendDraft: vi.fn(), createDraft: vi.fn(), discar
 vi.mock('../../api/pos', () => ({ posApi: api }));
 const toasts = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock('../../components/ui/toaster', () => ({ toaster: toasts }));
+const olvidar = vi.hoisted(() => vi.fn());
+vi.mock('./useCuenta', () => ({ olvidarNuevoDePedido: olvidar }));
 
 const PEDIDO = { id: 12, number: 3, folioName: 'Levkoy', total: '74.00', outstanding: '74.00' } as OrderView;
 const CUENTA: DraftView = {
@@ -56,6 +58,14 @@ describe('mandar a cocina (US3, caso 5)', () => {
     await act(async () => { await result.current.enviar('d-1'); });
     expect(usePosStore.getState().selected).toEqual({ kind: 'order', id: 12 });
     expect(qc.getQueryData(['orders', 12])).toEqual(PEDIDO);
+  });
+
+  // Incidente del 2026-11-02: tras mandar lo «Nuevo», la tableta seguía agregando a esa cuenta.
+  test('mandar lo «Nuevo» de un pedido lo suelta para que lo siguiente abra otro', async () => {
+    api.sendDraft.mockResolvedValue({ order: PEDIDO, printLineIds: [1], created: false });
+    const { result } = renderHook(() => useEnviarCuenta({ onComanda: vi.fn() }), { wrapper });
+    await act(async () => { await result.current.enviar('d-1'); });
+    expect(olvidar).toHaveBeenCalledWith(12);
   });
 
   test('devuelve el pedido para que cobrar siga con él', async () => {
@@ -105,5 +115,32 @@ describe('a lo «Nuevo» de un pedido que ya se cerró (research R-9)', () => {
     const aviso = toasts.create.mock.calls[0][0];
     expect(aviso.title).toMatch(/plataforma/);
     expect(aviso.action).toBeUndefined();
+  });
+});
+
+// El 2026-10-10 se cambió el grupo de perlas de un producto con la cuenta ya capturada: mandar a
+// cocina y cobrar salían en rojo con «No se pudo», sin decir qué renglón volver a elegir (spec 034).
+describe('el menú cambió debajo de la cuenta al mandar o cobrar', () => {
+  const MENU_CAMBIADO = () => new ApiError(422, 'MENU_CHANGED', 'Perlas no es un extra de Frappé', 'r',
+    { lineId: 'l-1', productId: 41 });
+
+  test('aviso neutro, señala el renglón y no deja un motivo rojo en el pie', async () => {
+    qc.setQueryData(['pos', 'draft', 'd-1'], CUENTA);
+    api.sendDraft.mockRejectedValue(MENU_CAMBIADO());
+    const onMenuChanged = vi.fn();
+    const { result } = renderHook(() => useEnviarCuenta({ onComanda: vi.fn(), onMenuChanged }), { wrapper });
+    let r: OrderView | null = PEDIDO;
+    await act(async () => { r = await result.current.enviar('d-1'); });
+
+    expect(r).toBeNull();
+    expect(onMenuChanged).toHaveBeenCalledWith({ lineId: 'l-1', productId: 41 });
+    expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'El menú se actualizó; elige de nuevo', type: 'info', id: 'menu-cambiado',
+    }));
+    expect(toasts.create).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+    expect(result.current.motivo).toBeNull();
+    // La cuenta se queda: se relee para que el renglón muestre lo que hoy vale, no se borra.
+    expect(usePosStore.getState().selected).toEqual({ kind: 'draft', id: 'd-1' });
+    expect(qc.getQueryState(['pos', 'draft', 'd-1'])?.isInvalidated).toBe(true);
   });
 });

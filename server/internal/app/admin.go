@@ -378,15 +378,37 @@ func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput)
 		}
 	}
 
-	err = s.store.QC(ctx).AdminUpdateProduct(ctx, db.AdminUpdateProductParams{
-		ID:             in.ID,
-		Name:           in.Name,
-		Price:          domain.Round2(in.Price),
-		IsFavorite:     in.Favorite,
-		IsActive:       in.Active,
-		AvailableFrom:  from,
-		AvailableUntil: until,
-		NeedsPrep:      in.NeedsPrep,
+	// El precio de mostrador cambia en la misma transacción que su evento: «¿quién cambió el precio
+	// del frappé?» es la pregunta que la bitácora existe para contestar.
+	newPrice := domain.Round2(in.Price)
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El precio anterior se lee con candado DENTRO de la transacción: leído antes, dos ediciones
+		// a la vez dejarían un «antes» falso, y un error de lectura ignorado cambiaría el precio sin
+		// evento.
+		oldPrice, err := q.GetProductPriceForAudit(ctx, in.ID)
+		missing := errors.Is(err, pgx.ErrNoRows)
+		if err != nil && !missing {
+			return err
+		}
+		if err := q.AdminUpdateProduct(ctx, db.AdminUpdateProductParams{
+			ID:             in.ID,
+			Name:           in.Name,
+			Price:          newPrice,
+			IsFavorite:     in.Favorite,
+			IsActive:       in.Active,
+			AvailableFrom:  from,
+			AvailableUntil: until,
+			NeedsPrep:      in.NeedsPrep,
+		}); err != nil {
+			return err
+		}
+		// Sin producto no hubo cambio (el update no tocó filas); con el mismo precio, tampoco.
+		if missing || oldPrice.Equal(newPrice) {
+			return nil
+		}
+		return auditEntity(ctx, q, "price.set", "product", in.ID, nil, nil,
+			map[string]any{"price": oldPrice, "channel": "mostrador", "name": in.Name},
+			map[string]any{"price": newPrice, "channel": "mostrador", "name": in.Name})
 	})
 	if isUniqueViolation(err) { // renombrar a un nombre ya usado → 409 accionable
 		return domain.ErrDuplicateName

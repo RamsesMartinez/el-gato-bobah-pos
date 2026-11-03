@@ -274,12 +274,12 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
   );
   const elegido = elegibles.find((m) => m.id === metodo);
   const efectivo = esEfectivo(elegido);
-  // Con tarjeta se registra la terminal (spec 032): llega la del usuario o la única de la sucursal.
+  // Con tarjeta se registra la terminal (spec 032). Con varias se elige en cada cobro; con una sola
+  // va sola (spec 036: la recordada del usuario dejó cobros en la terminal equivocada).
   const esTarjeta = elegido?.kind === 'tarjeta';
   const { data: terminales } = useQuery({ queryKey: ['card-terminals'], queryFn: posApi.cardTerminals, enabled: order !== null });
-  const { data: terminalDelUsuario } = useQuery({ queryKey: ['card-terminal-default'], queryFn: posApi.defaultTerminal, enabled: order !== null });
   const [terminalElegida, setTerminalElegida] = useState<number | null>(null);
-  const terminal = esTarjeta ? terminalEfectiva(terminales?.items ?? [], terminalDelUsuario ?? null, terminalElegida) : null;
+  const terminal = esTarjeta ? terminalEfectiva(terminales?.items ?? [], terminalElegida) : null;
   const faltaTerminal = esTarjeta && terminal === null;
 
   const v = validarCobro({
@@ -292,8 +292,10 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
     setSelection({});
     setAllRemaining(false);
     setTypedAmount('');
-    // El método NO se hereda: cada persona paga con lo suyo.
+    // El método NO se hereda: cada persona paga con lo suyo. La terminal tampoco: cada quien pasa su
+    // tarjeta donde la pasa.
     setMetodo(null);
+    setTerminalElegida(null);
     setRecibido('');
     setPropina('');
   };
@@ -606,10 +608,10 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
                 <Input flex="1" minW={0} minH="44px" inputMode="decimal" autoFocus aria-label="Descuento"
                   value={descuentoTecleado} onChange={(e) => setDescuentoTecleado(e.target.value)} />
                 {descuentoTeclado.malEscrito && (
-                  <Text fontSize="xs" color="red.fg" flexShrink={0}>Solo números</Text>
+                  <Text fontSize="xs" color="fg.error" flexShrink={0}>Solo números</Text>
                 )}
                 {descuentoTeclado.excede && (
-                  <Text fontSize="xs" color="red.fg" flexShrink={0}>
+                  <Text fontSize="xs" color="fg.error" flexShrink={0}>
                     Máx {modoDescuento === 'pct' ? '100 %' : money(String(baseDelDescuento), moneda)}
                   </Text>
                 )}
@@ -695,7 +697,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
 
             {/* Con tarjeta, la terminal en lugar de «Paga con»: no se apilan (revisión de tableta U1). */}
             {esTarjeta && (
-              <TerminalDelCobro terminales={terminales?.items ?? []} porOmision={terminalDelUsuario ?? null}
+              <TerminalDelCobro terminales={terminales?.items ?? []}
                 elegida={terminalElegida}
                 onChange={setTerminalElegida} />
             )}
@@ -748,7 +750,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
           <DrawerFooter borderTopWidth="1px" flexDirection="column" gap={2} alignItems="stretch" data-testid="pie-de-cobro">
             {rebote && (
               <Box borderWidth="1px" borderColor="red.emphasized" bg="red.subtle" borderRadius="md" px={3} py={2}>
-                <Text fontWeight="700" color="red.fg">{rebote.titulo}</Text>
+                <Text fontWeight="700" color="fg.error">{rebote.titulo}</Text>
                 {rebote.detalle && <Text fontSize="sm" color="fg.muted">{rebote.detalle}</Text>}
               </Box>
             )}

@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react';
+import { round2 } from '../../domain/numeros';
+import { DatePickerButton } from '../../components/DatePickerButton';
 import {
   Box, Heading, Text, Button, HStack, VStack, Table, Input, Textarea,
   Center, Spinner, Tabs, Badge,
@@ -15,7 +17,13 @@ import {
 } from '../../api/backoffice';
 import { SortHead } from '../../components/SortHead';
 import { ExpenseDialog } from './ExpenseDialog';
+import { DrawerOutField, IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
+import { activeRegisters, registerLabel, outsideAskOf, countsInDrawer, drawerExtraOf, withCountChoice, type CountChoice, type OutsideAsk } from './cajaDelGasto';
 import { ExpenseDetailDialog } from './ExpenseDetailDialog';
+import { DeliveryForExpense } from './DeliverySheet';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
 import { posApi } from '../../api/pos';
 import { money } from '../../utils/format';
 import { Page } from '../../components/Page';
@@ -50,14 +58,18 @@ export function ExpensesPage() {
 // ---- Tab: gastos (registrar, listar, pagar, cancelar) ----
 function GastosTab() {
   const qc = useQueryClient();
-  const [filter, setFilter] = useState<ExpenseStatus | ''>('');
+  // 'por-llegar' no es un estado de pago: son las compras con algo que no ha llegado (spec 038).
+  const [filter, setFilter] = useState<ExpenseStatus | '' | 'por-llegar'>('');
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<ExpenseSort>('date');
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const pageSize = 20;
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', filter, page, sort, dir],
-    queryFn: () => backofficeApi.expenses({ status: filter || undefined, page, pageSize, sort, dir }),
+    queryFn: () => backofficeApi.expenses({
+      status: filter && filter !== 'por-llegar' ? filter : undefined, pending: filter === 'por-llegar' || undefined,
+      page, pageSize, sort, dir,
+    }),
     placeholderData: (prev) => prev, // sin parpadeo al cambiar de página
   });
   const { data: methods } = useQuery({ queryKey: ['payment-methods'], queryFn: posApi.paymentMethods });
@@ -65,6 +77,8 @@ function GastosTab() {
   const [newOpen, setNewOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<Expense | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [receiveId, setReceiveId] = useState<number | null>(null);
+  const canReceive = can('inventory.receive', useSessionStore((st) => st.user));
   // El gasto que se está cancelando. El motivo se pide en una hoja de la app, no con el `prompt()`
   // del navegador (spec 030, caso 10).
   const [cancelando, setCancelando] = useState<Expense | null>(null);
@@ -80,7 +94,7 @@ function GastosTab() {
     onError: (e) => toaster.create({ title: 'No se pudo cancelar', description: String(e), type: 'error' }),
   });
 
-  const setFilterReset = (f: ExpenseStatus | '') => { setFilter(f); setPage(0); };
+  const setFilterReset = (f: ExpenseStatus | '' | 'por-llegar') => { setFilter(f); setPage(0); };
   // Orden por columna: 1er clic ordena (texto asc / fecha e importe desc); reclics alternan.
   const onSort = (col: ExpenseSort, numeric = false) => {
     if (sort === col) setDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -96,8 +110,8 @@ function GastosTab() {
       {/* Cabecera: filtros por estado + acción principal (la tabla es la protagonista) */}
       <HStack justify="space-between" flexWrap="wrap" gap={3}>
         <HStack gap={2} flexWrap="wrap">
-          {([['', 'Todos'], ['pendiente', 'Pendientes'], ['pagada', 'Pagadas'], ['cancelada', 'Canceladas']] as const).map(([v, label]) => (
-            <Button key={v} size="sm" variant={filter === v ? 'solid' : 'outline'} colorPalette={filter === v ? undefined : 'gray'}
+          {([['', 'Todos'], ['pendiente', 'Pendientes'], ['pagada', 'Pagadas'], ['cancelada', 'Canceladas'], ['por-llegar', 'Con pendientes de llegar']] as const).map(([v, label]) => (
+            <Button key={v} size="sm" minH="44px" variant={filter === v ? 'solid' : 'outline'} colorPalette={filter === v ? undefined : 'gray'}
               onClick={() => setFilterReset(v)}>{label}</Button>
           ))}
         </HStack>
@@ -122,7 +136,7 @@ function GastosTab() {
             </Table.Row></Table.Header>
             <Table.Body>
               {items.map((e) => (
-                <Table.Row key={e.id}>
+                <Table.Row key={e.id} cursor="pointer" onClick={() => setDetailId(e.id)}>
                   <Table.Cell whiteSpace="nowrap">{e.expenseDate}</Table.Cell>
                   <Table.Cell><Badge colorPalette={STATUS_COLOR[e.status]}>{STATUS_LABEL[e.status]}</Badge></Table.Cell>
                   <Table.Cell>{e.category}</Table.Cell>
@@ -135,18 +149,25 @@ function GastosTab() {
                     ) : e.receivedAt ? (
                       <Badge colorPalette="green">recibida {e.receivedAt}</Badge>
                     ) : (
-                      <Badge colorPalette="orange">{e.itemCount} por recibir</Badge>
+                      // Atajo de la spec 053: la etiqueta misma abre la hoja de entrega. Un botón aparte
+                      // ensanchaba la fila y sacaba «Ver» y «Pagar» de la pantalla de 1024 px.
+                      canReceive && e.status !== 'cancelada' ? (
+                        <Button size="sm" minH="44px" px={2} variant="subtle" colorPalette="orange"
+                          onClick={(ev) => { ev.stopPropagation(); setReceiveId(e.id); }}>
+                          {e.itemCount} por recibir ›
+                        </Button>
+                      ) : <Badge colorPalette="orange">{e.itemCount} por recibir</Badge>
                     )}
                   </Table.Cell>
                   <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap">{money(e.amount, e.currency)}</Table.Cell>
                   <Table.Cell>
                     <HStack gap={1} justify="end">
-                      <Button size="xs" variant="ghost" onClick={() => setDetailId(e.id)}>Ver</Button>
+                      <Button size="xs" variant="ghost" onClick={(ev) => { ev.stopPropagation(); setDetailId(e.id); }}>Ver</Button>
                       {e.status === 'pendiente' && (
                         <>
                           {/* 44 px y separados: «Cancelar» es destructivo y vive junto a «Pagar». */}
-                          <Box><Button size="xs" minH="44px" px={3} colorPalette="green" onClick={() => setPayTarget(e)}>Pagar</Button></Box>
-                          <Box pl={4}><Button size="xs" minH="44px" px={3} variant="outline" colorPalette="red" onClick={() => setCancelando(e)}>Cancelar</Button></Box>
+                          <Box><Button size="xs" minH="44px" px={3} colorPalette="green" onClick={(ev) => { ev.stopPropagation(); setPayTarget(e); }}>Pagar</Button></Box>
+                          <Box pl={4}><Button size="xs" minH="44px" px={3} variant="outline" colorPalette="red" onClick={(ev) => { ev.stopPropagation(); setCancelando(e); }}>Cancelar</Button></Box>
                         </>
                       )}
                     </HStack>
@@ -188,6 +209,10 @@ function GastosTab() {
         }} />
       <PayDialog expense={payTarget} methods={methods?.items ?? []}
         onClose={() => setPayTarget(null)} onPaid={invalidate} />
+      {receiveId !== null && (
+        <DeliveryForExpense expenseId={receiveId} onClose={() => setReceiveId(null)}
+          onDone={() => { setReceiveId(null); invalidate(); void qc.invalidateQueries({ queryKey: ['stock'] }); }} />
+      )}
     </VStack>
   );
 }
@@ -195,33 +220,60 @@ function GastosTab() {
 // PayDialog agrega UN pago al gasto. Si con él los pagos cubren el importe, el gasto pasa a
 // pagado; si no, queda pendiente con un abono registrado (así el pago partido no necesita un
 // estado "parcial" aparte).
-function PayDialog({ expense, methods, onClose, onPaid }: {
+export function PayDialog({ expense, methods, onClose, onPaid, defaultAmount }: {
   expense: Expense | null;
   methods: Array<{ id: number; name: string; affectsCashDrawer?: boolean }>;
   onClose: () => void;
   onPaid: () => void;
+  // Lo que falta pagar después de editar el gasto (spec 053): el pago nuevo sale por el saldo.
+  defaultAmount?: string;
 }) {
   const [methodId, setMethodId] = useState('');
   const [registerId, setRegisterId] = useState('');
-  const [amount, setAmount] = useState('');
-  const [paidOn, setPaidOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [amount, setAmount] = useState(defaultAmount ?? '');
+  const hora = useHoraDelNegocio();
+  const [paidOn, setPaidOn] = useState(() => hora.diaDelNegocio(new Date()));
   const { data: registers } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });
-  const openRegisters = (registers?.items ?? []).filter((r) => r.openSessionId !== null);
+  const cashRegisters = activeRegisters(registers?.items);
+  const [outsideAsk, setOutsideAsk] = useState<OutsideAsk | null>(null);
+  const [includeInCount, setIncludeInCount] = useState(true);
+  const [drawerOut, setDrawerOut] = useState<string | null>(null);
+  // Lo excluido del gasto que otros pagos no han usado: el tope de «Salió de la caja» (spec 050).
+  const { data: detail } = useQuery({
+    queryKey: ['expense', expense?.id], enabled: expense !== null,
+    queryFn: () => backofficeApi.expenseDetail(expense!.id),
+  });
+  const excludedAvail = (detail?.items ?? []).filter((i) => i.excluded).reduce((s, i) => s + (Number(i.amount) || 0), 0)
+    - (detail?.payments ?? []).reduce((s, p) => s + (Number(p.drawerExtra) || 0), 0);
 
   // Un método que mueve el cajón EXIGE caja: el backend lo rechaza si no, porque efectivo que
   // sale sin movimiento de caja descuadra el corte.
   const cash = !!methods.find((m) => String(m.id) === methodId)?.affectsCashDrawer;
+  const withCheckbox = countsInDrawer(cash, cashRegisters, Number(registerId));
+  // Por omisión, lo que falta pagar (spec 053): con un abono previo, «el total» pagaba de nuevo lo
+  // ya pagado. Sin el detalle todavía, el total (R9).
+  const saldo = detail ? round2(Number(detail.amount) - Number(detail.paid)) : NaN;
+  const due = Number.isFinite(saldo) ? String(Math.max(0, saldo)) : expense?.amount;
+  const usedAmount = amount || due || '';
+  const withDrawerOut = withCheckbox && includeInCount && excludedAvail > 0.004;
+  const drawer = withDrawerOut ? drawerExtraOf(usedAmount, drawerOut, excludedAvail) : { bad: false };
 
-  const reset = () => { setMethodId(''); setRegisterId(''); setAmount(''); };
+  const reset = () => { setMethodId(''); setRegisterId(''); setAmount(''); setIncludeInCount(true); setDrawerOut(null); };
   const pay = useMutation({
-    mutationFn: () => backofficeApi.payExpense(expense!.id, {
+    mutationFn: (choice?: CountChoice) => backofficeApi.payExpense(expense!.id, withCountChoice({
       methodId: Number(methodId),
-      amount: amount || expense!.amount,
+      amount: usedAmount,
       paidOn,
       registerId: registerId ? Number(registerId) : undefined,
-    }),
+      includeInCount: withCheckbox ? includeInCount : undefined,
+      drawerExtra: drawer.extra,
+    }, choice)),
     onSuccess: () => { onPaid(); onClose(); reset(); },
-    onError: (e) => toaster.create({ title: 'No se pudo pagar', description: String(e), type: 'error' }),
+    onError: (e) => {
+      const ask = outsideAskOf(e, cashRegisters, [Number(registerId)]);
+      if (ask) { setOutsideAsk(ask); return; }
+      toaster.create({ title: 'No se pudo pagar', description: String(e), type: 'error' });
+    },
   });
   return (
     <DialogRoot open={expense !== null} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }} placement="center" size="sm">
@@ -236,30 +288,34 @@ function PayDialog({ expense, methods, onClose, onPaid }: {
               <Picker value={methodId} onChange={setMethodId} placeholder="Método de pago" title="Método de pago"
                 options={methods.map((m) => ({ value: String(m.id), label: m.name }))} />
             </Field>
-            <Field label="Importe (vacío = el total del gasto)">
-              <Input type="number" inputMode="decimal" placeholder={expense?.amount ?? '0'} value={amount}
+            <Field label="Importe (vacío = lo que falta pagar)">
+              <Input type="number" inputMode="decimal" placeholder={due ?? '0'} value={amount}
                 onChange={(e) => setAmount(e.target.value)} />
             </Field>
+            {withDrawerOut && <DrawerOutField amount={usedAmount} value={drawerOut} bad={drawer.bad} onChange={setDrawerOut} />}
             <Field label="Fecha del pago">
-              <Input type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
+              <DatePickerButton label="Fecha del pago" value={paidOn} onChange={setPaidOn} />
             </Field>
             <Field label={cash ? 'Caja (obligatoria en efectivo)' : 'Caja (para el arqueo)'}>
-              {openRegisters.length === 0 ? (
-                <Text fontSize="sm" color={cash ? 'red.500' : 'fg.muted'}>
-                  {cash ? 'No hay caja abierta. Abre una en Caja para poder pagar en efectivo.' : 'Sin cajas abiertas.'}
-                </Text>
+              {cashRegisters.length === 0 ? (
+                <Text fontSize="sm" color={cash ? 'fg.error' : 'fg.muted'}>Sin cajas.</Text>
               ) : (
                 <Picker value={registerId} onChange={setRegisterId} placeholder={cash ? 'Elegir caja' : '— Sin arqueo —'}
                   title="Caja" clearable={!cash} clearLabel="— No entra al arqueo —"
-                  options={openRegisters.map((r) => ({ value: String(r.id), label: r.name }))} />
+                  options={cashRegisters.map((r) => ({ value: String(r.id), label: registerLabel(r) }))} />
               )}
             </Field>
           </VStack>
-          <Button w="100%" colorPalette="green" disabled={!methodId || (cash && !registerId)}
-            loading={pay.isPending} onClick={() => pay.mutate()}>
+          {withCheckbox && (
+            <HStack mb={2}><IncludeInCountCheckbox checked={includeInCount} onChange={setIncludeInCount} /></HStack>
+          )}
+          <Button w="100%" colorPalette="green" disabled={!methodId || (cash && !registerId) || drawer.bad}
+            loading={pay.isPending} onClick={() => pay.mutate(undefined)}>
             Confirmar pago
           </Button>
         </DialogBody>
+        <OutsideCountSheet ask={outsideAsk} loading={pay.isPending} onCancel={() => setOutsideAsk(null)}
+          onChoose={(c) => { setOutsideAsk(null); pay.mutate(c); }} />
       </DialogContent>
     </DialogRoot>
   );

@@ -69,3 +69,7 @@ references/
 # Credenciales de la extensión REST Client (`http/*.http`): trae el Client Secret de Uber.
 # La plantilla sin secretos sí se commitea: `.vscode/settings.json.example`.
 .vscode/settings.json
+
+# Lado activo de la API (spec 041): lo escribe scripts/deploy-azul-verde.sh en cada VM.
+deploy/upstream/activo*.caddy
+deploy/upstream/*.tmp

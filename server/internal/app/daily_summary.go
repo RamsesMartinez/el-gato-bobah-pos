@@ -164,7 +164,12 @@ func summaryHTML(day time.Time, m db.DaySummaryMoneyRow, salidas []db.DaySummary
 // SendSummariesPeriodically corre SendPending para cada empresa cada `every`. La lista de empresas
 // la da quien llama (la conexión de plataforma, que es la única que las ve todas).
 func SendSummariesPeriodically(ctx context.Context, every time.Duration, svc *DailySummaryService, companies func(context.Context) ([]int64, error)) {
+	// La pasada no hereda la cancelación del ciclo: el apagado detiene el ciclo, pero una pasada a
+	// medio envío termina. Cortada después de mandar el correo y antes de marcarlo, la fila quedaba
+	// «pending» y a los 10 minutos se volvía a mandar (spec 041).
+	passCtx := context.WithoutCancel(ctx)
 	pass := func() {
+		ctx := passCtx
 		ids, err := companies(ctx)
 		if err != nil {
 			slog.WarnContext(ctx, "daily_summary_companies_failed", "error", err.Error())

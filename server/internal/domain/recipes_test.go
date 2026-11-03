@@ -52,3 +52,26 @@ func TestValidConfirmIDs(t *testing.T) {
 		})
 	}
 }
+
+// Lo que un extra lleva hoy, en una línea, para ofrecer copiarle otra receta sin esconderlo.
+func TestRecipeToday(t *testing.T) {
+	cases := map[string]struct {
+		status, linked string
+		items          []string
+		want           string
+	}{
+		"sin capturar":      {status: "", want: "Pendiente"},
+		"no gasta insumos":  {status: "confirmed", want: "No gasta insumos"},
+		"es otro producto":  {status: "confirmed", linked: "Coca-Cola", want: "Es: Coca-Cola"},
+		"con insumos":       {status: "estimated", items: []string{"5 g Polvo"}, want: "5 g Polvo"},
+		"corta en tres":     {status: "confirmed", items: []string{"a", "b", "c", "d", "e"}, want: "a · b · c · +2 más"},
+		"estimada sin nada": {status: "estimated", want: "Pendiente"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := RecipeToday(c.status, c.linked, c.items); got != c.want {
+				t.Fatalf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}

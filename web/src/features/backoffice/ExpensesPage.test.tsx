@@ -72,3 +72,13 @@ test('«Pagar» y «Cancelar» miden 44 px', async () => {
   expect(screen.getByRole('button', { name: 'Pagar' }).parentElement)
     .not.toBe(screen.getByRole('button', { name: 'Cancelar' }).parentElement);
 });
+
+// Revisión de tableta del 038: los filtros de estado eran `size="sm"` (~32 px), y el nuevo de
+// compras por llegar se agregó igual.
+test('los filtros de la lista miden 44 px', async () => {
+  montar();
+  for (const n of ['Todos', 'Pendientes', 'Con pendientes de llegar']) {
+    const b = await screen.findByRole('button', { name: n });
+    expect(parseInt(getComputedStyle(b).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
+  }
+});

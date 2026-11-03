@@ -6,7 +6,7 @@ import { ApiError } from '../../api/client';
 import type { DraftView } from '../../types/pos';
 import { usePosStore } from '../../stores/pos';
 import { reportarResultado } from './useSinConexion';
-import { reiniciarCaptura, useCuenta } from './useCuenta';
+import { olvidarNuevoDePedido, reiniciarCaptura, useCuenta } from './useCuenta';
 import { accionPropia } from '../../stores/accionesPropias';
 
 const api = vi.hoisted(() => ({
@@ -217,6 +217,58 @@ describe('lo «Nuevo» de un pedido ya enviado', () => {
   });
 });
 
+// Incidente del 2026-11-02: se mandó a cocina lo «Nuevo» de un pedido y, al agregar más, la tableta
+// seguía mandando los productos a esa cuenta ya enviada. El servidor respondía «Ya se mandó a cocina;
+// para quitarla hay que cancelar el pedido» y no había forma de seguir agregando.
+describe('agregar otra vez a un pedido después de mandar lo «Nuevo»', () => {
+  const PEDIDO = { id: 12, number: 1, folioName: 'Khao', status: 'abierta', lines: [], payments: [],
+    total: '0', outstanding: '0', paid: false, deliveryPlatformId: null };
+
+  async function primerAgregadoYa(result: { current: ReturnType<typeof useCuenta> }) {
+    act(() => result.current.agregar(TARO));
+    await waitFor(() => expect(api.createDraft).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.vista.borradorId).toBe(api.createDraft.mock.calls[0][0].id));
+    return api.createDraft.mock.calls[0][0].id as string;
+  }
+
+  test('lo agregado después del envío abre otro «Nuevo» del pedido en vez de chocar con el enviado', async () => {
+    usePosStore.getState().seleccionar({ kind: 'order', id: 12 });
+    api.order.mockResolvedValue(PEDIDO);
+    api.createDraft.mockImplementation(async (b) => draft({ id: b.id, orderId: b.orderId, folioName: null }));
+    const { result } = renderHook(() => useCuenta(), { wrapper });
+    await waitFor(() => expect(api.order).toHaveBeenCalled());
+    const enviado = await primerAgregadoYa(result);
+
+    // Lo manda a cocina otra tableta (o esta, sin que nada limpie la cuenta vieja).
+    api.addDraftLine.mockRejectedValue(new ApiError(409, 'DRAFT_SENT', 'Ya se mandó a cocina; para quitarla hay que cancelar el pedido', 'r'));
+    api.getDraft.mockImplementation(async (id) => (id === enviado
+      ? draft({ id, orderId: 12, folioName: null, status: 'enviada' })
+      : draft({ id, orderId: 12, folioName: null })));
+
+    act(() => result.current.agregar(TARO));
+    await waitFor(() => expect(api.createDraft).toHaveBeenCalledTimes(2));
+    const segundo = api.createDraft.mock.calls[1][0];
+    expect(segundo.orderId).toBe(12);
+    expect(segundo.id).not.toBe(enviado);
+    expect(segundo.lines).toEqual([expect.objectContaining({ productId: 41 })]);
+    expect(toasts.create).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+  });
+
+  test('mandar a cocina desde esta tableta suelta lo «Nuevo» y el siguiente toque no toca la cuenta enviada', async () => {
+    usePosStore.getState().seleccionar({ kind: 'order', id: 12 });
+    api.order.mockResolvedValue(PEDIDO);
+    api.createDraft.mockImplementation(async (b) => draft({ id: b.id, orderId: b.orderId, folioName: null }));
+    const { result } = renderHook(() => useCuenta(), { wrapper });
+    await waitFor(() => expect(api.order).toHaveBeenCalled());
+    await primerAgregadoYa(result);
+
+    act(() => olvidarNuevoDePedido(12));
+    act(() => result.current.agregar(TARO));
+    await waitFor(() => expect(api.createDraft).toHaveBeenCalledTimes(2));
+    expect(api.addDraftLine).not.toHaveBeenCalled();
+  });
+});
+
 describe('lo que pasa en otra tableta (US7)', () => {
   // US7 AS1: la otra tableta la mandó a cocina; ésta lo dice y la sigue mostrando, ya como pedido.
   test('la cuenta enviada en otra tableta avisa y pasa a ser el pedido', async () => {
@@ -327,4 +379,52 @@ test('esperar() no resuelve hasta que el folio quedó guardado', async () => {
   expect(listo, 'el envío saldría antes de guardar el folio').toBe(false);
   await act(async () => { soltar(); await espera; });
   expect(listo).toBe(true);
+});
+
+// El 2026-10-10 la tableta ofrecía un extra que el servidor ya no aceptaba y cada intento salía
+// como un error rojo, dieciocho veces. Con el menú viejo la tableta no se equivoca de operador: se
+// equivoca de menú, y lo que corresponde es recargarlo y pedir elegir de nuevo.
+describe('el menú cambió debajo de la tableta', () => {
+  const MENU_CAMBIADO = () => new ApiError(422, 'MENU_CHANGED', 'Chocolate no es un extra de Taro', 'r');
+
+  async function conCuenta(onMenuChanged = vi.fn()) {
+    usePosStore.getState().seleccionar({ kind: 'draft', id: 'd-1' });
+    api.getDraft.mockResolvedValue(draft({ lines: [renglon()] }));
+    const hook = renderHook(() => useCuenta({ onMenuChanged }), { wrapper });
+    await waitFor(() => expect(hook.result.current.vista.nuevos).toHaveLength(1));
+    return { ...hook, onMenuChanged };
+  }
+
+  test('al agregar: aviso neutro, pide elegir ese producto otra vez y la cuenta conserva lo demás', async () => {
+    const { result, onMenuChanged } = await conCuenta();
+    api.addDraftLine.mockRejectedValueOnce(MENU_CAMBIADO());
+
+    act(() => result.current.agregar({ ...TARO, productId: 630, name: 'Frappé' }));
+
+    await waitFor(() => expect(onMenuChanged).toHaveBeenCalledWith(630));
+    expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'El menú se actualizó; elige de nuevo', type: 'info', id: 'menu-cambiado',
+    }));
+    expect(toasts.create).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+    expect(result.current.vista.nuevos).toEqual([expect.objectContaining({ name: 'Taro' })]);
+  });
+
+  test('al cambiar un renglón: el mismo aviso, recarga el menú y no abre la hoja como alta nueva', async () => {
+    const { result, onMenuChanged } = await conCuenta();
+    api.changeDraftLine.mockRejectedValueOnce(MENU_CAMBIADO());
+
+    act(() => result.current.menos(result.current.vista.nuevos[0]));
+
+    await waitFor(() => expect(onMenuChanged).toHaveBeenCalledWith(null));
+    expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'info', id: 'menu-cambiado' }));
+    expect(toasts.create).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+  });
+
+  test('otro rechazo de negocio sigue siendo un error rojo', async () => {
+    const { result, onMenuChanged } = await conCuenta();
+    api.addDraftLine.mockRejectedValueOnce(new ApiError(422, 'UNPROCESSABLE', 'La cuenta está vacía', 'r'));
+    act(() => result.current.agregar(TARO));
+    await waitFor(() => expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' })));
+    expect(onMenuChanged).not.toHaveBeenCalled();
+  });
 });

@@ -6,6 +6,7 @@ import { Picker } from '../../components/Picker';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { toaster } from '../../components/ui/toaster';
 import { mensajeDeError } from '../../api/mensajes';
+import { FondoFijo } from './FondoFijo';
 
 const TAP = '44px';
 
@@ -18,8 +19,8 @@ function Bloque({ titulo, children }: { titulo: string; children: React.ReactNod
   );
 }
 
-// AjustesDeCaja: lo que se configura de caja y tarjeta (spec 032): conceptos de salida, terminales
-// por sucursal, cómo se arquea la tarjeta y a quién le llega el resumen diario.
+// AjustesDeCaja: lo que se configura de caja y tarjeta (spec 032): el fondo fijo de cada caja (spec
+// 035), conceptos de salida, terminales por sucursal, cómo se arquea la tarjeta y a quién le llega el resumen diario.
 export function AjustesDeCaja() {
   const qc = useQueryClient();
   const avisar = (titulo: string) => (e: unknown) => toaster.create({ title: titulo, description: mensajeDeError(e), type: 'error' });
@@ -89,6 +90,10 @@ export function AjustesDeCaja() {
 
   return (
     <VStack align="stretch" gap={4}>
+      <Bloque titulo="Fondo fijo">
+        <FondoFijo />
+      </Bloque>
+
       <Bloque titulo="Conceptos de salida de caja">
         <VStack align="stretch" gap={2}>
           {(conceptos?.items ?? []).map((c) => (

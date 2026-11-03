@@ -10,15 +10,35 @@ import (
 // productos vuelve a quedarse sin salida para quien atiende el mostrador; si le da `payments.void`
 // a un cajero, cualquiera puede sacar dinero cobrado del corte.
 func TestPermissionsForEachRoleOfToday(t *testing.T) {
-	all := []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending}
+	all := AllPermissions()
+	// El gerente revisa a los demás pero no se corrige a sí mismo ni configura la asistencia: una
+	// corrección propia mueve horas pagadas sin que nadie más la vea (decisión del 2026-10-10).
+	// Cambiar la terminal de un pago mueve dinero entre terminales del corte: lo hace quien lo revisa.
+	// Ver la salud del inventario y cambiar qué resta un producto (spec 037) son de quien configura el
+	// menú y el almacén; dárselos a un cajero le dejaría mover existencias desde la hoja de receta.
+	// Recibir compras, configurar el almacén y contar (spec 038) mueven lo guardado y el costo de los
+	// insumos: tampoco son de quien opera la caja.
+	// Registrar lo que se echó a perder (spec 039) lo hace cualquiera del local (decisión del 9-oct);
+	// aprobar la merma que pasa el tope, solo quien revisa.
+	// Ver el catálogo de artículos (spec 042) es de quien hoy ve el almacén: administrador y gerente.
+	// Cerrar la caja sin la salida de quien la abrió (spec 046) deja horas «sin salida»: lo autoriza
+	// quien revisa; un cajero solo puede pedir que alguien lo haga.
+	// Mover la hora de apertura y la casilla del arqueo de un gasto ya registrado (spec 048) cambian
+	// el esperado de un corte: también de quien revisa.
+	// Editar un gasto ya guardado (spec 053) mueve su importe, sus renglones y lo que sumó al almacén:
+	// por omisión solo el administrador (#167); el reparto fino es #61.
+	gerente := []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
+		PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
+		PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount,
+		PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount}
 	cases := []struct {
 		role Role
 		want []Permission
 	}{
 		{RoleAdmin, all},
-		{RoleGerente, all},
-		{RoleCajero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending}},
-		{RoleMesero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending}},
+		{RoleGerente, gerente},
+		{RoleCajero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}},
+		{RoleMesero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}},
 		{Role("dueño"), nil},
 		{Role(""), nil},
 	}
@@ -45,10 +65,28 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 // empresa, «gerente» puede no existir, y un texto que lo nombre manda a buscar a alguien que no hay.
 func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 	want := map[Permission]string{
-		PermPaymentsVoid:        "Tu usuario no puede devolver pagos",
-		PermOrdersCancel:        "Tu usuario no puede cancelar pedidos",
-		PermOrdersMoveLines:     "Tu usuario no puede pasar productos",
-		PermOrdersCancelPending: "Tu usuario no puede quitar productos",
+		PermPaymentsVoid:             "Tu usuario no puede devolver pagos",
+		PermOrdersCancel:             "Tu usuario no puede cancelar pedidos",
+		PermOrdersMoveLines:          "Tu usuario no puede pasar productos",
+		PermOrdersCancelPending:      "Tu usuario no puede quitar productos",
+		PermAttendanceConfigure:      "Tu usuario no puede configurar la asistencia",
+		PermAttendanceReport:         "Tu usuario no puede ver la asistencia del personal",
+		PermAttendanceCorrectOthers:  "Tu usuario no puede corregir la asistencia de otras personas",
+		PermAttendanceCorrectOwn:     "Tu usuario no puede corregir su propia asistencia",
+		PermAuditView:                "Tu usuario no puede ver la bitácora",
+		PermPaymentsChangeTerminal:   "Tu usuario no puede cambiar la terminal de un pago",
+		PermCashConfigure:            "Tu usuario no puede configurar la caja",
+		PermInventoryHealthView:      "Tu usuario no puede ver la salud del inventario",
+		PermMenuConfigure:            "Tu usuario no puede configurar el menú",
+		PermInventoryReceive:         "Tu usuario no puede registrar lo que llega al almacén",
+		PermInventoryConfigure:       "Tu usuario no puede configurar el almacén",
+		PermInventoryCount:           "Tu usuario no puede contar el almacén",
+		PermInventoryWriteOff:        "Tu usuario no puede registrar lo que se echó a perder",
+		PermInventoryWriteOffApprove: "Tu usuario no puede aprobar lo que se echó a perder",
+		PermInventoryView:            "Tu usuario no puede ver el almacén",
+		PermCashCloseWithoutClockOut: "Tu usuario no puede cerrar la caja sin la salida de quien la abrió",
+		PermCashAdjustCount:          "Tu usuario no puede cambiar lo que entra al arqueo",
+		PermExpensesEdit:             "Tu usuario no puede editar gastos",
 	}
 	for _, p := range AllPermissions() {
 		msg := PermissionDeniedMessage(p)

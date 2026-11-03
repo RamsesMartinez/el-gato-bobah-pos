@@ -2,12 +2,19 @@
 .PHONY: help deploy-journald install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
         sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import fudo-composiciones reset-admin reset-password build deploy \
-        prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo db-restaurar
+        prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo db-restaurar worktree-env test-integration \
+        nuevo-worktree cerrar-worktree
 .DEFAULT_GOAL := help
 
 # Puertos de la infra dev. Son env con default (y no un número fijo) porque el 5433/6380 de
 # antes chocaba con el postgres/redis de otros compose locales. Overridea con
 # `PG_PORT=… make db-migrate` si start.sh tuvo que mover el puerto.
+# Un worktree con infraestructura propia (make worktree-env n=NN) trae aquí sus puertos y su proyecto
+# de compose; en la carpeta principal no hay archivo y todo sigue igual.
+ifneq ($(wildcard .env.worktree.local),)
+include .env.worktree.local
+export COMPOSE_PROJECT_NAME PG_TEST_PORT CI_PG_PORT MAILPIT_HTTP_PORT MAILPIT_SMTP_PORT BACKEND_PORT FRONTEND_PORT PORT TEST_DATABASE_URL
+endif
 PG_PORT    ?= 5490
 REDIS_PORT ?= 6390
 export PG_PORT
@@ -62,7 +69,8 @@ stop: ## Detiene todo lo que 'make start' dejó vivo (docker + API/web huérfano
 deps-up: ## Levanta postgres + redis (dev)
 	docker compose -f deploy/docker-compose.dev.yml up -d
 deps-down: ## Detiene postgres + redis (dev)
-	docker compose -f deploy/docker-compose.dev.yml down
+	@bash scripts/guard-shared-compose.sh
+	docker compose -f deploy/docker-compose.dev.yml --profile test down
 
 # --- Frontend ---
 web-dev: ## Frontend en dev (Vite, http://localhost:3000)
@@ -91,13 +99,27 @@ web-lint: ## Lint frontend (eslint + tsc)
 	cd web && bun run lint && bun run typecheck
 web-audit: ## Auditoría de deps del frontend
 	cd web && bun audit || true
+nuevo-worktree: ## Worktree de una feature nueva, de cero a la API respondiendo: make nuevo-worktree n=041 slug=subidas-sin-corte
+	@bash scripts/nuevo-worktree.sh "$(n)" "$(slug)"
+
+cerrar-worktree: ## Apaga y quita el worktree: desde dentro, make cerrar-worktree [datos=1]; desde otro, dir=../egb-041-x
+	@bash scripts/cerrar-worktree.sh "$(dir)" $(if $(datos),--datos,)
+
+worktree-env: ## Infra propia para este worktree (Postgres, pruebas, Redis, puertos): make worktree-env n=35
+	@bash scripts/worktree-env.sh "$(n)"
+
+test-integration: ## Pruebas de integración contra el Postgres de pruebas de este worktree (no el de la API)
+	@test -n "$(TEST_DATABASE_URL)" || { echo "Sin TEST_DATABASE_URL: corre antes make worktree-env n=NN."; exit 1; }
+	docker compose -f deploy/docker-compose.dev.yml --profile test up -d --wait postgres-test
+	cd server && go test -count=1 -timeout 10m -tags=integration ./internal/integration/... ./internal/httpapi/...
+
 ci-local: ## Lo mismo que CI (backend, integración, frontend) en paralelo y en local, antes de empujar
 	bash scripts/ci-local.sh
 
 sec: lint vuln web-lint web-audit ## Todos los chequeos de seguridad/calidad
 	@echo "\n✅ Chequeos de seguridad completados"
 
-reset-admin: deps-up ## Actualiza contraseña/PIN del admin desde deploy/.env (sin borrar datos)
+reset-admin: deps-up ## Crea el admin o le cambia contraseña/PIN, pidiéndolos al momento (sin borrar datos)
 	@bash scripts/dev-api.sh reset-admin
 reset-password: deps-up ## Resetea password de un usuario (prompt oculto): make reset-password user=admin@gatobobah
 	@bash scripts/dev-api.sh reset-password "$(user)"
@@ -153,12 +175,12 @@ build: ## Build de imágenes de producción (API + web, self-contained, sin bun 
 deploy: deploy-journald ## Deploy compilando en la máquina local (fallback; en el VPS usa deploy-image)
 	@bash scripts/check-env.sh || (echo "Configura deploy/.env antes de desplegar"; exit 1)
 	$(MAKE) build
-	docker compose -f deploy/docker-compose.yml up -d
+	@# Por el mismo azul/verde (spec 041); la imagen se compiló aquí y no hay que bajarla.
+	SKIP_PULL=1 bash scripts/deploy-azul-verde.sh
 deploy-image: deploy-journald ## Deploy bajando la imagen ya compilada por CI (API_IMAGE=ghcr.io/...:sha-xxxx)
 	@bash scripts/check-env.sh || (echo "Configura deploy/.env antes de desplegar"; exit 1)
-	docker compose -f deploy/docker-compose.yml pull api
-	docker compose -f deploy/docker-compose.yml up -d
-	@docker image prune -f >/dev/null 2>&1 || true
+	@# Azul/verde (spec 041): la nueva arranca junto a la vieja y Caddy cambia sin cortar.
+	bash scripts/deploy-azul-verde.sh
 
 # Solo reinicia journald si la config cambió. Falla ruidoso sin sudo: un deploy que deja la
 # bitácora en memoria sin decirlo es justo lo que esto viene a quitar.

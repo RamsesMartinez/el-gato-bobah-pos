@@ -173,12 +173,18 @@ export interface PaymentView {
   voidReason?: string;
   methodId: number;
   methodName: string;
+  // 'tarjeta' es la única con terminal. Opcional: una API anterior a la 036 no lo manda.
+  methodKind?: string;
   amount: string;
   tip: string;
   reference: string;
   paidAt: string;
   receivedBy: string;
   split: { part: number; of: number } | null;
+  // En qué terminal se cobró con tarjeta; null en efectivo, devuelto o anterior a las terminales.
+  // Opcional porque una API anterior a la 036 no lo manda.
+  terminalId?: number | null;
+  terminalName?: string | null;
   // Lo que cubrió: vacío en un pago por monto o por partes.
   lines: PaymentLine[];
 }
@@ -264,6 +270,9 @@ export interface ReceiptLine {
   lineTotal: string;
   notes?: string;
   modifiers?: Array<{ name: string; quantity: number; priceDelta: string }>;
+  // Un renglón cancelado viaja en el pedido para que la pantalla lo tache; al papel no va
+  // (printableLines). Opcional: lo que se arma en el POS antes de mandarse nunca está cancelado.
+  cancelled?: boolean;
 }
 
 // ReceiptOrder es un pedido visto por la impresora: sin los datos de entrega, que el papel no lleva,

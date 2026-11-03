@@ -18,12 +18,12 @@ const moveLines = vi.hoisted(() => vi.fn());
 const activeOrders = vi.hoisted(() => vi.fn());
 const setOrderDiscount = vi.hoisted(() => vi.fn());
 const medirAccion = vi.hoisted(() => vi.fn());
+const cardTerminals = vi.hoisted(() => vi.fn());
 vi.mock('../api/pos', () => ({
   posApi: {
     order, paymentMethods, chargeOrder, chargeOrderShape, quoteOrder, voidPayment, moveLines, activeOrders,
     setOrderDiscount,
-    cardTerminals: () => Promise.resolve({ items: [{ id: 5, branchId: 1, branchName: 'Matriz', name: 'Getnet', archived: false }] }),
-    defaultTerminal: () => Promise.resolve(null),
+    cardTerminals,
     businessSettings: () => Promise.resolve({ timezone: 'America/Mexico_City' }),
   },
 }));
@@ -80,6 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   order.mockResolvedValue(view());
   paymentMethods.mockResolvedValue({ items: metodos });
+  cardTerminals.mockResolvedValue({ items: [{ id: 5, branchId: 1, branchName: 'Matriz', name: 'Terminal B', archived: false }] });
   quoteOrder.mockImplementation(async (_id: number, shape: { lines?: Array<{ lineId: number; qty: string }>; allRemaining?: boolean }) => {
     if (shape.allRemaining) return { amount: '311', lines: [], outstandingAfter: '0' };
     const amount = (shape.lines ?? []).reduce((n, l) => {
@@ -213,6 +214,32 @@ test('por monto teclea con su propio teclado de dos filas y cobra lo tecleado', 
   await u.click(screen.getByRole('button', { name: /^Cobrar \$250/ }));
   await waitFor(() => expect(chargeOrder).toHaveBeenCalledTimes(1));
   expect(chargeOrder.mock.calls[0][1].amount).toBe(250);
+});
+
+// CADA PERSONA PASA SU TARJETA DONDE LA PASA (spec 036). Tras cobrar un pedazo con tarjeta, el
+// siguiente no hereda la terminal: heredarla es como volvía a quedar un débito en la terminal
+// equivocada, igual que la terminal recordada del usuario.
+test('en cuenta dividida la terminal se vuelve a elegir en cada cobro', async () => {
+  const u = userEvent.setup();
+  cardTerminals.mockResolvedValue({ items: [
+    { id: 5, branchId: 1, branchName: 'Matriz', name: 'Terminal B', archived: false },
+    { id: 6, branchId: 1, branchName: 'Matriz', name: 'Terminal A', archived: false },
+  ] });
+  chargeOrder.mockResolvedValue({ outstanding: '61', paid: false, yaEstaba: false, amount: '250' });
+  pinta(<CobrarSheet pantalla="pos" order={board()} onClose={() => {}} onCobrado={() => {}} />);
+  await u.click(await screen.findByRole('button', { name: /Dividir/ }));
+  await u.click(screen.getByRole('button', { name: 'Por monto' }));
+  for (const k of ['2', '5', '0']) await u.click(screen.getByRole('button', { name: k }));
+  await u.click(screen.getByRole('button', { name: 'Tarjeta' }));
+  await u.click(await screen.findByRole('button', { name: 'Terminal A' }));
+  await u.click(screen.getByRole('button', { name: /^Cobrar \$250/ }));
+  await waitFor(() => expect(chargeOrder).toHaveBeenCalledTimes(1));
+  expect(chargeOrder.mock.calls[0][1].terminalId).toBe(6);
+
+  for (const k of ['6', '1']) await u.click(screen.getByRole('button', { name: k }));
+  await u.click(screen.getByRole('button', { name: 'Tarjeta' }));
+  expect(await screen.findByRole('button', { name: 'Terminal A' })).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByRole('button', { name: /^Cobrar/ })).toBeDisabled();
 });
 
 // LA SELECCIÓN QUE NO CABE TRAS UN PAGO POR MONTO DICE QUÉ HACER.

@@ -18,6 +18,13 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
+// isForeignKeyViolation: la llave compuesta por empresa frenó una referencia a una fila que esta
+// sesión no puede ver.
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+}
+
 // --- Grupos (catálogo global reutilizable) ---------------------------------
 
 type GroupView struct {

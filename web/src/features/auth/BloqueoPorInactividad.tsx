@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { posApi } from '../../api/pos';
 import { useInactividad } from './useInactividad';
 import { LockScreen } from './LockScreen';
+import { TabletaBloqueadaContext } from '../../hooks/tabletaBloqueada';
 
 // Envuelve la aplicación y le pone encima la pantalla de bloqueo cuando toca.
 //
@@ -33,7 +34,7 @@ export function BloqueoPorInactividad({ children }: { children: ReactNode }) {
           alturas al 100 % desde la raíz, y un `div` de verdad en medio le rompe el alto a la
           pantalla del mostrador. */}
       <div style={{ display: 'contents' }} inert={bloqueado ? true : undefined}>
-        {children}
+        <TabletaBloqueadaContext.Provider value={bloqueado}>{children}</TabletaBloqueadaContext.Provider>
       </div>
       {bloqueado && <LockScreen onDesbloqueado={desbloquear} />}
     </>

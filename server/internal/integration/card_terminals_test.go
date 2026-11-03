@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -36,7 +37,8 @@ func terminalDelPago(t *testing.T, st *store.Store, orderID int64) (*int64, *str
 }
 
 // TODO COBRO CON TARJETA GUARDA SU TERMINAL (punto 8). Con una sola terminal en la sucursal no hay
-// nada que elegir; con varias, manda la del usuario; sin ella, se pide (EB-28, EB-29, EB-31).
+// nada que elegir; con varias se pide SIEMPRE, aunque el usuario tenga una recordada (spec 036): la
+// recordada fue la que dejó un débito en Terminal A cuando se cobró en Terminal B.
 func TestCardChargeRecordsTerminal(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
@@ -54,6 +56,13 @@ func TestCardChargeRecordsTerminal(t *testing.T) {
 		_, err := orders.Charge(ctx, app.ChargeCmd{OrderID: ord, MethodID: debito, Amount: dec("100"), ActorID: cajero, TerminalID: terminal})
 		return ord, err
 	}
+	preferencia := func() int {
+		var n int
+		if err := st.Pool.QueryRow(ctx, `select count(*) from user_preferences where user_id = $1 and key = 'card_terminal'`, cajero).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
 
 	// Una sola terminal (la que nace con el negocio): se usa sola.
 	ord, err := cobrar("Tarjeta una terminal", nil)
@@ -64,49 +73,45 @@ func TestCardChargeRecordsTerminal(t *testing.T) {
 		t.Fatalf("el cobro no guardó la terminal: %v %v", id, name)
 	}
 
-	// Dos terminales y sin la del usuario: se pide.
-	hey, err := terms.Create(ctx, branch, "Hey")
+	// Dos terminales y sin elegir: se pide.
+	termA, err := terms.Create(ctx, branch, "Terminal A")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := cobrar("Tarjeta sin elegir", nil); !errors.Is(err, domain.ErrCardTerminalRequired) {
 		t.Fatalf("con dos terminales y sin elegir: err = %v", err)
 	}
-	// La del usuario llega sola.
-	if err := terms.SetUserDefault(ctx, cajero, &hey.ID); err != nil {
+	// Una recordada de antes (la guardaba la versión anterior al cobrar) ya no decide por nadie.
+	if _, err := st.Pool.Exec(ctx, `insert into user_preferences (user_id, key, value) values ($1, 'card_terminal', $2)`,
+		cajero, []byte(strconv.FormatInt(termA.ID, 10))); err != nil {
 		t.Fatal(err)
 	}
-	ord, err = cobrar("Tarjeta por omision", nil)
+	if _, err := cobrar("Tarjeta con recordada", nil); !errors.Is(err, domain.ErrCardTerminalRequired) {
+		t.Fatalf("con una terminal recordada y sin elegir: err = %v; quiere que se pida", err)
+	}
+	if _, err := st.Pool.Exec(ctx, `delete from user_preferences where user_id = $1`, cajero); err != nil {
+		t.Fatal(err)
+	}
+	// Elegida, se usa, y cobrar con ella ya no la recuerda.
+	ord, err = cobrar("Tarjeta elegida", &termA.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id, _ := terminalDelPago(t, st, ord); id == nil || *id != hey.ID {
-		t.Fatalf("no usó la terminal del usuario: %v", id)
+	if id, _ := terminalDelPago(t, st, ord); id == nil || *id != termA.ID {
+		t.Fatalf("no usó la terminal elegida: %v", id)
 	}
-	// Cobrar con una terminal la deja como la del usuario: la última con la que cobró, no la última
-	// que tocó en el selector (un cobro abandonado no cuenta).
-	otra, err := terms.Create(ctx, branch, "Otra")
-	if err != nil {
-		t.Fatal(err)
+	if n := preferencia(); n != 0 {
+		t.Fatalf("cobrar dejó %d terminal recordada", n)
 	}
-	if _, err := cobrar("Tarjeta con otra", &otra.ID); err != nil {
-		t.Fatal(err)
-	}
-	if d, err := terms.UserDefault(ctx, cajero); err != nil || d == nil || *d != otra.ID {
-		t.Fatalf("cobrar con una terminal no la dejó como la del usuario: %v %v", d, err)
-	}
-	if err := terms.Archive(ctx, otra.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := terms.SetUserDefault(ctx, cajero, &hey.ID); err != nil {
-		t.Fatal(err)
-	}
-	// Archivada, la del usuario se ignora y se vuelve a pedir.
-	if err := terms.Archive(ctx, hey.ID); err != nil {
+	// Archivada, deja de ofrecerse: con una sola activa, se usa la activa.
+	if err := terms.Archive(ctx, termA.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := cobrar("Tarjeta archivada", nil); err != nil {
-		t.Fatalf("con la del usuario archivada y una sola activa, debe usar la activa: %v", err)
+		t.Fatalf("con una sola activa debe usarla: %v", err)
+	}
+	if _, err := cobrar("Tarjeta en archivada", &termA.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("cobrar en una archivada: err = %v", err)
 	}
 	// Efectivo no lleva terminal.
 	prod := makeProduct(t, st, "Efectivo sin terminal", dec("50"), false)

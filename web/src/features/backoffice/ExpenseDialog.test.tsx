@@ -1,0 +1,1093 @@
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+import { Provider } from '../../components/ui/provider';
+import { ExpenseDialog } from './ExpenseDialog';
+import { PayDialog } from './ExpensesPage';
+import { ApiError } from '../../api/client';
+import { OUTSIDE_COUNT_TEXT, BEFORE_LAST_CLOSE_TEXT } from './cajaDelGasto';
+import { useSessionStore } from '../../stores/session';
+
+const units = [
+  { id: 1, code: 'g', name: 'Gramo', kind: 'masa', toBase: '1' },
+  { id: 2, code: 'kg', name: 'Kilogramo', kind: 'masa', toBase: '1000' },
+  { id: 3, code: 'ml', name: 'Mililitro', kind: 'volumen', toBase: '1' },
+  { id: 5, code: 'cda', name: 'Cucharada', kind: 'volumen', toBase: '15' },
+  { id: 7, code: 'l', name: 'Litro', kind: 'volumen', toBase: '1000' },
+  { id: 8, code: 'pieza', name: 'Pieza', kind: 'pieza', toBase: '1' },
+  { id: 9, code: 'cm', name: 'Centímetro', kind: 'longitud', toBase: '1' },
+];
+
+const back = vi.hoisted(() => ({
+  expenseCategories: vi.fn(),
+  suppliers: vi.fn(),
+  cashRegisters: vi.fn(),
+  units: vi.fn(),
+  presentations: vi.fn(),
+  searchArticles: vi.fn(),
+  createExpense: vi.fn(),
+  createExpenseCategory: vi.fn(),
+  createSupplier: vi.fn(),
+  parseDoc: vi.fn(),
+  suggestArticles: vi.fn(),
+  lastClosedCount: vi.fn(),
+  payExpense: vi.fn(),
+  expenseDetail: vi.fn(),
+  setDensity: vi.fn(),
+}));
+const pos = vi.hoisted(() => ({
+  paymentMethods: vi.fn(() => Promise.resolve({ items: [] as unknown[] })),
+  cashStatus: vi.fn(() => Promise.resolve({ open: false })),
+  businessSettings: vi.fn(() => Promise.resolve({ stockItemLabel: 'artículo', timezone: 'America/Mexico_City' })),
+}));
+vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
+vi.mock('../../api/pos', () => ({ posApi: pos }));
+// Doble del Picker sin hoja animada: el Picker real tiene sus pruebas, y en jsdom el cierre de su
+// hoja deja oculto el diálogo durante un tiempo que no es estable. Aquí se prueba la captura.
+vi.mock('../../components/Picker', async () => {
+  const { useState } = await import('react');
+  type Opt = { value: string; label: string };
+  function Picker({ value, options, onChange, placeholder, onCreate }: {
+    value: string; options: Opt[]; onChange: (v: string) => void; placeholder?: string;
+    onCreate?: (name: string) => Promise<Opt | null>;
+  }) {
+    const [open, setOpen] = useState(false);
+    const [q, setQ] = useState('');
+    const selected = options.find((o) => o.value === value);
+    return (
+      <div>
+        <button type="button" onClick={() => setOpen(true)}>{selected ? selected.label : placeholder}</button>
+        {open && (
+          <div>
+            {onCreate && <input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} />}
+            {options.map((o) => (
+              <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}>{o.label}</button>
+            ))}
+            {onCreate && q && (
+              <button type="button" onClick={async () => { const o = await onCreate(q); if (o) onChange(o.value); setOpen(false); }}>
+                Crear «{q}»
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return { Picker };
+});
+
+beforeEach(() => {
+  back.expenseCategories.mockResolvedValue({ items: [{ id: 4, name: 'Mercancía', financialGroup: 'operacional', isActive: true }] });
+  back.suppliers.mockResolvedValue({ items: [{ id: 6, name: 'Lácteos del Centro', isActive: true }] });
+  back.cashRegisters.mockResolvedValue({ items: [] });
+  back.units.mockResolvedValue({ items: units });
+  back.presentations.mockResolvedValue([
+    { id: 2, ingredientId: 10, name: 'Caja', qtyInBase: '12000', baseUnitCode: 'ml', active: true, approximate: false, purchaseUnitId: null },
+  ]);
+  back.searchArticles.mockResolvedValue({ items: [
+    { itemType: 'ingrediente', id: 10, name: 'Leche entera', unitCode: 'ml', unitKind: 'volumen' },
+    { itemType: 'ingrediente', id: 11, name: 'Azúcar', unitCode: 'g', unitKind: 'masa' },
+  ] });
+  back.createExpense.mockResolvedValue({ id: 99 });
+  back.lastClosedCount.mockResolvedValue({ closedAt: null });
+  back.expenseDetail.mockResolvedValue({ items: [], payments: [] });
+  pos.businessSettings.mockResolvedValue({ stockItemLabel: 'artículo', timezone: 'America/Mexico_City' });
+});
+// Las hojas dejan en `body` el bloqueo de scroll y el `aria-hidden` de lo que tapan; sin limpiarlo,
+// la prueba siguiente nace con su diálogo oculto.
+afterEach(() => {
+  cleanup();
+  document.body.innerHTML = '';
+  for (const a of ['style', 'data-inert', 'data-scroll-lock', 'aria-hidden']) document.body.removeAttribute(a);
+  vi.clearAllMocks();
+});
+
+function montar() {
+  const onSaved = vi.fn();
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={qc}><Provider>
+    <ExpenseDialog open onClose={vi.fn()} onSaved={onSaved} />
+  </Provider></QueryClientProvider>);
+  return { onSaved };
+}
+
+const click = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
+
+// Elige en un Picker: abre su hoja y toca la opción.
+async function elegir(placeholder: string | RegExp, opcion: string | RegExp) {
+  fireEvent.click(await screen.findByRole('button', { name: placeholder }));
+  fireEvent.click(await screen.findByRole('button', { name: opcion }));
+}
+
+async function encabezado(total = '1140') {
+  await elegir(/Elegir categoría/, 'Mercancía');
+  fireEvent.change(screen.getByLabelText('Total de la compra'), { target: { value: total } });
+}
+
+async function capturaConMercancia() {
+  montar();
+  click(/Capturar sin ticket/);
+  click('Sí');
+  await encabezado();
+}
+
+describe('Captura de una compra (spec 038, maqueta C)', () => {
+  test('abre por el ticket, con capturar a mano a un toque, y sin controles nativos', async () => {
+    montar();
+    expect(await screen.findByRole('button', { name: /Sube la foto del ticket/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Capturar sin ticket/ })).toBeInTheDocument();
+    expect(document.querySelector('select')).toBeNull();
+    expect(document.querySelector('input[type="date"]')).toBeNull();
+  });
+
+  test('un gasto sin mercancía no lleva renglones ni se marca recibido', async () => {
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+      await encabezado('640');
+    click('Todavía no se paga');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar' })).toBeEnabled());
+    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const body = back.createExpense.mock.calls[0][0];
+    expect(body.items).toEqual([]);
+    expect(body.receivedAt).toBeUndefined();
+  });
+
+  test('sin categoría o sin total no se guarda', async () => {
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    fireEvent.change(screen.getByLabelText('Total de la compra'), { target: { value: '640' } });
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    expect(screen.getByTestId('pie-compra')).toHaveTextContent('falta la categoría');
+  });
+
+  test('un renglón en empaque dice cuánto suma, pide importe y manda el empaque', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    // El empaque de la empresa llega elegido; las cucharadas no se ofrecen para comprar.
+    expect(await screen.findByRole('button', { name: 'Caja · 12 L' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: 'cda' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '3' } });
+    expect(screen.getByText('= 36 L')).toBeInTheDocument();
+    expect(screen.getByTestId('pie-compra')).toHaveTextContent('falta el importe de un renglón');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '540' } });
+    expect(screen.getByTestId('pie-compra')).toHaveTextContent('el resto queda como «otros» del gasto');
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const [item] = back.createExpense.mock.calls[0][0].items;
+    expect(item).toMatchObject({ itemType: 'ingrediente', ingredientId: 10, presentationId: 2, quantity: '3', qtyReceived: '3', amount: '540' });
+    expect(item.unitId).toBeUndefined();
+  });
+
+  test('«Llega después» se guarda sin recibir', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
+    click('Llega después');
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].items[0].qtyReceived).toBe('0');
+  });
+
+  test('renglones que pasan del total no se guardan', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '2000' } });
+    expect(screen.getByTestId('pie-compra')).toHaveTextContent('los renglones suman $2,000');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+  });
+
+  test('un regalo va en 0 y se guarda', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    click(/Regalo/);
+    expect(screen.getByLabelText('Importe')).toHaveValue('0');
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].items[0]).toMatchObject({ isGift: true, amount: '0' });
+  });
+
+  // Spec 042, FR-003: el insumo nuevo no se crea al elegir su unidad sino al guardar el gasto, así que
+  // cancelar el gasto no deja nada creado.
+  test('crear un insumo pregunta en qué se mide y no llama al servidor hasta guardar el gasto', async () => {
+    await capturaConMercancia();
+    fireEvent.click(await screen.findByRole('button', { name: 'Buscar o crear' }));
+    fireEvent.change(await screen.findByPlaceholderText('Buscar…'), { target: { value: 'Canela' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Crear/ }));
+    expect(await screen.findByText('¿En qué lo mides?')).toBeInTheDocument();
+    for (const k of ['Peso (g, kg)', 'Líquido (ml, L)', 'Longitud (cm, m)', 'Piezas']) {
+      expect(screen.getByText(k)).toBeInTheDocument();
+    }
+    fireEvent.click(screen.getByText('Peso (g, kg)'));
+    expect((await screen.findAllByText(/Canela/)).length).toBeGreaterThan(0);
+  });
+
+  test('quitar un renglón capturado pide confirmación', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    click('Quitar renglón');
+    expect(screen.getAllByTestId('renglon')).toHaveLength(1);
+    click('Quitar');
+    expect(screen.queryAllByTestId('renglon')).toHaveLength(0);
+  });
+
+  test('una compra con fecha anterior al último conteo avisa', async () => {
+    // La fecha de la compra arranca hoy; un conteo «cerrado» después de hoy la deja antes.
+    back.lastClosedCount.mockResolvedValue({ closedAt: '2099-01-01T18:00:00Z' });
+    montar();
+    click(/Capturar sin ticket/);
+    click('Sí');
+    expect(await screen.findByText(/Esta compra es de antes del último conteo/)).toBeInTheDocument();
+  });
+
+  test('una compra posterior al último conteo no avisa', async () => {
+    back.lastClosedCount.mockResolvedValue({ closedAt: '2000-01-01T18:00:00Z' });
+    montar();
+    click(/Capturar sin ticket/);
+    click('Sí');
+    await screen.findByRole('button', { name: /Agregar artículo/ });
+    await waitFor(() => expect(back.lastClosedCount).toHaveBeenCalled());
+    expect(screen.queryByText(/de antes del último conteo/)).toBeNull();
+  });
+
+  test('la palabra del almacén es la de la empresa', async () => {
+    pos.businessSettings.mockResolvedValue({ stockItemLabel: 'insumo', timezone: 'America/Mexico_City' });
+    montar();
+    click(/Capturar sin ticket/);
+    click('Sí');
+    expect(await screen.findByRole('button', { name: /Agregar insumo/ })).toBeInTheDocument();
+  });
+});
+
+describe('desde el ticket', () => {
+  beforeEach(() => {
+    back.parseDoc.mockResolvedValue({
+      doc: {
+        issuedOn: '2026-10-14', total: '1140.00', kind: 'ticket', folio: 'A1', supplier: 'Lácteos',
+        charges: [], payments: [], warnings: [],
+        lines: [{ rawCode: '', rawName: 'AZUCAR STD 25K', qty: '1', amount: '600', unitPrice: '', packQty: '', packUnit: '', status: '' }],
+      },
+      raw: {}, reconciliation: { balanced: true, diff: '0', linesSum: '600', chargesSum: '0', breakdownSum: '0', total: '1140', hasSubtotal: false, linesMatchSubtotal: true, unreadable: [] },
+    });
+    back.suggestArticles.mockResolvedValue({ items: [
+      { itemType: 'ingrediente', itemId: 11, itemName: 'Azúcar', source: 'parecido', score: 0.8, matchedVia: 'AZUCAR', packQtyInBase: '', unitId: null },
+    ] });
+  });
+
+  async function subirTicket() {
+    montar();
+    const file = new File(['x'], 'ticket.jpg', { type: 'image/jpeg' });
+    fireEvent.change(screen.getByTestId('ticket-file'), { target: { files: [file] } });
+    return screen.findByTestId('renglon-dudoso');
+  }
+
+  test('un renglón dudoso va arriba, no suma y no bloquea guardar', async () => {
+    const dudoso = await subirTicket();
+    expect(dudoso).toHaveTextContent('Ticket: AZUCAR STD 25K');
+    expect(dudoso).toHaveTextContent('¿Es Azúcar');
+    expect(screen.getByTestId('pie-compra')).toHaveTextContent('1 renglón sin confirmar: no suma');
+    await elegir(/Elegir categoría/, 'Mercancía');
+    click('Todavía no se paga');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar' })).toBeEnabled());
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const [item] = back.createExpense.mock.calls[0][0].items;
+    // Sin tocar el almacén ni enseñarle al proveedor que no es del almacén.
+    expect(item).toMatchObject({ itemType: '', amount: '600' });
+    expect(item.rawName).toBeUndefined();
+  });
+
+  test('«Sí, es ése» lo vuelve un renglón que suma', async () => {
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    expect(screen.queryByTestId('renglon-dudoso')).toBeNull();
+    expect(screen.getByTestId('pie-compra')).not.toHaveTextContent('sin confirmar');
+  });
+
+  test('un renglón surtido se parte en dos, y la mitad nueva no aprende el texto del ticket', async () => {
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    await elegir(/Elegir categoría/, 'Mercancía');
+    fireEvent.click(screen.getByRole('button', { name: /Partir/ }));
+    expect(screen.getAllByTestId('renglon')).toHaveLength(2);
+    const importes = screen.getAllByLabelText('Importe');
+    fireEvent.change(importes[0], { target: { value: '400' } });
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getAllByLabelText('Importe')[1], { target: { value: '200' } });
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const [a, b] = back.createExpense.mock.calls[0][0].items;
+    expect(a).toMatchObject({ ingredientId: 11, rawName: 'AZUCAR STD 25K', amount: '400' });
+    expect(b).toMatchObject({ ingredientId: 10, amount: '200' });
+    expect(b.rawName).toBeUndefined();
+  });
+
+  test('«Excluir» de la captura se lee y no borra la descripción del renglón (spec 050)', async () => {
+    await capturaConMercancia();
+    const renglon = screen.getByTestId('renglon');
+    fireEvent.change(within(renglon).getByLabelText('Descripción'), { target: { value: 'Shampoo' } });
+    const boton = within(renglon).getByRole('button', { name: 'Excluir' });
+    expect(boton).toHaveTextContent('Excluir');
+    fireEvent.click(boton);
+    expect(within(renglon).getByLabelText('Descripción')).toHaveValue('Shampoo');
+  });
+
+  test('«Excluir» conserva el artículo, no suma y se manda marcado (spec 049)', async () => {
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    await elegir(/Elegir categoría/, 'Mercancía');
+    const renglon = screen.getByTestId('renglon');
+    fireEvent.click(within(renglon).getByRole('button', { name: 'Excluir' }));
+    expect(within(renglon).getByRole('button', { name: 'Excluir' })).toHaveAttribute('aria-pressed', 'true');
+    expect(renglon).toHaveAttribute('data-excluded', 'true');
+    expect(within(renglon).getByRole('button', { name: /Azúcar/ })).toBeInTheDocument();
+    expect(screen.getByTestId('pie-compra')).not.toHaveTextContent('Azúcar +');
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const body = back.createExpense.mock.calls[0][0];
+    expect(body.items[0]).toMatchObject({ ingredientId: 11, amount: '600', excluded: true });
+    expect(body.items[0].personal).toBeUndefined();
+    expect(body.documentTotal).toBe('1140.00');
+  });
+
+  // Spec 050: del cajón salió el ticket entero aunque una parte no sea del negocio.
+  test('«Salió de la caja» aparece con lo excluido, sigue al importe y viaja como drawerExtra', async () => {
+    pos.paymentMethods.mockResolvedValue({ items: [
+      { id: 1, name: 'Efectivo', affectsCashDrawer: true, isActive: true },
+      { id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true },
+    ] });
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 }] });
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    await elegir(/Elegir categoría/, 'Mercancía');
+    fireEvent.change(screen.getByLabelText('Total de la compra'), { target: { value: '540' } });
+    click('Agregar pago');
+    fireEvent.change(screen.getAllByPlaceholderText('0.00').at(-1)!, { target: { value: '540' } });
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1');
+    // Sin excluidos no hay nada nuevo.
+    expect(screen.queryByLabelText('Salió de la caja')).toBeNull();
+    fireEvent.click(within(screen.getByTestId('renglon')).getByRole('button', { name: 'Excluir' }));
+    const salio = await screen.findByLabelText('Salió de la caja');
+    expect(salio).toHaveValue('540');
+    fireEvent.change(salio, { target: { value: '1140.01' } });
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    fireEvent.change(salio, { target: { value: '539' } });
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    fireEvent.change(salio, { target: { value: '1140' } });
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments[0]).toMatchObject({ amount: '540', drawerExtra: '600.00', includeInCount: true });
+  });
+
+  test('«Salió de la caja» no aparece con tarjeta ni sin incluir en el arqueo', async () => {
+    pos.paymentMethods.mockResolvedValue({ items: [
+      { id: 1, name: 'Efectivo', affectsCashDrawer: true, isActive: true },
+      { id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true },
+    ] });
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 }] });
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    await elegir(/Elegir categoría/, 'Mercancía');
+    fireEvent.click(within(screen.getByTestId('renglon')).getByRole('button', { name: 'Excluir' }));
+    click('Agregar pago');
+    await elegir('Método de pago', 'Tarjeta');
+    expect(screen.queryByLabelText('Salió de la caja')).toBeNull();
+    await elegir('Tarjeta', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1');
+    expect(await screen.findByLabelText('Salió de la caja')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Incluir en el arqueo' }));
+    expect(screen.queryByLabelText('Salió de la caja')).toBeNull();
+  });
+
+  test('lo que la lectura reconoce como de la casa llega con «Excluir» marcado', async () => {
+    back.suggestArticles.mockResolvedValue({ items: [
+      { itemType: '', itemId: 0, itemName: '', source: 'personal', score: 1, matchedVia: 'AZUCAR', packQtyInBase: '', unitId: null },
+    ] });
+    montar();
+    fireEvent.change(screen.getByTestId('ticket-file'), { target: { files: [new File(['x'], 't.jpg', { type: 'image/jpeg' })] } });
+    const renglon = await screen.findByTestId('renglon');
+    expect(within(renglon).getByRole('button', { name: 'Excluir' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('un ticket sin excluidos no agrega pasos ni manda la marca (SC-003)', async () => {
+    const dudoso = await subirTicket();
+    fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
+    await elegir(/Elegir categoría/, 'Mercancía');
+    expect(screen.queryByText(/De la casa/)).toBeNull();
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].items[0].excluded).toBeUndefined();
+  });
+
+  test('capturado a mano no manda total del documento', async () => {
+    await capturaConMercancia();
+    click('Todavía no se paga');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].documentTotal).toBeUndefined();
+  });
+
+  test('si el total capturado no es el del ticket, pregunta cuál', async () => {
+    await subirTicket();
+    fireEvent.change(screen.getByLabelText('Total de la compra'), { target: { value: '1000' } });
+    expect(screen.getByText(/El ticket dice \$1,140 y capturaste \$1,000/)).toBeInTheDocument();
+    click(/el del ticket/);
+    expect(screen.getByLabelText('Total de la compra')).toHaveValue('1140.00');
+  });
+});
+
+// Revisión de tableta del 038: el pie juntaba lo que suma cada renglón en un solo texto, y un ticket
+// de 10 renglones lo partía en 3 o 4 líneas que se comían el alto de la lista.
+test('el pie dice lo que suman los primeros renglones y cuántos más', async () => {
+  const lines = ['A', 'B', 'C', 'D', 'E'].map((n) => ({
+    rawCode: '', rawName: `LECHE ${n}`, qty: '1', amount: '100', unitPrice: '', packQty: '', packUnit: '', status: '',
+  }));
+  back.parseDoc.mockResolvedValue({
+    doc: { issuedOn: '2026-10-14', total: '500.00', kind: 'ticket', folio: '', supplier: '', charges: [], payments: [], warnings: [], lines },
+    raw: {}, reconciliation: { balanced: true, diff: '0', linesSum: '500', chargesSum: '0', breakdownSum: '0', total: '500', hasSubtotal: false, linesMatchSubtotal: true, unreadable: [] },
+  });
+  back.suggestArticles.mockResolvedValue({ items: [
+    { itemType: 'ingrediente', itemId: 10, itemName: 'Leche entera', source: 'aprendido', score: 1, matchedVia: 'LECHE', packQtyInBase: '', unitId: 7 },
+  ] });
+  montar();
+  fireEvent.change(screen.getByTestId('ticket-file'), { target: { files: [new File(['x'], 't.jpg', { type: 'image/jpeg' })] } });
+  await waitFor(() => expect(screen.getAllByTestId('renglon')).toHaveLength(5));
+  const pie = screen.getByTestId('pie-compra');
+  expect(pie).toHaveTextContent('y 2 más');
+  expect(pie.textContent?.match(/Leche entera \+/g)).toHaveLength(3);
+});
+
+// Análisis del 038 (C1): T030 prometía estas tres y no estaban.
+describe('lo que se crea desde la captura', () => {
+  test('«+ Otro empaque» abre «Cómo llega» del insumo sin salir de la captura (FR-011)', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.click(screen.getByRole('button', { name: '+ Otro empaque' }));
+    expect(await screen.findByText('Cómo llega Leche entera')).toBeInTheDocument();
+  });
+
+  test('categoría y proveedor nuevos se crean con las rutas de la empresa (FR-004b)', async () => {
+    back.createExpenseCategory.mockResolvedValue({ id: 40, name: 'Insumos de barra', financialGroup: 'operacional', isActive: true });
+    back.createSupplier.mockResolvedValue({ id: 60, name: 'Abarrotes La Esquina', isActive: true });
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    fireEvent.click(await screen.findByRole('button', { name: /Elegir categoría/ }));
+    fireEvent.change(screen.getByPlaceholderText('Buscar…'), { target: { value: 'Insumos de barra' } });
+    fireEvent.click(screen.getByRole('button', { name: /Crear «Insumos de barra»/ }));
+    await waitFor(() => expect(back.createExpenseCategory).toHaveBeenCalledWith({ name: 'Insumos de barra', financialGroup: 'operacional' }));
+    expect(await screen.findByRole('button', { name: 'Insumos de barra' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Sin proveedor/ }));
+    fireEvent.change(screen.getByPlaceholderText('Buscar…'), { target: { value: 'Abarrotes La Esquina' } });
+    fireEvent.click(screen.getByRole('button', { name: /Crear «Abarrotes La Esquina»/ }));
+    await waitFor(() => expect(back.createSupplier).toHaveBeenCalledWith({ name: 'Abarrotes La Esquina' }));
+  });
+
+  test('el empaque que se elige gana sobre el tamaño aprendido del proveedor (regla 11)', async () => {
+    back.parseDoc.mockResolvedValue({
+      doc: { issuedOn: '2026-10-14', total: '540.00', kind: 'ticket', folio: '', supplier: '', charges: [], payments: [], warnings: [],
+        lines: [{ rawCode: '', rawName: 'LECHE CAJA', qty: '3', amount: '540', unitPrice: '', packQty: '', packUnit: '', status: '' }] },
+      raw: {}, reconciliation: { balanced: true, diff: '0', linesSum: '540', chargesSum: '0', breakdownSum: '0', total: '540', hasSubtotal: false, linesMatchSubtotal: true, unreadable: [] },
+    });
+    // Lo aprendido dice «pieza de 999 ml»; la empresa tiene «Caja · 12 L».
+    back.suggestArticles.mockResolvedValue({ items: [
+      { itemType: 'ingrediente', itemId: 10, itemName: 'Leche entera', source: 'aprendido', score: 1, matchedVia: 'LECHE', packQtyInBase: '999', unitId: 8 },
+    ] });
+    montar();
+    fireEvent.change(screen.getByTestId('ticket-file'), { target: { files: [new File(['x'], 't.jpg', { type: 'image/jpeg' })] } });
+    await screen.findByTestId('renglon');
+    await elegir(/Elegir categoría/, 'Mercancía');
+    fireEvent.click(await screen.findByRole('button', { name: 'Caja · 12 L' }));
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const [item] = back.createExpense.mock.calls[0][0].items;
+    expect(item).toMatchObject({ presentationId: 2 });
+    expect(item.packQtyInBase).toBeUndefined();
+    expect(item.unitId).toBeUndefined();
+  });
+});
+
+// Prueba con usuarios sin contexto (T065): «Fecha» junto a «Día del gasto» se leía como dos fechas
+// que no cuadran. Una es la del papel, la otra el día de la caja.
+test('la fecha dice que es la del ticket', async () => {
+  montar();
+  click(/Capturar sin ticket/);
+  click('No, solo el gasto');
+  expect(await screen.findByText('Fecha del ticket')).toBeInTheDocument();
+});
+
+// Decisión del dueño tras la prueba sin contexto (FR-004d): «Total pagado» se leía como «ya está
+// pagado», y sin un pago capturado aparte la compra quedaba como deuda.
+describe('¿Cómo se pagó? (FR-004d)', () => {
+  beforeEach(() => {
+    pos.paymentMethods.mockResolvedValue({ items: [
+      { id: 1, name: 'Efectivo', affectsCashDrawer: true, isActive: true },
+      { id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true },
+    ] });
+  });
+
+  async function gastoListo(total = '640') {
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    await encabezado(total);
+  }
+
+  test('no se guarda sin contestar', async () => {
+    await gastoListo();
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    expect(screen.getByTestId('pie-compra')).toHaveTextContent('elige cómo se pagó');
+  });
+
+  test('un método registra un pago por el total y la compra queda pagada', async () => {
+    await gastoListo();
+    click('Tarjeta');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const body = back.createExpense.mock.calls[0][0];
+    expect(body.payments).toEqual([expect.objectContaining({ methodId: 2, amount: '640' })]);
+    expect(body.status).toBe('pagada');
+  });
+
+  test('efectivo con una sola caja abierta la toma sola', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', openSessionId: 70 }] });
+    await gastoListo();
+    click('Efectivo');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments).toEqual([expect.objectContaining({ methodId: 1, registerId: 7 })]);
+  });
+
+  test('efectivo con varias cajas abiertas pide de cuál sale', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [
+      { id: 7, name: 'Caja 1', openSessionId: 70 }, { id: 8, name: 'Caja 2', openSessionId: 80 },
+    ] });
+    await gastoListo();
+    click('Efectivo');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    await elegir(/¿De qué caja sale\?/, 'Caja 2');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments).toEqual([expect.objectContaining({ registerId: 8 })]);
+  });
+
+  test('sin caja abierta no se ofrece efectivo', async () => {
+    await gastoListo();
+    await screen.findByRole('button', { name: 'Tarjeta' });
+    expect(screen.queryByRole('button', { name: 'Efectivo' })).toBeNull();
+  });
+
+  test('«Todavía no se paga» guarda sin pagos y queda pendiente', async () => {
+    await gastoListo();
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0]).toMatchObject({ payments: [], status: 'pendiente' });
+  });
+
+  test('con pagos capturados abajo no se pregunta', async () => {
+    await gastoListo();
+    click('Agregar pago');
+    expect(screen.queryByRole('button', { name: 'Todavía no se paga' })).toBeNull();
+  });
+});
+
+// Decisión del dueño tras la prueba sin contexto (FR-007e): «pedí 2, llegó 1» se dice en la captura.
+describe('Llegó una parte (FR-007e)', () => {
+  test('pide cuántos, acepta menos que lo pedido y manda esa cantidad', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '540' } });
+    click('Llegó una parte');
+    const cuantos = screen.getByLabelText('¿Cuántos llegaron?');
+    click('Todavía no se paga');
+    for (const bad of ['', '0', '3', '4']) {
+      fireEvent.change(cuantos, { target: { value: bad } });
+      expect(screen.getByRole('button', { name: 'Guardar' }), `«${bad}» llegaron de 3`).toBeDisabled();
+    }
+    fireEvent.change(cuantos, { target: { value: '2' } });
+    expect(screen.getByText('= 24 L')).toBeInTheDocument();
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].items[0]).toMatchObject({ quantity: '3', qtyReceived: '2' });
+  });
+});
+
+// Capturas en el ambiente de pruebas (T088): un insumo en ml sin empaque llegaba con «ml» elegido,
+// y «3» se guardaba como 3 ml. Nadie compra mililitros: llega elegida la unidad grande.
+test('sin empaque, la unidad que llega elegida es la grande (kg, L, m)', async () => {
+  await capturaConMercancia();
+  await elegir('Buscar o crear', /Azúcar/);
+  expect(await screen.findByRole('button', { name: 'kg' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '100' } });
+  click('Todavía no se paga');
+  click('Guardar');
+  await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+  expect(back.createExpense.mock.calls[0][0].items[0]).toMatchObject({ unitId: 2 });
+});
+
+// Capturas en el ambiente de pruebas (T088): «¿Cómo se pagó?» ofrecía los métodos de las
+// plataformas (Uber, Didi, Rappi), que no pagan una compra; con ellos eran dos filas.
+test('«¿Cómo se pagó?» no ofrece los métodos de las plataformas', async () => {
+  pos.paymentMethods.mockResolvedValue({ items: [
+    { id: 2, name: 'Tarjeta', kind: 'tarjeta', affectsCashDrawer: false, isActive: true },
+    { id: 5, name: 'Uber Eats en línea', kind: 'plataforma', affectsCashDrawer: false, isActive: true },
+  ] });
+  montar();
+  click(/Capturar sin ticket/);
+  click('No, solo el gasto');
+  expect(await screen.findByRole('button', { name: 'Tarjeta' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Uber Eats en línea' })).toBeNull();
+});
+
+// Spec 047 (US1): pasada la medianoche UTC, en México sigue siendo el día anterior. Antes cada fecha
+// salía de `toISOString` y un gasto de las 11:30 pm caía al día siguiente.
+describe('las fechas del gasto son del día del negocio', () => {
+  afterEach(() => { vi.useRealTimers(); });
+  beforeEach(() => {
+    pos.paymentMethods.mockResolvedValue({ items: [{ id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true }] });
+  });
+
+  async function guardarConTodo() {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
+    click('Tarjeta');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    return back.createExpense.mock.calls[0][0];
+  }
+
+  test.each([
+    ['2026-11-01T05:30:00Z', '2026-10-31'],
+    ['2026-11-01T06:30:00Z', '2026-11-01'],
+  ])('a las %s el gasto es del %s (ticket, día, pago rápido y recepción)', async (ahora, dia) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(ahora));
+    const body = await guardarConTodo();
+    expect(body).toMatchObject({ expenseDate: dia, expenseDay: dia, receivedAt: dia });
+    expect(body.payments[0].paidOn).toBe(dia);
+  });
+
+  test('el pago capturado abajo nace con el día del negocio', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-01T05:30:00Z'));
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    await encabezado('640');
+    click('Agregar pago');
+    await elegir('Método de pago', 'Tarjeta');
+    fireEvent.change(screen.getAllByPlaceholderText('0.00').at(-1)!, { target: { value: '640' } });
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments[0].paidOn).toBe('2026-10-31');
+  });
+});
+
+// Spec 047 (US3): el efectivo sale de cualquier caja activa, tenga turno o no. Si el servidor dice
+// que el pago no entra a ningún corte, se pregunta en una hoja antes de reenviar.
+describe('efectivo sin turno abierto (spec 047)', () => {
+  const outside = () => new ApiError(409, 'EXPENSE_OUTSIDE_COUNT', 'fuera de corte', 'r1');
+  beforeEach(() => {
+    pos.paymentMethods.mockResolvedValue({ items: [
+      { id: 1, name: 'Efectivo', affectsCashDrawer: true, isActive: true },
+      { id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true },
+    ] });
+  });
+
+  async function gastoListo() {
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    await encabezado('640');
+  }
+
+  test('sin turno se ofrece el chip «Efectivo» y la caja cerrada se toma sola', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    await gastoListo();
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments).toEqual([expect.objectContaining({ methodId: 1, registerId: 7 })]);
+  });
+
+  test('el selector lista las cajas cerradas con su sufijo, y no las inactivas', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [
+      { id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 },
+      { id: 8, name: 'Caja 2', isActive: true, countsCash: true, openSessionId: null },
+      { id: 9, name: 'Caja fuerte', isActive: true, countsCash: false, openSessionId: null },
+      { id: 10, name: 'Vieja', isActive: false, countsCash: true, openSessionId: null },
+    ] });
+    await gastoListo();
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    fireEvent.click(await screen.findByRole('button', { name: /¿De qué caja sale\?/ }));
+    expect(screen.getByRole('button', { name: 'Caja 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Caja 2 · cerrada' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Caja fuerte · sin arqueo' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Vieja/ })).toBeNull();
+  });
+
+  test('sin ninguna caja el renglón de pago dice «Sin cajas.»', async () => {
+    await gastoListo();
+    click('Agregar pago');
+    await elegir('Método de pago', 'Efectivo');
+    expect(screen.getByText('Sin cajas.')).toBeInTheDocument();
+  });
+
+  test('ante EXPENSE_OUTSIDE_COUNT pregunta; «Cancelar» no reenvía', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    back.createExpense.mockRejectedValueOnce(outside());
+    await gastoListo();
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    click('Guardar');
+    expect(await screen.findByText('Caja 1 no tiene turno abierto')).toBeInTheDocument();
+    expect(screen.getByText(OUTSIDE_COUNT_TEXT)).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Cancelar' }).at(-1)!);
+    await waitFor(() => expect(screen.queryByText('Caja 1 no tiene turno abierto')).toBeNull());
+    expect(back.createExpense).toHaveBeenCalledTimes(1);
+  });
+
+  test('«Registrar» lo deja pendiente: reenvía con outsideCount e includeInCount', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 }] });
+    back.createExpense.mockRejectedValueOnce(outside());
+    const { onSaved } = (await (async () => { const r = montar(); click(/Capturar sin ticket/); click('No, solo el gasto'); await encabezado('640'); return r; })());
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    click('Guardar');
+    // Con turno abierto, el 409 solo puede ser por la fecha.
+    expect(await screen.findByText('El pago es de otro día')).toBeInTheDocument();
+    expect(screen.getByText(OUTSIDE_COUNT_TEXT)).toBeInTheDocument();
+    click('Registrar para el siguiente corte');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalledTimes(2));
+    expect(back.createExpense.mock.calls[0][0].payments[0]).toMatchObject({ includeInCount: true });
+    expect(back.createExpense.mock.calls[0][0].payments[0].outsideCount).toBeUndefined();
+    expect(back.createExpense.mock.calls[1][0].payments[0]).toMatchObject({ registerId: 7, outsideCount: true, includeInCount: true });
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  test('«Registrar sin incluir en el arqueo» va aparte, mide 44 px y reenvía con includeInCount false', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    back.createExpense.mockRejectedValueOnce(outside());
+    await gastoListo();
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    click('Guardar');
+    const fuera = await screen.findByRole('button', { name: 'Registrar sin incluir en el arqueo' });
+    expect(parseInt(getComputedStyle(fuera).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
+    expect(fuera.parentElement).not.toBe(screen.getByRole('button', { name: 'Registrar para el siguiente corte' }).parentElement);
+    fireEvent.click(fuera);
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalledTimes(2));
+    expect(back.createExpense.mock.calls[1][0].payments[0]).toMatchObject({ registerId: 7, includeInCount: false });
+    expect(back.createExpense.mock.calls[1][0].payments[0].outsideCount).toBeUndefined();
+  });
+
+  test('antes del último cierre no se puede registrar: el principal es «sin incluir»', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    back.createExpense.mockRejectedValueOnce(new ApiError(409, 'EXPENSE_BEFORE_LAST_CLOSE', 'antes del cierre', 'r1'));
+    await gastoListo();
+    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    click('Guardar');
+    expect(await screen.findByText(BEFORE_LAST_CLOSE_TEXT)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar para el siguiente corte' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Registrar sin incluir en el arqueo' })).toHaveLength(1);
+    click('Registrar sin incluir en el arqueo');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalledTimes(2));
+    expect(back.createExpense.mock.calls[1][0].payments[0]).toMatchObject({ includeInCount: false });
+  });
+
+  test('«Pagar gasto» (/pay) pregunta igual y «Registrar» lo deja pendiente', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    back.payExpense.mockRejectedValueOnce(outside()).mockResolvedValueOnce(undefined);
+    const onPaid = vi.fn();
+    montarPago(onPaid);
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1 · cerrada');
+    click('Confirmar pago');
+    expect(await screen.findByText('Caja 1 no tiene turno abierto')).toBeInTheDocument();
+    click('Registrar para el siguiente corte');
+    await waitFor(() => expect(back.payExpense).toHaveBeenCalledTimes(2));
+    expect(back.payExpense.mock.calls[0][1]).toMatchObject({ includeInCount: true });
+    expect(back.payExpense.mock.calls[0][1].outsideCount).toBeUndefined();
+    expect(back.payExpense.mock.calls[1][1]).toMatchObject({ registerId: 7, outsideCount: true, includeInCount: true });
+    await waitFor(() => expect(onPaid).toHaveBeenCalled());
+  });
+
+  test('«Pagar gasto» antes del último cierre solo ofrece «sin incluir»', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: null }] });
+    back.payExpense.mockRejectedValueOnce(new ApiError(409, 'EXPENSE_BEFORE_LAST_CLOSE', 'x', 'r1')).mockResolvedValueOnce(undefined);
+    montarPago(vi.fn());
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1 · cerrada');
+    click('Confirmar pago');
+    expect(await screen.findByText(BEFORE_LAST_CLOSE_TEXT)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar para el siguiente corte' })).toBeNull();
+    click('Registrar sin incluir en el arqueo');
+    await waitFor(() => expect(back.payExpense).toHaveBeenCalledTimes(2));
+    expect(back.payExpense.mock.calls[1][1]).toMatchObject({ includeInCount: false });
+  });
+});
+
+describe('«Salió de la caja» al pagar (spec 050)', () => {
+  test('con lo excluido disponible, sigue al importe que se usa y viaja como drawerExtra', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 }] });
+    // $120 excluidos, $30 ya usados por otro pago: quedan $90.
+    back.expenseDetail.mockResolvedValue({
+      items: [{ id: 1, amount: '120', excluded: true }, { id: 2, amount: '100', excluded: false }],
+      payments: [{ id: 3, amount: '10', drawerExtra: '30' }],
+    });
+    back.payExpense.mockResolvedValue(undefined);
+    montarPago(vi.fn());
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1');
+    const salio = await screen.findByLabelText('Salió de la caja');
+    expect(salio).toHaveValue('100');
+    fireEvent.change(salio, { target: { value: '190.01' } });
+    expect(screen.getByRole('button', { name: 'Confirmar pago' })).toBeDisabled();
+    fireEvent.change(salio, { target: { value: '190' } });
+    click('Confirmar pago');
+    await waitFor(() => expect(back.payExpense).toHaveBeenCalled());
+    expect(back.payExpense.mock.calls[0][1]).toMatchObject({ amount: '100', drawerExtra: '90.00' });
+  });
+
+  test('sin excluidos no aparece y no se manda', async () => {
+    back.cashRegisters.mockResolvedValue({ items: [{ id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 }] });
+    back.payExpense.mockResolvedValue(undefined);
+    montarPago(vi.fn());
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1');
+    expect(screen.queryByLabelText('Salió de la caja')).toBeNull();
+    click('Confirmar pago');
+    await waitFor(() => expect(back.payExpense).toHaveBeenCalled());
+    expect(back.payExpense.mock.calls[0][1].drawerExtra).toBeUndefined();
+  });
+});
+
+function montarPago(onPaid: () => void) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={qc}><Provider>
+    <PayDialog expense={{ id: 5, amount: '100', currency: 'MXN', category: 'Insumos' } as never}
+      methods={[{ id: 1, name: 'Efectivo', affectsCashDrawer: true }, { id: 2, name: 'Tarjeta', affectsCashDrawer: false }]}
+      onClose={vi.fn()} onPaid={onPaid} />
+  </Provider></QueryClientProvider>);
+}
+
+// Spec 048, R10: la casilla va en el renglón del pago, solo para efectivo de una caja con arqueo.
+describe('casilla «Incluir en el arqueo» (spec 048)', () => {
+  beforeEach(() => {
+    pos.paymentMethods.mockResolvedValue({ items: [
+      { id: 1, name: 'Efectivo', affectsCashDrawer: true, isActive: true },
+      { id: 2, name: 'Tarjeta', affectsCashDrawer: false, isActive: true },
+    ] });
+    back.cashRegisters.mockResolvedValue({ items: [
+      { id: 7, name: 'Caja 1', isActive: true, countsCash: true, openSessionId: 70 },
+      { id: 9, name: 'Caja fuerte', isActive: true, countsCash: false, openSessionId: null },
+    ] });
+  });
+
+  async function conPago() {
+    montar();
+    click(/Capturar sin ticket/);
+    click('No, solo el gasto');
+    await encabezado('640');
+    click('Agregar pago');
+    fireEvent.change(screen.getAllByPlaceholderText('0.00').at(-1)!, { target: { value: '640' } });
+  }
+  const casilla = () => screen.queryByRole('checkbox', { name: 'Incluir en el arqueo' });
+
+  test('efectivo de caja con arqueo: aparece marcada y viaja como includeInCount', async () => {
+    await conPago();
+    await elegir('Método de pago', 'Efectivo');
+    expect(casilla()).toBeNull();
+    await elegir('Elegir caja', 'Caja 1');
+    expect(casilla()).toBeChecked();
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments[0]).toMatchObject({ registerId: 7, includeInCount: true });
+  });
+
+  test('desmarcada viaja como includeInCount false', async () => {
+    await conPago();
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja 1');
+    await userEvent.click(casilla()!);
+    expect(casilla()).not.toBeChecked();
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments[0]).toMatchObject({ includeInCount: false });
+  });
+
+  test('caja sin arqueo o tarjeta: no aparece y no se manda', async () => {
+    await conPago();
+    await elegir('Método de pago', 'Efectivo');
+    await elegir('Elegir caja', 'Caja fuerte · sin arqueo');
+    expect(casilla()).toBeNull();
+    await elegir('Efectivo', 'Tarjeta');
+    expect(casilla()).toBeNull();
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].payments[0].includeInCount).toBeUndefined();
+  });
+
+  test('«Pagar gasto»: la casilla aparece con efectivo y caja con arqueo, y desmarcada viaja en false', async () => {
+    back.payExpense.mockResolvedValue(undefined);
+    montarPago(vi.fn());
+    await elegir('Método de pago', 'Efectivo');
+    expect(casilla()).toBeNull();
+    await elegir('Elegir caja', 'Caja 1');
+    expect(casilla()).toBeChecked();
+    await userEvent.click(casilla()!);
+    click('Confirmar pago');
+    await waitFor(() => expect(back.payExpense).toHaveBeenCalled());
+    expect(back.payExpense.mock.calls[0][1]).toMatchObject({ registerId: 7, includeInCount: false });
+  });
+
+  test('«Pagar gasto» con tarjeta no la muestra', async () => {
+    montarPago(vi.fn());
+    await elegir('Método de pago', 'Tarjeta');
+    await elegir('— Sin arqueo —', 'Caja 1');
+    expect(casilla()).toBeNull();
+  });
+
+});
+
+// Prueba con usuario nuevo (spec 053): con un abono previo, el importe vacío pagaba el total otra vez.
+test('«Pagar gasto» con un abono previo paga lo que falta, no el total', async () => {
+  back.cashRegisters.mockResolvedValue({ items: [] });
+  back.expenseDetail.mockResolvedValue({ amount: '100', paid: '90', items: [], payments: [{ id: 3, amount: '90', drawerExtra: '0' }] });
+  back.payExpense.mockResolvedValue(undefined);
+  montarPago(vi.fn());
+  await elegir('Método de pago', 'Tarjeta');
+  expect(await screen.findByPlaceholderText('10')).toBeInTheDocument();
+  click('Confirmar pago');
+  await waitFor(() => expect(back.payExpense).toHaveBeenCalled());
+  expect(back.payExpense.mock.calls[0][1]).toMatchObject({ amount: '10' });
+});
+
+// US2 (FR-007, FR-009, FR-010): una compra en kg de algo que se guarda en ml se convierte con la
+// densidad y lo dice en el mismo renglón; sin ella el renglón no se acepta y ofrece capturarla ahí.
+describe('compras entre peso y líquido (spec 058)', () => {
+  const salsa = { itemType: 'ingrediente', id: 12, name: 'Salsa de chocolate', unitCode: 'ml', unitKind: 'volumen' };
+  beforeEach(() => {
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'admin', permissions: ['inventory.configure'] } as never });
+    back.setDensity.mockResolvedValue({ density: { value: '1.1', method: 'manual', setByName: 'Ana', setAt: '2026-11-02T10:00:00Z' } });
+  });
+  afterEach(() => useSessionStore.setState({ user: null } as never));
+
+  async function renglonEnKg(qty = '4.3') {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Salsa de chocolate/);
+    click('kg');
+    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: qty } });
+  }
+
+  test('con densidad dice la cuenta y manda la unidad en que se compró', async () => {
+    back.searchArticles.mockResolvedValue({ items: [{ ...salsa, densityGPerMl: '1.1' }] });
+    await renglonEnKg();
+    expect(await screen.findByText('4,300 g ÷ 1.10 = 3,909 ml')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '500' } });
+    click('Todavía no se paga');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar' })).toBeEnabled());
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].items[0]).toMatchObject({ ingredientId: 12, unitId: 2, quantity: '4.3' });
+  });
+
+  test('un renglón en la misma clase no dice nada de densidad', async () => {
+    back.searchArticles.mockResolvedValue({ items: [{ ...salsa, densityGPerMl: '1.1' }] });
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Salsa de chocolate/);
+    click('L');
+    expect(screen.queryByText(/÷ 1.10/)).toBeNull();
+    expect(screen.queryByText(/Sin densidad/)).toBeNull();
+  });
+
+  test('sin densidad avisa, no se guarda, y «Capturar la densidad» la pide sin perder el renglón', async () => {
+    back.searchArticles.mockResolvedValue({ items: [salsa] });
+    await renglonEnKg();
+    expect(await screen.findByText('Sin densidad para pasar kg a ml')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '500' } });
+    click('Todavía no se paga');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    back.searchArticles.mockResolvedValue({ items: [{ ...salsa, densityGPerMl: '1.1' }] });
+    click('Capturar la densidad');
+    expect(await screen.findByText('Densidad · Salsa de chocolate')).toBeInTheDocument();
+    click('Escribir el valor');
+    fireEvent.click(screen.getByLabelText('Gramos por mililitro'));
+    for (const k of ['1', 'punto', '1']) click(k);
+    click('Listo');
+    // La hoja de abajo puede seguir expuesta: se guarda en la de la densidad.
+    fireEvent.click(within(screen.getByText('Densidad · Salsa de chocolate').closest('[role=dialog]') as HTMLElement).getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(back.setDensity).toHaveBeenCalledWith(12, { method: 'manual', density: '1.1' }));
+    expect(await screen.findByText('4,300 g ÷ 1.10 = 3,909 ml')).toBeInTheDocument();
+    expect(screen.getByLabelText('Cantidad')).toHaveValue('4.3');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar' })).toBeEnabled());
+  });
+
+  test('dos renglones del mismo artículo sin densidad ofrecen un solo atajo', async () => {
+    back.searchArticles.mockResolvedValue({ items: [salsa] });
+    await renglonEnKg();
+    click(/Agregar artículo/);
+    const segundo = screen.getAllByTestId('renglon')[1];
+    fireEvent.click(within(segundo).getByRole('button', { name: 'Buscar o crear' }));
+    fireEvent.click(within(segundo).getByRole('button', { name: /Salsa de chocolate/ }));
+    fireEvent.click(within(segundo).getByRole('button', { name: 'kg' }));
+    expect(screen.getAllByText('Sin densidad para pasar kg a ml')).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Capturar la densidad' })).toHaveLength(1);
+  });
+
+  test('sin permiso de configurar avisa y dice qué hacer', async () => {
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: [] } as never });
+    back.searchArticles.mockResolvedValue({ items: [salsa] });
+    await renglonEnKg();
+    expect(await screen.findByText('Sin densidad para pasar kg a ml')).toBeInTheDocument();
+    expect(screen.getByText(/Pídele a quien configura el almacén que capture la densidad, o elige otra unidad/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
+  });
+
+  // El aviso con su botón crecía el renglón una línea entera dentro de la fila de unidades y estados:
+  // va en una sola línea propia, texto a la izquierda y botón a la derecha (revisión de tableta de la 058).
+  test('el aviso y su botón van juntos en una línea propia, fuera de la fila de unidades y estado', async () => {
+    back.searchArticles.mockResolvedValue({ items: [salsa] });
+    await renglonEnKg();
+    const linea = await screen.findByTestId('sin-densidad');
+    expect(within(linea).getByText('Sin densidad para pasar kg a ml')).toBeInTheDocument();
+    expect(within(linea).getByRole('button', { name: 'Capturar la densidad' })).toBeInTheDocument();
+    expect(within(linea).queryByRole('group', { name: 'Estado' })).toBeNull();
+    expect(within(linea).queryByRole('button', { name: 'kg' })).toBeNull();
+    expect(linea.children).toHaveLength(2);
+    expect(getComputedStyle(within(linea).getByText('Sin densidad para pasar kg a ml')).color).toContain('orange-fg');
+  });
+
+  test('un artículo recién creado, todavía sin guardar, no ofrece el atajo y dice qué hacer', async () => {
+    back.searchArticles.mockResolvedValue({ items: [{ ...salsa, id: -1 }] });
+    await renglonEnKg();
+    expect(await screen.findByText('Sin densidad para pasar kg a ml')).toBeInTheDocument();
+    expect(screen.getByText(/Pídele a quien configura el almacén/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
+  });
+
+  test('si el servidor dice que falta la densidad, ofrece el mismo atajo', async () => {
+    back.searchArticles.mockResolvedValue({ items: [{ ...salsa, densityGPerMl: '1.1' }] });
+    back.createExpense.mockRejectedValueOnce(new ApiError(400, 'UNIT_KIND_MISMATCH', 'no tiene densidad', 'r', { ingredientId: 12 } as never));
+    await renglonEnKg();
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '500' } });
+    click('Todavía no se paga');
+    click('Guardar');
+    fireEvent.click(await screen.findByRole('button', { name: 'Capturar la densidad' }));
+    expect(await screen.findByText('Densidad · Salsa de chocolate')).toBeInTheDocument();
+  });
+});

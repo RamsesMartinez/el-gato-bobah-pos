@@ -48,7 +48,7 @@ func TestErrorProductoNoDisponibleViajaConNombreEId(t *testing.T) {
 			if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 				t.Fatalf("respuesta ilegible: %v", err)
 			}
-			if got.Error.Code != "UNPROCESSABLE" {
+			if got.Error.Code != "MENU_CHANGED" {
 				t.Fatalf("code = %q", got.Error.Code)
 			}
 			if got.Error.Details == nil {
@@ -356,5 +356,113 @@ func TestCaja032ErrorsHaveTheirOwnCode(t *testing.T) {
 		if w.Code != 422 || !strings.Contains(w.Body.String(), `"code":"`+want+`"`) {
 			t.Errorf("%v → %d %s; quería 422 %s", err, w.Code, w.Body.String(), want)
 		}
+	}
+}
+
+// La tableta reacciona a un menú viejo recargándolo y pidiendo elegir de nuevo, y lo decide por el
+// código, no por el texto. Un rechazo que no es de menú viejo no puede caer ahí: la tableta
+// escondería el motivo real detrás de «el menú se actualizó».
+func TestStaleMenuRejectionsShareOneStableCode(t *testing.T) {
+	casos := []struct {
+		nombre string
+		err    error
+		code   string
+	}{
+		{"extra que ya no es del producto", fmt.Errorf("%w: Chocolate no es un extra de Frappé", domain.ErrOptionNotFound), "MENU_CHANGED"},
+		{"producto que ya no se vende", domain.ProductUnavailable{ProductID: 7, Name: "Chococino"}, "MENU_CHANGED"},
+		{"extra pedido más veces de las que hoy se permite", fmt.Errorf("%w: Perlas admite 1", domain.ErrOptionOverMax), "MENU_CHANGED"},
+		{"cuenta vacía", domain.ErrEmptyOrder, "UNPROCESSABLE"},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			Error(w, c.err)
+			var got struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != http.StatusUnprocessableEntity || got.Error.Code != c.code {
+				t.Fatalf("status %d code %q, quería 422 %q", w.Code, got.Error.Code, c.code)
+			}
+		})
+	}
+}
+
+// Al mandar a cocina o cobrar, la tableta señala el renglón que hay que volver a elegir. Lo decide por
+// el dato, no por el texto: el renglón y el producto viajan en details junto al código MENU_CHANGED.
+func TestMenuChangedCarriesTheRejectedLine(t *testing.T) {
+	casos := []struct {
+		nombre string
+		err    error
+		prod   int64
+	}{
+		{"extra que ya no es del producto", domain.LineRejected{Index: 1, LineID: "a1b2", ProductID: 630,
+			Err: fmt.Errorf("%w: Perlas no es un extra de Frappé", domain.ErrOptionNotFound)}, 630},
+		{"producto que ya no se vende", domain.LineRejected{Index: 0, LineID: "a1b2", ProductID: 7,
+			Err: domain.ProductUnavailable{ProductID: 7, Name: "Chococino"}}, 7},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			Error(w, c.err)
+			var got struct {
+				Error struct {
+					Code    string `json:"code"`
+					Details struct {
+						LineID    string `json:"lineId"`
+						ProductID int64  `json:"productId"`
+					} `json:"details"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+			if got.Error.Code != "MENU_CHANGED" || got.Error.Details.LineID != "a1b2" || got.Error.Details.ProductID != c.prod {
+				t.Fatalf("code %q lineId %q productId %d: la tableta no puede señalar qué renglón volver a elegir",
+					got.Error.Code, got.Error.Details.LineID, got.Error.Details.ProductID)
+			}
+		})
+	}
+}
+
+// La caja con asistencia (spec 046): tres 409 con su propio código, porque la hoja ofrece cosas
+// distintas en cada uno. El de quien abrió nombra a la persona y llega sin el prefijo del sentinel.
+func TestCashAttendanceErrorsHaveTheirOwnCode(t *testing.T) {
+	for _, c := range []struct {
+		err       error
+		code, msg string
+	}{
+		{domain.ErrCashClockInRequired, "CLOCK_IN_REQUIRED", "Para abrir la caja, primero marca tu entrada"},
+		{domain.CashOpenerClockedIn{Name: "Ana"}, "OPENER_NOT_CLOCKED_OUT", "Ana abrió esta caja y no ha marcado su salida"},
+		{domain.ErrCashClockOutWithPIN, "CLOCK_OUT_WITH_PIN", "Marca tu salida con tu PIN para cerrar la caja"},
+	} {
+		w := httptest.NewRecorder()
+		Error(w, c.err)
+		var body errorEnvelope
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if w.Code != 409 || body.Error.Code != c.code || body.Error.Message != c.msg {
+			t.Errorf("%v → %d %+v; quería 409 %s «%s»", c.err, w.Code, body.Error, c.code, c.msg)
+		}
+	}
+}
+
+// Pasar la venta con una caja abierta es el estado del negocio, no un dato mal escrito: la pantalla
+// lo distingue por el código para decir «cierra las dos cajas primero».
+func TestMovingSalesWithAnOpenRegisterHasItsOwnCode(t *testing.T) {
+	w := httptest.NewRecorder()
+	Error(w, domain.ErrRegistersMustBeClosed)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), `"code":"REGISTERS_MUST_BE_CLOSED"`) {
+		t.Fatalf("→ %d %s; quería 409 REGISTERS_MUST_BE_CLOSED", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	Error(w, domain.ErrOtherBranch)
+	if w.Code != 400 {
+		t.Fatalf("otra sucursal → %d; quería 400", w.Code)
 	}
 }

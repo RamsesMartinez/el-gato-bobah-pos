@@ -1,0 +1,228 @@
+package domain
+
+import (
+	"fmt"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/shopspring/decimal"
+)
+
+// MaxArticleName es el largo de un artículo del almacén, en letras: cabe en el renglón de la lista.
+const MaxArticleName = 60
+
+// CleanArticleName es el nombre como se guarda: sin espacios en las orillas ni repetidos adentro.
+func CleanArticleName(name string) string {
+	return strings.Join(strings.Fields(name), " ")
+}
+
+// ArticleInput es lo que se captura de un artículo al crearlo o editarlo. Los punteros nulos son
+// campos que no se tocan.
+type ArticleInput struct {
+	Name         string
+	MinStock     *decimal.Decimal
+	Cost         *decimal.Decimal
+	InitialStock *decimal.Decimal
+}
+
+// ValidateArticle rechaza como 400 lo que no cabe en la ficha. El nombre repetido no se decide aquí:
+// depende de los demás artículos de la empresa, y lo responde la base con su candado.
+func ValidateArticle(in ArticleInput) error {
+	if n := utf8.RuneCountInString(CleanArticleName(in.Name)); n == 0 || n > MaxArticleName {
+		return fmt.Errorf("%w: el nombre lleva de 1 a %d letras", ErrValidation, MaxArticleName)
+	}
+	if in.MinStock != nil && !ValidStockQtyOrZero(*in.MinStock) {
+		return fmt.Errorf("%w: el mínimo no puede ser negativo", ErrValidation)
+	}
+	if in.InitialStock != nil && !ValidStockQtyOrZero(*in.InitialStock) {
+		return fmt.Errorf("%w: la existencia inicial no puede ser negativa", ErrValidation)
+	}
+	if in.Cost != nil && !ValidMoney(*in.Cost, true) {
+		return fmt.Errorf("%w: costo inválido", ErrValidation)
+	}
+	return nil
+}
+
+// UnitPath es cómo se cambia la unidad base de un artículo.
+type UnitPath string
+
+const (
+	// UnitPathDirect convierte el mismo artículo: solo tiene ajustes.
+	UnitPathDirect UnitPath = "direct"
+	// UnitPathReplace crea otro en la unidad nueva y archiva este: ya tiene compras, ventas o mermas.
+	UnitPathReplace UnitPath = "replace"
+)
+
+// UnitChangePath decide el camino por los tipos de movimiento del artículo. Solo un ajuste (conteo,
+// existencia inicial, cambio de modo) deja convertir en el mismo artículo: los demás registran algo
+// que pasó con alguien —un proveedor, un cliente— en la unidad vieja, y no se reescriben (decisión
+// del dueño, 2026-10-19). Un tipo que no se conoce cuenta como de los que bloquean.
+func UnitChangePath(movementTypes []string) UnitPath {
+	for _, t := range movementTypes {
+		if t != "ajuste" {
+			return UnitPathReplace
+		}
+	}
+	return UnitPathDirect
+}
+
+// ValidUnitChange acepta un cambio de clase de unidad con una equivalencia (cuánto de la unidad base
+// nueva vale una de la vieja). Entre masa y volumen no se ofrece: haría falta la densidad, y 1 g = 1 ml
+// es cierto para el agua y falso para el aceite.
+func ValidUnitChange(fromKind, toKind string, factor decimal.Decimal) error {
+	if fromKind == toKind {
+		return fmt.Errorf("%w: el artículo ya se mide así", ErrValidation)
+	}
+	if fromKind != "pieza" && toKind != "pieza" {
+		return fmt.Errorf("%w: no se puede pasar de %s a %s sin la densidad del producto", ErrValidation, fromKind, toKind)
+	}
+	if !ValidQty(factor, MaxStockQty, false) {
+		return fmt.Errorf("%w: la equivalencia debe ser mayor que cero", ErrValidation)
+	}
+	return nil
+}
+
+// ConvertQty pasa una cantidad a la unidad nueva, a 4 decimales como la columna.
+func ConvertQty(qty, factor decimal.Decimal) decimal.Decimal {
+	return Round4(qty.Mul(factor))
+}
+
+// ConvertCost pasa un costo por unidad a la unidad nueva: si una pieza son 5,000 g, el costo de la
+// pieza es 5,000 veces el del gramo. 6 decimales, la escala de los costos por unidad.
+func ConvertCost(cost, factor decimal.Decimal) decimal.Decimal {
+	return cost.Div(factor).Round(6)
+}
+
+// ErrArticleNameTaken: ya hay un artículo con ese nombre, sin distinguir mayúsculas, acentos ni
+// espacios. Es un conflicto (409) con código propio para que la pantalla ofrezca el que existe.
+var ErrArticleNameTaken = fmt.Errorf("%w: ya hay un artículo que se llama así", ErrConflict)
+
+// ArticleNameTaken lleva el artículo que ya existe y si está archivado: la pantalla ofrece abrirlo o
+// reactivarlo en vez de crear otro.
+type ArticleNameTaken struct {
+	ID       int64
+	Archived bool
+}
+
+func (e ArticleNameTaken) Error() string { return ErrArticleNameTaken.Error() }
+func (e ArticleNameTaken) Unwrap() error { return ErrArticleNameTaken }
+
+// ErrArticleStale: la ficha cambió mientras se veía. Es un conflicto (409 STALE): la pantalla vuelve a
+// cargar en vez de pisar lo que guardó otra persona.
+var ErrArticleStale = fmt.Errorf("%w: el artículo cambió mientras lo veías; vuelve a abrirlo", ErrConflict)
+
+// ErrPrepCost: el costo de un preparado lo calcula su receta, no se captura a mano (409 PREP_COST).
+var ErrPrepCost = fmt.Errorf("%w: el costo de un preparado sale de su receta", ErrConflict)
+
+// TrendPct es cuánto cambió el costo contra una referencia, en por ciento con un decimal. Sin
+// referencia positiva no hay tendencia.
+func TrendPct(current, reference decimal.Decimal) *decimal.Decimal {
+	if !reference.IsPositive() {
+		return nil
+	}
+	pct := current.Sub(reference).Div(reference).Mul(decimal.NewFromInt(100)).Round(1)
+	return &pct
+}
+
+// ErrArticleInUse: el artículo no se archiva mientras una receta activa lo reste o un conteo abierto
+// lo tenga capturado (409 IN_USE): la pantalla dice cuáles.
+var ErrArticleInUse = fmt.Errorf("%w: el artículo todavía se usa", ErrConflict)
+
+// ErrArchiveHasStock: el artículo tiene existencia en alguna sucursal y quien archiva no lo confirmó
+// (#203, 409 ARCHIVE_HAS_STOCK). La pantalla vuelve a pedir la revisión y la muestra.
+var ErrArchiveHasStock = fmt.Errorf("%w: todavía tiene existencia; confirma que lo archivas así", ErrConflict)
+
+// ArchiveStockGate decide si se archiva un artículo con lo que tiene en cada sucursal: sin existencia,
+// sí; con existencia (también negativa), solo confirmado. Archivar no ajusta nada: la existencia se
+// queda como estaba y vuelve igual al reactivar (decisión del #203). Llevarla a cero es un conteo o una
+// merma, que dejan motivo; un ajuste escondido en archivar contaría como pérdida sin que nadie contara.
+func ArchiveStockGate(onHand []decimal.Decimal, confirmed bool) error {
+	for _, q := range onHand {
+		if !q.IsZero() && !confirmed {
+			return ErrArchiveHasStock
+		}
+	}
+	return nil
+}
+
+// ErrIngredientMerged: algo nuevo apunta a un insumo que ya se unió a otro (la base lo rechaza con
+// EGB02, 0104). 409 INGREDIENT_MERGED: la pantalla tenía el insumo de antes y hay que volver a elegir.
+var ErrIngredientMerged = fmt.Errorf("%w: ese insumo se unió a otro; vuelve a elegirlo", ErrConflict)
+
+// IngredientMergedInto es ErrIngredientMerged con el nombre del destino, para que la pantalla diga a
+// cuál elegir.
+type IngredientMergedInto struct{ Target string }
+
+func (e IngredientMergedInto) Error() string {
+	return "ese insumo se unió a " + e.Target + "; vuelve a elegirlo"
+}
+func (e IngredientMergedInto) Unwrap() error { return ErrIngredientMerged }
+
+// ErrMergeBlocked: la unión espera a que se resuelva algo de un origen o del destino (409
+// MERGE_BLOCKED). El mensaje dice qué y de cuál.
+var ErrMergeBlocked = fmt.Errorf("%w: falta resolver algo antes de unir", ErrConflict)
+
+// ErrMergeStale: lo que se vio en la vista previa ya no es lo que pasaría (409 MERGE_STALE).
+var ErrMergeStale = fmt.Errorf("%w: algo cambió mientras revisabas", ErrConflict)
+
+// ErrMergePresentationConflict: dos presentaciones con el mismo nombre y marca traen cantidades
+// distintas; hay que renombrar una antes de unir (409 MERGE_PRESENTATION_CONFLICT).
+var ErrMergePresentationConflict = fmt.Errorf("%w: dos presentaciones se llaman igual y traen distinto", ErrConflict)
+
+// ConvertRecipeQty pasa la cantidad de un renglón de receta a la unidad base nueva: de su unidad a la
+// base vieja (unitToBase) y de ahí con la equivalencia.
+func ConvertRecipeQty(qty, unitToBase, factor decimal.Decimal) decimal.Decimal {
+	return Round4(qty.Mul(unitToBase).Mul(factor))
+}
+
+// PresentationFits dice si un empaque convertido sigue siendo válido en la clase nueva: más de cero y,
+// en piezas, piezas enteras (como exige la base, 0092 regla 16).
+func PresentationFits(kind string, qtyInBase decimal.Decimal) bool {
+	if !qtyInBase.IsPositive() {
+		return false
+	}
+	return kind != "pieza" || qtyInBase.Equal(qtyInBase.Truncate(0))
+}
+
+// UnitChangePending: el cambio de unidad espera a que se cierre lo que todavía habla en la unidad
+// vieja (409 UNIT_CHANGE_PENDING). El mensaje dice qué falta.
+type UnitChangePending struct {
+	Receipts int
+	Waste    int
+}
+
+// ErrUnitChangePending es el sentinel de UnitChangePending, para el código de error.
+var ErrUnitChangePending = fmt.Errorf("%w: falta cerrar lo pendiente del artículo", ErrConflict)
+
+func (e UnitChangePending) Error() string {
+	parts := []string{}
+	if e.Receipts > 0 {
+		parts = append(parts, fmt.Sprintf("recibir %d compra(s)", e.Receipts))
+	}
+	if e.Waste > 0 {
+		parts = append(parts, fmt.Sprintf("aprobar o rechazar %d merma(s)", e.Waste))
+	}
+	return "antes de cambiar en qué se mide, falta " + strings.Join(parts, " y ")
+}
+func (e UnitChangePending) Unwrap() error { return ErrUnitChangePending }
+
+// maxConvertedQty es el tope de una cantidad convertida por un cambio de unidad: muy por debajo del
+// numeric(14,4) de las columnas, para que una equivalencia absurda responda 400 y no desborde (500).
+var maxConvertedQty = decimal.NewFromInt(1_000_000_000)
+
+// maxUnitCost es el tope de un costo por unidad convertido: el numeric(12,6) de las columnas.
+var maxUnitCost = decimal.NewFromInt(999_999)
+
+// ValidConvertedQty acepta una cantidad convertida que cabe en las columnas, con su signo.
+func ValidConvertedQty(v decimal.Decimal) bool {
+	return !v.Abs().GreaterThan(maxConvertedQty)
+}
+
+// ValidConvertedCost rechaza un costo que desborda, y uno positivo que la conversión dejó en cero: el
+// artículo se quedaría sin costo sin que nadie lo decidiera.
+func ValidConvertedCost(original, converted decimal.Decimal) bool {
+	if converted.GreaterThan(maxUnitCost) {
+		return false
+	}
+	return !original.IsPositive() || converted.IsPositive()
+}

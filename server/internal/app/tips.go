@@ -290,7 +290,7 @@ func (s *TipsService) Payout(ctx context.Context, registerID int64, cmd TipPayou
 			}
 			out = append(out, TipPayoutView{MovementID: mid, RecipientID: u.ID, RecipientName: name, Amount: l.Amount})
 		}
-		return nil
+		return auditCash(ctx, q, "tip.paid_out", sess.ID, nil, nil, map[string]any{"mode": cmd.Mode, "payouts": out})
 	})
 	if err != nil {
 		return nil, err

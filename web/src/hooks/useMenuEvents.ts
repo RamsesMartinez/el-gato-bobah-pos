@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
 import { useSessionStore } from '../stores/session';
+import { alReconectar } from './alReconectar';
 import { useReprecio } from './useReprecio';
 
 const BASE = import.meta.env.VITE_API_URL || '/api/v1';
@@ -24,6 +25,7 @@ export function useMenuEvents(): void {
     es.addEventListener('menu.updated', () => {
       void reprecia();
     });
+    alReconectar(es, () => void reprecia());
     return () => es.close();
   }, [token, reprecia]);
 }

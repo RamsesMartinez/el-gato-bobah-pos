@@ -1,4 +1,4 @@
-import { parseMonto, parseNumero } from '../../domain/numeros';
+import { parseMonto, parseNumero, round2 } from '../../domain/numeros';
 
 // Reglas puras del borrador de gasto: convertir lo que dice un documento a lo que el almacén y
 // la contabilidad necesitan. Viven aparte del diálogo para poder probarse sin montar la UI.
@@ -77,4 +77,113 @@ export function lineAmount(amount: string, unitPrice: string, qty: string): stri
   const cant = parseNumero(qty);
   const n = precio.valor * (cant.estado === 'valido' && cant.valor > 0 ? cant.valor : 1);
   return n.toFixed(2);
+}
+
+// Reglas de dinero de una compra (spec 038, FR-004a): cada renglón de mercancía lleva importe
+// salvo un regalo, y los renglones no pasan del total pagado; lo que falta queda como «otros» del
+// gasto. El servidor las vuelve a validar: aquí es para decirlo en el pie antes del 400.
+export interface PurchaseMoneyLine {
+  amount: string;
+  goods: boolean; // renglón de almacén
+  gift: boolean;
+  // Fuera del gasto: lo excluido (de la casa) no suma al importe del negocio.
+  excluded?: boolean;
+}
+export interface PurchaseMoney {
+  linesSum: number;
+  missingAmount: number; // renglones de mercancía sin importe (y que no son regalo)
+  over: boolean; // los renglones pasan del total pagado
+  others: number; // lo que queda como «otros» del gasto
+}
+export function purchaseMoney(lines: PurchaseMoneyLine[], total: number): PurchaseMoney {
+  let sum = 0;
+  let missingAmount = 0;
+  for (const l of lines) {
+    if (l.excluded) continue;
+    const m = parseMonto(l.amount);
+    const v = m.estado === 'valido' ? m.valor : 0;
+    if (l.goods && !l.gift && !(v > 0)) missingAmount++;
+    sum += v;
+  }
+  const linesSum = round2(sum);
+  return { linesSum, missingAmount, over: linesSum > round2(total), others: Math.max(0, round2(total - linesSum)) };
+}
+
+// baseOfLine es lo que un renglón suma en la unidad base del artículo: cantidad × lo que trae su
+// empaque (o el factor de su unidad). null cuando falta alguno de los dos: un «= 0 g» engañaría.
+export function baseOfLine(qty: string, factor: string | null | undefined): number | null {
+  const q = parseNumero(qty);
+  const f = parseNumero(factor ?? '');
+  if (q.estado !== 'valido' || f.estado !== 'valido' || q.valor <= 0 || f.valor <= 0) return null;
+  return Number((q.valor * f.valor).toFixed(4));
+}
+
+// Spec 058. densityFactor es cuánto suma en la unidad base UNA unidad de compra de la otra clase
+// (kg de un artículo en ml): la misma regla que domain.BaseQty — masa → volumen divide entre la
+// densidad, volumen → masa multiplica. null cuando no aplica (misma clase, pieza, longitud) o falta
+// la densidad: sin ella el servidor rechaza el renglón y la pantalla no debe inventar un número.
+export function densityFactor(buyKind: string, baseKind: string, toBase: string, density: string | null | undefined): number | null {
+  const d = parseNumero(density ?? '');
+  const f = parseNumero(toBase);
+  if (d.estado !== 'valido' || f.estado !== 'valido' || d.valor <= 0 || f.valor <= 0) return null;
+  if (buyKind === 'masa' && baseKind === 'volumen') return f.valor / d.valor;
+  if (buyKind === 'volumen' && baseKind === 'masa') return f.valor * d.valor;
+  return null;
+}
+
+const SMALLEST: Record<string, string> = { masa: 'g', volumen: 'ml' };
+// Un número, no una fecha: no lleva zona. Lo grande sin decimales («3,909»), lo chico con dos.
+const qtyWords = (n: number) => n.toLocaleString('es-MX', { maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 2 });
+export const densityWords = (n: number) => n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+
+// conversionWords dice en palabras cómo se convirtió un renglón entre peso y líquido (FR-009):
+// «4,300 g ÷ 1.10 = 3,909 ml». null si no aplica o falta algo.
+export function conversionWords(qty: string, buy: { kind: string; toBase: string }, baseKind: string, density: string | null | undefined): string | null {
+  const factor = densityFactor(buy.kind, baseKind, buy.toBase, density);
+  const result = baseOfLine(qty, factor === null ? null : String(factor));
+  const q = parseNumero(qty);
+  if (result === null || q.estado !== 'valido') return null;
+  const d = parseNumero(density ?? '');
+  if (d.estado !== 'valido') return null;
+  const smallest = q.valor * Number(buy.toBase);
+  const op = buy.kind === 'masa' ? '÷' : '×';
+  return `${qtyWords(smallest)} ${SMALLEST[buy.kind]} ${op} ${densityWords(d.valor)} = ${qtyWords(result)} ${SMALLEST[baseKind]}`;
+}
+
+const CODE_WORD: Record<string, string> = { l: 'L' };
+export interface CrossConversion {
+  factor: number | null; // cuánto suma una unidad comprada en la base; null sin densidad
+  words: string | null; // «4,300 g ÷ 1.10 = 3,909 ml», si hay cantidad y densidad
+  missing: string; // «Sin densidad para pasar kg a ml», o '' si no falta
+}
+
+// ASK_FOR_DENSITY acompaña al aviso donde no hay atajo a la densidad (sin permiso, o un artículo que
+// todavía no existe): sin él, quien captura se queda sin saber cómo seguir.
+export const ASK_FOR_DENSITY = 'Pídele a quien configura el almacén que capture la densidad, o elige otra unidad.';
+
+// crossConversion es lo que un renglón de compra entre peso y líquido le dice a quien captura: su
+// conversión o lo que falta para hacerla. null cuando el renglón no cruza de clase (o es pieza, o
+// longitud): ahí la cuenta es la de siempre y no hay nada que decir.
+export function crossConversion(
+  qty: string, buy: { code: string; kind: string; toBase: string }, baseKind: string, baseCode: string, density: string | null | undefined,
+): CrossConversion | null {
+  const cross = (buy.kind === 'masa' && baseKind === 'volumen') || (buy.kind === 'volumen' && baseKind === 'masa');
+  if (!cross) return null;
+  const factor = densityFactor(buy.kind, baseKind, buy.toBase, density);
+  if (factor === null) return { factor: null, words: null, missing: `Sin densidad para pasar ${CODE_WORD[buy.code] ?? buy.code} a ${baseCode}` };
+  return { factor, words: conversionWords(qty, buy, baseKind, density), missing: '' };
+}
+
+const BASE_KIND: Record<string, string> = { g: 'masa', ml: 'volumen', cm: 'longitud', pieza: 'pieza' };
+
+// lineConversion es crossConversion para las pantallas que solo tienen el código de la unidad del
+// renglón y de la base (por recibir, detalle del gasto).
+export function lineConversion(
+  qty: string, unitCode: string | null | undefined, baseUnitCode: string | null | undefined, density: string | null | undefined,
+  units: { code: string; kind: string; toBase: string }[],
+): CrossConversion | null {
+  const buy = units.find((u) => u.code === unitCode);
+  const baseKind = BASE_KIND[baseUnitCode ?? ''];
+  if (!buy || !baseKind || !baseUnitCode) return null;
+  return crossConversion(qty, buy, baseKind, baseUnitCode, density);
 }

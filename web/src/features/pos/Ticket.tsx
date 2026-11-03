@@ -38,6 +38,9 @@ interface Props {
   // Por qué no se pudo enviar o cobrar la última vez (sin caja, un producto que ya no se vende).
   // Se queda en el pie: un aviso que se va solo no se lee con el cliente enfrente.
   motivo?: string | null;
+  // El renglón que el servidor rechazó por menú viejo al mandar o cobrar: se señala para elegirlo
+  // de nuevo.
+  reselectLineId?: string | null;
   puedeCancelar: boolean;
   onMas: (r: RenglonNuevo) => void;
   onMenos: (r: RenglonNuevo) => void;
@@ -80,10 +83,13 @@ export function Ticket(props: Props) {
 
   const hayNuevo = vista.nuevos.length > 0;
   const noSeVende = vista.noDisponibles.length > 0;
+  // El renglón por volver a elegir sigue a la venta (cambió su extra): no se ofrece quitarlo.
+  const removable = vista.noDisponibles.filter((l) => l.id !== props.reselectLineId);
   const bloqueo = sinConexion
     ? 'Sin conexión: no se puede mandar a cocina ni cobrar.'
     : vista.guardando ? 'Guardando…'
-      : noSeVende ? 'Quita lo que ya no se vende para mandar o cobrar.' : null;
+      : removable.length > 0 ? 'Quita lo que ya no se vende para mandar o cobrar.'
+        : noSeVende ? 'Elige de nuevo lo señalado para mandar o cobrar.' : null;
   const capturaMal = (llevaEnvio && envioMal) || descuentoMal;
   const enviarApagado = !hayNuevo || bloqueo !== null || noSeVende || capturaMal;
   const cobrarApagado = vista.falta <= 0 || bloqueo !== null || capturaMal;
@@ -159,19 +165,19 @@ export function Ticket(props: Props) {
               {vista.tipo === 'captura' && <MenuSeparator />}
               {/* Lejos de lo que se toca todo el día, y pregunta en una hoja de la app. */}
               {vista.tipo === 'captura' && (
-                <MenuItem value="descartar" minH="48px" mt={3} color="red.fg" onClick={onDescartar}>
+                <MenuItem value="descartar" minH="48px" mt={3} color="fg.error" onClick={onDescartar}>
                   <LuCircleX /> Descartar cuenta
                 </MenuItem>
               )}
               {!enCaptura && puedeCancelar && <MenuSeparator />}
               {!enCaptura && puedeCancelar && (
-                <MenuItem value="cancelar" minH="48px" mt={3} color="red.fg" onClick={onCancelarPedido}>
+                <MenuItem value="cancelar" minH="48px" mt={3} color="fg.error" onClick={onCancelarPedido}>
                   <LuBan /> Cancelar pedido
                 </MenuItem>
               )}
               {puedeCancelar && onCancelarResto && puedeCancelarLoQueFalta(vista) && <MenuSeparator />}
               {puedeCancelar && onCancelarResto && puedeCancelarLoQueFalta(vista) && (
-                <MenuItem value="cancelar-resto" minH="48px" color="red.fg" onClick={onCancelarResto}>
+                <MenuItem value="cancelar-resto" minH="48px" color="fg.error" onClick={onCancelarResto}>
                   <LuBan /> Cancelar lo que falta
                 </MenuItem>
               )}
@@ -216,7 +222,7 @@ export function Ticket(props: Props) {
         )}
         {vista.pagados.length > 0 && (
           <Seccion key={`pagado-${claveDeCuenta}-${hayNuevo}`}
-            titulo="Pagado" color="green.fg" plegable={hayNuevo} total={vista.pagados.length}>
+            titulo="Pagado" color="fg.success" plegable={hayNuevo} total={vista.pagados.length}>
             {vista.pagados.map((r) => <Pagado key={r.id} r={r} />)}
           </Seccion>
         )}
@@ -225,11 +231,11 @@ export function Ticket(props: Props) {
       <Separator />
       {/* Lo que el servidor ya no vende. Vive FUERA de la caja de totales: adentro mandaba Cobrar a
           un scroll interno. */}
-      {noSeVende && (
+      {removable.length > 0 && (
         <Box colorPalette="orange" borderWidth="1px" borderColor="colorPalette.emphasized"
           bg="colorPalette.subtle" borderRadius="lg" p={2} mx={3} mb={2} flexShrink={0}>
           <Text fontWeight="700" fontSize="sm" color="colorPalette.fg">Ya no están en el menú</Text>
-          <Text fontSize="xs" color="fg.muted" mb={2}>{vista.noDisponibles.map((l) => l.name).join(', ')}</Text>
+          <Text fontSize="xs" color="fg.muted" mb={2}>{removable.map((l) => l.name).join(', ')}</Text>
           <Button size="sm" minH="44px" variant="outline" colorPalette="orange" onClick={props.onQuitarNoDisponibles}>
             Quitar del pedido
           </Button>
@@ -292,7 +298,7 @@ export function Ticket(props: Props) {
           </Button>
         </VStack>
         {(bloqueo || motivo) && (
-          <Text fontSize="xs" color={motivo ? 'red.fg' : 'fg.muted'} textAlign="right" mt={1} role="status">
+          <Text fontSize="xs" color={motivo ? 'fg.error' : 'fg.muted'} textAlign="right" mt={1} role="status">
             {motivo ?? bloqueo}
           </Text>
         )}
@@ -327,12 +333,13 @@ function Seccion({ titulo, color, plegable, total, children }: {
 // Un renglón de 44 px en UNA línea: papelera · nombre y precio · −/cantidad/+. En dos líneas medía
 // ~80 px y en el panel de 600 px cabían tres. La papelera va al extremo OPUESTO del «+»: quitar un
 // renglón por accidente obliga a volver a buscar el producto en el menú.
-function Nuevos({ vista, onMas, onMenos, onQuitar, onEditLine }: Props) {
+function Nuevos({ vista, reselectLineId, onMas, onMenos, onQuitar, onEditLine }: Props) {
   return (
     <>
       {vista.nuevos.map((l) => (
         <HStack key={l.id} py={1} px={1} gap={1} minH="44px" borderBottomWidth="1px" borderColor="border.muted"
-          opacity={l.guardando ? 0.6 : 1}>
+          opacity={l.guardando ? 0.6 : 1}
+          {...(l.id === reselectLineId ? { borderLeftWidth: '4px', borderLeftColor: 'orange.solid', bg: 'orange.subtle' } : {})}>
           {l.guardando ? (
             <Box minW="44px" />
           ) : (
@@ -340,9 +347,12 @@ function Nuevos({ vista, onMas, onMenos, onQuitar, onEditLine }: Props) {
               colorPalette="red" flexShrink={0} onClick={() => onQuitar(l)}><LuTrash2 /></IconButton>
           )}
           <Box flex="1" minW={0} onClick={() => !l.guardando && onEditLine(l)} cursor="pointer">
-            <Text fontWeight="600" fontSize="sm" lineClamp={2} textDecoration={l.available ? undefined : 'line-through'}>
+            <Text fontWeight="600" fontSize="sm" lineClamp={2} textDecoration={l.available || l.id === reselectLineId ? undefined : 'line-through'}>
               {l.name}
             </Text>
+            {l.id === reselectLineId && (
+              <Text fontSize="xs" fontWeight="600" color="orange.fg">Elige de nuevo</Text>
+            )}
             {l.modifiers.length > 0 && (
               <Text fontSize="xs" color="fg.muted" lineClamp={2}>{detalleDeModificadores(l.modifiers)}</Text>
             )}
@@ -376,7 +386,7 @@ function EnCocina({ r, onQuitar }: { r: RenglonPedido; onQuitar: () => void }) {
         {r.detalle && <Text fontSize="2xs" color="fg.muted" truncate>{r.detalle}</Text>}
       </Box>
       {entregado ? (
-        <HStack gap={1} color="green.fg" flexShrink={0}><LuCheck size={14} /><Text fontSize="xs">entregado</Text></HStack>
+        <HStack gap={1} color="fg.success" flexShrink={0}><LuCheck size={14} /><Text fontSize="xs">entregado</Text></HStack>
       ) : r.delivered > 0 ? (
         <Text fontSize="xs" color="fg.muted" flexShrink={0}>{r.delivered} de {r.qty} entregados</Text>
       ) : null}
@@ -389,7 +399,7 @@ function EnCocina({ r, onQuitar }: { r: RenglonPedido; onQuitar: () => void }) {
           </IconButton>
         </MenuTrigger>
         <MenuContent>
-          <MenuItem value="quitar" minH="48px" color="red.fg" onClick={onQuitar}>
+          <MenuItem value="quitar" minH="48px" color="fg.error" onClick={onQuitar}>
             <LuTrash2 /> Quitar
           </MenuItem>
         </MenuContent>
@@ -401,7 +411,7 @@ function EnCocina({ r, onQuitar }: { r: RenglonPedido; onQuitar: () => void }) {
 function Pagado({ r }: { r: RenglonPedido }) {
   return (
     <HStack px={2} minH="40px" gap={2} borderBottomWidth="1px" borderColor="border.muted" color="fg.muted">
-      <Box color="green.fg" aria-label="Pagado" role="img" flexShrink={0}><LuLock size={14} /></Box>
+      <Box color="fg.success" aria-label="Pagado" role="img" flexShrink={0}><LuLock size={14} /></Box>
       <Text fontSize="sm" truncate flex="1">{r.qty > 1 ? `${r.name} ×${r.qty}` : r.name}</Text>
       <Text fontSize="sm" whiteSpace="nowrap">{money(r.lineTotal)}</Text>
     </HStack>
@@ -428,7 +438,7 @@ function CampoEnvio({ guardado, onMal, onGuardar }: {
           const v = leido.valor.toFixed(2);
           if (v !== Number(guardado).toFixed(2)) onGuardar(v);
         }} />
-      {mal && <Text fontSize="xs" color="red.fg">Solo números</Text>}
+      {mal && <Text fontSize="xs" color="fg.error">Solo números</Text>}
     </HStack>
   );
 }
@@ -485,8 +495,8 @@ function CampoDescuento({ subtotal, onMal, onListo }: {
         disabled={mal} onClick={listo}>Listo</Button>
     </HStack>
     {/* El aviso en su propia línea: junto al campo lo dejaba en ~10 px en el panel de 300. */}
-    {d.malEscrito && <Text fontSize="xs" color="red.fg">Solo números</Text>}
-    {d.excede && <Text fontSize="xs" color="red.fg">Máx {modo === 'pct' ? '100 %' : money(subtotal)}</Text>}
+    {d.malEscrito && <Text fontSize="xs" color="fg.error">Solo números</Text>}
+    {d.excede && <Text fontSize="xs" color="fg.error">Máx {modo === 'pct' ? '100 %' : money(subtotal)}</Text>}
     </VStack>
   );
 }

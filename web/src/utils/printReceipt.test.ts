@@ -542,3 +542,50 @@ describe('buildReceiptHtml — ticket de un pago', () => {
     expect(html).toContain('POR COBRAR');
   });
 });
+
+// Un renglón cancelado no se cobra y no va en el papel. Caso real (2026-11-02): se cancelaron unos
+// boneless, se agregaron otros, y el ticket salió con los dos mientras el total solo contaba uno.
+// El cliente suma los renglones, le da de más, y quien atiende no tiene con qué explicarlo.
+describe('buildReceiptHtml — renglones cancelados', () => {
+  const pedido: ReceiptOrder = {
+    ...baseOrder,
+    subtotal: '185',
+    total: '185',
+    lines: [
+      { id: 801, cancelled: true, productName: 'Boneless J', quantity: '1', unitPrice: '160', lineTotal: '160', modifiers: [] },
+      { id: 802, cancelled: false, productName: 'Boneless J', quantity: '1', unitPrice: '160', lineTotal: '160', modifiers: [] },
+      { id: 803, cancelled: false, productName: 'Refresco', quantity: '1', unitPrice: '25', lineTotal: '25', modifiers: [] },
+    ],
+  };
+
+  // Los importes de la tabla de renglones: la primera tabla después de la línea punteada.
+  const sumaDeRenglones = (html: string) => {
+    const tabla = html.split('<hr/>')[1];
+    return [...tabla.matchAll(/<td class="r">([^<]+)<\/td>/g)]
+      .map((m) => Number(m[1].replace(/[^0-9.]/g, '')))
+      .reduce((a, b) => a + b, 0);
+  };
+
+  it.each([
+    ['ticket del pedido', {}],
+    ['pre-cuenta', { preCuenta: true }],
+    ['reimpresión', { reprint: true }],
+  ])('%s: el cancelado no sale y los renglones suman el total', (_, opts) => {
+    const html = buildReceiptHtml(pedido, baseBusiness, opts);
+    expect(html.match(/Boneless J/g), 'el boneless cancelado salió impreso junto al vivo').toHaveLength(1);
+    expect(sumaDeRenglones(html), 'los renglones del papel no suman el total impreso').toBe(Number(pedido.total));
+  });
+
+  // El ticket de un pago lista lo que cubrió ese pago, así que un cancelado (que nadie pagó) no
+  // puede aparecer: el servidor no deja cancelar piezas cubiertas.
+  it('ticket de un pago: solo lo cubierto, nunca el cancelado', () => {
+    const html = buildReceiptHtml(pedido, baseBusiness, {
+      payment: {
+        id: 1, number: 1, voided: false, methodId: 1, methodName: 'Efectivo', amount: '160.00', tip: '0',
+        reference: '', paidAt: '2026-11-02T20:00:00Z', receivedBy: 'x', split: null,
+        lines: [{ lineId: 802, qty: '1', amount: '160.00' }],
+      },
+    });
+    expect(html.match(/Boneless J/g)).toHaveLength(1);
+  });
+});

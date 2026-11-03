@@ -113,9 +113,10 @@ create table platform_webhook_events (
   -- perder la única prueba de autenticidad que tenemos. Si hace falta consultarlo, `raw_body::jsonb`
   -- funciona en la consulta.
   --
-  -- TRAE DATOS DEL CLIENTE. Se poda a los 60 días: se borra el cuerpo y la fila se queda. El número
-  -- no es arbitrario — el documento de pago de la plataforma llega mensual y una discrepancia se
-  -- descubre al conciliarlo; pasado ese ciclo el cuerpo ya no sirve para nada y solo carga riesgo.
+  -- TRAE DATOS DEL CLIENTE, y se conserva: NO se poda (decisión del dueño, 2026-10-22). Este
+  -- comentario prometía borrarlo a los 60 días; se construyó y se quitó porque el POS va a mostrar
+  -- lo que mandó la plataforma, y lo borrado no se recupera. Lo que sí lo saca de las copias de
+  -- prueba es scripts/respaldo-anonimo.sh, que trunca esta tabla.
   raw_body      text,
   company_id    bigint not null default current_setting('app.company_id', true)::bigint
                 references companies(id) on delete cascade,
@@ -192,7 +193,7 @@ create table platform_incoming_orders (
   -- EL DETALLE CRUDO, byte por byte, como lo devolvió la plataforma. Es lo ÚNICO desde lo cual se
   -- puede corregir un mapeo equivocado días después, cuando la plataforma ya no entregue ese
   -- pedido. El aviso (`raw_body` de arriba) son cuatro campos y una liga: no sirve para esto.
-  -- Misma poda de 60 días y por la misma razón.
+  -- Se conserva, igual que `raw_body` arriba.
   raw_detail        text,
   created_at        timestamptz not null default now(),
   company_id        bigint not null default current_setting('app.company_id', true)::bigint

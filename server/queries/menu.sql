@@ -55,3 +55,9 @@ where o.status <> 'cancelada'
 group by ol.product_id
 order by qty desc, ol.product_id
 limit 60;
+
+-- name: CatalogVersion :one
+-- La versión de catálogo de la empresa de la sesión (RLS pone el filtro) y el día de la base, que
+-- es el mismo con el que MenuProducts filtra la disponibilidad por fecha. Sin fila = versión 0.
+select coalesce(max(version), 0)::bigint as version, current_date::date as today
+from catalog_versions;

@@ -19,6 +19,8 @@ const ETIQUETAS: Record<string, string> = {
   negocio: 'Ajustes del negocio',
   impresion: 'Impresión',
   cuenta: 'Cuenta propia',
+  asistencia: 'Asistencia',
+  merma: 'Se echó a perder',
 };
 
 const ACCIONES: Record<string, string> = {
@@ -34,6 +36,30 @@ const ACCIONES: Record<string, string> = {
   'crear-producto': 'Crear producto',
   'ajustar-stock': 'Ajustar existencias',
   'registrar-gasto': 'Registrar gasto',
+  'ver-salud': 'Ver salud del inventario',
+  'exportar-salud': 'Exportar salud del inventario',
+  'registrar-compra': 'Registrar compra al almacén',
+  'corregir-compra': 'Corregir lo que llegó',
+  'ver-por-recibir': 'Ver por recibir',
+  recibir: 'Recibir',
+  'ver-conteo': 'Ver conteo',
+  'cerrar-conteo': 'Cerrar conteo',
+  'ver-merma': 'Ver lo que se echó a perder',
+  'ver-faltante': 'Ver el faltante de un conteo',
+  'ver-articulos': 'Ver los artículos del almacén',
+  'crear-articulo': 'Crear un artículo',
+  'editar-articulo': 'Editar un artículo',
+  'corregir-costo': 'Corregir el costo de un artículo',
+  'archivar-articulo': 'Archivar o reactivar un artículo',
+  'cambiar-unidad': 'Cambiar en qué se mide un artículo',
+  'unir-insumos': 'Unir insumos duplicados',
+  'capturar-densidad': 'Capturar la densidad de un artículo',
+  'pesar-con-empaque': 'Contar pesando con el empaque',
+  'no-son-lo-mismo': 'Descartar un posible duplicado',
+  registrar: 'Registrar lo que se echó a perder',
+  deshacer: 'Deshacer lo que se echó a perder',
+  aprobar: 'Aprobar lo que se echó a perder',
+  rechazar: 'Rechazar lo que se echó a perder',
 };
 
 // etiquetaDePantalla y etiquetaDeAccion caen al slug si no lo conocen.

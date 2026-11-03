@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, HStack, VStack, Text, Input } from '@chakra-ui/react';
 import { LuChevronDown, LuSearch, LuPlus } from 'react-icons/lu';
 import { DrawerRoot, DrawerBackdrop, DrawerContent, DrawerCloseTrigger } from './ui/drawer';
@@ -23,8 +23,23 @@ interface Props {
   disabled?: boolean;
   size?: 'sm' | 'md' | 'lg';
   // Alta inline: si se define, al buscar algo sin coincidencia aparece "+ Crear «query»".
-  // Debe devolver la opción ya creada (para seleccionarla al vuelo).
-  onCreate?: (name: string) => Promise<PickerOption>;
+  // Debe devolver la opción ya creada (para seleccionarla al vuelo), o null si quien crea se
+  // arrepintió a medio camino (p. ej. no eligió en qué se mide un insumo).
+  onCreate?: (name: string) => Promise<PickerOption | null>;
+  // focusSearch=false no abre el teclado del sistema al abrir la hoja: en 600 px de alto se come la
+  // mitad y deja una o dos filas a la vista. Para listas cortas donde casi siempre se toca, no se escribe.
+  focusSearch?: boolean;
+  // searchMaxLength: el tope de lo que se puede crear desde el buscador, el mismo del servidor; sin
+  // él, un nombre largo volvía con 400 y la hoja se quedaba abierta sin decir por qué.
+  searchMaxLength?: number;
+  // createFirst pone «Crear» debajo del buscador en vez de al final: con el teclado abierto en 600 px
+  // el final de la lista queda tapado (revisión de tableta de la 043, R4).
+  createFirst?: boolean;
+  // cannotCreateHint se muestra en lugar de «Crear» a quien no puede crear: sin él, escribir algo que
+  // no existe no dice nada y parece que la hoja no responde.
+  cannotCreateHint?: string;
+  // searchPlaceholder reemplaza «Buscar…»: con la lista vacía, un ejemplo de qué escribir.
+  searchPlaceholder?: string;
 }
 
 // Picker táctil: reemplaza al <select> nativo (malo en tablet con muchos ítems). Abre un
@@ -35,19 +50,32 @@ const comparable = (s: string) => normalize(s).trim().replace(/\s+/g, ' ');
 
 export function Picker({
   value, options, onChange, placeholder = 'Seleccionar', title, clearable,
-  clearLabel = '— Ninguno —', searchThreshold = 6, disabled, size = 'md', onCreate,
+  clearLabel = '— Ninguno —', searchThreshold = 6, disabled, size = 'md', onCreate, focusSearch = true, searchMaxLength,
+  createFirst, cannotCreateHint, searchPlaceholder = 'Buscar…',
 }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
 
   const selected = options.find((o) => o.value === value);
-  const showSearch = options.length > searchThreshold || !!onCreate;
+  const showSearch = options.length > searchThreshold || !!onCreate || !!cannotCreateHint;
   const filtered = useMemo(() => {
     const n = comparable(q);
     return n ? options.filter((o) => comparable(o.label).includes(n)) : options;
   }, [q, options]);
   const exact = q.trim() !== '' && options.some((o) => comparable(o.label) === comparable(q));
+
+  // Al abrir, la hoja baja hasta lo elegido: con 96 horas, abrir arriba obligaba a recorrer la lista
+  // con el dedo hasta la hora que ya estaba puesta.
+  const selectedRow = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => {
+      const row = selectedRow.current?.firstElementChild ?? selectedRow.current;
+      row?.scrollIntoView?.({ block: 'center' });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [open]);
 
   const pick = (v: string) => { onChange(v); setOpen(false); setQ(''); };
 
@@ -56,11 +84,20 @@ export function Picker({
     setCreating(true);
     try {
       const opt = await onCreate(q.trim());
-      pick(opt.value);
+      if (opt) pick(opt.value);
     } finally {
       setCreating(false);
     }
   };
+
+  const createRow = q.trim() === '' || exact ? null
+    : onCreate ? (
+      <Button size="lg" minH="52px" variant="subtle" colorPalette="green" justifyContent="start"
+        loading={creating} onClick={create}>
+        <LuPlus /> Crear «{q.trim()}»
+      </Button>
+    )
+      : cannotCreateHint ? <Text color="fg.muted" px={2} py={3}>{cannotCreateHint}</Text> : null;
 
   return (
     <>
@@ -85,23 +122,23 @@ export function Picker({
               <Box px={4} pt={title ? 0 : 4} pb={2}>
                 <HStack px={3} borderWidth="1px" borderRadius="lg" bg="bg.subtle">
                   <LuSearch />
-                  <Input variant="flushed" border="none" placeholder="Buscar…" value={q}
-                    onChange={(e) => setQ(e.target.value)} autoFocus />
+                  <Input variant="flushed" border="none" placeholder={searchPlaceholder} value={q}
+                    onChange={(e) => setQ(e.target.value)} autoFocus={focusSearch} maxLength={searchMaxLength} />
                 </HStack>
               </Box>
             )}
             <VStack align="stretch" gap={1} overflowY="auto" px={3} pb={4} pt={1} flex="1">
+              {createFirst && createRow}
               {clearable && <ListRow label={clearLabel} muted selected={!value} onClick={() => pick('')} />}
               {filtered.map((o) => (
-                <ListRow key={o.value} label={o.label} hint={o.hint} selected={o.value === value} onClick={() => pick(o.value)} />
+                o.value === value
+                  ? <Box key={o.value} ref={selectedRow} display="contents"><ListRow label={o.label} hint={o.hint} selected onClick={() => pick(o.value)} /></Box>
+                  : <ListRow key={o.value} label={o.label} hint={o.hint} selected={false} onClick={() => pick(o.value)} />
               ))}
-              {onCreate && q.trim() !== '' && !exact && (
-                <Button size="lg" minH="52px" variant="subtle" colorPalette="green" justifyContent="start"
-                  loading={creating} onClick={create}>
-                  <LuPlus /> Crear «{q.trim()}»
-                </Button>
-              )}
-              {filtered.length === 0 && !onCreate && <Text color="fg.muted" px={2} py={3}>Sin resultados.</Text>}
+              {!createFirst && createRow}
+              {filtered.length === 0 && !onCreate && !cannotCreateHint && <Text color="fg.muted" px={2} py={3}>Sin resultados.</Text>}
+              {/* Sin opciones y sin poder crear, la hoja lo explica sin tener que escribir. */}
+              {!onCreate && cannotCreateHint && options.length === 0 && q.trim() === '' && <Text color="fg.muted" px={2} py={3}>{cannotCreateHint}</Text>}
               {/* Sin esto el alta inline es invisible: el botón «Crear» solo aparece al escribir, así
                   que quien abre la hoja y no ve su proveedor asume que tiene que salirse a crearlo. */}
               {onCreate && q.trim() === '' && (

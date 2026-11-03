@@ -725,9 +725,9 @@ select order_id from order_payment_voids where client_uuid = $1;
 
 -- name: ListOrderPaymentsForView :many
 -- Los pagos vivos de un pedido como los pinta la hoja de cobro.
-select p.id, p.payment_number, p.payment_method_id, pm.name as method_name, p.amount, p.tip_amount,
+select p.id, p.payment_number, p.payment_method_id, pm.name as method_name, pm.kind::text as method_kind, p.amount, p.tip_amount,
        coalesce(p.reference, '')::text as reference, p.created_at, coalesce(u.name, '')::text as received_by,
-       p.split_part, p.split_of
+       p.split_part, p.split_of, p.card_terminal_id, p.card_terminal_name
 from order_payments p
 join payment_methods pm on pm.id = p.payment_method_id
 left join users u on u.id = p.received_by

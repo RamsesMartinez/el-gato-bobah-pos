@@ -38,3 +38,25 @@ describe('rechazos de la cuenta', () => {
     expect(m).not.toMatch(/borrador|draft|versi[oó]n|409|DRAFT|ORDER/i);
   });
 });
+
+// La caja con asistencia (spec 046): frases para quien opera, y la de quien abrió conserva el nombre.
+describe('rechazos de la caja por asistencia', () => {
+  test.each([
+    ['CLOCK_IN_REQUIRED', /marca tu entrada/i],
+    ['CLOCK_OUT_WITH_PIN', /tu PIN/],
+  ])('%s', (code, esperado) => {
+    const m = mensajeDeError(new ApiError(409, code, 'x', 'r'));
+    expect(m).toMatch(esperado);
+    expect(m).not.toMatch(/409|CLOCK/);
+  });
+
+  test('OPENER_NOT_CLOCKED_OUT dice quién abrió', () => {
+    expect(mensajeDeError(new ApiError(409, 'OPENER_NOT_CLOCKED_OUT', 'Ana abrió esta caja y no ha marcado su salida', 'r')))
+      .toBe('Ana abrió esta caja y no ha marcado su salida');
+  });
+});
+
+test('ATTENDANCE_STATE_CHANGED pide volver a intentar, sin el texto en minúsculas del servidor', () => {
+  expect(mensajeDeError(new ApiError(409, 'ATTENDANCE_STATE_CHANGED', 'el registro de esta persona cambió, vuelve a intentarlo', 'r')))
+    .toBe('La asistencia cambió en otra tableta. Vuelve a intentarlo.');
+});

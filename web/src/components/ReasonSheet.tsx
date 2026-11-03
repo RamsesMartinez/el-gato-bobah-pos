@@ -64,7 +64,7 @@ export function ReasonSheet({
               </Button>
             </Box>
             <Box flex={destructive ? undefined : '1'} display="flex">
-              <Button flex="1" minH="52px" px={6} colorPalette="red" variant={destructive ? 'outline' : 'solid'}
+              <Button flex="1" minH="52px" px={6} colorPalette={destructive ? 'red' : 'brand'} variant={destructive ? 'outline' : 'solid'}
                 loading={loading} disabled={required === true && !limpio} onClick={() => salir(limpio)}>
                 {confirmLabel}
               </Button>

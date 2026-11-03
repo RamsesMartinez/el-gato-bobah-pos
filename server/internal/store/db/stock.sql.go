@@ -12,6 +12,79 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const getProductOnHand = `-- name: GetProductOnHand :one
+select coalesce(sum(on_hand), 0)::numeric(14,4) as on_hand,
+       count(*) filter (where on_hand <> 0)::int as branches
+  from stock_levels where item_type = 'producto' and product_id = $1
+`
+
+type GetProductOnHandRow struct {
+	OnHand   decimal.Decimal `json:"on_hand"`
+	Branches int32           `json:"branches"`
+}
+
+// La existencia propia de un producto, sumada: es lo que la hoja de receta muestra al preguntar
+// «¿Cuántas tienes de verdad?». La cifra que manda manda la vuelve a comparar contra la bloqueada.
+func (q *Queries) GetProductOnHand(ctx context.Context, productID *int64) (GetProductOnHandRow, error) {
+	row := q.db.QueryRow(ctx, getProductOnHand, productID)
+	var i GetProductOnHandRow
+	err := row.Scan(&i.OnHand, &i.Branches)
+	return i, err
+}
+
+const getUnitToIngredientBase = `-- name: GetUnitToIngredientBase :one
+select (u.to_base / bu.to_base)::numeric(20,6) as factor
+  from units u, ingredients i join units bu on bu.id = i.base_unit_id
+ where u.id = $1 and i.id = $2
+`
+
+type GetUnitToIngredientBaseParams struct {
+	UnitID       int16 `json:"unit_id"`
+	IngredientID int64 `json:"ingredient_id"`
+}
+
+// Cuánto de la unidad base del insumo es una unidad capturada: «1 caja» de un insumo que se lleva
+// por pieza. La captura ya exige que sean del mismo tipo.
+// Con 6 decimales, como units.to_base: la división de Postgres devuelve 20, y multiplicada por una
+// existencia queda fuera de lo que Round4 acepta redondear.
+func (q *Queries) GetUnitToIngredientBase(ctx context.Context, arg GetUnitToIngredientBaseParams) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, getUnitToIngredientBase, arg.UnitID, arg.IngredientID)
+	var factor decimal.Decimal
+	err := row.Scan(&factor)
+	return factor, err
+}
+
+const insertModeAdjustment = `-- name: InsertModeAdjustment :exec
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, branch_id, user_id, reason, note)
+values ($1::stock_item_type, $2, $3, 'ajuste',
+        $4, $5, $6, 'cambio de modo', $7)
+`
+
+type InsertModeAdjustmentParams struct {
+	ItemType     StockItemType   `json:"item_type"`
+	IngredientID *int64          `json:"ingredient_id"`
+	ProductID    *int64          `json:"product_id"`
+	Quantity     decimal.Decimal `json:"quantity"`
+	BranchID     int64           `json:"branch_id"`
+	UserID       *int64          `json:"user_id"`
+	Note         *string         `json:"note"`
+}
+
+// Un ajuste del cambio de modo. Va con su sucursal explícita (la de la fila bloqueada), la nota que
+// liga los dos movimientos de un traslado y quién lo hizo.
+func (q *Queries) InsertModeAdjustment(ctx context.Context, arg InsertModeAdjustmentParams) error {
+	_, err := q.db.Exec(ctx, insertModeAdjustment,
+		arg.ItemType,
+		arg.IngredientID,
+		arg.ProductID,
+		arg.Quantity,
+		arg.BranchID,
+		arg.UserID,
+		arg.Note,
+	)
+	return err
+}
+
 const insertStockMovement = `-- name: InsertStockMovement :exec
 
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, order_id, order_line_id, user_id, reason, note,
@@ -158,4 +231,100 @@ func (q *Queries) ListStockMovements(ctx context.Context, limit int32) ([]ListSt
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockIngredientStockLevels = `-- name: LockIngredientStockLevels :many
+select branch_id, on_hand from stock_levels
+ where item_type = 'ingrediente' and ingredient_id = $1
+ order by branch_id
+   for update nowait
+`
+
+type LockIngredientStockLevelsRow struct {
+	BranchID int64           `json:"branch_id"`
+	OnHand   decimal.Decimal `json:"on_hand"`
+}
+
+// NOWAIT a propósito: una venta bloquea en el orden de su ticket, y si ya tiene tomado el insumo y
+// espera por el producto que esta conversión ya bloqueó, esperar aquí sería un bloqueo mutuo y
+// Postgres cancelaría una de las dos (a veces el cobro). Sin esperar, la conversión falla con
+// 55P03, la app responde 409 y la venta sigue.
+func (q *Queries) LockIngredientStockLevels(ctx context.Context, ingredientID *int64) ([]LockIngredientStockLevelsRow, error) {
+	rows, err := q.db.Query(ctx, lockIngredientStockLevels, ingredientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockIngredientStockLevelsRow{}
+	for rows.Next() {
+		var i LockIngredientStockLevelsRow
+		if err := rows.Scan(&i.BranchID, &i.OnHand); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockProductForComposition = `-- name: LockProductForComposition :exec
+
+select 1 from products where id = $1 for update
+`
+
+// Cambio de modo de consumo (spec 037, research R6) -----------------------------------------------
+// El producto ANTES que sus existencias, en el mismo orden que una venta (la llave foránea de su
+// renglón toma el producto y luego el trigger toma la existencia). Guardar la receta cambia
+// recipe_id, que es único, y eso choca con esa llave: tomado después de la existencia, una venta a
+// la mitad cerraba el círculo y Postgres cancelaba una de las dos (40P01).
+func (q *Queries) LockProductForComposition(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, lockProductForComposition, id)
+	return err
+}
+
+const lockProductStockLevels = `-- name: LockProductStockLevels :many
+select branch_id, on_hand from stock_levels
+ where item_type = 'producto' and product_id = $1
+ order by branch_id
+   for update
+`
+
+type LockProductStockLevelsRow struct {
+	BranchID int64           `json:"branch_id"`
+	OnHand   decimal.Decimal `json:"on_hand"`
+}
+
+// Las existencias del producto, una por sucursal, BLOQUEADAS: una venta simultánea espera a que la
+// conversión termine en vez de aplicar su delta sobre una cifra que ya se trasladó. El trigger de
+// existencias suma deltas y no relee nada, así que sin este bloqueo se perdería o se inventaría.
+func (q *Queries) LockProductStockLevels(ctx context.Context, productID *int64) ([]LockProductStockLevelsRow, error) {
+	rows, err := q.db.Query(ctx, lockProductStockLevels, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockProductStockLevelsRow{}
+	for rows.Next() {
+		var i LockProductStockLevelsRow
+		if err := rows.Scan(&i.BranchID, &i.OnHand); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const turnOffProductTrackStock = `-- name: TurnOffProductTrackStock :exec
+update products set track_stock = false, updated_at = now() where id = $1
+`
+
+// Antes de ponerle receta: el check de products no deja existencia propia y receta a la vez.
+func (q *Queries) TurnOffProductTrackStock(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, turnOffProductTrackStock, id)
+	return err
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
@@ -134,6 +135,10 @@ type Deps struct {
 	// Permissions resuelve los permisos de un rol. Nil = domain.PermissionsFor, el mapa de hoy; las
 	// pruebas inyectan uno que no da ninguno para ver el 403 de un permiso que hoy tienen todos.
 	Permissions PermissionResolver
+	Attendance  *app.AttendanceService
+	Audit       *app.AuditService
+	// InventoryHealth es «Salud del inventario» (spec 037).
+	InventoryHealth *app.InventoryHealthService
 }
 
 type Handlers struct {
@@ -160,6 +165,7 @@ type Handlers struct {
 	company           *app.CompanyService
 	reset             *app.ResetService
 	broker            *realtime.Broker
+	shuttingDown      atomic.Bool
 	purchaseDoc       *app.PurchaseDocService
 	platformPrices    *app.PlatformPricesService
 	menusPlataforma   *app.MenusDePlataformaService
@@ -194,15 +200,20 @@ type Handlers struct {
 	authFails   *rateLimiter // account-targeted brute-force lockout (per username / user id)
 	authIPs     *rateLimiter // per-IP request throttle for the /auth group
 	permissions PermissionResolver
+	attendance  *app.AttendanceService
+	audit       *app.AuditService
+	health      *app.InventoryHealthService
 }
+
+// BeginShutdown hace que /readyz responda 503 mientras la copia termina lo que trae.
+func (h *Handlers) BeginShutdown() { h.shuttingDown.Store(true) }
 
 func NewHandlers(d Deps) *Handlers {
 	h := newHandlers(d)
-	// La lectura del menú copia precios en una goroutine que no pasa por un handler (0077). Sin este
-	// aviso el menú cacheado dura 24 horas y las tabletas cobrarían con el precio viejo.
-	if h.menusPlataforma != nil && h.menuCache != nil && h.broker != nil {
-		h.menusPlataforma.OnPricesSynced(func(ctx context.Context, companyID int64) {
-			h.menuCache.Invalidate(ctx, companyID)
+	// La lectura del menú copia precios en una goroutine que no pasa por un handler (0077). El menú
+	// guardado ya cambia de llave solo (0093); el aviso es para que las tabletas lo pidan al instante.
+	if h.menusPlataforma != nil && h.broker != nil {
+		h.menusPlataforma.OnPricesSynced(func(_ context.Context, companyID int64) {
 			h.broker.Publish(companyID, realtime.Event{Type: "menu.updated"})
 		})
 	}
@@ -216,6 +227,9 @@ func newHandlers(d Deps) *Handlers {
 	}
 	return &Handlers{
 		permissions: permissions,
+		attendance:  d.Attendance,
+		audit:       d.Audit,
+		health:      d.InventoryHealth,
 		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,

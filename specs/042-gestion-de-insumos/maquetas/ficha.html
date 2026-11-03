@@ -1,0 +1,99 @@
+<title>Maqueta ficha del artículo</title><meta name="claude:viewport-fit-sides" content="cover"><style>
+/* Marco fijo 1024x600 de la tableta, escalado al ancho disponible; riel de 76 px como el POS. */
+:root{--bg:#eef0f3;--surface:#fff;--fg:#1b1f24;--muted:#5d6670;--line:#d9dde3;--brand:#e23b2e;--brand-fg:#fff;--brand-soft:#fff1f0;--warn:#b45309;--warn-soft:#fff7e6;--ok:#15803d;--chip:#f3f4f6;
+--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1216;--surface:#1a1e24;--fg:#e8ebef;--muted:#9aa3ad;--line:#2d333b;--brand:#f0574b;--brand-fg:#fff;--brand-soft:#3a1310;--warn:#f59e0b;--warn-soft:#33240a;--ok:#4ade80;--chip:#252a31;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;font-variant-numeric:tabular-nums}
+h1{font-size:22px;margin:0 0 4px;text-wrap:balance}.sub{color:var(--muted);margin:0 0 16px;max-width:70ch}
+.tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.tab{min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.stage{width:100%;max-width:1024px;overflow:hidden}
+.scaler{width:1024px;height:600px;transform-origin:0 0}
+.frame{width:1024px;height:600px;background:var(--bg);border:1px solid var(--line);border-radius:12px;display:flex;overflow:hidden;position:relative}
+.rail{width:76px;flex:none;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:10px}
+.rail i{width:52px;height:46px;border-radius:10px;background:var(--chip);display:grid;place-items:center;font:600 10px var(--font);font-style:normal;color:var(--muted)}
+.rail i.on{background:var(--brand-soft);color:var(--brand)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px 16px;gap:10px;position:relative}
+.btn{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 15px var(--font);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--brand);color:var(--brand-fg);border-color:var(--brand)}
+.btn.danger{color:var(--brand);border-color:var(--brand)}
+.chip{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:500 14px var(--font);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+.input{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:16px var(--font);padding:0 12px}
+.notes{margin-top:14px;display:grid;gap:6px;max-width:1024px}.notes p{margin:0;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.notes b{display:inline-block;min-width:22px}
+.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+.sheet{background:var(--surface);width:100%;border-radius:16px 16px 0 0;padding:16px;display:flex;flex-direction:column;gap:10px;max-height:92%;overflow:auto}
+.modal{background:var(--surface);width:460px;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px;margin:auto}
+.muted{color:var(--muted)}.warn{color:var(--warn)}
+.tag{font:600 12px var(--font);padding:3px 8px;border-radius:6px;background:var(--chip);color:var(--muted)}
+.tag.neg{background:var(--brand-soft);color:var(--brand)}
+.example{font:600 12px var(--font);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+button:focus-visible,input:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+</style><script>
+function fit(){document.querySelectorAll('.stage').forEach(s=>{const k=Math.min(1,s.clientWidth/1024);const c=s.firstElementChild;c.style.transform='scale('+k+')';s.style.height=(600*k)+'px'})}
+addEventListener('resize',fit);
+function tabs(render){const bs=[...document.querySelectorAll('.tab')];const pick=id=>{bs.forEach(b=>b.setAttribute('aria-selected',b.dataset.opt===id));document.querySelectorAll('.opt-note').forEach(n=>n.style.fontWeight=n.dataset.opt===id?'600':'400');render(id);fit()};bs.forEach(b=>b.onclick=()=>pick(b.dataset.opt));const h=(location.hash||'').slice(1).toUpperCase();pick(['A','B','C'].includes(h)?h:'A')}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+</script>
+<h1>Ficha del artículo</h1>
+<p class="sub">Se abre al tocar un artículo de la lista, a 1024×600. Datos de ejemplo.</p>
+<div class="stage"><div class="scaler"><div class="frame" id="frame"></div></div></div>
+<div class="notes"><p>Opción elegida: A, dos columnas. Prueba: «Ver más» en el historial, la flecha de tendencia, «Bitácora», «Cambiar ›» en «Se mide en» (el artículo tiene compras, así que va por el reemplazo guiado) y «Archivar».</p></div>
+<style>
+.hdr{display:flex;align-items:center;gap:10px}
+.hdr h2{font-size:20px;margin:0;flex:1}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.scroll{overflow:auto}
+.fld{display:grid;grid-template-columns:110px 1fr;align-items:center;gap:8px}
+.fld .btn{text-align:left}
+.pres{display:flex;justify-content:space-between;align-items:center;min-height:48px;border-bottom:1px solid var(--line)}
+.hist{display:grid;grid-template-columns:70px 1fr auto;gap:8px;align-items:center;min-height:46px;border-bottom:1px solid var(--line);font-size:14px}
+.hist b{font-size:15px}
+.stabs{display:flex;gap:6px}
+svg text{fill:var(--muted);font:13px var(--font)}
+.trend{font:700 14px var(--font);padding:4px 8px;border-radius:8px}
+.trend.up{background:var(--brand-soft);color:var(--brand)}.trend.down{background:var(--chip);color:var(--ok)}
+.ev{display:grid;grid-template-columns:120px 1fr;gap:8px;min-height:48px;align-items:center;border-bottom:1px solid var(--line)}
+.rq{display:grid;grid-template-columns:1fr 150px 30px 150px;gap:8px;align-items:center;min-height:52px;border-bottom:1px solid var(--line)}
+</style>
+<script>
+const ART={n:'Hielo en bolsa',kind:'Peso',unit:'g',cat:'Desechables y hielo',place:'Refri',min:'10 kg',cost:0.006};
+let PRES=[{n:'Bolsa',q:'5 kg'},{n:'Bolsa',q:'15 kg'}];
+const H=[];const base=[['19 oct','Corrección a mano · Admin',null,0.0060],['17 oct','Proveedor B','Bolsa · 5 kg',0.0060],['10 oct','Proveedor A','Bolsa · 15 kg',0.0075],['03 oct','Proveedor A','Bolsa · 15 kg',0.0075],['26 sep','Proveedor A','Bolsa · 15 kg',0.0070],['19 sep','Proveedor B','Bolsa · 5 kg',0.0064],['12 sep','Proveedor A','Bolsa · 15 kg',0.0070],['05 sep','Proveedor A','Bolsa · 15 kg',0.0067],['29 ago','Proveedor A','Bolsa · 15 kg',0.0067],['22 ago','Proveedor B','Bolsa · 5 kg',0.0062],['15 ago','Proveedor A','Bolsa · 15 kg',0.0065],['08 ago','Proveedor A','Bolsa · 15 kg',0.0065],['01 ago','Proveedor A','Bolsa · 15 kg',0.0063],['25 jul','Proveedor B','Bolsa · 5 kg',0.0060],['18 jul','Proveedor A','Bolsa · 15 kg',0.0063],['11 jul','Proveedor A','Bolsa · 15 kg',0.0061],['04 jul','Proveedor A','Bolsa · 15 kg',0.0061],['27 jun','Proveedor A','Bolsa · 15 kg',0.0060],['20 jun','Proveedor B','Bolsa · 5 kg',0.0058],['13 jun','Proveedor A','Bolsa · 15 kg',0.0060],['06 jun','Proveedor A','Bolsa · 15 kg',0.0058],['30 may','Proveedor A','Bolsa · 15 kg',0.0058],['23 may','Proveedor B','Bolsa · 5 kg',0.0056],['16 may','Proveedor A','Bolsa · 15 kg',0.0057]];
+let shown=20,step=1,opt='A',stab='Datos',sheet=null;
+const kg=c=>'$'+(c*1000).toFixed(2)+' / kg';
+const pack=(p,c)=>{if(!p)return '';const q=parseFloat(p.split('· ')[1]);return '$'+(c*q*1000).toFixed(0)+' por '+p};
+function chart(w,h){const pts=base.slice(0,20).slice().reverse();const ys=pts.map(p=>p[3]);const lo=Math.min(...ys)*.95,hi=Math.max(...ys)*1.05;const L=54,R=w-64,T=14,B=h-24;const X=i=>L+(R-L)*i/(pts.length-1),Y=v=>B-(B-T)*(v-lo)/(hi-lo);
+ const d=pts.map((p,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(p[3]).toFixed(1)).join(' ');const last=pts[pts.length-1];
+ return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="Costo por kg en las últimas ${pts.length} compras"><line x1="${L}" x2="${R}" y1="${B}" y2="${B}" stroke="var(--line)"/><line x1="${L}" x2="${R}" y1="${T}" y2="${T}" stroke="var(--line)" stroke-dasharray="3 3"/><text x="${L-4}" y="${T+4}" text-anchor="end">$${(hi*1000).toFixed(1)}</text><text x="${L-4}" y="${B+4}" text-anchor="end">$${(lo*1000).toFixed(1)}</text><path d="${d} L${R} ${B} L${L} ${B}Z" fill="var(--brand-soft)"/><path d="${d}" fill="none" stroke="var(--brand)" stroke-width="2"/>${pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p[3])}" r="${p[2]?2.5:4}" fill="${p[2]?'var(--brand)':'var(--surface)'}" stroke="var(--brand)" stroke-width="${p[2]?0:2}"/>`).join('')}<text x="${L}" y="${h-4}">${pts[0][0]}</text><text x="${R}" y="${h-4}" text-anchor="end">${last[0]}</text><text x="${R+6}" y="${Y(last[3])+5}" style="fill:var(--fg);font-weight:700;font-size:14px">${kg(last[3]).replace(' / kg','')}</text></svg>`}
+function history(){return base.slice(0,shown).map(r=>`<div class="hist"><span class="muted">${r[0]}</span><span>${r[2]?esc(r[1])+'<br><span class="muted" style="font-size:12px">'+pack(r[2],r[3])+'</span>':'<span class="warn">'+esc(r[1])+'</span>'}</span><b>${kg(r[3])}</b></div>`).join('')+(shown<base.length?`<button class="btn" data-a="more">Ver más (${Math.min(20,base.length-shown)} anteriores)</button>`:'')}
+function trend(){if(base.filter(x=>x[2]).length<2)return '';const a=base[0][3],b=base[Math.min(19,base.length-1)][3];const pc=Math.round((a-b)/b*100);return pc===0?'<span class="trend down">= Igual</span>':`<span class="trend ${pc>0?'up':'down'}" title="Contra la compra más vieja de las últimas 20">${pc>0?'▲ Sube':'▼ Baja'} ${Math.abs(pc)} %</span>`}
+const datos=()=>`<div class="fld"><span>Nombre</span><input class="input" value="${ART.n}"></div><div class="fld"><span>Categoría</span><button class="btn">${ART.cat} ›</button></div><div class="fld"><span>Lugar</span><button class="btn">${ART.place} ›</button></div><div class="fld"><span>Mínimo</span><input class="input" value="${ART.min}"></div><div class="fld"><span>Se mide en</span><button class="btn" data-a="unit">${ART.kind} (g) · Cambiar ›</button></div>`;
+const empaques=()=>`<div style="display:flex;justify-content:space-between;align-items:center"><b>Empaques</b><button class="btn" data-a="pres">+ Agregar empaque</button></div><p class="muted" style="margin:0;font-size:13px">Cómo lo compras. Cada empaque se convierte a gramos al recibirlo.</p>${PRES.map(p=>`<div class="pres"><span><b>${p.n}</b> · ${p.q}</span><span class="muted">= ${(parseFloat(p.q)*1000).toLocaleString('es-MX')} g &nbsp;<button class="btn">Editar</button></span></div>`).join('')}`;
+const costo=(w,h)=>`<div style="display:flex;justify-content:space-between;align-items:center"><span style="display:flex;align-items:center;gap:8px"><b>Costo</b> <span style="font-size:20px;font-weight:700">${kg(ART.cost)}</span>${trend()}</span><button class="btn" data-a="cost">Corregir costo</button></div>${chart(w,h)}<div class="example">Compras y correcciones, la más reciente arriba</div>`;
+const mas=()=>`<button class="btn danger" data-a="archive" style="align-self:flex-start">Archivar artículo</button><p class="muted" style="margin:0">Archivado deja de ofrecerse en gastos, recetas y conteo. Su historia se conserva.</p>`;
+function render(){const f=document.getElementById('frame');let m=`<div class="hdr"><button class="btn">‹ Artículos</button><h2>${ART.n}</h2><button class="btn" data-a="log">Bitácora</button><button class="btn danger" data-a="archive">Archivar</button><button class="btn primary">Guardar</button></div>`;
+ m+=`<div class="cols"><div class="card scroll">${datos()}${empaques()}</div><div class="card" style="gap:6px">${costo(410,140)}<div class="scroll" style="flex:1;min-height:0">${history()}</div></div></div>`;
+
+ let sh='';
+ if(sheet==='more'){}
+ if(sheet==='cost')sh=`<div class="sheet-bg"><div class="modal"><b style="font-size:18px">Corregir costo</b><p class="muted" style="margin:0">El costo nuevo se usa desde ahora. Lo ya vendido no cambia.</p><input class="input" value="$6.00 por kg"><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close="1">Cancelar</button><button class="btn primary" data-close="1">Guardar costo</button></div></div></div>`;
+ if(sheet==='pres')sh=`<div class="sheet-bg"><div class="sheet"><b style="font-size:18px">¿Cómo lo compras?</b><p class="muted" style="margin:0">Por ejemplo: bolsa de 5 kg. Escribe cómo se llama y cuánto trae; el sistema lo cuenta en gramos.</p><div class="example">Usados en otros artículos que se pesan</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['Costal · 25 kg','Bolsa · 1 kg','Caja · 10 kg'].map(s=>`<button class="chip" data-sug="${s}">${s}</button>`).join('')}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input class="input" id="pn" placeholder="Nombre: Bolsa"><input class="input" id="pq" placeholder="Cuánto trae: 5 kg"></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close="1">Cancelar</button><button class="btn primary" data-a="addp">Agregar</button></div></div></div>`;
+ if(sheet==='archive')sh=`<div class="sheet-bg"><div class="modal"><b style="font-size:18px">¿Archivar «${ART.n}»?</b><p style="margin:0">Quedan <b>27 kg</b> en existencia.</p><p style="margin:0">Lo usan <b>2 recetas activas</b>: Frappé de café y Limonada. Quítalo de esas recetas antes de archivar.</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close="1">Entendido</button></div></div></div>`;
+ if(sheet==='unit'&&step===1)sh=`<div class="sheet-bg"><div class="sheet"><b style="font-size:18px">Cambiar en qué se mide · paso 1 de 2</b><div style="display:flex;gap:6px">${['Peso','Líquido','Longitud','Piezas'].map(k=>`<button class="chip" aria-pressed="${k==='Piezas'}" ${k==='Peso'?'disabled style="opacity:.45"':''}>${k}${k==='Peso'?' (actual)':''}</button>`).join('')}</div><label>¿Cuánto es 1 pieza?<br><input class="input" value="5,000 g"></label><div style="padding:10px;border-radius:10px;background:var(--warn-soft)">«${ART.n}» ya tiene compras y ventas, así que no se cambia en el mismo artículo: se crea <b>«${ART.n}» en piezas</b> con lo de abajo y este queda archivado con toda su historia.</div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close="1">Cancelar</button><button class="btn primary" data-a="step2">Revisar cantidades ›</button></div></div></div>`;
+ if(sheet==='unit'&&step===2)sh=`<div class="sheet-bg"><div class="sheet"><b style="font-size:18px">Revisa cada cantidad · paso 2 de 2</b><p class="muted" style="margin:0">Se convirtió con 1 pieza = 5,000 g. Corrige la que no cuadre.</p><div class="rq example"><span>Qué</span><span>Hoy</span><span></span><span>En el nuevo</span></div>${[['Existencia · Matriz','27,000 g','5.4 pz'],['Receta: Frappé de café','200 g','0.04 pz'],['Receta: Limonada','150 g','0.03 pz'],['Empaque: Bolsa · 5 kg','5,000 g','1 pz'],['Empaque: Bolsa · 15 kg','15,000 g','3 pz']].map(([a,b,c])=>`<div class="rq"><span>${a}</span><span class="muted">${b}</span><span>→</span><input class="input" value="${c}"></div>`).join('')}<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-a="step1">‹ Atrás</button><button class="btn primary" data-a="replace">Crear el nuevo y archivar este</button></div></div></div>`;
+ if(sheet==='done')sh=`<div class="sheet-bg"><div class="modal"><b style="font-size:18px">Listo</b><p style="margin:0">Se creó «${ART.n}» en piezas con 5.4 pz, 2 recetas y 2 empaques. Este quedó archivado; su historia sigue en Archivados.</p><div style="display:flex;justify-content:flex-end"><button class="btn primary" data-close="1">Abrir el nuevo</button></div></div></div>`;
+ if(sheet==='log')sh=`<div class="sheet-bg" data-close="1"><div class="sheet"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">Bitácora de «${ART.n}»</b><button class="btn" data-close="1">Cerrar</button></div>${[['19 oct 21:14','Admin','Corrigió el costo: $30.00 → $6.00 por kg'],['17 oct 22:02','Admin','Agregó el empaque Bolsa · 5 kg'],['16 oct 10:30','Gerente','Cambió el mínimo: 5 kg → 10 kg'],['02 sep 09:12','Gerente','Cambió el lugar: Bodega → Refri'],['14 may 18:40','Admin','Creó el artículo, en peso']].map(([a,b,c])=>`<div class="ev"><span class="muted">${a}</span><span><b>${b}</b> · ${c}</span></div>`).join('')}<p class="muted" style="margin:0">También se ve en Negocio › Bitácora, filtrada por este artículo.</p></div></div>`;
+ f.innerHTML=`<nav class="rail"><i>POS</i><i>Caja</i><i>Gastos</i><i class="on">Almacén</i><i>Negocio</i></nav><div class="main">${m}${sh}</div>`}
+document.getElementById('frame').addEventListener('click',e=>{const t=e.target.closest('[data-a],[data-st],[data-close],[data-sug]');if(!t)return;
+ const a=t.dataset.a;if(a==='more'){shown=Math.min(base.length,shown+20)}else if(a==='unit'){sheet='unit';step=1}else if(a==='step2'){step=2}else if(a==='step1'){step=1}else if(a==='replace'){sheet='done'}else if(a==='addp'){const n=document.getElementById('pn').value||'Bolsa',q=document.getElementById('pq').value||'1 kg';PRES.push({n,q});sheet=null}else if(a)sheet=a;
+ if(t.dataset.st)stab=t.dataset.st;if(t.dataset.close){if(t.dataset.close&&e.target!==t&&!e.target.closest('button'))return;sheet=null}
+ if(t.dataset.sug){const[n,q]=t.dataset.sug.split(' · ');document.getElementById('pn').value=n;document.getElementById('pq').value=q;return}
+ render()});
+render();fit();
+</script>

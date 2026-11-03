@@ -189,7 +189,7 @@ export function EmparejarPage({ conexionId }: Props) {
       </Button>
     );
 
-  if (error) return <Text color="red.600">{error}</Text>;
+  if (error) return <Text color="fg.error">{error}</Text>;
   if (!datos) return <Text color="fg.muted">Cargando…</Text>;
 
   const total = items.length;
@@ -290,8 +290,8 @@ export function EmparejarPage({ conexionId }: Props) {
                 borderRadius="0"
                 borderBottomWidth="1px"
                 borderLeftWidth="4px"
-                borderLeftColor={actual?.externalId === i.externalId ? 'red.500' : 'transparent'}
-                bg={actual?.externalId === i.externalId ? 'red.50' : undefined}
+                borderLeftColor={actual?.externalId === i.externalId ? 'brand.solid' : 'transparent'}
+                bg={actual?.externalId === i.externalId ? 'brand.subtle' : undefined}
                 onClick={() => {
                   setSeleccion(i.externalId);
                   setCaptura(null);
@@ -490,7 +490,7 @@ export function EmparejarPage({ conexionId }: Props) {
 
 function Comparacion({ item, destino, plataforma }: { item: RenglonDelTablero; destino: string; plataforma: string }) {
   return (
-    <Box borderWidth="1px" borderColor="red.100" bg="red.50" borderRadius="lg" p={4}>
+    <Box borderWidth="1px" borderColor="border.error" bg="bg.error" borderRadius="lg" p={4}>
       <HStack align="center" gap={3}>
         <Box flex="1" minW={0}>
           <Text fontSize="xs" color="fg.muted">
@@ -632,7 +632,7 @@ function PanelDeCaptura({
               justifyContent="space-between"
               variant="outline"
               borderWidth={elegido ? '2px' : '1px'}
-              borderColor={elegido ? 'red.500' : undefined}
+              borderColor={elegido ? 'brand.solid' : undefined}
               onClick={() => onElegir(o.externalId)}
             >
               <Text>

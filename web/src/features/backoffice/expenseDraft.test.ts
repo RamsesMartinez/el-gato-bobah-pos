@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'vitest';
-import { packToBase, lineAmount, splitTotals } from './expenseDraft';
+import { packToBase, lineAmount, splitTotals, purchaseMoney, baseOfLine, densityFactor, conversionWords, crossConversion, lineConversion } from './expenseDraft';
 
 // Unidades como las siembra la migración 0010.
 const units = [
@@ -125,4 +125,93 @@ test('un número con la unidad pegada se rechaza en vez de tirar la cola', () =>
 test('un importe con coma no se suma al total del documento', () => {
   const { local } = splitTotals([{ amount: '1,000', personal: false }, { amount: '250', personal: false }]);
   expect(local).toBe(250);
+});
+
+describe('purchaseMoney (FR-004a)', () => {
+  const goods = (amount: string, gift = false) => ({ amount, goods: true, gift });
+  test('un renglón de mercancía sin importe se cuenta como faltante; un regalo en 0 no', () => {
+    const m = purchaseMoney([goods(''), goods('0'), goods('0', true), { amount: '0', goods: false, gift: false }], 100);
+    expect(m.missingAmount).toBe(2);
+  });
+  test('renglones sobre el total se marcan; lo que falta queda como «otros»', () => {
+    expect(purchaseMoney([goods('730'), goods('410.01')], 1140).over).toBe(true);
+    const m = purchaseMoney([goods('190'), goods('540')], 1140);
+    expect(m).toMatchObject({ linesSum: 730, over: false, others: 410 });
+  });
+  test('lo de la casa no suma al gasto', () => {
+    expect(purchaseMoney([goods('100'), { amount: '50', goods: false, gift: false, excluded: true }], 100).over).toBe(false);
+  });
+  test('sin centavos fantasma al sumar', () => {
+    expect(purchaseMoney([goods('0.1'), goods('0.2')], 0.3).over).toBe(false);
+  });
+});
+
+describe('baseOfLine', () => {
+  test('cantidad por lo que trae el empaque', () => {
+    expect(baseOfLine('3', '12000')).toBe(36000);
+    expect(baseOfLine('1.5', '12000')).toBe(18000);
+  });
+  test('sin empaque o sin cantidad no inventa un cero', () => {
+    expect(baseOfLine('3', null)).toBeNull();
+    expect(baseOfLine('', '12000')).toBeNull();
+    expect(baseOfLine('0', '12000')).toBeNull();
+  });
+});
+
+// Spec 058 (FR-007, FR-009): la pantalla convierte entre peso y líquido con la MISMA regla que
+// domain.BaseQty. Si no, mostraría 4.3 kg como «no compatible» mientras el servidor lo acepta, o
+// un resultado distinto del que el almacén va a sumar.
+describe('densityFactor', () => {
+  test('masa → volumen divide entre la densidad: 4.3 kg con 1.1 son 3,909.0909 ml', () => {
+    expect(baseOfLine('4.3', String(densityFactor('masa', 'volumen', '1000', '1.1')))).toBe(3909.0909);
+  });
+  test('volumen → masa multiplica: 2 L con 0.92 son 1,840 g', () => {
+    expect(baseOfLine('2', String(densityFactor('volumen', 'masa', '1000', '0.92')))).toBe(1840);
+  });
+  test.each([
+    ['sin densidad', 'masa', 'volumen', '1000', null],
+    ['densidad vacía', 'masa', 'volumen', '1000', ''],
+    ['densidad cero', 'masa', 'volumen', '1000', '0'],
+    ['longitud nunca', 'longitud', 'masa', '100', '1.1'],
+    ['hacia longitud nunca', 'masa', 'longitud', '1000', '1.1'],
+    ['pieza no usa densidad', 'pieza', 'volumen', '1', '1.1'],
+    ['misma clase no es asunto de la densidad', 'masa', 'masa', '1000', '1.1'],
+  ])('%s → null', (_n, buy, base, toBase, d) => {
+    expect(densityFactor(buy, base, toBase, d)).toBeNull();
+  });
+});
+
+describe('conversionWords', () => {
+  test('dice la cuenta con la densidad y el resultado en la unidad base', () => {
+    expect(conversionWords('4.3', { kind: 'masa', toBase: '1000' }, 'volumen', '1.1')).toBe('4,300 g ÷ 1.10 = 3,909 ml');
+    expect(conversionWords('2', { kind: 'volumen', toBase: '1000' }, 'masa', '0.92')).toBe('2,000 ml × 0.92 = 1,840 g');
+  });
+  test('sin densidad o con una cantidad que no es número no dice nada', () => {
+    expect(conversionWords('4.3', { kind: 'masa', toBase: '1000' }, 'volumen', null)).toBeNull();
+    expect(conversionWords('', { kind: 'masa', toBase: '1000' }, 'volumen', '1.1')).toBeNull();
+  });
+});
+
+// Un mismo cálculo para las pantallas que tienen la unidad (captura) y las que solo tienen su código
+// (por recibir, detalle). Fuera de peso ↔ líquido no dice nada: ahí la cuenta es la de siempre.
+describe('crossConversion / lineConversion', () => {
+  const kg = { code: 'kg', kind: 'masa', toBase: '1000' };
+  const l = { code: 'l', kind: 'volumen', toBase: '1000' };
+  const all = [kg, l, { code: 'g', kind: 'masa', toBase: '1' }, { code: 'ml', kind: 'volumen', toBase: '1' }, { code: 'pieza', kind: 'pieza', toBase: '1' }];
+  test('con densidad: el factor y la cuenta', () => {
+    expect(crossConversion('4.3', kg, 'volumen', 'ml', '1.1')).toMatchObject({ missing: '', words: '4,300 g ÷ 1.10 = 3,909 ml' });
+    expect(crossConversion('4.3', kg, 'volumen', 'ml', '1.1')!.factor).toBeCloseTo(909.0909, 4);
+  });
+  test('sin densidad dice qué falta, sin factor', () => {
+    expect(crossConversion('2', l, 'masa', 'g', null)).toEqual({ factor: null, words: null, missing: 'Sin densidad para pasar L a g' });
+  });
+  test('misma clase o pieza: no aplica', () => {
+    expect(crossConversion('2', kg, 'masa', 'g', '1.1')).toBeNull();
+    expect(crossConversion('2', { code: 'pieza', kind: 'pieza', toBase: '1' }, 'volumen', 'ml', '1.1')).toBeNull();
+  });
+  test('por el código de la unidad del renglón', () => {
+    expect(lineConversion('2', 'l', 'g', '0.92', all)?.words).toBe('2,000 ml × 0.92 = 1,840 g');
+    expect(lineConversion('2', 'pieza', 'g', '0.92', all)).toBeNull();
+    expect(lineConversion('2', null, 'g', '0.92', all)).toBeNull();
+  });
 });

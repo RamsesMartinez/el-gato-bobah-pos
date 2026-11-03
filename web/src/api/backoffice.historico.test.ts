@@ -23,3 +23,16 @@ test('sin rango no manda fechas vacías', async () => {
   await backofficeApi.cashHistory({ page: 0, pageSize: 20 });
   expect(url()).toMatch(/\/cash-sessions\?page=0&pageSize=20$/);
 });
+
+// Cierre autorizado (spec 046): el motivo viaja en el cuerpo del cierre, no en otra petición.
+test('cerrar con autorización manda authorizedClose', async () => {
+  await backofficeApi.cashClose(3, {}, { countedCash: 500, manualReason: 'a mano', authorizedClose: { reason: 'Se fue sin checar' } });
+  const init = (fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit])[1];
+  expect(url()).toMatch(/\/cash-sessions\/close$/);
+  expect(JSON.parse(String(init.body)).authorizedClose).toEqual({ reason: 'Se fue sin checar' });
+});
+
+test('el estado de asistencia se pide por caja', async () => {
+  await backofficeApi.cashAttendance(3);
+  expect(url()).toMatch(/\/cash-sessions\/attendance\?registerId=3$/);
+});
