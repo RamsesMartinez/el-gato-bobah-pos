@@ -64,6 +64,9 @@ type MenuProduct struct {
 	ImageURL    *string         `json:"imageUrl"`
 	TrackStock  bool            `json:"trackStock"`
 	Groups      []MenuGroup     `json:"groups"`
+	// AltNames: otros nombres para buscarlo (spec 063). Se omite vacío para no engordar el documento
+	// del menú; el tipo del front lo declara opcional.
+	AltNames []string `json:"altNames,omitempty"`
 }
 
 type MenuGroup struct {
@@ -220,7 +223,7 @@ func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 			groups = []MenuGroup{}
 		}
 		doc.Products = append(doc.Products, MenuProduct{
-			ID: pr.ID, Name: pr.Name, SKU: pr.Sku, Description: pr.Description,
+			ID: pr.ID, Name: pr.Name, SKU: pr.Sku, Description: pr.Description, AltNames: pr.AltNames,
 			Price:      domain.Round2(pr.Price),
 			Cost:       domain.Round2(pr.CurrentCost),
 			Margin:     domain.Round2(pr.Price.Sub(pr.CurrentCost)),

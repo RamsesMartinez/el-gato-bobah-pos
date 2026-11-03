@@ -237,6 +237,18 @@ describe('buscador del conteo (spec 045)', () => {
   test('«bols» encuentra el hielo por su empaque', async () => {
     expect(await buscar('bols')).toEqual([expect.stringContaining('Hielo')]);
   });
+  // Spec 063: por otro nombre, con la misma regla de inicio de palabra, y señalado en la fila.
+  test('«cubos» encuentra el hielo por otro nombre y lo dice', async () => {
+    const conAlt = () => items().map((i) => (i.ingredientId === 3 ? { ...i, altNames: ['Cubos de hielo'] } : i));
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conAlt() });
+    montar();
+    fireEvent.change(await screen.findByLabelText('Buscar'), { target: { value: 'cubos' } });
+    const filas = screen.queryAllByTestId('renglon-conteo').map((r) => r.textContent);
+    expect(filas).toEqual([expect.stringContaining('Hielo')]);
+    expect(filas[0]).toContain('también: Cubos de hielo');
+    fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: 'ubos' } });
+    expect(screen.queryAllByTestId('renglon-conteo')).toHaveLength(0);
+  });
 });
 
 describe('llegar desde la ficha con ?q= (spec 045)', () => {

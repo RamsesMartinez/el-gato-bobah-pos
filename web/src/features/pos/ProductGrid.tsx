@@ -11,9 +11,11 @@ interface Props {
   menu: Menu | undefined;
   lista: ListaActiva;
   onEditPrice?: (p: MenuProduct) => void;
+  // Por producto, el otro nombre por el que salió en la búsqueda (spec 063).
+  matchedAlts?: Map<number, string>;
 }
 
-export function ProductGrid({ products, counts, onTap, showPrice, menu, lista, onEditPrice }: Props) {
+export function ProductGrid({ products, counts, onTap, showPrice, menu, lista, onEditPrice, matchedAlts }: Props) {
   if (products.length === 0) {
     return (
       <Center h="200px">
@@ -33,6 +35,7 @@ export function ProductGrid({ products, counts, onTap, showPrice, menu, lista, o
           price={precioDeLista(menu, lista, p.id, Number(p.price))}
           esManual={desglosePrecio(menu, lista, p.id, Number(p.price))?.esManual ?? false}
           onEditPrice={onEditPrice}
+          matchedAlt={matchedAlts?.get(p.id)}
         />
       ))}
     </Grid>

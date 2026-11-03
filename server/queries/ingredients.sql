@@ -21,7 +21,7 @@ select i.id, i.name, i.is_active, i.track_stock, i.is_packaging, i.min_stock,
        ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
        i.is_prep, i.composition_status,
        (select count(*) from recipe_items ri where ri.ingredient_id = i.id)::int as recipe_uses,
-       i.count_place_id, cp.name as count_place
+       i.count_place_id, cp.name as count_place, i.alt_names
 from ingredients i
 join units u on u.id = i.base_unit_id
 left join count_places cp on cp.id = i.count_place_id
@@ -53,17 +53,22 @@ where i.id = $1;
 -- con control de stock (una bebida que se compra y se revende tal cual). Un solo picker sobre
 -- un union en vez de obligar al operador a elegir primero "¿es ingrediente o producto?".
 select 'ingrediente' as item_type, i.id, i.name::text as name,
-       u.code as unit_code, u.kind as unit_kind, i.density_g_per_ml
+       u.code as unit_code, u.kind as unit_kind, i.density_g_per_ml, i.alt_names
 from ingredients i
 join units u on u.id = i.base_unit_id
 where i.is_active
-  and (sqlc.narg('q')::text is null or i.name::text ilike '%' || sqlc.narg('q')::text || '%')
+  -- Sin mayúsculas ni acentos, por nombre o por otro nombre (spec 063).
+  and (sqlc.narg('q')::text is null
+       or strpos(catalog_name_key(i.name::text), catalog_name_key(sqlc.narg('q')::text)) > 0
+       or exists (select 1 from unnest(i.alt_names) a where strpos(catalog_name_key(a), catalog_name_key(sqlc.narg('q')::text)) > 0))
 union all
 select 'producto' as item_type, p.id, p.name::text as name,
-       'pieza' as unit_code, 'pieza'::unit_kind as unit_kind, null::numeric(8,4) as density_g_per_ml
+       'pieza' as unit_code, 'pieza'::unit_kind as unit_kind, null::numeric(8,4) as density_g_per_ml, p.alt_names
 from products p
 where p.is_active and p.track_stock
-  and (sqlc.narg('q')::text is null or p.name::text ilike '%' || sqlc.narg('q')::text || '%')
+  and (sqlc.narg('q')::text is null
+       or strpos(catalog_name_key(p.name::text), catalog_name_key(sqlc.narg('q')::text)) > 0
+       or exists (select 1 from unnest(p.alt_names) a where strpos(catalog_name_key(a), catalog_name_key(sqlc.narg('q')::text)) > 0))
 order by name
 limit sqlc.arg('lim');
 

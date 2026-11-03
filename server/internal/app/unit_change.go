@@ -265,6 +265,11 @@ func (s *BackofficeService) ChangeUnit(ctx context.Context, id int64, req UnitCh
 		if err := q.LockCompositionEdits(ctx); err != nil {
 			return err
 		}
+		// El de nombres también antes de la fila: el reemplazo lo necesita, y guardar alternativos lo
+		// toma y luego la fila. Al revés, los dos se esperaban uno al otro (revisión de la 063).
+		if err := q.LockIngredientNames(ctx); err != nil {
+			return err
+		}
 		// Artículo y existencias sin esperar: una venta en curso responde «vuelve a intentar» (E6).
 		art, err := q.LockArticleNowait(ctx, id)
 		if err != nil {
@@ -536,6 +541,14 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 	if err := q.RenameArticle(ctx, db.RenameArticleParams{ID: old.ID, Name: retired}); err != nil {
 		return err
 	}
+	// Los nombres alternativos pasan al nuevo (FR-019): el viejo se archiva y los seguiría reservando.
+	alts, err := q.GetArticleForAltNames(ctx, old.ID)
+	if err != nil {
+		return err
+	}
+	if _, err := q.SetArticleAltNames(ctx, db.SetArticleAltNamesParams{ID: old.ID, Names: []string{}}); err != nil {
+		return err
+	}
 	var minStock *decimal.Decimal
 	if old.MinStock != nil {
 		v := domain.ConvertQty(*old.MinStock, f)
@@ -546,6 +559,9 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 		return err
 	}
 	if err := q.SetArticleExtras(ctx, db.SetArticleExtrasParams{ID: newID, PlaceID: old.CountPlaceID, TrackStock: old.TrackStock, IsPackaging: old.IsPackaging}); err != nil {
+		return err
+	}
+	if _, err := q.SetArticleAltNames(ctx, db.SetArticleAltNamesParams{ID: newID, Names: alts.AltNames}); err != nil {
 		return err
 	}
 	repID, err := q.InsertReplacement(ctx, db.InsertReplacementParams{OldIngredientID: old.ID, NewIngredientID: newID, Factor: f, UserID: actor})

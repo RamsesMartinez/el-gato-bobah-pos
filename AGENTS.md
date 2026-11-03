@@ -529,6 +529,23 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Un destino con insumos unidos no cambia de unidad**: la equivalencia de cada unión habla de la
     unidad de hoy. Unir no reescribe ventas, compras ni conteos pasados; el historial de costos y la
     bitácora del destino leen los de sus orígenes con un CTE recursivo dentro de la consulta (bajo RLS).
+- **Nombres alternativos** (spec 063, 0107). `products.alt_names` e `ingredients.alt_names` (hasta
+  10, `text[]`) sirven solo para buscar: ticket, comanda, reportes y plataformas leen `name`. Cuatro
+  cosas que no se ven:
+  - **La llave con que dos nombres son el mismo es `catalog_name_key` (SQL) y `domain.CatalogNameKey`
+    (Go)**, gemelas con prueba de paridad (también con `standard_conforming_strings=off`). Las
+    expresiones viejas (`IngredientNameTaken`, `FindArticleByName` por nombre) no recortan un tabulador
+    en la orilla; lo nuevo usa la función.
+  - **El choque se decide bajo el candado de nombres del catálogo, tomado antes de leer**: 28063 para
+    productos (alternativos, alta, renombre, duplicado) y el 28037 de siempre para artículos. Un
+    alternativo choca con el nombre de cualquiera de su catálogo y con los alternativos de los demás,
+    archivados incluidos, salvo los **orígenes de una unión**, que no reservan nada. Un camino nuevo
+    que dé de alta o renombre pasa por `productNameFree` o por `FindArticleByName`.
+  - **Van por su propia ruta (`PUT …/alt-names`, lista completa), nunca en el `PATCH` de la ficha**:
+    una tableta con la pantalla anterior manda el `PATCH` sin ellos y no puede borrarlos. En el
+    artículo, guardar mueve `updated_at` (trigger de la 0009) y la respuesta trae la versión nueva.
+  - **El cambio de unidad por reemplazo los pasa al artículo nuevo**; duplicar un producto no los
+    copia. La carga de FUDO no toma el candado: no trae alternativos.
 - **Densidad y tara** (spec 058, 0105). La densidad (g por ml) del artículo es lo único que pasa
   entre peso y líquido; nunca se asume 1 g = 1 ml. Cuatro cosas que no se ven:
   - **Cada renglón de compra fija la densidad con que convirtió la primera vez**
@@ -951,7 +968,16 @@ lo que queda. Hoy lo cuida quien mergea; la protección de develop que lo exige 
 «al día») la activa el dueño. Si el PR va atrás, se trae develop **en local** (commit firmado),
 `make ci-local`, se empuja y se espera el CI de nuevo; no se mergea sin eso. **No** con
 `gh pr update-branch` ni el botón «Update branch»: ese merge lo firma GitHub y no el dueño, y rompe la
-autoría única de la constitución. `main` corre todo siempre.
+autoría única de la constitución. **El push a `main` no repite lo que ya se probó** (decidido el
+2026-11-02). La llave es el **árbol** de archivos (`git rev-parse HEAD^{tree}`), no el SHA: el merge
+crea un commit nuevo, pero con develop al día sus archivos son idénticos a los de la cabeza del PR.
+- Pruebas: si un PR en verde probó ese árbol ([ci-tree-tested.sh](scripts/ci-tree-tested.sh)), no
+  corren; si no —un push directo, un PR que no estaba al día—, corre la suite completa.
+- Imagen: el push a develop la publica también como `api:tree-<árbol>`; main la encuentra y solo le
+  pone sus etiquetas, sin compilar. Producción corre el mismo binario que el ambiente de pruebas, y
+  por eso `/api/v1/version` dice el SHA de develop que la construyó. Un hotfix trae árbol nuevo y sí
+  se construye.
+- El frontend se construye otra vez: la URL de la API queda dentro del build y es otra por ambiente.
 Un test que lea archivos de otra carpeta (como los de nombres de empresa, que leen `web/src`) se
 agrega también al filtro de su job, o un PR de esa carpeta lo deja de correr.
 

@@ -1,3 +1,4 @@
+import type { SimilarAlt } from '../components/altNames';
 import { api } from './client';
 
 export interface AdminUser {
@@ -31,6 +32,10 @@ export interface AdminProduct {
   costSource?: CostSource;
   manualCost?: string | null;
   hasRecipe?: boolean;
+  // Otros nombres con que se busca (spec 063). Opcional: una respuesta de la API anterior no los trae.
+  altNames?: string[];
+  // El otro nombre por el que salió en la búsqueda; ausente si salió por su nombre.
+  matchedAlt?: string;
 }
 
 export type CostSource = 'manual' | 'compra' | 'receta';
@@ -208,6 +213,12 @@ export const adminApi = {
     api.post<{ id: number }>(`/admin/products/${id}/duplicate`, { name, cost }),
   updateProduct: (id: number, b: UpdateProductBody) =>
     api.patch<void>(`/admin/products/${id}`, b),
+  // Lista completa de otros nombres (spec 063); va aparte del PATCH para que una pantalla que no la
+  // conoce no la borre.
+  setProductAltNames: (id: number, altNames: string[]) =>
+    api.put<{ altNames: string[] }>(`/admin/products/${id}/alt-names`, { altNames }),
+  similarProductAltNames: (id: number, name: string) =>
+    api.get<SimilarAlt[]>(`/admin/products/${id}/alt-names/similar?name=${encodeURIComponent(name)}`),
 
   composition: (kind: CompositionKind, id: number) =>
     api.get<Composition>(`${compositionPath(kind, id)}`),

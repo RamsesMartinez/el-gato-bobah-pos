@@ -127,7 +127,7 @@ export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose,
             ) : (
               <>
                 <Picker value={pick} onChange={choose} placeholder={`¿Qué ${stockItemLabel}?`} title={`¿Qué ${stockItemLabel}?`}
-                  options={list.map((a) => ({ value: `${a.itemType}:${a.id}`, label: a.name, hint: a.unitCode }))} />
+                  options={list.map((a) => ({ value: `${a.itemType}:${a.id}`, label: a.name, hint: a.unitCode, aliases: a.altNames }))} />
                 {art && (
                   <HStack gap={2} flexWrap="wrap">
                     <Text>Cantidad</Text>

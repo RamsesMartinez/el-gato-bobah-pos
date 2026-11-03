@@ -473,6 +473,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/unit", h.ChangeUnit)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/articles/{id}/density", h.SetDensity)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Delete("/articles/{id}/density", h.ClearDensity)
+					// Nombres alternativos (spec 063): los edita quien edita la ficha; sin permiso nuevo.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/articles/{id}/alt-names", h.PutArticleAltNames)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Get("/articles/{id}/alt-names/similar", h.SimilarArticleAltNames)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/merge", h.MergeIngredients)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Get("/articles/duplicate-groups", h.DuplicateGroups)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/distinct-pairs", h.MarkDistinct)
@@ -542,6 +545,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.Route("/admin/products", func(r chi.Router) {
 					r.With(menuConfigure).Put("/{id}/composition", h.PutProductComposition)
 					r.With(menuConfigure).Post("/{id}/composition/confirm", h.ConfirmProductComposition)
+					// Nombres alternativos (spec 063): por permiso, fuera del grupo por rol. `menu.configure`
+					// lo tienen los roles que hoy editan un producto; no hay permiso nuevo.
+					r.With(menuConfigure).Put("/{id}/alt-names", h.PutProductAltNames)
+					r.With(menuConfigure).Get("/{id}/alt-names/similar", h.SimilarProductAltNames)
 					r.Group(func(r chi.Router) {
 						r.Use(RequireRole(domain.RoleAdmin, domain.RoleGerente))
 						r.Get("/", h.AdminListProducts)

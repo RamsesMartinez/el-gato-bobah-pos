@@ -695,7 +695,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
       <SearchSheet open={picker === 'ing'} title="Agregar insumo" error={pickerError} restoreFocus={false} onExitComplete={focusJustAdded}
         options={(ingredients.data?.items ?? []).filter((i) => !(isIng && i.id === id))
           .sort((a, b) => (b.recipeUses ?? 0) - (a.recipeUses ?? 0) || a.name.localeCompare(b.name, 'es'))
-          .map((i) => ({ value: String(i.id), label: i.name, hint: `${i.isPrep ? 'preparado · ' : ''}${unitLabel(i.baseUnitCode)}` }))}
+          .map((i) => ({ value: String(i.id), label: i.name, hint: `${i.isPrep ? 'preparado · ' : ''}${unitLabel(i.baseUnitCode)}`, aliases: i.altNames }))}
         onPick={(v) => { if (addIngredient(Number(v))) setPicker(null); }}
         onClose={() => setPicker(null)}
         renderCreate={(q) => (
@@ -718,7 +718,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
         options={(products.data?.items ?? [])
           // Un combo no lleva combos ni a sí mismo; un extra sí puede ser un combo.
           .filter((p) => picker === 'link' || (p.type !== 'combo' && p.id !== id && !parts.some((x) => x.productId === p.id)))
-          .map((p) => ({ value: String(p.id), label: p.name, hint: p.type === 'combo' ? 'combo' : '' }))}
+          .map((p) => ({ value: String(p.id), label: p.name, hint: p.type === 'combo' ? 'combo' : '', aliases: p.altNames }))}
         onPick={(v) => {
           const pid = Number(v);
           if (picker === 'part') edit(() => setParts((ps) => [...ps, { productId: pid, quantity: 1 }]));
@@ -729,7 +729,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
       <SearchSheet open={picker === 'store'} title="¿Qué se resta?" restoreFocus={false}
         options={[...(ingredients.data?.items ?? []).filter((i) => i.baseUnitKind === 'pieza')
           .sort((a, b) => Number(b.id === storeId) - Number(a.id === storeId) || a.name.localeCompare(b.name, 'es'))
-          .map((i) => ({ value: String(i.id), label: `${i.id === storeId ? '✓ ' : ''}${i.name}`, hint: `tienes ${Number(i.onHand)}` })),
+          .map((i) => ({ value: String(i.id), label: `${i.id === storeId ? '✓ ' : ''}${i.name}`, hint: `tienes ${Number(i.onHand)}`, aliases: i.altNames })),
         { value: 'new', label: `${storeId === 'new' ? '✓ ' : ''}Crear una nueva: «${name}»`, hint: 'por pieza' }]}
         onPick={(v) => { edit(() => { setStoreChoice(v === 'new' ? 'new' : Number(v)); setActual(''); }); setPicker(null); }}
         onClose={() => setPicker(null)} />

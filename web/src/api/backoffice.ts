@@ -1,3 +1,4 @@
+import type { SimilarAlt } from '../components/altNames';
 import { api } from './client';
 import type { PaymentMethod, AccountItem } from '../types/pos';
 
@@ -637,6 +638,8 @@ export interface Ingredient {
   countPlaceId?: number | null;
   category: string | null;
   onHand: string;
+  // Otros nombres con que se busca (spec 063). Opcional: una API anterior no los trae.
+  altNames?: string[];
 }
 // Entrada del buscador único (ingredientes + productos con control de stock).
 export interface Article {
@@ -647,6 +650,8 @@ export interface Article {
   unitKind: string;
   // Spec 058: para convertir en pantalla una compra entre peso y líquido.
   densityGPerMl?: string | null;
+  // Otros nombres con que se busca (spec 063). Opcional: una API anterior no los trae.
+  altNames?: string[];
 }
 // Sugerencia de mapeo. source dice cuánto confiar: "aprendido" ya se confirmó con ese
 // proveedor (autollenar); los otros son parecidos y esperan confirmación.
@@ -812,6 +817,8 @@ export interface CountItem {
   densityGPerMl?: string | null;
   // #204: cómo se capturó lo contado pesando con empaque; falta o es null si no se pesó.
   weighed?: CountWeighed | null;
+  // Otros nombres con que se busca (spec 063). Opcional: una API anterior no los trae.
+  altNames?: string[];
 }
 // CountWeighed es cómo se capturó una pesada con empaque (#204). closedPacks falta o es null si no se
 // sabe cómo se repartió lo cerrado entre empaques.
@@ -1151,6 +1158,13 @@ export const backofficeApi = {
   article: (id: number) => api.get<ArticleSheet>(`/stock/articles/${id}`),
   // Solo los campos que vienen cambian; uno en null se limpia (spec 043). Devuelve la versión nueva.
   updateArticle: (id: number, b: ArticleUpdate) => api.patch<{ updatedAt: string }>(`/stock/articles/${id}`, b),
+  // Lista completa de otros nombres (spec 063). Devuelve la versión nueva de la ficha: guardar mueve
+  // updated_at como cualquier cambio del artículo.
+  // expectedUpdatedAt: la versión que vio la ficha; con otra responde STALE, como el PATCH.
+  setArticleAltNames: (id: number, altNames: string[], expectedUpdatedAt: string) =>
+    api.put<{ altNames: string[]; updatedAt: string }>(`/stock/articles/${id}/alt-names`, { altNames, expectedUpdatedAt }),
+  similarArticleAltNames: (id: number, name: string) =>
+    api.get<SimilarAlt[]>(`/stock/articles/${id}/alt-names/similar?name=${encodeURIComponent(name)}`),
   correctArticleCost: (id: number, cost: string) => api.post<void>(`/stock/articles/${id}/cost`, { cost }),
   articleCostHistory: (id: number, before?: string) =>
     api.get<CostHistoryPage>(`/stock/articles/${id}/cost-history${before ? `?before=${encodeURIComponent(before)}` : ''}`),
@@ -1300,6 +1314,10 @@ export interface ArticleRow {
   presentations?: PresentationLabel[];
   // «estimated»: su receta vino estimada y está por revisar.
   compositionStatus?: string;
+  // Otros nombres con que se busca (spec 063). Opcional: una API anterior no los trae.
+  altNames?: string[];
+  // El otro nombre por el que salió en la búsqueda; ausente si salió por otra cosa.
+  matchedAlt?: string;
 }
 export interface ArticleSheet extends ArticleRow {
   costSource: string;

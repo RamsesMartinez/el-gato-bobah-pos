@@ -13,7 +13,14 @@ from (
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
          (select count(*) from product_modifier_groups pmg
-           where pmg.product_id = p.id and pmg.min_select is not null)::int as override_count
+           where pmg.product_id = p.id and pmg.min_select is not null)::int as override_count,
+         p.alt_names,
+         -- El alternativo que coincidió (spec 063): '' si no se busca o si coincide el nombre; el
+         -- primero en el orden capturado. coalesce: la subconsulta sin coincidencia es NULL.
+         (case when @search::text = '' or strpos(catalog_name_key(p.name), catalog_name_key(@search)) > 0 then ''
+               else coalesce((select a from unnest(p.alt_names) with ordinality u(a, n)
+                               where strpos(catalog_name_key(a), catalog_name_key(@search)) > 0
+                               order by n limit 1), '') end)::text as matched_alt
   from products p
   join categories c on c.id = p.category_id
   -- El producto genérico de plataforma (0077) no es del catálogo: lo usa el sistema para renglones
@@ -22,7 +29,11 @@ from (
     and (@status::text = ''
           or (@status = 'act' and p.is_active)
           or (@status = 'inact' and not p.is_active))
-    and (@search::text = '' or p.name ilike '%' || @search || '%')
+    -- Sin mayúsculas ni acentos, por nombre o alternativo (spec 063). strpos y no ilike: lo que alguien
+    -- escribe es texto, nunca un comodín.
+    and (@search::text = ''
+          or strpos(catalog_name_key(p.name), catalog_name_key(@search)) > 0
+          or exists (select 1 from unnest(p.alt_names) a where strpos(catalog_name_key(a), catalog_name_key(@search)) > 0))
     and (@category_id::bigint = 0 or p.category_id = @category_id or c.parent_id = @category_id)
     -- Composición (spec 028): ''=todas | 'none'=sin capturar | 'estimated'=por revisar.
     and (@composition::text = ''

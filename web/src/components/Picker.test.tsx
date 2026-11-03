@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from './ui/provider';
 import { Picker } from './Picker';
@@ -95,4 +95,27 @@ test('al abrir, la hoja baja hasta lo que ya está elegido', async () => {
   await vi.waitFor(() => expect(spy).toHaveBeenCalled());
   const row = spy.mock.contexts[0] as HTMLElement;
   expect(row.textContent).toContain('Opción 30');
+});
+
+// Spec 063: el Picker del gasto encuentra un artículo por otro nombre y lo señala en su fila.
+test('encuentra por otro nombre y lo señala; lo que coincide con un otro nombre no se ofrece crear', async () => {
+  const u = userEvent.setup();
+  const onChange = vi.fn();
+  render(
+    <Provider>
+      <Picker value="" onChange={onChange} placeholder="Buscar o crear" onCreate={vi.fn(async () => null)}
+        options={[
+          { value: 'i:1', label: 'Leche entera', hint: 'ml', aliases: ['Leche de vaca', 'Leche Lala'] },
+          { value: 'i:2', label: 'Azúcar', hint: 'g' },
+        ]} />
+    </Provider>,
+  );
+  await u.click(screen.getByRole('button', { name: /Buscar o crear/ }));
+  await u.type(await screen.findByPlaceholderText('Buscar…'), 'leche lala');
+  const fila = await screen.findByRole('button', { name: /Leche entera/ });
+  expect(within(fila).getByText(/también: Leche Lala/)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Azúcar/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Crear «leche lala»/ })).not.toBeInTheDocument();
+  await u.click(fila);
+  expect(onChange).toHaveBeenCalledWith('i:1');
 });

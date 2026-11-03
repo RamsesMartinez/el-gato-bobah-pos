@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, HStack, VStack, Text, Input } from '@chakra-ui/react';
 import { LuChevronDown, LuSearch, LuPlus } from 'react-icons/lu';
 import { DrawerRoot, DrawerBackdrop, DrawerContent, DrawerCloseTrigger } from './ui/drawer';
-import { normalize } from '../utils/format';
+import { matchedAlias, normalize } from '../utils/format';
 import { ListRow } from './ListRow';
 
 export interface PickerOption {
   value: string;
   label: string;
   hint?: string; // texto secundario a la derecha (p.ej. grupo, precio)
+  // Otros nombres con que se encuentra (spec 063); el que coincidió se señala en la fila.
+  aliases?: string[];
 }
 
 interface Props {
@@ -59,11 +61,20 @@ export function Picker({
 
   const selected = options.find((o) => o.value === value);
   const showSearch = options.length > searchThreshold || !!onCreate || !!cannotCreateHint;
-  const filtered = useMemo(() => {
+  // Por etiqueta o por otro nombre; el otro nombre se señala solo si la etiqueta no coincidió.
+  const filtered = useMemo((): { o: PickerOption; alt?: string }[] => {
     const n = comparable(q);
-    return n ? options.filter((o) => comparable(o.label).includes(n)) : options;
+    if (!n) return options.map((o) => ({ o }));
+    const has = (text: string) => comparable(text).includes(n);
+    return options.flatMap((o): { o: PickerOption; alt?: string }[] => {
+      if (has(o.label)) return [{ o }];
+      const alt = matchedAlias(o.aliases, n, (text) => has(text));
+      return alt ? [{ o, alt }] : [];
+    });
   }, [q, options]);
-  const exact = q.trim() !== '' && options.some((o) => comparable(o.label) === comparable(q));
+  // Un otro nombre exacto también es «ya existe»: no se ofrece crearlo.
+  const exact = q.trim() !== '' && options.some((o) => comparable(o.label) === comparable(q)
+    || (o.aliases ?? []).some((a) => comparable(a) === comparable(q)));
 
   // Al abrir, la hoja baja hasta lo elegido: con 96 horas, abrir arriba obligaba a recorrer la lista
   // con el dedo hasta la hora que ya estaba puesta.
@@ -130,10 +141,10 @@ export function Picker({
             <VStack align="stretch" gap={1} overflowY="auto" px={3} pb={4} pt={1} flex="1">
               {createFirst && createRow}
               {clearable && <ListRow label={clearLabel} muted selected={!value} onClick={() => pick('')} />}
-              {filtered.map((o) => (
+              {filtered.map(({ o, alt }) => (
                 o.value === value
-                  ? <Box key={o.value} ref={selectedRow} display="contents"><ListRow label={o.label} hint={o.hint} selected onClick={() => pick(o.value)} /></Box>
-                  : <ListRow key={o.value} label={o.label} hint={o.hint} selected={false} onClick={() => pick(o.value)} />
+                  ? <Box key={o.value} ref={selectedRow} display="contents"><ListRow label={o.label} hint={o.hint} match={alt} selected onClick={() => pick(o.value)} /></Box>
+                  : <ListRow key={o.value} label={o.label} hint={o.hint} match={alt} selected={false} onClick={() => pick(o.value)} />
               ))}
               {!createFirst && createRow}
               {filtered.length === 0 && !onCreate && !cannotCreateHint && <Text color="fg.muted" px={2} py={3}>Sin resultados.</Text>}

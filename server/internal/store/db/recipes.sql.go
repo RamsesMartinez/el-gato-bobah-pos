@@ -162,9 +162,12 @@ select x.status, count(*)::int as n from (
      and ($1::bigint = 0 or p.category_id = $1 or c.parent_id = $1)
      and ($2::text = ''
           or translate(lower(p.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower($2), 'áéíóúüñ', 'aeiouun') || '%'
+          -- Por los otros nombres del producto y de sus insumos (spec 063, prueba con usuario nuevo).
+          or exists (select 1 from unnest(p.alt_names) a where strpos(catalog_name_key(a), catalog_name_key($2::text)) > 0)
           or exists (select 1 from recipe_items ri join ingredients i on i.id = ri.ingredient_id
                       where ri.recipe_id = p.recipe_id
-                        and translate(lower(i.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower($2), 'áéíóúüñ', 'aeiouun') || '%'))
+                        and (translate(lower(i.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower($2), 'áéíóúüñ', 'aeiouun') || '%'
+                             or exists (select 1 from unnest(i.alt_names) a where strpos(catalog_name_key(a), catalog_name_key($2::text)) > 0))))
 ) x group by x.status
 `
 
@@ -395,9 +398,12 @@ with sales as (
      and ($6::bigint = 0 or p.category_id = $6 or c.parent_id = $6)
      and ($7::text = ''
           or translate(lower(p.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower($7), 'áéíóúüñ', 'aeiouun') || '%'
+          -- Por los otros nombres del producto y de sus insumos (spec 063, prueba con usuario nuevo).
+          or exists (select 1 from unnest(p.alt_names) a where strpos(catalog_name_key(a), catalog_name_key($7::text)) > 0)
           or exists (select 1 from recipe_items ri join ingredients i on i.id = ri.ingredient_id
                       where ri.recipe_id = p.recipe_id
-                        and translate(lower(i.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower($7), 'áéíóúüñ', 'aeiouun') || '%'))
+                        and (translate(lower(i.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower($7), 'áéíóúüñ', 'aeiouun') || '%'
+                             or exists (select 1 from unnest(i.alt_names) a where strpos(catalog_name_key(a), catalog_name_key($7::text)) > 0))))
 )
 select b.id, b.name, b.category, b.type, b.track_stock, b.status, b.sold,
        coalesce((select string_agg(x.txt, ' · ' order by x.pos, x.id) from (
