@@ -181,7 +181,7 @@ test('el conteo dice el orden de los lugares y lleva a ordenarlos', async ({ pag
   await page.goto('/almacen');
   await page.getByRole('tab', { name: 'Conteo' }).click();
   await expect(page.getByText(/^Se recorre en este orden: /)).toBeVisible();
-  await page.getByRole('button', { name: 'Cambiar el orden ›' }).click();
+  await page.getByRole('button', { name: 'Ordenar lugares en Negocio ›' }).click();
   await expect(page).toHaveURL(/\/negocio#lugares$/);
   await expect(page.getByText('Mantén presionada ≡ para mover un lugar')).toBeInViewport();
   await page.getByRole('button', { name: '‹ Volver al conteo' }).click();

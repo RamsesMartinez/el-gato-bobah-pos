@@ -466,6 +466,23 @@ describe('Ficha del artículo', () => {
     expect(await screen.findByText('por revisar')).toBeInTheDocument();
   });
 
+  // #103: «Se compra hecho ›» no dejaba claro si era un dato o un botón; la prueba con usuario nuevo
+  // leyó «Se compra hecho · agregar receta ›» como estado y acción mezclados. Van separados, como «Se
+  // mide en … · Cambiar ›».
+  it('la receta dice qué es en texto y la acción va en su propio botón', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    const row = (await screen.findByText('se compra hecho')).closest('[data-recipe-row]') as HTMLElement;
+    expect(row).toHaveTextContent('Receta: se compra hecho');
+    expect(within(row).getByRole('button', { name: 'Agregar receta ›' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Se compra hecho/ })).toBeNull();
+  });
+  it('un preparado dice que lo es y ofrece ver su receta', async () => {
+    back.article.mockResolvedValue({ ...ficha, isPrep: true });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    const row = (await screen.findByText('es un preparado')).closest('[data-recipe-row]') as HTMLElement;
+    expect(within(row).getByRole('button', { name: 'Ver receta ›' })).toBeInTheDocument();
+  });
+
   it('recién creado, «Agregar empaque» va primero', async () => {
     montar(<ArticleSheet id={7} justCreated onClose={vi.fn()} />);
     const agregar = await screen.findByRole('button', { name: '+ Agregar empaque' });
@@ -548,7 +565,7 @@ describe('Ficha · unir insumos', () => {
   it('un preparado no ofrece unir', async () => {
     back.article.mockResolvedValue({ ...ficha, isPrep: true });
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
-    await screen.findByText(/Es un preparado/);
+    await screen.findByText('es un preparado');
     expect(screen.queryByRole('button', { name: 'Unir otros aquí' })).toBeNull();
   });
 
