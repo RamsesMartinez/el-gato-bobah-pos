@@ -38,7 +38,8 @@ export function SearchSheet({ open, title, options, onPick, onClose, error, rend
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setVisible(open); if (!open) setQ(''); }, [open]);
 
-  const n = normalize(q.trim());
+  // Sin espacios de más, como el Picker y el servidor: «leche  lala» es «Leche Lala».
+  const n = normalize(q).trim().replace(/\s+/g, ' ');
   // Por nombre o por otro nombre; con la etiqueta del otro nombre solo si el nombre no coincidió.
   const shown = useMemo((): { o: SearchOption; alt?: string }[] => {
     if (!n) return options.map((o) => ({ o }));

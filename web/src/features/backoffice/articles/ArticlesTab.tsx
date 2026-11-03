@@ -131,8 +131,13 @@ function ArticleLine({ a, onOpen }: { a: ArticleRow; onOpen: (id: number) => voi
     <Table.Row role="button" tabIndex={0} aria-label={a.name} cursor="pointer" h="44px" css={{ "& > td": { paddingBlock: "0" } }}
       onClick={() => onOpen(a.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(a.id); }}>
       <Table.Cell>
-        <Text fontWeight="600">{a.name}{a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}
-          {a.matchedAlt && <Box as="span" ml={2} display="inline-flex" verticalAlign="middle" maxW="160px"><AltMatchTag name={a.matchedAlt} /></Box>}</Text>
+        {/* Una sola línea: con «por revisar» y la etiqueta en un mismo texto, la fila se partía en dos
+            mientras se buscaba (revisión de tableta). */}
+        <HStack gap={2} minW={0}>
+          <Text fontWeight="600" truncate minW={0}>{a.name}</Text>
+          {a.compositionStatus === 'estimated' && <Badge colorPalette="orange" flexShrink={0}>por revisar</Badge>}
+          {a.matchedAlt && <AltMatchTag name={a.matchedAlt} maxW="40%" />}
+        </HStack>
       </Table.Cell>
       <Table.Cell textAlign="end" whiteSpace="nowrap">
         <Text as="span" color={negative ? 'fg.error' : undefined} fontWeight={negative ? '700' : undefined}>

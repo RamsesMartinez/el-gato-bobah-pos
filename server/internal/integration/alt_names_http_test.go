@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 
@@ -51,9 +52,20 @@ func TestAltNamesHTTP(t *testing.T) {
 	eleven := `{"altNames":["a1","a2","a3","a4","a5","a6","a7","a8","a9","a10","a11"]}`
 	long := `{"altNames":["` + strings.Repeat("a", domain.MaxAltName+1) + `"]}`
 
-	for _, c := range []struct{ base, clash, owner string }{
-		{"/api/v1/admin/products/" + strconv.FormatInt(ice, 10), "latte HTTP", "Latte http"},
-		{"/api/v1/stock/articles/" + strconv.FormatInt(leche, 10), "leche lala http", "Leche Lala http"},
+	// La ficha del artículo manda su versión (STALE si cambió); la del producto no lleva.
+	withVersion := func(article bool, body string) []byte {
+		if !article || !strings.HasPrefix(body, `{"altNames":`) {
+			return []byte(body)
+		}
+		v := articleVersion(t, st, leche).Format(time.RFC3339Nano)
+		return []byte(strings.TrimSuffix(body, "}") + `,"expectedUpdatedAt":"` + v + `"}`)
+	}
+	for _, c := range []struct {
+		base, clash, owner string
+		article            bool
+	}{
+		{"/api/v1/admin/products/" + strconv.FormatInt(ice, 10), "latte HTTP", "Latte http", false},
+		{"/api/v1/stock/articles/" + strconv.FormatInt(leche, 10), "leche lala http", "Leche Lala http", true},
 	} {
 		put := c.base + "/alt-names"
 		if w := do(t, r, http.MethodPut, put, cajero, []byte(`{"altNames":["Café frío"]}`), json); w.Code != http.StatusForbidden {
@@ -62,23 +74,33 @@ func TestAltNamesHTTP(t *testing.T) {
 		if w := do(t, r, http.MethodGet, put+"/similar?name=caf", cajero, nil, ""); w.Code != http.StatusForbidden {
 			t.Errorf("%s/similar: cajero = %d; quiere 403", put, w.Code)
 		}
-		for _, bad := range []string{eleven, long, `{"altNames":["x"],"otro":1}`} {
-			if w := do(t, r, http.MethodPut, put, gerente, []byte(bad), json); w.Code != http.StatusBadRequest {
+		// Sin la lista no es «vaciarla» (un {} borraba todos), y un NUL no llega a Postgres (500).
+		for _, bad := range []string{eleven, long, `{"altNames":["x"],"otro":1}`, `{}`, `{"altNames":null}`, `{"altNames":["caf\u0000e"]}`} {
+			if w := do(t, r, http.MethodPut, put, gerente, withVersion(c.article, bad), json); w.Code != http.StatusBadRequest {
 				t.Errorf("%s %.40s = %d; quiere 400", put, bad, w.Code)
 			}
 		}
-		w := do(t, r, http.MethodPut, put, gerente, []byte(`{"altNames":[" Café  frío "]}`), json)
+		w := do(t, r, http.MethodPut, put, gerente, withVersion(c.article, `{"altNames":[" Café  frío "]}`), json)
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"altNames":["Café frío"]`) {
 			t.Fatalf("%s gerente = %d %s", put, w.Code, w.Body.String())
 		}
-		w = do(t, r, http.MethodPut, put, gerente, []byte(`{"altNames":[]}`), json)
+		w = do(t, r, http.MethodPut, put, gerente, withVersion(c.article, `{"altNames":[]}`), json)
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"altNames":[]`) {
 			t.Fatalf("quitar todos = %d %s; quiero altNames:[] en el JSON crudo", w.Code, w.Body.String())
 		}
-		w = do(t, r, http.MethodPut, put, gerente, []byte(`{"altNames":["`+c.clash+`"]}`), json)
+		w = do(t, r, http.MethodPut, put, gerente, withVersion(c.article, `{"altNames":["`+c.clash+`"]}`), json)
 		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "ALT_NAME_TAKEN") ||
 			!strings.Contains(w.Body.String(), c.owner) || !strings.Contains(w.Body.String(), `"name":"`+c.clash+`"`) {
 			t.Errorf("%s choque = %d %s", put, w.Code, w.Body.String())
+		}
+		if c.article {
+			stale := `{"altNames":["x"],"expectedUpdatedAt":"2020-01-01T00:00:00Z"}`
+			if w := do(t, r, http.MethodPut, put, gerente, []byte(stale), json); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "STALE") {
+				t.Errorf("con otra versión = %d %s; quiere 409 STALE", w.Code, w.Body.String())
+			}
+			if w := do(t, r, http.MethodPut, put, gerente, []byte(`{"altNames":["x"]}`), json); w.Code != http.StatusBadRequest {
+				t.Errorf("sin versión = %d; quiere 400", w.Code)
+			}
 		}
 		if w := do(t, r, http.MethodGet, put+"/similar?name=", gerente, nil, ""); w.Code != http.StatusBadRequest {
 			t.Errorf("%s/similar sin nombre = %d; quiere 400", put, w.Code)

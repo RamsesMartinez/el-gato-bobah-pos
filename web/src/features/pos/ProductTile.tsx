@@ -60,7 +60,8 @@ export function ProductTile({ product, count, onTap, showPrice, price, esManual,
           {product.name}
         </Text>
         {matchedAlt ? (
-          <Box mt={0.5} display="flex" minW={0}><AltMatchTag name={matchedAlt} /></Box>
+          // xs y del alto de la línea de descripción: el tile no crece mientras se busca (revisión M3).
+          <Box mt={0.5} display="flex" minW={0} h="16px" alignItems="center"><AltMatchTag name={matchedAlt} size="xs" /></Box>
         ) : product.description && (
           <Text fontSize="xs" color="fg.muted" lineClamp={1} mt={0.5}>
             {product.description}

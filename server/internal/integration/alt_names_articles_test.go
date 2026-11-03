@@ -25,6 +25,16 @@ func articleAltNames(t *testing.T, st *store.Store, id int64) []string {
 	return alts
 }
 
+// articleVersion es la versión de la ficha que la pantalla manda al guardar sus alternativos.
+func articleVersion(t *testing.T, st *store.Store, id int64) time.Time {
+	t.Helper()
+	var v time.Time
+	if err := st.Pool.QueryRow(context.Background(), `select updated_at from ingredients where id = $1`, id).Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
 func actorCtx(t *testing.T, st *store.Store, name string) context.Context {
 	t.Helper()
 	return app.WithActorUser(context.Background(), makeUser(t, st, name, "admin"))
@@ -41,8 +51,23 @@ func TestArticleAltNames(t *testing.T) {
 	crema := ingredientIn(t, st, defaultCompanyID, "Crema", "ml")
 	makeProduct(t, st, "Leche", decimal.RequireFromString("20"), false)
 
+	t.Run("con la versión vieja de la ficha responde STALE y no guarda", func(t *testing.T) {
+		// Otra tableta renombró mientras ésta veía la ficha: guardar alternativos con la versión vieja
+		// le daba una versión nueva, y su siguiente autoguardado deshacía el renombre (revisión).
+		old := articleVersion(t, st, leche)
+		if _, err := st.Pool.Exec(ctx, `update ingredients set name = 'Leche entera' where id = $1`, leche); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.SetArticleAltNames(ctx, leche, []string{"Leche fresca"}, old); !errors.Is(err, domain.ErrArticleStale) {
+			t.Fatalf("quería STALE, tuve %v", err)
+		}
+		if got := articleAltNames(t, st, leche); len(got) != 0 {
+			t.Fatalf("guardó con la versión vieja: %v", got)
+		}
+	})
+
 	t.Run("guarda, devuelve la versión nueva de la ficha y deja evento", func(t *testing.T) {
-		got, err := svc.SetArticleAltNames(ctx, leche, []string{"Leche de vaca", "Leche"})
+		got, err := svc.SetArticleAltNames(ctx, leche, []string{"Leche de vaca", "Leche"}, articleVersion(t, st, leche))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,9 +97,9 @@ func TestArticleAltNames(t *testing.T) {
 	})
 
 	t.Run("choca con el nombre o un alternativo de otro artículo", func(t *testing.T) {
-		_, err := svc.SetArticleAltNames(ctx, crema, []string{"leche lala"})
+		_, err := svc.SetArticleAltNames(ctx, crema, []string{"leche lala"}, articleVersion(t, st, crema))
 		requireAltTaken(t, err, "leche lala", "Leche Lala")
-		_, err = svc.SetArticleAltNames(ctx, crema, []string{"LECHE DE VACA"})
+		_, err = svc.SetArticleAltNames(ctx, crema, []string{"LECHE DE VACA"}, articleVersion(t, st, crema))
 		if taken := requireAltTaken(t, err, "LECHE DE VACA", "Leche entera"); !taken.OwnerAlt {
 			t.Fatal("no dice que es otro nombre")
 		}
@@ -85,11 +110,11 @@ func TestArticleAltNames(t *testing.T) {
 		if _, err := st.Pool.Exec(ctx, `update ingredients set is_active = false where id = $1`, old); err != nil {
 			t.Fatal(err)
 		}
-		_, err := svc.SetArticleAltNames(ctx, crema, []string{"Crema vieja"})
+		_, err := svc.SetArticleAltNames(ctx, crema, []string{"Crema vieja"}, articleVersion(t, st, crema))
 		if taken := requireAltTaken(t, err, "Crema vieja", "Crema vieja"); taken.Error() != "«Crema vieja» ya es el nombre de «Crema vieja» (archivado)" {
 			t.Fatalf("mensaje: %q", taken.Error())
 		}
-		if _, err := svc.SetArticleAltNames(ctx, old, []string{"Crema de antes"}); err != nil {
+		if _, err := svc.SetArticleAltNames(ctx, old, []string{"Crema de antes"}, articleVersion(t, st, old)); err != nil {
 			t.Fatalf("un archivado no deja editar sus alternativos: %v", err)
 		}
 	})
@@ -102,7 +127,7 @@ func TestArticleAltNames(t *testing.T) {
 		if _, err := st.Pool.Exec(ctx, `update ingredients set is_active = false where id = $1`, lala); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := svc.SetArticleAltNames(ctx, leche, []string{"Leche de vaca", "Leche", "Leche Lala"}); err != nil {
+		if _, err := svc.SetArticleAltNames(ctx, leche, []string{"Leche de vaca", "Leche", "Leche Lala"}, articleVersion(t, st, leche)); err != nil {
 			t.Fatalf("después de unir «Leche Lala» no se puede capturar como alternativo del destino: %v", err)
 		}
 	})
@@ -115,7 +140,7 @@ func TestArticleAltNames(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, func() error {
-			_, err := svc.SetArticleAltNames(ctx, a, []string{"Endulzante"})
+			_, err := svc.SetArticleAltNames(ctx, a, []string{"Endulzante"}, articleVersion(t, st, a))
 			return err
 		}, func(err error) {
 			if !errors.Is(err, domain.ErrAltNameTaken) {
@@ -133,7 +158,7 @@ func TestArticlePrincipalNameAgainstAltNames(t *testing.T) {
 	ctx := actorCtx(t, st, "admin_alt_art2")
 	svc := app.NewBackofficeService(st, clock)
 	leche := ingredientIn(t, st, defaultCompanyID, "Leche entera", "ml")
-	if _, err := svc.SetArticleAltNames(ctx, leche, []string{"Leche Lala"}); err != nil {
+	if _, err := svc.SetArticleAltNames(ctx, leche, []string{"Leche Lala"}, articleVersion(t, st, leche)); err != nil {
 		t.Fatal(err)
 	}
 	ml := unitID(t, st, "ml")
@@ -162,7 +187,7 @@ func TestArticlePrincipalNameAgainstAltNames(t *testing.T) {
 
 	t.Run("cambiar la unidad por reemplazo lleva los alternativos al nuevo", func(t *testing.T) {
 		vaso := ingredientIn(t, st, defaultCompanyID, "Vaso grande", "pieza")
-		if _, err := svc.SetArticleAltNames(ctx, vaso, []string{"Vaso 16 oz"}); err != nil {
+		if _, err := svc.SetArticleAltNames(ctx, vaso, []string{"Vaso 16 oz"}, articleVersion(t, st, vaso)); err != nil {
 			t.Fatal(err)
 		}
 		// Una compra registrada: con ella el cambio ya no reescribe, reemplaza.
@@ -286,7 +311,7 @@ func TestAnExpenseCreatingAnAltNameUsesTheExistingArticle(t *testing.T) {
 	ctx := app.WithActorUser(k.ctx, k.user)
 	g := gramos(t, k.st)
 	azucar := ingredientIn(t, k.st, defaultCompanyID, "Azúcar estándar", "g")
-	if _, err := k.svc.SetArticleAltNames(ctx, azucar, []string{"Azúcar Zulka"}); err != nil {
+	if _, err := k.svc.SetArticleAltNames(ctx, azucar, []string{"Azúcar Zulka"}, articleVersion(t, k.st, azucar)); err != nil {
 		t.Fatal(err)
 	}
 	q := qty("1")
@@ -303,5 +328,135 @@ func TestAnExpenseCreatingAnAltNameUsesTheExistingArticle(t *testing.T) {
 	var item int64
 	if err := k.st.Pool.QueryRow(context.Background(), `select ingredient_id from expense_items where description = 'Azúcar' order by id desc limit 1`).Scan(&item); err != nil || item != azucar {
 		t.Fatalf("el renglón apunta a %d, quería %d (%v)", item, azucar, err)
+	}
+}
+
+// Revisión de la 063: guardar alternativos toma el candado de nombres y luego la fila; cambiar la
+// unidad y reactivar tomaban la fila y luego el candado, y dos de esos a la vez se esperaban uno al
+// otro (Postgres abortaba uno con 40P01, un 500). Ahora toman el candado de nombres primero: mientras
+// lo esperan, la fila del artículo sigue libre.
+func TestNameLockComesBeforeTheArticleRow(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := actorCtx(t, st, "admin_orden_candados")
+	svc := app.NewBackofficeService(st, clock)
+	rowFree := func(t *testing.T, id int64) {
+		t.Helper()
+		tx, err := st.Pool.Begin(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = tx.Rollback(context.Background()) }()
+		if _, err := tx.Exec(context.Background(), `select 1 from ingredients where id = $1 for update nowait`, id); err != nil {
+			t.Fatalf("la fila del artículo ya estaba tomada mientras esperaba el candado de nombres: %v", err)
+		}
+	}
+
+	t.Run("cambiar la unidad", func(t *testing.T) {
+		vaso := ingredientIn(t, st, defaultCompanyID, "Vaso chico candado", "pieza")
+		if _, err := st.Pool.Exec(ctx, `insert into stock_movements (item_type, ingredient_id, movement_type, quantity, reason)
+			values ('ingrediente', $1, 'compra', 10, 'prueba 063')`, vaso); err != nil {
+			t.Fatal(err)
+		}
+		holdLockWhile(t, st, 28037, func(<-chan error) { rowFree(t, vaso) }, func() error {
+			return svc.ChangeUnit(ctx, vaso, app.UnitChangeRequest{BaseUnitID: unitID(t, st, "g"), Factor: decimal.RequireFromString("10")})
+		}, func(err error) {
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	})
+
+	t.Run("reactivar", func(t *testing.T) {
+		old := ingredientIn(t, st, defaultCompanyID, "Popote archivado", "pieza")
+		if _, err := st.Pool.Exec(ctx, `update ingredients set is_active = false where id = $1`, old); err != nil {
+			t.Fatal(err)
+		}
+		holdLockWhile(t, st, 28037, func(<-chan error) { rowFree(t, old) }, func() error {
+			return svc.ReactivateArticle(ctx, old)
+		}, func(err error) {
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	})
+}
+
+// Revisión de seguridad: los tres caminos de artículos (guardar, choque, parecidos) en los tres casos.
+func TestArticleAltNamesIsolation(t *testing.T) {
+	t.Parallel()
+	owner := newTestStore(t)
+	ctx := context.Background()
+	other := makeCompany(t, owner, "otra-art-alt-iso")
+	theirs := ingredientIn(t, owner, other, "Leche ajena iso", "ml")
+	if _, err := owner.Pool.Exec(ctx, `update ingredients set alt_names = array['Leche Lala iso'] where id = $1`, theirs); err != nil {
+		t.Fatal(err)
+	}
+	mine := ingredientIn(t, owner, defaultCompanyID, "Leche entera iso", "ml")
+
+	appSt := appRoleStore(t)
+	tctx, release, err := appSt.AcquireTenant(ctx, defaultCompanyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := app.NewBackofficeService(appSt, clock)
+	if _, err := svc.SetArticleAltNames(app.WithActorUser(tctx, makeUser(t, owner, "admin_iso_art", "admin")), mine, []string{"Leche Lala iso"}, articleVersion(t, owner, mine)); err != nil {
+		t.Fatalf("chocó con un artículo de otra empresa: %v", err)
+	}
+	similar, err := svc.SimilarArticleAltNames(tctx, mine, "Leche ajena iso")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range similar {
+		if s.ID == theirs {
+			t.Fatalf("el aviso nombra un artículo de otra empresa: %+v", s)
+		}
+	}
+	release()
+
+	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, st *store.Store, ctx context.Context) {
+		svc := app.NewBackofficeService(st, clock)
+		if _, err := svc.SetArticleAltNames(ctx, mine, []string{"Otro nombre"}, articleVersion(t, owner, mine)); err == nil {
+			t.Fatal("escribió los alternativos de un artículo de otra empresa")
+		}
+		if got, err := svc.SimilarArticleAltNames(ctx, 0, "Leche entera iso"); err == nil {
+			for _, s := range got {
+				if s.ID == mine {
+					t.Fatalf("ve el artículo de la otra empresa: %+v", s)
+				}
+			}
+		}
+		if alts := articleAltNames(t, owner, mine); !slices.Equal(alts, []string{"Leche Lala iso"}) {
+			t.Fatalf("cambió los alternativos ajenos: %v", alts)
+		}
+	})
+}
+
+// Revisión del db-architect: el buscador del gasto filtraba en el servidor solo por nombre (ilike).
+func TestExpenseArticleSearchFindsAltNames(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	leche := ingredientIn(t, st, defaultCompanyID, "Leche entera gasto", "ml")
+	if _, err := st.Pool.Exec(ctx, `update ingredients set alt_names = array['Leche Lalá gasto'] where id = $1`, leche); err != nil {
+		t.Fatal(err)
+	}
+	refresco := makeProduct(t, st, "Refresco de cola gasto", decimal.RequireFromString("20"), true)
+	if _, err := st.Pool.Exec(ctx, `update products set alt_names = array['Coca gasto'] where id = $1`, refresco); err != nil {
+		t.Fatal(err)
+	}
+	svc := app.NewBackofficeService(st, clock)
+	for q, want := range map[string]int64{"lala gasto": leche, "COCA GASTO": refresco, "entéra gasto": leche} {
+		got, err := svc.SearchArticles(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, a := range got {
+			found = found || a.ID == want
+		}
+		if !found {
+			t.Fatalf("«%s» no encontró %d: %+v", q, want, got)
+		}
 	}
 }

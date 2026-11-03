@@ -399,13 +399,14 @@ func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput)
 	// del frappé?» es la pregunta que la bitácora existe para contestar.
 	newPrice := domain.Round2(in.Price)
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
-		// Solo un nombre que cambió se compara con los alternativos (FR-005), y solo entonces se toma
-		// el candado: un producto heredado que ya choca debe poder guardar su precio.
+		// El candado primero y el nombre después: leído antes, un renombre de otra tableta en medio
+		// dejaba comparar contra un nombre viejo. Solo un nombre que cambió se compara con los
+		// alternativos (FR-005): un producto heredado que ya choca debe poder guardar su precio.
+		if err := q.LockProductNames(ctx); err != nil {
+			return err
+		}
 		switch current, err := q.GetProductName(ctx, in.ID); {
 		case err == nil && current != in.Name:
-			if err := q.LockProductNames(ctx); err != nil {
-				return err
-			}
 			if err := productNameFree(ctx, q, in.Name); err != nil {
 				return err
 			}

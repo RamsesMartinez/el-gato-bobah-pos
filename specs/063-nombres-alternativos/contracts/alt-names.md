@@ -11,13 +11,16 @@ Permiso: `menu.configure`. Reemplaza la lista completa.
 | Respuesta | Cuándo |
 | --- | --- |
 | 200 `{ "altNames": ["Café frío", "Café helado"] }` | Guardado; la lista ya limpia |
-| 400 `VALIDATION` | Más de 10, uno de más de 60 letras, repetido en la lista o igual al nombre propio |
+| 400 `VALIDATION` | Sin `altNames` (vaciar exige `[]`), más de 10, uno de más de 60 letras, con caracteres que no se ven (NUL, controles, ancho cero), repetido en la lista o igual al nombre propio |
 | 404 `NOT_FOUND` | No existe, es de otra empresa o es el producto de sistema |
 | 409 `ALT_NAME_TAKEN` `details: { name, existingId, archived }` | Choca con el nombre o un alternativo de otro producto |
 
 ## PUT /api/v1/stock/articles/{id}/alt-names
 
-Permiso: `inventory.configure`. Mismo cuerpo y errores (`existingId` es el artículo). La respuesta
+Permiso: `inventory.configure`. Cuerpo `{ "altNames": [...], "expectedUpdatedAt": "…" }`: la versión
+de la ficha que vio la pantalla, obligatoria; con otra, 409 `STALE` y no guarda (revisión de código:
+sin ella, guardar sobre una ficha que otra tableta renombró y luego autoguardar deshacía el renombre).
+Mismos errores (`existingId` es el artículo). La respuesta
 trae además la versión nueva de la ficha: `200 { "altNames": [...], "updatedAt": "…" }`. Funciona
 también sobre un archivado.
 

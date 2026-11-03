@@ -21,7 +21,7 @@ import { ProductGroupsManager } from './ProductGroupsManager';
 import { CompositionSheet } from './CompositionSheet';
 import { compositionLabel } from './compositionLabel';
 import { AltNamesField } from '../components/AltNamesField';
-import { withPendingAlt } from '../components/altNames';
+import { altNameKey, withPendingAlt } from '../components/altNames';
 import { ApiError } from '../api/client';
 
 interface Props {
@@ -65,20 +65,34 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
 
   const save = useMutation({
     mutationFn: async (p: AdminProduct) => {
+      const before = product?.altNames ?? [];
+      const oldName = product?.name ?? p.name;
       // Lo escrito sin tocar «Agregar» se agrega aquí: en 600 px «Guardar» queda lejos de «Agregar»
-      // y perderlo en silencio era lo más probable (revisión de tableta, A1).
-      const alts = withPendingAlt(altNames, altDraft, p.name);
-      if (alts.join('\u0000') !== (product?.altNames ?? []).join('\u0000')) {
-        const saved = await adminApi.setProductAltNames(p.id, alts);
-        setAltNames(saved.altNames);
-        setAltDraft('');
-      }
-      return adminApi.updateProduct(p.id, {
+      // y perderlo en silencio era lo más probable (revisión de tableta, A1). El nombre nuevo nunca
+      // va como otro nombre: subir un otro nombre a nombre principal lo saca de la lista.
+      const wanted = withPendingAlt(altNames, altDraft, p.name).filter((a) => altNameKey(a) !== altNameKey(p.name));
+      // El servidor compara contra el nombre GUARDADO: la lista que conserva el nombre viejo (corregir
+      // un dedazo y dejarlo como otro nombre) va después del PATCH, y el resto antes (revisión).
+      const first = wanted.filter((a) => altNameKey(a) !== altNameKey(oldName));
+      const put = async (list: string[]) => {
+        try {
+          const saved = await adminApi.setProductAltNames(p.id, list);
+          setAltNames(saved.altNames);
+          setAltDraft('');
+          // Guardada la lista, la de Productos ya cambió aunque falle lo que sigue.
+          void qc.invalidateQueries({ queryKey: ['admin', 'products'] });
+        } catch (e) {
+          throw new AltSaveError(e);
+        }
+      };
+      if (!sameList(first, before)) await put(first);
+      await adminApi.updateProduct(p.id, {
         name: p.name, price: Number(p.price), favorite: p.is_favorite, active: p.is_active,
         needsPrep: p.needsPrep, categoryId: p.categoryId,
         availableFrom: p.availableFrom, availableUntil: p.availableUntil,
         ...(cost && cost !== 'invalido' ? { cost } : {}),
       });
+      if (!sameList(wanted, first)) await put(wanted);
     },
     onSuccess: () => {
       // Después de que el servidor guardó, nunca antes (spec 017, US3).
@@ -89,9 +103,14 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
       toaster.create({ title: 'Producto actualizado', type: 'success' });
     },
     onError: (e) => {
-      // El choque de un otro nombre se ve bajo su campo y la ficha no se cierra.
-      if (e instanceof ApiError && e.code === 'ALT_NAME_TAKEN') { setAltError(e.message); return; }
-      toaster.create({ title: 'Error', description: String(e), type: 'error' });
+      // Lo que rechazó la lista se ve bajo su campo y la ficha no se cierra; un choque del nombre
+      // (PATCH) no es de la lista y va como cualquier otro error.
+      if (e instanceof AltSaveError) {
+        const inner = e.cause;
+        setAltError(inner instanceof ApiError && inner.status < 500 ? inner.message : 'No se pudieron guardar los otros nombres');
+        return;
+      }
+      toaster.create({ title: 'Error', description: e instanceof ApiError && e.status < 500 ? e.message : String(e), type: 'error' });
     },
   });
 
@@ -252,3 +271,12 @@ export function CostoFijo({ monto, nota, children }: { monto?: string; nota: str
     </VStack>
   );
 }
+
+// AltSaveError marca que lo que falló fue guardar la lista de otros nombres, no el resto de la ficha.
+class AltSaveError extends Error {
+  constructor(cause: unknown) {
+    super('alt-names', { cause });
+  }
+}
+
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);

@@ -616,13 +616,12 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
         {[...groups.entries()].map(([place, items]) => (
           <Box key={place}>
             <Text px={3} py={2} fontWeight="700" bg="bg.subtle">{place}</Text>
-            {items.map((i) => (
+            {items.map((i) => { const alt = altOf(i); return (
               <HStack key={i.ingredientId} px={3} py={2} gap={3} borderTopWidth="1px" data-testid="renglon-conteo">
                 <VStack align="start" gap={0} flex="1" minW={0}>
-                  <HStack gap={2} minW={0} maxW="100%">
-                    <Text fontWeight="600" flexShrink={0}>{i.name}</Text>
-                    {altOf(i) && <AltMatchTag name={altOf(i)!} />}
-                  </HStack>
+                  <Text fontWeight="600">{i.name}</Text>
+                  {/* En su propio renglón: junto al nombre, un nombre largo la dejaba sin ancho (revisión). */}
+                  {alt && <AltMatchTag name={alt} size="xs" />}
                   {i.presentations.length > 0 && (
                     <Text fontSize="xs" color="fg.muted">
                       {i.presentations.map((p) => `${presentationLabel(p)} (${formatBaseQty(p.qtyInBase, i.baseUnitCode)})`).join(' · ')}
@@ -637,7 +636,7 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
                   {i.countedQty !== null ? 'Cambiar' : 'Contar'}
                 </Button>
               </HStack>
-            ))}
+            ); })}
           </Box>
         ))}
       </Box>

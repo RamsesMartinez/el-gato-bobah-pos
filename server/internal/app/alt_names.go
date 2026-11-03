@@ -93,7 +93,11 @@ type ArticleAltNames struct {
 
 // SetArticleAltNames reemplaza los alternativos de un artículo del almacén. Deja el cambio en el
 // evento de edición de la ficha, en la misma transacción.
-func (s *BackofficeService) SetArticleAltNames(ctx context.Context, id int64, names []string) (ArticleAltNames, error) {
+//
+// expected es la versión de la ficha que vio la pantalla: con otra, STALE. Sin esto, guardar
+// alternativos sobre una ficha que otra tableta renombró le daba a la pantalla la versión nueva, y su
+// siguiente autoguardado (que manda la ficha completa) deshacía el renombre sin aviso.
+func (s *BackofficeService) SetArticleAltNames(ctx context.Context, id int64, names []string, expected time.Time) (ArticleAltNames, error) {
 	var out ArticleAltNames
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
 		if err := q.LockIngredientNames(ctx); err != nil {
@@ -102,6 +106,9 @@ func (s *BackofficeService) SetArticleAltNames(ctx context.Context, id int64, na
 		art, err := q.GetArticleForAltNames(ctx, id)
 		if err != nil {
 			return notFound(err)
+		}
+		if !art.UpdatedAt.Equal(expected) {
+			return domain.ErrArticleStale
 		}
 		clean, err := domain.CleanAltNames(art.Name, names)
 		if err != nil {
@@ -156,7 +163,7 @@ func (s *BackofficeService) SimilarArticleAltNames(ctx context.Context, id int64
 }
 
 func validSimilarQuery(name string) error {
-	if n := utf8.RuneCountInString(strings.TrimSpace(name)); n == 0 || n > domain.MaxAltName {
+	if n := utf8.RuneCountInString(strings.TrimSpace(name)); n == 0 || n > domain.MaxAltName || !domain.PrintableName(name) {
 		return fmt.Errorf("%w: el nombre va de 1 a %d letras", domain.ErrValidation, domain.MaxAltName)
 	}
 	return nil

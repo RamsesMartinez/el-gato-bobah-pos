@@ -186,3 +186,20 @@ Si uno de los exentos deja un nombre igual a un alternativo, el siguiente guarda
   `SearchSheet`), truncada (`maxW` 45%) y con el nombre con prioridad; en Conteo, en la línea de
   empaques si no cabe.
 - El choque se muestra con el mensaje del servidor bajo el campo, nunca en un toast con `String(e)`.
+
+## R15. Revisión de código (2026-11-03), lo que cambió del diseño
+
+- **Esquema del menú `v4`** (`internal/cache/menu.go`): la 0107 no sube la versión del catálogo, y con
+  `v3` el menú guardado por la API anterior se servía hasta 24 h sin los otros nombres.
+- **Candado de nombres antes que la fila también en cambiar unidad y reactivar**: guardar alternativos
+  toma el candado y luego la fila; esos dos lo hacían al revés y se podían esperar uno al otro.
+- **`for no key update`** al leer el producto o artículo: no frena la llave foránea de una venta.
+- **El buscador del gasto filtra por otro nombre también en el servidor** (`SearchArticles`).
+- **`catalog_name_key` junta todos los espacios Unicode que junta `strings.Fields`**, y un otro
+  nombre con caracteres que no se ven (NUL, controles, ancho cero) es 400.
+- **El PUT del artículo exige la versión de la ficha** (STALE si cambió).
+- **Front**: el producto que se renombra y conserva el nombre viejo como otro nombre guarda la lista
+  después del PATCH; crear un artículo con un otro nombre existente usa ése; lo escrito sin «Agregar»
+  se guarda también al ir al conteo.
+- **Residual aceptado**: un acento escrito como letra más acento combinado (dos caracteres) no se
+  iguala con el acento de un solo carácter; los teclados de tableta escriben el de un carácter.

@@ -265,6 +265,11 @@ func (s *BackofficeService) ChangeUnit(ctx context.Context, id int64, req UnitCh
 		if err := q.LockCompositionEdits(ctx); err != nil {
 			return err
 		}
+		// El de nombres también antes de la fila: el reemplazo lo necesita, y guardar alternativos lo
+		// toma y luego la fila. Al revés, los dos se esperaban uno al otro (revisión de la 063).
+		if err := q.LockIngredientNames(ctx); err != nil {
+			return err
+		}
 		// Artículo y existencias sin esperar: una venta en curso responde «vuelve a intentar» (E6).
 		art, err := q.LockArticleNowait(ctx, id)
 		if err != nil {

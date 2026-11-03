@@ -74,3 +74,18 @@ test('el choque que respondió el servidor se ve bajo el campo', () => {
   render(<Harness error="«café frío» ya es otro nombre de «Latte»" />);
   expect(screen.getByRole('alert')).toHaveTextContent('ya es otro nombre de «Latte»');
 });
+
+// Revisión del front: lo que se sigue escribiendo mientras «Agregar» consulta los parecidos no se pierde.
+test('si el texto cambió mientras se consultaban los parecidos, no agrega lo viejo ni borra lo nuevo', async () => {
+  const u = userEvent.setup();
+  let resolve: (v: SimilarAlt[]) => void = () => {};
+  const similar = vi.fn(() => new Promise<SimilarAlt[]>((r) => { resolve = r; }));
+  render(<Harness similar={similar} />);
+  const campo = screen.getByRole('textbox', { name: /otro nombre/i });
+  await u.type(campo, 'café');
+  await u.click(screen.getByRole('button', { name: 'Agregar' }));
+  await u.type(campo, ' frío');
+  resolve([]);
+  await waitFor(() => expect(campo).toHaveValue('café frío'));
+  expect(value()).toBe('');
+});

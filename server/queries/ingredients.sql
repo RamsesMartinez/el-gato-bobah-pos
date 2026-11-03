@@ -57,13 +57,18 @@ select 'ingrediente' as item_type, i.id, i.name::text as name,
 from ingredients i
 join units u on u.id = i.base_unit_id
 where i.is_active
-  and (sqlc.narg('q')::text is null or i.name::text ilike '%' || sqlc.narg('q')::text || '%')
+  -- Sin mayúsculas ni acentos, por nombre o por otro nombre (spec 063).
+  and (sqlc.narg('q')::text is null
+       or strpos(catalog_name_key(i.name::text), catalog_name_key(sqlc.narg('q')::text)) > 0
+       or exists (select 1 from unnest(i.alt_names) a where strpos(catalog_name_key(a), catalog_name_key(sqlc.narg('q')::text)) > 0))
 union all
 select 'producto' as item_type, p.id, p.name::text as name,
        'pieza' as unit_code, 'pieza'::unit_kind as unit_kind, null::numeric(8,4) as density_g_per_ml, p.alt_names
 from products p
 where p.is_active and p.track_stock
-  and (sqlc.narg('q')::text is null or p.name::text ilike '%' || sqlc.narg('q')::text || '%')
+  and (sqlc.narg('q')::text is null
+       or strpos(catalog_name_key(p.name::text), catalog_name_key(sqlc.narg('q')::text)) > 0
+       or exists (select 1 from unnest(p.alt_names) a where strpos(catalog_name_key(a), catalog_name_key(sqlc.narg('q')::text)) > 0))
 order by name
 limit sqlc.arg('lim');
 

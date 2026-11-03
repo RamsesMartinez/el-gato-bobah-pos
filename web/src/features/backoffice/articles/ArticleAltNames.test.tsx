@@ -36,7 +36,7 @@ const back = vi.hoisted(() => ({
   articleArchiveCheck: vi.fn(),
   archiveArticle: vi.fn(() => Promise.resolve()),
   setDensity: vi.fn(),
-  setArticleAltNames: vi.fn((_id: number, alts: string[]) => Promise.resolve({ altNames: alts, updatedAt: 'v-alt' })),
+  setArticleAltNames: vi.fn((_id: number, alts: string[], _v?: string) => Promise.resolve({ altNames: alts, updatedAt: 'v-alt' })),
   similarArticleAltNames: vi.fn(() => Promise.resolve([])),
 }));
 vi.mock('../../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
@@ -68,7 +68,7 @@ describe('otros nombres en la ficha del artículo', () => {
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
     expect(await screen.findByText('Hielo Polar')).toBeInTheDocument();
     await u.type(screen.getByRole('textbox', { name: /otro nombre/i }), 'Cubos de hielo{Enter}');
-    await waitFor(() => expect(back.setArticleAltNames).toHaveBeenCalledWith(7, ['Hielo Polar', 'Cubos de hielo']));
+    await waitFor(() => expect(back.setArticleAltNames).toHaveBeenCalledWith(7, ['Hielo Polar', 'Cubos de hielo'], ficha.updatedAt));
     const nombre = screen.getByDisplayValue('Hielo en bolsa');
     await u.clear(nombre);
     await u.type(nombre, 'Hielo en cubo{Enter}');
@@ -90,7 +90,7 @@ describe('otros nombres en la ficha del artículo', () => {
     montar(<ArticleSheet id={7} onClose={onClose} />);
     await u.type(await screen.findByRole('textbox', { name: /otro nombre/i }), 'Hielo de garrafón');
     await u.click(volver());
-    await waitFor(() => expect(back.setArticleAltNames).toHaveBeenCalledWith(7, ['Hielo Polar', 'Hielo de garrafón']));
+    await waitFor(() => expect(back.setArticleAltNames).toHaveBeenCalledWith(7, ['Hielo Polar', 'Hielo de garrafón'], ficha.updatedAt));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
 
     onClose.mockClear();
@@ -106,5 +106,18 @@ describe('otros nombres en la ficha del artículo', () => {
     useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.view'] } as never });
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
     expect(await screen.findByRole('button', { name: 'Quitar «Hielo Polar»' })).toBeDisabled();
+  });
+
+  it('ir al conteo también guarda lo escrito sin «Agregar»', async () => {
+    const u = userEvent.setup();
+    const onCount = vi.fn();
+    // «Revisar con un conteo» aparece con existencia negativa y a quien cuenta.
+    back.article.mockResolvedValue({ ...conAlts, onHand: '-500' });
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'gerente', permissions: ['inventory.view', 'inventory.configure', 'inventory.count'] } as never });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} onCount={onCount} />);
+    await u.type(await screen.findByRole('textbox', { name: /otro nombre/i }), 'Hielo en cubos');
+    await u.click(screen.getByRole('button', { name: /conteo/i }));
+    await waitFor(() => expect(back.setArticleAltNames).toHaveBeenCalledWith(7, ['Hielo Polar', 'Hielo en cubos'], ficha.updatedAt));
+    await waitFor(() => expect(onCount).toHaveBeenCalled());
   });
 });

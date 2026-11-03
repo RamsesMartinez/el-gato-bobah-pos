@@ -29,6 +29,9 @@ export function AltNamesField({ ownName, value, onChange, draft, onDraftChange, 
   const [warnedFor, setWarnedFor] = useState('');
   const [checking, setChecking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Lo escrito AHORA: «Agregar» espera los parecidos y en ese rato se puede seguir escribiendo.
+  const draftRef = useRef(draft);
+  useEffect(() => { draftRef.current = draft; }, [draft]);
   const text = clean(draft);
   const full = value.length >= MAX_ALT_NAMES;
 
@@ -65,6 +68,8 @@ export function AltNamesField({ ownName, value, onChange, draft, onDraftChange, 
         setChecking(false);
       }
       setFound({ text, items });
+      // Si siguió escribiendo, lo que se consultó ya no es lo que quiere agregar.
+      if (clean(draftRef.current) !== text) return;
     }
     if (items.length > 0 && warnedFor !== text) {
       setWarnedFor(text);
@@ -111,7 +116,8 @@ export function AltNamesField({ ownName, value, onChange, draft, onDraftChange, 
           </Button>
         </HStack>
       )}
-      {confirming && (
+      {/* Con un error a la vista no se pinta también el aviso: en 600 px empujaba «Guardar» (revisión). */}
+      {confirming && !(localError || error) && (
         <Box fontSize="sm" color="fg.warning">
           Se parece a: {shown.map((s, i) => (
             <span key={s.id}>{i > 0 && ', '}«{s.name}»{s.viaAlt && <> (otro nombre: «{s.viaAlt}»)</>}</span>

@@ -124,27 +124,29 @@ func (q *Queries) FirstProductNameClash(ctx context.Context, arg FirstProductNam
 
 const getArticleForAltNames = `-- name: GetArticleForAltNames :one
 
-select name::text as name, alt_names from ingredients where id = $1 for update
+select name::text as name, alt_names, updated_at from ingredients where id = $1 for no key update
 `
 
 type GetArticleForAltNamesRow struct {
-	Name     string   `json:"name"`
-	AltNames []string `json:"alt_names"`
+	Name      string    `json:"name"`
+	AltNames  []string  `json:"alt_names"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ==== Artículos del almacén ====
+// no key update: alt_names no es llave, y así no frena la llave foránea de una venta o un movimiento.
 func (q *Queries) GetArticleForAltNames(ctx context.Context, id int64) (GetArticleForAltNamesRow, error) {
 	row := q.db.QueryRow(ctx, getArticleForAltNames, id)
 	var i GetArticleForAltNamesRow
-	err := row.Scan(&i.Name, &i.AltNames)
+	err := row.Scan(&i.Name, &i.AltNames, &i.UpdatedAt)
 	return i, err
 }
 
 const getProductForAltNames = `-- name: GetProductForAltNames :one
-select name::text as name from products where id = $1 and system_kind is null for update
+select name::text as name from products where id = $1 and system_kind is null for no key update
 `
 
-// El nombre propio, con la fila tomada. El genérico de plataforma no es del catálogo: no lleva
+// El nombre propio, con la fila tomada (no key update: no frena la llave foránea de una venta). El genérico de plataforma no es del catálogo: no lleva
 // alternativos y responde como inexistente, igual que su edición.
 func (q *Queries) GetProductForAltNames(ctx context.Context, id int64) (string, error) {
 	row := q.db.QueryRow(ctx, getProductForAltNames, id)

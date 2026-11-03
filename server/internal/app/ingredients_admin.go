@@ -723,6 +723,11 @@ func (s *BackofficeService) ArchiveArticle(ctx context.Context, id int64, confir
 // ReactivateArticle vuelve a ofrecer un artículo archivado, tal como estaba.
 func (s *BackofficeService) ReactivateArticle(ctx context.Context, id int64) error {
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El candado de nombres antes que la fila, el orden de guardar alternativos (spec 063): al
+		// revés, reactivar y guardar alternativos del mismo artículo se esperaban uno al otro.
+		if err := q.LockIngredientNames(ctx); err != nil {
+			return err
+		}
 		a, err := q.LockArticle(ctx, id)
 		if err != nil {
 			return notFound(err)

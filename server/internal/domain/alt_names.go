@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -38,6 +39,9 @@ func CleanAltNames(own string, in []string) ([]string, error) {
 		if name == "" {
 			continue
 		}
+		if !PrintableName(name) {
+			return nil, fmt.Errorf("%w: «%s» lleva caracteres que no se ven", ErrValidation, name)
+		}
 		if utf8.RuneCountInString(name) > MaxAltName {
 			return nil, fmt.Errorf("%w: cada nombre lleva hasta %d letras", ErrValidation, MaxAltName)
 		}
@@ -55,6 +59,21 @@ func CleanAltNames(own string, in []string) ([]string, error) {
 		return nil, fmt.Errorf("%w: hasta %d nombres", ErrValidation, MaxAltNames)
 	}
 	return out, nil
+}
+
+// PrintableName dice que un nombre solo trae letras que se ven: ni UTF-8 inválido ni NUL (Postgres
+// los rechaza con 22021 y salía un 500), ni controles, ni caracteres de formato como el espacio de
+// ancho cero, que dejarían guardar «Café​frío» junto a «Café frío» viéndose iguales (revisión).
+func PrintableName(s string) bool {
+	if !utf8.ValidString(s) {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return false
+		}
+	}
+	return true
 }
 
 // ErrAltNameTaken: el nombre ya es de otro producto o artículo de la empresa.

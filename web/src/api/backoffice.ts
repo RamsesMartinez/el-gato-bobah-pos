@@ -1160,8 +1160,9 @@ export const backofficeApi = {
   updateArticle: (id: number, b: ArticleUpdate) => api.patch<{ updatedAt: string }>(`/stock/articles/${id}`, b),
   // Lista completa de otros nombres (spec 063). Devuelve la versión nueva de la ficha: guardar mueve
   // updated_at como cualquier cambio del artículo.
-  setArticleAltNames: (id: number, altNames: string[]) =>
-    api.put<{ altNames: string[]; updatedAt: string }>(`/stock/articles/${id}/alt-names`, { altNames }),
+  // expectedUpdatedAt: la versión que vio la ficha; con otra responde STALE, como el PATCH.
+  setArticleAltNames: (id: number, altNames: string[], expectedUpdatedAt: string) =>
+    api.put<{ altNames: string[]; updatedAt: string }>(`/stock/articles/${id}/alt-names`, { altNames, expectedUpdatedAt }),
   similarArticleAltNames: (id: number, name: string) =>
     api.get<SimilarAlt[]>(`/stock/articles/${id}/alt-names/similar?name=${encodeURIComponent(name)}`),
   correctArticleCost: (id: number, cost: string) => api.post<void>(`/stock/articles/${id}/cost`, { cost }),

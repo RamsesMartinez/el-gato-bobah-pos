@@ -72,4 +72,42 @@ describe('otros nombres en la ficha del producto', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(api.updateProduct).not.toHaveBeenCalled();
   });
+
+  // Revisión del front: corregir un dedazo («Ice Coffe» → «Ice Coffee») y dejar el viejo como otro
+  // nombre. El servidor compara contra el nombre guardado: la lista que lo trae va después del PATCH.
+  it('renombrar y dejar el nombre viejo como otro nombre: primero el PATCH, luego la lista', async () => {
+    const u = userEvent.setup();
+    const onClose = pinta();
+    const nombre = await screen.findByDisplayValue('Ice Coffee');
+    await u.clear(nombre);
+    await u.type(nombre, 'Ice Coffee frío');
+    await u.type(screen.getByRole('textbox', { name: /otro nombre/i }), 'Ice Coffee{Enter}');
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(calls).toEqual(['patch', 'alts']);
+    expect(api.setProductAltNames).toHaveBeenLastCalledWith(5, ['Café helado', 'Ice Coffee']);
+  });
+
+  // Y al revés: subir un otro nombre a nombre principal lo quita de la lista antes del PATCH.
+  it('subir un otro nombre a nombre principal lo quita de la lista primero', async () => {
+    const u = userEvent.setup();
+    const onClose = pinta();
+    const nombre = await screen.findByDisplayValue('Ice Coffee');
+    await u.clear(nombre);
+    await u.type(nombre, 'Café helado');
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(calls).toEqual(['alts', 'patch']);
+    expect(api.setProductAltNames).toHaveBeenCalledWith(5, []);
+  });
+
+  it('un choque del nombre (PATCH) no se pinta bajo «Otros nombres»', async () => {
+    const u = userEvent.setup();
+    api.updateProduct.mockRejectedValueOnce(new ApiError(409, 'ALT_NAME_TAKEN', '«Latte» ya es otro nombre de «Café con leche»', 'x'));
+    pinta();
+    await screen.findByText('Café helado');
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(api.updateProduct).toHaveBeenCalled());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

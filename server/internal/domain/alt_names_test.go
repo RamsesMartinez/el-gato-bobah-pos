@@ -17,6 +17,10 @@ func TestCatalogNameKey(t *testing.T) {
 		{"café frío", "cafe frio"},
 		{" café ", "cafe"},
 		{"PIÑA Ü", "pina u"},
+		// Los espacios Unicode que strings.Fields junta: la base tiene que juntar los mismos.
+		{"café\u202ffrío", "cafe frio"},
+		{"café\u3000frío", "cafe frio"},
+		{"café\u2003frío\u0085", "cafe frio"},
 	}
 	for _, c := range cases {
 		if got := CatalogNameKey(c.in); got != c.want {
@@ -49,6 +53,10 @@ func TestCleanAltNames(t *testing.T) {
 		{name: "60 letras con acentos sí", own: "X", in: []string{strings.Repeat("é", MaxAltName)}, want: []string{strings.Repeat("é", MaxAltName)}},
 		{name: "repetido en la lista, sin acento ni mayúsculas", own: "X", in: []string{"Café frío", "cafe  FRIO"}, wantErr: true},
 		{name: "igual al nombre propio", own: "Ice Coffee", in: []string{"ice coffee"}, wantErr: true},
+		// Revisión de código: Postgres rechaza NUL y UTF-8 inválido con 22021 y salía un 500.
+		{name: "con NUL no", own: "X", in: []string{"a\x00b"}, wantErr: true},
+		{name: "UTF-8 inválido no", own: "X", in: []string{"caf\xe9"}, wantErr: true},
+		{name: "espacio de ancho cero no: se vería igual que otro", own: "X", in: []string{"Café\u200bfrío"}, wantErr: true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

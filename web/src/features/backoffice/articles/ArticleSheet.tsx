@@ -145,7 +145,7 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
       // Los otros nombres van por su propia ruta (spec 063); devuelve la versión nueva de la ficha.
       if (patch.alts !== undefined) {
         const list = JSON.parse(patch.alts) as string[];
-        const r = await backofficeApi.setArticleAltNames(id, list);
+        const r = await backofficeApi.setArticleAltNames(id, list, version);
         setAltDraft((d) => (list.some((n) => altNameKey(n) === altNameKey(d)) ? '' : d));
         void qc.invalidateQueries({ queryKey: ['articles'] });
         void qc.invalidateQueries({ queryKey: ['article', id] });
@@ -177,6 +177,9 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
     onReject: (k, saved, e) => {
       if (k === 'alts') {
         altRejected.current = true;
+        // Con otro guardado de la lista en cola, ése trae lo último: regresar a lo guardado borraría de
+        // la pantalla lo que la cola está por guardar (revisión del front).
+        if (auto.busy('alts')) { setAltError(e instanceof ApiError && e.status < 500 ? e.message : 'No se pudo guardar'); return; }
         setForm((f) => f && { ...f, alts: JSON.parse(saved) as string[] });
         setAltError(e instanceof ApiError && e.status < 500 ? e.message : 'No se pudo guardar');
         return;
@@ -249,23 +252,31 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
     setLeaving(false);
     return allSaved;
   };
-  const close = async () => {
-    if (leaving) return;
-    // Lo escrito sin «Agregar» se guarda al salir; si choca, la ficha se queda con el aviso (A1).
+  // Lo escrito sin «Agregar» se guarda al salir de la ficha, por donde sea; si choca, la ficha se queda
+  // con el aviso (A1). Devuelve si se puede salir.
+  const savePending = async () => {
     altRejected.current = false;
     if (form) {
       const pending = withPendingAlt(form.alts, altDraft, form.name);
       if (pending !== form.alts) changeAlts(pending);
     }
-    if (await settle()) {
-      if (!altRejected.current) onClose();
+    const allSaved = await settle();
+    return { allSaved, rejected: altRejected.current };
+  };
+  const close = async () => {
+    if (leaving) return;
+    const { allSaved, rejected } = await savePending();
+    if (allSaved) {
+      if (!rejected) onClose();
     } else setPanel('discard');
   };
   // Ir al conteo no pregunta si descartar: si algo no se guardó, se queda con el error a la vista (B12).
   const goCount = async () => {
     if (leaving) return;
     // El nombre de la ficha, ya guardado: si se acaba de renombrar, el conteo lo busca con el nuevo.
-    if (form && await settle()) onCount?.(form.name.trim());
+    if (!form) return;
+    const { allSaved, rejected } = await savePending();
+    if (allSaved && !rejected) onCount?.(form.name.trim());
   };
   const items = history.data?.pages.flatMap((p) => p.items ?? []) ?? [];
   const trend = history.data?.pages[0]?.trendPct;

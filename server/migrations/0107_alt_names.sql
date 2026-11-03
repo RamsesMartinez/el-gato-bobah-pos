@@ -26,14 +26,15 @@ alter table ingredients add column alt_names text[] not null default '{}'
 
 -- La llave con que dos nombres son el mismo: sin mayúsculas, acentos ni espacios de más. Gemela de
 -- domain.CatalogNameKey (prueba de paridad). btrim va DESPUÉS de juntar espacios: antes, un tabulador
--- en la orilla quedaba como espacio sin recortar. El espacio duro va explícito y escapado (no el
--- carácter invisible): no se puede asumir que \s lo cubra en la locale de la base. Literal E'…': el
+-- en la orilla quedaba como espacio sin recortar. Los espacios Unicode que junta strings.Fields (el duro,
+-- el estrecho, el ideográfico…) van explícitos y escapados: no se puede asumir que \s los cubra en la
+-- locale de la base. Literal E'…': el
 -- cuerpo se vuelve a leer en cada llamada con el ajuste de la sesión, y con
 -- standard_conforming_strings=off un '\s' simple se lee como «s».
 -- +goose StatementBegin
 create function catalog_name_key(t text) returns text
   language sql immutable parallel safe
-  as $$ select btrim(regexp_replace(translate(lower(t), 'áéíóúüñ', 'aeiouun'), E'[\\s\\u00a0]+', ' ', 'g')) $$;
+  as $$ select btrim(regexp_replace(translate(lower(t), 'áéíóúüñ', 'aeiouun'), E'[\\s\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]+', ' ', 'g')) $$;
 -- +goose StatementEnd
 
 -- +goose Down

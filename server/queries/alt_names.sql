@@ -11,9 +11,9 @@
 select pg_advisory_xact_lock(28063, coalesce(nullif(current_setting('app.company_id', true), '')::int, 0));
 
 -- name: GetProductForAltNames :one
--- El nombre propio, con la fila tomada. El genérico de plataforma no es del catálogo: no lleva
+-- El nombre propio, con la fila tomada (no key update: no frena la llave foránea de una venta). El genérico de plataforma no es del catálogo: no lleva
 -- alternativos y responde como inexistente, igual que su edición.
-select name::text as name from products where id = sqlc.arg(id) and system_kind is null for update;
+select name::text as name from products where id = sqlc.arg(id) and system_kind is null for no key update;
 
 -- name: FirstProductNameClash :one
 -- El primer nombre propuesto (en el orden capturado) que ya es el nombre o un alternativo de OTRO
@@ -53,7 +53,8 @@ select p.id, p.name::text as name, p.alt_names from products p where p.system_ki
 -- ==== Artículos del almacén ====
 
 -- name: GetArticleForAltNames :one
-select name::text as name, alt_names from ingredients where id = sqlc.arg(id) for update;
+-- no key update: alt_names no es llave, y así no frena la llave foránea de una venta o un movimiento.
+select name::text as name, alt_names, updated_at from ingredients where id = sqlc.arg(id) for no key update;
 
 -- name: FirstArticleNameClash :one
 -- Como en productos. Un artículo que es origen de una unión no cuenta: no puede volver, y si

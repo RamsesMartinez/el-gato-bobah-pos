@@ -23,7 +23,10 @@ const popularTTL = 5 * time.Minute
 // de precios por plataforma: el selector no aparecía y la base sí tenía las plataformas.
 //
 // v2: agrega platforms, platformPrices y platformModPrices (spec 002).
-const menuSchema = "v3"
+// v4: agrega products[].altNames (spec 063). La 0107 no sube la versión del catálogo: sin esto, el
+// menú guardado por la API anterior seguía sirviéndose (y el ETag daba 304) hasta 24 h sin los otros
+// nombres, y buscar por ellos en Vender no encontraba nada.
+const menuSchema = "v4"
 
 // MenuETag identifica un menú: forma del documento, empresa, versión de catálogo (la suben los
 // triggers de la 0093 con cualquier cambio, también por SQL directo) y día (la disponibilidad por
