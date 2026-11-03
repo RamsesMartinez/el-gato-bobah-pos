@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import userEvent from '@testing-library/user-event';
 
 import { useSessionStore } from '../../../stores/session';
 import { Provider } from '../../../components/ui/provider';
@@ -537,6 +538,21 @@ describe('Bitácora del artículo', () => {
 
 // US4 (FR-007): una receta activa impide archivar, pero no es un callejón: cada una se abre desde aquí.
 describe('Archivar', () => {
+  // Prueba con usuario nuevo (#203): con diez recetas, «Cancelar» y «Archivar» quedaban 270 px
+  // debajo de la pantalla; la casilla de confirmar salía aunque una receta impidiera archivar; y
+  // decía «receta(s)».
+  it('con recetas que lo impiden: los botones quedan fijos abajo, sin casilla y con plural de verdad', async () => {
+    back.articleArchiveCheck.mockResolvedValue({
+      activeRecipes: [{ kind: 'product', id: 5, name: 'Frappé de mango' }, { kind: 'product', id: 6, name: 'Té helado' }],
+      onHand: [{ branch: 'Matriz', qty: '27000' }], pendingReceipts: 2, openCount: false,
+    });
+    montar(<ArchiveSheet article={ficha as never} onClose={vi.fn()} onDone={vi.fn()} />);
+    expect(await screen.findByText(/Lo usan 2 recetas activas/)).toBeInTheDocument();
+    expect(screen.getByText(/Tiene 2 compras por recibir/)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Sí, archivarlo con esa existencia' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Archivar' }).closest('[data-archive-body]')).toBeNull();
+  });
+
   it('con una receta activa no deja archivar y ofrece abrir esa receta', async () => {
     back.articleArchiveCheck.mockResolvedValue({ activeRecipes: [{ kind: 'product', id: 5, name: 'Frappé de mango' }], onHand: [], pendingReceipts: 0, openCount: false });
     montar(<ArchiveSheet article={ficha as never} onClose={vi.fn()} onDone={vi.fn()} />);
@@ -544,14 +560,42 @@ describe('Archivar', () => {
     expect(screen.getByRole('button', { name: 'Archivar' })).toBeDisabled();
   });
 
-  it('sin bloqueos, muestra lo que queda en existencia y archiva al confirmar', async () => {
-    back.articleArchiveCheck.mockResolvedValue({ activeRecipes: [], onHand: [{ branch: 'Matriz', qty: '27000' }], pendingReceipts: 0, openCount: false });
+  // #203: con existencia se archivaba con un solo toque y el aviso pasaba de largo.
+  it('con existencia dice cuánto hay por sucursal y no archiva hasta confirmarlo', async () => {
+    back.articleArchiveCheck.mockResolvedValue({ activeRecipes: [], onHand: [{ branch: 'Matriz', qty: '27000' }, { branch: 'Centro', qty: '-500' }], pendingReceipts: 0, openCount: false });
     const onDone = vi.fn();
     montar(<ArchiveSheet article={ficha as never} onClose={vi.fn()} onDone={onDone} />);
-    expect(await screen.findByText(/en Matriz/)).toBeInTheDocument();
+    const aviso = await screen.findByTestId('archivar-con-existencia');
+    expect(aviso).toHaveTextContent('Matriz');
+    expect(aviso).toHaveTextContent('27 kg');
+    expect(aviso).toHaveTextContent('Centro');
+    expect(screen.getByRole('button', { name: 'Archivar' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Sí, archivarlo con esa existencia' }));
     fireEvent.click(screen.getByRole('button', { name: 'Archivar' }));
-    await waitFor(() => expect(back.archiveArticle).toHaveBeenCalledWith(7));
+    await waitFor(() => expect(back.archiveArticle).toHaveBeenCalledWith(7, true));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
+  });
+
+  it('si llegó existencia después de abrir la hoja, el servidor lo detiene y la hoja la muestra', async () => {
+    back.articleArchiveCheck.mockResolvedValueOnce({ activeRecipes: [], onHand: [], pendingReceipts: 0, openCount: false })
+      .mockResolvedValue({ activeRecipes: [], onHand: [{ branch: 'Matriz', qty: '500' }], pendingReceipts: 0, openCount: false });
+    back.archiveArticle.mockRejectedValueOnce(new ApiError(409, 'ARCHIVE_HAS_STOCK', 'todavía tiene existencia; confirma que lo archivas así', 'r'));
+    const onDone = vi.fn();
+    montar(<ArchiveSheet article={ficha as never} onClose={vi.fn()} onDone={onDone} />);
+    await screen.findByText(/deja de ofrecerse/);
+    fireEvent.click(screen.getByRole('button', { name: 'Archivar' }));
+    expect(await screen.findByTestId('archivar-con-existencia')).toHaveTextContent('Matriz');
+    expect(screen.getByRole('button', { name: 'Archivar' })).toBeDisabled();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('sin existencia archiva sin pedir más', async () => {
+    back.articleArchiveCheck.mockResolvedValue({ activeRecipes: [], onHand: [], pendingReceipts: 0, openCount: false });
+    montar(<ArchiveSheet article={ficha as never} onClose={vi.fn()} onDone={vi.fn()} />);
+    await screen.findByText(/deja de ofrecerse/);
+    expect(screen.queryByTestId('archivar-con-existencia')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Archivar' }));
+    await waitFor(() => expect(back.archiveArticle).toHaveBeenCalledWith(7, false));
   });
 });
 

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/shopspring/decimal"
 )
 
 func TestValidateArticle(t *testing.T) {
@@ -139,5 +141,34 @@ func TestConvertedLimits(t *testing.T) {
 	}
 	if ValidConvertedCost(dec("0.001"), dec("0")) || !ValidConvertedCost(dec("0"), dec("0")) || ValidConvertedCost(dec("1"), dec("2000000")) {
 		t.Fatal("un costo positivo no queda en cero, y uno enorme no cabe")
+	}
+}
+
+// #203: archivar con existencia no avisaba. La misma regla en la pantalla y en el servidor: con algo
+// en existencia (también negativo) se archiva solo si quien archiva lo confirmó.
+func TestArchiveStockGate(t *testing.T) {
+	cases := []struct {
+		name      string
+		onHand    []string
+		confirmed bool
+		blocked   bool
+	}{
+		{name: "sin existencia en ninguna sucursal se archiva sin preguntar", onHand: nil},
+		{name: "con existencia y sin confirmar se niega", onHand: []string{"27000"}, blocked: true},
+		{name: "una existencia negativa también se confirma", onHand: []string{"-2"}, blocked: true},
+		{name: "con existencia en otra sucursal también", onHand: []string{"0", "5"}, blocked: true},
+		{name: "confirmado se archiva con la existencia tal cual", onHand: []string{"27000"}, confirmed: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var qs []decimal.Decimal
+			for _, q := range tc.onHand {
+				qs = append(qs, dec(q))
+			}
+			err := ArchiveStockGate(qs, tc.confirmed)
+			if tc.blocked != errors.Is(err, ErrArchiveHasStock) || (!tc.blocked && err != nil) {
+				t.Fatalf("= %v; bloqueado quería %v", err, tc.blocked)
+			}
+		})
 	}
 }
