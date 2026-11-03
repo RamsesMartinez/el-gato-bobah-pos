@@ -6,7 +6,7 @@ import { ApiError } from '../../api/client';
 import type { DraftView } from '../../types/pos';
 import { usePosStore } from '../../stores/pos';
 import { reportarResultado } from './useSinConexion';
-import { reiniciarCaptura, useCuenta } from './useCuenta';
+import { olvidarNuevoDePedido, reiniciarCaptura, useCuenta } from './useCuenta';
 import { accionPropia } from '../../stores/accionesPropias';
 
 const api = vi.hoisted(() => ({
@@ -214,6 +214,58 @@ describe('lo «Nuevo» de un pedido ya enviado', () => {
     act(() => result.current.agregar(TARO));
     await waitFor(() => expect(api.addDraftLine).toHaveBeenCalledTimes(1));
     expect(api.addDraftLine.mock.calls[0][0]).toBe('de-otra-tableta');
+  });
+});
+
+// Incidente del 2026-11-02: se mandó a cocina lo «Nuevo» de un pedido y, al agregar más, la tableta
+// seguía mandando los productos a esa cuenta ya enviada. El servidor respondía «Ya se mandó a cocina;
+// para quitarla hay que cancelar el pedido» y no había forma de seguir agregando.
+describe('agregar otra vez a un pedido después de mandar lo «Nuevo»', () => {
+  const PEDIDO = { id: 12, number: 1, folioName: 'Khao', status: 'abierta', lines: [], payments: [],
+    total: '0', outstanding: '0', paid: false, deliveryPlatformId: null };
+
+  async function primerAgregadoYa(result: { current: ReturnType<typeof useCuenta> }) {
+    act(() => result.current.agregar(TARO));
+    await waitFor(() => expect(api.createDraft).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.vista.borradorId).toBe(api.createDraft.mock.calls[0][0].id));
+    return api.createDraft.mock.calls[0][0].id as string;
+  }
+
+  test('lo agregado después del envío abre otro «Nuevo» del pedido en vez de chocar con el enviado', async () => {
+    usePosStore.getState().seleccionar({ kind: 'order', id: 12 });
+    api.order.mockResolvedValue(PEDIDO);
+    api.createDraft.mockImplementation(async (b) => draft({ id: b.id, orderId: b.orderId, folioName: null }));
+    const { result } = renderHook(() => useCuenta(), { wrapper });
+    await waitFor(() => expect(api.order).toHaveBeenCalled());
+    const enviado = await primerAgregadoYa(result);
+
+    // Lo manda a cocina otra tableta (o esta, sin que nada limpie la cuenta vieja).
+    api.addDraftLine.mockRejectedValue(new ApiError(409, 'DRAFT_SENT', 'Ya se mandó a cocina; para quitarla hay que cancelar el pedido', 'r'));
+    api.getDraft.mockImplementation(async (id) => (id === enviado
+      ? draft({ id, orderId: 12, folioName: null, status: 'enviada' })
+      : draft({ id, orderId: 12, folioName: null })));
+
+    act(() => result.current.agregar(TARO));
+    await waitFor(() => expect(api.createDraft).toHaveBeenCalledTimes(2));
+    const segundo = api.createDraft.mock.calls[1][0];
+    expect(segundo.orderId).toBe(12);
+    expect(segundo.id).not.toBe(enviado);
+    expect(segundo.lines).toEqual([expect.objectContaining({ productId: 41 })]);
+    expect(toasts.create).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+  });
+
+  test('mandar a cocina desde esta tableta suelta lo «Nuevo» y el siguiente toque no toca la cuenta enviada', async () => {
+    usePosStore.getState().seleccionar({ kind: 'order', id: 12 });
+    api.order.mockResolvedValue(PEDIDO);
+    api.createDraft.mockImplementation(async (b) => draft({ id: b.id, orderId: b.orderId, folioName: null }));
+    const { result } = renderHook(() => useCuenta(), { wrapper });
+    await waitFor(() => expect(api.order).toHaveBeenCalled());
+    await primerAgregadoYa(result);
+
+    act(() => olvidarNuevoDePedido(12));
+    act(() => result.current.agregar(TARO));
+    await waitFor(() => expect(api.createDraft).toHaveBeenCalledTimes(2));
+    expect(api.addDraftLine).not.toHaveBeenCalled();
   });
 });
 
