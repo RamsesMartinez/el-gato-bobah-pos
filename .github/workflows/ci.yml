@@ -19,7 +19,10 @@ jobs:
   #   corre todo.
   # - Al mergear a develop, ninguna: el PR ya las pasó, y se mergea al día con develop (AGENTS.md
   #   §4). Solo se construye y se despliega.
-  # - En main, todas siempre: producción no depende de lo que se probó en otro lado.
+  # - Al mergear a main, tampoco (decidido el 2026-11-02): el PR de release develop → main y el de
+  #   un hotfix ya corrieron las pruebas sobre el commit de merge, y repetirlas solo atrasaba la
+  #   subida. Lo que gatea producción es ese PR en verde y al día; por eso a main no se empuja
+  #   directo. Solo se construye y se despliega.
   changes:
     name: Qué toca el cambio
     runs-on: ubuntu-latest
@@ -39,8 +42,7 @@ jobs:
           REF: ${{ github.ref }}
         run: |
           if [ "$EVENT" = push ]; then
-            all=false; [ "$REF" = refs/heads/main ] && all=true
-            for k in go integration web; do echo "$k=$all" >> "$GITHUB_OUTPUT"; done
+            for k in go integration web; do echo "$k=false" >> "$GITHUB_OUTPUT"; done
             exit 0
           fi
           files="$(git diff --name-only HEAD^1 HEAD)"
@@ -280,7 +282,8 @@ jobs:
   deploy-frontend:
     name: Deploy frontend (Cloudflare Pages)
     needs: [frontend, deploy-backend]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # `frontend` se salta en main (ver `changes`): sin `!failure()` el salto apagaría el despliegue.
+    if: ${{ !cancelled() && !failure() && needs.deploy-backend.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -376,7 +379,8 @@ jobs:
   deploy-consola:
     name: Deploy consola (Cloudflare Pages)
     needs: [frontend, deploy-backend]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # `frontend` se salta en main (ver `changes`): sin `!failure()` el salto apagaría el despliegue.
+    if: ${{ !cancelled() && !failure() && needs.deploy-backend.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -454,7 +458,7 @@ jobs:
     # Las DOS ramas: main alimenta producción y develop el ambiente de pruebas. Sin construir en
     # develop, api-dev se quedaría corriendo la imagen de producción y no probaría nada.
     # `!failure()` y no el `success()` implícito: en develop `backend` se salta (ver `changes`) y
-    # eso saltaría la imagen. En main `backend` corre, y si falla la imagen no se construye.
+    # eso saltaría la imagen. Lo mismo en main desde el 2026-11-02.
     if: ${{ !cancelled() && !failure() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
@@ -563,7 +567,7 @@ jobs:
     name: Deploy backend (VPS)
     # `integration` va aquí, no en `image`: el gate es del despliegue.
     needs: [image, integration]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: ${{ !cancelled() && !failure() && needs.image.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
