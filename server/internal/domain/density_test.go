@@ -200,6 +200,8 @@ func TestClosedFromWeighed(t *testing.T) {
 		{name: "3 cerradas más lo pesado en ml", counted: "3554.5455", in: GrossInput{GrossG: dec("850"), TareG: dec("120"), Containers: 2, BaseKind: "volumen", Density: decPtr("1.1")}, want: "3000", ok: true},
 		{name: "solo lo pesado no deja cerrados", counted: "850", in: GrossInput{GrossG: dec("1000"), TareG: dec("50"), Containers: 3, BaseKind: "masa"}, want: "0", ok: true},
 		{name: "lo contado es menos que lo pesado: no cuadra", counted: "100", in: GrossInput{GrossG: dec("1000"), TareG: dec("50"), Containers: 3, BaseKind: "masa"}},
+		{name: "en ml sin la densidad de la captura no se adivina", counted: "3554.5455", in: GrossInput{GrossG: dec("850"), TareG: dec("120"), Containers: 2, BaseKind: "volumen"}},
+		{name: "en g con decimales", counted: "1850.25", in: GrossInput{GrossG: dec("1000.25"), TareG: dec("50"), Containers: 3, BaseKind: "masa"}, want: "1000", ok: true},
 		{name: "una pesada que ya no da cuenta", counted: "850", in: GrossInput{GrossG: dec("100"), TareG: dec("50"), Containers: 3, BaseKind: "masa"}},
 	}
 	for _, tt := range tests {
