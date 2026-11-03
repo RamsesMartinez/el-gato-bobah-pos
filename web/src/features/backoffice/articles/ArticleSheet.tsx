@@ -307,7 +307,7 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                 )}
                 {!justCreated && <PacksBlock />}
                 <Button minH="44px" variant="outline" justifyContent="flex-start" onClick={() => setPanel('recipe')}>
-                  {a.isPrep ? 'Es un preparado · ver receta ›' : 'Se compra hecho ›'}
+                  {a.isPrep ? 'Es un preparado · ver receta ›' : 'Se compra hecho · agregar receta ›'}
                   {a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}
                 </Button>
                 {a.mergedInto ? (

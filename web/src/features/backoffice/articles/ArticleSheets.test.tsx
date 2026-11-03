@@ -466,6 +466,13 @@ describe('Ficha del artículo', () => {
     expect(await screen.findByText('por revisar')).toBeInTheDocument();
   });
 
+  // #103: «Se compra hecho ›» no dejaba claro si era un dato o un botón. El botón dice qué hace.
+  it('lo que se compra hecho se ve como botón que agrega la receta', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'Se compra hecho · agregar receta ›' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Se compra hecho ›' })).toBeNull();
+  });
+
   it('recién creado, «Agregar empaque» va primero', async () => {
     montar(<ArticleSheet id={7} justCreated onClose={vi.fn()} />);
     const agregar = await screen.findByRole('button', { name: '+ Agregar empaque' });
