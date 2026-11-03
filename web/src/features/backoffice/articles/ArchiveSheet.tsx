@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { medirAccion } from '../../../api/uso';
-import { Box, Button, HStack, Spinner, Stack, Text } from '@chakra-ui/react';
+import { Box, Button, Checkbox, HStack, Spinner, Stack, Text } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader,
@@ -12,7 +12,8 @@ import { CompositionSheet } from '../../../shared/CompositionSheet';
 import type { CompositionKind } from '../../../api/admin';
 import { formatBaseQty } from '../../../shared/units';
 
-// Archivar y reactivar (spec 042, FR-007). Antes de archivar se ve cuánto queda y qué recetas lo usan.
+// Archivar y reactivar (spec 042, FR-007). Antes de archivar se ve cuánto queda y qué recetas lo usan;
+// con existencia, archivar pide confirmarlo y no la ajusta (#203).
 // Una receta activa lo impide, pero no es un callejón: cada una abre su receta y se vuelve aquí
 // (revisión de tableta, A5).
 
@@ -26,18 +27,27 @@ export function ArchiveSheet({ article, onClose, onDone }: Props) {
   const qc = useQueryClient();
   const check = useQuery({ queryKey: ['article-archive-check', article.id], queryFn: () => backofficeApi.articleArchiveCheck(article.id), enabled: article.isActive });
   const [recipe, setRecipe] = useState<{ kind: CompositionKind; id: number; name: string } | null>(null);
+  // Con existencia se archiva solo confirmándolo (#203); el servidor aplica la misma regla.
+  const [stockOk, setStockOk] = useState(false);
   const act = useMutation({
-    mutationFn: () => (article.isActive ? backofficeApi.archiveArticle(article.id) : backofficeApi.reactivateArticle(article.id)),
+    mutationFn: () => (article.isActive ? backofficeApi.archiveArticle(article.id, stockOk) : backofficeApi.reactivateArticle(article.id)),
     onSuccess: () => {
       medirAccion('inventario', 'archivar-articulo');
       toaster.create({ title: article.isActive ? 'Archivado' : 'Volvió a estar activo', type: 'success' });
       onDone();
     },
-    onError: (e) => toaster.create({ title: e instanceof ApiError && e.status !== 500 ? e.message : 'No se pudo', type: 'error' }),
+    onError: (e) => {
+      // Llegó existencia después de abrir la hoja: se vuelve a mostrar y a pedir que se confirme.
+      if (e instanceof ApiError && e.code === 'ARCHIVE_HAS_STOCK') {
+        setStockOk(false);
+        void qc.invalidateQueries({ queryKey: ['article-archive-check', article.id] });
+      }
+      toaster.create({ title: e instanceof ApiError && e.status !== 500 ? e.message : 'No se pudo', type: 'error' });
+    },
   });
   const recipes = check.data?.activeRecipes ?? [];
   const onHand = check.data?.onHand ?? [];
-  const blocked = recipes.length > 0 || !!check.data?.openCount;
+  const blocked = recipes.length > 0 || !!check.data?.openCount || (onHand.length > 0 && !stockOk);
 
   return (
     <DrawerRoot open placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }}>
@@ -53,7 +63,20 @@ export function ArchiveSheet({ article, onClose, onDone }: Props) {
                 <>
                   <Text color="fg.muted">Archivado deja de ofrecerse en gastos, recetas y conteo. Su historia se conserva.</Text>
                   {onHand.length > 0 && (
-                    <Text>Queda en existencia: {onHand.map((b) => `${formatBaseQty(b.qty, article.baseUnitCode)} en ${b.branch}`).join(', ')}.</Text>
+                    <Stack gap={1} p={3} borderRadius="lg" bg="orange.subtle" data-testid="archivar-con-existencia">
+                      <Text fontWeight="700">Todavía tiene existencia:</Text>
+                      {onHand.map((b) => (
+                        <HStack key={b.branch} justify="space-between">
+                          <Text>{b.branch}</Text><Text fontWeight="700">{formatBaseQty(b.qty, article.baseUnitCode)}</Text>
+                        </HStack>
+                      ))}
+                      <Text fontSize="sm" color="fg.muted">Se queda así, sin ajustarse, y vuelve igual si lo reactivas.</Text>
+                      <Checkbox.Root minH="44px" checked={stockOk} onCheckedChange={(e) => setStockOk(e.checked === true)}>
+                        <Checkbox.HiddenInput />
+                        <Checkbox.Control />
+                        <Checkbox.Label>Sí, archivarlo con esa existencia</Checkbox.Label>
+                      </Checkbox.Root>
+                    </Stack>
                   )}
                   {(check.data?.pendingReceipts ?? 0) > 0 && (
                     <Text>Tiene {check.data!.pendingReceipts} compra(s) por recibir. Al llegar, sumarán aunque esté archivado.</Text>

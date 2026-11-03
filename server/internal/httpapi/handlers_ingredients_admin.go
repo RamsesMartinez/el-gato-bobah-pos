@@ -3,7 +3,9 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -259,9 +261,20 @@ func (h *Handlers) ArticleArchiveCheck(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, out)
 }
 
-// POST /stock/articles/{id}/archive — 409 IN_USE con receta activa o conteo abierto.
+// POST /stock/articles/{id}/archive — 409 IN_USE con receta activa o conteo abierto, y 409
+// ARCHIVE_HAS_STOCK si tiene existencia y el cuerpo no trae confirmOnHand (#203).
 func (h *Handlers) ArchiveArticle(w http.ResponseWriter, r *http.Request) {
-	h.articleAction(w, r, h.backoffice.ArchiveArticle)
+	var body struct {
+		ConfirmOnHand bool `json:"confirmOnHand"`
+	}
+	// Sin cuerpo es no confirmar: con existencia responde 409, sin ella archiva como antes.
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	h.articleAction(w, r, func(ctx context.Context, id int64) error {
+		return h.backoffice.ArchiveArticle(ctx, id, body.ConfirmOnHand)
+	})
 }
 
 // POST /stock/articles/{id}/reactivate

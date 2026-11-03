@@ -573,7 +573,7 @@ func TestArchivingAnArticle(t *testing.T) {
 		if len(check.ActiveRecipes) != 1 || check.ActiveRecipes[0].Name != "Agua de azúcar" {
 			t.Fatalf("recetas = %+v", check.ActiveRecipes)
 		}
-		if err := svc.ArchiveArticle(ctx, k.azucar); !errors.Is(err, domain.ErrArticleInUse) {
+		if err := svc.ArchiveArticle(ctx, k.azucar, true); !errors.Is(err, domain.ErrArticleInUse) {
 			t.Fatalf("= %v; quiere ErrArticleInUse", err)
 		}
 	})
@@ -588,7 +588,14 @@ func TestArchivingAnArticle(t *testing.T) {
 		if len(check.OnHand) != 1 || !check.OnHand[0].Qty.Equal(qty("120")) || check.ActiveRecipes == nil {
 			t.Fatalf("revisión = %+v", check)
 		}
-		if err := svc.ArchiveArticle(ctx, suelto); err != nil {
+		// #203: con existencia, sin confirmarla no se archiva; la pantalla anterior archivaba sin avisar.
+		if err := svc.ArchiveArticle(ctx, suelto, false); !errors.Is(err, domain.ErrArchiveHasStock) {
+			t.Fatalf("archivar 120 ml sin confirmar = %v; quiere ErrArchiveHasStock", err)
+		}
+		if a, err := svc.GetArticle(ctx, suelto); err != nil || !a.IsActive {
+			t.Fatalf("el rechazo dejó el artículo archivado: %+v %v", a, err)
+		}
+		if err := svc.ArchiveArticle(ctx, suelto, true); err != nil {
 			t.Fatal(err)
 		}
 		if n := auditCount(t, k.st, "ingredient.archived", suelto); n != 1 {
@@ -632,7 +639,7 @@ func TestArchivingAnArticle(t *testing.T) {
 		if err := svc.CaptureCount(ctx, count.ID, suelto, qty("100"), k.user); err != nil {
 			t.Fatal(err)
 		}
-		if err := svc.ArchiveArticle(ctx, suelto); !errors.Is(err, domain.ErrArticleInUse) {
+		if err := svc.ArchiveArticle(ctx, suelto, true); !errors.Is(err, domain.ErrArticleInUse) {
 			t.Fatalf("= %v; quiere ErrArticleInUse por el conteo abierto", err)
 		}
 		if err := svc.DiscardCount(ctx, count.ID, k.user); err != nil {
@@ -652,7 +659,8 @@ func TestArchivingAnArticle(t *testing.T) {
 		if err != nil || check.PendingReceipts != 1 {
 			t.Fatalf("por recibir = %+v %v", check, err)
 		}
-		if err := svc.ArchiveArticle(ctx, fresa); err != nil {
+		// Sin existencia (lo comprado no ha llegado) no pide confirmar.
+		if err := svc.ArchiveArticle(ctx, fresa, false); err != nil {
 			t.Fatal(err)
 		}
 		var item int64
@@ -697,6 +705,16 @@ func TestArchivingHTTPPermissions(t *testing.T) {
 	admin := token("arch_admin", "admin")
 	if w := do(t, r, http.MethodPost, "/api/v1/stock/articles/"+id+"/archive", admin, nil, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("archivar = %d %s", w.Code, w.Body.String())
+	}
+	// #203: con existencia, sin confirmarla responde 409 ARCHIVE_HAS_STOCK; confirmándola archiva.
+	conStock := ingredientIn(t, st, defaultCompanyID, "Archivable con existencia", "ml")
+	stockAdjust(t, st, defaultCompanyID, conStock, "50")
+	path := "/api/v1/stock/articles/" + strconv.FormatInt(conStock, 10) + "/archive"
+	if w := do(t, r, http.MethodPost, path, admin, []byte(`{}`), "application/json"); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "ARCHIVE_HAS_STOCK") {
+		t.Fatalf("archivar con existencia sin confirmar = %d %s; quiere 409 ARCHIVE_HAS_STOCK", w.Code, w.Body.String())
+	}
+	if w := do(t, r, http.MethodPost, path, admin, []byte(`{"confirmOnHand":true}`), "application/json"); w.Code != http.StatusNoContent {
+		t.Fatalf("archivar confirmando = %d %s", w.Code, w.Body.String())
 	}
 	if w := do(t, r, http.MethodPost, "/api/v1/stock/ingredient-categories", admin, []byte(`{"name":"Lácteos"}`), "application/json"); w.Code != http.StatusCreated {
 		t.Fatalf("crear categoría = %d %s", w.Code, w.Body.String())

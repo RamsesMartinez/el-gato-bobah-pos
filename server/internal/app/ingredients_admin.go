@@ -674,9 +674,10 @@ func archiveCheck(ctx context.Context, q *db.Queries, id int64) (ArchiveCheck, e
 }
 
 // ArchiveArticle deja de ofrecer un artículo en el gasto, la receta y el conteo, sin tocar su historia.
-// Se niega mientras una receta activa lo use o un conteo abierto lo tenga capturado (FR-007). Una
-// compra por recibir no lo impide: cuando llegue, suma sin reactivarlo.
-func (s *BackofficeService) ArchiveArticle(ctx context.Context, id int64) error {
+// Se niega mientras una receta activa lo use o un conteo abierto lo tenga capturado (FR-007), y con
+// existencia si confirmOnHand es falso (#203). Una compra por recibir no lo impide: cuando llegue,
+// suma sin reactivarlo.
+func (s *BackofficeService) ArchiveArticle(ctx context.Context, id int64, confirmOnHand bool) error {
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		// Sin esperar: una venta en curso responde «vuelve a intentar» en vez de dejar la pantalla colgada.
 		a, err := q.LockArticleNowait(ctx, id)
@@ -695,6 +696,13 @@ func (s *BackofficeService) ArchiveArticle(ctx context.Context, id int64) error 
 		}
 		if check.OpenCount {
 			return fmt.Errorf("%w: un conteo abierto ya lo capturó; ciérralo o descártalo antes", domain.ErrArticleInUse)
+		}
+		onHand := make([]decimal.Decimal, len(check.OnHand))
+		for i, b := range check.OnHand {
+			onHand[i] = b.Qty
+		}
+		if err := domain.ArchiveStockGate(onHand, confirmOnHand); err != nil {
+			return err
 		}
 		if err := q.SetArticleActive(ctx, db.SetArticleActiveParams{ID: id, Active: false}); err != nil {
 			return err

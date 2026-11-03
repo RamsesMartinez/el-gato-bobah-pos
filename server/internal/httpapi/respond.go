@@ -266,6 +266,8 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "MERGE_STALE"
 	case errors.Is(err, domain.ErrMergePresentationConflict):
 		status, code = http.StatusConflict, "MERGE_PRESENTATION_CONFLICT"
+	case errors.Is(err, domain.ErrArchiveHasStock):
+		status, code = http.StatusConflict, "ARCHIVE_HAS_STOCK"
 	case errors.Is(err, domain.ErrArticleInUse):
 		status, code = http.StatusConflict, "IN_USE"
 	case errors.Is(err, domain.ErrArticleStale):
