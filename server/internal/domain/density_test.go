@@ -186,3 +186,57 @@ func TestUnitChangeFactor(t *testing.T) {
 }
 
 func sptr(s string) *string { return &s }
+
+// #204: al volver a abrir lo contado pesando, lo cerrado sale de lo contado menos lo pesado con los
+// números que se usaron al capturar (no los de hoy). Si no cuadra, no se inventa un desglose.
+func TestClosedFromWeighed(t *testing.T) {
+	tests := []struct {
+		name    string
+		counted string
+		in      GrossInput
+		want    string
+		ok      bool
+	}{
+		{name: "3 cerradas más lo pesado en ml", counted: "3554.5455", in: GrossInput{GrossG: dec("850"), TareG: dec("120"), Containers: 2, BaseKind: "volumen", Density: decPtr("1.1")}, want: "3000", ok: true},
+		{name: "solo lo pesado no deja cerrados", counted: "850", in: GrossInput{GrossG: dec("1000"), TareG: dec("50"), Containers: 3, BaseKind: "masa"}, want: "0", ok: true},
+		{name: "lo contado es menos que lo pesado: no cuadra", counted: "100", in: GrossInput{GrossG: dec("1000"), TareG: dec("50"), Containers: 3, BaseKind: "masa"}},
+		{name: "en ml sin la densidad de la captura no se adivina", counted: "3554.5455", in: GrossInput{GrossG: dec("850"), TareG: dec("120"), Containers: 2, BaseKind: "volumen"}},
+		{name: "en g con decimales", counted: "1850.25", in: GrossInput{GrossG: dec("1000.25"), TareG: dec("50"), Containers: 3, BaseKind: "masa"}, want: "1000", ok: true},
+		{name: "una pesada que ya no da cuenta", counted: "850", in: GrossInput{GrossG: dec("100"), TareG: dec("50"), Containers: 3, BaseKind: "masa"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := ClosedFromWeighed(dec(tt.counted), tt.in)
+			if ok != tt.ok || (ok && !got.Equal(dec(tt.want))) {
+				t.Fatalf("= %s, %v; quería %s, %v", got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+// #204: el reparto de lo cerrado por empaque se guarda solo si cuadra con lo cerrado; uno que no suma
+// reabriría la captura con cifras que nadie contó.
+func TestValidClosedPacks(t *testing.T) {
+	sizes := map[int64]decimal.Decimal{1: dec("5000"), 2: dec("15000")}
+	tests := []struct {
+		name   string
+		packs  []ClosedPack
+		closed string
+		ok     bool
+	}{
+		{name: "una de 15 kg y una de 5 kg son 20 kg", packs: []ClosedPack{{1, 1}, {2, 1}}, closed: "20000", ok: true},
+		{name: "sin cerrados, vacío", packs: []ClosedPack{}, closed: "0", ok: true},
+		{name: "no suma lo cerrado", packs: []ClosedPack{{1, 1}}, closed: "20000"},
+		{name: "un empaque que no es de este artículo", packs: []ClosedPack{{9, 4}}, closed: "20000"},
+		{name: "el mismo empaque dos veces", packs: []ClosedPack{{1, 2}, {1, 2}}, closed: "20000"},
+		{name: "cero de un empaque no se guarda", packs: []ClosedPack{{1, 0}, {2, 1}, {1, 1}}, closed: "20000"},
+		{name: "cantidad absurda", packs: []ClosedPack{{1, 100000}}, closed: "500000000"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidClosedPacks(tt.packs, sizes, dec(tt.closed)); (err == nil) != tt.ok || (err != nil && !errors.Is(err, ErrValidation)) {
+				t.Fatalf("= %v; quería ok %v", err, tt.ok)
+			}
+		})
+	}
+}
