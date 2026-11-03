@@ -2,6 +2,7 @@ import type { PaymentView, ReceiptLine, ReceiptOrder } from '../types/pos';
 import { fechaYHora } from './horaDelNegocio';
 import { DEFAULT_TIMEZONE } from './zonaPorDefecto';
 import { money } from './format';
+import { printableLines } from './printableLines';
 
 const SERVICE: Record<string, string> = {
   mostrador: 'Mostrador',
@@ -83,7 +84,7 @@ export function buildReceiptHtml(
   // El renglón del producto muestra su BASE (cantidad × unitario) y cada adicional con costo lleva
   // el suyo debajo, así los números suman a la vista. Antes el renglón traía el total con los
   // extras adentro y el cliente no tenía cómo explicarse por qué pagó de más.
-  const rows = (order.lines ?? [])
+  const rows = printableLines(order.lines)
     .map((l) => {
       const qty = Number(l.quantity) || 0;
       const unit = Number(l.unitPrice) || 0;
