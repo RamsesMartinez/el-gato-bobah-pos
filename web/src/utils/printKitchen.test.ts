@@ -145,3 +145,23 @@ describe('el folio de la comanda cabe en el rollo', () => {
     expect(tamanoDelFolio('')).toBe(46);
   });
 });
+
+// Reimprimir la comanda desde Pedidos manda el pedido completo: un renglón cancelado ahí le dice a
+// cocina que prepare algo que ya nadie va a cobrar.
+describe('comanda con renglones cancelados', () => {
+  const conCancelado = {
+    ...pedido,
+    lines: [
+      { id: 1, cancelled: true, productName: 'Boneless J', quantity: '1', unitPrice: '160', lineTotal: '160', modifiers: [] },
+      { id: 2, cancelled: false, productName: 'Boneless J', quantity: '1', unitPrice: '160', lineTotal: '160', modifiers: [] },
+    ],
+  };
+
+  it('el pedido completo no lleva el cancelado', () => {
+    expect(buildKitchenHtml(conCancelado).match(/Boneless J/g), 'cocina vería dos boneless por preparar').toHaveLength(1);
+  });
+
+  it('el agregado tampoco, aunque su id venga en la lista', () => {
+    expect(buildKitchenHtml(conCancelado, [1, 2]).match(/Boneless J/g)).toHaveLength(1);
+  });
+});

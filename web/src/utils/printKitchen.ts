@@ -1,6 +1,7 @@
 import type { ReceiptOrder } from '../types/pos';
 import { soloHora } from './horaDelNegocio';
 import { DEFAULT_TIMEZONE } from './zonaPorDefecto';
+import { printableLines } from './printableLines';
 
 // La comanda de cocina: el papel que reemplaza a la libreta.
 //
@@ -50,9 +51,10 @@ export function buildKitchenHtml(order: ReceiptOrder, soloLineas?: number[], zon
   const horaTxt = Number.isNaN(hora.getTime()) ? '' : soloHora(hora, zona ?? DEFAULT_TIMEZONE);
 
   const esAgregado = soloLineas !== undefined && soloLineas.length > 0;
+  const vivos = printableLines(order.lines);
   const aImprimir = esAgregado
-    ? (order.lines ?? []).filter((l) => l.id !== undefined && soloLineas.includes(l.id))
-    : (order.lines ?? []);
+    ? vivos.filter((l) => l.id !== undefined && soloLineas.includes(l.id))
+    : vivos;
 
   const lineas = aImprimir
     .map((l) => {
