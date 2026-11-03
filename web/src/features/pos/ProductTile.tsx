@@ -4,6 +4,7 @@ import type { MenuProduct } from '../../types/pos';
 import { money, categoryColor } from '../../utils/format';
 import { RADIUS, BORDER_W, ACCENT_W } from '../../theme/ui';
 import { useLongPress } from '../../hooks/useLongPress';
+import { AltMatchTag } from '../../components/AltMatchTag';
 
 interface Props {
   product: MenuProduct;
@@ -17,9 +18,11 @@ interface Props {
   esManual: boolean;
   // Mantener presionado para corregir el precio. undefined en mostrador o sin permiso.
   onEditPrice?: (p: MenuProduct) => void;
+  // El otro nombre por el que salió en la búsqueda (spec 063); ocupa el lugar de la descripción.
+  matchedAlt?: string;
 }
 
-export function ProductTile({ product, count, onTap, showPrice, price, esManual, onEditPrice }: Props) {
+export function ProductTile({ product, count, onTap, showPrice, price, esManual, onEditPrice, matchedAlt }: Props) {
   const hue = categoryColor(product.categoryId);
   const press = useLongPress(
     onEditPrice ? () => onEditPrice(product) : undefined,
@@ -56,7 +59,9 @@ export function ProductTile({ product, count, onTap, showPrice, price, esManual,
         <Text fontWeight="600" fontSize="md" lineClamp={3} lineHeight="1.25" pr={count > 0 ? '32px' : undefined}>
           {product.name}
         </Text>
-        {product.description && (
+        {matchedAlt ? (
+          <Box mt={0.5} display="flex" minW={0}><AltMatchTag name={matchedAlt} /></Box>
+        ) : product.description && (
           <Text fontSize="xs" color="fg.muted" lineClamp={1} mt={0.5}>
             {product.description}
           </Text>

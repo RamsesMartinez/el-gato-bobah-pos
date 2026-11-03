@@ -536,6 +536,14 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 	if err := q.RenameArticle(ctx, db.RenameArticleParams{ID: old.ID, Name: retired}); err != nil {
 		return err
 	}
+	// Los nombres alternativos pasan al nuevo (FR-019): el viejo se archiva y los seguiría reservando.
+	alts, err := q.GetArticleForAltNames(ctx, old.ID)
+	if err != nil {
+		return err
+	}
+	if _, err := q.SetArticleAltNames(ctx, db.SetArticleAltNamesParams{ID: old.ID, Names: []string{}}); err != nil {
+		return err
+	}
 	var minStock *decimal.Decimal
 	if old.MinStock != nil {
 		v := domain.ConvertQty(*old.MinStock, f)
@@ -546,6 +554,9 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 		return err
 	}
 	if err := q.SetArticleExtras(ctx, db.SetArticleExtrasParams{ID: newID, PlaceID: old.CountPlaceID, TrackStock: old.TrackStock, IsPackaging: old.IsPackaging}); err != nil {
+		return err
+	}
+	if _, err := q.SetArticleAltNames(ctx, db.SetArticleAltNamesParams{ID: newID, Names: alts.AltNames}); err != nil {
 		return err
 	}
 	repID, err := q.InsertReplacement(ctx, db.InsertReplacementParams{OldIngredientID: old.ID, NewIngredientID: newID, Factor: f, UserID: actor})

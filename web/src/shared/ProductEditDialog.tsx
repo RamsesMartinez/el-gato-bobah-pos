@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 // Reinicia el borrador local cuando se abre para otro producto (patrón legítimo).
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { DatePickerButton } from '../components/DatePickerButton';
 import { Box, VStack, HStack, Text, Button, Input } from '@chakra-ui/react';
 import {
@@ -20,6 +20,9 @@ import { useUiStore } from '../stores/ui';
 import { ProductGroupsManager } from './ProductGroupsManager';
 import { CompositionSheet } from './CompositionSheet';
 import { compositionLabel } from './compositionLabel';
+import { AltNamesField } from '../components/AltNamesField';
+import { withPendingAlt } from '../components/altNames';
+import { ApiError } from '../api/client';
 
 interface Props {
   product: AdminProduct | null;
@@ -35,11 +38,19 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   const [edit, setEdit] = useState<AdminProduct | null>(product);
   const [costMode, setCostMode] = useState<'manual' | 'receta'>(modoInicial(product));
   const [costText, setCostText] = useState(product?.manualCost ?? '');
+  // Otros nombres (spec 063): se guardan con «Guardar», por su propia ruta y antes del PATCH.
+  const [altNames, setAltNames] = useState<string[]>(product?.altNames ?? []);
+  const [altDraft, setAltDraft] = useState('');
+  const [altError, setAltError] = useState('');
   useEffect(() => {
     setEdit(product);
     setCostMode(modoInicial(product));
     setCostText(product?.manualCost ?? '');
+    setAltNames(product?.altNames ?? []);
+    setAltDraft('');
+    setAltError('');
   }, [product]);
+  const similar = useCallback((name: string) => adminApi.similarProductAltNames(product?.id ?? 0, name), [product?.id]);
   const cost = edit ? cambioDeCosto(edit, costMode, costText) : undefined;
   const [composing, setComposing] = useState(false);
   // Solo se piden al abrir el diálogo: es un catálogo chico que casi nunca cambia y no vale un
@@ -53,13 +64,22 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   const categorias = cats?.items ?? [];
 
   const save = useMutation({
-    mutationFn: (p: AdminProduct) =>
-      adminApi.updateProduct(p.id, {
+    mutationFn: async (p: AdminProduct) => {
+      // Lo escrito sin tocar «Agregar» se agrega aquí: en 600 px «Guardar» queda lejos de «Agregar»
+      // y perderlo en silencio era lo más probable (revisión de tableta, A1).
+      const alts = withPendingAlt(altNames, altDraft, p.name);
+      if (alts.join('\u0000') !== (product?.altNames ?? []).join('\u0000')) {
+        const saved = await adminApi.setProductAltNames(p.id, alts);
+        setAltNames(saved.altNames);
+        setAltDraft('');
+      }
+      return adminApi.updateProduct(p.id, {
         name: p.name, price: Number(p.price), favorite: p.is_favorite, active: p.is_active,
         needsPrep: p.needsPrep, categoryId: p.categoryId,
         availableFrom: p.availableFrom, availableUntil: p.availableUntil,
         ...(cost && cost !== 'invalido' ? { cost } : {}),
-      }),
+      });
+    },
     onSuccess: () => {
       // Después de que el servidor guardó, nunca antes (spec 017, US3).
       medirAccion('catalogo', 'editar-producto');
@@ -68,7 +88,11 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
       onClose();
       toaster.create({ title: 'Producto actualizado', type: 'success' });
     },
-    onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
+    onError: (e) => {
+      // El choque de un otro nombre se ve bajo su campo y la ficha no se cierra.
+      if (e instanceof ApiError && e.code === 'ALT_NAME_TAKEN') { setAltError(e.message); return; }
+      toaster.create({ title: 'Error', description: String(e), type: 'error' });
+    },
   });
 
   return (
@@ -128,6 +152,8 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                     title="Mover a la categoría"
                   />
                 </Field>
+                <AltNamesField ownName={edit.name} value={altNames} onChange={(v) => { setAltNames(v); setAltError(''); }}
+                  draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similar} error={altError} />
                 <HStack justify="space-between">
                   <Text>Favorito</Text>
                   <Switch checked={edit.is_favorite} onCheckedChange={(e) => setEdit({ ...edit, is_favorite: e.checked })} />

@@ -53,3 +53,15 @@ export function matchesWords(text: string, query: string): boolean {
     .every((q) => words.some((w) => w.startsWith(q)));
 }
 
+
+// matchedAlias es el nombre alternativo que hizo coincidir una búsqueda (spec 063): el primero en el
+// orden capturado, con la misma regla con que cada buscador compara el nombre. Quien llama solo lo
+// pregunta cuando el nombre principal no coincidió.
+export function matchedAlias(
+  alts: readonly string[] | undefined,
+  query: string,
+  match: (text: string, query: string) => boolean,
+): string | undefined {
+  if (!alts?.length || !query.trim()) return undefined;
+  return alts.find((a) => match(a, query));
+}

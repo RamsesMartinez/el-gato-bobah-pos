@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AltMatchTag } from '../../../components/AltMatchTag';
 import { medirAccion } from '../../../api/uso';
 import { Badge, Box, Button, HStack, Input, Stack, Table, Text } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
@@ -130,7 +131,8 @@ function ArticleLine({ a, onOpen }: { a: ArticleRow; onOpen: (id: number) => voi
     <Table.Row role="button" tabIndex={0} aria-label={a.name} cursor="pointer" h="44px" css={{ "& > td": { paddingBlock: "0" } }}
       onClick={() => onOpen(a.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(a.id); }}>
       <Table.Cell>
-        <Text fontWeight="600">{a.name}{a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}</Text>
+        <Text fontWeight="600">{a.name}{a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}
+          {a.matchedAlt && <Box as="span" ml={2} display="inline-flex" verticalAlign="middle" maxW="160px"><AltMatchTag name={a.matchedAlt} /></Box>}</Text>
       </Table.Cell>
       <Table.Cell textAlign="end" whiteSpace="nowrap">
         <Text as="span" color={negative ? 'fg.error' : undefined} fontWeight={negative ? '700' : undefined}>

@@ -223,7 +223,7 @@ select i.id, i.name, i.is_active, i.track_stock, i.is_packaging, i.min_stock,
        ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
        i.is_prep, i.composition_status,
        (select count(*) from recipe_items ri where ri.ingredient_id = i.id)::int as recipe_uses,
-       i.count_place_id, cp.name as count_place
+       i.count_place_id, cp.name as count_place, i.alt_names
 from ingredients i
 join units u on u.id = i.base_unit_id
 left join count_places cp on cp.id = i.count_place_id
@@ -251,6 +251,7 @@ type ListIngredientsRow struct {
 	RecipeUses        int32            `json:"recipe_uses"`
 	CountPlaceID      *int64           `json:"count_place_id"`
 	CountPlace        *string          `json:"count_place"`
+	AltNames          []string         `json:"alt_names"`
 }
 
 // Existencias de la sucursal (0076): sin el filtro, con dos sucursales cada insumo saldría dos
@@ -282,6 +283,7 @@ func (q *Queries) ListIngredients(ctx context.Context, onlyActive *bool) ([]List
 			&i.RecipeUses,
 			&i.CountPlaceID,
 			&i.CountPlace,
+			&i.AltNames,
 		); err != nil {
 			return nil, err
 		}
@@ -404,14 +406,14 @@ func (q *Queries) LockIngredientNames(ctx context.Context) error {
 
 const searchArticles = `-- name: SearchArticles :many
 select 'ingrediente' as item_type, i.id, i.name::text as name,
-       u.code as unit_code, u.kind as unit_kind, i.density_g_per_ml
+       u.code as unit_code, u.kind as unit_kind, i.density_g_per_ml, i.alt_names
 from ingredients i
 join units u on u.id = i.base_unit_id
 where i.is_active
   and ($2::text is null or i.name::text ilike '%' || $2::text || '%')
 union all
 select 'producto' as item_type, p.id, p.name::text as name,
-       'pieza' as unit_code, 'pieza'::unit_kind as unit_kind, null::numeric(8,4) as density_g_per_ml
+       'pieza' as unit_code, 'pieza'::unit_kind as unit_kind, null::numeric(8,4) as density_g_per_ml, p.alt_names
 from products p
 where p.is_active and p.track_stock
   and ($2::text is null or p.name::text ilike '%' || $2::text || '%')
@@ -431,6 +433,7 @@ type SearchArticlesRow struct {
 	UnitCode      string           `json:"unit_code"`
 	UnitKind      UnitKind         `json:"unit_kind"`
 	DensityGPerMl *decimal.Decimal `json:"density_g_per_ml"`
+	AltNames      []string         `json:"alt_names"`
 }
 
 // Buscador ÚNICO sobre los dos catálogos que el almacén sabe mover: ingredientes y productos
@@ -452,6 +455,7 @@ func (q *Queries) SearchArticles(ctx context.Context, arg SearchArticlesParams) 
 			&i.UnitCode,
 			&i.UnitKind,
 			&i.DensityGPerMl,
+			&i.AltNames,
 		); err != nil {
 			return nil, err
 		}

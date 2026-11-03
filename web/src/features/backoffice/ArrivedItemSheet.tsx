@@ -88,7 +88,7 @@ export function ArrivedItemSheet({ expenseId, supplier, onClose, onDone }: {
       footer={<Button minH="44px" colorPalette="brand" disabled={!ok} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>}>
       <VStack align="stretch" gap={3}>
         <Picker value={pick} onChange={choose} placeholder="¿Qué llegó?" title="¿Qué llegó?"
-          options={list.map((a) => ({ value: `${a.itemType}:${a.id}`, label: a.name, hint: a.unitCode }))} />
+          options={list.map((a) => ({ value: `${a.itemType}:${a.id}`, label: a.name, hint: a.unitCode, aliases: a.altNames }))} />
         {art && (
           <HStack gap={2} flexWrap="wrap">
             <Text>Cantidad</Text>

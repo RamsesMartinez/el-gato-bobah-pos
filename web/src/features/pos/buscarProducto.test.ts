@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buscarProductos } from './buscarProducto';
+import { aliasCoincidente, buscarProductos } from './buscarProducto';
 import type { MenuProduct } from '../../types/pos';
 
 const p = (id: number, name: string, sku: string | null): MenuProduct =>
@@ -45,5 +45,35 @@ describe('buscar un producto en la pantalla de venta', () => {
 
   it('sin búsqueda devuelve todo', () => {
     expect(buscarProductos(catalogo, '  ')).toHaveLength(4);
+  });
+});
+
+// Spec 063: los nombres alternativos.
+describe('buscar por otro nombre', () => {
+  const conAlt = (id: number, name: string, altNames: string[], sku: string | null = null): MenuProduct =>
+    ({ ...p(id, name, sku), altNames });
+  const menu = [
+    conAlt(10, 'Ice Coffee', ['Café helado', 'Café frío']),
+    conAlt(11, 'Café frío de olla', []),
+    conAlt(12, 'Malteada', [], 'FRIO1'),
+    p(13, 'Té verde', null),
+  ];
+
+  it('nombre primero, luego otro nombre, luego código', () => {
+    expect(buscarProductos(menu, 'frio').map((x) => x.id)).toEqual([11, 10, 12]);
+  });
+  it('sin acentos ni mayúsculas', () => {
+    expect(buscarProductos(menu, 'CAFÉ FRÍO').map((x) => x.id)).toEqual([11, 10]);
+  });
+  it('un error de dedo no coincide', () => {
+    expect(buscarProductos(menu, 'cafe fiio').map((x) => x.id)).toEqual([]);
+  });
+  it('dice qué otro nombre coincidió: el primero en el orden capturado', () => {
+    expect(aliasCoincidente(menu[0], 'café')).toBe('Café helado');
+    expect(aliasCoincidente(menu[0], 'helad')).toBe('Café helado');
+    expect(aliasCoincidente(menu[0], 'frío')).toBe('Café frío');
+  });
+  it('si coincide el nombre no señala otro nombre', () => {
+    expect(aliasCoincidente(conAlt(14, 'Café frío', ['Café helado']), 'café')).toBeUndefined();
   });
 });

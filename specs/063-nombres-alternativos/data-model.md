@@ -115,6 +115,8 @@ case when sqlc.narg('q')::text is null
 
 ### `updated_at`
 
-`SetArticleAltNames` **no** toca `updated_at`: el `PATCH` de la ficha no escribe `alt_names`, así que
-no hay carrera entre los dos, y moverlo haría responder `STALE` a otra tableta por un cambio que su
-`PATCH` no pisa.
+El trigger de la 0009 mueve `ingredients.updated_at` en **todo** update, así que guardar alternativos
+cambia la versión de la ficha igual que la densidad o el costo (lo encontró la prueba de integración;
+el plan decía lo contrario). `PUT /stock/articles/{id}/alt-names` devuelve el `updatedAt` nuevo y la
+ficha que guardó sigue editando con él; otra tableta con la misma ficha abierta recibe `STALE` en su
+siguiente autoguardado y recarga, como ya pasa con la densidad.

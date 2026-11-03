@@ -29,7 +29,7 @@ func (q *Queries) CountChangedAfterPreview(ctx context.Context, countID int64) (
 const countItems = `-- name: CountItems :many
 select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at,
        u.kind as base_unit_kind, i.density_g_per_ml, l.gross_g, l.gross_containers, l.tare_g_used, l.density_used,
-       l.closed_packs
+       l.closed_packs, i.alt_names
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join count_places cp on cp.id = i.count_place_id
@@ -53,6 +53,7 @@ type CountItemsRow struct {
 	TareGUsed       *decimal.Decimal   `json:"tare_g_used"`
 	DensityUsed     *decimal.Decimal   `json:"density_used"`
 	ClosedPacks     []byte             `json:"closed_packs"`
+	AltNames        []string           `json:"alt_names"`
 }
 
 // Lo que se cuenta: los insumos activos que llevan existencia, por lugar (los sin lugar al final)
@@ -82,6 +83,7 @@ func (q *Queries) CountItems(ctx context.Context, countID int64) ([]CountItemsRo
 			&i.TareGUsed,
 			&i.DensityUsed,
 			&i.ClosedPacks,
+			&i.AltNames,
 		); err != nil {
 			return nil, err
 		}

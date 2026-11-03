@@ -1170,6 +1170,7 @@ type Ingredient struct {
 	DensityMethod          *string            `json:"density_method"`
 	DensitySetBy           *int64             `json:"density_set_by"`
 	DensitySetAt           pgtype.Timestamptz `json:"density_set_at"`
+	AltNames               []string           `json:"alt_names"`
 }
 
 type IngredientCategory struct {
@@ -1725,6 +1726,7 @@ type Product struct {
 	CompositionStatus      *string            `json:"composition_status"`
 	CompositionConfirmedBy *int64             `json:"composition_confirmed_by"`
 	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
+	AltNames               []string           `json:"alt_names"`
 }
 
 type ProductChannel struct {

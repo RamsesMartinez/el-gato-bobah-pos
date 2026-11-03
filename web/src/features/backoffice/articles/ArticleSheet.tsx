@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { medirAccion } from '../../../api/uso';
 import { Badge, Box, Button, HStack, Input, SimpleGrid, Spinner, Stack, Text } from '@chakra-ui/react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,6 +9,8 @@ import { backofficeApi, type ArticleSheet as Sheet, type ArticleUpdate } from '.
 import { ApiError } from '../../../api/client';
 import { InfoButton } from '../../../components/InfoButton';
 import { Picker } from '../../../components/Picker';
+import { AltNamesField } from '../../../components/AltNamesField';
+import { altNameKey, withPendingAlt } from '../../../components/altNames';
 import { ConfirmSheet } from '../../../components/ConfirmSheet';
 import { useAutosave, type AutosaveStatus } from './useAutosave';
 import { useLocations } from '../useLocations';
@@ -52,10 +54,12 @@ interface Form {
   categoryId: string;
   placeId: string;
   min: { qty: string; big: boolean };
+  alts: string[];
 }
 
 // Saved son los valores tal como se guardan: el mínimo en la unidad base, '' para vacío.
-type Saved = { name: string; categoryId: string; placeId: string; min: string };
+// alts va como JSON: la cola guarda textos, y la lista de otros nombres (spec 063) se manda completa.
+type Saved = { name: string; categoryId: string; placeId: string; min: string; alts: string };
 
 function savedOf(a: Sheet): Saved {
   return {
@@ -63,6 +67,7 @@ function savedOf(a: Sheet): Saved {
     categoryId: a.categoryId == null ? '' : String(a.categoryId),
     placeId: a.countPlaceId == null ? '' : String(a.countPlaceId),
     min: a.minStock == null ? '' : String(Number(a.minStock)),
+    alts: JSON.stringify(a.altNames ?? []),
   };
 }
 
@@ -83,6 +88,7 @@ function formOf(a: Sheet): Form {
     categoryId: a.categoryId == null ? '' : String(a.categoryId),
     placeId: a.countPlaceId == null ? '' : String(a.countPlaceId),
     min: { qty: min, big: !!big && a.minStock != null && Number(a.minStock) >= big.factor },
+    alts: a.altNames ?? [],
   };
 }
 
@@ -112,6 +118,11 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
   // guardarla se vuelve ahí con ese destino elegido, en vez de cerrar las dos hojas.
   const [unitTarget, setUnitTarget] = useState<Kind | null>(null);
   const [cost, setCost] = useState('');
+  // Otros nombres (spec 063): lo escrito sin agregar y el choque que respondió el servidor.
+  const [altDraft, setAltDraft] = useState('');
+  const [altError, setAltError] = useState('');
+  const altRejected = useRef(false);
+  const similarAlts = useCallback((name: string) => backofficeApi.similarArticleAltNames(id, name), [id]);
 
   // El formulario se llena solo con la ficha pedida al abrir, nunca con la de la caché: la caché puede
   // traer el nombre de antes de un guardado y el campo lo mostraría como si fuera lo vigente.
@@ -125,12 +136,22 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
   const big = bigUnitOf(kind);
 
   const auto = useAutosave<Saved>({
-    initial: a ? savedOf(a) : { name: '', categoryId: '', placeId: '', min: '' },
+    initial: a ? savedOf(a) : { name: '', categoryId: '', placeId: '', min: '', alts: '[]' },
     version: a?.updatedAt ?? '',
     // Manda la ficha completa: lo que cambió más lo último guardado de lo demás. La API anterior, que
     // atiende durante una subida, toma un campo ausente como vacío y lo borraría. La nueva compara
     // contra lo que había y deja en la bitácora solo lo que cambió.
     save: async (patch, version, saved) => {
+      // Los otros nombres van por su propia ruta (spec 063); devuelve la versión nueva de la ficha.
+      if (patch.alts !== undefined) {
+        const list = JSON.parse(patch.alts) as string[];
+        const r = await backofficeApi.setArticleAltNames(id, list);
+        setAltDraft((d) => (list.some((n) => altNameKey(n) === altNameKey(d)) ? '' : d));
+        void qc.invalidateQueries({ queryKey: ['articles'] });
+        void qc.invalidateQueries({ queryKey: ['article', id] });
+        void qc.invalidateQueries({ queryKey: ['article-audit', id] });
+        return { updatedAt: r.updatedAt };
+      }
       const v = { ...saved, ...patch };
       const body: ArticleUpdate = {
         expectedUpdatedAt: version, name: v.name,
@@ -154,6 +175,12 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
     },
     complete: (k, v) => k !== 'min' || NUMBER.test(v),
     onReject: (k, saved, e) => {
+      if (k === 'alts') {
+        altRejected.current = true;
+        setForm((f) => f && { ...f, alts: JSON.parse(saved) as string[] });
+        setAltError(e instanceof ApiError && e.status < 500 ? e.message : 'No se pudo guardar');
+        return;
+      }
       setForm((f) => f && (k === 'min' ? { ...f, min: minDisplay(saved, kind) } : { ...f, [k === 'categoryId' ? 'categoryId' : k === 'placeId' ? 'placeId' : 'name']: saved }));
       toaster.create({ title: e instanceof ApiError && e.status < 500 ? e.message : 'No se pudo guardar', type: 'error' });
     },
@@ -187,6 +214,7 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
         categoryId: keep.has('categoryId') ? prev.categoryId : next.categoryId,
         placeId: keep.has('placeId') ? prev.placeId : next.placeId,
         min: keep.has('min') ? prev.min : next.min,
+        alts: keep.has('alts') ? prev.alts : next.alts,
       };
     });
     if (keep.size === 0) auto.reset(savedOf(fresh), fresh.updatedAt);
@@ -206,6 +234,11 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
   // close es la única salida («Volver a Artículos», el fondo, Escape): guarda el campo que tiene el foco
   // (en la tableta tocar un botón no siempre lo quita), espera la cola y pregunta solo si algo quedó
   // sin guardar (R2).
+  const changeAlts = (alts: string[]) => {
+    setAltError('');
+    setForm((f) => f && { ...f, alts });
+    auto.commit('alts', JSON.stringify(alts));
+  };
   const [leaving, setLeaving] = useState(false);
   // settle saca el foco del campo (eso lo manda a guardar) y espera a que la cola termine.
   const settle = async () => {
@@ -218,8 +251,15 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
   };
   const close = async () => {
     if (leaving) return;
-    if (await settle()) onClose();
-    else setPanel('discard');
+    // Lo escrito sin «Agregar» se guarda al salir; si choca, la ficha se queda con el aviso (A1).
+    altRejected.current = false;
+    if (form) {
+      const pending = withPendingAlt(form.alts, altDraft, form.name);
+      if (pending !== form.alts) changeAlts(pending);
+    }
+    if (await settle()) {
+      if (!altRejected.current) onClose();
+    } else setPanel('discard');
   };
   // Ir al conteo no pregunta si descartar: si algo no se guardó, se queda con el error a la vista (B12).
   const goCount = async () => {
@@ -279,6 +319,8 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                   <Picker {...locations.pickerProps} disabled={!canConfigure} value={form.placeId} options={locations.options}
                     onChange={(v) => { if (auto.busy('placeId')) return; setForm({ ...form, placeId: v }); auto.commit('placeId', v); }} />
                 </Field>
+                <AltNamesField ownName={form.name} value={form.alts} onChange={changeAlts} disabled={!canConfigure}
+                  draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similarAlts} error={altError} />
                 <Stack gap={1}>
                   <QtyWithUnit label="Mínimo" kind={kind} value={form.min} keepAmount
                     onChange={(min) => { setForm({ ...form, min }); if (min.qty !== form.min.qty) auto.type('min', minValue(min)); }}

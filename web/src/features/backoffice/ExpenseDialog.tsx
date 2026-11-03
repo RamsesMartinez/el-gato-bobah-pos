@@ -179,7 +179,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const methodList = methods?.items ?? [];
   const presList = presentations ?? [];
   const articleList = [...(articles?.items ?? []), ...created];
-  const articleOptions = articleList.map((a) => ({ value: `${a.itemType}:${a.id}`, label: a.name, hint: a.unitCode }));
+  const articleOptions = articleList.map((a) => ({ value: `${a.itemType}:${a.id}`, label: a.name, hint: a.unitCode, aliases: a.altNames }));
 
   const reset = () => {
     setStep('start'); setWithGoods(true);

@@ -1,4 +1,5 @@
-import { matchesWords, money } from './format';
+import { matchedAlias, matchesWords, money, normalize } from './format';
+import { describe } from 'vitest';
 
 // Spec 029: «$2,165.2» se lee como un error de captura. Con centavos van los dos; entero, ninguno
 // («$45» es como se lee el precio en el mostrador).
@@ -27,4 +28,23 @@ test.each([
   ['Té verde', 'te', true],
 ])('%s con «%s» → %s', (text, query, want) => {
   expect(matchesWords(text, query)).toBe(want);
+});
+
+// Spec 063: el alternativo que se señala es el primero que coincide, en el orden capturado, con la
+// misma regla de coincidencia que el buscador usa para el nombre.
+describe('matchedAlias', () => {
+  const contains = (text: string, q: string) => normalize(text).includes(normalize(q.trim()));
+  test('el primero que coincide, sin acentos ni mayúsculas', () => {
+    expect(matchedAlias(['Café helado', 'Café frío'], 'CAFE', contains)).toBe('Café helado');
+    expect(matchedAlias(['Café helado', 'Café frío'], 'frio', contains)).toBe('Café frío');
+  });
+  test('ninguno, vacío o búsqueda en blanco no señala nada', () => {
+    expect(matchedAlias(['Café frío'], 'té', contains)).toBeUndefined();
+    expect(matchedAlias(undefined, 'café', contains)).toBeUndefined();
+    expect(matchedAlias(['Café frío'], '   ', contains)).toBeUndefined();
+  });
+  test('usa la regla del buscador: por inicio de palabra, «apio» no es «Tapioca»', () => {
+    expect(matchedAlias(['Perlas de tapioca'], 'apio', matchesWords)).toBeUndefined();
+    expect(matchedAlias(['Perlas de tapioca'], 'tapi', matchesWords)).toBe('Perlas de tapioca');
+  });
 });

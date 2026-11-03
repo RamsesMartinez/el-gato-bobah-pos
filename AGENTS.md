@@ -529,6 +529,23 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Un destino con insumos unidos no cambia de unidad**: la equivalencia de cada unión habla de la
     unidad de hoy. Unir no reescribe ventas, compras ni conteos pasados; el historial de costos y la
     bitácora del destino leen los de sus orígenes con un CTE recursivo dentro de la consulta (bajo RLS).
+- **Nombres alternativos** (spec 063, 0107). `products.alt_names` e `ingredients.alt_names` (hasta
+  10, `text[]`) sirven solo para buscar: ticket, comanda, reportes y plataformas leen `name`. Cuatro
+  cosas que no se ven:
+  - **La llave con que dos nombres son el mismo es `catalog_name_key` (SQL) y `domain.CatalogNameKey`
+    (Go)**, gemelas con prueba de paridad (también con `standard_conforming_strings=off`). Las
+    expresiones viejas (`IngredientNameTaken`, `FindArticleByName` por nombre) no recortan un tabulador
+    en la orilla; lo nuevo usa la función.
+  - **El choque se decide bajo el candado de nombres del catálogo, tomado antes de leer**: 28063 para
+    productos (alternativos, alta, renombre, duplicado) y el 28037 de siempre para artículos. Un
+    alternativo choca con el nombre de cualquiera de su catálogo y con los alternativos de los demás,
+    archivados incluidos, salvo los **orígenes de una unión**, que no reservan nada. Un camino nuevo
+    que dé de alta o renombre pasa por `productNameFree` o por `FindArticleByName`.
+  - **Van por su propia ruta (`PUT …/alt-names`, lista completa), nunca en el `PATCH` de la ficha**:
+    una tableta con la pantalla anterior manda el `PATCH` sin ellos y no puede borrarlos. En el
+    artículo, guardar mueve `updated_at` (trigger de la 0009) y la respuesta trae la versión nueva.
+  - **El cambio de unidad por reemplazo los pasa al artículo nuevo**; duplicar un producto no los
+    copia. La carga de FUDO no toma el candado: no trae alternativos.
 - **Densidad y tara** (spec 058, 0105). La densidad (g por ml) del artículo es lo único que pasa
   entre peso y líquido; nunca se asume 1 g = 1 ml. Cuatro cosas que no se ven:
   - **Cada renglón de compra fija la densidad con que convirtió la primera vez**

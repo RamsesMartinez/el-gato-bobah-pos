@@ -87,7 +87,7 @@ nombre de otro producto y ver el aviso que lo nombra.
 7. **Given** «Ice Coffee» con el alternativo «Café frío», **When** alguien renombra otro producto a
    «Cafe frio» o da de alta uno con ese nombre, **Then** se rechaza diciendo que ya es otro nombre
    de «Ice Coffee».
-8. **Given** «Café frío de olla» y la ficha de «Ice Coffee», **When** se escribe «Café frío olla»
+8. **Given** «Café frío de olla» y la ficha de «Ice Coffee», **When** se escribe «Café frío»
    como alternativo, **Then** antes de agregarlo la pantalla avisa que se parece a «Café frío de
    olla», y aun así deja agregarlo y guardarlo.
 9. **Given** una persona sin permiso de editar productos, **When** intenta guardar alternativos (por

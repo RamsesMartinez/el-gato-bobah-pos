@@ -49,6 +49,8 @@ type IngredientView struct {
 	// CountPlace: dónde está, para ordenar el conteo (spec 038). No es un almacén.
 	CountPlace   *string `json:"countPlace"`
 	CountPlaceID *int64  `json:"countPlaceId"`
+	// AltNames: otros nombres para encontrarlo en el buscador de la receta (spec 063).
+	AltNames []string `json:"altNames"`
 }
 
 // ArticleView es una entrada del buscador único: ingredientes y productos con control de stock
@@ -62,6 +64,8 @@ type ArticleView struct {
 	UnitKind string `json:"unitKind"`
 	// DensityGPerMl: para convertir en pantalla una compra entre peso y líquido (spec 058).
 	DensityGPerMl *decimal.Decimal `json:"densityGPerMl"`
+	// AltNames: otros nombres para encontrarlo en el buscador del gasto (spec 063).
+	AltNames []string `json:"altNames"`
 }
 
 // maxArticleResults es un techo defensivo, no una paginación: el front carga el catálogo una
@@ -100,7 +104,7 @@ func (s *BackofficeService) Ingredients(ctx context.Context, onlyActive bool) ([
 			BaseUnitID: r.BaseUnitID, BaseUnitCode: r.BaseUnitCode, BaseUnitKind: string(r.BaseUnitKind),
 			Category: r.Category, OnHand: r.OnHand,
 			IsPrep: r.IsPrep, CompositionStatus: textoDe(r.CompositionStatus), RecipeUses: int(r.RecipeUses),
-			CountPlace: r.CountPlace, CountPlaceID: r.CountPlaceID,
+			CountPlace: r.CountPlace, CountPlaceID: r.CountPlaceID, AltNames: nonNilStrings(r.AltNames),
 		}
 	}
 	return out, nil
@@ -122,6 +126,7 @@ func (s *BackofficeService) SearchArticles(ctx context.Context, q string) ([]Art
 		out[i] = ArticleView{
 			ItemType: r.ItemType, ID: r.ID, Name: r.Name,
 			UnitCode: r.UnitCode, UnitKind: string(r.UnitKind), DensityGPerMl: r.DensityGPerMl,
+			AltNames: nonNilStrings(r.AltNames),
 		}
 	}
 	return out, nil

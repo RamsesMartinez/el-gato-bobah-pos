@@ -3,12 +3,15 @@ import { Box, Button, HStack, Input, Text, VStack } from '@chakra-ui/react';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerCloseTrigger, DrawerHeader, DrawerTitle, DrawerBody,
 } from '../components/ui/drawer';
-import { normalize } from '../utils/format';
+import { matchedAlias, normalize } from '../utils/format';
+import { AltMatchTag } from '../components/AltMatchTag';
 
 export interface SearchOption {
   value: string;
   label: string;
   hint?: string;
+  // Otros nombres con que se encuentra (spec 063); el que coincidió se señala en el renglón.
+  aliases?: string[];
 }
 
 // SearchSheet es una hoja con buscador para elegir de una lista larga (cientos de insumos o
@@ -36,8 +39,18 @@ export function SearchSheet({ open, title, options, onPick, onClose, error, rend
   useEffect(() => { setVisible(open); if (!open) setQ(''); }, [open]);
 
   const n = normalize(q.trim());
-  const shown = useMemo(() => (n ? options.filter((o) => normalize(o.label).includes(n)) : options), [n, options]);
-  const exact = !!n && options.some((o) => normalize(o.label) === n);
+  // Por nombre o por otro nombre; con la etiqueta del otro nombre solo si el nombre no coincidió.
+  const shown = useMemo((): { o: SearchOption; alt?: string }[] => {
+    if (!n) return options.map((o) => ({ o }));
+    const has = (text: string) => normalize(text).includes(n);
+    return options.flatMap((o): { o: SearchOption; alt?: string }[] => {
+      if (has(o.label)) return [{ o }];
+      const alt = matchedAlias(o.aliases, n, (text) => has(text));
+      return alt ? [{ o, alt }] : [];
+    });
+  }, [n, options]);
+  // Un otro nombre exacto también es «ya existe»: no se ofrece crearlo como nuevo.
+  const exact = !!n && options.some((o) => normalize(o.label) === n || (o.aliases ?? []).some((a) => normalize(a) === n));
 
   return (
     <DrawerRoot open={visible} placement="bottom" size="md" restoreFocus={restoreFocus} onExitComplete={onExitComplete} onOpenChange={(e) => { if (!e.open) onClose(); }}>
@@ -52,11 +65,14 @@ export function SearchSheet({ open, title, options, onPick, onClose, error, rend
               <Box role="alert" px={3} py={2} borderRadius="md" bg="bg.error" borderWidth="1px" borderColor="border.error" color="fg.error" fontSize="sm">{error}</Box>
             )}
             <Box>
-              {shown.map((o) => (
+              {shown.map(({ o, alt }) => (
                 <Button key={o.value} variant="ghost" w="100%" minH="48px" justifyContent="space-between" fontWeight="normal"
                   borderBottomWidth="1px" borderColor="border.muted" borderRadius={0} onClick={() => onPick(o.value)}>
-                  <Text truncate>{o.label}</Text>
-                  {o.hint && <Text fontSize="sm" color="fg.muted">{o.hint}</Text>}
+                  <HStack gap={2} minW={0} flex="1">
+                    <Text truncate flexShrink={0} maxW={alt ? '55%' : '100%'}>{o.label}</Text>
+                    {alt && <AltMatchTag name={alt} maxW="45%" />}
+                  </HStack>
+                  {o.hint && <Text fontSize="sm" color="fg.muted" flexShrink={0}>{o.hint}</Text>}
                 </Button>
               ))}
             </Box>

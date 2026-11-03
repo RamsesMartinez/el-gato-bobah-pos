@@ -37,7 +37,7 @@ import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { money } from '../../utils/format';
 import { TicketPreview } from '../../shared/tickets/TicketPreview';
 import { AutoPrintTicket, KitchenTicket } from '../../shared/tickets/AutoPrintTicket';
-import { buscarProductos } from './buscarProducto';
+import { aliasCoincidente, buscarProductos } from './buscarProducto';
 import { CategoryRail, type Selection } from './CategoryRail';
 import { PlatformPicker } from './PlatformPicker';
 import { AvisoDePlataforma } from './AvisoDePlataforma';
@@ -399,6 +399,17 @@ export function POSPage() {
     return (base.length ? base : scope).slice(0, topCount);
   }, [allProducts, search, selection, childrenByRoot, popular, topCount]);
 
+  // El otro nombre por el que salió cada producto (spec 063), para señalarlo en el mosaico.
+  const matchedAlts = useMemo(() => {
+    const m = new Map<number, string>();
+    if (!search.trim()) return m;
+    for (const p of products) {
+      const alt = aliasCoincidente(p, search);
+      if (alt) m.set(p.id, alt);
+    }
+    return m;
+  }, [products, search]);
+
   const counts = useMemo(() => {
     const c: Record<number, number> = {};
     vista.nuevos.forEach((l) => (c[l.productId] = (c[l.productId] ?? 0) + l.qty));
@@ -622,6 +633,7 @@ export function POSPage() {
           menu={menu}
           lista={lista}
           onEditPrice={lista !== null && !editMode ? setEditandoPrecio : undefined}
+          matchedAlts={matchedAlts}
         />
       </Box>
       </Box>

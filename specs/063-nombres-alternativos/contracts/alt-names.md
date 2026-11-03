@@ -17,8 +17,9 @@ Permiso: `menu.configure`. Reemplaza la lista completa.
 
 ## PUT /api/v1/stock/articles/{id}/alt-names
 
-Permiso: `inventory.configure`. Mismo cuerpo, mismas respuestas (`existingId` es el artículo).
-Funciona también sobre un archivado.
+Permiso: `inventory.configure`. Mismo cuerpo y errores (`existingId` es el artículo). La respuesta
+trae además la versión nueva de la ficha: `200 { "altNames": [...], "updatedAt": "…" }`. Funciona
+también sobre un archivado.
 
 ## GET /api/v1/admin/products/{id}/alt-names/similar?name=…
 

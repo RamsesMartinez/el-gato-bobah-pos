@@ -8,7 +8,15 @@
 select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
        i.current_cost, i.min_stock, i.is_prep, i.category_id, ic.name as category,
        i.count_place_id, cp.name as count_place, i.composition_status,
-       coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+       coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
+       i.alt_names,
+       -- El alternativo por el que salió (spec 063): '' sin búsqueda o si coincide el nombre; el primero
+       -- en el orden capturado. Salir por empaque o marca no lo señala.
+       (case when sqlc.narg('q')::text is null
+               or strpos(catalog_name_key(i.name::text), catalog_name_key(sqlc.narg('q')::text)) > 0 then ''
+             else coalesce((select a from unnest(i.alt_names) with ordinality u(a, n)
+                             where strpos(catalog_name_key(a), catalog_name_key(sqlc.narg('q')::text)) > 0
+                             order by n limit 1), '') end)::text as matched_alt
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join count_places cp on cp.id = i.count_place_id
@@ -19,6 +27,9 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
    and (sqlc.narg('q')::text is null
         -- strpos y no like: lo que alguien escriba es texto, nunca un comodín.
         or strpos(translate(lower(i.name::text), 'áéíóúüñ', 'aeiouun'), translate(lower(sqlc.narg('q')::text), 'áéíóúüñ', 'aeiouun')) > 0
+        -- Y sus nombres alternativos (spec 063).
+        or exists (select 1 from unnest(i.alt_names) a
+                    where strpos(catalog_name_key(a), catalog_name_key(sqlc.narg('q')::text)) > 0)
         -- La marca también (spec 056): quien busca «lala» quiere la leche que llega en «Caja · Lala».
         or exists (select 1 from ingredient_presentations p
                     where p.ingredient_id = i.id and p.active
@@ -32,11 +43,19 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
 
 -- name: FindArticleByName :one
 -- El artículo de la empresa con ese nombre, sin distinguir mayúsculas, acentos ni espacios de más (la
--- normalización de IngredientNameTaken). Va después de LockIngredientNames.
-select id, is_active from ingredients
- where regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
-     = regexp_replace(translate(lower(trim(sqlc.arg(name)::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
- order by is_active desc, id
+-- normalización de IngredientNameTaken). Va después de LockIngredientNames. También el que lo tiene
+-- como nombre alternativo (spec 063, via_alt): crear «Leche Lala» cuando ya es otro nombre de
+-- «Leche entera» ofrece ésa. Un origen de unión no cuenta por sus alternativos (FR-021).
+select id, is_active, via_alt::text as via_alt from (
+  select i.id, i.is_active, '' as via_alt, 0 as rank from ingredients i
+   where regexp_replace(translate(lower(trim(i.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+       = regexp_replace(translate(lower(trim(sqlc.arg(name)::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+  union all
+  select i.id, i.is_active, a as via_alt, 1 as rank from ingredients i, unnest(i.alt_names) a
+   where catalog_name_key(a) = catalog_name_key(sqlc.arg(name)::text)
+     and not exists (select 1 from ingredient_replacements r where r.old_ingredient_id = i.id and r.kind = 'merge')
+) f
+ order by rank, is_active desc, id
  limit 1;
 
 -- name: SetArticleCostManual :one
@@ -63,7 +82,7 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
        i.current_cost, i.cost_source::text as cost_source, i.min_stock, i.is_prep, i.category_id, ic.name as category,
        i.count_place_id, cp.name as count_place, i.updated_at, i.composition_status,
        coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
-       i.density_g_per_ml, i.density_method, i.density_set_at, du.name as density_set_by_name
+       i.density_g_per_ml, i.density_method, i.density_set_at, du.name as density_set_by_name, i.alt_names
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join users du on du.id = i.density_set_by
@@ -73,12 +92,19 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
  where i.id = sqlc.arg(id);
 
 -- name: FindOtherArticleByName :one
--- Como FindArticleByName, sin contarse a sí mismo: renombrar a su propio nombre no es repetirlo.
-select id, is_active from ingredients
- where id <> sqlc.arg(id)
-   and regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
-     = regexp_replace(translate(lower(trim(sqlc.arg(name)::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
- order by is_active desc, id
+-- Como FindArticleByName, sin contarse a sí mismo por su nombre: renombrar a su propio nombre no es
+-- repetirlo. Sí cuenta un alternativo propio: llamarse igual que uno de sus otros nombres lo deja sobrando.
+select id, is_active, via_alt::text as via_alt from (
+  select i.id, i.is_active, '' as via_alt, 0 as rank from ingredients i
+   where i.id <> sqlc.arg(id)
+     and regexp_replace(translate(lower(trim(i.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+       = regexp_replace(translate(lower(trim(sqlc.arg(name)::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+  union all
+  select i.id, i.is_active, a as via_alt, 1 as rank from ingredients i, unnest(i.alt_names) a
+   where catalog_name_key(a) = catalog_name_key(sqlc.arg(name)::text)
+     and not exists (select 1 from ingredient_replacements r where r.old_ingredient_id = i.id and r.kind = 'merge')
+) f
+ order by rank, is_active desc, id
  limit 1;
 
 -- name: UpdateArticle :one
