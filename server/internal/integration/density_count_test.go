@@ -365,13 +365,53 @@ func TestReopeningAWeighedCountKeepsHowClosedWasSplit(t *testing.T) {
 		}
 	})
 
-	t.Run("la base no acepta un reparto en un renglón sin pesada", func(t *testing.T) {
+	// Revisión de la 0106: durante la subida, la API anterior recaptura con su upsert, que no conoce
+	// closed_packs y pone la pesada en nulo. Con el check solo, esa captura respondía 500.
+	t.Run("la API anterior recaptura sin pesar y no truena: el reparto se va con la pesada", func(t *testing.T) {
+		g := k.gross("850", k.g, 2)
+		g.ClosedPacks = split
+		if _, _, _, err := k.svc.CaptureCountWeighed(k.ctx, c.ID, k.salsa, app.CountCapture{Qty: dd("5000"), Gross: g}, k.user); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := k.st.Pool.Exec(context.Background(), `insert into stock_count_lines (count_id, ingredient_id, counted_qty, system_qty, captured_by,
+			last_movement_id, gross_g, gross_containers, tare_g_used, density_used)
+			values ($1, $2, 1500, 0, $3, 0, null, null, null, null)
+			on conflict (count_id, ingredient_id) do update
+			   set counted_qty = excluded.counted_qty, system_qty = excluded.system_qty, captured_by = excluded.captured_by,
+			       captured_at = now(), last_movement_id = excluded.last_movement_id, gross_g = excluded.gross_g,
+			       gross_containers = excluded.gross_containers, tare_g_used = excluded.tare_g_used, density_used = excluded.density_used`,
+			c.ID, k.salsa, k.user); err != nil {
+			t.Fatalf("el upsert de la API anterior truena: %v", err)
+		}
+		var packs *string
+		if err := k.st.Pool.QueryRow(context.Background(), `select closed_packs::text from stock_count_lines where count_id = $1 and ingredient_id = $2`,
+			c.ID, k.salsa).Scan(&packs); err != nil || packs != nil {
+			t.Fatalf("quedó el reparto %v de una pesada que ya no está (%v)", packs, err)
+		}
+	})
+
+	t.Run("la base no acepta un reparto que no es arreglo", func(t *testing.T) {
+		g := k.gross("850", k.g, 2)
+		g.ClosedPacks = split
+		if _, _, _, err := k.svc.CaptureCountWeighed(k.ctx, c.ID, k.salsa, app.CountCapture{Qty: dd("5000"), Gross: g}, k.user); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := k.st.Pool.Exec(context.Background(), `update stock_count_lines set closed_packs = '{}' where count_id = $1 and ingredient_id = $2`, c.ID, k.salsa); err == nil {
+			t.Fatal("se aceptó un reparto que no es arreglo")
+		}
+	})
+
+	t.Run("un renglón sin pesada no se queda con un reparto", func(t *testing.T) {
 		if err := k.svc.CaptureCount(k.ctx, c.ID, k.salsa, dd("2000"), k.user); err != nil {
 			t.Fatal(err)
 		}
-		_, err := k.st.Pool.Exec(context.Background(), `update stock_count_lines set closed_packs = '[]' where count_id = $1 and ingredient_id = $2`, c.ID, k.salsa)
-		if err == nil {
-			t.Fatal("se aceptó un reparto de cerrados sin pesada")
+		if _, err := k.st.Pool.Exec(context.Background(), `update stock_count_lines set closed_packs = '[]' where count_id = $1 and ingredient_id = $2`, c.ID, k.salsa); err != nil {
+			t.Fatal(err)
+		}
+		var packs *string
+		if err := k.st.Pool.QueryRow(context.Background(), `select closed_packs::text from stock_count_lines where count_id = $1 and ingredient_id = $2`,
+			c.ID, k.salsa).Scan(&packs); err != nil || packs != nil {
+			t.Fatalf("un renglón sin pesada quedó con el reparto %v (%v)", packs, err)
 		}
 	})
 }
