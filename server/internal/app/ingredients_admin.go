@@ -56,6 +56,10 @@ type ArticleRow struct {
 	Presentations []PresentationLabel `json:"presentations"`
 	// CompositionStatus: "estimated" es una receta que vino estimada (de FUDO) y está por revisar.
 	CompositionStatus string `json:"compositionStatus"`
+	// AltNames: otros nombres con que se busca (spec 063). Siempre un arreglo.
+	AltNames []string `json:"altNames"`
+	// MatchedAlt: el alternativo por el que salió en la búsqueda; vacío si salió por otra cosa.
+	MatchedAlt string `json:"matchedAlt,omitempty"`
 }
 
 // ListArticles es la lista de Almacén › Artículos. Los empaques de cada artículo se juntan aparte, en
@@ -94,6 +98,7 @@ func (s *BackofficeService) ListArticles(ctx context.Context, f ArticleFilter) (
 			BaseUnitKind: string(r.BaseUnitKind), CurrentCost: r.CurrentCost, MinStock: r.MinStock, IsPrep: r.IsPrep,
 			CategoryID: r.CategoryID, Category: r.Category, CountPlaceID: r.CountPlaceID, CountPlace: r.CountPlace,
 			OnHand: r.OnHand, Presentations: ps, CompositionStatus: textoDe(r.CompositionStatus),
+			AltNames: nonNilStrings(r.AltNames), MatchedAlt: r.MatchedAlt,
 		}
 	}
 	return out, nil
@@ -164,7 +169,7 @@ func createArticleTx(ctx context.Context, q *db.Queries, in ArticleCreate) (int6
 	}
 	switch found, err := q.FindArticleByName(ctx, in.Name); {
 	case err == nil:
-		return 0, domain.ArticleNameTaken{ID: found.ID, Archived: !found.IsActive}
+		return 0, domain.ArticleNameTaken{ID: found.ID, Archived: !found.IsActive, ViaAlt: found.ViaAlt}
 	case !errors.Is(err, pgx.ErrNoRows):
 		return 0, err
 	}
@@ -283,6 +288,7 @@ func (s *BackofficeService) GetArticle(ctx context.Context, id int64) (ArticleSh
 			BaseUnitKind: string(r.BaseUnitKind), CurrentCost: r.CurrentCost, MinStock: r.MinStock, IsPrep: r.IsPrep,
 			CategoryID: r.CategoryID, Category: r.Category, CountPlaceID: r.CountPlaceID, CountPlace: r.CountPlace,
 			OnHand: r.OnHand, Presentations: ps, CompositionStatus: textoDe(r.CompositionStatus),
+			AltNames: nonNilStrings(r.AltNames),
 		},
 		CostSource: r.CostSource, UpdatedAt: r.UpdatedAt, MergedInto: into, MergedSources: int(sources),
 		Density: densityView(r),
@@ -333,7 +339,7 @@ func (s *BackofficeService) UpdateArticle(ctx context.Context, id int64, in Arti
 			}
 			switch found, err := q.FindOtherArticleByName(ctx, db.FindOtherArticleByNameParams{ID: id, Name: *in.Name}); {
 			case err == nil:
-				return domain.ArticleNameTaken{ID: found.ID, Archived: !found.IsActive}
+				return domain.ArticleNameTaken{ID: found.ID, Archived: !found.IsActive, ViaAlt: found.ViaAlt}
 			case !errors.Is(err, pgx.ErrNoRows):
 				return err
 			}
@@ -717,6 +723,11 @@ func (s *BackofficeService) ArchiveArticle(ctx context.Context, id int64, confir
 // ReactivateArticle vuelve a ofrecer un artículo archivado, tal como estaba.
 func (s *BackofficeService) ReactivateArticle(ctx context.Context, id int64) error {
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El candado de nombres antes que la fila, el orden de guardar alternativos (spec 063): al
+		// revés, reactivar y guardar alternativos del mismo artículo se esperaban uno al otro.
+		if err := q.LockIngredientNames(ctx); err != nil {
+			return err
+		}
 		a, err := q.LockArticle(ctx, id)
 		if err != nil {
 			return notFound(err)

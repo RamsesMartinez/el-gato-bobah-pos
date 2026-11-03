@@ -4,10 +4,12 @@ import { normalize } from '../utils/format';
 const comparable = (s: string) => normalize(s).trim().replace(/\s+/g, ' ');
 
 // existingByName busca un artículo ya cargado con ese nombre: quien captura un gasto o una receta
-// recibe el que existe en vez de crear otro igual (spec 037).
-export function existingByName<T extends { id: number; name: string }>(name: string, list: T[]): T | undefined {
+// recibe el que existe en vez de crear otro igual (spec 037). También por sus otros nombres (spec 063):
+// el servidor ya los cuenta como el mismo, y crear uno así hacía caer la captura entera.
+export function existingByName<T extends { id: number; name: string; altNames?: string[] }>(name: string, list: T[]): T | undefined {
   const n = comparable(name);
-  return list.find((i) => i.id > 0 && comparable(i.name) === n);
+  return list.find((i) => i.id > 0 && comparable(i.name) === n)
+    ?? list.find((i) => i.id > 0 && (i.altNames ?? []).some((a) => comparable(a) === n));
 }
 
 // Ids provisionales de los artículos que nacen dentro de una captura (spec 042, FR-003): negativos,

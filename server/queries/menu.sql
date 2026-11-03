@@ -11,7 +11,9 @@ order by parent_id nulls first, sort_key, name;
 -- tableta táctil, escribir tres letras en el teclado de pantalla es más rápido que bajar por
 -- categorías, y quien transcribe de una libreta se sabe los códigos.
 select p.id, p.name, p.sku, p.description, p.price, p.current_cost,
-       p.category_id, p.type, p.is_favorite, p.image_url, p.track_stock
+       p.category_id, p.type, p.is_favorite, p.image_url, p.track_stock,
+       -- Para buscar en la pantalla de venta por otro nombre (spec 063); no se imprime.
+       p.alt_names
 from products p
 where p.is_active
   and (p.available_from is null or p.available_from <= current_date)

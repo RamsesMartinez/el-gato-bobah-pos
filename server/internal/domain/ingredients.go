@@ -102,9 +102,16 @@ var ErrArticleNameTaken = fmt.Errorf("%w: ya hay un artículo que se llama así"
 type ArticleNameTaken struct {
 	ID       int64
 	Archived bool
+	// ViaAlt: el nombre es uno de los alternativos del que existe (spec 063), no su nombre.
+	ViaAlt string
 }
 
-func (e ArticleNameTaken) Error() string { return ErrArticleNameTaken.Error() }
+func (e ArticleNameTaken) Error() string {
+	if e.ViaAlt != "" {
+		return fmt.Sprintf("%v: «%s» ya es otro nombre de un artículo", ErrConflict, e.ViaAlt)
+	}
+	return ErrArticleNameTaken.Error()
+}
 func (e ArticleNameTaken) Unwrap() error { return ErrArticleNameTaken }
 
 // ErrArticleStale: la ficha cambió mientras se veía. Es un conflicto (409 STALE): la pantalla vuelve a

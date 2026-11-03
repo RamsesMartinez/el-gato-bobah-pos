@@ -120,7 +120,7 @@ func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListMod
 }
 
 const adminListProducts = `-- name: AdminListProducts :many
-select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, count(*) over() as total
+select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, q.alt_names, q.matched_alt, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
          p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
@@ -129,16 +129,27 @@ from (
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
          (select count(*) from product_modifier_groups pmg
-           where pmg.product_id = p.id and pmg.min_select is not null)::int as override_count
+           where pmg.product_id = p.id and pmg.min_select is not null)::int as override_count,
+         p.alt_names,
+         -- El alternativo que coincidió (spec 063): '' si no se busca o si coincide el nombre; el
+         -- primero en el orden capturado. coalesce: la subconsulta sin coincidencia es NULL.
+         (case when $1::text = '' or strpos(catalog_name_key(p.name), catalog_name_key($1)) > 0 then ''
+               else coalesce((select a from unnest(p.alt_names) with ordinality u(a, n)
+                               where strpos(catalog_name_key(a), catalog_name_key($1)) > 0
+                               order by n limit 1), '') end)::text as matched_alt
   from products p
   join categories c on c.id = p.category_id
   -- El producto genérico de plataforma (0077) no es del catálogo: lo usa el sistema para renglones
   -- sin pareja. Editarlo o borrarlo desde aquí dejaría a esos pedidos sin a dónde ir.
   where p.system_kind is null
+    and ($2::text = ''
+          or ($2 = 'act' and p.is_active)
+          or ($2 = 'inact' and not p.is_active))
+    -- Sin mayúsculas ni acentos, por nombre o alternativo (spec 063). strpos y no ilike: lo que alguien
+    -- escribe es texto, nunca un comodín.
     and ($1::text = ''
-          or ($1 = 'act' and p.is_active)
-          or ($1 = 'inact' and not p.is_active))
-    and ($2::text = '' or p.name ilike '%' || $2 || '%')
+          or strpos(catalog_name_key(p.name), catalog_name_key($1)) > 0
+          or exists (select 1 from unnest(p.alt_names) a where strpos(catalog_name_key(a), catalog_name_key($1)) > 0))
     and ($3::bigint = 0 or p.category_id = $3 or c.parent_id = $3)
     -- Composición (spec 028): ''=todas | 'none'=sin capturar | 'estimated'=por revisar.
     and ($4::text = ''
@@ -165,8 +176,8 @@ limit nullif($9::int, 0) offset $8
 `
 
 type AdminListProductsParams struct {
-	Status      string `json:"status"`
 	Search      string `json:"search"`
+	Status      string `json:"status"`
 	CategoryID  int64  `json:"category_id"`
 	Composition string `json:"composition"`
 	Groups      string `json:"groups"`
@@ -195,6 +206,8 @@ type AdminListProductsRow struct {
 	HasRecipe         bool             `json:"has_recipe"`
 	GroupCount        int32            `json:"group_count"`
 	OverrideCount     int32            `json:"override_count"`
+	AltNames          []string         `json:"alt_names"`
+	MatchedAlt        string           `json:"matched_alt"`
 	Total             int64            `json:"total"`
 }
 
@@ -205,8 +218,8 @@ type AdminListProductsRow struct {
 // over() (tras el filtro de grupos) = total del filtro en la misma consulta (sin viaje extra).
 func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsParams) ([]AdminListProductsRow, error) {
 	rows, err := q.db.Query(ctx, adminListProducts,
-		arg.Status,
 		arg.Search,
+		arg.Status,
 		arg.CategoryID,
 		arg.Composition,
 		arg.Groups,
@@ -241,6 +254,8 @@ func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsPa
 			&i.HasRecipe,
 			&i.GroupCount,
 			&i.OverrideCount,
+			&i.AltNames,
+			&i.MatchedAlt,
 			&i.Total,
 		); err != nil {
 			return nil, err

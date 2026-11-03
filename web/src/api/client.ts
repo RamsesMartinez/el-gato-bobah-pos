@@ -21,6 +21,8 @@ export interface ApiErrorDetails {
   archived?: boolean;
   // El artículo sin densidad de una compra entre peso y líquido (spec 058): la pantalla ofrece capturarla.
   ingredientId?: number;
+  // El nombre alternativo que chocó (spec 063, ALT_NAME_TAKEN); el mensaje ya lo nombra.
+  name?: string;
 }
 
 export class ApiError extends Error {

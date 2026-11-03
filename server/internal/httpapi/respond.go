@@ -39,6 +39,8 @@ type errorDetails struct {
 	// IngredientID: el artículo de una compra entre peso y líquido sin densidad (spec 058), para
 	// abrir su hoja de densidad.
 	IngredientID int64 `json:"ingredientId,omitempty"`
+	// Name: el nombre alternativo que chocó (spec 063), para señalarlo en la lista que se capturó.
+	Name string `json:"name,omitempty"`
 }
 
 // JSON writes v as JSON with the given status.
@@ -280,6 +282,8 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "PREP_COST"
 	case errors.Is(err, domain.ErrArticleNameTaken):
 		status, code = http.StatusConflict, "NAME_TAKEN"
+	case errors.Is(err, domain.ErrAltNameTaken):
+		status, code = http.StatusConflict, "ALT_NAME_TAKEN"
 	case errors.Is(err, domain.ErrConflict):
 		status, code = http.StatusConflict, "CONFLICT"
 	case errors.Is(err, domain.ErrTooManyRequests):
@@ -339,6 +343,10 @@ func Error(w http.ResponseWriter, err error) {
 	var article domain.ArticleNameTaken
 	if errors.As(err, &article) {
 		details = &errorDetails{ExistingID: article.ID, Archived: article.Archived}
+	}
+	var alt domain.AltNameTaken
+	if errors.As(err, &alt) {
+		details = &errorDetails{ExistingID: alt.OwnerID, Archived: alt.OwnerArchived, Name: alt.Name}
 	}
 	var mismatch domain.UnitKindMismatch
 	if errors.As(err, &mismatch) {

@@ -48,3 +48,13 @@ func TestLaLlaveDelMenuLlevaVersionYEmpresa(t *testing.T) {
 		t.Fatalf("forma inesperada de la llave: %s", k1)
 	}
 }
+
+// Spec 063 (revisión de la 0107): el documento del menú ganó products[].altNames y la migración no
+// sube la versión del catálogo. Con el esquema anterior, el menú guardado por la API vieja se servía
+// (y el ETag daba 304) hasta 24 h sin los otros nombres. Si el documento vuelve a cambiar de forma,
+// esto se sube junto con él.
+func TestMenuSchemaMovedWithAltNames(t *testing.T) {
+	if menuSchema == "v3" {
+		t.Fatal("el documento del menú lleva altNames y el esquema sigue en v3: se serviría el menú viejo")
+	}
+}

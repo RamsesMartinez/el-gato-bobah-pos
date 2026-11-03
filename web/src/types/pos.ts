@@ -52,6 +52,9 @@ export interface MenuProduct {
   imageUrl: string | null;
   trackStock: boolean;
   groups: MenuGroup[];
+  // Otros nombres con que se busca (spec 063). Opcional: el menú lo omite si no hay, y una tableta con
+  // el menú guardado de antes no lo trae.
+  altNames?: string[];
 }
 
 export interface Menu {

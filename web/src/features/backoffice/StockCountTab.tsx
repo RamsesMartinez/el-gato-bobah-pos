@@ -10,7 +10,8 @@ import { NumericKeypad } from '../../components/NumericKeypad';
 import { pressKey } from '../../components/pressKey';
 import { backofficeApi, type CountCaptureBody, type CountClose, type CountItem, type StockCount } from '../../api/backoffice';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
-import { matchesWords } from '../../utils/format';
+import { matchedAlias, matchesWords } from '../../utils/format';
+import { AltMatchTag } from '../../components/AltMatchTag';
 import { formatBaseQty } from '../../shared/units';
 import { countedWords, diffWords, grossNet, isBigDiff, looseUnitsOf, packsTotal, restoreWeighed, withGross, closedPacksOf } from './countEntry';
 import { InfoButton } from '../../components/InfoButton';
@@ -601,8 +602,10 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
   const editing = count.items.find((i) => i.ingredientId === editingId) ?? null;
   const needle = q.trim();
   // Buscar también por nombre de empaque (spec 042): quien busca «bolsa» encuentra el hielo.
+  // Y por sus otros nombres (spec 063), con la misma regla; el que coincidió se señala en la fila.
+  const altOf = (i: CountItem) => (needle && !matchesWords(i.name, needle) ? matchedAlias(i.altNames, needle, matchesWords) : undefined);
   const shown = needle
-    ? count.items.filter((i) => matchesWords(i.name, needle) || i.presentations.some((p) => matchesWords(presentationLabel(p), needle)))
+    ? count.items.filter((i) => matchesWords(i.name, needle) || i.presentations.some((p) => matchesWords(presentationLabel(p), needle)) || altOf(i))
     : count.items;
   const groups = new Map<string, CountItem[]>();
   for (const i of shown) groups.set(placeOf(i), [...(groups.get(placeOf(i)) ?? []), i]);
@@ -613,10 +616,12 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
         {[...groups.entries()].map(([place, items]) => (
           <Box key={place}>
             <Text px={3} py={2} fontWeight="700" bg="bg.subtle">{place}</Text>
-            {items.map((i) => (
+            {items.map((i) => { const alt = altOf(i); return (
               <HStack key={i.ingredientId} px={3} py={2} gap={3} borderTopWidth="1px" data-testid="renglon-conteo">
-                <VStack align="start" gap={0} flex="1">
+                <VStack align="start" gap={0} flex="1" minW={0}>
                   <Text fontWeight="600">{i.name}</Text>
+                  {/* En su propio renglón: junto al nombre, un nombre largo la dejaba sin ancho (revisión). */}
+                  {alt && <AltMatchTag name={alt} size="xs" />}
                   {i.presentations.length > 0 && (
                     <Text fontSize="xs" color="fg.muted">
                       {i.presentations.map((p) => `${presentationLabel(p)} (${formatBaseQty(p.qtyInBase, i.baseUnitCode)})`).join(' · ')}
@@ -631,7 +636,7 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
                   {i.countedQty !== null ? 'Cambiar' : 'Contar'}
                 </Button>
               </HStack>
-            ))}
+            ); })}
           </Box>
         ))}
       </Box>

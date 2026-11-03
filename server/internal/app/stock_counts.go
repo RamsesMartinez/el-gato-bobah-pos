@@ -48,6 +48,8 @@ type CountItem struct {
 	DensityGPerMl  *decimal.Decimal `json:"densityGPerMl"`
 	// Weighed es cómo se capturó lo contado pesando con empaque (#204); nil si no se pesó.
 	Weighed *CountWeighed `json:"weighed"`
+	// AltNames: otros nombres para encontrarlo en la lista del conteo (spec 063). Siempre un arreglo.
+	AltNames []string `json:"altNames"`
 }
 
 // CountWeighed es el desglose de lo contado pesando: lo cerrado (en la unidad base), lo que marcó la
@@ -154,7 +156,8 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 		}
 		v.Items[i] = CountItem{IngredientID: r.ID, Name: r.Name, Place: r.CountPlace, PlaceID: r.CountPlaceID, BaseUnitCode: r.BaseUnitCode,
 			Presentations: ps, CountedQty: r.CountedQty, Weighable: weighable[r.ID], DensityGPerMl: r.DensityGPerMl,
-			GrossWeighable: grossWeighable(r.BaseUnitKind, r.DensityGPerMl, ps), Weighed: weighedOf(r, ps)}
+			GrossWeighable: grossWeighable(r.BaseUnitKind, r.DensityGPerMl, ps), Weighed: weighedOf(r, ps),
+			AltNames: nonNilStrings(r.AltNames)}
 	}
 	return v, nil
 }

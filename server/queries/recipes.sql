@@ -28,9 +28,12 @@ with sales as (
      and (sqlc.arg(category_id)::bigint = 0 or p.category_id = sqlc.arg(category_id) or c.parent_id = sqlc.arg(category_id))
      and (sqlc.arg(q)::text = ''
           or translate(lower(p.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower(sqlc.arg(q)), 'áéíóúüñ', 'aeiouun') || '%'
+          -- Por los otros nombres del producto y de sus insumos (spec 063, prueba con usuario nuevo).
+          or exists (select 1 from unnest(p.alt_names) a where strpos(catalog_name_key(a), catalog_name_key(sqlc.arg(q)::text)) > 0)
           or exists (select 1 from recipe_items ri join ingredients i on i.id = ri.ingredient_id
                       where ri.recipe_id = p.recipe_id
-                        and translate(lower(i.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower(sqlc.arg(q)), 'áéíóúüñ', 'aeiouun') || '%'))
+                        and (translate(lower(i.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower(sqlc.arg(q)), 'áéíóúüñ', 'aeiouun') || '%'
+                             or exists (select 1 from unnest(i.alt_names) a where strpos(catalog_name_key(a), catalog_name_key(sqlc.arg(q)::text)) > 0))))
 )
 select b.id, b.name, b.category, b.type, b.track_stock, b.status, b.sold,
        coalesce((select string_agg(x.txt, ' · ' order by x.pos, x.id) from (
@@ -71,9 +74,12 @@ select x.status, count(*)::int as n from (
      and (sqlc.arg(category_id)::bigint = 0 or p.category_id = sqlc.arg(category_id) or c.parent_id = sqlc.arg(category_id))
      and (sqlc.arg(q)::text = ''
           or translate(lower(p.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower(sqlc.arg(q)), 'áéíóúüñ', 'aeiouun') || '%'
+          -- Por los otros nombres del producto y de sus insumos (spec 063, prueba con usuario nuevo).
+          or exists (select 1 from unnest(p.alt_names) a where strpos(catalog_name_key(a), catalog_name_key(sqlc.arg(q)::text)) > 0)
           or exists (select 1 from recipe_items ri join ingredients i on i.id = ri.ingredient_id
                       where ri.recipe_id = p.recipe_id
-                        and translate(lower(i.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower(sqlc.arg(q)), 'áéíóúüñ', 'aeiouun') || '%'))
+                        and (translate(lower(i.name), 'áéíóúüñ', 'aeiouun') like '%' || translate(lower(sqlc.arg(q)), 'áéíóúüñ', 'aeiouun') || '%'
+                             or exists (select 1 from unnest(i.alt_names) a where strpos(catalog_name_key(a), catalog_name_key(sqlc.arg(q)::text)) > 0))))
 ) x group by x.status;
 
 -- name: ListExtraRecipes :many

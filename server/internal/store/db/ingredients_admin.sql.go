@@ -638,33 +638,48 @@ func (q *Queries) CopyArticleDensity(ctx context.Context, arg CopyArticleDensity
 }
 
 const findArticleByName = `-- name: FindArticleByName :one
-select id, is_active from ingredients
- where regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
-     = regexp_replace(translate(lower(trim($1::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
- order by is_active desc, id
+select id, is_active, via_alt::text as via_alt from (
+  select i.id, i.is_active, '' as via_alt, 0 as rank from ingredients i
+   where regexp_replace(translate(lower(trim(i.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+       = regexp_replace(translate(lower(trim($1::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+  union all
+  select i.id, i.is_active, a as via_alt, 1 as rank from ingredients i, unnest(i.alt_names) a
+   where catalog_name_key(a) = catalog_name_key($1::text)
+     and not exists (select 1 from ingredient_replacements r where r.old_ingredient_id = i.id and r.kind = 'merge')
+) f
+ order by rank, is_active desc, id
  limit 1
 `
 
 type FindArticleByNameRow struct {
-	ID       int64 `json:"id"`
-	IsActive bool  `json:"is_active"`
+	ID       int64  `json:"id"`
+	IsActive bool   `json:"is_active"`
+	ViaAlt   string `json:"via_alt"`
 }
 
 // El artículo de la empresa con ese nombre, sin distinguir mayúsculas, acentos ni espacios de más (la
-// normalización de IngredientNameTaken). Va después de LockIngredientNames.
+// normalización de IngredientNameTaken). Va después de LockIngredientNames. También el que lo tiene
+// como nombre alternativo (spec 063, via_alt): crear «Leche Lala» cuando ya es otro nombre de
+// «Leche entera» ofrece ésa. Un origen de unión no cuenta por sus alternativos (FR-021).
 func (q *Queries) FindArticleByName(ctx context.Context, name string) (FindArticleByNameRow, error) {
 	row := q.db.QueryRow(ctx, findArticleByName, name)
 	var i FindArticleByNameRow
-	err := row.Scan(&i.ID, &i.IsActive)
+	err := row.Scan(&i.ID, &i.IsActive, &i.ViaAlt)
 	return i, err
 }
 
 const findOtherArticleByName = `-- name: FindOtherArticleByName :one
-select id, is_active from ingredients
- where id <> $1
-   and regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
-     = regexp_replace(translate(lower(trim($2::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
- order by is_active desc, id
+select id, is_active, via_alt::text as via_alt from (
+  select i.id, i.is_active, '' as via_alt, 0 as rank from ingredients i
+   where i.id <> $1
+     and regexp_replace(translate(lower(trim(i.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+       = regexp_replace(translate(lower(trim($2::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+  union all
+  select i.id, i.is_active, a as via_alt, 1 as rank from ingredients i, unnest(i.alt_names) a
+   where catalog_name_key(a) = catalog_name_key($2::text)
+     and not exists (select 1 from ingredient_replacements r where r.old_ingredient_id = i.id and r.kind = 'merge')
+) f
+ order by rank, is_active desc, id
  limit 1
 `
 
@@ -674,15 +689,17 @@ type FindOtherArticleByNameParams struct {
 }
 
 type FindOtherArticleByNameRow struct {
-	ID       int64 `json:"id"`
-	IsActive bool  `json:"is_active"`
+	ID       int64  `json:"id"`
+	IsActive bool   `json:"is_active"`
+	ViaAlt   string `json:"via_alt"`
 }
 
-// Como FindArticleByName, sin contarse a sí mismo: renombrar a su propio nombre no es repetirlo.
+// Como FindArticleByName, sin contarse a sí mismo por su nombre: renombrar a su propio nombre no es
+// repetirlo. Sí cuenta un alternativo propio: llamarse igual que uno de sus otros nombres lo deja sobrando.
 func (q *Queries) FindOtherArticleByName(ctx context.Context, arg FindOtherArticleByNameParams) (FindOtherArticleByNameRow, error) {
 	row := q.db.QueryRow(ctx, findOtherArticleByName, arg.ID, arg.Name)
 	var i FindOtherArticleByNameRow
-	err := row.Scan(&i.ID, &i.IsActive)
+	err := row.Scan(&i.ID, &i.IsActive, &i.ViaAlt)
 	return i, err
 }
 
@@ -691,7 +708,7 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
        i.current_cost, i.cost_source::text as cost_source, i.min_stock, i.is_prep, i.category_id, ic.name as category,
        i.count_place_id, cp.name as count_place, i.updated_at, i.composition_status,
        coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
-       i.density_g_per_ml, i.density_method, i.density_set_at, du.name as density_set_by_name
+       i.density_g_per_ml, i.density_method, i.density_set_at, du.name as density_set_by_name, i.alt_names
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join users du on du.id = i.density_set_by
@@ -723,6 +740,7 @@ type GetArticleRow struct {
 	DensityMethod     *string            `json:"density_method"`
 	DensitySetAt      pgtype.Timestamptz `json:"density_set_at"`
 	DensitySetByName  *string            `json:"density_set_by_name"`
+	AltNames          []string           `json:"alt_names"`
 }
 
 // La ficha. updated_at es la versión: editar exige la que se vio (STALE si cambió).
@@ -751,6 +769,7 @@ func (q *Queries) GetArticle(ctx context.Context, id int64) (GetArticleRow, erro
 		&i.DensityMethod,
 		&i.DensitySetAt,
 		&i.DensitySetByName,
+		&i.AltNames,
 	)
 	return i, err
 }
@@ -878,22 +897,33 @@ const listArticles = `-- name: ListArticles :many
 select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
        i.current_cost, i.min_stock, i.is_prep, i.category_id, ic.name as category,
        i.count_place_id, cp.name as count_place, i.composition_status,
-       coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+       coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
+       i.alt_names,
+       -- El alternativo por el que salió (spec 063): '' sin búsqueda o si coincide el nombre; el primero
+       -- en el orden capturado. Salir por empaque o marca no lo señala.
+       (case when $1::text is null
+               or strpos(catalog_name_key(i.name::text), catalog_name_key($1::text)) > 0 then ''
+             else coalesce((select a from unnest(i.alt_names) with ordinality u(a, n)
+                             where strpos(catalog_name_key(a), catalog_name_key($1::text)) > 0
+                             order by n limit 1), '') end)::text as matched_alt
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join count_places cp on cp.id = i.count_place_id
   left join ingredient_categories ic on ic.id = i.category_id
   -- Existencias de la sucursal (0076): con dos sucursales, sin el filtro cada artículo saldría dos veces.
   left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
- where i.is_active = not $1::boolean
-   and ($2::text is null
+ where i.is_active = not $2::boolean
+   and ($1::text is null
         -- strpos y no like: lo que alguien escriba es texto, nunca un comodín.
-        or strpos(translate(lower(i.name::text), 'áéíóúüñ', 'aeiouun'), translate(lower($2::text), 'áéíóúüñ', 'aeiouun')) > 0
+        or strpos(translate(lower(i.name::text), 'áéíóúüñ', 'aeiouun'), translate(lower($1::text), 'áéíóúüñ', 'aeiouun')) > 0
+        -- Y sus nombres alternativos (spec 063).
+        or exists (select 1 from unnest(i.alt_names) a
+                    where strpos(catalog_name_key(a), catalog_name_key($1::text)) > 0)
         -- La marca también (spec 056): quien busca «lala» quiere la leche que llega en «Caja · Lala».
         or exists (select 1 from ingredient_presentations p
                     where p.ingredient_id = i.id and p.active
-                      and (strpos(translate(lower(p.name), 'áéíóúüñ', 'aeiouun'), translate(lower($2::text), 'áéíóúüñ', 'aeiouun')) > 0
-                           or strpos(translate(lower(coalesce(p.brand, '')), 'áéíóúüñ', 'aeiouun'), translate(lower($2::text), 'áéíóúüñ', 'aeiouun')) > 0)))
+                      and (strpos(translate(lower(p.name), 'áéíóúüñ', 'aeiouun'), translate(lower($1::text), 'áéíóúüñ', 'aeiouun')) > 0
+                           or strpos(translate(lower(coalesce(p.brand, '')), 'áéíóúüñ', 'aeiouun'), translate(lower($1::text), 'áéíóúüñ', 'aeiouun')) > 0)))
    and ($3::bigint is null or i.count_place_id = $3)
    and (not $4::boolean or i.count_place_id is null)
    and (not $5::boolean or coalesce(i.current_cost, 0) = 0)
@@ -902,8 +932,8 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
 `
 
 type ListArticlesParams struct {
-	Archived bool    `json:"archived"`
 	Q        *string `json:"q"`
+	Archived bool    `json:"archived"`
 	PlaceID  *int64  `json:"place_id"`
 	NoPlace  bool    `json:"no_place"`
 	NoCost   bool    `json:"no_cost"`
@@ -926,6 +956,8 @@ type ListArticlesRow struct {
 	CountPlace        *string          `json:"count_place"`
 	CompositionStatus *string          `json:"composition_status"`
 	OnHand            decimal.Decimal  `json:"on_hand"`
+	AltNames          []string         `json:"alt_names"`
+	MatchedAlt        string           `json:"matched_alt"`
 }
 
 // Gestión de artículos del almacén (spec 042): la lista con buscador y filtros, la ficha, editar,
@@ -935,8 +967,8 @@ type ListArticlesRow struct {
 // Archivados se ven solo cuando se piden: un archivado no es un artículo en uso.
 func (q *Queries) ListArticles(ctx context.Context, arg ListArticlesParams) ([]ListArticlesRow, error) {
 	rows, err := q.db.Query(ctx, listArticles,
-		arg.Archived,
 		arg.Q,
+		arg.Archived,
 		arg.PlaceID,
 		arg.NoPlace,
 		arg.NoCost,
@@ -965,6 +997,8 @@ func (q *Queries) ListArticles(ctx context.Context, arg ListArticlesParams) ([]L
 			&i.CountPlace,
 			&i.CompositionStatus,
 			&i.OnHand,
+			&i.AltNames,
+			&i.MatchedAlt,
 		); err != nil {
 			return nil, err
 		}

@@ -169,7 +169,9 @@ func (q *Queries) MenuProductGroups(ctx context.Context) ([]MenuProductGroupsRow
 
 const menuProducts = `-- name: MenuProducts :many
 select p.id, p.name, p.sku, p.description, p.price, p.current_cost,
-       p.category_id, p.type, p.is_favorite, p.image_url, p.track_stock
+       p.category_id, p.type, p.is_favorite, p.image_url, p.track_stock,
+       -- Para buscar en la pantalla de venta por otro nombre (spec 063); no se imprime.
+       p.alt_names
 from products p
 where p.is_active
   and (p.available_from is null or p.available_from <= current_date)
@@ -194,6 +196,7 @@ type MenuProductsRow struct {
 	IsFavorite  bool            `json:"is_favorite"`
 	ImageUrl    *string         `json:"image_url"`
 	TrackStock  bool            `json:"track_stock"`
+	AltNames    []string        `json:"alt_names"`
 }
 
 // El sku viaja para que la pantalla de venta pueda buscar por código además de por nombre: en una
@@ -220,6 +223,7 @@ func (q *Queries) MenuProducts(ctx context.Context) ([]MenuProductsRow, error) {
 			&i.IsFavorite,
 			&i.ImageUrl,
 			&i.TrackStock,
+			&i.AltNames,
 		); err != nil {
 			return nil, err
 		}

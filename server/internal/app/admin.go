@@ -48,6 +48,10 @@ type AdminProductView struct {
 	CostSource string           `json:"costSource"`
 	ManualCost *decimal.Decimal `json:"manualCost"`
 	HasRecipe  bool             `json:"hasRecipe"`
+	// AltNames: los otros nombres con que se busca (spec 063). Siempre un arreglo.
+	AltNames []string `json:"altNames"`
+	// MatchedAlt: el alternativo por el que salió en la búsqueda; vacío si salió por su nombre.
+	MatchedAlt string `json:"matchedAlt,omitempty"`
 }
 
 const dateFmt = "2006-01-02"
@@ -118,6 +122,12 @@ func (s *AdminService) CreateProduct(ctx context.Context, name string, categoryI
 	}
 	var id int64
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := q.LockProductNames(ctx); err != nil {
+			return err
+		}
+		if err := productNameFree(ctx, q, name); err != nil {
+			return err
+		}
 		var err error
 		id, err = q.AdminCreateProduct(ctx, db.AdminCreateProductParams{
 			Name: name, CategoryID: categoryID, Price: domain.Round2(price), IsFavorite: favorite, TrackStock: trackStock,
@@ -185,6 +195,12 @@ func (s *AdminService) DuplicateProduct(ctx context.Context, sourceID int64, new
 	}
 	var newID int64
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := q.LockProductNames(ctx); err != nil {
+			return err
+		}
+		if err := productNameFree(ctx, q, newName); err != nil {
+			return err
+		}
 		info, err := q.GetProductCloneInfo(ctx, sourceID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -265,6 +281,7 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search string, 
 			GroupCount: int(r.GroupCount), OverrideCount: int(r.OverrideCount),
 			CompositionStatus: textoDe(r.CompositionStatus),
 			CostSource:        string(r.CostSource), ManualCost: r.ManualCost, HasRecipe: r.HasRecipe,
+			AltNames: nonNilStrings(r.AltNames), MatchedAlt: r.MatchedAlt,
 		})
 	}
 	c, err := s.store.QC(ctx).AdminProductCounts(ctx)
@@ -382,6 +399,20 @@ func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput)
 	// del frappé?» es la pregunta que la bitácora existe para contestar.
 	newPrice := domain.Round2(in.Price)
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El candado primero y el nombre después: leído antes, un renombre de otra tableta en medio
+		// dejaba comparar contra un nombre viejo. Solo un nombre que cambió se compara con los
+		// alternativos (FR-005): un producto heredado que ya choca debe poder guardar su precio.
+		if err := q.LockProductNames(ctx); err != nil {
+			return err
+		}
+		switch current, err := q.GetProductName(ctx, in.ID); {
+		case err == nil && current != in.Name:
+			if err := productNameFree(ctx, q, in.Name); err != nil {
+				return err
+			}
+		case err != nil && !errors.Is(err, pgx.ErrNoRows):
+			return err
+		}
 		// El precio anterior se lee con candado DENTRO de la transacción: leído antes, dos ediciones
 		// a la vez dejarían un «antes» falso, y un error de lectura ignorado cambiaría el precio sin
 		// evento.
@@ -422,4 +453,13 @@ func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput)
 	// Recalcular todo y no solo este producto: los combos y los extras ligados a él suman su costo,
 	// y al volver a «de su receta» el monto lo pone el motor, no la petición.
 	return NewCostingService(s.store).RecomputeAll(ctx)
+}
+
+// nonNilStrings: un slice nil sale en JSON como `null`; toda respuesta que promete un arreglo lo
+// entrega aunque esté vacío (AGENTS §1).
+func nonNilStrings(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
