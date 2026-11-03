@@ -116,7 +116,7 @@ func TestABuyInKilosOfSomethingKeptInMlConvertsWithItsDensity(t *testing.T) {
 	})
 
 	t.Run("anular devuelve exactamente lo que entró", func(t *testing.T) {
-		if err := k.svc.CancelExpense(k.ctx, id, "", k.user); err != nil {
+		if err := k.svc.CancelExpense(k.ctx, id, "prueba", k.user, true); err != nil {
 			t.Fatal(err)
 		}
 		if got := onHandIngredient(t, k.st, k.salsa); !got.IsZero() {
@@ -220,7 +220,7 @@ func TestACancelledPurchaseNeverBlocksClearingTheDensity(t *testing.T) {
 	if err := k.svc.ClearDensity(k.ctx, k.salsa); !errors.Is(err, domain.ErrDensityInUse) {
 		t.Fatalf("con la compra por recibir = %v; quería 409", err)
 	}
-	if err := k.svc.CancelExpense(k.ctx, id, "", k.user); err != nil {
+	if err := k.svc.CancelExpense(k.ctx, id, "prueba", k.user, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := k.svc.ClearDensity(k.ctx, k.salsa); err != nil {

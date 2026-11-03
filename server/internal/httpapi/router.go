@@ -397,12 +397,13 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Post("/{id}/deliveries", h.DeliverExpense)
 					// La casilla del arqueo de un pago ya registrado (spec 048): por permiso, fuera del grupo por rol.
 					r.With(RequirePermission(h.permissions, domain.PermCashAdjustCount)).Patch("/{id}/payments/{paymentId}", h.SetPaymentInCount)
+					// Anular un gasto capturado por error, aunque esté pagado (#216): por permiso.
+					r.With(RequirePermission(h.permissions, domain.PermExpensesCancel)).Post("/{id}/cancel", h.CancelExpense)
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
 						r.Get("/", h.ListExpenses)
 						r.Post("/", h.CreateExpense)
 						r.Get("/{id}", h.ExpenseDetail)
 						r.Post("/{id}/pay", h.PayExpense) // agrega UN pago (el "+1 nuevo pago")
-						r.Post("/{id}/cancel", h.CancelExpense)
 						// Extracción del documento (ticket/factura/pedido) → borrador. NO escribe nada:
 						// devuelve las líneas para que el operador las confirme.
 						r.Post("/parse-doc", h.ExtractPurchaseDoc)

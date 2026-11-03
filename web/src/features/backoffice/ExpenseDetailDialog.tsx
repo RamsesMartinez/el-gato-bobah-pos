@@ -11,7 +11,7 @@ import {
 } from '../../components/ui/dialog';
 import { money } from '../../utils/format';
 import {
-  backofficeApi, type EditExpenseBody, type ExpenseDetail, type ExpenseItem, type StockLineBody, type Unit, type Presentation,
+  backofficeApi, type EditExpenseBody, type ExpenseDetail, type ExpenseItem, type ExpensePayment, type StockLineBody, type Unit, type Presentation,
 } from '../../api/backoffice';
 import { ApiError } from '../../api/client';
 import { parseNumero, round2 } from '../../domain/numeros';
@@ -23,12 +23,13 @@ import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
 import { Switch } from '../../components/ui/switch';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
+import { ReasonSheet } from '../../components/ReasonSheet';
 import { Picker } from '../../components/Picker';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { NumericKeypad } from '../../components/NumericKeypad';
 import { useKeypadField } from '../../components/useKeypadField';
-import { INCLUDE_IN_COUNT_LABEL } from './cajaDelGasto';
+import { CANCEL_SHORTCUTS, INCLUDE_IN_COUNT_LABEL } from './cajaDelGasto';
 import { AddLineSheet, type DraftLine } from './AddLineSheet';
 import { DeliverySheet } from './DeliverySheet';
 import { EditPreviewSheet } from './EditPreviewSheet';
@@ -122,6 +123,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
   const user = useSessionStore((s) => s.user);
   const canReceive = can('inventory.receive', user);
   const canEdit = can('expenses.edit', user);
+  const canCancel = can('expenses.cancel', user);
   const hora = useHoraDelNegocio();
   const today = hora.diaDelNegocio(new Date());
   const editing = mode === 'edit';
@@ -208,7 +210,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
   });
 
   const cancel = useMutation({
-    mutationFn: () => backofficeApi.cancelExpense(id!, ''),
+    mutationFn: (reason: string) => backofficeApi.cancelExpense(id!, reason),
     onSuccess: async () => { setConfirmCancel(false); await refresh(); },
     onError: (e) => toaster.create({ title: 'No se pudo anular', description: mensajeDeError(e), type: 'error' }),
   });
@@ -254,6 +256,11 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
   })();
 
   const cancelled = data?.status === 'cancelada';
+  // Un pago en un corte ya cerrado: anular reescribiría ese corte, y el servidor lo niega.
+  const inClosedCount = !!data?.payments.some((p) => p.sessionClosed);
+  // Sacar un pago del arqueo mueve el esperado del cajón: el servidor pide además ese permiso.
+  const movesCount = !!data?.payments.some((p) => p.inCashCount || p.includeInCount);
+  const offerCancel = canCancel && !inClosedCount && (!movesCount || canAdjustCount);
   const fresh = freshSeq >= editSeq;
   const due = data ? round2(num(data.amount) - num(data.paid)) : 0;
   const pendingToReceive = data ? pendingGoods(data) : [];
@@ -317,6 +324,12 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                       ? <Badge colorPalette="green">recibida {dia(data.receivedAt)}</Badge>
                       : <Badge colorPalette="orange">falta que llegue algo</Badge>)}
                   </HStack>
+                  {cancelled && data.cancelledBy && (
+                    <Text fontSize="sm" p={3} borderRadius="lg" bg="bg.muted" data-testid="anulado-por">
+                      Anulado por {data.cancelledBy}{data.cancelledAt ? ` el ${hora.fechaYHora(data.cancelledAt)}` : ''}
+                      {data.cancelReason ? ` · Motivo: ${data.cancelReason}` : ''}
+                    </Text>
+                  )}
                   <Text fontSize="sm" color="fg.muted">
                     {data.category} · {data.supplier ?? 'sin proveedor'} · día {data.expenseDate}{data.documentDate ? ` · documento ${data.documentDate}` : ''}
                     {data.description ? ` · ${data.description}` : ''}
@@ -328,7 +341,9 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                         <Text fontSize="xs" color="fg.muted">Total del ticket {money(data.documentTotal, data.currency)}</Text>
                       )}
                     </Box>
-                    <Stat label="Pagado" value={money(data.paid, data.currency)} tone={due <= 0 ? 'green' : 'orange'} />
+                    {cancelled
+                      ? <Stat label="Pagos anulados" value={money(data.paid, data.currency)} />
+                      : <Stat label="Pagado" value={money(data.paid, data.currency)} tone={due <= 0 ? 'green' : 'orange'} />}
                     {/* FR-012 y FR-013: lo que falta o lo que sobra, con palabras además del color. */}
                     {!cancelled && due > 0 && data.payments.length > 0 && <Stat label="⚠ Falta pagar" value={money(due, data.currency)} tone="orange" />}
                     {!cancelled && due < 0 && <Stat label="⚠ Pagado de más" value={money(-due, data.currency)} tone="orange" />}
@@ -417,6 +432,11 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                 <>
                   <Separator />
                   <Text fontWeight="700">Pagos</Text>
+                  {canCancel && !cancelled && inClosedCount && (
+                    <Text fontSize="sm" color="fg.muted" data-testid="no-se-anula">
+                      No se puede anular: un pago ya entró a un corte de caja cerrado.
+                    </Text>
+                  )}
                   <VStack align="stretch" gap={1}>
                     {data.payments.map((p) => (
                       <HStack key={p.id} justify="space-between" py={1}>
@@ -443,10 +463,6 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                 </>
               )}
 
-              {confirmCancel && (
-                <CancelConfirm data={data} pending={cancel.isPending}
-                  onYes={() => cancel.mutate()} onNo={() => setConfirmCancel(false)} />
-              )}
             </VStack>
           )}
         </DialogBody>
@@ -490,9 +506,9 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
               </HStack>
             ) : (
               <HStack w="100%" gap={3}>
-                {data.status === 'pendiente' && (
-                  <Button minH="44px" variant="outline" colorPalette="red" onClick={() => setConfirmCancel(true)}>
-                    Anular compra
+                {offerCancel && (
+                  <Button minH="44px" mr={6} variant="outline" colorPalette="red" onClick={() => setConfirmCancel(true)}>
+                    Anular gasto
                   </Button>
                 )}
                 <Box flex="1" />
@@ -515,6 +531,13 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
           </DialogFooter>
         )}
 
+        {data && (
+          <ReasonSheet isOpen={confirmCancel} title="¿Anular este gasto?" label="Motivo" placeholder="Motivo (obligatorio)"
+            required destructive confirmLabel="Sí, anular" loading={cancel.isPending} atajos={CANCEL_SHORTCUTS}
+            onDone={(reason) => { if (reason === null) setConfirmCancel(false); else cancel.mutate(reason); }}>
+            <CancelEffects data={data} />
+          </ReasonSheet>
+        )}
         {adding && data && (
           <AddLineSheet expenseDate={header?.expenseDate ?? data.expenseDate} canReceive={canReceive}
             stockItemLabel={settings?.stockItemLabel || 'artículo'} onClose={() => setAdding(false)}
@@ -680,24 +703,22 @@ function GoodsRow({ item, edit, correcting, presentations, units, desired, onEdi
   );
 }
 
-// CancelConfirm dice cuánto quedará guardado de cada artículo antes de anular: anular revierte lo
-// que la compra sumó.
-function CancelConfirm({ data, pending, onYes, onNo }: {
-  data: ExpenseDetail; pending: boolean; onYes: () => void; onNo: () => void;
-}) {
+// CancelEffects dice qué pasa al anular antes de hacerlo: cuánto quedará de cada artículo (anular
+// revierte lo que la compra sumó) y qué pasa con cada pago.
+function CancelEffects({ data }: { data: ExpenseDetail }) {
   const goods = data.items.filter((i) => i.itemType !== null && num(i.applied) !== 0);
+  const fate = (p: ExpensePayment) =>
+    p.inCashCount ? 'ya no se descuenta de la caja abierta' : p.includeInCount ? 'ya no se descontará en el siguiente corte' : 'deja de contar';
   return (
-    <VStack align="stretch" gap={2} p={4} borderWidth="2px" borderColor="border.error" borderRadius="lg" data-testid="confirmar-anular">
-      <Text fontWeight="700">¿Anular esta compra?</Text>
-      {goods.length > 0 ? goods.map((i) => (
+    <VStack align="stretch" gap={1} mb={3} data-testid="confirmar-anular">
+      {goods.map((i) => (
         <Text key={i.id} fontSize="sm">
           {i.itemName ?? i.description}: quedarán {formatBaseQty(round2(num(i.onHand) - num(i.applied)), i.baseUnitCode ?? '')} guardados
         </Text>
-      )) : <Text fontSize="sm">No sumó nada al almacén.</Text>}
-      <HStack gap={3}>
-        <Button minH="44px" variant="outline" onClick={onNo}>No, dejarla</Button>
-        <Button minH="44px" colorPalette="red" loading={pending} onClick={onYes}>Sí, anular</Button>
-      </HStack>
+      ))}
+      {data.payments.map((p) => (
+        <Text key={p.id} fontSize="sm">{p.method} {money(p.amount, data.currency)}: {fate(p)}</Text>
+      ))}
     </VStack>
   );
 }

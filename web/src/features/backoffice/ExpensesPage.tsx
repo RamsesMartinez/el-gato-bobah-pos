@@ -19,20 +19,21 @@ import { SortHead } from '../../components/SortHead';
 import { ExpenseDialog } from './ExpenseDialog';
 import { DrawerOutField, IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
-import { activeRegisters, registerLabel, outsideAskOf, countsInDrawer, drawerExtraOf, withCountChoice, type CountChoice, type OutsideAsk } from './cajaDelGasto';
+import { CANCEL_SHORTCUTS, activeRegisters, registerLabel, outsideAskOf, countsInDrawer, drawerExtraOf, withCountChoice, type CountChoice, type OutsideAsk } from './cajaDelGasto';
 import { ExpenseDetailDialog } from './ExpenseDetailDialog';
 import { DeliveryForExpense } from './DeliverySheet';
 import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
 import { posApi } from '../../api/pos';
 import { money } from '../../utils/format';
+import { mensajeDeError } from '../../api/mensajes';
 import { Page } from '../../components/Page';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogCloseTrigger,
 } from '../../components/ui/dialog';
 
 const GROUPS: FinancialGroup[] = ['operacional', 'administrativo', 'otro'];
-const STATUS_LABEL: Record<ExpenseStatus, string> = { pendiente: 'Pendiente', pagada: 'Pagada', cancelada: 'Cancelada' };
+const STATUS_LABEL: Record<ExpenseStatus, string> = { pendiente: 'Pendiente', pagada: 'Pagada', cancelada: 'Anulada' };
 const STATUS_COLOR: Record<ExpenseStatus, string> = { pendiente: 'orange', pagada: 'green', cancelada: 'gray' };
 
 export function ExpensesPage() {
@@ -78,7 +79,9 @@ function GastosTab() {
   const [payTarget, setPayTarget] = useState<Expense | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [receiveId, setReceiveId] = useState<number | null>(null);
-  const canReceive = can('inventory.receive', useSessionStore((st) => st.user));
+  const user = useSessionStore((st) => st.user);
+  const canReceive = can('inventory.receive', user);
+  const canCancel = can('expenses.cancel', user);
   // El gasto que se está cancelando. El motivo se pide en una hoja de la app, no con el `prompt()`
   // del navegador (spec 030, caso 10).
   const [cancelando, setCancelando] = useState<Expense | null>(null);
@@ -91,7 +94,7 @@ function GastosTab() {
   const cancel = useMutation({
     mutationFn: (v: { id: number; reason: string }) => backofficeApi.cancelExpense(v.id, v.reason),
     onSuccess: () => invalidate(),
-    onError: (e) => toaster.create({ title: 'No se pudo cancelar', description: String(e), type: 'error' }),
+    onError: (e) => toaster.create({ title: 'No se pudo anular', description: mensajeDeError(e), type: 'error' }),
   });
 
   const setFilterReset = (f: ExpenseStatus | '' | 'por-llegar') => { setFilter(f); setPage(0); };
@@ -110,7 +113,7 @@ function GastosTab() {
       {/* Cabecera: filtros por estado + acción principal (la tabla es la protagonista) */}
       <HStack justify="space-between" flexWrap="wrap" gap={3}>
         <HStack gap={2} flexWrap="wrap">
-          {([['', 'Todos'], ['pendiente', 'Pendientes'], ['pagada', 'Pagadas'], ['cancelada', 'Canceladas'], ['por-llegar', 'Con pendientes de llegar']] as const).map(([v, label]) => (
+          {([['', 'Todos'], ['pendiente', 'Pendientes'], ['pagada', 'Pagadas'], ['cancelada', 'Anuladas'], ['por-llegar', 'Con pendientes de llegar']] as const).map(([v, label]) => (
             <Button key={v} size="sm" minH="44px" variant={filter === v ? 'solid' : 'outline'} colorPalette={filter === v ? undefined : 'gray'}
               onClick={() => setFilterReset(v)}>{label}</Button>
           ))}
@@ -165,9 +168,11 @@ function GastosTab() {
                       <Button size="xs" variant="ghost" onClick={(ev) => { ev.stopPropagation(); setDetailId(e.id); }}>Ver</Button>
                       {e.status === 'pendiente' && (
                         <>
-                          {/* 44 px y separados: «Cancelar» es destructivo y vive junto a «Pagar». */}
+                          {/* 44 px y separados: «Anular» es destructivo y vive junto a «Pagar». */}
                           <Box><Button size="xs" minH="44px" px={3} colorPalette="green" onClick={(ev) => { ev.stopPropagation(); setPayTarget(e); }}>Pagar</Button></Box>
-                          <Box pl={4}><Button size="xs" minH="44px" px={3} variant="outline" colorPalette="red" onClick={(ev) => { ev.stopPropagation(); setCancelando(e); }}>Cancelar</Button></Box>
+                          {canCancel && (
+                            <Box pl={4}><Button size="xs" minH="44px" px={3} variant="outline" colorPalette="red" onClick={(ev) => { ev.stopPropagation(); setCancelando(e); }}>Anular</Button></Box>
+                          )}
                         </>
                       )}
                     </HStack>
@@ -199,8 +204,8 @@ function GastosTab() {
       <ExpenseDialog open={newOpen} onClose={() => setNewOpen(false)}
         onSaved={() => { setNewOpen(false); invalidate(); }} />
       <ExpenseDetailDialog key={detailId ?? 'none'} id={detailId} onClose={() => setDetailId(null)} onChanged={invalidate} />
-      <ReasonSheet isOpen={cancelando !== null} title="Cancelar gasto" label="Motivo"
-        confirmLabel="Cancelar gasto" loading={cancel.isPending}
+      <ReasonSheet isOpen={cancelando !== null} title="¿Anular este gasto?" label="Motivo" placeholder="Motivo (obligatorio)"
+        required destructive confirmLabel="Sí, anular" loading={cancel.isPending} atajos={CANCEL_SHORTCUTS}
         onDone={(reason) => {
           const g = cancelando;
           setCancelando(null);

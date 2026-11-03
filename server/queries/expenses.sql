@@ -53,11 +53,13 @@ select * from expenses where id = $1;
 select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.financial_group,
        s.name as supplier, e.amount, e.currency, e.description, e.doc_kind, e.doc_folio,
        e.paid_at, ub.name as created_by_name, e.document_date, e.document_total,
-       e.supplier_id, e.category_id
+       e.supplier_id, e.category_id,
+       e.cancelled_at, uc.name as cancelled_by_name, e.cancel_reason
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
 left join users ub on ub.id = e.created_by
+left join users uc on uc.id = e.cancelled_by
 where e.id = $1;
 
 -- name: ListExpenses :many
@@ -106,10 +108,11 @@ where (sqlc.narg('status')::expense_status is null or e.status = sqlc.narg('stat
                      and pi.item_type is not null and pi.voided_at is null and not pi.excluded)));
 
 -- name: CancelExpense :execrows
+-- Pendiente o pagada (#216: un gasto capturado por error se anula aunque esté pagado). El servicio
+-- saca antes los pagos de un corte ABIERTO; uno que siga en un corte —uno cerrado— lo impide: el corte
+-- seguiría contando la salida de un gasto anulado y el arqueo dejaría de cuadrar (spec 053, A1).
 update expenses set status = 'cancelada', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
-where expenses.id = $1 and expenses.status = 'pendiente'
-  -- Con un pago ya dentro de un corte no se anula (spec 053, A1): el corte seguiría contando la salida
-  -- de un gasto anulado y el arqueo dejaría de cuadrar.
+where expenses.id = $1 and expenses.status in ('pendiente', 'pagada')
   and not exists (select 1 from expense_payments ep where ep.expense_id = expenses.id
                                                      and ep.register_session_id is not null);
 

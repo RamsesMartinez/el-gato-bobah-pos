@@ -104,7 +104,7 @@ func TestExpensesAndTipPayoutsAreAudited(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := back.CancelExpense(ctx, otherUser, "Capturado dos veces", admin); err != nil {
+	if err := back.CancelExpense(ctx, otherUser, "Capturado dos veces", admin, true); err != nil {
 		t.Fatalf("cancelar gasto: %v", err)
 	}
 

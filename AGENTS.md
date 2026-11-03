@@ -568,10 +568,13 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **El importe se mueve con `domain.ExpenseAmountAfterEdit`**: lo agregado ocupa primero lo que el
     importe tenía sin desglosar; borrar lo baja por su renglón. El estado se recalcula solo si cambió
     el importe y una `pagada` sin ningún pago no se degrada. Los pagos nunca se tocan.
-  - **Anular se niega con un pago ya dentro de un corte** (`CanCancelExpense`): una edición puede
-    volver pendiente un gasto pagado, y anularlo dejaría el corte contando la salida de un gasto
-    anulado. Un pago que todavía espera corte no lo impide (spec 050). Anular con devolución es la
-    entrega 2 del #167.
+  - **Anular un gasto capturado por error** (#216, permiso `expenses.cancel`, motivo obligatorio)
+    vale pendiente o pagado. Es borrado lógico: el gasto queda `cancelada` y sus pagos se quedan
+    como fila, sin contar en ningún arqueo (`domain.CancelPaymentPlan`): el de un corte **abierto**
+    sale de él con su salida de caja, y el que espera corte deja de esperarlo, en la misma
+    transacción. Los candados van caja → turno → gasto, como la casilla del arqueo. **Un pago en un
+    corte cerrado lo impide** (409 `EXPENSE_IN_CLOSED_COUNT`): eso ya es una devolución (#175), no se
+    reescribe un corte contado. La mercancía recibida se revierte con la regla de la 038.
 - **Lo que salió de la caja** (spec 050, 0102). Un pago en efectivo de un gasto con renglones
   excluidos guarda en `expense_payments.drawer_extra` lo que salió del cajón además de su importe.
   Tres cosas que no se ven:

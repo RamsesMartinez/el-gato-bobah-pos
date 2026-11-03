@@ -1176,7 +1176,9 @@ func (h *Handlers) CancelExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := userFrom(r.Context())
-	if err := h.backoffice.CancelExpense(r.Context(), id, body.Reason, u.ID); err != nil {
+	// Sacar un pago del arqueo es lo mismo que su casilla: el servicio lo niega sin cash.adjust_count.
+	canAdjust := slices.Contains(h.permissions(u.Role), domain.PermCashAdjustCount)
+	if err := h.backoffice.CancelExpense(r.Context(), id, body.Reason, u.ID, canAdjust); err != nil {
 		Error(w, err)
 		return
 	}
