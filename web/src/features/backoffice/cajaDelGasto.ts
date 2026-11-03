@@ -76,3 +76,6 @@ export function drawerExtraOf(amount: string, out: string | null, available: num
   const extra = o - a;
   return extra >= 0.005 ? { extra: extra.toFixed(2), bad: false } : { bad: false };
 }
+
+// Motivos frecuentes de anular un gasto (#216); la lista y el detalle ofrecen los mismos.
+export const CANCEL_SHORTCUTS = ['Se capturó por error', 'Se capturó dos veces'];

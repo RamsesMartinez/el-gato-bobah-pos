@@ -711,7 +711,7 @@ func TestCancellingAfterKeepLeavesTheCountedStock(t *testing.T) {
 	if got := onHandIngredient(t, k.st, k.tapas); !got.Equal(before) {
 		t.Fatalf("con «No mover» lo guardado cambió de %s a %s", before, got)
 	}
-	if err := k.svc.CancelExpense(k.ctx, id, "prueba", k.user); err != nil {
+	if err := k.svc.CancelExpense(k.ctx, id, "prueba", k.user, true); err != nil {
 		t.Fatal(err)
 	}
 	if got := onHandIngredient(t, k.st, k.tapas); !got.Equal(before) {

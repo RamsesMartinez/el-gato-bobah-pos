@@ -308,7 +308,7 @@ func TestCancellingAReceivedPurchaseReversesWithoutDeleting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := k.svc.CancelExpense(k.ctx, id, "no era de aquí", k.user); err != nil {
+	if err := k.svc.CancelExpense(k.ctx, id, "no era de aquí", k.user, true); err != nil {
 		t.Fatalf("anular una compra recibida: %v", err)
 	}
 	if got := k.onHand(t); !got.IsZero() {
@@ -375,7 +375,7 @@ func TestPurchasesAreIsolated(t *testing.T) {
 		if _, err := svc.SaveStockLines(ctx, id, []app.StockLineInput{line}, k.user); err == nil {
 			t.Fatal("corrigió una compra de otra empresa")
 		}
-		if err := svc.CancelExpense(ctx, id, "ajena", k.user); err == nil {
+		if err := svc.CancelExpense(ctx, id, "ajena", k.user, true); err == nil {
 			t.Fatal("anuló una compra de otra empresa")
 		}
 	})
@@ -728,7 +728,7 @@ func TestChangingTheIngredientOfAReceivedLineMovesWhatItAdded(t *testing.T) {
 	if got := onHandIngredient(t, k.st, harina); !got.Equal(dd("25000")) {
 		t.Errorf("la harina tiene %s g; quiere 25000", got)
 	}
-	if err := k.svc.CancelExpense(k.ctx, id, "", k.user); err != nil {
+	if err := k.svc.CancelExpense(k.ctx, id, "prueba", k.user, true); err != nil {
 		t.Fatal(err)
 	}
 	if a, h := k.onHand(t), onHandIngredient(t, k.st, harina); !a.IsZero() || !h.IsZero() {
@@ -755,7 +755,7 @@ func TestCancellingNeverWaitsForStockHeldElsewhere(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- k.svc.CancelExpense(k.ctx, id, "", k.user) }()
+	go func() { done <- k.svc.CancelExpense(k.ctx, id, "prueba", k.user, true) }()
 	select {
 	case err := <-done:
 		if !errors.Is(err, domain.ErrConflict) {

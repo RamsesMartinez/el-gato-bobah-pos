@@ -94,4 +94,16 @@ describe('ReasonSheet: atajos y descripción', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
     expect(onDone).toHaveBeenCalledWith('Se fue sin pagar');
   });
+
+  // #216: lo que pasa al confirmar puede ser una lista (cada pago, cada artículo), no una frase.
+  test('pinta el contenido que recibe arriba del motivo', async () => {
+    render(
+      <Provider>
+        <ReasonSheet isOpen title="Anular gasto" label="Motivo" confirmLabel="Sí, anular" onDone={vi.fn()}>
+          <p>Efectivo $120: ya no se descuenta de la caja abierta</p>
+        </ReasonSheet>
+      </Provider>,
+    );
+    expect(await screen.findByText('Efectivo $120: ya no se descuenta de la caja abierta')).toBeInTheDocument();
+  });
 });

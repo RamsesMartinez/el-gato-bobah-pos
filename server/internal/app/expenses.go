@@ -114,6 +114,10 @@ type ExpenseDetailView struct {
 	// SupplierID y CategoryID: lo que preselecciona la edición del encabezado (spec 053).
 	SupplierID *int64 `json:"supplierId"`
 	CategoryID int64  `json:"categoryId"`
+	// Quién anuló, cuándo y por qué (#216); los tres vacíos si no está anulado.
+	CancelledAt  *time.Time `json:"cancelledAt,omitempty"`
+	CancelledBy  *string    `json:"cancelledBy,omitempty"`
+	CancelReason *string    `json:"cancelReason,omitempty"`
 }
 
 // ---- Entradas ----
@@ -1083,23 +1087,97 @@ func (s *BackofficeService) learnSupplierItems(ctx context.Context, q *db.Querie
 
 // ---- Cancelación ----
 
-// CancelExpense anula una pendiente sin pagos (ver domain.CanCancelExpense).
-func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason string, userID int64) error {
+// CancelExpense anula un gasto capturado por error, pendiente o pagado (#216). Es borrado lógico: el
+// gasto queda `cancelada` con quién, cuándo y el motivo, y sus pagos se quedan como registro de lo que
+// se capturó, pero sin contar en ningún arqueo (ver domain.CancelPaymentPlan). No registra devolución:
+// el dinero nunca salió por ese concepto. Un pago dentro de un corte cerrado lo impide (eso es la
+// devolución del #175). Sacar un pago del arqueo mueve el esperado del cajón: sin canAdjustCount
+// (el permiso de la casilla del arqueo) se niega.
+func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason string, userID int64, canAdjustCount bool) error {
+	reason, err := domain.CancelReason(reason)
+	if err != nil {
+		return err
+	}
 	exp, err := s.getExpense(ctx, id)
 	if err != nil {
 		return err
 	}
+	seen, err := s.store.QC(ctx).ListExpensePayments(ctx, id)
+	if err != nil {
+		return err
+	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		// LA CAJA, EL TURNO Y DESPUÉS EL GASTO: el orden de la apertura, el cierre y la casilla del
+		// arqueo (spec 048). Con la caja en compartido no corre un barrido que meta un pago a un corte,
+		// y con el turno en compartido el corte no se cierra mientras se le quita una salida.
+		lockedRegs, openLocked, err := lockPaymentRegisters(ctx, q, seen)
+		if err != nil {
+			return err
+		}
 		locked, err := q.LockExpenseForEdit(ctx, id)
 		if err != nil {
 			return err
 		}
-		// Con el gasto tomado: un pago que entra a un corte mientras tanto no deja anularlo (spec 053, A1).
-		if !domain.CanCancelExpense(string(locked.Status), locked.CountedPaymentCount > 0) {
-			if locked.CountedPaymentCount > 0 && locked.Status == db.ExpenseStatusPendiente {
-				return fmt.Errorf("%w: un pago de este gasto ya está en un corte de caja; no se puede anular", domain.ErrConflict)
+		if locked.Status == db.ExpenseStatusCancelada {
+			return fmt.Errorf("%w: este gasto ya está anulado", domain.ErrConflict)
+		}
+		pays, err := q.ListExpensePayments(ctx, id)
+		if err != nil {
+			return err
+		}
+		type plannedPayment struct {
+			p      db.ListExpensePaymentsRow
+			action domain.CancelPaymentAction
+		}
+		plan := make([]plannedPayment, 0, len(pays))
+		for _, p := range pays {
+			state := domain.PaymentWithoutCount
+			if p.RegisterSessionID != nil {
+				state = domain.PaymentInOpenCount
+				if p.SessionClosed {
+					state = domain.PaymentInClosedCount
+				}
 			}
+			// Un turno abierto que no quedó tomado cuenta como caja sin tomar: se cerraría a media anulación.
+			regLocked := p.RegisterID != nil && slices.Contains(lockedRegs, *p.RegisterID) &&
+				(p.RegisterSessionID == nil || openLocked[*p.RegisterSessionID])
+			action, err := domain.CancelPaymentPlan(state, p.IncludeInCount, regLocked)
+			if err != nil {
+				return err
+			}
+			if action.MovesCount() && !canAdjustCount {
+				return fmt.Errorf("%w: %s", domain.ErrForbidden, domain.PermissionDeniedMessage(domain.PermCashAdjustCount))
+			}
+			plan = append(plan, plannedPayment{p, action})
+		}
+		if !domain.CanCancelExpense(string(locked.Status)) {
 			return domain.ErrConflict
+		}
+		before := make([]map[string]any, 0, len(plan))
+		for _, pp := range plan {
+			// drawerExtra y removedSalida: con ellos la bitácora reconstruye cuánto volvió al esperado
+			// del corte (la salida era importe + diferencia, spec 050).
+			removedSalida := pp.action == domain.CancelPaymentLeaveOpenCount && pp.p.AffectsCashDrawer
+			before = append(before, map[string]any{"paymentId": pp.p.ID, "amount": pp.p.Amount,
+				"drawerExtra": pp.p.DrawerExtra, "sessionId": pp.p.RegisterSessionID,
+				"includeInCount": pp.p.IncludeInCount, "removedSalida": removedSalida})
+			switch pp.action {
+			case domain.CancelPaymentLeaveOpenCount:
+				if removedSalida {
+					n, err := q.DeleteExpenseSalidaOfPayment(ctx, &pp.p.ID)
+					if err != nil {
+						return err
+					}
+					if n != 1 {
+						return domain.ErrPaymentNotLinked
+					}
+				}
+				fallthrough
+			case domain.CancelPaymentDropPending:
+				if err := q.SetPaymentCount(ctx, db.SetPaymentCountParams{ID: pp.p.ID, SessionID: nil, IncludeInCount: false}); err != nil {
+					return err
+				}
+			}
 		}
 		// Lo que la compra sumó al almacén se revierte con movimientos nuevos, en la misma tx:
 		// anular el gasto y dejar la mercancía sumada haría que el almacén contara algo que no
@@ -1113,7 +1191,7 @@ func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason 
 			return err
 		}
 		n, err := q.CancelExpense(ctx, db.CancelExpenseParams{
-			ID: id, CancelledBy: &userID, CancelReason: strPtr(reason),
+			ID: id, CancelledBy: &userID, CancelReason: &reason,
 		})
 		if err != nil {
 			return err
@@ -1121,9 +1199,44 @@ func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason 
 		if n == 0 {
 			return domain.ErrConflict
 		}
-		return auditEntity(ctx, q, "expense.cancelled", "expense", id, nil, &userID,
-			map[string]any{"amount": exp.Amount, "status": exp.Status}, map[string]any{"status": "cancelada", "reason": reason})
+		return auditEntity(ctx, q, domain.AuditExpenseCancelled, "expense", id, nil, &userID,
+			map[string]any{"amount": exp.Amount, "status": locked.Status, "payments": before},
+			map[string]any{"status": domain.ExpenseCancelada, "reason": reason})
 	})
+}
+
+// lockPaymentRegisters toma en compartido la caja de cada pago que toca un arqueo (en un corte o
+// esperándolo) y su turno abierto, en orden de caja para no cruzar candados entre dos anulaciones.
+// Devuelve las cajas y los turnos abiertos que quedaron tomados.
+func lockPaymentRegisters(ctx context.Context, q *db.Queries, pays []db.ListExpensePaymentsRow) ([]int64, map[int64]bool, error) {
+	var registers []int64
+	for _, p := range pays {
+		if p.RegisterID != nil && (p.RegisterSessionID != nil || p.IncludeInCount) && !slices.Contains(registers, *p.RegisterID) {
+			registers = append(registers, *p.RegisterID)
+		}
+	}
+	slices.Sort(registers)
+	open := map[int64]bool{}
+	for _, reg := range registers {
+		if _, err := q.GetCashRegisterForShare(ctx, reg); err != nil {
+			return nil, nil, err
+		}
+		sess, err := q.GetOpenSessionByRegister(ctx, reg)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		if _, err := q.LockOpenSessionForShare(ctx, sess.ID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				continue // se cerró mientras esperaba: sus pagos se deciden como corte cerrado
+			}
+			return nil, nil, err
+		}
+		open[sess.ID] = true
+	}
+	return registers, open, nil
 }
 
 // ---- Consultas ----
@@ -1199,6 +1312,7 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 	out.Paid = paid
 	out.DocumentTotal = exp.DocumentTotal
 	out.SupplierID, out.CategoryID = exp.SupplierID, exp.CategoryID
+	out.CancelledAt, out.CancelledBy, out.CancelReason = tsPtr(exp.CancelledAt), exp.CancelledByName, exp.CancelReason
 	history, err := s.store.QC(ctx).ExpenseDeliveryHistory(ctx, &id)
 	if err != nil {
 		return out, err

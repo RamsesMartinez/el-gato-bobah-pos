@@ -248,7 +248,7 @@ func TestAnularUnPendienteConDiferencia(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := g.back.CancelExpense(ctx, id, "prueba", g.admin); err != nil {
+	if err := g.back.CancelExpense(ctx, id, "prueba", g.admin, true); err != nil {
 		t.Fatalf("anular: %v", err)
 	}
 	desde := time.Now().Add(-3 * time.Hour)
@@ -368,12 +368,13 @@ func TestLaSalidaDeUnPagoLaFijaLaBase(t *testing.T) {
 }
 
 // Spec 053, revisión A1: una edición puede dejar pendiente un gasto pagado cuya salida ya entró a un
-// corte. Anularlo dejaría el corte contando la salida de un gasto anulado.
-func TestAnExpenseWithAPaymentInACountCannotBeCancelled(t *testing.T) {
+// corte. Anularlo sin más dejaría el corte contando la salida de un gasto anulado. Desde el #216, con el
+// corte todavía abierto, la anulación saca el pago y su salida del corte en la misma transacción.
+func TestCancellingAnEditedExpenseTakesItsPaymentOutOfTheOpenCount(t *testing.T) {
 	t.Parallel()
 	g := nuevoArqueoPorHora(t)
 	ctx := context.Background()
-	g.turno(t, g.primar, time.Now().Add(-time.Hour))
+	sess := g.turno(t, g.primar, time.Now().Add(-time.Hour))
 	id, err := g.back.CreateExpense(ctx, g.gasto(g.primar, hoyDelNegocio(), incluir(true), false, "100"))
 	if err != nil {
 		t.Fatal(err)
@@ -391,7 +392,10 @@ func TestAnExpenseWithAPaymentInACountCannotBeCancelled(t *testing.T) {
 	if _, err := g.back.EditExpense(ctx, id, in, g.admin, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.back.CancelExpense(ctx, id, "prueba", g.admin); !errors.Is(err, domain.ErrConflict) {
-		t.Fatalf("anular con un pago en un corte = %v, quiere conflicto", err)
+	if err := g.back.CancelExpense(ctx, id, "prueba", g.admin, true); err != nil {
+		t.Fatalf("anular con el pago en un corte abierto = %v", err)
+	}
+	if p := g.pago(t, id); p.session != nil || g.neto(t, sess) != "0.00" {
+		t.Fatalf("el corte abierto sigue contando la salida del gasto anulado: corte %v, neto %s", p.session, g.neto(t, sess))
 	}
 }

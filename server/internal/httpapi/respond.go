@@ -167,6 +167,10 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "EXPENSE_BEFORE_LAST_CLOSE"
 	case errors.Is(err, domain.ErrPaymentNotLinked):
 		status, code = http.StatusConflict, "PAYMENT_NOT_LINKED"
+	case errors.Is(err, domain.ErrExpenseInClosedCount):
+		// #216: no es un conflicto de concurrencia que se resuelva reintentando; el mensaje dice que
+		// lo que procede es una devolución.
+		status, code = http.StatusConflict, "EXPENSE_IN_CLOSED_COUNT"
 	case errors.Is(err, domain.ErrPaymentInClosedCount):
 		status, code = http.StatusConflict, "PAYMENT_IN_CLOSED_COUNT"
 	case errors.Is(err, domain.ErrRegisterNotCounted):

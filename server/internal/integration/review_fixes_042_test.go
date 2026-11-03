@@ -234,7 +234,7 @@ func TestCostHistoryCountsEachPurchaseOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := k.svc.CancelExpense(ctx, exp3, "Se pidió dos veces", k.user); err != nil {
+	if err := k.svc.CancelExpense(ctx, exp3, "Se pidió dos veces", k.user, true); err != nil {
 		t.Fatal(err)
 	}
 	page, err = k.svc.ArticleCostHistory(ctx, k.azucar, nil)

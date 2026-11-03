@@ -128,14 +128,17 @@ describe('Corregir lo que llegó (spec 038, maqueta B)', () => {
     expect(screen.getByTestId('resumen-correccion')).toHaveTextContent('Sin cambios todavía');
   });
 
-  test('anular confirma diciendo cuánto quedará, y después se ve anulada', async () => {
+  test('anular confirma diciendo cuánto quedará, pide el motivo, y después se ve anulada', async () => {
+    sesion(['inventory.receive', 'expenses.cancel']);
     montar();
-    click(await screen.findByRole('button', { name: 'Anular compra' }).then((b) => b.textContent!));
-    expect(screen.getByTestId('confirmar-anular')).toHaveTextContent('Leche entera: quedarán 4 L guardados');
+    click(await screen.findByRole('button', { name: 'Anular gasto' }).then((b) => b.textContent!));
+    expect(await screen.findByTestId('confirmar-anular')).toHaveTextContent('Leche entera: quedarán 4 L guardados');
+    expect(screen.getByRole('button', { name: 'Sí, anular' })).toBeDisabled();
     expect(back.cancelExpense).not.toHaveBeenCalled();
     back.expenseDetail.mockResolvedValue(detail([leche({ applied: '0', onHand: '4000' })], { status: 'cancelada' }));
+    fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: '  no era de este local ' } });
     click('Sí, anular');
-    await waitFor(() => expect(back.cancelExpense).toHaveBeenCalledWith(9, ''));
+    await waitFor(() => expect(back.cancelExpense).toHaveBeenCalledWith(9, 'no era de este local'));
     expect(await screen.findByText('Anulada')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Corregir lo que llegó' })).toBeNull();
   });
@@ -441,5 +444,65 @@ describe('entre peso y líquido (spec 058)', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'Menos' }));
     // 3.3 kg ÷ 1.10 = 3,000 ml; hoy 5 L, la compra había sumado 3,909.0909 → quedarán 4,090.91 ml.
     expect(within(row).getByTestId('tendras')).toHaveTextContent('Tendrás 4.09 L (hoy 5 L)');
+  });
+});
+
+// #216: un gasto capturado por error se anula aunque esté pagado. Caso real: una propina registrada
+// como gasto, que seguía pagada y contando en los reportes.
+describe('anular un gasto capturado por error (#216)', () => {
+  const pago = (over: Partial<ExpenseDetail['payments'][number]> = {}): ExpenseDetail['payments'][number] => ({
+    id: 70, methodId: 1, method: 'Efectivo', amount: '120.00', paidOn: '2026-11-02', inCashCount: true, reference: null,
+    affectsCashDrawer: true, includeInCount: true, sessionClosed: false, ...over,
+  });
+  const propina = (over: Partial<ExpenseDetail> = {}) =>
+    detail([], { status: 'pagada', amount: '120.00', paid: '120.00', receivedAt: null, payments: [pago()], ...over });
+
+  test('pagado con su pago en un corte abierto: dice que sale del corte y anula con el motivo', async () => {
+    sesion(['expenses.cancel', 'cash.adjust_count']);
+    back.expenseDetail.mockResolvedValue(propina());
+    montar();
+    click(await screen.findByRole('button', { name: 'Anular gasto' }).then((b) => b.textContent!));
+    expect(await screen.findByTestId('confirmar-anular')).toHaveTextContent('Efectivo $120: ya no se descuenta de la caja abierta');
+    click('Se capturó por error');
+    click('Sí, anular');
+    await waitFor(() => expect(back.cancelExpense).toHaveBeenCalledWith(9, 'Se capturó por error'));
+  });
+
+  test('con un pago en un corte cerrado no ofrece anular y dice por qué', async () => {
+    sesion(['expenses.cancel']);
+    back.expenseDetail.mockResolvedValue(propina({ payments: [pago({ sessionClosed: true })] }));
+    montar();
+    expect(await screen.findByTestId('no-se-anula')).toHaveTextContent('No se puede anular: un pago ya entró a un corte de caja cerrado');
+    expect(screen.queryByRole('button', { name: 'Anular gasto' })).toBeNull();
+  });
+
+  test('sin el permiso del arqueo no se ofrece anular un pago que está en un corte', async () => {
+    sesion(['expenses.cancel']);
+    back.expenseDetail.mockResolvedValue(propina());
+    montar();
+    expect(await screen.findByText('Pagos')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Anular gasto' })).toBeNull();
+  });
+
+  test('sin el permiso no se ofrece anular', async () => {
+    sesion(['inventory.receive']);
+    back.expenseDetail.mockResolvedValue(propina());
+    montar();
+    expect(await screen.findByText('Pagos')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Anular gasto' })).toBeNull();
+  });
+
+  test('un gasto anulado dice quién, cuándo y por qué', async () => {
+    sesion(['expenses.cancel']);
+    back.expenseDetail.mockResolvedValue(propina({ status: 'cancelada', cancelledBy: 'Ana', cancelledAt: '2026-11-02T22:10:00Z',
+      cancelReason: 'era una propina' }));
+    montar();
+    const nota = await screen.findByTestId('anulado-por');
+    expect(nota).toHaveTextContent('Anulado por Ana');
+    expect(nota).toHaveTextContent('Motivo: era una propina');
+    // Prueba con usuario nuevo: «Pagado» en verde hacía creer que el dinero seguía contado.
+    expect(screen.queryByText('Pagado')).toBeNull();
+    expect(screen.getByText('Pagos anulados')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Anular gasto' })).toBeNull();
   });
 });
