@@ -667,6 +667,21 @@ describe('pesar con empaque (spec 058)', () => {
     expect(uso.medirAccion).toHaveBeenCalledWith('inventario', 'pesar-con-empaque');
   });
 
+  // #204: reabrir lo contado pesando mostraba solo el total en lo suelto; el desglose se perdía.
+  test('al volver a abrir lo contado pesando, vuelven los cerrados, la báscula y los empaques', async () => {
+    back.currentCount.mockResolvedValue(jarabe({
+      countedQty: '2804.5455', weighed: { closedQty: '2250', grossG: '850', containers: 2, tareG: '120' },
+    }));
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[0]).getByRole('button', { name: 'Cambiar' }));
+    expect(await screen.findByLabelText('Botella de Jarabe de vainilla')).toHaveValue('3');
+    expect(screen.getByLabelText('Peso en la báscula de Jarabe de vainilla')).toHaveValue('850');
+    expect(screen.getByLabelText('Empaques pesados de Jarabe de vainilla')).toHaveValue('2');
+    expect(screen.queryByLabelText('Suelto de Jarabe de vainilla')).toBeNull();
+    expect(screen.getByTestId('cuenta-pesada')).toHaveTextContent('850 g − 2 × 120 g = 610 g ÷ 1.10 = 554.5 ml');
+    expect(screen.getByTestId('total-contado')).toHaveTextContent('2.8 L');
+  });
+
   test('el peso en kg se manda con su unidad', async () => {
     await abrir();
     pesar();

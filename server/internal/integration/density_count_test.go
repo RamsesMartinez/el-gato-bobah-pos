@@ -104,6 +104,22 @@ func (k *grossKit) gross(weight string, unit int16, containers int) *app.GrossCa
 		SeenTareG: decp("120"), SeenDensity: decp("1.1")}
 }
 
+// weighedOf es el desglose de la pesada que el conteo abierto devuelve para un artículo (#204).
+func weighedOf(t *testing.T, k *grossKit) *app.CountWeighed {
+	t.Helper()
+	v, err := k.svc.CurrentCount(k.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range v.Items {
+		if it.IngredientID == k.salsa {
+			return it.Weighed
+		}
+	}
+	t.Fatal("el artículo no está en el conteo")
+	return nil
+}
+
 func TestCountingByWeighingWithThePresentation(t *testing.T) {
 	t.Parallel()
 	k := newGrossKit(t)
@@ -147,6 +163,28 @@ func TestCountingByWeighingWithThePresentation(t *testing.T) {
 		}
 	})
 
+	t.Run("al volver a abrir, el conteo trae cómo se pesó (#204)", func(t *testing.T) {
+		w := weighedOf(t, k)
+		if w == nil {
+			t.Fatal("lo contado pesando vuelve sin desglose: la pantalla solo puede mostrar el total")
+		}
+		if !w.GrossG.Equal(dd("850")) || w.Containers != 2 || !w.TareG.Equal(dd("120")) || !w.ClosedQty.Equal(dd("3000")) {
+			t.Fatalf("desglose %+v; quería 850 g, 2 empaques de 120 g y 3,000 ml cerrados", *w)
+		}
+	})
+
+	t.Run("si después cambia lo que pesa vacío, el desglose sigue siendo el de la captura", func(t *testing.T) {
+		if _, err := k.st.Pool.Exec(context.Background(), `update ingredient_presentations set tare_g = 125 where id = $1`, k.bottle); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			_, _ = k.st.Pool.Exec(context.Background(), `update ingredient_presentations set tare_g = 120 where id = $1`, k.bottle)
+		})
+		if w := weighedOf(t, k); w == nil || !w.TareG.Equal(dd("120")) || !w.ClosedQty.Equal(dd("3000")) {
+			t.Fatalf("desglose %+v; quería el de la captura (120 g vacío, 3,000 ml cerrados)", w)
+		}
+	})
+
 	t.Run("en kg da lo mismo", func(t *testing.T) {
 		got, err := k.svc.CaptureCountChecked(k.ctx, c.ID, k.salsa, app.CountCapture{Gross: k.gross("0.85", k.kg, 2)}, k.user)
 		if err != nil || !got.Equal(dd("554.5455")) {
@@ -165,6 +203,9 @@ func TestCountingByWeighingWithThePresentation(t *testing.T) {
 		}
 		if gross != nil {
 			t.Fatalf("quedó el bruto %s de una captura anterior", *gross)
+		}
+		if w := weighedOf(t, k); w != nil {
+			t.Fatalf("recapturado sin pesar, el conteo sigue trayendo una pesada: %+v", *w)
 		}
 	})
 

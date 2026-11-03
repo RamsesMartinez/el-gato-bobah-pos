@@ -45,6 +45,17 @@ type CountItem struct {
 	// pantalla usa para mostrar la cuenta; el servidor la vuelve a exigir al guardar.
 	GrossWeighable bool             `json:"grossWeighable"`
 	DensityGPerMl  *decimal.Decimal `json:"densityGPerMl"`
+	// Weighed es cómo se capturó lo contado pesando con empaque (#204); nil si no se pesó.
+	Weighed *CountWeighed `json:"weighed"`
+}
+
+// CountWeighed es el desglose de lo contado pesando: lo cerrado (en la unidad base), lo que marcó la
+// báscula (en g), cuántos empaques se pusieron y lo que pesaba vacío cada uno al capturar.
+type CountWeighed struct {
+	ClosedQty  decimal.Decimal `json:"closedQty"`
+	GrossG     decimal.Decimal `json:"grossG"`
+	Containers int16           `json:"containers"`
+	TareG      decimal.Decimal `json:"tareG"`
 }
 
 // CountView es el conteo abierto con lo que hay que contar.
@@ -139,9 +150,24 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 		}
 		v.Items[i] = CountItem{IngredientID: r.ID, Name: r.Name, Place: r.CountPlace, PlaceID: r.CountPlaceID, BaseUnitCode: r.BaseUnitCode,
 			Presentations: ps, CountedQty: r.CountedQty, Weighable: weighable[r.ID], DensityGPerMl: r.DensityGPerMl,
-			GrossWeighable: grossWeighable(r.BaseUnitKind, r.DensityGPerMl, ps)}
+			GrossWeighable: grossWeighable(r.BaseUnitKind, r.DensityGPerMl, ps), Weighed: weighedOf(r)}
 	}
 	return v, nil
+}
+
+// weighedOf arma el desglose de un renglón contado pesando, con los números que se usaron al capturar.
+func weighedOf(r db.CountItemsRow) *CountWeighed {
+	if r.CountedQty == nil || r.GrossG == nil || r.GrossContainers == nil || r.TareGUsed == nil {
+		return nil
+	}
+	closed, ok := domain.ClosedFromWeighed(*r.CountedQty, domain.GrossInput{
+		GrossG: *r.GrossG, TareG: *r.TareGUsed, Containers: int(*r.GrossContainers),
+		BaseKind: string(r.BaseUnitKind), Density: r.DensityUsed,
+	})
+	if !ok {
+		return nil
+	}
+	return &CountWeighed{ClosedQty: closed, GrossG: *r.GrossG, Containers: *r.GrossContainers, TareG: *r.TareGUsed}
 }
 
 // grossWeighable: se puede contar pesando con empaque si alguno dice cuánto pesa vacío, y si el

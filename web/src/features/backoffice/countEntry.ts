@@ -116,3 +116,31 @@ export function grossNet(in_: GrossEntry): GrossResult | null {
 export function withGross(closed: number | null, net: number): number {
   return round4((closed ?? 0) + net);
 }
+
+// WeighedCapture es cómo se capturó lo contado pesando con empaque (#204), como lo guarda el servidor.
+export interface WeighedCapture { closedQty: string; grossG: string; containers: number; tareG: string }
+type PackForRestore = { id?: number; qtyInBase: string; tareG?: string | null };
+
+// restoreWeighed vuelve a llenar las casillas de una pesada ya guardada: lo cerrado en el empaque más
+// grande en que cabe entero, y la báscula en g. El servidor no guarda cómo se repartió lo cerrado entre
+// empaques ni cuál se pesó; el pesado se reconoce por lo que pesaba vacío. null si no hay forma de
+// reabrirla sin inventar: entonces la captura vuelve con el total en lo suelto, como antes.
+export function restoreWeighed(w: WeighedCapture | null | undefined, packs: PackForRestore[]) {
+  if (!w) return null;
+  const pack = packs.find((p) => p.id !== undefined && !!p.tareG && Number(p.tareG) === Number(w.tareG));
+  if (!pack) return null;
+  const counts = packs.map(() => '');
+  const closed = Number(w.closedQty);
+  if (closed > 0) {
+    const bySize = packs.map((_, i) => i).filter((i) => Number(packs[i].qtyInBase) > 0)
+      .sort((a, b) => Number(packs[b].qtyInBase) - Number(packs[a].qtyInBase));
+    // Lo cerrado llega a 4 decimales: «entero» es a menos de una milésima de la unidad base.
+    const fits = bySize.find((i) => {
+      const n = Math.round(closed / Number(packs[i].qtyInBase));
+      return n >= 1 && Math.abs(closed - n * Number(packs[i].qtyInBase)) < 0.001;
+    });
+    if (fits === undefined) return null;
+    counts[fits] = String(Math.round(closed / Number(packs[fits].qtyInBase)));
+  }
+  return { counts, grossWeight: String(Number(w.grossG)), containers: String(w.containers), packId: pack.id! };
+}

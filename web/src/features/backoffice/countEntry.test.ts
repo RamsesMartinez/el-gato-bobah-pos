@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { diffWords, entryTotal, grossNet, isBigDiff, looseUnitOf, looseUnitsOf, packsTotal, withGross } from './countEntry';
+import { diffWords, entryTotal, grossNet, isBigDiff, looseUnitOf, looseUnitsOf, packsTotal, restoreWeighed, withGross } from './countEntry';
 
 describe('entryTotal', () => {
   test('empaques más suelto, en la unidad base', () => {
@@ -98,5 +98,30 @@ describe('withGross', () => {
   it('suma lo cerrado y lo pesado; sin cerrado cuenta como cero', () => {
     expect(withGross(3000, 554.5455)).toBe(3554.5455);
     expect(withGross(null, 610)).toBe(610);
+  });
+});
+
+// #204: al volver a abrir lo contado pesando, las casillas vuelven como se llenaron.
+describe('restoreWeighed', () => {
+  const packs = [{ id: 7, qtyInBase: '750', tareG: '120' }, { id: 9, qtyInBase: '12000' }];
+  const w = { closedQty: '2250', grossG: '850', containers: 2, tareG: '120' };
+  test('lo cerrado vuelve al empaque en que cabe entero, con la báscula y los empaques pesados', () => {
+    expect(restoreWeighed(w, packs)).toEqual({ counts: ['3', ''], grossWeight: '850', containers: '2', packId: 7 });
+  });
+  test('sin cerrados, las casillas de empaques quedan vacías (no en cero)', () => {
+    expect(restoreWeighed({ ...w, closedQty: '0' }, packs)?.counts).toEqual(['', '']);
+  });
+  test('lo cerrado va al empaque más grande en que cabe entero', () => {
+    expect(restoreWeighed({ ...w, closedQty: '24000' }, packs)?.counts).toEqual(['', '2']);
+  });
+  test('si lo cerrado no cabe entero en ningún empaque, no se inventa un reparto', () => {
+    expect(restoreWeighed({ ...w, closedQty: '1000' }, packs)).toBeNull();
+  });
+  test('si ningún empaque pesa vacío lo mismo que al capturar, no se reabre la pesada', () => {
+    expect(restoreWeighed({ ...w, tareG: '125' }, packs)).toBeNull();
+  });
+  test('sin pesada no hay nada que reabrir', () => {
+    expect(restoreWeighed(null, packs)).toBeNull();
+    expect(restoreWeighed(undefined, packs)).toBeNull();
   });
 });

@@ -171,3 +171,18 @@ func UnitChangeFactor(fromKind, toKind string, factor decimal.Decimal, density *
 	}
 	return derived, nil
 }
+
+// ClosedFromWeighed es lo cerrado de una pesada ya guardada: lo contado menos lo pesado, con la tara y
+// la densidad que se usaron al capturar (#204). ok es falso si esa cuenta ya no sale o deja cerrados
+// negativos: en ese caso la pantalla muestra solo el total, en vez de un desglose inventado.
+func ClosedFromWeighed(counted decimal.Decimal, in GrossInput) (decimal.Decimal, bool) {
+	net, err := NetFromGross(in)
+	if err != nil {
+		return decimal.Zero, false
+	}
+	closed := Round4(counted.Sub(net))
+	if closed.IsNegative() {
+		return decimal.Zero, false
+	}
+	return closed, true
+}

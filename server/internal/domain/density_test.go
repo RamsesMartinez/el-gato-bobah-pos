@@ -186,3 +186,28 @@ func TestUnitChangeFactor(t *testing.T) {
 }
 
 func sptr(s string) *string { return &s }
+
+// #204: al volver a abrir lo contado pesando, lo cerrado sale de lo contado menos lo pesado con los
+// números que se usaron al capturar (no los de hoy). Si no cuadra, no se inventa un desglose.
+func TestClosedFromWeighed(t *testing.T) {
+	tests := []struct {
+		name    string
+		counted string
+		in      GrossInput
+		want    string
+		ok      bool
+	}{
+		{name: "3 cerradas más lo pesado en ml", counted: "3554.5455", in: GrossInput{GrossG: dec("850"), TareG: dec("120"), Containers: 2, BaseKind: "volumen", Density: decPtr("1.1")}, want: "3000", ok: true},
+		{name: "solo lo pesado no deja cerrados", counted: "850", in: GrossInput{GrossG: dec("1000"), TareG: dec("50"), Containers: 3, BaseKind: "masa"}, want: "0", ok: true},
+		{name: "lo contado es menos que lo pesado: no cuadra", counted: "100", in: GrossInput{GrossG: dec("1000"), TareG: dec("50"), Containers: 3, BaseKind: "masa"}},
+		{name: "una pesada que ya no da cuenta", counted: "850", in: GrossInput{GrossG: dec("100"), TareG: dec("50"), Containers: 3, BaseKind: "masa"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := ClosedFromWeighed(dec(tt.counted), tt.in)
+			if ok != tt.ok || (ok && !got.Equal(dec(tt.want))) {
+				t.Fatalf("= %s, %v; quería %s, %v", got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}

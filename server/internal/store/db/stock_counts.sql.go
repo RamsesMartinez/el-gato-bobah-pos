@@ -28,7 +28,7 @@ func (q *Queries) CountChangedAfterPreview(ctx context.Context, countID int64) (
 
 const countItems = `-- name: CountItems :many
 select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at,
-       u.kind as base_unit_kind, i.density_g_per_ml
+       u.kind as base_unit_kind, i.density_g_per_ml, l.gross_g, l.gross_containers, l.tare_g_used, l.density_used
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join count_places cp on cp.id = i.count_place_id
@@ -38,19 +38,24 @@ select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_un
 `
 
 type CountItemsRow struct {
-	ID            int64              `json:"id"`
-	Name          string             `json:"name"`
-	CountPlace    *string            `json:"count_place"`
-	CountPlaceID  *int64             `json:"count_place_id"`
-	BaseUnitCode  string             `json:"base_unit_code"`
-	CountedQty    *decimal.Decimal   `json:"counted_qty"`
-	CapturedAt    pgtype.Timestamptz `json:"captured_at"`
-	BaseUnitKind  UnitKind           `json:"base_unit_kind"`
-	DensityGPerMl *decimal.Decimal   `json:"density_g_per_ml"`
+	ID              int64              `json:"id"`
+	Name            string             `json:"name"`
+	CountPlace      *string            `json:"count_place"`
+	CountPlaceID    *int64             `json:"count_place_id"`
+	BaseUnitCode    string             `json:"base_unit_code"`
+	CountedQty      *decimal.Decimal   `json:"counted_qty"`
+	CapturedAt      pgtype.Timestamptz `json:"captured_at"`
+	BaseUnitKind    UnitKind           `json:"base_unit_kind"`
+	DensityGPerMl   *decimal.Decimal   `json:"density_g_per_ml"`
+	GrossG          *decimal.Decimal   `json:"gross_g"`
+	GrossContainers *int16             `json:"gross_containers"`
+	TareGUsed       *decimal.Decimal   `json:"tare_g_used"`
+	DensityUsed     *decimal.Decimal   `json:"density_used"`
 }
 
 // Lo que se cuenta: los insumos activos que llevan existencia, por lugar (los sin lugar al final)
 // y por nombre. Lo que el sistema tiene NO viaja: el conteo es a ciegas.
+// Lo pesado con empaque (spec 058) viaja para que la captura se reabra con su desglose (#204).
 func (q *Queries) CountItems(ctx context.Context, countID int64) ([]CountItemsRow, error) {
 	rows, err := q.db.Query(ctx, countItems, countID)
 	if err != nil {
@@ -70,6 +75,10 @@ func (q *Queries) CountItems(ctx context.Context, countID int64) ([]CountItemsRo
 			&i.CapturedAt,
 			&i.BaseUnitKind,
 			&i.DensityGPerMl,
+			&i.GrossG,
+			&i.GrossContainers,
+			&i.TareGUsed,
+			&i.DensityUsed,
 		); err != nil {
 			return nil, err
 		}

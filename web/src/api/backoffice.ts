@@ -806,6 +806,8 @@ export interface CountItem {
   // si se guarda en ml). La densidad es la que se usa para mostrar la cuenta.
   grossWeighable?: boolean;
   densityGPerMl?: string | null;
+  // #204: cómo se capturó lo contado pesando con empaque; falta o es null si no se pesó.
+  weighed?: { closedQty: string; grossG: string; containers: number; tareG: string } | null;
 }
 // Lo que se manda al capturar. confirmable pide el aviso de una cifra fuera de lo razonable.
 export interface CountCaptureBody {

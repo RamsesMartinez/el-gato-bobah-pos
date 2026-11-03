@@ -16,8 +16,9 @@ select id, branch_id, status from stock_counts where id = $1 for update;
 -- name: CountItems :many
 -- Lo que se cuenta: los insumos activos que llevan existencia, por lugar (los sin lugar al final)
 -- y por nombre. Lo que el sistema tiene NO viaja: el conteo es a ciegas.
+-- Lo pesado con empaque (spec 058) viaja para que la captura se reabra con su desglose (#204).
 select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at,
-       u.kind as base_unit_kind, i.density_g_per_ml
+       u.kind as base_unit_kind, i.density_g_per_ml, l.gross_g, l.gross_containers, l.tare_g_used, l.density_used
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join count_places cp on cp.id = i.count_place_id
