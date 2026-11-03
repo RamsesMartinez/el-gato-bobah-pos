@@ -713,6 +713,11 @@ func TestArchivingHTTPPermissions(t *testing.T) {
 	if w := do(t, r, http.MethodPost, path, admin, []byte(`{}`), "application/json"); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "ARCHIVE_HAS_STOCK") {
 		t.Fatalf("archivar con existencia sin confirmar = %d %s; quiere 409 ARCHIVE_HAS_STOCK", w.Code, w.Body.String())
 	}
+	for _, bad := range []string{`{"confirmOnHand":"true"}`, `{nope`} {
+		if w := do(t, r, http.MethodPost, path, admin, []byte(bad), "application/json"); w.Code != http.StatusBadRequest {
+			t.Fatalf("archivar con cuerpo %s = %d; quiere 400, no tomarlo como «no confirmó»", bad, w.Code)
+		}
+	}
 	if w := do(t, r, http.MethodPost, path, admin, []byte(`{"confirmOnHand":true}`), "application/json"); w.Code != http.StatusNoContent {
 		t.Fatalf("archivar confirmando = %d %s", w.Code, w.Body.String())
 	}

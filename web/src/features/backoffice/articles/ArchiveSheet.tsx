@@ -64,7 +64,7 @@ export function ArchiveSheet({ article, onClose, onDone }: Props) {
                   <Text color="fg.muted">Archivado deja de ofrecerse en gastos, recetas y conteo. Su historia se conserva.</Text>
                   {onHand.length > 0 && (
                     <Stack gap={1} p={3} borderRadius="lg" bg="orange.subtle" data-testid="archivar-con-existencia">
-                      <Text fontWeight="700">Todavía tiene existencia:</Text>
+                      <Text fontWeight="700">Tiene existencia registrada:</Text>
                       {onHand.map((b) => (
                         <HStack key={b.branch} justify="space-between">
                           <Text>{b.branch}</Text><Text fontWeight="700">{formatBaseQty(b.qty, article.baseUnitCode)}</Text>
