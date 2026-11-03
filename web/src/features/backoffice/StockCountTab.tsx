@@ -12,7 +12,7 @@ import { backofficeApi, type CountCaptureBody, type CountClose, type CountItem, 
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { matchesWords } from '../../utils/format';
 import { formatBaseQty } from '../../shared/units';
-import { countedWords, diffWords, grossNet, isBigDiff, looseUnitsOf, packsTotal, restoreWeighed, withGross } from './countEntry';
+import { countedWords, diffWords, grossNet, isBigDiff, looseUnitsOf, packsTotal, restoreWeighed, withGross, closedPacksOf } from './countEntry';
 import { InfoButton } from '../../components/InfoButton';
 import { Picker } from '../../components/Picker';
 import { parseNumero } from '../../domain/numeros';
@@ -324,7 +324,7 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
       return wu ? {
         countedQty: String(fromPacks ?? 0), confirmable: true,
         gross: { weight: grossWeight.trim(), weightUnitId: wu, presentationId: grossPack.id!, containers: Number(containers),
-          seenTareG: grossPack.tareG!, seenDensity: item.densityGPerMl ?? null },
+          seenTareG: grossPack.tareG!, seenDensity: item.densityGPerMl ?? null, closedPacks: closedPacksOf(counts, packs) },
       } : null;
     }
     if (!weighing && unit.weightCode && restNum.estado === 'valido') {
@@ -505,6 +505,11 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
       if (b?.gross) medirAccion('inventario', 'pesar-con-empaque');
       // Lo contado que se muestra es lo que guardó el servidor: con una pesada, su cuenta manda.
       const qty = b === null ? null : r?.countedQty ?? b.countedQty;
+      // El desglose que quedó guardado reemplaza al de antes (#204): sin esto, reabrir mostraba la
+      // captura anterior y «Guardar» sin tocar nada deshacía la corrección.
+      qc.setQueryData(['stock', 'count'], (old: StockCount | null | undefined) => old && {
+        ...old, items: old.items.map((i) => (i.ingredientId === item.ingredientId ? { ...i, weighed: r?.weighed ?? null } : i)),
+      });
       if (qty !== null) toaster.create({ title: `Guardado: ${countedWords(qty, item.baseUnitCode)}`, type: 'success', duration: 1500 });
       onSaved(item.ingredientId, qty);
     },

@@ -186,3 +186,32 @@ func ClosedFromWeighed(counted decimal.Decimal, in GrossInput) (decimal.Decimal,
 	}
 	return closed, true
 }
+
+// ClosedPack es cuántos empaques cerrados de uno se contaron en una pesada (#204).
+type ClosedPack struct {
+	PresentationID int64 `json:"presentationId"`
+	Qty            int   `json:"qty"`
+}
+
+// maxClosedPacks es el tope de cerrados de un empaque en una captura: más es un dedazo, no un anaquel.
+const maxClosedPacks = 9999
+
+// ValidClosedPacks acepta el reparto de lo cerrado si cada empaque es de este artículo (sizes: su
+// contenido en la unidad base), aparece una sola vez con al menos uno, y todo suma exactamente lo
+// cerrado. Uno que no cuadra no se guarda: reabriría la captura con cifras que nadie contó.
+func ValidClosedPacks(packs []ClosedPack, sizes map[int64]decimal.Decimal, closed decimal.Decimal) error {
+	seen := map[int64]bool{}
+	sum := decimal.Zero
+	for _, p := range packs {
+		size, ok := sizes[p.PresentationID]
+		if !ok || seen[p.PresentationID] || p.Qty < 1 || p.Qty > maxClosedPacks {
+			return fmt.Errorf("%w: el reparto de los cerrados no es de este artículo", ErrValidation)
+		}
+		seen[p.PresentationID] = true
+		sum = sum.Add(size.Mul(decimal.NewFromInt(int64(p.Qty))))
+	}
+	if !Round4(sum).Equal(Round4(closed)) {
+		return fmt.Errorf("%w: los cerrados por empaque no suman lo cerrado", ErrValidation)
+	}
+	return nil
+}

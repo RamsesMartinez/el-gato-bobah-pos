@@ -6,6 +6,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
 // Conteo de existencias (spec 038, historia 3). Las cifras van en la unidad base del insumo.
@@ -77,6 +78,8 @@ func (h *Handlers) CaptureCount(w http.ResponseWriter, r *http.Request) {
 			Containers     int              `json:"containers"`
 			SeenTareG      *decimal.Decimal `json:"seenTareG"`
 			SeenDensity    *decimal.Decimal `json:"seenDensity"`
+			// ClosedPacks: cómo se repartió countedQty entre empaques (#204); falta en la pantalla anterior.
+			ClosedPacks []domain.ClosedPack `json:"closedPacks"`
 		} `json:"gross"`
 	}
 	if err := Decode(r, &body); err != nil {
@@ -90,9 +93,9 @@ func (h *Handlers) CaptureCount(w http.ResponseWriter, r *http.Request) {
 	}
 	if g := body.Gross; g != nil {
 		in.Gross = &app.GrossCapture{Weight: g.Weight, WeightUnitID: g.WeightUnitID, PresentationID: g.PresentationID,
-			Containers: g.Containers, SeenTareG: g.SeenTareG, SeenDensity: g.SeenDensity}
+			Containers: g.Containers, SeenTareG: g.SeenTareG, SeenDensity: g.SeenDensity, ClosedPacks: g.ClosedPacks}
 	}
-	counted, net, err := h.backoffice.CaptureCountWeighed(r.Context(), id, ing, in, u.ID)
+	counted, net, weighed, err := h.backoffice.CaptureCountWeighed(r.Context(), id, ing, in, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -103,7 +106,7 @@ func (h *Handlers) CaptureCount(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	out := map[string]decimal.Decimal{"countedQty": counted}
+	out := map[string]any{"countedQty": counted, "weighed": weighed}
 	if body.Gross != nil {
 		// Lo pesado ya convertido, para que la pantalla muestre la cifra del servidor y no la suya.
 		out["grossNet"] = net

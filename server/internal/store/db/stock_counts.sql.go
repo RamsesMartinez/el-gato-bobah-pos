@@ -28,7 +28,8 @@ func (q *Queries) CountChangedAfterPreview(ctx context.Context, countID int64) (
 
 const countItems = `-- name: CountItems :many
 select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at,
-       u.kind as base_unit_kind, i.density_g_per_ml, l.gross_g, l.gross_containers, l.tare_g_used, l.density_used
+       u.kind as base_unit_kind, i.density_g_per_ml, l.gross_g, l.gross_containers, l.tare_g_used, l.density_used,
+       l.closed_packs
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join count_places cp on cp.id = i.count_place_id
@@ -51,6 +52,7 @@ type CountItemsRow struct {
 	GrossContainers *int16             `json:"gross_containers"`
 	TareGUsed       *decimal.Decimal   `json:"tare_g_used"`
 	DensityUsed     *decimal.Decimal   `json:"density_used"`
+	ClosedPacks     []byte             `json:"closed_packs"`
 }
 
 // Lo que se cuenta: los insumos activos que llevan existencia, por lugar (los sin lugar al final)
@@ -79,6 +81,7 @@ func (q *Queries) CountItems(ctx context.Context, countID int64) ([]CountItemsRo
 			&i.GrossContainers,
 			&i.TareGUsed,
 			&i.DensityUsed,
+			&i.ClosedPacks,
 		); err != nil {
 			return nil, err
 		}
@@ -561,15 +564,15 @@ func (q *Queries) SetCountPlace(ctx context.Context, arg SetCountPlaceParams) (i
 
 const upsertCountLine = `-- name: UpsertCountLine :exec
 insert into stock_count_lines (count_id, ingredient_id, counted_qty, system_qty, captured_by, last_movement_id,
-                               gross_g, gross_containers, tare_g_used, density_used)
+                               gross_g, gross_containers, tare_g_used, density_used, closed_packs)
 values ($1, $2, $3, $4, $5,
         $6, $7, $8, $9,
-        $10)
+        $10, $11)
 on conflict (count_id, ingredient_id) do update
    set counted_qty = excluded.counted_qty, system_qty = excluded.system_qty,
        captured_by = excluded.captured_by, captured_at = now(), last_movement_id = excluded.last_movement_id,
        gross_g = excluded.gross_g, gross_containers = excluded.gross_containers,
-       tare_g_used = excluded.tare_g_used, density_used = excluded.density_used
+       tare_g_used = excluded.tare_g_used, density_used = excluded.density_used, closed_packs = excluded.closed_packs
 `
 
 type UpsertCountLineParams struct {
@@ -583,11 +586,13 @@ type UpsertCountLineParams struct {
 	GrossContainers *int16           `json:"gross_containers"`
 	TareGUsed       *decimal.Decimal `json:"tare_g_used"`
 	DensityUsed     *decimal.Decimal `json:"density_used"`
+	ClosedPacks     []byte           `json:"closed_packs"`
 }
 
 // Recapturar manda: la lectura nueva reemplaza cifra, lo que había en el sistema y su último
 // movimiento.
-// Lo pesado con empaque (spec 058) viaja con la cifra: recapturar sin pesar lo deja en nulo.
+// Lo pesado con empaque (spec 058) y su reparto de cerrados (#204) viajan con la cifra: recapturar sin
+// pesar los deja en nulo.
 func (q *Queries) UpsertCountLine(ctx context.Context, arg UpsertCountLineParams) error {
 	_, err := q.db.Exec(ctx, upsertCountLine,
 		arg.CountID,
@@ -600,6 +605,7 @@ func (q *Queries) UpsertCountLine(ctx context.Context, arg UpsertCountLineParams
 		arg.GrossContainers,
 		arg.TareGUsed,
 		arg.DensityUsed,
+		arg.ClosedPacks,
 	)
 	return err
 }

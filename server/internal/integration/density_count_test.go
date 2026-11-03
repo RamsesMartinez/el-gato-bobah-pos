@@ -311,3 +311,67 @@ func TestMergingSourcesWithDifferentDensitiesCopiesNone(t *testing.T) {
 		t.Fatalf("el destino adivinó la densidad %s", *density)
 	}
 }
+
+// #204, prueba con usuario nuevo: con dos tamaños de empaque, «1 de 15 kg y 1 de 5 kg» se reabría como
+// «4 de 5 kg». Lo cerrado por empaque se guarda con la pesada y vuelve tal cual.
+func TestReopeningAWeighedCountKeepsHowClosedWasSplit(t *testing.T) {
+	t.Parallel()
+	k := newGrossKit(t)
+	var galon int64
+	if err := k.st.Pool.QueryRow(context.Background(), `insert into ingredient_presentations (company_id, ingredient_id, name, qty_in_base)
+		values ($1, $2, 'Galón 4 L', 4000) returning id`, defaultCompanyID, k.salsa).Scan(&galon); err != nil {
+		t.Fatal(err)
+	}
+	c, err := k.svc.OpenCount(k.ctx, k.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	split := []domain.ClosedPack{{PresentationID: k.bottle, Qty: 1}, {PresentationID: galon, Qty: 1}}
+
+	t.Run("lo cerrado por empaque vuelve en la respuesta y al reabrir", func(t *testing.T) {
+		g := k.gross("850", k.g, 2)
+		g.ClosedPacks = split
+		_, _, saved, err := k.svc.CaptureCountWeighed(k.ctx, c.ID, k.salsa, app.CountCapture{Qty: dd("5000"), Gross: g}, k.user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, w := range map[string]*app.CountWeighed{"la respuesta": saved, "el conteo": weighedOf(t, k)} {
+			if w == nil || !w.ClosedQty.Equal(dd("5000")) || len(w.ClosedPacks) != 2 || w.ClosedPacks[0] != split[0] || w.ClosedPacks[1] != split[1] {
+				t.Fatalf("%s trae %+v; quería 1 botella y 1 galón", name, w)
+			}
+		}
+	})
+
+	t.Run("un reparto que no suma lo cerrado se rechaza sin guardar", func(t *testing.T) {
+		g := k.gross("850", k.g, 2)
+		g.ClosedPacks = []domain.ClosedPack{{PresentationID: k.bottle, Qty: 2}}
+		if _, _, _, err := k.svc.CaptureCountWeighed(k.ctx, c.ID, k.salsa, app.CountCapture{Qty: dd("5000"), Gross: g}, k.user); !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("= %v; quería ErrValidation", err)
+		}
+		if w := weighedOf(t, k); w == nil || len(w.ClosedPacks) != 2 {
+			t.Fatalf("el rechazo cambió lo guardado: %+v", w)
+		}
+	})
+
+	t.Run("si un empaque ya no está, no se inventa el reparto pero sigue la pesada", func(t *testing.T) {
+		if _, err := k.st.Pool.Exec(context.Background(), `update ingredient_presentations set active = false where id = $1`, galon); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			_, _ = k.st.Pool.Exec(context.Background(), `update ingredient_presentations set active = true where id = $1`, galon)
+		})
+		if w := weighedOf(t, k); w == nil || w.ClosedPacks != nil || !w.ClosedQty.Equal(dd("5000")) {
+			t.Fatalf("desglose %+v; quería la pesada sin reparto", w)
+		}
+	})
+
+	t.Run("la base no acepta un reparto en un renglón sin pesada", func(t *testing.T) {
+		if err := k.svc.CaptureCount(k.ctx, c.ID, k.salsa, dd("2000"), k.user); err != nil {
+			t.Fatal(err)
+		}
+		_, err := k.st.Pool.Exec(context.Background(), `update stock_count_lines set closed_packs = '[]' where count_id = $1 and ingredient_id = $2`, c.ID, k.salsa)
+		if err == nil {
+			t.Fatal("se aceptó un reparto de cerrados sin pesada")
+		}
+	})
+}

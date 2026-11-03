@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { diffWords, entryTotal, grossNet, isBigDiff, looseUnitOf, looseUnitsOf, packsTotal, restoreWeighed, withGross } from './countEntry';
+import { diffWords, entryTotal, grossNet, isBigDiff, looseUnitOf, looseUnitsOf, packsTotal, restoreWeighed, withGross, closedPacksOf } from './countEntry';
 
 describe('entryTotal', () => {
   test('empaques más suelto, en la unidad base', () => {
@@ -103,25 +103,41 @@ describe('withGross', () => {
 
 // #204: al volver a abrir lo contado pesando, las casillas vuelven como se llenaron.
 describe('restoreWeighed', () => {
-  const packs = [{ id: 7, qtyInBase: '750', tareG: '120' }, { id: 9, qtyInBase: '12000' }];
-  const w = { closedQty: '2250', grossG: '850', containers: 2, tareG: '120' };
-  test('lo cerrado vuelve al empaque en que cabe entero, con la báscula y los empaques pesados', () => {
-    expect(restoreWeighed(w, packs)).toEqual({ counts: ['3', ''], grossWeight: '850', containers: '2', packId: 7 });
+  const packs = [{ id: 7, qtyInBase: '5000', tareG: '20' }, { id: 9, qtyInBase: '15000' }];
+  const w = { closedQty: '20000', grossG: '3000', containers: 1, tareG: '20', closedPacks: [{ presentationId: 9, qty: 1 }, { presentationId: 7, qty: 1 }] };
+  test('lo cerrado vuelve como se repartió, con la báscula y los empaques pesados', () => {
+    expect(restoreWeighed(w, packs)).toEqual({ counts: ['1', '1'], grossWeight: '3000', containers: '1', packId: 7 });
   });
   test('sin cerrados, las casillas de empaques quedan vacías (no en cero)', () => {
-    expect(restoreWeighed({ ...w, closedQty: '0' }, packs)?.counts).toEqual(['', '']);
+    expect(restoreWeighed({ ...w, closedQty: '0', closedPacks: [] }, packs)?.counts).toEqual(['', '']);
   });
-  test('lo cerrado va al empaque más grande en que cabe entero', () => {
-    expect(restoreWeighed({ ...w, closedQty: '24000' }, packs)?.counts).toEqual(['', '2']);
+  // La prueba con usuario nuevo: «1 de 15 kg y 1 de 5 kg» se reabría como «4 de 5 kg».
+  test('sin el reparto guardado y con dos tamaños, no se adivina', () => {
+    expect(restoreWeighed({ ...w, closedPacks: null }, packs)).toBeNull();
+    expect(restoreWeighed({ ...w, closedPacks: undefined }, packs)).toBeNull();
   });
-  test('si lo cerrado no cabe entero en ningún empaque, no se inventa un reparto', () => {
-    expect(restoreWeighed({ ...w, closedQty: '1000' }, packs)).toBeNull();
+  test('sin el reparto guardado y un solo empaque, se sabe cuántos', () => {
+    expect(restoreWeighed({ ...w, closedQty: '10000', closedPacks: null }, [packs[0]])?.counts).toEqual(['2']);
+    expect(restoreWeighed({ ...w, closedQty: '7000', closedPacks: null }, [packs[0]])).toBeNull();
+  });
+  test('un reparto con un empaque que ya no está no se reabre', () => {
+    expect(restoreWeighed({ ...w, closedPacks: [{ presentationId: 99, qty: 1 }] }, packs)).toBeNull();
   });
   test('si ningún empaque pesa vacío lo mismo que al capturar, no se reabre la pesada', () => {
-    expect(restoreWeighed({ ...w, tareG: '125' }, packs)).toBeNull();
+    expect(restoreWeighed({ ...w, tareG: '25' }, packs)).toBeNull();
   });
   test('sin pesada no hay nada que reabrir', () => {
     expect(restoreWeighed(null, packs)).toBeNull();
     expect(restoreWeighed(undefined, packs)).toBeNull();
+  });
+});
+
+// closedPacksOf es lo que se manda de lo cerrado por empaque: solo los que llevan algo.
+describe('closedPacksOf', () => {
+  test('cada empaque con su cantidad, sin los vacíos', () => {
+    expect(closedPacksOf(['1', '', '0'], [{ id: 7 }, { id: 9 }, { id: 3 }])).toEqual([{ presentationId: 7, qty: 1 }]);
+  });
+  test('con un empaque sin id (API anterior) no se manda reparto', () => {
+    expect(closedPacksOf(['1'], [{}])).toBeUndefined();
   });
 });

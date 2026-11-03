@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -56,6 +57,9 @@ type CountWeighed struct {
 	GrossG     decimal.Decimal `json:"grossG"`
 	Containers int16           `json:"containers"`
 	TareG      decimal.Decimal `json:"tareG"`
+	// ClosedPacks es cuántos de cada empaque fueron lo cerrado. nil si no se sabe: capturado antes de
+	// guardarlo, por la API anterior, o con un empaque que ya no está. Vacío es «no había cerrados».
+	ClosedPacks []domain.ClosedPack `json:"closedPacks"`
 }
 
 // CountView es el conteo abierto con lo que hay que contar.
@@ -150,13 +154,13 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 		}
 		v.Items[i] = CountItem{IngredientID: r.ID, Name: r.Name, Place: r.CountPlace, PlaceID: r.CountPlaceID, BaseUnitCode: r.BaseUnitCode,
 			Presentations: ps, CountedQty: r.CountedQty, Weighable: weighable[r.ID], DensityGPerMl: r.DensityGPerMl,
-			GrossWeighable: grossWeighable(r.BaseUnitKind, r.DensityGPerMl, ps), Weighed: weighedOf(r)}
+			GrossWeighable: grossWeighable(r.BaseUnitKind, r.DensityGPerMl, ps), Weighed: weighedOf(r, ps)}
 	}
 	return v, nil
 }
 
 // weighedOf arma el desglose de un renglón contado pesando, con los números que se usaron al capturar.
-func weighedOf(r db.CountItemsRow) *CountWeighed {
+func weighedOf(r db.CountItemsRow, ps []CountPresentation) *CountWeighed {
 	if r.CountedQty == nil || r.GrossG == nil || r.GrossContainers == nil || r.TareGUsed == nil {
 		return nil
 	}
@@ -167,7 +171,24 @@ func weighedOf(r db.CountItemsRow) *CountWeighed {
 	if !ok {
 		return nil
 	}
-	return &CountWeighed{ClosedQty: closed, GrossG: *r.GrossG, Containers: *r.GrossContainers, TareG: *r.TareGUsed}
+	w := &CountWeighed{ClosedQty: closed, GrossG: *r.GrossG, Containers: *r.GrossContainers, TareG: *r.TareGUsed}
+	// El reparto se usa solo si sigue sumando lo cerrado con los empaques de hoy: la API anterior, al
+	// recapturar durante la subida, no lo limpia.
+	var packs []domain.ClosedPack
+	if r.ClosedPacks != nil && json.Unmarshal(r.ClosedPacks, &packs) == nil && packs != nil &&
+		domain.ValidClosedPacks(packs, packSizes(ps), closed) == nil {
+		w.ClosedPacks = packs
+	}
+	return w
+}
+
+// packSizes es el contenido de cada empaque cerrado del artículo, en la unidad base.
+func packSizes(ps []CountPresentation) map[int64]decimal.Decimal {
+	out := make(map[int64]decimal.Decimal, len(ps))
+	for _, p := range ps {
+		out[p.ID] = p.QtyInBase
+	}
+	return out
 }
 
 // grossWeighable: se puede contar pesando con empaque si alguno dice cuánto pesa vacío, y si el
@@ -229,6 +250,9 @@ type GrossCapture struct {
 	Containers     int
 	SeenTareG      *decimal.Decimal
 	SeenDensity    *decimal.Decimal
+	// ClosedPacks es cómo se repartió lo cerrado (Qty) entre empaques (#204). nil en la pantalla
+	// anterior: se guarda sin reparto.
+	ClosedPacks []domain.ClosedPack
 }
 
 // grossUsed es lo que se guarda en el renglón del conteo de una pesada con empaque (puerta VIII).
@@ -236,19 +260,22 @@ type grossUsed struct {
 	grossG, tareG decimal.Decimal
 	containers    int16
 	density       *decimal.Decimal
+	closedPacks   []byte
 }
 
 // CaptureCountChecked guarda una cifra del conteo y devuelve lo que quedó en la unidad base. Con
 // Confirmable y sin Confirmed, una cifra que pasa la referencia del artículo se rechaza con
 // ErrCountNeedsConfirm sin guardar; la referencia no sale del servidor.
 func (s *BackofficeService) CaptureCountChecked(ctx context.Context, countID, ingredientID int64, in CountCapture, userID int64) (decimal.Decimal, error) {
-	counted, _, err := s.CaptureCountWeighed(ctx, countID, ingredientID, in, userID)
+	counted, _, _, err := s.CaptureCountWeighed(ctx, countID, ingredientID, in, userID)
 	return counted, err
 }
 
 // CaptureCountWeighed es CaptureCountChecked que además devuelve lo pesado con empaque ya convertido
-// (spec 058), para que la pantalla muestre la cifra del servidor y no la suya. Sin pesada, net es cero.
-func (s *BackofficeService) CaptureCountWeighed(ctx context.Context, countID, ingredientID int64, in CountCapture, userID int64) (counted, net decimal.Decimal, err error) {
+// (spec 058), para que la pantalla muestre la cifra del servidor y no la suya, y el desglose que quedó
+// guardado (#204), para que reabrir la captura no muestre el de antes. Sin pesada, net es cero y
+// weighed es nil.
+func (s *BackofficeService) CaptureCountWeighed(ctx context.Context, countID, ingredientID int64, in CountCapture, userID int64) (counted, net decimal.Decimal, weighed *CountWeighed, err error) {
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		var err error
 		var gross *grossUsed
@@ -256,6 +283,8 @@ func (s *BackofficeService) CaptureCountWeighed(ctx context.Context, countID, in
 			counted, gross, err = grossQty(ctx, q, ingredientID, in)
 			if err == nil {
 				net = counted.Sub(domain.Round4(in.Qty))
+				weighed = &CountWeighed{ClosedQty: domain.Round4(in.Qty), GrossG: gross.grossG, Containers: gross.containers,
+					TareG: gross.tareG, ClosedPacks: in.Gross.ClosedPacks}
 			}
 		} else {
 			counted, err = countedQty(ctx, q, ingredientID, in)
@@ -275,10 +304,13 @@ func (s *BackofficeService) CaptureCountWeighed(ctx context.Context, countID, in
 				After: map[string]any{"countId": countID, "captured": counted},
 			})
 		}); aerr != nil {
-			return counted, net, aerr
+			return counted, net, nil, aerr
 		}
 	}
-	return counted, net, err
+	if err != nil {
+		weighed = nil
+	}
+	return counted, net, weighed, err
 }
 
 // countedQty resuelve la cifra en la unidad base: la capturada o la que sale de un peso.
@@ -345,9 +377,22 @@ func grossQty(ctx context.Context, q *db.Queries, ingredientID int64, in CountCa
 		return decimal.Zero, nil, err
 	}
 	var tare *decimal.Decimal
+	sizes := map[int64]decimal.Decimal{}
 	for _, p := range pres {
-		if p.ID == g.PresentationID && p.Active && !p.IsApproximate {
-			tare = p.TareG
+		if p.Active && !p.IsApproximate {
+			sizes[p.ID] = p.QtyInBase
+			if p.ID == g.PresentationID {
+				tare = p.TareG
+			}
+		}
+	}
+	var closedPacks []byte
+	if g.ClosedPacks != nil {
+		if err := domain.ValidClosedPacks(g.ClosedPacks, sizes, domain.Round4(in.Qty)); err != nil {
+			return decimal.Zero, nil, err
+		}
+		if closedPacks, err = json.Marshal(g.ClosedPacks); err != nil {
+			return decimal.Zero, nil, err
 		}
 	}
 	if tare == nil {
@@ -372,7 +417,7 @@ func grossQty(ctx context.Context, q *db.Queries, ingredientID int64, in CountCa
 	if !domain.ValidCountQty(total) {
 		return decimal.Zero, nil, fmt.Errorf("%w: lo pesado da una cifra fuera de lo posible", domain.ErrValidation)
 	}
-	used := &grossUsed{grossG: domain.Round4(g.Weight.Mul(wu.ToBase)), tareG: *tare, containers: int16(g.Containers)}
+	used := &grossUsed{grossG: domain.Round4(g.Weight.Mul(wu.ToBase)), tareG: *tare, containers: int16(g.Containers), closedPacks: closedPacks}
 	if ing.BaseUnitKind == db.UnitKindVolumen {
 		used.density = ing.DensityGPerMl
 	}
@@ -430,6 +475,7 @@ func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countI
 	}
 	if gross != nil {
 		params.GrossG, params.GrossContainers, params.TareGUsed, params.DensityUsed = &gross.grossG, &gross.containers, &gross.tareG, gross.density
+		params.ClosedPacks = gross.closedPacks
 	}
 	err = q.UpsertCountLine(ctx, params)
 	if isForeignKeyViolation(err) {

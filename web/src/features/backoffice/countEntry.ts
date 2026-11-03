@@ -117,30 +117,48 @@ export function withGross(closed: number | null, net: number): number {
   return round4((closed ?? 0) + net);
 }
 
+// ClosedPack es cuántos cerrados de un empaque se contaron en una pesada.
+export interface ClosedPack { presentationId: number; qty: number }
 // WeighedCapture es cómo se capturó lo contado pesando con empaque (#204), como lo guarda el servidor.
-export interface WeighedCapture { closedQty: string; grossG: string; containers: number; tareG: string }
+// closedPacks falta o es null si no se sabe cómo se repartió lo cerrado (captura anterior).
+export interface WeighedCapture { closedQty: string; grossG: string; containers: number; tareG: string; closedPacks?: ClosedPack[] | null }
 type PackForRestore = { id?: number; qtyInBase: string; tareG?: string | null };
 
-// restoreWeighed vuelve a llenar las casillas de una pesada ya guardada: lo cerrado en el empaque más
-// grande en que cabe entero, y la báscula en g. El servidor no guarda cómo se repartió lo cerrado entre
-// empaques ni cuál se pesó; el pesado se reconoce por lo que pesaba vacío. null si no hay forma de
-// reabrirla sin inventar: entonces la captura vuelve con el total en lo suelto, como antes.
+// restoreWeighed vuelve a llenar las casillas de una pesada ya guardada: lo cerrado como se repartió y
+// la báscula en g. El empaque pesado se reconoce por lo que pesaba vacío. Sin el reparto guardado solo
+// se reabre si hay un empaque y lo cerrado cabe entero en él: con dos tamaños, «4 de 5 kg» y «1 de 15
+// kg y 1 de 5 kg» dan lo mismo. null si no hay forma de reabrirla sin inventar: entonces la captura
+// vuelve con el total en lo suelto, como antes.
 export function restoreWeighed(w: WeighedCapture | null | undefined, packs: PackForRestore[]) {
   if (!w) return null;
   const pack = packs.find((p) => p.id !== undefined && !!p.tareG && Number(p.tareG) === Number(w.tareG));
   if (!pack) return null;
   const counts = packs.map(() => '');
-  const closed = Number(w.closedQty);
-  if (closed > 0) {
-    const bySize = packs.map((_, i) => i).filter((i) => Number(packs[i].qtyInBase) > 0)
-      .sort((a, b) => Number(packs[b].qtyInBase) - Number(packs[a].qtyInBase));
+  if (w.closedPacks) {
+    for (const c of w.closedPacks) {
+      const i = packs.findIndex((p) => p.id === c.presentationId);
+      if (i < 0) return null;
+      counts[i] = String(c.qty);
+    }
+  } else if (Number(w.closedQty) > 0) {
+    if (packs.length !== 1) return null;
+    const size = Number(packs[0].qtyInBase);
+    const n = Math.round(Number(w.closedQty) / size);
     // Lo cerrado llega a 4 decimales: «entero» es a menos de una milésima de la unidad base.
-    const fits = bySize.find((i) => {
-      const n = Math.round(closed / Number(packs[i].qtyInBase));
-      return n >= 1 && Math.abs(closed - n * Number(packs[i].qtyInBase)) < 0.001;
-    });
-    if (fits === undefined) return null;
-    counts[fits] = String(Math.round(closed / Number(packs[fits].qtyInBase)));
+    if (!(size > 0) || n < 1 || Math.abs(Number(w.closedQty) - n * size) >= 0.001) return null;
+    counts[0] = String(n);
   }
   return { counts, grossWeight: String(Number(w.grossG)), containers: String(w.containers), packId: pack.id! };
+}
+
+// closedPacksOf es el reparto de lo cerrado que se manda con una pesada: los empaques que llevan
+// algo. undefined si algún empaque no trae id (API anterior a la 056): se guarda sin reparto.
+export function closedPacksOf(counts: string[], packs: { id?: number }[]): ClosedPack[] | undefined {
+  if (packs.some((p) => p.id === undefined)) return undefined;
+  const out: ClosedPack[] = [];
+  counts.forEach((c, i) => {
+    const n = Number(c);
+    if (c.trim() !== '' && Number.isInteger(n) && n > 0) out.push({ presentationId: packs[i].id!, qty: n });
+  });
+  return out;
 }
