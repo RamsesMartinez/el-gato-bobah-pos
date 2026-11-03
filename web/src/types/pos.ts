@@ -270,6 +270,9 @@ export interface ReceiptLine {
   lineTotal: string;
   notes?: string;
   modifiers?: Array<{ name: string; quantity: number; priceDelta: string }>;
+  // Un renglón cancelado viaja en el pedido para que la pantalla lo tache; al papel no va
+  // (printableLines). Opcional: lo que se arma en el POS antes de mandarse nunca está cancelado.
+  cancelled?: boolean;
 }
 
 // ReceiptOrder es un pedido visto por la impresora: sin los datos de entrega, que el papel no lleva,
