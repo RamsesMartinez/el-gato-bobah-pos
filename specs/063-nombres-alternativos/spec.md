@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-02
 
-**Status**: Draft
+**Status**: En producción (release #223)
 
 **Input**: Issue #221. Un mismo producto o artículo del almacén se nombra de varias formas: «Ice
 Coffee», «café frío» o «café helado»; un insumo por su marca o por su nombre genérico. Hoy los
@@ -266,6 +266,8 @@ Artículos, Conteo, captura de gastos y receta.
   producto no tiene tope de nombre, y 60 cabe en el renglón de cualquier buscador.
 - Los buscadores que ya miran otras cosas además del nombre (código en Vender, empaque y marca en
   Artículos y Conteo) las siguen mirando; los alternativos se suman.
-- Otros buscadores que listan productos o artículos fuera de los seis nombrados (por ejemplo
-  emparejar con la plataforma o unir artículos) no cambian en esta feature.
+- La lista de Menú › Recetas también busca por los otros nombres del producto y de sus insumos
+  (agregado tras la prueba con usuario nuevo, misma regla de FR-010 y FR-011). Fuera de los seis
+  nombrados y de esa lista, los buscadores que listan productos o artículos (por ejemplo emparejar
+  con la plataforma o unir artículos) no cambian en esta feature.
 - Los productos de sistema (el genérico de plataforma) no llevan alternativos.

@@ -133,7 +133,8 @@ server/
 ├── internal/domain/alt_names.go (+ _test)
 ├── internal/app/alt_names.go (+ admin.go, ingredients_admin.go, unit_change.go, menú, conteo)
 ├── internal/httpapi/handlers_alt_names.go (+ router.go, respond.go)
-└── internal/integration/alt_names_test.go, migracion_0107_test.go (+ respaldo_anonimo_test.go)
+└── internal/integration/alt_names_{products,articles,menu,http}_test.go, migration_0107_test.go,
+    catalog_name_key_test.go (+ respaldo_anonimo_test.go)
 web/src/
 ├── utils/format.ts
 ├── components/AltNamesField.tsx, Picker.tsx
@@ -162,6 +163,25 @@ que dice «de otro producto»; los chips en renglones; la lista de Menú › Rec
 nombres del producto y de sus insumos; textos del campo por catálogo (en un artículo, «otro nombre o
 marca»). Queda como está: el editor abajo de Categoría en la ficha del producto (decisión de la
 revisión de tableta), y el aviso de parecidos con la regla de unir insumos (no tolera dos dedazos).
+
+## Vuelta final contra el build servido (2026-11-03)
+
+Usuario nuevo con Playwright a 1024×600 (`hasTouch`) contra `bun run build && bun run preview`, API
+local como `gatobobah_app` sobre un respaldo de producción restaurado (0107 aplicada al arrancar).
+
+- Pasan los seis buscadores (Vender, Productos, Artículos, Conteo en vista «Lista», renglón de gasto y
+  receta, insumo y producto del combo): encuentran sin acentos ni mayúsculas y la etiqueta dice
+  «también: …» con el otro nombre que coincidió.
+- Captura en la ficha del producto (con «Guardar») y del artículo (autoguardado), las dos sobreviven a
+  recargar; el nombre de otro producto se rechaza nombrándolo (también por API: 409 `ALT_NAME_TAKEN`).
+- Comanda (reimpresa desde Pedidos), ticket de «Ver ticket» y ticket del cobro: «1x» con el nombre
+  principal, ninguno con el otro nombre. El pedido se cobró y entregó.
+- Ningún 5xx ni error de consola.
+- No verificado: la búsqueda del conteo en «Uno por uno» y la comanda impresa sola (la impresión
+  automática está apagada en el respaldo).
+- Observado, sin cambio: en gasto y receta, junto a un resultado que coincidió por otro nombre sigue
+  la fila «Crear «…»» con lo escrito. Escribir el otro nombre completo y crear ofrece el artículo que
+  ya existe (FR-014); lo que crea uno nuevo es un texto parcial, que es otro nombre.
 
 ## Riesgos
 
