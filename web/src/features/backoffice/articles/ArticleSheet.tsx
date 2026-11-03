@@ -306,10 +306,13 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                   </HStack>
                 )}
                 {!justCreated && <PacksBlock />}
-                <Button minH="44px" variant="outline" justifyContent="flex-start" onClick={() => setPanel('recipe')}>
-                  {a.isPrep ? 'Es un preparado · ver receta ›' : 'Se compra hecho · agregar receta ›'}
-                  {a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}
-                </Button>
+                {/* El estado en texto y la acción en su botón, como «Se mide en … · Cambiar ›» (#103): en un
+                    solo botón se leía como un dato. */}
+                <HStack justify="space-between" minH="44px" data-recipe-row>
+                  <Text>Receta: <b>{a.isPrep ? 'es un preparado' : 'se compra hecho'}</b>
+                    {a.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}</Text>
+                  <Button minH="44px" variant="outline" onClick={() => setPanel('recipe')}>{a.isPrep ? 'Ver receta ›' : 'Agregar receta ›'}</Button>
+                </HStack>
                 {a.mergedInto ? (
                   // Unido a otro (spec 056): no se reactiva; lleva al que se quedó.
                   <HStack gap={2} bg="bg.muted" borderRadius="md" pl={3} minH="44px" data-merged-into>
