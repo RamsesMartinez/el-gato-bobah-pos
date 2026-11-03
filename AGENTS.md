@@ -951,10 +951,16 @@ lo que queda. Hoy lo cuida quien mergea; la protección de develop que lo exige 
 «al día») la activa el dueño. Si el PR va atrás, se trae develop **en local** (commit firmado),
 `make ci-local`, se empuja y se espera el CI de nuevo; no se mergea sin eso. **No** con
 `gh pr update-branch` ni el botón «Update branch»: ese merge lo firma GitHub y no el dueño, y rompe la
-autoría única de la constitución. **El push a `main` tampoco corre pruebas** (decidido el
-2026-11-02): el PR de release o de hotfix ya las pasó sobre el commit de merge, así que solo se
-construye y se despliega. Por eso a `main` solo se llega por PR en verde y al día, nunca con un push
-directo.
+autoría única de la constitución. **El push a `main` no repite lo que ya se probó** (decidido el
+2026-11-02). La llave es el **árbol** de archivos (`git rev-parse HEAD^{tree}`), no el SHA: el merge
+crea un commit nuevo, pero con develop al día sus archivos son idénticos a los de la cabeza del PR.
+- Pruebas: si un PR en verde probó ese árbol ([ci-tree-tested.sh](scripts/ci-tree-tested.sh)), no
+  corren; si no —un push directo, un PR que no estaba al día—, corre la suite completa.
+- Imagen: el push a develop la publica también como `api:tree-<árbol>`; main la encuentra y solo le
+  pone sus etiquetas, sin compilar. Producción corre el mismo binario que el ambiente de pruebas, y
+  por eso `/api/v1/version` dice el SHA de develop que la construyó. Un hotfix trae árbol nuevo y sí
+  se construye.
+- El frontend se construye otra vez: la URL de la API queda dentro del build y es otra por ambiente.
 Un test que lea archivos de otra carpeta (como los de nombres de empresa, que leen `web/src`) se
 agrega también al filtro de su job, o un PR de esa carpeta lo deja de correr.
 

@@ -43,6 +43,9 @@ pre-commit:
       run: bash scripts/tests/deploy-azul-verde-test.sh
     # Reparte la integración entre los shards de CI (spec 044): una prueba que ningún shard tome no
     # corre en ningún lado y el CI queda verde.
+    ci-tree-tested-test:
+      glob: "scripts/{ci-tree-tested.sh,tests/ci-tree-tested-test.sh}"
+      run: bash scripts/tests/ci-tree-tested-test.sh
     ci-shard-tests-test:
       glob: "scripts/{ci-shard-tests.sh,tests/ci-shard-tests-test.sh}"
       run: bash scripts/tests/ci-shard-tests-test.sh
