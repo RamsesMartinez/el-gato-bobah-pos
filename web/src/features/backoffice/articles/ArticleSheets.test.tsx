@@ -521,6 +521,21 @@ describe('Bitácora del artículo', () => {
 
 // US4 (FR-007): una receta activa impide archivar, pero no es un callejón: cada una se abre desde aquí.
 describe('Archivar', () => {
+  // Prueba con usuario nuevo (#203): con diez recetas, «Cancelar» y «Archivar» quedaban 270 px
+  // debajo de la pantalla; la casilla de confirmar salía aunque una receta impidiera archivar; y
+  // decía «receta(s)».
+  it('con recetas que lo impiden: los botones quedan fijos abajo, sin casilla y con plural de verdad', async () => {
+    back.articleArchiveCheck.mockResolvedValue({
+      activeRecipes: [{ kind: 'product', id: 5, name: 'Frappé de mango' }, { kind: 'product', id: 6, name: 'Té helado' }],
+      onHand: [{ branch: 'Matriz', qty: '27000' }], pendingReceipts: 2, openCount: false,
+    });
+    montar(<ArchiveSheet article={ficha as never} onClose={vi.fn()} onDone={vi.fn()} />);
+    expect(await screen.findByText(/Lo usan 2 recetas activas/)).toBeInTheDocument();
+    expect(screen.getByText(/Tiene 2 compras por recibir/)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Sí, archivarlo con esa existencia' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Archivar' }).closest('[data-archive-body]')).toBeNull();
+  });
+
   it('con una receta activa no deja archivar y ofrece abrir esa receta', async () => {
     back.articleArchiveCheck.mockResolvedValue({ activeRecipes: [{ kind: 'product', id: 5, name: 'Frappé de mango' }], onHand: [], pendingReceipts: 0, openCount: false });
     montar(<ArchiveSheet article={ficha as never} onClose={vi.fn()} onDone={vi.fn()} />);

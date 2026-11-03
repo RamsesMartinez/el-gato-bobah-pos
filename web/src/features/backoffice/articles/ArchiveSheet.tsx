@@ -3,7 +3,7 @@ import { medirAccion } from '../../../api/uso';
 import { Box, Button, Checkbox, HStack, Spinner, Stack, Text } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader,
+  DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerFooter, DrawerHeader,
 } from '../../../components/ui/drawer';
 import { backofficeApi, type ArticleSheet } from '../../../api/backoffice';
 import { ApiError } from '../../../api/client';
@@ -47,7 +47,10 @@ export function ArchiveSheet({ article, onClose, onDone }: Props) {
   });
   const recipes = check.data?.activeRecipes ?? [];
   const onHand = check.data?.onHand ?? [];
-  const blocked = recipes.length > 0 || !!check.data?.openCount || (onHand.length > 0 && !stockOk);
+  // Una receta o un conteo abierto lo impiden: ahí no se pide confirmar la existencia, no serviría.
+  const inUse = recipes.length > 0 || !!check.data?.openCount;
+  const blocked = inUse || (onHand.length > 0 && !stockOk);
+  const pending = check.data?.pendingReceipts ?? 0;
 
   return (
     <DrawerRoot open placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }}>
@@ -56,7 +59,7 @@ export function ArchiveSheet({ article, onClose, onDone }: Props) {
         <DrawerHeader>
           <Text fontSize="lg" fontWeight="700">{article.isActive ? `¿Archivar «${article.name}»?` : `¿Reactivar «${article.name}»?`}</Text>
         </DrawerHeader>
-        <DrawerBody flex="1" minH={0} overflowY="auto">
+        <DrawerBody flex="1" minH={0} overflowY="auto" data-archive-body>
           {article.isActive && check.isLoading ? <Spinner /> : (
             <Stack gap={3}>
               {article.isActive ? (
@@ -71,20 +74,22 @@ export function ArchiveSheet({ article, onClose, onDone }: Props) {
                         </HStack>
                       ))}
                       <Text fontSize="sm" color="fg.muted">Se queda así, sin ajustarse, y vuelve igual si lo reactivas.</Text>
-                      <Checkbox.Root minH="44px" checked={stockOk} onCheckedChange={(e) => setStockOk(e.checked === true)}>
-                        <Checkbox.HiddenInput />
-                        <Checkbox.Control />
-                        <Checkbox.Label>Sí, archivarlo con esa existencia</Checkbox.Label>
-                      </Checkbox.Root>
+                      {!inUse && (
+                        <Checkbox.Root minH="44px" checked={stockOk} onCheckedChange={(e) => setStockOk(e.checked === true)}>
+                          <Checkbox.HiddenInput />
+                          <Checkbox.Control />
+                          <Checkbox.Label>Sí, archivarlo con esa existencia</Checkbox.Label>
+                        </Checkbox.Root>
+                      )}
                     </Stack>
                   )}
-                  {(check.data?.pendingReceipts ?? 0) > 0 && (
-                    <Text>Tiene {check.data!.pendingReceipts} compra(s) por recibir. Al llegar, sumarán aunque esté archivado.</Text>
+                  {pending > 0 && (
+                    <Text>Tiene {pending === 1 ? '1 compra' : `${pending} compras`} por recibir. Al llegar, sumarán aunque esté archivado.</Text>
                   )}
                   {check.data?.openCount && <Text color="fg.error">Un conteo abierto ya lo contó. Ciérralo o descártalo antes de archivar.</Text>}
                   {recipes.length > 0 && (
                     <Stack gap={1}>
-                      <Text color="fg.error">Lo usan {recipes.length} receta(s) activa(s). Quítalo de cada una antes de archivar:</Text>
+                      <Text color="fg.error">Lo {recipes.length === 1 ? 'usa 1 receta activa' : `usan ${recipes.length} recetas activas`}. Quítalo de cada una antes de archivar:</Text>
                       {recipes.map((r) => (
                         <Button key={`${r.kind}-${r.id}`} minH="48px" variant="outline" justifyContent="space-between"
                           onClick={() => setRecipe({ kind: r.kind, id: r.id, name: r.name })}>
@@ -95,14 +100,15 @@ export function ArchiveSheet({ article, onClose, onDone }: Props) {
                   )}
                 </>
               ) : <Text>Vuelve a ofrecerse en gastos, recetas y conteo, tal como estaba.</Text>}
-              <HStack gap={3} justify="flex-end" pt={2}>
-                <Button minH="52px" variant="outline" onClick={onClose}>Cancelar</Button>
-                <Button minH="52px" colorPalette={article.isActive ? 'red' : 'brand'} disabled={article.isActive && blocked}
-                  loading={act.isPending} onClick={() => act.mutate()}>{article.isActive ? 'Archivar' : 'Reactivar'}</Button>
-              </HStack>
             </Stack>
           )}
         </DrawerBody>
+        {/* Fijos abajo: con varias recetas que abrir, quedaban debajo de la pantalla (#203). */}
+        <DrawerFooter gap={3}>
+          <Button minH="52px" variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button minH="52px" colorPalette={article.isActive ? 'red' : 'brand'} disabled={article.isActive && (blocked || check.isLoading)}
+            loading={act.isPending} onClick={() => act.mutate()}>{article.isActive ? 'Archivar' : 'Reactivar'}</Button>
+        </DrawerFooter>
       </DrawerContent>
       {recipe && (
         <CompositionSheet kind={recipe.kind} id={recipe.id} name={recipe.name} open
