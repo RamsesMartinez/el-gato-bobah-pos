@@ -601,6 +601,42 @@ func (q *Queries) CategoryVisible(ctx context.Context, id int64) (int64, error) 
 	return id_2, err
 }
 
+const clearArticleDensity = `-- name: ClearArticleDensity :execrows
+update ingredients
+   set density_g_per_ml = null, density_method = null, density_set_by = null, density_set_at = null
+ where id = $1 and density_g_per_ml is not null
+`
+
+func (q *Queries) ClearArticleDensity(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, clearArticleDensity, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const copyArticleDensity = `-- name: CopyArticleDensity :exec
+update ingredients d
+   set density_g_per_ml = s.density_g_per_ml, density_method = s.density_method,
+       density_set_by = s.density_set_by, density_set_at = s.density_set_at
+  from ingredients s
+ where d.id = $1 and s.id = $2 and s.density_g_per_ml is not null
+   -- Solo a un artículo en g o ml: el trigger limpia al cambiar de unidad, pero no ve esta escritura.
+   and exists (select 1 from units u where u.id = d.base_unit_id and u.kind in ('masa', 'volumen'))
+`
+
+type CopyArticleDensityParams struct {
+	ToID   int64 `json:"to_id"`
+	FromID int64 `json:"from_id"`
+}
+
+// El artículo de un reemplazo (cambio de unidad) o el destino de una unión recibe la densidad tal
+// como estaba: no es una pesada nueva.
+func (q *Queries) CopyArticleDensity(ctx context.Context, arg CopyArticleDensityParams) error {
+	_, err := q.db.Exec(ctx, copyArticleDensity, arg.ToID, arg.FromID)
+	return err
+}
+
 const findArticleByName = `-- name: FindArticleByName :one
 select id, is_active from ingredients
  where regexp_replace(translate(lower(trim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
@@ -654,9 +690,11 @@ const getArticle = `-- name: GetArticle :one
 select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
        i.current_cost, i.cost_source::text as cost_source, i.min_stock, i.is_prep, i.category_id, ic.name as category,
        i.count_place_id, cp.name as count_place, i.updated_at, i.composition_status,
-       coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+       coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
+       i.density_g_per_ml, i.density_method, i.density_set_at, du.name as density_set_by_name
   from ingredients i
   join units u on u.id = i.base_unit_id
+  left join users du on du.id = i.density_set_by
   left join count_places cp on cp.id = i.count_place_id
   left join ingredient_categories ic on ic.id = i.category_id
   left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
@@ -664,23 +702,27 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
 `
 
 type GetArticleRow struct {
-	ID                int64            `json:"id"`
-	Name              string           `json:"name"`
-	IsActive          bool             `json:"is_active"`
-	BaseUnitID        int16            `json:"base_unit_id"`
-	BaseUnitCode      string           `json:"base_unit_code"`
-	BaseUnitKind      UnitKind         `json:"base_unit_kind"`
-	CurrentCost       decimal.Decimal  `json:"current_cost"`
-	CostSource        string           `json:"cost_source"`
-	MinStock          *decimal.Decimal `json:"min_stock"`
-	IsPrep            bool             `json:"is_prep"`
-	CategoryID        *int64           `json:"category_id"`
-	Category          *string          `json:"category"`
-	CountPlaceID      *int64           `json:"count_place_id"`
-	CountPlace        *string          `json:"count_place"`
-	UpdatedAt         time.Time        `json:"updated_at"`
-	CompositionStatus *string          `json:"composition_status"`
-	OnHand            decimal.Decimal  `json:"on_hand"`
+	ID                int64              `json:"id"`
+	Name              string             `json:"name"`
+	IsActive          bool               `json:"is_active"`
+	BaseUnitID        int16              `json:"base_unit_id"`
+	BaseUnitCode      string             `json:"base_unit_code"`
+	BaseUnitKind      UnitKind           `json:"base_unit_kind"`
+	CurrentCost       decimal.Decimal    `json:"current_cost"`
+	CostSource        string             `json:"cost_source"`
+	MinStock          *decimal.Decimal   `json:"min_stock"`
+	IsPrep            bool               `json:"is_prep"`
+	CategoryID        *int64             `json:"category_id"`
+	Category          *string            `json:"category"`
+	CountPlaceID      *int64             `json:"count_place_id"`
+	CountPlace        *string            `json:"count_place"`
+	UpdatedAt         time.Time          `json:"updated_at"`
+	CompositionStatus *string            `json:"composition_status"`
+	OnHand            decimal.Decimal    `json:"on_hand"`
+	DensityGPerMl     *decimal.Decimal   `json:"density_g_per_ml"`
+	DensityMethod     *string            `json:"density_method"`
+	DensitySetAt      pgtype.Timestamptz `json:"density_set_at"`
+	DensitySetByName  *string            `json:"density_set_by_name"`
 }
 
 // La ficha. updated_at es la versión: editar exige la que se vio (STALE si cambió).
@@ -705,19 +747,24 @@ func (q *Queries) GetArticle(ctx context.Context, id int64) (GetArticleRow, erro
 		&i.UpdatedAt,
 		&i.CompositionStatus,
 		&i.OnHand,
+		&i.DensityGPerMl,
+		&i.DensityMethod,
+		&i.DensitySetAt,
+		&i.DensitySetByName,
 	)
 	return i, err
 }
 
 const getPresentationForAudit = `-- name: GetPresentationForAudit :one
-select name, qty_in_base, active, brand from ingredient_presentations where id = $1
+select name, qty_in_base, active, brand, tare_g from ingredient_presentations where id = $1
 `
 
 type GetPresentationForAuditRow struct {
-	Name      string          `json:"name"`
-	QtyInBase decimal.Decimal `json:"qty_in_base"`
-	Active    bool            `json:"active"`
-	Brand     *string         `json:"brand"`
+	Name      string           `json:"name"`
+	QtyInBase decimal.Decimal  `json:"qty_in_base"`
+	Active    bool             `json:"active"`
+	Brand     *string          `json:"brand"`
+	TareG     *decimal.Decimal `json:"tare_g"`
 }
 
 func (q *Queries) GetPresentationForAudit(ctx context.Context, id int64) (GetPresentationForAuditRow, error) {
@@ -728,6 +775,7 @@ func (q *Queries) GetPresentationForAudit(ctx context.Context, id int64) (GetPre
 		&i.QtyInBase,
 		&i.Active,
 		&i.Brand,
+		&i.TareG,
 	)
 	return i, err
 }
@@ -948,24 +996,29 @@ func (q *Queries) LockArticle(ctx context.Context, id int64) (LockArticleRow, er
 const lockArticleNowait = `-- name: LockArticleNowait :one
 
 select id, is_active, name::text as name, base_unit_id, min_stock, current_cost, cost_source::text as cost_source,
-       yield_qty, is_prep, category_id, count_place_id, track_stock, is_packaging
+       yield_qty, is_prep, category_id, count_place_id, track_stock, is_packaging,
+       density_g_per_ml, density_method, density_set_by, density_set_at
   from ingredients where id = $1 for update nowait
 `
 
 type LockArticleNowaitRow struct {
-	ID           int64            `json:"id"`
-	IsActive     bool             `json:"is_active"`
-	Name         string           `json:"name"`
-	BaseUnitID   int16            `json:"base_unit_id"`
-	MinStock     *decimal.Decimal `json:"min_stock"`
-	CurrentCost  decimal.Decimal  `json:"current_cost"`
-	CostSource   string           `json:"cost_source"`
-	YieldQty     *decimal.Decimal `json:"yield_qty"`
-	IsPrep       bool             `json:"is_prep"`
-	CategoryID   *int64           `json:"category_id"`
-	CountPlaceID *int64           `json:"count_place_id"`
-	TrackStock   bool             `json:"track_stock"`
-	IsPackaging  bool             `json:"is_packaging"`
+	ID            int64              `json:"id"`
+	IsActive      bool               `json:"is_active"`
+	Name          string             `json:"name"`
+	BaseUnitID    int16              `json:"base_unit_id"`
+	MinStock      *decimal.Decimal   `json:"min_stock"`
+	CurrentCost   decimal.Decimal    `json:"current_cost"`
+	CostSource    string             `json:"cost_source"`
+	YieldQty      *decimal.Decimal   `json:"yield_qty"`
+	IsPrep        bool               `json:"is_prep"`
+	CategoryID    *int64             `json:"category_id"`
+	CountPlaceID  *int64             `json:"count_place_id"`
+	TrackStock    bool               `json:"track_stock"`
+	IsPackaging   bool               `json:"is_packaging"`
+	DensityGPerMl *decimal.Decimal   `json:"density_g_per_ml"`
+	DensityMethod *string            `json:"density_method"`
+	DensitySetBy  *int64             `json:"density_set_by"`
+	DensitySetAt  pgtype.Timestamptz `json:"density_set_at"`
 }
 
 // ---- Cambio de unidad (spec 042, FR-009) ----
@@ -987,6 +1040,10 @@ func (q *Queries) LockArticleNowait(ctx context.Context, id int64) (LockArticleN
 		&i.CountPlaceID,
 		&i.TrackStock,
 		&i.IsPackaging,
+		&i.DensityGPerMl,
+		&i.DensityMethod,
+		&i.DensitySetBy,
+		&i.DensitySetAt,
 	)
 	return i, err
 }
@@ -1078,6 +1135,29 @@ func (q *Queries) OpenExpenseItemsOf(ctx context.Context, ingredientID *int64) (
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const pendingDensityLinesOf = `-- name: PendingDensityLinesOf :one
+select count(*) from expense_items ei
+  join expenses e on e.id = ei.expense_id
+  join units bu on bu.id = ei.unit_id
+  join ingredients i on i.id = ei.ingredient_id
+  join units iu on iu.id = i.base_unit_id
+ where ei.ingredient_id = $1 and ei.voided_at is null and ei.presentation_id is null
+   and ei.density_g_per_ml is null and e.status <> 'cancelada' and not ei.excluded
+   and ei.quantity - coalesce(ei.qty_received, 0) - ei.not_coming_qty > 0
+   and bu.kind in ('masa', 'volumen') and iu.kind in ('masa', 'volumen') and bu.kind <> iu.kind
+`
+
+// Renglones de compra del artículo entre peso y líquido que todavía esperan algo y no fijaron su
+// densidad: quitarla los dejaría sin poder convertirse y el gasto entero sin poder tocarse (revisión
+// A1). Uno anulado, excluido o que ya no va a llegar no espera nada: con el mismo predicado que «Por
+// recibir», o un gasto muerto bloquearía quitarla para siempre.
+func (q *Queries) PendingDensityLinesOf(ctx context.Context, ingredientID *int64) (int64, error) {
+	row := q.db.QueryRow(ctx, pendingDensityLinesOf, ingredientID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const pendingReceiptsOf = `-- name: PendingReceiptsOf :one
@@ -1204,6 +1284,32 @@ func (q *Queries) SetArticleCostManual(ctx context.Context, arg SetArticleCostMa
 	var previous_cost decimal.Decimal
 	err := row.Scan(&previous_cost)
 	return previous_cost, err
+}
+
+const setArticleDensity = `-- name: SetArticleDensity :exec
+update ingredients
+   set density_g_per_ml = $1, density_method = $2::text,
+       density_set_by = $3, density_set_at = now()
+ where id = $4
+`
+
+type SetArticleDensityParams struct {
+	Density *decimal.Decimal `json:"density"`
+	Method  string           `json:"method"`
+	UserID  *int64           `json:"user_id"`
+	ID      int64            `json:"id"`
+}
+
+// La densidad vigente con quién y cómo (spec 058). Su historia va en la bitácora, en la misma
+// transacción.
+func (q *Queries) SetArticleDensity(ctx context.Context, arg SetArticleDensityParams) error {
+	_, err := q.db.Exec(ctx, setArticleDensity,
+		arg.Density,
+		arg.Method,
+		arg.UserID,
+		arg.ID,
+	)
+	return err
 }
 
 const setArticleExtras = `-- name: SetArticleExtras :exec
@@ -1333,6 +1439,21 @@ func (q *Queries) SetPresentationRaw(ctx context.Context, arg SetPresentationRaw
 		arg.Active,
 		arg.ID,
 	)
+	return err
+}
+
+const setPresentationTare = `-- name: SetPresentationTare :exec
+update ingredient_presentations set tare_g = $1 where id = $2
+`
+
+type SetPresentationTareParams struct {
+	TareG *decimal.Decimal `json:"tare_g"`
+	ID    int64            `json:"id"`
+}
+
+// Lo que pesa vacío un empaque, aparte del resto: un PUT que no la manda no la toca.
+func (q *Queries) SetPresentationTare(ctx context.Context, arg SetPresentationTareParams) error {
+	_, err := q.db.Exec(ctx, setPresentationTare, arg.TareG, arg.ID)
 	return err
 }
 

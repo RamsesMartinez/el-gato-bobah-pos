@@ -96,6 +96,9 @@ var auditActions = []struct {
 	{AuditIngredientCostCorrected, AuditGroupPrice},
 	{AuditIngredientUnitChanged, AuditGroupPrice},
 	{AuditIngredientUnitChangedDetail, AuditGroupPrice},
+	{AuditIngredientDensitySet, AuditGroupPrice},
+	{AuditIngredientDensityCleared, AuditGroupPrice},
+	{AuditPresentationTareSet, AuditGroupPrice},
 	{AuditIngredientReplaced, AuditGroupPrice},
 	{AuditPresentationCreated, AuditGroupPrice},
 	{AuditPresentationUpdated, AuditGroupPrice},
@@ -144,6 +147,13 @@ const (
 	AuditIngredientMerged AuditAction = "ingredient.merged"
 	// AuditIngredientMergedInto: este insumo se unió a otro y quedó archivado (cada origen).
 	AuditIngredientMergedInto AuditAction = "ingredient.merged_into"
+	// AuditIngredientDensitySet: se puso o se rehízo la densidad de un artículo (spec 058), con el
+	// método y los datos de la pesada o de la etiqueta.
+	AuditIngredientDensitySet AuditAction = "ingredient.density_set"
+	// AuditIngredientDensityCleared: se quitó la densidad de un artículo.
+	AuditIngredientDensityCleared AuditAction = "ingredient.density_cleared"
+	// AuditPresentationTareSet: cambió lo que pesa vacío un empaque.
+	AuditPresentationTareSet AuditAction = "presentation.tare_set"
 	// AuditPresentationCreated: se agregó un empaque a un artículo.
 	AuditPresentationCreated AuditAction = "presentation.created"
 	// AuditPresentationUpdated: cambió el nombre o la cantidad de un empaque.

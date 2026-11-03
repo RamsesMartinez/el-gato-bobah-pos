@@ -37,6 +37,7 @@ const back = vi.hoisted(() => ({
   presentationSuggestions: vi.fn(() => Promise.resolve([])),
   articleArchiveCheck: vi.fn(),
   archiveArticle: vi.fn(() => Promise.resolve()),
+  setDensity: vi.fn(),
 }));
 vi.mock('../../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 const pos = vi.hoisted(() => ({ businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) }));
@@ -626,5 +627,74 @@ describe('Nuevo artículo · aviso de parecido', () => {
     montar(<NewArticleSheet onClose={vi.fn()} onCreated={vi.fn()} />);
     await llenar('Leche entera lala');
     await waitFor(() => expect(back.createArticle).toHaveBeenCalled());
+  });
+});
+
+// US1 (FR-001, FR-004): la densidad es opcional, solo en g o ml, y dice quién la puso y cómo, sin
+// los nombres internos del método.
+describe('Ficha · densidad', () => {
+  it('en g sin densidad dice «Sin capturar» y «Capturar» abre la hoja', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText('Sin capturar')).toBeInTheDocument();
+    expect(screen.getByText('Densidad')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Capturar la densidad' }));
+    expect(await screen.findByText('Densidad · Hielo en bolsa')).toBeInTheDocument();
+  });
+
+  it('con densidad dice el valor, el método en palabras, quién y cuándo, y ofrece «Cambiar»', async () => {
+    back.article.mockResolvedValue({ ...ficha, baseUnitCode: 'ml', baseUnitKind: 'volumen',
+      density: { value: '1.1', method: 'weighing', setByName: 'Ana', setAt: '2026-11-02T18:00:00Z' } });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText(/1\.10 gramos por ml · por pesada · Ana, 2 nov/)).toBeInTheDocument();
+    expect(screen.queryByText(/weighing/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Cambiar la densidad' })).toBeInTheDocument();
+  });
+
+  it.each([['label', 'de la etiqueta'], ['manual', 'escrita']])('el método %s se lee «%s»', async (method, words) => {
+    back.article.mockResolvedValue({ ...ficha, density: { value: '0.92', method, setByName: 'Luis', setAt: '2026-11-02T18:00:00Z' } });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText(new RegExp(`0\\.92 gramos por ml · ${words} · Luis`))).toBeInTheDocument();
+  });
+
+  it('el (i) despliega para qué sirve, debajo', async () => {
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '¿Para qué sirve la densidad?' }));
+    expect(screen.getByText(/4,300 g ÷ 1.10 = 3,909 ml/)).toBeInTheDocument();
+  });
+
+  it('en piezas no hay renglón de densidad', async () => {
+    back.article.mockResolvedValue({ ...ficha, baseUnitCode: 'pieza', baseUnitKind: 'pieza', onHand: '12' });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    await screen.findByText(/Hay 12 piezas/);
+    expect(screen.queryByText('Sin capturar')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
+  });
+
+  // Capturar la densidad desde el cambio de unidad cerraba todo al guardar: había que volver a abrir
+  // «Cambiar ›» y elegir otra vez el destino (revisión de tableta de la 058).
+  it('desde el cambio de unidad, al guardar la densidad regresa al cambio con el destino ya elegido', async () => {
+    back.setDensity.mockResolvedValue({ density: { value: '1.3', method: 'manual', setByName: 'Ana', setAt: '2026-11-02T18:00:00Z' } });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Cambiar ›' }));
+    const unidad = (await screen.findByText(/Primero captura la densidad/)).closest('[role=dialog]') as HTMLElement;
+    // Las hojas anidadas quedan marcadas como ocultas mientras animan en jsdom: se buscan con hidden.
+    fireEvent.click(within(unidad).getByRole('button', { name: 'Capturar la densidad', hidden: true }));
+    const hoja = (await screen.findByText('Densidad · Hielo en bolsa')).closest('[role=dialog]') as HTMLElement;
+    fireEvent.click(within(hoja).getByRole('button', { name: 'Escribir el valor', hidden: true }));
+    fireEvent.click(within(hoja).getByLabelText('Gramos por mililitro'));
+    for (const k of ['1', 'punto', '3']) fireEvent.click(within(hoja).getByRole('button', { name: k, hidden: true }));
+    fireEvent.click(within(hoja).getByRole('button', { name: 'Listo', hidden: true }));
+    back.article.mockResolvedValue({ ...ficha, density: { value: '1.3', method: 'manual', setByName: 'Ana', setAt: '2026-11-02T18:00:00Z' } });
+    fireEvent.click(within(hoja).getByRole('button', { name: 'Guardar', hidden: true }));
+    expect(await screen.findByText('1 g = 0.7692 ml · sale de la densidad 1.30 gramos por ml')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Líquido', hidden: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('Densidad · Hielo en bolsa')).toBeNull();
+  });
+
+  it('sin permiso de configurar se ve, pero no se captura', async () => {
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.view'] } as never });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText('Sin capturar')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
   });
 });

@@ -9,7 +9,7 @@ import { UnitChangeSheet } from './UnitChangeSheet';
 const back = vi.hoisted(() => ({
   units: vi.fn(() => Promise.resolve({ items: [
     { id: 1, code: 'g', name: 'Gramo', kind: 'masa', toBase: '1' }, { id: 2, code: 'kg', name: 'Kilo', kind: 'masa', toBase: '1000' },
-    { id: 8, code: 'pieza', name: 'Pieza', kind: 'pieza', toBase: '1' },
+    { id: 8, code: 'pieza', name: 'Pieza', kind: 'pieza', toBase: '1' }, { id: 3, code: 'ml', name: 'Mililitro', kind: 'volumen', toBase: '1' },
   ] })),
   previewUnitChange: vi.fn(),
   changeUnit: vi.fn(() => Promise.resolve()),
@@ -21,9 +21,11 @@ const harina = {
   isPrep: false, categoryId: null, category: null, countPlaceId: null, countPlace: null, onHand: '25000', presentations: [], costSource: 'compra', updatedAt: '',
 };
 
-function montar(onDone = vi.fn()) {
+function montar(onDone = vi.fn(), article: typeof harina & { density?: unknown } = harina, onNeedDensity = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={qc}><Provider><UnitChangeSheet article={harina} onClose={vi.fn()} onDone={onDone} /></Provider></QueryClientProvider>);
+  render(<QueryClientProvider client={qc}><Provider>
+    <UnitChangeSheet article={article as never} onClose={vi.fn()} onDone={onDone} onNeedDensity={onNeedDensity} />
+  </Provider></QueryClientProvider>);
   return onDone;
 }
 
@@ -44,6 +46,7 @@ describe('Cambiar en qué se mide', () => {
     montar();
     const revisar = await screen.findByRole('button', { name: 'Revisar cantidades ›' });
     expect(revisar).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Piezas' }));
     fireEvent.click(screen.getByRole('button', { name: 'kg' }));
     fireEvent.change(screen.getByLabelText('¿Cuánto es 1 pieza?'), { target: { value: '5' } });
     await waitFor(() => expect(revisar).not.toBeDisabled());
@@ -53,6 +56,7 @@ describe('Cambiar en qué se mide', () => {
 
   it('en el paso 2 dice que se crea uno nuevo, pone primero lo que no cuadra y aplica las correcciones', async () => {
     const onDone = montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Piezas' }));
     fireEvent.change(await screen.findByLabelText('¿Cuánto es 1 pieza?'), { target: { value: '5000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Revisar cantidades ›' }));
     expect(await screen.findByText(/se crea «Harina» en piezas/)).toBeInTheDocument();
@@ -72,6 +76,7 @@ describe('Cambiar en qué se mide', () => {
       { key: 'recipe:2', group: 'recipe', label: 'Receta: Agua', from: '20', to: '0.1333333333', fits: true },
     ] });
     montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Piezas' }));
     fireEvent.change(await screen.findByLabelText('¿Cuánto es 1 pieza?'), { target: { value: '150' } });
     fireEvent.click(screen.getByRole('button', { name: 'Revisar cantidades ›' }));
     await screen.findByText(/Se cambia el mismo artículo/);
@@ -82,9 +87,56 @@ describe('Cambiar en qué se mide', () => {
   it('lo que falta cerrar se dice, y no avanza', async () => {
     back.previewUnitChange.mockRejectedValue(new ApiError(409, 'UNIT_CHANGE_PENDING', 'antes de cambiar en qué se mide, falta recibir 1 compra(s)', 'r'));
     montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Piezas' }));
     fireEvent.change(await screen.findByLabelText('¿Cuánto es 1 pieza?'), { target: { value: '5000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Revisar cantidades ›' }));
     expect(await screen.findByText(/falta recibir 1 compra/)).toBeInTheDocument();
     expect(screen.queryByText(/paso 2 de 2/)).toBeNull();
+  });
+
+  // US3 (FR-012, FR-013): entre peso y líquido la equivalencia sale de la densidad; no se teclea.
+  describe('entre peso y líquido', () => {
+    const conDensidad = { ...harina, density: { value: '1.3', method: 'weighing', setByName: 'Ana', setAt: '2026-11-02T10:00:00Z' } };
+    const directo = { path: 'direct', fromUnit: 'g', toUnit: 'ml', density: '1.3', factor: '0.769231', conversions: [
+      { key: 'stock:1', group: 'stock', label: 'Existencia · Matriz', from: '1300', to: '1000', fits: true },
+    ] };
+
+    it('con densidad ofrece líquido, muestra la equivalencia fija y no la pide', async () => {
+      back.previewUnitChange.mockResolvedValue(directo);
+      const onDone = montar(vi.fn(), conDensidad);
+      fireEvent.click(await screen.findByRole('button', { name: 'Líquido' }));
+      expect(screen.queryByLabelText('¿Cuánto es 1 pieza?')).toBeNull();
+      expect(screen.getByText('1 g = 0.7692 ml · sale de la densidad 1.30 gramos por ml')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Revisar cantidades ›' }));
+      await waitFor(() => expect(back.previewUnitChange).toHaveBeenCalledWith(7, { baseUnitId: 3 }));
+      expect(await screen.findByText(/Se cambia el mismo artículo/)).toBeInTheDocument();
+      expect(screen.getByText('1 g = 0.7692 ml · sale de la densidad 1.30 gramos por ml')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Cambiar' }));
+      // Al confirmar devuelve la equivalencia que vio: si alguien rehízo la pesada, el servidor lo nota.
+      await waitFor(() => expect(back.changeUnit).toHaveBeenCalledWith(7, { baseUnitId: 3, factor: '0.769231', overrides: {} }));
+      await waitFor(() => expect(onDone).toHaveBeenCalled());
+    });
+
+    it('sin densidad líquido no se puede elegir y ofrece capturarla', async () => {
+      const onNeedDensity = vi.fn();
+      montar(vi.fn(), harina, onNeedDensity);
+      expect(await screen.findByRole('button', { name: 'Líquido' })).toBeDisabled();
+      expect(screen.getByText(/Primero captura la densidad/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Capturar la densidad' }));
+      expect(onNeedDensity).toHaveBeenCalledWith('volumen');
+    });
+
+    it('si la densidad cambió mientras se revisaba, vuelve a pedir la vista previa', async () => {
+      back.previewUnitChange.mockResolvedValueOnce(directo).mockResolvedValueOnce({ ...directo, density: '1.25', factor: '0.8',
+        conversions: [{ key: 'stock:1', group: 'stock', label: 'Existencia · Matriz', from: '1300', to: '1040', fits: true }] });
+      back.changeUnit.mockRejectedValueOnce(new ApiError(409, 'DENSITY_CHANGED', 'la densidad cambió', 'r'));
+      montar(vi.fn(), conDensidad);
+      fireEvent.click(await screen.findByRole('button', { name: 'Líquido' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Revisar cantidades ›' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Cambiar' }));
+      await waitFor(() => expect(back.previewUnitChange).toHaveBeenCalledTimes(2));
+      expect(await screen.findByText('1 g = 0.8 ml · sale de la densidad 1.25 gramos por ml')).toBeInTheDocument();
+      expect(screen.getByText('1040 ml')).toBeInTheDocument();
+    });
   });
 });

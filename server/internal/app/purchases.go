@@ -181,7 +181,7 @@ func stockStates(rows []db.ListStockLinesRow) []domain.StockLineState {
 			ID: r.ID, IngredientID: derefID(r.IngredientID),
 			Unit: domain.PurchaseUnit{
 				Kind: string(r.BuyKind), ToBase: r.BuyToBase, BaseKind: string(r.BaseKind), PackQtyInBase: r.PackQtyInBase,
-				FromPresentation: r.PresentationID != nil,
+				FromPresentation: r.PresentationID != nil, Density: r.DensityGPerMl,
 			},
 			Ordered: r.Quantity, Received: received, NotComing: r.NotComingQty, Applied: r.AppliedQtyBase,
 			Excluded: r.Excluded,
@@ -221,6 +221,9 @@ func (s *BackofficeService) applyStockLinesOn(ctx context.Context, q *db.Queries
 		return nil, err
 	}
 	moves, pending, err := domain.PlanStockLines(stockStates(rows))
+	if errors.Is(err, domain.ErrUnitKindMismatch) {
+		return nil, unitKindMismatchOf(ctx, q, rows)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -288,6 +291,13 @@ func (s *BackofficeService) applyStockLinesOn(ctx context.Context, q *db.Queries
 		if err := q.AddAppliedQty(ctx, db.AddAppliedQtyParams{ID: r.ID, Delta: m.Delta}); err != nil {
 			return nil, err
 		}
+		// La primera vez que un renglón entre peso y líquido suma, se queda con la densidad que usó: lo
+		// que entra después (corregir, editar, anular) se calcula con ella, no con la que se pese luego.
+		if needsDensity(r) && !r.DensityFixed && r.DensityGPerMl != nil {
+			if err := q.SetExpenseItemDensity(ctx, db.SetExpenseItemDensityParams{ID: r.ID, Density: r.DensityGPerMl}); err != nil {
+				return nil, err
+			}
+		}
 		out = append(out, appliedMove{ItemID: r.ID, IngredientID: r.IngredientID, ProductID: r.ProductID,
 			Description: r.Description, Qty: m.Delta, Day: on, NewerPurchaseOn: newer})
 	}
@@ -309,6 +319,29 @@ func (s *BackofficeService) applyStockLinesOn(ctx context.Context, q *db.Queries
 		}
 	}
 	return out, q.SetExpenseReceivedAt(ctx, db.SetExpenseReceivedAtParams{ID: expenseID, ReceivedAt: received})
+}
+
+// needsDensity: el renglón se compró en peso y se guarda en líquido (o al revés), sin presentación.
+func needsDensity(r db.ListStockLinesRow) bool {
+	return r.PresentationID == nil && r.BuyKind != r.BaseKind &&
+		(r.BuyKind == db.UnitKindMasa || r.BuyKind == db.UnitKindVolumen) &&
+		(r.BaseKind == db.UnitKindMasa || r.BaseKind == db.UnitKindVolumen)
+}
+
+// unitKindMismatchOf nombra el artículo del primer renglón entre peso y líquido sin densidad, para que
+// la pantalla ofrezca capturarla ahí mismo.
+func unitKindMismatchOf(ctx context.Context, q *db.Queries, rows []db.ListStockLinesRow) error {
+	for _, r := range rows {
+		if r.IngredientID == nil || !needsDensity(r) || r.DensityGPerMl != nil {
+			continue
+		}
+		art, err := q.GetArticle(ctx, *r.IngredientID)
+		if err != nil {
+			return err
+		}
+		return domain.UnitKindMismatch{IngredientID: art.ID, Name: art.Name}
+	}
+	return domain.ErrUnitKindMismatch
 }
 
 // applyPurchaseCost recalcula el costo de un insumo con el método de la empresa por una compra que

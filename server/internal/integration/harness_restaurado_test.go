@@ -323,6 +323,20 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
+	// Las compras entre peso y líquido se anulan: la API anterior no las sabría convertir.
+	105: {
+		`update ingredients set density_g_per_ml = null, density_method = null, density_set_by = null, density_set_at = null
+		  where density_g_per_ml is not null`,
+		`update ingredient_presentations set tare_g = null where tare_g is not null`,
+		`update expense_items set density_g_per_ml = null where density_g_per_ml is not null`,
+		`update stock_count_lines set gross_g = null, gross_containers = null, tare_g_used = null, density_used = null
+		  where gross_g is not null`,
+		`update expense_items ei set voided_at = now()
+		   from units bu, ingredients i, units iu
+		  where bu.id = ei.unit_id and i.id = ei.ingredient_id and iu.id = i.base_unit_id
+		    and ei.voided_at is null and ei.presentation_id is null
+		    and bu.kind in ('masa', 'volumen') and iu.kind in ('masa', 'volumen') and bu.kind <> iu.kind`,
+	},
 	// Primero se sueltan los movimientos del traspaso, después las uniones; las presentaciones que
 	// quedarían repetidas por nombre al quitar la marca se desactivan antes de borrarla, o el índice
 	// único viejo no se podría volver a crear.

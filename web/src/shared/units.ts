@@ -37,6 +37,14 @@ export function purchaseUnitsFor(kind: string, units: Unit[]): Unit[] {
     .sort((a, b) => Number(b.toBase) - Number(a.toBase));
 }
 
+// crossBuyUnits es la unidad grande de la otra clase entre peso y líquido (kg para algo que se guarda
+// en ml, L para algo en g): se compra así con la densidad del artículo (spec 058). Una sola, la que
+// traen los tickets; ninguna fuera de esas dos clases.
+export function crossBuyUnits(kind: string, units: Unit[]): Unit[] {
+  const other = kind === 'masa' ? 'volumen' : kind === 'volumen' ? 'masa' : null;
+  return other ? purchaseUnitsFor(other, units).slice(0, 1) : [];
+}
+
 // formatUnitCost muestra un costo por unidad base («0.006», «g») como se compra: «$6.00 / kg».
 // Sin costo devuelve null: la pantalla decide cómo decirlo («Sin costo»).
 export function formatUnitCost(cost: string | number, baseUnitCode: string): string | null {

@@ -13,7 +13,8 @@ import { useKeypadField } from '../../components/useKeypadField';
 import { backofficeApi, type Article, type EditLineBody } from '../../api/backoffice';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { parseMonto, parseNumero } from '../../domain/numeros';
-import { formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
+import { crossBuyUnits, formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';
+import { ASK_FOR_DENSITY, crossConversion } from './expenseDraft';
 
 // Agregar un renglón a un gasto guardado (spec 053). No escribe nada: devuelve el renglón a la
 // edición, que lo junta con los demás cambios y pasa por la vista previa. «Ya llegó» lo recibe en la
@@ -51,13 +52,18 @@ export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose,
   const list: Article[] = articles?.items ?? [];
   const art = list.find((a) => `${a.itemType}:${a.id}` === pick);
   const packs = art?.itemType === 'ingrediente' ? (presentations ?? []).filter((p) => p.ingredientId === art.id && p.active) : [];
-  const buyUnits = art ? purchaseUnitsFor(art.unitKind, units?.items ?? []) : [];
+  const buyUnits = art ? [...purchaseUnitsFor(art.unitKind, units?.items ?? []),
+    ...(art.itemType === 'ingrediente' ? crossBuyUnits(art.unitKind, units?.items ?? []) : [])] : [];
+  // Entre peso y líquido (spec 058): la cuenta con la densidad o lo que falta. Aquí solo se avisa; el
+  // atajo a la densidad sería una tercera capa sobre el gasto y su edición.
+  const buyUnit = (units?.items ?? []).find((u) => u.id === how.unitId);
+  const cross = art && buyUnit && !how.presentationId ? crossConversion(qty, buyUnit, art.unitKind, art.unitCode, art.densityGPerMl) : null;
   const n = parseNumero(qty);
   const m = parseMonto(amount);
   const qtyOk = n.estado === 'valido' && n.valor > 0;
   const moneyOk = gift || (m.estado === 'valido' && m.valor > 0);
   const ok = kind === 'stock'
-    ? !!art && qtyOk && !!(how.presentationId || how.unitId) && moneyOk
+    ? !!art && qtyOk && !!(how.presentationId || how.unitId) && moneyOk && !cross?.missing
     : description.trim() !== '' && m.estado === 'valido' && m.valor > 0;
 
   const choose = (v: string) => {
@@ -140,7 +146,11 @@ export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose,
                         {unitLabel(u)}
                       </Button>
                     ))}
+                    {cross?.words && <Text fontSize="sm" fontWeight="700" color="fg.success">{cross.words}</Text>}
                   </HStack>
+                )}
+                {cross?.missing && (
+                  <Text fontSize="sm"><Text as="span" fontWeight="700" color="orange.fg">{cross.missing}</Text>. {ASK_FOR_DENSITY}</Text>
                 )}
                 <HStack gap={3} flexWrap="wrap">
                   <HStack gap={0} borderWidth="1px" borderRadius="md" role="group" aria-label="¿Se pagó?">

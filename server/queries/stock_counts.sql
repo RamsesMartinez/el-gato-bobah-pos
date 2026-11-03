@@ -16,7 +16,8 @@ select id, branch_id, status from stock_counts where id = $1 for update;
 -- name: CountItems :many
 -- Lo que se cuenta: los insumos activos que llevan existencia, por lugar (los sin lugar al final)
 -- y por nombre. Lo que el sistema tiene NO viaja: el conteo es a ciegas.
-select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at
+select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at,
+       u.kind as base_unit_kind, i.density_g_per_ml
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join count_places cp on cp.id = i.count_place_id
@@ -51,12 +52,17 @@ select coalesce((select sl.on_hand from stock_levels sl
 -- name: UpsertCountLine :exec
 -- Recapturar manda: la lectura nueva reemplaza cifra, lo que había en el sistema y su último
 -- movimiento.
-insert into stock_count_lines (count_id, ingredient_id, counted_qty, system_qty, captured_by, last_movement_id)
+-- Lo pesado con empaque (spec 058) viaja con la cifra: recapturar sin pesar lo deja en nulo.
+insert into stock_count_lines (count_id, ingredient_id, counted_qty, system_qty, captured_by, last_movement_id,
+                               gross_g, gross_containers, tare_g_used, density_used)
 values (sqlc.arg(count_id), sqlc.arg(ingredient_id), sqlc.arg(counted_qty), sqlc.arg(system_qty), sqlc.arg(captured_by),
-        sqlc.arg(last_movement_id))
+        sqlc.arg(last_movement_id), sqlc.narg(gross_g), sqlc.narg(gross_containers), sqlc.narg(tare_g_used),
+        sqlc.narg(density_used))
 on conflict (count_id, ingredient_id) do update
    set counted_qty = excluded.counted_qty, system_qty = excluded.system_qty,
-       captured_by = excluded.captured_by, captured_at = now(), last_movement_id = excluded.last_movement_id;
+       captured_by = excluded.captured_by, captured_at = now(), last_movement_id = excluded.last_movement_id,
+       gross_g = excluded.gross_g, gross_containers = excluded.gross_containers,
+       tare_g_used = excluded.tare_g_used, density_used = excluded.density_used;
 
 -- name: SaveCountLineCosts :exec
 -- Al cerrar, el costo de cada insumo contado: el reporte del faltante de este conteo no cambia

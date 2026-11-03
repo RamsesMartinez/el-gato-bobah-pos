@@ -241,3 +241,68 @@ describe('un empaque rechazado', () => {
     expect(await screen.findByText('escribe cuánto trae el empaque')).toBeInTheDocument();
   });
 });
+
+// Spec 058 (US4): lo que pesa vacío el empaque, para contar pesando con el producto adentro.
+describe('pesa vacío', () => {
+  const azucar = { id: 12, name: 'Azúcar', baseUnitCode: 'g', baseUnitKind: 'masa' };
+
+  test('en la lista se ve junto al contenido', async () => {
+    montar(leche, [pres({ id: 1, name: 'Galón', qtyInBase: '3785.4', tareG: '120' })]);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Galón · 3.79 L · pesa vacío 120 g');
+  });
+
+  test('solo en artículos en g o ml, marcado «Opcional» y con su (i)', async () => {
+    montar(aguacate);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(screen.queryByLabelText('Pesa vacío (g)')).toBeNull();
+  });
+
+  // Va junto a «Cuánto trae», que es de lo que habla: después de la marca se leía como dato de la marca.
+  test('«Pesa vacío» va antes de «Marca o proveedor»', async () => {
+    montar(azucar);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    const tare = screen.getByLabelText('Pesa vacío (g)');
+    const brand = screen.getByLabelText('Marca o proveedor (opcional)');
+    expect(tare.compareDocumentPosition(brand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('un empaque nuevo manda lo que pesa vacío si se escribió, y nada si no', async () => {
+    montar(azucar);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar empaque' }));
+    expect(screen.getByText('Opcional')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Para qué sirve «Pesa vacío»' }));
+    expect(screen.getByText(/el conteo resta lo que pesa el empaque/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Otro' }));
+    fireEvent.change(screen.getByLabelText('Nombre del empaque'), { target: { value: 'Tarro' } });
+    fireEvent.change(screen.getByLabelText('Cuánto trae'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'kg' }));
+    fireEvent.change(screen.getByLabelText('Pesa vacío (g)'), { target: { value: '150' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.createPresentation).toHaveBeenCalledWith(12, expect.objectContaining({ name: 'Tarro', tareG: '150' })));
+  });
+
+  test('editar sin tocarlo no lo manda; borrarlo manda null', async () => {
+    montar(leche, [pres({ id: 1, tareG: '120.00' })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar' }));
+    expect(screen.getByLabelText('Pesa vacío (g)')).toHaveValue('120');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.updatePresentation).toHaveBeenCalledTimes(1));
+    expect(back.updatePresentation.mock.calls[0][1]).not.toHaveProperty('tareG');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar' }));
+    fireEvent.change(screen.getByLabelText('Pesa vacío (g)'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar empaque' }));
+    await waitFor(() => expect(back.updatePresentation).toHaveBeenCalledTimes(2));
+    expect(back.updatePresentation.mock.calls[1][1]).toMatchObject({ tareG: null });
+  });
+
+  test('un peso que no es número no deja guardar', async () => {
+    montar(leche, [pres({ id: 1 })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar' }));
+    fireEvent.change(screen.getByLabelText('Pesa vacío (g)'), { target: { value: '0' } });
+    expect(screen.getByRole('button', { name: 'Guardar empaque' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Pesa vacío (g)'), { target: { value: '120' } });
+    expect(screen.getByRole('button', { name: 'Guardar empaque' })).not.toBeDisabled();
+  });
+});

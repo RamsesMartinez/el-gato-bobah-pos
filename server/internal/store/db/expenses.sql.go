@@ -716,7 +716,9 @@ select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description,
        ei.qty_received, ei.unit_cost, ei.amount, ei.pack_qty_in_base, ei.position,
        i.name as ingredient_name, p.name as product_name,
        ei.applied_qty_base, ei.not_coming_qty, ei.voided_at, ei.is_gift, ei.presentation_id, ei.excluded,
-       iu.code as base_unit_code,
+       iu.code as base_unit_code, iu.kind as base_unit_kind,
+       -- La densidad con que el renglón convierte entre peso y líquido: la fija o la vigente (spec 058).
+       coalesce(ei.density_g_per_ml, i.density_g_per_ml) as density_g_per_ml,
        -- Lo guardado hoy del insumo, para «Tendrás X (hoy Y)» al corregir (spec 038). En toda la
        -- empresa y no por sucursal: con dos sucursales y sin selector, ver el detalle no debe
        -- tronar; guardar sí, y ése es el que dice BRANCH_AMBIGUOUS.
@@ -756,6 +758,8 @@ type ListExpenseItemsRow struct {
 	PresentationID *int64             `json:"presentation_id"`
 	Excluded       bool               `json:"excluded"`
 	BaseUnitCode   *string            `json:"base_unit_code"`
+	BaseUnitKind   *UnitKind          `json:"base_unit_kind"`
+	DensityGPerMl  *decimal.Decimal   `json:"density_g_per_ml"`
 	OnHand         decimal.Decimal    `json:"on_hand"`
 }
 
@@ -792,6 +796,8 @@ func (q *Queries) ListExpenseItems(ctx context.Context, expenseID int64) ([]List
 			&i.PresentationID,
 			&i.Excluded,
 			&i.BaseUnitCode,
+			&i.BaseUnitKind,
+			&i.DensityGPerMl,
 			&i.OnHand,
 		); err != nil {
 			return nil, err

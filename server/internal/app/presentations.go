@@ -29,6 +29,8 @@ type PresentationView struct {
 	PurchaseUnitID *int16 `json:"purchaseUnitId"`
 	// Brand es la marca o el proveedor (spec 056), opcional.
 	Brand *string `json:"brand"`
+	// TareG: lo que pesa vacío, en g (spec 058), para contar pesando con el producto adentro.
+	TareG *decimal.Decimal `json:"tareG"`
 }
 
 // PresentationInput es un empaque tal como se captura: cuánto trae y en qué unidad. Active nulo
@@ -41,6 +43,9 @@ type PresentationInput struct {
 	Active      *bool
 	// Brand nulo crea sin marca y, al editar, conserva la que tiene; vacío la quita.
 	Brand *string
+	// Tare: lo que pesa vacío (spec 058). Sin Set, al editar se queda la que tiene (una tableta vieja
+	// no la manda); con Set y sin valor, se quita.
+	Tare Field[decimal.Decimal]
 }
 
 // Presentations lista los empaques de un insumo, o los de toda la empresa sin filtro. Nunca nil:
@@ -55,10 +60,42 @@ func (s *BackofficeService) Presentations(ctx context.Context, ingredientID *int
 		out = append(out, PresentationView{
 			ID: r.ID, IngredientID: r.IngredientID, Name: r.Name, QtyInBase: r.QtyInBase,
 			BaseUnitCode: r.BaseUnitCode, Active: r.Active, Approximate: r.IsApproximate,
-			PurchaseUnitID: r.PurchaseUnitID, Brand: r.Brand,
+			PurchaseUnitID: r.PurchaseUnitID, Brand: r.Brand, TareG: r.TareG,
 		})
 	}
 	return out, nil
+}
+
+// presentationTare valida lo que pesa vacío un empaque: solo en un artículo en g o ml.
+func presentationTare(ctx context.Context, q *db.Queries, ingredientID int64, tare *decimal.Decimal) error {
+	if tare == nil {
+		return nil
+	}
+	if err := domain.ValidTare(*tare); err != nil {
+		return err
+	}
+	ing, err := q.GetIngredientUnit(ctx, ingredientID)
+	if err != nil {
+		return notFound(err)
+	}
+	if ing.BaseUnitKind != db.UnitKindMasa && ing.BaseUnitKind != db.UnitKindVolumen {
+		return fmt.Errorf("%w: lo que pesa vacío solo sirve en lo que se mide en g o ml", domain.ErrValidation)
+	}
+	return nil
+}
+
+// setTare guarda lo que pesa vacío y deja el evento si cambió.
+func setTare(ctx context.Context, q *db.Queries, id int64, before, after *decimal.Decimal) error {
+	if sameDec(before, after) {
+		return nil
+	}
+	if err := q.SetPresentationTare(ctx, db.SetPresentationTareParams{ID: id, TareG: after}); err != nil {
+		return err
+	}
+	return recordAudit(ctx, q, domain.AuditEvent{
+		Action: domain.AuditPresentationTareSet, EntityType: "presentation", EntityID: id,
+		Before: map[string]any{"tareG": before}, After: map[string]any{"tareG": after},
+	})
 }
 
 // planPresentation convierte lo capturado a la unidad del insumo con las reglas de dominio.
@@ -109,11 +146,17 @@ func (s *BackofficeService) CreatePresentation(ctx context.Context, ingredientID
 		if err != nil {
 			return err
 		}
+		if err := presentationTare(ctx, q, ingredientID, in.Tare.Value); err != nil {
+			return err
+		}
 		id, err = q.CreatePresentation(ctx, db.CreatePresentationParams{
 			IngredientID: ingredientID, Name: plan.Name, QtyInBase: plan.QtyInBase,
 			PurchaseUnitID: approxUnit(plan.Approximate, in.UnitID), IsApproximate: plan.Approximate, Brand: brand,
 		})
 		if err != nil {
+			return err
+		}
+		if err := setTare(ctx, q, id, nil, in.Tare.Value); err != nil {
 			return err
 		}
 		return recordAudit(ctx, q, domain.AuditEvent{
@@ -170,6 +213,14 @@ func (s *BackofficeService) UpdatePresentation(ctx context.Context, id int64, in
 		}
 		if n == 0 {
 			return domain.ErrNotFound
+		}
+		if in.Tare.Set {
+			if err := presentationTare(ctx, q, ingredientID, in.Tare.Value); err != nil {
+				return err
+			}
+			if err := setTare(ctx, q, id, before.TareG, in.Tare.Value); err != nil {
+				return err
+			}
 		}
 		// Un cambio de estado (deja de llegar así o vuelve) es «retiró»; uno de nombre o cantidad, «editó».
 		if before.Active != active {

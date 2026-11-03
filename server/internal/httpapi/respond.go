@@ -36,6 +36,9 @@ type errorDetails struct {
 	Ingredients int32 `json:"ingredients,omitempty"`
 	// Archived: el artículo con ese nombre está archivado (spec 042); la pantalla ofrece reactivarlo.
 	Archived bool `json:"archived,omitempty"`
+	// IngredientID: el artículo de una compra entre peso y líquido sin densidad (spec 058), para
+	// abrir su hoja de densidad.
+	IngredientID int64 `json:"ingredientId,omitempty"`
 }
 
 // JSON writes v as JSON with the given status.
@@ -242,6 +245,17 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusNotFound, "PLATFORM_ITEM_NOT_FOUND"
 	case errors.Is(err, domain.ErrUnitChangePending):
 		status, code = http.StatusConflict, "UNIT_CHANGE_PENDING"
+	// Densidad y tara (spec 058): cada uno dice algo distinto en pantalla, así que va antes de
+	// ErrConflict y ErrValidation, que los envuelven.
+	case errors.Is(err, domain.ErrDensityChanged):
+		status, code = http.StatusConflict, "DENSITY_CHANGED"
+	case errors.Is(err, domain.ErrDensityInUse):
+		status, code = http.StatusConflict, "DENSITY_IN_USE"
+	case errors.Is(err, domain.ErrCountInputsChanged):
+		status, code = http.StatusConflict, "COUNT_INPUTS_CHANGED"
+	case errors.Is(err, domain.ErrUnitKindMismatch):
+		// 400 con código propio: la pantalla de la compra ofrece capturar la densidad ahí mismo.
+		status, code = http.StatusBadRequest, "UNIT_KIND_MISMATCH"
 	case errors.Is(err, domain.ErrCountNeedsConfirm):
 		status, code = http.StatusConflict, "NEEDS_CONFIRM"
 	case errors.Is(err, domain.ErrIngredientMerged):
@@ -320,6 +334,10 @@ func Error(w http.ResponseWriter, err error) {
 	if errors.As(err, &article) {
 		details = &errorDetails{ExistingID: article.ID, Archived: article.Archived}
 	}
+	var mismatch domain.UnitKindMismatch
+	if errors.As(err, &mismatch) {
+		details = &errorDetails{IngredientID: mismatch.IngredientID, ProductName: mismatch.Name}
+	}
 	var busy domain.CountPlaceHasIngredients
 	if errors.As(err, &busy) {
 		details = &errorDetails{Ingredients: busy.Ingredients}
@@ -357,6 +375,17 @@ func operatorMessage(msg string) string {
 // Decode parses a JSON request body into v, returning a validation error on failure.
 func Decode(r *http.Request, v any) error {
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		return domain.ErrValidation
+	}
+	return nil
+}
+
+// DecodeStrict es Decode que rechaza un campo que el cuerpo no conoce: donde un dato de más cambia lo
+// que se entiende (la forma de capturar una densidad), ignorarlo sería caer a un default en silencio.
+func DecodeStrict(r *http.Request, v any) error {
+	d := json.NewDecoder(r.Body)
+	d.DisallowUnknownFields()
+	if err := d.Decode(v); err != nil {
 		return domain.ErrValidation
 	}
 	return nil

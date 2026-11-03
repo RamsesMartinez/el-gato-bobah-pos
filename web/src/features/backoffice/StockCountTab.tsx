@@ -12,7 +12,9 @@ import { backofficeApi, type CountCaptureBody, type CountClose, type CountItem, 
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { matchesWords } from '../../utils/format';
 import { formatBaseQty } from '../../shared/units';
-import { countedWords, diffWords, isBigDiff, looseUnitsOf, packsTotal } from './countEntry';
+import { countedWords, diffWords, grossNet, isBigDiff, looseUnitsOf, packsTotal, withGross } from './countEntry';
+import { InfoButton } from '../../components/InfoButton';
+import { Picker } from '../../components/Picker';
 import { parseNumero } from '../../domain/numeros';
 import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
@@ -57,8 +59,11 @@ function useKeyTarget(target: KeyTarget) {
       get next() { return latest.current.next; },
       save: () => latest.current.save(),
     };
+    // La hoja que se abre encima de la tarjeta (pesar con empaque, spec 058) toma las teclas y al
+    // cerrarse se las devuelve a la tarjeta.
+    const before = ref.current;
     ref.current = proxy;
-    return () => { if (ref.current === proxy) ref.current = null; };
+    return () => { if (ref.current === proxy) ref.current = before; };
   }, [ref]);
 }
 
@@ -244,58 +249,183 @@ export function StockCountTab() {
 // Entry son las casillas de un artículo (spec 042, maqueta «Teclado del conteo», opción A): un renglón
 // por empaque con − y + para ajustar de uno en uno, y lo suelto con su unidad elegida. Tocar una
 // casilla lleva el teclado en pantalla ahí (`inputMode="none"`: el del sistema no se abre).
-type Field = number | 'rest';
+// 'gross' y 'containers' son las casillas de «Pesar con empaque» (spec 058).
+type Field = number | 'rest' | 'gross' | 'containers';
 
-function useEntry(item: CountItem) {
+// GROSS_UNITS son las unidades de la báscula: siempre peso, aunque el artículo se guarde en ml.
+const GROSS_UNITS = [{ label: 'g', factor: 1, code: 'g' as const }, { label: 'kg', factor: 1000, code: 'kg' as const }];
+
+// taredPacks son los empaques con los que se puede pesar: los que dicen cuánto pesan vacíos.
+const taredPacks = (item: CountItem) => item.presentations.filter((p) => p.id !== undefined && !!p.tareG);
+
+function useEntry(item: CountItem, opts: { startWeighing?: boolean } = {}) {
   const packs = item.presentations;
   const units = looseUnitsOf(item.baseUnitCode, !!item.weighable);
+  const tared = item.grossWeighable ? taredPacks(item) : [];
   // Los ids de g y kg, para mandar un peso: solo se piden si el artículo se puede pesar.
-  const unitList = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units, enabled: !!item.weighable });
+  const unitList = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units, enabled: !!item.weighable || tared.length > 0 });
   const weightUnitId = (code: 'g' | 'kg') => unitList.data?.items.find((u) => u.code === code)?.id;
   const prev = item.countedQty !== null ? Number(item.countedQty) : null;
   const [counts, setCounts] = useState<string[]>(() => packs.map(() => ''));
   // Lo ya contado vuelve en lo suelto, en la unidad base: no se sabe cómo se repartió.
-  const [rest, setRest] = useState(prev !== null ? String(prev) : '');
+  const [rest, setRest] = useState(() => (opts.startWeighing && tared.length > 0 ? '' : prev !== null ? String(prev) : ''));
   const [unitIdx, setUnitIdx] = useState(0);
-  const [field, setField] = useState<Field>(packs.length ? 0 : 'rest');
+  // Pesar con empaque y teclear lo suelto son excluyentes: lo abierto se pesa o se teclea.
+  const [grossOpen, setGrossOpen] = useState(!!opts.startWeighing);
+  const [grossWeight, setGrossWeight] = useState('');
+  const [grossUnitIdx, setGrossUnitIdx] = useState(0);
+  const [grossPackId, setGrossPackId] = useState<number | null>(null);
+  const [containers, setContainers] = useState('1');
+  const weighing = grossOpen && tared.length > 0;
+  const [field, setField] = useState<Field>(weighing ? 'gross' : packs.length ? 0 : 'rest');
   const unit = units[unitIdx];
   const restNum = parseNumero(rest);
   const fromPacks = packsTotal(counts, packs.map((p) => p.qtyInBase));
-  const captured = fromPacks !== null || restNum.estado === 'valido';
-  const invalid = restNum.estado === 'invalido';
+  // El empaque se sigue por id: si al recargar ya no dice cuánto pesa vacío, se toma el primero que sí.
+  const grossPack = tared.find((p) => p.id === grossPackId) ?? tared[0] ?? null;
+  const grossUnit = GROSS_UNITS[grossUnitIdx];
+  const gross = weighing && grossPack ? grossNet({
+    weight: grossWeight, weightFactor: grossUnit.factor, tareG: grossPack.tareG!, containers: Number(containers),
+    baseCode: item.baseUnitCode, density: item.densityGPerMl,
+  }) : null;
+  // Con la báscula escrita, la cuenta tiene que salir; vacía, la pesada no cuenta.
+  const grossTyped = weighing && grossWeight.trim() !== '';
+  const grossOk = gross !== null && gross.ok;
+  const captured = fromPacks !== null || (!weighing && restNum.estado === 'valido') || grossOk;
+  const invalid = (!weighing && restNum.estado === 'invalido') || (grossTyped && !grossOk);
   // Sin peso, el total se sabe aquí. Con peso lo calcula el servidor (no se adivina el redondeo).
-  const total = !captured || invalid || unit.weightCode ? null
-    : Number(((fromPacks ?? 0) + (restNum.estado === 'valido' ? restNum.valor * unit.factor : 0)).toFixed(4));
+  // Con empaque, la pantalla repite la regla del servidor para mostrar la cuenta; se guarda la suya.
+  const total = !captured || invalid || (!weighing && unit.weightCode) ? null
+    : grossOk ? withGross(fromPacks, gross.net)
+      : Number(((fromPacks ?? 0) + (!weighing && restNum.estado === 'valido' ? restNum.valor * unit.factor : 0)).toFixed(4));
   // Si no se pudieron leer, los de siempre; el servidor decide con los de la empresa.
   const { data: limits = DEFAULT_COUNT_LIMITS } = useQuery({ queryKey: ['count-limits'], queryFn: countLimitsApi.get, retry: false });
   // Con peso el total lo calcula el servidor: ahí el máximo lo dice su 400.
   const overMax = total !== null ? overMaxMessage(limits, item.baseUnitCode, total) : null;
+  const fields: Field[] = [...packs.map((_, i) => i), ...(weighing ? ['gross', 'containers'] as const : ['rest'] as const)];
   const key = (k: string) => {
     if (field === 'rest') setRest((v) => pressKey(v, k, unit.decimals));
+    else if (field === 'gross') setGrossWeight((v) => pressKey(v, k, true));
+    else if (field === 'containers') setContainers((v) => pressKey(v, k, false));
     else setCounts((cs) => cs.map((c, i) => (i === field ? pressKey(c, k, false) : c)));
   };
   const bump = (i: number, d: 1 | -1) => setCounts((cs) => cs.map((c, j) => (j === i ? String(Math.max(0, (Number(c) || 0) + d)) : c)));
-  const next = () => setField((f) => (f === 'rest' ? (packs.length ? 0 : 'rest') : f + 1 < packs.length ? f + 1 : 'rest'));
+  const bumpContainers = (d: 1 | -1) => setContainers((c) => String(Math.max(1, (Number(c) || 0) + d)));
+  const next = () => setField((f) => fields[(fields.indexOf(f) + 1) % fields.length]);
+  const openWeighing = () => { setGrossOpen(true); setRest(''); setField('gross'); };
+  const closeWeighing = () => { setGrossOpen(false); setGrossWeight(''); setContainers('1'); setField('rest'); };
   const body = (): CountCaptureBody | null => {
     if (!captured || invalid || overMax) return null;
-    if (unit.weightCode && restNum.estado === 'valido') {
+    if (grossOk && grossPack) {
+      const wu = weightUnitId(grossUnit.code);
+      return wu ? {
+        countedQty: String(fromPacks ?? 0), confirmable: true,
+        gross: { weight: grossWeight.trim(), weightUnitId: wu, presentationId: grossPack.id!, containers: Number(containers),
+          seenTareG: grossPack.tareG!, seenDensity: item.densityGPerMl ?? null },
+      } : null;
+    }
+    if (!weighing && unit.weightCode && restNum.estado === 'valido') {
       const wu = weightUnitId(unit.weightCode);
       return wu ? { countedQty: String(fromPacks ?? 0), weight: String(restNum.valor), weightUnitId: wu, confirmable: true } : null;
     }
     return { countedQty: String(total), confirmable: true };
   };
   return { packs, units, unit, unitIdx, setUnitIdx, counts, rest, field, setField, total, captured, key, bump, next, body,
-    weighed: !!unit.weightCode && restNum.estado === 'valido', fromPacks, overMax, allowDecimal: field === 'rest' && unit.decimals };
+    hasNext: fields.length > 1,
+    weighed: !weighing && !!unit.weightCode && restNum.estado === 'valido', fromPacks, overMax,
+    allowDecimal: (field === 'rest' && unit.decimals) || field === 'gross',
+    tared, weighing, openWeighing, closeWeighing, grossWeight, grossUnitIdx, setGrossUnitIdx, grossPack,
+    setGrossPackId, containers, bumpContainers, gross };
 }
 
-function EntryFields({ item, e, serverError }: { item: CountItem; e: ReturnType<typeof useEntry>; serverError?: string | null }) {
-  const box = (active: boolean) => ({
-    w: '96px', minH: '56px', fontSize: '2xl', fontWeight: '800', textAlign: 'center' as const, inputMode: 'none' as const, readOnly: true,
-    placeholder: '—', borderWidth: '2px', borderColor: active ? 'brand.solid' : undefined, bg: active ? 'brand.subtle' : undefined,
-  });
+type Entry = ReturnType<typeof useEntry>;
+
+const entryBox = (active: boolean) => ({
+  w: '96px', minH: '56px', fontSize: '2xl', fontWeight: '800', textAlign: 'center' as const, inputMode: 'none' as const, readOnly: true,
+  placeholder: '—', borderWidth: '2px', borderColor: active ? 'brand.solid' : undefined, bg: active ? 'brand.subtle' : undefined,
+  'data-active': active ? '' : undefined,
+});
+
+// WeighRow es el renglón plegado «Pesar con empaque» (spec 058, maqueta Conteo A): una forma
+// avanzada y opcional, así que plegado no le estorba a quien no pesa. onOpen decide dónde se abre:
+// en su lugar en la hoja, o la hoja completa desde «Uno por uno».
+function WeighRow({ open, onOpen, onClose, toMl }: { open: boolean; onOpen: () => void; onClose: () => void; toMl: boolean }) {
+  const [info, setInfo] = useState(false);
+  return (
+    <VStack align="stretch" gap={1}>
+      <HStack gap={1}>
+        <Button minH="44px" variant="ghost" colorPalette="gray" px={1} aria-expanded={open} onClick={open ? onClose : onOpen}>
+          <Text as="span" fontWeight="700">{open ? '▾' : '▸'} Pesar con empaque</Text>
+          <Text as="span" fontSize="sm" color="fg.muted" fontWeight="400">· Opcional</Text>
+        </Button>
+        <InfoButton label="Para qué sirve pesar con empaque" open={info} onToggle={() => setInfo((v) => !v)} />
+      </HStack>
+      {info && (
+        <Text fontSize="sm" color="fg.muted">
+          Pon en la báscula los empaques abiertos con lo que traen. Se resta lo que pesan vacíos{toMl ? ' y se convierte a ml' : ''}. No lo sumes también como suelto.
+        </Text>
+      )}
+    </VStack>
+  );
+}
+
+function WeighFields({ item, e }: { item: CountItem; e: Entry }) {
+  const pack = e.grossPack;
+  if (!pack) return null;
+  const packName = presentationLabel(pack);
+  return (
+    <VStack align="stretch" gap={2} data-testid="pesar-con-empaque">
+      <HStack gap={3}>
+        <Text minW="110px">Báscula</Text>
+        <Input aria-label={`Peso en la báscula de ${item.name}`} value={e.grossWeight} {...entryBox(e.field === 'gross')} w="140px"
+          onFocus={() => e.setField('gross')} onClick={() => e.setField('gross')} />
+        <HStack gap={0} borderWidth="1px" borderRadius="lg" overflow="hidden" role="group" aria-label="Unidad de la báscula">
+          {GROSS_UNITS.map((u, i) => (
+            <Button key={u.label} minH="48px" minW="64px" borderRadius="0" fontSize="lg" fontWeight="700"
+              variant={e.grossUnitIdx === i ? 'solid' : 'ghost'} colorPalette="gray" aria-pressed={e.grossUnitIdx === i}
+              onClick={() => e.setGrossUnitIdx(i)}>{u.label}</Button>
+          ))}
+        </HStack>
+      </HStack>
+      <HStack gap={3}>
+        <Text minW="110px">¿Cuál empaque?</Text>
+        {e.tared.length > 1 ? (
+          <Box flex="1" maxW="320px">
+            <Picker title="¿Qué empaque pesaste?" value={String(pack.id)} onChange={(v) => e.setGrossPackId(Number(v))}
+              options={e.tared.map((p) => ({ value: String(p.id), label: presentationLabel(p), hint: `pesa vacío ${formatBaseQty(p.tareG!, 'g')}` }))} />
+          </Box>
+        ) : (
+          <Text fontWeight="600">{packName} · pesa vacío {formatBaseQty(pack.tareG!, 'g')}</Text>
+        )}
+      </HStack>
+      <HStack gap={3}>
+        <Text minW="110px">Cuántos pesaste</Text>
+        <Button aria-label="Quitar un empaque pesado" minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bumpContainers(-1)}>−</Button>
+        <Input aria-label={`Empaques pesados de ${item.name}`} value={e.containers} {...entryBox(e.field === 'containers')}
+          onFocus={() => e.setField('containers')} onClick={() => e.setField('containers')} />
+        <Button aria-label="Agregar un empaque pesado" minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bumpContainers(1)}>+</Button>
+      </HStack>
+      {e.gross && (e.gross.ok
+        ? <Text fontSize="lg" fontWeight="600" data-testid="cuenta-pesada">{e.gross.words}</Text>
+        : <Text color="fg.error" fontWeight="700" role="alert">{e.gross.error}</Text>)}
+    </VStack>
+  );
+}
+
+function EntryFields({ item, e, serverError, onWeigh }: {
+  item: CountItem; e: Entry; serverError?: string | null;
+  // onWeigh abre la pesada en otro lado (la hoja completa) en vez de crecer aquí.
+  onWeigh?: () => void;
+}) {
   const many = e.packs.length > 3;
+  // La casilla activa se trae a la vista al cambiar: con varios empaques y la pesada abierta queda
+  // debajo del área con scroll, y el teclado escribiría en una casilla que no se ve.
+  const fieldsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    fieldsRef.current?.querySelector('[data-active]')?.scrollIntoView?.({ block: 'nearest' });
+  }, [e.field, e.weighing]);
   const totalLine = (
-    <HStack justify="space-between" align="baseline" data-testid="total-contado">
+    <HStack justify="space-between" align="baseline" data-testid="total-contado" flexShrink={0}>
       <Text color="fg.muted">Total contado</Text>
       <Text fontSize="4xl" fontWeight="800" lineHeight="1">
         {e.total !== null ? countedWords(e.total, item.baseUnitCode)
@@ -307,35 +437,49 @@ function EntryFields({ item, e, serverError }: { item: CountItem; e: ReturnType<
   return (
     <VStack align="stretch" gap={2} flex="1" minH={0} data-count-entry="">
       {many && totalLine}
-      {e.packs.length > 0 && (
-        <VStack align="stretch" gap={0} overflowY={many ? 'auto' : undefined} flex={many ? '1' : undefined} minH={0}>
-          <Text fontWeight="700">Empaques cerrados</Text>
-          {e.packs.map((p, i) => (
-            <HStack key={p.id ?? `${p.name}-${i}`} minH="56px" borderBottomWidth="1px" gap={3}>
-              <Text flex="1" fontSize="lg"><b>{presentationLabel(p)}</b> · {formatBaseQty(p.qtyInBase, item.baseUnitCode)}</Text>
-              <Button aria-label={`Quitar ${presentationLabel(p)}`} minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bump(i, -1)}>−</Button>
-              <Input aria-label={`${presentationLabel(p)} de ${item.name}`} value={e.counts[i]} {...box(e.field === i)}
-                onFocus={() => e.setField(i)} onClick={() => e.setField(i)} />
-              <Button aria-label={`Agregar ${presentationLabel(p)}`} minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bump(i, 1)}>+</Button>
-            </HStack>
-          ))}
-        </VStack>
-      )}
-      <Text fontWeight="700">{e.packs.length ? 'Abierto o suelto' : 'Cuánto hay'}</Text>
-      <HStack gap={3}>
-        <Input aria-label={`Suelto de ${item.name}`} value={e.rest} {...box(e.field === 'rest')} w="140px"
-          onFocus={() => e.setField('rest')} onClick={() => e.setField('rest')} />
-        {e.units.length > 1 ? (
-          <HStack gap={0} borderWidth="1px" borderRadius="lg" overflow="hidden" role="group" aria-label="Unidad de lo suelto">
-            {e.units.map((u, i) => (
-              <Button key={u.label} minH="48px" minW="64px" borderRadius="0" fontSize="lg" fontWeight="700"
-                variant={e.unitIdx === i ? 'solid' : 'ghost'} colorPalette="gray" aria-pressed={e.unitIdx === i}
-                onClick={() => e.setUnitIdx(i)}>{u.label}</Button>
+      {/* Lo capturable se desplaza y el total se queda fijo: con la pesada abierta y varios empaques no
+          cabe en 600 px, y «Guardar» no puede salirse de la pantalla. */}
+      <VStack ref={fieldsRef} align="stretch" gap={2} flex="1" minH={0} overflowY="auto" data-testid="campos-conteo">
+        {e.packs.length > 0 && (
+          <VStack align="stretch" gap={0} flexShrink={0}>
+            <Text fontWeight="700">Empaques cerrados</Text>
+            {e.packs.map((p, i) => (
+              <HStack key={p.id ?? `${p.name}-${i}`} minH="56px" borderBottomWidth="1px" gap={3}>
+                <Text flex="1" fontSize="lg"><b>{presentationLabel(p)}</b> · {formatBaseQty(p.qtyInBase, item.baseUnitCode)}</Text>
+                <Button aria-label={`Quitar ${presentationLabel(p)}`} minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bump(i, -1)}>−</Button>
+                <Input aria-label={`${presentationLabel(p)} de ${item.name}`} value={e.counts[i]} {...entryBox(e.field === i)}
+                  onFocus={() => e.setField(i)} onClick={() => e.setField(i)} />
+                <Button aria-label={`Agregar ${presentationLabel(p)}`} minH="52px" minW="52px" variant="outline" fontSize="2xl" onClick={() => e.bump(i, 1)}>+</Button>
+              </HStack>
             ))}
-          </HStack>
-        ) : <Text fontSize="2xl" fontWeight="800">{e.unit.label}</Text>}
-      </HStack>
-      {!many && <Box pt={2} borderTopWidth="1px">{totalLine}</Box>}
+          </VStack>
+        )}
+        {!e.weighing && (
+          <>
+            <Text fontWeight="700">{e.packs.length ? 'Abierto o suelto' : 'Cuánto hay'}</Text>
+            <HStack gap={3}>
+              <Input aria-label={`Suelto de ${item.name}`} value={e.rest} {...entryBox(e.field === 'rest')} w="140px"
+                onFocus={() => e.setField('rest')} onClick={() => e.setField('rest')} />
+              {e.units.length > 1 ? (
+                <HStack gap={0} borderWidth="1px" borderRadius="lg" overflow="hidden" role="group" aria-label="Unidad de lo suelto">
+                  {e.units.map((u, i) => (
+                    <Button key={u.label} minH="48px" minW="64px" borderRadius="0" fontSize="lg" fontWeight="700"
+                      variant={e.unitIdx === i ? 'solid' : 'ghost'} colorPalette="gray" aria-pressed={e.unitIdx === i}
+                      onClick={() => e.setUnitIdx(i)}>{u.label}</Button>
+                  ))}
+                </HStack>
+              ) : <Text fontSize="2xl" fontWeight="800">{e.unit.label}</Text>}
+            </HStack>
+          </>
+        )}
+        {e.tared.length > 0 && (
+          <Box borderTopWidth="1px" pt={1} flexShrink={0}>
+            <WeighRow open={e.weighing} onOpen={onWeigh ?? e.openWeighing} onClose={e.closeWeighing} toMl={item.baseUnitCode === 'ml'} />
+            {e.weighing && <WeighFields item={item} e={e} />}
+          </Box>
+        )}
+      </VStack>
+      {!many && <Box pt={2} borderTopWidth="1px" flexShrink={0}>{totalLine}</Box>}
       {(e.overMax ?? serverError) && <Text color="fg.error" fontWeight="700" role="alert">{e.overMax ?? serverError}</Text>}
     </VStack>
   );
@@ -344,6 +488,7 @@ function EntryFields({ item, e, serverError }: { item: CountItem; e: ReturnType<
 // useCapture guarda pidiendo el aviso (confirmable). Si el servidor dice que la cifra es rara, se pide
 // confirmar mostrándola en grande; el servidor no dice contra qué comparó.
 function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty: string | null) => void) {
+  const qc = useQueryClient();
   const [confirming, setConfirming] = useState<CountCaptureBody | null>(null);
   // El 400 del servidor (p. ej. el máximo) se muestra tal cual junto a la cifra.
   const [serverError, setServerError] = useState<string | null>(null);
@@ -354,12 +499,21 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
     onMutate: () => setServerError(null),
     onSuccess: (r, b) => {
       setConfirming(null);
+      if (b?.gross) medirAccion('inventario', 'pesar-con-empaque');
+      // Lo contado que se muestra es lo que guardó el servidor: con una pesada, su cuenta manda.
       const qty = b === null ? null : r?.countedQty ?? b.countedQty;
       if (qty !== null) toaster.create({ title: `Guardado: ${countedWords(qty, item.baseUnitCode)}`, type: 'success', duration: 1500 });
       onSaved(item.ingredientId, qty);
     },
     onError: (err, b) => {
       if (b && err instanceof ApiError && err.code === 'NEEDS_CONFIRM') { setConfirming(b); return; }
+      // Alguien cambió lo que pesa vacío el empaque o la densidad: se recarga y se dice, no se adivina.
+      if (err instanceof ApiError && err.code === 'COUNT_INPUTS_CHANGED') {
+        setConfirming(null);
+        setServerError('Lo que pesa vacío el empaque o la densidad cambiaron. Ya se actualizó la cuenta: revísala y vuelve a guardar.');
+        void qc.invalidateQueries({ queryKey: ['stock', 'count'] });
+        return;
+      }
       if (err instanceof ApiError && err.status === 400) { setConfirming(null); setServerError(err.message); return; }
       toaster.create({ title: 'No se pudo guardar', type: 'error' });
     },
@@ -369,10 +523,10 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
 
 // useCountKeys conecta la captura abierta al teclado físico: Enter es «Guardar» solo si «Guardar» está
 // encendido y no hay aviso abierto (el aviso se confirma tocando su botón).
-function useCountKeys(e: ReturnType<typeof useEntry>, c: ReturnType<typeof useCapture>) {
+function useCountKeys(e: Entry, c: ReturnType<typeof useCapture>) {
   useKeyTarget({
     key: e.key,
-    next: e.packs.length ? e.next : undefined,
+    next: e.hasNext ? e.next : undefined,
     save: () => {
       const b = e.body();
       if (b === null || c.confirming || c.save.isPending) return;
@@ -396,7 +550,7 @@ function NoHay({ item, onConfirm }: { item: CountItem; onConfirm: () => void }) 
 }
 
 // ConfirmFigure es el aviso de una cifra rara: la cifra con su unidad en grande, «Corregir» y «Sí, guardar».
-function ConfirmFigure({ item, e, c }: { item: CountItem; e: ReturnType<typeof useEntry>; c: ReturnType<typeof useCapture> }) {
+function ConfirmFigure({ item, e, c }: { item: CountItem; e: Entry; c: ReturnType<typeof useCapture> }) {
   if (!c.confirming) return null;
   const figure = e.total !== null ? countedWords(e.total, item.baseUnitCode) : `${e.rest} ${e.unit.label}`;
   return (
@@ -433,7 +587,10 @@ function PlacePicker({ item }: { item: CountItem }) {
 
 function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; onSaved: (id: number, qty: string | null) => void; initialQuery?: string }) {
   const [q, setQ] = useState(initialQuery);
-  const [editing, setEditing] = useState<CountItem | null>(null);
+  // Se sigue por id: si el conteo se recarga (p. ej. cambió lo que pesa vacío un empaque), la hoja
+  // abierta recibe el artículo nuevo.
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const editing = count.items.find((i) => i.ingredientId === editingId) ?? null;
   const needle = q.trim();
   // Buscar también por nombre de empaque (spec 042): quien busca «bolsa» encuentra el hielo.
   const shown = needle
@@ -462,7 +619,7 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
                 <Text fontSize="sm" color={i.countedQty !== null ? 'fg.success' : 'fg.muted'} minW="120px">
                   {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}` : 'Sin contar'}
                 </Text>
-                <Button minH="44px" minW="120px" variant="outline" onClick={() => setEditing(i)}>
+                <Button minH="44px" minW="120px" variant="outline" onClick={() => setEditingId(i.ingredientId)}>
                   {i.countedQty !== null ? 'Cambiar' : 'Contar'}
                 </Button>
               </HStack>
@@ -470,16 +627,18 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
           </Box>
         ))}
       </Box>
-      {editing && <EntrySheet countId={count.id} item={editing} onClose={() => setEditing(null)}
-        onSaved={(id, qty) => { onSaved(id, qty); setEditing(null); }} />}
+      {editing && <EntrySheet countId={count.id} item={editing} onClose={() => setEditingId(null)}
+        onSaved={(id, qty) => { onSaved(id, qty); setEditingId(null); }} />}
     </VStack>
   );
 }
 
-function EntrySheet({ countId, item, onClose, onSaved }: {
+function EntrySheet({ countId, item, onClose, onSaved, startWeighing }: {
   countId: number; item: CountItem; onClose: () => void; onSaved: (id: number, qty: string | null) => void;
+  // startWeighing abre con «Pesar con empaque» desplegado (desde «Uno por uno»).
+  startWeighing?: boolean;
 }) {
-  const e = useEntry(item);
+  const e = useEntry(item, { startWeighing });
   const c = useCapture(countId, item, onSaved);
   useCountKeys(e, c);
   return (
@@ -491,7 +650,7 @@ function EntrySheet({ countId, item, onClose, onSaved }: {
         <DrawerBody display="flex" minH={0}>
           <HStack align="stretch" gap={6} flex="1" minH={0}>
             <EntryFields item={item} e={e} serverError={c.serverError} />
-            <Box w="240px" flexShrink={0}><NumericKeypad allowDecimal={e.allowDecimal} onKey={e.key} onNext={e.packs.length ? e.next : undefined} /></Box>
+            <Box w="240px" flexShrink={0}><NumericKeypad allowDecimal={e.allowDecimal} onKey={e.key} onNext={e.hasNext ? e.next : undefined} /></Box>
           </HStack>
         </DrawerBody>
         <DrawerFooter>
@@ -538,6 +697,9 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
 }) {
   const e = useEntry(item);
   const c = useCapture(countId, item, (id, qty) => { onSaved(id, qty); onNext(); });
+  // Pesar con empaque abre la hoja completa del artículo: crecer la tarjeta sacaría los botones de la
+  // pantalla (revisión de arquitectura de la 058).
+  const [weighing, setWeighing] = useState(false);
   useCountKeys(e, c);
   return (
     <HStack align="stretch" gap={3} flex="1" minH={0}>
@@ -547,7 +709,7 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
           <Text fontSize="2xl" fontWeight="700" flex="1">{item.name}</Text>
           <PlacePicker item={item} />
         </HStack>
-        <EntryFields item={item} e={e} serverError={c.serverError} />
+        <EntryFields item={item} e={e} serverError={c.serverError} onWeigh={() => setWeighing(true)} />
         <HStack gap={3}>
           <Button minH="44px" variant="outline" disabled={!onPrev} onClick={onPrev}>‹ Anterior</Button>
           <Box flex="1" />
@@ -558,8 +720,12 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
           </Button>
         </HStack>
       </VStack>
-      <Box w="232px"><NumericKeypad allowDecimal={e.allowDecimal} onKey={e.key} onNext={e.packs.length ? e.next : undefined} /></Box>
+      <Box w="232px"><NumericKeypad allowDecimal={e.allowDecimal} onKey={e.key} onNext={e.hasNext ? e.next : undefined} /></Box>
       <ConfirmFigure item={item} e={e} c={c} />
+      {weighing && (
+        <EntrySheet countId={countId} item={item} startWeighing onClose={() => setWeighing(false)}
+          onSaved={(id, qty) => { setWeighing(false); onSaved(id, qty); onNext(); }} />
+      )}
     </HStack>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { diffWords, entryTotal, isBigDiff, looseUnitOf, looseUnitsOf, packsTotal } from './countEntry';
+import { diffWords, entryTotal, grossNet, isBigDiff, looseUnitOf, looseUnitsOf, packsTotal, withGross } from './countEntry';
 
 describe('entryTotal', () => {
   test('empaques más suelto, en la unidad base', () => {
@@ -58,5 +58,45 @@ describe('packsTotal', () => {
     expect(packsTotal(['2', '', '1'], ['5000', '15000', '1000'])).toBe(11000);
     expect(packsTotal(['', ''], ['5000', '15000'])).toBeNull();
     expect(packsTotal(['0'], ['5000'])).toBe(0);
+  });
+});
+
+// Spec 058 (US4): contar pesando con el empaque. La pantalla repite la regla del servidor para
+// mostrar la cuenta; la cifra que se guarda es la que responde el servidor.
+describe('grossNet', () => {
+  it('en g resta lo que pesan vacíos y no divide', () => {
+    const r = grossNet({ weight: '1000', weightFactor: 1, tareG: '50', containers: 3, baseCode: 'g' });
+    expect(r).toEqual({ ok: true, net: 850, words: '1,000 g − 3 × 50 g = 850 g' });
+  });
+  it('en ml divide el neto entre la densidad, a 4 decimales', () => {
+    const r = grossNet({ weight: '850', weightFactor: 1, tareG: '120', containers: 2, baseCode: 'ml', density: '1.1' });
+    expect(r).toEqual({ ok: true, net: 554.5455, words: '850 g − 2 × 120 g = 610 g ÷ 1.10 = 554.5 ml' });
+  });
+  it('lo pesado en kg se cuenta en g', () => {
+    const r = grossNet({ weight: '0.85', weightFactor: 1000, tareG: '120', containers: 2, baseCode: 'ml', density: '1.1' });
+    expect(r).toMatchObject({ ok: true, net: 554.5455 });
+    expect(r && r.ok && r.words.startsWith('850 g − 2 × 120 g')).toBe(true);
+  });
+  it('un bruto menor que los empaques vacíos es un error, no un negativo', () => {
+    const r = grossNet({ weight: '200', weightFactor: 1, tareG: '120', containers: 2, baseCode: 'g' });
+    expect(r).toEqual({ ok: false, error: 'Pesa menos que 2 empaques vacíos' });
+    expect(grossNet({ weight: '100', weightFactor: 1, tareG: '120', containers: 1, baseCode: 'g' }))
+      .toEqual({ ok: false, error: 'Pesa menos que 1 empaque vacío' });
+  });
+  it('un neto cero es válido: «no hay» dentro de los empaques', () => {
+    expect(grossNet({ weight: '240', weightFactor: 1, tareG: '120', containers: 2, baseCode: 'g' })).toMatchObject({ ok: true, net: 0 });
+  });
+  it('sin peso no hay cuenta; mal tecleado o sin empaques tampoco se adivina', () => {
+    expect(grossNet({ weight: '', weightFactor: 1, tareG: '120', containers: 1, baseCode: 'g' })).toBeNull();
+    expect(grossNet({ weight: '1,000', weightFactor: 1, tareG: '120', containers: 1, baseCode: 'g' })).toBeNull();
+    expect(grossNet({ weight: '500', weightFactor: 1, tareG: '120', containers: 0, baseCode: 'g' })).toBeNull();
+    expect(grossNet({ weight: '500', weightFactor: 1, tareG: '120', containers: 1, baseCode: 'ml', density: null })).toBeNull();
+  });
+});
+
+describe('withGross', () => {
+  it('suma lo cerrado y lo pesado; sin cerrado cuenta como cero', () => {
+    expect(withGross(3000, 554.5455)).toBe(3554.5455);
+    expect(withGross(null, 610)).toBe(610);
   });
 });
