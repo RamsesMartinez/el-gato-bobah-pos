@@ -11,6 +11,8 @@ const api = vi.hoisted(() => ({ sendDraft: vi.fn(), createDraft: vi.fn(), discar
 vi.mock('../../api/pos', () => ({ posApi: api }));
 const toasts = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock('../../components/ui/toaster', () => ({ toaster: toasts }));
+const olvidar = vi.hoisted(() => vi.fn());
+vi.mock('./useCuenta', () => ({ olvidarNuevoDePedido: olvidar }));
 
 const PEDIDO = { id: 12, number: 3, folioName: 'Levkoy', total: '74.00', outstanding: '74.00' } as OrderView;
 const CUENTA: DraftView = {
@@ -56,6 +58,14 @@ describe('mandar a cocina (US3, caso 5)', () => {
     await act(async () => { await result.current.enviar('d-1'); });
     expect(usePosStore.getState().selected).toEqual({ kind: 'order', id: 12 });
     expect(qc.getQueryData(['orders', 12])).toEqual(PEDIDO);
+  });
+
+  // Incidente del 2026-11-02: tras mandar lo «Nuevo», la tableta seguía agregando a esa cuenta.
+  test('mandar lo «Nuevo» de un pedido lo suelta para que lo siguiente abra otro', async () => {
+    api.sendDraft.mockResolvedValue({ order: PEDIDO, printLineIds: [1], created: false });
+    const { result } = renderHook(() => useEnviarCuenta({ onComanda: vi.fn() }), { wrapper });
+    await act(async () => { await result.current.enviar('d-1'); });
+    expect(olvidar).toHaveBeenCalledWith(12);
   });
 
   test('devuelve el pedido para que cobrar siga con él', async () => {

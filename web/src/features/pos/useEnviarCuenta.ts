@@ -10,6 +10,7 @@ import type { DraftView, OrderView } from '../../types/pos';
 import { uuid } from '../../utils/uuid';
 import { descartarCuenta } from './descartarCuenta';
 import { reportarResultado } from './useSinConexion';
+import { olvidarNuevoDePedido } from './useCuenta';
 import { notifyMenuChanged, isStaleMenu } from './menuChanged';
 
 // MANDAR A COCINA (spec 030, US3; research R-4).
@@ -57,6 +58,8 @@ export function useEnviarCuenta({ onComanda, onMenuChanged }: Opciones) {
       setMotivo(null);
       qc.setQueryData(['orders', r.order.id], r.order);
       qc.removeQueries({ queryKey: ['pos', 'draft', draftId] });
+      // Lo enviado ya es del pedido: lo que se agregue después abre otra «Nuevo».
+      olvidarNuevoDePedido(r.order.id);
       usePosStore.getState().seleccionar({ kind: 'order', id: r.order.id });
       qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
       qc.invalidateQueries({ queryKey: ['orders'] });

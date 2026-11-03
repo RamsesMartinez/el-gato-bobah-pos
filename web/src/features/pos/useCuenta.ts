@@ -69,6 +69,19 @@ export function reiniciarCaptura(): void {
 
 const real = (id: string) => adoptados.get(id) ?? id;
 
+// olvidarNuevoDePedido suelta lo «Nuevo» que esta tableta recordaba para un pedido. Se llama al
+// mandarlo a cocina: esa cuenta ya es parte del pedido y el siguiente toque abre otro «Nuevo». Si se
+// queda recordada, todo lo que se agrega después choca con «ya se mandó a cocina» (incidente del
+// 2026-11-02).
+export function olvidarNuevoDePedido(orderId: number): void {
+  useCaptura.setState((s) => {
+    if (!(orderId in s.nuevoDePedido)) return s;
+    const nuevoDePedido = { ...s.nuevoDePedido };
+    delete nuevoDePedido[orderId];
+    return { nuevoDePedido };
+  });
+}
+
 function fotoDeBorrador(d: DraftView): FotoDeCuenta {
   return {
     nombre: d.folioName ?? '', estado: d.status, falta: Number(d.total),
@@ -334,6 +347,10 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false, onMenuChanged
           onMenuChanged?.(pendiente.productId);
           return;
         }
+        if (e instanceof ApiError && e.code === 'DRAFT_SENT') {
+          void alPedidoEnviado(pendiente, linea, e);
+          return;
+        }
         if (e instanceof ApiError && e.status === 404) {
           void recargar(real(cuenta));
           avisarCambio();
@@ -346,6 +363,34 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false, onMenuChanged
           action: { label: 'Reintentar', onClick: () => correrAgregado(pendiente, linea) },
         });
       });
+  };
+
+  // La cuenta a la que iba el producto ya se mandó a cocina (aquí o en otra tableta): lo que se
+  // agrega después es lo «Nuevo» de ese pedido, no un error. El producto se lleva, con su misma
+  // llave, a la «Nuevo» del pedido, que se abre si no existe.
+  const alPedidoEnviado = async (pendiente: Pendiente, linea: DraftLineInput, e: ApiError) => {
+    const vieja = real(pendiente.cuenta);
+    const d = await qc.fetchQuery({ queryKey: claveDraft(vieja), queryFn: () => posApi.getDraft(vieja), staleTime: 0 })
+      .catch(() => undefined);
+    const orderId = d?.status === 'enviada' ? d.orderId : null;
+    if (orderId === null) {
+      toaster.create({ title: `No se guardó ${pendiente.name}`, description: mensajeDeError(e), type: 'error' });
+      return;
+    }
+    const st = usePosStore.getState();
+    if (st.selected?.kind === 'draft' && real(st.selected.id) === vieja) st.seleccionar({ kind: 'order', id: orderId });
+    const recordada = useCaptura.getState().nuevoDePedido[orderId];
+    let cuenta = recordada;
+    if (cuenta === undefined || cuenta === pendiente.cuenta || real(cuenta) === vieja) {
+      cuenta = uuid();
+      bases.set(cuenta, { id: cuenta, orderId });
+      const nueva = cuenta;
+      useCaptura.setState((s) => ({
+        naciendo: { ...s.naciendo, [nueva]: 'creando' },
+        nuevoDePedido: { ...s.nuevoDePedido, [orderId]: nueva },
+      }));
+    }
+    correrAgregado({ ...pendiente, cuenta }, linea);
   };
 
   const agregar = (p: ProductoAAgregar) => {
