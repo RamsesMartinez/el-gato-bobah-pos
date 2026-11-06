@@ -30,7 +30,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'prompt', // POS: nunca recargar solo a media venta; el operador decide (ver registerPwa.ts)
-      injectRegister: false, // registramos a mano en registerPwa.ts para poder mostrar el aviso con nuestro toaster
+      injectRegister: false, // registramos a mano en registerPwa.ts: el aviso de versión nueva lo pinta el riel
       manifest: false, // public/manifest.json es la fuente de verdad; el plugin solo genera el service worker
       workbox: {
         // Precachea el shell (incl. fuente e íconos) para que la app abra aunque parpadee la red.

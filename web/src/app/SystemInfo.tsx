@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, Text, HStack, VStack, Button, Circle } from '@chakra-ui/react';
+import { Box, Text, HStack, VStack, Button } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { systemApi, frontendVersion } from '../api/system';
 import { useAppUpdate } from '../stores/appUpdate';
@@ -22,7 +22,7 @@ function fmtDate(iso: string, zona: string) {
 
 // Pie de sistema: marca de agua tenue con la versión del frontend (siempre visible en el sidebar);
 // al tocarla abre "Detalles del sistema" con FE + backend y, si hay versión nueva, el botón para
-// actualizar. Un punto verde sobre la marca avisa de actualización pendiente sin robar atención.
+// actualizar. El aviso de versión nueva no va aquí: ocupa el lugar del logo (UpdateRailButton).
 export function SystemInfo() {
   const [open, setOpen] = useState(false);
   const needRefresh = useAppUpdate((s) => s.needRefresh);
@@ -42,7 +42,6 @@ export function SystemInfo() {
         display="flex" alignItems="center" gap={1} opacity={0.45} _hover={{ opacity: 0.95 }}
         transition="opacity 0.15s"
       >
-        {needRefresh && <Circle size="6px" bg="green.solid" flexShrink={0} />}
         <Text fontSize="9px" color="gray.400" lineClamp={1}>v{short(frontendVersion.version)}</Text>
       </Box>
 
