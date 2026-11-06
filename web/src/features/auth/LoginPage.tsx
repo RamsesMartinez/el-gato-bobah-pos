@@ -10,6 +10,8 @@ import { limpiarBloqueo } from './inactividad';
 import { useUiStore } from '../../stores/ui';
 import { ApiError } from '../../api/client';
 import { RADIUS } from '../../theme/ui';
+import { useAppUpdate } from '../../stores/appUpdate';
+import { UpdateRailButton } from '../../app/UpdateRailButton';
 
 export function LoginPage() {
   const motivo = useSessionStore((s) => s.motivo);
@@ -18,6 +20,7 @@ export function LoginPage() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const palette = useUiStore((s) => s.palette);
+  const needRefresh = useAppUpdate((s) => s.needRefresh);
   const setSession = useSessionStore((s) => s.setSession);
   const navigate = useNavigate();
 
@@ -57,7 +60,13 @@ export function LoginPage() {
       <Box as="form" onSubmit={submit} bg="bg.panel" p={8} borderRadius={RADIUS} boxShadow="lg" w="360px" maxW="90vw">
         <VStack gap={5} align="stretch">
           <Box textAlign="center">
-            <Center mb={3}><Image src={logo} alt="El Gato Bobah" boxSize="88px" borderRadius="2xl" /></Center>
+            {/* El aviso de versión nueva va en el lugar del logo, como en el riel (spec 064): aquí no
+                hay riel, y una versión que no deja entrar se arregla pasando a la siguiente. */}
+            <Center mb={3}>
+              {needRefresh
+                ? <UpdateRailButton size="login" />
+                : <Image src={logo} alt="El Gato Bobah" boxSize="88px" borderRadius="2xl" />}
+            </Center>
             <Heading size="lg">El Gato Bobah</Heading>
             <Text color="fg.muted">Punto de venta</Text>
           </Box>

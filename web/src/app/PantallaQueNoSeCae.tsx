@@ -1,11 +1,12 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Box, Button, Text, VStack } from '@chakra-ui/react';
+import { useAppUpdate } from '../stores/appUpdate';
 
 // La barrera que impide que un defecto de una pantalla deje la tableta en blanco.
 //
 // SIN ELLA, un throw durante el render vacía el `#root` y el operador se queda sin nada: ni mensaje,
-// ni botón, ni el aviso de "Nueva versión disponible" —lo pinta el toaster, que vive dentro del
-// árbol que acaba de morir—. La tableta sigue con el service worker viejo sirviendo la versión rota
+// ni botón, ni el aviso de versión nueva —lo pinta el riel, que vive dentro del árbol que acaba de
+// morir—. La tableta sigue con el service worker viejo sirviendo la versión rota
 // y la única salida es cerrar la app y volver a abrirla, que es justo lo que nadie adivina. Pasó el
 // 8 de septiembre de 2026: `platformOrderRef` faltaba en una cuenta guardada y el POS entero dejó de
 // renderizar al entrar.
@@ -50,8 +51,24 @@ export class PantallaQueNoSeCae extends Component<Props, State> {
             onClick={() => { window.location.href = `${window.location.pathname}?r=${Date.now()}`; }}>
             Reiniciar la aplicación
           </Button>
+          <ActualizarSiHayVersionNueva />
         </VStack>
       </Box>
     );
   }
+}
+
+// ActualizarSiHayVersionNueva ofrece pasar a la versión que espera. Es la salida de verdad cuando la
+// que truena es la versión en uso: «Reiniciar» la vuelve a cargar, porque el service worker viejo
+// sigue atendiendo mientras el nuevo espera. Antes lo hacía el toast, que vivía fuera de la barrera;
+// el aviso del riel (spec 064) muere junto con la pantalla.
+function ActualizarSiHayVersionNueva() {
+  const needRefresh = useAppUpdate((s) => s.needRefresh);
+  const apply = useAppUpdate((s) => s.apply);
+  if (!needRefresh) return null;
+  return (
+    <Button size="lg" minH="56px" w="100%" colorPalette="green" onClick={apply}>
+      Actualizar a la versión nueva
+    </Button>
+  );
 }

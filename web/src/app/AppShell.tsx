@@ -14,6 +14,8 @@ import { can } from './permissions';
 import { wasteApi } from '../api/waste';
 import { RADIUS } from '../theme/ui';
 import { SystemInfo } from './SystemInfo';
+import { UpdateRailButton } from './UpdateRailButton';
+import { useAppUpdate } from '../stores/appUpdate';
 import { NAV } from './nav';
 import { PendingWasteBar } from '../features/waste/PendingWasteBar';
 import { railScrollFor } from './railScroll';
@@ -22,6 +24,7 @@ export function AppShell() {
   const user = useSessionStore((s) => s.user);
   const clear = useSessionStore((s) => s.clear);
   const palette = useUiStore((s) => s.palette);
+  const needRefresh = useAppUpdate((s) => s.needRefresh);
   const navigate = useNavigate();
   const { pathname } = useLocation();
   // No mostrar accesos que el rol no puede usar (evita el 403 sorpresa). El backend sigue
@@ -49,12 +52,14 @@ export function AppShell() {
     const list = navList.current;
     const active = list?.querySelector<HTMLElement>('[aria-current="page"]');
     if (list && active) list.scrollTop = railScrollFor(list, active);
-  }, [pathname, nav.length]);
+    // needRefresh: el botón de versión nueva toma el lugar del logo; mide lo mismo, pero si un día
+    // el alto del riel cambia con él, la opción abierta no queda partida.
+  }, [pathname, nav.length, needRefresh]);
   useEffect(() => {
     measureRail();
     window.addEventListener('resize', measureRail);
     return () => window.removeEventListener('resize', measureRail);
-  }, [measureRail, nav.length]);
+  }, [measureRail, nav.length, needRefresh]);
 
   const logout = async () => {
     // Revoca la cookie de refresh en el server ANTES de limpiar; si no, la sesión revive
@@ -78,13 +83,17 @@ export function AppShell() {
     // abajo a la derecha, justo sobre la zona del botón de cobrar.
     <Flex data-medible h="100dvh" overflow="hidden" colorPalette={palette}>
       <Flex direction="column" w="76px" bg="gray.900" color="white" py={3} flexShrink={0}>
-        <Image src={logo} alt="El Gato Bobah" boxSize="44px" borderRadius="lg" mb={2} alignSelf="center" flexShrink={0} />
+        {/* El aviso de versión nueva va en el lugar del logo (spec 064): fuera de la pantalla y sin
+            quitarle alto a la lista. */}
+        {needRefresh
+          ? <UpdateRailButton />
+          : <Image src={logo} alt="El Gato Bobah" boxSize="44px" borderRadius="lg" mb={2} alignSelf="center" flexShrink={0} />}
         {/* lista scrollable: en pantallas de poco alto (7") no se recortan los ítems. La barra de
             scroll va oculta, así que un ítem abajo del pliegue no se notaba (medido a 1024×600 con
             el rol admin: «Asistencia» desaparecía sin rastro). La flecha del pie dice que hay más. */}
         <Box position="relative" flex="1" minH={0} display="flex">
         <VStack
-          ref={navList} onScroll={measureRail}
+          ref={navList} onScroll={measureRail} data-rail-list
           flex="1" minH={0} overflowY="auto" gap={1} w="100%"
           // Se detiene siempre al inicio de una opción (spec 045): al llevar a la vista la opción de
           // la pantalla abierta, o al soltar el dedo, la de arriba quedaba partida a la mitad.
@@ -134,7 +143,7 @@ export function AppShell() {
           su alto a la pantalla en vez de empujarla 44 px fuera de los 600 (spec 039). */}
       <Flex flex="1" minW={0} direction="column">
         <PendingWasteBar />
-        <Box flex="1" minH={0} overflowY="auto">
+        <Box data-work-area flex="1" minH={0} overflowY="auto">
           <Outlet />
         </Box>
       </Flex>
