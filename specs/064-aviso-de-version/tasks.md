@@ -73,13 +73,29 @@ Las dos historias son el mismo componente: US1 dice dónde (no tapa, no quita al
 
 - [X] T013 [P] Actualizar el comentario de `web/src/app/PantallaQueNoSeCae.tsx` que dice que el aviso
   de versión lo pinta el toaster.
-- [ ] T014 Vuelta con usuario sin contexto (subagente) a 1024×600 en Vender con versión nueva
+- [X] T014 Vuelta con usuario sin contexto (subagente) a 1024×600 en Vender con versión nueva
   esperando: ¿encuentra y aplica la actualización a la primera?, ¿qué cree que hace el botón?
   (SC-003). Lo observado, en texto en el reporte.
+  **Observado (2026-11-05, local, base sin datos y caja cerrada)**: la persona notó el botón «luego
+  luego» («lo único verde en la barra negra»), antes de tocarlo dijo que «pone la app al día», lo
+  acertó a la primera, no tapó nada en Vender, Pedidos ni Negocio y siguió fijo al desplazar la lista.
+  Lo que no se vio: Vender con una cuenta en captura (la caja estaba cerrada). Detalle ajeno a esta
+  feature: tras recargar, la lista del riel arranca en otra posición (la regla de la spec 045 deja la
+  opción abierta completa, no conserva el desplazamiento).
 - [X] T015 Build servido: `bun run build && bun run preview` en `web/`, comprobar que
   `window.__egbSimularVersionNueva` es `undefined` y que el riel sin aviso se ve igual (quickstart).
 - [X] T016 Gates: `bun run lint`, `bun run vitest run`, `bun run build` en `web/`; `make ci-local`
   antes de empujar.
+
+## Phase 5: Hallazgos de /revision-de-codigo
+
+- [X] T017 [US2] Test y arreglo: con versión nueva esperando, la barrera de
+  `web/src/app/PantallaQueNoSeCae.tsx` ofrece «Actualizar a la versión nueva» (ALTO: el toast era la
+  salida ante una versión rota y vivía fuera de la barrera).
+- [X] T018 [US2] Test y arreglo: el aviso en el lugar del logo de `web/src/features/auth/LoginPage.tsx`
+  (`UpdateRailButton size="login"`), y su e2e a 600 px en `web/e2e/aviso-de-version.spec.ts`.
+- [X] T019 [US2] Test y arreglo en `web/src/shared/pwa/registerPwa.ts`: sin versión en espera,
+  «Actualizar» recarga; comentario de `updateSW(false)` corregido (el plugin sí recarga).
 
 ## Dependencies
 

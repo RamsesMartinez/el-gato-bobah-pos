@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -21,6 +21,7 @@ function renderView(path = '/') {
 
 // «Salir» medía 46×32 (validación como usuario nuevo): bajo el mínimo de 44 px de la constitución.
 describe('el menú lateral', () => {
+  afterEach(() => useAppUpdate.setState({ needRefresh: false, apply: () => {} }));
   test('«Salir» mide al menos 44 px de alto', () => {
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'admin', permissions: [] } as never });
     renderView();
@@ -127,7 +128,6 @@ describe('el menú lateral', () => {
     const lista = screen.getByText('Vender').closest('a')!.parentElement!;
     // Va arriba de la lista, donde estaba el logo.
     expect(boton.compareDocumentPosition(lista) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    useAppUpdate.setState({ needRefresh: false, apply: () => {} });
   });
 
   // Si el alto del riel cambiara con el aviso, la opción abierta podría quedar partida: se vuelve a
@@ -142,7 +142,6 @@ describe('el menú lateral', () => {
     const antes = spy.mock.calls.length;
     act(() => useAppUpdate.setState({ needRefresh: true }));
     await vi.waitFor(() => expect(spy.mock.calls.length).toBeGreaterThan(antes));
-    useAppUpdate.setState({ needRefresh: false, apply: () => {} });
   });
 });
 

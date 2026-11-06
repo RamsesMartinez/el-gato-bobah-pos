@@ -93,3 +93,16 @@ test('el aviso no tapa ni le quita alto a ninguna pantalla', async ({ page }) =>
   const encima = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('button')?.textContent, [centro.x + centro.w / 2, centro.y + centro.h / 2]);
   expect(encima, 'algo tapa «Agregar lugar»').toContain('Agregar lugar');
 });
+
+// Antes de entrar no hay riel: el aviso ocupa el lugar del logo del inicio de sesión. Una versión
+// que no deja entrar se arregla pasando a la siguiente, y el formulario sigue cabiendo en 600 px.
+test('en el inicio de sesión el aviso ocupa el lugar del logo y el formulario cabe', async ({ page }) => {
+  await page.goto('/login');
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => window.__egbSimularVersionNueva!());
+  await expect(boton(page)).toBeVisible();
+  await expect(page.getByAltText('El Gato Bobah')).toHaveCount(0);
+  await enteraEnLaVentana(page.getByRole('button', { name: 'Entrar', exact: true }), '«Entrar»');
+  await enteraEnLaVentana(page.getByRole('button', { name: '¿Olvidaste tu contraseña?' }), '«¿Olvidaste tu contraseña?»');
+  await page.screenshot({ path: 'test-results/aviso-de-version/login.png' });
+});

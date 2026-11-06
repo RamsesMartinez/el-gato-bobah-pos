@@ -43,14 +43,22 @@ export function initPwa(): void {
   }
 
   // registerType:'prompt' → el SW nuevo espera; el operador toca "Actualizar" entre pedidos.
-  // updateSW(false): activa el SW nuevo (skipWaiting) SIN recarga automática del plugin; la
-  // recarga la dispara el guard de arriba, una sola vez.
+  // updateSW(false) manda skipWaiting al SW que espera; al tomar control, recargan el plugin (en
+  // esta pestaña) y el guard de arriba (una sola vez por pestaña).
+  //
+  // Si no hay ninguno esperando es que otra pestaña ya lo aplicó y aquí el guard pudo no recargar
+  // (ya había recargado una vez en esta sesión): mandar skipWaiting no haría nada y el botón se
+  // quedaría puesto. Recargar ya carga la versión nueva, que es la que controla.
   //
   // El aviso es SOLO el botón del riel (spec 064), no un toast: flotando arriba al centro tapaba
   // botones de la pantalla —«Agregar lugar» en Negocio a 1024×600— y no se cerraba solo.
   const updateSW = registerSW({
     onNeedRefresh() {
-      useAppUpdate.getState().markNeedRefresh(() => void updateSW(false));
+      useAppUpdate.getState().markNeedRefresh(() => void (async () => {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration?.waiting) await updateSW(false);
+        else window.location.reload();
+      })());
     },
   });
 

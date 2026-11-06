@@ -86,6 +86,12 @@ cambia de disposición.
 - **Distancia a «Vender»** (revisión de tableta, MEDIUM 2, aceptado): quedan los 8 px de margen que
   hoy tiene el logo, el doble de los 4 px que separan las opciones del riel entre sí. Más aire le
   quitaría alto a la lista. Un toque errado recarga pero no pierde la cuenta en captura (US2-3).
+- **Fuera del riel** (revisión de código, 2026-11-05): en el inicio de sesión el aviso ocupa el
+  lugar del logo de 88 px (`UpdateRailButton size="login"`); en la barrera «La pantalla no se pudo
+  mostrar» hay un segundo botón «Actualizar a la versión nueva» cuando la hay. Los dos casos los
+  cubría el toast, que vivía fuera de la barrera y fuera del riel.
+- **«Actualizar» sin versión en espera recarga**: otra pestaña ya la aplicó y el guard de una
+  recarga por pestaña pudo no recargar esta.
 - Componentes: `Button` del tema (`colorPalette="green"`, radio del tema), icono de `react-icons/lu`
   como el resto del riel.
 

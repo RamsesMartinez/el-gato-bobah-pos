@@ -78,13 +78,16 @@ lugar; tocarlo una vez y comprobar que la app se actualiza.
 
 - **Riel con muchas opciones**: con el rol de administrador el riel ya hace scroll a 600 px. El
   aviso no puede empujar fuera de la vista la opción de la pantalla abierta ni el botón «Salir».
-- **La pantalla se cae** (barrera de «La pantalla no se pudo mostrar»): esa pantalla ya ofrece
-  recargar; el aviso no tiene que sobrevivir ahí.
-- **Pantallas fuera del marco** (inicio de sesión, bloqueo por PIN): no tienen riel. El aviso no
-  aparece ahí; al entrar al marco, aparece. Una versión nueva que llega en el inicio de sesión se
-  aplica sola en la siguiente carga, como hoy.
-- **Varias pestañas**: cada pestaña muestra su aviso; aplicar en una recarga las demás una sola vez
-  (comportamiento actual, no cambia).
+- **Pantallas fuera del marco**: el inicio de sesión no tiene riel; ahí el aviso ocupa el lugar
+  de su logo (una versión que no deja entrar se arregla pasando a la siguiente). Recuperar y
+  restablecer contraseña no lo muestran: vuelven al inicio de sesión. La pantalla de bloqueo por PIN
+  tapa el riel; al desbloquear, el aviso sigue ahí.
+- **La pantalla se cae con versión nueva esperando**: «Reiniciar» vuelve a cargar la versión rota
+  (el service worker viejo sigue atendiendo mientras el nuevo espera). La barrera ofrece además
+  «Actualizar a la versión nueva». Antes lo cubría el toast, que vivía fuera de la barrera.
+- **Varias pestañas**: cada pestaña muestra su aviso; aplicar en una recarga las demás una sola vez.
+  Si otra pestaña ya la aplicó y ésta no recargó, «Actualizar» recarga en vez de quedarse puesto sin
+  hacer nada.
 - **Doble toque** sobre «Actualizar»: no debe provocar dos recargas (ya lo impide la marca por
   pestaña).
 - **Diálogo u hoja abierta**: el aviso queda detrás de la capa, como el resto del marco; no compite

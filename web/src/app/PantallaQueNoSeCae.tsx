@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Box, Button, Text, VStack } from '@chakra-ui/react';
+import { useAppUpdate } from '../stores/appUpdate';
 
 // La barrera que impide que un defecto de una pantalla deje la tableta en blanco.
 //
@@ -50,8 +51,24 @@ export class PantallaQueNoSeCae extends Component<Props, State> {
             onClick={() => { window.location.href = `${window.location.pathname}?r=${Date.now()}`; }}>
             Reiniciar la aplicación
           </Button>
+          <ActualizarSiHayVersionNueva />
         </VStack>
       </Box>
     );
   }
+}
+
+// ActualizarSiHayVersionNueva ofrece pasar a la versión que espera. Es la salida de verdad cuando la
+// que truena es la versión en uso: «Reiniciar» la vuelve a cargar, porque el service worker viejo
+// sigue atendiendo mientras el nuevo espera. Antes lo hacía el toast, que vivía fuera de la barrera;
+// el aviso del riel (spec 064) muere junto con la pantalla.
+function ActualizarSiHayVersionNueva() {
+  const needRefresh = useAppUpdate((s) => s.needRefresh);
+  const apply = useAppUpdate((s) => s.apply);
+  if (!needRefresh) return null;
+  return (
+    <Button size="lg" minH="56px" w="100%" colorPalette="green" onClick={apply}>
+      Actualizar a la versión nueva
+    </Button>
+  );
 }
