@@ -11,8 +11,9 @@ import { captureInstallPrompt, promptInstall } from './installPrompt';
 const RELOADED_KEY = 'egb:sw-reloaded';
 
 // initPwa cablea las dos únicas piezas de la PWA con UI: ofrecer instalar y avisar
-// de una versión nueva. Sin runtime caching de /api: el servidor sigue siendo la
-// única fuente de verdad (los precios se recalculan en el backend).
+// de una versión nueva (el aviso lo pinta el riel, ver UpdateRailButton). Sin runtime
+// caching de /api: el servidor sigue siendo la única fuente de verdad (los precios se
+// recalculan en el backend).
 export function initPwa(): void {
   // "Instalar app" propio: Chrome dispara beforeinstallprompt solo si es instalable
   // y no está ya instalada, así que este toast no aparece una vez instalada. El evento
@@ -44,17 +45,22 @@ export function initPwa(): void {
   // registerType:'prompt' → el SW nuevo espera; el operador toca "Actualizar" entre pedidos.
   // updateSW(false): activa el SW nuevo (skipWaiting) SIN recarga automática del plugin; la
   // recarga la dispara el guard de arriba, una sola vez.
+  //
+  // El aviso es SOLO el botón del riel (spec 064), no un toast: flotando arriba al centro tapaba
+  // botones de la pantalla —«Agregar lugar» en Negocio a 1024×600— y no se cerraba solo.
   const updateSW = registerSW({
     onNeedRefresh() {
-      // Indicador persistente en el pie de sistema (además del toast): si el operador cierra el
-      // toast, el aviso de "actualizar" sigue visible hasta que aplique la versión nueva.
       useAppUpdate.getState().markNeedRefresh(() => void updateSW(false));
-      toaster.create({
-        title: 'Nueva versión disponible',
-        type: 'info',
-        duration: Number.POSITIVE_INFINITY, // que no se auto-cierre: puede tardar en verlo
-        action: { label: 'Actualizar', onClick: () => void updateSW(false) },
-      });
     },
   });
+
+  // En desarrollo no hay service worker y una versión nueva de verdad exige dos builds servidos.
+  // La e2e del aviso (spec 064) lo prende con esto; Vite lo quita del build de producción.
+  if (import.meta.env.DEV) {
+    window.__egbSimularVersionNueva = () => useAppUpdate.getState().markNeedRefresh(() => window.location.reload());
+  }
+}
+
+declare global {
+  interface Window { __egbSimularVersionNueva?: () => void }
 }

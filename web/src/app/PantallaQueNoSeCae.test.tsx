@@ -7,8 +7,7 @@ import { PantallaQueNoSeCae } from './PantallaQueNoSeCae';
 // UN DEFECTO EN UNA PANTALLA NO PUEDE DEJAR AL OPERADOR SIN NADA QUE TOCAR.
 //
 // Sin barrera, un throw durante el render vacía el `#root`: pantalla blanca, sin mensaje y sin el
-// aviso de "Nueva versión disponible" —que lo pinta el toaster, dentro del árbol que acaba de
-// morir—. La tableta se queda con el service worker viejo sirviendo la versión rota y la única
+// aviso de versión nueva —que lo pinta el riel, dentro del árbol que acaba de morir—. La tableta se queda con el service worker viejo sirviendo la versión rota y la única
 // salida, cerrar la app y volver a abrirla, es la que nadie adivina. Ya pasó el 8 de septiembre de
 // 2026 con el folio de plataforma.
 function Truena(): React.ReactElement {

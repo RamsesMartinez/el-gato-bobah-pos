@@ -4,8 +4,8 @@ import { Box, Button, Text, VStack } from '@chakra-ui/react';
 // La barrera que impide que un defecto de una pantalla deje la tableta en blanco.
 //
 // SIN ELLA, un throw durante el render vacía el `#root` y el operador se queda sin nada: ni mensaje,
-// ni botón, ni el aviso de "Nueva versión disponible" —lo pinta el toaster, que vive dentro del
-// árbol que acaba de morir—. La tableta sigue con el service worker viejo sirviendo la versión rota
+// ni botón, ni el aviso de versión nueva —lo pinta el riel, que vive dentro del árbol que acaba de
+// morir—. La tableta sigue con el service worker viejo sirviendo la versión rota
 // y la única salida es cerrar la app y volver a abrirla, que es justo lo que nadie adivina. Pasó el
 // 8 de septiembre de 2026: `platformOrderRef` faltaba en una cuenta guardada y el POS entero dejó de
 // renderizar al entrar.
