@@ -219,7 +219,7 @@ func (h *Handlers) CorrectAttendance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := userFrom(r.Context())
-	if err := h.attendance.Correct(r.Context(), u.ID, h.permissionsOf(u.Role), app.CorrectCmd{
+	if err := h.attendance.Correct(r.Context(), u.ID, h.permissionsOf(r.Context(), u), app.CorrectCmd{
 		EntryID: id, Field: body.Field, At: body.At, Reason: body.Reason}); err != nil {
 		Error(w, err)
 		return
@@ -240,7 +240,7 @@ func (h *Handlers) ManualAttendanceEntry(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	id, err := h.attendance.ManualEntry(r.Context(), u.ID, h.permissionsOf(u.Role), app.ManualEntryCmd{
+	id, err := h.attendance.ManualEntry(r.Context(), u.ID, h.permissionsOf(r.Context(), u), app.ManualEntryCmd{
 		UserID: body.UserID, In: body.In, Out: body.Out, Reason: body.Reason})
 	if err != nil {
 		Error(w, err)

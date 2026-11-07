@@ -268,7 +268,7 @@ func TestLlevaArqueoExigeElPermisoDeConfigurarCaja(t *testing.T) {
 	}
 	for _, c := range []struct {
 		name   string
-		perms  httpapi.PermissionResolver
+		perms  func(domain.Role) []domain.Permission
 		body   string
 		denied bool
 	}{
@@ -281,7 +281,7 @@ func TestLlevaArqueoExigeElPermisoDeConfigurarCaja(t *testing.T) {
 			st := newTestStore(t)
 			jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
 			h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Backoffice: app.NewBackofficeService(st, clock), MenuCache: cache.NewMenuCache(""),
-				Broker: realtime.NewBroker(), Permissions: c.perms})
+				Broker: realtime.NewBroker(), Permissions: porRol(c.perms)})
 			r := httpapi.Router(config.Config{}, jm, h, st)
 			id := makeUser(t, st, "gerente_arqueo", "gerente")
 			tok, err := jm.Issue(domain.User{ID: id, CompanyID: defaultCompanyID, Name: "g", Role: domain.RoleGerente})

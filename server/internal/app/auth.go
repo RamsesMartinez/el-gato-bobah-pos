@@ -54,6 +54,9 @@ type Session struct {
 	// Cuándo muere el refresh. Va aquí para que la cookie se ponga con ESTE vencimiento: fijarla a
 	// 30 días dejaba a la tableta mandando durante un mes una credencial muerta desde el día dos.
 	RefreshExpiresAt time.Time `json:"-"`
+	// El rol de la empresa y lo que puede, leídos al emitir (spec 068).
+	Role        UserRoleInfo        `json:"-"`
+	Permissions []domain.Permission `json:"-"`
 }
 
 // Login authenticates a user by username + company slug + password. El identificador de login
@@ -304,6 +307,17 @@ func (s *AuthService) issueUntil(ctx context.Context, q *db.Queries, u db.User, 
 	if co, err := q.GetCompany(ctx, u.CompanyID); err == nil {
 		du.CompanySlug = co.Slug
 	}
+	// El rol y los permisos salen del rol de la empresa (spec 068), no de users.role. El JWT lleva el
+	// código del sugerido, o "" en un rol propio: solo sirve para el log; ningún control lo lee.
+	rol, err := userRole(ctx, q, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	perms, err := effectivePermissions(ctx, q, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	du.Role = rol.SystemCode
 	access, err := s.jwt.Issue(du)
 	if err != nil {
 		return nil, err
@@ -323,7 +337,8 @@ func (s *AuthService) issueUntil(ctx context.Context, q *db.Queries, u db.User, 
 	}); err != nil {
 		return nil, err
 	}
-	return &Session{AccessToken: access, RefreshToken: token, CompanyID: u.CompanyID, User: du, RefreshExpiresAt: vence}, nil
+	return &Session{AccessToken: access, RefreshToken: token, CompanyID: u.CompanyID, User: du, RefreshExpiresAt: vence,
+		Role: rol, Permissions: perms}, nil
 }
 
 func toDomainUser(u db.User) domain.User {

@@ -95,12 +95,12 @@ func TestStockCountsHTTP(t *testing.T) {
 // configura sin contar, no.
 func TestTheCountPlaceIsSetByWhoCounts(t *testing.T) {
 	t.Parallel()
-	only := func(p domain.Permission) httpapi.PermissionResolver {
+	only := func(p domain.Permission) func(domain.Role) []domain.Permission {
 		return func(domain.Role) []domain.Permission { return []domain.Permission{p} }
 	}
 	for _, c := range []struct {
 		name   string
-		perms  httpapi.PermissionResolver
+		perms  func(domain.Role) []domain.Permission
 		denied bool
 	}{
 		{"quien cuenta sí", only(domain.PermInventoryCount), false},
@@ -111,7 +111,7 @@ func TestTheCountPlaceIsSetByWhoCounts(t *testing.T) {
 			jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
 			h := httpapi.NewHandlers(httpapi.Deps{
 				JWT: jm, Backoffice: app.NewBackofficeService(st, nil), MenuCache: cache.NewMenuCache(""),
-				Broker: realtime.NewBroker(), Permissions: c.perms,
+				Broker: realtime.NewBroker(), Permissions: porRol(c.perms),
 			})
 			r := httpapi.Router(config.Config{}, jm, h, st)
 			id := makeUser(t, st, "lugar_"+itoa(len(c.name)), "cajero")

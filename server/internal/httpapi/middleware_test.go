@@ -69,7 +69,7 @@ func TestRequireRole_EmitsForbiddenEvent(t *testing.T) {
 // lugares lo necesita quien cuenta y quien configura, y un rol propio puede tener solo uno.
 func TestRequireAnyPermission(t *testing.T) {
 	only := func(p domain.Permission) PermissionResolver {
-		return func(domain.Role) []domain.Permission { return []domain.Permission{p} }
+		return func(context.Context, AuthUser) ([]domain.Permission, error) { return []domain.Permission{p}, nil }
 	}
 	call := func(resolve PermissionResolver) int {
 		next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
@@ -108,7 +108,7 @@ func TestRequireAnyPermission(t *testing.T) {
 // roles tienen `orders.cancel_pending`: sin inyectarlo no existe usuario con quien ver el 403, y
 // una ruta que perdió su gate pasaría todas las pruebas.
 func TestRequirePermission(t *testing.T) {
-	none := func(domain.Role) []domain.Permission { return []domain.Permission{} }
+	none := func(context.Context, AuthUser) ([]domain.Permission, error) { return []domain.Permission{}, nil }
 	call := func(resolve PermissionResolver, p domain.Permission, u *AuthUser) *httptest.ResponseRecorder {
 		next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/9/lines/cancel-pending", nil)
@@ -138,20 +138,20 @@ func TestRequirePermission(t *testing.T) {
 	})
 
 	t.Run("con el permiso pasa", func(t *testing.T) {
-		all := func(domain.Role) []domain.Permission { return domain.AllPermissions() }
+		all := func(context.Context, AuthUser) ([]domain.Permission, error) { return domain.AllPermissions(), nil }
 		if rec := call(all, domain.PermPaymentsVoid, &AuthUser{ID: 5, Role: domain.RoleMesero}); rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, quiere 200", rec.Code)
 		}
 	})
 
 	t.Run("el resolutor de hoy niega cancelar pedidos al cajero", func(t *testing.T) {
-		if rec := call(domain.PermissionsFor, domain.PermOrdersCancel, &AuthUser{ID: 6, Role: domain.RoleCajero}); rec.Code != http.StatusForbidden {
+		if rec := call(byRole, domain.PermOrdersCancel, &AuthUser{ID: 6, Role: domain.RoleCajero}); rec.Code != http.StatusForbidden {
 			t.Fatalf("status = %d, quiere 403", rec.Code)
 		}
 	})
 
 	t.Run("sin usuario autenticado es 403", func(t *testing.T) {
-		if rec := call(domain.PermissionsFor, domain.PermOrdersMoveLines, nil); rec.Code != http.StatusForbidden {
+		if rec := call(byRole, domain.PermOrdersMoveLines, nil); rec.Code != http.StatusForbidden {
 			t.Fatalf("status = %d, quiere 403", rec.Code)
 		}
 	})
@@ -170,4 +170,8 @@ func TestRequirePermission(t *testing.T) {
 			t.Fatalf("evento sin contexto de detección: %v", m)
 		}
 	})
+}
+
+func byRole(_ context.Context, u AuthUser) ([]domain.Permission, error) {
+	return domain.PermissionsFor(u.Role), nil
 }

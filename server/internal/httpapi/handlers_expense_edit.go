@@ -106,7 +106,7 @@ func (h *Handlers) EditExpense(w http.ResponseWriter, r *http.Request) {
 	// Agregar algo que «ya llegó» o quitar lo que ya sumó al almacén mueven existencias: además del
 	// permiso de editar, el de recibir. Depende del estado del renglón, así que lo decide el servicio;
 	// aquí se le dice si la persona lo tiene, con el mismo resolvedor que el router.
-	in.CanReceive = slices.Contains(h.permissions(u.Role), domain.PermInventoryReceive)
+	in.CanReceive = slices.Contains(h.permissionsOf(r.Context(), u), domain.PermInventoryReceive)
 	res, err := h.backoffice.EditExpense(r.Context(), id, in, u.ID, preview)
 	if err != nil {
 		if errors.Is(err, domain.ErrForbidden) {

@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -18,6 +19,19 @@ import (
 // Router assembles the HTTP API. st es el store de SERVICIO (rol app, sujeto a RLS): lo usa el
 // middleware WithTenant para atar la conexión del tenant a cada request autenticado.
 func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) http.Handler {
+	// Lo que puede cada usuario se lee de la base en cada petición (roles por empresa, spec 068),
+	// una sola vez por petición.
+	if h.roles == nil {
+		h.roles = app.NewRolesService(st)
+	}
+	if h.permissions == nil {
+		roles := h.roles
+		h.permissions = func(ctx context.Context, u AuthUser) ([]domain.Permission, error) {
+			return roles.EffectivePermissions(ctx, u.ID)
+		}
+	}
+	h.permissions = MemoizedPermissions(h.permissions)
+
 	r := chi.NewRouter()
 	r.Use(RequestID) // X-Request-Id (del front o generado), trazabilidad
 	r.Use(middleware.Recoverer)

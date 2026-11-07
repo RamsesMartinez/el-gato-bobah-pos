@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -135,8 +136,10 @@ type Deps struct {
 	// Permissions resuelve los permisos de un rol. Nil = domain.PermissionsFor, el mapa de hoy; las
 	// pruebas inyectan uno que no da ninguno para ver el 403 de un permiso que hoy tienen todos.
 	Permissions PermissionResolver
-	Attendance  *app.AttendanceService
-	Audit       *app.AuditService
+	// Roles: roles por empresa (spec 068). Sin él, Router arma uno con el store.
+	Roles      *app.RolesService
+	Attendance *app.AttendanceService
+	Audit      *app.AuditService
 	// InventoryHealth es «Salud del inventario» (spec 037).
 	InventoryHealth *app.InventoryHealthService
 }
@@ -200,6 +203,7 @@ type Handlers struct {
 	authFails   *rateLimiter // account-targeted brute-force lockout (per username / user id)
 	authIPs     *rateLimiter // per-IP request throttle for the /auth group
 	permissions PermissionResolver
+	roles       *app.RolesService
 	attendance  *app.AttendanceService
 	audit       *app.AuditService
 	health      *app.InventoryHealthService
@@ -222,15 +226,12 @@ func NewHandlers(d Deps) *Handlers {
 
 func newHandlers(d Deps) *Handlers {
 	permissions := d.Permissions
-	if permissions == nil {
-		permissions = domain.PermissionsFor
-	}
 	return &Handlers{
-		permissions: permissions,
-		attendance:  d.Attendance,
-		audit:       d.Audit,
-		health:      d.InventoryHealth,
-		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
+		permissions: permissions, roles: d.Roles,
+		attendance: d.Attendance,
+		audit:      d.Audit,
+		health:     d.InventoryHealth,
+		cfg:        d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		purchaseDoc:       d.PurchaseDoc,
@@ -282,7 +283,16 @@ type sessionResponse struct {
 // (`can()`), nunca por nombre de rol; por eso viajan con cada sesión y no se deducen del rol allá.
 type sessionUser struct {
 	domain.User
+	RoleID      int64               `json:"roleId"`
+	RoleName    string              `json:"roleName"`
 	Permissions []domain.Permission `json:"permissions"`
+}
+
+func nonNilPerms(p []domain.Permission) []domain.Permission {
+	if p == nil {
+		return []domain.Permission{}
+	}
+	return p
 }
 
 // La cookie de refresh codifica el tenant como "cid.token": el /refresh necesita fijar la
@@ -326,15 +336,18 @@ func (h *Handlers) clearRefreshCookie(w http.ResponseWriter) {
 func (h *Handlers) writeSession(w http.ResponseWriter, s *app.Session, status int) {
 	h.setRefreshCookie(w, s.CompanyID, s.RefreshToken, s.RefreshExpiresAt)
 	JSON(w, status, sessionResponse{AccessToken: s.AccessToken,
-		User: sessionUser{User: s.User, Permissions: h.permissionsOf(s.User.Role)}})
+		User: sessionUser{User: s.User, RoleID: s.Role.ID, RoleName: s.Role.Name, Permissions: nonNilPerms(s.Permissions)}})
 }
 
-// permissionsOf nunca devuelve nil: un nil saldría como `null` y la pantalla truena al preguntar.
-func (h *Handlers) permissionsOf(role domain.Role) []domain.Permission {
-	if p := h.permissions(role); p != nil {
-		return p
+// permissionsOf es lo que puede el usuario de la petición. Nunca devuelve nil (saldría `null` y la
+// pantalla truena al preguntar). Si la base no responde, ninguno: falla cerrado.
+func (h *Handlers) permissionsOf(ctx context.Context, u AuthUser) []domain.Permission {
+	p, err := h.permissions(ctx, u)
+	if err != nil {
+		slog.ErrorContext(ctx, "permissions_resolve_failed", "user_id", u.ID, "err", err)
+		return []domain.Permission{}
 	}
-	return []domain.Permission{}
+	return nonNilPerms(p)
 }
 
 // POST /auth/login  {username, slug, password}. El identificador es username@slug; también se
@@ -579,9 +592,19 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
+	perms, err := h.permissions(r.Context(), u)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	rol, err := h.roles.UserRole(r.Context(), u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	JSON(w, http.StatusOK, map[string]any{
-		"id": u.ID, "companyId": u.CompanyID, "name": u.Name, "role": u.Role,
-		"permissions": h.permissionsOf(u.Role),
+		"id": u.ID, "companyId": u.CompanyID, "name": u.Name, "role": rol.SystemCode,
+		"roleId": rol.ID, "roleName": rol.Name, "permissions": nonNilPerms(perms),
 	})
 }
 
