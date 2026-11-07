@@ -28,3 +28,12 @@ describe('el shell del service worker es «/», nunca «index.html»', () => {
     expect(manifest.some((e) => e.url.endsWith('index.html'))).toBe(false);
   });
 });
+
+// El build usa ESTAS opciones: si alguien vuelve a escribir las opciones de workbox a mano en
+// vite.config.ts, el objeto de arriba quedaría probado y el service worker real con el defecto.
+test('vite.config.ts arma el service worker con workboxOptions', async () => {
+  const fs = await import('node:fs');
+  const config = fs.readFileSync(`${process.cwd()}/vite.config.ts`, 'utf8');
+  expect(config).toMatch(/workbox:\s*workboxOptions\b/);
+  expect(config).not.toMatch(/navigateFallback:\s*'index\.html'/);
+});
