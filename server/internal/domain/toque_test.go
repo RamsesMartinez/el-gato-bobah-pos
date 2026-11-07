@@ -97,13 +97,13 @@ func TestPreAgregarToques(t *testing.T) {
 // POS, que abre cualquier sesión, así que el filtro se prueba con la regla que usa: si mañana se
 // instrumenta Caja, el toque de quien no tiene «operar la caja» se descarta.
 func TestElToqueDeUnRolQueNoPuedeAbrirLaPantallaNoCuenta(t *testing.T) {
-	if !PantallaPermitida("pos", nil) {
+	if !ScreenAllowed("pos", nil) {
 		t.Fatal("el POS lo abre cualquier sesión")
 	}
-	if PantallaPermitida("caja", PermissionsFor(RoleMesero)) {
+	if ScreenAllowed("caja", PermissionsFor(RoleMesero)) {
 		t.Fatal("el mesero no abre Caja: su toque ahí sería una mentira")
 	}
-	if PantallaPermitida("inventada", AllPermissions()) {
+	if ScreenAllowed("inventada", AllPermissions()) {
 		t.Fatal("una pantalla que no existe no se mide")
 	}
 }

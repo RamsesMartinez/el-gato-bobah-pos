@@ -135,3 +135,18 @@ func CanDeleteRole(system *Role, anyUsers int) error {
 	}
 	return nil
 }
+
+// ErrBeyondOwnPermissions: quien actúa intentó dar, quitar o asignar algo que su usuario no puede.
+var ErrBeyondOwnPermissions = fmt.Errorf("%w: Tu usuario no puede administrar permisos que no tiene", ErrForbidden)
+
+// WithinPermissions exige que `target` (lo que puede un rol o una persona) quepa en lo que puede quien
+// actúa. Es la barrera contra escalar: sin ella, quien solo administra empleados se asignaba el rol
+// admin o reseteaba la contraseña del admin, y quien administra roles se daba cualquier permiso.
+func WithinPermissions(actor, target []Permission) error {
+	for _, p := range target {
+		if !slices.Contains(actor, p) {
+			return ErrBeyondOwnPermissions
+		}
+	}
+	return nil
+}

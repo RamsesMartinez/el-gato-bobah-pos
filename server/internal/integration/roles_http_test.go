@@ -395,3 +395,121 @@ func TestTheLastRoleAdminCannotBeRemoved(t *testing.T) {
 		t.Fatalf("dos bajas a la vez dejaron a la empresa sin administradores (respuestas %v)", codes)
 	}
 }
+
+// Editar el nombre de alguien no depende de que quede un administrador si no se tocó rol ni alta:
+// una empresa que ya estaba sin administradores (alta a mano) no se queda sin poder corregir nada.
+func TestEditingANameDoesNotRequireARoleAdminIfNothingChanged(t *testing.T) {
+	t.Parallel()
+	a := newRolesAPI(t)
+	ctx := context.Background()
+	u := makeUser(t, a.st, "solo_nombre", "cajero")
+	// La empresa se queda sin nadie que administre roles (como la dejaría un alta a mano).
+	if _, err := a.st.Pool.Exec(ctx, `update users set is_active = false where company_id = $1 and id <> $2`, defaultCompanyID, u); err != nil {
+		t.Fatal(err)
+	}
+	svc := app.NewUsersService(a.st, nil, false, "pepper-de-prueba")
+	tctx, release, err := appRoleStore(t).AcquireTenant(ctx, defaultCompanyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	_ = svc
+	appSvc := app.NewUsersService(appRoleStore(t), nil, false, "pepper-de-prueba")
+	cajero := roleIDOf(t, a.st, defaultCompanyID, "cajero")
+	if _, err := appSvc.Update(tctx, app.UpdateUserInput{ID: u, Name: "Nombre nuevo", RoleID: &cajero, IsActive: true, ActorPerms: domain.AllPermissions()}); err != nil {
+		t.Fatalf("cambiar solo el nombre: %v", err)
+	}
+}
+
+// DURANTE LA SUBIDA, una tableta con la pantalla anterior manda `role` (el código que ve) al editar a
+// alguien con rol propio; ese `role` es «mesero» (lo que el trigger le puso). No se le reasigna el
+// sugerido: se conserva su rol propio.
+func TestTheOldScreenDoesNotReassignACustomRole(t *testing.T) {
+	t.Parallel()
+	a := newRolesAPI(t)
+	ctx := context.Background()
+	_, _ = a.call(http.MethodPost, "/api/v1/roles", a.admin, map[string]any{"name": "Barista", "permissions": []string{"orders.move_lines"}})
+	barista := a.roles()["Barista"].ID
+	u := makeUser(t, a.st, "barista_vieja", "cajero")
+	if _, err := a.st.Pool.Exec(ctx, `update users set role_id = $2 where id = $1`, u, barista); err != nil {
+		t.Fatal(err)
+	}
+	code, body := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", u), a.admin, map[string]any{
+		"name": "Barista vieja", "role": "mesero", "isActive": true})
+	if code != http.StatusOK {
+		t.Fatalf("= %d %v", code, body)
+	}
+	var rid int64
+	_ = a.st.Pool.QueryRow(ctx, `select role_id from users where id = $1`, u).Scan(&rid)
+	if rid != barista {
+		t.Fatalf("role_id = %d: la pantalla anterior le quitó su rol propio", rid)
+	}
+}
+
+// NADIE ADMINISTRA A QUIEN PUEDE MÁS QUE ÉL (auditoría de seguridad de la 068). Un rol propio con solo
+// «administrar empleados» podía asignarse el rol admin o resetear la contraseña del admin, y uno con
+// «administrar roles» darse cualquier permiso. Se rechaza dar, quitar o asignar lo que uno no tiene.
+func TestNobodyManagesSomeoneMorePowerful(t *testing.T) {
+	t.Parallel()
+	a := newRolesAPI(t)
+	_, _ = a.call(http.MethodPost, "/api/v1/roles", a.admin, map[string]any{"name": "Personal", "permissions": []string{"employees.manage"}})
+	_, _ = a.call(http.MethodPost, "/api/v1/roles", a.admin, map[string]any{"name": "Roles", "permissions": []string{"roles.manage", "sales.view"}})
+	roles := a.roles()
+	personal := makeUser(t, a.st, "enc_personal", "cajero")
+	rolesU := makeUser(t, a.st, "enc_roles", "cajero")
+	for u, r := range map[int64]int64{personal: roles["Personal"].ID, rolesU: roles["Roles"].ID} {
+		if code, body := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", u), a.admin, map[string]any{
+			"name": "x", "roleId": r, "isActive": true}); code != http.StatusOK {
+			t.Fatalf("asignar = %d %v", code, body)
+		}
+	}
+	pt, rt := a.token(personal), a.token(rolesU)
+	cajeroU := makeUser(t, a.st, "otro_cajero", "cajero")
+
+	t.Run("no se asigna el rol admin a sí mismo", func(t *testing.T) {
+		if code, _ := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", personal), pt, map[string]any{
+			"name": "x", "roleId": roles["Admin"].ID, "isActive": true}); code != http.StatusForbidden {
+			t.Fatalf("= %d, quiere 403", code)
+		}
+	})
+	t.Run("ni se lo asigna a otro", func(t *testing.T) {
+		if code, _ := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", cajeroU), pt, map[string]any{
+			"name": "x", "roleId": roles["Admin"].ID, "isActive": true}); code != http.StatusForbidden {
+			t.Fatalf("= %d, quiere 403", code)
+		}
+	})
+	t.Run("ni resetea la contraseña del admin", func(t *testing.T) {
+		if code, _ := a.call(http.MethodPost, fmt.Sprintf("/api/v1/users/%d/password", a.adminU), pt, map[string]any{
+			"password": "Otra-Contrasena-Larga-9!"}); code != http.StatusForbidden {
+			t.Fatalf("= %d, quiere 403", code)
+		}
+	})
+	t.Run("ni da de baja al admin", func(t *testing.T) {
+		if code, _ := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", a.adminU), pt, map[string]any{
+			"name": "x", "roleId": roles["Admin"].ID, "isActive": false}); code != http.StatusForbidden {
+			t.Fatalf("= %d, quiere 403", code)
+		}
+	})
+	t.Run("quien administra roles no se da lo que no tiene", func(t *testing.T) {
+		r := a.roles()["Roles"]
+		if code, _ := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/roles/%d", r.ID), rt, map[string]any{
+			"version": r.Version, "add": []string{"payments.void"}}); code != http.StatusForbidden {
+			t.Fatalf("= %d, quiere 403", code)
+		}
+	})
+	t.Run("ni le quita al admin", func(t *testing.T) {
+		ad := a.roles()["Admin"]
+		if code, _ := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/roles/%d", ad.ID), rt, map[string]any{
+			"version": ad.Version, "remove": []string{"sales.view"}}); code != http.StatusForbidden {
+			t.Fatalf("= %d, quiere 403", code)
+		}
+	})
+	t.Run("pero sí da lo que tiene a un rol que no lo supera", func(t *testing.T) {
+		_, _ = a.call(http.MethodPost, "/api/v1/roles", a.admin, map[string]any{"name": "Vacío", "permissions": []string{}})
+		m := a.roles()["Vacío"]
+		if code, body := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/roles/%d", m.ID), rt, map[string]any{
+			"version": m.Version, "add": []string{"sales.view"}}); code != http.StatusOK {
+			t.Fatalf("= %d %v", code, body)
+		}
+	})
+}

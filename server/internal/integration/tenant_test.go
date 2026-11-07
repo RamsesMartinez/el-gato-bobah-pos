@@ -94,7 +94,7 @@ func TestLoginIsScopedByCompany(t *testing.T) {
 			t.Fatalf("AcquireTenant(%d): %v", companyID, err)
 		}
 		defer release()
-		if _, err := users.Create(ctx, app.CreateUserInput{
+		if _, err := users.Create(ctx, app.CreateUserInput{ActorPerms: domain.AllPermissions(),
 			Name: "Jefe", Username: strptr("jefe"), Role: domain.RoleAdmin, Password: pw,
 		}); err != nil {
 			t.Fatalf("Create jefe en %d: %v", companyID, err)

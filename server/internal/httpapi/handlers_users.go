@@ -46,6 +46,7 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 		Username:      body.Username,
 		RoleID:        body.RoleID,
 		Role:          domain.Role(body.Role),
+		ActorPerms:    h.actorPerms(r),
 		PIN:           body.PIN,
 		Password:      body.Password,
 		RecoveryEmail: body.RecoveryEmail,
@@ -76,7 +77,7 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := h.users.Update(r.Context(), app.UpdateUserInput{
-		ID: id, Name: body.Name, RoleID: body.RoleID, Role: domain.Role(body.Role), IsActive: body.IsActive, RecoveryEmail: body.RecoveryEmail,
+		ID: id, Name: body.Name, RoleID: body.RoleID, Role: domain.Role(body.Role), ActorPerms: h.actorPerms(r), IsActive: body.IsActive, RecoveryEmail: body.RecoveryEmail,
 	})
 	if err != nil {
 		Error(w, err)
@@ -99,6 +100,10 @@ func (h *Handlers) AdminSetPassword(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	if err := h.users.CanManageUser(r.Context(), h.actorPerms(r), id); err != nil {
+		Error(w, err)
+		return
+	}
 	if err := h.users.AdminSetPassword(r.Context(), id, body.Password); err != nil {
 		Error(w, err)
 		return
@@ -117,6 +122,10 @@ func (h *Handlers) AdminSetPIN(w http.ResponseWriter, r *http.Request) {
 		PIN string `json:"pin"`
 	}
 	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.users.CanManageUser(r.Context(), h.actorPerms(r), id); err != nil {
 		Error(w, err)
 		return
 	}
@@ -185,4 +194,14 @@ func (h *Handlers) SetOwnPIN(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// actorPerms es lo que puede quien hace la petición (nada si no hay sesión): las reglas de «nadie
+// administra a quien puede más que él» lo comparan con el destino.
+func (h *Handlers) actorPerms(r *http.Request) []domain.Permission {
+	u, ok := userFrom(r.Context())
+	if !ok {
+		return nil
+	}
+	return h.permissionsOf(r.Context(), u)
 }

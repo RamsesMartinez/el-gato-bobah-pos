@@ -151,7 +151,7 @@ func TestSeCuentanLosCuatroRoles(t *testing.T) {
 // el mapa mostraría un cero permanente que se lee como «nadie la usa».
 func TestTodaPantallaMedibleTieneRoles(t *testing.T) {
 	for _, pantalla := range PantallasMedibles() {
-		if !PantallaPermitida(pantalla, AllPermissions()) {
+		if !ScreenAllowed(pantalla, AllPermissions()) {
 			t.Errorf("la pantalla %q no dice qué roles pueden abrirla: sus eventos se descartarían todos, en silencio", pantalla)
 		}
 	}
@@ -253,7 +253,7 @@ func TestInventoryHealthIsMeasuredInsideInventory(t *testing.T) {
 	// Quien puede ver la pestaña puede abrir la pantalla que la contiene; si no, sus aperturas se
 	// descartarían por rol.
 	for _, r := range []Role{RoleAdmin, RoleGerente, RoleCajero, RoleMesero} {
-		if slices.Contains(PermissionsFor(r), PermInventoryHealthView) && !PantallaPermitida("inventario", PermissionsFor(r)) {
+		if slices.Contains(PermissionsFor(r), PermInventoryHealthView) && !ScreenAllowed("inventario", PermissionsFor(r)) {
 			t.Errorf("el rol %q ve la salud del inventario pero su medición se descarta por rol", r)
 		}
 	}
@@ -289,7 +289,7 @@ func TestEachSuggestedRoleMeasuresTheSameScreensAsBefore(t *testing.T) {
 	}
 	for pantalla, roles := range antes {
 		for _, r := range []Role{RoleAdmin, RoleGerente, RoleCajero, RoleMesero} {
-			if got, want := PantallaPermitida(pantalla, PermissionsFor(r)), slices.Contains(roles, r); got != want {
+			if got, want := ScreenAllowed(pantalla, PermissionsFor(r)), slices.Contains(roles, r); got != want {
 				t.Errorf("%s abre %q = %v, antes %v", r, pantalla, got, want)
 			}
 		}

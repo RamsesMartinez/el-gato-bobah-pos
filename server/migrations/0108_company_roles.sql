@@ -131,7 +131,9 @@ grant select, insert, update, delete on role_permission_overrides to gatobobah_a
 -- fallara: las llaves foráneas no pasan por RLS.
 alter table users add column role_id bigint;
 alter table users add constraint users_role_fkey
-  foreign key (company_id, role_id) references roles (company_id, id) on delete restrict;
+  -- no action y no restrict: se revisa al final de la sentencia, así que borrar una empresa (que
+  -- borra en cascada sus usuarios y sus roles) no depende del orden de los cascades.
+  foreign key (company_id, role_id) references roles (company_id, id) on delete no action;
 create index users_role_idx on users (company_id, role_id);
 
 -- Los cuatro sugeridos de una empresa, sin duplicar. La llaman esta migración, CreateCompany y el
@@ -139,10 +141,18 @@ create index users_role_idx on users (company_id, role_id);
 -- aplicación y dentro de pg_restore, que vacía el search_path.
 -- +goose StatementBegin
 create function ensure_company_roles(p_company bigint) returns void
-language sql security definer set search_path = pg_catalog, public, pg_temp as $$
+language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
+begin
+  -- Salta RLS (security definer): la aplicación solo la puede pedir para la empresa de su sesión.
+  -- El owner (migraciones, alta de empresa, pg_restore) la pide para cualquiera.
+  if session_user::text = 'gatobobah_app'
+     and p_company is distinct from nullif(current_setting('app.company_id', true), '')::bigint then
+    raise exception 'ensure_company_roles: solo la empresa de la sesión' using errcode = 'insufficient_privilege';
+  end if;
   insert into public.roles (company_id, system_role_id)
   select p_company, s.id from public.system_roles s
   on conflict (company_id, system_role_id) do nothing;
+end;
 $$;
 -- +goose StatementEnd
 revoke execute on function ensure_company_roles(bigint) from public;

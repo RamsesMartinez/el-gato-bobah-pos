@@ -3,6 +3,11 @@
 package integration
 
 import (
+	"net/http"
+	"strconv"
+	"strings"
+	"testing"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
@@ -10,10 +15,6 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
-	"net/http"
-	"strconv"
-	"strings"
-	"testing"
 )
 
 // Conteo por el router real (spec 038, historia 3).

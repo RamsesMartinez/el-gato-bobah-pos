@@ -138,14 +138,14 @@ func EventoDeUsoValido(pantalla, accion string) bool {
 	return ok
 }
 
-// permisoPorPantalla es el permiso que abre cada pantalla medible ("" = cualquier sesión), el
+// permissionByScreen es el permiso que abre cada pantalla medible ("" = cualquier sesión), el
 // mismo que pide el router (spec 068).
 //
 // Sin esto, la lista blanca acota el conjunto de valores pero no su coherencia: un mesero con su
 // propio token puede reportar treinta aperturas por minuto de la pantalla de usuarios —que un GET
 // suyo recibiría con 403— y el mapa diría que es la más usada del sistema. Con roles por empresa
 // la pregunta es por permiso: un rol propio con «ver ventas» sí mide Ventas.
-var permisoPorPantalla = map[string]Permission{
+var permissionByScreen = map[string]Permission{
 	"pos":         "",
 	"pedidos":     "",
 	"cuenta":      "",
@@ -164,9 +164,9 @@ var permisoPorPantalla = map[string]Permission{
 	"merma":       PermInventoryWriteOff,
 }
 
-// PantallaPermitida dice si quien tiene esos permisos puede siquiera abrir esa pantalla.
-func PantallaPermitida(pantalla string, perms []Permission) bool {
-	p, ok := permisoPorPantalla[pantalla]
+// ScreenAllowed dice si quien tiene esos permisos puede siquiera abrir esa pantalla.
+func ScreenAllowed(pantalla string, perms []Permission) bool {
+	p, ok := permissionByScreen[pantalla]
 	if !ok {
 		return false
 	}
@@ -201,7 +201,7 @@ func PreAgregarUso(lote []EventoDeUso, perms []Permission) []UsoAgregado {
 	orden := make([]llave, 0, len(lote))
 	veces := make(map[llave]int, len(lote))
 	for _, e := range lote {
-		if !EventoDeUsoValido(e.Pantalla, e.Accion) || !PantallaPermitida(e.Pantalla, perms) {
+		if !EventoDeUsoValido(e.Pantalla, e.Accion) || !ScreenAllowed(e.Pantalla, perms) {
 			continue
 		}
 		k := llave{e.Pantalla, e.Accion}

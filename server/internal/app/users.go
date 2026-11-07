@@ -59,8 +59,10 @@ type CreateUserInput struct {
 	Username *string
 	// RoleID es el rol de la empresa (spec 068). Sin él, Role (código de un sugerido) por
 	// compatibilidad con la pantalla anterior durante la subida.
-	RoleID        *int64
-	Role          domain.Role
+	RoleID *int64
+	Role   domain.Role
+	// ActorPerms es lo que puede quien da de alta: el rol que asigna no puede pasarse de eso.
+	ActorPerms    []domain.Permission
 	PIN           string  // opcional
 	Password      string  // OBLIGATORIO y fuerte (política + HIBP)
 	RecoveryEmail *string // opcional (email externo para recuperación)
@@ -101,8 +103,11 @@ func (s *UsersService) Create(ctx context.Context, in CreateUserInput) (domain.U
 		if err := q.LockCompanyRoles(ctx); err != nil {
 			return err
 		}
-		roleID, err := assignableRole(ctx, q, in.RoleID, in.Role, true)
+		roleID, perms, err := assignableRole(ctx, q, in.RoleID, in.Role, true)
 		if err != nil {
+			return err
+		}
+		if err := domain.WithinPermissions(in.ActorPerms, perms); err != nil {
 			return err
 		}
 		params.RoleID = &roleID
@@ -120,7 +125,8 @@ func (s *UsersService) Create(ctx context.Context, in CreateUserInput) (domain.U
 
 // assignableRole resuelve el rol que se le asigna a un empleado: uno de la empresa (RLS) y activo si
 // el empleado queda activo. Sin roleId, el sugerido del código (la pantalla anterior manda `role`).
-func assignableRole(ctx context.Context, q *db.Queries, roleID *int64, code domain.Role, userActive bool) (int64, error) {
+// Devuelve también lo que puede ese rol, para que nadie asigne más de lo que él mismo puede.
+func assignableRole(ctx context.Context, q *db.Queries, roleID *int64, code domain.Role, userActive bool) (int64, []domain.Permission, error) {
 	var id int64
 	switch {
 	case roleID != nil:
@@ -128,22 +134,36 @@ func assignableRole(ctx context.Context, q *db.Queries, roleID *int64, code doma
 	case code.Valid():
 		var err error
 		if id, err = q.SuggestedRoleID(ctx, string(code)); err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 	default:
-		return 0, fmt.Errorf("%w: elige un rol", domain.ErrValidation)
+		return 0, nil, fmt.Errorf("%w: elige un rol", domain.ErrValidation)
 	}
-	r, err := q.GetRoleForUpdate(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, fmt.Errorf("%w: ese rol no existe", domain.ErrValidation)
+	st, err := loadRoleState(ctx, q, id)
+	if errors.Is(err, domain.ErrNotFound) {
+		return 0, nil, fmt.Errorf("%w: ese rol no existe", domain.ErrValidation)
 	}
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	if userActive && !r.Active {
-		return 0, domain.ErrRoleInactive
+	if userActive && !st.row.Active {
+		return 0, nil, domain.ErrRoleInactive
 	}
-	return id, nil
+	return id, domain.EffectivePermissions(st.base, st.overrides), nil
+}
+
+// userPermissions es lo que puede ahora un empleado (nada si está dado de baja o su rol inactivo).
+func userPermissions(ctx context.Context, q *db.Queries, userID int64) ([]domain.Permission, error) {
+	return effectivePermissions(ctx, q, userID)
+}
+
+// CanManageUser rechaza administrar (contraseña, PIN) a quien puede más que quien actúa.
+func (s *UsersService) CanManageUser(ctx context.Context, actorPerms []domain.Permission, userID int64) error {
+	target, err := userPermissions(ctx, s.store.QC(ctx), userID)
+	if err != nil {
+		return err
+	}
+	return domain.WithinPermissions(actorPerms, target)
 }
 
 func (s *UsersService) List(ctx context.Context) ([]domain.User, error) {
@@ -159,10 +179,12 @@ func (s *UsersService) List(ctx context.Context) ([]domain.User, error) {
 }
 
 type UpdateUserInput struct {
-	ID            int64
-	Name          string
-	RoleID        *int64
-	Role          domain.Role
+	ID     int64
+	Name   string
+	RoleID *int64
+	Role   domain.Role
+	// ActorPerms es lo que puede quien edita: no administra a quien puede más que él ni le da más.
+	ActorPerms    []domain.Permission
 	IsActive      bool
 	RecoveryEmail *string
 }
@@ -187,8 +209,25 @@ func (s *UsersService) Update(ctx context.Context, in UpdateUserInput) (domain.U
 		if err != nil {
 			return err
 		}
-		roleID, err := assignableRole(ctx, q, in.RoleID, in.Role, in.IsActive)
+		// Nadie edita a quien puede más que él (ni lo da de baja ni le cambia el rol).
+		now, err := userPermissions(ctx, q, in.ID)
 		if err != nil {
+			return err
+		}
+		if err := domain.WithinPermissions(in.ActorPerms, now); err != nil {
+			return err
+		}
+		// La pantalla anterior manda `role` con el código que ve; a alguien con rol propio el trigger
+		// le puso «mesero». Ese mismo código no es un cambio de rol: se conserva el suyo.
+		requested := in.RoleID
+		if requested == nil && prev.RoleID != nil && string(in.Role) == prev.Role {
+			requested = prev.RoleID
+		}
+		roleID, perms, err := assignableRole(ctx, q, requested, in.Role, in.IsActive)
+		if err != nil {
+			return err
+		}
+		if err := domain.WithinPermissions(in.ActorPerms, perms); err != nil {
 			return err
 		}
 		u, err = q.UpdateUser(ctx, db.UpdateUserParams{
@@ -197,14 +236,20 @@ func (s *UsersService) Update(ctx context.Context, in UpdateUserInput) (domain.U
 		if err != nil {
 			return err
 		}
-		if prev.RoleID == nil || *prev.RoleID != roleID {
+		roleChanged := prev.RoleID == nil || *prev.RoleID != roleID
+		if roleChanged {
 			subject := in.ID
 			if err := recordAudit(ctx, q, domain.AuditEvent{Action: "user.role_changed", EntityType: "user", EntityID: in.ID,
 				SubjectUserID: &subject, Before: map[string]any{"roleId": prev.RoleID}, After: map[string]any{"roleId": roleID}}); err != nil {
 				return err
 			}
 		}
-		return ensureARoleAdminRemains(ctx, q)
+		// Solo si cambió el rol o el alta: una empresa que ya estaba sin quien administre roles (alta a
+		// mano) no se queda sin poder corregir un nombre.
+		if roleChanged || prev.IsActive != in.IsActive {
+			return ensureARoleAdminRemains(ctx, q)
+		}
+		return nil
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.User{}, domain.ErrNotFound

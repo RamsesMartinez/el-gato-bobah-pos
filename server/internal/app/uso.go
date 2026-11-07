@@ -75,16 +75,16 @@ type Descartes struct {
 // El rol y los permisos los pone quien llama desde la base (spec 068), nunca el cuerpo del request.
 // `rol` es el código del sugerido, o "" para un rol propio, que se mide sin rol.
 //
-// `quien` se llama solo si el lote trae algo válido: un lote que se va a tirar entero no le cuesta
+// `actor` se llama solo si el lote trae algo válido: un lote que se va a tirar entero no le cuesta
 // una consulta a la base a quien está cobrando.
-func (s *UsageService) Registrar(ctx context.Context, quien func() (domain.Role, []domain.Permission, error), lote LoteDeMedicion) (Descartes, error) {
+func (s *UsageService) Registrar(ctx context.Context, actor func() (domain.Role, []domain.Permission, error), lote LoteDeMedicion) (Descartes, error) {
 	eventos := domain.RecortarLoteDeUso(lote.Eventos)
 	toques := domain.RecortarLoteDeToques(lote.Toques)
 	var perms []domain.Permission
 	var rol domain.Role
-	if algoValido(eventos, toques) {
+	if anyValid(eventos, toques) {
 		var err error
-		if rol, perms, err = quien(); err != nil {
+		if rol, perms, err = actor(); err != nil {
 			return Descartes{Eventos: len(eventos), Toques: len(toques)}, err
 		}
 	}
@@ -531,7 +531,7 @@ func nombreDeRol(r *string) string {
 	return *r
 }
 
-func algoValido(eventos []domain.EventoDeUso, toques []domain.Toque) bool {
+func anyValid(eventos []domain.EventoDeUso, toques []domain.Toque) bool {
 	for _, e := range eventos {
 		if domain.EventoDeUsoValido(e.Pantalla, e.Accion) {
 			return true

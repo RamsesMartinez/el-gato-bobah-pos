@@ -158,3 +158,21 @@ func TestCanDeactivateAndDelete(t *testing.T) {
 		t.Errorf("borrar propio sin usuarios: %v", err)
 	}
 }
+
+// Nadie administra a quien puede más que él: sin esto, «administrar empleados» bastaba para
+// asignarse el rol admin (auditoría de seguridad de la 068).
+func TestWithinPermissions(t *testing.T) {
+	actor := []Permission{PermEmployeesManage, PermSalesView}
+	if err := WithinPermissions(actor, []Permission{PermSalesView}); err != nil {
+		t.Errorf("menos que uno: %v", err)
+	}
+	if err := WithinPermissions(actor, []Permission{PermSalesView, PermRolesManage}); !errors.Is(err, ErrForbidden) {
+		t.Errorf("más que uno = %v, quiere ErrForbidden", err)
+	}
+	if err := WithinPermissions(nil, []Permission{PermSalesView}); !errors.Is(err, ErrForbidden) {
+		t.Errorf("sin permisos no se administra a nadie con permisos: %v", err)
+	}
+	if err := WithinPermissions(nil, nil); err != nil {
+		t.Errorf("vacío contra vacío: %v", err)
+	}
+}

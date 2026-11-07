@@ -133,7 +133,7 @@ func PreAgregarToques(lote []Toque, perms []Permission) []ToqueAgregado {
 	orden := make([]llave, 0, len(lote))
 	veces := make(map[llave]int, len(lote))
 	for _, t := range lote {
-		if !ToqueValido(t) || !PantallaPermitida(t.Pantalla, perms) {
+		if !ToqueValido(t) || !ScreenAllowed(t.Pantalla, perms) {
 			continue
 		}
 		k := llave{t.Pantalla, t.Orientacion, t.Celda}

@@ -18,6 +18,7 @@ type RolesService struct {
 	store *store.Store
 }
 
+// NewRolesService arma el servicio de roles sobre el store de la aplicación.
 func NewRolesService(st *store.Store) *RolesService { return &RolesService{store: st} }
 
 // EffectivePermissions es lo que puede el usuario AHORA, leído de la base con la conexión de la
@@ -246,13 +247,23 @@ func roleAudit(ctx context.Context, q *db.Queries, action domain.AuditAction, id
 	return recordAudit(ctx, q, domain.AuditEvent{Action: action, EntityType: "role", EntityID: id, Before: before, After: after})
 }
 
+// withinRole: nadie toca un rol que puede más que él (ni para quitarle).
+func withinRole(actor []domain.Permission, st roleState) error {
+	return domain.WithinPermissions(actor, domain.EffectivePermissions(st.base, st.overrides))
+}
+
 // takenNames son los nombres con los que no puede chocar el rol `except` (0 al crear).
 func takenNames(ctx context.Context, q *db.Queries, except int64) ([]string, error) {
 	return q.RoleNamesExcept(ctx, except)
 }
 
 // Create da de alta un rol propio con sus permisos.
-func (s *RolesService) Create(ctx context.Context, name string, perms []domain.Permission) (int64, error) {
+//
+// `actor` es lo que puede quien crea: no se da a un rol lo que uno no tiene.
+func (s *RolesService) Create(ctx context.Context, actor []domain.Permission, name string, perms []domain.Permission) (int64, error) {
+	if err := domain.WithinPermissions(actor, perms); err != nil {
+		return 0, err
+	}
 	var id int64
 	err := s.mutate(ctx, func(q *db.Queries) error {
 		taken, err := takenNames(ctx, q, 0)
@@ -281,6 +292,8 @@ func (s *RolesService) Create(ctx context.Context, name string, perms []domain.P
 // UpdateRoleCmd: lo que la pantalla tocó. Add y Remove son solo los permisos que la persona marcó o
 // desmarcó: un permiso que el producto agregó mientras la hoja estaba abierta no se vuelve «quitado».
 type UpdateRoleCmd struct {
+	// Actor es lo que puede quien edita: no toca un rol que puede más que él ni le da lo que no tiene.
+	Actor   []domain.Permission
 	ID      int64
 	Version int32
 	Name    *string
@@ -288,10 +301,17 @@ type UpdateRoleCmd struct {
 	Remove  []domain.Permission
 }
 
+// Update renombra un rol propio y le aplica lo que la pantalla tocó.
 func (s *RolesService) Update(ctx context.Context, cmd UpdateRoleCmd) error {
 	return s.mutate(ctx, func(q *db.Queries) error {
 		st, err := loadRoleState(ctx, q, cmd.ID)
 		if err != nil {
+			return err
+		}
+		if err := withinRole(cmd.Actor, st); err != nil {
+			return err
+		}
+		if err := domain.WithinPermissions(cmd.Actor, cmd.Add); err != nil {
 			return err
 		}
 		if err := bump(ctx, q, cmd.ID, cmd.Version); err != nil {
@@ -332,10 +352,16 @@ func (s *RolesService) Update(ctx context.Context, cmd UpdateRoleCmd) error {
 }
 
 // Reset devuelve un sugerido a lo que el producto le da.
-func (s *RolesService) Reset(ctx context.Context, id int64, version int32) error {
+func (s *RolesService) Reset(ctx context.Context, actor []domain.Permission, id int64, version int32) error {
 	return s.mutate(ctx, func(q *db.Queries) error {
 		st, err := loadRoleState(ctx, q, id)
 		if err != nil {
+			return err
+		}
+		if err := withinRole(actor, st); err != nil {
+			return err
+		}
+		if err := domain.WithinPermissions(actor, st.base); err != nil {
 			return err
 		}
 		if st.system == nil {
@@ -352,10 +378,13 @@ func (s *RolesService) Reset(ctx context.Context, id int64, version int32) error
 }
 
 // SetActive inactiva o reactiva un rol. No se inactiva con personas activas ni el admin.
-func (s *RolesService) SetActive(ctx context.Context, id int64, version int32, active bool) error {
+func (s *RolesService) SetActive(ctx context.Context, actor []domain.Permission, id int64, version int32, active bool) error {
 	return s.mutate(ctx, func(q *db.Queries) error {
 		st, err := loadRoleState(ctx, q, id)
 		if err != nil {
+			return err
+		}
+		if err := withinRole(actor, st); err != nil {
 			return err
 		}
 		if !active {
@@ -382,10 +411,13 @@ func (s *RolesService) SetActive(ctx context.Context, id int64, version int32, a
 }
 
 // Delete borra un rol propio que nadie tiene ni tuvo.
-func (s *RolesService) Delete(ctx context.Context, id int64) error {
+func (s *RolesService) Delete(ctx context.Context, actor []domain.Permission, id int64) error {
 	return s.mutate(ctx, func(q *db.Queries) error {
 		st, err := loadRoleState(ctx, q, id)
 		if err != nil {
+			return err
+		}
+		if err := withinRole(actor, st); err != nil {
 			return err
 		}
 		n, err := q.CountUsersWithRole(ctx, &id)
@@ -395,8 +427,12 @@ func (s *RolesService) Delete(ctx context.Context, id int64) error {
 		if err := domain.CanDeleteRole(st.system, int(n)); err != nil {
 			return err
 		}
-		if err := q.DeleteRole(ctx, id); err != nil {
+		n, err = q.DeleteRole(ctx, id)
+		if err != nil {
 			return err
+		}
+		if n != 1 {
+			return domain.ErrRoleSystem
 		}
 		return roleAudit(ctx, q, "role.deleted", id, map[string]any{"name": st.row.Name}, nil)
 	})

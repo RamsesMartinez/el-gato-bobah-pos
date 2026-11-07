@@ -45,7 +45,7 @@ func (h *Handlers) CreateRole(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	id, err := h.roles.Create(r.Context(), body.Name, body.Permissions)
+	id, err := h.roles.Create(r.Context(), h.actorPerms(r), body.Name, body.Permissions)
 	if err != nil {
 		Error(w, err)
 		return
@@ -70,7 +70,7 @@ func (h *Handlers) UpdateRole(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	if err := h.roles.Update(r.Context(), app.UpdateRoleCmd{ID: id, Version: body.Version, Name: body.Name,
+	if err := h.roles.Update(r.Context(), app.UpdateRoleCmd{Actor: h.actorPerms(r), ID: id, Version: body.Version, Name: body.Name,
 		Add: body.Add, Remove: body.Remove}); err != nil {
 		Error(w, err)
 		return
@@ -100,17 +100,17 @@ func (h *Handlers) roleVersionAction(w http.ResponseWriter, r *http.Request, do 
 
 // POST /roles/{id}/reset  {version}
 func (h *Handlers) ResetRole(w http.ResponseWriter, r *http.Request) {
-	h.roleVersionAction(w, r, func(id int64, v int32) error { return h.roles.Reset(r.Context(), id, v) })
+	h.roleVersionAction(w, r, func(id int64, v int32) error { return h.roles.Reset(r.Context(), h.actorPerms(r), id, v) })
 }
 
 // POST /roles/{id}/deactivate  {version}
 func (h *Handlers) DeactivateRole(w http.ResponseWriter, r *http.Request) {
-	h.roleVersionAction(w, r, func(id int64, v int32) error { return h.roles.SetActive(r.Context(), id, v, false) })
+	h.roleVersionAction(w, r, func(id int64, v int32) error { return h.roles.SetActive(r.Context(), h.actorPerms(r), id, v, false) })
 }
 
 // POST /roles/{id}/reactivate  {version}
 func (h *Handlers) ReactivateRole(w http.ResponseWriter, r *http.Request) {
-	h.roleVersionAction(w, r, func(id int64, v int32) error { return h.roles.SetActive(r.Context(), id, v, true) })
+	h.roleVersionAction(w, r, func(id int64, v int32) error { return h.roles.SetActive(r.Context(), h.actorPerms(r), id, v, true) })
 }
 
 // DELETE /roles/{id}
@@ -120,7 +120,7 @@ func (h *Handlers) DeleteRole(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	if err := h.roles.Delete(r.Context(), id); err != nil {
+	if err := h.roles.Delete(r.Context(), h.actorPerms(r), id); err != nil {
 		Error(w, err)
 		return
 	}

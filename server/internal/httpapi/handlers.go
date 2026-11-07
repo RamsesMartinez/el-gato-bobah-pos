@@ -133,8 +133,8 @@ type Deps struct {
 	// el agregado. Son dos campos y no uno porque son dos permisos distintos, y confundirlos es
 	// exactamente lo que las tres barreras de la spec 016 existen para impedir.
 	UsageConsola *app.UsageService
-	// Permissions resuelve los permisos de un rol. Nil = domain.PermissionsFor, el mapa de hoy; las
-	// pruebas inyectan uno que no da ninguno para ver el 403 de un permiso que hoy tienen todos.
+	// Permissions resuelve lo que puede el usuario de la petición. Nil = el de producción, que Router
+	// arma con el store y lee la base (spec 068); las pruebas inyectan uno fijo para ver un 403.
 	Permissions PermissionResolver
 	// Roles: roles por empresa (spec 068). Sin él, Router arma uno con el store.
 	Roles      *app.RolesService

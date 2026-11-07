@@ -9,6 +9,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
 // ROLES POR EMPRESA EN LA BASE (spec 068, 0108).
@@ -299,5 +300,45 @@ func TestAUserWithAnInactiveRoleHasNoPermissions(t *testing.T) {
 	}
 	if len(perms) != 0 {
 		t.Fatalf("con el rol inactivo tiene %v", perms)
+	}
+}
+
+// La aplicación no crea roles en otra empresa: ensure_company_roles salta RLS (security definer) y
+// solo acepta la empresa de la sesión cuando la llama gatobobah_app.
+func TestEnsureCompanyRolesOnlyForTheSessionCompany(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	var otra int64
+	if err := st.Pool.QueryRow(ctx, `insert into companies (slug, name) values ('ajena-sin-roles', 'Ajena') returning id`).Scan(&otra); err != nil {
+		t.Fatal(err)
+	}
+	conn := conexionDeEmpresa(t, appRoleStore(t), defaultCompanyID)
+	if _, err := conn.Exec(ctx, `select ensure_company_roles($1)`, otra); err == nil {
+		t.Fatal("la aplicación creó los roles de otra empresa")
+	}
+	var n int
+	_ = st.Pool.QueryRow(ctx, `select count(*) from roles where company_id = $1`, otra).Scan(&n)
+	if n != 0 {
+		t.Fatalf("la otra empresa quedó con %d roles", n)
+	}
+	if _, err := conn.Exec(ctx, `select ensure_company_roles($1)`, int64(defaultCompanyID)); err != nil {
+		t.Fatalf("la propia empresa: %v", err)
+	}
+}
+
+// Un sugerido no se borra, tampoco por la consulta directa.
+func TestASuggestedRoleCannotBeDeletedByTheQuery(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	conn := conexionDeEmpresa(t, appRoleStore(t), defaultCompanyID)
+	q := db.New(conn)
+	n, err := q.DeleteRole(ctx, roleIDOf(t, st, defaultCompanyID, "mesero"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("borró el sugerido mesero")
 	}
 }

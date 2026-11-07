@@ -80,8 +80,9 @@ update roles set name = $2 where id = $1;
 -- name: SetRoleActive :exec
 update roles set active = $2 where id = $1;
 
--- name: DeleteRole :exec
-delete from roles where id = $1;
+-- name: DeleteRole :execrows
+-- Solo un rol propio: un sugerido no se borra, tampoco si alguien llama la consulta directo.
+delete from roles where id = $1 and system_role_id is null;
 
 -- name: DeleteRoleOverrides :exec
 delete from role_permission_overrides where role_id = $1;

@@ -70,13 +70,17 @@ func (q *Queries) CountUsersWithRole(ctx context.Context, roleID *int64) (int64,
 	return count, err
 }
 
-const deleteRole = `-- name: DeleteRole :exec
-delete from roles where id = $1
+const deleteRole = `-- name: DeleteRole :execrows
+delete from roles where id = $1 and system_role_id is null
 `
 
-func (q *Queries) DeleteRole(ctx context.Context, id int64) error {
-	_, err := q.db.Exec(ctx, deleteRole, id)
-	return err
+// Solo un rol propio: un sugerido no se borra, tampoco si alguien llama la consulta directo.
+func (q *Queries) DeleteRole(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRole, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteRoleOverrides = `-- name: DeleteRoleOverrides :exec
