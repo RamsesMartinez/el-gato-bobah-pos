@@ -331,7 +331,7 @@ function RoleSheet({ role: liveRole, roles, catalog, onClose, onShowPeople }: Sh
                         onClick={() => setConfirmDelete(true)}>Borrar</Button>
                     )}
                     {usedBefore && (
-                      <Text fontSize="sm" color="fg.muted" ml="auto">Ya lo tuvo alguien: solo se puede inactivar</Text>
+                      <Text fontSize="sm" color="fg.muted" ml="auto">Alguien lo tiene asignado (aunque esté dado de baja): solo se puede inactivar</Text>
                     )}
                   </HStack>
                   {dirty && <Text fontSize="sm" color="fg.muted">Guarda o descarta los cambios primero</Text>}
@@ -360,13 +360,13 @@ function RoleSheet({ role: liveRole, roles, catalog, onClose, onShowPeople }: Sh
       {role && (
         <ConfirmSheet isOpen={confirmReset} title={`¿Regresar ${role.name} a lo sugerido?`}
           description="Se quitan los permisos que le agregaron y vuelven los que le quitaron."
-          confirmLabel="Regresar" cancelLabel="Volver" loading={reset.isPending}
+          confirmLabel="Regresar a lo sugerido" cancelLabel="Cancelar" loading={reset.isPending}
           onConfirm={() => { setConfirmReset(false); reset.mutate(); }} onCancel={() => setConfirmReset(false)} />
       )}
       {role && (
         <ConfirmSheet isOpen={confirmDelete} title={`¿Borrar el rol ${role.name}?`} destructive
           description="Nadie tiene este rol. Se borra y no se puede deshacer."
-          confirmLabel="Borrar" cancelLabel="Volver" loading={remove.isPending}
+          confirmLabel="Borrar" cancelLabel="Cancelar" loading={remove.isPending}
           onConfirm={() => remove.mutate()} onCancel={() => setConfirmDelete(false)} />
       )}
     </>

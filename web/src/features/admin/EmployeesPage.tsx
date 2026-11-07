@@ -136,7 +136,7 @@ function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; o
 
       {roleFilter !== null && (
         <Button minH="44px" mb={3} variant="subtle" colorPalette="gray" onClick={onClearFilter}>
-          Solo {filterName ?? 'ese rol'} <LuX />
+          Rol: {filterName ?? 'ese rol'} <LuX />
         </Button>
       )}
       <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
@@ -255,7 +255,11 @@ function ManageDialog({ user, roles, mine, onClose, onSaved, onError, onSchedule
           )}
         </DialogBody>
         <DialogFooter>
-          <Button variant="outline" minH="44px" mr="auto" onClick={onSchedule}>Horario y asistencia</Button>
+          {/* El horario lo lee y lo guarda quien configura la asistencia; sin el permiso la hoja abría
+              vacía y editable con un 403 detrás, como si la persona no tuviera horario. */}
+          {mine?.includes('attendance.configure') && (
+            <Button variant="outline" minH="44px" mr="auto" onClick={onSchedule}>Horario y asistencia</Button>
+          )}
           <Button minH="44px" variant="ghost" onClick={onClose}>Cerrar</Button>
         </DialogFooter>
       </DialogContent>

@@ -195,7 +195,7 @@ describe('acciones del rol', () => {
     // Deshace los ajustes de todas las personas con ese rol: se confirma antes.
     expect(await screen.findByText('¿Regresar Cajero a lo sugerido?')).toBeInTheDocument();
     expect(api.resetRole).not.toHaveBeenCalled();
-    await u.click(screen.getByRole('button', { name: 'Regresar' }));
+    await u.click(screen.getByRole('button', { name: 'Regresar a lo sugerido' }));
     await waitFor(() => expect(api.resetRole).toHaveBeenCalledWith(3, 5));
   });
 
@@ -205,7 +205,7 @@ describe('acciones del rol', () => {
     montar();
     const hoja = await abrir(u, 'Barista');
     expect(within(hoja).queryByRole('button', { name: 'Borrar' })).toBeNull();
-    expect(within(hoja).getByText('Ya lo tuvo alguien: solo se puede inactivar')).toBeInTheDocument();
+    expect(within(hoja).getByText('Alguien lo tiene asignado (aunque esté dado de baja): solo se puede inactivar')).toBeInTheDocument();
   });
 
   test('inactivar con personas activas muestra cuántas y lleva a Personal filtrado', async () => {

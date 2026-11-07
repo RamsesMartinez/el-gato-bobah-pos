@@ -34,9 +34,9 @@ func RoleInUse(people int, activeOnly bool) error {
 		return fmt.Errorf("%w: Lo tienen %d personas activas; reasígnalas primero", ErrRoleInUse, people)
 	}
 	if people == 1 {
-		return fmt.Errorf("%w: Lo tiene o lo tuvo 1 persona; solo se puede inactivar", ErrRoleInUse)
+		return fmt.Errorf("%w: Lo tiene asignado 1 persona (activa o dada de baja); solo se puede inactivar", ErrRoleInUse)
 	}
-	return fmt.Errorf("%w: Lo tienen o lo tuvieron %d personas; solo se puede inactivar", ErrRoleInUse, people)
+	return fmt.Errorf("%w: Lo tienen asignado %d personas (activas o dadas de baja); solo se puede inactivar", ErrRoleInUse, people)
 }
 
 // MaxRoleName es el largo máximo del nombre de un rol propio.
@@ -127,7 +127,7 @@ func CanDeactivateRole(system *Role, activeUsers int) error {
 	return nil
 }
 
-// CanDeleteRole: solo un rol propio que nadie tiene ni tuvo (los dados de baja cuentan).
+// CanDeleteRole: solo un rol propio que nadie tiene asignado (los dados de baja cuentan).
 func CanDeleteRole(system *Role, anyUsers int) error {
 	if system != nil {
 		return ErrRoleSystem

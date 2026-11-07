@@ -186,8 +186,8 @@ func TestRoleInUseReadsWell(t *testing.T) {
 	}{
 		{CanDeactivateRole(nil, 1), "conflicto: Lo tiene 1 persona activa; reasígnala primero"},
 		{CanDeactivateRole(nil, 3), "conflicto: Lo tienen 3 personas activas; reasígnalas primero"},
-		{CanDeleteRole(nil, 1), "conflicto: Lo tiene o lo tuvo 1 persona; solo se puede inactivar"},
-		{CanDeleteRole(nil, 2), "conflicto: Lo tienen o lo tuvieron 2 personas; solo se puede inactivar"},
+		{CanDeleteRole(nil, 1), "conflicto: Lo tiene asignado 1 persona (activa o dada de baja); solo se puede inactivar"},
+		{CanDeleteRole(nil, 2), "conflicto: Lo tienen asignado 2 personas (activas o dadas de baja); solo se puede inactivar"},
 	}
 	for _, c := range cases {
 		if !errors.Is(c.err, ErrRoleInUse) || c.err.Error() != c.want {

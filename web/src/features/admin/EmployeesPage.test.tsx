@@ -183,6 +183,18 @@ describe('nadie administra a quien puede más que él', () => {
     expect(within(dialogo).queryByRole('button', { name: 'Guardar datos' })).toBeNull();
     expect(within(dialogo).queryByRole('button', { name: 'Restablecer' })).toBeNull();
     expect(within(dialogo).queryByRole('button', { name: 'Fijar PIN' })).toBeNull();
+    // La sesión no configura asistencia: el horario no se ofrece (antes abría una hoja vacía y
+    // editable con un 403 detrás, que decía que la persona no tenía horario).
+    expect(within(dialogo).queryByRole('button', { name: 'Horario y asistencia' })).toBeNull();
+  });
+
+  test('con «configurar asistencia» sí se ofrece el horario', async () => {
+    sesion(['employees.manage', 'roles.manage', 'cash.operate', 'attendance.configure']);
+    const u = userEvent.setup();
+    montar();
+    const fila = (await screen.findByText('Ana')).closest('tr')!;
+    await u.click(within(fila).getByRole('button', { name: 'Gestionar' }));
+    const dialogo = await screen.findByRole('dialog');
     expect(within(dialogo).getByRole('button', { name: 'Horario y asistencia' })).toBeInTheDocument();
   });
 });
