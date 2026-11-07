@@ -1,31 +1,46 @@
-# Research — 068, entrega 1
+# Research — 068
 
-## Nombre del permiso
+## Entrega 1 (cerrada)
 
-- **Decision**: `orders.delivered_view`.
-- **Rationale**: sigue la forma `<área>.<objeto>_view` de `inventory.health_view`; es una capacidad
-  que el operador entiende («ver los entregados») y se guardará como dato en la entrega 2.
-- **Alternatives**: `orders.view_delivered` (rompe la forma ya usada); `orders.reprint` (nombra un
-  botón, no una capacidad, y la lista sirve también para cobrar lo que se debe).
+`orders.delivered_view`; devolver por `payments.void`; sin migración. Ver historial del archivo.
 
-## Devolver dinero de un pedido entregado
+## Entregas 2 y 3
 
-- **Decision**: `POST /orders/{id}/refund` y `GET /orders/{id}/refund-info` piden `payments.void`.
-- **Rationale**: es la misma capacidad que devolver un pago (sacar dinero cobrado del corte hacia el
-  cliente) y hoy las dos son de admin y gerente: el cambio no mueve a nadie. Al tocar estas rutas,
-  la constitución pide pasarlas a permiso; dejar el `RequireRole` obligaría a la pantalla a seguir
-  preguntando por rol para ofrecer «Devolver».
-- **Alternatives**: un permiso nuevo `orders.refund` (dos permisos para una capacidad: lo que la
-  regla «uno por capacidad» evita); dejar `RequireRole` (la pantalla tendría que espejar el rol).
+### Dónde se decide el permiso de una petición
+- **Decision**: en cada petición, contra la base, con una consulta memorizada en el contexto.
+- **Rationale**: FR-016 pide que quitar un permiso aplique a la siguiente petición. El JWT dura
+  15 min; con los permisos dentro del token, un cajero al que se le quitó «devolver» podría seguir
+  15 min. La consulta va por llaves primarias.
+- **Alternatives**: permisos en el JWT (ventana de 15 min); caché en Redis con versión por empresa
+  (más piezas; YAGNI hasta medir).
 
-## Cuándo ve la cajera el permiso nuevo
+### Catálogo en la base y constantes en `domain`
+- **Decision**: las dos, con un test que exige que coincidan (código, área y siembra).
+- **Rationale**: el dueño pidió ids universales en la base; la herencia en SQL necesita
+  `system_role_permissions`. Las constantes evitan escribir el código del permiso como texto suelto en
+  el router.
+- **Alternatives**: solo código (sin FK para los ajustes); solo base (el router compara strings).
 
-- **Decision**: no se fuerza nada; los permisos viajan en la sesión (`/auth/login`, `/auth/refresh`,
-  `/auth/me`), así que llegan en la siguiente renovación.
-- **Rationale**: el servidor decide al instante (pregunta por el rol de la sesión contra el mapa
-  nuevo); solo la pantalla espera a la renovación.
+### Nombre de los sugeridos
+- **Decision**: lo pone el producto (Admin, Gerente, Cajero, Mesero); la empresa no lo renombra.
+- **Rationale**: el sugerido es el mismo en todas las empresas; renombrarlo confunde soporte y medición.
+  Quien quiera otro nombre crea uno propio.
 
-## Migración
+### Un rol propio puede tener «quitar»
+- **Decision**: no. En un propio solo se guarda lo agregado.
+- **Rationale**: no hay base que quitar; un «quitar» no tendría efecto y confundiría la pantalla.
 
-- **Decision**: ninguna. El permiso nace en el mapa fijo de `domain`, que todas las empresas
-  comparten. No hay tabla con permisos que rellenar.
+### La medición de uso con roles propios
+- **Decision**: agrupa por los cuatro sugeridos; lo de un propio se guarda sin rol.
+- **Rationale**: la medición ya tiene el balde «sin rol» para no identificar a una persona; un rol
+  propio puede ser de una sola persona.
+
+### Último administrador de roles
+- **Decision**: la app rechaza cambiar de rol o dar de baja al último usuario activo cuyo rol tenga
+  `roles.manage`, bajo el candado 28068 de la empresa.
+- **Rationale**: con el admin siempre activo y con `roles.manage`, basta con que exista una persona
+  activa con ese rol (u otro con el permiso).
+
+### Convivencia de `users.role`
+- **Decision**: trigger `sync_user_role` en la 0108, borrado en la 0109.
+- **Alternatives**: que la API nueva escriba los dos (no cubre a la anterior escribiendo `role`).

@@ -1,157 +1,279 @@
-# Feature Specification: Roles y permisos por empresa — entrega 1: el cajero ve los pedidos entregados
+# Feature Specification: Roles y permisos por empresa (modelo híbrido)
 
 **Feature Branch**: `068-roles-por-empresa`
 
-**Created**: 2026-11-06
+**Created**: 2026-11-06 (entrega 1) · ampliado el 2026-11-06 (entregas 2 y 3)
 
-**Status**: Draft
+**Status**: Entrega 1 en producción · entregas 2 y 3 en especificación
 
-**Input**: Issue #61 «Roles y permisos por empresa (modelo híbrido)», incluida su sección «Caso que entra en este issue: el cajero ve los pedidos entregados (2026-11-06)».
+**Input**: Issue #61 «Roles y permisos por empresa (modelo híbrido)» y su seguimiento #232, con las decisiones del dueño del 2026-10-13 y del 2026-11-06.
 
 ## Corte en entregas
 
-El issue #61 no cabe en una sola subida, y una de sus mitades cruza una puerta del principio VIII
-(roles guardados en la base), cuyo diseño decide el dueño antes de construir. Se parte así:
-
-| Entrega | Qué lleva | Dónde |
+| Entrega | Qué lleva | Estado |
 | --- | --- | --- |
-| **1 — esta spec** | El permiso por capacidad para ver los pedidos entregados del día y reimprimir su ticket; cajero, gerente y admin lo traen de inicio; la pantalla de Pedidos y el servidor preguntan por permiso, no por rol, para esa lista y para devolver dinero de un pedido entregado | Esta spec, rama `068-roles-por-empresa` |
-| **2 — issue nuevo enlazado al #61** | Roles por empresa en la base (sugeridos precargados + propios), pantalla para administrarlos, migrar los `RequireRole` y los gates por nombre de rol que quedan, y decidir qué pasa con `users.role` | Issue nuevo; el #61 se cierra solo cuando las dos estén entregadas |
+| **1** | Permiso `orders.delivered_view`: la cajera ve los entregados del día y reimprime su ticket; entregados y devolución preguntan por permiso | En producción desde el 2026-11-06 (PR #234, #235) |
+| **2** | Roles por empresa guardados en la base, pantalla para administrarlos, Empleados asigna cualquier rol activo, todo control que hoy pregunta por el nombre del rol pasa a un permiso por capacidad, y el permiso de cada petición se decide contra la base | Esta especificación |
+| **3** | Quitar el rol fijo del usuario cuando ninguna versión de la API en producción lo lea (el tipo de cuatro valores queda solo para la medición de uso) | Subida posterior a la 2; mismo spec |
 
-**Por qué este corte**: la entrega 1 resuelve un hueco que hoy obliga a sacar a una persona de su
-puesto para reimprimir un ticket, y no necesita guardar nada nuevo: los permisos de los roles
-sugeridos todavía viven en el mapa fijo del producto, y agregar ahí un permiso lo reparte a todas
-las empresas, nuevas y existentes, en la misma subida. La entrega 2 sí guarda roles como dato, y
-esa forma (tabla, qué pasa con el rol de cada usuario, cómo se migra) es una puerta que el dueño
-decide antes de construir.
+**Por qué tres subidas**: la API anterior y la nueva conviven durante cada subida (constitución IV).
+La entrega 2 agrega el rol por empresa y deja de leer el rol fijo; borrarlo en la misma subida
+dejaría a la API anterior preguntando por una columna que ya no existe. La entrega 3 la borra
+cuando ya nadie la lee.
 
-### Lo que la entrega 2 ya tiene decidido (dueño, 2026-10-13)
+### Entrega 1 (cerrada)
 
-- Un rol no se borra: se inactiva. Solo se borra definitivamente si no tiene ningún usuario asignado.
-- Los roles de sistema (los que pone el producto) no se borran; solo los propios de la empresa.
-- Fuera de alcance: permisos por pantalla o por botón; uno por capacidad.
+Una cajera no pudo reimprimir el ticket de un pedido que entregó otro usuario (2026-11-06). Se
+agregó el permiso por capacidad `orders.delivered_view` para admin, gerente y cajero; devolver dinero
+de un pedido entregado pasó a `payments.void`. Detalle en el historial de este archivo y en #234.
+
+## Decisiones del dueño
+
+**2026-10-13**
+- Un rol no se borra: se inactiva. Solo se borra definitivamente un rol propio sin ningún usuario.
+- Los roles sugeridos (los del producto) no se borran.
+
+**2026-11-06** (puerta de roles del principio VIII)
+1. Los roles sugeridos —admin, gerente, cajero y mesero— existen siempre en todas las empresas,
+   nuevas y existentes. La empresa los puede inactivar, extender o crear roles propios.
+2. Base normalizada: un catálogo universal de permisos y de roles sugeridos (el mismo identificador
+   en todas las empresas) y, por empresa, sus roles con llave compuesta empresa + rol; ninguna
+   referencia entre filas de una empresa puede apuntar a otra.
+3. **Herencia**: lo que puede un rol sugerido en una empresa = lo que el producto le da + lo que la
+   empresa le agregó − lo que le quitó. Un permiso nuevo del producto llega solo a los sugeridos de
+   todas las empresas, salvo que la empresa lo haya quitado a propósito. Los roles propios no
+   reciben nada solos.
+4. En un rol sugerido la empresa puede agregar y quitar permisos, salvo que el admin nunca pierde la
+   administración de roles.
+5. Lo que hoy se limita por rol pasa a un permiso por capacidad, reutilizando los que existen.
+
+Fuera de alcance: permisos por pantalla o por botón.
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - La cajera reimprime el ticket de un pedido ya entregado (Priority: P1)
+### User Story 1 - Nada cambia para quien ya opera (Priority: P1)
 
-Una cajera atiende el mostrador. Un pedido de plataforma lo capturó y lo entregó otra persona desde
-su usuario, en el mismo momento. El repartidor o el cliente pide el ticket. La cajera abre Pedidos,
-ve el pedido en la lista de entregados del día y reimprime su ticket, sin llamar a nadie.
+El día de la subida, cada persona de cada empresa puede exactamente lo mismo que el día anterior:
+la cajera abre caja y cobra, el mesero toma pedidos, la gerente ve ventas y reportes, la
+administradora da de alta empleados. Ninguna pantalla aparece ni desaparece.
 
-**Why this priority**: es el caso que pasó el 2026-11-06 y el único que esta entrega viene a
-resolver. Hoy obliga a que una administradora deje lo que hace y entre con su usuario.
+**Why this priority**: es un negocio operando; una subida que le quita a alguien una pantalla a
+media jornada detiene el mostrador.
 
-**Independent Test**: con un usuario de rol cajero, abrir Pedidos con al menos un pedido entregado
-hoy por otro usuario; aparece en la lista de entregados y «Ticket» abre la reimpresión.
+**Independent Test**: para cada rol sugerido, la lista de lo que puede hacer antes y después de la
+subida es idéntica, ruta por ruta y pantalla por pantalla.
 
 **Acceptance Scenarios**:
 
-1. **Given** una cajera con sesión y un pedido entregado hoy que capturó otro usuario, **When** abre Pedidos, **Then** la sección de entregados del día aparece y el pedido está en ella.
-2. **Given** esa misma lista, **When** toca «Ticket» en el pedido, **Then** se abre la reimpresión del ticket de ese pedido.
-3. **Given** esa misma lista, **When** la cajera la mira, **Then** no aparece la acción «Devolver» en ningún pedido, aunque el pedido tenga dinero cobrado.
-4. **Given** una cajera, **When** pide la lista de entregados directamente al servidor, **Then** la recibe; **When** intenta devolver dinero de un pedido entregado, **Then** el servidor lo rechaza.
+1. **Given** una empresa existente con usuarios de los cuatro roles, **When** se sube la versión nueva, **Then** cada usuario tiene asignado el rol sugerido equivalente al que tenía y puede exactamente lo mismo.
+2. **Given** cualquier ruta que hoy permite o niega por rol, **When** la pide un usuario de cada rol sugerido, **Then** la respuesta (permitido o negado) es la misma que antes.
+3. **Given** el menú lateral y los controles que hoy dependen del rol, **When** entra cada rol sugerido, **Then** ve las mismas pantallas y los mismos controles.
+4. **Given** una empresa creada después de la subida, **When** se crea, **Then** nace con los cuatro roles sugeridos, activos, y su primer admin con el rol admin.
 
 ---
 
-### User Story 2 - Gerente y admin siguen igual (Priority: P1)
+### User Story 2 - La administradora ajusta lo que puede un rol (Priority: P1)
 
-Una gerente o una administradora abre Pedidos: ve los entregados del día, reimprime y puede
-devolver dinero, exactamente como hoy.
+La administradora de una fonda quiere que su cajero pueda ver los reportes pero no capturar precios
+por plataforma. Entra a la administración de roles, abre «Cajero», ve los permisos agrupados por
+área con los que trae marcados, agrega «Ver reportes», quita «Capturar precios por plataforma» y
+guarda. Desde ese momento, sin que el cajero vuelva a entrar, el cajero ve Reportes y ya no puede
+capturar precios.
 
-**Why this priority**: separar «ver» de «devolver» no puede quitarle nada a quien ya lo tenía.
+**Why this priority**: es lo que el modelo híbrido le vende a cada cliente: decidir sin pedir un
+cambio de código.
 
-**Independent Test**: con usuarios gerente y admin, la lista y el botón «Devolver» aparecen y la
-devolución se registra.
+**Independent Test**: editar los permisos de un rol sugerido y comprobar que la siguiente petición
+de un usuario con ese rol se permite o se niega según lo nuevo.
 
 **Acceptance Scenarios**:
 
-1. **Given** una gerente con un pedido entregado y cobrado, **When** abre Pedidos, **Then** ve el pedido, «Ticket» y «Devolver».
-2. **Given** una administradora, **When** devuelve dinero de un pedido entregado, **Then** el servidor lo acepta como hoy.
+1. **Given** el rol sugerido «Cajero», **When** la administradora le agrega un permiso y le quita otro, **Then** lo que puede ese rol es lo que el producto le da, más lo agregado, menos lo quitado.
+2. **Given** un cajero con sesión abierta, **When** se le quita a su rol un permiso, **Then** su siguiente petición que lo pida se niega, sin esperar a que renueve su sesión.
+3. **Given** el rol sugerido «Cajero» con permisos editados, **When** la administradora pide «volver a lo sugerido», **Then** el rol vuelve a tener exactamente lo que el producto le da.
+4. **Given** el rol «Admin», **When** alguien intenta quitarle la administración de roles, **Then** se rechaza con un mensaje claro.
+5. **Given** el producto agrega en una subida futura un permiso nuevo al rol «Cajero», **When** la empresa no había quitado ese permiso, **Then** su cajero lo recibe sin que nadie haga nada; **When** la empresa lo había quitado, **Then** no lo recibe.
 
 ---
 
-### User Story 3 - El mesero no lo trae por omisión (Priority: P2)
+### User Story 3 - La empresa crea un rol propio y se lo asigna a alguien (Priority: P1)
 
-Un usuario de rol mesero abre Pedidos: no ve la sección de entregados, y el servidor no le entrega
-la lista.
+Una taquería tiene «Encargado de turno»: cobra, abre y cierra caja, ve ventas del día pero no
+reportes ni empleados. La administradora crea el rol «Encargado de turno», marca sus permisos,
+guarda, y en Empleados se lo asigna a una persona. Esa persona entra y ve justo eso.
 
-**Why this priority**: el permiso se da a los roles que cobran en el mostrador; el mesero no lo
-pidió nadie y repartirlo de más es más difícil de quitar después.
+**Why this priority**: sin roles propios, el modelo híbrido no existe.
 
-**Independent Test**: con un usuario mesero, la sección no aparece y la lista responde «sin permiso».
+**Independent Test**: crear un rol propio con un conjunto de permisos, asignarlo a un usuario y
+comprobar ruta por ruta que puede exactamente esos.
 
 **Acceptance Scenarios**:
 
-1. **Given** un mesero, **When** abre Pedidos, **Then** no aparece la sección de entregados del día.
-2. **Given** un mesero, **When** pide la lista de entregados al servidor, **Then** recibe «Tu usuario no puede ver los pedidos entregados».
+1. **Given** la administración de roles, **When** la administradora crea un rol con nombre y permisos, **Then** queda activo y aparece al asignar rol en Empleados.
+2. **Given** un nombre de rol que ya existe en la empresa (sin distinguir mayúsculas, acentos ni espacios, y contando los sugeridos), **When** intenta crearlo o renombrar otro con él, **Then** se rechaza diciendo que ya existe.
+3. **Given** un usuario con un rol propio, **When** entra, **Then** el menú y los controles muestran lo que su rol permite, y el servidor niega lo demás.
+4. **Given** el producto agrega un permiso nuevo, **Then** los roles propios no lo reciben.
+
+---
+
+### User Story 4 - Inactivar, reactivar y borrar roles (Priority: P2)
+
+La empresa deja de usar «Mesero». Lo inactiva: ya no aparece al asignar rol. Si todavía hay
+empleados activos con ese rol, el sistema no la deja inactivarlo y le dice cuántos son. Un rol propio
+que nunca se asignó se puede borrar; uno con usuarios (activos o dados de baja), no: solo se inactiva.
+
+**Why this priority**: es la regla del dueño del 2026-10-13; sin ella, borrar un rol dejaría a sus
+usuarios sin rol.
+
+**Independent Test**: intentar inactivar con usuarios activos (rechazado), inactivar sin ellos
+(aceptado), borrar un propio sin usuarios (aceptado) y uno con usuarios (rechazado).
+
+**Acceptance Scenarios**:
+
+1. **Given** un rol con empleados activos, **When** se intenta inactivar, **Then** se rechaza diciendo cuántos empleados lo tienen.
+2. **Given** un rol sin empleados activos, **When** se inactiva, **Then** deja de ofrecerse al asignar rol y puede reactivarse después con sus mismos permisos.
+3. **Given** un rol sugerido, **When** se intenta borrar, **Then** no se ofrece la acción y el servidor la rechaza.
+4. **Given** un rol propio que ningún usuario tiene ni tuvo asignado, **When** se borra, **Then** desaparece.
+5. **Given** un rol propio asignado a un usuario dado de baja, **When** se intenta borrar, **Then** se rechaza y se ofrece inactivarlo.
+6. **Given** el rol «Admin», **When** se intenta inactivar, **Then** se rechaza: una empresa no puede quedarse sin quien administre roles.
+
+---
+
+### User Story 5 - Queda registro de quién cambió qué (Priority: P2)
+
+La dueña ve en la bitácora que el martes la gerente le dio a «Cajero» el permiso de devolver
+dinero: quién, cuándo, desde qué aparato, qué agregó y qué quitó.
+
+**Why this priority**: dar permisos de dinero es una decisión de confianza; sin rastro, un abuso no
+se puede reconstruir.
+
+**Independent Test**: cada acción sobre roles y cada cambio de rol de un empleado deja un evento con
+el detalle de lo que cambió.
+
+**Acceptance Scenarios**:
+
+1. **Given** cualquier alta, edición de permisos, cambio de nombre, inactivación, reactivación o borrado de un rol, **When** se guarda, **Then** queda un evento con quién, cuándo y qué cambió.
+2. **Given** un cambio del rol asignado a un empleado, **When** se guarda, **Then** queda un evento con el rol anterior y el nuevo.
 
 ---
 
 ### Edge Cases
 
-- **Sesión abierta antes de la subida**: la tableta conoce sus permisos desde que inició o renovó
-  sesión. Una cajera con la sesión abierta antes de la subida ve la sección a más tardar en la
-  siguiente renovación de su sesión (o al volver a entrar); no se pide que aparezca al instante.
-- **Pantalla vieja durante la subida**: mientras una tableta corra la pantalla anterior, pregunta
-  por rol y a la cajera no le muestra la sección: igual que hoy, nada se rompe. Con la API anterior
-  y la pantalla nueva, la sesión no trae el permiso nuevo y la sección no aparece: tampoco se rompe.
-- **Pedido entregado que todavía debe**: la cajera ve el aviso y el camino a cobrarlo en su cuenta,
-  igual que hoy lo ven gerente y admin (el cobro ya está permitido a la cajera).
-- **Pedido ya devuelto por completo**: la marca de devolución se sigue viendo; la cajera tampoco
-  ve «Devolver», como hoy no lo ve nadie cuando ya no queda nada por devolver.
-- **Empresa distinta**: la lista sigue mostrando solo los pedidos de la empresa de la sesión.
-- **Rol desconocido o sesión sin lista de permisos**: no se muestra la sección (se niega por omisión).
+- **Subida con las dos versiones de la API corriendo**: la anterior sigue leyendo el rol fijo y la
+  nueva el rol por empresa. Un empleado dado de alta o cambiado de rol por cualquiera de las dos
+  queda con los dos datos coherentes mientras existan ambos.
+- **Sesión emitida por la API anterior**: no trae el rol por empresa; la API nueva lo resuelve por el
+  usuario y la petición funciona igual.
+- **Usuario con rol inactivo** (no debería pasar: no se puede inactivar con usuarios activos, pero un
+  usuario dado de baja que se reactiva sí puede caer ahí): no puede hacer nada que pida permiso; al
+  reactivarlo se pide elegirle un rol activo.
+- **Empleado dado de baja**: su rol no cuenta como «en uso» para inactivar, pero sí para borrar.
+- **Permiso que deja de existir en el producto**: las adiciones y quitas que lo nombraban dejan de
+  contar; no rompen la pantalla ni el cálculo.
+- **El último usuario activo con administración de roles**: no se le puede cambiar el rol a uno sin
+  esa capacidad ni darlo de baja; una empresa nunca queda sin quien corrija los roles.
+- **Una empresa sin roles por un respaldo viejo o un alta a mano**: los sugeridos se crean solos al
+  arrancar la API o al dar de alta la empresa; nunca se adivina un rol por empresa al vuelo.
+- **Dos pantallas editando el mismo rol**: la segunda en guardar recibe un aviso de que el rol cambió
+  en vez de pisar la primera.
+- **Nombre vacío, de más de 40 caracteres o igual a otro**: se rechaza con un mensaje claro.
+- **Una empresa nunca ve ni toca los roles de otra**, ni puede asignarle a su empleado un rol de otra.
+- **Medición de uso**: con roles propios, la medición sigue agrupando por los cuatro sugeridos; lo
+  hecho por un rol propio se guarda sin rol, como hoy se guarda lo de un rol con una sola persona.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: Existe un permiso por capacidad, «ver los pedidos entregados del día y reimprimir su
-  ticket», con nombre estable en inglés (`orders.delivered_view`), separado del permiso de devolver
-  dinero.
-- **FR-002**: Los roles sugeridos admin, gerente y cajero traen ese permiso de inicio, en toda
-  empresa, nueva o existente, desde la subida y sin ningún paso manual. El mesero no lo trae.
-- **FR-003**: El servidor entrega la lista de pedidos entregados del día a quien tiene ese permiso,
-  y a nadie más; quien no lo tiene recibe un rechazo que dice qué no puede hacer, sin nombrar roles.
-- **FR-004**: La pantalla de Pedidos muestra la sección de entregados del día si y solo si la sesión
-  trae ese permiso; no pregunta por el nombre del rol.
-- **FR-005**: Devolver dinero de un pedido entregado (y consultar con qué terminal se devolvería)
-  se decide por el permiso de devolver dinero (`payments.void`, el mismo que ya decide devolver un
-  pago), en la pantalla y en el servidor. Por omisión lo siguen teniendo solo admin y gerente.
-- **FR-006**: La acción «Devolver» de la lista de entregados aparece solo con el permiso de devolver
-  dinero, además de las condiciones que ya tiene (que quede algo por devolver).
-- **FR-007**: El texto que ve quien no tiene el permiso no nombra roles: con roles propios por
-  empresa, el rol que sí puede quizá no se llame igual.
-- **FR-008**: Reimprimir el ticket desde la lista no exige más permiso que el de verla.
+**Catálogo y roles**
+- **FR-001**: El producto mantiene un catálogo universal de permisos (nombre estable en inglés,
+  etiqueta y área) y de los cuatro roles sugeridos con lo que cada uno trae; el identificador de cada
+  permiso y de cada rol sugerido es el mismo en todas las empresas.
+- **FR-002**: Toda empresa, existente o nueva, tiene siempre sus cuatro roles sugeridos; la subida los
+  crea para las existentes y el alta de empresa para las nuevas.
+- **FR-003**: Lo que puede un rol sugerido en una empresa es lo que el producto le da, más lo que la
+  empresa le agregó, menos lo que le quitó. Lo que puede un rol propio es solo lo que la empresa le
+  dio.
+- **FR-004**: Un permiso nuevo del producto asignado a un rol sugerido lo reciben ese rol en todas
+  las empresas, salvo las que lo hayan quitado; ningún rol propio lo recibe.
+- **FR-005**: La empresa puede crear roles propios con nombre y cualquier conjunto de permisos del
+  catálogo; renombrarlos; agregar y quitar permisos a cualquier rol; y devolver un rol sugerido a lo
+  que el producto le da.
+- **FR-006**: El rol admin no puede perder la administración de roles ni inactivarse.
+- **FR-007**: Un rol con empleados activos no se puede inactivar; un rol inactivo no se ofrece al
+  asignar y se puede reactivar con sus permisos.
+- **FR-008**: Solo se borra un rol propio que ningún usuario (activo o dado de baja) tiene asignado;
+  los sugeridos nunca.
+- **FR-009**: El nombre de un rol es único en la empresa sin distinguir mayúsculas, acentos ni
+  espacios, incluidos los nombres de los sugeridos; de 1 a 40 caracteres.
+- **FR-010**: Guardar un rol rechaza el cambio si el rol cambió desde que la pantalla lo leyó.
+
+**Empleados**
+- **FR-011**: Empleados ofrece, al dar de alta o editar, cualquier rol activo de la empresa, y
+  muestra el nombre del rol de cada empleado.
+- **FR-012**: No se puede dejar a la empresa sin ningún usuario activo con la administración de
+  roles (por cambio de rol ni por baja).
+- **FR-013**: Una empresa solo puede asignar a sus empleados roles propios de ella.
+
+**Autorización**
+- **FR-014**: Todo control del servidor y de la pantalla que hoy pregunta por el nombre del rol pasa a
+  preguntar por un permiso por capacidad; ningún control pregunta por el nombre de un rol.
+- **FR-015**: La asignación inicial de permisos a los cuatro sugeridos reproduce exactamente lo que
+  cada rol puede hacer hoy, ruta por ruta y pantalla por pantalla.
+- **FR-016**: El servidor decide cada petición con los permisos vigentes del rol del usuario en ese
+  momento: un cambio de permisos o de rol aplica a la siguiente petición, sin renovar sesión.
+- **FR-017**: Un usuario sin rol activo no puede nada que pida permiso.
+- **FR-018**: La sesión entrega a la pantalla el nombre del rol y la lista de permisos vigentes, y la
+  pantalla la vuelve a pedir al volver al frente o al recibir un rechazo por permiso, para no ofrecer
+  lo que ya no puede.
+- **FR-019**: La medición de uso agrupa por los cuatro roles sugeridos; lo de un rol propio se guarda
+  sin rol. Ninguna pantalla medida depende del nombre del rol para aceptarse: depende del permiso.
+
+**Bitácora**
+- **FR-020**: Crear, renombrar, cambiar permisos, inactivar, reactivar, devolver a lo sugerido y
+  borrar un rol, y cambiar el rol de un empleado, dejan un evento en la bitácora con quién, cuándo y
+  el detalle de lo que cambió, en la misma operación que el cambio.
+
+**Entrega 3**
+- **FR-021**: En la subida siguiente a la entrega 2, el rol fijo del usuario deja de existir en la
+  base; ninguna consulta, prueba ni pantalla lo nombra. El tipo de cuatro valores sigue existiendo
+  solo como la dimensión «rol sugerido» de la medición de uso.
 
 ### Key Entities
 
-- **Permiso**: capacidad con nombre estable en inglés que un rol trae o no. Hoy los permisos de cada
-  rol sugerido salen de un mapa fijo del producto; en la entrega 2 pasarán a la base como semilla.
+- **Permiso**: capacidad del producto con nombre estable en inglés, etiqueta en español y área
+  (Ventas, Caja, Almacén…). Universal.
+- **Rol sugerido**: uno de los cuatro del producto (admin, gerente, cajero, mesero) con los permisos
+  que el producto le da. Universal.
+- **Rol de la empresa**: un rol que existe en una empresa; o es la instancia de un rol sugerido o es
+  propio. Tiene nombre (los sugeridos usan el del producto), si está activo, y la empresa a la que
+  pertenece.
+- **Ajuste de permiso**: lo que la empresa agregó o quitó a uno de sus roles, permiso por permiso.
+- **Usuario**: pertenece a una empresa y tiene asignado un rol de esa misma empresa.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: Una cajera reimprime el ticket de un pedido entregado hoy por otro usuario en 2 toques
-  desde Pedidos (abrir la sección ya visible, «Ticket»), sin que nadie más entre con su usuario.
-- **SC-002**: 0 cambios de lo que pueden hacer gerente y admin en Pedidos: siguen viendo la lista y
-  devolviendo dinero.
-- **SC-003**: Ni la cajera ni el mesero pueden devolver dinero de un pedido entregado, ni por
-  pantalla ni pidiéndolo directo al servidor.
-- **SC-004**: En la pantalla de Pedidos y en las tres rutas de entregados y devolución, ningún
-  control pregunta por el nombre del rol.
+- **SC-001**: El día de la subida, 0 diferencias entre lo que podía y lo que puede cada rol
+  sugerido, medido ruta por ruta y pantalla por pantalla.
+- **SC-002**: Una administradora crea un rol propio con 5 permisos y lo asigna a un empleado en
+  menos de 2 minutos, en una tableta de 1024×600, sin ayuda.
+- **SC-003**: Quitar un permiso a un rol niega la siguiente petición de un usuario con sesión
+  abierta que lo pida; no hay ventana en la que lo siga pudiendo.
+- **SC-004**: 0 controles, en servidor o pantalla, que pregunten por el nombre de un rol al terminar
+  la entrega 2.
+- **SC-005**: El 100% de los cambios de roles y de rol asignado aparecen en la bitácora con quién y
+  qué cambió.
+- **SC-006**: Ninguna empresa ve, asigna ni edita un rol de otra, probado con dos empresas reales.
 
 ## Assumptions
 
-- «Devolver dinero» de un pedido entregado es la misma capacidad que «devolver un pago»
-  (`payments.void`): las dos sacan dinero del corte hacia el cliente, y hoy las dos son de admin y
-  gerente. Unirlas evita un segundo permiso para la misma capacidad, que es lo que pide la regla
-  «uno por capacidad». Si en la entrega 2 el dueño las quiere separadas, se separa entonces sin
-  cambiar ninguna pantalla.
-- La reimpresión ya lee el pedido por un camino abierto a toda sesión; lo único que la impedía era
-  no ver la lista.
-- No hace falta migración de datos: los permisos de los roles sugeridos todavía no se guardan en la
-  base.
-- La entrega 2 queda en un issue nuevo enlazado al #61, con su diseño a decidir por el dueño.
+- Los nombres de los permisos nuevos (uno por capacidad) los decide el plan siguiendo la forma de
+  los que ya existen; quedan fijos en cuanto se guardan como dato.
+- El nombre de un rol sugerido es el del producto y no lo renombra la empresa; si quiere otro nombre,
+  inactiva el sugerido y crea uno propio.
+- La pantalla de roles vive dentro de la administración de Empleados (mismo permiso de entrada que
+  administrar roles), y se diseña con maquetas a 1024×600.
+- La consola de plataforma no administra roles de las empresas.
+- La medición de uso guardada antes de la subida no se reescribe.
