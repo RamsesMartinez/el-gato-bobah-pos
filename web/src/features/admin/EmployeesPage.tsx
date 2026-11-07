@@ -41,33 +41,36 @@ export function EmployeesPage() {
   const canPeople = can('employees.manage', user);
   const canRoles = can('roles.manage', user);
   const [tab, setTab] = useState<'people' | 'roles'>(canPeople ? 'people' : 'roles');
-  const [creatingRole, setCreatingRole] = useState(false);
   const [roleFilter, setRoleFilter] = useState<number | null>(null);
   const both = canPeople && canRoles;
   const active = canPeople && (tab === 'people' || !canRoles) ? 'people' : 'roles';
 
-  const header = (
-    <HStack mb={3} gap={4} flexWrap="wrap">
-      <Heading size="lg">Empleados</Heading>
-      {both && (
-        <Tabs.Root value={active} onValueChange={(e) => setTab(e.value as 'people' | 'roles')} variant="enclosed">
-          <Tabs.List>
-            <Tabs.Trigger value="people" minH="44px">Personal</Tabs.Trigger>
-            <Tabs.Trigger value="roles" minH="44px">Roles</Tabs.Trigger>
-          </Tabs.List>
-        </Tabs.Root>
-      )}
-      {active === 'roles' && <Button minH="44px" ml="auto" onClick={() => setCreatingRole(true)}>+ Rol propio</Button>}
-    </HStack>
+  const tabs = both && (
+    <Tabs.Root value={active} onValueChange={(e) => setTab(e.value as 'people' | 'roles')} variant="enclosed">
+      <Tabs.List>
+        <Tabs.Trigger value="people" minH="44px">Personal</Tabs.Trigger>
+        <Tabs.Trigger value="roles" minH="44px">Roles</Tabs.Trigger>
+      </Tabs.List>
+    </Tabs.Root>
   );
 
+  // Roles va en dos paneles (#243): las pestañas suben a la columna de la lista y el relleno se
+  // reduce, para que el rol elegido tenga el alto entero de la tableta.
+  if (active === 'roles') {
+    return (
+      <Page fill p={3}>
+        <RolesPage tabs={tabs || undefined} onShowPeople={(id) => { setRoleFilter(id); setTab('people'); }} />
+      </Page>
+    );
+  }
+
   return (
-    <Page fill maxW={active === 'roles' ? '1150px' : '900px'}>
-      {header}
-      {active === 'people'
-        ? <PeopleTab roleFilter={roleFilter} onClearFilter={() => setRoleFilter(null)} />
-        : <RolesPage creating={creatingRole} onCreatingChange={setCreatingRole}
-            onShowPeople={(id) => { setRoleFilter(id); setTab('people'); }} />}
+    <Page fill maxW="900px">
+      <HStack mb={3} gap={4} flexWrap="wrap">
+        <Heading size="lg">Empleados</Heading>
+        {tabs}
+      </HStack>
+      <PeopleTab roleFilter={roleFilter} onClearFilter={() => setRoleFilter(null)} />
     </Page>
   );
 }

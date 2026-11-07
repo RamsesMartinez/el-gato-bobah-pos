@@ -72,6 +72,8 @@ test('con los dos permisos hay pestañas Personal y Roles', async () => {
   expect(await screen.findByRole('tab', { name: 'Personal' })).toBeInTheDocument();
   await u.click(screen.getByRole('tab', { name: 'Roles' }));
   expect(await screen.findByRole('button', { name: /^Barista/ })).toBeInTheDocument();
+  // Las pestañas siguen a la vista en Roles, arriba de la lista.
+  expect(screen.getByRole('tab', { name: 'Personal' })).toBeInTheDocument();
 });
 
 test('con una sola pestaña visible no se pinta la barra', async () => {
@@ -208,7 +210,8 @@ test('el filtro por rol sin nadie dice «Nadie tiene este rol» y ofrece quitarl
   // Se llega a Personal filtrado por «Ver a esas personas».
   api.deactivateRole.mockRejectedValue(new ApiError(409, 'ROLE_IN_USE', 'Hay personas.', 'r'));
   await u.click(await screen.findByRole('button', { name: /^Mesero/ }));
-  const hoja = await screen.findByRole('dialog');
+  const hoja = await screen.findByRole('region', { name: 'Permisos del rol' });
+  await within(hoja).findByDisplayValue('Mesero');
   await u.click(within(hoja).getByRole('button', { name: 'Inactivar' }));
   await u.click(await within(hoja).findByRole('button', { name: 'Ver a esas personas' }));
   expect(await screen.findByText('Nadie tiene este rol')).toBeInTheDocument();
