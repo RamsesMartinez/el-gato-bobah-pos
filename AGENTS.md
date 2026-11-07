@@ -937,7 +937,11 @@ de punta a punta se detuvo 9 horas esperando aprobar el respaldo previo a subir)
 un comando que solo **nombra** la VM o `ssh` entre comillas, como el patrón de un `grep`: solo
 cuenta el programa que conecta en posición de comando, salvo que algo vuelva a ejecutar el texto
 (`bash -c`, `eval`, `xargs`), y entonces se revisa completo (decidido el 2026-11-02: un `grep
-"ssh\|pos-vps"` frenó un `/goal`). Lo cubre
+"ssh\|pos-vps"` frenó un `/goal`). Y pasan solas las **consultas de solo lectura a la base**:
+`docker exec deploy-postgres-1 psql` con `begin read only`, sin nada que cierre esa transacción
+(`commit`, `end`), la cambie a escritura o escriba (`insert`, `set_config`, `\!`, SQL leído de un
+archivo); `set role` y `app.company_id` sí se permiten (decidido el 2026-11-06: investigar un reporte
+de quien opera se detuvo en cada `select`). Lo cubre
 [proteger-produccion-test.sh](scripts/tests/proteger-produccion-test.sh).
 
 **Por qué es un hook y no una nota.** El 2026-09-19 hubo que auditar doce transcripciones de sesión
