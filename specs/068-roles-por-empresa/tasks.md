@@ -125,7 +125,7 @@ description: "Tareas de las entregas 2 y 3 de la 068: roles por empresa en la ba
 - [X] T039 Test de migración `server/internal/integration/migration_0109_test.go` contra respaldo con dos empresas: rellena roles y `role_id` faltantes (empresa creada por la API anterior), `role_id` queda `not null`, `users.role` y el trigger desaparecen, la medición sigue con su enum; con la API de la entrega 2 sirviendo, login y una ruta con permiso siguen funcionando.
 - [X] T040 Migración `server/migrations/0109_drop_user_role.sql` (relleno idempotente, `check not valid` → `validate` → `set not null`, `drop trigger/function`, `drop column role`); Down que recrea `role` desde `role_id`; su renglón en `guardedDownCleanup`.
 - [X] T041 Fixture `makeUserIn` asigna `role_id` por código de sugerido (sin `role`); `sqlc.yaml` y `server/queries/users.sql` sin `role`; `make sqlc`; gates; PR, release y despliegue hasta `/readyz` 200.
-- [ ] T042 Cerrar: comentar y cerrar #232 y #61, borrar la rama remota, `make cerrar-worktree datos=1`.
+- [X] T042 Cerrar: comentar y cerrar #232 y #61, borrar la rama remota, `make cerrar-worktree datos=1`.
 
 ---
 
