@@ -100,7 +100,7 @@ describe('ubicación del artículo (spec 040, renombrada en la 043)', () => {
     montar(null);
     fireEvent.click(await screen.findByRole('button', { name: /Sin definir/ }));
     fireEvent.change(await screen.findByPlaceholderText('Buscar…'), { target: { value: 'Bodega nueva' } });
-    expect(await screen.findByText('Pídele a un administrador que la cree.')).toBeInTheDocument();
+    expect(await screen.findByText('Pídele a quien configura el almacén que la cree.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Crear/ })).toBeNull();
   });
 
@@ -110,7 +110,7 @@ describe('ubicación del artículo (spec 040, renombrada en la 043)', () => {
     useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
     montar(null);
     fireEvent.click(await screen.findByRole('button', { name: /Sin definir/ }));
-    expect(await screen.findByText('Pídele a un administrador que la cree.')).toBeInTheDocument();
+    expect(await screen.findByText('Pídele a quien configura el almacén que la cree.')).toBeInTheDocument();
   });
 
   test('un nombre que el servidor rechaza lo dice y no deja la hoja trabada; el tope es de 30', async () => {

@@ -7,7 +7,7 @@ import { Text } from '@chakra-ui/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, CorteSummary, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
 import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
-import { CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico, TerminalesYPropinasDelCorte, ManageRegistersTab } from './CashPage';
+import { CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico, TerminalesYPropinasDelCorte, ManageRegistersTab, CashPage } from './CashPage';
 import { backofficeApi } from '../../api/backoffice';
 import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
@@ -1040,4 +1040,30 @@ test('la tabla de gastos del corte dice cuánto del pago no era del negocio', ()
     { id: 1, expenseId: 9, category: 'Insumos', supplier: null, paymentMethod: 'Efectivo', amount: '380', currency: 'MXN', status: 'pagada', drawerExtra: '120' },
   ]} /></Provider>);
   expect(screen.getByText('+ $120 no es del negocio')).toBeInTheDocument();
+});
+
+// Roles por empresa (spec 068): «Administrar» cajas es de quien tiene cash.configure. Un admin cuyo
+// rol lo perdió no ve la pestaña; un rol propio con el permiso, sí.
+describe('la pestaña «Administrar» de Caja', () => {
+  async function pintarCon(role: string, permissions: string[]) {
+    const { useSessionStore } = await import('../../stores/session');
+    const { MemoryRouter } = await import('react-router');
+    // Las pestañas piden datos al montar; aquí solo importa qué pestañas hay.
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role, permissions } });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(<QueryClientProvider client={qc}><Provider><MemoryRouter><CashPage /></MemoryRouter></Provider></QueryClientProvider>);
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  test('sin cash.configure no aparece, aunque el rol se llame admin', async () => {
+    await pintarCon('admin', ['cash.operate']);
+    expect(screen.getByRole('tab', { name: 'Cajas' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Administrar' })).toBeNull();
+  });
+
+  test('con cash.configure aparece, aunque el rol sea propio', async () => {
+    await pintarCon('', ['cash.operate', 'cash.configure']);
+    expect(screen.getByRole('tab', { name: 'Administrar' })).toBeInTheDocument();
+  });
 });

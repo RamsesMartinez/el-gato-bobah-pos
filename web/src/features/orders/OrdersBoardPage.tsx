@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { canAccess } from '../../app/roles';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, SimpleGrid, Text, Badge, HStack, VStack, Center, Spinner, Flex, Button, IconButton,
@@ -68,20 +67,16 @@ export function OrdersBoardPage() {
   // reimprime el ticket de un pedido que cerró otro usuario, y devolver saca dinero del corte. El
   // servidor aplica el 403; esto solo evita ofrecer lo que rebotaría.
   const user = useSessionStore((s) => s.user);
-  const role = user?.role;
   const puedeVerEntregadas = can('orders.delivered_view', user);
   const puedeDevolverDinero = can('payments.void', user);
 
   // COBRAR ES DE LA CUENTA, NO DEL TABLERO (spec 030, caso 25). El tablero tenía su propia puerta
   // de cobro y con ella eran tres; ahora cada tarjeta lleva a la cuenta en Vender —«Abrir cuenta»—,
-  // donde se agrega o se cobra con los tres modos.
-  //
-  // Quien NO puede entrar a Vender —una cocina con su propio rol— solo ve cuánto falta. El ajuste
-  // «el tablero puede cobrar» se quitó el 2026-10-09 (decisión del dueño): no tenía efecto en la
+  // donde se agrega o se cobra con los tres modos. Vender está abierto a toda sesión, así que
+  // «Abrir cuenta» no lleva puerta (spec 068). El ajuste «el tablero puede cobrar» se quitó el 2026-10-09 (decisión del dueño): no tenía efecto en la
   // operación de hoy y era una cuarta puerta de cobro.
   const { data: settings } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const navigate = useNavigate();
-  const puedeAbrirCuenta = canAccess(role, '/pos');
 
   const { data, isLoading } = useQuery({
     queryKey: ['orders', 'active'],
@@ -210,7 +205,6 @@ export function OrdersBoardPage() {
   };
 
   const acciones: Acciones = {
-    puedeAbrirCuenta,
     abrirCuenta: (o) => navigate(`/pos?pedido=${o.id}`),
     entregarLinea: (id, lineId, qty) => entregarLinea.mutate({ id, lineId, qty }),
     quitarRenglon: (id, linea) => setQuitando({ orderId: id, linea }),
@@ -261,7 +255,7 @@ export function OrdersBoardPage() {
       {puedeVerEntregadas && (
         <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} zona={horaNegocio.zona}
           onRefund={puedeDevolverDinero ? refund : undefined} onTicket={acciones.ticket}
-          onAbrirCuenta={puedeAbrirCuenta ? acciones.abrirCuenta : undefined} />
+          onAbrirCuenta={acciones.abrirCuenta} />
       )}
 
       <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
@@ -320,8 +314,7 @@ export function OrdersBoardPage() {
 }
 
 interface Acciones {
-  // Lleva a la cuenta en Vender. Sin acceso a Vender, la tarjeta solo dice cuánto falta.
-  puedeAbrirCuenta: boolean;
+  // Lleva a la cuenta en Vender, que está abierta a toda sesión.
   abrirCuenta: (o: BoardOrder) => void;
   entregarLinea: (id: number, lineId: number, qty: number) => void;
   quitarRenglon: (id: number, linea: BoardLine) => void;
@@ -467,7 +460,7 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             Falta cobrar {money(o.outstanding, o.currency)}
           </Text>
         )}
-        {!sinProductos && acciones.puedeAbrirCuenta && (
+        {!sinProductos && (
           <Button flex="1" minH={TAP} colorPalette="orange" variant={debe ? 'solid' : 'outline'}
             onClick={() => acciones.abrirCuenta(o)}>
             Abrir cuenta

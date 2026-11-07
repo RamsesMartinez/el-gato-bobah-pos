@@ -33,7 +33,7 @@ func TestEditExpenseHTTP(t *testing.T) {
 	}
 	h := httpapi.NewHandlers(httpapi.Deps{
 		JWT: jm, Backoffice: app.NewBackofficeService(k.st, nil), Settings: app.NewSettingsService(k.st, "pepper-de-prueba"),
-		MenuCache: cache.NewMenuCache(""), Broker: realtime.NewBroker(), Permissions: resolver,
+		MenuCache: cache.NewMenuCache(""), Broker: realtime.NewBroker(), Permissions: porRol(resolver),
 	})
 	r := httpapi.Router(config.Config{}, jm, h, k.st)
 	token := func(username, role string) string {

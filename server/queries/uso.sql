@@ -30,10 +30,14 @@ do update set hits = usage_daily.hits + excluded.hits;
 --
 -- Se pregunta al ESCRIBIR porque es el único momento en que la decisión no se puede deshacer — y
 -- porque quien lee no podría: la consola no tiene permiso sobre `users`.
-select role, count(*)::bigint as activos
-from users
-where is_active
-group by role;
+--
+-- Por rol SUGERIDO (spec 068): la gente de un rol propio sale con rol '' y cae siempre en el balde.
+select coalesce(s.code, '')::text as role, count(*)::bigint as activos
+  from users u
+  join roles r on r.id = u.role_id
+  left join system_roles s on s.id = r.system_role_id
+ where u.is_active
+ group by 1;
 
 -- name: SumUsageForMap :many
 -- Lo que lee la consola: el conteo del periodo por pantalla, acción y rol.

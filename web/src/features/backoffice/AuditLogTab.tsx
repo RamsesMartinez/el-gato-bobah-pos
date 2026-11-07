@@ -7,7 +7,10 @@ import { Picker } from '../../components/Picker';
 import { RangoDeFechas } from '../../components/RangoDeFechas';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { soloHora, soloFecha } from '../../utils/horaDelNegocio';
-import { ACTION_LABELS, actionLabel, summarizeChange } from '../../shared/audit/labels';
+import { ACTION_LABELS, actionLabel, auditGroupOf, summarizeEvent, type ChangeContext } from '../../shared/audit/labels';
+import { adminApi } from '../../api/admin';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
 import { OrderHistoryTimeline } from '../../shared/audit/OrderHistoryTimeline';
 
 // `short` va en el contador (una línea de 44 px); `label` es lo que se anuncia completo.
@@ -19,15 +22,6 @@ const GROUPS: Array<{ id: AuditGroup; label: string; short: string; color: strin
   { id: 'attendance', label: 'Asistencia', short: 'Asistencia', color: 'orange.400' },
 ];
 const COLOR: Record<string, string> = Object.fromEntries(GROUPS.map((g) => [g.id, g.color]));
-// El grupo de cada acción, espejo de domain.AuditGroupOf: solo pinta el punto de color.
-function groupOf(action: string): AuditGroup {
-  if (['payment.voided', 'payment.refunded', 'order.cancelled', 'order.line_removed', 'stock.written_off'].includes(action)) return 'cancel';
-  if (action.startsWith('price.') || action.startsWith('product.')) return 'price';
-  if (action.startsWith('cash.') || action.startsWith('expense.') || action.startsWith('tip.')) return 'cash';
-  if (action.startsWith('attendance.') || action.startsWith('user.')) return 'attendance';
-  return 'money';
-}
-
 const PRESETS = [
   { id: 'hoy', label: 'Hoy' },
   { id: 'ayer', label: 'Ayer' },
@@ -90,6 +84,20 @@ export function AuditLogTab() {
   const items = data?.items ?? [];
   const dayLabels = items.map((e) => soloFecha(e.occurredAt, zone));
 
+  // Las etiquetas de permiso y los nombres de rol solo se piden si la página trae eventos de roles y
+  // la sesión puede leerlos; sin ellos, el resumen dice cuántos permisos y «Cambió de rol».
+  const user = useSessionStore((s) => s.user);
+  const hasRoleEvents = items.some((e) => e.action.startsWith('role.') || e.action === 'user.role_changed');
+  const catalogQuery = useQuery({ queryKey: ['permissions'], queryFn: adminApi.permissionCatalog,
+    enabled: hasRoleEvents && can('roles.manage', user) });
+  const rolesQuery = useQuery({ queryKey: ['roles'], queryFn: adminApi.roles,
+    enabled: hasRoleEvents && (can('roles.manage', user) || can('employees.manage', user)) });
+  const ctx: ChangeContext = {
+    permissionLabel: (code) => catalogQuery.data?.items.find((p) => p.code === code)?.label,
+    roleName: (id) => rolesQuery.data?.items.find((r) => r.id === id)?.name,
+  };
+  const summary = (e: AuditEvent) => summarizeEvent(e.action, e.before, e.after, ctx);
+
   return (
     <Flex direction="column" gap={3} minH={0} h="100%">
       <Flex gap={2} align="flex-start" wrap="wrap">
@@ -137,9 +145,9 @@ export function AuditLogTab() {
                 <Text w="72px" fontSize="sm" color="fg.muted" flexShrink={0}>{soloHora(e.occurredAt, zone)}</Text>
                 <Text w="150px" fontWeight="700" lineClamp={1} flexShrink={0}>{e.actorName}</Text>
                 <Box flex="1" minW={0}>
-                  <HStack gap={2}><Box w="8px" h="8px" borderRadius="full" bg={COLOR[groupOf(e.action)]} /><Text fontWeight="600">{actionLabel(e.action)}</Text>
+                  <HStack gap={2}><Box w="8px" h="8px" borderRadius="full" bg={COLOR[auditGroupOf(e.action)]} /><Text fontWeight="600">{actionLabel(e.action)}</Text>
                     {e.orderLabel && <Text fontSize="sm" color="fg.muted" lineClamp={1}>{e.orderLabel}</Text>}</HStack>
-                  <Text fontSize="sm" color="fg.muted" lineClamp={1}>{summarizeChange(e.before, e.after)}</Text>
+                  <Text fontSize="sm" color="fg.muted" lineClamp={1}>{summary(e)}</Text>
                 </Box>
               </HStack>
             </Box>
@@ -173,7 +181,7 @@ export function AuditLogTab() {
             <DetailRow k="Cuándo" v={`${soloFecha(selectedEvent.occurredAt, zone)} · ${soloHora(selectedEvent.occurredAt, zone)}`} />
             <DetailRow k="Red" v={selectedEvent.ip || '—'} />
             <DetailRow k="Aparato" v={[deviceLabel(selectedEvent), selectedEvent.deviceKey && selectedEvent.deviceKey.slice(0, 4).toUpperCase()].filter(Boolean).join(' · ') || '—'} />
-            <DetailRow k="Qué cambió" v={summarizeChange(selectedEvent.before, selectedEvent.after) || '—'} />
+            <DetailRow k="Qué cambió" v={summary(selectedEvent) || '—'} />
             {selectedEvent.orderId && (
               <Button mt={2} minH="44px" variant="outline" alignSelf="flex-start"
                 onClick={() => { setHistoryOrderId(selectedEvent.orderId!); setHistoryLabel(selectedEvent.orderLabel ?? ''); setSelectedEvent(null); }}>

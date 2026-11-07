@@ -16,6 +16,7 @@ import type { MenuGroup, MenuOption, MenuProduct, RankedOption, TicketModifier }
 import { money, normalize } from '../../utils/format';
 import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
+import { can } from '../../app/permissions';
 import { adminApi, type AdminModifierOption } from '../../api/admin';
 import { toaster } from '../../components/ui/toaster';
 import { deltaDeLista, desgloseDelta, desglosePrecio, nombreDeLista, precioDeLista } from './precioPlataforma';
@@ -52,8 +53,8 @@ export function ModifierSheet({ product, lista, isOpen, initialModifiers, initia
   // Los cargos de los extras siguen la lista de precios de la cuenta, igual que el producto: si
   // aquí se mostrara el delta base, el total de pantalla no cuadraría con el cobrado.
   const { data: menu } = useMenu();
-  const role = useSessionStore((s) => s.user?.role);
-  const canManage = role === 'admin' || role === 'gerente';
+  const user = useSessionStore((s) => s.user);
+  const canManage = can('menu.configure', user);
   const qc = useQueryClient();
   const swipe = useSwipeDownToClose(onClose);
 

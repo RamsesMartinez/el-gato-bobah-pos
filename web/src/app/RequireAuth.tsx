@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate } from 'react-router';
 import { Center, Spinner } from '@chakra-ui/react';
 import { useSessionStore } from '../stores/session';
-import { canAccess } from './roles';
+import { canOpen } from './routes';
 
 export function RequireAuth({ children }: { children: ReactNode }) {
   const status = useSessionStore((s) => s.status);
@@ -19,11 +19,11 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-// RequireRole protege una ruta restringida ante un acceso por URL directa: si el rol no
-// alcanza, redirige a /pos en vez de dejar que la página dispare un 403. Es UX/defensa en
-// profundidad; la autorización real la hace el backend.
-export function RequireRole({ path, children }: { path: string; children: ReactNode }) {
-  const role = useSessionStore((s) => s.user?.role);
-  if (!canAccess(role, path)) return <Navigate to="/pos" replace />;
+// RequirePermission protege una ruta restringida ante un acceso por URL directa: sin el permiso
+// redirige a /pos en vez de dejar que la página dispare un 403. Es UX/defensa en profundidad; la
+// autorización real la hace el backend.
+export function RequirePermission({ path, children }: { path: string; children: ReactNode }) {
+  const user = useSessionStore((s) => s.user);
+  if (!canOpen(path, user)) return <Navigate to="/pos" replace />;
   return <>{children}</>;
 }

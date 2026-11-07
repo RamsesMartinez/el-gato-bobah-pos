@@ -65,6 +65,16 @@ var auditActions = []struct {
 	{"attendance.settings_changed", AuditGroupAttendance},
 	{"attendance.schedule_set", AuditGroupAttendance},
 	{"user.tracks_attendance_changed", AuditGroupAttendance},
+	// Roles por empresa (spec 068): quién puede qué es una decisión sobre el personal, como si lleva
+	// asistencia. Ningún grupo nuevo: la rejilla de la bitácora es una disposición de tableta.
+	{"role.created", AuditGroupAttendance},
+	{"role.renamed", AuditGroupAttendance},
+	{"role.permissions_changed", AuditGroupAttendance},
+	{"role.reset", AuditGroupAttendance},
+	{"role.deactivated", AuditGroupAttendance},
+	{"role.reactivated", AuditGroupAttendance},
+	{"role.deleted", AuditGroupAttendance},
+	{"user.role_changed", AuditGroupAttendance},
 	{"payment.terminal_changed", AuditGroupMoney},
 	// Qué resta un producto (spec 037). Va con los precios porque es configuración del menú: un
 	// grupo propio cambiaría la rejilla de contadores de la bitácora, pensada para la tableta.

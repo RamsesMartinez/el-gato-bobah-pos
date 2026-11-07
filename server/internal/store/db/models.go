@@ -1537,6 +1537,12 @@ type PaymentMethod struct {
 	IsCash             bool            `json:"is_cash"`
 }
 
+type Permission struct {
+	ID   int16  `json:"id"`
+	Code string `json:"code"`
+	Area string `json:"area"`
+}
+
 type PlatformConnection struct {
 	ID                 int64     `json:"id"`
 	DeliveryPlatformID int16     `json:"delivery_platform_id"`
@@ -1828,6 +1834,24 @@ type RegisterSessionTotal struct {
 	AffectsCashDrawer bool             `json:"affects_cash_drawer"`
 }
 
+type Role struct {
+	ID           int64     `json:"id"`
+	CompanyID    int64     `json:"company_id"`
+	SystemRoleID *int16    `json:"system_role_id"`
+	Name         *string   `json:"name"`
+	Active       bool      `json:"active"`
+	Version      int32     `json:"version"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type RolePermissionOverride struct {
+	CompanyID    int64 `json:"company_id"`
+	RoleID       int64 `json:"role_id"`
+	PermissionID int16 `json:"permission_id"`
+	Granted      bool  `json:"granted"`
+}
+
 type SessionCashCount struct {
 	ID           int64            `json:"id"`
 	SessionID    int64            `json:"session_id"`
@@ -1950,6 +1974,17 @@ type SupplierItem struct {
 	CompanyID     int64            `json:"company_id"`
 }
 
+type SystemRole struct {
+	ID   int16  `json:"id"`
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+type SystemRolePermission struct {
+	SystemRoleID int16 `json:"system_role_id"`
+	PermissionID int16 `json:"permission_id"`
+}
+
 type TipCarryover struct {
 	ID             int64           `json:"id"`
 	CompanyID      int64           `json:"company_id"`
@@ -2008,6 +2043,7 @@ type User struct {
 	MustChangePassword bool      `json:"must_change_password"`
 	PinLookup          *string   `json:"pin_lookup"`
 	TracksAttendance   bool      `json:"tracks_attendance"`
+	RoleID             *int64    `json:"role_id"`
 }
 
 type UserPreference struct {

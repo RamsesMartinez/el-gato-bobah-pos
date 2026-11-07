@@ -27,7 +27,7 @@ func TestElUsoNoGuardaAQuienLoUso(t *testing.T) {
 	uno := makeUser(t, st, "cajero_uso_uno", "cajero")
 	makeUser(t, st, "cajero_uso_dos", "cajero")
 
-	if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Eventos: []domain.EventoDeUso{
+	if _, err := svc.Registrar(ctx, quienEs(domain.RoleCajero), app.LoteDeMedicion{Eventos: []domain.EventoDeUso{
 		{Pantalla: "pos"},
 		{Pantalla: "pos", Accion: "cobrar"},
 	}}); err != nil {
@@ -69,7 +69,7 @@ func TestElRolDeUnaSolaPersonaSeGuardaSinCorte(t *testing.T) {
 
 	// Un solo mesero en la empresa.
 	makeUser(t, st, "mesero_solito", "mesero")
-	if _, err := svc.Registrar(ctx, domain.RoleMesero, app.LoteDeMedicion{Eventos: []domain.EventoDeUso{{Pantalla: "pos"}}}); err != nil {
+	if _, err := svc.Registrar(ctx, quienEs(domain.RoleMesero), app.LoteDeMedicion{Eventos: []domain.EventoDeUso{{Pantalla: "pos"}}}); err != nil {
 		t.Fatalf("registrar uso del mesero: %v", err)
 	}
 
@@ -85,7 +85,7 @@ func TestElRolDeUnaSolaPersonaSeGuardaSinCorte(t *testing.T) {
 	// Y con dos, el corte sí se conserva: si no, la feature no mide nada por rol nunca.
 	makeUser(t, st, "gerente_uso_uno", "gerente")
 	makeUser(t, st, "gerente_uso_dos", "gerente")
-	if _, err := svc.Registrar(ctx, domain.RoleGerente, app.LoteDeMedicion{Eventos: []domain.EventoDeUso{{Pantalla: "caja"}}}); err != nil {
+	if _, err := svc.Registrar(ctx, quienEs(domain.RoleGerente), app.LoteDeMedicion{Eventos: []domain.EventoDeUso{{Pantalla: "caja"}}}); err != nil {
 		t.Fatalf("registrar uso del gerente: %v", err)
 	}
 	var conRolGerente int
@@ -109,7 +109,7 @@ func TestElLotePreAgregadoNoPierdeEventos(t *testing.T) {
 	makeUser(t, st, "cajero_grano_dos", "cajero")
 
 	lote := []domain.EventoDeUso{{Pantalla: "pos"}, {Pantalla: "pos"}, {Pantalla: "pos"}}
-	if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Eventos: lote}); err != nil {
+	if _, err := svc.Registrar(ctx, quienEs(domain.RoleCajero), app.LoteDeMedicion{Eventos: lote}); err != nil {
 		t.Fatalf("registrar: %v", err)
 	}
 
@@ -135,7 +135,7 @@ func TestLoDesconocidoSeDescartaYSeCuenta(t *testing.T) {
 	makeUser(t, st, "cajero_desconocido_uno", "cajero")
 	makeUser(t, st, "cajero_desconocido_dos", "cajero")
 
-	descartados, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Eventos: []domain.EventoDeUso{
+	descartados, err := svc.Registrar(ctx, quienEs(domain.RoleCajero), app.LoteDeMedicion{Eventos: []domain.EventoDeUso{
 		{Pantalla: "pos"},
 		{Pantalla: "pantalla-que-no-existe"},
 		{Pantalla: "pos", Accion: "hacer-magia"},

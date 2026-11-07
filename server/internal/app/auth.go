@@ -54,6 +54,9 @@ type Session struct {
 	// Cuándo muere el refresh. Va aquí para que la cookie se ponga con ESTE vencimiento: fijarla a
 	// 30 días dejaba a la tableta mandando durante un mes una credencial muerta desde el día dos.
 	RefreshExpiresAt time.Time `json:"-"`
+	// El rol de la empresa y lo que puede, leídos al emitir (spec 068).
+	Role        UserRoleInfo        `json:"-"`
+	Permissions []domain.Permission `json:"-"`
 }
 
 // Login authenticates a user by username + company slug + password. El identificador de login
@@ -88,7 +91,7 @@ func (s *AuthService) Login(ctx context.Context, username, slug, password string
 		if !auth.CheckSecret(*u.PasswordHash, password) {
 			return domain.ErrInvalidCredentials
 		}
-		sess, err = s.issue(ctx, q, u)
+		sess, err = s.issue(ctx, q, db.User(u))
 		return err
 	})
 	if err != nil {
@@ -174,7 +177,7 @@ func (s *AuthService) relevar(ctx context.Context, userID int64, pin string, act
 		}
 		// Cadena nueva: la credencial que sale es de OTRA persona, y una familia no puede
 		// abarcar a dos — revocarla tendría que decidir a cuál de las dos echa.
-		sess, err = s.issueUntil(ctx, q, u, vence, uuid.Nil())
+		sess, err = s.issueUntil(ctx, q, db.User(u), vence, uuid.Nil())
 		return err
 	})
 	if err != nil {
@@ -248,7 +251,7 @@ func (s *AuthService) Refresh(ctx context.Context, companyID int64, refreshToken
 		// en el relevo por PIN, y quedó vivo en esta otra puerta.
 		// HEREDA la familia: rotar no es entrar de nuevo, es la misma sesión avanzando. Sin
 		// heredarla, cada rotación estrenaría cadena y el reuso volvería a no poder cortar nada.
-		sess, err = s.issueUntil(ctx, q, u, rt.ExpiresAt, deref(rt.FamilyID))
+		sess, err = s.issueUntil(ctx, q, db.User(u), rt.ExpiresAt, deref(rt.FamilyID))
 		return err
 	})
 	if reusedUserID != 0 {
@@ -304,6 +307,17 @@ func (s *AuthService) issueUntil(ctx context.Context, q *db.Queries, u db.User, 
 	if co, err := q.GetCompany(ctx, u.CompanyID); err == nil {
 		du.CompanySlug = co.Slug
 	}
+	// El rol y los permisos salen del rol de la empresa (spec 068), no de users.role. El JWT lleva el
+	// código del sugerido, o "" en un rol propio: solo sirve para el log; ningún control lo lee.
+	rol, err := userRole(ctx, q, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	perms, err := effectivePermissions(ctx, q, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	du.Role = rol.SystemCode
 	access, err := s.jwt.Issue(du)
 	if err != nil {
 		return nil, err
@@ -323,7 +337,8 @@ func (s *AuthService) issueUntil(ctx context.Context, q *db.Queries, u db.User, 
 	}); err != nil {
 		return nil, err
 	}
-	return &Session{AccessToken: access, RefreshToken: token, CompanyID: u.CompanyID, User: du, RefreshExpiresAt: vence}, nil
+	return &Session{AccessToken: access, RefreshToken: token, CompanyID: u.CompanyID, User: du, RefreshExpiresAt: vence,
+		Role: rol, Permissions: perms}, nil
 }
 
 func toDomainUser(u db.User) domain.User {
@@ -333,6 +348,7 @@ func toDomainUser(u db.User) domain.User {
 		Name:               u.Name,
 		Username:           u.Username,
 		Role:               domain.Role(u.Role),
+		RoleID:             u.RoleID,
 		IsActive:           u.IsActive,
 		RecoveryEmail:      u.RecoveryEmail,
 		MustChangePassword: u.MustChangePassword,

@@ -22,7 +22,7 @@ import (
 )
 
 // «Salud del inventario» por el ROUTER real: permiso, parámetros y forma del JSON.
-func newHealthAPI(t *testing.T, perms httpapi.PermissionResolver) (http.Handler, *store.Store, func(username, role string) string) {
+func newHealthAPI(t *testing.T, perms func(domain.Role) []domain.Permission) (http.Handler, *store.Store, func(username, role string) string) {
 	t.Helper()
 	st := newTestStore(t)
 	jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
@@ -31,7 +31,7 @@ func newHealthAPI(t *testing.T, perms httpapi.PermissionResolver) (http.Handler,
 		InventoryHealth: app.NewInventoryHealthService(st),
 		MenuCache:       cache.NewMenuCache(""),
 		Broker:          realtime.NewBroker(),
-		Permissions:     perms,
+		Permissions:     porRol(perms),
 	})
 	r := httpapi.Router(config.Config{}, jm, h, st)
 	token := func(username, role string) string {

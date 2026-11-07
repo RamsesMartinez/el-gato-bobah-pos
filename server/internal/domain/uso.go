@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 )
@@ -137,47 +138,39 @@ func EventoDeUsoValido(pantalla, accion string) bool {
 	return ok
 }
 
-// rolesPorPantalla es el ESPEJO de lo que el router deja abrir a cada rol.
+// permissionByScreen es el permiso que abre cada pantalla medible ("" = cualquier sesión), el
+// mismo que pide el router (spec 068).
 //
 // Sin esto, la lista blanca acota el conjunto de valores pero no su coherencia: un mesero con su
 // propio token puede reportar treinta aperturas por minuto de la pantalla de usuarios —que un GET
-// suyo recibiría con 403— y el mapa diría que es la más usada del sistema. No es una fuga de datos:
-// es una feature de medición que se puede llenar de mentiras desde adentro, y lo que mide deja de
-// servir para decidir.
-//
-// Es una COPIA de lo que `RequireRole` impone en el router y hay que moverla con él. El test
-// `TestTodaPantallaMedibleTieneRoles` impide la mitad barata de la desincronización —una pantalla
-// nueva sin roles— y el resto vive en esta nota.
-var rolesPorPantalla = map[string][]Role{
-	"pos":        {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
-	"pedidos":    {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
-	"cuenta":     {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
-	"caja":       {RoleAdmin, RoleGerente, RoleCajero},
-	"ventas":     {RoleAdmin, RoleGerente},
-	"reportes":   {RoleAdmin, RoleGerente},
-	"gastos":     {RoleAdmin, RoleGerente},
-	"inventario": {RoleAdmin, RoleGerente},
-	"catalogo":   {RoleAdmin, RoleGerente},
-	"usuarios":   {RoleAdmin},
-	"negocio":    {RoleAdmin},
-	"impresion":  {RoleAdmin, RoleGerente},
-	// Menús de plataforma (spec 020): admin y gerente, espejo de lo que deja el router. El cajero
-	// tiene su tablero de pedidos; esto administra el catálogo.
-	"plataformas": {RoleAdmin, RoleGerente},
-	"emparejar":   {RoleAdmin, RoleGerente},
-	// Asistencia (spec 033): cualquier rol checa su entrada.
-	"asistencia": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
-	// Lo que se echó a perder (spec 039): `inventory.write_off` lo tienen los cuatro roles.
-	"merma": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+// suyo recibiría con 403— y el mapa diría que es la más usada del sistema. Con roles por empresa
+// la pregunta es por permiso: un rol propio con «ver ventas» sí mide Ventas.
+var permissionByScreen = map[string]Permission{
+	"pos":         "",
+	"pedidos":     "",
+	"cuenta":      "",
+	"asistencia":  "",
+	"caja":        PermCashOperate,
+	"ventas":      PermSalesView,
+	"reportes":    PermReportsView,
+	"gastos":      PermExpensesCapture,
+	"inventario":  PermInventoryView,
+	"catalogo":    PermMenuConfigure,
+	"usuarios":    PermEmployeesManage,
+	"negocio":     PermBusinessConfigure,
+	"impresion":   PermBusinessConfigure,
+	"plataformas": PermPlatformsConfigure,
+	"emparejar":   PermPlatformsConfigure,
+	"merma":       PermInventoryWriteOff,
 }
 
-// PantallaPermitidaParaRol dice si ese rol puede siquiera abrir esa pantalla.
-func PantallaPermitidaParaRol(pantalla string, rol Role) bool {
-	roles, ok := rolesPorPantalla[pantalla]
+// ScreenAllowed dice si quien tiene esos permisos puede siquiera abrir esa pantalla.
+func ScreenAllowed(pantalla string, perms []Permission) bool {
+	p, ok := permissionByScreen[pantalla]
 	if !ok {
 		return false
 	}
-	return rol.In(roles...)
+	return p == "" || slices.Contains(perms, p)
 }
 
 // RolMedible dice si ese rol es uno de los que el sistema tiene.
@@ -198,7 +191,7 @@ func RolMedible(r Role) bool { return r.Valid() }
 // Descarta lo que no está en la lista blanca Y lo que ese rol no podría haber abierto: un evento
 // incoherente con quien lo manda es una mentira, y una medición llena de mentiras no sirve para
 // decidir, que es lo único para lo que existe.
-func PreAgregarUso(lote []EventoDeUso, rol Role) []UsoAgregado {
+func PreAgregarUso(lote []EventoDeUso, perms []Permission) []UsoAgregado {
 	if len(lote) == 0 {
 		return nil
 	}
@@ -208,7 +201,7 @@ func PreAgregarUso(lote []EventoDeUso, rol Role) []UsoAgregado {
 	orden := make([]llave, 0, len(lote))
 	veces := make(map[llave]int, len(lote))
 	for _, e := range lote {
-		if !EventoDeUsoValido(e.Pantalla, e.Accion) || !PantallaPermitidaParaRol(e.Pantalla, rol) {
+		if !EventoDeUsoValido(e.Pantalla, e.Accion) || !ScreenAllowed(e.Pantalla, perms) {
 			continue
 		}
 		k := llave{e.Pantalla, e.Accion}
@@ -261,18 +254,21 @@ const MinimoParaCortar = 2
 //
 // Por eso hay un tercer resultado: cuando el balde no alcanza a tapar a nadie, la medición **se
 // pierde**. Es lo que esta feature tiene permitido hacer; escribir un nombre no lo es.
+//
+// Un rol propio (rol "", spec 068) nunca se corta: puede ser de una sola persona. Su gente
+// (activosPorRol[""]) cae siempre en el balde.
 func CortarPorRol(activosPorRol map[Role]int, rol Role) DecisionDeCorte {
-	if !RolMedible(rol) {
+	if rol != "" && !RolMedible(rol) {
 		return NoGuardar
 	}
-	if activosPorRol[rol] >= MinimoParaCortar {
+	if rol != "" && activosPorRol[rol] >= MinimoParaCortar {
 		return GuardarConRol
 	}
 	// Cuánta gente cae en el balde de lo suprimido: la suma de los roles que tampoco se pueden
-	// cortar. Un rol SIN nadie activo aporta cero — no hay a quién tapar con él.
-	enElBalde := 0
-	for _, activos := range activosPorRol {
-		if activos > 0 && activos < MinimoParaCortar {
+	// cortar, más los de roles propios. Un rol SIN nadie activo aporta cero.
+	enElBalde := activosPorRol[""]
+	for r, activos := range activosPorRol {
+		if r != "" && activos > 0 && activos < MinimoParaCortar {
 			enElBalde += activos
 		}
 	}

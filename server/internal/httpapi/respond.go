@@ -58,6 +58,21 @@ func Error(w http.ResponseWriter, err error) {
 	msg := err.Error()
 
 	switch {
+	// Roles por empresa (spec 068): envuelven ErrConflict; la pantalla distingue cada caso.
+	case errors.Is(err, domain.ErrRoleNameTaken):
+		status, code = http.StatusConflict, "ROLE_NAME_TAKEN"
+	case errors.Is(err, domain.ErrRoleInUse):
+		status, code = http.StatusConflict, "ROLE_IN_USE"
+	case errors.Is(err, domain.ErrRoleSystem):
+		status, code = http.StatusConflict, "ROLE_SYSTEM"
+	case errors.Is(err, domain.ErrRoleAdminKeepsRoles):
+		status, code = http.StatusConflict, "ROLE_ADMIN_KEEPS_ROLES"
+	case errors.Is(err, domain.ErrLastRoleAdmin):
+		status, code = http.StatusConflict, "LAST_ROLE_ADMIN"
+	case errors.Is(err, domain.ErrRoleChanged):
+		status, code = http.StatusConflict, "ROLE_CHANGED"
+	case errors.Is(err, domain.ErrRoleInactive):
+		status, code = http.StatusConflict, "ROLE_INACTIVE"
 	case errors.Is(err, domain.ErrNotFound):
 		status, code = http.StatusNotFound, "NOT_FOUND"
 	case errors.Is(err, domain.ErrInvalidCredentials):

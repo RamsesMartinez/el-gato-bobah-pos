@@ -301,7 +301,7 @@ describe('ubicación desde el conteo (FR-015f)', () => {
     await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(3, 9));
   });
 
-  // El aviso «Pídele a un administrador» con el Picker de verdad lo cubre CountPlaceField.test.tsx;
+  // El aviso «Pídele a quien configura el almacén» con el Picker de verdad lo cubre CountPlaceField.test.tsx;
   // aquí el Picker es un doble y lo que se prueba es que el conteo no le pase el alta.
   test('quien solo cuenta elige pero no crea', async () => {
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });

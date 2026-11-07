@@ -1,7 +1,7 @@
-# Specification Quality Checklist: Roles por empresa — entrega 1
+# Specification Quality Checklist: Roles por empresa — entregas 2 y 3
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-11-06
+**Created**: 2026-11-06 (revalidado para las entregas 2 y 3)
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
