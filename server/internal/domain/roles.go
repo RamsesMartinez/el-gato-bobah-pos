@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -21,20 +20,23 @@ var (
 	ErrLastRoleAdmin       = fmt.Errorf("%w: debe quedar al menos una persona activa que administre roles", ErrConflict)
 	ErrRoleChanged         = fmt.Errorf("%w: el rol cambió mientras lo editabas; vuelve a abrirlo", ErrConflict)
 	ErrRoleInactive        = fmt.Errorf("%w: ese rol está inactivo; elige uno activo", ErrConflict)
-	// ErrRoleInUse se envuelve con cuántas personas lo tienen (RoleInUse).
-	ErrRoleInUse = errors.New("el rol está en uso")
+	// ErrRoleInUse se envuelve con cuántas personas lo tienen (RoleInUse); su propio texto es solo el
+	// del conflicto, para que el mensaje que ve quien opera empiece por lo que importa.
+	ErrRoleInUse = fmt.Errorf("%w", ErrConflict)
 )
 
 // RoleInUse arma el rechazo con cuántas personas lo tienen, que es lo que quien opera necesita.
 func RoleInUse(people int, activeOnly bool) error {
-	que := "persona"
-	if people != 1 {
-		que = "personas"
-	}
 	if activeOnly {
-		return fmt.Errorf("%w: %w: lo tienen %d %s activas; reasígnalas primero", ErrConflict, ErrRoleInUse, people, que)
+		if people == 1 {
+			return fmt.Errorf("%w: Lo tiene 1 persona activa; reasígnala primero", ErrRoleInUse)
+		}
+		return fmt.Errorf("%w: Lo tienen %d personas activas; reasígnalas primero", ErrRoleInUse, people)
 	}
-	return fmt.Errorf("%w: %w: lo tiene o lo tuvo %d %s; solo se puede inactivar", ErrConflict, ErrRoleInUse, people, que)
+	if people == 1 {
+		return fmt.Errorf("%w: Lo tiene o lo tuvo 1 persona; solo se puede inactivar", ErrRoleInUse)
+	}
+	return fmt.Errorf("%w: Lo tienen o lo tuvieron %d personas; solo se puede inactivar", ErrRoleInUse, people)
 }
 
 // MaxRoleName es el largo máximo del nombre de un rol propio.

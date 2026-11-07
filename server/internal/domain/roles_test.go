@@ -176,3 +176,22 @@ func TestWithinPermissions(t *testing.T) {
 		t.Errorf("vacío contra vacío: %v", err)
 	}
 }
+
+// El rechazo por personas asignadas se lee bien, en singular y en plural, y empieza como oración
+// (la prueba con usuario nuevo encontró «el rol está en uso: lo tienen 1 persona activas»).
+func TestRoleInUseReadsWell(t *testing.T) {
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{CanDeactivateRole(nil, 1), "conflicto: Lo tiene 1 persona activa; reasígnala primero"},
+		{CanDeactivateRole(nil, 3), "conflicto: Lo tienen 3 personas activas; reasígnalas primero"},
+		{CanDeleteRole(nil, 1), "conflicto: Lo tiene o lo tuvo 1 persona; solo se puede inactivar"},
+		{CanDeleteRole(nil, 2), "conflicto: Lo tienen o lo tuvieron 2 personas; solo se puede inactivar"},
+	}
+	for _, c := range cases {
+		if !errors.Is(c.err, ErrRoleInUse) || c.err.Error() != c.want {
+			t.Errorf("= %q, quiere %q", c.err, c.want)
+		}
+	}
+}
