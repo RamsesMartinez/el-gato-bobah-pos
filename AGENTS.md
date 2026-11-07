@@ -622,10 +622,12 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Toda escritura del rol de un empleado, de si está activo o de un rol toma el candado 28068
     antes de leer** y termina exigiendo que quede al menos una persona activa que administre roles
     (`ensureARoleAdminRemains`). Un camino nuevo que asigne rol o dé de baja pasa por ahí.
-  - **`users.role` vive hasta la 0109 solo por la API anterior**: el trigger `sync_user_role` lo
-    mantiene coherente con `role_id` (un rol propio aparece como `mesero`). Nada nuevo lo lee ni lo
-    escribe. El enum `user_role` sigue siendo la dimensión «rol sugerido» de la medición de uso; lo de
-    un rol propio se mide sin rol.
+  - **`users.role` ya no existe (0109)**: el rol de una persona es `users.role_id`, que apunta al rol de
+    su empresa. Las consultas de `users.sql` listan sus columnas en vez de `*`: sqlc expande el `*` al
+    generar y una columna borrada después tumba a la versión anterior de la API durante la subida
+    (pasó con `users.role`; lo cazó `TestTheAPIWorksWithoutUsersRole` antes de subir). El enum
+    `user_role` sigue siendo la dimensión «rol sugerido» de la medición de uso; lo de un rol propio
+    se mide sin rol.
 - **Dividir la cuenta** (spec 027). Cinco cosas que cuestan caro si se olvidan:
   - **Un pago devuelto SALE de `order_payments`** a la bitácora `order_payment_voids`, con su
     cobertura en `covered` y el número que lleva su ticket. Por eso las ~32 consultas que suman pagos
