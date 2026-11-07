@@ -8,7 +8,7 @@ export type Permission = 'payments.void' | 'orders.cancel' | 'orders.move_lines'
   | 'inventory.health_view' | 'menu.configure'
   | 'inventory.receive' | 'inventory.configure' | 'inventory.count'
   | 'inventory.write_off' | 'inventory.write_off_approve' | 'inventory.view'
-  | 'expenses.edit' | 'expenses.cancel';
+  | 'expenses.edit' | 'expenses.cancel' | 'orders.delivered_view';
 
 // can pregunta por permiso y nunca por nombre de rol: cuando cada empresa defina sus roles, lo único
 // que cambia es de dónde saca el servidor la lista, y ninguna pantalla se reescribe.

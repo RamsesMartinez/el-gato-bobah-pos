@@ -56,4 +56,25 @@ if ! printf '%s' "$comando" | grep -qE "$escribe" && printf '%s' "$comando" | gr
   exit 0
 fi
 
-printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Este comando toca la VM de PRODUCCION (pos-vps). Solo los respaldos pasan solos; todo lo demas necesita tu aprobacion explicita."}}'
+# Consultas de solo lectura a la base (decidido el 2026-11-06: investigar un reporte de quien opera
+# se detuvo en cada `select`). Pasan solas SOLO dentro de `begin read only`, con la que Postgres
+# mismo rechaza cualquier escritura de esa transacción, y sin nada que pueda salirse de ella: cerrar
+# la transacción (`commit`, `end`; después de eso un `select` a una función que escribe sí correría),
+# cambiarla a lectura y escritura, comandos de psql que ejecutan o escriben archivos, SQL leído de
+# un archivo que el hook no ve, o cualquier cosa de la lista de escrituras de arriba. El único
+# `docker exec` aceptado es psql en el contenedor de la base. `set role` y `app.company_id` se
+# permiten porque son la forma de ver lo que ve la API (AGENTS.md §2). Ante la duda, se pregunta:
+# un `case … end` también pregunta, a propósito.
+sql_escribe='(^|[^a-z_])(insert|update|delete|merge|alter|drop|create|truncate|grant|revoke|copy|commit|end|savepoint|prepare|execute|call|do|vacuum|reindex|cluster|refresh|lock|listen|notify|reset|discard|import|security|comment|set)([^a-z_]|$)|read +write|default_transaction|set_config|setval|nextval|dblink|pg_terminate|pg_cancel|pg_reload|lo_(import|export|unlink)|\\[^d]|(^|[^0-9])<'
+sin_psql=$(printf '%s' "$comando" | sed -E 's/docker +exec +(-i +)?deploy-postgres-1 +psql//g')
+sin_sets=$(printf '%s' "$comando" | tr 'A-Z' 'a-z' | sed -E 's/set +(local +)?(role +[a-z_]+|app\.company_id *(=|to) *[0-9'"'"' ]+)//g')
+if printf '%s' "$comando" | grep -qiE 'begin +(transaction +)?read +only' \
+  && printf '%s' "$comando" | grep -qE 'docker +exec +(-i +)?deploy-postgres-1 +psql' \
+  && ! printf '%s' "$sin_psql" | grep -qE "$escribe" \
+  && ! printf '%s' "$comando" | grep -qE '(^| )(-f|--file)( |=)' \
+  && ! printf '%s' "$sin_sets" | grep -qE "$sql_escribe"; then
+  printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"Consulta de solo lectura a la base de produccion: autorizada sin preguntar."}}'
+  exit 0
+fi
+
+printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Este comando toca la VM de PRODUCCION (pos-vps). Solo los respaldos, las lecturas de salud y las consultas con begin read only pasan solos; todo lo demas necesita tu aprobacion explicita."}}'

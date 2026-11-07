@@ -64,11 +64,13 @@ export function OrdersBoardPage() {
   const [quitando, setQuitando] = useState<{ orderId: number; linea: BoardLine } | null>(null);
   const [quitandoFaltante, setQuitandoFaltante] = useState<BoardOrder | null>(null);
   const qc = useQueryClient();
-  // Reembolsar = salida de dinero → solo admin/gerente ven las entregadas y la acción. El backend
-  // igual aplica el 403; esto es UX (no mostrar lo que no pueden usar).
+  // Ver los entregados y devolver dinero son dos permisos (068): desde la lista el mostrador
+  // reimprime el ticket de un pedido que cerró otro usuario, y devolver saca dinero del corte. El
+  // servidor aplica el 403; esto solo evita ofrecer lo que rebotaría.
   const user = useSessionStore((s) => s.user);
   const role = user?.role;
-  const canRefund = role === 'admin' || role === 'gerente';
+  const puedeVerEntregadas = can('orders.delivered_view', user);
+  const puedeDevolverDinero = can('payments.void', user);
 
   // COBRAR ES DE LA CUENTA, NO DEL TABLERO (spec 030, caso 25). El tablero tenía su propia puerta
   // de cobro y con ella eran tres; ahora cada tarjeta lleva a la cuenta en Vender —«Abrir cuenta»—,
@@ -89,7 +91,7 @@ export function OrdersBoardPage() {
   const { data: deliveredData } = useQuery({
     queryKey: ['orders', 'delivered'],
     queryFn: posApi.deliveredOrders,
-    enabled: canRefund,
+    enabled: puedeVerEntregadas,
     refetchInterval: 15_000, // SSE solo invalida 'active'; refrescamos entregadas aparte
   });
 
@@ -256,8 +258,9 @@ export function OrdersBoardPage() {
         <Columna titulo="A entregar" orders={listos} acciones={acciones} />
       </SimpleGrid>
 
-      {canRefund && (
-        <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} zona={horaNegocio.zona} onRefund={refund} onTicket={acciones.ticket}
+      {puedeVerEntregadas && (
+        <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} zona={horaNegocio.zona}
+          onRefund={puedeDevolverDinero ? refund : undefined} onTicket={acciones.ticket}
           onAbrirCuenta={puedeAbrirCuenta ? acciones.abrirCuenta : undefined} />
       )}
 
@@ -286,7 +289,10 @@ export function OrdersBoardPage() {
         />
       )}
 
-      {devolviendo && (
+      {/* La pantalla sigue montada debajo del bloqueo: si entra con su PIN alguien que no puede
+          hacer lo que el diálogo ofrece, el diálogo desaparece en vez de rebotar con el cliente
+          enfrente. */}
+      {devolviendo && (devolviendo.cancelando ? can('orders.cancel', user) : puedeDevolverDinero) && (
         <DevolucionSheet
           key={devolviendo.pedido.id}
           pedido={devolviendo.pedido}
@@ -587,14 +593,16 @@ function Renglon({ l, onEntregar, onQuitar }: {
   );
 }
 
-// Entregadas del día: solo admin/gerente, para reembolsar y para cobrar lo que quedó pendiente.
+// Entregadas del día: quien tiene orders.delivered_view las ve para reimprimir y para cobrar lo que
+// quedó pendiente; «Devolver» llega solo con payments.void.
 // TOPADA para no competir con el flujo operativo de arriba: en una jornada llena son decenas.
 function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCuenta }: {
   orders: BoardOrder[];
   zona: string;
   // El negocio elige cuándo se vacía esta lista; el rótulo tiene que decir esa misma ventana.
   corteDeVista?: string;
-  onRefund: (o: BoardOrder) => void;
+  // Sin el permiso de devolver dinero no llega, y el renglón no ofrece «Devolver».
+  onRefund?: (o: BoardOrder) => void;
   onTicket: (o: BoardOrder) => void;
   // Una entregada que debe se cobra en su cuenta, en Vender (caso 25).
   onAbrirCuenta?: (o: BoardOrder) => void;
@@ -643,7 +651,7 @@ function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCue
                       cobrado. Ofrecer una acción que el servidor va a rechazar es peor que no
                       ofrecerla: el operador la toca con el cliente enfrente. Y lo cobrado se resta
                       de lo ya devuelto: devuelto todo, el botón solo podía rebotar. */}
-                  {quedaPorDevolver(o) > 0 && (
+                  {onRefund && quedaPorDevolver(o) > 0 && (
                     <Button size="sm" minH={TAP} variant="outline" colorPalette="red"
                       onClick={() => onRefund(o)}>Devolver</Button>
                   )}

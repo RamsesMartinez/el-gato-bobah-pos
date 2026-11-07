@@ -27,19 +27,23 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 	// el esperado de un corte: también de quien revisa.
 	// Editar un gasto ya guardado (spec 053) mueve su importe, sus renglones y lo que sumó al almacén:
 	// por omisión solo el administrador (#167); el reparto fino es #61.
+	// Ver los entregados del día y reimprimir su ticket (068) es del mostrador: cajero sí, mesero no.
+	// Sin él, una cajera no podía reimprimir el ticket de un pedido que entregó otro usuario y tenía
+	// que entrar una administradora (2026-11-06). Devolver dinero sigue aparte, en payments.void.
 	// Anular un gasto capturado por error (#216) lo hacía ya el gerente con los pendientes; ahora
 	// alcanza también a los pagados, y sigue siendo de quien revisa, nunca de quien opera la caja.
 	gerente := []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 		PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
 		PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount,
-		PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount, PermExpensesCancel}
+		PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount, PermExpensesCancel,
+		PermOrdersDeliveredView}
 	cases := []struct {
 		role Role
 		want []Permission
 	}{
 		{RoleAdmin, all},
 		{RoleGerente, gerente},
-		{RoleCajero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}},
+		{RoleCajero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff, PermOrdersDeliveredView}},
 		{RoleMesero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}},
 		{Role("dueño"), nil},
 		{Role(""), nil},
@@ -90,6 +94,7 @@ func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 		PermCashAdjustCount:          "Tu usuario no puede cambiar lo que entra al arqueo",
 		PermExpensesEdit:             "Tu usuario no puede editar gastos",
 		PermExpensesCancel:           "Tu usuario no puede anular gastos",
+		PermOrdersDeliveredView:      "Tu usuario no puede ver los pedidos entregados",
 	}
 	for _, p := range AllPermissions() {
 		msg := PermissionDeniedMessage(p)
