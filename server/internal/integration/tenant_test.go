@@ -58,7 +58,7 @@ func TestTenantIsolationViaAppRole(t *testing.T) {
 	cajeroRole := roleIDOf(t, owner, defaultCompanyID, "cajero")
 	err := appSt.WithTenant(context.Background(), defaultCompanyID, func(q *db.Queries) error {
 		_, e := q.CreateUser(context.Background(), db.CreateUserParams{
-			Name: "intruso", Username: strptr("intruso"), RoleID: &cajeroRole,
+			Name: "intruso", Username: strptr("intruso"), RoleID: cajeroRole,
 		})
 		return e
 	})

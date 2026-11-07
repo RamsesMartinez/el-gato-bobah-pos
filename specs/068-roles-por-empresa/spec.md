@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-06 (entrega 1) · ampliado el 2026-11-06 (entregas 2 y 3)
 
-**Status**: Entrega 1 en producción · entregas 2 y 3 en especificación
+**Status**: Entregas 1 y 2 en producción · entrega 3 en subida
 
 **Input**: Issue #61 «Roles y permisos por empresa (modelo híbrido)» y su seguimiento #232, con las decisiones del dueño del 2026-10-13 y del 2026-11-06.
 

@@ -221,7 +221,10 @@ where ri.unit_id is not null and not exists (select 1 from units u where u.id = 
 -- tienen username NULL, y un join por username los dejaría fuera del reporte sin avisar.
 -- Un PIN repetido entre empresas NO es ambiguo: /pin-switch corre bajo WithTenant, o sea que
 -- resuelve el PIN dentro de la empresa en la que ya está el dispositivo.
-select u.name, u.username, u.role, u.is_active,
+select u.name, u.username,
+       (select coalesce(s.code, r.name) from roles r left join system_roles s on s.id = r.system_role_id
+         where r.id = u.role_id) as role,
+       u.is_active,
        (u.password_hash is not distinct from v.password_hash) as mismo_password,
        (u.pin_hash       is not distinct from v.pin_hash)      as mismo_pin
 from users u

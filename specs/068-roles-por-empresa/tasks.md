@@ -116,15 +116,15 @@ description: "Tareas de las entregas 2 y 3 de la 068: roles por empresa en la ba
 - [X] T035 [P] `AGENTS.md`: sección «Roles por empresa» (la consulta de permisos por petición, el trigger de convivencia hasta la 0109, cómo se agrega un permiso nuevo del producto: constante + migración con su fila en `permissions` y `system_role_permissions`, y el test que lo exige). Constitución: tabla de puertas, renglón de roles marcado como cruzado (spec 068), y «Roles: modelo híbrido» sin la frase de los `RequireRole` que quedan; enmienda MINOR con su versión.
 - [X] T036 Gates: `go build ./... && go test ./...`, `make test-integration`, `bun run lint && bun run typecheck && bun run vitest run && bun run build`; `explain (analyze, buffers)` de la consulta de permisos en la integración con ~100 usuarios, anotado en research.md.
 - [X] T037 Prueba a 1024×600 con usuario nuevo contra el `make start` del worktree con respaldo restaurado (quickstart.md, paso 4); capturas solo en `test-results/` o scratchpad.
-- [ ] T038 `/revision-de-codigo`, corrección con test de cada hallazgo; `make ci-local`; PR a develop, release a main y despliegue hasta `/readyz` 200, con respaldo previo.
+- [X] T038 `/revision-de-codigo`, corrección con test de cada hallazgo; `make ci-local`; PR a develop, release a main y despliegue hasta `/readyz` 200, con respaldo previo.
 
 ---
 
 ## Phase 9: Entrega 3 — borrar `users.role` (subida posterior)
 
-- [ ] T039 Test de migración `server/internal/integration/migration_0109_test.go` contra respaldo con dos empresas: rellena roles y `role_id` faltantes (empresa creada por la API anterior), `role_id` queda `not null`, `users.role` y el trigger desaparecen, la medición sigue con su enum; con la API de la entrega 2 sirviendo, login y una ruta con permiso siguen funcionando.
-- [ ] T040 Migración `server/migrations/0109_drop_user_role.sql` (relleno idempotente, `check not valid` → `validate` → `set not null`, `drop trigger/function`, `drop column role`); Down que recrea `role` desde `role_id`; su renglón en `guardedDownCleanup`.
-- [ ] T041 Fixture `makeUserIn` asigna `role_id` por código de sugerido (sin `role`); `sqlc.yaml` y `server/queries/users.sql` sin `role`; `make sqlc`; gates; PR, release y despliegue hasta `/readyz` 200.
+- [X] T039 Test de migración `server/internal/integration/migration_0109_test.go` contra respaldo con dos empresas: rellena roles y `role_id` faltantes (empresa creada por la API anterior), `role_id` queda `not null`, `users.role` y el trigger desaparecen, la medición sigue con su enum; con la API de la entrega 2 sirviendo, login y una ruta con permiso siguen funcionando.
+- [X] T040 Migración `server/migrations/0109_drop_user_role.sql` (relleno idempotente, `check not valid` → `validate` → `set not null`, `drop trigger/function`, `drop column role`); Down que recrea `role` desde `role_id`; su renglón en `guardedDownCleanup`.
+- [X] T041 Fixture `makeUserIn` asigna `role_id` por código de sugerido (sin `role`); `sqlc.yaml` y `server/queries/users.sql` sin `role`; `make sqlc`; gates; PR, release y despliegue hasta `/readyz` 200.
 - [ ] T042 Cerrar: comentar y cerrar #232 y #61, borrar la rama remota, `make cerrar-worktree datos=1`.
 
 ---

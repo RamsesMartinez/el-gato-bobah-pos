@@ -33,7 +33,12 @@ union all select 'business_settings', count(*) from business_settings
 order by 1;
 
 \echo '=== D) usuarios que van a poder entrar en la empresa nueva con su MISMA contraseña ==='
-select username, role, is_active, must_change_password from users order by id;
+-- El rol sale de role_id desde la 0109 (spec 068): users.role ya no existe.
+select username,
+       (select coalesce(s.code, r.name) from roles r left join system_roles s on s.id = r.system_role_id
+         where r.id = u.role_id) as role,
+       is_active, must_change_password
+  from users u order by id;
 
 -- El offset de cada tabla vale su propio max(id), así que los ids copiados caen en (max, 2*max].
 -- Este número sirve para confirmar de un vistazo que el doble sigue cabiendo en el tipo de la
