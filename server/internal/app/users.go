@@ -111,7 +111,8 @@ func (s *UsersService) Create(ctx context.Context, in CreateUserInput) (domain.U
 			return err
 		}
 		params.RoleID = &roleID
-		u, err = q.CreateUser(ctx, params)
+		row, err := q.CreateUser(ctx, params)
+		u = db.User(row)
 		return err
 	})
 	if isUniqueViolation(err) {
@@ -173,7 +174,7 @@ func (s *UsersService) List(ctx context.Context) ([]domain.User, error) {
 	}
 	out := make([]domain.User, len(rows))
 	for i, u := range rows {
-		out[i] = toDomainUser(u)
+		out[i] = toDomainUser(db.User(u))
 	}
 	return out, nil
 }
@@ -220,8 +221,18 @@ func (s *UsersService) Update(ctx context.Context, in UpdateUserInput) (domain.U
 		// La pantalla anterior manda `role` con el código que ve; a alguien con rol propio el trigger
 		// le puso «mesero». Ese mismo código no es un cambio de rol: se conserva el suyo.
 		requested := in.RoleID
-		if requested == nil && prev.RoleID != nil && string(in.Role) == prev.Role {
-			requested = prev.RoleID
+		if requested == nil && prev.RoleID != nil {
+			cur, err := userRole(ctx, q, in.ID)
+			if err != nil {
+				return err
+			}
+			seen := cur.SystemCode
+			if seen == "" {
+				seen = domain.RoleMesero // lo que el trigger le muestra a la API anterior de un rol propio
+			}
+			if in.Role == seen {
+				requested = prev.RoleID
+			}
 		}
 		roleID, perms, err := assignableRole(ctx, q, requested, in.Role, in.IsActive)
 		if err != nil {
@@ -230,12 +241,13 @@ func (s *UsersService) Update(ctx context.Context, in UpdateUserInput) (domain.U
 		if err := domain.WithinPermissions(in.ActorPerms, perms); err != nil {
 			return err
 		}
-		u, err = q.UpdateUser(ctx, db.UpdateUserParams{
+		row, err := q.UpdateUser(ctx, db.UpdateUserParams{
 			ID: in.ID, Name: in.Name, RoleID: &roleID, IsActive: in.IsActive, RecoveryEmail: in.RecoveryEmail,
 		})
 		if err != nil {
 			return err
 		}
+		u = db.User(row)
 		roleChanged := prev.RoleID == nil || *prev.RoleID != roleID
 		if roleChanged {
 			subject := in.ID
