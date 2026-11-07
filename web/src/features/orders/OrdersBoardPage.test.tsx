@@ -528,10 +528,11 @@ describe('quien no puede entrar a Vender', () => {
 // devolverlo todo: el operador lo tocaba con el cliente enfrente y el servidor lo rechazaba.
 describe('las entregadas dicen cuándo y cuánto se devolvió', () => {
   const ABIERTO = '2026-10-08T02:25:00Z'; // 7 oct, 20:25 en la Ciudad de México
-  function pintarEntregada(o: Partial<BoardOrder>) {
+  function pintarEntregada(o: Partial<BoardOrder>, quien: { role: string; permissions: string[] } =
+    { role: 'admin', permissions: ['orders.delivered_view', 'payments.void'] }) {
     useSessionStore.setState({
       token: 't', status: 'authed',
-      user: { id: 1, companyId: 2, name: 'Ana', role: 'admin', permissions: [] },
+      user: { id: 1, companyId: 2, name: 'Ana', ...quien },
     });
     api.businessSettings.mockResolvedValue({ timezone: 'America/Mexico_City', corteDeVista: '' });
     api.activeOrders.mockResolvedValue({ items: [] });
@@ -571,6 +572,51 @@ describe('las entregadas dicen cuándo y cuánto se devolvió', () => {
   test('abonado y devuelto el abono, no ofrece «Devolver» aunque deba', async () => {
     pintarEntregada({ total: '110', outstanding: '60', paid: false, refund: '50' });
     expect(within(await renglon()).queryByRole('button', { name: 'Devolver' })).toBeNull();
+  });
+});
+
+// QUIÉN VE LOS ENTREGADOS LO DICE UN PERMISO, NO EL ROL (068).
+//
+// El 2026-11-06 una cajera no pudo reimprimir el ticket de un pedido que entregó otro usuario: la
+// sección se escondía a todo rol que no fuera admin o gerente, y tuvo que entrar una administradora.
+// Ver la lista y devolver dinero son dos permisos: la cajera trae el primero y no el segundo.
+describe('los entregados se ven por permiso', () => {
+  const ABIERTO = '2026-10-08T02:25:00Z';
+  function pintarCon(role: string, permissions: string[]) {
+    useSessionStore.setState({ token: 't', status: 'authed', user: { id: 7, companyId: 2, name: 'Dany', role, permissions } });
+    api.businessSettings.mockResolvedValue({ timezone: 'America/Mexico_City', corteDeVista: '' });
+    api.activeOrders.mockResolvedValue({ items: [] });
+    api.deliveredOrders.mockResolvedValue({ items: [pedido({ id: 9, folioName: 'Sofía', status: 'entregada', lines: [], openedAt: ABIERTO, outstanding: '0', paid: true, refund: '0' })] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<Provider><QueryClientProvider client={qc}><OrdersBoardPage /></QueryClientProvider></Provider>);
+  }
+
+  test('la cajera ve el pedido entregado y su «Ticket», sin «Devolver»', async () => {
+    pintarCon('cajero', ['orders.delivered_view', 'orders.move_lines']);
+    const r = (await screen.findByText('Sofía')).closest('[data-delivered-row]') as HTMLElement;
+    expect(within(r).getByRole('button', { name: 'Ticket' })).toBeInTheDocument();
+    expect(within(r).queryByRole('button', { name: 'Devolver' })).toBeNull();
+  });
+
+  test('sin el permiso no se pide ni se pinta la lista, aunque el rol sea admin', async () => {
+    pintarCon('admin', ['payments.void']);
+    await waitFor(() => expect(api.activeOrders).toHaveBeenCalled());
+    expect(api.deliveredOrders).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-delivered-row]')).toBeNull();
+  });
+
+  test('el mesero, sin el permiso, no ve la sección', async () => {
+    pintarCon('mesero', ['orders.move_lines', 'orders.cancel_pending']);
+    await waitFor(() => expect(api.activeOrders).toHaveBeenCalled());
+    expect(api.deliveredOrders).not.toHaveBeenCalled();
+    expect(screen.queryByText('Sofía')).toBeNull();
+  });
+
+  test('con los dos permisos se ve «Ticket» y «Devolver»', async () => {
+    pintarCon('gerente', ['orders.delivered_view', 'payments.void']);
+    const r = (await screen.findByText('Sofía')).closest('[data-delivered-row]') as HTMLElement;
+    expect(within(r).getByRole('button', { name: 'Ticket' })).toBeInTheDocument();
+    expect(within(r).getByRole('button', { name: 'Devolver' })).toBeInTheDocument();
   });
 });
 
