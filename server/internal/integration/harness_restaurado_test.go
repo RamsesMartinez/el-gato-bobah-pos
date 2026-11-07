@@ -323,6 +323,15 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
+	// Los usuarios con rol propio vuelven al sugerido mesero (el trigger pone `role` igual) y se
+	// borran los ajustes y los roles propios, solo en la copia de prueba.
+	108: {
+		`update users u set role_id = r.id from roles r
+		  where r.company_id = u.company_id and r.system_role_id = 4
+		    and u.role_id in (select id from roles where system_role_id is null)`,
+		`delete from role_permission_overrides`,
+		`delete from roles where system_role_id is null`,
+	},
 	// Las compras entre peso y líquido se anulan: la API anterior no las sabría convertir.
 	105: {
 		`update ingredients set density_g_per_ml = null, density_method = null, density_set_by = null, density_set_at = null

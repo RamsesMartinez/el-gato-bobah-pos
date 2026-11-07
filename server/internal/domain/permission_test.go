@@ -36,14 +36,23 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 		PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
 		PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount,
 		PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount, PermExpensesCancel,
-		PermOrdersDeliveredView}
+		PermOrdersDeliveredView,
+		// Lo que hasta la 068 se pedía con RequireRole(admin, gerente) o (admin, gerente, cajero): mismo
+		// conjunto de roles, ahora como permiso por capacidad.
+		PermCashOperate, PermOrdersPlatformRef, PermPlatformPricesCapture, PermSalesView,
+		PermPlatformSettlementsCapture, PermReportsView, PermExpensesCapture, PermPlatformsConfigure,
+		PermBusinessConfigure}
+	// El cajero abría caja, corregía el folio de plataforma y capturaba precios por plataforma
+	// (RequireRole admin, gerente, cajero); el mesero, nada de eso.
+	cajero := []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff, PermOrdersDeliveredView,
+		PermCashOperate, PermOrdersPlatformRef, PermPlatformPricesCapture}
 	cases := []struct {
 		role Role
 		want []Permission
 	}{
 		{RoleAdmin, all},
 		{RoleGerente, gerente},
-		{RoleCajero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff, PermOrdersDeliveredView}},
+		{RoleCajero, cajero},
 		{RoleMesero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}},
 		{Role("dueño"), nil},
 		{Role(""), nil},
@@ -71,30 +80,42 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 // empresa, «gerente» puede no existir, y un texto que lo nombre manda a buscar a alguien que no hay.
 func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 	want := map[Permission]string{
-		PermPaymentsVoid:             "Tu usuario no puede devolver pagos",
-		PermOrdersCancel:             "Tu usuario no puede cancelar pedidos",
-		PermOrdersMoveLines:          "Tu usuario no puede pasar productos",
-		PermOrdersCancelPending:      "Tu usuario no puede quitar productos",
-		PermAttendanceConfigure:      "Tu usuario no puede configurar la asistencia",
-		PermAttendanceReport:         "Tu usuario no puede ver la asistencia del personal",
-		PermAttendanceCorrectOthers:  "Tu usuario no puede corregir la asistencia de otras personas",
-		PermAttendanceCorrectOwn:     "Tu usuario no puede corregir su propia asistencia",
-		PermAuditView:                "Tu usuario no puede ver la bitácora",
-		PermPaymentsChangeTerminal:   "Tu usuario no puede cambiar la terminal de un pago",
-		PermCashConfigure:            "Tu usuario no puede configurar la caja",
-		PermInventoryHealthView:      "Tu usuario no puede ver la salud del inventario",
-		PermMenuConfigure:            "Tu usuario no puede configurar el menú",
-		PermInventoryReceive:         "Tu usuario no puede registrar lo que llega al almacén",
-		PermInventoryConfigure:       "Tu usuario no puede configurar el almacén",
-		PermInventoryCount:           "Tu usuario no puede contar el almacén",
-		PermInventoryWriteOff:        "Tu usuario no puede registrar lo que se echó a perder",
-		PermInventoryWriteOffApprove: "Tu usuario no puede aprobar lo que se echó a perder",
-		PermInventoryView:            "Tu usuario no puede ver el almacén",
-		PermCashCloseWithoutClockOut: "Tu usuario no puede cerrar la caja sin la salida de quien la abrió",
-		PermCashAdjustCount:          "Tu usuario no puede cambiar lo que entra al arqueo",
-		PermExpensesEdit:             "Tu usuario no puede editar gastos",
-		PermExpensesCancel:           "Tu usuario no puede anular gastos",
-		PermOrdersDeliveredView:      "Tu usuario no puede ver los pedidos entregados",
+		PermPaymentsVoid:               "Tu usuario no puede devolver pagos",
+		PermOrdersCancel:               "Tu usuario no puede cancelar pedidos",
+		PermOrdersMoveLines:            "Tu usuario no puede pasar productos",
+		PermOrdersCancelPending:        "Tu usuario no puede quitar productos",
+		PermAttendanceConfigure:        "Tu usuario no puede configurar la asistencia",
+		PermAttendanceReport:           "Tu usuario no puede ver la asistencia del personal",
+		PermAttendanceCorrectOthers:    "Tu usuario no puede corregir la asistencia de otras personas",
+		PermAttendanceCorrectOwn:       "Tu usuario no puede corregir su propia asistencia",
+		PermAuditView:                  "Tu usuario no puede ver la bitácora",
+		PermPaymentsChangeTerminal:     "Tu usuario no puede cambiar la terminal de un pago",
+		PermCashConfigure:              "Tu usuario no puede configurar la caja",
+		PermInventoryHealthView:        "Tu usuario no puede ver la salud del inventario",
+		PermMenuConfigure:              "Tu usuario no puede configurar el menú",
+		PermInventoryReceive:           "Tu usuario no puede registrar lo que llega al almacén",
+		PermInventoryConfigure:         "Tu usuario no puede configurar el almacén",
+		PermInventoryCount:             "Tu usuario no puede contar el almacén",
+		PermInventoryWriteOff:          "Tu usuario no puede registrar lo que se echó a perder",
+		PermInventoryWriteOffApprove:   "Tu usuario no puede aprobar lo que se echó a perder",
+		PermInventoryView:              "Tu usuario no puede ver el almacén",
+		PermCashCloseWithoutClockOut:   "Tu usuario no puede cerrar la caja sin la salida de quien la abrió",
+		PermCashAdjustCount:            "Tu usuario no puede cambiar lo que entra al arqueo",
+		PermExpensesEdit:               "Tu usuario no puede editar gastos",
+		PermExpensesCancel:             "Tu usuario no puede anular gastos",
+		PermOrdersDeliveredView:        "Tu usuario no puede ver los pedidos entregados",
+		PermCashOperate:                "Tu usuario no puede operar la caja",
+		PermOrdersPlatformRef:          "Tu usuario no puede corregir el folio de plataforma",
+		PermPlatformPricesCapture:      "Tu usuario no puede capturar precios por plataforma",
+		PermSalesView:                  "Tu usuario no puede ver las ventas",
+		PermPlatformSettlementsCapture: "Tu usuario no puede capturar liquidaciones de plataforma",
+		PermReportsView:                "Tu usuario no puede ver los reportes",
+		PermExpensesCapture:            "Tu usuario no puede capturar gastos",
+		PermPlatformsConfigure:         "Tu usuario no puede configurar las plataformas",
+		PermPlatformsCredentials:       "Tu usuario no puede cambiar el acceso a las apps de plataforma",
+		PermBusinessConfigure:          "Tu usuario no puede configurar el negocio",
+		PermEmployeesManage:            "Tu usuario no puede dar de alta ni editar empleados",
+		PermRolesManage:                "Tu usuario no puede cambiar lo que puede cada rol",
 	}
 	for _, p := range AllPermissions() {
 		msg := PermissionDeniedMessage(p)
@@ -109,5 +130,22 @@ func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 	}
 	if len(AllPermissions()) != len(want) {
 		t.Errorf("AllPermissions() = %v, quiere los %d de la tabla", AllPermissions(), len(want))
+	}
+}
+
+// Cada permiso tiene área y etiqueta: la pantalla de roles los agrupa por área, y uno sin área no
+// aparecería en ninguna y nadie podría darlo ni quitarlo.
+func TestEveryPermissionHasAreaAndLabel(t *testing.T) {
+	areas := map[string]bool{}
+	for _, a := range PermissionAreas() {
+		areas[a] = true
+	}
+	for _, p := range AllPermissions() {
+		if !areas[PermissionArea(p)] {
+			t.Errorf("%q tiene área %q, que no está en PermissionAreas()", p, PermissionArea(p))
+		}
+		if PermissionLabel(p) == "" || PermissionLabel(p) == string(p) {
+			t.Errorf("%q no tiene etiqueta para quien opera", p)
+		}
 	}
 }
