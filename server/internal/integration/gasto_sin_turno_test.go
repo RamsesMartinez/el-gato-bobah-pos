@@ -268,20 +268,22 @@ func TestLlevaArqueoExigeElPermisoDeConfigurarCaja(t *testing.T) {
 	}
 	for _, c := range []struct {
 		name   string
-		perms  httpapi.PermissionResolver
+		perms  func(domain.Role) []domain.Permission
 		body   string
 		denied bool
 	}{
 		{"un gerente sin el permiso no apaga el arqueo", sinConfigurar, `{"name":"Sec","isActive":true,"countsCash":false}`, true},
 		{"ni lo prende", sinConfigurar, `{"name":"Sec","isActive":true,"countsCash":true}`, true},
-		{"sin tocar el arqueo, renombrar sigue igual", sinConfigurar, `{"name":"Sec 2","isActive":true}`, false},
+		// Configurar las cajas (alta, renombrar, activar) es el mismo permiso desde la 068: antes la
+		// ruta pedía rol admin o gerente, que son los roles que lo traen.
+		{"sin el permiso tampoco renombra", sinConfigurar, `{"name":"Sec 2","isActive":true}`, true},
 		{"con el permiso sí", nil, `{"name":"Sec","isActive":true,"countsCash":false}`, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			st := newTestStore(t)
 			jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
 			h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Backoffice: app.NewBackofficeService(st, clock), MenuCache: cache.NewMenuCache(""),
-				Broker: realtime.NewBroker(), Permissions: c.perms})
+				Broker: realtime.NewBroker(), Permissions: porRol(c.perms)})
 			r := httpapi.Router(config.Config{}, jm, h, st)
 			id := makeUser(t, st, "gerente_arqueo", "gerente")
 			tok, err := jm.Issue(domain.User{ID: id, CompanyID: defaultCompanyID, Name: "g", Role: domain.RoleGerente})

@@ -493,6 +493,12 @@ func provisionCompany(ctx context.Context, st *store.Store, pepper string) error
 	}
 	params := newAdminParams(username, pwHash, pinHash, pinLookup)
 	if err := st.WithTenant(ctx, co.ID, func(q *db.Queries) error {
+		// CreateCompany ya sembró los cuatro sugeridos: el admin nace con el suyo (spec 068).
+		adminRole, err := q.SuggestedRoleID(ctx, string(domain.RoleAdmin))
+		if err != nil {
+			return err
+		}
+		params.RoleID = &adminRole
 		if _, err := q.CreateUser(ctx, params); err != nil {
 			return err
 		}
@@ -611,7 +617,8 @@ func linePrompt(r io.Reader) func(string) (string, error) {
 // desbloquear en modo solo-PIN.
 func newAdminParams(username, pwHash string, pinHash, pinLookup *string) db.CreateUserParams {
 	return db.CreateUserParams{
-		Name: "Administrador", Username: &username, Role: string(domain.RoleAdmin),
+		// El rol (admin de la empresa) lo pone ResetCompanyAdmin con la empresa ya fijada (spec 068).
+		Name: "Administrador", Username: &username,
 		PasswordHash: &pwHash, PinHash: pinHash, PinLookup: pinLookup,
 	}
 }

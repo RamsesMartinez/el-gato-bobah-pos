@@ -7,7 +7,11 @@ export interface SessionUser {
   companyId: number;
   companySlug?: string;
   name: string;
+  // Código del rol sugerido (admin, gerente…) o "" si es un rol propio de la empresa. Solo se
+  // muestra o se mide: lo que la pantalla ofrece sale de `permissions`, nunca de aquí.
   role: string;
+  roleId?: number;
+  roleName?: string;
   mustChangePassword?: boolean; // tras alta/reset por admin: forzar cambio en el primer login
   // Lo que este usuario puede hacer, según el servidor. Opcional porque una sesión emitida antes de
   // que existiera no lo trae; se consulta solo con `can()` (app/permissions.ts).

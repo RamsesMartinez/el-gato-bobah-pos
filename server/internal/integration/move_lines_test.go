@@ -14,7 +14,6 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
-	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
@@ -370,7 +369,7 @@ func TestMoveLinesPermissionAndIsolation(t *testing.T) {
 	})
 
 	none := func(domain.Role) []domain.Permission { return nil }
-	r, token := ordersAPI(t, st, httpapi.PermissionResolver(none))
+	r, token := ordersAPI(t, st, none)
 	_, tok := token("http_sin_permiso_pasar", "cajero")
 	w := do(t, r, http.MethodPost, "/api/v1/orders/"+strconv.FormatInt(s.order.ID, 10)+"/lines/move", tok,
 		[]byte(`{"clientUuid":"`+uuid.New().String()+`","lines":[{"lineId":`+strconv.FormatInt(s.order.Lines[0].ID, 10)+`,"qty":"1"}]}`), "application/json")

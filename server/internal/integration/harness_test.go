@@ -22,6 +22,8 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -443,4 +445,19 @@ func crearYCobrar(t *testing.T, ctx context.Context, svc *app.OrdersService, cmd
 	}
 	// Se relee: tras el cobro cambian el estado y lo pagado, y los tests miran eso.
 	return svc.Detail(ctx, ord.ID)
+}
+
+// porRol adapta un resolvedor por rol de las pruebas al de la API (spec 068): lee el rol del JWT de
+// la prueba. Solo sirve para pruebas que fijan un conjunto de permisos a propósito; en producción
+// el permiso sale de la base.
+func porRol(f func(domain.Role) []domain.Permission) httpapi.PermissionResolver {
+	if f == nil {
+		return nil // el de producción, que lee la base
+	}
+	return func(_ context.Context, u httpapi.AuthUser) ([]domain.Permission, error) { return f(u.Role), nil }
+}
+
+// quienEs es el rol y los permisos de un rol sugerido, como los resuelve la medición de uso.
+func quienEs(r domain.Role) func() (domain.Role, []domain.Permission, error) {
+	return func() (domain.Role, []domain.Permission, error) { return r, domain.PermissionsFor(r), nil }
 }

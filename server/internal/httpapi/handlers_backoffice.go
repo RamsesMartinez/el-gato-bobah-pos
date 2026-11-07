@@ -282,7 +282,7 @@ func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 // lo que trae el cuerpo. Responde el 403 y deja el evento de seguridad; false = ya respondió.
 func (h *Handlers) requirePermission(w http.ResponseWriter, r *http.Request, p domain.Permission) bool {
 	u, ok := userFrom(r.Context())
-	if ok && slices.Contains(h.permissions(u.Role), p) {
+	if ok && slices.Contains(h.permissionsOf(r.Context(), u), p) {
 		return true
 	}
 	logging.SecurityEvent(r.Context(), "forbidden",
@@ -317,7 +317,7 @@ func (h *Handlers) CashSessionAttendance(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	state, err := h.backoffice.CashAttendanceState(r.Context(), registerID, u.ID, h.permissionsOf(u.Role))
+	state, err := h.backoffice.CashAttendanceState(r.Context(), registerID, u.ID, h.permissionsOf(r.Context(), u))
 	if err != nil {
 		Error(w, err)
 		return
@@ -400,7 +400,7 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		authorized = &body.AuthorizedClose.Reason
 	}
 	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
-		Perms: h.permissionsOf(u.Role), AuthorizedReason: authorized,
+		Perms: h.permissionsOf(r.Context(), u), AuthorizedReason: authorized,
 		TerminalCounts: terminales, FloatLeft: body.FloatLeft,
 		FixedFloatShown: body.FixedFloatShown, WithdrawalUserID: body.WithdrawalUserID,
 		Declarado: declared, Piezas: piezasDelBody(body.Counts),
@@ -498,7 +498,7 @@ func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	u, _ := userFrom(r.Context())
-	rows, total, err := h.backoffice.SessionHistoryFor(r.Context(), f, slices.Contains(h.permissions(u.Role), domain.PermCashConfigure))
+	rows, total, err := h.backoffice.SessionHistoryFor(r.Context(), f, slices.Contains(h.permissionsOf(r.Context(), u), domain.PermCashConfigure))
 	if err != nil {
 		Error(w, err)
 		return
@@ -514,7 +514,7 @@ func (h *Handlers) CashSessionDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := userFrom(r.Context())
-	view, err := h.backoffice.SessionDetailFor(r.Context(), id, slices.Contains(h.permissions(u.Role), domain.PermCashConfigure))
+	view, err := h.backoffice.SessionDetailFor(r.Context(), id, slices.Contains(h.permissionsOf(r.Context(), u), domain.PermCashConfigure))
 	if err != nil {
 		Error(w, err)
 		return
@@ -1177,7 +1177,7 @@ func (h *Handlers) CancelExpense(w http.ResponseWriter, r *http.Request) {
 	}
 	u, _ := userFrom(r.Context())
 	// Sacar un pago del arqueo es lo mismo que su casilla: el servicio lo niega sin cash.adjust_count.
-	canAdjust := slices.Contains(h.permissions(u.Role), domain.PermCashAdjustCount)
+	canAdjust := slices.Contains(h.permissionsOf(r.Context(), u), domain.PermCashAdjustCount)
 	if err := h.backoffice.CancelExpense(r.Context(), id, body.Reason, u.ID, canAdjust); err != nil {
 		Error(w, err)
 		return

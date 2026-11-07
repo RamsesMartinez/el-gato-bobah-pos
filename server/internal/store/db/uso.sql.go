@@ -12,10 +12,12 @@ import (
 )
 
 const countActiveUsersByRoleAll = `-- name: CountActiveUsersByRoleAll :many
-select role, count(*)::bigint as activos
-from users
-where is_active
-group by role
+select coalesce(s.code, '')::text as role, count(*)::bigint as activos
+  from users u
+  join roles r on r.id = u.role_id
+  left join system_roles s on s.id = r.system_role_id
+ where u.is_active
+ group by 1
 `
 
 type CountActiveUsersByRoleAllRow struct {
@@ -33,6 +35,8 @@ type CountActiveUsersByRoleAllRow struct {
 //
 // Se pregunta al ESCRIBIR porque es el único momento en que la decisión no se puede deshacer — y
 // porque quien lee no podría: la consola no tiene permiso sobre `users`.
+//
+// Por rol SUGERIDO (spec 068): la gente de un rol propio sale con rol ” y cae siempre en el balde.
 func (q *Queries) CountActiveUsersByRoleAll(ctx context.Context) ([]CountActiveUsersByRoleAllRow, error) {
 	rows, err := q.db.Query(ctx, countActiveUsersByRoleAll)
 	if err != nil {

@@ -24,7 +24,7 @@ beforeEach(() => {
   ]);
   waste.list.mockResolvedValue([row(1, 'Leche entera', 'Caducó'), row(2, 'Frappé de fresa', 'Consumo del personal')]);
 });
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.useRealTimers(); });
 
 function montar() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -67,6 +67,10 @@ describe('pestaña «Se echó a perder» (spec 039, maqueta B)', () => {
   });
 
   test('el rango tiene atajos y no usa el calendario nativo', async () => {
+    // Un miércoles a media mitad del mes: el día en que la semana empieza el 1, «esta semana» y «este
+    // mes» son el mismo rango y no hay segunda consulta que esperar (falló así el 2026-11-07).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-18T18:00:00Z'));
     montar();
     expect(await screen.findByRole('button', { name: 'Esta semana', pressed: true })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Este mes' }));

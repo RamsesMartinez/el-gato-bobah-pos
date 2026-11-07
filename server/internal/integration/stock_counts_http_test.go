@@ -3,6 +3,11 @@
 package integration
 
 import (
+	"net/http"
+	"strconv"
+	"strings"
+	"testing"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
@@ -10,10 +15,6 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
-	"net/http"
-	"strconv"
-	"strings"
-	"testing"
 )
 
 // Conteo por el router real (spec 038, historia 3).
@@ -95,12 +96,12 @@ func TestStockCountsHTTP(t *testing.T) {
 // configura sin contar, no.
 func TestTheCountPlaceIsSetByWhoCounts(t *testing.T) {
 	t.Parallel()
-	only := func(p domain.Permission) httpapi.PermissionResolver {
+	only := func(p domain.Permission) func(domain.Role) []domain.Permission {
 		return func(domain.Role) []domain.Permission { return []domain.Permission{p} }
 	}
 	for _, c := range []struct {
 		name   string
-		perms  httpapi.PermissionResolver
+		perms  func(domain.Role) []domain.Permission
 		denied bool
 	}{
 		{"quien cuenta sí", only(domain.PermInventoryCount), false},
@@ -111,7 +112,7 @@ func TestTheCountPlaceIsSetByWhoCounts(t *testing.T) {
 			jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
 			h := httpapi.NewHandlers(httpapi.Deps{
 				JWT: jm, Backoffice: app.NewBackofficeService(st, nil), MenuCache: cache.NewMenuCache(""),
-				Broker: realtime.NewBroker(), Permissions: c.perms,
+				Broker: realtime.NewBroker(), Permissions: porRol(c.perms),
 			})
 			r := httpapi.Router(config.Config{}, jm, h, st)
 			id := makeUser(t, st, "lugar_"+itoa(len(c.name)), "cajero")

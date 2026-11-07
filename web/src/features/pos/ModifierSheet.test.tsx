@@ -361,3 +361,29 @@ describe('las recomendadas se nombran para quien opera', () => {
     expect(screen.getByText('Las demás')).toBeInTheDocument();
   });
 });
+
+// Roles por empresa (spec 068): archivar opciones desde la hoja es de quien configura el menú, por
+// permiso. Un admin cuyo rol lo perdió no lo ve; un rol propio con el permiso, sí.
+describe('archivar opciones se ofrece por permiso', () => {
+  function pintarCon(role: string, permissions: string[]) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role, permissions } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <Provider>
+          <ModifierSheet product={conCortesia} lista={null} isOpen onClose={() => {}} onConfirm={vi.fn()} />
+        </Provider>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('sin menu.configure no hay «Ver archivadas», aunque el rol se llame admin', () => {
+    pintarCon('admin', []);
+    expect(screen.queryByRole('button', { name: /Ver archivadas/ })).toBeNull();
+  });
+
+  it('con menu.configure sí, aunque el rol sea propio', () => {
+    pintarCon('', ['menu.configure']);
+    expect(screen.getByRole('button', { name: /Ver archivadas/ })).toBeInTheDocument();
+  });
+});

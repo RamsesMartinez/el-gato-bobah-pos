@@ -222,7 +222,7 @@ func newLimitsAPI(t *testing.T) (http.Handler, *store.Store, func(username, role
 	}
 	h := httpapi.NewHandlers(httpapi.Deps{
 		JWT: jm, Backoffice: app.NewBackofficeService(st, nil), MenuCache: cache.NewMenuCache(""),
-		Broker: realtime.NewBroker(), Permissions: perms,
+		Broker: realtime.NewBroker(), Permissions: porRol(perms),
 	})
 	r := httpapi.Router(config.Config{}, jm, h, st)
 	token := func(username, role string) string {

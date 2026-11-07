@@ -12,7 +12,6 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
-	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
@@ -235,7 +234,7 @@ func TestAnularUnGastoExigeElPermiso(t *testing.T) {
 	cajero := makeUser(t, g.st, "cajero_216", "cajero")
 	for _, c := range []struct {
 		name  string
-		perms httpapi.PermissionResolver
+		perms func(domain.Role) []domain.Permission
 		user  domain.User
 	}{
 		{"admin sin el permiso", sinAnular, domain.User{ID: g.admin, CompanyID: defaultCompanyID, Name: "a", Role: domain.RoleAdmin}},

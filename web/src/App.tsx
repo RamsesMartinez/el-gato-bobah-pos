@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
-import { restoreSession } from './api/client';
+import { restoreSession, watchPermissions } from './api/client';
 import { AppShell } from './app/AppShell';
 import { MedidorDeUso } from './app/MedidorDeUso';
 import { MedidorDeToques } from './app/MedidorDeToques';
-import { RequireAuth, RequireRole } from './app/RequireAuth';
+import { RequireAuth, RequirePermission } from './app/RequireAuth';
 import { BloqueoPorInactividad } from './features/auth/BloqueoPorInactividad';
 import { LoginPage } from './features/auth/LoginPage';
 import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
@@ -37,6 +37,8 @@ export const App = () => {
     localStorage.removeItem('egb:session:v1');
     void restoreSession();
   }, []);
+  // Los permisos de la sesión se vuelven a pedir al volver al frente (roles por empresa, FR-018).
+  useEffect(() => watchPermissions(), []);
 
   return (
   <BrowserRouter>
@@ -63,27 +65,27 @@ export const App = () => {
       >
         <Route path="/pos" element={<POSPage />} />
         <Route path="/pedidos" element={<OrdersBoardPage />} />
-        <Route path="/ventas" element={<RequireRole path="/ventas"><SalesPage /></RequireRole>} />
-        <Route path="/caja" element={<RequireRole path="/caja"><CashPage /></RequireRole>} />
-        <Route path="/gastos" element={<RequireRole path="/gastos"><ExpensesPage /></RequireRole>} />
-        <Route path="/almacen" element={<RequireRole path="/almacen"><StockPage /></RequireRole>} />
-        <Route path="/reportes" element={<RequireRole path="/reportes"><ReportsPage /></RequireRole>} />
-        <Route path="/catalogo" element={<RequireRole path="/catalogo"><CatalogPage /></RequireRole>}>
+        <Route path="/ventas" element={<RequirePermission path="/ventas"><SalesPage /></RequirePermission>} />
+        <Route path="/caja" element={<RequirePermission path="/caja"><CashPage /></RequirePermission>} />
+        <Route path="/gastos" element={<RequirePermission path="/gastos"><ExpensesPage /></RequirePermission>} />
+        <Route path="/almacen" element={<RequirePermission path="/almacen"><StockPage /></RequirePermission>} />
+        <Route path="/reportes" element={<RequirePermission path="/reportes"><ReportsPage /></RequirePermission>} />
+        <Route path="/catalogo" element={<RequirePermission path="/catalogo"><CatalogPage /></RequirePermission>}>
           <Route index element={<Navigate to="/catalogo/productos" replace />} />
           <Route path="productos" element={<ProductsAdminPage />} />
           <Route path="opciones" element={<ModifierOptionsPage />} />
           <Route path="recetas" element={<RecipesPage />} />
         </Route>
-        {/* Menús de plataforma (spec 020). `RequireRole` es UX/espejo: la barrera real la pone
-            `RequireRole(RoleAdmin, RoleGerente)` en el router del backend. */}
-        <Route path="/plataformas" element={<RequireRole path="/plataformas"><PlataformasPage /></RequireRole>} />
-        <Route path="/plataformas/:id/emparejar" element={<RequireRole path="/plataformas"><EmparejarConexionPage /></RequireRole>} />
+        {/* Menús de plataforma (spec 020). `RequirePermission` es UX/espejo: la barrera real la pone
+            `RequirePermission` en el router del backend. */}
+        <Route path="/plataformas" element={<RequirePermission path="/plataformas"><PlataformasPage /></RequirePermission>} />
+        <Route path="/plataformas/:id/emparejar" element={<RequirePermission path="/plataformas"><EmparejarConexionPage /></RequirePermission>} />
         {/* rutas viejas → redirigen al hub (compatibilidad con enlaces existentes) */}
         <Route path="/productos" element={<Navigate to="/catalogo/productos" replace />} />
         <Route path="/opciones" element={<Navigate to="/catalogo/opciones" replace />} />
-        <Route path="/empleados" element={<RequireRole path="/empleados"><EmployeesPage /></RequireRole>} />
-        <Route path="/negocio" element={<RequireRole path="/negocio"><BusinessSettingsPage /></RequireRole>} />
-        <Route path="/impresion" element={<RequireRole path="/impresion"><PrintSettingsPage /></RequireRole>} />
+        <Route path="/empleados" element={<RequirePermission path="/empleados"><EmployeesPage /></RequirePermission>} />
+        <Route path="/negocio" element={<RequirePermission path="/negocio"><BusinessSettingsPage /></RequirePermission>} />
+        <Route path="/impresion" element={<RequirePermission path="/impresion"><PrintSettingsPage /></RequirePermission>} />
         <Route path="/apariencia" element={<AppearancePage />} />
         <Route path="/cuenta" element={<AccountPage />} />
         <Route path="/asistencia" element={<AttendancePage />} />

@@ -138,7 +138,7 @@ func (h *Handlers) UndoWaste(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := userFrom(r.Context())
-	canConfigure := slices.Contains(h.permissionsOf(u.Role), domain.PermInventoryConfigure)
+	canConfigure := slices.Contains(h.permissionsOf(r.Context(), u), domain.PermInventoryConfigure)
 	if err := h.backoffice.UndoWaste(r.Context(), id, u.ID, canConfigure); err != nil {
 		Error(w, err)
 		return

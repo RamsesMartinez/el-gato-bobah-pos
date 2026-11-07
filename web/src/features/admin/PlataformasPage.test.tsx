@@ -39,7 +39,7 @@ beforeEach(() => {
       : { available: false, configured: false, needsRecapture: false },
   );
   vi.mocked(api.saveCredentials).mockResolvedValue(undefined);
-  useSessionStore.setState({ user: { id: 1, name: 'Admin', role: 'admin' } as never });
+  useSessionStore.setState({ user: { id: 1, name: 'Admin', role: 'admin', permissions: ['platforms.configure', 'platforms.credentials'] } as never });
   vi.mocked(api.tiendasDisponibles).mockResolvedValue([
     { externalStoreId: '3806dacf-965d-4b09-91b6-6d40ad5e15db', name: 'El Gato Bobah', city: 'Monterrey', posConnected: true, alreadyAdded: false },
     { externalStoreId: '9f1c2b7e-0000-4000-8000-aaaaaaaaaaaa', name: 'El Gato Bobah Sur', city: 'Monterrey', posConnected: false, alreadyAdded: true },
@@ -348,12 +348,26 @@ describe('Acceso a la app de la plataforma', () => {
 
   // El servidor solo deja escribir al administrador; el botón no se ofrece a quien lo verá fallar.
   it('un gerente ve el estado pero no puede cambiar el acceso', async () => {
-    useSessionStore.setState({ user: { id: 2, name: 'Gerente', role: 'gerente' } as never });
+    useSessionStore.setState({ user: { id: 2, name: 'Gerente', role: 'gerente', permissions: ['platforms.configure'] } as never });
     montar();
     expect(await screen.findByText(/· Falta conectar$/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Conectar con Uber Eats/ })).not.toBeInTheDocument();
     // Sin botón, tiene que decir a quién pedírselo: si no, parece un error del sistema.
-    expect(screen.getByText(/Pídele a un administrador/)).toBeInTheDocument();
+    expect(screen.getByText(/Pídele a quien tenga el acceso a las apps/)).toBeInTheDocument();
+  });
+
+  // Roles por empresa (spec 068): lo decide el permiso, no el nombre del rol.
+  it('un admin cuyo rol perdió platforms.credentials no puede cambiar el acceso', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Admin', role: 'admin', permissions: ['platforms.configure'] } as never });
+    montar();
+    expect(await screen.findByText(/· Falta conectar$/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Conectar con Uber Eats/ })).not.toBeInTheDocument();
+  });
+
+  it('un rol propio con platforms.credentials sí puede conectar', async () => {
+    useSessionStore.setState({ user: { id: 3, name: 'Encargada', role: '', permissions: ['platforms.configure', 'platforms.credentials'] } as never });
+    montar();
+    expect(await screen.findByRole('button', { name: /Conectar con Uber Eats/ })).toBeInTheDocument();
   });
 
   // Sin credenciales no hay lista de tiendas. Decir «no se pudo traer la lista, escribe el id» manda
@@ -406,7 +420,7 @@ describe('Acceso a la app de la plataforma', () => {
 
   // La llave de pedidos también es solo del administrador (el servidor responde 403 al gerente).
   it('un gerente ve la llave de pedidos pero no puede ponerla ni retirar la anterior', async () => {
-    useSessionStore.setState({ user: { id: 2, name: 'Gerente', role: 'gerente' } as never });
+    useSessionStore.setState({ user: { id: 2, name: 'Gerente', role: 'gerente', permissions: ['platforms.configure'] } as never });
     vi.mocked(api.listarConexiones).mockResolvedValue([
       {
         id: 1, platformId: 6, platformName: 'Uber Eats', externalStoreId: 'abc',

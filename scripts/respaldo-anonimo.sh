@@ -266,6 +266,8 @@ update suppliers set name = 'Proveedor ' || id;
 -- presentación y no en nulo: dos «Caja» del mismo insumo con marca distinta chocarían en el índice
 -- único al quedar sin marca.
 update ingredient_presentations set brand = 'Marca ' || id where brand is not null;
+-- El nombre de un rol propio lo escribe la empresa y puede llevar el de una persona (spec 068).
+update roles set name = 'Rol ' || id where name is not null;
 update expense_items set presentation_brand = 'Marca ' || coalesce(presentation_id, id) where presentation_brand is not null;
 -- Preferencias de pantalla: la API acepta cualquier clave y cualquier JSON de quien tenga sesión, así
 -- que no se puede prometer qué hay adentro. Ninguna prueba las necesita.
@@ -307,6 +309,7 @@ PEDIDOS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "select count(*) from orders"
 # nombrada aquí, en un renglón de su tabla.
 FUGAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "
   select (select count(*) from orders where customer_name is not null or notes is not null)
+       + (select count(*) from roles where name is not null and name <> 'Rol ' || id)
        + (select count(*) from orders where cancel_reason <> 'motivo anonimizado' or refund_reason <> 'motivo anonimizado' or written_off_reason <> 'motivo anonimizado')
        + (select count(*) from order_lines where notes is not null or cancel_reason <> 'motivo anonimizado')
        + (select count(*) from order_drafts where customer_name is not null)

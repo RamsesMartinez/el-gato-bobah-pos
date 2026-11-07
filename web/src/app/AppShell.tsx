@@ -9,7 +9,7 @@ import { posApi } from '../api/pos';
 import { attendanceApi } from '../api/attendance';
 import { useSessionStore } from '../stores/session';
 import { useUiStore } from '../stores/ui';
-import { canAccess } from './roles';
+import { canOpen } from './routes';
 import { can } from './permissions';
 import { wasteApi } from '../api/waste';
 import { RADIUS } from '../theme/ui';
@@ -27,7 +27,7 @@ export function AppShell() {
   const needRefresh = useAppUpdate((s) => s.needRefresh);
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  // No mostrar accesos que el rol no puede usar (evita el 403 sorpresa). El backend sigue
+  // No mostrar accesos que los permisos no abren (evita el 403 sorpresa). El backend sigue
   // siendo la autoridad; esto es solo UX.
   // La asistencia es activable por empresa: apagada, su ítem no ocupa lugar en el riel.
   const { data: attendance } = useQuery({ queryKey: ['asistencia', 'roster'], queryFn: attendanceApi.roster, staleTime: 60_000 });
@@ -37,8 +37,7 @@ export function AppShell() {
     const el = navList.current;
     setMoreBelow(!!el && el.scrollHeight - el.scrollTop - el.clientHeight > 4);
   }, []);
-  // Lo que se echó a perder (spec 039) se ofrece por permiso: el rol no basta para decirlo.
-  const nav = NAV.filter((n) => canAccess(user?.role, n.to) && (n.to !== '/asistencia' || attendance?.enabled === true)
+  const nav = NAV.filter((n) => canOpen(n.to, user) && (n.to !== '/asistencia' || attendance?.enabled === true)
     && (!n.permission || can(n.permission, user)));
   // Las mermas por aprobar, para el número del riel: en Vender y Pedidos es el único aviso.
   const approver = can('inventory.write_off_approve', user);

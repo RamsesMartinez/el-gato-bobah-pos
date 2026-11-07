@@ -206,7 +206,7 @@ func TestNoSePuedeDarDeAltaConElPinDeOtro(t *testing.T) {
 		t.Fatalf("SetPIN: %v", err)
 	}
 
-	_, err := users.Create(ctx, app.CreateUserInput{
+	_, err := users.Create(ctx, app.CreateUserInput{ActorPerms: domain.AllPermissions(),
 		Name: "Beto", Username: ptrDePrueba("beto_alta"), Role: "cajero",
 		Password: "Contrasena-Larga-1!", PIN: "482715",
 	})
@@ -225,7 +225,7 @@ func TestNoSePuedeDarDeAltaConUnPinTrivial(t *testing.T) {
 	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
 
 	for _, pin := range []string{"1234", "0000", "4321"} {
-		_, err := users.Create(ctx, app.CreateUserInput{
+		_, err := users.Create(ctx, app.CreateUserInput{ActorPerms: domain.AllPermissions(),
 			Name: "Trivial", Username: ptrDePrueba("trivial_" + pin), Role: "cajero",
 			Password: "Contrasena-Larga-1!", PIN: pin,
 		})

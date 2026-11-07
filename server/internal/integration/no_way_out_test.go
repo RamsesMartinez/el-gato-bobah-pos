@@ -200,12 +200,12 @@ func TestCancelPendingClosesWithWhatWasDelivered(t *testing.T) {
 }
 
 // ordersAPI arma el router real sobre el rol de la aplicación. resolve nil = los permisos de hoy.
-func ordersAPI(t *testing.T, st *store.Store, resolve httpapi.PermissionResolver) (http.Handler, func(username, role string) (int64, string)) {
+func ordersAPI(t *testing.T, st *store.Store, resolve func(domain.Role) []domain.Permission) (http.Handler, func(username, role string) (int64, string)) {
 	t.Helper()
 	appSt := appRoleStore(t)
 	jm := auth.NewManager(secretoDelNegocioEnPruebas, nil)
 	h := httpapi.NewHandlers(httpapi.Deps{
-		JWT: jm, Orders: app.NewOrdersService(appSt, clock), Broker: realtime.NewBroker(), Permissions: resolve,
+		JWT: jm, Orders: app.NewOrdersService(appSt, clock), Broker: realtime.NewBroker(), Permissions: porRol(resolve),
 	})
 	r := httpapi.Router(config.Config{}, jm, h, appSt)
 	token := func(username, role string) (int64, string) {
