@@ -104,22 +104,33 @@ let refreshingPermissions: Promise<void> | null = null;
 // cambia un rol y el servidor lo aplica en la siguiente petición, pero la pantalla seguiría
 // ofreciendo lo de antes hasta volver a entrar. Una sola petición en vuelo aunque lleguen varios 403.
 // Solo se aplica si sigue siendo la misma persona: un desbloqueo con el PIN de otra mientras estaba
-// en vuelo no hereda los permisos de quien se fue.
+// en vuelo no hereda los permisos de quien se fue. A quien entró se le pide una vez más al terminar:
+// su 403 reutilizó la promesa de la anterior y, sin eso, se quedaría con los permisos con que entró.
 export function refreshPermissions(): Promise<void> {
   if (refreshingPermissions) return refreshingPermissions;
-  const { user, token } = useSessionStore.getState();
-  if (!user || !token) return Promise.resolve();
-  refreshingPermissions = request<MeResponse>('GET', '/auth/me')
-    .then((me) => {
-      const current = useSessionStore.getState().user;
-      if (!current || current.id !== me.id || current.companyId !== me.companyId) return;
-      useSessionStore.setState({
-        user: { ...current, name: me.name, role: me.role, roleId: me.roleId, roleName: me.roleName, permissions: me.permissions },
-      });
-    })
-    .catch(() => { /* sin red o sin sesión: se queda lo que había y el servidor sigue siendo la barrera */ })
-    .finally(() => { refreshingPermissions = null; });
+  refreshingPermissions = fetchPermissions(true).finally(() => { refreshingPermissions = null; });
   return refreshingPermissions;
+}
+
+async function fetchPermissions(retryIfSwitched: boolean): Promise<void> {
+  const { user, token } = useSessionStore.getState();
+  if (!user || !token) return;
+  let me: MeResponse;
+  try {
+    me = await request<MeResponse>('GET', '/auth/me');
+  } catch {
+    return; // sin red o sin sesión: se queda lo que había y el servidor sigue siendo la barrera
+  }
+  const current = useSessionStore.getState().user;
+  if (!current) return;
+  if (current.id === me.id && current.companyId === me.companyId) {
+    useSessionStore.setState({
+      user: { ...current, name: me.name, role: me.role, roleId: me.roleId, roleName: me.roleName, permissions: me.permissions },
+    });
+    return;
+  }
+  const switched = current.id !== user.id || current.companyId !== user.companyId;
+  if (retryIfSwitched && switched) await fetchPermissions(false);
 }
 
 // watchPermissions refresca los permisos cada vez que la pestaña vuelve al frente: una tableta que

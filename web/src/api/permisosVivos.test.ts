@@ -85,6 +85,35 @@ describe('los permisos de la sesión se refrescan', () => {
     expect(useSessionStore.getState().user).toMatchObject({ id: 9, permissions: [] });
   });
 
+  // B entra por PIN mientras el /auth/me de A está en vuelo: el 403 de B reutilizaba la promesa de A,
+  // cuya respuesta se descarta, y B se quedaba con los permisos con que entró.
+  test('si cambió el usuario mientras estaba en vuelo, se pide una vez más para el actual', async () => {
+    let veces = 0;
+    rutas['/auth/me'] = () => {
+      veces++;
+      if (veces === 1) {
+        useSessionStore.setState({ user: { id: 9, companyId: 2, name: 'Beto', role: 'mesero', permissions: [] } });
+        return json(200, me());
+      }
+      return json(200, me({ id: 9, name: 'Beto', permissions: ['sales.view'] }));
+    };
+    await refreshPermissions();
+    expect(useSessionStore.getState().user).toMatchObject({ id: 9, permissions: ['sales.view'] });
+    expect(veces).toBe(2);
+  });
+
+  test('si el usuario sigue cambiando, no se pide más de dos veces', async () => {
+    let veces = 0;
+    rutas['/auth/me'] = () => {
+      veces++;
+      useSessionStore.setState({ user: { id: 100 + veces, companyId: 2, name: 'Otro', role: '', permissions: [] } });
+      return json(200, me());
+    };
+    await refreshPermissions();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(veces).toBe(2);
+  });
+
   test('sin sesión no pide nada', async () => {
     useSessionStore.setState({ token: null, user: null, status: 'anon' });
     await refreshPermissions();

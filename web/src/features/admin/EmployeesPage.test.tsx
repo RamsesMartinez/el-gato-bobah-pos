@@ -1,8 +1,9 @@
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from '../../components/ui/provider';
+import { ApiError } from '../../api/client';
 import { useSessionStore } from '../../stores/session';
 import { EmployeesPage } from './EmployeesPage';
 
@@ -12,6 +13,7 @@ const api = vi.hoisted(() => ({
   permissionCatalog: vi.fn(),
   createUser: vi.fn(),
   updateUser: vi.fn(),
+  deactivateRole: vi.fn(),
 }));
 vi.mock('../../api/admin', () => ({ adminApi: api }));
 
@@ -131,4 +133,91 @@ test('el Picker de rol sobre el diálogo de edición responde y cerrarlo no cier
   await u.click(screen.getByRole('button', { name: 'Guardar datos' }));
   await waitFor(() => expect(api.updateUser).toHaveBeenCalledTimes(1));
   expect(api.updateUser.mock.calls[0]).toEqual([2, expect.objectContaining({ roleId: 3 })]);
+});
+
+// El servidor rechaza (403) asignar un rol que puede más que quien actúa y tocar a un empleado que
+// puede más que él: la pantalla no lo ofrece.
+describe('nadie administra a quien puede más que él', () => {
+  const ROLES_CON_PERMISOS = [
+    { ...ROLES[0], permissions: ['employees.manage', 'roles.manage', 'cash.configure'] },
+    { ...ROLES[1], permissions: ['cash.operate'] },
+    { ...ROLES[2], active: true, permissions: ['cash.operate'] },
+  ];
+  beforeEach(() => {
+    api.roles.mockResolvedValue({ items: ROLES_CON_PERMISOS });
+    api.users.mockResolvedValue({ items: [
+      { id: 1, name: 'Ana', username: 'ana', role: 'cajero', roleId: 3, isActive: true },
+      { id: 4, name: 'Dora', username: 'dora', role: 'admin', roleId: 1, isActive: true },
+    ] });
+    sesion(['employees.manage', 'roles.manage', 'cash.operate']);
+  });
+
+  test('el alta solo ofrece roles que caben en los permisos de la sesión', async () => {
+    const u = userEvent.setup();
+    montar();
+    await screen.findByText('Ana');
+    await u.click(screen.getByRole('button', { name: /Elige un rol/ }));
+    const hoja = await screen.findByRole('dialog');
+    expect(within(hoja).getByRole('button', { name: 'Cajero' })).toBeInTheDocument();
+    expect(within(hoja).queryByRole('button', { name: /^Admin/ })).toBeNull();
+  });
+
+  test('al editar a alguien que cabe, el Picker no ofrece un rol que puede más', async () => {
+    const u = userEvent.setup();
+    montar();
+    const fila = (await screen.findByText('Ana')).closest('tr')!;
+    await u.click(within(fila).getByRole('button', { name: 'Gestionar' }));
+    const dialogo = await screen.findByRole('dialog');
+    await u.click(within(dialogo).getByRole('button', { name: /Cajero/ }));
+    const hojas = await screen.findAllByRole('dialog');
+    expect(within(hojas[hojas.length - 1]).queryByRole('button', { name: /^Admin/ })).toBeNull();
+  });
+
+  test('a quien puede más no se le editan datos, contraseña ni PIN', async () => {
+    const u = userEvent.setup();
+    montar();
+    const fila = (await screen.findByText('Dora')).closest('tr')!;
+    await u.click(within(fila).getByRole('button', { name: 'Gestionar' }));
+    const dialogo = await screen.findByRole('dialog');
+    expect(within(dialogo).getByText('Esta persona tiene permisos que tu usuario no tiene: no puedes cambiar sus datos, contraseña ni PIN.')).toBeInTheDocument();
+    expect(within(dialogo).queryByRole('button', { name: 'Guardar datos' })).toBeNull();
+    expect(within(dialogo).queryByRole('button', { name: 'Restablecer' })).toBeNull();
+    expect(within(dialogo).queryByRole('button', { name: 'Fijar PIN' })).toBeNull();
+    expect(within(dialogo).getByRole('button', { name: 'Horario y asistencia' })).toBeInTheDocument();
+  });
+});
+
+// Con el filtro «Solo <rol>» y nadie con ese rol, la tabla quedaba vacía sin decir nada.
+test('el filtro por rol sin nadie dice «Nadie tiene este rol» y ofrece quitarlo', async () => {
+  const u = userEvent.setup();
+  api.roles.mockResolvedValue({ items: [...ROLES, { ...ROLES[2], id: 12, name: 'Mesero', active: true, activeUsers: 0, allUsers: 0 }] });
+  montar();
+  await u.click(await screen.findByRole('tab', { name: 'Roles' }));
+  // Se llega a Personal filtrado por «Ver a esas personas».
+  api.deactivateRole.mockRejectedValue(new ApiError(409, 'ROLE_IN_USE', 'Hay personas.', 'r'));
+  await u.click(await screen.findByRole('button', { name: /^Mesero/ }));
+  const hoja = await screen.findByRole('dialog');
+  await u.click(within(hoja).getByRole('button', { name: 'Inactivar' }));
+  await u.click(await within(hoja).findByRole('button', { name: 'Ver a esas personas' }));
+  expect(await screen.findByText('Nadie tiene este rol')).toBeInTheDocument();
+  await u.click(screen.getByRole('button', { name: 'Quitar el filtro' }));
+  expect(await screen.findByText('Ana')).toBeInTheDocument();
+  expect(screen.queryByText('Nadie tiene este rol')).toBeNull();
+});
+
+// Tocar el texto «Activo» no movía el interruptor, y «Guardar datos» decía «Guardado» con la persona
+// todavía activa: quien administra creía que la había dado de baja.
+test('todo el renglón «Activo» es el control y mide al menos 44 px', async () => {
+  const u = userEvent.setup();
+  montar();
+  const fila = (await screen.findByText('Beto')).closest('tr')!;
+  await u.click(within(fila).getByRole('button', { name: 'Gestionar' }));
+  const dialogo = await screen.findByRole('dialog');
+  const renglon = within(dialogo).getByText('Activo').closest('label')!;
+  expect(renglon).not.toBeNull();
+  expect(px(renglon)).toBeGreaterThanOrEqual(44);
+  await u.click(within(dialogo).getByText('Activo'));
+  await u.click(within(dialogo).getByRole('button', { name: 'Guardar datos' }));
+  await waitFor(() => expect(api.updateUser).toHaveBeenCalledTimes(1));
+  expect(api.updateUser.mock.calls[0]).toEqual([2, expect.objectContaining({ isActive: false })]);
 });

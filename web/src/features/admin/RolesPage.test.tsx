@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from '../../components/ui/provider';
 import { ApiError } from '../../api/client';
+import { toaster } from '../../components/ui/toaster';
+import { useSessionStore } from '../../stores/session';
 import { RolesPage } from './RolesPage';
 
 const api = vi.hoisted(() => ({
@@ -40,12 +42,16 @@ function montar(props: Partial<Parameters<typeof RolesPage>[0]> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const onCreatingChange = vi.fn();
   const onShowPeople = vi.fn();
-  render(
+  const r = render(
     <QueryClientProvider client={qc}><Provider>
       <RolesPage creating={false} onCreatingChange={onCreatingChange} onShowPeople={onShowPeople} {...props} />
     </Provider></QueryClientProvider>,
   );
-  return { onCreatingChange, onShowPeople };
+  return { onCreatingChange, onShowPeople, qc, ...r };
+}
+
+function sesion(permissions: string[]) {
+  useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Dueña', role: '', permissions } });
 }
 
 const alto = (el: Element) => parseInt(getComputedStyle(el).minHeight || '0', 10);
@@ -65,6 +71,7 @@ beforeEach(() => {
   api.deactivateRole.mockResolvedValue({ id: 3 });
   api.reactivateRole.mockResolvedValue({ id: 9 });
   api.deleteRole.mockResolvedValue(undefined);
+  sesion(ALL);
 });
 
 describe('lista de roles', () => {
@@ -185,7 +192,20 @@ describe('acciones del rol', () => {
     montar();
     const hoja = await abrir(u, 'Cajero');
     await u.click(within(hoja).getByRole('button', { name: 'Volver a lo sugerido' }));
+    // Deshace los ajustes de todas las personas con ese rol: se confirma antes.
+    expect(await screen.findByText('¿Regresar Cajero a lo sugerido?')).toBeInTheDocument();
+    expect(api.resetRole).not.toHaveBeenCalled();
+    await u.click(screen.getByRole('button', { name: 'Regresar' }));
     await waitFor(() => expect(api.resetRole).toHaveBeenCalledWith(3, 5));
+  });
+
+  test('un propio que ya tuvo alguien dice por qué no se borra', async () => {
+    const u = userEvent.setup();
+    api.roles.mockResolvedValue({ items: [ADMIN, CAJERO, { ...BARISTA, allUsers: 2 }] });
+    montar();
+    const hoja = await abrir(u, 'Barista');
+    expect(within(hoja).queryByRole('button', { name: 'Borrar' })).toBeNull();
+    expect(within(hoja).getByText('Ya lo tuvo alguien: solo se puede inactivar')).toBeInTheDocument();
   });
 
   test('inactivar con personas activas muestra cuántas y lleva a Personal filtrado', async () => {
@@ -258,5 +278,125 @@ describe('rol propio nuevo', () => {
     await u.type(within(hoja).getByPlaceholderText('Nombre del rol'), 'cajero');
     await u.click(within(hoja).getByRole('button', { name: 'Crear' }));
     expect(await screen.findAllByText('Ya hay un rol que se llama así.')).not.toHaveLength(0);
+  });
+});
+
+// La hoja calculaba la diferencia contra el rol RECARGADO: la lista ['roles'] se vuelve a pedir sola
+// (al volver al frente, o al guardar otra cosa) y lo que otra persona agregó mientras la hoja estaba
+// abierta viajaba como «quitado», con la versión nueva, y el servidor lo aceptaba.
+describe('la hoja compara contra lo que mostró al abrir', () => {
+  test('un permiso que otra persona agregó con la hoja abierta no viaja como quitado', async () => {
+    const u = userEvent.setup();
+    const { qc } = montar();
+    const hoja = await abrir(u, 'Cajero');
+    // Otra persona le agrega «Configurar cajas» al Cajero.
+    api.roles.mockResolvedValue({ items: [ADMIN, { ...CAJERO, version: 6, permissions: [...CAJERO.permissions, 'cash.configure'], removed: [] }, BARISTA] });
+    await qc.invalidateQueries({ queryKey: ['roles'] });
+    await waitFor(() => expect(api.roles).toHaveBeenCalledTimes(2));
+    // Sin tocar nada, la hoja no dice que hay cambios.
+    expect(within(hoja).getByText('0 cambios')).toBeInTheDocument();
+
+    await u.click(within(hoja).getByRole('button', { name: /Personal/ }));
+    await u.click(within(hoja).getByRole('checkbox', { name: /Administrar empleados/ }));
+    await u.click(within(hoja).getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(api.updateRole).toHaveBeenCalledTimes(1));
+    expect(api.updateRole).toHaveBeenCalledWith(3, { version: 5, add: ['employees.manage'] });
+  });
+
+  test('ROLE_CHANGED cierra la hoja, refresca la lista y pide abrir de nuevo', async () => {
+    const u = userEvent.setup();
+    const aviso = vi.spyOn(toaster, 'create');
+    api.updateRole.mockRejectedValue(new ApiError(409, 'ROLE_CHANGED', 'El rol cambió.', 'r9'));
+    montar();
+    const hoja = await abrir(u, 'Cajero');
+    await u.click(within(hoja).getByRole('button', { name: /Pedidos/ }));
+    await u.click(within(hoja).getByRole('checkbox', { name: /Pasar productos/ }));
+    const guardar = within(hoja).getByRole('button', { name: 'Guardar' });
+    await u.click(guardar);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(aviso).toHaveBeenCalledWith(expect.objectContaining({ title: 'Alguien cambió este rol; ábrelo de nuevo' }));
+    await waitFor(() => expect(api.roles).toHaveBeenCalledTimes(2));
+    // La selección vieja no se vuelve a mandar.
+    expect(api.updateRole).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('acciones con cambios sin guardar', () => {
+  test('«Volver a lo sugerido» e «Inactivar» no se ofrecen mientras hay cambios', async () => {
+    const u = userEvent.setup();
+    montar();
+    const hoja = await abrir(u, 'Cajero');
+    await u.click(within(hoja).getByRole('button', { name: /Pedidos/ }));
+    await u.click(within(hoja).getByRole('checkbox', { name: /Pasar productos/ }));
+    expect(within(hoja).getByRole('button', { name: 'Volver a lo sugerido' })).toBeDisabled();
+    expect(within(hoja).getByRole('button', { name: 'Inactivar' })).toBeDisabled();
+    expect(within(hoja).getByText('Guarda o descarta los cambios primero')).toBeInTheDocument();
+  });
+});
+
+test('sin administrar empleados, el rol en uso no ofrece «Ver a esas personas»', async () => {
+  const u = userEvent.setup();
+  sesion(ALL.filter((p) => p !== 'employees.manage'));
+  api.deactivateRole.mockRejectedValue(new ApiError(409, 'ROLE_IN_USE', 'Hay 3 personas activas con este rol.', 'r1'));
+  montar();
+  const hoja = await abrir(u, 'Cajero');
+  await u.click(within(hoja).getByRole('button', { name: 'Inactivar' }));
+  expect(await within(hoja).findByText('Hay 3 personas activas con este rol.')).toBeInTheDocument();
+  expect(within(hoja).queryByRole('button', { name: 'Ver a esas personas' })).toBeNull();
+});
+
+test('un rol propio con el nombre en blanco no se puede guardar', async () => {
+  const u = userEvent.setup();
+  montar();
+  const hoja = await abrir(u, 'Barista');
+  const nombre = within(hoja).getByPlaceholderText('Nombre del rol');
+  await u.clear(nombre);
+  await u.type(nombre, '   ');
+  expect(within(hoja).getByRole('button', { name: 'Guardar' })).toBeDisabled();
+});
+
+// El servidor rechaza dar lo que uno no tiene y tocar un rol que puede más (403): la hoja no lo ofrece.
+describe('nadie administra lo que puede más que él', () => {
+  const MIA = ['orders.cancel', 'orders.move_lines', 'cash.operate', 'employees.manage', 'roles.manage'];
+
+  test('lo que la sesión no tiene no se puede marcar, ni con «Marcar todas»', async () => {
+    const u = userEvent.setup();
+    sesion(MIA);
+    montar();
+    const hoja = await abrir(u, 'Cajero');
+    await u.click(within(hoja).getByRole('button', { name: /^Caja/ }));
+    const ajeno = within(hoja).getByRole('checkbox', { name: /Configurar cajas/ });
+    expect(ajeno).toBeDisabled();
+    expect(within(hoja).getAllByText('Tu usuario no lo tiene').length).toBeGreaterThan(0);
+    await u.click(within(hoja).getByRole('button', { name: 'Marcar todas' }));
+    expect(ajeno).toHaveAttribute('aria-checked', 'false');
+    // Volver a lo sugerido le daría «Configurar cajas»: no se ofrece.
+    expect(within(hoja).queryByRole('button', { name: 'Volver a lo sugerido' })).toBeNull();
+  });
+
+  test('un rol que puede más que la sesión se abre en solo lectura', async () => {
+    const u = userEvent.setup();
+    sesion(MIA);
+    montar();
+    const hoja = await abrir(u, 'Admin');
+    expect(within(hoja).getByText('Este rol tiene permisos que tu usuario no tiene. Solo puedes verlo.')).toBeInTheDocument();
+    expect(within(hoja).queryByRole('button', { name: 'Guardar' })).toBeNull();
+    expect(within(hoja).queryByRole('button', { name: 'Inactivar' })).toBeNull();
+    await u.click(within(hoja).getByRole('button', { name: /Pedidos/ }));
+    expect(within(hoja).getByRole('checkbox', { name: /Pasar productos/ })).toBeDisabled();
+    expect(within(hoja).queryByRole('button', { name: /Quitar todas|Marcar todas/ })).toBeNull();
+  });
+
+  test('copiar permisos de un rol que puede más trae solo lo que la sesión tiene', async () => {
+    const u = userEvent.setup();
+    sesion(MIA);
+    montar({ creating: true });
+    const hoja = await screen.findByRole('dialog');
+    await u.click(within(hoja).getByRole('button', { name: /Copiar permisos de/ }));
+    await u.click(await screen.findByRole('button', { name: 'Admin' }));
+    await u.type(within(hoja).getByPlaceholderText('Nombre del rol'), 'Encargado');
+    await u.click(within(hoja).getByRole('button', { name: 'Crear' }));
+    await waitFor(() => expect(api.createRole).toHaveBeenCalledTimes(1));
+    expect([...api.createRole.mock.calls[0][0].permissions].sort()).toEqual([...MIA].sort());
   });
 });

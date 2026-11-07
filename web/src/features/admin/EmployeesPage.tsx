@@ -17,16 +17,18 @@ import {
 } from '../../components/ui/dialog';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
+import { fitsIn } from './roleEdit';
 
 const MIN_LEN = 12; // espejo de domain.MinPasswordLen (el backend es la autoridad)
 
-// RolePicker ofrece los roles activos de la empresa y, al editar, también el que la persona ya tiene
-// aunque esté inactivo: sin él, el disparador saldría vacío y no se sabría qué rol tiene hoy.
-function RolePicker({ roles, value, onChange, current }: {
-  roles: Role[]; value: number | null; onChange: (id: number) => void; current?: number | null;
+// RolePicker ofrece los roles activos de la empresa que caben en lo que puede la sesión (el servidor
+// rechaza asignar uno que puede más) y, al editar, también el que la persona ya tiene aunque esté
+// inactivo: sin él, el disparador saldría vacío y no se sabría qué rol tiene hoy.
+function RolePicker({ roles, value, onChange, current, mine }: {
+  roles: Role[]; value: number | null; onChange: (id: number) => void; current?: number | null; mine: string[] | undefined;
 }) {
   const options = roles
-    .filter((r) => r.active || r.id === current)
+    .filter((r) => r.id === current || (r.active && fitsIn(r.permissions ?? [], mine)))
     .map((r) => ({ value: String(r.id), label: r.name, hint: r.active ? undefined : 'inactivo' }));
   return (
     <Picker value={value ? String(value) : ''} options={options} onChange={(v) => onChange(Number(v))}
@@ -72,6 +74,7 @@ export function EmployeesPage() {
 
 function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; onClearFilter: () => void }) {
   const qc = useQueryClient();
+  const mine = useSessionStore((s) => s.user?.permissions);
   const { data, isLoading } = useQuery({ queryKey: ['users'], queryFn: adminApi.users });
   const rolesQ = useQuery({ queryKey: ['roles'], queryFn: adminApi.roles });
   const roles = rolesQ.data?.items ?? [];
@@ -117,7 +120,7 @@ function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; o
           <HStack flexWrap="wrap" gap={3}>
             <Input minH="44px" placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} maxW="220px" />
             <Input minH="44px" placeholder="Usuario (login)" value={username} onChange={(e) => setUsername(e.target.value)} maxW="180px" autoCapitalize="none" />
-            <Box minW="200px" flex="1" maxW="260px"><RolePicker roles={roles} value={roleId} onChange={setRoleId} /></Box>
+            <Box minW="200px" flex="1" maxW="260px"><RolePicker roles={roles} value={roleId} onChange={setRoleId} mine={mine} /></Box>
           </HStack>
           <HStack flexWrap="wrap" gap={3} align="end">
             <Box>
@@ -161,9 +164,15 @@ function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; o
             ))}
           </Table.Body>
         </Table.Root>
+        {roleFilter !== null && shown.length === 0 && (
+          <VStack p={6} gap={3}>
+            <Text color="fg.muted">Nadie tiene este rol</Text>
+            <Button minH="44px" variant="outline" onClick={onClearFilter}>Quitar el filtro</Button>
+          </VStack>
+        )}
       </Box>
 
-      {manage && <ManageDialog user={manage} roles={roles} onClose={() => setManage(null)} onSaved={invalidate} onError={onErr}
+      {manage && <ManageDialog user={manage} roles={roles} mine={mine} onClose={() => setManage(null)} onSaved={invalidate} onError={onErr}
         onSchedule={() => { setScheduleUser(manage); setManage(null); }} />}
       {scheduleUser && <ScheduleEditor userId={scheduleUser.id} name={scheduleUser.name} onClose={() => setScheduleUser(null)}
         people={(data?.items ?? []).map((u) => ({ id: u.id, name: u.name }))} />}
@@ -172,8 +181,8 @@ function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; o
 }
 
 // Dialog de gestión: editar datos, resetear contraseña, fijar PIN, activar/desactivar.
-function ManageDialog({ user, roles, onClose, onSaved, onError, onSchedule }: {
-  user: AdminUser; roles: Role[]; onClose: () => void; onSaved: () => void; onError: (e: unknown) => void; onSchedule: () => void;
+function ManageDialog({ user, roles, mine, onClose, onSaved, onError, onSchedule }: {
+  user: AdminUser; roles: Role[]; mine: string[] | undefined; onClose: () => void; onSaved: () => void; onError: (e: unknown) => void; onSchedule: () => void;
 }) {
   const [name, setName] = useState(user.name);
   const [roleId, setRoleId] = useState<number | null>(user.roleId ?? null);
@@ -181,6 +190,10 @@ function ManageDialog({ user, roles, onClose, onSaved, onError, onSchedule }: {
   const [email, setEmail] = useState(user.recoveryEmail ?? '');
   const [newPass, setNewPass] = useState('');
   const [newPin, setNewPin] = useState('');
+  // A quien puede más que la sesión no se le toca nada (el servidor responde 403). Sin su rol en la
+  // lista no se sabe qué puede; el servidor sigue siendo la barrera.
+  const userRole = roles.find((r) => r.id === user.roleId);
+  const outranks = !!userRole && !fitsIn(userRole.permissions ?? [], mine);
 
   const save = useMutation({
     mutationFn: () => adminApi.updateUser(user.id, { name, roleId: roleId!, isActive, recoveryEmail: email || null }),
@@ -205,16 +218,20 @@ function ManageDialog({ user, roles, onClose, onSaved, onError, onSchedule }: {
         <DialogHeader><DialogTitle>{user.name} · @{user.username}</DialogTitle></DialogHeader>
         <DialogCloseTrigger />
         <DialogBody>
+          {outranks ? (
+            <Text color="fg.muted">Esta persona tiene permisos que tu usuario no tiene: no puedes cambiar sus datos, contraseña ni PIN.</Text>
+          ) : (
           <VStack align="stretch" gap={5}>
             <VStack align="stretch" gap={2}>
               <Text fontWeight="700">Datos</Text>
               <Input minH="44px" placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} />
-              <RolePicker roles={roles} value={roleId} onChange={setRoleId} current={user.roleId} />
+              <RolePicker roles={roles} value={roleId} onChange={setRoleId} current={user.roleId} mine={mine} />
               <Input minH="44px" placeholder="Email de recuperación" value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
-              <HStack justify="space-between">
-                <Text>Activo</Text>
-                <Switch checked={isActive} onCheckedChange={(e) => setIsActive(e.checked)} />
-              </HStack>
+              {/* El renglón entero es el control: tocar «Activo» no movía el interruptor. */}
+              <Switch checked={isActive} onCheckedChange={(e) => setIsActive(e.checked)}
+                w="100%" minH="44px" flexDirection="row-reverse" justifyContent="space-between" cursor="pointer">
+                Activo
+              </Switch>
               <Button minH="44px" loading={save.isPending} disabled={!roleId} onClick={() => save.mutate()}>Guardar datos</Button>
             </VStack>
 
@@ -235,6 +252,7 @@ function ManageDialog({ user, roles, onClose, onSaved, onError, onSchedule }: {
               </HStack>
             </VStack>
           </VStack>
+          )}
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" minH="44px" mr="auto" onClick={onSchedule}>Horario y asistencia</Button>

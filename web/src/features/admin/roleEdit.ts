@@ -35,6 +35,14 @@ export function permissionDiff(original: string[], current: Set<string>): { add:
   };
 }
 
+// fitsIn: todo lo de `perms` lo tiene también la sesión. Espejo de domain.WithinPermissions: nadie
+// da lo que no tiene ni toca un rol que puede más que él.
+export function fitsIn(perms: Iterable<string>, session: readonly string[] | undefined): boolean {
+  const have = new Set(session ?? []);
+  for (const p of perms) if (!have.has(p)) return false;
+  return true;
+}
+
 // productDefault: lo que el producto le da a un rol sugerido, reconstruido desde sus ajustes.
 export function productDefault(permissions: string[], added: string[], removed: string[]): Set<string> {
   const s = new Set(permissions.filter((p) => !added.includes(p)));

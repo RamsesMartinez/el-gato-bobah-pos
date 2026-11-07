@@ -125,3 +125,49 @@ export function summarizeChange(before: ChangeData, after: ChangeData): string {
   }
   return parts.join(' · ');
 }
+
+// ChangeContext trae lo que la bitácora no guarda con palabras: la etiqueta de cada permiso y el
+// nombre de cada rol. Sin ellos se dice cuántos, nunca el código.
+export interface ChangeContext {
+  permissionLabel?: (code: string) => string | undefined;
+  roleName?: (id: number) => string | undefined;
+}
+
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+
+function permissionList(codes: string[], ctx: ChangeContext): string {
+  const labels = codes.map((c) => ctx.permissionLabel?.(c));
+  if (labels.every((l): l is string => !!l)) return labels.join(', ');
+  return `${codes.length} ${codes.length === 1 ? 'permiso' : 'permisos'}`;
+}
+
+// summarizeEvent es summarizeChange con lo propio de cada acción: los eventos de roles guardan
+// nombres y listas de permisos que la lista de campos genérica no sabe leer.
+export function summarizeEvent(action: string, before: ChangeData, after: ChangeData, ctx: ChangeContext = {}): string {
+  if (action === 'user.role_changed') {
+    const from = typeof before?.roleId === 'number' ? ctx.roleName?.(before.roleId) : undefined;
+    const to = typeof after?.roleId === 'number' ? ctx.roleName?.(after.roleId) : undefined;
+    return from && to ? `Rol: ${from} → ${to}` : 'Cambió de rol';
+  }
+  if (!action.startsWith('role.')) return summarizeChange(before, after);
+  const parts: string[] = [];
+  const name = (after?.name ?? before?.name) as string | undefined;
+  if (action === 'role.renamed' && before?.name && after?.name) parts.push(`Rol: ${before.name} → ${after.name}`);
+  else if (name) parts.push(`Rol: ${name}`);
+  const perms = strings(after?.permissions);
+  if (action === 'role.created' && perms.length) parts.push(`Puede: ${permissionList(perms, ctx)}`);
+  const added = strings(after?.added);
+  const removed = strings(after?.removed);
+  if (added.length) parts.push(`Agregó: ${permissionList(added, ctx)}`);
+  if (removed.length) parts.push(`Quitó: ${permissionList(removed, ctx)}`);
+  return parts.join(' · ');
+}
+
+// auditGroupOf es el grupo de cada acción, espejo de domain.AuditGroupOf: solo pinta el punto de color.
+export function auditGroupOf(action: string): 'money' | 'cancel' | 'price' | 'cash' | 'attendance' {
+  if (['payment.voided', 'payment.refunded', 'order.cancelled', 'order.line_removed', 'stock.written_off'].includes(action)) return 'cancel';
+  if (action.startsWith('price.') || action.startsWith('product.')) return 'price';
+  if (action.startsWith('cash.') || action.startsWith('expense.') || action.startsWith('tip.')) return 'cash';
+  if (action.startsWith('attendance.') || action.startsWith('user.') || action.startsWith('role.')) return 'attendance';
+  return 'money';
+}

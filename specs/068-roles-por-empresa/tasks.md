@@ -115,7 +115,7 @@ description: "Tareas de las entregas 2 y 3 de la 068: roles por empresa en la ba
 
 - [X] T035 [P] `AGENTS.md`: sección «Roles por empresa» (la consulta de permisos por petición, el trigger de convivencia hasta la 0109, cómo se agrega un permiso nuevo del producto: constante + migración con su fila en `permissions` y `system_role_permissions`, y el test que lo exige). Constitución: tabla de puertas, renglón de roles marcado como cruzado (spec 068), y «Roles: modelo híbrido» sin la frase de los `RequireRole` que quedan; enmienda MINOR con su versión.
 - [X] T036 Gates: `go build ./... && go test ./...`, `make test-integration`, `bun run lint && bun run typecheck && bun run vitest run && bun run build`; `explain (analyze, buffers)` de la consulta de permisos en la integración con ~100 usuarios, anotado en research.md.
-- [ ] T037 Prueba a 1024×600 con usuario nuevo contra el `make start` del worktree con respaldo restaurado (quickstart.md, paso 4); capturas solo en `test-results/` o scratchpad.
+- [X] T037 Prueba a 1024×600 con usuario nuevo contra el `make start` del worktree con respaldo restaurado (quickstart.md, paso 4); capturas solo en `test-results/` o scratchpad.
 - [ ] T038 `/revision-de-codigo`, corrección con test de cada hallazgo; `make ci-local`; PR a develop, release a main y despliegue hasta `/readyz` 200, con respaldo previo.
 
 ---
