@@ -259,7 +259,7 @@ que el negocio ya sabe que va a querer. Un plan que cierre una de ellas es un ha
 | **Descuentos** | Cobrar sin dejar rastro de que hubo un descuento | `orders.discount_total` existe y siempre vale cero: la columna está, la feature no |
 | **Una lista de productos por plataforma** — activar y desactivar lo que se ofrece en cada app, con nombres propios ligados al mismo producto interno | Asumir que un producto del catálogo es un producto de la plataforma. Ya no lo es: en el POS se vende "Arma tu Crepa" y en Uber cada crepa por sabor, a propósito | `product_platform_prices` ya es por `(producto, plataforma)`: la llave correcta existe. Falta el nombre, el estado y la relación uno-a-varios |
 | **Promociones de plataforma** (2x1, producto de regalo) | Registrar el cobro sin poder reconstruir qué se regaló ni quién lo pagó — el restaurante o la plataforma | No existe el concepto. Los reportes de plataforma traen columnas de promoción y hoy vienen en cero |
-| **Roles y permisos configurables por empresa** — cada cliente crea sus roles y decide qué puede hacer cada uno (decidido el 2026-10-05) | Un control nuevo que pregunta por el **nombre** de un rol (`RequireRole(admin, gerente)`, `role === 'gerente'`) en lugar de por un **permiso**; o una lista de roles congelada en una columna o en una pantalla | `users.role` es el enum `user_role` de cuatro valores (0001), 32 rutas usan `RequireRole` y `web/src/app/roles.ts` lo espeja. Lo nuevo se pregunta por permiso (`domain.Permission`), resuelto hoy por un mapa fijo rol → permisos en `domain`; ese mapa es lo único que pasa a la base cuando lleguen los roles por empresa |
+| **Roles y permisos configurables por empresa** — cada cliente crea sus roles y decide qué puede hacer cada uno (decidido el 2026-10-05) | Un control nuevo que pregunta por el **nombre** de un rol (`RequireRole(admin, gerente)`, `role === 'gerente'`) en lugar de por un **permiso**; o una lista de roles congelada en una columna o en una pantalla | `users.role` es el enum `user_role` de cuatro valores (0001), 42 llamadas a `RequireRole` quedan en el router (2026-11-06) y `web/src/app/roles.ts` lo espeja. Lo nuevo se pregunta por permiso (`domain.Permission`), resuelto hoy por un mapa fijo rol → permisos en `domain`; ese mapa es lo único que pasa a la base cuando lleguen los roles por empresa (issue #232, segunda entrega del #61) |
 | ~~**Conciliar el depósito de una plataforma contra los pedidos que lo formaron**~~ **CRUZADA (spec 014, 2026-09-08)** | — | `orders.platform_order_ref` guarda el folio completo, único por empresa y plataforma, y `platform_settlements.payout_reference` la referencia del depósito. La conciliación dejó de ser por monto y fecha |
 
 Los tres renglones nuevos salieron de medir documentos reales; el detalle está en
@@ -381,12 +381,12 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
   comida puede necesitarlo; pero no se diseña una feature para otro giro.
 - **Roles: modelo híbrido, roles sugeridos más roles propios de cada empresa** (decidido el
   2026-10-13). Así se vende el producto: una empresa nueva arranca con roles sugeridos que ya traen
-  sus permisos cargados (los cuatro de hoy: admin, gerente, cajero, cocina) y puede crear roles
+  sus permisos cargados (los cuatro de hoy: admin, gerente, cajero, mesero) y puede crear roles
   propios y asignarles cualquier permiso, sin pedir un cambio de código. De ahí salen tres reglas:
   - **El código solo pregunta por permisos, nunca por el nombre de un rol.** Todo control nuevo
     cuelga de un `domain.Permission` (`RequirePermission` en el servidor, `can()` en el front). Un
-    `RequireRole` nuevo, o un `role === '…'` nuevo en el front, es un hallazgo de revisión. Los 32
-    `RequireRole` que ya existen se migran a permiso cuando alguien toca esa ruta por otra razón.
+    `RequireRole` nuevo, o un `role === '…'` nuevo en el front, es un hallazgo de revisión. Los
+    `RequireRole` que quedan se migran a permiso cuando alguien toca esa ruta por otra razón.
   - **Un permiso es una capacidad que el operador entiende, con nombre estable en inglés**
     (`menu.configure`, `inventory.health_view`): se guarda como dato en cuanto los roles vivan en la
     base, y renombrarlo después rompe los roles que ya armó cada cliente. Uno por capacidad, no uno
@@ -436,4 +436,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.27.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-11-02
+**Version**: 1.27.1 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-11-06

@@ -58,6 +58,11 @@ const (
 	// PermExpensesCancel: anular un gasto capturado por error, aunque esté pagado (#216). Lo saca de
 	// los reportes y, si su pago está en un corte abierto, cambia el esperado del cajón.
 	PermExpensesCancel Permission = "expenses.cancel"
+
+	// PermOrdersDeliveredView: ver los pedidos entregados del día y reimprimir su ticket (068). Es
+	// del mostrador: sin él, una cajera no podía reimprimir el ticket de un pedido que entregó otro
+	// usuario. Devolver dinero de esos pedidos va aparte, en PermPaymentsVoid.
+	PermOrdersDeliveredView Permission = "orders.delivered_view"
 )
 
 // AllPermissions devuelve todos los permisos que existen, en un orden fijo.
@@ -66,7 +71,7 @@ func AllPermissions() []Permission {
 		PermAttendanceConfigure, PermAttendanceReport, PermAttendanceCorrectOthers, PermAttendanceCorrectOwn,
 		PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure, PermInventoryHealthView, PermMenuConfigure,
 		PermInventoryReceive, PermInventoryConfigure, PermInventoryCount, PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount,
-		PermExpensesEdit, PermExpensesCancel}
+		PermExpensesEdit, PermExpensesCancel, PermOrdersDeliveredView}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -85,8 +90,10 @@ func PermissionsFor(role Role) []Permission {
 			PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure,
 			PermInventoryHealthView, PermMenuConfigure, PermInventoryReceive, PermInventoryConfigure, PermInventoryCount,
 			PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount,
-			PermExpensesCancel}
-	case RoleCajero, RoleMesero:
+			PermExpensesCancel, PermOrdersDeliveredView}
+	case RoleCajero:
+		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff, PermOrdersDeliveredView}
+	case RoleMesero:
 		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}
 	}
 	return []Permission{}
@@ -142,6 +149,8 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede cambiar lo que entra al arqueo"
 	case PermExpensesCancel:
 		return "Tu usuario no puede anular gastos"
+	case PermOrdersDeliveredView:
+		return "Tu usuario no puede ver los pedidos entregados"
 	}
 	return "Tu usuario no puede hacer esto"
 }

@@ -215,10 +215,12 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermOrdersCancel)).Post("/{id}/cancel", h.CancelOrder)
 					// «Cancelar lo que falta» (2026-10-09): mismo permiso que cancelar el pedido.
 					r.With(RequirePermission(h.permissions, domain.PermOrdersCancel)).Post("/{id}/write-off", h.WriteOffOrder)
-					// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
-					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)
-					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/refund", h.RefundOrder)
-					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/{id}/refund-info", h.RefundInfo) // mismo gate que /refund
+					// Ver los entregados del día es del mostrador: desde ahí se reimprime el ticket de un
+					// pedido que cerró otro usuario (068). Devolver dinero de uno es la misma capacidad
+					// que devolver un pago: saca dinero cobrado del corte.
+					r.With(RequirePermission(h.permissions, domain.PermOrdersDeliveredView)).Get("/delivered", h.DeliveredOrders)
+					r.With(RequirePermission(h.permissions, domain.PermPaymentsVoid)).Post("/{id}/refund", h.RefundOrder)
+					r.With(RequirePermission(h.permissions, domain.PermPaymentsVoid)).Get("/{id}/refund-info", h.RefundInfo) // mismo gate que /refund
 					// Cancelar UN renglón no mueve dinero por sí solo —baja el total de un pedido que
 					// todavía no se cobró—, así que no pide el rol que exige la salida de caja.
 					r.Post("/{id}/lines/{lineId}/cancel", h.CancelOrderLine)
