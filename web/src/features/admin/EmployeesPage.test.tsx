@@ -72,6 +72,8 @@ test('con los dos permisos hay pestañas Personal y Roles', async () => {
   expect(await screen.findByRole('tab', { name: 'Personal' })).toBeInTheDocument();
   await u.click(screen.getByRole('tab', { name: 'Roles' }));
   expect(await screen.findByRole('button', { name: /^Barista/ })).toBeInTheDocument();
+  // Las pestañas siguen a la vista en Roles, arriba de la lista.
+  expect(screen.getByRole('tab', { name: 'Personal' })).toBeInTheDocument();
 });
 
 test('con una sola pestaña visible no se pinta la barra', async () => {
@@ -208,7 +210,8 @@ test('el filtro por rol sin nadie dice «Nadie tiene este rol» y ofrece quitarl
   // Se llega a Personal filtrado por «Ver a esas personas».
   api.deactivateRole.mockRejectedValue(new ApiError(409, 'ROLE_IN_USE', 'Hay personas.', 'r'));
   await u.click(await screen.findByRole('button', { name: /^Mesero/ }));
-  const hoja = await screen.findByRole('dialog');
+  const hoja = await screen.findByRole('region', { name: 'Permisos del rol' });
+  await within(hoja).findByDisplayValue('Mesero');
   await u.click(within(hoja).getByRole('button', { name: 'Inactivar' }));
   await u.click(await within(hoja).findByRole('button', { name: 'Ver a esas personas' }));
   expect(await screen.findByText('Nadie tiene este rol')).toBeInTheDocument();
@@ -232,4 +235,40 @@ test('todo el renglón «Activo» es el control y mide al menos 44 px', async ()
   await u.click(within(dialogo).getByRole('button', { name: 'Guardar datos' }));
   await waitFor(() => expect(api.updateUser).toHaveBeenCalledTimes(1));
   expect(api.updateUser.mock.calls[0]).toEqual([2, expect.objectContaining({ isActive: false })]);
+});
+
+// El editor de Roles ya no es una hoja modal: tocar «Personal» desmontaba la pestaña y lo marcado se
+// perdía sin preguntar.
+describe('cambiar de pestaña con cambios sin guardar en un rol', () => {
+  beforeEach(() => {
+    api.permissionCatalog.mockResolvedValue({ items: [{ code: 'employees.manage', area: 'team', label: 'Administrar empleados' }] });
+  });
+
+  test('tocar «Personal» pide descartar y «Seguir editando» conserva lo marcado', async () => {
+    const u = userEvent.setup();
+    montar();
+    await u.click(await screen.findByRole('tab', { name: 'Roles' }));
+    const ed = await screen.findByRole('region', { name: 'Permisos del rol' });
+    await u.click(await within(ed).findByRole('checkbox', { name: /Administrar empleados/ }));
+    await u.click(screen.getByRole('tab', { name: 'Personal' }));
+    expect(await screen.findByText('¿Descartar los cambios?')).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Seguir editando' }));
+    const sigue = await screen.findByRole('region', { name: 'Permisos del rol' });
+    expect(within(sigue).getByRole('checkbox', { name: /Administrar empleados/ })).toHaveAttribute('aria-checked', 'true');
+    expect(within(sigue).getByText('1 cambio')).toBeInTheDocument();
+
+    await u.click(screen.getByRole('tab', { name: 'Personal' }));
+    await u.click(await screen.findByRole('button', { name: 'Descartar' }));
+    expect(await screen.findByText('Ana')).toBeInTheDocument();
+  });
+
+  test('sin cambios, «Personal» cambia sin preguntar', async () => {
+    const u = userEvent.setup();
+    montar();
+    await u.click(await screen.findByRole('tab', { name: 'Roles' }));
+    await screen.findByRole('region', { name: 'Permisos del rol' });
+    await u.click(screen.getByRole('tab', { name: 'Personal' }));
+    expect(await screen.findByText('Ana')).toBeInTheDocument();
+    expect(screen.queryByText('¿Descartar los cambios?')).toBeNull();
+  });
 });
