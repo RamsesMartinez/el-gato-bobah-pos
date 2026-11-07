@@ -4,6 +4,7 @@ DELETE /api/v1/admin/platform-menus/connections/{id}/links/{externalId} admin,ge
 DELETE /api/v1/admin/platform-menus/connections/{id}/local-exclusions admin,gerente
 DELETE /api/v1/admin/products/{id}/groups/{groupId} admin,gerente
 DELETE /api/v1/business-settings/ticket-logo admin,gerente
+DELETE /api/v1/roles/{id} admin
 DELETE /api/v1/stock/articles/{id}/density admin,gerente
 DELETE /api/v1/stock/counts/{id}/lines/{ingredientId} admin,gerente
 DELETE /api/v1/supplier-items/{id} admin,gerente
@@ -58,6 +59,7 @@ GET /api/v1/orders/{id}/refund-info admin,gerente
 GET /api/v1/orders/{id}/settlement admin,gerente
 GET /api/v1/payment-methods admin,gerente,cajero,mesero
 GET /api/v1/payment-methods/all admin,gerente
+GET /api/v1/permissions admin
 GET /api/v1/pos/folio-names admin,gerente,cajero,mesero
 GET /api/v1/pos/menu admin,gerente,cajero,mesero
 GET /api/v1/pos/modifier-defaults admin,gerente,cajero,mesero
@@ -67,6 +69,7 @@ GET /api/v1/reports/margins admin,gerente
 GET /api/v1/reports/products-sold admin,gerente
 GET /api/v1/reports/sales admin,gerente
 GET /api/v1/reports/tips admin,gerente
+GET /api/v1/roles admin
 GET /api/v1/sales admin,gerente
 GET /api/v1/sales/summary admin,gerente
 GET /api/v1/settings/count-limits admin,gerente
@@ -118,6 +121,7 @@ PATCH /api/v1/expenses/{id}/items/{itemId} admin,gerente
 PATCH /api/v1/expenses/{id}/payments/{paymentId} admin,gerente
 PATCH /api/v1/orders/{id}/platform-ref admin,gerente,cajero
 PATCH /api/v1/payment-methods/{id} admin,gerente
+PATCH /api/v1/roles/{id} admin
 PATCH /api/v1/stock/articles/{id} admin,gerente
 PATCH /api/v1/suppliers/{id} admin,gerente
 PATCH /api/v1/users/{id} admin
@@ -173,6 +177,10 @@ POST /api/v1/orders/{id}/quote admin,gerente,cajero,mesero
 POST /api/v1/orders/{id}/refund admin,gerente
 POST /api/v1/orders/{id}/status admin,gerente,cajero,mesero
 POST /api/v1/orders/{id}/write-off admin,gerente
+POST /api/v1/roles admin
+POST /api/v1/roles/{id}/deactivate admin
+POST /api/v1/roles/{id}/reactivate admin
+POST /api/v1/roles/{id}/reset admin
 POST /api/v1/stock/articles admin,gerente
 POST /api/v1/stock/articles/distinct-pairs admin,gerente
 POST /api/v1/stock/articles/{id}/archive admin,gerente

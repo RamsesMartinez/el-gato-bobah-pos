@@ -87,6 +87,51 @@ export async function restoreSession(): Promise<boolean> {
   return true;
 }
 
+// Lo que /auth/me dice de la sesión viva (spec 068).
+interface MeResponse {
+  id: number;
+  companyId: number;
+  name: string;
+  role: string;
+  roleId: number;
+  roleName: string;
+  permissions: string[];
+}
+
+let refreshingPermissions: Promise<void> | null = null;
+
+// refreshPermissions vuelve a pedir a /auth/me lo que puede la sesión (FR-018): la administradora
+// cambia un rol y el servidor lo aplica en la siguiente petición, pero la pantalla seguiría
+// ofreciendo lo de antes hasta volver a entrar. Una sola petición en vuelo aunque lleguen varios 403.
+// Solo se aplica si sigue siendo la misma persona: un desbloqueo con el PIN de otra mientras estaba
+// en vuelo no hereda los permisos de quien se fue.
+export function refreshPermissions(): Promise<void> {
+  if (refreshingPermissions) return refreshingPermissions;
+  const { user, token } = useSessionStore.getState();
+  if (!user || !token) return Promise.resolve();
+  refreshingPermissions = request<MeResponse>('GET', '/auth/me')
+    .then((me) => {
+      const current = useSessionStore.getState().user;
+      if (!current || current.id !== me.id || current.companyId !== me.companyId) return;
+      useSessionStore.setState({
+        user: { ...current, name: me.name, role: me.role, roleId: me.roleId, roleName: me.roleName, permissions: me.permissions },
+      });
+    })
+    .catch(() => { /* sin red o sin sesión: se queda lo que había y el servidor sigue siendo la barrera */ })
+    .finally(() => { refreshingPermissions = null; });
+  return refreshingPermissions;
+}
+
+// watchPermissions refresca los permisos cada vez que la pestaña vuelve al frente: una tableta que
+// pasó la noche suspendida trae los de ayer. Devuelve con qué dejar de escuchar.
+export function watchPermissions(): () => void {
+  const onVisible = () => {
+    if (document.visibilityState === 'visible' && useSessionStore.getState().status === 'authed') void refreshPermissions();
+  };
+  document.addEventListener('visibilitychange', onVisible);
+  return () => document.removeEventListener('visibilitychange', onVisible);
+}
+
 // raw devuelve el Response sin parsear: no toda respuesta es JSON (el logo del ticket es un binario).
 // Se resuelve aquí y no con un fetch aparte para no abrir una segunda ruta que se olvide del token,
 // del refresh ante 401, de la traza o del sobre de error.
@@ -128,9 +173,10 @@ async function request<T>(
   // el backend devuelve el mismo id (o el que generó si no lo mandamos)
   const traceId = res.headers.get('X-Request-Id') || requestId;
 
-  if (res.status === 401 && retry && !path.startsWith('/auth/') && (await tryRefresh())) {
+  if (res.status === 401 && retry && (!path.startsWith('/auth/') || path === '/auth/me') && (await tryRefresh())) {
     // No se reintenta sobre los propios endpoints de auth (un 401 ahí es real: credenciales malas
-    // o refresh vencido) ni si ya se reintentó una vez.
+    // o refresh vencido) ni si ya se reintentó una vez. /auth/me sí: es una lectura de la sesión, y
+    // al volver al frente con el token de 15 min vencido cerraría un turno que sigue vivo.
     return request<T>(method, path, body, false, raw, extra);
   }
   // 304 no es un error: es «lo que ya tienes sigue vigente», y solo llega si se pidió condicional.
@@ -158,6 +204,9 @@ async function request<T>(
       // creería que algo se rompió.
       useSessionStore.getState().clear('caducada');
     }
+    // Un 403 puede ser que el rol cambió: se traen los permisos de nuevo para que la pantalla deje
+    // de ofrecer lo que ya no puede. Nunca por un 403 del propio /auth/me, o no terminaría.
+    if (res.status === 403 && path !== '/auth/me') void refreshPermissions();
     console.error(`[api] ✗ ${label} · ${res.status} ${code} · ${ms}ms · id=${traceId}`);
     const retryAfter = Number(res.headers.get('Retry-After')) || undefined;
     throw new ApiError(res.status, code, message, traceId, details, retryAfter);

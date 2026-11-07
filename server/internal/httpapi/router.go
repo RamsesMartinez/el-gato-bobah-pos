@@ -672,6 +672,18 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Post("/admin/attendance/entries", h.ManualAttendanceEntry)
 				}
 
+				// Roles por empresa (spec 068). Empleados lee la lista para asignar un rol; el resto es
+				// de quien administra roles.
+				r.With(RequireAnyPermission(h.permissions, domain.PermRolesManage, domain.PermEmployeesManage)).Get("/roles", h.ListRoles)
+				r.With(RequirePermission(h.permissions, domain.PermRolesManage)).Group(func(r chi.Router) {
+					r.Get("/permissions", h.PermissionCatalog)
+					r.Post("/roles", h.CreateRole)
+					r.Patch("/roles/{id}", h.UpdateRole)
+					r.Post("/roles/{id}/reset", h.ResetRole)
+					r.Post("/roles/{id}/deactivate", h.DeactivateRole)
+					r.Post("/roles/{id}/reactivate", h.ReactivateRole)
+					r.Delete("/roles/{id}", h.DeleteRole)
+				})
 				r.With(RequirePermission(h.permissions, domain.PermEmployeesManage)).Route("/users", func(r chi.Router) {
 					r.Get("/", h.ListUsers)
 					r.Post("/", h.CreateUser)

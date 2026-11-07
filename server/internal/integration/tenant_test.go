@@ -55,9 +55,10 @@ func TestTenantIsolationViaAppRole(t *testing.T) {
 
 	// Escritura cruzada: bajo el tenant gatobobah, insertar un usuario marcado company=acme debe
 	// ser rechazado por la RLS (WITH CHECK).
+	cajeroRole := roleIDOf(t, owner, defaultCompanyID, "cajero")
 	err := appSt.WithTenant(context.Background(), defaultCompanyID, func(q *db.Queries) error {
 		_, e := q.CreateUser(context.Background(), db.CreateUserParams{
-			Name: "intruso", Username: strptr("intruso"), Role: string(domain.RoleCajero),
+			Name: "intruso", Username: strptr("intruso"), RoleID: &cajeroRole,
 		})
 		return e
 	})

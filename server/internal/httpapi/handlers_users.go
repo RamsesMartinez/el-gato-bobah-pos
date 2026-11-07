@@ -26,12 +26,13 @@ func (h *Handlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"items": users})
 }
 
-// POST /users  {name, username, role, pin?, password, recoveryEmail?}
+// POST /users  {name, username, roleId, pin?, password, recoveryEmail?}
 func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name          string  `json:"name"`
 		Username      *string `json:"username"`
-		Role          string  `json:"role"`
+		RoleID        *int64  `json:"roleId"`
+		Role          string  `json:"role"` // la pantalla anterior, durante la subida
 		PIN           string  `json:"pin"`
 		Password      string  `json:"password"`
 		RecoveryEmail *string `json:"recoveryEmail"`
@@ -43,6 +44,7 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	u, err := h.users.Create(r.Context(), app.CreateUserInput{
 		Name:          body.Name,
 		Username:      body.Username,
+		RoleID:        body.RoleID,
 		Role:          domain.Role(body.Role),
 		PIN:           body.PIN,
 		Password:      body.Password,
@@ -55,7 +57,7 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, u)
 }
 
-// PATCH /users/{id}  {name, role, isActive, recoveryEmail?}
+// PATCH /users/{id}  {name, roleId, isActive, recoveryEmail?}
 func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	id, err := userIDParam(r)
 	if err != nil {
@@ -64,7 +66,8 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Name          string  `json:"name"`
-		Role          string  `json:"role"`
+		RoleID        *int64  `json:"roleId"`
+		Role          string  `json:"role"` // la pantalla anterior, durante la subida
 		IsActive      bool    `json:"isActive"`
 		RecoveryEmail *string `json:"recoveryEmail"`
 	}
@@ -73,7 +76,7 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := h.users.Update(r.Context(), app.UpdateUserInput{
-		ID: id, Name: body.Name, Role: domain.Role(body.Role), IsActive: body.IsActive, RecoveryEmail: body.RecoveryEmail,
+		ID: id, Name: body.Name, RoleID: body.RoleID, Role: domain.Role(body.Role), IsActive: body.IsActive, RecoveryEmail: body.RecoveryEmail,
 	})
 	if err != nil {
 		Error(w, err)

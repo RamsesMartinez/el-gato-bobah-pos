@@ -348,6 +348,7 @@ func toDomainUser(u db.User) domain.User {
 		Name:               u.Name,
 		Username:           u.Username,
 		Role:               domain.Role(u.Role),
+		RoleID:             u.RoleID,
 		IsActive:           u.IsActive,
 		RecoveryEmail:      u.RecoveryEmail,
 		MustChangePassword: u.MustChangePassword,

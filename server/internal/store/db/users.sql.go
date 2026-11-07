@@ -80,7 +80,7 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 }
 
 const createUser = `-- name: CreateUser :one
-insert into users (name, username, role, pin_hash, pin_lookup, password_hash, recovery_email, must_change_password)
+insert into users (name, username, role_id, pin_hash, pin_lookup, password_hash, recovery_email, must_change_password)
 values ($1, $2, $3, $4, $8, $5, $6, $7)
 returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id
 `
@@ -88,7 +88,7 @@ returning id, name, username, role, pin_hash, password_hash, is_active, created_
 type CreateUserParams struct {
 	Name               string  `json:"name"`
 	Username           *string `json:"username"`
-	Role               string  `json:"role"`
+	RoleID             *int64  `json:"role_id"`
 	PinHash            *string `json:"pin_hash"`
 	PasswordHash       *string `json:"password_hash"`
 	RecoveryEmail      *string `json:"recovery_email"`
@@ -97,11 +97,12 @@ type CreateUserParams struct {
 }
 
 // company_id lo auto-sella el default (current_setting) desde el GUC del tenant; RLS lo exige.
+// El rol va por role_id (spec 068); `role` lo llena el trigger de convivencia hasta la 0109.
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, createUser,
 		arg.Name,
 		arg.Username,
-		arg.Role,
+		arg.RoleID,
 		arg.PinHash,
 		arg.PasswordHash,
 		arg.RecoveryEmail,
@@ -479,7 +480,7 @@ func (q *Queries) UnlockCandidates(ctx context.Context) ([]UnlockCandidatesRow, 
 
 const updateUser = `-- name: UpdateUser :one
 update users
-set name = $2, role = $3, is_active = $4, recovery_email = $5, updated_at = now()
+set name = $2, role_id = $3, is_active = $4, recovery_email = $5, updated_at = now()
 where id = $1
 returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id
 `
@@ -487,7 +488,7 @@ returning id, name, username, role, pin_hash, password_hash, is_active, created_
 type UpdateUserParams struct {
 	ID            int64   `json:"id"`
 	Name          string  `json:"name"`
-	Role          string  `json:"role"`
+	RoleID        *int64  `json:"role_id"`
 	IsActive      bool    `json:"is_active"`
 	RecoveryEmail *string `json:"recovery_email"`
 }
@@ -496,7 +497,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 	row := q.db.QueryRow(ctx, updateUser,
 		arg.ID,
 		arg.Name,
-		arg.Role,
+		arg.RoleID,
 		arg.IsActive,
 		arg.RecoveryEmail,
 	)

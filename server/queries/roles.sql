@@ -109,3 +109,9 @@ select r.id from roles r join system_roles s on s.id = r.system_role_id where s.
 
 -- name: EnsureCompanyRoles :exec
 select ensure_company_roles($1);
+
+-- name: CountActiveUsersWithRole :one
+select count(*) from users where role_id = $1 and is_active;
+
+-- name: CountUsersWithRole :one
+select count(*) from users where role_id = $1;

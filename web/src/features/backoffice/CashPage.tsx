@@ -540,8 +540,8 @@ export function TerminalesYPropinasDelCorte({ session, currency }: {
 }
 
 export function CashPage() {
-  const role = useSessionStore((s) => s.user?.role);
-  const canManage = role === 'admin' || role === 'gerente';
+  const user = useSessionStore((s) => s.user);
+  const canManage = can('cash.configure', user);
   return (
     <Page maxW="920px">
       <Heading size="lg" mb={4}>Caja</Heading>

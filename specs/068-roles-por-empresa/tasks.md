@@ -54,14 +54,14 @@ description: "Tareas de las entregas 2 y 3 de la 068: roles por empresa en la ba
 
 - [X] T015 [US1] Test de equivalencia `server/internal/integration/roles_equivalence_test.go`: recorre las rutas del router (chi `Walk`) y, para cada ruta con gate, para cada rol sugerido, compara permitido/negado contra la tabla esperada (la de hoy, escrita en el test a partir de los `RequireRole` actuales). Debe fallar mientras falte un permiso en la siembra.
 - [X] T016 [P] [US1] Test estático `server/internal/httpapi/no_role_gates_test.go`: ningún `RequireRole(` en `router.go` ni en el paquete (falla hoy).
-- [ ] T017 [P] [US1] Tests de front: `web/src/app/roles.test.ts` → `routes.test.ts` (`ROUTE_PERMISSIONS`/`canOpen` por permiso, nunca por rol); `AppShell.test.tsx` con sesiones por permisos; `POSPage`, `ModifierSheet`, `CashPage`, `PlataformasPage` muestran sus controles según `can()` (un admin sin el permiso no los ve); test estático que no quede `role ===` en `web/src` fuera de la consola.
+- [X] T017 [P] [US1] Tests de front: `web/src/app/roles.test.ts` → `routes.test.ts` (`ROUTE_PERMISSIONS`/`canOpen` por permiso, nunca por rol); `AppShell.test.tsx` con sesiones por permisos; `POSPage`, `ModifierSheet`, `CashPage`, `PlataformasPage` muestran sus controles según `can()` (un admin sin el permiso no los ve); test estático que no quede `role ===` en `web/src` fuera de la consola.
 
 ### Implementación
 
 - [X] T018 [US1] `server/internal/httpapi/router.go`: cada `RequireRole` a su permiso según data-model.md (tabla y «absorben»); borrar `RequireRole` y su test de `middleware.go`/`middleware_test.go`; actualizar los tests de integración que fijaban 403/2xx por rol solo si la tabla de equivalencia lo confirma idéntico.
 - [X] T019 [US1] `server/internal/domain/uso.go` y `toque.go`: `rolesPorPantalla` → `permisoPorPantalla`; `PantallaPermitida(pantalla, permisos)`; la medición guarda el código del sugerido o nulo; `server/internal/app/uso.go` cuenta activos por sugerido vía `roles`; `server/queries/uso.sql` sin `users.role`. Tests de `uso_test.go`/`toque_test.go` y de integración ajustados (mismo comportamiento para los sugeridos; rol propio → sin rol).
-- [ ] T020 [P] [US1] Front: `web/src/app/roles.ts` → `ROUTE_PERMISSIONS` + `canOpen(path, user)`; `RequireAuth.tsx`, `AppShell.tsx`, `App.tsx`; `POSPage.tsx` (`menu.configure`, `cash.operate`), `ModifierSheet.tsx` (`menu.configure`), `CashPage.tsx` (`cash.configure`), `PlataformasPage.tsx` (`platforms.credentials`); `permissions.ts` con los 12 permisos nuevos; `web/src/stores/session.ts` con `roleId`/`roleName`.
-- [ ] T021 [US1] Front: refrescar `/auth/me` al volver al frente y al recibir un 403, y actualizar `permissions` en el store (FR-018), en `web/src/api/client.ts` o el hook de sesión; test vitest.
+- [X] T020 [P] [US1] Front: `web/src/app/roles.ts` → `ROUTE_PERMISSIONS` + `canOpen(path, user)`; `RequireAuth.tsx`, `AppShell.tsx`, `App.tsx`; `POSPage.tsx` (`menu.configure`, `cash.operate`), `ModifierSheet.tsx` (`menu.configure`), `CashPage.tsx` (`cash.configure`), `PlataformasPage.tsx` (`platforms.credentials`); `permissions.ts` con los 12 permisos nuevos; `web/src/stores/session.ts` con `roleId`/`roleName`.
+- [X] T021 [US1] Front: refrescar `/auth/me` al volver al frente y al recibir un 403, y actualizar `permissions` en el store (FR-018), en `web/src/api/client.ts` o el hook de sesión; test vitest.
 
 **Checkpoint**: T015–T017 verdes; equivalencia ruta por ruta.
 

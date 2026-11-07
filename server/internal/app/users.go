@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
@@ -54,8 +55,11 @@ func hashPIN(pin string) (*string, error) {
 }
 
 type CreateUserInput struct {
-	Name          string
-	Username      *string
+	Name     string
+	Username *string
+	// RoleID es el rol de la empresa (spec 068). Sin él, Role (código de un sugerido) por
+	// compatibilidad con la pantalla anterior durante la subida.
+	RoleID        *int64
 	Role          domain.Role
 	PIN           string  // opcional
 	Password      string  // OBLIGATORIO y fuerte (política + HIBP)
@@ -66,7 +70,7 @@ type CreateUserInput struct {
 // obligatorio y validado; PIN opcional. must_change_password=true: el admin fija una contraseña
 // inicial y el empleado la cambia en su primer login.
 func (s *UsersService) Create(ctx context.Context, in CreateUserInput) (domain.User, error) {
-	if in.Name == "" || !in.Role.Valid() {
+	if in.Name == "" {
 		return domain.User{}, domain.ErrValidation
 	}
 	if err := s.checkPassword(ctx, in.Password); err != nil {
@@ -77,7 +81,7 @@ func (s *UsersService) Create(ctx context.Context, in CreateUserInput) (domain.U
 		return domain.User{}, err
 	}
 	params := db.CreateUserParams{
-		Name: in.Name, Username: in.Username, Role: string(in.Role),
+		Name: in.Name, Username: in.Username,
 		PasswordHash: &pwHash, RecoveryEmail: in.RecoveryEmail, MustChangePassword: true,
 	}
 	if in.PIN != "" {
@@ -92,7 +96,19 @@ func (s *UsersService) Create(ctx context.Context, in CreateUserInput) (domain.U
 		params.PinHash = pinHash
 		params.PinLookup = lookup
 	}
-	u, err := s.store.QC(ctx).CreateUser(ctx, params)
+	var u db.User
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := q.LockCompanyRoles(ctx); err != nil {
+			return err
+		}
+		roleID, err := assignableRole(ctx, q, in.RoleID, in.Role, true)
+		if err != nil {
+			return err
+		}
+		params.RoleID = &roleID
+		u, err = q.CreateUser(ctx, params)
+		return err
+	})
 	if isUniqueViolation(err) {
 		return domain.User{}, domain.ErrPinRepetido
 	}
@@ -100,6 +116,34 @@ func (s *UsersService) Create(ctx context.Context, in CreateUserInput) (domain.U
 		return domain.User{}, err
 	}
 	return toDomainUser(u), nil
+}
+
+// assignableRole resuelve el rol que se le asigna a un empleado: uno de la empresa (RLS) y activo si
+// el empleado queda activo. Sin roleId, el sugerido del código (la pantalla anterior manda `role`).
+func assignableRole(ctx context.Context, q *db.Queries, roleID *int64, code domain.Role, userActive bool) (int64, error) {
+	var id int64
+	switch {
+	case roleID != nil:
+		id = *roleID
+	case code.Valid():
+		var err error
+		if id, err = q.SuggestedRoleID(ctx, string(code)); err != nil {
+			return 0, err
+		}
+	default:
+		return 0, fmt.Errorf("%w: elige un rol", domain.ErrValidation)
+	}
+	r, err := q.GetRoleForUpdate(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, fmt.Errorf("%w: ese rol no existe", domain.ErrValidation)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if userActive && !r.Active {
+		return 0, domain.ErrRoleInactive
+	}
+	return id, nil
 }
 
 func (s *UsersService) List(ctx context.Context) ([]domain.User, error) {
@@ -117,23 +161,55 @@ func (s *UsersService) List(ctx context.Context) ([]domain.User, error) {
 type UpdateUserInput struct {
 	ID            int64
 	Name          string
+	RoleID        *int64
 	Role          domain.Role
 	IsActive      bool
 	RecoveryEmail *string
 }
 
 // Update edita datos no-secretos de un empleado (nombre, rol, alta/baja, email de recuperación).
+//
+// Bajo el candado de roles (28068): cambiar el rol o dar de baja al último que administra roles se
+// rechaza, también si dos bajas llegan a la vez.
 func (s *UsersService) Update(ctx context.Context, in UpdateUserInput) (domain.User, error) {
-	if in.Name == "" || !in.Role.Valid() {
+	if in.Name == "" {
 		return domain.User{}, domain.ErrValidation
 	}
-	u, err := s.store.QC(ctx).UpdateUser(ctx, db.UpdateUserParams{
-		ID: in.ID, Name: in.Name, Role: string(in.Role), IsActive: in.IsActive, RecoveryEmail: in.RecoveryEmail,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.User{}, domain.ErrNotFound
+	var u db.User
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := q.LockCompanyRoles(ctx); err != nil {
+			return err
 		}
+		prev, err := q.GetUserByID(ctx, in.ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		roleID, err := assignableRole(ctx, q, in.RoleID, in.Role, in.IsActive)
+		if err != nil {
+			return err
+		}
+		u, err = q.UpdateUser(ctx, db.UpdateUserParams{
+			ID: in.ID, Name: in.Name, RoleID: &roleID, IsActive: in.IsActive, RecoveryEmail: in.RecoveryEmail,
+		})
+		if err != nil {
+			return err
+		}
+		if prev.RoleID == nil || *prev.RoleID != roleID {
+			subject := in.ID
+			if err := recordAudit(ctx, q, domain.AuditEvent{Action: "user.role_changed", EntityType: "user", EntityID: in.ID,
+				SubjectUserID: &subject, Before: map[string]any{"roleId": prev.RoleID}, After: map[string]any{"roleId": roleID}}); err != nil {
+				return err
+			}
+		}
+		return ensureARoleAdminRemains(ctx, q)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.User{}, domain.ErrNotFound
+	}
+	if err != nil {
 		return domain.User{}, err
 	}
 	return toDomainUser(u), nil
