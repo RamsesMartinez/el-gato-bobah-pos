@@ -91,7 +91,7 @@ func (s *AuthService) Login(ctx context.Context, username, slug, password string
 		if !auth.CheckSecret(*u.PasswordHash, password) {
 			return domain.ErrInvalidCredentials
 		}
-		sess, err = s.issue(ctx, q, u)
+		sess, err = s.issue(ctx, q, db.User(u))
 		return err
 	})
 	if err != nil {
@@ -177,7 +177,7 @@ func (s *AuthService) relevar(ctx context.Context, userID int64, pin string, act
 		}
 		// Cadena nueva: la credencial que sale es de OTRA persona, y una familia no puede
 		// abarcar a dos — revocarla tendría que decidir a cuál de las dos echa.
-		sess, err = s.issueUntil(ctx, q, u, vence, uuid.Nil())
+		sess, err = s.issueUntil(ctx, q, db.User(u), vence, uuid.Nil())
 		return err
 	})
 	if err != nil {
@@ -251,7 +251,7 @@ func (s *AuthService) Refresh(ctx context.Context, companyID int64, refreshToken
 		// en el relevo por PIN, y quedó vivo en esta otra puerta.
 		// HEREDA la familia: rotar no es entrar de nuevo, es la misma sesión avanzando. Sin
 		// heredarla, cada rotación estrenaría cadena y el reuso volvería a no poder cortar nada.
-		sess, err = s.issueUntil(ctx, q, u, rt.ExpiresAt, deref(rt.FamilyID))
+		sess, err = s.issueUntil(ctx, q, db.User(u), rt.ExpiresAt, deref(rt.FamilyID))
 		return err
 	})
 	if reusedUserID != 0 {

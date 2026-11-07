@@ -70,6 +70,13 @@ Los roles salen del código y entran a la base, con la forma que decidió el due
 | Coherencia | Trigger `sync_user_role` (0108): si llega `role` sin `role_id`, o cambia `role` sin cambiar `role_id`, pone el `role_id` del sugerido equivalente; si cambia `role_id`, pone en `role` el código del sugerido, o `mesero` (lo mínimo) si es propio |
 | Medición de uso | escribe el enum | escribe el código del sugerido o nulo para un propio |
 
+**Corrección del 2026-11-07**: la API de la entrega 2 sí leía `users.role`: sqlc expande `select *`
+y `returning *` de `users.sql` a columnas explícitas. Antes de la release de la entrega 2 se agregó un
+cambio de solo código que lista columnas y devuelve `''` en lugar de `role`
+(`TestTheAPIWorksWithoutUsersRole` borra la columna y recorre alta, edición, lista, login y
+`/auth/me`). Viaja en la misma subida que la 0108, así que la API que corra cuando llegue la 0109 ya no
+la nombra.
+
 La 0109 (entrega 3) repite de forma idempotente el relleno de roles y de `role_id`, valida
 `role_id is not null` (`check … not valid` y luego `validate`, después `set not null`) y borra el
 trigger y `users.role`. **No toca la medición ni el tipo `user_role`**: las columnas `role` de
