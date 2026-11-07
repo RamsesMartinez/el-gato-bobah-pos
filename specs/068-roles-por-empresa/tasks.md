@@ -71,8 +71,8 @@ Sin tareas: monorepo existente, sin dependencias nuevas ni migración.
 ## Phase 6: Polish & Cross-Cutting
 
 - [X] T013 [P] Constitución, tabla de puertas del principio VIII (renglón de roles): actualizar la cuenta de rutas con `RequireRole` (tres menos) sin cambiar la regla; enmienda PATCH con su versión y fecha en `.specify/memory/constitution.md`.
-- [ ] T014 Gates: `cd server && go build ./... && go test ./...`; `make test-integration`; `cd web && bun run lint && bun run vitest run && bun run build`.
-- [ ] T015 Quickstart a 1024×600 contra el `make start` del worktree (`specs/068-roles-por-empresa/quickstart.md`, paso 4) con un cajero y un pedido entregado por otro usuario; cobrar y entregar lo que se cree. Observaciones en texto, capturas solo en `test-results/`.
+- [X] T014 Gates: `cd server && go build ./... && go test ./...`; `make test-integration`; `cd web && bun run lint && bun run vitest run && bun run build`.
+- [X] T015 Quickstart a 1024×600 contra el `make start` del worktree (`specs/068-roles-por-empresa/quickstart.md`, paso 4) con un cajero y un pedido entregado por otro usuario; cobrar y entregar lo que se cree. Observaciones en texto, capturas solo en `test-results/`.
 - [X] T016 Abrir el issue de la entrega 2 enlazado al #61 (roles en la base, pantalla, migrar `RequireRole`/`ROUTE_ROLES`, `users.role`, reglas del 2026-10-13, preguntas de diseño para el dueño).
 
 ---

@@ -593,7 +593,8 @@ function Renglon({ l, onEntregar, onQuitar }: {
   );
 }
 
-// Entregadas del día: solo admin/gerente, para reembolsar y para cobrar lo que quedó pendiente.
+// Entregadas del día: quien tiene orders.delivered_view las ve para reimprimir y para cobrar lo que
+// quedó pendiente; «Devolver» llega solo con payments.void.
 // TOPADA para no competir con el flujo operativo de arriba: en una jornada llena son decenas.
 function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCuenta }: {
   orders: BoardOrder[];
