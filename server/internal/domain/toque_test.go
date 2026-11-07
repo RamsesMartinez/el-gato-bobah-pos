@@ -79,7 +79,7 @@ func TestPreAgregarToques(t *testing.T) {
 		{Pantalla: "pos", Celda: 1, Orientacion: "landscape"},
 	}
 
-	agregado := PreAgregarToques(lote, RoleCajero)
+	agregado := PreAgregarToques(lote, PermissionsFor(RoleCajero))
 	if len(agregado) != 2 {
 		t.Fatalf("quedaron %d combinaciones y son 2 (la celda 37 en cada orientación): %+v", len(agregado), agregado)
 	}
@@ -93,21 +93,18 @@ func TestPreAgregarToques(t *testing.T) {
 	}
 }
 
-// Un rol que no puede abrir la pantalla no puede tocarla (el espejo de `RequireRole`).
-//
-// Sin esto, cualquiera con un token propio reporta trescientos toques en una pantalla que un GET
-// suyo recibiría con 403, y la rejilla con la que se decide un rediseño se llena de mentiras desde
-// adentro. No es una fuga: es una medición que deja de servir para lo único que existe.
-//
-// Se prueba con un rol DESCONOCIDO sobre una pantalla instrumentada porque hoy las cuatro roles
-// pueden abrir `pos`, que es la única de la lista: con un par (rol, pantalla) prohibido de verdad
-// este test no tendría con qué fallar, y un test que no puede fallar no protege nada.
+// UN TOQUE DE QUIEN NO PUEDE ABRIR LA PANTALLA NO CUENTA. Hoy la única pantalla con toques es el
+// POS, que abre cualquier sesión, así que el filtro se prueba con la regla que usa: si mañana se
+// instrumenta Caja, el toque de quien no tiene «operar la caja» se descarta.
 func TestElToqueDeUnRolQueNoPuedeAbrirLaPantallaNoCuenta(t *testing.T) {
-	agregado := PreAgregarToques([]Toque{
-		{Pantalla: "pos", Celda: 0, Orientacion: OrientacionHorizontal},
-	}, Role("cocina"))
-	if len(agregado) != 0 {
-		t.Fatalf("se contó el toque de un rol que no puede abrir esa pantalla: %+v", agregado)
+	if !PantallaPermitida("pos", nil) {
+		t.Fatal("el POS lo abre cualquier sesión")
+	}
+	if PantallaPermitida("caja", PermissionsFor(RoleMesero)) {
+		t.Fatal("el mesero no abre Caja: su toque ahí sería una mentira")
+	}
+	if PantallaPermitida("inventada", AllPermissions()) {
+		t.Fatal("una pantalla que no existe no se mide")
 	}
 }
 

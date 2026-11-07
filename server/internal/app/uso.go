@@ -72,12 +72,24 @@ type Descartes struct {
 // NO era aceptable era la versión anterior, donde un fallo al escribir las aperturas se llevaba los
 // toques sin siquiera intentarlos, y el comentario decía lo contrario.
 //
-// El rol lo pone quien llama desde el TOKEN, nunca el cuerpo del request.
-func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote LoteDeMedicion) (Descartes, error) {
+// El rol y los permisos los pone quien llama desde la base (spec 068), nunca el cuerpo del request.
+// `rol` es el código del sugerido, o "" para un rol propio, que se mide sin rol.
+//
+// `quien` se llama solo si el lote trae algo válido: un lote que se va a tirar entero no le cuesta
+// una consulta a la base a quien está cobrando.
+func (s *UsageService) Registrar(ctx context.Context, quien func() (domain.Role, []domain.Permission, error), lote LoteDeMedicion) (Descartes, error) {
 	eventos := domain.RecortarLoteDeUso(lote.Eventos)
 	toques := domain.RecortarLoteDeToques(lote.Toques)
-	usos := domain.PreAgregarUso(eventos, rol)
-	zonas := domain.PreAgregarToques(toques, rol)
+	var perms []domain.Permission
+	var rol domain.Role
+	if algoValido(eventos, toques) {
+		var err error
+		if rol, perms, err = quien(); err != nil {
+			return Descartes{Eventos: len(eventos), Toques: len(toques)}, err
+		}
+	}
+	usos := domain.PreAgregarUso(eventos, perms)
+	zonas := domain.PreAgregarToques(toques, perms)
 
 	var descartes Descartes
 	validos := 0
@@ -517,4 +529,18 @@ func nombreDeRol(r *string) string {
 		return "~sin corte"
 	}
 	return *r
+}
+
+func algoValido(eventos []domain.EventoDeUso, toques []domain.Toque) bool {
+	for _, e := range eventos {
+		if domain.EventoDeUsoValido(e.Pantalla, e.Accion) {
+			return true
+		}
+	}
+	for _, t := range toques {
+		if domain.ToqueValido(t) {
+			return true
+		}
+	}
+	return false
 }

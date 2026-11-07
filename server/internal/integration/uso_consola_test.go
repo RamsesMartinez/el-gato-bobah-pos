@@ -69,7 +69,7 @@ func TestElMapaDeUsoPorElRouter(t *testing.T) {
 	svc := app.NewUsageService(st)
 	makeUser(t, st, "cajero_mapa_uno", "cajero")
 	makeUser(t, st, "cajero_mapa_dos", "cajero")
-	if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Eventos: []domain.EventoDeUso{
+	if _, err := svc.Registrar(ctx, quienEs(domain.RoleCajero), app.LoteDeMedicion{Eventos: []domain.EventoDeUso{
 		{Pantalla: "pos"}, {Pantalla: "pos"}, {Pantalla: "pos"},
 		{Pantalla: "pos", Accion: "cobrar"}, {Pantalla: "pos", Accion: "cobrar"},
 		{Pantalla: "caja"},

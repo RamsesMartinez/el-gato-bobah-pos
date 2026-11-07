@@ -86,24 +86,6 @@ func WithTenant(st *store.Store) func(http.Handler) http.Handler {
 	}
 }
 
-// RequireRole gates a route to the given roles. Must run after RequireAuth.
-func RequireRole(roles ...domain.Role) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			u, ok := userFrom(r.Context())
-			if !ok || !u.Role.In(roles...) {
-				// Evento de seguridad para detección: quién (id/rol) intentó qué ruta.
-				logging.SecurityEvent(r.Context(), "forbidden",
-					"user_id", u.ID, "role", string(u.Role),
-					"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
-				Error(w, domain.ErrForbidden)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
 // PermissionResolver dice qué puede el usuario de la petición. En producción lee la base con la
 // conexión de la empresa (roles por empresa, spec 068), una vez por petición.
 type PermissionResolver func(ctx context.Context, u AuthUser) ([]domain.Permission, error)

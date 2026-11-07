@@ -274,7 +274,9 @@ func TestLlevaArqueoExigeElPermisoDeConfigurarCaja(t *testing.T) {
 	}{
 		{"un gerente sin el permiso no apaga el arqueo", sinConfigurar, `{"name":"Sec","isActive":true,"countsCash":false}`, true},
 		{"ni lo prende", sinConfigurar, `{"name":"Sec","isActive":true,"countsCash":true}`, true},
-		{"sin tocar el arqueo, renombrar sigue igual", sinConfigurar, `{"name":"Sec 2","isActive":true}`, false},
+		// Configurar las cajas (alta, renombrar, activar) es el mismo permiso desde la 068: antes la
+		// ruta pedía rol admin o gerente, que son los roles que lo traen.
+		{"sin el permiso tampoco renombra", sinConfigurar, `{"name":"Sec 2","isActive":true}`, true},
 		{"con el permiso sí", nil, `{"name":"Sec","isActive":true,"countsCash":false}`, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {

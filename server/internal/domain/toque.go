@@ -120,7 +120,7 @@ type ToqueAgregado struct {
 // de 64 kB a 232 kB antes de que autovacuum llegue.
 //
 // Descarta lo que no está instrumentado Y lo que ese rol no podría haber abierto.
-func PreAgregarToques(lote []Toque, rol Role) []ToqueAgregado {
+func PreAgregarToques(lote []Toque, perms []Permission) []ToqueAgregado {
 	if len(lote) == 0 {
 		return nil
 	}
@@ -133,7 +133,7 @@ func PreAgregarToques(lote []Toque, rol Role) []ToqueAgregado {
 	orden := make([]llave, 0, len(lote))
 	veces := make(map[llave]int, len(lote))
 	for _, t := range lote {
-		if !ToqueValido(t) || !PantallaPermitidaParaRol(t.Pantalla, rol) {
+		if !ToqueValido(t) || !PantallaPermitida(t.Pantalla, perms) {
 			continue
 		}
 		k := llave{t.Pantalla, t.Orientacion, t.Celda}

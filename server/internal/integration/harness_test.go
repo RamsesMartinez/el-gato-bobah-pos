@@ -456,3 +456,8 @@ func porRol(f func(domain.Role) []domain.Permission) httpapi.PermissionResolver 
 	}
 	return func(_ context.Context, u httpapi.AuthUser) ([]domain.Permission, error) { return f(u.Role), nil }
 }
+
+// quienEs es el rol y los permisos de un rol sugerido, como los resuelve la medición de uso.
+func quienEs(r domain.Role) func() (domain.Role, []domain.Permission, error) {
+	return func() (domain.Role, []domain.Permission, error) { return r, domain.PermissionsFor(r), nil }
+}
