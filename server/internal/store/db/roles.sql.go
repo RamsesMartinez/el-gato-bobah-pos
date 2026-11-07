@@ -52,7 +52,7 @@ const countActiveUsersWithRole = `-- name: CountActiveUsersWithRole :one
 select count(*) from users where role_id = $1 and is_active
 `
 
-func (q *Queries) CountActiveUsersWithRole(ctx context.Context, roleID *int64) (int64, error) {
+func (q *Queries) CountActiveUsersWithRole(ctx context.Context, roleID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, countActiveUsersWithRole, roleID)
 	var count int64
 	err := row.Scan(&count)
@@ -63,7 +63,7 @@ const countUsersWithRole = `-- name: CountUsersWithRole :one
 select count(*) from users where role_id = $1
 `
 
-func (q *Queries) CountUsersWithRole(ctx context.Context, roleID *int64) (int64, error) {
+func (q *Queries) CountUsersWithRole(ctx context.Context, roleID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, countUsersWithRole, roleID)
 	var count int64
 	err := row.Scan(&count)

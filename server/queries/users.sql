@@ -2,29 +2,29 @@
 select count(*) from users;
 
 -- name: GetUserByID :one
--- `role` sale vacío a propósito (spec 068): la columna se borra en la 0109 y ninguna API que la lea
--- puede estar corriendo ese día. El rol es role_id; el código del sugerido sale de UserRole.
+-- Columnas explícitas y no `*`: sqlc expande el `*` al generar, y una columna que se borra después
+-- tumbaría a la versión anterior de la API durante la subida (pasó con users.role, spec 068).
 -- RLS acota a la empresa del tenant activo (GUC app.company_id); no hace falta filtrar por company_id aquí.
-select id, name, username, ''::text as role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where id = $1;
+select id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where id = $1;
 
 -- name: GetUserByUsername :one
-select id, name, username, ''::text as role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where username = $1 and is_active;
+select id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where username = $1 and is_active;
 
 -- name: ListActiveUsers :many
-select id, name, username, ''::text as role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where is_active order by name;
+select id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where is_active order by name;
 
 -- name: CreateUser :one
 -- company_id lo auto-sella el default (current_setting) desde el GUC del tenant; RLS lo exige.
 -- El rol va por role_id (spec 068); `role` lo llena el trigger de convivencia hasta la 0109.
 insert into users (name, username, role_id, pin_hash, pin_lookup, password_hash, recovery_email, must_change_password)
 values ($1, $2, $3, $4, sqlc.narg(pin_lookup), $5, $6, $7)
-returning id, name, username, ''::text as role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id;
+returning id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id;
 
 -- name: UpdateUser :one
 update users
 set name = $2, role_id = $3, is_active = $4, recovery_email = $5, updated_at = now()
 where id = $1
-returning id, name, username, ''::text as role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id;
+returning id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id;
 
 -- name: SetUserPin :exec
 update users set pin_hash = $2, pin_lookup = sqlc.narg(pin_lookup), updated_at = now() where id = $1;

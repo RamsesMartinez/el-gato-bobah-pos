@@ -388,7 +388,7 @@ func (s *RolesService) SetActive(ctx context.Context, actor []domain.Permission,
 			return err
 		}
 		if !active {
-			n, err := q.CountActiveUsersWithRole(ctx, &id)
+			n, err := q.CountActiveUsersWithRole(ctx, id)
 			if err != nil {
 				return err
 			}
@@ -420,7 +420,7 @@ func (s *RolesService) Delete(ctx context.Context, actor []domain.Permission, id
 		if err := withinRole(actor, st); err != nil {
 			return err
 		}
-		n, err := q.CountUsersWithRole(ctx, &id)
+		n, err := q.CountUsersWithRole(ctx, id)
 		if err != nil {
 			return err
 		}

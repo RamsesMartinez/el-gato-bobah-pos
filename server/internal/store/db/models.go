@@ -2032,7 +2032,6 @@ type User struct {
 	ID                 int64     `json:"id"`
 	Name               string    `json:"name"`
 	Username           *string   `json:"username"`
-	Role               string    `json:"role"`
 	PinHash            *string   `json:"pin_hash"`
 	PasswordHash       *string   `json:"password_hash"`
 	IsActive           bool      `json:"is_active"`
@@ -2043,7 +2042,7 @@ type User struct {
 	MustChangePassword bool      `json:"must_change_password"`
 	PinLookup          *string   `json:"pin_lookup"`
 	TracksAttendance   bool      `json:"tracks_attendance"`
-	RoleID             *int64    `json:"role_id"`
+	RoleID             int64     `json:"role_id"`
 }
 
 type UserPreference struct {

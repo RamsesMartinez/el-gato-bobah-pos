@@ -498,7 +498,7 @@ func provisionCompany(ctx context.Context, st *store.Store, pepper string) error
 		if err != nil {
 			return err
 		}
-		params.RoleID = &adminRole
+		params.RoleID = adminRole
 		if _, err := q.CreateUser(ctx, params); err != nil {
 			return err
 		}

@@ -82,13 +82,13 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 const createUser = `-- name: CreateUser :one
 insert into users (name, username, role_id, pin_hash, pin_lookup, password_hash, recovery_email, must_change_password)
 values ($1, $2, $3, $4, $8, $5, $6, $7)
-returning id, name, username, ''::text as role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id
+returning id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id
 `
 
 type CreateUserParams struct {
 	Name               string  `json:"name"`
 	Username           *string `json:"username"`
-	RoleID             *int64  `json:"role_id"`
+	RoleID             int64   `json:"role_id"`
 	PinHash            *string `json:"pin_hash"`
 	PasswordHash       *string `json:"password_hash"`
 	RecoveryEmail      *string `json:"recovery_email"`
@@ -96,27 +96,9 @@ type CreateUserParams struct {
 	PinLookup          *string `json:"pin_lookup"`
 }
 
-type CreateUserRow struct {
-	ID                 int64     `json:"id"`
-	Name               string    `json:"name"`
-	Username           *string   `json:"username"`
-	Role               string    `json:"role"`
-	PinHash            *string   `json:"pin_hash"`
-	PasswordHash       *string   `json:"password_hash"`
-	IsActive           bool      `json:"is_active"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
-	CompanyID          int64     `json:"company_id"`
-	RecoveryEmail      *string   `json:"recovery_email"`
-	MustChangePassword bool      `json:"must_change_password"`
-	PinLookup          *string   `json:"pin_lookup"`
-	TracksAttendance   bool      `json:"tracks_attendance"`
-	RoleID             *int64    `json:"role_id"`
-}
-
 // company_id lo auto-sella el default (current_setting) desde el GUC del tenant; RLS lo exige.
 // El rol va por role_id (spec 068); `role` lo llena el trigger de convivencia hasta la 0109.
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, createUser,
 		arg.Name,
 		arg.Username,
@@ -127,12 +109,11 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 		arg.MustChangePassword,
 		arg.PinLookup,
 	)
-	var i CreateUserRow
+	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Username,
-		&i.Role,
 		&i.PinHash,
 		&i.PasswordHash,
 		&i.IsActive,
@@ -169,38 +150,19 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 }
 
 const getUserByID = `-- name: GetUserByID :one
-select id, name, username, ''::text as role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where id = $1
+select id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where id = $1
 `
 
-type GetUserByIDRow struct {
-	ID                 int64     `json:"id"`
-	Name               string    `json:"name"`
-	Username           *string   `json:"username"`
-	Role               string    `json:"role"`
-	PinHash            *string   `json:"pin_hash"`
-	PasswordHash       *string   `json:"password_hash"`
-	IsActive           bool      `json:"is_active"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
-	CompanyID          int64     `json:"company_id"`
-	RecoveryEmail      *string   `json:"recovery_email"`
-	MustChangePassword bool      `json:"must_change_password"`
-	PinLookup          *string   `json:"pin_lookup"`
-	TracksAttendance   bool      `json:"tracks_attendance"`
-	RoleID             *int64    `json:"role_id"`
-}
-
-// `role` sale vacío a propósito (spec 068): la columna se borra en la 0109 y ninguna API que la lea
-// puede estar corriendo ese día. El rol es role_id; el código del sugerido sale de UserRole.
+// Columnas explícitas y no `*`: sqlc expande el `*` al generar, y una columna que se borra después
+// tumbaría a la versión anterior de la API durante la subida (pasó con users.role, spec 068).
 // RLS acota a la empresa del tenant activo (GUC app.company_id); no hace falta filtrar por company_id aquí.
-func (q *Queries) GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, error) {
+func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
-	var i GetUserByIDRow
+	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Username,
-		&i.Role,
 		&i.PinHash,
 		&i.PasswordHash,
 		&i.IsActive,
@@ -217,35 +179,16 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, er
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-select id, name, username, ''::text as role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where username = $1 and is_active
+select id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where username = $1 and is_active
 `
 
-type GetUserByUsernameRow struct {
-	ID                 int64     `json:"id"`
-	Name               string    `json:"name"`
-	Username           *string   `json:"username"`
-	Role               string    `json:"role"`
-	PinHash            *string   `json:"pin_hash"`
-	PasswordHash       *string   `json:"password_hash"`
-	IsActive           bool      `json:"is_active"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
-	CompanyID          int64     `json:"company_id"`
-	RecoveryEmail      *string   `json:"recovery_email"`
-	MustChangePassword bool      `json:"must_change_password"`
-	PinLookup          *string   `json:"pin_lookup"`
-	TracksAttendance   bool      `json:"tracks_attendance"`
-	RoleID             *int64    `json:"role_id"`
-}
-
-func (q *Queries) GetUserByUsername(ctx context.Context, username *string) (GetUserByUsernameRow, error) {
+func (q *Queries) GetUserByUsername(ctx context.Context, username *string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByUsername, username)
-	var i GetUserByUsernameRow
+	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Username,
-		&i.Role,
 		&i.PinHash,
 		&i.PasswordHash,
 		&i.IsActive,
@@ -278,41 +221,22 @@ func (q *Queries) GetUserPreference(ctx context.Context, arg GetUserPreferencePa
 }
 
 const listActiveUsers = `-- name: ListActiveUsers :many
-select id, name, username, ''::text as role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where is_active order by name
+select id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where is_active order by name
 `
 
-type ListActiveUsersRow struct {
-	ID                 int64     `json:"id"`
-	Name               string    `json:"name"`
-	Username           *string   `json:"username"`
-	Role               string    `json:"role"`
-	PinHash            *string   `json:"pin_hash"`
-	PasswordHash       *string   `json:"password_hash"`
-	IsActive           bool      `json:"is_active"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
-	CompanyID          int64     `json:"company_id"`
-	RecoveryEmail      *string   `json:"recovery_email"`
-	MustChangePassword bool      `json:"must_change_password"`
-	PinLookup          *string   `json:"pin_lookup"`
-	TracksAttendance   bool      `json:"tracks_attendance"`
-	RoleID             *int64    `json:"role_id"`
-}
-
-func (q *Queries) ListActiveUsers(ctx context.Context) ([]ListActiveUsersRow, error) {
+func (q *Queries) ListActiveUsers(ctx context.Context) ([]User, error) {
 	rows, err := q.db.Query(ctx, listActiveUsers)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListActiveUsersRow{}
+	items := []User{}
 	for rows.Next() {
-		var i ListActiveUsersRow
+		var i User
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
 			&i.Username,
-			&i.Role,
 			&i.PinHash,
 			&i.PasswordHash,
 			&i.IsActive,
@@ -556,36 +480,18 @@ const updateUser = `-- name: UpdateUser :one
 update users
 set name = $2, role_id = $3, is_active = $4, recovery_email = $5, updated_at = now()
 where id = $1
-returning id, name, username, ''::text as role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id
+returning id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id
 `
 
 type UpdateUserParams struct {
 	ID            int64   `json:"id"`
 	Name          string  `json:"name"`
-	RoleID        *int64  `json:"role_id"`
+	RoleID        int64   `json:"role_id"`
 	IsActive      bool    `json:"is_active"`
 	RecoveryEmail *string `json:"recovery_email"`
 }
 
-type UpdateUserRow struct {
-	ID                 int64     `json:"id"`
-	Name               string    `json:"name"`
-	Username           *string   `json:"username"`
-	Role               string    `json:"role"`
-	PinHash            *string   `json:"pin_hash"`
-	PasswordHash       *string   `json:"password_hash"`
-	IsActive           bool      `json:"is_active"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
-	CompanyID          int64     `json:"company_id"`
-	RecoveryEmail      *string   `json:"recovery_email"`
-	MustChangePassword bool      `json:"must_change_password"`
-	PinLookup          *string   `json:"pin_lookup"`
-	TracksAttendance   bool      `json:"tracks_attendance"`
-	RoleID             *int64    `json:"role_id"`
-}
-
-func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error) {
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, updateUser,
 		arg.ID,
 		arg.Name,
@@ -593,12 +499,11 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateU
 		arg.IsActive,
 		arg.RecoveryEmail,
 	)
-	var i UpdateUserRow
+	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Username,
-		&i.Role,
 		&i.PinHash,
 		&i.PasswordHash,
 		&i.IsActive,
