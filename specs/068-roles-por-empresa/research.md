@@ -44,3 +44,11 @@
 ### Convivencia de `users.role`
 - **Decision**: trigger `sync_user_role` en la 0108, borrado en la 0109.
 - **Alternatives**: que la API nueva escriba los dos (no cubre a la anterior escribiendo `role`).
+
+### Medición de la consulta de permisos por petición (2026-11-06)
+
+`UserEffectivePermissions` como `gatobobah_app`, con la empresa `gatobobah` fijada, sobre el respaldo
+anónimo restaurado (dos empresas, 15 usuarios): 0.21 ms de ejecución en frío y 0.14 ms en caliente
+(planeación 1.5 ms la primera vez, 0.17 ms después), 14 buffers. Con la consulta por llaves primarias
+no hace falta caché; si una empresa crece a cientos de usuarios no cambia el costo, porque se lee un
+solo usuario.

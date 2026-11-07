@@ -71,14 +71,14 @@ description: "Tareas de las entregas 2 y 3 de la 068: roles por empresa en la ba
 
 ### Tests primero
 
-- [ ] T022 [US2] Integración `server/internal/integration/roles_http_test.go`: `PATCH /roles/{cajero}` con `add`/`remove` cambia lo que puede; la siguiente petición de un cajero con sesión abierta se niega/permite sin renovar; `version` vieja → 409 `ROLE_CHANGED`; quitar `roles.manage` al admin → 409; `reset` deja el sugerido sin ajustes; un permiso agregado a `system_role_permissions` después llega al cajero si no se quitó y no llega si se quitó (herencia, FR-004); la pantalla que guardó sin conocer el permiso nuevo no lo quita.
-- [ ] T023 [P] [US2] Vitest `web/src/features/admin/RolesPage.test.tsx`: abrir un rol abre la hoja (render siguiente), áreas plegadas con «n de m», marcar/desmarcar cuenta «N cambios», Guardar manda solo `add`/`remove`, Cerrar con cambios pide confirmar, el admin muestra «Administrar roles» fijo.
+- [X] T022 [US2] Integración `server/internal/integration/roles_http_test.go`: `PATCH /roles/{cajero}` con `add`/`remove` cambia lo que puede; la siguiente petición de un cajero con sesión abierta se niega/permite sin renovar; `version` vieja → 409 `ROLE_CHANGED`; quitar `roles.manage` al admin → 409; `reset` deja el sugerido sin ajustes; un permiso agregado a `system_role_permissions` después llega al cajero si no se quitó y no llega si se quitó (herencia, FR-004); la pantalla que guardó sin conocer el permiso nuevo no lo quita.
+- [X] T023 [P] [US2] Vitest `web/src/features/admin/RolesPage.test.tsx`: abrir un rol abre la hoja (render siguiente), áreas plegadas con «n de m», marcar/desmarcar cuenta «N cambios», Guardar manda solo `add`/`remove`, Cerrar con cambios pide confirmar, el admin muestra «Administrar roles» fijo.
 
 ### Implementación
 
-- [ ] T024 [US2] `server/internal/app/roles.go`: `Update`, `Reset` con candado 28068, `GetRoleForUpdate`, versión con `where version`, overrides mínimos vía `domain.ApplyRoleEdit`, bitácora en la misma transacción.
-- [ ] T025 [US2] `server/internal/httpapi/handlers_roles.go` + rutas en `router.go` (`GET /permissions`, `GET /roles`, `PATCH /roles/{id}`, `POST /roles/{id}/reset`) con `roles.manage` (y `GET /roles` también `employees.manage`).
-- [ ] T026 [US2] `web/src/features/admin/RolesPage.tsx` (Maquetas: fila «Roles», opción A): lista con `Page fill`, filas de 56 px, hoja inferior del rol con áreas plegables, barra fija con «N cambios» y Guardar; `web/src/api/admin.ts` con las llamadas; pestañas Personal/Roles en `EmployeesPage.tsx` según permisos (sin barra si hay una sola).
+- [X] T024 [US2] `server/internal/app/roles.go`: `Update`, `Reset` con candado 28068, `GetRoleForUpdate`, versión con `where version`, overrides mínimos vía `domain.ApplyRoleEdit`, bitácora en la misma transacción.
+- [X] T025 [US2] `server/internal/httpapi/handlers_roles.go` + rutas en `router.go` (`GET /permissions`, `GET /roles`, `PATCH /roles/{id}`, `POST /roles/{id}/reset`) con `roles.manage` (y `GET /roles` también `employees.manage`).
+- [X] T026 [US2] `web/src/features/admin/RolesPage.tsx` (Maquetas: fila «Roles», opción A): lista con `Page fill`, filas de 56 px, hoja inferior del rol con áreas plegables, barra fija con «N cambios» y Guardar; `web/src/api/admin.ts` con las llamadas; pestañas Personal/Roles en `EmployeesPage.tsx` según permisos (sin barra si hay una sola).
 
 ---
 
@@ -86,35 +86,35 @@ description: "Tareas de las entregas 2 y 3 de la 068: roles por empresa en la ba
 
 ### Tests primero
 
-- [ ] T027 [US3] Integración en `roles_http_test.go`: `POST /roles` crea un propio; nombre repetido (también contra «Cajero», sin acentos ni mayúsculas) → 409; asignarlo con `PATCH /users/{id}` (`roleId`) y comprobar ruta por ruta lo que puede; asignar un rol inactivo → 409; un rol de otra empresa → 404/409; un permiso nuevo del producto no llega al propio; renombrar un propio funciona y a un nombre repetido → 409; renombrar un sugerido → 409 `ROLE_SYSTEM`.
-- [ ] T027b [US3] Integración en `server/internal/integration/roles_last_admin_test.go`: cambiar de rol o dar de baja al último usuario activo con `roles.manage` → 409 `LAST_ROLE_ADMIN`; con dos, la primera baja pasa; dos bajas simultáneas de los dos únicos (dos transacciones) dejan al menos uno activo; quitar `roles.manage` a un rol propio cuyo único usuario es el último administrador → 409.
-- [ ] T028 [P] [US3] Vitest `EmployeesPage.test.tsx`: `Picker` de rol con los roles activos + el actual inactivo marcado; el alta exige elegir; el `Picker` abierto sobre el diálogo de edición funciona (la hoja responde y cerrar el `Picker` no cierra el diálogo).
+- [X] T027 [US3] Integración en `roles_http_test.go`: `POST /roles` crea un propio; nombre repetido (también contra «Cajero», sin acentos ni mayúsculas) → 409; asignarlo con `PATCH /users/{id}` (`roleId`) y comprobar ruta por ruta lo que puede; asignar un rol inactivo → 409; un rol de otra empresa → 404/409; un permiso nuevo del producto no llega al propio; renombrar un propio funciona y a un nombre repetido → 409; renombrar un sugerido → 409 `ROLE_SYSTEM`.
+- [X] T027b [US3] Integración en `server/internal/integration/roles_last_admin_test.go`: cambiar de rol o dar de baja al último usuario activo con `roles.manage` → 409 `LAST_ROLE_ADMIN`; con dos, la primera baja pasa; dos bajas simultáneas de los dos únicos (dos transacciones) dejan al menos uno activo; quitar `roles.manage` a un rol propio cuyo único usuario es el último administrador → 409.
+- [X] T028 [P] [US3] Vitest `EmployeesPage.test.tsx`: `Picker` de rol con los roles activos + el actual inactivo marcado; el alta exige elegir; el `Picker` abierto sobre el diálogo de edición funciona (la hoja responde y cerrar el `Picker` no cierra el diálogo).
 
 ### Implementación
 
-- [ ] T029 [US3] `app/roles.go` `Create` (candado 28068, nombre vía `domain.ValidateRoleName` contra propios y `system_roles.name`); `POST /roles`.
-- [ ] T030 [US3] `server/internal/app/users.go` y `handlers_users.go`: `roleId` (y `role` por compatibilidad durante la subida); candado 28068 en alta, edición, baja y reactivación; rol activo de la empresa; `ErrLastRoleAdmin` al cambiar de rol o dar de baja al último usuario activo con `roles.manage`; reactivar con rol inactivo → `ErrRoleInactive`; `server/queries/users.sql` sin `role` (escribe `role_id`). `SetUserSecretsByUsername`/reset-admin con el candado.
-- [ ] T031 [US3] `web/src/features/admin/EmployeesPage.tsx`: `Picker` de roles (Maquetas: fila «Empleados»), tabla con el nombre del rol, alta sin rol preelegido; si el `Picker` sobre el diálogo choca en T028, el diálogo pasa a hoja inferior. Crear rol en `RolesPage.tsx`: nombre y «Copiar permisos de…» (`Picker`) en un renglón, sin abrir el teclado solo.
+- [X] T029 [US3] `app/roles.go` `Create` (candado 28068, nombre vía `domain.ValidateRoleName` contra propios y `system_roles.name`); `POST /roles`.
+- [X] T030 [US3] `server/internal/app/users.go` y `handlers_users.go`: `roleId` (y `role` por compatibilidad durante la subida); candado 28068 en alta, edición, baja y reactivación; rol activo de la empresa; `ErrLastRoleAdmin` al cambiar de rol o dar de baja al último usuario activo con `roles.manage`; reactivar con rol inactivo → `ErrRoleInactive`; `server/queries/users.sql` sin `role` (escribe `role_id`). `SetUserSecretsByUsername`/reset-admin con el candado.
+- [X] T031 [US3] `web/src/features/admin/EmployeesPage.tsx`: `Picker` de roles (Maquetas: fila «Empleados»), tabla con el nombre del rol, alta sin rol preelegido; si el `Picker` sobre el diálogo choca en T028, el diálogo pasa a hoja inferior. Crear rol en `RolesPage.tsx`: nombre y «Copiar permisos de…» (`Picker`) en un renglón, sin abrir el teclado solo.
 
 ---
 
 ## Phase 6: US4 — Inactivar, reactivar y borrar (P2)
 
-- [ ] T032 [US4] Integración en `roles_http_test.go`: inactivar con empleados activos → 409 con cuántos; sin ellos → OK y no se ofrece; reactivar conserva permisos; admin no se inactiva (409 y `check` de la base); borrar sugerido → 409; propio sin usuarios → OK; propio con usuario dado de baja → 409; carrera inactivar contra asignar (dos transacciones) deja un estado válido.
-- [ ] T033 [US4] Primero el Vitest de las acciones en `RolesPage.test.tsx` (en rojo); después `app/roles.go` `Deactivate`, `Reactivate`, `Delete` con candado y `for update`; rutas; `RolesPage.tsx`: acciones al final del cuerpo, «Borrar» con `ConfirmSheet`, rechazo de inactivar con botón a Personal filtrado por el rol.
+- [X] T032 [US4] Integración en `roles_http_test.go`: inactivar con empleados activos → 409 con cuántos; sin ellos → OK y no se ofrece; reactivar conserva permisos; admin no se inactiva (409 y `check` de la base); borrar sugerido → 409; propio sin usuarios → OK; propio con usuario dado de baja → 409; carrera inactivar contra asignar (dos transacciones) deja un estado válido.
+- [X] T033 [US4] Primero el Vitest de las acciones en `RolesPage.test.tsx` (en rojo); después `app/roles.go` `Deactivate`, `Reactivate`, `Delete` con candado y `for update`; rutas; `RolesPage.tsx`: acciones al final del cuerpo, «Borrar» con `ConfirmSheet`, rechazo de inactivar con botón a Personal filtrado por el rol. Front hecho (RolesPage.test.tsx, RolesPage.tsx, filtro de Personal en EmployeesPage.tsx).
 
 ---
 
 ## Phase 7: US5 — Bitácora (P2)
 
-- [ ] T034 [US5] Acciones `role.created`, `role.renamed`, `role.permissions_changed`, `role.reset`, `role.deactivated`, `role.reactivated`, `role.deleted`, `user.role_changed` en `server/internal/domain/audit.go` (con detalle en códigos) y `web/src/shared/audit/labels.ts`; cada una producida por un test (`TestEveryAuditActionIsProduced`); `recordAudit` dentro de la transacción en `app/roles.go` y `app/users.go`.
+- [X] T034 [US5] Acciones `role.created`, `role.renamed`, `role.permissions_changed`, `role.reset`, `role.deactivated`, `role.reactivated`, `role.deleted`, `user.role_changed` en `server/internal/domain/audit.go` (con detalle en códigos) y `web/src/shared/audit/labels.ts`; cada una producida por un test (`TestEveryAuditActionIsProduced`); `recordAudit` dentro de la transacción en `app/roles.go` y `app/users.go`. Front hecho (labels.ts y su test).
 
 ---
 
 ## Phase 8: Polish (entrega 2)
 
-- [ ] T035 [P] `AGENTS.md`: sección «Roles por empresa» (la consulta de permisos por petición, el trigger de convivencia hasta la 0109, cómo se agrega un permiso nuevo del producto: constante + migración con su fila en `permissions` y `system_role_permissions`, y el test que lo exige). Constitución: tabla de puertas, renglón de roles marcado como cruzado (spec 068), y «Roles: modelo híbrido» sin la frase de los `RequireRole` que quedan; enmienda MINOR con su versión.
-- [ ] T036 Gates: `go build ./... && go test ./...`, `make test-integration`, `bun run lint && bun run typecheck && bun run vitest run && bun run build`; `explain (analyze, buffers)` de la consulta de permisos en la integración con ~100 usuarios, anotado en research.md.
+- [X] T035 [P] `AGENTS.md`: sección «Roles por empresa» (la consulta de permisos por petición, el trigger de convivencia hasta la 0109, cómo se agrega un permiso nuevo del producto: constante + migración con su fila en `permissions` y `system_role_permissions`, y el test que lo exige). Constitución: tabla de puertas, renglón de roles marcado como cruzado (spec 068), y «Roles: modelo híbrido» sin la frase de los `RequireRole` que quedan; enmienda MINOR con su versión.
+- [X] T036 Gates: `go build ./... && go test ./...`, `make test-integration`, `bun run lint && bun run typecheck && bun run vitest run && bun run build`; `explain (analyze, buffers)` de la consulta de permisos en la integración con ~100 usuarios, anotado en research.md.
 - [ ] T037 Prueba a 1024×600 con usuario nuevo contra el `make start` del worktree con respaldo restaurado (quickstart.md, paso 4); capturas solo en `test-results/` o scratchpad.
 - [ ] T038 `/revision-de-codigo`, corrección con test de cada hallazgo; `make ci-local`; PR a develop, release a main y despliegue hasta `/readyz` 200, con respaldo previo.
 

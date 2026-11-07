@@ -66,6 +66,14 @@ export const ACTION_LABELS: Record<string, string> = {
   'presentation.updated': 'Editó un empaque',
   'presentation.retired': 'Retiró o volvió un empaque',
   'stock.count_confirm_asked': 'El conteo pidió confirmar una cifra',
+  'role.created': 'Creó un rol',
+  'role.renamed': 'Cambió el nombre de un rol',
+  'role.permissions_changed': 'Cambió lo que puede hacer un rol',
+  'role.reset': 'Regresó un rol a lo sugerido',
+  'role.deactivated': 'Inactivó un rol',
+  'role.reactivated': 'Reactivó un rol',
+  'role.deleted': 'Borró un rol',
+  'user.role_changed': 'Cambió el rol de una persona',
 };
 
 // Qué resta un producto (spec 037), con las palabras de la hoja de receta.

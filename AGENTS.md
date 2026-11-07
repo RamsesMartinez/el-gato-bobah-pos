@@ -604,6 +604,28 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     dejaría lo excluido por debajo de lo usado responde 400 `DRAWER_EXTRA_TOO_HIGH`.
   - **El corte la presenta en «No es del negocio», no en «Gastos»** (`ListCashMovements` trae
     `drawer_extra`). Sumarla a Gastos reportaría un gasto mayor que el registrado.
+- **Roles por empresa** (spec 068, 0108). Cinco cosas que no se ven:
+  - **El permiso de cada petición se lee de la base**, una vez por petición (`MemoizedPermissions`,
+    después de `WithTenant`): lo que puede un sugerido es `system_role_permissions` menos lo quitado
+    más lo agregado en `role_permission_overrides`; un rol propio, solo lo agregado; un rol inactivo,
+    nada. El rol del JWT no decide nada (solo va al log). Login, refresh y `/auth/me` resuelven con la
+    conexión de la empresa de la sesión.
+  - **Un permiso nuevo del producto son tres lugares**: la constante en `domain/permission.go` (con
+    área, etiqueta y mensaje), una migración con su fila en `permissions` y, si lo trae un sugerido, en
+    `system_role_permissions`, y su espejo en `web/src/app/permissions.ts`.
+    `TestThePermissionCatalogMatchesTheDomain` truena si la base y el dominio no dicen lo mismo. Llega a
+    todas las empresas sin migrarlas una por una (herencia), salvo a las que lo quitaron.
+  - **Una ruta nueva va con `RequirePermission`**, y `testdata/route_gates.golden` dice qué rol
+    sugerido pasa por cada ruta: `TestNoSuggestedRoleGainsOrLosesARoute` truena con una ruta nueva sin
+    referencia o con un rol que gana o pierde una. Regenerarlo (`UPDATE_ROUTE_GATES=1`) es decidir a
+    propósito quién puede qué: va en el PR con el porqué.
+  - **Toda escritura del rol de un empleado, de si está activo o de un rol toma el candado 28068
+    antes de leer** y termina exigiendo que quede al menos una persona activa que administre roles
+    (`ensureARoleAdminRemains`). Un camino nuevo que asigne rol o dé de baja pasa por ahí.
+  - **`users.role` vive hasta la 0109 solo por la API anterior**: el trigger `sync_user_role` lo
+    mantiene coherente con `role_id` (un rol propio aparece como `mesero`). Nada nuevo lo lee ni lo
+    escribe. El enum `user_role` sigue siendo la dimensión «rol sugerido» de la medición de uso; lo de
+    un rol propio se mide sin rol.
 - **Dividir la cuenta** (spec 027). Cinco cosas que cuestan caro si se olvidan:
   - **Un pago devuelto SALE de `order_payments`** a la bitácora `order_payment_voids`, con su
     cobertura en `covered` y el número que lleva su ticket. Por eso las ~32 consultas que suman pagos
