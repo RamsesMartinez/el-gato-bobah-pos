@@ -34,7 +34,7 @@ func ResetCompanyAdmin(ctx context.Context, st *store.Store, companyID int64, p 
 			if err != nil {
 				return err
 			}
-			p.RoleID = &adminRole
+			p.RoleID = adminRole
 			_, err = q.CreateUser(ctx, p)
 			return err
 		}

@@ -42,7 +42,11 @@ func TestMigration0108OnARealBackup(t *testing.T) {
 		t.Fatal("el respaldo no trae usuarios")
 	}
 
-	migrarArriba(t, st.Pool)
+	// Solo hasta la 108: la 0109 borra users.role, contra la que se compara aquí.
+	if err := goose.UpToContext(ctx, prepararGoose(t, st.Pool), ".", companyRolesVersion); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { migrarArriba(t, st.Pool) })
 
 	t.Run("cada empresa tiene sus cuatro sugeridos activos", func(t *testing.T) {
 		var faltan int
@@ -109,6 +113,8 @@ func TestMigration0108OnARealBackup(t *testing.T) {
 			t.Fatal("el Down bajó con un rol propio: lo habría perdido sin avisar")
 		}
 		migrarAbajoHasta(t, st.Pool, companyRolesVersion-1)
-		migrarArriba(t, st.Pool)
+		if err := goose.UpToContext(ctx, prepararGoose(t, st.Pool), ".", companyRolesVersion); err != nil {
+			t.Fatal(err)
+		}
 	})
 }
