@@ -289,7 +289,10 @@ export function OrdersBoardPage() {
         />
       )}
 
-      {devolviendo && (
+      {/* La pantalla sigue montada debajo del bloqueo: si entra con su PIN alguien que no puede
+          hacer lo que el diálogo ofrece, el diálogo desaparece en vez de rebotar con el cliente
+          enfrente. */}
+      {devolviendo && (devolviendo.cancelando ? can('orders.cancel', user) : puedeDevolverDinero) && (
         <DevolucionSheet
           key={devolviendo.pedido.id}
           pedido={devolviendo.pedido}
