@@ -15,12 +15,10 @@ update users u set role_id = r.id
   from roles r join system_roles s on s.id = r.system_role_id
  where r.company_id = u.company_id and s.code = u.role::text and u.role_id is null;
 
--- not null sin barrer la tabla bajo bloqueo: check not valid, validate, y entonces set not null usa
--- el check ya validado.
-alter table users add constraint users_role_id_present check (role_id is not null) not valid;
-alter table users validate constraint users_role_id_present;
+-- Goose corre todo en una transacción, así que el bloqueo de users dura hasta el commit; la tabla es
+-- chica (decenas de filas) y el lock_timeout de arriba hace que la migración falle en vez de dejar el
+-- login esperando detrás de una transacción larga.
 alter table users alter column role_id set not null;
-alter table users drop constraint users_role_id_present;
 
 drop trigger users_sync_role on users;
 drop function sync_user_role();
