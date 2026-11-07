@@ -17,6 +17,7 @@ import {
 } from '../../components/ui/dialog';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
+import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { fitsIn } from './roleEdit';
 
 const MIN_LEN = 12; // espejo de domain.MinPasswordLen (el backend es la autoridad)
@@ -42,11 +43,20 @@ export function EmployeesPage() {
   const canRoles = can('roles.manage', user);
   const [tab, setTab] = useState<'people' | 'roles'>(canPeople ? 'people' : 'roles');
   const [roleFilter, setRoleFilter] = useState<number | null>(null);
+  // rolesDirty: el editor de Roles ya no es una hoja modal; cambiar a Personal lo desmonta y se
+  // perdería lo marcado. Salir por el riel no se puede detener: la app no usa un data router.
+  const [rolesDirty, setRolesDirty] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const pickTab = (v: 'people' | 'roles') => {
+    if (v === 'people' && active === 'roles' && rolesDirty) { setConfirmLeave(true); return; }
+    setTab(v);
+  };
+  const leaveRoles = () => { setConfirmLeave(false); setRolesDirty(false); setTab('people'); };
   const both = canPeople && canRoles;
   const active = canPeople && (tab === 'people' || !canRoles) ? 'people' : 'roles';
 
   const tabs = both && (
-    <Tabs.Root value={active} onValueChange={(e) => setTab(e.value as 'people' | 'roles')} variant="enclosed">
+    <Tabs.Root value={active} onValueChange={(e) => pickTab(e.value as 'people' | 'roles')} variant="enclosed">
       <Tabs.List>
         <Tabs.Trigger value="people" minH="44px">Personal</Tabs.Trigger>
         <Tabs.Trigger value="roles" minH="44px">Roles</Tabs.Trigger>
@@ -59,7 +69,12 @@ export function EmployeesPage() {
   if (active === 'roles') {
     return (
       <Page fill p={3}>
-        <RolesPage tabs={tabs || undefined} onShowPeople={(id) => { setRoleFilter(id); setTab('people'); }} />
+        <RolesPage tabs={tabs || undefined} onDirtyChange={setRolesDirty}
+          onShowPeople={(id) => { setRoleFilter(id); setRolesDirty(false); setTab('people'); }} />
+        <ConfirmSheet isOpen={confirmLeave} title="¿Descartar los cambios?" destructive
+          description="Lo que marcaste o quitaste en este rol no se guarda."
+          confirmLabel="Descartar" cancelLabel="Seguir editando"
+          onConfirm={leaveRoles} onCancel={() => setConfirmLeave(false)} />
       </Page>
     );
   }

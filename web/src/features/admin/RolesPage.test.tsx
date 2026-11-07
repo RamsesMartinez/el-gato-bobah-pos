@@ -503,3 +503,84 @@ describe('nadie administra lo que puede más que él', () => {
     expect([...api.createRole.mock.calls[0][0].permissions].sort()).toEqual([...MIA].sort());
   });
 });
+
+// Revisión de los dos paneles: lo que la hoja modal protegía sola y el panel ya no.
+describe('el panel no pierde ni mueve lo que la persona hizo', () => {
+  test('RolesPage avisa hacia arriba si hay cambios sin guardar', async () => {
+    const u = userEvent.setup();
+    const onDirtyChange = vi.fn();
+    montar({ onDirtyChange });
+    const ed = await abrir(u, 'Cajero');
+    await u.click(within(ed).getByRole('checkbox', { name: /Pasar productos/ }));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    await u.click(within(ed).getByRole('checkbox', { name: /Pasar productos/ }));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+  });
+
+  test('si la persona tocó otro rol mientras se inactivaba, no la regresa al anterior', async () => {
+    const u = userEvent.setup();
+    let terminar!: (v: { id: number }) => void;
+    api.deactivateRole.mockReturnValue(new Promise((r) => { terminar = r; }));
+    montar();
+    const ed = await abrir(u, 'Cajero');
+    await u.click(within(ed).getByRole('button', { name: 'Inactivar' }));
+    const barista = await abrir(u, 'Barista');
+    await u.click(within(barista).getByRole('checkbox', { name: /Pasar productos/ }));
+    terminar({ id: 3 });
+    await waitFor(() => expect(api.roles).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('button', { name: /^Barista/ })).toHaveAttribute('aria-current', 'true');
+    // Y no se volvió a montar: lo marcado en Barista sigue ahí.
+    expect(within(await editor()).getByText('1 cambio')).toBeInTheDocument();
+  });
+
+  test('después de ROLE_CHANGED, el siguiente Guardar manda la versión nueva', async () => {
+    const u = userEvent.setup();
+    api.updateRole.mockRejectedValueOnce(new ApiError(409, 'ROLE_CHANGED', 'El rol cambió.', 'r9'));
+    montar();
+    const ed = await abrir(u, 'Cajero');
+    await u.click(within(ed).getByRole('checkbox', { name: /Configurar cajas/ }));
+    api.roles.mockResolvedValue({ items: [ADMIN, { ...CAJERO, version: 6 }, BARISTA] });
+    await u.click(within(ed).getByRole('button', { name: 'Guardar' }));
+    await waitFor(async () => expect(within(await editor()).getByText('0 cambios')).toBeInTheDocument());
+    const otra = await editor();
+    await u.click(within(otra).getByRole('checkbox', { name: /Configurar cajas/ }));
+    await u.click(within(otra).getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(api.updateRole).toHaveBeenCalledTimes(2));
+    expect(api.updateRole).toHaveBeenLastCalledWith(3, { version: 6, add: ['cash.configure'] });
+  });
+
+  test('«Acciones del rol» en la barra lleva al bloque de acciones del final', async () => {
+    const u = userEvent.setup();
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    montar();
+    const ed = await abrir(u, 'Cajero');
+    const ir = within(ed).getByRole('button', { name: 'Acciones del rol' });
+    expect(alto(ir)).toBeGreaterThanOrEqual(44);
+    await u.click(ir);
+    expect(scroll).toHaveBeenCalled();
+    expect(scroll.mock.contexts.at(-1)).toBe(within(ed).getByRole('group', { name: 'Acciones del rol' }));
+  });
+
+  test('tras inactivar, el bloque de acciones sigue a la vista', async () => {
+    const u = userEvent.setup();
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    montar();
+    const ed = await abrir(u, 'Cajero');
+    await u.click(within(ed).getByRole('button', { name: 'Inactivar' }));
+    await waitFor(() => expect(api.roles).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(scroll).toHaveBeenCalled());
+    const nueva = await editor();
+    expect(scroll.mock.contexts.at(-1)).toBe(within(nueva).getByRole('group', { name: 'Acciones del rol' }));
+  });
+
+  test('el nombre de un rol nuevo tiene etiqueta visible', async () => {
+    const u = userEvent.setup();
+    montar();
+    const ed = await nuevo(u);
+    const etiqueta = within(ed).getByText('Nombre del rol', { selector: 'label' });
+    expect(within(ed).getByLabelText('Nombre del rol')).toBe(within(ed).getByPlaceholderText('Nombre del rol'));
+    expect(etiqueta).toBeVisible();
+  });
+});

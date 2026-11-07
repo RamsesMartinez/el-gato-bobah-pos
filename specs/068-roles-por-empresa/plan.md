@@ -131,6 +131,9 @@ Ajustes de la revisión de tableta (2026-11-06):
 |----------|----------|---------|---------|
 | Roles | https://claude.ai/artifact/VgJecdviTYJzbYWKZZxaEp | A · Lista y hoja | 20/25 contra 17 (B) y 10 (C), medido a 1024×600: reutiliza la hoja inferior del POS, aísla la edición de un rol y da el ancho completo a los nombres de permiso; C pone 216 interruptores con un solo Guardar. Elegida por la sesión por delegación del dueño, 2026-11-05 |
 | Empleados | — | — | Cambio a un componente común (`Picker`); sin opciones que decidir |
+<!-- Límite del rediseño B: el editor ya no es modal. Cambiar a «Personal» con cambios sin guardar
+pide descartar, pero salir por el riel lateral los pierde sin avisar: la app monta BrowserRouter (no
+un data router) y no hay useBlocker. Cerrarlo es pasar a createBrowserRouter, fuera de este alcance. -->
 | Roles (rediseño, #243) | https://claude.ai/artifact/PETcM22bynsNczHo1Kxwbf | B · Dos paneles | Elegida por el dueño el 2026-11-07 (no por delegación). Medido con los componentes reales a 1024×600: 14 de 36 permisos a la vista contra 7 de la pantalla anterior; lista y rol a la vez, cambiar de rol es un toque (patrón de Emparejar) |
 
 ## Project Structure

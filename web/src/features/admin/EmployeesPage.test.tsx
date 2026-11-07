@@ -236,3 +236,39 @@ test('todo el renglón «Activo» es el control y mide al menos 44 px', async ()
   await waitFor(() => expect(api.updateUser).toHaveBeenCalledTimes(1));
   expect(api.updateUser.mock.calls[0]).toEqual([2, expect.objectContaining({ isActive: false })]);
 });
+
+// El editor de Roles ya no es una hoja modal: tocar «Personal» desmontaba la pestaña y lo marcado se
+// perdía sin preguntar.
+describe('cambiar de pestaña con cambios sin guardar en un rol', () => {
+  beforeEach(() => {
+    api.permissionCatalog.mockResolvedValue({ items: [{ code: 'employees.manage', area: 'team', label: 'Administrar empleados' }] });
+  });
+
+  test('tocar «Personal» pide descartar y «Seguir editando» conserva lo marcado', async () => {
+    const u = userEvent.setup();
+    montar();
+    await u.click(await screen.findByRole('tab', { name: 'Roles' }));
+    const ed = await screen.findByRole('region', { name: 'Permisos del rol' });
+    await u.click(await within(ed).findByRole('checkbox', { name: /Administrar empleados/ }));
+    await u.click(screen.getByRole('tab', { name: 'Personal' }));
+    expect(await screen.findByText('¿Descartar los cambios?')).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Seguir editando' }));
+    const sigue = await screen.findByRole('region', { name: 'Permisos del rol' });
+    expect(within(sigue).getByRole('checkbox', { name: /Administrar empleados/ })).toHaveAttribute('aria-checked', 'true');
+    expect(within(sigue).getByText('1 cambio')).toBeInTheDocument();
+
+    await u.click(screen.getByRole('tab', { name: 'Personal' }));
+    await u.click(await screen.findByRole('button', { name: 'Descartar' }));
+    expect(await screen.findByText('Ana')).toBeInTheDocument();
+  });
+
+  test('sin cambios, «Personal» cambia sin preguntar', async () => {
+    const u = userEvent.setup();
+    montar();
+    await u.click(await screen.findByRole('tab', { name: 'Roles' }));
+    await screen.findByRole('region', { name: 'Permisos del rol' });
+    await u.click(screen.getByRole('tab', { name: 'Personal' }));
+    expect(await screen.findByText('Ana')).toBeInTheDocument();
+    expect(screen.queryByText('¿Descartar los cambios?')).toBeNull();
+  });
+});

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Badge, Box, Button, Center, Flex, Grid, HStack, Input, Spinner, Text, VStack,
 } from '@chakra-ui/react';
@@ -21,6 +21,9 @@ interface Props {
   tabs?: ReactNode;
   // Inactivar un rol con personas activas lleva a Personal filtrado por ese rol.
   onShowPeople: (roleId: number) => void;
+  // onDirtyChange: Empleados pregunta antes de cambiar de pestaña con cambios sin guardar; sin la hoja
+  // modal, tocar «Personal» desmontaba el editor y lo marcado se perdía sin aviso.
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 const MAX_ROLE_NAME = 40; // espejo de domain.ValidateRoleName
@@ -30,7 +33,7 @@ type Selection = number | 'new';
 // RolesPage es la pestaña «Roles» de Empleados (#243, opción B «Dos paneles»): la lista a la izquierda
 // y el rol elegido a la derecha, sin hoja que tape la lista; cambiar de rol es un toque. Vive dentro
 // de la pantalla de Empleados, así que no trae su propio Page.
-export function RolesPage({ tabs, onShowPeople }: Props) {
+export function RolesPage({ tabs, onShowPeople, onDirtyChange }: Props) {
   const roles = useQuery({ queryKey: ['roles'], queryFn: adminApi.roles });
   const catalog = useQuery({ queryKey: ['permissions'], queryFn: adminApi.permissionCatalog });
   const [picked, setPicked] = useState<Selection | null>(null);
@@ -39,7 +42,11 @@ export function RolesPage({ tabs, onShowPeople }: Props) {
   const [generation, setGeneration] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState<Selection | null>(null);
+  // atActions: tras inactivar o volver a lo sugerido el editor se vuelve a montar; sin esto regresaba
+  // arriba y el bloque de acciones, a casi mil píxeles, se perdía de vista.
+  const [atActions, setAtActions] = useState(false);
   const onDirty = useCallback((d: boolean) => setDirty(d), []);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
 
   if (roles.isLoading || catalog.isLoading) return <Center flex="1" minH="200px"><Spinner size="xl" /></Center>;
   if (roles.isError || catalog.isError) {
@@ -55,10 +62,12 @@ export function RolesPage({ tabs, onShowPeople }: Props) {
   const choose = (next: Selection) => {
     if (next === selected) return;
     if (dirty) { setPending(next); return; }
+    setAtActions(false);
     setPicked(next);
   };
-  const reopen = (next: Selection | null) => {
+  const reopen = (next: Selection | null, actions: boolean) => {
     setDirty(false);
+    setAtActions(actions);
     setPicked(next);
     setGeneration((g) => g + 1);
   };
@@ -86,13 +95,13 @@ export function RolesPage({ tabs, onShowPeople }: Props) {
         <Text color="fg.muted" p={4}>No hay roles.</Text>
       ) : (
         <RoleEditor key={`${selected}-${generation}`} role={selected === 'new' ? null : role} roles={items}
-          catalog={perms} onDirty={onDirty} onDone={reopen} onShowPeople={onShowPeople} />
+          catalog={perms} startAtActions={atActions} onDirty={onDirty} onDone={reopen} onShowPeople={onShowPeople} />
       )}
 
       <ConfirmSheet isOpen={pending !== null} title="¿Descartar los cambios?" destructive
         description="Lo que marcaste o quitaste en este rol no se guarda."
         confirmLabel="Descartar" cancelLabel="Seguir editando"
-        onConfirm={() => { const next = pending; setPending(null); setDirty(false); setPicked(next); }}
+        onConfirm={() => { const next = pending; setPending(null); setDirty(false); setAtActions(false); setPicked(next); }}
         onCancel={() => setPending(null)} />
     </Flex>
   );
@@ -125,13 +134,15 @@ interface EditorProps {
   role: Role | null; // null = rol propio nuevo
   roles: Role[];
   catalog: PermissionInfo[];
+  startAtActions: boolean;
   onDirty: (dirty: boolean) => void;
-  // onDone: terminó un guardado o una acción; elige `next` (null = el primero) recargado.
-  onDone: (next: Selection | null) => void;
+  // onDone: terminó un guardado o una acción; elige `next` (null = el primero) recargado y, con
+  // `actions`, deja a la vista el bloque de acciones.
+  onDone: (next: Selection | null, actions: boolean) => void;
   onShowPeople: (roleId: number) => void;
 }
 
-function RoleEditor({ role: liveRole, roles, catalog, onDirty, onDone, onShowPeople }: EditorProps) {
+function RoleEditor({ role: liveRole, roles, catalog, startAtActions, onDirty, onDone, onShowPeople }: EditorProps) {
   const qc = useQueryClient();
   // El rol tal como se mostró al abrir: la lista ['roles'] se vuelve a pedir sola, y comparar contra
   // la recargada mandaría como «quitado» lo que otra persona agregó mientras tanto, con la versión
@@ -167,22 +178,30 @@ function RoleEditor({ role: liveRole, roles, catalog, onDirty, onDone, onShowPeo
   const dirty = isNew ? name.trim() !== '' || checked.size > 0 : changes > 0;
   // La lista pregunta antes de cambiar de rol con cambios sin guardar.
   useEffect(() => { onDirty(dirty); }, [dirty, onDirty]);
+  // alive: si la persona eligió otro rol mientras la acción terminaba, este editor ya se desmontó y su
+  // respuesta no puede regresarla al rol anterior ni volver a montar el que ahora edita.
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const toActions = () => actionsRef.current?.scrollIntoView?.({ block: 'nearest' });
+  useEffect(() => { if (startAtActions) toActions(); }, [startAtActions]);
+  const nameId = useId();
 
   // Ajuste en vivo de un sugerido contra lo que el producto le da.
   const liveAdded = defaults ? [...checked].filter((c) => !defaults.has(c)).length : 0;
   const liveRemoved = defaults ? [...defaults].filter((c) => !checked.has(c)).length : 0;
 
-  const done = async (title: string, next: Selection | null) => {
+  const done = async (title: string, next: Selection | null, actions = false) => {
     toaster.create({ title, type: 'success' });
     await qc.invalidateQueries({ queryKey: ['roles'] });
-    onDone(next);
+    if (alive.current) onDone(next, actions);
   };
   const fail = (where: 'save' | 'action') => async (e: unknown) => {
     // Lo marcado se hizo sobre otra versión del rol: se descarta y se muestra como quedó.
     if (e instanceof ApiError && e.code === 'ROLE_CHANGED') {
       toaster.create({ title: 'Alguien cambió este rol; ya se ve como quedó', type: 'warning' });
       await qc.invalidateQueries({ queryKey: ['roles'] });
-      onDone(role ? role.id : 'new');
+      if (alive.current) onDone(role ? role.id : 'new', false);
       return;
     }
     setError({ message: mensajeDeError(e), inUse: e instanceof ApiError && e.code === 'ROLE_IN_USE', where });
@@ -205,11 +224,11 @@ function RoleEditor({ role: liveRole, roles, catalog, onDirty, onDone, onShowPeo
   });
   const reset = useMutation({
     mutationFn: () => adminApi.resetRole(role!.id, role!.version),
-    onSuccess: () => done('Rol regresado a lo sugerido', role!.id), ...onAction,
+    onSuccess: () => done('Rol regresado a lo sugerido', role!.id, true), ...onAction,
   });
   const toggleActive = useMutation({
     mutationFn: () => (role!.active ? adminApi.deactivateRole : adminApi.reactivateRole)(role!.id, role!.version),
-    onSuccess: () => done(role!.active ? 'Rol inactivado' : 'Rol reactivado', role!.id), ...onAction,
+    onSuccess: () => done(role!.active ? 'Rol inactivado' : 'Rol reactivado', role!.id, true), ...onAction,
   });
   const remove = useMutation({
     mutationFn: () => adminApi.deleteRole(role!.id),
@@ -248,6 +267,7 @@ function RoleEditor({ role: liveRole, roles, catalog, onDirty, onDone, onShowPeo
   const canDelete = !isNew && !isSystem && role.allUsers === 0;
   const usedBefore = !isNew && !isSystem && role.allUsers > 0;
   const canToggle = !isAdmin && !readOnly;
+  const hasActions = !isNew && (canReset || canToggle);
   const busy = reset.isPending || toggleActive.isPending || remove.isPending;
 
   const errorBox = (where: 'save' | 'action') => error?.where === where && (
@@ -263,11 +283,14 @@ function RoleEditor({ role: liveRole, roles, catalog, onDirty, onDone, onShowPeo
     <Flex as="section" aria-label="Permisos del rol" direction="column" flex="1" minW={0} minH={0}
       bg="bg.panel" borderWidth="1px" borderRadius="lg">
       <HStack gap={3} px={3} py={1.5} borderBottomWidth="1px" justify="space-between">
-        <HStack data-row="name" gap={2} minW={0} flex="1" flexWrap="wrap">
+        <HStack data-row="name" gap={2} minW={0} flex="1" flexWrap="wrap" align={isNew ? 'end' : 'center'}>
           {isNew ? (
             <>
-              <Input minH="44px" flex="1" minW="150px" placeholder="Nombre del rol" aria-label="Nombre del rol"
-                value={name} maxLength={MAX_ROLE_NAME} onChange={(e) => setName(e.target.value)} />
+              <VStack align="stretch" gap={0} flex="1" minW="150px">
+                <Text asChild fontSize="sm" color="fg.muted"><label htmlFor={nameId}>Nombre del rol</label></Text>
+                <Input id={nameId} minH="44px" placeholder="Nombre del rol"
+                  value={name} maxLength={MAX_ROLE_NAME} onChange={(e) => setName(e.target.value)} />
+              </VStack>
               <Box flex="1" minW="150px">
                 <Picker value={copyFrom} options={copyOptions} onChange={onCopy}
                   placeholder="Copiar permisos de…" title="Copiar permisos de…" focusSearch={false} />
@@ -281,8 +304,13 @@ function RoleEditor({ role: liveRole, roles, catalog, onDirty, onDone, onShowPeo
           )}
           {!isNew && <Badge colorPalette={isSystem ? 'blue' : 'gray'}>{isSystem ? 'sugerido' : 'propio'}</Badge>}
           {!isNew && !role.active && <Badge colorPalette="yellow">inactivo</Badge>}
-          {adjusted && <Text fontSize="sm" color="fg.muted">{adjusted}</Text>}
+          {adjusted && <Text fontSize="sm" color="fg.muted" truncate>{adjusted}</Text>}
         </HStack>
+        {hasActions && (
+          <Button variant="ghost" colorPalette="gray" minH="44px" px={2} flexShrink={0} onClick={toActions}>
+            Acciones del rol
+          </Button>
+        )}
         {!readOnly && (
           <HStack gap={3} flexShrink={0}>
             <Text color="fg.muted" fontSize="sm">
@@ -355,8 +383,8 @@ function RoleEditor({ role: liveRole, roles, catalog, onDirty, onDone, onShowPeo
           );
         })}
 
-        {!isNew && (canReset || canToggle) && (
-          <VStack align="stretch" gap={2} pt={3} mt={3} borderTopWidth="1px">
+        {hasActions && (
+          <VStack ref={actionsRef} role="group" aria-label="Acciones del rol" align="stretch" gap={2} pt={3} mt={3} borderTopWidth="1px">
             <HStack gap={3} flexWrap="wrap">
               {canReset && (
                 <Button variant="outline" colorPalette="gray" minH="44px" disabled={busy || dirty} loading={reset.isPending}
