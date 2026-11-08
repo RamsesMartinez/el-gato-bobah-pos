@@ -203,3 +203,24 @@ func TestModeOf(t *testing.T) {
 		})
 	}
 }
+
+// Al conteo entran solo los productos que llevan su propia existencia: un paquete con el interruptor
+// puesto se expande por sus piezas, y uno con receta descuenta sus insumos (decisión del issue #252).
+func TestCountsOwnStock(t *testing.T) {
+	cases := []struct {
+		name string
+		p    ProductModeFacts
+		want bool
+	}{
+		{"existencia propia", ProductModeFacts{TrackStock: true, CompositionStatus: "confirmed"}, true},
+		{"paquete con el interruptor puesto", ProductModeFacts{TrackStock: true, IsPackage: true}, false},
+		{"receta", ProductModeFacts{HasRecipeItems: true, CompositionStatus: "confirmed"}, false},
+		{"no se cuenta", ProductModeFacts{CompositionStatus: "confirmed"}, false},
+		{"sin decidir", ProductModeFacts{}, false},
+	}
+	for _, c := range cases {
+		if got := CountsOwnStock(c.p); got != c.want {
+			t.Errorf("%s: %v; quiere %v", c.name, got, c.want)
+		}
+	}
+}

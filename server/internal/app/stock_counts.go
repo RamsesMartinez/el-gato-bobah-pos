@@ -64,11 +64,13 @@ type CountWeighed struct {
 	ClosedPacks []domain.ClosedPack `json:"closedPacks"`
 }
 
-// CountView es el conteo abierto con lo que hay que contar.
+// CountView es el conteo abierto con lo que hay que contar: los artículos y los productos con
+// existencia propia (spec 069). Siempre arreglos.
 type CountView struct {
-	ID       int64       `json:"id"`
-	OpenedAt time.Time   `json:"openedAt"`
-	Items    []CountItem `json:"items"`
+	ID       int64              `json:"id"`
+	OpenedAt time.Time          `json:"openedAt"`
+	Items    []CountItem        `json:"items"`
+	Products []CountProductItem `json:"products"`
 }
 
 // CountAdjustmentView es un renglón contado al cerrar: lo que el sistema tenía, lo contado y la
@@ -88,10 +90,15 @@ type NotCountedView struct {
 	Name         string `json:"name"`
 }
 
-// CountCloseView es lo que hace (o haría) cerrar el conteo. Siempre arreglos, aunque vacíos.
+// CountCloseView es lo que hace (o haría) cerrar el conteo. Siempre arreglos, aunque vacíos. Los
+// productos van aparte (spec 069): la pantalla anterior solo lee los de artículos.
 type CountCloseView struct {
-	Adjusted   []CountAdjustmentView `json:"adjusted"`
-	NotCounted []NotCountedView      `json:"notCounted"`
+	Adjusted           []CountAdjustmentView        `json:"adjusted"`
+	NotCounted         []NotCountedView             `json:"notCounted"`
+	AdjustedProducts   []CountProductAdjustmentView `json:"adjustedProducts"`
+	NotCountedProducts []CountProductView           `json:"notCountedProducts"`
+	// SkippedProducts: contados, pero ya no llevan su existencia; no se ajustan.
+	SkippedProducts []CountProductView `json:"skippedProducts"`
 }
 
 // OpenCount abre el conteo de la sucursal de la sesión. Con uno abierto, 409.
@@ -148,7 +155,11 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 			weighable[p.IngredientID] = true
 		}
 	}
-	v := CountView{ID: id, OpenedAt: openedAt, Items: make([]CountItem, len(rows))}
+	products, err := countProducts(ctx, q, id)
+	if err != nil {
+		return CountView{}, err
+	}
+	v := CountView{ID: id, OpenedAt: openedAt, Items: make([]CountItem, len(rows)), Products: products}
 	for i, r := range rows {
 		ps := byIng[r.ID]
 		if ps == nil {
@@ -528,14 +539,15 @@ func (s *BackofficeService) planClose(ctx context.Context, q *db.Queries, countI
 	in := make([]domain.CountLine, len(lines))
 	byID := make(map[int64]db.CountLinesRow, len(lines))
 	for i, l := range lines {
-		in[i] = domain.CountLine{IngredientID: l.IngredientID, Counted: l.CountedQty, System: l.SystemQty}
+		in[i] = domain.CountLine{ItemID: l.IngredientID, Counted: l.CountedQty, System: l.SystemQty}
 		byID[l.IngredientID] = l
 	}
 	plan := domain.PlanCountClose(in)
-	out := CountCloseView{Adjusted: make([]CountAdjustmentView, 0, len(plan)), NotCounted: []NotCountedView{}}
+	out := CountCloseView{Adjusted: make([]CountAdjustmentView, 0, len(plan)), NotCounted: []NotCountedView{},
+		AdjustedProducts: []CountProductAdjustmentView{}, NotCountedProducts: []CountProductView{}, SkippedProducts: []CountProductView{}}
 	for _, a := range plan {
-		l := byID[a.IngredientID]
-		out.Adjusted = append(out.Adjusted, CountAdjustmentView{IngredientID: a.IngredientID, Name: l.Name,
+		l := byID[a.ItemID]
+		out.Adjusted = append(out.Adjusted, CountAdjustmentView{IngredientID: a.ItemID, Name: l.Name,
 			BaseUnitCode: l.BaseUnitCode, System: a.System, Counted: a.Counted, Delta: a.Delta})
 	}
 	nc, err := q.NotCountedIngredients(ctx, countID)
@@ -559,7 +571,10 @@ func (s *BackofficeService) PreviewCount(ctx context.Context, countID int64) (Co
 			return err
 		}
 		var err error
-		out, _, err = s.planClose(ctx, q, countID)
+		if out, _, err = s.planClose(ctx, q, countID); err != nil {
+			return err
+		}
+		_, _, err = productPlan(ctx, q, countID, &out)
 		return err
 	})
 	return out, err
@@ -574,13 +589,21 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 		if err != nil {
 			return err
 		}
+		// Las existencias de los productos contados se toman antes de leer sus cifras y su modo.
+		if err := lockCountedProducts(ctx, q, countID, c.BranchID); err != nil {
+			return err
+		}
 		var plan []domain.CountAdjustment
 		if out, plan, err = s.planClose(ctx, q, countID); err != nil {
 			return err
 		}
+		productAdj, processed, err := productPlan(ctx, q, countID, &out)
+		if err != nil {
+			return err
+		}
 		ids := make([]int64, len(plan))
 		for i, a := range plan {
-			ids[i] = a.IngredientID
+			ids[i] = a.ItemID
 		}
 		if len(ids) > 0 {
 			if _, err := q.LockStockLevelsInBranchNowait(ctx, db.LockStockLevelsInBranchNowaitParams{Ids: ids, BranchID: c.BranchID}); err != nil {
@@ -590,11 +613,14 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 		reason := "conteo"
 		for _, a := range plan {
 			if err := q.InsertCountMovement(ctx, db.InsertCountMovementParams{
-				IngredientID: &a.IngredientID, Quantity: a.Delta, StockCountID: &countID, UserID: &userID,
+				IngredientID: &a.ItemID, Quantity: a.Delta, StockCountID: &countID, UserID: &userID,
 				Reason: &reason, BranchID: c.BranchID,
 			}); err != nil {
 				return err
 			}
+		}
+		if err := closeProducts(ctx, q, countID, c.BranchID, userID, productAdj, processed); err != nil {
+			return err
 		}
 		if _, err := q.FinishStockCount(ctx, db.FinishStockCountParams{ID: countID, Status: "closed", ClosedBy: &userID}); err != nil {
 			return err
@@ -615,7 +641,9 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 		}
 		branch := c.BranchID
 		return auditEntity(ctx, q, domain.AuditStockCounted, "stock_count", countID, &branch, &userID, nil,
-			map[string]any{"adjusted": len(out.Adjusted), "notCounted": len(out.NotCounted), "changedAfterPreview": changed})
+			map[string]any{"adjusted": len(out.Adjusted), "notCounted": len(out.NotCounted), "changedAfterPreview": changed,
+				"adjustedProducts": len(out.AdjustedProducts), "notCountedProducts": len(out.NotCountedProducts),
+				"skippedProducts": len(out.SkippedProducts)})
 	})
 	return out, err
 }

@@ -199,3 +199,54 @@ func (h *Handlers) SetCountPlace(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// PUT /stock/counts/{id}/product-lines/{productId} — lo contado de un producto con existencia propia
+// (spec 069), en piezas enteras. Responde lo que quedó guardado.
+func (h *Handlers) CaptureCountProduct(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	product, err := idParam(r, "productId")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		CountedQty  decimal.Decimal `json:"countedQty"`
+		Confirmable bool            `json:"confirmable"`
+		Confirmed   bool            `json:"confirmed"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	counted, err := h.backoffice.CaptureCountProduct(r.Context(), id, product,
+		app.CountCapture{Qty: body.CountedQty, Confirmable: body.Confirmable, Confirmed: body.Confirmed}, u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"countedQty": counted})
+}
+
+// DELETE /stock/counts/{id}/product-lines/{productId} — vuelve a «no contado».
+func (h *Handlers) UncaptureCountProduct(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	product, err := idParam(r, "productId")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.backoffice.UncaptureCountProduct(r.Context(), id, product); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

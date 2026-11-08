@@ -161,3 +161,95 @@ select l.counted_qty from stock_count_lines l join stock_counts c on c.id = l.co
  where c.status = 'closed' and c.branch_id = sqlc.arg(branch_id) and l.ingredient_id = sqlc.arg(ingredient_id)
  order by c.closed_at desc, c.id desc
  limit 1;
+
+-- ---- Productos con existencia propia en el conteo (spec 069, issue #252) ----
+-- Solo entra el que cuenta su propia existencia: activo, con `track_stock` y que no es paquete (un
+-- paquete con el interruptor puesto se expande por sus piezas, domain.ModeOf). Los de receta no
+-- tienen `track_stock`: el check de products no deja las dos a la vez.
+
+-- name: CountProducts :many
+-- Lo que el sistema tiene NO viaja: el conteo es a ciegas. Por categoría del menú (maqueta C).
+select p.id, p.name, c.name as category, l.counted_qty, p.alt_names
+  from products p
+  join categories c on c.id = p.category_id
+  left join stock_count_product_lines l on l.product_id = p.id and l.count_id = sqlc.arg(count_id)
+ where p.is_active and p.track_stock and p.type <> 'combo'
+ order by c.sort_key, c.name, p.name, p.id;
+
+-- name: GetProductForCount :one
+select track_stock, (type = 'combo')::bool as is_package from products where id = $1;
+
+-- name: EnsureProductStockLevel :exec
+-- La fila de existencia del producto en la sucursal, en cero si no existía: sin fila no hay
+-- candado, y una venta a media cerrada se calcularía contra un cero viejo (revisión de
+-- arquitectura de la 069). La empresa es la del producto, que RLS ya dejó ver.
+insert into stock_levels (company_id, branch_id, item_type, product_id, on_hand)
+select p.company_id, sqlc.arg(branch_id)::bigint, 'producto', p.id, 0 from products p where p.id = sqlc.arg(product_id)::bigint
+on conflict (branch_id, product_id) do nothing;
+
+-- name: LockProductStockLevelForCapture :exec
+-- Mismo arreglo que el de los insumos: el candado en una sentencia y la lectura en otra.
+select 1 from stock_levels
+ where item_type = 'producto' and product_id = sqlc.arg(product_id)::bigint and branch_id = sqlc.arg(branch_id)::bigint
+   for share;
+
+-- name: ProductOnHandForCapture :one
+select coalesce((select sl.on_hand from stock_levels sl
+                  where sl.item_type = 'producto' and sl.product_id = sqlc.arg(product_id)::bigint
+                    and sl.branch_id = sqlc.arg(branch_id)::bigint), 0)::numeric(14,4) as on_hand,
+       coalesce((select max(sm.id) from stock_movements sm
+                  where sm.product_id = sqlc.arg(product_id)::bigint
+                    and sm.branch_id = sqlc.arg(branch_id)::bigint), 0)::bigint as last_movement_id;
+
+-- name: UpsertCountProductLine :exec
+insert into stock_count_product_lines (count_id, product_id, counted_qty, system_qty, captured_by, last_movement_id)
+values (sqlc.arg(count_id), sqlc.arg(product_id), sqlc.arg(counted_qty), sqlc.arg(system_qty), sqlc.arg(captured_by),
+        sqlc.arg(last_movement_id))
+on conflict (count_id, product_id) do update
+   set counted_qty = excluded.counted_qty, system_qty = excluded.system_qty, captured_by = excluded.captured_by,
+       captured_at = now(), last_movement_id = excluded.last_movement_id;
+
+-- name: DeleteCountProductLine :execrows
+delete from stock_count_product_lines where count_id = $1 and product_id = $2;
+
+-- name: CountProductLines :many
+-- Con el modo de HOY del producto: el que dejó de contar su existencia con el conteo abierto no se
+-- ajusta (FR-009). El cierre la lee después de tomar las existencias.
+select l.product_id, p.name, l.counted_qty, l.system_qty,
+       (p.track_stock and p.type <> 'combo')::bool as counts_own_stock
+  from stock_count_product_lines l
+  join products p on p.id = l.product_id
+ where l.count_id = $1
+ order by l.product_id;
+
+-- name: NotCountedProducts :many
+select p.id, p.name from products p
+ where p.is_active and p.track_stock and p.type <> 'combo'
+   and not exists (select 1 from stock_count_product_lines l where l.count_id = $1 and l.product_id = p.id)
+ order by p.name, p.id;
+
+-- name: LockProductStockLevelsInBranchNowait :many
+-- Las existencias de los productos que el cierre va a ajustar, en orden y sin esperar: una venta o
+-- un cambio de modo en curso hace que el cierre se reintente en vez de formar un ciclo.
+select product_id from stock_levels
+ where item_type = 'producto' and product_id = any(sqlc.arg(ids)::bigint[]) and branch_id = sqlc.arg(branch_id)
+ order by product_id
+   for update nowait;
+
+-- name: InsertCountProductMovement :exec
+insert into stock_movements (item_type, product_id, movement_type, quantity, stock_count_id, user_id, reason, branch_id)
+values ('producto', sqlc.arg(product_id), 'ajuste', sqlc.arg(quantity), sqlc.arg(stock_count_id),
+        sqlc.arg(user_id), sqlc.arg(reason), sqlc.arg(branch_id));
+
+-- name: SaveCountProductLineCosts :exec
+-- El costo de cada producto que el cierre procesó. Los que se saltaron quedan en nulo: «no se
+-- ajustó», igual que los que cerró la API anterior sin conocerlos.
+update stock_count_product_lines l set unit_cost = p.current_cost
+  from products p
+ where l.count_id = sqlc.arg(count_id) and p.id = l.product_id and l.product_id = any(sqlc.arg(ids)::bigint[]);
+
+-- name: LastClosedCountedProductQty :one
+select l.counted_qty from stock_count_product_lines l join stock_counts c on c.id = l.count_id
+ where c.status = 'closed' and c.branch_id = sqlc.arg(branch_id) and l.product_id = sqlc.arg(product_id)
+ order by c.closed_at desc, c.id desc
+ limit 1;

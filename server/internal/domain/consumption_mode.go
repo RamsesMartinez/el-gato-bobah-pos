@@ -39,3 +39,9 @@ func ModeOf(p ProductModeFacts) ConsumptionMode {
 	}
 	return ModeUndecided
 }
+
+// CountsOwnStock dice si el producto entra al conteo de existencias: solo el que lleva su propia
+// existencia. Los que restan por receta, paquete u opciones no se cuentan (decisión del issue #252).
+func CountsOwnStock(p ProductModeFacts) bool {
+	return ModeOf(p) == ModeOwnStock
+}
