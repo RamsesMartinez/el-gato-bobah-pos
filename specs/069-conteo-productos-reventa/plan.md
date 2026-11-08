@@ -61,9 +61,9 @@ Dos flujos con disposición cambiada, en pantallas existentes (opciones elegidas
      grupo por su **categoría del menú** («Bebidas · del menú»). En la columna del lugar dicen
      «Producto del menú»; no tienen lugar ni empaques ni pesada. El aviso de cuántos productos hay
      al final **no es un renglón nuevo** (gastaría ~52 px, una fila de la lista): va como botón de
-     44 px dentro del renglón de avance que ya existe («3 de 35 contados · 12 productos del menú al
-     final ›») y al tocarlo la lista se desplaza al primer grupo de productos. «Producto del menú» se
-     pinta apagado, como «Sin contar», para que no parezca el selector de lugar. El buscador y «Uno por uno» los incluyen (van después de los
+     44 px en el renglón del buscador, que ya existe, y solo sin búsqueda (con ella el grupo puede no
+     estar; revisión de código). Al tocarlo la lista se desplaza al primer grupo de productos.
+     «Producto del menú» se pinta apagado, como «Sin contar», para que no parezca el selector de lugar. El buscador y «Uno por uno» los incluyen (van después de los
      artículos).
    - **Captura**: la misma hoja con teclado, en piezas enteras (sin punto decimal).
    - **Vista previa**: primero las diferencias grandes, después el resto de lo contado (productos en la

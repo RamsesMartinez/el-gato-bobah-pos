@@ -63,14 +63,14 @@
   del almacén».
 - **El modo leído** (`ConsumptionMode`) gana un valor `options`, deducido: confirmado, sin receta,
   sin existencia propia, no paquete, y con opciones que restan. `ModeOf` recibe ese hecho como un
-  booleano más (`OptionsDeduct`). Recetas (`mode: "options"`) y Salud del inventario lo muestran
-  como «Lo restan sus opciones».
+  booleano más (`OptionsDeduct`). Recetas (`mode: "options"`) lo muestra como «Lo restan sus
+  opciones»; Salud del inventario no lo lista (está confirmado y sus ventas restan; spec FR-015).
 - **Rationale**: no hace falta columna: el modo ya es deducido (spec 037) y así no puede contradecir
   a la venta. `ExpandSale` ya resta las opciones sin importar el modo del producto, por eso «al
   vender solo baja el artículo del sabor» es cierto en cuanto se apaga el contador.
 - **Compatibilidad**: la pantalla anterior nunca manda `options`; la API anterior recibiría
   `options` como modo desconocido (422) solo si una tableta ya actualizada habla con ella durante
-  los segundos del traslape: la persona reintenta. Un valor nuevo de `mode` en Recetas/Salud se
+  los segundos del traslape: la persona reintenta. Un valor nuevo de `mode` en Recetas se
   pinta en la pantalla anterior como «No gasta insumos»/«none», que es lo de hoy.
 - **Alternatives considered**: renombrar «No se cuenta» (rechazado: sigue siendo correcto para un
   producto que de verdad no resta nada); permitir `items` vacío (rechazado: «Se prepara aquí» sin
@@ -107,8 +107,8 @@ Lo que cambió el diseño:
 - **El modo `options` es deducido del catálogo vivo** (MEDIUM). Si después alguien apaga la última
   opción que resta, el producto se lee como «No se cuenta» sin que nada falle; la validación del
   servidor es al guardar, no una invariante. Se documenta en `almacen.md`; Salud del inventario lo
-  hace visible. El conteo de «sin decidir» de Salud no cambia (un `none` pasa a `options`, los dos
-  son decididos).
+  hace visible solo si se vende sin restar. El conteo de «sin decidir» de Salud no cambia (un `none`
+  pasa a `options`, los dos son decididos).
 - **El cierre lee el modo DESPUÉS de bloquear las existencias de los productos** (MEDIUM). El cambio
   de modo (`applyModeChange`) bloquea esas mismas filas `FOR UPDATE`: si está en curso, el cierre
   responde «vuelve a intentar»; si ya confirmó, el cierre ve el modo nuevo y lo salta. Test de

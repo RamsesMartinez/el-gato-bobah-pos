@@ -23,10 +23,10 @@ Cuerpo: `{ "countedQty": "15", "confirmable": true, "confirmed": false }`.
 | Respuesta | Cuándo |
 | --- | --- |
 | 200 `{ "countedQty": "15" }` | guardado |
-| 400/422 `VALIDATION` | decimal, negativo, sobre el máximo de piezas |
+| 400/422 `VALIDATION` | falta `countedQty` (o es null), decimal, negativo, sobre el máximo de piezas |
 | 409 `NEEDS_CONFIRM` | `confirmable` y cifra rara sin `confirmed` (no dice la referencia) |
 | 409 `CONFLICT` | el conteo ya se cerró |
-| 404 | el producto no existe en la empresa, o no lleva existencia propia |
+| 404 | el producto no existe en la empresa, está archivado o no lleva existencia propia |
 
 ### `DELETE /counts/{id}/product-lines/{productId}` → 204. Vuelve a «sin contar».
 
@@ -54,4 +54,4 @@ existencia propia; no se ajustan (FR-009).
 
 - `optionsDeduct: boolean` — alguna opción ligada resta (FR-011).
 - `optionsRequired: boolean` — algún grupo con opción que resta es obligatorio (`min_select ≥ 1`) (FR-014).
-- `mode` deducido puede valer `options` donde se exponga (Recetas `mode: "options"`, Salud `status: "options"`).
+- `mode` deducido vale `options` en Recetas (`mode: "options"`). Salud del inventario no lista estos productos (FR-015).
