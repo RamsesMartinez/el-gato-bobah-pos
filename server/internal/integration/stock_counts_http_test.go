@@ -49,7 +49,7 @@ func TestStockCountsHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	line := "/api/v1/stock/counts/" + strconv.FormatInt(id, 10) + "/lines/" + strconv.FormatInt(azucar, 10)
-	for _, bad := range []string{`{"countedQty":"-1"}`, `{"countedQty":"1e20"}`, `{"countedQty":"abc"}`} {
+	for _, bad := range []string{`{"countedQty":"-1"}`, `{"countedQty":"1e20"}`, `{"countedQty":"abc"}`, `{}`, `{"countedQty":null}`} {
 		if w := do(t, r, http.MethodPut, line, admin, []byte(bad), json); w.Code != http.StatusBadRequest {
 			t.Errorf("%s = %d; quiere 400", bad, w.Code)
 		}
@@ -162,6 +162,12 @@ func TestStockCountProductsHTTP(t *testing.T) {
 	line := "/api/v1/stock/counts/" + strconv.FormatInt(id, 10) + "/product-lines/" + strconv.FormatInt(lata, 10)
 	if w := do(t, r, http.MethodPut, line, cajero, []byte(`{"countedQty":"15"}`), jsonCT); w.Code != http.StatusForbidden {
 		t.Errorf("cajero captura un producto = %d; quiere 403", w.Code)
+	}
+	// Un cuerpo sin cifra no es «no hay»: guardarlo como 0 dejaría el producto en 0 al cerrar.
+	for _, missing := range []string{`{}`, `{"countedQty":null}`, `{"countedQty":"NaN"}`, `{"countedQty":"1e99999999999"}`, `{"countedQty":"1e30"}`, `{"countedQty":"0e9999"}`} {
+		if w := do(t, r, http.MethodPut, line, admin, []byte(missing), jsonCT); w.Code != http.StatusBadRequest {
+			t.Errorf("%s = %d; quiere 400", missing, w.Code)
+		}
 	}
 	if w := do(t, r, http.MethodPut, line, admin, []byte(`{"countedQty":"2.5"}`), jsonCT); w.Code != http.StatusBadRequest {
 		t.Errorf("2.5 latas = %d; quiere 400", w.Code)

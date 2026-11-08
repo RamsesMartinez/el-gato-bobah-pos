@@ -75,7 +75,7 @@ func (s *BackofficeService) CaptureCountProduct(ctx context.Context, countID, pr
 		if err != nil {
 			return notFound(err)
 		}
-		if !domain.CountsOwnStock(domain.ProductModeFacts{TrackStock: p.TrackStock, IsPackage: p.IsPackage}) {
+		if !p.IsActive || !domain.CountsOwnStock(domain.ProductModeFacts{TrackStock: p.TrackStock, IsPackage: p.IsPackage}) {
 			return fmt.Errorf("%w: este producto no lleva su propia existencia", domain.ErrNotFound)
 		}
 		// La fila de existencia primero: un producto que nunca se movió en la sucursal no la tiene, y
@@ -135,6 +135,9 @@ func (s *BackofficeService) UncaptureCountProduct(ctx context.Context, countID, 
 // lockCountedProducts toma sin esperar las existencias de todos los productos contados, también
 // las de los que se van a saltar: un cambio de modo en curso las tiene tomadas, y el cierre se
 // reintenta en vez de leer un modo que está por cambiar. Va ANTES de leer las cifras.
+//
+// El conteo ya está bloqueado (openCount), así que ninguna captura cambia sus renglones entre esta
+// lectura y la del plan.
 func lockCountedProducts(ctx context.Context, q *db.Queries, countID, branchID int64) error {
 	lines, err := q.CountProductLines(ctx, countID)
 	if err != nil || len(lines) == 0 {

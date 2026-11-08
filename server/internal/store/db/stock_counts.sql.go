@@ -416,18 +416,20 @@ func (q *Queries) FinishStockCount(ctx context.Context, arg FinishStockCountPara
 }
 
 const getProductForCount = `-- name: GetProductForCount :one
-select track_stock, (type = 'combo')::bool as is_package from products where id = $1
+select track_stock, (type = 'combo')::bool as is_package, is_active from products where id = $1
 `
 
 type GetProductForCountRow struct {
 	TrackStock bool `json:"track_stock"`
 	IsPackage  bool `json:"is_package"`
+	IsActive   bool `json:"is_active"`
 }
 
+// Con is_active: un archivado no sale en la lista ni en «sin contar», así que tampoco se captura.
 func (q *Queries) GetProductForCount(ctx context.Context, id int64) (GetProductForCountRow, error) {
 	row := q.db.QueryRow(ctx, getProductForCount, id)
 	var i GetProductForCountRow
-	err := row.Scan(&i.TrackStock, &i.IsPackage)
+	err := row.Scan(&i.TrackStock, &i.IsPackage, &i.IsActive)
 	return i, err
 }
 

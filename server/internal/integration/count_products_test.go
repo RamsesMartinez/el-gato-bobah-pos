@@ -156,6 +156,14 @@ func TestCapturingAProductIsWholePiecesAndBlind(t *testing.T) {
 	if _, err := k.svc.CaptureCountProduct(k.ctx, c.ID, k.latte, app.CountCapture{Qty: dd("3")}, k.user); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("capturar un producto de receta = %v; quiere ErrNotFound", err)
 	}
+	// Un archivado no sale en la lista ni en «sin contar»: capturarlo lo ajustaría a escondidas.
+	archived := makeProduct(t, k.st, "Archivada captura", dd("20"), true)
+	if _, err := k.st.Pool.Exec(context.Background(), `update products set is_active = false where id = $1`, archived); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.svc.CaptureCountProduct(k.ctx, c.ID, archived, app.CountCapture{Qty: dd("3")}, k.user); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("capturar un producto archivado = %v; quiere ErrNotFound", err)
+	}
 	if _, err := k.svc.CaptureCountProduct(k.ctx, c.ID, k.lata, app.CountCapture{Qty: dd("2000000")}, k.user); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("sobre el máximo de piezas = %v; quiere ErrValidation", err)
 	}
@@ -298,7 +306,7 @@ func TestClosingAdjustsProductsAgainstWhatThereWasWhenCaptured(t *testing.T) {
 	}
 }
 
-func TestClosingWaitsForAModeChangeInProgress(t *testing.T) {
+func TestClosingFailsFastWhileAModeChangeHoldsTheStock(t *testing.T) {
 	t.Parallel()
 	k := newProductCountKit(t)
 	c := k.open(t)

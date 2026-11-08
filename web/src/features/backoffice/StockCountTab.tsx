@@ -201,7 +201,6 @@ export function StockCountTab() {
   const rows = rowsOf(count);
   const shown: StockCount = { ...count, items: rows };
   const done = rows.filter((i) => i.countedQty !== null).length;
-  const products = count.products?.length ?? 0;
   const onSaved = (ingredientId: number, qty: string | null) => {
     setSavedAt(new Date());
     qc.setQueryData(['stock', 'count'], (old: StockCount | null | undefined) => old && {
@@ -224,14 +223,7 @@ export function StockCountTab() {
             <Progress.Track><Progress.Range /></Progress.Track>
           </Progress.Root>
         </Box>
-        {/* En el renglón que ya existe y no en uno nuevo: uno más le quitaba una fila a la lista en
-            600 px (revisión de tableta de la 069). */}
-        {products > 0 && view === 'lista' && (
-          <Button minH="44px" variant="ghost" colorPalette="brand"
-            onClick={() => document.getElementById(PRODUCTS_ANCHOR)?.scrollIntoView({ block: 'start' })}>
-            {products} {products === 1 ? 'producto del menú' : 'productos del menú'} al final ›
-          </Button>
-        )}
+
         <HStack gap={0} borderWidth="1px" borderRadius="md" role="group" aria-label="Vista">
           {(['lista', 'uno'] as const).map((v) => (
             <Button key={v} minH="44px" aria-pressed={view === v} variant={view === v ? 'solid' : 'ghost'}
@@ -559,6 +551,14 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
         return;
       }
       if (err instanceof ApiError && err.status === 400) { setConfirming(null); setServerError(err.message); return; }
+      // Alguien cambió el producto con el conteo abierto (ya lo restan sus opciones o su receta): se
+      // dice y se vuelve a pedir el conteo, que ya no lo trae.
+      if (isProduct(item) && err instanceof ApiError && err.status === 404) {
+        setConfirming(null);
+        setServerError(`${item.name} ya no se cuenta sola: ahora lo restan sus opciones o su receta.`);
+        void qc.invalidateQueries({ queryKey: ['stock', 'count'] });
+        return;
+      }
       toaster.create({ title: 'No se pudo guardar', type: 'error' });
     },
   });
@@ -642,11 +642,22 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
   const shown = needle
     ? count.items.filter((i) => matchesWords(i.name, needle) || i.presentations.some((p) => matchesWords(presentationLabel(p), needle)) || altOf(i))
     : count.items;
+  const productsShown = shown.filter(isProduct).length;
   const groups = new Map<string, CountItem[]>();
   for (const i of shown) groups.set(placeOf(i), [...(groups.get(placeOf(i)) ?? []), i]);
   return (
     <VStack align="stretch" gap={3} flex="1" minH={0}>
-      <Input aria-label="Buscar" placeholder="Buscar…" minH="44px" value={q} onChange={(e) => setQ(e.target.value)} />
+      {/* El aviso de productos va en el renglón del buscador y no en uno nuevo (una fila menos de lista
+          en 600 px), y solo sin búsqueda: con ella su grupo puede no estar (revisión de la 069). */}
+      <HStack gap={2}>
+        <Input aria-label="Buscar" placeholder="Buscar…" minH="44px" flex="1" value={q} onChange={(e) => setQ(e.target.value)} />
+        {!needle && productsShown > 0 && (
+          <Button minH="44px" variant="ghost" colorPalette="brand" flexShrink={0}
+            onClick={() => document.getElementById(PRODUCTS_ANCHOR)?.scrollIntoView({ block: 'start' })}>
+            {productsShown} {productsShown === 1 ? 'producto del menú' : 'productos del menú'} al final ›
+          </Button>
+        )}
+      </HStack>
       <Box borderWidth="1px" borderRadius="lg" overflowY="auto" flex="1" minH={0} bg="bg.panel">
         {[...groups.entries()].map(([place, items], gi, all) => (
           <Box key={place}>
@@ -864,14 +875,18 @@ function CloseDetail({ preview }: { preview: CountClose }) {
 function ClosedSummary({ result }: { result: CountClose }) {
   const items = result.adjusted.length;
   const products = result.adjustedProducts?.length ?? 0;
+  const skipped = result.skippedProducts?.length ?? 0;
   const notCounted = notCountedOf(result).length;
-  const fixed = products === 0
-    ? `${items} ${items === 1 ? 'insumo corregido' : 'insumos corregidos'}`
-    : `${items} ${items === 1 ? 'insumo' : 'insumos'} y ${products} ${products === 1 ? 'producto' : 'productos'} corregidos`;
+  const parts = [
+    ...(items > 0 || products === 0 ? [`${items} ${items === 1 ? 'insumo' : 'insumos'}`] : []),
+    ...(products > 0 ? [`${products} ${products === 1 ? 'producto' : 'productos'}`] : []),
+  ];
+  const plural = items + products !== 1;
   return (
     <Box p={3} borderRadius="lg" bg="green.subtle" data-testid="conteo-cerrado">
-      <Text fontWeight="700">Conteo cerrado: {fixed}</Text>
+      <Text fontWeight="700">Conteo cerrado: {parts.join(' y ')} {plural ? 'corregidos' : 'corregido'}</Text>
       {notCounted > 0 && <Text fontSize="sm">{notCounted} sin contar se {notCounted === 1 ? 'quedó como estaba' : 'quedaron como estaban'}.</Text>}
+      {skipped > 0 && <Text fontSize="sm">{skipped} {skipped === 1 ? 'contado ya no se cuenta solo: no se ajustó' : 'contados ya no se cuentan solos: no se ajustaron'}.</Text>}
     </Box>
   );
 }

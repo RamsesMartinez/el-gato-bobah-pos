@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/shopspring/decimal"
@@ -63,7 +64,9 @@ func (h *Handlers) CaptureCount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		CountedQty   decimal.Decimal  `json:"countedQty"`
+		// Puntero: sin cifra no es «no hay» (revisión de la 069). La pantalla siempre la manda, también
+		// al pesar (lo cerrado, aunque sea 0).
+		CountedQty   *decimal.Decimal `json:"countedQty"`
 		Weight       *decimal.Decimal `json:"weight"`
 		WeightUnitID *int16           `json:"weightUnitId"`
 		// Confirmable pide el aviso de una cifra fuera de lo razonable (spec 042). Sin él se guarda como
@@ -86,9 +89,13 @@ func (h *Handlers) CaptureCount(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	if body.CountedQty == nil {
+		Error(w, fmt.Errorf("%w: falta cuánto contaste", domain.ErrValidation))
+		return
+	}
 	u, _ := userFrom(r.Context())
 	in := app.CountCapture{
-		Qty: body.CountedQty, Weight: body.Weight, WeightUnitID: body.WeightUnitID,
+		Qty: *body.CountedQty, Weight: body.Weight, WeightUnitID: body.WeightUnitID,
 		Confirmable: body.Confirmable, Confirmed: body.Confirmed,
 	}
 	if g := body.Gross; g != nil {
@@ -214,17 +221,22 @@ func (h *Handlers) CaptureCountProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		CountedQty  decimal.Decimal `json:"countedQty"`
-		Confirmable bool            `json:"confirmable"`
-		Confirmed   bool            `json:"confirmed"`
+		// Puntero: sin cifra no es «no hay». Como cero, el cierre dejaría el producto en 0.
+		CountedQty  *decimal.Decimal `json:"countedQty"`
+		Confirmable bool             `json:"confirmable"`
+		Confirmed   bool             `json:"confirmed"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
+	if body.CountedQty == nil {
+		Error(w, fmt.Errorf("%w: falta cuánto contaste", domain.ErrValidation))
+		return
+	}
 	u, _ := userFrom(r.Context())
 	counted, err := h.backoffice.CaptureCountProduct(r.Context(), id, product,
-		app.CountCapture{Qty: body.CountedQty, Confirmable: body.Confirmable, Confirmed: body.Confirmed}, u.ID)
+		app.CountCapture{Qty: *body.CountedQty, Confirmable: body.Confirmable, Confirmed: body.Confirmed}, u.ID)
 	if err != nil {
 		Error(w, err)
 		return

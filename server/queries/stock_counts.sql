@@ -177,7 +177,8 @@ select p.id, p.name, c.name as category, l.counted_qty, p.alt_names
  order by c.sort_key, c.name, p.name, p.id;
 
 -- name: GetProductForCount :one
-select track_stock, (type = 'combo')::bool as is_package from products where id = $1;
+-- Con is_active: un archivado no sale en la lista ni en «sin contar», así que tampoco se captura.
+select track_stock, (type = 'combo')::bool as is_package, is_active from products where id = $1;
 
 -- name: EnsureProductStockLevel :exec
 -- La fila de existencia del producto en la sucursal, en cero si no existía: sin fila no hay

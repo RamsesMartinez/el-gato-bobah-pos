@@ -347,6 +347,8 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
       qc.setQueryData(['admin', 'composition', kind, id], c);
       qc.invalidateQueries({ queryKey: ['admin'] });
       qc.invalidateQueries({ queryKey: ['ingredients'] });
+      // Un producto que deja de contarse sale del conteo abierto (spec 069).
+      qc.invalidateQueries({ queryKey: ['stock', 'count'] });
       const extra = chosen.length ? ` (y ${chosen.length} con el mismo nombre)` : '';
       toaster.create({ title: `${confirmOnly ? 'Confirmada' : 'Lista'}: ${name}${extra}`, type: 'success' });
       onDirty(false);
@@ -677,10 +679,10 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
           {mode === 'options' && (
             <VStack align="stretch" gap={1} p={3} borderRadius="lg" bg="bg.muted">
               <Text fontSize="sm" color="fg.muted">El producto no resta nada; cada opción resta lo suyo:</Text>
-              {(data.optionGroups ?? []).map((g) => (
-                <Box key={g.name}>
+              {(data.optionGroups ?? []).map((g, gi) => (
+                <Box key={gi}>
                   <Text fontWeight="600">{g.name}{g.required ? ' · siempre se elige una' : ''}</Text>
-                  {g.options.filter((o) => o.deducts).map((o) => <Text key={o.name} fontSize="sm">{o.name} → {o.deducts}</Text>)}
+                  {g.options.filter((o) => o.deducts).map((o, oi) => <Text key={oi} fontSize="sm">{o.name} → {o.deducts}</Text>)}
                 </Box>
               ))}
               {!data.optionsRequired && <Text fontSize="sm" color="orange.700">Si se vende sin elegir opción, no se resta nada.</Text>}

@@ -859,14 +859,62 @@ describe('productos con existencia propia (spec 069)', () => {
     expect(screen.getByTestId('avance')).toHaveTextContent('1 de 6 contados');
   });
 
-  test('el renglón de avance avisa cuántos productos hay al final y lleva a ellos', async () => {
+  test('junto al buscador avisa cuántos productos hay al final, lleva a ellos y se esconde al buscar', async () => {
+    // jsdom no trae scrollIntoView: se pone para esta prueba y se quita al final, sin filtrarse a otras.
+    const original = Element.prototype.scrollIntoView;
     const scroll = vi.fn();
     Element.prototype.scrollIntoView = scroll;
+    try {
+      montar();
+      const aviso = await screen.findByRole('button', { name: /3 productos del menú al final/ });
+      fireEvent.click(aviso);
+      expect(scroll).toHaveBeenCalled();
+      expect(scroll.mock.contexts[0]).toHaveTextContent('Bebidas · del menú');
+      // Con una búsqueda, el grupo puede no estar: el botón no promete un lugar que no existe.
+      fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: 'azúcar' } });
+      expect(screen.queryByRole('button', { name: /productos del menú al final/ })).toBeNull();
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  test('si el producto dejó de contarse, lo dice y vuelve a pedir el conteo', async () => {
+    back.captureCountProduct.mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'este producto no lleva su propia existencia', 'r'));
     montar();
-    const aviso = await screen.findByRole('button', { name: /3 productos del menú al final/ });
-    fireEvent.click(aviso);
-    expect(scroll).toHaveBeenCalled();
-    expect(scroll.mock.contexts[0]).toHaveTextContent('Bebidas · del menú');
+    const rows = await screen.findAllByTestId('renglon-conteo');
+    fireEvent.click(within(rows[3]).getByRole('button', { name: 'Contar' }));
+    tecla('1');
+    click('Guardar');
+    expect(await screen.findByText(/Agua mineral 355 ml ya no se cuenta sola/)).toBeInTheDocument();
+    await waitFor(() => expect(back.currentCount.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  test('una cifra rara de un producto se confirma y se reenvía confirmada', async () => {
+    back.captureCountProduct.mockRejectedValueOnce(new ApiError(409, 'NEEDS_CONFIRM', 'confirma', 'r'));
+    montar();
+    const rows = await screen.findAllByTestId('renglon-conteo');
+    fireEvent.click(within(rows[3]).getByRole('button', { name: 'Contar' }));
+    tecla('9'); tecla('0'); tecla('0');
+    click('Guardar');
+    fireEvent.click(await screen.findByRole('button', { name: 'Sí, guardar' }));
+    await waitFor(() => expect(back.captureCountProduct).toHaveBeenLastCalledWith(5, 81, { countedQty: '900', confirmable: true, confirmed: true }));
+  });
+
+  test('si solo se corrigieron productos y uno se saltó, el resumen lo dice sin «0 insumos»', async () => {
+    back.previewCount.mockResolvedValue({
+      adjusted: [], notCounted: [],
+      adjustedProducts: [{ productId: 81, name: 'Agua mineral 355 ml', system: '-2', counted: '15', delta: '17' }],
+      notCountedProducts: [], skippedProducts: [{ productId: 77, name: 'Té helado' }],
+    });
+    back.closeCount.mockImplementation(() => back.previewCount());
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Cerrar conteo' }));
+    await screen.findByTestId('cierre');
+    click('Sí, cerrar y corregir lo guardado');
+    const hecho = await screen.findByTestId('conteo-cerrado');
+    expect(hecho).toHaveTextContent('Conteo cerrado: 1 producto corregido');
+    expect(hecho).not.toHaveTextContent('0 insumos');
+    expect(hecho).toHaveTextContent('1 contado ya no se cuenta solo: no se ajustó');
   });
 
   test('se capturan en piezas enteras y se guardan como producto', async () => {
