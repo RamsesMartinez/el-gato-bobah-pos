@@ -272,3 +272,74 @@ func TestOptionsModeIsIsolated(t *testing.T) {
 		t.Error("otra empresa le apagó el contador al producto")
 	}
 }
+
+// «Una opción resta» en SQL (option_deducts, 0110) tiene que decir lo mismo que la venta real
+// (domain.ExpandSale): si no, la hoja ofrecería «Lo restan sus opciones» para un producto que al
+// venderse no baja nada. Lo encontró la revisión de la 0110: un paquete ligado contaba como «resta»
+// aunque sus piezas por omisión no restaran nada. Se vende cada opción y se compara.
+func TestOptionDeductsAgreesWithWhatASaleDeducts(t *testing.T) {
+	t.Parallel()
+	k := newOptionsKit(t)
+	ctx := context.Background()
+	st := k.st
+	ownStock := makeProduct(t, st, "Ligado existencia propia", dd("10"), true)
+	nothing := makeProduct(t, st, "Ligado que no resta", dd("10"), false)
+	withRecipe := makeProduct(t, st, "Ligado con receta", dd("10"), false)
+	if _, err := st.Pool.Exec(ctx, `update products set recipe_id = $1 where id = $2`, pieceRecipe(t, st, k.fresa, "1"), withRecipe); err != nil {
+		t.Fatal(err)
+	}
+	combo := func(name string, def *int64) int64 {
+		c := makeProduct(t, st, name, dd("50"), false)
+		if _, err := st.Pool.Exec(ctx, `update products set type = 'combo' where id = $1`, c); err != nil {
+			t.Fatal(err)
+		}
+		if def != nil {
+			if _, err := st.Pool.Exec(ctx, `
+				with s as (insert into combo_slots (combo_id, name, min_select, max_select) values ($1, 'hueco', 1, 1) returning id)
+				insert into combo_slot_products (slot_id, product_id, is_default) select id, $2, true from s`, c, *def); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return c
+	}
+	comboThatDeducts := combo("Paquete que resta", &ownStock)
+	comboThatDoesNot := combo("Paquete que no resta", &nothing)
+	comboEmpty := combo("Paquete sin piezas", nil)
+
+	host := makeProduct(t, st, "Producto anfitrión de opciones", dd("30"), false)
+	opts := flavorGroup(t, st, host, "Paridad opciones", 0, map[string]*int64{"Con receta": &k.fresa, "Sin nada": nil,
+		"Receta vacía": nil, "Existencia propia": nil, "No resta": nil, "Con receta ligada": nil,
+		"Paquete que resta": nil, "Paquete que no resta": nil, "Paquete vacío": nil})
+	if _, err := st.Pool.Exec(ctx, `insert into recipes default values`); err != nil {
+		t.Fatal(err)
+	}
+	links := map[string]int64{"Existencia propia": ownStock, "No resta": nothing, "Con receta ligada": withRecipe,
+		"Paquete que resta": comboThatDeducts, "Paquete que no resta": comboThatDoesNot, "Paquete vacío": comboEmpty}
+	for name, p := range links {
+		if _, err := st.Pool.Exec(ctx, `update modifier_options set linked_product_id = $1 where id = $2`, p, opts[name]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.Pool.Exec(ctx, `update modifier_options set recipe_id = (select max(id) from recipes) where id = $1`, opts["Receta vacía"]); err != nil {
+		t.Fatal(err)
+	}
+
+	cashier := makeUser(t, st, "cajero_paridad", "cajero")
+	abrirCajaPrincipal(t, st, cashier)
+	orders := app.NewOrdersService(st, clock)
+	for name, opt := range opts {
+		order, err := orders.Create(ctx, app.CreateOrderCmd{ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cashier,
+			Lines: []domain.OrderLineInput{{ProductID: host, Qty: dd("1"), Modifiers: []domain.OrderModInput{{OptionID: opt, Qty: 1}}}}})
+		if err != nil {
+			t.Fatalf("%s: vender: %v", name, err)
+		}
+		var sold, says bool
+		if err := st.Pool.QueryRow(ctx, `select exists (select 1 from stock_movements where order_id = $1 and modifier_option_id = $2 and movement_type = 'venta'),
+		    option_deducts($2)`, order.ID, opt).Scan(&sold, &says); err != nil {
+			t.Fatal(err)
+		}
+		if sold != says {
+			t.Errorf("%s: la venta restó %v y option_deducts dice %v", name, sold, says)
+		}
+	}
+}

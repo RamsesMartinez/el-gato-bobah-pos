@@ -50,8 +50,10 @@ grant select, insert, update, delete on stock_count_product_lines to gatobobah_a
 -- «LO RESTAN SUS OPCIONES» (spec 069). Una sola definición de «esta opción resta del almacén», la
 -- que usan la hoja de composición, la validación al guardar y Recetas: con tres copias del mismo
 -- predicado, una pantalla diría que resta y el servidor que no. Misma regla que ExpandSale: una
--- receta con insumos, o ser otro producto que a su vez resta (existencia propia, paquete o receta).
--- Corren con los permisos de quien llama: RLS aplica igual que en la consulta que las usa.
+-- receta con insumos, o ser otro producto que a su vez resta (existencia propia o receta; un paquete
+-- solo si alguna de sus piezas por omisión resta, como lo expande la venta). La paridad con la venta
+-- la vigila TestOptionDeductsAgreesWithWhatASaleDeducts. Corren con los permisos de quien llama: RLS
+-- aplica igual que en la consulta que las usa.
 -- +goose StatementBegin
 create function option_deducts(p_option bigint) returns boolean
 language sql stable as $$
@@ -61,8 +63,14 @@ language sql stable as $$
        and (exists (select 1 from recipe_items ri where ri.recipe_id = o.recipe_id)
             or exists (select 1 from products lp
                         where lp.id = o.linked_product_id
-                          and (lp.track_stock or lp.type = 'combo'
-                               or exists (select 1 from recipe_items ri where ri.recipe_id = lp.recipe_id)))))
+                          and ((lp.type <> 'combo'
+                                and (lp.track_stock or exists (select 1 from recipe_items ri where ri.recipe_id = lp.recipe_id)))
+                               or (lp.type = 'combo'
+                                and exists (select 1 from combo_slots cs
+                                              join combo_slot_products csp on csp.slot_id = cs.id and csp.is_default
+                                              join products cp on cp.id = csp.product_id
+                                             where cs.combo_id = lp.id and cp.type <> 'combo'
+                                               and (cp.track_stock or exists (select 1 from recipe_items ri where ri.recipe_id = cp.recipe_id))))))))
 $$;
 -- +goose StatementEnd
 -- +goose StatementBegin
