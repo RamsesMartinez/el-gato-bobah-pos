@@ -224,3 +224,25 @@ func TestCountsOwnStock(t *testing.T) {
 		}
 	}
 }
+
+// «Lo restan sus opciones» (spec 069) se deduce: confirmado, sin receta ni existencia propia, y con
+// alguna opción que resta. Sin opciones que resten sigue siendo «No se cuenta».
+func TestModeOfOptions(t *testing.T) {
+	cases := []struct {
+		name string
+		p    ProductModeFacts
+		want ConsumptionMode
+	}{
+		{"confirmado y sus opciones restan", ProductModeFacts{CompositionStatus: "confirmed", OptionsDeduct: true}, ModeOptions},
+		{"confirmado sin opciones que resten", ProductModeFacts{CompositionStatus: "confirmed"}, ModeNone},
+		{"existencia propia gana a las opciones", ProductModeFacts{TrackStock: true, CompositionStatus: "confirmed", OptionsDeduct: true}, ModeOwnStock},
+		{"receta gana a las opciones", ProductModeFacts{HasRecipeItems: true, CompositionStatus: "confirmed", OptionsDeduct: true}, ModeRecipe},
+		{"paquete gana a las opciones", ProductModeFacts{IsPackage: true, OptionsDeduct: true}, ModePackage},
+		{"sin decidir aunque las opciones resten", ProductModeFacts{OptionsDeduct: true}, ModeUndecided},
+	}
+	for _, c := range cases {
+		if got := ModeOf(c.p); got != c.want {
+			t.Errorf("%s: %s; quiere %s", c.name, got, c.want)
+		}
+	}
+}

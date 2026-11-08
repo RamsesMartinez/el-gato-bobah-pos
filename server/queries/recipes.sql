@@ -36,6 +36,8 @@ with sales as (
                              or exists (select 1 from unnest(i.alt_names) a where strpos(catalog_name_key(a), catalog_name_key(sqlc.arg(q)::text)) > 0))))
 )
 select b.id, b.name, b.category, b.type, b.track_stock, b.status, b.sold,
+       -- «Lo restan sus opciones» (spec 069): la misma regla que la hoja y la validación.
+       product_options_deduct(b.id)::bool as options_deduct,
        coalesce((select string_agg(x.txt, ' · ' order by x.pos, x.id) from (
           -- Lo que no llega a un kilo o un litro se lee en gramos o mililitros, como en la hoja.
           select ri.position as pos, ri.id, case when u.code in ('kg', 'l') and ri.quantity < 1

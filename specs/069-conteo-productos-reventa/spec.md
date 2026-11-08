@@ -114,8 +114,8 @@ sabor y ver que solo baja el artículo de ese sabor.
    rechaza diciendo que ninguna de sus opciones resta del almacén.
 4. **Given** un producto que no tenía existencia propia, **When** se guarda como «Lo restan sus
    opciones», **Then** se guarda igual (confirmado, sin receta) y no se inserta ningún movimiento.
-5. **Given** un producto guardado así, **When** se ven Recetas o Salud del inventario, **Then** se lee
-   «Lo restan sus opciones», no «No se cuenta».
+5. **Given** un producto guardado así, **When** se ve Recetas, **Then** se lee «Lo restan sus
+   opciones», no «No se cuenta».
 
 ---
 
@@ -183,8 +183,10 @@ sabor y ver que solo baja el artículo de ese sabor.
   en cada sucursal con el movimiento de cambio de modo existente y dejar el cambio en la bitácora.
 - **FR-014**: Si ningún grupo que resta es obligatorio, la hoja MUST avisar que una venta sin elegir
   opción no resta nada.
-- **FR-015**: Recetas y Salud del inventario MUST mostrar estos productos como «Lo restan sus
-  opciones», distinto de «No se cuenta».
+- **FR-015**: Recetas MUST mostrar estos productos como «Lo restan sus opciones», distinto de «No
+  se cuenta». Salud del inventario no los lista como problema: están confirmados y sus ventas dejan
+  el movimiento del artículo de la opción (si una venta no restara nada, sale como hoy en «se vende
+  sin restar»).
 - **FR-016**: Aplica a cualquier empresa: nada en la regla depende de nombres de productos, grupos o
   categorías.
 - **FR-017**: El resumen al cerrar MUST contar artículos y productos (corregidos y sin contar) con

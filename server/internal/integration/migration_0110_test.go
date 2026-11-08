@@ -130,8 +130,9 @@ func TestMigrationCountProductLinesOnARealBackup(t *testing.T) {
 		}
 		migrarAbajoHasta(t, st.Pool, countProductLinesVersion-1)
 		var exists bool
-		if err := st.Pool.QueryRow(ctx, `select to_regclass('stock_count_product_lines') is not null`).Scan(&exists); err != nil || exists {
-			t.Fatalf("la tabla sigue tras el Down (%v)", err)
+		if err := st.Pool.QueryRow(ctx, `select to_regclass('stock_count_product_lines') is not null
+		    or to_regprocedure('option_deducts(bigint)') is not null or to_regprocedure('product_options_deduct(bigint)') is not null`).Scan(&exists); err != nil || exists {
+			t.Fatalf("la tabla o las funciones siguen tras el Down (%v)", err)
 		}
 		migrarArriba(t, st.Pool)
 	})

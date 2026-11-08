@@ -515,6 +515,73 @@ func (q *Queries) PackageHasChoices(ctx context.Context, comboID int64) (bool, e
 	return has_choices, err
 }
 
+const productOptionGroups = `-- name: ProductOptionGroups :many
+select g.id as group_id, coalesce(nullif(pmg.title, ''), g.name)::text as group_name, (pmg.min_select > 0)::bool as required,
+       o.name::text as option_name, option_deducts(o.id)::bool as deducts,
+       coalesce(case
+         when o.linked_product_id is not null then (select '1 ' || lp.name from products lp where lp.id = o.linked_product_id)
+         else (select string_agg(trim_scale(ri.quantity)::text || ' ' || case when u.code = 'pieza' then '' else u.code || ' ' end || i.name,
+                                 ' · ' order by ri.position, ri.id)
+                 from recipe_items ri join units u on u.id = ri.unit_id join ingredients i on i.id = ri.ingredient_id
+                where ri.recipe_id = o.recipe_id)
+       end, '')::text as deducts_text
+  from product_modifier_groups pmg
+  join modifier_groups g on g.id = pmg.group_id and g.is_active
+  join modifier_options o on o.group_id = g.id and o.is_active
+ where pmg.product_id = $1
+ order by pmg.position, pmg.id, o.sort_key, o.id
+`
+
+type ProductOptionGroupsRow struct {
+	GroupID     int64  `json:"group_id"`
+	GroupName   string `json:"group_name"`
+	Required    bool   `json:"required"`
+	OptionName  string `json:"option_name"`
+	Deducts     bool   `json:"deducts"`
+	DeductsText string `json:"deducts_text"`
+}
+
+// Los grupos activos del producto con cada opción activa y lo que resta (spec 069), para la hoja de
+// composición: si alguna resta se ofrece «Lo restan sus opciones», y si ningún grupo que resta es
+// obligatorio se avisa. La regla de «resta» es option_deducts (0110), la misma de la validación.
+func (q *Queries) ProductOptionGroups(ctx context.Context, productID int64) ([]ProductOptionGroupsRow, error) {
+	rows, err := q.db.Query(ctx, productOptionGroups, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProductOptionGroupsRow{}
+	for rows.Next() {
+		var i ProductOptionGroupsRow
+		if err := rows.Scan(
+			&i.GroupID,
+			&i.GroupName,
+			&i.Required,
+			&i.OptionName,
+			&i.Deducts,
+			&i.DeductsText,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const productOptionsDeduct = `-- name: ProductOptionsDeduct :one
+select product_options_deduct($1)::bool
+`
+
+func (q *Queries) ProductOptionsDeduct(ctx context.Context, pProduct int64) (bool, error) {
+	row := q.db.QueryRow(ctx, productOptionsDeduct, pProduct)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const setIngredientComposition = `-- name: SetIngredientComposition :execrows
 update ingredients
    set is_prep = $1,

@@ -47,6 +47,35 @@ create policy tenant_isolation on stock_count_product_lines
 -- servicio, que solo escribe con el conteo abierto y bloqueado.
 grant select, insert, update, delete on stock_count_product_lines to gatobobah_app;
 
+-- «LO RESTAN SUS OPCIONES» (spec 069). Una sola definición de «esta opción resta del almacén», la
+-- que usan la hoja de composición, la validación al guardar y Recetas: con tres copias del mismo
+-- predicado, una pantalla diría que resta y el servidor que no. Misma regla que ExpandSale: una
+-- receta con insumos, o ser otro producto que a su vez resta (existencia propia, paquete o receta).
+-- Corren con los permisos de quien llama: RLS aplica igual que en la consulta que las usa.
+-- +goose StatementBegin
+create function option_deducts(p_option bigint) returns boolean
+language sql stable as $$
+  select exists (
+    select 1 from modifier_options o
+     where o.id = p_option
+       and (exists (select 1 from recipe_items ri where ri.recipe_id = o.recipe_id)
+            or exists (select 1 from products lp
+                        where lp.id = o.linked_product_id
+                          and (lp.track_stock or lp.type = 'combo'
+                               or exists (select 1 from recipe_items ri where ri.recipe_id = lp.recipe_id)))))
+$$;
+-- +goose StatementEnd
+-- +goose StatementBegin
+create function product_options_deduct(p_product bigint) returns boolean
+language sql stable as $$
+  select exists (
+    select 1 from product_modifier_groups pmg
+      join modifier_groups g on g.id = pmg.group_id and g.is_active
+      join modifier_options o on o.group_id = g.id and o.is_active
+     where pmg.product_id = p_product and option_deducts(o.id))
+$$;
+-- +goose StatementEnd
+
 -- +goose Down
 -- Se niega con cifras: son la única copia de lo que se contó. Los ajustes que dejaron en
 -- `stock_movements` sobreviven a este Down (y el Down de la 0092 ya se niega con ellos).
@@ -59,4 +88,6 @@ begin
 end;
 $$;
 -- +goose StatementEnd
+drop function product_options_deduct(bigint);
+drop function option_deducts(bigint);
 drop table stock_count_product_lines;
