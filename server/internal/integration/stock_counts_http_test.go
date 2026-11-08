@@ -49,7 +49,7 @@ func TestStockCountsHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	line := "/api/v1/stock/counts/" + strconv.FormatInt(id, 10) + "/lines/" + strconv.FormatInt(azucar, 10)
-	for _, bad := range []string{`{"countedQty":"-1"}`, `{"countedQty":"1e20"}`, `{"countedQty":"abc"}`} {
+	for _, bad := range []string{`{"countedQty":"-1"}`, `{"countedQty":"1e20"}`, `{"countedQty":"abc"}`, `{}`, `{"countedQty":null}`} {
 		if w := do(t, r, http.MethodPut, line, admin, []byte(bad), json); w.Code != http.StatusBadRequest {
 			t.Errorf("%s = %d; quiere 400", bad, w.Code)
 		}
@@ -129,5 +129,63 @@ func TestTheCountPlaceIsSetByWhoCounts(t *testing.T) {
 				t.Errorf("= %d %s; quiere 204", w.Code, w.Body.String())
 			}
 		})
+	}
+}
+
+// Productos con existencia propia en el conteo por el router real (spec 069): mismo permiso que el
+// de artículos, a ciegas, y arreglos aunque estén vacíos.
+func TestStockCountProductsHTTP(t *testing.T) {
+	t.Parallel()
+	r, st, token := newStockAPI(t)
+	admin, cajero := token("admin_conteo_prod", "admin"), token("cajero_conteo_prod", "cajero")
+	lata := makeProduct(t, st, "Lata conteo http", dd("25"), true)
+	adjust(t, st, "producto", lata, "-2")
+	jsonCT := "application/json"
+
+	w := do(t, r, http.MethodPost, "/api/v1/stock/counts", admin, nil, "")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("abrir = %d %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"products":[`) || !strings.Contains(body, `"productId":`+strconv.FormatInt(lata, 10)) {
+		t.Fatalf("el conteo no trae los productos: %s", body)
+	}
+	for _, leak := range []string{`"onHand"`, `"system"`, `"systemQty"`} {
+		if strings.Contains(body, leak) {
+			t.Errorf("el conteo abierto enseña lo que el sistema tiene (%s): deja de ser a ciegas", leak)
+		}
+	}
+	var id int64
+	if err := st.Pool.QueryRow(t.Context(), `select id from stock_counts where status = 'open' order by id desc limit 1`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	line := "/api/v1/stock/counts/" + strconv.FormatInt(id, 10) + "/product-lines/" + strconv.FormatInt(lata, 10)
+	if w := do(t, r, http.MethodPut, line, cajero, []byte(`{"countedQty":"15"}`), jsonCT); w.Code != http.StatusForbidden {
+		t.Errorf("cajero captura un producto = %d; quiere 403", w.Code)
+	}
+	// Un cuerpo sin cifra no es «no hay»: guardarlo como 0 dejaría el producto en 0 al cerrar.
+	for _, missing := range []string{`{}`, `{"countedQty":null}`, `{"countedQty":"NaN"}`, `{"countedQty":"1e99999999999"}`, `{"countedQty":"1e30"}`, `{"countedQty":"0e9999"}`} {
+		if w := do(t, r, http.MethodPut, line, admin, []byte(missing), jsonCT); w.Code != http.StatusBadRequest {
+			t.Errorf("%s = %d; quiere 400", missing, w.Code)
+		}
+	}
+	if w := do(t, r, http.MethodPut, line, admin, []byte(`{"countedQty":"2.5"}`), jsonCT); w.Code != http.StatusBadRequest {
+		t.Errorf("2.5 latas = %d; quiere 400", w.Code)
+	}
+	if w := do(t, r, http.MethodPut, line, admin, []byte(`{"countedQty":"15"}`), jsonCT); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"countedQty":"15"`) {
+		t.Fatalf("capturar 15 = %d %s; quiere 200 con lo guardado", w.Code, w.Body.String())
+	}
+	if w := do(t, r, http.MethodDelete, line, cajero, nil, ""); w.Code != http.StatusForbidden {
+		t.Errorf("cajero quita una cifra = %d; quiere 403", w.Code)
+	}
+	w = do(t, r, http.MethodGet, "/api/v1/stock/counts/"+strconv.FormatInt(id, 10)+"/preview", admin, nil, "")
+	for _, k := range []string{`"adjustedProducts":[`, `"notCountedProducts":[`, `"skippedProducts":[`} {
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), k) {
+			t.Errorf("vista previa sin %s como arreglo: %d %s", k, w.Code, w.Body.String())
+		}
+	}
+	w = do(t, r, http.MethodPost, "/api/v1/stock/counts/"+strconv.FormatInt(id, 10)+"/close", admin, nil, "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"delta":"17"`) {
+		t.Fatalf("cerrar = %d %s; quiere el ajuste de +17", w.Code, w.Body.String())
 	}
 }

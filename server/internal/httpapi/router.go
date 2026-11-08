@@ -509,6 +509,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						r.Post("/counts", h.OpenCount)
 						r.Put("/counts/{id}/lines/{ingredientId}", h.CaptureCount)
 						r.Delete("/counts/{id}/lines/{ingredientId}", h.UncaptureCount)
+						r.Put("/counts/{id}/product-lines/{productId}", h.CaptureCountProduct)
+						r.Delete("/counts/{id}/product-lines/{productId}", h.UncaptureCountProduct)
 						r.Get("/counts/{id}/preview", h.PreviewCount)
 						r.Post("/counts/{id}/close", h.CloseCount)
 						r.Post("/counts/{id}/discard", h.DiscardCount)

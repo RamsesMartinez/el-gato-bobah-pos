@@ -189,3 +189,23 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     (`domain.CountNeedsConfirm`): el conteo sigue a ciegas.
   - **Las sugerencias de empaque son por clase de unidad** (`PresentationSuggestions`), nunca por nombre
     suelto: así «Bolsa de 15 kg» no aparece en un artículo en litros.
+- **Productos con existencia propia en el conteo y «Lo restan sus opciones»** (spec 069, 0110). Cinco
+  cosas que no se ven:
+  - **Sus cifras van en `stock_count_product_lines`, no en `stock_count_lines`**: ahí `ingredient_id`
+    es parte de la llave y la API anterior escribe con `on conflict (count_id, ingredient_id)`. Solo
+    entran los productos activos con `track_stock` que no son paquete (`domain.CountsOwnStock`), en
+    piezas enteras (`domain.ValidCountPieces`). La pantalla los pinta con id negativo para reusar la
+    hoja de captura; el servidor nunca ve ese negativo.
+  - **Capturar asegura la fila de existencia antes de tomarla** (`EnsureProductStockLevel`): un
+    producto que nunca se movió en la sucursal no la tiene, y sin fila el `for share` no toma nada.
+  - **El cierre toma las existencias de los productos contados ANTES de leer su modo** (`nowait`): un
+    cambio de modo en curso las tiene tomadas y el cierre responde «vuelve a intentar». El producto
+    que dejó de contarse con el conteo abierto se salta (`skippedProducts`): ajustarlo le reviviría
+    el contador.
+  - **`unit_cost` nulo en un conteo cerrado = «no se ajustó»**: lo llena solo la API nueva al cerrar.
+    Así se reconocen los renglones que cerró la API anterior durante una subida y los saltados.
+  - **«Una opción resta» tiene una sola definición: `option_deducts` y `product_options_deduct`
+    (0110)**, que usan la validación al guardar, la hoja de composición y Recetas. El modo `options`
+    se deduce del catálogo de hoy: si alguien apaga la última opción que resta, el producto se lee
+    «No se cuenta» sin que nada falle (Salud del inventario lo hace visible si vende sin restar).
+    Ninguna regla depende de nombres de productos, grupos o categorías.

@@ -99,6 +99,11 @@ export interface Composition {
   // Extras que se llaman igual en otro grupo.
   // today: lo que ese extra lleva hoy, para que copiarle la receta no esconda que es otra cosa.
   sameName?: { id: number; group: string; stamp?: string; today?: string }[];
+  // Spec 069: alguna opción del producto resta (se ofrece «Lo restan sus opciones»), alguno de esos
+  // grupos es obligatorio, y lo que resta cada opción. Opcionales: una API anterior no los trae.
+  optionsDeduct?: boolean;
+  optionsRequired?: boolean;
+  optionGroups?: { name: string; required: boolean; options: { name: string; deducts: string }[] }[];
 }
 export interface CompositionBody {
   // Un insumo nuevo va con `newArticle` y sin id: el servidor lo crea al guardar la receta (spec 042).
@@ -111,7 +116,7 @@ export interface CompositionBody {
   alsoBasedOn?: Record<number, string>;
   basedOn?: string;
   // La tarjeta elegida: el servidor revisa que el contenido le corresponda (spec 037).
-  mode?: 'items' | 'package' | 'product' | 'nothing';
+  mode?: 'items' | 'package' | 'product' | 'nothing' | 'options';
   // «¿Cuántas tienes de verdad?» y las cifras que se mostraron al preguntar.
   actualStock?: string;
   seenProductOnHand?: string;
@@ -126,7 +131,7 @@ export interface RecipeRow {
   name: string;
   group: string;
   status: RecipeStatus;
-  mode: '' | 'items' | 'combo' | 'product' | 'own';
+  mode: '' | 'items' | 'combo' | 'product' | 'own' | 'options';
   summary: string;
   lines: number;
   soldPerMonth: string;

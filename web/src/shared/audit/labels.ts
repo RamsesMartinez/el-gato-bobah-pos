@@ -78,7 +78,7 @@ export const ACTION_LABELS: Record<string, string> = {
 
 // Qué resta un producto (spec 037), con las palabras de la hoja de receta.
 const MODE_LABELS: Record<string, string> = {
-  own_stock: 'Su propia existencia', recipe: 'Lo que lleva', package: 'Es un combo',
+  own_stock: 'Su propia existencia', options: 'Lo restan sus opciones', recipe: 'Lo que lleva', package: 'Es un combo',
   none: 'No se cuenta', undecided: 'Falta decir qué resta',
 };
 
