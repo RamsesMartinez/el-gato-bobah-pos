@@ -102,9 +102,9 @@ real (`make test-integration`).
 
 ## Phase 5: Polish & Cross-Cutting
 
-- [ ] T037 [P] Nota en docs/mecanica/almacen.md: productos en el conteo (tabla aparte, fila de existencia asegurada al capturar, modo leído después del bloqueo, `unit_cost` nulo = cerrado por la API anterior sin ajustar) y el modo `options` deducido del catálogo vivo; ninguna regla depende de nombres de productos, grupos o categorías (FR-016)
-- [ ] T038 `cd server && go build ./... && go test ./...` y `make test-integration` en verde
-- [ ] T039 `cd web && bun run lint && bun run vitest run && bun run build` en verde
+- [X] T037 [P] Nota en docs/mecanica/almacen.md: productos en el conteo (tabla aparte, fila de existencia asegurada al capturar, modo leído después del bloqueo, `unit_cost` nulo = cerrado por la API anterior sin ajustar) y el modo `options` deducido del catálogo vivo; ninguna regla depende de nombres de productos, grupos o categorías (FR-016)
+- [X] T038 `cd server && go build ./... && go test ./...` y `make test-integration` en verde
+- [X] T039 `cd web && bun run lint && bun run vitest run && bun run build` en verde
 - [ ] T040 Prueba con usuario nuevo a 1024×600 (`hasTouch`) contra el `make start` del worktree con la base restaurada (`make db-restaurar`): subagente sin contexto que cuente un producto y le quite el contador a otro siguiendo quickstart.md; cerrar los pedidos de prueba (entregar y cobrar) y descartar o cerrar el conteo de prueba; lo observado se escribe en texto (sin capturas en el repo)
 - [X] T041 Borrar el arnés de maquetas `web/maquetas069/` y su línea de `.git/info/exclude`
 
