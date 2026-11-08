@@ -227,7 +227,9 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
   // Con existencia negativa no hay «-3 latas» guardadas: se vendieron más de las que se registraron.
   // «Lo restan sus opciones» lo dice en palabras de quien opera y pide contar cada opción (spec 069):
   // la cuenta del producto no se reparte entre sabores, no se sabe de cuál era cada pieza.
-  const optionsNote = `${productOnHand > 0 ? `Tenías ${productOnHand} anotadas de ${name}` : `Vendiste ${-productOnHand} más de las que tenías anotadas de ${name}`}; al guardar, esa cuenta queda en 0. En el próximo conteo cuenta las piezas de cada opción.`;
+  const optionsNote = `${productOnHand > 0
+    ? `Tus ${productOnHand} de ${name} siguen donde están; el sistema deja de contarlas como producto.`
+    : `Vendiste ${-productOnHand} más de las que tenías anotadas de ${name}; el sistema deja de llevar esa cuenta.`} En el próximo conteo cuenta las piezas de cada opción.`;
   const stockNote = mode === 'options' ? optionsNote : productOnHand > 0
     ? `Tus ${productOnHand} de ${name} siguen donde están; el sistema solo deja de contarlas.`
     : `Según el sistema se vendieron ${-productOnHand} más de las que había registradas de ${name}; desde ahora el sistema deja de llevar esa cuenta. Lo que tengas guardado no se mueve.`;

@@ -598,7 +598,7 @@ describe('lo restan sus opciones (spec 069)', () => {
     fireEvent.click(await screen.findByText('Lo restan sus opciones'));
     expect(screen.getByText('Fresa → 1 Lata fresa')).toBeInTheDocument();
     expect(screen.getByText('Limón → 1 Lata limón')).toBeInTheDocument();
-    expect(screen.getByText(/Vendiste 4 más de las que tenías anotadas de Chai Latte G/)).toHaveTextContent('esa cuenta queda en 0');
+    expect(screen.getByText(/Vendiste 4 más de las que tenías anotadas de Chai Latte G/)).toHaveTextContent('el sistema deja de llevar esa cuenta');
     expect(screen.getByText(/Vendiste 4 más/)).toHaveTextContent('En el próximo conteo cuenta las piezas de cada opción');
     expect(screen.queryByText(/Agrega al menos un insumo/)).toBeNull();
     await guardar();
@@ -614,7 +614,8 @@ describe('lo restan sus opciones (spec 069)', () => {
     api.composition.mockResolvedValue({ ...sabores, productOnHand: '12' });
     montar();
     fireEvent.click(await screen.findByText('Lo restan sus opciones'));
-    expect(screen.getByText(/Tenías 12 anotadas de Chai Latte G/)).toBeInTheDocument();
+    // Recién contadas, «queda en 0» se leía como perderlas (prueba con usuario nuevo de la 069).
+    expect(screen.getByText(/Tus 12 de Chai Latte G siguen donde están/)).toHaveTextContent('el sistema deja de contarlas como producto');
   });
 
   it('avisa si ningún grupo que resta es obligatorio', async () => {

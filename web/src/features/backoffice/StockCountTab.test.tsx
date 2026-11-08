@@ -963,6 +963,9 @@ describe('productos con existencia propia (spec 069)', () => {
     const diffs = within(cierre).getAllByTestId('diferencia');
     expect(diffs[0]).toHaveTextContent('Agua mineral 355 ml · producto: contaste 15 piezas');
     expect(diffs[0]).toHaveTextContent('sobraban 17 piezas');
+    // «sobraban 17» no se entendía sin lo que tenía el sistema (prueba con usuario nuevo de la 069).
+    expect(diffs[0]).toHaveTextContent('el sistema marcaba 2 piezas de menos');
+    expect(diffs[1]).toHaveTextContent('el sistema tenía 2.8 L');
     expect(diffs[1]).toHaveTextContent('Jarabe de vainilla');
     expect(cierre).toHaveTextContent('Sin contar (2): se quedan como están');
     expect(cierre).not.toHaveTextContent('Refresco cola lata');

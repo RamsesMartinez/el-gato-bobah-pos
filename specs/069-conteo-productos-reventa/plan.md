@@ -146,3 +146,21 @@ Sin violaciones.
 `db-architect`: 0 CRITICAL, 2 HIGH, 4 MEDIUM, 3 LOW. `tablet-ui-reviewer`: sin bloqueantes, 2 MEDIUM.
 Todo lo HIGH y MEDIUM quedó incorporado (research R8, «Pantallas y maquetas» y «Riesgos»). Ninguna
 puerta del principio VIII se cierra. Veredicto tras incorporarlos: aprobado.
+
+## Prueba con usuario nuevo (2026-11-08)
+
+Agente sin contexto, pantalla real a 1024×600 táctil contra el `make start` del worktree con la base
+restaurada del 2026-10-22, más un «Refresco de lata (prueba)» con un grupo obligatorio de sabores
+creado solo en esa copia (ningún producto real tiene sabores obligatorios que resten).
+
+- **Conteo**: lo logró en ~16 toques. Verificado en la base: el refresco pasó de −2 a 15 con un
+  `ajuste` de +17 ligado al conteo; el Kokomen de −5 a 8 (+13).
+- **«Lo restan sus opciones»**: lo logró en ~6 toques. Verificado: el contador del refresco se cerró
+  con −15 de «cambio de modo» y el producto ya no cuenta su existencia. No vendió ni abrió pedidos.
+- **Corregido por lo que vio**: «sobraban 17» no se entendía → la vista previa dice también lo que
+  tenía el sistema («el sistema marcaba 2 piezas de menos»); «esa cuenta queda en 0» se leía como
+  perder lo recién contado → «Tus 15 … siguen donde están; el sistema deja de contarlas como producto».
+- **Fuera de esta feature** (ya existían): la ficha del producto no avisa al guardar la receta y
+  sigue diciendo «Pendiente» hasta reabrirla; «personalizado» y «elige 1–1 · def. 0–1» en los grupos
+  no se entienden; el orden de lugares que anuncia el conteo no coincide con el de la lista en los
+  datos restaurados.

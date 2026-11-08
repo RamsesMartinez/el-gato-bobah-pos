@@ -848,7 +848,13 @@ function CloseDetail({ preview }: { preview: CountClose }) {
       {big.length > 0 && <Text fontWeight="600">Revisa {big.length === 1 ? 'esta diferencia grande' : `estas ${big.length} diferencias grandes`} antes de cerrar:</Text>}
       {ordered.map((d) => (
         <HStack key={d.key} data-testid="diferencia" justify="space-between" p={2} borderRadius="md" bg={isBig(d) ? 'red.subtle' : undefined}>
-          <Text>{d.name}{d.product && <Text as="span" color="fg.muted"> · producto</Text>}: contaste {countedWords(d.counted, d.baseUnitCode)}</Text>
+          <VStack align="start" gap={0} minW={0}>
+            <Text>{d.name}{d.product && <Text as="span" color="fg.muted"> · producto</Text>}: contaste {countedWords(d.counted, d.baseUnitCode)}</Text>
+            {/* Sin lo que tenía el sistema, «sobraban 17» no se entendía (prueba con usuario nuevo de la 069). */}
+            <Text fontSize="sm" color="fg.muted">{d.system < 0
+              ? `el sistema marcaba ${countedWords(-d.system, d.baseUnitCode)} de menos`
+              : `el sistema tenía ${countedWords(d.system, d.baseUnitCode)}`}</Text>
+          </VStack>
           <Text fontWeight={isBig(d) ? '700' : '400'}>{diffWords(d.delta, d.baseUnitCode)}</Text>
         </HStack>
       ))}
