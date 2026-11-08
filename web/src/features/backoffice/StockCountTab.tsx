@@ -8,7 +8,7 @@ import {
 } from '../../components/ui/drawer';
 import { NumericKeypad } from '../../components/NumericKeypad';
 import { pressKey } from '../../components/pressKey';
-import { backofficeApi, type CountCaptureBody, type CountClose, type CountItem, type StockCount } from '../../api/backoffice';
+import { backofficeApi, type CountCaptureBody, type CountClose, type CountItem, type CountProduct, type StockCount } from '../../api/backoffice';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { matchedAlias, matchesWords } from '../../utils/format';
 import { AltMatchTag } from '../../components/AltMatchTag';
@@ -41,6 +41,21 @@ function saveView(v: View) {
 }
 
 const placeOf = (i: CountItem) => i.place ?? NO_LOCATION;
+
+// Productos con existencia propia en el conteo (spec 069, maqueta «Conteo con productos», opción C):
+// se pintan con los mismos renglones que los artículos, al final y agrupados por su categoría del
+// menú. Dentro de la pantalla viajan como un CountItem con el id NEGATIVO del producto: así la lista,
+// «Uno por uno» y la hoja de captura los siguen por id sin confundirlos con un artículo; productId
+// dice a dónde se guardan.
+type CountRow = CountItem & { productId?: number };
+const productRow = (p: CountProduct): CountRow => ({
+  ingredientId: -p.productId, productId: p.productId, name: p.name, place: `${p.category} · del menú`, placeId: null,
+  baseUnitCode: 'pieza', presentations: [], countedQty: p.countedQty, altNames: p.altNames,
+});
+const rowsOf = (c: StockCount): CountRow[] => [...c.items, ...(c.products ?? []).map(productRow)];
+const isProduct = (i: CountItem) => (i as CountRow).productId !== undefined;
+// El primer grupo de productos: a donde lleva el aviso del renglón de avance.
+const PRODUCTS_ANCHOR = 'conteo-productos';
 
 // ---- Teclado físico (spec 044) ----
 
@@ -183,11 +198,15 @@ export function StockCountTab() {
     );
   }
 
-  const done = count.items.filter((i) => i.countedQty !== null).length;
+  const rows = rowsOf(count);
+  const shown: StockCount = { ...count, items: rows };
+  const done = rows.filter((i) => i.countedQty !== null).length;
+  const products = count.products?.length ?? 0;
   const onSaved = (ingredientId: number, qty: string | null) => {
     setSavedAt(new Date());
     qc.setQueryData(['stock', 'count'], (old: StockCount | null | undefined) => old && {
       ...old, items: old.items.map((i) => (i.ingredientId === ingredientId ? { ...i, countedQty: qty } : i)),
+      products: old.products?.map((p) => (-p.productId === ingredientId ? { ...p, countedQty: qty } : p)),
     });
   };
   const pickView = (v: View) => { setView(v); saveView(v); };
@@ -198,13 +217,21 @@ export function StockCountTab() {
       <HStack gap={3} flexWrap="wrap">
         <Box flex="1" minW="260px">
           <Text fontSize="sm">
-            <Text as="span" fontWeight="700" data-testid="avance">{done} de {count.items.length} contados</Text>
+            <Text as="span" fontWeight="700" data-testid="avance">{done} de {rows.length} contados</Text>
             <Text as="span" color="fg.muted"> · empezado {hora.soloHora(count.openedAt)}{savedAt ? ` · ✓ guardado ${hora.soloHora(savedAt)}` : ' · se guarda solo'}</Text>
           </Text>
-          <Progress.Root value={count.items.length ? (done / count.items.length) * 100 : 0} size="sm" colorPalette="green" mt={1}>
+          <Progress.Root value={rows.length ? (done / rows.length) * 100 : 0} size="sm" colorPalette="green" mt={1}>
             <Progress.Track><Progress.Range /></Progress.Track>
           </Progress.Root>
         </Box>
+        {/* En el renglón que ya existe y no en uno nuevo: uno más le quitaba una fila a la lista en
+            600 px (revisión de tableta de la 069). */}
+        {products > 0 && view === 'lista' && (
+          <Button minH="44px" variant="ghost" colorPalette="brand"
+            onClick={() => document.getElementById(PRODUCTS_ANCHOR)?.scrollIntoView({ block: 'start' })}>
+            {products} {products === 1 ? 'producto del menú' : 'productos del menú'} al final ›
+          </Button>
+        )}
         <HStack gap={0} borderWidth="1px" borderRadius="md" role="group" aria-label="Vista">
           {(['lista', 'uno'] as const).map((v) => (
             <Button key={v} minH="44px" aria-pressed={view === v} variant={view === v ? 'solid' : 'ghost'}
@@ -229,8 +256,8 @@ export function StockCountTab() {
       </HStack>
 
       {view === 'lista'
-        ? <ListView count={count} onSaved={onSaved} initialQuery={initialQuery} />
-        : <OneByOne count={count} onSaved={onSaved} />}
+        ? <ListView count={shown} onSaved={onSaved} initialQuery={initialQuery} />
+        : <OneByOne count={shown} onSaved={onSaved} />}
 
       {closing && (
         <CloseSheet countId={count.id} onClose={() => setClosing(false)}
@@ -497,9 +524,17 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
   // El 400 del servidor (p. ej. el máximo) se muestra tal cual junto a la cifra.
   const [serverError, setServerError] = useState<string | null>(null);
   const save = useMutation({
-    mutationFn: (b: CountCaptureBody | null) => (b === null
-      ? backofficeApi.uncaptureCount(countId, item.ingredientId).then(() => null)
-      : backofficeApi.captureCount(countId, item.ingredientId, b)),
+    mutationFn: (b: CountCaptureBody | null) => {
+      const product = (item as CountRow).productId;
+      if (product !== undefined) {
+        return b === null
+          ? backofficeApi.uncaptureCountProduct(countId, product).then(() => null)
+          : backofficeApi.captureCountProduct(countId, product, { countedQty: b.countedQty, confirmable: true, confirmed: b.confirmed });
+      }
+      return b === null
+        ? backofficeApi.uncaptureCount(countId, item.ingredientId).then(() => null)
+        : backofficeApi.captureCount(countId, item.ingredientId, b);
+    },
     onMutate: () => setServerError(null),
     onSuccess: (r, b) => {
       setConfirming(null);
@@ -509,7 +544,7 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
       // El desglose que quedó guardado reemplaza al de antes (#204): sin esto, reabrir mostraba la
       // captura anterior y «Guardar» sin tocar nada deshacía la corrección.
       qc.setQueryData(['stock', 'count'], (old: StockCount | null | undefined) => old && {
-        ...old, items: old.items.map((i) => (i.ingredientId === item.ingredientId ? { ...i, weighed: r?.weighed ?? null } : i)),
+        ...old, items: old.items.map((i) => (i.ingredientId === item.ingredientId ? { ...i, weighed: r && 'weighed' in r ? r.weighed ?? null : null } : i)),
       });
       if (qty !== null) toaster.create({ title: `Guardado: ${countedWords(qty, item.baseUnitCode)}`, type: 'success', duration: 1500 });
       onSaved(item.ingredientId, qty);
@@ -613,9 +648,10 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
     <VStack align="stretch" gap={3} flex="1" minH={0}>
       <Input aria-label="Buscar" placeholder="Buscar…" minH="44px" value={q} onChange={(e) => setQ(e.target.value)} />
       <Box borderWidth="1px" borderRadius="lg" overflowY="auto" flex="1" minH={0} bg="bg.panel">
-        {[...groups.entries()].map(([place, items]) => (
+        {[...groups.entries()].map(([place, items], gi, all) => (
           <Box key={place}>
-            <Text px={3} py={2} fontWeight="700" bg="bg.subtle">{place}</Text>
+            <Text px={3} py={2} fontWeight="700" bg="bg.subtle"
+              id={isProduct(items[0]) && !all.slice(0, gi).some(([, g]) => isProduct(g[0])) ? PRODUCTS_ANCHOR : undefined}>{place}</Text>
             {items.map((i) => { const alt = altOf(i); return (
               <HStack key={i.ingredientId} px={3} py={2} gap={3} borderTopWidth="1px" data-testid="renglon-conteo">
                 <VStack align="start" gap={0} flex="1" minW={0}>
@@ -628,7 +664,9 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
                     </Text>
                   )}
                 </VStack>
-                <PlacePicker item={i} />
+                {isProduct(i)
+                  ? <Text w="160px" flexShrink={0} fontSize="sm" color="fg.muted">Producto del menú</Text>
+                  : <PlacePicker item={i} />}
                 <Text fontSize="sm" color={i.countedQty !== null ? 'fg.success' : 'fg.muted'} minW="120px">
                   {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}` : 'Sin contar'}
                 </Text>
@@ -720,7 +758,7 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
         <Text fontSize="xs" color="fg.muted">{where}</Text>
         <HStack gap={3} flexWrap="wrap">
           <Text fontSize="2xl" fontWeight="700" flex="1">{item.name}</Text>
-          <PlacePicker item={item} />
+          {isProduct(item) ? <Text color="fg.muted">Producto del menú · en piezas</Text> : <PlacePicker item={item} />}
         </HStack>
         <EntryFields item={item} e={e} serverError={c.serverError} onWeigh={() => setWeighing(true)} />
         <HStack gap={3}>
@@ -770,36 +808,70 @@ function CloseSheet({ countId, onClose, onClosed }: { countId: number; onClose: 
   );
 }
 
+// Una diferencia de la vista previa: un artículo o un producto (spec 069), en la unidad base.
+type Diff = { key: string; name: string; product: boolean; baseUnitCode: string; system: number; counted: number; delta: number };
+
+function diffsOf(p: CountClose): Diff[] {
+  return [
+    ...p.adjusted.map((a) => ({ key: `i${a.ingredientId}`, name: a.name, product: false, baseUnitCode: a.baseUnitCode,
+      system: Number(a.system), counted: Number(a.counted), delta: Number(a.delta) })),
+    ...(p.adjustedProducts ?? []).map((a) => ({ key: `p${a.productId}`, name: a.name, product: true, baseUnitCode: 'pieza',
+      system: Number(a.system), counted: Number(a.counted), delta: Number(a.delta) })),
+  ];
+}
+const notCountedOf = (p: CountClose) => [...p.notCounted.map((n) => n.name), ...(p.notCountedProducts ?? []).map((n) => n.name)];
+
+// CloseDetail pone primero lo grande: con muchos nombres sin contar arriba, la diferencia que había
+// que revisar quedaba bajo el corte de la tableta (revisión de tableta de la 069). Los nombres sin
+// contar se abren a pedido.
 function CloseDetail({ preview }: { preview: CountClose }) {
-  const big = preview.adjusted.filter((a) => isBigDiff(Number(a.delta), Number(a.counted), Number(a.system)));
+  const [showNames, setShowNames] = useState(false);
+  const all = diffsOf(preview);
+  const isBig = (d: Diff) => isBigDiff(d.delta, d.counted, d.system);
+  const big = all.filter(isBig);
+  const ordered = [...big, ...all.filter((d) => !isBig(d))];
+  const notCounted = notCountedOf(preview);
+  const skipped = preview.skippedProducts ?? [];
   return (
     <VStack align="stretch" gap={3} data-testid="cierre">
-      {preview.notCounted.length > 0 && (
+      {big.length > 0 && <Text fontWeight="600">Revisa {big.length === 1 ? 'esta diferencia grande' : `estas ${big.length} diferencias grandes`} antes de cerrar:</Text>}
+      {ordered.map((d) => (
+        <HStack key={d.key} data-testid="diferencia" justify="space-between" p={2} borderRadius="md" bg={isBig(d) ? 'red.subtle' : undefined}>
+          <Text>{d.name}{d.product && <Text as="span" color="fg.muted"> · producto</Text>}: contaste {countedWords(d.counted, d.baseUnitCode)}</Text>
+          <Text fontWeight={isBig(d) ? '700' : '400'}>{diffWords(d.delta, d.baseUnitCode)}</Text>
+        </HStack>
+      ))}
+      {all.length === 0 && <Text color="fg.muted">Todo lo contado cuadra con lo guardado.</Text>}
+      {notCounted.length > 0 && (
         <Box p={3} borderRadius="lg" bg="orange.subtle">
-          <Text fontWeight="600">Sin contar ({preview.notCounted.length}): se quedan como están</Text>
-          <Text fontSize="sm">{preview.notCounted.map((n) => n.name).join(', ')}</Text>
+          <HStack justify="space-between" gap={3}>
+            <Text fontWeight="600">Sin contar ({notCounted.length}): se quedan como están</Text>
+            {!showNames && <Button minH="44px" variant="ghost" onClick={() => setShowNames(true)}>Ver cuáles</Button>}
+          </HStack>
+          {showNames && <Text fontSize="sm">{notCounted.join(', ')}</Text>}
         </Box>
       )}
-      {big.length > 0 && <Text fontWeight="600">Revisa {big.length === 1 ? 'esta diferencia grande' : `estas ${big.length} diferencias grandes`} antes de cerrar:</Text>}
-      {preview.adjusted.map((a) => {
-        const isBig = big.includes(a);
-        return (
-          <HStack key={a.ingredientId} justify="space-between" p={2} borderRadius="md" bg={isBig ? 'red.subtle' : undefined}>
-            <Text>{a.name}: contaste {countedWords(a.counted, a.baseUnitCode)}</Text>
-            <Text fontWeight={isBig ? '700' : '400'}>{diffWords(Number(a.delta), a.baseUnitCode)}</Text>
-          </HStack>
-        );
-      })}
-      {preview.adjusted.length === 0 && <Text color="fg.muted">Todo lo contado cuadra con lo guardado.</Text>}
+      {skipped.length > 0 && (
+        <Box p={3} borderRadius="lg" bg="bg.muted">
+          <Text fontWeight="600">Contados, pero ya no se cuentan solos: no se ajustan</Text>
+          <Text fontSize="sm">{skipped.map((n) => n.name).join(', ')}</Text>
+        </Box>
+      )}
     </VStack>
   );
 }
 
 function ClosedSummary({ result }: { result: CountClose }) {
+  const items = result.adjusted.length;
+  const products = result.adjustedProducts?.length ?? 0;
+  const notCounted = notCountedOf(result).length;
+  const fixed = products === 0
+    ? `${items} ${items === 1 ? 'insumo corregido' : 'insumos corregidos'}`
+    : `${items} ${items === 1 ? 'insumo' : 'insumos'} y ${products} ${products === 1 ? 'producto' : 'productos'} corregidos`;
   return (
     <Box p={3} borderRadius="lg" bg="green.subtle" data-testid="conteo-cerrado">
-      <Text fontWeight="700">Conteo cerrado: {result.adjusted.length} {result.adjusted.length === 1 ? 'insumo corregido' : 'insumos corregidos'}</Text>
-      {result.notCounted.length > 0 && <Text fontSize="sm">{result.notCounted.length} sin contar se quedaron como estaban.</Text>}
+      <Text fontWeight="700">Conteo cerrado: {fixed}</Text>
+      {notCounted > 0 && <Text fontSize="sm">{notCounted} sin contar se {notCounted === 1 ? 'quedó como estaba' : 'quedaron como estaban'}.</Text>}
     </Box>
   );
 }

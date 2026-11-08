@@ -558,3 +558,70 @@ describe('se compra hecho', () => {
     expect(screen.getByRole('button', { name: 'Cambiar lo que se resta' })).toHaveTextContent('Elegir otro');
   });
 });
+
+// Spec 069, maqueta «Cambio a «Lo restan sus opciones»», opción B: en un producto cuyas opciones
+// restan, la cuarta tarjeta deja de ser «No se cuenta» (ahí sería falsa) y pasa a ser «Lo restan sus
+// opciones», sin pedir insumos.
+describe('lo restan sus opciones (spec 069)', () => {
+  const sabores = {
+    ...vacia, status: 'confirmed', ownStock: true, productOnHand: '-4', ownStockBranches: 1, stamp: 's1',
+    optionsDeduct: true, optionsRequired: true,
+    optionGroups: [{ name: 'Sabor', required: true, options: [{ name: 'Fresa', deducts: '1 Lata fresa' }, { name: 'Limón', deducts: '1 Lata limón' }] }],
+  } as Composition;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.composition.mockResolvedValue(sabores);
+  });
+
+  it('ocupa el lugar de «No se cuenta» solo cuando sus opciones restan', async () => {
+    montar();
+    expect(await screen.findByText('Lo restan sus opciones')).toBeInTheDocument();
+    expect(screen.queryByText('No se cuenta')).toBeNull();
+    const cards = screen.getAllByRole('button').filter((b) => b.hasAttribute('aria-pressed')
+      && /Se prepara aquí|Se compra hecho|Es un combo|No se cuenta|Lo restan sus opciones/.test(b.textContent ?? ''));
+    expect(cards.map((b) => b.textContent)).toEqual([
+      expect.stringContaining('Se prepara aquí'), expect.stringContaining('Se compra hecho'),
+      expect.stringContaining('Es un combo'), expect.stringContaining('Lo restan sus opciones'),
+    ]);
+  });
+
+  it('sin opciones que resten sigue «No se cuenta»', async () => {
+    api.composition.mockResolvedValue({ ...sabores, optionsDeduct: false, optionGroups: [] });
+    montar();
+    expect(await screen.findByText('No se cuenta')).toBeInTheDocument();
+    expect(screen.queryByText('Lo restan sus opciones')).toBeNull();
+  });
+
+  it('se guarda sin insumos, dice qué resta cada opción y que la cuenta del producto queda en 0', async () => {
+    montar();
+    fireEvent.click(await screen.findByText('Lo restan sus opciones'));
+    expect(screen.getByText('Fresa → 1 Lata fresa')).toBeInTheDocument();
+    expect(screen.getByText('Limón → 1 Lata limón')).toBeInTheDocument();
+    expect(screen.getByText(/Vendiste 4 más de las que tenías anotadas de Chai Latte G/)).toHaveTextContent('esa cuenta queda en 0');
+    expect(screen.getByText(/Vendiste 4 más/)).toHaveTextContent('En el próximo conteo cuenta las piezas de cada opción');
+    expect(screen.queryByText(/Agrega al menos un insumo/)).toBeNull();
+    await guardar();
+    const dialogo = await screen.findByRole('alertdialog');
+    expect(dialogo).toHaveTextContent('La cuenta de Chai Latte G queda en 0');
+    expect(dialogo).toHaveTextContent('cuenta las piezas de cada opción');
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Sí, que lo resten sus opciones' }));
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55,
+      expect.objectContaining({ mode: 'options', items: [], components: [], linkedProductId: null })));
+  });
+
+  it('con existencia positiva dice cuántas tenía anotadas', async () => {
+    api.composition.mockResolvedValue({ ...sabores, productOnHand: '12' });
+    montar();
+    fireEvent.click(await screen.findByText('Lo restan sus opciones'));
+    expect(screen.getByText(/Tenías 12 anotadas de Chai Latte G/)).toBeInTheDocument();
+  });
+
+  it('avisa si ningún grupo que resta es obligatorio', async () => {
+    api.composition.mockResolvedValue({ ...sabores, optionsRequired: false,
+      optionGroups: [{ ...sabores.optionGroups![0], required: false }] });
+    montar();
+    fireEvent.click(await screen.findByText('Lo restan sus opciones'));
+    expect(screen.getByText('Si se vende sin elegir opción, no se resta nada.')).toBeInTheDocument();
+  });
+});
