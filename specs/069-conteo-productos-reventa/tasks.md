@@ -28,10 +28,10 @@ real (`make test-integration`).
 
 ## Phase 2: Foundational (bloquea las dos historias)
 
-- [ ] T002 Test de la migración en server/internal/integration/migration_0110_test.go: sobre la base restaurada con dos empresas, la tabla `stock_count_product_lines` existe con RLS `nullif`, grants de `gatobobah_app` (select, insert, update, delete), FK compuestas a `stock_counts`, `products` y `users`, check de entero ≥ 0 (rechaza 2.5 y −1); el Down se niega con renglones y con la tabla vacía la borra. Verlo en rojo
-- [ ] T003 Migración server/migrations/0110_count_product_lines.sql según data-model.md (comentarios del porqué: tabla aparte, `last_movement_id` sin FK a propósito, `unit_cost` nulo = cerrado sin ajustar, Down que se niega con datos y deja escritos los ajustes que sobreviven)
-- [ ] T004 Renglón de la 0110 en `guardedDownCleanup` de server/internal/integration/harness_restaurado_test.go (borra `stock_count_product_lines` en la copia) y confirmar `TestEveryGuardedDownHasItsTestCleanup`, `TestEveryCompanyTableIsIsolated` y `TestEveryColumnIsCoveredByTheAnonymousBackup` en verde
-- [ ] T005 Pedir revisión del `db-architect` sobre server/migrations/0110_count_product_lines.sql ANTES de aplicarla a la base del worktree; corregir lo que encuentre
+- [X] T002 Test de la migración en server/internal/integration/migration_0110_test.go: sobre la base restaurada con dos empresas, la tabla `stock_count_product_lines` existe con RLS `nullif`, grants de `gatobobah_app` (select, insert, update, delete), FK compuestas a `stock_counts`, `products` y `users`, check de entero ≥ 0 (rechaza 2.5 y −1); el Down se niega con renglones y con la tabla vacía la borra. Verlo en rojo
+- [X] T003 Migración server/migrations/0110_count_product_lines.sql según data-model.md (comentarios del porqué: tabla aparte, `last_movement_id` sin FK a propósito, `unit_cost` nulo = cerrado sin ajustar, Down que se niega con datos y deja escritos los ajustes que sobreviven)
+- [X] T004 Renglón de la 0110 en `guardedDownCleanup` de server/internal/integration/harness_restaurado_test.go (borra `stock_count_product_lines` en la copia) y confirmar `TestEveryGuardedDownHasItsTestCleanup`, `TestEveryCompanyTableIsIsolated` y `TestEveryColumnIsCoveredByTheAnonymousBackup` en verde
+- [X] T005 Pedir revisión del `db-architect` sobre server/migrations/0110_count_product_lines.sql ANTES de aplicarla a la base del worktree; corregir lo que encuentre
 
 **Checkpoint**: tabla lista y vigilada.
 
