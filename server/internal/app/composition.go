@@ -124,6 +124,25 @@ type CompositionView struct {
 	// SameName son los extras que se llaman igual en otro grupo: la pantalla ofrece guardarles la
 	// misma receta.
 	SameName []SameNameOption `json:"sameName"`
+	// OptionsDeduct: alguna opción del producto resta del almacén; la hoja ofrece «Lo restan sus
+	// opciones» en lugar de «No se cuenta» (spec 069). OptionsRequired: alguno de esos grupos es
+	// obligatorio; si no, la hoja avisa que vender sin elegir no resta nada.
+	OptionsDeduct   bool              `json:"optionsDeduct"`
+	OptionsRequired bool              `json:"optionsRequired"`
+	OptionGroups    []OptionGroupView `json:"optionGroups"`
+}
+
+// OptionGroupView es un grupo de opciones del producto con lo que resta cada opción.
+type OptionGroupView struct {
+	Name     string           `json:"name"`
+	Required bool             `json:"required"`
+	Options  []OptionDeducted `json:"options"`
+}
+
+// OptionDeducted es una opción y lo que resta, en una línea («1 Lata fresa»); vacío si no resta.
+type OptionDeducted struct {
+	Name    string `json:"name"`
+	Deducts string `json:"deducts"`
 }
 
 // SameNameOption es un extra que se llama igual que otro, en otro grupo.
@@ -183,7 +202,7 @@ type CompositionRequest struct {
 // Composition devuelve lo que lleva un producto o un extra.
 func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id int64) (CompositionView, error) {
 	q := s.store.QC(ctx)
-	v := CompositionView{Items: []CompositionItemView{}, Components: []CompositionComponentView{}, SameName: []SameNameOption{}, Editable: true}
+	v := CompositionView{Items: []CompositionItemView{}, Components: []CompositionComponentView{}, SameName: []SameNameOption{}, OptionGroups: []OptionGroupView{}, Editable: true}
 	var recipe *int64
 	var status, by *string
 	var at pgtype.Timestamptz
@@ -200,6 +219,9 @@ func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id
 				return v, err
 			}
 			v.OwnStock, v.ProductOnHand, v.OwnStockBranches = true, oh.OnHand, int(oh.Branches)
+		}
+		if err := fillOptionGroups(ctx, q, id, &v); err != nil {
+			return v, err
 		}
 		if p.Type == db.ProductTypeCombo {
 			choices, err := q.PackageHasChoices(ctx, id)
@@ -294,12 +316,25 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 	if kind == CompositionOfOption && len(req.Components) > 0 {
 		return fmt.Errorf("%w: un extra que lleva varios productos se liga a un paquete", domain.ErrValidation)
 	}
+	if kind != CompositionOfProduct && req.Mode == "options" {
+		return fmt.Errorf("%w: «Lo restan sus opciones» es de un producto", domain.ErrValidation)
+	}
 	if err := validateMode(req); err != nil {
 		return err
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		if err := q.LockCompositionEdits(ctx); err != nil {
 			return err
+		}
+		// Bajo el candado de captura: nadie le quita a la vez la receta a la última opción que resta.
+		if req.Mode == "options" {
+			deducts, err := q.ProductOptionsDeduct(ctx, id)
+			if err != nil {
+				return err
+			}
+			if !deducts {
+				return fmt.Errorf("%w: ninguna de sus opciones resta del almacén", domain.ErrValidation)
+			}
 		}
 		if err := checkNotStale(ctx, q, kind, id, req.BasedOn); err != nil {
 			return err
@@ -336,7 +371,7 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 		var by *int64
 		// «No se cuenta» queda confirmado en el mismo guardado: en dos pasos, un corte entre los dos
 		// dejaba el producto como «nunca decidido».
-		if recipe != nil || req.LinkedProductID != nil || len(req.Components) > 0 || req.Mode == "nothing" {
+		if recipe != nil || req.LinkedProductID != nil || len(req.Components) > 0 || req.Mode == "nothing" || req.Mode == "options" {
 			confirmed := "confirmed"
 			status, by = &confirmed, &actor
 		}
@@ -418,6 +453,12 @@ func validateMode(req CompositionRequest) error {
 		if !empty {
 			return fmt.Errorf("%w: «No se cuenta» no lleva nada", domain.ErrValidation)
 		}
+	case "options":
+		// Lo restan sus opciones (spec 069): el producto no lleva nada. Que alguna opción reste lo
+		// revisa SaveComposition contra la base.
+		if !empty {
+			return fmt.Errorf("%w: «Lo restan sus opciones» no lleva insumos ni productos", domain.ErrValidation)
+		}
 	default:
 		return fmt.Errorf("%w: modo desconocido (%q)", domain.ErrValidation, req.Mode)
 	}
@@ -444,6 +485,8 @@ func targetMode(req CompositionRequest) domain.ConsumptionMode {
 		return domain.ModeRecipe
 	case req.Mode == "nothing":
 		return domain.ModeNone
+	case req.Mode == "options":
+		return domain.ModeOptions
 	}
 	return domain.ModeUndecided
 }
@@ -469,8 +512,13 @@ func applyModeChange(ctx context.Context, q *db.Queries, id int64, req Compositi
 	if p.CompositionStatus != nil {
 		status = *p.CompositionStatus
 	}
+	// Con sus opciones: volver a guardar «Lo restan sus opciones» no es un cambio de modo.
+	optionsDeduct, err := q.ProductOptionsDeduct(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	before := domain.ModeOf(domain.ProductModeFacts{TrackStock: p.TrackStock, HasRecipeItems: hasItems,
-		IsPackage: p.Type == db.ProductTypeCombo, CompositionStatus: status})
+		IsPackage: p.Type == db.ProductTypeCombo, CompositionStatus: status, OptionsDeduct: optionsDeduct})
 	audit := &modeChangeAudit{before: before, after: targetMode(req)}
 	if before != domain.ModeOwnStock {
 		return audit, nil
@@ -894,6 +942,31 @@ func resolveNewArticles(ctx context.Context, q *db.Queries, items []CompositionI
 			return err
 		}
 		items[i].IngredientID = id
+	}
+	return nil
+}
+
+// fillOptionGroups llena los grupos de opciones del producto con lo que resta cada una (spec 069).
+func fillOptionGroups(ctx context.Context, q *db.Queries, product int64, v *CompositionView) error {
+	rows, err := q.ProductOptionGroups(ctx, product)
+	if err != nil {
+		return err
+	}
+	at := map[int64]int{}
+	for _, r := range rows {
+		i, ok := at[r.GroupID]
+		if !ok {
+			i = len(v.OptionGroups)
+			at[r.GroupID] = i
+			v.OptionGroups = append(v.OptionGroups, OptionGroupView{Name: r.GroupName, Required: r.Required, Options: []OptionDeducted{}})
+		}
+		o := OptionDeducted{Name: r.OptionName}
+		if r.Deducts {
+			o.Deducts = r.DeductsText
+			v.OptionsDeduct = true
+			v.OptionsRequired = v.OptionsRequired || r.Required
+		}
+		v.OptionGroups[i].Options = append(v.OptionGroups[i].Options, o)
 	}
 	return nil
 }

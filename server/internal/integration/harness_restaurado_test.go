@@ -323,6 +323,9 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
+	// Las cifras de productos de los conteos, solo en la copia de prueba; sus ajustes en
+	// stock_movements se quedan.
+	110: {`delete from stock_count_product_lines`},
 	// Los usuarios con rol propio vuelven al sugerido mesero (el trigger pone `role` igual) y se
 	// borran los ajustes y los roles propios, solo en la copia de prueba.
 	108: {

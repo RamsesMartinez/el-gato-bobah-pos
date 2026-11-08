@@ -838,14 +838,31 @@ export interface CountCaptureBody {
   gross?: { weight: string; weightUnitId: number; presentationId: number; containers: number; seenTareG: string; seenDensity?: string | null;
     closedPacks?: { presentationId: number; qty: number }[] };
 }
+// Un producto con existencia propia en el conteo (spec 069): se cuenta en piezas enteras. Sin lo que
+// el sistema tiene: el conteo es a ciegas.
+export interface CountProduct {
+  productId: number;
+  name: string;
+  category: string;
+  countedQty: string | null;
+  altNames?: string[];
+}
 export interface StockCount {
   id: number;
   openedAt: string;
   items: CountItem[];
+  // Opcional: una API anterior a la 069 no los trae, y el compilador obliga a la guarda.
+  products?: CountProduct[];
 }
+export interface CountProductAdjustment { productId: number; name: string; system: string; counted: string; delta: string }
 export interface CountClose {
   adjusted: { ingredientId: number; name: string; baseUnitCode: string; system: string; counted: string; delta: string }[];
   notCounted: { ingredientId: number; name: string }[];
+  // Spec 069; opcionales por la API anterior. skippedProducts: contados pero ya no llevan su
+  // existencia, así que no se ajustan.
+  adjustedProducts?: CountProductAdjustment[];
+  notCountedProducts?: { productId: number; name: string }[];
+  skippedProducts?: { productId: number; name: string }[];
 }
 
 // «Llegó algo más»: un renglón que no venía y ya llegó. Con `isGift`, `amount` va en 0.
@@ -1122,6 +1139,10 @@ export const backofficeApi = {
     // weighed: el desglose que quedó guardado (#204); falta en una API anterior.
     api.put<{ countedQty: string; grossNet?: string; weighed?: CountWeighed | null }>(`/stock/counts/${id}/lines/${ingredientId}`, body),
   uncaptureCount: (id: number, ingredientId: number) => api.del<void>(`/stock/counts/${id}/lines/${ingredientId}`),
+  // Productos con existencia propia (spec 069): piezas enteras, mismo permiso que los artículos.
+  captureCountProduct: (id: number, productId: number, body: { countedQty: string; confirmable: true; confirmed?: boolean }) =>
+    api.put<{ countedQty: string }>(`/stock/counts/${id}/product-lines/${productId}`, body),
+  uncaptureCountProduct: (id: number, productId: number) => api.del<void>(`/stock/counts/${id}/product-lines/${productId}`),
   previewCount: (id: number) => api.get<CountClose>(`/stock/counts/${id}/preview`),
   closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),
   discardCount: (id: number) => api.post<void>(`/stock/counts/${id}/discard`, {}),

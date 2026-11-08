@@ -14,6 +14,8 @@ const back = vi.hoisted(() => ({
   openCount: vi.fn(),
   captureCount: vi.fn(),
   uncaptureCount: vi.fn(),
+  captureCountProduct: vi.fn(),
+  uncaptureCountProduct: vi.fn(),
   previewCount: vi.fn(),
   closeCount: vi.fn(),
   discardCount: vi.fn(),
@@ -184,6 +186,8 @@ describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Cerrar conteo' }));
     const cierre = await screen.findByTestId('cierre');
     expect(cierre).toHaveTextContent('Sin contar (1): se quedan como están');
+    // Los nombres se abren a pedido (spec 069): arriba, empujaban lo grande fuera de la tableta.
+    fireEvent.click(within(cierre).getByRole('button', { name: 'Ver cuáles' }));
     expect(cierre).toHaveTextContent('Limón');
     expect(cierre).toHaveTextContent('Azúcar: contaste 3 kg');
     expect(cierre).toHaveTextContent('sobraban 4.2 kg');
@@ -821,5 +825,157 @@ describe('pesar con empaque (spec 058)', () => {
     expect(getComputedStyle(campos).overflowY).toBe('auto');
     expect(campos.contains(screen.getByTestId('total-contado'))).toBe(false);
     expect(campos.contains(screen.getByLabelText('Peso en la báscula de Jarabe de vainilla'))).toBe(true);
+  });
+});
+
+// Spec 069, maqueta «Conteo con productos», opción C: los productos que se venden tal cual van al
+// final de la lista, por su categoría del menú, y se cuentan en piezas enteras.
+describe('productos con existencia propia (spec 069)', () => {
+  const conProductos = (): StockCount => ({
+    ...conteo(),
+    products: [
+      { productId: 81, name: 'Agua mineral 355 ml', category: 'Bebidas', countedQty: null },
+      { productId: 82, name: 'Refresco cola lata', category: 'Bebidas', countedQty: null },
+      { productId: 90, name: 'Mochi de fresa', category: 'Postres', countedQty: '4' },
+    ],
+  });
+  beforeEach(() => {
+    back.currentCount.mockResolvedValue(conProductos());
+    back.captureCountProduct.mockResolvedValue({ countedQty: '15' });
+    back.uncaptureCountProduct.mockResolvedValue(undefined);
+  });
+
+  test('van al final, por categoría del menú, con «Producto del menú» en lugar del lugar', async () => {
+    montar();
+    const rows = await screen.findAllByTestId('renglon-conteo');
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining('Jarabe de vainilla'), expect.stringContaining('Azúcar'), expect.stringContaining('Limón'),
+      expect.stringContaining('Agua mineral 355 ml'), expect.stringContaining('Refresco cola lata'), expect.stringContaining('Mochi de fresa'),
+    ]);
+    expect(screen.getByText('Bebidas · del menú')).toBeInTheDocument();
+    expect(screen.getByText('Postres · del menú')).toBeInTheDocument();
+    expect(within(rows[3]).getByText('Producto del menú').tagName).not.toBe('BUTTON');
+    expect(within(rows[5]).getByText('✓ 4 piezas')).toBeInTheDocument();
+    expect(screen.getByTestId('avance')).toHaveTextContent('1 de 6 contados');
+  });
+
+  test('junto al buscador avisa cuántos productos hay al final, lleva a ellos y se esconde al buscar', async () => {
+    // jsdom no trae scrollIntoView: se pone para esta prueba y se quita al final, sin filtrarse a otras.
+    const original = Element.prototype.scrollIntoView;
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      montar();
+      const aviso = await screen.findByRole('button', { name: /3 productos del menú al final/ });
+      fireEvent.click(aviso);
+      expect(scroll).toHaveBeenCalled();
+      expect(scroll.mock.contexts[0]).toHaveTextContent('Bebidas · del menú');
+      // Con una búsqueda, el grupo puede no estar: el botón no promete un lugar que no existe.
+      fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: 'azúcar' } });
+      expect(screen.queryByRole('button', { name: /productos del menú al final/ })).toBeNull();
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  test('si el producto dejó de contarse, lo dice y vuelve a pedir el conteo', async () => {
+    back.captureCountProduct.mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'este producto no lleva su propia existencia', 'r'));
+    montar();
+    const rows = await screen.findAllByTestId('renglon-conteo');
+    fireEvent.click(within(rows[3]).getByRole('button', { name: 'Contar' }));
+    tecla('1');
+    click('Guardar');
+    expect(await screen.findByText(/Agua mineral 355 ml ya no se cuenta sola/)).toBeInTheDocument();
+    await waitFor(() => expect(back.currentCount.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  test('una cifra rara de un producto se confirma y se reenvía confirmada', async () => {
+    back.captureCountProduct.mockRejectedValueOnce(new ApiError(409, 'NEEDS_CONFIRM', 'confirma', 'r'));
+    montar();
+    const rows = await screen.findAllByTestId('renglon-conteo');
+    fireEvent.click(within(rows[3]).getByRole('button', { name: 'Contar' }));
+    tecla('9'); tecla('0'); tecla('0');
+    click('Guardar');
+    fireEvent.click(await screen.findByRole('button', { name: 'Sí, guardar' }));
+    await waitFor(() => expect(back.captureCountProduct).toHaveBeenLastCalledWith(5, 81, { countedQty: '900', confirmable: true, confirmed: true }));
+  });
+
+  test('si solo se corrigieron productos y uno se saltó, el resumen lo dice sin «0 insumos»', async () => {
+    back.previewCount.mockResolvedValue({
+      adjusted: [], notCounted: [],
+      adjustedProducts: [{ productId: 81, name: 'Agua mineral 355 ml', system: '-2', counted: '15', delta: '17' }],
+      notCountedProducts: [], skippedProducts: [{ productId: 77, name: 'Té helado' }],
+    });
+    back.closeCount.mockImplementation(() => back.previewCount());
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Cerrar conteo' }));
+    await screen.findByTestId('cierre');
+    click('Sí, cerrar y corregir lo guardado');
+    const hecho = await screen.findByTestId('conteo-cerrado');
+    expect(hecho).toHaveTextContent('Conteo cerrado: 1 producto corregido');
+    expect(hecho).not.toHaveTextContent('0 insumos');
+    expect(hecho).toHaveTextContent('1 contado ya no se cuenta solo: no se ajustó');
+  });
+
+  test('se capturan en piezas enteras y se guardan como producto', async () => {
+    montar();
+    const rows = await screen.findAllByTestId('renglon-conteo');
+    fireEvent.click(within(rows[3]).getByRole('button', { name: 'Contar' }));
+    expect(await screen.findByText('¿Cuánto hay de Agua mineral 355 ml?')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'punto' })).toBeNull();
+    tecla('1'); tecla('5');
+    click('Guardar');
+    await waitFor(() => expect(back.captureCountProduct).toHaveBeenCalledWith(5, 81, { countedQty: '15', confirmable: true }));
+    expect(back.captureCount).not.toHaveBeenCalled();
+    expect(await screen.findByText('✓ 15 piezas')).toBeInTheDocument();
+    expect(screen.getByTestId('avance')).toHaveTextContent('2 de 6 contados');
+  });
+
+  test('quitar lo contado de un producto lo deja sin contar', async () => {
+    montar();
+    const rows = await screen.findAllByTestId('renglon-conteo');
+    fireEvent.click(within(rows[5]).getByRole('button', { name: 'Cambiar' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Quitar lo contado' }));
+    await waitFor(() => expect(back.uncaptureCountProduct).toHaveBeenCalledWith(5, 90));
+    expect(back.uncaptureCount).not.toHaveBeenCalled();
+  });
+
+  test('uno por uno los recorre después de los artículos', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Uno por uno' }));
+    for (let i = 0; i < 3; i++) click('Saltar (no contar hoy)');
+    expect(screen.getByText('Agua mineral 355 ml')).toBeInTheDocument();
+    expect(screen.getByText('Producto del menú · en piezas')).toBeInTheDocument();
+  });
+
+  test('la vista previa: primero lo grande, los productos marcados, los sin contar tras «Ver cuáles» y los saltados aparte', async () => {
+    back.previewCount.mockResolvedValue({
+      adjusted: [{ ingredientId: 1, name: 'Jarabe de vainilla', baseUnitCode: 'ml', system: '2800', counted: '2750', delta: '-50' }],
+      notCounted: [{ ingredientId: 3, name: 'Limón' }],
+      adjustedProducts: [{ productId: 81, name: 'Agua mineral 355 ml', system: '-2', counted: '15', delta: '17' }],
+      notCountedProducts: [{ productId: 82, name: 'Refresco cola lata' }],
+      skippedProducts: [{ productId: 77, name: 'Té helado' }],
+    });
+    back.closeCount.mockImplementation(() => back.previewCount());
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Cerrar conteo' }));
+    const cierre = await screen.findByTestId('cierre');
+    const diffs = within(cierre).getAllByTestId('diferencia');
+    expect(diffs[0]).toHaveTextContent('Agua mineral 355 ml · producto: contaste 15 piezas');
+    expect(diffs[0]).toHaveTextContent('sobraban 17 piezas');
+    // «sobraban 17» no se entendía sin lo que tenía el sistema (prueba con usuario nuevo de la 069).
+    expect(diffs[0]).toHaveTextContent('el sistema marcaba 2 piezas de menos');
+    expect(diffs[1]).toHaveTextContent('el sistema tenía 2.8 L');
+    expect(diffs[1]).toHaveTextContent('Jarabe de vainilla');
+    expect(cierre).toHaveTextContent('Sin contar (2): se quedan como están');
+    expect(cierre).not.toHaveTextContent('Refresco cola lata');
+    fireEvent.click(within(cierre).getByRole('button', { name: 'Ver cuáles' }));
+    expect(cierre).toHaveTextContent('Limón, Refresco cola lata');
+    expect(cierre).toHaveTextContent('Té helado');
+    expect(cierre).toHaveTextContent('ya no se cuentan solos: no se ajustan');
+    click('Sí, cerrar y corregir lo guardado');
+    const hecho = await screen.findByTestId('conteo-cerrado');
+    expect(hecho).toHaveTextContent('Conteo cerrado: 1 insumo y 1 producto corregidos');
+    expect(hecho).toHaveTextContent('2 sin contar se quedaron como estaban');
   });
 });

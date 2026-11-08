@@ -129,7 +129,7 @@ func checkLinesFitTotal(lines []decimal.Decimal, total decimal.Decimal) error {
 func lockErr(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "55P03" {
-		return fmt.Errorf("%w: hay una venta en curso con uno de esos insumos; vuelve a intentar en un momento", domain.ErrConflict)
+		return fmt.Errorf("%w: hay una venta o un cambio en curso con uno de esos artículos o productos; vuelve a intentar en un momento", domain.ErrConflict)
 	}
 	return err
 }

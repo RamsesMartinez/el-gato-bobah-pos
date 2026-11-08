@@ -1913,6 +1913,18 @@ type StockCountLine struct {
 	ClosedPacks     []byte           `json:"closed_packs"`
 }
 
+type StockCountProductLine struct {
+	CountID        int64            `json:"count_id"`
+	CompanyID      int64            `json:"company_id"`
+	ProductID      int64            `json:"product_id"`
+	CountedQty     decimal.Decimal  `json:"counted_qty"`
+	SystemQty      decimal.Decimal  `json:"system_qty"`
+	CapturedBy     int64            `json:"captured_by"`
+	CapturedAt     time.Time        `json:"captured_at"`
+	LastMovementID *int64           `json:"last_movement_id"`
+	UnitCost       *decimal.Decimal `json:"unit_cost"`
+}
+
 type StockLevel struct {
 	ItemType     StockItemType   `json:"item_type"`
 	IngredientID *int64          `json:"ingredient_id"`

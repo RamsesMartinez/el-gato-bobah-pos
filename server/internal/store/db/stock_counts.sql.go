@@ -202,6 +202,100 @@ func (q *Queries) CountLossLines(ctx context.Context, countID int64) ([]CountLos
 	return items, nil
 }
 
+const countProductLines = `-- name: CountProductLines :many
+select l.product_id, p.name, l.counted_qty, l.system_qty,
+       (p.track_stock and p.type <> 'combo')::bool as counts_own_stock
+  from stock_count_product_lines l
+  join products p on p.id = l.product_id
+ where l.count_id = $1
+ order by l.product_id
+`
+
+type CountProductLinesRow struct {
+	ProductID      int64           `json:"product_id"`
+	Name           string          `json:"name"`
+	CountedQty     decimal.Decimal `json:"counted_qty"`
+	SystemQty      decimal.Decimal `json:"system_qty"`
+	CountsOwnStock bool            `json:"counts_own_stock"`
+}
+
+// Con el modo de HOY del producto: el que dejó de contar su existencia con el conteo abierto no se
+// ajusta (FR-009). El cierre la lee después de tomar las existencias.
+func (q *Queries) CountProductLines(ctx context.Context, countID int64) ([]CountProductLinesRow, error) {
+	rows, err := q.db.Query(ctx, countProductLines, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountProductLinesRow{}
+	for rows.Next() {
+		var i CountProductLinesRow
+		if err := rows.Scan(
+			&i.ProductID,
+			&i.Name,
+			&i.CountedQty,
+			&i.SystemQty,
+			&i.CountsOwnStock,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countProducts = `-- name: CountProducts :many
+
+select p.id, p.name, c.name as category, l.counted_qty, p.alt_names
+  from products p
+  join categories c on c.id = p.category_id
+  left join stock_count_product_lines l on l.product_id = p.id and l.count_id = $1
+ where p.is_active and p.track_stock and p.type <> 'combo'
+ order by c.sort_key, c.name, p.name, p.id
+`
+
+type CountProductsRow struct {
+	ID         int64            `json:"id"`
+	Name       string           `json:"name"`
+	Category   string           `json:"category"`
+	CountedQty *decimal.Decimal `json:"counted_qty"`
+	AltNames   []string         `json:"alt_names"`
+}
+
+// ---- Productos con existencia propia en el conteo (spec 069, issue #252) ----
+// Solo entra el que cuenta su propia existencia: activo, con `track_stock` y que no es paquete (un
+// paquete con el interruptor puesto se expande por sus piezas, domain.ModeOf). Los de receta no
+// tienen `track_stock`: el check de products no deja las dos a la vez.
+// Lo que el sistema tiene NO viaja: el conteo es a ciegas. Por categoría del menú (maqueta C).
+func (q *Queries) CountProducts(ctx context.Context, countID int64) ([]CountProductsRow, error) {
+	rows, err := q.db.Query(ctx, countProducts, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountProductsRow{}
+	for rows.Next() {
+		var i CountProductsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Category,
+			&i.CountedQty,
+			&i.AltNames,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countedLinesSince = `-- name: CountedLinesSince :many
 select ingredient_id, captured_at from stock_count_lines where count_id = $1
 `
@@ -266,6 +360,42 @@ func (q *Queries) DeleteCountLine(ctx context.Context, arg DeleteCountLineParams
 	return result.RowsAffected(), nil
 }
 
+const deleteCountProductLine = `-- name: DeleteCountProductLine :execrows
+delete from stock_count_product_lines where count_id = $1 and product_id = $2
+`
+
+type DeleteCountProductLineParams struct {
+	CountID   int64 `json:"count_id"`
+	ProductID int64 `json:"product_id"`
+}
+
+func (q *Queries) DeleteCountProductLine(ctx context.Context, arg DeleteCountProductLineParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCountProductLine, arg.CountID, arg.ProductID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const ensureProductStockLevel = `-- name: EnsureProductStockLevel :exec
+insert into stock_levels (company_id, branch_id, item_type, product_id, on_hand)
+select p.company_id, $1::bigint, 'producto', p.id, 0 from products p where p.id = $2::bigint
+on conflict (branch_id, product_id) do nothing
+`
+
+type EnsureProductStockLevelParams struct {
+	BranchID  int64 `json:"branch_id"`
+	ProductID int64 `json:"product_id"`
+}
+
+// La fila de existencia del producto en la sucursal, en cero si no existía: sin fila no hay
+// candado, y una venta a media cerrada se calcularía contra un cero viejo (revisión de
+// arquitectura de la 069). La empresa es la del producto, que RLS ya dejó ver.
+func (q *Queries) EnsureProductStockLevel(ctx context.Context, arg EnsureProductStockLevelParams) error {
+	_, err := q.db.Exec(ctx, ensureProductStockLevel, arg.BranchID, arg.ProductID)
+	return err
+}
+
 const finishStockCount = `-- name: FinishStockCount :execrows
 update stock_counts set status = $1, closed_by = $2, closed_at = now()
  where id = $3 and status = 'open'
@@ -283,6 +413,24 @@ func (q *Queries) FinishStockCount(ctx context.Context, arg FinishStockCountPara
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getProductForCount = `-- name: GetProductForCount :one
+select track_stock, (type = 'combo')::bool as is_package, is_active from products where id = $1
+`
+
+type GetProductForCountRow struct {
+	TrackStock bool `json:"track_stock"`
+	IsPackage  bool `json:"is_package"`
+	IsActive   bool `json:"is_active"`
+}
+
+// Con is_active: un archivado no sale en la lista ni en «sin contar», así que tampoco se captura.
+func (q *Queries) GetProductForCount(ctx context.Context, id int64) (GetProductForCountRow, error) {
+	row := q.db.QueryRow(ctx, getProductForCount, id)
+	var i GetProductForCountRow
+	err := row.Scan(&i.TrackStock, &i.IsPackage, &i.IsActive)
+	return i, err
 }
 
 const insertCountMovement = `-- name: InsertCountMovement :exec
@@ -311,6 +459,52 @@ func (q *Queries) InsertCountMovement(ctx context.Context, arg InsertCountMoveme
 		arg.BranchID,
 	)
 	return err
+}
+
+const insertCountProductMovement = `-- name: InsertCountProductMovement :exec
+insert into stock_movements (item_type, product_id, movement_type, quantity, stock_count_id, user_id, reason, branch_id)
+values ('producto', $1, 'ajuste', $2, $3,
+        $4, $5, $6)
+`
+
+type InsertCountProductMovementParams struct {
+	ProductID    *int64          `json:"product_id"`
+	Quantity     decimal.Decimal `json:"quantity"`
+	StockCountID *int64          `json:"stock_count_id"`
+	UserID       *int64          `json:"user_id"`
+	Reason       *string         `json:"reason"`
+	BranchID     int64           `json:"branch_id"`
+}
+
+func (q *Queries) InsertCountProductMovement(ctx context.Context, arg InsertCountProductMovementParams) error {
+	_, err := q.db.Exec(ctx, insertCountProductMovement,
+		arg.ProductID,
+		arg.Quantity,
+		arg.StockCountID,
+		arg.UserID,
+		arg.Reason,
+		arg.BranchID,
+	)
+	return err
+}
+
+const lastClosedCountedProductQty = `-- name: LastClosedCountedProductQty :one
+select l.counted_qty from stock_count_product_lines l join stock_counts c on c.id = l.count_id
+ where c.status = 'closed' and c.branch_id = $1 and l.product_id = $2
+ order by c.closed_at desc, c.id desc
+ limit 1
+`
+
+type LastClosedCountedProductQtyParams struct {
+	BranchID  int64 `json:"branch_id"`
+	ProductID int64 `json:"product_id"`
+}
+
+func (q *Queries) LastClosedCountedProductQty(ctx context.Context, arg LastClosedCountedProductQtyParams) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, lastClosedCountedProductQty, arg.BranchID, arg.ProductID)
+	var counted_qty decimal.Decimal
+	err := row.Scan(&counted_qty)
+	return counted_qty, err
 }
 
 const lastClosedCountedQty = `-- name: LastClosedCountedQty :one
@@ -352,6 +546,57 @@ func (q *Queries) LastClosedStockCount(ctx context.Context) (LastClosedStockCoun
 	var i LastClosedStockCountRow
 	err := row.Scan(&i.ID, &i.ClosedAt)
 	return i, err
+}
+
+const lockProductStockLevelForCapture = `-- name: LockProductStockLevelForCapture :exec
+select 1 from stock_levels
+ where item_type = 'producto' and product_id = $1::bigint and branch_id = $2::bigint
+   for share
+`
+
+type LockProductStockLevelForCaptureParams struct {
+	ProductID int64 `json:"product_id"`
+	BranchID  int64 `json:"branch_id"`
+}
+
+// Mismo arreglo que el de los insumos: el candado en una sentencia y la lectura en otra.
+func (q *Queries) LockProductStockLevelForCapture(ctx context.Context, arg LockProductStockLevelForCaptureParams) error {
+	_, err := q.db.Exec(ctx, lockProductStockLevelForCapture, arg.ProductID, arg.BranchID)
+	return err
+}
+
+const lockProductStockLevelsInBranchNowait = `-- name: LockProductStockLevelsInBranchNowait :many
+select product_id from stock_levels
+ where item_type = 'producto' and product_id = any($1::bigint[]) and branch_id = $2
+ order by product_id
+   for update nowait
+`
+
+type LockProductStockLevelsInBranchNowaitParams struct {
+	Ids      []int64 `json:"ids"`
+	BranchID int64   `json:"branch_id"`
+}
+
+// Las existencias de los productos que el cierre va a ajustar, en orden y sin esperar: una venta o
+// un cambio de modo en curso hace que el cierre se reintente en vez de formar un ciclo.
+func (q *Queries) LockProductStockLevelsInBranchNowait(ctx context.Context, arg LockProductStockLevelsInBranchNowaitParams) ([]*int64, error) {
+	rows, err := q.db.Query(ctx, lockProductStockLevelsInBranchNowait, arg.Ids, arg.BranchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*int64{}
+	for rows.Next() {
+		var product_id *int64
+		if err := rows.Scan(&product_id); err != nil {
+			return nil, err
+		}
+		items = append(items, product_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockStockCount = `-- name: LockStockCount :one
@@ -468,6 +713,38 @@ func (q *Queries) NotCountedIngredients(ctx context.Context, countID int64) ([]N
 	return items, nil
 }
 
+const notCountedProducts = `-- name: NotCountedProducts :many
+select p.id, p.name from products p
+ where p.is_active and p.track_stock and p.type <> 'combo'
+   and not exists (select 1 from stock_count_product_lines l where l.count_id = $1 and l.product_id = p.id)
+ order by p.name, p.id
+`
+
+type NotCountedProductsRow struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) NotCountedProducts(ctx context.Context, countID int64) ([]NotCountedProductsRow, error) {
+	rows, err := q.db.Query(ctx, notCountedProducts, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NotCountedProductsRow{}
+	for rows.Next() {
+		var i NotCountedProductsRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const onHandForCapture = `-- name: OnHandForCapture :one
 select coalesce((select sl.on_hand from stock_levels sl
                   where sl.item_type = 'ingrediente' and sl.ingredient_id = $1::bigint
@@ -535,6 +812,32 @@ func (q *Queries) OpenStockCount(ctx context.Context, openedBy int64) (OpenStock
 	return i, err
 }
 
+const productOnHandForCapture = `-- name: ProductOnHandForCapture :one
+select coalesce((select sl.on_hand from stock_levels sl
+                  where sl.item_type = 'producto' and sl.product_id = $1::bigint
+                    and sl.branch_id = $2::bigint), 0)::numeric(14,4) as on_hand,
+       coalesce((select max(sm.id) from stock_movements sm
+                  where sm.product_id = $1::bigint
+                    and sm.branch_id = $2::bigint), 0)::bigint as last_movement_id
+`
+
+type ProductOnHandForCaptureParams struct {
+	ProductID int64 `json:"product_id"`
+	BranchID  int64 `json:"branch_id"`
+}
+
+type ProductOnHandForCaptureRow struct {
+	OnHand         decimal.Decimal `json:"on_hand"`
+	LastMovementID int64           `json:"last_movement_id"`
+}
+
+func (q *Queries) ProductOnHandForCapture(ctx context.Context, arg ProductOnHandForCaptureParams) (ProductOnHandForCaptureRow, error) {
+	row := q.db.QueryRow(ctx, productOnHandForCapture, arg.ProductID, arg.BranchID)
+	var i ProductOnHandForCaptureRow
+	err := row.Scan(&i.OnHand, &i.LastMovementID)
+	return i, err
+}
+
 const saveCountLineCosts = `-- name: SaveCountLineCosts :exec
 update stock_count_lines l set unit_cost = i.current_cost
   from ingredients i where l.count_id = $1 and i.id = l.ingredient_id
@@ -544,6 +847,24 @@ update stock_count_lines l set unit_cost = i.current_cost
 // cuando después cambia el costo (spec 039, revisión de arquitectura).
 func (q *Queries) SaveCountLineCosts(ctx context.Context, countID int64) error {
 	_, err := q.db.Exec(ctx, saveCountLineCosts, countID)
+	return err
+}
+
+const saveCountProductLineCosts = `-- name: SaveCountProductLineCosts :exec
+update stock_count_product_lines l set unit_cost = p.current_cost
+  from products p
+ where l.count_id = $1 and p.id = l.product_id and l.product_id = any($2::bigint[])
+`
+
+type SaveCountProductLineCostsParams struct {
+	CountID int64   `json:"count_id"`
+	Ids     []int64 `json:"ids"`
+}
+
+// El costo de cada producto que el cierre procesó. Los que se saltaron quedan en nulo: «no se
+// ajustó», igual que los que cerró la API anterior sin conocerlos.
+func (q *Queries) SaveCountProductLineCosts(ctx context.Context, arg SaveCountProductLineCostsParams) error {
+	_, err := q.db.Exec(ctx, saveCountProductLineCosts, arg.CountID, arg.Ids)
 	return err
 }
 
@@ -608,6 +929,36 @@ func (q *Queries) UpsertCountLine(ctx context.Context, arg UpsertCountLineParams
 		arg.TareGUsed,
 		arg.DensityUsed,
 		arg.ClosedPacks,
+	)
+	return err
+}
+
+const upsertCountProductLine = `-- name: UpsertCountProductLine :exec
+insert into stock_count_product_lines (count_id, product_id, counted_qty, system_qty, captured_by, last_movement_id)
+values ($1, $2, $3, $4, $5,
+        $6)
+on conflict (count_id, product_id) do update
+   set counted_qty = excluded.counted_qty, system_qty = excluded.system_qty, captured_by = excluded.captured_by,
+       captured_at = now(), last_movement_id = excluded.last_movement_id
+`
+
+type UpsertCountProductLineParams struct {
+	CountID        int64           `json:"count_id"`
+	ProductID      int64           `json:"product_id"`
+	CountedQty     decimal.Decimal `json:"counted_qty"`
+	SystemQty      decimal.Decimal `json:"system_qty"`
+	CapturedBy     int64           `json:"captured_by"`
+	LastMovementID *int64          `json:"last_movement_id"`
+}
+
+func (q *Queries) UpsertCountProductLine(ctx context.Context, arg UpsertCountProductLineParams) error {
+	_, err := q.db.Exec(ctx, upsertCountProductLine,
+		arg.CountID,
+		arg.ProductID,
+		arg.CountedQty,
+		arg.SystemQty,
+		arg.CapturedBy,
+		arg.LastMovementID,
 	)
 	return err
 }

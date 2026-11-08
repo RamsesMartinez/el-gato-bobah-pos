@@ -7,6 +7,7 @@ DELETE /api/v1/business-settings/ticket-logo admin,gerente
 DELETE /api/v1/roles/{id} admin
 DELETE /api/v1/stock/articles/{id}/density admin,gerente
 DELETE /api/v1/stock/counts/{id}/lines/{ingredientId} admin,gerente
+DELETE /api/v1/stock/counts/{id}/product-lines/{productId} admin,gerente
 DELETE /api/v1/supplier-items/{id} admin,gerente
 GET /api/v1/admin/categories admin,gerente
 GET /api/v1/admin/groups/ admin,gerente
@@ -232,6 +233,7 @@ PUT /api/v1/stock/articles/{id}/alt-names admin,gerente
 PUT /api/v1/stock/articles/{id}/density admin,gerente
 PUT /api/v1/stock/count-places/{id} admin,gerente
 PUT /api/v1/stock/counts/{id}/lines/{ingredientId} admin,gerente
+PUT /api/v1/stock/counts/{id}/product-lines/{productId} admin,gerente
 PUT /api/v1/stock/ingredients/{id}/composition admin,gerente
 PUT /api/v1/stock/ingredients/{id}/place admin,gerente
 PUT /api/v1/stock/presentations/{id} admin,gerente
