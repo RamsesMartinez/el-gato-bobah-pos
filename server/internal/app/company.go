@@ -31,6 +31,22 @@ func (s *CompanyService) Get(ctx context.Context, companyID int64) (domain.Compa
 	return domain.Company{ID: co.ID, Slug: co.Slug, Name: co.Name, IsActive: co.IsActive}, nil
 }
 
+// Name returns the company's name read under that company's own session (RLS «solo mi fila»).
+// Lo usa el aviso de un 500 (spec 070), que corre fuera del request: abre su propia transacción con
+// la empresa del aviso en vez de depender de lo que traiga el contexto.
+func (s *CompanyService) Name(ctx context.Context, companyID int64) (string, error) {
+	var name string
+	err := s.store.WithTenant(ctx, companyID, func(q *db.Queries) error {
+		co, err := q.GetCompany(ctx, companyID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		name = co.Name
+		return err
+	})
+	return name, err
+}
+
 // Update cambia nombre y slug de la empresa. Valida el formato del slug y mapea el choque de
 // unicidad (otra empresa ya lo usa) a ErrConflict. RLS with-check impide editar otra empresa.
 func (s *CompanyService) Update(ctx context.Context, companyID int64, name, slug string) (domain.Company, error) {

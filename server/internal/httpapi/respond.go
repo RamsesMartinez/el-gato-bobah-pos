@@ -325,6 +325,7 @@ func Error(w http.ResponseWriter, err error) {
 
 	if status == http.StatusInternalServerError {
 		slog.Error("request failed", "error", err)
+		recordServerError(w, err)
 		msg = "Error interno del servidor"
 		// Sin details en un 500: el mensaje ya se ocultó por opaco, y adjuntar el interior del
 		// error por otra puerta lo desharía.

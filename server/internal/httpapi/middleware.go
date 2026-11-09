@@ -56,6 +56,8 @@ func RequireAuth(jm *auth.Manager) func(http.Handler) http.Handler {
 			if ti := traceFrom(r.Context()); ti != nil {
 				ti.userID = u.ID
 				ti.role = string(u.Role)
+				ti.userName = u.Name
+				ti.companyID = u.CompanyID
 			}
 			ctx := app.WithActorUser(context.WithValue(r.Context(), userCtxKey, u), u.ID)
 			next.ServeHTTP(w, r.WithContext(ctx))

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/alerts"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
@@ -83,7 +84,9 @@ const (
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
 type Deps struct {
-	Cfg       config.Config
+	Cfg config.Config
+	// Alerts manda por correo cada 500 (spec 070); nil = avisos apagados.
+	Alerts    *alerts.Notifier
 	Version   string // SHA del build (ldflags); "dev" en local
 	BuiltAt   string // timestamp del build (ldflags); "" en local
 	JWT       *auth.Manager
@@ -207,6 +210,7 @@ type Handlers struct {
 	attendance  *app.AttendanceService
 	audit       *app.AuditService
 	health      *app.InventoryHealthService
+	alerts      *alerts.Notifier
 }
 
 // BeginShutdown hace que /readyz responda 503 mientras la copia termina lo que trae.
@@ -231,6 +235,7 @@ func newHandlers(d Deps) *Handlers {
 		attendance: d.Attendance,
 		audit:      d.Audit,
 		health:     d.InventoryHealth,
+		alerts:     d.Alerts,
 		cfg:        d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
