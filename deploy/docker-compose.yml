@@ -68,6 +68,8 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       MAIL_FROM: ${MAIL_FROM}
+      # Cada 500 de la API manda un correo aquí (spec 070). Vacío = avisos apagados.
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
       APP_BASE_URL: ${APP_BASE_URL}
     # Cada lado su propio volumen de bitácora: dos procesos rotando el mismo archivo se pisan.
     volumes:

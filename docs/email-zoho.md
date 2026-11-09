@@ -1,7 +1,7 @@
 # Email: Mailpit (local) y Zoho Mail (producción)
 
-El sistema envía correo **solo** para la recuperación de contraseña (flujo "olvidé mi
-contraseña"). El transporte es SMTP estándar (`net/smtp`, sin dependencias), así que el mismo
+El sistema envía correo para la recuperación de contraseña (flujo "olvidé mi contraseña"), el
+resumen diario del cierre y el **aviso de cada error interno de la API** (ver abajo). El transporte es SMTP estándar (`net/smtp`, sin dependencias), así que el mismo
 código habla con Mailpit en local y con Zoho en producción — solo cambian las variables de
 entorno.
 
@@ -18,6 +18,7 @@ funciona igual.
 | `SMTP_USER` | *(vacío)* | tu buzón Zoho, ej. `no-reply@tudominio.com` |
 | `SMTP_PASS` | *(vacío)* | **App Password** de Zoho (no la contraseña normal) |
 | `MAIL_FROM` | `no-reply@gatobobah.local` | igual que `SMTP_USER` |
+| `ALERT_EMAIL_TO` | tu correo (mailpit lo atrapa) | quien recibe los avisos de error; vacío = apagados |
 | `APP_BASE_URL` | `http://localhost:3000` | `https://app.tudominio.com` (para el link del correo) |
 
 > Zoho por región: si tu cuenta es de la UE usa `smtp.zoho.eu`; India `smtp.zoho.in`;
@@ -86,3 +87,21 @@ tocar código.
 Zoho Mail (buzón normal) tiene límites diarios de envío según el plan (típicamente cientos/día).
 Para recuperación de contraseña de un POS de un local es de sobra. Si escalas a muchas empresas
 con alto volumen, evalúa ZeptoMail.
+
+## Aviso de errores internos (spec 070)
+
+Cada respuesta **500** de la API (un error que nadie mapeó o un panic) manda un correo a
+`ALERT_EMAIL_TO` con la hora del centro de México, método y patrón de la ruta, usuario, empresa, id
+de request, mensaje (enmascarado) y una traza corta. El asunto lleva el host de `APP_BASE_URL`, que
+distingue producción del ambiente de pruebas.
+
+- **Agrupado**: un correo por ruta, método y tipo de error cada 15 min. El primero sale al instante;
+  si se repite, al cerrar la ventana llega uno con el conteo, y la ventana se renueva mientras siga
+  pasando. Las ventanas viven en Redis (llaves `pos:alert:*`) para que los dos procesos de una
+  subida azul/verde no avisen dos veces; con Redis caído siguen en memoria de cada proceso.
+- **Nunca atrasa la respuesta**: el request solo encola (64 lugares; lo que no cabe se descarta y
+  el siguiente correo lo cuenta). Un envío fallido queda en la bitácora como
+  `server_alert_send_failed` y no se reintenta.
+- **Sin datos sensibles**: ni cuerpos, ni encabezados, ni query; el mensaje pasa por un enmascarado
+  de tokens, contraseñas y números de tarjeta.
+- **Encendido**: la API escribe `server_alerts_enabled` o `server_alerts_disabled` al arrancar.
