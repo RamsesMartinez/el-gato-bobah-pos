@@ -158,7 +158,9 @@ insert into order_line_components (order_line_id, product_id, quantity) values (
 -- Los grupos activos del producto con cada opción activa y lo que resta (spec 069), para la hoja de
 -- composición: si alguna resta se ofrece «Lo restan sus opciones», y si ningún grupo que resta es
 -- obligatorio se avisa. La regla de «resta» es option_deducts (0110), la misma de la validación.
-select g.id as group_id, coalesce(nullif(pmg.title, ''), g.name)::text as group_name, (pmg.min_select > 0)::bool as required,
+-- El mínimo efectivo es el del producto o, si no lo ajustó (NULL, 0015), el del grupo: sin el coalesce
+-- la comparación da NULL y el scan a bool tumba la consulta entera.
+select g.id as group_id, coalesce(nullif(pmg.title, ''), g.name)::text as group_name, (coalesce(pmg.min_select, g.default_min_select) > 0)::bool as required,
        o.name::text as option_name, option_deducts(o.id)::bool as deducts,
        coalesce(case
          when o.linked_product_id is not null then (select '1 ' || lp.name from products lp where lp.id = o.linked_product_id)
