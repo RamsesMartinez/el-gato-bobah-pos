@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/base64"
 	"errors"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -62,6 +63,9 @@ type Config struct {
 	SMTPUser string `env:"SMTP_USER" envDefault:""`
 	SMTPPass string `env:"SMTP_PASS" envDefault:""`
 	MailFrom string `env:"MAIL_FROM" envDefault:"no-reply@elgatobobah.com"`
+	// AlertEmailTo recibe un correo por cada error interno de la API (spec 070). Vacío = avisos
+	// apagados: el producto se vende y cada despliegue avisa a su propia persona.
+	AlertEmailTo string `env:"ALERT_EMAIL_TO" envDefault:""`
 	// AppBaseURL: origen público del frontend, para armar el link de reset en el email.
 	AppBaseURL string `env:"APP_BASE_URL" envDefault:"http://localhost:3000"`
 
@@ -125,6 +129,21 @@ func (c Config) PlatformDatabaseURLOrDefault() string {
 
 // EmailEnabled reports whether SMTP is configured (host set).
 func (c Config) EmailEnabled() bool { return c.SMTPHost != "" }
+
+// ServerAlertsEnabled reports whether 500s are mailed: needs a recipient and SMTP.
+func (c Config) ServerAlertsEnabled() bool {
+	return strings.TrimSpace(c.AlertEmailTo) != "" && c.EmailEnabled()
+}
+
+// AlertEnvironment is the label of this deployment in an alert: the public host of the app.
+// APP_ENV no sirve: vale «production» también en la VM de pruebas.
+func (c Config) AlertEnvironment() string {
+	u, err := url.Parse(strings.TrimSpace(c.AppBaseURL))
+	if err != nil || u.Host == "" {
+		return "desconocido"
+	}
+	return u.Host
+}
 
 func Load() (Config, error) {
 	c, err := env.ParseAs[Config]()

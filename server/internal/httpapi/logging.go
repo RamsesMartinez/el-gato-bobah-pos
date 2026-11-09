@@ -21,8 +21,10 @@ type reqIDKey struct{}
 // traceInfo lo llena RequireAuth (downstream) y lo lee RequestLogger (al terminar),
 // vía un puntero compartido en el contexto → sabemos QUIÉN hizo cada request.
 type traceInfo struct {
-	userID int64
-	role   string
+	userID    int64
+	role      string
+	userName  string // para el aviso de un 500 (spec 070); no va a la bitácora
+	companyID int64
 }
 type traceKey struct{}
 
@@ -66,9 +68,13 @@ func RequestLogger(next http.Handler) http.Handler {
 			r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(reqBody), r.Body))
 		}
 
-		// holder que RequireAuth rellenará con el usuario autenticado
-		ti := &traceInfo{}
-		r = r.WithContext(context.WithValue(r.Context(), traceKey{}, ti))
+		// holder que RequireAuth rellenará con el usuario autenticado; si reportServerErrors ya lo
+		// creó, es el mismo, para que el aviso de un 500 también sepa quién fue.
+		ti := traceFrom(r.Context())
+		if ti == nil {
+			ti = &traceInfo{}
+			r = r.WithContext(context.WithValue(r.Context(), traceKey{}, ti))
+		}
 
 		cw := &captureWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(cw, r)
@@ -149,6 +155,9 @@ func (c *captureWriter) Write(b []byte) (int, error) {
 	}
 	return c.ResponseWriter.Write(b)
 }
+
+// Unwrap deja que Error() llegue al serverErrorWriter de afuera.
+func (c *captureWriter) Unwrap() http.ResponseWriter { return c.ResponseWriter }
 
 func (c *captureWriter) Flush() {
 	if f, ok := c.ResponseWriter.(http.Flusher); ok {

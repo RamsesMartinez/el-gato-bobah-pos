@@ -22,6 +22,12 @@ export APP_ENV=development
 export LOG_DIR="${LOG_DIR:-$ROOT/logs}"
 export SMTP_HOST="${SMTP_HOST:-localhost}"
 export SMTP_PORT="${SMTP_PORT:-${MAILPIT_SMTP_PORT:-1095}}"  # SMTP del Mailpit del compose dev
+# Contra Mailpit no hay usuario: el deploy/.env nace del ejemplo con el usuario de Zoho, y sin esto el
+# binario lo leía de ahí, intentaba AUTH y Mailpit respondía «502 Command not implemented» — ningún
+# correo local salía. Definidas aunque vacías, el binario ya no las toma del archivo.
+if [ "$SMTP_HOST" = "localhost" ]; then
+  export SMTP_USER="" SMTP_PASS=""
+fi
 export MAIL_FROM="${MAIL_FROM:-no-reply@gatobobah.local}"
 export APP_BASE_URL="${APP_BASE_URL:-http://localhost:${FRONTEND_PORT:-3000}}"
 # el binario carga los secretos de aquí (JWT_SECRET, etc.) de forma literal

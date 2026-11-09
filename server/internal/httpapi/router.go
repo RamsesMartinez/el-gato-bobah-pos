@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/alerts"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
@@ -33,12 +33,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 	h.permissions = MemoizedPermissions(h.permissions)
 
 	r := chi.NewRouter()
-	r.Use(RequestID) // X-Request-Id (del front o generado), trazabilidad
-	r.Use(middleware.Recoverer)
-	r.Use(maxBody(1 << 20)) // 1 MiB: acota el cuerpo antes de leerlo (anti-DoS)
-	r.Use(RequestLogger)    // captura request/response (redactado) en todos los ambientes
-	r.Use(cors(cfg.CORSOrigin, cfg.Env != "production"))
-	r.Use(withRequestOrigin(cfg.Env == "production"))
+	baseMiddlewares(r, cfg, h.alerts)
 
 	// Ops (unversioned)
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -753,4 +748,15 @@ func cors(allowed string, dev bool) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// baseMiddlewares es la pila que corre en toda petición. Vive aparte para que el test del aviso de
+// errores pruebe exactamente la misma cadena con rutas que truenan a propósito.
+func baseMiddlewares(r chi.Router, cfg config.Config, n *alerts.Notifier) {
+	r.Use(RequestID)                                     // X-Request-Id (del front o generado), trazabilidad
+	r.Use(reportServerErrors(n, cfg.AlertEnvironment())) // recupera panics y avisa de cada 500 (spec 070)
+	r.Use(maxBody(1 << 20))                              // 1 MiB: acota el cuerpo antes de leerlo (anti-DoS)
+	r.Use(RequestLogger)                                 // captura request/response (redactado) en todos los ambientes
+	r.Use(cors(cfg.CORSOrigin, cfg.Env != "production"))
+	r.Use(withRequestOrigin(cfg.Env == "production"))
 }
