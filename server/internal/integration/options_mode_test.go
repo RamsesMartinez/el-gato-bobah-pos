@@ -343,3 +343,57 @@ func TestOptionDeductsAgreesWithWhatASaleDeducts(t *testing.T) {
 		}
 	}
 }
+
+// Un producto ligado a un grupo SIN ajuste propio (min_select y max_select en NULL: hereda el mínimo
+// del grupo, 0015) no abría su receta: `(pmg.min_select > 0)::bool` daba NULL, sqlc lo tipa como
+// bool y el scan reventaba toda la consulta con 500. Pasó en producción el 2026-11-08 (hora del centro) con Ferrero,
+// Kinder Delice, Crepa Kit Kat y Dedos de Queso. «Obligatorio» sale del mínimo efectivo: el del
+// producto si lo ajustó, si no el del grupo.
+func TestAGroupThatInheritsItsMinimumOpensTheComposition(t *testing.T) {
+	t.Parallel()
+	k := newOptionsKit(t)
+	// own < 0: el producto hereda el mínimo del grupo; si no, lo ajusta (min y max juntos, 0015).
+	inherit := func(name string, groupMin, own int) int64 {
+		p := makeProduct(t, k.st, name, dd("30"), false)
+		var g int64
+		if err := k.st.Pool.QueryRow(context.Background(), `insert into modifier_groups (company_id, name, default_min_select, default_max_select)
+			values ($1, $2, $3, 1) returning id`, defaultCompanyID, name+" grupo", groupMin).Scan(&g); err != nil {
+			t.Fatal(err)
+		}
+		var ownMin, ownMax *int
+		if own >= 0 {
+			one := 1
+			ownMin, ownMax = &own, &one
+		}
+		if _, err := k.st.Pool.Exec(context.Background(), `insert into product_modifier_groups (product_id, group_id, min_select, max_select)
+			values ($1, $2, $3, $4)`, p, g, ownMin, ownMax); err != nil {
+			t.Fatal(err)
+		}
+		r := pieceRecipe(t, k.st, k.fresa, "1")
+		if _, err := k.st.Pool.Exec(context.Background(), `insert into modifier_options (company_id, group_id, name, recipe_id) values ($1, $2, 'Fresa', $3)`,
+			defaultCompanyID, g, r); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	for _, c := range []struct {
+		name     string
+		groupMin int
+		own      int
+		required bool
+	}{
+		{"Crepa hereda obligatorio", 1, -1, true},
+		{"Crepa hereda opcional", 0, -1, false},
+		// El ajuste del producto gana sobre el del grupo: invertir el coalesce lo volvería obligatorio.
+		{"Crepa ajusta a opcional", 1, 0, false},
+	} {
+		v, err := k.svc.Composition(k.ctx, app.CompositionOfProduct, inherit(c.name, c.groupMin, c.own))
+		if err != nil {
+			t.Fatalf("%s: abrir la receta de un producto cuyo grupo hereda el mínimo = %v; quiere que abra", c.name, err)
+		}
+		if len(v.OptionGroups) != 1 || v.OptionGroups[0].Required != c.required || v.OptionsRequired != c.required {
+			t.Errorf("%s: grupos %+v, required %v; quiere un grupo con obligatorio = %v (mínimo del grupo %d)",
+				c.name, v.OptionGroups, v.OptionsRequired, c.required, c.groupMin)
+		}
+	}
+}
