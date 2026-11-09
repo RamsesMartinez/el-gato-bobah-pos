@@ -60,10 +60,31 @@ var alertSecretPatterns = []struct {
 	// Primero el JWT completo: si el par clave-valor lo corta antes, quedarían dos tercios visibles.
 	{regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*`), "[jwt]"},
 	{regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+`), "Bearer ***"},
-	{regexp.MustCompile(`(?i)("?\b(?:password|passwd|pin|token|access_?token|refresh_?token|secret|authorization|api_?key|card|tarjeta|cvv)"?\s*[:=]\s*)("[^"]*"|[^\s,;&}]+)`), "${1}***"},
+	// La clave puede llevar prefijo (client_secret, X-Api-Key); el separador antes evita que «pin»
+	// salte dentro de otra palabra.
+	{regexp.MustCompile(`(?i)((?:^|[^A-Za-z0-9])["']?(?:[a-z]+[_-])?(?:password|passwd|pin|token|access_?token|refresh_?token|secret|authorization|api[_-]?key|card|tarjeta|cvv|cookie|otp)["']?\s*[:=]\s*)("[^"]*"|[^\s,;&}]+)`), "${1}***"},
+	// Postgres repite en el error el valor que mandó el cliente (22P02, 22007): puede ser lo que se
+	// tecleó en cualquier campo.
+	{regexp.MustCompile(`(?i)(invalid input (?:syntax|value) for [^:"]+: )"[^"]*"`), `${1}"***"`},
 	// 13 a 19 dígitos, con o sin separadores: el largo de un número de tarjeta. Un id de este
 	// sistema no llega a 13 dígitos.
 	{regexp.MustCompile(`\b(?:\d[ -]?){12,18}\d\b`), "[número]"},
+}
+
+// opaqueRun es la forma de un token sin nombre (refresh, llave de API): 24 o más caracteres de
+// base64url. Solo se enmascara si mezcla letras y dígitos, para no esconder el nombre de una
+// restricción como order_line_modifiers_order_line_id_fkey.
+var opaqueRun = regexp.MustCompile(`[A-Za-z0-9_-]{24,}`)
+
+func maskOpaque(s string) string {
+	return opaqueRun.ReplaceAllStringFunc(s, func(run string) string {
+		if strings.ContainsAny(run, "0123456789") && strings.IndexFunc(run, func(r rune) bool {
+			return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+		}) >= 0 {
+			return "[token]"
+		}
+		return run
+	})
 }
 
 // SanitizeAlertText masks what must never reach a mailbox (tokens, passwords, card numbers) and
@@ -72,6 +93,7 @@ func SanitizeAlertText(s string) string {
 	for _, p := range alertSecretPatterns {
 		s = p.re.ReplaceAllString(s, p.repl)
 	}
+	s = maskOpaque(s)
 	if r := []rune(s); len(r) > maxAlertText {
 		s = string(r[:maxAlertText]) + "…"
 	}

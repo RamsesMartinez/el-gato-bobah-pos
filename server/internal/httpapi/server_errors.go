@@ -118,7 +118,12 @@ func (w *serverErrorWriter) Write(b []byte) (int, error) {
 }
 
 // Flush mantiene vivo el SSE de /events, igual que captureWriter.
+// Un Flush antes del primer Write ya mandó el 200: se anota para que un panic posterior no pinte un
+// 500 encima de una respuesta enviada.
 func (w *serverErrorWriter) Flush() {
+	if !w.wrote {
+		w.WriteHeader(http.StatusOK)
+	}
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}

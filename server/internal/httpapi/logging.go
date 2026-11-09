@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 	"uuid"
@@ -35,12 +36,17 @@ func traceFrom(ctx context.Context) *traceInfo {
 	return nil
 }
 
+// validRequestID es la forma de un id que se acepta del cliente (el front manda un UUID). Lo demás se
+// reemplaza: el id viaja a la bitácora y al correo de aviso de un 500 (spec 070), y un texto libre
+// ahí es un mensaje del atacante dentro de un correo legítimo.
+var validRequestID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
 // RequestID toma el X-Request-Id del front o genera uno, lo pone en la respuesta y
 // en el contexto para trazar el request de inicio a fin.
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.Header.Get(RequestIDHeader))
-		if id == "" {
+		if !validRequestID.MatchString(id) {
 			id = uuid.New().String()
 		}
 		w.Header().Set(RequestIDHeader, id)

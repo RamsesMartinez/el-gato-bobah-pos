@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/base64"
 	"errors"
+	"net/mail"
 	"net/url"
 	"regexp"
 	"strings"
@@ -164,6 +165,13 @@ func Validate(c Config) error {
 	// "production", y el router refleja cualquier Origin cuando es cualquier cosa DISTINTA de
 	// "production". Un `APP_ENV=prod` cae en el peor cuadrante de los dos —arranca con `*` y
 	// refleja— sin que nada lo diga.
+	if to := strings.TrimSpace(c.AlertEmailTo); to != "" {
+		// Un destinatario que no parsea dejaría los avisos de error fallando en silencio, y uno con
+		// salto de línea inyectaría encabezados en el correo.
+		if a, err := mail.ParseAddress(to); err != nil || a.Address != to {
+			return errors.New("ALERT_EMAIL_TO inválido: una sola dirección de correo, sin nombre")
+		}
+	}
 	if c.Env != "development" && c.Env != "production" {
 		return errors.New("APP_ENV inválido: solo 'development' o 'production' (un valor desconocido apaga las dos mitades del control de CORS)")
 	}

@@ -80,3 +80,29 @@ func TestOrphanedRepeatsAreReportedByTheNextWindow(t *testing.T) {
 		t.Fatalf("no reportó las repeticiones huérfanas: %s", b.all()[0].body)
 	}
 }
+
+// Si se gana la ventana en Redis pero leer el conteo huérfano falla, la ventana sigue siendo de
+// Redis: si se tratara como de memoria, las repeticiones que cuentan los otros procesos se perderían.
+func TestWonWindowStaysInRedisWhenTheOrphanReadFails(t *testing.T) {
+	u := testRedis(t)
+	a := alertFor("/api/v1/z", "pg:XX002")
+	opt, _ := redis.ParseURL(u)
+	rdb := redis.NewClient(opt)
+	defer func() { _ = rdb.Close() }()
+	ctx := context.Background()
+	// Una llave de otro tipo hace que GETDEL responda WRONGTYPE: la falla real más barata de provocar.
+	rdb.HSet(ctx, countKey(domain.AlertKey(a)), "x", 1)
+
+	b, other := &inbox{}, &inbox{}
+	n := newTestNotifier(t, b, Options{RedisURL: u, Window: 400 * time.Millisecond})
+	n.Report(a)
+	waitFor(t, "aviso", time.Second, func() bool { return len(b.all()) == 1 })
+	rdb.Del(ctx, countKey(domain.AlertKey(a)))
+	n2 := newTestNotifier(t, other, Options{RedisURL: u, Window: 400 * time.Millisecond})
+	n2.Report(a)
+	n2.Report(a)
+	waitFor(t, "resumen", 2*time.Second, func() bool { return len(b.all()) == 2 })
+	if s := b.all()[1].subject; !strings.Contains(s, "repetido 2 veces") {
+		t.Fatalf("el dueño no sumó las repeticiones del otro proceso: %q", s)
+	}
+}

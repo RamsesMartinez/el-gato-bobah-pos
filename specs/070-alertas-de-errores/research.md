@@ -64,3 +64,14 @@
 
 - **Decision**: `CompanyService.Name(ctx, id)` con `store.WithTenant(id)` y `GetCompany` (RLS «solo
   mi fila»), plazo de 2 s. Si falla, el correo lleva solo el id.
+
+## R9. Lo que agregó la revisión de código
+
+- **`X-Request-Id`** del cliente solo se acepta con forma `[A-Za-z0-9._-]{1,64}` (el front manda un
+  UUID); otro valor se reemplaza por un UUID nuevo. Entraba tal cual al correo y a la bitácora.
+- **Cuerpo del correo en base64** (líneas de 76) en `mailer.buildMessage`, para todos los correos:
+  RFC 5322 limita la línea a 998 octetos y el HTML del aviso no tiene saltos.
+- **Enmascarado ampliado**: claves con prefijo (`client_secret`, `X-Api-Key`), `cookie`, `otp`, el
+  eco de valores de Postgres (22P02/22007) y corridas opacas de 24+ caracteres con letras y dígitos.
+- **`ALERT_EMAIL_TO`** inválido detiene el arranque (`config.Validate`).
+- Si se gana la ventana en Redis pero falla leer el conteo huérfano, la ventana sigue en Redis.

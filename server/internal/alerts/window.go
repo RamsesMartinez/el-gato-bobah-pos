@@ -3,6 +3,7 @@ package alerts
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -62,11 +63,16 @@ func (n *Notifier) claim(key string) (won bool, orphaned int64, err error) {
 	if !won {
 		return false, 0, nil
 	}
+	// La ventana ya es de este proceso en Redis aunque leer el conteo huérfano falle: si se tratara
+	// como de memoria, las repeticiones que cuentan los otros procesos se perderían.
 	orphaned, err = n.rdb.GetDel(ctx, countKey(key)).Int64()
-	if errors.Is(err, redis.Nil) {
-		err = nil
+	if err != nil && !errors.Is(err, redis.Nil) {
+		slog.Warn("server_alert_redis_failed", "op", "orphans", "error", err)
 	}
-	return true, orphaned, err
+	if err != nil {
+		orphaned = 0
+	}
+	return true, orphaned, nil
 }
 
 func (n *Notifier) incr(key string) error {

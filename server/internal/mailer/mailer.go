@@ -10,6 +10,7 @@ package mailer
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -110,7 +111,15 @@ func buildMessage(from, to, subject, htmlBody string) []byte {
 	b.WriteString("Subject: " + subject + "\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
 	b.WriteString("Content-Type: text/html; charset=\"utf-8\"\r\n")
+	// base64 en líneas de 76: RFC 5322 limita cada línea a 998 octetos, y un HTML sin saltos (el
+	// aviso de un error con mensaje largo) la rebasaba; un servidor estricto rechaza el correo entero.
+	b.WriteString("Content-Transfer-Encoding: base64\r\n")
 	b.WriteString("\r\n")
-	b.WriteString(htmlBody)
+	enc := base64.StdEncoding.EncodeToString([]byte(htmlBody))
+	for len(enc) > 76 {
+		b.WriteString(enc[:76] + "\r\n")
+		enc = enc[76:]
+	}
+	b.WriteString(enc + "\r\n")
 	return []byte(b.String())
 }

@@ -256,3 +256,52 @@ func TestAlertingDoesNotDelayTheResponse(t *testing.T) {
 		t.Fatalf("5 respuestas 500 con un SMTP de 2 s tardaron %v", d)
 	}
 }
+
+// Un handler que manda encabezados con Flush antes de escribir ya respondió 200. Si después entra
+// en panic, el middleware no puede pintar un 500 encima de una respuesta ya enviada.
+func TestPanicAfterFlushDoesNotRewriteTheResponse(t *testing.T) {
+	n := alerts.New(alerts.Options{To: "x@y.z", Send: (&alertMailbox{}).send, Window: time.Hour})
+	defer func() { _ = n.Close(context.Background()) }()
+	r := chi.NewRouter()
+	baseMiddlewares(r, config.Config{Env: "development"}, n)
+	r.Get("/stream", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		panic("se cayó a media transmisión")
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/stream", nil))
+	if strings.Contains(rec.Body.String(), "INTERNAL") {
+		t.Fatalf("pintó un 500 dentro de una respuesta ya enviada: %q", rec.Body.String())
+	}
+}
+
+// El X-Request-Id lo manda el cliente y viaja al correo: solo se acepta con forma de id.
+func TestHostileRequestIDIsReplaced(t *testing.T) {
+	for _, hostile := range []string{
+		"Soporte urgente: llama al 55-1234-5678 y dicta el código",
+		strings.Repeat("a", 10_000),
+		"<b>hola</b>",
+	} {
+		h, b, _ := alertTestRouter(t)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/things/1/fail", nil)
+		req.Header.Set(RequestIDHeader, hostile)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if got := rec.Header().Get(RequestIDHeader); got == hostile || len(got) > 64 {
+			t.Errorf("un id hostil de %d bytes se aceptó", len(got))
+		}
+		if m := b.waitOne(t); strings.Contains(m, hostile) {
+			t.Errorf("el correo trae el X-Request-Id hostil")
+		}
+	}
+	// El que manda el front (un UUID) se respeta: es el que une la tableta con la bitácora.
+	h, _, _ := alertTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set(RequestIDHeader, "5f0c2a1e-9b7d-4c3e-8a21-0d6f4b9e7c11")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if got := rec.Header().Get(RequestIDHeader); got != "5f0c2a1e-9b7d-4c3e-8a21-0d6f4b9e7c11" {
+		t.Fatalf("un UUID válido se reemplazó por %q", got)
+	}
+}

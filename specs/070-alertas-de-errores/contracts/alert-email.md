@@ -1,6 +1,6 @@
 # Contrato: correo de aviso
 
-Destinatario `ALERT_EMAIL_TO`; remitente `MAIL_FROM`; HTML UTF-8, todo valor escapado.
+Destinatario `ALERT_EMAIL_TO`; remitente `MAIL_FROM`; HTML UTF-8 en base64, todo valor escapado. El id de request es el del cliente solo si tiene forma de id (R9).
 
 **Asunto** (inmediato): `[POS <host>] Error 500: <METHOD> <route>`
 **Asunto** (resumen): `[POS <host>] Error 500 repetido <N> veces: <METHOD> <route>`

@@ -103,6 +103,7 @@ func (n *Notifier) Close(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		n.cancel() // corta lo que espera a Redis o a la base; el SMTP termina por su propio plazo
+		slog.Warn("server_alert_shutdown_incomplete", "error", ctx.Err())
 		return ctx.Err()
 	}
 }
@@ -110,6 +111,11 @@ func (n *Notifier) Close(ctx context.Context) error {
 func (n *Notifier) run() {
 	defer close(n.done)
 	defer n.cancel()
+	defer func() {
+		if n.rdb != nil {
+			_ = n.rdb.Close()
+		}
+	}()
 	for {
 		select {
 		case a := <-n.queue:

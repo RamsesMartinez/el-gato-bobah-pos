@@ -194,3 +194,31 @@ func TestAlertEmailSubjectHasNoHeaderInjection(t *testing.T) {
 		t.Fatalf("asunto con salto de línea: %q", s)
 	}
 }
+
+// Huecos que encontró la auditoría de seguridad de la spec 070.
+func TestSanitizeAlertTextAuditGaps(t *testing.T) {
+	cases := []struct {
+		name   string
+		in     string
+		absent string
+	}{
+		{"client_secret", "uber rechazó client_secret=s3cr3tvalue", "s3cr3tvalue"},
+		{"x-api-key con guion", "X-Api-Key: abcdef123 inválida", "abcdef123"},
+		{"cookie", "cookie: session=abc123 vencida", "abc123"},
+		{"otp", "otp=918273 incorrecto", "918273"},
+		{"token opaco suelto", "refresh token 9f8e7d6c5b4a39281706f5e4d3c2b1a0 not found", "9f8e7d6c5b4a39281706f5e4d3c2b1a0"},
+		{"eco de postgres 22P02", `ERROR: invalid input syntax for type integer: "mipin 4821" (SQLSTATE 22P02)`, "mipin 4821"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := SanitizeAlertText(c.in); strings.Contains(got, c.absent) {
+				t.Fatalf("el texto enmascarado todavía trae %q: %q", c.absent, got)
+			}
+		})
+	}
+	// Un nombre de restricción largo no es un token: enmascararlo esconde dónde falló.
+	in := `violates foreign key constraint "order_line_modifiers_order_line_id_fkey"`
+	if got := SanitizeAlertText(in); got != in {
+		t.Fatalf("enmascaró un nombre de restricción: %q", got)
+	}
+}

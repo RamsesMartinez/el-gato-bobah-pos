@@ -328,3 +328,20 @@ func TestAlertEnvironmentIsTheAppHost(t *testing.T) {
 		}
 	}
 }
+
+// Un destinatario mal escrito dejaría los avisos fallando en silencio; con CRLF inyectaría
+// encabezados. Se rechaza al arrancar.
+func TestValidate_RejectsAMalformedAlertRecipient(t *testing.T) {
+	for _, bad := range []string{"no-es-correo", "a@b.c\r\nBcc: x@y.z"} {
+		c := base()
+		c.AlertEmailTo = bad
+		if err := Validate(c); err == nil {
+			t.Errorf("ALERT_EMAIL_TO=%q pasó la validación", bad)
+		}
+	}
+	c := base()
+	c.AlertEmailTo = "ramses@example.com"
+	if err := Validate(c); err != nil {
+		t.Fatalf("un destinatario válido se rechazó: %v", err)
+	}
+}
