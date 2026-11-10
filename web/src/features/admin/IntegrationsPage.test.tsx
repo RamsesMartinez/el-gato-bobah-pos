@@ -78,6 +78,30 @@ describe('IntegrationsPage', () => {
     expect(screen.queryByText(/egbpat_/)).toBeNull();
   });
 
+  // Spec 073: seis alcances de escritura, y cada uno dice en su línea lo que abarca. Caja y Almacén
+  // ganaron abrir/cerrar y conteos: si su línea no lo dice, quien crea el token no lo sabe.
+  test('los seis alcances dicen qué permiten, incluido lo que agregó la 073', async () => {
+    montar();
+    await userEvent.click(await screen.findByRole('button', { name: 'Crear token' }));
+    const hoja = await screen.findByRole('dialog');
+    const casillas = within(hoja).getAllByRole('checkbox');
+    expect(casillas.map((c) => c.getAttribute('aria-label'))).toEqual(
+      ['Gastos', 'Caja', 'Almacén', 'Menú y precios', 'Compras', 'Pedidos']);
+    expect(within(hoja).getByText(/abrir y cerrar caja/)).toBeVisible();
+    expect(within(hoja).getByText(/conteos/)).toBeVisible();
+    expect(within(hoja).getByText(/compras con su mercancía/)).toBeVisible();
+    expect(within(hoja).getByText(/devuelve el dinero/)).toBeVisible();
+  });
+
+  test('la tarjeta nombra los alcances nuevos, nunca el identificador', async () => {
+    api.list.mockResolvedValue({ items: [tok({ id: 5, name: 'Laptop de compras', scopes: ['read', 'write:purchases', 'write:orders'] })] });
+    montar();
+    await screen.findByText('Laptop de compras');
+    expect(screen.getByText('Compras')).toBeVisible();
+    expect(screen.getByText('Pedidos')).toBeVisible();
+    expect(screen.queryByText(/write:/)).toBeNull();
+  });
+
   test('al abrir la hoja el foco no va a un campo de texto (no sube el teclado)', async () => {
     montar();
     await userEvent.click(await screen.findByRole('button', { name: 'Crear token' }));

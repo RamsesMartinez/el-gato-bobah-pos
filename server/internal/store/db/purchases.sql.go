@@ -68,6 +68,17 @@ func (q *Queries) AdjustLineToReceived(ctx context.Context, arg AdjustLineToRece
 	return err
 }
 
+const checkDeferredConstraintsNow = `-- name: CheckDeferredConstraintsNow :exec
+set constraints all immediate
+`
+
+// Corre ya los constraints diferidos (la guarda de insumos unidos, 0104): una transacción que se
+// revierte nunca llega al commit donde correrían (spec 073, revisión A1).
+func (q *Queries) CheckDeferredConstraintsNow(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, checkDeferredConstraintsNow)
+	return err
+}
+
 const costingMethod = `-- name: CostingMethod :one
 select coalesce((select costing_method from business_settings limit 1), 'last')::text as costing_method
 `
@@ -884,6 +895,47 @@ func (q *Queries) ProductVisible(ctx context.Context, id int64) (bool, error) {
 	return column_1, err
 }
 
+const purchasePreviewArticles = `-- name: PurchasePreviewArticles :many
+select i.id, i.name, i.current_cost, u.code as base_unit_code
+  from ingredients i join units u on u.id = i.base_unit_id
+ where i.id = any($1::bigint[])
+ order by i.id
+`
+
+type PurchasePreviewArticlesRow struct {
+	ID           int64           `json:"id"`
+	Name         string          `json:"name"`
+	CurrentCost  decimal.Decimal `json:"current_cost"`
+	BaseUnitCode string          `json:"base_unit_code"`
+}
+
+// Nombre, unidad base y costo vigente de los insumos de una compra en vista previa (spec 073). Se lee
+// dos veces dentro de la misma transacción revertida: antes de aplicar la mercancía y después.
+func (q *Queries) PurchasePreviewArticles(ctx context.Context, ids []int64) ([]PurchasePreviewArticlesRow, error) {
+	rows, err := q.db.Query(ctx, purchasePreviewArticles, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PurchasePreviewArticlesRow{}
+	for rows.Next() {
+		var i PurchasePreviewArticlesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CurrentCost,
+			&i.BaseUnitCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const raiseExpenseAmount = `-- name: RaiseExpenseAmount :exec
 with owed as (
   select e.id, (e.status = 'pagada'
@@ -1013,6 +1065,17 @@ func (q *Queries) SetLineArrival(ctx context.Context, arg SetLineArrivalParams) 
 		arg.UnitCost,
 		arg.ID,
 	)
+	return err
+}
+
+const setPreviewLockTimeout = `-- name: SetPreviewLockTimeout :exec
+set local lock_timeout = '2s'
+`
+
+// La vista previa de una compra toma los candados de la compra; con esto no detiene a una venta más
+// de 2 s (spec 073, revisión A4). Solo dura la transacción.
+func (q *Queries) SetPreviewLockTimeout(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, setPreviewLockTimeout)
 	return err
 }
 

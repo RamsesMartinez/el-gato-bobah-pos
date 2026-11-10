@@ -323,6 +323,9 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
+	// La 0112 se niega si un token ya tiene compras o pedidos: en la copia de prueba se le quitan esos
+	// dos alcances y el token sigue con los demás.
+	112: {`update api_tokens set scopes = array_remove(array_remove(scopes, 'write:purchases'), 'write:orders')`},
 	// La 0111 se niega con tokens del servidor MCP: en la copia de prueba se borran (las claves de
 	// idempotencia caen en cascada) junto con los ajustes de roles sobre el permiso 37.
 	111: {`delete from mcp_idempotency_keys`, `delete from api_tokens`,

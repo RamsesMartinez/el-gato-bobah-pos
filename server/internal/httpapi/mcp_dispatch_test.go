@@ -109,3 +109,48 @@ func TestDispatcherDeniedLeavesASecurityEvent(t *testing.T) {
 		t.Fatalf("sin evento: %s", buf.String())
 	}
 }
+
+// El conteo despacha rutas con dos parámetros enteros (spec 073). Los dos se ponen; con uno que
+// falta, la llave se queda en el camino y no se despacha.
+func TestDispatcherFillsTwoParams(t *testing.T) {
+	var got string
+	mux := chi.NewRouter()
+	mux.Put(pCountLine, func(w http.ResponseWriter, r *http.Request) {
+		got = chi.URLParam(r, "id") + "/" + chi.URLParam(r, "ingredientId")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	s := &mcpSession{mux: mux, outer: httptest.NewRequest(http.MethodPost, "/mcp", nil)}
+	status, _, err := s.dispatch(context.Background(), "stock_count_capture", http.MethodPut, pCountLine,
+		map[string]int64{"id": 7, "ingredientId": 42}, nil, map[string]any{})
+	if err != nil || status != http.StatusNoContent || got != "7/42" {
+		t.Fatalf("dos parámetros: %d %v %q", status, err, got)
+	}
+	if _, _, err := s.dispatch(context.Background(), "stock_count_capture", http.MethodPut, pCountLine,
+		map[string]int64{"id": 7}, nil, map[string]any{}); !errors.Is(err, errDispatchDenied) {
+		t.Fatalf("sin el insumo: %v", err)
+	}
+}
+
+// Las herramientas de la 073 rodean rutas que siguen fuera: cobrar, devolver, traspasar, repartir
+// propina y editar un gasto. Ninguna escritura nueva puede alcanzarlas.
+func TestNewToolsCannotReachRoutesThatStayOut(t *testing.T) {
+	hits := 0
+	mux := chi.NewRouter()
+	out := []string{"/api/v1/orders/{id}/pay", "/api/v1/orders/{id}/refund", "/api/v1/cash-sessions/transfer",
+		"/api/v1/cash-sessions/tips/payouts", "/api/v1/expenses/{id}/edit", "/api/v1/orders/{id}/write-off"}
+	for _, p := range out {
+		mux.Post(p, func(w http.ResponseWriter, _ *http.Request) { hits++ })
+	}
+	s := &mcpSession{mux: mux, outer: httptest.NewRequest(http.MethodPost, "/mcp", nil)}
+	for _, tool := range []string{"order_cancel", "cash_session_close", "cash_session_open", "purchase_create",
+		"purchase_receive", "stock_count_close"} {
+		for _, p := range out {
+			if _, _, err := s.dispatch(context.Background(), tool, http.MethodPost, p, map[string]int64{"id": 1}, nil, map[string]any{}); !errors.Is(err, errDispatchDenied) {
+				t.Errorf("%s alcanzó %s: %v", tool, p, err)
+			}
+		}
+	}
+	if hits != 0 {
+		t.Fatalf("%d despachos llegaron a un handler", hits)
+	}
+}

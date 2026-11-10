@@ -291,6 +291,28 @@ func TestMCPToolsListFollowsScopeAndPermission(t *testing.T) {
 		"idempotency_key": "mesero-0001"}); !res.isError && len(res.rpcErr) == 0 {
 		t.Fatalf("un mesero cambió un precio: %s", res.result)
 	}
+
+	// Lo que la 073 agregó a los alcances que ya existían (decisión D1): almacén abarca los conteos y
+	// caja abrir y cerrar. Un token emitido antes de la subida gana esto sin que nadie lo vuelva a crear;
+	// la prueba lo deja escrito para que nadie lo descubra en producción.
+	inv := listTools(t, w.router, w.token(t, w.company, w.admin, "write:inventory"))
+	for _, tool := range []string{"stock_count_open", "stock_count_capture", "stock_count_close", "stock_count_discard"} {
+		if !contains(inv, tool) {
+			t.Errorf("un token de almacén no ve %s", tool)
+		}
+	}
+	if contains(inv, "purchase_create") || contains(inv, "order_cancel") {
+		t.Errorf("un token de almacén ve compras o pedidos: %v", inv)
+	}
+	cash := listTools(t, w.router, w.token(t, w.company, w.admin, "write:cash"))
+	if !contains(cash, "cash_session_open") || !contains(cash, "cash_session_close") {
+		t.Errorf("un token de caja no ve abrir y cerrar: %v", cash)
+	}
+	// Compras y pedidos solo con su alcance.
+	if names := listTools(t, w.router, w.token(t, w.company, w.admin, "write:purchases", "write:orders")); !contains(names, "purchase_create") ||
+		!contains(names, "order_cancel") || contains(names, "cash_session_close") {
+		t.Errorf("compras y pedidos: %v", names)
+	}
 }
 
 func TestMCPDryRunIsTheDefault(t *testing.T) {
@@ -338,6 +360,25 @@ func TestMCPMoneyIsText(t *testing.T) {
 	res = callTool(t, w.router, tok, "expense_create", map[string]any{"category_id": 1, "amount": "10.5", "expense_date": "10/11/2026"})
 	if !res.isError {
 		t.Fatalf("una fecha mal escrita pasó: %s", res.text)
+	}
+	// Los de la 073: el cajón, el fondo, los montos por método y por terminal y lo contado del almacén.
+	// Un número o un texto que no es cantidad no llega a la herramienta (ni a la vista previa).
+	cash := w.token(t, w.company, w.admin, "write:cash", "write:inventory")
+	for name, c := range map[string]struct {
+		tool string
+		args map[string]any
+	}{
+		"cajón como número":      {"cash_session_close", map[string]any{"register_id": 1, "counted_cash": 1040}},
+		"cajón en letra":         {"cash_session_close", map[string]any{"register_id": 1, "counted_cash": "mil"}},
+		"fondo dejado en letra":  {"cash_session_close", map[string]any{"register_id": 1, "float_left": "quinientos"}},
+		"monto de un método":     {"cash_session_close", map[string]any{"register_id": 1, "declared": map[string]any{"2": "abc"}}},
+		"monto de una terminal":  {"cash_session_close", map[string]any{"register_id": 1, "terminal_counts": map[string]any{"1": 300}}},
+		"fondo de apertura":      {"cash_session_open", map[string]any{"register_id": 1, "opening_cash": "1,040"}},
+		"lo contado del almacén": {"stock_count_capture", map[string]any{"count_id": 1, "lines": []any{map[string]any{"ingredient_id": 1, "counted_qty": "seis"}}}},
+	} {
+		if res := callTool(t, w.router, cash, c.tool, c.args); !res.isError || strings.Contains(res.text, "preview") {
+			t.Errorf("%s pasó: %s", name, res.text)
+		}
 	}
 }
 
@@ -439,7 +480,7 @@ func TestEveryToolMatchesItsRouteGate(t *testing.T) {
 			}
 			continue
 		}
-		path := strings.NewReplacer("{id}", "1").Replace(pattern)
+		path := strings.NewReplacer("{id}", "1", "{ingredientId}", "1", "{productId}", "1").Replace(pattern)
 		if got := mux.Find(chi.NewRouteContext(), method, path); got != pattern {
 			t.Errorf("%s: la ruta %s %s no existe en el router (encontró %q)", tool.Name, method, pattern, got)
 			continue

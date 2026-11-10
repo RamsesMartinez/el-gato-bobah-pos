@@ -72,3 +72,28 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   doble.
 - **Los rechazos que la pantalla resuelve con una hoja** (caja sin turno, día ya cortado) llevan su
   corrección en palabras en `domain.ToolErrorHintFor`, porque el agente no ve esa hoja.
+
+### Lo que agregó la spec 073 (compras, conteos, cancelar pedidos, abrir y cerrar caja)
+
+- **Dos alcances nuevos, y dos viejos que crecieron.** `write:purchases` (compras con mercancía) y
+  `write:orders` (cancelar) entraron con la 0112. Además `write:inventory` abarca ahora los conteos y
+  `write:cash` abrir y cerrar caja: un token emitido antes de la 073 los ganó con la subida, sin que
+  nadie lo volviera a crear. Lo deja escrito `TestMCPToolsListFollowsScopeAndPermission`.
+- **El arqueo ciego por MCP es el de la ruta, no uno propio.** Las herramientas de caja solo leen
+  `GET /cash-sessions/current` (filtrado por `vistaDelTurnoAbierto`) y la asistencia; nunca el detalle
+  de un turno abierto ni el resumen de ventas. Lo propio de la capa MCP es que **cerrar exige cada
+  cifra dictada** (`domain.MissingCloseDeclarations`): el servidor toma un método ausente como cero,
+  correcto para la hoja (que no deja enviar sin capturar) y peligroso para un agente, que podría
+  «ayudar» llenándolo con lo esperado. Lo vigila `TestMCPCashCloseKeepsTheBlindCount`. Quien tiene
+  el permiso de ver ventas puede reconstruir el esperado igual que en la pantalla de Ventas: eso no
+  cambia.
+- **Una revisión contra el estado de ahora va en `guard`, no en `route`.** `route` corre antes de la
+  clave de idempotencia; una revisión ahí hace que repetir un cierre ya aplicado falle con «no hay
+  turno abierto» en vez de devolver lo guardado. `guard` corre después.
+- **La vista previa de una compra es la captura revertida** (`PreviewPurchase`, `POST
+  /expenses/purchase-preview`): la misma `prepareExpense` + `createExpenseIn` que guarda, con
+  `lock_timeout` de 2 s, los constraints diferidos forzados antes de revertir (la guarda de insumos
+  unidos corre en el commit) y sin dar de alta artículos. El costo es por insumo, de la compra
+  completa. Un camino nuevo que cambie la captura de un gasto lo cambia para los dos.
+- **El lote de conteo** despacha un `PUT` por renglón con `confirmable: true` y se detiene en el
+  primero que falla; capturar fija la cifra, así que repetirlo con la misma clave no duplica nada.

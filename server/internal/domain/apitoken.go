@@ -25,11 +25,17 @@ const (
 	ScopeWriteCash      APIScope = "write:cash"
 	ScopeWriteInventory APIScope = "write:inventory"
 	ScopeWriteCatalog   APIScope = "write:catalog"
+	// ScopeWritePurchases (spec 073): compras con su mercancía. Toca dinero y almacén a la vez, por eso
+	// no cabe en gastos ni en almacén.
+	ScopeWritePurchases APIScope = "write:purchases"
+	// ScopeWriteOrders (spec 073): cancelar pedidos, que puede devolver dinero ya cobrado.
+	ScopeWriteOrders APIScope = "write:orders"
 )
 
 // AllAPIScopes son los alcances en su orden canónico (el que se guarda y se muestra).
 func AllAPIScopes() []APIScope {
-	return []APIScope{ScopeRead, ScopeWriteExpenses, ScopeWriteCash, ScopeWriteInventory, ScopeWriteCatalog}
+	return []APIScope{ScopeRead, ScopeWriteExpenses, ScopeWriteCash, ScopeWriteInventory, ScopeWriteCatalog,
+		ScopeWritePurchases, ScopeWriteOrders}
 }
 
 // APITokenLifetimes son las únicas vigencias que se ofrecen, en días. No hay token sin fecha: una
@@ -269,6 +275,23 @@ var toolFixByCode = map[string]string{
 		"registrarlo fuera del arqueo, o cambia paid_on.",
 	"NO_OPEN_REGISTER":       "Esa caja no tiene turno abierto. Revisa cuál está abierta con cash_registers_list.",
 	"PLATFORM_PRICE_MANAGED": "Ese precio lo pone la plataforma conectada y no se cambia desde el POS.",
+	// Las de la 073: abrir y cerrar caja, contar, cancelar y comprar.
+	"OPENING_REASON_REQUIRED": "Lo contado no coincide con el cierre anterior: manda opening_reason " +
+		"(last_count_wrong, float_changed, unrecorded_withdrawal u other con opening_reason_note).",
+	"TIPS_DECISION_REQUIRED": "Hay propina pendiente: manda tips_decision con lo que decidió quien cierra.",
+	"REFUND_FOLIO_REQUIRED":  "Se devuelve algo cobrado con tarjeta: manda card_folio con el folio que imprimió la terminal.",
+	"TERMINAL_COUNT_REQUIRED": "Falta el corte de una terminal: manda terminal_counts con el total que marcó cada " +
+		"terminal.",
+	"CLOCK_IN_REQUIRED": "Quien abre la caja tiene que marcar su entrada en la tableta con su PIN antes de abrir. " +
+		"Revisa con cash_session_attendance.",
+	"OPENER_NOT_CLOCKED_OUT": "Quien abrió la caja no ha marcado su salida. Que la marque en la tableta, o manda " +
+		"authorized_close_reason si tu rol puede cerrar sin esa salida.",
+	"NEEDS_CONFIRM": "La cifra está fuera de lo de costumbre. Si es lo que se contó, repite ese renglón con " +
+		"confirmed: true.",
+	"INGREDIENT_MERGED": "Ese insumo se unió a otro: búscalo con articles_search y usa el que quedó.",
+	"OPEN_ORDERS": "Hay pedidos sin terminar en este turno: entrégalos en la pantalla o cancélalos con " +
+		"order_cancel antes de cerrar.",
+	"UNPAID_ORDERS": "Hay pedidos entregados que deben: cóbralos en la pantalla o cancélalos antes de cerrar.",
 }
 
 // ToolErrorHintFor es ToolErrorHint con el código de error de la API: si la operación tiene una
@@ -340,6 +363,32 @@ var mcpTools = []MCPTool{
 	wr("platform_price_set", "Pone el precio de un producto o extra en una plataforma de reparto.", ScopeWriteCatalog, PermPlatformPricesCapture),
 	wr("platform_price_delete", "Quita el precio propio de un producto o extra en una plataforma.", ScopeWriteCatalog, PermPlatformPricesCapture),
 	rd("audit_list", "Bitácora de auditoría: quién hizo qué y cuándo, paginada.", PermAuditView),
+
+	// Spec 073: compras, conteos, cancelar pedidos, abrir y cerrar caja.
+	rd("articles_search", "Busca insumos y productos de reventa por nombre (o nombre alternativo).", PermExpensesCapture),
+	rd("units_list", "Unidades de medida con su equivalencia a la unidad base.", PermExpensesCapture),
+	rd("presentations_list", "Empaques de compra de los insumos (bolsa de 5 kg, caja de 12…).", PermInventoryReceive),
+	rd("pending_receipts_list", "Compras con mercancía que todavía no llega.", PermInventoryReceive),
+	wr("purchase_create", "Captura una compra con su mercancía: entra al almacén y cambia el costo de cada insumo. "+
+		"La vista previa propone insumos y muestra el costo nuevo; aplicar exige insumo y empaque o unidad en cada renglón.",
+		ScopeWritePurchases, PermExpensesCapture),
+	wr("purchase_receive", "Recibe una compra pendiente: lo que llegó de cada renglón entra al almacén.",
+		ScopeWritePurchases, PermInventoryReceive),
+	rd("stock_count_current", "El conteo abierto y qué artículos se pueden contar. No dice lo que el sistema tiene.", PermInventoryCount),
+	wr("stock_count_open", "Abre un conteo de existencias.", ScopeWriteInventory, PermInventoryCount),
+	wr("stock_count_capture", "Captura lo contado de hasta 50 artículos, como lo dicta quien está en el almacén. "+
+		"Transcribe la cifra dictada; nunca la estimes.", ScopeWriteInventory, PermInventoryCount),
+	wr("stock_count_close", "Cierra el conteo. La vista previa muestra, por artículo, lo que el sistema tiene, lo "+
+		"contado y el ajuste; aplicar reemplaza lo que el sistema tenía por lo contado.", ScopeWriteInventory, PermInventoryCount),
+	wr("stock_count_discard", "Descarta el conteo abierto sin tocar el almacén.", ScopeWriteInventory, PermInventoryCount),
+	wr("order_cancel", "Cancela un pedido con motivo. Si tiene cobros, pide refund: true (y card_folio si hubo "+
+		"tarjeta): el dinero se devuelve y sale del corte.", ScopeWriteOrders, PermOrdersCancel),
+	rd("cash_denominations_list", "Billetes y monedas con los que se cuenta el cajón.", PermCashOperate),
+	rd("cash_session_attendance", "Qué pide la asistencia para abrir o cerrar una caja.", PermCashOperate),
+	wr("cash_session_open", "Abre una caja con el fondo contado (por billetes y monedas, o total con motivo).",
+		ScopeWriteCash, PermCashOperate),
+	wr("cash_session_close", "Cierra una caja con lo que contó la persona frente al cajón. Exige cada cifra: el "+
+		"cajón y cada método que se declara. Nunca mandes lo que el sistema espera.", ScopeWriteCash, PermCashOperate),
 }
 
 // MCPTools devuelve el catálogo en el orden del contrato.

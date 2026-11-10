@@ -181,7 +181,10 @@ var (
 	datePattern     = `^[0-9]{4}-[0-9]{2}-[0-9]{2}$`
 	moneyFields     = map[string]bool{"amount": true, "price": true, "price_delta": true}
 	quantityFields  = map[string]bool{"qty": true, "quantity": true}
-	dateFields      = map[string]bool{"from": true, "to": true, "expense_date": true, "paid_on": true}
+	dateFields      = map[string]bool{"from": true, "to": true, "expense_date": true, "paid_on": true,
+		"document_date": true, "received_on": true}
+	// moneyMapFields son mapas {id: monto}: el patrón va en cada valor.
+	moneyMapFields = map[string]bool{}
 )
 
 // schemaFor infiere el esquema del struct y les pone forma al dinero, las cantidades y las fechas:
@@ -204,6 +207,8 @@ func schemaFor[T any]() *jsonschema.Schema {
 				p.Pattern = quantityPattern
 			case dateFields[name]:
 				p.Pattern = datePattern
+			case moneyMapFields[name] && p.AdditionalProperties != nil:
+				p.AdditionalProperties.Pattern = moneyPattern
 			}
 			walk(p)
 			walk(p.Items)
@@ -351,6 +356,15 @@ type writeSpec[In writeArgs] struct {
 	// preview agrega a la vista previa lo que conviene saber antes de aplicar (nombres resueltos,
 	// avisos). Opcional.
 	preview func(s *mcpSession, ctx context.Context, in In) (any, []string)
+	// run reemplaza al despacho único cuando la escritura son varias peticiones (el lote de conteo).
+	// Despacha en orden y se detiene en la primera que falla; su respuesta y su estado se tratan como
+	// los de un despacho. Opcional.
+	run func(s *mcpSession, ctx context.Context, in In) (status int, resp []byte, err error)
+	// guard revisa, contra el estado de AHORA, algo que la ruta no exige y esta capa sí (las cifras
+	// dictadas del cierre). Corre después de la clave de idempotencia: una repetición de algo que ya
+	// se aplicó devuelve lo guardado aunque el estado ya no pase la revisión (la caja ya cerró).
+	// Opcional.
+	guard func(s *mcpSession, ctx context.Context, in In) error
 }
 
 func writeTool[In writeArgs](spec writeSpec[In]) {
@@ -434,8 +448,28 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 		s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: http.StatusConflict, Args: args})
 		return nil, toolError{msg: domain.IdempotencyMessage(decision), status: http.StatusConflict}
 	}
+	if spec.guard != nil {
+		if gerr := spec.guard(s, ctx, in); gerr != nil {
+			if aerr := s.h.apiTokens.AbandonIdempotent(bg, ref); aerr != nil {
+				slog.ErrorContext(ctx, "mcp_idempotency_abandon_failed", "tool", name, "error", aerr.Error())
+			}
+			status := http.StatusBadRequest
+			var te toolError
+			if errors.As(gerr, &te) && te.status != 0 {
+				status = te.status
+			}
+			s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: status, Args: args})
+			return nil, gerr
+		}
+	}
 
-	status, resp, err := s.dispatch(ctx, name, method, pattern, params, q, body)
+	var status int
+	var resp []byte
+	if spec.run != nil {
+		status, resp, err = spec.run(s, ctx, in)
+	} else {
+		status, resp, err = s.dispatch(ctx, name, method, pattern, params, q, body)
+	}
 	switch {
 	case err != nil || status >= 500:
 		if err != nil {
