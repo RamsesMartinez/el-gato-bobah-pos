@@ -794,6 +794,21 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type ApiToken struct {
+	ID         int64              `json:"id"`
+	CompanyID  int64              `json:"company_id"`
+	UserID     int64              `json:"user_id"`
+	Name       string             `json:"name"`
+	SecretHint string             `json:"secret_hint"`
+	SecretHash []byte             `json:"secret_hash"`
+	Scopes     []string           `json:"scopes"`
+	CreatedAt  time.Time          `json:"created_at"`
+	ExpiresAt  time.Time          `json:"expires_at"`
+	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
+	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	RevokedBy  *int64             `json:"revoked_by"`
+}
+
 type AttendanceCorrection struct {
 	ID          int64              `json:"id"`
 	CompanyID   int64              `json:"company_id"`
@@ -1241,6 +1256,17 @@ type LocalItemExclusion struct {
 	DecidedBy        int64     `json:"decided_by"`
 	DecidedAt        time.Time `json:"decided_at"`
 	CompanyID        int64     `json:"company_id"`
+}
+
+type McpIdempotencyKey struct {
+	CompanyID int64     `json:"company_id"`
+	TokenID   int64     `json:"token_id"`
+	IdemKey   string    `json:"idem_key"`
+	Tool      string    `json:"tool"`
+	ArgsHash  []byte    `json:"args_hash"`
+	Status    string    `json:"status"`
+	Result    []byte    `json:"result"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type ModifierGroup struct {

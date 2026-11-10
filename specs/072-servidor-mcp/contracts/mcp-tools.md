@@ -34,7 +34,7 @@ Permiso «—» = el mismo que la pantalla: cualquier usuario autenticado de la 
 | `cash_movement_create` | Caja | Escribe | `POST /cash-sessions/movements` | `cash.operate` | `write:cash` |
 | `expenses_list` | Gastos | Lee | `GET /expenses` | `expenses.capture` | `read` |
 | `expense_get` | Gastos | Lee | `GET /expenses/{id}` | `expenses.capture` | `read` |
-| `expense_categories_list` | Gastos | Lee | `GET /expense-categories` | `expenses.capture` | `read` |
+| `expense_categories_list` | Gastos | Lee | `GET /expense-categories` | — | `read` |
 | `suppliers_list` | Gastos | Lee | `GET /suppliers` | `expenses.capture` | `read` |
 | `payment_methods_list` | Gastos | Lee | `GET /payment-methods` | — | `read` |
 | `expense_create` | Gastos | Escribe | `POST /expenses` | `expenses.capture` | `write:expenses` |

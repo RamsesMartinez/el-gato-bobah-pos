@@ -20,8 +20,8 @@ Cuerpo: `{"name": "…", "scopes": ["write:expenses"], "expiresInDays": 90, "pas
 contraseña actual de quien llama es obligatoria (un PIN visto en la tableta no basta); los intentos
 fallidos cuentan en el mismo bloqueo que el login. Un `userId` en el cuerpo se ignora. `read` se agrega solo.
 `expiresInDays` ∈ {30, 90, 180}; nombre de 1 a 60 caracteres; alcance desconocido → 400. El dueño es
-quien llama. Respuesta 201: el registro de la lista más `"token": "egbpat_…"` (única vez) y
-`"mcpUrl"`.
+quien llama. Respuesta 201: el registro de la lista más `"token": "egbpat_…"` (única vez). La URL
+de `/mcp` del comando la arma la pantalla con la URL de la API de su build.
 
 ## `POST /integrations/tokens/{id}/revoke`
 
