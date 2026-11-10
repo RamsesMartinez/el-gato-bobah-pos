@@ -44,3 +44,31 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     tumba todas las peticiones desde otro dominio.
   - **Corregir asistencia propia es otro permiso** (`attendance.correct_own`). El router no puede
     decidirlo —depende de quién es el dueño del registro— y lo decide `domain.CanCorrect`.
+
+## La puerta para agentes: servidor MCP (spec 072)
+
+- **`/mcp` no llama servicios: despacha rutas de esta misma API.** Cada herramienta arma una
+  petición a una ruta de su lista blanca (`mcpToolRoutes` en
+  [mcp_tools.go](../../server/internal/httpapi/mcp_tools.go)) y la sirve el mismo router con la
+  identidad del token. Así hereda el `RequirePermission` de la ruta (leído de la base en cada
+  llamada), el `rateLimitUser`, la invalidación del menú y los eventos de seguridad que viven en el
+  handler. Una herramienta nueva es una entrada en `domain.MCPTools()` (nombre, alcance, permiso) y su
+  ruta en la lista blanca; `TestEveryToolMatchesItsRouteGate` truena si el permiso declarado no es el
+  de la ruta (así se encontró que `/expense-categories` no pide permiso).
+- **El despachador nunca recibe una ruta en texto.** Los parámetros de ruta son enteros y el patrón
+  se compara con el de chi antes de servir. Sin esto, el principal interno —que `RequireAuth` acepta
+  sin JWT— alcanzaría rutas que solo piden sesión, como `/me/pin`, que no pide el PIN actual.
+- **La petición interna empieza su ruteo de cero** (`chi.RouteCtxKey` en nil). Heredar el contexto de
+  ruta del `POST /mcp` hacía que todo GET despachado respondiera 405 sin cuerpo.
+- **Ninguna conexión se retiene durante el despacho**: el token, los permisos, la idempotencia y la
+  bitácora usan transacciones cortas propias. El despacho toma la suya; retener otra agota el pool.
+- **El token** es `egbpat_<empresa>_<id>_<secreto hex>`. Se busca por id bajo RLS de la empresa que
+  declara (una empresa cambiada no encuentra la fila) y se compara su sha256 en tiempo constante. Un
+  rechazo no dice por qué; la razón va al evento `api_token_rejected`.
+- **Qué no apaga un token**: quitarle `integrations.manage` a su dueño, resetearle la contraseña o
+  desactivar la empresa. Lo apaga revocarlo, que venza, o dar de baja a la persona o a su rol.
+- **Escrituras**: `dry_run` ausente es vista previa; aplicar pide `idempotency_key`. Una clave que
+  termina en 5xx queda «desconocida» y no se reintenta sola: peor un rechazo de más que un gasto
+  doble.
+- **Los rechazos que la pantalla resuelve con una hoja** (caja sin turno, día ya cortado) llevan su
+  corrección en palabras en `domain.ToolErrorHintFor`, porque el agente no ve esa hoja.
