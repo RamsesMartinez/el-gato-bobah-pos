@@ -3077,6 +3077,9 @@ func (s *BackofficeService) liveAccountsForClosing(ctx context.Context, isPrimar
 		return nil, err
 	}
 	for _, it := range live.Items {
+		if !domain.ListedAtClosing(it.State, it.PendingCount) {
+			continue
+		}
 		switch it.Group {
 		case domain.GroupCapturing, domain.GroupDeliveredOwes, domain.GroupPreviousDays:
 			out = append(out, it)
