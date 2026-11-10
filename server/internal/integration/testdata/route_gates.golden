@@ -52,6 +52,7 @@ GET /api/v1/expense-categories admin,gerente,cajero,mesero
 GET /api/v1/expenses/ admin,gerente
 GET /api/v1/expenses/{id} admin,gerente
 GET /api/v1/ingredients admin,gerente
+GET /api/v1/integrations/tokens/ admin
 GET /api/v1/me/preferences/{key} admin,gerente,cajero,mesero
 GET /api/v1/orders/ admin,gerente,cajero,mesero
 GET /api/v1/orders/delivered admin,gerente,cajero
@@ -161,6 +162,8 @@ POST /api/v1/expenses/{id}/items/{itemId}/not-coming admin,gerente
 POST /api/v1/expenses/{id}/items/{itemId}/receive admin,gerente
 POST /api/v1/expenses/{id}/pay admin,gerente
 POST /api/v1/expenses/{id}/receive admin,gerente
+POST /api/v1/integrations/tokens/ admin
+POST /api/v1/integrations/tokens/{id}/revoke admin
 POST /api/v1/me/password admin,gerente,cajero,mesero
 POST /api/v1/me/pin admin,gerente,cajero,mesero
 POST /api/v1/orders/ admin,gerente,cajero,mesero

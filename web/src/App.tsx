@@ -29,6 +29,7 @@ import { ModifierOptionsPage } from './features/admin/ModifierOptionsPage';
 import { AppearancePage } from './features/admin/AppearancePage';
 import { BusinessSettingsPage } from './features/admin/BusinessSettingsPage';
 import { PrintSettingsPage } from './features/admin/PrintSettingsPage';
+import { IntegrationsPage } from './features/admin/IntegrationsPage';
 
 export const App = () => {
   useEffect(() => {
@@ -86,6 +87,7 @@ export const App = () => {
         <Route path="/empleados" element={<RequirePermission path="/empleados"><EmployeesPage /></RequirePermission>} />
         <Route path="/negocio" element={<RequirePermission path="/negocio"><BusinessSettingsPage /></RequirePermission>} />
         <Route path="/impresion" element={<RequirePermission path="/impresion"><PrintSettingsPage /></RequirePermission>} />
+        <Route path="/integraciones" element={<RequirePermission path="/integraciones"><IntegrationsPage /></RequirePermission>} />
         <Route path="/apariencia" element={<AppearancePage />} />
         <Route path="/cuenta" element={<AccountPage />} />
         <Route path="/asistencia" element={<AttendancePage />} />

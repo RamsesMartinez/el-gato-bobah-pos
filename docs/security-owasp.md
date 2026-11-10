@@ -278,6 +278,21 @@ cortar YA, además se reinicia la API (`docker compose restart api` en la VM). L
   `delete`, y un trigger rechaza editar, borrar o vaciar eventos salvo el cascade de una empresa que
   ya se borró (`TestTheAuditLogCannotBeEditedOrDeleted`).
 
+## Servidor MCP (spec 072) — una puerta para agentes con la identidad de una persona
+
+| Barrera | Qué cierra | Prueba |
+| --- | --- | --- |
+| Token `egbpat_<empresa>_<id>_<secreto>`, sha256 en la base, comparación en tiempo constante, vigencia ≤ 180 días, revocación terminal en la base | Un token robado de la base no sirve; uno olvidado vence; uno revocado no revive | `TestParseAPIToken`, `TestAPITokenRejectionsLookAlike`, `TestMigration0111OnARealBackup` |
+| Búsqueda bajo RLS de la empresa del texto **y** empresa del principal desde la fila | Cambiar la empresa del token no alcanza otra empresa, ni sirviendo como owner | `TestAPITokenFromOtherCompanyIsUnknown`, `TestAPITokenCompanyComesFromTheRowNotTheText` |
+| Despacho en proceso solo a la lista blanca de cada herramienta (patrón de chi, parámetros enteros), con el principal en una llave de contexto no exportada | El principal interno pasa `RequireAuth`: sin la lista blanca alcanzaría `/me/pin` (sin PIN actual) y desbloquearía la tableta como admin | `TestDispatcherRefusesRoutesOutsideCatalog`, `TestDispatcherDeniedLeavesASecurityEvent`, `TestPATIsRejectedOnRegularRoutes` (subpruebas de `TestMCPTransportGuards`) |
+| Alcance del token × permiso del rol leído en cada llamada (el `RequirePermission` de la ruta despachada) | Un alcance no da permisos; un rol que pierde un permiso lo pierde en la siguiente llamada | `TestEveryToolMatchesItsRouteGate`, `TestMCPToolsListFollowsScopeAndPermission`, `TestMCPCatalog` |
+| Límite por IP antes de autenticar y por token por llamada (atómico, falla cerrado); sin lotes JSON-RPC; tope de 10 pagos por gasto | Un agente en bucle o un lote no vacía la base ni amplifica lecturas | `TestMCPRateLimitPerToken`, `TestMCPTransportGuards`, `TestMCPExpenses` |
+| Vista previa por omisión; idempotencia por clave con la herramienta en la huella; «desconocida» tras un 5xx | Un reintento no duplica un gasto, ni en paralelo | `TestMCPDryRunIsTheDefault`, `TestIdempotencyKeysEndToEnd`, `TestMCPExpenses` |
+| Texto de terceros fuera de las respuestas (`customer`, `folioName`, `notes`, …); anotaciones `readOnlyHint`/`destructiveHint` | Inyección de instrucciones desde el nombre o la nota de un pedido de plataforma | `TestForAgentCountsPagesFromOneAndDropsThirdPartyText` |
+| El token nunca en logs; `api_token_rejected` con la razón solo en el log; un evento `mcp.tool_called` por llamada | Rastro completo sin regalar la credencial | `TestMCPLogsNeverContainTheToken`, `TestEveryCallLeavesAnAuditEvent` (en `TestMCPExpenses`) |
+| Crear un token pide la contraseña (no el PIN), con bloqueo por intentos y `rateLimitUser` | Un PIN visto en la tableta compartida no alcanza para llevarse una llave de 180 días | `TestIntegrationsTokensHTTP` |
+| Hook de pre-commit contra el patrón del token | Un token pegado en el repositorio público | `scripts/tests/sin-tokens-mcp-test.sh` |
+
 ## Checklist de lanzamiento en el VPS (operador)
 
 **Secretos y config (antes del primer arranque):**

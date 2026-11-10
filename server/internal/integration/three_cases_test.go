@@ -63,3 +63,19 @@ func appRoleStoreWithOneConn(t *testing.T) *store.Store {
 	t.Cleanup(st.Close)
 	return st
 }
+
+// appRoleStoreWithOneConnN es appRoleStore con el pool limitado a n conexiones.
+func appRoleStoreWithOneConnN(t *testing.T, n int) *store.Store {
+	t.Helper()
+	u, _ := url.Parse(testURL(t))
+	u.User = url.UserPassword("gatobobah_app", appRolePassword)
+	q := u.Query()
+	q.Set("pool_max_conns", itoa(n))
+	u.RawQuery = q.Encode()
+	st, err := store.New(context.Background(), u.String())
+	if err != nil {
+		t.Fatalf("app-role store de %d conexiones: %v", n, err)
+	}
+	t.Cleanup(st.Close)
+	return st
+}

@@ -16,6 +16,7 @@ export const ROUTE_PERMISSIONS: Record<string, readonly Permission[]> = {
   '/empleados': ['employees.manage', 'roles.manage'],
   '/negocio': ['business.configure'],
   '/impresion': ['business.configure'],
+  '/integraciones': ['integrations.manage'],
 };
 
 export function canOpen(path: string, user: SessionUser | null): boolean {

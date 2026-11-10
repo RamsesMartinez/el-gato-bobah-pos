@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -35,7 +36,7 @@ func TestNoSuggestedRoleGainsOrLosesARoute(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
 	jm := auth.NewManager(secretoDelNegocioEnPruebas, nil)
-	h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Broker: realtime.NewBroker()})
+	h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Broker: realtime.NewBroker(), APITokens: app.NewAPITokensService(st)})
 	router := httpapi.Router(config.Config{}, jm, h, st)
 
 	roles := []domain.Role{domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero, domain.RoleMesero}
