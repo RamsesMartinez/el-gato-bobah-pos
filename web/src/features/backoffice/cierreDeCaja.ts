@@ -131,3 +131,32 @@ export function diferenciasDelCierre(
   }
   return { porMetodo, total, completo };
 }
+
+// Las etiquetas de los campos del cierre. Las usan los campos Y el aviso que lleva a ellos: si una
+// cambiara sola, el aviso dejaría de encontrar su campo sin que nada fallara.
+export const etiquetaDeclarado = (metodo: string) => `Declarado de ${metodo}`;
+export const etiquetaTerminal = (terminal: string) => `Total del corte de ${terminal}`;
+export const ETIQUETA_FONDO = 'Se queda de fondo';
+
+// Un faltante del cierre y el campo al que lleva: la etiqueta de su campo, o 'cajon', que no es un
+// campo sino la hoja de conteo.
+export interface FaltanteDelCierre {
+  texto: string;
+  campo: string;
+}
+
+// faltantesDelCierre arma el aviso de lo que falta capturar, en el orden en que se ve en pantalla.
+// Era una lista de texto y el equipo no supo dónde capturar (#251, 7-nov-2026).
+export function faltantesDelCierre({ cajon, metodos, terminales, fondo }: {
+  cajon: boolean;
+  metodos: MetodoPorContar[];
+  terminales: string[];
+  fondo: boolean;
+}): FaltanteDelCierre[] {
+  return [
+    ...(cajon ? [{ texto: 'el cajón', campo: 'cajon' }] : []),
+    ...metodos.map((m) => ({ texto: m.name, campo: etiquetaDeclarado(m.name) })),
+    ...terminales.map((t) => ({ texto: t, campo: etiquetaTerminal(t) })),
+    ...(fondo ? [{ texto: 'el fondo que se queda', campo: ETIQUETA_FONDO }] : []),
+  ];
+}

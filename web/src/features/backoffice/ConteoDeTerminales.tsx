@@ -1,6 +1,7 @@
 import { Box, HStack, Input, Text, VStack } from '@chakra-ui/react';
 
 import { type TerminalPorContar } from './terminalesPorContar';
+import { etiquetaTerminal } from './cierreDeCaja';
 
 // ConteoDeTerminales: con arqueo por terminal se escribe el total que imprime el corte de cada
 // terminal que cobró en el turno (spec 032, punto 9). La diferencia sale en el corte al cerrar.
@@ -17,7 +18,7 @@ export function ConteoDeTerminales({ terminales, valores, onChange }: {
         {terminales.map((t) => (
           <HStack key={t.terminalId} justify="space-between">
             <Text fontWeight="600">{t.name}</Text>
-            <Input aria-label={`Total del corte de ${t.name}`} inputMode="decimal" maxW="180px" minH="48px" placeholder="$"
+            <Input aria-label={etiquetaTerminal(t.name)} inputMode="decimal" maxW="180px" minH="48px" placeholder="$"
               value={valores[t.terminalId] ?? ''}
               onChange={(e) => onChange({ ...valores, [t.terminalId]: e.target.value })} />
           </HStack>

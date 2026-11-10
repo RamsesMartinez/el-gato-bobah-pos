@@ -7,7 +7,7 @@ import { Text } from '@chakra-ui/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, CorteSummary, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
 import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
-import { CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico, TerminalesYPropinasDelCorte, ManageRegistersTab, CashPage } from './CashPage';
+import { AvisoDeFaltantes, CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico, TerminalesYPropinasDelCorte, ManageRegistersTab, CashPage } from './CashPage';
 import { backofficeApi } from '../../api/backoffice';
 import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
@@ -497,6 +497,24 @@ describe('las cuentas vivas en el cierre', () => {
     await userEvent.click(plegada);
     expect(screen.getByText('Levkoy')).toBeInTheDocument();
     expect(screen.getByText('Bosque de Noruega')).toBeInTheDocument();
+  });
+
+  // Pedido 478 (7-nov-2026): cobrado y entregado, con algo «Nuevo» colgando. La fila decía «Cerrada»
+  // y $0, y el equipo creyó que eso no lo dejaba cerrar y pidió soporte.
+  test('un pedido cerrado con algo sin mandar dice cuántos productos y no un saldo de $0', async () => {
+    const cerrada = viva({ key: 'o:478', orderId: 478, number: 12, folioName: 'Ural Rex', state: 'closed_with_new',
+      group: 'capturing', total: '75.00', paid: '75.00', outstanding: '0.00', pendingCount: 2, closedWithPending: true });
+    wrap(<CuentasDelCierre pending={[]} cuentas={[cerrada]} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: /Cuentas pendientes/ }));
+    expect(screen.getByText('2 sin mandar')).toBeInTheDocument();
+    expect(screen.queryByText('$0')).toBeNull();
+  });
+
+  test('«No impiden cerrar» se sigue leyendo con la sección abierta', async () => {
+    wrap(<CuentasDelCierre pending={[]} cuentas={VIVAS} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
+    expect(screen.getByText(/No impiden cerrar/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Cuentas pendientes/ }));
+    expect(screen.getByText(/No impiden cerrar/)).toBeInTheDocument();
   });
 
   test('«Abrir» y «Descartar» miden 44 px, van separados, y solo se descarta lo que se captura', async () => {
@@ -1065,5 +1083,35 @@ describe('la pestaña «Administrar» de Caja', () => {
   test('con cash.configure aparece, aunque el rol sea propio', async () => {
     await pintarCon('', ['cash.operate', 'cash.configure']);
     expect(screen.getByRole('tab', { name: 'Administrar' })).toBeInTheDocument();
+  });
+});
+
+// #251: «Falta capturar lo contado en: …» era texto y el equipo no supo dónde capturar. Cada
+// faltante es un botón de 44 px que lleva a su campo; el cajón abre su hoja de conteo.
+describe('el aviso de lo que falta capturar', () => {
+  test('tocar un faltante pone el cursor en su campo, y «el cajón» abre el conteo', async () => {
+    const onContar = vi.fn();
+    // jsdom no implementa scrollIntoView; el navegador sí.
+    const desplazar = vi.fn();
+    Element.prototype.scrollIntoView = desplazar;
+    wrap(<>
+      <input aria-label="Total del corte de Getnet" />
+      <AvisoDeFaltantes onContar={onContar} faltantes={[
+        { texto: 'el cajón', campo: 'cajon' },
+        { texto: 'Getnet', campo: 'Total del corte de Getnet' },
+      ]} />
+    </>);
+    const getnet = screen.getByRole('button', { name: 'Capturar Getnet' });
+    expect(parseInt(getComputedStyle(getnet).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    await userEvent.click(getnet);
+    expect(screen.getByLabelText('Total del corte de Getnet')).toHaveFocus();
+    expect(desplazar).toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Capturar el cajón' }));
+    expect(onContar).toHaveBeenCalled();
+  });
+
+  test('sin faltantes no se pinta', () => {
+    wrap(<AvisoDeFaltantes onContar={vi.fn()} faltantes={[]} />);
+    expect(screen.queryByText(/falta capturar/)).toBeNull();
   });
 });
