@@ -2,6 +2,7 @@ import { Badge, Box, Button, HStack, Input, Text } from '@chakra-ui/react';
 import { fondoExcedeLoContado, personasDelRetiro, retiroDelCierre } from './fondoQueSeDeja';
 import { Picker } from '../../components/Picker';
 import { money } from '../../utils/format';
+import { ETIQUETA_FONDO } from './cierreDeCaja';
 
 // Con más personas que esto, la fila de botones deja de verse completa a 1024 px y pasa a la hoja
 // con buscador (revisión de tableta de la spec 035).
@@ -48,7 +49,7 @@ export function FondoQueSeDeja({ value, onChange, contado = null, fijo = null, r
         <>
           <HStack mt={3} gap={3} wrap="wrap">
             <Text>Se queda</Text>
-            <Input aria-label="Se queda de fondo" inputMode="decimal" maxW="160px" minH="48px" placeholder="$"
+            <Input aria-label={ETIQUETA_FONDO} inputMode="decimal" maxW="160px" minH="48px" placeholder="$"
               value={value} onChange={(e) => onChange(e.target.value)} />
             {soloHoy && <Badge colorPalette="orange">Solo hoy</Badge>}
             {retiro !== null && (

@@ -163,3 +163,52 @@ func TestSessionViewArraysAreNeverNull(t *testing.T) {
 	mustArray(t, m, "pending")
 	mustArray(t, m, "owing")
 }
+
+// Pedido 478 (7-nov-2026): cobrado, entregado y con una «Nuevo» VACÍA colgando. El cierre lo listó
+// como «Cuenta pendiente» con $0, el equipo creyó que eso le impedía cerrar y pidió soporte. Lo
+// cerrado con «Nuevo» vacía no se lista; con algo sin mandar, sí.
+func TestClosingDoesNotListAPaidOrderWithAnEmptyNew(t *testing.T) {
+	t.Parallel()
+	k := newLiveKit(t)
+	back := app.NewBackofficeService(k.appSt, clock)
+	principal := registerID(t, k.st, "Caja principal")
+	abrirCajaPrincipal(t, k.st, k.user)
+
+	// La secuencia del 478: se cobra en cocina, se abre su «Nuevo» (nace con un producto), se le
+	// quita ese producto y después el pedido se entrega. Queda cerrado con una «Nuevo» vacía.
+	cerradoConNuevo := func(quitar bool) *app.OrderView {
+		o := k.order(t, "1", "0", false)
+		if _, err := k.orders.Charge(k.ctx, app.ChargeCmd{OrderID: o.ID, MethodID: k.efectivo, Amount: o.Total, ActorID: k.user}); err != nil {
+			t.Fatal(err)
+		}
+		nuevo, err := k.newOf(t, k.ctx, o.ID, addOf(k.product, "1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if quitar {
+			if _, err := k.drafts.RemoveLine(k.ctx, nuevo.ID, nuevo.Lines[0].ID, nuevo.Lines[0].Version); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := k.orders.DeliverAll(k.ctx, o.ID); err != nil {
+			t.Fatal(err)
+		}
+		return o
+	}
+	vacio, conAlgo := cerradoConNuevo(true), cerradoConNuevo(false)
+
+	view, err := back.CurrentByRegister(k.ctx, principal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := map[string]app.AccountItem{}
+	for _, it := range view.LiveAccounts {
+		listed[it.Key] = it
+	}
+	if it, ok := listed[orderKey(vacio.ID)]; ok {
+		t.Errorf("el cierre lista el pedido cobrado y entregado con una «Nuevo» vacía (%+v): sale como cuenta pendiente de $0", it)
+	}
+	if it, ok := listed[orderKey(conAlgo.ID)]; !ok || it.PendingCount != 1 {
+		t.Errorf("presente=%v %+v: lo capturado sin mandar de un pedido cerrado dejaría de verse al cerrar", ok, it)
+	}
+}

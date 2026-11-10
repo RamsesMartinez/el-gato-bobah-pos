@@ -40,6 +40,7 @@ import type { TerminalCount, TipPayoutInput, TipsDecision } from '../../api/back
 import {
   faltanPorContar, diferenciasDelCierre, faltaContarElCajon, diferenciaDelCajon,
   type DiferenciasDelCierre,
+  etiquetaDeclarado, faltantesDelCierre, type FaltanteDelCierre,
 } from './cierreDeCaja';
 import { Page } from '../../components/Page';
 import { useSessionStore } from '../../stores/session';
@@ -694,6 +695,33 @@ function montoOSinDato(v: string | null, currency: string): string {
   return v === null ? '—' : money(v, currency);
 }
 
+// AvisoDeFaltantes dice qué falta capturar para cerrar y lleva a cada campo con un toque. Era una
+// lista de texto: el equipo no supo dónde capturar y leyó otra cosa como la causa (#251).
+export function AvisoDeFaltantes({ faltantes, onContar }: { faltantes: FaltanteDelCierre[]; onContar: () => void }) {
+  if (faltantes.length === 0) return null;
+  const ir = (campo: string) => {
+    if (campo === 'cajon') return onContar();
+    const el = document.querySelector<HTMLElement>(`[aria-label="${CSS.escape(campo)}"]`);
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el?.focus({ preventScroll: true });
+  };
+  return (
+    <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
+      <Text fontSize="sm" fontWeight="600" mb={2}>Para cerrar falta capturar lo contado en:</Text>
+      <HStack gap={2} flexWrap="wrap">
+        {/* Con el índice en la llave: dos terminales pueden llamarse igual en un turno (una archivada y
+            su reemplazo, las dos con cobros). */}
+        {faltantes.map((f, i) => (
+          <Button key={`${f.campo}-${i}`} size="sm" minH="44px" variant="outline" colorPalette="orange"
+            aria-label={`Capturar ${f.texto}`} onClick={() => ir(f.campo)}>
+            {f.texto}
+          </Button>
+        ))}
+      </HStack>
+    </Box>
+  );
+}
+
 // TablaDelCierre: qué se espera, qué se declaró y CUÁNTO FALTA (spec 015).
 //
 // EL CAJÓN ES UN RENGLÓN, NO CUATRO. Los métodos cuyo dinero cae en el mismo montón de billetes
@@ -768,7 +796,7 @@ export function TablaDelCierre({ totals, currency, declared, onDeclared, cajon, 
                       <Text fontSize="sm" color="fg.muted">Automático</Text>
                     ) : (
                       <Input size="sm" minH="44px" w="130px" inputMode="decimal" placeholder="0"
-                        aria-label={`Declarado de ${t.name}`}
+                        aria-label={etiquetaDeclarado(t.name)}
                         value={declared[t.methodId] ?? ''}
                         onChange={(e) => onDeclared({ ...declared, [t.methodId]: e.target.value })} />
                     )}
@@ -1128,13 +1156,9 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
               retirar={retirar} onRetirar={setRetirar} personas={personas} quien={quien} onQuien={setQuien}
               quienCierra={yo} currency={session.currency} />}
 
-            {(porContar.length > 0 || faltaElCajon || terminalesSinCifra.length > 0 || faltaFondo) && (
-              <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
-                <Text fontSize="sm" fontWeight="600">
-                  Falta capturar lo contado en: {[...(faltaElCajon ? ['el cajón'] : []), ...porContar.map((m) => m.name), ...terminalesSinCifra, ...(faltaFondo ? ['el fondo que se queda'] : [])].join(', ')}
-                </Text>
-              </Box>
-            )}
+            <AvisoDeFaltantes
+              faltantes={faltantesDelCierre({ cajon: faltaElCajon, metodos: porContar, terminales: terminalesSinCifra, fondo: faltaFondo })}
+              onContar={() => setContando(true)} />
             {avisoQuien && (
               <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
                 <Text fontSize="sm" fontWeight="600">{avisoQuien}</Text>
@@ -1923,9 +1947,7 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
             <Text fontWeight="700">Cuentas pendientes ({cuentas.length})</Text>
             {abierta ? <LuChevronUp /> : <LuChevronDown />}
           </Button>
-          {!abierta && (
-            <Text fontSize="xs" color="fg.muted" px={4}>No impiden cerrar: siguen en la fila de cuentas.</Text>
-          )}
+          <Text fontSize="xs" color="fg.muted" px={4}>No impiden cerrar: siguen en la fila de cuentas.</Text>
           {abierta && (
             <VStack align="stretch" gap={1} maxH="40dvh" overflowY="auto" mt={1}>
               {cuentas.map((c) => (
@@ -1936,7 +1958,10 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
                       {c.number !== null ? `#${c.number} · ` : ''}{ESTADO[c.state].texto}
                     </Text>
                   </Box>
-                  <Text fontWeight="700" flexShrink={0}>{money(c.state === 'capturing' ? c.total : c.outstanding)}</Text>
+                  {/* Un pedido cerrado no debe nada: lo vivo es lo que falta mandar, no un saldo de $0. */}
+                  <Text fontWeight="700" flexShrink={0}>
+                    {c.state === 'closed_with_new' ? `${c.pendingCount} sin mandar` : money(c.state === 'capturing' ? c.total : c.outstanding)}
+                  </Text>
                   <Box flexShrink={0}>
                     <Button size="sm" minH="44px" variant="outline" aria-label={`Abrir ${nombre(c)}`}
                       onClick={() => onAbrir(c.kind === 'draft' ? `/pos?cuenta=${c.draftId}` : `/pos?pedido=${c.orderId}`)}>
