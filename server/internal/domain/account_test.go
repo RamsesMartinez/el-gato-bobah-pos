@@ -103,3 +103,27 @@ func TestOrderAccountStateClosedWithNew(t *testing.T) {
 		})
 	}
 }
+
+// Pedido 478 (7-nov-2026): cobrado y entregado, con una «Nuevo» VACÍA abierta un minuto después.
+// El cierre lo listó como «Cuenta pendiente» con $0 y el equipo pidió soporte creyendo que eso no
+// lo dejaba cerrar. Una «Nuevo» sin renglones no tiene nada que abrir ni que perder.
+func TestListedAtClosing(t *testing.T) {
+	casos := []struct {
+		nombre  string
+		state   string
+		pending int
+		listed  bool
+	}{
+		{"cerrada con «Nuevo» vacía no es pendiente", AccountClosedWithNew, 0, false},
+		{"cerrada con algo sin mandar sí se lista", AccountClosedWithNew, 1, true},
+		{"cuenta en captura vacía se lista para descartarla", AccountCapturing, 0, true},
+		{"entregada que debe", AccountDeliveredOwes, 0, true},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			if got := ListedAtClosing(c.state, c.pending); got != c.listed {
+				t.Fatalf("ListedAtClosing(%q, %d) = %v, quería %v", c.state, c.pending, got, c.listed)
+			}
+		})
+	}
+}

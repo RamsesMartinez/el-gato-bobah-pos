@@ -89,3 +89,11 @@ func AccountGroup(state string, businessDate, today time.Time) string {
 func dayOf(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
+
+// ListedAtClosing dice si una cuenta viva se lista en el cierre de caja. Un pedido cerrado cuya
+// «Nuevo» no tiene renglones no se lista: no hay nada capturado que abrir ni que perder, y verlo
+// como «Cuenta pendiente» con $0 hizo creer al equipo que eso impedía cerrar (pedido 478, 7-nov).
+// La fila del POS sí lo sigue mostrando: ahí alguien puede estar a punto de agregar algo.
+func ListedAtClosing(state string, pendingCount int) bool {
+	return state != AccountClosedWithNew || pendingCount > 0
+}
