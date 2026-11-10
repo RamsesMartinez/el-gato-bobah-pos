@@ -31,9 +31,17 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 		}
 	}
 	h.permissions = MemoizedPermissions(h.permissions)
+	h.store = st
 
 	r := chi.NewRouter()
 	baseMiddlewares(r, cfg, h.alerts)
+
+	// LA PUERTA PARA AGENTES (spec 072), fuera de /api/v1 y fuera de RequireAuth: se autentica con
+	// su propio token, y cada herramienta vuelve a entrar a este mismo router con esa identidad.
+	// El límite por IP va antes de autenticar: cada intento con un token falso cuesta una lectura.
+	if h.apiTokens != nil {
+		r.With(rateLimit(h.mcpIPs, cfg.Env == "production")).Handle("/mcp", h.newMCPHandler(r))
+	}
 
 	// Ops (unversioned)
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -681,6 +689,16 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Post("/roles/{id}/reactivate", h.ReactivateRole)
 					r.Delete("/roles/{id}", h.DeleteRole)
 				})
+				// Integraciones (spec 072): crear y revocar los tokens del servidor MCP. El límite por
+				// usuario va después del permiso: acota a quien sí puede, que es de quien hay que
+				// acotar una ráfaga de altas.
+				if h.apiTokens != nil {
+					r.With(RequirePermission(h.permissions, domain.PermIntegrationsManage)).Route("/integrations/tokens", func(r chi.Router) {
+						r.Get("/", h.ListAPITokens)
+						r.With(rateLimitUser(h.tokenWrites)).Post("/", h.CreateAPIToken)
+						r.With(rateLimitUser(h.tokenWrites)).Post("/{id}/revoke", h.RevokeAPIToken)
+					})
+				}
 				r.With(RequirePermission(h.permissions, domain.PermEmployeesManage)).Route("/users", func(r chi.Router) {
 					r.Get("/", h.ListUsers)
 					r.Post("/", h.CreateUser)

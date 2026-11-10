@@ -18,6 +18,9 @@ var serialByDesign = map[string]string{
 	// Mide una consulta contra un techo de 30 ms; con otras pruebas peleando por el mismo Postgres
 	// el techo se rompe por ruido y no por la consulta.
 	"TestLiveAccountsStaysFast": "mide tiempo contra un techo",
+	// Cambia el slog global para leer lo que la API escribe en el log; en paralelo se mezclaría el
+	// log de otras pruebas y otra podría escribir un token propio.
+	"TestMCPLogsNeverContainTheToken": "cambia el slog global",
 }
 
 // TestEveryIntegrationTestDeclaresHowItRuns vigila que la suite siga corriendo en paralelo.

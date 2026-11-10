@@ -184,7 +184,11 @@ async function request<T>(
   // el backend devuelve el mismo id (o el que generó si no lo mandamos)
   const traceId = res.headers.get('X-Request-Id') || requestId;
 
-  if (res.status === 401 && retry && (!path.startsWith('/auth/') || path === '/auth/me') && (await tryRefresh())) {
+  // Una contraseña equivocada también llega como 401, pero la sesión sigue viva: reintentar volvería a
+  // mandar la contraseña y cada dedazo contaría doble en el bloqueo. Se mira el código en una copia
+  // de la respuesta, porque el cuerpo se lee una sola vez más abajo.
+  const wrongPassword = res.status === 401 && (await errorCode(res.clone())) === 'INVALID_CREDENTIALS';
+  if (res.status === 401 && retry && !wrongPassword && (!path.startsWith('/auth/') || path === '/auth/me') && (await tryRefresh())) {
     // No se reintenta sobre los propios endpoints de auth (un 401 ahí es real: credenciales malas
     // o refresh vencido) ni si ya se reintentó una vez. /auth/me sí: es una lectura de la sesión, y
     // al volver al frente con el token de 15 min vencido cerraría un turno que sigue vivo.
@@ -229,6 +233,14 @@ async function request<T>(
   if (raw) return res as T;
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+async function errorCode(res: Response): Promise<string | undefined> {
+  try {
+    return (await res.json())?.error?.code;
+  } catch {
+    return undefined;
+  }
 }
 
 export const api = {

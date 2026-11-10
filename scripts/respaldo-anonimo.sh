@@ -244,6 +244,9 @@ truncate platform_webhook_events, platform_incoming_order_lines, platform_incomi
 -- Sesiones vivas: no se anonimizan, se tiran. Un refresh token restaurado es una credencial
 -- funcional de producción viviendo en una base de pruebas.
 truncate refresh_tokens, password_reset_tokens;
+-- Los tokens del servidor MCP (spec 072) también: su huella no abre nada sin el secreto, pero el
+-- nombre lo pone una persona y las claves de idempotencia guardan respuestas de la API.
+truncate api_tokens, mcp_idempotency_keys;
 
 -- Texto libre de gastos: ahí caben nombres de personas y de proveedores.
 update expense_items set description = 'concepto anonimizado' where description is not null;
@@ -320,6 +323,8 @@ FUGAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "
        + (select count(*) from platform_operators where name !~ '^Operador [0-9]+\$' or username !~ '^operador[0-9]+\$' or password_hash !~ 'anonimizado')
        + (select count(*) from refresh_tokens)
        + (select count(*) from password_reset_tokens)
+       + (select count(*) from api_tokens)
+       + (select count(*) from mcp_idempotency_keys)
        + (select count(*) from suppliers where phone is not null or notes is not null or name !~ '^Proveedor [0-9]+\$')
        + (select count(*) from ingredient_presentations where brand !~ '^Marca [0-9]+\$')
        + (select count(*) from expense_items where presentation_brand !~ '^Marca [0-9]+\$')

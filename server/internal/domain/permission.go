@@ -82,6 +82,10 @@ const (
 	// PermRolesManage: decidir qué puede cada rol. El rol admin nunca lo pierde (ErrRoleAdminKeepsRoles):
 	// una empresa sin quien corrija los roles no tiene salida.
 	PermRolesManage Permission = "roles.manage"
+	// PermIntegrationsManage: crear y revocar los tokens con los que un agente (Claude, por el
+	// servidor MCP de la spec 072) opera el negocio sin pantalla. Una llave así trabaja desde fuera
+	// del local: por omisión solo el administrador.
+	PermIntegrationsManage Permission = "integrations.manage"
 )
 
 // AllPermissions devuelve todos los permisos que existen, en un orden fijo.
@@ -93,7 +97,7 @@ func AllPermissions() []Permission {
 		PermExpensesEdit, PermExpensesCancel, PermOrdersDeliveredView,
 		PermCashOperate, PermOrdersPlatformRef, PermPlatformPricesCapture, PermSalesView, PermPlatformSettlementsCapture,
 		PermReportsView, PermExpensesCapture, PermPlatformsConfigure, PermPlatformsCredentials, PermBusinessConfigure,
-		PermEmployeesManage, PermRolesManage}
+		PermEmployeesManage, PermRolesManage, PermIntegrationsManage}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -201,6 +205,8 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede dar de alta ni editar empleados"
 	case PermRolesManage:
 		return "Tu usuario no puede cambiar lo que puede cada rol"
+	case PermIntegrationsManage:
+		return "Tu usuario no puede crear ni revocar tokens de integración"
 	}
 	return "Tu usuario no puede hacer esto"
 }
@@ -237,6 +243,7 @@ var permissionMeta = map[Permission][2]string{
 	PermPlatformPricesCapture:      {"platforms", "Capturar precios por plataforma"},
 	PermPlatformsCredentials:       {"platforms", "Acceso a las apps de plataforma"},
 	PermBusinessConfigure:          {"business", "Configurar el negocio y la impresión"},
+	PermIntegrationsManage:         {"business", "Administrar integraciones (tokens para asistentes)"},
 	PermAttendanceReport:           {"team", "Ver la asistencia del personal"},
 	PermAttendanceCorrectOthers:    {"team", "Corregir la asistencia de otros"},
 	PermAttendanceCorrectOwn:       {"team", "Corregir su propia asistencia"},

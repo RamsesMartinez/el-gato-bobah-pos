@@ -21,6 +21,8 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		// Roles por empresa (spec 068).
 		"role.created", "role.renamed", "role.permissions_changed", "role.reset", "role.deactivated",
 		"role.reactivated", "role.deleted", "user.role_changed",
+		// La puerta para agentes (spec 072).
+		"api_token.created", "api_token.revoked", "mcp.tool_called",
 		"payment.terminal_changed",
 		"product.consumption_mode", "expense.received", "expense.count_changed", "cash.opening_backdated", "expense.stock_corrected", "stock.counted",
 		"settings.costing_method", "waste.recorded", "waste.approved", "waste.rejected", "waste.undone",
@@ -74,6 +76,7 @@ func TestEveryAuditActionHasAGroup(t *testing.T) {
 		"role.created": AuditGroupAttendance, "role.renamed": AuditGroupAttendance, "role.permissions_changed": AuditGroupAttendance,
 		"role.reset": AuditGroupAttendance, "role.deactivated": AuditGroupAttendance, "role.reactivated": AuditGroupAttendance,
 		"role.deleted": AuditGroupAttendance, "user.role_changed": AuditGroupAttendance,
+		"api_token.created": AuditGroupAttendance, "api_token.revoked": AuditGroupAttendance, "mcp.tool_called": AuditGroupAttendance,
 	}
 	for a, want := range cases {
 		if g, _ := AuditGroupOf(a); g != want {

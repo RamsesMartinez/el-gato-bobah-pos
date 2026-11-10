@@ -1,7 +1,7 @@
 import {
   LuShoppingCart, LuClipboardList, LuWallet, LuHandCoins, LuReceiptText,
   LuPackage, LuChartColumn, LuBookOpenText, LuUsers, LuPalette, LuStore, LuUserCog, LuPrinter, LuBike,
-  LuClock, LuTrash2,
+  LuClock, LuTrash2, LuKeyRound,
 } from 'react-icons/lu';
 import type { Permission } from './permissions';
 
@@ -30,6 +30,9 @@ export const NAV = [
   { to: '/empleados', icon: LuUsers, label: 'Empleados' },
   { to: '/negocio', icon: LuStore, label: 'Negocio' },
   { to: '/impresion', icon: LuPrinter, label: 'Impresión' },
+  // Los tokens para asistentes (spec 072): de uso raro, abajo; por permiso, así cajero y mesero no
+  // ven nada nuevo.
+  { to: '/integraciones', icon: LuKeyRound, label: 'Integraciones', permission: 'integrations.manage' as Permission },
   { to: '/apariencia', icon: LuPalette, label: 'Interfaz' },
   { to: '/cuenta', icon: LuUserCog, label: 'Mi cuenta' },
 ];

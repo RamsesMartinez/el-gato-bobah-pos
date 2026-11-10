@@ -250,6 +250,7 @@ func main() {
 		DailySummary:    resumen,
 		Admin:           app.NewAdminService(st),
 		InventoryHealth: app.NewInventoryHealthService(st),
+		APITokens:       app.NewAPITokensService(st),
 		Settings:        app.NewSettingsService(st, cfg.PinPepper),
 		Company:         companies,
 		Reset:           app.NewResetService(st, mail, hibpClient, cfg.HIBPEnabled, cfg.AppBaseURL, nil),

@@ -75,6 +75,11 @@ var auditActions = []struct {
 	{"role.reactivated", AuditGroupAttendance},
 	{"role.deleted", AuditGroupAttendance},
 	{"user.role_changed", AuditGroupAttendance},
+	// La puerta para agentes (spec 072): quién tiene una llave y qué hizo con ella. Con los roles,
+	// porque es una decisión sobre el acceso del personal.
+	{AuditAPITokenCreated, AuditGroupAttendance},
+	{AuditAPITokenRevoked, AuditGroupAttendance},
+	{AuditMCPToolCalled, AuditGroupAttendance},
 	{"payment.terminal_changed", AuditGroupMoney},
 	// Qué resta un producto (spec 037). Va con los precios porque es configuración del menú: un
 	// grupo propio cambiaría la rejilla de contadores de la bitácora, pensada para la tableta.
@@ -205,6 +210,15 @@ const (
 	AuditSettingsWasteThreshold AuditAction = "settings.waste_threshold"
 	// AuditSettingsCountLimits: cambiaron los límites del conteo (máximo y cifra para confirmar).
 	AuditSettingsCountLimits AuditAction = "settings.count_limits_changed"
+)
+
+const (
+	// AuditAPITokenCreated: alguien creó un token para un agente (spec 072).
+	AuditAPITokenCreated AuditAction = "api_token.created"
+	// AuditAPITokenRevoked: se revocó un token.
+	AuditAPITokenRevoked AuditAction = "api_token.revoked"
+	// AuditMCPToolCalled: un agente llamó una herramienta, leyera o escribiera.
+	AuditMCPToolCalled AuditAction = "mcp.tool_called"
 )
 
 // AllAuditActions devuelve la lista blanca de acciones, en orden fijo.

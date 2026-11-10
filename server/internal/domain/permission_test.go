@@ -116,6 +116,7 @@ func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 		PermBusinessConfigure:          "Tu usuario no puede configurar el negocio",
 		PermEmployeesManage:            "Tu usuario no puede dar de alta ni editar empleados",
 		PermRolesManage:                "Tu usuario no puede cambiar lo que puede cada rol",
+		PermIntegrationsManage:         "Tu usuario no puede crear ni revocar tokens de integración",
 	}
 	for _, p := range AllPermissions() {
 		msg := PermissionDeniedMessage(p)

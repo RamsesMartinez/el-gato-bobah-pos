@@ -23,6 +23,7 @@ const FROM_SERVER = [
   'ingredient.density_set', 'ingredient.density_cleared', 'presentation.tare_set',
   'role.created', 'role.renamed', 'role.permissions_changed', 'role.reset', 'role.deactivated',
   'role.reactivated', 'role.deleted', 'user.role_changed',
+  'api_token.created', 'api_token.revoked', 'mcp.tool_called',
 ];
 
 test('cada acción del servidor tiene etiqueta en español', () => {
