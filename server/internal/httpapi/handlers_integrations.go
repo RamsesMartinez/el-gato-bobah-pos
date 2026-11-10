@@ -29,8 +29,9 @@ func (h *Handlers) ListAPITokens(w http.ResponseWriter, r *http.Request) {
 //
 // Pide la contraseña y no basta la sesión: la tableta se comparte, y un PIN visto por encima del
 // hombro no debe alcanzar para llevarse una llave que opera el negocio desde fuera durante meses.
-// Los intentos fallidos cuentan en el mismo bloqueo que el login. El dueño del token es siempre
-// quien llama; un userId en el cuerpo ni se lee.
+// Los intentos fallidos cuentan en el mismo limitador que el login, con su propio contador por
+// persona (`apitoken:<id>`). El dueño del token es siempre quien llama; un userId en el cuerpo ni se
+// lee.
 func (h *Handlers) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 	u, ok := userFrom(r.Context())
 	if !ok {

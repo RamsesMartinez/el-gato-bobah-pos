@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -49,7 +50,7 @@ type expenseCreateArgs struct {
 	Description string       `json:"description,omitempty" jsonschema:"qué se compró"`
 	SupplierID  *int64       `json:"supplier_id,omitempty" jsonschema:"id del proveedor (de suppliers_list)"`
 	DocFolio    string       `json:"doc_folio,omitempty" jsonschema:"folio del ticket o factura"`
-	Payments    []paymentArg `json:"payments,omitempty" jsonschema:"pagos; sin pagos el gasto queda pendiente"`
+	Payments    []paymentArg `json:"payments,omitempty" jsonschema:"pagos (hasta 10); sin pagos el gasto queda pendiente"`
 }
 
 type expensePayArgs struct {
@@ -110,6 +111,9 @@ type platformPriceArgs struct {
 	OptionID   int64  `json:"option_id,omitempty" jsonschema:"extra; o product_id"`
 	Price      string `json:"price,omitempty" jsonschema:"precio (producto) o lo que suma (extra), texto decimal; solo en platform_price_set"`
 }
+
+// maxExpensePayments acota los pagos de un gasto capturado por un agente.
+const maxExpensePayments = 10
 
 func ids(id int64) map[string]int64 { return map[string]int64{"id": id} }
 
@@ -178,6 +182,11 @@ func registerWrites() {
 			if err := positive("category_id", in.CategoryID); err != nil {
 				return "", "", nil, nil, nil, err
 			}
+			// Un gasto real trae uno o dos pagos. Sin tope, cada pago de la vista previa despacha sus
+			// lecturas y una sola llamada multiplicaba las peticiones internas por miles.
+			if len(in.Payments) > maxExpensePayments {
+				return "", "", nil, nil, nil, toolErr("Un gasto lleva a lo más %d pagos.", maxExpensePayments)
+			}
 			total, err := decimal.NewFromString(in.Amount)
 			if err != nil {
 				return "", "", nil, nil, nil, toolErr("amount es un importe en pesos, como \"845.50\".")
@@ -213,22 +222,46 @@ func registerWrites() {
 		preview: func(s *mcpSession, ctx context.Context, in expenseCreateArgs) (any, []string) {
 			const tool = "expense_create"
 			out := map[string]any{}
-			if b, _, err := s.fetch(ctx, tool, pExpenseCats, nil, nil); err == nil {
-				out["category"] = findByID(b, in.CategoryID)
-			}
-			if in.SupplierID != nil {
-				if b, _, err := s.fetch(ctx, tool, pSuppliers, nil, nil); err == nil {
-					out["supplier"] = findByID(b, *in.SupplierID)
-				}
-			}
 			var notes []string
-			methods, _, _ := s.fetch(ctx, tool, pPaymentMethods, nil, nil)
-			var pays []any
+			// lookup resuelve un id en una lista; si no se pudo leer o no existe, lo dice en vez de
+			// dejar un null que el agente no sabe leer.
+			lists := map[string]json.RawMessage{}
+			lookup := func(pattern string, id int64, what, listTool string) any {
+				b, ok := lists[pattern]
+				var err error
+				if !ok {
+					b, _, err = s.fetch(ctx, tool, pattern, nil, nil)
+					lists[pattern] = b
+				}
+				if err != nil {
+					notes = append(notes, fmt.Sprintf("No se pudo revisar %s: %s", what, err.Error()))
+					return nil
+				}
+				row := findByID(b, id)
+				if row == nil {
+					notes = append(notes, fmt.Sprintf("No existe %s %d en esta empresa; búscalo con %s.", what, id, listTool))
+					return nil
+				}
+				return row
+			}
+			out["category"] = lookup(pExpenseCats, in.CategoryID, "la categoría", "expense_categories_list")
+			if in.SupplierID != nil {
+				out["supplier"] = lookup(pSuppliers, *in.SupplierID, "el proveedor", "suppliers_list")
+			}
+			if len(in.Payments) > maxExpensePayments {
+				return out, notes
+			}
+			shifts := map[int64]any{}
+			pays := []any{}
 			for _, p := range in.Payments {
-				pay := map[string]any{"method": findByID(methods, int64(p.MethodID)), "amount": p.Amount}
+				pay := map[string]any{"method": lookup(pPaymentMethods, int64(p.MethodID), "el método de pago", "payment_methods_list"),
+					"amount": p.Amount}
 				if p.RegisterID != nil {
-					pay["register_shift"] = s.soft(ctx, tool, pCashCurrent, nil,
-						url.Values{"registerId": {strconv.FormatInt(*p.RegisterID, 10)}})
+					if _, seen := shifts[*p.RegisterID]; !seen {
+						shifts[*p.RegisterID] = s.soft(ctx, tool, pCashCurrent, nil,
+							url.Values{"registerId": {strconv.FormatInt(*p.RegisterID, 10)}})
+					}
+					pay["register_shift"] = shifts[*p.RegisterID]
 				}
 				pays = append(pays, pay)
 			}

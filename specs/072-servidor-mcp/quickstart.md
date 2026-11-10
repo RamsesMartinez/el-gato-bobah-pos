@@ -14,6 +14,9 @@ Prerrequisitos: `make start` del worktree arriba (API en `:8072`, web en `:3072`
    claude mcp list    # pos-local: ✓ Connected
    ```
 
+   **No pongas las herramientas que escriben en `permissions.allow` de Claude Code**: el agente lee
+   texto que escribe gente de fuera (proveedores, plataformas) y cada escritura debe pasar por tu
+   aprobación. Para solo consultar, usa un token sin alcances de escritura.
 3. **Criterio de aceptación (SC-001)**, desde la sesión de Claude o con un cliente MCP de prueba:
    - `expense_create` con tarjeta: vista previa, después `dry_run: false` con una clave.
    - `expense_create` en efectivo de una caja con turno abierto: el turno muestra la salida.

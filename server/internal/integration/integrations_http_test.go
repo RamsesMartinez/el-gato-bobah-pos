@@ -14,6 +14,7 @@ import (
 )
 
 func TestIntegrationsTokensHTTP(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	ctx := context.Background()
 	jwtFor := func(id, company int64, role domain.Role) string {

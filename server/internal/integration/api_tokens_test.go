@@ -69,6 +69,7 @@ func (w tokenWorld) create(t *testing.T, scopes ...string) app.CreatedAPIToken {
 }
 
 func TestAPITokenCreateListRevoke(t *testing.T) {
+	t.Parallel()
 	w := newTokenWorld(t)
 	svc := app.NewAPITokensService(w.app)
 	ctx := w.tenant(t, w.company, w.admin)
@@ -145,6 +146,7 @@ func TestAPITokenCreateListRevoke(t *testing.T) {
 }
 
 func TestAPITokenRejectionsLookAlike(t *testing.T) {
+	t.Parallel()
 	w := newTokenWorld(t)
 	svc := app.NewAPITokensService(w.app)
 	ctx := context.Background()
@@ -194,6 +196,7 @@ func TestAPITokenRejectionsLookAlike(t *testing.T) {
 }
 
 func TestAPITokenFromOtherCompanyIsUnknown(t *testing.T) {
+	t.Parallel()
 	w := newTokenWorld(t)
 	svc := app.NewAPITokensService(w.app)
 	tok := w.create(t, "write:expenses")
@@ -207,6 +210,7 @@ func TestAPITokenFromOtherCompanyIsUnknown(t *testing.T) {
 }
 
 func TestAPITokenLastUsedAtMostOncePerMinute(t *testing.T) {
+	t.Parallel()
 	w := newTokenWorld(t)
 	svc := app.NewAPITokensService(w.app)
 	tok := w.create(t)
@@ -224,6 +228,7 @@ func TestAPITokenLastUsedAtMostOncePerMinute(t *testing.T) {
 }
 
 func TestIdempotencyKeysEndToEnd(t *testing.T) {
+	t.Parallel()
 	w := newTokenWorld(t)
 	svc := app.NewAPITokensService(w.app)
 	tok := w.create(t, "write:expenses")
@@ -276,6 +281,7 @@ func TestIdempotencyKeysEndToEnd(t *testing.T) {
 }
 
 func TestAPITokenRecordCallWritesAuditEvent(t *testing.T) {
+	t.Parallel()
 	w := newTokenWorld(t)
 	svc := app.NewAPITokensService(w.app)
 	tok := w.create(t, "write:expenses")
@@ -301,6 +307,7 @@ func TestAPITokenRecordCallWritesAuditEvent(t *testing.T) {
 
 // Aislamiento de las dos tablas nuevas en los tres casos donde RLS ya falló.
 func TestAPITokenTablesInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	w := newTokenWorld(t)
 	tok := w.create(t, "write:expenses")
 	key := domain.IdempotencyKeyRef{CompanyID: w.company, TokenID: tok.ID, Key: "aislada-01", Tool: "expense_create"}
@@ -320,4 +327,21 @@ func TestAPITokenTablesInTheThreeCases(t *testing.T) {
 			t.Fatal("se leyó la clave de idempotencia de otra empresa")
 		}
 	})
+}
+
+// Si la API sirviera como owner (o RLS fallara), la empresa del texto del token no puede ser otra
+// que la de su fila: la empresa del principal sale de la fila, y una distinta se rechaza.
+func TestAPITokenCompanyComesFromTheRowNotTheText(t *testing.T) {
+	t.Parallel()
+	w := newTokenWorld(t)
+	tok := w.create(t)
+	p, _ := domain.ParseAPIToken(tok.Token)
+	asOwner := app.NewAPITokensService(w.owner)
+	if got, err := asOwner.Authenticate(context.Background(), tok.Token); err != nil || got.CompanyID != w.company {
+		t.Fatalf("el token bueno como owner: %v %+v", err, got)
+	}
+	forged := domain.FormatAPIToken(w.other, p.TokenID, p.Secret)
+	if _, reason, err := asOwner.AuthenticateWithReason(context.Background(), forged); !errors.Is(err, domain.ErrUnauthorized) || reason != "company_mismatch" {
+		t.Fatalf("empresa cambiada como owner: %v (%s)", err, reason)
+	}
 }

@@ -88,11 +88,36 @@ func TestMigration0111OnARealBackup(t *testing.T) {
 			`update api_tokens set revoked_at = now(), revoked_by = user_id where id = $1`, tokenID); err != nil {
 			t.Fatal(err)
 		}
-		_, err := st.Pool.Exec(ctx, `update api_tokens set revoked_at = null, revoked_by = null where id = $1`, tokenID)
-		var pgErr *pgconn.PgError
-		if err == nil || !errors.As(err, &pgErr) {
-			t.Fatalf("un token revocado volvió a estar vigente: %v", err)
+		for _, stmt := range []string{
+			`update api_tokens set revoked_at = null, revoked_by = null where id = $1`,
+			// Reescribir quién lo revocó borra evidencia aunque siga revocado.
+			`update api_tokens set revoked_by = (select id from users where company_id = api_tokens.company_id and id <> api_tokens.revoked_by limit 1) where id = $1`,
+		} {
+			_, err := st.Pool.Exec(ctx, stmt, tokenID)
+			var pgErr *pgconn.PgError
+			if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+				t.Fatalf("%s: esperaba el rechazo del trigger (23514), salió %v", stmt, err)
+			}
 		}
+	})
+
+	t.Run("las llaves foráneas no cruzan empresas y la vigencia no va al revés", func(t *testing.T) {
+		var otherUser int64
+		if err := st.Pool.QueryRow(ctx, `select id from users where company_id <> $1 order by id limit 1`, company).Scan(&otherUser); err != nil {
+			t.Fatal(err)
+		}
+		_, err := st.Pool.Exec(ctx, `
+			insert into api_tokens (company_id, user_id, name, secret_hint, secret_hash, scopes, expires_at)
+			values ($1, $2, 'x', 'abab', decode($3, 'hex'), '{read}', now() + interval '30 days')`, company, otherUser, hash)
+		exigeViolacionDeRestriccion(t, err, "un token de la empresa A para una persona de la B")
+		_, err = st.Pool.Exec(ctx, `
+			insert into api_tokens (company_id, user_id, name, secret_hint, secret_hash, scopes, expires_at, revoked_at, revoked_by)
+			values ($1, $2, 'x', 'abab', decode($3, 'hex'), '{read}', now() + interval '30 days', now(), $4)`, company, user, hash, otherUser)
+		exigeViolacionDeRestriccion(t, err, "revocado por una persona de otra empresa")
+		_, err = st.Pool.Exec(ctx, `
+			insert into api_tokens (company_id, user_id, name, secret_hint, secret_hash, scopes, created_at, expires_at)
+			values ($1, $2, 'x', 'abab', decode($3, 'hex'), '{read}', now(), now() - interval '1 day')`, company, user, hash)
+		exigeViolacionDeRestriccion(t, err, "un token que vence antes de crearse")
 	})
 
 	t.Run("el rol de la app no puede renombrar ni borrar un token", func(t *testing.T) {

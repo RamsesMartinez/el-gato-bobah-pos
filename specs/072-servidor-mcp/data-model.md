@@ -20,10 +20,10 @@ Solo agrega: dos tablas y un permiso. Convive con la versión anterior (no la le
 | `revoked_at` | timestamptz null | |
 | `revoked_by` | bigint null | FK compuesta → `users`; check `(revoked_at is null) = (revoked_by is null)` |
 
-- `unique (company_id, id)` para las FK compuestas; índices `(company_id, created_at desc)` (lista)
-  y `(company_id, user_id)` (FK).
+- `unique (company_id, id)` para las FK compuestas; índice `(company_id, user_id)` (FK). Sin índice
+  para la lista: ordena por una expresión y la tabla es diminuta.
 - **Revocado es terminal en la base**: trigger `before update` que lanza excepción si
-  `old.revoked_at is not null and new.revoked_at is distinct from old.revoked_at`. Revocar es
+  `old.revoked_at is not null` y cambia `revoked_at` o `revoked_by` (quién revocó tampoco se reescribe). Revocar es
   `update … where id = $1 and revoked_at is null` (idempotente, no pisa a quien revocó).
 - RLS **enable** (no `force`, como todas) y política `tenant_isolation` con `nullif`, igual que 0108.
 - `gatobobah_app`: `select, insert, update(last_used_at, revoked_at, revoked_by)`. Sin `delete`.
@@ -42,7 +42,7 @@ Solo agrega: dos tablas y un permiso. Convive con la versión anterior (no la le
 | `result` | jsonb null | check `(status = 'done') = (result is not null)` y `pg_column_size(result) < 262144` |
 | `created_at` | timestamptz not null default now() | |
 
-- PK `(company_id, token_id, idem_key)`; índice `(company_id, token_id, created_at)` para la purga.
+- PK `(company_id, token_id, idem_key)`; la purga usa la PK (pocas claves por token).
 - Estados: `pending` → `done` (2xx) · `pending` → borrada (4xx) · `pending` → `unknown` (5xx o
   cortada). `unknown` bloquea esa clave hasta la purga: el agente revisa y usa otra.
 - Purga: al registrar una clave nueva se borran las de más de 7 días **del mismo token**.

@@ -109,12 +109,20 @@ var mcpListTool = map[string]string{
 	"platform_price_set": "platform_prices_list", "platform_price_delete": "platform_prices_list",
 }
 
-// toolError es un error que el agente lee: causa y cómo corregirlo.
-type toolError struct{ msg string }
+// mcpMaxSavedResult es lo más que se guarda de la respuesta de una escritura para repetirla; el check
+// de la tabla corta en 256 KB.
+const mcpMaxSavedResult = 200 << 10
+
+// toolError es un error que el agente lee: causa y cómo corregirlo. status es el de la API cuando
+// lo hubo, para que la bitácora distinga un permiso negado de un argumento malo.
+type toolError struct {
+	msg    string
+	status int
+}
 
 func (e toolError) Error() string { return e.msg }
 
-func toolErr(format string, a ...any) error { return toolError{fmt.Sprintf(format, a...)} }
+func toolErr(format string, a ...any) error { return toolError{msg: fmt.Sprintf(format, a...)} }
 
 // ---- Argumentos comunes ----
 
@@ -252,10 +260,11 @@ func (s *mcpSession) record(ctx context.Context, c app.MCPCall) {
 func (s *mcpSession) fetch(ctx context.Context, tool, pattern string, params map[string]int64, q url.Values) (json.RawMessage, int, error) {
 	status, body, err := s.dispatch(ctx, tool, http.MethodGet, pattern, params, q, nil)
 	if err != nil {
+		slog.ErrorContext(ctx, "mcp_dispatch_failed", "tool", tool, "pattern", pattern, "error", err.Error())
 		return nil, 0, toolErr("Error interno del servidor MCP. Avísale al administrador.")
 	}
 	if status >= 400 {
-		return nil, status, toolError{toolHint(status, body, mcpListTool[tool])}
+		return nil, status, toolError{msg: toolHint(status, body, mcpListTool[tool]), status: status}
 	}
 	return body, status, nil
 }
@@ -278,6 +287,9 @@ func readTool[In any](name string, run func(s *mcpSession, ctx context.Context, 
 			var te toolError
 			if errors.As(err, &te) {
 				status = http.StatusBadRequest
+				if te.status != 0 {
+					status = te.status
+				}
 			}
 			s.record(ctx, app.MCPCall{Tool: name, Mode: "read", Status: status, Args: argsJSON(in)})
 			if err != nil {
@@ -288,7 +300,8 @@ func readTool[In any](name string, run func(s *mcpSession, ctx context.Context, 
 	}
 }
 
-// simpleRead es una lectura que solo pasa la respuesta de una ruta.
+// simpleRead es una lectura que solo pasa la respuesta de una ruta, sin el texto que escribe un
+// tercero y con la página contada desde 1, como se la pidió el agente.
 func simpleRead[In any](name, pattern string, build func(in In) (map[string]int64, url.Values, error)) {
 	readTool(name, func(s *mcpSession, ctx context.Context, in In) (any, error) {
 		params, q, err := build(in)
@@ -299,8 +312,21 @@ func simpleRead[In any](name, pattern string, build func(in In) (map[string]int6
 		if err != nil {
 			return nil, err
 		}
-		return asObject(body), nil
+		return forAgent(body), nil
 	})
+}
+
+// forAgent prepara una respuesta de la API para el agente: quita el texto de terceros y, si la
+// respuesta trae página, la cuenta desde 1 (la API cuenta desde 0 y el agente pide desde 1; con la
+// de la API, pedir «la siguiente» repetía la primera).
+func forAgent(body json.RawMessage) any {
+	v := withoutCustomerText(body)
+	if m, ok := v.(map[string]any); ok {
+		if p, ok := m["page"].(float64); ok {
+			m["page"] = p + 1
+		}
+	}
+	return v
 }
 
 // asObject envuelve un arreglo: el contenido estructurado de MCP es un objeto.
@@ -360,7 +386,7 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 	name := spec.name
 	tool, _ := domain.MCPToolByName(name)
 	if !domain.ScopeAllows(s.principal.Scopes, tool.Scope) {
-		return nil, toolError{domain.MissingScopeMessage(tool.Scope)}
+		return nil, toolError{msg: domain.MissingScopeMessage(tool.Scope), status: http.StatusForbidden}
 	}
 	args := argsJSON(in)
 	method, pattern, params, q, body, err := spec.route(s, ctx, in)
@@ -378,7 +404,9 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 			"how_to_apply": "Repite la llamada con dry_run: false y una idempotency_key nueva."}
 		if spec.preview != nil {
 			extra, notes := spec.preview(s, ctx, in)
-			out["resolved"] = extra
+			if extra != nil {
+				out["resolved"] = extra
+			}
 			if len(notes) > 0 {
 				out["notes"] = notes
 			}
@@ -404,19 +432,26 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 	case domain.IdemProceed:
 	default:
 		s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: http.StatusConflict, Args: args})
-		return nil, toolError{domain.IdempotencyMessage(decision)}
+		return nil, toolError{msg: domain.IdempotencyMessage(decision), status: http.StatusConflict}
 	}
 
 	status, resp, err := s.dispatch(ctx, name, method, pattern, params, q, body)
 	switch {
 	case err != nil || status >= 500:
-		_ = s.h.apiTokens.MarkIdempotentUnknown(bg, ref)
+		if err != nil {
+			slog.ErrorContext(ctx, "mcp_dispatch_failed", "tool", name, "pattern", pattern, "error", err.Error())
+		}
+		if uerr := s.h.apiTokens.MarkIdempotentUnknown(bg, ref); uerr != nil {
+			slog.ErrorContext(ctx, "mcp_idempotency_mark_failed", "tool", name, "error", uerr.Error())
+		}
 		s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: max(status, 500), Args: args})
-		return nil, toolError{domain.ToolErrorHint(500, "", "")}
+		return nil, toolError{msg: domain.ToolErrorHint(500, "", ""), status: http.StatusInternalServerError}
 	case status >= 400:
-		_ = s.h.apiTokens.AbandonIdempotent(bg, ref)
+		if aerr := s.h.apiTokens.AbandonIdempotent(bg, ref); aerr != nil {
+			slog.ErrorContext(ctx, "mcp_idempotency_abandon_failed", "tool", name, "error", aerr.Error())
+		}
 		s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: status, Args: args})
-		return nil, toolError{toolHint(status, resp, mcpListTool[name])}
+		return nil, toolError{msg: toolHint(status, resp, mcpListTool[name]), status: status}
 	}
 	result := json.RawMessage(resp)
 	if len(strings.TrimSpace(string(resp))) == 0 {
@@ -426,8 +461,16 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 	if spec.state != nil {
 		after = spec.state(s, ctx, in, result)
 	}
-	if err := s.h.apiTokens.FinishIdempotent(bg, ref, result); err != nil {
+	stored := result
+	if len(stored) > mcpMaxSavedResult {
+		// El check de la tabla rechazaría guardarlo, y la clave se quedaría «en curso» para siempre.
+		stored = json.RawMessage(`{"applied":true,"note":"respuesta demasiado grande para guardarla; consulta el estado con una lectura"}`)
+	}
+	if err := s.h.apiTokens.FinishIdempotent(bg, ref, stored); err != nil {
+		// Ya se aplicó: la clave dice «pudo haberse aplicado» en vez de «en curso», para que un
+		// reintento no espere 7 días ni, con otra clave, repita la escritura sin revisar.
 		slog.ErrorContext(ctx, "mcp_idempotency_finish_failed", "tool", name, "error", err.Error())
+		_ = s.h.apiTokens.MarkIdempotentUnknown(bg, ref)
 	}
 	s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: status, Args: args,
 		EntityBefore: argsJSON(before), EntityAfter: argsJSON(after)})
@@ -463,6 +506,13 @@ type salesArgs struct {
 	rangeArgs
 	pageArgs
 	Status      string `json:"status,omitempty" jsonschema:"filtra por estado del pedido"`
+	ServiceType string `json:"service_type,omitempty" jsonschema:"filtra por tipo de servicio"`
+}
+
+// summaryArgs: el resumen no filtra por estado ni pagina (el handler no lo aplica); anunciarlo en el
+// esquema y no mandarlo haría que el agente leyera el total general como el de un estado.
+type summaryArgs struct {
+	rangeArgs
 	ServiceType string `json:"service_type,omitempty" jsonschema:"filtra por tipo de servicio"`
 }
 
@@ -537,16 +587,16 @@ func pageQuery(p pageArgs, def, maxSize int) (url.Values, error) {
 
 func init() {
 	readTool("whoami", func(s *mcpSession, _ context.Context, _ noArgs) (any, error) {
-		var tools []string
+		tools := []string{}
 		for _, t := range domain.MCPTools() {
 			if s.allows(t) {
 				tools = append(tools, t.Name)
 			}
 		}
 		return map[string]any{"user": s.user.Name, "token": s.principal.TokenName, "scopes": s.principal.Scopes,
-			"permissions": s.perms, "tools": tools}, nil
+			"permissions": nonNilPerms(s.perms), "tools": tools}, nil
 	})
-	simpleRead("sales_summary", pSalesSummary, func(in salesArgs) (map[string]int64, url.Values, error) {
+	simpleRead("sales_summary", pSalesSummary, func(in summaryArgs) (map[string]int64, url.Values, error) {
 		q := in.query()
 		if in.ServiceType != "" {
 			q.Set("serviceType", in.ServiceType)
@@ -577,7 +627,7 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		return withoutCustomerText(body), nil
+		return forAgent(body), nil
 	})
 	simpleRead("report_products_sold", pProductsSold, func(in productsSoldArgs) (map[string]int64, url.Values, error) {
 		q := in.query()
@@ -725,21 +775,27 @@ func init() {
 	registerWrites()
 }
 
-// withoutCustomerText quita el nombre y las notas del cliente: llegan de afuera (de una plataforma
-// de reparto, por ejemplo) y un texto de un tercero no debe llegarle al agente como si fuera una
-// instrucción.
+// thirdPartyText son las llaves que traen texto que escribe alguien de afuera (el cliente, o la
+// plataforma de reparto por él): un texto así no debe llegarle al agente como si fuera una
+// instrucción. Los importes, folios y fechas sí pasan.
+var thirdPartyText = []string{"customerName", "customer", "folioName", "notes", "note", "voidReason"}
+
+// withoutCustomerText quita de cualquier profundidad las llaves de thirdPartyText.
 func withoutCustomerText(body json.RawMessage) any {
 	var v any
 	if json.Unmarshal(body, &v) != nil {
 		return asObject(body)
 	}
+	if _, isObj := v.(map[string]any); !isObj {
+		v = map[string]any{"items": v}
+	}
 	var strip func(any)
 	strip = func(x any) {
 		switch t := x.(type) {
 		case map[string]any:
-			delete(t, "customerName")
-			delete(t, "notes")
-			delete(t, "note")
+			for _, k := range thirdPartyText {
+				delete(t, k)
+			}
 			for _, c := range t {
 				strip(c)
 			}
@@ -761,7 +817,12 @@ func projectPlatformPrices(body json.RawMessage, productID, optionID int64) any 
 		PlatformModPrices map[string]map[string]decimal.Decimal `json:"platformModPrices"`
 		PlatformSynced    map[string]map[string]any             `json:"platformSynced"`
 	}
-	_ = json.Unmarshal(body, &doc)
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return map[string]any{"unavailable": "No se pudo leer el menú. Vuelve a intentar."}
+	}
+	if doc.Platforms == nil {
+		doc.Platforms = []map[string]any{}
+	}
 	filter := func(m map[string]map[string]decimal.Decimal, id int64) map[string]map[string]decimal.Decimal {
 		out := map[string]map[string]decimal.Decimal{}
 		for pl, prices := range m {

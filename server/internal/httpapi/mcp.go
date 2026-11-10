@@ -67,7 +67,7 @@ const mcpMaxTokenCalls = 120
 // conexión a la base.
 const mcpMaxIPRequests = 300
 
-// MCPProtocolDescription es lo que el servidor dice de sí al conectarse.
+// mcpInstructions es lo que el servidor le dice al cliente al conectarse.
 const mcpInstructions = "Herramientas del punto de venta. Las de escritura muestran una vista previa " +
 	"si no mandas dry_run: false; para aplicar, manda dry_run: false y una idempotency_key nueva. " +
 	"Dinero como texto decimal (\"845.50\"); fechas AAAA-MM-DD en la zona del negocio."

@@ -225,6 +225,10 @@ func (s *APITokensService) AuthenticateWithReason(ctx context.Context, raw strin
 		reason = "not_found"
 	case !matches:
 		reason = "bad_secret"
+	case row.CompanyID != parsed.CompanyID:
+		// Bajo RLS no llega aquí; si un día se sirve como owner (o RLS falla), la empresa del texto
+		// no puede ser otra que la de la fila.
+		reason = "company_mismatch"
 	case row.RevokedAt.Valid:
 		reason = "revoked"
 	case !row.ExpiresAt.After(s.now()):
@@ -244,7 +248,7 @@ func (s *APITokensService) AuthenticateWithReason(ctx context.Context, raw strin
 		scopes[i] = domain.APIScope(sc)
 	}
 	return APIPrincipal{
-		TokenID: row.ID, TokenName: row.Name, CompanyID: parsed.CompanyID, UserID: row.UserID,
+		TokenID: row.ID, TokenName: row.Name, CompanyID: row.CompanyID, UserID: row.UserID,
 		UserName: row.UserName, RoleCode: row.RoleCode, Scopes: scopes,
 	}, "", nil
 }

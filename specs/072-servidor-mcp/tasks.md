@@ -100,8 +100,8 @@ tarea de test va **antes** de su implementación y se ve en rojo por la razón c
 
 - [X] T030 [P] `docs/mecanica/personal-y-permisos.md`: la puerta para agentes (cómo funciona el token, la lista blanca del despachador, qué no revoca un token, cómo agregar una herramienta) y su renglón en la tabla de `AGENTS.md` si cambia
 - [X] T031 Prueba real con un cliente MCP (Claude Code con `claude mcp add`) contra `make start` del worktree siguiendo quickstart.md; anotar en quickstart si la variable `${POS_MCP_TOKEN}` se expande en el alcance `user`
-- [ ] T032 `cd server && go build ./... && go test ./...`, `make test-integration`, `cd web && bun run lint && bun run vitest run && bun run build`
-- [ ] T033 `/revision-de-codigo` (hook `after_implement`) y corregir lo que encuentre con su test
+- [X] T032 `cd server && go build ./... && go test ./...`, `make test-integration`, `cd web && bun run lint && bun run vitest run && bun run build`
+- [X] T033 `/revision-de-codigo` (hook `after_implement`) y corregir lo que encuentre con su test
 
 ## Dependencies
 

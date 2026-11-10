@@ -51,6 +51,7 @@ func countExpenses(t *testing.T, w mcpWorld, desc string) int {
 
 // US1: capturar un gasto con tarjeta y uno en efectivo desde un agente.
 func TestMCPExpenses(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	f := mcpSeed(t, w)
 	tok := w.token(t, w.company, w.admin, "write:expenses")
@@ -124,6 +125,32 @@ func TestMCPExpenses(t *testing.T) {
 		}
 	})
 
+	t.Run("más de 10 pagos se rechaza sin despachar lecturas", func(t *testing.T) {
+		pays := make([]map[string]any, 11)
+		for i := range pays {
+			pays[i] = map[string]any{"method_id": f.card, "amount": "1.00"}
+		}
+		res := callTool(t, w.router, tok, "expense_create", map[string]any{"category_id": f.category, "amount": "11.00", "payments": pays})
+		if !res.isError || !strings.Contains(res.text, "10 pagos") {
+			t.Fatalf("11 pagos: %s", res.text)
+		}
+	})
+
+	t.Run("dos aplicaciones a la vez con la misma clave dejan un solo gasto", func(t *testing.T) {
+		args := map[string]any{"category_id": f.category, "amount": "33.00", "description": "Carrera MCP",
+			"payments": []map[string]any{{"method_id": f.card, "amount": "33.00"}}, "dry_run": false, "idempotency_key": "carrera-0001"}
+		done := make(chan struct{}, 4)
+		for range 4 {
+			go func() { callTool(t, w.router, tok, "expense_create", args); done <- struct{}{} }()
+		}
+		for range 4 {
+			<-done
+		}
+		if n := countExpenses(t, w, "Carrera MCP"); n != 1 {
+			t.Fatalf("hay %d gastos", n)
+		}
+	})
+
 	t.Run("un token de lectura no escribe", func(t *testing.T) {
 		read := w.token(t, w.company, w.admin)
 		res := callTool(t, w.router, read, "expense_create", map[string]any{"category_id": f.category, "amount": "1.00",
@@ -158,6 +185,7 @@ func TestMCPExpenses(t *testing.T) {
 
 // US3: cambiar precios. Solo cambia lo pedido.
 func TestMCPCatalog(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	tok := w.token(t, w.company, w.admin, "write:catalog")
 	ctx := context.Background()
@@ -265,6 +293,7 @@ func productRow(t *testing.T, w mcpWorld, id int64) map[string]any {
 
 // US4: consultas; otra empresa no ve nada.
 func TestMCPReads(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	f := mcpSeed(t, w)
 	tok := w.token(t, w.company, w.admin, "write:expenses")
@@ -302,6 +331,27 @@ func TestMCPReads(t *testing.T) {
 		}
 	})
 
+	t.Run("el resumen no acepta un filtro que no aplica", func(t *testing.T) {
+		res := callTool(t, w.router, tok, "sales_summary", map[string]any{"preset": "mes", "status": "cancelada"})
+		if !res.isError {
+			t.Fatalf("status en el resumen pasó: %s", res.text)
+		}
+	})
+
+	t.Run("la primera página es la 1", func(t *testing.T) {
+		res := callTool(t, w.router, tok, "expenses_list", map[string]any{"page_size": 1})
+		if res.isError || res.data["page"] != float64(1) {
+			t.Fatalf("página: %v %s", res.data["page"], res.text)
+		}
+	})
+
+	t.Run("la vista previa dice si la categoría no existe", func(t *testing.T) {
+		res := callTool(t, w.router, tok, "expense_create", map[string]any{"category_id": 999999, "amount": "1.00"})
+		if res.isError || !strings.Contains(res.text, "No existe la categoría") {
+			t.Fatalf("vista previa: %s", res.text)
+		}
+	})
+
 	t.Run("whoami dice el token y sus alcances", func(t *testing.T) {
 		res := callTool(t, w.router, tok, "whoami", map[string]any{})
 		if res.isError || !strings.Contains(res.text, "write:expenses") || !strings.Contains(res.text, "Claude de prueba") {
@@ -312,6 +362,7 @@ func TestMCPReads(t *testing.T) {
 
 // US5: caja e inventario.
 func TestMCPCashAndInventory(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	f := mcpSeed(t, w)
 	ctx := context.Background()

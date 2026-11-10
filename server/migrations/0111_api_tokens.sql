@@ -38,7 +38,6 @@ create table api_tokens (
   constraint api_tokens_expiry check (expires_at > created_at and expires_at <= created_at + interval '181 days'),
   constraint api_tokens_revoked_pair check ((revoked_at is null) = (revoked_by is null))
 );
-create index api_tokens_list_idx on api_tokens (company_id, created_at desc);
 create index api_tokens_user_idx on api_tokens (company_id, user_id);
 
 -- Revocado es terminal en la base y no solo en Go: un update descuidado no resucita una llave que
@@ -47,8 +46,9 @@ create index api_tokens_user_idx on api_tokens (company_id, user_id);
 create function api_tokens_revocation_is_final() returns trigger
 language plpgsql as $$
 begin
-  if old.revoked_at is not null and new.revoked_at is distinct from old.revoked_at then
-    raise exception 'un token revocado no se reactiva ni cambia de fecha de revocación'
+  if old.revoked_at is not null and (new.revoked_at is distinct from old.revoked_at
+                                     or new.revoked_by is distinct from old.revoked_by) then
+    raise exception 'un token revocado no se reactiva ni cambia quién ni cuándo lo revocó'
       using errcode = 'check_violation';
   end if;
   return new;
@@ -85,7 +85,8 @@ create table mcp_idempotency_keys (
   constraint mcp_idempotency_keys_result check ((status = 'done') = (result is not null)),
   constraint mcp_idempotency_keys_result_size check (result is null or pg_column_size(result) < 262144)
 );
-create index mcp_idempotency_keys_purge_idx on mcp_idempotency_keys (company_id, token_id, created_at);
+-- Sin índice propio para la purga: la PK ya acota por empresa y token, y un token tiene a lo sumo
+-- unos cientos de claves en 7 días. Agregarlo después cuesta lo mismo.
 alter table mcp_idempotency_keys enable row level security;
 create policy tenant_isolation on mcp_idempotency_keys
   using (company_id = nullif(current_setting('app.company_id', true), '')::bigint)

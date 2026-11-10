@@ -166,6 +166,7 @@ func contains(xs []string, x string) bool {
 }
 
 func TestMCPTransportGuards(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	tok := w.token(t, w.company, w.admin)
 
@@ -178,6 +179,12 @@ func TestMCPTransportGuards(t *testing.T) {
 		rec := do(t, w.router, http.MethodGet, "/api/v1/auth/me", tok, nil, "")
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("/me con un token MCP respondió %d", rec.Code)
+		}
+	})
+	t.Run("un token MCP tampoco escribe por una ruta de la pantalla", func(t *testing.T) {
+		rec := do(t, w.router, http.MethodPost, "/api/v1/expenses/", tok, []byte(`{"categoryId":1,"amount":"1.00","status":"pendiente"}`), "application/json")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("POST /expenses con un token MCP = %d", rec.Code)
 		}
 	})
 	t.Run("GET y DELETE: 405", func(t *testing.T) {
@@ -260,6 +267,7 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 }
 
 func TestMCPToolsListFollowsScopeAndPermission(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	read := w.token(t, w.company, w.admin)
 	names := listTools(t, w.router, read)
@@ -286,6 +294,7 @@ func TestMCPToolsListFollowsScopeAndPermission(t *testing.T) {
 }
 
 func TestMCPDryRunIsTheDefault(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	tok := w.token(t, w.company, w.admin, "write:expenses")
 	for _, args := range []map[string]any{
@@ -319,6 +328,7 @@ func TestMCPDryRunIsTheDefault(t *testing.T) {
 }
 
 func TestMCPMoneyIsText(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	tok := w.token(t, w.company, w.admin, "write:expenses")
 	res := callTool(t, w.router, tok, "expense_create", map[string]any{"category_id": 1, "amount": 10.5})
@@ -332,6 +342,7 @@ func TestMCPMoneyIsText(t *testing.T) {
 }
 
 func TestMCPRateLimitPerToken(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	tok := w.token(t, w.company, w.admin)
 	var limited bool
@@ -351,6 +362,7 @@ func TestMCPRateLimitPerToken(t *testing.T) {
 }
 
 func TestMCPPoolIsNeverHeldAcrossTheDispatch(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	tok := w.token(t, w.company, w.admin)
 	small := appRoleStoreWithOneConnN(t, 2)
@@ -390,6 +402,7 @@ func TestMCPPoolIsNeverHeldAcrossTheDispatch(t *testing.T) {
 // Cada herramienta pide en el catálogo el mismo permiso que exige su ruta: un rol con todo menos
 // ese permiso rebota en la ruta, y uno con solo ese permiso pasa la compuerta.
 func TestEveryToolMatchesItsRouteGate(t *testing.T) {
+	t.Parallel()
 	w := newMCPWorld(t)
 	ctx := context.Background()
 	mux := w.router.(interface {

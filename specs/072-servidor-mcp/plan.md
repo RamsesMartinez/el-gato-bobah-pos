@@ -92,6 +92,8 @@ Todos entran; cada uno con su prueba.
 | L3 | La protección de localhost del SDK no aplica detrás de Caddy | Se rechaza un `Origin` presente que no esté permitido; el token solo por header (nunca `?token=`); `GET`/`DELETE` 405 |
 | L4 | Estados terminales solo en la aplicación | `check (expires_at <= created_at + interval '181 days')` y trigger que impide volver `revoked_at` a nulo |
 | L5 | Bitácora y asistencia mandan datos del personal al proveedor del modelo | Se dice en el spec (Assumptions); el alcance `read` lo incluye a propósito: es el mismo dato que ve el admin |
+| A6 (código) | Cada lectura escribe un evento: un agente en bucle deja del orden de 170 mil filas al día por token (estimado) | Aceptado: el límite por token lo acota, cada evento es chico y la bitácora es lo que pidió el dueño («cada llamada»). Si crece, se agrupan las lecturas; agregarlo después cuesta lo mismo |
+| A8 (código) | `product_update` manda el registro completo: un cambio de nombre hecho en la tableta entre la lectura y el envío se pisa | Aceptado y documentado: es la misma ventana que tiene la pantalla con dos tabletas abiertas en el mismo producto |
 | L6 | Empresa inactiva y reset de contraseña | El token no mira `companies.is_active` (el login tampoco); un reset de contraseña no revoca tokens: se documenta en `docs/mecanica` |
 
 ## Pantallas y maquetas

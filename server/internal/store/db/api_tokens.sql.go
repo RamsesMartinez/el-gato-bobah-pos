@@ -43,7 +43,7 @@ func (q *Queries) FinishIdempotencyKey(ctx context.Context, arg FinishIdempotenc
 }
 
 const getAPITokenForAuth = `-- name: GetAPITokenForAuth :one
-select t.id, t.user_id, t.name, t.secret_hash, t.scopes::text[] as scopes, t.expires_at, t.revoked_at,
+select t.id, t.company_id, t.user_id, t.name, t.secret_hash, t.scopes::text[] as scopes, t.expires_at, t.revoked_at,
        u.name as user_name, u.is_active as user_active, r.active as role_active,
        coalesce(s.code, '')::text as role_code
   from api_tokens t
@@ -55,6 +55,7 @@ select t.id, t.user_id, t.name, t.secret_hash, t.scopes::text[] as scopes, t.exp
 
 type GetAPITokenForAuthRow struct {
 	ID         int64              `json:"id"`
+	CompanyID  int64              `json:"company_id"`
 	UserID     int64              `json:"user_id"`
 	Name       string             `json:"name"`
 	SecretHash []byte             `json:"secret_hash"`
@@ -73,6 +74,7 @@ func (q *Queries) GetAPITokenForAuth(ctx context.Context, id int64) (GetAPIToken
 	var i GetAPITokenForAuthRow
 	err := row.Scan(
 		&i.ID,
+		&i.CompanyID,
 		&i.UserID,
 		&i.Name,
 		&i.SecretHash,
@@ -178,7 +180,7 @@ select t.id, t.name, t.secret_hint, t.user_id, u.name as owner_name, t.scopes::t
   from api_tokens t
   join users u on u.id = t.user_id
  where coalesce(t.revoked_at, t.expires_at) > now() - interval '90 days'
- order by (t.revoked_at is null and t.expires_at > now()) desc, t.created_at desc
+ order by (t.revoked_at is null and t.expires_at > now()) desc, t.created_at desc, t.id desc
 `
 
 type ListAPITokensRow struct {

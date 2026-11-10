@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from '../../components/ui/provider';
@@ -61,10 +61,54 @@ describe('IntegrationsPage', () => {
       name: 'Claude de Ana', scopes: ['write:expenses'], expiresInDays: 90, password: 'secreta',
     }));
     expect(await screen.findByText('egbpat_2_9_' + 'a'.repeat(64))).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Cómo conectarlo' }));
+    expect(screen.getByText(/No apruebes en automático/)).toBeVisible();
     await userEvent.keyboard('{Escape}');
+    expect(screen.getByText('egbpat_2_9_' + 'a'.repeat(64))).toBeVisible();
+    const fondo = document.querySelector('[data-part="backdrop"]');
+    if (fondo) { fireEvent.pointerDown(fondo); fireEvent.click(fondo); }
     expect(screen.getByText('egbpat_2_9_' + 'a'.repeat(64))).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Ya lo copié' }));
     await waitFor(() => expect(screen.queryByText('egbpat_2_9_' + 'a'.repeat(64))).toBeNull());
+    // Al volver a abrir, el formulario está limpio y el token ya no existe en la pantalla.
+    await userEvent.click(screen.getByRole('button', { name: 'Crear token' }));
+    const otra = await screen.findByRole('dialog');
+    expect(within(otra).getByLabelText('Nombre')).toHaveValue('Claude de Ana');
+    expect(within(otra).getByLabelText('Tu contraseña')).toHaveValue('');
+    expect(screen.queryByText(/egbpat_/)).toBeNull();
+  });
+
+  test('al abrir la hoja el foco no va a un campo de texto (no sube el teclado)', async () => {
+    montar();
+    await userEvent.click(await screen.findByRole('button', { name: 'Crear token' }));
+    const hoja = await screen.findByRole('dialog');
+    await new Promise((r) => setTimeout(r, 100));
+    expect(within(hoja).getByLabelText('Nombre')).not.toHaveFocus();
+    expect(within(hoja).getByLabelText('Tu contraseña')).not.toHaveFocus();
+  });
+
+  test('una creación que falla deja el formulario, avisa y borra la contraseña', async () => {
+    api.create.mockRejectedValue(new Error('credenciales inválidas'));
+    montar();
+    await userEvent.click(await screen.findByRole('button', { name: 'Crear token' }));
+    const hoja = await screen.findByRole('dialog');
+    await userEvent.type(within(hoja).getByLabelText('Tu contraseña'), 'mala{Enter}');
+    await waitFor(() => expect(api.create).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(within(hoja).getByLabelText('Tu contraseña')).toHaveValue(''));
+    expect(within(hoja).getByLabelText('Nombre')).toBeVisible();
+  });
+
+  test('mientras se crea, «Volver» no cierra la hoja', async () => {
+    let resolver: (v: unknown) => void = () => {};
+    api.create.mockReturnValue(new Promise((r) => { resolver = r; }));
+    montar();
+    await userEvent.click(await screen.findByRole('button', { name: 'Crear token' }));
+    const hoja = await screen.findByRole('dialog');
+    await userEvent.type(within(hoja).getByLabelText('Tu contraseña'), 'secreta');
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Crear token' }));
+    expect(within(hoja).getByRole('button', { name: 'Volver' })).toBeDisabled();
+    resolver({ ...tok({ id: 10 }), token: 'egbpat_2_10_' + 'b'.repeat(64) });
+    expect(await screen.findByText('egbpat_2_10_' + 'b'.repeat(64))).toBeVisible();
   });
 
   test('revocar pide confirmación', async () => {
@@ -82,10 +126,17 @@ describe('comando de conexión', () => {
     expect(mcpUrl('https://api.elgatobobah.com/api/v1', 'https://app.elgatobobah.com')).toBe('https://api.elgatobobah.com/mcp');
     expect(mcpUrl('/api/v1', 'http://localhost:3072')).toBe('http://localhost:3072/mcp');
   });
-  test('el token va por variable y con comillas simples', () => {
+  test('el token va por variable, con comillas simples y en un solo renglón', () => {
     const c = connectCommand('https://api.elgatobobah.com/mcp', 'gatobobah');
     expect(c).toContain('pos-gatobobah https://api.elgatobobah.com/mcp');
     expect(c).toContain("'Authorization: Bearer ${POS_MCP_TOKEN}'");
     expect(c).not.toMatch(/egbpat_/);
+    // La continuación con «\» es de bash: en PowerShell partía el comando y lo registraba sin header.
+    expect(c).not.toContain('\n');
+    expect(c).not.toContain('\\');
+  });
+  test('el nombre del servidor sale del slug, limpio', () => {
+    expect(connectCommand('u', 'Mi Fonda 2')).toContain(' pos-mi-fonda-2 ');
+    expect(connectCommand('u', undefined)).toContain(' pos-negocio ');
   });
 });

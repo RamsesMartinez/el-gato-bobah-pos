@@ -46,8 +46,9 @@ export function mcpUrl(base: string = import.meta.env.VITE_API_URL || '/api/v1',
 }
 
 // connectCommand es lo que se pega en una terminal: el token va por variable de entorno, con
-// comillas simples para que se guarde la referencia y no el valor.
+// comillas simples para que se guarde la referencia y no el valor. En un solo renglón: la
+// continuación con «\» es de bash, y en PowerShell partía el comando y lo registraba sin el header.
 export function connectCommand(url: string, slug: string | undefined): string {
   const name = `pos-${(slug || 'negocio').replace(/[^a-z0-9-]/gi, '-').toLowerCase()}`;
-  return `claude mcp add --transport http --scope user ${name} ${url} \\\n  --header 'Authorization: Bearer \${POS_MCP_TOKEN}'`;
+  return `claude mcp add --transport http --scope user ${name} ${url} --header 'Authorization: Bearer \${POS_MCP_TOKEN}'`;
 }
