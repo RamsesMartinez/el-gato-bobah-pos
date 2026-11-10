@@ -420,6 +420,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermExpensesCapture)).Group(func(r chi.Router) {
 						r.Get("/", h.ListExpenses)
 						r.Post("/", h.CreateExpense)
+						// La vista previa de una compra (spec 073): la captura en una transacción que se
+						// revierte. Con el límite de la captura: toma los mismos candados que ella.
+						r.With(rateLimitUser(h.purchasePreviews)).Post("/purchase-preview", h.PurchasePreview)
 						r.Get("/{id}", h.ExpenseDetail)
 						r.Post("/{id}/pay", h.PayExpense) // agrega UN pago (el "+1 nuevo pago")
 						// Extracción del documento (ticket/factura/pedido) → borrador. NO escribe nada:

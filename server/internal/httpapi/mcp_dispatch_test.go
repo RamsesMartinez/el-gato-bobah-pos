@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -107,5 +108,95 @@ func TestDispatcherDeniedLeavesASecurityEvent(t *testing.T) {
 	_, _, _ = s.dispatch(context.Background(), "whoami", http.MethodPost, "/api/v1/me/pin", nil, nil, nil)
 	if !strings.Contains(buf.String(), "mcp_dispatch_denied") {
 		t.Fatalf("sin evento: %s", buf.String())
+	}
+}
+
+// El conteo despacha rutas con dos parámetros enteros (spec 073). Los dos se ponen; con uno que
+// falta, la llave se queda en el camino y no se despacha.
+func TestDispatcherFillsTwoParams(t *testing.T) {
+	var got string
+	mux := chi.NewRouter()
+	mux.Put(pCountLine, func(w http.ResponseWriter, r *http.Request) {
+		got = chi.URLParam(r, "id") + "/" + chi.URLParam(r, "ingredientId")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	s := &mcpSession{mux: mux, outer: httptest.NewRequest(http.MethodPost, "/mcp", nil)}
+	status, _, err := s.dispatch(context.Background(), "stock_count_capture", http.MethodPut, pCountLine,
+		map[string]int64{"id": 7, "ingredientId": 42}, nil, map[string]any{})
+	if err != nil || status != http.StatusNoContent || got != "7/42" {
+		t.Fatalf("dos parámetros: %d %v %q", status, err, got)
+	}
+	if _, _, err := s.dispatch(context.Background(), "stock_count_capture", http.MethodPut, pCountLine,
+		map[string]int64{"id": 7}, nil, map[string]any{}); !errors.Is(err, errDispatchDenied) {
+		t.Fatalf("sin el insumo: %v", err)
+	}
+}
+
+// Las herramientas de la 073 rodean rutas que siguen fuera: cobrar, devolver, traspasar, repartir
+// propina y editar un gasto. Ninguna escritura nueva puede alcanzarlas.
+func TestNewToolsCannotReachRoutesThatStayOut(t *testing.T) {
+	hits := 0
+	mux := chi.NewRouter()
+	out := []string{"/api/v1/orders/{id}/pay", "/api/v1/orders/{id}/refund", "/api/v1/cash-sessions/transfer",
+		"/api/v1/cash-sessions/tips/payouts", "/api/v1/expenses/{id}/edit", "/api/v1/orders/{id}/write-off"}
+	for _, p := range out {
+		mux.Post(p, func(w http.ResponseWriter, _ *http.Request) { hits++ })
+	}
+	s := &mcpSession{mux: mux, outer: httptest.NewRequest(http.MethodPost, "/mcp", nil)}
+	for _, tool := range []string{"order_cancel", "cash_session_close", "cash_session_open", "purchase_create",
+		"purchase_receive", "stock_count_close"} {
+		for _, p := range out {
+			if _, _, err := s.dispatch(context.Background(), tool, http.MethodPost, p, map[string]int64{"id": 1}, nil, map[string]any{}); !errors.Is(err, errDispatchDenied) {
+				t.Errorf("%s alcanzó %s: %v", tool, p, err)
+			}
+		}
+	}
+	if hits != 0 {
+		t.Fatalf("%d despachos llegaron a un handler", hits)
+	}
+}
+
+// El antes y el después de una escritura de conteo van resumidos: el conteo abierto trae todos los
+// artículos que se pueden contar y, completo, cada captura le mandaba al agente ~100 KB (lo encontró
+// la prueba con un cliente MCP real contra un respaldo).
+func TestCountSummaryIsSmall(t *testing.T) {
+	got, _ := json.Marshal(countSummary([]byte(`{"id":14,"items":[{"ingredientId":1,"countedQty":"1500"},{"ingredientId":2,"countedQty":null}],
+		"products":[{"productId":3,"countedQty":2}]}`)))
+	if string(got) != `{"open_count":{"articles":3,"counted":2,"id":14}}` {
+		t.Fatalf("resumen: %s", got)
+	}
+	if got, _ := json.Marshal(countSummary([]byte(`null`))); string(got) != `{"open_count":null}` {
+		t.Fatalf("sin conteo: %s", got)
+	}
+}
+
+func TestClosePreviewKeepsTheAdjustmentsAndCountsTheRest(t *testing.T) {
+	got, _ := json.Marshal(closePreviewForAgent([]byte(`{"adjusted":[{"ingredientId":1,"system":"10","counted":"6","delta":"-4"}],
+		"notCounted":[{"ingredientId":2},{"ingredientId":3}],"notCountedProducts":[],"adjustedProducts":[],"skippedProducts":[]}`)))
+	for _, want := range []string{`"notCounted":2`, `"notCountedProducts":0`, `"delta":"-4"`, `"system":"10"`} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("falta %s: %s", want, got)
+		}
+	}
+}
+
+// La vista previa de una compra pide sugerencias de insumo para los renglones sin artículo, pero cada
+// sugerencia son varias consultas de similitud y la llamada entera cuenta una contra el límite del
+// token: 300 renglones sin resolver eran 300 despachos por llamada (auditoría de la 073). Se piden una
+// vez por nombre y a lo más maxSuggestLines.
+func TestSuggestTargetsAreDedupedAndCapped(t *testing.T) {
+	lines := []purchaseLineArg{{Name: "AZUCAR 5KG"}, {Name: " azucar 5kg "}, {Name: "LECHE"}}
+	id := int64(9)
+	lines = append(lines, purchaseLineArg{Name: "YA RESUELTO", IngredientID: &id})
+	got := suggestTargets(lines)
+	if len(got) != 2 || got["azucar 5kg"] == nil || len(got["azucar 5kg"]) != 2 || got["leche"] == nil {
+		t.Fatalf("una sugerencia por nombre, sin los resueltos: %v", got)
+	}
+	many := make([]purchaseLineArg, 300)
+	for i := range many {
+		many[i].Name = "renglón " + strconv.Itoa(i)
+	}
+	if n := len(suggestTargets(many)); n != maxSuggestLines {
+		t.Fatalf("300 nombres distintos piden %d sugerencias; el tope es %d", n, maxSuggestLines)
 	}
 }

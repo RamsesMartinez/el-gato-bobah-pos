@@ -81,6 +81,10 @@ const (
 	// bucle, no el uso.
 	splitWritesMax    = 120
 	splitWritesWindow = 5 * time.Minute
+	// purchasePreviewMax/Window: la vista previa de una compra corre la captura entera y toma sus
+	// candados (spec 073). Un agente en bucle no debe poder tener tomado el almacén de las ventas.
+	purchasePreviewMax    = 30
+	purchasePreviewWindow = time.Minute
 )
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
@@ -206,14 +210,16 @@ type Handlers struct {
 	descuentoWrites *rateLimiter
 	// splitWrites limita devolver pagos y pasar productos por usuario (ver splitWritesMax).
 	splitWrites *rateLimiter
-	authFails   *rateLimiter // account-targeted brute-force lockout (per username / user id)
-	authIPs     *rateLimiter // per-IP request throttle for the /auth group
-	permissions PermissionResolver
-	roles       *app.RolesService
-	attendance  *app.AttendanceService
-	audit       *app.AuditService
-	health      *app.InventoryHealthService
-	alerts      *alerts.Notifier
+	// purchasePreviews limita la vista previa de una compra por usuario (ver purchasePreviewMax).
+	purchasePreviews *rateLimiter
+	authFails        *rateLimiter // account-targeted brute-force lockout (per username / user id)
+	authIPs          *rateLimiter // per-IP request throttle for the /auth group
+	permissions      PermissionResolver
+	roles            *app.RolesService
+	attendance       *app.AttendanceService
+	audit            *app.AuditService
+	health           *app.InventoryHealthService
+	alerts           *alerts.Notifier
 	// apiTokens, store, mcpIPs y mcpTokens son la puerta para agentes (spec 072). store es el del
 	// negocio: /mcp no pasa por WithTenant y lee los permisos con una conexión que suelta enseguida.
 	apiTokens *app.APITokensService
@@ -292,6 +298,8 @@ func newHandlers(d Deps) *Handlers {
 		descuentoWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:descuento:",
 			descuentoMax, descuentoWindow),
 		splitWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:split:", splitWritesMax, splitWritesWindow),
+		purchasePreviews: newRateLimiter(d.Cfg.RedisURL, "ratelimit:purchase-preview:",
+			purchasePreviewMax, purchasePreviewWindow),
 	}
 }
 

@@ -2,7 +2,8 @@ import { api } from './client';
 
 // Los tokens del servidor MCP (spec 072). Las listas son opcionales para que el compilador obligue a
 // la guarda si llegaran como null.
-export type TokenScope = 'read' | 'write:expenses' | 'write:cash' | 'write:inventory' | 'write:catalog';
+export type TokenScope = 'read' | 'write:expenses' | 'write:cash' | 'write:inventory' | 'write:catalog'
+  | 'write:purchases' | 'write:orders';
 
 export interface ApiToken {
   id: number;

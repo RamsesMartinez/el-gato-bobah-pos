@@ -205,60 +205,87 @@ const maxExpenseItems = 300
 // Todo o nada a propósito: un gasto guardado a medias (con líneas pero sin el pago, o con el
 // pago sin la salida de caja) descuadra la contabilidad y nadie se entera hasta el corte.
 func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) (int64, error) {
+	prep, err := s.prepareExpense(ctx, in)
+	if err != nil {
+		return 0, err
+	}
+	var id int64
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		var err error
+		id, err = s.createExpenseIn(ctx, q, prep)
+		return err
+	})
+	return id, err
+}
+
+// preparedExpense es un gasto ya validado, listo para escribirse en una transacción.
+type preparedExpense struct {
+	in          ExpenseInput
+	params      db.CreateExpenseParams
+	payments    []resolvedPayment
+	amount      decimal.Decimal
+	received    time.Time
+	hasReceived bool
+}
+
+// prepareExpense valida un gasto ANTES de abrir la transacción: resolver la caja y el método son
+// lecturas, y así un pago inválido no deja una transacción abierta a medias. La vista previa de una
+// compra pasa por aquí igual que la captura: lo que una rechaza, la otra también.
+func (s *BackofficeService) prepareExpense(ctx context.Context, in ExpenseInput) (preparedExpense, error) {
 	amount := domain.Round2(in.Amount)
 	if !domain.ValidMoney(amount, false) || in.CategoryID == 0 {
-		return 0, domain.ErrValidation
+		return preparedExpense{}, domain.ErrValidation
 	}
 	if in.Status != domain.ExpensePendiente && in.Status != domain.ExpensePagada {
-		return 0, domain.ErrValidation // no se crea directo como cancelada
+		return preparedExpense{}, domain.ErrValidation // no se crea directo como cancelada
 	}
 	if len(in.Items) > maxExpenseItems {
-		return 0, domain.ErrValidation
+		return preparedExpense{}, domain.ErrValidation
 	}
 	var docTotal *decimal.Decimal
 	if in.DocumentTotal != nil {
 		v := domain.Round2(*in.DocumentTotal)
 		if !domain.ValidMoney(v, true) {
-			return 0, fmt.Errorf("%w: el total del ticket no es válido", domain.ErrValidation)
+			return preparedExpense{}, fmt.Errorf("%w: el total del ticket no es válido", domain.ErrValidation)
 		}
 		docTotal = &v
 	}
 	docDate, hasDoc, err := s.parseOptionalDay(in.ExpenseDate)
 	if err != nil {
-		return 0, err
+		return preparedExpense{}, err
 	}
 	chosen, hasChosen, err := s.parseOptionalDay(in.ExpenseDay)
 	if err != nil {
-		return 0, err
+		return preparedExpense{}, err
 	}
 	var chosenPtr, shiftDay *time.Time
 	if hasChosen {
 		chosenPtr = &chosen
 	}
 	if d, ok, err := s.openShiftDay(ctx, in.Payments); err != nil {
-		return 0, err
+		return preparedExpense{}, err
 	} else if ok {
 		shiftDay = &d
 		// Con turno abierto el día lo pone el turno: un día elegido se rechaza, no se ignora.
 		if hasChosen {
-			return 0, fmt.Errorf("%w: con la caja abierta el día del gasto es el del turno", domain.ErrValidation)
+			return preparedExpense{}, fmt.Errorf("%w: con la caja abierta el día del gasto es el del turno", domain.ErrValidation)
 		}
 	}
 	expenseDay := domain.ExpenseDay(shiftDay, s.businessDate(ctx), chosenPtr)
 	received, hasReceived, err := s.parseOptionalDay(in.ReceivedAt)
 	if err != nil {
-		return 0, err
+		return preparedExpense{}, err
 	}
 
 	// Los pagos se validan ANTES de abrir la transacción: resolver la caja y el método son
 	// lecturas, y así un pago inválido no deja una tx abierta a medias.
 	payments, err := s.validatePayments(ctx, in.Payments, expenseDay)
 	if err != nil {
-		return 0, err
+		return preparedExpense{}, err
 	}
 	if in.Status == domain.ExpensePagada {
 		if err := checkPaymentsCover(payments, amount); err != nil {
-			return 0, err
+			return preparedExpense{}, err
 		}
 	}
 
@@ -277,8 +304,17 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 		params.PaidBy = &in.UserID
 	}
 
+	return preparedExpense{in: in, params: params, payments: payments, amount: amount,
+		received: received, hasReceived: hasReceived}, nil
+}
+
+// createExpenseIn escribe un gasto ya validado dentro de la transacción de quien llama: el gasto, su
+// mercancía (que suma al almacén si ya llegó), sus pagos, el aprendizaje del proveedor y la bitácora.
+func (s *BackofficeService) createExpenseIn(ctx context.Context, q *db.Queries, prep preparedExpense) (int64, error) {
+	in, params, payments, amount, received, hasReceived := prep.in, prep.params, prep.payments, prep.amount,
+		prep.received, prep.hasReceived
 	var id int64
-	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+	err := func() error {
 		var err error
 		for i, it := range in.Items {
 			if it.NewArticle == nil {
@@ -333,7 +369,7 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 		}
 		return auditEntity(ctx, q, "expense.created", "expense", id, nil, &in.UserID, nil,
 			map[string]any{"amount": params.Amount, "reason": in.Description, "status": in.Status})
-	})
+	}()
 	return id, err
 }
 
