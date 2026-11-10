@@ -95,6 +95,20 @@ Todos entran; cada uno con su prueba.
 | A6 | Textos de Pedidos y Compras (tablet-ui-reviewer) | Ver «Pantallas y maquetas» |
 | A7 | La consecuencia de D1 solo se ve al crear un token (tablet-ui-reviewer) | Se dice en el reporte de la subida y en el comentario del issue |
 
+### Ajustes de la revisión de código (2026-11-10)
+
+| # | Hallazgo (revisor) | Decisión |
+| --- | --- | --- |
+| C1 | El estado del gasto (pagado/pendiente) se decidía en la capa MCP sumando pagos sin redondear; `expense_create` (072) tenía la misma copia (go-backend-reviewer) | `domain.ExpenseStatusFromPayments` con `Round2`, usada por las dos herramientas; `TestExpenseStatusFromPayments` |
+| C2 | La prueba de «la vista previa no deja rastro» contaba tablas enteras y podía fallar por otra prueba en paralelo (go-backend-reviewer) | Cuenta solo lo que cuelga de su kit (categoría, insumo, usuario) |
+| C3 | La regla de propina por decidir estaba copiada con un literal (go-backend-reviewer) | `domain.TipsDecisionRequired` |
+| C4 | Sin poder leer la zona del negocio, el día de recepción caía callado a la zona por omisión (go-backend-reviewer) | Error que pide `received_on`. Destapó que el router de pruebas no tenía el servicio de ajustes: se agregó |
+| C5 | Cada renglón sin artículo de una vista previa de compra despachaba una sugerencia (varias consultas de similitud), y la llamada contaba una contra el límite del token: 300 renglones, 300 despachos (security-auditor) | Una sugerencia por nombre y a lo más 20 por llamada (`suggestTargets`, `TestSuggestTargetsAreDedupedAndCapped`) |
+| C6 | El límite de la vista previa de compra no tenía prueba (security-auditor) | `TestPurchasePreviewIsRateLimited` (vista en rojo quitándolo) |
+| C7 | El comentario decía que `lock_timeout` impedía detener una venta más de 2 s; solo acota lo que espera la vista previa (security-auditor) | Comentario corregido: la venta que llega después espera lo que dura la transacción, corta y limitada por usuario |
+| C8 | El aviso de cifra rara del conteo (`NEEDS_CONFIRM`) se puede tantear para deducir lo que el sistema tiene, más rápido por MCP (security-auditor) | Se rechaza el mismo artículo dos veces en un lote. **Residuo aceptado**: el tanteo renglón por renglón sigue posible, como en la pantalla; cada intento queda con sus argumentos en la bitácora (`mcp.tool_called`). Marcar los intentos en la hoja del cierre exigiría guardar un contador por artículo y conteo: se puede agregar después al mismo costo (VI) |
+| C9 | `purchase_create` tenía en su lista blanca una lectura del turno que no usa (security-auditor) | Quitada |
+
 ## Casos de borde (antes del código)
 
 | Forma de fallar | Familia | Test |

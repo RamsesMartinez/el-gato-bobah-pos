@@ -5,9 +5,8 @@ package integration
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
-
-	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -31,10 +30,15 @@ func TestPurchasePreviewLeavesNothingBehind(t *testing.T) {
 		}
 		return n
 	}
+	// Solo lo que cuelga de este kit (su categoría, su insumo, su usuario): la base la comparten las
+	// pruebas en paralelo, y contar la tabla entera mezclaría lo que inserta otra prueba.
 	snapshot := func() [5]int {
-		return [5]int{count(`select count(*) from expenses`), count(`select count(*) from expense_items`),
-			count(`select count(*) from stock_movements`), count(`select count(*) from audit_events`),
-			count(`select count(*) from supplier_items`)}
+		cat, ing, usr := strconv.FormatInt(k.category, 10), strconv.FormatInt(k.azucar, 10), strconv.FormatInt(k.user, 10)
+		return [5]int{count(`select count(*) from expenses where category_id = ` + cat),
+			count(`select count(*) from expense_items where ingredient_id = ` + ing),
+			count(`select count(*) from stock_movements where ingredient_id = ` + ing),
+			count(`select count(*) from audit_events where actor_user_id = ` + usr),
+			count(`select count(*) from supplier_items where ingredient_id = ` + ing)}
 	}
 	before, costBefore, onHand := snapshot(), k.ingredientCost(t), k.onHand(t)
 
@@ -140,5 +144,4 @@ func TestPurchasePreviewIsolation(t *testing.T) {
 			t.Fatal("la vista previa leyó el insumo de otra empresa")
 		}
 	})
-	_ = decimal.Zero
 }

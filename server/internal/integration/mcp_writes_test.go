@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
 // Las escrituras de la spec 073 por la puerta para agentes, contra la API completa servida como
@@ -418,6 +421,15 @@ func TestMCPCounts(t *testing.T) {
 		}
 	})
 
+	t.Run("el mismo artículo dos veces en un lote se rechaza", func(t *testing.T) {
+		res := callTool(t, w.router, tok, "stock_count_capture", map[string]any{"count_id": count, "lines": []any{
+			map[string]any{"ingredient_id": leche, "counted_qty": "6"},
+			map[string]any{"ingredient_id": leche, "counted_qty": "60"}}})
+		if !res.isError || !strings.Contains(res.text, "ya viene en este lote") {
+			t.Fatalf("artículo repetido: %s", res.text)
+		}
+	})
+
 	t.Run("más de 50 renglones se rechaza", func(t *testing.T) {
 		lines := make([]any, 51)
 		for i := range lines {
@@ -567,5 +579,32 @@ func TestMCPOrderCancel(t *testing.T) {
 			t.Fatalf("otra empresa: %s", res.text)
 		}
 	})
-	_ = fmt.Sprint
+}
+
+// La vista previa de una compra corre la captura entera y toma sus candados: lleva su propio límite
+// por usuario (auditoría de seguridad de la 073). Sin esta prueba, quitarlo no tronaba nada.
+func TestPurchasePreviewIsRateLimited(t *testing.T) {
+	t.Parallel()
+	w := newMCPWorld(t)
+	f := mcpSeed(t, w)
+	jwt, err := w.jm.Issue(domain.User{ID: w.admin, CompanyID: w.company, Name: "admin", Role: domain.RoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"categoryId":%d,"amount":"10.00","status":"pendiente"}`, f.category)
+	var last int
+	for i := range 31 {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/expenses/purchase-preview", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+jwt)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		w.router.ServeHTTP(rec, req)
+		last = rec.Code
+		if i < 30 && rec.Code != http.StatusOK {
+			t.Fatalf("la vista previa %d respondió %d: %s", i+1, rec.Code, rec.Body)
+		}
+	}
+	if last != http.StatusTooManyRequests {
+		t.Fatalf("la vista previa 31 en un minuto respondió %d, esperaba 429", last)
+	}
 }

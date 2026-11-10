@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -176,5 +177,26 @@ func TestClosePreviewKeepsTheAdjustmentsAndCountsTheRest(t *testing.T) {
 		if !strings.Contains(string(got), want) {
 			t.Errorf("falta %s: %s", want, got)
 		}
+	}
+}
+
+// La vista previa de una compra pide sugerencias de insumo para los renglones sin artículo, pero cada
+// sugerencia son varias consultas de similitud y la llamada entera cuenta una contra el límite del
+// token: 300 renglones sin resolver eran 300 despachos por llamada (auditoría de la 073). Se piden una
+// vez por nombre y a lo más maxSuggestLines.
+func TestSuggestTargetsAreDedupedAndCapped(t *testing.T) {
+	lines := []purchaseLineArg{{Name: "AZUCAR 5KG"}, {Name: " azucar 5kg "}, {Name: "LECHE"}}
+	id := int64(9)
+	lines = append(lines, purchaseLineArg{Name: "YA RESUELTO", IngredientID: &id})
+	got := suggestTargets(lines)
+	if len(got) != 2 || got["azucar 5kg"] == nil || len(got["azucar 5kg"]) != 2 || got["leche"] == nil {
+		t.Fatalf("una sugerencia por nombre, sin los resueltos: %v", got)
+	}
+	many := make([]purchaseLineArg, 300)
+	for i := range many {
+		many[i].Name = "renglón " + strconv.Itoa(i)
+	}
+	if n := len(suggestTargets(many)); n != maxSuggestLines {
+		t.Fatalf("300 nombres distintos piden %d sugerencias; el tope es %d", n, maxSuggestLines)
 	}
 }

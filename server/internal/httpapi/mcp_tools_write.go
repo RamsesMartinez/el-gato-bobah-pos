@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/shopspring/decimal"
+
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
 // Las escrituras del servidor MCP. Cada una arma el MISMO cuerpo que manda la pantalla a la MISMA
@@ -191,20 +193,17 @@ func registerWrites() {
 			if err != nil {
 				return "", "", nil, nil, nil, toolErr("amount es un importe en pesos, como \"845.50\".")
 			}
-			status := "pendiente"
 			payments := make([]map[string]any, 0, len(in.Payments))
-			paid := decimal.Zero
+			paid := make([]decimal.Decimal, 0, len(in.Payments))
 			for _, p := range in.Payments {
 				a, err := decimal.NewFromString(p.Amount)
 				if err != nil {
 					return "", "", nil, nil, nil, toolErr("El importe de cada pago es texto decimal, como \"845.50\".")
 				}
-				paid = paid.Add(a)
+				paid = append(paid, a)
 				payments = append(payments, p.body())
 			}
-			if len(payments) > 0 && paid.GreaterThanOrEqual(total) {
-				status = "pagada"
-			}
+			status := domain.ExpenseStatusFromPayments(total, paid)
 			body := map[string]any{"expenseDate": in.ExpenseDate, "categoryId": in.CategoryID,
 				"supplierId": in.SupplierID, "amount": in.Amount, "description": in.Description,
 				"status": status, "payments": payments, "docFolio": in.DocFolio}

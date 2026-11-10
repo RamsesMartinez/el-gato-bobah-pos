@@ -48,8 +48,9 @@ type PurchasePreviewCost struct {
 // compra de verdad, no una copia que se quede atrás. Tres cosas que no se ven:
 //   - Los constraints diferidos (la guarda de insumos unidos, 0104) corren en el commit, y una
 //     transacción revertida nunca llega ahí: se fuerzan antes de revertir.
-//   - Toma los mismos candados que la compra (insumos y existencias sin esperar, la caja). Con
-//     lock_timeout de 2 s, una vista previa no puede tener detenida a una venta.
+//   - Toma los mismos candados que la compra (insumos y existencias sin esperar, la caja).
+//     lock_timeout de 2 s acota lo que la vista previa espera; una venta que llega después la espera
+//     a ella mientras dure la transacción, que es corta y la ruta limita por usuario.
 //   - No da de alta artículos: devolvería el id de una fila que se revierte.
 func (s *BackofficeService) PreviewPurchase(ctx context.Context, in ExpenseInput) (PurchasePreview, error) {
 	for _, it := range in.Items {

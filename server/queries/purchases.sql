@@ -352,8 +352,9 @@ select i.id, i.name, i.current_cost, u.code as base_unit_code
  order by i.id;
 
 -- name: SetPreviewLockTimeout :exec
--- La vista previa de una compra toma los candados de la compra; con esto no detiene a una venta más
--- de 2 s (spec 073, revisión A4). Solo dura la transacción.
+-- La vista previa de una compra toma los candados de la compra. Esto acota lo que ELLA espera (2 s):
+-- una venta que llega después sí la espera a ella, lo que dura la transacción —corta, de 300
+-- renglones como mucho y con 30 por minuto por usuario— (spec 073, revisiones A4 y de seguridad).
 set local lock_timeout = '2s';
 
 -- name: CheckDeferredConstraintsNow :exec

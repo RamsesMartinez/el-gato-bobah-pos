@@ -47,7 +47,7 @@ func mcpRouter(st *store.Store, jm *auth.Manager) http.Handler {
 		Admin: app.NewAdminService(st), Sales: app.NewSalesService(st, nil), Audit: app.NewAuditService(st),
 		Attendance: app.NewAttendanceService(st, nil), CashConcepts: app.NewCashConceptsService(st),
 		PlatformPrices: app.NewPlatformPricesService(st), Users: app.NewUsersService(st, nil, false, ""),
-		APITokens: app.NewAPITokensService(st),
+		APITokens: app.NewAPITokensService(st), Settings: app.NewSettingsService(st, "pepper-de-prueba"),
 	})
 	return httpapi.Router(config.Config{}, jm, h, st)
 }

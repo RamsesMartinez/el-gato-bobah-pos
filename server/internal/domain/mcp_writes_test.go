@@ -69,3 +69,30 @@ func TestCancelSummary(t *testing.T) {
 		t.Fatalf("con tarjeta pide folio: %+v", s)
 	}
 }
+
+// El estado de un gasto capturado por un agente sale de los pagos REDONDEADOS, como los guarda el
+// servidor: un total de «100.004» con un pago de «100.00» está pagado (encontrado en la revisión de
+// código de la 073; el gasto de la 072 tenía la misma comparación sin redondear).
+func TestExpenseStatusFromPayments(t *testing.T) {
+	d := func(s string) decimal.Decimal { return decimal.RequireFromString(s) }
+	cases := []struct {
+		name  string
+		total decimal.Decimal
+		paid  []decimal.Decimal
+		want  string
+	}{
+		{"sin pagos queda pendiente", d("100"), nil, ExpensePendiente},
+		{"pago completo", d("100"), []decimal.Decimal{d("100")}, ExpensePagada},
+		{"en dos pagos", d("100"), []decimal.Decimal{d("60"), d("40")}, ExpensePagada},
+		{"abono", d("100"), []decimal.Decimal{d("99.99")}, ExpensePendiente},
+		{"el total se redondea como lo guarda el servidor", d("100.004"), []decimal.Decimal{d("100.00")}, ExpensePagada},
+		{"y los pagos también", d("100"), []decimal.Decimal{d("99.996")}, ExpensePagada},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := ExpenseStatusFromPayments(c.total, c.paid); got != c.want {
+				t.Fatalf("%s, esperaba %s", got, c.want)
+			}
+		})
+	}
+}

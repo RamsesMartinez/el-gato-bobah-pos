@@ -129,7 +129,7 @@ tarea de test va **antes** de su implementación y se ve en rojo por la razón c
     colgar la corrección.
   - Lo que la prueba dejó: los pedidos de prueba quedaron cerrados (entregados y cobrados, o
     cancelados) y la caja cerrada; todo en la base local.
-- [ ] T028 `/revision-de-codigo` y corregir cada hallazgo con su test
+- [X] T028 `/revision-de-codigo` y corregir cada hallazgo con su test (plan.md › «Ajustes de la revisión de código»)
 
 ## Dependencies
 

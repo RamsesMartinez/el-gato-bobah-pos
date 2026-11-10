@@ -51,6 +51,10 @@ const maxCountBatch = 50
 // maxPurchaseLines es el mismo techo que la captura de gastos (maxExpenseItems en app).
 const maxPurchaseLines = 300
 
+// maxSuggestLines acota las sugerencias de una vista previa de compra: cada una son varias consultas
+// de similitud, y la llamada entera cuenta UNA contra el límite del token.
+const maxSuggestLines = 20
+
 func init() {
 	for name, routes := range map[string][]mcpRoute{
 		"articles_search":       {get(pArticles)},
@@ -58,7 +62,7 @@ func init() {
 		"presentations_list":    {get(pPresentations)},
 		"pending_receipts_list": {get(pPendingReceipts)},
 		"purchase_create": {{http.MethodPost, pExpenses}, {http.MethodPost, pPurchasePreview}, get(pArticleSuggest),
-			get(pPresentations), get(pBusinessSettings), get(pExpense), get(pCashCurrent)},
+			get(pPresentations), get(pBusinessSettings), get(pExpense)},
 		"purchase_receive":        {{http.MethodPost, pExpenseReceive}, get(pExpense)},
 		"stock_count_current":     {get(pCountCurrent)},
 		"stock_count_open":        {{http.MethodPost, pCounts}, get(pCountCurrent)},
@@ -260,18 +264,21 @@ func (s *mcpSession) openShift(ctx context.Context, tool string, register int64)
 	return &v, nil
 }
 
-// today es el día del negocio, en su zona: la de los ajustes de la empresa.
-func (s *mcpSession) today(ctx context.Context, tool string) string {
-	tz := domain.DefaultTimezone
-	if b, _, err := s.fetch(ctx, tool, pBusinessSettings, nil, nil); err == nil {
-		var st struct {
-			Timezone string `json:"timezone"`
-		}
-		if json.Unmarshal(b, &st) == nil && st.Timezone != "" {
-			tz = st.Timezone
-		}
+// today es el día del negocio, en su zona: la de los ajustes de la empresa. Si no se pueden leer, es
+// un error y no la zona por omisión: cerca de la medianoche, otra zona es otro día de recepción.
+func (s *mcpSession) today(ctx context.Context, tool string) (string, error) {
+	b, _, err := s.fetch(ctx, tool, pBusinessSettings, nil, nil)
+	if err != nil {
+		return "", toolErr("No se pudo saber el día del negocio. Manda received_on (AAAA-MM-DD) o vuelve a intentar.")
 	}
-	return domain.BusinessDate(time.Now(), domain.LoadBusinessLocation(tz)).Format(time.DateOnly)
+	var st struct {
+		Timezone string `json:"timezone"`
+	}
+	tz := domain.DefaultTimezone
+	if json.Unmarshal(b, &st) == nil && st.Timezone != "" {
+		tz = st.Timezone
+	}
+	return domain.BusinessDate(time.Now(), domain.LoadBusinessLocation(tz)).Format(time.DateOnly), nil
 }
 
 // ---- Compras ----
@@ -280,6 +287,23 @@ func purchaseLineComplete(l purchaseLineArg) bool {
 	article := (l.IngredientID != nil) != (l.ProductID != nil)
 	unit := (l.PresentationID != nil) != (l.UnitID != nil)
 	return article && unit
+}
+
+// suggestTargets son los renglones sin artículo a los que se les piden candidatos: uno por nombre (dos
+// renglones del mismo producto comparten sugerencia) y a lo más maxSuggestLines nombres.
+func suggestTargets(lines []purchaseLineArg) map[string][]int {
+	out := map[string][]int{}
+	for i, l := range lines {
+		if l.IngredientID != nil || l.ProductID != nil {
+			continue
+		}
+		key := strings.ToLower(strings.Join(strings.Fields(l.Name), " "))
+		if _, seen := out[key]; !seen && len(out) == maxSuggestLines {
+			continue
+		}
+		out[key] = append(out[key], i)
+	}
+	return out
 }
 
 func purchaseItems(lines []purchaseLineArg) []map[string]any {
@@ -323,27 +347,27 @@ func purchaseBody(s *mcpSession, ctx context.Context, in purchaseCreateArgs) (ma
 	if err != nil {
 		return nil, toolErr("amount es un importe en pesos, como \"845.50\".")
 	}
-	status := "pendiente"
-	paid := decimal.Zero
+	paid := make([]decimal.Decimal, 0, len(in.Payments))
 	payments := make([]map[string]any, 0, len(in.Payments))
 	for _, p := range in.Payments {
 		a, err := decimal.NewFromString(p.Amount)
 		if err != nil {
 			return nil, toolErr("El importe de cada pago es texto decimal, como \"845.50\".")
 		}
-		paid = paid.Add(a)
+		paid = append(paid, a)
 		payments = append(payments, p.body())
 	}
-	if len(payments) > 0 && paid.GreaterThanOrEqual(total) {
-		status = "pagada"
-	}
+	status := domain.ExpenseStatusFromPayments(total, paid)
 	body := map[string]any{"expenseDate": in.DocumentDate, "categoryId": in.CategoryID, "supplierId": in.SupplierID,
 		"amount": in.Amount, "description": in.Description, "status": status, "payments": payments,
 		"docFolio": in.DocFolio, "items": purchaseItems(in.Lines)}
 	if !in.Pending {
 		day := in.ReceivedOn
 		if day == "" {
-			day = s.today(ctx, "purchase_create")
+			var err error
+			if day, err = s.today(ctx, "purchase_create"); err != nil {
+				return nil, err
+			}
 		}
 		body["receivedAt"] = day
 	}
@@ -400,15 +424,25 @@ func registerPurchases() {
 			}
 			var presentations json.RawMessage
 			presOK := false
+			candidates := map[int]any{}
+			for _, idx := range suggestTargets(in.Lines) {
+				q := url.Values{"rawName": {in.Lines[idx[0]].Name}}
+				if in.SupplierID != nil {
+					q.Set("supplierId", strconv.FormatInt(*in.SupplierID, 10))
+				}
+				found := s.soft(ctx, tool, pArticleSuggest, nil, q)
+				for _, i := range idx {
+					candidates[i] = found
+				}
+			}
 			lines := make([]map[string]any, 0, len(in.Lines))
 			for i, l := range in.Lines {
 				row := map[string]any{"line": i + 1, "name": l.Name, "complete": purchaseLineComplete(l)}
-				if l.IngredientID == nil && l.ProductID == nil {
-					q := url.Values{"rawName": {l.Name}}
-					if in.SupplierID != nil {
-						q.Set("supplierId", strconv.FormatInt(*in.SupplierID, 10))
-					}
-					row["candidates"] = s.soft(ctx, tool, pArticleSuggest, nil, q)
+				if c, ok := candidates[i]; ok {
+					row["candidates"] = c
+				} else if l.IngredientID == nil && l.ProductID == nil {
+					row["candidates"] = map[string]string{"note": fmt.Sprintf("Sin candidatos en esta llamada (se piden para %d nombres "+
+						"a la vez): resuelve los primeros y vuelve a pedir la vista previa.", maxSuggestLines)}
 				}
 				if l.IngredientID != nil && l.PresentationID == nil && l.UnitID == nil {
 					if !presOK {
@@ -531,6 +565,7 @@ func registerCounts() {
 			if len(in.Lines) == 0 || len(in.Lines) > maxCountBatch {
 				return "", "", nil, nil, nil, toolErr("Manda de 1 a %d renglones por llamada; un conteo grande va en varias.", maxCountBatch)
 			}
+			seen := map[string]bool{}
 			for i, l := range in.Lines {
 				if err := oneOf(l.IngredientID, l.ProductID, "ingredient_id o product_id"); err != nil {
 					return "", "", nil, nil, nil, toolErr("Renglón %d: %s", i+1, err.Error())
@@ -538,6 +573,16 @@ func registerCounts() {
 				if strings.TrimSpace(l.CountedQty) == "" {
 					return "", "", nil, nil, nil, toolErr("Renglón %d: falta counted_qty, lo que se contó.", i+1)
 				}
+				key := fmt.Sprintf("i%d", derefInt64(l.IngredientID))
+				if l.ProductID != nil {
+					key = fmt.Sprintf("p%d", *l.ProductID)
+				}
+				// Dos cifras del mismo artículo en un lote: una pisa a la otra y la primera solo sirvió para
+				// tantear el aviso de cifra rara (auditoría de la 073).
+				if seen[key] {
+					return "", "", nil, nil, nil, toolErr("Renglón %d: ese artículo ya viene en este lote. Manda una sola cifra por artículo.", i+1)
+				}
+				seen[key] = true
 			}
 			return http.MethodPut, pCountLine, nil, nil, in.Lines, nil
 		},
@@ -665,6 +710,13 @@ func closePreviewForAgent(body json.RawMessage) any {
 		}
 	}
 	return v
+}
+
+func derefInt64(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 // ---- Pedidos ----
@@ -854,7 +906,7 @@ func registerCash() {
 				terminals = append(terminals, fmt.Sprintf("%s (id %d)", t.Name, t.ID))
 			}
 			toDeclare := map[string]any{"drawer": req.DrawerNeedsCount, "methods": methods, "terminals": terminals,
-				"tips_decision_required": v.TipsPending != nil && v.TipsPending.Total.GreaterThanOrEqual(decimal.NewFromInt(1)),
+				"tips_decision_required": v.TipsPending != nil && domain.TipsDecisionRequired(v.TipsPending.Total),
 				"attendance":             s.soft(ctx, "cash_session_close", pCashAttendance, nil, reg(in.RegisterID))}
 			missing := domain.MissingCloseDeclarations(req,
 				domain.DeclarationsFrom(len(in.Counts) > 0 || in.CountedCash != "", in.Declared, in.TerminalCounts))

@@ -124,3 +124,21 @@ func CancelSummary(payments []CancelPayment) CancelSummaryView {
 	}
 	return out
 }
+
+// ExpenseStatusFromPayments es el estado con que un agente captura un gasto: pagado si los pagos,
+// redondeados como los guarda el servidor, cubren el total redondeado; si no, pendiente. La pantalla
+// lo decide en su hoja; el agente no tiene hoja, y comparar sin redondear dejaba pendiente un gasto
+// que el servidor guarda cubierto.
+func ExpenseStatusFromPayments(total decimal.Decimal, payments []decimal.Decimal) string {
+	if len(payments) == 0 {
+		return ExpensePendiente
+	}
+	paid := decimal.Zero
+	for _, p := range payments {
+		paid = paid.Add(Round2(p))
+	}
+	if paid.GreaterThanOrEqual(Round2(total)) {
+		return ExpensePagada
+	}
+	return ExpensePendiente
+}
