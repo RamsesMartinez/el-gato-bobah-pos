@@ -104,7 +104,31 @@ tarea de test va **antes** de su implementación y se ve en rojo por la razón c
 - [X] T024 [P] `TestMCPToolsListFollowsScopeAndPermission` en `server/internal/integration/mcp_test.go` ampliado: un token con `write:inventory` ve las herramientas de conteo y uno con `write:cash` las de abrir y cerrar (consecuencia de D1, explícita)
 - [X] T025 [P] Contrato `specs/072-servidor-mcp/contracts/mcp-tools.md` intacto; `docs/mecanica/personal-y-permisos.md`: qué agrega la 073 (alcances nuevos, arqueo ciego por MCP, lote de conteo, vista previa revertida de compras)
 - [X] T026 `cd server && go build ./... && go test ./...`, `make test-integration`, `cd web && bun run lint && bun run vitest run && bun run build`
-- [ ] T027 Prueba con un cliente MCP real contra la API local (quickstart.md); lo observado se escribe aquí, sin cifras del negocio; se cierra lo que la prueba dejó abierto
+- [X] T027 Prueba con un cliente MCP real contra la API local (quickstart.md); lo observado se escribe aquí, sin cifras del negocio; se cierra lo que la prueba dejó abierto
+
+  **Observado el 2026-11-10** (cliente del SDK oficial de MCP por HTTP contra `make start` del
+  worktree, base restaurada del respaldo de esa madrugada, arqueo ciego encendido):
+  - Un token con los seis alcances de escritura ve 45 herramientas (las 49 menos las 4 de catálogo).
+  - Compra: con solo el nombre del ticket, la vista previa propuso el insumo correcto como candidato
+    y avisó que faltaba insumo y unidad; con ids, dijo cuánto entra en gramos, el costo por gramo de
+    la compra y el costo vigente antes y después. Aplicar sin ids se rechazó nombrando el renglón;
+    aplicar dos veces con la misma clave dejó una compra, recibida y pagada.
+  - Conteo: abrir, capturar dos renglones en lote, vista previa del cierre con sistema/contado/ajuste
+    y cerrar. **Defecto encontrado aquí y corregido con su test**: el antes y el después de cada
+    escritura de conteo traían la lista completa de artículos (cientos, del orden de 100 KB por
+    llamada); ahora va un resumen (`TestCountSummaryIsSmall`) y lo no contado de la vista previa y del
+    cierre va como número (`TestClosePreviewKeepsTheAdjustmentsAndCountsTheRest`).
+  - Caja: la lectura del turno y la vista previa del cierre no trajeron ninguna cifra esperada; abrir
+    sin la entrada de quien abre y cerrar sin su salida se rechazaron con la causa de la pantalla y la
+    corrección en palabras; con la entrada y la salida marcadas con PIN por la ruta de la tableta, abrió
+    y cerró; repetir el cierre con la misma clave devolvió lo guardado; la diferencia llegó después de
+    cerrar.
+  - Cancelar: un pedido cobrado y no entregado se canceló con `refund: true` y la devolución quedó una
+    vez. Un pedido entregado y cobrado se rechaza como en la pantalla (es una devolución); **ajuste**:
+    la vista previa ahora lo avisa antes de aplicar, porque el rechazo no trae un código del que
+    colgar la corrección.
+  - Lo que la prueba dejó: los pedidos de prueba quedaron cerrados (entregados y cobrados, o
+    cancelados) y la caja cerrada; todo en la base local.
 - [ ] T028 `/revision-de-codigo` y corregir cada hallazgo con su test
 
 ## Dependencies

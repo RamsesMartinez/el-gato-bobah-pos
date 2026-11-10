@@ -527,6 +527,22 @@ func TestMCPOrderCancel(t *testing.T) {
 		}
 	})
 
+	t.Run("entregado y cobrado: la vista previa avisa que no se cancela", func(t *testing.T) {
+		id := crearPedidoSimple(t, octx, orders, prod, w.admin)
+		charge(t, octx, orders, id, int16(f.cash), "70", w.admin)
+		if err := orders.DeliverAll(octx, id); err != nil {
+			t.Fatal(err)
+		}
+		res := callTool(t, w.router, tok, "order_cancel", map[string]any{"order_id": id, "reason": "x"})
+		if res.isError || !strings.Contains(res.text, "devolución") || strings.Contains(res.text, "Hace falta refund") {
+			t.Fatalf("vista previa de un entregado cobrado: %s", res.text)
+		}
+		if res := callTool(t, w.router, tok, "order_cancel", applyArgs(map[string]any{"order_id": id, "reason": "x", "refund": true},
+			"cancelar-entregado-1")); !res.isError || status(id) == "cancelada" {
+			t.Fatalf("se canceló un entregado cobrado: %s", res.text)
+		}
+	})
+
 	t.Run("cobrado con tarjeta pide el folio", func(t *testing.T) {
 		id := crearPedidoSimple(t, octx, orders, prod, w.admin)
 		charge(t, octx, orders, id, int16(f.card), "70", w.admin)

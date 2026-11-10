@@ -154,3 +154,27 @@ func TestNewToolsCannotReachRoutesThatStayOut(t *testing.T) {
 		t.Fatalf("%d despachos llegaron a un handler", hits)
 	}
 }
+
+// El antes y el después de una escritura de conteo van resumidos: el conteo abierto trae todos los
+// artículos que se pueden contar y, completo, cada captura le mandaba al agente ~100 KB (lo encontró
+// la prueba con un cliente MCP real contra un respaldo).
+func TestCountSummaryIsSmall(t *testing.T) {
+	got, _ := json.Marshal(countSummary([]byte(`{"id":14,"items":[{"ingredientId":1,"countedQty":"1500"},{"ingredientId":2,"countedQty":null}],
+		"products":[{"productId":3,"countedQty":2}]}`)))
+	if string(got) != `{"open_count":{"articles":3,"counted":2,"id":14}}` {
+		t.Fatalf("resumen: %s", got)
+	}
+	if got, _ := json.Marshal(countSummary([]byte(`null`))); string(got) != `{"open_count":null}` {
+		t.Fatalf("sin conteo: %s", got)
+	}
+}
+
+func TestClosePreviewKeepsTheAdjustmentsAndCountsTheRest(t *testing.T) {
+	got, _ := json.Marshal(closePreviewForAgent([]byte(`{"adjusted":[{"ingredientId":1,"system":"10","counted":"6","delta":"-4"}],
+		"notCounted":[{"ingredientId":2},{"ingredientId":3}],"notCountedProducts":[],"adjustedProducts":[],"skippedProducts":[]}`)))
+	for _, want := range []string{`"notCounted":2`, `"notCountedProducts":0`, `"delta":"-4"`, `"system":"10"`} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("falta %s: %s", want, got)
+		}
+	}
+}

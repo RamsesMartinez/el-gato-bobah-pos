@@ -498,9 +498,16 @@ func presentationsOf(body json.RawMessage, ingredient int64) []map[string]any {
 func registerCounts() {
 	simpleRead("stock_count_current", pCountCurrent, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
 
+	// El conteo abierto trae todos los artículos que se pueden contar (cientos): en el antes y el
+	// después de una escritura va solo su resumen, o cada captura le mandaría al agente la lista
+	// entera. La lista completa es stock_count_current.
 	current := func(tool string) func(s *mcpSession, ctx context.Context, _ any) any {
 		return func(s *mcpSession, ctx context.Context, _ any) any {
-			return s.soft(ctx, tool, pCountCurrent, nil, nil)
+			b, _, err := s.fetch(ctx, tool, pCountCurrent, nil, nil)
+			if err != nil {
+				return map[string]string{"unavailable": err.Error()}
+			}
+			return countSummary(b)
 		}
 	}
 	openState := current("stock_count_open")
@@ -584,8 +591,20 @@ func registerCounts() {
 		// Las diferencias contra lo que el sistema tiene se ven aquí y solo aquí, antes de cerrar: es la
 		// misma hoja que la pantalla muestra antes del botón (y queda marcada como vista).
 		preview: func(s *mcpSession, ctx context.Context, in countIDArgs) (any, []string) {
-			return s.soft(ctx, "stock_count_close", pCountPreview, ids(in.CountID), nil),
-				[]string{"Cerrar reemplaza lo que el sistema tiene por lo contado en cada artículo de adjusted; lo no contado no se toca."}
+			notes := []string{"Cerrar reemplaza lo que el sistema tiene por lo contado en cada artículo de adjusted; lo no contado no se toca."}
+			b, _, err := s.fetch(ctx, "stock_count_close", pCountPreview, ids(in.CountID), nil)
+			if err != nil {
+				return nil, append(notes, err.Error())
+			}
+			return closePreviewForAgent(b), notes
+		},
+		run: func(s *mcpSession, ctx context.Context, in countIDArgs) (int, []byte, error) {
+			status, resp, err := s.dispatch(ctx, "stock_count_close", http.MethodPost, pCountClose, ids(in.CountID), nil, map[string]any{})
+			if err != nil || status >= 300 {
+				return status, resp, err
+			}
+			b, _ := json.Marshal(closePreviewForAgent(resp))
+			return status, b, nil
 		},
 	})
 
@@ -602,6 +621,50 @@ func registerCounts() {
 			return discardState(s, ctx, in)
 		},
 	})
+}
+
+// countSummary resume el conteo abierto: cuál es, cuántos artículos y cuántos ya tienen cifra. Sin
+// conteo abierto, lo dice.
+func countSummary(body json.RawMessage) any {
+	var c struct {
+		ID    int64 `json:"id"`
+		Items []struct {
+			CountedQty *json.RawMessage `json:"countedQty"`
+		} `json:"items"`
+		Products []struct {
+			CountedQty *json.RawMessage `json:"countedQty"`
+		} `json:"products"`
+	}
+	if t := strings.TrimSpace(string(body)); t == "" || t == "null" || json.Unmarshal(body, &c) != nil || c.ID == 0 {
+		return map[string]any{"open_count": nil}
+	}
+	counted := 0
+	for _, it := range c.Items {
+		if it.CountedQty != nil {
+			counted++
+		}
+	}
+	for _, it := range c.Products {
+		if it.CountedQty != nil {
+			counted++
+		}
+	}
+	return map[string]any{"open_count": map[string]any{"id": c.ID, "articles": len(c.Items) + len(c.Products), "counted": counted}}
+}
+
+// closePreviewForAgent deja de la vista previa del cierre lo contado completo (sistema, contado,
+// ajuste) y de lo no contado solo cuántos son: son cientos y no cambian nada.
+func closePreviewForAgent(body json.RawMessage) any {
+	var v map[string]any
+	if json.Unmarshal(body, &v) != nil {
+		return asObject(body)
+	}
+	for _, k := range []string{"notCounted", "notCountedProducts"} {
+		if xs, ok := v[k].([]any); ok {
+			v[k] = len(xs)
+		}
+	}
+	return v
 }
 
 // ---- Pedidos ----
@@ -641,6 +704,7 @@ func registerOrders() {
 				return nil, []string{err.Error()}
 			}
 			var o struct {
+				Status   string `json:"status"`
 				Payments []struct {
 					MethodName string          `json:"methodName"`
 					MethodKind string          `json:"methodKind"`
@@ -658,7 +722,13 @@ func registerOrders() {
 			}
 			sum := domain.CancelSummary(pays)
 			var notes []string
-			if sum.NeedsRefund {
+			if o.Status == "entregada" && sum.NeedsRefund {
+				// La regla es de la ruta (domain.ErrCancelDeliveredPaid y su gemela); aquí solo se avisa
+				// antes de aplicar, porque el rechazo no trae un código del que colgar la corrección.
+				notes = append(notes, "Ya se entregó y tiene cobros: no se cancela. Si se devuelve el dinero, es una "+
+					"devolución y se hace en la pantalla; si falta cobrar, se cobra o se cancela lo que falta en la pantalla.")
+			}
+			if sum.NeedsRefund && o.Status != "entregada" {
 				notes = append(notes, "El pedido tiene cobros: cancelarlo devuelve ese dinero y sale del corte. Hace falta refund: true.")
 			}
 			if sum.NeedsCardFolio {
