@@ -84,6 +84,9 @@ func TestNormalizeAPITokenInput(t *testing.T) {
 		{"orden canónico y sin duplicados", APITokenInput{Name: "x", ExpiresInDays: 30,
 			Scopes: []string{"write:catalog", "read", "write:expenses", "write:catalog"}},
 			[]APIScope{ScopeRead, ScopeWriteExpenses, ScopeWriteCatalog}, true},
+		{"los alcances de la 073 en su orden", APITokenInput{Name: "x", ExpiresInDays: 90,
+			Scopes: []string{"write:orders", "write:purchases", "write:cash"}},
+			[]APIScope{ScopeRead, ScopeWriteCash, ScopeWritePurchases, ScopeWriteOrders}, true},
 		{"nombre con espacios se recorta", APITokenInput{Name: "  Claude  ", ExpiresInDays: 180}, []APIScope{ScopeRead}, true},
 		{"nombre vacío tras recortar", APITokenInput{Name: "   ", ExpiresInDays: 90}, nil, false},
 		{"nombre de 61", APITokenInput{Name: strings.Repeat("a", 61), ExpiresInDays: 90}, nil, false},
@@ -127,6 +130,12 @@ func TestScopeAllows(t *testing.T) {
 	}
 	if ScopeAllows(gastos, ScopeWriteCatalog) {
 		t.Fatal("escribir gastos no da escribir el catálogo")
+	}
+	if ScopeAllows([]APIScope{ScopeRead, ScopeWriteExpenses}, ScopeWritePurchases) {
+		t.Fatal("capturar gastos no da capturar compras con mercancía")
+	}
+	if ScopeAllows([]APIScope{ScopeRead, ScopeWriteCash}, ScopeWriteOrders) {
+		t.Fatal("la caja no da cancelar pedidos")
 	}
 	if ScopeAllows(nil, ScopeRead) {
 		t.Fatal("sin alcances no se puede nada")
@@ -210,8 +219,32 @@ func TestMCPToolCatalog(t *testing.T) {
 			t.Errorf("%s no se encuentra por nombre", tool.Name)
 		}
 	}
-	if len(seen) != 33 || writes != 11 {
-		t.Fatalf("el contrato tiene 33 herramientas y 11 escrituras; hay %d y %d", len(seen), writes)
+	if len(seen) != 49 || writes != 20 {
+		t.Fatalf("el contrato tiene 49 herramientas y 20 escrituras; hay %d y %d", len(seen), writes)
+	}
+	// Las de la 073, con el alcance y el permiso de contracts/mcp-tools.md.
+	for name, want := range map[string]MCPTool{
+		"articles_search":         {Scope: ScopeRead, Permission: PermExpensesCapture},
+		"units_list":              {Scope: ScopeRead, Permission: PermExpensesCapture},
+		"presentations_list":      {Scope: ScopeRead, Permission: PermInventoryReceive},
+		"pending_receipts_list":   {Scope: ScopeRead, Permission: PermInventoryReceive},
+		"purchase_create":         {Scope: ScopeWritePurchases, Permission: PermExpensesCapture, Write: true},
+		"purchase_receive":        {Scope: ScopeWritePurchases, Permission: PermInventoryReceive, Write: true},
+		"stock_count_current":     {Scope: ScopeRead, Permission: PermInventoryCount},
+		"stock_count_open":        {Scope: ScopeWriteInventory, Permission: PermInventoryCount, Write: true},
+		"stock_count_capture":     {Scope: ScopeWriteInventory, Permission: PermInventoryCount, Write: true},
+		"stock_count_close":       {Scope: ScopeWriteInventory, Permission: PermInventoryCount, Write: true},
+		"stock_count_discard":     {Scope: ScopeWriteInventory, Permission: PermInventoryCount, Write: true},
+		"order_cancel":            {Scope: ScopeWriteOrders, Permission: PermOrdersCancel, Write: true},
+		"cash_denominations_list": {Scope: ScopeRead, Permission: PermCashOperate},
+		"cash_session_attendance": {Scope: ScopeRead, Permission: PermCashOperate},
+		"cash_session_open":       {Scope: ScopeWriteCash, Permission: PermCashOperate, Write: true},
+		"cash_session_close":      {Scope: ScopeWriteCash, Permission: PermCashOperate, Write: true},
+	} {
+		got, ok := MCPToolByName(name)
+		if !ok || got.Scope != want.Scope || got.Permission != want.Permission || got.Write != want.Write {
+			t.Errorf("%s: %+v, esperaba alcance %s, permiso %s, escritura %v", name, got, want.Scope, want.Permission, want.Write)
+		}
 	}
 	if _, ok := MCPToolByName("users_create"); ok {
 		t.Fatal("una herramienta fuera del catálogo se encontró")
@@ -251,6 +284,16 @@ func TestToolErrorHint(t *testing.T) {
 		"EXPENSE_BEFORE_LAST_CLOSE": "include_in_count: false",
 		"NO_OPEN_REGISTER":          "cash_registers_list",
 		"PLATFORM_PRICE_MANAGED":    "plataforma conectada",
+		"OPENING_REASON_REQUIRED":   "opening_reason",
+		"TIPS_DECISION_REQUIRED":    "tips_decision",
+		"REFUND_FOLIO_REQUIRED":     "card_folio",
+		"TERMINAL_COUNT_REQUIRED":   "terminal_counts",
+		"CLOCK_IN_REQUIRED":         "entrada",
+		"OPENER_NOT_CLOCKED_OUT":    "authorized_close_reason",
+		"NEEDS_CONFIRM":             "confirmed: true",
+		"INGREDIENT_MERGED":         "articles_search",
+		"OPEN_ORDERS":               "order_cancel",
+		"UNPAID_ORDERS":             "pantalla",
 	} {
 		if got := ToolErrorHintFor(409, code, "la caja está cerrada", ""); !strings.Contains(got, want) || !strings.Contains(got, "la caja está cerrada") {
 			t.Errorf("%s: %q no dice %q", code, got, want)

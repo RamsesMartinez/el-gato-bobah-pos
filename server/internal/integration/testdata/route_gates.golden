@@ -154,6 +154,7 @@ POST /api/v1/cash-sessions/transfer admin,gerente,cajero
 POST /api/v1/expense-categories admin,gerente
 POST /api/v1/expenses/ admin,gerente
 POST /api/v1/expenses/parse-doc admin,gerente
+POST /api/v1/expenses/purchase-preview admin,gerente
 POST /api/v1/expenses/{id}/cancel admin,gerente
 POST /api/v1/expenses/{id}/deliveries admin,gerente
 POST /api/v1/expenses/{id}/edit admin

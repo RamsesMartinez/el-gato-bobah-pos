@@ -342,3 +342,22 @@ select max(m.effective_on)::date as arrived_on
  where m.movement_type = 'compra' and m.quantity > 0 and m.unit_cost is not null and not ei.is_gift
    and ei.voided_at is null and not ei.excluded and e.status <> 'cancelada'
    and ei.applied_qty_base > 0;
+
+-- name: PurchasePreviewArticles :many
+-- Nombre, unidad base y costo vigente de los insumos de una compra en vista previa (spec 073). Se lee
+-- dos veces dentro de la misma transacción revertida: antes de aplicar la mercancía y después.
+select i.id, i.name, i.current_cost, u.code as base_unit_code
+  from ingredients i join units u on u.id = i.base_unit_id
+ where i.id = any(sqlc.arg(ids)::bigint[])
+ order by i.id;
+
+-- name: SetPreviewLockTimeout :exec
+-- La vista previa de una compra toma los candados de la compra. Esto acota lo que ELLA espera (2 s):
+-- una venta que llega después sí la espera a ella, lo que dura la transacción —corta, de 300
+-- renglones como mucho y con 30 por minuto por usuario— (spec 073, revisiones A4 y de seguridad).
+set local lock_timeout = '2s';
+
+-- name: CheckDeferredConstraintsNow :exec
+-- Corre ya los constraints diferidos (la guarda de insumos unidos, 0104): una transacción que se
+-- revierte nunca llega al commit donde correrían (spec 073, revisión A1).
+set constraints all immediate;

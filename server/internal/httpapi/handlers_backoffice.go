@@ -1030,42 +1030,66 @@ func toPaymentInputs(in []expensePaymentBody) []app.ExpensePaymentInput {
 	return out
 }
 
-func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ExpenseDate string               `json:"expenseDate"`
-		ExpenseDay  string               `json:"expenseDay"`
-		ReceivedAt  string               `json:"receivedAt"`
-		CategoryID  int64                `json:"categoryId"`
-		SupplierID  *int64               `json:"supplierId"`
-		Amount      decimal.Decimal      `json:"amount"`
-		Description string               `json:"description"`
-		Status      string               `json:"status"`
-		Items       []expenseItemBody    `json:"items"`
-		Payments    []expensePaymentBody `json:"payments"`
-		DocKind     string               `json:"docKind"`
-		DocFolio    string               `json:"docFolio"`
-		DocRaw      json.RawMessage      `json:"docRaw"`
-		// DocumentTotal: el total impreso en el ticket leído (spec 049); informativo.
-		DocumentTotal *decimal.Decimal `json:"documentTotal"`
+// expenseCreateBody es el cuerpo de capturar un gasto; la vista previa de una compra recibe el mismo.
+type expenseCreateBody struct {
+	ExpenseDate string               `json:"expenseDate"`
+	ExpenseDay  string               `json:"expenseDay"`
+	ReceivedAt  string               `json:"receivedAt"`
+	CategoryID  int64                `json:"categoryId"`
+	SupplierID  *int64               `json:"supplierId"`
+	Amount      decimal.Decimal      `json:"amount"`
+	Description string               `json:"description"`
+	Status      string               `json:"status"`
+	Items       []expenseItemBody    `json:"items"`
+	Payments    []expensePaymentBody `json:"payments"`
+	DocKind     string               `json:"docKind"`
+	DocFolio    string               `json:"docFolio"`
+	DocRaw      json.RawMessage      `json:"docRaw"`
+	// DocumentTotal: el total impreso en el ticket leído (spec 049); informativo.
+	DocumentTotal *decimal.Decimal `json:"documentTotal"`
+}
+
+func (b expenseCreateBody) input(userID int64) app.ExpenseInput {
+	return app.ExpenseInput{
+		ExpenseDate: b.ExpenseDate, ExpenseDay: b.ExpenseDay, ReceivedAt: b.ReceivedAt,
+		CategoryID: b.CategoryID, SupplierID: b.SupplierID, Amount: b.Amount,
+		Description: b.Description, Status: b.Status,
+		Items: toItemInputs(b.Items), Payments: toPaymentInputs(b.Payments),
+		DocKind: b.DocKind, DocFolio: b.DocFolio, DocRaw: b.DocRaw,
+		DocumentTotal: b.DocumentTotal, UserID: userID,
 	}
+}
+
+func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
+	var body expenseCreateBody
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	id, err := h.backoffice.CreateExpense(r.Context(), app.ExpenseInput{
-		ExpenseDate: body.ExpenseDate, ExpenseDay: body.ExpenseDay, ReceivedAt: body.ReceivedAt,
-		CategoryID: body.CategoryID, SupplierID: body.SupplierID, Amount: body.Amount,
-		Description: body.Description, Status: body.Status,
-		Items: toItemInputs(body.Items), Payments: toPaymentInputs(body.Payments),
-		DocKind: body.DocKind, DocFolio: body.DocFolio, DocRaw: body.DocRaw,
-		DocumentTotal: body.DocumentTotal, UserID: u.ID,
-	})
+	id, err := h.backoffice.CreateExpense(r.Context(), body.input(u.ID))
 	if err != nil {
 		Error(w, err)
 		return
 	}
 	JSON(w, http.StatusCreated, map[string]any{"id": id})
+}
+
+// PurchasePreview: POST /expenses/purchase-preview — lo que dejaría capturar esa compra (cuánto entra
+// y cómo cambia el costo de cada insumo), sin guardar nada (spec 073). Mismo cuerpo que capturar.
+func (h *Handlers) PurchasePreview(w http.ResponseWriter, r *http.Request) {
+	var body expenseCreateBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	out, err := h.backoffice.PreviewPurchase(r.Context(), body.input(u.ID))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, out)
 }
 
 // PayExpense agrega UN pago al gasto (el "+1 nuevo pago"). Si con él los pagos cubren el

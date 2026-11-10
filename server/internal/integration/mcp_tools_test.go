@@ -141,7 +141,9 @@ func TestMCPExpenses(t *testing.T) {
 			"payments": []map[string]any{{"method_id": f.card, "amount": "33.00"}}, "dry_run": false, "idempotency_key": "carrera-0001"}
 		done := make(chan struct{}, 4)
 		for range 4 {
-			go func() { callTool(t, w.router, tok, "expense_create", args); done <- struct{}{} }()
+			// done con defer: si callTool falla, su t.Fatalf termina la goroutine y sin defer la prueba
+			// se quedaba esperando hasta el timeout en vez de fallar con su causa.
+			go func() { defer func() { done <- struct{}{} }(); callTool(t, w.router, tok, "expense_create", args) }()
 		}
 		for range 4 {
 			<-done
@@ -314,6 +316,17 @@ func TestMCPReads(t *testing.T) {
 		list := callTool(t, w.router, other, "expenses_list", map[string]any{})
 		if strings.Contains(list.text, "Gasto de A") {
 			t.Fatal("la lista de otra empresa trae el gasto de A")
+		}
+		// La bitácora guarda el estado que dio la API (404), no un 400 genérico: quien audita tiene
+		// que distinguir un intento sobre algo ajeno de un argumento mal escrito.
+		var status string
+		if err := w.owner.Pool.QueryRow(context.Background(), `select after->>'status' from audit_events
+			where action = 'mcp.tool_called' and company_id = $1 and after->>'tool' = 'expense_get'
+			order by id desc limit 1`, w.other).Scan(&status); err != nil {
+			t.Fatal(err)
+		}
+		if status != "404" {
+			t.Fatalf("la bitácora guardó %q en vez del 404 de la API", status)
 		}
 	})
 

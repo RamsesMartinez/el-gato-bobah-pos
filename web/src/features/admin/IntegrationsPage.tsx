@@ -19,12 +19,15 @@ import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
 const WRITE_SCOPES: { v: TokenScope; label: string; hint: string }[] = [
   { v: 'write:expenses', label: 'Gastos', hint: 'Capturar, pagar y anular gastos; dar de alta proveedores' },
-  { v: 'write:cash', label: 'Caja', hint: 'Entradas y salidas de efectivo' },
-  { v: 'write:inventory', label: 'Almacén', hint: 'Mermas y ajustes de existencia' },
+  { v: 'write:cash', label: 'Caja', hint: 'Entradas y salidas de efectivo; abrir y cerrar caja' },
+  { v: 'write:inventory', label: 'Almacén', hint: 'Mermas, ajustes de existencia y conteos' },
   { v: 'write:catalog', label: 'Menú y precios', hint: 'Precio y disponibilidad, precios por plataforma' },
+  { v: 'write:purchases', label: 'Compras', hint: 'Capturar compras con su mercancía y recibir las que están por recibir' },
+  { v: 'write:orders', label: 'Pedidos', hint: 'Cancelar pedidos, también cobrados (devuelve el dinero)' },
 ];
 const LABEL: Record<TokenScope, string> = {
   read: 'Consultar', 'write:expenses': 'Gastos', 'write:cash': 'Caja', 'write:inventory': 'Almacén', 'write:catalog': 'Menú y precios',
+  'write:purchases': 'Compras', 'write:orders': 'Pedidos',
 };
 const LIFETIMES = [{ value: '30', label: '30 días' }, { value: '90', label: '90 días' }, { value: '180', label: '180 días' }];
 
