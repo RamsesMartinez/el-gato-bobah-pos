@@ -220,6 +220,10 @@ func (s *mcpSession) dispatch(ctx context.Context, tool string, method, pattern 
 	origin.Device = device
 	ictx := context.WithValue(ctx, mcpPrincipalKey{},
 		&mcpPrincipal{user: s.user, token: s.principal, tool: tool, origin: origin})
+	// El contexto de afuera trae el RouteContext de chi del POST /mcp; con él, chi trata la petición
+	// interna como un subrouter que ya se resolvió y la enruta con el método de afuera (un GET
+	// despachado respondía 405). La petición interna empieza su ruteo de cero.
+	ictx = context.WithValue(ictx, chi.RouteCtxKey, nil)
 	req, err := http.NewRequestWithContext(ictx, method, path, rd)
 	if err != nil {
 		return 0, nil, err

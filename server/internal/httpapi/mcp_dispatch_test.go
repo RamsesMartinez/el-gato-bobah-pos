@@ -53,3 +53,20 @@ func TestDispatcherRefusesMissingParams(t *testing.T) {
 		t.Fatalf("sin id: %v", err)
 	}
 }
+
+// Una lectura despachada desde dentro de POST /mcp no hereda el ruteo de afuera: con el
+// RouteContext de chi del POST, la petición interna se enrutaba como subrouter ya resuelto y un GET
+// respondía 405 sin cuerpo (lo encontraron las pruebas de las herramientas de lectura).
+func TestDispatcherStartsRoutingFromScratch(t *testing.T) {
+	mux := chi.NewRouter()
+	mux.Get("/api/v1/expenses/{id}", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	outer := chi.NewRouteContext()
+	outer.RouteMethod = http.MethodPost
+	outer.RoutePath = "/mcp"
+	ctx := context.WithValue(context.Background(), chi.RouteCtxKey, outer)
+	s := &mcpSession{mux: mux, outer: httptest.NewRequest(http.MethodPost, "/mcp", nil)}
+	status, _, err := s.dispatch(ctx, "expense_get", http.MethodGet, pExpense, map[string]int64{"id": 5}, nil, nil)
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("GET despachado desde un POST: %d %v", status, err)
+	}
+}

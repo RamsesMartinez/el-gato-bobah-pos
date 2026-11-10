@@ -55,9 +55,9 @@ tarea de test va **antes** de su implementación y se ve en rojo por la razón c
 
 - [X] T016 [P] [US2] Tests en `server/internal/httpapi/handlers_integrations_test.go`: sin `integrations.manage` → 403; contraseña equivocada → 401 y cuenta en el bloqueo; `userId` en el cuerpo se ignora; respuesta con el token una vez y `mcpUrl`; revocar de otra empresa → 404; revocar dos veces → 204
 - [X] T017 [US2] `server/internal/httpapi/handlers_integrations.go` y rutas `GET/POST /integrations/tokens`, `POST /integrations/tokens/{id}/revoke` con `RequirePermission(integrations.manage)` y `rateLimitUser`; `SecurityEvent("api_token_created")`; regenerar `server/internal/httpapi/testdata/route_gates.golden` con el porqué en el PR
-- [ ] T018 [P] [US2] Cliente en `web/src/api/integrations.ts` (tipos con arreglos opcionales)
-- [ ] T019 [US2] Tests en `web/src/features/admin/IntegrationsPage.test.tsx`: activos primero y revocados plegados; nombre por omisión «Claude de <nombre>»; «Consultar» fijo y cuatro alcances tocables; vigencia con `Picker`; contraseña obligatoria; la hoja del token no se cierra al tocar el fondo; «Copiar token» → «Copiado»; el comando sale de la URL de la API del build y del slug; revocar pide confirmación (maqueta A, plan «Maquetas»)
-- [ ] T020 [US2] `web/src/features/admin/IntegrationsPage.tsx` según la fila «Integraciones / A» de «Maquetas» del plan y sus ajustes; ruta `/integraciones` en `web/src/App.tsx` y `web/src/app/routes.ts`; ítem del riel en `web/src/app/nav.ts` con `permission: 'integrations.manage'`
+- [X] T018 [P] [US2] Cliente en `web/src/api/integrations.ts` (tipos con arreglos opcionales)
+- [X] T019 [US2] Tests en `web/src/features/admin/IntegrationsPage.test.tsx`: activos primero y revocados plegados; nombre por omisión «Claude de <nombre>»; «Consultar» fijo y cuatro alcances tocables; vigencia con `Picker`; contraseña obligatoria; la hoja del token no se cierra al tocar el fondo; «Copiar token» → «Copiado»; el comando sale de la URL de la API del build y del slug; revocar pide confirmación (maqueta A, plan «Maquetas»)
+- [X] T020 [US2] `web/src/features/admin/IntegrationsPage.tsx` según la fila «Integraciones / A» de «Maquetas» del plan y sus ajustes; ruta `/integraciones` en `web/src/App.tsx` y `web/src/app/routes.ts`; ítem del riel en `web/src/app/nav.ts` con `permission: 'integrations.manage'`
 - [ ] T021 [US2] Medir con Playwright a 1024×600 (local) que en la hoja de crear se ven los alcances y «Crear token» sin desplazar, y que la lista muestra los activos primero
 
 ---
@@ -66,8 +66,8 @@ tarea de test va **antes** de su implementación y se ve en rojo por la razón c
 
 **Goal**: `expense_create` (tarjeta y efectivo), `expense_pay`, `expense_cancel`, `supplier_create` y las lecturas que necesitan. **Independent Test**: quickstart paso 3, gastos.
 
-- [ ] T022 [P] [US1] Tests de integración en `server/internal/integration/mcp_expenses_test.go`: vista previa no guarda nada y resuelve nombres; aplicar con tarjeta y con efectivo (la salida aparece en el turno); `TestSameKeyTenTimesOneExpense`; misma clave con otros argumentos → error; `TestReadScopeCannotWrite`; sin `expenses.capture` → error con el mensaje del permiso; `TestEveryCallLeavesAnAuditEvent` con IP del cliente y `device.agent = "mcp"`; caja cerrada → error con causa y corrección
-- [ ] T023 [US1] Herramientas de gastos en `server/internal/httpapi/mcp_tools.go`: `expenses_list`, `expense_get`, `expense_categories_list`, `suppliers_list`, `payment_methods_list`, `cash_registers_list`, `expense_create`, `expense_pay`, `expense_cancel`, `supplier_create`, con vista previa por GET despachados y anotaciones `readOnlyHint`/`destructiveHint`
+- [X] T022 [P] [US1] Tests de integración en `server/internal/integration/mcp_expenses_test.go`: vista previa no guarda nada y resuelve nombres; aplicar con tarjeta y con efectivo (la salida aparece en el turno); `TestSameKeyTenTimesOneExpense`; misma clave con otros argumentos → error; `TestReadScopeCannotWrite`; sin `expenses.capture` → error con el mensaje del permiso; `TestEveryCallLeavesAnAuditEvent` con IP del cliente y `device.agent = "mcp"`; caja cerrada → error con causa y corrección
+- [X] T023 [US1] Herramientas de gastos en `server/internal/httpapi/mcp_tools.go`: `expenses_list`, `expense_get`, `expense_categories_list`, `suppliers_list`, `payment_methods_list`, `cash_registers_list`, `expense_create`, `expense_pay`, `expense_cancel`, `supplier_create`, con vista previa por GET despachados y anotaciones `readOnlyHint`/`destructiveHint`
 
 ---
 
@@ -75,8 +75,8 @@ tarea de test va **antes** de su implementación y se ve en rojo por la razón c
 
 **Goal**: `product_update`, `modifier_option_update`, `platform_price_set`, `platform_price_delete` y sus lecturas. **Independent Test**: cambiar un precio y verlo en el menú del POS.
 
-- [ ] T024 [P] [US3] Tests en `server/internal/integration/mcp_catalog_test.go`: cambiar solo el precio no toca nombre, categoría, horario ni costo; el tope por renglón de un extra no cambia; `TestRoleLosesPermissionMidway` (quitar `menu.configure` al rol entre dos llamadas); el menú se invalida igual que desde la pantalla
-- [ ] T025 [US3] Herramientas `products_list`, `modifier_options_list`, `platform_prices_list`, `product_update`, `modifier_option_update`, `platform_price_set`, `platform_price_delete` en `server/internal/httpapi/mcp_tools.go`
+- [X] T024 [P] [US3] Tests en `server/internal/integration/mcp_catalog_test.go`: cambiar solo el precio no toca nombre, categoría, horario ni costo; el tope por renglón de un extra no cambia; `TestRoleLosesPermissionMidway` (quitar `menu.configure` al rol entre dos llamadas); el menú se invalida igual que desde la pantalla
+- [X] T025 [US3] Herramientas `products_list`, `modifier_options_list`, `platform_prices_list`, `product_update`, `modifier_option_update`, `platform_price_set`, `platform_price_delete` en `server/internal/httpapi/mcp_tools.go`
 
 ---
 
@@ -84,15 +84,15 @@ tarea de test va **antes** de su implementación y se ve en rojo por la razón c
 
 **Goal**: lecturas de ventas, caja, inventario, reportes, asistencia y bitácora. **Independent Test**: token de solo lectura consulta y no escribe.
 
-- [ ] T026 [P] [US4] Tests en `server/internal/integration/mcp_reads_test.go`: `TestMCPOtherCompanySeesNothing` (token de la empresa 1 no ve un pedido ni un gasto de la 2); rango mal escrito → error de validación con el campo; `order_get` no trae nombre ni notas del cliente; páginas con tope
-- [ ] T027 [US4] Herramientas `whoami`, `sales_summary`, `sales_list`, `order_get`, `report_products_sold`, `attendance_report`, `cash_session_current`, `cash_sessions_history`, `stock_levels`, `stock_movements`, `audit_list` en `server/internal/httpapi/mcp_tools.go`
+- [X] T026 [P] [US4] Tests en `server/internal/integration/mcp_reads_test.go`: `TestMCPOtherCompanySeesNothing` (token de la empresa 1 no ve un pedido ni un gasto de la 2); rango mal escrito → error de validación con el campo; `order_get` no trae nombre ni notas del cliente; páginas con tope
+- [X] T027 [US4] Herramientas `whoami`, `sales_summary`, `sales_list`, `order_get`, `report_products_sold`, `attendance_report`, `cash_session_current`, `cash_sessions_history`, `stock_levels`, `stock_movements`, `audit_list` en `server/internal/httpapi/mcp_tools.go`
 
 ---
 
 ## Phase 7: User Story 5 — Caja e inventario (P3)
 
-- [ ] T028 [P] [US5] Tests en `server/internal/integration/mcp_cash_inventory_test.go`: salida con concepto y entrada con texto; salida sin concepto → error que remite a `cash_concepts_list`; merma sobre el tope queda pendiente; ajuste con antes y después
-- [ ] T029 [US5] Herramientas `cash_concepts_list`, `cash_movement_create`, `waste_reasons_list`, `waste_record`, `stock_adjust` en `server/internal/httpapi/mcp_tools.go`
+- [X] T028 [P] [US5] Tests en `server/internal/integration/mcp_cash_inventory_test.go`: salida con concepto y entrada con texto; salida sin concepto → error que remite a `cash_concepts_list`; merma sobre el tope queda pendiente; ajuste con antes y después
+- [X] T029 [US5] Herramientas `cash_concepts_list`, `cash_movement_create`, `waste_reasons_list`, `waste_record`, `stock_adjust` en `server/internal/httpapi/mcp_tools.go`
 
 ---
 
