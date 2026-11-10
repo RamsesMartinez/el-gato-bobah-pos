@@ -36,6 +36,14 @@ func userFrom(ctx context.Context) (AuthUser, bool) {
 func RequireAuth(jm *auth.Manager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Una petición que despachó el servidor MCP (spec 072) ya trae a su persona, autenticada
+			// por su token. Solo el despachador puede poner este valor: la llave del contexto no se
+			// exporta y una petición de afuera no fabrica contexto. Ver mcp.go.
+			if p, ok := mcpPrincipalFrom(r.Context()); ok {
+				ctx := app.WithActorUser(context.WithValue(r.Context(), userCtxKey, p.user), p.user.ID)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
 			raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			if raw == "" || raw == r.Header.Get("Authorization") {
 				// EventSource no permite headers: aceptar ?token= para SSE.

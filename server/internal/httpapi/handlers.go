@@ -19,6 +19,7 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
 const refreshCookie = "refresh_token"
@@ -145,6 +146,8 @@ type Deps struct {
 	Audit      *app.AuditService
 	// InventoryHealth es «Salud del inventario» (spec 037).
 	InventoryHealth *app.InventoryHealthService
+	// APITokens: los tokens del servidor MCP (spec 072). Sin él no se monta ni /mcp ni Integraciones.
+	APITokens *app.APITokensService
 }
 
 type Handlers struct {
@@ -211,6 +214,15 @@ type Handlers struct {
 	audit       *app.AuditService
 	health      *app.InventoryHealthService
 	alerts      *alerts.Notifier
+	// apiTokens, store, mcpIPs y mcpTokens son la puerta para agentes (spec 072). store es el del
+	// negocio: /mcp no pasa por WithTenant y lee los permisos con una conexión que suelta enseguida.
+	apiTokens *app.APITokensService
+	store     *store.Store
+	mcpIPs    *rateLimiter
+	mcpTokens *rateLimiter
+	// tokenWrites acota altas y revocaciones de tokens por usuario: son raras, y una ráfaga es un
+	// script o alguien probando contraseñas.
+	tokenWrites *rateLimiter
 }
 
 // BeginShutdown hace que /readyz responda 503 mientras la copia termina lo que trae.
@@ -232,11 +244,15 @@ func newHandlers(d Deps) *Handlers {
 	permissions := d.Permissions
 	return &Handlers{
 		permissions: permissions, roles: d.Roles,
-		attendance: d.Attendance,
-		audit:      d.Audit,
-		health:     d.InventoryHealth,
-		alerts:     d.Alerts,
-		cfg:        d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
+		attendance:  d.Attendance,
+		audit:       d.Audit,
+		health:      d.InventoryHealth,
+		alerts:      d.Alerts,
+		apiTokens:   d.APITokens,
+		mcpIPs:      newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-ip:", mcpMaxIPRequests, time.Minute),
+		mcpTokens:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-token:", mcpMaxTokenCalls, time.Minute),
+		tokenWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:token-writes:", 30, time.Hour),
+		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		purchaseDoc:       d.PurchaseDoc,
