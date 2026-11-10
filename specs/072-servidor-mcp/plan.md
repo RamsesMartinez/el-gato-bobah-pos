@@ -51,13 +51,13 @@ crea, lista y revoca tokens.
 | VI. YAGNI | Sin OAuth ni registro dinámico de clientes (un token personal basta para Claude Code). Sin sesiones MCP, sin recursos ni prompts MCP: solo herramientas. Sin reintentos ni colas. El SDK es dependencia nueva porque la stdlib no habla MCP (R1) | OK |
 | VII. Comentarios / idioma | Identificadores, nombres de herramienta, alcances y claves de bitácora en inglés; descripciones de herramienta y errores en español | OK |
 | VIII. Puertas | Ninguna puerta se cierra. «Saber de quién es un pedido»: las herramientas no crean pedidos. El token guarda persona y nombre del token, y cada evento lo dice: deja abierta la distinción por estación/agente | OK |
-| Tableta | Pantalla nueva con maqueta elegida; controles de 44 px, vigencia con `Picker`, sin `<select>` nativo, confirmación separada para revocar | A elegir maqueta |
+| Tableta | Pantalla nueva con maqueta elegida (A); controles de 44 px, vigencia con `Picker`, sin `<select>` nativo, confirmación separada para revocar | OK |
 
 ## Seguridad (principio V)
 
 | Control | Diseño | Prueba que lo demuestra |
 | --- | --- | --- |
-| Identidad | `Authorization: Bearer egbpat_<empresa>_<id>_<secreto>`; secreto de 32 bytes aleatorios en hex (64 caracteres). Se guarda `sha256(secreto)` y un prefijo visible (`egbpat_<empresa>_<id>_` + 4 caracteres). Comparación en tiempo constante | `TestParseAPIToken*` (domain), `TestAPITokenAuth*` (integración) |
+| Identidad | `Authorization: Bearer egbpat_<empresa>_<id>_<secreto>`; secreto de 32 bytes aleatorios en hex (64 caracteres). Se guarda `sha256(secreto)` y una pista de 4 caracteres; el prefijo visible se compone al leer. Comparación en tiempo constante | `TestParseAPIToken*` (domain), `TestAPITokenAuth*` (integración) |
 | Empresa | La empresa del token fija el GUC; la búsqueda del token es por id **bajo RLS**: un token que declara otra empresa no se encuentra. Ninguna herramienta recibe empresa ni sucursal | `TestAPITokenFromOtherCompanyIsUnknown`, `TestMCPOtherCompanySeesNothing` |
 | Rechazo uniforme | No existe, revocado, vencido, persona dada de baja o rol inactivo → el mismo 401, mismo cuerpo, siempre se calcula la huella | `TestAPITokenRejectionsLookAlike` |
 | Permisos | Alcance (lo checa la capa MCP antes de despachar) **y** permiso del rol (lo checa el `RequirePermission` de la ruta, leído de la base en cada llamada). `tools/list` muestra solo lo que pasa ambos | `TestReadScopeCannotWrite`, `TestRoleLosesPermissionMidway`, `TestEveryToolMatchesItsRouteGate` |
@@ -68,7 +68,7 @@ crea, lista y revoca tokens.
 | Bitácora | Un evento `mcp.tool_called` por llamada (persona, token por id y nombre, herramienta, modo, estado, argumentos, antes y después en escrituras). Los eventos que la operación ya deja llevan en `device` `{"agent":"mcp","token":…,"tool":…}`. Crear y revocar dejan `api_token.created` / `api_token.revoked` | `TestEveryCallLeavesAnAuditEvent` |
 | Secretos en logs | El token nunca se loguea (el `RequestLogger` no escribe headers; el secreto no viaja en la URL). Los argumentos siguen la regla del cuerpo (solo debug o 5xx, redactado) | `TestMCPLogsNeverContainTheToken` |
 | Gestión de tokens | `integrations.manage`, solo admin por omisión; un token siempre es de quien lo crea; vigencia obligatoria 30/90/180 días; un token **no** puede usarse para crear tokens (las rutas de integraciones no son herramientas) | golden de rutas, `TestTokensAreAlwaysOwnedByTheCreator` |
-| DNS rebinding / CSRF | El SDK rechaza Host no-localhost llegando por localhost. CORS no aplica: el token va en un header que un navegador ajeno no puede poner sin preflight, y el preflight lo niega el CORS existente | — |
+| DNS rebinding / CSRF | Ver ajuste L3 abajo: `Origin` no permitido se rechaza, token solo por header, `GET`/`DELETE` 405 | `TestMCPRejectsForeignOrigin` |
 
 ### Ajustes de la auditoría de seguridad del plan (2026-11-10)
 
@@ -99,7 +99,7 @@ Todos entran; cada uno con su prueba.
 **Integraciones** (`/integraciones`, ítem propio del riel al final, antes de «Interfaz»), visible
 con `integrations.manage`. Opción **A** elegida: `Page fill`; encabezado con título, una línea de qué
 es y botón «Crear token» (44 px) a la derecha; debajo, la lista de tokens como tarjetas (nombre,
-estado, persona, prefijo, vence, último uso, alcances como chips, «Revocar» de 44 px en la tarjeta)
+estado, persona, vence, último uso, alcances como chips, «Revocar» de 44 px en la tarjeta)
 con scroll interno. «Crear token» abre una hoja inferior: nombre + vigencia (`Picker` 30/90/180) en
 un renglón, los cinco alcances como filas tocables y «Crear token»; al guardar, la misma hoja muestra
 el token **una vez** con «Copiar token», los dos pasos para conectarlo, el comando y «Ya lo copié».

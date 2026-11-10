@@ -137,7 +137,7 @@ siguiente llamada se rechaza.
 **Acceptance Scenarios**:
 
 1. **Given** un usuario con «Administrar integraciones», **When** crea un token, **Then** lo ve
-   completo una vez, con el comando para conectarlo, y después la lista solo muestra su inicio.
+   completo una vez, con el comando para conectarlo, y después la lista solo muestra su nombre.
 2. **Given** un usuario sin ese permiso, **When** intenta abrir la pantalla o crear un token por la
    API, **Then** se le niega con el mensaje de permiso, y la opción no aparece en el menú.
 3. **Given** un token revocado o vencido, **When** el agente lo usa, **Then** la llamada se rechaza
@@ -239,7 +239,7 @@ el turno y en la lista de mermas.
 - **FR-001**: El sistema MUST permitir a un usuario con el permiso «Administrar integraciones» crear
   tokens de acceso personal **para sí mismo**, con nombre, alcances y vigencia (30, 90 o 180 días).
 - **FR-002**: El valor del token MUST mostrarse una sola vez al crearlo; el sistema solo guarda una
-  huella irreversible y un prefijo visible para reconocerlo.
+  huella irreversible. Después se reconoce por el nombre que le puso quien lo creó.
 - **FR-003**: Todo token MUST incluir el alcance de lectura; los de escritura son por área: gastos,
   caja, inventario y catálogo.
 - **FR-004**: Una llamada MUST rechazarse como no autenticada si el token no existe, está revocado,
@@ -294,7 +294,7 @@ el turno y en la lista de mermas.
 
 ### Key Entities
 
-- **Token de acceso personal**: pertenece a una persona y a su empresa; tiene nombre, prefijo visible,
+- **Token de acceso personal**: pertenece a una persona y a su empresa; tiene nombre, pista de 4 caracteres,
   huella, alcances, fecha de creación, de vencimiento, de revocación (y quién) y de último uso.
 - **Clave de idempotencia**: la usa un token para una herramienta; guarda la huella de los argumentos,
   el estado (en curso, terminada) y el resultado.
