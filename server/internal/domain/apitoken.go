@@ -260,6 +260,30 @@ func ToolErrorHint(status int, serverMsg, listTool string) string {
 	return causa
 }
 
+// toolFixByCode es cómo corrige un agente los rechazos de la operación que la pantalla resuelve con
+// una hoja propia: el agente no ve esa hoja, así que la corrección va en palabras.
+var toolFixByCode = map[string]string{
+	"EXPENSE_OUTSIDE_COUNT": "La caja no tiene un turno que tome este pago. Abre la caja, o manda " +
+		"include_in_count: false en el pago para registrarlo fuera del arqueo.",
+	"EXPENSE_BEFORE_LAST_CLOSE": "El día del pago ya está cortado. Manda include_in_count: false para " +
+		"registrarlo fuera del arqueo, o cambia paid_on.",
+	"NO_OPEN_REGISTER":       "Esa caja no tiene turno abierto. Revisa cuál está abierta con cash_registers_list.",
+	"PLATFORM_PRICE_MANAGED": "Ese precio lo pone la plataforma conectada y no se cambia desde el POS.",
+}
+
+// ToolErrorHintFor es ToolErrorHint con el código de error de la API: si la operación tiene una
+// corrección conocida, la dice en vez de la genérica.
+func ToolErrorHintFor(status int, code, serverMsg, listTool string) string {
+	if fix, ok := toolFixByCode[code]; ok && status < 500 {
+		causa := strings.TrimRight(strings.TrimSpace(serverMsg), ".")
+		if causa == "" {
+			return fix
+		}
+		return causa + ". " + fix
+	}
+	return ToolErrorHint(status, serverMsg, listTool)
+}
+
 // ---- Catálogo ----
 
 // MCPTool es una herramienta del servidor MCP: qué alcance del token pide y qué permiso del rol

@@ -255,7 +255,7 @@ func (s *mcpSession) fetch(ctx context.Context, tool, pattern string, params map
 		return nil, 0, toolErr("Error interno del servidor MCP. Avísale al administrador.")
 	}
 	if status >= 400 {
-		return nil, status, toolError{domain.ToolErrorHint(status, serverMessage(body), mcpListTool[tool])}
+		return nil, status, toolError{toolHint(status, body, mcpListTool[tool])}
 	}
 	return body, status, nil
 }
@@ -416,7 +416,7 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 	case status >= 400:
 		_ = s.h.apiTokens.AbandonIdempotent(bg, ref)
 		s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: status, Args: args})
-		return nil, toolError{domain.ToolErrorHint(status, serverMessage(resp), mcpListTool[name])}
+		return nil, toolError{toolHint(status, resp, mcpListTool[name])}
 	}
 	result := json.RawMessage(resp)
 	if len(strings.TrimSpace(string(resp))) == 0 {

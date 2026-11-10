@@ -261,11 +261,9 @@ func (b *bufferedResponse) Write(p []byte) (int, error) {
 	return b.body.Write(p)
 }
 
-// serverMessage saca el mensaje de un error de la API ({"error":{"message":…}}).
-func serverMessage(body []byte) string {
+// toolHint es el error que recibe el agente por una respuesta de la API: causa y corrección.
+func toolHint(status int, body []byte, listTool string) string {
 	var env errorEnvelope
-	if json.Unmarshal(body, &env) == nil {
-		return env.Error.Message
-	}
-	return ""
+	_ = json.Unmarshal(body, &env)
+	return domain.ToolErrorHintFor(status, env.Error.Code, env.Error.Message, listTool)
 }

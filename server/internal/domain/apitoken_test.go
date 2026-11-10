@@ -245,6 +245,17 @@ func TestToolErrorHint(t *testing.T) {
 			t.Errorf("%d: un error interno no se le muestra al agente: %q", c.status, got)
 		}
 	}
+	// Los rechazos de caja que un agente puede corregir dicen cómo, no solo qué pasó.
+	for code, want := range map[string]string{
+		"EXPENSE_OUTSIDE_COUNT":     "include_in_count: false",
+		"EXPENSE_BEFORE_LAST_CLOSE": "include_in_count: false",
+		"NO_OPEN_REGISTER":          "cash_registers_list",
+		"PLATFORM_PRICE_MANAGED":    "plataforma conectada",
+	} {
+		if got := ToolErrorHintFor(409, code, "la caja está cerrada", ""); !strings.Contains(got, want) || !strings.Contains(got, "la caja está cerrada") {
+			t.Errorf("%s: %q no dice %q", code, got, want)
+		}
+	}
 	if m := MissingScopeMessage(ScopeWriteExpenses); !strings.Contains(m, "write:expenses") || !strings.Contains(m, "Integraciones") {
 		t.Fatalf("mensaje de alcance: %q", m)
 	}

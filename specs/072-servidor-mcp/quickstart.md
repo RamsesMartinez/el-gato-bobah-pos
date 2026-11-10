@@ -27,3 +27,18 @@ Prerrequisitos: `make start` del worktree arriba (API en `:8072`, web en `:3072`
 6. Limpiar: anular los gastos de prueba y regresar el precio.
 
 Resultado esperado: todos los pasos pasan sin tocar la base a mano.
+
+## Resultado de la corrida del 2026-11-10 (local)
+
+- Cliente MCP del SDK oficial contra `http://localhost:8072/mcp`: lista 30 herramientas para un
+  token con gastos y catálogo (sin las de caja ni almacén); gasto con tarjeta, gasto en efectivo
+  (con caja cerrada: rechazo con la corrección `include_in_count: false`; con ella, aplicado) y cambio
+  de precio, cada uno con su `mcp.tool_called` y el evento del negocio con `device.agent = "mcp"` y la
+  IP del cliente. Token revocado → `initialize` responde 401.
+- Claude Code: `claude mcp add --transport http … --header 'Authorization: Bearer ${POS_MCP_TOKEN}'`
+  guarda la referencia y no el valor; con la variable, `claude mcp list` → Connected; sin ella, 401 y
+  aviso de variable faltante. Probado con `--scope local` en una carpeta de prueba (mismo archivo que
+  `--scope user`); `--scope user` no se corrió para no tocar la configuración del dueño.
+- Pantalla a 1024×600: 4 de 4 alcances, contraseña y «Crear token» a la vista sin desplazar. Con
+  teclado simulado (alto 340 px) «Crear token» sigue a la vista; la contraseña queda bajo el teclado
+  y la hoja la desplaza al enfocarla.

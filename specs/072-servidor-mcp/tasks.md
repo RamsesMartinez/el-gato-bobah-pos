@@ -58,7 +58,7 @@ tarea de test va **antes** de su implementación y se ve en rojo por la razón c
 - [X] T018 [P] [US2] Cliente en `web/src/api/integrations.ts` (tipos con arreglos opcionales)
 - [X] T019 [US2] Tests en `web/src/features/admin/IntegrationsPage.test.tsx`: activos primero y revocados plegados; nombre por omisión «Claude de <nombre>»; «Consultar» fijo y cuatro alcances tocables; vigencia con `Picker`; contraseña obligatoria; la hoja del token no se cierra al tocar el fondo; «Copiar token» → «Copiado»; el comando sale de la URL de la API del build y del slug; revocar pide confirmación (maqueta A, plan «Maquetas»)
 - [X] T020 [US2] `web/src/features/admin/IntegrationsPage.tsx` según la fila «Integraciones / A» de «Maquetas» del plan y sus ajustes; ruta `/integraciones` en `web/src/App.tsx` y `web/src/app/routes.ts`; ítem del riel en `web/src/app/nav.ts` con `permission: 'integrations.manage'`
-- [ ] T021 [US2] Medir con Playwright a 1024×600 (local) que en la hoja de crear se ven los alcances y «Crear token» sin desplazar, y que la lista muestra los activos primero
+- [X] T021 [US2] Medir con Playwright a 1024×600 (local) que en la hoja de crear se ven los alcances y «Crear token» sin desplazar, y que la lista muestra los activos primero
 
 ---
 
@@ -99,7 +99,7 @@ tarea de test va **antes** de su implementación y se ve en rojo por la razón c
 ## Phase 8: Polish
 
 - [ ] T030 [P] `docs/mecanica/personal-y-permisos.md`: la puerta para agentes (cómo funciona el token, la lista blanca del despachador, qué no revoca un token, cómo agregar una herramienta) y su renglón en la tabla de `AGENTS.md` si cambia
-- [ ] T031 Prueba real con un cliente MCP (Claude Code con `claude mcp add`) contra `make start` del worktree siguiendo quickstart.md; anotar en quickstart si la variable `${POS_MCP_TOKEN}` se expande en el alcance `user`
+- [X] T031 Prueba real con un cliente MCP (Claude Code con `claude mcp add`) contra `make start` del worktree siguiendo quickstart.md; anotar en quickstart si la variable `${POS_MCP_TOKEN}` se expande en el alcance `user`
 - [ ] T032 `cd server && go build ./... && go test ./...`, `make test-integration`, `cd web && bun run lint && bun run vitest run && bun run build`
 - [ ] T033 `/revision-de-codigo` (hook `after_implement`) y corregir lo que encuentre con su test
 
