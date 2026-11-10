@@ -74,6 +74,9 @@ export const ACTION_LABELS: Record<string, string> = {
   'role.reactivated': 'Reactivó un rol',
   'role.deleted': 'Borró un rol',
   'user.role_changed': 'Cambió el rol de una persona',
+  'api_token.created': 'Creó un token para un asistente',
+  'api_token.revoked': 'Revocó un token de asistente',
+  'mcp.tool_called': 'Un asistente usó el POS',
 };
 
 // Qué resta un producto (spec 037), con las palabras de la hoja de receta.

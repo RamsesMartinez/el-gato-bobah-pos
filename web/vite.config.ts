@@ -45,6 +45,9 @@ export default defineConfig({
     host: true, // expone en LAN para probar en la tablet
     proxy: {
       '/api': { target: `http://localhost:${BACKEND_PORT}`, changeOrigin: true },
+      // El servidor MCP (spec 072) vive fuera de /api/v1; en desarrollo el comando de la pantalla
+      // apunta a esta misma página.
+      '/mcp': { target: `http://localhost:${BACKEND_PORT}`, changeOrigin: true },
     },
   },
   test: {
