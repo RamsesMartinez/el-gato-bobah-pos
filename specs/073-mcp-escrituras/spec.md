@@ -233,7 +233,8 @@ comparar el corte y el almacén con los mismos casos en la pantalla.
   captura de un gasto con mercancía en la pantalla: almacén, costo vigente, salida de caja si se paga
   en efectivo, aprendizaje por proveedor y bitácora.
 - **FR-004**: La vista previa de una compra MUST proponer candidatos de insumo para cada renglón que
-  no trae uno, y para cada renglón con insumo y empaque o unidad decir la cantidad que entra en la
+  no trae uno (una vez por nombre y hasta 20 nombres por llamada; los demás lo dicen y se piden en la
+  siguiente vista previa), y para cada renglón con insumo y empaque o unidad decir la cantidad que entra en la
   unidad del insumo, el costo por unidad de esta compra, el costo vigente actual y el que quedaría,
   con la regla de costeo del negocio.
 - **FR-005**: Aplicar una compra MUST rechazar todo renglón sin insumo (o producto de reventa) y sin
