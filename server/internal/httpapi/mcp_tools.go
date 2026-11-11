@@ -356,6 +356,10 @@ type writeSpec[In writeArgs] struct {
 	// preview agrega a la vista previa lo que conviene saber antes de aplicar (nombres resueltos,
 	// avisos). Opcional.
 	preview func(s *mcpSession, ctx context.Context, in In) (any, []string)
+	// strictPreview reemplaza a preview cuando la vista previa ES la operación (la edición de un gasto
+	// corre entera y se revierte): lo que la ruta rechaza ahí se le dice al agente como error, no como
+	// nota de una vista previa «exitosa». Opcional.
+	strictPreview func(s *mcpSession, ctx context.Context, in In) (any, []string, error)
 	// run reemplaza al despacho único cuando la escritura son varias peticiones (el lote de conteo).
 	// Despacha en orden y se detiene en la primera que falla; su respuesta y su estado se tratan como
 	// los de un despacho. Opcional.
@@ -416,6 +420,22 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 	if c.DryRun == nil || *c.DryRun {
 		out := map[string]any{"preview": true, "before": before, "would_send": body,
 			"how_to_apply": "Repite la llamada con dry_run: false y una idempotency_key nueva."}
+		if spec.strictPreview != nil {
+			extra, notes, perr := spec.strictPreview(s, ctx, in)
+			if perr != nil {
+				status := http.StatusBadRequest
+				var te toolError
+				if errors.As(perr, &te) && te.status != 0 {
+					status = te.status
+				}
+				s.record(ctx, app.MCPCall{Tool: name, Mode: "preview", Status: status, Args: args})
+				return nil, perr
+			}
+			out["resolved"] = extra
+			if len(notes) > 0 {
+				out["notes"] = notes
+			}
+		}
 		if spec.preview != nil {
 			extra, notes := spec.preview(s, ctx, in)
 			if extra != nil {

@@ -435,6 +435,7 @@ func registerPurchases() {
 					candidates[i] = found
 				}
 			}
+			base := &baseUnits{}
 			lines := make([]map[string]any, 0, len(in.Lines))
 			for i, l := range in.Lines {
 				row := map[string]any{"line": i + 1, "name": l.Name, "complete": purchaseLineComplete(l)}
@@ -444,7 +445,9 @@ func registerPurchases() {
 					row["candidates"] = map[string]string{"note": fmt.Sprintf("Sin candidatos en esta llamada (se piden para %d nombres "+
 						"a la vez): resuelve los primeros y vuelve a pedir la vista previa.", maxSuggestLines)}
 				}
-				if l.IngredientID != nil && l.PresentationID == nil && l.UnitID == nil {
+				// Sin empaque (spec 074): los del insumo con su marca y cómo crear el que falta. Si el
+				// empaque no existe, el único camino del agente era la unidad base, sin marca ni empaque.
+				if l.IngredientID != nil && l.PresentationID == nil {
 					if !presOK {
 						presentations, _, err = s.fetch(ctx, tool, pPresentations, nil, nil)
 						presOK = err == nil
@@ -454,6 +457,11 @@ func registerPurchases() {
 					}
 					if presOK {
 						row["presentations"] = presentationsOf(presentations, *l.IngredientID)
+					}
+					row["create_presentation"] = presentationSuggestion(s, ctx, base, *l.IngredientID, l.Name)
+					if l.UnitID != nil {
+						notes = append(notes, fmt.Sprintf("El renglón %d entra en la unidad que mandaste, sin marca ni empaque. Si llegó "+
+							"en un empaque (bolsa, caja…), búscalo en presentations o créalo con presentation_create.", i+1))
 					}
 				}
 				lines = append(lines, row)
@@ -520,11 +528,53 @@ func presentationsOf(body json.RawMessage, ingredient int64) []map[string]any {
 			if active, ok := p["active"].(bool); ok && !active {
 				continue
 			}
-			out = append(out, map[string]any{"id": p["id"], "name": p["name"], "qtyInBase": p["qtyInBase"],
-				"baseUnitCode": p["baseUnitCode"]})
+			out = append(out, map[string]any{"id": p["id"], "name": p["name"], "brand": p["brand"],
+				"qtyInBase": p["qtyInBase"], "baseUnitCode": p["baseUnitCode"]})
 		}
 	}
 	return out
+}
+
+// baseUnits resuelve la unidad base de cada insumo con dos lecturas por vista previa, no dos por renglón.
+type baseUnits struct {
+	read     bool
+	articles json.RawMessage
+	units    json.RawMessage
+}
+
+// presentationSuggestion son los argumentos de presentation_create que el servidor conoce (el insumo y
+// su unidad); marca y contenido los confirma la persona: adivinarlos del texto del ticket podría
+// equivocar el contenido, que es lo que mueve el almacén.
+func presentationSuggestion(s *mcpSession, ctx context.Context, b *baseUnits, ingredient int64, ticket string) map[string]any {
+	const tool = "purchase_create"
+	if !b.read {
+		b.read = true
+		b.articles, _, _ = s.fetch(ctx, tool, pArticles, nil, nil)
+		b.units, _, _ = s.fetch(ctx, tool, pUnits, nil, nil)
+	}
+	args := map[string]any{"ingredient_id": ingredient, "name": strings.TrimSpace(ticket)}
+	ask := []string{"brand", "qty"}
+	var env struct {
+		Items []struct {
+			ItemType string `json:"itemType"`
+			ID       int64  `json:"id"`
+			UnitCode string `json:"unitCode"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(b.articles, &env)
+	for _, a := range env.Items {
+		if a.ItemType == "ingrediente" && a.ID == ingredient {
+			if id, ok := baseUnitID(b.units, a.UnitCode); ok {
+				args["unit_id"] = id
+			}
+		}
+	}
+	if _, ok := args["unit_id"]; !ok {
+		ask = append(ask, "unit_id")
+	}
+	return map[string]any{"tool": "presentation_create", "args": args, "ask": ask,
+		"note": "Si llegó en un empaque que no está en presentations, créalo con lo que confirme la persona (marca y " +
+			"cuánto trae; name es un punto de partida) y repite la vista previa con su presentation_id."}
 }
 
 // ---- Conteos ----

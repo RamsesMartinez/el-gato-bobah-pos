@@ -39,6 +39,18 @@ func TestDispatcherRefusesRoutesOutsideCatalog(t *testing.T) {
 			t.Errorf("%s: llegó al handler", p)
 		}
 	}
+	// La edición de un gasto (spec 074) despacha su ruta y nada de lo que cuelga junto a ella: entregas
+	// parciales y renglones excluidos son otras operaciones con otros permisos.
+	edit := chi.NewRouter()
+	for _, p := range []string{"/api/v1/expenses/{id}/deliveries", "/api/v1/expenses/{id}/items"} {
+		edit.Post(p, func(w http.ResponseWriter, _ *http.Request) { hits[p]++; w.WriteHeader(http.StatusNoContent) })
+	}
+	se := &mcpSession{mux: edit, outer: s.outer, principal: s.principal}
+	for _, p := range []string{"/api/v1/expenses/{id}/deliveries", "/api/v1/expenses/{id}/items"} {
+		if _, _, err := se.dispatch(context.Background(), "expense_edit", http.MethodPost, p, map[string]int64{"id": 1}, nil, map[string]any{}); !errors.Is(err, errDispatchDenied) || hits[p] != 0 {
+			t.Errorf("expense_edit despachó %s (%v)", p, err)
+		}
+	}
 	// Una herramienta tampoco puede usar la ruta de otra.
 	if _, _, err := s.dispatch(context.Background(), "expenses_list", http.MethodPost, "/api/v1/expenses/", nil, nil, map[string]any{}); !errors.Is(err, errDispatchDenied) {
 		t.Errorf("una lectura despachó la escritura de otra herramienta: %v", err)
