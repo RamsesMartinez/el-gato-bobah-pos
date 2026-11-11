@@ -265,5 +265,9 @@ func (b *bufferedResponse) Write(p []byte) (int, error) {
 func toolHint(status int, body []byte, listTool string) string {
 	var env errorEnvelope
 	_ = json.Unmarshal(body, &env)
-	return domain.ToolErrorHintFor(status, env.Error.Code, env.Error.Message, listTool)
+	var ref domain.ExistingRef
+	if d := env.Error.Details; d != nil {
+		ref = domain.ExistingRef{ID: d.ExistingID, Archived: d.Archived}
+	}
+	return domain.ToolErrorHintWith(status, env.Error.Code, env.Error.Message, listTool, ref)
 }

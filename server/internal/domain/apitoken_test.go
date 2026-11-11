@@ -219,8 +219,8 @@ func TestMCPToolCatalog(t *testing.T) {
 			t.Errorf("%s no se encuentra por nombre", tool.Name)
 		}
 	}
-	if len(seen) != 52 || writes != 23 {
-		t.Fatalf("el contrato tiene 52 herramientas y 23 escrituras (074); hay %d y %d", len(seen), writes)
+	if len(seen) != 54 || writes != 25 {
+		t.Fatalf("el contrato tiene 54 herramientas y 25 escrituras (076); hay %d y %d", len(seen), writes)
 	}
 	// Las de la 073, con el alcance y el permiso de contracts/mcp-tools.md.
 	for name, want := range map[string]MCPTool{
@@ -326,6 +326,61 @@ func TestMCPToolCatalog074(t *testing.T) {
 		}
 		if tool.Scope != c.scope || tool.Permission != c.perm || !tool.Write {
 			t.Errorf("%s = %+v; quiere alcance %s, permiso %s, escritura", c.name, tool, c.scope, c.perm)
+		}
+	}
+}
+
+// Spec 076: el nombre repetido. La pantalla ofrece «Abrir ese» o «Reactivar» con el id del insumo que
+// ya tiene el nombre; el agente solo ve la pista, así que el id y si está archivado van en ella.
+func TestToolErrorHintNamesTheExistingArticle(t *testing.T) {
+	cases := []struct {
+		name string
+		code string
+		ref  ExistingRef
+		want []string
+		not  []string
+	}{
+		{"nombre de un activo", "NAME_TAKEN", ExistingRef{ID: 749}, []string{"ya existe", "id 749", "Usa ese insumo"}, []string{"archivado"}},
+		{"nombre de un archivado", "NAME_TAKEN", ExistingRef{ID: 495, Archived: true}, []string{"id 495", "archivado", "pantalla"}, nil},
+		{"otro nombre de otro insumo", "ALT_NAME_TAKEN", ExistingRef{ID: 12}, []string{"id 12", "Quita ese nombre"}, nil},
+		{"ficha cambiada", "STALE", ExistingRef{}, []string{"vuelve a intentar"}, []string{"id 0"}},
+		{"sin id no inventa uno", "NAME_TAKEN", ExistingRef{}, []string{"ya existe"}, []string{"id 0"}},
+	}
+	for _, c := range cases {
+		got := ToolErrorHintWith(409, c.code, "ya existe", "", c.ref)
+		for _, w := range c.want {
+			if !strings.Contains(got, w) {
+				t.Errorf("%s: %q no dice %q", c.name, got, w)
+			}
+		}
+		for _, n := range c.not {
+			if strings.Contains(got, n) {
+				t.Errorf("%s: %q no debería decir %q", c.name, got, n)
+			}
+		}
+	}
+}
+
+// Las escrituras de insumos van en el alcance de almacén con el permiso de configurarlo (spec 076, D1),
+// y la lista de empaques sigue siendo lectura con el permiso de recibir.
+func TestMCPToolCatalog076(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		scope APIScope
+		perm  Permission
+		write bool
+	}{
+		{"ingredient_create", ScopeWriteInventory, PermInventoryConfigure, true},
+		{"ingredient_update", ScopeWriteInventory, PermInventoryConfigure, true},
+		{"presentations_list", ScopeRead, PermInventoryReceive, false},
+	} {
+		tool, ok := MCPToolByName(c.name)
+		if !ok {
+			t.Errorf("%s no está en el catálogo", c.name)
+			continue
+		}
+		if tool.Scope != c.scope || tool.Permission != c.perm || tool.Write != c.write {
+			t.Errorf("%s = %s/%s/%v, quería %s/%s/%v", c.name, tool.Scope, tool.Permission, tool.Write, c.scope, c.perm, c.write)
 		}
 	}
 }
