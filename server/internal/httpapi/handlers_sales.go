@@ -91,7 +91,7 @@ func (h *Handlers) filtroDeVentas(r *http.Request) (domain.SalesFilter, error) {
 		Dir:             valorODefault(q.Get("dir"), "desc"),
 	}
 
-	limit, offset, err := paginaDeQuery(q)
+	limit, offset, err := paginaDeQuery(q, 20)
 	if err != nil {
 		return domain.SalesFilter{}, err
 	}

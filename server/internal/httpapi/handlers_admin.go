@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"math"
 	"net/http"
 	"strconv"
 
@@ -19,13 +20,20 @@ func (h *Handlers) AdminListProducts(w http.ResponseWriter, r *http.Request) {
 	if status != "act" && status != "inact" {
 		status = ""
 	}
-	limit := clampInt(atoiOr(q.Get("limit"), 25), 0, 100) // 0 = sin límite (POS modo edición)
-	offset := max(atoiOr(q.Get("offset"), 0), 0)
+	limit, offset, err := limiteYOffsetDeQuery(q, 25) // limit=0 = sin límite (POS modo edición)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	groups := q.Get("groups") // ""=todos | "none"=sin grupos | "some"=con grupos
 	if groups != "none" && groups != "some" {
 		groups = ""
 	}
-	categoryID := max(int64(atoiOr(q.Get("categoryId"), 0)), 0) // 0 = todas las categorías
+	categoryID, _, err := enteroDeQuery(q, "categoryId", 0, math.MaxInt64) // ausente o 0 = todas
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	composition, err := compositionFilter(q.Get("composition"))
 	if err != nil {
 		Error(w, err)
@@ -42,7 +50,7 @@ func (h *Handlers) AdminListProducts(w http.ResponseWriter, r *http.Request) {
 	if dir != "desc" {
 		dir = "asc"
 	}
-	page, err := h.admin.ListProducts(r.Context(), status, q.Get("search"), categoryID, groups, composition, sort, dir, int32(limit), int32(offset))
+	page, err := h.admin.ListProducts(r.Context(), status, q.Get("search"), categoryID, groups, composition, sort, dir, limit, offset)
 	if err != nil {
 		Error(w, err)
 		return
@@ -109,23 +117,6 @@ func (h *Handlers) AdminDuplicateProduct(w http.ResponseWriter, r *http.Request)
 	JSON(w, http.StatusCreated, map[string]any{"id": newID})
 }
 
-func atoiOr(s string, def int) int {
-	if n, err := strconv.Atoi(s); err == nil {
-		return n
-	}
-	return def
-}
-
-func clampInt(n, lo, hi int) int {
-	if n < lo {
-		return lo
-	}
-	if n > hi {
-		return hi
-	}
-	return n
-}
-
 // GET /admin/modifier-options?status=&search=&limit=&offset=  (paginado en el backend)
 func (h *Handlers) AdminListModifierOptions(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -133,14 +124,17 @@ func (h *Handlers) AdminListModifierOptions(w http.ResponseWriter, r *http.Reque
 	if status != "act" && status != "inact" {
 		status = ""
 	}
-	limit := clampInt(atoiOr(q.Get("limit"), 25), 0, 100) // 0 = sin límite (el POS pide todas)
-	offset := max(atoiOr(q.Get("offset"), 0), 0)
+	limit, offset, err := limiteYOffsetDeQuery(q, 25) // limit=0 = sin límite (el POS pide todas)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	composition, err := compositionFilter(q.Get("composition"))
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	page, err := h.admin.ListModifierOptions(r.Context(), status, q.Get("search"), composition, int32(limit), int32(offset))
+	page, err := h.admin.ListModifierOptions(r.Context(), status, q.Get("search"), composition, limit, offset)
 	if err != nil {
 		Error(w, err)
 		return

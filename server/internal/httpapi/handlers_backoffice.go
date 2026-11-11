@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"slices"
@@ -458,7 +459,7 @@ func (h *Handlers) CashSessionSales(w http.ResponseWriter, r *http.Request) {
 	}
 	// La misma paginación del resto de las listas, con sus mismos rechazos: un tamaño absurdo se
 	// devuelve como 400 y nunca cae a un default en silencio.
-	limit, offset, err := paginaDeQuery(r.URL.Query())
+	limit, offset, err := paginaDeQuery(r.URL.Query(), 20)
 	if err != nil {
 		Error(w, err)
 		return
@@ -478,7 +479,7 @@ func (h *Handlers) CashSessionSales(w http.ResponseWriter, r *http.Request) {
 // no se podía abrir desde la pantalla donde se audita.
 func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	limit, offset, err := paginaDeQuery(q)
+	limit, offset, err := paginaDeQuery(q, 20)
 	if err != nil {
 		Error(w, err)
 		return
@@ -906,13 +907,10 @@ func (h *Handlers) UpdateSupplier(w http.ResponseWriter, r *http.Request) {
 // ---- Gastos ----
 
 func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 0 {
-		page = 0
-	}
-	pageSize := 20
-	if n, err := strconv.Atoi(r.URL.Query().Get("pageSize")); err == nil && n >= 1 && n <= 100 {
-		pageSize = n
+	pageSize, offset, err := paginaDeQuery(r.URL.Query(), 20)
+	if err != nil {
+		Error(w, err)
+		return
 	}
 	// pending: la bandeja de mercancía por llegar. Ausente = todos; un valor que no es true/false se
 	// rechaza en vez de mostrar «todos» como si fuera el filtro. `pendingReceipt` es el nombre viejo.
@@ -945,12 +943,12 @@ func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
 	if dir != "desc" {
 		dir = "asc"
 	}
-	items, total, err := h.backoffice.ListExpenses(r.Context(), r.URL.Query().Get("status"), pending, sort, dir, int32(pageSize), int32(page*pageSize))
+	items, total, err := h.backoffice.ListExpenses(r.Context(), r.URL.Query().Get("status"), pending, sort, dir, pageSize, offset)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "page": page, "pageSize": pageSize})
+	JSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "page": offset / pageSize, "pageSize": pageSize})
 }
 
 func (h *Handlers) ExpenseDetail(w http.ResponseWriter, r *http.Request) {
@@ -1442,22 +1440,24 @@ func (h *Handlers) SuggestArticles(w http.ResponseWriter, r *http.Request) {
 // ---- Catálogo aprendido por proveedor (revisión de mapeos) ----
 
 func (h *Handlers) SupplierItems(w http.ResponseWriter, r *http.Request) {
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 0 {
-		page = 0
-	}
-	pageSize := 30
-	if n, err := strconv.Atoi(r.URL.Query().Get("pageSize")); err == nil && n >= 1 && n <= 100 {
-		pageSize = n
-	}
-	supplierID, _ := strconv.ParseInt(r.URL.Query().Get("supplierId"), 10, 64)
-	items, total, err := h.backoffice.SupplierItems(r.Context(), r.URL.Query().Get("status"),
-		supplierID, int32(pageSize), int32(page*pageSize))
+	q := r.URL.Query()
+	pageSize, offset, err := paginaDeQuery(q, 30)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "page": page, "pageSize": pageSize})
+	// Ausente = todos los proveedores; uno que no es número ya no cae a «todos» en silencio.
+	supplierID, _, err := enteroDeQuery(q, "supplierId", 1, math.MaxInt64)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	items, total, err := h.backoffice.SupplierItems(r.Context(), q.Get("status"), supplierID, pageSize, offset)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "page": offset / pageSize, "pageSize": pageSize})
 }
 
 // ForgetSupplierItem deshace un mapeo aprendido: la próxima compra vuelve a sugerir desde cero.
