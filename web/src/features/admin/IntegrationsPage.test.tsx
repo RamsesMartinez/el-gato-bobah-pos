@@ -91,9 +91,10 @@ describe('IntegrationsPage', () => {
     expect(within(hoja).getByText(/conteos/)).toBeVisible();
     expect(within(hoja).getByText(/compras con su mercancía/)).toBeVisible();
     expect(within(hoja).getByText(/devuelve el dinero/)).toBeVisible();
-    // Spec 074: Gastos abarca corregir un gasto guardado y Almacén los empaques de compra.
+    // Spec 074: Gastos abarca corregir un gasto guardado. Spec 076: Almacén abarca los insumos y sus
+    // empaques (un token con Almacén ya emitido gana dar de alta y editar insumos).
     expect(within(hoja).getByText(/corregir/)).toBeVisible();
-    expect(within(hoja).getByText(/empaques de compra/)).toBeVisible();
+    expect(within(hoja).getByText(/^Insumos y sus empaques/)).toBeVisible();
   });
 
   test('la tarjeta nombra los alcances nuevos, nunca el identificador', async () => {

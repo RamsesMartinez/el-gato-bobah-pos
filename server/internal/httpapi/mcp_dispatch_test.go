@@ -52,6 +52,25 @@ func TestDispatcherRefusesRoutesOutsideCatalog(t *testing.T) {
 			t.Errorf("expense_edit despachó %s (%v)", p, err)
 		}
 	}
+	// La ficha del insumo (spec 076): las dos herramientas despachan alta, ficha y otros nombres, y nada
+	// de la configuración pesada que cuelga junto (archivar, reactivar, unir, unidad, costo, densidad).
+	art := chi.NewRouter()
+	heavy := []struct{ method, p string }{
+		{http.MethodPost, "/api/v1/stock/articles/{id}/archive"}, {http.MethodPost, "/api/v1/stock/articles/{id}/reactivate"},
+		{http.MethodPost, "/api/v1/stock/articles/{id}/merge"}, {http.MethodPost, "/api/v1/stock/articles/{id}/unit"},
+		{http.MethodPost, "/api/v1/stock/articles/{id}/cost"}, {http.MethodPut, "/api/v1/stock/articles/{id}/density"},
+	}
+	for _, h := range heavy {
+		art.Method(h.method, h.p, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { hits[h.p]++; w.WriteHeader(http.StatusNoContent) }))
+	}
+	sa := &mcpSession{mux: art, outer: s.outer, principal: s.principal}
+	for _, tool := range []string{"ingredient_create", "ingredient_update"} {
+		for _, h := range heavy {
+			if _, _, err := sa.dispatch(context.Background(), tool, h.method, h.p, map[string]int64{"id": 1}, nil, map[string]any{}); !errors.Is(err, errDispatchDenied) || hits[h.p] != 0 {
+				t.Errorf("%s despachó %s %s (%v)", tool, h.method, h.p, err)
+			}
+		}
+	}
 	// Una herramienta tampoco puede usar la ruta de otra.
 	if _, _, err := s.dispatch(context.Background(), "expenses_list", http.MethodPost, "/api/v1/expenses/", nil, nil, map[string]any{}); !errors.Is(err, errDispatchDenied) {
 		t.Errorf("una lectura despachó la escritura de otra herramienta: %v", err)

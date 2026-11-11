@@ -297,6 +297,10 @@ var toolFixByCode = map[string]string{
 		"fingerprint (puedes repetir la misma idempotency_key).",
 	"DECISION_REQUIRED": "La vista previa pidió una decisión: manda decisions con la clave y una de sus opciones " +
 		"(lo que decida la persona).",
+	// Las de la 076: la ficha del insumo. El id del que ya tiene el nombre lo agrega ToolErrorHintWith.
+	"NAME_TAKEN":     "Usa ese insumo, o elige otro nombre.",
+	"ALT_NAME_TAKEN": "Quita ese nombre de la lista, o pregunta a la persona si son el mismo insumo.",
+	"STALE":          "La ficha cambió mientras se guardaba: vuelve a intentar.",
 }
 
 // ToolErrorHintFor es ToolErrorHint con el código de error de la API: si la operación tiene una
@@ -310,6 +314,26 @@ func ToolErrorHintFor(status int, code, serverMsg, listTool string) string {
 		return causa + ". " + fix
 	}
 	return ToolErrorHint(status, serverMsg, listTool)
+}
+
+// ExistingRef es lo que la operación dice del registro que ya tiene un nombre: la pantalla lo usa para
+// ofrecer «Abrir ese» o «Reactivar», y el agente solo lo ve si va en la pista.
+type ExistingRef struct {
+	ID       int64
+	Archived bool
+}
+
+// ToolErrorHintWith es ToolErrorHintFor con el registro que ya existe: agrega «(id N, archivado)» a la
+// causa para que el agente pueda usar ese registro en vez de crear otro.
+func ToolErrorHintWith(status int, code, serverMsg, listTool string, ref ExistingRef) string {
+	if ref.ID > 0 && status < 500 {
+		label := fmt.Sprintf("id %d", ref.ID)
+		if ref.Archived {
+			label += ", archivado: reactivarlo se hace en la pantalla"
+		}
+		serverMsg = fmt.Sprintf("%s (%s)", strings.TrimRight(strings.TrimSpace(serverMsg), "."), label)
+	}
+	return ToolErrorHintFor(status, code, serverMsg, listTool)
 }
 
 // ---- Catálogo ----
@@ -372,7 +396,7 @@ var mcpTools = []MCPTool{
 	// Spec 073: compras, conteos, cancelar pedidos, abrir y cerrar caja.
 	rd("articles_search", "Busca insumos y productos de reventa por nombre (o nombre alternativo).", PermExpensesCapture),
 	rd("units_list", "Unidades de medida con su equivalencia a la unidad base.", PermExpensesCapture),
-	rd("presentations_list", "Empaques de compra de los insumos (bolsa de 5 kg, caja de 12…).", PermInventoryReceive),
+	rd("presentations_list", "Empaques de compra de los insumos (bolsa de 5 kg, caja de 12…); con ingredient_id, solo los de ese insumo.", PermInventoryReceive),
 	rd("pending_receipts_list", "Compras con mercancía que todavía no llega.", PermInventoryReceive),
 	wr("purchase_create", "Captura una compra con su mercancía: entra al almacén y cambia el costo de cada insumo. "+
 		"La vista previa propone insumos y muestra el costo nuevo; aplicar exige insumo y empaque o unidad en cada renglón.",
@@ -405,6 +429,14 @@ var mcpTools = []MCPTool{
 		"(remove). Para cambiar el insumo o el empaque de un renglón, quítalo y agrégalo en la misma llamada. "+
 		"La vista previa trae los efectos y un fingerprint; aplicar exige ese fingerprint y las decisiones que pidió. "+
 		"Los pagos no cambian.", ScopeWriteExpenses, PermExpensesEdit),
+
+	// Spec 076: dar de alta y editar insumos.
+	wr("ingredient_create", "Da de alta un insumo (nombre, unidad base g, ml, cm o pieza, y lo demás opcional). "+
+		"La vista previa pone primero los insumos parecidos que ya existen: si es uno de ellos, usa ese y no crees otro. "+
+		"Si lo creas para una compra, la existencia y el costo llegan con la compra.", ScopeWriteInventory, PermInventoryConfigure),
+	wr("ingredient_update", "Edita la ficha de un insumo: nombre, categoría, ubicación, mínimo y otros nombres. Solo "+
+		"cambia lo que mandes; clear_* quita un valor; alt_names es la lista completa ([] los quita).",
+		ScopeWriteInventory, PermInventoryConfigure),
 }
 
 // MCPTools devuelve el catálogo en el orden del contrato.

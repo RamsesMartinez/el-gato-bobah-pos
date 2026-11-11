@@ -279,8 +279,17 @@ func argsJSON(v any) json.RawMessage {
 	return b
 }
 
+// mustRegisterOnce truena si dos archivos registran la misma herramienta: el mapa se queda con la del
+// último init en orden de archivo, en silencio, y la otra deja de existir.
+func mustRegisterOnce(name string) {
+	if _, dup := mcpToolRegs[name]; dup {
+		panic("herramienta MCP registrada dos veces: " + name)
+	}
+}
+
 // readTool registra una lectura.
 func readTool[In any](name string, run func(s *mcpSession, ctx context.Context, in In) (any, error)) {
+	mustRegisterOnce(name)
 	schema := schemaFor[In]()
 	mcpToolRegs[name] = func(s *mcpSession, srv *mcp.Server) {
 		mcp.AddTool(srv, toolDef(name, schema), func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
@@ -371,7 +380,14 @@ type writeSpec[In writeArgs] struct {
 	guard func(s *mcpSession, ctx context.Context, in In) error
 }
 
+// attentionFirst es la vista previa con avisos que van antes que todo lo demás.
+type attentionFirst struct {
+	attention []string
+	resolved  any
+}
+
 func writeTool[In writeArgs](spec writeSpec[In]) {
+	mustRegisterOnce(spec.name)
 	schema := schemaFor[In]()
 	name := spec.name
 	mcpToolRegs[name] = func(s *mcpSession, srv *mcp.Server) {
@@ -438,6 +454,14 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 		}
 		if spec.preview != nil {
 			extra, notes := spec.preview(s, ctx, in)
+			// Lo que el agente tiene que leer antes que nada (un posible duplicado) va en «attention»:
+			// las llaves salen en orden alfabético y ésa queda antes que «before» y «would_send».
+			if a, ok := extra.(attentionFirst); ok {
+				if len(a.attention) > 0 {
+					out["attention"] = a.attention
+				}
+				extra = a.resolved
+			}
 			if extra != nil {
 				out["resolved"] = extra
 			}
