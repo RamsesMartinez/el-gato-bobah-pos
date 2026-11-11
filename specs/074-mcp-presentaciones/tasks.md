@@ -57,7 +57,28 @@ caso de la US1 necesita `presentation_create`. Las dos son P1.
 - [X] T016 [P] docs/mecanica/personal-y-permisos.md: sección «Lo que agregó la spec 074» (herramientas, alcances, ensanche de tokens, protocolo de huella por MCP, cambiar renglón = quitar y agregar)
 - [X] T017 `cd server && go build ./... && go test ./...` y `make test-integration` completos en verde
 - [X] T018 Correr `/revision-de-codigo`; cada hallazgo que se acepte, con su test en rojo antes del arreglo
-- [ ] T019 Prueba con cliente MCP real contra la API local del worktree (quickstart.md): `whoami` con la fila del token «Gestión Claude» (secreto de prueba solo en la base local) lista las tres herramientas; caso de aceptación con un insumo de harina del negocio; rechazos; limpieza (anular la compra y desactivar el empaque de prueba). Lo observado, en texto en el PR
+- [X] T019 Prueba con cliente MCP real contra la API local del worktree (quickstart.md): `whoami` con la fila del token «Gestión Claude» (secreto de prueba solo en la base local) lista las tres herramientas; caso de aceptación con un insumo de harina del negocio; rechazos; limpieza (anular la compra y desactivar el empaque de prueba). Lo observado, en texto en el PR
+
+  **Observado el 2026-11-11** (cliente del SDK oficial de MCP por HTTP contra `make start` del
+  worktree, base restaurada del respaldo de esa madrugada; sin cifras del negocio):
+  - `whoami` con la fila del token «Gestión Claude» (secreto de prueba puesto solo en la base local):
+    trae los siete alcances y lista `presentation_create`, `presentation_update` y `expense_edit`
+    (52 herramientas). Cubre las nuevas sin regenerarlo.
+  - Compra en gramos del insumo de harina pastel del negocio: la vista previa sugirió
+    `presentation_create` con insumo y unidad llenos, pidió marca y contenido, y avisó que el renglón
+    entraba sin marca ni empaque. Aplicada así, reproduce el incidente.
+  - `presentation_create` (Bolsa, 375 g, Betty Crocker): la vista previa listó los empaques del insumo
+    (ninguno); aplicada, creó el empaque. Repetirlo dio «ya hay un empaque que se llama así» y una
+    marca de 41 letras «la marca va de 1 a 40 letras».
+  - `expense_edit` (quitar el renglón en gramos y agregar el mismo con el empaque, llegada del mismo
+    día): la vista previa dijo que existencias y costo no cambian y que el importe y el estado
+    quedan iguales, sin decisiones. Aplicar sin `fingerprint` se rechazó antes de despachar; con una
+    huella vieja, «algo cambió desde la vista previa»; con la buena, aplicó, y repetirla con la misma
+    clave devolvió lo guardado. Al final la existencia y el costo vigente del insumo son los mismos
+    que dejó la compra en gramos, y el renglón vivo tiene el empaque y la marca.
+  - Repetido tras las correcciones de la revisión: igual, y reaplicar con clave nueva y la misma huella
+    ya no duplica (la ruta responde que el renglón quitado no existe).
+  - Limpieza: las dos compras de prueba anuladas por `expense_cancel` y el empaque desactivado.
 - [ ] T020 `make ci-local` en verde; empujar; PR a `develop` que cierra #268; esperar CI y mergear en verde
 - [ ] T021 PR de release `develop` → `main`, CI verde, merge; seguir el deploy hasta `readyz` 200 en producción (solo salud)
 - [ ] T022 `make cerrar-worktree dir=../egb-074-mcp-presentaciones datos=1`, borrar la rama remota, comentar y cerrar #268 con lo que entró, lo que quedó fuera (`ingredient_create`) y el ensanche de tokens
