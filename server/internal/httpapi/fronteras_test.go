@@ -84,7 +84,7 @@ func TestUnaPaginaQueDesbordaNoContestaOtra(t *testing.T) {
 	}
 	for _, q := range malas {
 		t.Run(q.Encode(), func(t *testing.T) {
-			if _, _, err := paginaDeQuery(q); !errors.Is(err, domain.ErrValidation) {
+			if _, _, err := paginaDeQuery(q, 20); !errors.Is(err, domain.ErrValidation) {
 				t.Fatalf("%s: err = %v, quiere ErrValidation", q.Encode(), err)
 			}
 		})
@@ -104,7 +104,7 @@ func TestLaPaginaNormalSeTraduceAOffset(t *testing.T) {
 	}
 	for _, c := range casos {
 		t.Run(c.q.Encode(), func(t *testing.T) {
-			limit, offset, err := paginaDeQuery(c.q)
+			limit, offset, err := paginaDeQuery(c.q, 20)
 			if err != nil {
 				t.Fatalf("%s: %v", c.q.Encode(), err)
 			}
@@ -120,12 +120,12 @@ func TestLaPaginaNormalSeTraduceAOffset(t *testing.T) {
 // —y no un número escrito a mano— la cota se ajusta sola si el tamaño de página cambia.
 func TestElOffsetNuncaDesbordaInt32(t *testing.T) {
 	q := url.Values{"pageSize": {"100"}, "page": {itoaDePrueba(math.MaxInt32/100 + 1)}}
-	if _, _, err := paginaDeQuery(q); !errors.Is(err, domain.ErrValidation) {
+	if _, _, err := paginaDeQuery(q, 20); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("una página que desborda el offset debe rechazarse, fue %v", err)
 	}
 	// Y la última que sí cabe, pasa.
 	q = url.Values{"pageSize": {"100"}, "page": {itoaDePrueba(math.MaxInt32 / 100)}}
-	if _, _, err := paginaDeQuery(q); err != nil {
+	if _, _, err := paginaDeQuery(q, 20); err != nil {
 		t.Fatalf("la última página que cabe debe pasar, fue %v", err)
 	}
 }
@@ -140,4 +140,51 @@ func itoaDePrueba(n int) string {
 		n /= 10
 	}
 	return string(d)
+}
+
+// El offset de las listas del catálogo tiene que caber en el int32 de la consulta: 2^32 envolvía a
+// 0 y contestaba la primera página. El último que cabe pasa; uno más se rechaza.
+func TestElOffsetDelCatalogoNoEnvuelve(t *testing.T) {
+	casos := []struct {
+		q             url.Values
+		limit, offset int32
+		malo          bool
+	}{
+		{url.Values{}, 25, 0, false},
+		{url.Values{"limit": {"0"}, "offset": {"0"}}, 0, 0, false},
+		{url.Values{"limit": {"100"}, "offset": {itoaDePrueba(math.MaxInt32)}}, 100, math.MaxInt32, false},
+		{url.Values{"offset": {"2147483648"}}, 0, 0, true},
+		{url.Values{"offset": {"4294967296"}}, 0, 0, true},
+		{url.Values{"offset": {"-1"}}, 0, 0, true},
+		{url.Values{"offset": {""}}, 0, 0, true},
+		{url.Values{"limit": {"101"}}, 0, 0, true},
+		{url.Values{"limit": {"-1"}}, 0, 0, true},
+	}
+	for _, c := range casos {
+		t.Run(c.q.Encode(), func(t *testing.T) {
+			limit, offset, err := limiteYOffsetDeQuery(c.q, 25)
+			if c.malo {
+				if !errors.Is(err, domain.ErrValidation) {
+					t.Fatalf("%s: err = %v, quiere ErrValidation", c.q.Encode(), err)
+				}
+				return
+			}
+			if err != nil || limit != c.limit || offset != c.offset {
+				t.Fatalf("%s = limit %d offset %d (%v), quiere %d y %d", c.q.Encode(), limit, offset, err, c.limit, c.offset)
+			}
+		})
+	}
+}
+
+// Un tope mal escrito en enteroDeQuery (mayor que int32) no puede volver a envolver: la conversión
+// lo rechaza.
+func TestLaConversionAInt32NoEnvuelve(t *testing.T) {
+	for _, n := range []int64{math.MaxInt32 + 1, 1 << 32, math.MinInt32 - 1} {
+		if _, err := int32DeFrontera("x", n); !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("int32DeFrontera(%d): err = %v, quiere ErrValidation", n, err)
+		}
+	}
+	if v, err := int32DeFrontera("x", math.MaxInt32); err != nil || v != math.MaxInt32 {
+		t.Errorf("int32DeFrontera(MaxInt32) = %d, %v", v, err)
+	}
 }
