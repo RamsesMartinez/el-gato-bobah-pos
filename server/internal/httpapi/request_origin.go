@@ -20,6 +20,13 @@ const (
 func withRequestOrigin(behindProxy bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Lo que despachó el servidor MCP trae el origen de la petición de afuera (la IP del
+			// cliente) y el aparato del agente armado en el servidor; los headers de la petición
+			// interna no dirían nada cierto.
+			if p, ok := mcpPrincipalFrom(r.Context()); ok {
+				next.ServeHTTP(w, r.WithContext(app.WithOrigin(r.Context(), p.origin)))
+				return
+			}
 			o := domain.NormalizeOrigin(rateKeyIP(r, behindProxy),
 				r.Header.Get(DeviceKeyHeader), r.Header.Get(DeviceInfoHeader))
 			next.ServeHTTP(w, r.WithContext(app.WithOrigin(r.Context(), o)))

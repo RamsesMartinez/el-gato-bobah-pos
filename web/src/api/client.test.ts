@@ -70,3 +70,18 @@ test('un turno vencido sí cierra la sesión', async () => {
 
   expect(useSessionStore.getState().token).toBeNull();
 });
+
+// Una contraseña equivocada (crear un token, cambiar la propia) no es una sesión vencida: el
+// reintento tras canjear el refresh volvía a mandar la contraseña, y cada dedazo contaba doble en el
+// bloqueo, que llegaba con la mitad de los intentos.
+test('una contraseña equivocada no se reintenta', async () => {
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: { code: 'INVALID_CREDENTIALS', message: 'credenciales inválidas' } }), {
+    status: 401, headers: { 'Content-Type': 'application/json' },
+  }));
+  vi.stubGlobal('fetch', fetchMock);
+  const err: unknown = await api.post('/integrations/tokens', { password: 'mala' }).catch((e) => e);
+  expect(err).toBeInstanceOf(ApiError);
+  const calls = fetchMock.mock.calls.map((c) => String((c as unknown[])[0]));
+  expect(calls.filter((u) => u.endsWith('/integrations/tokens'))).toHaveLength(1);
+  expect(calls.some((u) => u.includes('/auth/refresh'))).toBe(false);
+});

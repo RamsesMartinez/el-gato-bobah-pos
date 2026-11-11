@@ -10,7 +10,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { posApi } from '../../api/pos';
 import { mensajeDeError } from '../../api/mensajes';
-import { canAccess } from '../../app/roles';
 import { can } from '../../app/permissions';
 import { DrawerRoot, DrawerBackdrop, DrawerContent, DrawerGrabber } from '../../components/ui/drawer';
 import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
@@ -107,12 +106,11 @@ export function POSPage() {
   const palette = useUiStore((s) => s.palette);
   const topCount = useUiStore((s) => s.topCount);
   const user = useSessionStore((s) => s.user);
-  const role = user?.role;
-  const canEdit = role === 'admin' || role === 'gerente';
+  const canEdit = can('menu.configure', user);
   const navigate = useNavigate();
   const horaNegocio = useHoraDelNegocio();
   const cashStatus = useQuery({ queryKey: ['cash', 'status'], queryFn: posApi.cashStatus, refetchInterval: 30000 });
-  const canOpenCash = canAccess(role, '/caja');
+  const canOpenCash = can('cash.operate', user);
 
   // El pedido que se está cobrando. La hoja se abre SIEMPRE sobre un pedido que ya existe.
   const [cobrando, setCobrando] = useState<PedidoParaCobrar | null>(null);
@@ -509,7 +507,7 @@ export function POSPage() {
               <LuWallet /> Abrir caja
             </Button>
           ) : (
-            <Text color="fg.muted" fontSize="sm">Pídele a un gerente que la abra.</Text>
+            <Text color="fg.muted" fontSize="sm">Pídele a alguien que pueda abrir la caja.</Text>
           )}
           </VStack>
         </Center>

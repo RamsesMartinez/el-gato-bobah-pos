@@ -85,7 +85,9 @@ export function CompositionSheet({ kind, id, name, group, open, onClose, onSaved
 }
 
 // 'store' es «Se compra hecho» de un producto (spec 037): una receta de un insumo por pieza.
-type Mode = 'items' | 'store' | 'package' | 'product' | 'nothing' | 'bought';
+// 'options' es «Lo restan sus opciones» (spec 069): el producto no resta nada y cada opción resta lo
+// suyo. Ocupa el lugar de «No se cuenta» cuando alguna opción resta (maqueta B).
+type Mode = 'items' | 'store' | 'package' | 'product' | 'nothing' | 'bought' | 'options';
 type Actual = '' | 'product' | 'ingredient' | 'both' | 'other';
 
 interface Row {
@@ -134,7 +136,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
     if (components.length) return 'package';
     // Lo que todavía cuenta su propia existencia se compra hecho: así se modelan los revendidos.
     if (isProduct && (data.ownStock || single)) return 'store';
-    if (data.status === 'confirmed' && !(data.items ?? []).length) return 'nothing';
+    if (data.status === 'confirmed' && !(data.items ?? []).length) return data.optionsDeduct ? 'options' : 'nothing';
     return 'items';
   });
   // «Se compra hecho»: el insumo elegido (o 'new' para crearlo con el nombre del producto) y cuántas
@@ -223,7 +225,12 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
   // Las otras tres tarjetas dejan de contar la existencia del producto (FR-014b, FR-020).
   const leavesStock = ownStock && mode !== 'store';
   // Con existencia negativa no hay «-3 latas» guardadas: se vendieron más de las que se registraron.
-  const stockNote = productOnHand > 0
+  // «Lo restan sus opciones» lo dice en palabras de quien opera y pide contar cada opción (spec 069):
+  // la cuenta del producto no se reparte entre sabores, no se sabe de cuál era cada pieza.
+  const optionsNote = `${productOnHand > 0
+    ? `Tus ${productOnHand} de ${name} siguen donde están; el sistema deja de contarlas como producto.`
+    : `Vendiste ${-productOnHand} más de las que tenías anotadas de ${name}; el sistema deja de llevar esa cuenta.`} En el próximo conteo cuenta las piezas de cada opción.`;
+  const stockNote = mode === 'options' ? optionsNote : productOnHand > 0
     ? `Tus ${productOnHand} de ${name} siguen donde están; el sistema solo deja de contarlas.`
     : `Según el sistema se vendieron ${-productOnHand} más de las que había registradas de ${name}; desde ahora el sistema deja de llevar esa cuenta. Lo que tengas guardado no se mueve.`;
   const origById = useMemo(() => new Map(original.map((o) => [o.ingredientId, o])), [original]);
@@ -342,6 +349,8 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
       qc.setQueryData(['admin', 'composition', kind, id], c);
       qc.invalidateQueries({ queryKey: ['admin'] });
       qc.invalidateQueries({ queryKey: ['ingredients'] });
+      // Un producto que deja de contarse sale del conteo abierto (spec 069).
+      qc.invalidateQueries({ queryKey: ['stock', 'count'] });
       const extra = chosen.length ? ` (y ${chosen.length} con el mismo nombre)` : '';
       toaster.create({ title: `${confirmOnly ? 'Confirmada' : 'Lista'}: ${name}${extra}`, type: 'success' });
       onDirty(false);
@@ -378,7 +387,10 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
     : kind === 'option'
       ? [{ k: 'items', title: 'Lleva insumos', example: 'Ej. 45 g de tapioca' }, { k: 'product', title: 'Es otro producto', example: 'Ej. la Coca del combo' }, { k: 'nothing', title: 'No gasta insumos', example: 'Ej. «Sin hielo»' }]
       : [{ k: 'items', title: 'Se prepara aquí', example: 'Ej. leche, café, vaso' }, { k: 'store', title: 'Se compra hecho', example: 'Ej. una lata, un mochi' },
-        { k: 'package', title: 'Es un combo', example: 'Productos con sus piezas' }, { k: 'nothing', title: 'No se cuenta', example: 'No se resta nada' }];
+        { k: 'package', title: 'Es un combo', example: 'Productos con sus piezas' },
+        data.optionsDeduct
+          ? { k: 'options', title: 'Lo restan sus opciones', example: 'Ej. cada sabor resta su lata' }
+          : { k: 'nothing', title: 'No se cuenta', example: 'No se resta nada' }];
 
   const mostUsed = (ingredients.data?.items ?? [])
     .filter((i) => (i.recipeUses ?? 0) > 0 && !rows.some((r) => r.ingredientId === i.id) && !(isIng && i.id === id))
@@ -387,7 +399,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
   const copyChips = (sources.data ?? []).slice().sort((a, b) => Number(normalize(b.name).startsWith(firstWord)) - Number(normalize(a.name).startsWith(firstWord))).slice(0, 2);
 
   const storeName = storeId === 'new' ? name : storeIng?.name ?? '';
-  const preview = mode === 'nothing' ? 'nada.'
+  const preview = mode === 'options' ? 'lo que resta la opción elegida.' : mode === 'nothing' ? 'nada.'
     : mode === 'store' ? `${storeQty} ${storeName}`
     : mode === 'bought' ? 'baja de sus existencias.'
       : mode === 'product' ? (linked ? `1 ${productName.get(linked) ?? ''}` : '— todavía nada —')
@@ -666,6 +678,18 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
             </HStack>
           )}
           {mode === 'nothing' && <Box p={3} borderRadius="lg" bg="bg.muted" color="fg.muted">Al venderlo no sale nada del almacén.</Box>}
+          {mode === 'options' && (
+            <VStack align="stretch" gap={1} p={3} borderRadius="lg" bg="bg.muted">
+              <Text fontSize="sm" color="fg.muted">El producto no resta nada; cada opción resta lo suyo:</Text>
+              {(data.optionGroups ?? []).map((g, gi) => (
+                <Box key={gi}>
+                  <Text fontWeight="600">{g.name}{g.required ? ' · siempre se elige una' : ''}</Text>
+                  {g.options.filter((o) => o.deducts).map((o, oi) => <Text key={oi} fontSize="sm">{o.name} → {o.deducts}</Text>)}
+                </Box>
+              ))}
+              {!data.optionsRequired && <Text fontSize="sm" color="orange.700">Si se vende sin elegir opción, no se resta nada.</Text>}
+            </VStack>
+          )}
           {mode === 'bought' && <Box p={3} borderRadius="lg" bg="bg.muted" color="fg.muted">Se compra hecho: cada vez que una receta lo usa, baja de sus existencias.</Box>}
 
           {removed && (
@@ -738,11 +762,16 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
         <DialogContent>
           <DialogHeader><DialogTitle>¿Dejar de contar {name}?</DialogTitle></DialogHeader>
           <DialogBody>
-            <Text>{stockNote} Si después lo regresas, la existencia no vuelve sola.</Text>
+            {/* En «Lo restan sus opciones» solo lo que cambia: la hoja de atrás ya lo explicó. */}
+            <Text>{mode === 'options'
+              ? `La cuenta de ${name} queda en 0. En el próximo conteo cuenta las piezas de cada opción.`
+              : `${stockNote} Si después lo regresas, la existencia no vuelve sola.`}</Text>
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" minH="44px" onClick={() => setAskZero(false)}>Seguir editando</Button>
-            <Button colorPalette="red" minH="44px" onClick={() => { setAskZero(false); save.mutate(); }}>Sí, dejar de contarla</Button>
+            <Button colorPalette="red" minH="44px" onClick={() => { setAskZero(false); save.mutate(); }}>
+              {mode === 'options' ? 'Sí, que lo resten sus opciones' : 'Sí, dejar de contarla'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </DialogRoot>

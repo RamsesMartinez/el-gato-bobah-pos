@@ -22,6 +22,8 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -299,8 +301,21 @@ func makeUser(t *testing.T, st *store.Store, username, role string) int64 {
 func makeUserIn(t *testing.T, st *store.Store, companyID int64, username, role string) int64 {
 	t.Helper()
 	var id int64
+	// El rol por su sugerido de la empresa (spec 068: desde la 0109 no existe users.role). Las pruebas
+	// de migraciones viejas bajan la base por debajo de la 0108, donde solo existe users.role.
+	var oldSchema bool
+	if err := st.Pool.QueryRow(context.Background(),
+		`select exists (select 1 from information_schema.columns where table_name = 'users' and column_name = 'role')`).Scan(&oldSchema); err != nil {
+		t.Fatalf("makeUser(%s): %v", username, err)
+	}
+	insert := `insert into users (company_id, name, username, role_id)
+		 select $1, $2, $3, r.id from roles r join system_roles s on s.id = r.system_role_id
+		  where r.company_id = $1 and s.code = $4 returning id`
+	if oldSchema {
+		insert = `insert into users (company_id, name, username, role) values ($1, $2, $3, $4::user_role) returning id`
+	}
 	err := st.Pool.QueryRow(context.Background(),
-		`insert into users (company_id, name, username, role) values ($1, $2, $3, $4::user_role) returning id`,
+		insert,
 		companyID, "Test "+username, username, role).Scan(&id)
 	if err != nil {
 		t.Fatalf("makeUser(%s): %v", username, err)
@@ -443,4 +458,19 @@ func crearYCobrar(t *testing.T, ctx context.Context, svc *app.OrdersService, cmd
 	}
 	// Se relee: tras el cobro cambian el estado y lo pagado, y los tests miran eso.
 	return svc.Detail(ctx, ord.ID)
+}
+
+// porRol adapta un resolvedor por rol de las pruebas al de la API (spec 068): lee el rol del JWT de
+// la prueba. Solo sirve para pruebas que fijan un conjunto de permisos a propósito; en producción
+// el permiso sale de la base.
+func porRol(f func(domain.Role) []domain.Permission) httpapi.PermissionResolver {
+	if f == nil {
+		return nil // el de producción, que lee la base
+	}
+	return func(_ context.Context, u httpapi.AuthUser) ([]domain.Permission, error) { return f(u.Role), nil }
+}
+
+// quienEs es el rol y los permisos de un rol sugerido, como los resuelve la medición de uso.
+func quienEs(r domain.Role) func() (domain.Role, []domain.Permission, error) {
+	return func() (domain.Role, []domain.Permission, error) { return r, domain.PermissionsFor(r), nil }
 }

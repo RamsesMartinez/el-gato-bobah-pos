@@ -17,7 +17,13 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		"cash.movement", "cash.movement_corrected", "expense.created", "expense.paid", "expense.cancelled", "tip.paid_out",
 		"price.set", "price.deleted", "price.synced", "attendance.clock_in", "attendance.clock_out",
 		"attendance.corrected", "attendance.manual_entry", "attendance.settings_changed",
-		"attendance.schedule_set", "user.tracks_attendance_changed", "payment.terminal_changed",
+		"attendance.schedule_set", "user.tracks_attendance_changed",
+		// Roles por empresa (spec 068).
+		"role.created", "role.renamed", "role.permissions_changed", "role.reset", "role.deactivated",
+		"role.reactivated", "role.deleted", "user.role_changed",
+		// La puerta para agentes (spec 072).
+		"api_token.created", "api_token.revoked", "mcp.tool_called",
+		"payment.terminal_changed",
 		"product.consumption_mode", "expense.received", "expense.count_changed", "cash.opening_backdated", "expense.stock_corrected", "stock.counted",
 		"settings.costing_method", "waste.recorded", "waste.approved", "waste.rejected", "waste.undone",
 		"settings.waste_threshold", "settings.count_limits_changed",
@@ -67,6 +73,10 @@ func TestEveryAuditActionHasAGroup(t *testing.T) {
 		"payment.charged": AuditGroupMoney, "payment.terminal_changed": AuditGroupMoney, "payment.voided": AuditGroupCancel, "stock.written_off": AuditGroupCancel,
 		"order.cancelled": AuditGroupCancel, "price.synced": AuditGroupPrice, "tip.paid_out": AuditGroupCash,
 		"attendance.corrected": AuditGroupAttendance, "user.tracks_attendance_changed": AuditGroupAttendance,
+		"role.created": AuditGroupAttendance, "role.renamed": AuditGroupAttendance, "role.permissions_changed": AuditGroupAttendance,
+		"role.reset": AuditGroupAttendance, "role.deactivated": AuditGroupAttendance, "role.reactivated": AuditGroupAttendance,
+		"role.deleted": AuditGroupAttendance, "user.role_changed": AuditGroupAttendance,
+		"api_token.created": AuditGroupAttendance, "api_token.revoked": AuditGroupAttendance, "mcp.tool_called": AuditGroupAttendance,
 	}
 	for a, want := range cases {
 		if g, _ := AuditGroupOf(a); g != want {

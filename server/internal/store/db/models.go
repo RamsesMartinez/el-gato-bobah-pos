@@ -794,6 +794,21 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type ApiToken struct {
+	ID         int64              `json:"id"`
+	CompanyID  int64              `json:"company_id"`
+	UserID     int64              `json:"user_id"`
+	Name       string             `json:"name"`
+	SecretHint string             `json:"secret_hint"`
+	SecretHash []byte             `json:"secret_hash"`
+	Scopes     []string           `json:"scopes"`
+	CreatedAt  time.Time          `json:"created_at"`
+	ExpiresAt  time.Time          `json:"expires_at"`
+	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
+	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	RevokedBy  *int64             `json:"revoked_by"`
+}
+
 type AttendanceCorrection struct {
 	ID          int64              `json:"id"`
 	CompanyID   int64              `json:"company_id"`
@@ -1243,6 +1258,17 @@ type LocalItemExclusion struct {
 	CompanyID        int64     `json:"company_id"`
 }
 
+type McpIdempotencyKey struct {
+	CompanyID int64     `json:"company_id"`
+	TokenID   int64     `json:"token_id"`
+	IdemKey   string    `json:"idem_key"`
+	Tool      string    `json:"tool"`
+	ArgsHash  []byte    `json:"args_hash"`
+	Status    string    `json:"status"`
+	Result    []byte    `json:"result"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type ModifierGroup struct {
 	ID               int64  `json:"id"`
 	Name             string `json:"name"`
@@ -1537,6 +1563,12 @@ type PaymentMethod struct {
 	IsCash             bool            `json:"is_cash"`
 }
 
+type Permission struct {
+	ID   int16  `json:"id"`
+	Code string `json:"code"`
+	Area string `json:"area"`
+}
+
 type PlatformConnection struct {
 	ID                 int64     `json:"id"`
 	DeliveryPlatformID int16     `json:"delivery_platform_id"`
@@ -1828,6 +1860,24 @@ type RegisterSessionTotal struct {
 	AffectsCashDrawer bool             `json:"affects_cash_drawer"`
 }
 
+type Role struct {
+	ID           int64     `json:"id"`
+	CompanyID    int64     `json:"company_id"`
+	SystemRoleID *int16    `json:"system_role_id"`
+	Name         *string   `json:"name"`
+	Active       bool      `json:"active"`
+	Version      int32     `json:"version"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type RolePermissionOverride struct {
+	CompanyID    int64 `json:"company_id"`
+	RoleID       int64 `json:"role_id"`
+	PermissionID int16 `json:"permission_id"`
+	Granted      bool  `json:"granted"`
+}
+
 type SessionCashCount struct {
 	ID           int64            `json:"id"`
 	SessionID    int64            `json:"session_id"`
@@ -1887,6 +1937,18 @@ type StockCountLine struct {
 	TareGUsed       *decimal.Decimal `json:"tare_g_used"`
 	DensityUsed     *decimal.Decimal `json:"density_used"`
 	ClosedPacks     []byte           `json:"closed_packs"`
+}
+
+type StockCountProductLine struct {
+	CountID        int64            `json:"count_id"`
+	CompanyID      int64            `json:"company_id"`
+	ProductID      int64            `json:"product_id"`
+	CountedQty     decimal.Decimal  `json:"counted_qty"`
+	SystemQty      decimal.Decimal  `json:"system_qty"`
+	CapturedBy     int64            `json:"captured_by"`
+	CapturedAt     time.Time        `json:"captured_at"`
+	LastMovementID *int64           `json:"last_movement_id"`
+	UnitCost       *decimal.Decimal `json:"unit_cost"`
 }
 
 type StockLevel struct {
@@ -1950,6 +2012,17 @@ type SupplierItem struct {
 	CompanyID     int64            `json:"company_id"`
 }
 
+type SystemRole struct {
+	ID   int16  `json:"id"`
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+type SystemRolePermission struct {
+	SystemRoleID int16 `json:"system_role_id"`
+	PermissionID int16 `json:"permission_id"`
+}
+
 type TipCarryover struct {
 	ID             int64           `json:"id"`
 	CompanyID      int64           `json:"company_id"`
@@ -1997,7 +2070,6 @@ type User struct {
 	ID                 int64     `json:"id"`
 	Name               string    `json:"name"`
 	Username           *string   `json:"username"`
-	Role               string    `json:"role"`
 	PinHash            *string   `json:"pin_hash"`
 	PasswordHash       *string   `json:"password_hash"`
 	IsActive           bool      `json:"is_active"`
@@ -2008,6 +2080,7 @@ type User struct {
 	MustChangePassword bool      `json:"must_change_password"`
 	PinLookup          *string   `json:"pin_lookup"`
 	TracksAttendance   bool      `json:"tracks_attendance"`
+	RoleID             int64     `json:"role_id"`
 }
 
 type UserPreference struct {

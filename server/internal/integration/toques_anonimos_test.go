@@ -29,7 +29,7 @@ func TestLosToquesNoGuardanAQuienToco(t *testing.T) {
 
 	// `RegistrarToques` recibe un ROL y una CELDA. No hay parámetro por donde entre una persona ni
 	// un punto: la identidad y la coordenada fina no se filtran después, no existen.
-	if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Toques: []domain.Toque{
+	if _, err := svc.Registrar(ctx, quienEs(domain.RoleCajero), app.LoteDeMedicion{Toques: []domain.Toque{
 		{Pantalla: "pos", Celda: 0, Orientacion: domain.OrientacionHorizontal},
 		{Pantalla: "pos", Celda: 83, Orientacion: domain.OrientacionHorizontal},
 	}}); err != nil {
@@ -61,7 +61,7 @@ func TestElRolDeUnaSolaPersonaNoSeGuardaEnLosToques(t *testing.T) {
 	svc := app.NewUsageService(st)
 
 	makeUser(t, st, "mesero_toque_solito", "mesero")
-	if _, err := svc.Registrar(ctx, domain.RoleMesero, app.LoteDeMedicion{Toques: []domain.Toque{
+	if _, err := svc.Registrar(ctx, quienEs(domain.RoleMesero), app.LoteDeMedicion{Toques: []domain.Toque{
 		{Pantalla: "pos", Celda: 12, Orientacion: domain.OrientacionHorizontal},
 	}}); err != nil {
 		t.Fatalf("registrar el toque del mesero: %v", err)
@@ -78,7 +78,7 @@ func TestElRolDeUnaSolaPersonaNoSeGuardaEnLosToques(t *testing.T) {
 	// Y CON EL BALDE LLENO SÍ SE MIDE, sin rol. Si no, un local chico saldría con la rejilla vacía
 	// y eso se lee como «aquí nadie toca» en vez de como «aquí no se puede cortar».
 	makeUser(t, st, "admin_toque_solito", "admin")
-	if _, err := svc.Registrar(ctx, domain.RoleMesero, app.LoteDeMedicion{Toques: []domain.Toque{
+	if _, err := svc.Registrar(ctx, quienEs(domain.RoleMesero), app.LoteDeMedicion{Toques: []domain.Toque{
 		{Pantalla: "pos", Celda: 12, Orientacion: domain.OrientacionHorizontal},
 	}}); err != nil {
 		t.Fatalf("registrar con el balde lleno: %v", err)
@@ -119,7 +119,7 @@ func TestUnaRafagaDeToquesNoCreaFilasNuevas(t *testing.T) {
 		for j := 0; j < porLote; j++ {
 			lote = append(lote, domain.Toque{Pantalla: "pos", Celda: 37, Orientacion: domain.OrientacionHorizontal})
 		}
-		if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Toques: lote}); err != nil {
+		if _, err := svc.Registrar(ctx, quienEs(domain.RoleCajero), app.LoteDeMedicion{Toques: lote}); err != nil {
 			t.Fatalf("registrar la ráfaga %d: %v", i, err)
 		}
 	}
@@ -149,7 +149,7 @@ func TestLaMismaCeldaEnDosOrientacionesSonDosFilas(t *testing.T) {
 	makeUser(t, st, "cajero_orient_uno", "cajero")
 	makeUser(t, st, "cajero_orient_dos", "cajero")
 
-	if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Toques: []domain.Toque{
+	if _, err := svc.Registrar(ctx, quienEs(domain.RoleCajero), app.LoteDeMedicion{Toques: []domain.Toque{
 		{Pantalla: "pos", Celda: 37, Orientacion: domain.OrientacionHorizontal},
 		{Pantalla: "pos", Celda: 37, Orientacion: domain.OrientacionVertical},
 	}}); err != nil {
@@ -178,7 +178,7 @@ func TestElToqueFueraDeLaListaSeDescartaYSeCuenta(t *testing.T) {
 	makeUser(t, st, "cajero_descarte_uno", "cajero")
 	makeUser(t, st, "cajero_descarte_dos", "cajero")
 
-	descartados, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Toques: []domain.Toque{
+	descartados, err := svc.Registrar(ctx, quienEs(domain.RoleCajero), app.LoteDeMedicion{Toques: []domain.Toque{
 		{Pantalla: "pos", Celda: 5, Orientacion: domain.OrientacionHorizontal},
 		// Medible en la 017, pero NO instrumentada para toques.
 		{Pantalla: "caja", Celda: 5, Orientacion: domain.OrientacionHorizontal},

@@ -155,6 +155,17 @@ describe('Menú › Recetas', () => {
     expect(screen.getByText('Resta 6 por venta · tienes 7')).toBeInTheDocument();
   });
 
+  // Spec 069: un producto que restan sus opciones no se lee «No gasta insumos».
+  it('un producto que restan sus opciones lo dice', async () => {
+    api.recipes.mockImplementation(() => Promise.resolve({
+      items: [row(60, 'Refresco de lata', { status: 'done', mode: 'options' })],
+      total: 1, counts: { pending: 0, review: 0, done: 1 }, totals,
+    }));
+    montar();
+    expect(await screen.findByText('Lo restan sus opciones')).toBeInTheDocument();
+    expect(screen.queryByText('No gasta insumos')).toBeNull();
+  });
+
   // FR-019: «restar», nunca «descontar». Se le escapó a esta pantalla (revisión de tableta, 13-oct).
   it('un producto con existencia propia dice que se resta solo, no que se descuenta', async () => {
     api.recipes.mockImplementation(() => Promise.resolve({

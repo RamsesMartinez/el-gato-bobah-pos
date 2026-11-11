@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react
 import { ApiError } from '../../api/client';
 import { vi, expect, test, beforeEach } from 'vitest';
 import { Provider } from '../../components/ui/provider';
+import { useSessionStore } from '../../stores/session';
 import { AuditLogTab } from './AuditLogTab';
 
 const list = vi.hoisted(() => vi.fn());
@@ -13,6 +14,8 @@ vi.mock('../../api/audit', () => ({
     orderHistory: () => Promise.resolve([]),
   },
 }));
+const admin = vi.hoisted(() => ({ roles: vi.fn(), permissionCatalog: vi.fn() }));
+vi.mock('../../api/admin', () => ({ adminApi: admin }));
 vi.mock('../../hooks/useHoraDelNegocio', () => ({
   useHoraDelNegocio: () => ({ zona: 'America/Mexico_City', diaDelNegocio: () => '2026-10-11' }),
 }));
@@ -98,4 +101,37 @@ test('el renglón de un pedido lo nombra como Ventas', async () => {
     orderLabel: 'Selkirk Rex · #12', before: { paid: '0' }, after: { amount: '63', paid: '63' } }] });
   renderView();
   expect(await screen.findByText(/Selkirk Rex · #12/)).toBeInTheDocument();
+});
+
+// Los eventos de roles salían con «Qué cambió: —» y el renglón no decía de qué rol se trataba.
+const roleEvent = (action: string, before: unknown, after: unknown) => ({
+  ...samplePage, items: [{ ...samplePage.items[0], action, before, after }],
+});
+
+test('un cambio de permisos nombra el rol y lo agregado con su etiqueta', async () => {
+  useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Dueña', role: '', permissions: ['audit.view', 'roles.manage'] } });
+  admin.permissionCatalog.mockResolvedValue({ items: [{ code: 'orders.cancel', area: 'orders', label: 'Cancelar pedidos' }] });
+  admin.roles.mockResolvedValue({ items: [] });
+  list.mockResolvedValue(roleEvent('role.permissions_changed', null, { name: 'Cajero', added: ['orders.cancel'], removed: [] }));
+  try {
+    renderView();
+    expect(await screen.findByText('Rol: Cajero · Agregó: Cancelar pedidos')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Cambió lo que puede hacer un rol'));
+    expect(await screen.findAllByText('Rol: Cajero · Agregó: Cancelar pedidos')).toHaveLength(2);
+  } finally {
+    useSessionStore.setState({ user: null });
+  }
+});
+
+test('sin administrar roles no pide el catálogo y dice cuántos permisos', async () => {
+  useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Gerente', role: '', permissions: ['audit.view'] } });
+  list.mockResolvedValue(roleEvent('role.permissions_changed', null, { name: 'Cajero', added: ['orders.cancel'], removed: [] }));
+  try {
+    renderView();
+    expect(await screen.findByText('Rol: Cajero · Agregó: 1 permiso')).toBeInTheDocument();
+    expect(admin.permissionCatalog).not.toHaveBeenCalled();
+    expect(admin.roles).not.toHaveBeenCalled();
+  } finally {
+    useSessionStore.setState({ user: null });
+  }
 });

@@ -1,56 +1,122 @@
 import { useState } from 'react';
 import {
-  Box, Heading, Button, HStack, VStack, Table, Input, Center, Spinner, Badge, Text, IconButton,
+  Box, Heading, Button, HStack, VStack, Table, Input, Center, Spinner, Badge, Text, IconButton, Tabs,
 } from '@chakra-ui/react';
-import { LuPencil, LuKeyRound, LuHash } from 'react-icons/lu';
+import { LuPencil, LuKeyRound, LuHash, LuX } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ScheduleEditor } from './ScheduleEditor';
-import { adminApi, type AdminUser } from '../../api/admin';
+import { RolesPage } from './RolesPage';
+import { adminApi, type AdminUser, type Role } from '../../api/admin';
+import { mensajeDeError } from '../../api/mensajes';
+import { Picker } from '../../components/Picker';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter, DialogTitle, DialogCloseTrigger,
 } from '../../components/ui/dialog';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
+import { ConfirmSheet } from '../../components/ConfirmSheet';
+import { fitsIn } from './roleEdit';
 
-const ROLES = ['admin', 'gerente', 'cajero', 'mesero'];
 const MIN_LEN = 12; // espejo de domain.MinPasswordLen (el backend es la autoridad)
 
-function RolePicker({ value, onChange }: { value: string; onChange: (r: string) => void }) {
+// RolePicker ofrece los roles activos de la empresa que caben en lo que puede la sesión (el servidor
+// rechaza asignar uno que puede más) y, al editar, también el que la persona ya tiene aunque esté
+// inactivo: sin él, el disparador saldría vacío y no se sabría qué rol tiene hoy.
+function RolePicker({ roles, value, onChange, current, mine }: {
+  roles: Role[]; value: number | null; onChange: (id: number) => void; current?: number | null; mine: string[] | undefined;
+}) {
+  const options = roles
+    .filter((r) => r.id === current || (r.active && fitsIn(r.permissions ?? [], mine)))
+    .map((r) => ({ value: String(r.id), label: r.name, hint: r.active ? undefined : 'inactivo' }));
   return (
-    <HStack gap={1} flexWrap="wrap">
-      {ROLES.map((r) => (
-        <Button key={r} size="sm" minH="44px" textTransform="capitalize"
-          variant={value === r ? 'solid' : 'outline'} colorPalette={value === r ? undefined : 'gray'}
-          onClick={() => onChange(r)}>{r}</Button>
-      ))}
-    </HStack>
+    <Picker value={value ? String(value) : ''} options={options} onChange={(v) => onChange(Number(v))}
+      placeholder="Elige un rol" title="Rol" focusSearch={false} />
   );
 }
 
 export function EmployeesPage() {
+  const user = useSessionStore((s) => s.user);
+  const canPeople = can('employees.manage', user);
+  const canRoles = can('roles.manage', user);
+  const [tab, setTab] = useState<'people' | 'roles'>(canPeople ? 'people' : 'roles');
+  const [roleFilter, setRoleFilter] = useState<number | null>(null);
+  // rolesDirty: el editor de Roles ya no es una hoja modal; cambiar a Personal lo desmonta y se
+  // perdería lo marcado. Salir por el riel no se puede detener: la app no usa un data router.
+  const [rolesDirty, setRolesDirty] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const pickTab = (v: 'people' | 'roles') => {
+    if (v === 'people' && active === 'roles' && rolesDirty) { setConfirmLeave(true); return; }
+    setTab(v);
+  };
+  const leaveRoles = () => { setConfirmLeave(false); setRolesDirty(false); setTab('people'); };
+  const both = canPeople && canRoles;
+  const active = canPeople && (tab === 'people' || !canRoles) ? 'people' : 'roles';
+
+  const tabs = both && (
+    <Tabs.Root value={active} onValueChange={(e) => pickTab(e.value as 'people' | 'roles')} variant="enclosed">
+      <Tabs.List>
+        <Tabs.Trigger value="people" minH="44px">Personal</Tabs.Trigger>
+        <Tabs.Trigger value="roles" minH="44px">Roles</Tabs.Trigger>
+      </Tabs.List>
+    </Tabs.Root>
+  );
+
+  // Roles va en dos paneles (#243): las pestañas suben a la columna de la lista y el relleno se
+  // reduce, para que el rol elegido tenga el alto entero de la tableta.
+  if (active === 'roles') {
+    return (
+      <Page fill p={3}>
+        <RolesPage tabs={tabs || undefined} onDirtyChange={setRolesDirty}
+          onShowPeople={(id) => { setRoleFilter(id); setRolesDirty(false); setTab('people'); }} />
+        <ConfirmSheet isOpen={confirmLeave} title="¿Descartar los cambios?" destructive
+          description="Lo que marcaste o quitaste en este rol no se guarda."
+          confirmLabel="Descartar" cancelLabel="Seguir editando"
+          onConfirm={leaveRoles} onCancel={() => setConfirmLeave(false)} />
+      </Page>
+    );
+  }
+
+  return (
+    <Page fill maxW="900px">
+      <HStack mb={3} gap={4} flexWrap="wrap">
+        <Heading size="lg">Empleados</Heading>
+        {tabs}
+      </HStack>
+      <PeopleTab roleFilter={roleFilter} onClearFilter={() => setRoleFilter(null)} />
+    </Page>
+  );
+}
+
+function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; onClearFilter: () => void }) {
   const qc = useQueryClient();
+  const mine = useSessionStore((s) => s.user?.permissions);
   const { data, isLoading } = useQuery({ queryKey: ['users'], queryFn: adminApi.users });
+  const rolesQ = useQuery({ queryKey: ['roles'], queryFn: adminApi.roles });
+  const roles = rolesQ.data?.items ?? [];
+  const roleName = (u: AdminUser) => roles.find((r) => r.id === u.roleId)?.name ?? u.role;
 
   // Alta
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
-  const [role, setRole] = useState('cajero');
+  const [roleId, setRoleId] = useState<number | null>(null);
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['users'] });
-  const onErr = (e: unknown) => toaster.create({ title: 'Error', description: String(e), type: 'error' });
+  const onErr = (e: unknown) => toaster.create({ title: 'Error', description: mensajeDeError(e), type: 'error' });
 
   const create = useMutation({
     mutationFn: () => adminApi.createUser({
-      name, role, username: username || undefined, password,
+      name, roleId: roleId!, username: username || undefined, password,
       pin: pin || undefined, recoveryEmail: email || undefined,
     }),
     onSuccess: () => {
       invalidate();
-      setName(''); setUsername(''); setPassword(''); setPin(''); setEmail('');
+      setName(''); setUsername(''); setRoleId(null); setPassword(''); setPin(''); setEmail('');
       toaster.create({ title: 'Empleado creado', description: 'Deberá cambiar su contraseña al entrar.', type: 'success' });
     },
     onError: onErr,
@@ -61,18 +127,18 @@ export function EmployeesPage() {
 
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
 
-  const canCreate = name && username && password.length >= MIN_LEN && !password.includes('@');
+  const canCreate = name && username && roleId && password.length >= MIN_LEN && !password.includes('@');
+  const shown = (data?.items ?? []).filter((u) => roleFilter === null || u.roleId === roleFilter);
+  const filterName = roles.find((r) => r.id === roleFilter)?.name;
 
   return (
-    <Page maxW="900px">
-      <Heading size="lg" mb={4}>Empleados</Heading>
-
+    <Box flex="1" minH={0} overflowY="auto">
       <Box bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px" mb={4}>
         <VStack align="stretch" gap={3}>
           <HStack flexWrap="wrap" gap={3}>
             <Input minH="44px" placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} maxW="220px" />
             <Input minH="44px" placeholder="Usuario (login)" value={username} onChange={(e) => setUsername(e.target.value)} maxW="180px" autoCapitalize="none" />
-            <RolePicker value={role} onChange={setRole} />
+            <Box minW="200px" flex="1" maxW="260px"><RolePicker roles={roles} value={roleId} onChange={setRoleId} mine={mine} /></Box>
           </HStack>
           <HStack flexWrap="wrap" gap={3} align="end">
             <Box>
@@ -86,6 +152,11 @@ export function EmployeesPage() {
         </VStack>
       </Box>
 
+      {roleFilter !== null && (
+        <Button minH="44px" mb={3} variant="subtle" colorPalette="gray" onClick={onClearFilter}>
+          Rol: {filterName ?? 'ese rol'} <LuX />
+        </Button>
+      )}
       <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
         <Table.Root size="sm">
           <Table.Header><Table.Row>
@@ -97,11 +168,11 @@ export function EmployeesPage() {
             <Table.ColumnHeader textAlign="end">Gestionar</Table.ColumnHeader>
           </Table.Row></Table.Header>
           <Table.Body>
-            {(data?.items ?? []).map((u) => (
+            {shown.map((u) => (
               <Table.Row key={u.id}>
                 <Table.Cell>{u.name}</Table.Cell>
                 <Table.Cell>{u.username ?? '—'}</Table.Cell>
-                <Table.Cell><Badge textTransform="capitalize">{u.role}</Badge></Table.Cell>
+                <Table.Cell><Badge>{roleName(u)}</Badge></Table.Cell>
                 <Table.Cell>{u.recoveryEmail ? u.recoveryEmail : <Text color="fg.subtle">—</Text>}</Table.Cell>
                 <Table.Cell>{u.isActive ? <Badge colorPalette="green">activo</Badge> : <Badge>inactivo</Badge>}</Table.Cell>
                 <Table.Cell textAlign="end">
@@ -111,29 +182,39 @@ export function EmployeesPage() {
             ))}
           </Table.Body>
         </Table.Root>
+        {roleFilter !== null && shown.length === 0 && (
+          <VStack p={6} gap={3}>
+            <Text color="fg.muted">Nadie tiene este rol</Text>
+            <Button minH="44px" variant="outline" onClick={onClearFilter}>Quitar el filtro</Button>
+          </VStack>
+        )}
       </Box>
 
-      {manage && <ManageDialog user={manage} onClose={() => setManage(null)} onSaved={invalidate} onError={onErr}
+      {manage && <ManageDialog user={manage} roles={roles} mine={mine} onClose={() => setManage(null)} onSaved={invalidate} onError={onErr}
         onSchedule={() => { setScheduleUser(manage); setManage(null); }} />}
       {scheduleUser && <ScheduleEditor userId={scheduleUser.id} name={scheduleUser.name} onClose={() => setScheduleUser(null)}
         people={(data?.items ?? []).map((u) => ({ id: u.id, name: u.name }))} />}
-    </Page>
+    </Box>
   );
 }
 
 // Dialog de gestión: editar datos, resetear contraseña, fijar PIN, activar/desactivar.
-function ManageDialog({ user, onClose, onSaved, onError, onSchedule }: {
-  user: AdminUser; onClose: () => void; onSaved: () => void; onError: (e: unknown) => void; onSchedule: () => void;
+function ManageDialog({ user, roles, mine, onClose, onSaved, onError, onSchedule }: {
+  user: AdminUser; roles: Role[]; mine: string[] | undefined; onClose: () => void; onSaved: () => void; onError: (e: unknown) => void; onSchedule: () => void;
 }) {
   const [name, setName] = useState(user.name);
-  const [role, setRole] = useState(user.role);
+  const [roleId, setRoleId] = useState<number | null>(user.roleId ?? null);
   const [isActive, setIsActive] = useState(user.isActive);
   const [email, setEmail] = useState(user.recoveryEmail ?? '');
   const [newPass, setNewPass] = useState('');
   const [newPin, setNewPin] = useState('');
+  // A quien puede más que la sesión no se le toca nada (el servidor responde 403). Sin su rol en la
+  // lista no se sabe qué puede; el servidor sigue siendo la barrera.
+  const userRole = roles.find((r) => r.id === user.roleId);
+  const outranks = !!userRole && !fitsIn(userRole.permissions ?? [], mine);
 
   const save = useMutation({
-    mutationFn: () => adminApi.updateUser(user.id, { name, role, isActive, recoveryEmail: email || null }),
+    mutationFn: () => adminApi.updateUser(user.id, { name, roleId: roleId!, isActive, recoveryEmail: email || null }),
     onSuccess: () => { onSaved(); toaster.create({ title: 'Guardado', type: 'success' }); onClose(); },
     onError,
   });
@@ -155,17 +236,21 @@ function ManageDialog({ user, onClose, onSaved, onError, onSchedule }: {
         <DialogHeader><DialogTitle>{user.name} · @{user.username}</DialogTitle></DialogHeader>
         <DialogCloseTrigger />
         <DialogBody>
+          {outranks ? (
+            <Text color="fg.muted">Esta persona tiene permisos que tu usuario no tiene: no puedes cambiar sus datos, contraseña ni PIN.</Text>
+          ) : (
           <VStack align="stretch" gap={5}>
             <VStack align="stretch" gap={2}>
               <Text fontWeight="700">Datos</Text>
               <Input minH="44px" placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} />
-              <RolePicker value={role} onChange={setRole} />
+              <RolePicker roles={roles} value={roleId} onChange={setRoleId} current={user.roleId} mine={mine} />
               <Input minH="44px" placeholder="Email de recuperación" value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
-              <HStack justify="space-between">
-                <Text>Activo</Text>
-                <Switch checked={isActive} onCheckedChange={(e) => setIsActive(e.checked)} />
-              </HStack>
-              <Button minH="44px" loading={save.isPending} onClick={() => save.mutate()}>Guardar datos</Button>
+              {/* El renglón entero es el control: tocar «Activo» no movía el interruptor. */}
+              <Switch checked={isActive} onCheckedChange={(e) => setIsActive(e.checked)}
+                w="100%" minH="44px" flexDirection="row-reverse" justifyContent="space-between" cursor="pointer">
+                Activo
+              </Switch>
+              <Button minH="44px" loading={save.isPending} disabled={!roleId} onClick={() => save.mutate()}>Guardar datos</Button>
             </VStack>
 
             <VStack align="stretch" gap={2}>
@@ -185,9 +270,14 @@ function ManageDialog({ user, onClose, onSaved, onError, onSchedule }: {
               </HStack>
             </VStack>
           </VStack>
+          )}
         </DialogBody>
         <DialogFooter>
-          <Button variant="outline" minH="44px" mr="auto" onClick={onSchedule}>Horario y asistencia</Button>
+          {/* El horario lo lee y lo guarda quien configura la asistencia; sin el permiso la hoja abría
+              vacía y editable con un 403 detrás, como si la persona no tuviera horario. */}
+          {mine?.includes('attendance.configure') && (
+            <Button variant="outline" minH="44px" mr="auto" onClick={onSchedule}>Horario y asistencia</Button>
+          )}
           <Button minH="44px" variant="ghost" onClick={onClose}>Cerrar</Button>
         </DialogFooter>
       </DialogContent>

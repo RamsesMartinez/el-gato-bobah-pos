@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -24,9 +25,20 @@ func ResetCompanyAdmin(ctx context.Context, st *store.Store, companyID int64, p 
 			return err
 		}
 		if n == 0 {
+			// El admin nace con el rol admin de SU empresa (spec 068); la empresa tiene sus
+			// sugeridos aunque la haya creado un camino anterior.
+			if err := q.EnsureCompanyRoles(ctx, companyID); err != nil {
+				return err
+			}
+			adminRole, err := q.SuggestedRoleID(ctx, string(domain.RoleAdmin))
+			if err != nil {
+				return err
+			}
+			p.RoleID = adminRole
 			_, err = q.CreateUser(ctx, p)
+			return err
 		}
-		return err
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("resetear el admin de la empresa %d: %w", companyID, err)

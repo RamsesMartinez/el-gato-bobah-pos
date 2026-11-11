@@ -7,9 +7,10 @@ import (
 	"errors"
 	"testing"
 
+	"time"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
-	"time"
 
 	"uuid"
 

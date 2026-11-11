@@ -26,6 +26,10 @@ with company as (
   -- Un negocio nace con una terminal por omisión (spec 032, punto 8).
   insert into card_terminals (company_id, branch_id, name)
   select company_id, id, 'Terminal' from headquarters
+), suggested_roles as (
+  -- Y con sus cuatro roles sugeridos (spec 068): toda empresa los tiene siempre.
+  insert into roles (company_id, system_role_id)
+  select c.id, s.id from company c cross join system_roles s
 ), concepts as (
   -- Y con los conceptos de salida frecuentes (punto 3).
   insert into cash_concepts (company_id, name)

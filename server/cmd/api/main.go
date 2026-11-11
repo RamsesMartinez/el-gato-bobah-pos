@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/alerts"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
@@ -222,11 +223,14 @@ func main() {
 		}
 		return errors.Join(errs...)
 	})
+	companies := app.NewCompanyService(st)
+	notifier := serverAlerts(cfg, mail, companies)
 	broker := realtime.NewBroker()
 	costing := app.NewCostingService(st)
 	menusPlataforma := app.NewMenusDePlataformaService(st, credentials, nil)
 	handlers := httpapi.NewHandlers(httpapi.Deps{
 		Cfg:             cfg,
+		Alerts:          notifier,
 		Version:         version,
 		BuiltAt:         builtAt,
 		JWT:             jm,
@@ -246,8 +250,9 @@ func main() {
 		DailySummary:    resumen,
 		Admin:           app.NewAdminService(st),
 		InventoryHealth: app.NewInventoryHealthService(st),
+		APITokens:       app.NewAPITokensService(st),
 		Settings:        app.NewSettingsService(st, cfg.PinPepper),
-		Company:         app.NewCompanyService(st),
+		Company:         companies,
 		Reset:           app.NewResetService(st, mail, hibpClient, cfg.HIBPEnabled, cfg.AppBaseURL, nil),
 		Broker:          broker,
 		// nil cuando no hay ANTHROPIC_API_KEY: la extracción de tickets es opcional y el POS
@@ -369,11 +374,35 @@ func main() {
 	defer cancelTail()
 	readsErr := menusPlataforma.Esperar(tailCtx)
 	bgErr := waitGroupCtx(tailCtx, &fondo)
-	if err := errors.Join(srvErr, readsErr, bgErr); err != nil {
+	// Al final, los resúmenes de avisos de error pendientes: el último 500 de esta copia también
+	// cuenta. 5 s propios, dentro de los 30 que da el despliegue.
+	alertsCtx, cancelAlerts := context.WithTimeout(context.Background(), alertsCloseTimeout)
+	defer cancelAlerts()
+	alertsErr := notifier.Close(alertsCtx)
+	if err := errors.Join(srvErr, readsErr, bgErr, alertsErr); err != nil {
 		slog.Error("shutdown", "error", err, "duration_ms", time.Since(started).Milliseconds())
 		return
 	}
 	slog.Info("shutdown complete", "duration_ms", time.Since(started).Milliseconds())
+}
+
+// alertsCloseTimeout es lo que el apagado espera a que salgan los resúmenes de avisos pendientes.
+const alertsCloseTimeout = 5 * time.Second
+
+// serverAlerts arma el aviso por correo de cada 500 (spec 070), o nil si no hay destinatario o
+// SMTP. Apagado se dice al arrancar: un despliegue sin ALERT_EMAIL_TO callaría los 500 sin aviso.
+func serverAlerts(cfg config.Config, mail *mailer.Mailer, companies *app.CompanyService) *alerts.Notifier {
+	if !cfg.ServerAlertsEnabled() {
+		slog.Warn("server_alerts_disabled", "alert_email_to_set", strings.TrimSpace(cfg.AlertEmailTo) != "", "smtp_set", cfg.EmailEnabled())
+		return nil
+	}
+	slog.Info("server_alerts_enabled", "environment", cfg.AlertEnvironment(), "redis", cfg.RedisURL != "")
+	return alerts.New(alerts.Options{
+		To:          strings.TrimSpace(cfg.AlertEmailTo),
+		Send:        mail.Send,
+		CompanyName: companies.Name,
+		RedisURL:    cfg.RedisURL,
+	})
 }
 
 // assertRLSEnforced verifica en runtime que el rol de servicio NO puede saltar RLS: (1) no es
@@ -493,6 +522,12 @@ func provisionCompany(ctx context.Context, st *store.Store, pepper string) error
 	}
 	params := newAdminParams(username, pwHash, pinHash, pinLookup)
 	if err := st.WithTenant(ctx, co.ID, func(q *db.Queries) error {
+		// CreateCompany ya sembró los cuatro sugeridos: el admin nace con el suyo (spec 068).
+		adminRole, err := q.SuggestedRoleID(ctx, string(domain.RoleAdmin))
+		if err != nil {
+			return err
+		}
+		params.RoleID = adminRole
 		if _, err := q.CreateUser(ctx, params); err != nil {
 			return err
 		}
@@ -611,7 +646,8 @@ func linePrompt(r io.Reader) func(string) (string, error) {
 // desbloquear en modo solo-PIN.
 func newAdminParams(username, pwHash string, pinHash, pinLookup *string) db.CreateUserParams {
 	return db.CreateUserParams{
-		Name: "Administrador", Username: &username, Role: string(domain.RoleAdmin),
+		// El rol (admin de la empresa) lo pone ResetCompanyAdmin con la empresa ya fijada (spec 068).
+		Name: "Administrador", Username: &username,
 		PasswordHash: &pwHash, PinHash: pinHash, PinLookup: pinLookup,
 	}
 }

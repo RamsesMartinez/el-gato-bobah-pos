@@ -1,5 +1,5 @@
-import { expect, test } from 'vitest';
-import { ACTION_LABELS, actionLabel, summarizeChange } from './labels';
+import { describe, expect, test } from 'vitest';
+import { ACTION_LABELS, actionLabel, auditGroupOf, summarizeChange, summarizeEvent } from './labels';
 
 // La lista del servidor (domain.AllAuditActions). Una acción sin etiqueta saldría en pantalla como
 // «payment.voided», que es texto para quien programa.
@@ -21,6 +21,9 @@ const FROM_SERVER = [
   'stock.count_confirm_asked', 'settings.count_limits_changed', 'expense.edited',
   'ingredient.merged', 'ingredient.merged_into',
   'ingredient.density_set', 'ingredient.density_cleared', 'presentation.tare_set',
+  'role.created', 'role.renamed', 'role.permissions_changed', 'role.reset', 'role.deactivated',
+  'role.reactivated', 'role.deleted', 'user.role_changed',
+  'api_token.created', 'api_token.revoked', 'mcp.tool_called',
 ];
 
 test('cada acción del servidor tiene etiqueta en español', () => {
@@ -53,4 +56,46 @@ test('el cambio de terminal se lee con el nombre, no con el id', () => {
 test('el cambio de modo se lee en español', () => {
   expect(summarizeChange({ mode: 'own_stock' }, { mode: 'recipe' })).toBe('Qué resta: Su propia existencia → Lo que lleva');
   expect(summarizeChange({ mode: 'recipe' }, { mode: 'undecided' })).toBe('Qué resta: Lo que lleva → Falta decir qué resta');
+});
+
+// Los eventos de roles salían como «Qué cambió: —»: el servidor guarda `name`, `permissions`,
+// `added`, `removed` y `roleId`, y ninguno estaba en la lista de campos.
+describe('eventos de roles', () => {
+  const LABELS: Record<string, string> = { 'orders.cancel': 'Cancelar pedidos', 'cash.operate': 'Operar caja' };
+  const ctx = { permissionLabel: (c: string) => LABELS[c], roleName: (id: number) => ({ 3: 'Cajero', 12: 'Encargado' } as Record<number, string>)[id] };
+
+  test('crear nombra el rol y lo que puede', () => {
+    expect(summarizeEvent('role.created', null, { name: 'Encargado', permissions: ['orders.cancel', 'cash.operate'] }, ctx))
+      .toBe('Rol: Encargado · Puede: Cancelar pedidos, Operar caja');
+  });
+  test('renombrar dice antes → después', () => {
+    expect(summarizeEvent('role.renamed', { name: 'Barista' }, { name: 'Barra' }, ctx)).toBe('Rol: Barista → Barra');
+  });
+  test('cambiar permisos dice qué agregó y qué quitó', () => {
+    expect(summarizeEvent('role.permissions_changed', null, { name: 'Cajero', added: ['orders.cancel'], removed: ['cash.operate'] }, ctx))
+      .toBe('Rol: Cajero · Agregó: Cancelar pedidos · Quitó: Operar caja');
+  });
+  test('sin las etiquetas de permiso, dice cuántos (nunca el código)', () => {
+    const s = summarizeEvent('role.permissions_changed', null, { name: 'Cajero', added: ['orders.cancel', 'x.y'], removed: [] }, {});
+    expect(s).toBe('Rol: Cajero · Agregó: 2 permisos');
+  });
+  test.each(['role.reset', 'role.deactivated', 'role.reactivated', 'role.deleted'])('%s nombra el rol', (a) => {
+    expect(summarizeEvent(a, { name: 'Barista' }, null, ctx)).toBe('Rol: Barista');
+  });
+  test('el cambio de rol de una persona dice de cuál a cuál, o «Cambió de rol» si no se saben', () => {
+    expect(summarizeEvent('user.role_changed', { roleId: 3 }, { roleId: 12 }, ctx)).toBe('Rol: Cajero → Encargado');
+    expect(summarizeEvent('user.role_changed', { roleId: 3 }, { roleId: 12 }, {})).toBe('Cambió de rol');
+  });
+  test('lo demás se lee igual que antes', () => {
+    expect(summarizeEvent('price.set', { price: '80' }, { price: '85' }, ctx)).toBe('Precio: $80 → $85');
+  });
+});
+
+// Espejo de domain.AuditGroupOf: los role.* iban con el color de Pedidos y el servidor los cuenta en
+// Asistencia, junto con user.role_changed.
+test('los eventos de roles van en el grupo de Asistencia, como en el servidor', () => {
+  for (const a of ['role.created', 'role.renamed', 'role.permissions_changed', 'role.reset', 'role.deactivated', 'role.reactivated', 'role.deleted', 'user.role_changed']) {
+    expect(auditGroupOf(a), a).toBe('attendance');
+  }
+  expect(auditGroupOf('payment.charged')).toBe('money');
 });

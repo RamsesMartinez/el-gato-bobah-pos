@@ -65,7 +65,7 @@ func TestElLoteDeUsoSePreAgrega(t *testing.T) {
 		{Pantalla: "caja", Accion: "cerrar-turno"},
 		{Pantalla: "pos"},
 	}
-	agregado := PreAgregarUso(lote, RoleCajero)
+	agregado := PreAgregarUso(lote, PermissionsFor(RoleCajero))
 
 	if len(agregado) != 3 {
 		t.Fatalf("quedaron %d combinaciones y hay 3 distintas: %+v", len(agregado), agregado)
@@ -151,7 +151,7 @@ func TestSeCuentanLosCuatroRoles(t *testing.T) {
 // el mapa mostraría un cero permanente que se lee como «nadie la usa».
 func TestTodaPantallaMedibleTieneRoles(t *testing.T) {
 	for _, pantalla := range PantallasMedibles() {
-		if !PantallaPermitidaParaRol(pantalla, RoleAdmin) {
+		if !ScreenAllowed(pantalla, AllPermissions()) {
 			t.Errorf("la pantalla %q no dice qué roles pueden abrirla: sus eventos se descartarían todos, en silencio", pantalla)
 		}
 	}
@@ -165,15 +165,15 @@ func TestTodaPantallaMedibleTieneRoles(t *testing.T) {
 // mentiras desde adentro, y entonces deja de servir para lo único que existe.
 func TestUnRolNoReportaPantallasQueNoPuedeAbrir(t *testing.T) {
 	mentira := []EventoDeUso{{Pantalla: "usuarios"}, {Pantalla: "negocio"}}
-	if n := len(PreAgregarUso(mentira, RoleMesero)); n != 0 {
+	if n := len(PreAgregarUso(mentira, PermissionsFor(RoleMesero))); n != 0 {
 		t.Fatalf("el mesero reportó %d pantallas de administración: el mapa se llena de mentiras desde adentro", n)
 	}
 	// Y lo que sí puede abrir, se cuenta.
-	if n := len(PreAgregarUso([]EventoDeUso{{Pantalla: "pos"}}, RoleMesero)); n != 1 {
+	if n := len(PreAgregarUso([]EventoDeUso{{Pantalla: "pos"}}, PermissionsFor(RoleMesero))); n != 1 {
 		t.Fatal("el mesero no pudo reportar el POS, que es donde trabaja")
 	}
 	// El admin sí ve las de administración.
-	if n := len(PreAgregarUso(mentira, RoleAdmin)); n != 2 {
+	if n := len(PreAgregarUso(mentira, PermissionsFor(RoleAdmin))); n != 2 {
 		t.Fatalf("el admin reportó %d de 2 pantallas suyas", n)
 	}
 }
@@ -253,7 +253,7 @@ func TestInventoryHealthIsMeasuredInsideInventory(t *testing.T) {
 	// Quien puede ver la pestaña puede abrir la pantalla que la contiene; si no, sus aperturas se
 	// descartarían por rol.
 	for _, r := range []Role{RoleAdmin, RoleGerente, RoleCajero, RoleMesero} {
-		if slices.Contains(PermissionsFor(r), PermInventoryHealthView) && !PantallaPermitidaParaRol("inventario", r) {
+		if slices.Contains(PermissionsFor(r), PermInventoryHealthView) && !ScreenAllowed("inventario", PermissionsFor(r)) {
 			t.Errorf("el rol %q ve la salud del inventario pero su medición se descarta por rol", r)
 		}
 	}
@@ -271,5 +271,41 @@ func TestPurchasesAndCountsAreMeasured(t *testing.T) {
 				t.Errorf("la acción %q de %q se descarta", a, pantalla)
 			}
 		}
+	}
+}
+
+// Lo que cada rol sugerido puede medir es lo mismo que antes de los roles por empresa (spec 068),
+// salvo «negocio»: la medición lo tenía solo para el admin, y el router siempre se lo dejó abrir
+// también al gerente. Ahora la medición dice lo mismo que el router.
+func TestEachSuggestedRoleMeasuresTheSameScreensAsBefore(t *testing.T) {
+	antes := map[string][]Role{
+		"pos": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero}, "pedidos": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+		"cuenta": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero}, "caja": {RoleAdmin, RoleGerente, RoleCajero},
+		"ventas": {RoleAdmin, RoleGerente}, "reportes": {RoleAdmin, RoleGerente}, "gastos": {RoleAdmin, RoleGerente},
+		"inventario": {RoleAdmin, RoleGerente}, "catalogo": {RoleAdmin, RoleGerente}, "usuarios": {RoleAdmin},
+		"negocio": {RoleAdmin, RoleGerente}, "impresion": {RoleAdmin, RoleGerente}, "plataformas": {RoleAdmin, RoleGerente},
+		"emparejar": {RoleAdmin, RoleGerente}, "asistencia": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+		"merma": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+	}
+	for pantalla, roles := range antes {
+		for _, r := range []Role{RoleAdmin, RoleGerente, RoleCajero, RoleMesero} {
+			if got, want := ScreenAllowed(pantalla, PermissionsFor(r)), slices.Contains(roles, r); got != want {
+				t.Errorf("%s abre %q = %v, antes %v", r, pantalla, got, want)
+			}
+		}
+	}
+}
+
+// UN ROL PROPIO SE MIDE SIN ROL (spec 068): puede ser de una sola persona. Su gente cae en el balde
+// sin corte, y el balde solo se guarda si tapa a dos o más.
+func TestACustomRoleIsMeasuredWithoutRole(t *testing.T) {
+	if got := CortarPorRol(map[Role]int{RoleGerente: 3, "": 1}, ""); got != NoGuardar {
+		t.Errorf("una sola persona con rol propio = %v, quiere NoGuardar", got)
+	}
+	if got := CortarPorRol(map[Role]int{RoleAdmin: 1, "": 1}, ""); got != GuardarSinCorte {
+		t.Errorf("rol propio + un admin en el balde = %v, quiere GuardarSinCorte", got)
+	}
+	if got := CortarPorRol(map[Role]int{RoleAdmin: 1, "": 1}, RoleAdmin); got != GuardarSinCorte {
+		t.Errorf("el admin solo, con un rol propio en el balde = %v, quiere GuardarSinCorte", got)
 	}
 }

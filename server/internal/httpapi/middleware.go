@@ -36,6 +36,14 @@ func userFrom(ctx context.Context) (AuthUser, bool) {
 func RequireAuth(jm *auth.Manager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Una petición que despachó el servidor MCP (spec 072) ya trae a su persona, autenticada
+			// por su token. Solo el despachador puede poner este valor: la llave del contexto no se
+			// exporta y una petición de afuera no fabrica contexto. Ver mcp.go.
+			if p, ok := mcpPrincipalFrom(r.Context()); ok {
+				ctx := app.WithActorUser(context.WithValue(r.Context(), userCtxKey, p.user), p.user.ID)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
 			raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			if raw == "" || raw == r.Header.Get("Authorization") {
 				// EventSource no permite headers: aceptar ?token= para SSE.
@@ -56,6 +64,8 @@ func RequireAuth(jm *auth.Manager) func(http.Handler) http.Handler {
 			if ti := traceFrom(r.Context()); ti != nil {
 				ti.userID = u.ID
 				ti.role = string(u.Role)
+				ti.userName = u.Name
+				ti.companyID = u.CompanyID
 			}
 			ctx := app.WithActorUser(context.WithValue(r.Context(), userCtxKey, u), u.ID)
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -79,33 +89,16 @@ func WithTenant(st *store.Store) func(http.Handler) http.Handler {
 				Error(w, err)
 				return
 			}
+			ctx = context.WithValue(ctx, permCacheKey{}, &permCache{})
 			defer release()
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
-// RequireRole gates a route to the given roles. Must run after RequireAuth.
-func RequireRole(roles ...domain.Role) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			u, ok := userFrom(r.Context())
-			if !ok || !u.Role.In(roles...) {
-				// Evento de seguridad para detección: quién (id/rol) intentó qué ruta.
-				logging.SecurityEvent(r.Context(), "forbidden",
-					"user_id", u.ID, "role", string(u.Role),
-					"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
-				Error(w, domain.ErrForbidden)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-// PermissionResolver dice qué permisos tiene un rol. Hoy es domain.PermissionsFor; cuando cada
-// empresa defina sus roles saldrá de la base, y es lo único que cambia ese día.
-type PermissionResolver func(domain.Role) []domain.Permission
+// PermissionResolver dice qué puede el usuario de la petición. En producción lee la base con la
+// conexión de la empresa (roles por empresa, spec 068), una vez por petición.
+type PermissionResolver func(ctx context.Context, u AuthUser) ([]domain.Permission, error)
 
 // RequirePermission gates a route to users whose role grants p. Must run after RequireAuth.
 //
@@ -116,7 +109,15 @@ func RequirePermission(resolve PermissionResolver, p domain.Permission) func(htt
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			u, ok := userFrom(r.Context())
-			if !ok || !slices.Contains(resolve(u.Role), p) {
+			var perms []domain.Permission
+			if ok {
+				var err error
+				if perms, err = resolve(r.Context(), u); err != nil {
+					Error(w, err)
+					return
+				}
+			}
+			if !ok || !slices.Contains(perms, p) {
 				logging.SecurityEvent(r.Context(), "forbidden",
 					"user_id", u.ID, "role", string(u.Role), "permission", string(p),
 					"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
@@ -140,7 +141,11 @@ func RequireAnyPermission(resolve PermissionResolver, ps ...domain.Permission) f
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			u, ok := userFrom(r.Context())
 			if ok {
-				has := resolve(u.Role)
+				has, err := resolve(r.Context(), u)
+				if err != nil {
+					Error(w, err)
+					return
+				}
 				for _, p := range ps {
 					if slices.Contains(has, p) {
 						next.ServeHTTP(w, r)
@@ -202,5 +207,33 @@ func RequireOperador(jm *auth.ManagerDePlataforma, svc *app.PlatformService) fun
 			}
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// permCache guarda los permisos de la petición la primera vez que se piden: el gate de la ruta y
+// el handler preguntan lo mismo, y la respuesta no cambia a media petición.
+type permCacheKey struct{}
+
+type permCache struct {
+	done  bool
+	perms []domain.Permission
+}
+
+// MemoizedPermissions envuelve un resolvedor para que lea la base una sola vez por petición. Fuera
+// de WithTenant (sin caché en el contexto) resuelve cada vez.
+func MemoizedPermissions(resolve PermissionResolver) PermissionResolver {
+	return func(ctx context.Context, u AuthUser) ([]domain.Permission, error) {
+		c, _ := ctx.Value(permCacheKey{}).(*permCache)
+		if c != nil && c.done {
+			return c.perms, nil
+		}
+		perms, err := resolve(ctx, u)
+		if err != nil {
+			return nil, err
+		}
+		if c != nil {
+			c.done, c.perms = true, perms
+		}
+		return perms, nil
 	}
 }

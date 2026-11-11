@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
-	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
@@ -31,7 +30,7 @@ func TestResetAdminTouchesOnlyItsOwnCompany(t *testing.T) {
 
 	nuevo := func(hash string) db.CreateUserParams {
 		u := "admin"
-		return db.CreateUserParams{Name: "Administrador", Username: &u, Role: string(domain.RoleAdmin), PasswordHash: &hash}
+		return db.CreateUserParams{Name: "Administrador", Username: &u, PasswordHash: &hash}
 	}
 	contar := func(empresa int64, hash string) int {
 		var n int

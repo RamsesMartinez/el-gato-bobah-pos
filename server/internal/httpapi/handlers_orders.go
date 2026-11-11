@@ -198,7 +198,7 @@ func (h *Handlers) DeliveredOrders(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-// POST /orders/{id}/refund  {reason}  — reembolsa una orden entregada (admin/gerente).
+// POST /orders/{id}/refund  {reason}  — reembolsa una orden entregada (permiso payments.void).
 func (h *Handlers) RefundOrder(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {

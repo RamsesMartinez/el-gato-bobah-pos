@@ -18,7 +18,8 @@ type RecipeRow struct {
 	Group  string `json:"group"` // categoría del producto o grupo del extra
 	Status string `json:"status"`
 	// Mode dice qué es la receta, para el resumen: "items" (lleva insumos), "combo", "product"
-	// (un extra que es otro producto), "own" (se descuenta solo) o "" (sin receta).
+	// (un extra que es otro producto), "own" (se descuenta solo), "options" (lo restan sus opciones,
+	// spec 069) o "" (sin receta).
 	Mode         string          `json:"mode"`
 	Summary      string          `json:"summary"`
 	Lines        int             `json:"lines"`
@@ -87,6 +88,8 @@ func (s *AdminService) ListRecipes(ctx context.Context, f domain.RecipeFilter, n
 				row.Mode, row.Summary = "combo", r.ComboSummary
 			case r.Lines > 0:
 				row.Mode = "items"
+			case r.Status == string(domain.RecipeStatusDone) && r.OptionsDeduct:
+				row.Mode = "options"
 			}
 			page.Items = append(page.Items, row)
 			page.Total = int(r.Total)

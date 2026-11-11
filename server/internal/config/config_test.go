@@ -287,3 +287,61 @@ func TestValidate_CredentialsCipher(t *testing.T) {
 		})
 	}
 }
+
+// Los avisos de error salen solo con destinatario Y correo configurados: sin SMTP no hay por dónde
+// mandarlos, y sin destinatario la máquina de quien programa no le escribe a nadie.
+func TestServerAlertsEnabled(t *testing.T) {
+	cases := []struct {
+		name string
+		to   string
+		host string
+		want bool
+	}{
+		{"sin destinatario", "", "smtp.zoho.com", false},
+		{"sin smtp", "a@b.c", "", false},
+		{"destinatario en blanco", "   ", "smtp.zoho.com", false},
+		{"los dos", "a@b.c", "smtp.zoho.com", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cfg := Config{AlertEmailTo: c.to, SMTPHost: c.host}
+			if got := cfg.ServerAlertsEnabled(); got != c.want {
+				t.Fatalf("ServerAlertsEnabled() = %v, quería %v", got, c.want)
+			}
+		})
+	}
+}
+
+// APP_ENV vale «production» también en la VM de pruebas: el correo se rotula con el host público
+// para que un aviso de pruebas no se lea como uno de producción.
+func TestAlertEnvironmentIsTheAppHost(t *testing.T) {
+	cases := map[string]string{
+		"https://app.elgatobobah.com":      "app.elgatobobah.com",
+		"https://app-dev.elgatobobah.com/": "app-dev.elgatobobah.com",
+		"http://localhost:3070":            "localhost:3070",
+		"":                                 "desconocido",
+		"::no es url":                      "desconocido",
+	}
+	for in, want := range cases {
+		if got := (Config{AppBaseURL: in}).AlertEnvironment(); got != want {
+			t.Errorf("AlertEnvironment(%q) = %q, quería %q", in, got, want)
+		}
+	}
+}
+
+// Un destinatario mal escrito dejaría los avisos fallando en silencio; con CRLF inyectaría
+// encabezados. Se rechaza al arrancar.
+func TestValidate_RejectsAMalformedAlertRecipient(t *testing.T) {
+	for _, bad := range []string{"no-es-correo", "a@b.c\r\nBcc: x@y.z"} {
+		c := base()
+		c.AlertEmailTo = bad
+		if err := Validate(c); err == nil {
+			t.Errorf("ALERT_EMAIL_TO=%q pasó la validación", bad)
+		}
+	}
+	c := base()
+	c.AlertEmailTo = "ramses@example.com"
+	if err := Validate(c); err != nil {
+		t.Fatalf("un destinatario válido se rechazó: %v", err)
+	}
+}

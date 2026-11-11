@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/alerts"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
@@ -17,6 +19,7 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
 const refreshCookie = "refresh_token"
@@ -78,11 +81,17 @@ const (
 	// bucle, no el uso.
 	splitWritesMax    = 120
 	splitWritesWindow = 5 * time.Minute
+	// purchasePreviewMax/Window: la vista previa de una compra corre la captura entera y toma sus
+	// candados (spec 073). Un agente en bucle no debe poder tener tomado el almacén de las ventas.
+	purchasePreviewMax    = 30
+	purchasePreviewWindow = time.Minute
 )
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
 type Deps struct {
-	Cfg       config.Config
+	Cfg config.Config
+	// Alerts manda por correo cada 500 (spec 070); nil = avisos apagados.
+	Alerts    *alerts.Notifier
 	Version   string // SHA del build (ldflags); "dev" en local
 	BuiltAt   string // timestamp del build (ldflags); "" en local
 	JWT       *auth.Manager
@@ -132,13 +141,17 @@ type Deps struct {
 	// el agregado. Son dos campos y no uno porque son dos permisos distintos, y confundirlos es
 	// exactamente lo que las tres barreras de la spec 016 existen para impedir.
 	UsageConsola *app.UsageService
-	// Permissions resuelve los permisos de un rol. Nil = domain.PermissionsFor, el mapa de hoy; las
-	// pruebas inyectan uno que no da ninguno para ver el 403 de un permiso que hoy tienen todos.
+	// Permissions resuelve lo que puede el usuario de la petición. Nil = el de producción, que Router
+	// arma con el store y lee la base (spec 068); las pruebas inyectan uno fijo para ver un 403.
 	Permissions PermissionResolver
-	Attendance  *app.AttendanceService
-	Audit       *app.AuditService
+	// Roles: roles por empresa (spec 068). Sin él, Router arma uno con el store.
+	Roles      *app.RolesService
+	Attendance *app.AttendanceService
+	Audit      *app.AuditService
 	// InventoryHealth es «Salud del inventario» (spec 037).
 	InventoryHealth *app.InventoryHealthService
+	// APITokens: los tokens del servidor MCP (spec 072). Sin él no se monta ni /mcp ni Integraciones.
+	APITokens *app.APITokensService
 }
 
 type Handlers struct {
@@ -197,12 +210,25 @@ type Handlers struct {
 	descuentoWrites *rateLimiter
 	// splitWrites limita devolver pagos y pasar productos por usuario (ver splitWritesMax).
 	splitWrites *rateLimiter
-	authFails   *rateLimiter // account-targeted brute-force lockout (per username / user id)
-	authIPs     *rateLimiter // per-IP request throttle for the /auth group
-	permissions PermissionResolver
-	attendance  *app.AttendanceService
-	audit       *app.AuditService
-	health      *app.InventoryHealthService
+	// purchasePreviews limita la vista previa de una compra por usuario (ver purchasePreviewMax).
+	purchasePreviews *rateLimiter
+	authFails        *rateLimiter // account-targeted brute-force lockout (per username / user id)
+	authIPs          *rateLimiter // per-IP request throttle for the /auth group
+	permissions      PermissionResolver
+	roles            *app.RolesService
+	attendance       *app.AttendanceService
+	audit            *app.AuditService
+	health           *app.InventoryHealthService
+	alerts           *alerts.Notifier
+	// apiTokens, store, mcpIPs y mcpTokens son la puerta para agentes (spec 072). store es el del
+	// negocio: /mcp no pasa por WithTenant y lee los permisos con una conexión que suelta enseguida.
+	apiTokens *app.APITokensService
+	store     *store.Store
+	mcpIPs    *rateLimiter
+	mcpTokens *rateLimiter
+	// tokenWrites acota altas y revocaciones de tokens por usuario: son raras, y una ráfaga es un
+	// script o alguien probando contraseñas.
+	tokenWrites *rateLimiter
 }
 
 // BeginShutdown hace que /readyz responda 503 mientras la copia termina lo que trae.
@@ -222,14 +248,16 @@ func NewHandlers(d Deps) *Handlers {
 
 func newHandlers(d Deps) *Handlers {
 	permissions := d.Permissions
-	if permissions == nil {
-		permissions = domain.PermissionsFor
-	}
 	return &Handlers{
-		permissions: permissions,
+		permissions: permissions, roles: d.Roles,
 		attendance:  d.Attendance,
 		audit:       d.Audit,
 		health:      d.InventoryHealth,
+		alerts:      d.Alerts,
+		apiTokens:   d.APITokens,
+		mcpIPs:      newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-ip:", mcpMaxIPRequests, time.Minute),
+		mcpTokens:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-token:", mcpMaxTokenCalls, time.Minute),
+		tokenWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:token-writes:", 30, time.Hour),
 		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
@@ -270,6 +298,8 @@ func newHandlers(d Deps) *Handlers {
 		descuentoWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:descuento:",
 			descuentoMax, descuentoWindow),
 		splitWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:split:", splitWritesMax, splitWritesWindow),
+		purchasePreviews: newRateLimiter(d.Cfg.RedisURL, "ratelimit:purchase-preview:",
+			purchasePreviewMax, purchasePreviewWindow),
 	}
 }
 
@@ -282,7 +312,16 @@ type sessionResponse struct {
 // (`can()`), nunca por nombre de rol; por eso viajan con cada sesión y no se deducen del rol allá.
 type sessionUser struct {
 	domain.User
+	RoleID      int64               `json:"roleId"`
+	RoleName    string              `json:"roleName"`
 	Permissions []domain.Permission `json:"permissions"`
+}
+
+func nonNilPerms(p []domain.Permission) []domain.Permission {
+	if p == nil {
+		return []domain.Permission{}
+	}
+	return p
 }
 
 // La cookie de refresh codifica el tenant como "cid.token": el /refresh necesita fijar la
@@ -326,15 +365,18 @@ func (h *Handlers) clearRefreshCookie(w http.ResponseWriter) {
 func (h *Handlers) writeSession(w http.ResponseWriter, s *app.Session, status int) {
 	h.setRefreshCookie(w, s.CompanyID, s.RefreshToken, s.RefreshExpiresAt)
 	JSON(w, status, sessionResponse{AccessToken: s.AccessToken,
-		User: sessionUser{User: s.User, Permissions: h.permissionsOf(s.User.Role)}})
+		User: sessionUser{User: s.User, RoleID: s.Role.ID, RoleName: s.Role.Name, Permissions: nonNilPerms(s.Permissions)}})
 }
 
-// permissionsOf nunca devuelve nil: un nil saldría como `null` y la pantalla truena al preguntar.
-func (h *Handlers) permissionsOf(role domain.Role) []domain.Permission {
-	if p := h.permissions(role); p != nil {
-		return p
+// permissionsOf es lo que puede el usuario de la petición. Nunca devuelve nil (saldría `null` y la
+// pantalla truena al preguntar). Si la base no responde, ninguno: falla cerrado.
+func (h *Handlers) permissionsOf(ctx context.Context, u AuthUser) []domain.Permission {
+	p, err := h.permissions(ctx, u)
+	if err != nil {
+		slog.ErrorContext(ctx, "permissions_resolve_failed", "user_id", u.ID, "err", err)
+		return []domain.Permission{}
 	}
-	return []domain.Permission{}
+	return nonNilPerms(p)
 }
 
 // POST /auth/login  {username, slug, password}. El identificador es username@slug; también se
@@ -579,9 +621,19 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
+	perms, err := h.permissions(r.Context(), u)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	rol, err := h.roles.UserRole(r.Context(), u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	JSON(w, http.StatusOK, map[string]any{
-		"id": u.ID, "companyId": u.CompanyID, "name": u.Name, "role": u.Role,
-		"permissions": h.permissionsOf(u.Role),
+		"id": u.ID, "companyId": u.CompanyID, "name": u.Name, "role": rol.SystemCode,
+		"roleId": rol.ID, "roleName": rol.Name, "permissions": nonNilPerms(perms),
 	})
 }
 

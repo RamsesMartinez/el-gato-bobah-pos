@@ -1,9 +1,10 @@
-import { describe, expect, test, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { act, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from '../components/ui/provider';
 import { useSessionStore } from '../stores/session';
+import { useAppUpdate } from '../stores/appUpdate';
 import { AppShell } from './AppShell';
 
 vi.mock('../api/pos', () => ({ posApi: { logout: vi.fn() } }));
@@ -13,15 +14,37 @@ vi.mock('../api/attendance', () => ({ attendanceApi: { roster: () => roster() } 
 const pendingWaste = vi.hoisted(() => vi.fn(() => Promise.resolve([] as unknown[])));
 vi.mock('../api/waste', () => ({ wasteApi: { pending: () => pendingWaste() } }));
 
-function renderView() {
+// Lo que trae hoy la sesión de un administrador para las pantallas del riel.
+const ADMIN = ['cash.operate', 'expenses.capture', 'inventory.view', 'sales.view', 'reports.view', 'menu.configure',
+  'platforms.configure', 'employees.manage', 'roles.manage', 'business.configure'];
+
+function renderView(path = '/') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={qc}><Provider><MemoryRouter><AppShell /></MemoryRouter></Provider></QueryClientProvider>);
+  return render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={[path]}><AppShell /></MemoryRouter></Provider></QueryClientProvider>);
 }
 
 // «Salir» medía 46×32 (validación como usuario nuevo): bajo el mínimo de 44 px de la constitución.
 describe('el menú lateral', () => {
-  test('«Salir» mide al menos 44 px de alto', () => {
+  afterEach(() => useAppUpdate.setState({ needRefresh: false, apply: () => {} }));
+
+  // Roles por empresa (spec 068): el riel sale de los PERMISOS de la sesión, no del nombre del rol.
+  test('el riel ofrece lo que los permisos abren, se llame como se llame el rol', async () => {
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'admin', permissions: [] } as never });
+    const { unmount } = renderView();
+    await screen.findByText('Vender');
+    for (const l of ['Ventas', 'Caja', 'Menú', 'Almacén', 'Gastos', 'Reportes', 'Plataformas', 'Empleados', 'Negocio', 'Impresión']) {
+      expect(screen.queryByText(l), `${l} sin permiso`).toBeNull();
+    }
+    unmount();
+    useSessionStore.setState({ user: { id: 2, name: 'Bety', role: '', permissions: ['sales.view', 'roles.manage'] } as never });
+    renderView();
+    expect(await screen.findByText('Ventas')).toBeInTheDocument();
+    expect(screen.getByText('Empleados')).toBeInTheDocument();
+    expect(screen.queryByText('Caja')).toBeNull();
+    expect(screen.getByText('Pedidos')).toBeInTheDocument();
+  });
+  test('«Salir» mide al menos 44 px de alto', () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'admin', permissions: ADMIN } as never });
     renderView();
     const salir = screen.getByRole('button', { name: 'Salir' });
     expect(parseInt(getComputedStyle(salir).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
@@ -44,7 +67,7 @@ describe('el menú lateral', () => {
   // A 600 px la flecha de «hay más abajo» iba encima del último ítem y su rótulo se encimaba con el
   // nombre de quien entró. Va en su propio renglón, fuera de la lista.
   test('la flecha de «hay más» no se encima sobre la lista', async () => {
-    useSessionStore.setState({ user: { id: 1, name: 'Administrador', role: 'admin', permissions: [] } as never });
+    useSessionStore.setState({ user: { id: 1, name: 'Administrador', role: 'admin', permissions: ADMIN } as never });
     const { container } = renderView();
     await screen.findByText('Vender');
     const flecha = container.querySelector('[data-rail-more]') as HTMLElement;
@@ -58,7 +81,7 @@ describe('el menú lateral', () => {
   // el desplazamiento lo prueba railScroll.test.ts; aquí, que la pantalla abierta lo pide.
   test('el ítem de la pantalla abierta se lleva a la vista', async () => {
     const spy = vi.spyOn(await import('./railScroll'), 'railScrollFor');
-    useSessionStore.setState({ user: { id: 1, name: 'Administrador', role: 'admin', permissions: [] } as never });
+    useSessionStore.setState({ user: { id: 1, name: 'Administrador', role: 'admin', permissions: ADMIN } as never });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={['/reportes']}><AppShell /></MemoryRouter></Provider></QueryClientProvider>);
     await screen.findByText('Reportes');
@@ -79,7 +102,7 @@ describe('el menú lateral', () => {
     const second = renderView();
     expect(await screen.findByText('Se echó a perder')).toBeInTheDocument();
     second.unmount();
-    useSessionStore.setState({ user: { id: 1, name: 'Admin', role: 'admin', permissions: ['inventory.write_off'] } as never });
+    useSessionStore.setState({ user: { id: 1, name: 'Admin', role: 'admin', permissions: [...ADMIN, 'inventory.write_off'] } as never });
     renderView();
     const labels = Array.from(document.querySelectorAll('a')).map((a) => a.textContent);
     expect(labels.indexOf('Se echó a perder')).toBeGreaterThan(labels.indexOf('Reportes'));
@@ -89,7 +112,7 @@ describe('el menú lateral', () => {
   // del pliegue. Lo de todos los días va antes que checar, que además está en la pantalla de bloqueo.
   test('«Se echó a perder» va antes de «Asistencia»', async () => {
     roster.mockResolvedValueOnce({ enabled: true, people: [] });
-    useSessionStore.setState({ user: { id: 1, name: 'Admin', role: 'admin', permissions: ['inventory.write_off'] } as never });
+    useSessionStore.setState({ user: { id: 1, name: 'Admin', role: 'admin', permissions: [...ADMIN, 'inventory.write_off'] } as never });
     renderView();
     await screen.findByText('Asistencia');
     const labels = Array.from(document.querySelectorAll('a')).map((a) => a.textContent);
@@ -104,4 +127,42 @@ describe('el menú lateral', () => {
     const link = (await screen.findByText('Se echó a perder')).closest('a')!;
     expect(await within(link).findByText('2')).toBeInTheDocument();
   });
+
+  // El aviso de versión nueva vive en el lugar del logo (spec 064): ni encima de la pantalla ni con
+  // un renglón propio que le quite alto a la lista del riel.
+  test('sin versión nueva está el logo y no el botón de actualizar', async () => {
+    useAppUpdate.setState({ needRefresh: false, apply: () => {} });
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'admin', permissions: ADMIN } as never });
+    renderView();
+    await screen.findByText('Vender');
+    expect(screen.getByAltText('El Gato Bobah')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actualizar a la versión nueva' })).toBeNull();
+  });
+
+  test('con versión nueva el botón ocupa el lugar del logo', async () => {
+    useAppUpdate.setState({ needRefresh: true, apply: () => {} });
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'admin', permissions: ADMIN } as never });
+    renderView();
+    await screen.findByText('Vender');
+    const boton = screen.getByRole('button', { name: 'Actualizar a la versión nueva' });
+    expect(screen.queryByAltText('El Gato Bobah')).toBeNull();
+    const lista = screen.getByText('Vender').closest('a')!.parentElement!;
+    // Va arriba de la lista, donde estaba el logo.
+    expect(boton.compareDocumentPosition(lista) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // Si el alto del riel cambiara con el aviso, la opción abierta podría quedar partida: se vuelve a
+  // llevar a la vista cuando llega la versión nueva.
+  test('al llegar una versión nueva se vuelve a llevar a la vista la opción abierta', async () => {
+    useAppUpdate.setState({ needRefresh: false, apply: () => {} });
+    const spy = vi.spyOn(await import('./railScroll'), 'railScrollFor');
+    useSessionStore.setState({ user: { id: 1, name: 'Administrador', role: 'admin', permissions: ADMIN } as never });
+    renderView('/reportes');
+    await screen.findByText('Reportes');
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+    const antes = spy.mock.calls.length;
+    act(() => useAppUpdate.setState({ needRefresh: true }));
+    await vi.waitFor(() => expect(spy.mock.calls.length).toBeGreaterThan(antes));
+  });
 });
+

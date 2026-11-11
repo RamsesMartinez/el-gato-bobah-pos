@@ -48,7 +48,7 @@ export function useLocations() {
       searchPlaceholder: options.length ? undefined : EXAMPLE,
       focusSearch: false, searchMaxLength: 30, createFirst: true,
       onCreate: canCreate ? create : undefined,
-      cannotCreateHint: canCreate ? undefined : 'Pídele a un administrador que la cree.',
+      cannotCreateHint: canCreate ? undefined : 'Pídele a quien configura el almacén que la cree.',
     },
   };
 }

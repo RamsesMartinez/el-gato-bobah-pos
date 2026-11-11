@@ -14,6 +14,7 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
 )
 
@@ -126,4 +127,59 @@ func TestEverySessionPathCarriesPermissionsAsAnArray(t *testing.T) {
 		}
 		permissionsOf(t, w.Body.Bytes(), "user", "permissions")
 	})
+}
+
+// ROLES POR EMPRESA (spec 068): la sesión trae lo del rol de la empresa, no lo del rol fijo, y un
+// token emitido por la API anterior (sin rol de empresa adentro) se resuelve por el usuario.
+func TestTheSessionCarriesTheCompanyRole(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	jm := auth.NewManager(secretoDelNegocioEnPruebas, nil)
+	h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Auth: app.NewAuthServiceConPepper(st, jm, clock, "pepper-de-prueba")})
+	r := httpapi.Router(config.Config{}, jm, h, st)
+
+	var propio int64
+	if err := st.Pool.QueryRow(ctx,
+		`insert into roles (company_id, name) values ($1, 'Encargado de turno') returning id`, defaultCompanyID).Scan(&propio); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `insert into role_permission_overrides (company_id, role_id, permission_id, granted)
+		select $1, $2, id, true from permissions where code in ('sales.view', 'cash.operate')`, defaultCompanyID, propio); err != nil {
+		t.Fatal(err)
+	}
+	u := makeUser(t, st, "encargada_sesion", "cajero")
+	if _, err := st.Pool.Exec(ctx, `update users set role_id = $2 where id = $1`, u, propio); err != nil {
+		t.Fatal(err)
+	}
+
+	// Un token como los de la API anterior: rol fijo «cajero», sin nada del rol de empresa.
+	tok, err := jm.Issue(domain.User{ID: u, CompanyID: defaultCompanyID, Name: "Encargada", Role: domain.RoleCajero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := do(t, r, http.MethodGet, "/api/v1/auth/me", tok, nil, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("/auth/me = %d: %s", w.Code, w.Body.String())
+	}
+	var me struct {
+		RoleID      int64    `json:"roleId"`
+		RoleName    string   `json:"roleName"`
+		Role        string   `json:"role"`
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &me); err != nil {
+		t.Fatal(err)
+	}
+	if me.RoleID != propio || me.RoleName != "Encargado de turno" || me.Role != "" {
+		t.Errorf("rol = %d %q %q, quiere el propio %d «Encargado de turno» sin código", me.RoleID, me.RoleName, me.Role, propio)
+	}
+	slices.Sort(me.Permissions)
+	if !slices.Equal(me.Permissions, []string{"cash.operate", "sales.view"}) {
+		t.Errorf("permisos = %v, quiere solo los del rol propio (el token decía cajero)", me.Permissions)
+	}
+	// Y el servidor decide igual: el cajero de hoy no ve ventas, este rol sí.
+	if w := do(t, r, http.MethodGet, "/api/v1/orders/delivered", tok, nil, ""); w.Code != http.StatusForbidden {
+		t.Errorf("entregados = %d, quiere 403: el rol propio no lo trae aunque el token diga cajero", w.Code)
+	}
 }

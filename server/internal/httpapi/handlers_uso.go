@@ -70,7 +70,15 @@ func (h *Handlers) RegistrarUso(w http.ResponseWriter, r *http.Request) {
 	// La versión anterior las separaba y un fallo al escribir las aperturas se llevaba los toques del
 	// mismo cuerpo sin siquiera intentarlos — y apagaba de paso el log de descartados, que es el
 	// único testigo de que una versión del front dejó de medir.
-	descartes, err := h.usage.Registrar(r.Context(), u.Role, app.LoteDeMedicion{
+	// El rol de la medición es el sugerido de la empresa (o ninguno, si es propio), leído de la base.
+	actor := func() (domain.Role, []domain.Permission, error) {
+		rol, err := h.roles.UserRole(r.Context(), u.ID)
+		if err != nil {
+			return "", nil, err
+		}
+		return rol.SystemCode, h.permissionsOf(r.Context(), u), nil
+	}
+	descartes, err := h.usage.Registrar(r.Context(), actor, app.LoteDeMedicion{
 		Eventos: body.Eventos,
 		Toques:  body.Toques,
 	})

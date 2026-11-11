@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { canAccess } from '../../app/roles';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, SimpleGrid, Text, Badge, HStack, VStack, Center, Spinner, Flex, Button, IconButton,
@@ -64,22 +63,20 @@ export function OrdersBoardPage() {
   const [quitando, setQuitando] = useState<{ orderId: number; linea: BoardLine } | null>(null);
   const [quitandoFaltante, setQuitandoFaltante] = useState<BoardOrder | null>(null);
   const qc = useQueryClient();
-  // Reembolsar = salida de dinero → solo admin/gerente ven las entregadas y la acción. El backend
-  // igual aplica el 403; esto es UX (no mostrar lo que no pueden usar).
+  // Ver los entregados y devolver dinero son dos permisos (068): desde la lista el mostrador
+  // reimprime el ticket de un pedido que cerró otro usuario, y devolver saca dinero del corte. El
+  // servidor aplica el 403; esto solo evita ofrecer lo que rebotaría.
   const user = useSessionStore((s) => s.user);
-  const role = user?.role;
-  const canRefund = role === 'admin' || role === 'gerente';
+  const puedeVerEntregadas = can('orders.delivered_view', user);
+  const puedeDevolverDinero = can('payments.void', user);
 
   // COBRAR ES DE LA CUENTA, NO DEL TABLERO (spec 030, caso 25). El tablero tenía su propia puerta
   // de cobro y con ella eran tres; ahora cada tarjeta lleva a la cuenta en Vender —«Abrir cuenta»—,
-  // donde se agrega o se cobra con los tres modos.
-  //
-  // Quien NO puede entrar a Vender —una cocina con su propio rol— solo ve cuánto falta. El ajuste
-  // «el tablero puede cobrar» se quitó el 2026-10-09 (decisión del dueño): no tenía efecto en la
+  // donde se agrega o se cobra con los tres modos. Vender está abierto a toda sesión, así que
+  // «Abrir cuenta» no lleva puerta (spec 068). El ajuste «el tablero puede cobrar» se quitó el 2026-10-09 (decisión del dueño): no tenía efecto en la
   // operación de hoy y era una cuarta puerta de cobro.
   const { data: settings } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const navigate = useNavigate();
-  const puedeAbrirCuenta = canAccess(role, '/pos');
 
   const { data, isLoading } = useQuery({
     queryKey: ['orders', 'active'],
@@ -89,7 +86,7 @@ export function OrdersBoardPage() {
   const { data: deliveredData } = useQuery({
     queryKey: ['orders', 'delivered'],
     queryFn: posApi.deliveredOrders,
-    enabled: canRefund,
+    enabled: puedeVerEntregadas,
     refetchInterval: 15_000, // SSE solo invalida 'active'; refrescamos entregadas aparte
   });
 
@@ -208,7 +205,6 @@ export function OrdersBoardPage() {
   };
 
   const acciones: Acciones = {
-    puedeAbrirCuenta,
     abrirCuenta: (o) => navigate(`/pos?pedido=${o.id}`),
     entregarLinea: (id, lineId, qty) => entregarLinea.mutate({ id, lineId, qty }),
     quitarRenglon: (id, linea) => setQuitando({ orderId: id, linea }),
@@ -256,9 +252,10 @@ export function OrdersBoardPage() {
         <Columna titulo="A entregar" orders={listos} acciones={acciones} />
       </SimpleGrid>
 
-      {canRefund && (
-        <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} zona={horaNegocio.zona} onRefund={refund} onTicket={acciones.ticket}
-          onAbrirCuenta={puedeAbrirCuenta ? acciones.abrirCuenta : undefined} />
+      {puedeVerEntregadas && (
+        <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} zona={horaNegocio.zona}
+          onRefund={puedeDevolverDinero ? refund : undefined} onTicket={acciones.ticket}
+          onAbrirCuenta={acciones.abrirCuenta} />
       )}
 
       <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
@@ -286,7 +283,10 @@ export function OrdersBoardPage() {
         />
       )}
 
-      {devolviendo && (
+      {/* La pantalla sigue montada debajo del bloqueo: si entra con su PIN alguien que no puede
+          hacer lo que el diálogo ofrece, el diálogo desaparece en vez de rebotar con el cliente
+          enfrente. */}
+      {devolviendo && (devolviendo.cancelando ? can('orders.cancel', user) : puedeDevolverDinero) && (
         <DevolucionSheet
           key={devolviendo.pedido.id}
           pedido={devolviendo.pedido}
@@ -314,8 +314,7 @@ export function OrdersBoardPage() {
 }
 
 interface Acciones {
-  // Lleva a la cuenta en Vender. Sin acceso a Vender, la tarjeta solo dice cuánto falta.
-  puedeAbrirCuenta: boolean;
+  // Lleva a la cuenta en Vender, que está abierta a toda sesión.
   abrirCuenta: (o: BoardOrder) => void;
   entregarLinea: (id: number, lineId: number, qty: number) => void;
   quitarRenglon: (id: number, linea: BoardLine) => void;
@@ -461,7 +460,7 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             Falta cobrar {money(o.outstanding, o.currency)}
           </Text>
         )}
-        {!sinProductos && acciones.puedeAbrirCuenta && (
+        {!sinProductos && (
           <Button flex="1" minH={TAP} colorPalette="orange" variant={debe ? 'solid' : 'outline'}
             onClick={() => acciones.abrirCuenta(o)}>
             Abrir cuenta
@@ -587,14 +586,16 @@ function Renglon({ l, onEntregar, onQuitar }: {
   );
 }
 
-// Entregadas del día: solo admin/gerente, para reembolsar y para cobrar lo que quedó pendiente.
+// Entregadas del día: quien tiene orders.delivered_view las ve para reimprimir y para cobrar lo que
+// quedó pendiente; «Devolver» llega solo con payments.void.
 // TOPADA para no competir con el flujo operativo de arriba: en una jornada llena son decenas.
 function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCuenta }: {
   orders: BoardOrder[];
   zona: string;
   // El negocio elige cuándo se vacía esta lista; el rótulo tiene que decir esa misma ventana.
   corteDeVista?: string;
-  onRefund: (o: BoardOrder) => void;
+  // Sin el permiso de devolver dinero no llega, y el renglón no ofrece «Devolver».
+  onRefund?: (o: BoardOrder) => void;
   onTicket: (o: BoardOrder) => void;
   // Una entregada que debe se cobra en su cuenta, en Vender (caso 25).
   onAbrirCuenta?: (o: BoardOrder) => void;
@@ -643,7 +644,7 @@ function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCue
                       cobrado. Ofrecer una acción que el servidor va a rechazar es peor que no
                       ofrecerla: el operador la toca con el cliente enfrente. Y lo cobrado se resta
                       de lo ya devuelto: devuelto todo, el botón solo podía rebotar. */}
-                  {quedaPorDevolver(o) > 0 && (
+                  {onRefund && quedaPorDevolver(o) > 0 && (
                     <Button size="sm" minH={TAP} variant="outline" colorPalette="red"
                       onClick={() => onRefund(o)}>Devolver</Button>
                   )}

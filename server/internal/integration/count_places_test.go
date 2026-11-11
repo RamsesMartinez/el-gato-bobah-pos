@@ -207,7 +207,7 @@ func TestCreatingALocationNeedsConfigure(t *testing.T) {
 		return domain.PermissionsFor(r)
 	}
 	h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Backoffice: app.NewBackofficeService(st, nil), MenuCache: cache.NewMenuCache(""),
-		Broker: realtime.NewBroker(), Permissions: soloCuenta})
+		Broker: realtime.NewBroker(), Permissions: porRol(soloCuenta)})
 	r := httpapi.Router(config.Config{}, jm, h, st)
 	token := func(username, role string) string {
 		id := makeUser(t, st, username, role)

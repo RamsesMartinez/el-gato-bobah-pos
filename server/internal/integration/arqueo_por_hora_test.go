@@ -430,11 +430,11 @@ func TestLosPendientesDeUnaCajaNoSeVenDesdeOtraEmpresa(t *testing.T) {
 
 // ---- US3 y US4 por HTTP: permisos y validación ----
 
-func routerDeArqueo(t *testing.T, st *store.Store, perms httpapi.PermissionResolver) (http.Handler, *auth.Manager) {
+func routerDeArqueo(t *testing.T, st *store.Store, perms func(domain.Role) []domain.Permission) (http.Handler, *auth.Manager) {
 	t.Helper()
 	jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
 	h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Backoffice: app.NewBackofficeService(st, time.Now), MenuCache: cache.NewMenuCache(""),
-		Broker: realtime.NewBroker(), Permissions: perms})
+		Broker: realtime.NewBroker(), Permissions: porRol(perms)})
 	return httpapi.Router(config.Config{}, jm, h, st), jm
 }
 
@@ -458,7 +458,7 @@ func TestAbrirDesdeUnaHoraAnteriorExigePermisoYHoraValida(t *testing.T) {
 	}
 	for _, c := range []struct {
 		name  string
-		perms httpapi.PermissionResolver
+		perms func(domain.Role) []domain.Permission
 		at    time.Time
 		want  int
 	}{

@@ -26,12 +26,13 @@ func (h *Handlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"items": users})
 }
 
-// POST /users  {name, username, role, pin?, password, recoveryEmail?}
+// POST /users  {name, username, roleId, pin?, password, recoveryEmail?}
 func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name          string  `json:"name"`
 		Username      *string `json:"username"`
-		Role          string  `json:"role"`
+		RoleID        *int64  `json:"roleId"`
+		Role          string  `json:"role"` // la pantalla anterior, durante la subida
 		PIN           string  `json:"pin"`
 		Password      string  `json:"password"`
 		RecoveryEmail *string `json:"recoveryEmail"`
@@ -43,7 +44,9 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	u, err := h.users.Create(r.Context(), app.CreateUserInput{
 		Name:          body.Name,
 		Username:      body.Username,
+		RoleID:        body.RoleID,
 		Role:          domain.Role(body.Role),
+		ActorPerms:    h.actorPerms(r),
 		PIN:           body.PIN,
 		Password:      body.Password,
 		RecoveryEmail: body.RecoveryEmail,
@@ -55,7 +58,7 @@ func (h *Handlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, u)
 }
 
-// PATCH /users/{id}  {name, role, isActive, recoveryEmail?}
+// PATCH /users/{id}  {name, roleId, isActive, recoveryEmail?}
 func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	id, err := userIDParam(r)
 	if err != nil {
@@ -64,7 +67,8 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Name          string  `json:"name"`
-		Role          string  `json:"role"`
+		RoleID        *int64  `json:"roleId"`
+		Role          string  `json:"role"` // la pantalla anterior, durante la subida
 		IsActive      bool    `json:"isActive"`
 		RecoveryEmail *string `json:"recoveryEmail"`
 	}
@@ -73,7 +77,7 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := h.users.Update(r.Context(), app.UpdateUserInput{
-		ID: id, Name: body.Name, Role: domain.Role(body.Role), IsActive: body.IsActive, RecoveryEmail: body.RecoveryEmail,
+		ID: id, Name: body.Name, RoleID: body.RoleID, Role: domain.Role(body.Role), ActorPerms: h.actorPerms(r), IsActive: body.IsActive, RecoveryEmail: body.RecoveryEmail,
 	})
 	if err != nil {
 		Error(w, err)
@@ -96,6 +100,10 @@ func (h *Handlers) AdminSetPassword(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	if err := h.users.CanManageUser(r.Context(), h.actorPerms(r), id); err != nil {
+		Error(w, err)
+		return
+	}
 	if err := h.users.AdminSetPassword(r.Context(), id, body.Password); err != nil {
 		Error(w, err)
 		return
@@ -114,6 +122,10 @@ func (h *Handlers) AdminSetPIN(w http.ResponseWriter, r *http.Request) {
 		PIN string `json:"pin"`
 	}
 	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.users.CanManageUser(r.Context(), h.actorPerms(r), id); err != nil {
 		Error(w, err)
 		return
 	}
@@ -182,4 +194,14 @@ func (h *Handlers) SetOwnPIN(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// actorPerms es lo que puede quien hace la petición (nada si no hay sesión): las reglas de «nadie
+// administra a quien puede más que él» lo comparan con el destino.
+func (h *Handlers) actorPerms(r *http.Request) []domain.Permission {
+	u, ok := userFrom(r.Context())
+	if !ok {
+		return nil
+	}
+	return h.permissionsOf(r.Context(), u)
 }

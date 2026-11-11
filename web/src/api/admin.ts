@@ -5,10 +5,33 @@ export interface AdminUser {
   id: number;
   name: string;
   username: string | null;
+  // Código del rol sugerido o "" si es propio; lo que se muestra es el nombre del rol (roleId).
   role: string;
+  roleId?: number | null;
   isActive: boolean;
   recoveryEmail?: string | null;
   mustChangePassword?: boolean;
+}
+// Un permiso del catálogo del producto (spec 068), en el orden en que se muestra.
+export interface PermissionInfo {
+  code: string;
+  area: string;
+  label: string;
+}
+// Un rol de la empresa. systemCode es "" en los propios. added/removed: lo que un sugerido tiene de
+// más o de menos contra lo que el producto le da. Las listas son opcionales para que el compilador
+// obligue a la guarda si llegaran como null.
+export interface Role {
+  id: number;
+  systemCode: string;
+  name: string;
+  active: boolean;
+  version: number;
+  activeUsers: number;
+  allUsers: number;
+  permissions?: string[];
+  added?: string[];
+  removed?: string[];
 }
 export interface AdminProduct {
   id: number;
@@ -76,6 +99,11 @@ export interface Composition {
   // Extras que se llaman igual en otro grupo.
   // today: lo que ese extra lleva hoy, para que copiarle la receta no esconda que es otra cosa.
   sameName?: { id: number; group: string; stamp?: string; today?: string }[];
+  // Spec 069: alguna opción del producto resta (se ofrece «Lo restan sus opciones»), alguno de esos
+  // grupos es obligatorio, y lo que resta cada opción. Opcionales: una API anterior no los trae.
+  optionsDeduct?: boolean;
+  optionsRequired?: boolean;
+  optionGroups?: { name: string; required: boolean; options: { name: string; deducts: string }[] }[];
 }
 export interface CompositionBody {
   // Un insumo nuevo va con `newArticle` y sin id: el servidor lo crea al guardar la receta (spec 042).
@@ -88,7 +116,7 @@ export interface CompositionBody {
   alsoBasedOn?: Record<number, string>;
   basedOn?: string;
   // La tarjeta elegida: el servidor revisa que el contenido le corresponda (spec 037).
-  mode?: 'items' | 'package' | 'product' | 'nothing';
+  mode?: 'items' | 'package' | 'product' | 'nothing' | 'options';
   // «¿Cuántas tienes de verdad?» y las cifras que se mostraron al preguntar.
   actualStock?: string;
   seenProductOnHand?: string;
@@ -103,7 +131,7 @@ export interface RecipeRow {
   name: string;
   group: string;
   status: RecipeStatus;
-  mode: '' | 'items' | 'combo' | 'product' | 'own';
+  mode: '' | 'items' | 'combo' | 'product' | 'own' | 'options';
   summary: string;
   lines: number;
   soldPerMonth: string;
@@ -193,10 +221,21 @@ function compositionPath(kind: CompositionKind, id: number): string {
 
 export const adminApi = {
   users: () => api.get<{ items: AdminUser[] }>('/users'),
-  createUser: (b: { name: string; role: string; username?: string; pin?: string; password: string; recoveryEmail?: string }) =>
+  createUser: (b: { name: string; roleId: number; username?: string; pin?: string; password: string; recoveryEmail?: string }) =>
     api.post<AdminUser>('/users', b),
-  updateUser: (id: number, b: { name: string; role: string; isActive: boolean; recoveryEmail?: string | null }) =>
+  updateUser: (id: number, b: { name: string; roleId: number; isActive: boolean; recoveryEmail?: string | null }) =>
     api.patch<AdminUser>(`/users/${id}`, b),
+  permissionCatalog: () => api.get<{ items: PermissionInfo[] }>('/permissions'),
+  roles: () => api.get<{ items: Role[] }>('/roles'),
+  createRole: (b: { name: string; permissions: string[] }) => api.post<{ id: number }>('/roles', b),
+  // Solo lo que la persona tocó, nunca la lista completa: un permiso que el producto agregó mientras
+  // la hoja estaba abierta no se vuelve «quitado».
+  updateRole: (id: number, b: { version: number; name?: string; add?: string[]; remove?: string[] }) =>
+    api.patch<{ id: number }>(`/roles/${id}`, b),
+  resetRole: (id: number, version: number) => api.post<{ id: number }>(`/roles/${id}/reset`, { version }),
+  deactivateRole: (id: number, version: number) => api.post<{ id: number }>(`/roles/${id}/deactivate`, { version }),
+  reactivateRole: (id: number, version: number) => api.post<{ id: number }>(`/roles/${id}/reactivate`, { version }),
+  deleteRole: (id: number) => api.del<void>(`/roles/${id}`),
   resetUserPassword: (id: number, password: string) =>
     api.post<void>(`/users/${id}/password`, { password }),
   setUserPin: (id: number, pin: string) =>

@@ -25,6 +25,7 @@ import { MenuDePlataformaPage } from './MenuDePlataformaPage';
 import { useMenu } from '../../hooks/useMenu';
 import { ApiError } from '../../api/client';
 import { useSessionStore } from '../../stores/session';
+import { can } from '../../app/permissions';
 
 /**
  * Las tiendas conectadas: alta, baja y el acceso a lo demás.
@@ -233,8 +234,8 @@ function PlatformConnection({ platformId, platformName }: { platformId: number; 
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [ayuda, setAyuda] = useState(false);
-  // El servidor solo deja escribir al administrador; el botón no se le ofrece a quien lo vería fallar.
-  const canEdit = useSessionStore((s) => s.user?.role) === 'admin';
+  // El servidor solo deja escribir a quien tiene el acceso a las apps; el botón no se le ofrece a quien lo vería fallar.
+  const canEdit = can('platforms.credentials', useSessionStore((s) => s.user));
 
   const cargar = useCallback(() => {
     getCredentialsState(platformId).then(setEstado).catch(() => setEstado(null));
@@ -293,7 +294,7 @@ function PlatformConnection({ platformId, platformName }: { platformId: number; 
           </Button>
         )}
         {missing && !canEdit && (
-          <Text fontSize="sm" color="fg.muted">Pídele a un administrador que lo conecte.</Text>
+          <Text fontSize="sm" color="fg.muted">Pídele a quien tenga el acceso a las apps que lo conecte.</Text>
         )}
       </HStack>
 
@@ -403,7 +404,7 @@ function LlaveDePedidos({ platformId, platformName }: { platformId: number; plat
   const [guardando, setGuardando] = useState(false);
   const [ayuda, setAyuda] = useState(false);
   // Cambiarla y retirar la anterior es solo del administrador; el servidor responde 403 al resto.
-  const canEdit = useSessionStore((s) => s.user?.role) === 'admin';
+  const canEdit = can('platforms.credentials', useSessionStore((s) => s.user));
 
   const cargar = useCallback(() => {
     estadoDeLlave(platformId).then(setEstado).catch(() => setEstado(null));
@@ -463,7 +464,7 @@ function LlaveDePedidos({ platformId, platformName }: { platformId: number; plat
       </HStack>
 
       {!canEdit && (!estado.configured || estado.needsRecapture) && (
-        <Text fontSize="sm" color="fg.muted" mt={1}>Pídele a un administrador que la ponga.</Text>
+        <Text fontSize="sm" color="fg.muted" mt={1}>Pídele a quien tenga el acceso a las apps que la ponga.</Text>
       )}
 
       {estado.rotating && !editando && canEdit && (

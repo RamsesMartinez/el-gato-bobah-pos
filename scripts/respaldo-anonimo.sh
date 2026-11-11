@@ -244,6 +244,9 @@ truncate platform_webhook_events, platform_incoming_order_lines, platform_incomi
 -- Sesiones vivas: no se anonimizan, se tiran. Un refresh token restaurado es una credencial
 -- funcional de producción viviendo en una base de pruebas.
 truncate refresh_tokens, password_reset_tokens;
+-- Los tokens del servidor MCP (spec 072) también: su huella no abre nada sin el secreto, pero el
+-- nombre lo pone una persona y las claves de idempotencia guardan respuestas de la API.
+truncate api_tokens, mcp_idempotency_keys;
 
 -- Texto libre de gastos: ahí caben nombres de personas y de proveedores.
 update expense_items set description = 'concepto anonimizado' where description is not null;
@@ -266,6 +269,8 @@ update suppliers set name = 'Proveedor ' || id;
 -- presentación y no en nulo: dos «Caja» del mismo insumo con marca distinta chocarían en el índice
 -- único al quedar sin marca.
 update ingredient_presentations set brand = 'Marca ' || id where brand is not null;
+-- El nombre de un rol propio lo escribe la empresa y puede llevar el de una persona (spec 068).
+update roles set name = 'Rol ' || id where name is not null;
 update expense_items set presentation_brand = 'Marca ' || coalesce(presentation_id, id) where presentation_brand is not null;
 -- Preferencias de pantalla: la API acepta cualquier clave y cualquier JSON de quien tenga sesión, así
 -- que no se puede prometer qué hay adentro. Ninguna prueba las necesita.
@@ -307,6 +312,7 @@ PEDIDOS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "select count(*) from orders"
 # nombrada aquí, en un renglón de su tabla.
 FUGAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "
   select (select count(*) from orders where customer_name is not null or notes is not null)
+       + (select count(*) from roles where name is not null and name <> 'Rol ' || id)
        + (select count(*) from orders where cancel_reason <> 'motivo anonimizado' or refund_reason <> 'motivo anonimizado' or written_off_reason <> 'motivo anonimizado')
        + (select count(*) from order_lines where notes is not null or cancel_reason <> 'motivo anonimizado')
        + (select count(*) from order_drafts where customer_name is not null)
@@ -317,6 +323,8 @@ FUGAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "
        + (select count(*) from platform_operators where name !~ '^Operador [0-9]+\$' or username !~ '^operador[0-9]+\$' or password_hash !~ 'anonimizado')
        + (select count(*) from refresh_tokens)
        + (select count(*) from password_reset_tokens)
+       + (select count(*) from api_tokens)
+       + (select count(*) from mcp_idempotency_keys)
        + (select count(*) from suppliers where phone is not null or notes is not null or name !~ '^Proveedor [0-9]+\$')
        + (select count(*) from ingredient_presentations where brand !~ '^Marca [0-9]+\$')
        + (select count(*) from expense_items where presentation_brand !~ '^Marca [0-9]+\$')

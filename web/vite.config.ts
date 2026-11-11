@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react-swc';
 import { VitePWA } from 'vite-plugin-pwa';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
+import { workboxOptions } from './src/pwa/workboxOptions';
 
 // Puertos configurables por env (los fija scripts/start.sh tras preguntar/detectar libres);
 // defaults 3000 (web) y 8080 (API). El dev server hace proxy de /api al backend para evitar CORS.
@@ -30,15 +31,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'prompt', // POS: nunca recargar solo a media venta; el operador decide (ver registerPwa.ts)
-      injectRegister: false, // registramos a mano en registerPwa.ts para poder mostrar el aviso con nuestro toaster
+      injectRegister: false, // registramos a mano en registerPwa.ts: el aviso de versión nueva lo pinta el riel
       manifest: false, // public/manifest.json es la fuente de verdad; el plugin solo genera el service worker
-      workbox: {
-        // Precachea el shell (incl. fuente e íconos) para que la app abra aunque parpadee la red.
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
-        navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api/], // el SW nunca sirve el shell a llamadas de API
-        cleanupOutdatedCaches: true,
-      },
+      workbox: workboxOptions, // ver src/pwa/workboxOptions.ts: el shell se publica como «/»
     }),
   ],
   resolve: {
@@ -50,6 +45,9 @@ export default defineConfig({
     host: true, // expone en LAN para probar en la tablet
     proxy: {
       '/api': { target: `http://localhost:${BACKEND_PORT}`, changeOrigin: true },
+      // El servidor MCP (spec 072) vive fuera de /api/v1; en desarrollo el comando de la pantalla
+      // apunta a esta misma página.
+      '/mcp': { target: `http://localhost:${BACKEND_PORT}`, changeOrigin: true },
     },
   },
   test: {

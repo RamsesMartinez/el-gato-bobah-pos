@@ -12,6 +12,7 @@ import { reportarResultado } from './useSinConexion';
 import { act } from '@testing-library/react';
 import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
+import { useSessionStore } from '../../stores/session';
 import { POSPage } from './POSPage';
 
 const pendientes = vi.hoisted(() => ({ current: [] as unknown[] }));
@@ -103,6 +104,36 @@ beforeEach(() => {
   usePosStore.setState({ selected: null });
   usePosStore.getState().reiniciarNueva();
   api.paymentMethods.mockResolvedValue({ items: [{ id: 1, name: 'Efectivo', kind: 'efectivo', deliveryPlatformId: null }] });
+});
+
+// Roles por empresa (spec 068): los controles salen por PERMISO. Un admin cuyo rol perdió el permiso
+// no los ve, y un rol propio que lo tiene sí, aunque no se llame «admin» ni «gerente».
+describe('los controles por permiso', () => {
+  const entrar = (role: string, permissions: string[]) =>
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role, permissions } });
+
+  test('«Abrir caja» se ofrece con cash.operate, no por ser admin', async () => {
+    cashStatus.current = { open: false };
+    entrar('admin', []);
+    const { unmount } = montar();
+    expect(await screen.findByText(/no hay caja abierta/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /abrir caja/i })).not.toBeInTheDocument();
+    unmount();
+    entrar('', ['cash.operate']);
+    montar();
+    expect(await screen.findByRole('button', { name: /abrir caja/i })).toBeInTheDocument();
+  });
+
+  test('«Editar productos» se ofrece con menu.configure, no por ser admin', async () => {
+    entrar('admin', ['cash.operate']);
+    const { unmount } = montar();
+    expect(await screen.findByPlaceholderText(/buscar/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar productos' })).not.toBeInTheDocument();
+    unmount();
+    entrar('', ['menu.configure']);
+    montar();
+    expect(await screen.findByRole('button', { name: 'Editar productos' })).toBeInTheDocument();
+  });
 });
 
 describe('caja', () => {

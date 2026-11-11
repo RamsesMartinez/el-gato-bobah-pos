@@ -1,4 +1,5 @@
 import {
+  faltantesDelCierre,
   faltanPorContar, diferenciasDelCierre, faltaContarElCajon, diferenciaDelCajon,
   type MetodoPorContar, type ArqueoDelCajon,
 } from './cierreDeCaja';
@@ -185,4 +186,25 @@ test('con el arqueo ciego, un método sin capturar sigue dejando el cierre incom
     {},
   );
   expect(completo).toBe(false);
+});
+
+// #251: el aviso era una lista de texto y el equipo no supo dónde capturar; cada faltante lleva a su
+// campo, con la MISMA etiqueta que ese campo tiene en pantalla.
+test('cada faltante del cierre dice a qué campo lleva', () => {
+  const faltan = faltantesDelCierre({
+    cajon: true,
+    metodos: [{ methodId: 3, name: 'Transferencia', kind: 'other', expected: null, autoDeclare: false, requiresEntry: true }],
+    terminales: ['Getnet'],
+    fondo: true,
+  });
+  expect(faltan).toEqual([
+    { texto: 'el cajón', campo: 'cajon' },
+    { texto: 'Transferencia', campo: 'Declarado de Transferencia' },
+    { texto: 'Getnet', campo: 'Total del corte de Getnet' },
+    { texto: 'el fondo que se queda', campo: 'Se queda de fondo' },
+  ]);
+});
+
+test('sin nada pendiente no hay aviso', () => {
+  expect(faltantesDelCierre({ cajon: false, metodos: [], terminales: [], fondo: false })).toEqual([]);
 });

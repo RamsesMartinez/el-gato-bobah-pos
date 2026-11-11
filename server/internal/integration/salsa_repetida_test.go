@@ -7,8 +7,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/shopspring/decimal"
 	"uuid"
+
+	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"

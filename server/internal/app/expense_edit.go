@@ -204,7 +204,9 @@ type editRun struct {
 	lines    []LineEffect
 	header   []FieldChange
 	pending  []EditDecision // decisiones que no son de conteo ni de dinero (lo que falta)
-	audit    map[string]any
+	// base son los renglones del gasto ANTES de la edición; entran a la huella (expenseLinesMark).
+	base  []lineMark
+	audit map[string]any
 	// canReceive: quien edita puede mover el almacén (EditInput.CanReceive).
 	canReceive bool
 }
@@ -326,6 +328,9 @@ func (s *BackofficeService) runExpenseEdit(ctx context.Context, id, userID int64
 		}
 		costsBefore, err := readCosts(ctx, q, sortedKeys(r.ings))
 		if err != nil {
+			return err
+		}
+		if r.base, err = expenseLinesMark(ctx, q, id); err != nil {
 			return err
 		}
 		if err := work(ctx, r); err != nil {
@@ -513,7 +518,10 @@ func (s *BackofficeService) finishEdit(ctx context.Context, r *editRun, stockBef
 	}
 
 	*out = EditPreview{Header: r.header, Lines: r.lines, Inventory: inv, Money: money, Costs: costs, Decisions: decided}
-	out.Fingerprint = domain.PreviewFingerprint(out)
+	out.Fingerprint = domain.PreviewFingerprint(struct {
+		Preview *EditPreview
+		Base    []lineMark
+	}{out, r.base})
 
 	r.audit["amountBefore"], r.audit["amountAfter"] = r.exp.Amount, amount
 	r.audit["statusBefore"], r.audit["statusAfter"] = statusBefore, status
@@ -533,6 +541,30 @@ func (s *BackofficeService) finishEdit(ctx context.Context, r *editRun, stockBef
 		return domain.ErrDecisionRequired
 	}
 	return nil
+}
+
+// lineMark es lo que la huella sabe de un renglón del gasto antes de editarlo.
+type lineMark struct {
+	ID      int64
+	Voided  bool
+	Applied decimal.Decimal
+}
+
+// expenseLinesMark son los renglones del gasto como están antes de la edición. La huella no puede
+// salir solo de los efectos: una edición sin efecto en dinero, almacén ni costo (un regalo que queda
+// por recibir) da la misma vista previa antes y después de aplicarse, y un reintento la aplicaba dos
+// veces (revisión de seguridad de la 074). Ids de renglón y lo aplicado no dependen de la transacción
+// de la vista previa, así que la huella sigue coincidiendo entre la vista previa y la confirmación.
+func expenseLinesMark(ctx context.Context, q *db.Queries, id int64) ([]lineMark, error) {
+	items, err := q.ListExpenseItems(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]lineMark, 0, len(items))
+	for _, it := range items {
+		out = append(out, lineMark{ID: it.ID, Voided: it.VoidedAt.Valid, Applied: it.AppliedQtyBase})
+	}
+	return out, nil
 }
 
 // auditAction: una entrega es «llegó mercancía»; lo demás, «gasto editado».

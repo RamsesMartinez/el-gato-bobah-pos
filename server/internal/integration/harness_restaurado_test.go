@@ -323,6 +323,25 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
+	// La 0112 se niega si un token ya tiene compras o pedidos: en la copia de prueba se le quitan esos
+	// dos alcances y el token sigue con los demás.
+	112: {`update api_tokens set scopes = array_remove(array_remove(scopes, 'write:purchases'), 'write:orders')`},
+	// La 0111 se niega con tokens del servidor MCP: en la copia de prueba se borran (las claves de
+	// idempotencia caen en cascada) junto con los ajustes de roles sobre el permiso 37.
+	111: {`delete from mcp_idempotency_keys`, `delete from api_tokens`,
+		`delete from role_permission_overrides where permission_id = 37`},
+	// Las cifras de productos de los conteos, solo en la copia de prueba; sus ajustes en
+	// stock_movements se quedan.
+	110: {`delete from stock_count_product_lines`},
+	// Los usuarios con rol propio vuelven al sugerido mesero (el trigger pone `role` igual) y se
+	// borran los ajustes y los roles propios, solo en la copia de prueba.
+	108: {
+		`update users u set role_id = r.id from roles r
+		  where r.company_id = u.company_id and r.system_role_id = 4
+		    and u.role_id in (select id from roles where system_role_id is null)`,
+		`delete from role_permission_overrides`,
+		`delete from roles where system_role_id is null`,
+	},
 	// Las compras entre peso y líquido se anulan: la API anterior no las sabría convertir.
 	105: {
 		`update ingredients set density_g_per_ml = null, density_method = null, density_set_by = null, density_set_at = null
