@@ -166,6 +166,19 @@ func TestMCPPresentations(t *testing.T) {
 		}
 	})
 
+	t.Run("editar la marca conserva la tara (la ruta la quita si se manda vacía)", func(t *testing.T) {
+		if _, err := w.owner.Pool.Exec(ctx, `update ingredient_presentations set tare_g = 12 where id = $1`, bolsa); err != nil {
+			t.Fatal(err)
+		}
+		if res := callTool(t, w.router, tok, "presentation_update", applyArgs(map[string]any{"presentation_id": bolsa,
+			"brand": "Betty Crocker Pro"}, "empaque-tara-0001")); res.isError {
+			t.Fatalf("editar marca: %s", res.text)
+		}
+		if n := scalar(t, w, `select count(*) from ingredient_presentations where id = $1 and tare_g = 12`, bolsa); n != 1 {
+			t.Fatal("editar la marca por MCP borró la tara")
+		}
+	})
+
 	t.Run("desactivar conserva la marca; brand vacío la quita", func(t *testing.T) {
 		if res := callTool(t, w.router, tok, "presentation_update", applyArgs(map[string]any{"presentation_id": bolsa,
 			"active": false}, "empaque-off-0001")); res.isError {
@@ -675,6 +688,11 @@ func TestMCPExpenseEditHeader(t *testing.T) {
 		res := callTool(t, w.router, tok, "expense_edit", map[string]any{"expense_id": exp, "description": "otra"})
 		if !res.isError || !strings.Contains(res.text, "anulado") {
 			t.Fatalf("editar un anulado: %s", res.text)
+		}
+		// El rechazo de la vista previa queda en la bitácora con el estado de la ruta, no como 200.
+		if n := scalar(t, w, `select count(*) from audit_events where action = 'mcp.tool_called' and after->>'tool' = 'expense_edit'
+			and after->>'mode' = 'preview' and after->>'status' = '409'`); n < 1 {
+			t.Fatal("la vista previa rechazada no quedó en la bitácora con su 409")
 		}
 	})
 }

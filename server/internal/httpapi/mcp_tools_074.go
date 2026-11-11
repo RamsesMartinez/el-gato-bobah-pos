@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/shopspring/decimal"
 )
 
 // Las herramientas de la spec 074: empaques de compra y corregir un gasto ya guardado. Igual que las
@@ -31,8 +30,6 @@ func init() {
 	} {
 		mcpToolRoutes[name] = routes
 	}
-	// La sugerencia de empaque de la compra lee la unidad base del insumo.
-	mcpToolRoutes["purchase_create"] = append(mcpToolRoutes["purchase_create"], get(pArticles), get(pUnits))
 	for k, v := range map[string]string{
 		"presentation_create": "articles_search", "presentation_update": "presentations_list",
 		"expense_edit": "expenses_list",
@@ -75,7 +72,7 @@ type editLineArg struct {
 	Quantity       string `json:"quantity" jsonschema:"cuántos empaques o cuánto en la unidad, texto decimal"`
 	Amount         string `json:"amount" jsonschema:"importe del renglón, texto decimal"`
 	IsGift         bool   `json:"is_gift,omitempty" jsonschema:"true si vino de regalo (importe 0)"`
-	ArrivedOn      string `json:"arrived_on,omitempty" jsonschema:"día en que llegó, AAAA-MM-DD; vacío = queda por recibir"`
+	ArrivedOn      string `json:"arrived_on,omitempty" jsonschema:"día en que llegó, AAAA-MM-DD; omítelo si todavía no llega (queda por recibir)"`
 }
 
 type expenseEditArgs struct {
@@ -107,12 +104,11 @@ func presentationNow(s *mcpSession, ctx context.Context, tool string, id int64) 
 	return p, nil
 }
 
-// baseUnitID es el id de la unidad con ese código y equivalencia 1: la unidad base de un insumo.
+// baseUnitID es el id de la unidad base de un insumo, por su código (único en el catálogo).
 func baseUnitID(units json.RawMessage, code string) (int64, bool) {
 	var list []struct {
-		ID     int64           `json:"id"`
-		Code   string          `json:"code"`
-		ToBase decimal.Decimal `json:"toBase"`
+		ID   int64  `json:"id"`
+		Code string `json:"code"`
 	}
 	if json.Unmarshal(units, &list) != nil {
 		var env struct {
@@ -123,7 +119,7 @@ func baseUnitID(units json.RawMessage, code string) (int64, bool) {
 		}
 	}
 	for _, u := range list {
-		if u.Code == code && u.ToBase.Equal(decimal.NewFromInt(1)) {
+		if u.Code == code {
 			return u.ID, true
 		}
 	}
@@ -246,7 +242,8 @@ func register074() {
 			status, resp, err := s.dispatch(ctx, "expense_edit", http.MethodPost, pExpenseEdit, ids(in.ExpenseID),
 				url.Values{"preview": {"1"}}, body)
 			if err != nil {
-				return nil, nil, toolErr("Error interno del servidor MCP. Avísale al administrador.")
+				slog.ErrorContext(ctx, "mcp_dispatch_failed", "tool", "expense_edit", "pattern", pExpenseEdit, "error", err.Error())
+				return nil, nil, toolError{msg: "Error interno del servidor MCP. Avísale al administrador.", status: http.StatusInternalServerError}
 			}
 			if status >= 400 {
 				return nil, nil, toolError{msg: toolHint(status, resp, mcpListTool["expense_edit"]), status: status}
@@ -289,9 +286,6 @@ func expenseEditBody(in expenseEditArgs) (map[string]any, error) {
 	}
 	if in.ClearSupplier && in.SupplierID != nil {
 		return nil, toolErr("Manda supplier_id para cambiar el proveedor o clear_supplier para quitarlo, no los dos.")
-	}
-	if len(in.Add)+len(in.Remove) > maxPurchaseLines {
-		return nil, toolErr("Una edición agrega y quita a lo más %d renglones.", maxPurchaseLines)
 	}
 	body := map[string]any{"remove": in.Remove, "decisions": in.Decisions, "fingerprint": in.Fingerprint}
 	if in.Remove == nil {

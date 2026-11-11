@@ -117,7 +117,13 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   Quitar el único renglón deja el gasto en $0 y la ruta lo rechaza: eso es anular.
 - **`presentation_update` parte del empaque de hoy**: la ruta reemplaza el registro, así que lo no
   mandado se manda como está (un normal, con su contenido en la unidad base; un aproximado, con su
-  unidad de compra). La marca solo viaja si el agente la manda.
+  unidad de compra). La marca y la tara solo viajan si el agente las manda. **Residuo aceptado**: entre
+  la lectura y el `PUT` no hay control de versión; si alguien cambia el contenido en la pantalla en
+  ese instante, el agente lo regresa al de antes. Es el mismo patrón de la pantalla y de
+  `product_update`; cerrarlo exige que la ruta acepte cambios parciales o una versión.
+- **Las lecturas auxiliares piden sus propios permisos.** `presentation_update` lee
+  `GET /stock/presentations` (`inventory.receive`) y, sin `qty`, `GET /units` (`expenses.capture`): un rol
+  con solo `inventory.configure` recibe el rechazo de esa lectura. Falla cerrado.
 - **La vista previa de una compra sugiere el empaque que falta** con insumo y unidad llenos, y deja
   marca y contenido para que los confirme la persona: adivinarlos del texto del ticket podría
   equivocar el contenido, que es lo que mueve el almacén.

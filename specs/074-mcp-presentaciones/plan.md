@@ -73,6 +73,19 @@ MCP; la API anterior y la nueva conviven (no hay cambio de esquema).
 | Bitácora | Cada llamada deja `mcp.tool_called`; la edición deja además `expense.edited` con el token en el dispositivo (lo pone la ruta) | subtest que lee el evento |
 | Ensanche de tokens (D3) | Sin cambio de esquema: un token emitido con `write:inventory`/`write:expenses` gana las herramientas si el rol tiene el permiso. Se dice en Integraciones y en el issue | `whoami` contra local con el token de «Gestión Claude» (quickstart) |
 
+### Ajustes de la revisión de código (2026-11-11)
+
+| # | Hallazgo (revisor) | Decisión |
+| --- | --- | --- |
+| C1 | La huella de la edición salía solo de los efectos: un regalo que queda por recibir daba la misma huella antes y después de aplicarse, y un reintento con clave nueva lo duplicaba (security-auditor; defecto de la ruta de la 053 que el MCP vuelve alcanzable) | La huella amarra los renglones del gasto de antes de editar (`expenseLinesMark`); `TestTheFingerprintDoesNotReapplyAnEditWithoutEffects`, visto en rojo |
+| C2 | Las rutas de `purchase_create` se agregaban con `append` en el `init` de otro archivo: dependía del orden de los archivos y fallaba en silencio (go-backend-reviewer) | En el literal de la 073; `TestPurchaseCreateCanReadArticlesAndUnits`, visto en rojo sin ellas |
+| C3 | El error interno de la vista previa estricta quedaba en bitácora como 400 y sin log (go-backend-reviewer) | 500 y `mcp_dispatch_failed`; la bitácora del rechazo de la vista previa tiene test (visto en rojo quitando el registro) |
+| C4 | `arrived_on: ""` lo rechaza el esquema y la descripción decía «vacío» (go-backend-reviewer) | La descripción dice «omítelo», como `received_on` de la 073 |
+| C5 | Tope de renglones duplicado en la capa MCP (go-backend-reviewer) | Quitado: lo decide la ruta |
+| C6 | Sin test de que editar un empaque conserve la tara (go-backend-reviewer) | Subtest, visto en rojo mandando `tareG` vacío |
+| C7 | `presentation_update` lee y reemplaza sin control de versión (security-auditor) | **Residuo aceptado**, escrito en `docs/mecanica/personal-y-permisos.md`: es el patrón de la pantalla y de `product_update` |
+| C8 | Nota y sugerencia en cada renglón en la unidad base; nota «queda por recibir» en la capa MCP (go-backend-reviewer) | Se quedan: avisar del renglón en gramos es el encargo, y la nota describe lo que mandó el agente, no una regla |
+
 ## Casos de borde (antes del código)
 
 | Forma de fallar | Familia | Test |

@@ -62,7 +62,7 @@ func init() {
 		"presentations_list":    {get(pPresentations)},
 		"pending_receipts_list": {get(pPendingReceipts)},
 		"purchase_create": {{http.MethodPost, pExpenses}, {http.MethodPost, pPurchasePreview}, get(pArticleSuggest),
-			get(pPresentations), get(pBusinessSettings), get(pExpense)},
+			get(pPresentations), get(pBusinessSettings), get(pExpense), get(pArticles), get(pUnits)},
 		"purchase_receive":        {{http.MethodPost, pExpenseReceive}, get(pExpense)},
 		"stock_count_current":     {get(pCountCurrent)},
 		"stock_count_open":        {{http.MethodPost, pCounts}, get(pCountCurrent)},

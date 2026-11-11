@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -210,5 +211,15 @@ func TestSuggestTargetsAreDedupedAndCapped(t *testing.T) {
 	}
 	if n := len(suggestTargets(many)); n != maxSuggestLines {
 		t.Fatalf("300 nombres distintos piden %d sugerencias; el tope es %d", n, maxSuggestLines)
+	}
+}
+
+// La sugerencia de empaque de purchase_create (spec 074) lee artículos y unidades. Si esas rutas no
+// están en su lista blanca, la sugerencia degrada en silencio a pedir unit_id: nada truena.
+func TestPurchaseCreateCanReadArticlesAndUnits(t *testing.T) {
+	for _, r := range []mcpRoute{get(pArticles), get(pUnits)} {
+		if !slices.Contains(mcpToolRoutes["purchase_create"], r) {
+			t.Errorf("purchase_create no puede leer %s", r.pattern)
+		}
 	}
 }
