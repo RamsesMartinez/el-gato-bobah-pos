@@ -54,7 +54,7 @@ conviven (no hay cambio de esquema).
 
 | Principio | Cómo se cumple | Estado |
 | --- | --- | --- |
-| I. Layering | `domain/apitoken.go`: catálogo (dos renglones, uno cambia la descripción) y `toolFixByCode` (tres códigos) más la pista con el id del insumo que ya existe. `httpapi/mcp_tools_076.go`: las herramientas, que solo arman el cuerpo de la pantalla y despachan. `app` y `store` no cambian | OK |
+| I. Layering | `domain/apitoken.go`: catálogo (dos renglones nuevos y la descripción de `presentations_list`) y `toolFixByCode` (tres códigos) más la pista con el id del insumo que ya existe. `httpapi/mcp_tools_076.go`: las herramientas, que solo arman el cuerpo de la pantalla y despachan. `app` y `store` no cambian | OK |
 | II. Errores | `NAME_TAKEN`, `ALT_NAME_TAKEN` y `STALE` entran a la pista con su corrección en palabras; el resto lo mapea `httpapi.Error` como siempre. El error del segundo paso de la edición se envuelve diciendo que el nombre ya quedó | OK |
 | III. Dinero | El costo inicial viaja como texto a la ruta, que valida y redondea | OK |
 | IV. Test-first | `mcp_076_test.go` se escribe y se ve en rojo (herramienta desconocida / parámetro ignorado) antes de `mcp_tools_076.go`; cada borde de la tabla de abajo es un subtest; la pista con id, en `apitoken_test.go`, en rojo antes | OK |

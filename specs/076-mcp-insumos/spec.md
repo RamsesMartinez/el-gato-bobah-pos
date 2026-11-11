@@ -148,6 +148,9 @@ anteriores.
 - **Insumo de otra empresa, unido a otro o archivado**: lo que responde la ruta («no existe», o la
   causa).
 - **Categoría o ubicación de otra empresa**: la ruta lo rechaza.
+- **Rol que configura el almacén pero no lo ve**: la edición se niega nombrando el permiso de ver el
+  almacén (la ficha no se abre sin él, tampoco en la pantalla); la vista previa del alta dice que no
+  pudo revisar la búsqueda por otros nombres en vez de callarlo.
 - **`ingredient_update` sin nada que cambiar**: rechazado antes de despachar.
 - **`clear_category` junto con `category_id`** (o ubicación, o mínimo): rechazado como argumento.
 - **Token con el alcance y rol sin el permiso**, o al revés: la herramienta no se ofrece y, si se
