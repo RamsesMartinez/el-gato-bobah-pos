@@ -158,7 +158,7 @@ comprobar que el importe sube, que se pide la decisión de la diferencia y que l
   contenido, unidad, marca opcional, aproximado opcional) con las reglas y efectos de la pantalla de
   empaques.
 - **FR-002**: Una herramienta MUST editar un empaque existente cambiando solo los campos que se
-  mandan (nombre, contenido, unidad, marca, aproximado, activo); lo no mandado se conserva. Mandar la
+  mandan (nombre, contenido y unidad —juntos—, marca, aproximado, activo); lo no mandado se conserva. Mandar la
   marca vacía la quita.
 - **FR-003**: Las dos MUST rechazar sin cambiar nada lo que la pantalla rechaza, en particular la
   marca repetida en el mismo insumo (ya existe) y la marca de más de 40 letras (argumento inválido),

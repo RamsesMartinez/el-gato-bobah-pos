@@ -18,9 +18,9 @@
   (400 `DECISION_REQUIRED`) caen en la rama 4xx de `apply`, que libera la clave. Las dos entran a
   `toolFixByCode` con la corrección en palabras.
 - **Rationale**: la huella cubre «el estado cambió»; la clave, «el reintento duplicaría». Liberar la
-  clave tras un 4xx deja que el agente repita con la huella nueva y la misma clave. La huella entra
-  a la huella de argumentos de la clave: la misma clave con otra huella es «otra escritura» → 409
-  de idempotencia, que es correcto (pide clave nueva).
+  clave tras un 4xx (la fila se borra) deja que el agente repita con la huella nueva y **la misma
+  clave**. Tras una aplicación **exitosa**, la misma clave con otra huella son otros argumentos: 409
+  de idempotencia, que pide una clave nueva.
 - **Alternatives**: que la herramienta pida la vista previa sola y aplique con esa huella — descartada:
   aplicaría sin que la persona viera los efectos, que es justo lo que el protocolo existe para evitar.
 
