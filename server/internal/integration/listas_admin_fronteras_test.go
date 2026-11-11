@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -62,6 +63,10 @@ func TestUnOffsetQueDesbordaNoContestaLaPrimeraPagina(t *testing.T) {
 		"/api/v1/supplier-items?page=214748365&pageSize=20",
 		"/api/v1/expenses?pageSize=500",
 		"/api/v1/supplier-items?page=abc",
+		"/api/v1/expenses?page=-1",
+		// Un proveedor que no es número contestaba los de todos.
+		"/api/v1/supplier-items?supplierId=abc",
+		"/api/v1/supplier-items?supplierId=0",
 	}
 	for _, path := range malas {
 		if w := do(t, r, http.MethodGet, path, tok, nil, ""); w.Code != http.StatusBadRequest {
@@ -84,6 +89,19 @@ func TestUnOffsetQueDesbordaNoContestaLaPrimeraPagina(t *testing.T) {
 	for _, path := range buenas {
 		if w := do(t, r, http.MethodGet, path, tok, nil, ""); w.Code != http.StatusOK {
 			t.Errorf("%s = %d (%.200s); quiere 200", path, w.Code, w.Body.String())
+		}
+	}
+
+	// La página que se contesta es la que se pidió: ahora sale de offset / pageSize.
+	for path, quiere := range map[string][2]int{
+		"/api/v1/expenses?page=3&pageSize=20":       {3, 20},
+		"/api/v1/supplier-items?page=1&pageSize=30": {1, 30},
+		"/api/v1/supplier-items":                    {0, 30},
+	} {
+		w := do(t, r, http.MethodGet, path, tok, nil, "")
+		var got struct{ Page, PageSize int }
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || got.Page != quiere[0] || got.PageSize != quiere[1] {
+			t.Errorf("%s = page %d pageSize %d (%v); quiere %d y %d", path, got.Page, got.PageSize, err, quiere[0], quiere[1])
 		}
 	}
 }
