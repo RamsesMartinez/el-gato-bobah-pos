@@ -59,7 +59,7 @@ func init() {
 	for name, routes := range map[string][]mcpRoute{
 		"articles_search":       {get(pArticles)},
 		"units_list":            {get(pUnits)},
-		"presentations_list":    {get(pPresentations)},
+		"presentations_list":    {get(pPresentations), get(pIngredientPresentations)},
 		"pending_receipts_list": {get(pPendingReceipts)},
 		"purchase_create": {{http.MethodPost, pExpenses}, {http.MethodPost, pPurchasePreview}, get(pArticleSuggest),
 			get(pPresentations), get(pBusinessSettings), get(pExpense), get(pArticles), get(pUnits)},
@@ -382,7 +382,6 @@ func registerPurchases() {
 		return nil, url.Values{"q": {in.Query}}, nil
 	})
 	simpleRead("units_list", pUnits, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
-	simpleRead("presentations_list", pPresentations, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
 	simpleRead("pending_receipts_list", pPendingReceipts, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
 
 	writeTool(writeSpec[purchaseCreateArgs]{

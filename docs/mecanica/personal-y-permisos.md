@@ -127,3 +127,24 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
 - **La vista previa de una compra sugiere el empaque que falta** con insumo y unidad llenos, y deja
   marca y contenido para que los confirme la persona: adivinarlos del texto del ticket podría
   equivocar el contenido, que es lo que mueve el almacén.
+
+### Lo que agregó la spec 076 (dar de alta y editar insumos; empaques de un insumo)
+
+- **`write:inventory` creció otra vez.** `ingredient_create` e `ingredient_update` van ahí con
+  `inventory.configure`. Un token con almacén emitido antes de la 076 las gana con la subida si el rol
+  de su dueño tiene el permiso; el texto del alcance en Integraciones lo dice.
+- **El aviso de duplicado va en `attention`, que sale primero.** El texto que lee el agente es el JSON
+  de la respuesta con las llaves en orden alfabético: una nota al final de `notes` se lee después de
+  `before` y `would_send`. Una vista previa que devuelve `attentionFirst` pone sus avisos en esa llave.
+  Lo vigila el subtest «la vista previa pone primero el insumo parecido» de `TestMCPIngredientCreate`.
+- **Los parecidos salen de dos búsquedas de la pantalla, no de una regla propia.** La de la hoja
+  «Nuevo artículo» (`/stock/articles/similar`) no lee otros nombres; la de la lista de Almacén
+  (`/stock/articles?q=`) sí, pero pide `inventory.view`. Si una de las dos falla, la vista previa lo
+  dice: callarlo haría creer que no hay duplicado.
+- **La edición son dos peticiones, en orden: ficha y después otros nombres.** Al revés, la ruta de
+  otros nombres descarta el nombre vigente y «Jamón de pierna» no podría quedar como otro nombre de
+  «Jamón». Si la segunda falla, la primera ya quedó y el error empieza con «La ficha ya quedó
+  cambiada». La versión de la ficha (`expectedUpdatedAt`) se lee en la misma llamada; el agente no la
+  manda.
+- **Un rol que configura y no ve el almacén no edita insumos**: la lectura de la ficha pide
+  `inventory.view` y se niega. Igual en la pantalla, que sin ese permiso no abre la ficha.
