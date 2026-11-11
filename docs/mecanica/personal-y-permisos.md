@@ -146,5 +146,12 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   «Jamón». Si la segunda falla, la primera ya quedó y el error empieza con «La ficha ya quedó
   cambiada». La versión de la ficha (`expectedUpdatedAt`) se lee en la misma llamada; el agente no la
   manda.
+- **Si la segunda petición falla con 5xx, el agente recibe 409 `PARTIAL`**, no el «puede que no se
+  haya aplicado» de siempre: la ficha sí quedó, y con el 409 la clave queda libre para repetir. La
+  bitácora MCP registra esa llamada como rechazada; el cambio de la ficha está en el
+  `ingredient.updated` de la ruta, con el token como dispositivo. **Residuo aceptado**: otros nombres
+  agregados en la tableta entre la vista previa y aplicar se pisan (la versión se lee al aplicar).
+- **El tope de 10 otros nombres se revisa antes de la vista previa**, que hace una lectura por
+  nombre: sin él, una sola llamada eran miles de lecturas contra un solo cupo del token.
 - **Un rol que configura y no ve el almacén no edita insumos**: la lectura de la ficha pide
   `inventory.view` y se niega. Igual en la pantalla, que sin ese permiso no abre la ficha.

@@ -231,6 +231,22 @@ func TestMCPIngredientCreate(t *testing.T) {
 		}
 	})
 
+	t.Run("otra empresa no ve los parecidos de ésta ni el id de su insumo, y puede usar el mismo nombre", func(t *testing.T) {
+		ajeno := w.token(t, w.other, w.otherAdm, "write:inventory")
+		res := callTool(t, w.router, ajeno, "ingredient_create", map[string]any{"name": "Jamón de pierna MCP", "base_unit_id": grams})
+		if res.isError || strings.Contains(res.text, "Quizá ya existe") || strings.Contains(res.text, "id "+itoa(int(jamon))) {
+			t.Fatalf("vista previa de otra empresa: %s", res.text)
+		}
+		res = callTool(t, w.router, ajeno, "ingredient_create", applyArgs(map[string]any{"name": "Jamón de pierna MCP",
+			"base_unit_id": grams}, "insumo-otra-0001"))
+		if res.isError || strings.Contains(res.text, "id "+itoa(int(jamon))) {
+			t.Fatalf("alta de otra empresa con el mismo nombre: %s", res.text)
+		}
+		if n := scalar(t, w, `select count(*) from ingredients where name = 'Jamón de pierna MCP' and company_id = $1`, w.other); n != 1 {
+			t.Fatalf("otra empresa tiene %d", n)
+		}
+	})
+
 	t.Run("un token de otra empresa no usa la categoría de ésta", func(t *testing.T) {
 		ajeno := w.token(t, w.other, w.otherAdm, "write:inventory")
 		res := callTool(t, w.router, ajeno, "ingredient_create", applyArgs(map[string]any{"name": "Ajeno MCP",
@@ -372,6 +388,16 @@ func TestMCPIngredientUpdate(t *testing.T) {
 			if name == "sin ver" && !strings.Contains(strings.ToLower(res.text), "ver") {
 				t.Errorf("sin ver: el rechazo no nombra el permiso de ver el almacén: %s", res.text)
 			}
+		}
+		propio := ingredientIn(t, w.owner, w.other, "Insumo ajeno 076", "g")
+		for _, a := range []map[string]any{{"category_id": cat}, {"place_id": place}} {
+			a["ingredient_id"] = propio
+			if res := callTool(t, w.router, ajeno, "ingredient_update", applyArgs(a, "insumo-ajeno-cat1")); !res.isError {
+				t.Errorf("otra empresa editó su insumo con %v de ésta: %s", a, res.text)
+			}
+		}
+		if r := ingredientNow(t, w, propio); r.category != nil || r.place != nil {
+			t.Fatalf("otra empresa quedó con categoría o ubicación de ésta: %+v", r)
 		}
 		if contains(listTools(t, w.router, sinConf), "ingredient_update") {
 			t.Fatal("un rol sin inventory.configure ve ingredient_update")

@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
 // Las herramientas de la spec 076: dar de alta y editar insumos, y los empaques de un insumo. Igual
@@ -215,6 +218,11 @@ func (in ingredientUpdateArgs) check() error {
 	if (in.ClearCategory && in.CategoryID != nil) || (in.ClearPlace && in.PlaceID != nil) || (in.ClearMinStock && in.MinStock != nil) {
 		return toolErr("Manda el valor nuevo o el clear_* de ese campo, no los dos.")
 	}
+	// El tope es el de la ruta (domain.MaxAltNames), revisado aquí ANTES de la vista previa: ella hace
+	// una lectura por nombre y la ruta solo lo revisa al guardar.
+	if in.AltNames != nil && len(*in.AltNames) > domain.MaxAltNames {
+		return toolErr("alt_names lleva a lo más %d nombres.", domain.MaxAltNames)
+	}
 	if len(in.sheetBody()) == 0 && in.AltNames == nil {
 		return toolErr("Manda al menos uno de name, category_id, place_id, min_stock, sus clear_* o alt_names.")
 	}
@@ -292,7 +300,7 @@ func register076() {
 			var notes []string
 			var attention []string
 			out := map[string]any{}
-			if in.Name != nil {
+			if in.Name != nil && strings.TrimSpace(*in.Name) != "" {
 				items, n := similarArticles(s, ctx, tool, strings.TrimSpace(*in.Name), in.IngredientID)
 				notes = append(notes, n...)
 				attention = maybeExists(items)
@@ -304,7 +312,7 @@ func register076() {
 			if in.AltNames != nil {
 				similar := map[string]any{}
 				for _, alt := range *in.AltNames {
-					if slices.Contains(sh.altNames, alt) {
+					if _, done := similar[alt]; done || slices.Contains(sh.altNames, alt) {
 						continue
 					}
 					b, _, err := s.fetch(ctx, tool, pArticleAltSimilar, ids(in.IngredientID), url.Values{"name": {alt}})
@@ -324,55 +332,7 @@ func register076() {
 				"nombres se rechazan, la ficha ya quedó cambiada y el error lo dice.")
 			return attentionFirst{attention: attention, resolved: out}, notes
 		},
-		run: func(s *mcpSession, ctx context.Context, in ingredientUpdateArgs) (int, []byte, error) {
-			const tool = "ingredient_update"
-			// La versión se lee justo antes de escribir. El error de la lectura va crudo para que apply lo
-			// traduzca como cualquier rechazo de la ruta (no existe, sin permiso de ver el almacén).
-			status, resp, err := s.dispatch(ctx, tool, http.MethodGet, pArticle, ids(in.IngredientID), nil, nil)
-			if err != nil || status >= 300 {
-				return status, resp, err
-			}
-			var sh struct {
-				UpdatedAt time.Time `json:"updatedAt"`
-			}
-			if json.Unmarshal(resp, &sh) != nil || sh.UpdatedAt.IsZero() {
-				return http.StatusInternalServerError, nil, fmt.Errorf("ficha %d sin versión", in.IngredientID)
-			}
-			version := sh.UpdatedAt
-			var changed []string
-			if body := in.sheetBody(); len(body) > 0 {
-				body["expectedUpdatedAt"] = version
-				status, resp, err := s.dispatch(ctx, tool, http.MethodPatch, pArticle, ids(in.IngredientID), nil, body)
-				if err != nil || status >= 300 {
-					return status, resp, err
-				}
-				var r struct {
-					UpdatedAt time.Time `json:"updatedAt"`
-				}
-				_ = json.Unmarshal(resp, &r)
-				version = r.UpdatedAt
-				changed = append(changed, "ficha")
-			}
-			if in.AltNames != nil {
-				status, resp, err := s.dispatch(ctx, tool, http.MethodPut, pArticleAltNames, ids(in.IngredientID), nil,
-					map[string]any{"altNames": *in.AltNames, "expectedUpdatedAt": version})
-				if err != nil || status >= 500 {
-					return max(status, 500), resp, err
-				}
-				if status >= 400 {
-					if len(changed) > 0 {
-						var env errorEnvelope
-						_ = json.Unmarshal(resp, &env)
-						env.Error.Message = "La ficha ya quedó cambiada; los otros nombres no: " + strings.TrimRight(env.Error.Message, ".")
-						resp, _ = json.Marshal(env)
-					}
-					return status, resp, nil
-				}
-				changed = append(changed, "otros nombres")
-			}
-			b, _ := json.Marshal(map[string]any{"id": in.IngredientID, "changed": changed})
-			return http.StatusOK, b, nil
-		},
+		run: ingredientUpdateRun,
 	})
 
 	readTool("presentations_list", func(s *mcpSession, ctx context.Context, in presentationsListArgs) (any, error) {
@@ -390,4 +350,78 @@ func register076() {
 		}
 		return forAgent(body), nil
 	})
+}
+
+// ingredientUpdateRun aplica la edición: ficha y después otros nombres, con la versión leída aquí.
+func ingredientUpdateRun(s *mcpSession, ctx context.Context, in ingredientUpdateArgs) (int, []byte, error) {
+	const tool = "ingredient_update"
+	// La versión se lee justo antes de escribir. El error de la lectura va crudo para que apply lo
+	// traduzca como cualquier rechazo de la ruta (no existe, sin permiso de ver el almacén).
+	status, resp, err := s.dispatch(ctx, tool, http.MethodGet, pArticle, ids(in.IngredientID), nil, nil)
+	if err != nil || status >= 300 {
+		return status, resp, err
+	}
+	var sh struct {
+		UpdatedAt time.Time `json:"updatedAt"`
+	}
+	if json.Unmarshal(resp, &sh) != nil || sh.UpdatedAt.IsZero() {
+		return http.StatusInternalServerError, nil, fmt.Errorf("ficha %d sin versión", in.IngredientID)
+	}
+	version := sh.UpdatedAt
+	var changed []string
+	if body := in.sheetBody(); len(body) > 0 {
+		body["expectedUpdatedAt"] = version
+		status, resp, err := s.dispatch(ctx, tool, http.MethodPatch, pArticle, ids(in.IngredientID), nil, body)
+		if err != nil || status >= 300 {
+			return status, resp, err
+		}
+		changed = append(changed, "ficha")
+		var r struct {
+			UpdatedAt time.Time `json:"updatedAt"`
+		}
+		if json.Unmarshal(resp, &r) != nil || r.UpdatedAt.IsZero() {
+			if in.AltNames != nil {
+				return sheetSavedAltNamesUnknown()
+			}
+		}
+		version = r.UpdatedAt
+	}
+	if in.AltNames != nil {
+		// ponytail: la lista completa reemplaza a la que hay con la versión leída en esta llamada, no con
+		// la de la vista previa: un otro nombre agregado en la tableta entre las dos se pisa sin STALE.
+		// Cerrarlo exige mandar la versión de la vista previa como `fingerprint`, como expense_edit.
+		status, resp, err := s.dispatch(ctx, tool, http.MethodPut, pArticleAltNames, ids(in.IngredientID), nil,
+			map[string]any{"altNames": *in.AltNames, "expectedUpdatedAt": version})
+		if err != nil || status >= 500 {
+			if len(changed) > 0 {
+				if err != nil {
+					slog.ErrorContext(ctx, "mcp_dispatch_failed", "tool", tool, "pattern", pArticleAltNames, "error", err.Error())
+				}
+				return sheetSavedAltNamesUnknown()
+			}
+			return max(status, 500), resp, err
+		}
+		if status >= 400 {
+			if len(changed) > 0 {
+				var env errorEnvelope
+				_ = json.Unmarshal(resp, &env)
+				env.Error.Message = "La ficha ya quedó cambiada; los otros nombres no: " + strings.TrimRight(env.Error.Message, ".")
+				resp, _ = json.Marshal(env)
+			}
+			return status, resp, nil
+		}
+		changed = append(changed, "otros nombres")
+	}
+	b, _ := json.Marshal(map[string]any{"id": in.IngredientID, "changed": changed})
+	return http.StatusOK, b, nil
+}
+
+// sheetSavedAltNamesUnknown es la respuesta cuando la ficha ya se guardó y los otros nombres no se
+// sabe. Un 409 y no un 5xx: con el 5xx apply diría «puede que no se haya aplicado» y la persona
+// creería que nada cambió; con el 409 la clave queda libre y repetir la llamada termina el trabajo
+// (la ficha se vuelve a mandar con los mismos valores y la versión nueva).
+func sheetSavedAltNamesUnknown() (int, []byte, error) {
+	b, _ := json.Marshal(errorEnvelope{Error: errorBody{Code: "PARTIAL", Message: "La ficha ya quedó cambiada; no se sabe si " +
+		"los otros nombres. Revísalo con articles_search y repite la llamada si faltan"}})
+	return http.StatusConflict, b, nil
 }

@@ -279,8 +279,17 @@ func argsJSON(v any) json.RawMessage {
 	return b
 }
 
+// mustRegisterOnce truena si dos archivos registran la misma herramienta: el mapa se queda con la del
+// último init en orden de archivo, en silencio, y la otra deja de existir.
+func mustRegisterOnce(name string) {
+	if _, dup := mcpToolRegs[name]; dup {
+		panic("herramienta MCP registrada dos veces: " + name)
+	}
+}
+
 // readTool registra una lectura.
 func readTool[In any](name string, run func(s *mcpSession, ctx context.Context, in In) (any, error)) {
+	mustRegisterOnce(name)
 	schema := schemaFor[In]()
 	mcpToolRegs[name] = func(s *mcpSession, srv *mcp.Server) {
 		mcp.AddTool(srv, toolDef(name, schema), func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
@@ -378,6 +387,7 @@ type attentionFirst struct {
 }
 
 func writeTool[In writeArgs](spec writeSpec[In]) {
+	mustRegisterOnce(spec.name)
 	schema := schemaFor[In]()
 	name := spec.name
 	mcpToolRegs[name] = func(s *mcpSession, srv *mcp.Server) {

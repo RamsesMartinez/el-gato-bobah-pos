@@ -54,8 +54,19 @@ correcta antes del código que lo pone en verde. Integración en
 - [x] T013 [P] Texto del alcance de almacén en web/src/features/admin/IntegrationsPage.tsx («Insumos y sus empaques, mermas, ajustes de existencia y conteos») con su test en web/src/features/admin/IntegrationsPage.test.tsx visto en rojo (plan, «Pantallas y maquetas», fila Integraciones › Crear token)
 - [x] T014 [P] docs/mecanica/personal-y-permisos.md: qué agrega la 076 a la puerta para agentes y el ensanche de tokens con almacén
 - [x] T015 `make api-build && make api-test` y `make test-integration` en verde
-- [ ] T016 `/revision-de-codigo` y corregir lo que encuentre con su test visto en rojo
-- [ ] T017 Caso de aceptación de specs/076-mcp-insumos/quickstart.md contra `make start` con el respaldo de producción restaurado y un cliente MCP real (a, b, c, d), con `whoami` del token «Token Gestion Claude»; resultado anotado aquí
+- [x] T016 `/revision-de-codigo` y corregir lo que encuentre con su test visto en rojo
+- [x] T017 Caso de aceptación de specs/076-mcp-insumos/quickstart.md contra `make start` con el respaldo de producción restaurado y un cliente MCP real (a, b, c, d), con `whoami` del token «Token Gestion Claude»; resultado anotado aquí
+  - Medido el 2026-11-11 contra `make start` del worktree con el respaldo de producción de ese día
+    (03:20) restaurado, con un cliente MCP por HTTP (initialize + tools/call) y la fila del token
+    «Token Gestion Claude» (secreto reemplazado solo en la base local): `whoami` lista
+    `ingredient_create`, `ingredient_update` y `presentations_list` sin regenerar el token.
+  - (a) `ingredient_create` «Jamon de pierna» en vista previa: `attention` primero con «Quizá ya
+    existe: Jamón de pierna (id 749)». (b) alta de un insumo de prueba (id 786), su empaque (id 35,
+    500 g) y `purchase_create` en vista previa con los dos: completa, costo 0 → 0.19 por g.
+    (c) 749 renombrado a «Jamón» con otros nombres «Jamón de pierna» y «Jamón de pavo»; categoría,
+    ubicación y costo sin cambio; `articles_search` «jamón de pavo» lo encuentra. (d)
+    `presentations_list` con `ingredient_id: 749`: solo sus 4 empaques (Kir, Bafar, Member's Mark y
+    la rebanada).
 - [ ] T018 `make ci-local` verde; PR a `develop`, CI verde (CodeQL sin hallazgo alto nuevo) y merge; PR `develop` → `main`, CI verde, merge, deploy y `readyz` 200 en producción
 - [ ] T019 Cerrar: `make cerrar-worktree datos=1`, borrar la rama remota, comentar y cerrar #271 (qué entró, qué quedó fuera y el ensanche de tokens)
 

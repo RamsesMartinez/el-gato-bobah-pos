@@ -79,6 +79,18 @@ conviven (no hay cambio de esquema).
 | Empresa | La del token: las rutas corren bajo la sesión del token y RLS | subtest de otra empresa por herramienta |
 | Ensanche de tokens (spec D2) | Sin cambio de esquema: un token emitido con `write:inventory` gana las dos escrituras si el rol tiene el permiso. Se dice en Integraciones y en el issue | `whoami` contra local con la fila del token «Token Gestion Claude» del respaldo (quickstart) |
 
+### Ajustes de la revisión de código (2026-11-11)
+
+| # | Hallazgo (revisor) | Decisión |
+| --- | --- | --- |
+| C1 | La vista previa de `ingredient_update` hacía una lectura por cada otro nombre sin tope: el de 10 solo lo revisa la ruta al guardar, y una llamada con 260 mil nombres (cabe en 1 MiB) eran 260 mil lecturas contando como una contra el límite del token (security-auditor, medio) | `check()` rechaza más de `domain.MaxAltNames` antes de despachar y la vista previa no repite nombres; `TestIngredientUpdateCapsAltNamesBeforeDispatching`, visto en rojo |
+| C2 | Si la ficha se guardaba y los otros nombres fallaban con 5xx (o el PATCH no devolvía versión), el agente recibía «puede que no se haya aplicado» (go-backend-reviewer, medio) | 409 `PARTIAL` «La ficha ya quedó cambiada; no se sabe si los otros nombres»: la clave queda libre y repetir termina el trabajo; `TestIngredientUpdateSaysTheSheetWasSavedWhenTheAltNamesFail`, visto en rojo en los dos casos |
+| C3 | Otros nombres agregados en la tableta entre la vista previa y aplicar se pisan sin STALE (go-backend-reviewer, bajo) | **Residuo aceptado**, marcado `ponytail:` en `ingredientUpdateRun`: cerrarlo exige mandar la versión de la vista previa como `fingerprint` |
+| C4 | Con un nombre de solo espacios la vista previa buscaba parecidos de «» (go-backend-reviewer, bajo) | Se salta la búsqueda; la ruta decide al aplicar |
+| C5 | Dos archivos podían registrar la misma herramienta y ganaba el último en silencio (go-backend-reviewer, bajo) | `mustRegisterOnce` truena al arrancar |
+| C6 | En la edición a medias la bitácora MCP registra la llamada como rechazada (409), aunque la ficha cambió (security-auditor, bajo) | **Residuo aceptado**, escrito en `docs/mecanica/personal-y-permisos.md`: el cambio queda en `ingredient.updated` de la ruta, con el token como dispositivo |
+| C7 | Faltaba fijar con prueba que otra empresa no ve los parecidos ni el id de un insumo de ésta, ni edita con su categoría o ubicación (security-auditor, bajo) | Subtests en `mcp_076_test.go`. Pasaron al escribirlos: el código ya lo cumplía y quedan como guarda |
+
 ## Casos de borde (antes del código)
 
 | Forma de fallar | Familia | Test |
