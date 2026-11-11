@@ -219,8 +219,8 @@ func TestMCPToolCatalog(t *testing.T) {
 			t.Errorf("%s no se encuentra por nombre", tool.Name)
 		}
 	}
-	if len(seen) != 49 || writes != 20 {
-		t.Fatalf("el contrato tiene 49 herramientas y 20 escrituras; hay %d y %d", len(seen), writes)
+	if len(seen) != 52 || writes != 23 {
+		t.Fatalf("el contrato tiene 52 herramientas y 23 escrituras (074); hay %d y %d", len(seen), writes)
 	}
 	// Las de la 073, con el alcance y el permiso de contracts/mcp-tools.md.
 	for name, want := range map[string]MCPTool{
@@ -294,6 +294,9 @@ func TestToolErrorHint(t *testing.T) {
 		"INGREDIENT_MERGED":         "articles_search",
 		"OPEN_ORDERS":               "order_cancel",
 		"UNPAID_ORDERS":             "pantalla",
+		// Spec 074: el protocolo de la edición de gastos.
+		"EXPENSE_EDIT_STALE": "vista previa",
+		"DECISION_REQUIRED":  "decisions",
 	} {
 		if got := ToolErrorHintFor(409, code, "la caja está cerrada", ""); !strings.Contains(got, want) || !strings.Contains(got, "la caja está cerrada") {
 			t.Errorf("%s: %q no dice %q", code, got, want)
@@ -301,5 +304,28 @@ func TestToolErrorHint(t *testing.T) {
 	}
 	if m := MissingScopeMessage(ScopeWriteExpenses); !strings.Contains(m, "write:expenses") || !strings.Contains(m, "Integraciones") {
 		t.Fatalf("mensaje de alcance: %q", m)
+	}
+}
+
+// Las escrituras de la spec 074 van en los alcances que ya existen (D1, D2): un empaque de compra es
+// configuración del almacén, y corregir un gasto es del alcance del permiso de editarlo.
+func TestMCPToolCatalog074(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		scope APIScope
+		perm  Permission
+	}{
+		{"presentation_create", ScopeWriteInventory, PermInventoryConfigure},
+		{"presentation_update", ScopeWriteInventory, PermInventoryConfigure},
+		{"expense_edit", ScopeWriteExpenses, PermExpensesEdit},
+	} {
+		tool, ok := MCPToolByName(c.name)
+		if !ok {
+			t.Errorf("%s no está en el catálogo", c.name)
+			continue
+		}
+		if tool.Scope != c.scope || tool.Permission != c.perm || !tool.Write {
+			t.Errorf("%s = %+v; quiere alcance %s, permiso %s, escritura", c.name, tool, c.scope, c.perm)
+		}
 	}
 }
