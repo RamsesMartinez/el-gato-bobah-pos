@@ -292,6 +292,11 @@ var toolFixByCode = map[string]string{
 	"OPEN_ORDERS": "Hay pedidos sin terminar en este turno: entrégalos en la pantalla o cancélalos con " +
 		"order_cancel antes de cerrar.",
 	"UNPAID_ORDERS": "Hay pedidos entregados que deben: cóbralos en la pantalla o cancélalos antes de cerrar.",
+	// Las de la 074: el protocolo de la edición de un gasto (spec 053).
+	"EXPENSE_EDIT_STALE": "Algo cambió desde la vista previa: vuelve a pedir la vista previa y aplica con su " +
+		"fingerprint (puedes repetir la misma idempotency_key).",
+	"DECISION_REQUIRED": "La vista previa pidió una decisión: manda decisions con la clave y una de sus opciones " +
+		"(lo que decida la persona).",
 }
 
 // ToolErrorHintFor es ToolErrorHint con el código de error de la API: si la operación tiene una
@@ -389,6 +394,17 @@ var mcpTools = []MCPTool{
 		ScopeWriteCash, PermCashOperate),
 	wr("cash_session_close", "Cierra una caja con lo que contó la persona frente al cajón. Exige cada cifra: el "+
 		"cajón y cada método que se declara. Nunca mandes lo que el sistema espera.", ScopeWriteCash, PermCashOperate),
+
+	// Spec 074: empaques de compra y corregir un gasto guardado.
+	wr("presentation_create", "Crea un empaque de compra de un insumo (bolsa de 375 g, caja de 12…), con marca "+
+		"opcional. Marca y contenido los confirma la persona con el ticket; nunca los adivines.",
+		ScopeWriteInventory, PermInventoryConfigure),
+	wr("presentation_update", "Edita un empaque de compra: solo cambia lo que mandes. brand vacío quita la marca; "+
+		"active: false deja de ofrecerlo.", ScopeWriteInventory, PermInventoryConfigure),
+	wr("expense_edit", "Corrige un gasto o compra ya guardado: encabezado, renglones agregados (add) y quitados "+
+		"(remove). Para cambiar el insumo o el empaque de un renglón, quítalo y agrégalo en la misma llamada. "+
+		"La vista previa trae los efectos y un fingerprint; aplicar exige ese fingerprint y las decisiones que pidió. "+
+		"Los pagos no cambian.", ScopeWriteExpenses, PermExpensesEdit),
 }
 
 // MCPTools devuelve el catálogo en el orden del contrato.

@@ -91,6 +91,9 @@ describe('IntegrationsPage', () => {
     expect(within(hoja).getByText(/conteos/)).toBeVisible();
     expect(within(hoja).getByText(/compras con su mercancía/)).toBeVisible();
     expect(within(hoja).getByText(/devuelve el dinero/)).toBeVisible();
+    // Spec 074: Gastos abarca corregir un gasto guardado y Almacén los empaques de compra.
+    expect(within(hoja).getByText(/corregir/)).toBeVisible();
+    expect(within(hoja).getByText(/empaques de compra/)).toBeVisible();
   });
 
   test('la tarjeta nombra los alcances nuevos, nunca el identificador', async () => {
