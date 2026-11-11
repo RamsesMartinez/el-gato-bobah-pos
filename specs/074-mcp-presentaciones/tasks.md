@@ -79,7 +79,7 @@ caso de la US1 necesita `presentation_create`. Las dos son P1.
   - Repetido tras las correcciones de la revisión: igual, y reaplicar con clave nueva y la misma huella
     ya no duplica (la ruta responde que el renglón quitado no existe).
   - Limpieza: las dos compras de prueba anuladas por `expense_cancel` y el empaque desactivado.
-- [ ] T020 `make ci-local` en verde; empujar; PR a `develop` que cierra #268; esperar CI y mergear en verde
+- [X] T020 `make ci-local` en verde; empujar; PR a `develop` que cierra #268; esperar CI y mergear en verde
 - [ ] T021 PR de release `develop` → `main`, CI verde, merge; seguir el deploy hasta `readyz` 200 en producción (solo salud)
 - [ ] T022 `make cerrar-worktree dir=../egb-074-mcp-presentaciones datos=1`, borrar la rama remota, comentar y cerrar #268 con lo que entró, lo que quedó fuera (`ingredient_create`) y el ensanche de tokens
 
