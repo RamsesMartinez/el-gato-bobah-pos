@@ -7,7 +7,7 @@
 ARG PREBUILT=
 # Imágenes base clavadas por digest (A08): el tag es mutable, el digest no. Dependabot
 # (docker) las mantiene al día.
-FROM golang:1.27-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS bin
+FROM golang:1.27-alpine@sha256:eb61c3873c97416fff0116553fff65d67a3549f72e11d9758849a689cdd8b523 AS bin
 WORKDIR /src
 # Descarga de módulos cacheada: solo se rehace si cambian go.mod/go.sum.
 COPY go.mod go.sum ./
@@ -28,7 +28,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # (slog traga ese error en silencio — logging.Setup queda "funcionando" solo por stdout).
 RUN mkdir -p /out/logs && chown 65532:65532 /out/logs
 
-FROM golang:1.27-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS bin-prebuilt
+FROM golang:1.27-alpine@sha256:eb61c3873c97416fff0116553fff65d67a3549f72e11d9758849a689cdd8b523 AS bin-prebuilt
 ARG PREBUILT
 COPY ${PREBUILT} /out/api
 RUN mkdir -p /out/logs && chown 65532:65532 /out/logs

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -37,6 +38,18 @@ func TestDispatcherRefusesRoutesOutsideCatalog(t *testing.T) {
 		}
 		if hits[p] != 0 {
 			t.Errorf("%s: llegó al handler", p)
+		}
+	}
+	// La edición de un gasto (spec 074) despacha su ruta y nada de lo que cuelga junto a ella: entregas
+	// parciales y renglones excluidos son otras operaciones con otros permisos.
+	edit := chi.NewRouter()
+	for _, p := range []string{"/api/v1/expenses/{id}/deliveries", "/api/v1/expenses/{id}/items"} {
+		edit.Post(p, func(w http.ResponseWriter, _ *http.Request) { hits[p]++; w.WriteHeader(http.StatusNoContent) })
+	}
+	se := &mcpSession{mux: edit, outer: s.outer, principal: s.principal}
+	for _, p := range []string{"/api/v1/expenses/{id}/deliveries", "/api/v1/expenses/{id}/items"} {
+		if _, _, err := se.dispatch(context.Background(), "expense_edit", http.MethodPost, p, map[string]int64{"id": 1}, nil, map[string]any{}); !errors.Is(err, errDispatchDenied) || hits[p] != 0 {
+			t.Errorf("expense_edit despachó %s (%v)", p, err)
 		}
 	}
 	// Una herramienta tampoco puede usar la ruta de otra.
@@ -198,5 +211,15 @@ func TestSuggestTargetsAreDedupedAndCapped(t *testing.T) {
 	}
 	if n := len(suggestTargets(many)); n != maxSuggestLines {
 		t.Fatalf("300 nombres distintos piden %d sugerencias; el tope es %d", n, maxSuggestLines)
+	}
+}
+
+// La sugerencia de empaque de purchase_create (spec 074) lee artículos y unidades. Si esas rutas no
+// están en su lista blanca, la sugerencia degrada en silencio a pedir unit_id: nada truena.
+func TestPurchaseCreateCanReadArticlesAndUnits(t *testing.T) {
+	for _, r := range []mcpRoute{get(pArticles), get(pUnits)} {
+		if !slices.Contains(mcpToolRoutes["purchase_create"], r) {
+			t.Errorf("purchase_create no puede leer %s", r.pattern)
+		}
 	}
 }

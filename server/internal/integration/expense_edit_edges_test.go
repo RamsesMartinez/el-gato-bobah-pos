@@ -436,3 +436,30 @@ func TestALineWithoutAnArticleIsNeitherAGiftNorArrives(t *testing.T) {
 	// Uno normal sí entra: el rechazo es por lo que trae, no por no tener artículo.
 	k.confirmEdit(t, id, app.EditInput{Add: []app.EditLineInput{{Description: "Flete", Quantity: dd("1"), Amount: dd("30")}}}, nil)
 }
+
+// Revisión de seguridad de la 074: la huella salía solo de los efectos. Un renglón de regalo que queda
+// por recibir no mueve dinero, almacén ni costo, así que su vista previa daba la MISMA huella antes y
+// después de aplicarlo, y un reintento (por MCP, con clave nueva tras un error interno) lo agregaba dos
+// veces; al recibirlo inflaba las existencias. La huella amarra ahora los renglones del gasto.
+func TestTheFingerprintDoesNotReapplyAnEditWithoutEffects(t *testing.T) {
+	t.Parallel()
+	k := newEditKit(t)
+	id := k.paidWithoutGoods(t, "100", k.day(-1))
+	gift := k.line(k.tapas, "Tapas de regalo", "5", "0", "")
+	gift.IsGift = true
+	in := app.EditInput{CanReceive: true, Add: []app.EditLineInput{gift}}
+	pre, err := k.svc.EditExpense(k.ctx, id, in, k.user, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Fingerprint = pre.Preview.Fingerprint
+	if _, err := k.svc.EditExpense(k.ctx, id, in, k.user, false); err != nil {
+		t.Fatalf("primera confirmación: %v", err)
+	}
+	if _, err := k.svc.EditExpense(k.ctx, id, in, k.user, false); !errors.Is(err, domain.ErrExpenseEditStale) {
+		t.Fatalf("confirmar otra vez con la misma huella = %v; quiere EXPENSE_EDIT_STALE", err)
+	}
+	if n := len(k.items(t, id)); n != 1 {
+		t.Fatalf("el regalo quedó %d veces", n)
+	}
+}

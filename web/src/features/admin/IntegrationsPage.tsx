@@ -18,9 +18,9 @@ import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 // negocio con los permisos de quien lo crea. Lista a todo el ancho y alta en una hoja inferior.
 
 const WRITE_SCOPES: { v: TokenScope; label: string; hint: string }[] = [
-  { v: 'write:expenses', label: 'Gastos', hint: 'Capturar, pagar y anular gastos; dar de alta proveedores' },
+  { v: 'write:expenses', label: 'Gastos', hint: 'Capturar, pagar, corregir y anular gastos; dar de alta proveedores' },
   { v: 'write:cash', label: 'Caja', hint: 'Entradas y salidas de efectivo; abrir y cerrar caja' },
-  { v: 'write:inventory', label: 'Almacén', hint: 'Mermas, ajustes de existencia y conteos' },
+  { v: 'write:inventory', label: 'Almacén', hint: 'Mermas, ajustes de existencia, conteos y empaques de compra' },
   { v: 'write:catalog', label: 'Menú y precios', hint: 'Precio y disponibilidad, precios por plataforma' },
   { v: 'write:purchases', label: 'Compras', hint: 'Capturar compras con su mercancía y recibir las que están por recibir' },
   { v: 'write:orders', label: 'Pedidos', hint: 'Cancelar pedidos, también cobrados (devuelve el dinero)' },

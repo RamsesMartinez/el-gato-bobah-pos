@@ -43,7 +43,11 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     todo y devuelve `errPreviewRollback`; confirmar repite la `fingerprint` de la última vista previa
     (409 `EXPENSE_EDIT_STALE` si algo cambió) y exige sus decisiones (400 `DECISION_REQUIRED`). Una
     cifra de la vista previa que dependa de algo volátil (un id recién insertado) rompe la huella: la
-    vista previa revertida consume otro id que la confirmación.
+    vista previa revertida consume otro id que la confirmación. **La huella amarra además los
+    renglones del gasto de antes de editar** (id, anulado y lo aplicado; `expenseLinesMark`): una
+    edición sin efecto en dinero, almacén ni costo —un regalo que queda por recibir— daba la misma
+    huella antes y después de aplicarse, y un reintento la duplicaba (revisión de la 074,
+    `TestTheFingerprintDoesNotReapplyAnEditWithoutEffects`).
   - **`stock_movements.effective_on` es el día de la entrega**, no el de la captura. La llena un
     trigger en cada compra o movimiento de un gasto (`business_day_of`, con la zona de la EMPRESA de la
     fila), así que la API vieja también deja fecha; los reportes por periodo siguen con `created_at`.

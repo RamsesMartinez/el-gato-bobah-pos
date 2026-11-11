@@ -97,3 +97,33 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   completa. Un camino nuevo que cambie la captura de un gasto lo cambia para los dos.
 - **El lote de conteo** despacha un `PUT` por renglón con `confirmable: true` y se detiene en el
   primero que falla; capturar fija la cifra, así que repetirlo con la misma clave no duplica nada.
+
+### Lo que agregó la spec 074 (empaques de compra y corregir un gasto guardado)
+
+- **Sin alcance nuevo: dos viejos que crecieron otra vez.** `presentation_create`/`presentation_update`
+  van en `write:inventory` (permiso `inventory.configure`) y `expense_edit` en `write:expenses`
+  (`expenses.edit`). Un token emitido antes de la 074 las gana con la subida si el rol de su dueño
+  tiene el permiso; el texto de cada alcance en Integraciones lo dice.
+- **Cuando la vista previa ES la operación, va en `strictPreview`.** La edición de un gasto corre
+  entera en una transacción revertida (`?preview=1`): lo que la ruta rechaza ahí (gasto anulado,
+  renglón ajeno, permiso de recibir) llega al agente como error. Con `preview`, que solo agrega notas,
+  esos rechazos salían como una vista previa «exitosa».
+- **La huella de la edición y la clave de idempotencia no se estorban.** Aplicar exige el
+  `fingerprint` de la última vista previa; uno vencido es un 409 que libera la clave (rama 4xx de
+  `apply`), así que el agente repite con la huella nueva y la misma clave. Tras aplicar con éxito,
+  otra huella con la misma clave son otros argumentos: 409 de idempotencia.
+- **«Cambiar un renglón» es quitar y agregar en la misma llamada.** La ruta no tiene otro verbo. El
+  renglón agregado sin `arrived_on` queda por recibir (no entra al almacén): la vista previa lo dice.
+  Quitar el único renglón deja el gasto en $0 y la ruta lo rechaza: eso es anular.
+- **`presentation_update` parte del empaque de hoy**: la ruta reemplaza el registro, así que lo no
+  mandado se manda como está (un normal, con su contenido en la unidad base; un aproximado, con su
+  unidad de compra). La marca y la tara solo viajan si el agente las manda. **Residuo aceptado**: entre
+  la lectura y el `PUT` no hay control de versión; si alguien cambia el contenido en la pantalla en
+  ese instante, el agente lo regresa al de antes. Es el mismo patrón de la pantalla y de
+  `product_update`; cerrarlo exige que la ruta acepte cambios parciales o una versión.
+- **Las lecturas auxiliares piden sus propios permisos.** `presentation_update` lee
+  `GET /stock/presentations` (`inventory.receive`) y, sin `qty`, `GET /units` (`expenses.capture`): un rol
+  con solo `inventory.configure` recibe el rechazo de esa lectura. Falla cerrado.
+- **La vista previa de una compra sugiere el empaque que falta** con insumo y unidad llenos, y deja
+  marca y contenido para que los confirme la persona: adivinarlos del texto del ticket podría
+  equivocar el contenido, que es lo que mueve el almacén.
