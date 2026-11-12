@@ -91,7 +91,7 @@ export interface PurchaseMoneyLine {
 }
 export interface PurchaseMoney {
   linesSum: number;
-  missingAmount: number; // renglones de mercancía sin importe (y que no son regalo)
+  missingAmount: number; // renglones sin importe que cuentan: ni regalo ni excluidos
   over: boolean; // los renglones pasan del total pagado
   others: number; // lo que queda como «otros» del gasto
 }
@@ -102,11 +102,20 @@ export function purchaseMoney(lines: PurchaseMoneyLine[], total: number): Purcha
     if (l.excluded) continue;
     const m = parseMonto(l.amount);
     const v = m.estado === 'valido' ? m.valor : 0;
-    if (l.goods && !l.gift && !(v > 0)) missingAmount++;
+    if (!l.gift && !(v > 0)) missingAmount++;
     sum += v;
   }
   const linesSum = round2(sum);
   return { linesSum, missingAmount, over: linesSum > round2(total), others: Math.max(0, round2(total - linesSum)) };
+}
+
+// blankLine: el renglón que la captura con mercancía agrega y nadie llenó. No se manda: en 0 la base
+// lo rechaza, y obligar a borrarlo para guardar el gasto es un toque que no aporta nada.
+export function blankLine(l: { description: string; rawName: string; itemId: number | null; amount: string }): boolean {
+  // Un importe escrito mal es un dato: el renglón se queda y la pantalla lo marca.
+  const m = parseMonto(l.amount);
+  const noAmount = !l.amount.trim() || (m.estado === 'valido' && m.valor === 0);
+  return !l.description.trim() && !l.rawName.trim() && !l.itemId && noAmount;
 }
 
 // baseOfLine es lo que un renglón suma en la unidad base del artículo: cantidad × lo que trae su

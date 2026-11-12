@@ -19,7 +19,7 @@ import {
 } from '../../components/ui/drawer';
 import { posApi } from '../../api/pos';
 import { money } from '../../utils/format';
-import { packToBase, lineAmount, purchaseMoney, baseOfLine, crossConversion, ASK_FOR_DENSITY, type CrossConversion } from './expenseDraft';
+import { packToBase, lineAmount, purchaseMoney, blankLine, baseOfLine, crossConversion, ASK_FOR_DENSITY, type CrossConversion } from './expenseDraft';
 import { DensitySheet } from './articles/DensitySheet';
 import { ApiError } from '../../api/client';
 import { can } from '../../app/permissions';
@@ -249,7 +249,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
 
   // ---- Dinero ----
   const total = montoTecleado(amount) ?? 0;
-  const counted = withGoods ? items : [];
+  const counted = withGoods ? items.filter((i) => !blankLine(i)) : [];
   const hasArticle = (i: DraftItem) => !!i.itemId && !i.doubtful;
   const isGoods = (i: DraftItem) => hasArticle(i) && !i.excluded;
   // Lo excluido que, por el total escrito, termina como «otros»: el pie lo dice para que no pase sin verse.
@@ -317,7 +317,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
     mutationFn: (choice?: CountChoice) => backofficeApi.createExpense({
       expenseDate,
       expenseDay: turno ? undefined : expenseDay,
-      receivedAt: withGoods ? today() : undefined,
+      receivedAt: withGoods && counted.length > 0 ? today() : undefined,
       categoryId: Number(categoryId),
       supplierId: supplierId ? Number(supplierId) : undefined,
       amount,
@@ -360,7 +360,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
       }))).map((p) => withCountChoice(p, choice)),
     }),
     onSuccess: () => {
-      if (withGoods) medirAccion('gastos', 'registrar-compra');
+      if (withGoods && counted.length > 0) medirAccion('gastos', 'registrar-compra');
       void qc.invalidateQueries({ queryKey: ['stock'] });
       void qc.invalidateQueries({ queryKey: ['ingredients'] });
       reset();
@@ -791,7 +791,8 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, cros
   const buyUnits = art ? [...purchaseUnitsFor(art.unitKind, units), ...(art.itemType === 'ingrediente' ? crossBuyUnits(art.unitKind, units) : [])] : [];
 
   const pick = (v: string) => {
-    if (!v) { onChange({ itemType: '', itemId: null, itemName: '', presentationId: null }); return; }
+    // Sin artículo no hay regalo: el servidor solo lo acepta en un renglón del almacén.
+    if (!v) { onChange({ itemType: '', itemId: null, itemName: '', presentationId: null, isGift: false }); return; }
     const [type, id] = v.split(':');
     const a = articleList.find((x) => x.itemType === type && x.id === Number(id));
     onChange({

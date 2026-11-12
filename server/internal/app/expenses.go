@@ -986,8 +986,15 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 			return domain.ErrValidation
 		}
 		amount := domain.Round2(it.Amount)
-		if !domain.ValidMoney(amount, true) { // 0 permitido fuera de la mercancía: un renglón sin costo
+		if !domain.ValidMoney(amount, true) {
 			return domain.ErrValidation
+		}
+		// FR-004a vale para todo renglón que cuenta, sea del almacén o no: con la regla solo en la
+		// rama del almacén, el 0 lo rechazaba el CHECK expense_items_amount_positive como un 500.
+		if !excluded {
+			if err := checkLineMoney(amount, it.IsGift); err != nil {
+				return err
+			}
 		}
 		if it.Description == "" {
 			return domain.ErrValidation
@@ -1000,11 +1007,7 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 			return err
 		}
 		if itemType != nil {
-			if !excluded {
-				if err := checkLineMoney(amount, it.IsGift); err != nil {
-					return err
-				}
-			} else if it.IsGift && !amount.IsZero() {
+			if excluded && it.IsGift && !amount.IsZero() {
 				return fmt.Errorf("%w: un regalo va con importe 0", domain.ErrValidation)
 			}
 			if it.UnitID, it.PackQtyInBase, err = lineUnit(ctx, q, it.IngredientID, it.PresentationID, it.UnitID, it.PackQtyInBase); err != nil {
