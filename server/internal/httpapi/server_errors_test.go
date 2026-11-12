@@ -215,7 +215,9 @@ func TestAlertEmailCarriesNoSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := `{"password":"hunter2","pin":"4821","customerName":"Cliente Secreto","card":"4111111111111111"}`
+	// El PIN de prueba es largo a propósito: con «4821» la prueba falló en CI sin fuga, porque cuatro
+	// dígitos salen por azar en el id de la petición o en la hora del correo.
+	body := `{"password":"hunter2","pin":"48217390615","customerName":"Cliente Secreto","card":"4111111111111111"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/9/pay?token="+sampleAlertJWT, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
@@ -223,7 +225,7 @@ func TestAlertEmailCarriesNoSecrets(t *testing.T) {
 
 	m := b.waitOne(t)
 	for _, secret := range []string{
-		token, sampleAlertJWT, "hunter2", "4821", "Cliente Secreto", "4111111111111111", "token=", "/orders/9/",
+		token, sampleAlertJWT, "hunter2", "48217390615", "Cliente Secreto", "4111111111111111", "token=", "/orders/9/",
 	} {
 		if strings.Contains(m, secret) {
 			t.Errorf("el correo de aviso trae %q", secret)

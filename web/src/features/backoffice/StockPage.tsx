@@ -81,7 +81,7 @@ export function StockPage() {
               <Table.Header><Table.Row><Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Mínimo</Table.ColumnHeader></Table.Row></Table.Header>
               <Table.Body>
                 {(levels.data?.items ?? []).length === 0 && (
-                  <Table.Row><Table.Cell colSpan={4}><Text color="fg.subtle">Sin movimientos aún</Text></Table.Cell></Table.Row>
+                  <Table.Row><Table.Cell colSpan={4}><Text color="fg.subtle">Sin existencias que mostrar</Text></Table.Cell></Table.Row>
                 )}
                 {(levels.data?.items ?? []).map((s, i) => {
                   const low = s.min_stock != null && Number(s.on_hand) <= Number(s.min_stock);

@@ -67,8 +67,15 @@ correcta antes del código que lo pone en verde. Integración en
     ubicación y costo sin cambio; `articles_search` «jamón de pavo» lo encuentra. (d)
     `presentations_list` con `ingredient_id: 749`: solo sus 4 empaques (Kir, Bafar, Member's Mark y
     la rebanada).
-- [ ] T018 `make ci-local` verde; PR a `develop`, CI verde (CodeQL sin hallazgo alto nuevo) y merge; PR `develop` → `main`, CI verde, merge, deploy y `readyz` 200 en producción
-- [ ] T019 Cerrar: `make cerrar-worktree datos=1`, borrar la rama remota, comentar y cerrar #271 (qué entró, qué quedó fuera y el ensanche de tokens)
+- [x] T018 `make ci-local` verde; PR a `develop`, CI verde (CodeQL sin hallazgo alto nuevo) y merge; PR `develop` → `main`, CI verde, merge, deploy y `readyz` 200 en producción
+  - 2026-11-11: `make ci-local` verde con develop traído en local; PR #274 con CI verde (CodeQL sin
+    alertas altas ni críticas) y merge; release #275 con CI verde, respaldo previo
+    (`gatobobah-20261111-0358.dump`), deploy con imagen `sha-31b8caf`, `healthz` y `readyz` 200, sin
+    5xx en el journal. Una línea `shutdown: context deadline exceeded` de la versión anterior, igual a
+    la de la subida de las 09:31 UTC: no la trae este cambio.
+- [x] T019 Cerrar: `make cerrar-worktree datos=1`, borrar la rama remota, comentar y cerrar #271 (qué entró, qué quedó fuera y el ensanche de tokens)
+  - 2026-11-11: worktree `egb-076-mcp-insumos` cerrado con sus volúmenes, rama remota borrada, #271
+    comentado (qué entró, el ensanche de tokens con Almacén y lo que quedó fuera) y cerrado.
 
 ## Dependencies & Execution Order
 
