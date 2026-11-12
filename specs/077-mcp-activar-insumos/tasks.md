@@ -89,8 +89,20 @@ ya cumple queda fijado, lo que no se arregla en la consulta.
   - (e) token del administrador sin `write:inventory` y token con todos los alcances de un rol sin
     `inventory.configure`: ninguno ve `ingredient_update` (llamarla es «unknown tool») y el 727 sigue
     activo. Los dos tokens se borraron de la base local.
-- [ ] T020 `make ci-local` verde; PR a `develop`, CI verde (CodeQL sin hallazgo alto nuevo) y merge; PR `develop` → `main`, CI verde, merge, deploy y `readyz` 200 en producción
-- [ ] T021 Cerrar: `make cerrar-worktree datos=1`, borrar la rama remota, comentar y cerrar #277 (qué entró, qué quedó fuera y el ensanche de tokens)
+- [x] T020 `make ci-local` verde; PR a `develop`, CI verde (CodeQL sin hallazgo alto nuevo) y merge; PR `develop` → `main`, CI verde, merge, deploy y `readyz` 200 en producción
+  - 2026-11-12: `make ci-local` verde; PR #278 con CI verde (CodeQL sin alertas altas ni críticas) y
+    merge. El primer CI falló en `TestAlertEmailCarriesNoSecrets`, ajena a la 077: el PIN de prueba
+    «4821» puede salir por azar en el id de la petición o en la hora del correo (0 fallas en 3000
+    corridas locales; la causa es inferida, no reproducida); se cambió por uno largo. #278 entró
+    detrás del #279 de otra sesión (solo `web/` de tickets) sin traer develop antes: el árbol
+    combinado lo probó completo el CI del release. Release #280 con CI verde, respaldo previo
+    (`gatobobah-20261112-0427.dump`), deploy en verde, `healthz` y `readyz` 200, sin 5xx en el
+    journal; un `shutdown: context deadline exceeded` de la versión anterior, igual al de la subida
+    de la 076.
+- [x] T021 Cerrar: `make cerrar-worktree datos=1`, borrar la rama remota, comentar y cerrar #277 (qué entró, qué quedó fuera y el ensanche de tokens)
+  - 2026-11-12: #277 comentado (qué entró, el ensanche de tokens con Almacén y lo que quedó fuera) y
+    cerrado; rama remota borrada; worktree `egb-077-mcp-activar-insumos` cerrado con sus volúmenes
+    después de mergear esta nota.
 
 ## Dependencies & Execution Order
 
