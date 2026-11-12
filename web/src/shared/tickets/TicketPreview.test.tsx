@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { Provider } from '../../components/ui/provider';
 import { TicketPreviewDialog } from './TicketPreview';
+import { buildReceiptHtml, sampleTicketOrder, type TicketBusinessInfo } from '../../utils/printReceipt';
 
 // printFrame ya tiene sus propios tests (candado anti-doble-toque incluido); aquí lo que importa es
 // el cableado: que el botón imprima EL MISMO iframe que el operador está viendo.
@@ -15,6 +16,10 @@ vi.mock('../../utils/printReceipt', async (importOriginal) => ({
 function wrap(ui: React.ReactElement) {
   return render(<Provider>{ui}</Provider>);
 }
+
+const negocio: TicketBusinessInfo = {
+  businessName: 'El Gato Bobah', address: '', phone: '', headerNote: '', footerNote: '', logoDataUri: '', timezone: 'America/Mexico_City',
+};
 
 const html = '<!doctype html><html><body><h1>El Gato Bobah</h1>Pedido #42</body></html>';
 
@@ -58,4 +63,28 @@ test('el ancho del ticket no se comprime: se escala, no se aplasta', () => {
   const frame = container.ownerDocument.querySelector('iframe')!;
   expect(frame.style.width).toMatch(/\d+px$/);
   expect(frame.style.width).not.toBe('100%');
+});
+
+// El ancho exterior del documento del ticket en px de pantalla, leído de SU propia hoja de estilo:
+// el ancho del cuerpo más su relleno lateral. El cuerpo es content-box, así que el relleno se suma.
+function anchoDelDocumento(doc: string): number {
+  const body = /body\s*\{([^}]*)\}/.exec(doc)?.[1] ?? '';
+  const ancho = Number(/(?:^|;)\s*width:\s*([\d.]+)mm/.exec(body)?.[1]);
+  const [, , lateral = 0] = /padding:\s*([\d.]+)mm\s+([\d.]+)mm/.exec(body)?.map(Number) ?? [];
+  expect(ancho, 'no encontré el ancho del cuerpo del ticket en su hoja de estilo').toBeGreaterThan(0);
+  return ((ancho + 2 * lateral) * 96) / 25.4;
+}
+
+test('el marco deja ver el ticket completo: la columna de importes y el TOTAL no quedan fuera (#233)', () => {
+  // Medido a 1024×600: el documento mide ~333 px (80 mm de papel + 4 mm de relleno por lado) y el
+  // marco medía 302 px (solo los 80 mm). Los ~31 px que sobraban eran la columna de importes: el
+  // operador veía «TOTAL» sin cifra y «@$12» sin el importe del renglón.
+  const doc = buildReceiptHtml(sampleTicketOrder(), negocio, {});
+  const { container } = wrap(<TicketPreviewDialog html={doc} isOpen onClose={vi.fn()} />);
+  const frame = container.ownerDocument.querySelector('iframe')!;
+  const documento = anchoDelDocumento(doc);
+  expect(
+    Number.parseInt(frame.style.width, 10),
+    `el marco mide ${frame.style.width} y el ticket ${documento.toFixed(1)} px: se corta la columna de importes`,
+  ).toBeGreaterThanOrEqual(Math.ceil(documento));
 });
