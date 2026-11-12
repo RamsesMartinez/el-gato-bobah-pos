@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'vitest';
-import { packToBase, lineAmount, splitTotals, purchaseMoney, baseOfLine, densityFactor, conversionWords, crossConversion, lineConversion } from './expenseDraft';
+import { packToBase, lineAmount, splitTotals, purchaseMoney, blankLine, baseOfLine, densityFactor, conversionWords, crossConversion, lineConversion } from './expenseDraft';
 
 // Unidades como las siembra la migración 0010.
 const units = [
@@ -129,9 +129,15 @@ test('un importe con coma no se suma al total del documento', () => {
 
 describe('purchaseMoney (FR-004a)', () => {
   const goods = (amount: string, gift = false) => ({ amount, goods: true, gift });
-  test('un renglón de mercancía sin importe se cuenta como faltante; un regalo en 0 no', () => {
-    const m = purchaseMoney([goods(''), goods('0'), goods('0', true), { amount: '0', goods: false, gift: false }], 100);
+  test('un renglón sin importe se cuenta como faltante; un regalo en 0 no', () => {
+    const m = purchaseMoney([goods(''), goods('0'), goods('0', true)], 100);
     expect(m.missingAmount).toBe(2);
+  });
+  // El servidor rechaza un renglón en 0 sea o no del almacén (FR-004a); si la pantalla deja
+  // guardarlo, quien opera topa con un error al tocar Guardar.
+  test('un renglón que no es del almacén también lleva importe; excluido en 0 no falta', () => {
+    const m = purchaseMoney([{ amount: '0', goods: false, gift: false }, { amount: '0', goods: false, gift: false, excluded: true }], 100);
+    expect(m.missingAmount).toBe(1);
   });
   test('renglones sobre el total se marcan; lo que falta queda como «otros»', () => {
     expect(purchaseMoney([goods('730'), goods('410.01')], 1140).over).toBe(true);
@@ -143,6 +149,28 @@ describe('purchaseMoney (FR-004a)', () => {
   });
   test('sin centavos fantasma al sumar', () => {
     expect(purchaseMoney([goods('0.1'), goods('0.2')], 0.3).over).toBe(false);
+  });
+});
+
+// La captura con mercancía abre con un renglón vacío; guardar sin tocarlo mandaba un renglón en 0
+// que la base rechazaba. Uno que no dice nada no es un renglón: no se manda.
+describe('blankLine', () => {
+  const blank = { description: '', rawName: '', itemId: null, amount: '' };
+  test('el renglón que la pantalla agrega y nadie llenó', () => {
+    expect(blankLine(blank)).toBe(true);
+    expect(blankLine({ ...blank, amount: '0' })).toBe(true);
+  });
+  test('cualquier dato lo vuelve un renglón', () => {
+    expect(blankLine({ ...blank, description: 'Fresas' })).toBe(false);
+    expect(blankLine({ ...blank, rawName: 'FRESA KG' })).toBe(false);
+    expect(blankLine({ ...blank, itemId: 7 })).toBe(false);
+    expect(blankLine({ ...blank, amount: '12' })).toBe(false);
+  });
+  // Un importe escrito mal es un dato: descartarlo mandaría ese dinero callado a «otros».
+  test('un importe escrito mal no vuelve vacío al renglón', () => {
+    expect(blankLine({ ...blank, amount: '1,500' })).toBe(false);
+    expect(blankLine({ ...blank, amount: '-50' })).toBe(false);
+    expect(blankLine({ ...blank, amount: '12.' })).toBe(false);
   });
 });
 

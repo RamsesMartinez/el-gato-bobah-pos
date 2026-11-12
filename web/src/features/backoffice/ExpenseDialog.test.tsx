@@ -49,9 +49,9 @@ vi.mock('../../api/pos', () => ({ posApi: pos }));
 vi.mock('../../components/Picker', async () => {
   const { useState } = await import('react');
   type Opt = { value: string; label: string };
-  function Picker({ value, options, onChange, placeholder, onCreate }: {
+  function Picker({ value, options, onChange, placeholder, onCreate, clearable, clearLabel }: {
     value: string; options: Opt[]; onChange: (v: string) => void; placeholder?: string;
-    onCreate?: (name: string) => Promise<Opt | null>;
+    onCreate?: (name: string) => Promise<Opt | null>; clearable?: boolean; clearLabel?: string;
   }) {
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState('');
@@ -61,6 +61,9 @@ vi.mock('../../components/Picker', async () => {
         <button type="button" onClick={() => setOpen(true)}>{selected ? selected.label : placeholder}</button>
         {open && (
           <div>
+            {clearable && value && clearLabel && (
+              <button type="button" onClick={() => { onChange(''); setOpen(false); }}>{clearLabel}</button>
+            )}
             {onCreate && <input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} />}
             {options.map((o) => (
               <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}>{o.label}</button>
@@ -214,6 +217,32 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
     click('Guardar');
     await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
     expect(back.createExpense.mock.calls[0][0].items[0]).toMatchObject({ isGift: true, amount: '0' });
+  });
+
+  // El 500 de producción: se abrió la captura con mercancía, nadie llenó el renglón que la pantalla
+  // agrega y se guardó el total. El renglón vacío no se manda, y sin renglones no es una compra
+  // recibida.
+  test('el renglón vacío que agrega la pantalla no se manda ni marca la compra como recibida', async () => {
+    await capturaConMercancia();
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const body = back.createExpense.mock.calls[0][0];
+    expect(body.items).toEqual([]);
+    expect(body.receivedAt).toBeUndefined();
+  });
+
+  // Quitar el artículo de un regalo dejaba el importe bloqueado en 0 y Guardar habilitado: el
+  // servidor rechaza un renglón en 0 que no es del almacén.
+  test('un regalo que deja de ser del almacén vuelve a pedir su importe', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    click(/Regalo/);
+    await elegir(/Leche entera/, /No es del almacén/);
+    fireEvent.change(screen.getByLabelText('Descripción'), { target: { value: 'Bolsa' } });
+    click('Todavía no se paga');
+    expect(screen.getByLabelText('Importe')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
   });
 
   // Spec 042, FR-003: el insumo nuevo no se crea al elegir su unidad sino al guardar el gasto, así que
