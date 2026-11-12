@@ -140,12 +140,19 @@ select sl.item_type,
        coalesce(i.name, p.name) as item_name,
        sl.on_hand,
        coalesce(i.min_stock, p.min_stock) as min_stock,
-       coalesce(iu.code, 'pieza') as unit_code
+       coalesce(iu.code, 'pieza') as unit_code,
+       -- El ` + "`" + `true` + "`" + ` final no cambia nada (todo renglón es de un insumo o de un producto): deja la
+       -- columna no nulable sin depender de cómo infiera sqlc un coalesce de dos left join.
+       coalesce(i.is_active, p.is_active, true) as is_active
 from stock_levels sl
 left join ingredients i on i.id = sl.ingredient_id
 left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = sl.product_id
 where sl.branch_id = current_branch_id()
+  -- Es la lista de faltantes de la pantalla (marca «bajo»): un insumo archivado ahí es un faltante
+  -- falso (spec 077). Su existencia sigue en Almacén › Archivados. Un producto archivado sí sale,
+  -- marcado: desactivar productos no es de esa feature.
+  and (sl.ingredient_id is null or i.is_active)
 order by item_name
 `
 
@@ -155,6 +162,7 @@ type ListStockLevelsRow struct {
 	OnHand   decimal.Decimal  `json:"on_hand"`
 	MinStock *decimal.Decimal `json:"min_stock"`
 	UnitCode string           `json:"unit_code"`
+	IsActive bool             `json:"is_active"`
 }
 
 // Almacén / niveles
@@ -174,6 +182,7 @@ func (q *Queries) ListStockLevels(ctx context.Context) ([]ListStockLevelsRow, er
 			&i.OnHand,
 			&i.MinStock,
 			&i.UnitCode,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}

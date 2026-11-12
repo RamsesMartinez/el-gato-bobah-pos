@@ -14,7 +14,11 @@ from supplier_items si
 left join ingredients i on i.id = si.ingredient_id
 left join products p on p.id = si.product_id
 where si.supplier_id = sqlc.arg('supplier_id')
-  and coalesce(si.raw_code, si.norm_name) = sqlc.arg('item_key')::text;
+  and coalesce(si.raw_code, si.norm_name) = sqlc.arg('item_key')::text
+  -- Lo aprendido hacia un insumo archivado no se autollena (spec 077): el renglón se queda guardado y
+  -- vuelve a proponerse si el insumo se reactiva. Mientras, el renglón cae a las sugerencias por
+  -- parecido, como uno sin aprender. Los productos no se filtran: desactivarlos es otra cosa.
+  and (si.ingredient_id is null or i.is_active);
 
 -- name: SuggestFromSupplierItems :many
 -- Paso 3: parecido contra renglones YA MAPEADOS, de cualquier proveedor. Mapeas "Coca Cola
@@ -29,6 +33,7 @@ left join ingredients i on i.id = si.ingredient_id
 left join products p on p.id = si.product_id
 where si.status = 'mapeado'
   and si.supplier_id <> sqlc.arg('supplier_id')
+  and (si.ingredient_id is null or i.is_active)
   and si.norm_name % sqlc.arg('needle')::text
 order by score desc
 limit sqlc.arg('lim');

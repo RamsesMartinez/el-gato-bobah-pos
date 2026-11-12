@@ -301,6 +301,11 @@ var toolFixByCode = map[string]string{
 	"NAME_TAKEN":     "Usa ese insumo, o elige otro nombre.",
 	"ALT_NAME_TAKEN": "Quita ese nombre de la lista, o pregunta a la persona si son el mismo insumo.",
 	"STALE":          "La ficha cambió mientras se guardaba: vuelve a intentar.",
+	// Las de la 077: desactivar un insumo. La regla es del servicio (#203); aquí solo va qué hacer.
+	"ARCHIVE_HAS_STOCK": "Registra la merma (waste_record) o el ajuste (stock_adjust) y repite. Solo si la persona " +
+		"decide desactivarlo con esa existencia, manda confirm_on_hand: true.",
+	"IN_USE": "Quítalo de esas recetas, o cierra o descarta el conteo, en la pantalla; desactivarlo no cambia " +
+		"ninguna receta ni producto.",
 }
 
 // ToolErrorHintFor es ToolErrorHint con el código de error de la API: si la operación tiene una
@@ -329,7 +334,7 @@ func ToolErrorHintWith(status int, code, serverMsg, listTool string, ref Existin
 	if ref.ID > 0 && status < 500 {
 		label := fmt.Sprintf("id %d", ref.ID)
 		if ref.Archived {
-			label += ", archivado: reactivarlo se hace en la pantalla"
+			label += ", archivado: se reactiva con ingredient_update y active: true"
 		}
 		serverMsg = fmt.Sprintf("%s (%s)", strings.TrimRight(strings.TrimSpace(serverMsg), "."), label)
 	}
@@ -379,7 +384,8 @@ var mcpTools = []MCPTool{
 	wr("expense_pay", "Agrega un pago a un gasto pendiente.", ScopeWriteExpenses, PermExpensesCapture),
 	wr("expense_cancel", "Anula un gasto capturado por error.", ScopeWriteExpenses, PermExpensesCancel),
 	wr("supplier_create", "Da de alta un proveedor.", ScopeWriteExpenses, PermExpensesCapture),
-	rd("stock_levels", "Existencias actuales de insumos y productos.", PermInventoryView),
+	rd("stock_levels", "Existencias actuales de insumos y productos; cada renglón dice si está activo. Los insumos "+
+		"inactivos no salen, igual que en la pantalla.", PermInventoryView),
 	rd("stock_movements", "Movimientos de almacén recientes.", PermInventoryView),
 	rd("waste_reasons_list", "Motivos de merma.", PermInventoryWriteOff),
 	wr("waste_record", "Registra lo que se echó a perder. Lo que pasa el tope de la empresa queda por aprobar.", ScopeWriteInventory, PermInventoryWriteOff),
@@ -394,7 +400,8 @@ var mcpTools = []MCPTool{
 	rd("audit_list", "Bitácora de auditoría: quién hizo qué y cuándo, paginada.", PermAuditView),
 
 	// Spec 073: compras, conteos, cancelar pedidos, abrir y cerrar caja.
-	rd("articles_search", "Busca insumos y productos de reventa por nombre (o nombre alternativo).", PermExpensesCapture),
+	rd("articles_search", "Busca insumos y productos de reventa por nombre (o nombre alternativo). Cada renglón dice "+
+		"si está activo; include_inactive: true agrega los insumos inactivos, para reactivarlos.", PermExpensesCapture),
 	rd("units_list", "Unidades de medida con su equivalencia a la unidad base.", PermExpensesCapture),
 	rd("presentations_list", "Empaques de compra de los insumos (bolsa de 5 kg, caja de 12…); con ingredient_id, solo los de ese insumo.", PermInventoryReceive),
 	rd("pending_receipts_list", "Compras con mercancía que todavía no llega.", PermInventoryReceive),
@@ -435,7 +442,10 @@ var mcpTools = []MCPTool{
 		"La vista previa pone primero los insumos parecidos que ya existen: si es uno de ellos, usa ese y no crees otro. "+
 		"Si lo creas para una compra, la existencia y el costo llegan con la compra.", ScopeWriteInventory, PermInventoryConfigure),
 	wr("ingredient_update", "Edita la ficha de un insumo: nombre, categoría, ubicación, mínimo y otros nombres. Solo "+
-		"cambia lo que mandes; clear_* quita un valor; alt_names es la lista completa ([] los quita).",
+		"cambia lo que mandes; clear_* quita un valor; alt_names es la lista completa ([] los quita). active: false lo "+
+		"desactiva (deja de salir en conteos, compras y existencias; su historial se conserva) y active: true lo "+
+		"reactiva; active va solo en la llamada. La vista previa dice su existencia y las recetas que lo usan; "+
+		"confirm_on_hand: true solo si la persona decide desactivarlo con existencia.",
 		ScopeWriteInventory, PermInventoryConfigure),
 }
 

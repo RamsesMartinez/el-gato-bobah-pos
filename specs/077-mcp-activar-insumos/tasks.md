@@ -12,18 +12,23 @@ escribirla, y se dice. Integración con `//go:build integration` (`make test-int
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirmar que no hace falta migración ni alcance nuevo (0113 libre en `origin/develop` y ramas remotas) en specs/077-mcp-activar-insumos/plan.md (Technical Context; ya anotado el 2026-11-12)
+- [x] T001 Confirmar que no hace falta migración ni alcance nuevo (0113 libre en `origin/develop` y ramas remotas) en specs/077-mcp-activar-insumos/plan.md (Technical Context; ya anotado el 2026-11-12)
 
 ## Phase 2: Foundational (qué hace hoy un insumo archivado — FR-008)
 
 **Purpose**: verificar con pruebas, antes de escribir código, el comportamiento del archivado; lo que
 ya cumple queda fijado, lo que no se arregla en la consulta.
 
-- [ ] T002 Pruebas en server/internal/integration/archived_ingredient_test.go (`TestArchivedIngredientLeavesCountPurchasesAndShortages`), por la ruta y bajo `gatobobah_app`: tras archivar por `POST /stock/articles/{id}/archive`, el insumo no sale en el conteo (lista y «sin contar»), ni en `GET /articles?q=`, ni en `GET /articles/suggest` por nombre parecido; sus movimientos (`/stock/movements`), historial de costo y bitácora del artículo siguen legibles. Esperado: verde (ya cumple); anotar el resultado aquí
-- [ ] T003 Pruebas en el mismo archivo, en rojo hoy: (a) `GET /articles/suggest` con proveedor y renglón aprendido hacia el insumo archivado ya no lo propone como «aprendido» y, con un activo parecido, propone el activo como sugerencia (A5); (b) aprendido de otro proveedor hacia el archivado no sale; (c) `GET /stock/levels` no lista el insumo archivado, sí un producto archivado con control de existencias marcado `is_active: false` (A4), y cada renglón trae `is_active`; (d) reactivar lo devuelve a todo lo anterior
-- [ ] T004 Aislamiento de las tres consultas cambiadas con `appRoleStore` e `inTheThreeCases` en server/internal/integration/archived_ingredient_test.go (`ListStockLevels`, `LookupSupplierItem`, `SuggestFromSupplierItems`)
-- [ ] T005 Arreglo en server/queries/supplier_items.sql (`LookupSupplierItem`, `SuggestFromSupplierItems`: `and (si.ingredient_id is null or i.is_active)`) y server/queries/stock.sql (`ListStockLevels`: omite insumos archivados y trae `coalesce(i.is_active, p.is_active, true) as is_active`); `make sqlc` y confirmar `IsActive bool` en server/internal/store/db/stock.sql.go. T003 y T004 en verde
-- [ ] T006 [P] `StockLevel.is_active?` en web/src/api/backoffice.ts y texto de la tabla vacía «Sin existencias que mostrar» en web/src/features/backoffice/StockPage.tsx, con su test en web/src/features/backoffice/StockPage.test.tsx visto en rojo (plan, «Maquetas», fila Almacén › Existencias; A1)
+- [x] T002 Pruebas en server/internal/integration/archived_ingredient_test.go (`TestArchivedIngredientLeavesCountPurchasesAndShortages`), por la ruta y bajo `gatobobah_app`: tras archivar por `POST /stock/articles/{id}/archive`, el insumo no sale en el conteo (lista y «sin contar»), ni en `GET /articles?q=`, ni en `GET /articles/suggest` por nombre parecido; sus movimientos (`/stock/movements`), historial de costo y bitácora del artículo siguen legibles. Esperado: verde (ya cumple); anotar el resultado aquí
+  - 2026-11-12: conteo (lista y «sin contar»), buscador `/articles` e historial (movimientos, costo,
+    bitácora) en verde al escribirlos: ya cumplían. La sugerencia por nombre sin proveedor salía en
+    rojo, pero por el paso 2 (lo aprendido de otros proveedores), el mismo hueco de T003
+- [x] T003 Pruebas en el mismo archivo, en rojo hoy: (a) `GET /articles/suggest` con proveedor y renglón aprendido hacia el insumo archivado ya no lo propone como «aprendido» y, con un activo parecido, propone el activo como sugerencia (A5); (b) aprendido de otro proveedor hacia el archivado no sale; (c) `GET /stock/levels` no lista el insumo archivado, sí un producto archivado con control de existencias marcado `is_active: false` (A4), y cada renglón trae `is_active`; (d) reactivar lo devuelve a todo lo anterior
+  - 2026-11-12: en rojo (a) «aprendido» hacia el archivado, (b) otro proveedor, (c) existencias lo
+    listaba y sin `is_active`; T004 pasó al escribirla (guarda)
+- [x] T004 Aislamiento de las tres consultas cambiadas con `appRoleStore` e `inTheThreeCases` en server/internal/integration/archived_ingredient_test.go (`ListStockLevels`, `LookupSupplierItem`, `SuggestFromSupplierItems`)
+- [x] T005 Arreglo en server/queries/supplier_items.sql (`LookupSupplierItem`, `SuggestFromSupplierItems`: `and (si.ingredient_id is null or i.is_active)`) y server/queries/stock.sql (`ListStockLevels`: omite insumos archivados y trae `coalesce(i.is_active, p.is_active, true) as is_active`); `make sqlc` y confirmar `IsActive bool` en server/internal/store/db/stock.sql.go. T003 y T004 en verde
+- [x] T006 [P] `StockLevel.is_active?` en web/src/api/backoffice.ts y texto de la tabla vacía «Sin existencias que mostrar» en web/src/features/backoffice/StockPage.tsx, con su test en web/src/features/backoffice/StockPage.test.tsx visto en rojo (plan, «Maquetas», fila Almacén › Existencias; A1)
 
 ## Phase 3: User Story 1 - Desactivar un insumo descontinuado (P1)
 
@@ -31,11 +36,14 @@ ya cumple queda fijado, lo que no se arregla en la consulta.
 
 **Independent Test**: vista previa de uno con existencia y de uno con receta activa; desactivar uno sin nada.
 
-- [ ] T007 [US1] Unitarios en server/internal/domain/apitoken_test.go, en rojo: pista de `ARCHIVE_HAS_STOCK` menciona merma, ajuste y `confirm_on_hand`; la de `IN_USE` dice que se quita en la pantalla y que no cambia recetas; `ToolErrorHintWith` con archivado dice «se reactiva con ingredient_update y active: true» y ya no «en la pantalla»
-- [ ] T008 [US1] Implementar las pistas en server/internal/domain/apitoken.go y la descripción de `ingredient_update` (active, confirm_on_hand). T007 en verde
-- [ ] T009 [US1] Tests en server/internal/integration/mcp_077_test.go (`TestMCPIngredientDeactivate`), en rojo (parámetro desconocido): vista previa con existencia positiva y con negativa → `attention` primero con cantidad y sucursal, y nada cambia; aplicar sin `confirm_on_hand` → 409 con la pista y sigue activo; con `confirm_on_hand: true` → inactivo con la existencia intacta; receta activa → la vista previa la nombra con tipo e id, aplicar rechaza y receta y producto sin cambio; conteo abierto que lo capturó → aviso y rechazo; compra por recibir → nota; sin nada → diez veces la misma clave dejan un solo `ingredient.archived` y `mcp.tool_called` con antes y después con `isActive`; ya inactivo → la vista previa lo dice y aplicar no cambia nada; `active` con `name` (y con `alt_names`) y `confirm_on_hand` sin `active: false` → rechazo de argumentos sin despachar; token sin `write:inventory` → se niega nombrando el alcance; rol sin `inventory.configure` (con ver y recibir) → no se ofrece, 403 y sigue activo; token de otra empresa → «no existe» y nada cambia; rol con configurar y sin ver el almacén → la vista previa dice que no pudo revisar existencia ni recetas
-- [ ] T010 [US1] Implementar en server/internal/httpapi/mcp_tools_076.go: argumentos `active` y `confirm_on_hand`, `check()` (va solo; confirm solo con false), `route` al POST de archivar con `{confirmOnHand}`, lista blanca (`…/archive`, `…/reactivate`, `GET …/archive-check`), vista previa con la ficha y la revisión (`attention` en el orden del contrato), `isActive` en la vista de la ficha. T009 en verde
-- [ ] T011 [US1] Ajustar `TestDispatcherRefusesRoutesOutsideCatalog` en server/internal/httpapi/mcp_dispatch_test.go: `ingredient_create` no despacha archivar ni reactivar; `ingredient_update` sigue sin despachar unir, unidad, costo ni densidad (en rojo si alguna pasara)
+- [x] T007 [US1] Unitarios en server/internal/domain/apitoken_test.go, en rojo: pista de `ARCHIVE_HAS_STOCK` menciona merma, ajuste y `confirm_on_hand`; la de `IN_USE` dice que se quita en la pantalla y que no cambia recetas; `ToolErrorHintWith` con archivado dice «se reactiva con ingredient_update y active: true» y ya no «en la pantalla»
+- [x] T008 [US1] Implementar las pistas en server/internal/domain/apitoken.go y la descripción de `ingredient_update` (active, confirm_on_hand). T007 en verde
+- [x] T009 [US1] Tests en server/internal/integration/mcp_077_test.go (`TestMCPIngredientDeactivate`), en rojo (parámetro desconocido): vista previa con existencia positiva y con negativa → `attention` primero con cantidad y sucursal, y nada cambia; aplicar sin `confirm_on_hand` → 409 con la pista y sigue activo; con `confirm_on_hand: true` → inactivo con la existencia intacta; receta activa → la vista previa la nombra con tipo e id, aplicar rechaza y receta y producto sin cambio; conteo abierto que lo capturó → aviso y rechazo; compra por recibir → nota; sin nada → diez veces la misma clave dejan un solo `ingredient.archived` y `mcp.tool_called` con antes y después con `isActive`; ya inactivo → la vista previa lo dice y aplicar no cambia nada; `active` con `name` (y con `alt_names`) y `confirm_on_hand` sin `active: false` → rechazo de argumentos sin despachar; token sin `write:inventory` → se niega nombrando el alcance; rol sin `inventory.configure` (con ver y recibir) → no se ofrece, 403 y sigue activo; token de otra empresa → «no existe» y nada cambia; rol con configurar y sin ver el almacén → la vista previa dice que no pudo revisar existencia ni recetas
+  - 2026-11-12: en rojo (parámetro `active` desconocido). Sin el alcance, la herramienta no se registra para
+    el token (072: «unknown tool»), no hay mensaje que nombre el alcance: la prueba comprueba que no se
+    ofrece y que nada cambia; el spec se precisó
+- [x] T010 [US1] Implementar en server/internal/httpapi/mcp_tools_076.go: argumentos `active` y `confirm_on_hand`, `check()` (va solo; confirm solo con false), `route` al POST de archivar con `{confirmOnHand}`, lista blanca (`…/archive`, `…/reactivate`, `GET …/archive-check`), vista previa con la ficha y la revisión (`attention` en el orden del contrato), `isActive` en la vista de la ficha. T009 en verde
+- [x] T011 [US1] Ajustar `TestDispatcherRefusesRoutesOutsideCatalog` en server/internal/httpapi/mcp_dispatch_test.go: `ingredient_create` no despacha archivar ni reactivar; `ingredient_update` sigue sin despachar unir, unidad, costo ni densidad (en rojo si alguna pasara)
 
 ## Phase 4: User Story 2 - Reactivar un insumo (P1)
 
@@ -43,8 +51,8 @@ ya cumple queda fijado, lo que no se arregla en la consulta.
 
 **Independent Test**: reactivar el insumo desactivado y verlo de nuevo en conteo, compras y existencias.
 
-- [ ] T012 [US2] Tests en server/internal/integration/mcp_077_test.go (`TestMCPIngredientReactivate`), en rojo: vista previa dice que vuelve tal como estaba con su existencia; aplicar → activo, `ingredient.reactivated`, y vuelve a salir en `stock_count_current`, `articles_search` y `stock_levels`; nombre tomado por otro activo → 409 con el id del otro y sigue inactivo; insumo unido a otro → rechazo con el nombre del destino; ya activo → lo dice y no cambia nada; `confirm_on_hand` con `active: true` → rechazo
-- [ ] T013 [US2] Implementar en server/internal/httpapi/mcp_tools_076.go la rama `active: true` (ruta de reactivar y su vista previa). T012 en verde
+- [x] T012 [US2] Tests en server/internal/integration/mcp_077_test.go (`TestMCPIngredientReactivate`), en rojo: vista previa dice que vuelve tal como estaba con su existencia; aplicar → activo, `ingredient.reactivated`, y vuelve a salir en `stock_count_current`, `articles_search` y `stock_levels`; nombre tomado por otro activo → 409 con el id del otro y sigue inactivo; insumo unido a otro → rechazo con el nombre del destino; ya activo → lo dice y no cambia nada; `confirm_on_hand` con `active: true` → rechazo
+- [x] T013 [US2] Implementar en server/internal/httpapi/mcp_tools_076.go la rama `active: true` (ruta de reactivar y su vista previa). T012 en verde
 
 ## Phase 5: User Story 3 - Saber si un insumo está activo (P2)
 
@@ -52,13 +60,16 @@ ya cumple queda fijado, lo que no se arregla en la consulta.
 
 **Independent Test**: comparar las dos lecturas antes y después de desactivar.
 
-- [ ] T014 [US3] Tests en server/internal/integration/mcp_077_test.go (`TestMCPArticlesSearchAndStockLevelsSayActive`), en rojo: `articles_search` sin el parámetro → los mismos renglones que la ruta, cada uno con `active: true`; con `include_inactive: true` → agrega el archivado (por nombre y por otro nombre) con `active: false`, sin repetir id; rol que captura compras y no ve el almacén → nota de permiso en vez de callarlo; `stock_levels` → `is_active` en cada renglón y sin el archivado
-- [ ] T015 [US3] Implementar `articles_search` como `readTool` en server/internal/httpapi/mcp_tools_076.go (quitar su `simpleRead` de server/internal/httpapi/mcp_tools_073.go; `GET /stock/articles` en su lista blanca) y su descripción en server/internal/domain/apitoken.go. `stock_levels` no cambia de código (pasa el campo). T014 en verde
+- [x] T014 [US3] Tests en server/internal/integration/mcp_077_test.go (`TestMCPArticlesSearchAndStockLevelsSayActive`), en rojo: `articles_search` sin el parámetro → los mismos renglones que la ruta, cada uno con `active: true`; con `include_inactive: true` → agrega el archivado (por nombre y por otro nombre) con `active: false`, sin repetir id; rol que captura compras y no ve el almacén → nota de permiso en vez de callarlo; `stock_levels` → `is_active` en cada renglón y sin el archivado
+- [x] T015 [US3] Implementar `articles_search` como `readTool` en server/internal/httpapi/mcp_tools_076.go (quitar su `simpleRead` de server/internal/httpapi/mcp_tools_073.go; `GET /stock/articles` en su lista blanca) y su descripción en server/internal/domain/apitoken.go. `stock_levels` no cambia de código (pasa el campo). T014 en verde
 
 ## Phase 6: Polish & Cross-Cutting
 
-- [ ] T016 [P] docs/mecanica/personal-y-permisos.md (qué agrega la 077 a la puerta para agentes y el ensanche de tokens con almacén) y docs/mecanica/almacen.md (archivado: sugerencias aprendidas, existencias sin archivados, productos archivados siguen, existencia confirmada que deja de verse en Existencias pero sigue en Archivados)
-- [ ] T017 `make api-build && make api-test`, `make test-integration` y `cd web && bun run lint && bun run vitest run` en verde
+- [x] T016 [P] docs/mecanica/personal-y-permisos.md (qué agrega la 077 a la puerta para agentes y el ensanche de tokens con almacén) y docs/mecanica/almacen.md (archivado: sugerencias aprendidas, existencias sin archivados, productos archivados siguen, existencia confirmada que deja de verse en Existencias pero sigue en Archivados)
+- [x] T017 `make api-build && make api-test`, `make test-integration` y `cd web && bun run lint && bun run vitest run` en verde
+  - 2026-11-12: verdes. `EmployeesPage.test.tsx` › «al editar a alguien que cabe…» falló tres veces
+    seguidas (no aparece el `dialog` del Picker) y después pasó sin cambios; falla igual sobre
+    `origin/develop` limpio con las mismas dependencias: intermitencia previa, ajena a la 077
 - [ ] T018 `/revision-de-codigo` y corregir lo que encuentre con su test visto en rojo
 - [ ] T019 Caso de aceptación de specs/077-mcp-activar-insumos/quickstart.md contra `make start` con el respaldo de producción restaurado (`backups/prod/pre-077-20261112-0340.dump`) y un cliente MCP real (a–e); resultado anotado aquí
 - [ ] T020 `make ci-local` verde; PR a `develop`, CI verde (CodeQL sin hallazgo alto nuevo) y merge; PR `develop` → `main`, CI verde, merge, deploy y `readyz` 200 en producción

@@ -159,8 +159,9 @@ antes y después de desactivar un insumo.
   rechazo de argumentos.
 - **`confirm_on_hand` sin `active: false`**: rechazo de argumentos.
 - **Insumo de otra empresa**: «no existe», como la ruta.
-- **Token sin almacén, o rol sin configurar el almacén**: la herramienta no se ofrece y, si se llama,
-  se niega nombrando lo que falta; nada cambia.
+- **Token sin almacén, o rol sin configurar el almacén**: la herramienta no se ofrece; si se llama, la
+  llamada se niega (sin el alcance, la herramienta no existe para ese token; sin el permiso, la ruta
+  responde 403); nada cambia.
 - **Rol que configura el almacén pero no lo ve**: la revisión previa pide ver el almacén; la vista
   previa dice que no pudo revisar existencia ni recetas en vez de callarlo. Aplicar lo decide la ruta.
 - **Un renglón de compra ya mapeado a un insumo que después se desactivó**: deja de proponerse y el

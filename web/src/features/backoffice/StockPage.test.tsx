@@ -83,6 +83,20 @@ describe('Almacén › Artículos', () => {
   });
 });
 
+// ALMACÉN › EXISTENCIAS (spec 077): la lista ya no trae insumos archivados, así que puede quedar vacía
+// aunque haya movimientos (el último insumo con existencia se archivó). «Sin movimientos aún» mentía.
+describe('Almacén › Existencias', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('vacía, dice que no hay existencias que mostrar y no que no hay movimientos', async () => {
+    sesion(['inventory.view']);
+    back.stockMovements.mockResolvedValueOnce({ items: [{ id: 1, item_type: 'ingrediente', item_name: 'Jarabe', movement_type: 'ajuste', quantity: '-3', reason: null, created_at: '2026-11-12T10:00:00Z' }] } as never);
+    montar('/almacen');
+    expect(await screen.findByText('Sin existencias que mostrar')).toBeInTheDocument();
+    expect(screen.queryByText('Sin movimientos aún')).not.toBeInTheDocument();
+  });
+});
+
 // ALMACÉN › SALUD (spec 037): la pestaña sale por permiso y Almacén deja de crecer con la página.
 describe('Almacén › pestañas', () => {
   beforeEach(() => vi.clearAllMocks());
