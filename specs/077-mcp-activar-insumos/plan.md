@@ -74,7 +74,7 @@ API anterior y la nueva conviven (no hay cambio de esquema; las consultas cambia
 
 | Control | Diseño | Prueba |
 | --- | --- | --- |
-| Alcance | El de `ingredient_update` (`write:inventory`), revisado por `apply` en cada llamada | token sin `write:inventory`: no se ofrece y, llamada directa con `active: false`, se niega nombrando el alcance; el insumo sigue activo |
+| Alcance | El de `ingredient_update` (`write:inventory`), revisado por `apply` en cada llamada | token sin `write:inventory`: la herramienta no existe para ese token (072), así que no se ofrece y llamarla responde «unknown tool»; el insumo sigue activo |
 | Permiso | El de la ruta (`inventory.configure`) | rol con ver y recibir pero sin configurar, con token de alcance completo: no se ofrece; aplicar responde 403 y nada cambia |
 | Despachador | Lista blanca de `ingredient_update`: se agregan `…/archive`, `…/reactivate` y `GET …/archive-check`; unir, unidad, costo y densidad siguen fuera. `articles_search` agrega solo `GET /stock/articles` | `TestDispatcherRefusesRoutesOutsideCatalog`: `ingredient_create` no despacha archivar ni reactivar; `ingredient_update` no despacha unir, unidad, costo ni densidad |
 | Confirmación de existencia | El agente no puede confirmar sin la persona por accidente: `confirm_on_hand` es explícito, la vista previa dice que solo va si la persona lo decide, y la descripción del catálogo lo repite. La regla es la del servicio | aplicar sin confirmar con existencia → 409 y nada cambia |
