@@ -3,14 +3,21 @@ import { Box, Button, Center, HStack, Spinner } from '@chakra-ui/react';
 import { LuPrinter, LuX } from 'react-icons/lu';
 
 import { DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogFooter } from '../../components/ui/dialog';
-import { buildReceiptHtml, printFrame } from '../../utils/printReceipt';
+import { buildReceiptHtml, printFrame, RECEIPT_DOCUMENT_PX } from '../../utils/printReceipt';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useTicketBusinessInfo } from './ticketBusinessInfo';
 import type { ReceiptOrder, PaymentView } from '../../types/pos';
 
-// Ancho real del papel: 80mm a 96dpi. La vista previa se muestra a ese tamaño para que lo que el
-// operador aprueba sea literalmente lo que sale por la impresora.
-const TICKET_PX = 302;
+// El ancho del DOCUMENTO del ticket, no el del papel: el cuerpo mide 80mm más su relleno. Con los
+// 80mm solos (302px) el marco recortaba la columna de importes y la cifra del TOTAL (#233). El papel
+// recibe ese mismo documento encogido a su ancho, así que escalarlo aquí es verlo como sale.
+//
+// Más el ancho de una barra de desplazamiento clásica: el ticket siempre es más alto que el marco y
+// en un navegador que no la superpone (Chrome de escritorio en Windows: 17px; Linux: 15px) la barra
+// sale del ancho del documento y vuelve a recortar los importes. Donde la barra se superpone
+// (Android) solo queda un margen blanco a la derecha.
+const SCROLLBAR_PX = 17;
+const TICKET_PX = RECEIPT_DOCUMENT_PX + SCROLLBAR_PX;
 
 // TicketPreviewDialog es la parte presentacional: recibe el documento ya armado. Se exporta para
 // poder probar el cableado sin montar react-query.
@@ -25,7 +32,7 @@ export function TicketPreviewDialog({
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   // Se mide el hueco disponible para ESCALAR el ticket, no para encogerlo. Comprimir el iframe por
-  // debajo de los 80mm del documento le mete scroll horizontal, y en una tablet arrastrar esa barra
+  // debajo del ancho del documento le mete scroll horizontal, y en una tablet arrastrar esa barra
   // cuenta como toque fuera del diálogo: se cierra solo.
   const { ref: slot, width } = useContainerWidth<HTMLDivElement>();
   const scale = width > 0 ? Math.min(1, width / TICKET_PX) : 1;
