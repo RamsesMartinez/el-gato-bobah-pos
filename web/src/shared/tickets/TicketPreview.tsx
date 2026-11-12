@@ -11,7 +11,13 @@ import type { ReceiptOrder, PaymentView } from '../../types/pos';
 // El ancho del DOCUMENTO del ticket, no el del papel: el cuerpo mide 80mm más su relleno. Con los
 // 80mm solos (302px) el marco recortaba la columna de importes y la cifra del TOTAL (#233). El papel
 // recibe ese mismo documento encogido a su ancho, así que escalarlo aquí es verlo como sale.
-const TICKET_PX = RECEIPT_DOCUMENT_PX;
+//
+// Más el ancho de una barra de desplazamiento clásica: el ticket siempre es más alto que el marco y
+// en un navegador que no la superpone (Chrome de escritorio en Windows: 17px; Linux: 15px) la barra
+// sale del ancho del documento y vuelve a recortar los importes. Donde la barra se superpone
+// (Android) solo queda un margen blanco a la derecha.
+const SCROLLBAR_PX = 17;
+const TICKET_PX = RECEIPT_DOCUMENT_PX + SCROLLBAR_PX;
 
 // TicketPreviewDialog es la parte presentacional: recibe el documento ya armado. Se exporta para
 // poder probar el cableado sin montar react-query.

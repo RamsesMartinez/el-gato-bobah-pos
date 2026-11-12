@@ -156,8 +156,10 @@ function paymentBody(order: ReceiptOrder & { outstanding?: string }, payment: Pa
 
 // Geometría del documento del ticket. El cuerpo es content-box: mide RECEIPT_BODY_MM MÁS su relleno
 // lateral, 88 mm en total, no los 80 mm del papel. Al imprimir, Chromium encoge el documento al
-// ancho del papel y sale completo; la vista previa tiene que reservar el ancho entero o recorta la
-// columna de importes (#233). Se exporta para que el marco de la vista previa salga de aquí y no de
+// ancho del papel y sale completo: medido el 2026-11-12 imprimiendo a PDF con Chromium en papel de
+// 80 y de 72 mm, el último importe termina a 3.5 y 3.1 mm del borde. No medido con el controlador de
+// la térmica. La vista previa tiene que reservar el ancho entero o recorta la columna de importes
+// (#233). Se exporta para que el marco de la vista previa salga de aquí y no de
 // una copia del número.
 const RECEIPT_BODY_MM = 80;
 const RECEIPT_SIDE_PADDING_MM = 4;
@@ -323,10 +325,10 @@ export function sampleTicketOrder(): ReceiptOrder {
   };
 }
 
-// Ancho útil del ticket en caracteres. Courier New avanza 0.6em ≈ 7.8px a 13px. El texto del cuerpo
-// tiene 80mm ≈ 302px y caben ~38, pero el papel lo recibe encogido (ver RECEIPT_BODY_MM) y una
-// impresora de 80mm suele imprimir solo 72mm; contado sobre 72mm ≈ 272px caben ~34. Se deja en 32 para no quedar al filo: un renglón que se pasa por uno no "se ve
-// apretado", se parte en dos y desacomoda el bloque entero.
+// Ancho útil del ticket en caracteres. El texto del cuerpo mide 80mm ≈ 302px y Courier New avanza
+// 0.6em ≈ 7.8px a 13px, así que caben ~38; encoger el documento al papel (ver RECEIPT_BODY_MM) no
+// cambia cuántos caben por renglón. Se deja en 32 para no quedar al filo: un renglón que se pasa por
+// uno no "se ve apretado", se parte en dos y desacomoda el bloque entero.
 export const TICKET_COLUMNS = 32;
 
 // overflowingLines devuelve los números de renglón (1-based) que no caben a lo ancho del papel.

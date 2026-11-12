@@ -56,7 +56,7 @@ test('cerrado no monta el documento del ticket', () => {
 });
 
 test('el ancho del ticket no se comprime: se escala, no se aplasta', () => {
-  // Comprimir el iframe a un ancho menor que los 80mm del documento deja al ticket con scroll
+  // Comprimir el iframe a un ancho menor que el del documento deja al ticket con scroll
   // horizontal dentro del marco. En una tablet, arrastrar esa barra es un toque perdido y, peor,
   // el arrastre cuenta como "fuera del diálogo" y lo cierra.
   const { container } = wrap(<TicketPreviewDialog html={html} isOpen onClose={vi.fn()} />);
@@ -70,9 +70,12 @@ test('el ancho del ticket no se comprime: se escala, no se aplasta', () => {
 function anchoDelDocumento(doc: string): number {
   const body = /body\s*\{([^}]*)\}/.exec(doc)?.[1] ?? '';
   const ancho = Number(/(?:^|;)\s*width:\s*([\d.]+)mm/.exec(body)?.[1]);
-  const [, , lateral = 0] = /padding:\s*([\d.]+)mm\s+([\d.]+)mm/.exec(body)?.map(Number) ?? [];
+  // padding con 1 a 4 valores: el lateral derecho es el 2.º (o el 1.º si va solo) y el izquierdo, el 4.º.
+  const p = (/padding:\s*([^;]+)/.exec(body)?.[1] ?? '0mm').trim().split(/\s+/).map((v) => Number(v.replace('mm', '')));
+  const derecho = p[1] ?? p[0];
+  const izquierdo = p[3] ?? derecho;
   expect(ancho, 'no encontré el ancho del cuerpo del ticket en su hoja de estilo').toBeGreaterThan(0);
-  return ((ancho + 2 * lateral) * 96) / 25.4;
+  return ((ancho + derecho + izquierdo) * 96) / 25.4;
 }
 
 test('el marco deja ver el ticket completo: la columna de importes y el TOTAL no quedan fuera (#233)', () => {
