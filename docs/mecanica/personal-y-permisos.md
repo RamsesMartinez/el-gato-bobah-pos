@@ -26,6 +26,19 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     (pasó con `users.role`; lo cazó `TestTheAPIWorksWithoutUsersRole` antes de subir). El enum
     `user_role` sigue siendo la dimensión «rol sugerido» de la medición de uso; lo de un rol propio
     se mide sin rol.
+- **Dadas de baja** (#236). Tres cosas que no se ven:
+  - **Una baja conserva su usuario y su PIN.** Los dos índices únicos (`users_company_username_key`
+    y `users_pin_lookup_unico`) cubren también a las bajas, así que reactivar a alguien nunca choca
+    con otra persona: nadie pudo tomarlos mientras estuvo fuera. El alta con el usuario de una baja
+    responde `USERNAME_TAKEN`; antes caía en el mismo 23505 que el PIN y decía «ese PIN ya lo usa
+    otra persona». Un índice único nuevo en `users` se distingue por nombre (`isUniqueViolationOf`).
+  - **Reactivar es el mismo `PATCH /users/{id}` con `isActive: true`**, bajo el candado 28068 y con
+    `WithinPermissions`. Con su rol inactivo responde `ROLE_INACTIVE`: la hoja de reactivar pide otro
+    rol en el mismo paso en vez de reactivar el rol entero. Su contraseña, PIN y asistencia de antes
+    siguen; vuelve a entrar en cuanto queda activa.
+  - **La lista de bajas es `GET /users?status=inactive`** (`ListInactiveUsers`, sin paginar como la
+    de activos). Sin `status` sigue siendo la plantilla activa, y uno desconocido es 400: caer a
+    activos pintaría gente activa bajo «Dadas de baja».
 - **Asistencia y bitácora de auditoría** (spec 033, 0089). Cinco cosas que no se ven:
   - **Todo camino nuevo que mueva dinero, caja, precios o asistencia escribe su evento** con
     `recordAudit` (o `auditOrder` / `auditCash`) **dentro de su transacción**, y su acción va en la

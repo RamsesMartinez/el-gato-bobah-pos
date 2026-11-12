@@ -9,6 +9,7 @@ import { EmployeesPage } from './EmployeesPage';
 
 const api = vi.hoisted(() => ({
   users: vi.fn(),
+  inactiveUsers: vi.fn(),
   roles: vi.fn(),
   permissionCatalog: vi.fn(),
   createUser: vi.fn(),
@@ -37,6 +38,10 @@ beforeEach(() => {
   api.users.mockResolvedValue({ items: [
     { id: 1, name: 'Ana', username: 'ana', role: 'cajero', roleId: 3, isActive: true },
     { id: 2, name: 'Beto', username: 'beto', role: '', roleId: 9, isActive: true },
+  ] });
+  api.inactiveUsers.mockResolvedValue({ items: [
+    { id: 7, name: 'Carla', username: 'carla', role: 'cajero', roleId: 3, isActive: false },
+    { id: 8, name: 'Dani', username: 'dani', role: '', roleId: 9, isActive: false },
   ] });
   api.roles.mockResolvedValue({ items: ROLES });
   api.permissionCatalog.mockResolvedValue({ items: [] });
@@ -270,5 +275,74 @@ describe('cambiar de pestaña con cambios sin guardar en un rol', () => {
     await u.click(screen.getByRole('tab', { name: 'Personal' }));
     expect(await screen.findByText('Ana')).toBeInTheDocument();
     expect(screen.queryByText('¿Descartar los cambios?')).toBeNull();
+  });
+});
+
+// DADAS DE BAJA (#236): la persona dada de baja desaparecía de Empleados y no había cómo reactivarla.
+describe('personas dadas de baja', () => {
+  test('por omisión la lista es la de siempre: las bajas no se mezclan con los activos', async () => {
+    montar();
+    await screen.findByText('Ana');
+    expect(screen.queryByText('Carla')).toBeNull();
+    expect(await screen.findByRole('button', { name: /Dadas de baja/ })).toBeInTheDocument();
+  });
+
+  test('«Dadas de baja» las muestra y reactivar con su rol activo la regresa con ese rol', async () => {
+    const u = userEvent.setup();
+    montar();
+    await screen.findByText('Ana');
+    await u.click(await screen.findByRole('button', { name: /Dadas de baja/ }));
+    const fila = (await screen.findByText('Carla')).closest('tr')!;
+    expect(screen.queryByText('Ana')).toBeNull();
+    await u.click(within(fila).getByRole('button', { name: 'Reactivar' }));
+    const hoja = await screen.findByRole('dialog');
+    await u.click(within(hoja).getByRole('button', { name: 'Reactivar' }));
+    await waitFor(() => expect(api.updateUser).toHaveBeenCalledTimes(1));
+    expect(api.updateUser.mock.calls[0]).toEqual([7, expect.objectContaining({ name: 'Carla', roleId: 3, isActive: true })]);
+    // Sin role: una hoja que se cierra queda aria-hidden y queryByRole ya no la ve aunque siga montada.
+    await waitFor(() => expect(document.querySelector('[role=dialog]')).toBeNull());
+  });
+
+  test('a quien tenía un rol inactivo se le pide otro antes de reactivarla', async () => {
+    const u = userEvent.setup();
+    montar();
+    await screen.findByText('Ana');
+    await u.click(await screen.findByRole('button', { name: /Dadas de baja/ }));
+    const fila = (await screen.findByText('Dani')).closest('tr')!;
+    await u.click(within(fila).getByRole('button', { name: 'Reactivar' }));
+    const hoja = await screen.findByRole('dialog');
+    expect(within(hoja).getByText(/Barista.*inactivo/)).toBeInTheDocument();
+    const reactivar = within(hoja).getByRole('button', { name: 'Reactivar' });
+    expect(reactivar).toBeDisabled();
+    await u.click(within(hoja).getByRole('button', { name: /Elige un rol/ }));
+    // Por el DOM y por texto: tras otra hoja cerrada en la prueba anterior, la librería de overlays deja
+    // aria-hidden sobre la siguiente (estado del módulo, no del DOM) y las consultas por rol no la ven.
+    await waitFor(() => expect(document.querySelectorAll('[role=dialog]')).toHaveLength(2));
+    const picker = [...document.querySelectorAll<HTMLElement>('[role=dialog]')].at(-1)!;
+    // El rol inactivo no se ofrece: reactivarla con él lo rechaza el servidor.
+    expect(within(picker).queryByText(/Barista/)).toBeNull();
+    await u.click(within(picker).getByText('Cajero'));
+    const confirmar = within(hoja).getByText('Reactivar').closest('button')!;
+    await waitFor(() => expect(confirmar).toBeEnabled());
+    await u.click(confirmar);
+    await waitFor(() => expect(api.updateUser).toHaveBeenCalledTimes(1));
+    expect(api.updateUser.mock.calls[0]).toEqual([8, expect.objectContaining({ roleId: 3, isActive: true })]);
+  });
+
+  // Un rol propio que alguien tuvo «solo se puede inactivar», y no había cómo ver quién lo tuvo:
+  // quienes lo tuvieron estaban dadas de baja y Empleados no las mostraba.
+  test('desde un rol que alguien tuvo se llega a quienes lo tuvieron, también las bajas', async () => {
+    const u = userEvent.setup();
+    montar();
+    await u.click(await screen.findByRole('tab', { name: 'Roles' }));
+    await u.click(await screen.findByRole('button', { name: /^Barista/ }));
+    const hoja = await screen.findByRole('region', { name: 'Permisos del rol' });
+    await within(hoja).findByDisplayValue('Barista');
+    await u.click(within(hoja).getByRole('button', { name: 'Ver a esas personas' }));
+    expect(await screen.findByText('Beto')).toBeInTheDocument();
+    expect(screen.queryByText('Ana')).toBeNull();
+    await u.click(await screen.findByRole('button', { name: /Dadas de baja/ }));
+    expect(await screen.findByText('Dani')).toBeInTheDocument();
+    expect(screen.queryByText('Carla')).toBeNull();
   });
 });

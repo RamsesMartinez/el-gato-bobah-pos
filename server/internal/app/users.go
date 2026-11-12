@@ -115,6 +115,9 @@ func (s *UsersService) Create(ctx context.Context, in CreateUserInput) (domain.U
 		u = db.User(row)
 		return err
 	})
+	if isUniqueViolationOf(err, "users_company_username_key") {
+		return domain.User{}, domain.ErrUsernameTaken
+	}
 	if isUniqueViolation(err) {
 		return domain.User{}, domain.ErrPinRepetido
 	}
@@ -167,8 +170,13 @@ func (s *UsersService) CanManageUser(ctx context.Context, actorPerms []domain.Pe
 	return domain.WithinPermissions(actorPerms, target)
 }
 
-func (s *UsersService) List(ctx context.Context) ([]domain.User, error) {
-	rows, err := s.store.QC(ctx).ListActiveUsers(ctx)
+// List devuelve la plantilla activa, o las bajas. Siempre un arreglo, aunque esté vacío.
+func (s *UsersService) List(ctx context.Context, status domain.UserListStatus) ([]domain.User, error) {
+	list := s.store.QC(ctx).ListActiveUsers
+	if status == domain.UsersInactive {
+		list = s.store.QC(ctx).ListInactiveUsers
+	}
+	rows, err := list(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -73,6 +73,8 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "ROLE_CHANGED"
 	case errors.Is(err, domain.ErrRoleInactive):
 		status, code = http.StatusConflict, "ROLE_INACTIVE"
+	case errors.Is(err, domain.ErrUsernameTaken):
+		status, code = http.StatusConflict, "USERNAME_TAKEN"
 	case errors.Is(err, domain.ErrNotFound):
 		status, code = http.StatusNotFound, "NOT_FOUND"
 	case errors.Is(err, domain.ErrInvalidCredentials):

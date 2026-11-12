@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Box, Heading, Button, HStack, VStack, Table, Input, Center, Spinner, Badge, Text, IconButton, Tabs,
 } from '@chakra-ui/react';
-import { LuPencil, LuKeyRound, LuHash, LuX } from 'react-icons/lu';
+import { LuPencil, LuKeyRound, LuHash, LuX, LuUserX, LuArrowLeft } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ScheduleEditor } from './ScheduleEditor';
@@ -81,19 +81,20 @@ export function EmployeesPage() {
 
   return (
     <Page fill maxW="900px">
-      <HStack mb={3} gap={4} flexWrap="wrap">
-        <Heading size="lg">Empleados</Heading>
-        {tabs}
-      </HStack>
-      <PeopleTab roleFilter={roleFilter} onClearFilter={() => setRoleFilter(null)} />
+      <PeopleTab roleFilter={roleFilter} onClearFilter={() => setRoleFilter(null)}
+        header={<><Heading size="lg">Empleados</Heading>{tabs}</>} />
     </Page>
   );
 }
 
-function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; onClearFilter: () => void }) {
+function PeopleTab({ roleFilter, onClearFilter, header }: { roleFilter: number | null; onClearFilter: () => void; header: ReactNode }) {
   const qc = useQueryClient();
   const mine = useSessionStore((s) => s.user?.permissions);
   const { data, isLoading } = useQuery({ queryKey: ['users'], queryFn: adminApi.users });
+  // Las bajas van en su propia consulta: la lista de siempre no cambia, y el botón dice cuántas hay.
+  const inactiveQ = useQuery({ queryKey: ['users', 'inactive'], queryFn: adminApi.inactiveUsers });
+  const [showInactive, setShowInactive] = useState(false);
+  const [reactivate, setReactivate] = useState<AdminUser | null>(null);
   const rolesQ = useQuery({ queryKey: ['roles'], queryFn: adminApi.roles });
   const roles = rolesQ.data?.items ?? [];
   const roleName = (u: AdminUser) => roles.find((r) => r.id === u.roleId)?.name ?? u.role;
@@ -128,11 +129,70 @@ function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; o
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
 
   const canCreate = name && username && roleId && password.length >= MIN_LEN && !password.includes('@');
-  const shown = (data?.items ?? []).filter((u) => roleFilter === null || u.roleId === roleFilter);
+  const byRole = (u: AdminUser) => roleFilter === null || u.roleId === roleFilter;
+  const shown = (data?.items ?? []).filter(byRole);
+  const inactive = (inactiveQ.data?.items ?? []).filter(byRole);
   const filterName = roles.find((r) => r.id === roleFilter)?.name;
+  const inactiveLabel = `Dadas de baja (${inactive.length})`;
+  // El botón va en el renglón del título, que ya mide 44 px por las pestañas: la lista activa no
+  // pierde alto. Se eligió contra una sección plegada al final (el control quedaba fuera de la
+  // pantalla) y un selector junto a las pestañas (dos niveles de pestañas en un renglón).
+  const toggle = (
+    <Button minH="44px" ml="auto" variant="outline" colorPalette="gray" onClick={() => setShowInactive(!showInactive)}>
+      {showInactive ? <><LuArrowLeft /> Volver a la plantilla</> : <><LuUserX /> {inactiveLabel}</>}
+    </Button>
+  );
+
+  const inactiveTable = (
+    <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
+      <Table.Root size="sm">
+        <Table.Header><Table.Row>
+          <Table.ColumnHeader>Nombre</Table.ColumnHeader>
+          <Table.ColumnHeader>Usuario</Table.ColumnHeader>
+          <Table.ColumnHeader>Rol</Table.ColumnHeader>
+          <Table.ColumnHeader />
+        </Table.Row></Table.Header>
+        <Table.Body>
+          {inactive.map((u) => {
+            const role = roles.find((r) => r.id === u.roleId);
+            return (
+              <Table.Row key={u.id}>
+                <Table.Cell>{u.name}</Table.Cell>
+                <Table.Cell>{u.username ?? '—'}</Table.Cell>
+                <Table.Cell><HStack gap={2}><Badge>{roleName(u)}</Badge>{role && !role.active && <Badge colorPalette="orange">rol inactivo</Badge>}</HStack></Table.Cell>
+                <Table.Cell textAlign="end">
+                  <Button size="sm" minH="44px" variant="outline" colorPalette="gray" onClick={() => setReactivate(u)}>Reactivar</Button>
+                </Table.Cell>
+              </Table.Row>
+            );
+          })}
+        </Table.Body>
+      </Table.Root>
+      {inactive.length === 0 && (
+        <Text p={6} textAlign="center" color="fg.muted">
+          {roleFilter !== null ? 'Nadie dado de baja tiene este rol' : 'No hay personas dadas de baja'}
+        </Text>
+      )}
+    </Box>
+  );
 
   return (
     <Box flex="1" minH={0} overflowY="auto">
+      <HStack mb={3} gap={4} flexWrap="wrap">
+        {header}
+        {toggle}
+      </HStack>
+      {showInactive ? (
+        <>
+          <Heading as="h2" size="md" mb={2}>{inactiveLabel}</Heading>
+          {roleFilter !== null && (
+            <Button minH="44px" mb={3} variant="subtle" colorPalette="gray" onClick={onClearFilter}>
+              Rol: {filterName ?? 'ese rol'} <LuX />
+            </Button>
+          )}
+          {inactiveTable}
+        </>
+      ) : (<>
       <Box bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px" mb={4}>
         <VStack align="stretch" gap={3}>
           <HStack flexWrap="wrap" gap={3}>
@@ -189,6 +249,10 @@ function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; o
           </VStack>
         )}
       </Box>
+      </>)}
+
+      {reactivate && <ReactivateSheet user={reactivate} roles={roles} mine={mine}
+        onClose={() => setReactivate(null)} onSaved={invalidate} onError={onErr} />}
 
       {manage && <ManageDialog user={manage} roles={roles} mine={mine} onClose={() => setManage(null)} onSaved={invalidate} onError={onErr}
         onSchedule={() => { setScheduleUser(manage); setManage(null); }} />}
@@ -282,5 +346,36 @@ function ManageDialog({ user, roles, mine, onClose, onSaved, onError, onSchedule
         </DialogFooter>
       </DialogContent>
     </DialogRoot>
+  );
+}
+
+// ReactivateSheet devuelve a una persona dada de baja con su usuario, contraseña y PIN de antes. Su
+// rol se conserva si sigue activo y cabe en lo que puede la sesión; si no, se elige otro aquí mismo,
+// porque el servidor no reactiva a nadie con un rol inactivo.
+function ReactivateSheet({ user, roles, mine, onClose, onSaved, onError }: {
+  user: AdminUser; roles: Role[]; mine: string[] | undefined; onClose: () => void; onSaved: () => void; onError: (e: unknown) => void;
+}) {
+  const prev = roles.find((r) => r.id === user.roleId);
+  const keeps = !!prev && prev.active && fitsIn(prev.permissions ?? [], mine);
+  const [roleId, setRoleId] = useState<number | null>(keeps ? prev.id : null);
+  const save = useMutation({
+    mutationFn: () => adminApi.updateUser(user.id, { name: user.name, roleId: roleId!, isActive: true, recoveryEmail: user.recoveryEmail ?? null }),
+    onSuccess: () => { onSaved(); toaster.create({ title: `Se reactivó a ${user.name}`, type: 'success' }); onClose(); },
+    onError,
+  });
+  return (
+    <ConfirmSheet isOpen title={`¿Reactivar a ${user.name}?`}
+      description="Vuelve a entrar con su usuario, contraseña y PIN de antes."
+      confirmLabel="Reactivar" cancelLabel="Cancelar"
+      loading={save.isPending} confirmDisabled={!roleId} onConfirm={() => save.mutate()} onCancel={onClose}>
+      <VStack align="stretch" gap={2} mt={4}>
+        {prev && !keeps && (
+          <Text fontSize="sm">
+            {prev.active ? `Su rol, ${prev.name}, tiene permisos que tu usuario no tiene: elige otro.` : `Su rol, ${prev.name}, está inactivo: elige otro.`}
+          </Text>
+        )}
+        <RolePicker roles={roles} value={roleId} onChange={setRoleId} mine={mine} />
+      </VStack>
+    </ConfirmSheet>
   );
 }
