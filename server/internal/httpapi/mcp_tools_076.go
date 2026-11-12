@@ -503,8 +503,10 @@ func activePreview(s *mcpSession, ctx context.Context, in ingredientUpdateArgs) 
 		if active {
 			return resolved, []string{"El insumo ya está activo; aplicar no cambia nada."}
 		}
+		// Las dos negativas las decide el servicio al aplicar; aquí solo se dicen, para no prometer de más.
 		return resolved, []string{fmt.Sprintf("Vuelve a ofrecerse en conteos, compras y existencias tal como estaba, con su "+
-			"existencia: %v %s.", sh.raw["onHand"], unit)}
+			"existencia: %v %s.", sh.raw["onHand"], unit), "Aplicar se rechaza si otro insumo activo ya usa su nombre " +
+			"(dice cuál) o si se unió a otro (dice a cuál)."}
 	}
 	if !active {
 		return resolved, []string{"El insumo ya está inactivo; aplicar no cambia nada."}
@@ -561,6 +563,8 @@ func articlesSearch(s *mcpSession, ctx context.Context, in searchArgs) (any, err
 	if items == nil {
 		items = []map[string]any{}
 	}
+	// Activos y archivados son conjuntos distintos, salvo si alguien archiva el insumo entre las dos
+	// lecturas: entonces saldría dos veces, una con cada estado.
 	seen := map[int64]bool{}
 	for _, it := range items {
 		it["active"] = true
@@ -568,7 +572,7 @@ func articlesSearch(s *mcpSession, ctx context.Context, in searchArgs) (any, err
 			seen[rowID(it)] = true
 		}
 	}
-	out := map[string]any{"items": items}
+	out := map[string]any{"items": agentView(items)}
 	if !in.IncludeInactive {
 		return out, nil
 	}
@@ -590,6 +594,15 @@ func articlesSearch(s *mcpSession, ctx context.Context, in searchArgs) (any, err
 		items = append(items, map[string]any{"itemType": "ingrediente", "id": id, "name": r["name"], "unitCode": r["baseUnitCode"],
 			"altNames": r["altNames"], "onHand": r["onHand"], "active": false})
 	}
-	out["items"] = items
+	out["items"] = agentView(items)
 	return out, nil
+}
+
+// agentView pasa los renglones de las rutas por la misma barrera que cualquier lectura (forAgent): si
+// una ruta empieza a traer texto de terceros, no llega crudo al agente. Solo los renglones: la barrera
+// borra la llave «notes», que aquí son los avisos de la herramienta.
+func agentView(items []map[string]any) any {
+	b, _ := json.Marshal(items)
+	v, _ := forAgent(b).(map[string]any)
+	return v["items"]
 }

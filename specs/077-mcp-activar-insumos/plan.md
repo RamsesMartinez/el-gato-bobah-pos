@@ -83,6 +83,18 @@ API anterior y la nueva conviven (no hay cambio de esquema; las consultas cambia
 | Empresa | La del token: rutas bajo su sesión y RLS | token de otra empresa → «no existe», sin revisión ni cambio |
 | Ensanche de tokens (spec D5) | Un token emitido con `write:inventory` gana desactivar y reactivar si el rol tiene configurar | `whoami` contra local con el token del respaldo (quickstart) |
 
+### Ajustes de la revisión de código (2026-11-12)
+
+| # | Hallazgo (revisor) | Decisión |
+| --- | --- | --- |
+| C1 | La vista previa de reactivar decía «vuelve tal como estaba» sin avisar que el nombre tomado o la unión lo rechazan (go-backend-reviewer, el más alto) | Nota que dice las dos negativas; las decide el servicio al aplicar. Subtest en `TestMCPIngredientReactivate`, visto en rojo |
+| C2 | `articles_search` dejó de pasar por la barrera `forAgent` al dejar `simpleRead` (go-backend-reviewer) | Los renglones de las rutas pasan por `forAgent`; los avisos de la herramienta van fuera, porque la barrera borra la llave `notes` |
+| C3 | La prueba de «solo compras» no comprobaba que el archivado no se filtrara (security-auditor, bajo) | Subtest ampliado: ni el nombre, ni `onHand`, ni un renglón `active: false`. Pasó al escribirlo: queda como guarda |
+| C4 | El mapa `seen` de `articles_search` parecía código muerto (go-backend-reviewer) | Se queda, con comentario: si el insumo se archiva entre las dos lecturas saldría dos veces |
+| C5 | Los renglones archivados no dicen por cuál otro nombre coincidieron (go-backend-reviewer, bajo) | **Residuo aceptado**: el renglón trae `altNames` completo |
+| C6 | La pista de `NAME_TAKEN` al reactivar dice «elige otro nombre», y `active` va solo (go-backend-reviewer, bajo) | **Residuo aceptado**: el error ya trae el id del activo que tiene el nombre; renombrar es otra llamada |
+| C7 | `TestEveryToolMatchesItsRouteGate` solo revisa la primera ruta de cada herramienta (security-auditor, bajo) | **Residuo aceptado, previo a la 077**: cada ruta despachada pasa por su `RequirePermission` del router; ampliar la prueba es trabajo aparte |
+
 ## Casos de borde (antes del código)
 
 | Forma de fallar | Familia | Test |

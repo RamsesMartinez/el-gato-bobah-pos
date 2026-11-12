@@ -279,6 +279,10 @@ func TestMCPIngredientReactivate(t *testing.T) {
 		if res.isError || !strings.Contains(res.text, "tal como estaba") || !strings.Contains(res.text, "40") {
 			t.Fatalf("vista previa: %s", res.text)
 		}
+		// Revisión de código: «tal como estaba» prometía algo que el servicio puede rechazar.
+		if !strings.Contains(res.text, "otro insumo activo ya usa su nombre") || !strings.Contains(res.text, "se unió a otro") {
+			t.Fatalf("la vista previa no dice cuándo se rechaza reactivar: %s", res.text)
+		}
 		if ingredientNow(t, w, lavanda).active {
 			t.Fatal("la vista previa lo reactivó")
 		}
@@ -399,6 +403,11 @@ func TestMCPArticlesSearchAndStockLevelsSayActive(t *testing.T) {
 		res := callTool(t, w.router, capt, "articles_search", map[string]any{"query": "Matcha", "include_inactive": true})
 		if res.isError || !strings.Contains(res.text, "ver el almacén") {
 			t.Fatalf("sin ver el almacén: %s", res.text)
+		}
+		for _, leak := range []string{"Matcha retirado 077", `"active":false`, "onHand"} {
+			if strings.Contains(res.text, leak) {
+				t.Fatalf("sin ver el almacén se filtra %q: %s", leak, res.text)
+			}
 		}
 	})
 	t.Run("stock_levels: is_active en cada renglón y sin el archivado", func(t *testing.T) {
