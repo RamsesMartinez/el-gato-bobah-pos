@@ -43,6 +43,9 @@ export function EmployeesPage() {
   const canRoles = can('roles.manage', user);
   const [tab, setTab] = useState<'people' | 'roles'>(canPeople ? 'people' : 'roles');
   const [roleFilter, setRoleFilter] = useState<number | null>(null);
+  // Aquí y no en PeopleTab: tocar «Personal» estando en las bajas regresa al personal activo (la
+  // pestaña ya estaba seleccionada, así que onValueChange no se dispara).
+  const [showInactive, setShowInactive] = useState(false);
   // rolesDirty: el editor de Roles ya no es una hoja modal; cambiar a Personal lo desmonta y se
   // perdería lo marcado. Salir por el riel no se puede detener: la app no usa un data router.
   const [rolesDirty, setRolesDirty] = useState(false);
@@ -58,7 +61,7 @@ export function EmployeesPage() {
   const tabs = both && (
     <Tabs.Root value={active} onValueChange={(e) => pickTab(e.value as 'people' | 'roles')} variant="enclosed">
       <Tabs.List>
-        <Tabs.Trigger value="people" minH="44px">Personal</Tabs.Trigger>
+        <Tabs.Trigger value="people" minH="44px" onClick={() => setShowInactive(false)}>Personal</Tabs.Trigger>
         <Tabs.Trigger value="roles" minH="44px">Roles</Tabs.Trigger>
       </Tabs.List>
     </Tabs.Root>
@@ -70,7 +73,7 @@ export function EmployeesPage() {
     return (
       <Page fill p={3}>
         <RolesPage tabs={tabs || undefined} onDirtyChange={setRolesDirty}
-          onShowPeople={(id) => { setRoleFilter(id); setRolesDirty(false); setTab('people'); }} />
+          onShowPeople={(id) => { setRoleFilter(id); setShowInactive(false); setRolesDirty(false); setTab('people'); }} />
         <ConfirmSheet isOpen={confirmLeave} title="¿Descartar los cambios?" destructive
           description="Lo que marcaste o quitaste en este rol no se guarda."
           confirmLabel="Descartar" cancelLabel="Seguir editando"
@@ -82,18 +85,20 @@ export function EmployeesPage() {
   return (
     <Page fill maxW="900px">
       <PeopleTab roleFilter={roleFilter} onClearFilter={() => setRoleFilter(null)}
+        showInactive={showInactive} setShowInactive={setShowInactive}
         header={<><Heading size="lg">Empleados</Heading>{tabs}</>} />
     </Page>
   );
 }
 
-function PeopleTab({ roleFilter, onClearFilter, header }: { roleFilter: number | null; onClearFilter: () => void; header: ReactNode }) {
+function PeopleTab({ roleFilter, onClearFilter, header, showInactive, setShowInactive }: {
+  roleFilter: number | null; onClearFilter: () => void; header: ReactNode; showInactive: boolean; setShowInactive: (v: boolean) => void;
+}) {
   const qc = useQueryClient();
   const mine = useSessionStore((s) => s.user?.permissions);
   const { data, isLoading } = useQuery({ queryKey: ['users'], queryFn: adminApi.users });
   // Las bajas van en su propia consulta: la lista de siempre no cambia, y el botón dice cuántas hay.
   const inactiveQ = useQuery({ queryKey: ['users', 'inactive'], queryFn: adminApi.inactiveUsers });
-  const [showInactive, setShowInactive] = useState(false);
   const [reactivate, setReactivate] = useState<AdminUser | null>(null);
   const rolesQ = useQuery({ queryKey: ['roles'], queryFn: adminApi.roles });
   const roles = rolesQ.data?.items ?? [];
@@ -140,7 +145,7 @@ function PeopleTab({ roleFilter, onClearFilter, header }: { roleFilter: number |
   // pantalla) y un selector junto a las pestañas (dos niveles de pestañas en un renglón).
   const toggle = (
     <Button minH="44px" ml="auto" variant="outline" colorPalette="gray" onClick={() => setShowInactive(!showInactive)}>
-      {showInactive ? <><LuArrowLeft /> Volver a la plantilla</> : <><LuUserX /> {inactiveLabel}</>}
+      {showInactive ? <><LuArrowLeft /> Volver al personal</> : <><LuUserX /> {inactiveLabel}</>}
     </Button>
   );
 

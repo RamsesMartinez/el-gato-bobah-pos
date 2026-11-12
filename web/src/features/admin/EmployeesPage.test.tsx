@@ -391,4 +391,16 @@ describe('personas dadas de baja', () => {
     expect(within(hoja).getByText(/Admin.*permisos que tu usuario no tiene/)).toBeInTheDocument();
     expect(within(hoja).getByText('Reactivar').closest('button')).toBeDisabled();
   });
+
+  // En la vista de bajas la pestaña «Personal» seguía marcada y tocarla no hacía nada.
+  test('tocar «Personal» desde las bajas regresa al personal activo', async () => {
+    const u = userEvent.setup();
+    montar();
+    await screen.findByText('Ana');
+    await u.click(await screen.findByRole('button', { name: /Dadas de baja/ }));
+    await screen.findByText('Carla');
+    await u.click(screen.getByRole('tab', { name: 'Personal' }));
+    expect(await screen.findByText('Ana')).toBeInTheDocument();
+    expect(screen.queryByText('Carla')).toBeNull();
+  });
 });
