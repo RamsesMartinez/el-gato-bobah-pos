@@ -136,6 +136,10 @@ left join ingredients i on i.id = si.ingredient_id
 left join products p on p.id = si.product_id
 where si.supplier_id = $1
   and coalesce(si.raw_code, si.norm_name) = $2::text
+  -- Lo aprendido hacia un insumo archivado no se autollena (spec 077): el renglón se queda guardado y
+  -- vuelve a proponerse si el insumo se reactiva. Mientras, el renglón cae a las sugerencias por
+  -- parecido, como uno sin aprender. Los productos no se filtran: desactivarlos es otra cosa.
+  and (si.ingredient_id is null or i.is_active)
 `
 
 type LookupSupplierItemParams struct {
@@ -248,6 +252,7 @@ left join ingredients i on i.id = si.ingredient_id
 left join products p on p.id = si.product_id
 where si.status = 'mapeado'
   and si.supplier_id <> $2
+  and (si.ingredient_id is null or i.is_active)
   and si.norm_name % $1::text
 order by score desc
 limit $3

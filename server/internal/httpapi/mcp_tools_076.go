@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
@@ -25,6 +27,10 @@ const (
 	pArticleSimilar    = "/api/v1/stock/articles/similar"
 	pArticleAltNames   = "/api/v1/stock/articles/{id}/alt-names"
 	pArticleAltSimilar = "/api/v1/stock/articles/{id}/alt-names/similar"
+	// Spec 077: las acciones de la hoja «Archivar» de la ficha y su revisión previa.
+	pArticleArchive      = "/api/v1/stock/articles/{id}/archive"
+	pArticleReactivate   = "/api/v1/stock/articles/{id}/reactivate"
+	pArticleArchiveCheck = "/api/v1/stock/articles/{id}/archive-check"
 )
 
 // maxListMatches acota lo que la búsqueda por nombre de la lista de Almacén suma a los parecidos: con
@@ -35,7 +41,8 @@ func init() {
 	for name, routes := range map[string][]mcpRoute{
 		"ingredient_create": {{http.MethodPost, pStockArticles}, get(pArticleSimilar), get(pStockArticles), get(pArticle)},
 		"ingredient_update": {{http.MethodPatch, pArticle}, {http.MethodPut, pArticleAltNames}, get(pArticle),
-			get(pArticleSimilar), get(pStockArticles), get(pArticleAltSimilar)},
+			get(pArticleSimilar), get(pStockArticles), get(pArticleAltSimilar),
+			{http.MethodPost, pArticleArchive}, {http.MethodPost, pArticleReactivate}, get(pArticleArchiveCheck)},
 	} {
 		mcpToolRoutes[name] = routes
 	}
@@ -68,6 +75,8 @@ type ingredientUpdateArgs struct {
 	MinStock      *string   `json:"min_stock,omitempty" jsonschema:"mínimo nuevo en la unidad base, texto decimal"`
 	ClearMinStock bool      `json:"clear_min_stock,omitempty" jsonschema:"true quita el mínimo; no va con min_stock"`
 	AltNames      *[]string `json:"alt_names,omitempty" jsonschema:"la lista COMPLETA de otros nombres; [] los quita; omítela para dejarlos como están"`
+	Active        *bool     `json:"active,omitempty" jsonschema:"false lo desactiva y true lo reactiva; va solo, sin otros cambios en la misma llamada"`
+	ConfirmOnHand bool      `json:"confirm_on_hand,omitempty" jsonschema:"solo con active: false: desactivarlo aunque tenga existencia, sin ajustarla; solo si la persona lo decide"`
 }
 
 type presentationsListArgs struct {
@@ -177,7 +186,7 @@ func readArticleSheet(s *mcpSession, ctx context.Context, tool string, id int64)
 // view es lo que la edición puede cambiar, para el antes y el después.
 func (sh articleSheet) view() map[string]any {
 	out := map[string]any{}
-	for _, k := range []string{"id", "name", "categoryId", "category", "countPlaceId", "countPlace", "minStock", "altNames", "baseUnitCode"} {
+	for _, k := range []string{"id", "name", "isActive", "categoryId", "category", "countPlaceId", "countPlace", "minStock", "altNames", "baseUnitCode"} {
 		out[k] = sh.raw[k]
 	}
 	return out
@@ -215,6 +224,16 @@ func (in ingredientUpdateArgs) check() error {
 	if err := positive("ingredient_id", in.IngredientID); err != nil {
 		return err
 	}
+	if in.ConfirmOnHand && (in.Active == nil || *in.Active) {
+		return toolErr("confirm_on_hand va solo con active: false.")
+	}
+	// Desactivar es otra ruta que la ficha y los otros nombres: juntas dejarían estados a medias.
+	if in.Active != nil {
+		if len(in.sheetBody()) > 0 || in.AltNames != nil {
+			return toolErr("active va solo: desactiva o reactiva en una llamada y edita la ficha en otra.")
+		}
+		return nil
+	}
 	if (in.ClearCategory && in.CategoryID != nil) || (in.ClearPlace && in.PlaceID != nil) || (in.ClearMinStock && in.MinStock != nil) {
 		return toolErr("Manda el valor nuevo o el clear_* de ese campo, no los dos.")
 	}
@@ -224,7 +243,7 @@ func (in ingredientUpdateArgs) check() error {
 		return toolErr("alt_names lleva a lo más %d nombres.", domain.MaxAltNames)
 	}
 	if len(in.sheetBody()) == 0 && in.AltNames == nil {
-		return toolErr("Manda al menos uno de name, category_id, place_id, min_stock, sus clear_* o alt_names.")
+		return toolErr("Manda al menos uno de name, category_id, place_id, min_stock, sus clear_*, alt_names o active.")
 	}
 	return nil
 }
@@ -274,6 +293,10 @@ func register076() {
 			if err := in.check(); err != nil {
 				return "", "", nil, nil, nil, err
 			}
+			if in.Active != nil {
+				pattern, body := in.activeRoute()
+				return http.MethodPost, pattern, ids(in.IngredientID), nil, body, nil
+			}
 			// Lo que se va a mandar, en el orden en que se manda; la versión de la ficha se lee al aplicar.
 			would := map[string]any{}
 			if b := in.sheetBody(); len(b) > 0 {
@@ -293,6 +316,9 @@ func register076() {
 		},
 		preview: func(s *mcpSession, ctx context.Context, in ingredientUpdateArgs) (any, []string) {
 			const tool = "ingredient_update"
+			if in.Active != nil {
+				return activePreview(s, ctx, in)
+			}
 			sh, err := readArticleSheet(s, ctx, tool, in.IngredientID)
 			if err != nil {
 				return nil, []string{err.Error()}
@@ -335,6 +361,8 @@ func register076() {
 		run: ingredientUpdateRun,
 	})
 
+	readTool("articles_search", articlesSearch)
+
 	readTool("presentations_list", func(s *mcpSession, ctx context.Context, in presentationsListArgs) (any, error) {
 		pattern, params := pPresentations, map[string]int64(nil)
 		if in.IngredientID != nil {
@@ -355,6 +383,12 @@ func register076() {
 // ingredientUpdateRun aplica la edición: ficha y después otros nombres, con la versión leída aquí.
 func ingredientUpdateRun(s *mcpSession, ctx context.Context, in ingredientUpdateArgs) (int, []byte, error) {
 	const tool = "ingredient_update"
+	if in.Active != nil {
+		// Un solo despacho a la ruta de la hoja «Archivar»: la existencia, las recetas, el conteo, el
+		// nombre tomado y la unión los decide el servicio.
+		pattern, body := in.activeRoute()
+		return s.dispatch(ctx, tool, http.MethodPost, pattern, ids(in.IngredientID), nil, body)
+	}
 	// La versión se lee justo antes de escribir. El error de la lectura va crudo para que apply lo
 	// traduzca como cualquier rechazo de la ruta (no existe, sin permiso de ver el almacén).
 	status, resp, err := s.dispatch(ctx, tool, http.MethodGet, pArticle, ids(in.IngredientID), nil, nil)
@@ -424,4 +458,151 @@ func sheetSavedAltNamesUnknown() (int, []byte, error) {
 	b, _ := json.Marshal(errorEnvelope{Error: errorBody{Code: "PARTIAL", Message: "La ficha ya quedó cambiada; no se sabe si " +
 		"los otros nombres. Revísalo con articles_search y repite la llamada si faltan"}})
 	return http.StatusConflict, b, nil
+}
+
+// ---- Desactivar y reactivar (spec 077) ----
+
+// activeRoute es la ruta de la hoja «Archivar» y su cuerpo, el mismo de la pantalla.
+func (in ingredientUpdateArgs) activeRoute() (string, any) {
+	if *in.Active {
+		return pArticleReactivate, map[string]any{}
+	}
+	return pArticleArchive, map[string]any{"confirmOnHand": in.ConfirmOnHand}
+}
+
+// archiveCheck es la revisión previa de la hoja «Archivar» (GET …/archive-check).
+type archiveCheck struct {
+	OnHand []struct {
+		Branch string          `json:"branch"`
+		Qty    decimal.Decimal `json:"qty"`
+	} `json:"onHand"`
+	ActiveRecipes []struct {
+		Kind string `json:"kind"`
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	} `json:"activeRecipes"`
+	OpenCount       bool `json:"openCount"`
+	PendingReceipts int  `json:"pendingReceipts"`
+}
+
+var recipeKindLabel = map[string]string{"product": "producto", "option": "extra", "ingredient": "preparado"}
+
+// activePreview es la vista previa de active: lo que la hoja «Archivar» muestra antes del botón. Las
+// reglas no se revisan aquí (las aplica el servicio al aplicar): se dicen, para que el agente pregunte
+// a la persona antes.
+func activePreview(s *mcpSession, ctx context.Context, in ingredientUpdateArgs) (any, []string) {
+	const tool = "ingredient_update"
+	sh, err := readArticleSheet(s, ctx, tool, in.IngredientID)
+	if err != nil {
+		return nil, []string{"No se pudo leer la ficha ni revisar su existencia y sus recetas: " + err.Error()}
+	}
+	active, _ := sh.raw["isActive"].(bool)
+	unit, _ := sh.raw["baseUnitCode"].(string)
+	resolved := map[string]any{"is_active": active}
+	if *in.Active {
+		if active {
+			return resolved, []string{"El insumo ya está activo; aplicar no cambia nada."}
+		}
+		// Las dos negativas las decide el servicio al aplicar; aquí solo se dicen, para no prometer de más.
+		return resolved, []string{fmt.Sprintf("Vuelve a ofrecerse en conteos, compras y existencias tal como estaba, con su "+
+			"existencia: %v %s.", sh.raw["onHand"], unit), "Aplicar se rechaza si otro insumo activo ya usa su nombre " +
+			"(dice cuál) o si se unió a otro (dice a cuál)."}
+	}
+	if !active {
+		return resolved, []string{"El insumo ya está inactivo; aplicar no cambia nada."}
+	}
+	notes := []string{"Al desactivarlo deja de salir en conteos, compras y existencias (también en stock_levels); su " +
+		"historial se conserva y se reactiva con active: true."}
+	b, _, err := s.fetch(ctx, tool, pArticleArchiveCheck, ids(in.IngredientID), nil)
+	if err != nil {
+		// Callarlo haría creer que no tiene existencia ni recetas.
+		return resolved, append(notes, "No se pudo revisar su existencia ni sus recetas: "+err.Error())
+	}
+	var check archiveCheck
+	if json.Unmarshal(b, &check) != nil {
+		return resolved, append(notes, "No se pudo leer la revisión de su existencia y sus recetas.")
+	}
+	resolved["archive_check"] = json.RawMessage(b)
+	var attention []string
+	if len(check.OnHand) > 0 {
+		parts := make([]string, len(check.OnHand))
+		for i, o := range check.OnHand {
+			parts[i] = fmt.Sprintf("%s %s %s", o.Branch, o.Qty.String(), unit)
+		}
+		attention = append(attention, "Tiene existencia: "+strings.Join(parts, "; ")+". Registra la merma (waste_record) o "+
+			"el ajuste (stock_adjust) antes de desactivarlo: desactivarlo no la ajusta, se queda así y deja de verse en "+
+			"existencias. Solo si la persona decide desactivarlo con esa existencia, manda confirm_on_hand: true.")
+	}
+	for _, r := range check.ActiveRecipes {
+		attention = append(attention, fmt.Sprintf("Lo usa la receta activa %s (%s, id %d): quítalo de ella en la pantalla "+
+			"antes de desactivarlo. Desactivarlo no cambia la receta ni el producto.", r.Name, recipeKindLabel[r.Kind], r.ID))
+	}
+	if check.OpenCount {
+		attention = append(attention, "Un conteo abierto ya lo contó: ciérralo o descártalo antes de desactivarlo.")
+	}
+	if check.PendingReceipts > 0 {
+		notes = append(notes, fmt.Sprintf("Tiene %d compra(s) por recibir: al llegar, sumarán aunque esté inactivo.", check.PendingReceipts))
+	}
+	return attentionFirst{attention: attention, resolved: resolved}, notes
+}
+
+// ---- articles_search con inactivos (spec 077) ----
+
+// articlesSearch es la búsqueda de la captura de compras y gastos, que solo trae activos, más los
+// insumos archivados de Almacén › Archivados cuando se piden: para reactivar uno hay que encontrarlo.
+func articlesSearch(s *mcpSession, ctx context.Context, in searchArgs) (any, error) {
+	const tool = "articles_search"
+	if strings.TrimSpace(in.Query) == "" {
+		return nil, toolErr("query es obligatorio: parte del nombre.")
+	}
+	body, _, err := s.fetch(ctx, tool, pArticles, nil, url.Values{"q": {in.Query}})
+	if err != nil {
+		return nil, err
+	}
+	items := listRows(body)
+	if items == nil {
+		items = []map[string]any{}
+	}
+	// Activos y archivados son conjuntos distintos, salvo si alguien archiva el insumo entre las dos
+	// lecturas: entonces saldría dos veces, una con cada estado.
+	seen := map[int64]bool{}
+	for _, it := range items {
+		it["active"] = true
+		if it["itemType"] == "ingrediente" {
+			seen[rowID(it)] = true
+		}
+	}
+	out := map[string]any{"items": agentView(items)}
+	if !in.IncludeInactive {
+		return out, nil
+	}
+	b, status, err := s.fetch(ctx, tool, pStockArticles, nil, url.Values{"q": {in.Query}, "status": {"archived"}})
+	switch {
+	case status == http.StatusForbidden:
+		out["notes"] = []string{"Para incluir los inactivos hace falta el permiso de ver el almacén; estos son solo los activos."}
+		return out, nil
+	case err != nil:
+		out["notes"] = []string{"No se pudieron buscar los inactivos: " + err.Error()}
+		return out, nil
+	}
+	for _, r := range listRows(b) {
+		id := rowID(r)
+		if id == 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		items = append(items, map[string]any{"itemType": "ingrediente", "id": id, "name": r["name"], "unitCode": r["baseUnitCode"],
+			"altNames": r["altNames"], "onHand": r["onHand"], "active": false})
+	}
+	out["items"] = agentView(items)
+	return out, nil
+}
+
+// agentView pasa los renglones de las rutas por la misma barrera que cualquier lectura (forAgent): si
+// una ruta empieza a traer texto de terceros, no llega crudo al agente. Solo los renglones: la barrera
+// borra la llave «notes», que aquí son los avisos de la herramienta.
+func agentView(items []map[string]any) any {
+	b, _ := json.Marshal(items)
+	v, _ := forAgent(b).(map[string]any)
+	return v["items"]
 }

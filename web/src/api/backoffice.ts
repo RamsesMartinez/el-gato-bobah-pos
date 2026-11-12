@@ -743,6 +743,8 @@ export interface StockLevel {
   on_hand: string;
   min_stock: string | null;
   unit_code: string;
+  // Opcional: la API anterior no lo manda durante una subida. Los insumos archivados ya no llegan.
+  is_active?: boolean;
 }
 export interface StockMovement {
   id: number;

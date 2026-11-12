@@ -341,7 +341,8 @@ func TestToolErrorHintNamesTheExistingArticle(t *testing.T) {
 		not  []string
 	}{
 		{"nombre de un activo", "NAME_TAKEN", ExistingRef{ID: 749}, []string{"ya existe", "id 749", "Usa ese insumo"}, []string{"archivado"}},
-		{"nombre de un archivado", "NAME_TAKEN", ExistingRef{ID: 495, Archived: true}, []string{"id 495", "archivado", "pantalla"}, nil},
+		// Spec 077 (D6): un archivado ya se reactiva por MCP; mandarlo a la pantalla era cierto en la 076.
+		{"nombre de un archivado", "NAME_TAKEN", ExistingRef{ID: 495, Archived: true}, []string{"id 495", "archivado", "ingredient_update", "active: true"}, []string{"pantalla"}},
 		{"otro nombre de otro insumo", "ALT_NAME_TAKEN", ExistingRef{ID: 12}, []string{"id 12", "Quita ese nombre"}, nil},
 		{"ficha cambiada", "STALE", ExistingRef{}, []string{"vuelve a intentar"}, []string{"id 0"}},
 		{"sin id no inventa uno", "NAME_TAKEN", ExistingRef{}, []string{"ya existe"}, []string{"id 0"}},
@@ -381,6 +382,23 @@ func TestMCPToolCatalog076(t *testing.T) {
 		}
 		if tool.Scope != c.scope || tool.Permission != c.perm || tool.Write != c.write {
 			t.Errorf("%s = %s/%s/%v, quería %s/%s/%v", c.name, tool.Scope, tool.Permission, tool.Write, c.scope, c.perm, c.write)
+		}
+	}
+}
+
+// Spec 077: desactivar un insumo. La regla es del servicio (#203, 042); la pista dice al agente qué
+// hacer en palabras de la operación: la existencia se resuelve con merma o ajuste, y solo la persona
+// decide archivarlo con ella; una receta activa se arregla en la pantalla y nada se desactiva en cascada.
+func TestToolErrorHintForArchivingAnIngredient(t *testing.T) {
+	for code, want := range map[string][]string{
+		"ARCHIVE_HAS_STOCK": {"waste_record", "stock_adjust", "confirm_on_hand: true", "persona"},
+		"IN_USE":            {"pantalla", "receta"},
+	} {
+		got := ToolErrorHintFor(409, code, "todavía tiene existencia", "")
+		for _, w := range want {
+			if !strings.Contains(got, w) {
+				t.Errorf("%s: %q no dice %q", code, got, w)
+			}
 		}
 	}
 }
