@@ -175,3 +175,23 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   nombre: sin él, una sola llamada eran miles de lecturas contra un solo cupo del token.
 - **Un rol que configura y no ve el almacén no edita insumos**: la lectura de la ficha pide
   `inventory.view` y se niega. Igual en la pantalla, que sin ese permiso no abre la ficha.
+
+### Lo que agregó la spec 077 (desactivar y reactivar insumos)
+
+- **`write:inventory` creció otra vez, sin herramienta nueva.** `ingredient_update` acepta `active`
+  y despacha las rutas de la hoja «Archivar» (`…/archive` con `{confirmOnHand}`, `…/reactivate`); la
+  vista previa lee `…/archive-check`. Un token con almacén emitido antes de la 077 gana desactivar y
+  reactivar con la subida si el rol de su dueño tiene `inventory.configure`.
+- **`active` va solo en la llamada.** Son rutas distintas de la ficha y de los otros nombres; juntas
+  dejarían un estado a medias. `confirm_on_hand` solo con `active: false`. Las dos reglas se revisan
+  antes de despachar.
+- **Ninguna regla del archivado vive en la capa MCP.** Existencia sin confirmar (409
+  `ARCHIVE_HAS_STOCK`), receta activa o conteo abierto (409 `IN_USE`), nombre tomado al reactivar y
+  unión los decide el servicio; la vista previa solo los dice, y la pista de cada código dice qué
+  hacer (merma o ajuste, o la pantalla para las recetas).
+- **Sin el alcance, la herramienta no existe para ese token**: llamarla es «unknown tool», no un
+  mensaje que nombre el alcance. Eso es de la 072 para todas las herramientas.
+- **`articles_search` con `include_inactive`** lee además Almacén › Archivados
+  (`/stock/articles?status=archived`, `inventory.view`): un rol que solo captura compras recibe una
+  nota en vez de una lista que callaría a los inactivos. Sin el parámetro, la búsqueda es la de la
+  captura de compras, que a propósito no ofrece archivados.

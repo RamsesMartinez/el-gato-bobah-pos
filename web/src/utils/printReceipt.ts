@@ -154,6 +154,17 @@ function paymentBody(order: ReceiptOrder & { outstanding?: string }, payment: Pa
   ${footer ? `<div class="center muted" style="margin-top:8px">${footer}</div>` : ''}`;
 }
 
+// Geometría del documento del ticket. El cuerpo es content-box: mide RECEIPT_BODY_MM MÁS su relleno
+// lateral, 88 mm en total, no los 80 mm del papel. Al imprimir, Chromium encoge el documento al
+// ancho del papel y sale completo: medido el 2026-11-12 imprimiendo a PDF con Chromium en papel de
+// 80 y de 72 mm, el último importe termina a 3.5 y 3.1 mm del borde. No medido con el controlador de
+// la térmica. La vista previa tiene que reservar el ancho entero o recorta la columna de importes
+// (#233). Se exporta para que el marco de la vista previa salga de aquí y no de
+// una copia del número.
+const RECEIPT_BODY_MM = 80;
+const RECEIPT_SIDE_PADDING_MM = 4;
+export const RECEIPT_DOCUMENT_PX = Math.ceil(((RECEIPT_BODY_MM + 2 * RECEIPT_SIDE_PADDING_MM) * 96) / 25.4);
+
 // receiptShell es lo que comparten el ticket del pedido y el de un pago: identidad del negocio,
 // datos del pedido, marcas y pie.
 function receiptShell(
@@ -168,7 +179,7 @@ function receiptShell(
   /* Todo en negro puro y en negritas: la térmica imprime a 1 bit, así que un gris no sale gris —
      sale como un patrón de puntos salteados que se lee desvaído, y un trazo delgado se pierde
      entre los puntos. La jerarquía se hace con tamaño y espaciado, nunca con color. */
-  body { width: 80mm; margin: 0; padding: 6mm 4mm; font-family: 'Courier New', monospace; font-size: 13px; font-weight: bold; color: #000; }
+  body { width: ${RECEIPT_BODY_MM}mm; margin: 0; padding: 6mm ${RECEIPT_SIDE_PADDING_MM}mm; font-family: 'Courier New', monospace; font-size: 13px; font-weight: bold; color: #000; }
   h1 { font-size: 17px; text-align: center; margin: 0 0 2px; }
   .center { text-align: center; }
   .muted { color: #000; font-size: 12px; }
@@ -314,10 +325,10 @@ export function sampleTicketOrder(): ReceiptOrder {
   };
 }
 
-// Ancho útil del ticket en caracteres. Sale de la geometría del documento: 80mm de papel menos
-// 4mm de margen por lado son 72mm ≈ 272px a 96dpi, y Courier New avanza 0.6em ≈ 7.8px a 13px, así
-// que caben ~34. Se deja en 32 para no quedar al filo: un renglón que se pasa por uno no "se ve
-// apretado", se parte en dos y desacomoda el bloque entero.
+// Ancho útil del ticket en caracteres. El texto del cuerpo mide 80mm ≈ 302px y Courier New avanza
+// 0.6em ≈ 7.8px a 13px, así que caben ~38; encoger el documento al papel (ver RECEIPT_BODY_MM) no
+// cambia cuántos caben por renglón. Se deja en 32 para no quedar al filo: un renglón que se pasa por
+// uno no "se ve apretado", se parte en dos y desacomoda el bloque entero.
 export const TICKET_COLUMNS = 32;
 
 // overflowingLines devuelve los números de renglón (1-based) que no caben a lo ancho del papel.

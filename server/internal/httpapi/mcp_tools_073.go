@@ -57,7 +57,7 @@ const maxSuggestLines = 20
 
 func init() {
 	for name, routes := range map[string][]mcpRoute{
-		"articles_search":       {get(pArticles)},
+		"articles_search":       {get(pArticles), get(pStockArticles)},
 		"units_list":            {get(pUnits)},
 		"presentations_list":    {get(pPresentations), get(pIngredientPresentations)},
 		"pending_receipts_list": {get(pPendingReceipts)},
@@ -99,7 +99,8 @@ func init() {
 // ---- Argumentos ----
 
 type searchArgs struct {
-	Query string `json:"query" jsonschema:"parte del nombre del insumo o producto"`
+	Query           string `json:"query" jsonschema:"parte del nombre del insumo o producto"`
+	IncludeInactive bool   `json:"include_inactive,omitempty" jsonschema:"true agrega los insumos inactivos que coinciden, marcados active: false (para reactivarlos); pide ver el almacén"`
 }
 
 type purchaseLineArg struct {
@@ -375,12 +376,6 @@ func purchaseBody(s *mcpSession, ctx context.Context, in purchaseCreateArgs) (ma
 }
 
 func registerPurchases() {
-	simpleRead("articles_search", pArticles, func(in searchArgs) (map[string]int64, url.Values, error) {
-		if strings.TrimSpace(in.Query) == "" {
-			return nil, nil, toolErr("query es obligatorio: parte del nombre.")
-		}
-		return nil, url.Values{"q": {in.Query}}, nil
-	})
 	simpleRead("units_list", pUnits, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
 	simpleRead("pending_receipts_list", pPendingReceipts, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
 

@@ -209,3 +209,19 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     se deduce del catálogo de hoy: si alguien apaga la última opción que resta, el producto se lee
     «No se cuenta» sin que nada falle (Salud del inventario lo hace visible si vende sin restar).
     Ninguna regla depende de nombres de productos, grupos o categorías.
+- **Un insumo archivado deja de ofrecerse en todas partes, y cada lista lo filtra por su cuenta**
+  (spec 077). No hay una sola consulta de «insumos vivos»: el conteo, el buscador de compras, las
+  sugerencias por parecido, las sugerencias por lo aprendido del proveedor (`LookupSupplierItem`,
+  `SuggestFromSupplierItems`) y la lista de existencias (`ListStockLevels`) llevan cada una su
+  `is_active`. Las dos de lo aprendido y la de existencias no lo llevaban: un renglón de ticket ya
+  mapeado autollenaba el archivado, y Existencias lo marcaba «bajo». **Una lista nueva que ofrezca
+  insumos lleva su filtro**, y `TestArchivedIngredientLeavesCountPurchasesAndShortages` es el lugar
+  para agregar su caso. Cuatro cosas que no se ven:
+  - **Lo aprendido no se borra**: el renglón sigue en `supplier_items` y vuelve a proponerse al
+    reactivar el insumo. Mientras, el renglón cae a las sugerencias por parecido.
+  - **Una existencia archivada con confirmación deja de verse en Existencias**, pero sigue en
+    `stock_levels` y en Almacén › Insumos › Archivados, y vuelve igual al reactivar (#203).
+  - **Un producto de reventa archivado sí sigue en Existencias**, con `is_active: false`: desactivar
+    productos no lo cubrió la 077 y la pantalla no pinta el campo.
+  - **El historial no se filtra**: movimientos, historial de costo y bitácora del artículo siguen
+    trayendo al archivado.
