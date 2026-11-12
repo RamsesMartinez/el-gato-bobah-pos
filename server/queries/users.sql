@@ -13,6 +13,11 @@ select id, name, username, pin_hash, password_hash, is_active, created_at, updat
 -- name: ListActiveUsers :many
 select id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where is_active order by name;
 
+-- name: ListInactiveUsers :many
+-- Las bajas, para verlas y reactivarlas desde Empleados (#236). Sin paginar, como la de activos: es
+-- la plantilla de un local, decenas de filas. RLS acota a la empresa.
+select id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where not is_active order by name;
+
 -- name: CreateUser :one
 -- company_id lo auto-sella el default (current_setting) desde el GUC del tenant; RLS lo exige.
 -- El rol va por role_id (spec 068); `role` lo llena el trigger de convivencia hasta la 0109.

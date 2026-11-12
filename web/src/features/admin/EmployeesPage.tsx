@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Box, Heading, Button, HStack, VStack, Table, Input, Center, Spinner, Badge, Text, IconButton, Tabs,
 } from '@chakra-ui/react';
-import { LuPencil, LuKeyRound, LuHash, LuX } from 'react-icons/lu';
+import { LuPencil, LuKeyRound, LuHash, LuX, LuUserX, LuArrowLeft } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ScheduleEditor } from './ScheduleEditor';
@@ -43,6 +43,9 @@ export function EmployeesPage() {
   const canRoles = can('roles.manage', user);
   const [tab, setTab] = useState<'people' | 'roles'>(canPeople ? 'people' : 'roles');
   const [roleFilter, setRoleFilter] = useState<number | null>(null);
+  // Aquí y no en PeopleTab: tocar «Personal» estando en las bajas regresa al personal activo (la
+  // pestaña ya estaba seleccionada, así que onValueChange no se dispara).
+  const [showInactive, setShowInactive] = useState(false);
   // rolesDirty: el editor de Roles ya no es una hoja modal; cambiar a Personal lo desmonta y se
   // perdería lo marcado. Salir por el riel no se puede detener: la app no usa un data router.
   const [rolesDirty, setRolesDirty] = useState(false);
@@ -58,7 +61,7 @@ export function EmployeesPage() {
   const tabs = both && (
     <Tabs.Root value={active} onValueChange={(e) => pickTab(e.value as 'people' | 'roles')} variant="enclosed">
       <Tabs.List>
-        <Tabs.Trigger value="people" minH="44px">Personal</Tabs.Trigger>
+        <Tabs.Trigger value="people" minH="44px" onClick={() => setShowInactive(false)}>Personal</Tabs.Trigger>
         <Tabs.Trigger value="roles" minH="44px">Roles</Tabs.Trigger>
       </Tabs.List>
     </Tabs.Root>
@@ -70,7 +73,7 @@ export function EmployeesPage() {
     return (
       <Page fill p={3}>
         <RolesPage tabs={tabs || undefined} onDirtyChange={setRolesDirty}
-          onShowPeople={(id) => { setRoleFilter(id); setRolesDirty(false); setTab('people'); }} />
+          onShowPeople={(id) => { setRoleFilter(id); setShowInactive(false); setRolesDirty(false); setTab('people'); }} />
         <ConfirmSheet isOpen={confirmLeave} title="¿Descartar los cambios?" destructive
           description="Lo que marcaste o quitaste en este rol no se guarda."
           confirmLabel="Descartar" cancelLabel="Seguir editando"
@@ -81,19 +84,22 @@ export function EmployeesPage() {
 
   return (
     <Page fill maxW="900px">
-      <HStack mb={3} gap={4} flexWrap="wrap">
-        <Heading size="lg">Empleados</Heading>
-        {tabs}
-      </HStack>
-      <PeopleTab roleFilter={roleFilter} onClearFilter={() => setRoleFilter(null)} />
+      <PeopleTab roleFilter={roleFilter} onClearFilter={() => setRoleFilter(null)}
+        showInactive={showInactive} setShowInactive={setShowInactive}
+        header={<><Heading size="lg">Empleados</Heading>{tabs}</>} />
     </Page>
   );
 }
 
-function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; onClearFilter: () => void }) {
+function PeopleTab({ roleFilter, onClearFilter, header, showInactive, setShowInactive }: {
+  roleFilter: number | null; onClearFilter: () => void; header: ReactNode; showInactive: boolean; setShowInactive: (v: boolean) => void;
+}) {
   const qc = useQueryClient();
   const mine = useSessionStore((s) => s.user?.permissions);
   const { data, isLoading } = useQuery({ queryKey: ['users'], queryFn: adminApi.users });
+  // Las bajas van en su propia consulta: la lista de siempre no cambia, y el botón dice cuántas hay.
+  const inactiveQ = useQuery({ queryKey: ['users', 'inactive'], queryFn: adminApi.inactiveUsers });
+  const [reactivate, setReactivate] = useState<AdminUser | null>(null);
   const rolesQ = useQuery({ queryKey: ['roles'], queryFn: adminApi.roles });
   const roles = rolesQ.data?.items ?? [];
   const roleName = (u: AdminUser) => roles.find((r) => r.id === u.roleId)?.name ?? u.role;
@@ -128,11 +134,81 @@ function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; o
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
 
   const canCreate = name && username && roleId && password.length >= MIN_LEN && !password.includes('@');
-  const shown = (data?.items ?? []).filter((u) => roleFilter === null || u.roleId === roleFilter);
+  const byRole = (u: AdminUser) => roleFilter === null || u.roleId === roleFilter;
+  const shown = (data?.items ?? []).filter(byRole);
+  const inactive = (inactiveQ.data?.items ?? []).filter(byRole);
   const filterName = roles.find((r) => r.id === roleFilter)?.name;
+  // Sin la cuenta mientras carga o si falló: «(0)» haría creer que no hay a quién reactivar.
+  const inactiveLabel = inactiveQ.isSuccess ? `Dadas de baja (${inactive.length})` : 'Dadas de baja';
+  // El botón va en el renglón del título, que ya mide 44 px por las pestañas: la lista activa no
+  // pierde alto. Se eligió contra una sección plegada al final (el control quedaba fuera de la
+  // pantalla) y un selector junto a las pestañas (dos niveles de pestañas en un renglón).
+  const toggle = (
+    <Button minH="44px" ml="auto" variant="outline" colorPalette="gray" onClick={() => setShowInactive(!showInactive)}>
+      {showInactive ? <><LuArrowLeft /> Volver al personal</> : <><LuUserX /> {inactiveLabel}</>}
+    </Button>
+  );
+
+  const inactiveTable = (
+    <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
+      <Table.Root size="sm">
+        <Table.Header><Table.Row>
+          <Table.ColumnHeader>Nombre</Table.ColumnHeader>
+          <Table.ColumnHeader>Usuario</Table.ColumnHeader>
+          <Table.ColumnHeader>Rol</Table.ColumnHeader>
+          <Table.ColumnHeader />
+        </Table.Row></Table.Header>
+        <Table.Body>
+          {inactive.map((u) => {
+            const role = roles.find((r) => r.id === u.roleId);
+            return (
+              <Table.Row key={u.id}>
+                <Table.Cell>{u.name}</Table.Cell>
+                <Table.Cell>{u.username ?? '—'}</Table.Cell>
+                <Table.Cell><HStack gap={2}><Badge>{roleName(u)}</Badge>{role && !role.active && <Badge colorPalette="orange">rol inactivo</Badge>}</HStack></Table.Cell>
+                <Table.Cell textAlign="end">
+                  <Button size="sm" minH="44px" variant="outline" colorPalette="gray" onClick={() => setReactivate(u)}>Reactivar</Button>
+                </Table.Cell>
+              </Table.Row>
+            );
+          })}
+        </Table.Body>
+      </Table.Root>
+      {inactiveQ.isLoading && <Center p={6}><Spinner /></Center>}
+      {inactiveQ.isError && (
+        <VStack p={6} gap={3}>
+          <Text color="fg.error">No se pudo cargar la lista</Text>
+          <Button minH="44px" variant="outline" onClick={() => inactiveQ.refetch()}>Reintentar</Button>
+        </VStack>
+      )}
+      {inactiveQ.isSuccess && inactive.length === 0 && (
+        <Text p={6} textAlign="center" color="fg.muted">
+          {roleFilter !== null ? 'Nadie dado de baja tiene este rol' : 'No hay personas dadas de baja'}
+        </Text>
+      )}
+    </Box>
+  );
 
   return (
     <Box flex="1" minH={0} overflowY="auto">
+      <HStack mb={3} gap={4} flexWrap="wrap">
+        {header}
+        {toggle}
+      </HStack>
+      {showInactive ? (
+        <>
+          {/* El título y el filtro comparten renglón: la vista dice dónde se está sin gastar dos. */}
+          <HStack mb={2} gap={3} flexWrap="wrap" minH="44px">
+            <Heading as="h2" size="md">{inactiveLabel}</Heading>
+            {roleFilter !== null && (
+              <Button minH="44px" variant="subtle" colorPalette="gray" onClick={onClearFilter}>
+                Rol: {filterName ?? 'ese rol'} <LuX />
+              </Button>
+            )}
+          </HStack>
+          {inactiveTable}
+        </>
+      ) : (<>
       <Box bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px" mb={4}>
         <VStack align="stretch" gap={3}>
           <HStack flexWrap="wrap" gap={3}>
@@ -189,6 +265,10 @@ function PeopleTab({ roleFilter, onClearFilter }: { roleFilter: number | null; o
           </VStack>
         )}
       </Box>
+      </>)}
+
+      {reactivate && <ReactivateSheet user={reactivate} roles={roles} mine={mine}
+        onClose={() => setReactivate(null)} onSaved={invalidate} onError={onErr} />}
 
       {manage && <ManageDialog user={manage} roles={roles} mine={mine} onClose={() => setManage(null)} onSaved={invalidate} onError={onErr}
         onSchedule={() => { setScheduleUser(manage); setManage(null); }} />}
@@ -282,5 +362,36 @@ function ManageDialog({ user, roles, mine, onClose, onSaved, onError, onSchedule
         </DialogFooter>
       </DialogContent>
     </DialogRoot>
+  );
+}
+
+// ReactivateSheet devuelve a una persona dada de baja con su usuario, contraseña y PIN de antes. Su
+// rol se conserva si sigue activo y cabe en lo que puede la sesión; si no, se elige otro aquí mismo,
+// porque el servidor no reactiva a nadie con un rol inactivo.
+function ReactivateSheet({ user, roles, mine, onClose, onSaved, onError }: {
+  user: AdminUser; roles: Role[]; mine: string[] | undefined; onClose: () => void; onSaved: () => void; onError: (e: unknown) => void;
+}) {
+  const prev = roles.find((r) => r.id === user.roleId);
+  const keeps = !!prev && prev.active && fitsIn(prev.permissions ?? [], mine);
+  const [roleId, setRoleId] = useState<number | null>(keeps ? prev.id : null);
+  const save = useMutation({
+    mutationFn: () => adminApi.updateUser(user.id, { name: user.name, roleId: roleId!, isActive: true, recoveryEmail: user.recoveryEmail ?? null }),
+    onSuccess: () => { onSaved(); toaster.create({ title: `Se reactivó a ${user.name}`, type: 'success' }); onClose(); },
+    onError,
+  });
+  return (
+    <ConfirmSheet isOpen title={`¿Reactivar a ${user.name}?`}
+      description="Vuelve a entrar con su usuario, contraseña y PIN de antes."
+      confirmLabel="Reactivar" cancelLabel="Cancelar"
+      loading={save.isPending} confirmDisabled={!roleId} onConfirm={() => save.mutate()} onCancel={onClose}>
+      <VStack align="stretch" gap={2} mt={4}>
+        {prev && !keeps && (
+          <Text fontSize="sm">
+            {prev.active ? `Su rol, ${prev.name}, tiene permisos que tu usuario no tiene: elige otro.` : `Su rol, ${prev.name}, está inactivo: elige otro.`}
+          </Text>
+        )}
+        <RolePicker roles={roles} value={roleId} onChange={setRoleId} mine={mine} />
+      </VStack>
+    </ConfirmSheet>
   );
 }

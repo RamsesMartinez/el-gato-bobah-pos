@@ -18,6 +18,13 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
+// isUniqueViolationOf distingue cuál restricción se repitió cuando una tabla tiene varias: el alta de
+// un empleado decía «ese PIN ya lo usa otra persona» cuando lo repetido era el usuario.
+func isUniqueViolationOf(err error, constraint string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == constraint
+}
+
 // isForeignKeyViolation: la llave compuesta por empresa frenó una referencia a una fila que esta
 // sesión no puede ver.
 func isForeignKeyViolation(err error) bool {

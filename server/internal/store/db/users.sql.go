@@ -259,6 +259,47 @@ func (q *Queries) ListActiveUsers(ctx context.Context) ([]User, error) {
 	return items, nil
 }
 
+const listInactiveUsers = `-- name: ListInactiveUsers :many
+select id, name, username, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance, role_id from users where not is_active order by name
+`
+
+// Las bajas, para verlas y reactivarlas desde Empleados (#236). Sin paginar, como la de activos: es
+// la plantilla de un local, decenas de filas. RLS acota a la empresa.
+func (q *Queries) ListInactiveUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, listInactiveUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Username,
+			&i.PinHash,
+			&i.PasswordHash,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompanyID,
+			&i.RecoveryEmail,
+			&i.MustChangePassword,
+			&i.PinLookup,
+			&i.TracksAttendance,
+			&i.RoleID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const revokeRefreshFamily = `-- name: RevokeRefreshFamily :exec
 update refresh_tokens set revoked_at = now()
 where family_id = $1 and family_id is not null and revoked_at is null

@@ -221,6 +221,7 @@ function compositionPath(kind: CompositionKind, id: number): string {
 
 export const adminApi = {
   users: () => api.get<{ items: AdminUser[] }>('/users'),
+  inactiveUsers: () => api.get<{ items: AdminUser[] }>('/users?status=inactive'),
   createUser: (b: { name: string; roleId: number; username?: string; pin?: string; password: string; recoveryEmail?: string }) =>
     api.post<AdminUser>('/users', b),
   updateUser: (id: number, b: { name: string; roleId: number; isActive: boolean; recoveryEmail?: string | null }) =>

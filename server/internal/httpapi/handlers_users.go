@@ -16,9 +16,14 @@ func userIDParam(r *http.Request) (int64, error) {
 	return strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 }
 
-// GET /users
+// GET /users?status=inactive — sin status, la plantilla activa.
 func (h *Handlers) ListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.users.List(r.Context())
+	status, err := domain.ParseUserListStatus(r.URL.Query().Get("status"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	users, err := h.users.List(r.Context(), status)
 	if err != nil {
 		Error(w, err)
 		return
