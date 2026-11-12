@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
@@ -37,15 +38,6 @@ func (a *rolesAPI) userNames(path, tok string) (int, []string) {
 	return w.Code, out
 }
 
-func has(xs []string, x string) bool {
-	for _, v := range xs {
-		if v == x {
-			return true
-		}
-	}
-	return false
-}
-
 func TestInactiveUsersAreListedApartAndCanBeReactivated(t *testing.T) {
 	t.Parallel()
 	a := newRolesAPI(t)
@@ -58,13 +50,13 @@ func TestInactiveUsersAreListedApartAndCanBeReactivated(t *testing.T) {
 
 	t.Run("la lista de siempre no cambia: solo activos", func(t *testing.T) {
 		_, names := a.userNames("/api/v1/users", a.admin)
-		if has(names, "ida_baja") || !has(names, "sigue_activa") {
+		if slices.Contains(names, "ida_baja") || !slices.Contains(names, "sigue_activa") {
 			t.Fatalf("GET /users = %v", names)
 		}
 	})
 	t.Run("status=inactive trae solo a las bajas", func(t *testing.T) {
 		code, names := a.userNames("/api/v1/users?status=inactive", a.admin)
-		if code != http.StatusOK || !has(names, "ida_baja") || has(names, "sigue_activa") {
+		if code != http.StatusOK || !slices.Contains(names, "ida_baja") || slices.Contains(names, "sigue_activa") {
 			t.Fatalf("= %d %v", code, names)
 		}
 	})
@@ -101,8 +93,16 @@ func TestInactiveUsersAreListedApartAndCanBeReactivated(t *testing.T) {
 		if code != http.StatusForbidden {
 			t.Errorf("reactivar = %d, quiere 403", code)
 		}
-		if _, names := a.userNames("/api/v1/users?status=inactive", a.admin); !has(names, "ida_baja") {
+		if _, names := a.userNames("/api/v1/users?status=inactive", a.admin); !slices.Contains(names, "ida_baja") {
 			t.Error("el 403 la reactivó de todos modos")
+		}
+	})
+	t.Run("el alta con el usuario de una baja dice que el usuario está repetido", func(t *testing.T) {
+		code, body := a.call(http.MethodPost, "/api/v1/users", a.admin, map[string]any{
+			"name": "Otra Ida", "username": "ida_baja", "roleId": roleIDOf(t, a.st, defaultCompanyID, "cajero"),
+			"password": "Contrasena-Larga-9!"})
+		if code != http.StatusConflict || errCode(body) != "USERNAME_TAKEN" {
+			t.Fatalf("= %d %v, quiere 409 USERNAME_TAKEN", code, body)
 		}
 	})
 	t.Run("reactivar la regresa a la lista de siempre", func(t *testing.T) {
@@ -113,7 +113,7 @@ func TestInactiveUsersAreListedApartAndCanBeReactivated(t *testing.T) {
 		}
 		_, active := a.userNames("/api/v1/users", a.admin)
 		_, inactive := a.userNames("/api/v1/users?status=inactive", a.admin)
-		if !has(active, "ida_baja") || has(inactive, "ida_baja") {
+		if !slices.Contains(active, "ida_baja") || slices.Contains(inactive, "ida_baja") {
 			t.Fatalf("activos %v, bajas %v", active, inactive)
 		}
 	})
@@ -253,22 +253,99 @@ func TestAReactivatedPersonLogsInAgainAndKeepsTheirAttendance(t *testing.T) {
 // La lista de bajas no alcanza a las de otra empresa, ni con una conexión reciclada ni sin empresa.
 func TestInactiveUsersAreIsolated(t *testing.T) {
 	t.Parallel()
-	owner := newTestStore(t)
-	dueña := makeCompany(t, owner, "bajas-duena")
-	ajena := makeCompany(t, owner, "bajas-ajena")
-	baja := makeUserIn(t, owner, dueña, "baja_de_la_duena", "cajero")
-	if _, err := owner.Pool.Exec(context.Background(), `update users set is_active = false where id = $1`, baja); err != nil {
+	admin := newTestStore(t)
+	owner := makeCompany(t, admin, "bajas-duena")
+	other := makeCompany(t, admin, "bajas-ajena")
+	inactive := makeUserIn(t, admin, owner, "baja_de_la_duena", "cajero")
+	if _, err := admin.Pool.Exec(context.Background(), `update users set is_active = false where id = $1`, inactive); err != nil {
 		t.Fatal(err)
 	}
-	inTheThreeCases(t, dueña, ajena, func(t *testing.T, st *store.Store, ctx context.Context) {
+	inTheThreeCases(t, owner, other, func(t *testing.T, st *store.Store, ctx context.Context) {
 		got, err := app.NewUsersService(st, nil, false, "").List(ctx, domain.UsersInactive)
 		if err != nil {
 			return // sin empresa la consulta puede negarse: lo que no puede es devolver filas ajenas
 		}
 		for _, u := range got {
-			if u.ID == baja {
-				t.Fatalf("la lista de bajas trae a %d, de otra empresa", baja)
+			if u.ID == inactive {
+				t.Fatalf("la lista de bajas trae a %d, de otra empresa", inactive)
 			}
 		}
 	})
+}
+
+// Una baja no tiene permisos «ahora», pero los recupera al reactivarla con su rol. Comparar contra
+// los de ahora dejaba que quien solo administra personal le plantara su PIN o su contraseña a un
+// admin dado de baja y entrara como admin en cuanto el dueño lo reactivaba.
+func TestNobodyManagesAnInactivePersonWhoCouldDoMore(t *testing.T) {
+	t.Parallel()
+	a := newRolesAPI(t)
+	_, _ = a.call(http.MethodPost, "/api/v1/roles", a.admin, map[string]any{"name": "Personal", "permissions": []string{"employees.manage"}})
+	roles := a.roles()
+	personal := makeUser(t, a.st, "solo_personal", "cajero")
+	if code, body := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", personal), a.admin, map[string]any{
+		"name": "x", "roleId": roles["Personal"].ID, "isActive": true}); code != http.StatusOK {
+		t.Fatalf("asignar = %d %v", code, body)
+	}
+	pt := a.token(personal)
+	exAdmin := makeUser(t, a.st, "admin_de_baja", "admin")
+	if code, body := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", exAdmin), a.admin, map[string]any{
+		"name": "Ex admin", "roleId": roles["Admin"].ID, "isActive": false}); code != http.StatusOK {
+		t.Fatalf("baja = %d %v", code, body)
+	}
+
+	cases := []struct {
+		name, method, path string
+		body               map[string]any
+	}{
+		{"no le fija el PIN", http.MethodPost, fmt.Sprintf("/api/v1/users/%d/pin", exAdmin), map[string]any{"pin": "739184"}},
+		{"no le resetea la contraseña", http.MethodPost, fmt.Sprintf("/api/v1/users/%d/password", exAdmin), map[string]any{"password": "Otra-Contrasena-Larga-9!"}},
+		{"no la reactiva como admin", http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", exAdmin), map[string]any{"name": "Ex admin", "roleId": roles["Admin"].ID, "isActive": true}},
+		{"no le cambia el correo de recuperación", http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", exAdmin), map[string]any{"name": "Ex admin", "roleId": roles["Admin"].ID, "isActive": false, "recoveryEmail": "mio@correo.mx"}},
+		{"no la reactiva con un rol menor para editarla después", http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", exAdmin), map[string]any{"name": "Ex admin", "roleId": roles["Personal"].ID, "isActive": true}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if code, body := a.call(c.method, c.path, pt, c.body); code != http.StatusForbidden {
+				t.Fatalf("= %d %v, quiere 403", code, body)
+			}
+		})
+	}
+	t.Run("quien sí puede la reactiva", func(t *testing.T) {
+		if code, body := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", exAdmin), a.admin, map[string]any{
+			"name": "Ex admin", "roleId": roles["Admin"].ID, "isActive": true}); code != http.StatusOK {
+			t.Fatalf("= %d %v", code, body)
+		}
+	})
+}
+
+// La baja corta las sesiones: una tableta que se quedó con el refresh de antes no vuelve a entrar
+// sola cuando la persona se reactiva. Antes el refresh seguía vivo (el 401 durante la baja se
+// revertía junto con la revocación) y daba sesión sin contraseña al reactivarla.
+func TestDeactivatingRevokesTheSessionsOfBefore(t *testing.T) {
+	t.Parallel()
+	a := newRolesAPI(t)
+	ctx := context.Background()
+	u := makeUser(t, a.st, "sesion_vieja", "cajero")
+	hash, err := auth.HashSecret("Contrasena-Larga-1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.st.Pool.Exec(ctx, `update users set password_hash = $2 where id = $1`, u, hash); err != nil {
+		t.Fatal(err)
+	}
+	authSvc := app.NewAuthService(a.st, a.jm, nil)
+	before, err := authSvc.Login(ctx, "sesion_vieja", "gatobobah", "Contrasena-Larga-1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cajero := roleIDOf(t, a.st, defaultCompanyID, "cajero")
+	for _, active := range []bool{false, true} {
+		if code, body := a.call(http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", u), a.admin, map[string]any{
+			"name": "Vieja", "roleId": cajero, "isActive": active}); code != http.StatusOK {
+			t.Fatalf("isActive=%v = %d %v", active, code, body)
+		}
+	}
+	if _, err := authSvc.Refresh(ctx, defaultCompanyID, before.RefreshToken); err == nil {
+		t.Fatal("reactivada, el refresh de antes de la baja volvió a dar sesión")
+	}
 }

@@ -26,7 +26,14 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     (pasó con `users.role`; lo cazó `TestTheAPIWorksWithoutUsersRole` antes de subir). El enum
     `user_role` sigue siendo la dimensión «rol sugerido» de la medición de uso; lo de un rol propio
     se mide sin rol.
-- **Dadas de baja** (#236). Tres cosas que no se ven:
+- **Dadas de baja** (#236). Cinco cosas que no se ven:
+  - **Quién administra a una baja se decide con lo que puede su rol asignado, no con lo que puede
+    ahora** (`manageablePermissions`). Ahora una baja no puede nada, así que `WithinPermissions`
+    pasaba siempre: quien solo administra personal le fijaba el PIN a un admin dado de baja y entraba
+    como admin cuando lo reactivaban. Lo vigila `TestNobodyManagesAnInactivePersonWhoCouldDoMore`.
+  - **La baja revoca sus refresh tokens** en la misma transacción. Sin eso, el refresh que se quedó
+    en una tableta volvía a dar sesión al reactivarla: el 401 de `Refresh` durante la baja revierte
+    también su propia revocación. Lo vigila `TestDeactivatingRevokesTheSessionsOfBefore`.
   - **Una baja conserva su usuario y su PIN.** Los dos índices únicos (`users_company_username_key`
     y `users_pin_lookup_unico`) cubren también a las bajas, así que reactivar a alguien nunca choca
     con otra persona: nadie pudo tomarlos mientras estuvo fuera. El alta con el usuario de una baja

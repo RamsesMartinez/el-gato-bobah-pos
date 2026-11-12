@@ -156,14 +156,28 @@ func assignableRole(ctx context.Context, q *db.Queries, roleID *int64, code doma
 	return id, domain.EffectivePermissions(st.base, st.overrides), nil
 }
 
-// userPermissions es lo que puede ahora un empleado (nada si está dado de baja o su rol inactivo).
-func userPermissions(ctx context.Context, q *db.Queries, userID int64) ([]domain.Permission, error) {
-	return effectivePermissions(ctx, q, userID)
+// manageablePermissions es lo que puede el rol asignado de un empleado, esté o no dado de baja y
+// esté o no activo su rol. Es la vara para decidir quién lo administra: lo que puede «ahora» una baja
+// es nada, y comparar contra eso dejaba que quien solo administra personal le fijara el PIN a un
+// admin dado de baja y entrara como admin en cuanto el dueño lo reactivaba.
+func manageablePermissions(ctx context.Context, q *db.Queries, userID int64) ([]domain.Permission, error) {
+	u, err := q.GetUserByID(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	st, err := loadRoleState(ctx, q, u.RoleID)
+	if err != nil {
+		return nil, err
+	}
+	return domain.EffectivePermissions(st.base, st.overrides), nil
 }
 
 // CanManageUser rechaza administrar (contraseña, PIN) a quien puede más que quien actúa.
 func (s *UsersService) CanManageUser(ctx context.Context, actorPerms []domain.Permission, userID int64) error {
-	target, err := userPermissions(ctx, s.store.QC(ctx), userID)
+	target, err := manageablePermissions(ctx, s.store.QC(ctx), userID)
 	if err != nil {
 		return err
 	}
@@ -219,7 +233,7 @@ func (s *UsersService) Update(ctx context.Context, in UpdateUserInput) (domain.U
 			return err
 		}
 		// Nadie edita a quien puede más que él (ni lo da de baja ni le cambia el rol).
-		now, err := userPermissions(ctx, q, in.ID)
+		now, err := manageablePermissions(ctx, q, in.ID)
 		if err != nil {
 			return err
 		}
@@ -261,6 +275,13 @@ func (s *UsersService) Update(ctx context.Context, in UpdateUserInput) (domain.U
 			subject := in.ID
 			if err := recordAudit(ctx, q, domain.AuditEvent{Action: "user.role_changed", EntityType: "user", EntityID: in.ID,
 				SubjectUserID: &subject, Before: map[string]any{"roleId": prev.RoleID}, After: map[string]any{"roleId": roleID}}); err != nil {
+				return err
+			}
+		}
+		// La baja corta sus sesiones: un refresh que se quedó en una tableta no vuelve a dar sesión
+		// sin contraseña cuando la reactiven.
+		if prev.IsActive && !in.IsActive {
+			if err := q.RevokeUserRefreshTokens(ctx, in.ID); err != nil {
 				return err
 			}
 		}

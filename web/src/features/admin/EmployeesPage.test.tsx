@@ -40,7 +40,7 @@ beforeEach(() => {
     { id: 2, name: 'Beto', username: 'beto', role: '', roleId: 9, isActive: true },
   ] });
   api.inactiveUsers.mockResolvedValue({ items: [
-    { id: 7, name: 'Carla', username: 'carla', role: 'cajero', roleId: 3, isActive: false },
+    { id: 7, name: 'Carla', username: 'carla', role: 'cajero', roleId: 3, isActive: false, recoveryEmail: 'carla@correo.mx' },
     { id: 8, name: 'Dani', username: 'dani', role: '', roleId: 9, isActive: false },
   ] });
   api.roles.mockResolvedValue({ items: ROLES });
@@ -298,7 +298,11 @@ describe('personas dadas de baja', () => {
     const hoja = await screen.findByRole('dialog');
     await u.click(within(hoja).getByRole('button', { name: 'Reactivar' }));
     await waitFor(() => expect(api.updateUser).toHaveBeenCalledTimes(1));
-    expect(api.updateUser.mock.calls[0]).toEqual([7, expect.objectContaining({ name: 'Carla', roleId: 3, isActive: true })]);
+    // Reactivar no borra su correo de recuperación.
+    expect(api.updateUser.mock.calls[0]).toEqual([7, { name: 'Carla', roleId: 3, isActive: true, recoveryEmail: 'carla@correo.mx' }]);
+    // Las dos listas se vuelven a pedir: sale de las bajas y regresa a la plantilla.
+    await waitFor(() => expect(api.inactiveUsers).toHaveBeenCalledTimes(2));
+    expect(api.users).toHaveBeenCalledTimes(2);
     // Sin role: una hoja que se cierra queda aria-hidden y queryByRole ya no la ve aunque siga montada.
     await waitFor(() => expect(document.querySelector('[role=dialog]')).toBeNull());
   });
@@ -344,5 +348,47 @@ describe('personas dadas de baja', () => {
     await u.click(await screen.findByRole('button', { name: /Dadas de baja/ }));
     expect(await screen.findByText('Dani')).toBeInTheDocument();
     expect(screen.queryByText('Carla')).toBeNull();
+  });
+
+  // Mientras cargan o si fallan, el botón decía «(0)» y la vista «No hay personas dadas de baja»:
+  // quien administra concluía que no había a quién reactivar.
+  test('mientras cargan las bajas no se dice que hay cero', async () => {
+    api.inactiveUsers.mockReturnValue(new Promise(() => {}));
+    const u = userEvent.setup();
+    montar();
+    await screen.findByText('Ana');
+    const boton = await screen.findByRole('button', { name: /Dadas de baja/ });
+    expect(boton).not.toHaveTextContent('(0)');
+    await u.click(boton);
+    expect(screen.queryByText('No hay personas dadas de baja')).toBeNull();
+  });
+
+  test('si fallan las bajas se dice y se puede reintentar', async () => {
+    api.inactiveUsers.mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'falló', 'r'));
+    const u = userEvent.setup();
+    montar();
+    await screen.findByText('Ana');
+    await u.click(await screen.findByRole('button', { name: /Dadas de baja/ }));
+    expect(screen.queryByText('No hay personas dadas de baja')).toBeNull();
+    await u.click(await screen.findByRole('button', { name: 'Reintentar' }));
+    expect(await screen.findByText('Carla')).toBeInTheDocument();
+  });
+
+  test('si su rol puede más que la sesión, se pide otro rol', async () => {
+    api.roles.mockResolvedValue({ items: [
+      { ...ROLES[0], permissions: ['employees.manage', 'cash.configure'] },
+      { ...ROLES[1], permissions: ['cash.operate'] },
+      ROLES[2],
+    ] });
+    api.inactiveUsers.mockResolvedValue({ items: [{ id: 9, name: 'Eva', username: 'eva', role: 'admin', roleId: 1, isActive: false }] });
+    sesion(['employees.manage', 'cash.operate']);
+    const u = userEvent.setup();
+    montar();
+    await screen.findByText('Ana');
+    await u.click(await screen.findByRole('button', { name: /Dadas de baja/ }));
+    await u.click(within((await screen.findByText('Eva')).closest('tr')!).getByRole('button', { name: 'Reactivar' }));
+    const hoja = await screen.findByRole('dialog');
+    expect(within(hoja).getByText(/Admin.*permisos que tu usuario no tiene/)).toBeInTheDocument();
+    expect(within(hoja).getByText('Reactivar').closest('button')).toBeDisabled();
   });
 });

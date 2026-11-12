@@ -133,7 +133,8 @@ function PeopleTab({ roleFilter, onClearFilter, header }: { roleFilter: number |
   const shown = (data?.items ?? []).filter(byRole);
   const inactive = (inactiveQ.data?.items ?? []).filter(byRole);
   const filterName = roles.find((r) => r.id === roleFilter)?.name;
-  const inactiveLabel = `Dadas de baja (${inactive.length})`;
+  // Sin la cuenta mientras carga o si falló: «(0)» haría creer que no hay a quién reactivar.
+  const inactiveLabel = inactiveQ.isSuccess ? `Dadas de baja (${inactive.length})` : 'Dadas de baja';
   // El botón va en el renglón del título, que ya mide 44 px por las pestañas: la lista activa no
   // pierde alto. Se eligió contra una sección plegada al final (el control quedaba fuera de la
   // pantalla) y un selector junto a las pestañas (dos niveles de pestañas en un renglón).
@@ -168,7 +169,14 @@ function PeopleTab({ roleFilter, onClearFilter, header }: { roleFilter: number |
           })}
         </Table.Body>
       </Table.Root>
-      {inactive.length === 0 && (
+      {inactiveQ.isLoading && <Center p={6}><Spinner /></Center>}
+      {inactiveQ.isError && (
+        <VStack p={6} gap={3}>
+          <Text color="fg.error">No se pudo cargar la lista</Text>
+          <Button minH="44px" variant="outline" onClick={() => inactiveQ.refetch()}>Reintentar</Button>
+        </VStack>
+      )}
+      {inactiveQ.isSuccess && inactive.length === 0 && (
         <Text p={6} textAlign="center" color="fg.muted">
           {roleFilter !== null ? 'Nadie dado de baja tiene este rol' : 'No hay personas dadas de baja'}
         </Text>
@@ -184,12 +192,15 @@ function PeopleTab({ roleFilter, onClearFilter, header }: { roleFilter: number |
       </HStack>
       {showInactive ? (
         <>
-          <Heading as="h2" size="md" mb={2}>{inactiveLabel}</Heading>
-          {roleFilter !== null && (
-            <Button minH="44px" mb={3} variant="subtle" colorPalette="gray" onClick={onClearFilter}>
-              Rol: {filterName ?? 'ese rol'} <LuX />
-            </Button>
-          )}
+          {/* El título y el filtro comparten renglón: la vista dice dónde se está sin gastar dos. */}
+          <HStack mb={2} gap={3} flexWrap="wrap" minH="44px">
+            <Heading as="h2" size="md">{inactiveLabel}</Heading>
+            {roleFilter !== null && (
+              <Button minH="44px" variant="subtle" colorPalette="gray" onClick={onClearFilter}>
+                Rol: {filterName ?? 'ese rol'} <LuX />
+              </Button>
+            )}
+          </HStack>
           {inactiveTable}
         </>
       ) : (<>
