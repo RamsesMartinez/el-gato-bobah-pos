@@ -9,8 +9,8 @@ import { ApiError } from '../../api/client';
 import { formatBaseQty, packExample, purchaseUnitsFor, unitLabel } from '../../shared/units';
 import { parseNumero, round2 } from '../../domain/numeros';
 import { InfoButton } from '../../components/InfoButton';
-import { UnitSegment } from './articles/qty';
-import { BASE_PACKS } from './articles/articleUnits';
+import { UnitSegment } from '../../shared/qty';
+import { BASE_PACKS } from '../../shared/articleUnits';
 import { presentationLabel } from '../../shared/presentationLabel';
 
 // «Cómo llega» un insumo (spec 038, maqueta «Cómo llega un insumo», opción B): sus empaques de

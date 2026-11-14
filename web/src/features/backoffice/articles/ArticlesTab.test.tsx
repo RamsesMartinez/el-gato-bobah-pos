@@ -122,4 +122,19 @@ describe('Almacén › Artículos · marca', () => {
     montar();
     expect(await screen.findByText(/Caja · Lala · 12 kg · Caja · Alpura · 12 kg/)).toBeInTheDocument();
   });
+
+  // «Dar de alta» desde la campana con Almacén › Insumos ya abierto solo cambia la liga: la pestaña no se
+  // vuelve a montar y la hoja no se abría.
+  it('un aviso que llega con la pestaña ya abierta abre la hoja de alta con su nombre', async () => {
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'gerente', permissions: ['inventory.view', 'inventory.configure'] } as never });
+    back.articles.mockImplementation(() => Promise.resolve([row(1, 'Hielo en bolsa')]));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const ui = (notice?: { name: string; id: number }) => (
+      <QueryClientProvider client={qc}><Provider><ArticlesTab onOpen={vi.fn()} notice={notice} /></Provider></QueryClientProvider>
+    );
+    const { rerender } = render(ui());
+    await screen.findByText('Hielo en bolsa');
+    rerender(ui({ name: 'servitoallas', id: 12 }));
+    expect(await screen.findByDisplayValue('servitoallas')).toBeTruthy();
+  });
 });

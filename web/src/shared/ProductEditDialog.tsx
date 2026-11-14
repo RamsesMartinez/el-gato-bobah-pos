@@ -19,6 +19,8 @@ import { Picker, type PickerOption } from '../components/Picker';
 import { useUiStore } from '../stores/ui';
 import { ProductGroupsManager } from './ProductGroupsManager';
 import { CompositionSheet } from './CompositionSheet';
+import { SeccionAlertas } from './alertas/SeccionAlertas';
+import { can } from '../app/permissions';
 import { compositionLabel } from './compositionLabel';
 import { AltNamesField } from '../components/AltNamesField';
 import { altNameKey, withPendingAlt } from '../components/altNames';
@@ -194,6 +196,11 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                   <Switch checked={edit.needsPrep}
                     onCheckedChange={(e) => setEdit({ ...edit, needsPrep: e.checked })} />
                 </HStack>
+                {/* Alertas de stock bajo (spec 084): solo aparece si el producto lleva existencia propia
+                    (el servidor responde 404 a los demás) y quien edita puede ver el almacén. */}
+                {can('inventory.view') && (
+                  <SeccionAlertas itemType="producto" id={edit.id} name={edit.name} kind="pieza" canConfigure={can('inventory.configure')} />
+                )}
                 <Box>
                   <Text fontSize="sm" fontWeight="600" mb={1}>Disponibilidad (temporada) — opcional</Text>
                   <Text fontSize="xs" color="fg.muted" mb={2}>Con fechas, el producto solo aparece en el POS dentro del rango. Vacío = siempre.</Text>

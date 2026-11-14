@@ -290,6 +290,11 @@ update branches set address = null, phone = null, postal_code = null
  where address is not null or phone is not null or postal_code is not null;
 -- El error del envío del resumen trae el correo al que no se pudo entregar.
 update daily_summary_sends set last_error = null where last_error is not null;
+-- Avisos de inventario (084): lo que alguien escribió en «No lo encuentro», los correos extra de los
+-- destinatarios y el error de un envío (puede traer el correo al que no se pudo entregar).
+update notifications set query_text = 'texto anonimizado' where query_text is not null;
+update notification_recipients set email = 'correo' || id || '@ejemplo.invalid' where email is not null;
+update notification_email_sends set last_error = null where last_error is not null;
 
 -- pg_get_constraintdef termina en «NOT VALID»: vuelven sin validar, como estaban.
 do $$ declare r record; begin
@@ -328,6 +333,9 @@ FUGAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "
        + (select count(*) from mcp_idempotency_keys)
        + (select count(*) from suppliers where phone is not null or notes is not null or name !~ '^Proveedor [0-9]+\$')
        + (select count(*) from ingredient_presentations where brand !~ '^Marca [0-9]+\$')
+       + (select count(*) from notifications where query_text <> 'texto anonimizado')
+       + (select count(*) from notification_recipients where email !~ '^correo[0-9]+@ejemplo[.]invalid\$')
+       + (select count(*) from notification_email_sends where last_error is not null)
        + (select count(*) from expense_items where presentation_brand !~ '^Marca [0-9]+\$')
        + (select count(*) from user_preferences)
        + (select count(*) from business_settings where phone is not null or address is not null or header_note is not null or footer_note is not null or daily_summary_emails <> '{}' or logo_bytes is not null or logo_mime is not null)

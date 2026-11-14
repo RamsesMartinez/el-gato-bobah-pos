@@ -437,6 +437,11 @@ var mcpTools = []MCPTool{
 		"La vista previa trae los efectos y un fingerprint; aplicar exige ese fingerprint y las decisiones que pidió. "+
 		"Los pagos no cambian.", ScopeWriteExpenses, PermExpensesEdit),
 
+	// Spec 084: alertas de stock bajo por lote.
+	wr("low_stock_update", "Enciende o apaga la alerta de stock bajo de varios insumos o productos (con existencia "+
+		"propia) a la vez, con su mínimo en la unidad base. La vista previa dice qué avisos se abrirían o cerrarían al "+
+		"guardar. Los eventos y la franja de cada artículo se conservan.", ScopeWriteInventory, PermInventoryConfigure),
+
 	// Spec 076: dar de alta y editar insumos.
 	wr("ingredient_create", "Da de alta un insumo (nombre, unidad base g, ml, cm o pieza, y lo demás opcional). "+
 		"La vista previa pone primero los insumos parecidos que ya existen: si es uno de ellos, usa ese y no crees otro. "+

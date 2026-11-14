@@ -25,7 +25,7 @@ hooks:
     # revisa la opción elegida, no tres candidatas. Si el plan no toca pantallas, no hace nada.
     - extension: maquetas
       command: maquetas
-      description: "2 o 3 maquetas navegables a 1024×600 por pantalla nueva; el dueño elige y queda en plan.md"
+      description: "2 o 3 maquetas navegables a 1280×854 por pantalla nueva; el dueño elige y queda en plan.md"
       optional: false
       enabled: true
     - extension: revision-de-arquitectura

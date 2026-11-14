@@ -12,6 +12,8 @@ import { NO_LOCATION } from '../useLocations';
 import { NewArticleSheet } from './NewArticleSheet';
 import { presentationLabel } from '../../../shared/presentationLabel';
 import { DuplicatesSheet } from './DuplicatesSheet';
+import { AlertasPorLote } from './AlertasPorLote';
+import { notificationsApi } from '../../../api/notifications';
 
 // Almacén › Artículos (spec 042, maqueta «Lista de artículos», opción A con los ajustes de la
 // revisión): en la fila del buscador van «Lugar», «Activos / Archivados» y «+ Nuevo»; en chips, los dos
@@ -19,6 +21,9 @@ import { DuplicatesSheet } from './DuplicatesSheet';
 
 interface Props {
   onOpen: (id: number) => void;
+  // notice: el «No lo encuentro» que se va a dar de alta (spec 084); onNoticeDone limpia la liga.
+  notice?: { name: string; id: number };
+  onNoticeDone?: () => void;
   // La palabra de la empresa para lo que se guarda (spec 038), en singular: «artículo», «insumo».
   word?: string;
 }
@@ -35,14 +40,26 @@ function useDebounced<T>(value: T, ms: number): T {
   return v;
 }
 
-export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
+export function ArticlesTab({ onOpen, word = 'artículo', notice, onNoticeDone }: Props) {
   const Word = word.charAt(0).toUpperCase() + word.slice(1);
   const user = useSessionStore((s) => s.user);
   const canConfigure = can('inventory.configure', user);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Omit<ArticleFilter, 'q'>>({});
-  const [creating, setCreating] = useState(false);
+  // «Dar de alta» desde un aviso de «No lo encuentro» (spec 084): al crear, el aviso se cierra como «se
+  // dio de alta».
+  const fromNotice = notice?.name ?? null;
+  const noticeID = notice?.id ?? 0;
+  const [creating, setCreating] = useState(fromNotice !== null);
+  // Un aviso nuevo con la pestaña ya abierta (se tocó «Dar de alta» estando aquí) solo cambia la liga:
+  // se abre la hoja al pintar, ajustando el estado a la prop nueva.
+  const [noticeVisto, setNoticeVisto] = useState(noticeID);
+  if (noticeID !== noticeVisto) {
+    setNoticeVisto(noticeID);
+    if (noticeID) setCreating(true);
+  }
   const [duplicates, setDuplicates] = useState(false);
+  const [porLote, setPorLote] = useState(false);
   const debounced = useDebounced(q, SEARCH_DELAY_MS);
   const f: ArticleFilter = { ...filter, q: debounced };
   const list = useQuery({ queryKey: ['articles', f], queryFn: () => backofficeApi.articles(f) });
@@ -57,6 +74,7 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
     { value: 'none', label: NO_LOCATION },
     ...(places.data ?? []).map((p) => ({ value: String(p.id), label: p.name })),
   ];
+  const clearNotice = () => onNoticeDone?.();
   const toggle = (k: 'noCost' | 'negative') => setFilter({ ...filter, [k]: !filter[k] });
   const rows = list.data ?? [];
 
@@ -86,6 +104,7 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
             aria-pressed={!!filter[k]} onClick={() => toggle(k)}>{label}</Button>
         ))}
         <Box flex="1" />
+        {canConfigure && <Button minH="44px" variant="outline" onClick={() => setPorLote(true)}>Alertas por lote</Button>}
         {canConfigure && groupCount > 0 && (
           <Button minH="44px" variant="outline" onClick={() => setDuplicates(true)}>
             Posibles duplicados <Badge colorPalette="orange">{groupCount}</Badge>
@@ -113,11 +132,19 @@ export function ArticlesTab({ onOpen, word = 'artículo' }: Props) {
           </Table.Body>
         </Table.Root>
       </Box>
+      {porLote && <AlertasPorLote onClose={() => setPorLote(false)} />}
       {duplicates && (
         <DuplicatesSheet onClose={() => setDuplicates(false)} onMerged={() => { void list.refetch(); }} />
       )}
       {creating && (
-        <NewArticleSheet word={word} onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); onOpen(id); }} />
+        <NewArticleSheet word={word} initialName={fromNotice ?? ''}
+          onClose={() => { setCreating(false); if (fromNotice !== null) clearNotice(); }}
+          onCreated={(id) => {
+            setCreating(false);
+            if (noticeID) void notificationsApi.resolve(noticeID, 'created', id).catch(() => { /* el aviso se cierra a mano desde la campana */ });
+            if (fromNotice !== null) clearNotice();
+            onOpen(id);
+          }} />
       )}
     </Stack>
   );

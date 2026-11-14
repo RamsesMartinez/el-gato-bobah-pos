@@ -43,6 +43,21 @@ import (
 // noPersonalData son las columnas de texto que pasan intactas a la base de pruebas. El valor dice
 // por qué no llevan datos de una persona.
 var noPersonalData = map[string]string{
+	// Avisos de inventario (084): tipos y estados de un conjunto cerrado, la copia del nombre y la unidad
+	// del artículo (catálogo), la llave del bloque de correo (una fecha) y la clave de idempotencia
+	// que genera la pantalla (un uuid al azar).
+	"notification_email_sends.kind":       "tipo de envío",
+	"notification_email_sends.period_key": "fecha u hora del bloque de correo",
+	"notification_email_sends.status":     "estado del envío",
+	"notification_recipients.kind":        "tipo de aviso",
+	"notifications.email_state":           "estado del correo",
+	"notifications.item_name":             "copia del nombre del artículo (catálogo)",
+	"notifications.kind":                  "tipo de aviso",
+	"notifications.resolved_reason":       "motivo de cierre, de un conjunto cerrado",
+	"notifications.status":                "estado del aviso",
+	"notifications.unit_code":             "código de unidad",
+	"stock_out_reports.client_key":        "uuid al azar que genera la pantalla",
+	"stock_out_reports.kind":              "tipo de reporte",
 	// Catálogo, configuración y nombres internos del negocio: son lo que las pruebas vienen a probar.
 	"branches.card_count_mode":                      "configuración",
 	"branches.code":                                 "código interno de la sucursal",

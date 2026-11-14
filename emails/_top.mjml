@@ -1,0 +1,11 @@
+<mj-section background-color="#c62b21" padding="16px 24px">
+  <mj-group>
+    <mj-column width="15%" vertical-align="middle">
+      <mj-image src="{{.LogoURL}}" width="44px" alt="{{.BusinessName}}" padding="0" border-radius="8px" align="left" />
+    </mj-column>
+    <mj-column width="85%" vertical-align="middle">
+      <mj-text color="#ffffff" font-size="18px" font-weight="700">{{.BusinessName}} · avisos de inventario</mj-text>
+      <mj-text color="#ffdad6" font-size="13px">{{.Period}}</mj-text>
+    </mj-column>
+  </mj-group>
+</mj-section>

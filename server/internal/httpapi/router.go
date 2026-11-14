@@ -24,6 +24,12 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 	if h.roles == nil {
 		h.roles = app.NewRolesService(st)
 	}
+	if h.stockOut == nil {
+		h.stockOut = app.NewStockOutService(st, nil)
+	}
+	if h.notifications == nil {
+		h.notifications = app.NewNotificationsService(st, nil)
+	}
 	if h.permissions == nil {
 		roles := h.roles
 		h.permissions = func(ctx context.Context, u AuthUser) ([]domain.Permission, error) {
@@ -481,6 +487,39 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						r.Post("/{id}/approve", h.ApproveWaste)
 						r.Post("/{id}/reject", h.RejectWaste)
 					})
+				})
+				// «Se acabó» y «No lo encuentro» (spec 084): por permiso propio, que no deja ajustar
+				// existencias. Lo tienen los cuatro sugeridos: quien vende es quien ve que se acabó.
+				r.With(RequirePermission(h.permissions, domain.PermInventoryReportOut)).Group(func(r chi.Router) {
+					r.Get("/stock/out-reports/search", h.SearchOutArticles)
+					r.Get("/stock/out-reports/suggestions", h.OutSuggestions)
+					r.Post("/stock/out-reports", h.ReportOut)
+					// Deshacer el propio; el de otro lo decide el servicio con el permiso de configurar.
+					r.Post("/stock/out-reports/{id}/undo", h.UndoOut)
+					r.Post("/stock/not-found", h.ReportNotFound)
+					// La campana: quien reporta ve los avisos de existencia; «No lo encuentro» y cerrar a
+					// mano los filtra el servicio con el permiso de cada caso.
+					r.Get("/notifications", h.ListNotifications)
+					r.Get("/notifications/unread-count", h.UnreadNotifications)
+					r.Post("/notifications/read", h.ReadNotifications)
+					r.Post("/notifications/{id}/banner-seen", h.NotificationBannerSeen)
+					r.Post("/notifications/{id}/resolve", h.ResolveNotification)
+				})
+				// Alertas de stock bajo (spec 084): leer con «ver el almacén», cambiar con «configurar».
+				r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Group(func(r chi.Router) {
+					r.Get("/stock/articles/{id}/low-stock", h.GetLowStock("ingrediente"))
+					r.Get("/stock/products/{id}/low-stock", h.GetLowStock("producto"))
+					r.Get("/stock/shopping-list", h.ShoppingList)
+					r.Post("/stock/shopping-list/email", h.EmailShoppingList)
+				})
+				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Group(func(r chi.Router) {
+					r.Put("/stock/articles/{id}/low-stock", h.PutLowStock("ingrediente"))
+					r.Put("/stock/products/{id}/low-stock", h.PutLowStock("producto"))
+					r.Post("/stock/articles/{id}/low-stock/asked", h.LowStockAsked)
+					r.Get("/stock/low-stock", h.ListLowStock)
+					r.Post("/stock/low-stock/batch", h.LowStockBatch)
+					r.Get("/settings/notification-recipients", h.NotificationRecipients)
+					r.Put("/settings/notification-recipients", h.SetNotificationRecipients)
 				})
 				r.Route("/stock", func(r chi.Router) {
 					// Artículos del almacén (spec 042): leer con «ver el almacén», cambiar con «configurar».

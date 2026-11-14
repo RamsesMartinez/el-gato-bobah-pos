@@ -29,8 +29,8 @@ import { MergeSheet } from './MergeSheet';
 import { DensitySheet } from './DensitySheet';
 import { densityWords } from '../expenseDraft';
 import { presentationLabel } from '../../../shared/presentationLabel';
-import { QtyWithUnit } from './qty';
-import { baseQty, bigUnitOf, KIND_WORD, type Kind } from './articleUnits';
+import { bigUnitOf, KIND_WORD, type Kind } from '../../../shared/articleUnits';
+import { SeccionAlertas } from '../../../shared/alertas/SeccionAlertas';
 
 // La ficha de un artículo (spec 042, maqueta «Ficha del artículo», opción A: dos columnas). A la
 // izquierda lo que se edita y los empaques; a la derecha el costo, su tendencia y el historial. De pie
@@ -140,7 +140,9 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
     version: a?.updatedAt ?? '',
     // Manda la ficha completa: lo que cambió más lo último guardado de lo demás. La API anterior, que
     // atiende durante una subida, toma un campo ausente como vacío y lo borraría. La nueva compara
-    // contra lo que había y deja en la bitácora solo lo que cambió.
+    // contra lo que había y deja en la bitácora solo lo que cambió. El mínimo es la excepción: se edita
+    // en «Alertas» (spec 084) y la API, la de producción incluida, toma su llave ausente como «no
+    // tocar»; mandarlo regresaba el mínimo que el autoguardado tenía por guardado.
     save: async (patch, version, saved) => {
       // Los otros nombres van por su propia ruta (spec 063); devuelve la versión nueva de la ficha.
       if (patch.alts !== undefined) {
@@ -157,7 +159,6 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
         expectedUpdatedAt: version, name: v.name,
         categoryId: v.categoryId ? Number(v.categoryId) : null,
         placeId: v.placeId ? Number(v.placeId) : null,
-        minStock: v.min === '' ? null : v.min,
       };
       const r = await backofficeApi.updateArticle(id, body);
       medirAccion('inventario', 'editar-articulo');
@@ -197,9 +198,6 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
     if (fresh && !synced) { auto.reset(savedOf(fresh), fresh.updatedAt); setSynced(true); }
   }, [fresh, synced, auto]);
 
-  // minValue es lo que el mínimo manda: la cantidad base si ya es un número, o lo escrito tal cual para
-  // que la cola lo valide (y no lo mande por la pausa).
-  const minValue = (m: { qty: string; big: boolean }) => (m.qty === '' ? '' : NUMBER.test(m.qty) ? baseQty(m.qty, kind, m.big) ?? m.qty : m.qty);
 
   // refresh llena el formulario con la ficha que ya trae lo guardado, después de una hoja que la cambió
   // (costo, unidad, archivar, empaques). Vaciarlo antes dejaba que el efecto de arriba lo volviera a
@@ -332,12 +330,9 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                 </Field>
                 <AltNamesField kind="article" ownName={form.name} value={form.alts} onChange={changeAlts} disabled={!canConfigure}
                   draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similarAlts} error={altError} />
-                <Stack gap={1}>
-                  <QtyWithUnit label="Mínimo" kind={kind} value={form.min} keepAmount
-                    onChange={(min) => { setForm({ ...form, min }); if (min.qty !== form.min.qty) auto.type('min', minValue(min)); }}
-                    onCommit={() => auto.commit('min', minValue(form.min))} />
-                  {auto.invalid.min && <Text fontSize="sm" color="fg.error">{auto.invalid.min}</Text>}
-                </Stack>
+                {/* El mínimo vive en «Alertas» (spec 084, maqueta M1-B): un renglón con el estado y su hoja. */}
+                <SeccionAlertas itemType="ingrediente" id={id} name={a.name} kind={kind} canConfigure={canConfigure}
+                  onSaved={() => void refresh()} />
                 <HStack justify="space-between" minH="44px">
                   <Text>Se mide en <b>{KIND_WORD[kind]}</b>{a.baseUnitCode === 'pieza' ? '' : ` (${a.baseUnitCode})`}{Number(a.onHand) < 0 ? '' : ` · Hay ${formatBaseQty(a.onHand, a.baseUnitCode)}`}</Text>
                   {canConfigure && a.isActive && <Button minH="44px" variant="outline" onClick={() => setPanel('unit')}>Cambiar ›</Button>}

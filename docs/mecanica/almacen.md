@@ -225,3 +225,22 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     productos no lo cubrió la 077 y la pantalla no pinta el campo.
   - **El historial no se filtra**: movimientos, historial de costo y bitácora del artículo siguen
     trayendo al archivado.
+
+- **Avisos de inventario (spec 084): el trigger de `stock_movements` decide, y nunca rompe una
+  venta.** `trg_stock_movement_notify` corre AFTER INSERT, después del trigger que mueve
+  `stock_levels`, y llama a `low_stock_state` (SQL plano, sin subtransacción); solo si el estado
+  difiere de lo abierto entra a `evaluate_low_stock` dentro de `begin … exception`. Medido con un
+  pedido de 90 movimientos en el Postgres de pruebas: 16.5 ms sin trigger, 30.9 ms con el trigger y
+  sin alertas, 81 ms cuando los 90 cruzan a la vez. Cuatro cosas que no se ven:
+  - **Todo camino que cambia la existencia sin un movimiento llama a la misma función**: editar el
+    artículo, archivar y reactivar, cerrar un conteo (`p_count_id`, para no pedir conteo del que se
+    acaba de contar), unir insumos y cambiar de unidad. Uno nuevo que no la llame deja un aviso
+    abierto que ya no es cierto.
+  - **Orden de candados**: artículo (`lockIngredients`) → `stock_levels` → movimiento → aviso. «Se
+    acabó» y una venta del mismo insumo a la vez no se bloquean entre sí
+    (`TestConcurrentStockOutReportAndSale`).
+  - **«Se acabó» con la alerta «al acabarse» encendida**: el ajuste a 0 abre el aviso por el trigger,
+    que no sabe quién fue; `ClaimTriggerOut` lo deja a nombre de quien reportó. Sin eso, la franja le
+    salía a esa misma persona.
+  - **«Stock bajo» y «se acabó» son dos eventos**: de 40 a 0 con mínimo 10 abre los dos, porque se
+    eligen por separado en la ficha.
