@@ -72,6 +72,9 @@ var pantallasMedibles = map[string]struct{}{
 	"asistencia": {},
 	// Lo que se echó a perder (spec 039): la captura es de todos los del local.
 	"merma": {},
+	// Interfaz e Integraciones (spec 085): el menú nuevo las movió a Ajustes y no se medían.
+	"apariencia":    {},
+	"integraciones": {},
 }
 
 // accionesMedibles son las acciones con nombre que vale la pena contar, por pantalla.
@@ -146,22 +149,24 @@ func EventoDeUsoValido(pantalla, accion string) bool {
 // suyo recibiría con 403— y el mapa diría que es la más usada del sistema. Con roles por empresa
 // la pregunta es por permiso: un rol propio con «ver ventas» sí mide Ventas.
 var permissionByScreen = map[string]Permission{
-	"pos":         "",
-	"pedidos":     "",
-	"cuenta":      "",
-	"asistencia":  "",
-	"caja":        PermCashOperate,
-	"ventas":      PermSalesView,
-	"reportes":    PermReportsView,
-	"gastos":      PermExpensesCapture,
-	"inventario":  PermInventoryView,
-	"catalogo":    PermMenuConfigure,
-	"usuarios":    PermEmployeesManage,
-	"negocio":     PermBusinessConfigure,
-	"impresion":   PermBusinessConfigure,
-	"plataformas": PermPlatformsConfigure,
-	"emparejar":   PermPlatformsConfigure,
-	"merma":       PermInventoryWriteOff,
+	"pos":           "",
+	"pedidos":       "",
+	"cuenta":        "",
+	"asistencia":    "",
+	"caja":          PermCashOperate,
+	"ventas":        PermSalesView,
+	"reportes":      PermReportsView,
+	"gastos":        PermExpensesCapture,
+	"inventario":    PermInventoryView,
+	"catalogo":      PermMenuConfigure,
+	"usuarios":      PermEmployeesManage,
+	"negocio":       PermBusinessConfigure,
+	"impresion":     PermBusinessConfigure,
+	"plataformas":   PermPlatformsConfigure,
+	"emparejar":     PermPlatformsConfigure,
+	"merma":         PermInventoryWriteOff,
+	"apariencia":    "",
+	"integraciones": PermIntegrationsManage,
 }
 
 // ScreenAllowed dice si quien tiene esos permisos puede siquiera abrir esa pantalla.

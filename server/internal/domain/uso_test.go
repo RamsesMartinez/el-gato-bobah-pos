@@ -309,3 +309,22 @@ func TestACustomRoleIsMeasuredWithoutRole(t *testing.T) {
 		t.Errorf("el admin solo, con un rol propio en el balde = %v, quiere GuardarSinCorte", got)
 	}
 }
+
+// INTERFAZ E INTEGRACIONES SE MIDEN (spec 085, issue #293). Sin medirlas, su cero en el mapa se leía
+// como «nadie entra», justo cuando el menú nuevo las movió a Ajustes. Integraciones exige su permiso:
+// un mesero con su propio token no puede inflar una pantalla que no abre.
+func TestInterfaceAndIntegrationsAreMeasured(t *testing.T) {
+	for _, p := range []string{"apariencia", "integraciones"} {
+		if !EventoDeUsoValido(p, "") {
+			t.Errorf("la apertura de %q se descarta", p)
+		}
+	}
+	for _, r := range []Role{RoleAdmin, RoleGerente, RoleCajero, RoleMesero} {
+		if !ScreenAllowed("apariencia", PermissionsFor(r)) {
+			t.Errorf("%s no puede medir Interfaz, que abre cualquier sesión", r)
+		}
+		if got, want := ScreenAllowed("integraciones", PermissionsFor(r)), r == RoleAdmin; got != want {
+			t.Errorf("%s mide Integraciones = %v, quiere %v (solo con integrations.manage)", r, got, want)
+		}
+	}
+}
