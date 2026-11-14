@@ -35,7 +35,7 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 - [ ] T004 [P] Tests de dominio de reglas puras en `server/internal/domain/notifications_test.go` (efecto de alertas, pedir conteo, bloque de 5 min, enfriamiento de 12 h, hora de la mañana, llaves de búsqueda, texto de «no lo encuentro», tope por hora, ventana de deshacer) — ya escritos; mantener en verde
 - [ ] T005 [P] Test de paridad `TestNotificationReasonsMatchTheCheck` y `TestNotificationKindsMatchTheCheck` en `server/internal/integration/notifications_schema_test.go`: las listas de `domain` contra los `check` de la 0115
 - [ ] T006 Test de migración `TestMigration0115OnARealBackup` en `server/internal/integration/migration_0115_test.go`: sobre el respaldo restaurado con dos empresas, sube la 0115 con la API anterior escribiendo movimientos (ventas y compras siguen), verifica columnas con default, grants, RLS, permiso 38 en los 4 sugeridos, orden de triggers en `pg_trigger`, y que el Down se niega con datos y baja limpio con su `guardedDownCleanup` (incluidos los overrides del permiso)
-- [ ] T007 Test `TestEvaluateLowStockMatchesTheDomain` en `server/internal/integration/notifications_trigger_test.go`: la función de la base produce la tabla de verdad de `domain.LowStockEffect` caso por caso
+- [ ] T007 Test `TestEvaluateLowStockMatchesTheDomain` en `server/internal/integration/notifications_trigger_test.go`: la función de la base produce la tabla de verdad de `domain.LowStockEffect` caso por caso, y `needs_count` con existencia negativa y sin conteo en 30 días
 - [ ] T008 Tests del trigger en `server/internal/integration/notifications_trigger_test.go`: `TestTwoConnectionsCrossingTheSameMinimumOpenOne` (dos conexiones `appRoleStore`, una sola notificación), `TestANotificationFailureNeverBreaksASale` (falla forzada del aviso, la venta se guarda), `TestAQuietSaleOpensNoSubtransaction` (artículo ya bajo el mínimo con aviso abierto: sin `savepoint` ni `pg_notify`), `TestReplacementMovementsDoNotNotify`, `TestInactiveOrMergedSourceNeverNotifies`, `TestRedirectedMovementNotifiesOnTheTarget`
 - [ ] T009 [P] Agregar las tablas nuevas a `TestEveryCompanyTableIsIsolated` (automático) y clasificar columnas en `scripts/respaldo-anonimo.sh` paso 5 y `noPersonalData` de `server/internal/integration/respaldo_anonimo_test.go` según data-model; agregar `stock_out_reports`, `branch_stock_minimums` y `notifications` a `app.MergeTables` y `app.UnitChangeTables` (`server/internal/app/ingredient_merge.go`, `unit_change.go`)
 
@@ -56,7 +56,7 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 **Goal**: el cajero reporta que algo se acabó; la existencia queda en 0 y se abre el aviso.
 **Independent Test**: cajero con solo `inventory.report_out` reporta, deshace, repite; no puede ajustar.
 
-- [ ] T015 [P] [US1] Tests de integración en `server/internal/integration/stock_out_test.go`: reporte deja 0 con ajuste «se acabó» y no cuenta como consumo; idempotencia por `clientKey`; segundo reporte con aviso abierto = confirmación sin ajuste; negativa sube a 0; deshacer ≤ 90 s con reloj de la base; deshacer niega tras movimiento o conteo posterior; tope de 20/h; `TestConcurrentStockOutReports`; `TestConcurrentStockOutReportAndSale` (sin 40P01); aislamiento `inTheThreeCases`; `TestCashierCanReportOutButNotAdjust`
+- [ ] T015 [P] [US1] Tests de integración en `server/internal/integration/stock_out_test.go`: reporte deja 0 con ajuste «se acabó» y no cuenta como consumo; idempotencia por `clientKey`; segundo reporte con aviso abierto = confirmación sin ajuste; negativa sube a 0; funciona sin alerta ni mínimo (avisa por campana y correo, sin franja); deshacer ≤ 90 s con reloj de la base; deshacer niega tras movimiento o conteo posterior; tope de 20/h; `TestConcurrentStockOutReports`; `TestConcurrentStockOutReportAndSale` (sin 40P01); aislamiento `inTheThreeCases`; `TestCashierCanReportOutButNotAdjust`
 - [ ] T016 [P] [US1] Tests de handler en `server/internal/httpapi/handlers_stock_out_test.go`: `quantity` en el cuerpo → 400; `clientKey` no uuid → 400; rutas en `testdata/route_gates.golden` (regenerado a propósito, con el porqué en el PR)
 - [ ] T017 [US1] `StockOutService` en `server/internal/app/stock_out.go`: buscar, sugerencias, reportar (movimiento primero, después aviso — research R12), deshacer, auditoría en la misma transacción
 - [ ] T018 [US1] Handlers y rutas en `server/internal/httpapi/handlers_stock_out.go` y `router.go` según contracts/api.md
@@ -103,11 +103,12 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 
 **Independent Test**: encender sobre un insumo bajo abre al instante con confirmación; apagar cierra; sin casilla no avisa.
 
-- [ ] T034 [P] [US3] Tests de integración `TestLowStockConfigPreviewAndSave` (vista previa sin guardar, guardado audita y evalúa, `409 STALE`), batch con preview, `asked`, producto sin existencia propia 400, en `server/internal/integration/low_stock_config_test.go`
+- [ ] T034 [P] [US3] Tests de integración `TestLowStockConfigPreviewAndSave` (vista previa sin guardar, guardado audita y evalúa, `409 STALE`), mínimo por sucursal (`branchMinStock` se guarda en `branch_stock_minimums` y gana sobre el de la empresa en la evaluación), batch con preview y con mínimos, `asked`, producto sin existencia propia 400, en `server/internal/integration/low_stock_config_test.go`
 - [ ] T035 [US3] Servicio y rutas `PUT /stock/articles/{id}/low-stock`, `PUT /products/{id}/low-stock`, `POST …/asked`, `POST /stock/low-stock/batch` en `server/internal/app/notifications.go` y `server/internal/httpapi/handlers_notifications.go`
 - [ ] T036 [P] [US3] Herramienta MCP `low_stock_update` con `dry_run` e `idempotency_key` en `server/internal/httpapi/mcp_tools_084.go`, `domain.MCPTools()` y su test `TestMCPLowStockUpdate`
 - [ ] T037 [P] [US3] Tests de pantalla `web/src/features/backoffice/articles/SeccionAlertas.test.tsx`: mínimo vacío ≠ 0, la confirmación dice si se avisará, pregunta al crear y al abrir una ficha nunca preguntada, «No, por ahora» no vuelve
 - [ ] T038 [US3] Renglón «Alertas» y hoja en `web/src/features/backoffice/articles/SeccionAlertas.tsx`, en `ArticleSheet.tsx` en lugar del campo «Mínimo», pregunta en `NewArticleSheet.tsx`, y la sección en la ficha de producto con existencia propia (`web/src/shared/ProductEditDialog.tsx`) (Maquetas M1, opción B)
+- [ ] T038b [US3] Hoja «Alertas por lote» con buscador, mínimo editable e interruptor, y su test `AlertasPorLote.test.tsx` (vacío ≠ 0, confirmación con el efecto por insumo), en `web/src/features/backoffice/articles/AlertasPorLote.tsx` y botón en `ArticlesTab.tsx` (Maquetas M8, opción B)
 
 ---
 
@@ -136,14 +137,16 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 - [ ] T047 [P] [US8] Tests de dominio `TestSuggestPurchase` (redondeo a empaques enteros del menor costo, sin consumo no sugiere, cobertura vacía = 14, existencia negativa pide conteo, el porqué) en `server/internal/domain/shopping_list_test.go`
 - [ ] T048 [US8] `domain.SuggestPurchase` en `server/internal/domain/shopping_list.go`
 - [ ] T049 [P] [US8] Test de integración `TestShoppingListExcludesOutReportsFromConsumption` y agrupado por proveedor de la última compra en `server/internal/integration/shopping_list_test.go`
-- [ ] T050 [US8] Consulta y ruta `GET /stock/shopping-list` (una sola consulta para pantalla y correo) en `server/internal/app/notifications.go`
+- [ ] T050 [US8] Consulta y ruta `GET /stock/shopping-list` (una sola consulta para pantalla y correo) y `POST /stock/shopping-list/email` («Enviarme por correo», al correo de quien lo pide, con el tope de envío por persona) en `server/internal/app/notifications.go`
 - [ ] T051 [US8] Pestaña «Lista de compra» en Almacén `web/src/features/notificaciones/ListaDeCompra.tsx` (Maquetas M6, opción B v2) con su test
 
 ---
 
 ## Phase 11: Polish
 
-- [ ] T052 e2e `web/e2e/notificaciones.spec.ts` a 1280×854 y 2560×1440 contra el `make start` del worktree: cajero reporta, gerente ve campana, correo en mailpit, lista de compra; capturas solo en `test-results/`; actualizar `docs/matriz-de-pantallas.md`
+- [ ] T051b Regenerar `server/internal/integration/testdata/route_gates.golden` con TODAS las rutas nuevas (US1–US8) con `UPDATE_ROUTE_GATES=1`, revisar quién pasa por cada una y dejar el porqué en el PR
+
+- [ ] T052 e2e `web/e2e/notificaciones.spec.ts` a 1280×854 y 2560×1440 contra el `make start` del worktree: cajero reporta, gerente ve la campana en menos de 5 s sin recargar (SC-001, medido y reportado), correo en mailpit, lista de compra; capturas solo en `test-results/`; actualizar `docs/matriz-de-pantallas.md`
 - [ ] T053 Notas de área en `docs/mecanica/almacen.md` (trigger, orden de candados, filtro sin subtransacción) y `docs/mecanica/personal-y-permisos.md` (permiso nuevo)
 - [ ] T054 `/revision-de-codigo` (incluido `security-auditor`) y cada hallazgo con su test
 - [ ] T055 Prueba con usuario nuevo (cajero y gerente de un negocio de comida) a 1280×854 y 2K; correos en mailpit

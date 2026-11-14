@@ -121,6 +121,7 @@ POS, datos inventados) a 1280×854 y 2560×1440.
 | 4. Franja | Una sola capa de avisos (un portal, capa 2000, columna) que apila el aviso de pedido de plataforma primero y la franja después, sin encimarse aunque el aviso crezca | Tarjeta roja de 560 px arriba al centro con «Ver» y «×» y barra de 90 s, a 8 px del borde; no sale en la tableta de quien reportó; espera mientras haya una hoja de captura abierta |
 | 5. Destinatarios | Almacén › pestaña «Avisos» (`inventory.configure`) | Tabla dentro de `Page`: una fila por persona (con su correo o «Sin correo: captúralo en Empleados») o correo extra (con «Quitar» como botón de 44 px), una columna por tipo de aviso con interruptores de área de 44 px; arriba la hora del resumen de la mañana con `Picker` en pasos de 15 min; «Agregar» correo extra abajo |
 | 6. Lista de compra | Almacén › pestaña «Lista de compra» (`inventory.view`) | Dentro de `Page` (mismo ancho que las demás pestañas): tarjetas por lugar de compra (proveedor de la última compra; «Sin lugar de compra» al final), cada renglón con estado, hay/mínimo, qué comprar y su porqué |
+| 8. Alertas por lote | Almacén › Insumos, botón «Alertas por lote» (`inventory.configure`) | Hoja a pantalla completa con buscador arriba y una tabla: insumo, hay, mínimo editable (en su unidad) e interruptor de alerta de 44 px; un solo «Guardar cambios (N)» que abre la misma confirmación de la ficha con el efecto de cada insumo. Los eventos y la franja quedan con su valor por omisión |
 | 7. Correo | Correo de bloque y de la mañana | Encabezado de marca con logo, tarjetas por aviso agrupadas por tipo con qué comprar y dónde, botón «Abrir en el sistema», pie con por qué te llega |
 
 ### Lo que cambió con la revisión de arquitectura (2026-11-14)
@@ -148,6 +149,7 @@ Del db-architect se tomaron todos los hallazgos; están en [data-model.md](data-
 | M4 Franja | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m4) | B | Patrón del aviso de pedido de plataforma; deja libre el buscador de Vender |
 | M5 Destinatarios | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m5) | A | Cada persona una vez; se lee de un vistazo quién recibe qué |
 | M6 Lista de compra | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m6) | B | La vuelta de compras sale ya armada por lugar |
+| M8 Alertas por lote | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m8) | B | Casi ningún insumo tiene mínimo: la tabla deja capturarlos en serie |
 | M7 Correo | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m7) | B | Se lee en el teléfono; 23.7 KB contra el límite de 102 KB |
 
 ## Project Structure

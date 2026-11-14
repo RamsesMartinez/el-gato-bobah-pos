@@ -275,8 +275,8 @@ enteros con su explicación; uno sin consumo medido lo dice y no sugiere cantida
 - Dos tabletas reportan «Se acabó» del mismo insumo en el mismo segundo: un solo ajuste a 0 y un solo
   aviso; la segunda suma su confirmación.
 - El doble toque manda la misma petición dos veces: la segunda devuelve el resultado de la primera.
-- «Se acabó» de un insumo con existencia 0 o negativa: no inserta ajuste (no hay qué restar) pero sí
-  abre el aviso.
+- «Se acabó» de un insumo con existencia 0: no inserta ajuste pero sí abre el aviso. Con existencia
+  negativa, el ajuste es positivo y la deja en 0 (la decisión es «deja la existencia en 0»).
 - «Deshacer» después de que llegó una compra o un conteo: se niega.
 - La existencia vuelve sobre el mínimo y vuelve a bajar en la misma ventana de 5 minutos: dos avisos
   en la campana, uno solo en el correo por el enfriamiento.
