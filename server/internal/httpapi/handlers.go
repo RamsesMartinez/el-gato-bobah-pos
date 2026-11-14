@@ -159,6 +159,8 @@ type Deps struct {
 }
 
 type Handlers struct {
+	// listEmails acota «Enviarme por correo» de la lista de compra (spec 084): 5 por hora y persona.
+	listEmails        *rateLimiter
 	stockOut          *app.StockOutService
 	notifications     *app.NotificationsService
 	cfg               config.Config

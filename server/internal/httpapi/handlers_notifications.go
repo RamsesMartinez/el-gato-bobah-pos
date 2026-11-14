@@ -271,3 +271,21 @@ func (h *Handlers) SetNotificationRecipients(w http.ResponseWriter, r *http.Requ
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// POST /stock/shopping-list/email — «Enviarme por correo». Con tope por persona: cada envío es un
+// correo real y el botón está a un toque.
+func (h *Handlers) EmailShoppingList(w http.ResponseWriter, r *http.Request) {
+	u, _ := userFrom(r.Context())
+	key := fmt.Sprintf("lista-correo:%d", u.ID)
+	if h.listEmails.blocked(r.Context(), key) {
+		tooManyRequests(w, h.listEmails.retryAfter(r.Context(), key))
+		return
+	}
+	h.listEmails.record(r.Context(), key)
+	to, err := h.notifications.EmailShoppingList(r.Context(), u.CompanyID, u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"sentTo": to})
+}

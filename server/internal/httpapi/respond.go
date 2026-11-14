@@ -340,6 +340,9 @@ func Error(w http.ResponseWriter, err error) {
 		// 501 y no 500: la extracción de documentos es opcional y no está configurada. Distinguirlo
 		// permite al front ofrecer la captura manual en vez de mostrar "error del servidor".
 		status, code = http.StatusNotImplemented, "NOT_CONFIGURED"
+	case errors.Is(err, app.ErrMailDisabled):
+		// Igual que la extracción: el correo es opcional en un servidor; la pantalla lo dice en palabras.
+		status, code, msg = http.StatusNotImplemented, "NOT_CONFIGURED", "Este servidor no tiene correo configurado"
 	}
 
 	if status == http.StatusInternalServerError {

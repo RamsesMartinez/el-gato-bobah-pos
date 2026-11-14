@@ -217,3 +217,61 @@ select a.item_type, a.id, a.name, a.unit_code, a.low_stock_enabled, a.min_stock,
 
 -- name: CompanyBranchCount :one
 select count(*)::int from branches where is_active;
+
+-- name: PendingEmailNotifications :many
+-- Lo que todavía no sale por correo y se abrió antes de `before` (el inicio del bloque en curso).
+select n.id, n.kind, n.status, n.item_key, n.branch_id, coalesce(n.item_name, '')::text as item_name,
+       coalesce(n.unit_code, '')::text as unit_code, coalesce(n.query_text, '')::text as query_text, n.opened_at,
+       coalesce(u.name, '')::text as opened_by_name, coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen,
+       coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count
+  from notifications n
+  left join users u on u.id = n.opened_by
+ where n.email_state = 'pending' and n.opened_at < sqlc.arg(before)
+ order by n.opened_at, n.id;
+
+-- name: LastEmailedAt :one
+-- La última vez que un artículo salió en un correo (para el enfriamiento de 12 h). Época si nunca.
+select coalesce(max(s.sent_at), 'epoch'::timestamptz)::timestamptz
+  from notifications n join notification_email_sends s on s.id = n.email_send_id
+ where n.item_key = sqlc.arg(item_key) and n.kind <> 'not_found' and n.email_state = 'sent';
+
+-- name: ClaimNotificationSend :many
+-- La fila se toma ANTES de mandar: dos APIs vivas o un reinicio no mandan dos veces. Solo se vuelve a
+-- tomar una fallida o una pendiente colgada más de 10 minutos, hasta 5 intentos.
+insert into notification_email_sends (kind, period_key, status, attempts) values (sqlc.arg(kind), sqlc.arg(period_key), 'pending', 1)
+on conflict (company_id, kind, period_key) do update
+   set status = 'pending', attempts = notification_email_sends.attempts + 1, last_error = null
+ where notification_email_sends.attempts < 5
+   and (notification_email_sends.status = 'failed'
+        or (notification_email_sends.status = 'pending' and notification_email_sends.created_at < now() - interval '10 minutes'))
+returning id;
+
+-- name: FinishNotificationSend :exec
+update notification_email_sends
+   set status = sqlc.arg(status), recipients = sqlc.arg(recipients), last_error = sqlc.narg(last_error),
+       sent_at = case when sqlc.arg(status)::text = 'sent' then now() end
+ where id = sqlc.arg(id);
+
+-- name: MarkNotificationsEmailed :exec
+update notifications set email_state = sqlc.arg(state), email_send_id = sqlc.narg(send_id)
+ where id = any(sqlc.arg(ids)::bigint[]) and email_state = 'pending';
+
+-- name: MorningSendExists :one
+select exists (select 1 from notification_email_sends where kind = 'morning' and period_key = sqlc.arg(period_key) and status in ('sent', 'empty'))::bool;
+
+-- name: OpenNotificationsForMorning :many
+select n.id, n.kind, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
+       coalesce(n.query_text, '')::text as query_text, n.opened_at, coalesce(u.name, '')::text as opened_by_name,
+       coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen, coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count
+  from notifications n left join users u on u.id = n.opened_by
+ where n.status = 'open'
+ order by n.kind, n.opened_at;
+
+-- name: EnabledLowStockItems :many
+-- Para el barrido de la mañana: si un aviso se perdió (una falla del trigger), se vuelve a evaluar.
+select 'ingrediente'::stock_item_type as item_type, id from ingredients where is_active and low_stock_enabled
+union all
+select 'producto'::stock_item_type, id from products where is_active and track_stock and low_stock_enabled;
+
+-- name: BusinessNameForEmail :one
+select coalesce(nullif(business_name, ''), 'Tu negocio')::text from business_settings limit 1;

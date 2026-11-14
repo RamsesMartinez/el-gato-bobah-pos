@@ -510,6 +510,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/stock/articles/{id}/low-stock", h.GetLowStock("ingrediente"))
 					r.Get("/stock/products/{id}/low-stock", h.GetLowStock("producto"))
 					r.Get("/stock/shopping-list", h.ShoppingList)
+					r.Post("/stock/shopping-list/email", h.EmailShoppingList)
 				})
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Group(func(r chi.Router) {
 					r.Put("/stock/articles/{id}/low-stock", h.PutLowStock("ingrediente"))

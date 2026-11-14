@@ -224,6 +224,7 @@ POST /api/v1/stock/movements admin,gerente
 POST /api/v1/stock/not-found admin,gerente,cajero,mesero
 POST /api/v1/stock/out-reports admin,gerente,cajero,mesero
 POST /api/v1/stock/out-reports/{id}/undo admin,gerente,cajero,mesero
+POST /api/v1/stock/shopping-list/email admin,gerente
 POST /api/v1/suppliers admin,gerente
 POST /api/v1/usage admin,gerente,cajero,mesero
 POST /api/v1/users/ admin

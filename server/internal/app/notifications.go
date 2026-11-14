@@ -20,6 +20,22 @@ import (
 type NotificationsService struct {
 	store *store.Store
 	now   func() time.Time
+	// mail manda la lista de compra a quien la pide; nil = sin correo configurado.
+	mail *NotificationMailer
+}
+
+// WithMail le da al servicio el despachador de correo («Enviarme por correo»).
+func (s *NotificationsService) WithMail(m *NotificationMailer) *NotificationsService {
+	s.mail = m
+	return s
+}
+
+// EmailShoppingList manda la lista de compra al correo de quien la pide.
+func (s *NotificationsService) EmailShoppingList(ctx context.Context, company, user int64) (string, error) {
+	if s.mail == nil {
+		return "", ErrMailDisabled
+	}
+	return s.mail.SendShoppingListTo(ctx, company, user)
 }
 
 // NewNotificationsService arma el servicio.

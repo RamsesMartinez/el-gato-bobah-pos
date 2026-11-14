@@ -116,11 +116,11 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 
 **Independent Test**: tres avisos en un bloque = un correo; enfriamiento; resumen una vez por día aunque se reinicie.
 
-- [ ] T039 [P] [US6] Tests `server/internal/mailtpl/mailtpl_test.go`: golden por plantilla, < 102 KB, colores de marca, logo PNG absoluto, escape de lo escrito por personas
-- [ ] T040 [US6] Plantillas `emails/layout.mjml`, `stock-window.mjml`, `stock-morning.mjml` (Maquetas M7, opción B), compiladas a `server/internal/mailtpl/templates/` y `server/internal/mailtpl/mailtpl.go` (`go:embed` + `html/template`)
-- [ ] T041 [P] [US6] Paso de CI en `.github/workflows/ci.yml` (y en `scripts/ci-local.sh`): `bun run compilar-correos && git diff --exit-code server/internal/mailtpl`
-- [ ] T042 [P] [US6] Tests con reloj falso en `server/internal/integration/notification_mailer_test.go`: `TestOneEmailPerWindow`, `TestResolvedBeforeTheWindowIsNotEmailed`, `TestCooldownPerItem`, `TestMorningSummaryOncePerDayAcrossRestarts`, `TestMorningSummaryUsesTheBusinessTimezone`, `TestAMailFailureRetriesAndNeverBlocksASale`, y dos procesos reclamando el mismo bloque
-- [ ] T043 [US6] `NotificationMailer` en `server/internal/app/notification_mailer.go` (bloques, enfriamiento, mañana con barrido de reevaluación, reclamo por fila) y cableado en `server/cmd/api/main.go`
+- [X] T039 [P] [US6] Tests `server/internal/mailtpl/mailtpl_test.go`: golden por plantilla, < 102 KB, colores de marca, logo PNG absoluto, escape de lo escrito por personas
+- [X] T040 [US6] Plantillas `emails/layout.mjml`, `stock-window.mjml`, `stock-morning.mjml` (Maquetas M7, opción B), compiladas a `server/internal/mailtpl/templates/` y `server/internal/mailtpl/mailtpl.go` (`go:embed` + `html/template`)
+- [X] T041 [P] [US6] Paso de CI en `.github/workflows/ci.yml` (y en `scripts/ci-local.sh`): `bun run compilar-correos && git diff --exit-code server/internal/mailtpl`
+- [X] T042 [P] [US6] Tests con reloj falso en `server/internal/integration/notification_mailer_test.go`: `TestOneEmailPerWindow`, `TestResolvedBeforeTheWindowIsNotEmailed`, `TestCooldownPerItem`, `TestMorningSummaryOncePerDayAcrossRestarts`, `TestMorningSummaryUsesTheBusinessTimezone`, `TestAMailFailureRetriesAndNeverBlocksASale`, y dos procesos reclamando el mismo bloque
+- [X] T043 [US6] `NotificationMailer` en `server/internal/app/notification_mailer.go` (bloques, enfriamiento, mañana con barrido de reevaluación, reclamo por fila) y cableado en `server/cmd/api/main.go`
 
 ---
 
@@ -137,8 +137,8 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 - [X] T047 [P] [US8] Tests de dominio `TestSuggestPurchase` (redondeo a empaques enteros del menor costo, sin consumo no sugiere, cobertura vacía = 14, existencia negativa pide conteo, el porqué) en `server/internal/domain/shopping_list_test.go`
 - [X] T048 [US8] `domain.SuggestPurchase` en `server/internal/domain/shopping_list.go`
 - [X] T049 [P] [US8] Test de integración `TestShoppingListExcludesOutReportsFromConsumption` y agrupado por proveedor de la última compra en `server/internal/integration/shopping_list_test.go`
-- [ ] T050 [US8] Consulta y ruta `GET /stock/shopping-list` (una sola consulta para pantalla y correo) y `POST /stock/shopping-list/email` («Enviarme por correo», al correo de quien lo pide, con el tope de envío por persona) en `server/internal/app/notifications.go`
-- [ ] T051 [US8] Pestaña «Lista de compra» en Almacén `web/src/features/notificaciones/ListaDeCompra.tsx` (Maquetas M6, opción B v2) con su test
+- [X] T050 [US8] Consulta y ruta `GET /stock/shopping-list` (una sola consulta para pantalla y correo) y `POST /stock/shopping-list/email` («Enviarme por correo», al correo de quien lo pide, con el tope de envío por persona) en `server/internal/app/notifications.go`
+- [X] T051 [US8] Pestaña «Lista de compra» en Almacén `web/src/features/notificaciones/ListaDeCompra.tsx` (Maquetas M6, opción B v2) con su test
 
 ---
 

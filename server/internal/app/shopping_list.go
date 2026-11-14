@@ -7,7 +7,10 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
+
+func decimalFrom(s string) (decimal.Decimal, error) { return decimal.NewFromString(s) }
 
 // La lista de compra (spec 084, historia 8). Una sola consulta para la pantalla y el correo de la
 // mañana; cuánto comprar lo decide domain.SuggestPurchase.
@@ -37,7 +40,11 @@ type ShoppingLine struct {
 
 // ShoppingList arma la lista de la sucursal de la sesión. Nunca nil.
 func (s *NotificationsService) ShoppingList(ctx context.Context) ([]ShoppingLine, error) {
-	q := s.store.QC(ctx)
+	return shoppingListIn(ctx, s.store.QC(ctx))
+}
+
+// shoppingListIn es la lista dentro de una transacción ajena (el correo de la mañana).
+func shoppingListIn(ctx context.Context, q *db.Queries) ([]ShoppingLine, error) {
 	now, err := q.DBNow(ctx)
 	if err != nil {
 		return nil, err

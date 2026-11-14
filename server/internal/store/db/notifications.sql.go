@@ -13,6 +13,54 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const businessNameForEmail = `-- name: BusinessNameForEmail :one
+select coalesce(nullif(business_name, ''), 'Tu negocio')::text from business_settings limit 1
+`
+
+func (q *Queries) BusinessNameForEmail(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, businessNameForEmail)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const claimNotificationSend = `-- name: ClaimNotificationSend :many
+insert into notification_email_sends (kind, period_key, status, attempts) values ($1, $2, 'pending', 1)
+on conflict (company_id, kind, period_key) do update
+   set status = 'pending', attempts = notification_email_sends.attempts + 1, last_error = null
+ where notification_email_sends.attempts < 5
+   and (notification_email_sends.status = 'failed'
+        or (notification_email_sends.status = 'pending' and notification_email_sends.created_at < now() - interval '10 minutes'))
+returning id
+`
+
+type ClaimNotificationSendParams struct {
+	Kind      string `json:"kind"`
+	PeriodKey string `json:"period_key"`
+}
+
+// La fila se toma ANTES de mandar: dos APIs vivas o un reinicio no mandan dos veces. Solo se vuelve a
+// tomar una fallida o una pendiente colgada más de 10 minutos, hasta 5 intentos.
+func (q *Queries) ClaimNotificationSend(ctx context.Context, arg ClaimNotificationSendParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, claimNotificationSend, arg.Kind, arg.PeriodKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const companyBranchCount = `-- name: CompanyBranchCount :one
 select count(*)::int from branches where is_active
 `
@@ -143,6 +191,38 @@ func (q *Queries) DismissAsUndone(ctx context.Context, arg DismissAsUndoneParams
 	return err
 }
 
+const enabledLowStockItems = `-- name: EnabledLowStockItems :many
+select 'ingrediente'::stock_item_type as item_type, id from ingredients where is_active and low_stock_enabled
+union all
+select 'producto'::stock_item_type, id from products where is_active and track_stock and low_stock_enabled
+`
+
+type EnabledLowStockItemsRow struct {
+	ItemType StockItemType `json:"item_type"`
+	ID       int64         `json:"id"`
+}
+
+// Para el barrido de la mañana: si un aviso se perdió (una falla del trigger), se vuelve a evaluar.
+func (q *Queries) EnabledLowStockItems(ctx context.Context) ([]EnabledLowStockItemsRow, error) {
+	rows, err := q.db.Query(ctx, enabledLowStockItems)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EnabledLowStockItemsRow{}
+	for rows.Next() {
+		var i EnabledLowStockItemsRow
+		if err := rows.Scan(&i.ItemType, &i.ID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const evaluateLowStock = `-- name: EvaluateLowStock :exec
 select evaluate_low_stock(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint,
                           $2::stock_item_type, $3::bigint, $4::bigint)
@@ -163,6 +243,30 @@ func (q *Queries) EvaluateLowStock(ctx context.Context, arg EvaluateLowStockPara
 		arg.ItemType,
 		arg.IngredientID,
 		arg.ProductID,
+	)
+	return err
+}
+
+const finishNotificationSend = `-- name: FinishNotificationSend :exec
+update notification_email_sends
+   set status = $1, recipients = $2, last_error = $3,
+       sent_at = case when $1::text = 'sent' then now() end
+ where id = $4
+`
+
+type FinishNotificationSendParams struct {
+	Status     string  `json:"status"`
+	Recipients int16   `json:"recipients"`
+	LastError  *string `json:"last_error"`
+	ID         int64   `json:"id"`
+}
+
+func (q *Queries) FinishNotificationSend(ctx context.Context, arg FinishNotificationSendParams) error {
+	_, err := q.db.Exec(ctx, finishNotificationSend,
+		arg.Status,
+		arg.Recipients,
+		arg.LastError,
+		arg.ID,
 	)
 	return err
 }
@@ -199,6 +303,20 @@ func (q *Queries) GetNotificationForUpdate(ctx context.Context, id int64) (GetNo
 		&i.OpenedBy,
 	)
 	return i, err
+}
+
+const lastEmailedAt = `-- name: LastEmailedAt :one
+select coalesce(max(s.sent_at), 'epoch'::timestamptz)::timestamptz
+  from notifications n join notification_email_sends s on s.id = n.email_send_id
+ where n.item_key = $1 and n.kind <> 'not_found' and n.email_state = 'sent'
+`
+
+// La última vez que un artículo salió en un correo (para el enfriamiento de 12 h). Época si nunca.
+func (q *Queries) LastEmailedAt(ctx context.Context, itemKey *int64) (time.Time, error) {
+	row := q.db.QueryRow(ctx, lastEmailedAt, itemKey)
+	var column_1 time.Time
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const listLowStockConfigs = `-- name: ListLowStockConfigs :many
@@ -495,6 +613,22 @@ func (q *Queries) MarkLowStockAsked(ctx context.Context, id int64) (int64, error
 	return result.RowsAffected(), nil
 }
 
+const markNotificationsEmailed = `-- name: MarkNotificationsEmailed :exec
+update notifications set email_state = $1, email_send_id = $2
+ where id = any($3::bigint[]) and email_state = 'pending'
+`
+
+type MarkNotificationsEmailedParams struct {
+	State  string  `json:"state"`
+	SendID *int64  `json:"send_id"`
+	Ids    []int64 `json:"ids"`
+}
+
+func (q *Queries) MarkNotificationsEmailed(ctx context.Context, arg MarkNotificationsEmailedParams) error {
+	_, err := q.db.Exec(ctx, markNotificationsEmailed, arg.State, arg.SendID, arg.Ids)
+	return err
+}
+
 const markNotificationsRead = `-- name: MarkNotificationsRead :exec
 insert into notification_reads (notification_id, user_id, read_at)
 select n.id, $1, now() from notifications n where n.id = any($2::bigint[])
@@ -536,6 +670,17 @@ func (q *Queries) MergeLowStockInto(ctx context.Context, arg MergeLowStockIntoPa
 	return err
 }
 
+const morningSendExists = `-- name: MorningSendExists :one
+select exists (select 1 from notification_email_sends where kind = 'morning' and period_key = $1 and status in ('sent', 'empty'))::bool
+`
+
+func (q *Queries) MorningSendExists(ctx context.Context, periodKey string) (bool, error) {
+	row := q.db.QueryRow(ctx, morningSendExists, periodKey)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const moveLowStockOnUnitChange = `-- name: MoveLowStockOnUnitChange :exec
 update branch_stock_minimums
    set ingredient_id = $1, min_stock = round(min_stock * $2::numeric, 4), updated_at = now()
@@ -562,6 +707,121 @@ select pg_notify('notifications', nullif(current_setting('app.company_id', true)
 func (q *Queries) NotifyNotificationsChanged(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, notifyNotificationsChanged)
 	return err
+}
+
+const openNotificationsForMorning = `-- name: OpenNotificationsForMorning :many
+select n.id, n.kind, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
+       coalesce(n.query_text, '')::text as query_text, n.opened_at, coalesce(u.name, '')::text as opened_by_name,
+       coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen, coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count
+  from notifications n left join users u on u.id = n.opened_by
+ where n.status = 'open'
+ order by n.kind, n.opened_at
+`
+
+type OpenNotificationsForMorningRow struct {
+	ID           int64           `json:"id"`
+	Kind         string          `json:"kind"`
+	ItemName     string          `json:"item_name"`
+	UnitCode     string          `json:"unit_code"`
+	QueryText    string          `json:"query_text"`
+	OpenedAt     time.Time       `json:"opened_at"`
+	OpenedByName string          `json:"opened_by_name"`
+	OnHandSeen   decimal.Decimal `json:"on_hand_seen"`
+	MinSeen      decimal.Decimal `json:"min_seen"`
+	NeedsCount   bool            `json:"needs_count"`
+}
+
+func (q *Queries) OpenNotificationsForMorning(ctx context.Context) ([]OpenNotificationsForMorningRow, error) {
+	rows, err := q.db.Query(ctx, openNotificationsForMorning)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OpenNotificationsForMorningRow{}
+	for rows.Next() {
+		var i OpenNotificationsForMorningRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.ItemName,
+			&i.UnitCode,
+			&i.QueryText,
+			&i.OpenedAt,
+			&i.OpenedByName,
+			&i.OnHandSeen,
+			&i.MinSeen,
+			&i.NeedsCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pendingEmailNotifications = `-- name: PendingEmailNotifications :many
+select n.id, n.kind, n.status, n.item_key, n.branch_id, coalesce(n.item_name, '')::text as item_name,
+       coalesce(n.unit_code, '')::text as unit_code, coalesce(n.query_text, '')::text as query_text, n.opened_at,
+       coalesce(u.name, '')::text as opened_by_name, coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen,
+       coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count
+  from notifications n
+  left join users u on u.id = n.opened_by
+ where n.email_state = 'pending' and n.opened_at < $1
+ order by n.opened_at, n.id
+`
+
+type PendingEmailNotificationsRow struct {
+	ID           int64           `json:"id"`
+	Kind         string          `json:"kind"`
+	Status       string          `json:"status"`
+	ItemKey      *int64          `json:"item_key"`
+	BranchID     int64           `json:"branch_id"`
+	ItemName     string          `json:"item_name"`
+	UnitCode     string          `json:"unit_code"`
+	QueryText    string          `json:"query_text"`
+	OpenedAt     time.Time       `json:"opened_at"`
+	OpenedByName string          `json:"opened_by_name"`
+	OnHandSeen   decimal.Decimal `json:"on_hand_seen"`
+	MinSeen      decimal.Decimal `json:"min_seen"`
+	NeedsCount   bool            `json:"needs_count"`
+}
+
+// Lo que todavía no sale por correo y se abrió antes de `before` (el inicio del bloque en curso).
+func (q *Queries) PendingEmailNotifications(ctx context.Context, before time.Time) ([]PendingEmailNotificationsRow, error) {
+	rows, err := q.db.Query(ctx, pendingEmailNotifications, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PendingEmailNotificationsRow{}
+	for rows.Next() {
+		var i PendingEmailNotificationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Status,
+			&i.ItemKey,
+			&i.BranchID,
+			&i.ItemName,
+			&i.UnitCode,
+			&i.QueryText,
+			&i.OpenedAt,
+			&i.OpenedByName,
+			&i.OnHandSeen,
+			&i.MinSeen,
+			&i.NeedsCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const replacementOf = `-- name: ReplacementOf :one
