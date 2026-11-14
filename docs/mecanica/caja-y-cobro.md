@@ -69,3 +69,47 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     o nunca podrá abrir. Lo dice la ayuda del horario, no una regla. El grupo `/cash-sessions` sigue
     con `RequireRole` por exención firmada (plan de la 046): la siguiente feature que lo toque lo
     migra completo a permisos.
+- **La diferencia de un corte** (#290, spec 082). Tres cosas que no se ven:
+  - **Una sola regla, en `domain.CutDifference`**: la usan la lista del Histórico, el detalle y la
+    respuesta del cierre. `ListSessions` ya no suma: trae las piezas (diferencia de los métodos
+    fuera y dentro del cajón, esperado y contado del conteo de cierre) y Go las junta. Una pantalla o
+    un reporte nuevo que sume diferencias por su cuenta vuelve a dar dos cifras del mismo corte.
+  - **Con arqueo, los métodos del cajón no suman a la conciliación**: desde la 0067 su renglón guarda
+    contado = esperado y su diferencia vive en `session_cash_counts`. La conciliación los pinta con
+    «ver arqueo». Sin arqueo con esperado (cortes anteriores a la 0067) el efectivo declarado sí
+    cuenta ahí.
+  - **El motivo de apertura explica el corte ANTERIOR de su caja** (`explainedByNext`). Se busca con
+    un `left join lateral` por `register_id` y no con una ventana `lead`: la ventana corre después
+    del filtro y del `limit`, y la última fila de cada página perdía su explicación. La nota viaja
+    como `reasonNote`: el MCP borra las llaves `note`/`notes` por ser texto de terceros.
+- **Correcciones de un corte cerrado** (#290, spec 082, 0113). Cuatro cosas que no se ven:
+  - **Lo firmado no se escribe nunca.** `session_cash_counts`, `register_session_totals` y
+    `register_sessions.float_left` se quedan como al cerrar; la corrección vive en
+    `cash_session_adjustments` y la diferencia corregida se calcula al leer (`withCorrectedCount`,
+    `historyRowDifference`). Un reporte nuevo que lea el conteo directo reporta lo firmado, no lo
+    corregido: que pase por la misma función.
+  - **Un reverso solo revierte una corrección de SU corte y una vez**: la llave del reverso es
+    `(company_id, session_id, reverses_id)` y hay un índice único sobre `reverses_id`; dos tabletas
+    que revierten a la vez reciben 409 `ALREADY_REVERSED` la segunda. Revertir un reverso lo impide el
+    servicio (`domain.CanReverseAdjustment`), no la base.
+  - **Corregir el corte anterior no mueve el turno abierto de esa caja**: su esperado lo fijó su conteo
+    de apertura. Corregir el fondo es un dato del corte, no un cambio de lo que se abrió.
+  - **El correo del resumen diario sale al cerrar** y es una foto de lo firmado: no se reenvía al
+    corregir. Tras desplegar la 0113, el rollback es hacia adelante en cuanto hay correcciones (su
+    Down se niega).
+- **Cierre por pasos, tolerancia y «Por explicar»** (#290, spec 082 fase 4, 0114). Cuatro cosas que
+  no se ven:
+  - **Lo que impide cerrar es una sola lista**: `pendientesDelCierre` (en
+    `web/src/features/caja/cierreDeCaja.ts`). El botón final, el estado de cada paso y la lista «Para
+    cerrar falta» salen de ella. Una condición nueva que apague el botón sin entrar a esa lista vuelve
+    al defecto de #251 (nueve condiciones, cuatro nombradas). El servidor sigue siendo la barrera.
+  - **El borrador del cierre vive en el aparato** (`localStorage`, `egb:cierre:<caja>:<sesión>`): una
+    recarga no pierde lo capturado; si otra tableta cerró ese turno, el borrador se descarta y se
+    avisa. No viaja a otra tableta.
+  - **«Por explicar» se calcula con la tolerancia de HOY** (`domain.CutNeedsExplanation`): subir o
+    bajar la tolerancia reclasifica cortes pasados. Un corte deja de estarlo con una nota vigente o
+    con el motivo de la apertura siguiente. Solo lo ve quien configura la caja; con arqueo ciego no
+    se pide explicación al cerrar (explicar una diferencia que no se ve es adivinarla), y el
+    servidor responde 403 si se manda sin el permiso.
+  - **La explicación del cierre se guarda como nota** (`cash_session_adjustments`, tipo `note`) en
+    la misma transacción del cierre: si el cierre falla, no queda nota huérfana.

@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { marcarEntrada, marcarSalidaEnElCierre } from './asistencia';
 import { iniciarSesion } from './sesion';
 import { API, tokenDeApi } from './ambiente';
+import { alPasoDelCierre, cerrarConElAsistente, contarEnElCierre, detalleDelCorte } from './cierre';
 
 // CONTAR EL CAJÓN, MEDIDO EN LA TABLETA (spec 003).
 //
@@ -133,11 +134,8 @@ test('C4 · contar 40 monedas se teclea, y el total es el que suma el servidor',
 
   // Y SE DEJA COMO ESTABA: la caja se abrió para probar, así que se cierra contando lo mismo. Un
   // turno de prueba que se queda abierto suma a "por cobrar" y bloquea el cierre de quien opera.
-  await page.getByRole('button', { name: 'Contar efectivo' }).click();
-  await expect(page.getByLabel('Piezas de $10', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await page.getByLabel('Piezas de $10', { exact: true }).fill('40');
-  await page.getByLabel('Piezas de $50', { exact: true }).fill('3');
-  await page.getByRole('button', { name: 'Usar este conteo' }).click();
+  await contarEnElCierre(page, { 'Piezas de $10': '40', 'Piezas de $50': '3' });
+  await alPasoDelCierre(page, 'Diferencia y cierre');
 
   // La diferencia se ve ANTES de cerrar, que es FR-005. Con el arqueo ciego, al contrario: no se ve
   // hasta confirmar (el esperado no viaja), y aparece en el resumen del cierre.
@@ -145,7 +143,7 @@ test('C4 · contar 40 monedas se teclea, y el total es el que suma el servidor',
     await expect(page.getByLabel('Diferencia del arqueo')).toHaveCount(0);
   } else {
     await expect(page.getByLabel('Diferencia del arqueo')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText('El arqueo cuadra')).toBeVisible();
+    await expect(page.getByLabel('Diferencia del arqueo')).toContainText('Cuadra');
   }
 
   await cerrarLaCaja(page);
@@ -168,11 +166,8 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
   await abrirLaCaja(page);
   await expect(page.getByText('Fondo inicial', { exact: true })).toBeVisible({ timeout: 30_000 });
 
-  await page.getByRole('button', { name: 'Contar efectivo' }).click();
-  await expect(page.getByLabel('Piezas de $100', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await page.getByLabel('Piezas de $100', { exact: true }).fill('4');
-  await page.getByLabel('Piezas de $50', { exact: true }).fill('1');
-  await page.getByRole('button', { name: 'Usar este conteo' }).click();
+  await contarEnElCierre(page, { 'Piezas de $100': '4', 'Piezas de $50': '1' });
+  await alPasoDelCierre(page, 'Diferencia y cierre');
 
   // SIN TOCAR «Cerrar caja»: el faltante ya está a la vista. Es FR-005, y antes solo se veía en el
   // diálogo POSTERIOR al cierre, cuando el corte ya estaba firmado.
@@ -181,8 +176,8 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
   if (ciego) {
     await expect(page.getByLabel('Diferencia del arqueo')).toHaveCount(0);
   } else {
-    await expect(page.getByLabel('Diferencia del arqueo')).toHaveText('-$50');
-    await expect(page.getByText('Faltante')).toBeVisible();
+    // Con palabra y signo, no solo color (#290).
+    await expect(page.getByLabel('Diferencia del arqueo')).toHaveText('Faltante−$50.00');
   }
 
   // Y un faltante NO bloquea el cierre: si bloqueara, el operador se queda con la caja abierta toda
@@ -198,13 +193,15 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
   // $100 y 1 de $50".
   await page.getByRole('tab', { name: 'Histórico' }).click();
   await page.getByRole('row').nth(1).click();
-  await expect(page.getByText('Efectivo contado')).toBeVisible({ timeout: 30_000 });
+  const detalle = detalleDelCorte(page);
+  await expect(detalle.getByText('Efectivo contado')).toBeVisible({ timeout: 30_000 });
   // El faltante queda en el corte cerrado, con o sin arqueo ciego: con el ciego es el primer lugar
   // donde se ve.
-  await expect(page.getByRole('dialog').last().getByText(/-\$50/).first()).toBeVisible();
-  await page.getByText('Efectivo contado').click();
-  await expect(page.getByText('Al cerrar')).toBeVisible();
-  await expect(page.getByText('Al abrir')).toBeVisible();
+  await expect(detalleDelCorte(page).getByText('−$50.00').first()).toBeVisible();
+  await detalle.getByText('Efectivo contado').click();
+  // exact: el detalle ahora dice también «Motivo al abrir» (#290).
+  await expect(detalle.getByText('Al cerrar', { exact: true })).toBeVisible();
+  await expect(detalle.getByText('Al abrir', { exact: true })).toBeVisible();
 });
 
 test('C6 · el total a mano exige motivo, y cambiar de camino avisa antes de borrar', async ({ page }) => {
@@ -231,10 +228,7 @@ test('C6 · el total a mano exige motivo, y cambiar de camino avisa antes de bor
   await expect(page.getByText('Fondo inicial', { exact: true })).toBeVisible({ timeout: 30_000 });
 
   // Y se deja como estaba.
-  await page.getByRole('button', { name: 'Contar efectivo' }).click();
-  await expect(page.getByLabel('Piezas de $200', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await page.getByLabel('Piezas de $200', { exact: true }).fill('2');
-  await page.getByRole('button', { name: 'Usar este conteo' }).click();
+  await contarEnElCierre(page, { 'Piezas de $200': '2' });
   await cerrarLaCaja(page);
   await expect(page.getByText('Caja cerrada')).toBeVisible({ timeout: 30_000 });
 });
@@ -282,10 +276,8 @@ test('C7 · un corte anterior a la funcionalidad no muestra desglose ni lo inven
   await expect(filas.nth(indice + 1)).toBeVisible({ timeout: 30_000 });
   await filas.nth(indice + 1).click();
 
-  // TODO se afirma DENTRO del diálogo: a 1024×600 el corte se abre así, y el panel lateral existe
-  // en el árbol pero oculto. Sin acotar, el localizador cae en la copia invisible y el assert espera
-  // 30 segundos a algo que nunca se va a ver.
-  const dialogo = page.locator('[role="dialog"]').first();
+  // Todo se afirma dentro del detalle: panel al lado desde 1024 px (#290), diálogo en angosto.
+  const dialogo = detalleDelCorte(page);
   // Por su identificador: si la posición no corresponde, falla aquí nombrando el corte equivocado.
   await expect(dialogo.getByRole('heading', { name: `Corte #${corteId}` })).toBeVisible({ timeout: 30_000 });
   await expect(dialogo.getByText('Monto inicial')).toBeVisible({ timeout: 30_000 });
@@ -297,9 +289,7 @@ test('C7 · un corte anterior a la funcionalidad no muestra desglose ni lo inven
 // «Cerrar caja» pregunta en una hoja de la app (spec 030): ya no hay `confirm()` del navegador que
 // aceptar. Se toca el botón y después el de la hoja.
 async function cerrarLaCaja(page: Page) {
-  await dejarTodoEnElCajon(page);
-  await page.getByRole('button', { name: 'Cerrar caja' }).click();
-  await page.getByRole('dialog').last().getByRole('button', { name: 'Cerrar caja' }).click();
+  await cerrarConElAsistente(page);
 }
 
 // arqueoCiego: si la empresa cuenta a ciegas. Cambia lo que el cierre puede mostrar antes de confirmar,

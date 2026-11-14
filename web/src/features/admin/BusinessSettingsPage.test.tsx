@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
 import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router';
 
 const businessSettings = vi.hoisted(() => vi.fn());
 const paymentMethods = vi.hoisted(() => vi.fn());
@@ -44,7 +45,7 @@ function pinta(nodo: ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <ChakraProvider value={defaultSystem}>
-      <QueryClientProvider client={qc}>{nodo}</QueryClientProvider>
+      <QueryClientProvider client={qc}><MemoryRouter>{nodo}</MemoryRouter></QueryClientProvider>
     </ChakraProvider>,
   );
 }

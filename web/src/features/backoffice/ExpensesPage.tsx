@@ -19,7 +19,7 @@ import { SortHead } from '../../components/SortHead';
 import { ExpenseDialog } from './ExpenseDialog';
 import { DrawerOutField, IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
-import { CANCEL_SHORTCUTS, activeRegisters, registerLabel, outsideAskOf, countsInDrawer, drawerExtraOf, withCountChoice, type CountChoice, type OutsideAsk } from './cajaDelGasto';
+import { CANCEL_SHORTCUTS, activeRegisters, registerLabel, outsideAskOf, countsInDrawer, drawerExtraOf, withCountChoice, type CountChoice, type OutsideAsk } from '../../shared/cajaDelGasto';
 import { ExpenseDetailDialog } from './ExpenseDetailDialog';
 import { DeliveryForExpense } from './DeliverySheet';
 import { can } from '../../app/permissions';

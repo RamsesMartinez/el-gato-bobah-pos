@@ -7,7 +7,7 @@ import { Provider } from '../../components/ui/provider';
 import { ExpenseDialog } from './ExpenseDialog';
 import { PayDialog } from './ExpensesPage';
 import { ApiError } from '../../api/client';
-import { OUTSIDE_COUNT_TEXT, BEFORE_LAST_CLOSE_TEXT } from './cajaDelGasto';
+import { OUTSIDE_COUNT_TEXT, BEFORE_LAST_CLOSE_TEXT } from '../../shared/cajaDelGasto';
 import { useSessionStore } from '../../stores/session';
 
 const units = [

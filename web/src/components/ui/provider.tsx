@@ -5,6 +5,7 @@ import {
   ColorModeProvider,
   type ColorModeProviderProps,
 } from "./color-mode"
+import { FALTANTE, SOBRANTE } from "../../theme/diferencia"
 
 // Inter: diseñada para pantalla, x-height alto → legible en 7". tabular-nums global
 // mantiene precios/cantidades alineados (los dígitos no "bailan" al cambiar de valor).
@@ -75,6 +76,9 @@ const system = createSystem(
           fg: {
             error: { value: { _light: "{colors.red.700}", _dark: "{colors.red.400}" } },
             success: { value: { _light: "{colors.green.700}", _dark: "{colors.green.400}" } },
+            // Faltante y sobrante de caja (#290): ver theme/diferencia.ts.
+            shortage: { value: { _light: FALTANTE.light, _dark: FALTANTE.dark } },
+            overage: { value: { _light: SOBRANTE.light, _dark: SOBRANTE.dark } },
           },
           brand: {
             // 600 y no 500: con el 500 el texto blanco del botón queda en 4.29:1 (spec 044).

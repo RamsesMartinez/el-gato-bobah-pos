@@ -908,6 +908,7 @@ type BusinessSetting struct {
 	CostingMethod             string             `json:"costing_method"`
 	StockItemLabel            string             `json:"stock_item_label"`
 	WasteApprovalThreshold    *decimal.Decimal   `json:"waste_approval_threshold"`
+	CashDifferenceTolerance   decimal.Decimal    `json:"cash_difference_tolerance"`
 }
 
 type CandidatasDelAviso struct {
@@ -956,6 +957,20 @@ type CashRegister struct {
 	BranchID   int64            `json:"branch_id"`
 	FixedFloat *decimal.Decimal `json:"fixed_float"`
 	CountsCash bool             `json:"counts_cash"`
+}
+
+type CashSessionAdjustment struct {
+	ID           int64            `json:"id"`
+	CompanyID    int64            `json:"company_id"`
+	SessionID    int64            `json:"session_id"`
+	Kind         string           `json:"kind"`
+	BeforeAmount *decimal.Decimal `json:"before_amount"`
+	AfterAmount  *decimal.Decimal `json:"after_amount"`
+	Reason       string           `json:"reason"`
+	Note         string           `json:"note"`
+	ReversesID   *int64           `json:"reverses_id"`
+	CreatedBy    int64            `json:"created_by"`
+	CreatedAt    time.Time        `json:"created_at"`
 }
 
 type CashTransfer struct {

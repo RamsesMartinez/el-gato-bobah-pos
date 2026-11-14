@@ -4,6 +4,7 @@ import { marcarSalida } from './asistencia';
 import { API, tokenDeApi } from './ambiente';
 import { iniciarSesion } from './sesion';
 import { pedidoPorApi, entregarPorApi } from './pos';
+import { alPasoDelCierre } from './cierre';
 
 // ARQUEO CIEGO EN LA TABLETA (spec 015, US3).
 //
@@ -112,12 +113,12 @@ async function venderEnEfectivo() {
 
 let comoEstaba = false;
 
-// cierreOCajaCerrada espera a que la caja termine de pintarse. El bloque del cierre se monta hasta que
-// responde la consulta de asistencia (spec 046): preguntar por él en cuanto aparece la pestaña lo
-// daba por ausente y la prueba se saltaba sola, en verde.
-async function cierreOCajaCerrada(page: Page) {
-  await expect(page.getByText('Cierre — declarado por método').or(page.getByText(/está cerrada\./)).first())
-    .toBeVisible({ timeout: 30_000 });
+// cierreOCajaCerrada espera a que la caja termine de pintarse y dice si hay turno abierto: preguntar
+// en cuanto aparece la pestaña lo daba por ausente y la prueba se saltaba sola, en verde.
+async function cierreOCajaCerrada(page: Page): Promise<boolean> {
+  const turno = page.getByText('Cómo va el turno');
+  await expect(turno.or(page.getByText(/está cerrada\./)).first()).toBeVisible({ timeout: 30_000 });
+  return turno.isVisible();
 }
 
 test.beforeEach(async () => { comoEstaba = await ponerElCiego(false); });
@@ -142,9 +143,11 @@ test('B1 · con el arqueo ciego la pantalla del cierre no tiene columna de esper
   await entrar(page);
   await page.goto('/caja');
   await expect(page.getByRole('tab', { name: 'Cajas' })).toBeVisible({ timeout: 30_000 });
-  const tabla = page.getByText('Cierre — declarado por método');
-  await cierreOCajaCerrada(page);
-  test.skip(!(await tabla.isVisible().catch(() => false)), 'no hay una caja abierta en el ambiente: no se abre la de alguien más');
+  test.skip(!(await cierreOCajaCerrada(page)), 'no hay una caja abierta en el ambiente: no se abre la de alguien más');
+  // En «Cómo va el turno» el resumen del corte tampoco se pinta.
+  await expect(page.getByText('El resumen aparece al confirmar el cierre, junto con la diferencia.')).toBeVisible();
+  await alPasoDelCierre(page, 'Otros métodos');
+  await expect(page.getByText('Cierre — contado por método')).toBeVisible({ timeout: 30_000 });
 
   // NI LA COLUMNA. Con todos los esperados en null la columna entera sobra, y una de rayas invita
   // a preguntarse qué se rompió.
@@ -171,8 +174,6 @@ test('B1 · con el arqueo ciego la pantalla del cierre no tiene columna de esper
       .toBeGreaterThan(0.005);
   }
 
-  // En pantalla, el resumen del corte tampoco se pinta.
-  await expect(page.getByText('Aparece al confirmar el cierre, junto con la diferencia.')).toBeVisible();
 });
 
 test('B2 · y el botón de cerrar sigue bloqueado mientras no se cuente el cajón', async ({ page }) => {
@@ -185,14 +186,15 @@ test('B2 · y el botón de cerrar sigue bloqueado mientras no se cuente el cajó
   await entrar(page);
   await page.goto('/caja');
   await expect(page.getByRole('tab', { name: 'Cajas' })).toBeVisible({ timeout: 30_000 });
-  const cerrar = page.getByRole('button', { name: 'Cerrar caja' });
-  await cierreOCajaCerrada(page);
-  test.skip(!(await cerrar.isVisible().catch(() => false)), 'no hay una caja abierta en el ambiente: no se abre la de alguien más');
+  test.skip(!(await cierreOCajaCerrada(page)), 'no hay una caja abierta en el ambiente: no se abre la de alguien más');
+  await alPasoDelCierre(page, 'Cajón');
 
   // El botón del cajón dice «Contar efectivo» mientras no haya conteo: si dijera un monto, ya se
   // contó y este caso no aplica.
   const contar = page.getByRole('button', { name: 'Contar efectivo' });
   test.skip(!(await contar.isVisible().catch(() => false)), 'el cajón de este turno ya está contado');
 
+  await alPasoDelCierre(page, 'Diferencia y cierre');
+  const cerrar = page.getByRole('button', { name: 'Cerrar caja' });
   await expect(cerrar, 'el cierre quedó habilitado sin haber contado el cajón: con el esperado en null, la pantalla creyó que no faltaba nada').toBeDisabled();
 });

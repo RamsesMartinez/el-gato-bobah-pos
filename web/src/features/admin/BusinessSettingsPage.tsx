@@ -1,4 +1,5 @@
 import { useState, type ComponentProps } from 'react';
+import { useNavigate } from 'react-router';
 import { Box, Heading, Text, Input, Button, VStack, HStack, Center, Spinner, InputGroup, Table } from '@chakra-ui/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { posApi } from '../../api/pos';
@@ -13,7 +14,6 @@ import { AttendanceSettingsSection } from './AttendanceSettingsSection';
 import { InventorySettingsSection } from './InventorySettingsSection';
 import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
-import { AjustesDeCaja } from './AjustesDeCaja';
 import { ZONAS_MEXICO } from './zonas';
 import { montoTecleado } from '../../domain/numeros';
 
@@ -45,6 +45,7 @@ function Interruptor(props: ComponentProps<typeof Switch>) {
 // la autoridad (el PUT exige rol) — esta pantalla es la UX para editarlo.
 export function BusinessSettingsPage() {
   const user = useSessionStore((s) => s.user);
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   // La lista COMPLETA, con los apagados: es la pantalla desde la que se vuelven a encender.
@@ -342,8 +343,13 @@ export function BusinessSettingsPage() {
         </Box>
       </Box>
 
-      <Box mt={6}>
-        <AjustesDeCaja />
+      {/* Los ajustes de caja se juntaron con las cajas en Caja → Administrar (#290). */}
+      <Box mt={6} borderWidth="1px" borderRadius="lg" p={4}>
+        <Text fontWeight="700">Caja</Text>
+        <Text fontSize="sm" color="fg.muted" mb={2}>
+          Conceptos de salida, terminales, fondo fijo, modo de arqueo y resumen diario están en Caja → Administrar.
+        </Text>
+        <Button minH="44px" variant="outline" onClick={() => navigate('/caja/administrar')}>Ir a Caja → Administrar</Button>
       </Box>
 
       {can('attendance.configure', user) && <AttendanceSettingsSection />}

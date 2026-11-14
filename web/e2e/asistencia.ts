@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { API, tokenDeApi } from './ambiente';
+import { alPasoDelCierre } from './cierre';
 
 // Marcar entrada y salida de quien corre la suite, por el mismo `POST /attendance/clock` que usa la
 // pantalla (spec 046). Con la asistencia encendida, abrir caja pide la entrada de quien abre y
@@ -55,15 +56,20 @@ export async function marcarSalida(jwt?: string) {
 // marcarSalidaEnElCierre marca, desde el aviso del cierre, la salida de quien abrió la caja: la
 // misma hoja de PIN que usa el cajero. Sin aviso no hace nada.
 export async function marcarSalidaEnElCierre(page: Page) {
+  // El aviso vive en el primer paso del asistente de cierre (#290); al terminar se vuelve al turno,
+  // que es donde la prueba lo dejó.
+  await alPasoDelCierre(page, 'Pendientes');
   const boton = page.getByRole('button', { name: /^Marcar salida de / });
-  // El aviso o el cierre de siempre: hasta que la consulta responde no se pinta ninguno.
-  const cierre = page.getByText('Cierre — declarado por método');
-  await expect(boton.or(cierre).first()).toBeVisible({ timeout: 30_000 });
-  if (!(await boton.isVisible())) return;
+  // El aviso o la lista vacía: hasta que la consulta responde no se pinta ninguno.
+  const nada = page.getByText('Nada pendiente: sigue con el cajón.');
+  await expect(boton.or(nada).first()).toBeVisible({ timeout: 30_000 });
+  const volver = () => page.getByRole('button', { name: 'Volver al turno' }).click();
+  if (!(await boton.isVisible())) return volver();
   if (!PIN) throw new Error('El cierre pide la salida de quien abrió y falta E2E_PIN para marcarla.');
   await boton.click();
   const hoja = page.getByRole('dialog').last();
   for (const d of PIN) await hoja.getByRole('button', { name: d, exact: true }).click();
   await hoja.getByRole('button', { name: 'Salida' }).click();
   await expect(page.getByText(/^Salida de .* marcada/)).toBeVisible({ timeout: 30_000 });
+  await volver();
 }

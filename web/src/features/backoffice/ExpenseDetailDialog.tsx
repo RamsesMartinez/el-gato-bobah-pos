@@ -29,7 +29,7 @@ import { DatePickerButton } from '../../components/DatePickerButton';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { NumericKeypad } from '../../components/NumericKeypad';
 import { useKeypadField } from '../../components/useKeypadField';
-import { CANCEL_SHORTCUTS, INCLUDE_IN_COUNT_LABEL } from './cajaDelGasto';
+import { CANCEL_SHORTCUTS, INCLUDE_IN_COUNT_LABEL } from '../../shared/cajaDelGasto';
 import { AddLineSheet, type DraftLine } from './AddLineSheet';
 import { DeliverySheet } from './DeliverySheet';
 import { EditPreviewSheet } from './EditPreviewSheet';

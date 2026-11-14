@@ -10,6 +10,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 )
 
@@ -414,4 +415,39 @@ func TestMCPCashAndInventory(t *testing.T) {
 			t.Fatalf("movimientos de ajuste: %d", n)
 		}
 	})
+}
+
+// El motivo con el que se abrió un turno —y la explicación que deja en el corte anterior— llegan al
+// agente por el histórico de cortes (#290, FR-009). La nota la escribe el personal del negocio, así
+// que no cae en el filtro de texto de terceros.
+func TestMCPCashHistoryCarriesTheOpeningReason(t *testing.T) {
+	t.Parallel()
+	w := newMCPWorld(t)
+	ctx := context.Background()
+	back := app.NewBackofficeService(w.owner, clock)
+	cajero := makeUser(t, w.owner, "cajero_mcp_motivo", "cajero")
+	fuerte := registerID(t, w.owner, "Caja fuerte")
+	quinientos, cuatrocientos := dec("500"), dec("400")
+	if _, err := back.OpenSession(ctx, fuerte, aperturaAMano(quinientos), cajero); err != nil {
+		t.Fatal(err)
+	}
+	// Cierra contando 400 (faltan 100) y el turno siguiente cuenta 500 y lo explica.
+	if _, err := back.CloseSession(ctx, fuerte, cajero, app.CierreCmd{Total: &cuatrocientos, Motivo: "prueba"}); err != nil {
+		t.Fatal(err)
+	}
+	const nota = "Un gasto salió de esta caja y se contó en la otra"
+	if _, err := back.OpenSession(ctx, fuerte, app.AperturaCmd{Total: &quinientos, Motivo: "prueba",
+		Reason: "last_count_wrong", ReasonNote: nota}, cajero); err != nil {
+		t.Fatal(err)
+	}
+	res := callTool(t, w.router, w.token(t, w.company, w.admin), "cash_sessions_history", map[string]any{})
+	if res.isError {
+		t.Fatalf("cash_sessions_history: %s", res.text)
+	}
+	for _, quiero := range []string{`"openingReason":"last_count_wrong"`, `"openingReasonNote":"` + nota + `"`,
+		`"explainedByNext":{`, `"reason":"last_count_wrong","reasonNote":"` + nota + `"`} {
+		if !strings.Contains(strings.ReplaceAll(res.text, ": ", ":"), quiero) {
+			t.Fatalf("el histórico por MCP no trae %s:\n%s", quiero, res.text)
+		}
+	}
 }

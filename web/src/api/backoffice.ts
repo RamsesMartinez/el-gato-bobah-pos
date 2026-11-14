@@ -25,6 +25,45 @@ export interface MethodTotal {
 // `null` en el turno = no hay arqueo de efectivo (un corte anterior a la spec 015, o una caja que
 // no maneja efectivo). `expected` en null con el arqueo ciego; `counted` y `difference` en null
 // mientras el turno esté abierto.
+// La diferencia de un corte en sus tres partes, calculada por el servidor con una sola regla para la
+// lista, el detalle y el cierre (#290). drawer es null si el corte no tiene arqueo con esperado.
+export interface CutDiff {
+  drawer: string | null;
+  otherMethods: string;
+  total: string;
+  drawerCovered: boolean;
+}
+
+// Una corrección de un corte cerrado (#290, fase 3). Lo firmado no se reescribe: se agrega esto.
+export interface SessionAdjustment {
+  id: number;
+  kind: 'count_correction' | 'float_correction' | 'note' | 'reversal';
+  before: string | null;
+  after: string | null;
+  reason: string;
+  reasonNote: string;
+  createdByName: string;
+  createdAt: string;
+  reversesId: number | null;
+  reversedBy: number | null;
+  // El servidor la aceptaría como reverso hoy. Opcional: un backend anterior no lo manda.
+  reversible?: boolean;
+}
+
+export interface AdjustmentInput {
+  kind: 'count_correction' | 'float_correction' | 'note';
+  after?: string;
+  reason: string;
+  note: string;
+}
+
+// El turno siguiente abrió con motivo y eso explica la diferencia de este corte (#290).
+export interface NextOpening {
+  sessionId: number;
+  reason: string;
+  reasonNote: string | null;
+}
+
 export interface ArqueoDelCajon {
   expected: string | null;
   counted: string | null;
@@ -266,6 +305,8 @@ export interface CashSession {
   floatLeft?: string | null;
   fixedFloatAtClose?: string | null;
   withdrawal?: Withdrawal | null;
+  // Solo en la respuesta del cierre (#290): la misma cifra que la lista y el detalle.
+  difference?: CutDiff | null;
 }
 
 // Propina por entregar del turno abierto y a quién se le puede entregar.
@@ -354,6 +395,15 @@ export interface CashSessionRow {
   // Con arqueo ciego, el último cierre de una caja no reabierta no muestra su arqueo a quien no
   // configura la caja. Opcional: un backend viejo no lo manda.
   arqueoHidden?: boolean;
+  // #290. Opcionales: el compilador obliga a la guarda ante un backend viejo.
+  difference?: CutDiff | null;
+  openingReason?: string | null;
+  openingReasonNote?: string | null;
+  explainedByNext?: NextOpening | null;
+  // La diferencia ya es la corregida (#290, fase 3).
+  adjusted?: boolean;
+  // Pasó la tolerancia y nadie la explicó (#290, P1). Solo llega a quien configura la caja.
+  needsExplanation?: boolean;
 }
 // Detalle de un corte (totales GUARDADOS al cerrar + movimientos).
 export interface CashSessionDetail {
@@ -402,6 +452,16 @@ export interface CashSessionDetail {
   floatLeft?: string | null;
   fixedFloatAtClose?: string | null;
   withdrawal?: Withdrawal | null;
+  // #290: la diferencia en tres partes, el motivo de apertura y su relación con los cortes vecinos.
+  difference?: CutDiff | null;
+  openingReason?: string | null;
+  openingReasonNote?: string | null;
+  explainedByNext?: NextOpening | null;
+  previousSessionId?: number | null;
+  // Correcciones del corte (#290, fase 3). Opcionales: un backend anterior no las manda.
+  adjustments?: SessionAdjustment[];
+  effective?: { drawerCounted: string | null; floatLeft: string | null } | null;
+  needsExplanation?: boolean;
 }
 
 export interface CorteSale {
@@ -1003,6 +1063,8 @@ export const backofficeApi = {
     // Cerrar sin la salida de quien abrió (spec 046). Solo con el permiso; el servidor lo ignora si
     // ya no hace falta.
     authorizedClose?: { reason: string };
+    // La explicación de la diferencia de quien cierra viendo el esperado (#290, fase 4).
+    explanation?: { reason: string; note: string };
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
   // Qué pide la asistencia para abrir o cerrar esa caja (spec 046). Lo calcula el servidor con la
   // misma regla que aplica al confirmar.
@@ -1017,7 +1079,9 @@ export const backofficeApi = {
     const q = new URLSearchParams({ page: String(p.page), pageSize: String(p.pageSize) });
     if (p.from) q.set('from', p.from);
     if (p.to) q.set('to', p.to);
-    return api.get<{ items: CashSessionRow[]; total: number; page: number; pageSize: number }>(`/cash-sessions?${q}`);
+    // periodDifference: sobrantes y faltantes de todo el filtro, ya corregidos (#290, P4); null con
+    // arqueo ciego, y ausente con un backend anterior.
+    return api.get<{ items: CashSessionRow[]; total: number; page: number; pageSize: number; periodDifference?: string | null }>(`/cash-sessions?${q}`);
   },
   cashSession: (id: number) => api.get<CashSessionDetail>(`/cash-sessions/${id}`),
   // Las ventas de un corte más allá de la primera página. El detalle trae las primeras; esto existe
@@ -1042,6 +1106,14 @@ export const backofficeApi = {
   cardCountModes: () => api.get<{ items: { branchId: number; name: string; mode: 'auto' | 'per_terminal' }[] }>('/branches/card-count-modes'),
   setCardCountMode: (branchId: number, mode: 'auto' | 'per_terminal') =>
     api.put<null>(`/branches/${branchId}/card-count-mode`, { mode }),
+  // Tolerancia de diferencia de la empresa (#290, fase 4).
+  cashCloseSettings: () => api.get<{ tolerance: string }>('/settings/cash-close'),
+  setCashCloseSettings: (tolerance: string) => api.put<{ tolerance: string }>('/settings/cash-close', { tolerance }),
+  // Corregir un corte cerrado y revertir una corrección (#290, fase 3).
+  adjustCashSession: (sessionId: number, input: AdjustmentInput) =>
+    api.post<SessionAdjustment>(`/cash-sessions/${sessionId}/adjustments`, input),
+  reverseCashSessionAdjustment: (sessionId: number, adjustmentId: number, note: string) =>
+    api.post<SessionAdjustment>(`/cash-sessions/${sessionId}/adjustments/${adjustmentId}/reverse`, { note }),
   correctCashOut: (movementId: number, input: { amount: number; conceptId: number }) =>
     api.post<CashSession>(`/cash-movements/${movementId}/correct`, input),
   // Traspaso de efectivo entre dos cajas abiertas (genera salida en origen + entrada en destino).
