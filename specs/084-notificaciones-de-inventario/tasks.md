@@ -126,17 +126,17 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 
 ## Phase 9: User Story 7 — Destinatarios (P2)
 
-- [ ] T044 [P] [US7] Tests `TestRecipientsByPermission` (rol propio sin permiso no recibe, persona sin correo no recibe, quitar a uno de omisión, correo extra sin usuario, por tipo), validación de correos y hora (400), auditoría, en `server/internal/integration/notification_recipients_test.go`
-- [ ] T045 [US7] Servicio y rutas `GET/PUT /settings/notification-recipients` en `server/internal/app/notifications.go` y `handlers_notifications.go`
-- [ ] T046 [US7] Pestaña «Avisos» en Almacén `web/src/features/notificaciones/Destinatarios.tsx` y `web/src/features/backoffice/StockPage.tsx` (Maquetas M5, opción A v2) con su test `Destinatarios.test.tsx`
+- [X] T044 [P] [US7] Tests `TestRecipientsByPermission` (rol propio sin permiso no recibe, persona sin correo no recibe, quitar a uno de omisión, correo extra sin usuario, por tipo), validación de correos y hora (400), auditoría, en `server/internal/integration/notification_recipients_test.go`
+- [X] T045 [US7] Servicio y rutas `GET/PUT /settings/notification-recipients` en `server/internal/app/notifications.go` y `handlers_notifications.go`
+- [X] T046 [US7] Pestaña «Avisos» en Almacén `web/src/features/notificaciones/Destinatarios.tsx` y `web/src/features/backoffice/StockPage.tsx` (Maquetas M5, opción A v2) con su test `Destinatarios.test.tsx`
 
 ---
 
 ## Phase 10: User Story 8 — Lista de compra (P3)
 
-- [ ] T047 [P] [US8] Tests de dominio `TestSuggestPurchase` (redondeo a empaques enteros del menor costo, sin consumo no sugiere, cobertura vacía = 14, existencia negativa pide conteo, el porqué) en `server/internal/domain/shopping_list_test.go`
-- [ ] T048 [US8] `domain.SuggestPurchase` en `server/internal/domain/shopping_list.go`
-- [ ] T049 [P] [US8] Test de integración `TestShoppingListExcludesOutReportsFromConsumption` y agrupado por proveedor de la última compra en `server/internal/integration/shopping_list_test.go`
+- [X] T047 [P] [US8] Tests de dominio `TestSuggestPurchase` (redondeo a empaques enteros del menor costo, sin consumo no sugiere, cobertura vacía = 14, existencia negativa pide conteo, el porqué) en `server/internal/domain/shopping_list_test.go`
+- [X] T048 [US8] `domain.SuggestPurchase` en `server/internal/domain/shopping_list.go`
+- [X] T049 [P] [US8] Test de integración `TestShoppingListExcludesOutReportsFromConsumption` y agrupado por proveedor de la última compra en `server/internal/integration/shopping_list_test.go`
 - [ ] T050 [US8] Consulta y ruta `GET /stock/shopping-list` (una sola consulta para pantalla y correo) y `POST /stock/shopping-list/email` («Enviarme por correo», al correo de quien lo pide, con el tope de envío por persona) en `server/internal/app/notifications.go`
 - [ ] T051 [US8] Pestaña «Lista de compra» en Almacén `web/src/features/notificaciones/ListaDeCompra.tsx` (Maquetas M6, opción B v2) con su test
 

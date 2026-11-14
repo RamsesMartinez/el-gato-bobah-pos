@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { ListaDeCompra } from './ListaDeCompra';
+import { Destinatarios } from './Destinatarios';
 import { formatBaseQty } from '../../shared/units';
 import {
   Box, Heading, Table, Center, Spinner, Badge, Tabs, Text,
@@ -19,7 +21,7 @@ import { ArticleSheet } from './articles/ArticleSheet';
 import { posApi } from '../../api/pos';
 
 // El orden lo fijó el plan del 038: Existencias · Movimientos · Insumos · Por recibir · Conteo · Salud.
-const TABS = ['existencias', 'movimientos', 'insumos', 'por-recibir', 'conteo', 'merma', 'salud'] as const;
+const TABS = ['existencias', 'movimientos', 'insumos', 'compra', 'por-recibir', 'conteo', 'merma', 'salud', 'avisos'] as const;
 type Tab = (typeof TABS)[number];
 
 export function StockPage() {
@@ -36,7 +38,8 @@ export function StockPage() {
   const [params, setParams] = useSearchParams();
   const asked = params.get('tab') as Tab | null;
   const canView = can('inventory.view', user);
-  const allowed = (t: Tab) => (t !== 'insumos' || canView) && ((t !== 'salud' && t !== 'merma') || canHealth) && (t !== 'por-recibir' || canReceive) && (t !== 'conteo' || canCount);
+  const canConfigureStock = can('inventory.configure', user);
+  const allowed = (t: Tab) => (t !== 'avisos' || canConfigureStock) && ((t !== 'insumos' && t !== 'compra') || canView) && ((t !== 'salud' && t !== 'merma') || canHealth) && (t !== 'por-recibir' || canReceive) && (t !== 'conteo' || canCount);
   const tab: Tab = asked && TABS.includes(asked) && allowed(asked) ? asked : 'existencias';
   const settings = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const pending = useQuery({ queryKey: ['stock', 'pending-receipts'], queryFn: backofficeApi.pendingReceipts, enabled: canReceive });
@@ -66,6 +69,7 @@ export function StockPage() {
           <Tabs.Trigger value="existencias" minH="44px">Existencias</Tabs.Trigger>
           <Tabs.Trigger value="movimientos" minH="44px">Movimientos</Tabs.Trigger>
           {canView && <Tabs.Trigger value="insumos" minH="44px">{itemsTab}</Tabs.Trigger>}
+          {canView && <Tabs.Trigger value="compra" minH="44px" flexShrink={0}>Lista de compra</Tabs.Trigger>}
           {canReceive && (
             <Tabs.Trigger value="por-recibir" minH="44px">
               Por recibir{pending.data && pending.data.length > 0 ? ` · ${pending.data.length}` : ''}
@@ -74,6 +78,7 @@ export function StockPage() {
           {canCount && <Tabs.Trigger value="conteo" minH="44px">Conteo</Tabs.Trigger>}
           {canHealth && <Tabs.Trigger value="merma" minH="44px" flexShrink={0}>Se echó a perder</Tabs.Trigger>}
           {canHealth && <Tabs.Trigger value="salud" minH="44px">Salud</Tabs.Trigger>}
+          {canConfigureStock && <Tabs.Trigger value="avisos" minH="44px">Avisos</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
           <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
@@ -148,6 +153,16 @@ export function StockPage() {
         {canHealth && (
           <Tabs.Content value="salud" px={0} flex="1" minH={0} display="flex" flexDirection="column">
             {tab === 'salud' && <InventoryHealthTab />}
+          </Tabs.Content>
+        )}
+        {canView && (
+          <Tabs.Content value="compra" px={0} flex="1" minH={0} display="flex" flexDirection="column">
+            {tab === 'compra' && <ListaDeCompra />}
+          </Tabs.Content>
+        )}
+        {canConfigureStock && (
+          <Tabs.Content value="avisos" px={0} flex="1" minH={0} display="flex" flexDirection="column">
+            {tab === 'avisos' && <Destinatarios />}
           </Tabs.Content>
         )}
       </Tabs.Root>

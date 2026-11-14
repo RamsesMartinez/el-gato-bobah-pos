@@ -236,3 +236,38 @@ func (h *Handlers) LowStockBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, map[string]any{"items": res})
 }
+
+// GET /stock/shopping-list — la lista de compra de la sucursal.
+func (h *Handlers) ShoppingList(w http.ResponseWriter, r *http.Request) {
+	lines, err := h.notifications.ShoppingList(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": lines})
+}
+
+// GET /settings/notification-recipients — quién recibe los avisos de inventario por correo.
+func (h *Handlers) NotificationRecipients(w http.ResponseWriter, r *http.Request) {
+	v, err := h.notifications.Recipients(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
+// PUT /settings/notification-recipients — la configuración completa.
+func (h *Handlers) SetNotificationRecipients(w http.ResponseWriter, r *http.Request) {
+	var body app.RecipientsView
+	if err := DecodeStrict(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.notifications.SetRecipients(r.Context(), body, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

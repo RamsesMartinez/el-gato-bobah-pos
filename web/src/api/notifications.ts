@@ -115,3 +115,32 @@ export const lowStockApi = {
     api.post<{ items?: { itemType: AlertItemType; id: number; effect: LowStockEffect['effect']; onHand: string }[] }>(
       `/stock/low-stock/batch${preview ? '?preview=1' : ''}`, { items }),
 };
+
+export interface ShoppingLine {
+  itemType: AlertItemType;
+  id: number;
+  name: string;
+  unit: string;
+  onHand: string;
+  min: string | null;
+  dailyUse: string | null;
+  coverageDays: number;
+  supplier: string;
+  state: 'out' | 'low' | 'count';
+  suggested: { packs: number; packName: string; qty: string } | null;
+  why: string;
+}
+
+export const shoppingApi = {
+  list: () => api.get<{ items?: ShoppingLine[] }>('/stock/shopping-list'),
+  emailMe: () => api.post<{ sentTo: string }>('/stock/shopping-list/email'),
+};
+
+export interface RecipientPerson { userId: number; name: string; role: string; email: string; hasEmail: boolean; stock: boolean; notFound: boolean }
+export interface RecipientExtra { email: string; stock: boolean; notFound: boolean }
+export interface RecipientsView { morningAt: string; people: RecipientPerson[]; extras: RecipientExtra[] }
+
+export const recipientsApi = {
+  get: () => api.get<RecipientsView>('/settings/notification-recipients'),
+  save: (v: RecipientsView) => api.put<void>('/settings/notification-recipients', v),
+};

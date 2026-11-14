@@ -509,6 +509,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Group(func(r chi.Router) {
 					r.Get("/stock/articles/{id}/low-stock", h.GetLowStock("ingrediente"))
 					r.Get("/stock/products/{id}/low-stock", h.GetLowStock("producto"))
+					r.Get("/stock/shopping-list", h.ShoppingList)
 				})
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Group(func(r chi.Router) {
 					r.Put("/stock/articles/{id}/low-stock", h.PutLowStock("ingrediente"))
@@ -516,6 +517,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Post("/stock/articles/{id}/low-stock/asked", h.LowStockAsked)
 					r.Get("/stock/low-stock", h.ListLowStock)
 					r.Post("/stock/low-stock/batch", h.LowStockBatch)
+					r.Get("/settings/notification-recipients", h.NotificationRecipients)
+					r.Put("/settings/notification-recipients", h.SetNotificationRecipients)
 				})
 				r.Route("/stock", func(r chi.Router) {
 					// Artículos del almacén (spec 042): leer con «ver el almacén», cambiar con «configurar».
