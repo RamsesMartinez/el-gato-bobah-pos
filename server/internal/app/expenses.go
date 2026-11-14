@@ -276,6 +276,11 @@ func (s *BackofficeService) prepareExpense(ctx context.Context, in ExpenseInput)
 	if err != nil {
 		return preparedExpense{}, err
 	}
+	if hasReceived {
+		if err := domain.ValidDeliveryDate(received, s.businessDate(ctx)); err != nil {
+			return preparedExpense{}, err
+		}
+	}
 
 	// Los pagos se validan ANTES de abrir la transacción: resolver la caja y el método son
 	// lecturas, y así un pago inválido no deja una tx abierta a medias.
@@ -380,6 +385,9 @@ func (s *BackofficeService) createExpenseIn(ctx context.Context, q *db.Queries, 
 func (s *BackofficeService) ReceiveExpense(ctx context.Context, id int64, receivedAt string, userID int64) error {
 	date, err := s.parseDayOrToday(ctx, receivedAt)
 	if err != nil {
+		return err
+	}
+	if err := domain.ValidDeliveryDate(date, s.businessDate(ctx)); err != nil {
 		return err
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {

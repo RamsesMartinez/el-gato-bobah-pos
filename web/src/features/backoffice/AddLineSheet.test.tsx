@@ -25,11 +25,11 @@ beforeEach(() => {
 });
 afterEach(() => vi.clearAllMocks());
 
-function montar() {
+function montar({ canReceive = false } = {}) {
   const onAdd = vi.fn();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={qc}><Provider>
-    <AddLineSheet expenseDate="2026-11-01" canReceive={false} stockItemLabel="artículo" onClose={vi.fn()} onAdd={onAdd} />
+    <AddLineSheet canReceive={canReceive} stockItemLabel="artículo" onClose={vi.fn()} onAdd={onAdd} />
   </Provider></QueryClientProvider>);
   return onAdd;
 }
@@ -66,5 +66,21 @@ describe('Agregar renglón entre peso y líquido (spec 058)', () => {
     expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Fue regalo' }));
     expect(screen.getByRole('button', { name: 'Agregar' })).toBeDisabled();
+  });
+});
+
+// Una compra que se pudo crear no se podía editar: la mercancía llega antes que la fecha del gasto
+// (lo de anoche capturado hoy, la compra a crédito), y la hoja no dejaba agregarla. La regla única
+// (domain.ValidDeliveryDate) solo rechaza un día que no ha pasado; el calendario ya lo tapa con `max`.
+describe('Ya llegó antes de la fecha del gasto', () => {
+  test('deja agregar una llegada anterior a la fecha del gasto', async () => {
+    back.searchArticles.mockResolvedValue({ items: [{ ...salsa, densityGPerMl: '1.1' }] });
+    const onAdd = montar({ canReceive: true });
+    await enKg(['2']);
+    fireEvent.click(screen.getByRole('button', { name: 'Fue regalo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ya llegó' }));
+    expect(screen.queryByText(/No puede llegar antes/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ ingredientId: 12, arrivedOn: expect.any(String) }));
   });
 });
