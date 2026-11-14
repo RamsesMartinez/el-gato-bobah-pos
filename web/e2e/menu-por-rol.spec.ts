@@ -118,10 +118,10 @@ test('el panel del gerente lleva a Gastos, Asistencia e Interfaz', async ({ page
 
   // Escape cierra el panel sin navegar.
   await riel(page).getByRole('button', { name: 'Caja', exact: true }).click();
-  await expect(page.getByRole('navigation', { name: 'Caja' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Caja', exact: true })).toBeVisible();
   await page.screenshot({ path: 'test-results/menu-por-rol/gerente-panel-caja.png' });
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('navigation', { name: 'Caja' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Caja', exact: true })).toHaveCount(0);
   await expect(page).toHaveURL(/\/apariencia$/);
 });
 
@@ -177,4 +177,31 @@ test('cada ruta de hoy abre por URL directa', async ({ page }) => {
     await expect(page, `${ruta} no abrió`).toHaveURL(final);
     await expect(riel(page).locator('[data-active="true"]'), `${ruta} no marca ${modulo}`).toHaveText(new RegExp(`^${modulo}`));
   }
+});
+
+// A 1920×1080 (y con la barra del navegador, ~950 px de alto) la vista expandida no cabe: medido,
+// pedía 1167 px en 863. Ahí va el riel con panel, que sí cabe (spec 085, revisión de código).
+for (const alto of [1080, 950]) {
+  test(`a 1920×${alto} va el riel con panel, sin desplazar`, async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: alto });
+    await entrar(page);
+    await expect(riel(page).getByRole('button', { name: 'Ajustes', exact: true })).toBeVisible();
+    await sinDesplazar(page, `admin a 1920×${alto}`);
+  });
+}
+
+// El panel del último módulo se apoya en el borde de abajo de su botón: a 1280×768 no se sale.
+test('a 1280×768 el panel de Ajustes queda dentro de la ventana', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 768 });
+  await entrar(page);
+  const ajustes = riel(page).getByRole('button', { name: 'Ajustes', exact: true });
+  await ajustes.scrollIntoViewIfNeeded();
+  await ajustes.click();
+  const panel = page.getByRole('navigation', { name: 'Ajustes', exact: true });
+  await expect(panel).toBeVisible();
+  const b = (await panel.boundingBox())!;
+  expect(b.y, 'el panel empieza arriba del borde').toBeGreaterThanOrEqual(0);
+  expect(b.y + b.height, 'el panel se sale por abajo').toBeLessThanOrEqual(768);
+  await expect(panel.getByRole('link', { name: 'Mi cuenta', exact: true })).toBeInViewport();
+  await page.screenshot({ path: 'test-results/menu-por-rol/ajustes-768.png' });
 });

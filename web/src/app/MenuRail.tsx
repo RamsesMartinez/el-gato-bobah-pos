@@ -1,5 +1,5 @@
 import { Box, Flex, HStack, Portal, Text, VStack } from '@chakra-ui/react';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { LuChevronRight } from 'react-icons/lu';
 import { NavLink, useLocation } from 'react-router';
 import { BORDER_W, RADIUS, TAP_LG } from '../theme/ui';
@@ -41,10 +41,13 @@ function NarrowRail({ modules, pendingWaste }: { modules: MenuModule[]; pendingW
   const { pathname } = useLocation();
   const current = moduleOf(pathname);
   const palette = useUiStore((s) => s.palette);
-  // El panel abierto recuerda en qué ruta se abrió: al cambiar de ruta por cualquier lado deja de
-  // estar abierto sin un efecto que lo cierre.
+  // El panel abierto recuerda en qué ruta se abrió. Al cambiar de ruta por cualquier lado se olvida
+  // (no solo se esconde: volver con «atrás» lo reabría), y con un solo destino ya no hay panel que
+  // mostrar porque el botón se volvió enlace. Se ajusta durante el render, sin efecto de por medio.
   const [open, setOpen] = useState<{ id: ModuleId; path: string; at: Placement } | null>(null);
-  const openId = open?.path === pathname ? open.id : null;
+  const stale = open && (open.path !== pathname || (modules.find((m) => m.id === open.id)?.items.length ?? 0) < 2);
+  if (stale) setOpen(null);
+  const openId = stale ? null : open?.id ?? null;
   const buttons = useRef(new Map<ModuleId, HTMLButtonElement>());
   const panelRef = useRef<HTMLElement>(null);
 
@@ -53,10 +56,36 @@ function NarrowRail({ modules, pendingWaste }: { modules: MenuModule[]; pendingW
     if (openId) panelRef.current?.querySelector<HTMLElement>('a')?.focus();
   }, [openId]);
 
-  const close = (returnFocus: boolean) => {
-    const id = openId;
+  const close = useCallback((returnFocus: boolean) => {
+    setOpen((cur) => {
+      if (returnFocus && cur) buttons.current.get(cur.id)?.focus();
+      return null;
+    });
+  }, []);
+
+  // Mientras el panel está abierto: Escape lo cierra esté donde esté el foco (abrir con el dedo deja
+  // el foco en el botón, no en el panel), y redimensionar o desplazar el riel lo cierran porque su
+  // lugar se calculó al abrir y quedaría despegado de su botón.
+  useEffect(() => {
+    if (!openId) return;
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') close(true); };
+    const onMove = () => close(false);
+    const list = buttons.current.get(openId)?.closest('[data-rail-list]');
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onMove);
+    list?.addEventListener('scroll', onMove);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onMove);
+      list?.removeEventListener('scroll', onMove);
+    };
+  }, [openId, close]);
+
+  // Al elegir, el panel se desmonta con el foco dentro y el foco caería en <body>: va al área de
+  // trabajo, donde está la pantalla que se acaba de abrir.
+  const pick = () => {
     setOpen(null);
-    if (returnFocus && id) buttons.current.get(id)?.focus();
+    document.querySelector<HTMLElement>('[data-work-area]')?.focus();
   };
 
   const toggle = (m: MenuModule) => {
@@ -67,12 +96,13 @@ function NarrowRail({ modules, pendingWaste }: { modules: MenuModule[]; pendingW
     // del botón. Un cálculo y no una medición: el panel todavía no existe.
     const estimate = 52 + m.items.length * (ROW_H + 4) + 16;
     const at: Placement = !rect || rect.top + estimate <= window.innerHeight - 8
-      ? { top: rect?.top ?? 8 }
+      // Nunca arriba del borde: un botón medio recortado por el desplazamiento daba un `top` negativo.
+      ? { top: Math.max(8, rect?.top ?? 8) }
       : { bottom: Math.max(8, window.innerHeight - rect.bottom) };
     setOpen({ id: m.id, path: pathname, at });
   };
 
-  const opened = modules.find((m) => m.id === openId);
+  const opened = openId ? modules.find((m) => m.id === openId) : undefined;
 
   return (
     <>
@@ -108,6 +138,7 @@ function NarrowRail({ modules, pendingWaste }: { modules: MenuModule[]; pendingW
               <Flex
                 asChild {...look} data-active={active}
                 aria-expanded={openId === m.id} aria-controls={`rail-panel-${m.id}`}
+                aria-current={active ? 'true' : undefined}
               >
                 <button
                   type="button" onClick={() => toggle(m)}
@@ -123,7 +154,7 @@ function NarrowRail({ modules, pendingWaste }: { modules: MenuModule[]; pendingW
           </Box>
         );
       })}
-      {opened && open && (
+      {opened && open && !stale && (
         // En un portal: así no lo recorta la lista desplazable del riel, y el mapa de toques no lo
         // cuenta como parte de la pantalla de abajo (AppShell, `data-medible`).
         <Portal>
@@ -135,7 +166,6 @@ function NarrowRail({ modules, pendingWaste }: { modules: MenuModule[]; pendingW
             display="flex" flexDirection="column" bg="bg.panel" color="fg" borderWidth={BORDER_W}
             borderRadius={RADIUS} boxShadow="lg" p={2}
             style={'top' in open.at ? { top: open.at.top } : { bottom: open.at.bottom }}
-            onKeyDown={(e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); close(true); } }}
           >
             <nav id={`rail-panel-${opened.id}`} aria-label={opened.label}>
               <Text fontSize="xs" fontWeight="700" color="fg.muted" textTransform="uppercase" letterSpacing="wide"
@@ -145,7 +175,7 @@ function NarrowRail({ modules, pendingWaste }: { modules: MenuModule[]; pendingW
               <VStack as="ul" listStyleType="none" m={0} p={0} gap={1} align="stretch" overflowY="auto" minH={0}>
                 {opened.items.map((it) => (
                   <li key={it.to}><PanelLink to={it.to} label={it.label} icon={it.icon}
-                    badge={it.to === WASTE_ITEM ? pendingWaste : 0} onPick={() => setOpen(null)} /></li>
+                    badge={it.to === WASTE_ITEM ? pendingWaste : 0} onPick={pick} /></li>
                 ))}
               </VStack>
             </nav>
@@ -189,7 +219,7 @@ function WideRail({ modules, pendingWaste }: { modules: MenuModule[]; pendingWas
         const divider = i > 0 && PRIMARY_MODULES.includes(modules[i - 1].id) && !PRIMARY_MODULES.includes(m.id)
           ? <Box data-rail-divider aria-hidden h="1px" bg="whiteAlpha.300" mx={2} my={1} />
           : null;
-        if (m.items.length === 1 && PRIMARY_MODULES.includes(m.id)) {
+        if (m.items.length === 1) {
           return (
             <Box key={m.id} w="100%">
               {divider}
@@ -205,7 +235,7 @@ function WideRail({ modules, pendingWaste }: { modules: MenuModule[]; pendingWas
             <HStack minH="44px" px={3} gap={3} color="gray.300" aria-hidden>
               <Icon size={20} /><Text fontWeight="700" fontSize="sm">{m.label}</Text>
             </HStack>
-            <VStack as="ul" listStyleType="none" m={0} p={0} gap={0.5} align="stretch">
+            <VStack as="ul" aria-label={m.label} listStyleType="none" m={0} p={0} gap={0.5} align="stretch">
               {m.items.map((it) => {
                 const I = it.icon;
                 return (

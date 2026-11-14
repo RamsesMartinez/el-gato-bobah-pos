@@ -20,11 +20,12 @@ export const riel = (page: Page) => page.locator('[data-rail-list]');
 export async function abrirDelMenu(page: Page, destino: string) {
   const modulo = MODULO_DE[destino];
   if (!modulo) throw new Error(`«${destino}» no está en el menú`);
-  const boton = riel(page).getByRole('button', { name: modulo, exact: true });
+  // Por el final del nombre: con mermas por aprobar, el aviso de Inventario va antes del rótulo.
+  const boton = riel(page).getByRole('button', { name: new RegExp(`${modulo}$`) });
   if (await boton.count()) {
     await boton.scrollIntoViewIfNeeded();
     await boton.click();
-    const panel = page.getByRole('navigation', { name: modulo });
+    const panel = page.getByRole('navigation', { name: modulo, exact: true });
     await expect(panel).toBeVisible();
     await panel.getByRole('link', { name: destino, exact: true }).click();
     await expect(panel).toHaveCount(0);

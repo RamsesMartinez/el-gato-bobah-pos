@@ -20,9 +20,11 @@ import { MenuRail, RAIL_WIDTH, RAIL_WIDTH_WIDE } from './MenuRail';
 import { PendingWasteBar } from '../features/waste/PendingWasteBar';
 import { railScrollFor } from './railScroll';
 
-// Desde 1920×1080 el menú se muestra expandido (spec 085, FR-008). Con `matchMedia` y no leyendo el
-// ancho una vez: la ventana se redimensiona y el menú la sigue.
-const WIDE_QUERY = '(min-width: 1920px) and (min-height: 1080px)';
+// En pantalla ancha y alta el menú se muestra expandido (spec 085, FR-008). El alto manda: medido a
+// 1920×1080, los 16 destinos del admin a 44 px piden 1167 px en una lista de 863 y desplazaba; a
+// 2560×1440 caben. Debajo de 1300 px de alto queda el riel con panel, que sí cabe. Con `matchMedia`
+// y no leyendo el ancho una vez: la ventana se redimensiona y el menú la sigue.
+const WIDE_QUERY = '(min-width: 1920px) and (min-height: 1300px)';
 function subscribeWide(cb: () => void) {
   const mq = window.matchMedia(WIDE_QUERY);
   mq.addEventListener('change', cb);
@@ -108,6 +110,7 @@ export function AppShell() {
             del pliegue no se notaría sin la flecha del pie, que dice que hay más. */}
         <Box position="relative" flex="1" minH={0} display="flex">
         <VStack
+          as="nav" aria-label="Menú principal"
           ref={navList} onScroll={measureRail} data-rail-list
           flex="1" minH={0} overflowY="auto" gap={1} w="100%"
           // Se detiene siempre al inicio de una opción (spec 045): al llevar a la vista la opción de
@@ -145,7 +148,8 @@ export function AppShell() {
           su alto a la pantalla en vez de empujarla 44 px fuera de los 600 (spec 039). */}
       <Flex flex="1" minW={0} direction="column">
         <PendingWasteBar />
-        <Box data-work-area flex="1" minH={0} overflowY="auto">
+        {/* tabIndex -1: el menú le pasa el foco al abrir una pantalla desde su panel (spec 085). */}
+        <Box data-work-area tabIndex={-1} outline="none" flex="1" minH={0} overflowY="auto">
           <Outlet />
         </Box>
       </Flex>

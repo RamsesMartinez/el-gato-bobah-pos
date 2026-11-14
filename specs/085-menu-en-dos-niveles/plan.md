@@ -92,7 +92,7 @@ Sin violaciones; la tabla de complejidad no aplica.
 - Posición: alineado con su botón; si no cabe abajo, su borde inferior se alinea con el del botón.
   `maxH` en dvh con la lista en `overflowY="auto"`, para un rol propio con muchos destinos.
 - El número de mermas por aprobar lleva `aria-label` («N mermas por aprobar»).
-- Vista expandida: con `matchMedia('(min-width: 1920px) and (min-height: 1080px)')` (reacciona al
+- Vista expandida: con `matchMedia('(min-width: 1920px) and (min-height: 1300px)')` (medido en la revisión de código: a 1920×1080 la vista expandida pedía 1167 px en 863) (reacciona al
   redimensionar) el riel mide 260 px y muestra módulos y destinos en lista, sin panel.
 
 ### Presupuesto de alto (medido en la maqueta, admin, 1280×854)

@@ -200,7 +200,7 @@ Interfaz e Integraciones.
   navegar. Con un solo destino visible, tocarlo MUST abrir ese destino directo.
 - **FR-007**: El módulo que contiene la pantalla abierta MUST verse activo, y dentro del panel el
   destino abierto marcado.
-- **FR-008**: En pantalla ancha (≥ 1920×1080) el menú MUST mostrarse expandido, con los
+- **FR-008**: En pantalla ancha y alta (≥ 1920×1300; medido: a 1920×1080 no cabe) el menú MUST mostrarse expandido, con los
   módulos y sus destinos visibles sin tocar nada.
 - **FR-009**: Ninguna ruta, redirección, nombre de pantalla ni permiso MUST cambiar; cada ruta de hoy
   MUST abrir por URL directa la misma pantalla.
