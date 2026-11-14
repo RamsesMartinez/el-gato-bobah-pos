@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from '../../components/ui/provider';
 import { backofficeApi, type CashSessionDetail } from '../../api/backoffice';
-import { CorteDetail } from './CashPage';
+import { CorteDetail } from './reporte';
 
 function corte(over: Partial<CashSessionDetail>): CashSessionDetail {
   return {
