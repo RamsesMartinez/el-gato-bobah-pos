@@ -168,6 +168,8 @@ Interfaz e Integraciones.
 - **Panel abierto y la persona toca otro módulo**: se cierra uno y se abre el otro (o navega, si el
   otro abre directo).
 - **Panel abierto cerca del pie**: se acomoda para no salirse de la pantalla (Ajustes, al fondo).
+- **Ventana más baja que 854 px** (1280×768, barra del navegador): la lista de módulos desplaza como
+  hoy, con el pie fijo y el aviso de «hay más»; Salir y el módulo activo quedan a la vista.
 - **Aviso de versión nueva**: sigue en el lugar del logo, sin quitar alto al menú.
 - **Permisos que cambian a media sesión** (se recargan al volver al frente): el menú se repinta con
   lo nuevo sin cerrar sesión.
@@ -198,7 +200,7 @@ Interfaz e Integraciones.
   navegar. Con un solo destino visible, tocarlo MUST abrir ese destino directo.
 - **FR-007**: El módulo que contiene la pantalla abierta MUST verse activo, y dentro del panel el
   destino abierto marcado.
-- **FR-008**: En pantalla ancha (≥ 1920 px de ancho) el menú MUST mostrarse expandido, con los
+- **FR-008**: En pantalla ancha (≥ 1920×1080) el menú MUST mostrarse expandido, con los
   módulos y sus destinos visibles sin tocar nada.
 - **FR-009**: Ninguna ruta, redirección, nombre de pantalla ni permiso MUST cambiar; cada ruta de hoy
   MUST abrir por URL directa la misma pantalla.

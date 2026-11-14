@@ -80,15 +80,34 @@ Sin violaciones; la tabla de complejidad no aplica.
 
 ### Panel (C ajustada)
 
-- Botón de módulo de 96 px de ancho y 72 px de alto, ícono de 26 px y rótulo de 12 px; los que abren
-  panel llevan un chevron y `aria-expanded`.
+- Botón de módulo de 96 px de ancho y 72 px de alto, ícono de 26 px y rótulo de 12 px. Los que abren
+  panel son `<button>` con chevron, `aria-expanded` y `aria-controls`; los de un solo destino son
+  `NavLink` con `aria-current="page"`.
 - Línea divisoria después de Pedidos.
-- Panel de 240 px junto al riel, sobre el área de trabajo con un velo que lo cierra al tocar; título
-  del módulo y renglones de 52 px (`role="menu"`/`menuitem`, foco al primer renglón, flechas y
-  Escape). Se alinea con su botón y, si no cabe abajo, se ancla al fondo.
-- A ≥ 1920 px de ancho el riel se expande (260 px): módulos con sus destinos en lista, sin panel.
-- El riel pierde su `overflowY` con desplazamiento: a 1280×854 todo cabe (el piso de la constitución
-  1.29.0). Debajo de ese alto conserva el desplazamiento como red, no como diseño.
+- Panel de 240 px junto al riel, sobre el área de trabajo con un velo que lo cierra al tocar. Es
+  navegación, no un menú de acciones: `<nav aria-label="{módulo}">` con una lista de `NavLink` de
+  52 px (`TAP_LG`), recorrible con Tab. Al abrir, el foco va al primer enlace; Escape o el velo lo
+  cierran y el foco vuelve al botón del módulo; cambiar de ruta lo cierra. Colores semánticos y
+  `RADIUS`/`BORDER_W` del tema (se ve igual en claro y oscuro).
+- Posición: alineado con su botón; si no cabe abajo, su borde inferior se alinea con el del botón.
+  `maxH` en dvh con la lista en `overflowY="auto"`, para un rol propio con muchos destinos.
+- El número de mermas por aprobar lleva `aria-label` («N mermas por aprobar»).
+- Vista expandida: con `matchMedia('(min-width: 1920px) and (min-height: 1080px)')` (reacciona al
+  redimensionar) el riel mide 260 px y muestra módulos y destinos en lista, sin panel.
+
+### Presupuesto de alto (medido en la maqueta, admin, 1280×854)
+
+- Logo 76 px + 8 botones de 72 px con huecos de 4 px y la divisoria (~613 px) + pie (~140 px).
+- La campana del #291 va en el **mismo renglón** que el tema rápido (dos de 44 px en 96 px de
+  ancho), así que no suma alto. El hueco es un `Box` de 44 px con `data-bell-slot` y un test que
+  vigila que exista.
+- Medido: el último control del riel (Salir) termina a 829 de 854 px; la versión cabe debajo.
+- **Debajo de 854 px de alto** (1280×768, barra del navegador) la lista de módulos conserva el
+  desplazamiento de hoy, con el pie fijo, el chevron de «hay más» y `railScrollFor` para dejar a la
+  vista el módulo activo. Es la red, no el diseño: un e2e a 1280×768 comprueba que Salir y el
+  módulo activo quedan dentro de la ventana.
+- El renglón de versión del pie mide menos de 44 px desde antes de esta feature; el dueño pidió el
+  pie intacto, así que no se toca aquí.
 
 ### Lo que no cambia
 
@@ -136,7 +155,7 @@ web/src/app/
 ├── MenuRail.tsx       # nuevo: riel con panel y vista ancha
 ├── MenuRail.test.tsx  # nuevo: panel, teclado, destino único
 ├── AppShell.tsx       # monta MenuRail
-├── railScroll.ts      # se borra si el riel deja de desplazar
+├── railScroll.ts      # se conserva: red para alturas menores a 854 px
 ├── rutas-medidas.ts
 web/src/consola/etiquetas-de-uso.ts
 web/e2e/                 # cabe-en-la-tableta, aviso-de-version, enlaces Asistencia/Almacén, menu-por-rol (nuevo)
