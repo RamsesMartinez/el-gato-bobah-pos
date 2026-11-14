@@ -34,6 +34,7 @@ var managerPerms084 = domain.PermissionsFor(domain.RoleGerente)
 var cashierPerms084 = domain.PermissionsFor(domain.RoleCajero)
 
 func TestTheBellIsPerPerson(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ana := makeUser(t, st, "ana_084", "cajero")
 	marisol := makeUser(t, st, "marisol_084", "gerente")
@@ -105,6 +106,7 @@ func TestTheBellIsPerPerson(t *testing.T) {
 }
 
 func TestResolvingNotificationsByHand(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ana := makeUser(t, st, "ana_084r", "cajero")
 	marisol := makeUser(t, st, "marisol_084r", "gerente")
@@ -195,6 +197,7 @@ func TestResolvingNotificationsByHand(t *testing.T) {
 
 // Los avisos de una empresa no se ven ni se cierran desde otra.
 func TestNotificationsAreIsolated(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	other := makeCompany(t, st, "otra-084n")
 	ana := makeUser(t, st, "ana_084i", "cajero")

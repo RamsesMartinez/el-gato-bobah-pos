@@ -50,6 +50,7 @@ func outMovements(t *testing.T, st *store.Store, ing int64) int {
 }
 
 func TestReportingOutLeavesZeroAndOpensTheNotification(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	cajero := makeUser(t, st, "cajero_084", "cajero")
 	svc, ctx := asStockOut(t, defaultCompanyID)
@@ -145,6 +146,7 @@ func TestReportingOutLeavesZeroAndOpensTheNotification(t *testing.T) {
 }
 
 func TestUndoingAnOutReport(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	cajero := makeUser(t, st, "cajero_084u", "cajero")
 	otro := makeUser(t, st, "cajera_084u", "cajero")
@@ -166,6 +168,10 @@ func TestUndoingAnOutReport(t *testing.T) {
 		}
 		if status != "dismissed" || reason != "undone" {
 			t.Fatalf("%s %s", status, reason)
+		}
+		var audits int
+		if err := st.Pool.QueryRow(ctx, `select count(*) from audit_events where action = 'stock.out_undone' and entity_id = $1`, res.ID).Scan(&audits); err != nil || audits != 1 {
+			t.Fatalf("bitácora del deshacer: %d %v", audits, err)
 		}
 	})
 
@@ -240,6 +246,7 @@ func TestUndoingAnOutReport(t *testing.T) {
 
 // Un tope de 20 reportes por hora y persona.
 func TestReportLimitPerHour(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	cajero := makeUser(t, st, "cajero_084l", "cajero")
 	svc, ctx := asStockOut(t, defaultCompanyID)
@@ -255,6 +262,7 @@ func TestReportLimitPerHour(t *testing.T) {
 
 // Dos tabletas reportan el mismo artículo a la vez: un ajuste y una confirmación.
 func TestConcurrentStockOutReports(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	a := makeUser(t, st, "cajero_084c", "cajero")
 	b := makeUser(t, st, "cajera_084c", "cajero")
@@ -295,6 +303,7 @@ func TestConcurrentStockOutReports(t *testing.T) {
 // «Se acabó» y una venta del mismo artículo a la vez: ninguna muere por deadlock (el reporte toma la
 // existencia antes que el aviso, como la venta).
 func TestConcurrentStockOutReportAndSale(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	cajero := makeUser(t, st, "cajero_084v", "cajero")
 	ing := pieceIngredient(t, st, "Vendido y acabado 084")
@@ -349,6 +358,7 @@ func isDeadlock(err error) bool {
 
 // Una empresa no reporta ni encuentra lo de otra.
 func TestStockOutIsIsolated(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	other := makeCompany(t, st, "otra-084")
 	ing := pieceIngredient(t, st, "Secreto 084")

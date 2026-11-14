@@ -76,6 +76,7 @@ func (k *mailerKit) openAt(t *testing.T, name string, at time.Time) (ing, notifi
 }
 
 func TestOneEmailPerWindow(t *testing.T) {
+	t.Parallel()
 	k := newMailerKit(t)
 	k.openAt(t, "Bolsas 084m", k.block.Add(1*time.Minute))
 	k.openAt(t, "Platos 084m", k.block.Add(2*time.Minute))
@@ -108,6 +109,7 @@ func TestOneEmailPerWindow(t *testing.T) {
 }
 
 func TestResolvedBeforeTheWindowIsNotEmailed(t *testing.T) {
+	t.Parallel()
 	k := newMailerKit(t)
 	ing, _ := k.openAt(t, "Se resolvió 084m", k.block.Add(time.Minute))
 	adjust(t, k.st, "ingrediente", ing, "5") // vuelve a haber: se resuelve antes de que salga el correo
@@ -124,6 +126,7 @@ func TestResolvedBeforeTheWindowIsNotEmailed(t *testing.T) {
 }
 
 func TestCooldownPerItem(t *testing.T) {
+	t.Parallel()
 	k := newMailerKit(t)
 	ctx := context.Background()
 	ing, _ := k.openAt(t, "Oscila 084m", k.block.Add(time.Minute))
@@ -156,6 +159,7 @@ func TestCooldownPerItem(t *testing.T) {
 }
 
 func TestTwoProcessesClaimingTheSameWindowSendOne(t *testing.T) {
+	t.Parallel()
 	k := newMailerKit(t)
 	k.openAt(t, "Carrera 084m", k.block.Add(time.Minute))
 	now := k.block.Add(6 * time.Minute)
@@ -171,6 +175,7 @@ func TestTwoProcessesClaimingTheSameWindowSendOne(t *testing.T) {
 }
 
 func TestAMailFailureRetriesAndNeverBlocksASale(t *testing.T) {
+	t.Parallel()
 	k := newMailerKit(t)
 	ctx := context.Background()
 	ing, _ := k.openAt(t, "Falla 084m", k.block.Add(time.Minute))
@@ -191,6 +196,7 @@ func TestAMailFailureRetriesAndNeverBlocksASale(t *testing.T) {
 }
 
 func TestMorningSummaryOncePerDayAcrossRestarts(t *testing.T) {
+	t.Parallel()
 	k := newMailerKit(t)
 	ctx := context.Background()
 	k.openAt(t, "Mañana 084m", k.block.Add(-time.Hour))

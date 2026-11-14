@@ -32,6 +32,7 @@ func checkValues(t *testing.T, constraint string) []string {
 // motivo que solo conoce uno de los dos es un cierre que la pantalla no sabe decir, o un insert que la
 // base rechaza.
 func TestNotificationListsMatchTheChecks(t *testing.T) {
+	t.Parallel()
 	var reasons, kinds []string
 	for _, r := range domain.NotificationReasons() {
 		reasons = append(reasons, string(r))

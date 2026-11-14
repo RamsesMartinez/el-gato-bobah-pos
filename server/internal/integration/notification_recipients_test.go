@@ -25,6 +25,7 @@ func setEmail(t *testing.T, st *store.Store, user int64, email string) {
 }
 
 func TestRecipientsByPermission(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	admin := makeUser(t, st, "admin_084d", "admin")
 	gerente := makeUser(t, st, "gerente_084d", "gerente")

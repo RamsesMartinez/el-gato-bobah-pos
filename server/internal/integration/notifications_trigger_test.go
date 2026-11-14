@@ -66,6 +66,7 @@ func ingredientOnHand(t *testing.T, st *store.Store, ing int64) decimal.Decimal 
 // La función de la base y domain.LowStockShould dicen lo mismo, caso por caso, recorriendo la
 // existencia de arriba abajo y de regreso: abre por estado y cierra al volver.
 func TestEvaluateLowStockMatchesTheDomain(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	configs := []struct {
 		name         string
@@ -110,6 +111,7 @@ func TestEvaluateLowStockMatchesTheDomain(t *testing.T) {
 
 // Sin la casilla no hay aviso por mínimo, por baja que esté la existencia.
 func TestWithoutTheCheckboxNothingOpens(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ing := pieceIngredient(t, st, "Insumo 084 sin casilla")
 	if _, err := st.Pool.Exec(context.Background(), `update ingredients set min_stock = 5 where id = $1`, ing); err != nil {
@@ -123,6 +125,7 @@ func TestWithoutTheCheckboxNothingOpens(t *testing.T) {
 
 // pedir conteo: con la existencia en negativo, o sin conteo en 30 días, el aviso no dice «agotado».
 func TestNegativeOrUncountedNeedsCount(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ing := pieceIngredient(t, st, "Insumo 084 sin conteo")
 	alertOn(t, st, ing, "5", true, true)
@@ -139,6 +142,7 @@ func TestNegativeOrUncountedNeedsCount(t *testing.T) {
 
 // Un insumo archivado no avisa aunque una receta viva lo siga descontando.
 func TestInactiveIngredientNeverNotifies(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ing := pieceIngredient(t, st, "Insumo 084 archivado")
 	adjust(t, st, "ingrediente", ing, "10")
@@ -155,6 +159,7 @@ func TestInactiveIngredientNeverNotifies(t *testing.T) {
 // DOS CONEXIONES CRUZAN EL MISMO MÍNIMO A LA VEZ: un solo aviso. La segunda venta espera la fila de
 // existencia de la primera y, al seguir, ve el aviso ya abierto (o choca en el índice único y lo deja).
 func TestTwoConnectionsCrossingTheSameMinimumOpenOne(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ing := pieceIngredient(t, st, "Insumo 084 carrera")
 	adjust(t, st, "ingrediente", ing, "7")
@@ -211,6 +216,7 @@ func TestTwoConnectionsCrossingTheSameMinimumOpenOne(t *testing.T) {
 // UNA FALLA AL CREAR EL AVISO NUNCA ROMPE LA VENTA: se fuerza con una restricción que rechaza toda
 // fila de avisos y la venta se guarda igual.
 func TestANotificationFailureNeverBreaksASale(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ing := pieceIngredient(t, st, "Insumo 084 falla")
@@ -242,6 +248,7 @@ func TestANotificationFailureNeverBreaksASale(t *testing.T) {
 // UNA VENTA SIN CAMBIO DE ESTADO NO LLAMA A LA FUNCIÓN (ni abre subtransacción ni avisa): un insumo ya
 // bajo el mínimo con su aviso abierto es el caso de cada venta en una mala racha.
 func TestAQuietSaleOpensNoSubtransaction(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ing := pieceIngredient(t, st, "Insumo 084 racha")
@@ -277,6 +284,7 @@ func TestAQuietSaleOpensNoSubtransaction(t *testing.T) {
 // El trigger de avisos corre DESPUÉS del que suma la existencia: si un renombre cambiara el orden,
 // evaluaría con la existencia de antes de la venta.
 func TestTheNotificationTriggerRunsAfterTheStockTrigger(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	rows, err := st.Pool.Query(context.Background(), `
 		select tgname from pg_trigger
@@ -298,6 +306,7 @@ func TestTheNotificationTriggerRunsAfterTheStockTrigger(t *testing.T) {
 // conteo, sus ajustes se insertan antes de marcarlo cerrado, así que «hubo conteo cerrado en 30 días»
 // todavía no lo ve; el movimiento trae su stock_count_id.
 func TestANotificationOpenedByACountDoesNotAskForACount(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ing := pieceIngredient(t, st, "Insumo 084 contado")
@@ -324,6 +333,7 @@ func TestANotificationOpenedByACountDoesNotAskForACount(t *testing.T) {
 // Apagar el aviso de mínimo (con la alerta encendida) cierra el aviso como «alerta apagada», no
 // como «volvió sobre el mínimo»: la existencia no subió.
 func TestTurningOffTheMinimumEventClosesAsAlertOff(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ing := pieceIngredient(t, st, "Insumo 084 sin evento")

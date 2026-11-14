@@ -28,6 +28,7 @@ func lowStockIn(enabled bool, min string) app.LowStockInput {
 }
 
 func TestLowStockConfigPreviewAndSave(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	gerente := makeUser(t, st, "gerente_084c", "gerente")
 	svc, _, ctx := asNotifications(t, defaultCompanyID)
@@ -144,6 +145,7 @@ func TestLowStockConfigPreviewAndSave(t *testing.T) {
 }
 
 func TestLowStockBatch(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	gerente := makeUser(t, st, "gerente_084b", "gerente")
 	svc, _, ctx := asNotifications(t, defaultCompanyID)
@@ -178,6 +180,7 @@ func TestLowStockBatch(t *testing.T) {
 
 // La configuración de alertas de una empresa no se lee ni se cambia desde otra.
 func TestLowStockConfigIsIsolated(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	other := makeCompany(t, st, "otra-084c")
 	gerente := makeUser(t, st, "gerente_084ci", "gerente")

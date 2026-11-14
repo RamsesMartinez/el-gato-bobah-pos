@@ -25,6 +25,7 @@ func notificationState(t *testing.T, st *store.Store, ing int64, kind string) (s
 }
 
 func TestPathsWithoutMovementEvaluate(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	user := makeUser(t, st, "gerente_084p", "gerente")
 	svc, ctx := asTenant(t, defaultCompanyID)
@@ -135,6 +136,7 @@ func TestPathsWithoutMovementEvaluate(t *testing.T) {
 // Unir (spec 056 + 084): la casilla del destino se fusiona con OR, el aviso del origen se cierra como
 // unido y el destino se evalúa con la existencia ya traspasada.
 func TestMergeOrsLowStockAndClosesSourceNotifications(t *testing.T) {
+	t.Parallel()
 	k := newMergeKit(t)
 	// B con alerta y bajo su mínimo; A sin alerta.
 	alertOn(t, k.st, k.b, "1000", true, false)

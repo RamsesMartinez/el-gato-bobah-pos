@@ -21,6 +21,9 @@ var serialByDesign = map[string]string{
 	// Cambia el slog global para leer lo que la API escribe en el log; en paralelo se mezclaría el
 	// log de otras pruebas y otra podría escribir un token propio.
 	"TestMCPLogsNeverContainTheToken": "cambia el slog global",
+	// Mide la latencia del trigger de avisos con un pedido grande; en paralelo la medida sería la
+	// del servidor ocupado y no la del trigger.
+	"TestLowStockTriggerLatency": "mide tiempo del trigger",
 }
 
 // TestEveryIntegrationTestDeclaresHowItRuns vigila que la suite siga corriendo en paralelo.

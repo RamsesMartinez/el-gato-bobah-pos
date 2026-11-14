@@ -13,6 +13,7 @@ import (
 // LA LISTA DE COMPRA (spec 084, historia 8): sale de lo que se acabó o está bajo su mínimo, mide el
 // consumo solo con ventas (un «se acabó» no es consumo) y explica cada cantidad.
 func TestShoppingListExcludesOutReportsFromConsumption(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ana := makeUser(t, st, "ana_084s", "cajero")

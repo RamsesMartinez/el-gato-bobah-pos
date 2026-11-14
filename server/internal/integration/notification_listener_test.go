@@ -14,6 +14,7 @@ import (
 // EL AVISO EN VIVO SALE SOLO SI LA VENTA CONFIRMA (spec 084, R3): el trigger avisa con NOTIFY, que
 // Postgres entrega al confirmar y descarta al revertir; la API lo pasa al Broker de esa empresa.
 func TestNotificationListenerPublishesOnCommitOnly(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	broker := realtime.NewBroker()
 	ctx, cancel := context.WithCancel(context.Background())
