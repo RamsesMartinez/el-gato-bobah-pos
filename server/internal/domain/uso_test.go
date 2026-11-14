@@ -312,6 +312,25 @@ func TestACustomRoleIsMeasuredWithoutRole(t *testing.T) {
 	}
 }
 
+// INTERFAZ E INTEGRACIONES SE MIDEN (spec 085, issue #293). Sin medirlas, su cero en el mapa se leía
+// como «nadie entra», justo cuando el menú nuevo las movió a Ajustes. Integraciones exige su permiso:
+// un mesero con su propio token no puede inflar una pantalla que no abre.
+func TestInterfaceAndIntegrationsAreMeasured(t *testing.T) {
+	for _, p := range []string{"apariencia", "integraciones"} {
+		if !EventoDeUsoValido(p, "") {
+			t.Errorf("la apertura de %q se descarta", p)
+		}
+	}
+	for _, r := range []Role{RoleAdmin, RoleGerente, RoleCajero, RoleMesero} {
+		if !ScreenAllowed("apariencia", PermissionsFor(r)) {
+			t.Errorf("%s no puede medir Interfaz, que abre cualquier sesión", r)
+		}
+		if got, want := ScreenAllowed("integraciones", PermissionsFor(r)), r == RoleAdmin; got != want {
+			t.Errorf("%s mide Integraciones = %v, quiere %v (solo con integrations.manage)", r, got, want)
+		}
+	}
+}
+
 // «Se acabó» (spec 084) se mide: los cuatro roles reportan, y sus cuatro acciones cuentan.
 func TestOutReportsAreMeasured(t *testing.T) {
 	for _, a := range []string{"reportar", "confirmar", "no-lo-encuentro", "deshacer"} {

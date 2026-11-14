@@ -195,17 +195,16 @@ test('en 2K nada se estira ni se desborda', async ({ browser }) => {
   await g.context().close();
 });
 
-// La campana vive al pie del riel y le quita alto a la lista de opciones: este número se fija para
-// que una pieza nueva al pie (o un renglón más alto) no se coma otra opción sin que nadie lo decida.
-// Medido el 2026-11-14 con la campana ya puesta: 11 opciones enteras a 1280×854.
-const VISIBLES_DEL_ADMIN = 11;
-test('a 1280×854 el admin ve las mismas opciones del riel sin desplazar', async ({ page }) => {
+// La campana vive al pie del riel y le quita alto a la lista de módulos: con el menú en dos niveles
+// (spec 085) comparte renglón con el tema, y los ocho módulos del admin caben enteros arriba de ella a
+// 1280×854. Una pieza nueva al pie que se coma un módulo truena aquí.
+const MODULOS_DEL_ADMIN = 8;
+test('a 1280×854 el admin ve todos los módulos del riel sin desplazar', async ({ page }) => {
   await entrar(page);
   await expect(campana(page)).toBeVisible();
   const tope = (await campana(page).boundingBox())!.y;
-  // Las opciones del riel son los enlaces dentro de sus 76 px.
-  const enteras = await page.locator('a[href^="/"]').evaluateAll((els, limite) =>
-    els.filter((e) => { const r = e.getBoundingClientRect(); return r.height > 0 && r.right <= 76 && r.top >= 0 && r.bottom <= limite; }).length, tope);
-  console.log(`[e2e] opciones del riel enteras a la vista: ${enteras}`);
-  expect(enteras).toBeGreaterThanOrEqual(VISIBLES_DEL_ADMIN);
+  const enteros = await page.locator('[data-rail-list]').locator(':scope > div > a, :scope > div > button').evaluateAll((els, limite) =>
+    els.filter((e) => { const r = e.getBoundingClientRect(); return r.height > 0 && r.top >= 0 && r.bottom <= limite; }).length, tope);
+  console.log(`[e2e] módulos del riel enteros a la vista: ${enteros}`);
+  expect(enteros).toBe(MODULOS_DEL_ADMIN);
 });

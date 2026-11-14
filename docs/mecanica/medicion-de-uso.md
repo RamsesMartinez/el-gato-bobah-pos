@@ -27,3 +27,7 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     y es lo que reemplaza a la captura que está prohibido pintar debajo. Ningún test puede saber si
     las bandas siguen siendo ciertas: el día que se mueva el panel de la cuenta, la leyenda vieja
     describe una pantalla que ya no existe.
+- **Interfaz e Integraciones se miden desde la spec 085** (`apariencia`, `integraciones`). El menú
+  en dos niveles las movió dentro de Ajustes; Integraciones exige `integrations.manage` en
+  `permissionByScreen`. Un destino nuevo del menú (`web/src/app/nav.ts`) que sea una pantalla nueva
+  lleva su renglón en los dos lugares de arriba: el menú no la mide por estar ahí.

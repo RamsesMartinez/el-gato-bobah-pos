@@ -32,16 +32,17 @@ describe('el menú lateral', () => {
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'admin', permissions: [] } as never });
     const { unmount } = renderView();
     await screen.findByText('Vender');
-    for (const l of ['Ventas', 'Caja', 'Menú', 'Almacén', 'Gastos', 'Reportes', 'Plataformas', 'Empleados', 'Negocio', 'Impresión']) {
+    for (const l of ['Caja', 'Inventario', 'Menú', 'Personal', 'Reportes']) {
       expect(screen.queryByText(l), `${l} sin permiso`).toBeNull();
     }
+    expect(screen.getByText('Pedidos')).toBeInTheDocument();
+    expect(screen.getByText('Ajustes')).toBeInTheDocument();
     unmount();
+    // Con solo «ver ventas», Caja lleva directo a Ventas: nunca a la pantalla de caja, que no abre.
     useSessionStore.setState({ user: { id: 2, name: 'Bety', role: '', permissions: ['sales.view', 'roles.manage'] } as never });
     renderView();
-    expect(await screen.findByText('Ventas')).toBeInTheDocument();
-    expect(screen.getByText('Empleados')).toBeInTheDocument();
-    expect(screen.queryByText('Caja')).toBeNull();
-    expect(screen.getByText('Pedidos')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Caja' })).toHaveAttribute('href', '/ventas');
+    expect(screen.getByRole('link', { name: 'Personal' })).toHaveAttribute('href', '/empleados');
   });
   test('«Salir» mide al menos 44 px de alto', () => {
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'admin', permissions: ADMIN } as never });
@@ -50,18 +51,30 @@ describe('el menú lateral', () => {
     expect(parseInt(getComputedStyle(salir).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
   });
 
-  // La asistencia es activable por empresa: apagada, su ítem no ocupa lugar en un riel que ya no
-  // tiene alto libre.
+  // La asistencia es activable por empresa: apagada, Personal no ocupa lugar si no le queda nada.
   test('«Asistencia» aparece solo con la asistencia activa', async () => {
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: [] } as never });
     roster.mockResolvedValueOnce({ enabled: false, people: [] });
     const { unmount } = renderView();
     await screen.findByText('Vender');
-    expect(screen.queryByText('Asistencia')).toBeNull();
+    expect(screen.queryByText('Personal')).toBeNull();
     unmount();
     roster.mockResolvedValueOnce({ enabled: true, people: [] });
     renderView();
-    expect(await screen.findByText('Asistencia')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Personal' })).toHaveAttribute('href', '/asistencia');
+  });
+
+  // La campana de notificaciones (#291) va junto al tema rápido, en el mismo renglón, para no quitarle
+  // alto a los módulos. El hueco existe antes que la campana: el siguiente cambio del pie no se lo come.
+  test('el pie deja el hueco de la campana junto al tema', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'admin', permissions: ADMIN } as never });
+    const { container } = renderView();
+    await screen.findByText('Vender');
+    const hueco = container.querySelector('[data-bell-slot]') as HTMLElement;
+    expect(hueco).not.toBeNull();
+    expect(parseInt(getComputedStyle(hueco).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    const tema = screen.getByRole('button', { name: /Cambiar a tema/ });
+    expect(hueco.parentElement!.contains(tema)).toBe(true);
   });
 
   // A 600 px la flecha de «hay más abajo» iba encima del último ítem y su rótulo se encimaba con el
@@ -73,13 +86,13 @@ describe('el menú lateral', () => {
     const flecha = container.querySelector('[data-rail-more]') as HTMLElement;
     expect(flecha).not.toBeNull();
     expect(getComputedStyle(flecha).position).not.toBe('absolute');
-    const lista = screen.getByText('Vender').closest('a')!.parentElement!;
+    const lista = container.querySelector('[data-rail-list]')!;
     expect(lista.contains(flecha)).toBe(false);
   });
 
-  // Con «Reportes» abierto a 600 px, su ítem quedaba partido bajo el pliegue del menú. Cómo se calcula
-  // el desplazamiento lo prueba railScroll.test.ts; aquí, que la pantalla abierta lo pide.
-  test('el ítem de la pantalla abierta se lleva a la vista', async () => {
+  // Con «Reportes» abierto en una ventana baja, su módulo quedaba partido bajo el pliegue. Cómo se
+  // calcula el desplazamiento lo prueba railScroll.test.ts; aquí, que la pantalla abierta lo pide.
+  test('el módulo de la pantalla abierta se lleva a la vista', async () => {
     const spy = vi.spyOn(await import('./railScroll'), 'railScrollFor');
     useSessionStore.setState({ user: { id: 1, name: 'Administrador', role: 'admin', permissions: ADMIN } as never });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -89,43 +102,26 @@ describe('el menú lateral', () => {
     expect((spy.mock.calls.at(-1)![1] as HTMLElement).textContent).toContain('Reportes');
   });
 
-  // Lo que se echó a perder (spec 039): el renglón sale por PERMISO y no por rol, porque lo usan
-  // cajero y cocina, que no entran a Almacén. Para quien administra va después de «Reportes», como
-  // Asistencia, para no sacar a «Reportes» de los ocho visibles a 600 px.
-  test('«Se echó a perder» sale con su permiso, después de «Reportes»', async () => {
+  // Lo que se echó a perder (spec 039) sale por PERMISO y no por rol: lo usan cajero y cocina, que no
+  // entran a Almacén. Vive en Inventario; con solo ese destino, Inventario abre directo ahí.
+  test('«Se echó a perder» sale con su permiso, dentro de Inventario', async () => {
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: [] } as never });
     const { unmount } = renderView();
     await screen.findByText('Vender');
-    expect(screen.queryByText('Se echó a perder')).toBeNull();
+    expect(screen.queryByText('Inventario')).toBeNull();
     unmount();
     useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.write_off'] } as never });
-    const second = renderView();
-    expect(await screen.findByText('Se echó a perder')).toBeInTheDocument();
-    second.unmount();
-    useSessionStore.setState({ user: { id: 1, name: 'Admin', role: 'admin', permissions: [...ADMIN, 'inventory.write_off'] } as never });
     renderView();
-    const labels = Array.from(document.querySelectorAll('a')).map((a) => a.textContent);
-    expect(labels.indexOf('Se echó a perder')).toBeGreaterThan(labels.indexOf('Reportes'));
-  });
-
-  // La prueba con alguien nuevo no encontró el renglón: con la asistencia activa quedaba más abajo
-  // del pliegue. Lo de todos los días va antes que checar, que además está en la pantalla de bloqueo.
-  test('«Se echó a perder» va antes de «Asistencia»', async () => {
-    roster.mockResolvedValueOnce({ enabled: true, people: [] });
-    useSessionStore.setState({ user: { id: 1, name: 'Admin', role: 'admin', permissions: [...ADMIN, 'inventory.write_off'] } as never });
-    renderView();
-    await screen.findByText('Asistencia');
-    const labels = Array.from(document.querySelectorAll('a')).map((a) => a.textContent);
-    expect(labels.indexOf('Se echó a perder')).toBeLessThan(labels.indexOf('Asistencia'));
+    expect(await screen.findByRole('link', { name: 'Inventario' })).toHaveAttribute('href', '/merma');
   });
 
   // Quien aprueba ve en el riel cuántas esperan: en Vender y Pedidos es el único aviso.
-  test('el renglón lleva el número de mermas por aprobar para quien aprueba', async () => {
+  test('Inventario lleva el número de mermas por aprobar para quien aprueba', async () => {
     pendingWaste.mockResolvedValue([{ id: 1 }, { id: 2 }]);
     useSessionStore.setState({ user: { id: 1, name: 'Gerente', role: 'gerente', permissions: ['inventory.write_off', 'inventory.write_off_approve'] } as never });
     renderView();
-    const link = (await screen.findByText('Se echó a perder')).closest('a')!;
-    expect(await within(link).findByText('2')).toBeInTheDocument();
+    const link = await screen.findByRole('link', { name: /Inventario/ });
+    expect(await within(link).findByLabelText('2 por aprobar en Se echó a perder')).toHaveTextContent('2');
   });
 
   // El aviso de versión nueva vive en el lugar del logo (spec 064): ni encima de la pantalla ni con
@@ -146,7 +142,7 @@ describe('el menú lateral', () => {
     await screen.findByText('Vender');
     const boton = screen.getByRole('button', { name: 'Actualizar a la versión nueva' });
     expect(screen.queryByAltText('El Gato Bobah')).toBeNull();
-    const lista = screen.getByText('Vender').closest('a')!.parentElement!;
+    const lista = document.querySelector('[data-rail-list]')!;
     // Va arriba de la lista, donde estaba el logo.
     expect(boton.compareDocumentPosition(lista) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

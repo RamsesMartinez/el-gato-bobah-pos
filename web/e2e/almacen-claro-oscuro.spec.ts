@@ -205,7 +205,8 @@ test.describe('tema del sistema', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     await iniciarSesion(page);
-    await page.getByRole('link', { name: 'Almacén' }).waitFor();
+    // El riel ya cargó: Inventario (con Almacén dentro, spec 085) está a la vista.
+    await page.locator('[data-rail-list]').getByRole('button', { name: 'Inventario' }).waitFor();
     expect(await page.evaluate(() => localStorage.getItem('theme'))).toBeNull();
     await expect(page.locator('html')).toHaveClass(/dark/);
     await page.emulateMedia({ colorScheme: 'light' });

@@ -21,6 +21,8 @@ const ETIQUETAS: Record<string, string> = {
   cuenta: 'Cuenta propia',
   asistencia: 'Asistencia',
   merma: 'Se echó a perder',
+  apariencia: 'Interfaz',
+  integraciones: 'Integraciones',
 };
 
 const ACCIONES: Record<string, string> = {

@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { entrar } from './pos';
+import { abrirDelMenu } from './menu';
 
 // EL AVISO DE VERSIÓN NUEVA NO TAPA LA PANTALLA (spec 064).
 //
@@ -11,7 +12,9 @@ import { entrar } from './pos';
 // En desarrollo no hay service worker: `__egbSimularVersionNueva` prende el aviso como lo haría
 // una versión nueva de verdad. Solo existe en desarrollo, así que corre contra `make start`.
 
-test.use({ hasTouch: true, viewport: { width: 1024, height: 600 } });
+// El equipo del mostrador (spec 085 diseña el menú contra él).
+const ALTO = 854;
+test.use({ hasTouch: true, viewport: { width: 1280, height: ALTO } });
 
 const PANTALLAS = [
   { riel: 'Vender', ruta: '/pos' },
@@ -31,9 +34,7 @@ const seCruzan = (a: { x: number; y: number; w: number; h: number }, b: typeof a
 
 async function irA(page: Page, riel: string, ruta: string) {
   // Navegación del riel y no `goto`: recargar borraría el aviso, que vive en la pestaña.
-  const link = page.locator('[data-rail-list] a', { hasText: riel });
-  await link.scrollIntoViewIfNeeded();
-  await link.click();
+  await abrirDelMenu(page, riel);
   await expect(page).toHaveURL(new RegExp(`${ruta}$`));
   await page.waitForLoadState('networkidle');
 }
@@ -41,7 +42,7 @@ async function irA(page: Page, riel: string, ruta: string) {
 async function enteraEnLaVentana(l: Locator, nombre: string) {
   const b = await caja(l);
   expect(b.y, `${nombre} quedó arriba del borde`).toBeGreaterThanOrEqual(0);
-  expect(b.y + b.h, `${nombre} quedó partido bajo el pliegue`).toBeLessThanOrEqual(600);
+  expect(b.y + b.h, `${nombre} quedó partido bajo el pliegue`).toBeLessThanOrEqual(ALTO);
 }
 
 test('el aviso no tapa ni le quita alto a ninguna pantalla', async ({ page }) => {
@@ -79,7 +80,7 @@ test('el aviso no tapa ni le quita alto a ninguna pantalla', async ({ page }) =>
         `${riel}: el aviso tapa «${(await b.textContent())?.trim()}»`).toBe(false);
     }
 
-    await enteraEnLaVentana(page.locator('[data-rail-list] a[aria-current="page"]'), `${riel} (opción abierta)`);
+    await enteraEnLaVentana(page.locator('[data-rail-list] [data-active="true"]'), `${riel} (módulo abierto)`);
     await enteraEnLaVentana(page.getByRole('button', { name: 'Salir' }), '«Salir»');
     await page.screenshot({ path: `test-results/aviso-de-version/${riel}.png` });
   }
