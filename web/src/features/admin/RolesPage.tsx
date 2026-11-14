@@ -19,7 +19,8 @@ import {
 interface Props {
   // Las pestañas de Empleados van arriba de la lista: así el rol elegido tiene el alto entero.
   tabs?: ReactNode;
-  // Inactivar un rol con personas activas lleva a Personal filtrado por ese rol.
+  // Inactivar un rol con personas activas, o ver quién tuvo uno que ya no se puede borrar, lleva a
+  // Personal filtrado por ese rol.
   onShowPeople: (roleId: number) => void;
   // onDirtyChange: Empleados pregunta antes de cambiar de pestaña con cambios sin guardar; sin la hoja
   // modal, tocar «Personal» desmontaba el editor y lo marcado se perdía sin aviso.
@@ -400,6 +401,9 @@ function RoleEditor({ role: liveRole, roles, catalog, startAtActions, onDirty, o
               )}
               {usedBefore && (
                 <Text fontSize="sm" color="fg.muted" ml="auto">Alguien lo tiene asignado (aunque esté dado de baja): solo se puede inactivar</Text>
+              )}
+              {usedBefore && can('employees.manage', user) && (
+                <Button variant="outline" minH="44px" disabled={busy || dirty} onClick={() => onShowPeople(role.id)}>Ver a esas personas</Button>
               )}
             </HStack>
             {dirty && <Text fontSize="sm" color="fg.muted">Guarda o descarta los cambios primero</Text>}

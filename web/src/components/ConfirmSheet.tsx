@@ -16,6 +16,8 @@ interface Props {
   // confirmPalette: el color de la acción principal cuando no es destructiva (por omisión, gris).
   confirmPalette?: string;
   loading?: boolean;
+  // confirmDisabled: la acción principal espera a que se complete algo del cuerpo (p. ej. elegir rol).
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   // children va en el cuerpo, bajo la descripción: una acción secundaria que no compite con el pie.
@@ -32,7 +34,7 @@ interface Props {
 // Cerrar la hoja de cualquier forma —fondo, Escape, arrastrar— es cancelar.
 export function ConfirmSheet({
   isOpen, title, description, confirmLabel, cancelLabel = 'Volver', destructive, confirmPalette, loading,
-  onConfirm, onCancel, children,
+  confirmDisabled, onConfirm, onCancel, children,
 }: Props) {
   const seguro = (
     <Button flex="1" minH="52px" variant={destructive ? 'solid' : 'outline'}
@@ -43,7 +45,7 @@ export function ConfirmSheet({
   const accion = (
     <Button flex={destructive ? undefined : '1'} minH="52px" px={6}
       variant={destructive ? 'outline' : 'solid'} colorPalette={destructive ? 'red' : confirmPalette}
-      data-destructive={destructive ? 'true' : 'false'} loading={loading} onClick={onConfirm}>
+      data-destructive={destructive ? 'true' : 'false'} loading={loading} disabled={confirmDisabled} onClick={onConfirm}>
       {confirmLabel}
     </Button>
   );

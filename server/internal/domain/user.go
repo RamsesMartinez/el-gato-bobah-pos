@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -86,3 +87,27 @@ func UsuarioValido(u string) bool {
 	}
 	return true
 }
+
+// UserListStatus elige qué lista de empleados se pide: la de siempre (activos) o la de bajas.
+type UserListStatus string
+
+const (
+	UsersActive   UserListStatus = "active"
+	UsersInactive UserListStatus = "inactive"
+)
+
+// ParseUserListStatus lee el `status` de GET /users. Ausente es la lista de siempre; uno
+// desconocido se rechaza, porque caer a activos pintaría gente activa bajo «Dadas de baja».
+func ParseUserListStatus(s string) (UserListStatus, error) {
+	switch UserListStatus(s) {
+	case "", UsersActive:
+		return UsersActive, nil
+	case UsersInactive:
+		return UsersInactive, nil
+	}
+	return "", fmt.Errorf("%w: status debe ser active o inactive", ErrValidation)
+}
+
+// ErrUsernameTaken: el usuario ya es de otra persona de la empresa, activa o dada de baja. Las
+// bajas conservan su usuario para poder reactivarlas sin que choquen con nadie.
+var ErrUsernameTaken = fmt.Errorf("%w: ese usuario ya es de otra persona (activa o dada de baja); elige otro", ErrConflict)
