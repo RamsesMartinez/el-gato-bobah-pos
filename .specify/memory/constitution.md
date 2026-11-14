@@ -298,12 +298,22 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
 
 ## Restricciones del producto
 
-- **Target: tablets de 7"** — el tamaño de los controles táctiles y la separación de las acciones destructivas son requisito funcional, no preferencia estética. La vara de UX del POS es **minimizar taps**: nunca obligar al operador a deshacer para rehacer.
-  - **El presupuesto real es ~1024×600 px, y se diseña contra él, no contra el monitor de quien
-    programa.** Cada control ocupa alto que le quita a la lista que el operador vino a leer. Antes de
-    agregar una barra de filtros, un encabezado o una fila de tarjetas, cuenta cuántos renglones de
-    contenido quedan debajo.
-  - **Prohibido el `<select>` nativo.** En una pantalla de 7 a 10 pulgadas su desplegable lo pinta el
+- **Target: el equipo de mostrador, con 1280×854 px como mínimo** (decidido el 2026-11-13, issue
+  #291) — el tamaño de los controles táctiles y la separación de las acciones destructivas son
+  requisito funcional, no preferencia estética. La vara de UX del POS es **minimizar taps**: nunca
+  obligar al operador a deshacer para rehacer.
+  - **El presupuesto real es 1280×854 px (proporción 3:2), y se diseña contra él, no contra el
+    monitor de quien programa.** Es la pantalla del equipo de mostrador que el negocio usa hoy, y la
+    que se recomienda a un negocio nuevo. Antes era ~1024×600 (tableta de 7"); se subió porque esa
+    tableta ya no es el equipo del mostrador y diseñar para ella le quitaba a cada pantalla un tercio
+    del alto que el equipo real sí tiene. Una laptop o un monitor 2K son ampliación: la pantalla se
+    revisa también ahí, pero no se diseña para ellos. Cada control ocupa alto que le quita a la lista
+    que el operador vino a leer. Antes de agregar una barra de filtros, un encabezado o una fila de
+    tarjetas, cuenta cuántos renglones de contenido quedan debajo.
+  - **Lo que NO cambió con la resolución**: el mínimo de 44 px de todo control tappable y la
+    prohibición del `<select>` nativo siguen igual. El equipo de mostrador también se opera con el
+    dedo; más píxeles no hacen más grande la yema.
+  - **Prohibido el `<select>` nativo.** En una pantalla táctil su desplegable lo pinta el
     sistema operativo con renglones de ~20 px, tapa la pantalla y no se acierta con el dedo. Va
     [`Picker`](../../web/src/components/Picker.tsx): una hoja inferior con filas grandes y buscador.
     Esta regla ya se había perdido una vez por vivir solo en el comentario de un componente; por eso
@@ -320,14 +330,14 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
     la primera; por debajo, el operador toca dos veces y la segunda cae en otra cosa.
   - **La pantalla la verifica el agente, no una persona con la tableta en la mano** (decidido el
     2026-10-11). No hay paso manual «en tableta real» ni se deja como pendiente: se mide con
-    Playwright a 1024×600 en local, con capturas, y con subagentes que usan la
+    Playwright a 1280×854 en local (y en 2K como ampliación), con capturas, y con subagentes que usan la
     pantalla como alguien nuevo y reportan dónde se atoran. Lo que Chromium no reproduce (el teclado
     del sistema, la densidad de una Surface) se simula —ventana encogida, `deviceScaleFactor`— y se
     nombra como simulado, no como pendiente para alguien más.
   - **Toda prueba corre en local; el ambiente de pruebas solo cuando el dueño lo pide** (decidido el
     2026-10-17, ampliado el 2026-10-21). Las vueltas con alguien sin contexto, los ajustes de pantalla,
     la suite e2e, los repasos visuales y la prueba del dueño corren contra el `make start` del worktree
-    (API como `gatobobah_app`, datos restaurados), a 1024×600: la pantalla local es el mismo código, y
+    (API como `gatobobah_app`, datos restaurados), a 1280×854: la pantalla local es el mismo código, y
     pasar cada corrección por PR, CI y despliegue para volver a probar costó, en la 040, seis ciclos de
     10 a 15 minutos. Para acercarse a lo desplegado, la vuelta final corre además contra el build de
     producción servido en local (`bun run build && bun run preview`). **El ambiente de pruebas
@@ -415,7 +425,7 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
 - **Los revisores de diseño corren solos, no por recordatorio.** [`.specify/extensions.yml`](../extensions.yml) engancha `/revision-de-arquitectura` en `after_plan` —`db-architect` y `tablet-ui-reviewer` sobre el plan, cuando corregir todavía cuesta editar un documento— y `/revision-de-codigo` en `after_implement`. Ninguno es `optional`: un hook opcional imprime una sugerencia, y una sugerencia es justo el recordatorio que el hook viene a reemplazar. Que qué revisor aplica se decida leyendo el diff, y no en el archivo de hooks, es a propósito.
 - **Una pantalla nueva o con disposición cambiada no se implementa sin maqueta elegida.** El hook
   `after_plan` corre `/maquetas` antes que los revisores de diseño: 2 o 3 opciones navegables a
-  1024×600 por pantalla, el dueño elige y la decisión queda en la sección «Maquetas» del plan. Una
+  1280×854 por pantalla, el dueño elige y la decisión queda en la sección «Maquetas» del plan. Una
   pantalla aprobada en una tabla se aprueba sin verla, y el defecto aparece en la tableta. Un plan
   que toca `web/` con la sección vacía es un hallazgo CRITICAL de `/speckit-analyze`.
 - **Los hooks de lefthook quedan verdes** antes de commitear o pushear. `--no-verify` no se usa: si un hook falla, se arregla la causa. (Qué corre cada hook: `AGENTS.md`.)
@@ -441,4 +451,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.28.1 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-11-08
+**Version**: 1.29.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-11-14
