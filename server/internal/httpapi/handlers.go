@@ -268,6 +268,7 @@ func newHandlers(d Deps) *Handlers {
 		mcpIPs:        newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-ip:", mcpMaxIPRequests, time.Minute),
 		mcpTokens:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-token:", mcpMaxTokenCalls, time.Minute),
 		tokenWrites:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:token-writes:", 30, time.Hour),
+		listEmails:    newRateLimiter(d.Cfg.RedisURL, "ratelimit:shopping-list-email:", 5, time.Hour),
 		cfg:           d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,

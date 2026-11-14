@@ -76,6 +76,33 @@ func TestReportingOutLeavesZeroAndOpensTheNotification(t *testing.T) {
 		}
 	})
 
+	// Con la alerta «al acabarse» encendida, el ajuste a 0 lo abre el trigger, que no sabe quién fue.
+	// El reporte se cuelga de ese aviso y tiene que dejarlo a nombre de quien reportó: sin eso, la
+	// franja le salía a esa misma persona y el panel decía «Lo reportó el sistema» (e2e de la 084).
+	t.Run("con la alerta encendida el aviso queda a nombre de quien reportó", func(t *testing.T) {
+		ing := pieceIngredient(t, st, "Vasos con alerta 084")
+		adjust(t, st, "ingrediente", ing, "40")
+		alertOn(t, st, ing, "10", true, true)
+		if _, err := st.Pool.Exec(ctx, `update ingredients set low_stock_banner = true where id = $1`, ing); err != nil {
+			t.Fatal(err)
+		}
+		res := reportOut(t, svc, ctx, ing, cajero)
+		var opener *int64
+		if err := st.Pool.QueryRow(ctx, `select opened_by from notifications where id = $1`, res.NotificationID).Scan(&opener); err != nil || opener == nil || *opener != cajero {
+			t.Fatalf("el aviso que abrió el trigger quedó sin autor: %v (%v)", opener, err)
+		}
+		nsvc, _, nctx := asNotifications(t, defaultCompanyID)
+		list, err := nsvc.List(nctx, cajero, []domain.Permission{domain.PermInventoryReportOut}, true, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, n := range list {
+			if n.ID == res.NotificationID && n.Banner {
+				t.Fatal("quien reportó recibe la franja de su propio aviso")
+			}
+		}
+	})
+
 	t.Run("funciona sin alerta ni mínimo", func(t *testing.T) {
 		ing := pieceIngredient(t, st, "Servilletas 084")
 		adjust(t, st, "ingrediente", ing, "5")

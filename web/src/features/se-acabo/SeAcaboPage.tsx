@@ -69,6 +69,9 @@ export function SeAcaboPage() {
       medirAccion('se-acabo', res.kind === 'confirmation' ? 'confirmar' : 'reportar');
       llave.current = uuid();
       setQ('');
+      // La cuenta arranca con la hora de ahora, no con la del último tic: si no, la pantalla que lleva
+      // rato abierta prometía más segundos de los que el servidor acepta.
+      setAhora(Date.now());
       setAviso({ tipo: 'hecho', nombre: it.name, id: res.id, confirmacion: res.kind === 'confirmation', hasta: Date.parse(res.undoUntil) });
       void qc.invalidateQueries({ queryKey: ['se-acabo'] });
       void qc.invalidateQueries({ queryKey: ['avisos'] });

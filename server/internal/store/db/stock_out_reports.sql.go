@@ -49,6 +49,35 @@ func (q *Queries) ArticleMovedSince(ctx context.Context, arg ArticleMovedSincePa
 	return column_1, err
 }
 
+const claimTriggerOut = `-- name: ClaimTriggerOut :one
+update notifications set opened_by = $1
+ where branch_id = $2 and status = 'open' and kind = 'stock_out'
+   and item_key = coalesce($3::bigint, -$4::bigint, 0)
+   and opened_by is null
+returning id
+`
+
+type ClaimTriggerOutParams struct {
+	OpenedBy     *int64 `json:"opened_by"`
+	BranchID     int64  `json:"branch_id"`
+	IngredientID *int64 `json:"ingredient_id"`
+	ProductID    *int64 `json:"product_id"`
+}
+
+// El aviso que abrió el trigger al dejar la existencia en 0 no sabe quién fue: el reporte que se
+// cuelga de él lo deja a nombre de quien reportó (lo vuelve manual: espera a que haya existencia).
+func (q *Queries) ClaimTriggerOut(ctx context.Context, arg ClaimTriggerOutParams) (int64, error) {
+	row := q.db.QueryRow(ctx, claimTriggerOut,
+		arg.OpenedBy,
+		arg.BranchID,
+		arg.IngredientID,
+		arg.ProductID,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const countUserReportsSince = `-- name: CountUserReportsSince :one
 select count(*)::int from stock_out_reports where reported_by = $1 and reported_at >= $2
 `

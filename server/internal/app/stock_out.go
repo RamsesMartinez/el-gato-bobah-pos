@@ -236,8 +236,9 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 				notification = ids[0]
 			} else {
 				// El ajuste a 0 lo acaba de abrir el trigger (un artículo con alerta «al acabarse»): el
-				// reporte se cuelga de ese aviso.
-				if notification, err = q.OpenOutNotification(ctx, db.OpenOutNotificationParams{BranchID: branch, IngredientID: ing, ProductID: prod}); err != nil {
+				// reporte se cuelga de ese aviso y lo deja a su nombre, o la franja le saldría a quien
+				// reportó y el panel diría que lo reportó el sistema.
+				if notification, err = q.ClaimTriggerOut(ctx, db.ClaimTriggerOutParams{OpenedBy: &cmd.Actor, BranchID: branch, IngredientID: ing, ProductID: prod}); err != nil {
 					return err
 				}
 			}

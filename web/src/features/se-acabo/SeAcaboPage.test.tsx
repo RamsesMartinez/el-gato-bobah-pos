@@ -51,6 +51,20 @@ describe('Se acabó', () => {
     expect(screen.getByRole('button', { name: /Deshacer/ })).toBeTruthy();
   });
 
+  // El e2e lo vio: con la pantalla abierta un rato, «Deshacer» arrancaba en 92 s, porque la cuenta
+  // usaba la hora en que se montó la pantalla hasta el primer tic. El servidor rechaza a los 90.
+  test('la cuenta del deshacer arranca en 90 s aunque la pantalla lleve rato abierta', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
+    montar();
+    const mosaico = await screen.findByRole('button', { name: /Queso crema/ });
+    vi.setSystemTime(Date.now() + 30_000);
+    out.report.mockResolvedValue({ id: 7, kind: 'report', notificationId: 3, delta: '-3', undoUntil: new Date(Date.now() + 90_000).toISOString(), confirmations: 1 });
+    fireEvent.click(mosaico);
+    await new Promise((r) => setTimeout(r, 450));
+    fireEvent.click(screen.getByRole('button', { name: /Queso crema/ }));
+    expect(await screen.findByRole('button', { name: /Deshacer · (89|90) s/ })).toBeTruthy();
+  });
+
   test('un doble toque rápido no confirma (0.4 s de gracia)', async () => {
     montar();
     const mosaico = await screen.findByRole('button', { name: /Queso crema/ });

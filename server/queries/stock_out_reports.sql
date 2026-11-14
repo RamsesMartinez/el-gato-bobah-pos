@@ -99,6 +99,15 @@ select id from notifications
  where branch_id = sqlc.arg(branch_id) and status = 'open' and kind = 'stock_out'
    and item_key = coalesce(sqlc.narg(ingredient_id)::bigint, -sqlc.narg(product_id)::bigint, 0);
 
+-- name: ClaimTriggerOut :one
+-- El aviso que abrió el trigger al dejar la existencia en 0 no sabe quién fue: el reporte que se
+-- cuelga de él lo deja a nombre de quien reportó (lo vuelve manual: espera a que haya existencia).
+update notifications set opened_by = sqlc.arg(opened_by)
+ where branch_id = sqlc.arg(branch_id) and status = 'open' and kind = 'stock_out'
+   and item_key = coalesce(sqlc.narg(ingredient_id)::bigint, -sqlc.narg(product_id)::bigint, 0)
+   and opened_by is null
+returning id;
+
 -- name: OpenNotFound :one
 insert into notifications (branch_id, kind, query_text, opened_by)
 values (sqlc.arg(branch_id), 'not_found', sqlc.arg(query_text), sqlc.arg(opened_by))
