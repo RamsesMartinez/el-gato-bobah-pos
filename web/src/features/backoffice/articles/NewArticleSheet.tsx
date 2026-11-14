@@ -23,16 +23,18 @@ import { baseQty, KINDS, bigUnitOf, type Kind } from './articleUnits';
 
 interface Props {
   word?: string;
+  // initialName llega de «No lo encuentro» (spec 084): el alta abre con lo que escribió quien lo buscó.
+  initialName?: string;
   onClose: () => void;
   onCreated: (id: number) => void;
 }
 
-export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Props) {
+export function NewArticleSheet({ word = 'artículo', initialName = '', onClose, onCreated }: Props) {
   const qc = useQueryClient();
   // Se piden al abrir para que al guardar ya estén casi siempre.
   useQuery({ queryKey: ['units'], queryFn: backofficeApi.units });
   const locations = useLocations();
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initialName);
   const [kind, setKind] = useState<Kind | null>(null);
   const [stock, setStock] = useState({ qty: '', big: true });
   const [min, setMin] = useState({ qty: '', big: true });

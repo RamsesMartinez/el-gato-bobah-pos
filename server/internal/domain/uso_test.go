@@ -287,6 +287,7 @@ func TestEachSuggestedRoleMeasuresTheSameScreensAsBefore(t *testing.T) {
 		"emparejar": {RoleAdmin, RoleGerente}, "asistencia": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
 		"merma":    {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
 		"se-acabo": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+		"avisos":   {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
 	}
 	for pantalla, roles := range antes {
 		for _, r := range []Role{RoleAdmin, RoleGerente, RoleCajero, RoleMesero} {

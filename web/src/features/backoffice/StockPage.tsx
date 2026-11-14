@@ -124,7 +124,11 @@ export function StockPage() {
         </Tabs.Content>
         {/* Artículos (spec 042): buscador, filtros, «+ Nuevo» y la ficha de cada uno. */}
         <Tabs.Content value="insumos" px={0} flex="1" minH={0} display="flex" flexDirection="column">
-          {tab === 'insumos' && <ArticlesTab word={word} onOpen={(id) => openArticle(id)} />}
+          {tab === 'insumos' && (
+            <ArticlesTab word={word} onOpen={(id) => openArticle(id)}
+              notice={params.get('nuevo') !== null ? { name: params.get('nuevo') ?? '', id: Number(params.get('aviso')) || 0 } : undefined}
+              onNoticeDone={() => setParams({ tab: 'insumos' }, { replace: true })} />
+          )}
         </Tabs.Content>
         {canReceive && (
           <Tabs.Content value="por-recibir" px={0} flex="1" minH={0} overflowY="auto">

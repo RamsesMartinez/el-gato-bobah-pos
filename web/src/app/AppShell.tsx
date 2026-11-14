@@ -19,6 +19,8 @@ import { UpdateRailButton } from './UpdateRailButton';
 import { useAppUpdate } from '../stores/appUpdate';
 import { NAV } from './nav';
 import { PendingWasteBar } from '../features/waste/PendingWasteBar';
+import { Campana } from '../features/notificaciones/Campana';
+import { FranjaDeAgotado } from '../features/notificaciones/FranjaDeAgotado';
 import { railScrollFor } from './railScroll';
 
 export function AppShell() {
@@ -34,6 +36,7 @@ export function AppShell() {
   const { data: attendance } = useQuery({ queryKey: ['asistencia', 'roster'], queryFn: attendanceApi.roster, staleTime: 60_000 });
   const navList = useRef<HTMLDivElement>(null);
   const [moreBelow, setMoreBelow] = useState(false);
+  const [avisos, setAvisos] = useState(false);
   const measureRail = useCallback(() => {
     const el = navList.current;
     setMoreBelow(!!el && el.scrollHeight - el.scrollTop - el.clientHeight > 4);
@@ -133,6 +136,8 @@ export function AppShell() {
           <LuChevronDown size={14} />
         </Flex>
         <VStack gap={0} flexShrink={0} borderTopWidth="1px" borderColor="whiteAlpha.300" pt={1}>
+          {/* La campana de avisos (spec 084): solo icono, para no quitarle más de un renglón a la lista. */}
+          <Campana abierto={avisos} setAbierto={setAvisos} />
           <TemaRapido />
           <Text fontSize="10px" color="gray.400" lineClamp={1} px={1}>{user?.name}</Text>
           {/* 44 px: es un control táctil como cualquier otro, aunque se toque poco. */}
@@ -144,6 +149,7 @@ export function AppShell() {
           su alto a la pantalla en vez de empujarla 44 px fuera de los 600 (spec 039). */}
       <Flex flex="1" minW={0} direction="column">
         <PendingWasteBar />
+        <FranjaDeAgotado onVer={() => setAvisos(true)} />
         <Box data-work-area flex="1" minH={0} overflowY="auto">
           <Outlet />
         </Box>
