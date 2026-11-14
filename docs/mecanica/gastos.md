@@ -38,7 +38,7 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     orden de la apertura y el cierre; tomar el pago primero los cruza.
 - **Editar un gasto ya guardado** (spec 053, 0103). Encabezado, agregar y quitar renglones
   (`POST /expenses/{id}/edit`, permiso `expenses.edit`, solo admin) y entregas con su fecha
-  (`POST /expenses/{id}/deliveries`, `inventory.receive`). Cinco cosas que no se ven:
+  (`POST /expenses/{id}/deliveries`, `inventory.receive`). Seis cosas que no se ven:
   - **La vista previa es la misma transacción, revertida** (`runExpenseEdit`): con `?preview=1` corre
     todo y devuelve `errPreviewRollback`; confirmar repite la `fingerprint` de la última vista previa
     (409 `EXPENSE_EDIT_STALE` si algo cambió) y exige sus decisiones (400 `DECISION_REQUIRED`). Una
@@ -57,9 +57,13 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     24:00 del centro ya es mañana. El gasto toma el día del turno y la entrega el del negocio, queda
     «entregado antes de comprarse» y editarlo truena con `domain.ValidDeliveryDate`. Detuvo un release
     con la prueba en rojo solo de noche (`TestMCPSeedShiftIsOnTheBusinessDay`). La API abre el turno
-    con la zona de la empresa (`OpenSession`), así que en el producto no pasa por la hora; lo que sí
-    pasa es que **crear acepta una entrega anterior a la fecha del gasto** (`received_at` explícito) y
-    editar la rechaza.
+    con la zona de la empresa (`OpenSession`), así que en el producto no pasa por la hora.
+  - **Una entrega puede ser anterior a la fecha del gasto; futura, nunca** (FR-015 enmendado,
+    `domain.ValidDeliveryDate`). La fecha del gasto la fija el turno cuando hay caja abierta, y la
+    mercancía llega antes en la operación real. Antes crear la aceptaba y editar la rechazaba: la
+    compra ya no se podía corregir (arreglado; `TestAPurchaseThatCouldBeCreatedCanBeEdited`). Crear,
+    «Llegó todo», entregar y agregar un renglón que ya llegó pasan por la misma función; un camino
+    nuevo que fije `received_at` o `effective_on` también.
   - **«No mover» ante un conteo posterior es un movimiento más, no la ausencia de uno**: el del renglón
     se registra igual (lo aplicado sigue siendo la suma de sus movimientos) y otro `ajuste` contrario
     lleva `stock_count_id`, `expense_id`, SIN `expense_item_id` y la sucursal del conteo explícita.
