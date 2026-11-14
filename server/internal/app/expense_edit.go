@@ -740,13 +740,6 @@ func (r *editRun) editHeader(ctx context.Context, h EditHeaderInput) error {
 		if d.After(r.today) {
 			return fmt.Errorf("%w: la fecha del gasto no puede ser de un día que no ha pasado", domain.ErrValidation)
 		}
-		first, err := q.MinDeliveryDate(ctx, exp.ID)
-		if err != nil {
-			return err
-		}
-		if first.Valid && d.After(first.Time) {
-			return fmt.Errorf("%w: ya hay mercancía que llegó el %s; la fecha del gasto no puede ser posterior", domain.ErrValidation, dayStr(first.Time))
-		}
 		if !d.Equal(date) {
 			b, a := dayStr(date), dayStr(d)
 			r.header = append(r.header, FieldChange{Field: "expenseDate", Before: &b, After: &a})
@@ -912,7 +905,7 @@ func (r *editRun) addLines(ctx context.Context, lines []EditLineInput) (map[int6
 			if err != nil {
 				return nil, err
 			}
-			if err := domain.ValidDeliveryDate(day, r.exp.ExpenseDate.Time, r.today); err != nil {
+			if err := domain.ValidDeliveryDate(day, r.today); err != nil {
 				return nil, err
 			}
 			recv = &qty
@@ -993,7 +986,7 @@ func (s *BackofficeService) DeliverExpense(ctx context.Context, id int64, in Del
 						return err
 					}
 				}
-				if err := domain.ValidDeliveryDate(day, r.exp.ExpenseDate.Time, r.today); err != nil {
+				if err := domain.ValidDeliveryDate(day, r.today); err != nil {
 					return err
 				}
 				info, ok := byID[l.ItemID]

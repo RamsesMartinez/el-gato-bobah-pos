@@ -345,6 +345,32 @@ describe('Editar un gasto guardado (spec 053)', () => {
     expect(back.editExpense.mock.calls.at(-1)![1]).toMatchObject({ remove: [41], fingerprint: 'f1' });
   });
 
+  // Una compra que se pudo crear no se podía editar: la hoja de «Agregar renglón» no dejaba una llegada
+  // anterior a la fecha del gasto (lo de anoche capturado hoy, la compra a crédito). La regla única
+  // (domain.ValidDeliveryDate) solo rechaza un día que no ha pasado.
+  test('«Ya llegó» con un día anterior a la fecha del gasto se agrega y se manda', async () => {
+    const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
+    back.expenseDetail.mockResolvedValue(detail([], { expenseDate: hoy, amount: '67.50', paid: '67.50', status: 'pagada', supplierId: 6, categoryId: 4 } as never));
+    back.searchArticles.mockResolvedValue({ items: [{ itemType: 'ingrediente', id: 7, name: 'Leche entera', unitCode: 'ml', unitKind: 'volumen' }] } as never);
+    montar();
+    click(await screen.findByRole('button', { name: 'Editar gasto' }).then((b) => b.textContent!));
+    click('+ Agregar renglón');
+    fireEvent.click(await screen.findByRole('button', { name: 'Leche entera' }));
+    click('Fue regalo');
+    click('Ya llegó');
+    click('Día en que llegó');
+    const calendario = await screen.findByRole('dialog', { name: 'Día en que llegó' });
+    fireEvent.click(within(calendario).getByRole('button', { name: 'Mes anterior' }));
+    fireEvent.click(within(calendario).getByRole('button', { name: '1' }));
+    const agregar = await screen.findByRole('button', { name: 'Agregar' });
+    expect(agregar).toBeEnabled();
+    fireEvent.click(agregar);
+    click('Revisar cambios');
+    await waitFor(() => expect(back.editExpense).toHaveBeenCalled());
+    const llego = back.editExpense.mock.calls[0][1].add[0].arrivedOn as string;
+    expect(llego < hoy).toBe(true);
+  });
+
   test('el encabezado se edita en línea y solo manda lo que cambió', async () => {
     montar();
     click(await screen.findByRole('button', { name: 'Editar gasto' }).then((b) => b.textContent!));

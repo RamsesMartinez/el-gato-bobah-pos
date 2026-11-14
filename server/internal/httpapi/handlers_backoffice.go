@@ -1160,24 +1160,17 @@ func (h *Handlers) ReceiveExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := userFrom(r.Context())
-	// Las cantidades recibidas se fijan antes de consumir: un renglón que no llegó va en 0 y no
-	// genera movimiento.
-	if len(body.Received) > 0 {
-		got := make(map[int64]decimal.Decimal, len(body.Received))
-		for k, v := range body.Received {
-			itemID, err := strconv.ParseInt(k, 10, 64)
-			if err != nil {
-				Error(w, domain.ErrValidation)
-				return
-			}
-			got[itemID] = v
-		}
-		if err := h.backoffice.SetItemsReceived(r.Context(), id, got); err != nil {
-			Error(w, err)
+	// Un renglón que no llegó va en 0 y no genera movimiento.
+	got := make(map[int64]decimal.Decimal, len(body.Received))
+	for k, v := range body.Received {
+		itemID, err := strconv.ParseInt(k, 10, 64)
+		if err != nil {
+			Error(w, domain.ErrValidation)
 			return
 		}
+		got[itemID] = v
 	}
-	if err := h.backoffice.ReceiveExpense(r.Context(), id, body.ReceivedAt, u.ID); err != nil {
+	if err := h.backoffice.ReceiveExpenseLines(r.Context(), id, body.ReceivedAt, got, u.ID); err != nil {
 		Error(w, err)
 		return
 	}

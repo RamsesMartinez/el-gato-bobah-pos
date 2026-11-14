@@ -139,19 +139,17 @@ func TestAdjustLineToReceived(t *testing.T) {
 	}
 }
 
-// FR-015: una entrega no es futura ni anterior a la compra.
+// FR-015 (enmendada): una entrega no es futura; anterior a la fecha del gasto sí vale.
 func TestValidDeliveryDate(t *testing.T) {
 	day := func(s string) time.Time { v, _ := time.Parse("2006-01-02", s); return v }
-	today, exp := day("2026-11-01"), day("2026-10-03")
-	for _, ok := range []string{"2026-10-03", "2026-10-20", "2026-11-01"} {
-		if err := ValidDeliveryDate(day(ok), exp, today); err != nil {
+	today := day("2026-11-01")
+	for _, ok := range []string{"2026-10-02", "2026-10-20", "2026-11-01"} {
+		if err := ValidDeliveryDate(day(ok), today); err != nil {
 			t.Errorf("%s debió valer: %v", ok, err)
 		}
 	}
-	for _, bad := range []string{"2026-11-02", "2026-10-02"} {
-		if err := ValidDeliveryDate(day(bad), exp, today); !errors.Is(err, ErrValidation) {
-			t.Errorf("%s debió rechazarse", bad)
-		}
+	if err := ValidDeliveryDate(day("2026-11-02"), today); !errors.Is(err, ErrValidation) {
+		t.Error("una entrega de mañana debió rechazarse")
 	}
 }
 
