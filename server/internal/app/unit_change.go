@@ -298,9 +298,35 @@ func (s *BackofficeService) ChangeUnit(ctx context.Context, id int64, req UnitCh
 		if err != nil {
 			return err
 		}
+		if err := unitChangeNotifications(ctx, q, id, req.Factor); err != nil {
+			return err
+		}
 		// Las recetas quedaron convertidas (y a veces corregidas a mano): lo que las lleva cambia de costo.
 		return recomputeCosts(ctx, q)
 	})
+}
+
+// unitChangeNotifications (spec 084): los avisos abiertos se cierran (sus cifras están en la unidad
+// vieja; los cerrados la guardan en unit_code), los mínimos por sucursal se convierten (y pasan al
+// artículo nuevo, con la casilla, si hubo reemplazo) y se evalúa al final, ya convertido.
+func unitChangeNotifications(ctx context.Context, q *db.Queries, id int64, factor decimal.Decimal) error {
+	if _, err := q.ResolveOpenOfArticle(ctx, db.ResolveOpenOfArticleParams{ResolvedReason: ptr(string(domain.ReasonUnitChanged)),
+		IngredientID: &id}); err != nil {
+		return err
+	}
+	target, err := q.ReplacementOf(ctx, id)
+	if err != nil {
+		return err
+	}
+	if target == 0 {
+		target = id
+	} else if err := q.CopyLowStockSettings(ctx, db.CopyLowStockSettingsParams{OldID: id, NewID: target}); err != nil {
+		return err
+	}
+	if err := q.MoveLowStockOnUnitChange(ctx, db.MoveLowStockOnUnitChangeParams{OldID: &id, NewID: &target, Factor: factor}); err != nil {
+		return err
+	}
+	return evaluateEverywhere(ctx, q, "ingrediente", &target, nil)
 }
 
 func newBatchID() string {

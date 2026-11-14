@@ -37,6 +37,66 @@ func (q *Queries) CompanyBranches(ctx context.Context) ([]int64, error) {
 	return items, nil
 }
 
+const copyLowStockSettings = `-- name: CopyLowStockSettings :exec
+update ingredients n
+   set low_stock_enabled = o.low_stock_enabled, low_stock_on_min = o.low_stock_on_min,
+       low_stock_on_out = o.low_stock_on_out, low_stock_banner = o.low_stock_banner,
+       coverage_days = o.coverage_days, low_stock_asked_at = o.low_stock_asked_at
+  from ingredients o
+ where o.id = $1 and n.id = $2
+`
+
+type CopyLowStockSettingsParams struct {
+	OldID int64 `json:"old_id"`
+	NewID int64 `json:"new_id"`
+}
+
+func (q *Queries) CopyLowStockSettings(ctx context.Context, arg CopyLowStockSettingsParams) error {
+	_, err := q.db.Exec(ctx, copyLowStockSettings, arg.OldID, arg.NewID)
+	return err
+}
+
+const countedArticlesOf = `-- name: CountedArticlesOf :many
+select 'ingrediente'::stock_item_type as item_type, ingredient_id as id from stock_count_lines where count_id = $1::bigint
+union all
+select 'producto'::stock_item_type, product_id from stock_count_product_lines where count_id = $1::bigint
+`
+
+type CountedArticlesOfRow struct {
+	ItemType StockItemType `json:"item_type"`
+	ID       int64         `json:"id"`
+}
+
+// Lo que un conteo incluyó (insumos y productos), contara diferencia o no.
+func (q *Queries) CountedArticlesOf(ctx context.Context, cid int64) ([]CountedArticlesOfRow, error) {
+	rows, err := q.db.Query(ctx, countedArticlesOf, cid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountedArticlesOfRow{}
+	for rows.Next() {
+		var i CountedArticlesOfRow
+		if err := rows.Scan(&i.ItemType, &i.ID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteBranchMinimumsOf = `-- name: DeleteBranchMinimumsOf :exec
+delete from branch_stock_minimums where ingredient_id = any($1::bigint[])
+`
+
+func (q *Queries) DeleteBranchMinimumsOf(ctx context.Context, ids []int64) error {
+	_, err := q.db.Exec(ctx, deleteBranchMinimumsOf, ids)
+	return err
+}
+
 const dismissAsUndone = `-- name: DismissAsUndone :exec
 update notifications
    set status = 'dismissed', resolved_at = now(), resolved_by = $1, resolved_reason = 'undone'
@@ -298,6 +358,49 @@ func (q *Queries) MarkNotificationsRead(ctx context.Context, arg MarkNotificatio
 	return err
 }
 
+const mergeLowStockInto = `-- name: MergeLowStockInto :exec
+update ingredients t
+   set low_stock_enabled = t.low_stock_enabled or s.enabled,
+       low_stock_on_min = t.low_stock_on_min or s.on_min,
+       low_stock_on_out = t.low_stock_on_out or s.on_out,
+       low_stock_banner = t.low_stock_banner or s.banner
+  from (select bool_or(low_stock_enabled) as enabled, bool_or(low_stock_enabled and low_stock_on_min) as on_min,
+               bool_or(low_stock_enabled and low_stock_on_out) as on_out, bool_or(low_stock_banner) as banner
+          from ingredients where id = any($2::bigint[])) s
+ where t.id = $1
+`
+
+type MergeLowStockIntoParams struct {
+	Target  int64   `json:"target"`
+	Sources []int64 `json:"sources"`
+}
+
+// Al unir insumos, la casilla y los eventos del destino se fusionan con OR: si alguien pidió aviso de
+// cualquiera de los que se unen, lo sigue teniendo.
+func (q *Queries) MergeLowStockInto(ctx context.Context, arg MergeLowStockIntoParams) error {
+	_, err := q.db.Exec(ctx, mergeLowStockInto, arg.Target, arg.Sources)
+	return err
+}
+
+const moveLowStockOnUnitChange = `-- name: MoveLowStockOnUnitChange :exec
+update branch_stock_minimums
+   set ingredient_id = $1, min_stock = round(min_stock * $2::numeric, 4), updated_at = now()
+ where ingredient_id = $3
+`
+
+type MoveLowStockOnUnitChangeParams struct {
+	NewID  *int64          `json:"new_id"`
+	Factor decimal.Decimal `json:"factor"`
+	OldID  *int64          `json:"old_id"`
+}
+
+// Cambio de unidad (spec 084): el mínimo de cada sucursal se convierte con el mismo factor que el del
+// artículo, y con reemplazo pasa al nuevo junto con su casilla y sus eventos.
+func (q *Queries) MoveLowStockOnUnitChange(ctx context.Context, arg MoveLowStockOnUnitChangeParams) error {
+	_, err := q.db.Exec(ctx, moveLowStockOnUnitChange, arg.NewID, arg.Factor, arg.OldID)
+	return err
+}
+
 const notifyNotificationsChanged = `-- name: NotifyNotificationsChanged :exec
 select pg_notify('notifications', nullif(current_setting('app.company_id', true), '')::text)
 `
@@ -305,6 +408,20 @@ select pg_notify('notifications', nullif(current_setting('app.company_id', true)
 func (q *Queries) NotifyNotificationsChanged(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, notifyNotificationsChanged)
 	return err
+}
+
+const replacementOf = `-- name: ReplacementOf :one
+select coalesce((select r.new_ingredient_id from ingredient_replacements r
+                  where r.old_ingredient_id = $1 and r.kind <> 'merge'
+                  order by r.id desc limit 1), 0)::bigint
+`
+
+// El artículo nuevo de un reemplazo por cambio de unidad (0 si se convirtió el mismo).
+func (q *Queries) ReplacementOf(ctx context.Context, oldID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, replacementOf, oldID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const resolveNotification = `-- name: ResolveNotification :execrows

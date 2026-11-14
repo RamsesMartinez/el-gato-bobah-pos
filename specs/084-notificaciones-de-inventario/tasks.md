@@ -79,11 +79,11 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 
 **Independent Test**: cada camino que mueve existencia abre o cierra; conteo, unión, archivado y cambio de unidad evalúan.
 
-- [ ] T024 [P] [US4] Tests `TestEveryMovementPathEvaluates` (venta, compra recibida, conteo con y sin diferencia, merma, ajuste, cancelación) y `TestMergeOrsLowStockAndClosesSourceNotifications`, `TestArchiveClosesNotifications`, `TestUnitChangeClosesAndReevaluates`, `TestOldArticlePatchEvaluatesLowStock` en `server/internal/integration/notifications_paths_test.go`
-- [ ] T025 [US4] Llamadas a `evaluate_low_stock` (después de los movimientos, misma transacción) en `CloseCount`/`closeProducts` (`stock_counts.go`, `stock_count_products.go`, que además resuelve los `stock_out` de lo contado), `MergeIngredients` (OR de la casilla, cierra avisos del origen), `ArchiveArticle`/`ReactivateArticle`, `ChangeUnit` y `UpdateArticle` en `server/internal/app/`
+- [X] T024 [P] [US4] Tests `TestEveryMovementPathEvaluates` (venta, compra recibida, conteo con y sin diferencia, merma, ajuste, cancelación) y `TestMergeOrsLowStockAndClosesSourceNotifications`, `TestArchiveClosesNotifications`, `TestUnitChangeClosesAndReevaluates`, `TestOldArticlePatchEvaluatesLowStock` en `server/internal/integration/notifications_paths_test.go`
+- [X] T025 [US4] Llamadas a `evaluate_low_stock` (después de los movimientos, misma transacción) en `CloseCount`/`closeProducts` (`stock_counts.go`, `stock_count_products.go`, que además resuelve los `stock_out` de lo contado), `MergeIngredients` (OR de la casilla, cierra avisos del origen), `ArchiveArticle`/`ReactivateArticle`, `ChangeUnit` y `UpdateArticle` en `server/internal/app/`
 - [X] T026 [P] [US4] Test `TestNotificationListenerPublishesOnCommitOnly` en `server/internal/integration/notification_listener_test.go`: commit publica `notifications.changed`, rollback no
 - [X] T027 [US4] `NotificationListener` en `server/internal/app/notification_listener.go` (conexión dedicada, `LISTEN notifications`, reconecta, termina con ctx) y cableado en `server/cmd/api/main.go`
-- [ ] T028 [US4] `TestLowStockTriggerLatency` en `server/internal/integration/notifications_trigger_test.go`: pedido de 30 renglones con receta sobre insumos con alerta, con y sin trigger, y `explain (analyze, buffers)` del filtro; imprime las cifras para el reporte
+- [X] T028 [US4] `TestLowStockTriggerLatency` en `server/internal/integration/notifications_trigger_test.go`: pedido de 30 renglones con receta sobre insumos con alerta, con y sin trigger, y `explain (analyze, buffers)` del filtro; imprime las cifras para el reporte
 
 ---
 

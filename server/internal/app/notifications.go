@@ -193,3 +193,41 @@ func (s *NotificationsService) Resolve(ctx context.Context, user int64, perms []
 			map[string]any{"action": cmd.Action, "kind": n.Kind, "ingredientId": cmd.IngredientID})
 	})
 }
+
+// evaluateEverywhere evalúa un artículo en cada sucursal activa: para lo que cambia sin movimiento
+// (el mínimo, archivar, unir, cambiar de unidad), que el trigger no ve. Va al final de la transacción
+// del cambio, cuando la existencia y la configuración ya son las nuevas.
+func evaluateEverywhere(ctx context.Context, q *db.Queries, itemType db.StockItemType, ing, prod *int64) error {
+	branches, err := q.CompanyBranches(ctx)
+	if err != nil {
+		return err
+	}
+	for _, b := range branches {
+		if err := q.EvaluateLowStock(ctx, db.EvaluateLowStockParams{BranchID: b, ItemType: itemType, IngredientID: ing, ProductID: prod}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// evaluateCounted cierra como «contado» el «se acabó» de lo que un conteo incluyó (FR-019) y lo vuelve
+// a evaluar con la cifra ya contada: un conteo que confirma la cifra no inserta movimiento y el trigger
+// no lo ve. Va después de marcar el conteo cerrado, así lo abierto ya no pide conteo.
+func evaluateCounted(ctx context.Context, q *db.Queries, countID, branch, user int64) error {
+	items, err := q.CountedArticlesOf(ctx, countID)
+	if err != nil {
+		return err
+	}
+	for _, it := range items {
+		ing, prod := itemIDs(it.ItemType, it.ID)
+		if _, err := q.ResolveOpenOfArticle(ctx, db.ResolveOpenOfArticleParams{ResolvedBy: &user,
+			ResolvedReason: ptr(string(domain.ReasonCounted)), IngredientID: ing, ProductID: prod,
+			Kind: string(domain.KindStockOut), BranchID: &branch}); err != nil {
+			return err
+		}
+		if err := q.EvaluateLowStock(ctx, db.EvaluateLowStockParams{BranchID: branch, ItemType: it.ItemType, IngredientID: ing, ProductID: prod}); err != nil {
+			return err
+		}
+	}
+	return nil
+}

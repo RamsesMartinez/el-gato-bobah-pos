@@ -99,3 +99,46 @@ select id from branches where is_active order by id;
 
 -- name: NotifyNotificationsChanged :exec
 select pg_notify('notifications', nullif(current_setting('app.company_id', true), '')::text);
+
+-- name: CountedArticlesOf :many
+-- Lo que un conteo incluyó (insumos y productos), contara diferencia o no.
+select 'ingrediente'::stock_item_type as item_type, ingredient_id as id from stock_count_lines where count_id = sqlc.arg(cid)::bigint
+union all
+select 'producto'::stock_item_type, product_id from stock_count_product_lines where count_id = sqlc.arg(cid)::bigint;
+
+-- name: MergeLowStockInto :exec
+-- Al unir insumos, la casilla y los eventos del destino se fusionan con OR: si alguien pidió aviso de
+-- cualquiera de los que se unen, lo sigue teniendo.
+update ingredients t
+   set low_stock_enabled = t.low_stock_enabled or s.enabled,
+       low_stock_on_min = t.low_stock_on_min or s.on_min,
+       low_stock_on_out = t.low_stock_on_out or s.on_out,
+       low_stock_banner = t.low_stock_banner or s.banner
+  from (select bool_or(low_stock_enabled) as enabled, bool_or(low_stock_enabled and low_stock_on_min) as on_min,
+               bool_or(low_stock_enabled and low_stock_on_out) as on_out, bool_or(low_stock_banner) as banner
+          from ingredients where id = any(sqlc.arg(sources)::bigint[])) s
+ where t.id = sqlc.arg(target);
+
+-- name: DeleteBranchMinimumsOf :exec
+delete from branch_stock_minimums where ingredient_id = any(sqlc.arg(ids)::bigint[]);
+
+-- name: ReplacementOf :one
+-- El artículo nuevo de un reemplazo por cambio de unidad (0 si se convirtió el mismo).
+select coalesce((select r.new_ingredient_id from ingredient_replacements r
+                  where r.old_ingredient_id = sqlc.arg(old_id) and r.kind <> 'merge'
+                  order by r.id desc limit 1), 0)::bigint;
+
+-- name: MoveLowStockOnUnitChange :exec
+-- Cambio de unidad (spec 084): el mínimo de cada sucursal se convierte con el mismo factor que el del
+-- artículo, y con reemplazo pasa al nuevo junto con su casilla y sus eventos.
+update branch_stock_minimums
+   set ingredient_id = sqlc.arg(new_id), min_stock = round(min_stock * sqlc.arg(factor)::numeric, 4), updated_at = now()
+ where ingredient_id = sqlc.arg(old_id);
+
+-- name: CopyLowStockSettings :exec
+update ingredients n
+   set low_stock_enabled = o.low_stock_enabled, low_stock_on_min = o.low_stock_on_min,
+       low_stock_on_out = o.low_stock_on_out, low_stock_banner = o.low_stock_banner,
+       coverage_days = o.coverage_days, low_stock_asked_at = o.low_stock_asked_at
+  from ingredients o
+ where o.id = sqlc.arg(old_id) and n.id = sqlc.arg(new_id);

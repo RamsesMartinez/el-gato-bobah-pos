@@ -344,3 +344,69 @@ func TestTurningOffTheMinimumEventClosesAsAlertOff(t *testing.T) {
 		t.Fatalf("cerró como %q", reason)
 	}
 }
+
+// LATENCIA DEL TRIGGER (SC-005): un pedido de 30 renglones con receta de 3 insumos cada uno son 90
+// movimientos en una transacción. Se mide con el trigger y sin él, en tres escenarios: insumos sin
+// alerta (el caso de casi todo el catálogo), con alerta ya avisada (una mala racha) y con alerta que
+// cruza su mínimo en este pedido (abre 90 avisos: el peor caso). Imprime las cifras para el reporte.
+func TestLowStockTriggerLatency(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	ings := make([]int64, 90)
+	for i := range ings {
+		ings[i] = pieceIngredient(t, st, "Latencia 084 "+itoa(i))
+		adjust(t, st, "ingrediente", ings[i], "1000")
+	}
+	order := func() time.Duration {
+		tx, err := st.Pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
+		batch := &pgx.Batch{}
+		for _, ing := range ings {
+			batch.Queue(`insert into stock_movements (item_type, ingredient_id, movement_type, quantity) values ('ingrediente', $1, 'venta', -1)`, ing)
+		}
+		if err := tx.SendBatch(ctx, batch).Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return time.Since(start)
+	}
+	median := func() time.Duration {
+		var ds []time.Duration
+		for i := 0; i < 7; i++ {
+			ds = append(ds, order())
+		}
+		sort.Slice(ds, func(a, b int) bool { return ds[a] < ds[b] })
+		return ds[3]
+	}
+	toggle := func(on bool) {
+		verb := "disable"
+		if on {
+			verb = "enable"
+		}
+		if _, err := st.Pool.Exec(ctx, `alter table stock_movements `+verb+` trigger trg_stock_movement_notify`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	toggle(false)
+	without := median()
+	toggle(true)
+	sinAlerta := median()
+	if _, err := st.Pool.Exec(ctx, `update ingredients set low_stock_enabled = true, min_stock = 100000 where id = any($1)`, ings); err != nil {
+		t.Fatal(err)
+	}
+	cruza := order() // este pedido abre los 90 avisos
+	conAviso := median()
+	t.Logf("[medido] pedido de 90 movimientos: sin trigger %v · con trigger, sin alertas %v · con alertas ya avisadas %v · cruzando el mínimo (abre 90 avisos) %v",
+		without.Round(time.Millisecond/10), sinAlerta.Round(time.Millisecond/10), conAviso.Round(time.Millisecond/10), cruza.Round(time.Millisecond/10))
+	if extra := sinAlerta - without; extra > 50*time.Millisecond {
+		t.Errorf("el trigger agrega %v a un pedido sin alertas; el objetivo es menos de 50 ms", extra)
+	}
+	if extra := conAviso - without; extra > 50*time.Millisecond {
+		t.Errorf("el trigger agrega %v a un pedido con alertas ya avisadas; el objetivo es menos de 50 ms", extra)
+	}
+}
