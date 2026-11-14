@@ -42,9 +42,17 @@ test('el resumen del corte nombra cajón, otros métodos y total', () => {
   expect(screen.getByText('Cuadra')).toBeInTheDocument();
 });
 
-// Un corte sin arqueo (caja que no lleva arqueo, o anterior a la spec 015) no inventa un cajón en $0.
-test('sin arqueo no pinta la parte del cajón', () => {
+// Un corte sin arqueo (caja que no lleva arqueo, o anterior a la spec 015) no inventa un cajón en $0,
+// y tampoco repite la misma cifra como «Otros métodos» y «Total»: sin cajón aparte, todo es el total.
+test('sin arqueo pinta solo el total', () => {
   pinta(<ResumenDeDiferencia currency="MXN" diferencia={{ drawer: null, otherMethods: '10', total: '10', drawerCovered: false }} />);
   expect(screen.queryByText('Cajón (arqueo)')).not.toBeInTheDocument();
-  expect(screen.getAllByText('+$10.00')).toHaveLength(2);
+  expect(screen.queryByText('Otros métodos (conciliación)')).not.toBeInTheDocument();
+  expect(screen.getAllByText('+$10.00')).toHaveLength(1);
+});
+
+// Un valor que no es número es una raya, no un «Sobrante +$NaN».
+test('un valor que no es número es una raya', () => {
+  pinta(<Diferencia valor="abc" currency="MXN" />);
+  expect(screen.getByText('—')).toBeInTheDocument();
 });

@@ -431,11 +431,12 @@ func TestMCPCashHistoryCarriesTheOpeningReason(t *testing.T) {
 	if _, err := back.OpenSession(ctx, fuerte, aperturaAMano(quinientos), cajero); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := back.CloseSession(ctx, fuerte, cajero, app.CierreCmd{Total: &quinientos, Motivo: "prueba"}); err != nil {
+	// Cierra contando 400 (faltan 100) y el turno siguiente cuenta 500 y lo explica.
+	if _, err := back.CloseSession(ctx, fuerte, cajero, app.CierreCmd{Total: &cuatrocientos, Motivo: "prueba"}); err != nil {
 		t.Fatal(err)
 	}
 	const nota = "Un gasto salió de esta caja y se contó en la otra"
-	if _, err := back.OpenSession(ctx, fuerte, app.AperturaCmd{Total: &cuatrocientos, Motivo: "prueba",
+	if _, err := back.OpenSession(ctx, fuerte, app.AperturaCmd{Total: &quinientos, Motivo: "prueba",
 		Reason: "last_count_wrong", ReasonNote: nota}, cajero); err != nil {
 		t.Fatal(err)
 	}
@@ -443,7 +444,8 @@ func TestMCPCashHistoryCarriesTheOpeningReason(t *testing.T) {
 	if res.isError {
 		t.Fatalf("cash_sessions_history: %s", res.text)
 	}
-	for _, quiero := range []string{`"openingReason":"last_count_wrong"`, `"openingReasonNote":"` + nota + `"`, `"reasonNote":"` + nota + `"`} {
+	for _, quiero := range []string{`"openingReason":"last_count_wrong"`, `"openingReasonNote":"` + nota + `"`,
+		`"explainedByNext":{`, `"reason":"last_count_wrong","reasonNote":"` + nota + `"`} {
 		if !strings.Contains(strings.ReplaceAll(res.text, ": ", ":"), quiero) {
 			t.Fatalf("el histórico por MCP no trae %s:\n%s", quiero, res.text)
 		}

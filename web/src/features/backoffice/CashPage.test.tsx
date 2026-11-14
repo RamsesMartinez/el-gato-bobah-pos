@@ -649,7 +649,7 @@ test('el efectivo dice «ver arqueo» y la fila Total no suma el cajón', () => 
     difference={{ drawer: '-200', otherMethods: '-10', total: '-210', drawerCovered: true }} />);
   const efectivo = screen.getByText('Efectivo').closest('tr') as HTMLElement;
   expect(within(efectivo).getByText('ver arqueo')).toBeInTheDocument();
-  const fila = screen.getByText('Total').closest('tr') as HTMLElement;
+  const fila = screen.getByText('Total sin el cajón').closest('tr') as HTMLElement;
   expect(within(fila).getByText('$500.00')).toBeInTheDocument();
   expect(within(fila).getByText('$490.00')).toBeInTheDocument();
   expect(within(fila).getByLabelText('Diferencia de la conciliación')).toHaveTextContent('Faltante−$10.00');
@@ -1130,4 +1130,42 @@ test('las ventas del corte muestran el estado traducido', () => {
   expect(screen.getByText('Entregada')).toBeInTheDocument();
   expect(screen.getByText('Cancelada')).toBeInTheDocument();
   expect(screen.queryByText('entregada')).not.toBeInTheDocument();
+});
+
+// UN BACKEND ANTERIOR NO MANDA `difference` (#290, revisión). Sin la regla de respaldo, el efectivo
+// del cajón —que guarda contado = esperado— se pintaba «Cuadra» y la fila Total dejaba fuera el
+// faltante del cajón: el defecto de la spec 031 D13, ahora con palabra e ícono.
+test('sin difference del servidor, el efectivo con arqueo dice «ver arqueo» y no «Cuadra»', () => {
+  const totals: MethodTotal[] = [
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '2000', declared: '2000', difference: '0', autoDeclare: false, requiresEntry: false },
+  ];
+  wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow
+    drawer={{ expected: '2000', counted: '1800', difference: '-200', methodIds: [1], requiresCount: false }} />);
+  const efectivo = screen.getByText('Efectivo').closest('tr') as HTMLElement;
+  expect(within(efectivo).getByText('ver arqueo')).toBeInTheDocument();
+  expect(within(efectivo).queryByText('Cuadra')).not.toBeInTheDocument();
+});
+
+// Dos cifras distintas no se llaman igual en la misma pantalla (constitución III): la fila de la
+// conciliación no es el Total del corte cuando el cajón se lee aparte.
+test('con el cajón aparte, la fila de la conciliación no se llama «Total»', () => {
+  const totals: MethodTotal[] = [
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '2000', declared: '2000', difference: '0', autoDeclare: false, requiresEntry: false },
+    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '500', declared: '490', difference: '-10', autoDeclare: false, requiresEntry: true },
+  ];
+  wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow drawerMethodIds={[1]}
+    difference={{ drawer: '-200', otherMethods: '-10', total: '-210', drawerCovered: true }} />);
+  expect(screen.queryByText('Total')).not.toBeInTheDocument();
+  expect(screen.getByText('Total sin el cajón')).toBeInTheDocument();
+});
+
+// Un esperado que no viajó no se suma como cero: la fila diría un esperado parcial como si fuera
+// completo.
+test('la fila de totales pone raya si falta un esperado', () => {
+  const totals: MethodTotal[] = [
+    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: null, declared: '490', difference: '-10', autoDeclare: false, requiresEntry: true },
+  ];
+  wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow />);
+  const fila = screen.getByText('Total').closest('tr') as HTMLElement;
+  expect(fila.querySelectorAll('td')[1].textContent).toBe('—');
 });

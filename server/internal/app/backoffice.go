@@ -794,9 +794,11 @@ type NextOpeningView struct {
 	ReasonNote *string `json:"reasonNote"`
 }
 
-// nextOpening devuelve la explicación del turno siguiente, o nil si no abrió con motivo.
-func nextOpening(id int64, reason, note *string) *NextOpeningView {
-	if id == 0 || reason == nil {
+// explanationOf devuelve la apertura del turno siguiente como explicación de este corte, o nil si no
+// abrió con motivo o si el corte cuadró: decir «diferencia explicada» junto a «Cuadra» afirma una
+// diferencia que no hubo (el siguiente pudo abrir con «cambié el fondo» por otra razón).
+func explanationOf(diff *domain.CutDiff, id int64, reason, note *string) *NextOpeningView {
+	if id == 0 || reason == nil || diff == nil || diff.Total.IsZero() {
 		return nil
 	}
 	return &NextOpeningView{SessionID: id, Reason: *reason, ReasonNote: note}
@@ -2534,13 +2536,16 @@ func (s *BackofficeService) SessionHistoryFor(ctx context.Context, f domain.Sess
 			OpeningReason: r.OpeningReason, OpeningReasonNote: r.OpeningReasonNote,
 		}
 		if r.Status != db.SessionStatusCerrada {
+			// Compatibilidad: antes de #290 un turno abierto traía aquí la suma parcial y nunca null.
+			// La PWA anterior y el MCP lo formatean como número durante la subida.
+			parcial := domain.Round2(r.OffDrawerDifference.Add(r.OnDrawerDifference))
+			out[i].TotalDifference = &parcial
 			continue
 		}
 		if ciego && r.IsLatestOfRegister {
 			out[i].ArqueoHidden = true
 			continue
 		}
-		out[i].ExplainedByNext = nextOpening(r.NextID, r.NextOpeningReason, r.NextOpeningReasonNote)
 		// La lista trae las diferencias ya sumadas por lado del cajón; domain.CutDifference no
 		// necesita los renglones, solo saber de qué lado cae cada peso.
 		methods := []domain.MethodDiff{
@@ -2553,6 +2558,7 @@ func (s *BackofficeService) SessionHistoryFor(ctx context.Context, f domain.Sess
 		}
 		diff := domain.CutDifference(methods, drawer)
 		out[i].Difference, out[i].TotalDifference = &diff, &diff.Total
+		out[i].ExplainedByNext = explanationOf(&diff, r.NextID, r.NextOpeningReason, r.NextOpeningReasonNote)
 	}
 	return out, total, nil
 }
@@ -2701,7 +2707,7 @@ func (s *BackofficeService) SessionDetailFor(ctx context.Context, id int64, canS
 	}
 	if sess.Status == db.SessionStatusCerrada && !view.ArqueoHidden {
 		view.Difference = cutDifferenceOf(view.Totals, view.Drawer)
-		view.ExplainedByNext = nextOpening(vecinos.NextID, vecinos.NextOpeningReason, vecinos.NextOpeningReasonNote)
+		view.ExplainedByNext = explanationOf(view.Difference, vecinos.NextID, vecinos.NextOpeningReason, vecinos.NextOpeningReasonNote)
 	}
 	return view, nil
 }

@@ -145,16 +145,17 @@ func TestTheOpeningReasonExplainsThePreviousCut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Caja fuerte: cierra con 500 y la apertura siguiente cuenta 400 con motivo.
+	// Caja fuerte: abre con 500 y cierra contando 400 (faltan 100); la apertura siguiente cuenta 500
+	// y explica que el cierre se contó mal.
 	if _, err := back.OpenSession(ctx, fuerte, aperturaAMano(quinientos), cajero); err != nil {
 		t.Fatal(err)
 	}
-	corteFuerte, err := back.CloseSession(ctx, fuerte, cajero, app.CierreCmd{Total: &quinientos, Motivo: "prueba"})
+	corteFuerte, err := back.CloseSession(ctx, fuerte, cajero, app.CierreCmd{Total: &cuatrocientos, Motivo: "prueba"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	const nota = "El gasto salió de esta caja y se contó como si fuera de la otra"
-	siguiente, err := back.OpenSession(ctx, fuerte, app.AperturaCmd{Total: &cuatrocientos, Motivo: "prueba",
+	siguiente, err := back.OpenSession(ctx, fuerte, app.AperturaCmd{Total: &quinientos, Motivo: "prueba",
 		Reason: "last_count_wrong", ReasonNote: nota}, cajero)
 	if err != nil {
 		t.Fatal(err)
@@ -212,4 +213,55 @@ func TestTheOpeningReasonExplainsThePreviousCut(t *testing.T) {
 			}
 		}
 	})
+}
+
+// COMPATIBILIDAD (#290, revisión): la PWA anterior y el MCP leen `totalDifference` de TODO turno, y
+// antes de esta feature un turno abierto lo traía como número (la suma parcial). Mandarlo en null
+// durante la subida dejaba al cliente viejo formateando un null.
+func TestAnOpenShiftKeepsANumericTotalDifferenceForOldClients(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	back := app.NewBackofficeService(st, clock)
+	cajero := makeUser(t, st, "cajero_compat_total", "cajero")
+	principal, _, _, _ := turnoConEfectivoDeMostradorYDeApp(t, ctx, st, cajero)
+	abierta, err := back.CurrentByRegister(ctx, principal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fila := filaDelHistorico(t, ctx, back, abierta.ID, true); fila.TotalDifference == nil {
+		t.Fatal("el turno abierto mandó totalDifference en null: un cliente anterior lo formateaba como número")
+	}
+}
+
+// Un corte que CUADRA no tiene nada que explicar, aunque el turno siguiente haya abierto con motivo
+// (p. ej. «cambié el fondo»): decir «diferencia explicada» junto a «Cuadra» afirma algo que no pasó.
+func TestACutThatBalancesIsNotExplainedByTheNextOpening(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	back := app.NewBackofficeService(st, clock)
+	cajero := makeUser(t, st, "cajero_cuadra_explica", "cajero")
+	fuerte := registerID(t, st, "Caja fuerte")
+	quinientos, seiscientos := dec("500"), dec("600")
+	if _, err := back.OpenSession(ctx, fuerte, aperturaAMano(quinientos), cajero); err != nil {
+		t.Fatal(err)
+	}
+	corte, err := back.CloseSession(ctx, fuerte, cajero, app.CierreCmd{Total: &quinientos, Motivo: "prueba"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := back.OpenSession(ctx, fuerte, app.AperturaCmd{Total: &seiscientos, Motivo: "prueba", Reason: "float_changed"}, cajero); err != nil {
+		t.Fatal(err)
+	}
+	if f := filaDelHistorico(t, ctx, back, corte.ID, true); f.ExplainedByNext != nil {
+		t.Fatalf("un corte que cuadra salió «explicado al abrir»: %+v (diferencia %+v)", f.ExplainedByNext, f.Difference)
+	}
+	det, err := back.SessionDetail(ctx, corte.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if det.ExplainedByNext != nil {
+		t.Fatalf("el detalle de un corte que cuadra dice que se explicó al abrir: %+v", det.ExplainedByNext)
+	}
 }

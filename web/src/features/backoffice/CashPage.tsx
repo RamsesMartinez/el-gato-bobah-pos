@@ -90,14 +90,20 @@ function esCorregible(m: CashMovement): boolean {
 // renglón guarda contado = esperado. Se pintan con «ver arqueo» y no entran a la fila Total, que
 // suma solo lo que se concilia aquí — sumar el cajón en una columna y no en las otras hacía que la
 // fila Total dijera «sistema = declarado, dif. $X» (#290).
-export function TotalsTable({ totals, currency, withTotalRow, drawerMethodIds, difference }: {
+export function TotalsTable({ totals, currency, withTotalRow, drawerMethodIds, difference, drawer }: {
   totals: MethodTotal[]; currency: string; withTotalRow?: boolean;
   drawerMethodIds?: number[]; difference?: CutDiff | null;
+  // Respaldo para un servidor anterior que no manda `difference`: la misma regla que
+  // domain.CutDifference (hay arqueo con esperado y contado ⇒ el cajón se lee en el arqueo).
+  drawer?: ArqueoDelCajon | null;
 }) {
   if (!totals?.length) return null;
-  const cubierto = new Set(difference?.drawerCovered ? (drawerMethodIds ?? []) : []);
+  const hayArqueo = difference ? difference.drawerCovered : (drawer?.expected != null && drawer?.counted != null);
+  const cubierto = new Set(hayArqueo ? (drawerMethodIds ?? drawer?.methodIds ?? []) : []);
   const conciliados = totals.filter((t) => !cubierto.has(t.methodId));
   const sum = (pick: (t: MethodTotal) => string) => round2(conciliados.reduce((s, t) => s + (Number(pick(t)) || 0), 0));
+  // Un esperado que no viajó (arqueo ciego) no se suma como cero: la fila diría un parcial.
+  const esperadoTotal = conciliados.some((t) => t.expected === null) ? null : String(sum((t) => t.expected ?? '0'));
   const difTotal = difference ? difference.otherMethods : String(sum((t) => t.difference));
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
@@ -115,7 +121,8 @@ export function TotalsTable({ totals, currency, withTotalRow, drawerMethodIds, d
               <Table.Cell textAlign="end">{montoOSinDato(t.expected, currency)}</Table.Cell>
               {cubierto.has(t.methodId) ? (<>
                 <Table.Cell textAlign="end" color="fg.muted">—</Table.Cell>
-                <Table.Cell textAlign="end" color="fg.muted">ver arqueo</Table.Cell>
+                {/* Texto, no acción: el arqueo está en la sección de abajo. */}
+                <Table.Cell textAlign="end" color="fg.muted" fontStyle="italic">ver arqueo</Table.Cell>
               </>) : (<>
                 <Table.Cell textAlign="end">{montoDeCaja(t.declared, currency)}</Table.Cell>
                 <Table.Cell><Diferencia valor={t.difference} currency={currency} /></Table.Cell>
@@ -124,8 +131,10 @@ export function TotalsTable({ totals, currency, withTotalRow, drawerMethodIds, d
           ))}
           {withTotalRow && (
             <Table.Row fontWeight="700" bg="bg.muted">
-              <Table.Cell>Total</Table.Cell>
-              <Table.Cell textAlign="end">{montoDeCaja(sum((t) => t.expected ?? '0'), currency)}</Table.Cell>
+              {/* Con el cajón aparte, esta fila NO es el Total del corte: se nombra distinto para
+                  que dos cifras distintas no se llamen igual en la misma pantalla (#290). */}
+              <Table.Cell>{cubierto.size > 0 ? 'Total sin el cajón' : 'Total'}</Table.Cell>
+              <Table.Cell textAlign="end">{montoOSinDato(esperadoTotal, currency)}</Table.Cell>
               <Table.Cell textAlign="end">{montoDeCaja(sum((t) => t.declared), currency)}</Table.Cell>
               <Table.Cell><Diferencia valor={difTotal} currency={currency} etiqueta="Diferencia de la conciliación" /></Table.Cell>
             </Table.Row>
@@ -437,7 +446,7 @@ export function CorteSummary({ data, abierto = false }: { data: CorteData; abier
       ) : <IngresosEgresosCard openingCash={data.openingCash} breakdown={data.breakdown} currency={cur} />}
       {totals.length > 0 && !abierto && (
         <Section title="Conciliación">
-          <TotalsTable totals={totals} currency={cur} withTotalRow drawerMethodIds={data.drawer?.methodIds} difference={data.difference} />
+          <TotalsTable totals={totals} currency={cur} withTotalRow drawerMethodIds={data.drawer?.methodIds} difference={data.difference} drawer={data.drawer} />
         </Section>
       )}
       <ArqueoDelCorte drawer={data.drawer} currency={cur} />
@@ -1311,8 +1320,8 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             {closed?.difference && (
               <Box mb={3}><ResumenDeDiferencia diferencia={closed.difference} currency={closed.currency} /></Box>
             )}
-            <TotalsTable totals={closed?.totals ?? []} currency={closed?.currency ?? 'MXN'} withTotalRow
-              drawerMethodIds={closed?.drawer?.methodIds} difference={closed?.difference} />
+            <TotalsTable totals={closed?.totals ?? []} currency={closed?.currency ?? 'MXN'}
+              drawerMethodIds={closed?.drawer?.methodIds} difference={closed?.difference} drawer={closed?.drawer} />
             {(closed?.terminalCounts ?? []).length > 0 && (
               <Box mt={3}>
                 <Text fontWeight="700" mb={1}>Terminales</Text>
@@ -1759,10 +1768,10 @@ function DiferenciaDeLaFila({ fila }: { fila: CashSessionRow }) {
     return <Text textAlign="end" color="fg.muted">{diferenciaDelHistorico(fila)}</Text>;
   }
   return (
-    <VStack align="end" gap={1}>
+    <HStack justify="flex-end" gap={2} flexWrap="wrap">
       <Diferencia valor={fila.difference?.total ?? fila.totalDifference} currency={fila.currency} />
       {fila.explainedByNext && <Badge colorPalette="gray">Explicado al abrir</Badge>}
-    </VStack>
+    </HStack>
   );
 }
 
