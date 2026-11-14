@@ -27,6 +27,7 @@ type BackofficeService struct {
 	*CashShiftService
 	*CashMovementService
 	*CashReportService
+	*CashAdjustmentService
 }
 
 func NewBackofficeService(s *store.Store, now func() time.Time) *BackofficeService {
@@ -35,10 +36,11 @@ func NewBackofficeService(s *store.Store, now func() time.Time) *BackofficeServi
 	}
 	deps := cashDeps{store: s, now: now}
 	return &BackofficeService{
-		cashDeps:            deps,
-		CashShiftService:    &CashShiftService{deps},
-		CashMovementService: &CashMovementService{deps},
-		CashReportService:   &CashReportService{deps},
+		cashDeps:              deps,
+		CashShiftService:      &CashShiftService{deps},
+		CashMovementService:   &CashMovementService{deps},
+		CashReportService:     &CashReportService{deps},
+		CashAdjustmentService: &CashAdjustmentService{deps},
 	}
 }
 
@@ -750,6 +752,9 @@ type SessionDetailView struct {
 	OpeningReasonNote *string          `json:"openingReasonNote"`
 	ExplainedByNext   *NextOpeningView `json:"explainedByNext"`
 	PreviousSessionID *int64           `json:"previousSessionId"`
+	// Correcciones del corte (#290, fase 3), siempre arreglo; Effective es lo que rige tras ellas.
+	Adjustments []SessionAdjustmentView `json:"adjustments"`
+	Effective   *EffectiveView          `json:"effective"`
 }
 
 // NextOpeningView es la apertura del turno siguiente que explica la diferencia de un corte.
@@ -806,7 +811,10 @@ type SessionHistoryRow struct {
 	// ExplainedByNext: el turno siguiente de la misma caja abrió con motivo, y ese motivo explica la
 	// diferencia de este corte. Se oculta junto con el arqueo: su existencia dice que hubo diferencia.
 	ExplainedByNext *NextOpeningView `json:"explainedByNext"`
-	Notes           *string          `json:"notes"`
+	// Adjusted: el corte tiene alguna corrección vigente (#290, fase 3): la diferencia ya es la
+	// corregida, y la pantalla lo marca.
+	Adjusted bool    `json:"adjusted"`
+	Notes    *string `json:"notes"`
 	// ArqueoHidden: con arqueo ciego, el último cierre de una caja que no se ha vuelto a abrir no le
 	// muestra su arqueo a quien no configura la caja: lo contado es el esperado de la siguiente
 	// apertura (spec 035, R8). Viaja para que la pantalla diga «oculto» y no pinte $0.

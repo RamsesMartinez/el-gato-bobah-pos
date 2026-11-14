@@ -34,6 +34,27 @@ export interface CutDiff {
   drawerCovered: boolean;
 }
 
+// Una corrección de un corte cerrado (#290, fase 3). Lo firmado no se reescribe: se agrega esto.
+export interface SessionAdjustment {
+  id: number;
+  kind: 'count_correction' | 'float_correction' | 'note' | 'reversal';
+  before: string | null;
+  after: string | null;
+  reason: string;
+  reasonNote: string;
+  createdByName: string;
+  createdAt: string;
+  reversesId: number | null;
+  reversedBy: number | null;
+}
+
+export interface AdjustmentInput {
+  kind: 'count_correction' | 'float_correction' | 'note';
+  after?: string;
+  reason: string;
+  note: string;
+}
+
 // El turno siguiente abrió con motivo y eso explica la diferencia de este corte (#290).
 export interface NextOpening {
   sessionId: number;
@@ -377,6 +398,8 @@ export interface CashSessionRow {
   openingReason?: string | null;
   openingReasonNote?: string | null;
   explainedByNext?: NextOpening | null;
+  // La diferencia ya es la corregida (#290, fase 3).
+  adjusted?: boolean;
 }
 // Detalle de un corte (totales GUARDADOS al cerrar + movimientos).
 export interface CashSessionDetail {
@@ -431,6 +454,9 @@ export interface CashSessionDetail {
   openingReasonNote?: string | null;
   explainedByNext?: NextOpening | null;
   previousSessionId?: number | null;
+  // Correcciones del corte (#290, fase 3). Opcionales: un backend anterior no las manda.
+  adjustments?: SessionAdjustment[];
+  effective?: { drawerCounted: string | null; floatLeft: string | null } | null;
 }
 
 export interface CorteSale {
@@ -1046,7 +1072,9 @@ export const backofficeApi = {
     const q = new URLSearchParams({ page: String(p.page), pageSize: String(p.pageSize) });
     if (p.from) q.set('from', p.from);
     if (p.to) q.set('to', p.to);
-    return api.get<{ items: CashSessionRow[]; total: number; page: number; pageSize: number }>(`/cash-sessions?${q}`);
+    // periodDifference: sobrantes y faltantes de todo el filtro, ya corregidos (#290, P4); null con
+    // arqueo ciego, y ausente con un backend anterior.
+    return api.get<{ items: CashSessionRow[]; total: number; page: number; pageSize: number; periodDifference?: string | null }>(`/cash-sessions?${q}`);
   },
   cashSession: (id: number) => api.get<CashSessionDetail>(`/cash-sessions/${id}`),
   // Las ventas de un corte más allá de la primera página. El detalle trae las primeras; esto existe
@@ -1071,6 +1099,11 @@ export const backofficeApi = {
   cardCountModes: () => api.get<{ items: { branchId: number; name: string; mode: 'auto' | 'per_terminal' }[] }>('/branches/card-count-modes'),
   setCardCountMode: (branchId: number, mode: 'auto' | 'per_terminal') =>
     api.put<null>(`/branches/${branchId}/card-count-mode`, { mode }),
+  // Corregir un corte cerrado y revertir una corrección (#290, fase 3).
+  adjustCashSession: (sessionId: number, input: AdjustmentInput) =>
+    api.post<SessionAdjustment>(`/cash-sessions/${sessionId}/adjustments`, input),
+  reverseCashSessionAdjustment: (sessionId: number, adjustmentId: number, note: string) =>
+    api.post<SessionAdjustment>(`/cash-sessions/${sessionId}/adjustments/${adjustmentId}/reverse`, { note }),
   correctCashOut: (movementId: number, input: { amount: number; conceptId: number }) =>
     api.post<CashSession>(`/cash-movements/${movementId}/correct`, input),
   // Traspaso de efectivo entre dos cajas abiertas (genera salida en origen + entrada en destino).

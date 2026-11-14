@@ -20,6 +20,7 @@ import { ArqueoDelCorte, DesgloseDelConteo } from './arqueo';
 import { TotalsTable } from './conciliacion';
 import { MovementsTable, ExpensesTable } from './movimientos';
 import { hhmm } from './piezasDeCaja';
+import { CorreccionesDelCorte } from './CorreccionesDelCorte';
 
 // Cuántas ventas trae cada "Ver más". El mismo tamaño de página que el resto de las listas: pedir
 // de 200 en 200 no cabe en la caja y pedir de 5 en 5 obliga a diez toques para ver un día.
@@ -277,6 +278,7 @@ export function CorteDetail({ id, onAbrirCorte }: { id: number; onAbrirCorte?: (
           )}
         </Box>
       )}
+      <CorreccionesDelCorte corte={data} />
       <Section title="El turno">
         <SimpleGrid columns={2} gap={2} fontSize="sm">
           <Text color="fg.muted">Caja</Text><Text textAlign="end" fontWeight="600">{data.registerName}</Text>
@@ -441,6 +443,13 @@ export function HistoryTab({ corteId, onCorte }: { corteId: number | null; onCor
           ))}
         </Table.Body>
       </Table.Root>
+      {/* Sobrantes y faltantes de TODO el filtro, ya corregidos (#290, P4): no es venta ni gasto. */}
+      {data?.periodDifference != null && (
+        <HStack justify="space-between" px={3} py={3} borderTopWidth="1px" bg="bg.muted" gap={2} flexWrap="wrap">
+          <Text fontWeight="700" fontSize="sm">Sobrantes y faltantes del periodo</Text>
+          <Diferencia valor={data.periodDifference} currency={rows[0]?.currency ?? 'MXN'} etiqueta="Sobrantes y faltantes del periodo" />
+        </HStack>
+      )}
     </Box>
   );
 
@@ -514,6 +523,7 @@ function DiferenciaDeLaFila({ fila }: { fila: CashSessionRow }) {
     <HStack justify="flex-end" gap={2} flexWrap="wrap">
       <Diferencia valor={fila.difference?.total ?? fila.totalDifference} currency={fila.currency} />
       {fila.explainedByNext && <Badge colorPalette="gray">Explicado al abrir</Badge>}
+      {fila.adjusted && <Badge colorPalette="blue">Corregido</Badge>}
     </HStack>
   );
 }

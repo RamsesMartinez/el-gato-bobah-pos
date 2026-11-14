@@ -958,6 +958,20 @@ type CashRegister struct {
 	CountsCash bool             `json:"counts_cash"`
 }
 
+type CashSessionAdjustment struct {
+	ID           int64            `json:"id"`
+	CompanyID    int64            `json:"company_id"`
+	SessionID    int64            `json:"session_id"`
+	Kind         string           `json:"kind"`
+	BeforeAmount *decimal.Decimal `json:"before_amount"`
+	AfterAmount  *decimal.Decimal `json:"after_amount"`
+	Reason       string           `json:"reason"`
+	Note         string           `json:"note"`
+	ReversesID   *int64           `json:"reverses_id"`
+	CreatedBy    int64            `json:"created_by"`
+	CreatedAt    time.Time        `json:"created_at"`
+}
+
 type CashTransfer struct {
 	ID            int64           `json:"id"`
 	FromSessionID int64           `json:"from_session_id"`

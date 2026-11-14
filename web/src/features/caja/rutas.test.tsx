@@ -18,11 +18,11 @@ const cajas = [
   { id: 5, name: 'Caja clip', isPrimary: false, isActive: true, openSessionId: null, countsCash: true },
 ];
 
-function pinta(ruta: string, permissions: string[] = ['cash.operate', 'cash.configure'], items: unknown[] = []) {
+function pinta(ruta: string, permissions: string[] = ['cash.operate', 'cash.configure'], items: unknown[] = [], historia: unknown = { items: [], total: 0 }) {
   useSessionStore.setState({ user: { id: 1, companyId: 1, name: 'Ana', role: 'gerente', permissions } as never });
   vi.spyOn(backofficeApi, 'cashRegisters').mockResolvedValue({ items } as never);
   vi.spyOn(backofficeApi, 'allCashRegisters').mockResolvedValue({ items: [] });
-  vi.spyOn(backofficeApi, 'cashHistory').mockResolvedValue({ items: [], total: 0 } as never);
+  vi.spyOn(backofficeApi, 'cashHistory').mockResolvedValue(historia as never);
   vi.spyOn(backofficeApi, 'cashSession').mockResolvedValue({ id: 410 } as never);
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -99,4 +99,18 @@ test('configurar el negocio sin operar la caja abre Caja → Administrar', () =>
   const user = { id: 1, companyId: 1, name: 'Ana', role: 'propio', permissions: ['business.configure'] } as never;
   expect(canOpen('/caja/administrar', user)).toBe(true);
   expect(canOpen('/caja', user)).toBe(false);
+});
+
+// La lista marca los cortes corregidos y suma los sobrantes y faltantes del periodo, que vienen del
+// servidor para todo el filtro y no solo de la página (#290, fase 3; P4).
+test('el Histórico marca lo corregido y dice la suma del periodo', async () => {
+  pinta('/caja/historico', undefined, [], {
+    items: [{ id: 410, registerName: 'Caja B', status: 'cerrada', openingCash: '500', currency: 'MXN', openedAt: '2026-11-12T14:10:00Z',
+      closedAt: '2026-11-13T04:41:00Z', openedByName: 'Luis', closedByName: 'Luis', totalDifference: '0', notes: null,
+      difference: { drawer: '0', otherMethods: '0', total: '0', drawerCovered: true }, adjusted: true }],
+    total: 1, page: 0, pageSize: 20, periodDifference: '-100',
+  });
+  expect(await screen.findByText('Corregido')).toBeInTheDocument();
+  expect(screen.getByText('Sobrantes y faltantes del periodo')).toBeInTheDocument();
+  expect(screen.getByLabelText('Sobrantes y faltantes del periodo')).toHaveTextContent('Faltante−$100.00');
 });

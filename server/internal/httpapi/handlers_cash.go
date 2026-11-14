@@ -285,12 +285,20 @@ func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	u, _ := userFrom(r.Context())
-	rows, total, err := h.backoffice.SessionHistoryFor(r.Context(), f, slices.Contains(h.permissionsOf(r.Context(), u), domain.PermCashConfigure))
+	canSee := slices.Contains(h.permissionsOf(r.Context(), u), domain.PermCashConfigure)
+	rows, total, err := h.backoffice.SessionHistoryFor(r.Context(), f, canSee)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"items": rows, "total": total, "page": offset / limit, "pageSize": limit})
+	// La suma de sobrantes y faltantes del filtro, no de la página (#290, P4).
+	periodo, err := h.backoffice.SessionPeriodDifference(r.Context(), f, canSee)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": rows, "total": total, "page": offset / limit, "pageSize": limit,
+		"periodDifference": periodo})
 }
 
 // GET /cash-sessions/{id} — detalle de un corte (totales guardados + movimientos).
@@ -394,4 +402,55 @@ func (h *Handlers) CashAlerts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, v)
+}
+
+// POST /cash-sessions/{id}/adjustments — corrige un corte cerrado sin reescribirlo (#290, fase 3).
+func (h *Handlers) AdjustCashSession(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Kind   string           `json:"kind"`
+		After  *decimal.Decimal `json:"after"`
+		Reason string           `json:"reason"`
+		Note   string           `json:"note"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	adj, err := h.backoffice.AdjustSession(r.Context(), id, u.ID, domain.AdjustmentInput{
+		Kind: body.Kind, After: body.After, Reason: body.Reason, Note: body.Note})
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, adj)
+}
+
+// POST /cash-sessions/{id}/adjustments/{adjId}/reverse — deshace una corrección con otra.
+func (h *Handlers) ReverseCashSessionAdjustment(w http.ResponseWriter, r *http.Request) {
+	id, err1 := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	adjID, err2 := strconv.ParseInt(chi.URLParam(r, "adjId"), 10, 64)
+	if err1 != nil || err2 != nil || id <= 0 || adjID <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Note string `json:"note"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	adj, err := h.backoffice.ReverseAdjustment(r.Context(), id, adjID, u.ID, body.Note)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, adj)
 }

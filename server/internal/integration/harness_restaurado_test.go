@@ -323,6 +323,9 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
+	// La 0113 se niega con correcciones de cortes: en la copia de prueba se borran (los reversos
+	// primero, por la llave que apunta a lo que revierten).
+	113: {`delete from cash_session_adjustments where reverses_id is not null`, `delete from cash_session_adjustments`},
 	// La 0112 se niega si un token ya tiene compras o pedidos: en la copia de prueba se le quitan esos
 	// dos alcances y el token sigue con los demás.
 	112: {`update api_tokens set scopes = array_remove(array_remove(scopes, 'write:purchases'), 'write:orders')`},

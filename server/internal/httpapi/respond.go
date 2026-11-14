@@ -252,6 +252,12 @@ func Error(w http.ResponseWriter, err error) {
 		// 412 como «sin credenciales»: la tienda existe, lo que falta es configurar — pero con su
 		// propio código, porque la pantalla dice «vuelve a capturarlas», no «nunca se capturaron».
 		status, code = http.StatusPreconditionFailed, "PLATFORM_CREDENTIALS_UNREADABLE"
+	case errors.Is(err, domain.ErrSessionNotClosed):
+		status, code = http.StatusConflict, "SESSION_NOT_CLOSED"
+	case errors.Is(err, domain.ErrAdjustmentReversed):
+		status, code = http.StatusConflict, "ALREADY_REVERSED"
+	case errors.Is(err, domain.ErrNoSignedCount):
+		status, code = http.StatusUnprocessableEntity, "NO_SIGNED_COUNT"
 	case errors.Is(err, domain.ErrLecturaEnCurso):
 		status, code = http.StatusConflict, "READ_IN_PROGRESS"
 	case errors.Is(err, domain.ErrSinLecturaValida), errors.Is(err, domain.ErrLecturaVacia):
