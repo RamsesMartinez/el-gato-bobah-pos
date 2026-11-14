@@ -269,7 +269,8 @@ la dirección de un corte en otra pestaña.
 - **Tolerancia borrada a media captura** (campo vacío): vacío no es $0 en silencio; se rechaza o se
   conserva la anterior.
 - **Dirección de un corte de otra empresa o inexistente**: «no encontrado», sin revelar existencia.
-- **Rotar la tableta o cambiar el ancho a medio cierre**: el paso y lo capturado se conservan.
+- **Rotar la tableta o cambiar el ancho a medio cierre**: el paso y lo capturado se conservan (el
+  borrador del aparato, FR-032).
 - **Versión anterior de la API corriendo durante la subida de la fase 3**: sigue cerrando y leyendo
   cortes sin conocer la tabla nueva.
 
@@ -295,7 +296,8 @@ la dirección de un corte en otra pestaña.
 - **FR-007**: El detalle de un corte cuya diferencia se explicó al abrir el turno siguiente de la
   misma caja MUST mostrar esa explicación con un enlace al turno.
 - **FR-008**: El arqueo ciego MUST conservarse: el esperado y la diferencia solo los ve quien tiene
-  configurar caja; el motivo y la nota de apertura los ve todo el que ve el corte (P2).
+  configurar caja; el motivo y la nota de apertura los ve todo el que ve el corte (P2). El aviso «explicada al abrir
+  el turno N» se oculta junto con el arqueo del último corte, porque revela que hubo diferencia.
 - **FR-009**: La lectura del histórico de cortes por MCP MUST traer el motivo y la nota de apertura.
 - **FR-010**: Un aviso de Caja MUST NOT mandar a «corregir en Caja» estando en Caja; dice la acción.
 - **FR-011**: El estado de una venta MUST mostrarse con su rótulo en español, nunca el valor crudo.
@@ -311,8 +313,8 @@ la dirección de un corte en otra pestaña.
 - **FR-015**: La pantalla de Caja MUST partirse en submódulos (turno, arqueo, conciliación,
   movimientos, ajustes, reporte) con un contenedor delgado, reusando las reglas que ya existen
   (cierre, fondo que se deja, propinas).
-- **FR-016**: El servicio de caja del servidor MUST partirse por responsabilidad (turno, conteo,
-  movimientos, reporte) y sus consultas en archivos por tema, sin cambiar ninguna respuesta.
+- **FR-016**: El servicio de caja del servidor MUST partirse por responsabilidad (turno con su
+  conteo, movimientos, reporte) y sus consultas en archivos por tema, sin cambiar ninguna respuesta.
 - **FR-017**: Cada caja, cada corte y Administrar MUST tener dirección propia, y una recarga MUST
   volver a la misma vista.
 - **FR-018**: Los ajustes de caja (cajas, conceptos, terminales, fondo fijo) MUST vivir juntos en
@@ -357,7 +359,7 @@ la dirección de un corte en otra pestaña.
 - **FR-035**: La apertura con conteo distinto MUST mostrar en qué paso va (conteo, motivo,
   confirmación).
 - **FR-036**: Caja MUST NOT tener tope de ancho de contenedor y MUST disponerse por ancho: una
-  columna bajo 840 px, dos desde 1024 px, tres desde 1440 px, y cajas lado a lado en 2560 px, con el
+  columna hasta 1023 px (bajo 840 px el detalle va en hoja), dos desde 1024 px, tres desde 1440 px, y cajas lado a lado en 2560 px, con el
   largo de línea de texto limitado.
 - **FR-037**: Todo control de Caja MUST medir al menos 48 px de alto y el conteo MUST usar un teclado
   numérico grande.
@@ -385,7 +387,7 @@ la dirección de un corte en otra pestaña.
 - **SC-003**: 0 correcciones de corte hechas por SQL después de la fase 3: toda corrección deja su
   rastro en la bitácora.
 - **SC-004**: 0 condiciones que deshabiliten el cierre sin aparecer en la lista de pendientes, contra
-  7 de 11 sin nombrar hoy.
+  5 de las 9 condiciones del botón sin nombrar hoy, más las 2 de asistencia que esconden el bloque.
 - **SC-005**: Una persona nueva cierra una caja con un pendiente y una diferencia sin pedir ayuda, a
   1024×600, en la prueba con usuario nuevo.
 - **SC-006**: En 1920 px el contenido de Caja ocupa al menos 85 % del ancho útil (hoy ~47 %); en 2560
