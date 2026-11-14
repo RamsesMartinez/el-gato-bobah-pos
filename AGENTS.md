@@ -206,10 +206,11 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 - `make web-dev` · `make web-build` · `make web-test` (vitest).
 - **Toda prueba corre en local** (constitución 1.25.0; el ambiente de pruebas solo si el dueño lo pide). El subagente
   usa `http://localhost:30NN` del worktree (el `FRONTEND_PORT` de `.env.worktree.local`), con
-  `make start` arriba y una base restaurada (`make db-restaurar`), a 1024×600 y `hasTouch`. Corrige,
+  `make start` arriba y una base restaurada (`make db-restaurar`), a 1280×854 (y en 2K como ampliación) y `hasTouch`. Corrige,
   recarga (Vite lo hace solo) y vuelve a probar sin PR ni despliegue. La vuelta final corre además
   contra el build servido en local (`bun run build && bun run preview`).
-- **`bun run e2e`** (en `web/`) — Playwright a 1024×600 contra el **`make start` del worktree**:
+- **`bun run e2e`** (en `web/`) — Playwright a 1280×854 (`web/playwright.config.ts`; algunas pruebas fijan
+  1024×600 a propósito para vigilar el modo angosto) contra el **`make start` del worktree**:
   `E2E_BASE_URL=http://localhost:30NN E2E_API_URL=http://localhost:80NN/api/v1 E2E_SLUG=… E2E_PASSWORD=… E2E_PIN=… bun run e2e`.
   `E2E_PIN` es el PIN de `E2E_USER`: con la asistencia encendida, las pruebas de caja marcan su
   entrada y su salida ([asistencia.ts](web/e2e/asistencia.ts)) y sin él fallan diciendo que falta.
@@ -382,7 +383,7 @@ mecánica:
   transición al montar.
 
 - **`overflowY="auto"` SIN un alto no hace scroll: la caja crece.** No falla, no avisa y en el
-  monitor de quien programa se ve bien — el precio lo paga la tableta de 600 px, donde cada renglón
+  monitor de quien programa se ve bien — el precio lo paga el equipo de mostrador (854 px de alto), donde cada renglón
   de la lista empuja fuera de la pantalla lo que viene debajo. Va con `maxH` en **dvh** (lo que se
   reparte es el alto de la tableta, no un número de píxeles) o con el patrón `Page fill` +
   `flex="1" minH={0}` que documenta [Page.tsx](web/src/components/Page.tsx). Pasó en la lista de
@@ -567,7 +568,7 @@ la sesión que lo recibe hace TODO esto por su cuenta, en este orden:
    `/speckit-analyze` quede sin CRITICAL ni HIGH. **Defecto** → rama `fix/slug`, test que falla por
    la razón correcta, y el arreglo.
 3. **Implementar con TDD** y después `/revision-de-codigo`; lo que encuentre se corrige con su test.
-4. **Prueba con usuario nuevo** a 1024×600 contra el `make start` del worktree, si hay pantalla.
+4. **Prueba con usuario nuevo** a 1280×854 (y en 2K) contra el `make start` del worktree, si hay pantalla.
 5. **Gates**: `make ci-local` verde antes de empujar.
 6. **PR a `develop`**, esperar su CI y mergear en verde; luego **PR de release `develop` → `main`**,
    esperar su CI, mergear y seguir el deploy hasta `readyz` 200 en producción. Con autorización del
