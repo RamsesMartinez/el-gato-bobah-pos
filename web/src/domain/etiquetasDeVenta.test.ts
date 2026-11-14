@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { etiquetaEstado, etiquetaTipo } from './etiquetas';
+import { etiquetaEstado, etiquetaTipo } from './etiquetasDeVenta';
 
 test('los estados y tipos se leen en español', () => {
   expect(etiquetaEstado('entregada')).toBe('Entregada');

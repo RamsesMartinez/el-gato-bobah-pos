@@ -145,7 +145,7 @@ test('C4 · contar 40 monedas se teclea, y el total es el que suma el servidor',
     await expect(page.getByLabel('Diferencia del arqueo')).toHaveCount(0);
   } else {
     await expect(page.getByLabel('Diferencia del arqueo')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText('El arqueo cuadra')).toBeVisible();
+    await expect(page.getByLabel('Diferencia del arqueo')).toContainText('Cuadra');
   }
 
   await cerrarLaCaja(page);
@@ -181,8 +181,8 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
   if (ciego) {
     await expect(page.getByLabel('Diferencia del arqueo')).toHaveCount(0);
   } else {
-    await expect(page.getByLabel('Diferencia del arqueo')).toHaveText('-$50');
-    await expect(page.getByText('Faltante')).toBeVisible();
+    // Con palabra y signo, no solo color (#290).
+    await expect(page.getByLabel('Diferencia del arqueo')).toHaveText('Faltante−$50.00');
   }
 
   // Y un faltante NO bloquea el cierre: si bloqueara, el operador se queda con la caja abierta toda
@@ -201,10 +201,11 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
   await expect(page.getByText('Efectivo contado')).toBeVisible({ timeout: 30_000 });
   // El faltante queda en el corte cerrado, con o sin arqueo ciego: con el ciego es el primer lugar
   // donde se ve.
-  await expect(page.getByRole('dialog').last().getByText(/-\$50/).first()).toBeVisible();
+  await expect(page.getByRole('dialog').last().getByText('−$50.00').first()).toBeVisible();
   await page.getByText('Efectivo contado').click();
-  await expect(page.getByText('Al cerrar')).toBeVisible();
-  await expect(page.getByText('Al abrir')).toBeVisible();
+  // exact: el detalle ahora dice también «Motivo al abrir» (#290).
+  await expect(page.getByText('Al cerrar', { exact: true })).toBeVisible();
+  await expect(page.getByText('Al abrir', { exact: true })).toBeVisible();
 });
 
 test('C6 · el total a mano exige motivo, y cambiar de camino avisa antes de borrar', async ({ page }) => {

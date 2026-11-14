@@ -697,6 +697,39 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, erro
 	return i, err
 }
 
+const getSessionNeighbors = `-- name: GetSessionNeighbors :one
+select coalesce((select p.id from register_sessions p
+                 where p.register_id = s.register_id and p.id < s.id and p.status = 'cerrada'
+                 order by p.id desc limit 1), 0)::bigint as previous_id,
+       coalesce(nx.id, 0)::bigint as next_id, nx.opening_reason as next_opening_reason, nx.opening_reason_note as next_opening_reason_note
+from register_sessions s
+left join lateral (select o.id, o.opening_reason, o.opening_reason_note from register_sessions o
+                   where o.register_id = s.register_id and o.id > s.id order by o.id limit 1) nx on true
+where s.id = $1
+`
+
+type GetSessionNeighborsRow struct {
+	PreviousID            int64   `json:"previous_id"`
+	NextID                int64   `json:"next_id"`
+	NextOpeningReason     *string `json:"next_opening_reason"`
+	NextOpeningReasonNote *string `json:"next_opening_reason_note"`
+}
+
+// Los vecinos de un turno en SU caja, para el detalle (#290): el corte cerrado contra el que comparó
+// su apertura y el turno siguiente con su motivo. Mismo criterio que ListSessions.
+// 0 = no hay; coalesce por la misma razón que en ListSessions.
+func (q *Queries) GetSessionNeighbors(ctx context.Context, id int64) (GetSessionNeighborsRow, error) {
+	row := q.db.QueryRow(ctx, getSessionNeighbors, id)
+	var i GetSessionNeighborsRow
+	err := row.Scan(
+		&i.PreviousID,
+		&i.NextID,
+		&i.NextOpeningReason,
+		&i.NextOpeningReasonNote,
+	)
+	return i, err
+}
+
 const insertCashMovement = `-- name: InsertCashMovement :one
 insert into register_cash_movements (session_id, kind, amount, concept, user_id)
 values ($1, $2, $3, $4, $5)
@@ -1513,18 +1546,27 @@ const listSessions = `-- name: ListSessions :many
 select s.id, s.business_date, s.status, s.opening_cash, s.currency, s.opened_at, s.closed_at, s.notes,
        r.name as register_name,
        ob.name as opened_by_name, cb.name as closed_by_name,
-       -- La diferencia total del corte son DOS sumandos desde la spec 015: lo que difieren los
-       -- métodos que no tocan el cajón, más la diferencia única del cajón. Los métodos de cajón
-       -- guardan ` + "`" + `declared = expected` + "`" + `, así que su parte de la primera suma es cero: sin el segundo
-       -- sumando, esta pantalla —donde alguien audita— muestra cuadrados los cortes que no cuadran.
+       -- Las PIEZAS de la diferencia, no la suma: la suma la hace domain.CutDifference, la misma
+       -- función que el detalle y el cierre (#290). Sumaba aquí todas las diferencias por método más
+       -- la del conteo, y el diálogo de cierre sumaba otra cosa: el mismo corte salía con dos cifras.
        --
-       -- Va como SUBCONSULTA CORRELACIONADA y no como join: un turno tiene hasta dos conteos
-       -- (apertura y cierre) y N renglones de método, y unir las dos 1:N multiplicaría cada
-       -- diferencia por el número de conteos. Es el patrón que ya documentamos para
-       -- order_payments/order_lines.
-       (coalesce((select sum(difference) from register_session_totals t where t.session_id = s.id), 0)
-        + coalesce((select c.difference from session_cash_counts c
-                    where c.session_id = s.id and c.moment = 'cierre'), 0))::numeric(10,2) as total_difference,
+       -- Subconsultas correlacionadas y no un join a los renglones: un turno tiene N renglones de
+       -- método, y unir eso con otra 1:N multiplicaría las sumas. El conteo de cierre sí va como
+       -- left join porque es uno solo por turno (session_cash_counts_un_momento).
+       coalesce((select sum(t.declared - t.expected) from register_session_totals t
+                 where t.session_id = s.id and not t.affects_cash_drawer), 0)::numeric(10,2) as off_drawer_difference,
+       coalesce((select sum(t.declared - t.expected) from register_session_totals t
+                 where t.session_id = s.id and t.affects_cash_drawer), 0)::numeric(10,2) as on_drawer_difference,
+       cc.expected as drawer_expected, cc.total as drawer_counted,
+       s.opening_reason, s.opening_reason_note,
+       -- El turno siguiente de la MISMA caja y su motivo de apertura: es lo que explica la diferencia
+       -- de este corte (#290). Lateral y no una ventana ` + "`" + `lead` + "`" + `: la ventana corre después del filtro y
+       -- del ` + "`" + `limit` + "`" + `, y la última fila de cada página se quedaría sin su turno siguiente.
+       -- ponytail: sin índice (register_id, id); son 1 a 3 turnos por caja y día, el mismo costo que
+       -- ya paga is_latest_of_register. Si el Histórico se vuelve lento, ese índice es el siguiente paso.
+       -- 0 = sin turno siguiente. coalesce y no NULL: sqlc tipa la columna del lateral como no nula
+       -- y un NULL tumbaría la consulta entera (AGENTS.md, «un agregado que se puede vaciar»).
+       coalesce(nx.id, 0)::bigint as next_id, nx.opening_reason as next_opening_reason, nx.opening_reason_note as next_opening_reason_note,
        -- El último turno de su caja: con arqueo ciego, su arqueo no se le muestra al cajero hasta
        -- que la caja se vuelve a abrir (spec 035, R8).
        not exists (select 1 from register_sessions o
@@ -1533,6 +1575,9 @@ from register_sessions s
 join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
 left join users cb on cb.id = s.closed_by
+left join session_cash_counts cc on cc.session_id = s.id and cc.moment = 'cierre'
+left join lateral (select o.id, o.opening_reason, o.opening_reason_note from register_sessions o
+                   where o.register_id = s.register_id and o.id > s.id order by o.id limit 1) nx on true
 where ($1::date is null or s.business_date >= $1::date)
   and ($2::date is null or s.business_date <= $2::date)
 order by s.opened_at desc, s.id desc
@@ -1547,19 +1592,27 @@ type ListSessionsParams struct {
 }
 
 type ListSessionsRow struct {
-	ID                 int64              `json:"id"`
-	BusinessDate       pgtype.Date        `json:"business_date"`
-	Status             SessionStatus      `json:"status"`
-	OpeningCash        decimal.Decimal    `json:"opening_cash"`
-	Currency           string             `json:"currency"`
-	OpenedAt           time.Time          `json:"opened_at"`
-	ClosedAt           pgtype.Timestamptz `json:"closed_at"`
-	Notes              *string            `json:"notes"`
-	RegisterName       string             `json:"register_name"`
-	OpenedByName       string             `json:"opened_by_name"`
-	ClosedByName       *string            `json:"closed_by_name"`
-	TotalDifference    decimal.Decimal    `json:"total_difference"`
-	IsLatestOfRegister bool               `json:"is_latest_of_register"`
+	ID                    int64              `json:"id"`
+	BusinessDate          pgtype.Date        `json:"business_date"`
+	Status                SessionStatus      `json:"status"`
+	OpeningCash           decimal.Decimal    `json:"opening_cash"`
+	Currency              string             `json:"currency"`
+	OpenedAt              time.Time          `json:"opened_at"`
+	ClosedAt              pgtype.Timestamptz `json:"closed_at"`
+	Notes                 *string            `json:"notes"`
+	RegisterName          string             `json:"register_name"`
+	OpenedByName          string             `json:"opened_by_name"`
+	ClosedByName          *string            `json:"closed_by_name"`
+	OffDrawerDifference   decimal.Decimal    `json:"off_drawer_difference"`
+	OnDrawerDifference    decimal.Decimal    `json:"on_drawer_difference"`
+	DrawerExpected        *decimal.Decimal   `json:"drawer_expected"`
+	DrawerCounted         *decimal.Decimal   `json:"drawer_counted"`
+	OpeningReason         *string            `json:"opening_reason"`
+	OpeningReasonNote     *string            `json:"opening_reason_note"`
+	NextID                int64              `json:"next_id"`
+	NextOpeningReason     *string            `json:"next_opening_reason"`
+	NextOpeningReasonNote *string            `json:"next_opening_reason_note"`
+	IsLatestOfRegister    bool               `json:"is_latest_of_register"`
 }
 
 // El mismo `where` que CountSessions, y se editan juntos: si divergen, «Página 3 de 2».
@@ -1591,7 +1644,15 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]L
 			&i.RegisterName,
 			&i.OpenedByName,
 			&i.ClosedByName,
-			&i.TotalDifference,
+			&i.OffDrawerDifference,
+			&i.OnDrawerDifference,
+			&i.DrawerExpected,
+			&i.DrawerCounted,
+			&i.OpeningReason,
+			&i.OpeningReasonNote,
+			&i.NextID,
+			&i.NextOpeningReason,
+			&i.NextOpeningReasonNote,
 			&i.IsLatestOfRegister,
 		); err != nil {
 			return nil, err

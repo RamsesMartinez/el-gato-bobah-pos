@@ -161,7 +161,7 @@ test('el detalle de un corte cerrado nombra lo perdido', () => {
       <VentasDelCorte session={{ ...corteCon({ salesCount: 1, salesShown: 1, salesTotal: '100.00' }), writtenOff: '60.00' }} />
     </Provider>,
   );
-  expect(screen.getByText(/Perdido: \$60 \(se canceló lo que faltaba\)/)).toBeInTheDocument();
+  expect(screen.getByText(/Perdido: \$60\.00 \(se canceló lo que faltaba\)/)).toBeInTheDocument();
 });
 
 // Un corte sin ventas lo dice con una frase. Una tabla con encabezados y cero renglones parece un
@@ -241,9 +241,8 @@ describe('el cierre en vivo', () => {
   test('con piezas que suman menos de lo esperado, el faltante ya está en pantalla', () => {
     // El cajón debía tener $340 y se contaron $290.
     pintaCierre({ counts: [{ denominationId: 6, pieces: 5 }], total: 290 });
-    expect(screen.getByLabelText('Diferencia del cajón')).toHaveTextContent('-$50');
-    expect(screen.getByLabelText('Diferencia del arqueo')).toHaveTextContent('-$50');
-    expect(screen.getByText('Faltante')).toBeInTheDocument();
+    expect(screen.getByLabelText('Diferencia del cajón')).toHaveTextContent('Faltante−$50.00');
+    expect(screen.getByLabelText('Diferencia del arqueo')).toHaveTextContent('Faltante−$50.00');
   });
 
   test('el faltante es UNO: ningún método de cajón reporta el suyo', () => {
@@ -264,7 +263,7 @@ describe('el cierre en vivo', () => {
 
   test('un conteo exacto dice que el arqueo cuadra', () => {
     pintaCierre({ counts: [], total: 340 });
-    expect(screen.getByText('El arqueo cuadra')).toBeInTheDocument();
+    expect(screen.getByLabelText('Diferencia del arqueo')).toHaveTextContent('Cuadra');
   });
 
   test('sin conteo no se muestra una diferencia inventada', () => {
@@ -297,7 +296,7 @@ describe('el cierre en vivo', () => {
     expect(screen.getByLabelText('Diferencia del cajón')).toHaveTextContent('—');
     expect(screen.queryByLabelText('Diferencia del arqueo')).not.toBeInTheDocument();
     // Y sí se ve lo que el operador contó.
-    expect(screen.getByRole('button', { name: '$290' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '$290.00' })).toBeInTheDocument();
   });
 
   test('el cajón se cuenta desde un botón, no se teclea', () => {
@@ -308,7 +307,7 @@ describe('el cierre en vivo', () => {
 
   test('con el conteo hecho, el botón muestra la cifra contada', () => {
     pintaCierre({ counts: [], total: 340 });
-    expect(screen.getByRole('button', { name: '$340' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '$340.00' })).toBeInTheDocument();
   });
 
   test('una caja sin efectivo no pinta renglón de cajón', () => {
@@ -336,8 +335,9 @@ describe('el desglose de lo contado', () => {
     wrap(<DesgloseDelConteo counts={conPiezas} currency="MXN" />);
     await userEvent.click(screen.getByText('Efectivo contado'));
     expect(screen.getByText('Al cerrar')).toBeInTheDocument();
+    // La denominación se nombra como el billete ($100); el subtotal, con centavos ($80.00).
     expect(screen.getByText('$100')).toBeInTheDocument();
-    expect(screen.getByText('$80')).toBeInTheDocument();
+    expect(screen.getByText('$80.00')).toBeInTheDocument();
   });
 
   test('la moneda de menos de un peso se nombra en centavos', async () => {
@@ -387,9 +387,9 @@ describe('el arqueo en el corte cerrado', () => {
     wrap(<ArqueoDelCorte drawer={{
       expected: '340', counted: '290', difference: '-50', methodIds: [1, 8], requiresCount: false,
     }} currency="MXN" />);
-    expect(screen.getByLabelText('Esperado del cajón')).toHaveTextContent('$340');
-    expect(screen.getByLabelText('Contado del cajón')).toHaveTextContent('$290');
-    expect(screen.getByLabelText('Diferencia del arqueo del corte')).toHaveTextContent('-$50');
+    expect(screen.getByLabelText('Esperado del cajón')).toHaveTextContent('$340.00');
+    expect(screen.getByLabelText('Contado del cajón')).toHaveTextContent('$290.00');
+    expect(screen.getByLabelText('Diferencia del arqueo del corte')).toHaveTextContent('Faltante−$50.00');
   });
 
   test('un corte anterior a la feature no pinta arqueo ni inventa un cero', () => {
@@ -416,7 +416,7 @@ test('VoidedPaymentsList lista método, monto, folio, quién y por qué', () => 
   wrap(<VoidedPaymentsList payments={[devuelto({})]} currency="MXN" zona="America/Mexico_City" />);
   expect(screen.getByText('Pagos devueltos')).toBeInTheDocument();
   expect(screen.getByText('Tarjeta')).toBeInTheDocument();
-  expect(screen.getByText('$120')).toBeInTheDocument();
+  expect(screen.getByText('$120.00')).toBeInTheDocument();
   expect(screen.getByText(/Mesa 3 #14/)).toBeInTheDocument();
   expect(screen.getByText(/Ana/)).toBeInTheDocument();
   expect(screen.getByText(/Se cobró a la tarjeta equivocada/)).toBeInTheDocument();
@@ -485,7 +485,7 @@ describe('las cuentas vivas en el cierre', () => {
   // «Falta entregar 3 pedidos» sin montos obligaba a abrir cada uno (validación como usuario nuevo).
   test('cada pedido que falta entregar dice de cuánto es', () => {
     wrap(<CuentasDelCierre pending={[{ number: 1, name: 'Khao Manee', id: 11, total: '165.00' }]} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
-    expect(screen.getByText('$165')).toBeInTheDocument();
+    expect(screen.getByText('$165.00')).toBeInTheDocument();
   });
 
   // Las que deben y las que se capturan NO bloquean (D-10): van plegadas, para no empujar el botón
@@ -557,8 +557,8 @@ describe('las cuentas vivas en el cierre', () => {
       wrap(<CuentasDelCierre pending={[]} owing={DEBEN} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()} onCancelar={vi.fn()} />);
       expect(screen.getByText(/Falta cobrar 2 pedidos/)).toBeInTheDocument();
       expect(screen.getByText(/no cierra hasta que se cobren o se cancelen/)).toBeInTheDocument();
-      expect(screen.getByText('$120')).toBeInTheDocument();
-      expect(screen.getByText('$50')).toBeInTheDocument();
+      expect(screen.getByText('$120.00')).toBeInTheDocument();
+      expect(screen.getByText('$50.00')).toBeInTheDocument();
     });
 
     test('«Cobrar» lleva a su cuenta y mide 44 px', async () => {
@@ -594,7 +594,7 @@ describe('las cuentas vivas en el cierre', () => {
       expect(parseInt(getComputedStyle(resto).minHeight, 10)).toBeGreaterThanOrEqual(44);
       await userEvent.click(resto);
       // Dice cuánto se pierde y que lo cobrado se queda, antes de confirmar (dueño, 2026-10-09).
-      expect(await screen.findByText(/Se dan por perdidos \$50\. Lo cobrado \(\$30\) se queda como venta/)).toBeInTheDocument();
+      expect(await screen.findByText(/Se dan por perdidos \$50\.00\. Lo cobrado \(\$30\.00\) se queda como venta/)).toBeInTheDocument();
       await userEvent.type(await screen.findByRole('textbox', { name: 'Motivo' }), 'se fue sin pagar');
       await userEvent.click(screen.getByRole('button', { name: 'Cancelar lo que falta' }));
       expect(onCancelarResto).toHaveBeenCalledWith(6, 'se fue sin pagar');
@@ -634,17 +634,25 @@ describe('«Cerrar caja» confirma en una hoja de la app', () => {
 
 // «TOTAL DIF.» DICE LO MISMO QUE EL HISTÓRICO (spec 031, D13).
 //
-// Los métodos del cajón guardan declarado = esperado, así que su diferencia por renglón es cero y la
-// del cajón vive en el conteo. La fila Total sumaba solo los renglones: un cajón $200 corto salía
-// «Total Dif. $0» en el detalle y −$200 en el histórico del mismo corte.
-test('Total Dif. incluye la diferencia del cajón', () => {
+// LA FILA TOTAL DE LA CONCILIACIÓN NO MEZCLA EL CAJÓN (#290).
+//
+// Sumaba la diferencia del cajón solo en la columna Diferencia: un corte con el cajón $200 corto
+// salía «Sistema $2,500 = Declarado $2,500, Dif. −$200» en el mismo renglón, y quien lo leía no
+// sabía cuál de las tres cifras creer. El cajón se lee en el arqueo; el efectivo dice «ver arqueo» y
+// la fila Total es solo lo que se concilia aquí.
+test('el efectivo dice «ver arqueo» y la fila Total no suma el cajón', () => {
   const totals: MethodTotal[] = [
     { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '2000', declared: '2000', difference: '0', autoDeclare: false, requiresEntry: false },
-    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '500', declared: '500', difference: '0', autoDeclare: true, requiresEntry: false },
+    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '500', declared: '490', difference: '-10', autoDeclare: false, requiresEntry: true },
   ];
-  wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow drawerDifference="-200" />);
-  const fila = screen.getByText('Total').closest('tr') as HTMLElement;
-  expect(within(fila).getByText(/-\$200/)).toBeInTheDocument();
+  wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow drawerMethodIds={[1]}
+    difference={{ drawer: '-200', otherMethods: '-10', total: '-210', drawerCovered: true }} />);
+  const efectivo = screen.getByText('Efectivo').closest('tr') as HTMLElement;
+  expect(within(efectivo).getByText('ver arqueo')).toBeInTheDocument();
+  const fila = screen.getByText('Total sin el cajón').closest('tr') as HTMLElement;
+  expect(within(fila).getByText('$500.00')).toBeInTheDocument();
+  expect(within(fila).getByText('$490.00')).toBeInTheDocument();
+  expect(within(fila).getByLabelText('Diferencia de la conciliación')).toHaveTextContent('Faltante−$10.00');
 });
 
 const devolucion = (o: Partial<SessionRefund>): SessionRefund => ({
@@ -843,9 +851,9 @@ test('el corte cerrado muestra declarado, esperado y diferencia por terminal y l
     tipsPaidOut: '40', cardTipsPaidInCash: '15', tipsCarriedOver: '12.40',
   }} />);
   const fila = screen.getByText('Terminal B').closest('tr') as HTMLElement;
-  expect(within(fila).getByText('$248')).toBeInTheDocument();
-  expect(within(fila).getByText('$250')).toBeInTheDocument();
-  expect(within(fila).getByText(/-\$2/)).toBeInTheDocument();
+  expect(within(fila).getByText('$248.00')).toBeInTheDocument();
+  expect(within(fila).getByText('$250.00')).toBeInTheDocument();
+  expect(within(fila).getByText('−$2.00')).toBeInTheDocument();
   expect(screen.getByText(/Propinas entregadas/).closest('tr')?.textContent).toContain('$40');
   expect(screen.getByText(/Se quedó en caja/).closest('tr')?.textContent).toContain('$12.40');
   expect(screen.getByText(/tarjeta pagada en efectivo/).closest('tr')?.textContent).toContain('$15');
@@ -864,8 +872,8 @@ test('el corte cerrado avisa qué terminal cambió después del arqueo, y solo e
   }} />);
   const avisos = screen.getAllByRole('status').map((n) => n.textContent);
   expect(avisos).toEqual([
-    'Terminal A: el esperado pasó de $250 a $0 después del arqueo. Diferencia ahora: $0',
-    'Terminal B: el esperado pasó de $0 a $250 después del arqueo. Diferencia ahora: -$250',
+    'Terminal A: el esperado pasó de $250.00 a $0.00 después del arqueo. Diferencia ahora: $0.00',
+    'Terminal B: el esperado pasó de $0.00 a $250.00 después del arqueo. Diferencia ahora: -$250.00',
   ]);
 });
 
@@ -1049,15 +1057,15 @@ test('el desglose del corte muestra «No es del negocio» aparte de «Gastos»',
     egresos: [{ concept: 'Gastos', amount: '380' }, { concept: 'No es del negocio', amount: '120' }],
   }} /></Provider>);
   expect(screen.getByText('No es del negocio')).toBeInTheDocument();
-  expect(screen.getByText('−$120')).toBeInTheDocument();
-  expect(screen.getByText('−$380')).toBeInTheDocument();
+  expect(screen.getByText('−$120.00')).toBeInTheDocument();
+  expect(screen.getByText('−$380.00')).toBeInTheDocument();
 });
 
 test('la tabla de gastos del corte dice cuánto del pago no era del negocio', () => {
   render(<Provider><ExpensesTable currency="MXN" expenses={[
     { id: 1, expenseId: 9, category: 'Insumos', supplier: null, paymentMethod: 'Efectivo', amount: '380', currency: 'MXN', status: 'pagada', drawerExtra: '120' },
   ]} /></Provider>);
-  expect(screen.getByText('+ $120 no es del negocio')).toBeInTheDocument();
+  expect(screen.getByText('+ $120.00 no es del negocio')).toBeInTheDocument();
 });
 
 // Roles por empresa (spec 068): «Administrar» cajas es de quien tiene cash.configure. Un admin cuyo
@@ -1114,4 +1122,50 @@ describe('el aviso de lo que falta capturar', () => {
     wrap(<AvisoDeFaltantes onContar={vi.fn()} faltantes={[]} />);
     expect(screen.queryByText(/falta capturar/)).toBeNull();
   });
+});
+
+// El estado de una venta se nombra para quien opera, no como lo guarda la base (#290, hallazgo 21).
+test('las ventas del corte muestran el estado traducido', () => {
+  wrap(<VentasDelCorte session={corteCon({ salesCount: 2, salesShown: 2, salesTotal: '100.00' })} />);
+  expect(screen.getByText('Entregada')).toBeInTheDocument();
+  expect(screen.getByText('Cancelada')).toBeInTheDocument();
+  expect(screen.queryByText('entregada')).not.toBeInTheDocument();
+});
+
+// UN BACKEND ANTERIOR NO MANDA `difference` (#290, revisión). Sin la regla de respaldo, el efectivo
+// del cajón —que guarda contado = esperado— se pintaba «Cuadra» y la fila Total dejaba fuera el
+// faltante del cajón: el defecto de la spec 031 D13, ahora con palabra e ícono.
+test('sin difference del servidor, el efectivo con arqueo dice «ver arqueo» y no «Cuadra»', () => {
+  const totals: MethodTotal[] = [
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '2000', declared: '2000', difference: '0', autoDeclare: false, requiresEntry: false },
+  ];
+  wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow
+    drawer={{ expected: '2000', counted: '1800', difference: '-200', methodIds: [1], requiresCount: false }} />);
+  const efectivo = screen.getByText('Efectivo').closest('tr') as HTMLElement;
+  expect(within(efectivo).getByText('ver arqueo')).toBeInTheDocument();
+  expect(within(efectivo).queryByText('Cuadra')).not.toBeInTheDocument();
+});
+
+// Dos cifras distintas no se llaman igual en la misma pantalla (constitución III): la fila de la
+// conciliación no es el Total del corte cuando el cajón se lee aparte.
+test('con el cajón aparte, la fila de la conciliación no se llama «Total»', () => {
+  const totals: MethodTotal[] = [
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '2000', declared: '2000', difference: '0', autoDeclare: false, requiresEntry: false },
+    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '500', declared: '490', difference: '-10', autoDeclare: false, requiresEntry: true },
+  ];
+  wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow drawerMethodIds={[1]}
+    difference={{ drawer: '-200', otherMethods: '-10', total: '-210', drawerCovered: true }} />);
+  expect(screen.queryByText('Total')).not.toBeInTheDocument();
+  expect(screen.getByText('Total sin el cajón')).toBeInTheDocument();
+});
+
+// Un esperado que no viajó no se suma como cero: la fila diría un esperado parcial como si fuera
+// completo.
+test('la fila de totales pone raya si falta un esperado', () => {
+  const totals: MethodTotal[] = [
+    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: null, declared: '490', difference: '-10', autoDeclare: false, requiresEntry: true },
+  ];
+  wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow />);
+  const fila = screen.getByText('Total').closest('tr') as HTMLElement;
+  expect(fila.querySelectorAll('td')[1].textContent).toBe('—');
 });

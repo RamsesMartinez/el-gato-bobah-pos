@@ -57,7 +57,7 @@ export async function marcarSalida(jwt?: string) {
 export async function marcarSalidaEnElCierre(page: Page) {
   const boton = page.getByRole('button', { name: /^Marcar salida de / });
   // El aviso o el cierre de siempre: hasta que la consulta responde no se pinta ninguno.
-  const cierre = page.getByText('Cierre — declarado por método');
+  const cierre = page.getByText('Cierre — contado por método');
   await expect(boton.or(cierre).first()).toBeVisible({ timeout: 30_000 });
   if (!(await boton.isVisible())) return;
   if (!PIN) throw new Error('El cierre pide la salida de quien abrió y falta E2E_PIN para marcarla.');

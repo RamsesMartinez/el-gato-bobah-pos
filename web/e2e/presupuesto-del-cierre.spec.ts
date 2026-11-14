@@ -69,7 +69,7 @@ test('P1 · la tabla del cierre no creció y no pide más capturas (SC-006)', as
   await entrar(page);
   await page.goto('/caja');
   await expect(page.getByRole('tab', { name: 'Cajas' })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText('Cierre — declarado por método')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Cierre — contado por método')).toBeVisible({ timeout: 30_000 });
 
   const medida = await page.evaluate(({ fuenteDelScroller }) => {
     const buscar = new Function(`return (${fuenteDelScroller})()`) as () => Element;
