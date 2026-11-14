@@ -176,8 +176,15 @@ describe('nadie administra a quien puede más que él', () => {
     await u.click(within(fila).getByRole('button', { name: 'Gestionar' }));
     const dialogo = await screen.findByRole('dialog');
     await u.click(within(dialogo).getByRole('button', { name: /Cajero/ }));
-    const hojas = await screen.findAllByRole('dialog');
-    expect(within(hojas[hojas.length - 1]).queryByRole('button', { name: /^Admin/ })).toBeNull();
+    // La hoja del Picker entra animada y deja oculto el diálogo de edición. Tomar «el último
+    // diálogo» al instante podía agarrar todavía el de edición (que no tiene «Admin»: pasaba sin
+    // haber abierto el Picker) o caer a media transición, sin ninguno visible, y agotar la espera de
+    // 1 s bajo la carga de la suite en paralelo. Se espera a la hoja misma: la que ofrece «Barista».
+    await waitFor(() => expect(within(screen.getByRole('dialog')).getByRole('button', { name: /Barista/ })).toBeInTheDocument(),
+      { timeout: 3000 });
+    const hoja = screen.getByRole('dialog');
+    expect(within(hoja).getByRole('button', { name: /^Cajero/ })).toBeInTheDocument();
+    expect(within(hoja).queryByRole('button', { name: /^Admin/ })).toBeNull();
   });
 
   test('a quien puede más no se le editan datos, contraseña ni PIN', async () => {
