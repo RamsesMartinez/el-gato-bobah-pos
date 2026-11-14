@@ -15,7 +15,7 @@ import { WastePage } from './features/waste/WastePage';
 import { POSPage } from './features/pos/POSPage';
 import { OrdersBoardPage } from './features/orders/OrdersBoardPage';
 import { SalesPage } from './features/sales/SalesPage';
-import { CashPage } from './features/backoffice/CashPage';
+import { CashPage } from './features/caja/CashPage';
 import { ExpensesPage } from './features/backoffice/ExpensesPage';
 import { StockPage } from './features/backoffice/StockPage';
 import { ReportsPage } from './features/backoffice/ReportsPage';
@@ -67,7 +67,7 @@ export const App = () => {
         <Route path="/pos" element={<POSPage />} />
         <Route path="/pedidos" element={<OrdersBoardPage />} />
         <Route path="/ventas" element={<RequirePermission path="/ventas"><SalesPage /></RequirePermission>} />
-        <Route path="/caja" element={<RequirePermission path="/caja"><CashPage /></RequirePermission>} />
+        <Route path="/caja/*" element={<RequirePermission path="/caja"><CashPage /></RequirePermission>} />
         <Route path="/gastos" element={<RequirePermission path="/gastos"><ExpensesPage /></RequirePermission>} />
         <Route path="/almacen" element={<RequirePermission path="/almacen"><StockPage /></RequirePermission>} />
         <Route path="/reportes" element={<RequirePermission path="/reportes"><ReportsPage /></RequirePermission>} />

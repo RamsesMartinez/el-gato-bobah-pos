@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { Provider } from '../../components/ui/provider';
+import { Provider } from '../components/ui/provider';
 import { AvisosDeCaja } from './AvisosDeCaja';
 
 // Punto 7: propina sin entregar y salidas sin concepto se avisan en Ventas del día y en el cierre.

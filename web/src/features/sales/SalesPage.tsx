@@ -13,7 +13,7 @@ import { money } from '../../utils/format';
 import { round2 } from '../../domain/cobro';
 import { SaleDetailDialog } from './SaleDetailDialog';
 import { SalesSummaryTiles } from './SalesSummaryTiles';
-import { AvisosDeCaja } from '../backoffice/AvisosDeCaja';
+import { AvisosDeCaja } from '../../shared/AvisosDeCaja';
 import { etiquetaEstado, etiquetaTipo } from '../../domain/etiquetasDeVenta';
 import { diaCortoYHora } from '../../utils/horaDelNegocio';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';

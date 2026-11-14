@@ -70,9 +70,9 @@ const FRONTERAS = [
             // `..`, así que ese patrón prohibía '../../api/pos' y todo lo demás que sí es legítimo.
             // La lista explícita además se lee como lo que es — el mapa de pantallas del producto.
             group: [
-              '../admin/*', '../attendance/*', '../auth/*', '../backoffice/*', '../orders/*', '../pos/*',
+              '../admin/*', '../attendance/*', '../auth/*', '../backoffice/*', '../caja/*', '../orders/*', '../pos/*',
               '../pwa/*', '../sales/*', '../tickets/*', '../waste/*',
-              '**/features/admin/*', '**/features/attendance/*', '**/features/auth/*', '**/features/backoffice/*',
+              '**/features/admin/*', '**/features/attendance/*', '**/features/auth/*', '**/features/backoffice/*', '**/features/caja/*',
               '**/features/orders/*', '**/features/pos/*', '**/features/pwa/*',
               '**/features/sales/*', '**/features/tickets/*', '**/features/waste/*',
             ],

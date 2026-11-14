@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 const ARCHIVOS = [
   'src/shared/CobrarSheet.tsx',
   'src/shared/ProductEditDialog.tsx',
-  'src/features/backoffice/CashPage.tsx',
+  'src/features/caja/CashPage.tsx',
   'src/features/orders/OrdersBoardPage.tsx',
   'src/app/MedidorDeUso.tsx',
   'src/app/MedidorDeToques.tsx',

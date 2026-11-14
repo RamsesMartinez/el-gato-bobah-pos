@@ -3,7 +3,7 @@ import { Box, Button, Checkbox, Input, Text } from '@chakra-ui/react';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import {
   BEFORE_LAST_CLOSE_TEXT, DRAWER_OUT_LABEL, INCLUDE_IN_COUNT_LABEL, OUTSIDE_COUNT_CONFIRM, OUTSIDE_COUNT_TEXT, type CountChoice, type OutsideAsk,
-} from './cajaDelGasto';
+} from '../../shared/cajaDelGasto';
 
 // OutsideCountSheet es el aviso de un pago en efectivo que no entra al corte (spec 048, R9). Conserva
 // sus dos botones de siempre; «sin incluir» va aparte, en el cuerpo, para que el dedo que confirma

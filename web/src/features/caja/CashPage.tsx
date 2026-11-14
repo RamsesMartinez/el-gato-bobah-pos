@@ -1,7 +1,9 @@
-import { cajasConTurno } from './cajaDelGasto';
+import { cajasConTurno } from '../../shared/cajaDelGasto';
 import { useState, Fragment, type ReactNode } from 'react';
 import { DatePickerButton } from '../../components/DatePickerButton';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
+import { AjustesDeCaja } from './AjustesDeCaja';
+import { seccionDeCaja, rutaDeCaja } from './rutasDeCaja';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { ReasonSheet } from '../../components/ReasonSheet';
 import { posApi } from '../../api/pos';
@@ -32,7 +34,7 @@ import { etiquetaEstado } from '../../domain/etiquetasDeVenta';
 import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
 import { MotivoDeApertura } from './MotivoDeApertura';
 import { AperturaConAsistencia, AvisoDelCierre, CierreConAsistencia } from './AsistenciaDeCaja';
-import { AvisosDeCaja } from './AvisosDeCaja';
+import { AvisosDeCaja } from '../../shared/AvisosDeCaja';
 import { FondoQueSeDeja } from './FondoQueSeDeja';
 import { diferenciaDelHistorico } from './historicoDeCaja';
 import { useVolverAlCierre } from './volverAlCierre';
@@ -586,38 +588,55 @@ export function TerminalesYPropinasDelCorte({ session, currency }: {
 export function CashPage() {
   const user = useSessionStore((s) => s.user);
   const canManage = can('cash.configure', user);
+  // Los ajustes de terminales, modo de arqueo y correos piden configurar el negocio: se muestran a
+  // quien antes los veía en Negocio, ni a más ni a menos.
+  const canBusiness = can('business.configure', user);
+  const navigate = useNavigate();
+  // La pestaña, la caja y el corte viven en la dirección (#290, FR-017): una recarga vuelve a donde
+  // se estaba y «corte #410» se puede compartir.
+  const seccion = seccionDeCaja(useLocation().pathname, canManage || canBusiness);
   return (
     <Page maxW="920px">
       <Heading size="lg" mb={4}>Caja</Heading>
-      <Tabs.Root defaultValue="operar">
+      <Tabs.Root value={seccion.pestana} onValueChange={(e) => navigate(rutaDeCaja(e.value as typeof seccion.pestana))}>
         <Tabs.List>
           {/* 44 px: medían 40. */}
           <Tabs.Trigger value="operar" minH="44px">Cajas</Tabs.Trigger>
           <Tabs.Trigger value="historico" minH="44px">Histórico</Tabs.Trigger>
-          {canManage && <Tabs.Trigger value="gestion" minH="44px">Administrar</Tabs.Trigger>}
+          {(canManage || canBusiness) && <Tabs.Trigger value="gestion" minH="44px">Administrar</Tabs.Trigger>}
         </Tabs.List>
-        <Tabs.Content value="operar" px={0} pt={4}><RegistersTab /></Tabs.Content>
-        <Tabs.Content value="historico" px={0} pt={4}><HistoryTab /></Tabs.Content>
-        {canManage && <Tabs.Content value="gestion" px={0} pt={4}><ManageRegistersTab /></Tabs.Content>}
+        <Tabs.Content value="operar" px={0} pt={4}>
+          <RegistersTab cajaId={seccion.cajaId} onCaja={(id) => navigate(`/caja/${id}`)} />
+        </Tabs.Content>
+        <Tabs.Content value="historico" px={0} pt={4}>
+          <HistoryTab corteId={seccion.corteId}
+            onCorte={(id) => navigate(id === null ? '/caja/historico' : `/caja/historico/${id}`)} />
+        </Tabs.Content>
+        {(canManage || canBusiness) && (
+          <Tabs.Content value="gestion" px={0} pt={4}>
+            <VStack align="stretch" gap={6}>
+              {canManage && <ManageRegistersTab />}
+              {canBusiness && <AjustesDeCaja />}
+            </VStack>
+          </Tabs.Content>
+        )}
       </Tabs.Root>
     </Page>
   );
 }
 
-// ---- Tab: cajas (selector + operar la caja elegida + traspaso) ----
-function RegistersTab() {
+function RegistersTab({ cajaId, onCaja }: { cajaId: number | null; onCaja: (id: number) => void }) {
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });
   // Una caja sin arqueo no tiene turno que abrir ni contar: aquí solo se vería «Cerrada» para siempre.
   const registers = cajasConTurno(data?.items ?? []);
   // Selección derivada: sin elección explícita (o si la caja elegida desaparece) cae en la primera
   // (la primaria). Evita un useEffect+setState solo para inicializar el default.
-  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   if (isLoading) return <Center h="40vh"><Spinner size="xl" /></Center>;
   if (registers.length === 0) return <Text color="fg.muted">No hay cajas configuradas. Créalas en «Administrar».</Text>;
 
   const openRegisters = registers.filter((r) => r.openSessionId !== null);
-  const current = registers.find((r) => r.id === selectedId) ?? registers[0];
+  const current = registers.find((r) => r.id === cajaId) ?? registers[0];
 
   return (
     <VStack align="stretch" gap={4}>
@@ -625,7 +644,7 @@ function RegistersTab() {
       <HStack gap={2} flexWrap="wrap">
         {registers.map((r) => (
           <Button key={r.id} size="sm" minH="44px" variant={current.id === r.id ? 'solid' : 'outline'}
-            colorPalette={current.id === r.id ? undefined : 'gray'} onClick={() => setSelectedId(r.id)}>
+            colorPalette={current.id === r.id ? undefined : 'gray'} onClick={() => onCaja(r.id)}>
             {r.name}
             <Badge ml={2} colorPalette={r.openSessionId !== null ? 'green' : 'gray'}>
               {r.openSessionId !== null ? 'Abierta' : 'Cerrada'}
@@ -1639,7 +1658,7 @@ export function ManageRegistersTab() {
 // ---- Tab: histórico de cortes (lista + detalle: panel lateral en pantallas grandes, diálogo en 7") ----
 const CORTES_POR_PAGINA = 20;
 
-function HistoryTab() {
+function HistoryTab({ corteId, onCorte }: { corteId: number | null; onCorte: (id: number | null) => void }) {
   const horaNegocio = useHoraDelNegocio();
   const [page, setPage] = useState(0);
   const [rango, setRango] = useState({ desde: '', hasta: '' });
@@ -1648,14 +1667,22 @@ function HistoryTab() {
     queryFn: () => backofficeApi.cashHistory({ page, pageSize: CORTES_POR_PAGINA, from: rango.desde, to: rango.hasta }),
     placeholderData: (prev) => prev,
   });
-  const [detailId, setDetailId] = useState<number | null>(null);
+  const detailId = corteId;
+  const setDetailId = onCorte;
   // Panel lateral solo en pantallas anchas (xl+); en tablet de 7" se usa el diálogo a pantalla completa.
   const wide = useBreakpointValue({ base: false, xl: true }, { ssr: false });
 
   if (isLoading) return <Center h="40vh"><Spinner size="xl" /></Center>;
   const rows = data?.items ?? [];
   const filtrando = rango.desde !== '' || rango.hasta !== '';
-  if (rows.length === 0 && !filtrando && page === 0) return <Text color="fg.muted">Aún no hay cortes registrados.</Text>;
+  // Con la dirección de un corte, el corte se abre aunque la lista no lo traiga (otra página, otras
+  // fechas): el enlace compartido no depende de lo que esta pantalla tenga cargado.
+  if (rows.length === 0 && !filtrando && page === 0) {
+    return (<>
+      <Text color="fg.muted">Aún no hay cortes registrados.</Text>
+      <SessionDetailDialog id={detailId} onClose={() => setDetailId(null)} onAbrirCorte={setDetailId} />
+    </>);
+  }
 
   const controles = (
     <ControlesDelHistorico page={page} total={data?.total ?? 0} pageSize={CORTES_POR_PAGINA}
