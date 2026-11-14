@@ -32,6 +32,9 @@ var MergeTables = map[string]string{
 	"ingredient_cost_corrections": "las pasadas se quedan y se leen desde el destino; después, rechaza",
 	"ingredient_replacements":     "registra la unión (kind = merge)",
 	"ingredient_distinct_pairs":   "se queda: un insumo unido ya no se propone",
+	"notifications":               "los avisos abiertos del origen se cierran (merged); el destino se evalúa al final",
+	"stock_out_reports":           "lo pasado se queda en el origen; después, rechaza",
+	"branch_stock_minimums":       "el destino conserva el suyo; los del origen se borran; después, rechaza",
 }
 
 // MergeSourceInput es un origen y, si se mide distinto que el destino, su equivalencia: cuánto del

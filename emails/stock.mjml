@@ -1,0 +1,14 @@
+<mjml>
+  <mj-include path="./_head.mjml" />
+  <mj-body background-color="#f6f5f3" width="600px">
+    <mj-include path="./_top.mjml" />
+    <mj-section padding="20px 24px 0">
+      <mj-column>
+        <mj-text font-size="22px" font-weight="800" padding-bottom="4px">{{.Title}}</mj-text>
+        <mj-text css-class="muted">{{.Subtitle}}</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-include path="./_cards.mjml" />
+    <mj-include path="./_foot.mjml" />
+  </mj-body>
+</mjml>

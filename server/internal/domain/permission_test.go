@@ -41,11 +41,13 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 		// conjunto de roles, ahora como permiso por capacidad.
 		PermCashOperate, PermOrdersPlatformRef, PermPlatformPricesCapture, PermSalesView,
 		PermPlatformSettlementsCapture, PermReportsView, PermExpensesCapture, PermPlatformsConfigure,
-		PermBusinessConfigure}
+		PermBusinessConfigure,
+		// Reportar que algo se acabó (084): lo ve quien vende; los cuatro sugeridos lo traen.
+		PermInventoryReportOut}
 	// El cajero abría caja, corregía el folio de plataforma y capturaba precios por plataforma
 	// (RequireRole admin, gerente, cajero); el mesero, nada de eso.
 	cajero := []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff, PermOrdersDeliveredView,
-		PermCashOperate, PermOrdersPlatformRef, PermPlatformPricesCapture}
+		PermCashOperate, PermOrdersPlatformRef, PermPlatformPricesCapture, PermInventoryReportOut}
 	cases := []struct {
 		role Role
 		want []Permission
@@ -53,7 +55,7 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 		{RoleAdmin, all},
 		{RoleGerente, gerente},
 		{RoleCajero, cajero},
-		{RoleMesero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff}},
+		{RoleMesero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff, PermInventoryReportOut}},
 		{Role("dueño"), nil},
 		{Role(""), nil},
 	}
@@ -97,6 +99,7 @@ func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 		PermInventoryConfigure:         "Tu usuario no puede configurar el almacén",
 		PermInventoryCount:             "Tu usuario no puede contar el almacén",
 		PermInventoryWriteOff:          "Tu usuario no puede registrar lo que se echó a perder",
+		PermInventoryReportOut:         "Tu usuario no puede avisar que algo se acabó",
 		PermInventoryWriteOffApprove:   "Tu usuario no puede aprobar lo que se echó a perder",
 		PermInventoryView:              "Tu usuario no puede ver el almacén",
 		PermCashCloseWithoutClockOut:   "Tu usuario no puede cerrar la caja sin la salida de quien la abrió",

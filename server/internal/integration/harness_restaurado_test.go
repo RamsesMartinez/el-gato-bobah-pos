@@ -323,6 +323,17 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
+	// La 0115 se niega con avisos o con alertas encendidas: en la copia de prueba se borran (las
+	// lecturas caen en cascada; los reportes antes que los avisos a los que apuntan), se apagan las
+	// alertas y se quitan los ajustes de roles sobre el permiso 38.
+	115: {`delete from stock_out_reports`, `delete from notifications`, `delete from notification_email_sends`,
+		`delete from notification_recipients`, `delete from branch_stock_minimums`,
+		`update ingredients set low_stock_enabled = false, coverage_days = null, low_stock_asked_at = null
+		  where low_stock_enabled or coverage_days is not null or low_stock_asked_at is not null`,
+		`update products set low_stock_enabled = false, coverage_days = null, low_stock_asked_at = null
+		  where low_stock_enabled or coverage_days is not null or low_stock_asked_at is not null`,
+		`update business_settings set notifications_morning_at = '08:00' where notifications_morning_at <> '08:00'`,
+		`delete from role_permission_overrides where permission_id = 38`},
 	// La 0113 se niega con correcciones de cortes: en la copia de prueba se borran (los reversos
 	// primero, por la llave que apunta a lo que revierten).
 	113: {`delete from cash_session_adjustments where reverses_id is not null`, `delete from cash_session_adjustments`},

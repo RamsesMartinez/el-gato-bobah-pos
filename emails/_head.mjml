@@ -1,0 +1,12 @@
+<mj-head>
+  <mj-title>{{.Title}}</mj-title>
+  <mj-preview>{{.Subtitle}}</mj-preview>
+  <mj-attributes>
+    <mj-all font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" />
+    <mj-text font-size="15px" line-height="22px" color="#1d1a19" padding="0" />
+    <mj-section padding="0" />
+  </mj-attributes>
+  <mj-style inline="inline">
+    .muted, .muted div { color: #655d5a !important; font-size: 13px !important; }
+  </mj-style>
+</mj-head>

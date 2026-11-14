@@ -23,6 +23,35 @@ const (
 	KindNotFound NotificationKind = "not_found" // alguien buscó algo que no está en el sistema
 )
 
+// NotificationKinds es la lista de tipos; la base la repite en su check (prueba de paridad).
+func NotificationKinds() []NotificationKind {
+	return []NotificationKind{KindStockLow, KindStockOut, KindNotFound}
+}
+
+// NotificationReason es por qué se cerró un aviso. Se guarda como dato: no se renombra.
+type NotificationReason string
+
+const (
+	ReasonAboveMin    NotificationReason = "above_min"    // volvió sobre el mínimo
+	ReasonRestocked   NotificationReason = "restocked"    // volvió a haber (cualquier movimiento)
+	ReasonCounted     NotificationReason = "counted"      // un conteo cerrado lo incluyó
+	ReasonArrived     NotificationReason = "arrived"      // alguien dijo «ya llegó»
+	ReasonUndone      NotificationReason = "undone"       // se deshizo el «se acabó»
+	ReasonAlertOff    NotificationReason = "alert_off"    // se apagó la alerta o el evento
+	ReasonArchived    NotificationReason = "archived"     // el artículo se archivó
+	ReasonMerged      NotificationReason = "merged"       // el insumo se unió a otro
+	ReasonUnitChanged NotificationReason = "unit_changed" // el artículo cambió de unidad
+	ReasonDismissed   NotificationReason = "dismissed"    // alguien lo descartó
+	ReasonCreated     NotificationReason = "created"      // «No lo encuentro» terminó en un alta
+	ReasonAlias       NotificationReason = "alias"        // «No lo encuentro» era otro nombre de algo que existe
+)
+
+// NotificationReasons es la lista de motivos; la base la repite en su check (prueba de paridad).
+func NotificationReasons() []NotificationReason {
+	return []NotificationReason{ReasonAboveMin, ReasonRestocked, ReasonCounted, ReasonArrived, ReasonUndone,
+		ReasonAlertOff, ReasonArchived, ReasonMerged, ReasonUnitChanged, ReasonDismissed, ReasonCreated, ReasonAlias}
+}
+
 var (
 	// ErrReportLimit: el tope de reportes por hora y persona. Frena a quien toca sin parar, no a la
 	// operación: 20 «se acabó» en una hora ya no es un turno normal.

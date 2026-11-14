@@ -34,6 +34,9 @@ var UnitChangeTables = map[string]string{
 	"ingredient_cost_corrections": "convierte el costo",
 	"ingredient_replacements":     "no guarda cantidades del artículo",
 	"ingredient_distinct_pairs":   "no guarda cantidades del artículo",
+	"notifications":               "cierra los avisos abiertos (unit_changed) y evalúa al final, ya convertido; los cerrados guardan su unidad",
+	"stock_out_reports":           "un reporte que todavía se puede deshacer bloquea; los demás guardan su delta histórico",
+	"branch_stock_minimums":       "convierte el mínimo; con reemplazo pasa al artículo nuevo",
 }
 
 // UnitChangeRequest es la clase nueva (su unidad base) y la equivalencia: cuánto de la base nueva vale
