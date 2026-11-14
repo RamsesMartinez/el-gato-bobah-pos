@@ -52,11 +52,17 @@ const PANTALLAS_039 = [
   'features/backoffice/CountLossReport.tsx',
   'features/admin/WasteSettings.tsx',
   'app/nav.ts',
+  'app/MenuRail.tsx',
 ];
 const PROHIBIDAS_039 = [/\bmermas?\b/i, /\bajustes?\b/i, /kardex/i, /movimiento/i, /existencia/i];
 
+// «Ajustes» en el menú es el módulo de configuración (Negocio, Impresión, Interfaz…), que pidió el
+// issue #293 con ese nombre: no es un ajuste de existencias. Solo ese rótulo exacto, solo en nav.ts.
+const PERMITIDAS_039: Record<string, string[]> = { 'app/nav.ts': ['Ajustes'] };
+
 test.each(PANTALLAS_039)('%s dice «Se echó a perder» y no palabras de contabilidad', (file) => {
-  const leidos = textosDePantalla(file).filter((t) => /\s/.test(t.trim()) || /[A-ZÁÉÍÓÚ]/.test(t));
+  const leidos = textosDePantalla(file).filter((t) => /\s/.test(t.trim()) || /[A-ZÁÉÍÓÚ]/.test(t))
+    .filter((t) => !(PERMITIDAS_039[file] ?? []).includes(t.trim()));
   const malas = leidos.filter((t) => PROHIBIDAS_039.some((p) => p.test(t)));
   expect(malas, 'textos de pantalla con palabras de contabilidad').toEqual([]);
 });

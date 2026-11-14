@@ -1,27 +1,40 @@
 import { TemaRapido } from './TemaRapido';
 import {
-  Box, Flex, VStack, Text, Button, Image } from '@chakra-ui/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+  Box, Flex, HStack, VStack, Text, Button, Image } from '@chakra-ui/react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LuChevronDown } from 'react-icons/lu';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import { Outlet, useLocation, useNavigate } from 'react-router';
 import logo from '../assets/logo.webp';
 import { posApi } from '../api/pos';
 import { attendanceApi } from '../api/attendance';
 import { useSessionStore } from '../stores/session';
 import { useUiStore } from '../stores/ui';
-import { canOpen } from './routes';
 import { can } from './permissions';
 import { wasteApi } from '../api/waste';
-import { RADIUS } from '../theme/ui';
 import { SystemInfo } from './SystemInfo';
 import { UpdateRailButton } from './UpdateRailButton';
 import { useAppUpdate } from '../stores/appUpdate';
-import { NAV } from './nav';
+import { visibleModules } from './nav';
+import { MenuRail, RAIL_WIDTH, RAIL_WIDTH_WIDE } from './MenuRail';
 import { PendingWasteBar } from '../features/waste/PendingWasteBar';
 import { Campana } from '../features/notificaciones/Campana';
 import { FranjaDeAgotado } from '../features/notificaciones/FranjaDeAgotado';
 import { railScrollFor } from './railScroll';
+
+// En pantalla ancha y alta el menú se muestra expandido (spec 085, FR-008). El alto manda: medido a
+// 1920×1080, los 16 destinos del admin a 44 px piden 1167 px en una lista de 863 y desplazaba; a
+// 2560×1440 caben. Debajo de 1300 px de alto queda el riel con panel, que sí cabe. Con `matchMedia`
+// y no leyendo el ancho una vez: la ventana se redimensiona y el menú la sigue.
+const WIDE_QUERY = '(min-width: 1920px) and (min-height: 1300px)';
+function subscribeWide(cb: () => void) {
+  const mq = window.matchMedia(WIDE_QUERY);
+  mq.addEventListener('change', cb);
+  return () => mq.removeEventListener('change', cb);
+}
+function useWideMenu() {
+  return useSyncExternalStore(subscribeWide, () => window.matchMedia(WIDE_QUERY).matches);
+}
 
 export function AppShell() {
   const user = useSessionStore((s) => s.user);
@@ -36,33 +49,37 @@ export function AppShell() {
   const { data: attendance } = useQuery({ queryKey: ['asistencia', 'roster'], queryFn: attendanceApi.roster, staleTime: 60_000 });
   const navList = useRef<HTMLDivElement>(null);
   const [moreBelow, setMoreBelow] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
   const [avisos, setAvisos] = useState(false);
   const measureRail = useCallback(() => {
     const el = navList.current;
     setMoreBelow(!!el && el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+    // Se mide sin el relleno del final, que solo existe cuando la lista desborda.
+    const spacer = el?.querySelector<HTMLElement>('[data-rail-spacer]');
+    setOverflowing(!!el && el.scrollHeight - (spacer ? spacer.offsetHeight + 4 : 0) > el.clientHeight + 1);
   }, []);
-  const nav = NAV.filter((n) => canOpen(n.to, user) && (n.to !== '/asistencia' || attendance?.enabled === true)
-    && (!n.permission || can(n.permission, user)));
+  const modules = visibleModules(user, { attendanceEnabled: attendance?.enabled === true });
+  const wide = useWideMenu();
   // Las mermas por aprobar, para el número del riel: en Vender y Pedidos es el único aviso.
   const approver = can('inventory.write_off_approve', user);
   const { data: pendingWaste } = useQuery({
     queryKey: ['merma', 'por-aprobar'], queryFn: wasteApi.pending, enabled: approver, staleTime: 30_000, refetchInterval: 60_000,
   });
   const pendingCount = approver ? (pendingWaste?.length ?? 0) : 0;
-  // El ítem de la pantalla abierta siempre a la vista: a 600 px «Reportes» quedaba partido bajo el
-  // pliegue, y no se veía en qué pantalla estaba uno.
+  // El módulo de la pantalla abierta siempre a la vista. A 1280×854 todo cabe; debajo de ese alto
+  // (1280×768, la barra del navegador) la lista desplaza y el módulo abierto quedaba partido.
   useEffect(() => {
     const list = navList.current;
-    const active = list?.querySelector<HTMLElement>('[aria-current="page"]');
+    const active = list?.querySelector<HTMLElement>('[data-active="true"], [aria-current="page"]');
     if (list && active) list.scrollTop = railScrollFor(list, active);
     // needRefresh: el botón de versión nueva toma el lugar del logo; mide lo mismo, pero si un día
     // el alto del riel cambia con él, la opción abierta no queda partida.
-  }, [pathname, nav.length, needRefresh]);
+  }, [pathname, modules.length, needRefresh, wide, overflowing]);
   useEffect(() => {
     measureRail();
     window.addEventListener('resize', measureRail);
     return () => window.removeEventListener('resize', measureRail);
-  }, [measureRail, nav.length, needRefresh]);
+  }, [measureRail, modules.length, needRefresh, wide]);
 
   const logout = async () => {
     // Revoca la cookie de refresh en el server ANTES de limpiar; si no, la sesión revive
@@ -85,48 +102,30 @@ export function AppShell() {
     // excluir capas conocidas hacía que un portal nuevo naciera CONTADO, y el aviso flotante cae
     // abajo a la derecha, justo sobre la zona del botón de cobrar.
     <Flex data-medible h="100dvh" overflow="hidden" colorPalette={palette}>
-      <Flex direction="column" w="76px" bg="gray.900" color="white" py={3} flexShrink={0}>
+      <Flex direction="column" w={wide ? RAIL_WIDTH_WIDE : RAIL_WIDTH} bg="gray.900" color="white" py={3} px={wide ? 2 : 1} flexShrink={0}>
         {/* El aviso de versión nueva va en el lugar del logo (spec 064): fuera de la pantalla y sin
             quitarle alto a la lista. */}
         {needRefresh
           ? <UpdateRailButton />
           : <Image src={logo} alt="El Gato Bobah" boxSize="44px" borderRadius="lg" mb={2} alignSelf="center" flexShrink={0} />}
-        {/* lista scrollable: en pantallas de poco alto (7") no se recortan los ítems. La barra de
-            scroll va oculta, así que un ítem abajo del pliegue no se notaba (medido a 1024×600 con
-            el rol admin: «Asistencia» desaparecía sin rastro). La flecha del pie dice que hay más. */}
+        {/* A 1280×854 los módulos caben sin desplazar (spec 085). La lista sigue siendo desplazable
+            como red para ventanas más bajas: la barra de scroll va oculta, así que un módulo abajo
+            del pliegue no se notaría sin la flecha del pie, que dice que hay más. */}
         <Box position="relative" flex="1" minH={0} display="flex">
         <VStack
+          as="nav" aria-label="Menú principal"
           ref={navList} onScroll={measureRail} data-rail-list
           flex="1" minH={0} overflowY="auto" gap={1} w="100%"
           // Se detiene siempre al inicio de una opción (spec 045): al llevar a la vista la opción de
           // la pantalla abierta, o al soltar el dedo, la de arriba quedaba partida a la mitad.
           css={{ scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' }, scrollSnapType: 'y mandatory' }}
         >
-          {nav.map((n) => {
-            const Icon = n.icon;
-            return (
-              <NavLink key={n.to} to={n.to} style={{ width: '100%', scrollSnapAlign: 'start' }}>
-                {({ isActive }) => (
-                  <VStack
-                    gap={1} py={1.5} minH="44px" borderRadius={RADIUS} mx={1}
-                    bg={isActive ? 'colorPalette.600' : 'transparent'}
-                    _hover={{ bg: isActive ? 'colorPalette.600' : 'whiteAlpha.200' }}
-                  >
-                    <Box position="relative">
-                      <Icon size={22} />
-                      {n.to === '/merma' && pendingCount > 0 && (
-                        <Box position="absolute" top="-6px" right="-10px" minW="16px" h="16px" px="3px" borderRadius="full"
-                          bg="orange.500" color="white" fontSize="10px" fontWeight="700" lineHeight="16px" textAlign="center">
-                          {pendingCount}
-                        </Box>
-                      )}
-                    </Box>
-                    <Text fontSize="10px" textAlign="center" lineHeight="1.1">{n.label}</Text>
-                  </VStack>
-                )}
-              </NavLink>
-            );
-          })}
+          <MenuRail modules={modules} wide={wide} pendingWaste={pendingCount} />
+          {/* Con la lista desplazada hasta el fondo, el desplazamiento máximo casi nunca coincide con
+              el inicio de un módulo y el de arriba quedaba partido (B10, a 600 px). Un módulo de
+              relleno deja que siempre se detenga en un inicio. Solo existe si la lista desborda: a
+              1280×854 no se pinta y el riel no desplaza. */}
+          {overflowing && <Box data-rail-spacer aria-hidden h="72px" flexShrink={0} />}
         </VStack>
         </Box>
         {/* La flecha va en su propio renglón y no encima de la lista: superpuesta tapaba el rótulo del
@@ -136,9 +135,12 @@ export function AppShell() {
           <LuChevronDown size={14} />
         </Flex>
         <VStack gap={0} flexShrink={0} borderTopWidth="1px" borderColor="whiteAlpha.300" pt={1}>
-          {/* La campana de avisos (spec 084): solo icono, para no quitarle más de un renglón a la lista. */}
-          <Campana abierto={avisos} setAbierto={setAvisos} />
-          <TemaRapido />
+          {/* El tema y la campana de avisos (spec 084) comparten renglón: así la campana no le quita
+              alto a los módulos (spec 085). */}
+          <HStack gap={0} w="100%">
+            <Box flex="1"><TemaRapido /></Box>
+            <Box data-bell-slot flex="1" minH="44px"><Campana abierto={avisos} setAbierto={setAvisos} /></Box>
+          </HStack>
           <Text fontSize="10px" color="gray.400" lineClamp={1} px={1}>{user?.name}</Text>
           {/* 44 px: es un control táctil como cualquier otro, aunque se toque poco. */}
           <Button size="xs" minH="44px" w="100%" variant="ghost" colorPalette="whiteAlpha" color="gray.100" onClick={logout}>Salir</Button>
@@ -150,7 +152,8 @@ export function AppShell() {
       <Flex flex="1" minW={0} direction="column">
         <PendingWasteBar />
         <FranjaDeAgotado onVer={() => setAvisos(true)} />
-        <Box data-work-area flex="1" minH={0} overflowY="auto">
+        {/* tabIndex -1: el menú le pasa el foco al abrir una pantalla desde su panel (spec 085). */}
+        <Box data-work-area tabIndex={-1} outline="none" flex="1" minH={0} overflowY="auto">
           <Outlet />
         </Box>
       </Flex>

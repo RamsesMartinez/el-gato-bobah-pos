@@ -249,26 +249,25 @@ test('F6 · el cierre de caja con cuentas vivas deja ver «Cerrar caja»', async
 
 // Spec 045 (US4) · LA BARRA LATERAL NUNCA DEJA UNA OPCIÓN PARTIDA.
 //
-// Al abrir una pantalla cuya opción queda bajo el pliegue (Asistencia, a 600 px), la barra se
-// desplazaba lo justo para mostrarla —111 px medidos— y la primera opción visible quedaba partida
-// arriba. Se mide la caja de cada opción contra la de la lista: ninguna a medias, todas de 44 px.
+// Al abrir una pantalla cuyo módulo queda bajo el pliegue, la barra se desplazaba lo justo para
+// mostrarlo y el primero visible quedaba partido arriba. Con el menú en dos niveles (spec 085) a
+// 1280×854 no desplaza; en una ventana más baja sí, y la regla sigue: ningún módulo a medias, el
+// abierto completo, todos de 72 px.
 test('B10 · la barra lateral no parte opciones y la activa queda a la vista', async ({ page }) => {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
   await iniciarSesion(page);
-  await page.getByRole('link', { name: 'Asistencia' }).waitFor();
-  for (const ruta of ['/asistencia', '/almacen']) {
+  const riel = page.locator('[data-rail-list]');
+  await riel.getByRole('button', { name: 'Ajustes' }).waitFor();
+  for (const ruta of ['/cuenta', '/almacen']) {
     await page.goto(ruta);
-    await page.getByRole('link', { name: 'Asistencia' }).waitFor();
+    await riel.getByRole('button', { name: 'Ajustes' }).waitFor();
     await page.waitForTimeout(800); // el desplazamiento suave y el ajuste terminan
-    const m = await page.evaluate(() => {
-      const links = [...document.querySelectorAll<HTMLAnchorElement>('a[href]')].filter((a) => a.getBoundingClientRect().left < 80);
-      let list = links[0].parentElement!;
-      while (list && getComputedStyle(list).overflowY !== 'auto') list = list.parentElement!;
+    const m = await riel.evaluate((list) => {
       const box = list.getBoundingClientRect();
-      const items = links.map((a) => {
-        const r = (a.firstElementChild ?? a).getBoundingClientRect();
-        return { name: a.textContent, top: r.top, bottom: r.bottom, h: r.height, active: a.getAttribute('aria-current') === 'page' };
+      const items = [...list.querySelectorAll<HTMLElement>(':scope > div > a, :scope > div > button')].map((el) => {
+        const r = el.getBoundingClientRect();
+        return { name: el.textContent, top: r.top, bottom: r.bottom, h: r.height, active: el.dataset.active === 'true' };
       });
       return { top: box.top, bottom: box.bottom, items };
     });
@@ -276,6 +275,6 @@ test('B10 · la barra lateral no parte opciones y la activa queda a la vista', a
     expect(partidas.filter((i) => i.top < m.top).map((i) => i.name), `${ruta}: opción partida arriba`).toEqual([]);
     const activa = m.items.find((i) => i.active)!;
     expect(activa.top >= m.top - 1 && activa.bottom <= m.bottom + 1, `${ruta}: la opción activa no se ve completa`).toBe(true);
-    for (const i of m.items) expect(i.h, `«${i.name}» mide ${i.h}px y el piso es 44`).toBeGreaterThanOrEqual(44);
+    for (const i of m.items) expect(i.h, `«${i.name}» mide ${i.h}px y el piso es 72`).toBeGreaterThanOrEqual(72);
   }
 });

@@ -1,41 +1,97 @@
+import type { IconType } from 'react-icons';
 import {
   LuShoppingCart, LuClipboardList, LuWallet, LuHandCoins, LuReceiptText,
   LuPackage, LuChartColumn, LuBookOpenText, LuUsers, LuPalette, LuStore, LuUserCog, LuPrinter, LuBike,
-  LuClock, LuTrash2, LuKeyRound, LuCircleOff,
+  LuClock, LuTrash2, LuKeyRound, LuSettings, LuWarehouse, LuCircleOff,
 } from 'react-icons/lu';
-import type { Permission } from './permissions';
+import type { SessionUser } from '../stores/session';
+import { canOpen } from './routes';
+import { can, type Permission } from './permissions';
 
-// NAV es la barra lateral, en orden. En la tableta de 600 px se ven los primeros 8 sin desplazar:
-// lo de todos los días va arriba. «Menú» (antes «Catálogo», decisión del dueño 2026-10-07) va junto a
-// Almacén porque sus recetas son lo que descuenta de ahí. «Asistencia» va DESPUÉS de «Reportes»
-// para no sacar a Reportes de los 8 visibles; para el admin queda como el 9.º, abajo del pliegue.
-// Quien checa casi siempre es cajero o mesero, que ven pocos ítems, y además lo tiene en la
-// pantalla de bloqueo. Solo aparece con la asistencia activa (AppShell).
-export const NAV = [
-  { to: '/pos', icon: LuShoppingCart, label: 'Vender' },
-  { to: '/pedidos', icon: LuClipboardList, label: 'Pedidos' },
-  { to: '/ventas', icon: LuReceiptText, label: 'Ventas' },
-  { to: '/caja', icon: LuWallet, label: 'Caja' },
-  { to: '/catalogo', icon: LuBookOpenText, label: 'Menú' },
-  { to: '/almacen', icon: LuPackage, label: 'Almacén' },
-  { to: '/gastos', icon: LuHandCoins, label: 'Gastos' },
-  { to: '/reportes', icon: LuChartColumn, label: 'Reportes' },
-  // Lo que se echó a perder (spec 039): por PERMISO, no por rol, porque lo usan cajero y cocina, que
-  // no entran a Almacén. Va después de «Reportes» para que el admin siga viendo «Reportes» en los
-  // ocho de arriba a 600 px, y antes de «Asistencia»: con ella activa, una persona nueva no lo
-  // encontraba (checar además está en la pantalla de bloqueo).
-  { to: '/merma', icon: LuTrash2, label: 'Se echó a perder', permission: 'inventory.write_off' as Permission },
-  // «Se acabó» (spec 084): debajo de «Se echó a perder», por permiso propio que tienen los cuatro
-  // sugeridos. Hasta que exista el menú en dos niveles (#293), un renglón más del riel.
-  { to: '/se-acabo', icon: LuCircleOff, label: 'Se acabó', permission: 'inventory.report_out' as Permission },
-  { to: '/asistencia', icon: LuClock, label: 'Asistencia' },
-  { to: '/plataformas', icon: LuBike, label: 'Plataformas' },
-  { to: '/empleados', icon: LuUsers, label: 'Empleados' },
-  { to: '/negocio', icon: LuStore, label: 'Negocio' },
-  { to: '/impresion', icon: LuPrinter, label: 'Impresión' },
-  // Los tokens para asistentes (spec 072): de uso raro, abajo; por permiso, así cajero y mesero no
-  // ven nada nuevo.
-  { to: '/integraciones', icon: LuKeyRound, label: 'Integraciones', permission: 'integrations.manage' as Permission },
-  { to: '/apariencia', icon: LuPalette, label: 'Interfaz' },
-  { to: '/cuenta', icon: LuUserCog, label: 'Mi cuenta' },
+export type ModuleId = 'sell' | 'orders' | 'cash' | 'inventory' | 'menu' | 'staff' | 'reports' | 'settings';
+
+export interface MenuItem {
+  to: string;
+  label: string;
+  icon: IconType;
+  // Solo los que piden algo además de `ROUTE_PERMISSIONS` (routes.ts): ahí vive el resto.
+  permission?: Permission;
+}
+
+export interface MenuModule {
+  id: ModuleId;
+  label: string;
+  icon: IconType;
+  items: MenuItem[];
+}
+
+// EL MENÚ LATERAL EN DOS NIVELES (spec 085, maqueta C elegida por el dueño el 2026-11-14).
+//
+// Vender y Pedidos son lo de todos los días y los únicos con protagonismo: van primero y abren
+// directo. El resto son módulos que juntan pantallas que ya existían; ninguna ruta, nombre ni
+// permiso cambió, solo dónde se encuentran. Caja y Menú abren su propia pantalla como primer destino
+// para que quien ya sabía llegar no busque de más.
+//
+// Menú e Inventario van juntos porque las recetas del menú descuentan del almacén.
+//
+// «Se acabó» (spec 084) va dentro de Inventario, junto a «Se echó a perder»: el dueño decidió que no
+// sea acceso rápido.
+export const MENU_MODULES: MenuModule[] = [
+  { id: 'sell', label: 'Vender', icon: LuShoppingCart, items: [{ to: '/pos', label: 'Vender', icon: LuShoppingCart }] },
+  { id: 'orders', label: 'Pedidos', icon: LuClipboardList, items: [{ to: '/pedidos', label: 'Pedidos', icon: LuClipboardList }] },
+  { id: 'cash', label: 'Caja', icon: LuWallet, items: [
+    { to: '/caja', label: 'Caja', icon: LuWallet },
+    { to: '/ventas', label: 'Ventas', icon: LuReceiptText },
+    { to: '/gastos', label: 'Gastos', icon: LuHandCoins },
+  ] },
+  { id: 'inventory', label: 'Inventario', icon: LuPackage, items: [
+    { to: '/almacen', label: 'Almacén', icon: LuWarehouse },
+    // Por PERMISO y no por la ruta: lo usan cajero y cocina, que no entran a Almacén (spec 039).
+    { to: '/merma', label: 'Se echó a perder', icon: LuTrash2, permission: 'inventory.write_off' },
+    { to: '/se-acabo', label: 'Se acabó', icon: LuCircleOff },
+  ] },
+  { id: 'menu', label: 'Menú', icon: LuBookOpenText, items: [
+    { to: '/catalogo', label: 'Menú', icon: LuBookOpenText },
+    { to: '/plataformas', label: 'Plataformas', icon: LuBike },
+  ] },
+  { id: 'staff', label: 'Personal', icon: LuUsers, items: [
+    // Solo con la asistencia encendida en la empresa (visibleModules).
+    { to: '/asistencia', label: 'Asistencia', icon: LuClock },
+    { to: '/empleados', label: 'Empleados', icon: LuUsers },
+  ] },
+  { id: 'reports', label: 'Reportes', icon: LuChartColumn, items: [{ to: '/reportes', label: 'Reportes', icon: LuChartColumn }] },
+  { id: 'settings', label: 'Ajustes', icon: LuSettings, items: [
+    { to: '/negocio', label: 'Negocio', icon: LuStore },
+    { to: '/impresion', label: 'Impresión', icon: LuPrinter },
+    { to: '/integraciones', label: 'Integraciones', icon: LuKeyRound, permission: 'integrations.manage' },
+    { to: '/apariencia', label: 'Interfaz', icon: LuPalette },
+    { to: '/cuenta', label: 'Mi cuenta', icon: LuUserCog },
+  ] },
 ];
+
+// Los que abren directo y van separados del resto por una línea.
+export const PRIMARY_MODULES: readonly ModuleId[] = ['sell', 'orders'];
+
+// visibleModules dice qué módulos y destinos ve esta sesión. Solo pregunta por permisos (nunca por
+// el nombre del rol) y es espejo de la barrera del servidor: ofrecer lo que respondería 403 es una
+// sorpresa a media operación. Un módulo sin destinos no aparece; con uno solo, el riel lo abre
+// directo.
+export function visibleModules(user: SessionUser | null, opts: { attendanceEnabled: boolean }): MenuModule[] {
+  return MENU_MODULES.flatMap((m) => {
+    const items = m.items.filter((i) => canOpen(i.to, user)
+      && (!i.permission || can(i.permission, user))
+      && (i.to !== '/asistencia' || opts.attendanceEnabled));
+    return items.length > 0 ? [{ ...m, items }] : [];
+  });
+}
+
+// moduleOf dice en qué módulo y destino vive una ruta, por prefijo: `/catalogo/productos` es Menú y
+// `/plataformas/3/emparejar` es Plataformas. Sin módulo, nada se marca como abierto.
+export function moduleOf(pathname: string): { moduleId: ModuleId; itemTo: string } | null {
+  for (const m of MENU_MODULES) {
+    for (const i of m.items) {
+      if (pathname === i.to || pathname.startsWith(`${i.to}/`)) return { moduleId: m.id, itemTo: i.to };
+    }
+  }
+  return null;
+}

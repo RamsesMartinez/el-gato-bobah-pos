@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { API, tokenDeRequest } from './ambiente';
 import { entrar, entregarPorApi, pagarPorApi, pedidoPorApi } from './pos';
+import { abrirDelMenu } from './menu';
 
 // ASISTENCIA Y BITÁCORA (spec 033) contra el ambiente de pruebas.
 //
@@ -32,7 +33,7 @@ test('checar entrada y salida tarda menos de 15 s desde que se abre la pantalla 
   const segunda: 'Entrada' | 'Salida' = dentro ? 'Entrada' : 'Salida';
 
   const desde = Date.now();
-  await page.getByRole('link', { name: 'Asistencia' }).first().click();
+  await abrirDelMenu(page, 'Asistencia');
   await checar(page, primera);
   const tardo = Date.now() - desde;
   expect(tardo, `checar tardó ${tardo} ms`).toBeLessThan(15_000);
