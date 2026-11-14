@@ -178,3 +178,44 @@ func TestReceiveWithAFutureDateLeavesNothingWritten(t *testing.T) {
 		t.Fatal("la fecha se rechazó pero las cantidades recibidas quedaron guardadas")
 	}
 }
+
+// El camino de recepción por el MCP: purchase_create pendiente (el turno de hoy fija la fecha del
+// gasto), purchase_receive con received_on de ayer y después expense_edit con esa llegada. Y
+// purchase_receive con received_on de mañana se rechaza sin dejar cantidades escritas.
+func TestAPurchaseReceivedByMCPCanBeEdited(t *testing.T) {
+	t.Parallel()
+	w := newMCPWorld(t)
+	f := mcpSeed(t, w)
+	grams := unitIDOf(t, w, "g")
+	tok := w.token(t, w.company, w.admin, "write:purchases", "write:inventory", "write:expenses")
+	ing := ingredientIn(t, w.owner, w.company, "Cocoa recepción MCP", "g")
+	var yesterday, tomorrow string
+	if err := w.owner.Pool.QueryRow(context.Background(), `select (business_day_of($1, now()) - 1)::text, (business_day_of($1, now()) + 1)::text`,
+		w.company).Scan(&yesterday, &tomorrow); err != nil {
+		t.Fatal(err)
+	}
+	line := func() map[string]any {
+		return map[string]any{"name": "COCOA 1KG", "ingredient_id": ing, "unit_id": grams, "quantity": "1000", "amount": "90.00"}
+	}
+
+	late, lateItem := purchaseLine(t, w, tok, f, "recibir-manana-0001", line(), map[string]any{"pending": true})
+	res := callTool(t, w.router, tok, "purchase_receive", applyArgs(map[string]any{"expense_id": late, "received_on": tomorrow,
+		"received": []any{map[string]any{"item_id": lateItem, "qty": "500"}}}, "recibir-manana-0002"))
+	if !res.isError || !strings.Contains(res.text, "no ha pasado") {
+		t.Fatalf("purchase_receive con received_on de mañana: %s", res.text)
+	}
+	if n := scalar(t, w, `select count(*) from expense_items where id = $1 and qty_received is not null`, lateItem); n != 0 {
+		t.Fatal("la fecha se rechazó pero las cantidades recibidas quedaron guardadas")
+	}
+
+	exp, _ := purchaseLine(t, w, tok, f, "recibir-ayer-0001", line(), map[string]any{"pending": true})
+	if res := callTool(t, w.router, tok, "purchase_receive", applyArgs(map[string]any{"expense_id": exp, "received_on": yesterday},
+		"recibir-ayer-0002")); res.isError {
+		t.Fatalf("purchase_receive con received_on de ayer: %s", res.text)
+	}
+	add := line()
+	add["arrived_on"] = yesterday
+	if res := callTool(t, w.router, tok, "expense_edit", map[string]any{"expense_id": exp, "add": []any{add}}); res.isError {
+		t.Fatalf("una compra que se pudo recibir por el MCP (llegó el %s) no se puede editar: %s", yesterday, res.text)
+	}
+}
