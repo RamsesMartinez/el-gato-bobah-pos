@@ -1,7 +1,7 @@
 import { ApiError } from '../../api/client';
 import { useState, Fragment, type ReactNode } from 'react';
 import { DatePickerButton } from '../../components/DatePickerButton';
-import { Box, Text, Button, VStack, HStack, Table, Center, Spinner, Badge, SimpleGrid, Grid, useBreakpointValue, IconButton } from '@chakra-ui/react';
+import { Box, Heading, Text, Button, VStack, HStack, Table, Center, Spinner, Badge, SimpleGrid, Grid, useBreakpointValue, IconButton } from '@chakra-ui/react';
 import { ANCHO_PC, ANCHO_2K, desde } from '../../hooks/useAnchoMinimo';
 import { LuChevronDown, LuChevronUp, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
@@ -393,7 +393,6 @@ export function HistoryTab({ corteId, onCorte }: { corteId: number | null; onCor
   });
   const detailId = corteId;
   const setDetailId = onCorte;
-  // Panel lateral solo en pantallas anchas (xl+); en tablet de 7" se usa el diálogo a pantalla completa.
   // Lista y detalle lado a lado desde 1024 px (#290, Maquetas M1 A); en la tableta vertical, el
   // detalle en diálogo como siempre.
   const wide = useBreakpointValue({ base: false, lg: true }, { ssr: false });
@@ -437,8 +436,10 @@ export function HistoryTab({ corteId, onCorte }: { corteId: number | null; onCor
               bg={wide && detailId === r.id ? 'bg.muted' : undefined}>
               {wide ? (
                 <Table.Cell maxW="0" w="100%">
-                  <Text fontWeight="600" truncate>#{r.id} · {r.registerName} · {r.status === 'abierta' ? 'Abierta' : 'Cerrada'}</Text>
-                  <Text fontSize="sm" color="fg.muted" truncate>
+                  {/* Baja de renglón en vez de cortarse: con «Caja p…» y «14 nov 2026, …» había que abrir
+                      cada corte para saber cuál era (lo midió la e2e de anchos en 1366). */}
+                  <Text fontWeight="600">#{r.id} · {r.registerName} · {r.status === 'abierta' ? 'Abierta' : 'Cerrada'}</Text>
+                  <Text fontSize="sm" color="fg.muted">
                     {horaNegocio.fechaYHora(r.openedAt)} · {r.openedByName}{r.closedByName ? ` → ${r.closedByName}` : ''}
                   </Text>
                 </Table.Cell>
@@ -474,12 +475,12 @@ export function HistoryTab({ corteId, onCorte }: { corteId: number | null; onCor
 
   if (wide) {
     return (
-      <Grid templateColumns="340px minmax(0, 1fr)" gap={4} alignItems="start"
-        css={{ [desde(ANCHO_PC)]: { gridTemplateColumns: '400px minmax(0, 1fr)' } }}>
+      <Grid templateColumns="minmax(0, 1fr) minmax(0, 1fr)" gap={4} alignItems="start"
+        css={{ [desde(ANCHO_PC)]: { gridTemplateColumns: 'minmax(520px, 2fr) minmax(0, 3fr)' } }}>
         <VStack minW={0} align="stretch" gap={2}>{controles}{list}</VStack>
-        <Box minW={0} bg="bg.panel" borderRadius="lg" borderWidth="1px" p={4} maxH="calc(100dvh - 200px)" overflowY="auto">
+        <Box as="section" aria-label="Detalle del corte" minW={0} bg="bg.panel" borderRadius="lg" borderWidth="1px" p={4} maxH="calc(100dvh - 200px)" overflowY="auto">
           {detailId
-            ? <CorteDetail id={detailId} onAbrirCorte={setDetailId} />
+            ? <><Heading as="h3" size="md" mb={3}>Corte #{detailId}</Heading><CorteDetail id={detailId} onAbrirCorte={setDetailId} /></>
             : <Center py={12}><Text color="fg.muted">Selecciona un corte para ver el detalle.</Text></Center>}
         </Box>
       </Grid>

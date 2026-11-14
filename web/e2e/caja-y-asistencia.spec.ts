@@ -2,6 +2,7 @@ import { test, expect, type Browser, type Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { API, EMPRESA, tokenDeApi } from './ambiente';
 import { pinNuevo } from './personas';
+import { alPasoDelCierre, cerrarConElAsistente, contarEnElCierre } from './cierre';
 
 // La caja exige la asistencia de quien la abre (spec 046): los escenarios Q1, Q2, Q5, Q6, Q7 y Q8
 // del quickstart, a 1024×600 con pantalla táctil.
@@ -67,6 +68,13 @@ async function irALaCaja(page: Page, caja: string) {
   await page.getByRole('button', { name: new RegExp(caja) }).first().click();
 }
 
+// irAlCierre llega al primer paso del cierre de esa caja, que es donde vive el aviso de asistencia
+// (#290): quien viene a cerrar entra por «Cerrar caja».
+async function irAlCierre(page: Page, caja: string) {
+  await irALaCaja(page, caja);
+  await alPasoDelCierre(page, 'Pendientes');
+}
+
 async function teclearPin(page: Page, pin: string, accion: 'Entrada' | 'Salida') {
   const hoja = page.getByRole('dialog').last();
   for (const d of pin) await hoja.getByRole('button', { name: d, exact: true }).click();
@@ -75,17 +83,8 @@ async function teclearPin(page: Page, pin: string, accion: 'Entrada' | 'Salida')
 
 // Cierra desde la pantalla, contando $500 en el cajón: lo que la prueba abrió.
 async function cerrarDesdeLaPantalla(page: Page, avisoAlConfirmar?: string) {
-  await page.getByRole('button', { name: 'Contar efectivo' }).click();
-  await page.getByLabel('Piezas de $500', { exact: true }).fill('1');
-  await page.getByRole('button', { name: 'Usar este conteo' }).click();
-  const no = page.getByRole('button', { name: 'No, todo se queda' });
-  if (await no.isVisible().catch(() => false)) await no.click();
-  // La propina que heredó la caja de un turno anterior se deja para el siguiente: no es de la prueba.
-  const propina = page.getByRole('button', { name: 'Se queda en caja' });
-  if (await propina.isVisible().catch(() => false)) await propina.click();
-  await page.getByRole('button', { name: 'Cerrar caja' }).click();
-  if (avisoAlConfirmar) await expect(page.getByRole('dialog').last().getByText(avisoAlConfirmar)).toBeVisible();
-  await page.getByRole('dialog').last().getByRole('button', { name: 'Cerrar caja' }).click();
+  await contarEnElCierre(page, { 'Piezas de $500': '1' });
+  await cerrarConElAsistente(page, avisoAlConfirmar);
   await expect(page.getByText('Caja cerrada').first()).toBeVisible({ timeout: 30_000 });
 }
 
@@ -164,24 +163,28 @@ test('Q1 · Q2 · abrir pide la entrada, y se marca desde la tarjeta sin volver 
 
 test('Q5 · Q6 · con quien abrió dentro, el aviso se ve arriba sin desplazar y el conteo espera; su salida lo libera', async ({ browser }) => {
   const page = await entrarComo(browser, gina);
-  await irALaCaja(page, caja.name);
+  await irAlCierre(page, caja.name);
   await expect(page.getByText(`${beto.name} abrió esta caja y no ha marcado su salida`)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: `Marcar salida de ${beto.name}` })).toBeVisible();
   await expect(page.getByRole('button', { name: `Cerrar sin la salida de ${beto.name}` })).toBeVisible();
-  // Nada del cierre: ni la tabla, ni las notas, ni el botón.
-  await expect(page.getByText('Cierre — contado por método')).toHaveCount(0);
-  await expect(page.getByPlaceholder('Notas del cierre (opcional)')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Cerrar caja' })).toHaveCount(0);
+  // Se puede contar mientras tanto (FR-031), pero el cierre espera: el paso lo marca pendiente y el
+  // botón final sigue apagado diciendo qué falta.
+  const pasos = page.getByRole('navigation', { name: 'Pasos del cierre' });
+  await expect(pasos.getByRole('button', { name: /Pendientes/ })).toContainText('1 pendiente');
   // Se ve sin desplazar: quien llega a cerrar lo encuentra arriba, no a media página.
   await expect(page.getByText(`${beto.name} abrió esta caja y no ha marcado su salida`)).toBeInViewport({ ratio: 1 });
   await expect(page.getByRole('button', { name: `Marcar salida de ${beto.name}` })).toBeInViewport({ ratio: 1 });
   await page.screenshot({ path: `${CAPTURAS}/q5-aviso-del-cierre.png` });
+  await alPasoDelCierre(page, 'Diferencia y cierre');
+  await expect(page.getByText('Para cerrar falta')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cerrar caja' })).toBeDisabled();
+  await alPasoDelCierre(page, 'Pendientes');
 
   await page.getByRole('button', { name: `Marcar salida de ${beto.name}` }).click();
   await expect(page.getByText(`Marcar salida · ${beto.name}`)).toBeVisible();
   await teclearPin(page, beto.pin, 'Salida');
   await expect(page.getByText(new RegExp(`^Salida de ${beto.name.replace(/[()]/g, '\\$&')} marcada`))).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText('Cierre — contado por método')).toBeVisible();
+  await expect(pasos.getByRole('button', { name: /Pendientes/ })).not.toContainText('pendiente');
   await cerrarDesdeLaPantalla(page);
   await page.context().close();
 });
@@ -189,7 +192,7 @@ test('Q5 · Q6 · con quien abrió dentro, el aviso se ve arriba sin desplazar y
 test('Q7 · quien abrió se fue sin marcar: Gina cierra con motivo y queda en la bitácora', async ({ browser }) => {
   await abrirPorApi(beto, caja.id);
   const page = await entrarComo(browser, gina);
-  await irALaCaja(page, caja.name);
+  await irAlCierre(page, caja.name);
   await page.getByRole('button', { name: `Cerrar sin la salida de ${beto.name}` }).click({ timeout: 30_000 });
   const hoja = page.getByRole('dialog').last();
   await hoja.getByRole('button', { name: 'Se fue sin checar' }).click();
@@ -210,7 +213,7 @@ test('Q7 · quien abrió se fue sin marcar: Gina cierra con motivo y queda en la
 test('Q8 · sin el permiso, el aviso dice a quién pedirlo y el servidor rechaza autorizar', async ({ browser }) => {
   await abrirPorApi(beto, caja.id);
   const page = await entrarComo(browser, caro);
-  await irALaCaja(page, caja.name);
+  await irAlCierre(page, caja.name);
   await expect(page.getByText(`${beto.name} abrió esta caja y no ha marcado su salida`)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText('Si ya se fue, pide a alguien con permiso que cierre la caja.')).toBeVisible();
   await expect(page.getByRole('button', { name: `Cerrar sin la salida de ${beto.name}` })).toHaveCount(0);

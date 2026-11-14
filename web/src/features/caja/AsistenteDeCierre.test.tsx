@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -91,4 +91,19 @@ test('con arqueo ciego no se pide explicación', async () => {
   await userEvent.click(await screen.findByRole('button', { name: /Diferencia y cierre/ }));
   expect(screen.queryByText(/Explica la diferencia/)).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Diferencia del arqueo')).not.toBeInTheDocument();
+});
+
+// Con quien abrió todavía dentro, el aviso queda en el primer paso y el cierre pendiente, pero el
+// conteo no se esconde: se cuenta mientras se resuelve (FR-031). Antes el aviso tapaba todo el cierre.
+test('el aviso de asistencia no esconde el conteo', async () => {
+  pinta('/caja/4/cerrar', turno({ pending: [] as never }));
+  vi.mocked(backofficeApi.cashAttendance).mockResolvedValue({
+    stage: 'close', applies: true, ready: false, person: { id: 12, name: 'Beto', active: true },
+    stale: false, isSelf: false, canAuthorize: false, openSince: '2026-11-13T14:00:00Z',
+  } as never);
+  expect(await screen.findByText('Beto abrió esta caja y no ha marcado su salida')).toBeInTheDocument();
+  await userEvent.click(within(screen.getByRole('navigation', { name: 'Pasos del cierre' })).getByRole('button', { name: /Cajón/ }));
+  expect(screen.getByRole('button', { name: 'Contar efectivo' })).toBeEnabled();
+  await userEvent.click(screen.getByRole('button', { name: /Diferencia y cierre/ }));
+  expect(screen.getByRole('button', { name: 'Cerrar caja' })).toBeDisabled();
 });

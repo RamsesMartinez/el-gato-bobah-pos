@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { tokenDeApi } from './ambiente';
+import { detalleDelCorte } from './cierre';
 import { LOCAL, pedir, abrir, cerrar, entrarACaja, type Caja } from './cortes';
 
 // CORREGIR UN CORTE CERRADO SIN REESCRIBIRLO (#290, fase 3; Maquetas M4).
@@ -19,7 +20,7 @@ test('R1 · corregir lo contado de un corte, ver el rastro y revertir', async ({
 
   await entrarACaja(page);
   await page.goto(`/caja/historico/${corte.id}`);
-  const detalle = page.getByRole('dialog').last();
+  const detalle = detalleDelCorte(page);
   await expect(detalle.getByLabel('Diferencia: Total')).toContainText('Faltante−$120.00', { timeout: 30_000 });
 
   await detalle.getByRole('button', { name: 'Corregir' }).click();

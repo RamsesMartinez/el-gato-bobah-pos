@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
@@ -113,4 +113,27 @@ test('el Histórico marca lo corregido y dice la suma del periodo', async () => 
   expect(await screen.findByText('Corregido')).toBeInTheDocument();
   expect(screen.getByText('Sobrantes y faltantes del periodo')).toBeInTheDocument();
   expect(screen.getByLabelText('Sobrantes y faltantes del periodo')).toHaveTextContent('Faltante−$100.00');
+});
+
+// Desde 1024 px el corte se lee en el panel al lado de la lista (#290, Maquetas M1 A), y el panel
+// dice qué corte es: sin título, «Ver el turno #209» cambiaba el contenido sin decir a cuál se fue y
+// quien leía no sabía qué corte tenía enfrente (lo encontró la e2e de la fase 4).
+test('en pantalla ancha el panel del detalle dice qué corte muestra', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
+    // Una pantalla de 1280 px: cumple todo «desde N px» hasta 1280.
+    matches: [...q.matchAll(/min-width:\s*([\d.]+)(px|r?em)/g)].every(([, n, u]) => Number(n) * (u === 'px' ? 1 : 16) <= 1280)
+      && [...q.matchAll(/max-width:\s*([\d.]+)(px|r?em)/g)].every(([, n, u]) => Number(n) * (u === 'px' ? 1 : 16) >= 1280),
+    media: q, onchange: null, addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  }) as MediaQueryList);
+  pinta('/caja/historico/410', undefined, [], {
+    items: [{ id: 410, registerName: 'Caja B', status: 'cerrada', openingCash: '500', currency: 'MXN', openedAt: '2026-11-12T14:10:00Z',
+      closedAt: '2026-11-13T04:41:00Z', openedByName: 'Luis', closedByName: 'Luis', totalDifference: '0', notes: null,
+      difference: { drawer: '0', otherMethods: '0', total: '0', drawerCovered: true } }],
+    total: 1, page: 0, pageSize: 20, periodDifference: '0',
+  });
+  // El corte sigue cargando: el título no depende de que llegue el detalle.
+  vi.spyOn(backofficeApi, 'cashSession').mockReturnValue(new Promise(() => {}));
+  const panel = await screen.findByRole('region', { name: 'Detalle del corte' });
+  expect(await within(panel).findByRole('heading', { name: 'Corte #410' })).toBeInTheDocument();
 });
