@@ -1,5 +1,5 @@
 import { Box, Text } from '@chakra-ui/react';
-import { money } from '../../utils/format';
+import { money } from '../utils/format';
 
 // AvisosDeCaja: lo que hay que resolver de las cajas abiertas (spec 032, punto 7). La propina que no
 // llega a un peso no se avisa: no se puede entregar.

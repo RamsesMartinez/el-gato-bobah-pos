@@ -75,15 +75,15 @@ al día antes de empezar la siguiente. Dentro de cada fase, las historias que en
 
 ## Phase 4: Entrega 2 — Partir sin cambiar comportamiento (US7) · PR «082 fase 2»
 
-- [ ] T025 [US7] Correr la red completa (T002) en `develop` actualizado y guardar los conteos «antes»
-- [ ] T026 [US7] Partir `server/queries/cash.sql` en `cash_sessions.sql`, `cash_counts.sql`, `cash_movements.sql` y `cash_history.sql` sin cambiar ninguna consulta; `make sqlc` y `sqlc diff` vacío salvo el nombre de los archivos generados
-- [ ] T027 [US7] Crear `CashShiftService` (`server/internal/app/cash_shift.go`), `CashMovementService` (`cash_movements.go`) y `CashReportService` (`cash_report.go`) moviendo los métodos de `backoffice.go` listados en research.md R5, con sus dependencias como campos y sin interfaces; cablearlos en `cmd/api` y en `Handlers`
-- [ ] T028 [US7] Mover los handlers de caja a `server/internal/httpapi/handlers_cash.go` llamando a los servicios nuevos; rutas y respuestas iguales; `go build ./... && go test ./...`
-- [ ] T029 [P] [US7] Test vitest de rutas `web/src/features/caja/rutas.test.tsx`: `/caja/historico/:corteId` abre ese corte, recargar en Histórico sigue en Histórico, `/caja/administrar` sin `cash.configure` no muestra los bloques de caja, la dirección vieja de ajustes lleva a `/caja/administrar`
-- [ ] T030 [US7] Partir `CashPage.tsx` en `web/src/features/caja/` (`CajaPage`, `turno/`, `arqueo/`, `conciliacion/`, `movimientos/`, `reporte/`, `administrar/`) con rutas de [contracts/rutas-web.md](contracts/rutas-web.md) en `App.tsx` y `app/routes.ts`; mover los tests con su componente cambiando solo imports y router
-- [ ] T031 [US7] Mover `AjustesDeCaja` a `web/src/features/caja/administrar/` junto a las cajas, cada bloque con su permiso; en `/negocio` dejar un enlace (Maquetas M5)
-- [ ] T032 [US7] Correr la red completa «después» y comparar con T025: mismos casos, mismos resultados; anotar los conteos en el PR
-- [ ] T033 `/revision-de-codigo`; hallazgos con su test
+- [X] T025 [US7] Correr la red completa (T002) en `develop` actualizado y guardar los conteos «antes»
+- [X] T026 [US7] Partir `server/queries/cash.sql` en `cash_sessions.sql`, `cash_counts.sql`, `cash_movements.sql` y `cash_history.sql` sin cambiar ninguna consulta; `make sqlc` y `sqlc diff` vacío salvo el nombre de los archivos generados
+- [X] T027 [US7] Crear `CashShiftService` (`server/internal/app/cash_shift.go`), `CashMovementService` (`cash_movements.go`) y `CashReportService` (`cash_report.go`) moviendo los métodos de `backoffice.go` listados en research.md R5, con sus dependencias como campos y sin interfaces; cablearlos en `cmd/api` y en `Handlers`
+- [X] T028 [US7] Mover los handlers de caja a `server/internal/httpapi/handlers_cash.go` llamando a los servicios nuevos; rutas y respuestas iguales; `go build ./... && go test ./...`
+- [X] T029 [P] [US7] Test vitest de rutas `web/src/features/caja/rutas.test.tsx`: `/caja/historico/:corteId` abre ese corte, recargar en Histórico sigue en Histórico, `/caja/administrar` sin `cash.configure` no muestra los bloques de caja, la dirección vieja de ajustes lleva a `/caja/administrar`
+- [X] T030 [US7] Partir `CashPage.tsx` en `web/src/features/caja/` (`CajaPage`, `turno/`, `arqueo/`, `conciliacion/`, `movimientos/`, `reporte/`, `administrar/`) con rutas de [contracts/rutas-web.md](contracts/rutas-web.md) en `App.tsx` y `app/routes.ts`; mover los tests con su componente cambiando solo imports y router
+- [X] T031 [US7] Mover `AjustesDeCaja` a `web/src/features/caja/administrar/` junto a las cajas, cada bloque con su permiso; en `/negocio` dejar un enlace (Maquetas M5)
+- [X] T032 [US7] Correr la red completa «después» y comparar con T025: mismos casos, mismos resultados; anotar los conteos en el PR
+- [X] T033 `/revision-de-codigo`; hallazgos con su test
 - [ ] T034 `make ci-local` verde; PR «082 fase 2» a `develop`, CI verde, al día, merge
 
 ---

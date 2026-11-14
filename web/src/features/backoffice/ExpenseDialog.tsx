@@ -30,7 +30,7 @@ import {
 } from '../../api/backoffice';
 import {
   activeRegisters, registerLabel, outsideAskOf, countsInDrawer, withCountChoice, drawerExtraOf, type CountChoice, type OutsideAsk,
-} from './cajaDelGasto';
+} from '../../shared/cajaDelGasto';
 import { DrawerOutField, IncludeInCountCheckbox, OutsideCountSheet } from './ExpenseCountControls';
 import { montoTecleado, parseNumero, round2 } from '../../domain/numeros';
 import { crossBuyUnits, formatBaseQty, purchaseUnitsFor, unitLabel } from '../../shared/units';

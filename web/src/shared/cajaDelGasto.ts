@@ -1,5 +1,5 @@
-import { ApiError } from '../../api/client';
-import type { CashRegister } from '../../api/backoffice';
+import { ApiError } from '../api/client';
+import type { CashRegister } from '../api/backoffice';
 
 // activeRegisters son las cajas de las que puede salir el efectivo de un gasto: todas las activas,
 // tengan turno o no (spec 047). Si el pago no entra a un corte lo decide el servidor, no la lista.
