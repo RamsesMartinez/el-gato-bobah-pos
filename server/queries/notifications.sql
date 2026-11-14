@@ -7,7 +7,7 @@
 -- quien lo reportó.
 select n.id, n.kind, n.status, n.item_type, n.ingredient_id, n.product_id, n.item_name, n.unit_code, n.query_text,
        n.on_hand_seen, n.min_seen, n.needs_count, n.opened_at, n.resolved_at, n.resolved_reason, n.opened_by,
-       ob.name::text as opened_by_name, rb.name::text as resolved_by_name, b.name::text as branch_name,
+       coalesce(ob.name, '')::text as opened_by_name, coalesce(rb.name, '')::text as resolved_by_name, b.name::text as branch_name,
        (r.read_at is not null)::bool as is_read,
        (n.status = 'open' and n.kind = 'stock_out' and coalesce(i.low_stock_banner, p.low_stock_banner, false)
          and r.banner_seen_at is null and n.opened_by is distinct from sqlc.arg(user_id)::bigint)::bool as banner,

@@ -54,6 +54,8 @@ GET /api/v1/expenses/{id} admin,gerente
 GET /api/v1/ingredients admin,gerente
 GET /api/v1/integrations/tokens/ admin
 GET /api/v1/me/preferences/{key} admin,gerente,cajero,mesero
+GET /api/v1/notifications admin,gerente,cajero,mesero
+GET /api/v1/notifications/unread-count admin,gerente,cajero,mesero
 GET /api/v1/orders/ admin,gerente,cajero,mesero
 GET /api/v1/orders/delivered admin,gerente,cajero
 GET /api/v1/orders/{id} admin,gerente,cajero,mesero
@@ -172,6 +174,9 @@ POST /api/v1/integrations/tokens/ admin
 POST /api/v1/integrations/tokens/{id}/revoke admin
 POST /api/v1/me/password admin,gerente,cajero,mesero
 POST /api/v1/me/pin admin,gerente,cajero,mesero
+POST /api/v1/notifications/read admin,gerente,cajero,mesero
+POST /api/v1/notifications/{id}/banner-seen admin,gerente,cajero,mesero
+POST /api/v1/notifications/{id}/resolve admin,gerente,cajero,mesero
 POST /api/v1/orders/ admin,gerente,cajero,mesero
 POST /api/v1/orders/{id}/cancel admin,gerente
 POST /api/v1/orders/{id}/deliver admin,gerente,cajero,mesero

@@ -27,6 +27,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 	if h.stockOut == nil {
 		h.stockOut = app.NewStockOutService(st, nil)
 	}
+	if h.notifications == nil {
+		h.notifications = app.NewNotificationsService(st, nil)
+	}
 	if h.permissions == nil {
 		roles := h.roles
 		h.permissions = func(ctx context.Context, u AuthUser) ([]domain.Permission, error) {
@@ -494,6 +497,13 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Deshacer el propio; el de otro lo decide el servicio con el permiso de configurar.
 					r.Post("/stock/out-reports/{id}/undo", h.UndoOut)
 					r.Post("/stock/not-found", h.ReportNotFound)
+					// La campana: quien reporta ve los avisos de existencia; «No lo encuentro» y cerrar a
+					// mano los filtra el servicio con el permiso de cada caso.
+					r.Get("/notifications", h.ListNotifications)
+					r.Get("/notifications/unread-count", h.UnreadNotifications)
+					r.Post("/notifications/read", h.ReadNotifications)
+					r.Post("/notifications/{id}/banner-seen", h.NotificationBannerSeen)
+					r.Post("/notifications/{id}/resolve", h.ResolveNotification)
 				})
 				r.Route("/stock", func(r chi.Router) {
 					// Artículos del almacén (spec 042): leer con «ver el almacén», cambiar con «configurar».

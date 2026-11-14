@@ -154,10 +154,13 @@ type Deps struct {
 	APITokens *app.APITokensService
 	// StockOut: «Se acabó» y «No lo encuentro» (spec 084). Sin él, Router arma uno con el store.
 	StockOut *app.StockOutService
+	// Notifications: la campana, la configuración de alertas y los destinatarios (spec 084).
+	Notifications *app.NotificationsService
 }
 
 type Handlers struct {
 	stockOut          *app.StockOutService
+	notifications     *app.NotificationsService
 	cfg               config.Config
 	version           string
 	builtAt           string
@@ -253,16 +256,17 @@ func newHandlers(d Deps) *Handlers {
 	permissions := d.Permissions
 	return &Handlers{
 		permissions: permissions, roles: d.Roles,
-		attendance:  d.Attendance,
-		audit:       d.Audit,
-		health:      d.InventoryHealth,
-		alerts:      d.Alerts,
-		apiTokens:   d.APITokens,
-		stockOut:    d.StockOut,
-		mcpIPs:      newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-ip:", mcpMaxIPRequests, time.Minute),
-		mcpTokens:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-token:", mcpMaxTokenCalls, time.Minute),
-		tokenWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:token-writes:", 30, time.Hour),
-		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
+		attendance:    d.Attendance,
+		audit:         d.Audit,
+		health:        d.InventoryHealth,
+		alerts:        d.Alerts,
+		apiTokens:     d.APITokens,
+		stockOut:      d.StockOut,
+		notifications: d.Notifications,
+		mcpIPs:        newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-ip:", mcpMaxIPRequests, time.Minute),
+		mcpTokens:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-token:", mcpMaxTokenCalls, time.Minute),
+		tokenWrites:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:token-writes:", 30, time.Hour),
+		cfg:           d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		purchaseDoc:       d.PurchaseDoc,

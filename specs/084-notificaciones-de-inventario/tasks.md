@@ -69,8 +69,8 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 
 **Independent Test**: un texto sin coincidencias abre un aviso que solo ve quien configura; ninguna existencia cambia.
 
-- [ ] T021 [P] [US2] Tests en `server/internal/integration/stock_out_test.go`: no toca `stock_levels` ni `stock_movements`; visible solo con `inventory.configure`; resolver con `alias` usa la regla de otros nombres (`TestAliasFromNotFoundUsesTheAltNamesRules`), con `created` y con `dismiss`
-- [ ] T022 [US2] `ReportNotFound` y resolución `alias`/`created`/`dismiss` en `server/internal/app/stock_out.go` y `notifications.go`; ruta `POST /stock/not-found` y `POST /notifications/{id}/resolve`
+- [X] T021 [P] [US2] Tests en `server/internal/integration/stock_out_test.go`: no toca `stock_levels` ni `stock_movements`; visible solo con `inventory.configure`; resolver con `alias` usa la regla de otros nombres (`TestAliasFromNotFoundUsesTheAltNamesRules`), con `created` y con `dismiss`
+- [X] T022 [US2] `ReportNotFound` y resolución `alias`/`created`/`dismiss` en `server/internal/app/stock_out.go` y `notifications.go`; ruta `POST /stock/not-found` y `POST /notifications/{id}/resolve`
 - [ ] T023 [US2] Fila «No lo encuentro» en `web/src/features/se-acabo/SeAcaboPage.tsx` (Maquetas M2, paso 7) y acciones «Dar de alta» (abre `NewArticleSheet` con el nombre), «Es otro nombre de…» (Picker de insumos), «Descartar» en el panel (T030)
 
 ---
@@ -81,8 +81,8 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 
 - [ ] T024 [P] [US4] Tests `TestEveryMovementPathEvaluates` (venta, compra recibida, conteo con y sin diferencia, merma, ajuste, cancelación) y `TestMergeOrsLowStockAndClosesSourceNotifications`, `TestArchiveClosesNotifications`, `TestUnitChangeClosesAndReevaluates`, `TestOldArticlePatchEvaluatesLowStock` en `server/internal/integration/notifications_paths_test.go`
 - [ ] T025 [US4] Llamadas a `evaluate_low_stock` (después de los movimientos, misma transacción) en `CloseCount`/`closeProducts` (`stock_counts.go`, `stock_count_products.go`, que además resuelve los `stock_out` de lo contado), `MergeIngredients` (OR de la casilla, cierra avisos del origen), `ArchiveArticle`/`ReactivateArticle`, `ChangeUnit` y `UpdateArticle` en `server/internal/app/`
-- [ ] T026 [P] [US4] Test `TestNotificationListenerPublishesOnCommitOnly` en `server/internal/integration/notification_listener_test.go`: commit publica `notifications.changed`, rollback no
-- [ ] T027 [US4] `NotificationListener` en `server/internal/app/notification_listener.go` (conexión dedicada, `LISTEN notifications`, reconecta, termina con ctx) y cableado en `server/cmd/api/main.go`
+- [X] T026 [P] [US4] Test `TestNotificationListenerPublishesOnCommitOnly` en `server/internal/integration/notification_listener_test.go`: commit publica `notifications.changed`, rollback no
+- [X] T027 [US4] `NotificationListener` en `server/internal/app/notification_listener.go` (conexión dedicada, `LISTEN notifications`, reconecta, termina con ctx) y cableado en `server/cmd/api/main.go`
 - [ ] T028 [US4] `TestLowStockTriggerLatency` en `server/internal/integration/notifications_trigger_test.go`: pedido de 30 renglones con receta sobre insumos con alerta, con y sin trigger, y `explain (analyze, buffers)` del filtro; imprime las cifras para el reporte
 
 ---
@@ -91,8 +91,8 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 
 **Independent Test**: dos personas, lectura por persona; franja espera hoja abierta y se va a los 90 s.
 
-- [ ] T029 [P] [US5] Tests de integración `TestUnreadIsPerPerson`, `TestBannerSeenIsPerPerson`, lista con `not_found` solo para `inventory.configure`, arreglos vacíos como `[]` en el JSON crudo, `status` desconocido 400, en `server/internal/integration/notifications_test.go`
-- [ ] T030 [US5] `NotificationsService` (lista, contador, leídas, franja vista, resolver `arrived`) en `server/internal/app/notifications.go`; handlers `server/internal/httpapi/handlers_notifications.go` y rutas
+- [X] T029 [P] [US5] Tests de integración `TestUnreadIsPerPerson`, `TestBannerSeenIsPerPerson`, lista con `not_found` solo para `inventory.configure`, arreglos vacíos como `[]` en el JSON crudo, `status` desconocido 400, en `server/internal/integration/notifications_test.go`
+- [X] T030 [US5] `NotificationsService` (lista, contador, leídas, franja vista, resolver `arrived`) en `server/internal/app/notifications.go`; handlers `server/internal/httpapi/handlers_notifications.go` y rutas
 - [ ] T031 [P] [US5] Tests de pantalla `web/src/features/notificaciones/Campana.test.tsx` y `CapaDeAvisos.test.tsx`: contador, panel con pestañas, motivo de cierre, franja difiere con hoja abierta, se quita a los 90 s, no sale a quien reportó, se apila bajo el aviso de pedido sin encimarse; test con admin a 1280×854 que fija las opciones del riel visibles
 - [ ] T032 [US5] Campana (icono 44 px) en `web/src/app/AppShell.tsx` y panel `web/src/features/notificaciones/PanelDeAvisos.tsx` (Maquetas M3, opción A v2); `useNotificationEvents` sobre SSE con `alReconectar` y relectura cada 60 s
 - [ ] T033 [US5] `CapaDeAvisos` (un portal, capa 2000) que apila `AvisoDePedidoEntrante` y `FranjaDeAgotado` en `web/src/features/notificaciones/` y su uso en `web/src/features/pos/AvisoDePlataforma.tsx` (Maquetas M4, opción B v2)

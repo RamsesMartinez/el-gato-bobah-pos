@@ -315,6 +315,11 @@ func main() {
 	fondo.Go(func() {
 		app.SendSummariesPeriodically(ctxRecorte, 15*time.Minute, resumen, activeCompanies)
 	})
+	// Los avisos de inventario en vivo (spec 084): lo que abre el trigger de existencias llega a la
+	// campana sin recargar. Con la conexión de la aplicación: LISTEN no lee tablas.
+	fondo.Go(func() {
+		app.NewNotificationListener(cfg.AppDatabaseURLOrDefault(), broker).Run(ctxRecorte)
+	})
 	// Una vez por arranque, el costo vigente de cada empresa se recalcula desde sus recetas: corrige
 	// lo que quedó mal antes de que guardar una receta lo recalculara (issue #145) y lo que deje
 	// cualquier script. Solo escribe lo que cambió. En segundo plano: un costo de margen no es razón
