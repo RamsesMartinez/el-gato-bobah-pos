@@ -22,9 +22,9 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirmar que la 0115 y el permiso 38 siguen libres contra `origin/develop` y las ramas abiertas (`git ls-tree` de `server/migrations`, `permissions` en las migraciones) y anotarlo en plan.md
-- [ ] T002 [P] Agregar `mjml@5.4.1` como dependencia de desarrollo en `web/package.json` con `bun add -d`, correr `bun audit --audit-level=high` y anotar el resultado (los dos avisos *moderate* ya los cubren los overrides de `minimatch` y `glob`)
-- [ ] T003 [P] Crear `emails/` (fuente MJML, `logo.png` del POS) y el script `web/scripts/compilar-correos.ts` con su comando `bun run compilar-correos` en `web/package.json`; salida en `server/internal/mailtpl/templates/`
+- [X] T001 Confirmar que la 0115 y el permiso 38 siguen libres contra `origin/develop` y las ramas abiertas (`git ls-tree` de `server/migrations`, `permissions` en las migraciones) y anotarlo en plan.md
+- [X] T002 [P] Agregar `mjml@5.4.1` como dependencia de desarrollo en `web/package.json` con `bun add -d`, correr `bun audit --audit-level=high` y anotar el resultado (los dos avisos *moderate* ya los cubren los overrides de `minimatch` y `glob`)
+- [X] T003 [P] Crear `emails/` (fuente MJML, `logo.png` del POS) y el script `web/scripts/compilar-correos.ts` con su comando `bun run compilar-correos` en `web/package.json`; salida en `server/internal/mailtpl/templates/`
 
 ---
 
@@ -32,20 +32,20 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 
 **Tests primero**
 
-- [ ] T004 [P] Tests de dominio de reglas puras en `server/internal/domain/notifications_test.go` (efecto de alertas, pedir conteo, bloque de 5 min, enfriamiento de 12 h, hora de la mañana, llaves de búsqueda, texto de «no lo encuentro», tope por hora, ventana de deshacer) — ya escritos; mantener en verde
-- [ ] T005 [P] Test de paridad `TestNotificationReasonsMatchTheCheck` y `TestNotificationKindsMatchTheCheck` en `server/internal/integration/notifications_schema_test.go`: las listas de `domain` contra los `check` de la 0115
-- [ ] T006 Test de migración `TestMigration0115OnARealBackup` en `server/internal/integration/migration_0115_test.go`: sobre el respaldo restaurado con dos empresas, sube la 0115 con la API anterior escribiendo movimientos (ventas y compras siguen), verifica columnas con default, grants, RLS, permiso 38 en los 4 sugeridos, orden de triggers en `pg_trigger`, y que el Down se niega con datos y baja limpio con su `guardedDownCleanup` (incluidos los overrides del permiso)
-- [ ] T007 Test `TestEvaluateLowStockMatchesTheDomain` en `server/internal/integration/notifications_trigger_test.go`: la función de la base produce la tabla de verdad de `domain.LowStockEffect` caso por caso, y `needs_count` con existencia negativa y sin conteo en 30 días
-- [ ] T008 Tests del trigger en `server/internal/integration/notifications_trigger_test.go`: `TestTwoConnectionsCrossingTheSameMinimumOpenOne` (dos conexiones `appRoleStore`, una sola notificación), `TestANotificationFailureNeverBreaksASale` (falla forzada del aviso, la venta se guarda), `TestAQuietSaleOpensNoSubtransaction` (artículo ya bajo el mínimo con aviso abierto: sin `savepoint` ni `pg_notify`), `TestReplacementMovementsDoNotNotify`, `TestInactiveOrMergedSourceNeverNotifies`, `TestRedirectedMovementNotifiesOnTheTarget`
-- [ ] T009 [P] Agregar las tablas nuevas a `TestEveryCompanyTableIsIsolated` (automático) y clasificar columnas en `scripts/respaldo-anonimo.sh` paso 5 y `noPersonalData` de `server/internal/integration/respaldo_anonimo_test.go` según data-model; agregar `stock_out_reports`, `branch_stock_minimums` y `notifications` a `app.MergeTables` y `app.UnitChangeTables` (`server/internal/app/ingredient_merge.go`, `unit_change.go`)
+- [X] T004 [P] Tests de dominio de reglas puras en `server/internal/domain/notifications_test.go` (efecto de alertas, pedir conteo, bloque de 5 min, enfriamiento de 12 h, hora de la mañana, llaves de búsqueda, texto de «no lo encuentro», tope por hora, ventana de deshacer) — ya escritos; mantener en verde
+- [X] T005 [P] Test de paridad `TestNotificationReasonsMatchTheCheck` y `TestNotificationKindsMatchTheCheck` en `server/internal/integration/notifications_schema_test.go`: las listas de `domain` contra los `check` de la 0115
+- [X] T006 Test de migración `TestMigration0115OnARealBackup` en `server/internal/integration/migration_0115_test.go`: sobre el respaldo restaurado con dos empresas, sube la 0115 con la API anterior escribiendo movimientos (ventas y compras siguen), verifica columnas con default, grants, RLS, permiso 38 en los 4 sugeridos, orden de triggers en `pg_trigger`, y que el Down se niega con datos y baja limpio con su `guardedDownCleanup` (incluidos los overrides del permiso)
+- [X] T007 Test `TestEvaluateLowStockMatchesTheDomain` en `server/internal/integration/notifications_trigger_test.go`: la función de la base produce la tabla de verdad de `domain.LowStockEffect` caso por caso, y `needs_count` con existencia negativa y sin conteo en 30 días
+- [X] T008 Tests del trigger en `server/internal/integration/notifications_trigger_test.go`: `TestTwoConnectionsCrossingTheSameMinimumOpenOne` (dos conexiones `appRoleStore`, una sola notificación), `TestANotificationFailureNeverBreaksASale` (falla forzada del aviso, la venta se guarda), `TestAQuietSaleOpensNoSubtransaction` (artículo ya bajo el mínimo con aviso abierto: sin `savepoint` ni `pg_notify`), `TestReplacementMovementsDoNotNotify`, `TestInactiveOrMergedSourceNeverNotifies`, `TestRedirectedMovementNotifiesOnTheTarget`
+- [X] T009 [P] Agregar las tablas nuevas a `TestEveryCompanyTableIsIsolated` (automático) y clasificar columnas en `scripts/respaldo-anonimo.sh` paso 5 y `noPersonalData` de `server/internal/integration/respaldo_anonimo_test.go` según data-model; agregar `stock_out_reports`, `branch_stock_minimums` y `notifications` a `app.MergeTables` y `app.UnitChangeTables` (`server/internal/app/ingredient_merge.go`, `unit_change.go`)
 
 **Implementación**
 
-- [ ] T010 Migración `server/migrations/0115_inventory_notifications.sql` según data-model.md (columnas, 6 tablas, llaves e índices con nombre, RLS, grants, guardas de unión, `evaluate_low_stock`, `notify_stock_movement` con filtro sin subtransacción, trigger con `lock_timeout`, permiso 38, `notifications_morning_at`, Down con guarda) y su renglón en `guardedDownCleanup` (`server/internal/integration/harness_restaurado_test.go`); `migrations/version.go` a 115
-- [ ] T011 Correr `db-architect` sobre la 0115 escrita antes de aplicarla en la base local; corregir lo que encuentre con su test
+- [X] T010 Migración `server/migrations/0115_inventory_notifications.sql` según data-model.md (columnas, 6 tablas, llaves e índices con nombre, RLS, grants, guardas de unión, `evaluate_low_stock`, `notify_stock_movement` con filtro sin subtransacción, trigger con `lock_timeout`, permiso 38, `notifications_morning_at`, Down con guarda) y su renglón en `guardedDownCleanup` (`server/internal/integration/harness_restaurado_test.go`); `migrations/version.go` a 115
+- [X] T011 Correr `db-architect` sobre la 0115 escrita antes de aplicarla en la base local; corregir lo que encuentre con su test
 - [ ] T012 [P] Permiso `PermInventoryReportOut` en `server/internal/domain/permission.go` (lista, los 4 sugeridos, mensaje), espejo en `web/src/app/permissions.ts`; acciones de bitácora `stock.out_reported`, `stock.out_undone`, `stock.low_stock_configured`, `notification.recipients_changed`, `notification.resolved` en `server/internal/domain/audit.go` y `web/src/shared/audit/labels.ts`
-- [ ] T013 Consultas sqlc en `server/queries/notifications.sql`, `stock_out_reports.sql`, `notification_recipients.sql`, `shopping_list.sql`; `make sqlc`
-- [ ] T014 [P] Sentinels nuevos mapeados en `server/internal/httpapi/respond.go` (`ErrReportLimit` 429, `ErrUndoExpired`/`ErrUndoAfterMovement`/`ErrNotificationClosed` 409) con su test en `respond_test.go`
+- [X] T013 Consultas sqlc en `server/queries/notifications.sql`, `stock_out_reports.sql`, `notification_recipients.sql`, `shopping_list.sql`; `make sqlc`
+- [X] T014 [P] Sentinels nuevos mapeados en `server/internal/httpapi/respond.go` (`ErrReportLimit` 429, `ErrUndoExpired`/`ErrUndoAfterMovement`/`ErrNotificationClosed` 409) con su test en `respond_test.go`
 
 **Checkpoint**: la base detecta y abre avisos; T006–T008 en verde.
 

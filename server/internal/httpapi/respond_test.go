@@ -466,3 +466,24 @@ func TestMovingSalesWithAnOpenRegisterHasItsOwnCode(t *testing.T) {
 		t.Fatalf("otra sucursal → %d; quería 400", w.Code)
 	}
 }
+
+// Los códigos de «Se acabó» (spec 084): la pantalla decide por el código si muestra el tope, si
+// esconde el «Deshacer» o si refresca la campana.
+func TestStockOutErrorsHaveTheirOwnCode(t *testing.T) {
+	cases := []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{domain.ErrReportLimit, 429, "REPORT_LIMIT"},
+		{domain.ErrUndoExpired, 409, "UNDO_EXPIRED"},
+		{domain.ErrUndoAfterMovement, 409, "UNDO_AFTER_MOVEMENT"},
+		{domain.ErrNotificationClosed, 409, "NOTIFICATION_CLOSED"},
+	}
+	for _, c := range cases {
+		status, body := errorOf(t, c.err)
+		if status != c.status || body.Code != c.code || body.Message != c.err.Error() {
+			t.Errorf("%v = %d %s %q", c.err, status, body.Code, body.Message)
+		}
+	}
+}

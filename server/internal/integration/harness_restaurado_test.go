@@ -328,10 +328,14 @@ var guardedDownCleanup = map[int64][]string{
 	// alertas y se quitan los ajustes de roles sobre el permiso 38.
 	115: {`delete from stock_out_reports`, `delete from notifications`, `delete from notification_email_sends`,
 		`delete from notification_recipients`, `delete from branch_stock_minimums`,
-		`update ingredients set low_stock_enabled = false, coverage_days = null, low_stock_asked_at = null
-		  where low_stock_enabled or coverage_days is not null or low_stock_asked_at is not null`,
-		`update products set low_stock_enabled = false, coverage_days = null, low_stock_asked_at = null
-		  where low_stock_enabled or coverage_days is not null or low_stock_asked_at is not null`,
+		`update ingredients set low_stock_enabled = false, coverage_days = null, low_stock_asked_at = null,
+		        low_stock_banner = false, low_stock_on_min = true, low_stock_on_out = true
+		  where low_stock_enabled or coverage_days is not null or low_stock_asked_at is not null
+		     or low_stock_banner or not low_stock_on_min or not low_stock_on_out`,
+		`update products set low_stock_enabled = false, coverage_days = null, low_stock_asked_at = null,
+		        low_stock_banner = false, low_stock_on_min = true, low_stock_on_out = true
+		  where low_stock_enabled or coverage_days is not null or low_stock_asked_at is not null
+		     or low_stock_banner or not low_stock_on_min or not low_stock_on_out`,
 		`update business_settings set notifications_morning_at = '08:00' where notifications_morning_at <> '08:00'`,
 		`delete from role_permission_overrides where permission_id = 38`},
 	// La 0113 se niega con correcciones de cortes: en la copia de prueba se borran (los reversos

@@ -58,6 +58,15 @@ func Error(w http.ResponseWriter, err error) {
 	msg := err.Error()
 
 	switch {
+	// «Se acabó» (spec 084): la pantalla decide por el código qué mostrar.
+	case errors.Is(err, domain.ErrReportLimit):
+		status, code = http.StatusTooManyRequests, "REPORT_LIMIT"
+	case errors.Is(err, domain.ErrUndoExpired):
+		status, code = http.StatusConflict, "UNDO_EXPIRED"
+	case errors.Is(err, domain.ErrUndoAfterMovement):
+		status, code = http.StatusConflict, "UNDO_AFTER_MOVEMENT"
+	case errors.Is(err, domain.ErrNotificationClosed):
+		status, code = http.StatusConflict, "NOTIFICATION_CLOSED"
 	// Roles por empresa (spec 068): envuelven ErrConflict; la pantalla distingue cada caso.
 	case errors.Is(err, domain.ErrRoleNameTaken):
 		status, code = http.StatusConflict, "ROLE_NAME_TAKEN"

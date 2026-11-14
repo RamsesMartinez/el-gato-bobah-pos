@@ -878,6 +878,17 @@ type Branch struct {
 	CardCountMode  string    `json:"card_count_mode"`
 }
 
+type BranchStockMinimum struct {
+	CompanyID    int64           `json:"company_id"`
+	BranchID     int64           `json:"branch_id"`
+	ItemType     StockItemType   `json:"item_type"`
+	IngredientID *int64          `json:"ingredient_id"`
+	ProductID    *int64          `json:"product_id"`
+	MinStock     decimal.Decimal `json:"min_stock"`
+	UpdatedBy    int64           `json:"updated_by"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+}
+
 type BusinessSetting struct {
 	DeliveryFee               decimal.Decimal    `json:"delivery_fee"`
 	UpdatedAt                 time.Time          `json:"updated_at"`
@@ -909,6 +920,7 @@ type BusinessSetting struct {
 	StockItemLabel            string             `json:"stock_item_label"`
 	WasteApprovalThreshold    *decimal.Decimal   `json:"waste_approval_threshold"`
 	CashDifferenceTolerance   decimal.Decimal    `json:"cash_difference_tolerance"`
+	NotificationsMorningAt    pgtype.Time        `json:"notifications_morning_at"`
 }
 
 type CandidatasDelAviso struct {
@@ -1201,6 +1213,12 @@ type Ingredient struct {
 	DensitySetBy           *int64             `json:"density_set_by"`
 	DensitySetAt           pgtype.Timestamptz `json:"density_set_at"`
 	AltNames               []string           `json:"alt_names"`
+	LowStockEnabled        bool               `json:"low_stock_enabled"`
+	LowStockOnMin          bool               `json:"low_stock_on_min"`
+	LowStockOnOut          bool               `json:"low_stock_on_out"`
+	LowStockBanner         bool               `json:"low_stock_banner"`
+	CoverageDays           *int16             `json:"coverage_days"`
+	LowStockAskedAt        pgtype.Timestamptz `json:"low_stock_asked_at"`
 }
 
 type IngredientCategory struct {
@@ -1318,6 +1336,63 @@ type ModifierOptionPlatformPrice struct {
 	CompanyID  int64              `json:"company_id"`
 	Source     string             `json:"source"`
 	SyncedAt   pgtype.Timestamptz `json:"synced_at"`
+}
+
+type Notification struct {
+	ID             int64              `json:"id"`
+	CompanyID      int64              `json:"company_id"`
+	BranchID       int64              `json:"branch_id"`
+	Kind           string             `json:"kind"`
+	ItemType       *StockItemType     `json:"item_type"`
+	IngredientID   *int64             `json:"ingredient_id"`
+	ProductID      *int64             `json:"product_id"`
+	ItemKey        *int64             `json:"item_key"`
+	ItemName       *string            `json:"item_name"`
+	UnitCode       *string            `json:"unit_code"`
+	QueryText      *string            `json:"query_text"`
+	Status         string             `json:"status"`
+	OnHandSeen     *decimal.Decimal   `json:"on_hand_seen"`
+	MinSeen        *decimal.Decimal   `json:"min_seen"`
+	NeedsCount     bool               `json:"needs_count"`
+	OpenedBy       *int64             `json:"opened_by"`
+	OpenedAt       time.Time          `json:"opened_at"`
+	ResolvedAt     pgtype.Timestamptz `json:"resolved_at"`
+	ResolvedBy     *int64             `json:"resolved_by"`
+	ResolvedReason *string            `json:"resolved_reason"`
+	EmailState     string             `json:"email_state"`
+	EmailSendID    *int64             `json:"email_send_id"`
+}
+
+type NotificationEmailSend struct {
+	ID         int64              `json:"id"`
+	CompanyID  int64              `json:"company_id"`
+	Kind       string             `json:"kind"`
+	PeriodKey  string             `json:"period_key"`
+	Status     string             `json:"status"`
+	Attempts   int16              `json:"attempts"`
+	LastError  *string            `json:"last_error"`
+	Recipients int16              `json:"recipients"`
+	CreatedAt  time.Time          `json:"created_at"`
+	SentAt     pgtype.Timestamptz `json:"sent_at"`
+}
+
+type NotificationRead struct {
+	CompanyID      int64              `json:"company_id"`
+	NotificationID int64              `json:"notification_id"`
+	UserID         int64              `json:"user_id"`
+	ReadAt         pgtype.Timestamptz `json:"read_at"`
+	BannerSeenAt   pgtype.Timestamptz `json:"banner_seen_at"`
+}
+
+type NotificationRecipient struct {
+	ID        int64     `json:"id"`
+	CompanyID int64     `json:"company_id"`
+	UserID    *int64    `json:"user_id"`
+	Email     *string   `json:"email"`
+	Kind      string    `json:"kind"`
+	Enabled   bool      `json:"enabled"`
+	UpdatedBy int64     `json:"updated_by"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Order struct {
@@ -1774,6 +1849,12 @@ type Product struct {
 	CompositionConfirmedBy *int64             `json:"composition_confirmed_by"`
 	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
 	AltNames               []string           `json:"alt_names"`
+	LowStockEnabled        bool               `json:"low_stock_enabled"`
+	LowStockOnMin          bool               `json:"low_stock_on_min"`
+	LowStockOnOut          bool               `json:"low_stock_on_out"`
+	LowStockBanner         bool               `json:"low_stock_banner"`
+	CoverageDays           *int16             `json:"coverage_days"`
+	LowStockAskedAt        pgtype.Timestamptz `json:"low_stock_asked_at"`
 }
 
 type ProductChannel struct {
@@ -1998,6 +2079,24 @@ type StockMovement struct {
 	WasteRecordID        *int64            `json:"waste_record_id"`
 	ReplacementID        *int64            `json:"replacement_id"`
 	EffectiveOn          pgtype.Date       `json:"effective_on"`
+}
+
+type StockOutReport struct {
+	ID             int64              `json:"id"`
+	CompanyID      int64              `json:"company_id"`
+	BranchID       int64              `json:"branch_id"`
+	Kind           string             `json:"kind"`
+	ItemType       *StockItemType     `json:"item_type"`
+	IngredientID   *int64             `json:"ingredient_id"`
+	ProductID      *int64             `json:"product_id"`
+	NotificationID int64              `json:"notification_id"`
+	MovementID     *int64             `json:"movement_id"`
+	Delta          *decimal.Decimal   `json:"delta"`
+	ClientKey      uuid.UUID          `json:"client_key"`
+	ReportedBy     int64              `json:"reported_by"`
+	ReportedAt     time.Time          `json:"reported_at"`
+	UndoneAt       pgtype.Timestamptz `json:"undone_at"`
+	UndoMovementID *int64             `json:"undo_movement_id"`
 }
 
 type Supplier struct {

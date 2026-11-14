@@ -293,3 +293,54 @@ func TestTheNotificationTriggerRunsAfterTheStockTrigger(t *testing.T) {
 		t.Fatalf("triggers en orden %v", got)
 	}
 }
+
+// Un aviso que abre el ajuste de un conteo no pide conteo: la cifra se acaba de contar. Al cerrar el
+// conteo, sus ajustes se insertan antes de marcarlo cerrado, así que «hubo conteo cerrado en 30 días»
+// todavía no lo ve; el movimiento trae su stock_count_id.
+func TestANotificationOpenedByACountDoesNotAskForACount(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	ing := pieceIngredient(t, st, "Insumo 084 contado")
+	adjust(t, st, "ingrediente", ing, "10")
+	alertOn(t, st, ing, "5", true, false)
+	user := makeUser(t, st, "contador084", "admin")
+	var count int64
+	if err := st.Pool.QueryRow(ctx, `insert into stock_counts (branch_id, opened_by) values (current_branch_id(), $1) returning id`, user).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `insert into stock_movements (item_type, ingredient_id, movement_type, quantity, stock_count_id)
+		values ('ingrediente', $1, 'ajuste', -7, $2)`, ing, count); err != nil {
+		t.Fatal(err)
+	}
+	var needs bool
+	if err := st.Pool.QueryRow(ctx, `select needs_count from notifications where ingredient_id = $1 and status = 'open'`, ing).Scan(&needs); err != nil {
+		t.Fatal(err)
+	}
+	if needs {
+		t.Fatal("el aviso que abrió el conteo dice «pedir conteo» de un artículo que se acaba de contar")
+	}
+}
+
+// Apagar el aviso de mínimo (con la alerta encendida) cierra el aviso como «alerta apagada», no
+// como «volvió sobre el mínimo»: la existencia no subió.
+func TestTurningOffTheMinimumEventClosesAsAlertOff(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	ing := pieceIngredient(t, st, "Insumo 084 sin evento")
+	adjust(t, st, "ingrediente", ing, "10")
+	alertOn(t, st, ing, "5", true, false)
+	adjust(t, st, "ingrediente", ing, "-7")
+	if _, err := st.Pool.Exec(ctx, `update ingredients set low_stock_on_min = false where id = $1`, ing); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `select evaluate_low_stock(1, current_branch_id(), 'ingrediente', $1, null)`, ing); err != nil {
+		t.Fatal(err)
+	}
+	var reason string
+	if err := st.Pool.QueryRow(ctx, `select resolved_reason from notifications where ingredient_id = $1`, ing).Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if reason != "alert_off" {
+		t.Fatalf("cerró como %q", reason)
+	}
+}

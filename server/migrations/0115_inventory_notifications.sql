@@ -130,7 +130,8 @@ create table notifications (
 -- Un aviso abierto por sucursal, artículo y tipo: dos ventas que cruzan el mismo mínimo abren uno.
 create unique index notifications_one_open on notifications (company_id, branch_id, item_key, kind)
   where status = 'open' and kind <> 'not_found';
-create index notifications_by_item on notifications (company_id, branch_id, item_key);
+-- Cerrar todo lo de un artículo (archivar, unir, cambiar de unidad) en todas las sucursales.
+create index notifications_by_item on notifications (company_id, item_key);
 create index notifications_open_recent on notifications (company_id, opened_at desc) where status = 'open';
 create index notifications_closed_recent on notifications (company_id, resolved_at desc) where status <> 'open';
 create index notifications_email_pending on notifications (company_id, opened_at) where email_state = 'pending';
@@ -260,7 +261,7 @@ end $$;
 -- ---------------------------------------------------------------------------------------------
 -- +goose StatementBegin
 create function low_stock_state(p_company bigint, p_branch bigint, p_type stock_item_type, p_ingredient bigint, p_product bigint)
-returns table (active boolean, enabled boolean, should_low boolean, should_out boolean, on_hand numeric, min_stock numeric,
+returns table (active boolean, enabled boolean, on_min boolean, should_low boolean, should_out boolean, on_hand numeric, min_stock numeric,
                low_open boolean, out_open boolean, out_manual boolean, item_name text, unit_code text)
 language sql stable as $$
   with art as (
@@ -280,9 +281,13 @@ language sql stable as $$
       left join branch_stock_minimums b on b.branch_id = p_branch and b.product_id = p.id
      where p_type = 'producto' and p.id = p_product and p.company_id = p_company
   ), lvl as (
+    -- Dos ramas con guarda y no un case: así cada una usa su índice único (sucursal, artículo); con
+    -- el case, el plan genérico recorría stock_levels completa en cada movimiento.
     select coalesce((select s.on_hand from stock_levels s
-                      where s.branch_id = p_branch
-                        and (case when p_type = 'ingrediente' then s.ingredient_id = p_ingredient else s.product_id = p_product end)), 0) as on_hand
+                      where p_type = 'ingrediente' and s.branch_id = p_branch and s.ingredient_id = p_ingredient
+                     union all
+                     select s.on_hand from stock_levels s
+                      where p_type = 'producto' and s.branch_id = p_branch and s.product_id = p_product), 0) as on_hand
   ), open as (
     select bool_or(n.kind = 'stock_low') as low_open, bool_or(n.kind = 'stock_out') as out_open,
            bool_or(n.kind = 'stock_out' and n.opened_by is not null) as out_manual
@@ -290,7 +295,7 @@ language sql stable as $$
      where n.company_id = p_company and n.branch_id = p_branch and n.status = 'open' and n.kind <> 'not_found'
        and n.item_key = coalesce(p_ingredient, -p_product, 0)
   )
-  select a.active, a.enabled,
+  select a.active, a.enabled, a.on_min,
          a.active and a.enabled and a.on_min and coalesce(a.min_stock, 0) > 0 and l.on_hand <= a.min_stock,
          a.active and a.enabled and a.on_out and l.on_hand <= 0,
          l.on_hand, a.min_stock,
@@ -301,7 +306,10 @@ $$;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-create function evaluate_low_stock(p_company bigint, p_branch bigint, p_type stock_item_type, p_ingredient bigint, p_product bigint)
+-- p_count_id: el conteo cuyo ajuste dispara la evaluación (el trigger lo pasa). Ese aviso no pide
+-- conteo, y lo que cierra lo cierra «contado».
+create function evaluate_low_stock(p_company bigint, p_branch bigint, p_type stock_item_type, p_ingredient bigint, p_product bigint,
+                                   p_count_id bigint default null)
 returns void language plpgsql as $$
 declare
   s record;
@@ -320,7 +328,9 @@ begin
      set status = 'resolved', resolved_at = now(),
          resolved_reason = case
            when not s.active then 'archived'
-           when n.kind = 'stock_low' then case when s.enabled then 'above_min' else 'alert_off' end
+           when p_count_id is not null then 'counted'
+           when n.kind = 'stock_low' then
+             case when s.enabled and s.on_min and coalesce(s.min_stock, 0) > 0 then 'above_min' else 'alert_off' end
            when s.on_hand > 0 then 'restocked'
            else 'alert_off' end
    where n.company_id = p_company and n.branch_id = p_branch and n.status = 'open' and n.kind <> 'not_found'
@@ -334,14 +344,14 @@ begin
   if s.should_low or s.should_out then
     -- «Pedir conteo»: con la existencia en negativo, o sin un conteo cerrado en 30 días, la cifra del
     -- sistema no es para comprar.
-    v_needs := s.on_hand < 0 or not exists (
+    v_needs := s.on_hand < 0 or (p_count_id is null and not exists (
       select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id and c.company_id = l.company_id
        where p_type = 'ingrediente' and l.ingredient_id = p_ingredient and c.branch_id = p_branch
          and c.status = 'closed' and c.closed_at > now() - interval '30 days'
       union all
       select 1 from stock_count_product_lines l join stock_counts c on c.id = l.count_id and c.company_id = l.company_id
        where p_type = 'producto' and l.product_id = p_product and c.branch_id = p_branch
-         and c.status = 'closed' and c.closed_at > now() - interval '30 days');
+         and c.status = 'closed' and c.closed_at > now() - interval '30 days'));
     insert into notifications (company_id, branch_id, kind, item_type, ingredient_id, product_id, item_name, unit_code,
                                on_hand_seen, min_seen, needs_count)
     select p_company, p_branch, k, p_type, p_ingredient, p_product, s.item_name, s.unit_code, s.on_hand, s.min_stock, v_needs
@@ -383,7 +393,7 @@ begin
      or (s.should_out and not s.out_open)
      or (s.out_open and not s.should_out and (not s.out_manual or s.on_hand > 0)) then
     begin
-      perform evaluate_low_stock(new.company_id, new.branch_id, new.item_type, new.ingredient_id, new.product_id);
+      perform evaluate_low_stock(new.company_id, new.branch_id, new.item_type, new.ingredient_id, new.product_id, new.stock_count_id);
     exception when others then
       -- La venta nunca falla por el aviso. Como la regla es por estado, el siguiente movimiento del
       -- artículo (o el barrido de la mañana) lo vuelve a intentar.
@@ -400,9 +410,9 @@ create trigger trg_stock_movement_notify after insert on stock_movements
   for each row execute function notify_stock_movement();
 
 revoke execute on function low_stock_state(bigint, bigint, stock_item_type, bigint, bigint) from public;
-revoke execute on function evaluate_low_stock(bigint, bigint, stock_item_type, bigint, bigint) from public;
+revoke execute on function evaluate_low_stock(bigint, bigint, stock_item_type, bigint, bigint, bigint) from public;
 grant execute on function low_stock_state(bigint, bigint, stock_item_type, bigint, bigint) to gatobobah_app;
-grant execute on function evaluate_low_stock(bigint, bigint, stock_item_type, bigint, bigint) to gatobobah_app;
+grant execute on function evaluate_low_stock(bigint, bigint, stock_item_type, bigint, bigint, bigint) to gatobobah_app;
 
 -- ---------------------------------------------------------------------------------------------
 -- 10. Permiso nuevo: reportar que algo se acabó sin poder ajustar existencias. Lo traen los cuatro
@@ -419,8 +429,11 @@ do $$
 begin
   if exists (select 1 from notifications) or exists (select 1 from stock_out_reports)
      or exists (select 1 from notification_recipients) or exists (select 1 from branch_stock_minimums)
-     or exists (select 1 from ingredients where low_stock_enabled or coverage_days is not null or low_stock_asked_at is not null)
-     or exists (select 1 from products where low_stock_enabled or coverage_days is not null or low_stock_asked_at is not null)
+     or exists (select 1 from notification_email_sends)
+     or exists (select 1 from ingredients where low_stock_enabled or coverage_days is not null or low_stock_asked_at is not null
+                                             or low_stock_banner or not low_stock_on_min or not low_stock_on_out)
+     or exists (select 1 from products where low_stock_enabled or coverage_days is not null or low_stock_asked_at is not null
+                                          or low_stock_banner or not low_stock_on_min or not low_stock_on_out)
      or exists (select 1 from business_settings where notifications_morning_at <> '08:00') then
     raise exception 'hay avisos o configuración de alertas: bajar los perdería';
   end if;
@@ -428,7 +441,7 @@ end $$;
 -- +goose StatementEnd
 drop trigger trg_stock_movement_notify on stock_movements;
 drop function notify_stock_movement();
-drop function evaluate_low_stock(bigint, bigint, stock_item_type, bigint, bigint);
+drop function evaluate_low_stock(bigint, bigint, stock_item_type, bigint, bigint, bigint);
 drop function low_stock_state(bigint, bigint, stock_item_type, bigint, bigint);
 drop table notification_reads;
 drop table stock_out_reports;
