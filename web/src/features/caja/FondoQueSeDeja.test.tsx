@@ -92,13 +92,13 @@ test('quien cierra va primero en la fila de personas', () => {
 // La persona viene marcada por omisión y el retiro no se corrige: la confirmación lo dice.
 test('el resumen de la confirmación nombra el retiro y a quién', () => {
   expect(resumenDelRetiro({ retirar: true, retiro: 4300, quien: 'Luis', contado: 5300, currency: 'MXN' }))
-    .toBe('Se retiran $4,300 · se los lleva Luis. No podrás modificarla después.');
+    .toBe('Se retiran $4,300 · se los lleva Luis. Lo contado queda firmado; un error se corrige en el Histórico, con su motivo.');
   expect(resumenDelRetiro({ retirar: false, retiro: 0, quien: null, contado: 5300, currency: 'MXN' }))
-    .toBe('Todo se queda en el cajón: $5,300. No podrás modificarla después.');
+    .toBe('Todo se queda en el cajón: $5,300. Lo contado queda firmado; un error se corrige en el Histórico, con su motivo.');
   expect(resumenDelRetiro({ retirar: true, retiro: 0, quien: null, contado: 1000, currency: 'MXN' }))
-    .toBe('Todo se queda en el cajón: $1,000. No podrás modificarla después.');
+    .toBe('Todo se queda en el cajón: $1,000. Lo contado queda firmado; un error se corrige en el Histórico, con su motivo.');
   expect(resumenDelRetiro({ retirar: true, retiro: null, quien: null, contado: null, currency: 'MXN' }))
-    .toBe('No podrás modificarla después.');
+    .toBe('Lo contado queda firmado; un error se corrige en el Histórico, con su motivo.');
 });
 
 // Revisión de código: con «No» no hay retiro que rebase lo contado, así que la caja no se pinta de

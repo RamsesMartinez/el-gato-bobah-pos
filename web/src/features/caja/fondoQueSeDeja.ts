@@ -31,10 +31,14 @@ export function personasDelRetiro<T extends { id: number }>(personas: T[], quien
 
 // resumenDelRetiro: lo que dice la hoja de «¿Cerrar caja?». La persona viene marcada por omisión y
 // el retiro no se corrige después, así que se lee justo antes del toque que lo vuelve definitivo.
+// FIN_DEL_CIERRE es lo último que se lee antes de firmar. Decía «No podrás modificarla después», y desde
+// la fase 3 de #290 un corte cerrado se corrige (con rastro): la hoja contradecía al Histórico.
+export const FIN_DEL_CIERRE = 'Lo contado queda firmado; un error se corrige en el Histórico, con su motivo.';
+
 export function resumenDelRetiro({ retirar, retiro, quien, contado, currency }: {
   retirar: boolean; retiro: number | null; quien: string | null; contado: number | null; currency: string;
 }): string {
-  const fin = 'No podrás modificarla después.';
+  const fin = FIN_DEL_CIERRE;
   if (contado === null) return fin;
   if (!retirar || retiro === 0) return `Todo se queda en el cajón: ${money(contado, currency)}. ${fin}`;
   if (retiro === null) return fin;

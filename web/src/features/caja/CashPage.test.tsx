@@ -909,7 +909,7 @@ describe('retiro al cierre', () => {
 
   test('la hoja de «¿Cerrar caja?» muestra el resumen del retiro', async () => {
     wrap(<BotonCerrarCaja nombre="Caja principal" disabled={false} loading={false} onCerrar={vi.fn()}
-      descripcion="Se retiran $4,300 · se los lleva Luis. No podrás modificarla después." />);
+      descripcion="Se retiran $4,300 · se los lleva Luis. Lo contado queda firmado; un error se corrige en el Histórico, con su motivo." />);
     await userEvent.click(screen.getByRole('button', { name: 'Cerrar caja' }));
     expect(await screen.findByText(/Se retiran \$4,300 · se los lleva Luis/)).toBeInTheDocument();
   });

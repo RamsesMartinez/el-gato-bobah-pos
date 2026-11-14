@@ -31,9 +31,9 @@ function turno(over: Partial<CashSession> = {}): CashSession {
   };
 }
 
-function pinta(ruta: string, sesion: CashSession | null | 'sin-red' = turno(), permissions = ['cash.operate', 'cash.configure']) {
+function pinta(ruta: string, sesion: CashSession | null | 'sin-red' = turno(), permissions = ['cash.operate', 'cash.configure'], cajas?: unknown[]) {
   useSessionStore.setState({ user: { id: 1, companyId: 1, name: 'Ana', role: 'gerente', permissions } as never });
-  vi.spyOn(backofficeApi, 'cashRegisters').mockResolvedValue({ items: [{ ...caja, openSessionId: sesion ? 60 : null }] } as never);
+  vi.spyOn(backofficeApi, 'cashRegisters').mockResolvedValue({ items: cajas ?? [{ ...caja, openSessionId: sesion ? 60 : null }] } as never);
   if (sesion === 'sin-red') vi.spyOn(backofficeApi, 'cashCurrent').mockRejectedValue(new Error('sin red'));
   else vi.spyOn(backofficeApi, 'cashCurrent').mockResolvedValue(sesion as never);
   vi.spyOn(backofficeApi, 'cashAttendance').mockResolvedValue({ stage: 'close', applies: false, ready: true } as never);
@@ -173,4 +173,24 @@ test('quien cierra viendo la diferencia la explica, en un solo renglón', async 
   await userEvent.click(within(screen.getAllByRole('dialog').at(-1)!).getByRole('button', { name: 'Cerrar caja' }));
   await waitFor(() => expect(cerrar).toHaveBeenCalled());
   expect(cerrar.mock.calls[0][2]?.explanation).toEqual({ reason: 'miscount', note: 'Contamos mal faltaba un billete' });
+});
+
+// «Ir a Diferencia y cierre» estando en «Diferencia y cierre» no lleva a ningún lado (prueba con
+// usuario nuevo de la fase 4): el pendiente del paso en que se está no lleva botón.
+test('un pendiente del paso actual no ofrece ir a él', async () => {
+  pinta('/caja/4/cerrar', turno({ pending: [] as never, fixedFloat: null as never }));
+  await userEvent.click(within(await screen.findByRole('navigation', { name: 'Pasos del cierre' })).getByRole('button', { name: /Diferencia y cierre/ }));
+  expect(screen.getByText('Escribir el fondo que se queda')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Ir a Diferencia y cierre' })).toBeNull();
+});
+
+// Sin caja elegida, Caja abre la que tiene turno: abría la principal cerrada aunque la abierta fuera
+// otra, y quien llegaba a cerrar no encontraba su turno (prueba con usuario nuevo de la fase 4).
+test('sin caja elegida, se ve la que tiene turno abierto', async () => {
+  pinta('/caja', null, undefined, [
+    { ...caja, openSessionId: null },
+    { id: 5, name: 'Caja clip', isPrimary: false, isActive: true, openSessionId: 60, countsCash: true },
+  ]);
+  vi.mocked(backofficeApi.cashCurrent).mockImplementation(async (id: number) => (id === 5 ? turno({ registerId: 5 }) : null) as never);
+  await waitFor(() => expect(backofficeApi.cashCurrent).toHaveBeenCalledWith(5));
 });

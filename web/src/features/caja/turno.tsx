@@ -28,7 +28,7 @@ import { AperturaConAsistencia, AvisoDelCierre, type EstadoDeAsistencia } from '
 import { AvisosDeCaja } from '../../shared/AvisosDeCaja';
 import { FondoQueSeDeja } from './FondoQueSeDeja';
 import { useVolverAlCierre } from './volverAlCierre';
-import { fondoValido, fondoExcedeLoContado, retiroDelCierre, resumenDelRetiro, avisoDeQuienSeLoLleva } from './fondoQueSeDeja';
+import { FIN_DEL_CIERRE, fondoValido, fondoExcedeLoContado, retiroDelCierre, resumenDelRetiro, avisoDeQuienSeLoLleva } from './fondoQueSeDeja';
 import { ConteoDeTerminales } from './ConteoDeTerminales';
 import { faltanTerminales } from './terminalesPorContar';
 import { faltaDecidirPropinas } from './propinas';
@@ -73,7 +73,8 @@ export function RegistersTab({ cajaId, onCaja, onCajaNoEncontrada, cerrando = fa
     queueMicrotask(onCajaNoEncontrada);
     return null;
   }
-  const current = elegida ?? registers[0];
+  // Sin caja elegida, la que tiene turno: abrir en la principal cerrada escondía el turno vivo.
+  const current = elegida ?? registers.find((r) => r.openSessionId !== null) ?? registers[0];
 
   return (
     <VStack align="stretch" gap={4}>
@@ -410,7 +411,7 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
   const conAvisoDeAutorizacion = (descripcion: string | undefined) => {
     const g = estadoDeAsistencia.gate;
     if (autorizacion === null || !g || g.ready) return descripcion;
-    return `La entrada de ${g.person.name} quedará «sin salida». ${descripcion ?? 'No podrás modificarla después.'}`;
+    return `La entrada de ${g.person.name} quedará «sin salida». ${descripcion ?? FIN_DEL_CIERRE}`;
   };
   // Descartar una cuenta que se capturaba y nadie mandó. No bloquea el cierre (D-8).
   const descartarDelCierre = async (draftId: string, version: number) => {
@@ -723,7 +724,7 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
               </Box>
             )}
             <Textarea rows={2} resize="none" placeholder="Notas del cierre (opcional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-            <ListaDePendientes pendientes={pendientes} onIr={irAlPaso} vacio={null} titulo="Para cerrar falta" />
+            <ListaDePendientes pendientes={pendientes} onIr={irAlPaso} actual={paso} vacio={null} titulo="Para cerrar falta" />
           </>)}
 
           <HStack justify="space-between" gap={3} pt={3} borderTopWidth="1px" position="sticky" bottom={0} bg="bg" pb={2}>
@@ -790,8 +791,8 @@ function ComoVaElTurno({ session, pendientes, onCerrar }: { session: CashSession
 
 // ListaDePendientes: lo que impide cerrar, cada cosa con un toque que lleva a su paso. Es la misma
 // lista que apaga el botón (FR-030).
-function ListaDePendientes({ pendientes, onIr, vacio, titulo }: {
-  pendientes: PendienteDelCierre[]; onIr?: (p: PasoDelCierre) => void; vacio: string | null; titulo?: string;
+function ListaDePendientes({ pendientes, onIr, actual, vacio, titulo }: {
+  pendientes: PendienteDelCierre[]; onIr?: (p: PasoDelCierre) => void; actual?: PasoDelCierre; vacio: string | null; titulo?: string;
 }) {
   if (pendientes.length === 0) return vacio === null ? null : <Text color="fg.muted">{vacio}</Text>;
   return (
@@ -801,7 +802,7 @@ function ListaDePendientes({ pendientes, onIr, vacio, titulo }: {
         {pendientes.map((x) => (
           <HStack key={x.clave} justify="space-between" gap={2} flexWrap="wrap">
             <Text fontWeight="600">{x.texto}</Text>
-            {onIr && <Button size="sm" minH="48px" variant="outline" onClick={() => onIr(x.paso)}>Ir a {NOMBRES_DE_PASOS[x.paso]}</Button>}
+            {onIr && x.paso !== actual && <Button size="sm" minH="48px" variant="outline" onClick={() => onIr(x.paso)}>Ir a {NOMBRES_DE_PASOS[x.paso]}</Button>}
           </HStack>
         ))}
       </VStack>
@@ -976,7 +977,7 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
 
 // «Cerrar caja» confirma en una hoja de la app, no con el `confirm()` del navegador: el del sistema
 // se pinta fuera de la app con botones que en la tableta se aciertan al revés.
-export function BotonCerrarCaja({ nombre, disabled, loading, onCerrar, descripcion = 'No podrás modificarla después.' }: {
+export function BotonCerrarCaja({ nombre, disabled, loading, onCerrar, descripcion = FIN_DEL_CIERRE }: {
   nombre: string; disabled: boolean; loading: boolean; onCerrar: () => void;
   // Lo que se lee antes de confirmar: con cajón, el retiro y quién se lo lleva (spec 035).
   descripcion?: string;
