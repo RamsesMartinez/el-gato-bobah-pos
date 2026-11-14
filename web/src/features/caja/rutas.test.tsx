@@ -137,3 +137,17 @@ test('en pantalla ancha el panel del detalle dice qué corte muestra', async () 
   const panel = await screen.findByRole('region', { name: 'Detalle del corte' });
   expect(await within(panel).findByRole('heading', { name: 'Corte #410' })).toBeInTheDocument();
 });
+
+// «Luis → Luis» decía lo mismo dos veces y bajaba el renglón a tres líneas en la tableta (revisión de
+// la fase 4): si abrió y cerró la misma persona, su nombre va una vez.
+test('si abrió y cerró la misma persona, el Histórico la nombra una vez', async () => {
+  pinta('/caja/historico', undefined, [], {
+    items: [{ id: 410, registerName: 'Caja B', status: 'cerrada', openingCash: '500', currency: 'MXN', openedAt: '2026-11-12T14:10:00Z',
+      closedAt: '2026-11-13T04:41:00Z', openedByName: 'Luis', closedByName: 'Luis', totalDifference: '0', notes: null,
+      difference: { drawer: '0', otherMethods: '0', total: '0', drawerCovered: true } }],
+    total: 1, page: 0, pageSize: 20, periodDifference: '0',
+  });
+  expect(await screen.findByText('Caja B')).toBeInTheDocument();
+  expect(screen.queryByText(/Luis → Luis/)).toBeNull();
+  expect(screen.getByText('Luis')).toBeInTheDocument();
+});

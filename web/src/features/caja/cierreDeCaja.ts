@@ -5,9 +5,10 @@
 // cero. Un arqueo con un faltante inventado es peor que no tener arqueo: manda a buscar dinero que
 // está en el cajón, y desconfía del sistema para siempre.
 //
-// Un cero ESCRITO sí es válido: puede no haber efectivo. Lo que no vale es el campo en blanco.
+// Un cero ESCRITO sí es válido: puede no haber efectivo. Lo que no vale es el campo en blanco, ni un
+// texto que no es un monto: «1,200» se mandaba como $0.
 
-import { round2 } from '../../domain/numeros';
+import { montoTecleado, round2 } from '../../domain/numeros';
 import type { ResultadoDelConteo } from './conteo';
 
 export interface MetodoPorContar {
@@ -46,8 +47,7 @@ export function faltanPorContar(
 ): MetodoPorContar[] {
   return totales.filter((t) => {
     if (!t.requiresEntry) return false;
-    const v = capturado[String(t.methodId)];
-    return v === undefined || v.trim() === '';
+    return montoTecleado(capturado[String(t.methodId)] ?? '') === undefined;
   });
 }
 
@@ -132,34 +132,10 @@ export function diferenciasDelCierre(
   return { porMetodo, total, completo };
 }
 
-// Las etiquetas de los campos del cierre. Las usan los campos Y el aviso que lleva a ellos: si una
-// cambiara sola, el aviso dejaría de encontrar su campo sin que nada fallara.
+// Las etiquetas de los campos del cierre: las usan los campos y las pruebas que los buscan.
 export const etiquetaDeclarado = (metodo: string) => `Declarado de ${metodo}`;
 export const etiquetaTerminal = (terminal: string) => `Total del corte de ${terminal}`;
 export const ETIQUETA_FONDO = 'Se queda de fondo';
-
-// Un faltante del cierre y el campo al que lleva: la etiqueta de su campo, o 'cajon', que no es un
-// campo sino la hoja de conteo.
-export interface FaltanteDelCierre {
-  texto: string;
-  campo: string;
-}
-
-// faltantesDelCierre arma el aviso de lo que falta capturar, en el orden en que se ve en pantalla.
-// Era una lista de texto y el equipo no supo dónde capturar (#251, 7-nov-2026).
-export function faltantesDelCierre({ cajon, metodos, terminales, fondo }: {
-  cajon: boolean;
-  metodos: MetodoPorContar[];
-  terminales: string[];
-  fondo: boolean;
-}): FaltanteDelCierre[] {
-  return [
-    ...(cajon ? [{ texto: 'el cajón', campo: 'cajon' }] : []),
-    ...metodos.map((m) => ({ texto: m.name, campo: etiquetaDeclarado(m.name) })),
-    ...terminales.map((t) => ({ texto: t, campo: etiquetaTerminal(t) })),
-    ...(fondo ? [{ texto: 'el fondo que se queda', campo: ETIQUETA_FONDO }] : []),
-  ];
-}
 
 // asistenciaDelCierre traduce el aviso de asistencia a un pendiente (#290, FR-031): el aviso ya no
 // esconde el cierre, solo lo bloquea mientras quien abrió no marque su salida o alguien autorice.
@@ -194,6 +170,9 @@ export function pendientesDelCierre(e: {
   fondo: boolean;
   quien: boolean;
   fondoExcedeLoContado: boolean;
+  // explicacionAMedias: motivo sin nota o nota sin motivo. Una explicación es opcional, pero a medias
+  // no se manda y quien cierra cree que la dejó.
+  explicacionAMedias: boolean;
 }): PendienteDelCierre[] {
   const p: PendienteDelCierre[] = [];
   if (e.asistencia === 'cargando') p.push({ clave: 'asistencia', texto: 'Revisando la asistencia de quien abrió', paso: 1 });
@@ -207,6 +186,7 @@ export function pendientesDelCierre(e: {
   if (e.fondo) p.push({ clave: 'fondo', texto: 'Escribir el fondo que se queda', paso: 4 });
   if (e.quien) p.push({ clave: 'quien', texto: 'Elegir quién se lleva el retiro', paso: 4 });
   if (e.fondoExcedeLoContado) p.push({ clave: 'fondo-excede', texto: 'El fondo no puede ser mayor que lo contado', paso: 4 });
+  if (e.explicacionAMedias) p.push({ clave: 'explicacion', texto: 'Termina la explicación: elige qué pasó y escríbelo', paso: 4 });
   return p;
 }
 

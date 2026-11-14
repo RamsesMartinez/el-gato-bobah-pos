@@ -440,7 +440,7 @@ export function HistoryTab({ corteId, onCorte }: { corteId: number | null; onCor
                       cada corte para saber cuál era (lo midió la e2e de anchos en 1366). */}
                   <Text fontWeight="600">#{r.id} · {r.registerName} · {r.status === 'abierta' ? 'Abierta' : 'Cerrada'}</Text>
                   <Text fontSize="sm" color="fg.muted">
-                    {horaNegocio.fechaYHora(r.openedAt)} · {r.openedByName}{r.closedByName ? ` → ${r.closedByName}` : ''}
+                    {horaNegocio.fechaYHora(r.openedAt)} · {quienAbrioYCerro(r.openedByName, r.closedByName)}
                   </Text>
                 </Table.Cell>
               ) : (<>
@@ -451,7 +451,7 @@ export function HistoryTab({ corteId, onCorte }: { corteId: number | null; onCor
                     {r.status === 'abierta' ? 'Abierta' : 'Cerrada'}
                   </Badge>
                 </Table.Cell>
-                <Table.Cell fontSize="sm">{r.openedByName}{r.closedByName ? ` → ${r.closedByName}` : ''}</Table.Cell>
+                <Table.Cell fontSize="sm">{quienAbrioYCerro(r.openedByName, r.closedByName)}</Table.Cell>
               </>)}
               <Table.Cell>
                 <DiferenciaDeLaFila fila={r} />
@@ -493,6 +493,12 @@ export function HistoryTab({ corteId, onCorte }: { corteId: number | null; onCor
       <SessionDetailDialog id={detailId} onClose={() => setDetailId(null)} onAbrirCorte={setDetailId} />
     </VStack>
   );
+}
+
+// quienAbrioYCerro nombra una sola vez a quien abrió y cerró: «Luis → Luis» bajaba el renglón a otra
+// línea sin decir nada nuevo.
+function quienAbrioYCerro(abrio: string, cerro: string | null | undefined): string {
+  return cerro && cerro !== abrio ? `${abrio} → ${cerro}` : abrio;
 }
 
 // Los controles del histórico: un rango opcional de días y la página. Van ARRIBA de la lista y en un

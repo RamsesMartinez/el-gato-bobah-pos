@@ -8,7 +8,7 @@ import { posApi } from '../../api/pos';
 import { descartarCuenta } from '../pos/descartarCuenta';
 import type { AccountItem } from '../../types/pos';
 import { ESTADO, nombreDeCuenta } from '../../domain/cuentas';
-import { Box, Text, Button, VStack, HStack, Table, Textarea, Center, Spinner, Stat, Badge, SimpleGrid, Grid } from '@chakra-ui/react';
+import { Box, Text, Button, Stack, VStack, HStack, Table, Textarea, Center, Spinner, Stat, Badge, SimpleGrid, Grid } from '@chakra-ui/react';
 import { useAnchoMinimo, ANCHO_2K, ANCHO_PC, desde } from '../../hooks/useAnchoMinimo';
 import { LuArrowLeftRight, LuChevronDown, LuChevronUp, LuChevronLeft, LuChevronRight, LuCheck, LuLock } from 'react-icons/lu';
 import { InfoButton } from '../../components/InfoButton';
@@ -54,6 +54,9 @@ export function RegistersTab({ cajaId, onCaja, onCajaNoEncontrada, cerrando = fa
 }) {
   const lado = useAnchoMinimo(ANCHO_2K);
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });
+  // El resumen tras cerrar vive aquí y no en el panel: en 2K, salir del cierre cambia del panel único a
+  // la cuadrícula, el panel se vuelve a montar y el resumen se perdía.
+  const [closed, setClosed] = useState<CashSession | null>(null);
   // Una caja sin arqueo no tiene turno que abrir ni contar: aquí solo se vería «Cerrada» para siempre.
   const registers = cajasConTurno(data?.items ?? []);
   // Selección derivada: sin elección explícita (o si la caja elegida desaparece) cae en la primera
@@ -74,8 +77,9 @@ export function RegistersTab({ cajaId, onCaja, onCajaNoEncontrada, cerrando = fa
 
   return (
     <VStack align="stretch" gap={4}>
-      {/* Selector de cajas: chip por caja con su estado (abierta/cerrada). */}
-      <HStack gap={2} flexWrap="wrap">
+      {/* Selector de cajas: chip por caja con su estado. Mientras se cierra no se pinta: le quitaba ~60 px
+          al paso en 600 de alto, y «Volver al turno» ya está en los pasos. */}
+      {!cerrando && <HStack gap={2} flexWrap="wrap">
         {registers.map((r) => (
           <Button key={r.id} size="sm" minH="44px" variant={current.id === r.id ? 'solid' : 'outline'}
             colorPalette={current.id === r.id ? undefined : 'gray'} onClick={() => onCaja(r.id)}>
@@ -85,22 +89,24 @@ export function RegistersTab({ cajaId, onCaja, onCajaNoEncontrada, cerrando = fa
             </Badge>
           </Button>
         ))}
-      </HStack>
+      </HStack>}
 
       {/* En 2K las cajas abiertas van lado a lado, cada una con su turno (#290, FR-036). */}
-      {lado && !cerrando && openRegisters.length > 1 ? (
+      {/* Solo si la elegida está abierta: una caja cerrada no está en la cuadrícula y no se podía abrir. */}
+      {lado && !cerrando && openRegisters.length > 1 && current.openSessionId !== null ? (
         <SimpleGrid columns={2} gap={6}>
           {openRegisters.map((r) => (
             <Box key={r.id} borderWidth="1px" borderRadius="lg" p={4} minW={0}>
               <RegisterPanel register={r} openRegisters={openRegisters} cerrando={false}
-                onCerrando={(v) => onCerrando?.(r.id, v)} />
+                onCerrando={(v) => onCerrando?.(r.id, v)} onCerrado={setClosed} />
             </Box>
           ))}
         </SimpleGrid>
       ) : (
         <RegisterPanel register={current} openRegisters={openRegisters} cerrando={cerrando}
-          onCerrando={(v) => onCerrando?.(current.id, v)} />
+          onCerrando={(v) => onCerrando?.(current.id, v)} onCerrado={setClosed} />
       )}
+      <ResumenDelCierre closed={closed} onClose={() => setClosed(null)} />
     </VStack>
   );
 }
@@ -122,6 +128,7 @@ interface BorradorDelCierre {
   decisionPropinas: TipsDecision | null;
   paso: PasoDelCierre;
   visitados: PasoDelCierre[];
+  explicacion: { reason: string; note: string };
 }
 
 // leerBorrador: lo capturado en este aparato para este turno. El almacenamiento del navegador puede no
@@ -135,12 +142,12 @@ function leerBorrador(clave: string): Partial<BorradorDelCierre> {
   }
 }
 
-function RegisterPanel({ register, openRegisters, cerrando, onCerrando }: {
+function RegisterPanel({ register, openRegisters, cerrando, onCerrando, onCerrado }: {
   register: CashRegister; openRegisters: CashRegister[];
-  cerrando: boolean; onCerrando: (v: boolean) => void;
+  cerrando: boolean; onCerrando: (v: boolean) => void; onCerrado: (s: CashSession) => void;
 }) {
   const qc = useQueryClient();
-  const { data: session, isLoading } = useQuery({
+  const { data: session, isLoading, isSuccess } = useQuery({
     queryKey: ['cash', 'current', register.id],
     queryFn: () => backofficeApi.cashCurrent(register.id),
   });
@@ -152,7 +159,6 @@ function RegisterPanel({ register, openRegisters, cerrando, onCerrando }: {
     queryFn: () => backofficeApi.cashPendingExpenses(register.id),
     enabled: !session && contando && register.countsCash !== false,
   });
-  const [closed, setClosed] = useState<CashSession | null>(null); // resumen tras cerrar
   // Apertura que no coincide con el cierre anterior: se guarda el conteo y se pide el motivo.
   const [aperturaPendiente, setAperturaPendiente] = useState<AperturaInput | null>(null);
   const asistencia = useQuery({
@@ -170,10 +176,16 @@ function RegisterPanel({ register, openRegisters, cerrando, onCerrando }: {
   const actualizarAsistencia = () => qc.invalidateQueries({ queryKey: ['cash', 'attendance', register.id] });
 
   // UN BORRADOR DE UN TURNO QUE YA NO ESTÁ ABIERTO SE DESCARTA AVISANDO (#290, FR-032): otra tableta
-  // cerró la caja mientras aquí se contaba. Sin el aviso, lo capturado desaparecería sin explicación.
-  const sinTurno = !isLoading && !session;
+  // cerró la caja mientras aquí se contaba. Solo con la respuesta del servidor: una consulta que falló
+  // por la red no dice que la caja se cerró, y el borrador existe justo para ese caso.
+  const sinTurno = isSuccess && !session;
+  // La dirección del cierre de una caja sin turno vuelve a la caja: si no, el turno que se abra
+  // después entraría directo al asistente de cierre.
   useEffect(() => {
-    if (!sinTurno || closed !== null) return;
+    if (cerrando && sinTurno) onCerrando(false);
+  }, [cerrando, sinTurno, onCerrando]);
+  useEffect(() => {
+    if (!sinTurno) return;
     try {
       const viejas = Object.keys(localStorage).filter((k) => k.startsWith(prefijoDelBorrador(register.id)));
       if (viejas.length === 0) return;
@@ -182,7 +194,7 @@ function RegisterPanel({ register, openRegisters, cerrando, onCerrando }: {
     } catch {
       // Sin almacenamiento no hay borrador que descartar.
     }
-  }, [sinTurno, closed, register.id]);
+  }, [sinTurno, register.id]);
 
   const openMut = useMutation({
     mutationFn: (apertura: AperturaInput) => backofficeApi.cashOpen(register.id, apertura),
@@ -215,7 +227,7 @@ function RegisterPanel({ register, openRegisters, cerrando, onCerrando }: {
         <TurnoAbierto key={session.id} register={register} session={session} openRegisters={openRegisters}
           estadoDeAsistencia={estadoDeAsistencia} onActualizarAsistencia={() => void actualizarAsistencia()}
           cerrando={cerrando} onCerrando={onCerrando}
-          onCerrado={(s) => { setClosed(s); onCerrando(false); invalidate(); }} />
+          onCerrado={(s) => { onCerrado(s); onCerrando(false); invalidate(); }} />
       )}
 
       {!session && (
@@ -236,8 +248,14 @@ function RegisterPanel({ register, openRegisters, cerrando, onCerrando }: {
         onVolver={() => { setAperturaPendiente(null); setContando(true); }}
         onConfirmar={(motivo, nota) => aperturaPendiente && openMut.mutate({ ...aperturaPendiente, openingReason: motivo, openingReasonNote: nota || undefined })} />
 
-      {/* Resumen tras cerrar: la misma cifra que la lista y el detalle (#290). */}
-      <DialogRoot open={closed !== null} onOpenChange={(e) => { if (!e.open) setClosed(null); }} placement="center" size="md">
+    </>
+  );
+}
+
+// ResumenDelCierre: lo que quedó al cerrar, con la misma cifra que la lista y el detalle (#290).
+function ResumenDelCierre({ closed, onClose }: { closed: CashSession | null; onClose: () => void }) {
+  return (
+      <DialogRoot open={closed !== null} onOpenChange={(e) => { if (!e.open) onClose(); }} placement="center" size="md">
         <DialogBackdrop />
         <DialogContent>
           <DialogHeader><DialogTitle>Caja cerrada</DialogTitle></DialogHeader>
@@ -265,7 +283,6 @@ function RegisterPanel({ register, openRegisters, cerrando, onCerrando }: {
           </DialogBody>
         </DialogContent>
       </DialogRoot>
-    </>
   );
 }
 
@@ -301,7 +318,7 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
   const [decisionPropinas, setDecisionPropinas] = useState<TipsDecision | null>(inicial.decisionPropinas ?? null);
   const [paso, setPaso] = useState<PasoDelCierre>(inicial.paso ?? 1);
   const [visitados, setVisitados] = useState<PasoDelCierre[]>(inicial.visitados ?? [1]);
-  const [explicacion, setExplicacion] = useState<{ reason: string; note: string }>({ reason: '', note: '' });
+  const [explicacion, setExplicacion] = useState<{ reason: string; note: string }>(inicial.explicacion ?? { reason: '', note: '' });
   const [contando, setContando] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [repartiendo, setRepartiendo] = useState(false);
@@ -310,15 +327,32 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
   const [autorizacion, setAutorizacion] = useState<string | null>(null);
 
   // EL BORRADOR SE GUARDA EN EL APARATO (#290, FR-032): una recarga o la tableta suspendida no pierden
-  // el conteo. Es por aparato, como el ticket del POS; no se sincroniza entre tabletas.
+  // el conteo. Es por aparato, como el ticket del POS; no se sincroniza entre tabletas. Solo si se
+  // capturó algo: una tableta que solo miraba el turno recibía después el aviso de «se descartó lo
+  // que se había capturado aquí».
+  const capturoAlgo = Object.values(declared).some((v) => v.trim() !== '') || conteoDelCierre !== null
+    || Object.values(conteoTerminales).some((v) => v.trim() !== '') || fondoTecleado !== null || !retirar
+    || quienTocado !== null || notes !== '' || decisionPropinas !== null || explicacion.reason !== '' || explicacion.note !== '';
   useEffect(() => {
     try {
-      const b: BorradorDelCierre = { declared, conteoDelCierre, conteoTerminales, fondoTecleado, retirar, quienTocado, notes, decisionPropinas, paso, visitados };
+      if (!capturoAlgo) { localStorage.removeItem(clave); return; }
+      const b: BorradorDelCierre = { declared, conteoDelCierre, conteoTerminales, fondoTecleado, retirar, quienTocado, notes, decisionPropinas, paso, visitados, explicacion };
       localStorage.setItem(clave, JSON.stringify(b));
     } catch {
       // Sin almacenamiento el cierre sigue funcionando; solo no sobrevive a una recarga.
     }
-  }, [clave, declared, conteoDelCierre, conteoTerminales, fondoTecleado, retirar, quienTocado, notes, decisionPropinas, paso, visitados]);
+  }, [capturoAlgo, clave, declared, conteoDelCierre, conteoTerminales, fondoTecleado, retirar, quienTocado, notes, decisionPropinas, paso, visitados, explicacion]);
+  // Los borradores de turnos anteriores de esta caja se van sin avisar: ese turno ya cerró y lo que
+  // quedó ahí no se puede usar. Si se quedaban, el aviso de «otra tableta» salía en un cierre propio.
+  useEffect(() => {
+    try {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith(prefijoDelBorrador(register.id)) && k !== clave)
+        .forEach((k) => localStorage.removeItem(k));
+    } catch {
+      // Sin almacenamiento no hay borradores viejos.
+    }
+  }, [register.id, clave]);
 
   const cajon = session.drawer ?? null;
   // QUIÉN EXIGE QUÉ LO DICE EL SERVIDOR (`requiresEntry`, `requiresCount`). Deducirlo de si el
@@ -337,13 +371,25 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
   const yo = user?.id ?? null;
   const personas = session.tipsPending?.people ?? [];
   // Por omisión se lo lleva quien cierra, si está en la lista; si no, hay que elegir.
-  const quien = quienTocado ?? (personas.some((p) => p.id === yo) ? yo : null);
+  // Lo elegido antes (quizá restaurado del borrador) vale solo si esa persona sigue en la lista.
+  const quien = (quienTocado !== null && personas.some((p) => p.id === quienTocado) ? quienTocado : null)
+    ?? (personas.some((p) => p.id === yo) ? yo : null);
   const contadoAlCerrar = conteoDelCierre?.total ?? null;
   const retiro = retirar ? retiroDelCierre(contadoAlCerrar, fondo) : 0;
   const faltaFondo = cajon !== null && retirar && !fondoValido(fondo);
   const faltaQuien = cajon !== null && retirar && (retiro ?? 0) > 0 && quien === null;
   const avisoQuien = avisoDeQuienSeLoLleva(faltaQuien, retiro, session.currency);
   const terminalesSinCifra = faltanTerminales(session.terminalsToCount ?? [], conteoTerminales);
+  // LA EXPLICACIÓN AL CERRAR (#290, P1; FR-033): para quien cierra viendo el esperado, configure o no la
+  // caja, y solo si la diferencia pasa la tolerancia. Con arqueo ciego no se pide ni se insinúa: el corte queda «por explicar».
+  const { data: ajustesDeCierre } = useQuery({ queryKey: ['cash', 'close-settings'], queryFn: backofficeApi.cashCloseSettings });
+  const difCajon = diferenciaDelCajon(cajon, conteoDelCierre);
+  const totalDelArqueo = diferencias.completo && !(cajon !== null && difCajon === undefined)
+    ? round2(diferencias.total + (difCajon ?? 0)) : null;
+  const pideExplicacion = !session.blind && totalDelArqueo !== null
+    && ajustesDeCierre !== undefined && Math.abs(totalDelArqueo) > Number(ajustesDeCierre.tolerance);
+  // Explicar es opcional, pero a medias (motivo sin nota o nota sin motivo) no se manda: es pendiente.
+  const explicacionAMedias = pideExplicacion && (explicacion.reason !== '') !== (explicacion.note.trim() !== '');
   const pendientes = pendientesDelCierre({
     asistencia: asistenciaDelCierre(estadoDeAsistencia, autorizacion),
     pedidosSinEntregar: session.pending.length,
@@ -355,16 +401,8 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
     fondo: faltaFondo,
     quien: faltaQuien,
     fondoExcedeLoContado: retirar && fondoExcedeLoContado(fondo, contadoAlCerrar),
+    explicacionAMedias,
   });
-
-  // LA EXPLICACIÓN AL CERRAR (#290, P1): solo para quien ve el esperado, y solo si la diferencia pasa
-  // la tolerancia. Con arqueo ciego no se pide ni se insinúa: el corte queda «por explicar».
-  const { data: ajustesDeCierre } = useQuery({ queryKey: ['cash', 'close-settings'], queryFn: backofficeApi.cashCloseSettings });
-  const difCajon = diferenciaDelCajon(cajon, conteoDelCierre);
-  const totalDelArqueo = diferencias.completo && !(cajon !== null && difCajon === undefined)
-    ? round2(diferencias.total + (difCajon ?? 0)) : null;
-  const pideExplicacion = !session.blind && can('cash.configure', user) && totalDelArqueo !== null
-    && ajustesDeCierre !== undefined && Math.abs(totalDelArqueo) > Number(ajustesDeCierre.tolerance);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
   const navigate = useNavigate();
@@ -410,7 +448,8 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
       const d: Record<string, number> = {};
       Object.entries(declared).forEach(([k, v]) => {
         if (delCajon.has(Number(k))) return;
-        d[k] = montoTecleado(v) ?? 0;
+        const monto = montoTecleado(v);
+        if (monto !== undefined) d[k] = monto;
       });
       const porPiezas = conteoDelCierre !== null && 'counts' in conteoDelCierre ? conteoDelCierre : null;
       const aMano = conteoDelCierre !== null && !('counts' in conteoDelCierre) ? conteoDelCierre : null;
@@ -427,7 +466,8 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
         terminalCounts: Object.fromEntries((session.terminalsToCount ?? []).map((t) => [String(t.terminalId), Number(conteoTerminales[t.terminalId])])),
         authorizedClose: autorizacion !== null ? { reason: autorizacion } : undefined,
         explanation: pideExplicacion && explicacion.reason !== '' && explicacion.note.trim() !== ''
-          ? { reason: explicacion.reason, note: explicacion.note.trim() } : undefined,
+          // Un salto de línea es un carácter de control que el servidor rechaza: tumbaba el cierre entero.
+          ? { reason: explicacion.reason, note: explicacion.note.replace(/\s+/g, ' ').trim() } : undefined,
       });
     },
     onSuccess: (s) => {
@@ -524,7 +564,7 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
             <VoidedPaymentsList payments={session.voidedPayments} currency={session.currency} zona={horaNegocio.zona} />
           </VStack>
           <Box position={{ lg: 'sticky' }} top={0} minW={0}>
-            <ComoVaElTurno session={session} pendientes={pendientes.length} onCerrar={() => { irAlPaso(1); onCerrando(true); }} />
+            <ComoVaElTurno session={session} pendientes={pendientes.filter((x) => x.paso === 1).length} onCerrar={() => { irAlPaso(1); onCerrando(true); }} />
           </Box>
         </Grid>
         {sheets}
@@ -540,12 +580,16 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
     <>
       <Grid templateColumns={{ base: '1fr', lg: '220px minmax(0, 1fr)' }}
         css={{ [desde(ANCHO_PC)]: { gridTemplateColumns: '300px minmax(0, 1fr)' } }} gap={4} alignItems="start">
-        <VStack as="nav" aria-label="Pasos del cierre" align="stretch" gap={1} position={{ lg: 'sticky' }} top={0}>
-          <Text fontWeight="800" mb={1}>Cerrar {register.name}</Text>
+        {/* Debajo de 1024 px los pasos van en fila: apilados, en la tableta vertical el paso empezaba a la
+            mitad de la pantalla. */}
+        <Stack as="nav" aria-label="Pasos del cierre" direction={{ base: 'row', lg: 'column' }} align="stretch" gap={1}
+          position={{ lg: 'sticky' }} top={0} overflowX={{ base: 'auto', lg: 'visible' }}>
+          <Text fontWeight="800" mb={1} display={{ base: 'none', lg: 'block' }}>Cerrar {register.name}</Text>
           {PASOS.map((p) => {
             const estado = estadoDelPaso(pendientes, p, visitados.includes(p));
             return (
               <Button key={p} variant={p === paso ? 'subtle' : 'ghost'} justifyContent="flex-start" h="auto" minH="56px" py={2}
+                flex={{ base: '1 0 auto', lg: 'none' }}
                 aria-current={p === paso ? 'step' : undefined} onClick={() => irAlPaso(p)}>
                 <HStack gap={3} align="center" w="100%">
                   <Center w="32px" h="32px" borderRadius="full" flexShrink={0} fontWeight="800"
@@ -561,8 +605,8 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
               </Button>
             );
           })}
-          <Button variant="ghost" minH="48px" mt={2} onClick={() => onCerrando(false)}>Volver al turno</Button>
-        </VStack>
+          <Button variant="ghost" minH="48px" mt={{ lg: 2 }} flexShrink={0} onClick={() => onCerrando(false)}>Volver al turno</Button>
+        </Stack>
 
         <VStack align="stretch" gap={4} minW={0} css={{ [desde(ANCHO_PC)]: { maxWidth: '1100px' } }}>
           <Text fontSize="xl" fontWeight="800">{NOMBRES_DE_PASOS[paso]}</Text>
@@ -571,7 +615,9 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
             <AvisoDelCierre estado={estadoDeAsistencia} autorizacion={autorizacion}
               onAutorizar={setAutorizacion} onQuitarAutorizacion={() => setAutorizacion(null)}
               onActualizar={onActualizarAsistencia} />
-            <ListaDePendientes pendientes={pendientes.filter((x) => x.paso === 1)} vacio="Nada pendiente: sigue con el cajón." />
+            {/* Cada pendiente de este paso ya tiene su bloque con su acción: repetirlos en una lista eran
+                tres bloques para dos asuntos. La lista con «Ir a…» va en el último paso. */}
+            {pendientes.every((x) => x.paso !== 1) && <Text color="fg.muted">Nada pendiente: sigue con el cajón.</Text>}
             <CuentasDelCierre pending={session.pending} owing={session.owing ?? []} cuentas={session.liveAccounts ?? []}
               onAbrir={(ruta) => navigate(ruta)} onDescartar={descartarDelCierre} onCancelar={cancelarDelCierre}
               onCancelarResto={(id, motivo) => cancelarDelCierre(id, motivo, true)} />
@@ -678,18 +724,21 @@ function TurnoAbierto({ register, session, openRegisters, estadoDeAsistencia, on
             )}
             <Textarea rows={2} resize="none" placeholder="Notas del cierre (opcional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
             <ListaDePendientes pendientes={pendientes} onIr={irAlPaso} vacio={null} titulo="Para cerrar falta" />
-            <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
-              descripcion={conAvisoDeAutorizacion(cajon ? resumenDelRetiro({ retirar, retiro, quien: personas.find((p) => p.id === quien)?.name ?? null,
-                contado: contadoAlCerrar, currency: session.currency }) : undefined)}
-              disabled={pendientes.length > 0}
-              onCerrar={() => closeMut.mutate()} />
           </>)}
 
           <HStack justify="space-between" gap={3} pt={3} borderTopWidth="1px" position="sticky" bottom={0} bg="bg" pb={2}>
             <Button minH="52px" variant="outline" disabled={paso === 1} onClick={() => irAlPaso((paso - 1) as PasoDelCierre)}>
               <LuChevronLeft /> Atrás
             </Button>
-            {!ultimo && (
+            {/* En el último paso, «Cerrar caja» va aquí, siempre a la vista: al final del contenido quedaba
+                varias pantallas abajo en 600 px de alto. */}
+            {ultimo ? (
+              <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
+                descripcion={conAvisoDeAutorizacion(cajon ? resumenDelRetiro({ retirar, retiro, quien: personas.find((p) => p.id === quien)?.name ?? null,
+                  contado: contadoAlCerrar, currency: session.currency }) : undefined)}
+                disabled={pendientes.length > 0}
+                onCerrar={() => closeMut.mutate()} />
+            ) : (
               <Button minH="52px" colorPalette="brand" onClick={() => irAlPaso((paso + 1) as PasoDelCierre)}>
                 Siguiente: {NOMBRES_DE_PASOS[(paso + 1) as PasoDelCierre]} <LuChevronRight />
               </Button>
