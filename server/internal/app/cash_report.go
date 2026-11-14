@@ -44,6 +44,10 @@ func (s *CashReportService) SessionHistoryFor(ctx context.Context, f domain.Sess
 		return nil, 0, err
 	}
 	ciego := !canSeeArqueo && s.arqueoCiego(ctx)
+	correcciones, err := adjustmentsBySession(ctx, q, rows)
+	if err != nil {
+		return nil, 0, err
+	}
 	out := make([]SessionHistoryRow, len(rows))
 	for i, r := range rows {
 		out[i] = SessionHistoryRow{
@@ -63,21 +67,98 @@ func (s *CashReportService) SessionHistoryFor(ctx context.Context, f domain.Sess
 			out[i].ArqueoHidden = true
 			continue
 		}
-		// La lista trae las diferencias ya sumadas por lado del cajón; domain.CutDifference no
-		// necesita los renglones, solo saber de qué lado cae cada peso.
-		methods := []domain.MethodDiff{
-			{Declared: r.OffDrawerDifference},
-			{Declared: r.OnDrawerDifference, TouchesDrawer: true},
-		}
-		var drawer *domain.DrawerCount
-		if r.DrawerCounted != nil {
-			drawer = &domain.DrawerCount{Expected: r.DrawerExpected, Counted: *r.DrawerCounted}
-		}
-		diff := domain.CutDifference(methods, drawer)
-		out[i].Difference, out[i].TotalDifference = &diff, &diff.Total
+		diff, corregido := historyRowDifference(r, correcciones[r.ID])
+		out[i].Difference, out[i].TotalDifference, out[i].Adjusted = &diff, &diff.Total, corregido
 		out[i].ExplainedByNext = explanationOf(&diff, r.NextID, r.NextOpeningReason, r.NextOpeningReasonNote)
 	}
 	return out, total, nil
+}
+
+// historyRowDifference es la diferencia de un renglón del Histórico con domain.CutDifference, ya con
+// el conteo corregido si hay una corrección vigente. La lista trae las diferencias sumadas por lado
+// del cajón: la regla no necesita los renglones, solo saber de qué lado cae cada peso.
+func historyRowDifference(r db.ListSessionsRow, adjs []domain.Adjustment) (domain.CutDiff, bool) {
+	methods := []domain.MethodDiff{
+		{Declared: r.OffDrawerDifference},
+		{Declared: r.OnDrawerDifference, TouchesDrawer: true},
+	}
+	var drawer *domain.DrawerCount
+	if r.DrawerCounted != nil {
+		drawer = &domain.DrawerCount{Expected: r.DrawerExpected, Counted: *r.DrawerCounted}
+	}
+	eff := effectiveOf(adjs)
+	if drawer != nil && eff != nil && eff.DrawerCounted != nil {
+		drawer.Counted = *eff.DrawerCounted
+	}
+	return domain.CutDifference(methods, drawer), eff != nil
+}
+
+// adjustmentsBySession trae las correcciones de los cortes cerrados de una página, en una consulta.
+func adjustmentsBySession(ctx context.Context, q *db.Queries, rows []db.ListSessionsRow) (map[int64][]domain.Adjustment, error) {
+	ids := make([]int64, 0, len(rows))
+	for _, r := range rows {
+		if r.Status == db.SessionStatusCerrada {
+			ids = append(ids, r.ID)
+		}
+	}
+	out := map[int64][]domain.Adjustment{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	adjs, err := q.ListAdjustmentsForSessions(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range adjs {
+		out[a.SessionID] = append(out[a.SessionID], domain.Adjustment{ID: a.ID, Kind: a.Kind, After: a.AfterAmount, ReversesID: a.ReversesID})
+	}
+	return out, nil
+}
+
+// SessionPeriodDifference suma los sobrantes y faltantes de TODOS los cortes cerrados del filtro, ya
+// corregidos (#290, P4): no es venta ni gasto, y no depende de la página que se esté viendo. Con
+// arqueo ciego, quien no configura la caja no la recibe: incluiría el último cierre de cada caja.
+//
+// ponytail: lee todos los cortes del filtro en una consulta; son pocos al día y el Histórico casi
+// siempre se filtra por fechas. Si un filtro abierto se vuelve lento, el siguiente paso es sumar en
+// SQL con las mismas piezas.
+func (s *CashReportService) SessionPeriodDifference(ctx context.Context, f domain.SessionHistoryFilter, canSeeArqueo bool) (*decimal.Decimal, error) {
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
+	if !canSeeArqueo && s.arqueoCiego(ctx) {
+		return nil, nil
+	}
+	day := func(t *time.Time) pgtype.Date {
+		if t == nil {
+			return pgtype.Date{}
+		}
+		return pgtype.Date{Time: *t, Valid: true}
+	}
+	q := s.store.QC(ctx)
+	desde, hasta := day(f.From), day(f.To)
+	total, err := q.CountSessions(ctx, db.CountSessionsParams{Desde: desde, Hasta: hasta})
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.ListSessions(ctx, db.ListSessionsParams{Desde: desde, Hasta: hasta, Lim: int32(total), Off: 0})
+	if err != nil {
+		return nil, err
+	}
+	correcciones, err := adjustmentsBySession(ctx, q, rows)
+	if err != nil {
+		return nil, err
+	}
+	suma := decimal.Zero
+	for _, r := range rows {
+		if r.Status != db.SessionStatusCerrada {
+			continue
+		}
+		diff, _ := historyRowDifference(r, correcciones[r.ID])
+		suma = suma.Add(diff.Total)
+	}
+	suma = domain.Round2(suma)
+	return &suma, nil
 }
 
 // SessionDetail devuelve una sesión con sus totales GUARDADOS (snapshot al cerrar) y movimientos,
@@ -223,8 +304,19 @@ func (s *CashReportService) SessionDetailFor(ctx context.Context, id int64, canS
 		view.PreviousSessionID = &vecinos.PreviousID
 	}
 	if sess.Status == db.SessionStatusCerrada && !view.ArqueoHidden {
-		view.Difference = cutDifferenceOf(view.Totals, view.Drawer)
+		adjRows, err := s.store.QC(ctx).ListSessionAdjustments(ctx, sess.ID)
+		if err != nil {
+			return nil, err
+		}
+		view.Adjustments = adjustmentViews(adjRows)
+		view.Effective = effectiveOf(adjustmentsOf(adjRows))
+		view.Difference = cutDifferenceOf(view.Totals, withCorrectedCount(view.Drawer, view.Effective))
 		view.ExplainedByNext = explanationOf(view.Difference, vecinos.NextID, vecinos.NextOpeningReason, vecinos.NextOpeningReasonNote)
+	}
+	// Siempre arreglo: un turno abierto o un arqueo oculto no tienen correcciones a la vista, y un
+	// `null` donde la pantalla espera una lista la tumba sin un solo error en el servidor.
+	if view.Adjustments == nil {
+		view.Adjustments = []SessionAdjustmentView{}
 	}
 	return view, nil
 }

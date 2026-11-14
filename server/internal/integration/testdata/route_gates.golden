@@ -151,6 +151,8 @@ POST /api/v1/cash-sessions/close admin,gerente,cajero
 POST /api/v1/cash-sessions/movements admin,gerente,cajero
 POST /api/v1/cash-sessions/tips/payouts admin,gerente,cajero
 POST /api/v1/cash-sessions/transfer admin,gerente,cajero
+POST /api/v1/cash-sessions/{id}/adjustments admin,gerente
+POST /api/v1/cash-sessions/{id}/adjustments/{adjId}/reverse admin,gerente
 POST /api/v1/expense-categories admin,gerente
 POST /api/v1/expenses/ admin,gerente
 POST /api/v1/expenses/parse-doc admin,gerente

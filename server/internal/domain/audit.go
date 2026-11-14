@@ -51,6 +51,9 @@ var auditActions = []struct {
 	{"cash.closed_without_opener_clock_out", AuditGroupCash},
 	{"cash.movement", AuditGroupCash},
 	{"cash.movement_corrected", AuditGroupCash},
+	// #290: correcciones de un corte cerrado (spec 082, fase 3).
+	{"cash.session_adjusted", AuditGroupCash},
+	{"cash.session_adjustment_reversed", AuditGroupCash},
 	{"expense.created", AuditGroupCash},
 	{"expense.paid", AuditGroupCash},
 	{"expense.cancelled", AuditGroupCash},

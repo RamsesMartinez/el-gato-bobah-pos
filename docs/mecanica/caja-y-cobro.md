@@ -82,3 +82,18 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     un `left join lateral` por `register_id` y no con una ventana `lead`: la ventana corre después
     del filtro y del `limit`, y la última fila de cada página perdía su explicación. La nota viaja
     como `reasonNote`: el MCP borra las llaves `note`/`notes` por ser texto de terceros.
+- **Correcciones de un corte cerrado** (#290, spec 082, 0113). Cuatro cosas que no se ven:
+  - **Lo firmado no se escribe nunca.** `session_cash_counts`, `register_session_totals` y
+    `register_sessions.float_left` se quedan como al cerrar; la corrección vive en
+    `cash_session_adjustments` y la diferencia corregida se calcula al leer (`withCorrectedCount`,
+    `historyRowDifference`). Un reporte nuevo que lea el conteo directo reporta lo firmado, no lo
+    corregido: que pase por la misma función.
+  - **Un reverso solo revierte una corrección de SU corte y una vez**: la llave del reverso es
+    `(company_id, session_id, reverses_id)` y hay un índice único sobre `reverses_id`; dos tabletas
+    que revierten a la vez reciben 409 `ALREADY_REVERSED` la segunda. Revertir un reverso lo impide el
+    servicio (`domain.CanReverseAdjustment`), no la base.
+  - **Corregir el corte anterior no mueve el turno abierto de esa caja**: su esperado lo fijó su conteo
+    de apertura. Corregir el fondo es un dato del corte, no un cambio de lo que se abrió.
+  - **El correo del resumen diario sale al cerrar** y es una foto de lo firmado: no se reenvía al
+    corregir. Tras desplegar la 0113, el rollback es hacia adelante en cuanto hay correcciones (su
+    Down se niega).

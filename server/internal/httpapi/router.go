@@ -331,6 +331,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/tips", h.PendingTips)         // propina por entregar del turno (spec 032)
 					r.Post("/tips/payouts", h.PayoutTips) // repartirla entre una o varias personas
 					r.Post("/transfer", h.CashTransfer)   // traspaso entre dos cajas abiertas
+					// Corregir un corte cerrado y revertir una corrección (#290, fase 3): mueven la
+					// diferencia de un corte, como ajustar el arqueo.
+					r.With(RequirePermission(h.permissions, domain.PermCashAdjustCount)).Post("/{id}/adjustments", h.AdjustCashSession)
+					r.With(RequirePermission(h.permissions, domain.PermCashAdjustCount)).Post("/{id}/adjustments/{adjId}/reverse", h.ReverseCashSessionAdjustment)
 				})
 				// Listar cajas (para elegir dónde abrir/operar/pagar): el cajero la necesita.
 				r.With(RequirePermission(h.permissions, domain.PermCashOperate)).Get("/cash-registers", h.CashRegisters)

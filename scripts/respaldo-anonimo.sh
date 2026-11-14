@@ -198,6 +198,7 @@ update order_payment_voids set reason = 'motivo anonimizado', reference = null;
 update register_sessions        set notes   = null where notes   is not null;
 update register_sessions        set opening_reason_note = 'nota anonimizada' where opening_reason_note is not null;
 update session_cash_counts      set manual_reason = 'motivo anonimizado' where manual_reason is not null;
+update cash_session_adjustments set note = 'nota anonimizada';
 update cash_transfers           set note    = null where note    is not null;
 update register_cash_movements  set concept = 'concepto anonimizado';
 -- La propina entregada guarda copia del nombre de quien la recibió.
@@ -334,6 +335,7 @@ FUGAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "
        + (select count(*) from daily_summary_sends where last_error is not null)
        + (select count(*) from register_sessions where notes is not null or opening_reason_note <> 'nota anonimizada')
        + (select count(*) from session_cash_counts where manual_reason <> 'motivo anonimizado')
+       + (select count(*) from cash_session_adjustments where note <> 'nota anonimizada')
        + (select count(*) from cash_transfers where note is not null)
        + (select count(*) from register_cash_movements where concept <> 'concepto anonimizado' or recipient_name <> 'Usuario ' || recipient_user_id)
        + (select count(*) from stock_movements where reason is not null or note is not null)
