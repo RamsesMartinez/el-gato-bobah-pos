@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { ALTO, ANCHO } from './e2e/pantalla';
 
 // Los E2E corren contra el AMBIENTE DE PRUEBAS desplegado, no contra un build local.
 //
@@ -33,12 +34,12 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: {
     baseURL: BASE,
-    // La tableta real, no un escritorio: el presupuesto de 1024x600 es requisito funcional y varios
-    // defectos de esta pantalla solo se ven a ese ancho.
-    viewport: { width: 1024, height: 600 },
+    // El equipo de mostrador, no el monitor de quien programa: el presupuesto de 1280×854 es
+    // requisito funcional (constitución, «Restricciones del producto»; e2e/pantalla.ts).
+    viewport: { width: ANCHO, height: ALTO },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     ...devices['Desktop Chrome'],
   },
-  projects: [{ name: 'tableta', use: { viewport: { width: 1024, height: 600 } } }],
+  projects: [{ name: 'tableta', use: { viewport: { width: ANCHO, height: ALTO } } }],
 });

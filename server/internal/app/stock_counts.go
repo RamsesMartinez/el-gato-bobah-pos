@@ -625,6 +625,9 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 		if _, err := q.FinishStockCount(ctx, db.FinishStockCountParams{ID: countID, Status: "closed", ClosedBy: &userID}); err != nil {
 			return err
 		}
+		if err := evaluateCounted(ctx, q, countID, c.BranchID, userID); err != nil {
+			return err
+		}
 		// El costo de cada artículo contado, para que su faltante no cambie después; y las mermas por
 		// aprobar que este conteo ya reflejó (spec 039).
 		if err := q.SaveCountLineCosts(ctx, countID); err != nil {

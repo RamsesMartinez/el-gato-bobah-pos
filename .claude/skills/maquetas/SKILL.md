@@ -1,6 +1,6 @@
 ---
 name: "maquetas"
-description: "Genera 2 o 3 maquetas navegables a 1024×600 por cada pantalla nueva o cambiada del plan de la feature activa, las publica como páginas privadas, pide al dueño que elija una por pantalla y deja la decisión escrita en plan.md. Lo dispara el hook after_plan de spec-kit; también se puede invocar a mano."
+description: "Genera 2 o 3 maquetas navegables a 1280×854 por cada pantalla nueva o cambiada del plan de la feature activa, las publica como páginas privadas, pide al dueño que elija una por pantalla y deja la decisión escrita en plan.md. Lo dispara el hook after_plan de spec-kit; también se puede invocar a mano."
 argument-hint: "sin argumento = la feature activa | ruta a un plan.md"
 user-invocable: true
 disable-model-invocation: false
@@ -34,12 +34,18 @@ Por cada pantalla nueva o con disposición cambiada (no por cada texto que cambi
    opciones. Si solo hay una disposición razonable, haz una y dilo.
 2. **Navegables**: los toques principales cambian de paso (elegir persona → PIN → confirmación), con
    datos de ejemplo. Nada se conecta a la API.
-3. **Dentro de un marco fijo de 1024×600** (el presupuesto real de la constitución), con el riel
+3. **Dentro de un marco fijo de 1280×854** (el presupuesto real de la constitución desde el
+   2026-11-13), y la misma pantalla en 2K (2560×1440) como ampliación, con el riel
    lateral de 76 px cuando la pantalla vive dentro del POS. Controles ≥ 44 px, sin `<select>` ni
    `type=time` nativos, texto para quien opera. Una opción que viola eso no se presenta.
-4. **Con la apariencia real del POS**: colores y tipografía de `web/src/theme/ui.ts` y los
-   componentes que ya existen (`Picker`, `Page`, la hoja inferior). Una maqueta más bonita que el
-   producto vende algo que no se va a construir.
+4. **Con los componentes reales del POS, no con HTML plano**: un arnés de Vite aparte que no se
+   versiona (base `./`, sin PWA, la app real con `fetch` simulado y las pantallas cambiadas como
+   copias con variantes), recorrido con Playwright a 1280×854 y en 2K. Cada opción reporta su cifra
+   medida (renglones visibles sin desplazar, toques del caso común) contra la pantalla actual. Una
+   maqueta en HTML plano prometió 13 de 36 permisos a la vista donde la pantalla real enseñaba 7
+   (2026-11-07). Se publican **capturas paso a paso por opción**, no la app en vivo dentro de un
+   iframe: ese iframe no cargó en el visor (2026-11-08). Una maqueta más bonita que el producto vende
+   algo que no se va a construir.
 5. **Datos de ejemplo inventados.** Nunca nombres de empleados, ventas, costos ni proveedores reales:
    las páginas son privadas, pero se comparten.
 

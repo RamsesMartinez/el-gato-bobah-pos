@@ -669,3 +669,24 @@ desplazamiento automático al borde, que la página no se recorra después de so
 medir en Chromium táctil a 1024×600 contra el `make start` local (`web/e2e/lugares-para-contar.spec.ts`);
 jsdom mide todo en 0 px. La de soltar (#101) va con toques por CDP y mide el contenedor desde el
 `pointerup`: lo que se mueve antes es el desplazamiento automático, y eso sí es intencional.
+
+
+## N. Avisos de inventario (spec 084)
+
+Lo que estas pantallas podían decir que no es cierto: que se avisó a quien compra cuando nadie lo
+recibe, que un aviso lo reportó «el sistema» cuando lo reportó una persona, que queda más tiempo para
+deshacer del que el servidor acepta, o que hay avisos sin leer que ya se leyeron.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+| --- | --- | --- | --- | --- |
+| N1 | El cajero reporta «se acabó» | La campana de la gerente sube sin recargar en menos de 5 s | `notificaciones.spec.ts › el cajero avisa` | Navegador, dos sesiones contra la API local: 101–121 ms |
+| N2 | Quien reporta | No recibe la franja de su propio aviso; el aviso queda a su nombre aunque lo haya abierto el trigger | `stock_out_test.go › con la alerta encendida`, `notificaciones.spec.ts` | Postgres; navegador |
+| N3 | La cuenta del deshacer | Arranca en 90 s aunque la pantalla lleve rato abierta | `SeAcaboPage.test.tsx › la cuenta del deshacer` | vitest con reloj falso |
+| N4 | Leer los avisos | Abrir el panel los marca leídos solo para quien lo abrió | `notifications_test.go › TheBellIsPerPerson`, `notificaciones.spec.ts` | Postgres; navegador |
+| N5 | El correo de avisos | Uno por bloque de 5 min con todo lo nuevo; ninguno si se resolvió antes | `notification_mailer_test.go`, `notificaciones.spec.ts › el correo de avisos` | Postgres con reloj falso; mailpit real (3.8 min) |
+| N6 | «Enviarme por correo» | Llega a quien lo pidió; 5 por hora | `notificaciones.spec.ts › la gerente arma la compra`, `limiters_wired_test.go` | mailpit real; Go |
+| N7 | La campana en el riel | Cabe a 854 de alto, mide 44 px y el admin sigue viendo 11 opciones enteras | `notificaciones.spec.ts › a 1280×854` | Navegador a 1280×854 |
+| N8 | En 2K | Nada se desborda a lo ancho; el panel no pasa de 600 px | `notificaciones.spec.ts › en 2K` | Navegador a 2560×1440 |
+
+**Lo que N no cubre:** la red real entre tabletas (SSE detrás de Caddy) solo se ve desplegado; el
+correo real sale por Zoho y aquí se probó contra mailpit.

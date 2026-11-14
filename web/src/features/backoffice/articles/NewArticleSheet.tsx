@@ -10,9 +10,9 @@ import { formatBaseQty } from '../../../shared/units';
 import { ApiError } from '../../../api/client';
 import { Picker } from '../../../components/Picker';
 import { toaster } from '../../../components/ui/toaster';
-import { QtyWithUnit } from './qty';
+import { QtyWithUnit } from '../../../shared/qty';
 import { useLocations } from '../useLocations';
-import { baseQty, KINDS, bigUnitOf, type Kind } from './articleUnits';
+import { baseQty, KINDS, bigUnitOf, type Kind } from '../../../shared/articleUnits';
 
 // «Nuevo artículo» (spec 042, FR-002, decisión del dueño): una hoja corta con lo obligatorio marcado.
 // Nada se guarda hasta tocar «Guardar»; al guardar se abre la ficha con «Agregar empaque» a la vista.
@@ -23,16 +23,18 @@ import { baseQty, KINDS, bigUnitOf, type Kind } from './articleUnits';
 
 interface Props {
   word?: string;
+  // initialName llega de «No lo encuentro» (spec 084): el alta abre con lo que escribió quien lo buscó.
+  initialName?: string;
   onClose: () => void;
   onCreated: (id: number) => void;
 }
 
-export function NewArticleSheet({ word = 'artículo', onClose, onCreated }: Props) {
+export function NewArticleSheet({ word = 'artículo', initialName = '', onClose, onCreated }: Props) {
   const qc = useQueryClient();
   // Se piden al abrir para que al guardar ya estén casi siempre.
   useQuery({ queryKey: ['units'], queryFn: backofficeApi.units });
   const locations = useLocations();
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initialName);
   const [kind, setKind] = useState<Kind | null>(null);
   const [stock, setStock] = useState({ qty: '', big: true });
   const [min, setMin] = useState({ qty: '', big: true });

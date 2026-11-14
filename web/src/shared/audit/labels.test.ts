@@ -11,6 +11,8 @@ const FROM_SERVER = [
   'cash.movement', 'cash.movement_corrected', 'expense.created', 'expense.paid', 'expense.cancelled', 'tip.paid_out',
   'expense.received', 'expense.count_changed', 'cash.opening_backdated', 'expense.stock_corrected', 'stock.counted', 'settings.costing_method',
   'waste.recorded', 'waste.approved', 'waste.rejected', 'waste.undone', 'settings.waste_threshold',
+  'stock.out_reported', 'stock.out_undone', 'stock.low_stock_configured', 'notification.recipients_changed',
+  'notification.resolved',
   'price.set', 'price.deleted', 'price.synced', 'attendance.clock_in', 'attendance.clock_out',
   'attendance.corrected', 'attendance.manual_entry', 'attendance.settings_changed',
   'attendance.schedule_set', 'user.tracks_attendance_changed', 'payment.terminal_changed',

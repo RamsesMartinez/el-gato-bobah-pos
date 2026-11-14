@@ -223,6 +223,8 @@ func main() {
 		}
 		return errors.Join(errs...)
 	})
+	// Los avisos de inventario por correo (spec 084): bloques de 5 minutos y resumen de la mañana.
+	avisosMail := app.NewNotificationMailer(st, nil, app.MailSender(mail.Enabled, mail.Send), cfg.AppBaseURL)
 	companies := app.NewCompanyService(st)
 	notifier := serverAlerts(cfg, mail, companies)
 	broker := realtime.NewBroker()
@@ -254,6 +256,7 @@ func main() {
 		Settings:        app.NewSettingsService(st, cfg.PinPepper),
 		Company:         companies,
 		Reset:           app.NewResetService(st, mail, hibpClient, cfg.HIBPEnabled, cfg.AppBaseURL, nil),
+		Notifications:   app.NewNotificationsService(st, nil).WithMail(avisosMail),
 		Broker:          broker,
 		// nil cuando no hay ANTHROPIC_API_KEY: la extracción de tickets es opcional y el POS
 		// funciona capturando las líneas del gasto a mano (el handler responde 501).
@@ -315,6 +318,18 @@ func main() {
 	fondo.Go(func() {
 		app.SendSummariesPeriodically(ctxRecorte, 15*time.Minute, resumen, activeCompanies)
 	})
+	// Los avisos de inventario en vivo (spec 084): lo que abre el trigger de existencias llega a la
+	// campana sin recargar. Con la conexión de la aplicación: LISTEN no lee tablas.
+	fondo.Go(func() {
+		app.NewNotificationListener(cfg.AppDatabaseURLOrDefault(), broker).Run(ctxRecorte)
+	})
+	// Sin correo configurado no corre: cada bloque fallaría, gastaría sus intentos y escribiría un
+	// aviso en la bitácora cada minuto.
+	if mail.Enabled() {
+		fondo.Go(func() {
+			app.SendNotificationsPeriodically(ctxRecorte, time.Minute, avisosMail, activeCompanies)
+		})
+	}
 	// Una vez por arranque, el costo vigente de cada empresa se recalcula desde sus recetas: corrige
 	// lo que quedó mal antes de que guardar una receta lo recalculara (issue #145) y lo que deje
 	// cualquier script. Solo escribe lo que cambió. En segundo plano: un costo de margen no es razón

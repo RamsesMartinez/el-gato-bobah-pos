@@ -1,0 +1,17 @@
+<mj-section padding="8px 24px 0">
+  <mj-column>
+    <mj-text>
+      {{range .Groups}}
+      <div style="font-size:20px;font-weight:800;margin:16px 0 8px">{{.Title}}</div>
+      {{range .Items}}
+      <div style="background:#ffffff;border-left:4px solid {{$.ColorFor .Kind}};border-radius:8px;padding:12px 16px;margin:0 0 10px">
+        <div style="font-size:17px;font-weight:700">{{.Name}}</div>
+        <div style="color:#655d5a;font-size:13px">{{.Detail}}</div>
+        {{if .Buy}}<div style="padding-top:8px">Comprar <b>{{.Buy}}</b>{{if .Supplier}} en {{.Supplier}}{{end}}</div>{{end}}
+        {{if .Why}}<div style="color:#655d5a;font-size:13px">{{.Why}}</div>{{end}}
+      </div>
+      {{end}}
+      {{end}}
+    </mj-text>
+  </mj-column>
+</mj-section>

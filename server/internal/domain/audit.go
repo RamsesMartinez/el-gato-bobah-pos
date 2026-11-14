@@ -104,6 +104,13 @@ var auditActions = []struct {
 	{AuditWasteApproved, AuditGroupCancel},
 	{AuditWasteRejected, AuditGroupCancel},
 	{AuditWasteUndone, AuditGroupCancel},
+	// Avisos de inventario (spec 084): «se acabó» con lo dado por perdido, como la merma; la
+	// configuración de alertas y de destinatarios, con los precios, como la del almacén.
+	{AuditStockOutReported, AuditGroupCancel},
+	{AuditStockOutUndone, AuditGroupCancel},
+	{AuditLowStockConfigured, AuditGroupPrice},
+	{AuditNotificationRecipientsChanged, AuditGroupPrice},
+	{AuditNotificationResolved, AuditGroupCancel},
 	{AuditSettingsWasteThreshold, AuditGroupPrice},
 	{AuditSettingsCountLimits, AuditGroupPrice},
 	// Artículos del almacén (spec 042): configuración, con los precios, como el costeo. El costo
@@ -210,6 +217,17 @@ const (
 	AuditWasteRejected AuditAction = "waste.rejected"
 	// AuditWasteUndone: se deshizo una merma y volvió lo que había restado.
 	AuditWasteUndone AuditAction = "waste.undone"
+	// AuditStockOutReported: alguien avisó que algo se acabó (spec 084); la existencia quedó en 0.
+	AuditStockOutReported AuditAction = "stock.out_reported"
+	// AuditStockOutUndone: se deshizo un «se acabó» y volvió lo que había restado.
+	AuditStockOutUndone AuditAction = "stock.out_undone"
+	// AuditLowStockConfigured: cambió la configuración de alertas de un artículo (encender, apagar,
+	// mínimo, eventos).
+	AuditLowStockConfigured AuditAction = "stock.low_stock_configured"
+	// AuditNotificationRecipientsChanged: cambió quién recibe los avisos de inventario por correo.
+	AuditNotificationRecipientsChanged AuditAction = "notification.recipients_changed"
+	// AuditNotificationResolved: alguien cerró un aviso a mano («ya llegó», alta, otro nombre, descartar).
+	AuditNotificationResolved AuditAction = "notification.resolved"
 	// AuditSettingsCashTolerance: cambió la tolerancia de diferencia de caja (#290, fase 4). Reclasifica
 	// los cortes «por explicar» pasados, por eso queda quién y de cuánto a cuánto.
 	AuditSettingsCashTolerance AuditAction = "settings.cash_tolerance"

@@ -1,0 +1,10 @@
+<mj-section padding="12px 24px">
+  <mj-column>
+    <mj-button background-color="#c62b21" border-radius="8px" font-weight="700" href="{{.OpenURL}}" inner-padding="14px 24px">Abrir en el sistema</mj-button>
+  </mj-column>
+</mj-section>
+<mj-section padding="8px 24px 24px">
+  <mj-column>
+    <mj-text css-class="muted">{{.Footer}}</mj-text>
+  </mj-column>
+</mj-section>

@@ -285,7 +285,9 @@ func TestEachSuggestedRoleMeasuresTheSameScreensAsBefore(t *testing.T) {
 		"inventario": {RoleAdmin, RoleGerente}, "catalogo": {RoleAdmin, RoleGerente}, "usuarios": {RoleAdmin},
 		"negocio": {RoleAdmin, RoleGerente}, "impresion": {RoleAdmin, RoleGerente}, "plataformas": {RoleAdmin, RoleGerente},
 		"emparejar": {RoleAdmin, RoleGerente}, "asistencia": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
-		"merma": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+		"merma":    {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+		"se-acabo": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+		"avisos":   {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
 	}
 	for pantalla, roles := range antes {
 		for _, r := range []Role{RoleAdmin, RoleGerente, RoleCajero, RoleMesero} {
@@ -307,5 +309,14 @@ func TestACustomRoleIsMeasuredWithoutRole(t *testing.T) {
 	}
 	if got := CortarPorRol(map[Role]int{RoleAdmin: 1, "": 1}, RoleAdmin); got != GuardarSinCorte {
 		t.Errorf("el admin solo, con un rol propio en el balde = %v, quiere GuardarSinCorte", got)
+	}
+}
+
+// «Se acabó» (spec 084) se mide: los cuatro roles reportan, y sus cuatro acciones cuentan.
+func TestOutReportsAreMeasured(t *testing.T) {
+	for _, a := range []string{"reportar", "confirmar", "no-lo-encuentro", "deshacer"} {
+		if !EventoDeUsoValido("se-acabo", a) {
+			t.Errorf("la acción %q de «Se acabó» no se cuenta", a)
+		}
 	}
 }

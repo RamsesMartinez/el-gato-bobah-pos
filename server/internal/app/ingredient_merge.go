@@ -32,6 +32,9 @@ var MergeTables = map[string]string{
 	"ingredient_cost_corrections": "las pasadas se quedan y se leen desde el destino; después, rechaza",
 	"ingredient_replacements":     "registra la unión (kind = merge)",
 	"ingredient_distinct_pairs":   "se queda: un insumo unido ya no se propone",
+	"notifications":               "los avisos abiertos del origen se cierran (merged); el destino se evalúa al final",
+	"stock_out_reports":           "lo pasado se queda en el origen; después, rechaza",
+	"branch_stock_minimums":       "el destino conserva el suyo; los del origen se borran; después, rechaza",
 }
 
 // MergeSourceInput es un origen y, si se mide distinto que el destino, su equivalencia: cuánto del
@@ -436,6 +439,9 @@ func (m *mergeRun) apply(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := m.mergeNotifications(ctx); err != nil {
+		return err
+	}
 	// Las recetas cambiaron de insumo y el costo del destino pudo cambiar: lo que las lleva se recostea.
 	return recomputeCosts(ctx, q)
 }
@@ -749,4 +755,28 @@ func (s *BackofficeService) SimilarArticles(ctx context.Context, name string) ([
 		out = append(out, views[it.ID])
 	}
 	return out, nil
+}
+
+// mergeNotifications (spec 084): la casilla de alertas del destino se fusiona con OR, los mínimos por
+// sucursal de los orígenes se van (el destino conserva el suyo), sus avisos abiertos se cierran como
+// unidos y el destino se evalúa con la existencia ya traspasada: los traspasos llevan replacement_id y
+// el trigger no los evalúa.
+func (m *mergeRun) mergeNotifications(ctx context.Context) error {
+	ids := make([]int64, len(m.sources))
+	for i, src := range m.sources {
+		ids[i] = src.ID
+	}
+	if err := m.q.MergeLowStockInto(ctx, db.MergeLowStockIntoParams{Sources: ids, Target: m.targetID}); err != nil {
+		return err
+	}
+	if err := m.q.DeleteBranchMinimumsOf(ctx, ids); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err := m.q.ResolveOpenOfArticle(ctx, db.ResolveOpenOfArticleParams{ResolvedReason: ptr(string(domain.ReasonMerged)),
+			IngredientID: &id}); err != nil {
+			return err
+		}
+	}
+	return evaluateEverywhere(ctx, m.q, "ingrediente", &m.targetID, nil)
 }

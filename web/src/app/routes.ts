@@ -20,6 +20,7 @@ export const ROUTE_PERMISSIONS: Record<string, readonly Permission[]> = {
   '/negocio': ['business.configure'],
   '/impresion': ['business.configure'],
   '/integraciones': ['integrations.manage'],
+  '/se-acabo': ['inventory.report_out'],
 };
 
 export function canOpen(path: string, user: SessionUser | null): boolean {
