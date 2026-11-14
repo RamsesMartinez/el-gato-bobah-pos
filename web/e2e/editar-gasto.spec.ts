@@ -72,7 +72,7 @@ async function teclear(page: Page, valor: string) {
   for (const c of valor) await pad.getByRole('button', { name: c === '.' ? 'punto' : c, exact: true }).click();
 }
 
-async function agregarRenglon(page: Page, articulo: string, cantidad: string, importe: string) {
+async function agregarRenglon(page: Page, articulo: string, cantidad: string, importe: string, llego?: string) {
   await page.getByRole('button', { name: '+ Agregar renglón' }).click();
   const hoja = page.getByRole('dialog').filter({ hasText: 'Agregar renglón' });
   await hoja.getByRole('button', { name: /¿Qué/ }).click();
@@ -87,6 +87,10 @@ async function agregarRenglon(page: Page, articulo: string, cantidad: string, im
   await hoja.getByLabel('Importe').click();
   await teclear(page, importe);
   await hoja.getByRole('button', { name: 'Listo' }).click();
+  if (llego) {
+    await hoja.getByRole('button', { name: 'Ya llegó' }).click();
+    await pickDate(page, 'Día en que llegó', llego);
+  }
   await hoja.getByRole('button', { name: 'Agregar', exact: true }).click();
 }
 
@@ -143,6 +147,28 @@ test('agregar la mercancía a un gasto guardado sin ella y recibirla', async ({ 
   const d = await api(request, 'get', `/expenses/${id}`);
   expect(d.amount).toBe('67.5');
   expect(d.payments).toHaveLength(1);
+});
+
+// FR-015 enmendado: lo que llegó antes de la fecha del gasto (la compra a crédito, lo de anoche
+// capturado hoy) se agrega como «Ya llegó» con su día. Antes la hoja lo bloqueaba y el servidor lo
+// rechazaba al editar, aunque al crear sí se aceptaba.
+test('«Ya llegó» con un día anterior a la fecha del gasto se agrega y entra al almacén', async ({ page, request }) => {
+  const desc = `E2E entrega anterior ${Date.now()}`;
+  const id = await gastoSinMercancia(request, desc, '30');
+  await abrirGasto(page, desc);
+  await page.getByRole('button', { name: 'Editar gasto' }).click();
+  await agregarRenglon(page, tapas!.name, '3', '30', diasAtras(3));
+  await page.getByRole('button', { name: 'Revisar cambios' }).click();
+  await expect(page.getByText('Listo para confirmar')).toBeVisible();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${CAPTURAS}/entrega-anterior-al-gasto.png` });
+  await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
+  await expect(page.getByText('Listo: el gasto quedó corregido')).toBeVisible();
+  expect(await sumado(request, id, tapas!.id)).toBeCloseTo(3, 2);
+  const d = await api(request, 'get', `/expenses/${id}`);
+  const renglon = d.items.find((x: { ingredientId: number | null }) => x.ingredientId === tapas!.id);
+  expect(renglon.deliveries[0].on).toBe(diasAtras(3));
+  expect(d.expenseDate).toBe(diasAtras(1));
 });
 
 // Criterio 4: recibir 3 de 5 con fecha de ayer y el resto hoy.
