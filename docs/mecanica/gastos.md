@@ -52,6 +52,14 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     trigger en cada compra o movimiento de un gasto (`business_day_of`, con la zona de la EMPRESA de la
     fila), así que la API vieja también deja fecha; los reportes por periodo siguen con `created_at`.
     El Down de la 0103 se niega en cuanto hay una fecha capturada distinta del día de su captura.
+    **Un turno sembrado en una prueba va con `business_day_of(empresa, now())`, nunca con
+    `current_date`**: ése es el día de la zona de la sesión de Postgres (UTC en CI), y de 18:00 a
+    24:00 del centro ya es mañana. El gasto toma el día del turno y la entrega el del negocio, queda
+    «entregado antes de comprarse» y editarlo truena con `domain.ValidDeliveryDate`. Detuvo un release
+    con la prueba en rojo solo de noche (`TestMCPSeedShiftIsOnTheBusinessDay`). La API abre el turno
+    con la zona de la empresa (`OpenSession`), así que en el producto no pasa por la hora; lo que sí
+    pasa es que **crear acepta una entrega anterior a la fecha del gasto** (`received_at` explícito) y
+    editar la rechaza.
   - **«No mover» ante un conteo posterior es un movimiento más, no la ausencia de uno**: el del renglón
     se registra igual (lo aplicado sigue siendo la suma de sus movimientos) y otro `ajuste` contrario
     lleva `stock_count_id`, `expense_id`, SIN `expense_item_id` y la sucursal del conteo explícita.
