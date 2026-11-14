@@ -34,7 +34,7 @@ description: "Tareas del menú lateral en dos niveles"
 **Goal**: panel por módulo, accesible, y vista expandida en pantalla ancha.
 **Independent Test**: como gerente, abrir cada módulo y llegar a Gastos, Asistencia y Ajustes; a 2K todo a la vista.
 
-- [X] T008 [US2] Tests que fallan en `web/src/app/MenuRail.test.tsx`: tocar un módulo con varios destinos abre `<nav>` con sus enlaces (`aria-expanded`, `aria-controls`), foco al primer enlace; elegir navega y cierra; Escape y el velo cierran sin navegar y devuelven el foco; cambiar de ruta cierra; tocar otro módulo cambia de panel; el módulo activo marcado con `/plataformas/3/emparejar`; con `matchMedia` ancho (≥1920×1080) se pintan todos los destinos sin panel
+- [X] T008 [US2] Tests que fallan en `web/src/app/MenuRail.test.tsx`: tocar un módulo con varios destinos abre `<nav>` con sus enlaces (`aria-expanded`, `aria-controls`), foco al primer enlace; elegir navega y cierra; Escape y el velo cierran sin navegar y devuelven el foco; cambiar de ruta cierra; tocar otro módulo cambia de panel; el módulo activo marcado con `/plataformas/3/emparejar`; con `matchMedia` ancho y alto (≥1920×1300, FR-008) se pintan todos los destinos sin panel
 - [X] T009 [US2] Implementar el panel y la vista expandida en `web/src/app/MenuRail.tsx` (posición junto al botón o anclado abajo, `maxH` en dvh con lista desplazable, `matchMedia` con escucha de cambios)
 - [X] T010 [US2] e2e en `web/e2e/menu-por-rol.spec.ts`: gerente abre Caja › Gastos, Personal › Asistencia, Ajustes › Interfaz a 1280×854; a 2560×1440 el riel expandido muestra todos los destinos del admin sin desplazar
 
