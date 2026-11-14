@@ -602,6 +602,9 @@ type SessionView struct {
 	FloatLeft         *decimal.Decimal `json:"floatLeft"`
 	FixedFloatAtClose *decimal.Decimal `json:"fixedFloatAtClose"`
 	Withdrawal        *WithdrawalView  `json:"withdrawal"`
+	// Difference: la diferencia del corte en sus tres partes (#290). Solo en la respuesta del cierre;
+	// un turno abierto no tiene diferencia porque nada se ha contado.
+	Difference *domain.CutDiff `json:"difference"`
 }
 
 // RefundView es una devolución del turno, para la lista del corte.
@@ -771,6 +774,32 @@ type SessionDetailView struct {
 	// Drawer: el arqueo del cajón físico. Nil = este turno no tiene arqueo de efectivo (un corte
 	// anterior a la spec 015, o una caja que no maneja efectivo).
 	Drawer *ArqueoDelCajonView `json:"drawer"`
+	// Difference: la diferencia del corte en sus tres partes (#290), con la misma función que la
+	// lista y el cierre. Nil en un turno abierto y cuando el arqueo está oculto (ArqueoHidden).
+	Difference *domain.CutDiff `json:"difference"`
+	// Lo mismo que la fila del Histórico (#290), más el corte contra el que comparó esta apertura.
+	OpeningReason     *string          `json:"openingReason"`
+	OpeningReasonNote *string          `json:"openingReasonNote"`
+	ExplainedByNext   *NextOpeningView `json:"explainedByNext"`
+	PreviousSessionID *int64           `json:"previousSessionId"`
+}
+
+// NextOpeningView es la apertura del turno siguiente que explica la diferencia de un corte.
+//
+// La nota va como `reasonNote` y no `note`: el MCP borra las llaves `note`/`notes` por ser texto de
+// terceros, y ésta la escribe el personal del negocio; el agente la necesita (FR-009).
+type NextOpeningView struct {
+	SessionID  int64   `json:"sessionId"`
+	Reason     string  `json:"reason"`
+	ReasonNote *string `json:"reasonNote"`
+}
+
+// nextOpening devuelve la explicación del turno siguiente, o nil si no abrió con motivo.
+func nextOpening(id int64, reason, note *string) *NextOpeningView {
+	if id == 0 || reason == nil {
+		return nil
+	}
+	return &NextOpeningView{SessionID: id, Reason: *reason, ReasonNote: note}
 }
 
 type SessionSaleView struct {
@@ -794,8 +823,19 @@ type SessionHistoryRow struct {
 	ClosedAt     *time.Time      `json:"closedAt"`
 	OpenedByName string          `json:"openedByName"`
 	ClosedByName *string         `json:"closedByName"`
-	// TotalDifference: nil cuando el arqueo está oculto (ArqueoHidden).
+	// TotalDifference: nil cuando el arqueo está oculto (ArqueoHidden). Es Difference.Total; se
+	// conserva mientras haya clientes que lo lean (la PWA anterior durante la subida y el MCP).
 	TotalDifference *decimal.Decimal `json:"totalDifference"`
+	// Difference: la diferencia en sus tres partes (#290). Nil en un turno abierto y con el arqueo
+	// oculto.
+	Difference *domain.CutDiff `json:"difference"`
+	// OpeningReason y OpeningReasonNote: por qué la apertura de este turno no coincidió con el cierre
+	// anterior (spec 032). Los ve todo el que ve el corte: no dicen cuánto se esperaba (#290, P2).
+	OpeningReason     *string `json:"openingReason"`
+	OpeningReasonNote *string `json:"openingReasonNote"`
+	// ExplainedByNext: el turno siguiente de la misma caja abrió con motivo, y ese motivo explica la
+	// diferencia de este corte. Se oculta junto con el arqueo: su existencia dice que hubo diferencia.
+	ExplainedByNext *NextOpeningView `json:"explainedByNext"`
 	Notes           *string          `json:"notes"`
 	// ArqueoHidden: con arqueo ciego, el último cierre de una caja que no se ha vuelto a abrir no le
 	// muestra su arqueo a quien no configura la caja: lo contado es el esperado de la siguiente
@@ -2071,6 +2111,7 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 			view.Drawer.RequiresCount = false
 		}
 	}
+	view.Difference = cutDifferenceOf(view.Totals, view.Drawer)
 	return view, nil
 }
 
@@ -2489,12 +2530,29 @@ func (s *BackofficeService) SessionHistoryFor(ctx context.Context, f domain.Sess
 		out[i] = SessionHistoryRow{
 			ID: r.ID, RegisterName: r.RegisterName, Status: string(r.Status), OpeningCash: r.OpeningCash,
 			Currency: domain.Currency(r.Currency), OpenedAt: r.OpenedAt, ClosedAt: tsPtr(r.ClosedAt),
-			OpenedByName: r.OpenedByName, ClosedByName: r.ClosedByName,
-			TotalDifference: &r.TotalDifference, Notes: r.Notes,
+			OpenedByName: r.OpenedByName, ClosedByName: r.ClosedByName, Notes: r.Notes,
+			OpeningReason: r.OpeningReason, OpeningReasonNote: r.OpeningReasonNote,
 		}
-		if ciego && r.Status == db.SessionStatusCerrada && r.IsLatestOfRegister {
-			out[i].TotalDifference, out[i].ArqueoHidden = nil, true
+		if r.Status != db.SessionStatusCerrada {
+			continue
 		}
+		if ciego && r.IsLatestOfRegister {
+			out[i].ArqueoHidden = true
+			continue
+		}
+		out[i].ExplainedByNext = nextOpening(r.NextID, r.NextOpeningReason, r.NextOpeningReasonNote)
+		// La lista trae las diferencias ya sumadas por lado del cajón; domain.CutDifference no
+		// necesita los renglones, solo saber de qué lado cae cada peso.
+		methods := []domain.MethodDiff{
+			{Declared: r.OffDrawerDifference},
+			{Declared: r.OnDrawerDifference, TouchesDrawer: true},
+		}
+		var drawer *domain.DrawerCount
+		if r.DrawerCounted != nil {
+			drawer = &domain.DrawerCount{Expected: r.DrawerExpected, Counted: *r.DrawerCounted}
+		}
+		diff := domain.CutDifference(methods, drawer)
+		out[i].Difference, out[i].TotalDifference = &diff, &diff.Total
 	}
 	return out, total, nil
 }
@@ -2633,7 +2691,43 @@ func (s *BackofficeService) SessionDetailFor(ctx context.Context, id int64, canS
 	if string(sess.Status) == "abierta" && s.arqueoCiego(ctx) {
 		ocultarLoEsperado(view.Totals, view.Drawer, &view.Breakdown, nil)
 	}
+	view.OpeningReason, view.OpeningReasonNote = sess.OpeningReason, sess.OpeningReasonNote
+	vecinos, err := s.store.QC(ctx).GetSessionNeighbors(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	if vecinos.PreviousID != 0 {
+		view.PreviousSessionID = &vecinos.PreviousID
+	}
+	if sess.Status == db.SessionStatusCerrada && !view.ArqueoHidden {
+		view.Difference = cutDifferenceOf(view.Totals, view.Drawer)
+		view.ExplainedByNext = nextOpening(vecinos.NextID, vecinos.NextOpeningReason, vecinos.NextOpeningReasonNote)
+	}
 	return view, nil
+}
+
+// cutDifferenceOf arma la diferencia de un corte cerrado con domain.CutDifference desde lo que ya
+// trae la vista. Nil si falta un esperado (arqueo ciego): sin esperado no hay diferencia que dar.
+func cutDifferenceOf(totals []MethodTotal, drawer *ArqueoDelCajonView) *domain.CutDiff {
+	enElCajon := map[int]bool{}
+	var conteo *domain.DrawerCount
+	if drawer != nil {
+		for _, id := range drawer.MethodIDs {
+			enElCajon[id] = true
+		}
+		if drawer.Counted != nil {
+			conteo = &domain.DrawerCount{Expected: drawer.Expected, Counted: *drawer.Counted}
+		}
+	}
+	methods := make([]domain.MethodDiff, 0, len(totals))
+	for _, t := range totals {
+		if t.Expected == nil {
+			return nil
+		}
+		methods = append(methods, domain.MethodDiff{Expected: *t.Expected, Declared: t.Declared, TouchesDrawer: enElCajon[t.MethodID]})
+	}
+	diff := domain.CutDifference(methods, conteo)
+	return &diff
 }
 
 // liveDetail pone en el detalle de un turno abierto lo que Cajas calcula en vivo: totales por
