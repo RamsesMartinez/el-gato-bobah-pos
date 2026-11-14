@@ -133,14 +133,17 @@ func ParseMoneyDecision(s string) (MoneyDecision, error) {
 	return "", fmt.Errorf("%w: decisión de pago desconocida (%q)", ErrValidation, s)
 }
 
-// ValidDeliveryDate: una entrega no llega antes de la compra ni en el futuro (FR-015). Las tres son
-// días del negocio.
-func ValidDeliveryDate(day, expenseDate, today time.Time) error {
+// ValidDeliveryDate: una entrega no puede ser de un día que no ha pasado. Las dos son días del negocio.
+//
+// SÍ puede ser anterior a la fecha del gasto, a propósito (enmienda a FR-015 de la 053): la fecha del
+// gasto es el día en que se registra o se paga —con caja abierta la fija el turno y no se elige—, y
+// la mercancía llega antes en la operación real: lo que llegó anoche y se captura después de
+// medianoche, o la compra a crédito que se paga días después. Rechazarla obligaba a inventar la
+// llegada, y crear la aceptaba mientras editar la rechazaba: esa compra ya no se podía corregir.
+// Crear, «Llegó todo» y editar pasan por esta misma regla.
+func ValidDeliveryDate(day, today time.Time) error {
 	if day.After(today) {
 		return fmt.Errorf("%w: la entrega no puede ser de un día que no ha pasado", ErrValidation)
-	}
-	if day.Before(expenseDate) {
-		return fmt.Errorf("%w: la entrega no puede ser anterior a la fecha del gasto", ErrValidation)
 	}
 	return nil
 }

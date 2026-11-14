@@ -293,14 +293,6 @@ update expense_items
        unit_cost = sqlc.arg(unit_cost), not_coming_qty = 0
  where id = sqlc.arg(id);
 
--- name: MinDeliveryDate :one
--- El día de la primera entrega de los renglones vivos: la fecha del gasto no puede quedar después.
-select min(sm.effective_on)::date as day
-  from stock_movements sm
-  join expense_items ei on ei.id = sm.expense_item_id
- where ei.expense_id = sqlc.arg(expense_id) and ei.voided_at is null and sm.movement_type = 'compra'
-   and sm.quantity > 0;
-
 -- name: OpenKeepCompensations :many
 -- Las compensaciones de «No mover» de un gasto que siguen vivas (spec 053): al anularlo se deshacen,
 -- o las existencias quedarían por debajo de lo que dejó el conteo.

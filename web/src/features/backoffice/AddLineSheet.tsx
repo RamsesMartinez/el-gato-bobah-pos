@@ -26,8 +26,7 @@ export interface DraftLine extends EditLineBody {
 
 type Field = 'qty' | 'amount';
 
-export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose, onAdd }: {
-  expenseDate: string;
+export function AddLineSheet({ canReceive, stockItemLabel, onClose, onAdd }: {
   canReceive: boolean;
   stockItemLabel: string;
   onClose: () => void;
@@ -166,9 +165,6 @@ export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose,
                       <Button minH="44px" aria-pressed={arrived} variant={arrived ? 'solid' : 'ghost'} colorPalette={arrived ? 'brand' : 'gray'} onClick={() => setArrived(true)}>Ya llegó</Button>
                     </HStack>
                     {arrived && <DatePickerButton value={arrivedOn} onChange={setArrivedOn} max={today} label="Día en que llegó" />}
-                    {arrived && arrivedOn < expenseDate && (
-                      <Text fontSize="sm" color="fg.error">No puede llegar antes de la fecha del gasto.</Text>
-                    )}
                   </HStack>
                 )}
               </>
@@ -188,7 +184,7 @@ export function AddLineSheet({ expenseDate, canReceive, stockItemLabel, onClose,
             <HStack w="100%" gap={3}>
               <Box flex="1" />
               <Button minH="44px" variant="outline" onClick={onClose}>Cancelar</Button>
-              <Button minH="44px" colorPalette="brand" disabled={!ok || (arrived && arrivedOn < expenseDate)} onClick={add}>Agregar</Button>
+              <Button minH="44px" colorPalette="brand" disabled={!ok} onClick={add}>Agregar</Button>
             </HStack>
           )}
         </DrawerFooter>
