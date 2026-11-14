@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
@@ -65,7 +65,7 @@ test('sin permiso, /caja/administrar cae en Cajas', async () => {
 test('cambiar de pestaña cambia la dirección', async () => {
   pinta('/caja');
   await userEvent.click(await screen.findByRole('tab', { name: 'Histórico' }));
-  expect(await screen.findByTestId('ruta')).toHaveTextContent('/caja/historico');
+  await waitFor(() => expect(screen.getByTestId('ruta')).toHaveTextContent('/caja/historico'));
 });
 
 // Una dirección con un corte que no existe —o de otra empresa— no deja el diálogo cargando para
@@ -81,7 +81,7 @@ test('un corte inexistente dice que no se encontró', async () => {
 test('una caja inexistente lleva a Cajas y avisa', async () => {
   pinta('/caja/999', ['cash.operate'], cajas);
   expect(await screen.findByText('No encontramos esa caja.')).toBeInTheDocument();
-  expect(await screen.findByTestId('ruta')).toHaveTextContent(/^\/caja$/);
+  await waitFor(() => expect(screen.getByTestId('ruta')).toHaveTextContent(/^\/caja$/));
 });
 
 // Cambiar de pestaña no olvida la caja elegida: volver a «Cajas» con otra caja abierta en pantalla
@@ -90,7 +90,7 @@ test('volver a Cajas regresa a la caja que estaba elegida', async () => {
   pinta('/caja/5', ['cash.operate'], cajas);
   await userEvent.click(await screen.findByRole('tab', { name: 'Histórico' }));
   await userEvent.click(await screen.findByRole('tab', { name: 'Cajas' }));
-  expect(await screen.findByTestId('ruta')).toHaveTextContent('/caja/5');
+  await waitFor(() => expect(screen.getByTestId('ruta')).toHaveTextContent('/caja/5'));
 });
 
 // Quien configura el negocio sin operar la caja veía los ajustes de caja en Negocio; ahora viven en
