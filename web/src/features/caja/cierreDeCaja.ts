@@ -160,3 +160,59 @@ export function faltantesDelCierre({ cajon, metodos, terminales, fondo }: {
     ...(fondo ? [{ texto: 'el fondo que se queda', campo: ETIQUETA_FONDO }] : []),
   ];
 }
+
+// asistenciaDelCierre traduce el aviso de asistencia a un pendiente (#290, FR-031): el aviso ya no
+// esconde el cierre, solo lo bloquea mientras quien abrió no marque su salida o alguien autorice.
+export function asistenciaDelCierre(estado: { gate?: { applies: boolean; ready: boolean }; failed: boolean }, autorizacion: string | null): 'cargando' | 'falta' | 'lista' {
+  if (!estado.gate && !estado.failed) return 'cargando';
+  if (!estado.gate || !estado.gate.applies || estado.gate.ready || autorizacion !== null) return 'lista';
+  return 'falta';
+}
+
+// PASOS DEL ASISTENTE DE CIERRE (#290, fase 4; Maquetas M3 B): 1 pendientes, 2 cajón, 3 otros
+// métodos y terminales, 4 diferencia, fondo y confirmación.
+export type PasoDelCierre = 1 | 2 | 3 | 4;
+
+export interface PendienteDelCierre {
+  clave: string;
+  texto: string;
+  paso: PasoDelCierre;
+}
+
+// pendientesDelCierre es LA regla del cierre: lo que impide cerrar, cada cosa con su paso. La lista
+// que se ve, el estado de cada paso y el botón de cerrar salen de aquí; no hay una condición que apague
+// el botón sin aparecer en la lista (#290, FR-030; era la falla de #251: nueve condiciones, cuatro
+// nombradas).
+export function pendientesDelCierre(e: {
+  asistencia: 'cargando' | 'falta' | 'lista';
+  pedidosSinEntregar: number;
+  pedidosQueDeben: number;
+  propinasPorDecidir: boolean;
+  cajon: boolean;
+  metodos: MetodoPorContar[];
+  terminales: string[];
+  fondo: boolean;
+  quien: boolean;
+  fondoExcedeLoContado: boolean;
+}): PendienteDelCierre[] {
+  const p: PendienteDelCierre[] = [];
+  if (e.asistencia === 'cargando') p.push({ clave: 'asistencia', texto: 'Revisando la asistencia de quien abrió', paso: 1 });
+  if (e.asistencia === 'falta') p.push({ clave: 'asistencia', texto: 'Quien abrió no ha marcado su salida', paso: 1 });
+  if (e.pedidosSinEntregar > 0) p.push({ clave: 'entregar', texto: e.pedidosSinEntregar === 1 ? '1 pedido sin entregar' : `${e.pedidosSinEntregar} pedidos sin entregar`, paso: 1 });
+  if (e.pedidosQueDeben > 0) p.push({ clave: 'cobrar', texto: e.pedidosQueDeben === 1 ? '1 pedido entregado sin cobrar' : `${e.pedidosQueDeben} pedidos entregados sin cobrar`, paso: 1 });
+  if (e.propinasPorDecidir) p.push({ clave: 'propinas', texto: 'Decidir qué se hace con las propinas', paso: 1 });
+  if (e.cajon) p.push({ clave: 'cajon', texto: 'Contar el efectivo del cajón', paso: 2 });
+  for (const m of e.metodos) p.push({ clave: `metodo-${m.methodId}`, texto: `Escribir lo contado de ${m.name}`, paso: 3 });
+  for (const t of e.terminales) p.push({ clave: `terminal-${t}`, texto: `Escribir el total del corte de ${t}`, paso: 3 });
+  if (e.fondo) p.push({ clave: 'fondo', texto: 'Escribir el fondo que se queda', paso: 4 });
+  if (e.quien) p.push({ clave: 'quien', texto: 'Elegir quién se lleva el retiro', paso: 4 });
+  if (e.fondoExcedeLoContado) p.push({ clave: 'fondo-excede', texto: 'El fondo no puede ser mayor que lo contado', paso: 4 });
+  return p;
+}
+
+// estadoDelPaso: verde solo sin pendientes en ese paso; naranja con pendientes; gris si no se ha
+// visitado y no tiene pendientes (todavía no se sabe si falta algo que se capture ahí).
+export function estadoDelPaso(p: PendienteDelCierre[], paso: PasoDelCierre, visitado: boolean): 'listo' | 'falta' | 'pendiente' {
+  if (p.some((x) => x.paso === paso)) return 'falta';
+  return visitado ? 'listo' : 'pendiente';
+}

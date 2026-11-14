@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Badge, Box, Button, Center, HStack, Spinner, Text, VStack } from '@chakra-ui/react';
+import { Badge, Box, Button, HStack, Text, VStack } from '@chakra-ui/react';
 import type { CashAttendanceGate } from '../../api/backoffice';
 import { ClockPinSheet } from '../../shared/attendance/ClockPinSheet';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
@@ -130,22 +130,6 @@ export function AvisoDelCierre({ estado, autorizacion, onAutorizar, onQuitarAuto
       <CierreAutorizadoSheet isOpen={hoja === 'autorizar'} nombre={nombre} onVolver={() => setHoja(null)}
         onConfirmar={(reason) => { setHoja(null); onAutorizar(reason); }} />
     </Box>
-  );
-}
-
-// CierreConAsistencia no monta el bloque del cierre (de la tabla al botón «Cerrar caja») mientras el
-// aviso de arriba no se resuelva: así no hay nada que contar antes de saber si se puede cerrar
-// (FR-005). En su lugar, un renglón que manda al aviso.
-export function CierreConAsistencia({ estado, autorizacion, children }: {
-  estado: EstadoDeAsistencia;
-  autorizacion: string | null;
-  children: ReactNode;
-}) {
-  const { gate, failed } = estado;
-  if (!gate && !failed) return <Center py={6}><Spinner /></Center>;
-  if (!gate || !gate.applies || gate.ready || autorizacion !== null) return <>{children}</>;
-  return (
-    <Text color="fg.muted">Para cerrar la caja, primero resuelve el aviso de arriba sobre {gate.person.name}.</Text>
   );
 }
 

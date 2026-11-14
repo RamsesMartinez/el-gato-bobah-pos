@@ -1,7 +1,8 @@
 import { ApiError } from '../../api/client';
 import { useState, Fragment, type ReactNode } from 'react';
 import { DatePickerButton } from '../../components/DatePickerButton';
-import { Box, Text, Button, VStack, HStack, Table, Center, Spinner, Badge, SimpleGrid, useBreakpointValue, IconButton } from '@chakra-ui/react';
+import { Box, Text, Button, VStack, HStack, Table, Center, Spinner, Badge, SimpleGrid, Grid, useBreakpointValue, IconButton } from '@chakra-ui/react';
+import { ANCHO_PC, ANCHO_2K, desde } from '../../hooks/useAnchoMinimo';
 import { LuChevronDown, LuChevronUp, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery } from '@tanstack/react-query';
@@ -264,8 +265,13 @@ export function CorteDetail({ id, onAbrirCorte }: { id: number; onAbrirCorte?: (
   if (isLoading || !data) return <Center py={8}><Spinner /></Center>;
   const cur = data.currency;
   return (
-    <VStack align="stretch" gap={4}>
+    // En 2K el detalle se reparte en dos columnas: resumen e historia a un lado, movimientos y ventas
+    // al otro (#290, FR-036). Debajo de eso, una sola columna como siempre.
+    <VStack align="stretch" gap={4} css={{ [desde(ANCHO_2K)]: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', alignItems: 'start' } }}>
       {data.difference && <ResumenDeDiferencia diferencia={data.difference} currency={cur} />}
+      {data.needsExplanation && (
+        <Text fontSize="sm" color="orange.fg" fontWeight="600">Por explicar: la diferencia pasa la tolerancia y nadie la ha explicado.</Text>
+      )}
       {data.explainedByNext && (
         <Box borderWidth="1px" borderRadius="lg" p={3} colorPalette="blue" bg="colorPalette.subtle" maxW="70ch">
           <Text fontWeight="700">Diferencia explicada al abrir el turno #{data.explainedByNext.sessionId}</Text>
@@ -388,7 +394,9 @@ export function HistoryTab({ corteId, onCorte }: { corteId: number | null; onCor
   const detailId = corteId;
   const setDetailId = onCorte;
   // Panel lateral solo en pantallas anchas (xl+); en tablet de 7" se usa el diálogo a pantalla completa.
-  const wide = useBreakpointValue({ base: false, xl: true }, { ssr: false });
+  // Lista y detalle lado a lado desde 1024 px (#290, Maquetas M1 A); en la tableta vertical, el
+  // detalle en diálogo como siempre.
+  const wide = useBreakpointValue({ base: false, lg: true }, { ssr: false });
 
   if (isLoading) return <Center h="40vh"><Spinner size="xl" /></Center>;
   const rows = data?.items ?? [];
@@ -413,31 +421,42 @@ export function HistoryTab({ corteId, onCorte }: { corteId: number | null; onCor
   ) : (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
       <Table.Root size="sm" interactive>
+        {/* Con el detalle al lado, la lista es angosta (340 px): caja y estado en un renglón, fecha y
+            personas en el segundo, para que nada se recorte ni se salga (#290, hallazgo 17). */}
         <Table.Header><Table.Row>
-          <Table.ColumnHeader>Caja</Table.ColumnHeader>
-          <Table.ColumnHeader>Abierta</Table.ColumnHeader>
-          <Table.ColumnHeader>Estado</Table.ColumnHeader>
+          <Table.ColumnHeader>{wide ? 'Corte' : 'Caja'}</Table.ColumnHeader>
+          {!wide && <Table.ColumnHeader>Abierta</Table.ColumnHeader>}
+          {!wide && <Table.ColumnHeader>Estado</Table.ColumnHeader>}
           {!wide && <Table.ColumnHeader>Abrió / Cerró</Table.ColumnHeader>}
           <Table.ColumnHeader textAlign="end">Diferencia</Table.ColumnHeader>
           <Table.ColumnHeader></Table.ColumnHeader>
         </Table.Row></Table.Header>
         <Table.Body>
           {rows.map((r) => (
-            <Table.Row key={r.id} cursor="pointer" onClick={() => setDetailId(r.id)}
+            <Table.Row key={r.id} cursor="pointer" onClick={() => setDetailId(r.id)} h="56px"
               bg={wide && detailId === r.id ? 'bg.muted' : undefined}>
-              <Table.Cell fontWeight="600">{r.registerName}</Table.Cell>
-              <Table.Cell whiteSpace="nowrap">{horaNegocio.fechaYHora(r.openedAt)}</Table.Cell>
-              <Table.Cell>
-                <Badge colorPalette={r.status === 'abierta' ? 'green' : 'gray'}>
-                  {r.status === 'abierta' ? 'Abierta' : 'Cerrada'}
-                </Badge>
-              </Table.Cell>
-              {!wide && <Table.Cell fontSize="sm">{r.openedByName}{r.closedByName ? ` → ${r.closedByName}` : ''}</Table.Cell>}
+              {wide ? (
+                <Table.Cell maxW="0" w="100%">
+                  <Text fontWeight="600" truncate>#{r.id} · {r.registerName} · {r.status === 'abierta' ? 'Abierta' : 'Cerrada'}</Text>
+                  <Text fontSize="sm" color="fg.muted" truncate>
+                    {horaNegocio.fechaYHora(r.openedAt)} · {r.openedByName}{r.closedByName ? ` → ${r.closedByName}` : ''}
+                  </Text>
+                </Table.Cell>
+              ) : (<>
+                <Table.Cell fontWeight="600">{r.registerName}</Table.Cell>
+                <Table.Cell whiteSpace="nowrap">{horaNegocio.fechaYHora(r.openedAt)}</Table.Cell>
+                <Table.Cell>
+                  <Badge colorPalette={r.status === 'abierta' ? 'green' : 'gray'}>
+                    {r.status === 'abierta' ? 'Abierta' : 'Cerrada'}
+                  </Badge>
+                </Table.Cell>
+                <Table.Cell fontSize="sm">{r.openedByName}{r.closedByName ? ` → ${r.closedByName}` : ''}</Table.Cell>
+              </>)}
               <Table.Cell>
                 <DiferenciaDeLaFila fila={r} />
               </Table.Cell>
               <Table.Cell textAlign="end">
-                <Button size="sm" minH="44px" px={4} variant="outline" onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}>Ver</Button>
+                <Button size="sm" minH="48px" px={4} variant="outline" onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}>Ver</Button>
               </Table.Cell>
             </Table.Row>
           ))}
@@ -455,14 +474,15 @@ export function HistoryTab({ corteId, onCorte }: { corteId: number | null; onCor
 
   if (wide) {
     return (
-      <HStack align="start" gap={4}>
-        <VStack flex="1.1" minW={0} align="stretch" gap={2}>{controles}{list}</VStack>
-        <Box flex="1" minW={0} bg="bg.panel" borderRadius="lg" borderWidth="1px" p={4} maxH="calc(100dvh - 220px)" overflowY="auto">
+      <Grid templateColumns="340px minmax(0, 1fr)" gap={4} alignItems="start"
+        css={{ [desde(ANCHO_PC)]: { gridTemplateColumns: '400px minmax(0, 1fr)' } }}>
+        <VStack minW={0} align="stretch" gap={2}>{controles}{list}</VStack>
+        <Box minW={0} bg="bg.panel" borderRadius="lg" borderWidth="1px" p={4} maxH="calc(100dvh - 200px)" overflowY="auto">
           {detailId
             ? <CorteDetail id={detailId} onAbrirCorte={setDetailId} />
             : <Center py={12}><Text color="fg.muted">Selecciona un corte para ver el detalle.</Text></Center>}
         </Box>
-      </HStack>
+      </Grid>
     );
   }
   return (
@@ -524,6 +544,7 @@ function DiferenciaDeLaFila({ fila }: { fila: CashSessionRow }) {
       <Diferencia valor={fila.difference?.total ?? fila.totalDifference} currency={fila.currency} />
       {fila.explainedByNext && <Badge colorPalette="gray">Explicado al abrir</Badge>}
       {fila.adjusted && <Badge colorPalette="blue">Corregido</Badge>}
+      {fila.needsExplanation && <Badge colorPalette="orange">Por explicar</Badge>}
     </HStack>
   );
 }
