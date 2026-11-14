@@ -1,3 +1,4 @@
+import { ApiError } from '../../api/client';
 import { useState, Fragment, type ReactNode } from 'react';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { Box, Text, Button, VStack, HStack, Table, Center, Spinner, Badge, SimpleGrid, useBreakpointValue, IconButton } from '@chakra-ui/react';
@@ -252,7 +253,13 @@ export function CorteSummary({ data, abierto = false }: { data: CorteData; abier
 // mostraba (#290).
 export function CorteDetail({ id, onAbrirCorte }: { id: number; onAbrirCorte?: (id: number) => void }) {
   const horaNegocio = useHoraDelNegocio();
-  const { data, isLoading } = useQuery({ queryKey: ['cash', 'session', id], queryFn: () => backofficeApi.cashSession(id) });
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['cash', 'session', id], queryFn: () => backofficeApi.cashSession(id),
+    // Un «no encontrado» no se arregla reintentando: tres reintentos eran segundos de spinner.
+    retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 3,
+  });
+  // Con la dirección, el id puede no existir o ser de otra empresa (404): el spinner se quedaba fijo.
+  if (isError) return <Text color="fg.muted" py={4}>No encontramos ese corte.</Text>;
   if (isLoading || !data) return <Center py={8}><Spinner /></Center>;
   const cur = data.currency;
   return (

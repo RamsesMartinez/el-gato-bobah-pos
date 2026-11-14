@@ -42,7 +42,9 @@ import { TotalsTable } from './conciliacion';
 import { ExpensesTable, MovementsPanel, TransferDialog } from './movimientos';
 import { Section, IngresosEgresosCard, VoidedPaymentsList, RefundsList } from './reporte';
 
-export function RegistersTab({ cajaId, onCaja }: { cajaId: number | null; onCaja: (id: number) => void }) {
+export function RegistersTab({ cajaId, onCaja, onCajaNoEncontrada }: {
+  cajaId: number | null; onCaja: (id: number) => void; onCajaNoEncontrada: () => void;
+}) {
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });
   // Una caja sin arqueo no tiene turno que abrir ni contar: aquí solo se vería «Cerrada» para siempre.
   const registers = cajasConTurno(data?.items ?? []);
@@ -53,7 +55,14 @@ export function RegistersTab({ cajaId, onCaja }: { cajaId: number | null; onCaja
   if (registers.length === 0) return <Text color="fg.muted">No hay cajas configuradas. Créalas en «Administrar».</Text>;
 
   const openRegisters = registers.filter((r) => r.openSessionId !== null);
-  const current = registers.find((r) => r.id === cajaId) ?? registers[0];
+  const elegida = registers.find((r) => r.id === cajaId);
+  // Una caja de la dirección que no está (otra empresa, archivada, mal escrita) no cae a la principal
+  // en silencio: se vuelve a Cajas y se avisa (constitución V).
+  if (cajaId !== null && !elegida) {
+    queueMicrotask(onCajaNoEncontrada);
+    return null;
+  }
+  const current = elegida ?? registers[0];
 
   return (
     <VStack align="stretch" gap={4}>

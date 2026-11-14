@@ -950,15 +950,6 @@ func (s *BackofficeService) SetPaymentInCount(ctx context.Context, expenseID, pa
 	})
 }
 
-// businessLocation es la zona del negocio, con el mismo fallback que businessDate.
-func (s *cashDeps) businessLocation(ctx context.Context) *time.Location {
-	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
-	if err != nil {
-		tz = domain.DefaultTimezone
-	}
-	return domain.LoadBusinessLocation(tz)
-}
-
 // checkPaymentsCover exige que los pagos cubran el importe antes de dar el gasto por pagado.
 // Sin esto un gasto quedaría "pagado" con menos dinero registrado del que salió.
 func checkPaymentsCover(payments []resolvedPayment, amount decimal.Decimal) error {

@@ -18,8 +18,8 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// cashDeps es lo que comparten los servicios de caja: la base, el reloj y las lecturas que usan
-// más de uno (el turno con su esperado, los conteos, el arqueo ciego). BackofficeService lo incrusta,
+// cashDeps son la base, el reloj y los ayudantes de caja que cuelgan de ellos, compartidos entre
+// servicios o no (el turno con su esperado, los conteos, el arqueo ciego, la fecha del negocio). BackofficeService lo incrusta,
 // así que sus otros métodos siguen viéndolas (spec 082, fase 2).
 type cashDeps struct {
 	store *store.Store
@@ -759,4 +759,13 @@ func (s *cashDeps) businessDate(ctx context.Context) time.Time {
 		tz = domain.DefaultTimezone
 	}
 	return domain.BusinessDate(s.now(), domain.LoadBusinessLocation(tz))
+}
+
+// businessLocation es la zona del negocio, con el mismo fallback que businessDate.
+func (s *cashDeps) businessLocation(ctx context.Context) *time.Location {
+	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
+	if err != nil {
+		tz = domain.DefaultTimezone
+	}
+	return domain.LoadBusinessLocation(tz)
 }

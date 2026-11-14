@@ -6,14 +6,21 @@ import { Provider } from '../../components/ui/provider';
 import { backofficeApi } from '../../api/backoffice';
 import { useSessionStore } from '../../stores/session';
 import { CashPage } from './CashPage';
+import { ApiError } from '../../api/client';
+import { canOpen } from '../../app/routes';
 
 function Donde() {
   return <span data-testid="ruta">{useLocation().pathname}</span>;
 }
 
-function pinta(ruta: string, permissions: string[] = ['cash.operate', 'cash.configure']) {
+const cajas = [
+  { id: 4, name: 'Caja principal', isPrimary: true, isActive: true, openSessionId: null, countsCash: true },
+  { id: 5, name: 'Caja clip', isPrimary: false, isActive: true, openSessionId: null, countsCash: true },
+];
+
+function pinta(ruta: string, permissions: string[] = ['cash.operate', 'cash.configure'], items: unknown[] = []) {
   useSessionStore.setState({ user: { id: 1, companyId: 1, name: 'Ana', role: 'gerente', permissions } as never });
-  vi.spyOn(backofficeApi, 'cashRegisters').mockResolvedValue({ items: [] });
+  vi.spyOn(backofficeApi, 'cashRegisters').mockResolvedValue({ items } as never);
   vi.spyOn(backofficeApi, 'allCashRegisters').mockResolvedValue({ items: [] });
   vi.spyOn(backofficeApi, 'cashHistory').mockResolvedValue({ items: [], total: 0 } as never);
   vi.spyOn(backofficeApi, 'cashSession').mockResolvedValue({ id: 410 } as never);
@@ -59,4 +66,37 @@ test('cambiar de pestaña cambia la dirección', async () => {
   pinta('/caja');
   await userEvent.click(await screen.findByRole('tab', { name: 'Histórico' }));
   expect(await screen.findByTestId('ruta')).toHaveTextContent('/caja/historico');
+});
+
+// Una dirección con un corte que no existe —o de otra empresa— no deja el diálogo cargando para
+// siempre (revisión de la fase 2): dice que no lo encontró.
+test('un corte inexistente dice que no se encontró', async () => {
+  pinta('/caja/historico/99999');
+  vi.spyOn(backofficeApi, 'cashSession').mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'no encontrado', 'r1'));
+  expect(await screen.findByText('No encontramos ese corte.')).toBeInTheDocument();
+});
+
+// Un parámetro presente y malformado no cae a un default en silencio (constitución V): /caja/999
+// mostraba la caja principal con la dirección diciendo otra cosa.
+test('una caja inexistente lleva a Cajas y avisa', async () => {
+  pinta('/caja/999', ['cash.operate'], cajas);
+  expect(await screen.findByText('No encontramos esa caja.')).toBeInTheDocument();
+  expect(await screen.findByTestId('ruta')).toHaveTextContent(/^\/caja$/);
+});
+
+// Cambiar de pestaña no olvida la caja elegida: volver a «Cajas» con otra caja abierta en pantalla
+// es operar la equivocada.
+test('volver a Cajas regresa a la caja que estaba elegida', async () => {
+  pinta('/caja/5', ['cash.operate'], cajas);
+  await userEvent.click(await screen.findByRole('tab', { name: 'Histórico' }));
+  await userEvent.click(await screen.findByRole('tab', { name: 'Cajas' }));
+  expect(await screen.findByTestId('ruta')).toHaveTextContent('/caja/5');
+});
+
+// Quien configura el negocio sin operar la caja veía los ajustes de caja en Negocio; ahora viven en
+// Caja → Administrar, y esa dirección le tiene que abrir.
+test('configurar el negocio sin operar la caja abre Caja → Administrar', () => {
+  const user = { id: 1, companyId: 1, name: 'Ana', role: 'propio', permissions: ['business.configure'] } as never;
+  expect(canOpen('/caja/administrar', user)).toBe(true);
+  expect(canOpen('/caja', user)).toBe(false);
 });

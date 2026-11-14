@@ -83,7 +83,7 @@ al día antes de empezar la siguiente. Dentro de cada fase, las historias que en
 - [X] T030 [US7] Partir `CashPage.tsx` en `web/src/features/caja/` (`CajaPage`, `turno/`, `arqueo/`, `conciliacion/`, `movimientos/`, `reporte/`, `administrar/`) con rutas de [contracts/rutas-web.md](contracts/rutas-web.md) en `App.tsx` y `app/routes.ts`; mover los tests con su componente cambiando solo imports y router
 - [X] T031 [US7] Mover `AjustesDeCaja` a `web/src/features/caja/administrar/` junto a las cajas, cada bloque con su permiso; en `/negocio` dejar un enlace (Maquetas M5)
 - [X] T032 [US7] Correr la red completa «después» y comparar con T025: mismos casos, mismos resultados; anotar los conteos en el PR
-- [ ] T033 `/revision-de-codigo`; hallazgos con su test
+- [X] T033 `/revision-de-codigo`; hallazgos con su test
 - [ ] T034 `make ci-local` verde; PR «082 fase 2» a `develop`, CI verde, al día, merge
 
 ---

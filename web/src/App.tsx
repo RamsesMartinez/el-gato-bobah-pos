@@ -67,6 +67,7 @@ export const App = () => {
         <Route path="/pos" element={<POSPage />} />
         <Route path="/pedidos" element={<OrdersBoardPage />} />
         <Route path="/ventas" element={<RequirePermission path="/ventas"><SalesPage /></RequirePermission>} />
+        <Route path="/caja/administrar" element={<RequirePermission path="/caja/administrar"><CashPage /></RequirePermission>} />
         <Route path="/caja/*" element={<RequirePermission path="/caja"><CashPage /></RequirePermission>} />
         <Route path="/gastos" element={<RequirePermission path="/gastos"><ExpensesPage /></RequirePermission>} />
         <Route path="/almacen" element={<RequirePermission path="/almacen"><StockPage /></RequirePermission>} />
