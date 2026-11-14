@@ -64,7 +64,7 @@ migraciones.
 | VI. YAGNI | Tres servicios, no cinco (R5); sin reabrir (P3); sin cuenta contable (P4); la tolerancia es por empresa | OK |
 | VII. Idioma | Tabla, columnas, valores de `kind`/`reason` y acciones de bitácora en inglés; texto de UI en español | OK |
 | VIII. Puertas | Ver abajo | OK |
-| Tableta | Controles ≥ 48 px en Caja; conteo con teclado numérico; sin `<select>`; maqueta elegida por pantalla antes de implementar | Pendiente de la elección del dueño |
+| Tableta | Controles ≥ 48 px en Caja; conteo con −/+ de 52 px y teclado numérico; sin `<select>`; maquetas elegidas (sección Maquetas) | OK |
 
 ### Principio VIII: ¿se puede agregar después al mismo costo?
 
@@ -91,35 +91,74 @@ migraciones.
 
 ## Pantallas y maquetas
 
-Cinco pantallas cambian; las tres primeras tienen opciones de verdad distintas y van a maqueta con
-opciones; las dos últimas tienen una sola disposición razonable y se muestran en la misma página
-para que el dueño las vea.
+Elegidas por el dueño el 2026-11-13 sobre el lienzo [https://claude.ai/artifact/1PJ62bqNXJJ4D9ume3e7nn](https://claude.ai/artifact/1PJ62bqNXJJ4D9ume3e7nn) (arnés con los componentes reales,
+medido a 1024×600, 1366, 1920 y 2560). Lo que se construye:
 
-| # | Pantalla | Fase | Qué decide el dueño |
-| --- | --- | --- | --- |
-| M1 | **Detalle del corte e Histórico** (lista + detalle, diferencia rotulada, motivo de apertura, correcciones) | 1, 3, 4 | Dónde va la diferencia (arriba como resumen o junto a cada tabla), cómo se ve la corrección, cuántas columnas por ancho |
-| M2 | **Turno abierto: Operar y Cerrar** (incluye Corte X) | 4 | Operar y Cerrar como pestañas, como dos columnas o como dos pantallas |
-| M3 | **Asistente de cierre** (4 pasos) | 4 | Barra de pasos arriba o lateral; pendientes como lista bloqueante o como tarjetas con su acción |
-| M4 | Corregir un corte (hoja) | 3 | Una opción |
-| M5 | Botón de tema y Caja → Administrar | 1, 2 | Una opción cada uno |
+- **M1 Histórico y detalle del corte — A «Resumen primero»** (fases 1, 3 y 4). Lista de cortes a la
+  izquierda (320 px en 1024; 400 px desde 1440) con caja, día, abrió/cerró, `<Diferencia>` y marca
+  («Corregido», «Por explicar», «Explicado al abrir»), y al pie la suma del periodo (P4). Detalle: tres
+  cifras arriba (Cajón (arqueo) · Otros métodos (conciliación) · Total), el aviso «Diferencia
+  explicada al abrir el turno #N» con motivo y nota, la corrección vigente con Revertir (fase 3), «El
+  turno» (abrió, cerró, fondo que se dejó, retiro y quién, motivo al abrir) en lista en 1024 y en
+  rejilla desde 1366, y debajo Arqueo del cajón (con «Corregir») y Conciliación, ambas en Esperado ·
+  Contado · Diferencia con «ver arqueo» en el efectivo. Desde 1440 una tercera columna con los
+  movimientos del corte; en 2560 una cuarta con las ventas. Corregir es una hoja inferior (M4).
+- **M2 Turno abierto — B «Resumen fijo al lado»** (fase 4). Desde 1024: Operar a la izquierda
+  (acciones de 52 px y movimientos de hoy) y el Corte X fijo a la derecha (320 px; `minmax(320px,1fr)`
+  desde 1366) con «Cerrar caja» de 56 px al pie. En 2560 las cajas abiertas lado a lado, cada una con
+  sus dos columnas. Debajo de 1024, una columna con el Corte X después de Operar.
+- **M3 Asistente de cierre — B «Pasos al costado»** (fase 4). Columna de pasos (220 px en 1024, 300 px
+  desde 1366) con el estado de cada paso en texto; el paso a la derecha con Atrás/Siguiente fijos al
+  pie y, en el último, «Cerrar caja (Corte Z)». Conteo por denominación con −/+ de 52 px. Con arqueo
+  ciego el último paso no muestra diferencia ni pide explicación.
+- **M4 Corregir un corte** — hoja inferior única (fase 3): qué corriges (conteo, fondo, nota), lo
+  firmado contra lo que debió decir con teclado numérico, motivo en botones y nota obligatoria.
+- **M5 Caja → Administrar y botón de tema** — disposición única (fases 1 y 2): índice de secciones
+  desde 1366, dos columnas desde 1920; sol/luna en la franja fija del riel, arriba del usuario.
 
-Cada opción se arma con los componentes reales del POS (arnés Vite fuera del repo) y se mide a
-1024×600, 1366×768, 1920×1080 y 2560×1440, con su cifra contra la pantalla actual (ancho ocupado,
-renglones visibles sin desplazar, toques para cerrar).
+### Precisiones de `/revision-de-arquitectura` (2026-11-13)
+
+Afinan las opciones elegidas sin cambiar su disposición:
+
+- **«Cómo va el turno» (Corte X) respeta el arqueo ciego en el servidor.** Lee la misma vista del
+  turno abierto, que ya pasa por `ocultarLoEsperado`: sin `cash.configure` y con arqueo ciego no viajan
+  el efectivo esperado, los ingresos por método ni lo cobrado por cajero; se ven pedidos por cobrar,
+  entradas y salidas registradas y ventas totales solo si hoy ya se muestran. Test de integración que
+  lo fija (`TestHowTheShiftIsGoingHidesTheDrawerWhenBlind`).
+- **Rótulos para quien opera**: «Cómo va el turno» y «Cerrar caja»; «Corte X»/«Corte Z» solo en la
+  ayuda (icono). Se quita el título «Caja» de la página: la pestaña ya lo dice (gana ~60 px a 1024).
+  Las cinco acciones de Operar en una fila de 5 columnas desde 1024.
+- **Estado de cada paso del asistente = la misma regla del botón** (`pendientesDelCierre`): gris sin
+  visitar, naranja con bloqueos (con su cuenta), verde solo con cero bloqueos. Se puede pasar al
+  conteo con bloqueos pendientes (se cuenta mientras se resuelven); el último paso vuelve a listar los
+  bloqueos con su acción y el botón dice cuál falta.
+- **Conteo a 1024×600 sin desplazar**: filas de 60 px y tres columnas desde 840 px; el total contado
+  queda en la barra fija del pie.
+- **Lista del Histórico a 1024**: 340 px; nombre de la caja en su línea, diferencia y marca en la
+  segunda.
+- **Hoja Corregir (M4)**: inferior, `maxH="90dvh"` con cuerpo desplazable; la aclaración va arriba
+  («Se guarda con tu nombre y no borra lo firmado»); la línea «la diferencia queda en…» solo con
+  `cash.configure`.
+- **2560**: movimientos sin tope de renglones (crece con el alto); la tipografía base no se escala
+  (decisión: mismo tamaño en todos los anchos, más contenido, no letras más grandes).
+- **Color**: `fg.shortage`/`fg.overage` solo marcan diferencias; lo seleccionado y la acción
+  principal siguen con `brand`, como el resto del POS.
+- **Toques en tablas**: los renglones que se tocan (corte en la lista, movimiento corregible) miden
+  ≥ 48 px; las celdas de lectura pueden ir en `size="sm"`.
 
 ## Maquetas
 
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|
-| M1 Detalle del corte e Histórico | pendiente | pendiente | |
-| M2 Turno abierto: Operar y Cerrar | pendiente | pendiente | |
-| M3 Asistente de cierre | pendiente | pendiente | |
-| M4 Corregir un corte | pendiente | pendiente | |
-| M5 Botón de tema y Administrar | pendiente | pendiente | |
+| M1 Histórico y detalle del corte | [lienzo](https://claude.ai/artifact/1PJ62bqNXJJ4D9ume3e7nn#m1) | A | La diferencia completa y su explicación se ven sin desplazar a 1024×600 |
+| M2 Turno abierto: Operar y Cerrar | [lienzo](https://claude.ai/artifact/1PJ62bqNXJJ4D9ume3e7nn#m2) | B | Cómo va el turno a la vista sin un toque; Cerrar caja en un solo lugar |
+| M3 Asistente de cierre | [lienzo](https://claude.ai/artifact/1PJ62bqNXJJ4D9ume3e7nn#m3) | B | Cada paso dice qué le falta sin entrar (evita el botón gris de #251) |
+| M4 Corregir un corte | [lienzo](https://claude.ai/artifact/1PJ62bqNXJJ4D9ume3e7nn#m1) | Única | Aprobada |
+| M5 Botón de tema y Administrar | [lienzo](https://claude.ai/artifact/1PJ62bqNXJJ4D9ume3e7nn#m5) | Única | Aprobada |
 
 ## Decisiones del dueño (P1–P4)
 
-Pendientes de la vuelta de maquetas; recomendaciones en el [spec](spec.md#decisiones-pendientes-del-dueño-se-deciden-en-la-vuelta-de-maquetas).
+Aprobadas el 2026-11-13 tal como las recomienda el [spec](spec.md#decisiones-del-dueño-2026-11-13).
 
 ## Project Structure
 

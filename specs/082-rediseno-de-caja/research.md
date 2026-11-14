@@ -47,8 +47,14 @@ correcciones sin repetir la regla en Go.
 **Decision**: `SessionHistoryRow` y `SessionDetailView` agregan `openingReason`,
 `openingReasonNote`, `previousSessionId` (el corte que esta apertura comparó) y
 `explainedByNext {sessionId, reason, note}` (el turno siguiente de la misma caja, si abrió con
-motivo). Las dos relaciones salen de una consulta por `register_id` con `lag/lead` sobre las
-sesiones cerradas de esa caja, para no cruzar cajas.
+motivo). Las dos relaciones salen de un `left join lateral` por fila (`o.register_id =
+s.register_id and o.id > s.id order by o.id limit 1`, y `o.id < s.id and o.status = 'cerrada'
+order by o.id desc limit 1` para el anterior), el mismo criterio que `is_latest_of_register`.
+**No** una ventana `lead/lag`: correría después del filtro de fechas y del `limit`, y la última fila
+de cada página saldría sin su turno siguiente (revisión del `db-architect`). El turno siguiente
+puede estar `abierta`: su motivo cuenta igual. Sin índice nuevo (`register_sessions` no tiene
+`(register_id, id)`): son 1 a 3 turnos por día y caja, el mismo costo que ya paga
+`is_latest_of_register`; `// ponytail:` en la consulta con el techo.
 
 **MCP**: `cash_sessions_history` llama al mismo handler; `withoutCustomerText` (`mcp_tools.go:859`)
 borra las llaves `note`/`notes`, no `openingReasonNote`. No hay herramienta de detalle: FR-009 se
@@ -183,6 +189,17 @@ existentes, para no tocar otras pantallas). Caja usa `Page` sin tope (`maxW="non
 ancho: base una columna; `lg` dos (Operar | Cierre; lista | detalle); `3xl` tres; `4xl` cajas abiertas
 lado a lado. El texto corrido lleva `maxW="70ch"`. 840 px del issue se aproxima con `md` (768) para
 la hoja de detalle; lo que cambia en 840 es solo el detalle en hoja, y 768–1023 ya es tableta.
+
+## R11-bis. Otros lectores de diferencias
+
+- `queries/daily_summary.sql:54` (correo del resumen diario): se manda **al cerrar**, antes de que
+  exista cualquier corrección. Es una foto de lo firmado y así se queda; no se reenvía al corregir.
+- `ListSessionCounts` (`cash.sql:659`): el conteo firmado; el detalle lo pinta junto a la
+  corrección vigente, nunca en su lugar.
+- `terminals.sql:66`: diferencias por terminal; las correcciones de esta feature no tocan
+  terminales.
+- «Por explicar» se calcula con la tolerancia de **hoy**: cambiarla reclasifica cortes pasados. Es
+  estado derivado, no un hecho; se dice en la ayuda de la tolerancia.
 
 ## R12. Lo que no se toca
 

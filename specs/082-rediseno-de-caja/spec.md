@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-13
 
-**Status**: Draft
+**Status**: Aprobado (maquetas y decisiones del dueño, 2026-11-13)
 
 **Input**: Issue #290 (lo subió el dueño el 2026-11-13). Relacionados: #251 (cierre sin decir qué
 falta), #175 (devoluciones de gasto), #289 (correcciones que hoy se hacen con SQL).
@@ -35,12 +35,12 @@ completo y coherente sin la siguiente.
 | 3. Correcciones con rastro | Corregir un corte cerrado sin reescribir lo firmado | US3 | Una tabla nueva, aditiva |
 | 4. Cierre por pasos, X/Z y pantallas grandes | Asistente de cierre, Corte X contra Corte Z, Operar contra Cerrar, y disposición por ancho hasta 2560 px | US4, US5 | Una configuración nueva (tolerancia), aditiva |
 
-## Decisiones pendientes del dueño (se deciden en la vuelta de maquetas)
+## Decisiones del dueño (2026-11-13)
 
-Son las cuatro «Dudas para el spec» del issue. Cada una lleva la recomendación con la que se
-escribió este spec; si el dueño decide otra cosa, se cambia aquí y en `plan.md` antes de seguir.
+Son las cuatro «Dudas para el spec» del issue. El dueño aprobó las cuatro recomendaciones el
+2026-11-13, en la misma vuelta en que eligió las maquetas (`plan.md`, sección Maquetas).
 
-| # | Duda | Recomendación | Por qué |
+| # | Duda | Decisión | Por qué |
 | --- | --- | --- | --- |
 | P1 | ¿Tolerancia de diferencia y quién aprueba fuera de ella? | **Tolerancia por empresa en pesos, configurada por quien tiene configurar caja, $0 por omisión. Sin PIN y sin bloquear el cierre.** Un corte que la pasa queda «por explicar» en el Histórico hasta que alguien deja la explicación: quien cierra viendo el esperado la escribe en el último paso; con arqueo ciego, la deja después quien tiene ajustar el arqueo (una nota, US3), o la deja sola la apertura siguiente con su motivo | **Consecuencia que no se ve**: con arqueo ciego quien cierra no conoce la diferencia, así que no puede explicarla, y pedirle un motivo «porque pasó la tolerancia» le revela que hay diferencia y le deja recontar hasta cuadrar, que es justo lo que el arqueo ciego impide. Un PIN de encargado detiene la caja cuando el encargado no está, contra la regla de que quien opera no decide en el momento. $0 por omisión para que nada pase en silencio |
 | P2 | ¿El motivo y la nota de apertura los ve el cajero o solo quien tiene configurar caja? | **Los ve todo el que ve el corte.** Lo que sigue oculto por el arqueo ciego son los montos (esperado y diferencia) | El motivo no revela cuánto se esperaba: quien abrió ya supo que su conteo no coincidía, porque el sistema le pidió el motivo. Ocultarlo al cajero que lo escribió no protege nada y le impide ver que su explicación quedó guardada |
@@ -410,6 +410,6 @@ la dirección de un corte en otra pestaña.
 
 - Conciliar contra el lote del banco por terminal (otro issue).
 - Editar arqueos firmados: revierte la spec 015.
-- Reabrir un corte (P3, recomendado no).
-- Una cuenta contable de sobrantes y faltantes (P4, recomendado no).
+- Reabrir un corte (P3, decidido no).
+- Una cuenta contable de sobrantes y faltantes (P4, decidido no).
 - Devoluciones de gasto (#175).

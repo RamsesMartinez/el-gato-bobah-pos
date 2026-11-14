@@ -5,9 +5,9 @@
 Solo cambian lecturas. Tipos de `domain` (puros, sin I/O):
 
 ```text
-MethodDiff   { Method string; Expected, Declared float64; TouchesDrawer bool }
-DrawerCount  { Expected *float64; Counted float64 }          // conteo de cierre
-CutDiff      { Drawer *float64; OtherMethods float64; Total *float64;
+MethodDiff   { Method string; Expected, Declared decimal.Decimal; TouchesDrawer bool }
+DrawerCount  { Expected *decimal.Decimal; Counted decimal.Decimal }          // conteo de cierre
+CutDiff      { Drawer *decimal.Decimal; OtherMethods decimal.Decimal; Total *decimal.Decimal;
                DrawerCovered bool }                         // nil = no se sabe (arqueo ciego o sin conteo)
 ```
 
@@ -41,24 +41,25 @@ lo lea (la consola de MCP y la PWA anterior durante la subida); se quita en una 
 | --- | --- | --- |
 | `id` | bigint identity PK | |
 | `company_id` | bigint not null | default `nullif(current_setting('app.company_id', true), '')::bigint`, FK `companies` on delete cascade |
-| `session_id` | bigint not null | FK `(company_id, session_id)` → `register_sessions (company_id, id)` on delete restrict |
-| `kind` | text not null | `count_correction`, `float_correction`, `note`, `reversal` |
-| `before_amount` | numeric(10,2) | lo que decía antes de esta corrección (el firmado o la corrección vigente) |
+| `session_id` | bigint not null | FK `(company_id, session_id)` → `register_sessions (company_id, id)` (`no action`: no se borra un corte con correcciones; `no action` y no `restrict` para que el borrado en cascada de una empresa no dependa del orden) |
+| `kind` | text not null | `check (kind in ('count_correction','float_correction','note','reversal'))` |
+| `before_amount` | numeric(10,2) | ≥ 0; lo que decía antes (el firmado o la corrección vigente). Nulo solo en `float_correction` de un corte anterior a 0088, que no guardó fondo |
 | `after_amount` | numeric(10,2) | ≥ 0 |
-| `reason` | text not null | `miscount`, `unrecorded_movement`, `wrong_register`, `float_error`, `other` |
-| `note` | text not null | 1..200, recortado |
-| `reverses_id` | bigint | FK `(company_id, reverses_id)` → `cash_session_adjustments (company_id, id)` |
-| `created_by` | bigint not null | FK `(company_id, created_by)` → `users (company_id, id)` on delete restrict |
+| `reason` | text not null | `check (reason in ('miscount','unrecorded_movement','wrong_register','float_error','other'))` |
+| `note` | text not null | `check (note = btrim(note) and char_length(note) between 1 and 200)` |
+| `reverses_id` | bigint | FK `(company_id, session_id, reverses_id)` → `cash_session_adjustments (company_id, session_id, id)`: un reverso solo revierte una corrección **del mismo corte** |
+| `created_by` | bigint not null | FK `(company_id, created_by)` → `users (company_id, id)` (`no action`) |
 | `created_at` | timestamptz not null default now() | |
 
 Checks:
 - `(kind = 'reversal') = (reverses_id is not null)`.
-- `kind in ('count_correction','float_correction')` ⇒ `before_amount` y `after_amount` no nulos.
+- `kind = 'count_correction'` ⇒ `before_amount` y `after_amount` no nulos; `kind = 'float_correction'` ⇒ `after_amount` no nulo.
+- `after_amount >= 0` y `before_amount >= 0`.
 - `kind in ('note','reversal')` ⇒ `before_amount` y `after_amount` nulos.
 
-Índices: `unique (company_id, id)` (para la FK propia), `unique (reverses_id) where reverses_id is not
-null` (un reverso por corrección, sin `company_id` a propósito, como 0088),
-`(company_id, session_id, created_at)`.
+Índices: `unique (company_id, session_id, id)` (para la FK del reverso; su prefijo cubre las lecturas por corte), `unique (reverses_id) where reverses_id is not
+null` (un reverso por corrección; sin `company_id` a propósito, como 0088: es id de una tabla con
+identity propia y no colisiona entre empresas).
 
 Seguridad: RLS `tenant_isolation` con `nullif`, `grant select, insert` a `gatobobah_app` (sin
 `update` ni `delete`: solo se agrega).
@@ -73,6 +74,10 @@ Down: se niega con `raise exception` si hay filas; si no, `drop table`. Lleva su
 ### Reglas (en `domain`)
 
 - `CanAdjustSession(status)`: solo `cerrada`.
+- Corregir el conteo de un corte **sin conteo de cierre con esperado** (anterior a la 0067) se
+  rechaza con 422 `NO_SIGNED_COUNT`: no hay arqueo que corregir; se deja una nota.
+- Revertir un `reversal` lo impide `CanReverseAdjustment` (sin trigger: el servicio es el único
+  que escribe y toma el corte `FOR UPDATE`).
 - `CanReverseAdjustment(adj, alreadyReversed)`: no se revierte un `reversal` ni algo ya revertido.
 - **Vigente** de un tipo: la última corrección de ese tipo no revertida. Conteo efectivo =
   `after_amount` de la vigente `count_correction`, o el conteo firmado. Fondo efectivo, igual con
