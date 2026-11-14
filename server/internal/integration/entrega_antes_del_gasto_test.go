@@ -5,11 +5,18 @@ package integration
 import (
 	"context"
 	"errors"
+	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 )
 
 // Una compra que se pudo crear no se podía editar: crear aceptaba una entrega anterior a la fecha del
@@ -138,5 +145,36 @@ func TestAPurchaseThatCouldBeCreatedByMCPCanBeEdited(t *testing.T) {
 	res := callTool(t, w.router, tok, "purchase_create", applyArgs(args, "entrega-manana-0001"))
 	if !res.isError || !strings.Contains(res.text, "no ha pasado") {
 		t.Fatalf("purchase_create con received_on de mañana: %s", res.text)
+	}
+}
+
+// Revisión de código: «Recibir» con cantidades por renglón guardaba las cantidades ANTES de validar la
+// fecha. Con una fecha futura respondía 400 pero dejaba lo recibido escrito a medias.
+func TestReceiveWithAFutureDateLeavesNothingWritten(t *testing.T) {
+	t.Parallel()
+	k := newEditKit(t)
+	jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
+	h := httpapi.NewHandlers(httpapi.Deps{
+		JWT: jm, Backoffice: app.NewBackofficeService(k.st, nil), Settings: app.NewSettingsService(k.st, "pepper-de-prueba"),
+		MenuCache: cache.NewMenuCache(""), Broker: realtime.NewBroker(), Permissions: porRol(domain.PermissionsFor),
+	})
+	r := httpapi.Router(config.Config{}, jm, h, k.st)
+	uid := makeUser(t, k.st, "admin_recibir_083", "admin")
+	tok, err := jm.Issue(domain.User{ID: uid, CompanyID: defaultCompanyID, Name: "admin_recibir_083", Role: domain.RoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := k.pendingPurchase(t, k.day(0), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := k.items(t, id)["Tapas"]
+	body := `{"receivedAt":"` + k.day(1) + `","received":{"` + strconv.FormatInt(item, 10) + `":"3"}}`
+	w := do(t, r, http.MethodPost, "/api/v1/expenses/"+strconv.FormatInt(id, 10)+"/receive", tok, []byte(body), "application/json")
+	if w.Code < 400 || w.Code >= 500 {
+		t.Fatalf("recibir con fecha de mañana = %d, quiere 4xx", w.Code)
+	}
+	if n := k.count(t, `select count(*) from expense_items where id = $1 and qty_received is not null`, item); n != 0 {
+		t.Fatal("la fecha se rechazó pero las cantidades recibidas quedaron guardadas")
 	}
 }
