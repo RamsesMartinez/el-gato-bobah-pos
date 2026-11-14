@@ -67,6 +67,8 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "UNDO_AFTER_MOVEMENT"
 	case errors.Is(err, domain.ErrNotificationClosed):
 		status, code = http.StatusConflict, "NOTIFICATION_CLOSED"
+	case errors.Is(err, domain.ErrAlreadyReportedByYou):
+		status, code = http.StatusConflict, "ALREADY_REPORTED"
 	case errors.Is(err, domain.ErrClientKeyReused):
 		status, code = http.StatusConflict, "CLIENT_KEY_REUSED"
 	// Roles por empresa (spec 068): envuelven ErrConflict; la pantalla distingue cada caso.

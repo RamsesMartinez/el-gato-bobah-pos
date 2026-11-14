@@ -299,6 +299,12 @@ func (m *NotificationMailer) bodies(ctx context.Context, q *db.Queries, items []
 		return out
 	}
 	out := map[string]string{}
+	footer := "Te llega porque recibes los avisos de inventario; quién recibe se cambia en Almacén › Avisos. " +
+		"Este correo junta lo nuevo de 5 minutos y el mismo artículo no se repite en 12 horas."
+	if morning {
+		footer = "Te llega porque recibes los avisos de inventario; quién recibe y a qué hora llega este resumen se " +
+			"cambia en Almacén › Avisos. Trae todo lo que sigue abierto esta mañana."
+	}
 	render := func(to string, groups []mailtpl.Group) error {
 		if len(groups) == 0 {
 			return nil
@@ -314,8 +320,7 @@ func (m *NotificationMailer) bodies(ctx context.Context, q *db.Queries, items []
 		html, err := mailtpl.RenderStock(mailtpl.StockEmail{BusinessName: name, Period: period, Title: title,
 			Subtitle: "Lo que se acabó o está por acabarse, con cuánto conviene comprar", LogoURL: m.baseURL + "/logo192.png",
 			OpenURL: m.baseURL + "/almacen?tab=compra", Groups: groups,
-			Footer: "Te llega porque recibes los avisos de inventario; quién recibe se cambia en Almacén › Avisos. " +
-				"Este correo junta lo nuevo de 5 minutos y el mismo artículo no se repite en 12 horas."})
+			Footer: footer})
 		if err != nil {
 			return err
 		}

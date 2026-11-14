@@ -34,7 +34,7 @@ select r.item_type, coalesce(r.ingredient_id, r.product_id)::bigint as id,
   from stock_out_reports r
   left join ingredients i on i.id = r.ingredient_id
   left join products p on p.id = r.product_id
- where r.kind in ('report', 'confirmation') and r.reported_at >= sqlc.arg(since)
+ where r.kind in ('report', 'confirmation') and r.reported_at >= sqlc.arg(since) and r.undone_at is null
    and coalesce(i.is_active, p.is_active)
  group by r.item_type, coalesce(r.ingredient_id, r.product_id)
  order by count(*) desc, 3
@@ -168,3 +168,9 @@ update stock_out_reports set undone_at = now(), undo_movement_id = sqlc.arg(undo
 -- Cuántos reportes vivos (sin deshacer) sostienen un aviso: deshacer el último lo descarta.
 select count(*)::int from stock_out_reports
  where notification_id = sqlc.arg(notification_id) and kind in ('report', 'confirmation') and undone_at is null;
+
+-- name: HasLiveReportOn :one
+-- ¿Esta persona ya sostiene el aviso con un reporte o confirmación vivos?
+select exists (select 1 from stock_out_reports
+                where notification_id = sqlc.arg(notification_id) and reported_by = sqlc.arg(user_id)
+                  and kind in ('report', 'confirmation') and undone_at is null)::bool;

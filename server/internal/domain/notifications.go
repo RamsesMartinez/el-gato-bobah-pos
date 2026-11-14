@@ -64,6 +64,9 @@ var (
 	// ErrClientKeyReused: la llave de un reporte ya se usó para otro artículo, otro texto u otra
 	// persona. Devolver el reporte guardado haría que la pantalla anunciara lo que no pasó.
 	ErrClientKeyReused = errors.New("ese aviso ya se mandó con otro artículo; vuelve a intentar")
+	// ErrAlreadyReportedByYou: la persona ya reportó ese artículo y el aviso sigue abierto. Contarlo
+	// como confirmación suya engañaba a quien compra y no se podía deshacer el reporte original.
+	ErrAlreadyReportedByYou = errors.New("ya lo reportaste tú; quien compra ya tiene el aviso")
 	// ErrNotificationClosed: el aviso ya se resolvió o se descartó.
 	ErrNotificationClosed = errors.New("ese aviso ya está cerrado")
 )

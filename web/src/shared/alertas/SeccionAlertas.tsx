@@ -203,7 +203,14 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
       <ConfirmSheet isOpen={preguntar} title={`¿Quieres recibir alertas de stock bajo de ${name}?`}
         confirmLabel="Sí, configurar" cancelLabel="No, por ahora" confirmPalette="brand"
         description="Te avisamos por la campana y por correo cuando quede poco o se acabe. Lo puedes cambiar después en «Alertas» de esta ficha."
-        onConfirm={() => { setPreguntaCerrada(true); abrir(true); }}
+        onConfirm={() => {
+          // La hoja se abre en la vuelta siguiente: si nace abierta en la misma actualización en que se
+          // cierra la pregunta, Chakra no la monta (lo mismo que CobrarSheet, AGENTS.md §3). Y la
+          // pregunta queda hecha también al decir que sí: si no, volvía en cada ficha que se abría.
+          setPreguntaCerrada(true);
+          yaPregunto.mutate();
+          setTimeout(() => abrir(true), 0);
+        }}
         onCancel={() => { setPreguntaCerrada(true); yaPregunto.mutate(); }} />
     </>
   );

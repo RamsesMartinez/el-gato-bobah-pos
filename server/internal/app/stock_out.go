@@ -207,6 +207,15 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
+		if alreadyOpen {
+			mine, err := q.HasLiveReportOn(ctx, db.HasLiveReportOnParams{NotificationID: existing, UserID: cmd.Actor})
+			if err != nil {
+				return err
+			}
+			if mine {
+				return domain.ErrAlreadyReportedByYou
+			}
+		}
 		kind := "confirmation"
 		var movement *int64
 		var delta *decimal.Decimal

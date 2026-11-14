@@ -46,6 +46,29 @@ describe('Alertas en la ficha', () => {
     await waitFor(() => expect(api.asked).toHaveBeenCalledWith(1));
   });
 
+  // Lo vio la prueba con alguien nuevo: «Sí, configurar» cerraba la pregunta y no abría nada (la
+  // hoja nacía abierta mientras la pregunta se cerraba; ver CobrarSheet en AGENTS.md), y la pregunta
+  // volvía cada vez que se abría la ficha.
+  test('«Sí, configurar» abre las alertas ya encendidas y la pregunta no vuelve', async () => {
+    api.get.mockResolvedValue(cfg({ asked: false }));
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sí, configurar' }));
+    const enviar = await screen.findByRole('checkbox', { name: /Enviar alerta de stock bajo/ });
+    expect((enviar as HTMLInputElement).checked).toBe(true);
+    await waitFor(() => expect(api.asked).toHaveBeenCalledWith(1));
+  });
+
+  // Cada renglón con casilla se toca en 44 px, no solo la casilla de 20.
+  test('las casillas de la hoja se tocan en 44 px', async () => {
+    api.get.mockResolvedValue(cfg({ asked: false }));
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sí, configurar' }));
+    await screen.findByRole('checkbox', { name: /Enviar alerta de stock bajo/ });
+    const raices = document.querySelectorAll('[data-scope="checkbox"][data-part="root"]');
+    expect(raices.length).toBeGreaterThan(0);
+    for (const r of raices) expect(getComputedStyle(r).minHeight).toBe('44px');
+  });
+
   test('sin poder configurar no pregunta ni ofrece «Configurar»', async () => {
     api.get.mockResolvedValue(cfg({ asked: false }));
     montar(false);

@@ -190,3 +190,35 @@ func TestUndoingEveryReportRestoresTheStock(t *testing.T) {
 		t.Fatalf("los dos se retractaron y quedaron %s; tenía 5", got)
 	}
 }
+
+// Prueba con alguien nuevo: la cajera volvía a reportar lo que ella misma reportó y el sistema le
+// sumaba «su confirmación»; al deshacerla el reporte original seguía. Y «Reportado 2 veces este mes»
+// contaba la vez deshecha.
+func TestReportingYourOwnItemAgainIsNotAConfirmation(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	cajera := makeUser(t, st, "cajera_084ra", "cajero")
+	svc, ctx := asStockOut(t, defaultCompanyID)
+	ing := pieceIngredient(t, st, "Vasos propios 084ra")
+	adjust(t, st, "ingrediente", ing, "5")
+	reportOut(t, svc, ctx, ing, cajera)
+	if _, _, err := svc.ReportOut(ctx, app.ReportOutCmd{ItemType: "ingrediente", ID: ing, ClientKey: uuid.New(), Actor: cajera}); !errors.Is(err, domain.ErrAlreadyReportedByYou) {
+		t.Fatalf("la misma persona otra vez: %v", err)
+	}
+
+	otro := pieceIngredient(t, st, "Tapas deshechas 084ra")
+	adjust(t, st, "ingrediente", otro, "5")
+	r := reportOut(t, svc, ctx, otro, cajera)
+	if err := svc.UndoOut(ctx, r.ID, cajera, false); err != nil {
+		t.Fatal(err)
+	}
+	sug, err := svc.Suggestions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range sug.Frequent {
+		if f.ID == otro {
+			t.Fatalf("lo deshecho cuenta como %d %s", f.Times, "veces este mes")
+		}
+	}
+}

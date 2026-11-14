@@ -227,6 +227,10 @@ func TestMorningSummaryOncePerDayAcrossRestarts(t *testing.T) {
 	if !strings.Contains(k.box.sent[0].html, "Mañana 084m") || !strings.Contains(k.box.sent[0].subject, "mañana") {
 		t.Fatalf("resumen: %s", k.box.sent[0].subject)
 	}
+	// El pie del resumen decía «junta lo nuevo de 5 minutos», que es del correo por bloques.
+	if strings.Contains(k.box.sent[0].html, "5 minutos") {
+		t.Fatal("el resumen de la mañana explica el bloque de 5 minutos")
+	}
 }
 
 func (b *mailbox) to(addr string) int {

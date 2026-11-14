@@ -149,8 +149,8 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 - [X] T052 e2e `web/e2e/notificaciones.spec.ts` a 1280×854 y 2560×1440 contra el `make start` del worktree: cajero reporta, gerente ve la campana en menos de 5 s sin recargar (SC-001, medido y reportado), correo en mailpit, lista de compra; capturas solo en `test-results/`; actualizar `docs/matriz-de-pantallas.md`
 - [X] T053 Notas de área en `docs/mecanica/almacen.md` (trigger, orden de candados, filtro sin subtransacción) y `docs/mecanica/personal-y-permisos.md` (permiso nuevo)
 - [X] T054 `/revision-de-codigo` (incluido `security-auditor`) y cada hallazgo con su test
-- [ ] T055 Prueba con usuario nuevo (cajero y gerente de un negocio de comida) a 1280×854 y 2K; correos en mailpit
-- [ ] T056 `make ci-local` verde
+- [X] T055 Prueba con usuario nuevo (cajero y gerente de un negocio de comida) a 1280×854 y 2K; correos en mailpit
+- [X] T056 `make ci-local` verde
 
 ## Dependencies
 

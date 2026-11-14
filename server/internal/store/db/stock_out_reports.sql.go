@@ -100,7 +100,7 @@ select r.item_type, coalesce(r.ingredient_id, r.product_id)::bigint as id,
   from stock_out_reports r
   left join ingredients i on i.id = r.ingredient_id
   left join products p on p.id = r.product_id
- where r.kind in ('report', 'confirmation') and r.reported_at >= $1
+ where r.kind in ('report', 'confirmation') and r.reported_at >= $1 and r.undone_at is null
    and coalesce(i.is_active, p.is_active)
  group by r.item_type, coalesce(r.ingredient_id, r.product_id)
  order by count(*) desc, 3
@@ -218,6 +218,25 @@ func (q *Queries) GetOutReportForUndo(ctx context.Context, id int64) (GetOutRepo
 		&i.UndoneAt,
 	)
 	return i, err
+}
+
+const hasLiveReportOn = `-- name: HasLiveReportOn :one
+select exists (select 1 from stock_out_reports
+                where notification_id = $1 and reported_by = $2
+                  and kind in ('report', 'confirmation') and undone_at is null)::bool
+`
+
+type HasLiveReportOnParams struct {
+	NotificationID int64 `json:"notification_id"`
+	UserID         int64 `json:"user_id"`
+}
+
+// ¿Esta persona ya sostiene el aviso con un reporte o confirmación vivos?
+func (q *Queries) HasLiveReportOn(ctx context.Context, arg HasLiveReportOnParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasLiveReportOn, arg.NotificationID, arg.UserID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const insertOutAdjustment = `-- name: InsertOutAdjustment :one
