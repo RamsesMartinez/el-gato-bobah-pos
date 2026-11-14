@@ -60,7 +60,7 @@ description: "Tareas del menú lateral en dos niveles"
 - [X] T016 Anotar en `docs/mecanica/medicion-de-uso.md` que Interfaz e Integraciones ya se miden
 - [X] T017 `bun run lint`, `bun run vitest run`, `bun run build` en `web/`; `go build ./... && go test ./internal/domain/` en `server/`
 - [X] T018 `/revision-de-codigo` y un test por cada hallazgo
-- [ ] T019 Usuario nuevo a 1280×854 y 2K, como cajero y como gerente de otra fonda: encontrar Pedidos, Gastos, Asistencia y Ajustes sin ayuda; capturas solo en `web/test-results/`
+- [X] T019 Usuario nuevo a 1280×854 y 2K, como cajero y como gerente de otra fonda: encontrar Pedidos, Gastos, Asistencia y Ajustes sin ayuda; capturas solo en `web/test-results/`
 
 ## Dependencies
 

@@ -232,4 +232,14 @@ describe('el riel en dos niveles (maqueta C)', () => {
     );
     expect(panel()).toBeNull();
   });
+
+  // Usuario nuevo en 2K: el encabezado «Caja» medía y se veía igual que la opción «Caja» de abajo, y
+  // tocarlo no hacía nada. El encabezado es un rótulo chico en mayúsculas, como el título del panel.
+  test('en pantalla ancha el encabezado de grupo no se confunde con una opción', () => {
+    renderRail(ADMIN, '/pos', { wide: true });
+    const rotulo = document.querySelector('[data-rail-group="cash"]') as HTMLElement;
+    expect(rotulo).not.toBeNull();
+    expect(rotulo.closest('a, button')).toBeNull();
+    expect(getComputedStyle(rotulo).textTransform).toBe('uppercase');
+  });
 });

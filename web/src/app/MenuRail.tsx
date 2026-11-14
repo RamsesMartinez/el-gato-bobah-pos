@@ -232,8 +232,11 @@ function WideRail({ modules, pendingWaste }: { modules: MenuModule[]; pendingWas
         return (
           <Box key={m.id} w="100%" data-active={current?.moduleId === m.id}>
             {divider}
-            <HStack minH="44px" px={3} gap={3} color="gray.300" aria-hidden>
-              <Icon size={20} /><Text fontWeight="700" fontSize="sm">{m.label}</Text>
+            {/* Rótulo, no opción: chico, en mayúsculas y gris, como el título del panel. Con el mismo
+                tamaño que sus opciones se leía «Caja» y luego «Caja», y tocarlo no hacía nada. */}
+            <HStack data-rail-group={m.id} minH="32px" px={3} pt={2} gap={2} color="gray.400" aria-hidden
+              textTransform="uppercase" letterSpacing="wide" fontSize="xs" fontWeight="700">
+              <Icon size={14} /><Text>{m.label}</Text>
             </HStack>
             <VStack as="ul" aria-label={m.label} listStyleType="none" m={0} p={0} gap={0.5} align="stretch">
               {m.items.map((it) => {
