@@ -6,6 +6,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
 // CloseExplanation es la explicación de la diferencia que deja quien cierra viendo el esperado
@@ -21,19 +22,27 @@ func (s *CashReportService) CashTolerance(ctx context.Context) (decimal.Decimal,
 }
 
 // SetCashTolerance guarda la tolerancia. Vacía, negativa o absurda es ErrValidation: ausente no es $0.
-func (s *CashReportService) SetCashTolerance(ctx context.Context, v *decimal.Decimal) error {
+// Va a la bitácora con el valor anterior: cambiarla reclasifica todos los cortes pasados.
+func (s *CashReportService) SetCashTolerance(ctx context.Context, actor int64, v *decimal.Decimal) error {
 	t, err := domain.ValidTolerance(v)
 	if err != nil {
 		return err
 	}
-	n, err := s.store.QC(ctx).SetCashTolerance(ctx, t)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return domain.ErrNotFound
-	}
-	return nil
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		before, err := q.GetCashTolerance(ctx)
+		if err != nil {
+			return err
+		}
+		n, err := q.SetCashTolerance(ctx, db.SetCashToleranceParams{Tolerance: t, UpdatedBy: &actor})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return domain.ErrNotFound
+		}
+		return auditEntity(ctx, q, domain.AuditSettingsCashTolerance, "business_settings", 0, nil, &actor,
+			map[string]any{"tolerance": before}, map[string]any{"tolerance": t})
+	})
 }
 
 // needsExplanation calcula la marca «por explicar» de un corte con la tolerancia de hoy. Nil para

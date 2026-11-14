@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -30,7 +31,7 @@ func TestACutOverToleranceNeedsExplanation(t *testing.T) {
 	ctx := context.Background()
 	back := app.NewBackofficeService(st, clock)
 	gerente := makeUser(t, st, "gerente_tolerancia", "gerente")
-	if err := back.SetCashTolerance(ctx, dp("40")); err != nil {
+	if err := back.SetCashTolerance(ctx, gerente, dp("40")); err != nil {
 		t.Fatal(err)
 	}
 	if tol, err := back.CashTolerance(ctx); err != nil || !tol.Equal(decimal.RequireFromString("40")) {
@@ -117,6 +118,51 @@ func TestCashToleranceHTTP(t *testing.T) {
 	if w := do(t, r, http.MethodPut, "/api/v1/settings/cash-close", gerente, []byte(`{"tolerance":"50"}`), "application/json"); w.Code != http.StatusOK {
 		t.Fatalf("el gerente cambia la tolerancia = %d %s", w.Code, w.Body.String())
 	}
+
+	// Un rol propio que configura la caja y no la opera (roles híbridos) lee la tolerancia que él mismo
+	// edita: con «operar» en el GET, la pantalla de Administrar le daba 403 al cargar (revisión fase 4).
+	ctx := context.Background()
+	var propio int64
+	if err := st.Pool.QueryRow(ctx, `insert into roles (company_id, name) values ($1, 'Contador de cajas') returning id`, defaultCompanyID).Scan(&propio); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `insert into role_permission_overrides (company_id, role_id, permission_id, granted)
+		select $1, $2, id, true from permissions where code = 'cash.configure'`, defaultCompanyID, propio); err != nil {
+		t.Fatal(err)
+	}
+	contador := makeUser(t, st, "contador_tol_http", "cajero")
+	if _, err := st.Pool.Exec(ctx, `update users set role_id = $2 where id = $1`, contador, propio); err != nil {
+		t.Fatal(err)
+	}
+	tokContador, err := jm.Issue(domain.User{ID: contador, CompanyID: defaultCompanyID, Name: "contador", Role: domain.RoleCajero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := do(t, r, http.MethodGet, "/api/v1/settings/cash-close", tokContador, nil, ""); w.Code != http.StatusOK {
+		t.Fatalf("quien solo configura la caja lee la tolerancia = %d; quería 200", w.Code)
+	}
+}
+
+// Cambiar la tolerancia reclasifica todos los cortes pasados: queda en la bitácora quién, cuándo, de
+// cuánto a cuánto (revisión de la fase 4: subirla de $0 a $500 borraba las marcas sin rastro).
+func TestChangingTheToleranceIsAudited(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	back := app.NewBackofficeService(st, clock)
+	gerente := makeUser(t, st, "gerente_tol_bitacora", "gerente")
+	if err := back.SetCashTolerance(ctx, gerente, dp("500")); err != nil {
+		t.Fatal(err)
+	}
+	var antes, despues string
+	var actor int64
+	if err := st.Pool.QueryRow(ctx, `select before->>'tolerance', after->>'tolerance', actor_user_id from audit_events
+		where action = 'settings.cash_tolerance' order by id desc limit 1`).Scan(&antes, &despues, &actor); err != nil {
+		t.Fatalf("el cambio de tolerancia no quedó en la bitácora: %v", err)
+	}
+	if antes != "0" || despues != "500" || actor != gerente {
+		t.Fatalf("bitácora = %s → %s por %d; quería 0 → 500 por %d", antes, despues, actor, gerente)
+	}
 }
 
 // AISLAMIENTO (los tres casos): la tolerancia de una empresa no se lee ni se cambia desde otra.
@@ -124,19 +170,56 @@ func TestCashToleranceIsIsolated(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
-	if err := app.NewBackofficeService(st, clock).SetCashTolerance(ctx, dp("75")); err != nil {
+	gerenteDeLaPrueba := makeUser(t, st, "gerente_tol_aislada", "gerente")
+	if err := app.NewBackofficeService(st, clock).SetCashTolerance(ctx, gerenteDeLaPrueba, dp("75")); err != nil {
 		t.Fatal(err)
 	}
 	other := makeCompany(t, st, "otra-tolerancia")
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, s *store.Store, c context.Context) {
 		b := app.NewBackofficeService(s, clock)
-		if tol, err := b.CashTolerance(c); err == nil && tol.Equal(decimal.RequireFromString("75")) {
-			t.Fatal("otra empresa leyó la tolerancia ajena")
+		// Sin la empresa de la sesión rige la más estricta: $0, nunca la ajena.
+		if tol, err := b.CashTolerance(c); err != nil || !tol.IsZero() {
+			t.Fatalf("leyó %v (%v); quería $0, no la tolerancia ajena", tol, err)
 		}
-		_ = b.SetCashTolerance(c, dp("1"))
+		// Escribir desde otra empresa o sin empresa no encuentra fila (otra empresa tiene la suya, que no
+		// es la que se mira abajo).
+		_ = b.SetCashTolerance(c, gerenteDeLaPrueba, dp("1"))
 	})
 	tol, err := app.NewBackofficeService(st, clock).CashTolerance(ctx)
 	if err != nil || !tol.Equal(decimal.RequireFromString("75")) {
 		t.Fatalf("otra empresa cambió la tolerancia: %v %v", tol, err)
+	}
+}
+
+// Por el router: con arqueo ciego, un cajero que manda la explicación recibe 403 y el turno sigue
+// abierto; el permiso sale del handler, no de quien llama al servicio (revisión de seguridad de la
+// fase 4: la prueba de servicio pasaba CanSeeArqueo a mano y un cambio en el handler no la ponía en
+// rojo). Una nota así quitaría la marca «por explicar» de un faltante que el cajero no vio.
+func TestABlindCashierCannotExplainThroughTheRouter(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
+	h := httpapi.NewHandlers(httpapi.Deps{
+		JWT: jm, Backoffice: app.NewBackofficeService(st, clock), Settings: settings,
+		MenuCache: cache.NewMenuCache(""), Broker: realtime.NewBroker(),
+	})
+	r := httpapi.Router(config.Config{}, jm, h, st)
+	cajero := makeUser(t, st, "cajero_ciego_router", "cajero")
+	principal, _, _, _ := turnoConEfectivoDeMostradorYDeApp(t, ctx, st, cajero)
+	prenderCiego(t, ctx, settings)
+	tok, err := jm.Issue(domain.User{ID: cajero, CompanyID: defaultCompanyID, Name: "cajero", Role: domain.RoleCajero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(fmt.Sprintf(`{"registerId":%d,"countedCash":"700","manualReason":"prueba","tipsDecision":"quedan_en_caja",
+		"explanation":{"reason":"unrecorded_movement","note":"Se pagó el hielo"}}`, principal))
+	if w := do(t, r, http.MethodPost, "/api/v1/cash-sessions/close", tok, body, "application/json"); w.Code != http.StatusForbidden {
+		t.Fatalf("un cajero con arqueo ciego explicó la diferencia = %d %s; quería 403", w.Code, w.Body.String())
+	}
+	var abierta bool
+	if err := st.Pool.QueryRow(ctx, `select exists(select 1 from register_sessions where register_id = $1 and status = 'abierta')`, principal).Scan(&abierta); err != nil || !abierta {
+		t.Fatalf("el turno se cerró con el 403: abierta=%v %v", abierta, err)
 	}
 }

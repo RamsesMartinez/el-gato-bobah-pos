@@ -150,10 +150,10 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		// a quien cierra.
 		FixedFloatShown  *decimal.Decimal `json:"fixedFloatShown"`
 		WithdrawalUserID *int64           `json:"withdrawalUserId"`
+		// Explanation: la explicación de la diferencia de quien cierra viendo el esperado (#290).
+		Explanation *app.CloseExplanation `json:"explanation"`
 		// AuthorizedClose (spec 046): cerrar sin la salida de quien abrió. Una tableta con el front
 		// anterior no lo manda y recibe el 409 de siempre.
-		// Explanation: la explicación de la diferencia de quien cierra viendo el esperado (#290).
-		Explanation     *app.CloseExplanation `json:"explanation"`
 		AuthorizedClose *struct {
 			Reason string `json:"reason"`
 		} `json:"authorizedClose"`
@@ -479,7 +479,8 @@ func (h *Handlers) SetCashCloseSettings(w http.ResponseWriter, r *http.Request) 
 		Error(w, err)
 		return
 	}
-	if err := h.backoffice.SetCashTolerance(r.Context(), body.Tolerance); err != nil {
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.SetCashTolerance(r.Context(), u.ID, body.Tolerance); err != nil {
 		Error(w, err)
 		return
 	}

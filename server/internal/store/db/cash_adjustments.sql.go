@@ -187,11 +187,16 @@ func (q *Queries) LockSessionForAdjustment(ctx context.Context, id int64) (LockS
 }
 
 const setCashTolerance = `-- name: SetCashTolerance :execrows
-update business_settings set cash_difference_tolerance = $1
+update business_settings set cash_difference_tolerance = $1, updated_at = now(), updated_by = $2
 `
 
-func (q *Queries) SetCashTolerance(ctx context.Context, cashDifferenceTolerance decimal.Decimal) (int64, error) {
-	result, err := q.db.Exec(ctx, setCashTolerance, cashDifferenceTolerance)
+type SetCashToleranceParams struct {
+	Tolerance decimal.Decimal `json:"tolerance"`
+	UpdatedBy *int64          `json:"updated_by"`
+}
+
+func (q *Queries) SetCashTolerance(ctx context.Context, arg SetCashToleranceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setCashTolerance, arg.Tolerance, arg.UpdatedBy)
 	if err != nil {
 		return 0, err
 	}

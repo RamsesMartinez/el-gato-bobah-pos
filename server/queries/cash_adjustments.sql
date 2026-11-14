@@ -32,4 +32,4 @@ order by a.session_id, a.id;
 select coalesce((select cash_difference_tolerance from business_settings), 0)::numeric(10,2) as tolerance;
 
 -- name: SetCashTolerance :execrows
-update business_settings set cash_difference_tolerance = $1;
+update business_settings set cash_difference_tolerance = @tolerance, updated_at = now(), updated_by = @updated_by;

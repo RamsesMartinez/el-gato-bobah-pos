@@ -97,3 +97,19 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   - **El correo del resumen diario sale al cerrar** y es una foto de lo firmado: no se reenvía al
     corregir. Tras desplegar la 0113, el rollback es hacia adelante en cuanto hay correcciones (su
     Down se niega).
+- **Cierre por pasos, tolerancia y «Por explicar»** (#290, spec 082 fase 4, 0114). Cuatro cosas que
+  no se ven:
+  - **Lo que impide cerrar es una sola lista**: `pendientesDelCierre` (en
+    `web/src/features/caja/cierreDeCaja.ts`). El botón final, el estado de cada paso y la lista «Para
+    cerrar falta» salen de ella. Una condición nueva que apague el botón sin entrar a esa lista vuelve
+    al defecto de #251 (nueve condiciones, cuatro nombradas). El servidor sigue siendo la barrera.
+  - **El borrador del cierre vive en el aparato** (`localStorage`, `egb:cierre:<caja>:<sesión>`): una
+    recarga no pierde lo capturado; si otra tableta cerró ese turno, el borrador se descarta y se
+    avisa. No viaja a otra tableta.
+  - **«Por explicar» se calcula con la tolerancia de HOY** (`domain.CutNeedsExplanation`): subir o
+    bajar la tolerancia reclasifica cortes pasados. Un corte deja de estarlo con una nota vigente o
+    con el motivo de la apertura siguiente. Solo lo ve quien configura la caja; con arqueo ciego no
+    se pide explicación al cerrar (explicar una diferencia que no se ve es adivinarla), y el
+    servidor responde 403 si se manda sin el permiso.
+  - **La explicación del cierre se guarda como nota** (`cash_session_adjustments`, tipo `note`) en
+    la misma transacción del cierre: si el cierre falla, no queda nota huérfana.
