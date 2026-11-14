@@ -184,7 +184,8 @@ solo al decidir; lo que se confirma es exactamente lo que se vio.
 - **Regalo** (importe 0): se agrega y se recibe; no cambia el importe ni el costo del insumo.
 - **Llega más de lo que faltaba**: se mantiene la regla actual: pide cuánto se pagó por lo de más y
   sube el importe.
-- **Entrega con fecha futura o anterior a la fecha del gasto**: se rechaza.
+- **Entrega con fecha futura**: se rechaza. **Anterior a la fecha del gasto**: vale (enmienda del
+  2026-11-14, ver FR-015).
 - **Renglón con entregas parciales que se borra**: el contra-movimiento revierte cada entrega con su
   propia fecha; la decisión por conteo posterior se toma por artículo.
 - **Gasto con importe sin desglosar y renglones**: agregar consume lo sin desglosar; borrar un
@@ -260,7 +261,13 @@ solo al decidir; lo que se confirma es exactamente lo que se vio.
 - **FR-014**: Quien tiene el permiso de recibir mercancía MUST poder registrar una entrega de uno o
   varios renglones con una fecha (hoy por omisión) y, en opciones avanzadas, una fecha distinta por
   renglón.
-- **FR-015**: La fecha de una entrega MUST NOT ser futura ni anterior a la fecha del gasto.
+- **FR-015** (enmendado el 2026-11-14): La fecha de una entrega MUST NOT ser futura. MAY ser anterior
+  a la fecha del gasto: la fecha del gasto es el día en que se registra o se paga —con caja abierta la
+  fija el turno y no se elige— y la mercancía llega antes en la operación real (lo de anoche capturado
+  después de medianoche, la compra a crédito que se paga días después). La versión original rechazaba
+  la anterior solo al editar: crear la aceptaba, y esa compra ya no se podía corregir; y FR-002 (cambiar
+  la fecha del gasto no mueve las entregas) la producía sola. Una sola regla
+  (`domain.ValidDeliveryDate`) para crear, «Llegó todo», entregar y agregar un renglón que ya llegó.
 - **FR-016**: Cada entrega MUST quedar registrada como movimientos de compra del renglón con su
   fecha, y el detalle del gasto MUST mostrar por renglón lo pedido, lo recibido, lo pendiente y el
   historial de entregas (fecha y cantidad, incluidas las correcciones).

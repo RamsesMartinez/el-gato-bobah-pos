@@ -683,22 +683,6 @@ func (q *Queries) MaxDeliveryDate(ctx context.Context, expenseID int64) (pgtype.
 	return day, err
 }
 
-const minDeliveryDate = `-- name: MinDeliveryDate :one
-select min(sm.effective_on)::date as day
-  from stock_movements sm
-  join expense_items ei on ei.id = sm.expense_item_id
- where ei.expense_id = $1 and ei.voided_at is null and sm.movement_type = 'compra'
-   and sm.quantity > 0
-`
-
-// El día de la primera entrega de los renglones vivos: la fecha del gasto no puede quedar después.
-func (q *Queries) MinDeliveryDate(ctx context.Context, expenseID int64) (pgtype.Date, error) {
-	row := q.db.QueryRow(ctx, minDeliveryDate, expenseID)
-	var day pgtype.Date
-	err := row.Scan(&day)
-	return day, err
-}
-
 const newestPurchaseArrival = `-- name: NewestPurchaseArrival :one
 with recursive src (ingredient_id, depth) as (
   select $1::bigint, 0

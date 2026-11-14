@@ -29,7 +29,7 @@ function montar() {
   const onAdd = vi.fn();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={qc}><Provider>
-    <AddLineSheet expenseDate="2026-11-01" canReceive={false} stockItemLabel="artículo" onClose={vi.fn()} onAdd={onAdd} />
+    <AddLineSheet canReceive={false} stockItemLabel="artículo" onClose={vi.fn()} onAdd={onAdd} />
   </Provider></QueryClientProvider>);
   return onAdd;
 }
@@ -68,3 +68,4 @@ describe('Agregar renglón entre peso y líquido (spec 058)', () => {
     expect(screen.getByRole('button', { name: 'Agregar' })).toBeDisabled();
   });
 });
+

@@ -539,7 +539,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
           </ReasonSheet>
         )}
         {adding && data && (
-          <AddLineSheet expenseDate={header?.expenseDate ?? data.expenseDate} canReceive={canReceive}
+          <AddLineSheet canReceive={canReceive}
             stockItemLabel={settings?.stockItemLabel || 'artículo'} onClose={() => setAdding(false)}
             onAdd={(l) => { setAdded((a) => [...a, l]); setAdding(false); }} />
         )}

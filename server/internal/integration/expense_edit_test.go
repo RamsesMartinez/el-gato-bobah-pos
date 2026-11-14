@@ -336,12 +336,13 @@ func TestEditAddingAnArrivedLineReceivesItWithItsDate(t *testing.T) {
 	if _, _, received := k.expenseRow(t, id); received == nil || *received != k.day(-1) {
 		t.Fatalf("recibido %v, quiere %s", received, k.day(-1))
 	}
-	// Una entrega del futuro o anterior al gasto no existe.
-	for _, bad := range []string{k.day(1), k.day(-4)} {
-		_, err := k.svc.EditExpense(k.ctx, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{k.line(k.tapas, "Otra", "1", "1", bad)}}, k.user, true)
-		if !errors.Is(err, domain.ErrValidation) {
-			t.Fatalf("una entrega del %s = %v, quiere validación", bad, err)
-		}
+	// Una entrega del futuro no existe; anterior al gasto sí (enmienda a FR-015).
+	_, err := k.svc.EditExpense(k.ctx, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{k.line(k.tapas, "Otra", "1", "1", k.day(1))}}, k.user, true)
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("una entrega de mañana = %v, quiere validación", err)
+	}
+	if _, err := k.svc.EditExpense(k.ctx, id, app.EditInput{CanReceive: true, Add: []app.EditLineInput{k.line(k.tapas, "Otra", "1", "1", k.day(-4))}}, k.user, true); err != nil {
+		t.Fatalf("una entrega anterior a la fecha del gasto: %v", err)
 	}
 }
 
@@ -729,9 +730,10 @@ func TestEditRejectsMalformedValues(t *testing.T) {
 	if _, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Header: &app.EditHeaderInput{ExpenseDate: &empty}}, k.user, true); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("fecha del gasto vacía = %v, quiere validación (no cae a hoy)", err)
 	}
-	after := k.day(-1)
-	if _, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Header: &app.EditHeaderInput{ExpenseDate: &after}}, k.user, true); !errors.Is(err, domain.ErrValidation) {
-		t.Fatalf("fecha del gasto posterior a su entrega = %v, quiere validación", err)
+	// Posterior a su entrega sí vale (TestAPurchaseThatCouldBeCreatedCanBeEdited); futura, no.
+	future := k.day(1)
+	if _, err := k.svc.EditExpense(k.ctx, id, app.EditInput{Header: &app.EditHeaderInput{ExpenseDate: &future}}, k.user, true); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("fecha del gasto de mañana = %v, quiere validación", err)
 	}
 	k.confirmEdit(t, id, app.EditInput{Add: []app.EditLineInput{k.line(k.fajillas, "Fajillas", "5", "1", "")}}, map[string]string{"money": "leave"})
 	item := k.items(t, id)["Fajillas"]
