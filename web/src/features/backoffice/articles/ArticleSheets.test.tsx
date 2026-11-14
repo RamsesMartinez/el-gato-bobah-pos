@@ -44,10 +44,10 @@ vi.mock('../../../api/backoffice', async (orig) => ({ ...(await orig<object>()),
 const pos = vi.hoisted(() => ({ businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) }));
 vi.mock('../../../api/pos', () => ({ posApi: pos }));
 // La sección «Alertas» (spec 084) se prueba en SeccionAlertas.test.tsx; aquí solo no estorba.
-vi.mock('../../../api/notifications', async (orig) => ({ ...(await orig<object>()), lowStockApi: {
-  get: vi.fn().mockResolvedValue({ enabled: false, onMin: true, onOut: true, banner: false, minStock: '10000', branchMinStock: null,
-    coverageDays: null, asked: true, onHand: '0', unitCode: 'g', branches: 1, updatedAt: 'v1' }),
-  preview: vi.fn(), save: vi.fn(), asked: vi.fn(), list: vi.fn(), batch: vi.fn() } }));
+const alertas = vi.hoisted(() => ({
+  get: vi.fn(), preview: vi.fn(), save: vi.fn(), asked: vi.fn(), list: vi.fn(), batch: vi.fn(),
+}));
+vi.mock('../../../api/notifications', async (orig) => ({ ...(await orig<object>()), lowStockApi: alertas }));
 
 const volver = () => screen.getByRole('button', { name: 'Volver a Artículos' });
 
@@ -60,6 +60,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.view', 'inventory.configure', 'inventory.receive'] } as never });
   back.article.mockResolvedValue(ficha);
+  alertas.get.mockResolvedValue({ enabled: false, onMin: true, onOut: true, banner: false, minStock: '10000', branchMinStock: null,
+    coverageDays: null, asked: true, onHand: '0', unitCode: 'g', branches: 1, updatedAt: ficha.updatedAt });
   back.articleCostHistory.mockResolvedValue({ items: [compra(18, '0.006'), compra(10, '0.0055')], next: 'cursor-1', trendPct: '9.1' });
   back.articleAudit.mockResolvedValue({ items: [], next: null });
 });
@@ -160,13 +162,36 @@ describe('Ficha del artículo', () => {
     fireEvent.change(nombre, { target: { value: 'Hielo' } });
     expect(screen.getByLabelText('Cambios sin guardar')).toBeInTheDocument();
     fireEvent.blur(nombre);
-    // La ficha completa, con lo último guardado en lo que no cambió: la API anterior (durante una
-    // subida) toma un campo ausente como vacío y borraría la categoría, la ubicación y el mínimo.
+    // La ficha con lo último guardado en lo que no cambió. El mínimo ya no viaja: se edita en «Alertas»
+    // (spec 084), y la API toma la llave ausente como «no tocar».
     await waitFor(() => expect(back.updateArticle).toHaveBeenCalledWith(7, {
-      expectedUpdatedAt: '2026-10-19T10:00:00.123456Z', name: 'Hielo', categoryId: null, placeId: null, minStock: '10000',
+      expectedUpdatedAt: '2026-10-19T10:00:00.123456Z', name: 'Hielo', categoryId: null, placeId: null,
     }));
     expect(await screen.findByText('Guardado ✓', {}, { timeout: 3000 })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Guardar' })).toBeNull();
+  });
+
+  // Guardar las alertas mueve la versión de la ficha; el autoguardado seguía con la vieja y el siguiente
+  // cambio de nombre salía «Cambió mientras la veías», perdiendo lo escrito. Y como mandaba el mínimo
+  // que tenía guardado, al rebasar regresaba el mínimo viejo en silencio.
+  it('guardar las alertas y luego cambiar el nombre guarda una vez, con la versión nueva y sin tocar el mínimo', async () => {
+    alertas.preview.mockResolvedValue({ effect: { opens: [], closes: [] }, onHand: '27000', min: '20000', needsCount: false });
+    alertas.save.mockResolvedValue({ effect: { opens: [], closes: [] }, onHand: '27000', min: '20000', needsCount: false, updatedAt: 'v-alertas' });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    const nombre = await screen.findByDisplayValue('Hielo en bolsa');
+    fireEvent.click(await screen.findByRole('button', { name: 'Configurar ›' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Guardar', hidden: true }).at(-1)!);
+    await screen.findByText(/Se actualizará/);
+    back.article.mockResolvedValue({ ...ficha, minStock: '20000', updatedAt: 'v-alertas' });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Guardar', hidden: true }).at(-1)!);
+    await waitFor(() => expect(alertas.save).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText(/Se actualizará/)).toBeNull());
+    fireEvent.change(nombre, { target: { value: 'Hielo' } });
+    fireEvent.blur(nombre);
+    await waitFor(() => expect(back.updateArticle).toHaveBeenCalledTimes(1));
+    const [, cuerpo] = back.updateArticle.mock.calls[0] as unknown as [number, Record<string, unknown>];
+    expect(cuerpo.expectedUpdatedAt).toBe('v-alertas');
+    expect(cuerpo).not.toHaveProperty('minStock');
   });
 
   it('mientras guarda, ningún campo se deshabilita', async () => {
@@ -195,7 +220,7 @@ describe('Ficha del artículo', () => {
     await waitFor(() => expect(screen.queryByText('¿Descartar cambios?')).toBeNull(), { timeout: 3000 });
     fireEvent.click(await screen.findByRole('button', { name: 'Reintentar' }));
     await waitFor(() => expect(back.updateArticle).toHaveBeenCalledTimes(2));
-    expect(back.updateArticle).toHaveBeenLastCalledWith(7, expect.objectContaining({ expectedUpdatedAt: '2026-10-19T10:00:00.123456Z', name: 'Hielo', minStock: '10000' }));
+    expect(back.updateArticle).toHaveBeenLastCalledWith(7, expect.objectContaining({ expectedUpdatedAt: '2026-10-19T10:00:00.123456Z', name: 'Hielo' }));
     expect(await screen.findByText('Guardado ✓', {}, { timeout: 3000 })).toBeInTheDocument();
   });
 

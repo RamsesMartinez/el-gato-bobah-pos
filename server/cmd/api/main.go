@@ -224,16 +224,7 @@ func main() {
 		return errors.Join(errs...)
 	})
 	// Los avisos de inventario por correo (spec 084): bloques de 5 minutos y resumen de la mañana.
-	avisosMail := app.NewNotificationMailer(st, nil, func(to []string, subject, body string) error {
-		if !mail.Enabled() {
-			return errors.New("correo no configurado")
-		}
-		var errs []error
-		for _, dest := range to {
-			errs = append(errs, mail.Send(dest, subject, body))
-		}
-		return errors.Join(errs...)
-	}, cfg.AppBaseURL)
+	avisosMail := app.NewNotificationMailer(st, nil, app.MailSender(mail.Enabled, mail.Send), cfg.AppBaseURL)
 	companies := app.NewCompanyService(st)
 	notifier := serverAlerts(cfg, mail, companies)
 	broker := realtime.NewBroker()
@@ -332,9 +323,13 @@ func main() {
 	fondo.Go(func() {
 		app.NewNotificationListener(cfg.AppDatabaseURLOrDefault(), broker).Run(ctxRecorte)
 	})
-	fondo.Go(func() {
-		app.SendNotificationsPeriodically(ctxRecorte, time.Minute, avisosMail, activeCompanies)
-	})
+	// Sin correo configurado no corre: cada bloque fallaría, gastaría sus intentos y escribiría un
+	// aviso en la bitácora cada minuto.
+	if mail.Enabled() {
+		fondo.Go(func() {
+			app.SendNotificationsPeriodically(ctxRecorte, time.Minute, avisosMail, activeCompanies)
+		})
+	}
 	// Una vez por arranque, el costo vigente de cada empresa se recalcula desde sus recetas: corrige
 	// lo que quedó mal antes de que guardar una receta lo recalculara (issue #145) y lo que deje
 	// cualquier script. Solo escribe lo que cambió. En segundo plano: un costo de margen no es razón

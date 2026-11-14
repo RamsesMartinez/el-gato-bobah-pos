@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { API, EMPRESA, tokenDeRequest } from './ambiente';
 import { altaDePrueba, bajaDePrueba, type PersonaDePrueba } from './personas';
 import { ALTO, ALTO_2K, ANCHO, ANCHO_2K } from './pantalla';
-import { iniciarSesion } from './sesion';
+import { entrar } from './pos';
 
 // NOTIFICACIONES DE INVENTARIO (spec 084, T052): un cajero avisa «se acabó», la gerente lo ve en la
 // campana sin recargar, le llega el correo y arma la compra. Contra el `make start` del worktree, a
@@ -200,8 +200,7 @@ test('en 2K nada se estira ni se desborda', async ({ browser }) => {
 // Medido el 2026-11-14 con la campana ya puesta: 11 opciones enteras a 1280×854.
 const VISIBLES_DEL_ADMIN = 11;
 test('a 1280×854 el admin ve las mismas opciones del riel sin desplazar', async ({ page }) => {
-  await page.goto('/');
-  await iniciarSesion(page);
+  await entrar(page);
   await expect(campana(page)).toBeVisible();
   const tope = (await campana(page).boundingBox())!.y;
   // Las opciones del riel son los enlaces dentro de sus 76 px.

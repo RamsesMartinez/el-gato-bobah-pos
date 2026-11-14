@@ -710,7 +710,7 @@ func (q *Queries) NotifyNotificationsChanged(ctx context.Context) error {
 }
 
 const openNotificationsForMorning = `-- name: OpenNotificationsForMorning :many
-select n.id, n.kind, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
+select n.id, n.kind, coalesce(n.item_key, 0)::bigint as item_key, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
        coalesce(n.query_text, '')::text as query_text, n.opened_at, coalesce(u.name, '')::text as opened_by_name,
        coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen, coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count
   from notifications n left join users u on u.id = n.opened_by
@@ -721,6 +721,7 @@ select n.id, n.kind, coalesce(n.item_name, '')::text as item_name, coalesce(n.un
 type OpenNotificationsForMorningRow struct {
 	ID           int64           `json:"id"`
 	Kind         string          `json:"kind"`
+	ItemKey      int64           `json:"item_key"`
 	ItemName     string          `json:"item_name"`
 	UnitCode     string          `json:"unit_code"`
 	QueryText    string          `json:"query_text"`
@@ -743,6 +744,7 @@ func (q *Queries) OpenNotificationsForMorning(ctx context.Context) ([]OpenNotifi
 		if err := rows.Scan(
 			&i.ID,
 			&i.Kind,
+			&i.ItemKey,
 			&i.ItemName,
 			&i.UnitCode,
 			&i.QueryText,

@@ -141,7 +141,11 @@ func (q *Queries) FrequentOutArticles(ctx context.Context, since time.Time) ([]F
 }
 
 const getOutReportByClientKey = `-- name: GetOutReportByClientKey :one
-select id, kind, notification_id, delta, reported_at from stock_out_reports where client_key = $1
+select r.id, r.kind, r.notification_id, r.delta, r.reported_at, r.reported_by,
+       coalesce(r.ingredient_id, 0)::bigint as ingredient_key, coalesce(r.product_id, 0)::bigint as product_key,
+       coalesce(n.query_text, '')::text as query_text
+  from stock_out_reports r join notifications n on n.id = r.notification_id
+ where r.client_key = $1
 `
 
 type GetOutReportByClientKeyRow struct {
@@ -150,8 +154,14 @@ type GetOutReportByClientKeyRow struct {
 	NotificationID int64            `json:"notification_id"`
 	Delta          *decimal.Decimal `json:"delta"`
 	ReportedAt     time.Time        `json:"reported_at"`
+	ReportedBy     int64            `json:"reported_by"`
+	IngredientKey  int64            `json:"ingredient_key"`
+	ProductKey     int64            `json:"product_key"`
+	QueryText      string           `json:"query_text"`
 }
 
+// Con lo que se reportó: una llave repetida solo devuelve el reporte si es del mismo artículo o texto
+// y de la misma persona.
 func (q *Queries) GetOutReportByClientKey(ctx context.Context, clientKey uuid.UUID) (GetOutReportByClientKeyRow, error) {
 	row := q.db.QueryRow(ctx, getOutReportByClientKey, clientKey)
 	var i GetOutReportByClientKeyRow
@@ -161,6 +171,10 @@ func (q *Queries) GetOutReportByClientKey(ctx context.Context, clientKey uuid.UU
 		&i.NotificationID,
 		&i.Delta,
 		&i.ReportedAt,
+		&i.ReportedBy,
+		&i.IngredientKey,
+		&i.ProductKey,
+		&i.QueryText,
 	)
 	return i, err
 }
@@ -294,6 +308,17 @@ func (q *Queries) LiveReportsOnNotification(ctx context.Context, notificationID 
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const lockReporter = `-- name: LockReporter :exec
+select pg_advisory_xact_lock(84291, $1::int)
+`
+
+// Un reporte a la vez por persona: así el tope por hora cuenta lo que de verdad pasó y la misma llave
+// mandada dos veces a la vez encuentra el primer reporte en vez de chocar con el único.
+func (q *Queries) LockReporter(ctx context.Context, userID int32) error {
+	_, err := q.db.Exec(ctx, lockReporter, userID)
+	return err
 }
 
 const markOutReportUndone = `-- name: MarkOutReportUndone :exec
@@ -491,6 +516,35 @@ func (q *Queries) OutReportsSince(ctx context.Context, since time.Time) ([]OutRe
 	return items, nil
 }
 
+const pendingOutMovementOf = `-- name: PendingOutMovementOf :one
+select id, movement_id::bigint as movement_id, delta::numeric as delta, reported_at
+  from stock_out_reports
+ where notification_id = $1 and movement_id is not null and undo_movement_id is null
+   and undone_at is not null
+ order by id limit 1
+`
+
+type PendingOutMovementOfRow struct {
+	ID         int64           `json:"id"`
+	MovementID int64           `json:"movement_id"`
+	Delta      decimal.Decimal `json:"delta"`
+	ReportedAt time.Time       `json:"reported_at"`
+}
+
+// El ajuste a 0 de un aviso que nadie ha repuesto: el reporte que lo hizo se deshizo mientras otro
+// sostenía el aviso. Al deshacer el último, se repone éste.
+func (q *Queries) PendingOutMovementOf(ctx context.Context, notificationID int64) (PendingOutMovementOfRow, error) {
+	row := q.db.QueryRow(ctx, pendingOutMovementOf, notificationID)
+	var i PendingOutMovementOfRow
+	err := row.Scan(
+		&i.ID,
+		&i.MovementID,
+		&i.Delta,
+		&i.ReportedAt,
+	)
+	return i, err
+}
+
 const searchOutArticles = `-- name: SearchOutArticles :many
 
 with keys as (select unnest($1::text[]) as k)
@@ -553,6 +607,20 @@ func (q *Queries) SearchOutArticles(ctx context.Context, keys []string) ([]Searc
 		return nil, err
 	}
 	return items, nil
+}
+
+const setOutReportUndoMovement = `-- name: SetOutReportUndoMovement :exec
+update stock_out_reports set undo_movement_id = $1 where id = $2
+`
+
+type SetOutReportUndoMovementParams struct {
+	UndoMovementID *int64 `json:"undo_movement_id"`
+	ID             int64  `json:"id"`
+}
+
+func (q *Queries) SetOutReportUndoMovement(ctx context.Context, arg SetOutReportUndoMovementParams) error {
+	_, err := q.db.Exec(ctx, setOutReportUndoMovement, arg.UndoMovementID, arg.ID)
+	return err
 }
 
 const stockOnHandForUpdate = `-- name: StockOnHandForUpdate :many

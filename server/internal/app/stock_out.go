@@ -176,7 +176,10 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 	var out OutReportResult
 	created := false
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
-		if prev, ok, err := previousReport(ctx, q, cmd.ClientKey); err != nil || ok {
+		if err := q.LockReporter(ctx, int32(cmd.Actor)); err != nil { //nolint:gosec // los ids de persona caben en int4
+			return err
+		}
+		if prev, ok, err := previousReport(ctx, q, cmd.ClientKey, sameReport{actor: cmd.Actor, ing: ing, prod: prod}); err != nil || ok {
 			out = prev
 			return err
 		}
@@ -238,7 +241,14 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 				// El ajuste a 0 lo acaba de abrir el trigger (un artículo con alerta «al acabarse»): el
 				// reporte se cuelga de ese aviso y lo deja a su nombre, o la franja le saldría a quien
 				// reportó y el panel diría que lo reportó el sistema.
-				if notification, err = q.ClaimTriggerOut(ctx, db.ClaimTriggerOutParams{OpenedBy: &cmd.Actor, BranchID: branch, IngredientID: ing, ProductID: prod}); err != nil {
+				notification, err = q.ClaimTriggerOut(ctx, db.ClaimTriggerOutParams{OpenedBy: &cmd.Actor, BranchID: branch, IngredientID: ing, ProductID: prod})
+				if errors.Is(err, pgx.ErrNoRows) {
+					// Otra tableta lo reportó mientras ésta esperaba el candado de la existencia (un
+					// producto no tiene el candado del insumo): ya está en 0 y con autor; esto confirma.
+					kind = "confirmation"
+					notification, err = q.OpenOutNotification(ctx, db.OpenOutNotificationParams{BranchID: branch, IngredientID: ing, ProductID: prod})
+				}
+				if err != nil {
 					return err
 				}
 			}
@@ -268,14 +278,35 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 	return out, created, nil
 }
 
+// sameReport es lo que una llave repetida tiene que traer para ser la misma petición.
+type sameReport struct {
+	actor     int64
+	ing, prod *int64
+	text      string
+}
+
+func keyOf(id *int64) int64 {
+	if id == nil {
+		return 0
+	}
+	return *id
+}
+
 // previousReport devuelve el reporte de una clave ya usada: repetir la petición devuelve lo mismo.
-func previousReport(ctx context.Context, q *db.Queries, key uuid.UUID) (OutReportResult, bool, error) {
+// La misma llave con otro artículo, otro texto u otra persona no es un reintento: se rechaza, porque
+// la pantalla anunciaría como hecho algo que no pasó.
+func previousReport(ctx context.Context, q *db.Queries, key uuid.UUID, want sameReport) (OutReportResult, bool, error) {
 	r, err := q.GetOutReportByClientKey(ctx, key)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return OutReportResult{}, false, nil
 	}
 	if err != nil {
 		return OutReportResult{}, false, err
+	}
+	notFound := want.ing == nil && want.prod == nil
+	if r.ReportedBy != want.actor || (r.Kind == "not_found") != notFound ||
+		r.IngredientKey != keyOf(want.ing) || r.ProductKey != keyOf(want.prod) || (notFound && r.QueryText != want.text) {
+		return OutReportResult{}, false, domain.ErrClientKeyReused
 	}
 	live, err := q.LiveReportsOnNotification(ctx, r.NotificationID)
 	if err != nil {
@@ -327,15 +358,28 @@ func (s *StockOutService) UndoOut(ctx context.Context, id, actor int64, canConfi
 			return err
 		}
 		others--
+		// Qué ajuste a 0 se repone: el de este reporte, o —si es el último vivo— el de un reporte que se
+		// deshizo antes mientras otro sostenía el aviso. Sin lo segundo, A reporta, B confirma, los dos
+		// se retractan y la existencia se queda en 0.
 		var undoMovement int64
-		if r.MovementID != nil && others == 0 {
+		var revert *db.PendingOutMovementOfRow
+		if others == 0 {
+			if r.MovementID != nil {
+				revert = &db.PendingOutMovementOfRow{ID: id, MovementID: *r.MovementID, Delta: *r.Delta, ReportedAt: r.ReportedAt}
+			} else if p, err := q.PendingOutMovementOf(ctx, r.NotificationID); err == nil {
+				revert = &p
+			} else if !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+		}
+		if revert != nil {
 			if r.IngredientID != nil {
 				if err := lockIngredients(ctx, q, []int64{*r.IngredientID}); err != nil {
 					return err
 				}
 			}
-			moved, err := q.ArticleMovedSince(ctx, db.ArticleMovedSinceParams{BranchID: r.BranchID, MovementID: *r.MovementID,
-				IngredientID: r.IngredientID, ProductID: r.ProductID, ReportedAt: r.ReportedAt})
+			moved, err := q.ArticleMovedSince(ctx, db.ArticleMovedSinceParams{BranchID: r.BranchID, MovementID: revert.MovementID,
+				IngredientID: r.IngredientID, ProductID: r.ProductID, ReportedAt: revert.ReportedAt})
 			if err != nil {
 				return err
 			}
@@ -343,13 +387,23 @@ func (s *StockOutService) UndoOut(ctx context.Context, id, actor int64, canConfi
 				return domain.ErrUndoAfterMovement
 			}
 			if undoMovement, err = q.InsertOutAdjustment(ctx, db.InsertOutAdjustmentParams{ItemType: *r.ItemType,
-				IngredientID: r.IngredientID, ProductID: r.ProductID, Quantity: r.Delta.Neg(), UserID: &actor,
+				IngredientID: r.IngredientID, ProductID: r.ProductID, Quantity: revert.Delta.Neg(), UserID: &actor,
 				Reason: ptr(outUndoReason), BranchID: r.BranchID}); err != nil {
 				return err
 			}
 		}
-		if err := q.MarkOutReportUndone(ctx, db.MarkOutReportUndoneParams{ID: id, UndoMovementID: nullID(undoMovement)}); err != nil {
+		mine := undoMovement
+		if revert != nil && revert.ID != id {
+			// El ajuste de vuelta es del reporte que hizo el ajuste a 0, no de éste.
+			mine = 0
+		}
+		if err := q.MarkOutReportUndone(ctx, db.MarkOutReportUndoneParams{ID: id, UndoMovementID: nullID(mine)}); err != nil {
 			return err
+		}
+		if revert != nil && revert.ID != id {
+			if err := q.SetOutReportUndoMovement(ctx, db.SetOutReportUndoMovementParams{ID: revert.ID, UndoMovementID: &undoMovement}); err != nil {
+				return err
+			}
 		}
 		// Después del ajuste de vuelta: la existencia antes que el aviso, como una venta (R12).
 		if others == 0 {
@@ -381,7 +435,10 @@ func (s *StockOutService) ReportNotFound(ctx context.Context, text string, key u
 	var out NotFoundResult
 	created := false
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
-		if prev, ok, err := previousReport(ctx, q, key); err != nil || ok {
+		if err := q.LockReporter(ctx, int32(actor)); err != nil { //nolint:gosec // los ids de persona caben en int4
+			return err
+		}
+		if prev, ok, err := previousReport(ctx, q, key, sameReport{actor: actor, text: clean}); err != nil || ok {
 			out = NotFoundResult{ID: prev.ID, NotificationID: prev.NotificationID}
 			return err
 		}

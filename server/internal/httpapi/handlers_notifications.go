@@ -215,21 +215,50 @@ func (h *Handlers) ListLowStock(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /stock/low-stock/batch[?preview=1] — `{items: [{itemType, id, enabled, minStock}]}`.
+// batchBody distingue un renglón sin `minStock` (deja el mínimo) de uno con `minStock: null` (lo
+// quita): la tabla solo manda el mínimo de los renglones que se editaron.
+type batchBody struct {
+	Items []struct {
+		ItemType string          `json:"itemType"`
+		ID       int64           `json:"id"`
+		Enabled  bool            `json:"enabled"`
+		MinStock json.RawMessage `json:"minStock"`
+	} `json:"items"`
+}
+
+func (b batchBody) items() ([]app.LowStockBatchItem, error) {
+	out := make([]app.LowStockBatchItem, len(b.Items))
+	for i, it := range b.Items {
+		out[i] = app.LowStockBatchItem{ItemType: it.ItemType, ID: it.ID, Enabled: it.Enabled, KeepMin: it.MinStock == nil}
+		if it.MinStock != nil && string(it.MinStock) != "null" {
+			var d decimal.Decimal
+			if err := json.Unmarshal(it.MinStock, &d); err != nil {
+				return nil, fmt.Errorf("%w: el mínimo del renglón %d no es un número", domain.ErrValidation, i+1)
+			}
+			out[i].MinStock = &d
+		}
+	}
+	return out, nil
+}
+
 func (h *Handlers) LowStockBatch(w http.ResponseWriter, r *http.Request) {
 	preview, err := previewParam(r)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	var body struct {
-		Items []app.LowStockBatchItem `json:"items"`
-	}
+	var body batchBody
 	if err := DecodeStrict(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
+	items, err := body.items()
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	u, _ := userFrom(r.Context())
-	res, err := h.notifications.ConfigureBatch(r.Context(), body.Items, u.ID, preview)
+	res, err := h.notifications.ConfigureBatch(r.Context(), items, u.ID, preview)
 	if err != nil {
 		Error(w, err)
 		return

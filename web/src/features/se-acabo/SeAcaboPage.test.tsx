@@ -33,6 +33,15 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.useRealTimers(); });
 
+// confirmar: primer toque, la gracia y el segundo toque sobre el mismo mosaico.
+async function confirmar(boton: HTMLElement) {
+  const nombre = boton.textContent ?? '';
+  fireEvent.click(boton);
+  await new Promise((r) => setTimeout(r, 450));
+  const otra = screen.getAllByRole('button').find((b) => (b.textContent ?? '').startsWith(nombre.slice(0, 8)));
+  fireEvent.click(otra ?? boton);
+}
+
 describe('Se acabó', () => {
   test('el primer toque arma el mosaico y el segundo reporta; nunca manda cantidad', async () => {
     montar();
@@ -52,17 +61,86 @@ describe('Se acabó', () => {
   });
 
   // El e2e lo vio: con la pantalla abierta un rato, «Deshacer» arrancaba en 92 s, porque la cuenta
-  // usaba la hora en que se montó la pantalla hasta el primer tic. El servidor rechaza a los 90.
-  test('la cuenta del deshacer arranca en 90 s aunque la pantalla lleve rato abierta', async () => {
+  // usaba la hora en que se montó la pantalla hasta el primer tic. Y la revisión: la hora límite viene
+  // del reloj de la base; con la tableta 60 s atrasada prometía 150 s y el servidor rechaza a los 90.
+  test('la cuenta del deshacer arranca en 90 s aunque la pantalla lleve rato abierta o su reloj vaya atrasado', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
     montar();
     const mosaico = await screen.findByRole('button', { name: /Queso crema/ });
     vi.setSystemTime(Date.now() + 30_000);
-    out.report.mockResolvedValue({ id: 7, kind: 'report', notificationId: 3, delta: '-3', undoUntil: new Date(Date.now() + 90_000).toISOString(), confirmations: 1 });
-    fireEvent.click(mosaico);
-    await new Promise((r) => setTimeout(r, 450));
-    fireEvent.click(screen.getByRole('button', { name: /Queso crema/ }));
+    out.report.mockResolvedValue({ id: 7, kind: 'report', notificationId: 3, delta: '-3', undoUntil: new Date(Date.now() + 150_000).toISOString(), confirmations: 1 });
+    await confirmar(mosaico);
     expect(await screen.findByRole('button', { name: /Deshacer · (89|90) s/ })).toBeTruthy();
+  });
+
+  // Si el servidor guardó el reporte y la respuesta se perdió, reintentar el MISMO artículo reusa la
+  // llave (no duplica); reportar OTRO con esa llave devolvía el reporte del primero y la pantalla decía
+  // «leche quedó en 0» sin que la leche cambiara.
+  test('tras un error, reportar otro artículo estrena llave y reintentar el mismo la reusa', async () => {
+    out.report.mockRejectedValueOnce(new ApiError(0, 'NETWORK', 'sin red', 'r'));
+    montar();
+    await confirmar(await screen.findByRole('button', { name: /Queso crema/ }));
+    await waitFor(() => expect(out.report).toHaveBeenCalledTimes(1));
+    await screen.findByRole('alert');
+    await confirmar(screen.getByRole('button', { name: /Queso crema/ }));
+    await waitFor(() => expect(out.report).toHaveBeenCalledTimes(2));
+    expect(out.report.mock.calls[1][1]).toBe(out.report.mock.calls[0][1]);
+    await screen.findByText(/Queso crema quedó en 0/);
+    out.report.mockRejectedValueOnce(new ApiError(0, 'NETWORK', 'sin red', 'r'));
+    await confirmar(screen.getByRole('button', { name: /Bolsa grande/ }));
+    await waitFor(() => expect(out.report).toHaveBeenCalledTimes(3));
+    await confirmar(screen.getByRole('button', { name: /Queso crema/ }));
+    await waitFor(() => expect(out.report).toHaveBeenCalledTimes(4));
+    expect(out.report.mock.calls[3][1]).not.toBe(out.report.mock.calls[2][1]);
+  });
+
+  test('mientras un reporte va en camino, «No lo encuentro» no se puede tocar', async () => {
+    out.search.mockResolvedValue({ items: [queso] });
+    let soltar: (v: unknown) => void = () => {};
+    out.report.mockReturnValue(new Promise((r) => { soltar = r; }));
+    montar();
+    fireEvent.change(await screen.findByRole('textbox', { name: '¿Qué se acabó?' }), { target: { value: 'queso' } });
+    await confirmar(await screen.findByRole('button', { name: /^Queso crema/ }));
+    await waitFor(() => expect(out.report).toHaveBeenCalled());
+    expect((screen.getByRole('button', { name: /No lo encuentro/ }) as HTMLButtonElement).disabled).toBe(true);
+    soltar({ id: 7, kind: 'report', notificationId: 3, delta: '-3', undoUntil: new Date().toISOString(), confirmations: 1 });
+  });
+
+  test('si deshacer falla, el botón de deshacer sigue ahí', async () => {
+    out.undo.mockRejectedValueOnce(new ApiError(0, 'NETWORK', 'sin red', 'r'));
+    montar();
+    await confirmar(await screen.findByRole('button', { name: /Queso crema/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Deshacer/ }));
+    await screen.findByRole('alert');
+    expect(screen.getByRole('button', { name: /Deshacer/ })).toBeTruthy();
+    expect(screen.getByText(/Queso crema quedó en 0/)).toBeTruthy();
+  });
+
+  test('si falla el reporte de otro, el deshacer del primero sigue ahí', async () => {
+    montar();
+    await confirmar(await screen.findByRole('button', { name: /Queso crema/ }));
+    await screen.findByRole('button', { name: /Deshacer/ });
+    out.report.mockRejectedValueOnce(new ApiError(0, 'NETWORK', 'sin red', 'r'));
+    await confirmar(screen.getByRole('button', { name: /Bolsa grande/ }));
+    await screen.findByRole('alert');
+    expect(screen.getByRole('button', { name: /Deshacer/ })).toBeTruthy();
+  });
+
+  test('mientras busca el texto nuevo no enseña los resultados del anterior', async () => {
+    out.search.mockImplementation(async (q: string) => (q === 'queso' ? { items: [queso] } : new Promise(() => {})));
+    montar();
+    const caja = await screen.findByRole('textbox', { name: '¿Qué se acabó?' });
+    fireEvent.change(caja, { target: { value: 'queso' } });
+    await screen.findByText('1 coinciden');
+    fireEvent.change(caja, { target: { value: 'bolsa' } });
+    expect(screen.queryByText('1 coinciden')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Queso crema/ })).toBeNull();
+  });
+
+  test('el nombre del mosaico se parte en dos renglones: «… 1 L» y «… 5 L» no se ven iguales', async () => {
+    montar();
+    const nombre = await screen.findByText('Queso crema');
+    expect(getComputedStyle(nombre).getPropertyValue('-webkit-line-clamp')).toBe('2');
   });
 
   test('un doble toque rápido no confirma (0.4 s de gracia)', async () => {

@@ -33,7 +33,9 @@ export type ResolveAction = 'arrived' | 'dismiss' | 'created' | 'alias';
 export const notificationsApi = {
   // La lista llega en `items`; se declara opcional para que el compilador obligue a la guarda
   // (AGENTS.md: un arreglo nil sale como null y tumba la pantalla sin un error).
-  list: (status: 'open' | 'closed') => api.get<{ items?: NotificationView[] }>(`/notifications?status=${status}&limit=50`),
+  // 200, el tope del servidor: con 50, más avisos sin leer que los que trae la lista dejaban la
+  // insignia sin poder llegar a 0.
+  list: (status: 'open' | 'closed') => api.get<{ items?: NotificationView[] }>(`/notifications?status=${status}&limit=200`),
   unread: () => api.get<{ unread: number }>('/notifications/unread-count'),
   read: (ids: number[]) => api.post<void>('/notifications/read', { ids }),
   bannerSeen: (id: number) => api.post<void>(`/notifications/${id}/banner-seen`),
@@ -111,7 +113,8 @@ export const lowStockApi = {
   save: (t: AlertItemType, id: number, body: LowStockInput) => api.put<LowStockEffect>(ruta(t, id), body),
   asked: (id: number) => api.post<void>(`/stock/articles/${id}/low-stock/asked`),
   list: () => api.get<{ items?: LowStockRow[] }>('/stock/low-stock'),
-  batch: (items: { itemType: AlertItemType; id: number; enabled: boolean; minStock: string | null }[], preview: boolean) =>
+  // minStock ausente = dejar el mínimo que tiene; null = quitarlo.
+  batch: (items: { itemType: AlertItemType; id: number; enabled: boolean; minStock?: string | null }[], preview: boolean) =>
     api.post<{ items?: { itemType: AlertItemType; id: number; effect: LowStockEffect['effect']; onHand: string }[] }>(
       `/stock/low-stock/batch${preview ? '?preview=1' : ''}`, { items }),
 };

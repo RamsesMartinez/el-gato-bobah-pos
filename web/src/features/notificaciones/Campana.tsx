@@ -29,15 +29,18 @@ const TIPO: Record<NotificationView['kind'], { texto: string; color: string }> =
 export function Campana({ abierto, setAbierto }: { abierto: boolean; setAbierto: (v: boolean) => void }) {
   const { enabled, unread, open } = useAvisos();
   const qc = useQueryClient();
+  // El servidor marca de 100 en 100: se manda en tandas.
   const leer = useMutation({
-    mutationFn: (ids: number[]) => notificationsApi.read(ids),
+    mutationFn: async (ids: number[]) => {
+      for (let i = 0; i < ids.length; i += 100) await notificationsApi.read(ids.slice(i, i + 100));
+    },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['avisos'] }),
   });
   if (!enabled) return null;
   const abrir = () => {
     setAbierto(true);
     medirAccion('avisos', 'abrir');
-    const sinLeer = open.filter((n) => !n.read).map((n) => n.id).slice(0, 100);
+    const sinLeer = open.filter((n) => !n.read).map((n) => n.id);
     if (sinLeer.length) leer.mutate(sinLeer);
   };
   return (
@@ -99,12 +102,20 @@ function Renglon({ n, onClose }: { n: NotificationView; onClose: () => void }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [eligiendo, setEligiendo] = useState(false);
+  // El insumo elegido espera confirmación: un toque errado en la lista ligaría para siempre un nombre
+  // al insumo equivocado.
+  const [elegido, setElegido] = useState<{ id: number; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const insumos = useQuery({ queryKey: ['articles', { q: '' }], queryFn: () => backofficeApi.articles({ q: '' }), enabled: eligiendo });
   const cerrar = useMutation({
     mutationFn: ({ action, ingredientId }: { action: ResolveAction; ingredientId?: number }) => notificationsApi.resolve(n.id, action, ingredientId),
-    onSuccess: (_, v) => { medirAccion('avisos', v.action); setEligiendo(false); void qc.invalidateQueries({ queryKey: ['avisos'] }); },
-    onError: (e) => setError(e instanceof ApiError ? e.message : 'No se pudo; vuelve a intentar.'),
+    onSuccess: (_, v) => { medirAccion('avisos', v.action); setEligiendo(false); setElegido(null); void qc.invalidateQueries({ queryKey: ['avisos'] }); },
+    // Lo más común es que otra persona ya lo cerró: se vuelve a pedir para que el renglón deje de
+    // ofrecer botones que ya no aplican.
+    onError: (e) => {
+      setError(e instanceof ApiError ? e.message : 'No se pudo; vuelve a intentar.');
+      void qc.invalidateQueries({ queryKey: ['avisos'] });
+    },
   });
   const abierto = n.status === 'open';
   const configura = can('inventory.configure', user);
@@ -138,17 +149,32 @@ function Renglon({ n, onClose }: { n: NotificationView; onClose: () => void }) {
           {n.kind === 'not_found' && configura && (
             <>
               <Button minH="44px" variant="outline" onClick={() => { onClose(); navigate(`/almacen?tab=insumos&nuevo=${encodeURIComponent(n.queryText ?? '')}&aviso=${n.id}`); }}>Dar de alta</Button>
-              {eligiendo ? (
+              {elegido ? null : eligiendo ? (
                 <Box minW="220px" flex="1">
                   <Picker value="" title="¿De qué insumo es otro nombre?" placeholder="Elegir insumo"
                     options={(insumos.data ?? []).map((a) => ({ value: String(a.id), label: a.name }))}
-                    onChange={(v) => cerrar.mutate({ action: 'alias', ingredientId: Number(v) })} />
+                    onChange={(v) => {
+                      const a = (insumos.data ?? []).find((x) => String(x.id) === v);
+                      if (a) setElegido({ id: a.id, name: a.name });
+                    }} />
                 </Box>
               ) : (
                 <Button minH="44px" variant="outline" onClick={() => setEligiendo(true)}>Es otro nombre de…</Button>
               )}
-              <Box flex="1" />
-              <Button minH="44px" variant="ghost" disabled={cerrar.isPending} onClick={() => cerrar.mutate({ action: 'dismiss' })}>Descartar</Button>
+              {elegido && (
+                <Box w="100%" borderWidth="1px" borderRadius="md" p={2}>
+                  <Text fontWeight="600" mb={2}>Guardar «{n.queryText}» como otro nombre de «{elegido.name}»</Text>
+                  <HStack gap={2} justify="flex-end">
+                    <Button minH="44px" variant="ghost" onClick={() => setElegido(null)}>Cancelar</Button>
+                    <Button minH="44px" disabled={cerrar.isPending} onClick={() => cerrar.mutate({ action: 'alias', ingredientId: elegido.id })}>Guardar</Button>
+                  </HStack>
+                </Box>
+              )}
+              {/* Descartar en su propio renglón, a la derecha: no queda pegado a las acciones frecuentes
+                  cuando los botones no caben en una línea del panel. */}
+              <Flex w="100%" justify="flex-end">
+                <Button minH="44px" variant="ghost" disabled={cerrar.isPending} onClick={() => cerrar.mutate({ action: 'dismiss' })}>Descartar</Button>
+              </Flex>
             </>
           )}
           {n.kind === 'stock_low' && can('inventory.view', user) && (

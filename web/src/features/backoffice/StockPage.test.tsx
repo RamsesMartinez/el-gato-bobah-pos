@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 
 import { useSessionStore } from '../../stores/session';
@@ -54,6 +55,11 @@ vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), ba
 vi.mock('../../api/admin', () => ({ adminApi: admin }));
 const pos = vi.hoisted(() => ({ businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' } as Record<string, string>)) }));
 vi.mock('../../api/pos', () => ({ posApi: pos }));
+const notif = vi.hoisted(() => ({
+  recipients: { get: vi.fn(() => Promise.resolve({ morningAt: '08:00', extras: [], people: [] })), save: vi.fn() },
+  shopping: { list: vi.fn(() => Promise.resolve({ items: [] })), email: vi.fn() },
+}));
+vi.mock('../../api/notifications', async (orig) => ({ ...(await orig<object>()), recipientsApi: notif.recipients, shoppingApi: notif.shopping }));
 
 function montar(entrada = '/almacen') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -188,4 +194,20 @@ it('«Revisar con un conteo» cierra la ficha y abre la pestaña Conteo con el a
   expect(await screen.findByLabelText('Buscar')).toHaveValue('Jarabe natural');
   expect(screen.getByRole('tab', { name: 'Conteo' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.queryByRole('button', { name: /Revisar con un conteo/ })).toBeNull();
+});
+
+// Lo que se edita en Avisos no se pierde al ir a otra pestaña y volver: antes la pestaña se
+// desmontaba y el correo a medio capturar desaparecía sin aviso (revisión de la 084).
+describe('Almacén › Avisos', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('un correo a medio capturar sigue ahí al volver de otra pestaña', async () => {
+    sesion(['inventory.view', 'inventory.configure']);
+    montar('/almacen?tab=avisos');
+    fireEvent.change(await screen.findByLabelText('Correo extra'), { target: { value: 'compras@ejemplo.mx' } });
+    await userEvent.click(screen.getByRole('tab', { name: 'Lista de compra' }));
+    expect(await screen.findByRole('tab', { name: 'Lista de compra', selected: true })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: 'Avisos' }));
+    expect(((await screen.findByLabelText('Correo extra')) as HTMLInputElement).value).toBe('compras@ejemplo.mx');
+  });
 });

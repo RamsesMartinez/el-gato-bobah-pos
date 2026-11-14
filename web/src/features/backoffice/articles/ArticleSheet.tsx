@@ -140,7 +140,9 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
     version: a?.updatedAt ?? '',
     // Manda la ficha completa: lo que cambió más lo último guardado de lo demás. La API anterior, que
     // atiende durante una subida, toma un campo ausente como vacío y lo borraría. La nueva compara
-    // contra lo que había y deja en la bitácora solo lo que cambió.
+    // contra lo que había y deja en la bitácora solo lo que cambió. El mínimo es la excepción: se edita
+    // en «Alertas» (spec 084) y la API, la de producción incluida, toma su llave ausente como «no
+    // tocar»; mandarlo regresaba el mínimo que el autoguardado tenía por guardado.
     save: async (patch, version, saved) => {
       // Los otros nombres van por su propia ruta (spec 063); devuelve la versión nueva de la ficha.
       if (patch.alts !== undefined) {
@@ -157,7 +159,6 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
         expectedUpdatedAt: version, name: v.name,
         categoryId: v.categoryId ? Number(v.categoryId) : null,
         placeId: v.placeId ? Number(v.placeId) : null,
-        minStock: v.min === '' ? null : v.min,
       };
       const r = await backofficeApi.updateArticle(id, body);
       medirAccion('inventario', 'editar-articulo');
@@ -330,7 +331,8 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                 <AltNamesField kind="article" ownName={form.name} value={form.alts} onChange={changeAlts} disabled={!canConfigure}
                   draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similarAlts} error={altError} />
                 {/* El mínimo vive en «Alertas» (spec 084, maqueta M1-B): un renglón con el estado y su hoja. */}
-                <SeccionAlertas itemType="ingrediente" id={id} name={a.name} kind={kind} canConfigure={canConfigure} />
+                <SeccionAlertas itemType="ingrediente" id={id} name={a.name} kind={kind} canConfigure={canConfigure}
+                  onSaved={() => void refresh()} />
                 <HStack justify="space-between" minH="44px">
                   <Text>Se mide en <b>{KIND_WORD[kind]}</b>{a.baseUnitCode === 'pieza' ? '' : ` (${a.baseUnitCode})`}{Number(a.onHand) < 0 ? '' : ` · Hay ${formatBaseQty(a.onHand, a.baseUnitCode)}`}</Text>
                   {canConfigure && a.isActive && <Button minH="44px" variant="outline" onClick={() => setPanel('unit')}>Cambiar ›</Button>}

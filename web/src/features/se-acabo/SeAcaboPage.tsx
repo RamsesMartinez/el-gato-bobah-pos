@@ -20,10 +20,8 @@ const ARMADO_MS = 4000;
 const BUSQUEDA_MS = 250;
 const NO_LO_ENCUENTRO = '__no-lo-encuentro';
 
-type Aviso =
-  | { tipo: 'hecho'; nombre: string; id: number; confirmacion: boolean; hasta: number }
-  | { tipo: 'no-lo-encuentro'; texto: string }
-  | { tipo: 'error'; texto: string };
+type Hecho = { nombre: string; id: number; confirmacion: boolean; hasta: number };
+type Mensaje = { tipo: 'no-lo-encuentro'; texto: string } | { tipo: 'error'; texto: string };
 
 const claveDe = (it: OutItem) => `${it.itemType}:${it.id}`;
 
@@ -37,10 +35,19 @@ export function SeAcaboPage() {
   const [q, setQ] = useState('');
   const [buscado, setBuscado] = useState('');
   const [armado, setArmado] = useState<{ clave: string; desde: number } | null>(null);
-  const [aviso, setAviso] = useState<Aviso | null>(null);
+  // El reporte que todavía se puede deshacer vive aparte del último mensaje: un error al deshacer o al
+  // reportar otro no se lleva el botón de deshacer que sigue vigente.
+  const [hecho, setHecho] = useState<Hecho | null>(null);
+  const [mensaje, setMensaje] = useState<Mensaje | null>(null);
   const [ahora, setAhora] = useState(() => Date.now());
-  // Una clave por reporte: si la red reintenta el mismo envío, el servidor devuelve el primero.
-  const llave = useRef(uuid());
+  // Una clave por destino: reintentar el MISMO artículo o texto tras un error la reusa (si el servidor
+  // ya lo guardó, devuelve el primero); cualquier otro destino estrena la suya. Si se reusara para otro
+  // artículo, el servidor devolvería el reporte del anterior como si fuera de éste.
+  const llave = useRef<{ destino: string; clave: string } | null>(null);
+  const llaveDe = (destino: string) => {
+    if (llave.current?.destino !== destino) llave.current = { destino, clave: uuid() };
+    return llave.current.clave;
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setBuscado(q.trim()), BUSQUEDA_MS);
@@ -52,46 +59,52 @@ export function SeAcaboPage() {
     return () => clearTimeout(t);
   }, [armado]);
   useEffect(() => {
-    if (aviso?.tipo !== 'hecho') return;
+    if (!hecho) return;
     const t = setInterval(() => setAhora(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [aviso]);
+  }, [hecho]);
 
   const { data: sug } = useQuery({ queryKey: ['se-acabo', 'sugerencias'], queryFn: stockOutApi.suggestions });
   const { data: resultados } = useQuery({
     queryKey: ['se-acabo', 'buscar', buscado], queryFn: () => stockOutApi.search(buscado), enabled: buscado !== '',
   });
 
-  const error = (e: unknown) => setAviso({ tipo: 'error', texto: e instanceof ApiError ? e.message : 'No se pudo avisar; vuelve a intentar.' });
+  const error = (e: unknown) => setMensaje({ tipo: 'error', texto: e instanceof ApiError ? e.message : 'No se pudo avisar; vuelve a intentar.' });
   const reportar = useMutation({
-    mutationFn: (it: OutItem) => stockOutApi.report(it, llave.current),
+    mutationFn: (it: OutItem) => stockOutApi.report(it, llaveDe(`articulo:${claveDe(it)}`)),
     onSuccess: (res, it) => {
       medirAccion('se-acabo', res.kind === 'confirmation' ? 'confirmar' : 'reportar');
-      llave.current = uuid();
+      llave.current = null;
       setQ('');
-      // La cuenta arranca con la hora de ahora, no con la del último tic: si no, la pantalla que lleva
-      // rato abierta prometía más segundos de los que el servidor acepta.
-      setAhora(Date.now());
-      setAviso({ tipo: 'hecho', nombre: it.name, id: res.id, confirmacion: res.kind === 'confirmation', hasta: Date.parse(res.undoUntil) });
+      setMensaje(null);
+      // La cuenta sale del reloj de la tableta y de los segundos que da el servidor, no de la hora
+      // límite de la base: con la tableta atrasada prometía más de lo que el servidor acepta. Y arranca
+      // con la hora de ahora, no con la del último tic.
+      const ahoraMismo = Date.now();
+      setAhora(ahoraMismo);
+      setHecho({ nombre: it.name, id: res.id, confirmacion: res.kind === 'confirmation', hasta: ahoraMismo + (sug?.undoSeconds ?? 90) * 1000 });
       void qc.invalidateQueries({ queryKey: ['se-acabo'] });
       void qc.invalidateQueries({ queryKey: ['avisos'] });
     },
     onError: error,
   });
   const noLoEncuentro = useMutation({
-    mutationFn: (texto: string) => stockOutApi.notFound(texto, llave.current),
+    mutationFn: (texto: string) => stockOutApi.notFound(texto, llaveDe(`texto:${texto}`)),
     onSuccess: (_, texto) => {
       medirAccion('se-acabo', 'no-lo-encuentro');
-      llave.current = uuid();
+      llave.current = null;
       setQ('');
-      setAviso({ tipo: 'no-lo-encuentro', texto });
+      setHecho(null);
+      setMensaje({ tipo: 'no-lo-encuentro', texto });
       void qc.invalidateQueries({ queryKey: ['se-acabo'] });
     },
     onError: error,
   });
+  // Mientras uno de los dos avisos va en camino no sale el otro: los dos llevarían la misma intención.
+  const enviando = reportar.isPending || noLoEncuentro.isPending;
   const deshacer = useMutation({
     mutationFn: (id: number) => stockOutApi.undo(id),
-    onSuccess: () => { medirAccion('se-acabo', 'deshacer'); setAviso(null); void qc.invalidateQueries({ queryKey: ['se-acabo'] }); },
+    onSuccess: () => { medirAccion('se-acabo', 'deshacer'); setHecho(null); setMensaje(null); void qc.invalidateQueries({ queryKey: ['se-acabo'] }); },
     onError: error,
   });
 
@@ -112,10 +125,10 @@ export function SeAcaboPage() {
     const listo = armado?.clave === clave;
     return (
       <Button key={clave} data-row minH="64px" h="auto" py={2} whiteSpace="normal" textAlign="left" justifyContent="flex-start"
-        variant={listo ? 'solid' : 'outline'} colorPalette={listo ? 'red' : 'gray'} disabled={reportar.isPending}
+        variant={listo ? 'solid' : 'outline'} colorPalette={listo ? 'red' : 'gray'} disabled={enviando}
         onClick={(e) => tocar(clave, e.timeStamp, () => reportar.mutate(it))}>
         <VStack align="start" gap={0} minW={0}>
-          <Text fontWeight="700" fontSize="md" lineClamp={1}>{it.name}</Text>
+          <Text fontWeight="700" fontSize="md" lineClamp={2}>{it.name}</Text>
           <Text fontSize="xs" color={listo ? 'white' : 'fg.muted'} minH="16px">
             {listo ? 'Toca otra vez para avisar que se acabó' : detalle ?? ''}
           </Text>
@@ -124,13 +137,16 @@ export function SeAcaboPage() {
     );
   };
 
-  const restantes = aviso?.tipo === 'hecho' ? Math.max(0, Math.ceil((aviso.hasta - ahora) / 1000)) : 0;
+  const restantes = hecho ? Math.max(0, Math.ceil((hecho.hasta - ahora) / 1000)) : 0;
+  // Los resultados son del texto que se buscó; mientras el texto nuevo espera su búsqueda, no se
+  // enseñan los del anterior con su «N coinciden».
+  const vigentes = buscado === q.trim() ? resultados : undefined;
   const lista = q.trim() ? (
     <VStack align="stretch" gap={2}>
-      <Titulo>{resultados ? (resultados.items.length ? `${resultados.items.length} coinciden` : 'Sin coincidencias') : 'Buscando…'}</Titulo>
-      {(resultados?.items ?? []).map((it) => mosaico(it, it.openOut ? 'Ya está reportado: suma tu confirmación' : undefined))}
+      <Titulo>{vigentes ? (vigentes.items.length ? `${vigentes.items.length} coinciden` : 'Sin coincidencias') : 'Buscando…'}</Titulo>
+      {(vigentes?.items ?? []).map((it) => mosaico(it, it.openOut ? 'Ya está reportado: suma tu confirmación' : undefined))}
       <Box h="24px" />
-      <Button data-row minH="64px" borderStyle="dashed" justifyContent="flex-start" disabled={noLoEncuentro.isPending}
+      <Button data-row minH="64px" borderStyle="dashed" justifyContent="flex-start" disabled={enviando}
         variant={armado?.clave === NO_LO_ENCUENTRO ? 'solid' : 'outline'} colorPalette={armado?.clave === NO_LO_ENCUENTRO ? 'orange' : 'gray'}
         onClick={(e) => tocar(NO_LO_ENCUENTRO, e.timeStamp, () => noLoEncuentro.mutate(q.trim()))}>
         <LuCircleHelp /> <Text fontWeight="700">No lo encuentro</Text>
@@ -163,28 +179,31 @@ export function SeAcaboPage() {
           {/* Hueco de alto fijo: el aviso aparece y se va sin mover los mosaicos bajo el dedo de quien
               reporta varios seguidos. */}
           <Box data-testid="hueco-del-aviso" data-alto="76" minH="76px" display="flex" flexDirection="column" justifyContent="center" flexShrink={0}>
-            {aviso?.tipo === 'hecho' && (
+            {hecho && (
               <HStack role="status" bg="green.subtle" borderRadius="lg" px={4} minH="64px" gap={3}>
                 <LuCircleCheck size={24} />
                 <Box flex="1" minW={0}>
-                  <Text fontWeight="700">{aviso.confirmacion ? `Ya estaba reportado: sumamos tu confirmación de ${aviso.nombre}` : `Listo: ${aviso.nombre} quedó en 0 y se avisó a quien compra`}</Text>
-                  {!aviso.confirmacion && <Text fontSize="sm" color="fg.muted">Le llega en la campana y por correo en unos minutos</Text>}
+                  <Text fontWeight="700">{hecho.confirmacion ? `Ya estaba reportado: sumamos tu confirmación de ${hecho.nombre}` : `Listo: ${hecho.nombre} quedó en 0 y se avisó a quien compra`}</Text>
+                  {/* Un error posterior se dice aquí, sin quitar el deshacer que sigue vigente. */}
+                  {mensaje?.tipo === 'error'
+                    ? <Text role="alert" fontSize="sm" color="fg.error" fontWeight="600">{mensaje.texto}</Text>
+                    : !hecho.confirmacion && <Text fontSize="sm" color="fg.muted">Le llega en la campana y por correo en unos minutos</Text>}
                 </Box>
                 {restantes > 0 && (
-                  <Button minH="52px" variant="outline" bg="bg" disabled={deshacer.isPending} onClick={() => deshacer.mutate(aviso.id)}>
+                  <Button minH="52px" variant="outline" bg="bg" disabled={deshacer.isPending} onClick={() => deshacer.mutate(hecho.id)}>
                     <LuUndo2 /> Deshacer · {restantes} s
                   </Button>
                 )}
               </HStack>
             )}
-            {aviso?.tipo === 'no-lo-encuentro' && (
+            {!hecho && mensaje?.tipo === 'no-lo-encuentro' && (
               <HStack role="status" bg="orange.subtle" borderRadius="lg" px={4} minH="64px" gap={3}>
                 <LuCircleCheck size={24} />
-                <Box flex="1"><Text fontWeight="700">Avisamos «{aviso.texto}» a quien compra</Text>
+                <Box flex="1"><Text fontWeight="700">Avisamos «{mensaje.texto}» a quien compra</Text>
                   <Text fontSize="sm" color="fg.muted">No se tocó ninguna existencia. Quien compra decide si lo da de alta.</Text></Box>
               </HStack>
             )}
-            {aviso?.tipo === 'error' && <Text role="alert" color="fg.error" fontWeight="600" px={1}>{aviso.texto}</Text>}
+            {!hecho && mensaje?.tipo === 'error' && <Text role="alert" color="fg.error" fontWeight="600" px={1}>{mensaje.texto}</Text>}
           </Box>
           {lista}
         </VStack>

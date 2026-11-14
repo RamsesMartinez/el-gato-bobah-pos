@@ -58,7 +58,30 @@ select r.id, r.kind, r.item_type, r.ingredient_id, r.product_id,
 select count(*)::int from stock_out_reports where reported_by = sqlc.arg(user_id) and reported_at >= sqlc.arg(since);
 
 -- name: GetOutReportByClientKey :one
-select id, kind, notification_id, delta, reported_at from stock_out_reports where client_key = sqlc.arg(client_key);
+-- Con lo que se reportó: una llave repetida solo devuelve el reporte si es del mismo artículo o texto
+-- y de la misma persona.
+select r.id, r.kind, r.notification_id, r.delta, r.reported_at, r.reported_by,
+       coalesce(r.ingredient_id, 0)::bigint as ingredient_key, coalesce(r.product_id, 0)::bigint as product_key,
+       coalesce(n.query_text, '')::text as query_text
+  from stock_out_reports r join notifications n on n.id = r.notification_id
+ where r.client_key = sqlc.arg(client_key);
+
+-- name: LockReporter :exec
+-- Un reporte a la vez por persona: así el tope por hora cuenta lo que de verdad pasó y la misma llave
+-- mandada dos veces a la vez encuentra el primer reporte en vez de chocar con el único.
+select pg_advisory_xact_lock(84291, sqlc.arg(user_id)::int);
+
+-- name: PendingOutMovementOf :one
+-- El ajuste a 0 de un aviso que nadie ha repuesto: el reporte que lo hizo se deshizo mientras otro
+-- sostenía el aviso. Al deshacer el último, se repone éste.
+select id, movement_id::bigint as movement_id, delta::numeric as delta, reported_at
+  from stock_out_reports
+ where notification_id = sqlc.arg(notification_id) and movement_id is not null and undo_movement_id is null
+   and undone_at is not null
+ order by id limit 1;
+
+-- name: SetOutReportUndoMovement :exec
+update stock_out_reports set undo_movement_id = sqlc.arg(undo_movement_id) where id = sqlc.arg(id);
 
 -- name: OutArticle :one
 -- Lo que «Se acabó» necesita del artículo: nombre, unidad y si sigue activo.

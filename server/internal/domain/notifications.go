@@ -61,6 +61,9 @@ var (
 	// ErrUndoAfterMovement: después del reporte el artículo se movió (una venta, una compra, un
 	// conteo): reponer el delta original pisaría ese movimiento.
 	ErrUndoAfterMovement = errors.New("ya no se puede deshacer: el artículo se movió después del reporte")
+	// ErrClientKeyReused: la llave de un reporte ya se usó para otro artículo, otro texto u otra
+	// persona. Devolver el reporte guardado haría que la pantalla anunciara lo que no pasó.
+	ErrClientKeyReused = errors.New("ese aviso ya se mandó con otro artículo; vuelve a intentar")
 	// ErrNotificationClosed: el aviso ya se resolvió o se descartó.
 	ErrNotificationClosed = errors.New("ese aviso ya está cerrado")
 )

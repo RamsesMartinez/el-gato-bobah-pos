@@ -22,6 +22,9 @@ interface Props {
   name: string;
   kind: Kind;
   canConfigure: boolean;
+  // onSaved recibe la versión nueva del artículo: guardar las alertas la cambia, y la ficha la necesita
+  // para que su autoguardado no choque contra sí misma.
+  onSaved?: (updatedAt: string) => void;
 }
 
 interface Forma {
@@ -46,14 +49,18 @@ function formaDe(c: LowStockConfig, kind: Kind): Forma {
   };
 }
 
-// cuerpo arma lo que se manda. Mínimo vacío es «sin mínimo» (null), nunca un cero escrito a medias.
+// cuerpo arma lo que se manda. Mínimo vacío es «sin mínimo» (null), nunca un cero escrito a medias; y
+// sin mínimo, «llegue al mínimo» viaja apagada aunque la casilla haya quedado marcada.
 function cuerpo(f: Forma, kind: Kind, updatedAt?: string): LowStockInput {
   const min = baseQty(f.min.qty, kind, f.min.big);
   return {
-    enabled: f.enabled, onMin: f.onMin, onOut: f.onOut, banner: f.banner, minStock: min ?? null,
+    enabled: f.enabled, onMin: f.onMin && min != null && Number(min) > 0, onOut: f.onOut, banner: f.banner, minStock: min ?? null,
     coverageDays: f.dias.trim() === '' ? null : Number(f.dias), ...(updatedAt ? { expectedUpdatedAt: updatedAt } : {}),
   };
 }
+
+// diasInvalidos: vacío es «los de omisión»; si se escribe, de 1 a 90 (lo mismo que acepta el servidor).
+const diasInvalidos = (d: string) => d.trim() !== '' && !(Number(d) >= 1 && Number(d) <= 90);
 
 const KIND_WORDS: Record<string, string> = { stock_low: 'al llegar al mínimo', stock_out: 'de que se acabó' };
 
@@ -65,7 +72,7 @@ function Casilla({ checked, onChange, disabled, children }: { checked: boolean; 
   );
 }
 
-export function SeccionAlertas({ itemType, id, name, kind, canConfigure }: Props) {
+export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved }: Props) {
   const qc = useQueryClient();
   const cfg = useQuery({ queryKey: ['alertas', itemType, id], queryFn: () => lowStockApi.get(itemType, id) });
   const [hoja, setHoja] = useState(false);
@@ -74,25 +81,36 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure }: Props
   const [error, setError] = useState<string | null>(null);
   const [preguntaCerrada, setPreguntaCerrada] = useState(false);
 
-  const fallo = (e: unknown) => setError(e instanceof ApiError ? e.message : 'No se pudo; vuelve a intentar.');
+  const fallo = (e: unknown) => {
+    // Otra tableta (o «Alertas por lote») guardó mientras tanto: se vuelve a leer en vez de pisarla.
+    if (e instanceof ApiError && e.code === 'STALE') {
+      setError('Alguien más cambió estas alertas mientras las veías. Se volvieron a leer: revisa y guarda otra vez.');
+      void qc.invalidateQueries({ queryKey: ['alertas', itemType, id] }).then(() => {
+        const nueva = qc.getQueryData<LowStockConfig>(['alertas', itemType, id]);
+        if (nueva) setForma(formaDe(nueva, kind));
+      });
+      return;
+    }
+    setError(e instanceof ApiError ? e.message : 'No se pudo; vuelve a intentar.');
+  };
   const yaPregunto = useMutation({
     mutationFn: () => lowStockApi.asked(id),
     onSettled: () => void qc.invalidateQueries({ queryKey: ['alertas', itemType, id] }),
   });
   const verEfecto = useMutation({
-    mutationFn: (f: Forma) => lowStockApi.preview(itemType, id, cuerpo(f, kind)),
+    mutationFn: (f: Forma) => lowStockApi.preview(itemType, id, cuerpo(f, kind, cfg.data?.updatedAt)),
     onSuccess: (r) => { setError(null); setEfecto(r); },
     onError: fallo,
   });
   const guardar = useMutation({
-    mutationFn: (f: Forma) => lowStockApi.save(itemType, id, cuerpo(f, kind)),
-    onSuccess: () => {
+    mutationFn: (f: Forma) => lowStockApi.save(itemType, id, cuerpo(f, kind, cfg.data?.updatedAt)),
+    onSuccess: (r) => {
+      if (r.updatedAt) onSaved?.(r.updatedAt);
       medirAccion('inventario', 'alertas');
       setEfecto(null);
       setHoja(false);
       void qc.invalidateQueries({ queryKey: ['alertas'] });
       void qc.invalidateQueries({ queryKey: ['avisos'] });
-      // Guardar el mínimo cambia la versión de la ficha: se relee para que su autoguardado no choque.
       if (itemType === 'ingrediente') void qc.invalidateQueries({ queryKey: ['article', id] });
     },
     onError: (e) => { setEfecto(null); fallo(e); },
@@ -111,7 +129,13 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure }: Props
   return (
     <>
       <HStack justify="space-between" minH="44px" data-alertas>
-        <Text>Alertas: <b>{resumenDeAlertas(c)}</b></Text>
+        <Box>
+          <Text>Alertas: <b>{resumenDeAlertas(c)}</b></Text>
+          {/* El mínimo de la sucursal gana sobre el del artículo: se dice, o el renglón promete otro. */}
+          {c.enabled && c.branchMinStock != null && (
+            <Text fontSize="sm" color="fg.muted">En esta sucursal avisa al llegar a {formatBaseQty(c.branchMinStock, c.unitCode)}</Text>
+          )}
+        </Box>
         {canConfigure && <Button minH="44px" variant="outline" onClick={() => abrir()}>Configurar ›</Button>}
       </HStack>
 
@@ -148,7 +172,10 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure }: Props
             </DrawerBody>
             <DrawerFooter>
               <Button minH="52px" variant="ghost" onClick={() => setHoja(false)}>Cancelar</Button>
-              <Button minH="52px" colorPalette="brand" loading={verEfecto.isPending} onClick={() => verEfecto.mutate(forma)}>Guardar</Button>
+              <Button minH="52px" colorPalette="brand" loading={verEfecto.isPending} onClick={() => {
+                if (forma.enabled && diasInvalidos(forma.dias)) { setError('Los días de cobertura van de 1 a 90 días.'); return; }
+                verEfecto.mutate(forma);
+              }}>Guardar</Button>
             </DrawerFooter>
           </DrawerContent>
         </DrawerRoot>
@@ -158,7 +185,7 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure }: Props
         <ConfirmSheet isOpen title="Guardar las alertas" confirmLabel="Guardar" confirmPalette="brand" loading={guardar.isPending}
           onConfirm={() => guardar.mutate(forma)} onCancel={() => setEfecto(null)}>
           <VStack align="stretch" gap={2}>
-            <Text>Se actualizará la configuración de alertas de <b>{name}</b>: {resumenDeAlertas({ ...c, ...cuerpo(forma, kind) }).toLowerCase()}.</Text>
+            <Text>Se actualizará la configuración de alertas de <b>{name}</b>: {resumenDeAlertas({ ...c, ...cuerpo(forma, kind), minStock: efecto.min ?? cuerpo(forma, kind).minStock }).toLowerCase()}.</Text>
             {efecto.effect.opens.length > 0 && (
               <Box bg="orange.subtle" borderRadius="md" p={3} fontWeight="600">
                 Hoy quedan {formatBaseQty(efecto.onHand, c.unitCode)}, así que se enviará un aviso {efecto.effect.opens.map((k) => KIND_WORDS[k]).join(' y ')} al guardar.

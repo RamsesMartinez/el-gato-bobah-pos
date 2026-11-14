@@ -20,9 +20,10 @@ import (
 // base para que los dos relojes hablen del mismo momento.
 
 type mailbox struct {
-	mu   sync.Mutex
-	sent []struct{ to, subject, html string }
-	fail error
+	mu      sync.Mutex
+	sent    []struct{ to, subject, html string }
+	fail    error
+	failFor string // un destinatario que el servidor de correo rechaza
 }
 
 func (b *mailbox) send(to []string, subject, html string) error {
@@ -30,6 +31,11 @@ func (b *mailbox) send(to []string, subject, html string) error {
 	defer b.mu.Unlock()
 	if b.fail != nil {
 		return b.fail
+	}
+	for _, t := range to {
+		if t == b.failFor {
+			return errors.New("550 <" + t + ">: Recipient address rejected")
+		}
 	}
 	for _, t := range to {
 		b.sent = append(b.sent, struct{ to, subject, html string }{t, subject, html})
@@ -220,5 +226,83 @@ func TestMorningSummaryOncePerDayAcrossRestarts(t *testing.T) {
 	}
 	if !strings.Contains(k.box.sent[0].html, "Mañana 084m") || !strings.Contains(k.box.sent[0].subject, "mañana") {
 		t.Fatalf("resumen: %s", k.box.sent[0].subject)
+	}
+}
+
+func (b *mailbox) to(addr string) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n := 0
+	for _, m := range b.sent {
+		if m.to == addr {
+			n++
+		}
+	}
+	return n
+}
+
+// Sin nadie que reciba, el bloque se daba por enviado: el aviso quedaba «enviado» sin que nadie lo
+// leyera y el enfriamiento de 12 h callaba la siguiente vez que se acabara, ya con destinatario.
+func TestWithoutRecipientsNothingCountsAsEmailed(t *testing.T) {
+	t.Parallel()
+	k := newMailerKit(t)
+	ctx := context.Background()
+	if _, err := k.st.Pool.Exec(ctx, `update users set recovery_email = null where recovery_email is not null`); err != nil {
+		t.Fatal(err)
+	}
+	ing, _ := k.openAt(t, "Sin destinatario 084m", k.block.Add(time.Minute))
+	if err := k.mailer(k.block.Add(6*time.Minute)).SendWindows(ctx, defaultCompanyID); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	if err := k.st.Pool.QueryRow(ctx, `select email_state from notifications where ingredient_id = $1`, ing).Scan(&state); err != nil || state == "sent" {
+		t.Fatalf("sin destinatarios el aviso quedó %q (%v)", state, err)
+	}
+	// Llega una gerente con correo y el mismo insumo se vuelve a acabar dos horas después.
+	setEmail(t, k.st, k.user, "gerente084m@ejemplo.mx")
+	adjust(t, k.st, "ingrediente", ing, "3")
+	adjust(t, k.st, "ingrediente", ing, "-3")
+	later := k.block.Add(2 * time.Hour)
+	if _, err := k.st.Pool.Exec(ctx, `update notifications set opened_at = $2 where ingredient_id = $1 and status = 'open'`, ing, later.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.mailer(later.Add(6*time.Minute)).SendWindows(ctx, defaultCompanyID); err != nil {
+		t.Fatal(err)
+	}
+	if k.box.count() != 1 {
+		t.Fatalf("el enfriamiento contó un correo que no salió: %d enviados", k.box.count())
+	}
+}
+
+// Un destinatario que el servidor rechaza cortaba el bloque para todos los demás y, al reintentar,
+// los que ya lo habían recibido lo recibían otra vez. Además, el rechazo traía la dirección ajena y
+// terminaba en la bitácora de la API cada minuto.
+func TestOneBadRecipientDoesNotStopTheOthers(t *testing.T) {
+	t.Parallel()
+	k := newMailerKit(t)
+	ctx := context.Background()
+	svc, _, nctx := asNotifications(t, defaultCompanyID)
+	v, err := svc.Recipients(nctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v.Extras = append(v.Extras, app.RecipientExtra{Email: "rebota084@tercero.mx", Stock: true}, app.RecipientExtra{Email: "compras084@ejemplo.mx", Stock: true})
+	if err := svc.SetRecipients(nctx, v, k.user); err != nil {
+		t.Fatal(err)
+	}
+	k.box.failFor = "rebota084@tercero.mx"
+	k.openAt(t, "Rebote 084m", k.block.Add(time.Minute))
+	err = k.mailer(k.block.Add(6*time.Minute)).SendWindows(ctx, defaultCompanyID)
+	if err != nil && strings.Contains(err.Error(), "tercero.mx") {
+		t.Fatalf("el error lleva la dirección ajena a la bitácora: %v", err)
+	}
+	if k.box.to("gerente084m@ejemplo.mx") != 1 || k.box.to("compras084@ejemplo.mx") != 1 {
+		t.Fatalf("un rebote dejó sin correo a los demás: gerente %d, compras %d", k.box.to("gerente084m@ejemplo.mx"), k.box.to("compras084@ejemplo.mx"))
+	}
+	if err := k.mailer(k.block.Add(7*time.Minute)).SendWindows(ctx, defaultCompanyID); err != nil && strings.Contains(err.Error(), "tercero.mx") {
+		t.Fatal(err)
+	}
+	if k.box.to("gerente084m@ejemplo.mx") != 1 {
+		t.Fatalf("la gerente recibió el mismo bloque %d veces", k.box.to("gerente084m@ejemplo.mx"))
 	}
 }

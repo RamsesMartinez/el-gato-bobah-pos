@@ -130,7 +130,7 @@ func configureLowStockIn(ctx context.Context, q *db.Queries, t db.StockItemType,
 	if !before.IsActive {
 		return LowStockResult{}, domain.ErrNotFound
 	}
-	if t == "ingrediente" && in.ExpectedUpdatedAt != nil && !before.UpdatedAt.Equal(*in.ExpectedUpdatedAt) {
+	if in.ExpectedUpdatedAt != nil && !before.UpdatedAt.Equal(*in.ExpectedUpdatedAt) {
 		return LowStockResult{}, domain.ErrArticleStale
 	}
 	branch, err := q.CurrentBranchID(ctx)
@@ -229,6 +229,9 @@ type LowStockBatchItem struct {
 	ID       int64            `json:"id"`
 	Enabled  bool             `json:"enabled"`
 	MinStock *decimal.Decimal `json:"minStock"`
+	// KeepMin deja el mínimo que ya tiene: la tabla del lote no lo trae en los renglones que no se
+	// editaron, y mandar el que leyó al abrir regresaría el que otra persona capturó mientras tanto.
+	KeepMin bool `json:"-"`
 }
 
 // LowStockBatchResult es el efecto de un renglón.
@@ -261,8 +264,14 @@ func (s *NotificationsService) ConfigureBatch(ctx context.Context, items []LowSt
 				d := int(*cur.CoverageDays)
 				days = &d
 			}
+			min := it.MinStock
+			if it.KeepMin {
+				min = cur.MinStock
+			}
+			// El efecto se calcula con el mínimo de la sucursal si lo hay (configureLowStockIn): es el
+			// que de verdad dispara el aviso, aunque el renglón muestre el del artículo.
 			in := LowStockInput{Enabled: it.Enabled, OnMin: cur.LowStockOnMin, OnOut: cur.LowStockOnOut, Banner: cur.LowStockBanner,
-				MinStock: it.MinStock, CoverageDays: days}
+				MinStock: min, CoverageDays: days}
 			if err := validLowStock(in); err != nil {
 				return err
 			}

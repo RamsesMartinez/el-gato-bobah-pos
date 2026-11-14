@@ -128,7 +128,12 @@ func (s *NotificationsService) SetRecipients(ctx context.Context, in RecipientsV
 		if err := q.ClearNotificationRecipients(ctx); err != nil {
 			return err
 		}
+		seen := map[int64]bool{}
 		for _, p := range in.People {
+			if seen[p.UserID] {
+				return fmt.Errorf("%w: una persona aparece dos veces en la lista", domain.ErrValidation)
+			}
+			seen[p.UserID] = true
 			if !eligible[p.UserID] {
 				return fmt.Errorf("%w: esa persona no puede configurar el almacén; recibe quien tiene ese permiso", domain.ErrValidation)
 			}

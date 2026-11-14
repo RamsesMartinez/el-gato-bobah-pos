@@ -18,27 +18,32 @@ const HORAS = Array.from({ length: 96 }, (_, i) => {
   return { value: `${h}:${m}`, label: `${h}:${m}` };
 });
 
+// La zona de toque es el propio interruptor: una caja de 44 px alrededor no recibe el toque.
 function Interruptor({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <Box display="inline-flex" minH="44px" minW="44px" alignItems="center" justifyContent="center">
-      <Switch aria-label={label} checked={checked} disabled={disabled} onCheckedChange={(e) => onChange(e.checked)} />
-    </Box>
+    <Switch aria-label={label} minH="44px" minW="44px" px={2} justifyContent="center" checked={checked} disabled={disabled}
+      onCheckedChange={(e) => onChange(e.checked)} />
   );
 }
 
 export function Destinatarios() {
   const qc = useQueryClient();
   const datos = useQuery({ queryKey: ['destinatarios'], queryFn: recipientsApi.get });
-  const [v, setV] = useState<RecipientsView | null>(null);
+  const [v, setVista] = useState<RecipientsView | null>(null);
   const [nuevo, setNuevo] = useState('');
   const [aviso, setAviso] = useState<{ texto: string; error: boolean } | null>(null);
-  if (datos.data && v === null) setV(datos.data);
+  if (datos.data && v === null) setVista(datos.data);
+  // Editar quita el «Guardado.»: ya no es cierto.
+  const setV = (x: RecipientsView) => { setVista(x); setAviso(null); };
   const guardar = useMutation({
     mutationFn: (x: RecipientsView) => recipientsApi.save(x),
-    onSuccess: () => {
+    // Se toma lo que el servidor dejó (normaliza los correos): comparar contra lo escrito dejaba
+    // «Guardar» encendido para siempre.
+    onSuccess: async () => {
       medirAccion('inventario', 'destinatarios');
+      const fresco = await qc.fetchQuery({ queryKey: ['destinatarios'], queryFn: recipientsApi.get, staleTime: 0 });
+      setVista(fresco);
       setAviso({ texto: 'Guardado.', error: false });
-      void qc.invalidateQueries({ queryKey: ['destinatarios'] });
     },
     onError: (e) => setAviso({ texto: e instanceof ApiError ? e.message : 'No se pudo guardar; vuelve a intentar.', error: true }),
   });
@@ -51,7 +56,9 @@ export function Destinatarios() {
     setNuevo('');
   };
   return (
-    <VStack align="stretch" gap={3} flex="1" minH={0} overflowY="auto">
+    <VStack align="stretch" gap={3} flex="1" minH={0}>
+      {/* Lo que crece se desplaza; «Guardar» se queda abajo, siempre a la vista. */}
+      <VStack data-testid="destinatarios-lista" align="stretch" gap={3} flex="1" minH={0} overflowY="auto">
       <Box>
         <Text fontSize="lg" fontWeight="700">Avisos de inventario</Text>
         <Text color="fg.muted">Quién recibe el correo de lo que se acabó y de lo que alguien no encontró. Si no eliges, reciben quienes configuran el almacén.</Text>
@@ -113,10 +120,13 @@ export function Destinatarios() {
         <Input aria-label="Correo extra" placeholder="Agregar un correo, por ejemplo compras@tunegocio.mx" minH="48px" maxW="420px" type="email"
           value={nuevo} onChange={(e) => setNuevo(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') agregar(); }} />
         <Button minH="48px" variant="outline" disabled={!nuevo.trim()} onClick={agregar}>Agregar</Button>
-        <Box flex="1" />
+      </HStack>
+      </VStack>
+      <HStack gap={3} flexShrink={0} borderTopWidth="1px" pt={3}>
+        {aviso && <Text flex="1" role={aviso.error ? 'alert' : 'status'} color={aviso.error ? 'fg.error' : 'fg.success'}>{aviso.texto}</Text>}
+        <Box flex={aviso ? undefined : '1'} />
         <Button minH="48px" colorPalette="brand" disabled={!cambiado} loading={guardar.isPending} onClick={() => { setAviso(null); guardar.mutate(v); }}>Guardar</Button>
       </HStack>
-      {aviso && <Text role={aviso.error ? 'alert' : 'status'} color={aviso.error ? 'fg.error' : 'fg.success'}>{aviso.texto}</Text>}
     </VStack>
   );
 }

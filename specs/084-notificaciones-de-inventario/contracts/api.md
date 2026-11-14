@@ -21,6 +21,9 @@ campo `quantity` es 400). Respuesta `201` (o `200` si `clientKey` ya existía, c
 Errores: 404 artículo inexistente o archivado; 409 `ITEM_MERGED`; 429 `REPORT_LIMIT` (20 por hora y
 persona, con el mensaje para pantalla).
 
+Una `clientKey` ya usada con otro artículo, otro texto u otra persona → `409 CLIENT_KEY_REUSED`
+(la misma petición repetida devuelve el reporte guardado).
+
 ### `POST /stock/out-reports/{id}/undo`
 Solo quien reportó (o `inventory.configure`), hasta 90 s después (reloj de la base), sin movimiento
 ni conteo posterior del artículo en la sucursal. `200 {"undone":true}`; 409 `UNDO_EXPIRED`,
@@ -65,7 +68,8 @@ Sin `preview` guarda, marca `asked`, evalúa al instante, audita y responde el m
 
 ### `POST /stock/low-stock/batch` (`?preview=1`)
 `{"items":[{"itemType":"ingrediente","id":12,"enabled":true,"minStock":"5"}]}` (máx. 100). Una
-transacción. La herramienta MCP `low_stock_update` (alcance `write:inventory`) la despacha con
+transacción. Sin la llave `minStock` el renglón conserva su mínimo; `"minStock": null` lo quita; uno
+que no es número es 400. El efecto se calcula con el mínimo de la sucursal si lo hay. La herramienta MCP `low_stock_update` (alcance `write:inventory`) la despacha con
 `dry_run` (= `preview`) e `idempotency_key`.
 
 ### `GET /settings/notification-recipients` / `PUT`

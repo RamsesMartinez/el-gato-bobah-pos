@@ -50,6 +50,10 @@ export function StockPage() {
   // La dirección abre la ficha que pide Salud (?tab=insumos&open=N).
   const openId = Number(params.get('open'));
   const [opened, setOpened] = useState<{ id: number; justCreated: boolean } | null>(null);
+  // Destinatarios se queda montado una vez abierto: lo que se capturó ahí no se pierde por ir a otra
+  // pestaña a revisar algo y volver. Se ajusta al pintar (estado derivado), no en un efecto.
+  const [avisosAbierto, setAvisosAbierto] = useState(false);
+  if (tab === 'avisos' && !avisosAbierto) setAvisosAbierto(true);
   const article = opened ?? (tab === 'insumos' && openId > 0 ? { id: openId, justCreated: false } : null);
   const openArticle = (id: number, justCreated = false) => setOpened({ id, justCreated });
   const closeArticle = () => {
@@ -162,7 +166,7 @@ export function StockPage() {
         )}
         {canConfigureStock && (
           <Tabs.Content value="avisos" px={0} flex="1" minH={0} display="flex" flexDirection="column">
-            {tab === 'avisos' && <Destinatarios />}
+            {(tab === 'avisos' || avisosAbierto) && <Destinatarios />}
           </Tabs.Content>
         )}
       </Tabs.Root>

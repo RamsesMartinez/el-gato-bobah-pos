@@ -26,9 +26,12 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Alertas por lote', () => {
-  test('solo manda lo que cambió, con el mínimo en la unidad base y la confirmación antes', async () => {
+  // La ficha captura el mínimo en kg y el lote lo pedía en g: quien escribía «2» pensando en kilos
+  // programaba un aviso a 2 g.
+  test('solo manda lo que cambió, con el mínimo en kg como la ficha y la confirmación antes', async () => {
     const onClose = montar();
-    fireEvent.change(await screen.findByLabelText('Mínimo de Queso crema'), { target: { value: '2000' } });
+    expect(await screen.findByText('kg')).toBeTruthy();
+    fireEvent.change(await screen.findByLabelText('Mínimo de Queso crema'), { target: { value: '2' } });
     await userEvent.click(screen.getByRole('checkbox', { name: 'Alerta de Queso crema' }));
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios (1)' }));
     await waitFor(() => expect(api.batch).toHaveBeenCalledWith([{ itemType: 'ingrediente', id: 1, enabled: true, minStock: '2000' }], true));
@@ -50,5 +53,42 @@ describe('Alertas por lote', () => {
     fireEvent.change(await screen.findByLabelText('Buscar insumo'), { target: { value: 'QUESO' } });
     expect(screen.queryByText('Vaso 16 oz')).toBeNull();
     expect(screen.getByText('Queso crema')).toBeTruthy();
+  });
+
+  // Encender la alerta mandaba también el mínimo leído al abrir la tabla: si otra persona lo cambió en la
+  // ficha mientras tanto, se regresaba.
+  test('tocar solo el interruptor no manda el mínimo', async () => {
+    montar();
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Alerta de Vaso 16 oz' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios (1)' }));
+    await waitFor(() => expect(api.batch).toHaveBeenCalledWith([{ itemType: 'ingrediente', id: 2, enabled: false }], true));
+  });
+
+  test('un mínimo que no es número se marca en su renglón y no sale', async () => {
+    montar();
+    fireEvent.change(await screen.findByLabelText('Mínimo de Queso crema'), { target: { value: 'abc' } });
+    fireEvent.change(screen.getByLabelText('Mínimo de Vaso 16 oz'), { target: { value: '-5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios (2)' }));
+    expect(await screen.findByText(/Revisa el mínimo de Queso crema y Vaso 16 oz/)).toBeTruthy();
+    expect(api.batch).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Mínimo de Queso crema').getAttribute('aria-invalid')).toBe('true');
+  });
+
+  test('las comas valen como punto y el 0 es «sin mínimo»', async () => {
+    montar();
+    fireEvent.change(await screen.findByLabelText('Mínimo de Queso crema'), { target: { value: '1,5' } });
+    fireEvent.change(screen.getByLabelText('Mínimo de Vaso 16 oz'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios (2)' }));
+    await waitFor(() => expect(api.batch).toHaveBeenCalledWith([
+      { itemType: 'ingrediente', id: 1, enabled: false, minStock: '1500' },
+      { itemType: 'ingrediente', id: 2, enabled: true, minStock: null },
+    ], true));
+  });
+
+  test('el interruptor de cada renglón se toca en 44 px', async () => {
+    montar();
+    const raiz = (await screen.findByRole('checkbox', { name: 'Alerta de Queso crema' })).closest('label')!;
+    expect(getComputedStyle(raiz).minHeight).toBe('44px');
+    expect(getComputedStyle(raiz).minWidth).toBe('44px');
   });
 });

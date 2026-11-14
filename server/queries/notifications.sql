@@ -260,7 +260,7 @@ update notifications set email_state = sqlc.arg(state), email_send_id = sqlc.nar
 select exists (select 1 from notification_email_sends where kind = 'morning' and period_key = sqlc.arg(period_key) and status in ('sent', 'empty'))::bool;
 
 -- name: OpenNotificationsForMorning :many
-select n.id, n.kind, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
+select n.id, n.kind, coalesce(n.item_key, 0)::bigint as item_key, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
        coalesce(n.query_text, '')::text as query_text, n.opened_at, coalesce(u.name, '')::text as opened_by_name,
        coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen, coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count
   from notifications n left join users u on u.id = n.opened_by

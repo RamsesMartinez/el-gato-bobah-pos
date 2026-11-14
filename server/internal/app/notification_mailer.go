@@ -122,7 +122,7 @@ func (m *NotificationMailer) windowJob(ctx context.Context, q *db.Queries, w tim
 		}
 		keep = append(keep, n.ID)
 		items = append(items, mailItem{kind: n.Kind, name: n.ItemName, unit: n.UnitCode, query: n.QueryText, at: n.OpenedAt.In(loc),
-			by: n.OpenedByName, onHand: n.OnHandSeen.String(), min: n.MinSeen.String(), needsCount: n.NeedsCount})
+			by: n.OpenedByName, onHand: n.OnHandSeen.String(), min: n.MinSeen.String(), needsCount: n.NeedsCount, key: keyOf(n.ItemKey)})
 	}
 	if len(skip) > 0 {
 		if err := q.MarkNotificationsEmailed(ctx, db.MarkNotificationsEmailedParams{State: "skipped", Ids: skip}); err != nil {
@@ -136,6 +136,14 @@ func (m *NotificationMailer) windowJob(ctx context.Context, q *db.Queries, w tim
 	bodies, err := m.bodies(ctx, q, items, period, false)
 	if err != nil {
 		return nil, err
+	}
+	if len(bodies) == 0 {
+		// Nadie lo recibe: no cuenta como enviado, o el enfriamiento callaría la próxima vez que se
+		// acabe, cuando ya haya a quién avisarle.
+		if err := q.MarkNotificationsEmailed(ctx, db.MarkNotificationsEmailedParams{State: "skipped", Ids: keep}); err != nil {
+			return nil, err
+		}
+		return nil, q.FinishNotificationSend(ctx, db.FinishNotificationSendParams{ID: sendID, Status: "empty"})
 	}
 	subject := fmt.Sprintf("Avisos de inventario: %d %s", len(items), plural(len(items), "nuevo", "nuevos"))
 	return &envelope{sendID: sendID, ids: keep, subject: subject, bodies: bodies}, nil
@@ -180,7 +188,7 @@ func (m *NotificationMailer) SendMorning(ctx context.Context, company int64) err
 		items := make([]mailItem, 0, len(open))
 		for _, n := range open {
 			items = append(items, mailItem{kind: n.Kind, name: n.ItemName, unit: n.UnitCode, query: n.QueryText, at: n.OpenedAt.In(loc),
-				by: n.OpenedByName, onHand: n.OnHandSeen.String(), min: n.MinSeen.String(), needsCount: n.NeedsCount})
+				by: n.OpenedByName, onHand: n.OnHandSeen.String(), min: n.MinSeen.String(), needsCount: n.NeedsCount, key: n.ItemKey})
 		}
 		if len(items) == 0 {
 			return q.FinishNotificationSend(ctx, db.FinishNotificationSendParams{ID: claimed[0], Status: "empty"})
@@ -188,6 +196,9 @@ func (m *NotificationMailer) SendMorning(ctx context.Context, company int64) err
 		bodies, err := m.bodies(ctx, q, items, fechaES(now.In(loc))+" · resumen de la mañana", true)
 		if err != nil {
 			return err
+		}
+		if len(bodies) == 0 {
+			return q.FinishNotificationSend(ctx, db.FinishNotificationSendParams{ID: claimed[0], Status: "empty"})
 		}
 		jobs = append(jobs, envelope{sendID: claimed[0], subject: fmt.Sprintf("Resumen de la mañana: %d %s", len(items),
 			plural(len(items), "aviso abierto", "avisos abiertos")), bodies: bodies})
@@ -203,14 +214,20 @@ func (m *NotificationMailer) SendMorning(ctx context.Context, company int64) err
 func (m *NotificationMailer) deliver(ctx context.Context, company int64, jobs []envelope) error {
 	var errs []error
 	for _, j := range jobs {
+		// Un destinatario que rebota no les quita el correo a los demás: se sigue con el resto y el
+		// bloque cuenta como enviado si llegó a alguien. Reintentar todo le repetiría el correo a
+		// quien ya lo recibió.
 		var failed error
 		sent := 0
 		for to, html := range j.bodies {
 			if err := m.send([]string{to}, j.subject, html); err != nil {
 				failed = err
-				break
+				continue
 			}
 			sent++
+		}
+		if sent > 0 {
+			failed = nil
 		}
 		err := m.store.WithTenant(ctx, company, func(q *db.Queries) error {
 			if failed != nil {
@@ -226,7 +243,8 @@ func (m *NotificationMailer) deliver(ctx context.Context, company int64, jobs []
 			return q.FinishNotificationSend(ctx, db.FinishNotificationSendParams{ID: j.sendID, Status: "sent", Recipients: int16(sent)})
 		})
 		if failed != nil {
-			errs = append(errs, fmt.Errorf("correo de avisos: %w", failed))
+			// Solo el tipo: el texto del rechazo trae la dirección ajena y esto va a la bitácora.
+			errs = append(errs, fmt.Errorf("correo de avisos: falló el envío (%T)", failed))
 		}
 		if err != nil {
 			errs = append(errs, err)
@@ -238,6 +256,7 @@ func (m *NotificationMailer) deliver(ctx context.Context, company int64, jobs []
 // mailItem es un aviso como entra al correo.
 type mailItem struct {
 	kind, name, unit, query, by, onHand, min string
+	key                                      int64 // id del insumo, o el del producto en negativo (notifications.item_key)
 	at                                       time.Time
 	needsCount                               bool
 }
@@ -249,10 +268,7 @@ func (m *NotificationMailer) bodies(ctx context.Context, q *db.Queries, items []
 	if err != nil {
 		return nil, err
 	}
-	buy := map[string]ShoppingLine{}
-	for _, l := range lines {
-		buy[l.Name] = l
-	}
+	buy := buyIndex(lines)
 	name, err := q.BusinessNameForEmail(ctx)
 	if err != nil {
 		return nil, err
@@ -324,7 +340,21 @@ func (m *NotificationMailer) bodies(ctx context.Context, q *db.Queries, items []
 	return out, nil
 }
 
-func (m *NotificationMailer) item(it mailItem, buy map[string]ShoppingLine) mailtpl.Item {
+// buyIndex indexa la lista de compra por artículo, con la misma llave que notifications.item_key:
+// por nombre, un insumo y un producto que se llaman igual se pisaban.
+func buyIndex(lines []ShoppingLine) map[int64]ShoppingLine {
+	out := make(map[int64]ShoppingLine, len(lines))
+	for _, l := range lines {
+		k := l.ID
+		if l.ItemType == "producto" {
+			k = -l.ID
+		}
+		out[k] = l
+	}
+	return out
+}
+
+func (m *NotificationMailer) item(it mailItem, buy map[int64]ShoppingLine) mailtpl.Item {
 	out := mailtpl.Item{Kind: it.kind, Name: it.name}
 	switch it.kind {
 	case string(domain.KindStockOut):
@@ -343,7 +373,7 @@ func (m *NotificationMailer) item(it mailItem, buy map[string]ShoppingLine) mail
 		out.Detail = fmt.Sprintf("Lo buscó %s a las %s y no está en el sistema. Dalo de alta o márcalo como otro nombre de un insumo.", it.by, it.at.Format("15:04"))
 		return out
 	}
-	if l, ok := buy[it.name]; ok {
+	if l, ok := buy[it.key]; ok {
 		out.Supplier, out.Why = l.Supplier, l.Why
 		if l.Suggested != nil {
 			if l.Suggested.Packs > 0 {
@@ -408,6 +438,21 @@ var ErrNoEmail = fmt.Errorf("%w: tu usuario no tiene correo; pídelo a quien adm
 
 // ErrMailDisabled: el servidor no tiene correo configurado.
 var ErrMailDisabled = errors.New("el correo no está configurado en este servidor")
+
+// MailSender adapta el envío de un correo a la vez al de una lista. Con el correo apagado responde
+// ErrMailDisabled, que la API sabe decir; cualquier otro error era un 500.
+func MailSender(enabled func() bool, send func(to, subject, body string) error) func([]string, string, string) error {
+	return func(to []string, subject, body string) error {
+		if !enabled() {
+			return ErrMailDisabled
+		}
+		var errs []error
+		for _, dest := range to {
+			errs = append(errs, send(dest, subject, body))
+		}
+		return errors.Join(errs...)
+	}
+}
 
 // SendShoppingListTo manda la lista de compra de hoy al correo de quien la pide («Enviarme por
 // correo»). Devuelve a dónde la mandó.

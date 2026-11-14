@@ -33,12 +33,18 @@ export function FranjaDeAgotado({ onVer }: { onVer: () => void }) {
   const { mutate: marcarVista } = useMutation({ mutationFn: (id: number) => notificationsApi.bannerSeen(id) });
 
   // La hoja abierta y el alto del aviso de pedido cambian sin pasar por React: se observan.
+  // Las mutaciones del cuerpo llegan a ráfagas: se miran una vez por cuadro, no una por mutación (cada
+  // medida fuerza un reflow).
   useEffect(() => {
-    const mira = () => { setEsperando(hayHojaAbierta()); setArriba(altoDelPedido()); };
+    let cuadro = 0;
+    const mira = () => {
+      if (cuadro) return;
+      cuadro = requestAnimationFrame(() => { cuadro = 0; setEsperando(hayHojaAbierta()); setArriba(altoDelPedido()); });
+    };
     const obs = new MutationObserver(mira);
     obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['role'] });
     window.addEventListener('resize', mira);
-    return () => { obs.disconnect(); window.removeEventListener('resize', mira); };
+    return () => { obs.disconnect(); window.removeEventListener('resize', mira); cancelAnimationFrame(cuadro); };
   }, []);
 
   // El siguiente aviso con franja entra en cuanto no hay otra a la vista ni una hoja abierta. Se ajusta
@@ -56,11 +62,12 @@ export function FranjaDeAgotado({ onVer }: { onVer: () => void }) {
   useEffect(() => {
     if (actualID !== null) marcarVista(actualID);
   }, [actualID, marcarVista]);
+  // Los 90 s cuentan solo mientras se ve: si una hoja la tapa, al quitarse vuelve a contar desde cero.
   useEffect(() => {
-    if (actualID === null) return;
+    if (actualID === null || esperando) return;
     const t = setTimeout(() => setActualID(null), DURA_MS);
     return () => clearTimeout(t);
-  }, [actualID]);
+  }, [actualID, esperando]);
 
   if (!actual || esperando) return null;
   return createPortal(

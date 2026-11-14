@@ -51,6 +51,13 @@ export function ArticlesTab({ onOpen, word = 'artículo', notice, onNoticeDone }
   const fromNotice = notice?.name ?? null;
   const noticeID = notice?.id ?? 0;
   const [creating, setCreating] = useState(fromNotice !== null);
+  // Un aviso nuevo con la pestaña ya abierta (se tocó «Dar de alta» estando aquí) solo cambia la liga:
+  // se abre la hoja al pintar, ajustando el estado a la prop nueva.
+  const [noticeVisto, setNoticeVisto] = useState(noticeID);
+  if (noticeID !== noticeVisto) {
+    setNoticeVisto(noticeID);
+    if (noticeID) setCreating(true);
+  }
   const [duplicates, setDuplicates] = useState(false);
   const [porLote, setPorLote] = useState(false);
   const debounced = useDebounced(q, SEARCH_DELAY_MS);

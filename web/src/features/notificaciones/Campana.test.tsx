@@ -7,12 +7,16 @@ import { useState } from 'react';
 import { Provider } from '../../components/ui/provider';
 import { useSessionStore } from '../../stores/session';
 import type { NotificationView } from '../../api/notifications';
+import { ApiError } from '../../api/client';
 import { Campana } from './Campana';
 import { FranjaDeAgotado, DURA_MS } from './FranjaDeAgotado';
 
 const api = vi.hoisted(() => ({ list: vi.fn(), unread: vi.fn(), read: vi.fn(), bannerSeen: vi.fn(), resolve: vi.fn() }));
 vi.mock('../../api/notifications', async (orig) => ({ ...(await orig<object>()), notificationsApi: api }));
-class FakeES { addEventListener() {} close() {} }
+const back = vi.hoisted(() => ({ articles: vi.fn() }));
+vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
+let abiertos = 0;
+class FakeES { constructor() { abiertos++; } addEventListener() {} close() { abiertos--; } }
 vi.stubGlobal('EventSource', FakeES);
 
 const aviso = (o: Partial<NotificationView>): NotificationView => ({
@@ -68,6 +72,52 @@ describe('Campana', () => {
     await waitFor(() => expect(api.resolve).toHaveBeenCalledWith(1, 'arrived', undefined));
   });
 
+  // Campana y franja pedían cada una su conexión en vivo: dos por tableta y cada aviso refrescaba dos veces.
+  test('la campana y la franja comparten una sola conexión en vivo', async () => {
+    abiertos = 0;
+    const { unmount } = montar(<><ConCampana /><FranjaDeAgotado onVer={() => {}} /></>);
+    await screen.findByRole('button', { name: /Avisos/ });
+    expect(abiertos).toBe(1);
+    unmount();
+    expect(abiertos).toBe(0);
+  });
+
+  // Con más de 50 sin leer la lista traía 50 y el contador nunca bajaba a 0.
+  test('con 130 sin leer, abrir los marca todos, en tandas de 100', async () => {
+    api.list.mockResolvedValue({ items: Array.from({ length: 130 }, (_, i) => aviso({ id: i + 1 })) });
+    montar(<ConCampana />);
+    await waitFor(() => expect(api.list).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    fireEvent.click(await screen.findByRole('button', { name: /Avisos/ }));
+    await waitFor(() => expect(api.read).toHaveBeenCalledTimes(2));
+    expect(api.read.mock.calls[0][0]).toHaveLength(100);
+    expect(api.read.mock.calls[1][0]).toHaveLength(30);
+  });
+
+  test('si cerrar un aviso falla porque ya lo cerró otro, la lista se vuelve a pedir', async () => {
+    api.resolve.mockRejectedValueOnce(new ApiError(409, 'NOTIFICATION_CLOSED', 'ese aviso ya está cerrado', 'r'));
+    montar(<ConCampana />);
+    fireEvent.click(await screen.findByRole('button', { name: /Avisos/ }));
+    const antes = api.list.mock.calls.length;
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya llegó' }));
+    await screen.findByText('ese aviso ya está cerrado');
+    await waitFor(() => expect(api.list.mock.calls.length).toBeGreaterThan(antes));
+  });
+
+  // Un toque errado en la lista ligaba para siempre un nombre al insumo equivocado.
+  test('«Es otro nombre de…» pide confirmar antes de guardar el nombre', async () => {
+    back.articles.mockResolvedValue([{ id: 40, name: 'Servilletas' }]);
+    montar(<ConCampana />);
+    fireEvent.click(await screen.findByRole('button', { name: /Avisos/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Es otro nombre de…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Elegir insumo' }));
+    fireEvent.click(await screen.findByText('Servilletas'));
+    expect(api.resolve).not.toHaveBeenCalled();
+    expect(await screen.findByText('Guardar «servitoallas» como otro nombre de «Servilletas»')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(api.resolve).toHaveBeenCalledWith(2, 'alias', 40));
+  });
+
   test('sin el permiso de reportar no hay campana', async () => {
     useSessionStore.setState({ user: { id: 9, companyId: 1, name: 'X', role: '', permissions: [] } });
     montar(<ConCampana />);
@@ -100,6 +150,22 @@ describe('Franja de «se acabó»', () => {
     expect(await screen.findByTestId('franja-de-agotado')).toBeTruthy();
   });
 
+  // Se marcaba vista y el reloj de 90 s seguía mientras una hoja la ocultaba: con un cobro largo,
+  // nadie la veía.
+  test('el reloj de 90 s no corre mientras una hoja la tapa', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    api.list.mockResolvedValue({ items: [aviso({ id: 9, banner: true })] });
+    montar(<FranjaDeAgotado onVer={() => {}} />);
+    await screen.findByTestId('franja-de-agotado');
+    const hoja = document.createElement('div');
+    hoja.setAttribute('role', 'dialog');
+    await act(async () => { document.body.appendChild(hoja); });
+    await waitFor(() => expect(screen.queryByTestId('franja-de-agotado')).toBeNull());
+    await act(async () => { vi.advanceTimersByTime(DURA_MS + 1000); });
+    await act(async () => { hoja.remove(); });
+    expect(await screen.findByTestId('franja-de-agotado')).toBeTruthy();
+  });
+
   test('va debajo del aviso de pedido de plataforma, aunque crezca', async () => {
     api.list.mockResolvedValue({ items: [aviso({ id: 7, banner: true })] });
     const pedido = document.createElement('div');
@@ -109,6 +175,25 @@ describe('Franja de «se acabó»', () => {
     montar(<FranjaDeAgotado onVer={() => {}} />);
     const franja = await screen.findByTestId('franja-de-agotado');
     expect(getComputedStyle(franja).top).toBe('100px');
+  });
+
+  // Cada mutación del cuerpo medía el aviso de pedido (un reflow): con el reloj de «Se acabó»
+  // corriendo, eran decenas por segundo en la tableta.
+  test('una ráfaga de cambios en la pantalla se mide una sola vez', async () => {
+    api.list.mockResolvedValue({ items: [] });
+    let medidas = 0;
+    const pedido = document.createElement('div');
+    pedido.setAttribute('data-testid', 'aviso-de-pedido-entrante');
+    pedido.getBoundingClientRect = () => { medidas++; return { bottom: 0 } as DOMRect; };
+    document.body.appendChild(pedido);
+    montar(<FranjaDeAgotado onVer={() => {}} />);
+    await new Promise((r) => setTimeout(r, 50));
+    medidas = 0;
+    await act(async () => {
+      for (let i = 0; i < 30; i++) { document.body.appendChild(document.createElement('span')); await Promise.resolve(); }
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    expect(medidas).toBeLessThanOrEqual(2);
   });
 
   test('sin franja pedida en el artículo, nada', async () => {
