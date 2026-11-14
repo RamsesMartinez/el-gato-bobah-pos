@@ -25,6 +25,22 @@ export interface MethodTotal {
 // `null` en el turno = no hay arqueo de efectivo (un corte anterior a la spec 015, o una caja que
 // no maneja efectivo). `expected` en null con el arqueo ciego; `counted` y `difference` en null
 // mientras el turno esté abierto.
+// La diferencia de un corte en sus tres partes, calculada por el servidor con una sola regla para la
+// lista, el detalle y el cierre (#290). drawer es null si el corte no tiene arqueo con esperado.
+export interface CutDiff {
+  drawer: string | null;
+  otherMethods: string;
+  total: string;
+  drawerCovered: boolean;
+}
+
+// El turno siguiente abrió con motivo y eso explica la diferencia de este corte (#290).
+export interface NextOpening {
+  sessionId: number;
+  reason: string;
+  reasonNote: string | null;
+}
+
 export interface ArqueoDelCajon {
   expected: string | null;
   counted: string | null;
@@ -266,6 +282,8 @@ export interface CashSession {
   floatLeft?: string | null;
   fixedFloatAtClose?: string | null;
   withdrawal?: Withdrawal | null;
+  // Solo en la respuesta del cierre (#290): la misma cifra que la lista y el detalle.
+  difference?: CutDiff | null;
 }
 
 // Propina por entregar del turno abierto y a quién se le puede entregar.
@@ -354,6 +372,11 @@ export interface CashSessionRow {
   // Con arqueo ciego, el último cierre de una caja no reabierta no muestra su arqueo a quien no
   // configura la caja. Opcional: un backend viejo no lo manda.
   arqueoHidden?: boolean;
+  // #290. Opcionales: el compilador obliga a la guarda ante un backend viejo.
+  difference?: CutDiff | null;
+  openingReason?: string | null;
+  openingReasonNote?: string | null;
+  explainedByNext?: NextOpening | null;
 }
 // Detalle de un corte (totales GUARDADOS al cerrar + movimientos).
 export interface CashSessionDetail {
@@ -402,6 +425,12 @@ export interface CashSessionDetail {
   floatLeft?: string | null;
   fixedFloatAtClose?: string | null;
   withdrawal?: Withdrawal | null;
+  // #290: la diferencia en tres partes, el motivo de apertura y su relación con los cortes vecinos.
+  difference?: CutDiff | null;
+  openingReason?: string | null;
+  openingReasonNote?: string | null;
+  explainedByNext?: NextOpening | null;
+  previousSessionId?: number | null;
 }
 
 export interface CorteSale {

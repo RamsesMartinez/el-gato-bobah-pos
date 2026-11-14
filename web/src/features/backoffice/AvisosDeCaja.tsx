@@ -3,7 +3,11 @@ import { money } from '../../utils/format';
 
 // AvisosDeCaja: lo que hay que resolver de las cajas abiertas (spec 032, punto 7). La propina que no
 // llega a un peso no se avisa: no se puede entregar.
-export function AvisosDeCaja({ tipsPending, cashOutsWithoutConcept }: { tipsPending: string; cashOutsWithoutConcept: number }) {
+// `enCaja`: el aviso se pinta dentro de Caja, donde «corrígelas en Caja» se refería a la misma
+// pantalla (#290, hallazgo 10); ahí dice qué hacer.
+export function AvisosDeCaja({ tipsPending, cashOutsWithoutConcept, enCaja = false }: {
+  tipsPending: string; cashOutsWithoutConcept: number; enCaja?: boolean;
+}) {
   const propina = Number(tipsPending);
   if (propina < 1 && cashOutsWithoutConcept === 0) return null;
   return (
@@ -11,7 +15,7 @@ export function AvisosDeCaja({ tipsPending, cashOutsWithoutConcept }: { tipsPend
       {propina >= 1 && <Text fontWeight="600">Propinas sin entregar: {money(propina)}</Text>}
       {cashOutsWithoutConcept > 0 && (
         <Text fontWeight="600">
-          {cashOutsWithoutConcept === 1 ? '1 salida sin concepto' : `${cashOutsWithoutConcept} salidas sin concepto`}: corrígelas en Caja.
+          {cashOutsWithoutConcept === 1 ? '1 salida sin concepto' : `${cashOutsWithoutConcept} salidas sin concepto`}{enCaja ? ': ponles concepto con «Corregir» en Movimientos de efectivo.' : ': corrígelas en Caja.'}
         </Text>
       )}
     </Box>

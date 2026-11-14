@@ -18,13 +18,17 @@ import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type CashRegisterConfig, type PendingOrder, type OwingOrder, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment, type SessionRefund,
+  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type CashRegisterConfig, type PendingOrder, type OwingOrder, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment, type SessionRefund, type CutDiff, type CashSessionRow,
 } from '../../api/backoffice';
 import { ContadorDeEfectivo } from './ContadorDeEfectivo';
 import type { ResultadoDelConteo } from './conteo';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { money } from '../../utils/format';
+import { Diferencia, ResumenDeDiferencia } from './diferencia';
+import { montoOSinDato, montoDeCaja } from './montosDeCaja';
+import { rotuloDeMotivo } from './motivosDeApertura';
+import { etiquetaEstado } from '../../domain/etiquetasDeVenta';
 import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
 import { MotivoDeApertura } from './MotivoDeApertura';
 import { AperturaConAsistencia, AvisoDelCierre, CierreConAsistencia } from './AsistenciaDeCaja';
@@ -58,14 +62,6 @@ import { mensajeDeError } from '../../api/mensajes';
 // de 200 en 200 no cabe en la caja y pedir de 5 en 5 obliga a diez toques para ver un día.
 const VENTAS_POR_PAGINA = 20;
 
-// Sobrante (>0) verde, faltante (<0) rojo, cuadrado gris.
-function diffColor(v: string) {
-  // Del servidor, no de un teclado: Number() alcanza y no hay formato que validar.
-  const n = Number(v);
-  if (n > 0.005) return 'fg.success';
-  if (n < -0.005) return 'fg.error';
-  return 'fg.muted';
-}
 
 // La zona llega como parámetro: esta es una función de módulo.
 function hhmm(iso: string, zona: string) {
@@ -89,42 +85,49 @@ function esCorregible(m: CashMovement): boolean {
 
 // ---- Tablas del resumen (compartidas entre caja en vivo, histórico y resumen post-cierre) ----
 
-// Totales por método: esperado (sistema) vs declarado (usuario) vs diferencia (solo lectura).
-// withTotalRow agrega una fila de totales (Sistema / Según usuario / Diferencia) al pie.
-//
-// `drawerDifference` es la diferencia del CAJÓN, que vive en el conteo y no en los renglones: los
-// métodos del cajón guardan declarado = esperado. Sin sumarla, la fila Total decía $0 en un corte con
-// el cajón corto, mientras el histórico —que sí la suma— decía la cifra real (spec 031, D13).
-export function TotalsTable({ totals, currency, withTotalRow, drawerDifference }: {
-  totals: MethodTotal[]; currency: string; withTotalRow?: boolean; drawerDifference?: string | null;
+// Conciliación por método: Esperado · Contado · Diferencia (#290, FR-003). Los métodos del cajón
+// no tienen diferencia propia cuando hay arqueo: su dinero se contó junto, y desde la spec 015 su
+// renglón guarda contado = esperado. Se pintan con «ver arqueo» y no entran a la fila Total, que
+// suma solo lo que se concilia aquí — sumar el cajón en una columna y no en las otras hacía que la
+// fila Total dijera «sistema = declarado, dif. $X» (#290).
+export function TotalsTable({ totals, currency, withTotalRow, drawerMethodIds, difference }: {
+  totals: MethodTotal[]; currency: string; withTotalRow?: boolean;
+  drawerMethodIds?: number[]; difference?: CutDiff | null;
 }) {
   if (!totals?.length) return null;
-  const sum = (pick: (t: MethodTotal) => string) => totals.reduce((s, t) => s + (Number(pick(t)) || 0), 0);
-  const diffTotal = round2(sum((t) => t.difference) + (Number(drawerDifference) || 0));
+  const cubierto = new Set(difference?.drawerCovered ? (drawerMethodIds ?? []) : []);
+  const conciliados = totals.filter((t) => !cubierto.has(t.methodId));
+  const sum = (pick: (t: MethodTotal) => string) => round2(conciliados.reduce((s, t) => s + (Number(pick(t)) || 0), 0));
+  const difTotal = difference ? difference.otherMethods : String(sum((t) => t.difference));
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
       <Table.Root size="sm">
         <Table.Header><Table.Row>
           <Table.ColumnHeader>Método</Table.ColumnHeader>
-          <Table.ColumnHeader textAlign="end">Sistema</Table.ColumnHeader>
-          <Table.ColumnHeader textAlign="end">Declarado</Table.ColumnHeader>
-          <Table.ColumnHeader textAlign="end">Dif.</Table.ColumnHeader>
+          <Table.ColumnHeader textAlign="end">Esperado</Table.ColumnHeader>
+          <Table.ColumnHeader textAlign="end">Contado</Table.ColumnHeader>
+          <Table.ColumnHeader textAlign="end">Diferencia</Table.ColumnHeader>
         </Table.Row></Table.Header>
         <Table.Body>
           {totals.map((t) => (
             <Table.Row key={t.methodId}>
               <Table.Cell>{t.name}</Table.Cell>
               <Table.Cell textAlign="end">{montoOSinDato(t.expected, currency)}</Table.Cell>
-              <Table.Cell textAlign="end">{money(t.declared, currency)}</Table.Cell>
-              <Table.Cell textAlign="end" color={diffColor(t.difference)} fontWeight="600">{money(t.difference, currency)}</Table.Cell>
+              {cubierto.has(t.methodId) ? (<>
+                <Table.Cell textAlign="end" color="fg.muted">—</Table.Cell>
+                <Table.Cell textAlign="end" color="fg.muted">ver arqueo</Table.Cell>
+              </>) : (<>
+                <Table.Cell textAlign="end">{montoDeCaja(t.declared, currency)}</Table.Cell>
+                <Table.Cell><Diferencia valor={t.difference} currency={currency} /></Table.Cell>
+              </>)}
             </Table.Row>
           ))}
           {withTotalRow && (
-            <Table.Row fontWeight="700">
+            <Table.Row fontWeight="700" bg="bg.muted">
               <Table.Cell>Total</Table.Cell>
-              <Table.Cell textAlign="end">{money(sum((t) => t.expected ?? '0'), currency)}</Table.Cell>
-              <Table.Cell textAlign="end">{money(sum((t) => t.declared), currency)}</Table.Cell>
-              <Table.Cell textAlign="end" color={diffColor(String(diffTotal))}>{money(diffTotal, currency)}</Table.Cell>
+              <Table.Cell textAlign="end">{montoDeCaja(sum((t) => t.expected ?? '0'), currency)}</Table.Cell>
+              <Table.Cell textAlign="end">{montoDeCaja(sum((t) => t.declared), currency)}</Table.Cell>
+              <Table.Cell><Diferencia valor={difTotal} currency={currency} etiqueta="Diferencia de la conciliación" /></Table.Cell>
             </Table.Row>
           )}
         </Table.Body>
@@ -172,7 +175,7 @@ export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE, o
                 <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap"
                   color={m.kind === 'entrada' || m.kind === 'reverso' ? 'fg.success' : 'fg.error'}
                   textDecoration={m.reversed ? 'line-through' : undefined}>
-                  {m.kind === 'entrada' || m.kind === 'reverso' ? '+' : '−'}{money(m.amount, currency)}
+                  {m.kind === 'entrada' || m.kind === 'reverso' ? '+' : '−'}{montoDeCaja(m.amount, currency)}
                 </Table.Cell>
                 {onCorregir && (
                   <Table.Cell textAlign="end">
@@ -213,17 +216,17 @@ export function ExpensesTable({ expenses, currency }: { expenses: CashExpenseLin
               <Table.Cell color="fg.muted">{e.supplier ?? '—'}</Table.Cell>
               <Table.Cell color="fg.muted">{e.paymentMethod ?? '—'}</Table.Cell>
               <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap">
-                {money(e.amount, currency)}
+                {montoDeCaja(e.amount, currency)}
                 {/* Salió del cajón con este gasto, pero no es del negocio (spec 050): no suma al total. */}
                 {Number(e.drawerExtra) > 0 && (
-                  <Text fontSize="xs" fontWeight="400" color="fg.muted">+ {money(e.drawerExtra!, currency)} no es del negocio</Text>
+                  <Text fontSize="xs" fontWeight="400" color="fg.muted">+ {montoDeCaja(e.drawerExtra!, currency)} no es del negocio</Text>
                 )}
               </Table.Cell>
             </Table.Row>
           ))}
           <Table.Row fontWeight="700">
             <Table.Cell colSpan={3}>Total gastos</Table.Cell>
-            <Table.Cell textAlign="end" whiteSpace="nowrap">{money(total, currency)}</Table.Cell>
+            <Table.Cell textAlign="end" whiteSpace="nowrap">{montoDeCaja(total, currency)}</Table.Cell>
           </Table.Row>
         </Table.Body>
       </Table.Root>
@@ -265,24 +268,24 @@ export function IngresosEgresosCard({ openingCash, breakdown, currency }: { open
   const plataformas = breakdown?.plataformas ?? [];
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflow="hidden">
-      <SummaryLine label="Monto inicial" amount={money(openingCash, currency)} weight="600" />
-      <SummaryLine label="Ingresos" amount={money(breakdown?.ingresosTotal ?? '0', currency)} weight="700" color="fg.success" top />
+      <SummaryLine label="Monto inicial" amount={montoDeCaja(openingCash, currency)} weight="600" />
+      <SummaryLine label="Ingresos" amount={montoDeCaja(breakdown?.ingresosTotal ?? '0', currency)} weight="700" color="fg.success" top />
       {ingresos.map((m) => (
         <Fragment key={m.method}>
-          <SummaryLine label={m.method} amount={money(m.total, currency)} indent={1} weight="600" />
+          <SummaryLine label={m.method} amount={montoDeCaja(m.total, currency)} indent={1} weight="600" />
           {m.note && <Text fontSize="xs" color="fg.muted" px={3} pl={8} pb={1}>{m.note}</Text>}
           {m.items.map((it) => (
             // Un concepto que resta (Devoluciones) se pinta como los egresos: en gris se leería como
             // otro ingreso.
-            <SummaryLine key={it.concept} label={it.concept} amount={money(it.amount, currency)} indent={2} color="fg.muted"
+            <SummaryLine key={it.concept} label={it.concept} amount={montoDeCaja(it.amount, currency)} indent={2} color="fg.muted"
               negative={Number(it.amount) < 0} />
           ))}
         </Fragment>
       ))}
       {ingresos.length === 0 && <SummaryLine label="Sin ingresos" indent={1} color="fg.muted" />}
-      <SummaryLine label="Egresos" amount={`−${money(breakdown?.egresosTotal ?? '0', currency)}`} weight="700" color="fg.error" top />
+      <SummaryLine label="Egresos" amount={`−${montoDeCaja(breakdown?.egresosTotal ?? '0', currency)}`} weight="700" color="fg.error" top />
       {egresos.map((it) => (
-        <SummaryLine key={it.concept} label={it.concept} amount={`−${money(it.amount, currency)}`} indent={1} color="fg.muted" />
+        <SummaryLine key={it.concept} label={it.concept} amount={`−${montoDeCaja(it.amount, currency)}`} indent={1} color="fg.muted" />
       ))}
       {egresos.length === 0 && <SummaryLine label="Sin egresos" indent={1} color="fg.muted" />}
       {/* Cada plataforma cobra por dos métodos —en línea y efectivo—, así que su total no se lee de
@@ -293,7 +296,7 @@ export function IngresosEgresosCard({ openingCash, breakdown, currency }: { open
         <>
           <SummaryLine label="Por plataforma" weight="700" top />
           {plataformas.map((p) => (
-            <SummaryLine key={p.platform} label={p.platform} amount={money(p.total, currency)} indent={1} weight="600" />
+            <SummaryLine key={p.platform} label={p.platform} amount={montoDeCaja(p.total, currency)} indent={1} weight="600" />
           ))}
         </>
       )}
@@ -338,8 +341,8 @@ export function VoidedPaymentsList({ payments, currency, zona = DEFAULT_TIMEZONE
                 <Text color="fg.muted" truncate>Pedido {p.orderFolio}</Text>
               </HStack>
               <HStack gap={2} flexShrink={0}>
-                {Number(p.tip) > 0 && <Text color="fg.muted">+ propina {money(p.tip, currency)}</Text>}
-                <Text fontWeight="600">{money(p.amount, currency)}</Text>
+                {Number(p.tip) > 0 && <Text color="fg.muted">+ propina {montoDeCaja(p.tip, currency)}</Text>}
+                <Text fontWeight="600">{montoDeCaja(p.amount, currency)}</Text>
               </HStack>
             </HStack>
             <Text color="fg.muted">
@@ -383,8 +386,8 @@ export function RefundsList({ refunds, currency, zona = DEFAULT_TIMEZONE }: {
                   <Text color="fg.muted" truncate>Pedido {r.orderFolio}</Text>
                 </HStack>
                 <HStack gap={2} flexShrink={0}>
-                  {Number(r.tip) > 0 && <Text color="fg.muted">+ propina {money(r.tip, currency)}</Text>}
-                  <Text fontWeight="600">{money(r.amount, currency)}</Text>
+                  {Number(r.tip) > 0 && <Text color="fg.muted">+ propina {montoDeCaja(r.tip, currency)}</Text>}
+                  <Text fontWeight="600">{montoDeCaja(r.amount, currency)}</Text>
                 </HStack>
               </HStack>
               <Text color="fg.muted">
@@ -412,6 +415,7 @@ interface CorteData {
   voidedPayments?: VoidedPayment[];
   refunds?: SessionRefund[];
   arqueoHidden?: boolean;
+  difference?: CutDiff | null;
 }
 
 // Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
@@ -432,8 +436,8 @@ export function CorteSummary({ data, abierto = false }: { data: CorteData; abier
         </Box>
       ) : <IngresosEgresosCard openingCash={data.openingCash} breakdown={data.breakdown} currency={cur} />}
       {totals.length > 0 && !abierto && (
-        <Section title="Conciliación (sistema vs declarado)">
-          <TotalsTable totals={totals} currency={cur} withTotalRow drawerDifference={data.drawer?.difference} />
+        <Section title="Conciliación">
+          <TotalsTable totals={totals} currency={cur} withTotalRow drawerMethodIds={data.drawer?.methodIds} difference={data.difference} />
         </Section>
       )}
       <ArqueoDelCorte drawer={data.drawer} currency={cur} />
@@ -452,24 +456,54 @@ export function CorteSummary({ data, abierto = false }: { data: CorteData; abier
   );
 }
 
-// Detalle completo de un corte (carga por id): cabecera + resumen + notas. Lo usan el diálogo (7")
-// y el panel lateral (pantallas grandes).
-function CorteDetail({ id }: { id: number }) {
+// Detalle completo de un corte (carga por id). Lo usan el diálogo (7") y el panel lateral (pantallas
+// grandes). Arriba va la diferencia en sus tres partes y lo que la explica (Maquetas M1, opción A):
+// es lo que faltó en el caso de la Caja B, donde la explicación existía y ninguna pantalla la
+// mostraba (#290).
+export function CorteDetail({ id, onAbrirCorte }: { id: number; onAbrirCorte?: (id: number) => void }) {
   const horaNegocio = useHoraDelNegocio();
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'session', id], queryFn: () => backofficeApi.cashSession(id) });
   if (isLoading || !data) return <Center py={8}><Spinner /></Center>;
+  const cur = data.currency;
   return (
     <VStack align="stretch" gap={4}>
-      <SimpleGrid columns={2} gap={2} fontSize="sm">
-        <Text color="fg.muted">Caja</Text><Text textAlign="end" fontWeight="600">{data.registerName}</Text>
-        <Text color="fg.muted">Abrió</Text><Text textAlign="end">{data.openedByName} · {horaNegocio.fechaYHora(data.openedAt)}</Text>
-        {data.closedAt && (<>
-          <Text color="fg.muted">Cerró</Text>
-          <Text textAlign="end">{data.closedByName ?? '—'} · {horaNegocio.fechaYHora(data.closedAt)}</Text>
-        </>)}
-      </SimpleGrid>
+      {data.difference && <ResumenDeDiferencia diferencia={data.difference} currency={cur} />}
+      {data.explainedByNext && (
+        <Box borderWidth="1px" borderRadius="lg" p={3} colorPalette="blue" bg="colorPalette.subtle" maxW="70ch">
+          <Text fontWeight="700">Diferencia explicada al abrir el turno #{data.explainedByNext.sessionId}</Text>
+          <Text fontSize="sm">«{rotuloDeMotivo(data.explainedByNext.reason)}»</Text>
+          {data.explainedByNext.reasonNote && <Text fontSize="sm" color="fg.muted">{data.explainedByNext.reasonNote}</Text>}
+          {onAbrirCorte && (
+            <Button size="sm" minH="44px" mt={2} variant="outline" onClick={() => onAbrirCorte(data.explainedByNext!.sessionId)}>
+              Ver el turno #{data.explainedByNext.sessionId}
+            </Button>
+          )}
+        </Box>
+      )}
+      <Section title="El turno">
+        <SimpleGrid columns={2} gap={2} fontSize="sm">
+          <Text color="fg.muted">Caja</Text><Text textAlign="end" fontWeight="600">{data.registerName}</Text>
+          <Text color="fg.muted">Abrió</Text><Text textAlign="end">{data.openedByName} · {horaNegocio.fechaYHora(data.openedAt)} · con {montoDeCaja(data.openingCash, cur)}</Text>
+          {data.closedAt && (<>
+            <Text color="fg.muted">Cerró</Text>
+            <Text textAlign="end">{data.closedByName ?? '—'} · {horaNegocio.fechaYHora(data.closedAt)}</Text>
+          </>)}
+          {data.floatLeft != null && (<>
+            <Text color="fg.muted">Fondo que se dejó</Text>
+            <Text textAlign="end">{montoDeCaja(data.floatLeft, cur)}{data.fixedFloatAtClose != null ? ` (fondo fijo ${montoDeCaja(data.fixedFloatAtClose, cur)})` : ''}</Text>
+          </>)}
+          {data.withdrawal && (<>
+            <Text color="fg.muted">Retiro</Text>
+            <Text textAlign="end">{montoDeCaja(data.withdrawal.amount, cur)} · se lo llevó {data.withdrawal.userName}</Text>
+          </>)}
+          {data.openingReason && (<>
+            <Text color="fg.muted">Motivo al abrir</Text>
+            <Text textAlign="end">{rotuloDeMotivo(data.openingReason)}{data.openingReasonNote ? `: ${data.openingReasonNote}` : ''}</Text>
+          </>)}
+        </SimpleGrid>
+      </Section>
       <CorteSummary data={data} abierto={!data.closedAt} />
-      <TerminalesYPropinasDelCorte session={data} currency={data.currency} />
+      <TerminalesYPropinasDelCorte session={data} currency={cur} />
       <VentasDelCorte session={data} zona={horaNegocio.zona} />
       {data.notes && (
         <Box><Text fontWeight="700" fontSize="sm">Notas</Text><Text fontSize="sm" color="fg.muted">{data.notes}</Text></Box>
@@ -499,17 +533,17 @@ export function TerminalesYPropinasDelCorte({ session, currency }: {
           <Table.Root size="sm">
             <Table.Header><Table.Row>
               <Table.ColumnHeader>Terminal</Table.ColumnHeader>
-              <Table.ColumnHeader textAlign="end">Declarado</Table.ColumnHeader>
               <Table.ColumnHeader textAlign="end">Esperado</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="end">Contado</Table.ColumnHeader>
               <Table.ColumnHeader textAlign="end">Diferencia</Table.ColumnHeader>
             </Table.Row></Table.Header>
             <Table.Body>
               {terminales.map((t) => (
                 <Table.Row key={t.terminalId}>
                   <Table.Cell>{t.name}</Table.Cell>
-                  <Table.Cell textAlign="end">{money(t.declared, currency)}</Table.Cell>
-                  <Table.Cell textAlign="end">{money(t.expected, currency)}</Table.Cell>
-                  <Table.Cell textAlign="end" fontWeight="600" color={diffColor(t.difference)}>{money(t.difference, currency)}</Table.Cell>
+                  <Table.Cell textAlign="end">{montoDeCaja(t.expected, currency)}</Table.Cell>
+                  <Table.Cell textAlign="end">{montoDeCaja(t.declared, currency)}</Table.Cell>
+                  <Table.Cell><Diferencia valor={t.difference} currency={currency} /></Table.Cell>
                 </Table.Row>
               ))}
             </Table.Body>
@@ -518,7 +552,7 @@ export function TerminalesYPropinasDelCorte({ session, currency }: {
               se dice aquí cuánto se espera hoy y la diferencia contra lo declarado. */}
           {terminales.filter(cambioTrasElArqueo).map((t) => (
             <Text key={t.terminalId} role="status" fontSize="sm" color="orange.fg" mt={2}>
-              {`${t.name}: el esperado pasó de ${money(t.expected, currency)} a ${money(t.expectedNow as string, currency)} después del arqueo. Diferencia ahora: ${money(t.differenceNow ?? '0', currency)}`}
+              {`${t.name}: el esperado pasó de ${montoDeCaja(t.expected, currency)} a ${montoDeCaja(t.expectedNow as string, currency)} después del arqueo. Diferencia ahora: ${montoDeCaja(t.differenceNow ?? '0', currency)}`}
             </Text>
           ))}
         </Section>
@@ -527,11 +561,11 @@ export function TerminalesYPropinasDelCorte({ session, currency }: {
         <Section title="Propinas">
           <Table.Root size="sm">
             <Table.Body>
-              <Table.Row><Table.Cell>Propinas entregadas</Table.Cell><Table.Cell textAlign="end">{money(session.tipsPaidOut ?? '0', currency)}</Table.Cell></Table.Row>
+              <Table.Row><Table.Cell>Propinas entregadas</Table.Cell><Table.Cell textAlign="end">{montoDeCaja(session.tipsPaidOut ?? '0', currency)}</Table.Cell></Table.Row>
               {enEfectivo > 0 && (
-                <Table.Row><Table.Cell>De ellas, propina de tarjeta pagada en efectivo</Table.Cell><Table.Cell textAlign="end">{money(session.cardTipsPaidInCash ?? '0', currency)}</Table.Cell></Table.Row>
+                <Table.Row><Table.Cell>De ellas, propina de tarjeta pagada en efectivo</Table.Cell><Table.Cell textAlign="end">{montoDeCaja(session.cardTipsPaidInCash ?? '0', currency)}</Table.Cell></Table.Row>
               )}
-              <Table.Row><Table.Cell>Se quedó en caja por entregar</Table.Cell><Table.Cell textAlign="end">{money(session.tipsCarriedOver ?? '0', currency)}</Table.Cell></Table.Row>
+              <Table.Row><Table.Cell>Se quedó en caja por entregar</Table.Cell><Table.Cell textAlign="end">{montoDeCaja(session.tipsCarriedOver ?? '0', currency)}</Table.Cell></Table.Row>
             </Table.Body>
           </Table.Root>
         </Section>
@@ -617,11 +651,8 @@ export function ArqueoDelCorte({ drawer, currency }: {
         <Text color="fg.muted">Contado</Text>
         <Text color="fg.muted">Diferencia</Text>
         <Text aria-label="Esperado del cajón">{montoOSinDato(drawer.expected, currency)}</Text>
-        <Text aria-label="Contado del cajón" fontWeight="600">{money(drawer.counted, currency)}</Text>
-        <Text aria-label="Diferencia del arqueo del corte" fontWeight="700"
-          color={dif === null ? 'fg.muted' : diffColor(dif)}>
-          {montoOSinDato(dif, currency)}
-        </Text>
+        <Text aria-label="Contado del cajón" fontWeight="600">{montoDeCaja(drawer.counted, currency)}</Text>
+        <Diferencia valor={dif} currency={currency} etiqueta="Diferencia del arqueo del corte" />
       </SimpleGrid>
     </Box>
   );
@@ -650,7 +681,7 @@ export function DesgloseDelConteo({ counts, currency }: {
           <Box key={titulo}>
             <HStack justify="space-between" mb={1}>
               <Text fontWeight="700" fontSize="sm">{titulo}</Text>
-              <Text fontWeight="700">{money(conteo!.total, currency)}</Text>
+              <Text fontWeight="700">{montoDeCaja(conteo!.total, currency)}</Text>
             </HStack>
             {conteo!.manualReason !== null ? (
               // Sin piezas: lo que hay es el porqué, y es lo que vuelve auditable este arqueo.
@@ -668,7 +699,7 @@ export function DesgloseDelConteo({ counts, currency }: {
                       <Table.Cell>{etiquetaDeDenominacion(l.value, currency)}</Table.Cell>
                       <Table.Cell textAlign="end">{l.pieces}</Table.Cell>
                       {/* Del servidor: quien lee esto está comparando contra su cajón. */}
-                      <Table.Cell textAlign="end">{money(l.subtotal, currency)}</Table.Cell>
+                      <Table.Cell textAlign="end">{montoDeCaja(l.subtotal, currency)}</Table.Cell>
                     </Table.Row>
                   ))}
                 </Table.Body>
@@ -687,13 +718,6 @@ function etiquetaDeDenominacion(value: string, currency: string): string {
   return n < 1 ? `${Math.round(n * 100)}¢` : money(n, currency);
 }
 
-// montoOSinDato: un importe que puede no viajar.
-//
-// Con el arqueo ciego encendido el esperado llega en null —lo que la pantalla no debe mostrar no se
-// le manda— y una raya es lo honesto. Pintar un cero diría que no se espera nada.
-function montoOSinDato(v: string | null, currency: string): string {
-  return v === null ? '—' : money(v, currency);
-}
 
 // AvisoDeFaltantes dice qué falta capturar para cerrar y lleva a cada campo con un toque. Era una
 // lista de texto: el equipo no supo dónde capturar y leyó otra cosa como la causa (#251).
@@ -751,13 +775,13 @@ export function TablaDelCierre({ totals, currency, declared, onDeclared, cajon, 
   const seVeElEsperado = totals.some((t) => t.expected !== null) || (cajon?.expected ?? null) !== null;
   return (
     <Box>
-      <Text fontWeight="700" mb={2}>Cierre — declarado por método</Text>
+      <Text fontWeight="700" mb={2}>Cierre — contado por método</Text>
       <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflow="hidden">
         <Table.Root size="sm">
           <Table.Header><Table.Row>
             <Table.ColumnHeader>Método</Table.ColumnHeader>
             {seVeElEsperado && <Table.ColumnHeader textAlign="end">Esperado</Table.ColumnHeader>}
-            <Table.ColumnHeader>Declarado</Table.ColumnHeader>
+            <Table.ColumnHeader>Contado</Table.ColumnHeader>
             <Table.ColumnHeader textAlign="end">Diferencia</Table.ColumnHeader>
           </Table.Row></Table.Header>
           <Table.Body>
@@ -770,12 +794,11 @@ export function TablaDelCierre({ totals, currency, declared, onDeclared, cajon, 
                 )}
                 <Table.Cell>
                   <Button size="sm" minH="44px" variant={conteo ? 'outline' : 'solid'} onClick={onContar}>
-                    {conteo ? money(conteo.total, currency) : 'Contar efectivo'}
+                    {conteo ? montoDeCaja(conteo.total, currency) : 'Contar efectivo'}
                   </Button>
                 </Table.Cell>
-                <Table.Cell textAlign="end" color={difCajon === undefined ? 'fg.muted' : diffColor(String(difCajon))}
-                  fontWeight="700" aria-label="Diferencia del cajón">
-                  {difCajon === undefined ? '—' : money(difCajon, currency)}
+                <Table.Cell>
+                  <Diferencia valor={difCajon === undefined ? null : difCajon} currency={currency} etiqueta="Diferencia del cajón" />
                 </Table.Cell>
               </Table.Row>
             )}
@@ -801,9 +824,8 @@ export function TablaDelCierre({ totals, currency, declared, onDeclared, cajon, 
                         onChange={(e) => onDeclared({ ...declared, [t.methodId]: e.target.value })} />
                     )}
                   </Table.Cell>
-                  <Table.Cell textAlign="end" color={dif === undefined ? 'fg.muted' : diffColor(String(dif))}
-                    fontWeight={dif ? '700' : undefined} aria-label={`Diferencia de ${t.name}`}>
-                    {dif === undefined ? '—' : money(dif, currency)}
+                  <Table.Cell>
+                    <Diferencia valor={dif === undefined ? null : dif} currency={currency} etiqueta={`Diferencia de ${t.name}`} />
                   </Table.Cell>
                 </Table.Row>
               );
@@ -833,16 +855,14 @@ export function DiferenciaDelCierre({ diferencias, cajon, conteo, currency }: {
   // mostrar. Sumar cero por el cajón diría que cuadra, y eso nadie lo comprobó.
   if (cajon !== null && difCajon === undefined) return null;
   const total = round2(diferencias.total + (difCajon ?? 0));
-  const cuadra = Math.abs(total) < 0.005;
+  // El borde marca solo el faltante: un sobrante dentro de un recuadro de error se leía como falla
+  // (#290, hallazgo 20).
   return (
     <Box borderWidth="1px" borderRadius="lg" p={3} bg="bg.panel"
-      borderColor={cuadra ? 'border' : 'border.error'}>
+      borderColor={total < -0.005 ? 'fg.shortage' : 'border'}>
       <HStack justify="space-between" flexWrap="wrap" gap={2}>
-        <Text fontWeight="700">{cuadra ? 'El arqueo cuadra' : (total < 0 ? 'Faltante' : 'Sobrante')}</Text>
-        <Text fontSize="xl" fontWeight="700" color={diffColor(String(total))}
-          aria-label="Diferencia del arqueo">
-          {money(total, currency)}
-        </Text>
+        <Text fontWeight="700">Resultado del arqueo</Text>
+        <Diferencia valor={total} currency={currency} grande etiqueta="Diferencia del arqueo" />
       </HStack>
     </Box>
   );
@@ -1081,11 +1101,11 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           <SimpleGrid columns={{ base: 1, sm: 3 }} gap={3}>
             <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px">
               <Stat.Label>Fondo inicial</Stat.Label>
-              <Stat.ValueText>{money(session.openingCash, session.currency)}</Stat.ValueText>
+              <Stat.ValueText>{montoDeCaja(session.openingCash, session.currency)}</Stat.ValueText>
             </Stat.Root>
             <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px">
               <Stat.Label>Movimientos (neto)</Stat.Label>
-              <Stat.ValueText fontSize="lg">{money(session.netMovements ?? '0', session.currency)}</Stat.ValueText>
+              <Stat.ValueText fontSize="lg">{montoDeCaja(session.netMovements ?? '0', session.currency)}</Stat.ValueText>
             </Stat.Root>
             <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px">
               <Stat.Label>Abierta desde</Stat.Label>
@@ -1110,10 +1130,10 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           {Number(session.tipsPending?.total ?? 0) >= 1 && (
             <HStack borderWidth="1px" borderRadius="lg" p={3} justify="space-between" flexWrap="wrap" gap={2}>
               <Box>
-                <Text fontWeight="700">Propinas por entregar: {money(session.tipsPending?.total ?? '0', session.currency)}</Text>
+                <Text fontWeight="700">Propinas por entregar: {montoDeCaja(session.tipsPending?.total ?? '0', session.currency)}</Text>
                 {Number(session.cardTipsPaidInCash ?? 0) > 0 && (
                   <Text fontSize="sm" color="fg.muted">
-                    Propina de tarjeta pagada en efectivo: {money(session.cardTipsPaidInCash ?? '0', session.currency)}
+                    Propina de tarjeta pagada en efectivo: {montoDeCaja(session.cardTipsPaidInCash ?? '0', session.currency)}
                   </Text>
                 )}
               </Box>
@@ -1187,8 +1207,8 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
                         <Table.Cell>{c.name}</Table.Cell>
                         {/* El efectivo con más peso: es lo que está en el cajón y lo único de donde
                             puede salir una diferencia. */}
-                        <Table.Cell textAlign="end" fontWeight="700">{money(c.cash)}</Table.Cell>
-                        <Table.Cell textAlign="end" color="fg.muted">{money(c.other)}</Table.Cell>
+                        <Table.Cell textAlign="end" fontWeight="700">{montoDeCaja(c.cash, 'MXN')}</Table.Cell>
+                        <Table.Cell textAlign="end" color="fg.muted">{montoDeCaja(c.other, 'MXN')}</Table.Cell>
                       </Table.Row>
                     ))}
                   </Table.Body>
@@ -1210,7 +1230,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
               <Box borderWidth="1px" borderColor="border.error" bg="bg.error"
    borderRadius="lg" p={3}>
                 <Text fontWeight="700" color="fg.error">
-                  Sin cobrar: {money(session.uncollected)}
+                  Sin cobrar: {montoDeCaja(session.uncollected, 'MXN')}
                   {' en '}
                   {session.uncollectedCount === 1 ? '1 pedido' : `${session.uncollectedCount} pedidos`}
                 </Text>
@@ -1224,7 +1244,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             {/* Lo dado por perdido («cancelar lo que falta»): ni cobrado ni sin cobrar. */}
             {Number(session.writtenOff ?? 0) > 0 && (
               <Text fontSize="sm" color="fg.muted">
-                Perdido: {money(session.writtenOff ?? '0')} (se canceló lo que faltaba)
+                Perdido: {montoDeCaja(session.writtenOff ?? '0', 'MXN')} (se canceló lo que faltaba)
               </Text>
             )}
 
@@ -1232,7 +1252,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
               currency={session.currency} />
 
             {(session.cashOutsWithoutConcept ?? 0) > 0 && (
-              <AvisosDeCaja tipsPending="0" cashOutsWithoutConcept={session.cashOutsWithoutConcept ?? 0} />
+              <AvisosDeCaja tipsPending="0" cashOutsWithoutConcept={session.cashOutsWithoutConcept ?? 0} enCaja />
             )}
 
             <Box ref={refDelCierre}>
@@ -1287,16 +1307,22 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           <DialogHeader><DialogTitle>Caja cerrada</DialogTitle></DialogHeader>
           <DialogCloseTrigger />
           <DialogBody pb={6}>
-            <TotalsTable totals={closed?.totals ?? []} currency={closed?.currency ?? 'MXN'} />
+            {/* La misma cifra que la lista y el detalle (#290): el diálogo era el que decía $0. */}
+            {closed?.difference && (
+              <Box mb={3}><ResumenDeDiferencia diferencia={closed.difference} currency={closed.currency} /></Box>
+            )}
+            <TotalsTable totals={closed?.totals ?? []} currency={closed?.currency ?? 'MXN'} withTotalRow
+              drawerMethodIds={closed?.drawer?.methodIds} difference={closed?.difference} />
             {(closed?.terminalCounts ?? []).length > 0 && (
               <Box mt={3}>
                 <Text fontWeight="700" mb={1}>Terminales</Text>
                 {(closed?.terminalCounts ?? []).map((t) => (
                   <HStack key={t.terminalId} justify="space-between">
                     <Text>{t.name}</Text>
-                    <Text color={diffColor(t.difference)}>
-                      {money(t.declared, closed?.currency ?? 'MXN')} · diferencia {money(t.difference, closed?.currency ?? 'MXN')}
-                    </Text>
+                    <HStack gap={2}>
+                      <Text>{montoDeCaja(t.declared, closed?.currency ?? 'MXN')}</Text>
+                      <Diferencia valor={t.difference} currency={closed?.currency ?? 'MXN'} />
+                    </HStack>
                   </HStack>
                 ))}
               </Box>
@@ -1409,7 +1435,7 @@ function CorregirSalida({ movimiento, opciones, onCrear, guardando, onCancelar, 
         <DialogBody>
           <VStack align="stretch" gap={3}>
             <Text fontSize="sm" color="fg.muted">
-              {movimiento ? `${movimiento.concept} · ${money(movimiento.amount)}` : ''} queda anulada y se registra esta en su lugar.
+              {movimiento ? `${movimiento.concept} · ${montoDeCaja(movimiento.amount, 'MXN')}` : ''} queda anulada y se registra esta en su lugar.
             </Text>
             <Input minH="48px" inputMode="decimal" placeholder="Monto correcto"
               value={monto} onChange={(e) => setMonto(e.target.value)} />
@@ -1653,8 +1679,8 @@ function HistoryTab() {
                 </Badge>
               </Table.Cell>
               {!wide && <Table.Cell fontSize="sm">{r.openedByName}{r.closedByName ? ` → ${r.closedByName}` : ''}</Table.Cell>}
-              <Table.Cell textAlign="end" color={r.totalDifference === null ? 'fg.muted' : diffColor(r.totalDifference)} fontWeight="600">
-                {diferenciaDelHistorico(r)}
+              <Table.Cell>
+                <DiferenciaDeLaFila fila={r} />
               </Table.Cell>
               <Table.Cell textAlign="end">
                 <Button size="sm" minH="44px" px={4} variant="outline" onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}>Ver</Button>
@@ -1672,7 +1698,7 @@ function HistoryTab() {
         <VStack flex="1.1" minW={0} align="stretch" gap={2}>{controles}{list}</VStack>
         <Box flex="1" minW={0} bg="bg.panel" borderRadius="lg" borderWidth="1px" p={4} maxH="calc(100dvh - 220px)" overflowY="auto">
           {detailId
-            ? <CorteDetail id={detailId} />
+            ? <CorteDetail id={detailId} onAbrirCorte={setDetailId} />
             : <Center py={12}><Text color="fg.muted">Selecciona un corte para ver el detalle.</Text></Center>}
         </Box>
       </HStack>
@@ -1682,7 +1708,7 @@ function HistoryTab() {
     <VStack align="stretch" gap={2}>
       {controles}
       {list}
-      <SessionDetailDialog id={detailId} onClose={() => setDetailId(null)} />
+      <SessionDetailDialog id={detailId} onClose={() => setDetailId(null)} onAbrirCorte={setDetailId} />
     </VStack>
   );
 }
@@ -1725,7 +1751,22 @@ export function ControlesDelHistorico({ page, total, pageSize, desde, hasta, hoy
   );
 }
 
-function SessionDetailDialog({ id, onClose }: { id: number | null; onClose: () => void }) {
+// La columna Diferencia del Histórico (#290): la misma cifra que el detalle, con palabra y signo, y
+// la marca de lo que la explica. Oculto no es cero.
+function DiferenciaDeLaFila({ fila }: { fila: CashSessionRow }) {
+  if (fila.status !== 'cerrada') return <Text textAlign="end" color="fg.muted">—</Text>;
+  if (fila.arqueoHidden || (fila.difference == null && fila.totalDifference === null)) {
+    return <Text textAlign="end" color="fg.muted">{diferenciaDelHistorico(fila)}</Text>;
+  }
+  return (
+    <VStack align="end" gap={1}>
+      <Diferencia valor={fila.difference?.total ?? fila.totalDifference} currency={fila.currency} />
+      {fila.explainedByNext && <Badge colorPalette="gray">Explicado al abrir</Badge>}
+    </VStack>
+  );
+}
+
+function SessionDetailDialog({ id, onClose, onAbrirCorte }: { id: number | null; onClose: () => void; onAbrirCorte: (id: number) => void }) {
   return (
     <DialogRoot open={id !== null} onOpenChange={(e) => { if (!e.open) onClose(); }} placement="center" size="lg" scrollBehavior="inside">
       <DialogBackdrop />
@@ -1733,7 +1774,7 @@ function SessionDetailDialog({ id, onClose }: { id: number | null; onClose: () =
         <DialogHeader><DialogTitle>Corte #{id}</DialogTitle></DialogHeader>
         <DialogCloseTrigger />
         <DialogBody pb={6}>
-          {id !== null && <CorteDetail id={id} />}
+          {id !== null && <CorteDetail id={id} onAbrirCorte={onAbrirCorte} />}
         </DialogBody>
       </DialogContent>
     </DialogRoot>
@@ -1795,7 +1836,7 @@ export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
   return (
     <Section title="Pedidos del corte">
       <Text fontSize="sm" color="fg.muted" mb={2}>
-        {total === 1 ? '1 venta' : `${total} ventas`} · {money(session.salesTotal ?? '0', session.currency)}
+        {total === 1 ? '1 venta' : `${total} ventas`} · {montoDeCaja(session.salesTotal ?? '0', session.currency)}
         {' '}sin canceladas, reembolsadas ni propinas
         {/* Es lo VENDIDO, no lo cobrado: los ingresos de arriba son lo que entró (spec 029). */}
         {' '}· importe vendido, incluye lo que falta por cobrar
@@ -1803,7 +1844,7 @@ export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
       </Text>
       {Number(session.writtenOff ?? 0) > 0 && (
         <Text fontSize="sm" color="fg.muted" mb={2}>
-          Perdido: {money(session.writtenOff ?? '0', session.currency)} (se canceló lo que faltaba)
+          Perdido: {montoDeCaja(session.writtenOff ?? '0', session.currency)} (se canceló lo que faltaba)
         </Text>
       )}
       <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" maxH="240px" overflowY="auto">
@@ -1822,10 +1863,10 @@ export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
                 </Table.Cell>
                 <Table.Cell whiteSpace="nowrap">{hhmm(v.openedAt, zona)}</Table.Cell>
                 <Table.Cell>
-                  <Badge colorPalette={colorDeEstadoDeVenta(v.status)}>{v.status}</Badge>
+                  <Badge colorPalette={colorDeEstadoDeVenta(v.status)}>{etiquetaEstado(v.status)}</Badge>
                 </Table.Cell>
                 <Table.Cell textAlign="end" fontWeight="600">
-                  {money(v.total, session.currency)}
+                  {montoDeCaja(v.total, session.currency)}
                 </Table.Cell>
               </Table.Row>
             ))}
@@ -1894,7 +1935,7 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
             {owing.map((o) => (
               <HStack key={o.id} justify="space-between" gap={2} flexWrap="wrap">
                 <Text fontWeight="600" truncate flex="1" minW="8rem">{o.name ? `${o.name} · #${o.number}` : `#${o.number}`}</Text>
-                <Text fontWeight="700" flexShrink={0}>{money(round2(Number(o.total) - Number(o.paid) - Number(o.writtenOff ?? 0)))}</Text>
+                <Text fontWeight="700" flexShrink={0}>{montoDeCaja(round2(Number(o.total) - Number(o.paid) - Number(o.writtenOff ?? 0)), 'MXN')}</Text>
                 <Box flexShrink={0}>
                   <Button size="sm" minH="44px" colorPalette="orange" aria-label={`Cobrar ${nombreDePedido(o)}`}
                     onClick={() => onAbrir(`/pos?pedido=${o.id}`)}>Cobrar</Button>
@@ -1918,9 +1959,10 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
         </Box>
       )}
       {pending.length > 0 && (
-        <Box borderWidth="1px" borderColor="orange.300" bg="orange.50"
-          _dark={{ bg: 'orange.950' }} borderRadius="lg" p={3}>
-          <Text fontWeight="700" color="orange.700" _dark={{ color: 'orange.200' }} mb={1}>
+        <Box borderWidth="1px" colorPalette="orange" borderColor="colorPalette.muted" bg="colorPalette.subtle"
+          borderRadius="lg" p={3}>
+          {/* Tokens semánticos y no orange.50: en oscuro el fondo claro dejaba el texto casi ilegible (#290). */}
+          <Text fontWeight="700" color="colorPalette.fg" mb={1}>
             Falta entregar {pending.length === 1 ? '1 pedido' : `${pending.length} pedidos`}
           </Text>
           <Text fontSize="sm" color="fg.muted" mb={2}>
@@ -1930,7 +1972,7 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
             {pending.map((o) => (
               <HStack key={o.number} justify="space-between" gap={2}>
                 <Text fontWeight="600" truncate flex="1" minW={0}>{o.name ? `${o.name} · #${o.number}` : `#${o.number}`}</Text>
-                {o.total !== undefined && <Text fontWeight="700" flexShrink={0}>{money(o.total)}</Text>}
+                {o.total !== undefined && <Text fontWeight="700" flexShrink={0}>{montoDeCaja(o.total, 'MXN')}</Text>}
                 {o.id !== undefined && (
                   <Button size="sm" minH="44px" variant="outline" aria-label={`Abrir ${o.name || `#${o.number}`}`}
                     onClick={() => onAbrir(`/pos?pedido=${o.id}`)}>Abrir</Button>
@@ -1960,7 +2002,7 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
                   </Box>
                   {/* Un pedido cerrado no debe nada: lo vivo es lo que falta mandar, no un saldo de $0. */}
                   <Text fontWeight="700" flexShrink={0}>
-                    {c.state === 'closed_with_new' ? `${c.pendingCount} sin mandar` : money(c.state === 'capturing' ? c.total : c.outstanding)}
+                    {c.state === 'closed_with_new' ? `${c.pendingCount} sin mandar` : montoDeCaja(c.state === 'capturing' ? c.total : c.outstanding, 'MXN')}
                   </Text>
                   <Box flexShrink={0}>
                     <Button size="sm" minH="44px" variant="outline" aria-label={`Abrir ${nombre(c)}`}
@@ -1995,7 +2037,7 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
         title={`¿Cancelar lo que falta de ${perdiendo ? nombreDePedido(perdiendo) : ''}?`}
         label="Motivo" placeholder="Ej. se fue sin pagar" confirmLabel="Cancelar lo que falta"
         atajos={['Se fue sin pagar']}
-        description={perdiendo ? `Se dan por perdidos ${money(round2(Number(perdiendo.total) - Number(perdiendo.paid) - Number(perdiendo.writtenOff ?? 0)))}. Lo cobrado (${money(perdiendo.paid)}) se queda como venta.` : undefined}
+        description={perdiendo ? `Se dan por perdidos ${montoDeCaja(round2(Number(perdiendo.total) - Number(perdiendo.paid) - Number(perdiendo.writtenOff ?? 0)), 'MXN')}. Lo cobrado (${montoDeCaja(perdiendo.paid, 'MXN')}) se queda como venta.` : undefined}
         onDone={(motivo) => {
           const o = perdiendo;
           setPerdiendo(null);

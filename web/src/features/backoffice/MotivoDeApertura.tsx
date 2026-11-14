@@ -3,14 +3,7 @@ import { Button, HStack, Input, SimpleGrid, Text } from '@chakra-ui/react';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../components/ui/drawer';
-
-// Los motivos son los mismos que acepta el servidor (domain.ValidOpeningReason).
-const MOTIVOS: { value: string; label: string }[] = [
-  { value: 'last_count_wrong', label: 'El cierre se contó mal' },
-  { value: 'float_changed', label: 'Cambié el fondo' },
-  { value: 'unrecorded_withdrawal', label: 'Se sacó dinero sin registrar' },
-  { value: 'other', label: 'Otro' },
-];
+import { MOTIVOS_DE_APERTURA } from './motivosDeApertura';
 
 // MotivoDeApertura: lo contado al abrir no coincide con el cierre anterior (spec 032, punto 6). No
 // dice cuánto había: el conteo es a ciegas.
@@ -34,7 +27,7 @@ export function MotivoDeApertura({ isOpen, guardando, onConfirmar, onVolver }: {
         </DrawerHeader>
         <DrawerBody flex="1" minH={0} overflowY="auto">
           <SimpleGrid columns={2} gap={2}>
-            {MOTIVOS.map((m) => (
+            {MOTIVOS_DE_APERTURA.map((m) => (
               <Button key={m.value} minH="52px" variant={motivo === m.value ? 'solid' : 'outline'}
                 colorPalette={motivo === m.value ? 'orange' : 'gray'} aria-pressed={motivo === m.value}
                 onClick={() => setMotivo(m.value)}>{m.label}</Button>

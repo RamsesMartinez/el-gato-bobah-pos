@@ -169,7 +169,7 @@ test('Q5 · Q6 · con quien abrió dentro, el aviso se ve arriba sin desplazar y
   await expect(page.getByRole('button', { name: `Marcar salida de ${beto.name}` })).toBeVisible();
   await expect(page.getByRole('button', { name: `Cerrar sin la salida de ${beto.name}` })).toBeVisible();
   // Nada del cierre: ni la tabla, ni las notas, ni el botón.
-  await expect(page.getByText('Cierre — declarado por método')).toHaveCount(0);
+  await expect(page.getByText('Cierre — contado por método')).toHaveCount(0);
   await expect(page.getByPlaceholder('Notas del cierre (opcional)')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Cerrar caja' })).toHaveCount(0);
   // Se ve sin desplazar: quien llega a cerrar lo encuentra arriba, no a media página.
@@ -181,7 +181,7 @@ test('Q5 · Q6 · con quien abrió dentro, el aviso se ve arriba sin desplazar y
   await expect(page.getByText(`Marcar salida · ${beto.name}`)).toBeVisible();
   await teclearPin(page, beto.pin, 'Salida');
   await expect(page.getByText(new RegExp(`^Salida de ${beto.name.replace(/[()]/g, '\\$&')} marcada`))).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText('Cierre — declarado por método')).toBeVisible();
+  await expect(page.getByText('Cierre — contado por método')).toBeVisible();
   await cerrarDesdeLaPantalla(page);
   await page.context().close();
 });

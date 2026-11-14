@@ -69,3 +69,16 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     o nunca podrá abrir. Lo dice la ayuda del horario, no una regla. El grupo `/cash-sessions` sigue
     con `RequireRole` por exención firmada (plan de la 046): la siguiente feature que lo toque lo
     migra completo a permisos.
+- **La diferencia de un corte** (#290, spec 082). Tres cosas que no se ven:
+  - **Una sola regla, en `domain.CutDifference`**: la usan la lista del Histórico, el detalle y la
+    respuesta del cierre. `ListSessions` ya no suma: trae las piezas (diferencia de los métodos
+    fuera y dentro del cajón, esperado y contado del conteo de cierre) y Go las junta. Una pantalla o
+    un reporte nuevo que sume diferencias por su cuenta vuelve a dar dos cifras del mismo corte.
+  - **Con arqueo, los métodos del cajón no suman a la conciliación**: desde la 0067 su renglón guarda
+    contado = esperado y su diferencia vive en `session_cash_counts`. La conciliación los pinta con
+    «ver arqueo». Sin arqueo con esperado (cortes anteriores a la 0067) el efectivo declarado sí
+    cuenta ahí.
+  - **El motivo de apertura explica el corte ANTERIOR de su caja** (`explainedByNext`). Se busca con
+    un `left join lateral` por `register_id` y no con una ventana `lead`: la ventana corre después
+    del filtro y del `limit`, y la última fila de cada página perdía su explicación. La nota viaja
+    como `reasonNote`: el MCP borra las llaves `note`/`notes` por ser texto de terceros.

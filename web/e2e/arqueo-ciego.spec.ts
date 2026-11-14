@@ -116,7 +116,7 @@ let comoEstaba = false;
 // responde la consulta de asistencia (spec 046): preguntar por él en cuanto aparece la pestaña lo
 // daba por ausente y la prueba se saltaba sola, en verde.
 async function cierreOCajaCerrada(page: Page) {
-  await expect(page.getByText('Cierre — declarado por método').or(page.getByText(/está cerrada\./)).first())
+  await expect(page.getByText('Cierre — contado por método').or(page.getByText(/está cerrada\./)).first())
     .toBeVisible({ timeout: 30_000 });
 }
 
@@ -142,7 +142,7 @@ test('B1 · con el arqueo ciego la pantalla del cierre no tiene columna de esper
   await entrar(page);
   await page.goto('/caja');
   await expect(page.getByRole('tab', { name: 'Cajas' })).toBeVisible({ timeout: 30_000 });
-  const tabla = page.getByText('Cierre — declarado por método');
+  const tabla = page.getByText('Cierre — contado por método');
   await cierreOCajaCerrada(page);
   test.skip(!(await tabla.isVisible().catch(() => false)), 'no hay una caja abierta en el ambiente: no se abre la de alguien más');
 

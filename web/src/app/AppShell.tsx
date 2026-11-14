@@ -1,3 +1,4 @@
+import { TemaRapido } from './TemaRapido';
 import {
   Box, Flex, VStack, Text, Button, Image } from '@chakra-ui/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -132,6 +133,7 @@ export function AppShell() {
           <LuChevronDown size={14} />
         </Flex>
         <VStack gap={0} flexShrink={0} borderTopWidth="1px" borderColor="whiteAlpha.300" pt={1}>
+          <TemaRapido />
           <Text fontSize="10px" color="gray.400" lineClamp={1} px={1}>{user?.name}</Text>
           {/* 44 px: es un control táctil como cualquier otro, aunque se toque poco. */}
           <Button size="xs" minH="44px" w="100%" variant="ghost" colorPalette="whiteAlpha" color="gray.100" onClick={logout}>Salir</Button>

@@ -13,7 +13,7 @@ import { LiquidacionSheet } from './LiquidacionSheet';
 import { settlementsApi } from '../../api/settlements';
 import { money } from '../../utils/format';
 import { round2 } from '../../domain/cobro';
-import { etiquetaEstado, etiquetaTipo } from './etiquetas';
+import { etiquetaEstado, etiquetaTipo } from '../../domain/etiquetasDeVenta';
 import { diaCortoYHora, fechaYHora } from '../../utils/horaDelNegocio';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { can } from '../../app/permissions';
