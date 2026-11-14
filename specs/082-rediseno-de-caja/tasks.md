@@ -68,7 +68,7 @@ al día antes de empezar la siguiente. Dentro de cada fase, las historias que en
 
 - [X] T021 e2e `web/e2e/caja-diferencia.spec.ts` a 1024×600: cerrar con el cajón corto y verificar la misma cifra en diálogo, lista y detalle; abrir el siguiente con motivo y verla en el corte anterior; botón de tema
 - [X] T022 Anotar en `docs/mecanica/caja-y-cobro.md` la regla única de diferencia y el enlace del motivo de apertura
-- [ ] T023 `/revision-de-codigo` sobre el diff de la entrega; cada hallazgo con su test antes del arreglo
+- [X] T023 `/revision-de-codigo` sobre el diff de la entrega; cada hallazgo con su test antes del arreglo
 - [ ] T024 `make ci-local` verde; PR «082 fase 1» a `develop`, CI verde, al día, merge
 
 ---
