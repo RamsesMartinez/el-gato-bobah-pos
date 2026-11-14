@@ -45,9 +45,13 @@ export function AppShell() {
   const { data: attendance } = useQuery({ queryKey: ['asistencia', 'roster'], queryFn: attendanceApi.roster, staleTime: 60_000 });
   const navList = useRef<HTMLDivElement>(null);
   const [moreBelow, setMoreBelow] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
   const measureRail = useCallback(() => {
     const el = navList.current;
     setMoreBelow(!!el && el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+    // Se mide sin el relleno del final, que solo existe cuando la lista desborda.
+    const spacer = el?.querySelector<HTMLElement>('[data-rail-spacer]');
+    setOverflowing(!!el && el.scrollHeight - (spacer ? spacer.offsetHeight + 4 : 0) > el.clientHeight + 1);
   }, []);
   const modules = visibleModules(user, { attendanceEnabled: attendance?.enabled === true });
   const wide = useWideMenu();
@@ -65,7 +69,7 @@ export function AppShell() {
     if (list && active) list.scrollTop = railScrollFor(list, active);
     // needRefresh: el botón de versión nueva toma el lugar del logo; mide lo mismo, pero si un día
     // el alto del riel cambia con él, la opción abierta no queda partida.
-  }, [pathname, modules.length, needRefresh, wide]);
+  }, [pathname, modules.length, needRefresh, wide, overflowing]);
   useEffect(() => {
     measureRail();
     window.addEventListener('resize', measureRail);
@@ -111,6 +115,11 @@ export function AppShell() {
           css={{ scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' }, scrollSnapType: 'y mandatory' }}
         >
           <MenuRail modules={modules} wide={wide} pendingWaste={pendingCount} />
+          {/* Con la lista desplazada hasta el fondo, el desplazamiento máximo casi nunca coincide con
+              el inicio de un módulo y el de arriba quedaba partido (B10, a 600 px). Un módulo de
+              relleno deja que siempre se detenga en un inicio. Solo existe si la lista desborda: a
+              1280×854 no se pinta y el riel no desplaza. */}
+          {overflowing && <Box data-rail-spacer aria-hidden h="72px" flexShrink={0} />}
         </VStack>
         </Box>
         {/* La flecha va en su propio renglón y no encima de la lista: superpuesta tapaba el rótulo del

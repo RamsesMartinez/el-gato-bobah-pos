@@ -124,6 +124,9 @@ Su renglón se declara en `nav.ts` (dentro de Inventario, sin acceso rápido) co
 solo cuando esa ruta exista en develop. Si al mergear no existe, no se declara (sería un enlace roto)
 y se reporta pendiente: es un renglón en `nav.ts`.
 
+**Estado al implementar (T001, 2026-11-14)**: la ruta de «Se acabó» no está en develop; no se
+declara. Queda pendiente para la sesión del #291.
+
 ## Pantallas y maquetas
 
 Una sola pieza cambia de disposición: el riel, presente en todas las pantallas del POS.
