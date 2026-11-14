@@ -61,7 +61,7 @@ test('el corte corregido muestra el original, la corrección y Revertir', async 
   const revertir = vi.spyOn(backofficeApi, 'reverseCashSessionAdjustment').mockResolvedValue({} as never);
   pinta(corte({
     adjustments: [{ id: 7, kind: 'count_correction', before: '785', after: '835', reason: 'miscount', reasonNote: 'Billete en el sobre',
-      createdByName: 'Carla', createdAt: '2026-11-13T16:15:00Z', reversesId: null, reversedBy: null }],
+      createdByName: 'Carla', createdAt: '2026-11-13T16:15:00Z', reversesId: null, reversedBy: null, reversible: true }],
     effective: { drawerCounted: '835', floatLeft: null },
   }));
   expect(await screen.findByText('Contado $785.00, corregido a $835.00')).toBeInTheDocument();
@@ -88,4 +88,26 @@ test('sin permiso de ajustar el arqueo no hay Corregir', async () => {
   pinta(corte({}), ['cash.operate']);
   expect(await screen.findByText('El turno')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Corregir' })).not.toBeInTheDocument();
+});
+
+// Cambiar de «qué corriges» borra el monto: un 500 tecleado para lo contado no se guarda como fondo
+// (revisión de la fase 3).
+test('cambiar lo que se corrige borra el monto tecleado', async () => {
+  pinta(corte({}));
+  await userEvent.click(await screen.findByRole('button', { name: 'Corregir' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Lo contado en el cajón' }));
+  await userEvent.type(screen.getByLabelText('Debió decir'), '500');
+  await userEvent.click(screen.getByRole('button', { name: 'El fondo que se dejó' }));
+  expect(screen.getByLabelText('Debió decir')).toHaveValue('');
+});
+
+// «Revertir» solo donde el servidor lo acepta: una corrección de abajo, con otra encima, no se ofrece.
+test('una corrección que ya no es la vigente no ofrece Revertir', async () => {
+  pinta(corte({
+    adjustments: [
+      { id: 7, kind: 'count_correction', before: '785', after: '800', reason: 'miscount', reasonNote: 'a', createdByName: 'Carla', createdAt: '2026-11-13T16:15:00Z', reversesId: null, reversedBy: null, reversible: false },
+      { id: 8, kind: 'count_correction', before: '800', after: '835', reason: 'miscount', reasonNote: 'b', createdByName: 'Carla', createdAt: '2026-11-13T16:20:00Z', reversesId: null, reversedBy: null, reversible: true },
+    ],
+  }));
+  expect(await screen.findAllByRole('button', { name: 'Revertir' })).toHaveLength(1);
 });

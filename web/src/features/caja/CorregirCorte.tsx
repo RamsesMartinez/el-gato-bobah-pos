@@ -56,7 +56,7 @@ export function CorregirCorte({ sessionId, contado, fondo, currency, isOpen, onC
               <HStack gap={2} flexWrap="wrap">
                 {QUE.map((q) => (
                   <Button key={q.kind} minH="48px" variant={kind === q.kind ? 'solid' : 'outline'}
-                    aria-pressed={kind === q.kind} onClick={() => setKind(q.kind)}>{q.label}</Button>
+                    aria-pressed={kind === q.kind} onClick={() => { setKind(q.kind); setMonto(''); }}>{q.label}</Button>
                 ))}
               </HStack>
             </Box>

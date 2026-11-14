@@ -103,7 +103,7 @@ al día antes de empezar la siguiente. Dentro de cada fase, las historias que en
 - [X] T044 [US3] Pantalla: hoja «Corregir» y corrección vigente con «Revertir» en el detalle, marca «Corregido» en la lista, suma del periodo corregida (P4) en `web/src/features/caja/reporte/`, con tests vitest (Maquetas M4, M1)
 - [X] T045 [US3] e2e `web/e2e/caja-correcciones.spec.ts`: corregir, ver original y corregido, revertir, segundo reverso rechazado, cajero sin la acción
 - [X] T046 Anotar en `docs/mecanica/caja-y-cobro.md` las correcciones (qué no reescriben, quién, rollback hacia adelante tras la 0113)
-- [ ] T047 `/revision-de-codigo` (incluye `security-auditor` por los permisos); hallazgos con su test
+- [X] T047 `/revision-de-codigo` (incluye `security-auditor` por los permisos); hallazgos con su test
 - [ ] T048 `make ci-local` verde; PR «082 fase 3» a `develop`, CI verde, al día, merge
 
 ---

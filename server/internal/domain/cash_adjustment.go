@@ -26,6 +26,9 @@ var (
 	ErrSessionNotClosed   = fmt.Errorf("%w: el corte sigue abierto: se corrige al cerrarlo", ErrConflict)
 	ErrAdjustmentReversed = fmt.Errorf("%w: esa corrección ya se revirtió", ErrConflict)
 	ErrNoSignedCount      = fmt.Errorf("%w: este corte no tiene arqueo del cajón que corregir; deja una nota", ErrValidation)
+	// ErrAdjustmentNotLatest: solo se revierte la corrección vigente de su tipo. Revertir una de abajo
+	// con otra encima dejaba rigiendo un valor que nadie firmó.
+	ErrAdjustmentNotLatest = fmt.Errorf("%w: solo se revierte la última corrección de ese dato; revierte primero la más reciente", ErrConflict)
 )
 
 // AdjustmentInput es lo que pide quien corrige. After es nil en una nota.
@@ -40,7 +43,8 @@ type AdjustmentInput struct {
 // corrige (lo firmado o la última corrección), nil si el corte no lo guardó.
 func ValidateAdjustment(in AdjustmentInput, current *decimal.Decimal) (AdjustmentInput, error) {
 	in.Note = strings.TrimSpace(in.Note)
-	if !adjustmentReasons[in.Reason] || in.Note == "" || utf8.RuneCountInString(in.Note) > 200 {
+	// PrintableName rechaza los caracteres de control: un NUL llegaba a Postgres y salía como 500.
+	if !adjustmentReasons[in.Reason] || in.Note == "" || utf8.RuneCountInString(in.Note) > 200 || !PrintableName(in.Note) {
 		return in, ErrValidation
 	}
 	switch in.Kind {
@@ -78,13 +82,18 @@ func CanAdjustSession(status string) error {
 	return nil
 }
 
-// CanReverseAdjustment: un reverso no se revierte, y una corrección se revierte una sola vez.
-func CanReverseAdjustment(kind string, alreadyReversed bool) error {
+// CanReverseAdjustment: un reverso no se revierte, una corrección se revierte una sola vez, y una
+// corrección de monto solo si es la vigente de su tipo (`effective`). Las notas no rigen nada: se
+// revierten siempre.
+func CanReverseAdjustment(kind string, alreadyReversed, effective bool) error {
 	if kind == AdjustmentReversal {
 		return fmt.Errorf("%w: un reverso no se revierte; registra otra corrección", ErrValidation)
 	}
 	if alreadyReversed {
 		return ErrAdjustmentReversed
+	}
+	if kind != AdjustmentNote && !effective {
+		return ErrAdjustmentNotLatest
 	}
 	return nil
 }

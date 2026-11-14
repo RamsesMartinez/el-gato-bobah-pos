@@ -256,6 +256,8 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "SESSION_NOT_CLOSED"
 	case errors.Is(err, domain.ErrAdjustmentReversed):
 		status, code = http.StatusConflict, "ALREADY_REVERSED"
+	case errors.Is(err, domain.ErrAdjustmentNotLatest):
+		status, code = http.StatusConflict, "NOT_LATEST_ADJUSTMENT"
 	case errors.Is(err, domain.ErrNoSignedCount):
 		status, code = http.StatusUnprocessableEntity, "NO_SIGNED_COUNT"
 	case errors.Is(err, domain.ErrLecturaEnCurso):

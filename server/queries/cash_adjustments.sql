@@ -3,7 +3,7 @@
 -- name: LockSessionForAdjustment :one
 -- El corte que se corrige, tomado para que dos tabletas no corrijan ni reviertan a la vez sobre la
 -- misma cifra vigente (cada corrección guarda el «antes» que vio).
-select id, status, float_left from register_sessions where id = $1 for update;
+select id, status, float_left, register_id from register_sessions where id = $1 for update;
 
 -- name: InsertSessionAdjustment :one
 insert into cash_session_adjustments (session_id, kind, before_amount, after_amount, reason, note, reverses_id, created_by)

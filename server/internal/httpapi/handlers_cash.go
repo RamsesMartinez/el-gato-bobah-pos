@@ -422,8 +422,9 @@ func (h *Handlers) AdjustCashSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := userFrom(r.Context())
+	canSee := slices.Contains(h.permissionsOf(r.Context(), u), domain.PermCashConfigure)
 	adj, err := h.backoffice.AdjustSession(r.Context(), id, u.ID, domain.AdjustmentInput{
-		Kind: body.Kind, After: body.After, Reason: body.Reason, Note: body.Note})
+		Kind: body.Kind, After: body.After, Reason: body.Reason, Note: body.Note}, canSee)
 	if err != nil {
 		Error(w, err)
 		return
@@ -447,7 +448,8 @@ func (h *Handlers) ReverseCashSessionAdjustment(w http.ResponseWriter, r *http.R
 		return
 	}
 	u, _ := userFrom(r.Context())
-	adj, err := h.backoffice.ReverseAdjustment(r.Context(), id, adjID, u.ID, body.Note)
+	canSee := slices.Contains(h.permissionsOf(r.Context(), u), domain.PermCashConfigure)
+	adj, err := h.backoffice.ReverseAdjustment(r.Context(), id, adjID, u.ID, body.Note, canSee)
 	if err != nil {
 		Error(w, err)
 		return

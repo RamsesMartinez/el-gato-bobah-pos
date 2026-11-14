@@ -55,9 +55,9 @@ export function CorreccionesDelCorte({ corte }: { corte: CashSessionDetail }) {
               </Text>
               <Text fontSize="sm">{a.reasonNote}</Text>
             </Box>
-            {a.reversedBy !== null ? (
+            {a.reversedBy != null ? (
               <Badge colorPalette="gray" flexShrink={0}>Revertida</Badge>
-            ) : puede && a.kind !== 'reversal' ? (
+            ) : puede && (a.reversible ?? a.kind !== 'reversal') ? (
               <Button size="sm" minH="48px" variant="outline" flexShrink={0} onClick={() => setRevirtiendo(a)}>Revertir</Button>
             ) : null}
           </HStack>

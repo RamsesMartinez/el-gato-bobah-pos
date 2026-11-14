@@ -149,13 +149,14 @@ func (q *Queries) ListSessionAdjustments(ctx context.Context, sessionID int64) (
 
 const lockSessionForAdjustment = `-- name: LockSessionForAdjustment :one
 
-select id, status, float_left from register_sessions where id = $1 for update
+select id, status, float_left, register_id from register_sessions where id = $1 for update
 `
 
 type LockSessionForAdjustmentRow struct {
-	ID        int64            `json:"id"`
-	Status    SessionStatus    `json:"status"`
-	FloatLeft *decimal.Decimal `json:"float_left"`
+	ID         int64            `json:"id"`
+	Status     SessionStatus    `json:"status"`
+	FloatLeft  *decimal.Decimal `json:"float_left"`
+	RegisterID int64            `json:"register_id"`
 }
 
 // Correcciones de un corte cerrado (#290, spec 082 fase 3). Solo se agregan: no hay update ni delete.
@@ -164,6 +165,11 @@ type LockSessionForAdjustmentRow struct {
 func (q *Queries) LockSessionForAdjustment(ctx context.Context, id int64) (LockSessionForAdjustmentRow, error) {
 	row := q.db.QueryRow(ctx, lockSessionForAdjustment, id)
 	var i LockSessionForAdjustmentRow
-	err := row.Scan(&i.ID, &i.Status, &i.FloatLeft)
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.FloatLeft,
+		&i.RegisterID,
+	)
 	return i, err
 }

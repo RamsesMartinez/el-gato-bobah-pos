@@ -32,6 +32,8 @@ func TestValidateAdjustment(t *testing.T) {
 		// Corregir al mismo valor no deja rastro de nada.
 		{"mismo monto que el vigente", AdjustmentInput{Kind: "count_correction", After: dp("1000.00"), Reason: "miscount", Note: "x"}, &mil, ErrValidation},
 		// Un corte anterior a la 0067 no tiene arqueo firmado que corregir: se deja una nota.
+		// Un carácter de control en la nota era un 500 de Postgres (22021), no un 400 (revisión de seguridad).
+		{"nota con un carácter de control", AdjustmentInput{Kind: "note", Reason: "other", Note: "a\x00b"}, nil, ErrValidation},
 		{"conteo sin arqueo firmado", AdjustmentInput{Kind: "count_correction", After: dp("1"), Reason: "miscount", Note: "x"}, nil, ErrNoSignedCount},
 	}
 	for _, c := range cases {
@@ -67,16 +69,24 @@ func TestCanAdjustSession(t *testing.T) {
 	}
 }
 
-// Un reverso no se revierte y nada se revierte dos veces.
+// Un reverso no se revierte, nada se revierte dos veces, y una corrección de monto solo se revierte
+// si es la vigente de su tipo: revertir una de abajo con otra encima dejaba rigiendo un valor que ya
+// nadie había firmado (revisión de la fase 3).
 func TestCanReverseAdjustment(t *testing.T) {
-	if err := CanReverseAdjustment("count_correction", false); err != nil {
+	if err := CanReverseAdjustment("count_correction", false, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := CanReverseAdjustment("count_correction", true); !errors.Is(err, ErrAdjustmentReversed) {
+	if err := CanReverseAdjustment("count_correction", true, true); !errors.Is(err, ErrAdjustmentReversed) {
 		t.Fatalf("revertir dos veces: %v", err)
 	}
-	if err := CanReverseAdjustment("reversal", false); !errors.Is(err, ErrValidation) {
+	if err := CanReverseAdjustment("reversal", false, true); !errors.Is(err, ErrValidation) {
 		t.Fatalf("revertir un reverso: %v", err)
+	}
+	if err := CanReverseAdjustment("count_correction", false, false); !errors.Is(err, ErrAdjustmentNotLatest) {
+		t.Fatalf("revertir una corrección que no es la vigente: %v", err)
+	}
+	if err := CanReverseAdjustment("note", false, false); err != nil {
+		t.Fatalf("una nota se revierte siempre: %v", err)
 	}
 }
 

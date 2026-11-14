@@ -46,6 +46,8 @@ export interface SessionAdjustment {
   createdAt: string;
   reversesId: number | null;
   reversedBy: number | null;
+  // El servidor la aceptaría como reverso hoy. Opcional: un backend anterior no lo manda.
+  reversible?: boolean;
 }
 
 export interface AdjustmentInput {

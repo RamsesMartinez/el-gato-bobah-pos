@@ -29,6 +29,9 @@ type SessionAdjustmentView struct {
 	ReversesID    *int64           `json:"reversesId"`
 	// ReversedBy: la corrección que la revirtió, si la hay.
 	ReversedBy *int64 `json:"reversedBy"`
+	// Reversible: el servidor la aceptaría como reverso hoy (no revertida, no es un reverso y, si es de
+	// monto, es la vigente). La pantalla ofrece «Revertir» solo aquí.
+	Reversible bool `json:"reversible"`
 }
 
 // EffectiveView es lo que rige después de las correcciones vigentes: el contado del cajón y el fondo
@@ -39,7 +42,8 @@ type EffectiveView struct {
 }
 
 // AdjustSession registra una corrección de conteo, de fondo o una nota sobre un corte cerrado.
-func (s *CashAdjustmentService) AdjustSession(ctx context.Context, sessionID, userID int64, in domain.AdjustmentInput) (*SessionAdjustmentView, error) {
+// `canSeeArqueo` es el mismo criterio que las lecturas (configurar caja).
+func (s *CashAdjustmentService) AdjustSession(ctx context.Context, sessionID, userID int64, in domain.AdjustmentInput, canSeeArqueo bool) (*SessionAdjustmentView, error) {
 	var out *SessionAdjustmentView
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
 		sess, err := q.LockSessionForAdjustment(ctx, sessionID)
@@ -50,6 +54,9 @@ func (s *CashAdjustmentService) AdjustSession(ctx context.Context, sessionID, us
 			return err
 		}
 		if err := domain.CanAdjustSession(string(sess.Status)); err != nil {
+			return err
+		}
+		if err := s.arqueoVisible(ctx, q, sess.RegisterID, sessionID, canSeeArqueo); err != nil {
 			return err
 		}
 		adjs, err := q.ListSessionAdjustments(ctx, sessionID)
@@ -94,12 +101,16 @@ func (s *CashAdjustmentService) AdjustSession(ctx context.Context, sessionID, us
 
 // ReverseAdjustment deshace una corrección con otra que la nombra. Una corrección se revierte una sola
 // vez, y solo desde su corte.
-func (s *CashAdjustmentService) ReverseAdjustment(ctx context.Context, sessionID, adjustmentID, userID int64, note string) (*SessionAdjustmentView, error) {
+func (s *CashAdjustmentService) ReverseAdjustment(ctx context.Context, sessionID, adjustmentID, userID int64, note string, canSeeArqueo bool) (*SessionAdjustmentView, error) {
 	var out *SessionAdjustmentView
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
-		if _, err := q.LockSessionForAdjustment(ctx, sessionID); errors.Is(err, pgx.ErrNoRows) {
+		sess, err := q.LockSessionForAdjustment(ctx, sessionID)
+		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.ErrNotFound
 		} else if err != nil {
+			return err
+		}
+		if err := s.arqueoVisible(ctx, q, sess.RegisterID, sessionID, canSeeArqueo); err != nil {
 			return err
 		}
 		adjs, err := q.ListSessionAdjustments(ctx, sessionID)
@@ -119,7 +130,8 @@ func (s *CashAdjustmentService) ReverseAdjustment(ctx context.Context, sessionID
 		if target == nil {
 			return domain.ErrNotFound
 		}
-		if err := domain.CanReverseAdjustment(target.Kind, reverted); err != nil {
+		vigente := domain.EffectiveAdjustment(adjustmentsOf(adjs), target.Kind)
+		if err := domain.CanReverseAdjustment(target.Kind, reverted, vigente != nil && vigente.ID == target.ID); err != nil {
 			return err
 		}
 		valid, err := domain.ValidateAdjustment(domain.AdjustmentInput{Kind: domain.AdjustmentNote, Reason: "other", Note: note}, nil)
@@ -143,6 +155,24 @@ func (s *CashAdjustmentService) ReverseAdjustment(ctx context.Context, sessionID
 			map[string]any{"adjustmentId": adjustmentID}, map[string]any{"reversalId": row.ID, "note": valid.Note})
 	})
 	return out, err
+}
+
+// arqueoVisible: con arqueo ciego, quien no configura la caja no corrige el último cierre de una caja
+// que no se ha vuelto a abrir. Es el corte cuyo arqueo las lecturas le ocultan, y corregirlo le
+// devolvería lo contado en el «antes» —o se lo dejaría adivinar con el «es el mismo monto»—
+// (revisión de seguridad de la fase 3).
+func (s *CashAdjustmentService) arqueoVisible(ctx context.Context, q *db.Queries, registerID, sessionID int64, canSee bool) error {
+	if canSee || !s.arqueoCiego(ctx) {
+		return nil
+	}
+	ultimo, err := q.IsLatestSessionOfRegister(ctx, db.IsLatestSessionOfRegisterParams{RegisterID: registerID, SessionID: sessionID})
+	if err != nil {
+		return err
+	}
+	if ultimo {
+		return domain.ErrForbidden
+	}
+	return nil
 }
 
 // signedDrawerCount es lo contado al cerrar, o nil si el corte no tiene arqueo con esperado (antes de
@@ -177,13 +207,17 @@ func adjustmentViews(rows []db.ListSessionAdjustmentsRow) []SessionAdjustmentVie
 			revertidaPor[*r.ReversesID] = r.ID
 		}
 	}
+	adjs := adjustmentsOf(rows)
 	out := make([]SessionAdjustmentView, len(rows))
 	for i, r := range rows {
 		out[i] = SessionAdjustmentView{ID: r.ID, Kind: r.Kind, Before: r.BeforeAmount, After: r.AfterAmount,
 			Reason: r.Reason, ReasonNote: r.Note, CreatedByName: r.CreatedByName, CreatedAt: r.CreatedAt, ReversesID: r.ReversesID}
-		if by, ok := revertidaPor[r.ID]; ok {
+		by, revertida := revertidaPor[r.ID]
+		if revertida {
 			out[i].ReversedBy = &by
 		}
+		vigente := domain.EffectiveAdjustment(adjs, r.Kind)
+		out[i].Reversible = domain.CanReverseAdjustment(r.Kind, revertida, vigente != nil && vigente.ID == r.ID) == nil
 	}
 	return out
 }

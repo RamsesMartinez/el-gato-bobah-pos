@@ -51,8 +51,17 @@ with t as (
                           and not exists (select 1 from register_cash_movements x where x.reverses_id = m.id)) as sin_concepto
     from register_cash_movements m where m.session_id in (select id from t)
 ), cajon as (
-  select coalesce(sum(c.difference), 0) as diferencia
-    from session_cash_counts c where c.moment = 'cierre' and c.session_id in (select id from t)
+  -- Con el contado corregido si hay una corrección vigente (#290, fase 3): la última de conteo sin
+  -- reverso, la misma regla que domain.EffectiveAdjustment. Sin esto el correo del día y el Histórico
+  -- decían dos cifras del mismo corte.
+  select coalesce(sum(coalesce(ef.after_amount, c.total) - c.expected), 0) as diferencia
+    from session_cash_counts c
+    left join lateral (
+      select a.after_amount from cash_session_adjustments a
+       where a.session_id = c.session_id and a.kind = 'count_correction'
+         and not exists (select 1 from cash_session_adjustments r where r.reverses_id = a.id)
+       order by a.id desc limit 1) ef on true
+   where c.moment = 'cierre' and c.session_id in (select id from t)
 ), term as (
   select coalesce(sum(declared - expected), 0) as diferencia from session_terminal_counts where session_id in (select id from t)
 )
