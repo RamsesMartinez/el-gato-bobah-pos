@@ -74,6 +74,7 @@ GET /api/v1/reports/tips admin,gerente
 GET /api/v1/roles admin
 GET /api/v1/sales admin,gerente
 GET /api/v1/sales/summary admin,gerente
+GET /api/v1/settings/cash-close admin,gerente,cajero
 GET /api/v1/settings/count-limits admin,gerente
 GET /api/v1/settings/daily-summary-emails admin,gerente
 GET /api/v1/stock/articles admin,gerente
@@ -231,6 +232,7 @@ PUT /api/v1/expenses/{id}/stock-lines admin,gerente
 PUT /api/v1/me/preferences/{key} admin,gerente,cajero,mesero
 PUT /api/v1/orders/{id}/discount admin,gerente,cajero,mesero
 PUT /api/v1/orders/{id}/settlement admin,gerente
+PUT /api/v1/settings/cash-close admin,gerente
 PUT /api/v1/settings/count-limits admin,gerente
 PUT /api/v1/settings/daily-summary-emails admin,gerente
 PUT /api/v1/settings/inventory admin,gerente

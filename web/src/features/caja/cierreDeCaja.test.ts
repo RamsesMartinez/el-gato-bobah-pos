@@ -1,5 +1,5 @@
 import {
-  faltantesDelCierre,
+  pendientesDelCierre, estadoDelPaso,
   faltanPorContar, diferenciasDelCierre, faltaContarElCajon, diferenciaDelCajon,
   type MetodoPorContar, type ArqueoDelCajon,
 } from './cierreDeCaja';
@@ -12,6 +12,17 @@ const rappiEfe: MetodoPorContar = { methodId: 21, name: 'Rappi efectivo', kind: 
 test('un método que exige conteo y está en blanco impide cerrar', () => {
   const faltan = faltanPorContar([efectivo, tarjeta], {});
   expect(faltan.map((m) => m.name)).toEqual(['Efectivo']);
+});
+
+// Un monto que no se entiende no es un monto capturado: «1,200» o «abc» pasaban como escritos, el botón
+// se habilitaba y el cierre los mandaba en $0, el faltante inventado de $1,662 por otro camino
+// (revisión de la fase 4).
+test.each(['1,200', 'abc', '12.3.4'])('«%s» sigue pendiente de capturar', (v) => {
+  expect(faltanPorContar([efectivo], { 1: v }).map((m) => m.name)).toEqual(['Efectivo']);
+});
+
+test('un cero escrito sí cuenta como capturado', () => {
+  expect(faltanPorContar([efectivo], { 1: '0' })).toEqual([]);
 });
 
 test('los que se autodeclaran no piden captura', () => {
@@ -188,23 +199,44 @@ test('con el arqueo ciego, un método sin capturar sigue dejando el cierre incom
   expect(completo).toBe(false);
 });
 
-// #251: el aviso era una lista de texto y el equipo no supo dónde capturar; cada faltante lleva a su
-// campo, con la MISMA etiqueta que ese campo tiene en pantalla.
-test('cada faltante del cierre dice a qué campo lleva', () => {
-  const faltan = faltantesDelCierre({
-    cajon: true,
-    metodos: [{ methodId: 3, name: 'Transferencia', kind: 'other', expected: null, autoDeclare: false, requiresEntry: true }],
-    terminales: ['Getnet'],
-    fondo: true,
+// UNA SOLA REGLA PARA LA LISTA, LOS PASOS Y EL BOTÓN (#290, FR-030). El botón de cerrar se apagaba
+// por nueve condiciones y el aviso nombraba cuatro (#251): aquí cada condición es un pendiente con su
+// paso, y el botón se habilita si y solo si la lista está vacía.
+describe('pendientesDelCierre', () => {
+  const nada = {
+    asistencia: 'lista' as const, pedidosSinEntregar: 0, pedidosQueDeben: 0, propinasPorDecidir: false,
+    cajon: false, metodos: [] as MetodoPorContar[], terminales: [] as string[],
+    fondo: false, quien: false, fondoExcedeLoContado: false, explicacionAMedias: false,
+  };
+  test('sin nada pendiente, la lista está vacía', () => {
+    expect(pendientesDelCierre(nada)).toEqual([]);
   });
-  expect(faltan).toEqual([
-    { texto: 'el cajón', campo: 'cajon' },
-    { texto: 'Transferencia', campo: 'Declarado de Transferencia' },
-    { texto: 'Getnet', campo: 'Total del corte de Getnet' },
-    { texto: 'el fondo que se queda', campo: 'Se queda de fondo' },
-  ]);
-});
-
-test('sin nada pendiente no hay aviso', () => {
-  expect(faltantesDelCierre({ cajon: false, metodos: [], terminales: [], fondo: false })).toEqual([]);
+  test.each([
+    ['la asistencia de quien abrió', { asistencia: 'falta' as const }, 1],
+    ['la asistencia todavía cargando', { asistencia: 'cargando' as const }, 1],
+    ['pedidos sin entregar', { pedidosSinEntregar: 2 }, 1],
+    ['pedidos entregados que deben', { pedidosQueDeben: 1 }, 1],
+    ['propinas por decidir', { propinasPorDecidir: true }, 1],
+    ['el cajón sin contar', { cajon: true }, 2],
+    ['un método sin cifra', { metodos: [rappiEfe] }, 3],
+    ['una terminal sin cifra', { terminales: ['Getnet'] }, 3],
+    ['el fondo que se deja', { fondo: true }, 4],
+    ['quién se lleva el retiro', { quien: true }, 4],
+    ['un fondo mayor que lo contado', { fondoExcedeLoContado: true }, 4],
+    // Un motivo sin nota (o una nota sin motivo) no se mandaba y nada lo decía: quien cerraba creía
+    // haber explicado y el corte quedaba «Por explicar» (revisión de la fase 4).
+    ['una explicación a medias', { explicacionAMedias: true }, 4],
+  ])('%s es un pendiente del paso %#', (_, cambio, paso) => {
+    const p = pendientesDelCierre({ ...nada, ...cambio });
+    expect(p).toHaveLength(1);
+    expect(p[0].paso).toBe(paso);
+    expect(p[0].texto.length).toBeGreaterThan(0);
+  });
+  test('el estado de cada paso sale de la misma lista', () => {
+    const p = pendientesDelCierre({ ...nada, pedidosSinEntregar: 1, cajon: true });
+    expect(estadoDelPaso(p, 1, true)).toBe('falta');
+    expect(estadoDelPaso(p, 2, true)).toBe('falta');
+    expect(estadoDelPaso(p, 3, true)).toBe('listo');
+    expect(estadoDelPaso(p, 3, false)).toBe('pendiente');
+  });
 });

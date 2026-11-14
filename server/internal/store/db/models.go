@@ -908,6 +908,7 @@ type BusinessSetting struct {
 	CostingMethod             string             `json:"costing_method"`
 	StockItemLabel            string             `json:"stock_item_label"`
 	WasteApprovalThreshold    *decimal.Decimal   `json:"waste_approval_threshold"`
+	CashDifferenceTolerance   decimal.Decimal    `json:"cash_difference_tolerance"`
 }
 
 type CandidatasDelAviso struct {

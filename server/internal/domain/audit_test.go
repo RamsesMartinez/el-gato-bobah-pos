@@ -12,7 +12,7 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 	want := []AuditAction{
 		"order.created", "order.lines_added", "order.line_removed", "order.lines_moved", "order.delivered",
 		"order.cancelled", "order.discount_set", "order.platform_ref_set", "payment.charged",
-		"payment.voided", "payment.refunded", "stock.written_off", "cash.opened", "cash.closed",
+		"payment.voided", "payment.refunded", "stock.written_off", "cash.opened", "cash.closed", "settings.cash_tolerance",
 		"cash.closed_without_opener_clock_out",
 		"cash.movement", "cash.movement_corrected", "cash.session_adjusted", "cash.session_adjustment_reversed", "expense.created", "expense.paid", "expense.cancelled", "tip.paid_out",
 		"price.set", "price.deleted", "price.synced", "attendance.clock_in", "attendance.clock_out",

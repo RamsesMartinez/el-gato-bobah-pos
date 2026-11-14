@@ -26,3 +26,10 @@ select a.id, a.session_id, a.kind, a.after_amount, a.reverses_id
 from cash_session_adjustments a
 where a.session_id = any(@session_ids::bigint[])
 order by a.session_id, a.id;
+
+-- name: GetCashTolerance :one
+-- La tolerancia de diferencia de la empresa (#290, fase 4). Sin fila de ajustes rige $0.
+select coalesce((select cash_difference_tolerance from business_settings), 0)::numeric(10,2) as tolerance;
+
+-- name: SetCashTolerance :execrows
+update business_settings set cash_difference_tolerance = @tolerance, updated_at = now(), updated_by = @updated_by;

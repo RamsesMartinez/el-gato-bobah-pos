@@ -354,6 +354,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequirePermission(h.permissions, domain.PermBusinessConfigure)).Get("/settings/daily-summary-emails", h.SummaryEmails)
 				r.With(RequirePermission(h.permissions, domain.PermBusinessConfigure)).Put("/settings/daily-summary-emails", h.SetSummaryEmails)
 				r.With(RequirePermission(h.permissions, domain.PermBusinessConfigure)).Put("/branches/{id}/card-count-mode", h.SetCardCountMode)
+				// Tolerancia de diferencia (#290, fase 4): la lee quien opera la caja; cambiarla es configurarla.
+				// La lee el cierre (operar) y Caja → Administrar (configurar): un rol propio puede tener solo uno.
+				r.With(RequireAnyPermission(h.permissions, domain.PermCashOperate, domain.PermCashConfigure)).Get("/settings/cash-close", h.CashCloseSettings)
+				r.With(RequirePermission(h.permissions, domain.PermCashConfigure)).Put("/settings/cash-close", h.SetCashCloseSettings)
 				// Corregir una salida: reverso + salida nueva. Gerente o admin.
 				r.With(RequirePermission(h.permissions, domain.PermCashAdjustCount)).Post("/cash-movements/{id}/correct", h.CorrectCashOut)
 				// El catálogo de denominaciones: lo pide la hoja de conteo, que abre el mismo que

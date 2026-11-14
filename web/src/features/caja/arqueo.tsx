@@ -4,7 +4,7 @@ import type { ResultadoDelConteo } from './conteo';
 import { money } from '../../utils/format';
 import { Diferencia } from './diferencia';
 import { montoOSinDato, montoDeCaja } from './montosDeCaja';
-import { diferenciaDelCajon, type DiferenciasDelCierre, etiquetaDeclarado, type FaltanteDelCierre } from './cierreDeCaja';
+import { diferenciaDelCajon, type DiferenciasDelCierre, etiquetaDeclarado } from './cierreDeCaja';
 import { round2 } from '../../domain/numeros';
 import { Plegable } from './reporte';
 
@@ -94,33 +94,6 @@ export function DesgloseDelConteo({ counts, currency }: {
 function etiquetaDeDenominacion(value: string, currency: string): string {
   const n = Number(value);
   return n < 1 ? `${Math.round(n * 100)}¢` : money(n, currency);
-}
-
-// AvisoDeFaltantes dice qué falta capturar para cerrar y lleva a cada campo con un toque. Era una
-// lista de texto: el equipo no supo dónde capturar y leyó otra cosa como la causa (#251).
-export function AvisoDeFaltantes({ faltantes, onContar }: { faltantes: FaltanteDelCierre[]; onContar: () => void }) {
-  if (faltantes.length === 0) return null;
-  const ir = (campo: string) => {
-    if (campo === 'cajon') return onContar();
-    const el = document.querySelector<HTMLElement>(`[aria-label="${CSS.escape(campo)}"]`);
-    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    el?.focus({ preventScroll: true });
-  };
-  return (
-    <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
-      <Text fontSize="sm" fontWeight="600" mb={2}>Para cerrar falta capturar lo contado en:</Text>
-      <HStack gap={2} flexWrap="wrap">
-        {/* Con el índice en la llave: dos terminales pueden llamarse igual en un turno (una archivada y
-            su reemplazo, las dos con cobros). */}
-        {faltantes.map((f, i) => (
-          <Button key={`${f.campo}-${i}`} size="sm" minH="44px" variant="outline" colorPalette="orange"
-            aria-label={`Capturar ${f.texto}`} onClick={() => ir(f.campo)}>
-            {f.texto}
-          </Button>
-        ))}
-      </HStack>
-    </Box>
-  );
 }
 
 // TablaDelCierre: qué se espera, qué se declaró y CUÁNTO FALTA (spec 015).

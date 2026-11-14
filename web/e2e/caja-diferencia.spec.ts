@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { tokenDeApi } from './ambiente';
+import { detalleDelCorte } from './cierre';
 import { LOCAL, pedir, abrir, cerrar, entrarACaja, type Caja } from './cortes';
 
 // UNA SOLA DIFERENCIA, Y LA EXPLICACIÓN A LA VISTA (#290, fase 1).
@@ -33,7 +34,7 @@ test('D1 · el corte con faltante dice lo mismo en la lista y en el detalle, y m
     await expect(fila).toContainText('Explicado al abrir');
     await fila.getByRole('button', { name: 'Ver' }).click();
 
-    const detalle = page.getByRole('dialog').last();
+    const detalle = detalleDelCorte(page);
     await expect(detalle.getByLabel('Diferencia: Total')).toContainText('Faltante−$120.00');
     await expect(detalle.getByLabel('Diferencia: Cajón (arqueo)')).toContainText('Faltante−$120.00');
     await expect(detalle.getByText(`Diferencia explicada al abrir el turno #${siguiente.id}`)).toBeVisible();

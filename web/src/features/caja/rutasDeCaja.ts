@@ -6,6 +6,8 @@ export interface SeccionDeCaja {
   pestana: PestanaDeCaja;
   cajaId: number | null;
   corteId: number | null;
+  // cerrando: /caja/:caja/cerrar, el asistente de cierre de esa caja (#290, fase 4).
+  cerrando: boolean;
 }
 
 const entero = (s: string | undefined) => (s !== undefined && /^\d+$/.test(s) ? Number(s) : null);
@@ -14,9 +16,10 @@ const entero = (s: string | undefined) => (s !== undefined && /^\d+$/.test(s) ? 
 // verdad es el servidor, pero la pantalla no ofrece lo que no se puede usar.
 export function seccionDeCaja(pathname: string, puedeAdministrar: boolean): SeccionDeCaja {
   const [primero, segundo] = pathname.replace(/^\/caja\/?/, '').split('/');
-  if (primero === 'historico') return { pestana: 'historico', cajaId: null, corteId: entero(segundo) };
-  if (primero === 'administrar' && puedeAdministrar) return { pestana: 'gestion', cajaId: null, corteId: null };
-  return { pestana: 'operar', cajaId: entero(primero), corteId: null };
+  if (primero === 'historico') return { pestana: 'historico', cajaId: null, corteId: entero(segundo), cerrando: false };
+  if (primero === 'administrar' && puedeAdministrar) return { pestana: 'gestion', cajaId: null, corteId: null, cerrando: false };
+  const cajaId = entero(primero);
+  return { pestana: 'operar', cajaId, corteId: null, cerrando: cajaId !== null && segundo === 'cerrar' };
 }
 
 export function rutaDeCaja(pestana: PestanaDeCaja): string {

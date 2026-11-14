@@ -154,7 +154,8 @@ export function PropinasDelCierre({ pendiente, currency, decision, onEntregarAho
       <Text fontWeight="700">Quedan {money(total, currency)} de propina por entregar</Text>
       <HStack mt={2} gap={2}>
         <Button flex="1" minH="52px" colorPalette="orange" onClick={onEntregarAhora}>Entregar ahora</Button>
-        <Button flex="1" minH="52px" variant={seQueda ? 'solid' : 'outline'} colorPalette="gray"
+        {/* Con fondo propio: sin él, el contorno gris sobre el naranja se leía como un hueco. */}
+        <Button flex="1" minH="52px" variant={seQueda ? 'solid' : 'outline'} colorPalette="gray" bg={seQueda ? undefined : 'bg'}
           aria-pressed={seQueda} onClick={() => onDecidir(seQueda ? null : 'quedan_en_caja')}>
           Se queda en caja
         </Button>

@@ -4,7 +4,8 @@ import { vi, expect, test, describe, beforeEach, afterEach } from 'vitest';
 import type { ReactElement } from 'react';
 import { Provider } from '../../components/ui/provider';
 import type { CashAttendanceGate } from '../../api/backoffice';
-import { AperturaConAsistencia, AvisoDelCierre, CierreConAsistencia, type EstadoDeAsistencia } from './AsistenciaDeCaja';
+import { AperturaConAsistencia, AvisoDelCierre, type EstadoDeAsistencia } from './AsistenciaDeCaja';
+import { asistenciaDelCierre } from './cierreDeCaja';
 
 const clock = vi.hoisted(() => vi.fn());
 vi.mock('../../api/attendance', () => ({ attendanceApi: { clock: (...a: unknown[]) => clock(...a) } }));
@@ -99,13 +100,15 @@ describe('el cierre', () => {
 
   const BLOQUE = 'bloque del cierre (tabla, terminales, fondo, notas y «Cerrar caja»)';
   type Extra = Partial<{ autorizacion: string | null; onAutorizar: (r: string) => void; onQuitarAutorizacion: () => void; onActualizar: () => void }>;
-  // Como en CashPage: el aviso arriba de la caja abierta y el bloque del cierre más abajo.
+  // Como en el asistente de cierre: el aviso arriba y el conteo SIEMPRE a la vista (#290, FR-031: el
+  // aviso ya no esconde el bloque; lo que bloquea es el pendiente de asistencia).
   const ui = (estado: EstadoDeAsistencia, p: Extra = {}) => (
     <>
       <AvisoDelCierre estado={estado} autorizacion={p.autorizacion ?? null} onAutorizar={p.onAutorizar ?? vi.fn()}
         onQuitarAutorizacion={p.onQuitarAutorizacion ?? vi.fn()} onActualizar={p.onActualizar ?? vi.fn()} />
       <p>Movimientos de efectivo</p>
-      <CierreConAsistencia estado={estado} autorizacion={p.autorizacion ?? null}><p>{BLOQUE}</p></CierreConAsistencia>
+      <p>{BLOQUE}</p>
+      <p data-testid="pendiente-asistencia">{asistenciaDelCierre(estado, p.autorizacion ?? null)}</p>
     </>
   );
   const cierre = (estado: EstadoDeAsistencia, p: Extra = {}) => wrap(ui(estado, p));
@@ -113,15 +116,15 @@ describe('el cierre', () => {
     stage: 'close', isSelf: false, openSince: new Date(Date.now() - 2 * 3600_000).toISOString(), ...o,
   });
 
-  test('con quien abrió dentro, el aviso va antes que el resto de la caja y el bloque del cierre no se monta', () => {
+  test('con quien abrió dentro, el aviso va antes que el resto, el conteo sigue a la vista y el cierre queda pendiente', () => {
     cierre({ gate: dentro({ canAuthorize: true }), failed: false });
     const titulo = screen.getByText('Ana abrió esta caja y no ha marcado su salida');
     // Arriba: antes que los movimientos, que es lo que lo empujaba fuera de los 600 px.
     expect(titulo.compareDocumentPosition(screen.getByText('Movimientos de efectivo')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText(/Ana sigue con la entrada abierta desde las/)).toBeInTheDocument();
     expect(screen.getByText('Para cerrar la caja, primero hay que resolverlo.')).toBeInTheDocument();
-    expect(screen.queryByText(BLOQUE)).not.toBeInTheDocument();
-    expect(screen.getByText('Para cerrar la caja, primero resuelve el aviso de arriba sobre Ana.')).toBeInTheDocument();
+    expect(screen.getByText(BLOQUE)).toBeInTheDocument();
+    expect(screen.getByTestId('pendiente-asistencia')).toHaveTextContent('falta');
     expect(screen.getByRole('button', { name: 'Marcar salida de Ana' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cerrar sin la salida de Ana' })).toBeInTheDocument();
   });
@@ -150,7 +153,7 @@ describe('el cierre', () => {
     expect(screen.queryByRole('button', { name: 'Cerrar sin la salida de Ana' })).not.toBeInTheDocument();
   });
 
-  test('tras marcar la salida, el bloque vuelve y arriba queda la franja de la salida', async () => {
+  test('tras marcar la salida, el pendiente se resuelve y arriba queda la franja de la salida', async () => {
     clock.mockResolvedValue({ kind: 'out', at: '2026-10-31T04:04:00Z' });
     const onActualizar = vi.fn();
     const { rerender } = cierre({ gate: dentro(), failed: false }, { onActualizar });
@@ -165,6 +168,7 @@ describe('el cierre', () => {
       {ui({ gate: dentro({ ready: true, openSince: undefined }), failed: false }, { onActualizar })}
     </Provider></QueryClientProvider>);
     expect(await screen.findByText(BLOQUE)).toBeInTheDocument();
+    expect(screen.getByTestId('pendiente-asistencia')).toHaveTextContent('lista');
     expect(screen.getByText('Salida de Ana marcada 10:04 p.m.')).toBeInTheDocument();
   });
 
@@ -185,9 +189,10 @@ describe('el cierre', () => {
     expect(screen.queryByText(/marcado su salida/)).not.toBeInTheDocument();
   });
 
-  test('mientras se pregunta, el bloque no se monta', () => {
+  test('mientras se pregunta, el cierre queda pendiente pero el conteo se ve', () => {
     cierre({ failed: false });
-    expect(screen.queryByText(BLOQUE)).not.toBeInTheDocument();
+    expect(screen.getByText(BLOQUE)).toBeInTheDocument();
+    expect(screen.getByTestId('pendiente-asistencia')).toHaveTextContent('cargando');
   });
 
   // SC-004.

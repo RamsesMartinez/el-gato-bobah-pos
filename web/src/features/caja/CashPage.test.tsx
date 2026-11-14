@@ -10,7 +10,6 @@ import { TotalsTable } from './conciliacion';
 import { MovementsTable, MovementsPanel, ExpensesTable } from './movimientos';
 import { TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte } from './arqueo';
 import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
-import { AvisoDeFaltantes } from './arqueo';
 import { CuentasDelCierre, BotonCerrarCaja } from './turno';
 import { ControlesDelHistorico, TerminalesYPropinasDelCorte } from './reporte';
 import { ManageRegistersTab } from './administrar';
@@ -910,7 +909,7 @@ describe('retiro al cierre', () => {
 
   test('la hoja de «¿Cerrar caja?» muestra el resumen del retiro', async () => {
     wrap(<BotonCerrarCaja nombre="Caja principal" disabled={false} loading={false} onCerrar={vi.fn()}
-      descripcion="Se retiran $4,300 · se los lleva Luis. No podrás modificarla después." />);
+      descripcion="Se retiran $4,300 · se los lleva Luis. Lo contado queda firmado; un error se corrige en el Histórico, con su motivo." />);
     await userEvent.click(screen.getByRole('button', { name: 'Cerrar caja' }));
     expect(await screen.findByText(/Se retiran \$4,300 · se los lleva Luis/)).toBeInTheDocument();
   });
@@ -1098,36 +1097,6 @@ describe('la pestaña «Administrar» de Caja', () => {
   test('con cash.configure aparece, aunque el rol sea propio', async () => {
     await pintarCon('', ['cash.operate', 'cash.configure']);
     expect(screen.getByRole('tab', { name: 'Administrar' })).toBeInTheDocument();
-  });
-});
-
-// #251: «Falta capturar lo contado en: …» era texto y el equipo no supo dónde capturar. Cada
-// faltante es un botón de 44 px que lleva a su campo; el cajón abre su hoja de conteo.
-describe('el aviso de lo que falta capturar', () => {
-  test('tocar un faltante pone el cursor en su campo, y «el cajón» abre el conteo', async () => {
-    const onContar = vi.fn();
-    // jsdom no implementa scrollIntoView; el navegador sí.
-    const desplazar = vi.fn();
-    Element.prototype.scrollIntoView = desplazar;
-    wrap(<>
-      <input aria-label="Total del corte de Getnet" />
-      <AvisoDeFaltantes onContar={onContar} faltantes={[
-        { texto: 'el cajón', campo: 'cajon' },
-        { texto: 'Getnet', campo: 'Total del corte de Getnet' },
-      ]} />
-    </>);
-    const getnet = screen.getByRole('button', { name: 'Capturar Getnet' });
-    expect(parseInt(getComputedStyle(getnet).minHeight, 10)).toBeGreaterThanOrEqual(44);
-    await userEvent.click(getnet);
-    expect(screen.getByLabelText('Total del corte de Getnet')).toHaveFocus();
-    expect(desplazar).toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: 'Capturar el cajón' }));
-    expect(onContar).toHaveBeenCalled();
-  });
-
-  test('sin faltantes no se pinta', () => {
-    wrap(<AvisoDeFaltantes onContar={vi.fn()} faltantes={[]} />);
-    expect(screen.queryByText(/falta capturar/)).toBeNull();
   });
 });
 

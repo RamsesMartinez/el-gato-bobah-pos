@@ -46,6 +46,7 @@ var auditActions = []struct {
 	{"stock.written_off", AuditGroupCancel},
 	{"cash.opened", AuditGroupCash},
 	{"cash.closed", AuditGroupCash},
+	{AuditSettingsCashTolerance, AuditGroupCash},
 	// Spec 046: quien abrió se fue sin marcar su salida y alguien con permiso cerró la caja; su
 	// entrada quedó «sin salida».
 	{"cash.closed_without_opener_clock_out", AuditGroupCash},
@@ -209,6 +210,9 @@ const (
 	AuditWasteRejected AuditAction = "waste.rejected"
 	// AuditWasteUndone: se deshizo una merma y volvió lo que había restado.
 	AuditWasteUndone AuditAction = "waste.undone"
+	// AuditSettingsCashTolerance: cambió la tolerancia de diferencia de caja (#290, fase 4). Reclasifica
+	// los cortes «por explicar» pasados, por eso queda quién y de cuánto a cuánto.
+	AuditSettingsCashTolerance AuditAction = "settings.cash_tolerance"
 	// AuditSettingsWasteThreshold: cambió el tope a partir del cual una merma espera aprobación.
 	AuditSettingsWasteThreshold AuditAction = "settings.waste_threshold"
 	// AuditSettingsCountLimits: cambiaron los límites del conteo (máximo y cifra para confirmar).

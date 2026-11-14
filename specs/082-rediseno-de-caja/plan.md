@@ -241,3 +241,14 @@ Cada PR se mergea al día con `develop` y con CI verde antes de empezar el sigui
 | --- | --- | --- |
 | Tres servicios de caja en vez de los cinco del issue (sin `CashCount`; `CashAdjustment` llega en la fase 3) | El conteo solo existe dentro de la transacción de abrir y cerrar; separarlo exigiría pasar la `q` entre dos servicios o una interfaz de un consumidor (VI) | Cinco servicios como dice el issue |
 | `money()` global no cambia; Caja usa `moneyFixed()` | Cambiar `money()` mueve tickets y precios de todo el POS, fuera del alcance | Cambiar `money()` |
+
+## Ajustes al implementar la fase 4 (2026-11-14)
+
+- **Controles a 44 px, no 48.** Pestañas, chips y campos salen de los componentes comunes (mínimo de la
+  constitución); subirlos solo en Caja la haría verse de otro producto. Los botones propios de Caja
+  miden 48–56. Lo mide `web/e2e/caja-anchos.spec.ts`.
+- **Lista del Histórico a la mitad desde 1024 px** (antes 340 px fijos en M1 A): con nombres y fechas
+  reales la lista de 340 px cortaba «Caja p…» y «14 nov 2026, …» en 1366. Desde 1440, 2/5 con mínimo
+  de 520 px. El texto baja de renglón en vez de cortarse.
+- **«Cerrar caja» en la barra fija del último paso** (revisión de tableta): al final del contenido
+  quedaba varias pantallas abajo en 600 px.

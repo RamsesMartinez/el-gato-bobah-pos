@@ -150,6 +150,8 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		// a quien cierra.
 		FixedFloatShown  *decimal.Decimal `json:"fixedFloatShown"`
 		WithdrawalUserID *int64           `json:"withdrawalUserId"`
+		// Explanation: la explicación de la diferencia de quien cierra viendo el esperado (#290).
+		Explanation *app.CloseExplanation `json:"explanation"`
 		// AuthorizedClose (spec 046): cerrar sin la salida de quien abrió. Una tableta con el front
 		// anterior no lo manda y recibe el 409 de siempre.
 		AuthorizedClose *struct {
@@ -192,6 +194,7 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		FixedFloatShown: body.FixedFloatShown, WithdrawalUserID: body.WithdrawalUserID,
 		Declarado: declared, Piezas: piezasDelBody(body.Counts),
 		Total: body.CountedCash, Motivo: body.ManualReason, Notas: body.Notes, Propinas: body.TipsDecision,
+		Explanation: body.Explanation, CanSeeArqueo: slices.Contains(h.permissionsOf(r.Context(), u), domain.PermCashConfigure),
 	})
 	if err != nil {
 		Error(w, err)
@@ -455,4 +458,31 @@ func (h *Handlers) ReverseCashSessionAdjustment(w http.ResponseWriter, r *http.R
 		return
 	}
 	JSON(w, http.StatusCreated, adj)
+}
+
+// GET /settings/cash-close — la tolerancia de diferencia de la empresa (#290, fase 4).
+func (h *Handlers) CashCloseSettings(w http.ResponseWriter, r *http.Request) {
+	t, err := h.backoffice.CashTolerance(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"tolerance": t})
+}
+
+// PUT /settings/cash-close — cambia la tolerancia. Ausente no es $0: se rechaza.
+func (h *Handlers) SetCashCloseSettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Tolerance *decimal.Decimal `json:"tolerance"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.SetCashTolerance(r.Context(), u.ID, body.Tolerance); err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"tolerance": domain.Round2(*body.Tolerance)})
 }

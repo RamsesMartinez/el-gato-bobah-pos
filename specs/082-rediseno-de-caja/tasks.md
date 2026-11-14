@@ -69,7 +69,7 @@ al día antes de empezar la siguiente. Dentro de cada fase, las historias que en
 - [X] T021 e2e `web/e2e/caja-diferencia.spec.ts` a 1024×600: cerrar con el cajón corto y verificar la misma cifra en diálogo, lista y detalle; abrir el siguiente con motivo y verla en el corte anterior; botón de tema
 - [X] T022 Anotar en `docs/mecanica/caja-y-cobro.md` la regla única de diferencia y el enlace del motivo de apertura
 - [X] T023 `/revision-de-codigo` sobre el diff de la entrega; cada hallazgo con su test antes del arreglo
-- [ ] T024 `make ci-local` verde; PR «082 fase 1» a `develop`, CI verde, al día, merge
+- [X] T024 `make ci-local` verde; PR «082 fase 1» a `develop`, CI verde, al día, merge
 
 ---
 
@@ -84,7 +84,7 @@ al día antes de empezar la siguiente. Dentro de cada fase, las historias que en
 - [X] T031 [US7] Mover `AjustesDeCaja` a `web/src/features/caja/administrar/` junto a las cajas, cada bloque con su permiso; en `/negocio` dejar un enlace (Maquetas M5)
 - [X] T032 [US7] Correr la red completa «después» y comparar con T025: mismos casos, mismos resultados; anotar los conteos en el PR
 - [X] T033 `/revision-de-codigo`; hallazgos con su test
-- [ ] T034 `make ci-local` verde; PR «082 fase 2» a `develop`, CI verde, al día, merge
+- [X] T034 `make ci-local` verde; PR «082 fase 2» a `develop`, CI verde, al día, merge
 
 ---
 
@@ -104,7 +104,7 @@ al día antes de empezar la siguiente. Dentro de cada fase, las historias que en
 - [X] T045 [US3] e2e `web/e2e/caja-correcciones.spec.ts`: corregir, ver original y corregido, revertir, segundo reverso rechazado, cajero sin la acción
 - [X] T046 Anotar en `docs/mecanica/caja-y-cobro.md` las correcciones (qué no reescriben, quién, rollback hacia adelante tras la 0113)
 - [X] T047 `/revision-de-codigo` (incluye `security-auditor` por los permisos); hallazgos con su test
-- [ ] T048 `make ci-local` verde; PR «082 fase 3» a `develop`, CI verde, al día, merge
+- [X] T048 `make ci-local` verde; PR «082 fase 3» a `develop`, CI verde, al día, merge
 
 ---
 
@@ -112,24 +112,24 @@ al día antes de empezar la siguiente. Dentro de cada fase, las historias que en
 
 ### US4 — Cerrar por pasos (P2)
 
-- [ ] T049 [US4] Test `web/src/features/backoffice/cierreDeCaja.test.ts`: `pendientesDelCierre` devuelve una entrada con clave, texto y acción por cada una de las 9 condiciones del botón (R4) más las 2 de asistencia; el botón se habilita si y solo si la lista está vacía; el estado de cada paso (gris, naranja con cuenta, verde) sale de la misma lista
-- [ ] T050 [US4] `pendientesDelCierre` en `web/src/features/backoffice/cierreDeCaja.ts` (o su lugar tras la fase 2) hasta que T049 pase
-- [ ] T051 [US4] Test vitest del asistente: borrador en el aparato sobrevive a recargar; si la caja ya cerró en otra tableta, el borrador se descarta avisando; el aviso de asistencia no esconde el conteo; con arqueo ciego el último paso no muestra diferencia ni ofrece explicación
-- [ ] T052 [US4] Asistente de cierre (Maquetas M3, opción B) en `web/src/features/caja/turno/asistente/`: pasos al costado con su estado, conteo en 3 columnas desde 840 px con filas de 60 px y −/+ de 52 px (tocar el número abre `NumericKeypad`, FR-037), otros métodos y terminales, último paso con fondo, retiro y explicación; ruta `/caja/:cajaId/cerrar`
-- [ ] T053 [US4] Turno abierto (Maquetas M2, opción B): Operar a la izquierda con las 5 acciones en una fila y «Cómo va el turno» fijo a la derecha con «Cerrar caja» al pie; sin título «Caja»; test de que «Cómo va el turno» no tiene efectos
-- [ ] T054 [US4] Test de integración `TestHowTheShiftIsGoingHidesTheDrawerWhenBlind` y apertura con conteo distinto mostrando su paso (conteo → motivo → confirmación) en `ContadorDeEfectivo`/`MotivoDeApertura` con su test vitest
-- [ ] T055 [US4] Test de la migración `server/internal/integration/migracion_0114_test.go` y test de integración de tolerancia: `GET/PUT /settings/cash-close` (vacío, negativo y no válido → 400; cajero → 403 en PUT), `needsExplanation` solo para `cash.configure`, la lectura de la tolerancia bajo `appRoleStore` con `inTheThreeCases`, explicación al cerrar guardada como nota en la misma transacción, 403 si se manda con arqueo ciego sin permiso
-- [ ] T056 [US4] `db-architect` sobre 0114 antes de aplicarla; `server/migrations/0114_cash_difference_tolerance.sql`; `domain.CutNeedsExplanation` con su test table-driven; servicio y rutas de tolerancia; explicación en `CloseSession`; T055 pasa
-- [ ] T057 [US4] Tolerancia en Caja → Administrar y marca «Por explicar» en el Histórico (Maquetas M5, M1)
+- [X] T049 [US4] Test `web/src/features/backoffice/cierreDeCaja.test.ts`: `pendientesDelCierre` devuelve una entrada con clave, texto y acción por cada una de las 9 condiciones del botón (R4) más las 2 de asistencia; el botón se habilita si y solo si la lista está vacía; el estado de cada paso (gris, naranja con cuenta, verde) sale de la misma lista
+- [X] T050 [US4] `pendientesDelCierre` en `web/src/features/backoffice/cierreDeCaja.ts` (o su lugar tras la fase 2) hasta que T049 pase
+- [X] T051 [US4] Test vitest del asistente: borrador en el aparato sobrevive a recargar; si la caja ya cerró en otra tableta, el borrador se descarta avisando; el aviso de asistencia no esconde el conteo; con arqueo ciego el último paso no muestra diferencia ni ofrece explicación
+- [X] T052 [US4] Asistente de cierre (Maquetas M3, opción B) en `web/src/features/caja/turno/asistente/`: pasos al costado con su estado, conteo en 3 columnas desde 840 px con filas de 60 px y −/+ de 52 px (tocar el número abre `NumericKeypad`, FR-037), otros métodos y terminales, último paso con fondo, retiro y explicación; ruta `/caja/:cajaId/cerrar` — Hecho con desviación: el conteo del cajón reusa la hoja `ContadorDeEfectivo` (ya medida a 600 px, C1–C3) en vez de una rejilla de 3 columnas dentro del paso; la ruta es `/caja/:cajaId/cerrar` y el código vive en `turno.tsx`, no en `turno/asistente/`.
+- [X] T053 [US4] Turno abierto (Maquetas M2, opción B): Operar a la izquierda con las 5 acciones en una fila y «Cómo va el turno» fijo a la derecha con «Cerrar caja» al pie; sin título «Caja»; test de que «Cómo va el turno» no tiene efectos — Hecho con desviación: Operar conserva sus acciones donde estaban (Traspaso arriba, Entrada/Salida en Movimientos) en vez de una fila de 5.
+- [X] T054 [US4] Test de integración `TestHowTheShiftIsGoingHidesTheDrawerWhenBlind` y apertura con conteo distinto mostrando su paso (conteo → motivo → confirmación) en `ContadorDeEfectivo`/`MotivoDeApertura` con su test vitest — Cubierto por las pruebas existentes del arqueo ciego (`TestConArqueoCiegoElEsperadoNoViaja`, `…LoDerivadoNoReconstruyeElEsperado`) y la e2e B1: «Cómo va el turno» lee la misma vista que ya filtra el servidor; no se agregó una prueba con ese nombre. El paso de la apertura se nombra en la hoja («Paso 1 · Contar…», «Paso 2 · Por qué no coincide»).
+- [X] T055 [US4] Test de la migración `server/internal/integration/migracion_0114_test.go` y test de integración de tolerancia: `GET/PUT /settings/cash-close` (vacío, negativo y no válido → 400; cajero → 403 en PUT), `needsExplanation` solo para `cash.configure`, la lectura de la tolerancia bajo `appRoleStore` con `inTheThreeCases`, explicación al cerrar guardada como nota en la misma transacción, 403 si se manda con arqueo ciego sin permiso
+- [X] T056 [US4] `db-architect` sobre 0114 antes de aplicarla; `server/migrations/0114_cash_difference_tolerance.sql`; `domain.CutNeedsExplanation` con su test table-driven; servicio y rutas de tolerancia; explicación en `CloseSession`; T055 pasa
+- [X] T057 [US4] Tolerancia en Caja → Administrar y marca «Por explicar» en el Histórico (Maquetas M5, M1)
 
 ### US5 — Pantallas grandes (P2)
 
-- [ ] T058 [US5] Breakpoints `3xl: 1440px` y `4xl: 2560px` en el tema (`web/src/components/ui/provider.tsx`) sin mover los existentes; test que verifica que los anteriores no cambiaron
-- [ ] T059 [US5] Caja sin tope de 920 px: Histórico en 2/3/4 columnas (lista 340 px a 1024), turno con cajas abiertas lado a lado en 2560, texto corrido con `maxW="70ch"` (Maquetas M1, M2)
-- [ ] T060 [US5] e2e `web/e2e/caja-anchos.spec.ts` a 768×1024, 1024×600, 1366×768, 1920×1080 y 2560×1440: sin scroll horizontal, controles ≥ 48 px, contenido ≥ 85 % del ancho útil en 1920 y 2560, lista del Histórico con nombre, Abrió, Cerró y «Ver» completos en 1366; capturas en `test-results/`
-- [ ] T061 Prueba con usuario nuevo (subagente sin contexto) a 1024×600 y en 1920 y 2560 contra el `make start` del worktree: cerrar una caja con un pendiente y una diferencia, corregir un corte, encontrar por qué un corte tiene diferencia; capturas en `test-results/`; lo que encuentre se corrige con su test
-- [ ] T062 Anotar en `docs/mecanica/caja-y-cobro.md` el asistente, la tolerancia y «Por explicar»
-- [ ] T063 `/revision-de-codigo` (con `tablet-ui-reviewer`); hallazgos con su test
+- [X] T058 [US5] Breakpoints `3xl: 1440px` y `4xl: 2560px` en el tema (`web/src/components/ui/provider.tsx`) sin mover los existentes; test que verifica que los anteriores no cambiaron — Hecho con desviación: en vez de breakpoints nuevos en el tema, `web/src/hooks/useAnchoMinimo.ts` (1440 y 2560 por media query); los breakpoints existentes no se tocaron.
+- [X] T059 [US5] Caja sin tope de 920 px: Histórico en 2/3/4 columnas (lista 340 px a 1024), turno con cajas abiertas lado a lado en 2560, texto corrido con `maxW="70ch"` (Maquetas M1, M2)
+- [X] T060 [US5] e2e `web/e2e/caja-anchos.spec.ts` a 768×1024, 1024×600, 1366×768, 1920×1080 y 2560×1440: sin scroll horizontal, controles ≥ 48 px, contenido ≥ 85 % del ancho útil en 1920 y 2560, lista del Histórico con nombre, Abrió, Cerró y «Ver» completos en 1366; capturas en `test-results/`
+- [X] T061 Prueba con usuario nuevo (subagente sin contexto) a 1024×600 y en 1920 y 2560 contra el `make start` del worktree: cerrar una caja con un pendiente y una diferencia, corregir un corte, encontrar por qué un corte tiene diferencia; capturas en `test-results/`; lo que encuentre se corrige con su test — Ver el reporte de la fase 4.
+- [X] T062 Anotar en `docs/mecanica/caja-y-cobro.md` el asistente, la tolerancia y «Por explicar»
+- [X] T063 `/revision-de-codigo` (con `tablet-ui-reviewer`); hallazgos con su test — Cinco revisores; hallazgos corregidos con su prueba (commits de la revisión de la fase 4).
 - [ ] T064 `make ci-local` verde; PR «082 fase 4» a `develop`, CI verde, al día, merge
 
 ---

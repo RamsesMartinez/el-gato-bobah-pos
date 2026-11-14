@@ -22,6 +22,8 @@ export function MotivoDeApertura({ isOpen, guardando, onConfirmar, onVolver }: {
       <DrawerBackdrop />
       <DrawerContent borderTopRadius="l3" maxH="85dvh" display="flex" flexDirection="column">
         <DrawerHeader pb={1}>
+          {/* El paso en que va la apertura (#290, FR-035): contar, luego esto, luego abrir. */}
+          <Text fontSize="sm" color="fg.muted" fontWeight="600">Paso 2 · Por qué no coincide</Text>
           <Text fontSize="lg" fontWeight="700">Lo contado no coincide con el cierre anterior</Text>
           <Text fontSize="sm" color="fg.muted">Elige el motivo. Si contaste mal, vuelve y cuenta otra vez.</Text>
         </DrawerHeader>

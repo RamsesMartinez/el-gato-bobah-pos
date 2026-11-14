@@ -402,6 +402,8 @@ export interface CashSessionRow {
   explainedByNext?: NextOpening | null;
   // La diferencia ya es la corregida (#290, fase 3).
   adjusted?: boolean;
+  // Pasó la tolerancia y nadie la explicó (#290, P1). Solo llega a quien configura la caja.
+  needsExplanation?: boolean;
 }
 // Detalle de un corte (totales GUARDADOS al cerrar + movimientos).
 export interface CashSessionDetail {
@@ -459,6 +461,7 @@ export interface CashSessionDetail {
   // Correcciones del corte (#290, fase 3). Opcionales: un backend anterior no las manda.
   adjustments?: SessionAdjustment[];
   effective?: { drawerCounted: string | null; floatLeft: string | null } | null;
+  needsExplanation?: boolean;
 }
 
 export interface CorteSale {
@@ -1060,6 +1063,8 @@ export const backofficeApi = {
     // Cerrar sin la salida de quien abrió (spec 046). Solo con el permiso; el servidor lo ignora si
     // ya no hace falta.
     authorizedClose?: { reason: string };
+    // La explicación de la diferencia de quien cierra viendo el esperado (#290, fase 4).
+    explanation?: { reason: string; note: string };
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
   // Qué pide la asistencia para abrir o cerrar esa caja (spec 046). Lo calcula el servidor con la
   // misma regla que aplica al confirmar.
@@ -1101,6 +1106,9 @@ export const backofficeApi = {
   cardCountModes: () => api.get<{ items: { branchId: number; name: string; mode: 'auto' | 'per_terminal' }[] }>('/branches/card-count-modes'),
   setCardCountMode: (branchId: number, mode: 'auto' | 'per_terminal') =>
     api.put<null>(`/branches/${branchId}/card-count-mode`, { mode }),
+  // Tolerancia de diferencia de la empresa (#290, fase 4).
+  cashCloseSettings: () => api.get<{ tolerance: string }>('/settings/cash-close'),
+  setCashCloseSettings: (tolerance: string) => api.put<{ tolerance: string }>('/settings/cash-close', { tolerance }),
   // Corregir un corte cerrado y revertir una corrección (#290, fase 3).
   adjustCashSession: (sessionId: number, input: AdjustmentInput) =>
     api.post<SessionAdjustment>(`/cash-sessions/${sessionId}/adjustments`, input),

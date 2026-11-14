@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { AjustesDeCaja } from './AjustesDeCaja';
+import { ToleranciaDeDiferencia } from './ToleranciaDeDiferencia';
 import { seccionDeCaja, rutaDeCaja } from './rutasDeCaja';
 import { Heading, VStack, Tabs, Text } from '@chakra-ui/react';
 import { Page } from '../../components/Page';
@@ -32,7 +33,9 @@ export function CashPage() {
   };
   const cajaNoEncontrada = (location.state as { cajaNoEncontrada?: boolean } | null)?.cajaNoEncontrada === true;
   return (
-    <Page maxW="920px">
+    // Sin tope de ancho (#290, FR-036): en 1920 y 2560 px el contenido usa la pantalla. Lo que se
+    // limita es el largo de las líneas de texto, en cada pieza.
+    <Page maxW="none">
       <Heading size="lg" mb={4}>Caja</Heading>
       {cajaNoEncontrada && <Text color="fg.muted" mb={2} role="status">No encontramos esa caja.</Text>}
       <Tabs.Root value={seccion.pestana} onValueChange={(e) => irA(e.value as typeof seccion.pestana)}>
@@ -45,6 +48,8 @@ export function CashPage() {
         </Tabs.List>
         <Tabs.Content value="operar" px={0} pt={4}>
           <RegistersTab cajaId={seccion.cajaId} onCaja={(id) => navigate(`/caja/${id}`)}
+            cerrando={seccion.cerrando}
+            onCerrando={(id, v) => navigate(v ? `/caja/${id}/cerrar` : `/caja/${id}`)}
             onCajaNoEncontrada={() => { ultimaCaja.current = null; navigate('/caja', { replace: true, state: { cajaNoEncontrada: true } }); }} />
         </Tabs.Content>
         <Tabs.Content value="historico" px={0} pt={4}>
@@ -58,6 +63,7 @@ export function CashPage() {
           <Tabs.Content value="gestion" px={0} pt={4}>
             <VStack align="stretch" gap={6}>
               {canManage && <ManageRegistersTab />}
+              {canManage && <ToleranciaDeDiferencia />}
               {canBusiness && <AjustesDeCaja />}
             </VStack>
           </Tabs.Content>
