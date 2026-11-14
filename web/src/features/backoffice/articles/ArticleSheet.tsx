@@ -29,8 +29,8 @@ import { MergeSheet } from './MergeSheet';
 import { DensitySheet } from './DensitySheet';
 import { densityWords } from '../expenseDraft';
 import { presentationLabel } from '../../../shared/presentationLabel';
-import { QtyWithUnit } from './qty';
-import { baseQty, bigUnitOf, KIND_WORD, type Kind } from './articleUnits';
+import { bigUnitOf, KIND_WORD, type Kind } from '../../../shared/articleUnits';
+import { SeccionAlertas } from '../../../shared/alertas/SeccionAlertas';
 
 // La ficha de un artículo (spec 042, maqueta «Ficha del artículo», opción A: dos columnas). A la
 // izquierda lo que se edita y los empaques; a la derecha el costo, su tendencia y el historial. De pie
@@ -197,9 +197,6 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
     if (fresh && !synced) { auto.reset(savedOf(fresh), fresh.updatedAt); setSynced(true); }
   }, [fresh, synced, auto]);
 
-  // minValue es lo que el mínimo manda: la cantidad base si ya es un número, o lo escrito tal cual para
-  // que la cola lo valide (y no lo mande por la pausa).
-  const minValue = (m: { qty: string; big: boolean }) => (m.qty === '' ? '' : NUMBER.test(m.qty) ? baseQty(m.qty, kind, m.big) ?? m.qty : m.qty);
 
   // refresh llena el formulario con la ficha que ya trae lo guardado, después de una hoja que la cambió
   // (costo, unidad, archivar, empaques). Vaciarlo antes dejaba que el efecto de arriba lo volviera a
@@ -332,12 +329,8 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                 </Field>
                 <AltNamesField kind="article" ownName={form.name} value={form.alts} onChange={changeAlts} disabled={!canConfigure}
                   draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similarAlts} error={altError} />
-                <Stack gap={1}>
-                  <QtyWithUnit label="Mínimo" kind={kind} value={form.min} keepAmount
-                    onChange={(min) => { setForm({ ...form, min }); if (min.qty !== form.min.qty) auto.type('min', minValue(min)); }}
-                    onCommit={() => auto.commit('min', minValue(form.min))} />
-                  {auto.invalid.min && <Text fontSize="sm" color="fg.error">{auto.invalid.min}</Text>}
-                </Stack>
+                {/* El mínimo vive en «Alertas» (spec 084, maqueta M1-B): un renglón con el estado y su hoja. */}
+                <SeccionAlertas itemType="ingrediente" id={id} name={a.name} kind={kind} canConfigure={canConfigure} />
                 <HStack justify="space-between" minH="44px">
                   <Text>Se mide en <b>{KIND_WORD[kind]}</b>{a.baseUnitCode === 'pieza' ? '' : ` (${a.baseUnitCode})`}{Number(a.onHand) < 0 ? '' : ` · Hay ${formatBaseQty(a.onHand, a.baseUnitCode)}`}</Text>
                   {canConfigure && a.isActive && <Button minH="44px" variant="outline" onClick={() => setPanel('unit')}>Cambiar ›</Button>}

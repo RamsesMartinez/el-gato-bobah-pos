@@ -12,6 +12,7 @@ import { NO_LOCATION } from '../useLocations';
 import { NewArticleSheet } from './NewArticleSheet';
 import { presentationLabel } from '../../../shared/presentationLabel';
 import { DuplicatesSheet } from './DuplicatesSheet';
+import { AlertasPorLote } from './AlertasPorLote';
 import { notificationsApi } from '../../../api/notifications';
 
 // Almacén › Artículos (spec 042, maqueta «Lista de artículos», opción A con los ajustes de la
@@ -51,6 +52,7 @@ export function ArticlesTab({ onOpen, word = 'artículo', notice, onNoticeDone }
   const noticeID = notice?.id ?? 0;
   const [creating, setCreating] = useState(fromNotice !== null);
   const [duplicates, setDuplicates] = useState(false);
+  const [porLote, setPorLote] = useState(false);
   const debounced = useDebounced(q, SEARCH_DELAY_MS);
   const f: ArticleFilter = { ...filter, q: debounced };
   const list = useQuery({ queryKey: ['articles', f], queryFn: () => backofficeApi.articles(f) });
@@ -95,6 +97,7 @@ export function ArticlesTab({ onOpen, word = 'artículo', notice, onNoticeDone }
             aria-pressed={!!filter[k]} onClick={() => toggle(k)}>{label}</Button>
         ))}
         <Box flex="1" />
+        {canConfigure && <Button minH="44px" variant="outline" onClick={() => setPorLote(true)}>Alertas por lote</Button>}
         {canConfigure && groupCount > 0 && (
           <Button minH="44px" variant="outline" onClick={() => setDuplicates(true)}>
             Posibles duplicados <Badge colorPalette="orange">{groupCount}</Badge>
@@ -122,6 +125,7 @@ export function ArticlesTab({ onOpen, word = 'artículo', notice, onNoticeDone }
           </Table.Body>
         </Table.Root>
       </Box>
+      {porLote && <AlertasPorLote onClose={() => setPorLote(false)} />}
       {duplicates && (
         <DuplicatesSheet onClose={() => setDuplicates(false)} onMerged={() => { void list.refetch(); }} />
       )}

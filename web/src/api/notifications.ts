@@ -56,3 +56,62 @@ export const REASON_WORDS: Record<string, string> = {
   created: 'Se dio de alta',
   alias: 'Era otro nombre de un insumo',
 };
+
+// Alertas de stock bajo de un artículo (spec 084, historia 3). Cantidades en la unidad base, en texto.
+export type AlertItemType = 'ingrediente' | 'producto';
+
+export interface LowStockConfig {
+  enabled: boolean;
+  onMin: boolean;
+  onOut: boolean;
+  banner: boolean;
+  minStock: string | null;
+  branchMinStock: string | null;
+  coverageDays: number | null;
+  asked: boolean;
+  onHand: string;
+  unitCode: string;
+  branches: number;
+  updatedAt: string;
+}
+
+export interface LowStockInput {
+  enabled: boolean;
+  onMin: boolean;
+  onOut: boolean;
+  banner: boolean;
+  minStock: string | null;
+  coverageDays: number | null;
+  expectedUpdatedAt?: string;
+}
+
+export interface LowStockEffect {
+  effect: { opens: NotificationKind[]; closes: NotificationKind[] };
+  onHand: string;
+  min: string | null;
+  needsCount: boolean;
+  updatedAt?: string;
+}
+
+export interface LowStockRow {
+  itemType: AlertItemType;
+  id: number;
+  name: string;
+  unitCode: string;
+  enabled: boolean;
+  minStock: string | null;
+  onHand: string;
+}
+
+const ruta = (t: AlertItemType, id: number) => `/stock/${t === 'ingrediente' ? 'articles' : 'products'}/${id}/low-stock`;
+
+export const lowStockApi = {
+  get: (t: AlertItemType, id: number) => api.get<LowStockConfig>(ruta(t, id)),
+  preview: (t: AlertItemType, id: number, body: LowStockInput) => api.put<LowStockEffect>(`${ruta(t, id)}?preview=1`, body),
+  save: (t: AlertItemType, id: number, body: LowStockInput) => api.put<LowStockEffect>(ruta(t, id), body),
+  asked: (id: number) => api.post<void>(`/stock/articles/${id}/low-stock/asked`),
+  list: () => api.get<{ items?: LowStockRow[] }>('/stock/low-stock'),
+  batch: (items: { itemType: AlertItemType; id: number; enabled: boolean; minStock: string | null }[], preview: boolean) =>
+    api.post<{ items?: { itemType: AlertItemType; id: number; effect: LowStockEffect['effect']; onHand: string }[] }>(
+      `/stock/low-stock/batch${preview ? '?preview=1' : ''}`, { items }),
+};

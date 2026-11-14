@@ -10,9 +10,9 @@ import { formatBaseQty } from '../../../shared/units';
 import { ApiError } from '../../../api/client';
 import { Picker } from '../../../components/Picker';
 import { toaster } from '../../../components/ui/toaster';
-import { QtyWithUnit } from './qty';
+import { QtyWithUnit } from '../../../shared/qty';
 import { useLocations } from '../useLocations';
-import { baseQty, KINDS, bigUnitOf, type Kind } from './articleUnits';
+import { baseQty, KINDS, bigUnitOf, type Kind } from '../../../shared/articleUnits';
 
 // «Nuevo artículo» (spec 042, FR-002, decisión del dueño): una hoja corta con lo obligatorio marcado.
 // Nada se guarda hasta tocar «Guardar»; al guardar se abre la ficha con «Agregar empaque» a la vista.
