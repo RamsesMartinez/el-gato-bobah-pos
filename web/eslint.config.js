@@ -71,10 +71,10 @@ const FRONTERAS = [
             // La lista explícita además se lee como lo que es — el mapa de pantallas del producto.
             group: [
               '../admin/*', '../attendance/*', '../auth/*', '../backoffice/*', '../caja/*', '../orders/*', '../pos/*',
-              '../pwa/*', '../sales/*', '../tickets/*', '../waste/*',
+              '../pwa/*', '../sales/*', '../tickets/*', '../waste/*', '../se-acabo/*', '../notificaciones/*',
               '**/features/admin/*', '**/features/attendance/*', '**/features/auth/*', '**/features/backoffice/*', '**/features/caja/*',
               '**/features/orders/*', '**/features/pos/*', '**/features/pwa/*',
-              '**/features/sales/*', '**/features/tickets/*', '**/features/waste/*',
+              '**/features/sales/*', '**/features/tickets/*', '**/features/waste/*', '**/features/se-acabo/*', '**/features/notificaciones/*',
             ],
             message:
               'Una pantalla no importa de otra pantalla. Si las dos necesitan lo mismo, bájalo a ' +

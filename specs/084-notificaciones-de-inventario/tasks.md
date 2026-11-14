@@ -60,8 +60,8 @@ campana y franja → (5) ficha de alertas → (6) correo, destinatarios, resumen
 - [X] T016 [P] [US1] Tests de handler en `server/internal/httpapi/handlers_stock_out_test.go`: `quantity` en el cuerpo → 400; `clientKey` no uuid → 400; rutas en `testdata/route_gates.golden` (regenerado a propósito, con el porqué en el PR)
 - [X] T017 [US1] `StockOutService` en `server/internal/app/stock_out.go`: buscar, sugerencias, reportar (movimiento primero, después aviso — research R12), deshacer, auditoría en la misma transacción
 - [X] T018 [US1] Handlers y rutas en `server/internal/httpapi/handlers_stock_out.go` y `router.go` según contracts/api.md
-- [ ] T019 [P] [US1] Tests de pantalla en `web/src/features/se-acabo/SeAcaboPage.test.tsx`: segundo toque confirma, se desarma a los 4 s / al teclear, tocar otro mueve el armado, el hueco del deshacer no mueve los mosaicos, sin `quantity` en la petición, clave por toque
-- [ ] T020 [US1] Pantalla `web/src/features/se-acabo/SeAcaboPage.tsx` y `api.ts` (Maquetas: fila M2, opción B v2), ruta `/se-acabo` en `web/src/App.tsx`, renglón en `web/src/app/nav.ts` debajo de «Se echó a perder» por permiso
+- [X] T019 [P] [US1] Tests de pantalla en `web/src/features/se-acabo/SeAcaboPage.test.tsx`: segundo toque confirma, se desarma a los 4 s / al teclear, tocar otro mueve el armado, el hueco del deshacer no mueve los mosaicos, sin `quantity` en la petición, clave por toque
+- [X] T020 [US1] Pantalla `web/src/features/se-acabo/SeAcaboPage.tsx` y `api.ts` (Maquetas: fila M2, opción B v2), ruta `/se-acabo` en `web/src/App.tsx`, renglón en `web/src/app/nav.ts` debajo de «Se echó a perder» por permiso
 
 ---
 

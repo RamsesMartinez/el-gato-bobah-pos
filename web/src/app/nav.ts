@@ -1,7 +1,7 @@
 import {
   LuShoppingCart, LuClipboardList, LuWallet, LuHandCoins, LuReceiptText,
   LuPackage, LuChartColumn, LuBookOpenText, LuUsers, LuPalette, LuStore, LuUserCog, LuPrinter, LuBike,
-  LuClock, LuTrash2, LuKeyRound,
+  LuClock, LuTrash2, LuKeyRound, LuCircleOff,
 } from 'react-icons/lu';
 import type { Permission } from './permissions';
 
@@ -25,6 +25,9 @@ export const NAV = [
   // ocho de arriba a 600 px, y antes de «Asistencia»: con ella activa, una persona nueva no lo
   // encontraba (checar además está en la pantalla de bloqueo).
   { to: '/merma', icon: LuTrash2, label: 'Se echó a perder', permission: 'inventory.write_off' as Permission },
+  // «Se acabó» (spec 084): debajo de «Se echó a perder», por permiso propio que tienen los cuatro
+  // sugeridos. Hasta que exista el menú en dos niveles (#293), un renglón más del riel.
+  { to: '/se-acabo', icon: LuCircleOff, label: 'Se acabó', permission: 'inventory.report_out' as Permission },
   { to: '/asistencia', icon: LuClock, label: 'Asistencia' },
   { to: '/plataformas', icon: LuBike, label: 'Plataformas' },
   { to: '/empleados', icon: LuUsers, label: 'Empleados' },

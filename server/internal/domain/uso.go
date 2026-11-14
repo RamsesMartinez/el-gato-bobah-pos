@@ -72,6 +72,8 @@ var pantallasMedibles = map[string]struct{}{
 	"asistencia": {},
 	// Lo que se echó a perder (spec 039): la captura es de todos los del local.
 	"merma": {},
+	// «Se acabó» (spec 084).
+	"se-acabo": {},
 }
 
 // accionesMedibles son las acciones con nombre que vale la pena contar, por pantalla.
@@ -106,7 +108,8 @@ var accionesMedibles = map[string]map[string]struct{}{
 	},
 	// Lo que se echó a perder (spec 039). Aprobar y rechazar se hacen en la hoja de la franja, que
 	// se abre sobre cualquier pantalla: se cuentan aquí para no repartirlas entre pantallas.
-	"merma": {"registrar": {}, "deshacer": {}, "aprobar": {}, "rechazar": {}},
+	"merma":    {"registrar": {}, "deshacer": {}, "aprobar": {}, "rechazar": {}},
+	"se-acabo": {"reportar": {}, "confirmar": {}, "no-lo-encuentro": {}, "deshacer": {}},
 }
 
 // maxNombreDePantalla y maxNombreDeAccion son el espejo de los `check` de la migración 0069.
@@ -162,6 +165,7 @@ var permissionByScreen = map[string]Permission{
 	"plataformas": PermPlatformsConfigure,
 	"emparejar":   PermPlatformsConfigure,
 	"merma":       PermInventoryWriteOff,
+	"se-acabo":    PermInventoryReportOut,
 }
 
 // ScreenAllowed dice si quien tiene esos permisos puede siquiera abrir esa pantalla.
