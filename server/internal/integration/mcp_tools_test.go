@@ -32,10 +32,7 @@ func mcpSeed(t *testing.T, w mcpWorld) mcpFixtures {
 	q(`select id from payment_methods where company_id = $1 and not affects_cash_drawer and is_active order by id limit 1`, &f.card, w.company)
 	q(`select id from payment_methods where company_id = $1 and affects_cash_drawer and is_active order by id limit 1`, &f.cash, w.company)
 	q(`select id from cash_registers where company_id = $1 and is_primary and is_active limit 1`, &f.register, w.company)
-	// Turno con la fecha y la hora reales: la API usa el reloj de verdad para decidir a qué corte va
-	// un pago en efectivo.
-	q(`insert into register_sessions (business_date, opening_cash, opened_by, register_id)
-	     values (current_date, 1000, $1, $2) returning id`, &f.session, w.admin, f.register)
+	f.session = openMCPShift(t, w.owner.Pool, w.company, w.admin, f.register)
 	q(`insert into cash_concepts (company_id, name, expense_category_id) values ($1, 'Gas MCP', $2) returning id`, &f.concept, w.company, f.category)
 	return f
 }
