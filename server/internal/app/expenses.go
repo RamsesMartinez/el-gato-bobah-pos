@@ -924,7 +924,7 @@ func (s *BackofficeService) SetPaymentInCount(ctx context.Context, expenseID, pa
 }
 
 // businessLocation es la zona del negocio, con el mismo fallback que businessDate.
-func (s *BackofficeService) businessLocation(ctx context.Context) *time.Location {
+func (s *cashDeps) businessLocation(ctx context.Context) *time.Location {
 	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
 	if err != nil {
 		tz = domain.DefaultTimezone
