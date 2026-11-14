@@ -1,6 +1,11 @@
 package domain
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"github.com/shopspring/decimal"
+)
 
 // La diferencia de un corte se calcula con una sola regla para la lista, el detalle y el cierre
 // (#290): en noviembre de 2026 la lista decía −$120 y el diálogo «Caja cerrada» decía $0 del mismo
@@ -91,3 +96,41 @@ func TestElEfectivoNoSeCuentaDosVecesEnLaDiferencia(t *testing.T) {
 }
 
 func strp(s string) *string { return &s }
+
+// «Por explicar» (#290, P1): la diferencia pasa la tolerancia y nadie la ha explicado. Una nota
+// vigente o el motivo de la apertura siguiente la explican.
+func TestCutNeedsExplanation(t *testing.T) {
+	cases := []struct {
+		name                string
+		total, tolerance    string
+		hasNote, nextReason bool
+		want                bool
+	}{
+		{"cuadra", "0", "0", false, false, false},
+		{"faltante con tolerancia cero", "-0.01", "0", false, false, true},
+		{"dentro de la tolerancia", "-49.99", "50", false, false, false},
+		{"justo en la tolerancia no pasa", "-50", "50", false, false, false},
+		{"pasa la tolerancia", "50.01", "50", false, false, true},
+		{"explicado con una nota", "-80", "50", true, false, false},
+		{"explicado al abrir el siguiente", "-80", "50", false, true, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := CutNeedsExplanation(d(c.total), d(c.tolerance), c.hasNote, c.nextReason); got != c.want {
+				t.Fatalf("CutNeedsExplanation = %v; quería %v", got, c.want)
+			}
+		})
+	}
+}
+
+// Una tolerancia vacía no es $0 (constitución IV, «el valor vacío que significa algo»): se rechaza.
+func TestValidTolerance(t *testing.T) {
+	for _, bad := range []*decimal.Decimal{nil, dp("-1"), dp("1e100000000")} {
+		if _, err := ValidTolerance(bad); !errors.Is(err, ErrValidation) {
+			t.Fatalf("tolerancia %v aceptada", bad)
+		}
+	}
+	if got, err := ValidTolerance(dp("50.005")); err != nil || !got.Equal(d("50.01")) {
+		t.Fatalf("50.005 → %v %v", got, err)
+	}
+}

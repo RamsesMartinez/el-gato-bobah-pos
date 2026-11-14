@@ -755,6 +755,8 @@ type SessionDetailView struct {
 	// Correcciones del corte (#290, fase 3), siempre arreglo; Effective es lo que rige tras ellas.
 	Adjustments []SessionAdjustmentView `json:"adjustments"`
 	Effective   *EffectiveView          `json:"effective"`
+	// NeedsExplanation: igual que en el Histórico.
+	NeedsExplanation *bool `json:"needsExplanation,omitempty"`
 }
 
 // NextOpeningView es la apertura del turno siguiente que explica la diferencia de un corte.
@@ -813,8 +815,11 @@ type SessionHistoryRow struct {
 	ExplainedByNext *NextOpeningView `json:"explainedByNext"`
 	// Adjusted: el corte tiene alguna corrección vigente (#290, fase 3): la diferencia ya es la
 	// corregida, y la pantalla lo marca.
-	Adjusted bool    `json:"adjusted"`
-	Notes    *string `json:"notes"`
+	Adjusted bool `json:"adjusted"`
+	// NeedsExplanation: pasó la tolerancia y nadie la explicó (#290, P1). Solo para quien configura
+	// la caja; ausente para los demás.
+	NeedsExplanation *bool   `json:"needsExplanation,omitempty"`
+	Notes            *string `json:"notes"`
 	// ArqueoHidden: con arqueo ciego, el último cierre de una caja que no se ha vuelto a abrir no le
 	// muestra su arqueo a quien no configura la caja: lo contado es el esperado de la siguiente
 	// apertura (spec 035, R8). Viaja para que la pantalla diga «oculto» y no pinte $0.
@@ -1206,6 +1211,11 @@ type CierreCmd struct {
 	// AuthorizedReason: cerrar sin la salida de quien abrió, y por qué (spec 046). Ausente = cierre
 	// normal; se ignora si quien abrió ya no tiene entrada abierta.
 	AuthorizedReason *string
+	// Explanation: la explicación de la diferencia que deja quien cierra viendo el esperado (#290,
+	// fase 4). CanSeeArqueo es si quien cierra configura la caja: con arqueo ciego y sin ese permiso,
+	// mandar una explicación sería una sonda de si hubo diferencia, y se rechaza.
+	Explanation  *CloseExplanation
+	CanSeeArqueo bool
 }
 
 // TerminalCountView es el arqueo de una terminal al cierre (spec 032, punto 9).

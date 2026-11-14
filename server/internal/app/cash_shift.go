@@ -226,6 +226,17 @@ func (s *CashShiftService) CurrentByRegister(ctx context.Context, registerID int
 }
 
 func (s *CashShiftService) CloseSession(ctx context.Context, registerID int64, userID int64, cmd CierreCmd) (*SessionView, error) {
+	var explicacion *domain.AdjustmentInput
+	if cmd.Explanation != nil {
+		if !cmd.CanSeeArqueo && s.arqueoCiego(ctx) {
+			return nil, domain.ErrForbidden
+		}
+		v, err := domain.ValidateAdjustment(domain.AdjustmentInput{Kind: domain.AdjustmentNote, Reason: cmd.Explanation.Reason, Note: cmd.Explanation.Note}, nil)
+		if err != nil {
+			return nil, err
+		}
+		explicacion = &v
+	}
 	// Copia: el mapa es de quien llama y el efectivo se sustituye por el total del conteo. Mutar el
 	// del handler dejaría el cuerpo del request diciendo algo que ya no es.
 	declared := make(map[int]decimal.Decimal, len(cmd.Declarado))
@@ -452,6 +463,16 @@ func (s *CashShiftService) CloseSession(ctx context.Context, registerID int64, u
 		}
 		if err := q.CloseSession(ctx, db.CloseSessionParams{ID: sess.ID, ClosedBy: &userID, Notes: n}); err != nil {
 			return err
+		}
+		if explicacion != nil {
+			if _, err := q.InsertSessionAdjustment(ctx, db.InsertSessionAdjustmentParams{SessionID: sess.ID, Kind: domain.AdjustmentNote,
+				Reason: explicacion.Reason, Note: explicacion.Note, CreatedBy: userID}); err != nil {
+				return err
+			}
+			if err := auditCash(ctx, q, "cash.session_adjusted", sess.ID, &userID, nil,
+				map[string]any{"kind": domain.AdjustmentNote, "reason": explicacion.Reason, "note": explicacion.Note}); err != nil {
+				return err
+			}
 		}
 		return auditCash(ctx, q, "cash.closed", sess.ID, &userID, nil,
 			map[string]any{"declared": cmd.Declarado, "total": cmd.Total, "reason": cmd.Motivo, "tips": cmd.Propinas})

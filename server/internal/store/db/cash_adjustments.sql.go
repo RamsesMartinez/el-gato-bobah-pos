@@ -12,6 +12,18 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const getCashTolerance = `-- name: GetCashTolerance :one
+select coalesce((select cash_difference_tolerance from business_settings), 0)::numeric(10,2) as tolerance
+`
+
+// La tolerancia de diferencia de la empresa (#290, fase 4). Sin fila de ajustes rige $0.
+func (q *Queries) GetCashTolerance(ctx context.Context) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, getCashTolerance)
+	var tolerance decimal.Decimal
+	err := row.Scan(&tolerance)
+	return tolerance, err
+}
+
 const insertSessionAdjustment = `-- name: InsertSessionAdjustment :one
 insert into cash_session_adjustments (session_id, kind, before_amount, after_amount, reason, note, reverses_id, created_by)
 values ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -172,4 +184,16 @@ func (q *Queries) LockSessionForAdjustment(ctx context.Context, id int64) (LockS
 		&i.RegisterID,
 	)
 	return i, err
+}
+
+const setCashTolerance = `-- name: SetCashTolerance :execrows
+update business_settings set cash_difference_tolerance = $1
+`
+
+func (q *Queries) SetCashTolerance(ctx context.Context, cashDifferenceTolerance decimal.Decimal) (int64, error) {
+	result, err := q.db.Exec(ctx, setCashTolerance, cashDifferenceTolerance)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

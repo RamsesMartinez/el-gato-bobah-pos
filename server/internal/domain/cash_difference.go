@@ -55,3 +55,24 @@ func CutDifference(methods []MethodDiff, drawer *DrawerCount) CutDiff {
 	}
 	return out
 }
+
+// CutNeedsExplanation dice si un corte queda «por explicar» (#290, decisión P1): su diferencia pasa
+// la tolerancia de la empresa y nadie la explicó, ni con una nota vigente ni con el motivo de la
+// apertura siguiente. No bloquea nada: marca el corte para que lo revise quien ajusta el arqueo.
+// Se calcula con la tolerancia de HOY: cambiarla reclasifica cortes pasados (es estado derivado).
+func CutNeedsExplanation(total, tolerance decimal.Decimal, hasNote, nextOpeningReason bool) bool {
+	return total.Abs().GreaterThan(tolerance) && !hasNote && !nextOpeningReason
+}
+
+// ValidTolerance valida la tolerancia que se guarda. Ausente no es $0: un campo borrado a media
+// captura apagaba el control sin que nadie lo decidiera.
+func ValidTolerance(v *decimal.Decimal) (decimal.Decimal, error) {
+	if v == nil {
+		return decimal.Zero, ErrValidation
+	}
+	t := Round2(*v)
+	if !ValidMoney(t, true) || t.IsNegative() {
+		return decimal.Zero, ErrValidation
+	}
+	return t, nil
+}

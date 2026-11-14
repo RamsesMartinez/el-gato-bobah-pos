@@ -48,6 +48,10 @@ func (s *CashReportService) SessionHistoryFor(ctx context.Context, f domain.Sess
 	if err != nil {
 		return nil, 0, err
 	}
+	tolerancia, err := q.GetCashTolerance(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
 	out := make([]SessionHistoryRow, len(rows))
 	for i, r := range rows {
 		out[i] = SessionHistoryRow{
@@ -70,6 +74,7 @@ func (s *CashReportService) SessionHistoryFor(ctx context.Context, f domain.Sess
 		diff, corregido := historyRowDifference(r, correcciones[r.ID])
 		out[i].Difference, out[i].TotalDifference, out[i].Adjusted = &diff, &diff.Total, corregido
 		out[i].ExplainedByNext = explanationOf(&diff, r.NextID, r.NextOpeningReason, r.NextOpeningReasonNote)
+		out[i].NeedsExplanation = needsExplanation(canSeeArqueo, &diff, tolerancia, correcciones[r.ID], out[i].ExplainedByNext)
 	}
 	return out, total, nil
 }
@@ -312,6 +317,11 @@ func (s *CashReportService) SessionDetailFor(ctx context.Context, id int64, canS
 		view.Effective = effectiveOf(adjustmentsOf(adjRows))
 		view.Difference = cutDifferenceOf(view.Totals, withCorrectedCount(view.Drawer, view.Effective))
 		view.ExplainedByNext = explanationOf(view.Difference, vecinos.NextID, vecinos.NextOpeningReason, vecinos.NextOpeningReasonNote)
+		tolerancia, err := s.store.QC(ctx).GetCashTolerance(ctx)
+		if err != nil {
+			return nil, err
+		}
+		view.NeedsExplanation = needsExplanation(canSeeFloat, view.Difference, tolerancia, adjustmentsOf(adjRows), view.ExplainedByNext)
 	}
 	// Siempre arreglo: un turno abierto o un arqueo oculto no tienen correcciones a la vista, y un
 	// `null` donde la pantalla espera una lista la tumba sin un solo error en el servidor.
