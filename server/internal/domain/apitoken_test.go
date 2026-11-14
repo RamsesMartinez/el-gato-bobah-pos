@@ -219,8 +219,8 @@ func TestMCPToolCatalog(t *testing.T) {
 			t.Errorf("%s no se encuentra por nombre", tool.Name)
 		}
 	}
-	if len(seen) != 54 || writes != 25 {
-		t.Fatalf("el contrato tiene 54 herramientas y 25 escrituras (076); hay %d y %d", len(seen), writes)
+	if len(seen) != 55 || writes != 26 {
+		t.Fatalf("el contrato tiene 55 herramientas y 26 escrituras (084); hay %d y %d", len(seen), writes)
 	}
 	// Las de la 073, con el alcance y el permiso de contracts/mcp-tools.md.
 	for name, want := range map[string]MCPTool{
@@ -372,6 +372,7 @@ func TestMCPToolCatalog076(t *testing.T) {
 		write bool
 	}{
 		{"ingredient_create", ScopeWriteInventory, PermInventoryConfigure, true},
+		{"low_stock_update", ScopeWriteInventory, PermInventoryConfigure, true},
 		{"ingredient_update", ScopeWriteInventory, PermInventoryConfigure, true},
 		{"presentations_list", ScopeRead, PermInventoryReceive, false},
 	} {

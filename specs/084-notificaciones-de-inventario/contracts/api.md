@@ -54,7 +54,7 @@ Arreglo vacío como `[]`, nunca `null`.
 
 ## Configuración de alertas — `inventory.configure`
 
-### `PUT /stock/articles/{id}/low-stock` y `PUT /products/{id}/low-stock`
+### `GET`/`PUT /stock/articles/{id}/low-stock` y `/stock/products/{id}/low-stock`
 `{"enabled":true,"minStock":"5","onMin":true,"onOut":true,"banner":false,"coverageDays":14,"branchMinStock":null,"expectedUpdatedAt":"…"}`
 Con `?preview=1` no guarda y responde el efecto:
 `{"effect":{"opens":["stock_low"],"closes":[],"onHand":"2","min":"5","needsCount":false},"summary":"…"}`.

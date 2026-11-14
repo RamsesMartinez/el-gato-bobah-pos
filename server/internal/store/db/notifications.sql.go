@@ -13,6 +13,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const companyBranchCount = `-- name: CompanyBranchCount :one
+select count(*)::int from branches where is_active
+`
+
+func (q *Queries) CompanyBranchCount(ctx context.Context) (int32, error) {
+	row := q.db.QueryRow(ctx, companyBranchCount)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const companyBranches = `-- name: CompanyBranches :many
 select id from branches where is_active order by id
 `
@@ -86,6 +97,23 @@ func (q *Queries) CountedArticlesOf(ctx context.Context, cid int64) ([]CountedAr
 		return nil, err
 	}
 	return items, nil
+}
+
+const deleteBranchMinimum = `-- name: DeleteBranchMinimum :exec
+delete from branch_stock_minimums
+ where branch_id = $1
+   and (ingredient_id = $2 or product_id = $3)
+`
+
+type DeleteBranchMinimumParams struct {
+	BranchID     int64  `json:"branch_id"`
+	IngredientID *int64 `json:"ingredient_id"`
+	ProductID    *int64 `json:"product_id"`
+}
+
+func (q *Queries) DeleteBranchMinimum(ctx context.Context, arg DeleteBranchMinimumParams) error {
+	_, err := q.db.Exec(ctx, deleteBranchMinimum, arg.BranchID, arg.IngredientID, arg.ProductID)
+	return err
 }
 
 const deleteBranchMinimumsOf = `-- name: DeleteBranchMinimumsOf :exec
@@ -171,6 +199,61 @@ func (q *Queries) GetNotificationForUpdate(ctx context.Context, id int64) (GetNo
 		&i.OpenedBy,
 	)
 	return i, err
+}
+
+const listLowStockConfigs = `-- name: ListLowStockConfigs :many
+select a.item_type, a.id, a.name, a.unit_code, a.low_stock_enabled, a.min_stock,
+       coalesce((select s.on_hand from stock_levels s
+                  where s.branch_id = current_branch_id()
+                    and ((a.item_type = 'ingrediente' and s.ingredient_id = a.id) or (a.item_type = 'producto' and s.product_id = a.id))), 0)::numeric as on_hand
+  from (
+    select 'ingrediente'::stock_item_type as item_type, i.id, i.name, u.code::text as unit_code, i.low_stock_enabled, i.min_stock
+      from ingredients i join units u on u.id = i.base_unit_id where i.is_active
+    union all
+    select 'producto'::stock_item_type, p.id, p.name, 'pieza'::text, p.low_stock_enabled, p.min_stock
+      from products p where p.is_active and p.track_stock
+  ) a
+ order by a.name
+`
+
+type ListLowStockConfigsRow struct {
+	ItemType        StockItemType    `json:"item_type"`
+	ID              int64            `json:"id"`
+	Name            string           `json:"name"`
+	UnitCode        string           `json:"unit_code"`
+	LowStockEnabled bool             `json:"low_stock_enabled"`
+	MinStock        *decimal.Decimal `json:"min_stock"`
+	OnHand          decimal.Decimal  `json:"on_hand"`
+}
+
+// La tabla de «Alertas por lote»: insumos activos y productos con existencia propia, con lo que hay
+// en la sucursal.
+func (q *Queries) ListLowStockConfigs(ctx context.Context) ([]ListLowStockConfigsRow, error) {
+	rows, err := q.db.Query(ctx, listLowStockConfigs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLowStockConfigsRow{}
+	for rows.Next() {
+		var i ListLowStockConfigsRow
+		if err := rows.Scan(
+			&i.ItemType,
+			&i.ID,
+			&i.Name,
+			&i.UnitCode,
+			&i.LowStockEnabled,
+			&i.MinStock,
+			&i.OnHand,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listNotifications = `-- name: ListNotifications :many
@@ -281,19 +364,77 @@ func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsPa
 	return items, nil
 }
 
+const lowStockConfigOf = `-- name: LowStockConfigOf :one
+select a.name, a.unit_code, a.is_active, a.low_stock_enabled, a.low_stock_on_min, a.low_stock_on_out, a.low_stock_banner,
+       a.min_stock, a.coverage_days, a.low_stock_asked_at, a.updated_at
+  from (
+    select i.name, u.code::text as unit_code, i.is_active, i.low_stock_enabled, i.low_stock_on_min, i.low_stock_on_out,
+           i.low_stock_banner, i.min_stock, i.coverage_days, i.low_stock_asked_at, i.updated_at
+      from ingredients i join units u on u.id = i.base_unit_id
+     where $1::stock_item_type = 'ingrediente' and i.id = $2
+    union all
+    select p.name, 'pieza'::text, p.is_active, p.low_stock_enabled, p.low_stock_on_min, p.low_stock_on_out,
+           p.low_stock_banner, p.min_stock, p.coverage_days, p.low_stock_asked_at, p.updated_at
+      from products p
+     where $1::stock_item_type = 'producto' and p.id = $2 and p.track_stock
+  ) a
+`
+
+type LowStockConfigOfParams struct {
+	ItemType StockItemType `json:"item_type"`
+	ID       int64         `json:"id"`
+}
+
+type LowStockConfigOfRow struct {
+	Name            string             `json:"name"`
+	UnitCode        string             `json:"unit_code"`
+	IsActive        bool               `json:"is_active"`
+	LowStockEnabled bool               `json:"low_stock_enabled"`
+	LowStockOnMin   bool               `json:"low_stock_on_min"`
+	LowStockOnOut   bool               `json:"low_stock_on_out"`
+	LowStockBanner  bool               `json:"low_stock_banner"`
+	MinStock        *decimal.Decimal   `json:"min_stock"`
+	CoverageDays    *int16             `json:"coverage_days"`
+	LowStockAskedAt pgtype.Timestamptz `json:"low_stock_asked_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+}
+
+// La configuración de alertas de un artículo, como la lee la ficha. Para un producto, solo si tiene
+// existencia propia: el «Se compra hecho» guarda la suya en su insumo.
+func (q *Queries) LowStockConfigOf(ctx context.Context, arg LowStockConfigOfParams) (LowStockConfigOfRow, error) {
+	row := q.db.QueryRow(ctx, lowStockConfigOf, arg.ItemType, arg.ID)
+	var i LowStockConfigOfRow
+	err := row.Scan(
+		&i.Name,
+		&i.UnitCode,
+		&i.IsActive,
+		&i.LowStockEnabled,
+		&i.LowStockOnMin,
+		&i.LowStockOnOut,
+		&i.LowStockBanner,
+		&i.MinStock,
+		&i.CoverageDays,
+		&i.LowStockAskedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const lowStockSnapshot = `-- name: LowStockSnapshot :one
 select coalesce((select s.on_hand from stock_levels s
                   where s.branch_id = $1
                     and (s.ingredient_id = $2 or s.product_id = $3)), 0)::numeric as on_hand,
-       (select m.min_stock from branch_stock_minimums m
-         where m.branch_id = $1
-           and (m.ingredient_id = $2 or m.product_id = $3)) as branch_min,
+       m.min_stock as branch_min,
        coalesce((select array_agg(n.kind order by n.kind) from notifications n
                   where n.branch_id = $1 and n.status = 'open' and n.kind <> 'not_found'
                     and n.item_key = coalesce($2::bigint, -$3::bigint, 0)), '{}')::text[] as open_kinds,
        exists (select 1 from notifications n
                 where n.branch_id = $1 and n.status = 'open' and n.kind = 'stock_out' and n.opened_by is not null
                   and n.item_key = coalesce($2::bigint, -$3::bigint, 0))::bool as manual_out
+  -- Left join y no subconsulta: así sqlc lo tipa como nulable (una sucursal sin mínimo propio).
+  from (select 1) one
+  left join branch_stock_minimums m on m.branch_id = $1
+   and (m.ingredient_id = $2 or m.product_id = $3)
 `
 
 type LowStockSnapshotParams struct {
@@ -303,10 +444,10 @@ type LowStockSnapshotParams struct {
 }
 
 type LowStockSnapshotRow struct {
-	OnHand    decimal.Decimal `json:"on_hand"`
-	BranchMin decimal.Decimal `json:"branch_min"`
-	OpenKinds []string        `json:"open_kinds"`
-	ManualOut bool            `json:"manual_out"`
+	OnHand    decimal.Decimal  `json:"on_hand"`
+	BranchMin *decimal.Decimal `json:"branch_min"`
+	OpenKinds []string         `json:"open_kinds"`
+	ManualOut bool             `json:"manual_out"`
 }
 
 // Lo que la vista previa de un cambio de alertas necesita para calcular el efecto con
@@ -339,6 +480,19 @@ type MarkBannerSeenParams struct {
 func (q *Queries) MarkBannerSeen(ctx context.Context, arg MarkBannerSeenParams) error {
 	_, err := q.db.Exec(ctx, markBannerSeen, arg.UserID, arg.ID)
 	return err
+}
+
+const markLowStockAsked = `-- name: MarkLowStockAsked :execrows
+update ingredients set low_stock_asked_at = coalesce(low_stock_asked_at, now()) where id = $1
+`
+
+// Ya se hizo la pregunta de alertas (la respuesta fue «No, por ahora»): no vuelve a salir.
+func (q *Queries) MarkLowStockAsked(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, markLowStockAsked, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const markNotificationsRead = `-- name: MarkNotificationsRead :exec
@@ -486,6 +640,74 @@ func (q *Queries) ResolveOpenOfArticle(ctx context.Context, arg ResolveOpenOfArt
 	return result.RowsAffected(), nil
 }
 
+const setIngredientLowStock = `-- name: SetIngredientLowStock :one
+update ingredients
+   set low_stock_enabled = $1, low_stock_on_min = $2, low_stock_on_out = $3,
+       low_stock_banner = $4, min_stock = $5, coverage_days = $6,
+       low_stock_asked_at = coalesce(low_stock_asked_at, now())
+ where id = $7
+returning updated_at
+`
+
+type SetIngredientLowStockParams struct {
+	Enabled      bool             `json:"enabled"`
+	OnMin        bool             `json:"on_min"`
+	OnOut        bool             `json:"on_out"`
+	Banner       bool             `json:"banner"`
+	MinStock     *decimal.Decimal `json:"min_stock"`
+	CoverageDays *int16           `json:"coverage_days"`
+	ID           int64            `json:"id"`
+}
+
+func (q *Queries) SetIngredientLowStock(ctx context.Context, arg SetIngredientLowStockParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, setIngredientLowStock,
+		arg.Enabled,
+		arg.OnMin,
+		arg.OnOut,
+		arg.Banner,
+		arg.MinStock,
+		arg.CoverageDays,
+		arg.ID,
+	)
+	var updated_at time.Time
+	err := row.Scan(&updated_at)
+	return updated_at, err
+}
+
+const setProductLowStock = `-- name: SetProductLowStock :one
+update products
+   set low_stock_enabled = $1, low_stock_on_min = $2, low_stock_on_out = $3,
+       low_stock_banner = $4, min_stock = $5, coverage_days = $6,
+       low_stock_asked_at = coalesce(low_stock_asked_at, now())
+ where id = $7 and track_stock
+returning updated_at
+`
+
+type SetProductLowStockParams struct {
+	Enabled      bool             `json:"enabled"`
+	OnMin        bool             `json:"on_min"`
+	OnOut        bool             `json:"on_out"`
+	Banner       bool             `json:"banner"`
+	MinStock     *decimal.Decimal `json:"min_stock"`
+	CoverageDays *int16           `json:"coverage_days"`
+	ID           int64            `json:"id"`
+}
+
+func (q *Queries) SetProductLowStock(ctx context.Context, arg SetProductLowStockParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, setProductLowStock,
+		arg.Enabled,
+		arg.OnMin,
+		arg.OnOut,
+		arg.Banner,
+		arg.MinStock,
+		arg.CoverageDays,
+		arg.ID,
+	)
+	var updated_at time.Time
+	err := row.Scan(&updated_at)
+	return updated_at, err
+}
+
 const unreadNotifications = `-- name: UnreadNotifications :one
 select count(*)::int
   from notifications n
@@ -504,4 +726,56 @@ func (q *Queries) UnreadNotifications(ctx context.Context, arg UnreadNotificatio
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const upsertBranchMinimum = `-- name: UpsertBranchMinimum :exec
+insert into branch_stock_minimums (branch_id, item_type, ingredient_id, product_id, min_stock, updated_by)
+values ($1, $2, $3, $4, $5, $6)
+on conflict (branch_id, ingredient_id) where ingredient_id is not null
+do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now()
+`
+
+type UpsertBranchMinimumParams struct {
+	BranchID     int64           `json:"branch_id"`
+	ItemType     StockItemType   `json:"item_type"`
+	IngredientID *int64          `json:"ingredient_id"`
+	ProductID    *int64          `json:"product_id"`
+	MinStock     decimal.Decimal `json:"min_stock"`
+	UpdatedBy    int64           `json:"updated_by"`
+}
+
+func (q *Queries) UpsertBranchMinimum(ctx context.Context, arg UpsertBranchMinimumParams) error {
+	_, err := q.db.Exec(ctx, upsertBranchMinimum,
+		arg.BranchID,
+		arg.ItemType,
+		arg.IngredientID,
+		arg.ProductID,
+		arg.MinStock,
+		arg.UpdatedBy,
+	)
+	return err
+}
+
+const upsertBranchProductMinimum = `-- name: UpsertBranchProductMinimum :exec
+insert into branch_stock_minimums (branch_id, item_type, product_id, min_stock, updated_by)
+values ($1, 'producto', $2, $3, $4)
+on conflict (branch_id, product_id) where product_id is not null
+do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now()
+`
+
+type UpsertBranchProductMinimumParams struct {
+	BranchID  int64           `json:"branch_id"`
+	ProductID *int64          `json:"product_id"`
+	MinStock  decimal.Decimal `json:"min_stock"`
+	UpdatedBy int64           `json:"updated_by"`
+}
+
+func (q *Queries) UpsertBranchProductMinimum(ctx context.Context, arg UpsertBranchProductMinimumParams) error {
+	_, err := q.db.Exec(ctx, upsertBranchProductMinimum,
+		arg.BranchID,
+		arg.ProductID,
+		arg.MinStock,
+		arg.UpdatedBy,
+	)
+	return err
 }

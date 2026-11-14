@@ -1,9 +1,13 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
+
+	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -105,4 +109,130 @@ func (h *Handlers) ResolveNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// lowStockBody es la sección «Alertas» como la manda la pantalla. branchMinStock se distingue
+// ausente (no se toca) de null (se quita el de la sucursal).
+type lowStockBody struct {
+	Enabled           bool             `json:"enabled"`
+	OnMin             bool             `json:"onMin"`
+	OnOut             bool             `json:"onOut"`
+	Banner            bool             `json:"banner"`
+	MinStock          *decimal.Decimal `json:"minStock"`
+	CoverageDays      *int             `json:"coverageDays"`
+	BranchMinStock    *json.RawMessage `json:"branchMinStock"`
+	ExpectedUpdatedAt *time.Time       `json:"expectedUpdatedAt"`
+}
+
+func (b lowStockBody) input() (app.LowStockInput, error) {
+	in := app.LowStockInput{Enabled: b.Enabled, OnMin: b.OnMin, OnOut: b.OnOut, Banner: b.Banner, MinStock: b.MinStock,
+		CoverageDays: b.CoverageDays, ExpectedUpdatedAt: b.ExpectedUpdatedAt}
+	if b.BranchMinStock != nil {
+		in.BranchMinStock.Set = true
+		if string(*b.BranchMinStock) != "null" {
+			var v decimal.Decimal
+			if err := json.Unmarshal(*b.BranchMinStock, &v); err != nil {
+				return in, fmt.Errorf("%w: el mínimo de la sucursal es un número", domain.ErrValidation)
+			}
+			in.BranchMinStock.Value = &v
+		}
+	}
+	return in, nil
+}
+
+// GET /stock/{articles|products}/{id}/low-stock — la sección «Alertas».
+func (h *Handlers) GetLowStock(itemType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := idParam(r, "id")
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		v, err := h.notifications.LowStockConfig(r.Context(), itemType, id)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		JSON(w, http.StatusOK, v)
+	}
+}
+
+// PUT /stock/{articles|products}/{id}/low-stock[?preview=1] — guarda (o dice qué pasaría).
+func (h *Handlers) PutLowStock(itemType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := idParam(r, "id")
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		preview, err := previewParam(r)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		var body lowStockBody
+		if err := DecodeStrict(r, &body); err != nil {
+			Error(w, err)
+			return
+		}
+		in, err := body.input()
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		u, _ := userFrom(r.Context())
+		res, err := h.notifications.ConfigureLowStock(r.Context(), itemType, id, in, u.ID, preview)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		JSON(w, http.StatusOK, res)
+	}
+}
+
+// POST /stock/articles/{id}/low-stock/asked — «No, por ahora»: la pregunta no vuelve.
+func (h *Handlers) LowStockAsked(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.notifications.LowStockAsked(r.Context(), id); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /stock/low-stock — la tabla de «Alertas por lote».
+func (h *Handlers) ListLowStock(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.notifications.ListLowStock(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": rows})
+}
+
+// POST /stock/low-stock/batch[?preview=1] — `{items: [{itemType, id, enabled, minStock}]}`.
+func (h *Handlers) LowStockBatch(w http.ResponseWriter, r *http.Request) {
+	preview, err := previewParam(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		Items []app.LowStockBatchItem `json:"items"`
+	}
+	if err := DecodeStrict(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	res, err := h.notifications.ConfigureBatch(r.Context(), body.Items, u.ID, preview)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": res})
 }

@@ -87,6 +87,7 @@ GET /api/v1/stock/articles/{id}/alt-names/similar admin,gerente
 GET /api/v1/stock/articles/{id}/archive-check admin,gerente
 GET /api/v1/stock/articles/{id}/audit admin,gerente
 GET /api/v1/stock/articles/{id}/cost-history admin,gerente
+GET /api/v1/stock/articles/{id}/low-stock admin,gerente
 GET /api/v1/stock/count-places admin,gerente
 GET /api/v1/stock/counts/current admin,gerente
 GET /api/v1/stock/counts/last-closed admin,gerente
@@ -98,12 +99,14 @@ GET /api/v1/stock/ingredient-categories admin,gerente
 GET /api/v1/stock/ingredients/{id}/composition admin,gerente
 GET /api/v1/stock/ingredients/{id}/presentations admin,gerente
 GET /api/v1/stock/levels admin,gerente
+GET /api/v1/stock/low-stock admin,gerente
 GET /api/v1/stock/movements admin,gerente
 GET /api/v1/stock/out-reports/search admin,gerente,cajero,mesero
 GET /api/v1/stock/out-reports/suggestions admin,gerente,cajero,mesero
 GET /api/v1/stock/pending-receipts admin,gerente
 GET /api/v1/stock/presentation-suggestions admin,gerente
 GET /api/v1/stock/presentations admin,gerente
+GET /api/v1/stock/products/{id}/low-stock admin,gerente
 GET /api/v1/supplier-items admin,gerente
 GET /api/v1/suppliers admin,gerente
 GET /api/v1/units admin,gerente
@@ -200,6 +203,7 @@ POST /api/v1/stock/articles admin,gerente
 POST /api/v1/stock/articles/distinct-pairs admin,gerente
 POST /api/v1/stock/articles/{id}/archive admin,gerente
 POST /api/v1/stock/articles/{id}/cost admin,gerente
+POST /api/v1/stock/articles/{id}/low-stock/asked admin,gerente
 POST /api/v1/stock/articles/{id}/merge admin,gerente
 POST /api/v1/stock/articles/{id}/reactivate admin,gerente
 POST /api/v1/stock/articles/{id}/unit admin,gerente
@@ -213,6 +217,7 @@ POST /api/v1/stock/counts/{id}/discard admin,gerente
 POST /api/v1/stock/ingredient-categories admin,gerente
 POST /api/v1/stock/ingredients/{id}/composition/confirm admin,gerente
 POST /api/v1/stock/ingredients/{id}/presentations admin,gerente
+POST /api/v1/stock/low-stock/batch admin,gerente
 POST /api/v1/stock/movements admin,gerente
 POST /api/v1/stock/not-found admin,gerente,cajero,mesero
 POST /api/v1/stock/out-reports admin,gerente,cajero,mesero
@@ -249,10 +254,12 @@ PUT /api/v1/settings/inventory admin,gerente
 PUT /api/v1/settings/waste-threshold admin,gerente
 PUT /api/v1/stock/articles/{id}/alt-names admin,gerente
 PUT /api/v1/stock/articles/{id}/density admin,gerente
+PUT /api/v1/stock/articles/{id}/low-stock admin,gerente
 PUT /api/v1/stock/count-places/{id} admin,gerente
 PUT /api/v1/stock/counts/{id}/lines/{ingredientId} admin,gerente
 PUT /api/v1/stock/counts/{id}/product-lines/{productId} admin,gerente
 PUT /api/v1/stock/ingredients/{id}/composition admin,gerente
 PUT /api/v1/stock/ingredients/{id}/place admin,gerente
 PUT /api/v1/stock/presentations/{id} admin,gerente
+PUT /api/v1/stock/products/{id}/low-stock admin,gerente
 PUT /api/v1/waste/reasons/{id} admin,gerente
