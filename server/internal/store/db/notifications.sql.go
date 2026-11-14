@@ -37,6 +37,24 @@ func (q *Queries) CompanyBranches(ctx context.Context) ([]int64, error) {
 	return items, nil
 }
 
+const dismissAsUndone = `-- name: DismissAsUndone :exec
+update notifications
+   set status = 'dismissed', resolved_at = now(), resolved_by = $1, resolved_reason = 'undone'
+ where id = $2 and (status = 'open' or resolved_at = now())
+`
+
+type DismissAsUndoneParams struct {
+	ResolvedBy *int64 `json:"resolved_by"`
+	ID         int64  `json:"id"`
+}
+
+// Deshacer el último «se acabó» descarta su aviso. El ajuste de vuelta pudo haberlo cerrado ya en esta
+// misma transacción (el trigger, como «volvió a haber»): resolved_at = now() es esta transacción.
+func (q *Queries) DismissAsUndone(ctx context.Context, arg DismissAsUndoneParams) error {
+	_, err := q.db.Exec(ctx, dismissAsUndone, arg.ResolvedBy, arg.ID)
+	return err
+}
+
 const evaluateLowStock = `-- name: EvaluateLowStock :exec
 select evaluate_low_stock(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint,
                           $2::stock_item_type, $3::bigint, $4::bigint)

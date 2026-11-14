@@ -152,9 +152,12 @@ type Deps struct {
 	InventoryHealth *app.InventoryHealthService
 	// APITokens: los tokens del servidor MCP (spec 072). Sin él no se monta ni /mcp ni Integraciones.
 	APITokens *app.APITokensService
+	// StockOut: «Se acabó» y «No lo encuentro» (spec 084). Sin él, Router arma uno con el store.
+	StockOut *app.StockOutService
 }
 
 type Handlers struct {
+	stockOut          *app.StockOutService
 	cfg               config.Config
 	version           string
 	builtAt           string
@@ -255,6 +258,7 @@ func newHandlers(d Deps) *Handlers {
 		health:      d.InventoryHealth,
 		alerts:      d.Alerts,
 		apiTokens:   d.APITokens,
+		stockOut:    d.StockOut,
 		mcpIPs:      newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-ip:", mcpMaxIPRequests, time.Minute),
 		mcpTokens:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:mcp-token:", mcpMaxTokenCalls, time.Minute),
 		tokenWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:token-writes:", 30, time.Hour),

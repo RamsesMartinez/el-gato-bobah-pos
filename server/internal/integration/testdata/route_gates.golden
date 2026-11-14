@@ -97,6 +97,8 @@ GET /api/v1/stock/ingredients/{id}/composition admin,gerente
 GET /api/v1/stock/ingredients/{id}/presentations admin,gerente
 GET /api/v1/stock/levels admin,gerente
 GET /api/v1/stock/movements admin,gerente
+GET /api/v1/stock/out-reports/search admin,gerente,cajero,mesero
+GET /api/v1/stock/out-reports/suggestions admin,gerente,cajero,mesero
 GET /api/v1/stock/pending-receipts admin,gerente
 GET /api/v1/stock/presentation-suggestions admin,gerente
 GET /api/v1/stock/presentations admin,gerente
@@ -207,6 +209,9 @@ POST /api/v1/stock/ingredient-categories admin,gerente
 POST /api/v1/stock/ingredients/{id}/composition/confirm admin,gerente
 POST /api/v1/stock/ingredients/{id}/presentations admin,gerente
 POST /api/v1/stock/movements admin,gerente
+POST /api/v1/stock/not-found admin,gerente,cajero,mesero
+POST /api/v1/stock/out-reports admin,gerente,cajero,mesero
+POST /api/v1/stock/out-reports/{id}/undo admin,gerente,cajero,mesero
 POST /api/v1/suppliers admin,gerente
 POST /api/v1/usage admin,gerente,cajero,mesero
 POST /api/v1/users/ admin

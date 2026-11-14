@@ -184,7 +184,8 @@ create table stock_out_reports (
            (item_type = 'producto' and product_id is not null and ingredient_id is null)
     end),
   constraint stock_out_reports_movement_shape check ((movement_id is null) = (delta is null)),
-  constraint stock_out_reports_undo_shape check ((undone_at is null) = (undo_movement_id is null)),
+  -- Deshacer una confirmación (o un reporte con existencia en 0) no mueve nada: no hay ajuste de vuelta.
+  constraint stock_out_reports_undo_shape check (undo_movement_id is null or undone_at is not null),
   constraint stock_out_reports_client_key unique (company_id, client_key),
   constraint stock_out_reports_branch_fkey foreign key (company_id, branch_id) references branches (company_id, id),
   constraint stock_out_reports_ingredient_fkey foreign key (ingredient_id, company_id) references ingredients (id, company_id),

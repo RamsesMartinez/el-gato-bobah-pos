@@ -24,6 +24,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 	if h.roles == nil {
 		h.roles = app.NewRolesService(st)
 	}
+	if h.stockOut == nil {
+		h.stockOut = app.NewStockOutService(st, nil)
+	}
 	if h.permissions == nil {
 		roles := h.roles
 		h.permissions = func(ctx context.Context, u AuthUser) ([]domain.Permission, error) {
@@ -481,6 +484,16 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						r.Post("/{id}/approve", h.ApproveWaste)
 						r.Post("/{id}/reject", h.RejectWaste)
 					})
+				})
+				// «Se acabó» y «No lo encuentro» (spec 084): por permiso propio, que no deja ajustar
+				// existencias. Lo tienen los cuatro sugeridos: quien vende es quien ve que se acabó.
+				r.With(RequirePermission(h.permissions, domain.PermInventoryReportOut)).Group(func(r chi.Router) {
+					r.Get("/stock/out-reports/search", h.SearchOutArticles)
+					r.Get("/stock/out-reports/suggestions", h.OutSuggestions)
+					r.Post("/stock/out-reports", h.ReportOut)
+					// Deshacer el propio; el de otro lo decide el servicio con el permiso de configurar.
+					r.Post("/stock/out-reports/{id}/undo", h.UndoOut)
+					r.Post("/stock/not-found", h.ReportNotFound)
 				})
 				r.Route("/stock", func(r chi.Router) {
 					// Artículos del almacén (spec 042): leer con «ver el almacén», cambiar con «configurar».

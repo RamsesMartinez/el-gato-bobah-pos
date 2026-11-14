@@ -54,6 +54,13 @@ update notifications
        resolved_reason = sqlc.arg(resolved_reason)
  where id = sqlc.arg(id) and status = 'open';
 
+-- name: DismissAsUndone :exec
+-- Deshacer el último «se acabó» descarta su aviso. El ajuste de vuelta pudo haberlo cerrado ya en esta
+-- misma transacción (el trigger, como «volvió a haber»): resolved_at = now() es esta transacción.
+update notifications
+   set status = 'dismissed', resolved_at = now(), resolved_by = sqlc.arg(resolved_by), resolved_reason = 'undone'
+ where id = sqlc.arg(id) and (status = 'open' or resolved_at = now());
+
 -- name: ResolveOpenOfArticle :execrows
 -- Cierra lo abierto de un artículo en todas las sucursales (archivar, unir, cambiar de unidad,
 -- contar). Con kind vacío cierra todos los tipos.

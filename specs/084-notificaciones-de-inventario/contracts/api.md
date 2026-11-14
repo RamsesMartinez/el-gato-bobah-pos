@@ -15,7 +15,7 @@ alguna palabra de `q` sin acentos ni plural. Máx. 20. `q` vacío → 400.
 `200 {"frequent":[…hasta 8, más reportados en 30 días], "recent":[…hasta 8, reportados hoy]}`
 
 ### `POST /stock/out-reports`
-`{"itemType":"ingrediente","ingredientId":12,"clientKey":"<uuid>"}` — **no acepta cantidad** (un
+`{"itemType":"ingrediente","id":12,"clientKey":"<uuid>"}` — **no acepta cantidad** (un
 campo `quantity` es 400). Respuesta `201` (o `200` si `clientKey` ya existía, con el mismo cuerpo):
 `{"id":7,"kind":"report|confirmation","notificationId":31,"delta":"-3","undoUntil":"…","confirmations":2}`
 Errores: 404 artículo inexistente o archivado; 409 `ITEM_MERGED`; 429 `REPORT_LIMIT` (20 por hora y
