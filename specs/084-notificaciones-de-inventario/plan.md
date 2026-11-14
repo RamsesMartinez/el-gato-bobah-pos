@@ -43,7 +43,7 @@ pantalla nuevas o cambiadas
 | VI. YAGNI | Sin push ni WhatsApp; sin selector de sucursal; plantillas solo para el correo nuevo (los viejos migran después); una tabla de envíos propia en vez de generalizar la del cierre | OK |
 | VII. Comentarios / idioma | Identificadores en inglés (`notifications`, nunca `alerts`); textos en español | OK |
 | VIII. Puertas | Ver la sección siguiente | OK |
-| Restricciones: 1280×854, 44 px, sin select nativo, un solo estilo | Maquetas con componentes reales; `Picker` para la hora de la mañana; hoja inferior y `Page` existentes | Pendiente de maquetas |
+| Restricciones: 1280×854, 44 px, sin select nativo, un solo estilo | Maquetas elegidas con componentes reales; `Picker` para la hora; `ConfirmSheet`, hoja inferior y `Page` existentes | OK |
 | Quien opera no decide en el momento | «Se acabó» no pregunta cantidad ni motivo; quién recibe y qué se avisa se configura antes | OK |
 
 ### Principio VIII: ¿esto se puede agregar después al mismo costo?
@@ -110,19 +110,30 @@ pantalla nuevas o cambiadas
 Presupuesto 1280×854 con el riel de 76 px; 2560×1440 como ampliación. Componentes: `Page`, la hoja
 inferior, `Picker`, `QtyWithUnit`, botones y tarjetas del tema.
 
-| Pantalla | Qué cambia |
-|---|---|
-| 1. Sección «Alertas» de la ficha del insumo (`ArticleSheet`) + pregunta al crear/abrir + confirmación al guardar | Bloque nuevo junto a «Mínimo»; diálogo de pregunta; hoja de confirmación con el efecto |
-| 2. «Se acabó» (`/se-acabo`) con «No lo encuentro» y «Deshacer» | Pantalla nueva en el menú, debajo de «Se echó a perder» |
-| 3. Campana al pie del riel + panel | Botón fijo en `AppShell`, panel lateral o hoja |
-| 4. Franja superior | Portal capa 2000, patrón `AvisoDePedidoEntrante` |
-| 5. Destinatarios y hora de la mañana | Pantalla en Ajustes (o en Almacén) |
-| 6. Lista de compra | Pestaña de Almacén o pantalla propia |
-| 7. Plantilla del correo | Correo de bloque y resumen de la mañana |
+Elegidas por el dueño el 2026-11-14 sobre capturas de la app real (arnés con los componentes del
+POS, datos inventados) a 1280×854 y 2560×1440.
+
+| Pantalla | Dónde vive | Cómo queda (opción elegida) |
+|---|---|---|
+| 1. Alertas en la ficha | Ficha del insumo (`ArticleSheet`) y de un producto con existencia propia | Renglón «Alertas: *estado en palabras* · Configurar ›» en lugar del campo «Mínimo»; abre una hoja inferior con la casilla, el mínimo (`QtyWithUnit`), los eventos, la franja y los días de cobertura, y su «Guardar», que abre la confirmación (`ConfirmSheet`) con el efecto inmediato. Al crear o al abrir una ficha que nunca preguntó: `ConfirmSheet` «¿Quieres recibir alertas de stock bajo de *X*?» (No, por ahora / Sí, configurar) |
+| 2. Se acabó | Riel, debajo de «Se echó a perder» (`/se-acabo`, permiso `inventory.report_out`) | Dos columnas: buscador grande (64 px) y mosaicos de lo que más se acaba; el mosaico tocado se pone rojo («Toca otra vez: se acabó *X*») y el segundo toque confirma (≥ 0.4 s después del primero); aviso verde con «Deshacer · 90 s». Última fila de los resultados: «No lo encuentro · avisar *texto*». Columna derecha de 340 px: «Reportado hoy» |
+| 3. Campana | Pie del riel, encima del tema, botón «Avisos» con contador | Panel de 440 px que sale junto al riel, pestañas «Abiertas · N» y «Cerradas», cada aviso con su acción («Ya llegó», «Dar de alta», «Es otro nombre de…», «Descartar», «Ver en la lista de compra ›») y el motivo de cierre |
+| 4. Franja | Portal propio, capa 2000 | Tarjeta roja de 560 px arriba al centro con «Ver» y «×» y barra de 90 s; si hay un aviso de pedido de plataforma visible va debajo de él; espera mientras haya una hoja de captura abierta |
+| 5. Destinatarios | Almacén › pestaña «Avisos» (`inventory.configure`) | Tabla: una fila por persona (con su correo o «Sin correo: captúralo en Empleados») o correo extra, una columna por tipo de aviso con interruptores de 44 px; arriba la hora del resumen de la mañana con `Picker` en pasos de 15 min; «Agregar» correo extra abajo |
+| 6. Lista de compra | Almacén › pestaña «Lista de compra» (`inventory.view`) | Tarjetas por lugar de compra (proveedor de la última compra; «Sin lugar de compra» al final), cada renglón con estado, hay/mínimo, qué comprar y su porqué |
+| 7. Correo | Correo de bloque y de la mañana | Encabezado de marca con logo, tarjetas por aviso agrupadas por tipo con qué comprar y dónde, botón «Abrir en el sistema», pie con por qué te llega |
+
+## Maquetas
 
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|
-| *(se llena con la elección del dueño)* | | | |
+| M1 Alertas en la ficha | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m1) | B | La ficha se guarda sola; la hoja propia trae su Guardar y de ahí la confirmación, sin empujar nada fuera de la pantalla |
+| M2 Se acabó / No lo encuentro | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m2) | B | Dos toques y lo ya reportado a la vista; el deshacer cubre el error |
+| M3 Campana y panel | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m3) | A | No tapa la pantalla de trabajo y crece bien en 2K |
+| M4 Franja | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m4) | B | Patrón del aviso de pedido de plataforma; deja libre el buscador de Vender |
+| M5 Destinatarios | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m5) | A | Cada persona una vez; se lee de un vistazo quién recibe qué |
+| M6 Lista de compra | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m6) | B | La vuelta de compras sale ya armada por lugar |
+| M7 Correo | [lienzo](https://claude.ai/artifact/1ZsK5kA6fNPqrrhpLA8eXP#m7) | B | Se lee en el teléfono; 23.7 KB contra el límite de 102 KB |
 
 ## Project Structure
 

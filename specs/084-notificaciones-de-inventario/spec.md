@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-14
 
-**Status**: Draft (las recomendaciones de «Para el spec» esperan la elección del dueño en las maquetas)
+**Status**: Aprobado (maquetas y «Para el spec» elegidos por el dueño el 2026-11-14)
 
 **Input**: Issue #291 (lo subió el dueño el 2026-11-14 con sus decisiones del 13-nov). Relacionados:
 #65 (más de un almacén), #271, #277, #289, #290, #293 (menú en dos niveles, otra sesión).
@@ -39,16 +39,16 @@ automática sobre esos datos daría falsos positivos y se ignoraría. Por eso la
 | Lista de compra | Con cantidad sugerida y el porqué; 14 días de cobertura por omisión |
 | Resolución mínima | 1280×854 (constitución 1.29.0) |
 
-## Para el spec: recomendaciones que el dueño confirma junto con las maquetas
+## Para el spec (aprobado por el dueño el 2026-11-14)
 
-| Pregunta | Recomendación |
+| Pregunta | Decisión |
 |---|---|
 | Nombre de la acción y del permiso | Acción «Se acabó» con permiso nuevo `inventory.report_out` («Reportar que algo se acabó o no se encuentra»). Lo traen por omisión los cuatro roles sugeridos, igual que «Se echó a perder» (`inventory.write_off`): quien vende es quien ve que se acabó |
 | Idempotencia en la pantalla | No hay una llave HTTP reutilizable fuera del MCP (que tiene la suya, ligada al token). Se sigue el patrón de `orders.client_uuid`: la pantalla manda una clave por toque, se guarda en el propio reporte con índice único por empresa, y repetirla devuelve el resultado del primero. El índice único del aviso abierto cubre el doble toque con claves distintas |
 | Roles sugeridos con conteo y merma | Medido en el código: `inventory.count`, `inventory.configure` e `inventory.view` solo los traen admin y gerente; `inventory.write_off` los cuatro. Por eso el permiso nuevo es aparte: el cajero reporta «Se acabó» sin poder ajustar existencias ni ver el almacén |
-| Correo de las personas | `users` no tiene columna de correo: solo `recovery_email`, opcional, que hoy usa la recuperación de contraseña. Recomendación: usar ese mismo correo para los avisos (en pantalla, «Correo») en vez de agregar otro; la pantalla de destinatarios dice quién no lo tiene y lleva a capturarlo |
+| Correo de las personas | `users` no tiene columna de correo: solo `recovery_email`, opcional, que hoy usa la recuperación de contraseña. Se usa ese mismo correo para los avisos (en pantalla, «Correo») en vez de agregar otro; la pantalla de destinatarios dice quién no lo tiene y no lo edita (cambiar el correo de recuperación de otra persona sería poder entrar a su cuenta) |
 | Destinatarios por omisión | Quien tiene `inventory.configure` (hoy admin y gerente) y correo. Un rol propio sin ese permiso no recibe nada |
-| Choque con el spec 070 | En el código y en la base todo se llama **notificaciones** (`notifications`), nunca `alerts` ni `alert`: ese paquete ya es de los avisos de error del servidor. En pantalla, la sección de la tarjeta se llama «Alertas» (decisión del dueño) y la campana «Notificaciones» |
+| Choque con el spec 070 | En el código y en la base todo se llama **notificaciones** (`notifications`), nunca `alerts` ni `alert`: ese paquete ya es de los avisos de error del servidor. En pantalla, la sección de la tarjeta se llama «Alertas» (decisión del dueño) y el botón de la campana «Avisos» |
 
 ## User Scenarios & Testing *(mandatory)*
 
