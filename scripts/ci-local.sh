@@ -42,7 +42,8 @@ integration() {
 }
 
 frontend() {
-  cd "$root/web" && bun run lint && bun run vitest run && bun run build
+  cd "$root/web" && bun run lint && bun run vitest run && bun run build &&
+    bun run compilar-correos && git -C "$root" diff --exit-code server/internal/mailtpl
 }
 
 backend >"$logs/backend.log" 2>&1 & b=$!

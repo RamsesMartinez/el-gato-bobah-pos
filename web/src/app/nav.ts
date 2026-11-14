@@ -2,7 +2,7 @@ import type { IconType } from 'react-icons';
 import {
   LuShoppingCart, LuClipboardList, LuWallet, LuHandCoins, LuReceiptText,
   LuPackage, LuChartColumn, LuBookOpenText, LuUsers, LuPalette, LuStore, LuUserCog, LuPrinter, LuBike,
-  LuClock, LuTrash2, LuKeyRound, LuSettings, LuWarehouse,
+  LuClock, LuTrash2, LuKeyRound, LuSettings, LuWarehouse, LuCircleOff,
 } from 'react-icons/lu';
 import type { SessionUser } from '../stores/session';
 import { canOpen } from './routes';
@@ -34,8 +34,8 @@ export interface MenuModule {
 //
 // Menú e Inventario van juntos porque las recetas del menú descuentan del almacén.
 //
-// «Se acabó» (#291) va dentro de Inventario, junto a «Se echó a perder», en cuanto su ruta exista: el
-// dueño decidió que no sea acceso rápido.
+// «Se acabó» (spec 084) va dentro de Inventario, junto a «Se echó a perder»: el dueño decidió que no
+// sea acceso rápido.
 export const MENU_MODULES: MenuModule[] = [
   { id: 'sell', label: 'Vender', icon: LuShoppingCart, items: [{ to: '/pos', label: 'Vender', icon: LuShoppingCart }] },
   { id: 'orders', label: 'Pedidos', icon: LuClipboardList, items: [{ to: '/pedidos', label: 'Pedidos', icon: LuClipboardList }] },
@@ -48,6 +48,7 @@ export const MENU_MODULES: MenuModule[] = [
     { to: '/almacen', label: 'Almacén', icon: LuWarehouse },
     // Por PERMISO y no por la ruta: lo usan cajero y cocina, que no entran a Almacén (spec 039).
     { to: '/merma', label: 'Se echó a perder', icon: LuTrash2, permission: 'inventory.write_off' },
+    { to: '/se-acabo', label: 'Se acabó', icon: LuCircleOff },
   ] },
   { id: 'menu', label: 'Menú', icon: LuBookOpenText, items: [
     { to: '/catalogo', label: 'Menú', icon: LuBookOpenText },

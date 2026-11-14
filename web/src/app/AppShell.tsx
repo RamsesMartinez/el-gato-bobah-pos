@@ -18,6 +18,8 @@ import { useAppUpdate } from '../stores/appUpdate';
 import { visibleModules } from './nav';
 import { MenuRail, RAIL_WIDTH, RAIL_WIDTH_WIDE } from './MenuRail';
 import { PendingWasteBar } from '../features/waste/PendingWasteBar';
+import { Campana } from '../features/notificaciones/Campana';
+import { FranjaDeAgotado } from '../features/notificaciones/FranjaDeAgotado';
 import { railScrollFor } from './railScroll';
 
 // En pantalla ancha y alta el menú se muestra expandido (spec 085, FR-008). El alto manda: medido a
@@ -48,6 +50,7 @@ export function AppShell() {
   const navList = useRef<HTMLDivElement>(null);
   const [moreBelow, setMoreBelow] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
+  const [avisos, setAvisos] = useState(false);
   const measureRail = useCallback(() => {
     const el = navList.current;
     setMoreBelow(!!el && el.scrollHeight - el.scrollTop - el.clientHeight > 4);
@@ -132,11 +135,11 @@ export function AppShell() {
           <LuChevronDown size={14} />
         </Flex>
         <VStack gap={0} flexShrink={0} borderTopWidth="1px" borderColor="whiteAlpha.300" pt={1}>
-          {/* El tema y la campana de notificaciones (#291, otra sesión) comparten renglón: así la
-              campana no le quita alto a los módulos. El hueco existe aunque todavía no haya campana. */}
+          {/* El tema y la campana de avisos (spec 084) comparten renglón: así la campana no le quita
+              alto a los módulos (spec 085). */}
           <HStack gap={0} w="100%">
             <Box flex="1"><TemaRapido /></Box>
-            <Box data-bell-slot flex="1" minH="44px" />
+            <Box data-bell-slot flex="1" minH="44px"><Campana abierto={avisos} setAbierto={setAvisos} /></Box>
           </HStack>
           <Text fontSize="10px" color="gray.400" lineClamp={1} px={1}>{user?.name}</Text>
           {/* 44 px: es un control táctil como cualquier otro, aunque se toque poco. */}
@@ -148,6 +151,7 @@ export function AppShell() {
           su alto a la pantalla en vez de empujarla 44 px fuera de los 600 (spec 039). */}
       <Flex flex="1" minW={0} direction="column">
         <PendingWasteBar />
+        <FranjaDeAgotado onVer={() => setAvisos(true)} />
         {/* tabIndex -1: el menú le pasa el foco al abrir una pantalla desde su panel (spec 085). */}
         <Box data-work-area tabIndex={-1} outline="none" flex="1" minH={0} overflowY="auto">
           <Outlet />

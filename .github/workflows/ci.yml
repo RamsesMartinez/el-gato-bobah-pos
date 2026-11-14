@@ -65,7 +65,7 @@ jobs:
           common='^(\.github/workflows/|scripts/|Makefile$)'
           echo "go=$(touches "$common|^server/|^web/src/")" >> "$GITHUB_OUTPUT"
           echo "integration=$(touches "$common|^server/")" >> "$GITHUB_OUTPUT"
-          echo "web=$(touches "$common|^web/|^docs/tickets/")" >> "$GITHUB_OUTPUT"
+          echo "web=$(touches "$common|^web/|^docs/tickets/|^emails/|^server/internal/mailtpl/")" >> "$GITHUB_OUTPUT"
 
   backend:
     name: Backend (Go)
@@ -281,6 +281,10 @@ jobs:
       # high evita que un aviso low/moderate rompa CI mientras se triagea.
       - name: Audit
         run: bun audit --audit-level=high
+      # Las plantillas de correo (spec 084) se compilan de emails/ a server/internal/mailtpl: la salida
+      # versionada tiene que ser la de la fuente, o el servidor manda un correo que nadie revisó.
+      - name: Plantillas de correo al día
+        run: bun run compilar-correos && git diff --exit-code ../server/internal/mailtpl
 
   # --- Deploy (solo push directo a main, nunca en PRs) ---
   # El front sale DESPUÉS del backend, a propósito.

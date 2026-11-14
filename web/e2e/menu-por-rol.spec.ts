@@ -162,7 +162,7 @@ test('cada ruta de hoy abre por URL directa', async ({ page }) => {
     ['/pos', /\/pos$/, 'Vender'], ['/pedidos', /\/pedidos$/, 'Pedidos'], ['/caja', /\/caja$/, 'Caja'],
     ['/caja/administrar', /\/caja\/administrar$/, 'Caja'], ['/ventas', /\/ventas$/, 'Caja'], ['/gastos', /\/gastos$/, 'Caja'],
     ['/almacen', /\/almacen$/, 'Inventario'], ['/almacen?tab=conteo', /\/almacen\?tab=conteo$/, 'Inventario'],
-    ['/merma', /\/merma$/, 'Inventario'], ['/catalogo', /\/catalogo\/productos$/, 'Menú'],
+    ['/merma', /\/merma$/, 'Inventario'], ['/se-acabo', /\/se-acabo$/, 'Inventario'], ['/catalogo', /\/catalogo\/productos$/, 'Menú'],
     ['/productos', /\/catalogo\/productos$/, 'Menú'], ['/opciones', /\/catalogo\/opciones$/, 'Menú'],
     ['/plataformas', /\/plataformas$/, 'Menú'], ['/empleados', /\/empleados$/, 'Personal'],
     ['/reportes', /\/reportes$/, 'Reportes'], ['/negocio', /\/negocio$/, 'Ajustes'],

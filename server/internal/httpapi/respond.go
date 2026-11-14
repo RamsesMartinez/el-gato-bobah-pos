@@ -58,6 +58,19 @@ func Error(w http.ResponseWriter, err error) {
 	msg := err.Error()
 
 	switch {
+	// «Se acabó» (spec 084): la pantalla decide por el código qué mostrar.
+	case errors.Is(err, domain.ErrReportLimit):
+		status, code = http.StatusTooManyRequests, "REPORT_LIMIT"
+	case errors.Is(err, domain.ErrUndoExpired):
+		status, code = http.StatusConflict, "UNDO_EXPIRED"
+	case errors.Is(err, domain.ErrUndoAfterMovement):
+		status, code = http.StatusConflict, "UNDO_AFTER_MOVEMENT"
+	case errors.Is(err, domain.ErrNotificationClosed):
+		status, code = http.StatusConflict, "NOTIFICATION_CLOSED"
+	case errors.Is(err, domain.ErrAlreadyReportedByYou):
+		status, code = http.StatusConflict, "ALREADY_REPORTED"
+	case errors.Is(err, domain.ErrClientKeyReused):
+		status, code = http.StatusConflict, "CLIENT_KEY_REUSED"
 	// Roles por empresa (spec 068): envuelven ErrConflict; la pantalla distingue cada caso.
 	case errors.Is(err, domain.ErrRoleNameTaken):
 		status, code = http.StatusConflict, "ROLE_NAME_TAKEN"
@@ -331,6 +344,9 @@ func Error(w http.ResponseWriter, err error) {
 		// 501 y no 500: la extracción de documentos es opcional y no está configurada. Distinguirlo
 		// permite al front ofrecer la captura manual en vez de mostrar "error del servidor".
 		status, code = http.StatusNotImplemented, "NOT_CONFIGURED"
+	case errors.Is(err, app.ErrMailDisabled):
+		// Igual que la extracción: el correo es opcional en un servidor; la pantalla lo dice en palabras.
+		status, code, msg = http.StatusNotImplemented, "NOT_CONFIGURED", "Este servidor no tiene correo configurado"
 	}
 
 	if status == http.StatusInternalServerError {

@@ -381,6 +381,11 @@ func (s *BackofficeService) UpdateArticle(ctx context.Context, id int64, in Arti
 		}
 		if !sameDec(before.MinStock, minStock) {
 			was["minStock"], now["minStock"] = before.MinStock, minStock
+			// El mínimo cambió sin movimiento: el trigger no lo ve (spec 084). También desde la ficha
+			// anterior y el MCP, que guardan por aquí.
+			if err := evaluateEverywhere(ctx, q, "ingrediente", &id, nil); err != nil {
+				return err
+			}
 		}
 		if len(now) == 0 {
 			return nil
@@ -713,6 +718,10 @@ func (s *BackofficeService) ArchiveArticle(ctx context.Context, id int64, confir
 		if err := q.SetArticleActive(ctx, db.SetArticleActiveParams{ID: id, Active: false}); err != nil {
 			return err
 		}
+		// Archivado no avisa: cierra lo abierto (spec 084).
+		if err := evaluateEverywhere(ctx, q, "ingrediente", &id, nil); err != nil {
+			return err
+		}
 		return recordAudit(ctx, q, domain.AuditEvent{
 			Action: domain.AuditIngredientArchived, EntityType: "ingredient", EntityID: id,
 			Before: map[string]any{"active": true}, After: map[string]any{"active": false, "onHand": check.OnHand, "pendingReceipts": check.PendingReceipts},
@@ -757,6 +766,9 @@ func (s *BackofficeService) ReactivateArticle(ctx context.Context, id int64) err
 			return err
 		}
 		if err := q.SetArticleActive(ctx, db.SetArticleActiveParams{ID: id, Active: true}); err != nil {
+			return err
+		}
+		if err := evaluateEverywhere(ctx, q, "ingrediente", &id, nil); err != nil {
 			return err
 		}
 		return recordAudit(ctx, q, domain.AuditEvent{

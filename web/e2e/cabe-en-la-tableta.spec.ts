@@ -5,10 +5,11 @@ import {
   abrirTicket, alto, botonCobrar, botonEnviar, crearCuentaPorApi, cuentaNueva, entrar, fichas, fila,
   ponerUnProducto, productoPorNombre,
 } from './pos';
+import { ALTO, ALTO_CON_TECLADO, ANCHO } from './pantalla';
 
 // LO QUE SE AGREGA TIENE QUE CABER EN LA TABLETA (SC-004).
 //
-// El presupuesto real es 1024×600 y el alto es lo que escasea: cada control que se agrega se lo
+// El presupuesto real es 1280×854 (e2e/pantalla.ts) y el alto es lo que escasea: cada control que se agrega se lo
 // quita a lo que el operador vino a leer. Es un requisito funcional del producto y se olvida solo,
 // así que se mide en vez de recordarse. Vitest no puede: las medidas de Chakra son clases CSS que
 // jsdom no resuelve. Aquí hay un navegador de verdad.
@@ -19,7 +20,7 @@ async function altoDeLaHoja(page: Page) {
   return Math.round((await page.locator('[role="dialog"]').last().boundingBox())?.height ?? 0);
 }
 
-test('E7 · la hoja de cobro cabe en 600 px, con y sin repartir', async ({ page }) => {
+test('E7 · la hoja de cobro cabe en el alto de la pantalla, con y sin repartir', async ({ page }) => {
   await entrar(page);
   await ponerUnProducto(page);
   await abrirTicket(page);
@@ -29,15 +30,15 @@ test('E7 · la hoja de cobro cabe en 600 px, con y sin repartir', async ({ page 
   // operador nunca ve.
   await expect(page.getByRole('button', { name: 'Efectivo' })).toBeVisible({ timeout: 30_000 });
   const sinRepartir = await altoDeLaHoja(page);
-  expect(sinRepartir, 'la hoja no cabe en la tableta sin repartir').toBeLessThanOrEqual(600);
+  expect(sinRepartir, 'la hoja no cabe en la tableta sin repartir').toBeLessThanOrEqual(ALTO);
 
   await page.getByRole('button', { name: /Dividir/ }).click();
   const repartiendo = await altoDeLaHoja(page);
-  expect(repartiendo, 'la hoja no cabe en la tableta al repartir').toBeLessThanOrEqual(600);
+  expect(repartiendo, 'la hoja no cabe en la tableta al repartir').toBeLessThanOrEqual(ALTO);
   // El repartidor no es gratis, y por eso no vive abierto.
   expect(repartiendo - sinRepartir,
     'el repartidor dejó de costar alto: ¿volvió a estar siempre abierto?').toBeGreaterThan(40);
-  console.log(`[e2e] hoja de cobro: ${sinRepartir}px sin repartir, ${repartiendo}px repartiendo, de 600px`);
+  console.log(`[e2e] hoja de cobro: ${sinRepartir}px sin repartir, ${repartiendo}px repartiendo, de ${ALTO}px`);
 });
 
 // X7 · LOS CONTROLES DEL RENGLÓN NUEVO MIDEN 44 PX Y LA PAPELERA VA APARTE.
@@ -77,7 +78,7 @@ test('X7 · los controles del renglón del ticket miden 44 px y la papelera va a
 //
 // Con una sola puerta, «Enviar y cobrar» manda a cocina antes de abrir la hoja: el papel ya es el
 // de un pedido, con su número. El botón «Cuenta» mide 44 px.
-test('T-cuenta · el papel de la cuenta sale desde el cobro y la hoja cabe en 600 px', async ({ page }) => {
+test('T-cuenta · el papel de la cuenta sale desde el cobro y la hoja cabe en el alto de la pantalla', async ({ page }) => {
   await entrar(page);
   await ponerUnProducto(page);
   await abrirTicket(page);
@@ -85,7 +86,7 @@ test('T-cuenta · el papel de la cuenta sale desde el cobro y la hoja cabe en 60
   await expect(page.getByRole('button', { name: 'Efectivo' })).toBeVisible({ timeout: 30_000 });
 
   const altoHoja = await altoDeLaHoja(page);
-  expect(altoHoja, 'la hoja de cobro dejó de caber en la tableta').toBeLessThanOrEqual(600);
+  expect(altoHoja, 'la hoja de cobro dejó de caber en la tableta').toBeLessThanOrEqual(ALTO);
   const boton = page.getByRole('dialog').last().getByRole('button', { name: /^Cuenta$/ });
   const caja = await boton.boundingBox();
   expect(caja!.height, `el botón mide ${caja!.height}px y el piso es 44`).toBeGreaterThanOrEqual(44);
@@ -114,11 +115,11 @@ test('E7 bis · por productos, con efectivo y propina, Cobrar sigue a la vista',
 
   const cobrar = hoja.getByRole('button', { name: /^Cobrar/ });
   const altoHoja = Math.round((await hoja.boundingBox())?.height ?? 0);
-  expect(altoHoja, 'la hoja por productos no cabe en 600 px').toBeLessThanOrEqual(600);
+  expect(altoHoja, 'la hoja por productos no cabe en el alto de la pantalla').toBeLessThanOrEqual(ALTO);
   await expect(cobrar).toBeInViewport();
-  await page.setViewportSize({ width: 1024, height: 330 });
+  await page.setViewportSize({ width: ANCHO, height: ALTO_CON_TECLADO });
   await expect(cobrar, 'con el teclado abierto, «Cobrar» salió de la pantalla').toBeInViewport();
-  await page.setViewportSize({ width: 1024, height: 600 });
+  await page.setViewportSize({ width: ANCHO, height: ALTO });
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -157,7 +158,7 @@ test('F2 · la hoja «+N» cabe y sus renglones miden 56 px', async ({ page }) =
   await page.getByRole('button', { name: /^Ver todas las cuentas/ }).click();
   const hoja = page.getByRole('dialog').last();
   await expect(hoja.getByText('Cuentas', { exact: true })).toBeVisible({ timeout: 20_000 });
-  expect(Math.round((await hoja.boundingBox())?.height ?? 0)).toBeLessThanOrEqual(600);
+  expect(Math.round((await hoja.boundingBox())?.height ?? 0)).toBeLessThanOrEqual(ALTO);
   const renglon = hoja.getByRole('button', { name: / · / }).first();
   if (await renglon.isVisible().catch(() => false)) {
     expect((await renglon.boundingBox())!.height).toBeGreaterThanOrEqual(56);
@@ -193,7 +194,7 @@ test('F3 · el ticket con las tres secciones deja ver renglones y el pie', async
   let visibles = 0;
   for (let i = 0; i < await renglones.count(); i++) {
     const c = await renglones.nth(i).boundingBox();
-    if (c && c.y >= 0 && c.y + c.height <= 600) visibles++;
+    if (c && c.y >= 0 && c.y + c.height <= ALTO) visibles++;
   }
   expect(visibles, `solo se ven ${visibles} renglones del ticket`).toBeGreaterThanOrEqual(4);
   await expect(botonCobrar(page)).toBeInViewport();

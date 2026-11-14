@@ -34,6 +34,8 @@ const PANTALLAS: Array<[RegExp, string]> = [
   // Interfaz e Integraciones (spec 085): también en `pantallasMedibles` y `permissionByScreen`.
   [/^\/apariencia/, 'apariencia'],
   [/^\/integraciones/, 'integraciones'],
+  // «Se acabó» (spec 084), ya en el menú dentro de Inventario (spec 085).
+  [/^\/se-acabo/, 'se-acabo'],
 ];
 
 // pantallaDe traduce una ruta al nombre que se mide, o `null` si esa ruta no se mide.

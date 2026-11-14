@@ -195,3 +195,10 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   (`/stock/articles?status=archived`, `inventory.view`): un rol que solo captura compras recibe una
   nota en vez de una lista que callaría a los inactivos. Sin el parámetro, la búsqueda es la de la
   captura de compras, que a propósito no ofrece archivados.
+
+- **`inventory.report_out` (spec 084, id 38)**: «Se acabó», «No lo encuentro», la campana y la
+  franja. Llega por herencia a los cuatro roles sugeridos (lo puede usar cualquiera que esté en el
+  local); a los roles propios de cada empresa, no. Configurar alertas, destinatarios y la lista de
+  compra cuelgan de los permisos de almacén que ya existían (`inventory.configure`,
+  `inventory.view`). Quién recibe por correo sigue al permiso `inventory.configure` más los correos
+  extra; nunca al nombre de un rol.

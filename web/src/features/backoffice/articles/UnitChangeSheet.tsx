@@ -9,7 +9,7 @@ import { backofficeApi, type ArticleSheet, type UnitChangeBody, type UnitChangeP
 import { densityWords } from '../expenseDraft';
 import { ApiError } from '../../../api/client';
 import { toaster } from '../../../components/ui/toaster';
-import { BIG, KINDS, SMALL, type Kind } from './articleUnits';
+import { BIG, KINDS, SMALL, type Kind } from '../../../shared/articleUnits';
 
 // Cambiar en qué se mide (spec 042, US5, maqueta de la ficha y revisión de tableta A4). Dos pasos: la
 // clase nueva con su equivalencia, y la revisión de cada cantidad convertida, con el botón de

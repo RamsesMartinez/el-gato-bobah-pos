@@ -5,7 +5,7 @@ import { expect, type Page } from '@playwright/test';
 export const MODULO_DE: Record<string, string> = {
   Vender: 'Vender', Pedidos: 'Pedidos',
   Caja: 'Caja', Ventas: 'Caja', Gastos: 'Caja',
-  Almacén: 'Inventario', 'Se echó a perder': 'Inventario',
+  Almacén: 'Inventario', 'Se echó a perder': 'Inventario', 'Se acabó': 'Inventario',
   Menú: 'Menú', Plataformas: 'Menú',
   Asistencia: 'Personal', Empleados: 'Personal',
   Reportes: 'Reportes',

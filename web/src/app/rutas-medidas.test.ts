@@ -6,6 +6,8 @@ import { pantallaDe } from './rutas-medidas';
 test.each([
   ['/apariencia', 'apariencia'],
   ['/integraciones', 'integraciones'],
+  // «Se acabó» (spec 084) entró al menú dentro de Inventario: su apertura también se mide.
+  ['/se-acabo', 'se-acabo'],
 ])('%s se mide como %s', (ruta, nombre) => {
   expect(pantallaDe(ruta)).toBe(nombre);
 });

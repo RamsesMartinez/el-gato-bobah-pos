@@ -100,6 +100,20 @@ type ArticleAltNames struct {
 func (s *BackofficeService) SetArticleAltNames(ctx context.Context, id int64, names []string, expected time.Time) (ArticleAltNames, error) {
 	var out ArticleAltNames
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		var err error
+		out, err = setArticleAltNamesIn(ctx, q, id, func([]string) []string { return names }, &expected)
+		return err
+	})
+	return out, err
+}
+
+// setArticleAltNamesIn guarda los otros nombres de un artículo dentro de una transacción ajena, bajo
+// el candado de nombres y con la regla de choque de siempre. names recibe la lista de hoy y devuelve
+// la nueva; expected nil no compara versión (agregar un nombre desde «No lo encuentro» parte de la
+// lista leída bajo el candado, así que no pisa nada).
+func setArticleAltNamesIn(ctx context.Context, q *db.Queries, id int64, names func([]string) []string, expected *time.Time) (ArticleAltNames, error) {
+	var out ArticleAltNames
+	err := func() error {
 		if err := q.LockIngredientNames(ctx); err != nil {
 			return err
 		}
@@ -107,10 +121,10 @@ func (s *BackofficeService) SetArticleAltNames(ctx context.Context, id int64, na
 		if err != nil {
 			return notFound(err)
 		}
-		if !art.UpdatedAt.Equal(expected) {
+		if expected != nil && !art.UpdatedAt.Equal(*expected) {
 			return domain.ErrArticleStale
 		}
-		clean, err := domain.CleanAltNames(art.Name, names)
+		clean, err := domain.CleanAltNames(art.Name, names(art.AltNames))
 		if err != nil {
 			return err
 		}
@@ -138,7 +152,7 @@ func (s *BackofficeService) SetArticleAltNames(ctx context.Context, id int64, na
 			Action: domain.AuditIngredientUpdated, EntityType: "ingredient", EntityID: id,
 			Before: map[string]any{"altNames": before}, After: map[string]any{"altNames": clean},
 		})
-	})
+	}()
 	return out, err
 }
 

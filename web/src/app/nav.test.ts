@@ -3,7 +3,8 @@ import { MENU_MODULES, visibleModules, moduleOf } from './nav';
 import type { SessionUser } from '../stores/session';
 import type { Permission } from './permissions';
 
-// Los permisos que traen hoy los roles sugeridos (0108, más integrations.manage del admin en 0111).
+// Los permisos que traen hoy los roles sugeridos (0108, más integrations.manage del admin en 0111 e
+// inventory.report_out de los cuatro en la 084).
 // La prueba pregunta por permisos: el nombre del rol solo da nombre al caso.
 const GERENTE: Permission[] = ['payments.void', 'orders.cancel', 'orders.move_lines', 'orders.cancel_pending',
   'attendance.report', 'attendance.correct_others', 'audit.view', 'payments.change_terminal', 'cash.configure',
@@ -11,12 +12,12 @@ const GERENTE: Permission[] = ['payments.void', 'orders.cancel', 'orders.move_li
   'inventory.write_off', 'inventory.write_off_approve', 'inventory.view', 'cash.close_without_clock_out',
   'cash.adjust_count', 'expenses.cancel', 'orders.delivered_view', 'cash.operate', 'orders.platform_ref',
   'platform_prices.capture', 'sales.view', 'platform_settlements.capture', 'reports.view', 'expenses.capture',
-  'platforms.configure', 'business.configure'];
+  'platforms.configure', 'business.configure', 'inventory.report_out'];
 const ADMIN: Permission[] = [...GERENTE, 'employees.manage', 'roles.manage', 'integrations.manage',
   'attendance.configure', 'attendance.correct_own', 'expenses.edit'];
 const CAJERO: Permission[] = ['orders.move_lines', 'orders.cancel_pending', 'inventory.write_off',
-  'orders.delivered_view', 'cash.operate', 'orders.platform_ref', 'platform_prices.capture'];
-const MESERO: Permission[] = ['orders.move_lines', 'orders.cancel_pending', 'inventory.write_off'];
+  'orders.delivered_view', 'cash.operate', 'orders.platform_ref', 'platform_prices.capture', 'inventory.report_out'];
+const MESERO: Permission[] = ['orders.move_lines', 'orders.cancel_pending', 'inventory.write_off', 'inventory.report_out'];
 
 const user = (permissions: Permission[]) => ({ id: 1, name: 'X', role: '', permissions }) as unknown as SessionUser;
 const ver = (permissions: Permission[], attendanceEnabled = true) =>
@@ -28,7 +29,7 @@ describe('el menú en dos niveles', () => {
     expect(ver(ADMIN)).toEqual({
       Vender: ['Vender'], Pedidos: ['Pedidos'],
       Caja: ['Caja', 'Ventas', 'Gastos'],
-      Inventario: ['Almacén', 'Se echó a perder'],
+      Inventario: ['Almacén', 'Se echó a perder', 'Se acabó'],
       Menú: ['Menú', 'Plataformas'],
       Personal: ['Asistencia', 'Empleados'],
       Reportes: ['Reportes'],
@@ -46,7 +47,7 @@ describe('el menú en dos niveles', () => {
   it('el cajero ve seis, y Caja con un solo destino', () => {
     expect(ver(CAJERO)).toEqual({
       Vender: ['Vender'], Pedidos: ['Pedidos'], Caja: ['Caja'],
-      Inventario: ['Se echó a perder'], Personal: ['Asistencia'], Ajustes: ['Interfaz', 'Mi cuenta'],
+      Inventario: ['Se echó a perder', 'Se acabó'], Personal: ['Asistencia'], Ajustes: ['Interfaz', 'Mi cuenta'],
     });
   });
 
@@ -65,6 +66,12 @@ describe('el menú en dos niveles', () => {
     expect(ver(['sales.view'] as Permission[], false)).toEqual({
       Vender: ['Vender'], Pedidos: ['Pedidos'], Caja: ['Ventas'], Ajustes: ['Interfaz', 'Mi cuenta'],
     });
+  });
+
+  // «Se acabó» (spec 084) cuelga de su propio permiso, no del de Almacén ni del de merma: un rol propio
+  // que solo reporta faltantes ve Inventario con ese único destino, y el riel lo abre directo.
+  it('un rol propio con solo «reportar que se acabó» ve Inventario con Se acabó', () => {
+    expect(ver(['inventory.report_out'] as Permission[], false).Inventario).toEqual(['Se acabó']);
   });
 
   it('sin permisos, solo lo que abre cualquier sesión', () => {
@@ -86,7 +93,7 @@ describe('el menú en dos niveles', () => {
   it('los destinos son las rutas de siempre', () => {
     expect(MENU_MODULES.flatMap((m) => m.items.map((i) => i.to)).sort()).toEqual([
       '/almacen', '/apariencia', '/asistencia', '/caja', '/catalogo', '/cuenta', '/empleados', '/gastos',
-      '/impresion', '/integraciones', '/merma', '/negocio', '/pedidos', '/plataformas', '/pos', '/reportes', '/ventas',
+      '/impresion', '/integraciones', '/merma', '/negocio', '/pedidos', '/plataformas', '/pos', '/reportes', '/se-acabo', '/ventas',
     ]);
   });
 
@@ -99,6 +106,7 @@ describe('el menú en dos niveles', () => {
     ['/catalogo/productos', 'menu', '/catalogo'],
     ['/plataformas/3/emparejar', 'menu', '/plataformas'],
     ['/merma', 'inventory', '/merma'],
+    ['/se-acabo', 'inventory', '/se-acabo'],
     ['/apariencia', 'settings', '/apariencia'],
   ])('%s abre dentro de %s', (path, moduleId, itemTo) => {
     expect(moduleOf(path)).toEqual({ moduleId, itemTo });

@@ -75,6 +75,10 @@ var pantallasMedibles = map[string]struct{}{
 	// Interfaz e Integraciones (spec 085): el menú nuevo las movió a Ajustes y no se medían.
 	"apariencia":    {},
 	"integraciones": {},
+	// «Se acabó» (spec 084).
+	"se-acabo": {},
+	// La campana de avisos (spec 084).
+	"avisos": {},
 }
 
 // accionesMedibles son las acciones con nombre que vale la pena contar, por pantalla.
@@ -100,6 +104,8 @@ var accionesMedibles = map[string]map[string]struct{}{
 		"ver-por-recibir": {}, "recibir": {}, "ver-conteo": {}, "cerrar-conteo": {},
 		// Spec 039: la pestaña de lo que se echó a perder y el faltante de un conteo.
 		"ver-merma": {}, "ver-faltante": {},
+		// Spec 084: guardar las alertas de un artículo y las de varios a la vez.
+		"alertas": {}, "alertas-lote": {}, "destinatarios": {}, "enviar-lista": {},
 		// Spec 042: los artículos del almacén y su ficha.
 		"ver-articulos": {}, "crear-articulo": {}, "editar-articulo": {}, "corregir-costo": {},
 		"archivar-articulo": {}, "cambiar-unidad": {},
@@ -109,7 +115,9 @@ var accionesMedibles = map[string]map[string]struct{}{
 	},
 	// Lo que se echó a perder (spec 039). Aprobar y rechazar se hacen en la hoja de la franja, que
 	// se abre sobre cualquier pantalla: se cuentan aquí para no repartirlas entre pantallas.
-	"merma": {"registrar": {}, "deshacer": {}, "aprobar": {}, "rechazar": {}},
+	"merma":    {"registrar": {}, "deshacer": {}, "aprobar": {}, "rechazar": {}},
+	"se-acabo": {"reportar": {}, "confirmar": {}, "no-lo-encuentro": {}, "deshacer": {}},
+	"avisos":   {"abrir": {}, "arrived": {}, "dismiss": {}, "alias": {}, "created": {}},
 }
 
 // maxNombreDePantalla y maxNombreDeAccion son el espejo de los `check` de la migración 0069.
@@ -167,6 +175,8 @@ var permissionByScreen = map[string]Permission{
 	"merma":         PermInventoryWriteOff,
 	"apariencia":    "",
 	"integraciones": PermIntegrationsManage,
+	"se-acabo":      PermInventoryReportOut,
+	"avisos":        PermInventoryReportOut,
 }
 
 // ScreenAllowed dice si quien tiene esos permisos puede siquiera abrir esa pantalla.

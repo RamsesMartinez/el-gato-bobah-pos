@@ -285,7 +285,9 @@ func TestEachSuggestedRoleMeasuresTheSameScreensAsBefore(t *testing.T) {
 		"inventario": {RoleAdmin, RoleGerente}, "catalogo": {RoleAdmin, RoleGerente}, "usuarios": {RoleAdmin},
 		"negocio": {RoleAdmin, RoleGerente}, "impresion": {RoleAdmin, RoleGerente}, "plataformas": {RoleAdmin, RoleGerente},
 		"emparejar": {RoleAdmin, RoleGerente}, "asistencia": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
-		"merma": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+		"merma":    {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+		"se-acabo": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+		"avisos":   {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
 	}
 	for pantalla, roles := range antes {
 		for _, r := range []Role{RoleAdmin, RoleGerente, RoleCajero, RoleMesero} {
@@ -325,6 +327,15 @@ func TestInterfaceAndIntegrationsAreMeasured(t *testing.T) {
 		}
 		if got, want := ScreenAllowed("integraciones", PermissionsFor(r)), r == RoleAdmin; got != want {
 			t.Errorf("%s mide Integraciones = %v, quiere %v (solo con integrations.manage)", r, got, want)
+		}
+	}
+}
+
+// «Se acabó» (spec 084) se mide: los cuatro roles reportan, y sus cuatro acciones cuentan.
+func TestOutReportsAreMeasured(t *testing.T) {
+	for _, a := range []string{"reportar", "confirmar", "no-lo-encuentro", "deshacer"} {
+		if !EventoDeUsoValido("se-acabo", a) {
+			t.Errorf("la acción %q de «Se acabó» no se cuenta", a)
 		}
 	}
 }
