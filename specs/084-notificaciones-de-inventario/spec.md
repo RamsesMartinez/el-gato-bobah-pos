@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-14
 
-**Status**: Aprobado (maquetas y «Para el spec» elegidos por el dueño el 2026-11-14)
+**Status**: Aprobado (maquetas v2 y «Para el spec» confirmados por el dueño el 2026-11-14)
 
 **Input**: Issue #291 (lo subió el dueño el 2026-11-14 con sus decisiones del 13-nov). Relacionados:
 #65 (más de un almacén), #271, #277, #289, #290, #293 (menú en dos niveles, otra sesión).
@@ -340,7 +340,7 @@ enteros con su explicación; uno sin consumo medido lo dice y no sugiere cantida
 - **FR-014**: MUST existir una pantalla «Se acabó» en el módulo de Inventario, junto a «Se echó a
   perder», visible por el permiso nuevo, con búsqueda grande que encuentra por nombre y otros
   nombres sin distinguir acentos ni plural, mosaicos de lo más reportado y lo reciente, confirmación
-  de un toque y «Deshacer» visible entre 60 y 90 s.
+  con un segundo toque sobre el mismo artículo, y «Deshacer» visible 90 s.
 - **FR-015**: «Se acabó» MUST dejar la existencia del artículo en 0 con un ajuste de motivo fijo, MUST
   NOT aceptar cantidad, MUST abrir el aviso y auditar, todo en una sola operación, y el ajuste MUST
   NOT contar como consumo.
@@ -421,7 +421,7 @@ enteros con su explicación; uno sin consumo medido lo dice y no sugiere cantida
 
 - **SC-001**: Desde que el cajero toca «Se acabó» hasta que el aviso aparece en la campana de otra
   persona pasan menos de 5 segundos, y el correo sale en menos de 5 minutos.
-- **SC-002**: Reportar «Se acabó» de un artículo conocido cuesta 3 toques o menos desde la pantalla.
+- **SC-002**: Reportar «Se acabó» de un artículo de los mosaicos cuesta 2 toques; uno que hay que buscar, escribir parte del nombre y 2 toques.
 - **SC-003**: Dos operaciones simultáneas que cruzan el mismo mínimo producen exactamente un aviso en
   el 100 % de las corridas de prueba.
 - **SC-004**: Ninguna venta ni compra falla por culpa de un aviso, incluso forzando la falla.

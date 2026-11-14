@@ -142,14 +142,27 @@ una `failed` o una `pending` de más de 10 min.
 
 ## 9. Funciones y trigger
 
-- `evaluate_low_stock(p_branch bigint, p_type stock_item_type, p_ingredient bigint, p_product bigint)
-  returns void` — `security invoker`, lee la empresa de `app.company_id`. Abre/cierra `stock_low` y
+- `evaluate_low_stock(p_company bigint, p_branch bigint, p_type stock_item_type, p_ingredient bigint,
+  p_product bigint) returns void` — `security invoker`; la empresa y la sucursal llegan explícitas
+  (del movimiento), nunca de la sesión: un camino con `app.company_id` vacío no pierde el aviso.
+  `revoke execute from public`, `grant execute to gatobobah_app`. Sale sin hacer nada si el artículo
+  está inactivo o es origen de una unión. Abre/cierra `stock_low` y
   `stock_out` del sistema y cierra el `stock_out` manual cuando la existencia pasa de 0. Termina con
   `pg_notify('notifications', company_id::text)` si cambió algo.
 - `notify_stock_movement()` + trigger `trg_stock_movement_notify` AFTER INSERT en `stock_movements`:
-  sale de inmediato si `replacement_id` no es nulo, o si el artículo no tiene alerta ni aviso abierto;
-  si no, llama a la función dentro de `begin … exception when others then raise warning` (la venta
-  nunca falla por el aviso).
+  sale de inmediato si `replacement_id` no es nulo. Si no, **una sola sentencia** (left join de
+  artículo, `branch_stock_minimums` y los avisos abiertos) calcula si el estado que debería haber
+  difiere del que hay; solo entonces entra al bloque `begin … exception when others then raise
+  warning` y llama a la función. Un artículo ya bajo el mínimo con su aviso abierto (el caso de cada
+  venta en una mala racha) **no abre subtransacción**: con más de 64 vivas en una sesión, todas las
+  sesiones pasan a leer `pg_subtrans` y la base entera se alenta en hora pico. Como la regla es por
+  estado y no por cruce, un aviso que se perdió por una falla se corrige en el siguiente movimiento
+  (y en el barrido del resumen de la mañana).
+- `pg_notify('notifications', company_id)` solo cuando se abre o se cierra algo: un `NOTIFY` toma al
+  confirmar un candado global de la cola, y hacerlo en cada venta serializaría los cobros.
+- La migración crea el trigger con `set local lock_timeout = '3s'` (toma `ShareRowExclusive` sobre
+  `stock_movements` un instante, con el negocio operando). Un test lee `pg_trigger` y fija el orden:
+  `trg_stock_movement` antes que `trg_stock_movement_notify`.
 
 ## 10. Permiso y bitácora
 
@@ -159,8 +172,56 @@ una `failed` o una `pending` de más de 10 min.
   merma), `stock.low_stock_configured` y `notification.recipients_changed` (grupo `price`, como la
   configuración del almacén), `notification.resolved`.
 
+## Llaves foráneas (revisión de arquitectura, 2026-11-14)
+
+| Hija → padre | Tipo | ON DELETE | Por qué |
+|---|---|---|---|
+| todas → `companies` | `company_id` | cascade | Borrar una empresa borra sus avisos; no son contables |
+| `notifications`, `stock_out_reports`, `branch_stock_minimums` → `branches` | `(company_id, branch_id)` | no action | Una sucursal con avisos no se borra en silencio |
+| `notifications`, `stock_out_reports`, `branch_stock_minimums` → `ingredients` / `products` | `(company_id, id)` | no action | Los artículos se archivan, no se borran; un borrado debe tronar |
+| `notifications.opened_by`, `resolved_by`, `stock_out_reports.reported_by`, `notification_reads.user_id`, `notification_recipients.user_id`, `*.updated_by` → `users` | `(company_id, id)` | no action | Nulo en `opened_by` significa «el sistema», nunca «se borró la persona» |
+| `notification_reads`, `stock_out_reports` → `notifications` | `(company_id, id)` | cascade en reads, no action en reportes | Lo leído no vale sin el aviso; un reporte es un hecho con su ajuste |
+| `notifications.email_send_id` → `notification_email_sends` | `(company_id, id)` | set null | El aviso sobrevive al registro del envío |
+| `stock_out_reports.movement_id`, `undo_movement_id` → `stock_movements` | `id` simple | no action | `stock_movements` no tiene `unique(company_id, id)` y crearlo en la tabla más grande no compra nada: se escribe bajo RLS |
+
+Nombres explícitos para cada índice y constraint (`branch_stock_minimums_ingredient_key`, …): la
+futura columna de almacén (#65) los reconstruye por nombre. Los únicos de `branch_stock_minimums` no
+llevan `company_id` a propósito, como `stock_levels`: sucursal e insumo son identidades que ya son de
+una sola empresa (comentario en el SQL).
+
+Índices además de los de arriba: `notifications (company_id, branch_id, item_key)` (cerrar todo lo de
+un artículo), `notifications (company_id, opened_at desc) where status = 'open'` y otro igual para
+cerradas, `notifications (email_send_id)`, `notification_reads (company_id, user_id)`,
+`stock_out_reports (company_id, notification_id)`, `(company_id, ingredient_id)`,
+`(company_id, product_id)`.
+
+Snapshot al abrir: `notifications.item_name text` y `notifications.unit_code text` (nulos en
+`not_found`): un aviso viejo dice lo que decía aunque el artículo se renombre o cambie de unidad.
+
+Unión (0104): `stock_out_reports` y `branch_stock_minimums` llevan las dos guardas
+(`*_merged_guard` inmediata y `*_merged_check` diferida); `notifications` no las necesita porque
+`evaluate_low_stock` sale con un origen de unión y la unión cierra sus avisos (`merged`).
+
+Cambio de unidad: cierra los avisos abiertos del artículo (`unit_changed`, motivo nuevo en el
+`check`) y evalúa al final, ya convertidos `min_stock`, `branch_stock_minimums` y existencias.
+
+`resolved_reason` agrega `unit_changed`; la lista vive también en `domain` con test de paridad
+contra el `check`.
+
+Clasificación del respaldo anónimo: `query_text`, `notification_recipients.email`, `item_name` se
+borran (paso 5); `last_error`, `period_key`, `unit_code` y los tipos y estados van a
+`noPersonalData` con su porqué.
+
+Grants: `notifications` select/insert/update; `notification_reads` select/insert/update;
+`stock_out_reports` select/insert/update; `notification_recipients` y `branch_stock_minimums`
+select/insert/update/delete; `notification_email_sends` select/insert/update. Ninguno con delete en
+avisos ni reportes: se cierran por estado.
+
 ## Down
 
 Se niega si hay filas en `notifications`, `stock_out_reports`, `notification_recipients` o
-`branch_stock_minimums` (perdería avisos y configuración). Sin datos: quita trigger, funciones,
-tablas, columnas, el permiso y sus filas. Su renglón en `guardedDownCleanup`.
+`branch_stock_minimums`, si algún artículo tiene alertas encendidas, días de cobertura o la pregunta
+respondida, o si la hora del resumen no es 08:00 (perdería avisos y configuración). Sin datos, en
+orden: trigger, funciones, tablas hijas, `notifications`, columnas, y el permiso 38 (primero
+`role_permission_overrides`, luego `system_role_permissions`, luego `permissions`). Su renglón en
+`guardedDownCleanup` borra también los overrides del permiso.

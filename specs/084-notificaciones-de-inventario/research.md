@@ -22,7 +22,7 @@ Hechos medidos en el código (2026-11-14) y la decisión que sale de cada uno.
 ## R2. Concurrencia
 
 - **Decisión**: índice único parcial `notifications (company_id, branch_id, item_key, kind) where
-  status = 'open'` e `insert … on conflict do nothing`. Dos ventas que cruzan el mismo mínimo ya se
+  status = 'open' and kind <> 'not_found'` e `insert … on conflict do nothing`. Dos ventas que cruzan el mismo mínimo ya se
   serializan en la fila de `stock_levels`; la segunda ve el aviso de la primera o choca en el índice.
   Prueba con dos conexiones bajo `appRoleStore`.
 
@@ -110,3 +110,18 @@ Hechos medidos en el código (2026-11-14) y la decisión que sale de cada uno.
   solo lee conexiones y plataformas.
 - **Decisión**: las tablas nuevas llevan su `grant` explícito a `gatobobah_app`; el trigger corre con
   el rol de quien inserta (`security invoker`), así que RLS lo acota a la empresa de la sesión.
+
+## R12. Orden de candados (revisión de arquitectura)
+
+- El trigger toma `stock_levels` (en `apply_stock_movement`) y después escribe `notifications`. Todo
+  camino de Go que escriba movimiento y aviso **inserta primero el movimiento** y después toca
+  `notifications`; `evaluate_low_stock` nunca hace `for update` sobre `stock_levels` ni `ingredients`;
+  resolver o descartar sin movimiento solo toca `notifications`. Al revés se cierra el ciclo que ya
+  costó un cobro cancelado (`LockIngredientStockNowait`). Lo prueba
+  `TestConcurrentStockOutReportAndSale` con dos conexiones y `lock_timeout` corto: falla con 40P01.
+
+## R13. La API anterior y el permiso nuevo
+
+- `app/roles.go` filtra con `domain.KnownPermission` al calcular lo que puede una persona: la API
+  anterior ignora `inventory.report_out` sin fallar. La pantalla de roles anterior lo listaría con su
+  código durante los minutos de la subida; se acepta.

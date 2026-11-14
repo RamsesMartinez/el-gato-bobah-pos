@@ -110,18 +110,33 @@ pantalla nuevas o cambiadas
 Presupuesto 1280×854 con el riel de 76 px; 2560×1440 como ampliación. Componentes: `Page`, la hoja
 inferior, `Picker`, `QtyWithUnit`, botones y tarjetas del tema.
 
-Elegidas por el dueño el 2026-11-14 sobre capturas de la app real (arnés con los componentes del
+Elegidas por el dueño el 2026-11-14 y confirmadas en su versión 2 (ajustes de la revisión de diseño) el mismo día, sobre capturas de la app real (arnés con los componentes del
 POS, datos inventados) a 1280×854 y 2560×1440.
 
 | Pantalla | Dónde vive | Cómo queda (opción elegida) |
 |---|---|---|
 | 1. Alertas en la ficha | Ficha del insumo (`ArticleSheet`) y de un producto con existencia propia | Renglón «Alertas: *estado en palabras* · Configurar ›» en lugar del campo «Mínimo»; abre una hoja inferior con la casilla, el mínimo (`QtyWithUnit`), los eventos, la franja y los días de cobertura, y su «Guardar», que abre la confirmación (`ConfirmSheet`) con el efecto inmediato. Al crear o al abrir una ficha que nunca preguntó: `ConfirmSheet` «¿Quieres recibir alertas de stock bajo de *X*?» (No, por ahora / Sí, configurar) |
-| 2. Se acabó | Riel, debajo de «Se echó a perder» (`/se-acabo`, permiso `inventory.report_out`) | Dos columnas: buscador grande (64 px) y mosaicos de lo que más se acaba; el mosaico tocado se pone rojo («Toca otra vez: se acabó *X*») y el segundo toque confirma (≥ 0.4 s después del primero); aviso verde con «Deshacer · 90 s». Última fila de los resultados: «No lo encuentro · avisar *texto*». Columna derecha de 340 px: «Reportado hoy» |
-| 3. Campana | Pie del riel, encima del tema, botón «Avisos» con contador | Panel de 440 px que sale junto al riel, pestañas «Abiertas · N» y «Cerradas», cada aviso con su acción («Ya llegó», «Dar de alta», «Es otro nombre de…», «Descartar», «Ver en la lista de compra ›») y el motivo de cierre |
-| 4. Franja | Portal propio, capa 2000 | Tarjeta roja de 560 px arriba al centro con «Ver» y «×» y barra de 90 s; si hay un aviso de pedido de plataforma visible va debajo de él; espera mientras haya una hoja de captura abierta |
-| 5. Destinatarios | Almacén › pestaña «Avisos» (`inventory.configure`) | Tabla: una fila por persona (con su correo o «Sin correo: captúralo en Empleados») o correo extra, una columna por tipo de aviso con interruptores de 44 px; arriba la hora del resumen de la mañana con `Picker` en pasos de 15 min; «Agregar» correo extra abajo |
-| 6. Lista de compra | Almacén › pestaña «Lista de compra» (`inventory.view`) | Tarjetas por lugar de compra (proveedor de la última compra; «Sin lugar de compra» al final), cada renglón con estado, hay/mínimo, qué comprar y su porqué |
+| 2. Se acabó | Riel, debajo de «Se echó a perder» (`/se-acabo`, permiso `inventory.report_out`) | Dos columnas: buscador grande (64 px) y mosaicos de lo que más se acaba; el mosaico o renglón de resultado tocado se pone rojo («Toca otra vez: se acabó *X*», mismo alto) y el segundo toque confirma (≥ 0.4 s después del primero); se desarma solo a los 4 s, al teclear o al desplazar, y tocar otro mueve el armado. El aviso verde con «Deshacer · 90 s» vive en un hueco de alto fijo (76 px) sobre los mosaicos: nada se mueve bajo el dedo al reportar varios seguidos. «No lo encuentro · avisar *texto*» va anclado al pie de los resultados, separado 24 px, en tono neutro y con el mismo toque-y-confirma. Columna derecha de 340 px: «Reportado hoy». El segundo toque se queda aunque haya deshacer: deshacer no retira el aviso que las otras tabletas ya vieron |
+| 3. Campana | Pie del riel, encima del tema: icono de 44 px sin rótulo (aria «Avisos, N sin leer»), con la misma insignia que «Se echó a perder» para no quitarle a la lista del riel más de un renglón | Panel «Avisos» de 440 px que sale junto al riel, pestañas «Abiertas · N» y «Cerradas», cada aviso con su acción («Ya llegó», «Dar de alta», «Es otro nombre de…», «Descartar», «Ver en la lista de compra ›») y el motivo de cierre |
+| 4. Franja | Una sola capa de avisos (un portal, capa 2000, columna) que apila el aviso de pedido de plataforma primero y la franja después, sin encimarse aunque el aviso crezca | Tarjeta roja de 560 px arriba al centro con «Ver» y «×» y barra de 90 s, a 8 px del borde; no sale en la tableta de quien reportó; espera mientras haya una hoja de captura abierta |
+| 5. Destinatarios | Almacén › pestaña «Avisos» (`inventory.configure`) | Tabla dentro de `Page`: una fila por persona (con su correo o «Sin correo: captúralo en Empleados») o correo extra (con «Quitar» como botón de 44 px), una columna por tipo de aviso con interruptores de área de 44 px; arriba la hora del resumen de la mañana con `Picker` en pasos de 15 min; «Agregar» correo extra abajo |
+| 6. Lista de compra | Almacén › pestaña «Lista de compra» (`inventory.view`) | Dentro de `Page` (mismo ancho que las demás pestañas): tarjetas por lugar de compra (proveedor de la última compra; «Sin lugar de compra» al final), cada renglón con estado, hay/mínimo, qué comprar y su porqué |
 | 7. Correo | Correo de bloque y de la mañana | Encabezado de marca con logo, tarjetas por aviso agrupadas por tipo con qué comprar y dónde, botón «Abrir en el sistema», pie con por qué te llega |
+
+### Lo que cambió con la revisión de arquitectura (2026-11-14)
+
+Del revisor de tableta se tomaron: hueco fijo del deshacer, reglas del armado, «No lo encuentro»
+neutro y separado, una sola capa para franja y pedido, franja fuera de la tableta de quien reportó,
+campana de icono, `Page` en Destinatarios y Lista, «Quitar» y casillas de 44 px, panel titulado
+«Avisos». Se dejaron, por ser decisión del dueño en el issue: la confirmación al guardar siempre (no
+solo cuando hay efecto), la pregunta al abrir por primera vez una ficha (con «No, por ahora» ya no
+vuelve), y los textos «Enviar alerta de stock bajo», «Mostrar franja en pantalla» y el porqué de la
+lista («se usan ~X al día, quedan Y, objetivo Z días»). Un test con admin a 1280×854 fija cuántas
+opciones del riel se ven sin desplazar.
+
+Del db-architect se tomaron todos los hallazgos; están en [data-model.md](data-model.md) (llaves,
+índices, filtro sin subtransacción, Down, guardas de unión, cambio de unidad, snapshot) y en
+[research.md](research.md) R12 (orden de candados) y R13 (la API anterior y el permiso nuevo).
 
 ## Maquetas
 
