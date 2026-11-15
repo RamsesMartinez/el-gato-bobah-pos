@@ -85,6 +85,18 @@ func alertTestRouter(t *testing.T) (http.Handler, *alertMailbox, *auth.Manager) 
 		r.Get("/panic", func(http.ResponseWriter, *http.Request) {
 			panic("explotó con " + sampleAlertJWT)
 		})
+		// Lo que hace un handler cuando el servicio le devuelve el error de su consulta.
+		r.Get("/menu", func(w http.ResponseWriter, req *http.Request) {
+			Error(w, fmt.Errorf("leer el menú: %w", req.Context().Err()))
+		})
+		// Un defecto nuestro que no viene de la cancelación.
+		r.Get("/bug", func(w http.ResponseWriter, _ *http.Request) {
+			Error(w, errors.New("cannot scan NULL into *string"))
+		})
+		// Un error de la base que trae «canceled» sin que el cliente se haya ido.
+		r.Get("/db-canceled", func(w http.ResponseWriter, _ *http.Request) {
+			Error(w, fmt.Errorf("consulta: %w", context.Canceled))
+		})
 		r.Get("/abort", func(http.ResponseWriter, *http.Request) {
 			panic(http.ErrAbortHandler)
 		})
@@ -306,4 +318,70 @@ func TestHostileRequestIDIsReplaced(t *testing.T) {
 	if got := rec.Header().Get(RequestIDHeader); got != "5f0c2a1e-9b7d-4c3e-8a21-0d6f4b9e7c11" {
 		t.Fatalf("un UUID válido se reemplazó por %q", got)
 	}
+}
+
+// UN CLIENTE QUE CANCELA NO CUENTA COMO ERROR DEL SERVIDOR NI MANDA AVISO. Pasó en producción el
+// 2026-11-15: al recargar la tableta, el navegador abortó un GET /pos/menu en vuelo, la consulta
+// devolvió «context canceled» y salió como 500, con slog.Error y correo de aviso (spec 070). Nadie
+// estaba esperando esa respuesta: va como 499, el código que usan los proxies para esto.
+func TestClientThatCancelsIsNotAServerError(t *testing.T) {
+	logs := captureHTTPLogs(t)
+	h, b, _ := alertTestRouter(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/menu", nil).WithContext(ctx))
+	if rec.Code != 499 {
+		t.Fatalf("un cliente que se fue respondió %d; quería 499, no un error del servidor", rec.Code)
+	}
+	if strings.Contains(logs(), "level=ERROR") {
+		t.Errorf("un cliente que se fue quedó como error en la bitácora:\n%s", logs())
+	}
+	// Queda rastro, sin alarma: un cobro abortado a la mitad se tiene que poder encontrar.
+	if !strings.Contains(logs(), "level=WARN") || !strings.Contains(logs(), "leer el menú") {
+		t.Errorf("el 499 no dejó su aviso en la bitácora con el error:\n%s", logs())
+	}
+	b.expectNone(t)
+}
+
+// Los hermanos que SÍ son nuestros siguen siendo 500 con aviso: un plazo vencido del servidor, y un
+// «canceled» que viene de la base mientras el cliente sigue ahí. Solo el contexto del request decide.
+func TestServerSideCancellationsStillAlert(t *testing.T) {
+	t.Run("plazo vencido", func(t *testing.T) {
+		h, b, _ := alertTestRouter(t)
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		defer cancel()
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/menu", nil).WithContext(ctx))
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("un plazo vencido respondió %d; es un error nuestro y va como 500", rec.Code)
+		}
+		b.waitOne(t)
+	})
+	// Revisión de código y de seguridad: con solo mirar el contexto, un atacante que cierra el socket
+	// justo después de pedir escondía cualquier 500 real (sin bitácora ni aviso).
+	t.Run("un defecto ajeno con el cliente ido", func(t *testing.T) {
+		logs := captureHTTPLogs(t)
+		h, b, _ := alertTestRouter(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/bug", nil).WithContext(ctx))
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("un defecto nuestro con el cliente ido respondió %d; se escondía como 499", rec.Code)
+		}
+		if !strings.Contains(logs(), "level=ERROR") {
+			t.Error("el defecto no quedó en la bitácora como error")
+		}
+		b.waitOne(t)
+	})
+	t.Run("canceled de la base con el cliente presente", func(t *testing.T) {
+		h, b, _ := alertTestRouter(t)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/db-canceled", nil))
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("un «canceled» de la base con el cliente presente respondió %d; va como 500", rec.Code)
+		}
+		b.waitOne(t)
+	})
 }
