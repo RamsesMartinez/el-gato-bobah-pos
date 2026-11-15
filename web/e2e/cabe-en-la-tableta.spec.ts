@@ -6,6 +6,7 @@ import {
   ponerUnProducto, productoPorNombre,
 } from './pos';
 import { ALTO, ALTO_CON_TECLADO, ANCHO } from './pantalla';
+import { alPasoDelCierre } from './cierre';
 
 // LO QUE SE AGREGA TIENE QUE CABER EN LA TABLETA (SC-004).
 //
@@ -228,12 +229,16 @@ test('F5 · el aviso sin conexión no mueve nada: va encima', async ({ page, con
   await expect(page.getByRole('alert').filter({ hasText: 'Sin conexión' })).toHaveCount(0, { timeout: 20_000 });
 });
 
-test('F6 · el cierre de caja con cuentas vivas deja ver «Cerrar caja»', async ({ page }) => {
+// Desde la Caja por pasos (spec 082, #290) las cuentas vivas ya no se ven en la pantalla de la caja:
+// salen en el paso «Pendientes» del cierre, plegadas. Lo que se cuida es lo mismo que antes: abrirlas
+// no empuja fuera de la pantalla el botón para seguir con el cierre.
+test('F6 · el cierre de caja con cuentas vivas deja a la vista cómo seguir', async ({ page }) => {
   const jwt = await tokenDeApi();
   const producto = await productoPorNombre(jwt, 'Dedos de Queso Pza');
   await crearCuentaPorApi(jwt, producto);
   await entrar(page);
   await page.goto('/caja');
+  await alPasoDelCierre(page, 'Pendientes');
   const plegada = page.getByRole('button', { name: /Cuentas pendientes \(\d+\)/ });
   await expect(plegada).toBeVisible({ timeout: 30_000 });
   expect((await plegada.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -242,9 +247,7 @@ test('F6 · el cierre de caja con cuentas vivas deja ver «Cerrar caja»', async
   const descartar = page.getByRole('button', { name: /^Descartar / }).first();
   expect((await abrir.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   expect((await descartar.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  const cerrar = page.getByRole('button', { name: 'Cerrar caja' });
-  await cerrar.scrollIntoViewIfNeeded();
-  await expect(cerrar).toBeInViewport();
+  await expect(page.getByRole('button', { name: /^Siguiente: Cajón/ })).toBeInViewport();
 });
 
 // Spec 045 (US4) · LA BARRA LATERAL NUNCA DEJA UNA OPCIÓN PARTIDA.
