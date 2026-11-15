@@ -69,7 +69,7 @@ export function BusinessSettingsPage() {
     mutationFn: () => posApi.updateCompany(nameValue.trim(), slugValue.trim()),
     onSuccess: (c) => {
       qc.setQueryData(['company'], c);
-      toaster.create({ title: 'Empresa actualizada', description: 'El nuevo slug aplica al login (usuario@' + c.slug + ').', type: 'success' });
+      toaster.create({ title: 'Empresa actualizada', description: `Ahora todo el equipo entra como usuario@${c.slug}.`, type: 'success' });
     },
     onError: (e) => toaster.create({ title: 'No se pudo actualizar', description: String(e), type: 'error' }),
   });

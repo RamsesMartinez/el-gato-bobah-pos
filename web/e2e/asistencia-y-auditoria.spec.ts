@@ -27,7 +27,9 @@ test('checar entrada y salida tarda menos de 15 s desde que se abre la pantalla 
   const roster = await (await request.get(`${API}/attendance/roster`, { headers: { Authorization: `Bearer ${jwt}` } })).json() as
     { enabled: boolean };
   expect(roster.enabled, 'la asistencia está apagada en esta empresa').toBe(true);
-  const persona = await altaDePrueba(jwt, 'Asistencia', 'cajero');
+  // Nombre propio por corrida: con uno fijo, una corrida interrumpida deja una persona activa con el
+  // mismo nombre y la siguiente toca a esa, con otro PIN.
+  const persona = await altaDePrueba(jwt, `Asistencia-${Date.now().toString(36)}`, 'cajero');
   try {
     await entrar(page);
     const desde = Date.now();
@@ -38,6 +40,12 @@ test('checar entrada y salida tarda menos de 15 s desde que se abre la pantalla 
     // Al volver, la misma persona ofrece la acción contraria: el servidor ya la registró.
     await checar(page, persona, 'Salida');
   } finally {
+    // Si falló con la entrada checada, la cierra antes de la baja: dada de baja ya no sale en la lista
+    // para checar y su turno quedaría abierto para siempre. Si ya salió, el servidor lo rechaza y
+    // no pasa nada.
+    await request.post(`${API}/attendance/clock`, {
+      headers: { Authorization: `Bearer ${jwt}` }, data: { userId: persona.id, pin: persona.pin, expected: 'out' },
+    });
     await bajaDePrueba(jwt, persona);
   }
 });
