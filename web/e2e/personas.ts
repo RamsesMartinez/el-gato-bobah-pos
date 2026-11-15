@@ -34,8 +34,10 @@ export async function altaDePrueba(admin: string, nombre: string, role: string):
 
 // bajaDePrueba la deja inactiva: no se borra, porque lo que hizo (una propina, un turno) apunta a ella.
 export async function bajaDePrueba(admin: string, p: PersonaDePrueba) {
-  await fetch(`${API}/users/${p.id}`, {
+  const r = await fetch(`${API}/users/${p.id}`, {
     method: 'PATCH', headers: { Authorization: `Bearer ${admin}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: p.name, role: p.role, isActive: false }),
   });
+  // Una baja que falla en silencio deja a la persona activa y la siguiente corrida se topa con ella.
+  if (!r.ok) throw new Error(`PATCH /users/${p.id}: ${r.status} ${await r.text()}`);
 }

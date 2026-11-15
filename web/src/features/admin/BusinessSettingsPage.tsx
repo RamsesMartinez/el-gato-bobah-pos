@@ -69,7 +69,7 @@ export function BusinessSettingsPage() {
     mutationFn: () => posApi.updateCompany(nameValue.trim(), slugValue.trim()),
     onSuccess: (c) => {
       qc.setQueryData(['company'], c);
-      toaster.create({ title: 'Empresa actualizada', description: 'El nuevo slug aplica al login (usuario@' + c.slug + ').', type: 'success' });
+      toaster.create({ title: 'Empresa actualizada', description: `Ahora todo el equipo entra como usuario@${c.slug}.`, type: 'success' });
     },
     onError: (e) => toaster.create({ title: 'No se pudo actualizar', description: String(e), type: 'error' }),
   });
@@ -157,13 +157,13 @@ export function BusinessSettingsPage() {
       <Box mb={6} borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
         <Text fontWeight="700" mb={1}>Identidad de la empresa</Text>
         <Text fontSize="sm" color="fg.muted" mb={3}>
-          El «slug» es el identificador con el que tu equipo inicia sesión: usuario@<b>{slugValue || 'slug'}</b>.
-          Cambiarlo modifica el login de todos los empleados (2–40, minúsculas, dígitos y guiones).
+          Lo que va después de la @ al iniciar sesión: usuario@<b>{slugValue || 'tu-negocio'}</b>.
+          Cambiarlo cambia cómo entra todo el equipo (2 a 40 letras minúsculas, números o guiones).
         </Text>
         <VStack align="stretch" gap={3} maxW="360px">
           <Input minH="44px" placeholder="Nombre del negocio" value={nameValue} onChange={(e) => setCoName(e.target.value)} />
           <InputGroup startElement="@">
-            <Input minH="44px" placeholder="slug" value={slugValue} autoCapitalize="none"
+            <Input minH="44px" placeholder="tu-negocio" value={slugValue} autoCapitalize="none"
               onChange={(e) => setCoSlug(e.target.value.toLowerCase())} />
           </InputGroup>
           <Button alignSelf="start" loading={saveCompany.isPending}

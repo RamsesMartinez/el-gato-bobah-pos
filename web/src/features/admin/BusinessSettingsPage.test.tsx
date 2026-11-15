@@ -13,6 +13,8 @@ const updateArqueoCiego = vi.hoisted(() => vi.fn());
 vi.mock('../../api/backoffice', () => ({ backofficeApi: { updatePaymentMethod } }));
 const updateCorteDeVista = vi.hoisted(() => vi.fn());
 const updateTimezone = vi.hoisted(() => vi.fn());
+const company = vi.hoisted(() => vi.fn());
+const updateCompany = vi.hoisted(() => vi.fn());
 vi.mock('../../api/pos', () => ({
   posApi: {
     businessSettings,
@@ -20,6 +22,8 @@ vi.mock('../../api/pos', () => ({
     allPaymentMethods,
     updateCorteDeVista,
     updateTimezone,
+    company,
+    updateCompany,
     updateArqueoCiego,
     updateBusinessSettings: vi.fn(),
     updateBusinessInfo: vi.fn(),
@@ -33,6 +37,7 @@ vi.mock('../../components/ui/toaster', () => ({ toaster: { create: vi.fn() } }))
 vi.mock('./AjustesDeCaja', () => ({ AjustesDeCaja: () => null }));
 
 import { BusinessSettingsPage } from './BusinessSettingsPage';
+import { toaster } from '../../components/ui/toaster';
 
 const ajustes = {
   deliveryFee: '20', businessName: 'Gato', address: '', phone: '', headerNote: '', footerNote: '',
@@ -66,6 +71,8 @@ beforeEach(() => {
   allPaymentMethods.mockResolvedValue({ items: metodos });
   updatePaymentMethod.mockResolvedValue(metodos[0]);
   updateArqueoCiego.mockResolvedValue(ajustes);
+  company.mockResolvedValue({ id: 2, name: 'Gato', slug: 'gatobobah' });
+  updateCompany.mockResolvedValue({ id: 2, name: 'Gato', slug: 'gato' });
 });
 afterEach(() => { vi.clearAllMocks(); });
 
@@ -178,4 +185,29 @@ describe('el arqueo ciego', () => {
     fireEvent.click(screen.getByLabelText('Contar sin ver lo esperado'));
     await waitFor(() => expect(updateArqueoCiego).toHaveBeenCalledWith(true));
   });
+});
+
+// «SLUG» ES PALABRA DE PROGRAMADOR (usuario nuevo de la spec 085, #293): un gerente de otra fonda leyó
+// «El «slug» es el identificador…» y no supo qué era. Lo que ve quien opera es lo que escribe al
+// entrar: lo que va después de la @.
+test('Negocio no dice «slug» ni en el texto ni en el campo', async () => {
+  const { container } = pinta(<BusinessSettingsPage />);
+  await screen.findByText(/Identidad de la empresa/i);
+  expect(container.textContent ?? '').not.toMatch(/slug/i);
+  const placeholders = [...container.querySelectorAll('input')].map((i) => i.placeholder);
+  expect(placeholders.filter((p) => /slug/i.test(p))).toEqual([]);
+});
+
+// El aviso al guardar tampoco: decía «El nuevo slug aplica al login» justo después de que el formulario
+// dejó de decirlo (revisión de código del arreglo).
+test('al guardar la empresa, el aviso dice cómo se entra y no dice «slug»', async () => {
+  pinta(<BusinessSettingsPage />);
+  const campo = await screen.findByPlaceholderText('tu-negocio');
+  await waitFor(() => expect((campo as HTMLInputElement).value).toBe('gatobobah'));
+  fireEvent.change(campo, { target: { value: 'gato' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar empresa' }));
+  await waitFor(() => expect(toaster.create).toHaveBeenCalled());
+  const aviso = vi.mocked(toaster.create).mock.calls.map(([a]) => `${a.title} ${a.description ?? ''}`).join(' ');
+  expect(aviso).not.toMatch(/slug/i);
+  expect(aviso).toContain('usuario@gato');
 });
