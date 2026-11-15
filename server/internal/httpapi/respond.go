@@ -349,6 +349,12 @@ func Error(w http.ResponseWriter, err error) {
 		status, code, msg = http.StatusNotImplemented, "NOT_CONFIGURED", "Este servidor no tiene correo configurado"
 	}
 
+	// Nadie espera esta respuesta: el navegador abortó (recarga, cambio de pantalla). No es un error
+	// del servidor, ni va a la bitácora como tal ni dispara el aviso por correo (spec 070).
+	if status == http.StatusInternalServerError && clientGone(w) {
+		w.WriteHeader(StatusClientClosedRequest)
+		return
+	}
 	if status == http.StatusInternalServerError {
 		slog.Error("request failed", "error", err)
 		recordServerError(w, err)

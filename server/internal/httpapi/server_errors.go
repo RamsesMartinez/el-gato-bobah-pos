@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -27,7 +28,7 @@ func reportServerErrors(n *alerts.Notifier, env string) func(http.Handler) http.
 				ti = &traceInfo{}
 				r = r.WithContext(context.WithValue(r.Context(), traceKey{}, ti))
 			}
-			sw := &serverErrorWriter{ResponseWriter: w, status: http.StatusOK}
+			sw := &serverErrorWriter{ResponseWriter: w, status: http.StatusOK, ctx: r.Context()}
 			defer func() {
 				rec := recover()
 				if rec == nil {
@@ -101,6 +102,8 @@ type serverErrorWriter struct {
 	wrote  bool
 	err    error
 	pcs    []uintptr
+	// ctx es el del request: dice si el cliente se fue (clientGone).
+	ctx context.Context
 }
 
 func (w *serverErrorWriter) WriteHeader(code int) {
@@ -130,6 +133,26 @@ func (w *serverErrorWriter) Flush() {
 }
 
 func (w *serverErrorWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// StatusClientClosedRequest es el 499 de nginx y Caddy: el cliente cerró antes de la respuesta.
+const StatusClientClosedRequest = 499
+
+// clientGone dice si el cliente abandonó el request: su contexto se canceló. Solo el contexto del
+// REQUEST decide, no el error: un «canceled» que llega de la base con el cliente presente, o un plazo
+// vencido del servidor, sí son errores nuestros y siguen como 500 con aviso.
+func clientGone(w http.ResponseWriter) bool {
+	for w != nil {
+		if sw, ok := w.(*serverErrorWriter); ok {
+			return sw.ctx != nil && errors.Is(sw.ctx.Err(), context.Canceled)
+		}
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return false
+		}
+		w = u.Unwrap()
+	}
+	return false
+}
 
 // recordServerError le entrega a reportServerErrors el error de un 500 y dónde se produjo.
 // Error() solo recibe el writer, así que el writer es el canal: se recorre la cadena de Unwrap
