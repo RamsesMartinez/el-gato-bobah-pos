@@ -179,3 +179,14 @@ describe('el arqueo ciego', () => {
     await waitFor(() => expect(updateArqueoCiego).toHaveBeenCalledWith(true));
   });
 });
+
+// «SLUG» ES PALABRA DE PROGRAMADOR (usuario nuevo de la spec 085, #293): un gerente de otra fonda leyó
+// «El «slug» es el identificador…» y no supo qué era. Lo que ve quien opera es lo que escribe al
+// entrar: lo que va después de la @.
+test('Negocio no dice «slug» ni en el texto ni en el campo', async () => {
+  const { container } = pinta(<BusinessSettingsPage />);
+  await screen.findByText(/Identidad de la empresa/i);
+  expect(container.textContent ?? '').not.toMatch(/slug/i);
+  const placeholders = [...container.querySelectorAll('input')].map((i) => i.placeholder);
+  expect(placeholders.filter((p) => /slug/i.test(p))).toEqual([]);
+});
