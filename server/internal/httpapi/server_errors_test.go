@@ -89,6 +89,10 @@ func alertTestRouter(t *testing.T) (http.Handler, *alertMailbox, *auth.Manager) 
 		r.Get("/menu", func(w http.ResponseWriter, req *http.Request) {
 			Error(w, fmt.Errorf("leer el menú: %w", req.Context().Err()))
 		})
+		// Un defecto nuestro que no viene de la cancelación.
+		r.Get("/bug", func(w http.ResponseWriter, _ *http.Request) {
+			Error(w, errors.New("cannot scan NULL into *string"))
+		})
 		// Un error de la base que trae «canceled» sin que el cliente se haya ido.
 		r.Get("/db-canceled", func(w http.ResponseWriter, _ *http.Request) {
 			Error(w, fmt.Errorf("consulta: %w", context.Canceled))
@@ -333,6 +337,10 @@ func TestClientThatCancelsIsNotAServerError(t *testing.T) {
 	if strings.Contains(logs(), "level=ERROR") {
 		t.Errorf("un cliente que se fue quedó como error en la bitácora:\n%s", logs())
 	}
+	// Queda rastro, sin alarma: un cobro abortado a la mitad se tiene que poder encontrar.
+	if !strings.Contains(logs(), "level=WARN") || !strings.Contains(logs(), "leer el menú") {
+		t.Errorf("el 499 no dejó su aviso en la bitácora con el error:\n%s", logs())
+	}
 	b.expectNone(t)
 }
 
@@ -347,6 +355,23 @@ func TestServerSideCancellationsStillAlert(t *testing.T) {
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/menu", nil).WithContext(ctx))
 		if rec.Code != http.StatusInternalServerError {
 			t.Fatalf("un plazo vencido respondió %d; es un error nuestro y va como 500", rec.Code)
+		}
+		b.waitOne(t)
+	})
+	// Revisión de código y de seguridad: con solo mirar el contexto, un atacante que cierra el socket
+	// justo después de pedir escondía cualquier 500 real (sin bitácora ni aviso).
+	t.Run("un defecto ajeno con el cliente ido", func(t *testing.T) {
+		logs := captureHTTPLogs(t)
+		h, b, _ := alertTestRouter(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/bug", nil).WithContext(ctx))
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("un defecto nuestro con el cliente ido respondió %d; se escondía como 499", rec.Code)
+		}
+		if !strings.Contains(logs(), "level=ERROR") {
+			t.Error("el defecto no quedó en la bitácora como error")
 		}
 		b.waitOne(t)
 	})
