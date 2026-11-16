@@ -13,8 +13,15 @@ var (
 	ErrUnauthorized       = errors.New("no autenticado")
 	ErrForbidden          = errors.New("sin permisos")
 	ErrInvalidCredentials = errors.New("credenciales inválidas")
-	ErrValidation         = errors.New("datos inválidos")
-	ErrConflict           = errors.New("conflicto")
+	// ErrPasswordChangeRequired: la persona entró con la contraseña que le puso un admin y no puede
+	// hacer nada más hasta cambiarla (#311). Envuelve ErrForbidden; su código propio le dice a la
+	// pantalla que mande a cambiarla en vez de releer los permisos.
+	ErrPasswordChangeRequired = fmt.Errorf("%w: cambia tu contraseña para continuar", ErrForbidden)
+	// ErrSamePassword: la contraseña nueva es la misma de antes. Tras un alta o restablecimiento,
+	// «cambiarla» por la misma dejaría al admin conociéndola.
+	ErrSamePassword = fmt.Errorf("%w: la contraseña nueva tiene que ser distinta de la actual", ErrValidation)
+	ErrValidation   = errors.New("datos inválidos")
+	ErrConflict     = errors.New("conflicto")
 	// ErrDuplicateName: ya existe un producto (por empresa) con ese nombre. Envuelve ErrConflict
 	// para heredar el 409 y a la vez dar un mensaje accionable en el alta/edición/duplicado.
 	ErrDuplicateName   = fmt.Errorf("ya existe un producto con ese nombre (%w)", ErrConflict)

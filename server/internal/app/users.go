@@ -331,6 +331,11 @@ func (s *UsersService) ChangeOwnPassword(ctx context.Context, userID int64, curr
 	if u.PasswordHash == nil || !auth.CheckSecret(*u.PasswordHash, current) {
 		return domain.ErrInvalidCredentials
 	}
+	// Con la contraseña que puso el admin, «cambiarla» por la misma apagaba el cambio obligatorio y
+	// dejaba al admin conociéndola (#311).
+	if next == current {
+		return domain.ErrSamePassword
+	}
 	if err := s.checkPassword(ctx, next); err != nil {
 		return err
 	}

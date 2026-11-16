@@ -444,3 +444,33 @@ func deref(u *uuid.UUID) uuid.UUID {
 	}
 	return *u
 }
+
+// MustChangePassword dice si la persona de la sesión todavía tiene que cambiar la contraseña que le
+// puso un admin (#311). Se lee de la base en cada petición, como los permisos: el token se emitió
+// antes de un restablecimiento y una recarga lo renueva, así que leerlo de ahí no detendría a nadie.
+//
+// Con la conexión de empresa de la petición la usa, y exige que sea la de la sesión; sin ella
+// (`/events`, `/version`) abre una corta con la empresa de la sesión. Que la persona no exista en
+// esa empresa es un rechazo, nunca un «no hace falta».
+func MustChangePassword(ctx context.Context, st *store.Store, companyID, userID int64) (bool, error) {
+	leer := func(q *db.Queries) (bool, error) {
+		v, err := q.UserMustChangePassword(ctx, userID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, domain.ErrUnauthorized
+		}
+		return v, err
+	}
+	if cid, ok := store.CompanyFrom(ctx); ok {
+		if cid != companyID {
+			return false, domain.ErrUnauthorized
+		}
+		return leer(st.QC(ctx))
+	}
+	var v bool
+	err := st.WithTenant(ctx, companyID, func(q *db.Queries) error {
+		var err error
+		v, err = leer(q)
+		return err
+	})
+	return v, err
+}

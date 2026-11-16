@@ -96,6 +96,7 @@ interface MeResponse {
   roleId: number;
   roleName: string;
   permissions: string[];
+  mustChangePassword?: boolean;
 }
 
 let refreshingPermissions: Promise<void> | null = null;
@@ -125,7 +126,10 @@ async function fetchPermissions(retryIfSwitched: boolean): Promise<void> {
   if (!current) return;
   if (current.id === me.id && current.companyId === me.companyId) {
     useSessionStore.setState({
-      user: { ...current, name: me.name, role: me.role, roleId: me.roleId, roleName: me.roleName, permissions: me.permissions },
+      user: {
+        ...current, name: me.name, role: me.role, roleId: me.roleId, roleName: me.roleName, permissions: me.permissions,
+        mustChangePassword: me.mustChangePassword === true,
+      },
     });
     return;
   }
@@ -221,7 +225,12 @@ async function request<T>(
     }
     // Un 403 puede ser que el rol cambió: se traen los permisos de nuevo para que la pantalla deje
     // de ofrecer lo que ya no puede. Nunca por un 403 del propio /auth/me, o no terminaría.
-    if (res.status === 403 && path !== '/auth/me') void refreshPermissions();
+    // El cambio obligatorio de contraseña (#311) no es un permiso que cambió: la sesión lo toma y
+    // RequireAuth pinta la pantalla del cambio en lugar de la aplicación.
+    if (res.status === 403 && code === 'PASSWORD_CHANGE_REQUIRED') {
+      const user = useSessionStore.getState().user;
+      if (user && !user.mustChangePassword) useSessionStore.setState({ user: { ...user, mustChangePassword: true } });
+    } else if (res.status === 403 && path !== '/auth/me') void refreshPermissions();
     console.error(`[api] ✗ ${label} · ${res.status} ${code} · ${ms}ms · id=${traceId}`);
     const retryAfter = Number(res.headers.get('Retry-After')) || undefined;
     throw new ApiError(res.status, code, message, traceId, details, retryAfter);

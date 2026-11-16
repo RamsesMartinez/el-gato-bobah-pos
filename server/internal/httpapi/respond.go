@@ -99,6 +99,8 @@ func Error(w http.ResponseWriter, err error) {
 	// enumeración que el sentinel único existe para evitar.
 	case errors.Is(err, domain.ErrCredencialDePlataforma):
 		status, code = http.StatusUnauthorized, "INVALID_CREDENTIALS"
+	case errors.Is(err, domain.ErrPasswordChangeRequired):
+		status, code = http.StatusForbidden, "PASSWORD_CHANGE_REQUIRED"
 	case errors.Is(err, domain.ErrForbidden):
 		status, code = http.StatusForbidden, "FORBIDDEN"
 	case errors.Is(err, domain.ErrCobroFueraDeLugar):

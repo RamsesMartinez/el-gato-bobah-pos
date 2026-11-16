@@ -93,6 +93,8 @@ export function vaciarCola(): void {
   // Sin sesión el servidor no sabría de qué empresa ni de qué rol es —los pone él, no el cliente—,
   // así que mandarlo sería gastar la red del mostrador para recibir un 401.
   if (!token) return;
+  // Con el cambio obligatorio de contraseña pendiente el servidor lo rechaza (#311).
+  if (useSessionStore.getState().user?.mustChangePassword) return;
 
   const lote = cola;
   cola = [];

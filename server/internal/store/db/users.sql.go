@@ -577,3 +577,15 @@ func (q *Queries) UserByPinLookup(ctx context.Context, pinLookup *string) (UserB
 	err := row.Scan(&i.ID, &i.Name)
 	return i, err
 }
+
+const userMustChangePassword = `-- name: UserMustChangePassword :one
+select must_change_password from users where id = $1
+`
+
+// El control del cambio obligatorio (#311) lo lee en cada petición: solo la columna, sin hashes.
+func (q *Queries) UserMustChangePassword(ctx context.Context, id int64) (bool, error) {
+	row := q.db.QueryRow(ctx, userMustChangePassword, id)
+	var must_change_password bool
+	err := row.Scan(&must_change_password)
+	return must_change_password, err
+}

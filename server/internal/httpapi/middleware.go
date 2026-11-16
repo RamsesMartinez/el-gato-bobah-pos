@@ -161,6 +161,42 @@ func RequireAnyPermission(resolve PermissionResolver, ps ...domain.Permission) f
 	}
 }
 
+// PasswordChangeCheck dice si la persona de la petición tiene pendiente el cambio obligatorio de
+// contraseña. En producción lee la base en cada petición.
+type PasswordChangeCheck func(ctx context.Context, u AuthUser) (bool, error)
+
+// RequirePasswordChanged detiene a quien tiene pendiente el cambio obligatorio de contraseña (#311).
+// Corre después de RequireAuth y va en todo grupo autenticado; lo que sí se permite (cambiarla, leer
+// la propia cuenta) se monta fuera de él, no con una lista de rutas exentas que una ruta nueva
+// heredaría sin querer.
+//
+// Antes solo lo hacía cumplir la pantalla de login con un desvío, y una recarga lo saltaba. El
+// indicador se lee de la base en cada petición y no del token: el token se emitió antes de un
+// restablecimiento y el refresh lo renueva. Si la lectura falla, la petición no pasa.
+func RequirePasswordChanged(check PasswordChangeCheck) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, ok := userFrom(r.Context())
+			if !ok {
+				Error(w, domain.ErrUnauthorized)
+				return
+			}
+			pending, err := check(r.Context(), u)
+			if err != nil {
+				Error(w, err)
+				return
+			}
+			if pending {
+				logging.SecurityEvent(r.Context(), "password_change_required",
+					"user_id", u.ID, "method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
+				Error(w, domain.ErrPasswordChangeRequired)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // RequireOperador valida el Bearer con la firma de la CONSOLA y vuelve a leer al operador.
 //
 // Las dos mitades importan:

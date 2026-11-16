@@ -26,6 +26,31 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     (pasó con `users.role`; lo cazó `TestTheAPIWorksWithoutUsersRole` antes de subir). El enum
     `user_role` sigue siendo la dimensión «rol sugerido» de la medición de uso; lo de un rol propio
     se mide sin rol.
+- **Cambio obligatorio de contraseña** (#311). `users.must_change_password` lo enciende el alta y el
+  restablecimiento por un admin. Antes solo lo hacía cumplir la pantalla de login con un desvío en
+  memoria, y una recarga lo saltaba. Las formas de evadirlo que se enumeraron antes de arreglarlo, y
+  qué cierra cada una:
+  1. **Recargar la página**: el desvío vivía en la memoria del login. Ahora la aplicación entera se
+     cambia por la pantalla de cambio en cuanto la sesión trae el indicador, venga del login, del
+     refresh, del relevo por PIN o de `/auth/me`.
+  2. **Llamar a la API sin pantalla** con el token: `RequirePasswordChanged` rechaza con 403
+     `PASSWORD_CHANGE_REQUIRED` y el evento `password_change_required`. Pasan solo
+     `POST /me/password`, `GET /auth/me` y `POST /auth/logout` (que no exige sesión).
+  3. **Un token emitido antes del restablecimiento**, o renovado con el refresh: el indicador se lee
+     de la base en cada petición, nunca del token. Un admin que restablece a alguien con la sesión
+     abierta lo detiene en la siguiente petición.
+  4. **Entrar como esa persona con su PIN** (relevo): la sesión que sale trae el indicador y queda
+     bajo el mismo control. Quien tiene el indicador tampoco puede usar `pin-switch` ni
+     `unlock-options`.
+  5. **Las rutas fuera del grupo con empresa**: `/events` (pedidos en vivo) y `/version` llevan el
+     mismo control, que abre su propia conexión de la empresa.
+  6. **Un token de agente (MCP) de la misma persona**: cada herramienta despacha una ruta del router
+     y pasa por el mismo control. La herramienta responde rechazada hasta que la persona cambie su
+     contraseña; el token no se revoca.
+  7. **«Cambiar» a la misma contraseña que puso el admin**: se rechaza; el admin la conoce.
+  8. **La lectura del indicador falla**: se rechaza la petición (cerrado), nunca se deja pasar.
+  9. **La consola de plataforma**: otra firma y otra tabla (`platform_operators`); su token no
+     abre ninguna ruta del POS, y el del POS no abre la consola.
 - **Dadas de baja** (#236). Cinco cosas que no se ven:
   - **Quién administra a una baja se decide con lo que puede su rol asignado, no con lo que puede
     ahora** (`manageablePermissions`). Ahora una baja no puede nada, así que `WithinPermissions`

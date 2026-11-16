@@ -37,6 +37,12 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 		}
 	}
 	h.permissions = MemoizedPermissions(h.permissions)
+	if h.passwordCheck == nil {
+		h.passwordCheck = func(ctx context.Context, u AuthUser) (bool, error) {
+			return app.MustChangePassword(ctx, st, u.CompanyID, u.ID)
+		}
+	}
+	mustHaveChangedPassword := RequirePasswordChanged(h.passwordCheck)
 	h.store = st
 
 	r := chi.NewRouter()
@@ -120,11 +126,16 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 			r.Group(func(r chi.Router) {
 				r.Use(RequireAuth(jm))
 				r.Use(WithTenant(st)) // pin-switch corre bajo el tenant del dispositivo
-				r.Post("/pin-switch", h.PinSwitch)
-				// Quiénes pueden desbloquear la estación. Autenticado: es la sesión del dispositivo la
-				// que pregunta, no un anónimo — de otro modo sería la plantilla del negocio en abierto.
-				r.Get("/unlock-options", h.UnlockOptions)
+				// Leer la propia cuenta pasa aunque falte el cambio obligatorio de contraseña (#311):
+				// es como la pantalla sabe, tras recargar, que tiene que pedirlo.
 				r.Get("/me", h.Me)
+				r.Group(func(r chi.Router) {
+					r.Use(mustHaveChangedPassword)
+					r.Post("/pin-switch", h.PinSwitch)
+					// Quiénes pueden desbloquear la estación. Autenticado: es la sesión del dispositivo la
+					// que pregunta, no un anónimo — de otro modo sería la plantilla del negocio en abierto.
+					r.Get("/unlock-options", h.UnlockOptions)
+				})
 			})
 		})
 
@@ -134,14 +145,23 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 			// SSE fuera del middleware de tenant: mantiene la respuesta abierta y acapararía una
 			// conexión del pool. El aislamiento por empresa lo da el broker, que suscribe por
 			// company_id del JWT (realtime.Broker + handlers_sse.go), no una conexión de tenant.
-			r.Get("/events", h.Events)
+			r.With(mustHaveChangedPassword).Get("/events", h.Events)
 
 			// Versión del backend (build SHA/fecha) para el pie de sistema del front. Autenticado
 			// pero sin tenant: es info global de despliegue, no toca datos de empresa.
-			r.Get("/version", h.Version)
+			r.With(mustHaveChangedPassword).Get("/version", h.Version)
+
+			// Cambiar la propia contraseña es lo único del negocio que pasa con el cambio obligatorio
+			// pendiente (#311). Va en su propio grupo, y no como excepción dentro del de abajo, para
+			// que ninguna ruta nueva nazca sin el control.
+			r.Group(func(r chi.Router) {
+				r.Use(WithTenant(st))
+				r.Post("/me/password", h.ChangeOwnPassword)
+			})
 
 			r.Group(func(r chi.Router) {
 				r.Use(WithTenant(st)) // todo lo demás: conexión atada al tenant → RLS aísla cada query
+				r.Use(mustHaveChangedPassword)
 
 				// LA MEDICIÓN DE USO (spec 017). Va dentro del grupo del negocio, con tenant y
 				// autenticación, porque la empresa y el rol los pone el SERVIDOR desde el token:
@@ -193,8 +213,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.Get("/me/preferences/{key}", h.MeGetPreference)
 				r.Put("/me/preferences/{key}", h.MeSetPreference)
 
-				// Cuenta propia (cualquier empleado autenticado): su contraseña / PIN.
-				r.Post("/me/password", h.ChangeOwnPassword)
+				// Cuenta propia (cualquier empleado autenticado): su PIN. La contraseña va arriba, fuera
+				// del control del cambio obligatorio.
 				r.Post("/me/pin", h.SetOwnPIN)
 
 				// Empresa (tenant): lectura para cualquier autenticado; editar nombre/slug solo admin/gerente.
