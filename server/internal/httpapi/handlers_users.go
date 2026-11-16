@@ -158,10 +158,24 @@ func (h *Handlers) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	// Con el cambio obligatorio pendiente esta es la única ruta que responde (#311): quien conoce
+	// solo el PIN de un empleado nuevo hace el relevo y desde aquí probaría la contraseña que puso el
+	// admin hasta acertarla. Se frena por persona, como el login.
+	llave := "pwchange:" + strconv.FormatInt(u.ID, 10)
+	if h.authFails.blocked(r.Context(), llave) {
+		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "change_password", "user_id", u.ID, "ip", clientIP(r))
+		tooManyRequests(w, h.authFails.retryAfter(r.Context(), llave))
+		return
+	}
 	if err := h.users.ChangeOwnPassword(r.Context(), u.ID, body.CurrentPassword, body.NewPassword); err != nil {
+		if errors.Is(err, domain.ErrInvalidCredentials) {
+			h.authFails.record(r.Context(), llave)
+			logging.SecurityEvent(r.Context(), "password_change_failed", "user_id", u.ID, "ip", clientIP(r))
+		}
 		Error(w, err)
 		return
 	}
+	h.authFails.reset(r.Context(), llave)
 	w.WriteHeader(http.StatusNoContent)
 }
 

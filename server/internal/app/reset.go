@@ -116,6 +116,15 @@ func (s *ResetService) Confirm(ctx context.Context, companyID int64, token, newP
 		if rt.UsedAt.Valid || s.now().After(rt.ExpiresAt) {
 			return domain.ErrResetInvalid // ya usado o vencido
 		}
+		// Apaga el cambio obligatorio (#311), así que la contraseña que puso el admin no puede volver
+		// a quedar: el admin la conoce.
+		u, err := q.GetUserByID(ctx, rt.UserID)
+		if err != nil {
+			return err
+		}
+		if u.PasswordHash != nil && auth.CheckSecret(*u.PasswordHash, newPassword) {
+			return domain.ErrSamePassword
+		}
 		pwHash, err := auth.HashSecret(newPassword)
 		if err != nil {
 			return err

@@ -42,8 +42,8 @@ export function LoginPage() {
       // el sistema tiene de saber quién está usando la tableta.
       limpiarBloqueo(window.sessionStorage);
       setSession(accessToken, user);
-      // Tras alta/reset por admin: obligar a cambiar la contraseña antes de operar.
-      navigate(user.mustChangePassword ? '/cuenta?forzar=1' : '/pos');
+      // Con el cambio obligatorio pendiente, RequireAuth pide la contraseña nueva en cualquier ruta.
+      navigate('/pos');
     } catch (err) {
       toaster.create({
         title: 'No se pudo entrar',

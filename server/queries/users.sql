@@ -34,6 +34,10 @@ returning id, name, username, pin_hash, password_hash, is_active, created_at, up
 -- name: SetUserPin :exec
 update users set pin_hash = $2, pin_lookup = sqlc.narg(pin_lookup), updated_at = now() where id = $1;
 
+-- name: UserMustChangePassword :one
+-- El control del cambio obligatorio (#311) lo lee en cada petición: solo la columna, sin hashes.
+select must_change_password from users where id = $1;
+
 -- name: SetUserPassword :exec
 -- must_change_password lo fija quien llama (true tras reset por admin, false en cambio propio).
 update users set password_hash = $2, must_change_password = $3, updated_at = now() where id = $1;
