@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -121,4 +123,67 @@ func TestRequirePermission(t *testing.T) {
 
 func byRole(_ context.Context, u AuthUser) ([]domain.Permission, error) {
 	return domain.PermissionsFor(u.Role), nil
+}
+
+// El cambio obligatorio de contraseña (#311) lo hace cumplir el servidor, no la pantalla: con el
+// indicador encendido nada pasa, el rechazo tiene código propio para que la pantalla mande a
+// cambiarla, y deja evento de seguridad. Si la lectura falla, tampoco pasa: el control falla cerrado.
+func TestRequirePasswordChanged(t *testing.T) {
+	call := func(check PasswordChangeCheck, u *AuthUser) (*httptest.ResponseRecorder, bool, string) {
+		var buf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+		defer slog.SetDefault(prev)
+		reached := false
+		next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			reached = true
+			w.WriteHeader(http.StatusOK)
+		})
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/company", nil)
+		if u != nil {
+			req = req.WithContext(context.WithValue(req.Context(), userCtxKey, *u))
+		}
+		rec := httptest.NewRecorder()
+		RequirePasswordChanged(check)(next).ServeHTTP(rec, req)
+		return rec, reached, buf.String()
+	}
+	who := &AuthUser{ID: 7, CompanyID: 2}
+	pending := func(context.Context, AuthUser) (bool, error) { return true, nil }
+	changed := func(context.Context, AuthUser) (bool, error) { return false, nil }
+	broken := func(context.Context, AuthUser) (bool, error) { return false, errors.New("la base no responde") }
+
+	t.Run("con el indicador encendido: 403 con código propio y evento", func(t *testing.T) {
+		rec, reached, logs := call(pending, who)
+		if reached {
+			t.Fatal("la ruta corrió con el cambio de contraseña pendiente")
+		}
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("código = %d; quiere 403", rec.Code)
+		}
+		var body struct {
+			Error struct{ Code string } `json:"error"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &body)
+		if body.Error.Code != "PASSWORD_CHANGE_REQUIRED" {
+			t.Fatalf("código de error = %q; la pantalla no sabría mandar a cambiarla", body.Error.Code)
+		}
+		if !strings.Contains(logs, `"security_event":"password_change_required"`) || !strings.Contains(logs, `"user_id":7`) {
+			t.Fatalf("sin evento de seguridad con la persona: %s", logs)
+		}
+	})
+	t.Run("con la contraseña ya cambiada pasa", func(t *testing.T) {
+		if rec, reached, _ := call(changed, who); !reached || rec.Code != http.StatusOK {
+			t.Fatalf("código = %d, llegó = %v", rec.Code, reached)
+		}
+	})
+	t.Run("si la lectura falla no pasa", func(t *testing.T) {
+		if rec, reached, _ := call(broken, who); reached || rec.Code != http.StatusInternalServerError {
+			t.Fatalf("con la base caída la ruta corrió (código %d): el control falla abierto", rec.Code)
+		}
+	})
+	t.Run("sin persona en el contexto no pasa", func(t *testing.T) {
+		if rec, reached, _ := call(changed, nil); reached || rec.Code != http.StatusUnauthorized {
+			t.Fatalf("código = %d, llegó = %v", rec.Code, reached)
+		}
+	})
 }

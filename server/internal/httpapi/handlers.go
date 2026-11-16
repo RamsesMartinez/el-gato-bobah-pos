@@ -141,6 +141,9 @@ type Deps struct {
 	// el agregado. Son dos campos y no uno porque son dos permisos distintos, y confundirlos es
 	// exactamente lo que las tres barreras de la spec 016 existen para impedir.
 	UsageConsola *app.UsageService
+	// PasswordCheck dice si la persona de la petición tiene pendiente el cambio obligatorio de
+	// contraseña. Nil = el de producción, que Router arma con el store y lee la base (#311).
+	PasswordCheck PasswordChangeCheck
 	// Permissions resuelve lo que puede el usuario de la petición. Nil = el de producción, que Router
 	// arma con el store y lee la base (spec 068); las pruebas inyectan uno fijo para ver un 403.
 	Permissions PermissionResolver
@@ -223,6 +226,7 @@ type Handlers struct {
 	authFails        *rateLimiter // account-targeted brute-force lockout (per username / user id)
 	authIPs          *rateLimiter // per-IP request throttle for the /auth group
 	permissions      PermissionResolver
+	passwordCheck    PasswordChangeCheck
 	roles            *app.RolesService
 	attendance       *app.AttendanceService
 	audit            *app.AuditService
@@ -257,7 +261,7 @@ func NewHandlers(d Deps) *Handlers {
 func newHandlers(d Deps) *Handlers {
 	permissions := d.Permissions
 	return &Handlers{
-		permissions: permissions, roles: d.Roles,
+		permissions: permissions, roles: d.Roles, passwordCheck: d.PasswordCheck,
 		attendance:    d.Attendance,
 		audit:         d.Audit,
 		health:        d.InventoryHealth,
@@ -642,9 +646,17 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	// Del mismo lugar que el control (#311): la pantalla lo vuelve a pedir al recargar y al volver al
+	// frente, y con eso manda a cambiar la contraseña aunque el login haya quedado atrás.
+	mustChange, err := h.passwordCheck(r.Context(), u)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	JSON(w, http.StatusOK, map[string]any{
 		"id": u.ID, "companyId": u.CompanyID, "name": u.Name, "role": rol.SystemCode,
 		"roleId": rol.ID, "roleName": rol.Name, "permissions": nonNilPerms(perms),
+		"mustChangePassword": mustChange,
 	})
 }
 
