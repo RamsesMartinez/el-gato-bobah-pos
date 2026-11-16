@@ -65,4 +65,31 @@ describe('cambio obligatorio de contraseña', () => {
     await waitFor(() => expect(useSessionStore.getState().status).toBe('anon'));
     expect(logout).toHaveBeenCalled();
   });
+
+  test('repetir la contraseña actual no deja enviar', () => {
+    useSessionStore.setState({ token: 't', status: 'authed', user: { ...usuario, mustChangePassword: true } });
+    pintar('/pos');
+    fireEvent.change(screen.getByPlaceholderText('Contraseña actual'), { target: { value: 'Asignada-Por-El-Admin-1' } });
+    fireEvent.change(screen.getByPlaceholderText('Nueva contraseña (mín. 12)'), { target: { value: 'Asignada-Por-El-Admin-1' } });
+    fireEvent.change(screen.getByPlaceholderText('Repetir nueva contraseña'), { target: { value: 'Asignada-Por-El-Admin-1' } });
+    expect((screen.getByRole('button', { name: 'Cambiar contraseña' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  // Ana cambia su contraseña, la tableta se bloquea y Beto entra con su PIN mientras la petición de
+  // Ana sigue en vuelo: el éxito de Ana no le apaga el cambio pendiente a Beto.
+  test('el cambio de una persona no le apaga el indicador a quien entró después', async () => {
+    let soltar!: () => void;
+    changeOwnPassword.mockImplementation(() => new Promise<void>((r) => { soltar = r; }));
+    useSessionStore.setState({ token: 't', status: 'authed', user: { ...usuario, mustChangePassword: true } });
+    pintar('/pos');
+    fireEvent.change(screen.getByPlaceholderText('Contraseña actual'), { target: { value: 'Asignada-Por-El-Admin-1' } });
+    fireEvent.change(screen.getByPlaceholderText('Nueva contraseña (mín. 12)'), { target: { value: 'Mi-Propia-Contrasena-9' } });
+    fireEvent.change(screen.getByPlaceholderText('Repetir nueva contraseña'), { target: { value: 'Mi-Propia-Contrasena-9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar contraseña' }));
+    await waitFor(() => expect(changeOwnPassword).toHaveBeenCalled());
+    useSessionStore.setState({ token: 't2', user: { ...usuario, id: 8, name: 'Beto', mustChangePassword: true } });
+    soltar();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(useSessionStore.getState().user?.mustChangePassword).toBe(true);
+  });
 });

@@ -168,3 +168,22 @@ func conIDDeRuta(ctx context.Context, id string) context.Context {
 	rc.URLParams.Add("id", id)
 	return context.WithValue(ctx, chi.RouteCtxKey, rc)
 }
+
+// Con el cambio obligatorio pendiente, `POST /me/password` es lo único que responde (#311). Sin
+// límite, quien solo conoce el PIN de un empleado nuevo hace el relevo y prueba la contraseña que le
+// puso el admin hasta acertarla, y se queda con la cuenta.
+func TestChangingTheOwnPasswordIsThrottled(t *testing.T) {
+	h := NewHandlers(Deps{Cfg: config.Config{}})
+	ctx := context.Background()
+	for i := 0; i < authFailMax+1; i++ {
+		h.authFails.record(ctx, "pwchange:7")
+	}
+	cuerpo, _ := json.Marshal(map[string]any{"currentPassword": "x", "newPassword": "Mi-Propia-Contrasena-9"})
+	req := httptest.NewRequest(http.MethodPost, "/me/password", bytes.NewReader(cuerpo))
+	req = req.WithContext(context.WithValue(req.Context(), userCtxKey, AuthUser{ID: 7, CompanyID: 1}))
+	w := httptest.NewRecorder()
+	h.ChangeOwnPassword(w, req)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, quiere 429: sin límite la contraseña actual se adivina", w.Code)
+	}
+}

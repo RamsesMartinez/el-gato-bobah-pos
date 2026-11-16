@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Button, Input, VStack } from '@chakra-ui/react';
+import { Button, Input, Text, VStack } from '@chakra-ui/react';
 import { posApi } from '../../api/pos';
-import { ApiError } from '../../api/client';
+import { ApiError, notePasswordChanged } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useSessionStore } from '../../stores/session';
 
@@ -19,12 +19,16 @@ export function CambiarContrasena({ onChanged }: { onChanged?: () => void }) {
 
   const save = async () => {
     setSaving(true);
+    // Quién la cambia se toma ANTES de esperar: si mientras tanto entra otra persona con su PIN, el
+    // éxito no es suyo y no le apaga su propio cambio pendiente.
+    const who = useSessionStore.getState().user?.id;
     try {
       await posApi.changeOwnPassword(current, next);
       toaster.create({ title: 'Contraseña actualizada', type: 'success' });
       setCurrent(''); setNext(''); setConfirm('');
+      notePasswordChanged();
       const user = useSessionStore.getState().user;
-      if (user?.mustChangePassword) useSessionStore.setState({ user: { ...user, mustChangePassword: false } });
+      if (user && user.id === who && user.mustChangePassword) useSessionStore.setState({ user: { ...user, mustChangePassword: false } });
       onChanged?.();
     } catch (err) {
       toaster.create({ title: 'No se pudo cambiar', description: err instanceof ApiError ? err.message : String(err), type: 'error' });
@@ -35,9 +39,10 @@ export function CambiarContrasena({ onChanged }: { onChanged?: () => void }) {
 
   return (
     <VStack align="stretch" gap={3}>
-      <Input type="password" autoComplete="current-password" placeholder="Contraseña actual" value={current} onChange={(e) => setCurrent(e.target.value)} />
-      <Input type="password" autoComplete="new-password" placeholder="Nueva contraseña (mín. 12)" value={next} onChange={(e) => setNext(e.target.value)} />
-      <Input type="password" autoComplete="new-password" placeholder="Repetir nueva contraseña" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+      <Input size="lg" type="password" autoComplete="current-password" placeholder="Contraseña actual" value={current} onChange={(e) => setCurrent(e.target.value)} />
+      <Input size="lg" type="password" autoComplete="new-password" placeholder="Nueva contraseña (mín. 12)" value={next} onChange={(e) => setNext(e.target.value)} />
+      <Input size="lg" type="password" autoComplete="new-password" placeholder="Repetir nueva contraseña" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+      <Text fontSize="sm" color="fg.muted">Mínimo 12 caracteres, sin @ y distinta de la actual.</Text>
       <Button onClick={save} disabled={!valid} loading={saving}>Cambiar contraseña</Button>
     </VStack>
   );

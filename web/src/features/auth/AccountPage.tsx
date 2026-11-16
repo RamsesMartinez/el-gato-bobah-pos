@@ -38,7 +38,7 @@ export function AccountPage() {
         <Text fontWeight="700" mb={1}>PIN de cambio rápido</Text>
         <Text fontSize="sm" color="fg.muted" mb={3}>Opcional. Para cambiar de operador sin escribir la contraseña completa.</Text>
         <HStack>
-          <Input type="password" inputMode="numeric" placeholder="Nuevo PIN (4-6 díg.)" value={pin} onChange={(e) => setPin(e.target.value)} maxW="200px" />
+          <Input size="lg" type="password" inputMode="numeric" placeholder="Nuevo PIN (4-6 díg.)" value={pin} onChange={(e) => setPin(e.target.value)} maxW="200px" />
           <Button variant="outline" onClick={changePin} disabled={pin.length < 4}>Guardar PIN</Button>
         </HStack>
       </Box>

@@ -170,8 +170,8 @@ type PasswordChangeCheck func(ctx context.Context, u AuthUser) (bool, error)
 // la propia cuenta) se monta fuera de él, no con una lista de rutas exentas que una ruta nueva
 // heredaría sin querer.
 //
-// Antes solo lo hacía cumplir la pantalla de login con un desvío, y una recarga lo saltaba. El
-// indicador se lee de la base en cada petición y no del token: el token se emitió antes de un
+// La pantalla no puede ser la barrera: una recarga o una llamada directa la saltan. El indicador
+// se lee de la base en cada petición y no del token: el token se emitió antes de un
 // restablecimiento y el refresh lo renueva. Si la lectura falla, la petición no pasa.
 func RequirePasswordChanged(check PasswordChangeCheck) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

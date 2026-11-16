@@ -147,13 +147,13 @@ func TestRequirePasswordChanged(t *testing.T) {
 		RequirePasswordChanged(check)(next).ServeHTTP(rec, req)
 		return rec, reached, buf.String()
 	}
-	quien := &AuthUser{ID: 7, CompanyID: 2}
-	pendiente := func(context.Context, AuthUser) (bool, error) { return true, nil }
-	cambiada := func(context.Context, AuthUser) (bool, error) { return false, nil }
-	rota := func(context.Context, AuthUser) (bool, error) { return false, errors.New("la base no responde") }
+	who := &AuthUser{ID: 7, CompanyID: 2}
+	pending := func(context.Context, AuthUser) (bool, error) { return true, nil }
+	changed := func(context.Context, AuthUser) (bool, error) { return false, nil }
+	broken := func(context.Context, AuthUser) (bool, error) { return false, errors.New("la base no responde") }
 
 	t.Run("con el indicador encendido: 403 con código propio y evento", func(t *testing.T) {
-		rec, reached, logs := call(pendiente, quien)
+		rec, reached, logs := call(pending, who)
 		if reached {
 			t.Fatal("la ruta corrió con el cambio de contraseña pendiente")
 		}
@@ -172,17 +172,17 @@ func TestRequirePasswordChanged(t *testing.T) {
 		}
 	})
 	t.Run("con la contraseña ya cambiada pasa", func(t *testing.T) {
-		if rec, reached, _ := call(cambiada, quien); !reached || rec.Code != http.StatusOK {
+		if rec, reached, _ := call(changed, who); !reached || rec.Code != http.StatusOK {
 			t.Fatalf("código = %d, llegó = %v", rec.Code, reached)
 		}
 	})
 	t.Run("si la lectura falla no pasa", func(t *testing.T) {
-		if rec, reached, _ := call(rota, quien); reached || rec.Code == http.StatusOK {
+		if rec, reached, _ := call(broken, who); reached || rec.Code != http.StatusInternalServerError {
 			t.Fatalf("con la base caída la ruta corrió (código %d): el control falla abierto", rec.Code)
 		}
 	})
 	t.Run("sin persona en el contexto no pasa", func(t *testing.T) {
-		if rec, reached, _ := call(cambiada, nil); reached || rec.Code != http.StatusUnauthorized {
+		if rec, reached, _ := call(changed, nil); reached || rec.Code != http.StatusUnauthorized {
 			t.Fatalf("código = %d, llegó = %v", rec.Code, reached)
 		}
 	})

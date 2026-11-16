@@ -51,6 +51,19 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   8. **La lectura del indicador falla**: se rechaza la petición (cerrado), nunca se deja pasar.
   9. **La consola de plataforma**: otra firma y otra tabla (`platform_operators`); su token no
      abre ninguna ruta del POS, y el del POS no abre la consola.
+  10. **Adivinar la contraseña del admin desde `/me/password`**, la única ruta que queda abierta
+      (con el PIN del empleado nuevo basta para llegar ahí): se frena por persona (`pwchange:<id>`,
+      el mismo bloqueo que el login) y por IP, con el evento `password_change_failed`.
+  11. **«Recuperarla» por correo con la misma contraseña**: `/auth/reset` también la rechaza.
+  12. **Un `/events` abierto antes del restablecimiento**: el stream vuelve a revisar el indicador en
+      cada ping (25 s) y se corta.
+
+  `TestEveryAuthenticatedRouteEnforcesTheForcedChange` recorre el router entero con una sesión
+  pendiente: una ruta nueva sin el control truena ahí. Las exentas están nombradas en la prueba, cada
+  una con su razón. **Lo que se nota al operar**: con alguien con el cambio pendiente en la tableta no
+  hay relevo por PIN (su `pin-switch` es 403) y la pantalla del cambio solo ofrece cambiarla o cerrar
+  sesión; si esa persona entra por relevo, la aplicación de quien estaba se desmonta (el carrito sí
+  sobrevive, vive en `egb:ticket:v2`).
 - **Dadas de baja** (#236). Cinco cosas que no se ven:
   - **Quién administra a una baja se decide con lo que puede su rol asignado, no con lo que puede
     ahora** (`manageablePermissions`). Ahora una baja no puede nada, así que `WithinPermissions`

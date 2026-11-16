@@ -10,6 +10,10 @@ import (
 )
 
 // GET /events — stream SSE del tablero de pedidos.
+// ssePingEvery mantiene viva la conexión detrás de proxies que cortan lo que no habla. Es variable
+// solo para que la prueba no espere 25 segundos.
+var ssePingEvery = 25 * time.Second
+
 func (h *Handlers) Events(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -43,7 +47,7 @@ func (h *Handlers) Events(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprint(w, ": ok\n\n")
 	flusher.Flush()
 
-	ping := time.NewTicker(25 * time.Second)
+	ping := time.NewTicker(ssePingEvery)
 	defer ping.Stop()
 
 	for {
@@ -51,6 +55,13 @@ func (h *Handlers) Events(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-ping.C:
+			// El control de la ruta corre al conectar; un restablecimiento de contraseña posterior
+			// (#311) cortaría el stream hasta el siguiente ping, no nunca.
+			if h.passwordCheck != nil {
+				if pending, err := h.passwordCheck(r.Context(), u); err != nil || pending {
+					return
+				}
+			}
 			_, _ = fmt.Fprint(w, ": ping\n\n")
 			flusher.Flush()
 		case ev, ok := <-ch:

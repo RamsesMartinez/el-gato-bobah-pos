@@ -156,7 +156,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 			// que ninguna ruta nueva nazca sin el control.
 			r.Group(func(r chi.Router) {
 				r.Use(WithTenant(st))
-				r.Post("/me/password", h.ChangeOwnPassword)
+				r.With(rateLimit(h.authIPs, cfg.Env == "production")).Post("/me/password", h.ChangeOwnPassword)
 			})
 
 			r.Group(func(r chi.Router) {

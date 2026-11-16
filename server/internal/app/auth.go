@@ -453,7 +453,7 @@ func deref(u *uuid.UUID) uuid.UUID {
 // (`/events`, `/version`) abre una corta con la empresa de la sesión. Que la persona no exista en
 // esa empresa es un rechazo, nunca un «no hace falta».
 func MustChangePassword(ctx context.Context, st *store.Store, companyID, userID int64) (bool, error) {
-	leer := func(q *db.Queries) (bool, error) {
+	read := func(q *db.Queries) (bool, error) {
 		v, err := q.UserMustChangePassword(ctx, userID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, domain.ErrUnauthorized
@@ -464,12 +464,12 @@ func MustChangePassword(ctx context.Context, st *store.Store, companyID, userID 
 		if cid != companyID {
 			return false, domain.ErrUnauthorized
 		}
-		return leer(st.QC(ctx))
+		return read(st.QC(ctx))
 	}
 	var v bool
 	err := st.WithTenant(ctx, companyID, func(q *db.Queries) error {
 		var err error
-		v, err = leer(q)
+		v, err = read(q)
 		return err
 	})
 	return v, err

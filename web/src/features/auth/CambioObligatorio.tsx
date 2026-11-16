@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, Button, Center, Heading, Text } from '@chakra-ui/react';
+import { Box, Button, Heading, Text } from '@chakra-ui/react';
 import { posApi } from '../../api/pos';
 import { useSessionStore } from '../../stores/session';
 import { CambiarContrasena } from './CambiarContrasena';
@@ -24,7 +24,9 @@ export function CambioObligatorio() {
   };
 
   return (
-    <Center minH="100dvh" bg="bg.subtle" p={4}>
+    // Arriba y con scroll, no centrada: el teclado de la tableta encoge la pantalla y una caja
+    // centrada deja el botón debajo del teclado.
+    <Box h="100dvh" overflowY="auto" bg="bg.subtle" px={4} py={{ base: 6, md: 12 }} display="flex" justifyContent="center" alignItems="flex-start">
       <Box bg="bg.panel" borderWidth="1px" borderColor="border" borderRadius="lg" p={6} w="420px" maxW="100%">
         <Heading size="lg" mb={1}>Debes cambiar tu contraseña</Heading>
         <Text color="fg.muted" mb={5}>
@@ -33,6 +35,6 @@ export function CambioObligatorio() {
         <CambiarContrasena />
         <Button mt={4} w="full" variant="ghost" onClick={salir} loading={saliendo}>Cerrar sesión</Button>
       </Box>
-    </Center>
+    </Box>
   );
 }
