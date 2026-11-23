@@ -74,6 +74,15 @@ describe('almacenes de la sucursal (spec 094, maqueta A3)', () => {
     await waitFor(() => expect(back.archiveWarehouse).toHaveBeenCalledWith(2));
   });
 
+  test('con compras por recibir dice por qué no se archiva', async () => {
+    back.archiveWarehouse.mockRejectedValue(new ApiError(409, 'WAREHOUSE_PENDING_PURCHASES', 'x', ''));
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: /Bodega/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Archivar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sí, archivar' }));
+    expect(await screen.findByText('Tiene compras por recibir: recíbelas o márcalas como que no llegan primero')).toBeInTheDocument();
+  });
+
   test('el de venta y uno con existencias no ofrecen archivar, y dicen por qué', async () => {
     montar();
     fireEvent.click(await screen.findByRole('button', { name: /^Local/ }));

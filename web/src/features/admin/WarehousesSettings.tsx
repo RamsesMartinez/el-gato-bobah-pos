@@ -23,6 +23,7 @@ function errorMessage(e: unknown) {
     if (e.status === 400) return 'El nombre lleva de 1 a 40 letras';
     if (e.code === 'WAREHOUSE_HAS_STOCK') return 'Tiene existencias: traspásalas o cuéntalas en cero antes de archivarlo';
     if (e.code === 'WAREHOUSE_COUNT_OPEN') return 'Tiene un conteo abierto: ciérralo o descártalo primero';
+    if (e.code === 'WAREHOUSE_PENDING_PURCHASES') return 'Tiene compras por recibir: recíbelas o márcalas como que no llegan primero';
     if (e.code === 'WAREHOUSE_IS_SALES') return 'De aquí salen las ventas: este almacén no se archiva';
     if (e.code === 'WAREHOUSE_NOT_FOUND') return 'Este almacén ya no existe o lo archivó alguien más';
   }
