@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { API } from './ambiente';
+import { API, PRODUCTO } from './ambiente';
 import { iniciarSesion } from './sesion';
 
 // Lo que comparten los specs que capturan en Vender (spec 030): entrar, poner un producto, abrir el
@@ -33,7 +33,7 @@ export async function buscar(page: Page, texto: string) {
 
 // ponerUnProducto toca el producto y, si abre la hoja de modificadores, la confirma. Espera a que el
 // servidor lo confirme: un renglón «Guardando…» todavía no se puede mandar.
-export async function ponerUnProducto(page: Page, nombre = 'Dedos de Queso Pza') {
+export async function ponerUnProducto(page: Page, nombre = PRODUCTO) {
   await buscar(page, nombre);
   await page.getByText(nombre).first().click({ timeout: 30_000 });
   const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
@@ -174,7 +174,7 @@ export async function pagarPorApi(jwt: string, id: number, monto?: number) {
 }
 
 // pedidoPorApi: una cuenta creada y mandada a cocina, como desde otra tableta.
-export async function pedidoPorApi(jwt: string, nombre = 'Dedos de Queso Pza', qty = '1') {
+export async function pedidoPorApi(jwt: string, nombre = PRODUCTO, qty = '1') {
   const productId = await productoPorNombre(jwt, nombre);
   const id = randomUUID();
   const r = await fetch(`${API}/pos/drafts`, {

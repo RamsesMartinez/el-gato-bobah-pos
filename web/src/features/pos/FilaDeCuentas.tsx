@@ -2,7 +2,8 @@ import { Box, Button, HStack, Text } from '@chakra-ui/react';
 import { LuList, LuPlus } from 'react-icons/lu';
 import type { AccountItem } from '../../types/pos';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
-import { BOTON, ESTADO, FICHA, GAP, fichasQueCaben, loQueFalta, nombreDeCuenta, ordenDeLaFila } from './estadosDeCuenta';
+import { missingFor } from '../../domain/cuentas';
+import { BOTON, FICHA, GAP, fichasQueCaben, nombreDeCuenta, ordenDeLaFila } from './estadosDeCuenta';
 
 // LA FILA DE CUENTAS (spec 030, US1): todas las cuentas vivas de todas las tabletas, arriba del
 // menú. Reemplaza a las pestañas «Cuenta 1 · 2» —que vivían solo en una tableta— y al botón naranja
@@ -51,12 +52,12 @@ export function FilaDeCuentas({ cuentas, seleccionada, onElegir, onNueva, onVerT
         </Button>
       )}
       {visibles.map((c) => {
-        const e = ESTADO[c.state];
+        const m = missingFor(c);
         const nombre = nombreDeCuenta(c);
         const activa = c.key === seleccionada;
         return (
           <Button key={c.key} data-ficha="true" aria-pressed={activa}
-            aria-label={`${nombre} · ${e.texto}`}
+            aria-label={`${nombre} · ${m.text}`}
             w={`${FICHA}px`} minW={`${FICHA}px`} minH="44px" h="44px" px={2} py={0.5}
             flexShrink={0} variant={activa ? 'solid' : 'outline'}
             colorPalette={activa ? undefined : 'gray'}
@@ -65,16 +66,10 @@ export function FilaDeCuentas({ cuentas, seleccionada, onElegir, onNueva, onVerT
             <Text fontSize="xs" fontWeight="700" truncate w="100%" textAlign="left" lineHeight="1.2">
               {nombre}
             </Text>
-            {/* La cifra no cede: con la ficha angosta se corta la etiqueta, nunca «falta $114». */}
-            <HStack gap={1} w="100%" minW={0} lineHeight="1.1">
-              <Text as="span" fontSize="2xs" fontWeight="700" color={activa ? undefined : `${e.color}.fg`}
-                truncate minW={0} flexShrink={1}>
-                {e.texto}
-              </Text>
-              <Text as="span" fontSize="2xs" fontWeight="700" whiteSpace="nowrap" flexShrink={0} opacity={0.9}>
-                {loQueFalta(c)}
-              </Text>
-            </HStack>
+            <Text as="span" fontSize="2xs" fontWeight="700" color={activa ? undefined : `${m.color}.fg`}
+              truncate w="100%" textAlign="left" lineHeight="1.1">
+              {m.short}
+            </Text>
           </Button>
         );
       })}

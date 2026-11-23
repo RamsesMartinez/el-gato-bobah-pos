@@ -1,6 +1,6 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { API, cuentasVivas, pedidosEnCurso, tokenDeApi, type CuentaViva } from './ambiente';
+import { API, cuentasVivas, pedidosEnCurso, tokenDeApi, type CuentaViva, PRODUCTO } from './ambiente';
 import {
   abrirTicket, botonCobrar, botonEnviar, crearCuentaPorApi, entrar, entregarPorApi, fichas,
   nombreDeLaCuentaActiva, pagarPorApi, pedido, pedidoPorApi, ponerUnProducto, productoPorNombre,
@@ -46,10 +46,11 @@ test.describe('la fila de cuentas (US1)', () => {
     const nombre = (await miCuenta(page, await tokenDeApi())).folioName ?? '';
     expect(nombre).not.toBe('');
     const b = await otraTableta(browser);
-    await expect(ficha(b, nombre, 'Capturando').or(b.getByRole('button', { name: /Ver todas las cuentas/ })))
+    // Con la columna (spec 089) la cuenta y «Ver todas» se ven a la vez: basta con cualquiera.
+    await expect(ficha(b, nombre, 'Sin enviar').or(b.getByRole('button', { name: /Ver todas las cuentas/ })).first())
       .toBeVisible({ timeout: 30_000 });
     await b.getByRole('button', { name: /Ver todas las cuentas/ }).click();
-    await expect(b.getByRole('dialog').last().getByRole('button', { name: new RegExp(`^${nombre} · Capturando`) }))
+    await expect(b.getByRole('dialog').last().getByRole('button', { name: new RegExp(`^${nombre} · Sin enviar`) }))
       .toBeVisible();
     await b.context().close();
   });
@@ -60,7 +61,7 @@ test.describe('la fila de cuentas (US1)', () => {
     await pagarPorApi(jwt, o.id);
     await entrar(page);
     await abrirPedido(page, o.id);
-    await expect(ficha(page, o.folioName, 'Pagada · en cocina')).toBeVisible({ timeout: 30_000 });
+    await expect(ficha(page, o.folioName, 'Falta entregar')).toBeVisible({ timeout: 30_000 });
     await ponerUnProducto(page, 'Coca Cola 355ml');
     await abrirTicket(page);
     await expect(page.getByRole('heading', { name: /Nuevo · aún no va a cocina/ })).toBeVisible();
@@ -83,7 +84,7 @@ test.describe('la fila de cuentas (US1)', () => {
     await entregarPorApi(jwt, o.id);
     await entrar(page);
     await abrirPedido(page, o.id);
-    await expect(ficha(page, o.folioName, 'Entregada · debe')).toBeVisible({ timeout: 30_000 });
+    await expect(ficha(page, o.folioName, 'Falta cobrar')).toBeVisible({ timeout: 30_000 });
     await pagarPorApi(jwt, o.id);
     await page.getByRole('button', { name: 'Cuenta nueva', exact: true }).click();
     await page.reload();
@@ -126,14 +127,14 @@ test.describe('la cuenta existe desde el primer producto (US2)', () => {
     const b = await otraTableta(browser);
     await b.goto(`/pos?cuenta=${cuenta.draftId}`);
     await abrirTicket(b);
-    await expect(b.getByText('Dedos de Queso Pza').first()).toBeVisible({ timeout: 30_000 });
+    await expect(b.getByText(PRODUCTO).first()).toBeVisible({ timeout: 30_000 });
     await expect(b.getByText('Coca Cola 355ml').first()).toBeVisible();
     await b.context().close();
   });
 
   test('caso 18 · una cuenta guardada por la versión anterior sube al servidor', async ({ page }) => {
     const jwt = await tokenDeApi();
-    const productId = await productoPorNombre(jwt, 'Dedos de Queso Pza');
+    const productId = await productoPorNombre(jwt, PRODUCTO);
     const id = randomUUID();
     await page.addInitScript(({ id, productId }) => {
       localStorage.setItem('egb:ticket:v2', JSON.stringify({
@@ -169,7 +170,7 @@ test.describe('agregar después de cocina (US3)', () => {
     await abrirTicket(page);
     await botonEnviar(page).click();
     await expect(page.getByRole('heading', { name: /En cocina/ })).toBeVisible({ timeout: 20_000 });
-    await expect(fichas(page).filter({ hasText: 'En cocina' }).first()).toBeVisible();
+    await expect(fichas(page).filter({ hasText: /y entregar/ }).first()).toBeVisible();
   });
 
   test('caso 6 · historia 3 · agregar después manda solo lo nuevo', async ({ page }) => {
@@ -201,7 +202,7 @@ test.describe('agregar después de cocina (US3)', () => {
 
   test('caso 8 · historia 6 · quitar 1 de 2 en cocina avisa y baja el total', async ({ page }) => {
     const jwt = await tokenDeApi();
-    const o = await pedidoPorApi(jwt, 'Dedos de Queso Pza', '2');
+    const o = await pedidoPorApi(jwt, PRODUCTO, '2');
     const total = Number(o.total);
     await entrar(page);
     await abrirPedido(page, o.id);
@@ -255,7 +256,7 @@ test.describe('cobrar siempre ofrece los tres modos (US4)', () => {
     await botonCobrar(page).click();
     await expect(page.getByRole('dialog').last().getByText(/Falta \$/)).toBeVisible({ timeout: 30_000 });
     await page.keyboard.press('Escape');
-    await expect(fichas(page).filter({ hasText: 'En cocina' }).first()).toBeVisible({ timeout: 20_000 });
+    await expect(fichas(page).filter({ hasText: /y entregar/ }).first()).toBeVisible({ timeout: 20_000 });
   });
 
   test('caso 15 · la red cae al mandar y el reintento no crea dos pedidos', async ({ page }) => {
@@ -363,7 +364,7 @@ test.describe('red, recarga y otra tableta (US7)', () => {
     await ponerUnProducto(page);
     const jwt = await tokenDeApi();
     const cuenta = await miCuenta(page, jwt);
-    const productId = await productoPorNombre(jwt, 'Dedos de Queso Pza');
+    const productId = await productoPorNombre(jwt, PRODUCTO);
     // La otra tableta agrega el mismo producto.
     const r = await fetch(`${API}/pos/drafts/${cuenta.draftId}/lines`, {
       method: 'POST',
@@ -387,7 +388,7 @@ test.describe('red, recarga y otra tableta (US7)', () => {
 test.describe('cerrar caja con cuentas vivas (US8)', () => {
   test('caso 21 · caso 12 · historia 8 · el cierre lista las cuentas vivas y «Abrir» lleva a cada una', async ({ page }) => {
     const jwt = await tokenDeApi();
-    await crearCuentaPorApi(jwt, await productoPorNombre(jwt, 'Dedos de Queso Pza'));
+    await crearCuentaPorApi(jwt, await productoPorNombre(jwt, PRODUCTO));
     await entrar(page);
     await page.goto('/caja');
     const plegada = page.getByRole('button', { name: /Cuentas pendientes \(\d+\)/ });
@@ -420,7 +421,7 @@ test.describe('cerrar caja con cuentas vivas (US8)', () => {
 
   test('caso 13 · cancelar con algo entregado ofrece quitar lo que falta', async ({ page }) => {
     const jwt = await tokenDeApi();
-    const o = await pedidoPorApi(jwt, 'Dedos de Queso Pza', '2');
+    const o = await pedidoPorApi(jwt, PRODUCTO, '2');
     const linea = (await pedido(jwt, o.id)).lines![0];
     await fetch(`${API}/orders/${o.id}/lines/${linea.id}/deliver`, {
       method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },

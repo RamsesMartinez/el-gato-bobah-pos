@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { pedidosEnCurso, tokenDeRequest } from './ambiente';
+import { pedidosEnCurso, tokenDeRequest, PRODUCTO } from './ambiente';
 import { botonCobrar, buscar, cerrarBusqueda } from './pos';
 import { iniciarSesion } from './sesion';
 
@@ -44,8 +44,8 @@ async function verElPedido(page: Page) {
 async function agregarUnProducto(page: Page): Promise<void> {
   // Uno SIN modificadores: los que los tienen abren otra hoja y lo que esta suite mide es el cobro,
   // no el armado del pedido.
-  await buscar(page, 'Dedos de Queso Pza');
-  await page.getByText('Dedos de Queso Pza').first().click();
+  await buscar(page, PRODUCTO);
+  await page.getByText(PRODUCTO).first().click();
   const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
   if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
   await expect(page.getByText('Guardando…')).toHaveCount(0, { timeout: 15_000 });

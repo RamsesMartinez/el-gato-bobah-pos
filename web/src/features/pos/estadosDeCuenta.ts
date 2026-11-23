@@ -1,25 +1,6 @@
 import type { AccountItem } from '../../types/pos';
-import { money } from '../../utils/format';
 
-export { ESTADO, nombreDeCuenta } from '../../domain/cuentas';
-
-// Lo que se lee debajo del estado: lo que importa para cobrar.
-export function loQueFalta(c: AccountItem): string {
-  const falta = Number(c.outstanding);
-  switch (c.state) {
-    case 'capturing':
-    case 'in_kitchen':
-      return money(Number(c.total));
-    case 'paid_in_kitchen':
-      return 'pagada';
-    case 'partly_paid':
-      return `falta ${money(falta)}`;
-    case 'delivered_owes':
-      return `debe ${money(falta)}`;
-    case 'closed_with_new':
-      return '';
-  }
-}
+export { nombreDeCuenta } from '../../domain/cuentas';
 
 // La fila: fichas de ANCHO FIJO y solo las que caben completas. 112 px por ficha, 6 de separación
 // y los dos botones de 44 («+N» y «+») siempre visibles. Con 112 caben tres con el ticket abierto a

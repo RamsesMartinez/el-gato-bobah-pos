@@ -7,6 +7,7 @@ import { Provider } from '../../components/ui/provider';
 import type { DraftView, OrderView } from '../../types/pos';
 import { armarVista, type Pendiente, type VistaCuenta } from './cuentaEnPantalla';
 import { Ticket } from './Ticket';
+import { cuenta } from './__fixtures__/cuentas';
 
 // El ticket ya no lee un almacén: pinta la cuenta que dice el servidor (spec 030). Las cuentas de
 // prueba se arman con la MISMA función que usa la pantalla, así que lo que aquí se ve es lo que
@@ -485,5 +486,36 @@ describe('lo que la revisión de tableta encontró', () => {
     const l = { ...draft().lines![0], available: false };
     pinta(vista({ draft: draft({ lines: [l] }) }));
     expect(screen.getByRole('status')).toHaveTextContent('Quita lo que ya no se vende');
+  });
+});
+
+// Spec 089, US2: el ticket de un pedido dice lo que le falta para quitarse y ofrece entregarlo.
+describe('lo que le falta a la cuenta abierta', () => {
+  test('una pagada sin entregar dice «Falta entregar» y ofrece «Entregar» de 44 px', () => {
+    const onDeliver = vi.fn();
+    const viva = cuenta({ key: 'o:1', orderId: 1, state: 'paid_in_kitchen', paid: '165.00', total: '165.00', outstanding: '0.00' });
+    render(<Provider><Ticket vista={vista({ order: pedido({ paid: true, outstanding: '0.00' }) })} {...handlers}
+      liveAccount={viva} onDeliver={onDeliver} /></Provider>);
+    const franja = screen.getByTestId('le-falta');
+    expect(within(franja).getByText('Falta entregar')).toBeInTheDocument();
+    const entregar = within(franja).getByRole('button', { name: /^Entregar/ });
+    expect(alto(entregar)).toBeGreaterThanOrEqual(44);
+    fireEvent.click(entregar);
+    expect(onDeliver).toHaveBeenCalledWith(viva);
+  });
+
+  test('una entregada que debe dice cuánto falta cobrar y no ofrece entregar', () => {
+    const viva = cuenta({ key: 'o:1', orderId: 1, state: 'delivered_owes', outstanding: '165.00' });
+    render(<Provider><Ticket vista={vista({ order: pedido({ status: 'entregada' }) })} {...handlers}
+      liveAccount={viva} onDeliver={vi.fn()} /></Provider>);
+    const franja = screen.getByTestId('le-falta');
+    expect(within(franja).getByText('Falta cobrar $165')).toBeInTheDocument();
+    expect(within(franja).queryByRole('button', { name: /^Entregar/ })).toBeNull();
+  });
+
+  test('una cuenta en captura no tiene la franja: todavía no es pedido', () => {
+    const viva = cuenta({ key: 'd:1', kind: 'draft', orderId: null, state: 'capturing' });
+    render(<Provider><Ticket vista={vista({ draft: draft() })} {...handlers} liveAccount={viva} onDeliver={vi.fn()} /></Provider>);
+    expect(screen.queryByTestId('le-falta')).toBeNull();
   });
 });
