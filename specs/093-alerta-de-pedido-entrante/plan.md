@@ -77,7 +77,7 @@ Sin violaciones; no hay tabla de complejidad.
 | Reconexión / subida azul-verde | Aviso perdido | vitest: `alReconectar` refetch; e2e offline→online |
 | Tableta suspendida | Aviso perdido | vitest: `visibilitychange` → refetch y `resume()` |
 | Simulación encendida en producción | Acepta aquí lo que la plataforma cancela | `config_test`: `APP_ENV=production` + flag → no arranca |
-| Hoja abierta encima | El indicador queda tapado | vitest: capa del indicador > capa de hojas (como `CAPA_DEL_AVISO`) |
+| Hoja abierta encima | El indicador queda tapado | vitest: capa del indicador > capa de hojas (`FRANJA` en `capas.ts`) |
 | Dos avisos del mismo pedido | Franja vieja + indicador nuevo | Se borra `AvisoDePlataforma` de `POSPage`; test de que Vender no lo monta |
 
 ## Pantallas y maquetas
@@ -86,8 +86,8 @@ Medidas con el front real a **1024×600** (pedido del dueño) y a **1280×854** 
 constitución).
 
 1. **Indicador global de pedidos por aceptar** (opción A): una fila de 52 px en la columna del área
-   de trabajo de `AppShell`, debajo de la franja de agotados, con `position: relative` y la capa
-   `CAPA_DEL_AVISO` (2000) para quedar encima del fondo de cualquier hoja. Dice cuántos hay y el más
+   de trabajo de `AppShell`, antes de la franja de agotados, con `position: relative` y la capa
+   `FRANJA` (2100, `features/entrantes/capas.ts`) para quedar encima de hojas, toaster y bloqueo por PIN. Dice cuántos hay y el más
    urgente (origen, cliente, minutos), y lleva «Ver pedidos» a `/pedidos`. Con el sonido bloqueado,
    agrega el botón «Toca para activar el sonido». En Pedidos no se pinta: la sección ya lo muestra.
    Reemplaza la franja de Vender.

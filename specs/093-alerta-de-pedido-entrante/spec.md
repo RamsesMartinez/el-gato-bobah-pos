@@ -267,7 +267,7 @@ muestra todos los entregados de hoy con su botón de ticket.
 - **FR-015**: Pedidos MUST tener una columna «Por aceptar» a la izquierda del tablero, solo cuando
   hay pendientes, con cada pedido y sus botones Aceptar y Rechazar de al menos 44 px, separados lo
   suficiente para no tocar uno por otro.
-- **FR-016**: La sección MUST ordenar los pedidos por urgencia (el plazo más cercano primero; los
+- **FR-016**: La columna MUST ordenar los pedidos por urgencia (el plazo más cercano primero; los
   que no tienen plazo, por antigüedad).
 - **FR-017**: Al aceptar, la comanda MUST imprimirse solo en la tableta que aceptó, con el ajuste de
   impresión del negocio.
@@ -280,7 +280,7 @@ muestra todos los entregados de hoy con su botón de ticket.
   «Cerrados» (los entregados del día, completos), sin quitarle alto al tablero.
 - **FR-030** (ídem): Cada tarjeta de pedido en curso MUST ofrecer su ticket a un toque, sin pasar por
   el menú de la tarjeta.
-- **FR-018**: El indicador y la sección MUST sustituir a la franja y a la hoja actuales de la
+- **FR-018**: El indicador y la columna MUST sustituir a la franja y a la hoja actuales de la
   pantalla Vender, sin dejar dos avisos del mismo pedido en pantalla.
 
 **Resistencia**
@@ -304,7 +304,7 @@ muestra todos los entregados de hoy con su botón de ticket.
 - **FR-024**: Los roles propios que ya existen al subir MUST conservar la capacidad que tenían (hoy
   cualquier sesión ve y acepta), sin que eso convierta al permiso en heredable para roles propios
   futuros.
-- **FR-025**: Sin el permiso, la sesión MUST NOT sonar, ni ver el indicador ni la sección.
+- **FR-025**: Sin el permiso, la sesión MUST NOT sonar, ni ver el indicador ni la columna.
 
 ### Key Entities
 
