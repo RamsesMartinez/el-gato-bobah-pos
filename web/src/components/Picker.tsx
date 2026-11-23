@@ -133,7 +133,8 @@ export function Picker({
               <Box px={4} pt={title ? 0 : 4} pb={2}>
                 <HStack px={3} borderWidth="1px" borderRadius="lg" bg="bg.subtle">
                   <LuSearch />
-                  <Input variant="flushed" border="none" placeholder={searchPlaceholder} value={q}
+                  {/* 44 px como todo lo que se toca: la receta de `flushed` lo deja en 40. */}
+                  <Input variant="flushed" border="none" minH="44px" placeholder={searchPlaceholder} value={q}
                     onChange={(e) => setQ(e.target.value)} autoFocus={focusSearch} maxLength={searchMaxLength} />
                 </HStack>
               </Box>
