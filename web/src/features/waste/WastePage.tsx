@@ -66,18 +66,19 @@ export function WastePage() {
   const chooseItem = (it: Item) => { setItem(it); setMeasure({ kind: 'base' }); setQty(''); setMessage(null); if (view === 'pasos') setStep(3); };
   const chooseReason = (id: number) => { setReasonId(id); setMessage(null); if (view === 'pasos') setStep(2); };
 
+  // El almacén viaja con la petición: el aviso dice de cuál se restó aunque se cambie mientras llega.
   const save = useMutation({
-    mutationFn: () => wasteApi.record(withWarehouse({
+    mutationFn: (where: { id?: number; name?: string }) => wasteApi.record(withWarehouse({
       reasonId: reasonId!, qty,
       ...(item!.kind === 'i' ? { ingredientId: item!.id } : { productId: item!.id }),
       ...(measure.kind === 'unit' ? { unitId: measure.id } : {}),
       ...(measure.kind === 'pack' ? { presentationId: measure.id } : {}),
-    }, wh.warehouseId)),
-    onSuccess: (res) => {
+    }, where.id)),
+    onSuccess: (res, where) => {
       medirAccion('merma', 'registrar');
       setMessage(res.status === 'pending'
         ? { text: 'Quedó por aprobar: espera aprobación de quien revisa y todavía no se resta.', tone: 'warn' }
-        : { text: wh.multi ? `Guardado: ya se restó de ${wh.name}.` : 'Guardado: ya se restó de lo que tienes.', tone: 'ok' });
+        : { text: where.name ? `Guardado: ya se restó de ${where.name}.` : 'Guardado: ya se restó de lo que tienes.', tone: 'ok' });
       setItem(null); setQty(''); setReasonId(null); setStep(1); setMeasure({ kind: 'base' });
       void qc.invalidateQueries({ queryKey: ['merma'] });
     },
@@ -140,7 +141,7 @@ export function WastePage() {
       )}
       {product && <Text color="fg.muted">En piezas</Text>}
       <NumericKeypad allowDecimal={allowDecimal} onKey={(k) => setQty((q) => pressKey(q, k, allowDecimal))} />
-      <Button minH="56px" position="sticky" bottom={0} zIndex={1} colorPalette="brand" disabled={!ready || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
+      <Button minH="56px" position="sticky" bottom={0} zIndex={1} colorPalette="brand" disabled={!ready || save.isPending} onClick={() => save.mutate({ id: wh.warehouseId, name: wh.multi ? wh.name : undefined })}>Guardar</Button>
     </VStack>
   );
 
@@ -157,7 +158,7 @@ export function WastePage() {
         <Box px={3} pt={2} flexShrink={0}><WarehousePicker pick={wh} label="¿De qué almacén?" /></Box>
       )}
       {tab === 'hoy' ? (
-        <TodayList rows={today} />
+        <TodayList rows={today} multi={wh.multi} />
       ) : view === 'una' ? (
         <Grid templateColumns="minmax(0, 260px) minmax(0, 1fr) minmax(0, 280px)" gap={4} p={2} flex="1" minH={0}>
           <Box minH={0} overflowY="auto">{reasonButtons}</Box>
@@ -258,7 +259,7 @@ function NewReasonSheet({ open, onClose, onChosen }: { open: boolean; onClose: (
   );
 }
 
-function TodayList({ rows }: { rows: WasteRow[] }) {
+function TodayList({ rows, multi }: { rows: WasteRow[]; multi: boolean }) {
   const qc = useQueryClient();
   const [confirm, setConfirm] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -280,7 +281,7 @@ function TodayList({ rows }: { rows: WasteRow[] }) {
         <Flex key={r.id} data-testid="renglon-merma" minH="56px" align="center" justify="space-between" gap={3} borderBottomWidth="1px" py={1}>
           <Box minW={0}>
             <Text fontWeight="600">{r.itemName} · {formatBaseQty(r.quantity, r.unitCode)}</Text>
-            <Text fontSize="sm" color="fg.muted">{r.reason} · {r.recordedBy} · {STATUS_WORDS[r.status] ?? r.status}{r.totalCost ? ` · ${moneyExact(r.totalCost)}` : ''}</Text>
+            <Text fontSize="sm" color="fg.muted">{r.reason} · {r.recordedBy}{multi && r.warehouseName ? ` · ${r.warehouseName}` : ''} · {STATUS_WORDS[r.status] ?? r.status}{r.totalCost ? ` · ${moneyExact(r.totalCost)}` : ''}</Text>
           </Box>
           {r.canUndo && (confirm === r.id ? (
             <HStack gap={3} flexShrink={0}>

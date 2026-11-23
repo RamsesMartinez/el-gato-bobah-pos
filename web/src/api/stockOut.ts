@@ -24,6 +24,9 @@ export interface OutReportRow {
   undoneAt: string | null;
   moved: boolean;
   open: boolean;
+  // Dónde se reportó (spec 094). Opcionales: la API anterior no los trae.
+  warehouseId?: number;
+  warehouseName?: string;
 }
 
 export interface OutSuggestions {

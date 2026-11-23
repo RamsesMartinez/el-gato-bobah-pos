@@ -159,12 +159,13 @@ function AddSheet({ warehouses, onClose, onDone }: { warehouses: Warehouse[]; on
         <DrawerHeader><Text fontWeight="700">Agregar lugar</Text></DrawerHeader>
         <DrawerBody>
           {warehouses.length > 1 && (
-            <Box mb={3}>
+            <HStack mb={3} gap={3} flexWrap="wrap">
+              <Text fontWeight="600">¿En qué almacén?</Text>
               <Segmented label="¿En qué almacén?" value={String(whId ?? '')}
                 options={warehouses.map((w) => ({ value: String(w.id), label: w.name }))} onChange={(v) => setWhId(Number(v))} />
-            </Box>
+            </HStack>
           )}
-          <Input aria-label="Nombre del lugar" minH="44px" maxLength={30} value={name} onChange={(e) => setName(e.target.value)} />
+          <Input aria-label="Nombre del lugar" placeholder="Ej. Refri, Anaquel, Barra" minH="44px" maxLength={30} value={name} onChange={(e) => setName(e.target.value)} />
           {error && <Text fontSize="sm" color="fg.error" mt={2}>{error}</Text>}
         </DrawerBody>
         <DrawerFooter>

@@ -239,4 +239,26 @@ describe('se echó a perder por almacén (spec 094)', () => {
     await waitFor(() => expect(waste.record).toHaveBeenCalledWith(expect.objectContaining({ ingredientId: 2, warehouseId: 2 })));
     expect(await screen.findByText(/se restó de Bodega/)).toBeInTheDocument();
   });
+  // El aviso nombraba el almacén elegido al LLEGAR la respuesta: cambiar de almacén mientras tanto
+  // decía otro. Y la lista de hoy no decía de qué almacén era cada merma.
+  test('el aviso nombra el almacén con que se mandó y la lista de hoy dice el almacén', async () => {
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    let suelta: (v: unknown) => void = () => {};
+    waste.record.mockImplementation(() => new Promise((r) => { suelta = r; }));
+    waste.today.mockResolvedValue([{ id: 5, itemType: 'ingrediente', itemName: 'Leche entera', quantity: '1', unitCode: 'L', totalCost: null,
+      status: 'applied', reason: 'Caducó', recordedBy: 'Ana', recordedAt: '2026-10-15T15:00:00Z', canUndo: false, warehouseName: 'Bodega' }]);
+    montar();
+    const grupo = await screen.findByRole('group', { name: '¿De qué almacén?' });
+    fireEvent.click(within(grupo).getByRole('button', { name: 'Bodega' }));
+    click('Caducó'); click('Perlas de tapioca'); tecla('2'); click('Guardar');
+    await waitFor(() => expect(waste.record).toHaveBeenCalled());
+    fireEvent.click(within(grupo).getByRole('button', { name: 'Local · de venta' }));
+    suelta({ id: 9, status: 'applied', totalCost: null });
+    expect(await screen.findByText(/se restó de Bodega/)).toBeInTheDocument();
+    click(/^Hoy/);
+    expect((await screen.findByText(/Leche entera/)).closest('[data-testid="renglon-merma"]')!.textContent).toContain('Bodega');
+  });
 });

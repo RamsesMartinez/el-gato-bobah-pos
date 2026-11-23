@@ -75,8 +75,10 @@ export function SeAcaboPage() {
   const error = (e: unknown) => setMensaje({ tipo: 'error', texto: e instanceof ApiError ? e.message : 'No se pudo avisar; vuelve a intentar.' });
   const reportar = useMutation({
     // La clave lleva el almacén: el mismo artículo en otro almacén es otro reporte.
-    mutationFn: (it: OutItem) => stockOutApi.report(it, llaveDe(`articulo:${claveDe(it)}:${wh.warehouseId ?? 'venta'}`), wh.warehouseId),
-    onSuccess: (res, it) => {
+    // El almacén viaja con la petición: el aviso dice dónde quedó en 0 aunque se cambie mientras llega.
+    mutationFn: ({ it, whId }: { it: OutItem; whId?: number; whName?: string }) =>
+      stockOutApi.report(it, llaveDe(`articulo:${claveDe(it)}:${whId ?? 'venta'}`), whId),
+    onSuccess: (res, { it, whName }) => {
       medirAccion('se-acabo', res.kind === 'confirmation' ? 'confirmar' : 'reportar');
       llave.current = null;
       setQ('');
@@ -86,7 +88,7 @@ export function SeAcaboPage() {
       // con la hora de ahora, no con la del último tic.
       const ahoraMismo = Date.now();
       setAhora(ahoraMismo);
-      setHecho({ nombre: it.name, id: res.id, confirmacion: res.kind === 'confirmation', hasta: ahoraMismo + (sug?.undoSeconds ?? 90) * 1000, almacen: wh.multi ? wh.name : undefined });
+      setHecho({ nombre: it.name, id: res.id, confirmacion: res.kind === 'confirmation', hasta: ahoraMismo + (sug?.undoSeconds ?? 90) * 1000, almacen: whName });
       void qc.invalidateQueries({ queryKey: ['se-acabo'] });
       void qc.invalidateQueries({ queryKey: ['avisos'] });
     },
@@ -130,7 +132,7 @@ export function SeAcaboPage() {
     return (
       <Button key={clave} data-row minH="64px" h="auto" py={2} whiteSpace="normal" textAlign="left" justifyContent="flex-start"
         variant={listo ? 'solid' : 'outline'} colorPalette={listo ? 'red' : 'gray'} disabled={enviando}
-        onClick={(e) => tocar(clave, e.timeStamp, () => reportar.mutate(it))}>
+        onClick={(e) => tocar(clave, e.timeStamp, () => reportar.mutate({ it, whId: wh.warehouseId, whName: wh.multi ? wh.name : undefined }))}>
         <VStack align="start" gap={0} minW={0}>
           <Text fontWeight="700" fontSize="md" lineClamp={2}>{it.name}</Text>
           <Text fontSize="xs" color={listo ? 'white' : 'fg.muted'} minH="16px">
@@ -220,7 +222,7 @@ export function SeAcaboPage() {
               <Box flex="1" minW={0}>
                 <Text fontWeight="600" lineClamp={1}>{r.name}</Text>
                 <Text fontSize="sm" color="fg.muted">
-                  {hora.soloHora(r.reportedAt)} · {r.reportedBy}
+                  {hora.soloHora(r.reportedAt)} · {r.reportedBy}{wh.multi && r.warehouseName ? ` · ${r.warehouseName}` : ''}
                   {r.kind === 'confirmation' ? ' · lo confirmó' : ''}{r.undoneAt ? ' · deshecho' : ''}
                 </Text>
               </Box>

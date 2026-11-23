@@ -1017,8 +1017,8 @@ describe('conteo por almacén (spec 094)', () => {
   test('el conteo abierto dice qué almacén se cuenta y deja al final lo que no tiene lugar en él', async () => {
     back.warehouses.mockResolvedValue(dos);
     back.currentCount.mockResolvedValue({ ...conteo(), warehouseId: 2, warehouseName: 'Bodega', items: [
-      { ingredientId: 3, name: 'Limón', place: null, placeId: null, baseUnitCode: 'pieza', presentations: [], countedQty: null },
-      { ingredientId: 1, name: 'Jarabe de vainilla', place: 'Anaquel', placeId: 7, baseUnitCode: 'ml', presentations: [], countedQty: null },
+      { ingredientId: 3, name: 'Limón', place: null, placeId: null, baseUnitCode: 'pieza', presentations: [], countedQty: null, placeElsewhere: true, inWarehouse: true },
+      { ingredientId: 1, name: 'Jarabe de vainilla', place: 'Anaquel', placeId: 7, baseUnitCode: 'ml', presentations: [], countedQty: null, inWarehouse: true },
     ] });
     montar();
     expect(await screen.findByText(/Contando Bodega/)).toBeInTheDocument();
@@ -1030,5 +1030,31 @@ describe('conteo por almacén (spec 094)', () => {
     await screen.findByText('Limón');
     expect(screen.queryByText(/Contando/)).toBeNull();
     expect(screen.queryByText('Sin lugar en este almacén')).toBeNull();
+  });
+  // Prueba con alguien nuevo: el conteo de la Bodega listaba los 520 artículos del negocio como «Sin
+  // lugar en este almacén». Ahora enseña los de la Bodega; los demás se encuentran buscando.
+  test('en la Bodega enseña lo suyo y lo demás sale buscando', async () => {
+    back.warehouses.mockResolvedValue(dos);
+    back.currentCount.mockResolvedValue({ ...conteo(), warehouseId: 2, warehouseName: 'Bodega', items: [
+      { ingredientId: 1, name: 'Jarabe de vainilla', place: 'Anaquel', placeId: 7, baseUnitCode: 'ml', presentations: [], countedQty: null, inWarehouse: true },
+      { ingredientId: 3, name: 'Limón', place: null, placeId: null, baseUnitCode: 'pieza', presentations: [], countedQty: null, inWarehouse: false },
+      { ingredientId: 4, name: 'Harina', place: null, placeId: null, baseUnitCode: 'g', presentations: [], countedQty: null, inWarehouse: true },
+    ] });
+    montar('/almacen?almacen=2');
+    expect(await screen.findByText('Jarabe de vainilla')).toBeInTheDocument();
+    expect(screen.queryByText('Limón')).toBeNull();
+    expect(screen.getByTestId('avance').textContent).toBe('0 de 2 contados');
+    // Lo que no tiene lugar en ningún lado dice «Sin definir», no «Sin lugar en este almacén».
+    expect(screen.queryByText('Sin lugar en este almacén')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: 'limón' } });
+    expect(await screen.findByText('Limón')).toBeInTheDocument();
+  });
+  // Recargar con un conteo abierto en la Bodega volvía al de venta y decía «No hay un conteo abierto».
+  test('el almacén elegido viaja en la dirección y sobrevive a recargar', async () => {
+    back.warehouses.mockResolvedValue(dos);
+    back.currentCount.mockResolvedValue(null);
+    montar('/almacen?almacen=2');
+    await waitFor(() => expect(back.currentCount).toHaveBeenCalledWith(2));
+    expect(await screen.findByRole('button', { name: 'Bodega' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

@@ -8,7 +8,7 @@ import { Picker } from '../../../components/Picker';
 import { can } from '../../../app/permissions';
 import { useSessionStore } from '../../../stores/session';
 import { formatBaseQty, formatUnitCost } from '../../../shared/units';
-import { NO_LOCATION } from '../useLocations';
+import { NO_LOCATION, useLocations } from '../useLocations';
 import { NewArticleSheet } from './NewArticleSheet';
 import { presentationLabel } from '../../../shared/presentationLabel';
 import { DuplicatesSheet } from './DuplicatesSheet';
@@ -63,7 +63,9 @@ export function ArticlesTab({ onOpen, word = 'artículo', notice, onNoticeDone }
   const debounced = useDebounced(q, SEARCH_DELAY_MS);
   const f: ArticleFilter = { ...filter, q: debounced };
   const list = useQuery({ queryKey: ['articles', f], queryFn: () => backofficeApi.articles(f) });
-  const places = useQuery({ queryKey: ['count-places'], queryFn: () => backofficeApi.countPlaces() });
+  // Los lugares de todos los almacenes, cada uno con el suyo (spec 094): el filtro solo ofrecía los
+  // del de venta y no encontraba un artículo con lugar en la Bodega.
+  const places = useLocations(undefined, { all: true });
   // Posibles duplicados (spec 056): el botón solo aparece con grupos y para quien puede unir.
   const groups = useQuery({ queryKey: ['duplicate-groups'], queryFn: backofficeApi.duplicateGroups, enabled: canConfigure });
   const groupCount = (groups.data?.groups ?? []).length;
@@ -72,7 +74,7 @@ export function ArticlesTab({ onOpen, word = 'artículo', notice, onNoticeDone }
   const placeValue = filter.place === undefined ? '' : String(filter.place);
   const placeOptions = [
     { value: 'none', label: NO_LOCATION },
-    ...(places.data ?? []).map((p) => ({ value: String(p.id), label: p.name })),
+    ...places.options,
   ];
   const clearNotice = () => onNoticeDone?.();
   const toggle = (k: 'noCost' | 'negative') => setFilter({ ...filter, [k]: !filter[k] });

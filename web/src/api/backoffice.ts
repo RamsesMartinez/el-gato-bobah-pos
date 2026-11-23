@@ -853,6 +853,15 @@ export interface StockMovement {
   warehouse_name?: string;
   transfer_id?: number | null;
   counterpart_warehouse_name?: string | null;
+  // El otro almacén del traspaso ya se archivó: con uno nuevo del mismo nombre, es lo que los distingue.
+  counterpart_warehouse_archived?: boolean;
+}
+
+// WarehouseValue es lo que vale un almacén en «Todos» (spec 094).
+export interface WarehouseValue {
+  warehouseId: number;
+  warehouseName: string;
+  value: string;
 }
 
 // Cuerpos de request del detalle del gasto (lo que se envía; distinto de lo que se lee).
@@ -922,6 +931,10 @@ export interface CountItem {
   weighed?: CountWeighed | null;
   // Otros nombres con que se busca (spec 063). Opcional: una API anterior no los trae.
   altNames?: string[];
+  // Spec 094: tiene lugar, pero en otro almacén. Y si es de este almacén (existencia, lugar o ya
+  // capturado aquí; en el de venta, todo). Opcionales: la API anterior no los trae.
+  placeElsewhere?: boolean;
+  inWarehouse?: boolean;
 }
 // CountWeighed es cómo se capturó una pesada con empaque (#204). closedPacks falta o es null si no se
 // sabe cómo se repartió lo cerrado entre empaques.
@@ -949,6 +962,7 @@ export interface CountProduct {
   category: string;
   countedQty: string | null;
   altNames?: string[];
+  inWarehouse?: boolean;
 }
 export interface StockCount {
   id: number;
@@ -1279,6 +1293,8 @@ export const backofficeApi = {
   // Almacenes de la sucursal (spec 094).
   warehouses: (includeArchived = false) =>
     api.get<{ items?: Warehouse[] }>(`/stock/warehouses${includeArchived ? '?includeArchived=1' : ''}`),
+  // Solo id, nombre y cuál es el de venta: lo que necesita quien registra sin ver el inventario.
+  warehouseNames: () => api.get<{ items?: Pick<Warehouse, 'id' | 'name' | 'isSales'>[] }>('/stock/warehouses/names'),
   createWarehouse: (name: string) => api.post<{ id: number }>('/stock/warehouses', { name }),
   renameWarehouse: (id: number, name: string) => api.patch<void>(`/stock/warehouses/${id}`, { name }),
   // Traspasos entre almacenes (spec 094): la clave del cliente hace que un reintento no duplique.
@@ -1377,7 +1393,7 @@ export const backofficeApi = {
   // Sin almacén, el de venta; un id o 'all' (spec 094).
   // totalValue no suma los negativos (spec 094); sin él, la pantalla no pinta el pie.
   stockLevels: (warehouseId?: number | 'all') =>
-    api.get<{ items: StockLevel[]; totalValue?: string }>(`/stock/levels${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
+    api.get<{ items: StockLevel[]; totalValue?: string; valueByWarehouse?: WarehouseValue[] }>(`/stock/levels${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
   stockMovements: (warehouseId?: number | 'all') =>
     api.get<{ items: StockMovement[] }>(`/stock/movements${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
   inventoryHealth: (q: HealthQuery = {}) => api.get<InventoryHealth>(`/stock/health?${qsReporte(q as ReportQuery)}`),

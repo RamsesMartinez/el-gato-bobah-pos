@@ -147,6 +147,9 @@ describe('lugares por almacén (spec 094)', () => {
     expect(within(frio).queryByText('Refri')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Agregar lugar' }));
     const grupo = await screen.findByRole('group', { name: '¿En qué almacén?' });
+    // La pregunta y el ejemplo se leen, no solo los botones (prueba con alguien nuevo, 094).
+    expect(screen.getByText('¿En qué almacén?')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Nombre del lugar' })).toHaveAttribute('placeholder', 'Ej. Refri, Anaquel, Barra');
     expect(within(grupo).getByRole('button', { name: 'Local' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(within(grupo).getByRole('button', { name: 'Cuarto frío' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Nombre del lugar' }), { target: { value: 'Tarima' } });

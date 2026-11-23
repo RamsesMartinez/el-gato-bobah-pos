@@ -55,17 +55,35 @@ function formaDe(c: LowStockConfig, kind: Kind, otroAlmacen = false): Forma {
 
 // cuerpo arma lo que se manda. Mínimo vacío es «sin mínimo» (null), nunca un cero escrito a medias; y
 // sin mínimo, «llegue al mínimo» viaja apagada aunque la casilla haya quedado marcada.
-// Con otro almacén (spec 094) el mínimo capturado es el de ese almacén y el del artículo viaja como
-// estaba; el almacén va con su id. El de venta va sin almacén.
-function cuerpo(f: Forma, kind: Kind, updatedAt?: string, otro?: { warehouseId: number; articleMin: string | null }): LowStockInput {
+function cuerpo(f: Forma, kind: Kind, updatedAt?: string): LowStockInput {
   const min = baseQty(f.min.qty, kind, f.min.big);
   return {
     enabled: f.enabled, onMin: f.onMin && min != null && Number(min) > 0, onOut: f.onOut, banner: f.banner,
-    minStock: otro ? otro.articleMin : min ?? null,
+    minStock: min ?? null,
     coverageDays: f.dias.trim() === '' ? null : Number(f.dias), ...(updatedAt ? { expectedUpdatedAt: updatedAt } : {}),
-    ...(otro ? { branchMinStock: min ?? null, warehouseId: otro.warehouseId } : {}),
   };
 }
+
+// cuerpoDeOtroAlmacen: con otro almacén (spec 094) solo cambia el mínimo de ese almacén. Las alertas
+// (encendidas, al mínimo, al acabarse, franja) son del artículo y viajan como están: calcularlas con
+// el mínimo de Bodega apagaba el aviso del de venta. Vacío manda null, que quita el mínimo.
+function cuerpoDeOtroAlmacen(f: Forma, kind: Kind, c: LowStockConfig, warehouseId: number): LowStockInput {
+  return {
+    enabled: c.enabled, onMin: c.onMin, onOut: c.onOut, banner: c.banner, minStock: c.minStock, coverageDays: c.coverageDays,
+    expectedUpdatedAt: c.updatedAt, branchMinStock: baseQty(f.min.qty, kind, f.min.big) ?? null, warehouseId,
+  };
+}
+
+// resumenDeOtroAlmacen: lo que avisa ese almacén, que solo mide su propio mínimo.
+function resumenDeOtroAlmacen(c: LowStockConfig, almacen: string): string {
+  if (!c.enabled) return 'Apagadas';
+  if (c.branchMinStock == null) return `${almacen} sin mínimo`;
+  const min = formatBaseQty(c.branchMinStock, c.unitCode);
+  return c.onMin ? `Avisa al llegar a ${min}` : `Mínimo ${min}, sin aviso al llegar`;
+}
+
+// primeraMinuscula: la frase va dentro de otra; bajar todo escribía «10 l» por «10 L».
+const primeraMinuscula = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 
 // diasInvalidos: vacío es «los de omisión»; si se escribe, de 1 a 90 (lo mismo que acepta el servidor).
 const diasInvalidos = (d: string) => d.trim() !== '' && !(Number(d) >= 1 && Number(d) <= 90);
@@ -108,8 +126,8 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
     }
     setError(e instanceof ApiError ? e.message : 'No se pudo; vuelve a intentar.');
   };
-  const cuerpoDe = (f: Forma) => cuerpo(f, kind, cfg.data?.updatedAt,
-    wid === undefined ? undefined : { warehouseId: wid, articleMin: cfg.data?.minStock ?? null });
+  const cuerpoDe = (f: Forma) => (wid !== undefined && cfg.data
+    ? cuerpoDeOtroAlmacen(f, kind, cfg.data, wid) : cuerpo(f, kind, cfg.data?.updatedAt));
   const yaPregunto = useMutation({
     mutationFn: () => lowStockApi.asked(id),
     onSettled: () => void qc.invalidateQueries({ queryKey: ['alertas', itemType, id] }),
@@ -142,18 +160,29 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
     setHoja(true);
   };
   const preguntar = canConfigure && itemType === 'ingrediente' && !c.asked && !preguntaCerrada && !hoja;
+  const otro = wid !== undefined;
+  const almacen = c.warehouseName ?? wh.name ?? '';
 
   return (
     <>
-      {wh.multi && <Box mb={2}><WarehousePicker pick={wh} label="Almacén" /></Box>}
+      {wh.multi && <Box mb={2}><WarehousePicker pick={wh} label="¿De qué almacén?" /></Box>}
       <HStack justify="space-between" minH="44px" data-alertas>
         <Box>
-          <Text>Alertas: <b>{resumenDeAlertas(c)}</b></Text>
-          {/* El mínimo de la sucursal gana sobre el del artículo: se dice, o el renglón promete otro. */}
-          {c.enabled && c.branchMinStock != null && (
-            <Text fontSize="sm" color="fg.muted">
-              {wh.multi && c.warehouseName ? `En ${c.warehouseName}` : 'En esta sucursal'} avisa al llegar a {formatBaseQty(c.branchMinStock, c.unitCode)}
-            </Text>
+          {otro ? (
+            <>
+              <Text>Alertas en {almacen}: <b>{resumenDeOtroAlmacen(c, almacen)}</b></Text>
+              <Text fontSize="sm" color="fg.muted">Hay {formatBaseQty(c.onHand, c.unitCode)} en {almacen}</Text>
+            </>
+          ) : (
+            <>
+              <Text>Alertas: <b>{resumenDeAlertas(c)}</b></Text>
+              {/* El mínimo propio del almacén gana sobre el del artículo: se dice, o el renglón promete otro. */}
+              {c.enabled && c.branchMinStock != null && (
+                <Text fontSize="sm" color="fg.muted">
+                  {wh.multi && c.warehouseName ? `En ${c.warehouseName}` : 'En esta sucursal'} avisa al llegar a {formatBaseQty(c.branchMinStock, c.unitCode)}
+                </Text>
+              )}
+            </>
           )}
         </Box>
         {canConfigure && <Button minH="44px" variant="outline" disabled={cfg.isPlaceholderData} onClick={() => abrir()}>Configurar ›</Button>}
@@ -163,8 +192,19 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
         <DrawerRoot open={hoja} placement="bottom" onOpenChange={(e) => { if (!e.open) setHoja(false); }}>
           <DrawerBackdrop />
           <DrawerContent borderTopRadius="l3" maxH="85dvh" display="flex" flexDirection="column">
-            <DrawerHeader><Text fontSize="lg" fontWeight="700">Alertas de {name}</Text></DrawerHeader>
+            <DrawerHeader><Text fontSize="lg" fontWeight="700">{otro ? `Mínimo de ${name} en ${almacen}` : `Alertas de ${name}`}</Text></DrawerHeader>
             <DrawerBody flex="1" minH={0} overflowY="auto">
+              {otro ? (
+                <Stack gap={2} maxW="560px">
+                  <QtyWithUnit label={`Mínimo en ${almacen}`} optional kind={kind} value={forma.min} keepAmount onChange={(min) => setForma({ ...forma, min })} />
+                  <Text fontSize="sm" color="fg.muted">
+                    {c.enabled
+                      ? `Avisa al llegar a este mínimo. Si avisa, cuándo y la franja se cambian en ${wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta'}.`
+                      : `Las alertas de este artículo están apagadas: se encienden en ${wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta'}.`}
+                  </Text>
+                  {error && <Text role="alert" color="fg.error">{error}</Text>}
+                </Stack>
+              ) : (
               <Stack gap={1} maxW="560px">
                 <Casilla checked={forma.enabled} onChange={(enabled) => setForma({ ...forma, enabled })}>
                   <Text fontWeight="700">Enviar alerta de stock bajo</Text>
@@ -189,11 +229,12 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
                 )}
                 {error && <Text role="alert" color="fg.error">{error}</Text>}
               </Stack>
+              )}
             </DrawerBody>
             <DrawerFooter>
               <Button minH="52px" variant="ghost" onClick={() => setHoja(false)}>Cancelar</Button>
               <Button minH="52px" colorPalette="brand" loading={verEfecto.isPending} onClick={() => {
-                if (forma.enabled && diasInvalidos(forma.dias)) { setError('Los días de cobertura van de 1 a 90 días.'); return; }
+                if (!otro && forma.enabled && diasInvalidos(forma.dias)) { setError('Los días de cobertura van de 1 a 90 días.'); return; }
                 verEfecto.mutate(forma);
               }}>Guardar</Button>
             </DrawerFooter>
@@ -205,7 +246,11 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
         <ConfirmSheet isOpen title="Guardar las alertas" confirmLabel="Guardar" confirmPalette="brand" loading={guardar.isPending}
           onConfirm={() => guardar.mutate(forma)} onCancel={() => setEfecto(null)}>
           <VStack align="stretch" gap={2}>
-            <Text>Se actualizará la configuración de alertas de <b>{name}</b>: {resumenDeAlertas({ ...c, ...cuerpo(forma, kind), minStock: efecto.min ?? cuerpo(forma, kind).minStock }).toLowerCase()}.</Text>
+            {otro ? (
+              <Text>Mínimo de <b>{name}</b> en {almacen}: {(() => { const m = baseQty(forma.min.qty, kind, forma.min.big); return m == null ? 'sin mínimo' : formatBaseQty(m, c.unitCode); })()}.</Text>
+            ) : (
+              <Text>Se actualizará la configuración de alertas de <b>{name}</b>{wh.multi ? ` en ${almacen}` : ''}: {primeraMinuscula(resumenDeAlertas({ ...c, ...cuerpo(forma, kind), minStock: efecto.min ?? cuerpo(forma, kind).minStock }))}.</Text>
+            )}
             {efecto.effect.opens.length > 0 && (
               <Box bg="orange.subtle" borderRadius="md" p={3} fontWeight="600">
                 Hoy quedan {formatBaseQty(efecto.onHand, c.unitCode)}, así que se enviará un aviso {efecto.effect.opens.map((k) => KIND_WORDS[k]).join(' y ')} al guardar.

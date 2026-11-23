@@ -246,4 +246,14 @@ describe('se acabó por almacén (spec 094)', () => {
     expect(await screen.findByText(/quedó en 0 en Bodega/)).toBeTruthy();
     expect(grupo).toBeInTheDocument();
   });
+  test('lo reportado hoy dice el almacén con dos o más', async () => {
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    out.suggestions.mockResolvedValue({ frequent: [], undoSeconds: 90, today: [{ id: 3, kind: 'report', name: 'Cajeta', reportedAt: '2026-11-23T15:00:00Z',
+      reportedById: 1, reportedBy: 'Ana', undoneAt: null, moved: true, open: true, warehouseId: 2, warehouseName: 'Bodega' }] });
+    montar();
+    expect((await screen.findByText('Cajeta')).closest('[data-row]')!.textContent).toContain('Bodega');
+  });
 });

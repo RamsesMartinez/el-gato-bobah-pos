@@ -48,7 +48,7 @@ const CountScopeContext = createContext<CountScope>({ key: ['stock', 'count', 'v
 // NO_PLACE_HERE: con varios almacenes, un artículo sin lugar en el que se cuenta puede tenerlo en
 // otro; «Sin definir» haría creer que nadie le puso lugar.
 const NO_PLACE_HERE = 'Sin lugar en este almacén';
-const placeOf = (i: CountItem, multi = false) => i.place ?? (multi ? NO_PLACE_HERE : NO_LOCATION);
+const placeOf = (i: CountItem, multi = false) => i.place ?? (multi && i.placeElsewhere ? NO_PLACE_HERE : NO_LOCATION);
 
 // Productos con existencia propia en el conteo (spec 069, maqueta «Conteo con productos», opción C):
 // se pintan con los mismos renglones que los artículos, al final y agrupados por su categoría del
@@ -58,8 +58,10 @@ const placeOf = (i: CountItem, multi = false) => i.place ?? (multi ? NO_PLACE_HE
 type CountRow = CountItem & { productId?: number };
 const productRow = (p: CountProduct): CountRow => ({
   ingredientId: -p.productId, productId: p.productId, name: p.name, place: `${p.category} · del menú`, placeId: null,
-  baseUnitCode: 'pieza', presentations: [], countedQty: p.countedQty, altNames: p.altNames,
+  baseUnitCode: 'pieza', presentations: [], countedQty: p.countedQty, altNames: p.altNames, inWarehouse: p.inWarehouse,
 });
+// ownRow: es de este almacén. Sin el dato (API anterior) todo lo es, como antes.
+const ownRow = (r: CountItem) => r.inWarehouse !== false;
 // Con varios almacenes, lo que no tiene lugar en éste va al final del recorrido: lo normal es que
 // esté en otro almacén y se cuente ahí.
 const rowsOf = (c: StockCount, multi: boolean): CountRow[] => [
@@ -125,14 +127,21 @@ export function StockCountTab() {
   const { data: whData } = useQuery({ queryKey: ['warehouses'], queryFn: () => backofficeApi.warehouses() });
   const whList = whData?.items ?? [];
   const multi = whList.length > 1;
-  const [picked, setPicked] = useState<number | undefined>(undefined);
+  // El elegido viaja en la dirección (?almacen=): recargar con un conteo abierto en la Bodega volvía
+  // al de venta y decía que no había conteo.
+  const [params, setParams] = useSearchParams();
+  const picked = Number(params.get('almacen')) || undefined;
+  const setPicked = (id: number) => setParams((p) => {
+    const n = new URLSearchParams(p);
+    if (whList.find((w) => w.id === id)?.isSales) n.delete('almacen'); else n.set('almacen', String(id));
+    return n;
+  }, { replace: true });
   const warehouseId = picked !== undefined && whList.some((w) => w.id === picked && !w.isSales) ? picked : undefined;
   const countKey = ['stock', 'count', warehouseId ?? 'venta'] as const;
   const scope: CountScope = { key: countKey, warehouseId, multi };
   const { data: count, isLoading } = useQuery({ queryKey: countKey, queryFn: () => backofficeApi.currentCount(warehouseId) });
   // ?q= llega de la ficha del artículo (spec 045): la lista ya buscada. Uno por uno no tiene buscador,
   // así que con búsqueda se abre la lista sin cambiar la vista recordada.
-  const [params] = useSearchParams();
   const initialQuery = params.get('q') ?? '';
   const [view, setView] = useState<View>(() => (initialQuery ? 'lista' : readView()));
   const [closed, setClosed] = useState<CountClose | null>(null);
@@ -232,14 +241,19 @@ export function StockCountTab() {
     );
   }
 
-  const rows = rowsOf(count, multi);
+  // En un almacén que no es el de venta se recorre lo suyo; lo demás sale al buscar (el primer conteo
+  // de una Bodega nueva carga justo lo que todavía no es suyo).
+  const all = rowsOf(count, multi);
+  const rows = all.filter(ownRow);
+  const others = all.filter((r) => !ownRow(r));
   const shown: StockCount = { ...count, items: rows };
   const done = rows.filter((i) => i.countedQty !== null).length;
   const onSaved = (ingredientId: number, qty: string | null) => {
     setSavedAt(new Date());
     qc.setQueryData(countKey, (old: StockCount | null | undefined) => old && {
-      ...old, items: old.items.map((i) => (i.ingredientId === ingredientId ? { ...i, countedQty: qty } : i)),
-      products: old.products?.map((p) => (-p.productId === ingredientId ? { ...p, countedQty: qty } : p)),
+      // Lo que se capturó buscando pasa a ser de este almacén: se queda en el recorrido y en el avance.
+      ...old, items: old.items.map((i) => (i.ingredientId === ingredientId ? { ...i, countedQty: qty, inWarehouse: qty !== null ? true : i.inWarehouse } : i)),
+      products: old.products?.map((p) => (-p.productId === ingredientId ? { ...p, countedQty: qty, inWarehouse: qty !== null ? true : p.inWarehouse } : p)),
     });
   };
   const pickView = (v: View) => { setView(v); saveView(v); };
@@ -285,7 +299,7 @@ export function StockCountTab() {
       </HStack>
 
       {view === 'lista'
-        ? <ListView count={shown} onSaved={onSaved} initialQuery={initialQuery} />
+        ? <ListView count={shown} others={others} onSaved={onSaved} initialQuery={initialQuery} />
         : <OneByOne count={shown} onSaved={onSaved} />}
 
       {closing && (
@@ -669,18 +683,19 @@ function PlacePicker({ item }: { item: CountItem }) {
 
 // ---- Lista ----
 
-function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; onSaved: (id: number, qty: string | null) => void; initialQuery?: string }) {
+// others: lo que no es del almacén que se cuenta; solo sale al buscar.
+function ListView({ count, others = [], onSaved, initialQuery = '' }: { count: StockCount; others?: CountItem[]; onSaved: (id: number, qty: string | null) => void; initialQuery?: string }) {
   const [q, setQ] = useState(initialQuery);
   // Se sigue por id: si el conteo se recarga (p. ej. cambió lo que pesa vacío un empaque), la hoja
   // abierta recibe el artículo nuevo.
   const [editingId, setEditingId] = useState<number | null>(null);
-  const editing = count.items.find((i) => i.ingredientId === editingId) ?? null;
+  const editing = [...count.items, ...others].find((i) => i.ingredientId === editingId) ?? null;
   const needle = q.trim();
   // Buscar también por nombre de empaque (spec 042): quien busca «bolsa» encuentra el hielo.
   // Y por sus otros nombres (spec 063), con la misma regla; el que coincidió se señala en la fila.
   const altOf = (i: CountItem) => (needle && !matchesWords(i.name, needle) ? matchedAlias(i.altNames, needle, matchesWords) : undefined);
   const shown = needle
-    ? count.items.filter((i) => matchesWords(i.name, needle) || i.presentations.some((p) => matchesWords(presentationLabel(p), needle)) || altOf(i))
+    ? [...count.items, ...others].filter((i) => matchesWords(i.name, needle) || i.presentations.some((p) => matchesWords(presentationLabel(p), needle)) || altOf(i))
     : count.items;
   const productsShown = shown.filter(isProduct).length;
   const { multi } = useContext(CountScopeContext);

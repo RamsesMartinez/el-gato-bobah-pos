@@ -42,8 +42,8 @@ export function StockPage() {
   // Si el almacén elegido se archivó (en otra tableta), se vuelve al de venta: si no, ningún botón
   // queda marcado y la lista falla sin salida.
   const warehouse = typeof picked === 'number' && warehouses.data && !whList.some((w) => w.id === picked) ? undefined : picked;
-  // El mínimo es del artículo y piensa en el de venta: compararlo contra la bodega o la suma diría
-  // «bajo» donde no falta nada, o lo escondería donde sí (spec 094; mínimos por almacén en E5).
+  // El mínimo lo manda el servidor por almacén (el propio; en el de venta, el del artículo si no tiene
+  // propio; en «Todos», ninguno). «Traer de…» solo tiene sentido en el de venta.
   const atSales = warehouse === undefined;
   const [bring, setBring] = useState<StockLevel | null>(null);
   const levels = useQuery({ queryKey: ['stock', 'levels', warehouse ?? 'venta'], queryFn: () => backofficeApi.stockLevels(warehouse),
@@ -65,6 +65,25 @@ export function StockPage() {
   // El valor solo se pinta si el servidor lo manda: la API anterior no lo trae durante una subida.
   const withValue = levels.data?.totalValue !== undefined;
   const levelCols = withValue ? 5 : 4;
+  // El total va arriba, junto al selector: al pie de cientos de renglones nadie lo encontraba. En
+  // «Todos», el valor de cada almacén al lado.
+  const valueSummary = withValue && !levels.isError && (
+    <Box mb={3} data-testid="valor-total">
+      <HStack gap={2} flexWrap="wrap">
+        <Text fontWeight="700">Valor total</Text>
+        <Text fontWeight="700">{money(levels.data!.totalValue!)}</Text>
+        {(levels.data!.valueByWarehouse ?? []).length > 1 && (
+          <Text color="fg.muted">({levels.data!.valueByWarehouse!.map((v) => `${v.warehouseName} ${money(v.value)}`).join(' · ')})</Text>
+        )}
+        <InfoButton label="¿Qué suma el valor total?" open={valueHelp} onToggle={() => setValueHelp((o) => !o)} />
+      </HStack>
+      {valueHelp && (
+        <Text color="fg.muted" fontSize="sm">
+          Suma lo que hay a su costo de hoy, almacén por almacén. Lo que está en negativo en un almacén no resta: cuéntalo para corregirlo.
+        </Text>
+      )}
+    </Box>
+  );
   const user = useSessionStore((s) => s.user);
   const canHealth = can('inventory.health_view', user);
   // Cómo llega cada insumo (spec 038): lo ve quien registra compras y lo cambia quien configura.
@@ -122,7 +141,7 @@ export function StockPage() {
           {canView && <Tabs.Trigger value="insumos" minH="44px">{itemsTab}</Tabs.Trigger>}
           {canView && <Tabs.Trigger value="compra" minH="44px" flexShrink={0}>Lista de compra</Tabs.Trigger>}
           {canReceive && (
-            <Tabs.Trigger value="por-recibir" minH="44px">
+            <Tabs.Trigger value="por-recibir" minH="44px" flexShrink={0} whiteSpace="nowrap">
               Por recibir{pending.data && pending.data.length > 0 ? ` · ${pending.data.length}` : ''}
             </Tabs.Trigger>
           )}
@@ -133,6 +152,7 @@ export function StockPage() {
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
           {warehousePicker}
+          {valueSummary}
           {/* Mientras llega la lista del almacén elegido, la anterior se atenúa: no se leen cifras de
               otro almacén como si fueran de éste. */}
           <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto" opacity={levels.isPlaceholderData ? 0.4 : 1}
@@ -149,7 +169,7 @@ export function StockPage() {
                   </Text></Table.Cell></Table.Row>
                 )}
                 {!levels.isError && (levels.data?.items ?? []).map((s, i) => {
-                  const low = atSales && s.min_stock != null && Number(s.on_hand) <= Number(s.min_stock);
+                  const low = s.min_stock != null && Number(s.on_hand) <= Number(s.min_stock);
                   return (
                     <Table.Row key={i}>
                       <Table.Cell>{s.item_name}</Table.Cell>
@@ -167,32 +187,12 @@ export function StockPage() {
                           </Button>
                         )}
                       </Table.Cell>
-                      <Table.Cell textAlign="end">{!atSales || s.min_stock == null ? '—' : formatBaseQty(s.min_stock, s.unit_code)}</Table.Cell>
-                      {withValue && (
-                        <Table.Cell textAlign="end" color={Number(s.value ?? 0) < 0 ? 'fg.error' : undefined}>{s.value == null ? '—' : money(s.value)}</Table.Cell>
-                      )}
+                      <Table.Cell textAlign="end">{s.min_stock == null ? '—' : formatBaseQty(s.min_stock, s.unit_code)}</Table.Cell>
+                      {withValue && <Table.Cell textAlign="end">{s.value == null ? '—' : money(s.value)}</Table.Cell>}
                     </Table.Row>
                   );
                 })}
               </Table.Body>
-              {withValue && !levels.isError && (
-                <Table.Footer>
-                  <Table.Row>
-                    <Table.Cell colSpan={levelCols - 1} fontWeight="700">
-                      <HStack gap={1}>
-                        <Text>Valor total</Text>
-                        <InfoButton label="¿Qué suma el valor total?" open={valueHelp} onToggle={() => setValueHelp((o) => !o)} />
-                      </HStack>
-                      {valueHelp && (
-                        <Text fontWeight="400" color="fg.muted" fontSize="sm">
-                          Suma lo que hay a su costo de hoy. No suma los artículos en negativo: cuéntalos para corregirlos.
-                        </Text>
-                      )}
-                    </Table.Cell>
-                    <Table.Cell textAlign="end" fontWeight="700">{money(levels.data!.totalValue!)}</Table.Cell>
-                  </Table.Row>
-                </Table.Footer>
-              )}
             </Table.Root>
           </Box>
         </Tabs.Content>
@@ -210,14 +210,16 @@ export function StockPage() {
               <Table.Body>
                 {(moves.data?.items ?? []).map((m) => (
                   <Table.Row key={m.id}>
-                    <Table.Cell>{horaNegocio.fechaYHora(m.created_at)}</Table.Cell>
+                    <Table.Cell whiteSpace="nowrap">{horaNegocio.fechaYHora(m.created_at)}</Table.Cell>
                     {warehouse === 'all' && <Table.Cell>{m.warehouse_name ?? '—'}</Table.Cell>}
                     <Table.Cell>{m.item_name}</Table.Cell>
                     <Table.Cell>{m.movement_type}{transferSide(m)}</Table.Cell>
                     <Table.Cell textAlign="end" color={Number(m.quantity) < 0 ? 'fg.error' : 'fg.success'}>
                       {m.unit_code ? formatBaseQty(m.quantity, m.unit_code) : m.quantity}
                     </Table.Cell>
-                    <Table.Cell>{m.reason ?? '—'}</Table.Cell>
+                    {/* Un motivo largo partía la fecha en cuatro renglones: se recorta, y el texto completo
+                        sale al dejar el dedo encima. */}
+                    <Table.Cell maxW="240px"><Text truncate title={m.reason ?? undefined}>{m.reason ?? '—'}</Text></Table.Cell>
                   </Table.Row>
                 ))}
               </Table.Body>
@@ -280,5 +282,6 @@ export function StockPage() {
 // entra «← de dónde».
 function transferSide(m: StockMovement): string {
   if (!m.counterpart_warehouse_name) return '';
-  return Number(m.quantity) < 0 ? ` → ${m.counterpart_warehouse_name}` : ` ← ${m.counterpart_warehouse_name}`;
+  const name = m.counterpart_warehouse_archived ? `${m.counterpart_warehouse_name} (archivado)` : m.counterpart_warehouse_name;
+  return Number(m.quantity) < 0 ? ` → ${name}` : ` ← ${name}`;
 }

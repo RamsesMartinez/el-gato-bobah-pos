@@ -13,7 +13,7 @@ import { FranjaDeAgotado, DURA_MS } from './FranjaDeAgotado';
 
 const api = vi.hoisted(() => ({ list: vi.fn(), unread: vi.fn(), read: vi.fn(), bannerSeen: vi.fn(), resolve: vi.fn() }));
 vi.mock('../../api/notifications', async (orig) => ({ ...(await orig<object>()), notificationsApi: api }));
-const back = vi.hoisted(() => ({ articles: vi.fn(), warehouses: vi.fn() }));
+const back = vi.hoisted(() => ({ articles: vi.fn(), warehouses: vi.fn(), warehouseNames: vi.fn() }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 let abiertos = 0;
 class FakeES { constructor() { abiertos++; } addEventListener() {} close() { abiertos--; } }
@@ -228,5 +228,16 @@ describe('avisos con almacenes (spec 094)', () => {
     montar(<ConCampana />);
     fireEvent.click(await screen.findByRole('button', { name: /Avisos/ }));
     expect(await screen.findByText(/Hay 3 piezas en Bodega · mínimo 10 piezas/)).toBeTruthy();
+  });
+  // Un cajero no ve el inventario: la lista de almacenes le daba 403 y su campana nunca decía de qué
+  // almacén era el aviso (revisión de la 094). Lee los nombres.
+  test('sin ver el inventario también dice de qué almacén', async () => {
+    useSessionStore.setState({ user: { id: 3, companyId: 1, name: 'Caja', role: '', permissions: ['inventory.report_out'] } });
+    back.warehouseNames.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true }, { id: 2, name: 'Bodega', isSales: false }] });
+    conAlmacen();
+    montar(<ConCampana />);
+    fireEvent.click(await screen.findByRole('button', { name: /Avisos/ }));
+    expect(await screen.findByText(/Hay 3 piezas en Bodega · mínimo 10 piezas/)).toBeTruthy();
+    expect(back.warehouses).not.toHaveBeenCalled();
   });
 });
