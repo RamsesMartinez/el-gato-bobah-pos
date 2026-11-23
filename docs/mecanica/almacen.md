@@ -333,3 +333,31 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     inserta después de unir; las ventas y mermas viejas del origen siguen con su id y su unidad.
     `domain.MergeChain` las suma con su factor. Un cambio de unidad, en cambio, empieza de cero.
     Unir hereda el % del origen si el destino está sin captura (`domain.InheritExpectedWaste`).
+- **Caducidad por lote** (spec 098, 0128). Un lote es almacén + artículo + fecha (`stock_lots`); lo sin
+  fecha no se guarda: es `stock_levels.on_hand` menos los lotes. Seis cosas que no se ven:
+  - **La regla de consumo vive en el trigger `apply_stock_lots`**, no en Go: todo movimiento de artículo
+    pasa por ella, también los de la versión anterior de la API durante una subida. Una salida sin
+    fecha toma primero lo sin fecha (mientras sea positivo), luego los lotes buenos del que caduca
+    antes; **nunca uno caducado** (`business_today`, en la zona del negocio: caduca el día D = bueno todo
+    el día D). Lo que no alcanza deja lo sin fecha en negativo, sin bloquear. Un camino nuevo que mueva
+    existencias no tiene que hacer nada; uno que mueva lotes **sin** movimiento (cierre de conteo,
+    unión, cambio de fecha de un renglón) toma antes la fila de `stock_levels`.
+  - **Cada toma o devolución queda en `stock_lot_allocations`**: así una cancelación (y la reposición de
+    la merma esperada de la 096) vuelve a los lotes de los que salió, lo último primero, y un traspaso
+    lleva las fechas al destino. Comparar `movement_type::text` en el trigger: un valor nuevo del enum
+    (la 096 agrega `merma_esperada` después) no truena antes de existir.
+  - **La fecha se deriva del origen** si el movimiento no la trae: `waste_records.lot_expires_on` y
+    `expense_items.expires_on`, solo si el movimiento es del mismo artículo de la fila (la merma de un
+    preparado resta a sus insumos, que no son de ese lote). Por eso aprobar o deshacer una merma de un
+    lote, o corregir un renglón fechado, va al lote correcto aunque lo haga la API anterior.
+  - **Un renglón de compra lleva una sola fecha**; otra fecha en una entrega posterior pasa lo ya recibido
+    a ella (`relocate_lot`, sin movimiento). La compensación «no mover» de un conteo no lleva fecha: sale
+    por el orden de consumo.
+  - **El conteo con fechas fija los lotes al cerrar** (`apply_count_lots`): lo contado de cada fecha más
+    lo que movimientos posteriores a la captura le tomaron o devolvieron (neto); los no mencionados en
+    0. Sin fechas, los lotes no se reescriben. **Lo sin fecha negativo solo lo corrige un conteo**: una
+    compra fechada entra completa a su lote y no salda el negativo (no se inventa de qué fecha era).
+  - **El aviso `expired_left`** (campana, sin correo) se abre cuando lo bueno queda en negativo con
+    caducados en el almacén y se cierra solo (`restocked` o `expired_cleared`). El resumen de la mañana
+    lo excluye. Medido en la base restaurada (2026-11-23), 90 movimientos de venta: 31 ms sin lotes
+    (igual que antes de la 0128), 58 ms con dos lotes por artículo (mediana de tres corridas).

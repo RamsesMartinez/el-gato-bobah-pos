@@ -265,6 +265,7 @@ declare
   v_need    numeric;
   v_take    numeric;
   v_undated numeric;
+  v_today   date;
   v_touched boolean := false;
   r         record;
   s         record;
@@ -381,23 +382,28 @@ begin
                          and l.warehouse_id = new.warehouse_id and l.ingredient_id = new.ingredient_id), 0)
       into v_undated;
     v_need := -new.quantity - greatest(v_undated, 0);
-    if v_need > 0 then
-      for r in
-        select l.id, l.qty from stock_lots l
-         where l.company_id = new.company_id and l.warehouse_id = new.warehouse_id
-           and l.ingredient_id = new.ingredient_id and l.qty > 0
-           and l.expires_on >= business_today(new.company_id)
-         order by l.expires_on, l.id
-         for update
-      loop
-        exit when v_need <= 0;
-        v_take := least(r.qty, v_need);
-        update stock_lots set qty = qty - v_take, updated_at = now() where id = r.id;
-        insert into stock_lot_allocations (company_id, movement_id, lot_id, qty) values (new.company_id, new.id, r.id, -v_take);
-        v_need := v_need - v_take;
-      end loop;
+    if v_need <= 0 then
+      -- Lo sin fecha alcanzó: lo bueno sigue positivo y no hay aviso que abrir ni cerrar.
+      return null;
     end if;
-    v_touched := true;
+    v_today := business_today(new.company_id);
+    for r in
+      select l.id, l.qty from stock_lots l
+       where l.company_id = new.company_id and l.warehouse_id = new.warehouse_id
+         and l.ingredient_id = new.ingredient_id and l.qty > 0 and l.expires_on >= v_today
+       order by l.expires_on, l.id
+       for update
+    loop
+      exit when v_need <= 0;
+      v_take := least(r.qty, v_need);
+      update stock_lots set qty = qty - v_take, updated_at = now() where id = r.id;
+      insert into stock_lot_allocations (company_id, movement_id, lot_id, qty) values (new.company_id, new.id, r.id, -v_take);
+      v_need := v_need - v_take;
+    end loop;
+    -- Solo si lo bueno no alcanzó puede tocar abrir el aviso; si alcanzó, solo hay que mirar si había
+    -- uno abierto (una salida no lo cierra, pero así queda una sola regla).
+    v_touched := v_need > 0 or exists (select 1 from notifications n where n.company_id = new.company_id
+      and n.warehouse_id = new.warehouse_id and n.item_key = new.ingredient_id and n.kind = 'expired_left' and n.status = 'open');
   end if;
 
   if v_touched then
