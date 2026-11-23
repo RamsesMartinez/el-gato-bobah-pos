@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { LuTriangleAlert } from 'react-icons/lu';
 import { backofficeApi } from '../../../api/backoffice';
 import type { RealWaste } from '../../../api/admin';
+import { formatBaseQty } from '../../../shared/units';
 
 // La merma real de los últimos 90 días por almacén (spec 096, maqueta A2): lo mermado entre lo que
 // las ventas consumieron. Solo informa: no cambia el costo. El aviso va en el mismo renglón del
@@ -30,6 +31,14 @@ export function RealWasteCard({ id, expected, unit }: { id: number; expected: nu
   );
 }
 
+// mermado concuerda con la unidad: «pieza» es femenino; g, ml y kg se leen gramos, mililitros, kilos.
+function mermado(wasted: string, unit: string): string {
+  const qty = formatBaseQty(wasted, unit);
+  const fem = unit === 'pieza' || unit === 'pza';
+  const one = Math.abs(Number(qty.split(' ')[0].replace(/,/g, ''))) === 1;
+  return `${qty} ${fem ? 'mermada' : 'mermado'}${one ? '' : 's'}`;
+}
+
 export function RealWasteRows({ items, expected, unit }: { items: RealWaste[]; expected: number | null; unit: string }) {
   if (items.length === 0) return <Text fontSize="sm" mt={1}>Sin datos en 90 días</Text>;
   return (
@@ -44,7 +53,7 @@ export function RealWasteRows({ items, expected, unit }: { items: RealWaste[]; e
             <Text flexGrow={1} flexShrink={0} maxW="100%">{r.warehouseName}</Text>
             {over && <Text fontSize="sm" color="fg.warning">Pasa lo esperado</Text>}
             {/* Lo mermado sin ventas va en texto: un title no se ve al tocar. */}
-            {r.state === 'no_sales' && <Text fontSize="sm" color="fg.muted">{Number(r.wasted)} {unit} mermados</Text>}
+            {r.state === 'no_sales' && <Text fontSize="sm" color="fg.muted">{mermado(r.wasted, unit)}</Text>}
             {/* nowrap: en una tarjeta angosta la cifra y su explicación bajan juntas, no partidas. */}
             <Text fontWeight="700" whiteSpace="nowrap">
               {r.state === 'ratio' ? `${r.ratio} %` : r.state === 'no_sales' ? 'Sin ventas' : 'Sin datos'}

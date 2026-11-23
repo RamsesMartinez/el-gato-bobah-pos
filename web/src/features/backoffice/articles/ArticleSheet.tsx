@@ -34,12 +34,22 @@ import { densityWords } from '../expenseDraft';
 import { presentationLabel } from '../../../shared/presentationLabel';
 import { bigUnitOf, KIND_WORD, type Kind } from '../../../shared/articleUnits';
 import { SeccionAlertas } from '../../../shared/alertas/SeccionAlertas';
+import { useWarehousePick } from '../warehouses/WarehousePicker';
 
 // La ficha de un artículo (spec 042, maqueta «Ficha del artículo», opción A: dos columnas). A la
 // izquierda lo que se edita y los empaques; a la derecha el costo, su tendencia y el historial. De pie
 // (menos de 800 px de ancho) es una sola columna con el costo arriba (revisión de tableta, M2).
 // Guarda sola (spec 043, maqueta «Ficha del artículo»): cada campo al elegir, tras 2 s sin escribir o
 // al salir de él; un indicador junto al título dice en qué va.
+
+// EnAlmacenDeVenta completa «Hay …» con el almacén: la existencia de la ficha es la del de venta, y con
+// dos o más se dice, porque «Alertas» puede estar mostrando otro almacén justo arriba (prueba con
+// alguien nuevo, spec 094). Componente aparte para que la lista de almacenes, al llegar, no vuelva a
+// pintar la ficha entera (en jsdom, una hoja que se abría en ese mismo instante no se montaba).
+function EnAlmacenDeVenta() {
+  const { multi, name } = useWarehousePick();
+  return multi && name ? <>{` en ${name}`}</> : null;
+}
 
 interface Props {
   id: number;
@@ -343,7 +353,7 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                 <SeccionAlertas itemType="ingrediente" id={id} name={a.name} kind={kind} canConfigure={canConfigure}
                   onSaved={() => void refresh()} />
                 <HStack justify="space-between" minH="44px">
-                  <Text>Se mide en <b>{KIND_WORD[kind]}</b>{a.baseUnitCode === 'pieza' ? '' : ` (${a.baseUnitCode})`}{Number(a.onHand) < 0 ? '' : ` · Hay ${formatBaseQty(a.onHand, a.baseUnitCode)}`}</Text>
+                  <Text>Se mide en <b>{KIND_WORD[kind]}</b>{a.baseUnitCode === 'pieza' ? '' : ` (${a.baseUnitCode})`}{Number(a.onHand) < 0 ? '' : ` · Hay ${formatBaseQty(a.onHand, a.baseUnitCode)}`}<EnAlmacenDeVenta /></Text>
                   {canConfigure && a.isActive && <Button minH="44px" variant="outline" onClick={() => setPanel('unit')}>Cambiar ›</Button>}
                 </HStack>
                 {(kind === 'masa' || kind === 'volumen') && (
@@ -355,7 +365,7 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                     No se recalcula nada del pasado. */}
                 {Number(a.onHand) < 0 && (
                   <HStack data-negative-stock gap={2} bg="red.subtle" borderRadius="md" pl={3} minH="44px">
-                    <Text flex="1" color="fg.error" fontWeight="700">Hay {formatBaseQty(a.onHand, a.baseUnitCode)}</Text>
+                    <Text flex="1" color="fg.error" fontWeight="700">Hay {formatBaseQty(a.onHand, a.baseUnitCode)}<EnAlmacenDeVenta /></Text>
                     {canCount && onCount ? (
                       <Button size="sm" minH="44px" variant="outline" colorPalette="brand" bg="bg" flexShrink={0}
                         loading={leaving} onClick={() => void goCount()}>Revisar con un conteo ›</Button>
