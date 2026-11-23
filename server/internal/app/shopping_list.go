@@ -42,13 +42,37 @@ type ShoppingLine struct {
 }
 
 // ShoppingList arma la lista de un almacén de la sucursal de la sesión (el de venta si no se pide
-// otro). Nunca nil.
+// otro), o la de todos sus almacenes activos con cada renglón en el suyo. Nunca nil.
 func (s *NotificationsService) ShoppingList(ctx context.Context, sel domain.WarehouseSel) ([]ShoppingLine, error) {
 	return shoppingListIn(ctx, s.store.QC(ctx), sel)
 }
 
 // shoppingListIn es la lista dentro de una transacción ajena (el correo de la mañana).
 func shoppingListIn(ctx context.Context, q *db.Queries, sel domain.WarehouseSel) ([]ShoppingLine, error) {
+	if !sel.All {
+		return warehouseShoppingList(ctx, q, sel)
+	}
+	// Uno por uno y no una consulta de todos: el consumo, el mínimo y los avisos son de cada almacén, y
+	// así «Todos» es por construcción la unión de las listas que ya se prueban por separado.
+	whs, err := q.ListWarehouseNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []ShoppingLine{}
+	for _, w := range whs {
+		lines, err := warehouseShoppingList(ctx, q, domain.WarehouseSel{ID: w.ID})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, lines...)
+	}
+	// Sin reordenar: cada lista ya viene en el orden de la base (proveedor, sin proveedor al final,
+	// nombre) y ListWarehouseNames pone primero el de venta. Reordenar aquí compararía bytes y no la
+	// collation de la base: «Ácido» saltaría al final y «Todos» no se leería como la lista de un almacén.
+	return out, nil
+}
+
+func warehouseShoppingList(ctx context.Context, q *db.Queries, sel domain.WarehouseSel) ([]ShoppingLine, error) {
 	wh, err := resolveWarehouse(ctx, q, sel)
 	if err != nil {
 		return nil, err

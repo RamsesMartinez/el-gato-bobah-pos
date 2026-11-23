@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Box, Button, HStack, IconButton, Input, Text, VStack } from '@chakra-ui/react';
 import { LuMinus, LuPlus } from 'react-icons/lu';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
@@ -42,6 +42,7 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
   // onlyItemId: se abrió desde un renglón («Por recibir»): solo ése viene precargado.
   onlyItemId?: number;
 }) {
+  const qc = useQueryClient();
   const hora = useHoraDelNegocio();
   const today = hora.diaDelNegocio(new Date());
   const lines = pendingGoods(expense);
@@ -172,7 +173,13 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
         <EditPreviewSheet title="Antes de recibir"
           request={(preview, decisions, fingerprint) => backofficeApi.deliverExpense(expense.id, body(decisions, fingerprint), preview)}
           onClose={() => setReviewing(false)}
-          onDone={(r) => { medirAccion('gastos', 'recibir-entrega'); setReviewing(false); onDone(r); }} />
+          onDone={(r) => {
+            medirAccion('gastos', 'recibir-entrega');
+            // Aquí y no en cada pantalla que abre la hoja: lo recibido sale de la lista de compra venga de donde venga.
+            void qc.invalidateQueries({ queryKey: ['lista-de-compra'] });
+            setReviewing(false);
+            onDone(r);
+          }} />
       )}
     </>
   );

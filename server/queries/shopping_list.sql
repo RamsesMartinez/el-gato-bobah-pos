@@ -5,17 +5,23 @@
 -- Consumo = lo que salió por venta menos lo que volvió por cancelación desde `since`. Un «se acabó»,
 -- una merma o un traspaso no son consumo. used_days cuenta los días con venta, para no creerle a un
 -- consumo de un solo día.
-with cand as (
+-- El mínimo del artículo es el del almacén de venta (igual que warehouse_low_stock_state, 0127): otro
+-- almacén solo cuenta con su mínimo propio. Sin esto, una Bodega en 0 listaba todo artículo con mínimo.
+with wh as (
+  select w.is_sales from warehouses w where w.id = sqlc.arg(warehouse_id)::bigint
+), cand as (
   select 'ingrediente'::stock_item_type as item_type, i.id, i.name, u.code::text as unit_code, i.coverage_days,
-         coalesce(b.min_stock, i.min_stock) as min_stock, i.low_stock_enabled as enabled
+         case when w.is_sales then coalesce(b.min_stock, i.min_stock) else b.min_stock end as min_stock, i.low_stock_enabled as enabled
     from ingredients i
     join units u on u.id = i.base_unit_id
+    cross join wh w
     left join branch_stock_minimums b on b.warehouse_id = sqlc.arg(warehouse_id)::bigint and b.ingredient_id = i.id
    where i.is_active
   union all
   select 'producto'::stock_item_type, p.id, p.name, 'pieza'::text, p.coverage_days,
-         coalesce(b.min_stock, p.min_stock), p.low_stock_enabled
+         case when w.is_sales then coalesce(b.min_stock, p.min_stock) else b.min_stock end, p.low_stock_enabled
     from products p
+    cross join wh w
     left join branch_stock_minimums b on b.warehouse_id = sqlc.arg(warehouse_id)::bigint and b.product_id = p.id
    where p.is_active and p.track_stock
 ), base as (

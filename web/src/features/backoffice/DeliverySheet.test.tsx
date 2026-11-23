@@ -33,10 +33,10 @@ const preview = { header: [], lines: [], inventory: [], costs: [], decisions: []
   money: { amountBefore: '62', amountAfter: '62', paid: '62', statusBefore: 'pagada', statusAfter: 'pagada', due: '0', overpaid: '0', decisionKey: null },
   fingerprint: 'f' };
 
-function setup(items: ExpenseItem[]) {
+function setup(items: ExpenseItem[], qc = new QueryClient()) {
   const onDone = vi.fn();
   render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={qc}>
       <Provider><DeliverySheet expense={expense(items)} onClose={() => {}} onDone={onDone} /></Provider>
     </QueryClientProvider>,
   );
@@ -59,6 +59,19 @@ describe('DeliverySheet', () => {
     expect(id).toBe(214);
     expect(isPreview).toBe(true);
     expect(body.lines).toEqual([{ itemId: 1, qty: '5' }, { itemId: 2, qty: '1' }]);
+  });
+
+  // Revisión de código: recibir sube la existencia y la lista de compra seguía pidiendo lo que ya llegó.
+  test('recibir invalida la lista de compra', async () => {
+    const qc = new QueryClient();
+    const inv = vi.spyOn(qc, 'invalidateQueries');
+    const { onDone } = setup([item({})], qc);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver efectos' }));
+    const confirmar = await screen.findByRole('button', { name: 'Confirmar' });
+    await waitFor(() => expect((confirmar as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(confirmar);
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(inv).toHaveBeenCalledWith({ queryKey: ['lista-de-compra'] });
   });
 
   test('«No llegó» deja el renglón en 0 y no lo manda; con todo en 0 no hay qué ver', async () => {

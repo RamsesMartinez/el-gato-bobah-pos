@@ -152,7 +152,8 @@ export interface ShoppingLine {
 }
 
 export const shoppingApi = {
-  list: () => api.get<{ items?: ShoppingLine[] }>('/stock/shopping-list'),
+  // 'all' = la de todos los almacenes, cada renglón en el suyo; sin nada, la del de venta.
+  list: (warehouse?: 'all') => api.get<{ items?: ShoppingLine[] }>(`/stock/shopping-list${warehouse ? `?warehouseId=${warehouse}` : ''}`),
   emailMe: () => api.post<{ sentTo: string }>('/stock/shopping-list/email'),
 };
 

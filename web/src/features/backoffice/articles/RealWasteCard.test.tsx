@@ -23,6 +23,20 @@ describe('Merma real en la ficha del artículo', () => {
     expect(screen.queryByText('Pasa lo esperado')).toBeNull();
   });
 
+  // Prueba con alguien nuevo: «1 pieza mermados». Concuerda en número y en género con la unidad.
+  test('lo mermado concuerda con la unidad', () => {
+    const pinta = (wasted: string, unit: string) => {
+      const { unmount } = render(<Provider><RealWasteRows items={[rw({ wasted, state: 'no_sales' })]} expected={null} unit={unit} /></Provider>);
+      const texto = screen.getByText(/mermad/).textContent;
+      unmount();
+      return texto;
+    };
+    expect(pinta('1', 'pieza')).toBe('1 pieza mermada');
+    expect(pinta('2', 'pieza')).toBe('2 piezas mermadas');
+    expect(pinta('400', 'g')).toBe('400 g mermados');
+    expect(pinta('1', 'ml')).toBe('1 ml mermado');
+  });
+
   test('avisa cuando la real pasa la esperada', () => {
     montar([rw({ ratio: 18, state: 'ratio' })], 15);
     expect(screen.getByText('Pasa lo esperado')).toBeInTheDocument();

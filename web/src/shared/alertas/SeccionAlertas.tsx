@@ -136,6 +136,9 @@ function Casilla({ checked, onChange, disabled, children }: { checked: boolean; 
   );
 }
 
+// FRANJA es el nombre del interruptor; la hoja de otro almacén lo cita igual para que se reconozca.
+const FRANJA = 'Mostrar franja en pantalla cuando se acabe';
+
 export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved }: Props) {
   const qc = useQueryClient();
   // De qué almacén se ve y se edita el mínimo (spec 094): por omisión el de venta.
@@ -267,7 +270,7 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
                   </Casilla>
                   <Text fontSize="sm" color="fg.muted">
                     {forma.enabled
-                      ? `Con las alertas encendidas, ${almacen} avisa al llegar a su mínimo. Cuándo avisa y la franja se cambian en ${wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta'}.`
+                      ? `Con las alertas encendidas, ${almacen} avisa al llegar a su mínimo. Cuándo avisa y «${FRANJA}» se cambian en ${wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta'}.`
                       : `Con las alertas apagadas, ningún almacén avisa, aunque tenga mínimo.`}
                   </Text>
                   {error && <Text role="alert" color="fg.error">{error}</Text>}
@@ -286,7 +289,7 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
                       llegue al mínimo{forma.min.qty.trim() === '' ? ' (captura un mínimo)' : ''}
                     </Casilla>
                     <Casilla checked={forma.onOut} onChange={(onOut) => setForma({ ...forma, onOut })}>se acabe</Casilla>
-                    <Casilla checked={forma.banner} onChange={(banner) => setForma({ ...forma, banner })}>Mostrar franja en pantalla cuando se acabe</Casilla>
+                    <Casilla checked={forma.banner} onChange={(banner) => setForma({ ...forma, banner })}>{FRANJA}</Casilla>
                     <HStack gap={2} flexWrap="wrap">
                       <Text>Comprar para</Text>
                       <Input aria-label="Días de cobertura" w="80px" minH="48px" inputMode="numeric" placeholder={String(DIAS_POR_OMISION)}
