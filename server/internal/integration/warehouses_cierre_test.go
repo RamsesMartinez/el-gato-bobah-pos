@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -115,4 +116,47 @@ func TestStockOutSearchIsIsolatedInTheThreeCases(t *testing.T) {
 			t.Fatalf("buscar en la bodega de otra empresa = %v; quiere 404 por el almacén", err)
 		}
 	})
+}
+
+// La bitácora de una compra solo decía a qué almacén iba cada renglón al recibirlo: una compra
+// capturada sin que llegara nada (o que llegó completa al crearla) no dejaba rastro de su destino, y
+// «¿quién mandó esto a Bodega?» no tenía respuesta. Ahora el alta lo registra por renglón.
+func TestCreatingAPurchaseAuditsTheWarehouseOfEachLine(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	local, bodega := comoEnLaSegundaSubida(t, k.st, defaultCompanyID)
+	in := k.bultos("2", "1000")
+	zero := dd("0")
+	in.Items[0].QtyReceived = &zero // pendiente: nada llega al crearla
+	in.Items[0].WarehouseID = &bodega
+	otro := in.Items[0]
+	otro.Description, otro.WarehouseID, otro.QtyReceived = "Azúcar del local", nil, nil
+	in.Items = append(in.Items, otro, app.ExpenseItemInput{Description: "Bolsa", Quantity: dd("1"), Amount: dd("10")})
+	in.Items[1].Amount, in.Amount = dd("500"), dd("1510")
+	id, err := k.svc.CreateExpense(k.ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw string
+	if err := k.st.Pool.QueryRow(context.Background(), `select coalesce(after->'lines', 'null')::text from audit_events
+		where action = 'expense.created' and entity_id = $1`, id).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var lines []struct {
+		Position    int    `json:"position"`
+		Description string `json:"description"`
+		WarehouseID *int64 `json:"warehouseId"`
+	}
+	if err := json.Unmarshal([]byte(raw), &lines); err != nil {
+		t.Fatalf("la bitácora del alta no trae los renglones: %s (%v)", raw, err)
+	}
+	want := map[int]int64{0: bodega, 1: local}
+	if len(lines) != len(want) {
+		t.Fatalf("la bitácora del alta trae %d renglones con almacén: %s; quiere los 2 del almacén", len(lines), raw)
+	}
+	for _, l := range lines {
+		if l.WarehouseID == nil || *l.WarehouseID != want[l.Position] {
+			t.Fatalf("el renglón %d (%s) dice almacén %v; quiere %d (%s)", l.Position, l.Description, l.WarehouseID, want[l.Position], raw)
+		}
+	}
 }
