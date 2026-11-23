@@ -385,12 +385,15 @@ var mcpTools = []MCPTool{
 	wr("expense_pay", "Agrega un pago a un gasto pendiente.", ScopeWriteExpenses, PermExpensesCapture),
 	wr("expense_cancel", "Anula un gasto capturado por error.", ScopeWriteExpenses, PermExpensesCancel),
 	wr("supplier_create", "Da de alta un proveedor.", ScopeWriteExpenses, PermExpensesCapture),
+	rd("warehouses_list", "Almacenes de la sucursal; el de venta es de donde salen las ventas.", PermInventoryView),
 	rd("stock_levels", "Existencias actuales de insumos y productos; cada renglón dice si está activo. Los insumos "+
-		"inactivos no salen, igual que en la pantalla.", PermInventoryView),
+		"inactivos no salen, igual que en la pantalla. Sin warehouse_id, las del almacén de venta; con all_warehouses, "+
+		"la suma de todos.", PermInventoryView),
 	rd("stock_movements", "Movimientos de almacén recientes.", PermInventoryView),
 	rd("waste_reasons_list", "Motivos de merma.", PermInventoryWriteOff),
 	wr("waste_record", "Registra lo que se echó a perder. Lo que pasa el tope de la empresa queda por aprobar.", ScopeWriteInventory, PermInventoryWriteOff),
-	wr("stock_adjust", "Ajusta la existencia de un insumo o producto (cantidad con signo).", ScopeWriteInventory, PermInventoryCount),
+	wr("stock_adjust", "Ajusta la existencia de un insumo o producto (cantidad con signo), en el almacén de venta o en "+
+		"warehouse_id.", ScopeWriteInventory, PermInventoryCount),
 	rd("products_list", "Productos del menú con precio, costo y si están activos; con búsqueda.", PermMenuConfigure),
 	rd("modifier_options_list", "Extras (opciones de modificador) con su precio y grupo; con búsqueda.", PermMenuConfigure),
 	rd("platform_prices_list", "Plataformas de reparto y los precios propios de cada producto y extra.", ""),

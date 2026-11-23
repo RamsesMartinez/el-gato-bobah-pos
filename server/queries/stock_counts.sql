@@ -30,7 +30,7 @@ select i.id, i.name, cp.name as count_place, i.count_place_id, u.code as base_un
 -- name: OnHandInBranch :one
 select coalesce((select on_hand from stock_levels
                   where item_type = 'ingrediente' and ingredient_id = sqlc.arg(ingredient_id)
-                    and branch_id = sqlc.arg(branch_id)), 0)::numeric(14,4) as on_hand;
+                    and warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))), 0)::numeric(14,4) as on_hand;
 
 -- name: LockStockLevelForCapture :exec
 -- Toma la existencia del insumo antes de leerla: una merma o una venta en curso termina antes. Va
@@ -38,7 +38,8 @@ select coalesce((select on_hand from stock_levels
 -- de la consulta sale de la foto tomada antes de esperar, y el último movimiento quedaba viejo (la
 -- merma que acababa de confirmar caía fuera del periodo del faltante).
 select 1 from stock_levels
- where item_type = 'ingrediente' and ingredient_id = sqlc.arg(ingredient_id)::bigint and branch_id = sqlc.arg(branch_id)::bigint
+ where item_type = 'ingrediente' and ingredient_id = sqlc.arg(ingredient_id)::bigint
+   and warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))
    for share;
 
 -- name: OnHandForCapture :one
@@ -46,10 +47,10 @@ select 1 from stock_levels
 -- 039, R2): el periodo del faltante se ancla por ese id y no por hora.
 select coalesce((select sl.on_hand from stock_levels sl
                   where sl.item_type = 'ingrediente' and sl.ingredient_id = sqlc.arg(ingredient_id)::bigint
-                    and sl.branch_id = sqlc.arg(branch_id)::bigint), 0)::numeric(14,4) as on_hand,
+                    and sl.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))), 0)::numeric(14,4) as on_hand,
        coalesce((select max(sm.id) from stock_movements sm
                   where sm.ingredient_id = sqlc.arg(ingredient_id)::bigint
-                    and sm.branch_id = sqlc.arg(branch_id)::bigint), 0)::bigint as last_movement_id;
+                    and sm.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))), 0)::bigint as last_movement_id;
 
 -- name: UpsertCountLine :exec
 -- Recapturar manda: la lectura nueva reemplaza cifra, lo que había en el sistema y su último
@@ -85,7 +86,7 @@ select l.ingredient_id, i.name, u.code as base_unit_code, l.counted_qty, l.syste
        l.unit_cost, (prev.last_movement_id is not null and l.last_movement_id is not null)::bool as has_previous,
        coalesce((select -sum(m.quantity) from stock_movements m
                   where m.waste_record_id is not null and m.ingredient_id = l.ingredient_id
-                    and m.branch_id = c.branch_id
+                    and m.warehouse_id = c.warehouse_id
                     and m.id > prev.last_movement_id and m.id <= l.last_movement_id), 0)::numeric(14,4) as registered
   from stock_count_lines l
   join stock_counts c on c.id = l.count_id
@@ -93,7 +94,7 @@ select l.ingredient_id, i.name, u.code as base_unit_code, l.counted_qty, l.syste
   join units u on u.id = i.base_unit_id
   left join lateral (
     select pl.last_movement_id from stock_count_lines pl join stock_counts pc on pc.id = pl.count_id
-     where pc.status = 'closed' and pc.branch_id = c.branch_id and pc.id <> c.id
+     where pc.status = 'closed' and pc.warehouse_id = c.warehouse_id and pc.id <> c.id
        and pl.ingredient_id = l.ingredient_id and pl.captured_at < l.captured_at
      order by pl.captured_at desc limit 1
   ) prev on true
@@ -121,7 +122,8 @@ select i.id, i.name from ingredients i
 -- Las existencias que el cierre va a ajustar, en orden y sin esperar a una venta (mismo arreglo
 -- que las compras): si una venta las tiene, el cierre se reintenta en vez de formar un ciclo.
 select ingredient_id from stock_levels
- where item_type = 'ingrediente' and ingredient_id = any(sqlc.arg(ids)::bigint[]) and branch_id = sqlc.arg(branch_id)
+ where item_type = 'ingrediente' and ingredient_id = any(sqlc.arg(ids)::bigint[])
+   and warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))
  order by ingredient_id
    for update nowait;
 
@@ -186,21 +188,22 @@ select track_stock, (type = 'combo')::bool as is_package, is_active from product
 -- arquitectura de la 069). La empresa es la del producto, que RLS ya dejó ver.
 insert into stock_levels (company_id, branch_id, item_type, product_id, on_hand)
 select p.company_id, sqlc.arg(branch_id)::bigint, 'producto', p.id, 0 from products p where p.id = sqlc.arg(product_id)::bigint
-on conflict (branch_id, product_id) do nothing;
+on conflict (warehouse_id, product_id) do nothing;
 
 -- name: LockProductStockLevelForCapture :exec
 -- Mismo arreglo que el de los insumos: el candado en una sentencia y la lectura en otra.
 select 1 from stock_levels
- where item_type = 'producto' and product_id = sqlc.arg(product_id)::bigint and branch_id = sqlc.arg(branch_id)::bigint
+ where item_type = 'producto' and product_id = sqlc.arg(product_id)::bigint
+   and warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))
    for share;
 
 -- name: ProductOnHandForCapture :one
 select coalesce((select sl.on_hand from stock_levels sl
                   where sl.item_type = 'producto' and sl.product_id = sqlc.arg(product_id)::bigint
-                    and sl.branch_id = sqlc.arg(branch_id)::bigint), 0)::numeric(14,4) as on_hand,
+                    and sl.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))), 0)::numeric(14,4) as on_hand,
        coalesce((select max(sm.id) from stock_movements sm
                   where sm.product_id = sqlc.arg(product_id)::bigint
-                    and sm.branch_id = sqlc.arg(branch_id)::bigint), 0)::bigint as last_movement_id;
+                    and sm.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))), 0)::bigint as last_movement_id;
 
 -- name: UpsertCountProductLine :exec
 insert into stock_count_product_lines (count_id, product_id, counted_qty, system_qty, captured_by, last_movement_id)
@@ -233,7 +236,8 @@ select p.id, p.name from products p
 -- Las existencias de los productos que el cierre va a ajustar, en orden y sin esperar: una venta o
 -- un cambio de modo en curso hace que el cierre se reintente en vez de formar un ciclo.
 select product_id from stock_levels
- where item_type = 'producto' and product_id = any(sqlc.arg(ids)::bigint[]) and branch_id = sqlc.arg(branch_id)
+ where item_type = 'producto' and product_id = any(sqlc.arg(ids)::bigint[])
+   and warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))
  order by product_id
    for update nowait;
 

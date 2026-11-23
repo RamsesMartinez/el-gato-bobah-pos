@@ -9,9 +9,11 @@ import { useSessionStore } from '../../stores/session';
 import { Provider } from '../../components/ui/provider';
 import { StockPage } from './StockPage';
 
+const oneWarehouse = { items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] };
 const back = vi.hoisted(() => ({
   countPlaces: vi.fn(() => Promise.resolve([{ id: 4, name: 'Barra', position: 0, ingredients: 1 }])),
-  stockLevels: vi.fn(() => Promise.resolve({ items: [] })),
+  stockLevels: vi.fn((_w?: number | 'all') => Promise.resolve({ items: [] as unknown[] })),
+  warehouses: vi.fn(() => Promise.resolve({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] })),
   stockMovements: vi.fn(() => Promise.resolve({ items: [] })),
   units: vi.fn(() => Promise.resolve({ items: [
     { id: 3, code: 'ml', name: 'Mililitro', kind: 'volumen', toBase: '1' },
@@ -52,6 +54,12 @@ const admin = vi.hoisted(() => ({
   products: vi.fn(() => Promise.resolve({ items: [], total: 0, counts: { act: 0, inact: 0 } })),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
+// Cada prueba arranca con un solo almacén y sin existencias: una que cambie el almacén y falle a la
+// mitad no deja a las siguientes con dos.
+beforeEach(() => {
+  back.warehouses.mockResolvedValue(oneWarehouse);
+  back.stockLevels.mockImplementation(() => Promise.resolve({ items: [] }));
+});
 vi.mock('../../api/admin', () => ({ adminApi: admin }));
 const pos = vi.hoisted(() => ({ businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' } as Record<string, string>)) }));
 vi.mock('../../api/pos', () => ({ posApi: pos }));
@@ -210,4 +218,89 @@ describe('Almacén › Avisos', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Avisos' }));
     expect(((await screen.findByLabelText('Correo extra')) as HTMLInputElement).value).toBe('compras@ejemplo.mx');
   });
+});
+
+// Existencias por almacén (spec 094, maqueta A): con un solo almacén la pantalla queda como hoy; con
+// dos aparece el segmentado, por omisión el de venta, y «Todos» suma.
+it('con un solo almacén no hay selector', async () => {
+  sesion(['inventory.view']);
+  montar('/almacen');
+  await screen.findByRole('columnheader', { name: 'Artículo' });
+  expect(screen.queryByRole('group', { name: 'Almacén' })).toBeNull();
+  expect(back.stockLevels).toHaveBeenLastCalledWith(undefined);
+});
+
+it('con dos almacenes elige cuál ver, y «Todos» suma', async () => {
+  back.warehouses.mockResolvedValue({ items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+  ] });
+  sesion(['inventory.view']);
+  montar('/almacen');
+  const grupo = await screen.findByRole('group', { name: 'Almacén' });
+  expect(screen.getByRole('button', { name: 'Local · de venta' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'Bodega' }));
+  await vi.waitFor(() => expect(back.stockLevels).toHaveBeenLastCalledWith(2));
+  fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+  await vi.waitFor(() => expect(back.stockLevels).toHaveBeenLastCalledWith('all'));
+  expect(grupo).toBeInTheDocument();
+});
+
+// El mínimo es del artículo y piensa en el local: comparar la bodega o la suma contra él dice «bajo»
+// donde no falta nada, o lo esconde donde sí (revisión de la 094). Fuera del de venta no se compara.
+it('fuera del almacén de venta no hay «bajo» ni mínimo', async () => {
+  back.warehouses.mockResolvedValue({ items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+  ] });
+  back.stockLevels.mockImplementation((w?: number | 'all') => Promise.resolve({ items: [
+    { item_name: 'Leche', item_type: 'insumo', on_hand: w === 2 ? '2000' : '1000', unit_code: 'ml', min_stock: '5000', is_active: true },
+  ] }));
+  sesion(['inventory.view']);
+  montar('/almacen');
+  expect(((await screen.findByText('Leche')).closest('tr')!).textContent).toContain('bajo');
+  fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
+  await vi.waitFor(() => expect(screen.getByText('Leche').closest('tr')!.textContent).toContain('2 L'));
+  expect(screen.getByText('Leche').closest('tr')!.textContent).not.toContain('bajo');
+  expect(screen.getByText('Leche').closest('tr')!.textContent).not.toContain('5 L');
+});
+
+// Un error al pedir otro almacén no se pinta como «sin existencias».
+it('si no se pudo leer el almacén lo dice', async () => {
+  back.warehouses.mockResolvedValue({ items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+  ] });
+  back.stockLevels.mockImplementation((w?: number | 'all') => (w === 2 ? Promise.reject(new Error('x')) : Promise.resolve({ items: [] })));
+  sesion(['inventory.view']);
+  montar('/almacen');
+  fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
+  expect(await screen.findByText('No se pudieron leer las existencias de este almacén')).toBeInTheDocument();
+  expect(screen.queryByText('Sin existencias que mostrar')).toBeNull();
+});
+
+// La persona nueva buscó los almacenes en Almacén y no estaban (prueba con usuario nuevo, 094): quien
+// los administra tiene el atajo junto al título.
+it('quien administra almacenes llega a ellos desde Almacén', async () => {
+  sesion(['inventory.view', 'inventory.warehouse_manage']);
+  montar('/almacen');
+  expect(await screen.findByRole('button', { name: 'Almacenes ›' })).toBeInTheDocument();
+});
+
+it('quien no los administra no ve el atajo', async () => {
+  sesion(['inventory.view']);
+  montar('/almacen');
+  await screen.findByRole('columnheader', { name: 'Artículo' });
+  expect(screen.queryByRole('button', { name: 'Almacenes ›' })).toBeNull();
+});
+
+it('una bodega vacía lo dice', async () => {
+  back.warehouses.mockResolvedValue({ items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 0 },
+  ] });
+  sesion(['inventory.view']);
+  montar('/almacen');
+  fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
+  expect(await screen.findByText('Este almacén todavía no tiene mercancía')).toBeInTheDocument();
 });

@@ -166,8 +166,8 @@ func (q *Queries) InsertMerge(ctx context.Context, arg InsertMergeParams) (int64
 }
 
 const insertMergeMove = `-- name: InsertMergeMove :exec
-insert into stock_movements (item_type, ingredient_id, movement_type, quantity, unit_cost, branch_id, user_id, reason, replacement_id)
-values ('ingrediente', $1, 'ajuste', $2, $3, $4,
+insert into stock_movements (item_type, ingredient_id, movement_type, quantity, unit_cost, warehouse_id, user_id, reason, replacement_id)
+values ('ingrediente', $1, 'ajuste', $2, $3, $4::bigint,
         $5, 'unión de insumos', $6)
 `
 
@@ -175,19 +175,19 @@ type InsertMergeMoveParams struct {
 	IngredientID  *int64           `json:"ingredient_id"`
 	Quantity      decimal.Decimal  `json:"quantity"`
 	UnitCost      *decimal.Decimal `json:"unit_cost"`
-	BranchID      int64            `json:"branch_id"`
+	WarehouseID   int64            `json:"warehouse_id"`
 	UserID        *int64           `json:"user_id"`
 	ReplacementID *int64           `json:"replacement_id"`
 }
 
-// Un lado del traspaso, con su sucursal explícita y ligado a la unión (el trigger de la 0104 no
-// redirige un movimiento con replacement_id).
+// Un lado del traspaso, con su almacén explícito (spec 094: se une almacén por almacén) y ligado a
+// la unión (el trigger de la 0104 no redirige un movimiento con replacement_id).
 func (q *Queries) InsertMergeMove(ctx context.Context, arg InsertMergeMoveParams) error {
 	_, err := q.db.Exec(ctx, insertMergeMove,
 		arg.IngredientID,
 		arg.Quantity,
 		arg.UnitCost,
-		arg.BranchID,
+		arg.WarehouseID,
 		arg.UserID,
 		arg.ReplacementID,
 	)

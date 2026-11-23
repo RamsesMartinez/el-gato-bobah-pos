@@ -45,7 +45,9 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 		// Reportar que algo se acabó (084): lo ve quien vende; los cuatro sugeridos lo traen.
 		PermInventoryReportOut,
 		// Aceptar pedidos entrantes (093): antes no tenía gate; los cuatro sugeridos lo traen.
-		PermOrdersAcceptIncoming}
+		PermOrdersAcceptIncoming,
+		// Almacenes y traspasos (094): quien hoy configura y cuenta el almacén.
+		PermInventoryWarehouseManage, PermInventoryTransfer}
 	// El cajero abría caja, corregía el folio de plataforma y capturaba precios por plataforma
 	// (RequireRole admin, gerente, cajero); el mesero, nada de eso.
 	cajero := []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff, PermOrdersDeliveredView,
@@ -123,6 +125,8 @@ func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 		PermEmployeesManage:            "Tu usuario no puede dar de alta ni editar empleados",
 		PermRolesManage:                "Tu usuario no puede cambiar lo que puede cada rol",
 		PermIntegrationsManage:         "Tu usuario no puede crear ni revocar tokens de integración",
+		PermInventoryWarehouseManage:   "Tu usuario no puede dar de alta ni cambiar almacenes",
+		PermInventoryTransfer:          "Tu usuario no puede traspasar entre almacenes",
 	}
 	for _, p := range AllPermissions() {
 		msg := PermissionDeniedMessage(p)

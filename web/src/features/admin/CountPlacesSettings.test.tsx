@@ -39,7 +39,7 @@ describe('lugares del recorrido (spec 040, maqueta C)', () => {
     expect(await screen.findByText('Conteo abierto aquí')).toBeInTheDocument();
     cleanup();
     montar();
-    await screen.findByText('Lugares');
+    await screen.findByText('Lugares para contar');
     expect(screen.queryByRole('button', { name: '‹ Volver al conteo' })).toBeNull();
   });
 

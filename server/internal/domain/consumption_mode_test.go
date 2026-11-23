@@ -27,95 +27,95 @@ func TestPlanModeChange(t *testing.T) {
 		{
 			name: "a un insumo sin existencia: las 12 latas pasan al insumo",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
-				Levels: []BranchLevels{{BranchID: branch, Product: dec("12")}}},
+				Levels: []WarehouseLevels{{WarehouseID: branch, Product: dec("12")}}},
 			want: []StockAdjustment{
-				{BranchID: branch, ItemType: "producto", ID: product, Qty: dec("-12")},
-				{BranchID: branch, ItemType: "ingrediente", ID: ingredient, Qty: dec("12")},
+				{WarehouseID: branch, ItemType: "producto", ID: product, Qty: dec("-12")},
+				{WarehouseID: branch, ItemType: "ingrediente", ID: ingredient, Qty: dec("12")},
 			},
 			turnOff: true,
 		},
 		{
 			name: "un six: cada pieza de producto son 6 del insumo",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("6"),
-				Levels: []BranchLevels{{BranchID: branch, Product: dec("2")}}},
+				Levels: []WarehouseLevels{{WarehouseID: branch, Product: dec("2")}}},
 			want: []StockAdjustment{
-				{BranchID: branch, ItemType: "producto", ID: product, Qty: dec("-2")},
-				{BranchID: branch, ItemType: "ingrediente", ID: ingredient, Qty: dec("12")},
+				{WarehouseID: branch, ItemType: "producto", ID: product, Qty: dec("-2")},
+				{WarehouseID: branch, ItemType: "ingrediente", ID: ingredient, Qty: dec("12")},
 			},
 			turnOff: true,
 		},
 		{
 			name: "existencia negativa también se traslada, no se pierde",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
-				Levels: []BranchLevels{{BranchID: branch, Product: dec("-3")}}},
+				Levels: []WarehouseLevels{{WarehouseID: branch, Product: dec("-3")}}},
 			want: []StockAdjustment{
-				{BranchID: branch, ItemType: "producto", ID: product, Qty: dec("3")},
-				{BranchID: branch, ItemType: "ingrediente", ID: ingredient, Qty: dec("-3")},
+				{WarehouseID: branch, ItemType: "producto", ID: product, Qty: dec("3")},
+				{WarehouseID: branch, ItemType: "ingrediente", ID: ingredient, Qty: dec("-3")},
 			},
 			turnOff: true,
 		},
 		{
 			name: "el insumo ya tenía existencia y no se dijo cuántas hay de verdad",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
-				Levels: []BranchLevels{{BranchID: branch, Product: dec("12"), Ingredient: dec("20")}}},
+				Levels: []WarehouseLevels{{WarehouseID: branch, Product: dec("12"), Ingredient: dec("20")}}},
 			err: ErrValidation,
 		},
 		{
 			name: "el insumo ya tenía existencia: queda la cifra elegida, no la suma a ciegas",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
-				Levels:      []BranchLevels{{BranchID: branch, Product: dec("12"), Ingredient: dec("20")}},
+				Levels:      []WarehouseLevels{{WarehouseID: branch, Product: dec("12"), Ingredient: dec("20")}},
 				ActualStock: decp("32"), SeenProductOnHand: decp("12"), SeenIngredientOnHand: decp("20")},
 			want: []StockAdjustment{
-				{BranchID: branch, ItemType: "producto", ID: product, Qty: dec("-12")},
-				{BranchID: branch, ItemType: "ingrediente", ID: ingredient, Qty: dec("12")},
+				{WarehouseID: branch, ItemType: "producto", ID: product, Qty: dec("-12")},
+				{WarehouseID: branch, ItemType: "ingrediente", ID: ingredient, Qty: dec("12")},
 			},
 			turnOff: true,
 		},
 		{
 			name: "la cifra elegida igual a la del insumo: el producto va a cero y el insumo no se mueve",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
-				Levels:      []BranchLevels{{BranchID: branch, Product: dec("12"), Ingredient: dec("20")}},
+				Levels:      []WarehouseLevels{{WarehouseID: branch, Product: dec("12"), Ingredient: dec("20")}},
 				ActualStock: decp("20"), SeenProductOnHand: decp("12"), SeenIngredientOnHand: decp("20")},
-			want:    []StockAdjustment{{BranchID: branch, ItemType: "producto", ID: product, Qty: dec("-12")}},
+			want:    []StockAdjustment{{WarehouseID: branch, ItemType: "producto", ID: product, Qty: dec("-12")}},
 			turnOff: true,
 		},
 		{
 			name: "no queda ninguna de verdad: cero es una respuesta válida",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
-				Levels:      []BranchLevels{{BranchID: branch, Product: dec("12"), Ingredient: dec("20")}},
+				Levels:      []WarehouseLevels{{WarehouseID: branch, Product: dec("12"), Ingredient: dec("20")}},
 				ActualStock: decp("0"), SeenProductOnHand: decp("12"), SeenIngredientOnHand: decp("20")},
 			want: []StockAdjustment{
-				{BranchID: branch, ItemType: "producto", ID: product, Qty: dec("-12")},
-				{BranchID: branch, ItemType: "ingrediente", ID: ingredient, Qty: dec("-20")},
+				{WarehouseID: branch, ItemType: "producto", ID: product, Qty: dec("-12")},
+				{WarehouseID: branch, ItemType: "ingrediente", ID: ingredient, Qty: dec("-20")},
 			},
 			turnOff: true,
 		},
 		{
 			name: "una cantidad absurda por venta desborda la columna: se rechaza, no es un 500",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1000000"),
-				Levels: []BranchLevels{{BranchID: branch, Product: dec("10001")}}},
+				Levels: []WarehouseLevels{{WarehouseID: branch, Product: dec("10001")}}},
 			err: ErrValidation,
 		},
 		{
 			name: "una venta entre mostrar y guardar: lo que se vio ya no es lo que hay",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
-				Levels:      []BranchLevels{{BranchID: branch, Product: dec("11"), Ingredient: dec("20")}},
+				Levels:      []WarehouseLevels{{WarehouseID: branch, Product: dec("11"), Ingredient: dec("20")}},
 				ActualStock: decp("32"), SeenProductOnHand: decp("12"), SeenIngredientOnHand: decp("20")},
 			err: ErrConflict,
 		},
 		{
 			name: "cifra negativa",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
-				Levels:      []BranchLevels{{BranchID: branch, Product: dec("12"), Ingredient: dec("20")}},
+				Levels:      []WarehouseLevels{{WarehouseID: branch, Product: dec("12"), Ingredient: dec("20")}},
 				ActualStock: decp("-1"), SeenProductOnHand: decp("12"), SeenIngredientOnHand: decp("20")},
 			err: ErrValidation,
 		},
 		{
 			name: "dos sucursales con existencia en los dos: se resuelve con un conteo",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
-				Levels: []BranchLevels{
-					{BranchID: 1, Product: dec("5"), Ingredient: dec("2")},
-					{BranchID: 2, Product: dec("3"), Ingredient: dec("1")},
+				Levels: []WarehouseLevels{
+					{WarehouseID: 1, Product: dec("5"), Ingredient: dec("2")},
+					{WarehouseID: 2, Product: dec("3"), Ingredient: dec("1")},
 				},
 				ActualStock: decp("10"), SeenProductOnHand: decp("8"), SeenIngredientOnHand: decp("3")},
 			err: ErrConflict,
@@ -123,26 +123,26 @@ func TestPlanModeChange(t *testing.T) {
 		{
 			name: "dos sucursales sin existencia del insumo: cada una traslada lo suyo",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
-				Levels: []BranchLevels{{BranchID: 1, Product: dec("5")}, {BranchID: 2, Product: dec("3")}}},
+				Levels: []WarehouseLevels{{WarehouseID: 1, Product: dec("5")}, {WarehouseID: 2, Product: dec("3")}}},
 			want: []StockAdjustment{
-				{BranchID: 1, ItemType: "producto", ID: product, Qty: dec("-5")},
-				{BranchID: 1, ItemType: "ingrediente", ID: ingredient, Qty: dec("5")},
-				{BranchID: 2, ItemType: "producto", ID: product, Qty: dec("-3")},
-				{BranchID: 2, ItemType: "ingrediente", ID: ingredient, Qty: dec("3")},
+				{WarehouseID: 1, ItemType: "producto", ID: product, Qty: dec("-5")},
+				{WarehouseID: 1, ItemType: "ingrediente", ID: ingredient, Qty: dec("5")},
+				{WarehouseID: 2, ItemType: "producto", ID: product, Qty: dec("-3")},
+				{WarehouseID: 2, ItemType: "ingrediente", ID: ingredient, Qty: dec("3")},
 			},
 			turnOff: true,
 		},
 		{
 			name: "a varios insumos, un paquete o «No se cuenta»: la existencia se cierra en cero",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: ModeTarget{Kind: TargetNothing},
-				Levels: []BranchLevels{{BranchID: branch, Product: dec("7")}}},
-			want:    []StockAdjustment{{BranchID: branch, ItemType: "producto", ID: product, Qty: dec("-7")}},
+				Levels: []WarehouseLevels{{WarehouseID: branch, Product: dec("7")}}},
+			want:    []StockAdjustment{{WarehouseID: branch, ItemType: "producto", ID: product, Qty: dec("-7")}},
 			turnOff: true,
 		},
 		{
 			name: "existencia propia en cero: se apaga sin ajustes",
 			in: ModeChangeInput{From: ModeOwnStock, ProductID: product, Target: single("1"),
-				Levels: []BranchLevels{{BranchID: branch}}},
+				Levels: []WarehouseLevels{{WarehouseID: branch}}},
 			turnOff: true,
 		},
 	}
@@ -166,7 +166,7 @@ func TestPlanModeChange(t *testing.T) {
 			}
 			for i, a := range got.Adjustments {
 				w := c.want[i]
-				if a.BranchID != w.BranchID || a.ItemType != w.ItemType || a.ID != w.ID || !a.Qty.Equal(w.Qty) {
+				if a.WarehouseID != w.WarehouseID || a.ItemType != w.ItemType || a.ID != w.ID || !a.Qty.Equal(w.Qty) {
 					t.Errorf("ajuste %d = %+v, quiere %+v", i, a, w)
 				}
 			}

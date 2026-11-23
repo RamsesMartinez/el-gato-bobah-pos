@@ -66,6 +66,7 @@ var noPersonalData = map[string]string{
 	"branches.card_count_mode":                      "configuración",
 	"branches.code":                                 "código interno de la sucursal",
 	"branches.name":                                 "nombre de la sucursal",
+	"warehouses.name":                               "nombre del lugar donde se guarda mercancía (Local, Bodega)",
 	"branches.timezone":                             "configuración",
 	"business_settings.business_name":               "nombre del negocio, no de una persona",
 	"business_settings.corte_de_vista":              "configuración",

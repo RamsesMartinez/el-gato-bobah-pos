@@ -176,6 +176,9 @@ select i.id as ingredient_id, i.name::text as name, u.code::text as unit, sl.on_
   join ingredients i on i.id = sl.ingredient_id
   join units u on u.id = i.base_unit_id
   join branches b on b.id = sl.branch_id
+  -- El de venta de cada sucursal (spec 094): un negativo es lo que el mostrador vendió sin tener; la
+  -- salud por almacén llega con el conteo por almacén.
+  join warehouses w on w.id = sl.warehouse_id and w.is_sales
  where sl.item_type = 'ingrediente' and sl.on_hand < 0 and i.is_active
  order by sl.on_hand, i.name, b.name
  limit $2::int offset $1::int

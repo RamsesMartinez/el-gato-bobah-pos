@@ -202,8 +202,8 @@ func TestMoveSalesWithTwoBranches(t *testing.T) {
 	admin := makeUser(t, st, "admin_049_sucursal", "admin")
 	regMatriz := principalRegister(t, st)
 	var branch, norteA, norteB int64
-	if err := st.Pool.QueryRow(context.Background(), `insert into branches (company_id, name, code)
-		values ($1, 'Norte 049', 'NORTE049') returning id`, defaultCompanyID).Scan(&branch); err != nil {
+	if err := st.Pool.QueryRow(context.Background(), `with b as (insert into branches (company_id, name, code)
+		values ($1, 'Norte 049', 'NORTE049') returning *), w as (insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local', true from b) select id from b`, defaultCompanyID).Scan(&branch); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Pool.QueryRow(context.Background(), `insert into cash_registers (name, branch_id, is_primary) values ('Norte A', $1, true) returning id`, branch).Scan(&norteA); err != nil {

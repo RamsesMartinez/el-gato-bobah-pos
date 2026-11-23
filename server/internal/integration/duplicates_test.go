@@ -139,7 +139,7 @@ func TestDuplicatesWorkWithTwoBranches(t *testing.T) {
 	ingredientIn(t, st, defaultCompanyID, "Polvo chocolate", "g")
 	b := ingredientIn(t, st, defaultCompanyID, "Polvo chocolate Monjita", "g")
 	var second int64
-	if err := st.Pool.QueryRow(ctx, `insert into branches (company_id, branch_number, code, name) values ($1, 2, 'S2', 'Sucursal 2') returning id`,
+	if err := st.Pool.QueryRow(ctx, `with b as (insert into branches (company_id, branch_number, code, name) values ($1, 2, 'S2', 'Sucursal 2') returning *), w as (insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local', true from b) select id from b`,
 		defaultCompanyID).Scan(&second); err != nil {
 		t.Fatal(err)
 	}

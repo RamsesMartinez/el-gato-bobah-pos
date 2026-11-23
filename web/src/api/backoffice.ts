@@ -797,6 +797,15 @@ export interface ParsedDoc {
   raw: unknown; // extracción cruda: se reenvía en docRaw al crear el gasto
   reconciliation: DocReconciliation;
 }
+// Un almacén de la sucursal (spec 094). El de venta es de donde salen las ventas.
+export interface Warehouse {
+  id: number;
+  name: string;
+  isSales: boolean;
+  isActive: boolean;
+  itemsWithStock: number;
+}
+
 export interface StockLevel {
   item_type: string;
   item_name: string;
@@ -1227,6 +1236,13 @@ export const backofficeApi = {
   createCountPlace: (name: string) => api.post<{ id: number }>('/stock/count-places', { name }),
   renameCountPlace: (id: number, name: string) => api.put<void>(`/stock/count-places/${id}`, { name }),
   moveCountPlace: (id: number, toPosition: number) => api.post<void>(`/stock/count-places/${id}/move`, { toPosition }),
+  // Almacenes de la sucursal (spec 094).
+  warehouses: (includeArchived = false) =>
+    api.get<{ items?: Warehouse[] }>(`/stock/warehouses${includeArchived ? '?includeArchived=1' : ''}`),
+  createWarehouse: (name: string) => api.post<{ id: number }>('/stock/warehouses', { name }),
+  renameWarehouse: (id: number, name: string) => api.patch<void>(`/stock/warehouses/${id}`, { name }),
+  archiveWarehouse: (id: number) => api.post<void>(`/stock/warehouses/${id}/archive`, {}),
+  restoreWarehouse: (id: number) => api.post<void>(`/stock/warehouses/${id}/restore`, {}),
   archiveCountPlace: (id: number, moveTo?: number | null) =>
     api.post<void>(`/stock/count-places/${id}/archive`, moveTo === undefined ? {} : { moveTo }),
 
@@ -1313,7 +1329,9 @@ export const backofficeApi = {
     return api.get<{ items: ArticleSuggestion[] }>(`/articles/suggest?${qs}`);
   },
 
-  stockLevels: () => api.get<{ items: StockLevel[] }>('/stock/levels'),
+  // Sin almacén, el de venta; un id o 'all' (spec 094).
+  stockLevels: (warehouseId?: number | 'all') =>
+    api.get<{ items: StockLevel[] }>(`/stock/levels${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
   stockMovements: () => api.get<{ items: StockMovement[] }>('/stock/movements'),
   inventoryHealth: (q: HealthQuery = {}) => api.get<InventoryHealth>(`/stock/health?${qsReporte(q as ReportQuery)}`),
   // El archivo de la misma pantalla. El nombre viene del servidor (Content-Disposition), con el periodo.

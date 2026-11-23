@@ -90,6 +90,7 @@ type stockAdjustArgs struct {
 	ProductID    *int64 `json:"product_id,omitempty" jsonschema:"producto de reventa; o ingredient_id"`
 	Quantity     string `json:"quantity" jsonschema:"cuánto sumar (positivo) o restar (negativo), en la unidad base"`
 	Reason       string `json:"reason" jsonschema:"por qué se ajusta"`
+	WarehouseID  *int64 `json:"warehouse_id,omitempty" jsonschema:"almacén (de warehouses_list); sin él, el de venta"`
 }
 
 type productUpdateArgs struct {
@@ -384,6 +385,9 @@ func registerWrites() {
 			}
 			body := map[string]any{"itemType": itemType, "ingredientId": in.IngredientID, "productId": in.ProductID,
 				"movementType": "ajuste", "quantity": in.Quantity, "reason": in.Reason}
+			if in.WarehouseID != nil {
+				body["warehouseId"] = *in.WarehouseID
+			}
 			return http.MethodPost, pStockMoves, nil, nil, body, nil
 		},
 		state: func(s *mcpSession, ctx context.Context, in stockAdjustArgs, _ json.RawMessage) any {

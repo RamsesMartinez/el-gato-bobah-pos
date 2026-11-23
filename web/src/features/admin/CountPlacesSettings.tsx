@@ -66,7 +66,7 @@ export function CountPlacesSettings() {
   return (
     <Box ref={box} id="lugares" mt={6} borderWidth="1px" borderRadius="lg" p={5}>
       <Flex justify="space-between" align="center" gap={3}>
-        <Text fontWeight="700">Lugares</Text>
+        <Text fontWeight="700">Lugares para contar</Text>
         <HStack gap={2}>
           {/* Quien llegó desde el conteo no sabía cómo volver: el menú lateral ya no lo lleva ahí. */}
           {fromCount && <Button minH="44px" variant="ghost" onClick={() => navigate('/almacen?tab=conteo')}>‹ Volver al conteo</Button>}

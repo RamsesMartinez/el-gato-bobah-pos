@@ -16,7 +16,7 @@ import (
 
 const articleMovedSince = `-- name: ArticleMovedSince :one
 select (exists (select 1 from stock_movements m
-                 where m.branch_id = $1 and m.id > $2::bigint
+                 where m.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint)) and m.id > $2::bigint
                    and (m.ingredient_id = $3 or m.product_id = $4))
      or exists (select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id
                  where c.branch_id = $1 and l.ingredient_id = $3
@@ -358,7 +358,7 @@ const openManualOut = `-- name: OpenManualOut :many
 insert into notifications (branch_id, kind, item_type, ingredient_id, product_id, item_name, unit_code, on_hand_seen, opened_by)
 values ($1, 'stock_out', $2, $3, $4,
         $5, $6, $7, $8)
-on conflict (company_id, branch_id, item_key, kind) where status = 'open' and kind <> 'not_found' do nothing
+on conflict (company_id, warehouse_id, item_key, kind) where status = 'open' and kind <> 'not_found' do nothing
 returning id
 `
 
@@ -644,7 +644,7 @@ func (q *Queries) SetOutReportUndoMovement(ctx context.Context, arg SetOutReport
 
 const stockOnHandForUpdate = `-- name: StockOnHandForUpdate :many
 select on_hand from stock_levels
- where branch_id = $1
+ where warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint))
    and (ingredient_id = $2 or product_id = $3)
  for update
 `

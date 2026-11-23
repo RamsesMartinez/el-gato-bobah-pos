@@ -1432,15 +1432,39 @@ func (s *BackofficeService) UpdateExpenseCategory(ctx context.Context, id int64,
 
 // ---- Almacén ----
 
-func (s *BackofficeService) StockLevels(ctx context.Context) ([]db.ListStockLevelsRow, error) {
-	return s.store.QC(ctx).ListStockLevels(ctx)
+// StockLevels son las existencias del almacén que se pidió (el de venta por omisión) o de todos los
+// de la sucursal sumados. Un almacén ajeno, de otra sucursal o archivado es «no existe».
+func (s *BackofficeService) StockLevels(ctx context.Context, sel domain.WarehouseSel) ([]db.ListStockLevelsRow, error) {
+	q := s.store.QC(ctx)
+	var ids []int64
+	if sel.All {
+		ws, err := q.ListWarehouses(ctx, false)
+		if err != nil {
+			return nil, err
+		}
+		for _, w := range ws {
+			ids = append(ids, w.ID)
+		}
+	} else {
+		id, err := ResolveWarehouseID(ctx, q, sel)
+		if err != nil {
+			return nil, err
+		}
+		ids = []int64{id}
+	}
+	rows, err := q.ListStockLevels(ctx, ids)
+	if rows == nil {
+		rows = []db.ListStockLevelsRow{}
+	}
+	return rows, err
 }
 func (s *BackofficeService) StockMovements(ctx context.Context, limit int32) ([]db.ListStockMovementsRow, error) {
 	return s.store.QC(ctx).ListStockMovements(ctx, limit)
 }
 
-// RecordMovement registra un ajuste/compra/merma manual sobre un ingrediente o producto.
-func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string, ingID, prodID *int64, mtype string, qty decimal.Decimal, reason string, userID int64) error {
+// RecordMovement registra un ajuste/compra/merma manual sobre un ingrediente o producto, en el almacén
+// que se pidió (el de venta por omisión).
+func (s *BackofficeService) RecordMovement(ctx context.Context, sel domain.WarehouseSel, itemType string, ingID, prodID *int64, mtype string, qty decimal.Decimal, reason string, userID int64) error {
 	// allowNegative: el delta puede restar (merma/ajuste). Round4 porque la columna es
 	// numeric(14,4) (base units g/ml); Round2 rechazaría ajustes válidos de sub-centésima.
 	// Rechaza 0 y valores que desbordarían la columna.
@@ -1452,14 +1476,21 @@ func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string,
 	if reason != "" {
 		r = &reason
 	}
-	return s.store.QC(ctx).InsertStockMovement(ctx, db.InsertStockMovementParams{
-		ItemType:     db.StockItemType(itemType),
-		IngredientID: ingID,
-		ProductID:    prodID,
-		MovementType: db.StockMovementType(mtype),
-		Quantity:     q,
-		UserID:       &userID,
-		Reason:       r,
+	return s.store.WithTx(ctx, func(qs *db.Queries) error {
+		wh, err := ResolveWarehouseID(ctx, qs, sel)
+		if err != nil {
+			return err
+		}
+		return qs.InsertStockMovement(ctx, db.InsertStockMovementParams{
+			ItemType:     db.StockItemType(itemType),
+			IngredientID: ingID,
+			ProductID:    prodID,
+			MovementType: db.StockMovementType(mtype),
+			Quantity:     q,
+			UserID:       &userID,
+			Reason:       r,
+			WarehouseID:  &wh,
+		})
 	})
 }
 
