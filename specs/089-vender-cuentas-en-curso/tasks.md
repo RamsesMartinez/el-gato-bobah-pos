@@ -68,8 +68,8 @@ cuentas» de la sección **Maquetas** de [plan.md](plan.md).
 ## Phase 6: Polish
 
 - [X] T025 Nota del área en `docs/mecanica/caja-y-cobro.md`: «lo que falta» se deriva del estado del servidor; entregar desde Vender; la columna en modo ancho y la fila en angosto
-- [ ] T026 `bun run lint`, `bun run vitest run`, `bun run build` en verde, desde `web/`
-- [ ] T027 Prueba con alguien nuevo de una fonda a 1024×600 contra el `make start` del worktree (quickstart), corregir lo que encuentre con su test, y cerrar los pedidos de prueba
+- [X] T026 `bun run lint`, `bun run vitest run`, `bun run build` en verde, desde `web/`
+- [X] T027 Prueba con alguien nuevo de una fonda a 1024×600 contra el `make start` del worktree (quickstart), corregir lo que encuentre con su test, y cerrar los pedidos de prueba
 
 ## Dependencies
 
@@ -86,3 +86,18 @@ cuentas» de la sección **Maquetas** de [plan.md](plan.md).
 
 MVP = Foundational + US1 + US2 (la cuenta dice qué le falta y se resuelve desde la hoja y el ticket).
 Después US3 (la columna elegida). Se sube completo: el dueño pidió las tres cosas.
+
+## Lo que encontró la prueba con alguien nuevo (T027, 2026-11-23)
+
+Calificó «qué le falta a cada cuenta» con 4 de 5: los textos de la columna con su botón se
+entienden sin explicación.
+
+- **Corregido aquí, con su prueba**: entregar la cuenta ABIERTA ya pagada la cerraba pero el ticket
+  se quedaba en ella («falta $0») y el siguiente producto se rechazaba. Ahora la tableta pasa a una
+  cuenta nueva (`POSPage.test.tsx` › *entregar la cuenta abierta ya pagada…*).
+- **No reproducido**: una vez salió «La pantalla no se pudo mostrar» al recargar con una cuenta sin
+  enviar, con la red de WSL cortándose. Ocho recargas seguidas no lo repitieron.
+- **Ya existían antes de esta feature; van en un issue aparte**: el recuadro «Cobrado» no dice que
+  falta entregar ni se cierra con Escape; el cambio no se repite al confirmar el cobro; «EN COCINA»
+  encabeza renglones ya entregados; a 1024×600 el ticket arranca oculto y «Enviar a cocina» no se ve
+  sin abrirlo; la cuenta de plataforma no dice su canal en la lista.

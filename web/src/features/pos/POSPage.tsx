@@ -46,6 +46,7 @@ import { desglosePrecio, nombreDeLista, precioDeLista } from './precioPlataforma
 import { SearchBar } from './SearchBar';
 import { FilaDeCuentas } from './FilaDeCuentas';
 import { AccountsColumn } from './AccountsColumn';
+import { missingFor } from '../../domain/cuentas';
 import { useDeliverAccount } from './useDeliverAccount';
 import { TodasLasCuentasSheet } from './TodasLasCuentasSheet';
 import { DescartarCuentaSheet } from './DescartarCuentaSheet';
@@ -257,7 +258,19 @@ export function POSPage() {
       })
       .catch((e: unknown) => toaster.create({ title: 'No se pudo abrir el cobro', description: mensajeDeError(e), type: 'error' }));
   };
-  const { deliver: deliverAccount, delivering } = useDeliverAccount();
+  // Entregar la cuenta ABIERTA que ya estaba pagada la cierra: sale de la columna, y la tableta pasa a
+  // una cuenta nueva. Si se quedara en ella, el ticket diría «falta $0» y el siguiente producto se
+  // rechazaría por «ya pagada y entregada» (prueba con usuario nuevo de la 089). Se lee la selección
+  // al confirmar, no al tocar: mientras iba la petición pudieron abrir otra cuenta.
+  const { deliver: deliverAccount, delivering } = useDeliverAccount({
+    onDelivered: (c) => {
+      const abierta = usePosStore.getState().selected;
+      if (abierta?.kind === 'order' && abierta.id === c.orderId && !missingFor(c).charge) {
+        limpiarMotivo();
+        cuentaNueva();
+      }
+    },
+  });
 
   // La venta termina cuando el pedido queda saldado. Se RELEE para imprimir: el ticket estampa
   // PAGADO o POR COBRAR y solo el servidor lo sabe.

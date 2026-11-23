@@ -275,6 +275,34 @@ describe('resolver una cuenta desde la columna', () => {
     expect(within(screen.getByRole('dialog')).queryAllByText(/\$195/)).toHaveLength(0);
   });
 
+  // Prueba con usuario nuevo (089): entregar la cuenta ABIERTA ya pagada la cerraba, salía de la
+  // columna, pero el ticket se quedaba en ella («falta $0», «Enviar a cocina») y el siguiente producto
+  // se rechazaba con «ya está pagada y entregada». Al cerrarse, la tableta pasa a una cuenta nueva.
+  test('entregar la cuenta abierta ya pagada deja la tableta en una cuenta nueva', async () => {
+    anchoDelPos.width = 1024;
+    vivas.current = [cuenta({ key: 'o:6', orderId: 6, folioName: 'Siamés', state: 'paid_in_kitchen', paid: '63.00', total: '63.00', outstanding: '0.00' })];
+    usePosStore.getState().seleccionar({ kind: 'order', id: 6 });
+    api.order.mockResolvedValue(pedidoDe(6, 'Siamés', { status: 'abierta', paid: true, outstanding: '0.00', total: '63.00' }));
+    api.deliverOrder.mockResolvedValue(undefined);
+    montar();
+    await screen.findByRole('button', { name: /^Siamés ·/ });
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Entregar Siamés' }))[0]);
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalledWith(6));
+    await waitFor(() => expect(usePosStore.getState().selected).toBeNull());
+  });
+
+  test('entregar la cuenta abierta que todavía debe la deja abierta para cobrarla', async () => {
+    anchoDelPos.width = 1024;
+    vivas.current = [cuenta({ key: 'o:5', orderId: 5, folioName: 'Persa', state: 'in_kitchen', outstanding: '90.00', total: '90.00' })];
+    usePosStore.getState().seleccionar({ kind: 'order', id: 5 });
+    api.order.mockResolvedValue(pedidoDe(5, 'Persa', { status: 'abierta', outstanding: '90.00', total: '90.00' }));
+    api.deliverOrder.mockResolvedValue(undefined);
+    montar();
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Entregar Persa' }))[0]);
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalledWith(5));
+    expect(usePosStore.getState().selected).toEqual({ kind: 'order', id: 5 });
+  });
+
   test('«Entregar» entrega ese pedido sin abrirlo', async () => {
     anchoDelPos.width = 1024;
     vivas.current = [cuenta({ key: 'o:6', orderId: 6, folioName: 'Siamés', state: 'paid_in_kitchen', paid: '63.00', total: '63.00', outstanding: '0.00' })];
