@@ -178,3 +178,11 @@ Veredicto: 0 CRITICAL, 6 HIGH, 7 MEDIUM. Lo que cambia del diseño de arriba:
 | LOW Almacenes A2/A3 con estilo propio | La opción que elija el dueño se construye ampliando `ListRow` (ícono opcional), sin etiquetas en mayúsculas que el POS no usa; «Archivar» con `ConfirmSheet` |
 | LOW nombres largos en el segmentado | `overflowX="auto"` en el contenedor; con 5+ almacenes pasa a botón con hoja |
 | Textos | El resumen «Se guarda en Local: N · en Bodega: M» y «¿Dónde se guarda?» solo aparecen con 2+ almacenes |
+
+## R13. Riesgo aceptado en la subida 1
+
+Una empresa que dé de alta la API anterior durante el traslape (o tras un regreso a la versión
+anterior) nace sin almacén de venta, y su primer movimiento truena con `EGB03`. No se arregla con un
+trigger sobre `branches`: un restore con COPY lo dispararía y chocaría con el «Local» del respaldo
+(la razón de la 0076). La ventana es la del traslape, la API nueva lo crea en la misma consulta que la
+matriz, y la 0118 crea «Local» donde falte (R11 M2).
