@@ -89,6 +89,12 @@ de la ficha (`PUT .../expected-waste`), porque la ficha del artículo se guarda 
 `inventory.configure` y el % es decisión del menú. La merma real del artículo se lee con
 `inventory.view` (la ficha ya muestra su costo con ese permiso).
 
+Consecuencia que no se ve: la sección «Costos» vive en Ajustes del negocio, que abre con
+`business.configure`. Admin y gerente tienen los dos permisos; un rol propio con `menu.configure` y
+sin `business.configure` captura el % de productos y artículos pero no llega al general. Es el mismo
+caso que ya tiene la sección Inventario con `inventory.configure`; se resuelve dándole el permiso al
+rol, no abriendo Ajustes a quien no configura el negocio.
+
 ## R7. Recalcular y no tocar el pasado
 
 **Decision**: cada cambio de % llama a `recomputeCosts` en la misma transacción (como guardar una

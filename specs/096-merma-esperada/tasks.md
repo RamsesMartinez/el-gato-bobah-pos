@@ -133,7 +133,7 @@ por la razón correcta.
 ## Phase S1-Polish: cierre de la subida 1
 
 - [X] T043 Nota en `docs/mecanica/almacen.md`: la precedencia, por qué el general no compone en preparados, que la merma real sigue las uniones y que el Down copia el % de regreso
-- [ ] T044 E2E en `web/e2e/merma-esperada.spec.ts` contra el `make start` del worktree a 1024×600 y 1280×854 (capturas solo en `test-results/`): general 5 % sube el costo, % del producto, 0 % de artículo, desglose suma, historial del artículo con ≥ 2 renglones visibles a 1024×600; cuenta los toques de capturar el general y el % de un producto (≤ 4 cada uno, SC-005); deja todo como estaba
+- [X] T044 E2E en `web/e2e/merma-esperada.spec.ts` contra el `make start` del worktree a 1024×600 y 1280×854 (capturas solo en `test-results/`): general 5 % sube el costo, % del producto, 0 % de artículo, desglose suma, historial del artículo con ≥ 2 renglones visibles a 1024×600; cuenta los toques de capturar el general y el % de un producto (≤ 4 cada uno, SC-005); deja todo como estaba
 - [ ] T045 `/revision-de-codigo` sobre el diff y corregir cada hallazgo con su test
 - [ ] T046 Prueba con alguien nuevo de una fonda a 1024×600 en local con la base restaurada (subagente sin contexto): capturar el general, el de un producto y ver de dónde sale el costo; anotar en este spec lo que se atore
 - [ ] T047 `make ci-local` en verde
