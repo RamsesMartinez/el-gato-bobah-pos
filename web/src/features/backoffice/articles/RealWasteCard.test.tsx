@@ -43,4 +43,13 @@ describe('Merma real en la ficha del artículo', () => {
     montar([rw({ ratio: 0, state: 'ratio', consumed: '50' })], 5);
     expect(screen.getByText(/sin merma registrada/)).toBeInTheDocument();
   });
+
+  // A 1024×600 la tarjeta va junto a otras y «400 g mermados» + «Sin ventas» se comían el renglón:
+  // el nombre del almacén, que encogía hasta lo que quedara, quedaba con ancho 0 (cierre del #65).
+  test('el nombre del almacén no encoge: lo demás baja de renglón', () => {
+    montar([rw({ warehouseId: 2, warehouseName: 'Bodega', isSales: false, wasted: '400', state: 'no_sales' })], 5);
+    const name = screen.getByText('Bodega');
+    expect(getComputedStyle(name).flexShrink).toBe('0');
+    expect(getComputedStyle(name.parentElement!).flexWrap).toBe('wrap');
+  });
 });
