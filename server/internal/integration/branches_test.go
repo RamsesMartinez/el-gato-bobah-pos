@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -36,7 +37,7 @@ func addBranch(t *testing.T, st *store.Store, company int64, code string) (branc
 	t.Helper()
 	ctx := context.Background()
 	if err := st.Pool.QueryRow(ctx,
-		`insert into branches (company_id, code, name) values ($1, $2::text, $2::text) returning id`, company, code).Scan(&branch); err != nil {
+		`with b as (insert into branches (company_id, code, name) values ($1, $2::text, $2::text) returning *), w as (insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local', true from b) select id from b`, company, code).Scan(&branch); err != nil {
 		t.Fatalf("alta de la sucursal %s: %v", code, err)
 	}
 	if err := st.Pool.QueryRow(ctx,
@@ -161,7 +162,14 @@ func TestABranchOfAnotherCompanyIsRejected(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.table, func(t *testing.T) {
-			if _, err := owner.Pool.Exec(ctx, c.sql, c.args...); !esViolacionDeLlave(err) {
+			_, err := owner.Pool.Exec(ctx, c.sql, c.args...)
+			// Desde la 0120 el movimiento busca el almacén de venta de esa sucursal en SU empresa, no lo
+			// encuentra y truena antes de llegar a la llave (EGB03): también es un rechazo.
+			var pgErr *pgconn.PgError
+			if c.table == "stock_movements" && errors.As(err, &pgErr) && pgErr.Code == "EGB03" {
+				return
+			}
+			if !esViolacionDeLlave(err) {
 				t.Fatalf("%s aceptó la sucursal de otra empresa: %v", c.table, err)
 			}
 		})
@@ -280,14 +288,14 @@ func TestBranchScopedQueriesInTheThreeCases(t *testing.T) {
 
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, st *store.Store, ctx context.Context) {
 		q := st.QC(ctx)
-		if levels, err := q.ListStockLevels(ctx); err == nil {
+		if levels, err := app.NewBackofficeService(st, clock).StockLevels(ctx, domain.WarehouseSel{}); err == nil {
 			for _, l := range levels {
 				if l.ItemName == "Pan" {
 					t.Fatalf("otra sesión ve las existencias de la empresa dueña")
 				}
 			}
-		} else if !errors.Is(err, domain.ErrBranchAmbiguous) {
-			t.Fatalf("ListStockLevels: %v", err)
+		} else if !errors.Is(err, domain.ErrBranchAmbiguous) && !errors.Is(err, domain.ErrWarehouseNotFound) {
+			t.Fatalf("StockLevels: %v", err)
 		}
 		if _, err := q.GetOpenPrimarySession(ctx); err == nil {
 			t.Fatalf("otra sesión encontró el turno abierto de la empresa dueña")

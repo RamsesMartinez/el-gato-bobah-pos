@@ -14,7 +14,7 @@ import (
 const lockSalesStock = `-- name: LockSalesStock :many
 select item_type, ingredient_id, product_id, on_hand
 from stock_levels
-where branch_id = $1
+where warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1))
   and ((item_type = 'ingrediente' and ingredient_id = any($2::bigint[]))
     or (item_type = 'producto' and product_id = any($3::bigint[])))
 order by item_type, product_id, ingredient_id
@@ -66,7 +66,7 @@ const salesStockLevels = `-- name: SalesStockLevels :many
 
 select item_type, ingredient_id, product_id, on_hand
 from stock_levels
-where branch_id = current_branch_id()
+where warehouse_id = current_sales_warehouse_id()
 `
 
 type SalesStockLevelsRow struct {
@@ -79,7 +79,8 @@ type SalesStockLevelsRow struct {
 // La existencia con la que se vende (spec 092). Hoy es la de la sucursal; con varios almacenes por
 // sucursal (#65) será la del almacén de venta, y solo cambian estas dos consultas y
 // app/sales_stock.go, que es lo único que las llama.
-// La sucursal es la misma con la que vende la caja principal (`current_branch_id()`).
+// El almacén de venta de la sucursal con la que vende la caja principal (spec 094): lo que hay en la
+// bodega no se puede vender desde el mostrador hasta que se traspase.
 func (q *Queries) SalesStockLevels(ctx context.Context) ([]SalesStockLevelsRow, error) {
 	rows, err := q.db.Query(ctx, salesStockLevels)
 	if err != nil {

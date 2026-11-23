@@ -234,7 +234,7 @@ func TestArchivedIngredientQueriesAreIsolated(t *testing.T) {
 	}
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, ast *store.Store, actx context.Context) {
 		svc := app.NewBackofficeService(ast, nil)
-		if rows, err := svc.StockLevels(actx); err == nil {
+		if rows, err := svc.StockLevels(actx, domain.WarehouseSel{}); err == nil {
 			for _, row := range rows {
 				if row.ItemName == "Insumo propio 077" {
 					t.Fatal("existencias de otra empresa")

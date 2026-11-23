@@ -244,3 +244,22 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     salía a esa misma persona.
   - **«Stock bajo» y «se acabó» son dos eventos**: de 40 a 0 con mínimo 10 abre los dos, porque se
     eligen por separado en la ficha.
+
+- **Varios almacenes por sucursal** (spec 094, 0120). Cada sucursal tiene almacenes y uno es el de
+  venta (`warehouses.is_sales`). Cinco cosas que no se ven:
+  - **Todo lo que guardaba existencias «de la sucursal» guarda su almacén**, con llave compuesta a la
+    sucursal de la fila (`(company_id, branch_id, warehouse_id)`): un almacén de otra sucursal no se
+    guarda aunque RLS fallara. Un insert que no trae almacén lo llena un trigger con el de venta
+    (`sales_warehouse_of`, que truena con `EGB03` si no hay); una tabla nueva con existencias hace lo
+    mismo.
+  - **La primera subida deja dos llaves únicas vivas** (por sucursal y por almacén) para que la API
+    anterior no pierda su `on conflict`. Mientras rijan, la base rechaza con `EGB04` cualquier
+    movimiento a un almacén que no sea el de venta y cambiar cuál es el de venta. La migración
+    siguiente borra las de sucursal y quita las compuertas: **después de ella ya no se puede volver a
+    una imagen anterior a la 094**.
+  - **Las lecturas que decían `branch_id = current_branch_id()` leen el almacén de venta**
+    (`current_sales_warehouse_id()`); con dos almacenes, leer por sucursal duplicaba cada artículo.
+    Las sumas de toda la empresa (costo promedio, candidatos a unir) siguen siendo sumas.
+  - **Una cancelación repone al almacén del movimiento que repone**, no al de venta de hoy.
+  - **El relleno de `expense_items` aparta sus checks `NOT VALID`**: producción tiene filas viejas que
+    no los cumplen y Postgres los revisa en cualquier update de la fila (medido: una, el 2026-11-23).

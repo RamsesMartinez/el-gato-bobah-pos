@@ -22,7 +22,7 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
   left join count_places cp on cp.id = i.count_place_id
   left join ingredient_categories ic on ic.id = i.category_id
   -- Existencias de la sucursal (0076): con dos sucursales, sin el filtro cada artículo saldría dos veces.
-  left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
+  left join stock_levels sl on sl.ingredient_id = i.id and sl.warehouse_id = current_sales_warehouse_id()
  where i.is_active = not sqlc.arg(archived)::boolean
    and (sqlc.narg('q')::text is null
         -- strpos y no like: lo que alguien escriba es texto, nunca un comodín.
@@ -88,7 +88,7 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
   left join users du on du.id = i.density_set_by
   left join count_places cp on cp.id = i.count_place_id
   left join ingredient_categories ic on ic.id = i.category_id
-  left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
+  left join stock_levels sl on sl.ingredient_id = i.id and sl.warehouse_id = current_sales_warehouse_id()
  where i.id = sqlc.arg(id);
 
 -- name: FindOtherArticleByName :one
@@ -238,9 +238,12 @@ select id, occurred_at, action, entity_type, first_before::jsonb as before, afte
 
 -- name: ArticleOnHandByBranch :many
 -- Lo que queda del artículo en cada sucursal, para la revisión de archivar y el cambio de unidad.
-select b.id as branch_id, b.name::text as branch, sl.on_hand
+-- Sumado por sucursal (spec 094): con dos almacenes, una fila por almacén repetiría la sucursal.
+select b.id as branch_id, b.name::text as branch, sum(sl.on_hand)::numeric(14,4) as on_hand
   from stock_levels sl join branches b on b.id = sl.branch_id
- where sl.item_type = 'ingrediente' and sl.ingredient_id = sqlc.arg(ingredient_id) and sl.on_hand <> 0
+ where sl.item_type = 'ingrediente' and sl.ingredient_id = sqlc.arg(ingredient_id)
+ group by b.id, b.name
+having sum(sl.on_hand) <> 0
  order by b.name;
 
 -- name: ActiveRecipesUsing :many
@@ -302,9 +305,10 @@ select id, is_active, name::text as name, base_unit_id, min_stock, current_cost,
   from ingredients where id = sqlc.arg(id) for update nowait;
 
 -- name: LockArticleStockNowait :many
-select branch_id, on_hand from stock_levels
+-- Una fila por almacén (spec 094): la unión y el reemplazo traspasan cada almacén por separado.
+select warehouse_id::bigint as warehouse_id, branch_id, on_hand from stock_levels
  where item_type = 'ingrediente' and ingredient_id = sqlc.arg(ingredient_id)
- order by branch_id
+ order by warehouse_id
    for update nowait;
 
 -- name: ArticleMovementTypes :many
@@ -438,7 +442,7 @@ update ingredients
 -- separado deja un residuo que el trigger (solo de insert) no corrige (Revisión B2).
 update stock_levels sl
    set on_hand = coalesce((select sum(m.quantity) from stock_movements m
-                            where m.ingredient_id = sl.ingredient_id and m.branch_id = sl.branch_id), 0),
+                            where m.ingredient_id = sl.ingredient_id and m.warehouse_id = sl.warehouse_id), 0),
        updated_at = now()
  where sl.item_type = 'ingrediente' and sl.ingredient_id = sqlc.arg(ingredient_id);
 
@@ -451,9 +455,10 @@ values (sqlc.arg(old_ingredient_id), sqlc.arg(new_ingredient_id), sqlc.arg(facto
 returning id;
 
 -- name: InsertReplacementMove :exec
--- Un lado del traspaso de un reemplazo, con su sucursal explícita: el trigger la tomaría de la empresa.
-insert into stock_movements (item_type, ingredient_id, movement_type, quantity, unit_cost, branch_id, user_id, reason, replacement_id)
-values ('ingrediente', sqlc.arg(ingredient_id), 'ajuste', sqlc.arg(quantity), sqlc.narg(unit_cost), sqlc.arg(branch_id),
+-- Un lado del traspaso de un reemplazo, con su almacén explícito (la sucursal sale del almacén): el
+-- trigger la tomaría de la empresa.
+insert into stock_movements (item_type, ingredient_id, movement_type, quantity, unit_cost, warehouse_id, user_id, reason, replacement_id)
+values ('ingrediente', sqlc.arg(ingredient_id), 'ajuste', sqlc.arg(quantity), sqlc.narg(unit_cost), sqlc.arg(warehouse_id)::bigint,
         sqlc.arg(user_id), 'reemplazo', sqlc.arg(replacement_id));
 
 -- name: SetArticleExtras :exec

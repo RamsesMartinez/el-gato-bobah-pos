@@ -30,7 +30,7 @@ order by ei.position, ei.id;
 -- de las dos —a veces el cobro—. Tomadas antes de escribir, la compra ya no espera por nada (el
 -- mismo arreglo del 037 en el cambio de modo).
 select ingredient_id from stock_levels
- where item_type = 'ingrediente' and ingredient_id = any(sqlc.arg(ids)::bigint[]) and branch_id = current_branch_id()
+ where item_type = 'ingrediente' and ingredient_id = any(sqlc.arg(ids)::bigint[]) and warehouse_id = current_sales_warehouse_id()
  order by ingredient_id
    for update nowait;
 
@@ -220,7 +220,7 @@ select c.id, c.branch_id, scl.captured_at
   from stock_count_lines scl
   join stock_counts c on c.id = scl.count_id
  where scl.ingredient_id = sqlc.arg(ingredient_id) and c.status = 'closed'
-   and c.branch_id = current_branch_id() and scl.captured_at > sqlc.arg(cutoff)::timestamptz
+   and c.warehouse_id = current_sales_warehouse_id() and scl.captured_at > sqlc.arg(cutoff)::timestamptz
  order by scl.captured_at desc
  limit 1;
 
@@ -254,7 +254,7 @@ select max(sm.effective_on)::date as day
 -- de la vista previa.
 select sl.ingredient_id, sl.product_id, sl.on_hand
   from stock_levels sl
- where sl.branch_id = current_branch_id()
+ where sl.warehouse_id = current_sales_warehouse_id()
    and (sl.ingredient_id = any(sqlc.arg(ingredient_ids)::bigint[]) or sl.product_id = any(sqlc.arg(product_ids)::bigint[]));
 
 -- name: IngredientCostsFor :many

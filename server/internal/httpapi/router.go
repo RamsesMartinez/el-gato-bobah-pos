@@ -606,6 +606,13 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/count-places/{id}", h.RenameCountPlace)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/count-places/{id}/move", h.MoveCountPlace)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/count-places/{id}/archive", h.ArchiveCountPlace)
+					// Almacenes (spec 094): los ve quien ve el almacén; darlos de alta, renombrar, archivar y
+					// reactivar, quien los administra.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/warehouses", h.ListWarehouses)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Post("/warehouses", h.CreateWarehouse)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Patch("/warehouses/{id}", h.RenameWarehouse)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Post("/warehouses/{id}/archive", h.ArchiveWarehouse)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Post("/warehouses/{id}/restore", h.RestoreWarehouse)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/ingredients/{id}/presentations", h.ListIngredientPresentations)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredients/{id}/presentations", h.CreatePresentation)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/presentations/{id}", h.UpdatePresentation)

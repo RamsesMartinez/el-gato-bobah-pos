@@ -256,7 +256,7 @@ func TestCreatingAnArticleFromTheList(t *testing.T) {
 	})
 	t.Run("con dos sucursales y sin selector, la existencia inicial se niega y no queda nada", func(t *testing.T) {
 		co2 := makeCompany(t, st, "articulos-dos-sucursales")
-		if _, err := st.Pool.Exec(context.Background(), `insert into branches (company_id, name, code) values ($1, 'Segunda', 'SEG')`, co2); err != nil {
+		if _, err := st.Pool.Exec(context.Background(), `with b as (insert into branches (company_id, name, code) values ($1, 'Segunda', 'SEG') returning *), w as (insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local', true from b) select 1`, co2); err != nil {
 			t.Fatal(err)
 		}
 		u2 := makeUserIn(t, st, co2, "crea_dos_suc", "admin")

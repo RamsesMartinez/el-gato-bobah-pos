@@ -8,9 +8,8 @@ import (
 )
 
 // salesStock y lockSalesStock son la ÚNICA puerta a la existencia con la que se vende (spec 092):
-// la lista de agotados y el chequeo de la venta solo pasan por aquí. Hoy leen la existencia de la
-// sucursal; con varios almacenes por sucursal (#65) leerán la del almacén de venta cambiando solo
-// su interior.
+// la lista de agotados y el chequeo de la venta solo pasan por aquí. Leen el almacén de venta de la
+// sucursal (spec 094): lo que está en la bodega no se vende hasta que se traspasa.
 func salesStock(ctx context.Context, q *db.Queries) (domain.StockLevels, error) {
 	rows, err := q.SalesStockLevels(ctx)
 	if err != nil {
@@ -23,8 +22,8 @@ func salesStock(ctx context.Context, q *db.Queries) (domain.StockLevels, error) 
 	return out, nil
 }
 
-// lockSalesStock bloquea (FOR UPDATE) los renglones de existencia que pide una venta en la sucursal
-// del pedido y devuelve lo que hay en ellos ya bloqueados. Lo que no tiene fila no se bloquea: vale
+// lockSalesStock bloquea (FOR UPDATE) los renglones de existencia que pide una venta en el almacén de
+// venta de la sucursal del pedido y devuelve lo que hay en ellos ya bloqueados. Lo que no tiene fila no se bloquea: vale
 // cero, y cero se rechaza igual en las dos tabletas.
 func lockSalesStock(ctx context.Context, q *db.Queries, branchID int64, keys map[domain.StockKey]struct{}) (domain.StockLevels, error) {
 	var ings, prods []int64

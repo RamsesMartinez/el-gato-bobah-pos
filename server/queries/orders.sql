@@ -227,15 +227,18 @@ where id = $1;
 -- que se prepara y ya salió a cocina no vuelve. Antes esta consulta revertía todo renglón vivo, y un
 -- frappé ya preparado devolvía su leche y su té al almacén si se cancelaba el pedido, pero no si se
 -- quitaba el renglón: el mismo hecho, dos inventarios.
+--
+-- Repone al almacén del que salió (spec 094, FR-011), no al de venta de hoy: si cambió cuál es, lo
+-- vendido antes volvería a otro lugar y el primero quedaría descontado para siempre.
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
-                             modifier_option_id, component_of_product_id)
+                             modifier_option_id, component_of_product_id, warehouse_id)
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, null,
-       sqlc.arg(actor_id), 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id
+       sqlc.arg(actor_id), 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id, sm.warehouse_id
 from stock_movements sm
 where sm.order_id = sqlc.arg(oid) and sm.movement_type in ('venta', 'cancelacion')
   and sm.order_line_id is null
 group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id,
-         sm.modifier_option_id, sm.component_of_product_id
+         sm.modifier_option_id, sm.component_of_product_id, sm.warehouse_id
 having sum(sm.quantity) <> 0;
 
 -- name: RecalcOrderTotals :exec
@@ -588,10 +591,12 @@ where id = $1 and cancelled_at is null;
 -- Un renglón anterior a la migración 0060 no tiene movimientos ligados y no repone nada. Es la
 -- decisión: de un movimiento viejo no consta a qué renglón pertenecía, y adivinarlo inventaría
 -- existencias.
+--
+-- Al almacén del movimiento que revierte (spec 094, FR-011).
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
-                             modifier_option_id, component_of_product_id)
+                             modifier_option_id, component_of_product_id, warehouse_id)
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, sm.order_line_id,
-       sqlc.arg(actor_id), 'cancelación de renglón', sm.modifier_option_id, sm.component_of_product_id
+       sqlc.arg(actor_id), 'cancelación de renglón', sm.modifier_option_id, sm.component_of_product_id, sm.warehouse_id
 from stock_movements sm
 where sm.order_line_id = sqlc.arg(line_id) and sm.movement_type = 'venta';
 
@@ -668,7 +673,7 @@ update order_lines
 -- extra o el paquete de origen viaja con el par: sin él, la perla extra quedaría contada como el
 -- producto mismo y el reporte por extra y por paquete dejaría de cuadrar.
 select item_type, ingredient_id, product_id, quantity, unit_cost, order_id,
-       modifier_option_id, component_of_product_id
+       modifier_option_id, component_of_product_id, warehouse_id
 from stock_movements
 where order_line_id = $1 and movement_type = 'venta'
 order by id;

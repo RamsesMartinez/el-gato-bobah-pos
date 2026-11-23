@@ -822,8 +822,14 @@ func (h *Handlers) CancelExpense(w http.ResponseWriter, r *http.Request) {
 
 // ---- Almacén ----
 
+// GET /stock/levels — `?warehouseId=<id>|all`; sin él, el almacén de venta (spec 094).
 func (h *Handlers) StockLevels(w http.ResponseWriter, r *http.Request) {
-	items, err := h.backoffice.StockLevels(r.Context())
+	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), true)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	items, err := h.backoffice.StockLevels(r.Context(), sel)
 	if err != nil {
 		Error(w, err)
 		return
@@ -853,13 +859,23 @@ func (h *Handlers) CreateStockMovement(w http.ResponseWriter, r *http.Request) {
 		MovementType string          `json:"movementType"` // ajuste | compra | merma
 		Quantity     decimal.Decimal `json:"quantity"`
 		Reason       string          `json:"reason"`
+		// Sin él, el almacén de venta (spec 094). Presente y no positivo es 400, nunca el de venta.
+		WarehouseID *int64 `json:"warehouseId"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
+	var sel domain.WarehouseSel
+	if body.WarehouseID != nil {
+		if *body.WarehouseID <= 0 {
+			Error(w, fmt.Errorf("%w: almacén inválido", domain.ErrValidation))
+			return
+		}
+		sel.ID = *body.WarehouseID
+	}
 	u, _ := userFrom(r.Context())
-	if err := h.backoffice.RecordMovement(r.Context(), body.ItemType, body.IngredientID, body.ProductID, body.MovementType, body.Quantity, body.Reason, u.ID); err != nil {
+	if err := h.backoffice.RecordMovement(r.Context(), sel, body.ItemType, body.IngredientID, body.ProductID, body.MovementType, body.Quantity, body.Reason, u.ID); err != nil {
 		Error(w, err)
 		return
 	}

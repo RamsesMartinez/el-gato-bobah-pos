@@ -10,22 +10,22 @@ with cand as (
          coalesce(b.min_stock, i.min_stock) as min_stock, i.low_stock_enabled as enabled
     from ingredients i
     join units u on u.id = i.base_unit_id
-    left join branch_stock_minimums b on b.branch_id = current_branch_id() and b.ingredient_id = i.id
+    left join branch_stock_minimums b on b.warehouse_id = current_sales_warehouse_id() and b.ingredient_id = i.id
    where i.is_active
   union all
   select 'producto'::stock_item_type, p.id, p.name, 'pieza'::text, p.coverage_days,
          coalesce(b.min_stock, p.min_stock), p.low_stock_enabled
     from products p
-    left join branch_stock_minimums b on b.branch_id = current_branch_id() and b.product_id = p.id
+    left join branch_stock_minimums b on b.warehouse_id = current_sales_warehouse_id() and b.product_id = p.id
    where p.is_active and p.track_stock
 ), base as (
   select c.*, coalesce(l.on_hand, 0)::numeric as on_hand,
-         exists (select 1 from notifications n where n.status = 'open' and n.kind = 'stock_out' and n.branch_id = current_branch_id()
+         exists (select 1 from notifications n where n.status = 'open' and n.kind = 'stock_out' and n.warehouse_id = current_sales_warehouse_id()
                    and n.item_key = case when c.item_type = 'ingrediente' then c.id else -c.id end) as out_open,
-         exists (select 1 from notifications n where n.status = 'open' and n.kind = 'stock_low' and n.branch_id = current_branch_id()
+         exists (select 1 from notifications n where n.status = 'open' and n.kind = 'stock_low' and n.warehouse_id = current_sales_warehouse_id()
                    and n.item_key = case when c.item_type = 'ingrediente' then c.id else -c.id end) as low_open
     from cand c
-    left join stock_levels l on l.branch_id = current_branch_id()
+    left join stock_levels l on l.warehouse_id = current_sales_warehouse_id()
      and ((c.item_type = 'ingrediente' and l.ingredient_id = c.id) or (c.item_type = 'producto' and l.product_id = c.id))
 )
 -- coalesce explícito: sqlc tipa estas columnas como no nulas (vienen de un CTE y de un lateral), y un
@@ -37,7 +37,7 @@ select b.item_type, b.id, b.name, b.unit_code, coalesce(b.coverage_days, 0)::int
   left join lateral (
     select -sum(m.quantity) as used, count(distinct (m.created_at at time zone 'UTC')::date) as days
       from stock_movements m
-     where m.branch_id = current_branch_id() and m.movement_type in ('venta', 'cancelacion')
+     where m.warehouse_id = current_sales_warehouse_id() and m.movement_type in ('venta', 'cancelacion')
        and m.created_at >= sqlc.arg(since)
        and ((b.item_type = 'ingrediente' and m.ingredient_id = b.id) or (b.item_type = 'producto' and m.product_id = b.id))
   ) u on true

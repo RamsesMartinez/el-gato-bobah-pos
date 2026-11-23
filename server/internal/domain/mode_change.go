@@ -28,12 +28,12 @@ type ModeTarget struct {
 	QtyPerSale decimal.Decimal
 }
 
-// BranchLevels son las existencias bloqueadas (FOR UPDATE) de una sucursal: las del producto y, si
+// WarehouseLevels son las existencias bloqueadas (FOR UPDATE) de un almacén: las del producto y, si
 // la receta lleva un solo insumo, las de ese insumo.
-type BranchLevels struct {
-	BranchID   int64
-	Product    decimal.Decimal
-	Ingredient decimal.Decimal
+type WarehouseLevels struct {
+	WarehouseID int64
+	Product     decimal.Decimal
+	Ingredient  decimal.Decimal
 }
 
 // ModeChangeInput es lo que decide la transición. Los Seen son lo que mostró la pantalla al
@@ -42,7 +42,7 @@ type ModeChangeInput struct {
 	From                 ConsumptionMode
 	ProductID            int64
 	Target               ModeTarget
-	Levels               []BranchLevels
+	Levels               []WarehouseLevels
 	ActualStock          *decimal.Decimal
 	SeenProductOnHand    *decimal.Decimal
 	SeenIngredientOnHand *decimal.Decimal
@@ -50,10 +50,10 @@ type ModeChangeInput struct {
 
 // StockAdjustment es un movimiento de ajuste a insertar: positivo entra, negativo sale.
 type StockAdjustment struct {
-	BranchID int64
-	ItemType string // "producto" | "ingrediente", como stock_movements.item_type
-	ID       int64
-	Qty      decimal.Decimal
+	WarehouseID int64
+	ItemType    string // "producto" | "ingrediente", como stock_movements.item_type
+	ID          int64
+	Qty         decimal.Decimal
 }
 
 // ModeChange es el resultado: los ajustes y si se apaga la existencia propia.
@@ -75,23 +75,23 @@ func PlanModeChange(in ModeChangeInput) (ModeChange, error) {
 	if !single {
 		for _, l := range in.Levels {
 			if !l.Product.IsZero() {
-				out.Adjustments = append(out.Adjustments, StockAdjustment{BranchID: l.BranchID, ItemType: "producto", ID: in.ProductID, Qty: l.Product.Neg()})
+				out.Adjustments = append(out.Adjustments, StockAdjustment{WarehouseID: l.WarehouseID, ItemType: "producto", ID: in.ProductID, Qty: l.Product.Neg()})
 			}
 		}
 		return out, checkAdjustments(out.Adjustments)
 	}
 
 	ing := *in.Target.SingleIngredient
-	// Las sucursales donde las dos cuentas tienen existencia: ahí hay que decidir cuántas hay de
+	// Los almacenes donde las dos cuentas tienen existencia: ahí hay que decidir cuántas hay de
 	// verdad. Sumarlas a ciegas contaría dos veces las mismas latas.
-	var both []BranchLevels
+	var both []WarehouseLevels
 	for _, l := range in.Levels {
 		if !l.Product.IsZero() && !l.Ingredient.IsZero() {
 			both = append(both, l)
 		}
 	}
 	if len(both) > 1 {
-		return out, fmt.Errorf("%w: el producto y el insumo tienen existencia en más de una sucursal; ajústalo con un conteo", ErrConflict)
+		return out, fmt.Errorf("%w: el producto y el insumo tienen existencia en más de un almacén; ajústalo con un conteo", ErrConflict)
 	}
 	if len(both) == 1 {
 		if in.ActualStock == nil || in.SeenProductOnHand == nil || in.SeenIngredientOnHand == nil {
@@ -111,9 +111,9 @@ func PlanModeChange(in ModeChangeInput) (ModeChange, error) {
 		if l.Product.IsZero() {
 			continue
 		}
-		out.Adjustments = append(out.Adjustments, StockAdjustment{BranchID: l.BranchID, ItemType: "producto", ID: in.ProductID, Qty: l.Product.Neg()})
+		out.Adjustments = append(out.Adjustments, StockAdjustment{WarehouseID: l.WarehouseID, ItemType: "producto", ID: in.ProductID, Qty: l.Product.Neg()})
 		var toIngredient decimal.Decimal
-		if len(both) == 1 && both[0].BranchID == l.BranchID {
+		if len(both) == 1 && both[0].WarehouseID == l.WarehouseID {
 			// La cifra elegida queda como existencia del insumo; el ajuste es la diferencia.
 			toIngredient = Round4(*in.ActualStock).Sub(l.Ingredient)
 		} else {
@@ -123,7 +123,7 @@ func PlanModeChange(in ModeChangeInput) (ModeChange, error) {
 			}
 		}
 		if !toIngredient.IsZero() {
-			out.Adjustments = append(out.Adjustments, StockAdjustment{BranchID: l.BranchID, ItemType: "ingrediente", ID: ing, Qty: toIngredient})
+			out.Adjustments = append(out.Adjustments, StockAdjustment{WarehouseID: l.WarehouseID, ItemType: "ingrediente", ID: ing, Qty: toIngredient})
 		}
 	}
 	return out, checkAdjustments(out.Adjustments)

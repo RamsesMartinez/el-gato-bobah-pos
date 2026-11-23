@@ -536,15 +536,16 @@ func applyModeChange(ctx context.Context, q *db.Queries, id int64, req Compositi
 	case len(req.Items) > 0:
 		target.Kind = domain.TargetItems
 	}
-	levels := map[int64]*domain.BranchLevels{}
+	// Por almacén (spec 094): la existencia del producto en la bodega pasa al insumo en la bodega.
+	levels := map[int64]*domain.WarehouseLevels{}
 	var order []int64
-	branchLevel := func(b int64) *domain.BranchLevels {
-		if l, ok := levels[b]; ok {
+	warehouseLevel := func(w int64) *domain.WarehouseLevels {
+		if l, ok := levels[w]; ok {
 			return l
 		}
-		levels[b] = &domain.BranchLevels{BranchID: b}
-		order = append(order, b)
-		return levels[b]
+		levels[w] = &domain.WarehouseLevels{WarehouseID: w}
+		order = append(order, w)
+		return levels[w]
 	}
 	if err := q.LockProductForComposition(ctx, id); err != nil {
 		return nil, err
@@ -554,7 +555,7 @@ func applyModeChange(ctx context.Context, q *db.Queries, id int64, req Compositi
 		return nil, err
 	}
 	for _, l := range own {
-		branchLevel(l.BranchID).Product = l.OnHand
+		warehouseLevel(l.WarehouseID).Product = l.OnHand
 	}
 	if len(req.Items) == 1 {
 		it := req.Items[0]
@@ -574,9 +575,9 @@ func applyModeChange(ctx context.Context, q *db.Queries, id int64, req Compositi
 			return nil, err
 		}
 		for _, l := range rows {
-			// Solo cuenta el insumo de las sucursales donde el producto tiene algo que entregar.
-			if _, ok := levels[l.BranchID]; ok {
-				levels[l.BranchID].Ingredient = l.OnHand
+			// Solo cuenta el insumo de los almacenes donde el producto tiene algo que entregar.
+			if _, ok := levels[l.WarehouseID]; ok {
+				levels[l.WarehouseID].Ingredient = l.OnHand
 			}
 		}
 	}
@@ -592,7 +593,7 @@ func applyModeChange(ctx context.Context, q *db.Queries, id int64, req Compositi
 	note := fmt.Sprintf("Producto %d: deja de contar su propia existencia (%s)", id, audit.after)
 	for _, a := range plan.Adjustments {
 		arg := db.InsertModeAdjustmentParams{ItemType: db.StockItemType(a.ItemType), Quantity: domain.Round4(a.Qty),
-			BranchID: a.BranchID, UserID: &actor, Note: &note}
+			WarehouseID: a.WarehouseID, UserID: &actor, Note: &note}
 		aid := a.ID
 		if a.ItemType == "producto" {
 			arg.ProductID = &aid

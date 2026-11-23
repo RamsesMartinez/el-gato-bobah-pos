@@ -224,7 +224,7 @@ func TestWithTwoBranchesTheEntryDoesNotGuessABranch(t *testing.T) {
 	co := makeCompany(t, st, "checar-dos-suc")
 	ana := clockingEmployeeIn(t, st, co, "ana-dos-suc")
 	if _, err := st.Pool.Exec(context.Background(),
-		`insert into branches (company_id, branch_number, code, name) values ($1, 2, 'S2', 'Sucursal 2')`, co); err != nil {
+		`with b as (insert into branches (company_id, branch_number, code, name) values ($1, 2, 'S2', 'Sucursal 2') returning *), w as (insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local', true from b) select 1`, co); err != nil {
 		t.Fatalf("segunda sucursal: %v", err)
 	}
 	now := time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC)

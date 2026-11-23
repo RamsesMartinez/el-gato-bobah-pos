@@ -15,10 +15,10 @@ values (sqlc.arg(old_ingredient_id), sqlc.arg(new_ingredient_id), sqlc.arg(facto
 returning id;
 
 -- name: InsertMergeMove :exec
--- Un lado del traspaso, con su sucursal explícita y ligado a la unión (el trigger de la 0104 no
--- redirige un movimiento con replacement_id).
-insert into stock_movements (item_type, ingredient_id, movement_type, quantity, unit_cost, branch_id, user_id, reason, replacement_id)
-values ('ingrediente', sqlc.arg(ingredient_id), 'ajuste', sqlc.arg(quantity), sqlc.narg(unit_cost), sqlc.arg(branch_id),
+-- Un lado del traspaso, con su almacén explícito (spec 094: se une almacén por almacén) y ligado a
+-- la unión (el trigger de la 0104 no redirige un movimiento con replacement_id).
+insert into stock_movements (item_type, ingredient_id, movement_type, quantity, unit_cost, warehouse_id, user_id, reason, replacement_id)
+values ('ingrediente', sqlc.arg(ingredient_id), 'ajuste', sqlc.arg(quantity), sqlc.narg(unit_cost), sqlc.arg(warehouse_id)::bigint,
         sqlc.arg(user_id), 'unión de insumos', sqlc.arg(replacement_id));
 
 -- name: RecipeItemOfIngredient :one

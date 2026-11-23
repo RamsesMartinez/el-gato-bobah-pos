@@ -6,6 +6,9 @@ import { backofficeApi, type CostingMethod } from '../../api/backoffice';
 import { ApiError } from '../../api/client';
 import { WasteSettings } from './WasteSettings';
 import { CountPlacesSettings } from './CountPlacesSettings';
+import { WarehousesSettings } from './WarehousesSettings';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
 import { CountLimitsSettings } from './CountLimitsSettings';
 
 const METHODS: { value: CostingMethod; label: string; hint: string }[] = [
@@ -18,6 +21,7 @@ const METHODS: { value: CostingMethod; label: string; hint: string }[] = [
 // página porque lo cambia quien configura el almacén, no quien cambia los datos fiscales.
 export function InventorySettingsSection() {
   const qc = useQueryClient();
+  const user = useSessionStore((s) => s.user);
   const { data } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const [label, setLabel] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -65,6 +69,7 @@ export function InventorySettingsSection() {
       </HStack>
       <Text fontSize="sm" color="fg.muted" mt={1}>Se ve en la captura de compras: «Agregar {trimmed || current}».</Text>
       {error && <Text fontSize="sm" color="fg.error" mt={2}>{error}</Text>}
+      {can('inventory.warehouse_manage', user) && <WarehousesSettings />}
       <CountPlacesSettings />
       <CountLimitsSettings />
       <WasteSettings />

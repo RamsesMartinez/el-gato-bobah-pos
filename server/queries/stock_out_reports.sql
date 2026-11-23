@@ -97,7 +97,7 @@ select a.name, a.unit_code, a.is_active
 -- name: StockOnHandForUpdate :many
 -- La existencia del artículo en la sucursal, tomada: el ajuste a 0 resta exactamente lo que hay.
 select on_hand from stock_levels
- where branch_id = sqlc.arg(branch_id)
+ where warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))
    and (ingredient_id = sqlc.narg(ingredient_id) or product_id = sqlc.narg(product_id))
  for update;
 
@@ -114,7 +114,7 @@ returning id;
 insert into notifications (branch_id, kind, item_type, ingredient_id, product_id, item_name, unit_code, on_hand_seen, opened_by)
 values (sqlc.arg(branch_id), 'stock_out', sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id),
         sqlc.arg(item_name), sqlc.arg(unit_code), sqlc.arg(on_hand_seen), sqlc.arg(opened_by))
-on conflict (company_id, branch_id, item_key, kind) where status = 'open' and kind <> 'not_found' do nothing
+on conflict (company_id, warehouse_id, item_key, kind) where status = 'open' and kind <> 'not_found' do nothing
 returning id;
 
 -- name: OpenOutNotification :one
@@ -152,7 +152,7 @@ select id, branch_id, kind, item_type, ingredient_id, product_id, notification_i
 -- ¿Algo movió el artículo después del reporte? Un movimiento posterior o un renglón de conteo
 -- capturado después: reponer el delta original lo pisaría.
 select (exists (select 1 from stock_movements m
-                 where m.branch_id = sqlc.arg(branch_id) and m.id > sqlc.arg(movement_id)::bigint
+                 where m.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint)) and m.id > sqlc.arg(movement_id)::bigint
                    and (m.ingredient_id = sqlc.narg(ingredient_id) or m.product_id = sqlc.narg(product_id)))
      or exists (select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id
                  where c.branch_id = sqlc.arg(branch_id) and l.ingredient_id = sqlc.narg(ingredient_id)

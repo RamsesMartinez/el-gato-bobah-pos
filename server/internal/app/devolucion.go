@@ -942,6 +942,8 @@ func splitOrderLine(ctx context.Context, q *db.Queries, l db.ListLinesToSplitRow
 				MovementType: db.StockMovementTypeVenta, Quantity: half.qty, UnitCost: m.UnitCost,
 				OrderID: &half.order, OrderLineID: &half.line, UserID: &actor, Reason: &reason,
 				ModifierOptionID: m.ModifierOptionID, ComponentOfProductID: m.ComponentOfProductID,
+				// Las dos mitades se quedan en el almacén del que salió la venta (spec 094).
+				WarehouseID: m.WarehouseID,
 			}); err != nil {
 				return 0, err
 			}

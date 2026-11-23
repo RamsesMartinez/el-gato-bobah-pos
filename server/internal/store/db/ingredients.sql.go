@@ -228,7 +228,7 @@ from ingredients i
 join units u on u.id = i.base_unit_id
 left join count_places cp on cp.id = i.count_place_id
 left join ingredient_categories ic on ic.id = i.category_id
-left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
+left join stock_levels sl on sl.ingredient_id = i.id and sl.warehouse_id = current_sales_warehouse_id()
 where ($1::boolean is not true or i.is_active)
 order by i.name
 `

@@ -408,9 +408,11 @@ func (q *Queries) ArticleNameExists(ctx context.Context, name string) (bool, err
 }
 
 const articleOnHandByBranch = `-- name: ArticleOnHandByBranch :many
-select b.id as branch_id, b.name::text as branch, sl.on_hand
+select b.id as branch_id, b.name::text as branch, sum(sl.on_hand)::numeric(14,4) as on_hand
   from stock_levels sl join branches b on b.id = sl.branch_id
- where sl.item_type = 'ingrediente' and sl.ingredient_id = $1 and sl.on_hand <> 0
+ where sl.item_type = 'ingrediente' and sl.ingredient_id = $1
+ group by b.id, b.name
+having sum(sl.on_hand) <> 0
  order by b.name
 `
 
@@ -421,6 +423,7 @@ type ArticleOnHandByBranchRow struct {
 }
 
 // Lo que queda del artículo en cada sucursal, para la revisión de archivar y el cambio de unidad.
+// Sumado por sucursal (spec 094): con dos almacenes, una fila por almacén repetiría la sucursal.
 func (q *Queries) ArticleOnHandByBranch(ctx context.Context, ingredientID *int64) ([]ArticleOnHandByBranchRow, error) {
 	rows, err := q.db.Query(ctx, articleOnHandByBranch, ingredientID)
 	if err != nil {
@@ -717,7 +720,7 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
   left join users du on du.id = i.density_set_by
   left join count_places cp on cp.id = i.count_place_id
   left join ingredient_categories ic on ic.id = i.category_id
-  left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
+  left join stock_levels sl on sl.ingredient_id = i.id and sl.warehouse_id = current_sales_warehouse_id()
  where i.id = $1
 `
 
@@ -870,8 +873,8 @@ func (q *Queries) InsertReplacement(ctx context.Context, arg InsertReplacementPa
 }
 
 const insertReplacementMove = `-- name: InsertReplacementMove :exec
-insert into stock_movements (item_type, ingredient_id, movement_type, quantity, unit_cost, branch_id, user_id, reason, replacement_id)
-values ('ingrediente', $1, 'ajuste', $2, $3, $4,
+insert into stock_movements (item_type, ingredient_id, movement_type, quantity, unit_cost, warehouse_id, user_id, reason, replacement_id)
+values ('ingrediente', $1, 'ajuste', $2, $3, $4::bigint,
         $5, 'reemplazo', $6)
 `
 
@@ -879,18 +882,19 @@ type InsertReplacementMoveParams struct {
 	IngredientID  *int64           `json:"ingredient_id"`
 	Quantity      decimal.Decimal  `json:"quantity"`
 	UnitCost      *decimal.Decimal `json:"unit_cost"`
-	BranchID      int64            `json:"branch_id"`
+	WarehouseID   int64            `json:"warehouse_id"`
 	UserID        *int64           `json:"user_id"`
 	ReplacementID *int64           `json:"replacement_id"`
 }
 
-// Un lado del traspaso de un reemplazo, con su sucursal explícita: el trigger la tomaría de la empresa.
+// Un lado del traspaso de un reemplazo, con su almacén explícito (la sucursal sale del almacén): el
+// trigger la tomaría de la empresa.
 func (q *Queries) InsertReplacementMove(ctx context.Context, arg InsertReplacementMoveParams) error {
 	_, err := q.db.Exec(ctx, insertReplacementMove,
 		arg.IngredientID,
 		arg.Quantity,
 		arg.UnitCost,
-		arg.BranchID,
+		arg.WarehouseID,
 		arg.UserID,
 		arg.ReplacementID,
 	)
@@ -916,7 +920,7 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
   left join count_places cp on cp.id = i.count_place_id
   left join ingredient_categories ic on ic.id = i.category_id
   -- Existencias de la sucursal (0076): con dos sucursales, sin el filtro cada artículo saldría dos veces.
-  left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
+  left join stock_levels sl on sl.ingredient_id = i.id and sl.warehouse_id = current_sales_warehouse_id()
  where i.is_active = not $2::boolean
    and ($1::text is null
         -- strpos y no like: lo que alguien escriba es texto, nunca un comodín.
@@ -1088,17 +1092,19 @@ func (q *Queries) LockArticleNowait(ctx context.Context, id int64) (LockArticleN
 }
 
 const lockArticleStockNowait = `-- name: LockArticleStockNowait :many
-select branch_id, on_hand from stock_levels
+select warehouse_id::bigint as warehouse_id, branch_id, on_hand from stock_levels
  where item_type = 'ingrediente' and ingredient_id = $1
- order by branch_id
+ order by warehouse_id
    for update nowait
 `
 
 type LockArticleStockNowaitRow struct {
-	BranchID int64           `json:"branch_id"`
-	OnHand   decimal.Decimal `json:"on_hand"`
+	WarehouseID int64           `json:"warehouse_id"`
+	BranchID    int64           `json:"branch_id"`
+	OnHand      decimal.Decimal `json:"on_hand"`
 }
 
+// Una fila por almacén (spec 094): la unión y el reemplazo traspasan cada almacén por separado.
 func (q *Queries) LockArticleStockNowait(ctx context.Context, ingredientID *int64) ([]LockArticleStockNowaitRow, error) {
 	rows, err := q.db.Query(ctx, lockArticleStockNowait, ingredientID)
 	if err != nil {
@@ -1108,7 +1114,7 @@ func (q *Queries) LockArticleStockNowait(ctx context.Context, ingredientID *int6
 	items := []LockArticleStockNowaitRow{}
 	for rows.Next() {
 		var i LockArticleStockNowaitRow
-		if err := rows.Scan(&i.BranchID, &i.OnHand); err != nil {
+		if err := rows.Scan(&i.WarehouseID, &i.BranchID, &i.OnHand); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1264,7 +1270,7 @@ func (q *Queries) PresentationSuggestions(ctx context.Context, kind UnitKind) ([
 const recomputeArticleStock = `-- name: RecomputeArticleStock :exec
 update stock_levels sl
    set on_hand = coalesce((select sum(m.quantity) from stock_movements m
-                            where m.ingredient_id = sl.ingredient_id and m.branch_id = sl.branch_id), 0),
+                            where m.ingredient_id = sl.ingredient_id and m.warehouse_id = sl.warehouse_id), 0),
        updated_at = now()
  where sl.item_type = 'ingrediente' and sl.ingredient_id = $1
 `

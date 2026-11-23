@@ -82,18 +82,18 @@ select evaluate_low_stock(nullif(current_setting('app.company_id', true), '')::b
 -- domain.LowStockEffect (la misma tabla de verdad que evaluate_low_stock): la existencia en la
 -- sucursal, el mínimo de la sucursal si tiene, y lo abierto.
 select coalesce((select s.on_hand from stock_levels s
-                  where s.branch_id = sqlc.arg(branch_id)
+                  where s.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))
                     and (s.ingredient_id = sqlc.narg(ingredient_id) or s.product_id = sqlc.narg(product_id))), 0)::numeric as on_hand,
        m.min_stock as branch_min,
        coalesce((select array_agg(n.kind order by n.kind) from notifications n
-                  where n.branch_id = sqlc.arg(branch_id) and n.status = 'open' and n.kind <> 'not_found'
+                  where n.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint)) and n.status = 'open' and n.kind <> 'not_found'
                     and n.item_key = coalesce(sqlc.narg(ingredient_id)::bigint, -sqlc.narg(product_id)::bigint, 0)), '{}')::text[] as open_kinds,
        exists (select 1 from notifications n
-                where n.branch_id = sqlc.arg(branch_id) and n.status = 'open' and n.kind = 'stock_out' and n.opened_by is not null
+                where n.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint)) and n.status = 'open' and n.kind = 'stock_out' and n.opened_by is not null
                   and n.item_key = coalesce(sqlc.narg(ingredient_id)::bigint, -sqlc.narg(product_id)::bigint, 0))::bool as manual_out
   -- Left join y no subconsulta: así sqlc lo tipa como nulable (una sucursal sin mínimo propio).
   from (select 1) one
-  left join branch_stock_minimums m on m.branch_id = sqlc.arg(branch_id)
+  left join branch_stock_minimums m on m.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))
    and (m.ingredient_id = sqlc.narg(ingredient_id) or m.product_id = sqlc.narg(product_id));
 
 -- name: CompanyBranches :many
@@ -185,13 +185,13 @@ update ingredients set low_stock_asked_at = coalesce(low_stock_asked_at, now()) 
 -- name: UpsertBranchMinimum :exec
 insert into branch_stock_minimums (branch_id, item_type, ingredient_id, product_id, min_stock, updated_by)
 values (sqlc.arg(branch_id), sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id), sqlc.arg(min_stock), sqlc.arg(updated_by))
-on conflict (branch_id, ingredient_id) where ingredient_id is not null
+on conflict (warehouse_id, ingredient_id) where ingredient_id is not null
 do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now();
 
 -- name: UpsertBranchProductMinimum :exec
 insert into branch_stock_minimums (branch_id, item_type, product_id, min_stock, updated_by)
 values (sqlc.arg(branch_id), 'producto', sqlc.arg(product_id), sqlc.arg(min_stock), sqlc.arg(updated_by))
-on conflict (branch_id, product_id) where product_id is not null
+on conflict (warehouse_id, product_id) where product_id is not null
 do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now();
 
 -- name: DeleteBranchMinimum :exec
@@ -204,7 +204,7 @@ delete from branch_stock_minimums
 -- en la sucursal.
 select a.item_type, a.id, a.name, a.unit_code, a.low_stock_enabled, a.min_stock,
        coalesce((select s.on_hand from stock_levels s
-                  where s.branch_id = current_branch_id()
+                  where s.warehouse_id = current_sales_warehouse_id()
                     and ((a.item_type = 'ingrediente' and s.ingredient_id = a.id) or (a.item_type = 'producto' and s.product_id = a.id))), 0)::numeric as on_hand
   from (
     select 'ingrediente'::stock_item_type as item_type, i.id, i.name, u.code::text as unit_code, i.low_stock_enabled, i.min_stock

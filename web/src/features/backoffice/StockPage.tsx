@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { ListaDeCompra } from './ListaDeCompra';
 import { Destinatarios } from './Destinatarios';
 import { formatBaseQty } from '../../shared/units';
 import {
-  Box, Heading, Table, Center, Spinner, Badge, Tabs, Text,
+  Box, Button, Heading, HStack, Table, Center, Spinner, Badge, Tabs, Text,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { backofficeApi } from '../../api/backoffice';
@@ -19,6 +19,7 @@ import { WasteTab } from './WasteTab';
 import { ArticlesTab } from './articles/ArticlesTab';
 import { ArticleSheet } from './articles/ArticleSheet';
 import { posApi } from '../../api/pos';
+import { Segmented } from '../../components/Segmented';
 
 // El orden lo fijó el plan del 038: Existencias · Movimientos · Insumos · Por recibir · Conteo · Salud.
 const TABS = ['existencias', 'movimientos', 'insumos', 'compra', 'por-recibir', 'conteo', 'merma', 'salud', 'avisos'] as const;
@@ -26,7 +27,21 @@ type Tab = (typeof TABS)[number];
 
 export function StockPage() {
   const horaNegocio = useHoraDelNegocio();
-  const levels = useQuery({ queryKey: ['stock', 'levels'], queryFn: backofficeApi.stockLevels });
+  const navigate = useNavigate();
+  // El almacén que se ve en Existencias (spec 094): por omisión el de venta. Con un solo almacén no
+  // hay selector y la pantalla queda como antes.
+  const [picked, setWarehouse] = useState<number | 'all' | undefined>(undefined);
+  const warehouses = useQuery({ queryKey: ['warehouses'], queryFn: () => backofficeApi.warehouses() });
+  const whList = warehouses.data?.items ?? [];
+  // Si el almacén elegido se archivó (en otra tableta), se vuelve al de venta: si no, ningún botón
+  // queda marcado y la lista falla sin salida.
+  const warehouse = typeof picked === 'number' && warehouses.data && !whList.some((w) => w.id === picked) ? undefined : picked;
+  // El mínimo es del artículo y piensa en el de venta: compararlo contra la bodega o la suma diría
+  // «bajo» donde no falta nada, o lo escondería donde sí (spec 094; mínimos por almacén en E5).
+  const atSales = warehouse === undefined;
+  const levels = useQuery({ queryKey: ['stock', 'levels', warehouse ?? 'venta'], queryFn: () => backofficeApi.stockLevels(warehouse),
+    // Cambiar de almacén no borra la pantalla mientras llega la otra lista.
+    placeholderData: (prev) => prev });
   const moves = useQuery({ queryKey: ['stock', 'moves'], queryFn: backofficeApi.stockMovements });
   const user = useSessionStore((s) => s.user);
   const canHealth = can('inventory.health_view', user);
@@ -65,7 +80,14 @@ export function StockPage() {
 
   return (
     <Page fill>
-      <Heading size="lg" mb={4}>Almacén</Heading>
+      <HStack justify="space-between" mb={4}>
+        <Heading size="lg">Almacén</Heading>
+        {/* La persona nueva buscaba aquí sus almacenes (prueba con usuario nuevo, 094): viven en Negocio,
+            junto a los lugares para contar, y este atajo la lleva. */}
+        {can('inventory.warehouse_manage', user) && (
+          <Button minH="44px" variant="ghost" onClick={() => navigate('/negocio#almacenes')}>Almacenes ›</Button>
+        )}
+      </HStack>
       <Tabs.Root value={tab} onValueChange={(e) => setParams({ tab: e.value }, { replace: true })}
         display="flex" flexDirection="column" flex="1" minH={0}>
         {/* Con «Se echó a perder» son siete: la fila se desplaza a lo ancho antes que salirse de 1024 px. */}
@@ -85,15 +107,32 @@ export function StockPage() {
           {canConfigureStock && <Tabs.Trigger value="avisos" minH="44px">Avisos</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
-          <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
+          {whList.length > 1 && (
+            <Box mb={3}>
+              <Segmented label="Almacén"
+                value={String(warehouse ?? whList.find((w) => w.isSales)?.id ?? '')}
+                options={[...whList.map((w) => ({ value: String(w.id), label: w.isSales ? `${w.name} · de venta` : w.name })),
+                  { value: 'all', label: 'Todos' }]}
+                onChange={(v) => setWarehouse(v === 'all' ? 'all' : whList.find((w) => String(w.id) === v)?.isSales ? undefined : Number(v))} />
+            </Box>
+          )}
+          {/* Mientras llega la lista del almacén elegido, la anterior se atenúa: no se leen cifras de
+              otro almacén como si fueran de éste. */}
+          <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto" opacity={levels.isPlaceholderData ? 0.4 : 1}
+            aria-busy={levels.isPlaceholderData || undefined}>
             <Table.Root size="sm">
               <Table.Header><Table.Row><Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Mínimo</Table.ColumnHeader></Table.Row></Table.Header>
               <Table.Body>
-                {(levels.data?.items ?? []).length === 0 && (
-                  <Table.Row><Table.Cell colSpan={4}><Text color="fg.subtle">Sin existencias que mostrar</Text></Table.Cell></Table.Row>
+                {levels.isError && (
+                  <Table.Row><Table.Cell colSpan={4}><Text color="fg.error">No se pudieron leer las existencias de este almacén</Text></Table.Cell></Table.Row>
                 )}
-                {(levels.data?.items ?? []).map((s, i) => {
-                  const low = s.min_stock != null && Number(s.on_hand) <= Number(s.min_stock);
+                {!levels.isError && (levels.data?.items ?? []).length === 0 && (
+                  <Table.Row><Table.Cell colSpan={4}><Text color="fg.subtle">
+                    {typeof warehouse === 'number' ? 'Este almacén todavía no tiene mercancía' : 'Sin existencias que mostrar'}
+                  </Text></Table.Cell></Table.Row>
+                )}
+                {!levels.isError && (levels.data?.items ?? []).map((s, i) => {
+                  const low = atSales && s.min_stock != null && Number(s.on_hand) <= Number(s.min_stock);
                   return (
                     <Table.Row key={i}>
                       <Table.Cell>{s.item_name}</Table.Cell>
@@ -105,7 +144,7 @@ export function StockPage() {
                           <Text as="span" ml={2} px={2} py="1px" borderRadius="md" fontWeight="700" color="fg.error" bg="bg.error">Revisar</Text>
                         )}
                       </Table.Cell>
-                      <Table.Cell textAlign="end">{s.min_stock == null ? '—' : formatBaseQty(s.min_stock, s.unit_code)}</Table.Cell>
+                      <Table.Cell textAlign="end">{!atSales || s.min_stock == null ? '—' : formatBaseQty(s.min_stock, s.unit_code)}</Table.Cell>
                     </Table.Row>
                   );
                 })}

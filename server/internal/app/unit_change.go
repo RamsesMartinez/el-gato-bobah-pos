@@ -607,25 +607,42 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 			return err
 		}
 	}
-	// El traspaso, sucursal por sucursal, con su sucursal explícita y ligado al reemplazo.
+	// El traspaso, almacén por almacén, con su almacén explícito y ligado al reemplazo. La vista previa
+	// habla por sucursal (la cifra corregida a mano es la de la sucursal): solo se aplica tal cual
+	// donde la sucursal tiene un solo almacén con existencia; con más, cada uno se convierte con la
+	// equivalencia, porque repartir la cifra a mano entre almacenes sería adivinar (spec 094).
 	oldCost := old.CurrentCost
 	moved := []map[string]any{}
+	perBranch := map[int64]int{}
+	for _, s := range locked {
+		if !s.OnHand.IsZero() {
+			perBranch[s.BranchID]++
+		}
+	}
+	for branch, n := range perBranch {
+		if _, ok := req.Overrides["stock:"+strconv.FormatInt(branch, 10)]; ok && n > 1 {
+			return fmt.Errorf("%w: esa sucursal tiene existencia en varios almacenes; no se corrige a mano", domain.ErrValidation)
+		}
+	}
 	for _, s := range locked {
 		if s.OnHand.IsZero() {
 			continue
 		}
-		to := override(req, "stock:"+strconv.FormatInt(s.BranchID, 10), domain.ConvertQty(s.OnHand, f))
+		to := domain.ConvertQty(s.OnHand, f)
+		if perBranch[s.BranchID] == 1 {
+			to = override(req, "stock:"+strconv.FormatInt(s.BranchID, 10), to)
+		}
 		if err := q.InsertReplacementMove(ctx, db.InsertReplacementMoveParams{IngredientID: &old.ID, Quantity: s.OnHand.Neg(), UnitCost: &oldCost,
-			BranchID: s.BranchID, UserID: &actor, ReplacementID: &repID}); err != nil {
+			WarehouseID: s.WarehouseID, UserID: &actor, ReplacementID: &repID}); err != nil {
 			return err
 		}
 		if !to.IsZero() {
 			if err := q.InsertReplacementMove(ctx, db.InsertReplacementMoveParams{IngredientID: &newID, Quantity: to, UnitCost: &newCost,
-				BranchID: s.BranchID, UserID: &actor, ReplacementID: &repID}); err != nil {
+				WarehouseID: s.WarehouseID, UserID: &actor, ReplacementID: &repID}); err != nil {
 				return err
 			}
 		}
-		moved = append(moved, map[string]any{"branchId": s.BranchID, "old": s.OnHand, "new": to})
+		moved = append(moved, map[string]any{"branchId": s.BranchID, "warehouseId": s.WarehouseID, "old": s.OnHand, "new": to})
 	}
 	// Todas, también las de productos inactivos: si se reactivan, venden del artículo nuevo.
 	for _, r := range p.recipes {

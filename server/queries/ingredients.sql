@@ -28,7 +28,7 @@ left join count_places cp on cp.id = i.count_place_id
 left join ingredient_categories ic on ic.id = i.category_id
 -- Existencias de la sucursal (0076): sin el filtro, con dos sucursales cada insumo saldría dos
 -- veces sin decir de cuál es.
-left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
+left join stock_levels sl on sl.ingredient_id = i.id and sl.warehouse_id = current_sales_warehouse_id()
 where (sqlc.narg('only_active')::boolean is not true or i.is_active)
 order by i.name;
 
