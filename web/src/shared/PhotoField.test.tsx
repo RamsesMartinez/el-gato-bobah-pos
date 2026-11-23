@@ -8,7 +8,7 @@ import { PhotoError } from '../media/preparePhoto';
 
 const media = vi.hoisted(() => ({
   canPreparePhotos: vi.fn(() => true),
-  photoSize: vi.fn(async () => ({ width: 4000, height: 3000 })),
+  openPhoto: vi.fn(async () => ({ width: 4000, height: 3000, close: vi.fn() })),
   preparePhoto: vi.fn(async () => ({ large: new Blob(['LL'], { type: 'image/webp' }), small: new Blob(['S'], { type: 'image/webp' }) })),
   toBase64: vi.fn(async (b: Blob) => (b.size === 2 ? 'QQ==' : 'Qg==')),
 }));
@@ -23,8 +23,6 @@ vi.mock('../api/admin', async (orig) => ({ ...(await orig<object>()), adminApi: 
 beforeEach(() => {
   vi.clearAllMocks();
   media.canPreparePhotos.mockReturnValue(true);
-  URL.createObjectURL = vi.fn(() => 'blob:foto');
-  URL.revokeObjectURL = vi.fn();
 });
 
 function wrap(props: Partial<React.ComponentProps<typeof PhotoField>> = {}) {
@@ -76,7 +74,7 @@ test('«Ajustar encuadre» ofrece acercar y alejar; «Cancelar» no sube nada', 
 });
 
 test('una foto que no se puede abrir dice qué hacer y no abre el recorte', async () => {
-  media.photoSize.mockRejectedValueOnce(new PhotoError('cannot_open'));
+  media.openPhoto.mockRejectedValueOnce(new PhotoError('cannot_open'));
   const u = userEvent.setup({ pointerEventsCheck: 0 }); // el input es invisible a propósito
   wrap();
   await u.upload(document.querySelector('input[type=file]') as HTMLInputElement, file);
@@ -146,4 +144,19 @@ test('«Cambiar» y «Quitar» se leen, no son solo íconos', () => {
   wrap({ imageUrl: 'https://media.test/1/products/7/bbbb-1200.webp' });
   expect(screen.getByRole('button', { name: 'Cambiar foto' })).toHaveTextContent('Cambiar');
   expect(screen.getByRole('button', { name: 'Quitar foto' })).toHaveTextContent('Quitar');
+});
+
+test('la vista previa se dibuja en un canvas, sin la URL del archivo, y la foto leída se libera al cancelar', async () => {
+  // Un <img src> con la URL del archivo elegido es el camino que CodeQL marca como XSS desde un
+  // input de archivo; dibujar la foto ya leída lo evita sin descartar la alerta.
+  const close = vi.fn();
+  media.openPhoto.mockResolvedValueOnce({ width: 4000, height: 3000, close });
+  const u = userEvent.setup({ pointerEventsCheck: 0 });
+  wrap();
+  await u.upload(document.querySelector('input[type=file]') as HTMLInputElement, file);
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog.querySelector('img')).toBeNull();
+  expect(dialog.querySelector('canvas')).not.toBeNull();
+  await u.click(screen.getByRole('button', { name: 'Cancelar' }));
+  await waitFor(() => expect(close).toHaveBeenCalled());
 });

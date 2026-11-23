@@ -10,7 +10,7 @@ import { adminApi } from '../api/admin';
 import { ApiError } from '../api/client';
 import { useUiStore } from '../stores/ui';
 import {
-  PhotoError, SMALL_SIDE, canPreparePhotos, cropFor, photoSize, preparePhoto, toBase64, type Framing,
+  PhotoError, SMALL_SIDE, canPreparePhotos, cropFor, openPhoto, preparePhoto, toBase64, type Framing, type OpenedPhoto,
 } from '../media/preparePhoto';
 
 interface Props {
@@ -39,7 +39,9 @@ export function PhotoField({ kind, id, name, imageUrl, categoryImageUrl, family,
   const input = useRef<HTMLInputElement>(null);
   const actions = useRef<HTMLDivElement>(null);
   const [supported] = useState(canPreparePhotos);
-  const [pending, setPending] = useState<{ file: File; url: string; width: number; height: number } | null>(null);
+  // La foto elegida, ya leída: la vista previa se dibuja de ella en un canvas. Sin URL del archivo en
+  // un <img>, que es el camino que un análisis de XSS sigue desde un input de archivo.
+  const [pending, setPending] = useState<{ file: File; photo: OpenedPhoto } | null>(null);
   const [error, setError] = useState('');
   const [cropError, setCropError] = useState('');
   const [saved, setSaved] = useState(false);
@@ -50,7 +52,7 @@ export function PhotoField({ kind, id, name, imageUrl, categoryImageUrl, family,
   const choice = useRef(0);
   useEffect(() => () => { choice.current = -1; }, []);
 
-  useEffect(() => () => { if (pending) URL.revokeObjectURL(pending.url); }, [pending]);
+  useEffect(() => () => { pending?.photo.close(); }, [pending]);
 
   // Tras guardar o quitar, el botón que se tocó desaparece (cambia «Agregar» por «Cambiar» y al
   // revés); el foco va al que quedó y no se pierde en la página.
@@ -63,10 +65,10 @@ export function PhotoField({ kind, id, name, imageUrl, categoryImageUrl, family,
     setError('');
     setSaved(false);
     try {
-      const { width, height } = await photoSize(f);
-      if (choice.current !== mine) return;
+      const photo = await openPhoto(f);
+      if (choice.current !== mine) { photo.close(); return; }
       setCropError('');
-      setPending({ file: f, url: URL.createObjectURL(f), width, height });
+      setPending({ file: f, photo });
     } catch (e) {
       if (choice.current !== mine) return;
       setError(e instanceof PhotoError ? e.message : 'Esta foto no se puede abrir. Elige una en JPG o PNG.');
@@ -149,7 +151,7 @@ export function PhotoField({ kind, id, name, imageUrl, categoryImageUrl, family,
       )}
 
       {pending && (
-        <CropDialog src={pending.url} width={pending.width} height={pending.height} busy={busy} error={cropError}
+        <CropDialog photo={pending.photo} busy={busy} error={cropError}
           onCancel={() => setPending(null)} onSave={(f) => void save(f)} />
       )}
       <ConfirmSheet isOpen={confirming} destructive title="¿Quitar la foto?" confirmLabel="Quitar" loading={busy}
@@ -163,9 +165,11 @@ export function PhotoField({ kind, id, name, imageUrl, categoryImageUrl, family,
 
 // CropDialog (maqueta M2, opción B): la foto centrada tal como se guardará; ajustar el encuadre es
 // opcional y cuesta un toque más.
-function CropDialog({ src, width, height, busy, error, onCancel, onSave }: {
-  src: string; width: number; height: number; busy: boolean; error: string; onCancel: () => void; onSave: (f: Framing) => void;
+function CropDialog({ photo, busy, error, onCancel, onSave }: {
+  photo: OpenedPhoto; busy: boolean; error: string; onCancel: () => void; onSave: (f: Framing) => void;
 }) {
+  const { width, height } = photo;
+  const canvas = useRef<HTMLCanvasElement>(null);
   const [adjusting, setAdjusting] = useState(false);
   const [framing, setFraming] = useState<Framing>({ zoom: 1, cx: 0.5, cy: 0.5 });
   const frame = useRef<HTMLDivElement>(null);
@@ -189,8 +193,17 @@ function CropDialog({ src, width, height, busy, error, onCancel, onSave }: {
     setFraming({ ...f, cx: (c.x + c.size / 2) / width, cy: (c.y + c.size / 2) / height });
   };
 
-  // La foto se dibuja escalada para que el cuadrado elegido llene el marco.
-  const pct = (v: number) => `${(v / crop.size) * 100}%`;
+  // El cuadrado elegido llena el marco; se vuelve a dibujar con cada ajuste.
+  useEffect(() => {
+    const c = canvas.current;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return;
+    const px = Math.round((c.clientWidth || 340) * (window.devicePixelRatio || 1));
+    c.width = px;
+    c.height = px;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(photo as unknown as CanvasImageSource, crop.x, crop.y, crop.size, crop.size, 0, 0, px, px);
+  }, [photo, crop, adjusting]);
   const palette = useUiStore((st) => st.palette);
   return (
     // Mientras se guarda no se cierra: cancelar a media subida no la detendría.
@@ -206,10 +219,8 @@ function CropDialog({ src, width, height, busy, error, onCancel, onSave }: {
               onPointerDown={(e) => { if (adjusting) { drag.current = { x: e.clientX, y: e.clientY, f: framing }; e.currentTarget.setPointerCapture?.(e.pointerId); } }}
               onPointerMove={onPointerMove}
               onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
-              <img src={src} alt="" draggable={false} style={{
-                position: 'absolute', maxWidth: 'none', left: pct(-crop.x), top: pct(-crop.y),
-                width: pct(width), height: pct(height), userSelect: 'none',
-              }} />
+              <canvas ref={canvas} aria-label="Vista previa de la foto" role="img"
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
               {adjusting && <Box position="absolute" inset={0} pointerEvents="none" css={{
                 backgroundImage: 'linear-gradient(#fff6 1px, transparent 1px), linear-gradient(90deg, #fff6 1px, transparent 1px)',
                 backgroundSize: '33.33% 33.33%', outline: '2px solid white', outlineOffset: '-2px',

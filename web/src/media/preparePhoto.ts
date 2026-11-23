@@ -74,13 +74,17 @@ const browserDeps: PhotoDeps = {
   },
 };
 
-/** Lee las medidas de la foto ya derecha, para el encuadre. */
-export async function photoSize(file: Blob, deps: PhotoDeps = browserDeps): Promise<{ width: number; height: number }> {
+/** La foto ya derecha, leída para el recorte. Quien la recibe la cierra (close) al terminar. */
+export type OpenedPhoto = Decoded;
+
+/** Abre la foto para la vista previa del recorte: se dibuja en un canvas, sin URL de por medio. */
+export async function openPhoto(file: Blob, deps: PhotoDeps = browserDeps): Promise<OpenedPhoto> {
   const img = await deps.decode(file).catch(() => { throw new PhotoError('cannot_open'); });
-  const out = { width: img.width, height: img.height };
-  img.close();
-  if (Math.min(out.width, out.height) < SMALL_SIDE) throw new PhotoError('too_small');
-  return out;
+  if (Math.min(img.width, img.height) < SMALL_SIDE) {
+    img.close();
+    throw new PhotoError('too_small');
+  }
+  return img;
 }
 
 /** Las dos variantes listas para subir. */
