@@ -152,3 +152,15 @@ describe('ficha del producto por pestañas', () => {
     expect(sent().sales).toMatchObject({ allowOversell: false });
   });
 });
+
+describe('el renglón entero mueve el interruptor (prueba con usuario nuevo)', () => {
+  it('tocar el texto «Vender sin existencia» lo apaga', async () => {
+    const u = userEvent.setup();
+    const onClose = pinta();
+    await u.click(tab(/^receta e inventario/i));
+    await u.click(screen.getByText('Vender sin existencia'));
+    await u.click(screen.getByRole('button', { name: /^guardar$/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(sent().sales).toMatchObject({ allowOversell: false });
+  });
+});

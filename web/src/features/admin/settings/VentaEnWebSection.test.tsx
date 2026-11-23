@@ -16,6 +16,6 @@ describe('la sección Venta en web de Ajustes', () => {
     expect(await screen.findByText('142')).toBeInTheDocument();
     expect(screen.getByText('de 160')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /ver productos en menú/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ir a los productos/i })).toBeInTheDocument();
   });
 });

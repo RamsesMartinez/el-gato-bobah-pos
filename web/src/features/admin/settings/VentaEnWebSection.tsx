@@ -29,7 +29,7 @@ export function VentaEnWebSection() {
           </Box>
         </HStack>
       )}
-      <Button variant="outline" minH="44px" onClick={() => navigate('/catalogo')}>Ver productos en Menú</Button>
+      <Button variant="outline" minH="44px" onClick={() => navigate('/catalogo')}>Ir a los productos</Button>
     </Box>
   );
 }

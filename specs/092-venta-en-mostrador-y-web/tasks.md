@@ -134,7 +134,7 @@ ve fallar por la razón correcta.
 - [X] T044 Documentar en `docs/mecanica/catalogo-y-sucursales.md`: lugares de venta (`pos`=Mostrador, `online`=Web), «sin fila = se ofrece», precio por lugar, la puerta única de existencia para vender (#65) y que un canal nuevo necesita el trigger de 0093
 - [X] T045 Herramientas MCP: si `mcp_tools_090_catalog.go` edita productos con un PATCH completo, verificar que no borre `sales` (ausente = no tocar) con una prueba en `server/internal/httpapi/`
 - [X] T046 `/revision-de-codigo` (hook `after_implement`) y corregir lo que encuentre con su prueba
-- [ ] T047 Prueba con alguien nuevo de una fonda a 1024×600 y 1280×854 contra `make start` del worktree con base restaurada (`make db-restaurar`), siguiendo `quickstart.md`, y medir con Playwright que ninguna pestaña de la ficha desliza a 1024×600 con un producto de 4 grupos de extras (SC-007); corregir y volver a probar
+- [X] T047 Prueba con alguien nuevo de una fonda a 1024×600 y 1280×854 contra `make start` del worktree con base restaurada (`make db-restaurar`), siguiendo `quickstart.md`, y medir con Playwright que ninguna pestaña de la ficha desliza a 1024×600 con un producto de 4 grupos de extras (SC-007); corregir y volver a probar
 - [ ] T048 `cd server && go build ./... && go test ./...`, `make test-integration`, `cd web && bun run lint && bun run vitest run && bun run build`, y `make ci-local` en verde
 
 ---

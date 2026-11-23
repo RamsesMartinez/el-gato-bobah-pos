@@ -41,14 +41,8 @@ export function LugaresDeVenta({ venta, setVenta }: PanelProps) {
 export function PanelVentaEnWeb({ venta, setVenta, precioMostrador, errorPrecio }: PanelProps & { precioMostrador: string; errorPrecio: boolean }) {
   return (
     <VStack align="stretch" gap={5} maxW="640px">
-      <HStack justify="space-between" align="start">
-        <Box pr={3}>
-          <Text>Se vende en la web</Text>
-          <Text fontSize="xs" color="fg.muted">Sale en el menú en línea.</Text>
-        </Box>
-        <Switch size="lg" py="10px" checked={venta.web} inputProps={{ 'aria-label': 'Se vende en la web' }}
-          onCheckedChange={(e) => setVenta({ ...venta, web: e.checked })} />
-      </HStack>
+      <RenglonConInterruptor titulo="Se vende en la web" nota="Sale en el menú en línea." checked={venta.web}
+        onChange={(c) => setVenta({ ...venta, web: c })} />
       {venta.web && (
         <>
           <VStack align="stretch" gap={2}>
@@ -84,14 +78,22 @@ export function VenderSinExistencia({ venta, setVenta, mide }: PanelProps & { mi
     return <Text fontSize="sm" color="fg.muted">Este producto no descuenta del almacén. Agrega su receta para controlarlo.</Text>;
   }
   return (
-    <HStack justify="space-between" align="start">
-      <Box pr={3}>
-        <Text>Vender sin existencia</Text>
-        <Text fontSize="xs" color="fg.muted">Apagado, cuando se acaba sale «Agotado» en mostrador y en la web.</Text>
+    <RenglonConInterruptor titulo="Vender sin existencia" nota="Apagado, cuando se acaba sale «Agotado» en mostrador y en la web."
+      checked={venta.allowOversell} onChange={(c) => setVenta({ ...venta, allowOversell: c })} />
+  );
+}
+
+// RenglonConInterruptor: todo el renglón —título y nota incluidos— mueve el interruptor. Tocar solo
+// el texto no hacía nada y quien probaba creía que ya había cambiado (prueba con usuario nuevo, 092).
+function RenglonConInterruptor({ titulo, nota, checked, onChange }: { titulo: string; nota: string; checked: boolean; onChange: (c: boolean) => void }) {
+  return (
+    <Switch size="lg" py="10px" w="100%" flexDirection="row-reverse" justifyContent="space-between" alignItems="start" gap={3}
+      checked={checked} inputProps={{ 'aria-label': titulo }} onCheckedChange={(e) => onChange(e.checked)}>
+      <Box>
+        <Text>{titulo}</Text>
+        <Text fontSize="xs" color="fg.muted" fontWeight="normal">{nota}</Text>
       </Box>
-      <Switch size="lg" py="10px" checked={venta.allowOversell} inputProps={{ 'aria-label': 'Vender sin existencia' }}
-        onCheckedChange={(e) => setVenta({ ...venta, allowOversell: e.checked })} />
-    </HStack>
+    </Switch>
   );
 }
 
