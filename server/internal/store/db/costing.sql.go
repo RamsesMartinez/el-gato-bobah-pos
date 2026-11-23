@@ -60,7 +60,7 @@ func (q *Queries) ListComboSlotDefaultsForCosting(ctx context.Context) ([]ListCo
 
 const listIngredientsForCosting = `-- name: ListIngredientsForCosting :many
 
-select id, is_prep, recipe_id, yield_qty, expected_waste_pct, current_cost, cost_source
+select id, is_prep, recipe_id, yield_qty, expected_waste_pct, current_cost, cost_source, is_packaging
 from ingredients
 `
 
@@ -72,6 +72,7 @@ type ListIngredientsForCostingRow struct {
 	ExpectedWastePct *decimal.Decimal `json:"expected_waste_pct"`
 	CurrentCost      decimal.Decimal  `json:"current_cost"`
 	CostSource       CostSource       `json:"cost_source"`
+	IsPackaging      bool             `json:"is_packaging"`
 }
 
 // Cargas para el motor de costeo (recompute batch).
@@ -92,6 +93,7 @@ func (q *Queries) ListIngredientsForCosting(ctx context.Context) ([]ListIngredie
 			&i.ExpectedWastePct,
 			&i.CurrentCost,
 			&i.CostSource,
+			&i.IsPackaging,
 		); err != nil {
 			return nil, err
 		}

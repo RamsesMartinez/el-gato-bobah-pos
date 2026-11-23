@@ -158,6 +158,7 @@ func loadGraph(ctx context.Context, q *db.Queries) (
 			YieldQty:         numF(r.YieldQty),
 			ExpectedWastePct: pctF(r.ExpectedWastePct),
 			CurrentCost:      r.CurrentCost.InexactFloat64(),
+			IsPackaging:      r.IsPackaging,
 		}
 	}
 	recipes := map[int64][]domain.CostRecipeItem{}

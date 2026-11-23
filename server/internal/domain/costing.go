@@ -22,6 +22,8 @@ type CostIngredient struct {
 	// general), 0 = capturado en cero (spec 096).
 	ExpectedWastePct *float64
 	CurrentCost      float64 // para materia prima (raw): costo por unidad base ya conocido
+	// IsPackaging: vaso, tapa, popote. Solo recibe su propio %: un empaque no se pierde al preparar.
+	IsPackaging bool
 }
 
 type CostRecipeItem struct {
@@ -110,7 +112,8 @@ func (g *CostGraph) ingredientCost(id int64, visiting map[int64]bool) float64 {
 }
 
 // wasteFallback es lo que recibe un renglón sin % propio: el del producto y el general en la receta
-// de un producto, solo el general en la de un extra, y nada dentro de un preparado (R2).
+// de un producto, solo el general en la de un extra, y nada dentro de un preparado (R2). Un empaque
+// nunca lo recibe: solo lleva el suyo (FR-004).
 type wasteFallback struct{ product, general *float64 }
 
 // prepRecipeCost es el costo de la receta de un preparado: sin fallback, así que no depende de quién
@@ -151,7 +154,11 @@ func (g *CostGraph) recipeLines(recipeID int64, visiting map[int64]bool, fb wast
 	for _, item := range items {
 		ing := g.ingredients[item.IngredientID]
 		unit := g.ingredientCost(item.IngredientID, visiting)
-		pct, src := ResolveExpectedWaste(ing.ExpectedWastePct, fb.product, fb.general)
+		fbp, fbg := fb.product, fb.general
+		if ing.IsPackaging { // decisión del dueño (2026-11-23): el general y el del producto no tocan empaques
+			fbp, fbg = nil, nil
+		}
+		pct, src := ResolveExpectedWaste(ing.ExpectedWastePct, fbp, fbg)
 		base := item.QtyBase * unit
 		lines = append(lines, costLine{
 			IngredientID: item.IngredientID, QtyBase: item.QtyBase, UnitCost: unit,
@@ -241,6 +248,7 @@ func StorableCost(x, limit float64) (decimal.Decimal, bool) {
 type BreakdownLine struct {
 	IngredientID int64
 	IsPrep       bool
+	IsPackaging  bool
 	QtyBase      float64
 	UnitCost     float64
 	Base         float64
@@ -308,7 +316,8 @@ func (g *CostGraph) productBreakdown(id int64, visiting map[int64]bool) CostBrea
 		for _, l := range g.recipeLines(*p.RecipeID, map[int64]bool{}, fb) {
 			line := BreakdownLine{
 				IngredientID: l.IngredientID, IsPrep: g.ingredients[l.IngredientID].IsPrep,
-				QtyBase: l.QtyBase, UnitCost: l.UnitCost, Base: round4(l.Base), Pct: l.Pct, Source: l.Source,
+				IsPackaging: g.ingredients[l.IngredientID].IsPackaging,
+				QtyBase:     l.QtyBase, UnitCost: l.UnitCost, Base: round4(l.Base), Pct: l.Pct, Source: l.Source,
 				Waste: round4(l.Waste),
 			}
 			b.Lines = append(b.Lines, line)

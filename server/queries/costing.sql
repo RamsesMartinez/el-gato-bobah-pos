@@ -1,7 +1,7 @@
 -- Cargas para el motor de costeo (recompute batch).
 
 -- name: ListIngredientsForCosting :many
-select id, is_prep, recipe_id, yield_qty, expected_waste_pct, current_cost, cost_source
+select id, is_prep, recipe_id, yield_qty, expected_waste_pct, current_cost, cost_source, is_packaging
 from ingredients;
 
 -- name: ListRecipeItemsForCosting :many

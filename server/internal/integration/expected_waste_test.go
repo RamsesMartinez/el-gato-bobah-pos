@@ -176,3 +176,24 @@ func TestExpectedWasteIsIsolated(t *testing.T) {
 	}
 	wantCost(t, owner, "frappé de la dueña", "products", k.frappe, "4")
 }
+
+// Los empaques no reciben la merma general (decisión del dueño, 2026-11-23): con 5 % general, el
+// frappé ($4 de base) más un vaso de $2 marcado como empaque cuesta 4.2 + 2, no 6.3.
+func TestPackagingIsOutOfTheGeneralExpectedWaste(t *testing.T) {
+	t.Parallel()
+	owner := newTestStore(t)
+	k := seedCostCatalog(t, owner, defaultCompanyID, "")
+	if _, err := owner.Pool.Exec(context.Background(), `
+		with v as (insert into ingredients (name, base_unit_id, current_cost, is_packaging)
+		           select 'Vaso empaque', id, 2, true from units where code = 'g' returning id)
+		insert into recipe_items (recipe_id, ingredient_id, quantity, unit_id)
+		select p.recipe_id, v.id, 1, u.id from products p, v, units u where p.id = $1 and u.code = 'g'`, k.frappe); err != nil {
+		t.Fatal(err)
+	}
+	st := appRoleStore(t)
+	ctx := tenantCtx(t, st, k.company, k.admin)
+	if err := app.NewCostingService(st).SetGeneralExpectedWaste(ctx, wpct("5"), k.admin); err != nil {
+		t.Fatal(err)
+	}
+	wantCost(t, owner, "frappé con vaso de empaque y 5 % general", "products", k.frappe, "6.2")
+}

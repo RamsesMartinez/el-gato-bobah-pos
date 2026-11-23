@@ -18,7 +18,7 @@ export function conMermaDelProducto(c: ProductCosting, typed: number | null): { 
   // una diezmilésima y la cifra no sería la del costo guardado (revisión de código).
   if (typed === c.productPct) return { lines: c.lines ?? [], base: Number(c.base), waste: Number(c.waste) };
   const lines = (c.lines ?? []).map((l) => {
-    if (l.pctSource === 'article') return l;
+    if (l.pctSource === 'article' || l.isPackaging) return l;
     const pct = typed ?? c.generalPct ?? 0;
     const pctSource = typed !== null ? 'product' : c.generalPct !== null ? 'general' : 'none';
     return { ...l, pct, pctSource, waste: String(r4((Number(l.base) * pct) / 100)) } as CostLine;

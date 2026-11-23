@@ -332,7 +332,9 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   - **El % del producto y el general solo aplican en la receta del producto** (y el general en la
     de un extra). Dentro de un preparado manda solo el % de cada artículo: si el general entrara
     también ahí, se compondría (5 % general subiría ~10 % un producto con jarabe) y el costo del
-    preparado, que es uno solo por artículo, dependería de quién lo usa.
+    preparado, que es uno solo por artículo, dependería de quién lo usa. **Un empaque** (`is_packaging`:
+    vaso, tapa, popote) tampoco los recibe: solo su propio % (decisión del dueño, 2026-11-23). La
+    vista previa del front lo repite con `isPackaging` del desglose.
   - **`ingredients.waste_pct` es la columna vieja y se queda hasta la subida 2**: la versión
     anterior de la API la lee durante el traslape. El código nuevo no la lee; el Down de la 0126
     le copia de regreso lo capturado para que un regreso de versión no cambie costos.
