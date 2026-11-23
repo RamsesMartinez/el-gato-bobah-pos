@@ -26,16 +26,18 @@ export function BringSheet({ item, sources, to, onClose }: {
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const unit = typedUnit(item.unit);
   const richest = richestSource(sources);
   const [fromId, setFromId] = useState(richest.warehouseId);
   const from = sources.find((s) => s.warehouseId === fromId) ?? richest;
+  // La unidad sigue a como se ve la existencia del origen, como en Traspaso: con 105 g se teclea en g.
+  const unit = typedUnit(item.unit, from.onHand);
   const proposal = (src: Source) => {
+    const srcUnit = typedUnit(item.unit, src.onHand);
     const missing = Math.min(Math.max(0, -Number(item.onHand)), Math.max(0, Number(src.onHand)));
     if (missing <= 0) return '';
     // Cuatro decimales, como la columna: con dos, faltar 4 g se proponía como 0 kg.
-    const v = missing / unit.factor;
-    return String(unit.decimals ? Number(v.toFixed(4)) : Math.ceil(v));
+    const v = missing / srcUnit.factor;
+    return String(srcUnit.decimals ? Number(v.toFixed(4)) : Math.ceil(v));
   };
   const [qty, setQty] = useState(() => proposal(from));
   // Una clave por traspaso: un reintento por red no lo duplica. Se renueva si cambia lo que se manda.
@@ -57,7 +59,7 @@ export function BringSheet({ item, sources, to, onClose }: {
     fresh.current = true;
     setClientKey(crypto.randomUUID());
   };
-  const base = toBase(qty, item.unit);
+  const base = toBase(qty, item.unit, from.onHand);
   const send = useMutation({
     mutationFn: (confirmNegative: boolean) => backofficeApi.createTransfer({
       clientKey, fromWarehouseId: from.warehouseId, toWarehouseId: to.id, confirmNegative: confirmNegative || undefined,
