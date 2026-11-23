@@ -261,8 +261,12 @@ lo más dos toques desde que abre, sin desplazarse por secciones ajenas.
   inventario** (receta, vender sin existencia, alertas) y **Extras** (grupos modificadores). Todo lo
   que hoy tiene la ficha MUST quedar en exactamente una pestaña; a 1280×854 y a 1024×600 ninguna
   pestaña MUST obligar a deslizar con un producto típico (hasta 4 grupos de extras).
-- **FR-029**: «Guardar» MUST guardar lo de todas las pestañas en una sola acción, y cambiar de
-  pestaña MUST no perder lo capturado.
+- **FR-029**: «Guardar» MUST guardar lo de todas las pestañas en una sola acción (salvo Extras, que
+  se guarda al momento como hoy y lo confirma), cambiar de pestaña MUST no perder lo capturado, y
+  «Guardar» MUST poder tocarse siempre: si algo no es válido, la ficha MUST ir a la pestaña del error
+  y marcar el campo.
+- **FR-030**: Con «Usar el precio de mostrador» apagado, el precio web MUST ser obligatorio. Apagar
+  la web MUST conservar el precio web y la descripción ya capturados.
 
 **Configuración**
 

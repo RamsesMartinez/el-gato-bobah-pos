@@ -115,8 +115,12 @@ un solo lugar.
 **Decision**: `createInTx` y `addLinesInTx` (los dos caminos que escriben renglones de mostrador; el
 envío de una cuenta en captura pasa por `createInTx`) llaman a una función `checkStock` antes de
 descontar: suma lo que piden los renglones de productos con `allow_oversell = false`, bloquea las
-filas de `stock_levels` de esos renglones en la sucursal del pedido (`FOR UPDATE`, en orden de id
-para no generar abrazos mortales) y compara. Error de dominio `ErrOutOfStock` (con nombre y lo que
+filas de `stock_levels` de esos renglones en la sucursal del pedido con un solo `select … for
+update order by item_type, product_id, ingredient_id` (`stock_levels` no tiene `id`) y compara con
+el `on_hand` que devuelve ese mismo select (en READ COMMITTED relee la versión nueva tras esperar).
+Corre **antes** de cualquier `descontarRenglon`, para que ninguna transacción tome un candado de
+existencia por el trigger sin haber tomado antes todos los del chequeo. Sin fila = 0: dos tabletas
+rechazan igual. Error de dominio `ErrOutOfStock` (con nombre y lo que
 queda) → **409 `OUT_OF_STOCK`**. Solo aplica a pedidos sin plataforma (FR-014).
 
 **Rationale**: dos tabletas vendiendo la última pieza: el candado serializa y la segunda ve la

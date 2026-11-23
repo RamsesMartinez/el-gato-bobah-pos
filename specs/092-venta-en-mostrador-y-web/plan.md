@@ -95,7 +95,33 @@ Sin violaciones; *Complexity Tracking* vacío.
   nombres (por omisión), B menú de íconos de 104 px, C índice en dos columnas con «Todas las
   secciones» para volver. La vista se recuerda por tableta (`localStorage`, como Interfaz); la
   sección abierta va en `?seccion=`.
-- **Alta**: `NewProductDialog` agrega «Opciones avanzadas» cerrado con las dos casillas.
+- **Alta**: `NewProductDialog` agrega «Opciones avanzadas» cerrado (botón de 44 px) con las dos
+  casillas; el título del desplegable resume «Se vende en: Mostrador · Web» para saberlo sin abrirlo.
+
+### Ajustes de la revisión de arquitectura (pantalla)
+
+- **Guardar siempre se puede tocar.** Si algo no es válido, la ficha salta a la pestaña del error,
+  marca el campo con su texto y pone un punto rojo en el botón de esa pestaña. Con «Usar el precio de
+  mostrador» apagado, el precio web es obligatorio y mayor que cero.
+- **Extras se guarda al momento, como hoy**, y cada cambio confirma «Guardado» en el momento. La
+  frase «no dependen de Guardar» sale de la pantalla (es explicación de implementación). Guardar
+  guarda el resto de las pestañas.
+- **Un solo estado para Web** en el diálogo: la casilla de Disponibilidad y el interruptor de Venta en
+  web son el mismo dato. Con Web apagado, Venta en web muestra solo el interruptor; el precio y la
+  descripción capturados **se conservan** (no se borran al apagar).
+- **Nombres de pestaña**: los que eligió el dueño (General, Disponibilidad, Venta en web, Receta e
+  inventario, Extras). «Dónde y cuándo» lo descartó él por no ser un nombre de uso común.
+- **Selector de vista con texto**: cada botón lleva ícono y palabra (Lista, Íconos, Índice); el
+  `title` no existe en táctil.
+- **Cuántas secciones caben**: 6 a 1024×600 en las tres vistas (B: 6 × 64 px; C: 3 filas de 88 px).
+  Una sección nueva se mide en las tres antes de agregarse.
+- **Receta e inventario sin nada que medir**: en vez de ocultar «Vender sin existencia» en silencio,
+  una línea «Este producto no descuenta del almacén. Agrega su receta para controlarlo.»
+- **Tarjeta «Agotado» en Vender**: la tarjeta conserva su tamaño y sigue tocable; la etiqueta
+  «Agotado» usa los tokens del tema (no opacidad sobre todo), y tocarla muestra un aviso breve
+  «Agotado: no hay existencia» en vez de no hacer nada. Sin maqueta: no cambia la disposición.
+- Fuera de alcance, anotado: confirmar al cerrar con la X si hay cambios sin guardar (comportamiento
+  de hoy) y mover la ayuda de «Métodos de cobro» a un ícono (heredado).
 
 | Tarjeta «Agotado» en Vender | Sin maqueta: usa el estado atenuado de la tarjeta existente más una etiqueta; no cambia disposición | — | — |
 
@@ -151,4 +177,6 @@ web/src/
 
 ## Complexity Tracking
 
-Vacío: sin violaciones.
+| Qué | Por qué | Lo que cuesta |
+| --- | --- | --- |
+| Ajustes con tres vistas (A, B, C) | Lo pidió el dueño en la maqueta | Cada sección nueva se mide en las tres vistas; las pruebas recorren las tres |
