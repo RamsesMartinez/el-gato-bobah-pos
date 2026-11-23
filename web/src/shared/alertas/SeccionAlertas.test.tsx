@@ -308,10 +308,10 @@ describe('Alertas con otro almacén', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Configurar ›' }));
     await userEvent.click(await screen.findByRole('checkbox', { name: /Alertas de este artículo, en todos los almacenes/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(api.preview).toHaveBeenCalled());
-    const vista = api.preview.mock.calls[0][2];
+    await waitFor(() => expect(api.preview).toHaveBeenCalledTimes(2));
+    // Dos vistas previas: la del artículo (el de venta, sin almacén) y la de Bodega con lo propuesto.
+    const vista = api.preview.mock.calls.map((c) => c[2]).find((b) => !('warehouseId' in b));
     expect(vista).toEqual(expect.objectContaining({ enabled: true, onMin: true, minStock: '3000' }));
-    expect(vista).not.toHaveProperty('warehouseId');
     expect(vista).not.toHaveProperty('branchMinStock');
     expect(await screen.findByText(/Se encenderán las alertas de/)).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: 'Guardar', hidden: true }).at(-1)!);
@@ -343,5 +343,31 @@ describe('Alertas con otro almacén', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Guardar', hidden: true }).at(-1)!);
     await waitFor(() => expect(api.save).toHaveBeenCalledTimes(2));
     expect(api.save.mock.calls[1][2]).toEqual(expect.objectContaining({ warehouseId: 2, branchMinStock: '8000', expectedUpdatedAt: 'v2' }));
+  });
+
+  // Lo vio la prueba en pantalla (cierre del #65): la confirmación decía «no se envía nada» (la vista
+  // previa era la de Local) y al guardar se abría el aviso de Bodega, con 800 ml contra su mínimo de 2 L.
+  test('encender desde Bodega anuncia el aviso que se abre en Bodega', async () => {
+    dos();
+    api.get.mockImplementation((_t: string, _id: number, w?: number) => Promise.resolve(w === 2
+      ? cfg({ enabled: false, minStock: '3000', branchMinStock: '2000', onHand: '800', unitCode: 'ml', warehouseId: 2, warehouseName: 'Bodega' } as Partial<LowStockConfig>)
+      : cfg({ enabled: false, minStock: '3000', onHand: '4600', unitCode: 'ml', warehouseId: 1, warehouseName: 'Local' } as Partial<LowStockConfig>)));
+    api.preview.mockImplementation((_t: string, _id: number, b: { warehouseId?: number }) => Promise.resolve(b.warehouseId === 2
+      ? { effect: { opens: ['stock_low'], closes: [] }, onHand: '800', min: '2000', needsCount: false }
+      : { effect: { opens: [], closes: [] }, onHand: '4600', min: '3000', needsCount: false }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><Provider>
+      <SeccionAlertas itemType="ingrediente" id={1} name="Aceite" kind="volumen" canConfigure />
+    </Provider></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
+    await screen.findByText(/Mínimo en Bodega: 2 L · no avisa/);
+    fireEvent.click(await screen.findByRole('button', { name: 'Configurar ›' }));
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Alertas de este artículo, en todos los almacenes/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(api.preview).toHaveBeenCalledTimes(2));
+    expect(api.preview.mock.calls.map((c) => c[2]).find((b) => b.warehouseId === 2))
+      .toEqual(expect.objectContaining({ enabled: true, onMin: true, branchMinStock: '2000' }));
+    expect(await screen.findByText('Hoy quedan 800 ml en Bodega, debajo de su mínimo de 2 L: al guardar se abre un aviso.')).toBeTruthy();
+    expect(screen.queryByText(/no se envía nada/)).toBeNull();
   });
 });

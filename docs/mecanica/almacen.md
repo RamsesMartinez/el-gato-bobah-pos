@@ -292,7 +292,10 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     acabarse», la franja y el mínimo del artículo valen en todos los almacenes. Guardar desde otro
     almacén solo cambia su mínimo propio: el servidor ignora los interruptores que lleguen con un
     `warehouseId` que no es el de venta. Tomarlos de esa hoja apagaba el aviso de Local sin que nada
-    fallara. Y `branchMinStock: null` quita el mínimo propio: con `*json.RawMessage` el `null` llegaba
+    fallara. **La vista previa sí los toma** (`?preview=1` con `warehouseId`): la hoja de Bodega
+    enciende las alertas del artículo guardándolas sin almacén, y la confirmación anuncia el aviso que
+    eso abre en Bodega con su mínimo propio. Con los de antes decía «no se envía nada» y al guardar se
+    abría el aviso (`TestPreviewInBodegaWithTheProposedSwitchesAnnouncesItsNotice`). Y `branchMinStock: null` quita el mínimo propio: con `*json.RawMessage` el `null` llegaba
     como ausente y «quitar» no quitaba.
   - **El almacén de venta nombrado por su id es el de venta** (`wh.IsSales`, no `sel.Sales()`): el
     lote de mínimos con el id de Local escribía un mínimo propio y dejaba el del artículo.

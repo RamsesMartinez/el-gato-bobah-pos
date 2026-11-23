@@ -489,3 +489,64 @@ func TestWasteHistoryNamesTheWarehouse(t *testing.T) {
 	}
 	t.Fatal("el historial no trae la merma de Bodega")
 }
+
+// Encender las alertas del artículo desde la hoja de Bodega: la confirmación decía «no se envía nada»
+// (la vista previa salía del de venta, o de Bodega con las alertas apagadas de antes) y al guardar se
+// abría el aviso de Bodega, con 800 ml contra su mínimo de 2 L. La vista previa de Bodega se calcula
+// con los interruptores propuestos y anuncia lo mismo que después pasa.
+func TestPreviewInBodegaWithTheProposedSwitchesAnnouncesItsNotice(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	local, bodega := comoEnLaSegundaSubida(t, st, defaultCompanyID)
+	aceite := ingredientIn(t, st, defaultCompanyID, "Aceite vista previa bodega", "ml")
+	adjustIn(t, st, local, "ingrediente", aceite, "5000")
+	adjustIn(t, st, bodega, "ingrediente", aceite, "800")
+	ns, _, ctx := asNotifications(t, defaultCompanyID)
+	actor := makeUser(t, st, "alertas_bodega_"+itoa(int(bodega)), "gerente")
+	dos := decimal.NewFromInt(2000)
+	if _, err := ns.ConfigureLowStock(ctx, "ingrediente", aceite, app.LowStockInput{
+		BranchMinStock: app.Field[decimal.Decimal]{Set: true, Value: &dos}, Warehouse: domain.WarehouseSel{ID: bodega}}, actor, false); err != nil {
+		t.Fatal(err)
+	}
+	prev, err := ns.ConfigureLowStock(ctx, "ingrediente", aceite, app.LowStockInput{Enabled: true, OnMin: true, OnOut: true,
+		BranchMinStock: app.Field[decimal.Decimal]{Set: true, Value: &dos}, Warehouse: domain.WarehouseSel{ID: bodega}}, actor, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prev.Effect.Opens) != 1 || prev.Effect.Opens[0] != domain.NotificationKind("stock_low") || !prev.OnHand.Equal(decimal.NewFromInt(800)) {
+		t.Fatalf("la vista previa de Bodega = %+v con %s; quiere que abra el aviso de stock bajo con 800 ml", prev.Effect, prev.OnHand)
+	}
+	// La vista previa no guarda: las alertas del artículo siguen apagadas.
+	var enabled bool
+	if err := st.Pool.QueryRow(context.Background(), `select low_stock_enabled from ingredients where id = $1`, aceite).Scan(&enabled); err != nil || enabled {
+		t.Fatalf("la vista previa encendió las alertas (%v, %v)", enabled, err)
+	}
+	// Y lo anunciado es lo que pasa: encender el artículo (sin almacén) abre el aviso de Bodega.
+	if _, err := ns.ConfigureLowStock(ctx, "ingrediente", aceite, app.LowStockInput{Enabled: true, OnMin: true, OnOut: true}, actor, false); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := st.Pool.QueryRow(context.Background(), `select count(*) from notifications where ingredient_id = $1 and warehouse_id = $2
+		and kind = 'stock_low' and status = 'open'`, aceite, bodega).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("avisos abiertos de Bodega = %d, %v; quiere 1, el que anunció la vista previa", n, err)
+	}
+}
+
+// Guardar (no la vista previa) desde Bodega sigue ignorando los interruptores: son del artículo.
+func TestSavingFromBodegaStillIgnoresTheSwitches(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	_, bodega := comoEnLaSegundaSubida(t, st, defaultCompanyID)
+	aceite := ingredientIn(t, st, defaultCompanyID, "Aceite guarda bodega", "ml")
+	ns, _, ctx := asNotifications(t, defaultCompanyID)
+	actor := makeUser(t, st, "alertas_bodega_"+itoa(int(bodega)), "gerente")
+	dos := decimal.NewFromInt(2000)
+	if _, err := ns.ConfigureLowStock(ctx, "ingrediente", aceite, app.LowStockInput{Enabled: true, OnMin: true,
+		BranchMinStock: app.Field[decimal.Decimal]{Set: true, Value: &dos}, Warehouse: domain.WarehouseSel{ID: bodega}}, actor, false); err != nil {
+		t.Fatal(err)
+	}
+	var enabled bool
+	if err := st.Pool.QueryRow(context.Background(), `select low_stock_enabled from ingredients where id = $1`, aceite).Scan(&enabled); err != nil || enabled {
+		t.Fatalf("guardar desde Bodega encendió las alertas del artículo (%v, %v)", enabled, err)
+	}
+}

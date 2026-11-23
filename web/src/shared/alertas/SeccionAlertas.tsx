@@ -103,6 +103,31 @@ const diasInvalidos = (d: string) => d.trim() !== '' && !(Number(d) >= 1 && Numb
 
 const KIND_WORDS: Record<string, string> = { stock_low: 'al llegar al mínimo', stock_out: 'de que se acabó' };
 
+// EfectoAlGuardar dice lo que pasará con los avisos de un almacén al guardar. `siempre` lo dice aunque
+// no pase nada; sin él (el otro almacén de un cambio del artículo) solo si algo se abre o se cierra.
+// `propio`: el almacén mide su mínimo propio, y se dice contra cuál («debajo de su mínimo de 2 L»).
+function EfectoAlGuardar({ e, unit, donde, siempre, propio }: { e: LowStockEffect; unit: string; donde: string; siempre?: boolean; propio?: boolean }) {
+  const en = donde ? ` en ${donde}` : '';
+  const hay = formatBaseQty(e.onHand, unit);
+  const nada = e.effect.opens.length === 0 && e.effect.closes.length === 0;
+  if (nada) return siempre ? <Text color="fg.muted">Hoy quedan {hay}{en}: no se envía nada al guardar.</Text> : null;
+  const otros = e.effect.opens.filter((k) => k !== 'stock_low');
+  const bajo = propio && e.effect.opens.includes('stock_low') && e.min != null ? `, debajo de su mínimo de ${formatBaseQty(e.min, unit)}` : '';
+  return (
+    <>
+      {e.effect.opens.length > 0 && (
+        <Box bg="orange.subtle" borderRadius="md" p={3} fontWeight="600">
+          {bajo
+            ? `Hoy quedan ${hay}${en}${bajo}: al guardar se abre un aviso${otros.length ? ` y otro ${otros.map((k) => KIND_WORDS[k]).join(' y ')}` : ''}.`
+            : `Hoy quedan ${hay}${en}, así que se enviará un aviso ${e.effect.opens.map((k) => KIND_WORDS[k]).join(' y ')} al guardar.`}
+          {e.needsCount ? ' La existencia está en negativo: conviene contarlo.' : ''}
+        </Box>
+      )}
+      {e.effect.closes.length > 0 && <Text>Se cerrará el aviso abierto de este artículo{en}.</Text>}
+    </>
+  );
+}
+
 function Casilla({ checked, onChange, disabled, children }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; children: React.ReactNode }) {
   return (
     <Checkbox.Root minH="44px" w="100%" checked={checked} disabled={disabled} onCheckedChange={(e) => onChange(e.checked === true)}>
@@ -124,6 +149,9 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
   const [hoja, setHoja] = useState(false);
   const [forma, setForma] = useState<Forma | null>(null);
   const [efecto, setEfecto] = useState<LowStockEffect | null>(null);
+  // Al encender o apagar las alertas desde otro almacén, efecto es el de ese almacén y efectoVenta el
+  // del de venta: cambiar el artículo mueve los avisos de los dos.
+  const [efectoVenta, setEfectoVenta] = useState<LowStockEffect | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preguntaCerrada, setPreguntaCerrada] = useState(false);
 
@@ -154,8 +182,17 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
     onSettled: () => void qc.invalidateQueries({ queryKey: ['alertas', itemType, id] }),
   });
   const verEfecto = useMutation({
-    mutationFn: (f: Forma) => lowStockApi.preview(itemType, id, cambiaArticulo(f) ? cuerpoDelArticulo(cfg.data!, f.enabled) : cuerpoDe(f)),
-    onSuccess: (r) => { setError(null); setEfecto(r); },
+    mutationFn: async (f: Forma) => {
+      if (!cambiaArticulo(f)) return { aqui: await lowStockApi.preview(itemType, id, cuerpoDe(f)), venta: null };
+      // La de este almacén va con los interruptores propuestos: el servidor los toma en la vista previa
+      // (al guardar con almacén los ignora) y anuncia el aviso que encenderlas abre aquí.
+      const [aqui, venta] = await Promise.all([
+        lowStockApi.preview(itemType, id, { ...cuerpoDe(f), enabled: f.enabled, onMin: f.enabled ? true : cfg.data!.onMin }),
+        lowStockApi.preview(itemType, id, cuerpoDelArticulo(cfg.data!, f.enabled)),
+      ]);
+      return { aqui, venta };
+    },
+    onSuccess: (r) => { setError(null); setEfecto(r.aqui); setEfectoVenta(r.venta); },
     onError: fallo,
   });
   const guardar = useMutation({
@@ -189,8 +226,7 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
   const preguntar = canConfigure && itemType === 'ingrediente' && !c.asked && !preguntaCerrada && !hoja;
   const otro = wid !== undefined;
   const almacen = c.warehouseName ?? wh.name ?? '';
-  // Al encender o apagar las alertas desde otro almacén, la vista previa es la del de venta: se dice.
-  const dondeEfecto = otro && forma && forma.enabled !== c.enabled ? ` en ${wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta'}` : '';
+  const venta = wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta';
 
   return (
     <>
@@ -286,16 +322,8 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
             ) : (
               <Text>Se actualizará la configuración de alertas de <b>{name}</b>{wh.multi ? ` en ${almacen}` : ''}: {primeraMinuscula(resumenDeAlertas({ ...c, ...cuerpo(forma, kind), minStock: efecto.min ?? cuerpo(forma, kind).minStock }))}.</Text>
             )}
-            {efecto.effect.opens.length > 0 && (
-              <Box bg="orange.subtle" borderRadius="md" p={3} fontWeight="600">
-                Hoy quedan {formatBaseQty(efecto.onHand, c.unitCode)}{dondeEfecto}, así que se enviará un aviso {efecto.effect.opens.map((k) => KIND_WORDS[k]).join(' y ')} al guardar.
-                {efecto.needsCount ? ' La existencia está en negativo: conviene contarlo.' : ''}
-              </Box>
-            )}
-            {efecto.effect.closes.length > 0 && <Text>Se cerrará el aviso abierto de este artículo.</Text>}
-            {efecto.effect.opens.length === 0 && efecto.effect.closes.length === 0 && (
-              <Text color="fg.muted">Hoy quedan {formatBaseQty(efecto.onHand, c.unitCode)}{dondeEfecto}: no se envía nada al guardar.</Text>
-            )}
+            <EfectoAlGuardar e={efecto} unit={c.unitCode} donde={otro || wh.multi ? almacen : ''} siempre propio={otro} />
+            {efectoVenta && <EfectoAlGuardar e={efectoVenta} unit={c.unitCode} donde={venta} />}
           </VStack>
         </ConfirmSheet>
       )}
