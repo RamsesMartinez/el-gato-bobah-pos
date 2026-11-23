@@ -97,22 +97,49 @@ Sin violaciones; sin Complexity Tracking.
 
 ## Pantallas y maquetas
 
-Dos pantallas cambian. Las maquetas se miden a **1024×600** (pedido del dueño para esta feature) y
-a 1280×854 (constitución).
+Dos pantallas cambian. Maquetas medidas a **1024×600** (pedido del dueño) y a 1280×854 y 2560×1440.
 
-1. **Editor de producto** (`shared/ProductEditDialog.tsx`): un bloque de foto arriba del nombre, y
-   el flujo de recorte (diálogo con la foto, arrastre, acercamiento y «Guardar foto»).
-2. **Pestaña nueva «Categorías»** en el hub Menú (`CatalogPage`): lista con miniatura, nombre,
-   familia y cantidad de productos; tocar abre el editor de la categoría (foto + familia con
-   `Picker`). Hoy no existe pantalla de categorías.
+1. **Editor de producto** (`shared/ProductEditDialog.tsx`, opción A): el diálogo pasa a `size="lg"`
+   (~512 px) y el bloque de foto de 132 px va a la izquierda de Nombre y Categoría; Precio/Costo
+   (con el botón largo de costo) quedan a todo el ancho debajo. Sin foto: la ilustración (o la foto de la categoría) con la
+   etiqueta «Sin foto» y el botón «Agregar foto». Con foto: dos botones de ícono de 44 px, «Cambiar
+   foto» y «Quitar foto». Quitar confirma con `ConfirmSheet` destructivo («Volver» como acción
+   segura). La foto se guarda al tocar «Guardar foto», sin esperar al «Guardar» del producto (como
+   los grupos): el bloque dice «La foto se guarda aparte» y, al guardar, «Foto guardada».
+   El selector de archivo es un `<input type=file>` invisible (`opacity:0`, no `display:none`) que
+   dispara el botón; `accept="image/jpeg,image/png,image/webp"`; su `value` se limpia tras elegir.
+   Una foto que el navegador no abre (HEIC) dice «Esta foto no se puede abrir. Elige una en JPG o
+   PNG». Si el navegador no puede preparar fotos, se detecta al montar: «Agregar foto» queda
+   deshabilitado con «Este navegador no puede preparar la foto. Ábrelo en Chrome o Edge».
+2. **Recorte** (opción B): al elegir el archivo se abre un diálogo «Así se verá» con la foto centrada
+   en cuadrado (`min(340px, 52dvh)`; `44dvh` con el ajuste abierto), «Ajustar encuadre» (rejilla,
+   arrastre y botones −/+ de 44 px), «Cancelar» y «Guardar foto». Cuerpo con scroll interno y pie
+   siempre visible. Recorte y confirmación se montan dentro del `DialogRoot` del editor (como
+   `CompositionSheet`): cerrarlos no cierra el editor ni pierde lo escrito.
+3. **Pestaña «Categorías»** en el hub Menú (`CatalogPage`), con **tres vistas** y selector de tres
+   botones de 44 px en la barra de pestañas (solo en esta pestaña), mosaico por omisión y la última
+   vista recordada en el equipo (`localStorage`, con respaldo a mosaico si falla):
+   - **Mosaico**: tarjetas cuadradas (`repeat(auto-fill, minmax(150px, 1fr))`: 6 columnas a 1024)
+     con foto o ilustración, nombre y número de productos; scroll dentro de su caja (`Page fill`).
+   - **Tabla**: miniatura de 40 px, nombre, familia y productos, como la lista de productos.
+   - **Lista y panel**: lista a la izquierda (44 %) y el editor a la derecha, sin diálogo. Todo se
+     aplica al momento (foto con «Guardar foto», familia al elegirla): no hay cambios pendientes que
+     perder al tocar otra categoría.
+   En mosaico y tabla, tocar abre el diálogo de la categoría: foto (mismo bloque que el producto) y
+   «Familia de comida» con `Picker`, que también se aplica al elegirla. La confirmación de quitar la
+   foto de una categoría dice «Los productos sin foto propia dejarán de mostrar ésta».
+   El selector va en el hueco que hoy empuja la ayuda a la derecha (las pestañas no se mueven),
+   con `aria-label`, `title` y `aria-pressed`. La pestaña lleva su `what`/`steps` de ayuda y su
+   ruta en `routes.ts` con `menu.configure`.
 
-La lista de productos solo agrega una columna de miniatura de 40 px (sin cambiar la disposición).
+La lista de productos agrega una columna de miniatura de 32 px (con `width`/`height` fijos), para
+no subir la altura de cada renglón.
 
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|
-| Editor de producto con foto | [maqueta](https://claude.ai/artifact/BM3i3c2r8gNe4n4fpHkWvX) | (espera al dueño) | |
-| Recorte de la foto | [maqueta](https://claude.ai/artifact/1U5DLLrioJ5prXPQPSsypN) | (espera al dueño) | |
-| Categorías | [maqueta](https://claude.ai/artifact/1MaoeVygkugHvXKBpYUw4N) | (espera al dueño) | |
+| Editor de producto con foto | [maqueta](https://claude.ai/artifact/BM3i3c2r8gNe4n4fpHkWvX) | A · Junto al nombre | Mismos 5 controles visibles que hoy a 1024×600; agregar foto en 3 toques |
+| Recorte de la foto | [maqueta](https://claude.ai/artifact/1U5DLLrioJ5prXPQPSsypN) | B · Centrada, ajustar opcional | El caso común se guarda viendo el resultado; ajustar cuesta 1 toque |
+| Categorías | [maqueta](https://claude.ai/artifact/1MaoeVygkugHvXKBpYUw4N) | Las tres vistas con selector, mosaico por omisión | Decisión del dueño (2026-11-23): mosaico, tabla y lista con panel; selector de 3 botones de 44 px en la barra de pestañas; cada equipo recuerda la última vista |
 
 ## Project Structure
 
@@ -180,6 +207,19 @@ Se pide cuando la implementación llegue a ese paso (local avanza sin esto):
 3. Un API token de R2 por bucket, permiso «Object Read & Write», aplicado solo a ese bucket.
    Entregar: Account ID, Access Key ID y Secret Access Key de cada uno.
 4. Las variables van al `deploy/.env` de cada VM; el `_headers` de Pages lleva el dominio.
+
+## Revisión de arquitectura (2026-11-23)
+
+`db-architect` y `tablet-ui-reviewer`: aprobado con cambios; todos aplicados arriba y en
+[data-model.md](data-model.md).
+
+- Base: `CloneProductRow` deja de copiar `image_url`; checks de `image_url` `not valid`; Down que
+  se niega con pendientes y sus renglones de limpieza; check de tabla de `object_key` contra
+  `company_id`; clasificación del respaldo anónimo.
+- Pantalla: editor `size="lg"`; «La foto se guarda aparte»; navegador sin soporte detectado al
+  montar; recorte y confirmación dentro del mismo `DialogRoot` con `ConfirmSheet`; recorte con pie
+  siempre visible; miniatura de 32 px; mosaico con columnas mínimas de 150 px; autoguardado en la
+  vista de panel; selector con `aria-pressed`; input de archivo invisible y reiniciado.
 
 ## Complexity Tracking
 

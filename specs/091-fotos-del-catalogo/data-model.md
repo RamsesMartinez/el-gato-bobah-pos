@@ -14,8 +14,10 @@ Forma de la URL: `<MEDIA_PUBLIC_BASE_URL>/<company_id>/<products|categories>/<id
 La de 400 px es la misma con `-400.webp`. Un `update` a estas columnas ya sube `catalog_versions`
 (triggers de la 0093), así que el menú guardado de cada tableta se renueva solo.
 
-Restricción nueva (sin perder datos: hoy todas valen `null`, medido en producción antes de la
-migración con `select count(*) … where image_url is not null`):
+Restricción nueva, agregada **`not valid`**: vale para toda escritura nueva y no revisa las filas que
+ya existen, así que la API nueva arranca aunque alguna fila de producción traiga un valor viejo
+(no se pudo contar en producción desde esta máquina). El test de migración cubre un respaldo con
+`image_url` ajena y comprueba que la migración pasa y que la URL vieja no se toca:
 
 - `products_image_url_shape` / `categories_image_url_shape`: `image_url is null or image_url ~
   '^https?://[^\s]+-1200\.webp$'`. Un `https?` y no solo `https` porque en local el dominio es
@@ -44,16 +46,17 @@ Null = genérica (`dish` al mostrar). Elegirla no depende del nombre de la categ
 |---|---|---|
 | `id` | `bigint identity` | PK |
 | `company_id` | `bigint not null default current_setting(app.company_id)` | FK a `companies` on delete cascade |
-| `object_key` | `text not null` | Llave relativa al bucket; check `^[0-9]+/(products|categories)/[0-9]+/[0-9a-f]{32}-(400|1200)\.webp$` y que empiece con el `company_id` de la fila |
+| `object_key` | `text not null` | Llave relativa al bucket; check de columna `^[0-9]+/(products|categories)/[0-9]+/[0-9a-f]{32}-(400|1200)\.webp$` y check de tabla `object_key like company_id::text || '/%'` |
 | `attempts` | `int not null default 1` | Check `>= 1` |
-| `last_error` | `text not null` | Check longitud ≤ 300; mensaje del almacenamiento, sin secretos |
+| `last_error` | `text not null` | Check longitud ≤ 300; el código lo recorta a 300 y quita la querystring de cualquier URL |
 | `created_at` / `updated_at` | `timestamptz not null default now()` | |
 
 - `unique (company_id, object_key)`: el mismo borrado fallido no se apila.
 - RLS `tenant_isolation` con `nullif`, `grant select, insert, update (attempts, last_error,
   updated_at), delete` a `gatobobah_app`.
 - Índice: la `unique` empieza por `company_id`, sirve para el barrido por empresa.
-- Respaldo anónimo: `object_key` y `last_error` van a `noPersonalData` (llave derivada de ids y un
+- Respaldo anónimo: `media_pending_deletions.object_key` y `.last_error` van a `noPersonalData` en
+  `respaldo_anonimo_test.go` (llave derivada de ids y un
   hash; error del proveedor).
 - `TestEveryCompanyTableIsIsolated` la cubre sola.
 
@@ -78,3 +81,19 @@ de antes).
 `auditEntity` con acciones nuevas `product.image_set`, `product.image_removed`,
 `category.image_set`, `category.image_removed`, `category.family_set` (forma `entidad.verbo` de
 `domain/audit.go`); antes y después = la URL o la familia.
+
+## Down
+
+Quita, en orden: los dos checks de `image_url`, `categories.food_family`, la tabla y el tipo.
+**Se niega** (`raise exception`) si `media_pending_deletions` tiene filas: bajar perdería las llaves
+y esos archivos quedarían en el bucket para siempre. Lleva su renglón en `guardedDownCleanup`
+(`harness_restaurado_test.go`), que vacía la tabla en la copia de prueba, y otro para
+`food_family`, que el Up no vuelve a llenar.
+
+## Duplicar un producto
+
+`CloneProductRow` (`server/queries/admin.sql:95`) deja de copiar `image_url`: la llave del objeto
+lleva el id del producto original y dos filas con la misma URL harían que quitar la foto de una
+borrara la de la otra. Durante el traslape la API vieja todavía la copia; la guarda de prefijo
+(la URL no trae el id del duplicado) impide que la nueva la borre, y la foto se reemplaza al subir
+otra.
