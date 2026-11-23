@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { presentationLabel } from '../../shared/presentationLabel';
 import { medirAccion } from '../../api/uso';
-import { Box, Button, Center, HStack, Input, Progress, Spinner, Text, VStack } from '@chakra-ui/react';
+import { Box, Button, Center, Heading, HStack, Input, Progress, Spinner, Text, VStack } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
@@ -27,16 +27,23 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { can } from '../../app/permissions';
 import { countLimitsApi, DEFAULT_COUNT_LIMITS, overMaxMessage } from '../../api/countLimits';
 import { Segmented } from '../../components/Segmented';
+import { LuListChecks, LuSlidersHorizontal } from 'react-icons/lu';
 
 // Conteo de existencias (spec 038, maqueta «Almacén › Conteo»: las dos vistas). A ciegas —no se ve
 // lo que el sistema tiene—, cada cifra se guarda al capturarla y el cierre dice qué no se contó y
 // qué diferencias son grandes antes de ajustar.
 
-type View = 'lista' | 'uno';
+// Spec 096 (maqueta B): la sencilla es para contar —el recorrido de un lugar con el teclado fijo— y la
+// avanzada es la lista completa con lo esperado y la diferencia. Quien solo cuenta entra siempre a la
+// sencilla; quien configura el almacén abre en la que dejó (la avanzada si nunca eligió).
+type View = 'sencilla' | 'avanzada';
 const VIEW_KEY = 'egb:conteo:vista';
 
 function readView(): View {
-  try { return localStorage.getItem(VIEW_KEY) === 'uno' ? 'uno' : 'lista'; } catch { return 'lista'; }
+  try {
+    const v = localStorage.getItem(VIEW_KEY);
+    return v === 'sencilla' || v === 'uno' ? 'sencilla' : 'avanzada';
+  } catch { return 'avanzada'; }
 }
 function saveView(v: View) {
   try { localStorage.setItem(VIEW_KEY, v); } catch { /* la tableta sin almacenamiento cuenta igual */ }
@@ -54,7 +61,7 @@ const placeOf = (i: CountItem, multi = false) => i.place ?? (multi && i.placeEls
 // Productos con existencia propia en el conteo (spec 069, maqueta «Conteo con productos», opción C):
 // se pintan con los mismos renglones que los artículos, al final y agrupados por su categoría del
 // menú. Dentro de la pantalla viajan como un CountItem con el id NEGATIVO del producto: así la lista,
-// «Uno por uno» y la hoja de captura los siguen por id sin confundirlos con un artículo; productId
+// la vista sencilla y la hoja de captura los siguen por id sin confundirlos con un artículo; productId
 // dice a dónde se guardan.
 type CountRow = CountItem & { productId?: number };
 const productRow = (p: CountProduct): CountRow => ({
@@ -144,10 +151,18 @@ export function StockCountTab() {
   // el del elegido.
   const knowsWarehouse = picked === undefined || whData !== undefined;
   const { data: count, isLoading } = useQuery({ queryKey: countKey, queryFn: () => backofficeApi.currentCount(warehouseId), enabled: knowsWarehouse });
-  // ?q= llega de la ficha del artículo (spec 045): la lista ya buscada. Uno por uno no tiene buscador,
-  // así que con búsqueda se abre la lista sin cambiar la vista recordada.
+  // Lo esperado de cada insumo, solo para la vista avanzada y solo con permiso de configurar el almacén:
+  // la ruta lo exige, así que a quien solo cuenta nunca le llega (spec 096).
+  const expected = useQuery({
+    queryKey: [...countKey, 'esperado', count?.id], queryFn: () => backofficeApi.countExpected(count!.id),
+    enabled: !!count && can('inventory.configure'),
+  });
+  // ?q= llega de la ficha del artículo (spec 045): la avanzada ya buscada, sin cambiar la vista
+  // recordada. La sencilla no tiene buscador: abre la tarjeta de ese artículo.
   const initialQuery = params.get('q') ?? '';
-  const [view, setView] = useState<View>(() => (initialQuery ? 'lista' : readView()));
+  const [stored, setView] = useState<View>(() => (initialQuery ? 'avanzada' : readView()));
+  const canAdvanced = can('inventory.configure');
+  const view: View = canAdvanced ? stored : 'sencilla';
   const [closed, setClosed] = useState<CountClose | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -281,7 +296,7 @@ export function StockCountTab() {
     <VStack align="stretch" gap={3} h="100%" minH={0}>
       {/* En la lista, la pregunta va en el renglón del buscador: en su propio renglón le quitaba a la
           lista 58 px a 1024×600, un renglón de artículo menos que con un solo almacén. */}
-      {view !== 'lista' && picker}
+      {view !== 'avanzada' && picker}
       <HStack gap={3} flexWrap="wrap">
         <Box flex="1" minW="260px">
           <Text fontSize="sm">
@@ -294,14 +309,11 @@ export function StockCountTab() {
           </Progress.Root>
         </Box>
 
-        <HStack gap={0} borderWidth="1px" borderRadius="md" role="group" aria-label="Vista">
-          {(['lista', 'uno'] as const).map((v) => (
-            <Button key={v} minH="44px" aria-pressed={view === v} variant={view === v ? 'solid' : 'ghost'}
-              colorPalette={view === v ? 'brand' : 'gray'} onClick={() => pickView(v)}>
-              {v === 'lista' ? 'Lista' : 'Uno por uno'}
-            </Button>
-          ))}
-        </HStack>
+        {/* Con íconos, como el selector de vista de Ajustes (pedido del dueño). Quien solo cuenta no lo ve. */}
+        {canAdvanced && (
+          <Segmented label="Vista" value={view} onChange={pickView}
+            options={[{ value: 'sencilla', label: 'Sencilla', icon: <LuListChecks /> }, { value: 'avanzada', label: 'Avanzada', icon: <LuSlidersHorizontal /> }]} />
+        )}
         {confirmDiscard ? (
           <HStack gap={2}>
             <Text fontSize="sm">¿Descartar? Lo guardado no cambia.</Text>
@@ -317,9 +329,9 @@ export function StockCountTab() {
         </VStack>
       </HStack>
 
-      {view === 'lista'
-        ? <ListView count={shown} others={others} onSaved={onSaved} initialQuery={initialQuery} picker={picker || undefined} />
-        : <OneByOne count={shown} onSaved={onSaved} />}
+      {view === 'avanzada'
+        ? <ListView count={shown} others={others} onSaved={onSaved} initialQuery={initialQuery} picker={picker || undefined} expected={expected.data} />
+        : <PlaceView count={shown} onSaved={onSaved} initialQuery={initialQuery} />}
 
       {closing && (
         <CloseSheet countId={count.id} onClose={() => setClosing(false)}
@@ -442,7 +454,7 @@ const entryBox = (active: boolean) => ({
 
 // WeighRow es el renglón plegado «Pesar con empaque» (spec 058, maqueta Conteo A): una forma
 // avanzada y opcional, así que plegado no le estorba a quien no pesa. onOpen decide dónde se abre:
-// en su lugar en la hoja, o la hoja completa desde «Uno por uno».
+// en su lugar en la hoja, o la hoja completa desde la vista sencilla.
 function WeighRow({ open, onOpen, onClose, toMl }: { open: boolean; onOpen: () => void; onClose: () => void; toMl: boolean }) {
   const [info, setInfo] = useState(false);
   return (
@@ -703,8 +715,10 @@ function PlacePicker({ item }: { item: CountItem }) {
 // ---- Lista ----
 
 // others: lo que no es del almacén que se cuenta; solo sale al buscar.
-function ListView({ count, others = [], onSaved, initialQuery = '', picker }: {
+function ListView({ count, others = [], onSaved, initialQuery = '', picker, expected }: {
   count: StockCount; others?: CountItem[]; onSaved: (id: number, qty: string | null) => void; initialQuery?: string;
+  // Lo esperado por insumo (vista avanzada, spec 096); falta para quien solo cuenta.
+  expected?: { items?: { ingredientId: number; expected: string }[] };
   // picker es la pregunta del almacén con dos o más: va en este renglón para no gastar uno propio.
   picker?: React.ReactNode;
 }) {
@@ -724,6 +738,7 @@ function ListView({ count, others = [], onSaved, initialQuery = '', picker }: {
   const { multi } = useContext(CountScopeContext);
   const groups = new Map<string, CountItem[]>();
   for (const i of shown) groups.set(placeOf(i, multi), [...(groups.get(placeOf(i, multi)) ?? []), i]);
+  const expectedOf = new Map((expected?.items ?? []).map((x) => [x.ingredientId, x.expected]));
   return (
     <VStack align="stretch" gap={3} flex="1" minH={0}>
       {/* El aviso de productos va en el renglón del buscador y no en uno nuevo (una fila menos de lista
@@ -767,6 +782,9 @@ function ListView({ count, others = [], onSaved, initialQuery = '', picker }: {
                 <Text fontSize="sm" color={i.countedQty !== null ? 'fg.success' : 'fg.muted'} minW="120px">
                   {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}` : 'Sin contar'}
                 </Text>
+                {expected && !isProduct(i) && (
+                  <ExpectedCell expected={expectedOf.get(i.ingredientId) ?? '0'} counted={i.countedQty} unit={i.baseUnitCode} />
+                )}
                 <Button minH="44px" minW="120px" variant="outline" onClick={() => setEditingId(i.ingredientId)}>
                   {i.countedQty !== null ? 'Cambiar' : 'Contar'}
                 </Button>
@@ -783,7 +801,7 @@ function ListView({ count, others = [], onSaved, initialQuery = '', picker }: {
 
 function EntrySheet({ countId, item, onClose, onSaved, startWeighing }: {
   countId: number; item: CountItem; onClose: () => void; onSaved: (id: number, qty: string | null) => void;
-  // startWeighing abre con «Pesar con empaque» desplegado (desde «Uno por uno»).
+  // startWeighing abre con «Pesar con empaque» desplegado (desde la vista sencilla).
   startWeighing?: boolean;
 }) {
   const e = useEntry(item, { startWeighing, restore: true });
@@ -819,26 +837,86 @@ function EntrySheet({ countId, item, onClose, onSaved, startWeighing }: {
   );
 }
 
-// ---- Uno por uno ----
-
-function OneByOne({ count, onSaved }: { count: StockCount; onSaved: (id: number, qty: string | null) => void }) {
-  // Se sigue al INSUMO, no a la posición: poner un lugar reordena la lista, y por posición la tarjeta
-  // saltaría a otro insumo a media captura.
-  const { multi } = useContext(CountScopeContext);
-  const [atId, setAtId] = useState<number | null>(() => (count.items.find((i) => i.countedQty === null) ?? count.items[0])?.ingredientId ?? null);
-  const item = count.items.find((i) => i.ingredientId === atId) ?? count.items[0];
-  if (!item) return <Text color="fg.muted">No hay insumos que contar.</Text>;
-  const at = count.items.indexOf(item);
-  const go = (i: number) => setAtId(count.items[Math.max(0, Math.min(i, count.items.length - 1))].ingredientId);
-  const sameplace = count.items.filter((i) => placeOf(i, multi) === placeOf(item, multi));
+// Lo esperado y la diferencia de un renglón (vista avanzada, spec 096). La diferencia solo cuando ya
+// se contó; en rojo si falta.
+function ExpectedCell({ expected, counted, unit }: { expected: string; counted: string | null; unit: string }) {
+  const diff = counted === null ? null : Number(counted) - Number(expected);
   return (
-    <OneCard key={item.ingredientId} countId={count.id} item={item}
-      where={`${placeOf(item, multi)} · ${sameplace.indexOf(item) + 1} de ${sameplace.length}`}
-      onPrev={at > 0 ? () => go(at - 1) : undefined}
-      onNext={() => go(at + 1)}
-      onSaved={onSaved} />
+    <VStack gap={0} align="end" minW="120px" flexShrink={0}>
+      <Text fontSize="sm" color="fg.muted">Esperado {formatBaseQty(expected, unit)}</Text>
+      {diff !== null && (
+        <Text fontSize="sm" fontWeight="600" color={diff < 0 ? 'fg.error' : undefined}>
+          Diferencia {diff > 0 ? '+' : ''}{formatBaseQty(String(Math.round(diff * 10000) / 10000), unit)}
+        </Text>
+      )}
+    </VStack>
   );
 }
+
+// ---- Vista sencilla: el recorrido de un lugar (spec 096, maqueta B) ----
+
+// PlaceView es la vista para contar: arriba los lugares con su avance, a la izquierda lo de ese lugar
+// y a la derecha la tarjeta del artículo elegido con el teclado fijo. Al guardar pasa al siguiente sin
+// contar del mismo lugar. Lo esperado no se muestra: el conteo es a ciegas.
+function PlaceView({ count, onSaved, initialQuery = '' }: {
+  count: StockCount; onSaved: (id: number, qty: string | null) => void; initialQuery?: string;
+}) {
+  const { multi } = useContext(CountScopeContext);
+  // count.items ya trae los productos del menú al final (rowsOf), cada categoría como su lugar.
+  const rows = count.items;
+  const places: string[] = [];
+  for (const i of rows) if (!places.includes(placeOf(i, multi))) places.push(placeOf(i, multi));
+  const firstIn = (p: string) => {
+    const of = rows.filter((i) => placeOf(i, multi) === p);
+    return (of.find((i) => i.countedQty === null) ?? of[0])?.ingredientId ?? null;
+  };
+  // Llegar desde «Revisar con un conteo» abre la tarjeta de ese artículo, no la del primer lugar.
+  const asked = initialQuery.trim() ? rows.find((i) => matchesWords(i.name, initialQuery.trim())) : undefined;
+  const [place, setPlace] = useState(() => asked ? placeOf(asked, multi) : places.find((p) => rows.some((i) => placeOf(i, multi) === p && i.countedQty === null)) ?? places[0]);
+  // Se sigue al INSUMO, no al lugar: ponerle otro lugar desde la tarjeta lo mueve de grupo, y la
+  // tarjeta se va con él en vez de saltar a otro insumo a media captura.
+  const [atId, setAtId] = useState<number | null>(() => asked?.ingredientId ?? firstIn(place));
+  const current = rows.find((i) => i.ingredientId === atId);
+  const shownPlace = current ? placeOf(current, multi) : place;
+  const items = rows.filter((i) => placeOf(i, multi) === shownPlace);
+  const item = current ?? items[0];
+  if (!item) return <Text color="fg.muted">No hay insumos que contar.</Text>;
+  const next = () => {
+    const after = items.slice(items.indexOf(item) + 1).find((i) => i.countedQty === null);
+    setAtId(after?.ingredientId ?? item.ingredientId);
+  };
+  return (
+    <VStack align="stretch" gap={2} flex="1" minH={0}>
+      {places.length > 1 && (
+        <Segmented label="Lugar" value={shownPlace} onChange={(p) => { setPlace(p); setAtId(firstIn(p)); }}
+          options={places.map((p) => {
+            const of = rows.filter((i) => placeOf(i, multi) === p);
+            return { value: p, label: `${p} · ${of.filter((i) => i.countedQty !== null).length}/${of.length}` };
+          })} />
+      )}
+      <HStack align="stretch" gap={3} flex="1" minH={0}>
+        <Box w="260px" flexShrink={0} borderWidth="1px" borderRadius="lg" overflowY="auto" minH={0} bg="bg.panel">
+          {items.map((i) => (
+            <Button key={i.ingredientId} data-testid="renglon-lugar" variant={i.ingredientId === item.ingredientId ? 'subtle' : 'ghost'}
+              colorPalette={i.ingredientId === item.ingredientId ? undefined : 'gray'} w="100%" h="auto" minH="52px" px={3} py={2}
+              borderRadius={0} borderBottomWidth="1px" justifyContent="start" fontWeight="normal" onClick={() => setAtId(i.ingredientId)}>
+              <Text flex="1" textAlign="start" truncate>{i.name}</Text>
+              <Text fontSize="sm" color={i.countedQty !== null ? 'fg.success' : 'fg.muted'} flexShrink={0}>
+                {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}` : '—'}
+              </Text>
+            </Button>
+          ))}
+        </Box>
+        <OneCard key={item.ingredientId} countId={count.id} item={item}
+          where={`${shownPlace} · ${items.indexOf(item) + 1} de ${items.length}`}
+          onPrev={items.indexOf(item) > 0 ? () => setAtId(items[items.indexOf(item) - 1].ingredientId) : undefined}
+          onNext={next} onSaved={onSaved} />
+      </HStack>
+    </VStack>
+  );
+}
+
+// ---- La tarjeta de un artículo (vista sencilla) ----
 
 function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
   countId: number; item: CountItem; where: string; onPrev?: () => void; onNext: () => void;
@@ -855,7 +933,7 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
       <VStack align="stretch" gap={3} flex="1" minH={0} p={4} borderWidth="1px" borderRadius="lg" bg="bg.panel">
         <Text fontSize="xs" color="fg.muted">{where}</Text>
         <HStack gap={3} flexWrap="wrap">
-          <Text fontSize="2xl" fontWeight="700" flex="1">{item.name}</Text>
+          <Heading as="h2" fontSize="2xl" fontWeight="700" flex="1">{item.name}</Heading>
           {isProduct(item) ? <Text color="fg.muted">Producto del menú · en piezas</Text> : <PlacePicker item={item} />}
         </HStack>
         <EntryFields item={item} e={e} serverError={c.serverError} onWeigh={() => setWeighing(true)} />

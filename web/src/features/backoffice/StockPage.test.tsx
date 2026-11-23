@@ -207,7 +207,8 @@ it('«Revisar con un conteo» cierra la ficha y abre la pestaña Conteo con el a
   sesion(['inventory.view', 'inventory.count']);
   montar('/almacen?tab=insumos&open=2');
   fireEvent.click(await screen.findByRole('button', { name: /Revisar con un conteo/ }));
-  expect(await screen.findByLabelText('Buscar')).toHaveValue('Jarabe natural');
+  // Quien solo cuenta entra a la vista sencilla (spec 096): la tarjeta abre en ese artículo.
+  expect(await screen.findByRole('heading', { name: 'Jarabe natural' })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Conteo' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.queryByRole('button', { name: /Revisar con un conteo/ })).toBeNull();
 });

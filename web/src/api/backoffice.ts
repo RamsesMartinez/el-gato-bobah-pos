@@ -1338,6 +1338,8 @@ export const backofficeApi = {
     api.put<{ altNames: string[]; updatedAt: string }>(`/stock/articles/${id}/alt-names`, { altNames, expectedUpdatedAt }),
   similarArticleAltNames: (id: number, name: string) =>
     api.get<SimilarAlt[]>(`/stock/articles/${id}/alt-names/similar?name=${encodeURIComponent(name)}`),
+  // Lo esperado de cada insumo del conteo (vista avanzada, spec 096): solo con inventory.configure.
+  countExpected: (countId: number) => api.get<{ items?: { ingredientId: number; expected: string }[] }>(`/stock/counts/${countId}/expected`),
   // Merma esperada (spec 096): null = sin captura; 0 = capturada en cero.
   setArticleExpectedWaste: (id: number, pct: number | null) =>
     api.put<{ pct: string | null }>(`/stock/articles/${id}/expected-waste`, { pct }),

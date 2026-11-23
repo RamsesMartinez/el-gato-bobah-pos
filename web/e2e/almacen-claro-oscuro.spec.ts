@@ -172,7 +172,7 @@ for (const tema of ['light', 'dark'] as const) {
     if (await empezar.isVisible().catch(() => false)) { await empezar.click(); abrimosConteo = true; }
     await expect(page.getByTestId('avance')).toBeVisible({ timeout: 15_000 });
     await paso('06-conteo');
-    await page.getByRole('button', { name: 'Lista', exact: true }).click();
+    await page.getByRole('button', { name: 'Avanzada', exact: true }).click();
     await page.getByTestId('renglon-conteo').first().getByRole('button', { name: /^(Contar|Cambiar)$/ }).click();
     const hoja = page.locator('[role="dialog"]').last();
     await hoja.locator('input').first().click();
