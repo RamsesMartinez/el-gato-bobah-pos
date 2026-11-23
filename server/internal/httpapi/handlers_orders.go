@@ -779,10 +779,8 @@ func (h *Handlers) SetOrderPlatformRef(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"id": id, "platformOrderRef": res.Actual})
 }
 
-// PlatformPendingOrders lista los pedidos de plataforma que esperan decisión.
-//
-// Sin gate de rol, igual que la barra de pedidos en curso: quien está atendiendo es quien tiene que
-// poder verlos y decidir, y el plazo de la plataforma no espera a que llegue un gerente.
+// PlatformPendingOrders lista los pedidos de plataforma que esperan decisión. Ruta de la spec 021,
+// reemplazada por /orders/incoming (093); se conserva una subida para el front anterior en caché.
 func (h *Handlers) PlatformPendingOrders(w http.ResponseWriter, r *http.Request) {
 	pedidos, err := h.pedidosPlataforma.Pendientes(r.Context())
 	if err != nil {
@@ -807,8 +805,7 @@ func (h *Handlers) AcceptPlatformOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.created", Data: pedido})
-	// Y el aviso de que ESTE pedido ya se atendió: sin él, la otra tableta sigue mostrando la
-	// alarma y quien la toque encuentra un botón que ya no hace nada.
-	h.broker.Publish(u.CompanyID, realtime.Event{Type: "platform.order.decided", Data: map[string]any{"id": id}})
+	// Y el aviso de que ESTE pedido ya se atendió, a las tabletas con el front nuevo y con el viejo.
+	h.publishIncomingDecided(u.CompanyID, id)
 	JSON(w, http.StatusOK, pedido)
 }

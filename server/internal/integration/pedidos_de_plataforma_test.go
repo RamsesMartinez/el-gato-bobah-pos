@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
@@ -26,6 +27,14 @@ import (
 type decisorFalso struct {
 	detalle []byte
 	falla   error
+	// niega hace que la plataforma no confirme aceptar ni rechazar.
+	niega error
+	// decisiones cuenta las llamadas a aceptar o rechazar: un pedido vencido no debe llegar a la
+	// plataforma.
+	decisiones atomic.Int32
+	// durante corre mientras la plataforma «responde»: simula lo que otra tableta o un aviso hacen
+	// entre la lectura del pedido y su update.
+	durante func()
 }
 
 func (d *decisorFalso) TraerDetalleDePedido(ctx context.Context, liga string) ([]byte, error) {
@@ -34,9 +43,19 @@ func (d *decisorFalso) TraerDetalleDePedido(ctx context.Context, liga string) ([
 	}
 	return d.detalle, nil
 }
-func (d *decisorFalso) AceptarPedido(ctx context.Context, pedidoID, ref string) error { return nil }
+func (d *decisorFalso) AceptarPedido(ctx context.Context, pedidoID, ref string) error {
+	d.decisiones.Add(1)
+	return d.niega
+}
 func (d *decisorFalso) RechazarPedido(ctx context.Context, pedidoID, motivo, expl string) error {
-	return nil
+	d.decisiones.Add(1)
+	if d.durante != nil {
+		d.durante()
+	}
+	if !domain.MotivoDeRechazoValido(motivo) {
+		return domain.ErrMotivoDesconocido
+	}
+	return d.niega
 }
 func (d *decisorFalso) ClaseDeFallo(err error) domain.ClaseDeFallo {
 	return domain.FalloRespuestaInvalida

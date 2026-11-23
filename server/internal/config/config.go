@@ -93,6 +93,11 @@ type Config struct {
 	// integración está apagada y el POS arranca igual. No tiene default porque adivinarlo es elegir
 	// por el operador entre la tienda de pruebas y la que factura.
 	UberEatsEnv string `env:"UBER_EATS_ENV" envDefault:""`
+	// PlatformOrdersSimulated: SOLO DESARROLLO (spec 093). Aceptar y rechazar un pedido de plataforma
+	// se confirman sin hablar con la plataforma, para poder probar la alerta de punta a punta en
+	// local, donde no hay credenciales ni pedidos de prueba. Validate se niega a arrancar con él
+	// fuera de desarrollo.
+	PlatformOrdersSimulated bool `env:"PLATFORM_ORDERS_SIMULATED" envDefault:"false"`
 
 	// --- Cifrado de secretos de terceros (0075) ---
 	// Exactamente una. CredentialsKMSKey es el nombre de la llave de Cloud KMS
@@ -253,6 +258,13 @@ func Validate(c Config) error {
 	// Un ambiente mal escrito es peor que un error: habla con la tienda equivocada sin decirlo.
 	if c.UberEatsEnv != "" && c.UberEatsEnv != "sandbox" && c.UberEatsEnv != "production" {
 		return errors.New(`UBER_EATS_ENV debe ser "sandbox" o "production" (o vacío para apagar la integración)`)
+	}
+	// Simular en producción es aceptar aquí lo que la plataforma va a cancelar: la cocina prepara y
+	// el dinero nunca llega.
+	// Y también si habla con la Uber de producción: APP_ENV vale «development» cuando falta, y un
+	// contenedor arrancado a mano sin él no debe poder fingir decisiones ante la tienda que factura.
+	if c.PlatformOrdersSimulated && (c.Env != "development" || c.UberEatsEnv == "production") {
+		return errors.New("PLATFORM_ORDERS_SIMULATED solo se permite con APP_ENV=development y sin UBER_EATS_ENV=production")
 	}
 	if err := validateCredentialsCipher(c); err != nil {
 		return err

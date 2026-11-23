@@ -59,6 +59,10 @@ func (h *Handlers) WebhookDePlataforma(w http.ResponseWriter, r *http.Request) {
 		if recibido.PedidoNuevo {
 			h.broker.Publish(recibido.Empresa, realtime.Event{Type: "platform.order.received"})
 		}
+		// La alerta continua (093) escucha solo este: llegó un pedido o la plataforma canceló uno.
+		if recibido.Cambio {
+			h.broker.Publish(recibido.Empresa, realtime.Event{Type: "incoming.changed", Data: map[string]any{}})
+		}
 		// 200 CON CUERPO VACÍO, que es lo que la plataforma espera. Cualquier otra cosa la hace
 		// reintentar un aviso que ya procesamos.
 		w.WriteHeader(http.StatusOK)

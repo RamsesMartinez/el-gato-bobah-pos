@@ -71,6 +71,11 @@ func Error(w http.ResponseWriter, err error) {
 	// «Se acabó» (spec 084): la pantalla decide por el código qué mostrar.
 	case errors.Is(err, domain.ErrReportLimit):
 		status, code = http.StatusTooManyRequests, "REPORT_LIMIT"
+	// Dos tabletas decidiendo el mismo pedido entrante: la que pierde recibe 409 y la pantalla dice
+	// que otra ya lo atendió. Sin este caso caía a 500, y quien operaba veía un error del sistema
+	// por algo que es el funcionamiento normal con varias tabletas.
+	case errors.Is(err, domain.ErrPedidoYaDecidido):
+		status, code = http.StatusConflict, "ALREADY_DECIDED"
 	case errors.Is(err, domain.ErrUndoExpired):
 		status, code = http.StatusConflict, "UNDO_EXPIRED"
 	case errors.Is(err, domain.ErrUndoAfterMovement):

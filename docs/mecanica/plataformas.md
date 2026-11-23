@@ -83,3 +83,24 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   - **La AAD de cada cifrado es `credential|company|platform|kind`** ([domain](../../server/internal/domain/platform_credentials.go)).
     No se cambia su formato: todo lo ya guardado se cifró con él. La llave de firma usa el mismo
     tipo para la primaria y la secundaria porque rotar mueve el cifrado entre columnas.
+
+## Pedidos por aceptar y la alerta continua (spec 093)
+
+- **«Pendiente» lo decide el servidor, y no es solo el estado.** Un pedido de plataforma deja de
+  estar por aceptar cuando la plataforma avisa que lo canceló (`orders.cancel`/`orders.failure`) **o**
+  cuando pasa su `decide_before`, aunque la fila siga en `pendiente`. Hasta la 093 la cancelación se
+  confirmaba y no se hacía nada, y con una alarma que suena hasta que alguien decide eso es una
+  tableta sonando para siempre. La hora del filtro la pone el servicio (`@now`), no `now()`: es la
+  misma con la que decide al aceptar, y se prueba con reloj fijo.
+- **Primero la plataforma, después la base, también al rechazar.** Si la plataforma no confirma el
+  rechazo, el pedido sigue pendiente y sonando: allá también sigue esperando.
+- **La tableta que pierde una carrera recibe 409 `ALREADY_DECIDED`**, también cuando choca con el
+  único del folio (`orders_platform_ref`) antes del `execrows`. Antes caía a 500.
+- **`PLATFORM_ORDERS_SIMULATED=true` solo en desarrollo**: aceptar y rechazar se confirman sin hablar
+  con la plataforma, para probar la alerta en local. `config.Validate` no arranca con él fuera de
+  `APP_ENV=development`. Los pedidos se siembran con `make entrantes-de-prueba n=…`, que solo escribe
+  en la base del worktree; aceptados ya vienen pagados y se cierran entregándolos.
+- **Se retiran en una subida posterior**: `GET /orders/platform/pending`, `POST
+  /orders/platform/{id}/accept` y los eventos `platform.order.received`/`platform.order.decided`.
+  Siguen esta subida para las tabletas con el front anterior en caché; el front nuevo usa
+  `/orders/incoming` y el evento `incoming.changed`.

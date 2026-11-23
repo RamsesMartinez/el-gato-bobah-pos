@@ -40,7 +40,6 @@ import { AutoPrintTicket, KitchenTicket } from '../../shared/tickets/AutoPrintTi
 import { aliasCoincidente, buscarProductos } from './buscarProducto';
 import { CategoryRail, type Selection } from './CategoryRail';
 import { PlatformPicker } from './PlatformPicker';
-import { AvisoDePlataforma } from './AvisoDePlataforma';
 import { AvisoSinConexion } from './AvisoSinConexion';
 import { PlatformPriceDialog } from './PlatformPriceDialog';
 import { desglosePrecio, nombreDeLista, precioDeLista } from './precioPlataforma';
@@ -502,8 +501,6 @@ export function POSPage() {
   if (cashStatus.data && !cashStatus.data.open) {
     return (
       <>
-        {/* El aviso de plataforma también aquí: aceptar un pedido de plataforma no exige turno. */}
-        <AvisoDePlataforma />
         <Center h="80vh" px={6}>
         <VStack gap={4} maxW="420px" textAlign="center">
           <Box color="orange.500"><LuTriangleAlert size={44} /></Box>
@@ -652,7 +649,6 @@ export function POSPage() {
 
   return (
     <Box ref={ref} h="100%" bg="bg.subtle" position="relative">
-      <AvisoDePlataforma />
       <AvisoDeTurnoViejo estado={cashStatus.data} />
       {wide ? (
         <Flex h="100%">
