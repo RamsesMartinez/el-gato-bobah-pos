@@ -60,6 +60,7 @@ func (in lowStockUpdateArgs) body() (map[string]any, error) {
 func register084() {
 	writeTool(writeSpec[lowStockUpdateArgs]{
 		name: "low_stock_update",
+		refs: refsLowStock,
 		route: func(_ *mcpSession, _ context.Context, in lowStockUpdateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			body, err := in.body()
 			if err != nil {
