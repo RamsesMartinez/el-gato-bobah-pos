@@ -101,6 +101,15 @@ invalidar el menú en cada venta. Una lista corta y aparte cuesta una consulta p
 barata la revisión); aviso en vivo por SSE (no llega con la tableta suspendida, el mismo problema que
 la spec 034 resolvió con la revisión por minuto).
 
+## R-5b. Una sola puerta a «la existencia con la que se vende» (coordinación con #65)
+
+**Decision**: `app.salesStock(ctx, q, channel) (domain.StockLevels, error)` es la única lectura de
+existencias para vender: hoy devuelve los niveles de `stock_levels` de la sucursal (la de
+`current_branch_id()` o la del pedido), y con el #65 devolverá los del almacén de venta. La lista de
+agotados (R-5) y el chequeo de la venta (R-6) solo la llaman a ella; el chequeo bloquea con `FOR
+UPDATE` dentro de la misma función (variante `lockSalesStock`) para que el candado también cambie en
+un solo lugar.
+
 ## R-6. Dónde se rechaza la venta: en la transacción del pedido, con candado
 
 **Decision**: `createInTx` y `addLinesInTx` (los dos caminos que escriben renglones de mostrador; el
@@ -139,7 +148,9 @@ atómico.
 
 ## R-9. Configuración: menú lateral dentro de `/negocio`, sección en la URL
 
-**Decision**: `BusinessSettingsPage` se parte en secciones con un menú a la izquierda; la sección
+**Decision** (maqueta elegida por el dueño, tercera vuelta): `BusinessSettingsPage` se parte en
+secciones con tres vistas —A menú lateral con nombres (por omisión), B menú de íconos, C índice— que
+se cambian con un selector fijo en la barra de título. La vista se recuerda por tableta; la sección
 abierta va en `?seccion=` (FR-024). No cambia ninguna ruta ni permiso; cada sección es un componente
 con los bloques que hoy existen:
 

@@ -46,8 +46,8 @@ mientras no se capture otro (la casilla «Usar precio original» de Fudo).
 
 ### User Story 1 - Decidir dónde se vende cada producto (Priority: P1)
 
-Quien configura el menú abre un producto y, dentro de «Opciones avanzadas», ve dos casillas grandes:
-«Mostrador» y «Web», las dos encendidas. Apaga «Mostrador» en un producto que solo quiere ofrecer
+Quien configura el menú abre un producto y, en la pestaña «Disponibilidad» (o en «Opciones avanzadas»
+al darlo de alta), ve dos casillas grandes: «Mostrador» y «Web», las dos encendidas. Apaga «Mostrador» en un producto que solo quiere ofrecer
 por la web (o al revés) y guarda.
 
 **Why this priority**: es la base de todo lo demás: el menú público (#316) solo puede mostrar lo que
@@ -61,7 +61,8 @@ el catálogo.
 **Acceptance Scenarios**:
 
 1. **Given** un producto recién creado sin tocar opciones avanzadas, **When** se abre Vender,
-   **Then** el producto aparece, y en su ficha las casillas «Mostrador» y «Web» están encendidas.
+   **Then** el producto aparece, y en su pestaña «Disponibilidad» las casillas «Mostrador» y «Web»
+   están encendidas.
 2. **Given** cualquier producto que ya existía antes de esta subida, **When** se abre su ficha,
    **Then** las dos casillas están encendidas y Vender lo sigue mostrando como antes.
 3. **Given** un producto con «Mostrador» apagado, **When** se abre Vender, **Then** no aparece, ni
@@ -112,7 +113,7 @@ aunque la pantalla esté desactualizada.
 
 ### User Story 3 - Precio y datos para la web en el mismo producto (Priority: P2)
 
-Quien configura el menú abre un producto y entra a la sección «Venta en web». Ahí ve si el producto
+Quien configura el menú abre un producto (a pantalla completa) y entra a la pestaña «Venta en web». Ahí ve si el producto
 se vende en la web, el precio web —vacío, mostrando el de mostrador como el que se usará— y la
 descripción para el cliente. Escribe un precio propio para la web y guarda; el precio de mostrador
 no cambia.
@@ -145,7 +146,8 @@ que la web vuelve al de mostrador.
 
 Quien administra el negocio entra a Ajustes → Negocio y ve, a la izquierda, un menú con las
 secciones (Negocio, Venta en mostrador, Venta en web, Caja, Inventario, Personal); toca una y a la
-derecha ve solo sus ajustes. Ya no tiene que bajar por una sola página larga.
+derecha ve solo sus ajustes. Ya no tiene que bajar por una sola página larga. Si prefiere, cambia la
+vista a íconos o a índice con el selector de la barra de título.
 
 **Why this priority**: la pantalla ya junta once bloques y el menú público va a sumar más (enlace,
 QR, marca). Reordenarla ahora cuesta poco; hacerlo cuando tenga veinte cuesta más.
@@ -165,6 +167,8 @@ lo más dos toques desde que abre, sin desplazarse por secciones ajenas.
    misma sección.
 5. **Given** la sección «Venta en web», **When** se abre, **Then** dice cuántos productos se venden
    en la web y cuántos tienen precio web propio, con un acceso al menú para cambiarlos.
+6. **Given** que cambia a la vista de íconos o de índice, **When** recarga, **Then** abre en la
+   misma vista, y el selector está en el mismo lugar en las tres.
 
 ### Edge Cases
 
@@ -205,8 +209,9 @@ lo más dos toques desde que abre, sin desplazarse por secciones ajenas.
   o no. La ausencia de decisión MUST significar «se ofrece».
 - **FR-002**: Todo producto existente y todo producto nuevo, en toda empresa, MUST quedar
   ofreciéndose en Mostrador y Web sin que nadie lo marque.
-- **FR-003**: La ficha del producto (alta y edición) MUST mostrar, dentro de «Opciones avanzadas»,
-  dos casillas «Mostrador» y «Web», encendidas por omisión, de al menos 44 px de alto.
+- **FR-003**: Las casillas «Mostrador» y «Web», encendidas por omisión y de al menos 44 px de alto,
+  MUST estar en el alta (dentro de «Opciones avanzadas», cerrado, para no estorbar el alta normal) y
+  en la edición (pestaña «Disponibilidad» de la ficha a pantalla completa; ver FR-028).
 - **FR-004**: Un producto apagado para Mostrador MUST no aparecer en Vender (categorías, búsqueda,
   favoritos y «Top»), y el servidor MUST rechazar agregarlo a un pedido de mostrador.
 - **FR-005**: El sistema MUST ofrecer una regla única que diga qué productos se venden en la web y
@@ -237,9 +242,10 @@ lo más dos toques desde que abre, sin desplazarse por secciones ajenas.
 
 **Venta en web del producto**
 
-- **FR-016**: La ficha del producto MUST tener una sección «Venta en web» que junte: si se vende en
-  la web (la misma casilla de FR-003), el precio web y la descripción para el cliente.
-- **FR-017**: El precio web MUST ser opcional; vacío MUST significar «el de mostrador», y la sección
+- **FR-016**: La ficha del producto MUST tener una pestaña «Venta en web» que junte: si se vende en
+  la web (el mismo dato que la casilla de FR-003), el precio web y la descripción para el cliente.
+- **FR-017**: El precio web MUST ser opcional, con una casilla «Usar el precio de mostrador ($N)»
+  encendida por omisión; encendida (o el campo vacío) MUST significar «el de mostrador», y la pestaña
   MUST mostrar la cifra que se usará.
 - **FR-018**: El precio web MUST validarse como cualquier precio (mayor que cero, dos decimales,
   tope de dinero) y MUST no cambiar el precio de mostrador ni los de plataforma.
@@ -247,10 +253,24 @@ lo más dos toques desde que abre, sin desplazarse por secciones ajenas.
   plataformas de reparto.
 - **FR-020**: Duplicar un producto MUST copiar sus lugares de venta y su precio web.
 
+**Ficha del producto**
+
+- **FR-028**: La edición de un producto MUST abrirse a pantalla completa, con un menú lateral de
+  pestañas por tema: **General** (nombre, precio, costo, categoría, otros nombres, favorito, activo,
+  pasa por cocina), **Disponibilidad** (Mostrador y Web, temporada), **Venta en web**, **Receta e
+  inventario** (receta, vender sin existencia, alertas) y **Extras** (grupos modificadores). Todo lo
+  que hoy tiene la ficha MUST quedar en exactamente una pestaña; a 1280×854 y a 1024×600 ninguna
+  pestaña MUST obligar a deslizar con un producto típico (hasta 4 grupos de extras).
+- **FR-029**: «Guardar» MUST guardar lo de todas las pestañas en una sola acción, y cambiar de
+  pestaña MUST no perder lo capturado.
+
 **Configuración**
 
-- **FR-021**: La pantalla de configuración del negocio MUST organizarse con un menú lateral por
-  secciones: Negocio, Venta en mostrador, Venta en web, Caja, Inventario y Personal.
+- **FR-021**: La pantalla de configuración del negocio MUST organizarse por secciones: Negocio,
+  Venta en mostrador, Venta en web, Caja, Inventario y Personal, con tres vistas que se cambian con
+  un selector fijo en la barra de título (siempre en el mismo lugar): **A** menú lateral con
+  nombres (por omisión), **B** menú lateral de íconos e **C** índice de secciones. La tableta
+  recuerda la vista elegida.
 - **FR-022**: Todo ajuste que hoy está en esa pantalla MUST quedar en exactamente una sección, con
   el mismo comportamiento.
 - **FR-023**: Una sección cuyo contenido el usuario no puede ver MUST no aparecer en el menú.
@@ -287,6 +307,8 @@ lo más dos toques desde que abre, sin desplazarse por secciones ajenas.
   desactualizada (0 ventas aceptadas por encima de la existencia con la opción apagada).
 - **SC-004**: Quien configura llega a cualquier ajuste de la pantalla de configuración en a lo más
   dos toques desde que abre, a 1280×854.
+- **SC-007**: En la ficha del producto, ninguna pestaña obliga a deslizar a 1024×600 con un producto
+  típico (medido en la maqueta elegida: la más alta, 464 px de 464 a la vista).
 - **SC-005**: Una persona nueva, de una fonda, logra sin ayuda: apagar un producto para la web,
   ponerle precio web y hacer que otro se agote solo; en la prueba con alguien sin contexto.
 - **SC-006**: Un producto repuesto deja de salir «Agotado» en a lo más un minuto.

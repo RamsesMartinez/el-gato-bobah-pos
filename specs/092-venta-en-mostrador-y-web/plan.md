@@ -68,17 +68,35 @@ Sin violaciones; *Complexity Tracking* vacío.
 | Chequeo en la venta | app | `server/internal/app/orders.go`, `server/queries/orders.sql` (`GetPricedProducts` + `LockStockLevels`) |
 | Resumen de la web | query + app + handler | `server/queries/web_sales.sql`, `server/internal/app/web_sales.go`, `server/internal/httpapi/handlers_web_sales.go` |
 | Mapeo `OUT_OF_STOCK` | httpapi | `server/internal/httpapi/respond.go` |
-| Ficha del producto | web | `web/src/shared/ProductEditDialog.tsx`, `web/src/shared/VentaEnWebSection.tsx`, `web/src/shared/OpcionesAvanzadas.tsx`, alta en `web/src/features/admin/ProductsAdminPage.tsx` |
+| Ficha del producto (G2) | web | `web/src/shared/ProductEditDialog.tsx` + `web/src/shared/producto/*` (una pestaña por archivo), alta en `web/src/features/admin/ProductsAdminPage.tsx` |
 | Agotado en Vender | web | `web/src/hooks/useSoldOut.ts`, tarjeta de producto en `web/src/features/pos/` |
 | Lista de productos | web | badge «No se vende en ningún lado» en `ProductsAdminPage.tsx` |
-| Configuración | web | `web/src/features/admin/BusinessSettingsPage.tsx` → `web/src/features/admin/settings/*` |
+| Ajustes del negocio | web | `web/src/features/admin/BusinessSettingsPage.tsx` → `web/src/features/admin/settings/*` (secciones, vistas y selector) |
 
 ## Pantallas y maquetas
 
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|
-| Ficha del producto (casillas Mostrador/Web y Vender sin existencia en «Opciones avanzadas», sección «Venta en web») | [maquetas](https://claude.ai/artifact/JgmuMgs77e5mpgxVFDTydv) | _esperando al dueño_ | — |
-| Configuración (Negocio) con menú lateral | [maquetas](https://claude.ai/artifact/8mxJFnD73y2dxyoBxWbbtg) | _esperando al dueño_ | — |
+| Ficha del producto | [maquetas](https://claude.ai/artifact/JgmuMgs77e5mpgxVFDTydv) | G2 (tercera vuelta) | El dueño pidió pantalla completa y pestañas por tema con nombres de uso común; laterales como Ajustes; ninguna pestaña desliza a 1024×600 (464 px a la vista) |
+| Ajustes del negocio | [maquetas](https://claude.ai/artifact/8mxJFnD73y2dxyoBxWbbtg) | Selector de vista fijo, A por omisión (tercera vuelta) | El dueño pidió poder cambiar entre las tres vistas con el selector siempre en el mismo lugar |
+| Alta de producto | — | Sin maqueta: el alta de hoy más un «Opciones avanzadas» cerrado con las dos casillas | Lo pidió el dueño en el issue; no cambia la disposición del alta |
+### Lo elegido, en detalle
+
+- **Ficha del producto (G2)**: `ProductEditDialog` pasa a `size="full"`. Título arriba, menú lateral
+  de 220 px con cinco pestañas (botones de 48 px): General · Disponibilidad · Venta en web · Receta e
+  inventario · Extras. A la derecha el contenido de la pestaña; General y otras con más de tres
+  bloques en dos columnas. Pie fijo con Cancelar y Guardar (guarda todo). Medido a 1024×600: 464 px
+  a la vista; la pestaña más alta cabe. «Venta en web»: interruptor «Se vende en la web» (mismo dato
+  que la casilla Web), casilla «Usar el precio de mostrador ($N)» encendida por omisión, campo de
+  precio al apagarla, descripción para el cliente. La pestaña «Receta e inventario» muestra «Vender
+  sin existencia» solo si el producto descuenta algo del almacén.
+- **Ajustes del negocio**: barra de título fija (60 px) con «Ajustes del negocio» y un selector de
+  tres botones de 44 px a la derecha (radiogroup) que no se mueve: A menú lateral de 224 px con
+  nombres (por omisión), B menú de íconos de 104 px, C índice en dos columnas con «Todas las
+  secciones» para volver. La vista se recuerda por tableta (`localStorage`, como Interfaz); la
+  sección abierta va en `?seccion=`.
+- **Alta**: `NewProductDialog` agrega «Opciones avanzadas» cerrado con las dos casillas.
+
 | Tarjeta «Agotado» en Vender | Sin maqueta: usa el estado atenuado de la tarjeta existente más una etiqueta; no cambia disposición | — | — |
 
 ## Project Structure
@@ -118,6 +136,13 @@ web/src/
 `web/src/features/admin/settings/`.
 
 ## Coordinación con otras ramas
+
+- **#65** (varios almacenes por sucursal) corre en paralelo: «hay existencia» se mide en el
+  **almacén de venta** de la sucursal. Toda lectura de existencia para vender pasa por **una sola
+  función** en `app` (`salesStock(ctx, q, channel)`: niveles del lugar donde se vende ese lugar de
+  venta), que hoy lee `stock_levels` de la sucursal y que el #65 solo cambia por dentro. La usan la
+  lista de agotados y el chequeo de la venta; ninguna consulta de existencia para vender vive fuera
+  de ella.
 
 - **#325** (fotos) también toca la ficha del producto: se trae `develop` a esta rama en cada etapa
   (antes de maquetas aprobadas, antes de implementar el front y antes del PR), con merge firmado.
