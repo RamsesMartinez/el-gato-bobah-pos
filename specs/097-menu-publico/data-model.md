@@ -1,6 +1,6 @@
 # Data Model: Menú público v1
 
-Migración **0123_public_menu.sql** (la siguiente libre con develop al día: 0121 es la del MCP, #335, y 0122 la de almacenes, spec 094).
+Migración **0125_public_menu.sql** (renumerada al mergear: develop ya traía 0123 y 0124 de los traspasos de la spec 094).
 Todo es aditivo: la API anterior no lee nada de esto y sigue funcionando durante el traslape.
 
 ## Tablas nuevas
@@ -141,7 +141,7 @@ entrada: nombre pedido (ya normalizado), nombres de la empresa (vigente + retira
 Orden: vista → funciones → políticas (`companies`, `public_menus`, `public_menu_names`) → revocar
 grants → tablas. El rol **no** se borra (es de clúster) y queda `nologin`. Pierde los nombres
 elegidos y los códigos QR: al volver a subir, el Up genera códigos nuevos y un QR impreso deja de
-funcionar. No se niega (no hay a dónde guardarlos); se anota en el Down y la 0123 entra a
+funcionar. No se niega (no hay a dónde guardarlos); se anota en el Down y la 0125 entra a
 `guardedDownWithoutCleanup` con esa razón si la prueba de Downs lo pide.
 
 ## Concurrencia conocida y aceptada

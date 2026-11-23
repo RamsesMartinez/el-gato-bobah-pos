@@ -59,7 +59,7 @@ with company as (
   select c.id, v.code, v.name from company c
   cross join (values ('pos', 'Mostrador'), ('qr', 'Menú QR'), ('online', 'Web')) as v(code, name)
 ), public_menu as (
-  -- Y con su menú público (spec 097), nombrado con la misma regla que el relleno de la 0123: del
+  -- Y con su menú público (spec 097), nombrado con la misma regla que el relleno de la 0125: del
   -- nombre de la empresa, nunca del slug con el que se inicia sesión.
   insert into public_menus (company_id, qr_token)
   select id, substr(replace(gen_random_uuid()::text, '-', ''), 1, 12) from company

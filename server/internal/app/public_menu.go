@@ -90,7 +90,7 @@ func (s *PublicMenuService) Menu(ctx context.Context, name string) (*PublicMenu,
 	if !domain.ValidMenuNameShape(name) {
 		return nil, nil, domain.ErrNotFound
 	}
-	// La vista de la 0123 resuelve con el rol de la aplicación sin empresa: el pool, no la conexión
+	// La vista de la 0125 resuelve con el rol de la aplicación sin empresa: el pool, no la conexión
 	// de una sesión (aquí no la hay, y si la hubiera sería de otra empresa).
 	route, err := s.store.Q.ResolvePublicMenuName(ctx, name)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !route.CompanyActive) {
