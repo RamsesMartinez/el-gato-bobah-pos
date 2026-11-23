@@ -9,7 +9,7 @@ import { CostBreakdownTable } from './CostBreakdownTable';
 
 function Cifra({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <Box borderWidth="1px" borderRadius="lg" px={3} py={2} aria-label={label}>
+    <Box borderWidth="1px" borderRadius="lg" px={3} py={2} role="group" aria-label={label}>
       <Text fontSize="sm" color="fg.muted">{label}</Text>
       <Text fontSize="xl" fontWeight={strong ? '800' : '600'}>{value}</Text>
     </Box>
@@ -52,7 +52,7 @@ export function CostTab({ productId, text, onText }: { productId: number; text: 
           helperText={typed === null ? `Usa la general: ${data.generalPct ?? 0} %` : 'Reemplaza a la general en este producto'}>
           <HStack gap={2}>
             <Input aria-label="Merma del producto, en porcentaje" maxW="110px" minH="44px" inputMode="decimal"
-              placeholder={data.generalPct !== null ? `${data.generalPct}` : 'Sin merma'} value={text} onChange={(e) => onText(e.target.value)} />
+              value={text} onChange={(e) => onText(e.target.value)} />
             <Text>%</Text>
           </HStack>
         </Field>

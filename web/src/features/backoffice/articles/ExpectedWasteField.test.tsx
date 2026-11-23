@@ -55,4 +55,45 @@ describe('Merma al preparar en la ficha del artículo', () => {
     expect(screen.getByLabelText('Merma del artículo, en porcentaje')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Sin capturar' })).toBeDisabled();
   });
+
+  // Revisión de código: el blur guarda 5 y el toque en «Sin capturar» llega con la petición en vuelo.
+  test('teclear 5 y tocar «Sin capturar» enseguida termina en null', async () => {
+    let resolver: (v: unknown) => void = () => {};
+    back.setArticleExpectedWaste.mockImplementationOnce(() => new Promise((r) => { resolver = r; }));
+    montar(null);
+    fireEvent.click(screen.getByRole('button', { name: 'Capturada' }));
+    const input = screen.getByLabelText('Merma del artículo, en porcentaje');
+    fireEvent.change(input, { target: { value: '5' } });
+    fireEvent.blur(input);
+    fireEvent.click(screen.getByRole('button', { name: 'Sin capturar' }));
+    await waitFor(() => expect(back.setArticleExpectedWaste).toHaveBeenCalledWith(7, 5));
+    resolver({ pct: '5' });
+    await waitFor(() => expect(back.setArticleExpectedWaste).toHaveBeenLastCalledWith(7, null));
+  });
+
+  test('borrar el % y salir lo deja sin capturar (null), no se queda «Capturada» vacía', async () => {
+    montar('5.00');
+    const input = screen.getByLabelText('Merma del artículo, en porcentaje');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(back.setArticleExpectedWaste).toHaveBeenCalledWith(7, null));
+    expect(screen.getByRole('button', { name: 'Sin capturar' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('«Capturada» con el campo vacío y salir regresa a «Sin capturar» sin mandar nada', () => {
+    montar(null);
+    fireEvent.click(screen.getByRole('button', { name: 'Capturada' }));
+    fireEvent.blur(screen.getByLabelText('Merma del artículo, en porcentaje'));
+    expect(back.setArticleExpectedWaste).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Sin capturar' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('si falla quitar la merma, la ficha vuelve a mostrar la que sigue guardada', async () => {
+    back.setArticleExpectedWaste.mockRejectedValueOnce(new Error('red'));
+    montar('5.00');
+    fireEvent.click(screen.getByRole('button', { name: 'Sin capturar' }));
+    expect(await screen.findByText('No se pudo guardar')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Capturada' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Merma del artículo, en porcentaje')).toHaveValue('5');
+  });
 });

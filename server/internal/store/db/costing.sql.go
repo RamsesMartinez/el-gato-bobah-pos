@@ -219,6 +219,9 @@ type SetGeneralExpectedWasteParams struct {
 
 // Los tres % de merma esperada (spec 096). Cada uno devuelve el valor anterior para la bitácora; sin
 // fila = no existe o es de otra empresa (RLS), y sale como 404.
+// Sin where a propósito: business_settings tiene una fila por empresa y RLS la acota a la de la
+// sesión (sqlc no conoce company_id, AGENTS.md §1). Solo corre como gatobobah_app; como owner tocaría
+// a todas las empresas.
 func (q *Queries) SetGeneralExpectedWaste(ctx context.Context, arg SetGeneralExpectedWasteParams) (*decimal.Decimal, error) {
 	row := q.db.QueryRow(ctx, setGeneralExpectedWaste, arg.Pct, arg.UpdatedBy)
 	var previous *decimal.Decimal

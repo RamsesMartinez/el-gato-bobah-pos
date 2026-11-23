@@ -2,9 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
-
-	"github.com/jackc/pgx/v5"
 
 	"github.com/shopspring/decimal"
 
@@ -147,7 +144,8 @@ type ProductCostingView struct {
 }
 
 // ProductCosting arma el desglose del costo de un producto con la merma real de cada artículo.
-func (s *CostingService) ProductCosting(ctx context.Context, productID int64) (ProductCostingView, error) {
+// withRealWaste: quien no puede ver el almacén recibe realWaste vacío (no nulo) en cada renglón.
+func (s *CostingService) ProductCosting(ctx context.Context, productID int64, withRealWaste bool) (ProductCostingView, error) {
 	q := s.store.QC(ctx)
 	g, _, prods, _, err := loadGraph(ctx, q)
 	if err != nil {
@@ -163,14 +161,10 @@ func (s *CostingService) ProductCosting(ctx context.Context, productID int64) (P
 	if !found {
 		return ProductCostingView{}, domain.ErrNotFound
 	}
-	general, err := q.GetGeneralExpectedWaste(ctx)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return ProductCostingView{}, err
-	}
 	b := g.ProductBreakdown(productID)
 	v := ProductCostingView{
 		ProductID: productID, Source: b.Source, Cost: d4(b.Total), Base: d4(b.Base), Waste: d4(b.Waste),
-		GeneralPct: pctF(general), ProductPct: prodPct,
+		GeneralPct: g.General(), ProductPct: prodPct,
 		Lines: make([]CostLineView, 0, len(b.Lines)), Components: make([]CostComponentView, 0, len(b.Components)),
 	}
 	ids := make([]int64, 0, len(b.Lines))
@@ -185,9 +179,11 @@ func (s *CostingService) ProductCosting(ctx context.Context, productID int64) (P
 	for _, l := range labels {
 		name[l.ID], unit[l.ID] = l.Name, l.BaseUnit
 	}
-	real, err := realWaste(ctx, q, ids)
-	if err != nil {
-		return ProductCostingView{}, err
+	real := map[int64][]RealWasteView{}
+	if withRealWaste {
+		if real, err = realWaste(ctx, q, ids); err != nil {
+			return ProductCostingView{}, err
+		}
 	}
 	for _, l := range b.Lines {
 		rw := real[l.IngredientID]

@@ -156,11 +156,12 @@ func TestExpectedWasteIsIsolated(t *testing.T) {
 	other := makeCompany(t, owner, "otra-merma")
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, st *store.Store, ctx context.Context) {
 		svc := app.NewCostingService(st)
-		if err := svc.SetProductExpectedWaste(ctx, k.frappe, wpct("10"), k.admin); err == nil {
-			t.Fatal("se cambió la merma de un producto de otra empresa")
+		// 404 y nada más: ni un 500 de RLS ni un 409 que distinga «ajeno» de «no existe».
+		if err := svc.SetProductExpectedWaste(ctx, k.frappe, wpct("10"), k.admin); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("merma de un producto ajeno = %v; quiere ErrNotFound", err)
 		}
-		if err := svc.SetArticleExpectedWaste(ctx, k.base, wpct("10"), k.admin); err == nil {
-			t.Fatal("se cambió la merma de un artículo de otra empresa")
+		if err := svc.SetArticleExpectedWaste(ctx, k.base, wpct("10"), k.admin); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("merma de un artículo ajeno = %v; quiere ErrNotFound", err)
 		}
 		_ = svc.SetGeneralExpectedWaste(ctx, wpct("10"), k.admin)
 	})

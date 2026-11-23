@@ -19,6 +19,7 @@ describe('Merma real en la ficha del artículo', () => {
     expect(screen.getByText('4.5 %')).toBeInTheDocument();
     expect(screen.getByText('Bodega')).toBeInTheDocument();
     expect(screen.getByText('Sin ventas')).toBeInTheDocument();
+    expect(screen.getByText('400 g mermados')).toBeInTheDocument();
     expect(screen.queryByText('Pasa lo esperado')).toBeNull();
   });
 
@@ -36,5 +37,10 @@ describe('Merma real en la ficha del artículo', () => {
   test('sin almacenes con datos no queda vacío', () => {
     montar([], 5);
     expect(screen.getByText('Sin datos en 90 días')).toBeInTheDocument();
+  });
+
+  test('un 0 % con ventas dice que no hay merma registrada', () => {
+    montar([rw({ ratio: 0, state: 'ratio', consumed: '50' })], 5);
+    expect(screen.getByText(/sin merma registrada/)).toBeInTheDocument();
   });
 });

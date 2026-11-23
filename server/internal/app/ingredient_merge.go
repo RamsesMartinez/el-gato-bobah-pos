@@ -803,6 +803,11 @@ func (m *mergeRun) mergeExpectedWaste(ctx context.Context) error {
 	if pct == m.target.ExpectedWastePct {
 		return nil
 	}
-	_, err := m.q.SetIngredientExpectedWaste(ctx, db.SetIngredientExpectedWasteParams{ID: m.targetID, Pct: pct})
-	return err
+	// El candado de composición ya está tomado (lock): el valor anterior es el que se ve aquí.
+	if _, err := m.q.SetIngredientExpectedWaste(ctx, db.SetIngredientExpectedWasteParams{ID: m.targetID, Pct: pct}); err != nil {
+		return err
+	}
+	// Heredarla cambia el costo del destino: queda en la bitácora como cualquier cambio de merma.
+	return auditEntity(ctx, m.q, domain.AuditIngredientExpectedWaste, "ingredient", m.targetID, nil, &m.actor,
+		map[string]any{"pct": m.target.ExpectedWastePct}, map[string]any{"pct": pct, "inheritedFromMerge": true})
 }

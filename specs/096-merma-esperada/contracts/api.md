@@ -6,7 +6,7 @@ Todas bajo `/api/v1`, con sesión. Errores por `httpapi.Error`: 400 validación,
 ## Subida 1
 
 ### `PUT /settings/expected-waste` — `menu.configure`
-Body `{ "pct": number | null }`. `null` = sin merma general. 200 → `{ "pct": number|null }`.
+Body `{ "pct": number | null }`. `null` = sin merma general. 200 → `{ "pct": "5" | null }` (decimal como texto, como todo decimal de la API).
 Recalcula costos en la misma transacción. Bitácora `settings.expected_waste`.
 
 ### `PUT /admin/products/{id}/expected-waste` — `menu.configure`
@@ -47,7 +47,8 @@ Agrega `expectedWastePct: number | null`.
 }
 ```
 `lines` y `components` siempre son arreglo (nunca `null`). `realWaste` siempre arreglo; estado
-`no_sales` o `no_data` con `ratio: null`.
+`no_sales` o `no_data` con `ratio: null`. Sin `inventory.view`, `realWaste` viaja vacío (son consumo y
+mermas por almacén, que su ruta propia pide con ese permiso).
 
 ### `GET /stock/articles/{id}/real-waste` — `inventory.view`
 `{ "days": 90, "items": [RealWaste...] }`.

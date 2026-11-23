@@ -32,8 +32,12 @@ describe('Merma general en Ajustes › Costos (spec 096)', () => {
   test('teclear 5 y Guardar manda 5', async () => {
     montar();
     fireEvent.change(await screen.findByLabelText('Merma al preparar, en porcentaje'), { target: { value: '5' } });
+    // El refetch tarda: mientras, la caché ya trae lo guardado.
+    pos.businessSettings.mockReturnValue(new Promise(() => {}));
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
     await waitFor(() => expect(back.setGeneralExpectedWaste).toHaveBeenCalledWith(5));
+    // Guardado, el campo se queda en 5 aunque el refetch todavía no llegue.
+    await waitFor(() => expect(screen.getByLabelText('Merma al preparar, en porcentaje')).toHaveValue('5'));
   });
 
   test('vaciar una merma guardada manda null, nunca 0', async () => {
@@ -53,11 +57,11 @@ describe('Merma general en Ajustes › Costos (spec 096)', () => {
     expect(screen.getByText('Escribe de 0 a 99.99')).toBeInTheDocument();
   });
 
-  test('si el servidor está recalculando, lo dice sin nombres internos', async () => {
-    back.setGeneralExpectedWaste.mockRejectedValue(new ApiError(409, 'conflict', 'x', 'r'));
+  test('un rechazo del servidor se dice con su mensaje, no con uno inventado', async () => {
+    back.setGeneralExpectedWaste.mockRejectedValue(new ApiError(409, 'conflict', 'Captura primero los datos del negocio', 'r'));
     montar();
     fireEvent.change(await screen.findByLabelText('Merma al preparar, en porcentaje'), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-    expect(await screen.findByText('Se está recalculando el costo; intenta en un momento')).toBeInTheDocument();
+    expect(await screen.findByText('Captura primero los datos del negocio')).toBeInTheDocument();
   });
 });

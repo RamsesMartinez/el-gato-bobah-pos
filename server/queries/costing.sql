@@ -56,6 +56,9 @@ update modifier_options o set current_cost = v.cost::numeric
 -- fila = no existe o es de otra empresa (RLS), y sale como 404.
 
 -- name: SetGeneralExpectedWaste :one
+-- Sin where a propósito: business_settings tiene una fila por empresa y RLS la acota a la de la
+-- sesión (sqlc no conoce company_id, AGENTS.md §1). Solo corre como gatobobah_app; como owner tocaría
+-- a todas las empresas.
 update business_settings bs set expected_waste_pct = sqlc.narg(pct), updated_at = now(), updated_by = sqlc.arg(updated_by)
   from (select expected_waste_pct from business_settings limit 1) old
 returning old.expected_waste_pct as previous;

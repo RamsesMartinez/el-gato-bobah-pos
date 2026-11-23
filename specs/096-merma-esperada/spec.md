@@ -414,3 +414,26 @@ Ver [research.md › Otros POS](research.md#otros-pos) para las fuentes. Lo que 
 - La sugerencia de % de S2 usa los tres últimos conteos cerrados del almacén; con menos, no sugiere.
 - Fuera de alcance: caducidad por lote (#146), costo por almacén, recalcular ventas pasadas, merma
   esperada por presentación o por proveedor.
+
+## Lo que encontró la prueba con alguien nuevo (2026-11-23, subida 1)
+
+Dueña de una fonda sin capacitación, a 1024×600 en local con la base restaurada. Logró las tres
+tareas (merma general en 6 toques, la del Capuccino en 10, «no se pierde nada» en los palillos en 9).
+Toques con ratón sobre un contexto táctil: los eventos táctiles no se verificaron ahí (la e2e sí los
+usa).
+
+| Lo que se atoró | Qué se hizo |
+| --- | --- |
+| Tras «Guardar» en Costos no supo si quedó | Mensaje «Guardado. Los costos ya incluyen la merma.» |
+| En el artículo buscó un botón Guardar: se guarda al salir del campo sin decirlo | Mensaje «Guardado» bajo el campo |
+| «al servirlo» en una tarjeta que se llama «al preparar» | Dice «al prepararlo» |
+| El campo vacío del producto mostraba el general en gris y parecía escrito | Sin texto de ejemplo; la ayuda debajo dice «Usa la general: N %» |
+| «Merma real, últimos 90 días» sin explicación, y «Local» no se entendía | Encabezado «…por almacén» y un (i) con qué es y qué hacer con ella |
+| Un 0 % con ventas se leía como «sin datos» | «0 % · sin merma registrada» |
+| **La merma general también se suma a vasos, tapas y popotes** | **Pendiente de decisión del dueño** (ver abajo) |
+| La lista de productos no dice que el costo trae merma | Sin cambio: el desglose está a un toque en la ficha |
+
+**Decisión pendiente del dueño**: hoy la merma general aplica a todo renglón de la receta sin % propio,
+empaques incluidos. Los artículos ya tienen la marca «es empaque»; excluirlos del general es un cambio
+de una regla en `domain.ResolveExpectedWaste` y no toca datos. Mientras tanto, capturar 0 % en esos
+artículos los deja fuera.

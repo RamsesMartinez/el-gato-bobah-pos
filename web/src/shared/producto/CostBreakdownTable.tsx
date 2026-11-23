@@ -12,11 +12,12 @@ function real(l: CostLine): string {
 }
 
 // CostBreakdownTable es el desglose del costo de un producto (spec 096, maqueta B): cinco columnas
-// con la primera y el encabezado fijos, para que a 1024×600 se desplace la tabla y no la pantalla.
+// con la primera y el encabezado fijos, y un alto máximo en dvh para que una receta larga se desplace
+// dentro de la tabla con el encabezado a la vista, y no la pantalla.
 // La merma real va debajo del %, en pequeño: una columna por almacén no cabría.
 export function CostBreakdownTable({ lines }: { lines: CostLine[] }) {
   return (
-    <Box borderWidth="1px" borderRadius="lg" overflowX="auto" bg="bg.panel">
+    <Box borderWidth="1px" borderRadius="lg" overflowX="auto" overflowY="auto" maxH="45dvh" bg="bg.panel">
       <Table.Root size="sm" stickyHeader>
         <Table.Header>
           <Table.Row>

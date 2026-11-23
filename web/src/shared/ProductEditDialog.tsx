@@ -129,6 +129,8 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
       const pct = pctTecleado(wasteText);
       const pctAntes = product?.expectedWastePct == null ? null : Number(product.expectedWastePct);
       if (pct !== 'invalido' && pct !== pctAntes) {
+        // El PATCH ya quedó: la lista se refresca aunque este PUT falle y la ficha se quede abierta.
+        void qc.invalidateQueries({ queryKey: ['admin', 'products'] });
         await adminApi.setProductExpectedWaste(p.id, pct);
         void qc.invalidateQueries({ queryKey: ['admin', 'costing', p.id] });
       }

@@ -4,7 +4,10 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/pressly/goose/v3"
 )
@@ -64,8 +67,34 @@ func TestMigration0126OnARealBackup(t *testing.T) {
 	})
 
 	t.Run("el check rechaza un 100 %", func(t *testing.T) {
-		if _, err := st.Pool.Exec(ctx, `update business_settings set expected_waste_pct = 100`); err == nil {
-			t.Fatal("un general de 100 % entró: el costo se duplicaría")
+		_, err := st.Pool.Exec(ctx, `update business_settings set expected_waste_pct = 100`)
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+			t.Fatalf("un general de 100 %% = %v; quiere la violación del check (23514)", err)
+		}
+	})
+
+	// Un regreso a la imagen anterior SIN correr el Down: la versión vieja lee waste_pct, que tiene que
+	// seguir lo capturado desde la subida (R14 H3 y la revisión de código).
+	t.Run("lo capturado se refleja en la columna que lee la versión anterior", func(t *testing.T) {
+		var conPct int64
+		if err := st.Pool.QueryRow(ctx, `select id from ingredients where waste_pct > 0 order by id limit 1`).Scan(&conPct); err != nil {
+			t.Skip("el respaldo no trae artículos con merma de FUDO")
+		}
+		if _, err := st.Pool.Exec(ctx, `update ingredients set expected_waste_pct = 7.5 where id = $1`, conPct); err != nil {
+			t.Fatal(err)
+		}
+		var viejo float64
+		_ = st.Pool.QueryRow(ctx, `select waste_pct from ingredients where id = $1`, conPct).Scan(&viejo)
+		if viejo != 7.5 {
+			t.Fatalf("waste_pct = %v tras capturar 7.5 %%: la versión anterior recalcularía con lo de antes", viejo)
+		}
+		if _, err := st.Pool.Exec(ctx, `update ingredients set expected_waste_pct = null where id = $1`, conPct); err != nil {
+			t.Fatal(err)
+		}
+		_ = st.Pool.QueryRow(ctx, `select waste_pct from ingredients where id = $1`, conPct).Scan(&viejo)
+		if viejo != 0 {
+			t.Fatalf("waste_pct = %v tras quitar la merma: la versión anterior la seguiría sumando", viejo)
 		}
 	})
 

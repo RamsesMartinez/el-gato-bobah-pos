@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { HStack, Input, Text, VStack } from '@chakra-ui/react';
 import { backofficeApi } from '../../../api/backoffice';
 import { ApiError } from '../../../api/client';
@@ -12,6 +12,10 @@ type Mode = 'sin' | 'con';
 // ExpectedWasteField es «Merma al preparar» en la ficha del artículo (spec 096, maqueta A2). «Sin
 // capturar» deja que mande el producto o la general; «Capturada» fija la del artículo, 0 incluido. Se
 // guarda sola: al elegir «Sin capturar» y al salir del campo, como el resto de la ficha.
+//
+// Las peticiones van en fila y se compara contra lo último PEDIDO, no contra lo confirmado: tocar
+// «Sin capturar» con el 5 % todavía en camino tiene que terminar en null (revisión de código). Un
+// campo vacío al salir es «Sin capturar», nunca 0, y la pantalla nunca se queda en «Capturada» vacía.
 export function ExpectedWasteField({ id, value, generalPct, canEdit }: {
   id: number;
   value: string | null | undefined;
@@ -19,33 +23,54 @@ export function ExpectedWasteField({ id, value, generalPct, canEdit }: {
   canEdit: boolean;
 }) {
   const qc = useQueryClient();
-  const [mode, setMode] = useState<Mode>(value == null ? 'sin' : 'con');
+  const initial = value == null ? null : Number(value);
+  const [mode, setMode] = useState<Mode>(initial === null ? 'sin' : 'con');
   const [text, setText] = useState(pctTexto(value));
-  const [saved, setSaved] = useState<number | null>(value == null ? null : Number(value));
   const [info, setInfo] = useState(false);
   const [error, setError] = useState('');
-  const save = useMutation({
-    mutationFn: (pct: number | null) => backofficeApi.setArticleExpectedWaste(id, pct),
-    onSuccess: (_r, pct) => {
-      setSaved(pct);
-      setError('');
-      void qc.invalidateQueries({ queryKey: ['article', id] });
-      void qc.invalidateQueries({ queryKey: ['admin'] });
-    },
-    onError: (e) => setError(e instanceof ApiError && e.status === 409
-      ? 'Se está recalculando el costo; intenta en un momento'
-      : 'No se pudo guardar'),
-  });
+  const [done, setDone] = useState(false);
+  const confirmed = useRef<number | null>(initial);
+  const requested = useRef<number | null>(initial);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+
+  const send = (pct: number | null) => {
+    if (pct === requested.current) return;
+    requested.current = pct;
+    queue.current = queue.current.then(async () => {
+      try {
+        await backofficeApi.setArticleExpectedWaste(id, pct);
+        confirmed.current = pct;
+        setError('');
+        setDone(true);
+        void qc.invalidateQueries({ queryKey: ['article', id] });
+        void qc.invalidateQueries({ queryKey: ['articles'] });
+        void qc.invalidateQueries({ queryKey: ['article-audit', id] });
+        void qc.invalidateQueries({ queryKey: ['admin'] });
+      } catch (e) {
+        // Lo que sigue guardado vuelve a la pantalla: decir «Sin capturar» con el % todavía sumando
+        // al costo sería mentir, y además no se podría reintentar tocando el mismo segmento.
+        requested.current = confirmed.current;
+        setMode(confirmed.current === null ? 'sin' : 'con');
+        setText(pctTexto(confirmed.current));
+        setError(e instanceof ApiError && e.status < 500 ? e.message : 'No se pudo guardar');
+      }
+    });
+  };
   const typed = pctTecleado(text);
   const commit = () => {
-    if (typed === null || typed === 'invalido' || typed === saved) return;
-    save.mutate(typed);
+    if (typed === 'invalido') return;
+    if (typed === null) {
+      setMode('sin');
+      send(null);
+      return;
+    }
+    send(typed);
   };
   const pick = (m: Mode) => {
     setMode(m);
-    if (m === 'sin' && saved !== null) {
+    if (m === 'sin') {
       setText('');
-      save.mutate(null);
+      send(null);
     }
   };
   const general = pctTexto(generalPct);
@@ -67,8 +92,8 @@ export function ExpectedWasteField({ id, value, generalPct, canEdit }: {
       {mode === 'con' ? (
         <HStack gap={2}>
           <Input aria-label="Merma del artículo, en porcentaje" maxW="110px" minH="44px" bg="bg" inputMode="decimal"
-            value={text} disabled={!canEdit} aria-invalid={typed === 'invalido'}
-            onChange={(e) => { setText(e.target.value); setError(''); }}
+            placeholder="0 a 99.99" autoFocus={text === ''} value={text} disabled={!canEdit} aria-invalid={typed === 'invalido'}
+            onChange={(e) => { setText(e.target.value); setError(''); setDone(false); }}
             onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') commit(); }} />
           <Text>%</Text>
           {typed === 0 && <Text fontSize="sm" color="fg.muted">Aquí no se pierde nada</Text>}
@@ -77,6 +102,8 @@ export function ExpectedWasteField({ id, value, generalPct, canEdit }: {
         <Text fontSize="sm" color="fg.muted">Usa la del producto o la general{general ? ` (${general} %)` : ''}</Text>
       )}
       {typed === 'invalido' && <Text fontSize="sm" color="fg.error">Escribe de 0 a 99.99</Text>}
+      {/* Se guarda sola al salir del campo; sin decirlo, quien la probó buscó un botón Guardar. */}
+      {done && !error && <Text fontSize="sm" color="fg.success">Guardado</Text>}
       {error && <Text fontSize="sm" color="fg.error">{error}</Text>}
     </VStack>
   );

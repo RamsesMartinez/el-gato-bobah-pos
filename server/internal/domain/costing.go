@@ -259,7 +259,9 @@ type BreakdownComponent struct {
 
 // CostBreakdown es de dónde sale el costo de un producto. Los importes van redondeados a 4 decimales
 // (el redondeo de current_cost) y Waste es la suma de los renglones ya redondeados, así que la suma
-// que ve quien opera cuadra con el total por construcción (SC-003). Lines y Components nunca son nil.
+// que ve quien opera cuadra con el total por construcción (SC-003). Por eso Total puede diferir de
+// current_cost (redondeo de la suma sin redondear) en hasta 0.00005 por renglón: a propósito, y por
+// debajo del centavo que muestra la pantalla. Lines y Components nunca son nil.
 type CostBreakdown struct {
 	Source     string
 	Base       float64
@@ -268,6 +270,9 @@ type CostBreakdown struct {
 	Lines      []BreakdownLine
 	Components []BreakdownComponent
 }
+
+// General es la merma general con que se armó el grafo; nil = sin merma general.
+func (g *CostGraph) General() *float64 { return g.general }
 
 func round4(x float64) float64 { return math.Round(x*1e4) / 1e4 }
 

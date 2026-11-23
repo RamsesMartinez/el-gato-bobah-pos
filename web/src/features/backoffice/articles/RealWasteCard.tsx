@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Box, HStack, Spinner, Text, VStack } from '@chakra-ui/react';
+import { InfoButton } from '../../../components/InfoButton';
 import { useQuery } from '@tanstack/react-query';
 import { LuTriangleAlert } from 'react-icons/lu';
 import { backofficeApi } from '../../../api/backoffice';
@@ -9,9 +11,19 @@ import type { RealWaste } from '../../../api/admin';
 // almacén para no comerse el historial de compras a 1024×600.
 export function RealWasteCard({ id, expected, unit }: { id: number; expected: number | null; unit: string }) {
   const { data, isLoading } = useQuery({ queryKey: ['article', id, 'real-waste'], queryFn: () => backofficeApi.articleRealWaste(id) });
+  const [info, setInfo] = useState(false);
   return (
     <Box bg="bg.muted" borderRadius="lg" p={3} flex="1" minW={0}>
-      <Text fontSize="sm" color="fg.muted">Merma real, últimos 90 días</Text>
+      <HStack justify="space-between">
+        <Text fontSize="sm" color="fg.muted">Merma real, últimos 90 días, por almacén</Text>
+        <InfoButton label="Qué es la merma real" open={info} onToggle={() => setInfo(!info)} />
+      </HStack>
+      {info && (
+        <Text fontSize="sm" color="fg.muted">
+          Lo registrado en «Se echó a perder» entre lo que se vendió de este artículo. Solo informa: si es
+          mucho mayor que la merma al preparar, sube la merma o revisa la presentación que compras.
+        </Text>
+      )}
       {isLoading ? <Spinner size="sm" mt={2} /> : <RealWasteRows items={data?.items ?? []} expected={expected} unit={unit} />}
     </Box>
   );
@@ -28,8 +40,12 @@ export function RealWasteRows({ items, expected, unit }: { items: RealWaste[]; e
             <Box w="16px" color="fg.warning" flexShrink={0}>{over && <LuTriangleAlert aria-hidden="true" />}</Box>
             <Text flex="1" truncate>{r.warehouseName}</Text>
             {over && <Text fontSize="sm" color="fg.warning">Pasa lo esperado</Text>}
-            <Text fontWeight="700" title={r.state === 'no_sales' ? `${Number(r.wasted)} ${unit} mermados` : undefined}>
+            {/* Lo mermado sin ventas va en texto: un title no se ve al tocar. */}
+            {r.state === 'no_sales' && <Text fontSize="sm" color="fg.muted">{Number(r.wasted)} {unit} mermados</Text>}
+            <Text fontWeight="700">
               {r.state === 'ratio' ? `${r.ratio} %` : r.state === 'no_sales' ? 'Sin ventas' : 'Sin datos'}
+              {/* Un 0 % con ventas se leía como «sin datos»: dice que no se registró merma. */}
+              {r.state === 'ratio' && r.ratio === 0 && <Text as="span" fontSize="sm" fontWeight="normal" color="fg.muted"> · sin merma registrada</Text>}
             </Text>
           </HStack>
         );

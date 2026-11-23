@@ -107,7 +107,7 @@ func TestProductCostingJSONAndRealWaste(t *testing.T) {
 	ctx := tenantCtx(t, st, f.k.company, f.k.admin)
 	svc := app.NewCostingService(st)
 
-	v, err := svc.ProductCosting(ctx, f.k.frappe)
+	v, err := svc.ProductCosting(ctx, f.k.frappe, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,13 +116,23 @@ func TestProductCostingJSONAndRealWaste(t *testing.T) {
 	}
 	// El paquete es combo: sin renglones de receta, con sus productos. El JSON crudo dice [] y no null:
 	// la pantalla recorre los dos arreglos (AGENTS.md, slices nil).
-	combo, err := svc.ProductCosting(ctx, f.k.paquete)
+	combo, err := svc.ProductCosting(ctx, f.k.paquete, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(combo)
 	if !strings.Contains(string(raw), `"lines":[]`) || !strings.Contains(string(raw), `"components":[{`) {
 		t.Fatalf("JSON del combo: %s", raw)
+	}
+	// Quien configura el menú pero no ve el almacén recibe el desglose sin la merma real (arreglo vacío,
+	// nunca null): son consumo y mermas por almacén, que su ruta propia pide con inventory.view.
+	sinAlmacen, err := svc.ProductCosting(ctx, f.k.frappe, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oculto, _ := json.Marshal(sinAlmacen)
+	if !strings.Contains(string(oculto), `"realWaste":[]`) || strings.Contains(string(oculto), `"warehouseName"`) {
+		t.Fatalf("sin permiso de almacén el desglose trae la merma real: %s", oculto)
 	}
 	frappe, _ := json.Marshal(v)
 	if !strings.Contains(string(frappe), `"components":[]`) || !strings.Contains(string(frappe), `"realWaste":[`) {
@@ -139,7 +149,7 @@ func TestRealWasteAndCostingAreIsolated(t *testing.T) {
 		if _, err := svc.ArticleRealWaste(ctx, f.k.leche); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("merma real de un artículo ajeno = %v; quiere ErrNotFound", err)
 		}
-		if _, err := svc.ProductCosting(ctx, f.k.frappe); !errors.Is(err, domain.ErrNotFound) {
+		if _, err := svc.ProductCosting(ctx, f.k.frappe, true); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("desglose de un producto ajeno = %v; quiere ErrNotFound", err)
 		}
 	})

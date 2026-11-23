@@ -14,6 +14,9 @@ export const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
 // que no tienen % propio del artículo toman el del producto o, vacío, el general. La suma sale de los
 // renglones ya redondeados, igual que en el servidor (SC-003).
 export function conMermaDelProducto(c: ProductCosting, typed: number | null): { lines: CostLine[]; base: number; waste: number } {
+  // Sin cambio, lo que dijo el servidor tal cual: recalcular sobre bases ya redondeadas puede moverse
+  // una diezmilésima y la cifra no sería la del costo guardado (revisión de código).
+  if (typed === c.productPct) return { lines: c.lines ?? [], base: Number(c.base), waste: Number(c.waste) };
   const lines = (c.lines ?? []).map((l) => {
     if (l.pctSource === 'article') return l;
     const pct = typed ?? c.generalPct ?? 0;
