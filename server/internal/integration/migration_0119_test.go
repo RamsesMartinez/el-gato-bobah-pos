@@ -12,14 +12,14 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
-const incomingOrdersPermissionVersion = 118
+const incomingOrdersPermissionVersion = 119
 
-// LA 0118 (permiso de pedidos entrantes, spec 093) CONTRA UN RESPALDO REAL CON DOS EMPRESAS. Solo
+// LA 0119 (permiso de pedidos entrantes, spec 093) CONTRA UN RESPALDO REAL CON DOS EMPRESAS. Solo
 // agrega filas, pero dos de ellas son la parte delicada: el permiso llega por herencia a los
 // sugeridos, y a los roles PROPIOS que ya existían se les da una vez —hasta hoy cualquier sesión
 // veía y aceptaba pedidos de plataforma, y un rol propio no hereda permisos nuevos—. Sin eso, sus
 // usuarios dejarían de oír los pedidos al subir.
-func TestMigration0118OnARealBackup(t *testing.T) {
+func TestMigration0119OnARealBackup(t *testing.T) {
 	st := restoredStore(t)
 	ctx := context.Background()
 	exigeDosEmpresas(t, st)

@@ -1,6 +1,6 @@
 # Data Model: Alerta continua de pedido entrante
 
-## Esquema: una migración, solo filas (0118)
+## Esquema: una migración, solo filas (0119)
 
 Sin tablas ni columnas nuevas. Todo lo que el modelo necesita ya existe en
 `platform_incoming_orders` (`state`, `decided_by`, `settled_at`, `deny_reason`, `decide_before`).
@@ -10,7 +10,7 @@ Sin tablas ni columnas nuevas. Todo lo que el modelo necesita ya existe en
 | `permissions` | `(39, 'orders.accept_incoming', 'orders')` |
 | `system_role_permissions` | `(1..4, 39)`: herencia a los cuatro sugeridos |
 | `role_permission_overrides` | `(company_id, role_id, 39, true)` para cada rol con `system_role_id is null` existente; `company_id` explícito (el default sale de la sesión), `on conflict do nothing` |
-| Down | Se niega si existe un override de 39 con `granted = false` (una empresa se lo quitó a un rol); si no, borra overrides, `system_role_permissions` y `permissions` de 39, en ese orden. Renglón `118` en `guardedDownCleanup` |
+| Down | Se niega si existe un override de 39 con `granted = false` (una empresa se lo quitó a un rol); si no, borra overrides, `system_role_permissions` y `permissions` de 39, en ese orden. Renglón `119` en `guardedDownCleanup` |
 
 ¿Se puede agregar después al mismo costo? Sí: son filas de catálogo. No cierra ninguna puerta del
 principio VIII.
