@@ -101,14 +101,14 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 **Goal**: cada renglón dice dónde se guarda; la captura deja de verse amontonada.
 **Independent Test**: spec US4.
 
-- [ ] T039 [US4] Tests de la 0121: llaves por sucursal borradas, `not null` (check `not valid` + `validate` + `set not null`), «Local» creado donde falte, `expense_items` con `item_type is null or warehouse_id is not null`, compuerta EGB04 quitada salvo `cancelacion` sin almacén, `is_sales` cambiable; Down se niega con duplicados; en `server/internal/integration/warehouses_contract_test.go`
-- [ ] T040 [US4] `server/migrations/NNNN_warehouses_contract.sql` (revisada por db-architect antes de aplicarla)
-- [ ] T041 [P] [US4] Test de dominio: `PlanStockLines` por almacén (cambiar destino de un renglón aplicado = salida del anterior + entrada al nuevo; excluido no mueve) en `server/internal/domain/purchase_test.go`
-- [ ] T042 [US4] Destino por renglón en gasto, edición, `stock-lines` y «Por recibir» (`server/internal/app/purchases.go`, `expense_edit.go`, `server/queries/purchases.sql`, `expenses.sql`, handlers) con tests de integración (escenario 8 renglones / 2 a Bodega / 1 excluido)
-- [ ] T043 [US4] `PATCH /stock/warehouses/{id}` acepta `isSales` (cambiar el de venta) con test
-- [ ] T044 [US4] Rediseño de la captura según la fila «Compra (captura completa)» de Maquetas (R3, R12): encabezado de una línea, lista + detalle al lado (hoja por debajo de 1100 px), «¿Dónde se guarda?» con 2+ almacenes, `ConfirmSheet` al quitar; sección regalo / no es del negocio según la fila «Regalo / no es del negocio» (S1: interruptores con explicación e `InfoButton`; panel de detalle con desplazamiento propio); color según la fila «Color de la captura» (P1: paleta heredada, estado como ícono al inicio); en `web/src/features/backoffice/ExpenseDialog.tsx` y componentes nuevos en `web/src/features/backoffice/expense/`, con tests vitest que cubran lo que hoy cubre `ExpenseDialog`
-- [ ] T045 [US4] El último destino usado se recuerda por equipo en `localStorage` con try/catch (`web/src/features/backoffice/expense/useLastWarehouse.ts`) con test
-- [ ] T046 [US8] MCP `purchase_create`, `purchase_receive`, `expense_create`, `expense_edit` con `warehouse_id` por renglón; `stock_adjust` ya escribe en cualquier almacén activo; tests en `server/internal/httpapi/mcp_tools_094_test.go`
+- [X] T039 [US4] Tests de la 0122: llaves por sucursal borradas, `not null` (check `not valid` + `validate` + `set not null`), «Local» creado donde falte, `expense_items` con `item_type is null or warehouse_id is not null`, compuerta EGB04 quitada salvo `cancelacion` sin almacén, `is_sales` cambiable; Down se niega con duplicados; en `server/internal/integration/warehouses_contract_test.go`
+- [X] T040 [US4] `server/migrations/NNNN_warehouses_contract.sql` (revisada por db-architect antes de aplicarla)
+- [X] T041 [P] [US4] (hecho como integración: `TestChangingTheDestinationMovesWhatArrived`; el traslado vive en `moveToLineWarehouse` porque depende de los movimientos guardados, no de un cálculo puro) Test de dominio: `PlanStockLines` por almacén (cambiar destino de un renglón aplicado = salida del anterior + entrada al nuevo; excluido no mueve) en `server/internal/domain/purchase_test.go`
+- [X] T042 [US4] Destino por renglón en gasto, edición, `stock-lines` y «Por recibir» (`server/internal/app/purchases.go`, `expense_edit.go`, `server/queries/purchases.sql`, `expenses.sql`, handlers) con tests de integración (escenario 8 renglones / 2 a Bodega / 1 excluido)
+- [X] T043 [US4] `PATCH /stock/warehouses/{id}` acepta `isSales` (cambiar el de venta) con test
+- [X] T044 [US4] Rediseño de la captura según la fila «Compra (captura completa)» de Maquetas (R3, R12): encabezado de una línea, lista + detalle al lado (hoja por debajo de 1100 px), «¿Dónde se guarda?» con 2+ almacenes, `ConfirmSheet` al quitar; sección regalo / no es del negocio según la fila «Regalo / no es del negocio» (S1: interruptores con explicación e `InfoButton`; panel de detalle con desplazamiento propio); color según la fila «Color de la captura» (P1: paleta heredada, estado como ícono al inicio); en `web/src/features/backoffice/ExpenseDialog.tsx` y componentes nuevos en `web/src/features/backoffice/expense/`, con tests vitest que cubran lo que hoy cubre `ExpenseDialog`
+- [X] T045 [US4] El último destino usado se recuerda por equipo en `localStorage` con try/catch (`web/src/features/backoffice/expense/useLastWarehouse.ts`) con test
+- [X] T046 [US8] MCP `purchase_create` y `expense_edit` con `warehouse_id` por renglón (`expense_create` no lleva renglones; `purchase_receive` recibe al almacén que el renglón ya dice, documentado en su descripción); `stock_adjust` ya escribe en cualquier almacén activo; tests en `server/internal/httpapi/mcp_tools_094_test.go`
 
 ---
 
@@ -130,7 +130,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 - [ ] T055 [P] [US6] Tests: conteo de Bodega no toca Local; un conteo abierto por almacén; merma y «se acabó» con almacén; mínimos y salud por almacén; lugares con nombre único por almacén y artículos de otro almacén al final («Sin lugar en este almacén»); en `server/internal/integration/warehouses_count_test.go`
 - [ ] T056 [US6] Migración si hace falta (índice único de lugares por almacén, `low_stock_state`/`evaluate_low_stock` por almacén) revisada por db-architect
-- [ ] T057 [US6] Servicios y consultas de conteo, merma, se acabó, mínimos, lista de compra, salud y lugares con `warehouseId` (`server/internal/app/stock_counts.go`, `waste.go`, `stock_out.go`, `notifications.go`, `inventory_health.go`, queries respectivas)
+- [ ] T057 [US6] (incluye lo que dejó el db-architect en la subida 1: `CurrentStockCount` y `LastClosedStockCount` siguen por sucursal y son `:one`; `ArticleMovedSince` mezcla conteos por sucursal con movimientos del almacén de venta — pasarlos a `warehouse_id`) Servicios y consultas de conteo, merma, se acabó, mínimos, lista de compra, salud y lugares con `warehouseId` (`server/internal/app/stock_counts.go`, `waste.go`, `stock_out.go`, `notifications.go`, `inventory_health.go`, queries respectivas)
 - [ ] T058b [US6] Prueba con alguien nuevo de una fonda: contar la Bodega y cerrar sin tocar Local (SC-005)
 - [ ] T058 [US6] Pantallas: elegir almacén al empezar el conteo (por omisión el de venta) en `web/src/features/backoffice/StockCountTab.tsx`; almacén en merma, se acabó, mínimos y avisos; con test
 - [ ] T059 [US8] MCP `stock_count_*`, `waste_record`, `low_stock_update` con `warehouse_id`, tests
@@ -148,7 +148,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 ## Phase 9: Polish
 
-- [ ] T064 `docs/mecanica/almacen.md`: notas de lo que no se ve (compuerta EGB04, llaves expandidas y contraídas, no volver atrás después de la 0121, reposición al almacén original)
+- [ ] T064 `docs/mecanica/almacen.md`: notas de lo que no se ve (compuerta EGB04, llaves expandidas y contraídas, no volver atrás después de la 0122, reposición al almacén original)
 - [ ] T065 Quitar el arnés de maquetas `web/maquetas-094/` (no versionado) al cerrar
 - [ ] T066 Comentario en el #65 con lo que entró por subida; cerrar solo si entraron las cinco
 
@@ -156,7 +156,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 ## Dependencies
 
-- Phase 2 bloquea todo. US1 + US2/US3 forman la subida 1. US4 depende de la subida 1 en producción (la 0121 necesita que la versión anterior sea la de la subida 1). US5 depende de US4 (almacén no de venta escribible). US6 y US7 dependen de US5 solo por el tipo de movimiento; pueden ir en la misma subida si no rompen R2.
+- Phase 2 bloquea todo. US1 + US2/US3 forman la subida 1. US4 depende de la subida 1 en producción (la 0122 necesita que la versión anterior sea la de la subida 1). US5 depende de US4 (almacén no de venta escribible). US6 y US7 dependen de US5 solo por el tipo de movimiento; pueden ir en la misma subida si no rompen R2.
 - US8 (MCP) va repartida en la subida de cada ruta.
 
 ## Parallel

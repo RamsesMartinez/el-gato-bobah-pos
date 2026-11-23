@@ -75,6 +75,9 @@ type ExpenseItemView struct {
 	// DensityGPerMl: con la que el renglón convierte entre peso y líquido (la fija o la vigente), para
 	// decir la conversión en palabras (spec 058).
 	DensityGPerMl *decimal.Decimal `json:"densityGPerMl"`
+	// WarehouseID y WarehouseName: a qué almacén entra (spec 094); nulos en un renglón sin artículo.
+	WarehouseID   *int64  `json:"warehouseId"`
+	WarehouseName *string `json:"warehouseName"`
 }
 
 // DeliveryView es lo que un renglón sumó al almacén en un día de entrega, correcciones incluidas.
@@ -123,7 +126,9 @@ type ExpenseDetailView struct {
 // ---- Entradas ----
 
 type ExpenseItemInput struct {
-	ItemType     string // "" (no inventariable) | ingrediente | producto
+	ItemType string // "" (no inventariable) | ingrediente | producto
+	// WarehouseID: a qué almacén entra (spec 094). Nulo = el de venta.
+	WarehouseID  *int64
 	IngredientID *int64
 	// NewArticle: un artículo que se da de alta con este gasto (spec 042, FR-003). Se crea en la misma
 	// transacción: si el gasto no se guarda, el artículo tampoco existe.
@@ -1058,13 +1063,17 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 		if !domain.ValidLineUnitCost(unitCost) {
 			return fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
 		}
+		wh, err := newLineWarehouse(ctx, q, itemType, it.WarehouseID)
+		if err != nil {
+			return err
+		}
 		if _, err := q.CreateExpenseItem(ctx, db.CreateExpenseItemParams{
 			ExpenseID: expenseID, ItemType: itemType,
 			IngredientID: it.IngredientID, ProductID: it.ProductID,
 			Description: it.Description, Quantity: qty, UnitID: it.UnitID,
 			QtyReceived: it.QtyReceived, UnitCost: unitCost, Amount: amount,
 			PackQtyInBase: it.PackQtyInBase, Position: int32(i),
-			PresentationID: it.PresentationID, IsGift: it.IsGift, Excluded: excluded,
+			PresentationID: it.PresentationID, IsGift: it.IsGift, Excluded: excluded, WarehouseID: wh,
 		}); err != nil {
 			return err
 		}
@@ -1395,6 +1404,7 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 			Applied: r.AppliedQtyBase, BaseUnitCode: r.BaseUnitCode, NotComing: r.NotComingQty,
 			IsGift: r.IsGift, PresentationID: r.PresentationID, Excluded: r.Excluded,
 			Deliveries: deliveries[r.ID], DensityGPerMl: r.DensityGPerMl,
+			WarehouseID: r.WarehouseID, WarehouseName: r.WarehouseName,
 		}
 		if v.Deliveries == nil {
 			v.Deliveries = []DeliveryView{}

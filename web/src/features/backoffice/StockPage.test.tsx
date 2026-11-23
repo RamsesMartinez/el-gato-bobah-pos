@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 
 import { useSessionStore } from '../../stores/session';
 
@@ -71,7 +71,14 @@ vi.mock('../../api/notifications', async (orig) => ({ ...(await orig<object>()),
 
 function montar(entrada = '/almacen') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={[entrada]}><StockPage /></MemoryRouter></Provider></QueryClientProvider>);
+  return render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={[entrada]}>
+    <Routes><Route path="/almacen" element={<StockPage />} /><Route path="/negocio" element={<Donde />} /></Routes>
+  </MemoryRouter></Provider></QueryClientProvider>);
+}
+
+function Donde() {
+  const l = useLocation();
+  return <p>{l.pathname + l.search + l.hash}</p>;
 }
 
 function sesion(permissions: string[]) {
@@ -284,7 +291,9 @@ it('si no se pudo leer el almacén lo dice', async () => {
 it('quien administra almacenes llega a ellos desde Almacén', async () => {
   sesion(['inventory.view', 'inventory.warehouse_manage']);
   montar('/almacen');
-  expect(await screen.findByRole('button', { name: 'Almacenes ›' })).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole('button', { name: 'Almacenes ›' }));
+  // Abre la sección de Inventario de Negocio, no la primera (prueba con usuario nuevo, 094).
+  expect(await screen.findByText('/negocio?seccion=inventario#almacenes')).toBeInTheDocument();
 });
 
 it('quien no los administra no ve el atajo', async () => {

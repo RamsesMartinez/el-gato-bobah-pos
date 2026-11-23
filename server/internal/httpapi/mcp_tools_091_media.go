@@ -124,6 +124,7 @@ func register091Media() {
 	prodState := imageState("product_image_set", pProductImage)
 	writeTool(writeSpec[productImageSetArgs]{
 		name: "product_image_set",
+		refs: refsProductImageSet,
 		route: func(_ *mcpSession, _ context.Context, in productImageSetArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("product_id", in.ProductID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -145,6 +146,7 @@ func register091Media() {
 	removeState := imageState("product_image_remove", pProductImage)
 	writeTool(writeSpec[productImageRemoveArgs]{
 		name: "product_image_remove",
+		refs: refsProductImageRemove,
 		route: func(_ *mcpSession, _ context.Context, in productImageRemoveArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("product_id", in.ProductID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -159,6 +161,7 @@ func register091Media() {
 	catState := imageState("category_image_set", pCategoryImage)
 	writeTool(writeSpec[categoryImageSetArgs]{
 		name: "category_image_set",
+		refs: refsCategoryImageSet,
 		route: func(_ *mcpSession, _ context.Context, in categoryImageSetArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("category_id", in.CategoryID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -180,6 +183,7 @@ func register091Media() {
 	catRemoveState := imageState("category_image_remove", pCategoryImage)
 	writeTool(writeSpec[categoryImageRemoveArgs]{
 		name: "category_image_remove",
+		refs: refsCategoryImageRemove,
 		route: func(_ *mcpSession, _ context.Context, in categoryImageRemoveArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("category_id", in.CategoryID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -194,6 +198,7 @@ func register091Media() {
 	famState := imageState("category_family_set", pCategoryImage)
 	writeTool(writeSpec[categoryFamilyArgs]{
 		name: "category_family_set",
+		refs: refsCategoryFamily,
 		route: func(_ *mcpSession, _ context.Context, in categoryFamilyArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("category_id", in.CategoryID); err != nil {
 				return "", "", nil, nil, nil, err

@@ -122,8 +122,8 @@ where expenses.id = $1 and expenses.status in ('pendiente', 'pagada')
 insert into expense_items (
   expense_id, item_type, ingredient_id, product_id, description,
   quantity, unit_id, qty_received, unit_cost, amount, pack_qty_in_base, position,
-  presentation_id, is_gift, excluded
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+  presentation_id, is_gift, excluded, warehouse_id
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,sqlc.narg(warehouse_id))
 returning id;
 
 -- name: ListExpenseItems :many
@@ -132,6 +132,8 @@ select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description,
        ei.qty_received, ei.unit_cost, ei.amount, ei.pack_qty_in_base, ei.position,
        i.name as ingredient_name, p.name as product_name,
        ei.applied_qty_base, ei.not_coming_qty, ei.voided_at, ei.is_gift, ei.presentation_id, ei.excluded,
+       -- A qué almacén entra (spec 094); nulo en un renglón sin artículo.
+       ei.warehouse_id, w.name as warehouse_name,
        iu.code as base_unit_code, iu.kind as base_unit_kind,
        -- La densidad con que el renglón convierte entre peso y líquido: la fija o la vigente (spec 058).
        coalesce(ei.density_g_per_ml, i.density_g_per_ml) as density_g_per_ml,
@@ -146,6 +148,7 @@ left join units u on u.id = ei.unit_id
 left join ingredients i on i.id = ei.ingredient_id
 left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = ei.product_id
+left join warehouses w on w.id = ei.warehouse_id
 where ei.expense_id = $1
 order by ei.position, ei.id;
 

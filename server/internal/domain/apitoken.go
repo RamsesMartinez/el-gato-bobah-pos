@@ -156,11 +156,14 @@ func MissingScopeMessage(need APIScope) string {
 
 // ---- Idempotencia ----
 
-// Estados de una clave de idempotencia; los mismos que el check de la migración 0111.
+// Estados de una clave de idempotencia; los mismos que el check de las migraciones 0111 y 0121.
 const (
 	IdemStatusPending = "pending"
 	IdemStatusDone    = "done"
 	IdemStatusUnknown = "unknown"
+	// IdemStatusFailed: la escritura se rechazó o falló sin confirmar nada en la base (#335). Guarda el
+	// error, para que se sepa con certeza que reintentar es seguro.
+	IdemStatusFailed = "failed"
 )
 
 // IdempotencyRecord es lo que ya se guardó con una clave.
@@ -184,12 +187,18 @@ const (
 	// IdemUnknown: la primera terminó en error interno o se cortó; puede haberse aplicado. Se
 	// revisa con una lectura en vez de reintentar: peor un rechazo de más que un gasto doble.
 	IdemUnknown
+	// IdemRetry: la primera falló sin aplicar nada; se vuelve a correr, con la misma huella o con los
+	// argumentos corregidos (antes la clave se borraba en ese caso y se reusaba igual).
+	IdemRetry
 )
 
 // DecideIdempotency decide con lo guardado (nil si la clave es nueva) y la huella de la llamada.
 func DecideIdempotency(existing *IdempotencyRecord, argsHash []byte) IdempotencyDecision {
 	if existing == nil {
 		return IdemProceed
+	}
+	if existing.Status == IdemStatusFailed {
+		return IdemRetry
 	}
 	if !bytes.Equal(existing.ArgsHash, argsHash) {
 		return IdemConflict
@@ -234,6 +243,55 @@ func IdempotencyArgsHash(tool string, canonicalArgs []byte) []byte {
 }
 
 // ---- Errores ----
+
+// InternalOutcome es lo que se sabe de una operación que falló por dentro.
+type InternalOutcome int
+
+const (
+	// InternalRead: era una lectura; reintentar no cambia nada.
+	InternalRead InternalOutcome = iota
+	// InternalNotApplied: una escritura que no confirmó nada en la base.
+	InternalNotApplied
+	// InternalMayHaveApplied: una escritura que pudo haber confirmado antes de fallar.
+	InternalMayHaveApplied
+)
+
+// InternalErrorHint es lo que recibe quien llamó cuando la operación falló por dentro (#335): el id del
+// error —el mismo del correo al administrador y de la bitácora—, la causa por categoría y si reintentar
+// es seguro. Nunca el texto del error: puede traer la consulta o datos de otra empresa.
+func InternalErrorHint(errorID, cause string, outcome InternalOutcome) string {
+	msg := "Error interno del servidor"
+	if errorID != "" {
+		msg += " (id del error: " + errorID + ")"
+	}
+	msg += ": " + cause + ". Se avisó al administrador."
+	switch outcome {
+	case InternalNotApplied:
+		return msg + " No se aplicó nada: puedes reintentar con la misma idempotency_key."
+	case InternalMayHaveApplied:
+		return msg + " La escritura pudo haberse aplicado: revisa con una lectura antes de reintentar."
+	}
+	return msg + " Puedes volver a intentar."
+}
+
+// InternalCause traduce la clase de un error interno (la de alerts.ErrorKind: «pg:SQLSTATE» o el tipo
+// de Go) a una causa que se puede decir sin revelar nada de adentro.
+func InternalCause(kind string) string {
+	code, isPG := strings.CutPrefix(kind, "pg:")
+	switch {
+	case isPG && strings.HasPrefix(code, "23"):
+		return "una regla de los datos rechazó la escritura"
+	case isPG && strings.HasPrefix(code, "40"):
+		return "chocó con otra operación al mismo tiempo; reintentar suele resolverlo"
+	case isPG && code == "57014", strings.Contains(kind, "deadlineExceeded"):
+		return "la operación tardó demasiado"
+	case isPG && strings.HasPrefix(code, "08"), strings.Contains(kind, "ConnectError"), strings.Contains(kind, "net.OpError"):
+		return "la base de datos no respondió"
+	case isPG:
+		return "la base de datos rechazó la operación"
+	}
+	return "un error no previsto"
+}
 
 // ToolErrorHint traduce el estado y el mensaje de la operación a lo que recibe el agente: la causa
 // y cómo corregirla. Un error interno no muestra su texto: puede traer detalles de la base.
@@ -412,9 +470,11 @@ var mcpTools = []MCPTool{
 	rd("presentations_list", "Empaques de compra de los insumos (bolsa de 5 kg, caja de 12…); con ingredient_id, solo los de ese insumo.", PermInventoryReceive),
 	rd("pending_receipts_list", "Compras con mercancía que todavía no llega.", PermInventoryReceive),
 	wr("purchase_create", "Captura una compra con su mercancía: entra al almacén y cambia el costo de cada insumo. "+
-		"La vista previa propone insumos y muestra el costo nuevo; aplicar exige insumo y empaque o unidad en cada renglón.",
+		"La vista previa propone insumos y muestra el costo nuevo; aplicar exige insumo y empaque o unidad en cada renglón. "+
+		"Cada renglón entra al almacén de venta o al de su warehouse_id.",
 		ScopeWritePurchases, PermExpensesCapture),
-	wr("purchase_receive", "Recibe una compra pendiente: lo que llegó de cada renglón entra al almacén.",
+	wr("purchase_receive", "Recibe una compra pendiente: lo que llegó de cada renglón entra al almacén que el renglón ya "+
+		"dice (el que se eligió al capturarla); para cambiarlo, expense_edit.",
 		ScopeWritePurchases, PermInventoryReceive),
 	rd("stock_count_current", "El conteo abierto y qué artículos se pueden contar. No dice lo que el sistema tiene.", PermInventoryCount),
 	wr("stock_count_open", "Abre un conteo de existencias.", ScopeWriteInventory, PermInventoryCount),
@@ -441,7 +501,7 @@ var mcpTools = []MCPTool{
 	wr("expense_edit", "Corrige un gasto o compra ya guardado: encabezado, renglones agregados (add) y quitados "+
 		"(remove). Para cambiar el insumo o el empaque de un renglón, quítalo y agrégalo en la misma llamada. "+
 		"La vista previa trae los efectos y un fingerprint; aplicar exige ese fingerprint y las decisiones que pidió. "+
-		"Los pagos no cambian.", ScopeWriteExpenses, PermExpensesEdit),
+		"Los pagos no cambian. Un renglón agregado entra al almacén de venta o al de su warehouse_id.", ScopeWriteExpenses, PermExpensesEdit),
 
 	// Spec 084: alertas de stock bajo por lote.
 	wr("low_stock_update", "Enciende o apaga la alerta de stock bajo de varios insumos o productos (con existencia "+

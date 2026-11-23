@@ -24,7 +24,7 @@ func setOwnStock(t *testing.T, st *store.Store, product int64, onHand string) {
 		select p.company_id, b.id, 'producto', p.id, $2::numeric
 		  from products p join branches b on b.company_id = p.company_id and b.is_headquarters
 		 where p.id = $1
-		on conflict (branch_id, product_id) do update set on_hand = excluded.on_hand`, product, onHand); err != nil {
+		on conflict (warehouse_id, product_id) do update set on_hand = excluded.on_hand`, product, onHand); err != nil {
 		t.Fatal(err)
 	}
 }

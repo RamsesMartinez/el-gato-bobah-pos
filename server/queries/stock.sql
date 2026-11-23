@@ -11,7 +11,7 @@
 -- reparte movimientos que ya salieron de un almacén (spec 094).
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, order_id, order_line_id, user_id, reason, note,
                              modifier_option_id, component_of_product_id, warehouse_id)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14);
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,sqlc.narg(warehouse_id));
 
 -- Almacén / niveles
 

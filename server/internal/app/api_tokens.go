@@ -279,6 +279,20 @@ func (s *APITokensService) BeginIdempotent(ctx context.Context, k domain.Idempot
 		}
 		decision = domain.DecideIdempotency(&domain.IdempotencyRecord{Status: existing.Status, ArgsHash: existing.ArgsHash}, argsHash)
 		saved = existing.Result
+		if decision != domain.IdemRetry {
+			return nil
+		}
+		// El intento anterior falló sin aplicar nada (#335): se retoma con la huella de éste. Si otro
+		// reintento la tomó primero, ése ya está en curso.
+		n, err := q.RetakeFailedIdempotencyKey(ctx, db.RetakeFailedIdempotencyKeyParams{
+			ArgsHash: argsHash, Tool: k.Tool, TokenID: k.TokenID, IdemKey: k.Key})
+		if err != nil {
+			return err
+		}
+		decision, saved = domain.IdemProceed, nil
+		if n == 0 {
+			decision = domain.IdemInProgress
+		}
 		return nil
 	})
 	return decision, saved, err
@@ -291,12 +305,48 @@ func (s *APITokensService) FinishIdempotent(ctx context.Context, k domain.Idempo
 	})
 }
 
-// AbandonIdempotent suelta la clave de una escritura que la operación rechazó: nada se aplicó y se
-// puede reintentar con la misma clave.
-func (s *APITokensService) AbandonIdempotent(ctx context.Context, k domain.IdempotencyKeyRef) error {
+// FailIdempotent deja la clave en «fallida» con el error (#335): la escritura se rechazó o falló sin
+// confirmar nada, así que reintentar es seguro y la siguiente llamada con esa clave la retoma.
+func (s *APITokensService) FailIdempotent(ctx context.Context, k domain.IdempotencyKeyRef, result json.RawMessage) error {
 	return s.store.WithTenant(ctx, k.CompanyID, func(q *db.Queries) error {
-		return q.DeleteIdempotencyKey(ctx, db.DeleteIdempotencyKeyParams{TokenID: k.TokenID, IdemKey: k.Key})
+		return q.FailIdempotencyKey(ctx, db.FailIdempotencyKeyParams{TokenID: k.TokenID, IdemKey: k.Key, Result: result})
 	})
+}
+
+// ReferenceState es lo que se sabe de un id que manda una escritura del MCP.
+type ReferenceState struct {
+	domain.Ref
+	Found  bool
+	Active bool
+	Name   string
+}
+
+// FindReferences dice cuáles de los ids existen en la empresa de la sesión (#335), en el mismo orden.
+// Lee por la conexión de la sesión: sin empresa, RLS no deja ver nada y todo sale como inexistente.
+func (s *APITokensService) FindReferences(ctx context.Context, refs []domain.Ref) ([]ReferenceState, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	kinds := make([]string, len(refs))
+	ids := make([]int64, len(refs))
+	for i, r := range refs {
+		kinds[i], ids[i] = string(r.Kind), r.ID
+	}
+	rows, err := s.store.QC(ctx).FindReferences(ctx, db.FindReferencesParams{Kinds: kinds, Ids: ids})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReferenceState, len(refs))
+	for i, r := range refs {
+		out[i] = ReferenceState{Ref: r}
+		for _, row := range rows {
+			if row.Kind == string(r.Kind) && row.ID == r.ID {
+				out[i].Found, out[i].Active, out[i].Name = row.Found, row.Active, row.Name
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 // MarkIdempotentUnknown deja la clave en «desconocida»: la escritura terminó en error interno o se

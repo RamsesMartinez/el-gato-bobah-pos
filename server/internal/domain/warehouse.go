@@ -21,6 +21,9 @@ var (
 	ErrWarehouseHasStock = fmt.Errorf("%w: el almacén tiene existencias", ErrConflict)
 	// ErrWarehouseCountOpen: archivarlo dejaría un conteo abierto sin almacén donde cerrarse.
 	ErrWarehouseCountOpen = fmt.Errorf("%w: el almacén tiene un conteo abierto", ErrConflict)
+	// ErrWarehousePendingPurchases: tiene renglones de compra por recibir; lo que llegara después
+	// entraría a un almacén que ya no sale en ninguna lista.
+	ErrWarehousePendingPurchases = fmt.Errorf("%w: el almacén tiene compras por recibir", ErrConflict)
 	// ErrWarehouseNameTaken: ya hay un almacén activo con ese nombre en la sucursal.
 	ErrWarehouseNameTaken = fmt.Errorf("%w: ya hay un almacén con ese nombre", ErrConflict)
 	// ErrWarehouseMissing: la sucursal no tiene almacén de venta (EGB03 de la base). No debería
@@ -56,7 +59,7 @@ func ValidWarehouseName(name string) error {
 
 // CanArchiveWarehouse decide si un almacén se puede archivar. El de venta se revisa primero: aunque
 // esté vacío, archivarlo dejaría a la sucursal sin de dónde vender.
-func CanArchiveWarehouse(isSales bool, itemsWithStock int64, countOpen bool) error {
+func CanArchiveWarehouse(isSales bool, itemsWithStock int64, countOpen, pendingPurchases bool) error {
 	switch {
 	case isSales:
 		return ErrWarehouseIsSales
@@ -64,6 +67,8 @@ func CanArchiveWarehouse(isSales bool, itemsWithStock int64, countOpen bool) err
 		return WarehouseHasStock{Items: itemsWithStock}
 	case countOpen:
 		return ErrWarehouseCountOpen
+	case pendingPurchases:
+		return ErrWarehousePendingPurchases
 	}
 	return nil
 }
