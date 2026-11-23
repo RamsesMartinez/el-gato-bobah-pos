@@ -29,6 +29,8 @@ const back = vi.hoisted(() => ({
   similarArticles: vi.fn(() => Promise.resolve({ items: [] as unknown[] })),
   reactivateArticle: vi.fn(() => Promise.resolve()),
   article: vi.fn(),
+  setArticleExpectedWaste: vi.fn(),
+  articleRealWaste: vi.fn(() => Promise.resolve({ days: 90, items: [] })),
   updateArticle: vi.fn(() => Promise.resolve({ updatedAt: 'v2' })),
   articleCategories: vi.fn(() => Promise.resolve([])),
   presentations: vi.fn(() => Promise.resolve([{ id: 3, ingredientId: 7, name: 'Bolsa', qtyInBase: '5000', baseUnitCode: 'g', active: true, approximate: false, purchaseUnitId: null }])),
@@ -773,5 +775,26 @@ describe('Ficha · densidad', () => {
     // La merma esperada (spec 096) también dice «Sin capturar»: aquí se mira solo la fila de densidad.
     await waitFor(() => expect(document.querySelector('[data-density-row]')).toHaveTextContent('Sin capturar'));
     expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
+  });
+});
+
+// Prueba táctil con alguien nuevo (spec 096): tras capturar 0 % en el artículo no apareció ningún
+// aviso. El campo estaba ligado a su valor como `key`: al refrescar la ficha con lo guardado se volvía
+// a montar y perdía el «Guardado» (y cerraba el (i)) en el mismo instante.
+describe('Ficha · merma al preparar', () => {
+  it('después de guardar, la ficha se refresca y el aviso «Guardado» sigue a la vista', async () => {
+    useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'admin', permissions: ['inventory.view', 'inventory.configure', 'menu.configure'] } as never });
+    back.setArticleExpectedWaste.mockResolvedValue({ pct: '0' });
+    back.articleRealWaste.mockResolvedValue({ days: 90, items: [] });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Capturada' }));
+    back.article.mockResolvedValue({ ...ficha, expectedWastePct: '0' });
+    const campo = screen.getByLabelText('Merma del artículo, en porcentaje');
+    fireEvent.change(campo, { target: { value: '0' } });
+    fireEvent.blur(campo);
+    await waitFor(() => expect(back.article).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Guardado')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByText('Guardado')).toBeInTheDocument();
   });
 });
