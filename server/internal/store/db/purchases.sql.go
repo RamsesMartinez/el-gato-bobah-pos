@@ -74,6 +74,7 @@ select expense_item_id::bigint as expense_item_id, warehouse_id, sum(quantity)::
  where expense_id = $1 and expense_item_id is not null
  group by expense_item_id, warehouse_id
 having sum(quantity) <> 0
+ order by expense_item_id, warehouse_id
 `
 
 type AppliedByWarehouseRow struct {
@@ -144,6 +145,7 @@ const expenseDeliveryHistory = `-- name: ExpenseDeliveryHistory :many
 select sm.expense_item_id::bigint as item_id, sm.effective_on::date as day, sum(sm.quantity)::numeric(14,4) as qty
   from stock_movements sm
  where sm.expense_id = $1 and sm.expense_item_id is not null and sm.movement_type = 'compra'
+   and not sm.warehouse_relocation
  group by sm.expense_item_id, sm.effective_on
  order by sm.expense_item_id, sm.effective_on
 `
@@ -292,11 +294,11 @@ func (q *Queries) InsertCompensationMovement(ctx context.Context, arg InsertComp
 const insertLineMovement = `-- name: InsertLineMovement :exec
 insert into stock_movements (
   item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, expense_id, expense_item_id,
-  user_id, reason, warehouse_id, effective_on
+  user_id, reason, warehouse_id, effective_on, warehouse_relocation
 ) values (
   $1, $2, $3, 'compra', $4,
   $5, $6, $7, $8,
-  $9, $10, $11
+  $9, $10, $11, coalesce($12::boolean, false)
 )
 `
 
@@ -312,11 +314,14 @@ type InsertLineMovementParams struct {
 	Reason        *string          `json:"reason"`
 	WarehouseID   int64            `json:"warehouse_id"`
 	EffectiveOn   pgtype.Date      `json:"effective_on"`
+	Relocation    *bool            `json:"relocation"`
 }
 
 // Un movimiento de compra ligado a su gasto y a su RENGLÓN, en el almacén donde está lo aplicado del
 // renglón (spec 094); la sucursal la toma el trigger del almacén.
 // `effective_on` es el día de la entrega (spec 053); nula, la pone el trigger de la 0103 con hoy.
+// `warehouse_relocation`: el par de movimientos que lleva lo ya llegado a otro almacén cuando se cambia
+// el destino del renglón. No es una entrega: no cuenta para el día de recibido ni el historial (0121).
 func (q *Queries) InsertLineMovement(ctx context.Context, arg InsertLineMovementParams) error {
 	_, err := q.db.Exec(ctx, insertLineMovement,
 		arg.ItemType,
@@ -330,6 +335,7 @@ func (q *Queries) InsertLineMovement(ctx context.Context, arg InsertLineMovement
 		arg.Reason,
 		arg.WarehouseID,
 		arg.EffectiveOn,
+		arg.Relocation,
 	)
 	return err
 }
@@ -367,7 +373,7 @@ func (q *Queries) LatestPosteriorCount(ctx context.Context, arg LatestPosteriorC
 const lineDeliveryDays = `-- name: LineDeliveryDays :many
 select effective_on::date as day, sum(quantity)::numeric(14,4) as qty, max(created_at)::timestamptz as registered_at
   from stock_movements
- where expense_item_id = $1 and movement_type = 'compra'
+ where expense_item_id = $1 and movement_type = 'compra' and not warehouse_relocation
  group by effective_on
  order by effective_on
 `
@@ -672,7 +678,8 @@ func (q *Queries) LockIngredientsNowait(ctx context.Context, ids []int64) ([]int
 }
 
 const lockStockLine = `-- name: LockStockLine :one
-select id, quantity, qty_received, not_coming_qty, amount, applied_qty_base, ingredient_id, is_gift
+select id, quantity, qty_received, not_coming_qty, amount, applied_qty_base, ingredient_id, is_gift,
+       item_type, warehouse_id
   from expense_items
  where id = $1 and expense_id = $2 and item_type is not null and voided_at is null and not excluded
    for update
@@ -692,6 +699,8 @@ type LockStockLineRow struct {
 	AppliedQtyBase decimal.Decimal  `json:"applied_qty_base"`
 	IngredientID   *int64           `json:"ingredient_id"`
 	IsGift         bool             `json:"is_gift"`
+	ItemType       *StockItemType   `json:"item_type"`
+	WarehouseID    *int64           `json:"warehouse_id"`
 }
 
 // Un renglón de almacén vivo de un gasto, bloqueado: recibir o cerrar una parte compara contra lo
@@ -708,6 +717,8 @@ func (q *Queries) LockStockLine(ctx context.Context, arg LockStockLineParams) (L
 		&i.AppliedQtyBase,
 		&i.IngredientID,
 		&i.IsGift,
+		&i.ItemType,
+		&i.WarehouseID,
 	)
 	return i, err
 }
@@ -717,7 +728,7 @@ select max(sm.effective_on)::date as day
   from stock_movements sm
   join expense_items ei on ei.id = sm.expense_item_id
  where ei.expense_id = $1 and ei.voided_at is null and sm.movement_type = 'compra'
-   and sm.quantity > 0
+   and sm.quantity > 0 and not sm.warehouse_relocation
 `
 
 // El día de la última entrega de los renglones vivos: la fecha en que el gasto quedó recibido (FR-019).
@@ -1124,35 +1135,37 @@ func (q *Queries) SetPreviewLockTimeout(ctx context.Context) error {
 	return err
 }
 
-const stockOnHandFor = `-- name: StockOnHandFor :many
-select sl.ingredient_id, sl.product_id, sl.on_hand
+const stockOnHandInBranchFor = `-- name: StockOnHandInBranchFor :many
+select sl.ingredient_id, sl.product_id, sum(sl.on_hand)::numeric(14,4) as on_hand
   from stock_levels sl
- where sl.warehouse_id = current_sales_warehouse_id()
+ where sl.branch_id = current_branch_id()
    and (sl.ingredient_id = any($1::bigint[]) or sl.product_id = any($2::bigint[]))
+ group by sl.ingredient_id, sl.product_id
 `
 
-type StockOnHandForParams struct {
+type StockOnHandInBranchForParams struct {
 	IngredientIds []int64 `json:"ingredient_ids"`
 	ProductIds    []int64 `json:"product_ids"`
 }
 
-type StockOnHandForRow struct {
+type StockOnHandInBranchForRow struct {
 	IngredientID *int64          `json:"ingredient_id"`
 	ProductID    *int64          `json:"product_id"`
 	OnHand       decimal.Decimal `json:"on_hand"`
 }
 
-// Lo guardado en la sucursal de la sesión de los artículos que toca una edición: el antes y el después
-// de la vista previa.
-func (q *Queries) StockOnHandFor(ctx context.Context, arg StockOnHandForParams) ([]StockOnHandForRow, error) {
-	rows, err := q.db.Query(ctx, stockOnHandFor, arg.IngredientIds, arg.ProductIds)
+// Lo guardado en TODOS los almacenes de la sucursal de la sesión de los artículos que toca una
+// edición, sumado por artículo: el antes y el después de la vista previa. Un renglón puede ir a la
+// bodega (spec 094) y medir solo el de venta escondería lo que la edición mueve ahí.
+func (q *Queries) StockOnHandInBranchFor(ctx context.Context, arg StockOnHandInBranchForParams) ([]StockOnHandInBranchForRow, error) {
+	rows, err := q.db.Query(ctx, stockOnHandInBranchFor, arg.IngredientIds, arg.ProductIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []StockOnHandForRow{}
+	items := []StockOnHandInBranchForRow{}
 	for rows.Next() {
-		var i StockOnHandForRow
+		var i StockOnHandInBranchForRow
 		if err := rows.Scan(&i.IngredientID, &i.ProductID, &i.OnHand); err != nil {
 			return nil, err
 		}

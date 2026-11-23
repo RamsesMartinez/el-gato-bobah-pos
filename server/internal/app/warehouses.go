@@ -58,64 +58,64 @@ func (s *BackofficeService) CreateWarehouse(ctx context.Context, name string) (i
 
 // RenameWarehouse cambia el nombre de un almacén activo de la sucursal.
 func (s *BackofficeService) RenameWarehouse(ctx context.Context, id int64, name string) error {
-	if err := domain.ValidWarehouseName(name); err != nil {
+	return s.UpdateWarehouse(ctx, id, &name, false)
+}
+
+func renameWarehouseTx(ctx context.Context, q *db.Queries, id int64, name string) error {
+	if err := q.LockWarehouses(ctx); err != nil {
 		return err
 	}
-	name = domain.CleanWarehouseName(name)
-	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		if err := q.LockWarehouses(ctx); err != nil {
-			return err
-		}
-		w, err := q.LockWarehouse(ctx, id)
-		if err != nil {
-			return warehouseNotFound(err)
-		}
-		if !w.IsActive {
-			return domain.ErrWarehouseNotFound
-		}
-		if w.Name == name {
-			return nil
-		}
-		if err := warehouseNameFree(ctx, q, name, id); err != nil {
-			return err
-		}
-		if err := q.RenameWarehouse(ctx, db.RenameWarehouseParams{ID: id, Name: name}); err != nil {
-			return warehouseNameConflict(err)
-		}
-		return auditWarehouse(ctx, q, domain.AuditWarehouseUpdated, id, map[string]any{"name": w.Name}, map[string]any{"name": name})
-	})
+	w, err := q.LockWarehouse(ctx, id)
+	if err != nil {
+		return warehouseNotFound(err)
+	}
+	if !w.IsActive {
+		return domain.ErrWarehouseNotFound
+	}
+	if w.Name == name {
+		return nil
+	}
+	if err := warehouseNameFree(ctx, q, name, id); err != nil {
+		return err
+	}
+	if err := q.RenameWarehouse(ctx, db.RenameWarehouseParams{ID: id, Name: name}); err != nil {
+		return warehouseNameConflict(err)
+	}
+	return auditWarehouse(ctx, q, domain.AuditWarehouseUpdated, id, map[string]any{"name": w.Name}, map[string]any{"name": name})
 }
 
 // SetSalesWarehouse hace de este almacén el de venta de la sucursal: de él salen las ventas desde ese
 // momento. Lo ya vendido se queda en el almacén del que salió, y una cancelación repone ahí.
 func (s *BackofficeService) SetSalesWarehouse(ctx context.Context, id int64) error {
-	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		if err := q.LockWarehouses(ctx); err != nil {
-			return err
-		}
-		w, err := q.LockWarehouse(ctx, id)
-		if err != nil {
-			return warehouseNotFound(err)
-		}
-		if !w.IsActive {
-			return domain.ErrWarehouseNotFound
-		}
-		if w.IsSales {
-			return nil
-		}
-		before, err := q.SalesWarehouse(ctx)
-		if err != nil {
-			return err
-		}
-		if err := q.ClearSalesWarehouse(ctx); err != nil {
-			return err
-		}
-		if err := q.MarkSalesWarehouse(ctx, id); err != nil {
-			return err
-		}
-		return auditWarehouse(ctx, q, domain.AuditWarehouseUpdated, id,
-			map[string]any{"salesWarehouse": before.Name}, map[string]any{"salesWarehouse": w.Name})
-	})
+	return s.UpdateWarehouse(ctx, id, nil, true)
+}
+
+func setSalesWarehouseTx(ctx context.Context, q *db.Queries, id int64) error {
+	if err := q.LockWarehouses(ctx); err != nil {
+		return err
+	}
+	w, err := q.LockWarehouse(ctx, id)
+	if err != nil {
+		return warehouseNotFound(err)
+	}
+	if !w.IsActive {
+		return domain.ErrWarehouseNotFound
+	}
+	if w.IsSales {
+		return nil
+	}
+	before, err := q.SalesWarehouse(ctx)
+	if err != nil {
+		return err
+	}
+	if err := q.ClearSalesWarehouse(ctx); err != nil {
+		return err
+	}
+	if err := q.MarkSalesWarehouse(ctx, id); err != nil {
+		return err
+	}
+	return auditWarehouse(ctx, q, domain.AuditWarehouseUpdated, id,
+		map[string]any{"salesWarehouse": before.Name}, map[string]any{"salesWarehouse": w.Name})
 }
 
 // ArchiveWarehouse archiva un almacén vacío, que no es el de venta y sin conteo abierto. Ya
@@ -137,7 +137,11 @@ func (s *BackofficeService) ArchiveWarehouse(ctx context.Context, id int64) erro
 		if err != nil {
 			return err
 		}
-		if err := domain.CanArchiveWarehouse(w.IsSales, items, open); err != nil {
+		pending, err := q.WarehouseHasPendingPurchases(ctx, &id)
+		if err != nil {
+			return err
+		}
+		if err := domain.CanArchiveWarehouse(w.IsSales, items, open, pending); err != nil {
 			return err
 		}
 		if err := q.SetWarehouseActive(ctx, db.SetWarehouseActiveParams{ID: id, IsActive: false}); err != nil {
@@ -224,4 +228,27 @@ func auditWarehouse(ctx context.Context, q *db.Queries, action domain.AuditActio
 		return err
 	}
 	return auditEntity(ctx, q, action, "warehouse", id, &branch, nil, before, after)
+}
+
+// UpdateWarehouse cambia el nombre y/o hace de venta a un almacén, en una sola transacción: si lo
+// segundo falla, lo primero no queda.
+func (s *BackofficeService) UpdateWarehouse(ctx context.Context, id int64, name *string, makeSales bool) error {
+	if name != nil {
+		if err := domain.ValidWarehouseName(*name); err != nil {
+			return err
+		}
+		clean := domain.CleanWarehouseName(*name)
+		name = &clean
+	}
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		if name != nil {
+			if err := renameWarehouseTx(ctx, q, id, *name); err != nil {
+				return err
+			}
+		}
+		if makeSales {
+			return setSalesWarehouseTx(ctx, q, id)
+		}
+		return nil
+	})
 }

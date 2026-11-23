@@ -33,6 +33,33 @@ func TestMigration0121OnARealBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Un renglón de compra que la API de la 0120 dio de alta en otra sucursal: apunta al de venta de la
+	// matriz, pero su mercancía está en el de la sucursal donde se capturó.
+	var item, movedTo int64
+	err := st.Pool.QueryRow(ctx, `select ei.id, m.warehouse_id from expense_items ei
+		join stock_movements m on m.expense_item_id = ei.id where ei.company_id = $1 order by ei.id limit 1`, company).Scan(&item, &movedTo)
+	hasItem := err == nil
+	if hasItem {
+		var norte int64
+		if err := st.Pool.QueryRow(ctx, `with b as (insert into branches (company_id, branch_number, code, name, is_active)
+			values ($1, 8, 'NORTE8', 'Norte', false) returning *)
+			insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local Norte', true from b returning id`,
+			company).Scan(&norte); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Pool.Exec(ctx, `alter table expense_items drop constraint expense_items_amount_positive, drop constraint expense_items_received_range`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Pool.Exec(ctx, `update expense_items set warehouse_id = $2 where id = $1`, item, norte); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Pool.Exec(ctx, `alter table expense_items
+			add constraint expense_items_amount_positive check (amount > 0 or is_gift or (excluded and amount >= 0)) not valid,
+			add constraint expense_items_received_range check (coalesce(qty_received, 0) + not_coming_qty <= quantity) not valid`); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	if err := goose.UpToContext(ctx, prepararGoose(t, st.Pool), ".", warehousesContractVersion); err != nil {
 		t.Fatal(err)
 	}
@@ -41,6 +68,16 @@ func TestMigration0121OnARealBackup(t *testing.T) {
 		var n int
 		if err := st.Pool.QueryRow(ctx, `select count(*) from warehouses where branch_id = $1 and is_sales`, orphan).Scan(&n); err != nil || n != 1 {
 			t.Fatalf("la sucursal sin almacén quedó con %d de venta, %v", n, err)
+		}
+	})
+
+	t.Run("el renglón de compra queda en el almacén donde está su mercancía", func(t *testing.T) {
+		if !hasItem {
+			t.Skip("el respaldo no trae compras con movimientos de esta empresa")
+		}
+		var got int64
+		if err := st.Pool.QueryRow(ctx, `select warehouse_id from expense_items where id = $1`, item).Scan(&got); err != nil || got != movedTo {
+			t.Fatalf("el renglón quedó en el almacén %d, %v; su mercancía está en %d", got, err, movedTo)
 		}
 	})
 

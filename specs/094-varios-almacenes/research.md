@@ -197,3 +197,21 @@ matriz, y la 0121 crea «Local» donde falte (R11 M2).
   del almacén» como un número suelto fuera de `stock_levels`.
 - **Merma esperada (#226)**: su reporte de conteo contra ventas se construye por almacén encima de E5;
   las ventas ya salen del almacén de venta y el conteo es por almacén.
+
+## R15. Lo que encontró la revisión de la segunda subida (0121 y compras con destino)
+
+- **El traslado de lo ya llegado al cambiar el destino no es una entrega**: sus dos movimientos llevan
+  `stock_movements.warehouse_relocation` (columna nueva de la 0121) y no cuentan para el día de
+  recibido, el historial de entregas ni el contra-movimiento por día. Marca explícita y no «sin
+  costo» o un texto en `reason`, que otro camino puede repetir.
+- **Dos entregas a dos almacenes no caben en un renglón con un destino**: recibir en otro almacén
+  cuando ya llegó algo responde 409 y pide cambiarlo desde corregir.
+- **Un almacén con compras por recibir no se archiva**, y lo que entra a un renglón cuyo almacén ya no
+  está activo se rechaza: lo que llegara quedaría en un almacén que no sale en ninguna lista.
+- **Un renglón nuevo sin almacén toma el de venta de la sesión**, no el de la matriz que pondría el
+  trigger.
+- **Ventana del traslape, aceptada**: un conteo abierto en un almacén que no es el de venta por la API
+  nueva y cerrado por la anterior (la de la 0120) falla con la llave
+  `stock_movements_count_same_warehouse` (la API anterior manda el ajuste sin almacén y el trigger lo
+  pone en el de venta). Es un 409/500 de esa petición mientras conviven las dos versiones, sin dato
+  corrupto; los conteos por almacén llegan en la subida de conteo y merma.

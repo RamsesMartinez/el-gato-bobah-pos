@@ -179,13 +179,19 @@ func (s *BackofficeService) ReceiveItem(ctx context.Context, expenseID, itemID i
 			return fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
 		}
 		if in.WarehouseID != nil {
-			stockLine := db.StockItemTypeIngrediente // un renglón que se recibe siempre es del almacén
-			wh, err := lineWarehouse(ctx, q, &stockLine, in.WarehouseID)
+			wh, err := lineWarehouse(ctx, q, line.ItemType, in.WarehouseID)
 			if err != nil {
 				return err
 			}
-			if err := q.SetExpenseItemWarehouse(ctx, db.SetExpenseItemWarehouseParams{ID: itemID, ExpenseID: expenseID, WarehouseID: wh}); err != nil {
-				return err
+			if line.WarehouseID == nil || *wh != *line.WarehouseID {
+				// Con algo ya llegado, cambiar el destino del renglón trasladaría también eso: dos entregas
+				// a dos almacenes no caben en un renglón con un solo destino.
+				if line.AppliedQtyBase.IsPositive() {
+					return fmt.Errorf("%w: ya llegó algo de este renglón a otro almacén; cámbialo desde corregir", domain.ErrConflict)
+				}
+				if err := q.SetExpenseItemWarehouse(ctx, db.SetExpenseItemWarehouseParams{ID: itemID, ExpenseID: expenseID, WarehouseID: wh}); err != nil {
+					return err
+				}
 			}
 		}
 		if err := q.SetLineArrival(ctx, db.SetLineArrivalParams{
@@ -309,7 +315,7 @@ func (s *BackofficeService) AddArrivedItem(ctx context.Context, expenseID int64,
 		if err != nil {
 			return err
 		}
-		wh, err := lineWarehouse(ctx, q, itemType, in.WarehouseID)
+		wh, err := newLineWarehouse(ctx, q, itemType, in.WarehouseID)
 		if err != nil {
 			return err
 		}

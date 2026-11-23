@@ -252,7 +252,7 @@ func readStock(ctx context.Context, q *db.Queries, ings, prods []int64) (map[sto
 	if len(ings)+len(prods) == 0 {
 		return out, nil
 	}
-	rows, err := q.StockOnHandFor(ctx, db.StockOnHandForParams{IngredientIds: ings, ProductIds: prods})
+	rows, err := q.StockOnHandInBranchFor(ctx, db.StockOnHandInBranchForParams{IngredientIds: ings, ProductIds: prods})
 	if err != nil {
 		return nil, err
 	}
@@ -924,7 +924,7 @@ func (r *editRun) addLines(ctx context.Context, lines []EditLineInput) (map[int6
 		if err != nil {
 			return nil, err
 		}
-		wh, err := lineWarehouse(ctx, r.q, itemType, l.WarehouseID)
+		wh, err := newLineWarehouse(ctx, r.q, itemType, l.WarehouseID)
 		if err != nil {
 			return nil, err
 		}

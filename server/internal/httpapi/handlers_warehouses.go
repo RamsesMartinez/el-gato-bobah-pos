@@ -73,17 +73,9 @@ func (h *Handlers) RenameWarehouse(w http.ResponseWriter, r *http.Request) {
 		Error(w, fmt.Errorf("%w: manda el nombre o isSales: true", domain.ErrValidation))
 		return
 	}
-	if body.Name != nil {
-		if err := h.backoffice.RenameWarehouse(r.Context(), id, *body.Name); err != nil {
-			Error(w, err)
-			return
-		}
-	}
-	if body.IsSales != nil {
-		if err := h.backoffice.SetSalesWarehouse(r.Context(), id); err != nil {
-			Error(w, err)
-			return
-		}
+	if err := h.backoffice.UpdateWarehouse(r.Context(), id, body.Name, body.IsSales != nil); err != nil {
+		Error(w, err)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

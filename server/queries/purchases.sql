@@ -55,13 +55,15 @@ select coalesce((select costing_method from business_settings limit 1), 'last'):
 -- Un movimiento de compra ligado a su gasto y a su RENGLÓN, en el almacén donde está lo aplicado del
 -- renglón (spec 094); la sucursal la toma el trigger del almacén.
 -- `effective_on` es el día de la entrega (spec 053); nula, la pone el trigger de la 0103 con hoy.
+-- `warehouse_relocation`: el par de movimientos que lleva lo ya llegado a otro almacén cuando se cambia
+-- el destino del renglón. No es una entrega: no cuenta para el día de recibido ni el historial (0121).
 insert into stock_movements (
   item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, expense_id, expense_item_id,
-  user_id, reason, warehouse_id, effective_on
+  user_id, reason, warehouse_id, effective_on, warehouse_relocation
 ) values (
   sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id), 'compra', sqlc.arg(quantity),
   sqlc.narg(unit_cost), sqlc.arg(expense_id), sqlc.arg(expense_item_id), sqlc.arg(user_id),
-  sqlc.arg(reason), sqlc.arg(warehouse_id), sqlc.narg(effective_on)
+  sqlc.arg(reason), sqlc.arg(warehouse_id), sqlc.narg(effective_on), coalesce(sqlc.narg(relocation)::boolean, false)
 );
 
 -- name: AppliedByWarehouse :many
@@ -71,7 +73,8 @@ select expense_item_id::bigint as expense_item_id, warehouse_id, sum(quantity)::
   from stock_movements
  where expense_id = sqlc.arg(expense_id) and expense_item_id is not null
  group by expense_item_id, warehouse_id
-having sum(quantity) <> 0;
+having sum(quantity) <> 0
+ order by expense_item_id, warehouse_id;
 
 -- name: SetExpenseItemWarehouse :exec
 update expense_items set warehouse_id = sqlc.arg(warehouse_id) where id = sqlc.arg(id) and expense_id = sqlc.arg(expense_id);
@@ -156,7 +159,8 @@ select e.id as expense_id, e.expense_date, s.name as supplier, e.amount as expen
 -- name: LockStockLine :one
 -- Un renglón de almacén vivo de un gasto, bloqueado: recibir o cerrar una parte compara contra lo
 -- que tiene ahora, no contra lo que leyó la pantalla.
-select id, quantity, qty_received, not_coming_qty, amount, applied_qty_base, ingredient_id, is_gift
+select id, quantity, qty_received, not_coming_qty, amount, applied_qty_base, ingredient_id, is_gift,
+       item_type, warehouse_id
   from expense_items
  where id = $1 and expense_id = $2 and item_type is not null and voided_at is null and not excluded
    for update;
@@ -246,7 +250,7 @@ select c.id, c.branch_id, scl.captured_at
 -- de aquí sale el contra-movimiento de un borrado (R7).
 select effective_on::date as day, sum(quantity)::numeric(14,4) as qty, max(created_at)::timestamptz as registered_at
   from stock_movements
- where expense_item_id = sqlc.arg(expense_item_id) and movement_type = 'compra'
+ where expense_item_id = sqlc.arg(expense_item_id) and movement_type = 'compra' and not warehouse_relocation
  group by effective_on
  order by effective_on;
 
@@ -255,6 +259,7 @@ select effective_on::date as day, sum(quantity)::numeric(14,4) as qty, max(creat
 select sm.expense_item_id::bigint as item_id, sm.effective_on::date as day, sum(sm.quantity)::numeric(14,4) as qty
   from stock_movements sm
  where sm.expense_id = sqlc.arg(expense_id) and sm.expense_item_id is not null and sm.movement_type = 'compra'
+   and not sm.warehouse_relocation
  group by sm.expense_item_id, sm.effective_on
  order by sm.expense_item_id, sm.effective_on;
 
@@ -264,15 +269,17 @@ select max(sm.effective_on)::date as day
   from stock_movements sm
   join expense_items ei on ei.id = sm.expense_item_id
  where ei.expense_id = sqlc.arg(expense_id) and ei.voided_at is null and sm.movement_type = 'compra'
-   and sm.quantity > 0;
+   and sm.quantity > 0 and not sm.warehouse_relocation;
 
--- name: StockOnHandFor :many
--- Lo guardado en la sucursal de la sesión de los artículos que toca una edición: el antes y el después
--- de la vista previa.
-select sl.ingredient_id, sl.product_id, sl.on_hand
+-- name: StockOnHandInBranchFor :many
+-- Lo guardado en TODOS los almacenes de la sucursal de la sesión de los artículos que toca una
+-- edición, sumado por artículo: el antes y el después de la vista previa. Un renglón puede ir a la
+-- bodega (spec 094) y medir solo el de venta escondería lo que la edición mueve ahí.
+select sl.ingredient_id, sl.product_id, sum(sl.on_hand)::numeric(14,4) as on_hand
   from stock_levels sl
- where sl.warehouse_id = current_sales_warehouse_id()
-   and (sl.ingredient_id = any(sqlc.arg(ingredient_ids)::bigint[]) or sl.product_id = any(sqlc.arg(product_ids)::bigint[]));
+ where sl.branch_id = current_branch_id()
+   and (sl.ingredient_id = any(sqlc.arg(ingredient_ids)::bigint[]) or sl.product_id = any(sqlc.arg(product_ids)::bigint[]))
+ group by sl.ingredient_id, sl.product_id;
 
 -- name: IngredientCostsFor :many
 select id, name, current_cost from ingredients where id = any(sqlc.arg(ids)::bigint[]) order by id;

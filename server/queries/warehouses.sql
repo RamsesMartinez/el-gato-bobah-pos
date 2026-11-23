@@ -61,3 +61,12 @@ update warehouses set is_sales = false where branch_id = current_branch_id() and
 
 -- name: MarkSalesWarehouse :exec
 update warehouses set is_sales = true where id = sqlc.arg(id);
+
+-- name: WarehouseHasPendingPurchases :one
+-- Renglones de compra vivos que todavía esperan mercancía para este almacén: archivarlo dejaría que lo
+-- que llegue entre a un almacén que no sale en ninguna lista.
+select exists (
+  select 1 from expense_items ei join expenses e on e.id = ei.expense_id
+   where ei.warehouse_id = sqlc.arg(id) and ei.item_type is not null and ei.voided_at is null and not ei.excluded
+     and e.status <> 'cancelada'
+     and coalesce(ei.qty_received, 0) + ei.not_coming_qty < ei.quantity);

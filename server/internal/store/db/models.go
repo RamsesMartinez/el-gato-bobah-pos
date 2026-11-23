@@ -2150,6 +2150,7 @@ type StockMovement struct {
 	ReplacementID        *int64            `json:"replacement_id"`
 	EffectiveOn          pgtype.Date       `json:"effective_on"`
 	WarehouseID          int64             `json:"warehouse_id"`
+	WarehouseRelocation  bool              `json:"warehouse_relocation"`
 }
 
 type StockOutReport struct {

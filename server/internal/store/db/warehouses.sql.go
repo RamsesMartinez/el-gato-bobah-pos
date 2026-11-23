@@ -217,6 +217,23 @@ func (q *Queries) WarehouseHasOpenCount(ctx context.Context, id int64) (bool, er
 	return exists, err
 }
 
+const warehouseHasPendingPurchases = `-- name: WarehouseHasPendingPurchases :one
+select exists (
+  select 1 from expense_items ei join expenses e on e.id = ei.expense_id
+   where ei.warehouse_id = $1 and ei.item_type is not null and ei.voided_at is null and not ei.excluded
+     and e.status <> 'cancelada'
+     and coalesce(ei.qty_received, 0) + ei.not_coming_qty < ei.quantity)
+`
+
+// Renglones de compra vivos que todavía esperan mercancía para este almacén: archivarlo dejaría que lo
+// que llegue entre a un almacén que no sale en ninguna lista.
+func (q *Queries) WarehouseHasPendingPurchases(ctx context.Context, id *int64) (bool, error) {
+	row := q.db.QueryRow(ctx, warehouseHasPendingPurchases, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const warehouseItemsWithStock = `-- name: WarehouseItemsWithStock :one
 select count(*)::bigint from stock_levels where warehouse_id = $1 and on_hand <> 0
 `

@@ -323,13 +323,22 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
-	// La 0121 se niega con mercancía fuera del almacén de venta o con un artículo en dos almacenes de
-	// una sucursal. En la copia de prueba se borra lo que hay fuera del de venta (los avisos y
-	// reportes que cuelgan de esos movimientos, primero).
+	// La 0121 se niega con cualquier registro fuera del almacén de venta o repetido por sucursal en dos
+	// almacenes. En la copia de prueba se borra lo que hay fuera del de venta (lo que cuelga de los
+	// movimientos primero) y se manda al de venta lo que solo lo apunta.
 	121: {`delete from stock_out_reports where warehouse_id in (select id from warehouses where not is_sales)`,
 		`delete from notifications where warehouse_id in (select id from warehouses where not is_sales)`,
 		`delete from stock_movements where warehouse_id in (select id from warehouses where not is_sales)`,
-		`delete from stock_levels where warehouse_id in (select id from warehouses where not is_sales)`},
+		`delete from stock_levels where warehouse_id in (select id from warehouses where not is_sales)`,
+		`delete from branch_stock_minimums where warehouse_id in (select id from warehouses where not is_sales)`,
+		`delete from stock_count_lines where count_id in (select id from stock_counts where warehouse_id in (select id from warehouses where not is_sales))`,
+		`delete from stock_count_product_lines where count_id in (select id from stock_counts where warehouse_id in (select id from warehouses where not is_sales))`,
+		`delete from stock_counts where warehouse_id in (select id from warehouses where not is_sales)`,
+		`delete from waste_records where warehouse_id in (select id from warehouses where not is_sales)`,
+		`update expense_items t set warehouse_id = s.id from warehouses w, warehouses s
+		  where t.warehouse_id = w.id and not w.is_sales and s.company_id = w.company_id and s.branch_id = w.branch_id and s.is_sales`,
+		`update count_places t set warehouse_id = s.id from warehouses w, warehouses s
+		  where t.warehouse_id = w.id and not w.is_sales and s.company_id = w.company_id and s.branch_id = w.branch_id and s.is_sales`},
 	// La 0120 se niega con almacenes además del de venta (mientras rige no pueden tener existencias:
 	// la base rechaza cualquier movimiento a ellos). En la copia de prueba se borran.
 	120: {`delete from warehouses where not is_sales`},

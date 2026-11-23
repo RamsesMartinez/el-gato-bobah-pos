@@ -212,6 +212,8 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "WAREHOUSE_HAS_STOCK"
 	case errors.Is(err, domain.ErrWarehouseCountOpen):
 		status, code = http.StatusConflict, "WAREHOUSE_COUNT_OPEN"
+	case errors.Is(err, domain.ErrWarehousePendingPurchases):
+		status, code = http.StatusConflict, "WAREHOUSE_PENDING_PURCHASES"
 	case errors.Is(err, domain.ErrWarehouseNameTaken):
 		status, code = http.StatusConflict, "WAREHOUSE_NAME_TAKEN"
 	case errors.Is(err, domain.ErrWarehouseNotWritableYet):

@@ -1063,7 +1063,7 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 		if !domain.ValidLineUnitCost(unitCost) {
 			return fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
 		}
-		wh, err := lineWarehouse(ctx, q, itemType, it.WarehouseID)
+		wh, err := newLineWarehouse(ctx, q, itemType, it.WarehouseID)
 		if err != nil {
 			return err
 		}
