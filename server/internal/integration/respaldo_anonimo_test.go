@@ -43,6 +43,12 @@ import (
 // noPersonalData son las columnas de texto que pasan intactas a la base de pruebas. El valor dice
 // por qué no llevan datos de una persona.
 var noPersonalData = map[string]string{
+	// Menú público (097): el nombre de la dirección y el código del QR son públicos por diseño (se
+	// imprimen y se comparten); paleta y plantilla son valores de una lista cerrada.
+	"public_menu_names.name":     "nombre público del menú del negocio",
+	"public_menus.qr_token":      "código público del QR",
+	"public_menus.brand_palette": "id de paleta de una lista cerrada",
+	"public_menus.template_key":  "id de plantilla de una lista cerrada",
 	// Fotos del catálogo (091): la llave sale de ids y de la huella del archivo; el error es el que
 	// devolvió el almacenamiento, recortado y sin URL firmada.
 	"media_pending_deletions.object_key": "llave de archivo: ids y huella",

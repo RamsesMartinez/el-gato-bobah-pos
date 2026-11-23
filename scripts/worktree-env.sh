@@ -35,7 +35,7 @@ fi
 
 pg=$((5500 + N)) pgtest=$((5600 + N)) ci=$((5700 + N)) redis=$((6400 + N))
 mail_http=$((8200 + N)) mail_smtp=$((1100 + N)) api=$((8000 + N)) web=$((3000 + N))
-media=$((9300 + N))
+media=$((9300 + N)) menu=$((8700 + N))
 
 # Un puerto ocupado por OTRA cosa se dice antes de escribir nada; uno ocupado por los contenedores
 # de este mismo proyecto es el caso normal de volver a correrlo.
@@ -63,10 +63,12 @@ BACKEND_PORT=$api
 # El binario de la API lee PORT; start.sh lo deriva de BACKEND_PORT, dev-api.sh no.
 PORT=$api
 FRONTEND_PORT=$web
+# El menú público en local (spec 097): wrangler pages dev.
+MENU_PORT=$menu
 TEST_DATABASE_URL=postgres://gatobobah:gatobobah@localhost:$pgtest/gatobobah_test?sslmode=disable
 EOF
 
 echo "Listo: $OUT"
-echo "  Postgres :$pg  ·  pruebas :$pgtest  ·  Redis :$redis  ·  fotos :$media  ·  API :$api  ·  web :$web  (proyecto egb$N)"
+echo "  Postgres :$pg  ·  pruebas :$pgtest  ·  Redis :$redis  ·  fotos :$media  ·  API :$api  ·  web :$web  ·  menú :$menu  (proyecto egb$N)"
 echo "Siguiente: make start (levanta todo con estos puertos). Las credenciales salen de deploy/.env"
 echo "de ESTE worktree; si no existe, make check-env lo crea con contraseñas nuevas."

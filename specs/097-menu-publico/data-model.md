@@ -83,7 +83,7 @@ existen —que son públicos por diseño—.
 Un bloque `do $$ … for r in select … from companies c left join business_settings b … order by
 c.id loop … end loop`: por empresa, una fila en `public_menus` (token
 `substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)`, sin pgcrypto) y su nombre vigente
-`public_menu_free_name(public_menu_slugify(coalesce(b.business_name, c.name)), c.id)`. El loop ve
+`public_menu_free_name(public_menu_slugify(coalesce(c.name, b.business_name)), c.id)` (el de la empresa primero: la empresa de pruebas de producción imprime «El Gato Bobah» en sus tickets y le quitaba el nombre al negocio real). El loop ve
 lo que insertó la vuelta anterior: la empresa más vieja gana un nombre empatado.
 
 En los datos restaurados: «El Gato Bobah» → `el-gato-bobah`; «Bobah Pruebas» → `bobah-pruebas`

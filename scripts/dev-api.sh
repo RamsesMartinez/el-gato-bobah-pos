@@ -38,6 +38,8 @@ export MEDIA_S3_REGION="${MEDIA_S3_REGION:-us-east-1}"
 export MEDIA_S3_ACCESS_KEY_ID="${MEDIA_S3_ACCESS_KEY_ID:-gatobobah-dev}"
 export MEDIA_S3_SECRET_ACCESS_KEY="${MEDIA_S3_SECRET_ACCESS_KEY:-gatobobah-dev-secret}"
 export MEDIA_PUBLIC_BASE_URL="${MEDIA_PUBLIC_BASE_URL:-http://localhost:${MEDIA_PORT:-9390}/media}"
+# El enlace y el QR del menú público apuntan a la Function local (spec 097, `bun run dev:menu`).
+export MENU_BASE_URL="${MENU_BASE_URL:-http://localhost:${MENU_PORT:-8790}}"
 export ENV_FILE="$ROOT/deploy/.env"
 
 # La API de dev sirve con los MISMOS roles que producción, no como owner. El owner salta RLS y

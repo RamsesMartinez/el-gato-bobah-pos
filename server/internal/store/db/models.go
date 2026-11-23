@@ -1952,6 +1952,33 @@ type ProductPlatformPrice struct {
 	SyncedAt   pgtype.Timestamptz `json:"synced_at"`
 }
 
+type PublicMenu struct {
+	ID           int64     `json:"id"`
+	CompanyID    int64     `json:"company_id"`
+	QrToken      string    `json:"qr_token"`
+	BrandPalette string    `json:"brand_palette"`
+	TemplateKey  string    `json:"template_key"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type PublicMenuName struct {
+	ID        int64              `json:"id"`
+	CompanyID int64              `json:"company_id"`
+	MenuID    int64              `json:"menu_id"`
+	Name      string             `json:"name"`
+	RetiredAt pgtype.Timestamptz `json:"retired_at"`
+	CreatedAt time.Time          `json:"created_at"`
+}
+
+type PublicMenuRoute struct {
+	Name        string      `json:"name"`
+	CompanyID   int64       `json:"company_id"`
+	IsCurrent   interface{} `json:"is_current"`
+	CurrentName string      `json:"current_name"`
+	QrToken     string      `json:"qr_token"`
+}
+
 type Recipe struct {
 	ID        int64     `json:"id"`
 	CreatedAt time.Time `json:"created_at"`

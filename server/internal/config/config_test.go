@@ -445,3 +445,53 @@ func TestValidate_MediaEnProduccionSoloHTTPS(t *testing.T) {
 		t.Errorf("config de producción correcta rechazada: %v", err)
 	}
 }
+
+// El menú público (spec 097): la base del enlace y del QR es una sola variable, y el secreto con el
+// que la Function del borde pasa la IP del cliente no se acepta débil.
+func TestValidate_MenuPublico(t *testing.T) {
+	prod := func() Config {
+		c := base()
+		c.Env = "production"
+		c.CORSOrigin = "https://app.elgatobobah.com"
+		c.AppDatabaseURL = "postgres://gatobobah_app:pw@x"
+		c.PlatformDatabaseURL = "postgres://gatobobah_platform:pw@x"
+		c.PlatformDBPassword = "pw"
+		return c
+	}
+	cases := []struct {
+		name string
+		mod  func(*Config)
+		prod bool
+		ok   bool
+	}{
+		{"sin nada arranca", func(c *Config) {}, false, true},
+		{"sin nada arranca en producción", func(c *Config) {}, true, true},
+		{"base http en desarrollo", func(c *Config) { c.MenuBaseURL = "http://localhost:8797" }, false, true},
+		{"base http en producción", func(c *Config) { c.MenuBaseURL = "http://menu.elgatobobah.com" }, true, false},
+		{"base con / final", func(c *Config) { c.MenuBaseURL = "https://menu.elgatobobah.com/" }, true, false},
+		{"base que no es URL", func(c *Config) { c.MenuBaseURL = "menu.elgatobobah.com" }, false, false},
+		{"secreto corto", func(c *Config) { c.MenuEdgeKey = "corto" }, false, false},
+		{"secreto de ejemplo", func(c *Config) { c.MenuEdgeKey = "cambia-esto-por-un-secreto-de-32-caracteres" }, true, false},
+		{"secreto bueno", func(c *Config) { c.MenuEdgeKey = "0123456789abcdef0123456789abcdef" }, true, true},
+	}
+	for _, tc := range cases {
+		c := base()
+		if tc.prod {
+			c = prod()
+		}
+		tc.mod(&c)
+		err := Validate(c)
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: err=%v, esperaba ok=%v", tc.name, err, tc.ok)
+		}
+	}
+}
+
+func TestMenuBaseURLOrDefault(t *testing.T) {
+	if got := (Config{}).MenuBaseURLOrDefault(); got != "https://menu.elgatobobah.com" {
+		t.Fatalf("sin MENU_BASE_URL el enlace debe ser el de producción, fue %q", got)
+	}
+	if got := (Config{MenuBaseURL: "http://localhost:8797"}).MenuBaseURLOrDefault(); got != "http://localhost:8797" {
+		t.Fatalf("fue %q", got)
+	}
+}

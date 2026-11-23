@@ -28,14 +28,22 @@ responde 404 igual que uno inexistente.
       "products": [
         { "id": 301, "name": "Taro", "description": "Con perlas de tapioca",
           "price": "65", "imageUrl": null, "soldOut": false }
+      ],
+      "subcategories": [
+        { "id": 31, "name": "Buldak", "products": [ … ] }
       ]
     }
   ]
 }
 ```
 
+- Dos niveles, como el catálogo (spec 085): `categories` son las principales (barra, columna y
+  mosaico); `subcategories` las hijas, que se pintan como subtítulos dentro de su principal. Los
+  productos de la principal van antes que los de sus hijas.
+
 - `categories` siempre es arreglo (vacío si no hay nada en web); `products` nunca es `null`.
-- Solo categorías con al menos un producto. Orden: `sort_key`, luego nombre; igual productos.
+- Solo categorías con al menos un producto (propio o de una hija) y solo hijas con productos. Orden:
+  `sort_key`, luego nombre; igual hijas y productos. `subcategories` nunca es `null`.
 - `price`: decimal como texto, ya con `Round2`.
 - `family`: `null` = genérica. `imageUrl`: la de 1200; la Function deriva la de 400.
 

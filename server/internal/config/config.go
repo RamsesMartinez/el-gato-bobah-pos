@@ -118,6 +118,27 @@ type Config struct {
 	MediaS3SecretAccessKey string `env:"MEDIA_S3_SECRET_ACCESS_KEY" envDefault:""`
 	// MediaPublicBaseURL es el dominio de medios por el que se sirven las fotos, sin / final.
 	MediaPublicBaseURL string `env:"MEDIA_PUBLIC_BASE_URL" envDefault:""`
+
+	// --- Menú público (spec 097) ---
+	// MenuBaseURL es la base de la dirección de cada menú y de su QR, sin / final. Es UNA variable
+	// para que mudarse a otro dominio (#331) sea configuración. Vacía = la de producción.
+	MenuBaseURL string `env:"MENU_BASE_URL" envDefault:""`
+	// MenuEdgeKey lo comparte la Function del borde con la API: con él, la API cree la IP del
+	// visitante que la Function le reenvía y limita por ella. Sin él, la API limita por la IP de
+	// quien la llama (en el menú, la de Cloudflare): menos fino, pero no se cae nada.
+	MenuEdgeKey string `env:"MENU_EDGE_KEY" envDefault:""`
+}
+
+// defaultMenuBaseURL es la base del menú de producción. Un QR impreso con ella tiene que seguir
+// llevando al menú aunque el producto se mude de dominio (ver docs/menu-publico.md).
+const defaultMenuBaseURL = "https://menu.elgatobobah.com"
+
+// MenuBaseURLOrDefault devuelve la base del menú público.
+func (c Config) MenuBaseURLOrDefault() string {
+	if c.MenuBaseURL != "" {
+		return c.MenuBaseURL
+	}
+	return defaultMenuBaseURL
 }
 
 // MediaEnabled reports whether catalog photos have somewhere to go.
@@ -269,7 +290,31 @@ func Validate(c Config) error {
 	if err := validateCredentialsCipher(c); err != nil {
 		return err
 	}
+	if err := validateMenu(c); err != nil {
+		return err
+	}
 	return validateMedia(c)
+}
+
+// validateMenu revisa la base del menú público y su secreto. Un secreto débil dejaría a cualquiera
+// elegir con qué IP lo cuenta el límite, que es lo mismo que no tener límite.
+func validateMenu(c Config) error {
+	if c.MenuBaseURL != "" {
+		u, err := url.Parse(c.MenuBaseURL)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+			return errors.New("MENU_BASE_URL debe ser una dirección http(s)://host")
+		}
+		if strings.HasSuffix(c.MenuBaseURL, "/") {
+			return errors.New("MENU_BASE_URL sin / final")
+		}
+		if c.Env == "production" && u.Scheme != "https" {
+			return errors.New("MENU_BASE_URL debe ser https en producción")
+		}
+	}
+	if c.MenuEdgeKey != "" && (IsPlaceholder(c.MenuEdgeKey) || len(c.MenuEdgeKey) < minSecretLen) {
+		return errors.New("MENU_EDGE_KEY débil o de ejemplo: usa 32+ caracteres aleatorios (openssl rand -hex 32), o déjalo vacío")
+	}
+	return nil
 }
 
 // validateMedia exige las MEDIA_* completas o ninguna: a medias, la API arranca «con fotos» y

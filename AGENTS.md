@@ -148,6 +148,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   | Postgres de `make ci-local` | 5700+NN | Antes fijo en 5510: dos `ci-local` a la vez chocaban |
   | Redis | 6400+NN | |
   | API · web | 8000+NN · 3000+NN | |
+  | Menú público (`bun run dev:menu`) | 8700+NN | `MENU_PORT`; la API arma el enlace y el QR con él (spec 097) |
   | mailpit (web · SMTP) | 8200+NN · 1100+NN | |
 
   Reglas:

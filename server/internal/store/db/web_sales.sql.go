@@ -13,29 +13,36 @@ import (
 
 const webOfferProducts = `-- name: WebOfferProducts :many
 
-select p.id, p.price, p.allow_oversell,
+select p.id, p.price, p.allow_oversell, p.name, p.description, p.image_url, p.category_id, p.sort_key,
        (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
          where pc.product_id = p.id and ch.code = 'online') as web_price
 from products p
+join categories c on c.id = p.category_id and c.is_active
 where p.is_active and p.system_kind is null
   and (p.available_from is null or p.available_from <= current_date)
   and (p.available_until is null or p.available_until >= current_date)
   and not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
                    where pc.product_id = p.id and ch.code = 'online' and pc.visibility = 'oculto')
-order by p.id
+order by p.sort_key, p.name, p.id
 `
 
 type WebOfferProductsRow struct {
 	ID            int64            `json:"id"`
 	Price         decimal.Decimal  `json:"price"`
 	AllowOversell bool             `json:"allow_oversell"`
+	Name          string           `json:"name"`
+	Description   *string          `json:"description"`
+	ImageUrl      *string          `json:"image_url"`
+	CategoryID    int64            `json:"category_id"`
+	SortKey       decimal.Decimal  `json:"sort_key"`
 	WebPrice      *decimal.Decimal `json:"web_price"`
 }
 
 // Lo que se vende en la web (spec 092). La regla vive aquí y en app/web_sales.go, y la usa todo lo
 // que muestre o cuente la web: el resumen de Ajustes hoy y el menú público (#316) después.
-// Activos, dentro de su temporada (como el menú del POS) y sin fila «oculto» para Web. Sin fila de
-// lugar de venta = se ofrece, al precio de mostrador.
+// Activos, dentro de su temporada (como el menú del POS), en una categoría activa y sin fila
+// «oculto» para Web. Sin fila de lugar de venta = se ofrece, al precio de mostrador. Es LA regla de
+// qué se vende en la web: el menú público (spec 097) la usa tal cual, con lo que necesita pintar.
 func (q *Queries) WebOfferProducts(ctx context.Context) ([]WebOfferProductsRow, error) {
 	rows, err := q.db.Query(ctx, webOfferProducts)
 	if err != nil {
@@ -49,6 +56,11 @@ func (q *Queries) WebOfferProducts(ctx context.Context) ([]WebOfferProductsRow, 
 			&i.ID,
 			&i.Price,
 			&i.AllowOversell,
+			&i.Name,
+			&i.Description,
+			&i.ImageUrl,
+			&i.CategoryID,
+			&i.SortKey,
 			&i.WebPrice,
 		); err != nil {
 			return nil, err
@@ -69,6 +81,7 @@ with base as (
          (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
            where pc.product_id = p.id and ch.code = 'online') as web_price
   from products p
+  join categories c on c.id = p.category_id and c.is_active
   where p.is_active and p.system_kind is null
     and (p.available_from is null or p.available_from <= current_date)
     and (p.available_until is null or p.available_until >= current_date)
