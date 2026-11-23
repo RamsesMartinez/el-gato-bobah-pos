@@ -15,14 +15,18 @@ const EXAMPLE = 'Ej. Refri, Bodega, Barra';
 // useLocations da las ubicaciones como opciones, el texto del campo vacío y el alta según el permiso.
 // Los avisos van en un toast y no en el renglón: en el conteo el renglón mide 160 px, y al guardar el
 // conteo se reordena por ubicación y el renglón se va a otra parte (revisión de tableta).
-export function useLocations() {
+// Con warehouseId (spec 094) son las de ese almacén, y la que se crea nace en él.
+export function useLocations(warehouseId?: number) {
   const qc = useQueryClient();
   const canCreate = can('inventory.configure', useSessionStore((s) => s.user));
-  const { data: places = [] } = useQuery({ queryKey: ['count-places'], queryFn: backofficeApi.countPlaces });
+  const { data: places = [] } = useQuery({
+    queryKey: warehouseId === undefined ? ['count-places'] : ['count-places', warehouseId],
+    queryFn: () => backofficeApi.countPlaces(warehouseId),
+  });
   const options: PickerOption[] = places.map((p) => ({ value: String(p.id), label: p.name }));
   const create = async (name: string): Promise<PickerOption | null> => {
     try {
-      const { id } = await backofficeApi.createCountPlace(name);
+      const { id } = await backofficeApi.createCountPlace(name, warehouseId);
       await qc.invalidateQueries({ queryKey: ['count-places'] });
       return { value: String(id), label: name };
     } catch (e) {

@@ -71,9 +71,13 @@ test.each(PANTALLAS_039)('%s dice «Se echó a perder» y no palabras de contabi
 // almacén con existencias propias (issue #65), ni «posición» de programador.
 const PANTALLAS_040 = ['features/backoffice/CountPlaceField.tsx', 'features/admin/CountPlacesSettings.tsx'];
 const PROHIBIDAS_040 = [/cat[aá]logo/i, /almac[eé]n/i, /posici[oó]n/i];
+// Desde la spec 094 los almacenes existen y cada lugar vive dentro de uno: preguntar en cuál nace
+// el lugar nombra el almacén de verdad, no llama «almacén» al lugar. Solo ese rótulo exacto.
+const PERMITIDAS_040: Record<string, string[]> = { 'features/admin/CountPlacesSettings.tsx': ['¿En qué almacén?'] };
 
 test.each(PANTALLAS_040)('%s habla de lugares y no de almacenes', (file) => {
-  const leidos = textosDePantalla(file).filter((t) => /\s/.test(t.trim()) || /[A-ZÁÉÍÓÚ]/.test(t));
+  const leidos = textosDePantalla(file).filter((t) => /\s/.test(t.trim()) || /[A-ZÁÉÍÓÚ]/.test(t))
+    .filter((t) => !(PERMITIDAS_040[file] ?? []).includes(t.trim()));
   const malas = leidos.filter((t) => PROHIBIDAS_040.some((p) => p.test(t)));
   expect(malas, 'textos de pantalla que no son de quien opera').toEqual([]);
 });

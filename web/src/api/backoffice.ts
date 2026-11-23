@@ -953,6 +953,9 @@ export interface CountProduct {
 export interface StockCount {
   id: number;
   openedAt: string;
+  // Qué almacén se cuenta (spec 094). Opcionales: la API anterior no los trae.
+  warehouseId?: number;
+  warehouseName?: string;
   items: CountItem[];
   // Opcional: una API anterior a la 069 no los trae, y el compilador obliga a la guarda.
   products?: CountProduct[];
@@ -1061,6 +1064,9 @@ export interface HealthQuery {
   offset?: number;
   noPurchasesSince?: string;
 }
+
+// whQuery arma ?warehouseId= solo cuando se pidió un almacén: ausente es el de venta (spec 094).
+const whQuery = (warehouseId?: number) => (warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`);
 
 export const backofficeApi = {
   // Cajas (catálogo). `cashRegisters` = activas + estado de sesión; `allCashRegisters` = gestión.
@@ -1248,8 +1254,9 @@ export const backofficeApi = {
   addArrivedItem: (expenseId: number, b: ArrivedItemBody) => api.post<void>(`/expenses/${expenseId}/items`, b),
   // Conteo (spec 038). Las cifras van en la unidad base del insumo.
   // null sin conteo abierto (204): TanStack Query no acepta `undefined` como dato.
-  currentCount: () => api.get<StockCount | undefined>('/stock/counts/current').then((c) => c ?? null),
-  openCount: () => api.post<StockCount>('/stock/counts', {}),
+  // Sin warehouseId es el almacén de venta (spec 094): así lo entiende también la API anterior.
+  currentCount: (warehouseId?: number) => api.get<StockCount | undefined>(`/stock/counts/current${whQuery(warehouseId)}`).then((c) => c ?? null),
+  openCount: (warehouseId?: number) => api.post<StockCount>('/stock/counts', warehouseId === undefined ? {} : { warehouseId }),
   captureCount: (id: number, ingredientId: number, body: CountCaptureBody) =>
     // weighed: el desglose que quedó guardado (#204); falta en una API anterior.
     api.put<{ countedQty: string; grossNet?: string; weighed?: CountWeighed | null }>(`/stock/counts/${id}/lines/${ingredientId}`, body),
@@ -1261,11 +1268,12 @@ export const backofficeApi = {
   previewCount: (id: number) => api.get<CountClose>(`/stock/counts/${id}/preview`),
   closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),
   discardCount: (id: number) => api.post<void>(`/stock/counts/${id}/discard`, {}),
-  lastClosedCount: () => api.get<{ closedAt: string | null; id: number | null }>('/stock/counts/last-closed'),
+  lastClosedCount: (warehouseId?: number) => api.get<{ closedAt: string | null; id: number | null }>(`/stock/counts/last-closed${whQuery(warehouseId)}`),
   // Lugares del recorrido del conteo (spec 040): una lista por empresa en vez de texto libre.
   setCountPlace: (ingredientId: number, placeId: number | null) => api.put<void>(`/stock/ingredients/${ingredientId}/place`, { placeId }),
-  countPlaces: () => api.get<CountPlace[]>('/stock/count-places'),
-  createCountPlace: (name: string) => api.post<{ id: number }>('/stock/count-places', { name }),
+  countPlaces: (warehouseId?: number) => api.get<CountPlace[]>(`/stock/count-places${whQuery(warehouseId)}`),
+  createCountPlace: (name: string, warehouseId?: number) =>
+    api.post<{ id: number }>('/stock/count-places', warehouseId === undefined ? { name } : { name, warehouseId }),
   renameCountPlace: (id: number, name: string) => api.put<void>(`/stock/count-places/${id}`, { name }),
   moveCountPlace: (id: number, toPosition: number) => api.post<void>(`/stock/count-places/${id}/move`, { toPosition }),
   // Almacenes de la sucursal (spec 094).

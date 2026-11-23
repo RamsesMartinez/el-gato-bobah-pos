@@ -63,7 +63,7 @@ export function ArticlesTab({ onOpen, word = 'artículo', notice, onNoticeDone }
   const debounced = useDebounced(q, SEARCH_DELAY_MS);
   const f: ArticleFilter = { ...filter, q: debounced };
   const list = useQuery({ queryKey: ['articles', f], queryFn: () => backofficeApi.articles(f) });
-  const places = useQuery({ queryKey: ['count-places'], queryFn: backofficeApi.countPlaces });
+  const places = useQuery({ queryKey: ['count-places'], queryFn: () => backofficeApi.countPlaces() });
   // Posibles duplicados (spec 056): el botón solo aparece con grupos y para quien puede unir.
   const groups = useQuery({ queryKey: ['duplicate-groups'], queryFn: backofficeApi.duplicateGroups, enabled: canConfigure });
   const groupCount = (groups.data?.groups ?? []).length;

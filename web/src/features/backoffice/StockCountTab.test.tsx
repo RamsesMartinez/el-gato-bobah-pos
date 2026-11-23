@@ -23,6 +23,8 @@ const back = vi.hoisted(() => ({
   countPlaces: vi.fn(),
   createCountPlace: vi.fn(),
   units: vi.fn(),
+  lastClosedCount: vi.fn(),
+  warehouses: vi.fn(),
 }));
 const uso = vi.hoisted(() => ({ medirAccion: vi.fn(), medirPantalla: vi.fn() }));
 vi.mock('../../api/uso', async (orig) => ({ ...(await orig<object>()), ...uso }));
@@ -85,6 +87,8 @@ beforeEach(() => {
   });
   back.closeCount.mockImplementation(() => back.previewCount());
   limits.get.mockRejectedValue(new Error('sin límites'));
+  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] });
+  back.lastClosedCount.mockResolvedValue({ closedAt: null, id: null });
 });
 afterEach(() => {
   cleanup();
@@ -977,5 +981,54 @@ describe('productos con existencia propia (spec 069)', () => {
     const hecho = await screen.findByTestId('conteo-cerrado');
     expect(hecho).toHaveTextContent('Conteo cerrado: 1 insumo y 1 producto corregidos');
     expect(hecho).toHaveTextContent('2 sin contar se quedaron como estaban');
+  });
+});
+
+// VARIOS ALMACENES (spec 094, subida 4). Regla de lo que se manda: el almacén de venta va SIN
+// warehouseId (ausente = el de venta, y así lo entiende también la API anterior durante la subida);
+// cualquier otro va con su id. La misma regla en merma, «se acabó» y mínimos.
+describe('conteo por almacén (spec 094)', () => {
+  const dos = { items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+  ] };
+  test('con un solo almacén no pregunta cuál y empieza el de venta sin almacén', async () => {
+    back.currentCount.mockResolvedValue(null);
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Empezar conteo' }));
+    await waitFor(() => expect(back.openCount).toHaveBeenCalled());
+    expect(back.openCount.mock.calls[0][0]).toBeUndefined();
+    expect(back.currentCount.mock.calls[0][0]).toBeUndefined();
+    expect(screen.queryByRole('group', { name: '¿Qué almacén cuentas?' })).toBeNull();
+  });
+  test('con dos pregunta cuál, por omisión el de venta, y cuenta la Bodega con su id', async () => {
+    back.warehouses.mockResolvedValue(dos);
+    back.currentCount.mockResolvedValue(null);
+    montar();
+    await screen.findByRole('group', { name: '¿Qué almacén cuentas?' });
+    expect(screen.getByRole('button', { name: 'Local · de venta' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Bodega' }));
+    // Los lugares del recorrido son los de la Bodega.
+    await waitFor(() => expect(back.countPlaces).toHaveBeenCalledWith(2));
+    await waitFor(() => expect(back.currentCount).toHaveBeenLastCalledWith(2));
+    fireEvent.click(await screen.findByRole('button', { name: 'Empezar conteo' }));
+    await waitFor(() => expect(back.openCount).toHaveBeenCalledWith(2));
+  });
+  test('el conteo abierto dice qué almacén se cuenta y deja al final lo que no tiene lugar en él', async () => {
+    back.warehouses.mockResolvedValue(dos);
+    back.currentCount.mockResolvedValue({ ...conteo(), warehouseId: 2, warehouseName: 'Bodega', items: [
+      { ingredientId: 3, name: 'Limón', place: null, placeId: null, baseUnitCode: 'pieza', presentations: [], countedQty: null },
+      { ingredientId: 1, name: 'Jarabe de vainilla', place: 'Anaquel', placeId: 7, baseUnitCode: 'ml', presentations: [], countedQty: null },
+    ] });
+    montar();
+    expect(await screen.findByText(/Contando Bodega/)).toBeInTheDocument();
+    const titulos = screen.getAllByText(/^(Anaquel|Sin lugar en este almacén)$/).map((e) => e.textContent);
+    expect(titulos).toEqual(['Anaquel', 'Sin lugar en este almacén']);
+  });
+  test('con un almacén el conteo abierto se ve como antes', async () => {
+    montar();
+    await screen.findByText('Limón');
+    expect(screen.queryByText(/Contando/)).toBeNull();
+    expect(screen.queryByText('Sin lugar en este almacén')).toBeNull();
   });
 });
