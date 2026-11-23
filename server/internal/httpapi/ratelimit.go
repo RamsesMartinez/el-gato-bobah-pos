@@ -245,6 +245,11 @@ const (
 func publicMenuKey(r *http.Request, behindProxy bool, edgeKey string) string {
 	if edgeKey != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get(menuEdgeKeyHeader)), []byte(edgeKey)) == 1 {
 		if ip := net.ParseIP(strings.TrimSpace(r.Header.Get(menuClientIPHeader))); ip != nil {
+			// IPv6 por su /64: es lo que recibe una sola conexión, y contar la dirección completa
+			// dejaría que alguien rote dentro de su bloque y estrene tope en cada petición.
+			if ip.To4() == nil {
+				return (&net.IPNet{IP: ip.Mask(net.CIDRMask(64, 128)), Mask: net.CIDRMask(64, 128)}).String()
+			}
 			return ip.String()
 		}
 	}

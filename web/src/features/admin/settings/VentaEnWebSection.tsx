@@ -15,8 +15,12 @@ export function VentaEnWebSection() {
 
   return (
     <VStack align="stretch" gap={4}>
-      {menu.isError ? <Text fontSize="sm" color="fg.muted">No se pudo leer el menú en línea.</Text>
-        : !menu.data ? <Spinner /> : (
+      {menu.isError ? (
+        <HStack role="alert" justify="space-between" borderWidth="1px" borderColor="border" borderRadius="lg" px={5} py={3}>
+          <Text fontSize="sm">No se pudo leer el menú en línea.</Text>
+          <Button variant="outline" minH="44px" onClick={() => menu.refetch()}>Reintentar</Button>
+        </HStack>
+      ) : !menu.data ? <Spinner aria-label="Cargando" /> : (
         <>
           <CompartirMenu menu={menu.data} />
           <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>

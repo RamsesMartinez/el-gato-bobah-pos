@@ -46,9 +46,14 @@ En el `deploy/.env` de cada VM:
 | `MENU_BASE_URL` | `https://menu.elgatobobah.com` | `https://menu-dev.elgatobobah.com` |
 | `MENU_EDGE_KEY` | `openssl rand -hex 32` | otro distinto |
 
-Sin `MENU_BASE_URL` la API arma el enlace y el QR con la de producción. Sin `MENU_EDGE_KEY` arranca
-igual, deja `menu_edge_key_missing` en el journal y limita por la IP de Cloudflare en vez de la del
-visitante.
+Sin `MENU_BASE_URL` la API arma el enlace y el QR con la de producción. **Sin `MENU_EDGE_KEY` la API
+de producción no arranca** (`APP_ENV=production`, también en la VM de pruebas): sin él limitaría por la
+IP de Cloudflare, y una sola persona pidiendo nombres al azar agotaría el cupo de todo un centro de
+datos. En desarrollo es opcional (deja `menu_edge_key_missing` en el log).
+
+**Antes de la primera subida del menú, el secreto tiene que estar en el `.env` de la VM**: con la
+subida azul/verde, una API nueva que no arranca no recibe tráfico y el despliegue falla, pero no
+se cae nada.
 
 ## Límite de peticiones
 
@@ -61,8 +66,8 @@ visitante.
 
 ## Rotar `MENU_EDGE_KEY`
 
-Las dos mitades tienen que coincidir; durante el cambio, la API limita por la IP de Cloudflare (no
-se cae nada):
+Las dos mitades tienen que coincidir; mientras difieren, la API ignora la IP que le reenvía la
+Function y limita por la de Cloudflare (no se cae nada):
 
 1. `openssl rand -hex 32`.
 2. Ponerlo en el `deploy/.env` de la VM y desplegar (`make deploy-image`); verificar `readyz`.
@@ -90,6 +95,8 @@ select name, company_id, is_current, current_name, company_active from public_me
 
 ## Sin verificar al publicar la v1
 
+- Que la Cache API funcione en las direcciones de vista previa `*.pages.dev` (en `workers.dev` no
+  guarda nada); los dominios propios sí la tienen.
 - Que la vista previa de WhatsApp muestre la foto (las fotos son WebP). Si no la muestra, el
   siguiente paso es una transformación de Cloudflare a JPEG sobre el dominio de medios.
 - La regla de límite de peticiones en el plan de la cuenta.

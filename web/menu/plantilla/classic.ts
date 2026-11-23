@@ -9,6 +9,14 @@ import { esc } from './html';
 import type { Tonos } from './marca';
 import { SIMBOLOS, familia } from './sprite';
 
+function origenDe(u: string): string | null {
+  try {
+    return new URL(u).origin;
+  } catch {
+    return null;
+  }
+}
+
 export interface OpcionesDePagina {
   /** La dirección vigente del menú: canonical y og:url. */
   canonicalUrl: string;
@@ -25,7 +33,8 @@ export function renderClassic(m: PublicMenu, t: Tonos, o: OpcionesDePagina): str
   const conFoto = todos.find((p) => p.imageUrl);
   const ogImage = conFoto?.imageUrl ? chica(conFoto.imageUrl) : o.ogDefaultImage;
   const negocio = esc(m.business.name);
-  const descripcion = total > 0 ? `Menú de ${negocio}: ${total} productos. Precios y fotos.` : `Menú de ${negocio}.`;
+  const cuantos = total === 1 ? '1 producto' : `${total} productos`;
+  const descripcion = total > 0 ? `Menú de ${negocio}: ${cuantos}. Precios y fotos.` : `Menú de ${negocio}.`;
 
   let n = 0;
   const imagen = (p: PublicProduct, fam: string | null, tam: number) => {
@@ -58,7 +67,7 @@ export function renderClassic(m: PublicMenu, t: Tonos, o: OpcionesDePagina): str
   const cuerpo = total === 0
     ? `<main class="vacio"><p>Este menú todavía no tiene productos.</p></main>`
     : `<nav class="chips" aria-label="Categorías"><ul>${botonMosaico}${enlaces}</ul></nav>
-<div id="categorias" class="hoja" role="dialog" aria-label="Categorías"><div class="hoja-in"><div class="hoja-cab"><b>Categorías</b><a href="#cerrar" class="cerrar">Cerrar</a></div><ul class="portada">${m.categories.map(mosaico).join('')}</ul></div></div>
+<div id="categorias" class="hoja" role="dialog" aria-label="Categorías"><a href="#cerrar" class="fondo" aria-hidden="true" tabindex="-1"></a><div class="hoja-in"><div class="hoja-cab"><b>Categorías</b><a href="#cerrar" class="cerrar">Cerrar</a></div><ul class="portada">${m.categories.map(mosaico).join('')}</ul></div></div>
 <main class="con-lado"><nav class="lado" aria-label="Categorías"><ul>${botonMosaico}${enlaces}</ul></nav><div class="cuerpo">${m.categories.map(seccion).join('')}</div></main>`;
 
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -72,10 +81,10 @@ export function renderClassic(m: PublicMenu, t: Tonos, o: OpcionesDePagina): str
 <meta property="og:url" content="${esc(o.canonicalUrl)}">
 <meta name="twitter:card" content="summary">
 <meta name="theme-color" content="${t.c700}">
-${conFoto?.imageUrl ? `<link rel="preconnect" href="${esc(new URL(conFoto.imageUrl).origin)}">` : ''}
+${conFoto?.imageUrl && origenDe(conFoto.imageUrl) ? `<link rel="preconnect" href="${esc(origenDe(conFoto.imageUrl)!)}">` : ''}
 <style>${css(t)}</style></head><body>
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none">${SIMBOLOS}</svg>
-<header class="cab"><h1>${negocio}</h1><p>Menú${total ? ` · ${total} productos` : ''}</p></header>
+<header class="cab"><h1>${negocio}</h1><p>Menú${total ? ` · ${cuantos}` : ''}</p></header>
 ${cuerpo}
 <footer class="pie">Precios en pesos mexicanos. Lo marcado como «Agotado» no está disponible por ahora.</footer>
 </body></html>`;
@@ -96,7 +105,7 @@ ul{list-style:none;margin:0;padding:0}a{color:inherit}a:focus-visible,summary:fo
 main{max-width:1200px;margin:0 auto;padding:0 16px}
 
 h2{font-size:20px;margin:24px 0 8px;color:var(--m700)}h3{font-size:16px;margin:20px 0 4px;color:var(--mu)}
-@media (prefers-color-scheme:dark){h2{color:var(--tx)}}
+@media (prefers-color-scheme:dark){h2{color:var(--tx)}a:focus-visible,summary:focus-visible{outline-color:var(--tx)}}
 summary{list-style:none;cursor:pointer}summary::-webkit-details-marker{display:none}
 .ilu{display:flex;align-items:center;justify-content:center;background:var(--m50);color:var(--ilu);border-radius:12px;flex-shrink:0;aspect-ratio:1}
 .ilu svg{width:45%;height:auto;aspect-ratio:1}
@@ -114,7 +123,8 @@ img{border-radius:12px;background:var(--m50);display:block;max-width:100%;height
 .ren[open] .ds{display:none}
 .hoja{display:none;position:fixed;inset:0;z-index:5;background:rgba(0,0,0,.5);overscroll-behavior:contain}.hoja:target{display:block}
 html:has(.hoja:target){overflow:hidden}
-.hoja-in{background:var(--bg);max-height:100dvh;overflow:auto;overscroll-behavior:contain}
+.hoja-in{position:relative;background:var(--bg);max-height:100dvh;overflow:auto;overscroll-behavior:contain}
+.fondo{position:absolute;inset:0}
 .hoja-cab{position:sticky;top:0;background:var(--bg);display:flex;justify-content:space-between;align-items:center;padding:8px 16px;border-bottom:1px solid var(--bo);font-size:18px}
 .cerrar{display:flex;align-items:center;min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--bo);text-decoration:none;font-weight:600;font-size:15px}
 .portada{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:16px}

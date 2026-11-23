@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type PublicMenuSettings } from '../../../../api/admin';
 import { ApiError } from '../../../../api/client';
 import { slugDelMenu } from './slug';
+import { toaster } from '../../../../components/ui/toaster';
 
 const base = (m: PublicMenuSettings) => m.url.replace(/^https?:\/\//, '').slice(0, -m.name.length);
 
@@ -23,9 +24,15 @@ export function NombreDelMenu({ menu }: { menu: PublicMenuSettings }) {
   const [texto, setTexto] = useState(menu.name);
   const slug = slugDelMenu(texto);
   const corto = slug.length < 3;
+  // Mismo `scope` que el color: los dos cambian el mismo menú y sus respuestas no pueden llegar
+  // cruzadas (la última en llegar dejaría en pantalla un estado viejo).
   const guardar = useMutation({
-    mutationFn: () => adminApi.updatePublicMenu({ name: texto }),
-    onSuccess: (m) => { qc.setQueryData(['admin', 'public-menu'], m); setTexto(m.name); },
+    scope: { id: 'public-menu' },
+    mutationFn: (name: string) => adminApi.updatePublicMenu({ name }),
+    onSuccess: (m) => {
+      qc.setQueryData(['admin', 'public-menu'], m);
+      toaster.create({ title: 'Nombre guardado', description: 'La dirección anterior y el código QR siguen llevando a tu menú.', type: 'success' });
+    },
   });
   const error = guardar.isError ? textoDeError(guardar.error, menu) : corto ? 'Usa al menos 3 letras o números.' : '';
 
@@ -35,12 +42,13 @@ export function NombreDelMenu({ menu }: { menu: PublicMenuSettings }) {
       <HStack gap={2} align="start">
         <Box flex="1" minW={0}>
           <Input id="nombre-del-menu" minH="44px" value={texto} autoCapitalize="none" autoComplete="off" maxLength={60}
-            aria-invalid={!!error} onChange={(e) => { setTexto(e.target.value); guardar.reset(); }} />
+            aria-invalid={!!error} aria-describedby="nombre-del-menu-ayuda"
+            onChange={(e) => { setTexto(e.target.value); if (!guardar.isPending) guardar.reset(); }} />
           <Text fontSize="sm" color="fg.muted" mt={1}>Quedará: {base(menu)}<b>{slug}</b></Text>
         </Box>
-        <Button minH="44px" disabled={corto || slug === menu.name} loading={guardar.isPending} onClick={() => guardar.mutate()}>Guardar</Button>
+        <Button minH="44px" disabled={corto || slug === menu.name} loading={guardar.isPending} onClick={() => guardar.mutate(texto)}>Guardar</Button>
       </HStack>
-      <Text fontSize="sm" color={error ? 'red.fg' : 'fg.muted'} mt={2} minH="20px" role={error ? 'alert' : undefined}>
+      <Text id="nombre-del-menu-ayuda" aria-live="polite" fontSize="sm" color={error ? 'red.fg' : 'fg.muted'} mt={2} minH="20px">
         {error || 'Si lo cambias, la dirección anterior y el QR impreso siguen llevando a tu menú.'}
       </Text>
     </Box>

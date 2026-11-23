@@ -12,7 +12,10 @@ func base() Config {
 		// KMS y no la llave local: es lo único válido en los dos ambientes, así que los tests de
 		// producción que parten de aquí no fallan por la razón equivocada.
 		CredentialsKMSKey: "projects/p/locations/us-central1/keyRings/pos-dev/cryptoKeys/credenciales",
-		Env:               "development",
+		// El secreto del menú público: obligatorio en producción, así que los tests de producción que
+		// parten de aquí no fallan por la razón equivocada.
+		MenuEdgeKey: "0123456789abcdef0123456789abcdef",
+		Env:         "development",
 	}
 }
 
@@ -465,10 +468,17 @@ func TestValidate_MenuPublico(t *testing.T) {
 		ok   bool
 	}{
 		{"sin nada arranca", func(c *Config) {}, false, true},
-		{"sin nada arranca en producción", func(c *Config) {}, true, true},
+		{"en producción sin el secreto no arranca", func(c *Config) { c.MenuEdgeKey = "" }, true, false},
+		{"en desarrollo sin el secreto arranca", func(c *Config) { c.MenuEdgeKey = "" }, false, true},
 		{"base http en desarrollo", func(c *Config) { c.MenuBaseURL = "http://localhost:8797" }, false, true},
-		{"base http en producción", func(c *Config) { c.MenuBaseURL = "http://menu.elgatobobah.com" }, true, false},
-		{"base con / final", func(c *Config) { c.MenuBaseURL = "https://menu.elgatobobah.com/" }, true, false},
+		{"base http en producción", func(c *Config) {
+			c.MenuBaseURL = "http://menu.elgatobobah.com"
+			c.MenuEdgeKey = "0123456789abcdef0123456789abcdef"
+		}, true, false},
+		{"base con / final", func(c *Config) {
+			c.MenuBaseURL = "https://menu.elgatobobah.com/"
+			c.MenuEdgeKey = "0123456789abcdef0123456789abcdef"
+		}, true, false},
 		{"base que no es URL", func(c *Config) { c.MenuBaseURL = "menu.elgatobobah.com" }, false, false},
 		{"secreto corto", func(c *Config) { c.MenuEdgeKey = "corto" }, false, false},
 		{"secreto de ejemplo", func(c *Config) { c.MenuEdgeKey = "cambia-esto-por-un-secreto-de-32-caracteres" }, true, false},

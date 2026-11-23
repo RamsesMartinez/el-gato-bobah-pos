@@ -91,14 +91,14 @@ describe('el menú en el borde', () => {
     let r = await get('/nombre-viejo');
     expect(r.status).toBe(302);
     expect(r.headers.get('Location')).toBe('/fonda-lupe');
-    expect(r.headers.get('Cache-Control')).toBe('public, max-age=300');
+    expect(r.headers.get('Cache-Control')).toBe('public, max-age=60');
     r = await get('/q/0123456789ab');
     expect(r.status).toBe(302);
     expect(calls.at(-1)!.url).toBe('https://api.test/api/v1/public/menus/q/0123456789ab');
   });
 
   it('un nombre que no existe es 404 y también se guarda', async () => {
-    api = async () => json(404, { code: 'NOT_FOUND' });
+    api = async () => json(404, { error: { code: 'NOT_FOUND', message: 'no encontrado' } });
     expect((await get('/no-existe')).status).toBe(404);
     expect((await get('/no-existe')).status).toBe(404);
     expect(calls).toHaveLength(1);
@@ -148,6 +148,87 @@ describe('el menú en el borde', () => {
     const d = { ...deps(), buildId: 'b2' };
     await handle(new Request('https://menu.test/fonda-lupe'), ENV, d);
     expect(calls).toHaveLength(2);
+  });
+
+  it('un 404 que no es «no existe» de la API no borra la copia buena', async () => {
+    await get('/fonda-lupe');
+    api = async () => new Response('not found', { status: 404 });
+    now += FRESCO_MS + 1;
+    const r = await get('/fonda-lupe');
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain('Americano');
+  });
+
+  it('una API colgada no deja esperando: se corta y sirve la copia', async () => {
+    await get('/fonda-lupe');
+    let señal: AbortSignal | undefined;
+    // Como el fetch de verdad: no responde nunca, salvo que la señal lo corte.
+    api = async (req) => {
+      señal = req.signal;
+      return new Promise<Response>((_, mal) => req.signal.addEventListener('abort', () => mal(new Error('abort'))));
+    };
+    now += FRESCO_MS + 1;
+    const d = deps();
+    const espera = handle(new Request('https://menu.test/fonda-lupe'), ENV, { ...d, timeoutMs: 20 });
+    const r = await espera;
+    expect(r.status).toBe(200);
+    expect(señal).toBeDefined();
+  });
+
+  it('un despliegue nuevo de la Function no pierde la copia vieja si la API está caída', async () => {
+    await get('/fonda-lupe');
+    api = async () => json(502, {});
+    const r = await handle(new Request('https://menu.test/fonda-lupe'), ENV, { ...deps(), buildId: 'b2' });
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain('Americano');
+  });
+
+  it('una foto con dirección rota no tumba el menú', async () => {
+    api = async () => json(200, { ...MENU, categories: [{ ...MENU.categories[0], imageUrl: 'no es url', products: [{ ...MENU.categories[0].products[0], imageUrl: 'tampoco' }] }] });
+    const r = await get('/fonda-lupe');
+    expect(r.status).toBe(200);
+  });
+
+  it('la CSP permite el origen de las fotos de categoría y de producto', async () => {
+    api = async () => json(200, { ...MENU, categories: [{ ...MENU.categories[0], imageUrl: 'https://cat.test/2/categories/1/a-1200.webp' }] });
+    const r = await get('/fonda-lupe');
+    expect(r.headers.get('Content-Security-Policy')).toContain('https://cat.test');
+  });
+
+  it('la copia guardada sale sin la marca interna y con la vida que ve el cliente', async () => {
+    await get('/fonda-lupe');
+    const r = await get('/fonda-lupe');
+    expect(calls).toHaveLength(1);
+    expect(r.headers.get('X-Menu-Stored-At')).toBeNull();
+    expect(r.headers.get('X-Menu-Build')).toBeNull();
+    expect(r.headers.get('Cache-Control')).toBe('public, max-age=60');
+  });
+
+  it('el 302 de un nombre anterior vive poco: volver a ese nombre no deja un ciclo en el navegador', async () => {
+    api = async () => json(200, { kind: 'moved', name: 'fonda-lupe' });
+    const r = await get('/nombre-viejo');
+    expect(r.headers.get('Cache-Control')).toBe('public, max-age=60');
+    const g = await get('/nombre-viejo');
+    expect(g.headers.get('Cache-Control')).toBe('public, max-age=60');
+  });
+
+  it('la forma canónica conserva la query string', async () => {
+    const r = await get('/Fonda-Lupe?utm_source=volante');
+    expect(r.headers.get('Location')).toBe('/fonda-lupe?utm_source=volante');
+  });
+
+  it('un nombre vigente inválido o un QR que responde un menú no se sirven', async () => {
+    api = async () => json(200, { kind: 'moved', name: '../../x' });
+    expect((await get('/fonda-lupe')).status).toBe(503);
+    api = async () => json(200, MENU);
+    expect((await get('/q/0123456789ab')).status).toBe(503);
+  });
+
+  it('solo GET y HEAD', async () => {
+    const r = await handle(new Request('https://menu.test/fonda-lupe', { method: 'POST' }), ENV, deps());
+    expect(r.status).toBe(405);
+    const h = await handle(new Request('https://menu.test/fonda-lupe', { method: 'HEAD' }), ENV, deps());
+    expect(h.status).toBe(200);
   });
 
   it('la portada no lista negocios', async () => {

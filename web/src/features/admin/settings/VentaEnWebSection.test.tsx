@@ -88,6 +88,39 @@ describe('Ajustes › Venta en web (maqueta B)', () => {
     expect(await screen.findByText(/color guardado/i)).toBeInTheDocument();
   });
 
+  it('si el portapapeles no deja copiar, lo dice', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn(() => Promise.reject(new Error('no'))) } });
+    pinta();
+    fireEvent.click(await screen.findByRole('button', { name: /copiar enlace/i }));
+    expect(await screen.findByText(/no se pudo copiar/i)).toBeInTheDocument();
+  });
+
+  it('si el QR no se puede generar, lo dice y deja reintentar', async () => {
+    qrSvg.mockRejectedValueOnce(new Error('chunk'));
+    pinta();
+    expect(await screen.findByText(/no se pudo generar el código qr/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /reintentar/i }));
+    await waitFor(() => expect(qrSvg).toHaveBeenCalledTimes(2));
+  });
+
+  it('al guardar el nombre lo confirma', async () => {
+    update.mockResolvedValue({ ...ajustes, name: 'dona-lupe' });
+    pinta();
+    fireEvent.change(await screen.findByLabelText(/nombre en la dirección/i), { target: { value: 'Doña Lupe' } });
+    fireEvent.click(screen.getByRole('button', { name: /^guardar$/i }));
+    expect(await screen.findByText(/nombre guardado/i)).toBeInTheDocument();
+  });
+
+  it('los colores son una sola parada de teclado y se recorren con flechas', async () => {
+    update.mockResolvedValue({ ...ajustes, palette: 'blue' });
+    pinta();
+    await screen.findByRole('radiogroup', { name: /color del menú/i });
+    const radios = screen.getAllByRole('radio');
+    expect(radios.filter((r) => r.getAttribute('tabindex') === '0')).toHaveLength(1);
+    fireEvent.keyDown(screen.getByRole('radio', { name: 'Gato Bobah' }), { key: 'ArrowRight' });
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ palette: 'blue' }));
+  });
+
   it('el resumen de productos queda en un renglón con su acceso', async () => {
     pinta();
     expect(await screen.findByText(/142/)).toBeInTheDocument();

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -392,5 +393,47 @@ func TestPublicMenuRename(t *testing.T) {
 	}
 	if _, err := rename("relleno-3"); err != nil {
 		t.Fatalf("volver a uno anterior con el tope lleno: %v", err)
+	}
+}
+
+// DOS EMPRESAS POR EL MISMO NOMBRE A LA VEZ (revisión de seguridad 097): las dos pasan la revisión
+// de «tomado en otra empresa» antes de que la otra inserte. Gana una; la otra recibe «no disponible»
+// (409), nunca un 500.
+func TestTwoCompaniesRaceForTheSameMenuName(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ast := appRoleStore(t)
+	svc := app.NewPublicMenuService(ast, testMenuBase)
+	a := makeCompany(t, st, "pm-carrera-a")
+	b := makeCompany(t, st, "pm-carrera-b")
+	ctxs := []context.Context{
+		tenantCtx(t, ast, a, makeUserIn(t, st, a, "admin_pm_ca", "admin")),
+		tenantCtx(t, ast, b, makeUserIn(t, st, b, "admin_pm_cb", "admin")),
+	}
+	for round := 0; round < 5; round++ {
+		name := fmt.Sprintf("disputado-%d", round)
+		var wg sync.WaitGroup
+		errs := make([]error, 2)
+		for i := range ctxs {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				_, errs[i] = svc.Update(ctxs[i], app.PublicMenuUpdate{Name: &name})
+			}(i)
+		}
+		wg.Wait()
+		ok := 0
+		for _, err := range errs {
+			switch {
+			case err == nil:
+				ok++
+			case errors.Is(err, domain.ErrMenuNameUnavailable):
+			default:
+				t.Fatalf("ronda %d: %v (debía ser «no disponible»)", round, err)
+			}
+		}
+		if ok != 1 {
+			t.Fatalf("ronda %d: %d empresas se quedaron con %q", round, ok, name)
+		}
 	}
 }

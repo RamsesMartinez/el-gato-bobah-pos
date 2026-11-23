@@ -111,8 +111,8 @@ regla que la pantalla (la pantalla solo la muestra).
 | Ruta | Respuesta |
 |---|---|
 | `/<nombre>` vigente | 200 HTML del menú |
-| `/<nombre>` anterior | 302 a `/<vigente>`, `Cache-Control: public, max-age=300` |
-| `/q/<token>` | 302 a `/<vigente>`, ídem |
+| `/<nombre>` anterior | 302 a `/<vigente>`, `Cache-Control: public, max-age=60` (corto: si el negocio vuelve a ese nombre, el navegador no se queda con un salto viejo) |
+| `/q/<token>` | 302 a `/<vigente>`, `max-age=60` |
 | `/<nombre>/` o con mayúsculas | 302 a `/<nombre en minúsculas, sin diagonal final>` |
 | `/` | 200 página breve «Menús en línea» sin lista de negocios |
 | inexistente | 404 HTML «Este menú no existe» |

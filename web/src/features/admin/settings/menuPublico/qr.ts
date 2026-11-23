@@ -55,9 +55,13 @@ export function imprimirTarjeta(svg: string, negocio: string, direccion: string)
 h1{font-size:28pt;margin:0 0 8px}p{font-size:14pt;margin:8px 0}.qr svg{width:90mm;height:90mm}.u{font-size:13pt;word-break:break-all}
 </style></head><body><div class="t"><h1>${esc(negocio)}</h1><p>Escanea para ver el menú</p><div class="qr">${svg}</div><p class="u">${esc(direccion)}</p></div></body></html>`);
   doc.close();
+  // En Chrome de Android y en Safari print() no bloquea: el marco se quita cuando termina la
+  // impresión, y si el evento no llega, un minuto después.
+  const quitar = () => f.remove();
   setTimeout(() => {
+    f.contentWindow?.addEventListener('afterprint', quitar, { once: true });
     f.contentWindow?.focus();
     f.contentWindow?.print();
-    setTimeout(() => f.remove(), 1000);
+    setTimeout(quitar, 60_000);
   }, 50);
 }

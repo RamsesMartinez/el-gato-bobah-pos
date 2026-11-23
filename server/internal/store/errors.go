@@ -21,6 +21,10 @@ const branchAmbiguousCode = "EGB01"
 // unió a otro. El mensaje trae «ingredient_merged|<destino>».
 const mergedIngredientCode = "EGB02"
 
+// uniqueViolationCode es el SQLSTATE de una llave única repetida (el nombre de un menú público que
+// otra empresa ganó en la carrera, spec 097).
+const uniqueViolationCode = "23505"
+
 // warehouseMissingCode y warehouseNotWritableCode son los de la 0120: la sucursal no tiene almacén
 // de venta (`sales_warehouse_of`), y un movimiento o un cambio de almacén de venta que la base todavía
 // no admite mientras guarde las existencias con llave por sucursal.
@@ -30,9 +34,6 @@ const (
 )
 
 // DomainError traduce a un sentinel de domain los errores que la base lanza a propósito.
-// uniqueViolationCode es el SQLSTATE de una llave única repetida.
-const uniqueViolationCode = "23505"
-
 func DomainError(err error) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {

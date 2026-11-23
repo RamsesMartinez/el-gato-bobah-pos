@@ -123,7 +123,20 @@ describe('plantilla classic (A + mosaico)', () => {
   });
 });
 
+it('un solo producto se dice en singular', () => {
+  const m = menu();
+  m.categories = [{ ...m.categories[0], products: [m.categories[0].products[0]], subcategories: [] }];
+  const html = renderMenu(m, OPTS);
+  expect(html).toContain('Menú · 1 producto<');
+  expect(html).not.toContain('1 productos');
+});
+
 describe('precio', () => {
+  it('un precio vacío no se publica como cero', () => {
+    expect(precio('')).toBe('');
+    expect(precio('  ')).toBe('');
+  });
+
   it.each([['45', '$45'], ['59.5', '$59.50'], ['1250', '$1,250'], ['0.5', '$0.50']])('%s → %s', (p, s) => {
     expect(precio(p)).toBe(s);
   });

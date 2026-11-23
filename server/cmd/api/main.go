@@ -1017,7 +1017,7 @@ func (u uberClient) Verify(ctx context.Context) error {
 // por IP cuenta la IP de Cloudflare y no la del visitante, y eso tiene que verse en el journal.
 func logMenuConfig(cfg config.Config) {
 	if cfg.MenuEdgeKey == "" {
-		slog.Warn("menu_edge_key_missing", "efecto", "el límite del menú público cuenta la IP de quien llama, no la del visitante")
+		slog.Warn("menu_edge_key_missing", "detail", "el límite del menú público cuenta la IP de quien llama, no la del visitante")
 	}
 }
 

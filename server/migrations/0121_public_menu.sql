@@ -126,7 +126,9 @@ $$;
 create function public_menu_free_name(base text, cid bigint) returns text
 language plpgsql volatile set search_path = pg_catalog, public as $$
 declare
-  b        text := coalesce(base, '');
+  -- Se normaliza aquí también (es idempotente): un llamador futuro que pase «Café» tumbaría el alta
+  -- de una empresa con la violación del check.
+  b        text := public_menu_slugify(base);
   cand     text;
   n        int := 1;
   sfx      text;

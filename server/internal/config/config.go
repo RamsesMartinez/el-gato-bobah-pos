@@ -124,8 +124,8 @@ type Config struct {
 	// para que mudarse a otro dominio (#331) sea configuración. Vacía = la de producción.
 	MenuBaseURL string `env:"MENU_BASE_URL" envDefault:""`
 	// MenuEdgeKey lo comparte la Function del borde con la API: con él, la API cree la IP del
-	// visitante que la Function le reenvía y limita por ella. Sin él, la API limita por la IP de
-	// quien la llama (en el menú, la de Cloudflare): menos fino, pero no se cae nada.
+	// visitante que la Function le reenvía y limita por ella. Obligatorio en producción; en
+	// desarrollo, sin él se limita por la IP de quien llama.
 	MenuEdgeKey string `env:"MENU_EDGE_KEY" envDefault:""`
 }
 
@@ -310,6 +310,11 @@ func validateMenu(c Config) error {
 		if c.Env == "production" && u.Scheme != "https" {
 			return errors.New("MENU_BASE_URL debe ser https en producción")
 		}
+	}
+	// En producción es obligatorio: sin él, el límite cuenta la IP de Cloudflare, y una sola persona
+	// pidiendo nombres al azar agota el cupo de todo un centro de datos (revisión de seguridad 097).
+	if c.Env == "production" && c.MenuEdgeKey == "" {
+		return errors.New("MENU_EDGE_KEY requerido en producción: el mismo secreto que el proyecto de Pages del menú (openssl rand -hex 32)")
 	}
 	if c.MenuEdgeKey != "" && (IsPlaceholder(c.MenuEdgeKey) || len(c.MenuEdgeKey) < minSecretLen) {
 		return errors.New("MENU_EDGE_KEY débil o de ejemplo: usa 32+ caracteres aleatorios (openssl rand -hex 32), o déjalo vacío")
