@@ -7,9 +7,11 @@
 -- receta que cambió entre la venta y la cancelación repondría una cantidad distinta de la que salió.
 -- NULL en los movimientos que no vienen de una venta (ajustes, compras, mermas).
 -- modifier_option_id / component_of_product_id: el extra o el paquete que originó el descuento.
+-- warehouse_id: nulo en una venta (el trigger pone el de venta); explícito al partir un renglón, que
+-- reparte movimientos que ya salieron de un almacén (spec 094).
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, order_id, order_line_id, user_id, reason, note,
-                             modifier_option_id, component_of_product_id)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13);
+                             modifier_option_id, component_of_product_id, warehouse_id)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14);
 
 -- Almacén / niveles
 
@@ -27,7 +29,7 @@ left join ingredients i on i.id = sl.ingredient_id
 left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = sl.product_id
 -- Las de la sucursal (0076): con dos, el mismo insumo saldría dos veces sin decir de cuál es.
-where sl.branch_id = current_branch_id()
+where sl.warehouse_id = current_sales_warehouse_id()
   -- Es la lista de faltantes de la pantalla (marca «bajo»): un insumo archivado ahí es un faltante
   -- falso (spec 077). Su existencia sigue en Almacén › Archivados. Un producto archivado sí sale,
   -- marcado: desactivar productos no es de esa feature.
@@ -56,9 +58,9 @@ select 1 from products where id = $1 for update;
 -- Las existencias del producto, una por sucursal, BLOQUEADAS: una venta simultánea espera a que la
 -- conversión termine en vez de aplicar su delta sobre una cifra que ya se trasladó. El trigger de
 -- existencias suma deltas y no relee nada, así que sin este bloqueo se perdería o se inventaría.
-select branch_id, on_hand from stock_levels
+select warehouse_id::bigint as warehouse_id, on_hand from stock_levels
  where item_type = 'producto' and product_id = $1
- order by branch_id
+ order by warehouse_id
    for update;
 
 -- name: LockIngredientStockLevels :many
@@ -66,17 +68,17 @@ select branch_id, on_hand from stock_levels
 -- espera por el producto que esta conversión ya bloqueó, esperar aquí sería un bloqueo mutuo y
 -- Postgres cancelaría una de las dos (a veces el cobro). Sin esperar, la conversión falla con
 -- 55P03, la app responde 409 y la venta sigue.
-select branch_id, on_hand from stock_levels
+select warehouse_id::bigint as warehouse_id, on_hand from stock_levels
  where item_type = 'ingrediente' and ingredient_id = $1
- order by branch_id
+ order by warehouse_id
    for update nowait;
 
 -- name: InsertModeAdjustment :exec
--- Un ajuste del cambio de modo. Va con su sucursal explícita (la de la fila bloqueada), la nota que
--- liga los dos movimientos de un traslado y quién lo hizo.
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, branch_id, user_id, reason, note)
+-- Un ajuste del cambio de modo. Va con su almacén explícito (el de la fila bloqueada; la sucursal sale
+-- del almacén), la nota que liga los dos movimientos de un traslado y quién lo hizo.
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, warehouse_id, user_id, reason, note)
 values (sqlc.arg(item_type)::stock_item_type, sqlc.narg(ingredient_id), sqlc.narg(product_id), 'ajuste',
-        sqlc.arg(quantity), sqlc.arg(branch_id), sqlc.arg(user_id), 'cambio de modo', sqlc.arg(note));
+        sqlc.arg(quantity), sqlc.arg(warehouse_id)::bigint, sqlc.arg(user_id), 'cambio de modo', sqlc.arg(note));
 
 -- name: TurnOffProductTrackStock :exec
 -- Antes de ponerle receta: el check de products no deja existencia propia y receta a la vez.

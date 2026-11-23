@@ -300,7 +300,7 @@ select c.id, c.branch_id, scl.captured_at
   from stock_count_lines scl
   join stock_counts c on c.id = scl.count_id
  where scl.ingredient_id = $1 and c.status = 'closed'
-   and c.branch_id = current_branch_id() and scl.captured_at > $2::timestamptz
+   and c.warehouse_id = current_sales_warehouse_id() and scl.captured_at > $2::timestamptz
  order by scl.captured_at desc
  limit 1
 `
@@ -569,7 +569,7 @@ func (q *Queries) LockIngredientCostNowait(ctx context.Context, id int64) (decim
 
 const lockIngredientStockNowait = `-- name: LockIngredientStockNowait :many
 select ingredient_id from stock_levels
- where item_type = 'ingrediente' and ingredient_id = any($1::bigint[]) and branch_id = current_branch_id()
+ where item_type = 'ingrediente' and ingredient_id = any($1::bigint[]) and warehouse_id = current_sales_warehouse_id()
  order by ingredient_id
    for update nowait
 `
@@ -1067,7 +1067,7 @@ func (q *Queries) SetPreviewLockTimeout(ctx context.Context) error {
 const stockOnHandFor = `-- name: StockOnHandFor :many
 select sl.ingredient_id, sl.product_id, sl.on_hand
   from stock_levels sl
- where sl.branch_id = current_branch_id()
+ where sl.warehouse_id = current_sales_warehouse_id()
    and (sl.ingredient_id = any($1::bigint[]) or sl.product_id = any($2::bigint[]))
 `
 

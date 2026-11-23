@@ -16,7 +16,7 @@ import (
 
 const articleMovedSince = `-- name: ArticleMovedSince :one
 select (exists (select 1 from stock_movements m
-                 where m.branch_id = $1 and m.id > $2::bigint
+                 where m.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint)) and m.id > $2::bigint
                    and (m.ingredient_id = $3 or m.product_id = $4))
      or exists (select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id
                  where c.branch_id = $1 and l.ingredient_id = $3
@@ -644,7 +644,7 @@ func (q *Queries) SetOutReportUndoMovement(ctx context.Context, arg SetOutReport
 
 const stockOnHandForUpdate = `-- name: StockOnHandForUpdate :many
 select on_hand from stock_levels
- where branch_id = $1
+ where warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint))
    and (ingredient_id = $2 or product_id = $3)
  for update
 `

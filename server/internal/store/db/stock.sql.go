@@ -55,9 +55,9 @@ func (q *Queries) GetUnitToIngredientBase(ctx context.Context, arg GetUnitToIngr
 }
 
 const insertModeAdjustment = `-- name: InsertModeAdjustment :exec
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, branch_id, user_id, reason, note)
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, warehouse_id, user_id, reason, note)
 values ($1::stock_item_type, $2, $3, 'ajuste',
-        $4, $5, $6, 'cambio de modo', $7)
+        $4, $5::bigint, $6, 'cambio de modo', $7)
 `
 
 type InsertModeAdjustmentParams struct {
@@ -65,20 +65,20 @@ type InsertModeAdjustmentParams struct {
 	IngredientID *int64          `json:"ingredient_id"`
 	ProductID    *int64          `json:"product_id"`
 	Quantity     decimal.Decimal `json:"quantity"`
-	BranchID     int64           `json:"branch_id"`
+	WarehouseID  int64           `json:"warehouse_id"`
 	UserID       *int64          `json:"user_id"`
 	Note         *string         `json:"note"`
 }
 
-// Un ajuste del cambio de modo. Va con su sucursal explícita (la de la fila bloqueada), la nota que
-// liga los dos movimientos de un traslado y quién lo hizo.
+// Un ajuste del cambio de modo. Va con su almacén explícito (el de la fila bloqueada; la sucursal sale
+// del almacén), la nota que liga los dos movimientos de un traslado y quién lo hizo.
 func (q *Queries) InsertModeAdjustment(ctx context.Context, arg InsertModeAdjustmentParams) error {
 	_, err := q.db.Exec(ctx, insertModeAdjustment,
 		arg.ItemType,
 		arg.IngredientID,
 		arg.ProductID,
 		arg.Quantity,
-		arg.BranchID,
+		arg.WarehouseID,
 		arg.UserID,
 		arg.Note,
 	)
@@ -88,8 +88,8 @@ func (q *Queries) InsertModeAdjustment(ctx context.Context, arg InsertModeAdjust
 const insertStockMovement = `-- name: InsertStockMovement :exec
 
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, order_id, order_line_id, user_id, reason, note,
-                             modifier_option_id, component_of_product_id)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                             modifier_option_id, component_of_product_id, warehouse_id)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 `
 
 type InsertStockMovementParams struct {
@@ -106,6 +106,7 @@ type InsertStockMovementParams struct {
 	Note                 *string           `json:"note"`
 	ModifierOptionID     *int64            `json:"modifier_option_id"`
 	ComponentOfProductID *int64            `json:"component_of_product_id"`
+	WarehouseID          *int64            `json:"warehouse_id"`
 }
 
 // Depleción en venta
@@ -115,6 +116,8 @@ type InsertStockMovementParams struct {
 // receta que cambió entre la venta y la cancelación repondría una cantidad distinta de la que salió.
 // NULL en los movimientos que no vienen de una venta (ajustes, compras, mermas).
 // modifier_option_id / component_of_product_id: el extra o el paquete que originó el descuento.
+// warehouse_id: nulo en una venta (el trigger pone el de venta); explícito al partir un renglón, que
+// reparte movimientos que ya salieron de un almacén (spec 094).
 func (q *Queries) InsertStockMovement(ctx context.Context, arg InsertStockMovementParams) error {
 	_, err := q.db.Exec(ctx, insertStockMovement,
 		arg.ItemType,
@@ -130,6 +133,7 @@ func (q *Queries) InsertStockMovement(ctx context.Context, arg InsertStockMoveme
 		arg.Note,
 		arg.ModifierOptionID,
 		arg.ComponentOfProductID,
+		arg.WarehouseID,
 	)
 	return err
 }
@@ -148,7 +152,7 @@ from stock_levels sl
 left join ingredients i on i.id = sl.ingredient_id
 left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = sl.product_id
-where sl.branch_id = current_branch_id()
+where sl.warehouse_id = current_sales_warehouse_id()
   -- Es la lista de faltantes de la pantalla (marca «bajo»): un insumo archivado ahí es un faltante
   -- falso (spec 077). Su existencia sigue en Almacén › Archivados. Un producto archivado sí sale,
   -- marcado: desactivar productos no es de esa feature.
@@ -243,15 +247,15 @@ func (q *Queries) ListStockMovements(ctx context.Context, limit int32) ([]ListSt
 }
 
 const lockIngredientStockLevels = `-- name: LockIngredientStockLevels :many
-select branch_id, on_hand from stock_levels
+select warehouse_id::bigint as warehouse_id, on_hand from stock_levels
  where item_type = 'ingrediente' and ingredient_id = $1
- order by branch_id
+ order by warehouse_id
    for update nowait
 `
 
 type LockIngredientStockLevelsRow struct {
-	BranchID int64           `json:"branch_id"`
-	OnHand   decimal.Decimal `json:"on_hand"`
+	WarehouseID int64           `json:"warehouse_id"`
+	OnHand      decimal.Decimal `json:"on_hand"`
 }
 
 // NOWAIT a propósito: una venta bloquea en el orden de su ticket, y si ya tiene tomado el insumo y
@@ -267,7 +271,7 @@ func (q *Queries) LockIngredientStockLevels(ctx context.Context, ingredientID *i
 	items := []LockIngredientStockLevelsRow{}
 	for rows.Next() {
 		var i LockIngredientStockLevelsRow
-		if err := rows.Scan(&i.BranchID, &i.OnHand); err != nil {
+		if err := rows.Scan(&i.WarehouseID, &i.OnHand); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -294,15 +298,15 @@ func (q *Queries) LockProductForComposition(ctx context.Context, id int64) error
 }
 
 const lockProductStockLevels = `-- name: LockProductStockLevels :many
-select branch_id, on_hand from stock_levels
+select warehouse_id::bigint as warehouse_id, on_hand from stock_levels
  where item_type = 'producto' and product_id = $1
- order by branch_id
+ order by warehouse_id
    for update
 `
 
 type LockProductStockLevelsRow struct {
-	BranchID int64           `json:"branch_id"`
-	OnHand   decimal.Decimal `json:"on_hand"`
+	WarehouseID int64           `json:"warehouse_id"`
+	OnHand      decimal.Decimal `json:"on_hand"`
 }
 
 // Las existencias del producto, una por sucursal, BLOQUEADAS: una venta simultánea espera a que la
@@ -317,7 +321,7 @@ func (q *Queries) LockProductStockLevels(ctx context.Context, productID *int64) 
 	items := []LockProductStockLevelsRow{}
 	for rows.Next() {
 		var i LockProductStockLevelsRow
-		if err := rows.Scan(&i.BranchID, &i.OnHand); err != nil {
+		if err := rows.Scan(&i.WarehouseID, &i.OnHand); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

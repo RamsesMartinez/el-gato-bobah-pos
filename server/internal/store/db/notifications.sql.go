@@ -322,7 +322,7 @@ func (q *Queries) LastEmailedAt(ctx context.Context, itemKey *int64) (time.Time,
 const listLowStockConfigs = `-- name: ListLowStockConfigs :many
 select a.item_type, a.id, a.name, a.unit_code, a.low_stock_enabled, a.min_stock,
        coalesce((select s.on_hand from stock_levels s
-                  where s.branch_id = current_branch_id()
+                  where s.warehouse_id = current_sales_warehouse_id()
                     and ((a.item_type = 'ingrediente' and s.ingredient_id = a.id) or (a.item_type = 'producto' and s.product_id = a.id))), 0)::numeric as on_hand
   from (
     select 'ingrediente'::stock_item_type as item_type, i.id, i.name, u.code::text as unit_code, i.low_stock_enabled, i.min_stock
@@ -540,18 +540,18 @@ func (q *Queries) LowStockConfigOf(ctx context.Context, arg LowStockConfigOfPara
 
 const lowStockSnapshot = `-- name: LowStockSnapshot :one
 select coalesce((select s.on_hand from stock_levels s
-                  where s.branch_id = $1
+                  where s.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint))
                     and (s.ingredient_id = $2 or s.product_id = $3)), 0)::numeric as on_hand,
        m.min_stock as branch_min,
        coalesce((select array_agg(n.kind order by n.kind) from notifications n
-                  where n.branch_id = $1 and n.status = 'open' and n.kind <> 'not_found'
+                  where n.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint)) and n.status = 'open' and n.kind <> 'not_found'
                     and n.item_key = coalesce($2::bigint, -$3::bigint, 0)), '{}')::text[] as open_kinds,
        exists (select 1 from notifications n
-                where n.branch_id = $1 and n.status = 'open' and n.kind = 'stock_out' and n.opened_by is not null
+                where n.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint)) and n.status = 'open' and n.kind = 'stock_out' and n.opened_by is not null
                   and n.item_key = coalesce($2::bigint, -$3::bigint, 0))::bool as manual_out
   -- Left join y no subconsulta: así sqlc lo tipa como nulable (una sucursal sin mínimo propio).
   from (select 1) one
-  left join branch_stock_minimums m on m.branch_id = $1
+  left join branch_stock_minimums m on m.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint))
    and (m.ingredient_id = $2 or m.product_id = $3)
 `
 

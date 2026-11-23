@@ -58,8 +58,10 @@ type MergeArticle struct {
 	Factor   decimal.Decimal `json:"factor"`
 }
 
-// MergeStock es la existencia de un insumo en una sucursal, antes y después.
+// MergeStock es la existencia de un insumo en un almacén, antes y después (spec 094: se une almacén
+// por almacén; la sucursal es la del almacén).
 type MergeStock struct {
+	WarehouseID   int64           `json:"warehouseId"`
 	BranchID      int64           `json:"branchId"`
 	Branch        string          `json:"branch"`
 	IngredientID  int64           `json:"ingredientId"`
@@ -335,9 +337,12 @@ func (m *mergeRun) apply(ctx context.Context) error {
 	for _, b := range branches {
 		branchName[b.ID] = b.Name
 	}
+	// Por almacén: dos almacenes de una sucursal se unen cada uno con lo suyo.
 	targetAfter := map[int64]decimal.Decimal{}
+	branchOf := map[int64]int64{}
 	for _, row := range m.stock[m.targetID] {
-		targetAfter[row.BranchID] = row.OnHand
+		targetAfter[row.WarehouseID] = row.OnHand
+		branchOf[row.WarehouseID] = row.BranchID
 	}
 	m.moved = map[int64][]map[string]any{}
 
@@ -352,28 +357,29 @@ func (m *mergeRun) apply(ctx context.Context) error {
 		if err := m.moveRecipes(ctx, src, f, targetUnit); err != nil {
 			return err
 		}
-		// El traspaso, sucursal por sucursal, con la sucursal explícita y ligado a la unión.
+		// El traspaso, almacén por almacén, con el almacén explícito y ligado a la unión.
 		srcCost := src.CurrentCost
 		dstCost := domain.ConvertCost(srcCost, f)
 		for _, row := range m.stock[src.ID] {
 			to := domain.ConvertQty(row.OnHand, f)
-			m.out.Stock = append(m.out.Stock, MergeStock{BranchID: row.BranchID, Branch: branchName[row.BranchID], IngredientID: src.ID,
+			branchOf[row.WarehouseID] = row.BranchID
+			m.out.Stock = append(m.out.Stock, MergeStock{WarehouseID: row.WarehouseID, BranchID: row.BranchID, Branch: branchName[row.BranchID], IngredientID: src.ID,
 				Name: src.Name, BaseUnit: m.units[src.BaseUnitID], Before: row.OnHand, After: decimal.Zero})
 			if row.OnHand.IsZero() {
 				continue
 			}
 			if err := q.InsertMergeMove(ctx, db.InsertMergeMoveParams{IngredientID: &src.ID, Quantity: row.OnHand.Neg(), UnitCost: &srcCost,
-				BranchID: row.BranchID, UserID: &m.actor, ReplacementID: &repID}); err != nil {
+				WarehouseID: row.WarehouseID, UserID: &m.actor, ReplacementID: &repID}); err != nil {
 				return err
 			}
 			if !to.IsZero() {
 				if err := q.InsertMergeMove(ctx, db.InsertMergeMoveParams{IngredientID: &m.target.ID, Quantity: to, UnitCost: &dstCost,
-					BranchID: row.BranchID, UserID: &m.actor, ReplacementID: &repID}); err != nil {
+					WarehouseID: row.WarehouseID, UserID: &m.actor, ReplacementID: &repID}); err != nil {
 					return err
 				}
 			}
-			targetAfter[row.BranchID] = targetAfter[row.BranchID].Add(to)
-			m.moved[src.ID] = append(m.moved[src.ID], map[string]any{"branchId": row.BranchID, "from": row.OnHand, "to": to})
+			targetAfter[row.WarehouseID] = targetAfter[row.WarehouseID].Add(to)
+			m.moved[src.ID] = append(m.moved[src.ID], map[string]any{"branchId": row.BranchID, "warehouseId": row.WarehouseID, "from": row.OnHand, "to": to})
 		}
 		if err := m.movePresentations(ctx, src, f); err != nil {
 			return err
@@ -412,19 +418,20 @@ func (m *mergeRun) apply(ctx context.Context) error {
 		m.out.SupplierItems += len(items)
 	}
 
-	// La existencia del destino en cada sucursal donde había algo, de él o de un origen.
-	branchIDs := make([]int64, 0, len(targetAfter))
+	// La existencia del destino en cada almacén donde había algo, de él o de un origen.
+	warehouseIDs := make([]int64, 0, len(targetAfter))
 	before := map[int64]decimal.Decimal{}
 	for _, row := range m.stock[m.targetID] {
-		before[row.BranchID] = row.OnHand
+		before[row.WarehouseID] = row.OnHand
 	}
 	for id := range targetAfter {
-		branchIDs = append(branchIDs, id)
+		warehouseIDs = append(warehouseIDs, id)
 	}
-	slices.Sort(branchIDs)
-	for _, id := range branchIDs {
+	slices.Sort(warehouseIDs)
+	for _, id := range warehouseIDs {
 		after := targetAfter[id]
-		m.out.Stock = append(m.out.Stock, MergeStock{BranchID: id, Branch: branchName[id], IngredientID: m.targetID, Name: m.target.Name,
+		b := branchOf[id]
+		m.out.Stock = append(m.out.Stock, MergeStock{WarehouseID: id, BranchID: b, Branch: branchName[b], IngredientID: m.targetID, Name: m.target.Name,
 			BaseUnit: targetUnit, Before: before[id], After: after, NegativeAfter: after.IsNegative()})
 	}
 

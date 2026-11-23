@@ -143,7 +143,7 @@ select l.ingredient_id, i.name, u.code as base_unit_code, l.counted_qty, l.syste
        l.unit_cost, (prev.last_movement_id is not null and l.last_movement_id is not null)::bool as has_previous,
        coalesce((select -sum(m.quantity) from stock_movements m
                   where m.waste_record_id is not null and m.ingredient_id = l.ingredient_id
-                    and m.branch_id = c.branch_id
+                    and m.warehouse_id = c.warehouse_id
                     and m.id > prev.last_movement_id and m.id <= l.last_movement_id), 0)::numeric(14,4) as registered
   from stock_count_lines l
   join stock_counts c on c.id = l.count_id
@@ -151,7 +151,7 @@ select l.ingredient_id, i.name, u.code as base_unit_code, l.counted_qty, l.syste
   join units u on u.id = i.base_unit_id
   left join lateral (
     select pl.last_movement_id from stock_count_lines pl join stock_counts pc on pc.id = pl.count_id
-     where pc.status = 'closed' and pc.branch_id = c.branch_id and pc.id <> c.id
+     where pc.status = 'closed' and pc.warehouse_id = c.warehouse_id and pc.id <> c.id
        and pl.ingredient_id = l.ingredient_id and pl.captured_at < l.captured_at
      order by pl.captured_at desc limit 1
   ) prev on true
@@ -550,7 +550,8 @@ func (q *Queries) LastClosedStockCount(ctx context.Context) (LastClosedStockCoun
 
 const lockProductStockLevelForCapture = `-- name: LockProductStockLevelForCapture :exec
 select 1 from stock_levels
- where item_type = 'producto' and product_id = $1::bigint and branch_id = $2::bigint
+ where item_type = 'producto' and product_id = $1::bigint
+   and warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $2::bigint))
    for share
 `
 
@@ -567,7 +568,8 @@ func (q *Queries) LockProductStockLevelForCapture(ctx context.Context, arg LockP
 
 const lockProductStockLevelsInBranchNowait = `-- name: LockProductStockLevelsInBranchNowait :many
 select product_id from stock_levels
- where item_type = 'producto' and product_id = any($1::bigint[]) and branch_id = $2
+ where item_type = 'producto' and product_id = any($1::bigint[])
+   and warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $2::bigint))
  order by product_id
    for update nowait
 `
@@ -619,7 +621,8 @@ func (q *Queries) LockStockCount(ctx context.Context, id int64) (LockStockCountR
 
 const lockStockLevelForCapture = `-- name: LockStockLevelForCapture :exec
 select 1 from stock_levels
- where item_type = 'ingrediente' and ingredient_id = $1::bigint and branch_id = $2::bigint
+ where item_type = 'ingrediente' and ingredient_id = $1::bigint
+   and warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $2::bigint))
    for share
 `
 
@@ -639,7 +642,8 @@ func (q *Queries) LockStockLevelForCapture(ctx context.Context, arg LockStockLev
 
 const lockStockLevelsInBranchNowait = `-- name: LockStockLevelsInBranchNowait :many
 select ingredient_id from stock_levels
- where item_type = 'ingrediente' and ingredient_id = any($1::bigint[]) and branch_id = $2
+ where item_type = 'ingrediente' and ingredient_id = any($1::bigint[])
+   and warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $2::bigint))
  order by ingredient_id
    for update nowait
 `
@@ -748,10 +752,10 @@ func (q *Queries) NotCountedProducts(ctx context.Context, countID int64) ([]NotC
 const onHandForCapture = `-- name: OnHandForCapture :one
 select coalesce((select sl.on_hand from stock_levels sl
                   where sl.item_type = 'ingrediente' and sl.ingredient_id = $1::bigint
-                    and sl.branch_id = $2::bigint), 0)::numeric(14,4) as on_hand,
+                    and sl.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $2::bigint))), 0)::numeric(14,4) as on_hand,
        coalesce((select max(sm.id) from stock_movements sm
                   where sm.ingredient_id = $1::bigint
-                    and sm.branch_id = $2::bigint), 0)::bigint as last_movement_id
+                    and sm.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $2::bigint))), 0)::bigint as last_movement_id
 `
 
 type OnHandForCaptureParams struct {
@@ -776,7 +780,7 @@ func (q *Queries) OnHandForCapture(ctx context.Context, arg OnHandForCapturePara
 const onHandInBranch = `-- name: OnHandInBranch :one
 select coalesce((select on_hand from stock_levels
                   where item_type = 'ingrediente' and ingredient_id = $1
-                    and branch_id = $2), 0)::numeric(14,4) as on_hand
+                    and warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $2::bigint))), 0)::numeric(14,4) as on_hand
 `
 
 type OnHandInBranchParams struct {
@@ -815,10 +819,10 @@ func (q *Queries) OpenStockCount(ctx context.Context, openedBy int64) (OpenStock
 const productOnHandForCapture = `-- name: ProductOnHandForCapture :one
 select coalesce((select sl.on_hand from stock_levels sl
                   where sl.item_type = 'producto' and sl.product_id = $1::bigint
-                    and sl.branch_id = $2::bigint), 0)::numeric(14,4) as on_hand,
+                    and sl.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $2::bigint))), 0)::numeric(14,4) as on_hand,
        coalesce((select max(sm.id) from stock_movements sm
                   where sm.product_id = $1::bigint
-                    and sm.branch_id = $2::bigint), 0)::bigint as last_movement_id
+                    and sm.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $2::bigint))), 0)::bigint as last_movement_id
 `
 
 type ProductOnHandForCaptureParams struct {
