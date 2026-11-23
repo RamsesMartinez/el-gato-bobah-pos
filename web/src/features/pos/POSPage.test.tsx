@@ -30,6 +30,7 @@ const api = vi.hoisted(() => ({
   sendDraft: vi.fn(),
   discardDraft: vi.fn(),
   paymentMethods: vi.fn(),
+  deliverOrder: vi.fn(),
 }));
 vi.mock('../../api/pos', () => ({
   posApi: {
@@ -224,6 +225,92 @@ describe('una sola fila de cuentas (US1)', () => {
     expect(screen.queryByPlaceholderText(/buscar/i)).toBeNull();
     await userEvent.click(lupa);
     expect(screen.getByPlaceholderText(/buscar/i)).toBeInTheDocument();
+  });
+});
+
+// Spec 089, US2: lo que le falta a una cuenta se resuelve desde Vender sin abrirla primero.
+describe('resolver una cuenta desde la columna', () => {
+  const pedidoDe = (id: number, folioName: string, over: Record<string, unknown> = {}) => ({
+    id, number: id, folioName, status: 'entregada', serviceType: 'mostrador', deliveryPlatformId: null,
+    platformOrderRef: null, customerName: null, subtotal: '195.00', discount: '0.00', deliveryFee: '0.00',
+    total: '195.00', currency: 'MXN', paid: false, outstanding: '195.00', openedAt: '',
+    lines: [{ id: 1, productName: 'Crepa', quantity: '1', unitPrice: '195.00', lineTotal: '195.00', delivered: '1', cancelled: false, modifiers: [] }],
+    payments: [], ...over,
+  });
+
+  test('«Cobrar» abre la hoja de cobro de ESE pedido aunque la cuenta abierta sea otra', async () => {
+    anchoDelPos.width = 1024;
+    vivas.current = [
+      cuenta({ key: 'd:d-1', kind: 'draft', draftId: 'd-1', orderId: null, folioName: 'Levkoy', state: 'capturing', group: 'capturing' }),
+      cuenta({ key: 'o:7', orderId: 7, folioName: 'Bosque de Noruega', state: 'delivered_owes', group: 'delivered_owes', outstanding: '195.00', total: '195.00' }),
+    ];
+    usePosStore.getState().seleccionar({ kind: 'draft', id: 'd-1' });
+    api.getDraft.mockResolvedValue(draft());
+    api.order.mockResolvedValue(pedidoDe(7, 'Bosque de Noruega'));
+    montar();
+    await userEvent.click(await screen.findByRole('button', { name: 'Cobrar $195 Bosque de Noruega' }));
+    await waitFor(() => expect(api.order).toHaveBeenCalledWith(7));
+    const hoja = await screen.findByRole('dialog');
+    expect(within(hoja).getAllByText(/\$195/).length).toBeGreaterThan(0);
+  });
+
+  // Revisión de la 089: con la red lenta, la respuesta tardía del primer «Cobrar» reemplazaba la hoja
+  // que ya se estaba usando para otra cuenta, y lo tecleado se perdía.
+  test('una respuesta tardía de otro «Cobrar» no reemplaza la hoja que ya está abierta', async () => {
+    anchoDelPos.width = 1024;
+    vivas.current = [
+      cuenta({ key: 'o:7', orderId: 7, folioName: 'Bosque de Noruega', state: 'delivered_owes', outstanding: '195.00', total: '195.00' }),
+      cuenta({ key: 'o:8', orderId: 8, folioName: 'Manx', state: 'delivered_owes', outstanding: '88.00', total: '88.00', openedAt: '2026-10-08T15:30:00Z' }),
+    ];
+    let soltar: (v: unknown) => void = () => {};
+    api.order.mockImplementation((id: number) => (id === 7
+      ? new Promise((r) => { soltar = r; })
+      : Promise.resolve(pedidoDe(8, 'Manx', { total: '88.00', outstanding: '88.00' }))));
+    montar();
+    await userEvent.click(await screen.findByRole('button', { name: 'Cobrar $195 Bosque de Noruega' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cobrar $88 Manx' }));
+    const hoja = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(hoja).getAllByText(/\$88/).length).toBeGreaterThan(0));
+    await act(async () => { soltar(pedidoDe(7, 'Bosque de Noruega')); });
+    expect(within(screen.getByRole('dialog')).queryAllByText(/\$195/)).toHaveLength(0);
+  });
+
+  // Prueba con usuario nuevo (089): entregar la cuenta ABIERTA ya pagada la cerraba, salía de la
+  // columna, pero el ticket se quedaba en ella («falta $0», «Enviar a cocina») y el siguiente producto
+  // se rechazaba con «ya está pagada y entregada». Al cerrarse, la tableta pasa a una cuenta nueva.
+  test('entregar la cuenta abierta ya pagada deja la tableta en una cuenta nueva', async () => {
+    anchoDelPos.width = 1024;
+    vivas.current = [cuenta({ key: 'o:6', orderId: 6, folioName: 'Siamés', state: 'paid_in_kitchen', paid: '63.00', total: '63.00', outstanding: '0.00' })];
+    usePosStore.getState().seleccionar({ kind: 'order', id: 6 });
+    api.order.mockResolvedValue(pedidoDe(6, 'Siamés', { status: 'abierta', paid: true, outstanding: '0.00', total: '63.00' }));
+    api.deliverOrder.mockResolvedValue(undefined);
+    montar();
+    await screen.findByRole('button', { name: /^Siamés ·/ });
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Entregar Siamés' }))[0]);
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalledWith(6));
+    await waitFor(() => expect(usePosStore.getState().selected).toBeNull());
+  });
+
+  test('entregar la cuenta abierta que todavía debe la deja abierta para cobrarla', async () => {
+    anchoDelPos.width = 1024;
+    vivas.current = [cuenta({ key: 'o:5', orderId: 5, folioName: 'Persa', state: 'in_kitchen', outstanding: '90.00', total: '90.00' })];
+    usePosStore.getState().seleccionar({ kind: 'order', id: 5 });
+    api.order.mockResolvedValue(pedidoDe(5, 'Persa', { status: 'abierta', outstanding: '90.00', total: '90.00' }));
+    api.deliverOrder.mockResolvedValue(undefined);
+    montar();
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Entregar Persa' }))[0]);
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalledWith(5));
+    expect(usePosStore.getState().selected).toEqual({ kind: 'order', id: 5 });
+  });
+
+  test('«Entregar» entrega ese pedido sin abrirlo', async () => {
+    anchoDelPos.width = 1024;
+    vivas.current = [cuenta({ key: 'o:6', orderId: 6, folioName: 'Siamés', state: 'paid_in_kitchen', paid: '63.00', total: '63.00', outstanding: '0.00' })];
+    api.deliverOrder.mockResolvedValue(undefined);
+    montar();
+    await userEvent.click(await screen.findByRole('button', { name: 'Entregar Siamés' }));
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalledWith(6));
+    expect(usePosStore.getState().selected).toBeNull();
   });
 });
 
