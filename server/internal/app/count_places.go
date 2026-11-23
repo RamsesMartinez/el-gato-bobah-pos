@@ -20,9 +20,14 @@ type CountPlace struct {
 	Ingredients int32  `json:"ingredients"`
 }
 
-// ListCountPlaces son los lugares que se ofrecen, en el orden del recorrido.
-func (s *BackofficeService) ListCountPlaces(ctx context.Context) ([]CountPlace, error) {
-	rows, err := s.store.QC(ctx).ListCountPlaces(ctx)
+// ListCountPlaces son los lugares que se ofrecen en el almacén, en el orden de su recorrido.
+func (s *BackofficeService) ListCountPlaces(ctx context.Context, sel domain.WarehouseSel) ([]CountPlace, error) {
+	q := s.store.QC(ctx)
+	wh, err := ResolveWarehouseID(ctx, q, sel)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.ListCountPlaces(ctx, wh)
 	if err != nil {
 		return nil, err
 	}
@@ -33,9 +38,10 @@ func (s *BackofficeService) ListCountPlaces(ctx context.Context) ([]CountPlace, 
 	return out, nil
 }
 
-// CreateCountPlace da de alta un lugar al final del recorrido. Si ya hay uno con ese nombre (sin
-// distinguir mayúsculas, acentos ni espacios), responde cuál es para que la pantalla lo elija.
-func (s *BackofficeService) CreateCountPlace(ctx context.Context, name string) (int64, error) {
+// CreateCountPlace da de alta un lugar al final del recorrido del almacén. Si ya hay uno con ese
+// nombre en el almacén (sin distinguir mayúsculas, acentos ni espacios), responde cuál es para que la
+// pantalla lo elija.
+func (s *BackofficeService) CreateCountPlace(ctx context.Context, sel domain.WarehouseSel, name string) (int64, error) {
 	if err := domain.ValidCountPlaceName(name); err != nil {
 		return 0, err
 	}
@@ -45,11 +51,14 @@ func (s *BackofficeService) CreateCountPlace(ctx context.Context, name string) (
 		if err := q.LockCountPlaces(ctx); err != nil {
 			return err
 		}
-		if err := placeNameFree(ctx, q, name); err != nil {
+		wh, err := ResolveWarehouseID(ctx, q, sel)
+		if err != nil {
 			return err
 		}
-		var err error
-		id, err = q.CreateCountPlace(ctx, name)
+		if err := placeNameFree(ctx, q, name, wh); err != nil {
+			return err
+		}
+		id, err = q.CreateCountPlace(ctx, db.CreateCountPlaceParams{Name: name, WarehouseID: wh})
 		return placeNameConflict(err)
 	})
 	return id, err
@@ -65,7 +74,11 @@ func (s *BackofficeService) RenameCountPlace(ctx context.Context, id int64, name
 		if err := q.LockCountPlaces(ctx); err != nil {
 			return err
 		}
-		if existing, err := q.CountPlaceByName(ctx, name); err == nil && existing != id {
+		p, err := q.LockCountPlaceForShare(ctx, id)
+		if err != nil {
+			return notFound(err)
+		}
+		if existing, err := q.CountPlaceByName(ctx, db.CountPlaceByNameParams{Name: name, WarehouseID: p.WarehouseID}); err == nil && existing != id {
 			return domain.CountPlaceExists{ID: existing}
 		} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
@@ -87,7 +100,7 @@ func (s *BackofficeService) MoveCountPlace(ctx context.Context, id int64, to int
 		if err := q.LockCountPlaces(ctx); err != nil {
 			return err
 		}
-		order, err := q.ActiveCountPlaceIDs(ctx)
+		order, err := q.ActiveCountPlaceIDs(ctx, id)
 		if err != nil {
 			return err
 		}
@@ -129,8 +142,14 @@ func (s *BackofficeService) archivePlace(ctx context.Context, id int64, dest *in
 			return nil
 		}
 		if dest != nil {
-			if err := activePlace(ctx, q, *dest); err != nil {
+			destWarehouse, err := activePlace(ctx, q, *dest)
+			if err != nil {
 				return err
+			}
+			// Mandarlos a un lugar de otro almacén los sacaría del recorrido del suyo y los metería en
+			// uno que no los cuenta.
+			if destWarehouse != p.WarehouseID {
+				return fmt.Errorf("%w: los artículos pasan a un lugar del mismo almacén", domain.ErrValidation)
 			}
 		}
 		n, err := q.CountPlaceIngredients(ctx, &id)
@@ -148,7 +167,7 @@ func (s *BackofficeService) archivePlace(ctx context.Context, id int64, dest *in
 		if err := q.ArchiveCountPlace(ctx, id); err != nil {
 			return err
 		}
-		order, err := q.ActiveCountPlaceIDs(ctx)
+		order, err := q.ActiveCountPlaceIDs(ctx, id)
 		if err != nil {
 			return err
 		}
@@ -160,7 +179,7 @@ func (s *BackofficeService) archivePlace(ctx context.Context, id int64, dest *in
 func (s *BackofficeService) SetCountPlace(ctx context.Context, ingredientID int64, placeID *int64) error {
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		if placeID != nil {
-			if err := activePlace(ctx, q, *placeID); err != nil {
+			if _, err := activePlace(ctx, q, *placeID); err != nil {
 				return err
 			}
 		}
@@ -175,20 +194,20 @@ func (s *BackofficeService) SetCountPlace(ctx context.Context, ingredientID int6
 	})
 }
 
-// activePlace toma el lugar for share y exige que se siga ofreciendo.
-func activePlace(ctx context.Context, q *db.Queries, id int64) error {
+// activePlace toma el lugar for share, exige que se siga ofreciendo y dice de qué almacén es.
+func activePlace(ctx context.Context, q *db.Queries, id int64) (int64, error) {
 	p, err := q.LockCountPlaceForShare(ctx, id)
 	if err != nil {
-		return notFound(err)
+		return 0, notFound(err)
 	}
 	if p.ArchivedAt.Valid {
-		return fmt.Errorf("%w: ese lugar ya no se ofrece", domain.ErrConflict)
+		return 0, fmt.Errorf("%w: ese lugar ya no se ofrece", domain.ErrConflict)
 	}
-	return nil
+	return p.WarehouseID, nil
 }
 
-func placeNameFree(ctx context.Context, q *db.Queries, name string) error {
-	existing, err := q.CountPlaceByName(ctx, name)
+func placeNameFree(ctx context.Context, q *db.Queries, name string, warehouseID int64) error {
+	existing, err := q.CountPlaceByName(ctx, db.CountPlaceByNameParams{Name: name, WarehouseID: warehouseID})
 	if err == nil {
 		return domain.CountPlaceExists{ID: existing}
 	}

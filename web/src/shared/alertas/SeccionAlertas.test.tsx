@@ -10,6 +10,9 @@ import { SeccionAlertas } from './SeccionAlertas';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), preview: vi.fn(), save: vi.fn(), asked: vi.fn(), list: vi.fn(), batch: vi.fn() }));
 vi.mock('../../api/notifications', async (orig) => ({ ...(await orig<object>()), lowStockApi: api }));
+const back = vi.hoisted(() => ({ warehouses: vi.fn() }));
+vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
+import { useSessionStore } from '../../stores/session';
 
 const cfg = (o: Partial<LowStockConfig> = {}): LowStockConfig => ({
   enabled: false, onMin: true, onOut: true, banner: false, minStock: null, branchMinStock: null, coverageDays: null,
@@ -24,6 +27,8 @@ function montar(canConfigure = true, onSaved?: (v: string) => void) {
 }
 
 beforeEach(() => {
+  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] });
+  useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.view', 'inventory.configure'] } as never });
   api.get.mockResolvedValue(cfg());
   api.asked.mockResolvedValue(undefined);
   api.preview.mockResolvedValue({ effect: { opens: ['stock_low'], closes: [] }, onHand: '1200', min: '2000', needsCount: false });
@@ -163,5 +168,116 @@ describe('Alertas en la ficha', () => {
     await screen.findByText(/Se actualizará/);
     fireEvent.click(screen.getAllByRole('button', { name: 'Guardar', hidden: true }).at(-1)!);
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith('v2'));
+  });
+});
+
+// VARIOS ALMACENES (spec 094): por omisión el de venta, que va sin almacén; otro, con su id, y su
+// mínimo es el del almacén (branchMinStock), sin tocar el del artículo.
+describe('mínimos por almacén (spec 094)', () => {
+  test('con un solo almacén no pregunta de cuál y manda sin almacén', async () => {
+    api.get.mockResolvedValue(cfg({ enabled: true, minStock: '2000' }));
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Configurar ›' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(api.preview).toHaveBeenCalled());
+    expect(api.preview.mock.calls[0][2]).not.toHaveProperty('warehouseId');
+    expect(api.preview.mock.calls[0][2]).not.toHaveProperty('branchMinStock');
+    expect(screen.queryByRole('group', { name: '¿De qué almacén?' })).toBeNull();
+  });
+  test('con dos se ve y se cambia el mínimo de la Bodega sin tocar el del artículo', async () => {
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    api.get.mockImplementation((_t: string, _id: number, w?: number) => Promise.resolve(w === 2
+      ? cfg({ enabled: true, minStock: '3000', branchMinStock: '5000', warehouseId: 2, warehouseName: 'Bodega' } as Partial<LowStockConfig>)
+      : cfg({ enabled: true, minStock: '3000', warehouseId: 1, warehouseName: 'Local' } as Partial<LowStockConfig>)));
+    montar();
+    const grupo = await screen.findByRole('group', { name: '¿De qué almacén?' });
+    expect(screen.getByRole('button', { name: 'Local · de venta' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Bodega' }));
+    expect(await screen.findByText('Avisa al llegar a 5 kg')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Configurar ›' }));
+    const min = screen.getByLabelText(/Mínimo/) as HTMLInputElement;
+    expect(min.value).toBe('5');
+    fireEvent.change(min, { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(api.preview).toHaveBeenCalledWith('ingrediente', 1,
+      expect.objectContaining({ warehouseId: 2, branchMinStock: '8000', minStock: '3000' })));
+    expect(grupo).toBeInTheDocument();
+  });
+
+});
+
+// Revisión y prueba con alguien nuevo (spec 094): las alertas son del artículo y el mínimo de cada
+// almacén. Guardar en Bodega mandaba onMin apagado (calculado con el mínimo de Bodega) y el Local
+// dejaba de avisar; el renglón de Bodega prometía el aviso del mínimo del artículo; la confirmación
+// decía «10 l».
+describe('Alertas con otro almacén', () => {
+  const dos = () => back.warehouses.mockResolvedValue({ items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+  ] });
+  const articulo = { enabled: true, onMin: true, onOut: true, banner: true, minStock: '3000' };
+
+  test('guardar el mínimo de Bodega sin mínimo no apaga las alertas del artículo', async () => {
+    dos();
+    api.get.mockImplementation((_t: string, _id: number, w?: number) => Promise.resolve(w === 2
+      ? cfg({ ...articulo, branchMinStock: null, warehouseId: 2, warehouseName: 'Bodega' } as Partial<LowStockConfig>)
+      : cfg({ ...articulo, warehouseId: 1, warehouseName: 'Local' } as Partial<LowStockConfig>)));
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
+    await screen.findByText(/Alertas en Bodega/);
+    fireEvent.click(await screen.findByRole('button', { name: 'Configurar ›' }));
+    // La hoja de Bodega solo trae su mínimo: los interruptores son del artículo.
+    expect(screen.queryByText('Enviar alerta de stock bajo')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(api.preview).toHaveBeenCalled());
+    expect(api.preview.mock.calls[0][2]).toEqual(expect.objectContaining({
+      enabled: true, onMin: true, onOut: true, banner: true, minStock: '3000', branchMinStock: null, warehouseId: 2 }));
+  });
+
+  test('el renglón de Bodega habla del mínimo de Bodega, no del del artículo', async () => {
+    dos();
+    api.get.mockImplementation((_t: string, _id: number, w?: number) => Promise.resolve(w === 2
+      ? cfg({ ...articulo, branchMinStock: null, onHand: '20000', warehouseId: 2, warehouseName: 'Bodega' } as Partial<LowStockConfig>)
+      : cfg({ ...articulo, warehouseId: 1, warehouseName: 'Local' } as Partial<LowStockConfig>)));
+    montar();
+    expect(await screen.findByText('¿De qué almacén?')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
+    expect(await screen.findByText(/Bodega sin mínimo/)).toBeTruthy();
+    expect(screen.queryByText(/Avisa al llegar a 3 kg/)).toBeNull();
+    expect(screen.getByText(/Hay 20 kg en Bodega/)).toBeTruthy();
+  });
+
+  test('la confirmación nombra el almacén y escribe la unidad como en el resto de la pantalla', async () => {
+    dos();
+    api.get.mockImplementation((_t: string, _id: number, w?: number) => Promise.resolve(w === 2
+      ? cfg({ ...articulo, minStock: '3000', branchMinStock: null, unitCode: 'ml', warehouseId: 2, warehouseName: 'Bodega' } as Partial<LowStockConfig>)
+      : cfg({ ...articulo, unitCode: 'ml', warehouseId: 1, warehouseName: 'Local' } as Partial<LowStockConfig>)));
+    api.preview.mockResolvedValue({ effect: { opens: [], closes: [] }, onHand: '20000', min: '10000', needsCount: false });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><Provider>
+      <SeccionAlertas itemType="ingrediente" id={1} name="Aceite" kind="volumen" canConfigure />
+    </Provider></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
+    await screen.findByText(/Alertas en Bodega/);
+    fireEvent.click(await screen.findByRole('button', { name: 'Configurar ›' }));
+    fireEvent.change(screen.getByLabelText(/Mínimo/), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    expect(await screen.findByText((_, el) => el?.tagName === 'P' && /^Mínimo de Aceite en Bodega: 10 L\.$/.test(el.textContent ?? ''))).toBeTruthy();
+  });
+
+  test('en el de venta la confirmación tampoco baja la unidad a minúscula', async () => {
+    api.get.mockResolvedValue(cfg({ enabled: true, onMin: true, minStock: null, unitCode: 'ml' }));
+    api.preview.mockResolvedValue({ effect: { opens: [], closes: [] }, onHand: '20000', min: '10000', needsCount: false });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><Provider>
+      <SeccionAlertas itemType="ingrediente" id={1} name="Aceite" kind="volumen" canConfigure />
+    </Provider></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Configurar ›' }));
+    fireEvent.change(screen.getByLabelText(/Mínimo/), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    expect(await screen.findByText((_, el) => el?.tagName === 'P' && /avisa al llegar a 10 L/.test(el.textContent ?? ''))).toBeTruthy();
   });
 });

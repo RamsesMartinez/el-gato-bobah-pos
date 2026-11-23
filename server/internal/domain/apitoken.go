@@ -449,9 +449,11 @@ var mcpTools = []MCPTool{
 	rd("stock_levels", "Existencias actuales de insumos y productos; cada renglón dice si está activo. Los insumos "+
 		"inactivos no salen, igual que en la pantalla. Sin warehouse_id, las del almacén de venta; con all_warehouses, "+
 		"la suma de todos.", PermInventoryView),
-	rd("stock_movements", "Movimientos de almacén recientes.", PermInventoryView),
+	rd("stock_movements", "Movimientos de almacén recientes, con su almacén; un traspaso dice el otro almacén. Sin "+
+		"warehouse_id, los del almacén de venta; con all_warehouses, los de todos.", PermInventoryView),
 	rd("waste_reasons_list", "Motivos de merma.", PermInventoryWriteOff),
-	wr("waste_record", "Registra lo que se echó a perder. Lo que pasa el tope de la empresa queda por aprobar.", ScopeWriteInventory, PermInventoryWriteOff),
+	wr("waste_record", "Registra lo que se echó a perder, en el almacén de venta o en warehouse_id. Lo que pasa el "+
+		"tope de la empresa queda por aprobar.", ScopeWriteInventory, PermInventoryWriteOff),
 	wr("stock_adjust", "Ajusta la existencia de un insumo o producto (cantidad con signo), en el almacén de venta o en "+
 		"warehouse_id.", ScopeWriteInventory, PermInventoryCount),
 	wr("stock_transfer", "Traspasa mercancía de un almacén a otro de la sucursal (insumos o productos con existencia "+
@@ -481,8 +483,10 @@ var mcpTools = []MCPTool{
 	wr("purchase_receive", "Recibe una compra pendiente: lo que llegó de cada renglón entra al almacén que el renglón ya "+
 		"dice (el que se eligió al capturarla); para cambiarlo, expense_edit.",
 		ScopeWritePurchases, PermInventoryReceive),
-	rd("stock_count_current", "El conteo abierto y qué artículos se pueden contar. No dice lo que el sistema tiene.", PermInventoryCount),
-	wr("stock_count_open", "Abre un conteo de existencias.", ScopeWriteInventory, PermInventoryCount),
+	rd("stock_count_current", "El conteo abierto del almacén de venta (o de warehouse_id) y qué artículos se pueden "+
+		"contar. No dice lo que el sistema tiene.", PermInventoryCount),
+	wr("stock_count_open", "Abre un conteo de existencias del almacén de venta o de warehouse_id; cerrarlo solo "+
+		"ajusta ese almacén.", ScopeWriteInventory, PermInventoryCount),
 	wr("stock_count_capture", "Captura lo contado de hasta 50 artículos, como lo dicta quien está en el almacén. "+
 		"Transcribe la cifra dictada; nunca la estimes.", ScopeWriteInventory, PermInventoryCount),
 	wr("stock_count_close", "Cierra el conteo. La vista previa muestra, por artículo, lo que el sistema tiene, lo "+
@@ -511,7 +515,8 @@ var mcpTools = []MCPTool{
 	// Spec 084: alertas de stock bajo por lote.
 	wr("low_stock_update", "Enciende o apaga la alerta de stock bajo de varios insumos o productos (con existencia "+
 		"propia) a la vez, con su mínimo en la unidad base. La vista previa dice qué avisos se abrirían o cerrarían al "+
-		"guardar. Los eventos y la franja de cada artículo se conservan.", ScopeWriteInventory, PermInventoryConfigure),
+		"guardar. Los eventos y la franja de cada artículo se conservan. Con warehouse_id, min_stock es el mínimo "+
+		"propio de ese almacén.", ScopeWriteInventory, PermInventoryConfigure),
 
 	// Spec 076: dar de alta y editar insumos.
 	wr("ingredient_create", "Da de alta un insumo (nombre, unidad base g, ml, cm o pieza, y lo demás opcional). "+
@@ -529,7 +534,8 @@ var mcpTools = []MCPTool{
 		"con extras). La vista previa trae el total que calcula el servidor con los precios de la plataforma y, por "+
 		"renglón, si el precio es el propio de la plataforma o el base más su margen. Aplicar no la manda a cocina: "+
 		"eso es order_draft_send.", ScopeWriteOrders, ""),
-	wr("order_draft_send", "Manda a cocina una cuenta abierta: nace el pedido. Repetirlo no duplica el pedido.", ScopeWriteOrders, ""),
+	wr("order_draft_send", "Manda a cocina una cuenta abierta: nace el pedido y lo vendido sale del almacén de venta. "+
+		"Repetirlo no duplica el pedido.", ScopeWriteOrders, ""),
 	wr("order_draft_discard", "Descarta una cuenta abierta que no se va a mandar.", ScopeWriteOrders, ""),
 	wr("order_deliver", "Marca como entregado todo lo que falta de un pedido.", ScopeWriteOrders, ""),
 	wr("order_discount_set", "Pone el descuento de un pedido (monto o porcentaje) o lo quita con clear: true.", ScopeWriteOrders, ""),
@@ -544,7 +550,7 @@ var mcpTools = []MCPTool{
 	wr("ingredient_cost_set", "Corrige el costo por unidad base de un insumo, con motivo (queda en su historial). La "+
 		"vista previa trae el costo actual, el historial reciente y las recetas que lo usan. No mete mercancía ni crea "+
 		"un gasto.", ScopeWriteInventory, PermInventoryConfigure),
-	rd("recipe_get", "Lo que resta del almacén un producto o un extra: su receta, si tiene existencia propia y los "+
+	rd("recipe_get", "Lo que resta del almacén de venta un producto o un extra al venderse: su receta, si tiene existencia propia y los "+
 		"extras que se llaman igual. Trae el based_on que pide recipe_set.", PermMenuConfigure),
 	wr("recipe_set", "Guarda lo que resta un producto o un extra (insumos, el producto que es, los productos de un "+
 		"paquete o nada). No copia la receta a los extras con el mismo nombre salvo also_in_same_name: true. Aplicar "+

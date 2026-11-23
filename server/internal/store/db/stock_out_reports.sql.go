@@ -16,18 +16,18 @@ import (
 
 const articleMovedSince = `-- name: ArticleMovedSince :one
 select (exists (select 1 from stock_movements m
-                 where m.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint)) and m.id > $2::bigint
+                 where m.warehouse_id = $1::bigint and m.id > $2::bigint
                    and (m.ingredient_id = $3 or m.product_id = $4))
      or exists (select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id
-                 where c.branch_id = $1 and l.ingredient_id = $3
+                 where c.warehouse_id = $1 and l.ingredient_id = $3
                    and l.captured_at > $5)
      or exists (select 1 from stock_count_product_lines l join stock_counts c on c.id = l.count_id
-                 where c.branch_id = $1 and l.product_id = $4
+                 where c.warehouse_id = $1 and l.product_id = $4
                    and l.captured_at > $5))::bool
 `
 
 type ArticleMovedSinceParams struct {
-	BranchID     int64     `json:"branch_id"`
+	WarehouseID  int64     `json:"warehouse_id"`
 	MovementID   int64     `json:"movement_id"`
 	IngredientID *int64    `json:"ingredient_id"`
 	ProductID    *int64    `json:"product_id"`
@@ -38,7 +38,7 @@ type ArticleMovedSinceParams struct {
 // capturado después: reponer el delta original lo pisaría.
 func (q *Queries) ArticleMovedSince(ctx context.Context, arg ArticleMovedSinceParams) (bool, error) {
 	row := q.db.QueryRow(ctx, articleMovedSince,
-		arg.BranchID,
+		arg.WarehouseID,
 		arg.MovementID,
 		arg.IngredientID,
 		arg.ProductID,
@@ -51,7 +51,7 @@ func (q *Queries) ArticleMovedSince(ctx context.Context, arg ArticleMovedSincePa
 
 const claimTriggerOut = `-- name: ClaimTriggerOut :one
 update notifications set opened_by = $1
- where branch_id = $2 and status = 'open' and kind = 'stock_out'
+ where warehouse_id = $2 and status = 'open' and kind = 'stock_out'
    and item_key = coalesce($3::bigint, -$4::bigint, 0)
    and opened_by is null
 returning id
@@ -59,7 +59,7 @@ returning id
 
 type ClaimTriggerOutParams struct {
 	OpenedBy     *int64 `json:"opened_by"`
-	BranchID     int64  `json:"branch_id"`
+	WarehouseID  int64  `json:"warehouse_id"`
 	IngredientID *int64 `json:"ingredient_id"`
 	ProductID    *int64 `json:"product_id"`
 }
@@ -69,7 +69,7 @@ type ClaimTriggerOutParams struct {
 func (q *Queries) ClaimTriggerOut(ctx context.Context, arg ClaimTriggerOutParams) (int64, error) {
 	row := q.db.QueryRow(ctx, claimTriggerOut,
 		arg.OpenedBy,
-		arg.BranchID,
+		arg.WarehouseID,
 		arg.IngredientID,
 		arg.ProductID,
 	)
@@ -141,7 +141,7 @@ func (q *Queries) FrequentOutArticles(ctx context.Context, since time.Time) ([]F
 }
 
 const getOutReportByClientKey = `-- name: GetOutReportByClientKey :one
-select r.id, r.kind, r.notification_id, r.delta, r.reported_at, r.reported_by,
+select r.id, r.kind, r.notification_id, r.delta, r.reported_at, r.reported_by, r.warehouse_id,
        coalesce(r.ingredient_id, 0)::bigint as ingredient_key, coalesce(r.product_id, 0)::bigint as product_key,
        coalesce(n.query_text, '')::text as query_text
   from stock_out_reports r join notifications n on n.id = r.notification_id
@@ -155,13 +155,14 @@ type GetOutReportByClientKeyRow struct {
 	Delta          *decimal.Decimal `json:"delta"`
 	ReportedAt     time.Time        `json:"reported_at"`
 	ReportedBy     int64            `json:"reported_by"`
+	WarehouseID    int64            `json:"warehouse_id"`
 	IngredientKey  int64            `json:"ingredient_key"`
 	ProductKey     int64            `json:"product_key"`
 	QueryText      string           `json:"query_text"`
 }
 
-// Con lo que se reportó: una llave repetida solo devuelve el reporte si es del mismo artículo o texto
-// y de la misma persona.
+// Con lo que se reportó: una llave repetida solo devuelve el reporte si es del mismo artículo o texto,
+// del mismo almacén y de la misma persona.
 func (q *Queries) GetOutReportByClientKey(ctx context.Context, clientKey uuid.UUID) (GetOutReportByClientKeyRow, error) {
 	row := q.db.QueryRow(ctx, getOutReportByClientKey, clientKey)
 	var i GetOutReportByClientKeyRow
@@ -172,6 +173,7 @@ func (q *Queries) GetOutReportByClientKey(ctx context.Context, clientKey uuid.UU
 		&i.Delta,
 		&i.ReportedAt,
 		&i.ReportedBy,
+		&i.WarehouseID,
 		&i.IngredientKey,
 		&i.ProductKey,
 		&i.QueryText,
@@ -180,7 +182,7 @@ func (q *Queries) GetOutReportByClientKey(ctx context.Context, clientKey uuid.UU
 }
 
 const getOutReportForUndo = `-- name: GetOutReportForUndo :one
-select id, branch_id, kind, item_type, ingredient_id, product_id, notification_id, movement_id, delta, reported_by,
+select id, branch_id, warehouse_id, kind, item_type, ingredient_id, product_id, notification_id, movement_id, delta, reported_by,
        reported_at, undone_at
   from stock_out_reports where id = $1 for update
 `
@@ -188,6 +190,7 @@ select id, branch_id, kind, item_type, ingredient_id, product_id, notification_i
 type GetOutReportForUndoRow struct {
 	ID             int64              `json:"id"`
 	BranchID       int64              `json:"branch_id"`
+	WarehouseID    int64              `json:"warehouse_id"`
 	Kind           string             `json:"kind"`
 	ItemType       *StockItemType     `json:"item_type"`
 	IngredientID   *int64             `json:"ingredient_id"`
@@ -206,6 +209,7 @@ func (q *Queries) GetOutReportForUndo(ctx context.Context, id int64) (GetOutRepo
 	err := row.Scan(
 		&i.ID,
 		&i.BranchID,
+		&i.WarehouseID,
 		&i.Kind,
 		&i.ItemType,
 		&i.IngredientID,
@@ -240,7 +244,7 @@ func (q *Queries) HasLiveReportOn(ctx context.Context, arg HasLiveReportOnParams
 }
 
 const insertOutAdjustment = `-- name: InsertOutAdjustment :one
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, user_id, reason, branch_id)
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, user_id, reason, warehouse_id)
 values ($1, $2, $3, 'ajuste', $4,
         $5, $6, $7)
 returning id
@@ -253,7 +257,7 @@ type InsertOutAdjustmentParams struct {
 	Quantity     decimal.Decimal `json:"quantity"`
 	UserID       *int64          `json:"user_id"`
 	Reason       *string         `json:"reason"`
-	BranchID     int64           `json:"branch_id"`
+	WarehouseID  int64           `json:"warehouse_id"`
 }
 
 // El ajuste de «se acabó» (o su deshacer). Es un ajuste, no una venta: no cuenta como consumo.
@@ -265,7 +269,7 @@ func (q *Queries) InsertOutAdjustment(ctx context.Context, arg InsertOutAdjustme
 		arg.Quantity,
 		arg.UserID,
 		arg.Reason,
-		arg.BranchID,
+		arg.WarehouseID,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -273,15 +277,15 @@ func (q *Queries) InsertOutAdjustment(ctx context.Context, arg InsertOutAdjustme
 }
 
 const insertOutReport = `-- name: InsertOutReport :one
-insert into stock_out_reports (branch_id, kind, item_type, ingredient_id, product_id, notification_id, movement_id, delta,
+insert into stock_out_reports (branch_id, warehouse_id, kind, item_type, ingredient_id, product_id, notification_id, movement_id, delta,
                                client_key, reported_by)
-values ($1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $10)
+select w.branch_id, w.id, $1, $2, $3, $4,
+       $5, $6, $7, $8, $9
+  from warehouses w where w.id = $10
 returning id, reported_at
 `
 
 type InsertOutReportParams struct {
-	BranchID       int64            `json:"branch_id"`
 	Kind           string           `json:"kind"`
 	ItemType       *StockItemType   `json:"item_type"`
 	IngredientID   *int64           `json:"ingredient_id"`
@@ -291,6 +295,7 @@ type InsertOutReportParams struct {
 	Delta          *decimal.Decimal `json:"delta"`
 	ClientKey      uuid.UUID        `json:"client_key"`
 	ReportedBy     int64            `json:"reported_by"`
+	WarehouseID    int64            `json:"warehouse_id"`
 }
 
 type InsertOutReportRow struct {
@@ -300,7 +305,6 @@ type InsertOutReportRow struct {
 
 func (q *Queries) InsertOutReport(ctx context.Context, arg InsertOutReportParams) (InsertOutReportRow, error) {
 	row := q.db.QueryRow(ctx, insertOutReport,
-		arg.BranchID,
 		arg.Kind,
 		arg.ItemType,
 		arg.IngredientID,
@@ -310,6 +314,7 @@ func (q *Queries) InsertOutReport(ctx context.Context, arg InsertOutReportParams
 		arg.Delta,
 		arg.ClientKey,
 		arg.ReportedBy,
+		arg.WarehouseID,
 	)
 	var i InsertOutReportRow
 	err := row.Scan(&i.ID, &i.ReportedAt)
@@ -355,15 +360,15 @@ func (q *Queries) MarkOutReportUndone(ctx context.Context, arg MarkOutReportUndo
 }
 
 const openManualOut = `-- name: OpenManualOut :many
-insert into notifications (branch_id, kind, item_type, ingredient_id, product_id, item_name, unit_code, on_hand_seen, opened_by)
-values ($1, 'stock_out', $2, $3, $4,
-        $5, $6, $7, $8)
+insert into notifications (branch_id, warehouse_id, kind, item_type, ingredient_id, product_id, item_name, unit_code, on_hand_seen, opened_by)
+select w.branch_id, w.id, 'stock_out', $1, $2, $3,
+       $4, $5, $6, $7
+  from warehouses w where w.id = $8
 on conflict (company_id, warehouse_id, item_key, kind) where status = 'open' and kind <> 'not_found' do nothing
 returning id
 `
 
 type OpenManualOutParams struct {
-	BranchID     int64            `json:"branch_id"`
 	ItemType     *StockItemType   `json:"item_type"`
 	IngredientID *int64           `json:"ingredient_id"`
 	ProductID    *int64           `json:"product_id"`
@@ -371,13 +376,13 @@ type OpenManualOutParams struct {
 	UnitCode     *string          `json:"unit_code"`
 	OnHandSeen   *decimal.Decimal `json:"on_hand_seen"`
 	OpenedBy     *int64           `json:"opened_by"`
+	WarehouseID  int64            `json:"warehouse_id"`
 }
 
 // Abre el «se acabó» reportado a mano. Si ya hay uno abierto (de alguien más o del sistema), no abre
 // otro: el índice único lo impide también con dos tabletas a la vez.
 func (q *Queries) OpenManualOut(ctx context.Context, arg OpenManualOutParams) ([]int64, error) {
 	rows, err := q.db.Query(ctx, openManualOut,
-		arg.BranchID,
 		arg.ItemType,
 		arg.IngredientID,
 		arg.ProductID,
@@ -385,6 +390,7 @@ func (q *Queries) OpenManualOut(ctx context.Context, arg OpenManualOutParams) ([
 		arg.UnitCode,
 		arg.OnHandSeen,
 		arg.OpenedBy,
+		arg.WarehouseID,
 	)
 	if err != nil {
 		return nil, err
@@ -425,18 +431,18 @@ func (q *Queries) OpenNotFound(ctx context.Context, arg OpenNotFoundParams) (int
 
 const openOutNotification = `-- name: OpenOutNotification :one
 select id from notifications
- where branch_id = $1 and status = 'open' and kind = 'stock_out'
+ where warehouse_id = $1 and status = 'open' and kind = 'stock_out'
    and item_key = coalesce($2::bigint, -$3::bigint, 0)
 `
 
 type OpenOutNotificationParams struct {
-	BranchID     int64  `json:"branch_id"`
+	WarehouseID  int64  `json:"warehouse_id"`
 	IngredientID *int64 `json:"ingredient_id"`
 	ProductID    *int64 `json:"product_id"`
 }
 
 func (q *Queries) OpenOutNotification(ctx context.Context, arg OpenOutNotificationParams) (int64, error) {
-	row := q.db.QueryRow(ctx, openOutNotification, arg.BranchID, arg.IngredientID, arg.ProductID)
+	row := q.db.QueryRow(ctx, openOutNotification, arg.WarehouseID, arg.IngredientID, arg.ProductID)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -475,8 +481,10 @@ func (q *Queries) OutArticle(ctx context.Context, arg OutArticleParams) (OutArti
 const outReportsSince = `-- name: OutReportsSince :many
 select r.id, r.kind, r.item_type, r.ingredient_id, r.product_id,
        coalesce(i.name, p.name, n.query_text)::text as name, r.reported_at, r.undone_at, r.reported_by,
-       u.name::text as reported_by_name, (r.delta is not null)::bool as moved, n.status::text as notification_status
+       u.name::text as reported_by_name, (r.delta is not null)::bool as moved, n.status::text as notification_status,
+       r.warehouse_id, wh.name as warehouse_name
   from stock_out_reports r
+  join warehouses wh on wh.id = r.warehouse_id
   join notifications n on n.id = r.notification_id
   join users u on u.id = r.reported_by
   left join ingredients i on i.id = r.ingredient_id
@@ -499,6 +507,8 @@ type OutReportsSinceRow struct {
 	ReportedByName     string             `json:"reported_by_name"`
 	Moved              bool               `json:"moved"`
 	NotificationStatus string             `json:"notification_status"`
+	WarehouseID        int64              `json:"warehouse_id"`
+	WarehouseName      string             `json:"warehouse_name"`
 }
 
 // Lo reportado en la sucursal desde `since`: la columna «Reportado hoy».
@@ -524,6 +534,8 @@ func (q *Queries) OutReportsSince(ctx context.Context, since time.Time) ([]OutRe
 			&i.ReportedByName,
 			&i.Moved,
 			&i.NotificationStatus,
+			&i.WarehouseID,
+			&i.WarehouseName,
 		); err != nil {
 			return nil, err
 		}
@@ -644,20 +656,20 @@ func (q *Queries) SetOutReportUndoMovement(ctx context.Context, arg SetOutReport
 
 const stockOnHandForUpdate = `-- name: StockOnHandForUpdate :many
 select on_hand from stock_levels
- where warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint))
+ where warehouse_id = $1::bigint
    and (ingredient_id = $2 or product_id = $3)
  for update
 `
 
 type StockOnHandForUpdateParams struct {
-	BranchID     int64  `json:"branch_id"`
+	WarehouseID  int64  `json:"warehouse_id"`
 	IngredientID *int64 `json:"ingredient_id"`
 	ProductID    *int64 `json:"product_id"`
 }
 
-// La existencia del artículo en la sucursal, tomada: el ajuste a 0 resta exactamente lo que hay.
+// La existencia del artículo en el almacén, tomada: el ajuste a 0 resta exactamente lo que hay.
 func (q *Queries) StockOnHandForUpdate(ctx context.Context, arg StockOnHandForUpdateParams) ([]decimal.Decimal, error) {
-	rows, err := q.db.Query(ctx, stockOnHandForUpdate, arg.BranchID, arg.IngredientID, arg.ProductID)
+	rows, err := q.db.Query(ctx, stockOnHandForUpdate, arg.WarehouseID, arg.IngredientID, arg.ProductID)
 	if err != nil {
 		return nil, err
 	}

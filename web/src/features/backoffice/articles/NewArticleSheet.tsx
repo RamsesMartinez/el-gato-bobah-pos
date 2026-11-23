@@ -33,7 +33,7 @@ export function NewArticleSheet({ word = 'artículo', initialName = '', onClose,
   const qc = useQueryClient();
   // Se piden al abrir para que al guardar ya estén casi siempre.
   useQuery({ queryKey: ['units'], queryFn: backofficeApi.units });
-  const locations = useLocations();
+  const locations = useLocations(undefined, { all: true });
   const [name, setName] = useState(initialName);
   const [kind, setKind] = useState<Kind | null>(null);
   const [stock, setStock] = useState({ qty: '', big: true });

@@ -71,7 +71,7 @@ func TestADraftIsNeverASale(t *testing.T) {
 		{"Top / populares", func() (any, error) { return menu.Popular(ctx) }},
 		{"tablero de cocina", func() (any, error) { return k.orders.Board(ctx) }},
 		{"almacén: existencias", func() (any, error) { return back.StockLevels(ctx, domain.WarehouseSel{}) }},
-		{"almacén: movimientos", func() (any, error) { return back.StockMovements(ctx, 100) }},
+		{"almacén: movimientos", func() (any, error) { return back.StockMovements(ctx, domain.WarehouseSel{}, 100) }},
 	}
 	snap := func(t *testing.T) map[string]string {
 		t.Helper()

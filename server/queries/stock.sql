@@ -24,30 +24,50 @@ select sl.item_type,
        coalesce(i.name, p.name) as item_name,
        sum(sl.on_hand)::numeric(14,4) as on_hand,
        coalesce(i.min_stock, p.min_stock) as min_stock,
+       -- El mínimo propio del almacén leído (min_warehouse_id): el servicio decide con él y el del
+       -- artículo cuál vale en ese almacén.
+       bsm.min_stock as own_min_stock,
        coalesce(iu.code, 'pieza') as unit_code,
        -- El `true` final no cambia nada (todo renglón es de un insumo o de un producto): deja la
        -- columna no nulable sin depender de cómo infiera sqlc un coalesce de dos left join.
-       coalesce(i.is_active, p.is_active, true) as is_active
+       coalesce(i.is_active, p.is_active, true) as is_active,
+       -- Valor al costo vigente, almacén por almacén y sin negativos: lo que falta en un almacén no le
+       -- resta valor a lo que sí hay en otro, y así la suma de los almacenes es el valor de todos.
+       round(sum(greatest(sl.on_hand, 0)) * coalesce(i.current_cost, p.current_cost, 0), 2)::numeric(14,2) as value
 from stock_levels sl
 left join ingredients i on i.id = sl.ingredient_id
 left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = sl.product_id
+left join branch_stock_minimums bsm on bsm.warehouse_id = sqlc.narg('min_warehouse_id')::bigint
+      and (bsm.ingredient_id = sl.ingredient_id or bsm.product_id = sl.product_id)
 where sl.warehouse_id = any(sqlc.arg(warehouse_ids)::bigint[])
   -- Es la lista de faltantes de la pantalla (marca «bajo»): un insumo archivado ahí es un faltante
   -- falso (spec 077). Su existencia sigue en Almacén › Archivados. Un producto archivado sí sale,
   -- marcado: desactivar productos no es de esa feature.
   and (sl.ingredient_id is null or i.is_active)
-group by sl.item_type, i.id, p.id, iu.code
+group by sl.item_type, i.id, p.id, iu.code, bsm.min_stock
 order by item_name;
 
 -- name: ListStockMovements :many
+-- Los últimos movimientos de los almacenes pedidos (spec 094). De un traspaso viajan sus dos
+-- almacenes: la contraparte de cada pata se decide en el servicio. Por id y no por hora: el índice
+-- por almacén ya los trae en ese orden.
 select sm.id, sm.item_type, coalesce(i.name, p.name) as item_name, sm.movement_type,
-       sm.quantity, sm.reason, sm.created_at
+       sm.quantity, sm.reason, sm.created_at, sm.warehouse_id, w.name as warehouse_name,
+       coalesce(iu.code, 'pieza')::text as unit_code, sm.transfer_id,
+       t.from_warehouse_id as transfer_from_id, fw.name as transfer_from_name, tw.name as transfer_to_name,
+       fw.is_active as transfer_from_active, tw.is_active as transfer_to_active
 from stock_movements sm
+join warehouses w on w.id = sm.warehouse_id
 left join ingredients i on i.id = sm.ingredient_id
+left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = sm.product_id
-order by sm.created_at desc
-limit $1;
+left join stock_transfers t on t.id = sm.transfer_id
+left join warehouses fw on fw.id = t.from_warehouse_id
+left join warehouses tw on tw.id = t.to_warehouse_id
+where sm.warehouse_id = any(sqlc.arg(warehouse_ids)::bigint[])
+order by sm.id desc
+limit sqlc.arg(lim);
 
 -- Cambio de modo de consumo (spec 037, research R6) -----------------------------------------------
 

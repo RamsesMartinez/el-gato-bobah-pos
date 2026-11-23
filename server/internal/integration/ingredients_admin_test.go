@@ -632,7 +632,7 @@ func TestArchivingAnArticle(t *testing.T) {
 		}
 	})
 	t.Run("con un conteo abierto que ya lo capturó se niega", func(t *testing.T) {
-		count, err := svc.OpenCount(ctx, k.user)
+		count, err := svc.OpenCount(ctx, domain.WarehouseSel{}, k.user)
 		if err != nil {
 			t.Fatal(err)
 		}

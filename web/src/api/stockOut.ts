@@ -24,6 +24,9 @@ export interface OutReportRow {
   undoneAt: string | null;
   moved: boolean;
   open: boolean;
+  // Dónde se reportó (spec 094). Opcionales: la API anterior no los trae.
+  warehouseId?: number;
+  warehouseName?: string;
 }
 
 export interface OutSuggestions {
@@ -44,8 +47,11 @@ export interface OutReportResult {
 export const stockOutApi = {
   search: (q: string) => api.get<{ items: OutItem[] }>(`/stock/out-reports/search?q=${encodeURIComponent(q)}`),
   suggestions: () => api.get<OutSuggestions>('/stock/out-reports/suggestions'),
-  report: (item: OutItem, clientKey: string) =>
-    api.post<OutReportResult>('/stock/out-reports', { itemType: item.itemType, id: item.id, clientKey }),
+  // Sin warehouseId es el almacén de venta (spec 094).
+  report: (item: OutItem, clientKey: string, warehouseId?: number) =>
+    api.post<OutReportResult>('/stock/out-reports', warehouseId === undefined
+      ? { itemType: item.itemType, id: item.id, clientKey }
+      : { itemType: item.itemType, id: item.id, clientKey, warehouseId }),
   undo: (id: number) => api.post<void>(`/stock/out-reports/${id}/undo`),
   notFound: (text: string, clientKey: string) =>
     api.post<{ id: number; notificationId: number }>('/stock/not-found', { text, clientKey }),

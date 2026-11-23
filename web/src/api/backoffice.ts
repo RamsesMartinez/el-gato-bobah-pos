@@ -820,6 +820,8 @@ export interface StockLevel {
   product_id?: number | null;
   // En el almacén de venta, un negativo dice de qué otro almacén se puede traer.
   transfer_from?: { warehouseId: number; name: string; onHand: string }[];
+  // Valor a costo vigente de lo que hay (spec 094); un negativo trae valor negativo.
+  value?: string;
 }
 
 // Un traspaso entre almacenes de la sucursal (spec 094). `qty` en la unidad base del artículo.
@@ -845,6 +847,22 @@ export interface StockMovement {
   quantity: string;
   reason: string | null;
   created_at: string;
+  // Spec 094: en qué almacén pasó y, si fue un traspaso, de o hacia cuál. Opcionales: el servidor
+  // anterior no los manda.
+  unit_code?: string;
+  warehouse_id?: number;
+  warehouse_name?: string;
+  transfer_id?: number | null;
+  counterpart_warehouse_name?: string | null;
+  // El otro almacén del traspaso ya se archivó: con uno nuevo del mismo nombre, es lo que los distingue.
+  counterpart_warehouse_archived?: boolean;
+}
+
+// WarehouseValue es lo que vale un almacén en «Todos» (spec 094).
+export interface WarehouseValue {
+  warehouseId: number;
+  warehouseName: string;
+  value: string;
 }
 
 // Cuerpos de request del detalle del gasto (lo que se envía; distinto de lo que se lee).
@@ -914,6 +932,10 @@ export interface CountItem {
   weighed?: CountWeighed | null;
   // Otros nombres con que se busca (spec 063). Opcional: una API anterior no los trae.
   altNames?: string[];
+  // Spec 094: tiene lugar, pero en otro almacén. Y si es de este almacén (existencia, lugar o ya
+  // capturado aquí; en el de venta, todo). Opcionales: la API anterior no los trae.
+  placeElsewhere?: boolean;
+  inWarehouse?: boolean;
 }
 // CountWeighed es cómo se capturó una pesada con empaque (#204). closedPacks falta o es null si no se
 // sabe cómo se repartió lo cerrado entre empaques.
@@ -941,10 +963,14 @@ export interface CountProduct {
   category: string;
   countedQty: string | null;
   altNames?: string[];
+  inWarehouse?: boolean;
 }
 export interface StockCount {
   id: number;
   openedAt: string;
+  // Qué almacén se cuenta (spec 094). Opcionales: la API anterior no los trae.
+  warehouseId?: number;
+  warehouseName?: string;
   items: CountItem[];
   // Opcional: una API anterior a la 069 no los trae, y el compilador obliga a la guarda.
   products?: CountProduct[];
@@ -1053,6 +1079,9 @@ export interface HealthQuery {
   offset?: number;
   noPurchasesSince?: string;
 }
+
+// whQuery arma ?warehouseId= solo cuando se pidió un almacén: ausente es el de venta (spec 094).
+const whQuery = (warehouseId?: number) => (warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`);
 
 export const backofficeApi = {
   // Cajas (catálogo). `cashRegisters` = activas + estado de sesión; `allCashRegisters` = gestión.
@@ -1240,8 +1269,9 @@ export const backofficeApi = {
   addArrivedItem: (expenseId: number, b: ArrivedItemBody) => api.post<void>(`/expenses/${expenseId}/items`, b),
   // Conteo (spec 038). Las cifras van en la unidad base del insumo.
   // null sin conteo abierto (204): TanStack Query no acepta `undefined` como dato.
-  currentCount: () => api.get<StockCount | undefined>('/stock/counts/current').then((c) => c ?? null),
-  openCount: () => api.post<StockCount>('/stock/counts', {}),
+  // Sin warehouseId es el almacén de venta (spec 094): así lo entiende también la API anterior.
+  currentCount: (warehouseId?: number) => api.get<StockCount | undefined>(`/stock/counts/current${whQuery(warehouseId)}`).then((c) => c ?? null),
+  openCount: (warehouseId?: number) => api.post<StockCount>('/stock/counts', warehouseId === undefined ? {} : { warehouseId }),
   captureCount: (id: number, ingredientId: number, body: CountCaptureBody) =>
     // weighed: el desglose que quedó guardado (#204); falta en una API anterior.
     api.put<{ countedQty: string; grossNet?: string; weighed?: CountWeighed | null }>(`/stock/counts/${id}/lines/${ingredientId}`, body),
@@ -1253,16 +1283,19 @@ export const backofficeApi = {
   previewCount: (id: number) => api.get<CountClose>(`/stock/counts/${id}/preview`),
   closeCount: (id: number) => api.post<CountClose>(`/stock/counts/${id}/close`, {}),
   discardCount: (id: number) => api.post<void>(`/stock/counts/${id}/discard`, {}),
-  lastClosedCount: () => api.get<{ closedAt: string | null; id: number | null }>('/stock/counts/last-closed'),
+  lastClosedCount: (warehouseId?: number) => api.get<{ closedAt: string | null; id: number | null }>(`/stock/counts/last-closed${whQuery(warehouseId)}`),
   // Lugares del recorrido del conteo (spec 040): una lista por empresa en vez de texto libre.
   setCountPlace: (ingredientId: number, placeId: number | null) => api.put<void>(`/stock/ingredients/${ingredientId}/place`, { placeId }),
-  countPlaces: () => api.get<CountPlace[]>('/stock/count-places'),
-  createCountPlace: (name: string) => api.post<{ id: number }>('/stock/count-places', { name }),
+  countPlaces: (warehouseId?: number) => api.get<CountPlace[]>(`/stock/count-places${whQuery(warehouseId)}`),
+  createCountPlace: (name: string, warehouseId?: number) =>
+    api.post<{ id: number }>('/stock/count-places', warehouseId === undefined ? { name } : { name, warehouseId }),
   renameCountPlace: (id: number, name: string) => api.put<void>(`/stock/count-places/${id}`, { name }),
   moveCountPlace: (id: number, toPosition: number) => api.post<void>(`/stock/count-places/${id}/move`, { toPosition }),
   // Almacenes de la sucursal (spec 094).
   warehouses: (includeArchived = false) =>
     api.get<{ items?: Warehouse[] }>(`/stock/warehouses${includeArchived ? '?includeArchived=1' : ''}`),
+  // Solo id, nombre y cuál es el de venta: lo que necesita quien registra sin ver el inventario.
+  warehouseNames: () => api.get<{ items?: Pick<Warehouse, 'id' | 'name' | 'isSales'>[] }>('/stock/warehouses/names'),
   createWarehouse: (name: string) => api.post<{ id: number }>('/stock/warehouses', { name }),
   renameWarehouse: (id: number, name: string) => api.patch<void>(`/stock/warehouses/${id}`, { name }),
   // Traspasos entre almacenes (spec 094): la clave del cliente hace que un reintento no duplique.
@@ -1364,9 +1397,11 @@ export const backofficeApi = {
   },
 
   // Sin almacén, el de venta; un id o 'all' (spec 094).
+  // totalValue no suma los negativos (spec 094); sin él, la pantalla no pinta el pie.
   stockLevels: (warehouseId?: number | 'all') =>
-    api.get<{ items: StockLevel[] }>(`/stock/levels${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
-  stockMovements: () => api.get<{ items: StockMovement[] }>('/stock/movements'),
+    api.get<{ items: StockLevel[]; totalValue?: string; valueByWarehouse?: WarehouseValue[] }>(`/stock/levels${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
+  stockMovements: (warehouseId?: number | 'all') =>
+    api.get<{ items: StockMovement[] }>(`/stock/movements${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
   inventoryHealth: (q: HealthQuery = {}) => api.get<InventoryHealth>(`/stock/health?${qsReporte(q as ReportQuery)}`),
   // El archivo de la misma pantalla. El nombre viene del servidor (Content-Disposition), con el periodo.
   exportInventoryHealth: async (q: Pick<HealthQuery, 'from' | 'to'>) => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Badge, Box, Button, Flex, Grid, HStack, Input, Text, VStack } from '@chakra-ui/react';
+import { useWarehousePick, WarehousePicker } from '../backoffice/warehouses/WarehousePicker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LuCircleCheck, LuCircleHelp, LuSearch, LuUndo2 } from 'react-icons/lu';
 import { ApiError } from '../../api/client';
@@ -20,7 +21,7 @@ const ARMADO_MS = 4000;
 const BUSQUEDA_MS = 250;
 const NO_LO_ENCUENTRO = '__no-lo-encuentro';
 
-type Hecho = { nombre: string; id: number; confirmacion: boolean; hasta: number };
+type Hecho = { nombre: string; id: number; confirmacion: boolean; hasta: number; almacen?: string };
 type Mensaje = { tipo: 'no-lo-encuentro'; texto: string } | { tipo: 'error'; texto: string };
 
 const claveDe = (it: OutItem) => `${it.itemType}:${it.id}`;
@@ -32,6 +33,8 @@ const Titulo = ({ children }: { children: React.ReactNode }) => (
 export function SeAcaboPage() {
   const qc = useQueryClient();
   const hora = useHoraDelNegocio();
+  // De qué almacén se acabó (spec 094): solo se pregunta con dos o más.
+  const wh = useWarehousePick();
   const [q, setQ] = useState('');
   const [buscado, setBuscado] = useState('');
   const [armado, setArmado] = useState<{ clave: string; desde: number } | null>(null);
@@ -71,8 +74,11 @@ export function SeAcaboPage() {
 
   const error = (e: unknown) => setMensaje({ tipo: 'error', texto: e instanceof ApiError ? e.message : 'No se pudo avisar; vuelve a intentar.' });
   const reportar = useMutation({
-    mutationFn: (it: OutItem) => stockOutApi.report(it, llaveDe(`articulo:${claveDe(it)}`)),
-    onSuccess: (res, it) => {
+    // La clave lleva el almacén: el mismo artículo en otro almacén es otro reporte.
+    // El almacén viaja con la petición: el aviso dice dónde quedó en 0 aunque se cambie mientras llega.
+    mutationFn: ({ it, whId }: { it: OutItem; whId?: number; whName?: string }) =>
+      stockOutApi.report(it, llaveDe(`articulo:${claveDe(it)}:${whId ?? 'venta'}`), whId),
+    onSuccess: (res, { it, whName }) => {
       medirAccion('se-acabo', res.kind === 'confirmation' ? 'confirmar' : 'reportar');
       llave.current = null;
       setQ('');
@@ -82,7 +88,7 @@ export function SeAcaboPage() {
       // con la hora de ahora, no con la del último tic.
       const ahoraMismo = Date.now();
       setAhora(ahoraMismo);
-      setHecho({ nombre: it.name, id: res.id, confirmacion: res.kind === 'confirmation', hasta: ahoraMismo + (sug?.undoSeconds ?? 90) * 1000 });
+      setHecho({ nombre: it.name, id: res.id, confirmacion: res.kind === 'confirmation', hasta: ahoraMismo + (sug?.undoSeconds ?? 90) * 1000, almacen: whName });
       void qc.invalidateQueries({ queryKey: ['se-acabo'] });
       void qc.invalidateQueries({ queryKey: ['avisos'] });
     },
@@ -126,7 +132,7 @@ export function SeAcaboPage() {
     return (
       <Button key={clave} data-row minH="64px" h="auto" py={2} whiteSpace="normal" textAlign="left" justifyContent="flex-start"
         variant={listo ? 'solid' : 'outline'} colorPalette={listo ? 'red' : 'gray'} disabled={enviando}
-        onClick={(e) => tocar(clave, e.timeStamp, () => reportar.mutate(it))}>
+        onClick={(e) => tocar(clave, e.timeStamp, () => reportar.mutate({ it, whId: wh.warehouseId, whName: wh.multi ? wh.name : undefined }))}>
         <VStack align="start" gap={0} minW={0}>
           <Text fontWeight="700" fontSize="md" lineClamp={2}>{it.name}</Text>
           <Text fontSize="xs" color={listo ? 'white' : 'fg.muted'} minH="16px">
@@ -165,8 +171,9 @@ export function SeAcaboPage() {
 
   return (
     <Flex direction="column" h="100%" minH={0}>
-      <Flex h="52px" align="center" px={3} borderBottomWidth="1px" flexShrink={0}>
+      <Flex h="52px" align="center" justify="space-between" gap={3} px={3} borderBottomWidth="1px" flexShrink={0}>
         <Text fontWeight="700" fontSize="lg">Se acabó</Text>
+        <WarehousePicker pick={wh} label="¿De qué almacén?" />
       </Flex>
       <Grid templateColumns={{ base: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) minmax(0, 340px)' }} gap={4} p={3} flex="1" minH={0}>
         <VStack align="stretch" gap={3} minH={0} overflowY="auto">
@@ -183,7 +190,7 @@ export function SeAcaboPage() {
               <HStack role="status" bg="green.subtle" borderRadius="lg" px={4} minH="64px" gap={3}>
                 <LuCircleCheck size={24} />
                 <Box flex="1" minW={0}>
-                  <Text fontWeight="700">{hecho.confirmacion ? `Ya estaba reportado: sumamos tu confirmación de ${hecho.nombre}` : `Listo: ${hecho.nombre} quedó en 0 y se avisó a quien compra`}</Text>
+                  <Text fontWeight="700">{hecho.confirmacion ? `Ya estaba reportado: sumamos tu confirmación de ${hecho.nombre}` : `Listo: ${hecho.nombre} quedó en 0${hecho.almacen ? ` en ${hecho.almacen}` : ''} y se avisó a quien compra`}</Text>
                   {/* Un error posterior se dice aquí, sin quitar el deshacer que sigue vigente. */}
                   {mensaje?.tipo === 'error'
                     ? <Text role="alert" fontSize="sm" color="fg.error" fontWeight="600">{mensaje.texto}</Text>
@@ -215,7 +222,7 @@ export function SeAcaboPage() {
               <Box flex="1" minW={0}>
                 <Text fontWeight="600" lineClamp={1}>{r.name}</Text>
                 <Text fontSize="sm" color="fg.muted">
-                  {hora.soloHora(r.reportedAt)} · {r.reportedBy}
+                  {hora.soloHora(r.reportedAt)} · {r.reportedBy}{wh.multi && r.warehouseName ? ` · ${r.warehouseName}` : ''}
                   {r.kind === 'confirmation' ? ' · lo confirmó' : ''}{r.undoneAt ? ' · deshecho' : ''}
                 </Text>
               </Box>

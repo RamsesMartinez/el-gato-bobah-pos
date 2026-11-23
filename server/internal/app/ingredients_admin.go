@@ -186,7 +186,7 @@ func createArticleTx(ctx context.Context, q *db.Queries, in ArticleCreate) (int6
 	}
 	id := row.ID
 	if in.PlaceID != nil {
-		if err := activePlace(ctx, q, *in.PlaceID); err != nil {
+		if _, err := activePlace(ctx, q, *in.PlaceID); err != nil {
 			return 0, err
 		}
 		if _, err := q.SetCountPlace(ctx, db.SetCountPlaceParams{ID: id, PlaceID: in.PlaceID}); err != nil {
@@ -352,7 +352,7 @@ func (s *BackofficeService) UpdateArticle(ctx context.Context, id int64, in Arti
 			return err
 		}
 		if p := in.PlaceID.Value; p != nil && (before.CountPlaceID == nil || *before.CountPlaceID != *p) {
-			if err := activePlace(ctx, q, *p); err != nil {
+			if _, err := activePlace(ctx, q, *p); err != nil {
 				return err
 			}
 		}

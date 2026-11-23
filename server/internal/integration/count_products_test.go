@@ -56,7 +56,7 @@ func (k *productCountKit) sellProduct(t *testing.T, product int64, q string) {
 
 func (k *productCountKit) open(t *testing.T) app.CountView {
 	t.Helper()
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatalf("abrir: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestCapturingAProductIsWholePiecesAndBlind(t *testing.T) {
 	if _, err := k.svc.CaptureCountProduct(k.ctx, c.ID, k.lata, app.CountCapture{Qty: dd("12")}, k.user); err != nil {
 		t.Fatal(err)
 	}
-	cur, err := k.svc.CurrentCount(k.ctx)
+	cur, err := k.svc.CurrentCount(k.ctx, domain.WarehouseSel{})
 	if err != nil || cur == nil {
 		t.Fatalf("conteo abierto: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestCapturingAProductIsWholePiecesAndBlind(t *testing.T) {
 	if err := k.svc.UncaptureCountProduct(k.ctx, c.ID, k.lata); err != nil {
 		t.Fatal(err)
 	}
-	cur, _ = k.svc.CurrentCount(k.ctx)
+	cur, _ = k.svc.CurrentCount(k.ctx, domain.WarehouseSel{})
 	if p := productIn(*cur, k.lata); p == nil || p.CountedQty != nil {
 		t.Fatalf("quitar la cifra no la dejó sin contar: %+v", p)
 	}
@@ -338,7 +338,7 @@ func TestProductCountsAreIsolated(t *testing.T) {
 	other := makeCompany(t, k.st, "conteo-productos-otra")
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, as *store.Store, ctx context.Context) {
 		svc := app.NewBackofficeService(as, nil)
-		if cur, err := svc.CurrentCount(ctx); err == nil && cur != nil && productIn(*cur, k.lata) != nil {
+		if cur, err := svc.CurrentCount(ctx, domain.WarehouseSel{}); err == nil && cur != nil && productIn(*cur, k.lata) != nil {
 			t.Fatal("se ven los productos de otra empresa en el conteo")
 		}
 		if _, err := svc.CaptureCountProduct(ctx, c.ID, k.lata, app.CountCapture{Qty: dd("1")}, k.user); err == nil {

@@ -25,6 +25,7 @@ import { NO_LOCATION } from './useLocations';
 import { useNavigate, useSearchParams } from 'react-router';
 import { can } from '../../app/permissions';
 import { countLimitsApi, DEFAULT_COUNT_LIMITS, overMaxMessage } from '../../api/countLimits';
+import { Segmented } from '../../components/Segmented';
 
 // Conteo de existencias (spec 038, maqueta «Almacén › Conteo»: las dos vistas). A ciegas —no se ve
 // lo que el sistema tiene—, cada cifra se guarda al capturarla y el cierre dice qué no se contó y
@@ -40,7 +41,14 @@ function saveView(v: View) {
   try { localStorage.setItem(VIEW_KEY, v); } catch { /* la tableta sin almacenamiento cuenta igual */ }
 }
 
-const placeOf = (i: CountItem) => i.place ?? NO_LOCATION;
+// El almacén que se cuenta (spec 094). key es la llave del conteo en caché: cada almacén tiene el
+// suyo. Con un solo almacén multi es falso y la pantalla queda como antes.
+interface CountScope { key: readonly unknown[]; warehouseId?: number; multi: boolean }
+const CountScopeContext = createContext<CountScope>({ key: ['stock', 'count', 'venta'], multi: false });
+// NO_PLACE_HERE: con varios almacenes, un artículo sin lugar en el que se cuenta puede tenerlo en
+// otro; «Sin definir» haría creer que nadie le puso lugar.
+const NO_PLACE_HERE = 'Sin lugar en este almacén';
+const placeOf = (i: CountItem, multi = false) => i.place ?? (multi && i.placeElsewhere ? NO_PLACE_HERE : NO_LOCATION);
 
 // Productos con existencia propia en el conteo (spec 069, maqueta «Conteo con productos», opción C):
 // se pintan con los mismos renglones que los artículos, al final y agrupados por su categoría del
@@ -50,9 +58,16 @@ const placeOf = (i: CountItem) => i.place ?? NO_LOCATION;
 type CountRow = CountItem & { productId?: number };
 const productRow = (p: CountProduct): CountRow => ({
   ingredientId: -p.productId, productId: p.productId, name: p.name, place: `${p.category} · del menú`, placeId: null,
-  baseUnitCode: 'pieza', presentations: [], countedQty: p.countedQty, altNames: p.altNames,
+  baseUnitCode: 'pieza', presentations: [], countedQty: p.countedQty, altNames: p.altNames, inWarehouse: p.inWarehouse,
 });
-const rowsOf = (c: StockCount): CountRow[] => [...c.items, ...(c.products ?? []).map(productRow)];
+// ownRow: es de este almacén. Sin el dato (API anterior) todo lo es, como antes.
+const ownRow = (r: CountItem) => r.inWarehouse !== false;
+// Con varios almacenes, lo que no tiene lugar en éste va al final del recorrido: lo normal es que
+// esté en otro almacén y se cuente ahí.
+const rowsOf = (c: StockCount, multi: boolean): CountRow[] => [
+  ...(multi ? [...c.items.filter((i) => i.place != null), ...c.items.filter((i) => i.place == null)] : c.items),
+  ...(c.products ?? []).map(productRow),
+];
 const isProduct = (i: CountItem) => (i as CountRow).productId !== undefined;
 // El primer grupo de productos: a donde lleva el aviso del renglón de avance.
 const PRODUCTS_ANCHOR = 'conteo-productos';
@@ -107,10 +122,26 @@ function keyOf(e: KeyboardEvent): string | null {
 export function StockCountTab() {
   const qc = useQueryClient();
   const hora = useHoraDelNegocio();
-  const { data: count, isLoading } = useQuery({ queryKey: ['stock', 'count'], queryFn: backofficeApi.currentCount });
+  // Qué almacén se cuenta (spec 094): por omisión el de venta, que va sin id. Si el elegido se archivó,
+  // se vuelve al de venta.
+  const { data: whData } = useQuery({ queryKey: ['warehouses'], queryFn: () => backofficeApi.warehouses() });
+  const whList = whData?.items ?? [];
+  const multi = whList.length > 1;
+  // El elegido viaja en la dirección (?almacen=): recargar con un conteo abierto en la Bodega volvía
+  // al de venta y decía que no había conteo.
+  const [params, setParams] = useSearchParams();
+  const picked = Number(params.get('almacen')) || undefined;
+  const setPicked = (id: number) => setParams((p) => {
+    const n = new URLSearchParams(p);
+    if (whList.find((w) => w.id === id)?.isSales) n.delete('almacen'); else n.set('almacen', String(id));
+    return n;
+  }, { replace: true });
+  const warehouseId = picked !== undefined && whList.some((w) => w.id === picked && !w.isSales) ? picked : undefined;
+  const countKey = ['stock', 'count', warehouseId ?? 'venta'] as const;
+  const scope: CountScope = { key: countKey, warehouseId, multi };
+  const { data: count, isLoading } = useQuery({ queryKey: countKey, queryFn: () => backofficeApi.currentCount(warehouseId) });
   // ?q= llega de la ficha del artículo (spec 045): la lista ya buscada. Uno por uno no tiene buscador,
   // así que con búsqueda se abre la lista sin cambiar la vista recordada.
-  const [params] = useSearchParams();
   const initialQuery = params.get('q') ?? '';
   const [view, setView] = useState<View>(() => (initialQuery ? 'lista' : readView()));
   const [closed, setClosed] = useState<CountClose | null>(null);
@@ -125,9 +156,13 @@ export function StockCountTab() {
   const navigate = useNavigate();
   // El orden del recorrido a la vista antes de empezar, y el camino a cambiarlo: la segunda prueba sin
   // contexto (040, T022) no encontró dónde se ordenan los lugares.
-  const { data: places = [] } = useQuery({ queryKey: ['count-places'], queryFn: backofficeApi.countPlaces, enabled: !count });
+  const { data: places = [] } = useQuery({
+    queryKey: warehouseId === undefined ? ['count-places'] : ['count-places', warehouseId],
+    queryFn: () => backofficeApi.countPlaces(warehouseId), enabled: !count,
+  });
   const { data: lastClosed } = useQuery({
-    queryKey: ['stock', 'count', 'last-closed'], queryFn: backofficeApi.lastClosedCount, enabled: canSeeLoss && !count,
+    queryKey: ['stock', 'count', 'last-closed', warehouseId ?? 'venta'], queryFn: () => backofficeApi.lastClosedCount(warehouseId),
+    enabled: canSeeLoss && !count,
   });
   const lossCountId = closedId ?? lastClosed?.id ?? null;
   useEffect(() => { medirAccion('inventario', 'ver-conteo'); }, []);
@@ -153,21 +188,32 @@ export function StockCountTab() {
   }, []);
 
   const open = useMutation({
-    mutationFn: backofficeApi.openCount,
-    onSuccess: (c) => { setClosed(null); qc.setQueryData(['stock', 'count'], c); },
+    mutationFn: () => backofficeApi.openCount(warehouseId),
+    onSuccess: (c) => { setClosed(null); qc.setQueryData(countKey, c); },
     // Otra tableta lo abrió primero: se toma ése.
-    onError: () => void qc.invalidateQueries({ queryKey: ['stock', 'count'] }),
+    onError: () => void qc.invalidateQueries({ queryKey: countKey }),
   });
   const discard = useMutation({
     mutationFn: (id: number) => backofficeApi.discardCount(id),
-    onSuccess: () => { setConfirmDiscard(false); qc.setQueryData(['stock', 'count'], null); },
+    onSuccess: () => { setConfirmDiscard(false); qc.setQueryData(countKey, null); },
   });
+
+  const picker = multi && (
+    <HStack gap={3} flexWrap="wrap">
+      <Text fontWeight="600">¿Qué almacén cuentas?</Text>
+      <Segmented label="¿Qué almacén cuentas?"
+        value={String(warehouseId ?? whList.find((w) => w.isSales)?.id ?? '')}
+        options={whList.map((w) => ({ value: String(w.id), label: w.isSales ? `${w.name} · de venta` : w.name }))}
+        onChange={(v) => { setPicked(Number(v)); setClosed(null); setClosedId(null); setShowLoss(false); }} />
+    </HStack>
+  );
 
   if (isLoading) return <Center py={16}><Spinner size="xl" /></Center>;
 
   if (!count) {
     return (
       <VStack align="stretch" gap={3} maxW="640px" py={4}>
+        {picker}
         {closed && <ClosedSummary result={closed} />}
         <Text>{closed ? 'El conteo quedó cerrado.' : 'No hay un conteo abierto.'}</Text>
         {canSeeLoss && lossCountId !== null && (showLoss
@@ -198,24 +244,32 @@ export function StockCountTab() {
     );
   }
 
-  const rows = rowsOf(count);
+  // En un almacén que no es el de venta se recorre lo suyo; lo demás sale al buscar (el primer conteo
+  // de una Bodega nueva carga justo lo que todavía no es suyo).
+  const all = rowsOf(count, multi);
+  const rows = all.filter(ownRow);
+  const others = all.filter((r) => !ownRow(r));
   const shown: StockCount = { ...count, items: rows };
   const done = rows.filter((i) => i.countedQty !== null).length;
   const onSaved = (ingredientId: number, qty: string | null) => {
     setSavedAt(new Date());
-    qc.setQueryData(['stock', 'count'], (old: StockCount | null | undefined) => old && {
-      ...old, items: old.items.map((i) => (i.ingredientId === ingredientId ? { ...i, countedQty: qty } : i)),
-      products: old.products?.map((p) => (-p.productId === ingredientId ? { ...p, countedQty: qty } : p)),
+    qc.setQueryData(countKey, (old: StockCount | null | undefined) => old && {
+      // Lo que se capturó buscando pasa a ser de este almacén: se queda en el recorrido y en el avance.
+      ...old, items: old.items.map((i) => (i.ingredientId === ingredientId ? { ...i, countedQty: qty, inWarehouse: qty !== null ? true : i.inWarehouse } : i)),
+      products: old.products?.map((p) => (-p.productId === ingredientId ? { ...p, countedQty: qty, inWarehouse: qty !== null ? true : p.inWarehouse } : p)),
     });
   };
   const pickView = (v: View) => { setView(v); saveView(v); };
 
   return (
+    <CountScopeContext.Provider value={scope}>
     <KeyTargetContext.Provider value={keyTarget}>
     <VStack align="stretch" gap={3} h="100%" minH={0}>
+      {picker}
       <HStack gap={3} flexWrap="wrap">
         <Box flex="1" minW="260px">
           <Text fontSize="sm">
+            {multi && <Text as="span" fontWeight="700">Contando {count.warehouseName ?? whList.find((w) => w.id === (warehouseId ?? whList.find((x) => x.isSales)?.id))?.name} · </Text>}
             <Text as="span" fontWeight="700" data-testid="avance">{done} de {rows.length} contados</Text>
             <Text as="span" color="fg.muted"> · empezado {hora.soloHora(count.openedAt)}{savedAt ? ` · ✓ guardado ${hora.soloHora(savedAt)}` : ' · se guarda solo'}</Text>
           </Text>
@@ -248,19 +302,20 @@ export function StockCountTab() {
       </HStack>
 
       {view === 'lista'
-        ? <ListView count={shown} onSaved={onSaved} initialQuery={initialQuery} />
+        ? <ListView count={shown} others={others} onSaved={onSaved} initialQuery={initialQuery} />
         : <OneByOne count={shown} onSaved={onSaved} />}
 
       {closing && (
         <CloseSheet countId={count.id} onClose={() => setClosing(false)}
           onClosed={(r) => {
             setClosing(false); setClosed(r); setClosedId(count.id); setShowLoss(false);
-            qc.setQueryData(['stock', 'count'], null);
+            qc.setQueryData(countKey, null);
             void qc.invalidateQueries({ queryKey: ['stock', 'levels'] });
           }} />
       )}
     </VStack>
     </KeyTargetContext.Provider>
+    </CountScopeContext.Provider>
   );
 }
 
@@ -512,6 +567,7 @@ function EntryFields({ item, e, serverError, onWeigh }: {
 // confirmar mostrándola en grande; el servidor no dice contra qué comparó.
 function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty: string | null) => void) {
   const qc = useQueryClient();
+  const scope = useContext(CountScopeContext);
   const [confirming, setConfirming] = useState<CountCaptureBody | null>(null);
   // El 400 del servidor (p. ej. el máximo) se muestra tal cual junto a la cifra.
   const [serverError, setServerError] = useState<string | null>(null);
@@ -535,7 +591,7 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
       const qty = b === null ? null : r?.countedQty ?? b.countedQty;
       // El desglose que quedó guardado reemplaza al de antes (#204): sin esto, reabrir mostraba la
       // captura anterior y «Guardar» sin tocar nada deshacía la corrección.
-      qc.setQueryData(['stock', 'count'], (old: StockCount | null | undefined) => old && {
+      qc.setQueryData(scope.key, (old: StockCount | null | undefined) => old && {
         ...old, items: old.items.map((i) => (i.ingredientId === item.ingredientId ? { ...i, weighed: r && 'weighed' in r ? r.weighed ?? null : null } : i)),
       });
       if (qty !== null) toaster.create({ title: `Guardado: ${countedWords(qty, item.baseUnitCode)}`, type: 'success', duration: 1500 });
@@ -618,9 +674,10 @@ function ConfirmFigure({ item, e, c }: { item: CountItem; e: Entry; c: ReturnTyp
 // empresa, igual que la hoja del artículo; al guardarlo el conteo se vuelve a ordenar.
 function PlacePicker({ item }: { item: CountItem }) {
   const qc = useQueryClient();
+  const { warehouseId } = useContext(CountScopeContext);
   return (
     <Box w="160px" flexShrink={0}>
-      <PlaceChooser ingredientId={item.ingredientId} placeId={item.placeId ?? null} title={`¿Dónde está ${item.name}?`}
+      <PlaceChooser ingredientId={item.ingredientId} placeId={item.placeId ?? null} title={`¿Dónde está ${item.name}?`} warehouseId={warehouseId}
         onSaved={() => void qc.invalidateQueries({ queryKey: ['stock', 'count'] })} />
     </Box>
   );
@@ -629,22 +686,24 @@ function PlacePicker({ item }: { item: CountItem }) {
 
 // ---- Lista ----
 
-function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; onSaved: (id: number, qty: string | null) => void; initialQuery?: string }) {
+// others: lo que no es del almacén que se cuenta; solo sale al buscar.
+function ListView({ count, others = [], onSaved, initialQuery = '' }: { count: StockCount; others?: CountItem[]; onSaved: (id: number, qty: string | null) => void; initialQuery?: string }) {
   const [q, setQ] = useState(initialQuery);
   // Se sigue por id: si el conteo se recarga (p. ej. cambió lo que pesa vacío un empaque), la hoja
   // abierta recibe el artículo nuevo.
   const [editingId, setEditingId] = useState<number | null>(null);
-  const editing = count.items.find((i) => i.ingredientId === editingId) ?? null;
+  const editing = [...count.items, ...others].find((i) => i.ingredientId === editingId) ?? null;
   const needle = q.trim();
   // Buscar también por nombre de empaque (spec 042): quien busca «bolsa» encuentra el hielo.
   // Y por sus otros nombres (spec 063), con la misma regla; el que coincidió se señala en la fila.
   const altOf = (i: CountItem) => (needle && !matchesWords(i.name, needle) ? matchedAlias(i.altNames, needle, matchesWords) : undefined);
   const shown = needle
-    ? count.items.filter((i) => matchesWords(i.name, needle) || i.presentations.some((p) => matchesWords(presentationLabel(p), needle)) || altOf(i))
+    ? [...count.items, ...others].filter((i) => matchesWords(i.name, needle) || i.presentations.some((p) => matchesWords(presentationLabel(p), needle)) || altOf(i))
     : count.items;
   const productsShown = shown.filter(isProduct).length;
+  const { multi } = useContext(CountScopeContext);
   const groups = new Map<string, CountItem[]>();
-  for (const i of shown) groups.set(placeOf(i), [...(groups.get(placeOf(i)) ?? []), i]);
+  for (const i of shown) groups.set(placeOf(i, multi), [...(groups.get(placeOf(i, multi)) ?? []), i]);
   return (
     <VStack align="stretch" gap={3} flex="1" minH={0}>
       {/* El aviso de productos va en el renglón del buscador y no en uno nuevo (una fila menos de lista
@@ -659,6 +718,12 @@ function ListView({ count, onSaved, initialQuery = '' }: { count: StockCount; on
         )}
       </HStack>
       <Box borderWidth="1px" borderRadius="lg" overflowY="auto" flex="1" minH={0} bg="bg.panel">
+        {/* El primer conteo de una Bodega nueva no tiene nada suyo todavía: se cuenta buscando. */}
+        {!needle && count.items.length === 0 && others.length > 0 && (
+          <Text p={3} color="fg.muted">
+            {count.warehouseName ?? 'Este almacén'} todavía no tiene artículos. Busca arriba lo que tienes ahí para contarlo.
+          </Text>
+        )}
         {[...groups.entries()].map(([place, items], gi, all) => (
           <Box key={place}>
             <Text px={3} py={2} fontWeight="700" bg="bg.subtle"
@@ -738,15 +803,16 @@ function EntrySheet({ countId, item, onClose, onSaved, startWeighing }: {
 function OneByOne({ count, onSaved }: { count: StockCount; onSaved: (id: number, qty: string | null) => void }) {
   // Se sigue al INSUMO, no a la posición: poner un lugar reordena la lista, y por posición la tarjeta
   // saltaría a otro insumo a media captura.
+  const { multi } = useContext(CountScopeContext);
   const [atId, setAtId] = useState<number | null>(() => (count.items.find((i) => i.countedQty === null) ?? count.items[0])?.ingredientId ?? null);
   const item = count.items.find((i) => i.ingredientId === atId) ?? count.items[0];
   if (!item) return <Text color="fg.muted">No hay insumos que contar.</Text>;
   const at = count.items.indexOf(item);
   const go = (i: number) => setAtId(count.items[Math.max(0, Math.min(i, count.items.length - 1))].ingredientId);
-  const sameplace = count.items.filter((i) => placeOf(i) === placeOf(item));
+  const sameplace = count.items.filter((i) => placeOf(i, multi) === placeOf(item, multi));
   return (
     <OneCard key={item.ingredientId} countId={count.id} item={item}
-      where={`${placeOf(item)} · ${sameplace.indexOf(item) + 1} de ${sameplace.length}`}
+      where={`${placeOf(item, multi)} · ${sameplace.indexOf(item) + 1} de ${sameplace.length}`}
       onPrev={at > 0 ? () => go(at - 1) : undefined}
       onNext={() => go(at + 1)}
       onSaved={onSaved} />

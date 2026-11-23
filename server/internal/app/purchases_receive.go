@@ -178,11 +178,13 @@ func (s *BackofficeService) ReceiveItem(ctx context.Context, expenseID, itemID i
 		if !domain.ValidLineUnitCost(domain.UnitCost(amount, quantity)) {
 			return fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
 		}
+		dest := line.WarehouseID
 		if in.WarehouseID != nil {
 			wh, err := lineWarehouse(ctx, q, line.ItemType, in.WarehouseID)
 			if err != nil {
 				return err
 			}
+			dest = wh
 			if line.WarehouseID == nil || *wh != *line.WarehouseID {
 				// Con algo ya llegado, cambiar el destino del renglón trasladaría también eso: dos entregas
 				// a dos almacenes no caben en un renglón con un solo destino.
@@ -203,7 +205,7 @@ func (s *BackofficeService) ReceiveItem(ctx context.Context, expenseID, itemID i
 			return err
 		}
 		return auditEntity(ctx, q, domain.AuditExpenseReceived, "expense", expenseID, nil, &userID, nil,
-			map[string]any{"itemId": itemID, "qty": qty, "extraAmount": extra})
+			map[string]any{"itemId": itemID, "qty": qty, "extraAmount": extra, "warehouseId": dest})
 	})
 }
 

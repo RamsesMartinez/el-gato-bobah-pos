@@ -5,8 +5,9 @@ package integration
 import (
 	"context"
 	"errors"
-	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"testing"
+
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 
 	"github.com/shopspring/decimal"
 
@@ -77,11 +78,10 @@ func TestStockReadsUseTheSalesWarehouse(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
-	_, bodega := comoEnLaSegundaSubida(t, st, defaultCompanyID)
+	local, bodega := comoEnLaSegundaSubida(t, st, defaultCompanyID)
 	leche := ingredientIn(t, st, defaultCompanyID, "Leche dos almacenes", "ml")
 	adjust(t, st, "ingrediente", leche, "5")
 	adjustIn(t, st, bodega, "ingrediente", leche, "20")
-	branch := headquarters(t, st, defaultCompanyID)
 	cinco := decimal.RequireFromString("5")
 
 	t.Run("Existencias", func(t *testing.T) {
@@ -128,7 +128,7 @@ func TestStockReadsUseTheSalesWarehouse(t *testing.T) {
 		}
 	})
 	t.Run("captura del conteo", func(t *testing.T) {
-		got, err := st.Q.OnHandForCapture(ctx, db.OnHandForCaptureParams{IngredientID: leche, BranchID: branch})
+		got, err := st.Q.OnHandForCapture(ctx, db.OnHandForCaptureParams{IngredientID: leche, WarehouseID: local})
 		if err != nil {
 			t.Fatalf("la captura del conteo truena con dos almacenes: %v", err)
 		}
@@ -137,7 +137,7 @@ func TestStockReadsUseTheSalesWarehouse(t *testing.T) {
 		}
 	})
 	t.Run("se acabó", func(t *testing.T) {
-		got, err := st.Q.StockOnHandForUpdate(ctx, db.StockOnHandForUpdateParams{BranchID: branch, IngredientID: &leche})
+		got, err := st.Q.StockOnHandForUpdate(ctx, db.StockOnHandForUpdateParams{WarehouseID: local, IngredientID: &leche})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -146,7 +146,7 @@ func TestStockReadsUseTheSalesWarehouse(t *testing.T) {
 		}
 	})
 	t.Run("vista previa de alertas", func(t *testing.T) {
-		got, err := st.Q.LowStockSnapshot(ctx, db.LowStockSnapshotParams{BranchID: branch, IngredientID: &leche})
+		got, err := st.Q.LowStockSnapshot(ctx, db.LowStockSnapshotParams{WarehouseID: local, IngredientID: &leche})
 		if err != nil {
 			t.Fatalf("la vista previa de alertas truena con dos almacenes: %v", err)
 		}

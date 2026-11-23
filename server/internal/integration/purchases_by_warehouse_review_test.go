@@ -321,3 +321,27 @@ func TestPatchWarehouseHTTP(t *testing.T) {
 		}
 	}
 }
+
+// Recibir un renglón deja en la bitácora a qué almacén entró: sin eso, «¿quién metió esto a Bodega?»
+// no tiene respuesta.
+func TestReceivingAnItemAuditsItsWarehouse(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	_, bodega := comoEnLaSegundaSubida(t, k.st, defaultCompanyID)
+	in := k.bultos("2", "1000")
+	zero := dd("0")
+	in.Items[0].QtyReceived = &zero
+	id, err := k.svc.CreateExpense(k.ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, applied := k.itemOf(t, id)
+	if err := k.svc.ReceiveItem(k.ctx, id, item, app.ReceiveItemInput{Qty: dd("2"), SeenApplied: applied, WarehouseID: &bodega}, k.user); err != nil {
+		t.Fatal(err)
+	}
+	var wh string
+	if err := k.st.Pool.QueryRow(context.Background(), `select coalesce(after->>'warehouseId', '') from audit_events
+		where action = 'expense.received' and entity_id = $1 and after ? 'itemId'`, id).Scan(&wh); err != nil || wh != itoa(int(bodega)) {
+		t.Fatalf("la bitácora de lo recibido dice almacén %q (%v); quiere %d", wh, err, bodega)
+	}
+}

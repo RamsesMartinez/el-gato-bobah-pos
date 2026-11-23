@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 
 import { Provider } from '../../components/ui/provider';
+import { useSessionStore } from '../../stores/session';
 import { ApiError } from '../../api/client';
 import { WastePage } from './WastePage';
 
@@ -11,6 +12,8 @@ const waste = vi.hoisted(() => ({
   reasons: vi.fn(), items: vi.fn(), createReason: vi.fn(), record: vi.fn(), today: vi.fn(), undo: vi.fn(),
 }));
 vi.mock('../../api/waste', async (orig) => ({ ...(await orig<object>()), wasteApi: waste }));
+const back = vi.hoisted(() => ({ warehouses: vi.fn() }));
+vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 
 // Doble del Picker sin hoja animada (como en las pruebas del conteo y de compras).
 vi.mock('../../components/Picker', async () => {
@@ -48,6 +51,8 @@ beforeEach(() => {
   waste.today.mockResolvedValue([]);
   waste.record.mockResolvedValue({ id: 70, status: 'applied', totalCost: '48.00' });
   waste.undo.mockResolvedValue(undefined);
+  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] });
+  useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.view'] } as never });
 });
 afterEach(() => {
   cleanup();
@@ -208,5 +213,52 @@ describe('Se echó a perder (spec 039, maqueta D)', () => {
     click('Sí, deshacer');
     expect(await screen.findByText('ya se deshizo')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sí, deshacer' })).not.toBeInTheDocument();
+  });
+});
+
+// VARIOS ALMACENES (spec 094): el de venta va sin warehouseId; otro, con su id.
+describe('se echó a perder por almacén (spec 094)', () => {
+  test('con un solo almacén no pregunta de cuál y manda sin almacén', async () => {
+    montar();
+    await screen.findByRole('button', { name: 'Caducó' });
+    click('Caducó'); click('Perlas de tapioca'); tecla('2'); click('Guardar');
+    await waitFor(() => expect(waste.record).toHaveBeenCalled());
+    expect(waste.record.mock.calls[0][0]).not.toHaveProperty('warehouseId');
+    expect(screen.queryByRole('group', { name: '¿De qué almacén?' })).toBeNull();
+  });
+  test('con dos pregunta de cuál, por omisión el de venta, y la Bodega va con su id', async () => {
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    montar();
+    const grupo = await screen.findByRole('group', { name: '¿De qué almacén?' });
+    expect(within(grupo).getByRole('button', { name: 'Local · de venta' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(grupo).getByRole('button', { name: 'Bodega' }));
+    click('Caducó'); click('Perlas de tapioca'); tecla('2'); click('Guardar');
+    await waitFor(() => expect(waste.record).toHaveBeenCalledWith(expect.objectContaining({ ingredientId: 2, warehouseId: 2 })));
+    expect(await screen.findByText(/se restó de Bodega/)).toBeInTheDocument();
+  });
+  // El aviso nombraba el almacén elegido al LLEGAR la respuesta: cambiar de almacén mientras tanto
+  // decía otro. Y la lista de hoy no decía de qué almacén era cada merma.
+  test('el aviso nombra el almacén con que se mandó y la lista de hoy dice el almacén', async () => {
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    let suelta: (v: unknown) => void = () => {};
+    waste.record.mockImplementation(() => new Promise((r) => { suelta = r; }));
+    waste.today.mockResolvedValue([{ id: 5, itemType: 'ingrediente', itemName: 'Leche entera', quantity: '1', unitCode: 'L', totalCost: null,
+      status: 'applied', reason: 'Caducó', recordedBy: 'Ana', recordedAt: '2026-10-15T15:00:00Z', canUndo: false, warehouseName: 'Bodega' }]);
+    montar();
+    const grupo = await screen.findByRole('group', { name: '¿De qué almacén?' });
+    fireEvent.click(within(grupo).getByRole('button', { name: 'Bodega' }));
+    click('Caducó'); click('Perlas de tapioca'); tecla('2'); click('Guardar');
+    await waitFor(() => expect(waste.record).toHaveBeenCalled());
+    fireEvent.click(within(grupo).getByRole('button', { name: 'Local · de venta' }));
+    suelta({ id: 9, status: 'applied', totalCost: null });
+    expect(await screen.findByText(/se restó de Bodega/)).toBeInTheDocument();
+    click(/^Hoy/);
+    expect((await screen.findByText(/Leche entera/)).closest('[data-testid="renglon-merma"]')!.textContent).toContain('Bodega');
   });
 });

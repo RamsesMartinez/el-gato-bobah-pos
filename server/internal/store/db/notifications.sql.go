@@ -72,12 +72,13 @@ func (q *Queries) CompanyBranchCount(ctx context.Context) (int32, error) {
 	return column_1, err
 }
 
-const companyBranches = `-- name: CompanyBranches :many
-select id from branches where is_active order by id
+const companyWarehouses = `-- name: CompanyWarehouses :many
+select id from warehouses where is_active order by id
 `
 
-func (q *Queries) CompanyBranches(ctx context.Context) ([]int64, error) {
-	rows, err := q.db.Query(ctx, companyBranches)
+// Los almacenes activos de la empresa: lo que cambia sin movimiento se evalúa en cada uno.
+func (q *Queries) CompanyWarehouses(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.Query(ctx, companyWarehouses)
 	if err != nil {
 		return nil, err
 	}
@@ -149,18 +150,18 @@ func (q *Queries) CountedArticlesOf(ctx context.Context, cid int64) ([]CountedAr
 
 const deleteBranchMinimum = `-- name: DeleteBranchMinimum :exec
 delete from branch_stock_minimums
- where branch_id = $1
+ where warehouse_id = $1
    and (ingredient_id = $2 or product_id = $3)
 `
 
 type DeleteBranchMinimumParams struct {
-	BranchID     int64  `json:"branch_id"`
+	WarehouseID  int64  `json:"warehouse_id"`
 	IngredientID *int64 `json:"ingredient_id"`
 	ProductID    *int64 `json:"product_id"`
 }
 
 func (q *Queries) DeleteBranchMinimum(ctx context.Context, arg DeleteBranchMinimumParams) error {
-	_, err := q.db.Exec(ctx, deleteBranchMinimum, arg.BranchID, arg.IngredientID, arg.ProductID)
+	_, err := q.db.Exec(ctx, deleteBranchMinimum, arg.WarehouseID, arg.IngredientID, arg.ProductID)
 	return err
 }
 
@@ -224,22 +225,22 @@ func (q *Queries) EnabledLowStockItems(ctx context.Context) ([]EnabledLowStockIt
 }
 
 const evaluateLowStock = `-- name: EvaluateLowStock :exec
-select evaluate_low_stock(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint,
-                          $2::stock_item_type, $3::bigint, $4::bigint)
+select evaluate_warehouse_low_stock(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint,
+                                    $2::stock_item_type, $3::bigint, $4::bigint)
 `
 
 type EvaluateLowStockParams struct {
-	BranchID     int64         `json:"branch_id"`
+	WarehouseID  int64         `json:"warehouse_id"`
 	ItemType     StockItemType `json:"item_type"`
 	IngredientID *int64        `json:"ingredient_id"`
 	ProductID    *int64        `json:"product_id"`
 }
 
 // La misma función que corre el trigger, para lo que cambia sin movimiento (configuración, conteo
-// que confirma la cifra, archivar, unir, cambiar de unidad).
+// que confirma la cifra, archivar, unir, cambiar de unidad), en un almacén.
 func (q *Queries) EvaluateLowStock(ctx context.Context, arg EvaluateLowStockParams) error {
 	_, err := q.db.Exec(ctx, evaluateLowStock,
-		arg.BranchID,
+		arg.WarehouseID,
 		arg.ItemType,
 		arg.IngredientID,
 		arg.ProductID,
@@ -322,7 +323,7 @@ func (q *Queries) LastEmailedAt(ctx context.Context, itemKey *int64) (time.Time,
 const listLowStockConfigs = `-- name: ListLowStockConfigs :many
 select a.item_type, a.id, a.name, a.unit_code, a.low_stock_enabled, a.min_stock,
        coalesce((select s.on_hand from stock_levels s
-                  where s.warehouse_id = current_sales_warehouse_id()
+                  where s.warehouse_id = $1
                     and ((a.item_type = 'ingrediente' and s.ingredient_id = a.id) or (a.item_type = 'producto' and s.product_id = a.id))), 0)::numeric as on_hand
   from (
     select 'ingrediente'::stock_item_type as item_type, i.id, i.name, u.code::text as unit_code, i.low_stock_enabled, i.min_stock
@@ -345,9 +346,9 @@ type ListLowStockConfigsRow struct {
 }
 
 // La tabla de «Alertas por lote»: insumos activos y productos con existencia propia, con lo que hay
-// en la sucursal.
-func (q *Queries) ListLowStockConfigs(ctx context.Context) ([]ListLowStockConfigsRow, error) {
-	rows, err := q.db.Query(ctx, listLowStockConfigs)
+// en el almacén.
+func (q *Queries) ListLowStockConfigs(ctx context.Context, warehouseID int64) ([]ListLowStockConfigsRow, error) {
+	rows, err := q.db.Query(ctx, listLowStockConfigs, warehouseID)
 	if err != nil {
 		return nil, err
 	}
@@ -379,6 +380,7 @@ const listNotifications = `-- name: ListNotifications :many
 select n.id, n.kind, n.status, n.item_type, n.ingredient_id, n.product_id, n.item_name, n.unit_code, n.query_text,
        n.on_hand_seen, n.min_seen, n.needs_count, n.opened_at, n.resolved_at, n.resolved_reason, n.opened_by,
        coalesce(ob.name, '')::text as opened_by_name, coalesce(rb.name, '')::text as resolved_by_name, b.name::text as branch_name,
+       n.warehouse_id, wh.name::text as warehouse_name,
        (r.read_at is not null)::bool as is_read,
        (n.status = 'open' and n.kind = 'stock_out' and coalesce(i.low_stock_banner, p.low_stock_banner, false)
          and r.banner_seen_at is null and n.opened_by is distinct from $1::bigint)::bool as banner,
@@ -386,6 +388,7 @@ select n.id, n.kind, n.status, n.item_type, n.ingredient_id, n.product_id, n.ite
          where s.notification_id = n.id and s.kind in ('report', 'confirmation') and s.undone_at is null)::int as confirmations
   from notifications n
   join branches b on b.id = n.branch_id
+  join warehouses wh on wh.id = n.warehouse_id
   left join users ob on ob.id = n.opened_by
   left join users rb on rb.id = n.resolved_by
   left join ingredients i on i.id = n.ingredient_id
@@ -424,6 +427,8 @@ type ListNotificationsRow struct {
 	OpenedByName   string             `json:"opened_by_name"`
 	ResolvedByName string             `json:"resolved_by_name"`
 	BranchName     string             `json:"branch_name"`
+	WarehouseID    int64              `json:"warehouse_id"`
+	WarehouseName  string             `json:"warehouse_name"`
 	IsRead         bool               `json:"is_read"`
 	Banner         bool               `json:"banner"`
 	Confirmations  int32              `json:"confirmations"`
@@ -468,6 +473,8 @@ func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsPa
 			&i.OpenedByName,
 			&i.ResolvedByName,
 			&i.BranchName,
+			&i.WarehouseID,
+			&i.WarehouseName,
 			&i.IsRead,
 			&i.Banner,
 			&i.Confirmations,
@@ -540,23 +547,23 @@ func (q *Queries) LowStockConfigOf(ctx context.Context, arg LowStockConfigOfPara
 
 const lowStockSnapshot = `-- name: LowStockSnapshot :one
 select coalesce((select s.on_hand from stock_levels s
-                  where s.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint))
+                  where s.warehouse_id = $1::bigint
                     and (s.ingredient_id = $2 or s.product_id = $3)), 0)::numeric as on_hand,
        m.min_stock as branch_min,
        coalesce((select array_agg(n.kind order by n.kind) from notifications n
-                  where n.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint)) and n.status = 'open' and n.kind <> 'not_found'
+                  where n.warehouse_id = $1::bigint and n.status = 'open' and n.kind <> 'not_found'
                     and n.item_key = coalesce($2::bigint, -$3::bigint, 0)), '{}')::text[] as open_kinds,
        exists (select 1 from notifications n
-                where n.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint)) and n.status = 'open' and n.kind = 'stock_out' and n.opened_by is not null
+                where n.warehouse_id = $1::bigint and n.status = 'open' and n.kind = 'stock_out' and n.opened_by is not null
                   and n.item_key = coalesce($2::bigint, -$3::bigint, 0))::bool as manual_out
   -- Left join y no subconsulta: así sqlc lo tipa como nulable (una sucursal sin mínimo propio).
   from (select 1) one
-  left join branch_stock_minimums m on m.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint))
+  left join branch_stock_minimums m on m.warehouse_id = $1::bigint
    and (m.ingredient_id = $2 or m.product_id = $3)
 `
 
 type LowStockSnapshotParams struct {
-	BranchID     int64  `json:"branch_id"`
+	WarehouseID  int64  `json:"warehouse_id"`
 	IngredientID *int64 `json:"ingredient_id"`
 	ProductID    *int64 `json:"product_id"`
 }
@@ -569,10 +576,10 @@ type LowStockSnapshotRow struct {
 }
 
 // Lo que la vista previa de un cambio de alertas necesita para calcular el efecto con
-// domain.LowStockEffect (la misma tabla de verdad que evaluate_low_stock): la existencia en la
-// sucursal, el mínimo de la sucursal si tiene, y lo abierto.
+// domain.LowStockEffect (la misma tabla de verdad que evaluate_warehouse_low_stock): la existencia en
+// el almacén, el mínimo del almacén si tiene, y lo abierto.
 func (q *Queries) LowStockSnapshot(ctx context.Context, arg LowStockSnapshotParams) (LowStockSnapshotRow, error) {
-	row := q.db.QueryRow(ctx, lowStockSnapshot, arg.BranchID, arg.IngredientID, arg.ProductID)
+	row := q.db.QueryRow(ctx, lowStockSnapshot, arg.WarehouseID, arg.IngredientID, arg.ProductID)
 	var i LowStockSnapshotRow
 	err := row.Scan(
 		&i.OnHand,
@@ -873,7 +880,7 @@ update notifications
  where status = 'open' and kind <> 'not_found'
    and item_key = coalesce($3::bigint, -$4::bigint, 0)
    and ($5::text = '' or kind = $5::text)
-   and ($6::bigint is null or branch_id = $6::bigint)
+   and ($6::bigint is null or warehouse_id = $6::bigint)
 `
 
 type ResolveOpenOfArticleParams struct {
@@ -882,11 +889,11 @@ type ResolveOpenOfArticleParams struct {
 	IngredientID   *int64  `json:"ingredient_id"`
 	ProductID      *int64  `json:"product_id"`
 	Kind           string  `json:"kind"`
-	BranchID       *int64  `json:"branch_id"`
+	WarehouseID    *int64  `json:"warehouse_id"`
 }
 
-// Cierra lo abierto de un artículo en todas las sucursales (archivar, unir, cambiar de unidad,
-// contar). Con kind vacío cierra todos los tipos.
+// Cierra lo abierto de un artículo en todos los almacenes (archivar, unir, cambiar de unidad), o en
+// uno (contar). Con kind vacío cierra todos los tipos.
 func (q *Queries) ResolveOpenOfArticle(ctx context.Context, arg ResolveOpenOfArticleParams) (int64, error) {
 	result, err := q.db.Exec(ctx, resolveOpenOfArticle,
 		arg.ResolvedBy,
@@ -894,7 +901,7 @@ func (q *Queries) ResolveOpenOfArticle(ctx context.Context, arg ResolveOpenOfArt
 		arg.IngredientID,
 		arg.ProductID,
 		arg.Kind,
-		arg.BranchID,
+		arg.WarehouseID,
 	)
 	if err != nil {
 		return 0, err
@@ -991,53 +998,56 @@ func (q *Queries) UnreadNotifications(ctx context.Context, arg UnreadNotificatio
 }
 
 const upsertBranchMinimum = `-- name: UpsertBranchMinimum :exec
-insert into branch_stock_minimums (branch_id, item_type, ingredient_id, product_id, min_stock, updated_by)
-values ($1, $2, $3, $4, $5, $6)
+insert into branch_stock_minimums (branch_id, warehouse_id, item_type, ingredient_id, product_id, min_stock, updated_by)
+select w.branch_id, w.id, $1, $2, $3, $4, $5
+  from warehouses w where w.id = $6
 on conflict (warehouse_id, ingredient_id) where ingredient_id is not null
 do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now()
 `
 
 type UpsertBranchMinimumParams struct {
-	BranchID     int64           `json:"branch_id"`
 	ItemType     StockItemType   `json:"item_type"`
 	IngredientID *int64          `json:"ingredient_id"`
 	ProductID    *int64          `json:"product_id"`
 	MinStock     decimal.Decimal `json:"min_stock"`
 	UpdatedBy    int64           `json:"updated_by"`
+	WarehouseID  int64           `json:"warehouse_id"`
 }
 
+// El mínimo del almacén (la tabla conserva su nombre de cuando era por sucursal).
 func (q *Queries) UpsertBranchMinimum(ctx context.Context, arg UpsertBranchMinimumParams) error {
 	_, err := q.db.Exec(ctx, upsertBranchMinimum,
-		arg.BranchID,
 		arg.ItemType,
 		arg.IngredientID,
 		arg.ProductID,
 		arg.MinStock,
 		arg.UpdatedBy,
+		arg.WarehouseID,
 	)
 	return err
 }
 
 const upsertBranchProductMinimum = `-- name: UpsertBranchProductMinimum :exec
-insert into branch_stock_minimums (branch_id, item_type, product_id, min_stock, updated_by)
-values ($1, 'producto', $2, $3, $4)
+insert into branch_stock_minimums (branch_id, warehouse_id, item_type, product_id, min_stock, updated_by)
+select w.branch_id, w.id, 'producto', $1, $2, $3
+  from warehouses w where w.id = $4
 on conflict (warehouse_id, product_id) where product_id is not null
 do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now()
 `
 
 type UpsertBranchProductMinimumParams struct {
-	BranchID  int64           `json:"branch_id"`
-	ProductID *int64          `json:"product_id"`
-	MinStock  decimal.Decimal `json:"min_stock"`
-	UpdatedBy int64           `json:"updated_by"`
+	ProductID   *int64          `json:"product_id"`
+	MinStock    decimal.Decimal `json:"min_stock"`
+	UpdatedBy   int64           `json:"updated_by"`
+	WarehouseID int64           `json:"warehouse_id"`
 }
 
 func (q *Queries) UpsertBranchProductMinimum(ctx context.Context, arg UpsertBranchProductMinimumParams) error {
 	_, err := q.db.Exec(ctx, upsertBranchProductMinimum,
-		arg.BranchID,
 		arg.ProductID,
 		arg.MinStock,
 		arg.UpdatedBy,
+		arg.WarehouseID,
 	)
 	return err
 }

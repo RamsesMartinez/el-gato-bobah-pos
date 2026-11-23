@@ -10,6 +10,7 @@ import { placeAnnouncements } from './placeAnnouncements';
 
 const back = vi.hoisted(() => ({
   countPlaces: vi.fn(), createCountPlace: vi.fn(), renameCountPlace: vi.fn(), moveCountPlace: vi.fn(), archiveCountPlace: vi.fn(),
+  warehouses: vi.fn(),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 
@@ -19,6 +20,7 @@ beforeEach(() => {
     { id: 2, name: 'Barra', position: 1, ingredients: 0 },
     { id: 3, name: 'Bodega', position: 2, ingredients: 4 },
   ]);
+  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] });
   for (const f of [back.createCountPlace, back.renameCountPlace, back.moveCountPlace, back.archiveCountPlace]) f.mockResolvedValue(undefined);
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -114,5 +116,44 @@ describe('lugares del recorrido (spec 040, maqueta C)', () => {
     const archivar = screen.getByRole('button', { name: 'Archivar' });
     expect(guardar.parentElement).toHaveStyle({ justifyContent: 'space-between' });
     expect(archivar.parentElement).toBe(guardar.parentElement);
+  });
+});
+
+// VARIOS ALMACENES (spec 094): cada almacén tiene sus lugares. El de venta va sin id.
+describe('lugares por almacén (spec 094)', () => {
+  test('con un solo almacén la lista y el alta quedan como antes', async () => {
+    montar();
+    await row('Refri');
+    expect(back.countPlaces.mock.calls[0][0]).toBeUndefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar lugar' }));
+    expect(screen.queryByRole('group', { name: '¿En qué almacén?' })).toBeNull();
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Nombre del lugar' }), { target: { value: 'Patio' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+    await waitFor(() => expect(back.createCountPlace).toHaveBeenCalledWith('Patio', undefined));
+  });
+  test('con dos, la lista va por almacén y el alta pregunta en cuál', async () => {
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Cuarto frío', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    back.countPlaces.mockImplementation((w?: number) => Promise.resolve(w === 2
+      ? [{ id: 8, name: 'Anaquel', position: 0, ingredients: 3 }]
+      : [{ id: 1, name: 'Refri', position: 0, ingredients: 12 }]));
+    montar();
+    const local = await screen.findByRole('region', { name: 'Local' });
+    const frio = await screen.findByRole('region', { name: 'Cuarto frío' });
+    expect(await within(local).findByText('Refri')).toBeInTheDocument();
+    expect(await within(frio).findByText('Anaquel')).toBeInTheDocument();
+    expect(within(frio).queryByText('Refri')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar lugar' }));
+    const grupo = await screen.findByRole('group', { name: '¿En qué almacén?' });
+    // La pregunta y el ejemplo se leen, no solo los botones (prueba con alguien nuevo, 094).
+    expect(screen.getByText('¿En qué almacén?')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Nombre del lugar' })).toHaveAttribute('placeholder', 'Ej. Refri, Anaquel, Barra');
+    expect(within(grupo).getByRole('button', { name: 'Local' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(grupo).getByRole('button', { name: 'Cuarto frío' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nombre del lugar' }), { target: { value: 'Tarima' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+    await waitFor(() => expect(back.createCountPlace).toHaveBeenCalledWith('Tarima', 2));
   });
 });

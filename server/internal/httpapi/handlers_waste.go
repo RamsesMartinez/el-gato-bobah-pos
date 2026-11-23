@@ -65,15 +65,21 @@ func (h *Handlers) RecordWaste(w http.ResponseWriter, r *http.Request) {
 		UnitID         *int16          `json:"unitId"`
 		PresentationID *int64          `json:"presentationId"`
 		Note           *string         `json:"note"`
+		WarehouseID    *int64          `json:"warehouseId"`
 	}
-	if err := Decode(r, &body); err != nil {
+	if err := DecodeStrict(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	sel, err := domain.WarehouseFromBody(body.WarehouseID)
+	if err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
 	res, err := h.backoffice.RecordWaste(r.Context(), app.RecordWasteCmd{
 		ReasonID: body.ReasonID, IngredientID: body.IngredientID, ProductID: body.ProductID, Qty: body.Qty,
-		UnitID: body.UnitID, PresentationID: body.PresentationID, Note: body.Note, Actor: u.ID,
+		UnitID: body.UnitID, PresentationID: body.PresentationID, Note: body.Note, Actor: u.ID, Warehouse: sel,
 	})
 	if err != nil {
 		Error(w, err)

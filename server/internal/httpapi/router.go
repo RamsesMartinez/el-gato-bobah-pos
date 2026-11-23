@@ -628,6 +628,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Almacenes (spec 094): los ve quien ve el almacén; darlos de alta, renombrar, archivar y
 					// reactivar, quien los administra.
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/warehouses", h.ListWarehouses)
+					// Solo los nombres, para elegir dónde se registra: quien cuenta, registra merma o «se
+					// acabó» o configura mínimos no necesita ver el inventario para eso.
+					r.With(RequireAnyPermission(h.permissions, domain.PermInventoryView, domain.PermInventoryWriteOff,
+						domain.PermInventoryReportOut, domain.PermInventoryCount, domain.PermInventoryConfigure)).Get("/warehouses/names", h.WarehouseNames)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Post("/warehouses", h.CreateWarehouse)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Patch("/warehouses/{id}", h.RenameWarehouse)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Post("/warehouses/{id}/archive", h.ArchiveWarehouse)

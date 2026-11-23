@@ -12,11 +12,14 @@ import (
 )
 
 const activeCountPlaceIDs = `-- name: ActiveCountPlaceIDs :many
-select id from count_places where archived_at is null order by position, id
+select id from count_places
+ where archived_at is null and warehouse_id = (select c.warehouse_id from count_places c where c.id = $1)
+ order by position, id
 `
 
-func (q *Queries) ActiveCountPlaceIDs(ctx context.Context) ([]int64, error) {
-	rows, err := q.db.Query(ctx, activeCountPlaceIDs)
+// El recorrido del almacén del lugar: cada almacén se ordena aparte.
+func (q *Queries) ActiveCountPlaceIDs(ctx context.Context, placeID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, activeCountPlaceIDs, placeID)
 	if err != nil {
 		return nil, err
 	}
@@ -46,14 +49,19 @@ func (q *Queries) ArchiveCountPlace(ctx context.Context, id int64) error {
 
 const countPlaceByName = `-- name: CountPlaceByName :one
 select id from count_places
- where archived_at is null
+ where archived_at is null and warehouse_id = $1
    and regexp_replace(translate(lower(btrim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
-     = regexp_replace(translate(lower(btrim($1::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+     = regexp_replace(translate(lower(btrim($2::text)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
 `
 
-// El que ya existe con ese nombre normalizado (la misma expresión que el índice).
-func (q *Queries) CountPlaceByName(ctx context.Context, name string) (int64, error) {
-	row := q.db.QueryRow(ctx, countPlaceByName, name)
+type CountPlaceByNameParams struct {
+	WarehouseID int64  `json:"warehouse_id"`
+	Name        string `json:"name"`
+}
+
+// El que ya existe con ese nombre normalizado en el almacén (la misma expresión que el índice).
+func (q *Queries) CountPlaceByName(ctx context.Context, arg CountPlaceByNameParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPlaceByName, arg.WarehouseID, arg.Name)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -71,13 +79,19 @@ func (q *Queries) CountPlaceIngredients(ctx context.Context, countPlaceID *int64
 }
 
 const createCountPlace = `-- name: CreateCountPlace :one
-insert into count_places (name, position)
-select $1, coalesce(max(position) + 1, 0) from count_places where archived_at is null
+insert into count_places (name, warehouse_id, position)
+select $1, $2::bigint, coalesce(max(position) + 1, 0)
+  from count_places where archived_at is null and warehouse_id = $2::bigint
 returning id
 `
 
-func (q *Queries) CreateCountPlace(ctx context.Context, name string) (int64, error) {
-	row := q.db.QueryRow(ctx, createCountPlace, name)
+type CreateCountPlaceParams struct {
+	Name        string `json:"name"`
+	WarehouseID int64  `json:"warehouse_id"`
+}
+
+func (q *Queries) CreateCountPlace(ctx context.Context, arg CreateCountPlaceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, createCountPlace, arg.Name, arg.WarehouseID)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -87,7 +101,7 @@ const listCountPlaces = `-- name: ListCountPlaces :many
 select p.id, p.name, p.position,
        (select count(*) from ingredients i where i.count_place_id = p.id)::int as ingredients
   from count_places p
- where p.archived_at is null
+ where p.archived_at is null and p.warehouse_id = $1
  order by p.position, p.id
 `
 
@@ -98,10 +112,10 @@ type ListCountPlacesRow struct {
 	Ingredients int32  `json:"ingredients"`
 }
 
-// Los que se ofrecen, en el orden del recorrido, con cuántos artículos tienen (también los
-// inactivos: al reactivarlos vuelven con su lugar).
-func (q *Queries) ListCountPlaces(ctx context.Context) ([]ListCountPlacesRow, error) {
-	rows, err := q.db.Query(ctx, listCountPlaces)
+// Los que se ofrecen en el almacén, en el orden de su recorrido, con cuántos artículos tienen
+// (también los inactivos: al reactivarlos vuelven con su lugar).
+func (q *Queries) ListCountPlaces(ctx context.Context, warehouseID int64) ([]ListCountPlacesRow, error) {
+	rows, err := q.db.Query(ctx, listCountPlaces, warehouseID)
 	if err != nil {
 		return nil, err
 	}
@@ -126,28 +140,30 @@ func (q *Queries) ListCountPlaces(ctx context.Context) ([]ListCountPlacesRow, er
 }
 
 const lockCountPlaceForShare = `-- name: LockCountPlaceForShare :one
-select id, archived_at from count_places where id = $1 for share
+select id, warehouse_id, archived_at from count_places where id = $1 for share
 `
 
 type LockCountPlaceForShareRow struct {
-	ID         int64              `json:"id"`
-	ArchivedAt pgtype.Timestamptz `json:"archived_at"`
+	ID          int64              `json:"id"`
+	WarehouseID int64              `json:"warehouse_id"`
+	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
 }
 
 func (q *Queries) LockCountPlaceForShare(ctx context.Context, id int64) (LockCountPlaceForShareRow, error) {
 	row := q.db.QueryRow(ctx, lockCountPlaceForShare, id)
 	var i LockCountPlaceForShareRow
-	err := row.Scan(&i.ID, &i.ArchivedAt)
+	err := row.Scan(&i.ID, &i.WarehouseID, &i.ArchivedAt)
 	return i, err
 }
 
 const lockCountPlaceForUpdate = `-- name: LockCountPlaceForUpdate :one
-select id, archived_at from count_places where id = $1 for update
+select id, warehouse_id, archived_at from count_places where id = $1 for update
 `
 
 type LockCountPlaceForUpdateRow struct {
-	ID         int64              `json:"id"`
-	ArchivedAt pgtype.Timestamptz `json:"archived_at"`
+	ID          int64              `json:"id"`
+	WarehouseID int64              `json:"warehouse_id"`
+	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
 }
 
 // Archivar lo toma así antes de mover sus artículos; asignar lo toma `for share`, así que uno espera
@@ -155,7 +171,7 @@ type LockCountPlaceForUpdateRow struct {
 func (q *Queries) LockCountPlaceForUpdate(ctx context.Context, id int64) (LockCountPlaceForUpdateRow, error) {
 	row := q.db.QueryRow(ctx, lockCountPlaceForUpdate, id)
 	var i LockCountPlaceForUpdateRow
-	err := row.Scan(&i.ID, &i.ArchivedAt)
+	err := row.Scan(&i.ID, &i.WarehouseID, &i.ArchivedAt)
 	return i, err
 }
 

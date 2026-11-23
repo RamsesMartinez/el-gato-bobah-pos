@@ -254,23 +254,27 @@ it('con dos almacenes elige cuál ver, y «Todos» suma', async () => {
   expect(grupo).toBeInTheDocument();
 });
 
-// El mínimo es del artículo y piensa en el local: comparar la bodega o la suma contra él dice «bajo»
-// donde no falta nada, o lo esconde donde sí (revisión de la 094). Fuera del de venta no se compara.
-it('fuera del almacén de venta no hay «bajo» ni mínimo', async () => {
+// Cada almacén se compara con SU mínimo, el que manda el servidor: la Bodega con 10 L de mínimo decía
+// «—» y nunca «bajo» (prueba con alguien nuevo, 094). En «Todos» el servidor no manda mínimo.
+it('cada almacén muestra y compara su propio mínimo', async () => {
   back.warehouses.mockResolvedValue({ items: [
     { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 },
     { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
   ] });
   back.stockLevels.mockImplementation((w?: number | 'all') => Promise.resolve({ items: [
-    { item_name: 'Leche', item_type: 'insumo', on_hand: w === 2 ? '2000' : '1000', unit_code: 'ml', min_stock: '5000', is_active: true },
+    { item_name: 'Leche', item_type: 'insumo', on_hand: w === 2 ? '8000' : '1000', unit_code: 'ml',
+      min_stock: w === 2 ? '10000' : w === 'all' ? null : '5000', is_active: true },
   ] }));
   sesion(['inventory.view']);
   montar('/almacen');
   expect(((await screen.findByText('Leche')).closest('tr')!).textContent).toContain('bajo');
   fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
-  await vi.waitFor(() => expect(screen.getByText('Leche').closest('tr')!.textContent).toContain('2 L'));
-  expect(screen.getByText('Leche').closest('tr')!.textContent).not.toContain('bajo');
-  expect(screen.getByText('Leche').closest('tr')!.textContent).not.toContain('5 L');
+  await vi.waitFor(() => expect(screen.getByText('Leche').closest('tr')!.textContent).toContain('8 L'));
+  expect(screen.getByText('Leche').closest('tr')!.textContent).toContain('10 L');
+  expect(screen.getByText('Leche').closest('tr')!.textContent).toContain('bajo');
+  fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+  await vi.waitFor(() => expect(back.stockLevels).toHaveBeenLastCalledWith('all'));
+  await vi.waitFor(() => expect(screen.getByText('Leche').closest('tr')!.textContent).not.toContain('bajo'));
 });
 
 // Un error al pedir otro almacén no se pinta como «sin existencias».
@@ -363,4 +367,117 @@ it('un negativo en el de venta con mercancía en la bodega se trae con un toque'
     lines: [{ itemType: 'ingrediente', ingredientId: 7, qty: '2000' }] });
   // Sin de dónde traer, no hay botón.
   expect(within((await screen.findByText('Azúcar')).closest('tr')!).queryByRole('button', { name: /Traer de/ })).toBeNull();
+});
+
+// MOVIMIENTOS Y VALOR POR ALMACÉN (spec 094, subida 5).
+const moveLeche = (over: Record<string, unknown>) => ({ id: 1, item_type: 'insumo', item_name: 'Leche', movement_type: 'venta',
+  quantity: '-6000', reason: null, created_at: '2026-11-20T15:00:00Z', unit_code: 'ml', warehouse_id: 1, warehouse_name: 'Local', ...over });
+
+it('con un solo almacén, Movimientos queda como antes: sin selector ni columna de almacén', async () => {
+  back.stockMovements.mockImplementation(() => Promise.resolve({ items: [moveLeche({})] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen?tab=movimientos');
+  await screen.findByText('Leche');
+  expect(screen.queryByRole('group', { name: 'Almacén' })).toBeNull();
+  expect(screen.queryByRole('columnheader', { name: 'Almacén' })).toBeNull();
+  expect(back.stockMovements).toHaveBeenLastCalledWith(undefined);
+});
+
+it('Movimientos dice la cantidad con su unidad, no «-6000»', async () => {
+  back.stockMovements.mockImplementation(() => Promise.resolve({ items: [moveLeche({})] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen?tab=movimientos');
+  const fila = (await screen.findByText('Leche')).closest('tr')!;
+  expect(fila.textContent).toContain('-6 L');
+  expect(fila.textContent).not.toContain('-6000');
+});
+
+it('con dos almacenes, Movimientos elige almacén y solo «Todos» trae la columna Almacén', async () => {
+  back.warehouses.mockResolvedValue(twoWarehouses);
+  back.stockMovements.mockImplementation(() => Promise.resolve({ items: [moveLeche({})] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen?tab=movimientos');
+  await screen.findByText('Leche');
+  expect(await screen.findByRole('group', { name: 'Almacén' })).toBeInTheDocument();
+  expect(screen.queryByRole('columnheader', { name: 'Almacén' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Bodega' }));
+  await vi.waitFor(() => expect(back.stockMovements).toHaveBeenLastCalledWith(2));
+  fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+  await vi.waitFor(() => expect(back.stockMovements).toHaveBeenLastCalledWith('all'));
+  expect(await screen.findByRole('columnheader', { name: 'Almacén' })).toBeInTheDocument();
+  await vi.waitFor(() => expect(screen.getByText('Leche').closest('tr')!.textContent).toContain('Local'));
+});
+
+it('un traspaso dice a dónde fue o de dónde vino', async () => {
+  back.warehouses.mockResolvedValue(twoWarehouses);
+  back.stockMovements.mockImplementation(() => Promise.resolve({ items: [
+    moveLeche({ id: 1, movement_type: 'traspaso', quantity: '-2000', warehouse_id: 2, warehouse_name: 'Bodega', transfer_id: 9, counterpart_warehouse_name: 'Local', item_name: 'Leche sale' }),
+    moveLeche({ id: 2, movement_type: 'traspaso', quantity: '2000', transfer_id: 9, counterpart_warehouse_name: 'Bodega', item_name: 'Leche entra' }),
+  ] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen?tab=movimientos');
+  expect((await screen.findByText('Leche sale')).closest('tr')!.textContent).toContain('→ Local');
+  expect(screen.getByText('Leche entra').closest('tr')!.textContent).toContain('← Bodega');
+});
+
+// El total va arriba, junto al selector: al pie de 440 renglones nadie lo encontraba (prueba con
+// alguien nuevo, 094). En «Todos» se desglosa por almacén sin cambiar de filtro.
+it('Existencias trae el valor de cada artículo y el total arriba', async () => {
+  back.stockLevels.mockImplementation(() => Promise.resolve({ totalValue: '1250.5', items: [
+    { item_name: 'Leche', item_type: 'insumo', on_hand: '10000', unit_code: 'ml', min_stock: null, is_active: true, value: '250.5' },
+    { item_name: 'Café', item_type: 'insumo', on_hand: '-100', unit_code: 'g', min_stock: null, is_active: true, value: '0' },
+  ] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen');
+  expect(await screen.findByRole('columnheader', { name: 'Valor' })).toBeInTheDocument();
+  expect((await screen.findByText('Leche')).closest('tr')!.textContent).toContain('$250.50');
+  // El total es el que manda el servidor (no suma negativos), no una suma hecha aquí, y no vive en la tabla.
+  const total = screen.getByText('Valor total');
+  expect(total.closest('table')).toBeNull();
+  expect(screen.getByTestId('valor-total').textContent).toContain('$1,250.50');
+  fireEvent.click(screen.getByRole('button', { name: '¿Qué suma el valor total?' }));
+  expect(await screen.findByText(/no resta/i)).toBeInTheDocument();
+});
+
+it('en «Todos» el valor se desglosa por almacén', async () => {
+  back.warehouses.mockResolvedValue({ items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+  ] });
+  back.stockLevels.mockImplementation((w?: number | 'all') => Promise.resolve(w === 'all'
+    ? { totalValue: '1300', valueByWarehouse: [{ warehouseId: 1, warehouseName: 'Local', value: '1000' }, { warehouseId: 2, warehouseName: 'Bodega', value: '300' }],
+      items: [{ item_name: 'Leche', item_type: 'insumo', on_hand: '1000', unit_code: 'ml', min_stock: null, is_active: true, value: '1300' }] }
+    : { totalValue: '1000', items: [{ item_name: 'Leche', item_type: 'insumo', on_hand: '1000', unit_code: 'ml', min_stock: null, is_active: true, value: '1000' }] }) as never);
+  sesion(['inventory.view']);
+  montar('/almacen');
+  fireEvent.click(await screen.findByRole('button', { name: 'Todos' }));
+  await vi.waitFor(() => expect(screen.getByTestId('valor-total').textContent).toContain('$1,300'));
+  expect(screen.getByTestId('valor-total').textContent).toMatch(/Local \$1,000.*Bodega \$300/);
+});
+
+// Movimientos: la fecha no se parte en renglones, el motivo largo se recorta con el texto completo al
+// tocarlo, y un traspaso con un almacén archivado lo dice (había dos «Bodega» y no se distinguían).
+it('Movimientos dice cuándo la contraparte está archivada y no parte la fecha', async () => {
+  back.stockMovements.mockImplementation(() => Promise.resolve({ items: [
+    moveLeche({ id: 2, movement_type: 'traspaso', quantity: '2000', transfer_id: 9, counterpart_warehouse_name: 'Bodega',
+      counterpart_warehouse_archived: true, item_name: 'Leche entra', reason: 'Un motivo muy largo que escribió alguien para explicar todo lo que pasó con la leche' }),
+  ] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen?tab=movimientos');
+  const fila = (await screen.findByText('Leche entra')).closest('tr')!;
+  expect(fila.textContent).toContain('← Bodega (archivado)');
+  const celdas = fila.querySelectorAll('td');
+  expect(getComputedStyle(celdas[0]).whiteSpace).toBe('nowrap');
+  expect(within(fila).getByTitle(/Un motivo muy largo/)).toBeInTheDocument();
+});
+
+it('sin valor del servidor no hay columna Valor ni total', async () => {
+  back.stockLevels.mockImplementation(() => Promise.resolve({ items: [
+    { item_name: 'Leche', item_type: 'insumo', on_hand: '10000', unit_code: 'ml', min_stock: null, is_active: true },
+  ] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen');
+  await screen.findByText('Leche');
+  expect(screen.queryByRole('columnheader', { name: 'Valor' })).toBeNull();
+  expect(screen.queryByText('Valor total')).toBeNull();
 });

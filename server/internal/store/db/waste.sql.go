@@ -121,22 +121,22 @@ func (q *Queries) IngredientForWaste(ctx context.Context, arg IngredientForWaste
 const ingredientsCountedSince = `-- name: IngredientsCountedSince :one
 select exists (
   select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id
-   where c.status in ('open', 'closed') and c.branch_id = $1
+   where c.status in ('open', 'closed') and c.warehouse_id = $1
      and l.ingredient_id = any($2::bigint[]) and l.captured_at > $3
 )::bool
 `
 
 type IngredientsCountedSinceParams struct {
-	BranchID int64     `json:"branch_id"`
-	Ids      []int64   `json:"ids"`
-	Since    time.Time `json:"since"`
+	WarehouseID int64     `json:"warehouse_id"`
+	Ids         []int64   `json:"ids"`
+	Since       time.Time `json:"since"`
 }
 
-// ¿Algún conteo de la sucursal, cerrado o abierto, capturó alguno de estos insumos después de la
-// merma? Entonces el conteo ya corrige lo guardado contra lo que vio, y deshacer inventaría lo que
+// ¿Algún conteo del almacén de la merma, cerrado o abierto, capturó alguno de estos insumos después
+// de la merma? Entonces el conteo ya corrige lo guardado contra lo que vio, y deshacer inventaría lo que
 // quitó; abierto también: su ajuste se calculó al capturar (revisión de código).
 func (q *Queries) IngredientsCountedSince(ctx context.Context, arg IngredientsCountedSinceParams) (bool, error) {
-	row := q.db.QueryRow(ctx, ingredientsCountedSince, arg.BranchID, arg.Ids, arg.Since)
+	row := q.db.QueryRow(ctx, ingredientsCountedSince, arg.WarehouseID, arg.Ids, arg.Since)
 	var column_1 bool
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -145,7 +145,7 @@ func (q *Queries) IngredientsCountedSince(ctx context.Context, arg IngredientsCo
 const insertWasteMovement = `-- name: InsertWasteMovement :exec
 insert into stock_movements (
   item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, waste_record_id, user_id,
-  reason, branch_id, modifier_option_id, component_of_product_id
+  reason, warehouse_id, modifier_option_id, component_of_product_id
 ) values (
   $1, $2, $3, 'merma', $4,
   $5, $6, $7, $8, $9,
@@ -162,13 +162,13 @@ type InsertWasteMovementParams struct {
 	WasteRecordID        *int64           `json:"waste_record_id"`
 	UserID               *int64           `json:"user_id"`
 	Reason               *string          `json:"reason"`
-	BranchID             int64            `json:"branch_id"`
+	WarehouseID          int64            `json:"warehouse_id"`
 	ModifierOptionID     *int64           `json:"modifier_option_id"`
 	ComponentOfProductID *int64           `json:"component_of_product_id"`
 }
 
-// La sucursal es la del registro, explícita: el trigger genérico la tomaría de la empresa y truena
-// con dos sucursales (como la venta en la 0078). La FK compuesta impide otra.
+// El almacén es el del registro, explícito (la sucursal la pone el trigger desde él): sin él, la
+// merma de Bodega restaría de Local. stock_movements_waste_same_warehouse impide otro.
 func (q *Queries) InsertWasteMovement(ctx context.Context, arg InsertWasteMovementParams) error {
 	_, err := q.db.Exec(ctx, insertWasteMovement,
 		arg.ItemType,
@@ -179,7 +179,7 @@ func (q *Queries) InsertWasteMovement(ctx context.Context, arg InsertWasteMoveme
 		arg.WasteRecordID,
 		arg.UserID,
 		arg.Reason,
-		arg.BranchID,
+		arg.WarehouseID,
 		arg.ModifierOptionID,
 		arg.ComponentOfProductID,
 	)
@@ -205,17 +205,17 @@ func (q *Queries) InsertWasteReason(ctx context.Context, arg InsertWasteReasonPa
 
 const insertWasteRecord = `-- name: InsertWasteRecord :one
 insert into waste_records (
-  branch_id, reason_id, item_type, ingredient_id, product_id, quantity, entered_qty, presentation_id,
+  branch_id, warehouse_id, reason_id, item_type, ingredient_id, product_id, quantity, entered_qty, presentation_id,
   unit_cost, total_cost, is_staff_meal, note, status, recorded_by
-) values (
-  $1, $2, $3, $4, $5,
-  $6, $7, $8, $9, $10,
-  $11, $12, $13, $14
-) returning id, recorded_at
+)
+select w.branch_id, w.id, $1, $2, $3, $4,
+       $5, $6, $7, $8, $9,
+       $10, $11, $12, $13
+  from warehouses w where w.id = $14
+returning id, recorded_at
 `
 
 type InsertWasteRecordParams struct {
-	BranchID       int64            `json:"branch_id"`
 	ReasonID       int64            `json:"reason_id"`
 	ItemType       StockItemType    `json:"item_type"`
 	IngredientID   *int64           `json:"ingredient_id"`
@@ -229,6 +229,7 @@ type InsertWasteRecordParams struct {
 	Note           *string          `json:"note"`
 	Status         string           `json:"status"`
 	RecordedBy     int64            `json:"recorded_by"`
+	WarehouseID    int64            `json:"warehouse_id"`
 }
 
 type InsertWasteRecordRow struct {
@@ -236,9 +237,9 @@ type InsertWasteRecordRow struct {
 	RecordedAt time.Time `json:"recorded_at"`
 }
 
+// El almacén ya viene resuelto (de la sucursal de la sesión y activo); la sucursal es la suya.
 func (q *Queries) InsertWasteRecord(ctx context.Context, arg InsertWasteRecordParams) (InsertWasteRecordRow, error) {
 	row := q.db.QueryRow(ctx, insertWasteRecord,
-		arg.BranchID,
 		arg.ReasonID,
 		arg.ItemType,
 		arg.IngredientID,
@@ -252,6 +253,7 @@ func (q *Queries) InsertWasteRecord(ctx context.Context, arg InsertWasteRecordPa
 		arg.Note,
 		arg.Status,
 		arg.RecordedBy,
+		arg.WarehouseID,
 	)
 	var i InsertWasteRecordRow
 	err := row.Scan(&i.ID, &i.RecordedAt)
@@ -432,7 +434,7 @@ func (q *Queries) LockWasteReasonsForMerge(ctx context.Context, ids []int64) err
 }
 
 const lockWasteRecord = `-- name: LockWasteRecord :one
-select id, branch_id, item_type, ingredient_id, product_id, quantity, unit_cost, total_cost, status,
+select id, branch_id, warehouse_id, item_type, ingredient_id, product_id, quantity, unit_cost, total_cost, status,
        recorded_by, recorded_at
   from waste_records where id = $1 and branch_id = current_branch_id() for update
 `
@@ -440,6 +442,7 @@ select id, branch_id, item_type, ingredient_id, product_id, quantity, unit_cost,
 type LockWasteRecordRow struct {
 	ID           int64            `json:"id"`
 	BranchID     int64            `json:"branch_id"`
+	WarehouseID  int64            `json:"warehouse_id"`
 	ItemType     StockItemType    `json:"item_type"`
 	IngredientID *int64           `json:"ingredient_id"`
 	ProductID    *int64           `json:"product_id"`
@@ -457,6 +460,7 @@ func (q *Queries) LockWasteRecord(ctx context.Context, id int64) (LockWasteRecor
 	err := row.Scan(
 		&i.ID,
 		&i.BranchID,
+		&i.WarehouseID,
 		&i.ItemType,
 		&i.IngredientID,
 		&i.ProductID,
@@ -508,21 +512,21 @@ func (q *Queries) MoveMergedWasteReasons(ctx context.Context, arg MoveMergedWast
 const openCountThatSaw = `-- name: OpenCountThatSaw :one
 select coalesce((
   select c.id from stock_count_lines l join stock_counts c on c.id = l.count_id
-   where c.status = 'open' and c.branch_id = $1
+   where c.status = 'open' and c.warehouse_id = $1
      and l.ingredient_id = any($2::bigint[]) and l.captured_at >= $3
    order by c.id limit 1), 0)::bigint
 `
 
 type OpenCountThatSawParams struct {
-	BranchID int64     `json:"branch_id"`
-	Ids      []int64   `json:"ids"`
-	Since    time.Time `json:"since"`
+	WarehouseID int64     `json:"warehouse_id"`
+	Ids         []int64   `json:"ids"`
+	Since       time.Time `json:"since"`
 }
 
-// El conteo abierto de la sucursal que capturó alguno de estos insumos después de la merma, si lo
+// El conteo abierto del almacén de la merma que capturó alguno de estos insumos después de la merma, si lo
 // hay: ya ajustará esa pérdida al cerrar, así que aprobarla la restaría dos veces.
 func (q *Queries) OpenCountThatSaw(ctx context.Context, arg OpenCountThatSawParams) (int64, error) {
-	row := q.db.QueryRow(ctx, openCountThatSaw, arg.BranchID, arg.Ids, arg.Since)
+	row := q.db.QueryRow(ctx, openCountThatSaw, arg.WarehouseID, arg.Ids, arg.Since)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -531,8 +535,9 @@ func (q *Queries) OpenCountThatSaw(ctx context.Context, arg OpenCountThatSawPara
 const pendingWaste = `-- name: PendingWaste :many
 select w.id, w.item_type, coalesce(i.name, p.name)::text as item_name, w.quantity,
        coalesce(u.code, 'pza')::text as unit_code, w.total_cost, r.name as reason_name,
-       uu.name as recorded_by_name, w.recorded_at
+       uu.name as recorded_by_name, w.recorded_at, w.warehouse_id, wh.name as warehouse_name
   from waste_records w
+  join warehouses wh on wh.id = w.warehouse_id
   join waste_reasons r on r.id = w.reason_id
   join users uu on uu.id = w.recorded_by
   left join ingredients i on i.id = w.ingredient_id
@@ -552,6 +557,8 @@ type PendingWasteRow struct {
 	ReasonName     string           `json:"reason_name"`
 	RecordedByName string           `json:"recorded_by_name"`
 	RecordedAt     time.Time        `json:"recorded_at"`
+	WarehouseID    int64            `json:"warehouse_id"`
+	WarehouseName  string           `json:"warehouse_name"`
 }
 
 func (q *Queries) PendingWaste(ctx context.Context) ([]PendingWasteRow, error) {
@@ -573,6 +580,8 @@ func (q *Queries) PendingWaste(ctx context.Context) ([]PendingWasteRow, error) {
 			&i.ReasonName,
 			&i.RecordedByName,
 			&i.RecordedAt,
+			&i.WarehouseID,
+			&i.WarehouseName,
 		); err != nil {
 			return nil, err
 		}
@@ -587,7 +596,7 @@ func (q *Queries) PendingWaste(ctx context.Context) ([]PendingWasteRow, error) {
 const pendingWasteToCover = `-- name: PendingWasteToCover :many
 select id, item_type, ingredient_id, product_id, quantity, recorded_at
   from waste_records
- where branch_id = $1 and status = 'pending'
+ where warehouse_id = $1 and status = 'pending'
  order by id
 `
 
@@ -600,10 +609,10 @@ type PendingWasteToCoverRow struct {
 	RecordedAt   time.Time       `json:"recorded_at"`
 }
 
-// Las por aprobar de la sucursal, para que el cierre de un conteo cubra las que vio; cuáles vio lo
+// Las por aprobar del almacén del conteo, para que su cierre cubra las que vio; cuáles vio lo
 // decide coverPendingWaste contra la hora de captura de cada insumo.
-func (q *Queries) PendingWasteToCover(ctx context.Context, branchID int64) ([]PendingWasteToCoverRow, error) {
-	rows, err := q.db.Query(ctx, pendingWasteToCover, branchID)
+func (q *Queries) PendingWasteToCover(ctx context.Context, warehouseID int64) ([]PendingWasteToCoverRow, error) {
+	rows, err := q.db.Query(ctx, pendingWasteToCover, warehouseID)
 	if err != nil {
 		return nil, err
 	}
@@ -917,8 +926,10 @@ func (q *Queries) WasteMovements(ctx context.Context, wasteRecordID *int64) ([]W
 const wasteOfDay = `-- name: WasteOfDay :many
 select w.id, w.item_type, coalesce(i.name, p.name)::text as item_name, w.quantity, w.entered_qty,
        coalesce(u.code, 'pza')::text as unit_code, w.total_cost, w.status, w.note,
-       r.name as reason_name, w.recorded_by, uu.name as recorded_by_name, w.recorded_at
+       r.name as reason_name, w.recorded_by, uu.name as recorded_by_name, w.recorded_at,
+       w.warehouse_id, wh.name as warehouse_name
   from waste_records w
+  join warehouses wh on wh.id = w.warehouse_id
   join waste_reasons r on r.id = w.reason_id
   join users uu on uu.id = w.recorded_by
   left join ingredients i on i.id = w.ingredient_id
@@ -942,6 +953,8 @@ type WasteOfDayRow struct {
 	RecordedBy     int64            `json:"recorded_by"`
 	RecordedByName string           `json:"recorded_by_name"`
 	RecordedAt     time.Time        `json:"recorded_at"`
+	WarehouseID    int64            `json:"warehouse_id"`
+	WarehouseName  string           `json:"warehouse_name"`
 }
 
 // Lo registrado en la sucursal desde un momento (el inicio del día del local).
@@ -968,6 +981,8 @@ func (q *Queries) WasteOfDay(ctx context.Context, since time.Time) ([]WasteOfDay
 			&i.RecordedBy,
 			&i.RecordedByName,
 			&i.RecordedAt,
+			&i.WarehouseID,
+			&i.WarehouseName,
 		); err != nil {
 			return nil, err
 		}

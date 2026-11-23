@@ -47,7 +47,7 @@ func (k *countKit) sale(t *testing.T, ing int64, q string) {
 func TestACountAdjustsAgainstWhatThereWasWhenCaptured(t *testing.T) {
 	t.Parallel()
 	k := newCountKit(t)
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatalf("abrir: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestACountAdjustsAgainstWhatThereWasWhenCaptured(t *testing.T) {
 	if err := k.svc.CaptureCount(k.ctx, c.ID, k.leche, dd("1"), k.user); !errors.Is(err, domain.ErrConflict) {
 		t.Errorf("capturar en un conteo cerrado = %v; quiere ErrConflict", err)
 	}
-	last, err := k.svc.LastClosedCount(k.ctx)
+	last, err := k.svc.LastClosedCount(k.ctx, domain.WarehouseSel{})
 	if err != nil || last == nil || last.ID != c.ID {
 		t.Errorf("último conteo cerrado = %v (%v); quiere su fecha y su id (para abrir su faltante)", last, err)
 	}
@@ -110,14 +110,14 @@ func TestACountAdjustsAgainstWhatThereWasWhenCaptured(t *testing.T) {
 func TestOneOpenCountPerBranchAndBlindWhileOpen(t *testing.T) {
 	t.Parallel()
 	k := newCountKit(t)
-	if last, err := k.svc.LastClosedCount(k.ctx); err != nil || last != nil {
+	if last, err := k.svc.LastClosedCount(k.ctx, domain.WarehouseSel{}); err != nil || last != nil {
 		t.Fatalf("sin conteos, último cerrado = %v (%v); quiere nada", last, err)
 	}
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := k.svc.OpenCount(k.ctx, k.user); !errors.Is(err, domain.ErrConflict) {
+	if _, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("segundo conteo abierto = %v; quiere ErrConflict", err)
 	}
 	if err := k.svc.CaptureCount(k.ctx, c.ID, k.azucar, dd("-1"), k.user); !errors.Is(err, domain.ErrValidation) {
@@ -126,7 +126,7 @@ func TestOneOpenCountPerBranchAndBlindWhileOpen(t *testing.T) {
 	if err := k.svc.CaptureCount(k.ctx, c.ID, k.azucar, dd("0"), k.user); err != nil {
 		t.Errorf("cero («no hay») = %v; quiere aceptarlo", err)
 	}
-	cur, err := k.svc.CurrentCount(k.ctx)
+	cur, err := k.svc.CurrentCount(k.ctx, domain.WarehouseSel{})
 	if err != nil || cur == nil || cur.ID != c.ID {
 		t.Fatalf("conteo actual = %+v (%v)", cur, err)
 	}
@@ -148,10 +148,10 @@ func TestOneOpenCountPerBranchAndBlindWhileOpen(t *testing.T) {
 	if got := k.onHand(t); !got.Equal(dd("-1200")) {
 		t.Errorf("descartar movió lo guardado a %s", got)
 	}
-	if cur, _ := k.svc.CurrentCount(k.ctx); cur != nil {
+	if cur, _ := k.svc.CurrentCount(k.ctx, domain.WarehouseSel{}); cur != nil {
 		t.Error("descartado y sigue como conteo actual")
 	}
-	if _, err := k.svc.OpenCount(k.ctx, k.user); err != nil {
+	if _, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user); err != nil {
 		t.Errorf("tras descartar, abrir otro = %v", err)
 	}
 }
@@ -159,7 +159,7 @@ func TestOneOpenCountPerBranchAndBlindWhileOpen(t *testing.T) {
 func TestCountPlaceOrdersTheCount(t *testing.T) {
 	t.Parallel()
 	k := newCountKit(t)
-	refri, err := k.svc.CreateCountPlace(k.ctx, "Refri del conteo")
+	refri, err := k.svc.CreateCountPlace(k.ctx, domain.WarehouseSel{}, "Refri del conteo")
 	if err != nil {
 		var exists domain.CountPlaceExists
 		if !errors.As(err, &exists) {
@@ -180,10 +180,10 @@ func TestCountPlaceOrdersTheCount(t *testing.T) {
 			t.Errorf("la lista de insumos no trae el lugar: %v", i.CountPlace)
 		}
 	}
-	if _, err := k.svc.OpenCount(k.ctx, k.user); err != nil {
+	if _, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user); err != nil {
 		t.Fatal(err)
 	}
-	cur, err := k.svc.CurrentCount(k.ctx)
+	cur, err := k.svc.CurrentCount(k.ctx, domain.WarehouseSel{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestACountWithTwoBranchesAndNoSelectorIsNotGuessed(t *testing.T) {
 	t.Parallel()
 	k := newCountKit(t)
 	addBranch(t, k.st, defaultCompanyID, "NORTE")
-	if _, err := k.svc.OpenCount(k.ctx, k.user); !errors.Is(err, domain.ErrBranchAmbiguous) {
+	if _, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user); !errors.Is(err, domain.ErrBranchAmbiguous) {
 		t.Fatalf("con dos sucursales = %v; quiere ErrBranchAmbiguous", err)
 	}
 }
@@ -210,7 +210,7 @@ func TestACountWithTwoBranchesAndNoSelectorIsNotGuessed(t *testing.T) {
 func TestCountsAreIsolated(t *testing.T) {
 	t.Parallel()
 	k := newCountKit(t)
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestCountsAreIsolated(t *testing.T) {
 	other := makeCompany(t, k.st, "conteo-otra")
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, as *store.Store, ctx context.Context) {
 		svc := app.NewBackofficeService(as, nil)
-		if cur, err := svc.CurrentCount(ctx); err == nil && cur != nil && cur.ID == c.ID {
+		if cur, err := svc.CurrentCount(ctx, domain.WarehouseSel{}); err == nil && cur != nil && cur.ID == c.ID {
 			t.Fatal("se ve el conteo de otra empresa")
 		}
 		if err := svc.CaptureCount(ctx, c.ID, k.azucar, dd("1"), k.user); err == nil {
@@ -241,7 +241,7 @@ func TestCountsAreIsolated(t *testing.T) {
 func TestRecapturingAfterThePreviewIsRecorded(t *testing.T) {
 	t.Parallel()
 	k := newCountKit(t)
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}

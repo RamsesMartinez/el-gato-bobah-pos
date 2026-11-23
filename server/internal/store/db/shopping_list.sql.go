@@ -66,22 +66,22 @@ with cand as (
          coalesce(b.min_stock, i.min_stock) as min_stock, i.low_stock_enabled as enabled
     from ingredients i
     join units u on u.id = i.base_unit_id
-    left join branch_stock_minimums b on b.warehouse_id = current_sales_warehouse_id() and b.ingredient_id = i.id
+    left join branch_stock_minimums b on b.warehouse_id = $1::bigint and b.ingredient_id = i.id
    where i.is_active
   union all
   select 'producto'::stock_item_type, p.id, p.name, 'pieza'::text, p.coverage_days,
          coalesce(b.min_stock, p.min_stock), p.low_stock_enabled
     from products p
-    left join branch_stock_minimums b on b.warehouse_id = current_sales_warehouse_id() and b.product_id = p.id
+    left join branch_stock_minimums b on b.warehouse_id = $1::bigint and b.product_id = p.id
    where p.is_active and p.track_stock
 ), base as (
   select c.item_type, c.id, c.name, c.unit_code, c.coverage_days, c.min_stock, c.enabled, coalesce(l.on_hand, 0)::numeric as on_hand,
-         exists (select 1 from notifications n where n.status = 'open' and n.kind = 'stock_out' and n.warehouse_id = current_sales_warehouse_id()
+         exists (select 1 from notifications n where n.status = 'open' and n.kind = 'stock_out' and n.warehouse_id = $1::bigint
                    and n.item_key = case when c.item_type = 'ingrediente' then c.id else -c.id end) as out_open,
-         exists (select 1 from notifications n where n.status = 'open' and n.kind = 'stock_low' and n.warehouse_id = current_sales_warehouse_id()
+         exists (select 1 from notifications n where n.status = 'open' and n.kind = 'stock_low' and n.warehouse_id = $1::bigint
                    and n.item_key = case when c.item_type = 'ingrediente' then c.id else -c.id end) as low_open
     from cand c
-    left join stock_levels l on l.warehouse_id = current_sales_warehouse_id()
+    left join stock_levels l on l.warehouse_id = $1::bigint
      and ((c.item_type = 'ingrediente' and l.ingredient_id = c.id) or (c.item_type = 'producto' and l.product_id = c.id))
 )
 select b.item_type, b.id, b.name, b.unit_code, coalesce(b.coverage_days, 0)::int as coverage_days,
@@ -91,8 +91,8 @@ select b.item_type, b.id, b.name, b.unit_code, coalesce(b.coverage_days, 0)::int
   left join lateral (
     select -sum(m.quantity) as used, count(distinct (m.created_at at time zone 'UTC')::date) as days
       from stock_movements m
-     where m.warehouse_id = current_sales_warehouse_id() and m.movement_type in ('venta', 'cancelacion')
-       and m.created_at >= $1
+     where m.warehouse_id = $1::bigint and m.movement_type in ('venta', 'cancelacion')
+       and m.created_at >= $2
        and ((b.item_type = 'ingrediente' and m.ingredient_id = b.id) or (b.item_type = 'producto' and m.product_id = b.id))
   ) u on true
   left join lateral (
@@ -106,6 +106,11 @@ select b.item_type, b.id, b.name, b.unit_code, coalesce(b.coverage_days, 0)::int
  where b.out_open or b.low_open or (b.enabled and coalesce(b.min_stock, 0) > 0 and b.on_hand <= b.min_stock)
  order by coalesce(sup.name, '') = '', sup.name, b.name
 `
+
+type ShoppingListItemsParams struct {
+	WarehouseID int64     `json:"warehouse_id"`
+	Since       time.Time `json:"since"`
+}
 
 type ShoppingListItemsRow struct {
 	ItemType     StockItemType   `json:"item_type"`
@@ -122,15 +127,15 @@ type ShoppingListItemsRow struct {
 	Supplier     string          `json:"supplier"`
 }
 
-// La lista de compra (spec 084, historia 8): lo que se acabó o está en o bajo su mínimo en la sucursal,
+// La lista de compra (spec 084, historia 8): lo que se acabó o está en o bajo su mínimo en el almacén,
 // con lo que se sabe para sugerir cuánto comprar. Una sola consulta para la pantalla y el correo.
 // Consumo = lo que salió por venta menos lo que volvió por cancelación desde `since`. Un «se acabó»,
 // una merma o un traspaso no son consumo. used_days cuenta los días con venta, para no creerle a un
 // consumo de un solo día.
 // coalesce explícito: sqlc tipa estas columnas como no nulas (vienen de un CTE y de un lateral), y un
 // NULL tumbaría la consulta entera (AGENTS.md). 0 = sin mínimo; ” = sin proveedor conocido.
-func (q *Queries) ShoppingListItems(ctx context.Context, since time.Time) ([]ShoppingListItemsRow, error) {
-	rows, err := q.db.Query(ctx, shoppingListItems, since)
+func (q *Queries) ShoppingListItems(ctx context.Context, arg ShoppingListItemsParams) ([]ShoppingListItemsRow, error) {
+	rows, err := q.db.Query(ctx, shoppingListItems, arg.WarehouseID, arg.Since)
 	if err != nil {
 		return nil, err
 	}

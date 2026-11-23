@@ -128,22 +128,22 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 ## Phase 7: US6 — Conteo, merma, mínimos y lugares por almacén (P2, subida 4)
 
-- [ ] T055 [P] [US6] Tests: conteo de Bodega no toca Local; un conteo abierto por almacén; merma y «se acabó» con almacén; mínimos y salud por almacén; lugares con nombre único por almacén y artículos de otro almacén al final («Sin lugar en este almacén»); en `server/internal/integration/warehouses_count_test.go`
-- [ ] T056 [US6] Migración si hace falta (índice único de lugares por almacén, `low_stock_state`/`evaluate_low_stock` por almacén) revisada por db-architect
-- [ ] T057 [US6] (incluye lo que dejó el db-architect en la subida 1: `CurrentStockCount` y `LastClosedStockCount` siguen por sucursal y son `:one`; `ArticleMovedSince` mezcla conteos por sucursal con movimientos del almacén de venta — pasarlos a `warehouse_id`) Servicios y consultas de conteo, merma, se acabó, mínimos, lista de compra, salud y lugares con `warehouseId` (`server/internal/app/stock_counts.go`, `waste.go`, `stock_out.go`, `notifications.go`, `inventory_health.go`, queries respectivas)
+- [X] T055 [P] [US6] Tests: conteo de Bodega no toca Local; un conteo abierto por almacén; merma y «se acabó» con almacén; mínimos y salud por almacén; lugares con nombre único por almacén y artículos de otro almacén al final («Sin lugar en este almacén»); en `server/internal/integration/warehouses_count_test.go`
+- [X] T056 [US6] Migración `0127_stock_alerts_per_warehouse.sql` (índice único de lugares por almacén, `low_stock_state`/`evaluate_low_stock` por almacén, validate de las dos restricciones de la 0124) con su test; aprobada por db-architect el 2026-11-23 sin bloqueantes
+- [X] T057 [US6] (incluye lo que dejó el db-architect en la subida 1: `CurrentStockCount` y `LastClosedStockCount` siguen por sucursal y son `:one`; `ArticleMovedSince` mezcla conteos por sucursal con movimientos del almacén de venta — pasarlos a `warehouse_id`) Servicios y consultas de conteo, merma, se acabó, mínimos, lista de compra, salud y lugares con `warehouseId` (`server/internal/app/stock_counts.go`, `waste.go`, `stock_out.go`, `notifications.go`, `inventory_health.go`, queries respectivas)
 - [ ] T058b [US6] Prueba con alguien nuevo de una fonda: contar la Bodega y cerrar sin tocar Local (SC-005)
-- [ ] T058 [US6] Pantallas: elegir almacén al empezar el conteo (por omisión el de venta) en `web/src/features/backoffice/StockCountTab.tsx`; almacén en merma, se acabó, mínimos y avisos; con test
-- [ ] T056b [US6] Migración nueva que valida lo que la 0124 dejó `not valid` sobre `stock_movements`: `alter table stock_movements validate constraint stock_movements_transfer_of_branch` y `validate constraint stock_movements_transfer_link` (el `validate` toma `share update exclusive` y no frena a las ventas), con su test de integración
-- [ ] T059 [US8] MCP `stock_count_*`, `waste_record`, `low_stock_update` con `warehouse_id`, tests
+- [X] T058 [US6] Pantallas: elegir almacén al empezar el conteo (por omisión el de venta) en `web/src/features/backoffice/StockCountTab.tsx`; almacén en merma, se acabó, mínimos y avisos; con test
+- [X] T056b [US6] Migración nueva que valida lo que la 0124 dejó `not valid` sobre `stock_movements`: `alter table stock_movements validate constraint stock_movements_transfer_of_branch` y `validate constraint stock_movements_transfer_link` (el `validate` toma `share update exclusive` y no frena a las ventas), con su test de integración
+- [X] T059 [US8] MCP `stock_count_*`, `waste_record`, `low_stock_update` con `warehouse_id`, tests
 
 ---
 
 ## Phase 8: US7 — Reportes y movimientos (P3, subida 5)
 
-- [ ] T060 [P] [US7] Tests: `GET /stock/movements?warehouseId=` con almacén y traspaso contraparte; `GET /stock/valuation` (valor por almacén suma el total; negativos no suman valor, test que lo nombra; costo de ventas solo de `venta`) en `server/internal/integration/warehouses_reports_test.go`
-- [ ] T061 [US7] Consultas y servicio de movimientos y valuación (`server/queries/stock.sql`, `server/internal/app/backoffice.go`)
-- [ ] T062 [US7] Movimientos con almacén y traspaso; reporte de valor por almacén (`web/src/features/backoffice/StockPage.tsx`) con test
-- [ ] T063 [US8] MCP `stock_movements` con `warehouse_id`; documentar en la descripción de las herramientas de recetas y pedidos que descuentan del de venta
+- [X] T060 [P] [US7] Tests: `GET /stock/movements?warehouseId=` con almacén y traspaso contraparte; `GET /stock/valuation` (valor por almacén suma el total; negativos no suman valor, test que lo nombra; costo de ventas solo de `venta`) en `server/internal/integration/warehouses_reports_test.go`
+- [X] T061 [US7] Consultas y servicio de movimientos y valuación (`server/queries/stock.sql`, `server/internal/app/backoffice.go`)
+- [X] T062 [US7] Movimientos con almacén y traspaso; reporte de valor por almacén (`web/src/features/backoffice/StockPage.tsx`) con test
+- [X] T063 [US8] MCP `stock_movements` con `warehouse_id`; documentar en la descripción de las herramientas de recetas y pedidos que descuentan del de venta
 
 ---
 

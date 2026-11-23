@@ -137,7 +137,7 @@ func TestLowStockConfigPreviewAndSave(t *testing.T) {
 		if err := svc.LowStockAsked(ctx, ing); err != nil {
 			t.Fatal(err)
 		}
-		cfg, err := svc.LowStockConfig(ctx, "ingrediente", ing)
+		cfg, err := svc.LowStockConfig(ctx, "ingrediente", ing, domain.WarehouseSel{})
 		if err != nil || !cfg.Asked || cfg.Enabled {
 			t.Fatalf("%+v %v", cfg, err)
 		}
@@ -157,7 +157,7 @@ func TestLowStockBatch(t *testing.T) {
 		{ItemType: "ingrediente", ID: a, Enabled: true, MinStock: decp("5")},
 		{ItemType: "ingrediente", ID: b, Enabled: true, MinStock: decp("5")},
 	}
-	prev, err := svc.ConfigureBatch(ctx, items, gerente, true)
+	prev, err := svc.ConfigureBatch(ctx, items, domain.WarehouseSel{}, gerente, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,13 +167,13 @@ func TestLowStockBatch(t *testing.T) {
 	if len(openKinds(t, st, a)) != 0 {
 		t.Fatal("la vista previa del lote abrió avisos")
 	}
-	if _, err := svc.ConfigureBatch(ctx, items, gerente, false); err != nil {
+	if _, err := svc.ConfigureBatch(ctx, items, domain.WarehouseSel{}, gerente, false); err != nil {
 		t.Fatal(err)
 	}
 	if len(openKinds(t, st, a)) != 1 || len(openKinds(t, st, b)) != 0 {
 		t.Fatalf("a %v b %v", openKinds(t, st, a), openKinds(t, st, b))
 	}
-	if _, err := svc.ConfigureBatch(ctx, make([]app.LowStockBatchItem, 101), gerente, true); !errors.Is(err, domain.ErrValidation) {
+	if _, err := svc.ConfigureBatch(ctx, make([]app.LowStockBatchItem, 101), domain.WarehouseSel{}, gerente, true); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("101 renglones: %v", err)
 	}
 }
@@ -187,7 +187,7 @@ func TestLowStockConfigIsIsolated(t *testing.T) {
 	ing := pieceIngredient(t, st, "Aislada 084c")
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, as *store.Store, ctx context.Context) {
 		svc := app.NewNotificationsService(as, clock)
-		if _, err := svc.LowStockConfig(ctx, "ingrediente", ing); err == nil {
+		if _, err := svc.LowStockConfig(ctx, "ingrediente", ing, domain.WarehouseSel{}); err == nil {
 			t.Fatal("otra empresa leyó la configuración")
 		}
 		if _, err := svc.ConfigureLowStock(ctx, "ingrediente", ing, lowStockIn(true, "5"), gerente, false); err == nil {
