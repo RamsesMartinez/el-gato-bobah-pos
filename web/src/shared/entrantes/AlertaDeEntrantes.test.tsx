@@ -5,7 +5,7 @@ import { Provider } from '../../components/ui/provider';
 import type { PedidoEntrante } from '../../api/pedidosEntrantes';
 import type { Alarma, EstadoAlarma } from './alarma';
 import { AlertaDeEntrantes } from './AlertaDeEntrantes';
-import { useColumnaPorAceptar } from './estado';
+import { useColumnaPorAceptar, usePestanaDePedidos } from './estado';
 import * as hook from './useEntrantes';
 
 vi.mock('./useEntrantes', () => ({ useEntrantes: vi.fn(), CLAVE_ENTRANTES: ['pedidos-entrantes'] }));
@@ -67,13 +67,29 @@ describe('AlertaDeEntrantes', () => {
 
   // El primer toque en cualquier parte desbloquea el sonido (FR-012), y volver a primer plano lo
   // intenta de nuevo (una tableta que se suspendió puede volver con el audio suspendido).
-  it('un toque en cualquier parte o volver a primer plano intenta desbloquear el sonido', () => {
+  // Con el dedo, el navegador cuenta como gesto el `pointerup`, el `touchend` y el `click`, no el
+  // `pointerdown`: escuchar solo éste dejaba la tableta muda tras el primer toque (en iOS, siempre).
+  it('el toque que cuenta como gesto desbloquea el sonido, y también volver a primer plano', () => {
     const { alarma } = montar('/almacen', [pedido], alarmaFalsa('bloqueada'));
-    fireEvent.pointerDown(document.body);
-    expect(alarma.desbloquear).toHaveBeenCalledTimes(1);
+    for (const toque of [() => fireEvent.pointerUp(document.body), () => fireEvent.touchEnd(document.body),
+      () => fireEvent.click(document.body), () => fireEvent.keyDown(document.body, { key: 'a' })]) {
+      alarma.desbloquear.mockClear();
+      toque();
+      expect(alarma.desbloquear).toHaveBeenCalled();
+    }
+    alarma.desbloquear.mockClear();
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
     fireEvent(document, new Event('visibilitychange'));
-    expect(alarma.desbloquear).toHaveBeenCalledTimes(2);
+    expect(alarma.desbloquear).toHaveBeenCalledTimes(1);
+  });
+
+  // En Pedidos con «Cerrados» abierto, «Ver pedido» lleva a la misma ruta: tiene que volver a
+  // «En curso», donde está la columna, o el botón no hace nada.
+  it('«Ver pedido» regresa a la pestaña En curso', () => {
+    usePestanaDePedidos.setState({ pestana: 'cerrados' });
+    montar('/pedidos', [pedido]);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver pedido' }));
+    expect(usePestanaDePedidos.getState().pestana).toBe('curso');
   });
 
   // Al salir de la sesión se desmonta el shell: la alarma no se queda sonando en el login.

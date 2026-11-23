@@ -337,3 +337,101 @@ func TestElServicioComunEntregaLaFormaComun(t *testing.T) {
 		t.Fatalf("motivo inválido dio %v", err)
 	}
 }
+
+// DOS PEDIDOS DISTINTOS ACEPTADOS A LA VEZ CON CAJA ABIERTA: los dos entran, cada uno con su folio.
+// Solo el choque del folio de la PLATAFORMA es «otra tableta ya lo atendió»; cualquier otro choque
+// que se tradujera así dejaría un pedido aceptado allá y pendiente aquí, sin cocina.
+func TestDosPedidosDistintosAceptadosALaVezEntranLosDos(t *testing.T) {
+	t.Parallel()
+	e := nuevoEscenario(t, "distintos", fixedNow)
+	ctx := context.Background()
+	var reg int64
+	if err := e.st.Pool.QueryRow(ctx, `insert into cash_registers (company_id, branch_id, name, is_primary)
+		select $1, min(id), 'Caja 093', true from branches where company_id = $1 returning id`, e.empresa).Scan(&reg); err != nil {
+		t.Fatalf("caja principal de la empresa: %v", err)
+	}
+	if _, err := e.st.Pool.Exec(ctx, `insert into register_sessions (business_date, opening_cash, opened_by, register_id, company_id)
+		values ($1, 0, $2, $3, $4)`, fixedNow, e.usuario, reg, e.empresa); err != nil {
+		t.Fatalf("abrir turno: %v", err)
+	}
+	for ronda := range 10 {
+		ids := []int64{
+			pendienteDirecto(t, e.st, e.empresa, e.conexion, fmt.Sprintf("P-%02d-a", ronda), fixedNow.Add(5*time.Minute)),
+			pendienteDirecto(t, e.st, e.empresa, e.conexion, fmt.Sprintf("P-%02d-b", ronda), fixedNow.Add(5*time.Minute)),
+		}
+		var wg sync.WaitGroup
+		errs := make([]error, 2)
+		for k, id := range ids {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				c, soltar, err := e.st.AcquireTenant(ctx, e.empresa)
+				if err != nil {
+					errs[k] = err
+					return
+				}
+				defer soltar()
+				_, errs[k] = e.svc.Aceptar(c, id, e.usuario)
+			}()
+		}
+		wg.Wait()
+		for k, err := range errs {
+			if err != nil {
+				t.Fatalf("ronda %d: el pedido %d no entró (%v); allá ya está aceptado y aquí nadie lo prepara", ronda, ids[k], err)
+			}
+		}
+	}
+}
+
+// RECHAZAR MIENTRAS LA PLATAFORMA RESPONDE Y OTRA TABLETA ACEPTA: la fila no se pisa (sigue
+// aceptada, con su pedido) y quien rechazó se entera de que otra ganó.
+func TestUnRechazoQueLlegaTardeNoPisaUnaAceptacion(t *testing.T) {
+	t.Parallel()
+	e := nuevoEscenario(t, "tarde", fixedNow)
+	id := pendienteDirecto(t, e.st, e.empresa, e.conexion, "T-1", fixedNow.Add(5*time.Minute))
+	e.decisor.durante = func() {
+		c, soltar, err := e.st.AcquireTenant(context.Background(), e.empresa)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer soltar()
+		if _, err := e.svc.Aceptar(c, id, e.usuario); err != nil {
+			t.Errorf("la otra tableta no pudo aceptar: %v", err)
+		}
+	}
+	if err := e.svc.Rechazar(e.tenant(t), id, e.usuario, "too_busy"); !errors.Is(err, domain.ErrPedidoYaDecidido) {
+		t.Fatalf("rechazar tarde dio %v; debía decir que otra tableta ganó", err)
+	}
+	if estado, motivo, _ := estadoDe(t, e.st, id); estado != "aceptado" || motivo != nil {
+		t.Fatalf("quedó %q con motivo %v: el rechazo tardío pisó la aceptación", estado, motivo)
+	}
+}
+
+// UNA CANCELACIÓN SOLO CANCELA EN SU TIENDA. El folio viene dentro del cuerpo firmado, pero la
+// tienda la da la firma: un aviso de la tienda B con el folio de un pendiente de la tienda A no lo
+// toca, ni en la misma empresa ni en otra.
+func TestUnaCancelacionNoCruzaTiendasNiEmpresas(t *testing.T) {
+	t.Parallel()
+	e := nuevoEscenario(t, "tiendas", fixedNow)
+	pend := pendienteDirecto(t, e.st, e.empresa, e.conexion, "Z-1", fixedNow.Add(5*time.Minute))
+	// La llave de firma es de la empresa, no de la tienda: la hermana firma con la misma.
+	tiendaSinLlave(t, e.st, e.empresa, "tienda-hermana")
+	otra := makeCompany(t, e.st, "entrantes-otra-tienda")
+	tiendaConLlave(t, e.st, otra, "tienda-ajena", "llave-ajena-suficientemente-larga")
+	for _, c := range []struct{ tienda, llave string }{
+		{"tienda-hermana", "llave-tiendas-suficientemente-larga"},
+		{"tienda-ajena", "llave-ajena-suficientemente-larga"},
+	} {
+		cuerpo := avisoDeCancelacion("evt-"+c.tienda, c.tienda, "Z-1")
+		r, err := e.svc.RecibirAviso(context.Background(), "Uber Eats", app.AvisoEntrante{
+			Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, c.llave), Ambiente: "sandbox",
+		})
+		if err != nil || r.Cambio {
+			t.Fatalf("%s: cambio=%v err=%v; no debía tocar el pedido de otra tienda", c.tienda, r.Cambio, err)
+		}
+	}
+	if estado, _, _ := estadoDe(t, e.st, pend); estado != "pendiente" {
+		t.Fatalf("una cancelación de otra tienda dejó el pedido %q", estado)
+	}
+}

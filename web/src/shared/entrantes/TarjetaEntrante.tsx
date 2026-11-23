@@ -45,7 +45,10 @@ export function TarjetaEntrante({ p, ahora, plegada, aceptando, ocupada, onAcept
   onAceptar: () => void;
   onRechazar: () => void;
 }) {
-  const [abierta, setAbierta] = useState(!plegada);
+  // Abierta si es la más urgente o si alguien la abrió: cuando la de arriba se decide, la que sube
+  // queda abierta sola, y una que se abrió a mano no se vuelve a plegar.
+  const [abiertaAMano, setAbierta] = useState(false);
+  const abierta = !plegada || abiertaAMano;
   const [todos, setTodos] = useState(false);
   const lines = p.lines ?? [];
   const recoger = p.serviceType === 'para_llevar';
@@ -76,7 +79,7 @@ export function TarjetaEntrante({ p, ahora, plegada, aceptando, ocupada, onAcept
       {abierta && (p.customerPhone || p.address) && (
         <VStack align="stretch" gap={0.5} mb={2} fontSize="sm">
           {p.customerPhone && <HStack gap={1.5}><LuPhone size={14} /><Text fontWeight="600">{p.customerPhone}</Text></HStack>}
-          {p.address && <HStack gap={1.5} align="start"><Box pt={0.5}><LuMapPin size={14} /></Box><Text>{p.address}</Text></HStack>}
+          {p.address && <HStack gap={1.5} align="start"><Box pt={0.5}><LuMapPin size={14} /></Box><Text lineClamp={2}>{p.address}</Text></HStack>}
         </VStack>
       )}
 

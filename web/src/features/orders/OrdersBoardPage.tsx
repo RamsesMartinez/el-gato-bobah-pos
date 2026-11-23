@@ -32,6 +32,7 @@ import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { tituloDeEntregadas, vacioDeEntregadas } from './ventanaDeEntregadas';
 import { ColumnaPorAceptar } from '../../shared/entrantes/ColumnaPorAceptar';
 import { useEntrantes } from '../../shared/entrantes/useEntrantes';
+import { usePestanaDePedidos, type PestanaDePedidos } from '../../shared/entrantes/estado';
 
 // para_llevar ya no se ofrece al cobrar, pero hay pedidos históricos con ese tipo y sin su etiqueta
 // la tarjeta los mostraría como "para_llevar", con guion bajo.
@@ -45,16 +46,14 @@ const SERVICE_META: Record<string, { label: string; icon: IconType }> = {
 // entregado o por cobrado lo que no fue.
 const TAP = '44px';
 
-// Cuántas entregadas se listan. El resto vive en Ventas, que es la pantalla del histórico; aquí
-// estorbarían lo que falta por atender.
-
-
 export function OrdersBoardPage() {
   const horaNegocio = useHoraDelNegocio();
   const live = useOrderEvents();
   const [ticketOrderID, setTicketOrderID] = useState<number | null>(null);
-  // «En curso» y «Cerrados» (093, M-Pedidos): los entregados ya no se apilan bajo el tablero.
-  const [pestana, setPestana] = useState<'curso' | 'cerrados'>('curso');
+  // «En curso» y «Cerrados» (093, M-Pedidos): los entregados ya no se apilan bajo el tablero. La
+  // pestaña es compartida para que «Ver pedido» de la franja pueda volver a «En curso».
+  const pestana = usePestanaDePedidos((s) => s.pestana);
+  const setPestana = (p: PestanaDePedidos) => usePestanaDePedidos.setState({ pestana: p });
   const { pedidos: porAceptar } = useEntrantes();
   const [cobrando, setCobrando] = useState<BoardOrder | null>(null);
   const [devolviendo, setDevolviendo] = useState<{ pedido: BoardOrder; cancelando: boolean } | null>(null);
@@ -244,12 +243,12 @@ export function OrdersBoardPage() {
         {/* Las pestañas van en el renglón del título: no le quitan alto al tablero. Sin permiso de
             ver entregados no hay segunda pestaña, y entonces tampoco hay pestañas. */}
         {puedeVerEntregadas && (
-          <Tabs.Root value={pestana} onValueChange={(e) => setPestana(e.value as 'curso' | 'cerrados')} size="sm">
+          <Tabs.Root value={pestana} onValueChange={(e) => setPestana(e.value as PestanaDePedidos)} size="sm">
             <Tabs.List>
               <Tabs.Trigger value="curso" minH={TAP}>
                 En curso
                 {porAceptar.length > 0 && (
-                  <Badge colorPalette="red" variant="solid" borderRadius="full" px={2}>{porAceptar.length} por aceptar</Badge>
+                  <Badge colorPalette="red" variant="solid" borderRadius="full" px={2} aria-label={`${porAceptar.length} por aceptar`}>{porAceptar.length}</Badge>
                 )}
               </Tabs.Trigger>
               <Tabs.Trigger value="cerrados" minH={TAP}>
@@ -266,19 +265,22 @@ export function OrdersBoardPage() {
         )}
       </HStack>
 
-      {pestana === 'curso' && (
-        // «Por aceptar» a la izquierda (093, M-PorAceptar): solo existe con pedidos esperando, y no
-        // le quita tarjetas al tablero, que se angosta en vez de bajar.
-        <Flex gap={3} align="stretch">
-          <ColumnaPorAceptar />
-          {/* Dos columnas en pantalla ancha, una sola abajo de 900 px: en una tableta de 7" dos
-              columnas dejan tarjetas donde el nombre del producto ya no cabe. */}
-          <SimpleGrid flex="1" minW={0} columns={{ base: 1, md: 2 }} gap={3} alignItems="stretch">
-            <Columna titulo="En preparación" orders={preparando} acciones={acciones} />
-            <Columna titulo="A entregar" orders={listos} acciones={acciones} />
-          </SimpleGrid>
-        </Flex>
-      )}
+      {/* «Por aceptar» a la izquierda (093, M-PorAceptar): solo existe con pedidos esperando, y no
+          le quita tarjetas al tablero, que se angosta en vez de bajar. Montada SIEMPRE en el mismo
+          lugar, oculta en «Cerrados»: una comanda en vuelo al cambiar de pestaña no se pierde. */}
+      <Flex gap={3} align="stretch">
+        <ColumnaPorAceptar oculta={pestana !== 'curso'} />
+        {pestana === 'curso' && (
+          <>
+            {/* Dos columnas en pantalla ancha, una sola abajo de 900 px: en una tableta de 7" dos
+                columnas dejan tarjetas donde el nombre del producto ya no cabe. */}
+            <SimpleGrid flex="1" minW={0} columns={{ base: 1, md: 2 }} gap={3} alignItems="stretch">
+              <Columna titulo="En preparación" orders={preparando} acciones={acciones} />
+              <Columna titulo="A entregar" orders={listos} acciones={acciones} />
+            </SimpleGrid>
+          </>
+        )}
+      </Flex>
 
       {puedeVerEntregadas && pestana === 'cerrados' && (
         <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} zona={horaNegocio.zona}

@@ -32,6 +32,9 @@ type decisorFalso struct {
 	// decisiones cuenta las llamadas a aceptar o rechazar: un pedido vencido no debe llegar a la
 	// plataforma.
 	decisiones atomic.Int32
+	// durante corre mientras la plataforma «responde»: simula lo que otra tableta o un aviso hacen
+	// entre la lectura del pedido y su update.
+	durante func()
 }
 
 func (d *decisorFalso) TraerDetalleDePedido(ctx context.Context, liga string) ([]byte, error) {
@@ -46,6 +49,9 @@ func (d *decisorFalso) AceptarPedido(ctx context.Context, pedidoID, ref string) 
 }
 func (d *decisorFalso) RechazarPedido(ctx context.Context, pedidoID, motivo, expl string) error {
 	d.decisiones.Add(1)
+	if d.durante != nil {
+		d.durante()
+	}
 	if !domain.MotivoDeRechazoValido(motivo) {
 		return domain.ErrMotivoDesconocido
 	}

@@ -355,6 +355,12 @@ func TestValidate_RechazaLaSimulacionDePedidosFueraDeDesarrollo(t *testing.T) {
 	if err := Validate(c); err != nil {
 		t.Fatalf("en desarrollo la simulación debía pasar: %v", err)
 	}
+	// Sin APP_ENV vale «development»: un contenedor arrancado a mano contra la Uber de producción.
+	c.UberEatsEnv = "production"
+	if err := Validate(c); err == nil {
+		t.Fatal("PLATFORM_ORDERS_SIMULATED arrancó hablando con la Uber de producción")
+	}
+	c.UberEatsEnv = ""
 	c.Env = "production"
 	c.CORSOrigin = "https://app.elgatobobah.com"
 	c.AppDatabaseURL = "postgres://gatobobah_app:pw@x"

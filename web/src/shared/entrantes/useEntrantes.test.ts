@@ -40,7 +40,7 @@ const conPermiso = (permisos: string[]) => useSessionStore.setState({
 function montar() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client: qc }, children);
-  return renderHook(() => useEntrantes(), { wrapper });
+  return renderHook(() => useEntrantes({ escuchar: true }), { wrapper });
 }
 
 describe('useEntrantes', () => {
@@ -68,6 +68,25 @@ describe('useEntrantes', () => {
 
   // RED CAÍDA Y RECONECTADA, o una subida que cambió de copia de la API: lo que pasó mientras no
   // había canal no llega como aviso, se recupera al reconectar.
+  // Cada apertura del canal pregunta, también la primera: al renovar el token el canal se cierra y
+  // se abre otro, y un aviso que cae en ese hueco esperaría al sondeo de 15 s.
+  it('al abrir un canal nuevo vuelve a pedir', async () => {
+    montar();
+    await waitFor(() => expect(api.pedidosEntrantes).toHaveBeenCalledTimes(1));
+    act(() => ultima().emitir('open'));
+    await waitFor(() => expect(api.pedidosEntrantes).toHaveBeenCalledTimes(2));
+  });
+
+  // UN SOLO CANAL POR PESTAÑA: la franja, la columna y el tablero leen lo mismo, y cada uno con su
+  // /events eran cinco conexiones por tableta contando las de pedidos y avisos.
+  it('sin escuchar no abre canal propio', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client: qc }, children);
+    renderHook(() => useEntrantes(), { wrapper });
+    await waitFor(() => expect(api.pedidosEntrantes).toHaveBeenCalled());
+    expect(FakeEventSource.abiertas).toHaveLength(0);
+  });
+
   it('al reconectar el canal vuelve a pedir', async () => {
     montar();
     await waitFor(() => expect(api.pedidosEntrantes).toHaveBeenCalledTimes(1));

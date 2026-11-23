@@ -2,7 +2,7 @@ import { useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { TabletaBloqueadaContext } from '../../hooks/tabletaBloqueada';
 import { alarmaDeLaApp, type Alarma } from './alarma';
-import { useColumnaPorAceptar } from './estado';
+import { useColumnaPorAceptar, usePestanaDePedidos } from './estado';
 import { FranjaDeEntrantes } from './FranjaDeEntrantes';
 import { useEntrantes } from './useEntrantes';
 
@@ -11,7 +11,7 @@ import { useEntrantes } from './useEntrantes';
  * lo que el servidor dice pendiente con la alarma y la franja; no decide nada por su cuenta.
  */
 export function AlertaDeEntrantes({ alarma = alarmaDeLaApp }: { alarma?: Alarma }) {
-  const { pedidos } = useEntrantes();
+  const { pedidos } = useEntrantes({ escuchar: true });
   const estado = useSyncExternalStore(alarma.suscribir, alarma.estado);
   const tabletaBloqueada = useContext(TabletaBloqueadaContext);
   const columnaVisible = useColumnaPorAceptar((s) => s.visible);
@@ -32,19 +32,19 @@ export function AlertaDeEntrantes({ alarma = alarmaDeLaApp }: { alarma?: Alarma 
   useEffect(() => () => alarma.sonar(false), [alarma]);
 
   // El navegador no deja sonar hasta el primer toque: cualquiera lo destraba, en cualquier pantalla
-  // (en captura, para que lo vea aunque una hoja lo detenga). Al volver a primer plano se intenta
+  // (en captura, para que lo vea aunque una hoja lo detenga). Con el dedo, el gesto que cuenta es
+  // el `pointerup`/`touchend`/`click`, NO el `pointerdown`. Al volver a primer plano se intenta
   // otra vez: una tableta que se suspendió puede volver con el audio suspendido.
   useEffect(() => {
     const destrabar = () => alarma.desbloquear();
     const alVolver = () => {
       if (document.visibilityState === 'visible') alarma.desbloquear();
     };
-    window.addEventListener('pointerdown', destrabar, true);
-    window.addEventListener('keydown', destrabar, true);
+    const gestos = ['pointerup', 'touchend', 'click', 'keydown'] as const;
+    for (const g of gestos) window.addEventListener(g, destrabar, true);
     document.addEventListener('visibilitychange', alVolver);
     return () => {
-      window.removeEventListener('pointerdown', destrabar, true);
-      window.removeEventListener('keydown', destrabar, true);
+      for (const g of gestos) window.removeEventListener(g, destrabar, true);
       document.removeEventListener('visibilitychange', alVolver);
     };
   }, [alarma]);
@@ -52,6 +52,9 @@ export function AlertaDeEntrantes({ alarma = alarmaDeLaApp }: { alarma?: Alarma 
   if (pathname === '/pedidos' && columnaVisible) return null;
   return (
     <FranjaDeEntrantes pedidos={pedidos} alarma={estado} tabletaBloqueada={tabletaBloqueada} ahora={ahora}
-      onVer={() => navigate('/pedidos')} onActivarSonido={() => alarma.desbloquear()} />
+      onVer={() => {
+        usePestanaDePedidos.setState({ pestana: 'curso' });
+        navigate('/pedidos');
+      }} onActivarSonido={() => alarma.desbloquear()} />
   );
 }

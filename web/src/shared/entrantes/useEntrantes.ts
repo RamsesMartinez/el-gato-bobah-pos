@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { pedidosEntrantes, type PedidoEntrante } from '../../api/pedidosEntrantes';
 import { useSessionStore } from '../../stores/session';
 import { can } from '../../app/permissions';
-import { alReconectar } from '../../hooks/alReconectar';
 
 const BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -27,7 +26,7 @@ export const INTERVALO_DE_SONDEO = 15_000;
  * Un error de red NO borra lo que ya se sabía (TanStack conserva los datos): la alarma sigue
  * sonando sin red, que es lo que pide FR-021.
  */
-export function useEntrantes(): { pedidos: PedidoEntrante[]; refrescar: () => void } {
+export function useEntrantes({ escuchar = false }: { escuchar?: boolean } = {}): { pedidos: PedidoEntrante[]; refrescar: () => void } {
   const token = useSessionStore((s) => s.token);
   const user = useSessionStore((s) => s.user);
   const habilitado = !!token && can('orders.accept_incoming', user);
@@ -38,10 +37,14 @@ export function useEntrantes(): { pedidos: PedidoEntrante[]; refrescar: () => vo
   }, [qc]);
 
   useEffect(() => {
-    if (!habilitado || !token) return () => {};
+    // UN SOLO CANAL POR PESTAÑA: lo abre la alerta del shell, que siempre está montada; la columna y
+    // el tablero leen la misma consulta sin abrir el suyo.
+    if (!escuchar || !habilitado || !token) return () => {};
     const es = new EventSource(`${BASE}/events?token=${encodeURIComponent(token)}`);
     es.addEventListener('incoming.changed', refrescar);
-    alReconectar(es, refrescar);
+    // En CADA apertura y no solo al reconectar: al renovar el token este canal se cierra y se abre
+    // otro, y lo que llegó en ese hueco no vuelve a avisarse.
+    es.addEventListener('open', refrescar);
     const alVolver = () => {
       if (document.visibilityState === 'visible') refrescar();
     };
@@ -50,7 +53,7 @@ export function useEntrantes(): { pedidos: PedidoEntrante[]; refrescar: () => vo
       es.close();
       document.removeEventListener('visibilitychange', alVolver);
     };
-  }, [habilitado, token, refrescar]);
+  }, [escuchar, habilitado, token, refrescar]);
 
   const { data } = useQuery({
     queryKey: CLAVE_ENTRANTES,

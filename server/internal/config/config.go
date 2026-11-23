@@ -246,8 +246,10 @@ func Validate(c Config) error {
 	}
 	// Simular en producción es aceptar aquí lo que la plataforma va a cancelar: la cocina prepara y
 	// el dinero nunca llega.
-	if c.PlatformOrdersSimulated && c.Env != "development" {
-		return errors.New("PLATFORM_ORDERS_SIMULATED solo se permite con APP_ENV=development")
+	// Y también si habla con la Uber de producción: APP_ENV vale «development» cuando falta, y un
+	// contenedor arrancado a mano sin él no debe poder fingir decisiones ante la tienda que factura.
+	if c.PlatformOrdersSimulated && (c.Env != "development" || c.UberEatsEnv == "production") {
+		return errors.New("PLATFORM_ORDERS_SIMULATED solo se permite con APP_ENV=development y sin UBER_EATS_ENV=production")
 	}
 	if err := validateCredentialsCipher(c); err != nil {
 		return err

@@ -45,6 +45,10 @@ export const tonoPorOmision: Tono = (ctx) => {
 };
 
 function contextoDelNavegador(): ContextoDeAudio | null {
+  // En iOS, Web Audio obedece el interruptor de silencio: la alarma diría «sonando» sin que se oiga.
+  // Como reproducción (Safari 16.4+) suena aunque el iPad esté en silencio.
+  const sesion = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+  if (sesion) sesion.type = 'playback';
   const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   return Ctor ? (new Ctor() as unknown as ContextoDeAudio) : null;
 }
@@ -78,6 +82,16 @@ export function crearAlarma(opts: { contexto?: () => ContextoDeAudio | null; ton
     }
     return ctx;
   };
+
+  function descartar() {
+    try {
+      fuente?.stop();
+    } catch {
+      /* ya estaba detenida */
+    }
+    fuente = null;
+    ctx = undefined;
+  }
 
   function fijar(nuevo: EstadoAlarma) {
     if (nuevo === estado) return;
@@ -119,12 +133,24 @@ export function crearAlarma(opts: { contexto?: () => ContextoDeAudio | null; ton
       if (d && estado === 'bloqueada') this.desbloquear();
     },
     desbloquear() {
+      // Un contexto cerrado no revive: se tira y se crea otro (iOS lo cierra tras una llamada).
+      if (ctx && (ctx.state as string) === 'closed') descartar();
       const c = contexto();
       if (!c || c.state === 'running') {
         aplicar();
         return;
       }
-      c.resume().then(aplicar, aplicar);
+      c.resume().then(aplicar, () => {
+        // `interrupted` en iOS: resume() rechaza para siempre. Uno nuevo sí arranca. Solo se tira el
+        // que falló: con dos intentos encimados, el segundo tiraría el bueno y quedarían dos bucles.
+        if (ctx === c) descartar();
+        const nuevo = contexto();
+        if (!nuevo) {
+          aplicar();
+          return;
+        }
+        nuevo.resume().then(aplicar, aplicar);
+      });
     },
     estado: () => estado,
     suscribir(fn) {

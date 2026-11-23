@@ -22,9 +22,10 @@ const POR_EXPIRAR_MS = 2 * 60 * 1000;
 /**
  * urgenciaDe clasifica un pedido por lo que queda de plazo.
  *
- * `decideBefore` viene del SERVIDOR como instante absoluto: el reloj de la tableta puede estar
- * corrido, y una cuenta regresiva calculada con una hora equivocada miente en la dirección más
- * cara —promete tiempo que ya no existe—.
+ * `decideBefore` es el instante absoluto que fijó el SERVIDOR, no una duración: el plazo es suyo.
+ * La cuenta se hace contra el reloj de la tableta, así que una tableta atrasada promete minutos
+ * que ya no existen; por eso los minutos se redondean hacia abajo, y el servidor rechaza decidir
+ * un pedido vencido aunque la pantalla todavía lo ofrezca.
  */
 export function urgenciaDe(decideBefore: string | null, ahora: number): Urgencia {
   if (!decideBefore) return 'normal';

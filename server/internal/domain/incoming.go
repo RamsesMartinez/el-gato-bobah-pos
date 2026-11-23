@@ -95,12 +95,12 @@ func SortByUrgency(orders []IncomingOrder) {
 // incluyen varios que solo entiende un integrador.
 type IncomingRejectReason string
 
-type motivoDeRechazo struct {
-	label      string
-	plataforma string
+type rejectReasonMeta struct {
+	label        string
+	platformCode string
 }
 
-var motivosDeRechazoPropios = map[IncomingRejectReason]motivoDeRechazo{
+var incomingRejectReasons = map[IncomingRejectReason]rejectReasonMeta{
 	"closed":       {"Ya cerramos", "STORE_CLOSED"},
 	"out_of_stock": {"Se acabó un producto", "ITEM_AVAILABILITY"},
 	"too_busy":     {"Estamos saturados", "CAPACITY"},
@@ -112,14 +112,14 @@ var motivosDeRechazoPropios = map[IncomingRejectReason]motivoDeRechazo{
 // default le mandaría al cliente una explicación que nadie eligió.
 func ParseIncomingRejectReason(raw string) (IncomingRejectReason, error) {
 	r := IncomingRejectReason(raw)
-	if _, ok := motivosDeRechazoPropios[r]; !ok {
+	if _, ok := incomingRejectReasons[r]; !ok {
 		return "", fmt.Errorf("%w: motivo de rechazo %q", ErrValidation, raw)
 	}
 	return r, nil
 }
 
 // Label es el texto que lee quien opera, y la explicación que recibe la plataforma.
-func (r IncomingRejectReason) Label() string { return motivosDeRechazoPropios[r].label }
+func (r IncomingRejectReason) Label() string { return incomingRejectReasons[r].label }
 
 // PlatformCode es el código que admite la plataforma de reparto.
-func (r IncomingRejectReason) PlatformCode() string { return motivosDeRechazoPropios[r].plataforma }
+func (r IncomingRejectReason) PlatformCode() string { return incomingRejectReasons[r].platformCode }

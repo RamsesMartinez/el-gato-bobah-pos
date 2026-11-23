@@ -113,3 +113,36 @@ describe('alarma', () => {
     expect(a.estado()).toBe('bloqueada');
   });
 });
+
+// iOS deja el contexto `interrupted` o `closed` tras una llamada o un bloqueo largo, y ahí `resume()`
+// rechaza para siempre. Sin recrearlo, la alarma quedaría muda hasta recargar la página.
+describe('alarma con un contexto que ya no revive', () => {
+  it('si resume() falla, el siguiente toque crea un contexto nuevo y suena', async () => {
+    const muerto = contextoFalso(false).ctx;
+    (muerto as unknown as { resume: () => Promise<void> }).resume = vi.fn(async () => { throw new Error('closed'); });
+    const vivo = contextoFalso(true);
+    const crear = vi.fn().mockReturnValueOnce(muerto).mockReturnValue(vivo.ctx);
+    const a = crearAlarma({ contexto: crear });
+    a.sonar(true);
+    a.desbloquear();
+    await espera();
+    await espera();
+    expect(crear).toHaveBeenCalledTimes(2);
+    expect(a.estado()).toBe('sonando');
+    // Dos intentos encimados (sonar y el toque) no dejan dos bucles sonando.
+    expect(vivo.fuentes).toHaveLength(1);
+  });
+
+  it('un contexto cerrado se reemplaza en el siguiente toque', async () => {
+    const cerrado = contextoFalso(false).ctx;
+    (cerrado as unknown as { state: string }).state = 'closed';
+    const vivo = contextoFalso(true);
+    const crear = vi.fn().mockReturnValueOnce(cerrado).mockReturnValue(vivo.ctx);
+    const a = crearAlarma({ contexto: crear });
+    a.sonar(true);
+    a.desbloquear();
+    await espera();
+    await espera();
+    expect(a.estado()).toBe('sonando');
+  });
+});

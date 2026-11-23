@@ -169,6 +169,49 @@ describe('ColumnaPorAceptar (M-PorAceptar, B2)', () => {
     expect(await screen.findByText('Pedido rechazado')).toBeInTheDocument();
   });
 
+  // SIN RESPUESTA: el servidor pudo haber aceptado y la red cortó la respuesta. Decir «no se pudo»
+  // e invitar a reintentar terminaba en un «otra tableta ya lo atendió» falso y sin comanda.
+  it('si se pierde la respuesta, no afirma que falló y dice dónde imprimir la comanda', async () => {
+    vi.mocked(api.aceptarEntrante).mockRejectedValue(new TypeError('Failed to fetch'));
+    montar([pedido(1)]);
+    await userEvent.click(screen.getByRole('button', { name: 'Aceptar' }));
+    expect(await screen.findByText('No se supo si quedó aceptado')).toBeInTheDocument();
+    expect(screen.getByText(/En preparación/)).toBeInTheDocument();
+  });
+
+  // LA HOJA DE RECHAZO NO SOBREVIVE A SU PEDIDO. Otra tableta lo decidió con la hoja abierta: al
+  // llegar el siguiente, la hoja reaparecía diciendo «Rechazar» el anterior con el motivo puesto.
+  it('si el pedido que se iba a rechazar ya no está, la hoja se cierra y olvida el motivo', async () => {
+    const r = montar([pedido(1)]);
+    await userEvent.click(screen.getByRole('button', { name: 'Rechazar' }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('radio', { name: 'Ya cerramos' }));
+    r.con([]);
+    r.con([pedido(2)]);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await userEvent.click(screen.getByRole('button', { name: 'Rechazar' }));
+    const hoja = await screen.findByRole('dialog');
+    expect(within(hoja).getByText(/Rechazar F2/)).toBeInTheDocument();
+    expect(within(hoja).getByRole('button', { name: 'Rechazar pedido' })).toBeDisabled();
+  });
+
+  // EL MÁS URGENTE SIEMPRE ABIERTO: aceptado el primero, el que sube no se queda plegado.
+  it('al decidir el primero, el siguiente se abre solo', () => {
+    const r = montar([pedido(1), pedido(2)]);
+    expect(within(tarjeta('Cliente 2')).queryByText('Taro grande')).toBeNull();
+    r.con([pedido(2)]);
+    expect(within(tarjeta('Cliente 2')).getByText('Taro grande')).toBeInTheDocument();
+  });
+
+  // Oculta (pestaña «Cerrados») no pinta nada, pero la comanda en vuelo no se pierde.
+  it('oculta no pinta la columna y conserva la comanda montada', () => {
+    vi.mocked(hook.useEntrantes).mockReturnValue({ pedidos: [pedido(1)], refrescar: vi.fn() });
+    const qc = new QueryClient();
+    render(<QueryClientProvider client={qc}><Provider><ColumnaPorAceptar oculta /></Provider></QueryClientProvider>);
+    expect(screen.queryByText('Por aceptar')).toBeNull();
+    expect(montajes).toHaveBeenCalledTimes(1);
+    expect(useColumnaPorAceptar.getState().visible).toBe(false);
+  });
+
   it('todo lo que se toca mide al menos 44 px', () => {
     montar([pedido(1), pedido(2)]);
     for (const b of screen.getAllByRole('button')) {

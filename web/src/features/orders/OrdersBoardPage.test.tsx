@@ -38,7 +38,8 @@ vi.mock('../../shared/entrantes/useEntrantes', () => ({
   CLAVE_ENTRANTES: ['pedidos-entrantes'],
 }));
 vi.mock('../../shared/entrantes/ColumnaPorAceptar', () => ({
-  ColumnaPorAceptar: () => (entrantes.current.length ? <div data-testid="columna-por-aceptar" /> : null),
+  ColumnaPorAceptar: ({ oculta }: { oculta?: boolean }) =>
+    (entrantes.current.length && !oculta ? <div data-testid="columna-por-aceptar" /> : null),
 }));
 
 // El ticket tiene su propia prueba; aquí importa qué pedido abre.
@@ -53,6 +54,7 @@ vi.mock('react-router', async () => ({
 }));
 
 import { OrdersBoardPage } from './OrdersBoardPage';
+import { usePestanaDePedidos } from '../../shared/entrantes/estado';
 
 const linea = (id: number, qty: number, delivered = 0): BoardLine => ({
   id, name: `Producto ${id}`, qty: String(qty), delivered: String(delivered),
@@ -94,6 +96,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   entrantes.current = [];
+  usePestanaDePedidos.setState({ pestana: 'curso' });
   vi.clearAllMocks();
   useSessionStore.setState({ user: null, token: null });
 });
@@ -668,7 +671,7 @@ describe('Pedidos con la columna «Por aceptar», el ticket y los cerrados', () 
     expect(screen.getByText('En preparación')).toBeInTheDocument();
     expect(screen.getByText('A entregar')).toBeInTheDocument();
     // La pestaña «En curso» dice cuántos esperan, para quien esté en «Cerrados».
-    expect(within(screen.getByRole('tab', { name: /En curso/ })).getByText('2 por aceptar')).toBeInTheDocument();
+    expect(within(screen.getByRole('tab', { name: /En curso/ })).getByLabelText('2 por aceptar')).toHaveTextContent('2');
   });
 
   test('«Cerrados» lista todas las entregadas de hoy, no solo las últimas cinco', async () => {
