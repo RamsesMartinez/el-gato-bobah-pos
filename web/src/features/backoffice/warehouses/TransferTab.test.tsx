@@ -108,4 +108,35 @@ describe('traspaso entre almacenes (spec 094, maqueta B)', () => {
     await waitFor(() => expect(back.createTransfer).toHaveBeenCalledTimes(2));
     expect(back.createTransfer.mock.calls[1][0].clientKey).toBe(back.createTransfer.mock.calls[0][0].clientKey);
   });
+
+  // La clave ya se usó para otro traspaso (se mandó, la respuesta se perdió y luego se cambió la
+  // cantidad): reintentar con la misma clave fallaría siempre. Se renueva y se avisa que el primero
+  // pudo haber entrado.
+  test('una clave ya usada se renueva y avisa que el traspaso ya se había hecho', async () => {
+    back.createTransfer.mockRejectedValueOnce(new ApiError(409, 'TRANSFER_KEY_REUSED', 'x', ''));
+    montar();
+    const leche = await fila('Leche entera');
+    fireEvent.click(within(leche).getByRole('button', { name: 'Más' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Traspasar 1 artículo' }));
+    expect(await screen.findByText('Ese traspaso ya se había hecho. Revisa las existencias antes de repetirlo.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Traspasar 1 artículo' }));
+    await waitFor(() => expect(back.createTransfer).toHaveBeenCalledTimes(2));
+    expect(back.createTransfer.mock.calls[1][0].clientKey).not.toBe(back.createTransfer.mock.calls[0][0].clientKey);
+  });
+
+  // Otro origen u otro destino es otro traspaso: con la clave del borrador anterior el servidor lo
+  // rechazaría como clave reusada.
+  test('cambiar el origen o invertir renueva la clave', async () => {
+    back.createTransfer.mockRejectedValueOnce(new Error('red'));
+    montar();
+    fireEvent.click(within(await fila('Leche entera')).getByRole('button', { name: 'Más' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Traspasar 1 artículo' }));
+    await waitFor(() => expect(back.createTransfer).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Invertir' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Invertir' }));
+    fireEvent.click(within(await fila('Leche entera')).getByRole('button', { name: 'Más' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Traspasar 1 artículo' }));
+    await waitFor(() => expect(back.createTransfer).toHaveBeenCalledTimes(2));
+    expect(back.createTransfer.mock.calls[1][0].clientKey).not.toBe(back.createTransfer.mock.calls[0][0].clientKey);
+  });
 });

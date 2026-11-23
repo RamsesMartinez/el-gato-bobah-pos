@@ -22,6 +22,7 @@ import { posApi } from '../../api/pos';
 import { Segmented } from '../../components/Segmented';
 import { TransferTab } from './warehouses/TransferTab';
 import { BringSheet } from './warehouses/BringSheet';
+import { richestSource } from './warehouses/transferUnits';
 import type { StockLevel } from '../../api/backoffice';
 
 // El orden lo fijó el plan del 038: Existencias · Movimientos · Insumos · Por recibir · Conteo · Salud.
@@ -153,7 +154,7 @@ export function StockPage() {
                         {/* Un negativo en el de venta con mercancía en otro almacén se trae de ahí (spec 094). */}
                         {atSales && canTransfer && Number(s.on_hand) < 0 && (s.transfer_from?.length ?? 0) > 0 && (s.ingredient_id ?? s.product_id) && (
                           <Button ml={2} size="sm" minH="44px" variant="outline" onClick={() => setBring(s)}>
-                            Traer de {s.transfer_from![0].name}
+                            Traer de {richestSource(s.transfer_from!).name}
                           </Button>
                         )}
                       </Table.Cell>
@@ -233,7 +234,7 @@ export function StockPage() {
       {bring && bring.transfer_from?.[0] && whList.find((w) => w.isSales) && (
         <BringSheet onClose={() => setBring(null)}
           item={{ itemType: bring.item_type, id: (bring.ingredient_id ?? bring.product_id)!, name: bring.item_name, unit: bring.unit_code, onHand: bring.on_hand }}
-          from={bring.transfer_from[0]}
+          sources={bring.transfer_from}
           to={{ id: whList.find((w) => w.isSales)!.id, name: whList.find((w) => w.isSales)!.name }} />
       )}
     </Page>

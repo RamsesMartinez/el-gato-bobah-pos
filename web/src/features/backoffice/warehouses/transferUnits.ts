@@ -26,3 +26,13 @@ export function toBase(typed: string, baseCode: string): number {
   if (!Number.isFinite(n) || n <= 0) return 0;
   return Math.round(n * typedUnit(baseCode).factor * 10000) / 10000;
 }
+
+// KEY_REUSED_MESSAGE se dice cuando la clave del traspaso ya se usó con otro cuerpo: casi siempre el
+// primer envío sí entró y su respuesta se perdió, así que repetirlo a ciegas movería la mercancía dos
+// veces.
+export const KEY_REUSED_MESSAGE = 'Ese traspaso ya se había hecho. Revisa las existencias antes de repetirlo.';
+
+// richestSource es el almacén que más tiene del artículo: el que «Traer de…» propone.
+export function richestSource<T extends { onHand: string }>(sources: T[]): T {
+  return sources.reduce((a, b) => (Number(b.onHand) > Number(a.onHand) ? b : a));
+}

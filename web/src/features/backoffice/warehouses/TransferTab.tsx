@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box, Button, HStack, IconButton, Input, Table, Text, VStack } from '@chakra-ui/react';
+import { Box, Button, Flex, HStack, IconButton, Input, Table, Text, VStack } from '@chakra-ui/react';
 import { LuArrowLeftRight, LuArrowRight, LuMinus, LuPlus, LuSearch } from 'react-icons/lu';
 import { Picker } from '../../../components/Picker';
 import { NumericKeypad } from '../../../components/NumericKeypad';
@@ -12,14 +12,15 @@ import { toaster } from '../../../components/ui/toaster';
 import { ApiError } from '../../../api/client';
 import { backofficeApi, type StockLevel, type TransferBody, type Warehouse } from '../../../api/backoffice';
 import { formatBaseQty } from '../../../shared/units';
-import { toBase, typedUnit } from './transferUnits';
+import { KEY_REUSED_MESSAGE, toBase, typedUnit } from './transferUnits';
 
 // La pestaña Traspaso (spec 094, maqueta B): «De → A» arriba, lo que hay en el origen con lo que hay en
 // el destino al lado, una cantidad por renglón con el teclado de la pantalla, y un solo traspaso con
 // todos los renglones. Lo que no está en el origen no se ofrece.
 
 // La clave del borrador vive en la sesión del navegador: un F5 a media confirmación no la cambia, y el
-// servidor reconoce el reintento en vez de traspasar dos veces. Se renueva solo tras un traspaso.
+// servidor reconoce el reintento en vez de traspasar dos veces. Se renueva tras un traspaso, al cambiar
+// el origen o el destino (es otro traspaso) y cuando el servidor dice que ya se usó.
 const KEY_STORAGE = 'egb:traspaso:clave';
 function storedKey(): string {
   try {
@@ -51,7 +52,7 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
   const [note, setNote] = useState('');
   const [clientKey, setClientKey] = useState(storedKey);
   const [error, setError] = useState('');
-  const [confirm, setConfirm] = useState<{ name: string; available: string }[] | null>(null);
+  const [confirm, setConfirm] = useState<{ key: string; name: string; available: string }[] | null>(null);
   const { field, setField, apply, keep, ref } = useKeypadField<string>();
 
   const fromLevels = useQuery({ queryKey: ['stock', 'levels', from], queryFn: () => backofficeApi.stockLevels(from), enabled: !!from });
@@ -104,8 +105,14 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
         const byKey = new Map(rows.map((r) => [`${r.itemType}:${r.id}`, r]));
         setConfirm((e.details?.lines ?? []).map((l) => {
           const r = byKey.get(`${l.itemType}:${l.id}`);
-          return { name: r?.name ?? '', available: formatBaseQty(l.available, r?.unit ?? '') };
+          return { key: `${l.itemType}:${l.id}`, name: r?.name ?? '', available: formatBaseQty(l.available, r?.unit ?? '') };
         }));
+        return;
+      }
+      setConfirm(null);
+      if (e instanceof ApiError && e.code === 'TRANSFER_KEY_REUSED') {
+        setClientKey(renewKey());
+        setError(KEY_REUSED_MESSAGE);
         return;
       }
       setError(e instanceof ApiError && e.code === 'WAREHOUSE_NOT_FOUND'
@@ -120,6 +127,15 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
     const n = Math.max(0, (Number(qty[r.key]) || 0) + d);
     setRowQty(r.key, n === 0 ? '' : String(n));
   };
+  // Otro origen u otro destino es otro traspaso: lleva clave nueva.
+  const route = (f?: number, t?: number) => {
+    setFrom(f);
+    setTo(t);
+    setQty({});
+    setField(null);
+    setError('');
+    setClientKey(renewKey());
+  };
   const options = (exclude?: number) => warehouses.filter((w) => w.id !== exclude)
     .map((w) => ({ value: String(w.id), label: w.isSales ? `${w.name} · de venta` : w.name }));
   const fieldRow = rows.find((r) => r.key === field);
@@ -130,14 +146,14 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
         <HStack gap={2} flexWrap="wrap">
           <Box w="200px" role="group" aria-label="De">
             <Picker title="¿De dónde sale?" value={String(from ?? '')} options={options(to)}
-              onChange={(v) => { setFrom(Number(v)); setQty({}); }} />
+              onChange={(v) => route(Number(v), to)} />
           </Box>
           <LuArrowRight aria-hidden />
           <Box w="200px" role="group" aria-label="A">
-            <Picker title="¿A dónde va?" value={String(to ?? '')} options={options(from)} onChange={(v) => setTo(Number(v))} />
+            <Picker title="¿A dónde va?" value={String(to ?? '')} options={options(from)} onChange={(v) => route(from, Number(v))} />
           </Box>
           <IconButton aria-label="Invertir" minH="44px" minW="44px" variant="outline"
-            onClick={() => { setFrom(to); setTo(from); setQty({}); }}>
+            onClick={() => route(to, from)}>
             <LuArrowLeftRight />
           </IconButton>
         </HStack>
@@ -147,6 +163,9 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
         </HStack>
       </HStack>
 
+      {/* Con 1024 px o más el teclado va a la derecha de la tabla: abajo le quitaba a la lista casi
+          todo el alto de la pantalla de 600 px y quedaban uno o dos renglones a la vista. */}
+      <Flex flex="1" minH={0} gap={3} direction={{ base: 'column', lg: 'row' }}>
       <Box flex="1" minH={0} overflowY="auto" bg="bg.panel" borderRadius="lg" borderWidth="1px">
         <Table.Root size="sm">
           <Table.Header><Table.Row>
@@ -185,28 +204,31 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
         </Table.Root>
       </Box>
 
-      {fieldRow ? (
-        <HStack flexShrink={0} gap={3} align="end">
-          <Box flex="1" maxW="320px">
+      {fieldRow && (
+        <Flex flexShrink={0} gap={3} align={{ base: 'end', lg: 'stretch' }} direction={{ base: 'row', lg: 'column' }}
+          w={{ base: 'auto', lg: '280px' }} data-testid="teclado-traspaso">
+          <Box flex={{ base: '1', lg: 'none' }} maxW="320px">
             <NumericKeypad allowDecimal={typedUnit(fieldRow.unit).decimals}
               onKey={(k) => setRowQty(fieldRow.key, apply(qty[fieldRow.key] ?? '', k, typedUnit(fieldRow.unit).decimals))} />
           </Box>
-          <Box flex="1" />
-          <Button minH="56px" onClick={() => setField(null)}>Listo</Button>
-        </HStack>
-      ) : (
-        <VStack align="stretch" gap={1} flexShrink={0}>
+          <Box flex="1" display={{ base: 'block', lg: 'none' }} />
+          <Button minH="56px" colorPalette="brand" onClick={() => setField(null)}>Listo</Button>
+        </Flex>
+      )}
+      </Flex>
+
+      {/* Con el teclado abajo (pantalla angosta) el pie se esconde; con el teclado a la derecha se queda. */}
+      <VStack align="stretch" gap={1} flexShrink={0} display={fieldRow ? { base: 'none', lg: 'flex' } : 'flex'}>
           <HStack gap={3}>
             <Input aria-label="Nota" placeholder="Nota (opcional)" minH="44px" maxW="420px" maxLength={200}
               value={note} onChange={(e) => setNote(e.target.value)} />
-            <Button minH="52px" ml="auto" disabled={chosen.length === 0 || !from || !to} loading={send.isPending}
+            <Button minH="52px" ml="auto" colorPalette="brand" disabled={chosen.length === 0 || !from || !to} loading={send.isPending}
               onClick={() => { setError(''); send.mutate(false); }}>
               Traspasar {chosen.length} {chosen.length === 1 ? 'artículo' : 'artículos'}
             </Button>
           </HStack>
           {error && <Text fontSize="sm" color="fg.error">{error}</Text>}
-        </VStack>
-      )}
+      </VStack>
 
       {confirm && (
         <DrawerRoot open placement="bottom" onOpenChange={(e) => { if (!e.open) setConfirm(null); }}>
@@ -215,13 +237,15 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
             <DrawerHeader><Text fontWeight="700">{name(from)} se quedaría en negativo</Text></DrawerHeader>
             <DrawerBody>
               <VStack align="stretch" gap={1}>
-                {confirm.map((c) => <Text key={c.name}>{c.name}: hay {c.available} en {name(from)}</Text>)}
+                {confirm.map((c) => <Text key={c.key}>{c.name}: hay {c.available} en {name(from)}</Text>)}
                 <Text fontSize="sm" color="fg.muted" mt={2}>Si de verdad hay más, el conteo lo corregirá después.</Text>
               </VStack>
             </DrawerBody>
             <DrawerFooter>
-              <Button minH="44px" variant="ghost" onClick={() => setConfirm(null)}>Revisar cantidades</Button>
-              <Button minH="52px" loading={send.isPending} onClick={() => send.mutate(true)}>Traspasar de todos modos</Button>
+              <Button minH="52px" variant="outline" onClick={() => setConfirm(null)}>Revisar cantidades</Button>
+              <Button minH="52px" ml="auto" colorPalette="orange" loading={send.isPending} onClick={() => send.mutate(true)}>
+                Traspasar de todos modos
+              </Button>
             </DrawerFooter>
           </DrawerContent>
         </DrawerRoot>
