@@ -36,7 +36,10 @@ export function WarehousesSettings() {
   const items = data?.items ?? [];
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Warehouse | null>(null);
-  const refresh = () => qc.invalidateQueries({ queryKey: ['warehouses'] });
+  // Los nombres van aparte (quien cuenta o registra merma no lee la lista completa): se refrescan juntos.
+  const refresh = () => Promise.all([
+    qc.invalidateQueries({ queryKey: ['warehouses'] }), qc.invalidateQueries({ queryKey: ['warehouse-names'] }),
+  ]);
   const sales = items.filter((w) => w.isSales);
   const storage = items.filter((w) => !w.isSales);
   // Desde Almacén se llega con #almacenes: la sección vive dentro de Negocio y hay que ir a ella.

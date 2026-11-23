@@ -219,7 +219,7 @@ export function StockPage() {
                     </Table.Cell>
                     {/* Un motivo largo partía la fecha en cuatro renglones: se recorta, y el texto completo
                         sale al dejar el dedo encima. */}
-                    <Table.Cell maxW="240px"><Text truncate title={m.reason ?? undefined}>{m.reason ?? '—'}</Text></Table.Cell>
+                    <Table.Cell maxW="240px"><Text lineClamp={2} title={m.reason ?? undefined}>{m.reason ?? '—'}</Text></Table.Cell>
                   </Table.Row>
                 ))}
               </Table.Body>
