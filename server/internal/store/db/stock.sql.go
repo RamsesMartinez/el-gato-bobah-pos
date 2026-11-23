@@ -147,6 +147,9 @@ select sl.item_type,
        coalesce(i.name, p.name) as item_name,
        sum(sl.on_hand)::numeric(14,4) as on_hand,
        coalesce(i.min_stock, p.min_stock) as min_stock,
+       -- El mínimo propio del almacén leído (min_warehouse_id): el servicio decide con él y el del
+       -- artículo cuál vale en ese almacén.
+       bsm.min_stock as own_min_stock,
        coalesce(iu.code, 'pieza') as unit_code,
        -- El ` + "`" + `true` + "`" + ` final no cambia nada (todo renglón es de un insumo o de un producto): deja la
        -- columna no nulable sin depender de cómo infiera sqlc un coalesce de dos left join.
@@ -158,14 +161,21 @@ from stock_levels sl
 left join ingredients i on i.id = sl.ingredient_id
 left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = sl.product_id
-where sl.warehouse_id = any($1::bigint[])
+left join branch_stock_minimums bsm on bsm.warehouse_id = $1::bigint
+      and (bsm.ingredient_id = sl.ingredient_id or bsm.product_id = sl.product_id)
+where sl.warehouse_id = any($2::bigint[])
   -- Es la lista de faltantes de la pantalla (marca «bajo»): un insumo archivado ahí es un faltante
   -- falso (spec 077). Su existencia sigue en Almacén › Archivados. Un producto archivado sí sale,
   -- marcado: desactivar productos no es de esa feature.
   and (sl.ingredient_id is null or i.is_active)
-group by sl.item_type, i.id, p.id, iu.code
+group by sl.item_type, i.id, p.id, iu.code, bsm.min_stock
 order by item_name
 `
+
+type ListStockLevelsParams struct {
+	MinWarehouseID *int64  `json:"min_warehouse_id"`
+	WarehouseIds   []int64 `json:"warehouse_ids"`
+}
 
 type ListStockLevelsRow struct {
 	ItemType     StockItemType    `json:"item_type"`
@@ -174,6 +184,7 @@ type ListStockLevelsRow struct {
 	ItemName     string           `json:"item_name"`
 	OnHand       decimal.Decimal  `json:"on_hand"`
 	MinStock     *decimal.Decimal `json:"min_stock"`
+	OwnMinStock  *decimal.Decimal `json:"own_min_stock"`
 	UnitCode     string           `json:"unit_code"`
 	IsActive     bool             `json:"is_active"`
 	Value        decimal.Decimal  `json:"value"`
@@ -182,8 +193,8 @@ type ListStockLevelsRow struct {
 // Almacén / niveles
 // Los almacenes que se piden, sumados por artículo (spec 094): uno solo (el de venta por omisión, o
 // el elegido) o todos los de la sucursal. Con un almacén, la suma es su cifra.
-func (q *Queries) ListStockLevels(ctx context.Context, warehouseIds []int64) ([]ListStockLevelsRow, error) {
-	rows, err := q.db.Query(ctx, listStockLevels, warehouseIds)
+func (q *Queries) ListStockLevels(ctx context.Context, arg ListStockLevelsParams) ([]ListStockLevelsRow, error) {
+	rows, err := q.db.Query(ctx, listStockLevels, arg.MinWarehouseID, arg.WarehouseIds)
 	if err != nil {
 		return nil, err
 	}
@@ -198,6 +209,7 @@ func (q *Queries) ListStockLevels(ctx context.Context, warehouseIds []int64) ([]
 			&i.ItemName,
 			&i.OnHand,
 			&i.MinStock,
+			&i.OwnMinStock,
 			&i.UnitCode,
 			&i.IsActive,
 			&i.Value,
@@ -216,7 +228,8 @@ const listStockMovements = `-- name: ListStockMovements :many
 select sm.id, sm.item_type, coalesce(i.name, p.name) as item_name, sm.movement_type,
        sm.quantity, sm.reason, sm.created_at, sm.warehouse_id, w.name as warehouse_name,
        coalesce(iu.code, 'pieza')::text as unit_code, sm.transfer_id,
-       t.from_warehouse_id as transfer_from_id, fw.name as transfer_from_name, tw.name as transfer_to_name
+       t.from_warehouse_id as transfer_from_id, fw.name as transfer_from_name, tw.name as transfer_to_name,
+       fw.is_active as transfer_from_active, tw.is_active as transfer_to_active
 from stock_movements sm
 join warehouses w on w.id = sm.warehouse_id
 left join ingredients i on i.id = sm.ingredient_id
@@ -236,20 +249,22 @@ type ListStockMovementsParams struct {
 }
 
 type ListStockMovementsRow struct {
-	ID               int64             `json:"id"`
-	ItemType         StockItemType     `json:"item_type"`
-	ItemName         string            `json:"item_name"`
-	MovementType     StockMovementType `json:"movement_type"`
-	Quantity         decimal.Decimal   `json:"quantity"`
-	Reason           *string           `json:"reason"`
-	CreatedAt        time.Time         `json:"created_at"`
-	WarehouseID      int64             `json:"warehouse_id"`
-	WarehouseName    string            `json:"warehouse_name"`
-	UnitCode         string            `json:"unit_code"`
-	TransferID       *int64            `json:"transfer_id"`
-	TransferFromID   *int64            `json:"transfer_from_id"`
-	TransferFromName *string           `json:"transfer_from_name"`
-	TransferToName   *string           `json:"transfer_to_name"`
+	ID                 int64             `json:"id"`
+	ItemType           StockItemType     `json:"item_type"`
+	ItemName           string            `json:"item_name"`
+	MovementType       StockMovementType `json:"movement_type"`
+	Quantity           decimal.Decimal   `json:"quantity"`
+	Reason             *string           `json:"reason"`
+	CreatedAt          time.Time         `json:"created_at"`
+	WarehouseID        int64             `json:"warehouse_id"`
+	WarehouseName      string            `json:"warehouse_name"`
+	UnitCode           string            `json:"unit_code"`
+	TransferID         *int64            `json:"transfer_id"`
+	TransferFromID     *int64            `json:"transfer_from_id"`
+	TransferFromName   *string           `json:"transfer_from_name"`
+	TransferToName     *string           `json:"transfer_to_name"`
+	TransferFromActive *bool             `json:"transfer_from_active"`
+	TransferToActive   *bool             `json:"transfer_to_active"`
 }
 
 // Los últimos movimientos de los almacenes pedidos (spec 094). De un traspaso viajan sus dos
@@ -279,6 +294,8 @@ func (q *Queries) ListStockMovements(ctx context.Context, arg ListStockMovements
 			&i.TransferFromID,
 			&i.TransferFromName,
 			&i.TransferToName,
+			&i.TransferFromActive,
+			&i.TransferToActive,
 		); err != nil {
 			return nil, err
 		}

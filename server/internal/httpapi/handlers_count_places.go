@@ -10,7 +10,7 @@ import (
 // GET /stock/count-places[?warehouseId=] — los lugares del almacén (el de venta sin él), en el
 // orden del recorrido.
 func (h *Handlers) ListCountPlaces(w http.ResponseWriter, r *http.Request) {
-	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	sel, err := warehouseFromQuery(r, false)
 	if err != nil {
 		Error(w, err)
 		return
@@ -30,7 +30,7 @@ func (h *Handlers) CreateCountPlace(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		WarehouseID *int64 `json:"warehouseId"`
 	}
-	if err := Decode(r, &body); err != nil {
+	if err := DecodeStrict(r, &body); err != nil {
 		Error(w, err)
 		return
 	}

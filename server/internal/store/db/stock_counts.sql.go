@@ -29,10 +29,17 @@ func (q *Queries) CountChangedAfterPreview(ctx context.Context, countID int64) (
 const countItems = `-- name: CountItems :many
 select i.id, i.name, cp.name as count_place, cp.id as count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at,
        u.kind as base_unit_kind, i.density_g_per_ml, l.gross_g, l.gross_containers, l.tare_g_used, l.density_used,
-       l.closed_packs, i.alt_names, (i.count_place_id is not null and cp.id is null)::bool as place_elsewhere
+       l.closed_packs, i.alt_names, (i.count_place_id is not null and cp.id is null)::bool as place_elsewhere,
+       -- De este almacén: en el de venta todo; en otro, lo que tiene existencia, lugar o ya se
+       -- capturó aquí. Lo demás viaja igual, para encontrarlo buscando (el primer conteo de una
+       -- Bodega nueva es el que carga lo que tiene).
+       (w.is_sales or cp.id is not null or l.ingredient_id is not null
+        or exists (select 1 from stock_levels sl where sl.warehouse_id = c.warehouse_id
+                    and sl.ingredient_id = i.id and sl.on_hand <> 0))::bool as in_warehouse
   from ingredients i
   join units u on u.id = i.base_unit_id
   join stock_counts c on c.id = $1
+  join warehouses w on w.id = c.warehouse_id
   left join count_places cp on cp.id = i.count_place_id and cp.warehouse_id = c.warehouse_id
   left join stock_count_lines l on l.ingredient_id = i.id and l.count_id = c.id
  where i.is_active and i.track_stock
@@ -56,6 +63,7 @@ type CountItemsRow struct {
 	ClosedPacks     []byte             `json:"closed_packs"`
 	AltNames        []string           `json:"alt_names"`
 	PlaceElsewhere  bool               `json:"place_elsewhere"`
+	InWarehouse     bool               `json:"in_warehouse"`
 }
 
 // Lo que se cuenta: los insumos activos que llevan existencia, por lugar (los sin lugar al final)
@@ -88,6 +96,7 @@ func (q *Queries) CountItems(ctx context.Context, countID int64) ([]CountItemsRo
 			&i.ClosedPacks,
 			&i.AltNames,
 			&i.PlaceElsewhere,
+			&i.InWarehouse,
 		); err != nil {
 			return nil, err
 		}
@@ -253,20 +262,27 @@ func (q *Queries) CountProductLines(ctx context.Context, countID int64) ([]Count
 
 const countProducts = `-- name: CountProducts :many
 
-select p.id, p.name, c.name as category, l.counted_qty, p.alt_names
+select p.id, p.name, c.name as category, l.counted_qty, p.alt_names,
+       -- De este almacén: la misma regla que CountItems, sin lugares (los productos no tienen).
+       (w.is_sales or l.product_id is not null
+        or exists (select 1 from stock_levels sl where sl.warehouse_id = sc.warehouse_id
+                    and sl.product_id = p.id and sl.on_hand <> 0))::bool as in_warehouse
   from products p
   join categories c on c.id = p.category_id
-  left join stock_count_product_lines l on l.product_id = p.id and l.count_id = $1
+  join stock_counts sc on sc.id = $1
+  join warehouses w on w.id = sc.warehouse_id
+  left join stock_count_product_lines l on l.product_id = p.id and l.count_id = sc.id
  where p.is_active and p.track_stock and p.type <> 'combo'
  order by c.sort_key, c.name, p.name, p.id
 `
 
 type CountProductsRow struct {
-	ID         int64            `json:"id"`
-	Name       string           `json:"name"`
-	Category   string           `json:"category"`
-	CountedQty *decimal.Decimal `json:"counted_qty"`
-	AltNames   []string         `json:"alt_names"`
+	ID          int64            `json:"id"`
+	Name        string           `json:"name"`
+	Category    string           `json:"category"`
+	CountedQty  *decimal.Decimal `json:"counted_qty"`
+	AltNames    []string         `json:"alt_names"`
+	InWarehouse bool             `json:"in_warehouse"`
 }
 
 // ---- Productos con existencia propia en el conteo (spec 069, issue #252) ----
@@ -289,6 +305,7 @@ func (q *Queries) CountProducts(ctx context.Context, countID int64) ([]CountProd
 			&i.Category,
 			&i.CountedQty,
 			&i.AltNames,
+			&i.InWarehouse,
 		); err != nil {
 			return nil, err
 		}
@@ -699,8 +716,14 @@ func (q *Queries) MarkCountPreviewed(ctx context.Context, id int64) error {
 
 const notCountedIngredients = `-- name: NotCountedIngredients :many
 select i.id, i.name from ingredients i
+  join stock_counts c on c.id = $1
+  join warehouses w on w.id = c.warehouse_id
  where i.is_active and i.track_stock
-   and not exists (select 1 from stock_count_lines l where l.count_id = $1 and l.ingredient_id = i.id)
+   and not exists (select 1 from stock_count_lines l where l.count_id = c.id and l.ingredient_id = i.id)
+   and (w.is_sales
+        or exists (select 1 from count_places cp where cp.id = i.count_place_id and cp.warehouse_id = c.warehouse_id)
+        or exists (select 1 from stock_levels sl where sl.warehouse_id = c.warehouse_id
+                    and sl.ingredient_id = i.id and sl.on_hand <> 0))
  order by i.name, i.id
 `
 
@@ -709,8 +732,10 @@ type NotCountedIngredientsRow struct {
 	Name string `json:"name"`
 }
 
-func (q *Queries) NotCountedIngredients(ctx context.Context, countID int64) ([]NotCountedIngredientsRow, error) {
-	rows, err := q.db.Query(ctx, notCountedIngredients, countID)
+// Solo lo de este almacén (la misma regla que in_warehouse de CountItems): en una Bodega, «sin
+// contar» no son todos los artículos del negocio.
+func (q *Queries) NotCountedIngredients(ctx context.Context, id int64) ([]NotCountedIngredientsRow, error) {
+	rows, err := q.db.Query(ctx, notCountedIngredients, id)
 	if err != nil {
 		return nil, err
 	}
@@ -731,8 +756,13 @@ func (q *Queries) NotCountedIngredients(ctx context.Context, countID int64) ([]N
 
 const notCountedProducts = `-- name: NotCountedProducts :many
 select p.id, p.name from products p
+  join stock_counts c on c.id = $1
+  join warehouses w on w.id = c.warehouse_id
  where p.is_active and p.track_stock and p.type <> 'combo'
-   and not exists (select 1 from stock_count_product_lines l where l.count_id = $1 and l.product_id = p.id)
+   and not exists (select 1 from stock_count_product_lines l where l.count_id = c.id and l.product_id = p.id)
+   and (w.is_sales
+        or exists (select 1 from stock_levels sl where sl.warehouse_id = c.warehouse_id
+                    and sl.product_id = p.id and sl.on_hand <> 0))
  order by p.name, p.id
 `
 
@@ -741,8 +771,8 @@ type NotCountedProductsRow struct {
 	Name string `json:"name"`
 }
 
-func (q *Queries) NotCountedProducts(ctx context.Context, countID int64) ([]NotCountedProductsRow, error) {
-	rows, err := q.db.Query(ctx, notCountedProducts, countID)
+func (q *Queries) NotCountedProducts(ctx context.Context, id int64) ([]NotCountedProductsRow, error) {
+	rows, err := q.db.Query(ctx, notCountedProducts, id)
 	if err != nil {
 		return nil, err
 	}

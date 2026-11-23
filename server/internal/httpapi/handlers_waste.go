@@ -67,7 +67,7 @@ func (h *Handlers) RecordWaste(w http.ResponseWriter, r *http.Request) {
 		Note           *string         `json:"note"`
 		WarehouseID    *int64          `json:"warehouseId"`
 	}
-	if err := Decode(r, &body); err != nil {
+	if err := DecodeStrict(r, &body); err != nil {
 		Error(w, err)
 		return
 	}

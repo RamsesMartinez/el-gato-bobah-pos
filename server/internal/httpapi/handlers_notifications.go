@@ -114,25 +114,27 @@ func (h *Handlers) ResolveNotification(w http.ResponseWriter, r *http.Request) {
 // lowStockBody es la sección «Alertas» como la manda la pantalla. branchMinStock se distingue
 // ausente (no se toca) de null (se quita el de la sucursal).
 type lowStockBody struct {
-	Enabled           bool             `json:"enabled"`
-	OnMin             bool             `json:"onMin"`
-	OnOut             bool             `json:"onOut"`
-	Banner            bool             `json:"banner"`
-	MinStock          *decimal.Decimal `json:"minStock"`
-	CoverageDays      *int             `json:"coverageDays"`
-	BranchMinStock    *json.RawMessage `json:"branchMinStock"`
-	ExpectedUpdatedAt *time.Time       `json:"expectedUpdatedAt"`
-	WarehouseID       *int64           `json:"warehouseId"`
+	Enabled      bool             `json:"enabled"`
+	OnMin        bool             `json:"onMin"`
+	OnOut        bool             `json:"onOut"`
+	Banner       bool             `json:"banner"`
+	MinStock     *decimal.Decimal `json:"minStock"`
+	CoverageDays *int             `json:"coverageDays"`
+	// BranchMinStock va sin puntero: con *json.RawMessage, un null explícito llega como nil y no se
+	// distingue de ausente, así que «quitar el mínimo» no lo quitaba.
+	BranchMinStock    json.RawMessage `json:"branchMinStock"`
+	ExpectedUpdatedAt *time.Time      `json:"expectedUpdatedAt"`
+	WarehouseID       *int64          `json:"warehouseId"`
 }
 
 func (b lowStockBody) input() (app.LowStockInput, error) {
 	in := app.LowStockInput{Enabled: b.Enabled, OnMin: b.OnMin, OnOut: b.OnOut, Banner: b.Banner, MinStock: b.MinStock,
 		CoverageDays: b.CoverageDays, ExpectedUpdatedAt: b.ExpectedUpdatedAt}
-	if b.BranchMinStock != nil {
+	if len(b.BranchMinStock) > 0 {
 		in.BranchMinStock.Set = true
-		if string(*b.BranchMinStock) != "null" {
+		if string(b.BranchMinStock) != "null" {
 			var v decimal.Decimal
-			if err := json.Unmarshal(*b.BranchMinStock, &v); err != nil {
+			if err := json.Unmarshal(b.BranchMinStock, &v); err != nil {
 				return in, fmt.Errorf("%w: el mínimo de la sucursal es un número", domain.ErrValidation)
 			}
 			in.BranchMinStock.Value = &v
@@ -149,7 +151,7 @@ func (h *Handlers) GetLowStock(itemType string) http.HandlerFunc {
 			Error(w, err)
 			return
 		}
-		sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+		sel, err := warehouseFromQuery(r, false)
 		if err != nil {
 			Error(w, err)
 			return
@@ -204,7 +206,7 @@ func (h *Handlers) PutLowStock(itemType string) http.HandlerFunc {
 // dos a la vez y distintos se rechazan: guardar el mínimo en uno cuando la pantalla mostraba el otro
 // es peor que un 400.
 func lowStockWarehouse(r *http.Request, inBody *int64) (domain.WarehouseSel, error) {
-	fromURL, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	fromURL, err := warehouseFromQuery(r, false)
 	if err != nil {
 		return fromURL, err
 	}
@@ -237,7 +239,7 @@ func (h *Handlers) LowStockAsked(w http.ResponseWriter, r *http.Request) {
 
 // GET /stock/low-stock[?warehouseId=] — la tabla de «Alertas por lote», con lo que hay en el almacén.
 func (h *Handlers) ListLowStock(w http.ResponseWriter, r *http.Request) {
-	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	sel, err := warehouseFromQuery(r, false)
 	if err != nil {
 		Error(w, err)
 		return
@@ -311,7 +313,7 @@ func (h *Handlers) LowStockBatch(w http.ResponseWriter, r *http.Request) {
 
 // GET /stock/shopping-list[?warehouseId=] — la lista de compra del almacén (el de venta sin él).
 func (h *Handlers) ShoppingList(w http.ResponseWriter, r *http.Request) {
-	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	sel, err := warehouseFromQuery(r, false)
 	if err != nil {
 		Error(w, err)
 		return

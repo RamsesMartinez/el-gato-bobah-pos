@@ -60,9 +60,9 @@ select r.id, r.kind, r.item_type, r.ingredient_id, r.product_id,
 select count(*)::int from stock_out_reports where reported_by = sqlc.arg(user_id) and reported_at >= sqlc.arg(since);
 
 -- name: GetOutReportByClientKey :one
--- Con lo que se reportó: una llave repetida solo devuelve el reporte si es del mismo artículo o texto
--- y de la misma persona.
-select r.id, r.kind, r.notification_id, r.delta, r.reported_at, r.reported_by,
+-- Con lo que se reportó: una llave repetida solo devuelve el reporte si es del mismo artículo o texto,
+-- del mismo almacén y de la misma persona.
+select r.id, r.kind, r.notification_id, r.delta, r.reported_at, r.reported_by, r.warehouse_id,
        coalesce(r.ingredient_id, 0)::bigint as ingredient_key, coalesce(r.product_id, 0)::bigint as product_key,
        coalesce(n.query_text, '')::text as query_text
   from stock_out_reports r join notifications n on n.id = r.notification_id

@@ -24,6 +24,9 @@ select sl.item_type,
        coalesce(i.name, p.name) as item_name,
        sum(sl.on_hand)::numeric(14,4) as on_hand,
        coalesce(i.min_stock, p.min_stock) as min_stock,
+       -- El mínimo propio del almacén leído (min_warehouse_id): el servicio decide con él y el del
+       -- artículo cuál vale en ese almacén.
+       bsm.min_stock as own_min_stock,
        coalesce(iu.code, 'pieza') as unit_code,
        -- El `true` final no cambia nada (todo renglón es de un insumo o de un producto): deja la
        -- columna no nulable sin depender de cómo infiera sqlc un coalesce de dos left join.
@@ -35,12 +38,14 @@ from stock_levels sl
 left join ingredients i on i.id = sl.ingredient_id
 left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = sl.product_id
+left join branch_stock_minimums bsm on bsm.warehouse_id = sqlc.narg('min_warehouse_id')::bigint
+      and (bsm.ingredient_id = sl.ingredient_id or bsm.product_id = sl.product_id)
 where sl.warehouse_id = any(sqlc.arg(warehouse_ids)::bigint[])
   -- Es la lista de faltantes de la pantalla (marca «bajo»): un insumo archivado ahí es un faltante
   -- falso (spec 077). Su existencia sigue en Almacén › Archivados. Un producto archivado sí sale,
   -- marcado: desactivar productos no es de esa feature.
   and (sl.ingredient_id is null or i.is_active)
-group by sl.item_type, i.id, p.id, iu.code
+group by sl.item_type, i.id, p.id, iu.code, bsm.min_stock
 order by item_name;
 
 -- name: ListStockMovements :many
@@ -50,7 +55,8 @@ order by item_name;
 select sm.id, sm.item_type, coalesce(i.name, p.name) as item_name, sm.movement_type,
        sm.quantity, sm.reason, sm.created_at, sm.warehouse_id, w.name as warehouse_name,
        coalesce(iu.code, 'pieza')::text as unit_code, sm.transfer_id,
-       t.from_warehouse_id as transfer_from_id, fw.name as transfer_from_name, tw.name as transfer_to_name
+       t.from_warehouse_id as transfer_from_id, fw.name as transfer_from_name, tw.name as transfer_to_name,
+       fw.is_active as transfer_from_active, tw.is_active as transfer_to_active
 from stock_movements sm
 join warehouses w on w.id = sm.warehouse_id
 left join ingredients i on i.id = sm.ingredient_id

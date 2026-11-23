@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/shopspring/decimal"
@@ -15,7 +18,7 @@ import (
 // GET /stock/counts/current[?warehouseId=] — el conteo abierto del almacén (el de venta sin él), o
 // 204 si no hay.
 func (h *Handlers) CurrentCount(w http.ResponseWriter, r *http.Request) {
-	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	sel, err := warehouseFromQuery(r, false)
 	if err != nil {
 		Error(w, err)
 		return
@@ -38,11 +41,13 @@ func (h *Handlers) OpenCount(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		WarehouseID *int64 `json:"warehouseId"`
 	}
-	if r.ContentLength != 0 {
-		if err := Decode(r, &body); err != nil {
-			Error(w, err)
-			return
-		}
+	// Vacío es el de venta, venga con largo 0 o sin largo declarado (chunked): io.EOF no es un cuerpo
+	// malformado. Un campo que no conoce sí lo es: un almacén mal escrito abriría el de venta.
+	d := json.NewDecoder(r.Body)
+	d.DisallowUnknownFields()
+	if err := d.Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		Error(w, domain.ErrValidation)
+		return
 	}
 	sel, err := domain.WarehouseFromBody(body.WarehouseID)
 	if err != nil {
@@ -61,7 +66,7 @@ func (h *Handlers) OpenCount(w http.ResponseWriter, r *http.Request) {
 // GET /stock/counts/last-closed[?warehouseId=] — `{ closedAt }` del último conteo cerrado del
 // almacén, o null.
 func (h *Handlers) LastClosedCount(w http.ResponseWriter, r *http.Request) {
-	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	sel, err := warehouseFromQuery(r, false)
 	if err != nil {
 		Error(w, err)
 		return

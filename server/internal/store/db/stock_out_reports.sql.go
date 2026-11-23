@@ -141,7 +141,7 @@ func (q *Queries) FrequentOutArticles(ctx context.Context, since time.Time) ([]F
 }
 
 const getOutReportByClientKey = `-- name: GetOutReportByClientKey :one
-select r.id, r.kind, r.notification_id, r.delta, r.reported_at, r.reported_by,
+select r.id, r.kind, r.notification_id, r.delta, r.reported_at, r.reported_by, r.warehouse_id,
        coalesce(r.ingredient_id, 0)::bigint as ingredient_key, coalesce(r.product_id, 0)::bigint as product_key,
        coalesce(n.query_text, '')::text as query_text
   from stock_out_reports r join notifications n on n.id = r.notification_id
@@ -155,13 +155,14 @@ type GetOutReportByClientKeyRow struct {
 	Delta          *decimal.Decimal `json:"delta"`
 	ReportedAt     time.Time        `json:"reported_at"`
 	ReportedBy     int64            `json:"reported_by"`
+	WarehouseID    int64            `json:"warehouse_id"`
 	IngredientKey  int64            `json:"ingredient_key"`
 	ProductKey     int64            `json:"product_key"`
 	QueryText      string           `json:"query_text"`
 }
 
-// Con lo que se reportó: una llave repetida solo devuelve el reporte si es del mismo artículo o texto
-// y de la misma persona.
+// Con lo que se reportó: una llave repetida solo devuelve el reporte si es del mismo artículo o texto,
+// del mismo almacén y de la misma persona.
 func (q *Queries) GetOutReportByClientKey(ctx context.Context, clientKey uuid.UUID) (GetOutReportByClientKeyRow, error) {
 	row := q.db.QueryRow(ctx, getOutReportByClientKey, clientKey)
 	var i GetOutReportByClientKeyRow
@@ -172,6 +173,7 @@ func (q *Queries) GetOutReportByClientKey(ctx context.Context, clientKey uuid.UU
 		&i.Delta,
 		&i.ReportedAt,
 		&i.ReportedBy,
+		&i.WarehouseID,
 		&i.IngredientKey,
 		&i.ProductKey,
 		&i.QueryText,

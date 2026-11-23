@@ -24,10 +24,17 @@ select id, branch_id, warehouse_id, status from stock_counts where id = $1 for u
 -- Un lugar de OTRO almacén no ordena este recorrido: el artículo va al final, marcado (R11 M4).
 select i.id, i.name, cp.name as count_place, cp.id as count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at,
        u.kind as base_unit_kind, i.density_g_per_ml, l.gross_g, l.gross_containers, l.tare_g_used, l.density_used,
-       l.closed_packs, i.alt_names, (i.count_place_id is not null and cp.id is null)::bool as place_elsewhere
+       l.closed_packs, i.alt_names, (i.count_place_id is not null and cp.id is null)::bool as place_elsewhere,
+       -- De este almacén: en el de venta todo; en otro, lo que tiene existencia, lugar o ya se
+       -- capturó aquí. Lo demás viaja igual, para encontrarlo buscando (el primer conteo de una
+       -- Bodega nueva es el que carga lo que tiene).
+       (w.is_sales or cp.id is not null or l.ingredient_id is not null
+        or exists (select 1 from stock_levels sl where sl.warehouse_id = c.warehouse_id
+                    and sl.ingredient_id = i.id and sl.on_hand <> 0))::bool as in_warehouse
   from ingredients i
   join units u on u.id = i.base_unit_id
   join stock_counts c on c.id = sqlc.arg(count_id)
+  join warehouses w on w.id = c.warehouse_id
   left join count_places cp on cp.id = i.count_place_id and cp.warehouse_id = c.warehouse_id
   left join stock_count_lines l on l.ingredient_id = i.id and l.count_id = c.id
  where i.is_active and i.track_stock
@@ -119,9 +126,17 @@ select l.ingredient_id, i.name, u.code as base_unit_code, l.counted_qty, l.syste
  order by l.ingredient_id;
 
 -- name: NotCountedIngredients :many
+-- Solo lo de este almacén (la misma regla que in_warehouse de CountItems): en una Bodega, «sin
+-- contar» no son todos los artículos del negocio.
 select i.id, i.name from ingredients i
+  join stock_counts c on c.id = $1
+  join warehouses w on w.id = c.warehouse_id
  where i.is_active and i.track_stock
-   and not exists (select 1 from stock_count_lines l where l.count_id = $1 and l.ingredient_id = i.id)
+   and not exists (select 1 from stock_count_lines l where l.count_id = c.id and l.ingredient_id = i.id)
+   and (w.is_sales
+        or exists (select 1 from count_places cp where cp.id = i.count_place_id and cp.warehouse_id = c.warehouse_id)
+        or exists (select 1 from stock_levels sl where sl.warehouse_id = c.warehouse_id
+                    and sl.ingredient_id = i.id and sl.on_hand <> 0))
  order by i.name, i.id;
 
 -- name: LockStockLevelsInBranchNowait :many
@@ -177,10 +192,16 @@ select l.counted_qty from stock_count_lines l join stock_counts c on c.id = l.co
 
 -- name: CountProducts :many
 -- Lo que el sistema tiene NO viaja: el conteo es a ciegas. Por categoría del menú (maqueta C).
-select p.id, p.name, c.name as category, l.counted_qty, p.alt_names
+select p.id, p.name, c.name as category, l.counted_qty, p.alt_names,
+       -- De este almacén: la misma regla que CountItems, sin lugares (los productos no tienen).
+       (w.is_sales or l.product_id is not null
+        or exists (select 1 from stock_levels sl where sl.warehouse_id = sc.warehouse_id
+                    and sl.product_id = p.id and sl.on_hand <> 0))::bool as in_warehouse
   from products p
   join categories c on c.id = p.category_id
-  left join stock_count_product_lines l on l.product_id = p.id and l.count_id = sqlc.arg(count_id)
+  join stock_counts sc on sc.id = sqlc.arg(count_id)
+  join warehouses w on w.id = sc.warehouse_id
+  left join stock_count_product_lines l on l.product_id = p.id and l.count_id = sc.id
  where p.is_active and p.track_stock and p.type <> 'combo'
  order by c.sort_key, c.name, p.name, p.id;
 
@@ -236,8 +257,13 @@ select l.product_id, p.name, l.counted_qty, l.system_qty,
 
 -- name: NotCountedProducts :many
 select p.id, p.name from products p
+  join stock_counts c on c.id = $1
+  join warehouses w on w.id = c.warehouse_id
  where p.is_active and p.track_stock and p.type <> 'combo'
-   and not exists (select 1 from stock_count_product_lines l where l.count_id = $1 and l.product_id = p.id)
+   and not exists (select 1 from stock_count_product_lines l where l.count_id = c.id and l.product_id = p.id)
+   and (w.is_sales
+        or exists (select 1 from stock_levels sl where sl.warehouse_id = c.warehouse_id
+                    and sl.product_id = p.id and sl.on_hand <> 0))
  order by p.name, p.id;
 
 -- name: LockProductStockLevelsInBranchNowait :many

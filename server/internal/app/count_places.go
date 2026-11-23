@@ -142,8 +142,14 @@ func (s *BackofficeService) archivePlace(ctx context.Context, id int64, dest *in
 			return nil
 		}
 		if dest != nil {
-			if err := activePlace(ctx, q, *dest); err != nil {
+			destWarehouse, err := activePlace(ctx, q, *dest)
+			if err != nil {
 				return err
+			}
+			// Mandarlos a un lugar de otro almacén los sacaría del recorrido del suyo y los metería en
+			// uno que no los cuenta.
+			if destWarehouse != p.WarehouseID {
+				return fmt.Errorf("%w: los artículos pasan a un lugar del mismo almacén", domain.ErrValidation)
 			}
 		}
 		n, err := q.CountPlaceIngredients(ctx, &id)
@@ -173,7 +179,7 @@ func (s *BackofficeService) archivePlace(ctx context.Context, id int64, dest *in
 func (s *BackofficeService) SetCountPlace(ctx context.Context, ingredientID int64, placeID *int64) error {
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		if placeID != nil {
-			if err := activePlace(ctx, q, *placeID); err != nil {
+			if _, err := activePlace(ctx, q, *placeID); err != nil {
 				return err
 			}
 		}
@@ -188,16 +194,16 @@ func (s *BackofficeService) SetCountPlace(ctx context.Context, ingredientID int6
 	})
 }
 
-// activePlace toma el lugar for share y exige que se siga ofreciendo.
-func activePlace(ctx context.Context, q *db.Queries, id int64) error {
+// activePlace toma el lugar for share, exige que se siga ofreciendo y dice de qué almacén es.
+func activePlace(ctx context.Context, q *db.Queries, id int64) (int64, error) {
 	p, err := q.LockCountPlaceForShare(ctx, id)
 	if err != nil {
-		return notFound(err)
+		return 0, notFound(err)
 	}
 	if p.ArchivedAt.Valid {
-		return fmt.Errorf("%w: ese lugar ya no se ofrece", domain.ErrConflict)
+		return 0, fmt.Errorf("%w: ese lugar ya no se ofrece", domain.ErrConflict)
 	}
-	return nil
+	return p.WarehouseID, nil
 }
 
 func placeNameFree(ctx context.Context, q *db.Queries, name string, warehouseID int64) error {

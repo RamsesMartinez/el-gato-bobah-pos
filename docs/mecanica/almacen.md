@@ -278,3 +278,24 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     y «todos» es la suma de cada almacén, no la existencia sumada por el costo. La respuesta lo declara
     (`totalValueExcludesNegative`).
   - **Un traspaso no es consumo**: la lista de compra mide `venta` y `cancelacion` y nada más.
+  - **Las alertas son del artículo; el mínimo, de cada almacén.** Encendidas, «al mínimo», «al
+    acabarse», la franja y el mínimo del artículo valen en todos los almacenes. Guardar desde otro
+    almacén solo cambia su mínimo propio: el servidor ignora los interruptores que lleguen con un
+    `warehouseId` que no es el de venta. Tomarlos de esa hoja apagaba el aviso de Local sin que nada
+    fallara. Y `branchMinStock: null` quita el mínimo propio: con `*json.RawMessage` el `null` llegaba
+    como ausente y «quitar» no quitaba.
+  - **El almacén de venta nombrado por su id es el de venta** (`wh.IsSales`, no `sel.Sales()`): el
+    lote de mínimos con el id de Local escribía un mínimo propio y dejaba el del artículo.
+  - **Existencias de un almacén trae su mínimo**: el propio, y en el de venta el del artículo si no
+    tiene propio. En «Todos» no hay mínimo (`min_stock` nulo) y viene `valueByWarehouse`.
+  - **El conteo de un almacén que no es el de venta marca `inWarehouse`** (tiene existencia, lugar o
+    ya se capturó ahí). Los demás artículos siguen en la lista para encontrarlos buscando: el primer
+    conteo de una Bodega nueva es el que carga lo que tiene. «Sin contar» solo cuenta los de ese
+    almacén.
+  - **`GET /stock/warehouses/names`** da id, nombre y cuál es el de venta a quien cuenta, registra
+    merma o «se acabó» o configura mínimos sin ver el inventario. La lista con cuántos artículos tiene
+    cada almacén sigue pidiendo `inventory.view`.
+  - **Una llave de «se acabó» es de su almacén**: la misma llave en otro almacén es
+    `CLIENT_KEY_REUSED`, y el almacén se resuelve antes que la llave (uno ajeno es 404).
+  - **`?warehouseId=` vacío es 400** y los cuerpos que aceptan `warehouseId` rechazan campos que no
+    conocen (`warehouse_id` restaba del de venta sin avisar).

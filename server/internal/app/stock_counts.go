@@ -53,6 +53,10 @@ type CountItem struct {
 	// PlaceElsewhere: tiene lugar, pero en otro almacén; en este va al final, «Sin lugar en este
 	// almacén» (spec 094, R11 M4). Place y PlaceID vienen vacíos.
 	PlaceElsewhere bool `json:"placeElsewhere"`
+	// InWarehouse: es de este almacén (tiene existencia, lugar o ya se capturó aquí; en el de venta,
+	// todo). La pantalla de un almacén que no es el de venta enseña estos y deja los demás a la
+	// búsqueda.
+	InWarehouse bool `json:"inWarehouse"`
 }
 
 // CountWeighed es el desglose de lo contado pesando: lo cerrado (en la unidad base), lo que marcó la
@@ -187,7 +191,7 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 		v.Items[i] = CountItem{IngredientID: r.ID, Name: r.Name, Place: r.CountPlace, PlaceID: r.CountPlaceID, BaseUnitCode: r.BaseUnitCode,
 			Presentations: ps, CountedQty: r.CountedQty, Weighable: weighable[r.ID], DensityGPerMl: r.DensityGPerMl,
 			GrossWeighable: grossWeighable(r.BaseUnitKind, r.DensityGPerMl, ps), Weighed: weighedOf(r, ps),
-			AltNames: nonNilStrings(r.AltNames), PlaceElsewhere: r.PlaceElsewhere}
+			AltNames: nonNilStrings(r.AltNames), PlaceElsewhere: r.PlaceElsewhere, InWarehouse: r.InWarehouse}
 	}
 	return v, nil
 }

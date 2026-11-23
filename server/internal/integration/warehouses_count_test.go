@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -295,6 +296,13 @@ func TestWarehouseCountsAreIsolatedInTheThreeCases(t *testing.T) {
 	if _, err := svc.CreateCountPlace(ctx, domain.WarehouseSel{ID: bodega}, "Anaquel"); err != nil {
 		t.Fatal(err)
 	}
+	// Un motivo y un insumo de la empresa ajena: así la merma solo puede fallar por el almacén.
+	var reason int64
+	if err := st.Pool.QueryRow(context.Background(), `select id from waste_reasons
+		where company_id = $1 and archived_at is null and not is_staff_meal order by id limit 1`, other).Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	otherIng := ingredientIn(t, st, other, "Leche ajena conteo", "ml")
 	inTheThreeCases(t, owner, other, func(t *testing.T, as *store.Store, ctx context.Context) {
 		s := app.NewBackofficeService(as, clock)
 		if c, err := s.CurrentCount(ctx, domain.WarehouseSel{ID: bodega}); err == nil && c != nil {
@@ -309,10 +317,14 @@ func TestWarehouseCountsAreIsolatedInTheThreeCases(t *testing.T) {
 		if ms, err := s.StockMovements(ctx, domain.WarehouseSel{ID: bodega}, 10); err == nil && len(ms) > 0 {
 			t.Fatalf("se vieron movimientos de la bodega de otra empresa: %d", len(ms))
 		}
-		ing := int64(1)
-		if _, err := s.RecordWaste(ctx, app.RecordWasteCmd{ReasonID: 1, IngredientID: &ing, Qty: decimal.NewFromInt(1), Actor: 1,
-			Warehouse: domain.WarehouseSel{ID: bodega}}); err == nil {
+		_, err := s.RecordWaste(ctx, app.RecordWasteCmd{ReasonID: reason, IngredientID: &otherIng, Qty: decimal.NewFromInt(1), Actor: 1,
+			Warehouse: domain.WarehouseSel{ID: bodega}})
+		if err == nil {
 			t.Fatal("se registró merma en la bodega de otra empresa")
+		}
+		// Desde la empresa ajena, con su motivo y su insumo, lo único que falla es el almacén: 404.
+		if strings.Contains(t.Name(), "otra") && !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("merma en la bodega de otra empresa = %v; quiere 404 por el almacén", err)
 		}
 	})
 }

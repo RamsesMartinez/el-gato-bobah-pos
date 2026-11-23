@@ -27,6 +27,8 @@ type CountProductItem struct {
 	CountedQty *decimal.Decimal `json:"countedQty"`
 	// AltNames: otros nombres para encontrarlo en la lista del conteo (spec 063). Siempre un arreglo.
 	AltNames []string `json:"altNames"`
+	// InWarehouse: la misma regla que CountItem.InWarehouse.
+	InWarehouse bool `json:"inWarehouse"`
 }
 
 // CountProductAdjustmentView es un producto contado al cerrar: lo que el sistema tenía, lo contado
@@ -53,7 +55,7 @@ func countProducts(ctx context.Context, q *db.Queries, countID int64) ([]CountPr
 	out := make([]CountProductItem, len(rows))
 	for i, r := range rows {
 		out[i] = CountProductItem{ProductID: r.ID, Name: r.Name, Category: r.Category, CountedQty: r.CountedQty,
-			AltNames: nonNilStrings(r.AltNames)}
+			AltNames: nonNilStrings(r.AltNames), InWarehouse: r.InWarehouse}
 	}
 	return out, nil
 }

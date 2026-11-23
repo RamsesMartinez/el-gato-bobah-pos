@@ -1454,12 +1454,22 @@ func (s *BackofficeService) StockLevels(ctx context.Context, sel domain.Warehous
 	if err != nil {
 		return nil, err
 	}
-	rows, err := q.ListStockLevels(ctx, ids)
+	// Con un almacén se lee su mínimo; el de venta, nombrado o no, hereda el del artículo.
+	var minOf *int64
+	isSales := false
+	if !sel.All {
+		wh, err := resolveWarehouse(ctx, q, sel)
+		if err != nil {
+			return nil, err
+		}
+		minOf, isSales = &wh.ID, wh.IsSales
+	}
+	rows, err := q.ListStockLevels(ctx, db.ListStockLevelsParams{MinWarehouseID: minOf, WarehouseIds: ids})
 	if err != nil {
 		return nil, err
 	}
 	sources := map[domain.StockKey][]TransferSource{}
-	if sel.Sales() {
+	if isSales {
 		src, err := q.TransferSources(ctx)
 		if err != nil {
 			return nil, err
@@ -1471,11 +1481,57 @@ func (s *BackofficeService) StockLevels(ctx context.Context, sel domain.Warehous
 	}
 	out := make([]StockLevelView, 0, len(rows))
 	for _, r := range rows {
+		r.MinStock = warehouseMinimum(r.MinStock, r.OwnMinStock, minOf != nil, isSales)
 		from := sources[salesStockKey(string(r.ItemType), r.IngredientID, r.ProductID)]
 		if from == nil {
 			from = []TransferSource{}
 		}
 		out = append(out, StockLevelView{ListStockLevelsRow: r, TransferFrom: from})
+	}
+	return out, nil
+}
+
+// warehouseMinimum es el mínimo que vale en el almacén leído: el propio; si no tiene, el del artículo
+// solo en el de venta (la regla de warehouse_low_stock_state). Sumando almacenes no hay uno.
+func warehouseMinimum(article, own *decimal.Decimal, oneWarehouse, isSales bool) *decimal.Decimal {
+	switch {
+	case !oneWarehouse:
+		return nil
+	case own != nil:
+		return own
+	case isSales:
+		return article
+	}
+	return nil
+}
+
+// WarehouseValue es lo que vale lo que hay en un almacén, al costo vigente y sin negativos.
+type WarehouseValue struct {
+	WarehouseID   int64           `json:"warehouseId"`
+	WarehouseName string          `json:"warehouseName"`
+	Value         decimal.Decimal `json:"value"`
+}
+
+// StockValueByWarehouse es el desglose de «Todos»: cada almacén activo de la sucursal con su valor.
+// Sale de la misma consulta que Existencias, así que la suma es el total que muestra la pantalla.
+// Nunca nil.
+func (s *BackofficeService) StockValueByWarehouse(ctx context.Context) ([]WarehouseValue, error) {
+	q := s.store.QC(ctx)
+	ws, err := q.ListWarehouses(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WarehouseValue, 0, len(ws))
+	for _, w := range ws {
+		rows, err := q.ListStockLevels(ctx, db.ListStockLevelsParams{WarehouseIds: []int64{w.ID}})
+		if err != nil {
+			return nil, err
+		}
+		total := decimal.Zero
+		for _, r := range rows {
+			total = total.Add(r.Value)
+		}
+		out = append(out, WarehouseValue{WarehouseID: w.ID, WarehouseName: w.Name, Value: domain.Round2(total)})
 	}
 	return out, nil
 }
@@ -1504,6 +1560,9 @@ type StockMovementView struct {
 	UnitCode                 string               `json:"unit_code"`
 	TransferID               *int64               `json:"transfer_id"`
 	CounterpartWarehouseName *string              `json:"counterpart_warehouse_name"`
+	// CounterpartWarehouseArchived: el otro almacén del traspaso ya se archivó. Con uno nuevo del
+	// mismo nombre, es lo que distingue de cuál vino.
+	CounterpartWarehouseArchived bool `json:"counterpart_warehouse_archived"`
 }
 
 // warehouseIDs es la lista de almacenes de una lectura: uno (el de venta por omisión) o todos los
@@ -1547,6 +1606,11 @@ func (s *BackofficeService) StockMovements(ctx context.Context, sel domain.Wareh
 		if r.TransferFromID != nil && r.TransferFromName != nil && r.TransferToName != nil {
 			c := domain.TransferCounterpart(r.WarehouseID, *r.TransferFromID, *r.TransferFromName, *r.TransferToName)
 			v.CounterpartWarehouseName = &c
+			active := r.TransferToActive
+			if r.WarehouseID != *r.TransferFromID {
+				active = r.TransferFromActive
+			}
+			v.CounterpartWarehouseArchived = active != nil && !*active
 		}
 		out = append(out, v)
 	}

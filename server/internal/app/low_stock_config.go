@@ -144,6 +144,17 @@ func configureLowStockIn(ctx context.Context, q *db.Queries, t db.StockItemType,
 	if err != nil {
 		return LowStockResult{}, err
 	}
+	if !wh.IsSales {
+		// Las alertas (encendidas, al mínimo, al acabarse, franja) y el mínimo del artículo son del
+		// artículo: valen en todos los almacenes. Desde otro almacén solo se cambia su mínimo propio;
+		// tomar los interruptores de esa hoja apagaba el aviso del almacén de venta sin decirlo.
+		in.Enabled, in.OnMin, in.OnOut, in.Banner = before.LowStockEnabled, before.LowStockOnMin, before.LowStockOnOut, before.LowStockBanner
+		in.MinStock, in.CoverageDays = before.MinStock, nil
+		if before.CoverageDays != nil {
+			d := int(*before.CoverageDays)
+			in.CoverageDays = &d
+		}
+	}
 	branch, err := q.CurrentBranchID(ctx)
 	if err != nil {
 		return LowStockResult{}, err
@@ -263,14 +274,19 @@ type LowStockBatchResult struct {
 // ConfigureBatch enciende o apaga y fija el mínimo de varios artículos en una transacción. Conserva los
 // eventos y la franja de cada uno (se cambian en su ficha). La vista previa no guarda nada.
 //
-// Sin almacén, el mínimo es el del artículo (el que mide el de venta). Con un almacén nombrado, es el
-// mínimo propio de ese almacén y el del artículo no se toca.
+// En el almacén de venta (sin nombrarlo o por su id), el mínimo es el del artículo. En otro almacén es
+// el mínimo propio de ese almacén, y ni el del artículo ni el encendido se tocan: son del artículo.
 func (s *NotificationsService) ConfigureBatch(ctx context.Context, items []LowStockBatchItem, sel domain.WarehouseSel, actor int64, preview bool) ([]LowStockBatchResult, error) {
 	if len(items) == 0 || len(items) > 100 {
 		return nil, fmt.Errorf("%w: van de 1 a 100 artículos por lote", domain.ErrValidation)
 	}
 	out := make([]LowStockBatchResult, 0, len(items))
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El almacén de venta nombrado por su id es el de venta: su mínimo es el del artículo.
+		wh, err := resolveWarehouse(ctx, q, sel)
+		if err != nil {
+			return err
+		}
 		for _, it := range items {
 			t, err := itemTypeOf(it.ItemType)
 			if err != nil {
@@ -293,7 +309,7 @@ func (s *NotificationsService) ConfigureBatch(ctx context.Context, items []LowSt
 			// que de verdad dispara el aviso, aunque el renglón muestre el del artículo.
 			in := LowStockInput{Enabled: it.Enabled, OnMin: cur.LowStockOnMin, OnOut: cur.LowStockOnOut, Banner: cur.LowStockBanner,
 				MinStock: min, CoverageDays: days, Warehouse: sel}
-			if !sel.Sales() {
+			if !wh.IsSales {
 				in.MinStock = cur.MinStock
 				in.BranchMinStock = Field[decimal.Decimal]{Set: !it.KeepMin, Value: it.MinStock}
 			}

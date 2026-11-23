@@ -78,6 +78,9 @@ type OutReportRow struct {
 	UndoneAt       *time.Time `json:"undoneAt"`
 	Moved          bool       `json:"moved"`
 	Open           bool       `json:"open"`
+	// WarehouseID y WarehouseName: dónde se reportó (spec 094).
+	WarehouseID   int64  `json:"warehouseId"`
+	WarehouseName string `json:"warehouseName"`
 }
 
 // OutSuggestions son los mosaicos: lo que más se acaba y lo reportado hoy.
@@ -112,7 +115,8 @@ func (s *StockOutService) Suggestions(ctx context.Context) (OutSuggestions, erro
 	}
 	for _, r := range today {
 		row := OutReportRow{ID: r.ID, Kind: r.Kind, Name: r.Name, ReportedAt: r.ReportedAt, ReportedBy: r.ReportedBy,
-			ReportedByName: r.ReportedByName, Moved: r.Moved, Open: r.NotificationStatus == "open"}
+			ReportedByName: r.ReportedByName, Moved: r.Moved, Open: r.NotificationStatus == "open",
+			WarehouseID: r.WarehouseID, WarehouseName: r.WarehouseName}
 		if r.UndoneAt.Valid {
 			t := r.UndoneAt.Time
 			row.UndoneAt = &t
@@ -181,7 +185,13 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 		if err := q.LockReporter(ctx, int32(cmd.Actor)); err != nil { //nolint:gosec // los ids de persona caben en int4
 			return err
 		}
-		if prev, ok, err := previousReport(ctx, q, cmd.ClientKey, sameReport{actor: cmd.Actor, ing: ing, prod: prod}); err != nil || ok {
+		// El almacén antes que la llave: uno ajeno es 404 aunque la llave ya exista, y la llave
+		// repetida en otro almacén no es un reintento.
+		wh, err := resolveWarehouse(ctx, q, cmd.Warehouse)
+		if err != nil {
+			return err
+		}
+		if prev, ok, err := previousReport(ctx, q, cmd.ClientKey, sameReport{actor: cmd.Actor, ing: ing, prod: prod, warehouse: wh.ID}); err != nil || ok {
 			out = prev
 			return err
 		}
@@ -196,10 +206,6 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 			return domain.ErrNotFound
 		}
 		branch, err := q.CurrentBranchID(ctx)
-		if err != nil {
-			return err
-		}
-		wh, err := resolveWarehouse(ctx, q, cmd.Warehouse)
 		if err != nil {
 			return err
 		}
@@ -299,6 +305,8 @@ type sameReport struct {
 	actor     int64
 	ing, prod *int64
 	text      string
+	// warehouse: 0 no lo compara («no lo encontré» siempre es del almacén de venta).
+	warehouse int64
 }
 
 func keyOf(id *int64) int64 {
@@ -321,7 +329,8 @@ func previousReport(ctx context.Context, q *db.Queries, key uuid.UUID, want same
 	}
 	notFound := want.ing == nil && want.prod == nil
 	if r.ReportedBy != want.actor || (r.Kind == "not_found") != notFound ||
-		r.IngredientKey != keyOf(want.ing) || r.ProductKey != keyOf(want.prod) || (notFound && r.QueryText != want.text) {
+		r.IngredientKey != keyOf(want.ing) || r.ProductKey != keyOf(want.prod) || (notFound && r.QueryText != want.text) ||
+		(want.warehouse != 0 && r.WarehouseID != want.warehouse) {
 		return OutReportResult{}, false, domain.ErrClientKeyReused
 	}
 	live, err := q.LiveReportsOnNotification(ctx, r.NotificationID)

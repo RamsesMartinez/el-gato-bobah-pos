@@ -119,6 +119,7 @@ GET /api/v1/stock/products/{id}/low-stock admin,gerente
 GET /api/v1/stock/shopping-list admin,gerente
 GET /api/v1/stock/transfers admin,gerente
 GET /api/v1/stock/warehouses admin,gerente
+GET /api/v1/stock/warehouses/names admin,gerente,cajero,mesero
 GET /api/v1/supplier-items admin,gerente
 GET /api/v1/suppliers admin,gerente
 GET /api/v1/units admin,gerente
