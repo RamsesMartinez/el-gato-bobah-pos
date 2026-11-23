@@ -288,6 +288,13 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     total de «Todos» no era la suma de sus partes. Lo vigila
     `TestStockValueOfAllIsTheSumOfTheWarehouses`.
   - **Un traspaso no es consumo**: la lista de compra mide `venta` y `cancelacion` y nada más.
+  - **La lista de compra de la pantalla y de «Enviarme por correo» es la de todos los almacenes**
+    (`?warehouseId=all`, con dos o más; con uno, sin almacén), cada renglón con el suyo: la del de
+    venta sola dejaba fuera el «se acabó» de Bodega al que mandaba la campana. «Todos» es la unión de
+    la lista de cada almacén, no una consulta aparte. **El mínimo del artículo solo cuenta en el de
+    venta** (como `warehouse_low_stock_state`): otro almacén entra a la lista con su mínimo propio o
+    con un aviso abierto; con el del artículo, una Bodega en 0 listaba todo artículo con mínimo
+    (`TestTheShoppingListOfAllWarehousesNamesEach`).
   - **Las alertas son del artículo; el mínimo, de cada almacén.** Encendidas, «al mínimo», «al
     acabarse», la franja y el mínimo del artículo valen en todos los almacenes. Guardar desde otro
     almacén solo cambia su mínimo propio: el servidor ignora los interruptores que lleguen con un

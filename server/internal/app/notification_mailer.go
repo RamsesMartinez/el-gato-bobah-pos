@@ -505,7 +505,13 @@ func (m *NotificationMailer) SendShoppingListTo(ctx context.Context, company, us
 			return ErrNoEmail
 		}
 		to = *u.RecoveryEmail
-		lines, err := shoppingListIn(ctx, q, domain.WarehouseSel{})
+		// La de todos los almacenes, como la pantalla: la del de venta dejaba fuera lo que se acabó en
+		// Bodega. Con dos o más, cada renglón dice de cuál.
+		lines, err := shoppingListIn(ctx, q, domain.WarehouseSel{All: true})
+		if err != nil {
+			return err
+		}
+		whs, err := q.ListWarehouseNames(ctx)
 		if err != nil {
 			return err
 		}
@@ -514,20 +520,18 @@ func (m *NotificationMailer) SendShoppingListTo(ctx context.Context, company, us
 			return err
 		}
 		groups := map[string]*mailtpl.Group{}
-		var order []string
 		for _, l := range lines {
-			key := l.Supplier
-			if key == "" {
-				key = "Sin lugar de compra"
-			}
+			key := supplierKey(l)
 			g, ok := groups[key]
 			if !ok {
 				g = &mailtpl.Group{Title: key}
 				groups[key] = g
-				order = append(order, key)
 			}
 			it := mailtpl.Item{Kind: map[string]string{"out": "stock_out", "low": "stock_low"}[l.State], Name: l.Name, Why: l.Why,
 				Detail: "Hay " + domain.HumanQty(l.OnHand, l.Unit)}
+			if len(whs) > 1 {
+				it.Detail += " en " + l.WarehouseName
+			}
 			if l.Suggested != nil {
 				if l.Suggested.Packs > 0 {
 					it.Buy = fmt.Sprintf("%d × %s", l.Suggested.Packs, l.Suggested.PackName)
@@ -538,7 +542,7 @@ func (m *NotificationMailer) SendShoppingListTo(ctx context.Context, company, us
 			g.Items = append(g.Items, it)
 		}
 		var gs []mailtpl.Group
-		for _, k := range order {
+		for _, k := range supplierGroups(lines) {
 			gs = append(gs, *groups[k])
 		}
 		loc := businessLocation(ctx, q)
@@ -555,4 +559,37 @@ func (m *NotificationMailer) SendShoppingListTo(ctx context.Context, company, us
 		return "", err
 	}
 	return to, nil
+}
+
+const withoutSupplier = "Sin lugar de compra"
+
+func supplierKey(l ShoppingLine) string {
+	if l.Supplier == "" {
+		return withoutSupplier
+	}
+	return l.Supplier
+}
+
+// supplierGroups da los grupos del correo en el orden en que aparecen, con «Sin lugar de compra» al
+// final. Lo de afuera no se puede apoyar en el orden de la lista: la de «Todos» es la de cada almacén
+// una tras otra, y lo sin proveedor de Local llega antes que lo con proveedor de Bodega.
+func supplierGroups(lines []ShoppingLine) []string {
+	seen := map[string]bool{}
+	var out []string
+	without := false
+	for _, l := range lines {
+		k := supplierKey(l)
+		if k == withoutSupplier {
+			without = true
+			continue
+		}
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	if without {
+		out = append(out, withoutSupplier)
+	}
+	return out
 }

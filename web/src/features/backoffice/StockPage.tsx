@@ -213,7 +213,7 @@ export function StockPage() {
                     <Table.Cell whiteSpace="nowrap">{horaNegocio.fechaYHora(m.created_at)}</Table.Cell>
                     {warehouse === 'all' && <Table.Cell>{m.warehouse_name ?? '—'}</Table.Cell>}
                     <Table.Cell>{m.item_name}</Table.Cell>
-                    <Table.Cell>{m.movement_type}{transferSide(m)}</Table.Cell>
+                    <Table.Cell whiteSpace="nowrap">{m.movement_type}{transferSide(m)}</Table.Cell>
                     <Table.Cell textAlign="end" color={Number(m.quantity) < 0 ? 'fg.error' : 'fg.success'}>
                       {m.unit_code ? formatBaseQty(m.quantity, m.unit_code) : m.quantity}
                     </Table.Cell>

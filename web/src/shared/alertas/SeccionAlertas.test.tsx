@@ -237,6 +237,21 @@ describe('Alertas con otro almacén', () => {
       enabled: true, onMin: true, onOut: true, banner: true, minStock: '3000', branchMinStock: null, warehouseId: 2 }));
   });
 
+  // Prueba con alguien nuevo: «Cuándo avisa y la franja se cambian en Local»; «la franja» no se
+  // entendía. Se nombra el interruptor como lo dice la hoja del de venta.
+  test('la hoja de Bodega nombra el interruptor de la franja como la del de venta', async () => {
+    dos();
+    api.get.mockImplementation((_t: string, _id: number, w?: number) => Promise.resolve(w === 2
+      ? cfg({ ...articulo, branchMinStock: null, warehouseId: 2, warehouseName: 'Bodega' } as Partial<LowStockConfig>)
+      : cfg({ ...articulo, warehouseId: 1, warehouseName: 'Local' } as Partial<LowStockConfig>)));
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
+    await screen.findByText(/Bodega sin mínimo/);
+    fireEvent.click(await screen.findByRole('button', { name: 'Configurar ›' }));
+    expect(await screen.findByText(/Cuándo avisa y «Mostrar franja en pantalla cuando se acabe» se cambian en Local\./)).toBeTruthy();
+    expect(screen.queryByText(/y la franja se cambian/)).toBeNull();
+  });
+
   test('el renglón de Bodega habla del mínimo de Bodega, no del del artículo', async () => {
     dos();
     api.get.mockImplementation((_t: string, _id: number, w?: number) => Promise.resolve(w === 2

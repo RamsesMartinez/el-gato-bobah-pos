@@ -41,6 +41,7 @@ const back = vi.hoisted(() => ({
   articleArchiveCheck: vi.fn(),
   archiveArticle: vi.fn(() => Promise.resolve()),
   setDensity: vi.fn(),
+  warehouses: vi.fn(() => Promise.resolve({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 }] as unknown[] })),
 }));
 vi.mock('../../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 const pos = vi.hoisted(() => ({ businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) }));
@@ -62,6 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.view', 'inventory.configure', 'inventory.receive'] } as never });
   back.article.mockResolvedValue(ficha);
+  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 }] });
   alertas.get.mockResolvedValue({ enabled: false, onMin: true, onOut: true, banner: false, minStock: '10000', branchMinStock: null,
     coverageDays: null, asked: true, onHand: '0', unitCode: 'g', branches: 1, updatedAt: ficha.updatedAt });
   back.articleCostHistory.mockResolvedValue({ items: [compra(18, '0.006'), compra(10, '0.0055')], next: 'cursor-1', trendPct: '9.1' });
@@ -131,6 +133,20 @@ describe('Ficha del artículo', () => {
     expect(await screen.findByText('▲ Sube 9.1 %')).toBeInTheDocument();
     expect(screen.getAllByText('$6.00 / kg').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/\$30\.00 por Bolsa/).length).toBe(1);
+  });
+
+  // Prueba con alguien nuevo: con Bodega elegida en «Alertas», «Hay 27 kg» no decía de qué almacén
+  // era; es la existencia del de venta y con dos o más lo dice.
+  it('con dos almacenes dice de cuál es la existencia; con uno, como antes', async () => {
+    const { unmount } = montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText(/· Hay 27 kg$/)).toBeInTheDocument();
+    unmount();
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    montar(<ArticleSheet id={7} onClose={vi.fn()} />);
+    expect(await screen.findByText(/· Hay 27 kg en Local$/)).toBeInTheDocument();
   });
 
   it('«Ver más» pide la página siguiente', async () => {

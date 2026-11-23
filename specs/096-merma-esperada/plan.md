@@ -93,7 +93,7 @@ actual (toques y renglones visibles).
 | Conteo vs ventas (S2) | [maquetas](https://claude.ai/artifact/KxsQHew5tGpHWaCcsYRr98) | C · Agrupado por qué hacer | Tres grupos (revisar receta, usar el % sugerido, diferencia chica): dice qué hacer, no solo qué pasó |
 | Conteo sencilla/avanzada (S2) | [maquetas](https://claude.ai/artifact/RPsFWUsVS8C2itYvBX9n1d) | B · Lista del lugar | Recorrido por lugar con avance y teclado fijo; 6 de 8 renglones del lugar a 1024×600. El cambio de vista, como en Existencias |
 | Existencias sencilla/avanzada (S2) | [maquetas](https://claude.ai/artifact/5wmZHee7CYAwTfU3NXSLtD) | B · Tablero por estado, con otro cambio de vista | 14 de 20 a 1024×600. El dueño pidió que el cambio sencilla/avanzada sea con íconos, como el selector de vista de Ajustes del negocio (`SettingsLayout`, botones ícono + texto en `radiogroup`); se hace con `Segmented` y su prop `icon` (un solo componente para elegir entre pocas, R14) |
-| Ajustes › Almacén: descontar merma (S2) | [maquetas](https://claude.ai/artifact/NFvuSJ9CPACsYwYboC7XuQ) (pestaña S2) | Única disposición | Un renglón con interruptor; sin alternativa razonable |
+| Ajustes › Almacén: descontar merma (S2) | [maquetas](https://claude.ai/artifact/NFvuSJ9CPACsYwYboC7XuQ) (pestaña S2) | Única disposición, confirmada por el dueño | Un renglón con interruptor; sin alternativa razonable. El dueño confirmó el registro completo de maquetas el 2026-11-23 |
 
 ## Project Structure
 
