@@ -85,3 +85,28 @@ select ingredient_id::bigint as ingredient_id, (-sum(quantity) / 30)::numeric as
  where branch_id = current_branch_id() and ingredient_id = any(sqlc.arg(ids)::bigint[])
    and movement_type in ('venta', 'cancelacion') and created_at >= now() - interval '30 days'
  group by ingredient_id;
+
+-- name: CountLotsOf :many
+-- El desglose de fechas de un conteo, por artículo.
+select ingredient_id, expires_on, qty from stock_count_line_lots where count_id = sqlc.arg(count_id) order by ingredient_id, expires_on;
+
+-- name: KnownLotDates :many
+-- Las fechas que el sistema ya conoce de cada artículo en el almacén (lotes con algo): el conteo las
+-- ofrece sin cantidad, para no reteclearlas ni enseñar lo esperado.
+select ingredient_id, expires_on from stock_lots where warehouse_id = sqlc.arg(warehouse_id) and qty > 0 order by ingredient_id, expires_on;
+
+-- name: CountLotsSum :one
+select coalesce(sum(qty), 0)::numeric from stock_count_line_lots where count_id = sqlc.arg(count_id) and ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: DeleteCountLots :exec
+delete from stock_count_line_lots where count_id = sqlc.arg(count_id) and ingredient_id = sqlc.arg(ingredient_id);
+
+-- name: InsertCountLot :exec
+insert into stock_count_line_lots (count_id, ingredient_id, expires_on, qty)
+values (sqlc.arg(count_id), sqlc.arg(ingredient_id), sqlc.arg(expires_on), sqlc.arg(qty));
+
+-- name: CountLotIngredients :many
+select distinct ingredient_id from stock_count_line_lots where count_id = sqlc.arg(count_id) order by ingredient_id;
+
+-- name: ApplyCountLots :exec
+select apply_count_lots(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(count_id)::bigint, sqlc.arg(ingredient_id)::bigint);

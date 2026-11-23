@@ -7,6 +7,7 @@ import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../components/ui/drawer';
 import { DatePickerButton } from '../../components/DatePickerButton';
+import { ExpiryPickerButton } from '../../components/ExpiryPickerButton';
 import { NumericKeypad } from '../../components/NumericKeypad';
 import { useKeypadField } from '../../components/useKeypadField';
 import { backofficeApi, type DeliveryBody, type EditResult, type ExpenseDetail, type ExpenseItem } from '../../api/backoffice';
@@ -48,6 +49,8 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
   const [day, setDay] = useState(today);
   const [perLine, setPerLine] = useState(false);
   const [days, setDays] = useState<Record<number, string>>({});
+  // La caducidad de lo que llegó (spec 098); vacía = sin fecha.
+  const [expires, setExpires] = useState<Record<number, string>>({});
   const [qty, setQty] = useState<Record<number, string>>(() => Object.fromEntries(lines.map((l) =>
     [l.id, onlyItemId === undefined || onlyItemId === l.id ? String(missingOf(l)) : '0'])));
   const [extra, setExtra] = useState<Record<number, string>>({});
@@ -79,6 +82,7 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
         ...(perLine && days[l.id] && days[l.id] !== day ? { on: days[l.id] } : {}),
         ...(short === 'pending' || short === 'adjust' ? { shortfall: short } : {}),
         ...(over(l) ? { extraAmount: String(num(extra[l.id])) } : {}),
+        ...(l.itemType === 'ingrediente' && expires[l.id] ? { expiresOn: expires[l.id] } : {}),
       };
     }),
     decisions, fingerprint,
@@ -95,7 +99,7 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
               <Text fontSize="sm" color="fg.muted">Llegó el</Text>
               <DatePickerButton value={day} onChange={setDay} max={today} label="Día de la entrega" />
               <Button minH="44px" variant="ghost" onClick={() => setPerLine((v) => !v)}>
-                {perLine ? 'Una fecha para todo' : 'Fechas por renglón'}
+                {perLine ? 'Un día de llegada para todo' : 'Día de llegada por renglón'}
               </Button>
             </HStack>
           </DrawerHeader>
@@ -129,6 +133,10 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
                         onClick={() => setField({ id: l.id, kind: 'qty' })} onFocus={() => setField({ id: l.id, kind: 'qty' })} />
                       <IconButton aria-label={`Más ${name}`} variant="ghost" minH="44px" minW="44px" onClick={() => bump(l, 1)}><LuPlus /></IconButton>
                     </HStack>
+                    {n > 0 && l.itemType === 'ingrediente' && (
+                      <ExpiryPickerButton value={expires[l.id] ?? ''} today={today} label={`Caduca ${name}`}
+                        onChange={(v) => setExpires((p) => ({ ...p, [l.id]: v }))} />
+                    )}
                     {n > 0
                       ? <Button minH="44px" variant="outline" onClick={() => { setQty((p) => ({ ...p, [l.id]: '0' })); setField(null); }}>No llegó</Button>
                       : <Button minH="44px" variant="ghost" onClick={() => setQty((p) => ({ ...p, [l.id]: String(missing) }))}>Llegó todo</Button>}

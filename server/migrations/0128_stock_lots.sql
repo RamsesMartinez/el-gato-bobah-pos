@@ -225,6 +225,37 @@ $$;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- apply_count_lots fija los lotes de un artículo contado con fechas (R6): cada lote del almacén queda en
+-- lo contado de su fecha (0 si no se mencionó) más lo que movimientos posteriores a la captura le
+-- tomaron o devolvieron (neto). Es la misma regla con la que el conteo ajusta la existencia: contra
+-- lo que había al capturar. Quien llama ya tomó la fila de stock_levels.
+create or replace function apply_count_lots(p_company bigint, p_count bigint, p_ingredient bigint)
+returns void language plpgsql as $$
+declare
+  v_wh     bigint;
+  v_branch bigint;
+  v_last   bigint;
+begin
+  select c.warehouse_id, c.branch_id into v_wh, v_branch from stock_counts c where c.id = p_count;
+  select coalesce(cl.last_movement_id, 0) into v_last from stock_count_lines cl
+   where cl.count_id = p_count and cl.ingredient_id = p_ingredient;
+  insert into stock_lots (company_id, branch_id, warehouse_id, ingredient_id, expires_on, qty)
+  select p_company, v_branch, v_wh, p_ingredient, b.expires_on, 0
+    from stock_count_line_lots b where b.count_id = p_count and b.ingredient_id = p_ingredient
+  on conflict (company_id, warehouse_id, ingredient_id, expires_on) do nothing;
+  update stock_lots l set updated_at = now(), qty = greatest(0,
+         coalesce((select b.qty from stock_count_line_lots b
+                    where b.count_id = p_count and b.ingredient_id = p_ingredient and b.expires_on = l.expires_on), 0)
+       + coalesce((select sum(a.qty) from stock_lot_allocations a join stock_movements m on m.id = a.movement_id
+                    where a.company_id = p_company and a.lot_id = l.id and m.id > coalesce(v_last, 0)
+                      and m.stock_count_id is distinct from p_count), 0))
+   where l.company_id = p_company and l.warehouse_id = v_wh and l.ingredient_id = p_ingredient;
+  perform evaluate_expired_left(p_company, v_wh, p_ingredient);
+end;
+$$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
 -- apply_stock_lots aplica la regla de R4 a cada movimiento de artículo. Corre después de
 -- trg_stock_movement (que ya tomó y movió la fila de stock_levels de este almacén y artículo, así que
 -- todo escritor de estos lotes queda en fila detrás de ella) y antes del aviso de existencias.
@@ -274,14 +305,16 @@ begin
 
   elsif new.quantity > 0 then
     -- Una reposición vuelve a los lotes de los que salió, lo último primero (FR-023).
-    if new.movement_type = 'cancelacion' and new.order_id is not null then
+    -- `::text`: 'merma_esperada' (spec 096, subida 2) entra al enum en una migración posterior; como
+    -- texto, la comparación no truena mientras el valor no exista.
+    if new.movement_type::text in ('cancelacion', 'merma_esperada') and new.order_id is not null then
       v_need := new.quantity;
       for r in
         select a.lot_id, -sum(a.qty) as owed
           from stock_movements m join stock_lot_allocations a on a.movement_id = m.id and a.company_id = m.company_id
          where m.company_id = new.company_id and m.order_id = new.order_id and m.id <> new.id
            and m.ingredient_id = new.ingredient_id and m.warehouse_id = new.warehouse_id
-           and m.movement_type in ('venta', 'cancelacion')
+           and m.movement_type::text in ('venta', 'cancelacion', 'merma_esperada')
            and m.order_line_id is not distinct from new.order_line_id
            and m.modifier_option_id is not distinct from new.modifier_option_id
            and m.component_of_product_id is not distinct from new.component_of_product_id
@@ -396,6 +429,7 @@ drop trigger trg_stock_movement_lots on stock_movements;
 drop function apply_stock_lots();
 drop function lot_put(bigint, bigint, bigint, bigint, bigint, date, numeric);
 drop function relocate_lot(bigint, bigint, bigint, date, date, numeric);
+drop function apply_count_lots(bigint, bigint, bigint);
 drop function evaluate_expired_left(bigint, bigint, bigint);
 drop function expired_left_state(bigint, bigint, bigint);
 drop function business_today(bigint);

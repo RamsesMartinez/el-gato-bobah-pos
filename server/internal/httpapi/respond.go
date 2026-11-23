@@ -368,6 +368,9 @@ func Error(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrUnitKindMismatch):
 		// 400 con código propio: la pantalla de la compra ofrece capturar la densidad ahí mismo.
 		status, code = http.StatusBadRequest, "UNIT_KIND_MISMATCH"
+	case errors.Is(err, domain.ErrLotsExceedCounted):
+		// 400 con código propio: la pantalla del conteo lo dice en el artículo (spec 098).
+		status, code = http.StatusBadRequest, "LOTS_EXCEED_COUNTED"
 	case errors.Is(err, domain.ErrCountNeedsConfirm), errors.Is(err, domain.ErrTransferNeedsConfirm):
 		status, code = http.StatusConflict, "NEEDS_CONFIRM"
 	case errors.Is(err, domain.ErrTransferKeyReused):

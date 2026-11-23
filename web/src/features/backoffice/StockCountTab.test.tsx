@@ -31,6 +31,11 @@ vi.mock('../../api/uso', async (orig) => ({ ...(await orig<object>()), ...uso })
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 const limits = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn() }));
 vi.mock('../../api/countLimits', async (orig) => ({ ...(await orig<object>()), countLimitsApi: limits }));
+vi.mock('../../components/ExpiryPickerButton', () => ({
+  ExpiryPickerButton: ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
+    <button type="button" aria-label={label} onClick={() => onChange(value || '2026-12-10')}>{value || label}</button>
+  ),
+}));
 vi.mock('../../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) } }));
 
 // Doble del Picker sin hoja animada (ver ExpenseDialog.test.tsx).
@@ -105,6 +110,44 @@ function montar(url = '/almacen') {
 }
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
 const tecla = (k: string) => fireEvent.click(screen.getByRole('button', { name: k }));
+
+// Spec 098: las fechas de lo contado. Sin tocarlas no se mandan; con fechas que pasan lo contado no se
+// guarda; las que el sistema ya conocía llegan sin cantidad.
+describe('fechas de caducidad al contar (spec 098)', () => {
+  test('con fechas, el desglose viaja con lo contado y lo sin fecha se calcula solo', async () => {
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    await screen.findByLabelText('Suelto de Limón');
+    tecla('9');
+    click('Agregar fecha');
+    tecla('6');
+    expect(screen.getByText('Sin fecha: 3 piezas')).toBeInTheDocument();
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3,
+      { countedQty: '9', confirmable: true, lots: [{ expiresOn: '2026-12-10', qty: '6' }] }));
+  });
+
+  test('las fechas que ya conocía llegan sin cantidad y, sin tocarlas, no se mandan', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3 ? { ...i, knownDates: ['2026-12-01'] } : i)) });
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    expect(await screen.findByRole('button', { name: 'Cuánto caduca el 2026-12-01' })).toHaveTextContent('¿cuánto?');
+    tecla('4');
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3, { countedQty: '4', confirmable: true }));
+  });
+
+  test('si las fechas suman más que lo contado no se guarda y lo dice en el artículo', async () => {
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    await screen.findByLabelText('Suelto de Limón');
+    tecla('2');
+    click('Agregar fecha');
+    tecla('5');
+    expect(screen.getByRole('alert')).toHaveTextContent('Las fechas suman más de lo contado');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+  });
+});
 
 // #103: el botón dice que lleva a Negocio; «Cambiar el orden ›» cambiaba de sección sin avisar.
 // La segunda prueba sin contexto (040, T022) no encontró cómo cambiar el orden del recorrido: antes

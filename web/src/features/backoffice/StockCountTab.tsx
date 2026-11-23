@@ -20,6 +20,7 @@ import { parseNumero } from '../../domain/numeros';
 import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { CountLossReport } from './CountLossReport';
+import { CountLotsFields, type LotRow } from './CountLots';
 import { PlaceChooser } from './CountPlaceField';
 import { NO_LOCATION } from './useLocations';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -330,7 +331,7 @@ export function StockCountTab() {
 // por empaque con − y + para ajustar de uno en uno, y lo suelto con su unidad elegida. Tocar una
 // casilla lleva el teclado en pantalla ahí (`inputMode="none"`: el del sistema no se abre).
 // 'gross' y 'containers' son las casillas de «Pesar con empaque» (spec 058).
-type Field = number | 'rest' | 'gross' | 'containers';
+type Field = number | 'rest' | 'gross' | 'containers' | `lot:${number}`;
 
 // GROSS_UNITS son las unidades de la báscula: siempre peso, aunque el artículo se guarde en ml.
 const GROSS_UNITS = [{ label: 'g', factor: 1, code: 'g' as const }, { label: 'kg', factor: 1000, code: 'kg' as const }];
@@ -360,6 +361,13 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   const [grossPackId, setGrossPackId] = useState<number | null>(restored?.packId ?? null);
   const [containers, setContainers] = useState(restored?.containers ?? '1');
   const weighing = grossOpen && tared.length > 0;
+  // Spec 098: las fechas de lo contado. Las que el sistema ya conocía llegan sin cantidad; si nadie
+  // toca las fechas no se mandan y los lotes no se reescriben.
+  const [lotRows, setLotRows] = useState<LotRow[]>(() => (item.lots?.length
+    ? item.lots.map((l) => ({ expiresOn: l.expiresOn, qty: String(Number(l.qty)) }))
+    : (item.knownDates ?? []).map((d) => ({ expiresOn: d, qty: '' }))));
+  const [lotsDirty, setLotsDirty] = useState(false);
+  const editLots = (f: (rows: LotRow[]) => LotRow[]) => { setLotRows(f); setLotsDirty(true); };
   const [field, setField] = useState<Field>(weighing ? 'gross' : packs.length ? 0 : 'rest');
   const unit = units[unitIdx];
   const restNum = parseNumero(rest);
@@ -387,6 +395,11 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   const overMax = total !== null ? overMaxMessage(limits, item.baseUnitCode, total) : null;
   const fields: Field[] = [...packs.map((_, i) => i), ...(weighing ? ['gross', 'containers'] as const : ['rest'] as const)];
   const key = (k: string) => {
+    if (typeof field === 'string' && field.startsWith('lot:')) {
+      const at = Number(field.slice(4));
+      editLots((rows) => rows.map((r, i) => (i === at ? { ...r, qty: pressKey(r.qty, k, item.baseUnitCode !== 'pieza') } : r)));
+      return;
+    }
     if (field === 'rest') setRest((v) => pressKey(v, k, unit.decimals));
     else if (field === 'gross') setGrossWeight((v) => pressKey(v, k, true));
     else if (field === 'containers') setContainers((v) => pressKey(v, k, false));
@@ -397,7 +410,14 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   const next = () => setField((f) => fields[(fields.indexOf(f) + 1) % fields.length]);
   const openWeighing = () => { setGrossOpen(true); setRest(''); setField('gross'); };
   const closeWeighing = () => { setGrossOpen(false); setGrossWeight(''); setContainers('1'); setField('rest'); };
+  const lotSum = lotRows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0);
+  const lotsOver = lotsDirty && total !== null && lotSum > total + 1e-9;
+  const lotsBody = lotsDirty ? { lots: lotRows.filter((r) => Number(r.qty) > 0).map((r) => ({ expiresOn: r.expiresOn, qty: r.qty })) } : {};
   const body = (): CountCaptureBody | null => {
+    const b = baseBody();
+    return b && !lotsOver ? { ...b, ...lotsBody } : null;
+  };
+  const baseBody = (): CountCaptureBody | null => {
     if (!captured || invalid || overMax) return null;
     if (grossOk && grossPack) {
       const wu = weightUnitId(grossUnit.code);
@@ -416,9 +436,14 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   return { packs, units, unit, unitIdx, setUnitIdx, counts, rest, field, setField, total, captured, key, bump, next, body,
     hasNext: fields.length > 1,
     weighed: !weighing && !!unit.weightCode && restNum.estado === 'valido', fromPacks, overMax,
-    allowDecimal: (field === 'rest' && unit.decimals) || field === 'gross',
+    allowDecimal: (field === 'rest' && unit.decimals) || (typeof field === 'string' && field.startsWith('lot:') && item.baseUnitCode !== 'pieza') || field === 'gross',
     tared, weighing, openWeighing, closeWeighing, grossWeight, grossUnitIdx, setGrossUnitIdx, grossPack,
-    setGrossPackId, containers, bumpContainers, gross };
+    setGrossPackId, containers, bumpContainers, gross,
+    lotRows, activeLot: typeof field === 'string' && field.startsWith('lot:') ? Number(field.slice(4)) : null,
+    pickLot: (i: number) => setField(`lot:${i}`),
+    setLotDate: (i: number, d: string) => editLots((rows) => rows.map((r, j) => (j === i ? { ...r, expiresOn: d } : r))),
+    addLot: (d: string) => { editLots((rows) => (rows.some((r) => r.expiresOn === d) ? rows : [...rows, { expiresOn: d, qty: '' }])); setField(`lot:${lotRows.length}`); },
+    removeLot: (i: number) => { editLots((rows) => rows.filter((_, j) => j !== i)); setField('rest'); } };
 }
 
 type Entry = ReturnType<typeof useEntry>;
@@ -560,6 +585,10 @@ function EntryFields({ item, e, serverError, onWeigh }: {
             <WeighRow open={e.weighing} onOpen={onWeigh ?? e.openWeighing} onClose={e.closeWeighing} toMl={item.baseUnitCode === 'ml'} />
             {e.weighing && <WeighFields item={item} e={e} />}
           </Box>
+        )}
+        {!isProduct(item) && (
+          <CountLotsFields rows={e.lotRows} active={e.activeLot} total={e.total} unitCode={item.baseUnitCode}
+            onPick={e.pickLot} onChangeDate={e.setLotDate} onAdd={e.addLot} onRemove={e.removeLot} />
         )}
       </VStack>
       {!many && <Box pt={2} borderTopWidth="1px" flexShrink={0}>{totalLine}</Box>}

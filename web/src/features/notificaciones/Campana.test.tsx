@@ -241,3 +241,17 @@ describe('avisos con almacenes (spec 094)', () => {
     expect(back.warehouses).not.toHaveBeenCalled();
   });
 });
+
+// CADUCIDAD POR LOTE (spec 098): lo bueno se acabó y lo que queda está caducado; lleva a Caducidades.
+describe('aviso de caducados (spec 098)', () => {
+  test('dice qué pasa y ofrece ver las caducidades', async () => {
+    api.list.mockImplementation((st: string) => Promise.resolve({ items: st === 'open'
+      ? [aviso({ id: 4, kind: 'expired_left', itemName: 'Crema para batir' } as Partial<NotificationView>)] : [] }));
+    montar(<ConCampana />);
+    fireEvent.click(await screen.findByRole('button', { name: /Avisos/ }));
+    expect(await screen.findByText('Lo que queda está caducado')).toBeTruthy();
+    expect(screen.getByText('Crema para batir')).toBeTruthy();
+    expect(screen.getByText(/Se está usando y lo que queda está caducado/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Ver caducidades ›' })).toBeTruthy();
+  });
+});

@@ -14,6 +14,8 @@ const back = vi.hoisted(() => ({
   createTransfer: vi.fn((_b?: unknown) => Promise.resolve({ id: 1 })),
   countPlaces: vi.fn(() => Promise.resolve([{ id: 4, name: 'Barra', position: 0, ingredients: 1 }])),
   stockLevels: vi.fn((_w?: number | 'all') => Promise.resolve({ items: [] as unknown[] })),
+  expirySummary: vi.fn((_w?: number | 'all') => Promise.resolve({ expired: 0, within7: 0 })),
+  expiries: vi.fn(() => Promise.resolve({ today: '2026-11-23', counts: { expired: 0, within7: 0, within30: 0, within60: 0 }, lots: [] })),
   warehouses: vi.fn(() => Promise.resolve({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] })),
   stockMovements: vi.fn(() => Promise.resolve({ items: [] })),
   units: vi.fn(() => Promise.resolve({ items: [
@@ -482,4 +484,27 @@ it('sin valor del servidor no hay columna Valor ni total', async () => {
   await screen.findByText('Leche');
   expect(screen.queryByRole('columnheader', { name: 'Valor' })).toBeNull();
   expect(screen.queryByText('Valor total')).toBeNull();
+});
+
+// Spec 098: Caducidades con el permiso de ver inventario; el aviso de Existencias solo cuando hay algo
+// y lleva a la pestaña.
+it('el aviso de caducidad sale con algo por caducar y lleva a Caducidades', async () => {
+  back.warehouses.mockResolvedValue(oneWarehouse);
+  back.expirySummary.mockResolvedValue({ expired: 1, within7: 2 });
+  sesion(['inventory.view']);
+  montar('/almacen');
+  const aviso = await screen.findByTestId('aviso-caducidad');
+  expect(aviso).toHaveTextContent('1 caducado · 2 caducan en 7 días');
+  fireEvent.click(screen.getByRole('button', { name: 'Ver caducidades ›' }));
+  expect(await screen.findByTestId('sin-caducidades')).toBeInTheDocument();
+});
+
+it('sin nada por caducar no hay aviso', async () => {
+  back.warehouses.mockResolvedValue(oneWarehouse);
+  back.expirySummary.mockResolvedValue({ expired: 0, within7: 0 });
+  sesion(['inventory.view']);
+  montar('/almacen');
+  await screen.findByRole('columnheader', { name: 'Artículo' });
+  expect(screen.queryByTestId('aviso-caducidad')).toBeNull();
+  expect(screen.getByRole('tab', { name: 'Caducidades' })).toBeInTheDocument();
 });

@@ -85,6 +85,8 @@ export interface RecordWasteInput {
   note?: string;
   // Spec 094: ausente es el almacén de venta.
   warehouseId?: number;
+  // Spec 098: la merma sale de ese lote (Caducidades), no del orden de consumo.
+  lotExpiresOn?: string;
 }
 
 export interface WasteResult {

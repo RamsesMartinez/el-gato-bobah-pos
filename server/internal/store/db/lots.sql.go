@@ -12,6 +12,20 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const applyCountLots = `-- name: ApplyCountLots :exec
+select apply_count_lots(nullif(current_setting('app.company_id', true), '')::bigint, $1::bigint, $2::bigint)
+`
+
+type ApplyCountLotsParams struct {
+	CountID      int64 `json:"count_id"`
+	IngredientID int64 `json:"ingredient_id"`
+}
+
+func (q *Queries) ApplyCountLots(ctx context.Context, arg ApplyCountLotsParams) error {
+	_, err := q.db.Exec(ctx, applyCountLots, arg.CountID, arg.IngredientID)
+	return err
+}
+
 const branchDailyUse = `-- name: BranchDailyUse :many
 select ingredient_id::bigint as ingredient_id, (-sum(quantity) / 30)::numeric as daily
   from stock_movements
@@ -151,6 +165,91 @@ func (q *Queries) BusinessToday(ctx context.Context) (pgtype.Date, error) {
 	return today, err
 }
 
+const countLotIngredients = `-- name: CountLotIngredients :many
+select distinct ingredient_id from stock_count_line_lots where count_id = $1 order by ingredient_id
+`
+
+func (q *Queries) CountLotIngredients(ctx context.Context, countID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, countLotIngredients, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var ingredient_id int64
+		if err := rows.Scan(&ingredient_id); err != nil {
+			return nil, err
+		}
+		items = append(items, ingredient_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countLotsOf = `-- name: CountLotsOf :many
+select ingredient_id, expires_on, qty from stock_count_line_lots where count_id = $1 order by ingredient_id, expires_on
+`
+
+type CountLotsOfRow struct {
+	IngredientID int64           `json:"ingredient_id"`
+	ExpiresOn    pgtype.Date     `json:"expires_on"`
+	Qty          decimal.Decimal `json:"qty"`
+}
+
+// El desglose de fechas de un conteo, por artículo.
+func (q *Queries) CountLotsOf(ctx context.Context, countID int64) ([]CountLotsOfRow, error) {
+	rows, err := q.db.Query(ctx, countLotsOf, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountLotsOfRow{}
+	for rows.Next() {
+		var i CountLotsOfRow
+		if err := rows.Scan(&i.IngredientID, &i.ExpiresOn, &i.Qty); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countLotsSum = `-- name: CountLotsSum :one
+select coalesce(sum(qty), 0)::numeric from stock_count_line_lots where count_id = $1 and ingredient_id = $2
+`
+
+type CountLotsSumParams struct {
+	CountID      int64 `json:"count_id"`
+	IngredientID int64 `json:"ingredient_id"`
+}
+
+func (q *Queries) CountLotsSum(ctx context.Context, arg CountLotsSumParams) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, countLotsSum, arg.CountID, arg.IngredientID)
+	var column_1 decimal.Decimal
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const deleteCountLots = `-- name: DeleteCountLots :exec
+delete from stock_count_line_lots where count_id = $1 and ingredient_id = $2
+`
+
+type DeleteCountLotsParams struct {
+	CountID      int64 `json:"count_id"`
+	IngredientID int64 `json:"ingredient_id"`
+}
+
+func (q *Queries) DeleteCountLots(ctx context.Context, arg DeleteCountLotsParams) error {
+	_, err := q.db.Exec(ctx, deleteCountLots, arg.CountID, arg.IngredientID)
+	return err
+}
+
 const expenseItemExpiry = `-- name: ExpenseItemExpiry :one
 select expires_on from expense_items where id = $1 and expense_id = $2
 `
@@ -165,6 +264,59 @@ func (q *Queries) ExpenseItemExpiry(ctx context.Context, arg ExpenseItemExpiryPa
 	var expires_on pgtype.Date
 	err := row.Scan(&expires_on)
 	return expires_on, err
+}
+
+const insertCountLot = `-- name: InsertCountLot :exec
+insert into stock_count_line_lots (count_id, ingredient_id, expires_on, qty)
+values ($1, $2, $3, $4)
+`
+
+type InsertCountLotParams struct {
+	CountID      int64           `json:"count_id"`
+	IngredientID int64           `json:"ingredient_id"`
+	ExpiresOn    pgtype.Date     `json:"expires_on"`
+	Qty          decimal.Decimal `json:"qty"`
+}
+
+func (q *Queries) InsertCountLot(ctx context.Context, arg InsertCountLotParams) error {
+	_, err := q.db.Exec(ctx, insertCountLot,
+		arg.CountID,
+		arg.IngredientID,
+		arg.ExpiresOn,
+		arg.Qty,
+	)
+	return err
+}
+
+const knownLotDates = `-- name: KnownLotDates :many
+select ingredient_id, expires_on from stock_lots where warehouse_id = $1 and qty > 0 order by ingredient_id, expires_on
+`
+
+type KnownLotDatesRow struct {
+	IngredientID int64       `json:"ingredient_id"`
+	ExpiresOn    pgtype.Date `json:"expires_on"`
+}
+
+// Las fechas que el sistema ya conoce de cada artículo en el almacén (lotes con algo): el conteo las
+// ofrece sin cantidad, para no reteclearlas ni enseñar lo esperado.
+func (q *Queries) KnownLotDates(ctx context.Context, warehouseID int64) ([]KnownLotDatesRow, error) {
+	rows, err := q.db.Query(ctx, knownLotDates, warehouseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []KnownLotDatesRow{}
+	for rows.Next() {
+		var i KnownLotDatesRow
+		if err := rows.Scan(&i.IngredientID, &i.ExpiresOn); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const moveLotsToIngredient = `-- name: MoveLotsToIngredient :exec

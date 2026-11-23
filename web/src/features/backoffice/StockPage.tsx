@@ -26,14 +26,17 @@ import { richestSource } from './warehouses/transferUnits';
 import type { StockLevel, StockMovement } from '../../api/backoffice';
 import { InfoButton } from '../../components/InfoButton';
 import { money } from '../../utils/format';
+import { ExpiriesTab } from './expiries/ExpiriesTab';
+import { ExpiryNotice } from './expiries/ExpiryNotice';
 
 // El orden lo fijó el plan del 038: Existencias · Movimientos · Insumos · Por recibir · Conteo · Salud.
-const TABS = ['existencias', 'traspaso', 'movimientos', 'insumos', 'compra', 'por-recibir', 'conteo', 'merma', 'salud', 'avisos'] as const;
+const TABS = ['existencias', 'traspaso', 'caducidades', 'movimientos', 'insumos', 'compra', 'por-recibir', 'conteo', 'merma', 'salud', 'avisos'] as const;
 type Tab = (typeof TABS)[number];
 
 export function StockPage() {
   const horaNegocio = useHoraDelNegocio();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   // El almacén que se ve en Existencias (spec 094): por omisión el de venta. Con un solo almacén no
   // hay selector y la pantalla queda como antes.
   const [picked, setWarehouse] = useState<number | 'all' | undefined>(undefined);
@@ -53,14 +56,22 @@ export function StockPage() {
   const moves = useQuery({ queryKey: ['stock', 'moves', warehouse ?? 'venta'], queryFn: () => backofficeApi.stockMovements(warehouse),
     placeholderData: (prev) => prev });
   const [valueHelp, setValueHelp] = useState(false);
-  const warehousePicker = whList.length > 1 && (
-    <Box mb={3}>
+  const canViewStock = can('inventory.view', useSessionStore((st) => st.user));
+  const warehouseSegmented = whList.length > 1 && (
       <Segmented label="Almacén"
         value={String(warehouse ?? whList.find((w) => w.isSales)?.id ?? '')}
         options={[...whList.map((w) => ({ value: String(w.id), label: w.isSales ? `${w.name} · de venta` : w.name })),
           { value: 'all', label: 'Todos' }]}
         onChange={(v) => setWarehouse(v === 'all' ? 'all' : whList.find((w) => String(w.id) === v)?.isSales ? undefined : Number(v))} />
-    </Box>
+  );
+  const warehousePicker = warehouseSegmented && <Box mb={3}>{warehouseSegmented}</Box>;
+  // En Existencias, el aviso de caducidad va a la derecha del selector cuando cabe: así no le quita un
+  // renglón a la lista (revisión de tableta, spec 098).
+  const stockHeader = (
+    <HStack mb={3} gap={3} flexWrap="wrap" align="center">
+      {warehouseSegmented}
+      {canViewStock && <Box flex="1" minW="280px"><ExpiryNotice warehouse={warehouse} onOpen={() => setParams({ tab: 'caducidades' }, { replace: true })} /></Box>}
+    </HStack>
   );
   // El valor solo se pinta si el servidor lo manda: la API anterior no lo trae durante una subida.
   const withValue = levels.data?.totalValue !== undefined;
@@ -91,13 +102,12 @@ export function StockPage() {
   const canCount = can('inventory.count', user);
   // La dirección decide la pestaña y el insumo abierto: «Salud del inventario» manda aquí con
   // ?tab=insumos&open=N. Un valor desconocido cae a la primera pestaña, nunca a una que no existe.
-  const [params, setParams] = useSearchParams();
   const asked = params.get('tab') as Tab | null;
   const canView = can('inventory.view', user);
   const canConfigureStock = can('inventory.configure', user);
   // Traspaso (spec 094): solo con el permiso y con dos o más almacenes; con uno no hay a dónde llevar.
   const canTransfer = can('inventory.transfer', user) && whList.length > 1;
-  const allowed = (t: Tab) => (t !== 'traspaso' || canTransfer) && (t !== 'avisos' || canConfigureStock) && ((t !== 'insumos' && t !== 'compra') || canView) && ((t !== 'salud' && t !== 'merma') || canHealth) && (t !== 'por-recibir' || canReceive) && (t !== 'conteo' || canCount);
+  const allowed = (t: Tab) => (t !== 'traspaso' || canTransfer) && (t !== 'avisos' || canConfigureStock) && ((t !== 'insumos' && t !== 'compra' && t !== 'caducidades') || canView) && ((t !== 'salud' && t !== 'merma') || canHealth) && (t !== 'por-recibir' || canReceive) && (t !== 'conteo' || canCount);
   const tab: Tab = asked && TABS.includes(asked) && allowed(asked) ? asked : 'existencias';
   const settings = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const pending = useQuery({ queryKey: ['stock', 'pending-receipts'], queryFn: backofficeApi.pendingReceipts, enabled: canReceive });
@@ -137,6 +147,7 @@ export function StockPage() {
         <Tabs.List overflowX="auto" flexShrink={0}>
           <Tabs.Trigger value="existencias" minH="44px">Existencias</Tabs.Trigger>
           {canTransfer && <Tabs.Trigger value="traspaso" minH="44px">Traspaso</Tabs.Trigger>}
+          {canView && <Tabs.Trigger value="caducidades" minH="44px">Caducidades</Tabs.Trigger>}
           <Tabs.Trigger value="movimientos" minH="44px">Movimientos</Tabs.Trigger>
           {canView && <Tabs.Trigger value="insumos" minH="44px">{itemsTab}</Tabs.Trigger>}
           {canView && <Tabs.Trigger value="compra" minH="44px" flexShrink={0}>Lista de compra</Tabs.Trigger>}
@@ -151,7 +162,7 @@ export function StockPage() {
           {canConfigureStock && <Tabs.Trigger value="avisos" minH="44px">Avisos</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
-          {warehousePicker}
+          {stockHeader}
           {valueSummary}
           {/* Mientras llega la lista del almacén elegido, la anterior se atenúa: no se leen cifras de
               otro almacén como si fueran de éste. */}
@@ -196,6 +207,11 @@ export function StockPage() {
             </Table.Root>
           </Box>
         </Tabs.Content>
+        {canView && (
+          <Tabs.Content value="caducidades" px={0} flex="1" minH={0} overflowY="auto">
+            <ExpiriesTab onGoToCount={canCount ? () => setParams({ tab: 'conteo' }, { replace: true }) : undefined} />
+          </Tabs.Content>
+        )}
         {canTransfer && (
           <Tabs.Content value="traspaso" px={0} flex="1" minH={0}>
             <TransferTab warehouses={whList} />
