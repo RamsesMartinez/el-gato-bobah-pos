@@ -1,0 +1,7 @@
+# Lo estático del menú público (spec 097). Las páginas de menú llevan sus encabezados desde la
+# Function (borde/handler.ts); esto solo cubre lo que Pages sirve sin invocarla.
+/*
+  X-Content-Type-Options: nosniff
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+/og-default.png
+  Cache-Control: public, max-age=86400

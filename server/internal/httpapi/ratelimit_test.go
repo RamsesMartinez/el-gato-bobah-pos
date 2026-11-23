@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -203,5 +204,55 @@ func TestUnaFechaMalformadaNoCaeAlDefault(t *testing.T) {
 		if _, err := parseDate(malo, base); !errors.Is(err, domain.ErrValidation) {
 			t.Fatalf("%q debe rechazarse como validación, fue %v", malo, err)
 		}
+	}
+}
+
+// EL LÍMITE DEL MENÚ PÚBLICO CUENTA AL VISITANTE, NO A CLOUDFLARE (spec 097). Quien llama a la API es
+// la Function del borde; solo con el secreto compartido se le cree la IP que reenvía. Sin él, una IP
+// puesta a mano en el encabezado se ignora: si no, cualquiera elegiría con qué IP lo cuentan.
+func TestPublicMenuKey(t *testing.T) {
+	const secret = "0123456789abcdef0123456789abcdef"
+	req := func(key, client string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/api/v1/public/menus/x", nil)
+		r.RemoteAddr = "172.68.1.1:443" // la IP de salida de Cloudflare
+		if key != "" {
+			r.Header.Set(menuEdgeKeyHeader, key)
+		}
+		if client != "" {
+			r.Header.Set(menuClientIPHeader, client)
+		}
+		return r
+	}
+	cases := []struct {
+		name, secret, key, client, want string
+	}{
+		{"con el secreto se cuenta al visitante", secret, secret, "201.141.10.5", "201.141.10.5"},
+		{"sin secreto la IP reenviada se ignora", secret, "", "201.141.10.5", "172.68.1.1"},
+		{"con secreto equivocado se ignora", secret, "x" + secret[1:], "201.141.10.5", "172.68.1.1"},
+		{"sin secreto configurado nada se cree", "", secret, "201.141.10.5", "172.68.1.1"},
+		{"con el secreto y una IP que no es IP se cuenta a quien llama", secret, secret, "no-soy-ip", "172.68.1.1"},
+		{"con el secreto y sin IP se cuenta a quien llama", secret, secret, "", "172.68.1.1"},
+		// Un /64 de IPv6 es de una sola persona: rotar la dirección dentro de él no da un tope nuevo.
+		{"IPv6 cuenta por su /64", secret, secret, "2001:db8:1:2:aaaa:bbbb:cccc:dddd", "2001:db8:1:2::/64"},
+		{"otra dirección del mismo /64 es la misma llave", secret, secret, "2001:db8:1:2::1", "2001:db8:1:2::/64"},
+	}
+	for _, c := range cases {
+		if got := publicMenuKey(req(c.key, c.client), false, c.secret); got != c.want {
+			t.Errorf("%s: %q, quiero %q", c.name, got, c.want)
+		}
+	}
+}
+
+// Un 500 del menú público no se guarda en ninguna caché: la Function o un CDN lo servirían a todos
+// los visitantes del negocio. El menú y el «no existe» sí.
+func TestPublicMenuCacheControl(t *testing.T) {
+	if got := publicMenuCacheControl(nil); got != publicMenuCache {
+		t.Fatalf("menú: %q", got)
+	}
+	if got := publicMenuCacheControl(fmt.Errorf("x: %w", domain.ErrNotFound)); got != publicMenuCache {
+		t.Fatalf("no existe: %q", got)
+	}
+	if got := publicMenuCacheControl(errors.New("db caída")); got != "no-store" {
+		t.Fatalf("un error del servidor se dejaría guardar: %q", got)
 	}
 }

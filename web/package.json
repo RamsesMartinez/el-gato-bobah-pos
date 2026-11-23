@@ -11,6 +11,9 @@
     "build:consola": "tsc --noEmit -p tsconfig.consola.json && vite build --config vite.consola.config.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:consola": "tsc --noEmit -p tsconfig.consola.json",
+    "build:menu": "tsc --noEmit -p tsconfig.menu.json && bun menu/build.ts",
+    "typecheck:menu": "tsc --noEmit -p tsconfig.menu.json",
+    "dev:menu": "bash menu/dev.sh",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node scripts/require-node.mjs && vitest run",
@@ -30,6 +33,7 @@
     "react-dom": "^19.3.1",
     "react-icons": "^5.7.0",
     "react-router": "^8.5.1",
+    "uqr": "0.1.3",
     "zustand": "^5.1.0"
   },
   "devDependencies": {
