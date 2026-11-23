@@ -36,6 +36,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'user.tracks_attendance_changed': 'Lleva asistencia',
   'payment.terminal_changed': 'Terminal cambiada',
   'product.consumption_mode': 'Cambió qué resta',
+  'product.sales_changed': 'Cambió dónde se vende',
   'expense.received': 'Llegó mercancía',
   'expense.count_changed': 'Cambió “En el arqueo” de un pago',
   'cash.opening_backdated': 'Abrió la caja con hora anterior',
@@ -67,6 +68,11 @@ export const ACTION_LABELS: Record<string, string> = {
   'ingredient.replaced': 'Reemplazó el artículo por otro',
   'ingredient.merged': 'Unió otros artículos en éste',
   'ingredient.merged_into': 'Se unió a otro artículo',
+  'product.image_set': 'Puso la foto de un producto',
+  'product.image_removed': 'Quitó la foto de un producto',
+  'category.image_set': 'Puso la foto de una categoría',
+  'category.image_removed': 'Quitó la foto de una categoría',
+  'category.family_set': 'Cambió la familia de una categoría',
   'presentation.created': 'Agregó un empaque',
   'presentation.updated': 'Editó un empaque',
   'presentation.retired': 'Retiró o volvió un empaque',
@@ -157,6 +163,7 @@ export function summarizeEvent(action: string, before: ChangeData, after: Change
     const to = typeof after?.roleId === 'number' ? ctx.roleName?.(after.roleId) : undefined;
     return from && to ? `Rol: ${from} → ${to}` : 'Cambió de rol';
   }
+  if (action === 'product.sales_changed') return summarizeSales(before, after);
   if (!action.startsWith('role.')) return summarizeChange(before, after);
   const parts: string[] = [];
   const name = (after?.name ?? before?.name) as string | undefined;
@@ -178,4 +185,18 @@ export function auditGroupOf(action: string): 'money' | 'cancel' | 'price' | 'ca
   if (action.startsWith('cash.') || action.startsWith('expense.') || action.startsWith('tip.')) return 'cash';
   if (action.startsWith('attendance.') || action.startsWith('user.') || action.startsWith('role.')) return 'attendance';
   return 'money';
+}
+
+// summarizeSales dice en palabras de quien opera qué cambió de la venta de un producto (spec 092).
+function summarizeSales(before: ChangeData, after: ChangeData): string {
+  const lugares = (d: ChangeData) => {
+    const l = [d?.counter === true && 'Mostrador', d?.web === true && 'Web'].filter(Boolean);
+    return l.length ? l.join(' · ') : 'ningún lado';
+  };
+  const parts: string[] = [];
+  if (before?.counter !== after?.counter || before?.web !== after?.web) parts.push(`Se vende en: ${lugares(before)} → ${lugares(after)}`);
+  if (before?.allowOversell !== after?.allowOversell) {
+    parts.push(`Vender sin existencia: ${before?.allowOversell ? 'sí' : 'no'} → ${after?.allowOversell ? 'sí' : 'no'}`);
+  }
+  return parts.join(' · ');
 }

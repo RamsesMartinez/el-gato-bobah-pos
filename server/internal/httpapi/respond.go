@@ -58,6 +58,16 @@ func Error(w http.ResponseWriter, err error) {
 	msg := err.Error()
 
 	switch {
+	// Fotos del catálogo (spec 091): cada rechazo con su código; la pantalla y el MCP actúan distinto.
+	case errors.Is(err, domain.ErrImageInvalid):
+		status, code = http.StatusUnprocessableEntity, "IMAGE_INVALID"
+	case errors.Is(err, domain.ErrImageTooLarge):
+		status, code = http.StatusRequestEntityTooLarge, "IMAGE_TOO_LARGE"
+	case errors.Is(err, domain.ErrMediaDisabled):
+		status, code = http.StatusServiceUnavailable, "MEDIA_DISABLED"
+	case errors.Is(err, domain.ErrMediaUnavailable):
+		// El detalle del almacenamiento ya quedó en el log del servicio; a quien opera, qué hacer.
+		status, code, msg = http.StatusBadGateway, "MEDIA_UNAVAILABLE", domain.ErrMediaUnavailable.Error()
 	// «Se acabó» (spec 084): la pantalla decide por el código qué mostrar.
 	case errors.Is(err, domain.ErrReportLimit):
 		status, code = http.StatusTooManyRequests, "REPORT_LIMIT"
@@ -88,6 +98,10 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "ROLE_INACTIVE"
 	case errors.Is(err, domain.ErrUsernameTaken):
 		status, code = http.StatusConflict, "USERNAME_TAKEN"
+	// Spec 092: lo pedido de un producto con «vender sin existencia» apagado no alcanza. 409 porque
+	// es el estado del almacén, no lo que mandó la tableta; la pantalla lo marca agotado.
+	case errors.Is(err, domain.ErrOutOfStock):
+		status, code = http.StatusConflict, "OUT_OF_STOCK"
 	case errors.Is(err, domain.ErrNotFound):
 		status, code = http.StatusNotFound, "NOT_FOUND"
 	case errors.Is(err, domain.ErrInvalidCredentials):
@@ -377,6 +391,10 @@ func Error(w http.ResponseWriter, err error) {
 	if errors.As(err, &pu) {
 		details = &errorDetails{ProductID: pu.ProductID, ProductName: pu.Name}
 	}
+	var oos domain.OutOfStock
+	if errors.As(err, &oos) {
+		details = &errorDetails{ProductID: oos.ProductID, ProductName: oos.Name}
+	}
 	var lr domain.LineRejected
 	if errors.As(err, &lr) && lr.LineID != "" {
 		if details == nil {
@@ -419,6 +437,8 @@ var sentinelPrefixes = []string{
 	domain.ErrValidation.Error() + ": ",
 	domain.ErrForbidden.Error() + ": ",
 	domain.ErrNotFound.Error() + ": ",
+	domain.ErrImageInvalid.Error() + ": ",
+	domain.ErrImageTooLarge.Error() + ": ",
 }
 
 // operatorMessage quita los prefijos de los sentinels base del INICIO del mensaje, también los

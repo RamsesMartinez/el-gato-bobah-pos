@@ -24,7 +24,7 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		// La puerta para agentes (spec 072).
 		"api_token.created", "api_token.revoked", "mcp.tool_called",
 		"payment.terminal_changed",
-		"product.consumption_mode", "expense.received", "expense.count_changed", "cash.opening_backdated", "expense.stock_corrected", "stock.counted",
+		"product.consumption_mode", "product.sales_changed", "expense.received", "expense.count_changed", "cash.opening_backdated", "expense.stock_corrected", "stock.counted",
 		"settings.costing_method", "waste.recorded", "waste.approved", "waste.rejected", "waste.undone",
 		"stock.out_reported", "stock.out_undone", "stock.low_stock_configured", "notification.recipients_changed",
 		"notification.resolved",
@@ -35,6 +35,9 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		"ingredient.replaced", "presentation.created", "presentation.updated", "presentation.retired",
 		"stock.count_confirm_asked", "expense.item_excluded", "cash.selling_register_changed",
 		"expense.edited", "ingredient.merged", "ingredient.merged_into",
+		// Fotos del catálogo (spec 091).
+		"product.image_set", "product.image_removed", "category.image_set", "category.image_removed",
+		"category.family_set",
 	}
 	got := AllAuditActions()
 	if len(got) != len(want) {
@@ -167,8 +170,9 @@ func TestAuditFilterActions(t *testing.T) {
 	// aprobación de la merma (spec 039): todas son configuración de lo que cuesta o se resta. Más las
 	// once de los artículos del almacén (spec 042), los límites del conteo (spec 044) y las dos de
 	// unir insumos (spec 056), y las tres de densidad y tara (spec 058). Y las dos de configurar
-	// avisos de inventario (spec 084): alertas de un artículo y destinatarios.
-	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 25 {
+	// avisos de inventario (spec 084): alertas de un artículo y destinatarios. Y las cinco de fotos
+	// y familias del catálogo (spec 091), y dónde se vende un producto (spec 092).
+	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 31 {
 		t.Fatalf("grupo precios = %v", got)
 	}
 	if got := (AuditFilter{Group: "price", Action: "price.set"}).Actions(); len(got) != 1 || got[0] != "price.set" {

@@ -45,3 +45,29 @@ describe('el otro nombre que coincidió', () => {
     expect(screen.queryByText(/también:/i)).not.toBeInTheDocument();
   });
 });
+
+// Un producto agotado (spec 092) se ve con su etiqueta y no se agrega a la cuenta; tocarlo avisa en
+// vez de no hacer nada (un toque mudo se repite).
+describe('el mosaico de un producto agotado', () => {
+  test('dice «Agotado», no llama a agregar y avisa', async () => {
+    const onTap = vi.fn();
+    const onSoldOutTap = vi.fn();
+    render(
+      <Provider>
+        <ProductTile product={BUBBLE} count={0} onTap={onTap} showPrice price={20} esManual={false} soldOut onSoldOutTap={onSoldOutTap} />
+      </Provider>,
+    );
+    expect(screen.getByText('Agotado')).toBeInTheDocument();
+    const tile = screen.getByRole('button', { name: /bubble gum durazno/i });
+    tile.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    tile.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    tile.click();
+    expect(onTap).not.toHaveBeenCalled();
+    expect(onSoldOutTap).toHaveBeenCalledWith(BUBBLE);
+  });
+
+  test('sin agotar no hay etiqueta', () => {
+    pinta(0);
+    expect(screen.queryByText('Agotado')).not.toBeInTheDocument();
+  });
+});

@@ -1,6 +1,6 @@
 import { useState, type ComponentProps } from 'react';
 import { useNavigate } from 'react-router';
-import { Box, Heading, Text, Input, Button, VStack, HStack, Center, Spinner, InputGroup, Table } from '@chakra-ui/react';
+import { Box, Text, Input, Button, VStack, HStack, Center, Spinner, InputGroup, Table } from '@chakra-ui/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { posApi } from '../../api/pos';
 import { backofficeApi } from '../../api/backoffice';
@@ -8,7 +8,6 @@ import { toaster } from '../../components/ui/toaster';
 import { mensajeDeError } from '../../api/mensajes';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
-import { Page } from '../../components/Page';
 import { InstallAppSection } from '../../shared/pwa/InstallAppSection';
 import { AttendanceSettingsSection } from './AttendanceSettingsSection';
 import { InventorySettingsSection } from './InventorySettingsSection';
@@ -16,6 +15,9 @@ import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
 import { ZONAS_MEXICO } from './zonas';
 import { montoTecleado } from '../../domain/numeros';
+import { LuGlobe, LuPackage, LuShoppingCart, LuStore, LuUsers, LuWallet } from 'react-icons/lu';
+import { SettingsLayout, type SeccionDeAjustes } from './settings/SettingsLayout';
+import { VentaEnWebSection } from './settings/VentaEnWebSection';
 
 // Los tres momentos en los que se puede limpiar la lista de entregados. El texto dice QUÉ pasa, no
 // por qué: el porqué de cada uno es una decisión del dueño, no algo que el operador tenga que leer
@@ -149,12 +151,12 @@ export function BusinessSettingsPage() {
 
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
 
-  return (
-    <Page maxW="560px">
-      <Heading size="lg" mb={1}>Negocio</Heading>
-      <Text color="fg.muted" mb={6}>Ajustes generales del local.</Text>
-
-      <Box mb={6} borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
+  // Spec 092: secciones con menú lateral (maqueta «Ajustes del negocio»). Cada ajuste vive en una sola
+  // sección y se comporta igual que antes; Inventario y Personal aparecen solo con su permiso.
+  const secciones: SeccionDeAjustes[] = [
+    { id: 'negocio', label: 'Negocio', icon: LuStore, resumen: 'Nombre, zona horaria, instalar en esta tablet', contenido: (
+      <VStack align="stretch" gap={6}>
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
         <Text fontWeight="700" mb={1}>Identidad de la empresa</Text>
         <Text fontSize="sm" color="fg.muted" mb={3}>
           Lo que va después de la @ al iniciar sesión: usuario@<b>{slugValue || 'tu-negocio'}</b>.
@@ -171,27 +173,7 @@ export function BusinessSettingsPage() {
             onClick={() => saveCompany.mutate()}>Guardar empresa</Button>
         </VStack>
       </Box>
-
       <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
-        <Text fontWeight="700" mb={1}>Costo de envío</Text>
-        <Text fontSize="sm" color="fg.muted" mb={3}>
-          Se agrega automáticamente al cobrar un pedido a domicilio (el operador puede ajustarlo o
-          ponerlo en 0 en cada pedido).
-        </Text>
-        <HStack gap={3} align="end">
-          <Box flex="1" maxW="220px">
-            <InputGroup startElement="$">
-              <Input size="lg" type="number" inputMode="decimal" min={0} value={feeValue}
-                onChange={(e) => setFee(e.target.value)} />
-            </InputGroup>
-          </Box>
-          <Button size="lg" loading={save.isPending} onClick={() => save.mutate()}>
-            Guardar
-          </Button>
-        </HStack>
-      </Box>
-
-      <Box mt={6} borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
         <Text fontWeight="700" mb={1}>Zona horaria</Text>
         <Text fontSize="sm" color="fg.muted" mb={3}>
           Define a qué día pertenece cada venta, corte y gasto. Cámbiala solo si el negocio opera
@@ -224,8 +206,34 @@ export function BusinessSettingsPage() {
           </Text>
         )}
       </Box>
-
-      <Box mt={6} borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
+      <InstallAppSection />
+      </VStack>
+    ) },
+    { id: 'mostrador', label: 'Venta en mostrador', icon: LuShoppingCart, resumen: 'Nombres de los pedidos, entregados, costo de envío', contenido: (
+      <VStack align="stretch" gap={6}>
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
+        <Text fontWeight="700" mb={1}>Nombres de los pedidos</Text>
+        <Text fontSize="sm" color="fg.muted" mb={3}>
+          Con qué se nombra cada pedido para cantarlo en cocina. Se usan todos los nombres de la
+          lista antes de repetir alguno. Los pedidos ya vendidos conservan el nombre con el que
+          salieron.
+        </Text>
+        <HStack gap={2} align="end" flexWrap="wrap">
+          <Box flex="1" minW="260px">
+            <Picker
+              size="lg"
+              value={esquema ?? data?.folioScheme ?? 'razas'}
+              onChange={setEsquema}
+              options={ESQUEMAS}
+              title="¿Con qué se nombran los pedidos?"
+            />
+          </Box>
+          <Button size="lg" loading={saveEsquema.isPending} onClick={() => saveEsquema.mutate()}>
+            Guardar
+          </Button>
+        </HStack>
+      </Box>
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
         <Text fontWeight="700" mb={1}>Pedidos entregados en pantalla</Text>
         <Text fontSize="sm" color="fg.muted" mb={3}>
           Hasta cuándo se siguen viendo los pedidos que ya entregaste. No cambia de qué día es una
@@ -249,31 +257,30 @@ export function BusinessSettingsPage() {
           </Button>
         </HStack>
       </Box>
-
-      <Box mt={6} borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
-        <Text fontWeight="700" mb={1}>Nombres de los pedidos</Text>
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
+        <Text fontWeight="700" mb={1}>Costo de envío</Text>
         <Text fontSize="sm" color="fg.muted" mb={3}>
-          Con qué se nombra cada pedido para cantarlo en cocina. Se usan todos los nombres de la
-          lista antes de repetir alguno. Los pedidos ya vendidos conservan el nombre con el que
-          salieron.
+          Se agrega automáticamente al cobrar un pedido a domicilio (el operador puede ajustarlo o
+          ponerlo en 0 en cada pedido).
         </Text>
-        <HStack gap={2} align="end" flexWrap="wrap">
-          <Box flex="1" minW="260px">
-            <Picker
-              size="lg"
-              value={esquema ?? data?.folioScheme ?? 'razas'}
-              onChange={setEsquema}
-              options={ESQUEMAS}
-              title="¿Con qué se nombran los pedidos?"
-            />
+        <HStack gap={3} align="end">
+          <Box flex="1" maxW="220px">
+            <InputGroup startElement="$">
+              <Input size="lg" type="number" inputMode="decimal" min={0} value={feeValue}
+                onChange={(e) => setFee(e.target.value)} />
+            </InputGroup>
           </Box>
-          <Button size="lg" loading={saveEsquema.isPending} onClick={() => saveEsquema.mutate()}>
+          <Button size="lg" loading={save.isPending} onClick={() => save.mutate()}>
             Guardar
           </Button>
         </HStack>
       </Box>
-
-      <Box mt={6} borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
+      </VStack>
+    ) },
+    { id: 'web', label: 'Venta en web', icon: LuGlobe, resumen: 'Productos que se venden en la web', contenido: <VentaEnWebSection /> },
+    { id: 'caja', label: 'Caja', icon: LuWallet, resumen: 'Métodos de cobro, contar sin ver lo esperado', contenido: (
+      <VStack align="stretch" gap={6}>
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
         {/* EL ARQUEO CIEGO, arriba de los métodos: es política del negocio y cambia cómo se ve el
             cierre entero, no la configuración de un método. */}
         <HStack justify="space-between" align="start" mb={4} gap={4}>
@@ -343,20 +350,18 @@ export function BusinessSettingsPage() {
         </Box>
       </Box>
 
-      {/* Los ajustes de caja se juntaron con las cajas en Caja → Administrar (#290). */}
-      <Box mt={6} borderWidth="1px" borderRadius="lg" p={4}>
+      <Box borderWidth="1px" borderRadius="lg" p={4}>
         <Text fontWeight="700">Caja</Text>
         <Text fontSize="sm" color="fg.muted" mb={2}>
           Conceptos de salida, terminales, fondo fijo, modo de arqueo y resumen diario están en Caja → Administrar.
         </Text>
         <Button minH="44px" variant="outline" onClick={() => navigate('/caja/administrar')}>Ir a Caja → Administrar</Button>
       </Box>
+      </VStack>
+    ) },
+    ...(can('inventory.configure', user) ? [{ id: 'inventario', label: 'Inventario', icon: LuPackage, resumen: 'Costeo, lugares de conteo, merma', contenido: <InventorySettingsSection /> }] : []),
+    ...(can('attendance.configure', user) ? [{ id: 'personal', label: 'Personal', icon: LuUsers, resumen: 'Asistencia', contenido: <AttendanceSettingsSection /> }] : []),
+  ];
 
-      {can('attendance.configure', user) && <AttendanceSettingsSection />}
-
-      {can('inventory.configure', user) && <InventorySettingsSection />}
-
-      <InstallAppSection />
-    </Page>
-  );
+  return <SettingsLayout secciones={secciones} />;
 }

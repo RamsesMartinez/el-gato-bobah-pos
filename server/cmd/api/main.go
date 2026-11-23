@@ -26,6 +26,7 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/mailer"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/objstore"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/secrets"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
@@ -230,7 +231,13 @@ func main() {
 	broker := realtime.NewBroker()
 	costing := app.NewCostingService(st)
 	menusPlataforma := app.NewMenusDePlataformaService(st, credentials, nil)
+	media, err := catalogMedia(cfg, st)
+	if err != nil {
+		slog.Error("fotos del catálogo", "error", err)
+		os.Exit(1)
+	}
 	handlers := httpapi.NewHandlers(httpapi.Deps{
+		Media:           media,
 		Cfg:             cfg,
 		Alerts:          notifier,
 		Version:         version,
@@ -239,6 +246,7 @@ func main() {
 		Auth:            app.NewAuthServiceConPepper(st, jm, nil, cfg.PinPepper),
 		Users:           app.NewUsersService(st, hibpClient, cfg.HIBPEnabled, cfg.PinPepper),
 		Menu:            app.NewMenuService(st, nil),
+		WebSales:        app.NewWebSalesService(st),
 		MenuCache:       cache.NewMenuCache(cfg.RedisURL),
 		Suggest:         app.NewSuggestService(st, nil),
 		Costing:         costing,
@@ -994,4 +1002,18 @@ func (u uberClient) Verify(ctx context.Context) error {
 		// no aceptada: no guardarla es lo seguro, y el detalle queda en el error envuelto.
 		return fmt.Errorf("%w: %w", domain.ErrCredentialsRejected, err)
 	}
+}
+
+// catalogMedia arma el servicio de fotos (spec 091). Sin MEDIA_* las fotos quedan apagadas: subir
+// responde 503 y el POS opera igual.
+func catalogMedia(cfg config.Config, st *store.Store) (*app.CatalogMediaService, error) {
+	if !cfg.MediaEnabled() {
+		slog.Info("fotos del catálogo apagadas: MEDIA_* no definidas")
+		return app.NewCatalogMediaService(st, nil, ""), nil
+	}
+	c, err := objstore.New(cfg.MediaS3Endpoint, cfg.MediaS3Bucket, cfg.MediaS3Region, cfg.MediaS3AccessKeyID, cfg.MediaS3SecretAccessKey)
+	if err != nil {
+		return nil, err
+	}
+	return app.NewCatalogMediaService(st, c, cfg.MediaPublicBaseURL), nil
 }

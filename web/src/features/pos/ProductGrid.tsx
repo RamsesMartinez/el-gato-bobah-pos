@@ -13,9 +13,12 @@ interface Props {
   onEditPrice?: (p: MenuProduct) => void;
   // Por producto, el otro nombre por el que salió en la búsqueda (spec 063).
   matchedAlts?: Map<number, string>;
+  // Los agotados (spec 092): se ven, pero no se agregan.
+  soldOut?: Set<number>;
+  onSoldOutTap?: (p: MenuProduct) => void;
 }
 
-export function ProductGrid({ products, counts, onTap, showPrice, menu, lista, onEditPrice, matchedAlts }: Props) {
+export function ProductGrid({ products, counts, onTap, showPrice, menu, lista, onEditPrice, matchedAlts, soldOut, onSoldOutTap }: Props) {
   if (products.length === 0) {
     return (
       <Center h="200px">
@@ -36,6 +39,8 @@ export function ProductGrid({ products, counts, onTap, showPrice, menu, lista, o
           esManual={desglosePrecio(menu, lista, p.id, Number(p.price))?.esManual ?? false}
           onEditPrice={onEditPrice}
           matchedAlt={matchedAlts?.get(p.id)}
+          soldOut={soldOut?.has(p.id) ?? false}
+          onSoldOutTap={onSoldOutTap}
         />
       ))}
     </Grid>

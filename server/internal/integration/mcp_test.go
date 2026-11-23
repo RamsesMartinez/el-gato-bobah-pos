@@ -39,9 +39,9 @@ type mcpWorld struct {
 	otherAdm int64
 }
 
-func mcpRouter(st *store.Store, jm *auth.Manager) http.Handler {
+func mcpRouter(st *store.Store, jm *auth.Manager, extra ...func(*httpapi.Deps)) http.Handler {
 	orders := app.NewOrdersService(st, nil)
-	h := httpapi.NewHandlers(httpapi.Deps{
+	d := httpapi.Deps{
 		JWT: jm, Broker: realtime.NewBroker(), MenuCache: cache.NewMenuCache(""),
 		Menu: app.NewMenuService(st, nil), Orders: orders, Backoffice: app.NewBackofficeService(st, nil),
 		Admin: app.NewAdminService(st), Sales: app.NewSalesService(st, nil), Audit: app.NewAuditService(st),
@@ -49,8 +49,12 @@ func mcpRouter(st *store.Store, jm *auth.Manager) http.Handler {
 		PlatformPrices: app.NewPlatformPricesService(st), Users: app.NewUsersService(st, nil, false, ""),
 		APITokens: app.NewAPITokensService(st), Settings: app.NewSettingsService(st, "pepper-de-prueba"),
 		Drafts: app.NewDraftsService(st, orders), Terminals: app.NewTerminalsService(st),
-	})
-	return httpapi.Router(config.Config{}, jm, h, st)
+		Media: app.NewCatalogMediaService(st, nil, ""),
+	}
+	for _, f := range extra {
+		f(&d)
+	}
+	return httpapi.Router(config.Config{}, jm, httpapi.NewHandlers(d), st)
 }
 
 func newMCPWorld(t *testing.T) mcpWorld {
