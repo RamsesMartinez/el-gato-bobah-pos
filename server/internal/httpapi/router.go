@@ -601,6 +601,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health.csv", h.ExportInventoryHealth)
 					// El faltante de un conteo (spec 039): lo lee quien ve la salud del inventario.
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/counts/{id}/loss", h.CountLoss)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/counts/{id}/vs-sales", h.CountVsSales)
 					// Empaques de compra (spec 038): por permiso y fuera del grupo por rol, igual que la salud.
 					// Leerlos es de quien registra compras; cambiarlos, de quien configura el almacén.
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/presentations", h.ListPresentations)

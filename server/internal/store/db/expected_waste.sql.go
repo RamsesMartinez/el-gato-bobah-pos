@@ -11,6 +11,91 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const countVsSalesLines = `-- name: CountVsSalesLines :many
+select l.ingredient_id, i.name::text as name, u.code::text as base_unit_code, l.counted_qty, l.system_qty,
+       (prev.last_movement_id is not null and l.last_movement_id is not null)::bool as has_previous,
+       coalesce(prev.counted_qty, 0)::numeric(14,4) as initial_qty,
+       coalesce(mv.sold, 0)::numeric(14,4) as sold,
+       coalesce(mv.expected_waste, 0)::numeric(14,4) as expected_waste,
+       coalesce(mv.registered, 0)::numeric(14,4) as registered,
+       coalesce(mv.transfers_out, 0)::numeric(14,4) as transfers_out,
+       coalesce(mv.entries, 0)::numeric(14,4) as entries
+  from stock_count_lines l
+  join stock_counts c on c.id = l.count_id
+  join ingredients i on i.id = l.ingredient_id
+  join units u on u.id = i.base_unit_id
+  left join lateral (
+    select pl.last_movement_id, pl.counted_qty from stock_count_lines pl join stock_counts pc on pc.id = pl.count_id
+     where pc.status = 'closed' and pc.warehouse_id = c.warehouse_id and pc.id <> c.id
+       and pl.ingredient_id = l.ingredient_id and pl.captured_at < l.captured_at
+     order by pl.captured_at desc limit 1
+  ) prev on true
+  left join lateral (
+    select -sum(m.quantity) filter (where m.movement_type in ('venta', 'cancelacion')) as sold,
+           -sum(m.quantity) filter (where m.movement_type = 'merma_esperada') as expected_waste,
+           -sum(m.quantity) filter (where m.waste_record_id is not null) as registered,
+           -sum(m.quantity) filter (where m.movement_type = 'traspaso' and m.quantity < 0) as transfers_out,
+           sum(m.quantity) filter (where m.movement_type in ('compra', 'traspaso') and m.quantity > 0) as entries
+      from stock_movements m
+     where m.ingredient_id = l.ingredient_id and m.warehouse_id = c.warehouse_id
+       and m.id > prev.last_movement_id and m.id <= l.last_movement_id
+  ) mv on true
+ where l.count_id = $1 and c.status = 'closed'
+ order by i.name, l.ingredient_id
+`
+
+type CountVsSalesLinesRow struct {
+	IngredientID  int64           `json:"ingredient_id"`
+	Name          string          `json:"name"`
+	BaseUnitCode  string          `json:"base_unit_code"`
+	CountedQty    decimal.Decimal `json:"counted_qty"`
+	SystemQty     decimal.Decimal `json:"system_qty"`
+	HasPrevious   bool            `json:"has_previous"`
+	InitialQty    decimal.Decimal `json:"initial_qty"`
+	Sold          decimal.Decimal `json:"sold"`
+	ExpectedWaste decimal.Decimal `json:"expected_waste"`
+	Registered    decimal.Decimal `json:"registered"`
+	TransfersOut  decimal.Decimal `json:"transfers_out"`
+	Entries       decimal.Decimal `json:"entries"`
+}
+
+// Conteo contra ventas (spec 096, subida 2): por insumo contado, lo que pasó en su almacén entre el
+// conteo cerrado anterior que lo vio y éste, con el mismo ancla por id de movimiento que el faltante
+// (CountLossLines). Cada suma va con coalesce: un insumo sin movimientos en el periodo da 0, y un NULL
+// tumbaría la consulta entera (AGENTS.md).
+func (q *Queries) CountVsSalesLines(ctx context.Context, countID int64) ([]CountVsSalesLinesRow, error) {
+	rows, err := q.db.Query(ctx, countVsSalesLines, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountVsSalesLinesRow{}
+	for rows.Next() {
+		var i CountVsSalesLinesRow
+		if err := rows.Scan(
+			&i.IngredientID,
+			&i.Name,
+			&i.BaseUnitCode,
+			&i.CountedQty,
+			&i.SystemQty,
+			&i.HasPrevious,
+			&i.InitialQty,
+			&i.Sold,
+			&i.ExpectedWaste,
+			&i.Registered,
+			&i.TransfersOut,
+			&i.Entries,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIngredientLabels = `-- name: ListIngredientLabels :many
 select i.id, i.name::text as name, u.code::text as base_unit
   from ingredients i
@@ -187,6 +272,34 @@ func (q *Queries) ListRealWasteRecords(ctx context.Context, ids []int64) ([]List
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const previousClosedCounts = `-- name: PreviousClosedCounts :many
+select pc.id from stock_counts pc join stock_counts c on c.id = $1
+ where pc.status = 'closed' and pc.warehouse_id = c.warehouse_id and pc.id < c.id
+ order by pc.id desc limit 2
+`
+
+// Los dos conteos cerrados anteriores del mismo almacén, el más reciente primero, para ver si la
+// diferencia de un artículo es estable.
+func (q *Queries) PreviousClosedCounts(ctx context.Context, countID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, previousClosedCounts, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

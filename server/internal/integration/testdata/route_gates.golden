@@ -103,6 +103,7 @@ GET /api/v1/stock/counts/current admin,gerente
 GET /api/v1/stock/counts/last-closed admin,gerente
 GET /api/v1/stock/counts/{id}/loss admin,gerente
 GET /api/v1/stock/counts/{id}/preview admin,gerente
+GET /api/v1/stock/counts/{id}/vs-sales admin,gerente
 GET /api/v1/stock/health admin,gerente
 GET /api/v1/stock/health.csv admin,gerente
 GET /api/v1/stock/ingredient-categories admin,gerente
