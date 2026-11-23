@@ -108,7 +108,7 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
   const hora = useHoraDelNegocio();
   const art = useQuery({ queryKey: ['article', id], queryFn: () => backofficeApi.article(id) });
   const cats = useQuery({ queryKey: ['article-categories'], queryFn: backofficeApi.articleCategories });
-  const locations = useLocations();
+  const locations = useLocations(undefined, { all: true });
   const units = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units, enabled: canConfigure });
   const allPres = useQuery({ queryKey: ['presentations'], queryFn: backofficeApi.presentations, enabled: canReceive });
   const history = useInfiniteQuery({

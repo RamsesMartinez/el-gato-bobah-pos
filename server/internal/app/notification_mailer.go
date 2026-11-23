@@ -264,7 +264,7 @@ type mailItem struct {
 // bodies arma el HTML de cada destinatario con los tipos de aviso que recibe; quien no recibe nada de
 // lo que hay, no recibe correo. La lista de compra viene de la misma consulta que la pantalla.
 func (m *NotificationMailer) bodies(ctx context.Context, q *db.Queries, items []mailItem, period string, morning bool) (map[string]string, error) {
-	lines, err := shoppingListIn(ctx, q)
+	lines, err := shoppingListIn(ctx, q, domain.WarehouseSel{})
 	if err != nil {
 		return nil, err
 	}
@@ -472,7 +472,7 @@ func (m *NotificationMailer) SendShoppingListTo(ctx context.Context, company, us
 			return ErrNoEmail
 		}
 		to = *u.RecoveryEmail
-		lines, err := shoppingListIn(ctx, q)
+		lines, err := shoppingListIn(ctx, q, domain.WarehouseSel{})
 		if err != nil {
 			return err
 		}

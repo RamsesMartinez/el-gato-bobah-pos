@@ -19,7 +19,7 @@ import (
 
 func countAndClose(t *testing.T, svc *app.BackofficeService, ctx context.Context, ing int64, counted string, actor int64) int64 {
 	t.Helper()
-	c, err := svc.OpenCount(ctx, actor)
+	c, err := svc.OpenCount(ctx, domain.WarehouseSel{}, actor)
 	if err != nil {
 		t.Fatalf("abrir conteo: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestAWasteCommittingDuringTheCaptureIsCountedOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c, err := svc.OpenCount(ctx, actor)
+	c, err := svc.OpenCount(ctx, domain.WarehouseSel{}, actor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestClosingACountCoversOnlyThePendingWasteItSaw(t *testing.T) {
 		return r.ID
 	}
 
-	discarded, err := svc.OpenCount(ctx, actor)
+	discarded, err := svc.OpenCount(ctx, domain.WarehouseSel{}, actor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestClosingACountCoversOnlyThePendingWasteItSaw(t *testing.T) {
 		t.Fatal("un conteo descartado cubrió una merma")
 	}
 
-	c, err := svc.OpenCount(ctx, actor)
+	c, err := svc.OpenCount(ctx, domain.WarehouseSel{}, actor)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -38,7 +38,7 @@ func placeIngredient(t *testing.T, st *store.Store, company int64, name string) 
 
 func placeNames(t *testing.T, ctx context.Context, svc *app.BackofficeService) []string {
 	t.Helper()
-	ps, err := svc.ListCountPlaces(ctx)
+	ps, err := svc.ListCountPlaces(ctx, domain.WarehouseSel{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,11 +56,11 @@ func TestChoosingAPlaceFromTheList(t *testing.T) {
 	svc, ctx := asWaste(t, co)
 	ing := placeIngredient(t, st, co, "Leche de lugares")
 
-	refri, err := svc.CreateCountPlace(ctx, "  Refri ")
+	refri, err := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "  Refri ")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.CreateCountPlace(ctx, "Barra"); err != nil {
+	if _, err := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Barra"); err != nil {
 		t.Fatal(err)
 	}
 	if got := placeNames(t, ctx, svc); len(got) != 2 || got[0] != "Refri" || got[1] != "Barra" {
@@ -68,7 +68,7 @@ func TestChoosingAPlaceFromTheList(t *testing.T) {
 	}
 
 	t.Run("un nombre que ya existe con otra mayúscula o acento no crea otro y dice cuál es", func(t *testing.T) {
-		_, err := svc.CreateCountPlace(ctx, " REFRÍ ")
+		_, err := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, " REFRÍ ")
 		var exists domain.CountPlaceExists
 		if !errors.As(err, &exists) || exists.ID != refri {
 			t.Fatalf("= %v; quiere el lugar %d que ya existe", err, refri)
@@ -91,7 +91,7 @@ func TestChoosingAPlaceFromTheList(t *testing.T) {
 	})
 	t.Run("nombre vacío o de más de 30 letras", func(t *testing.T) {
 		for _, n := range []string{"   ", "1234567890123456789012345678901"} {
-			if _, err := svc.CreateCountPlace(ctx, n); !errors.Is(err, domain.ErrValidation) {
+			if _, err := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, n); !errors.Is(err, domain.ErrValidation) {
 				t.Errorf("%q = %v; quiere ErrValidation", n, err)
 			}
 		}
@@ -105,11 +105,11 @@ func TestAPlaceOfAnotherCompanyOrArchivedCannotBeAssigned(t *testing.T) {
 	co := makeCompany(t, st, "lugares-duenos")
 	other := makeCompany(t, st, "lugares-otros")
 	svc, ctx := asWaste(t, co)
-	place, err := svc.CreateCountPlace(ctx, "Bodega de la dueña")
+	place, err := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Bodega de la dueña")
 	if err != nil {
 		t.Fatal(err)
 	}
-	archived, err := svc.CreateCountPlace(ctx, "Archivado")
+	archived, err := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Archivado")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestAPlaceOfAnotherCompanyOrArchivedCannotBeAssigned(t *testing.T) {
 	theirs := placeIngredient(t, st, other, "Insumo de la otra")
 	inTheThreeCases(t, co, other, func(t *testing.T, s *store.Store, c context.Context) {
 		svc := app.NewBackofficeService(s, clock)
-		ps, err := svc.ListCountPlaces(c)
+		ps, err := svc.ListCountPlaces(c, domain.WarehouseSel{})
 		if err == nil {
 			for _, p := range ps {
 				if p.ID == place {
@@ -156,7 +156,7 @@ func TestAssigningWhileArchivingNeverLeavesAnArchivedPlace(t *testing.T) {
 	st := newTestStore(t)
 	co := makeCompany(t, st, "lugares-carrera")
 	svc, ctx := asWaste(t, co)
-	place, err := svc.CreateCountPlace(ctx, "Refri en disputa")
+	place, err := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Refri en disputa")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestCreatingALocationNeedsConfigure(t *testing.T) {
 
 	t.Run("crear no ve ni toca las ubicaciones de otra empresa, en los tres casos", func(t *testing.T) {
 		inTheThreeCases(t, defaultCompanyID, makeCompany(t, st, "ubicacion-ajena"), func(t *testing.T, st *store.Store, ctx context.Context) {
-			_, err := app.NewBackofficeService(st, clock).CreateCountPlace(ctx, "Bodega 043 permisos")
+			_, err := app.NewBackofficeService(st, clock).CreateCountPlace(ctx, domain.WarehouseSel{}, "Bodega 043 permisos")
 			var exists domain.CountPlaceExists
 			if errors.As(err, &exists) && exists.ID == place.ID {
 				t.Fatal("la ubicación de otra empresa contó como repetida: se vio entre empresas")

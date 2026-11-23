@@ -1450,28 +1450,26 @@ type TransferSource struct {
 
 func (s *BackofficeService) StockLevels(ctx context.Context, sel domain.WarehouseSel) ([]StockLevelView, error) {
 	q := s.store.QC(ctx)
-	var ids []int64
-	if sel.All {
-		ws, err := q.ListWarehouses(ctx, false)
-		if err != nil {
-			return nil, err
-		}
-		for _, w := range ws {
-			ids = append(ids, w.ID)
-		}
-	} else {
-		id, err := ResolveWarehouseID(ctx, q, sel)
-		if err != nil {
-			return nil, err
-		}
-		ids = []int64{id}
+	ids, err := warehouseIDs(ctx, q, sel)
+	if err != nil {
+		return nil, err
 	}
-	rows, err := q.ListStockLevels(ctx, ids)
+	// Con un almacén se lee su mínimo; el de venta, nombrado o no, hereda el del artículo.
+	var minOf *int64
+	isSales := false
+	if !sel.All {
+		wh, err := resolveWarehouse(ctx, q, sel)
+		if err != nil {
+			return nil, err
+		}
+		minOf, isSales = &wh.ID, wh.IsSales
+	}
+	rows, err := q.ListStockLevels(ctx, db.ListStockLevelsParams{MinWarehouseID: minOf, WarehouseIds: ids})
 	if err != nil {
 		return nil, err
 	}
 	sources := map[domain.StockKey][]TransferSource{}
-	if sel.Sales() {
+	if isSales {
 		src, err := q.TransferSources(ctx)
 		if err != nil {
 			return nil, err
@@ -1483,6 +1481,7 @@ func (s *BackofficeService) StockLevels(ctx context.Context, sel domain.Warehous
 	}
 	out := make([]StockLevelView, 0, len(rows))
 	for _, r := range rows {
+		r.MinStock = warehouseMinimum(r.MinStock, r.OwnMinStock, minOf != nil, isSales)
 		from := sources[salesStockKey(string(r.ItemType), r.IngredientID, r.ProductID)]
 		if from == nil {
 			from = []TransferSource{}
@@ -1491,8 +1490,131 @@ func (s *BackofficeService) StockLevels(ctx context.Context, sel domain.Warehous
 	}
 	return out, nil
 }
-func (s *BackofficeService) StockMovements(ctx context.Context, limit int32) ([]db.ListStockMovementsRow, error) {
-	return s.store.QC(ctx).ListStockMovements(ctx, limit)
+
+// warehouseMinimum es el mínimo que vale en el almacén leído: el propio; si no tiene, el del artículo
+// solo en el de venta (la regla de warehouse_low_stock_state). Sumando almacenes no hay uno.
+func warehouseMinimum(article, own *decimal.Decimal, oneWarehouse, isSales bool) *decimal.Decimal {
+	switch {
+	case !oneWarehouse:
+		return nil
+	case own != nil:
+		return own
+	case isSales:
+		return article
+	}
+	return nil
+}
+
+// WarehouseValue es lo que vale lo que hay en un almacén, al costo vigente y sin negativos.
+type WarehouseValue struct {
+	WarehouseID   int64           `json:"warehouseId"`
+	WarehouseName string          `json:"warehouseName"`
+	Value         decimal.Decimal `json:"value"`
+}
+
+// StockValueByWarehouse es el desglose de «Todos»: cada almacén activo de la sucursal con su valor.
+// Sale de la misma consulta que Existencias, así que la suma es el total que muestra la pantalla.
+// Nunca nil.
+func (s *BackofficeService) StockValueByWarehouse(ctx context.Context) ([]WarehouseValue, error) {
+	q := s.store.QC(ctx)
+	ws, err := q.ListWarehouses(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WarehouseValue, 0, len(ws))
+	for _, w := range ws {
+		rows, err := q.ListStockLevels(ctx, db.ListStockLevelsParams{WarehouseIds: []int64{w.ID}})
+		if err != nil {
+			return nil, err
+		}
+		total := decimal.Zero
+		for _, r := range rows {
+			total = total.Add(r.Value)
+		}
+		out = append(out, WarehouseValue{WarehouseID: w.ID, WarehouseName: w.Name, Value: domain.Round2(total)})
+	}
+	return out, nil
+}
+
+// StockValueTotal suma el valor de los renglones. Cada uno ya viene sin negativos (ListStockLevels):
+// el total es lo que vale lo que hay, almacén por almacén.
+func StockValueTotal(items []StockLevelView) decimal.Decimal {
+	total := decimal.Zero
+	for _, it := range items {
+		total = total.Add(it.Value)
+	}
+	return domain.Round2(total)
+}
+
+// StockMovementView es un movimiento con su almacén y, si es pata de un traspaso, el otro almacén.
+type StockMovementView struct {
+	ID                       int64                `json:"id"`
+	ItemType                 db.StockItemType     `json:"item_type"`
+	ItemName                 string               `json:"item_name"`
+	MovementType             db.StockMovementType `json:"movement_type"`
+	Quantity                 decimal.Decimal      `json:"quantity"`
+	Reason                   *string              `json:"reason"`
+	CreatedAt                time.Time            `json:"created_at"`
+	WarehouseID              int64                `json:"warehouse_id"`
+	WarehouseName            string               `json:"warehouse_name"`
+	UnitCode                 string               `json:"unit_code"`
+	TransferID               *int64               `json:"transfer_id"`
+	CounterpartWarehouseName *string              `json:"counterpart_warehouse_name"`
+	// CounterpartWarehouseArchived: el otro almacén del traspaso ya se archivó. Con uno nuevo del
+	// mismo nombre, es lo que distingue de cuál vino.
+	CounterpartWarehouseArchived bool `json:"counterpart_warehouse_archived"`
+}
+
+// warehouseIDs es la lista de almacenes de una lectura: uno (el de venta por omisión) o todos los
+// activos de la sucursal.
+func warehouseIDs(ctx context.Context, q *db.Queries, sel domain.WarehouseSel) ([]int64, error) {
+	if !sel.All {
+		id, err := ResolveWarehouseID(ctx, q, sel)
+		if err != nil {
+			return nil, err
+		}
+		return []int64{id}, nil
+	}
+	ws, err := q.ListWarehouses(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(ws))
+	for _, w := range ws {
+		ids = append(ids, w.ID)
+	}
+	return ids, nil
+}
+
+// StockMovements son los últimos movimientos de un almacén (el de venta por omisión) o de todos.
+// Nunca nil.
+func (s *BackofficeService) StockMovements(ctx context.Context, sel domain.WarehouseSel, limit int32) ([]StockMovementView, error) {
+	q := s.store.QC(ctx)
+	ids, err := warehouseIDs(ctx, q, sel)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.ListStockMovements(ctx, db.ListStockMovementsParams{WarehouseIds: ids, Lim: limit})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]StockMovementView, 0, len(rows))
+	for _, r := range rows {
+		v := StockMovementView{ID: r.ID, ItemType: r.ItemType, ItemName: r.ItemName, MovementType: r.MovementType,
+			Quantity: r.Quantity, Reason: r.Reason, CreatedAt: r.CreatedAt, WarehouseID: r.WarehouseID,
+			WarehouseName: r.WarehouseName, UnitCode: r.UnitCode, TransferID: r.TransferID}
+		if r.TransferFromID != nil && r.TransferFromName != nil && r.TransferToName != nil {
+			c := domain.TransferCounterpart(r.WarehouseID, *r.TransferFromID, *r.TransferFromName, *r.TransferToName)
+			v.CounterpartWarehouseName = &c
+			active := r.TransferToActive
+			if r.WarehouseID != *r.TransferFromID {
+				active = r.TransferFromActive
+			}
+			v.CounterpartWarehouseArchived = active != nil && !*active
+		}
+		out = append(out, v)
+	}
+	return out, nil
 }
 
 // RecordMovement registra un ajuste/compra/merma manual sobre un ingrediente o producto, en el almacén

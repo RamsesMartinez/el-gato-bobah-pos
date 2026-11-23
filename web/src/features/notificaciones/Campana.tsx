@@ -14,6 +14,7 @@ import { useSessionStore } from '../../stores/session';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { formatBaseQty } from '../../shared/units';
 import { useAvisos } from './useAvisos';
+import { useWarehousePick } from '../backoffice/warehouses/WarehousePicker';
 
 // La campana al pie del riel (spec 084, maqueta M3, opción A v2): solo icono de 44 px, con la misma
 // insignia que «Se echó a perder», y un panel de 440 px que sale junto al riel sin tapar la pantalla
@@ -98,6 +99,7 @@ export function PanelDeAvisos({ abiertos, onClose }: { abiertos: NotificationVie
 
 function Renglon({ n, onClose }: { n: NotificationView; onClose: () => void }) {
   const user = useSessionStore((s) => s.user);
+  const { multi } = useWarehousePick();
   const hora = useHoraDelNegocio();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -120,8 +122,10 @@ function Renglon({ n, onClose }: { n: NotificationView; onClose: () => void }) {
   const abierto = n.status === 'open';
   const configura = can('inventory.configure', user);
   const cantidad = (v: string | null) => (v == null ? '' : formatBaseQty(v, n.unitCode ?? ''));
+  // Con dos o más almacenes (spec 094) se dice en cuál; con uno, como antes.
+  const dondeHay = multi && n.warehouseName ? ` en ${n.warehouseName}` : '';
   const detalle = n.kind === 'stock_low'
-    ? `Hay ${cantidad(n.onHandSeen)} · mínimo ${cantidad(n.minSeen)}`
+    ? `Hay ${cantidad(n.onHandSeen)}${dondeHay} · mínimo ${cantidad(n.minSeen)}`
     : n.kind === 'stock_out'
       ? `Lo reportó ${n.openedByName || 'el sistema'}${n.confirmations > 1 ? ` · lo confirmaron ${n.confirmations}` : ''}`
       : `Lo buscó ${n.openedByName || 'alguien'}`;

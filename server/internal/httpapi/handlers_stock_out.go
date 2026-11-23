@@ -43,9 +43,10 @@ func clientKey(s string) (uuid.UUID, error) {
 // Decode: un `quantity` ignorado en silencio haría creer a quien lo mandó que restó esa cantidad.
 func (h *Handlers) ReportOut(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ItemType  string `json:"itemType"`
-		ID        int64  `json:"id"`
-		ClientKey string `json:"clientKey"`
+		ItemType    string `json:"itemType"`
+		ID          int64  `json:"id"`
+		ClientKey   string `json:"clientKey"`
+		WarehouseID *int64 `json:"warehouseId"`
 	}
 	if err := DecodeStrict(r, &body); err != nil {
 		Error(w, err)
@@ -56,8 +57,14 @@ func (h *Handlers) ReportOut(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	sel, err := domain.WarehouseFromBody(body.WarehouseID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	u, _ := userFrom(r.Context())
-	res, created, err := h.stockOut.ReportOut(r.Context(), app.ReportOutCmd{ItemType: body.ItemType, ID: body.ID, ClientKey: key, Actor: u.ID})
+	res, created, err := h.stockOut.ReportOut(r.Context(), app.ReportOutCmd{ItemType: body.ItemType, ID: body.ID, ClientKey: key,
+		Actor: u.ID, Warehouse: sel})
 	if err != nil {
 		Error(w, err)
 		return

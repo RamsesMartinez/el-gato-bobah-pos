@@ -57,6 +57,8 @@ type NotificationView struct {
 	UnitCode       string           `json:"unitCode,omitempty"`
 	QueryText      string           `json:"queryText,omitempty"`
 	BranchName     string           `json:"branchName"`
+	WarehouseID    int64            `json:"warehouseId"`
+	WarehouseName  string           `json:"warehouseName"`
 	OnHandSeen     *decimal.Decimal `json:"onHandSeen"`
 	MinSeen        *decimal.Decimal `json:"minSeen"`
 	NeedsCount     bool             `json:"needsCount"`
@@ -96,7 +98,8 @@ func (s *NotificationsService) List(ctx context.Context, user int64, perms []dom
 	}
 	out := make([]NotificationView, 0, len(rows))
 	for _, r := range rows {
-		v := NotificationView{ID: r.ID, Kind: r.Kind, Status: r.Status, BranchName: r.BranchName, OnHandSeen: r.OnHandSeen,
+		v := NotificationView{ID: r.ID, Kind: r.Kind, Status: r.Status, BranchName: r.BranchName,
+			WarehouseID: r.WarehouseID, WarehouseName: r.WarehouseName, OnHandSeen: r.OnHandSeen,
 			MinSeen: r.MinSeen, NeedsCount: r.NeedsCount, OpenedAt: r.OpenedAt, OpenedBy: r.OpenedBy, OpenedByName: r.OpenedByName,
 			ResolvedByName: r.ResolvedByName, ResolvedReason: strOf(r.ResolvedReason), Read: r.IsRead, Banner: r.Banner,
 			Confirmations: int(r.Confirmations), ItemName: strOf(r.ItemName), UnitCode: strOf(r.UnitCode), QueryText: strOf(r.QueryText)}
@@ -210,16 +213,16 @@ func (s *NotificationsService) Resolve(ctx context.Context, user int64, perms []
 	})
 }
 
-// evaluateEverywhere evalúa un artículo en cada sucursal activa: para lo que cambia sin movimiento
+// evaluateEverywhere evalúa un artículo en cada almacén activo: para lo que cambia sin movimiento
 // (el mínimo, archivar, unir, cambiar de unidad), que el trigger no ve. Va al final de la transacción
 // del cambio, cuando la existencia y la configuración ya son las nuevas.
 func evaluateEverywhere(ctx context.Context, q *db.Queries, itemType db.StockItemType, ing, prod *int64) error {
-	branches, err := q.CompanyBranches(ctx)
+	warehouses, err := q.CompanyWarehouses(ctx)
 	if err != nil {
 		return err
 	}
-	for _, b := range branches {
-		if err := q.EvaluateLowStock(ctx, db.EvaluateLowStockParams{BranchID: b, ItemType: itemType, IngredientID: ing, ProductID: prod}); err != nil {
+	for _, w := range warehouses {
+		if err := q.EvaluateLowStock(ctx, db.EvaluateLowStockParams{WarehouseID: w, ItemType: itemType, IngredientID: ing, ProductID: prod}); err != nil {
 			return err
 		}
 	}
@@ -228,8 +231,9 @@ func evaluateEverywhere(ctx context.Context, q *db.Queries, itemType db.StockIte
 
 // evaluateCounted cierra como «contado» el «se acabó» de lo que un conteo incluyó (FR-019) y lo vuelve
 // a evaluar con la cifra ya contada: un conteo que confirma la cifra no inserta movimiento y el trigger
-// no lo ve. Va después de marcar el conteo cerrado, así lo abierto ya no pide conteo.
-func evaluateCounted(ctx context.Context, q *db.Queries, countID, branch, user int64) error {
+// no lo ve. Va después de marcar el conteo cerrado, así lo abierto ya no pide conteo. Solo en el
+// almacén del conteo: contar Bodega no dice nada de lo que se acabó en Local.
+func evaluateCounted(ctx context.Context, q *db.Queries, countID, warehouse, user int64) error {
 	items, err := q.CountedArticlesOf(ctx, countID)
 	if err != nil {
 		return err
@@ -238,10 +242,10 @@ func evaluateCounted(ctx context.Context, q *db.Queries, countID, branch, user i
 		ing, prod := itemIDs(it.ItemType, it.ID)
 		if _, err := q.ResolveOpenOfArticle(ctx, db.ResolveOpenOfArticleParams{ResolvedBy: &user,
 			ResolvedReason: ptr(string(domain.ReasonCounted)), IngredientID: ing, ProductID: prod,
-			Kind: string(domain.KindStockOut), BranchID: &branch}); err != nil {
+			Kind: string(domain.KindStockOut), WarehouseID: &warehouse}); err != nil {
 			return err
 		}
-		if err := q.EvaluateLowStock(ctx, db.EvaluateLowStockParams{BranchID: branch, ItemType: it.ItemType, IngredientID: ing, ProductID: prod}); err != nil {
+		if err := q.EvaluateLowStock(ctx, db.EvaluateLowStockParams{WarehouseID: warehouse, ItemType: it.ItemType, IngredientID: ing, ProductID: prod}); err != nil {
 			return err
 		}
 	}

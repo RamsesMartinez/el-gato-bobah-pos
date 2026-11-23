@@ -10,6 +10,7 @@ import { formatBaseQty } from '../units';
 import { QtyWithUnit } from '../qty';
 import { baseQty, bigUnitOf, type Kind } from '../articleUnits';
 import { resumenDeAlertas } from './resumenDeAlertas';
+import { useWarehousePick, WarehousePicker } from '../../features/backoffice/warehouses/WarehousePicker';
 
 // La sección «Alertas» de la ficha (spec 084, maqueta M1, opción B): un renglón con el estado en
 // palabras y «Configurar ›», que abre su hoja con la casilla, el mínimo, los eventos, la franja y los
@@ -38,9 +39,12 @@ interface Forma {
 
 const DIAS_POR_OMISION = 14;
 
-function formaDe(c: LowStockConfig, kind: Kind): Forma {
+// otroAlmacen: con un almacén que no es el de venta elegido, el mínimo que se edita es el de ese
+// almacén (branchMinStock), no el del artículo.
+function formaDe(c: LowStockConfig, kind: Kind, otroAlmacen = false): Forma {
   const big = bigUnitOf(kind);
-  const n = c.minStock == null ? null : Number(c.minStock);
+  const raw = otroAlmacen ? c.branchMinStock : c.minStock;
+  const n = raw == null ? null : Number(raw);
   const enGrande = !!big && n != null && n >= big.factor;
   return {
     enabled: c.enabled, onMin: c.onMin, onOut: c.onOut, banner: c.banner,
@@ -54,10 +58,32 @@ function formaDe(c: LowStockConfig, kind: Kind): Forma {
 function cuerpo(f: Forma, kind: Kind, updatedAt?: string): LowStockInput {
   const min = baseQty(f.min.qty, kind, f.min.big);
   return {
-    enabled: f.enabled, onMin: f.onMin && min != null && Number(min) > 0, onOut: f.onOut, banner: f.banner, minStock: min ?? null,
+    enabled: f.enabled, onMin: f.onMin && min != null && Number(min) > 0, onOut: f.onOut, banner: f.banner,
+    minStock: min ?? null,
     coverageDays: f.dias.trim() === '' ? null : Number(f.dias), ...(updatedAt ? { expectedUpdatedAt: updatedAt } : {}),
   };
 }
+
+// cuerpoDeOtroAlmacen: con otro almacén (spec 094) solo cambia el mínimo de ese almacén. Las alertas
+// (encendidas, al mínimo, al acabarse, franja) son del artículo y viajan como están: calcularlas con
+// el mínimo de Bodega apagaba el aviso del de venta. Vacío manda null, que quita el mínimo.
+function cuerpoDeOtroAlmacen(f: Forma, kind: Kind, c: LowStockConfig, warehouseId: number): LowStockInput {
+  return {
+    enabled: c.enabled, onMin: c.onMin, onOut: c.onOut, banner: c.banner, minStock: c.minStock, coverageDays: c.coverageDays,
+    expectedUpdatedAt: c.updatedAt, branchMinStock: baseQty(f.min.qty, kind, f.min.big) ?? null, warehouseId,
+  };
+}
+
+// resumenDeOtroAlmacen: lo que avisa ese almacén, que solo mide su propio mínimo.
+function resumenDeOtroAlmacen(c: LowStockConfig, almacen: string): string {
+  if (!c.enabled) return 'Apagadas';
+  if (c.branchMinStock == null) return `${almacen} sin mínimo`;
+  const min = formatBaseQty(c.branchMinStock, c.unitCode);
+  return c.onMin ? `Avisa al llegar a ${min}` : `Mínimo ${min}, sin aviso al llegar`;
+}
+
+// primeraMinuscula: la frase va dentro de otra; bajar todo escribía «10 l» por «10 L».
+const primeraMinuscula = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 
 // diasInvalidos: vacío es «los de omisión»; si se escribe, de 1 a 90 (lo mismo que acepta el servidor).
 const diasInvalidos = (d: string) => d.trim() !== '' && !(Number(d) >= 1 && Number(d) <= 90);
@@ -74,7 +100,14 @@ function Casilla({ checked, onChange, disabled, children }: { checked: boolean; 
 
 export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved }: Props) {
   const qc = useQueryClient();
-  const cfg = useQuery({ queryKey: ['alertas', itemType, id], queryFn: () => lowStockApi.get(itemType, id) });
+  // De qué almacén se ve y se edita el mínimo (spec 094): por omisión el de venta.
+  const wh = useWarehousePick();
+  const wid = wh.warehouseId;
+  const llave = ['alertas', itemType, id, wid ?? 'venta'];
+  // Cambiar de almacén no quita la sección mientras llega el otro; solo del mismo artículo, y sin
+  // poder configurar hasta que llegue (se editaría el mínimo del almacén anterior).
+  const cfg = useQuery({ queryKey: llave, queryFn: () => lowStockApi.get(itemType, id, wid),
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === itemType && prevQuery?.queryKey[2] === id ? prev : undefined) });
   const [hoja, setHoja] = useState(false);
   const [forma, setForma] = useState<Forma | null>(null);
   const [efecto, setEfecto] = useState<LowStockEffect | null>(null);
@@ -86,24 +119,26 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
     if (e instanceof ApiError && e.code === 'STALE') {
       setError('Alguien más cambió estas alertas mientras las veías. Se volvieron a leer: revisa y guarda otra vez.');
       void qc.invalidateQueries({ queryKey: ['alertas', itemType, id] }).then(() => {
-        const nueva = qc.getQueryData<LowStockConfig>(['alertas', itemType, id]);
-        if (nueva) setForma(formaDe(nueva, kind));
+        const nueva = qc.getQueryData<LowStockConfig>(llave);
+        if (nueva) setForma(formaDe(nueva, kind, wid !== undefined));
       });
       return;
     }
     setError(e instanceof ApiError ? e.message : 'No se pudo; vuelve a intentar.');
   };
+  const cuerpoDe = (f: Forma) => (wid !== undefined && cfg.data
+    ? cuerpoDeOtroAlmacen(f, kind, cfg.data, wid) : cuerpo(f, kind, cfg.data?.updatedAt));
   const yaPregunto = useMutation({
     mutationFn: () => lowStockApi.asked(id),
     onSettled: () => void qc.invalidateQueries({ queryKey: ['alertas', itemType, id] }),
   });
   const verEfecto = useMutation({
-    mutationFn: (f: Forma) => lowStockApi.preview(itemType, id, cuerpo(f, kind, cfg.data?.updatedAt)),
+    mutationFn: (f: Forma) => lowStockApi.preview(itemType, id, cuerpoDe(f)),
     onSuccess: (r) => { setError(null); setEfecto(r); },
     onError: fallo,
   });
   const guardar = useMutation({
-    mutationFn: (f: Forma) => lowStockApi.save(itemType, id, cuerpo(f, kind, cfg.data?.updatedAt)),
+    mutationFn: (f: Forma) => lowStockApi.save(itemType, id, cuerpoDe(f)),
     onSuccess: (r) => {
       if (r.updatedAt) onSaved?.(r.updatedAt);
       medirAccion('inventario', 'alertas');
@@ -119,32 +154,57 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
   const c = cfg.data;
   if (!c) return null;
   const abrir = (encender?: boolean) => {
-    const f = formaDe(c, kind);
+    const f = formaDe(c, kind, wid !== undefined);
     setForma(encender ? { ...f, enabled: true } : f);
     setError(null);
     setHoja(true);
   };
   const preguntar = canConfigure && itemType === 'ingrediente' && !c.asked && !preguntaCerrada && !hoja;
+  const otro = wid !== undefined;
+  const almacen = c.warehouseName ?? wh.name ?? '';
 
   return (
     <>
+      {wh.multi && <Box mb={2}><WarehousePicker pick={wh} label="¿De qué almacén?" /></Box>}
       <HStack justify="space-between" minH="44px" data-alertas>
         <Box>
-          <Text>Alertas: <b>{resumenDeAlertas(c)}</b></Text>
-          {/* El mínimo de la sucursal gana sobre el del artículo: se dice, o el renglón promete otro. */}
-          {c.enabled && c.branchMinStock != null && (
-            <Text fontSize="sm" color="fg.muted">En esta sucursal avisa al llegar a {formatBaseQty(c.branchMinStock, c.unitCode)}</Text>
+          {otro ? (
+            <>
+              <Text>Alertas en {almacen}: <b>{resumenDeOtroAlmacen(c, almacen)}</b></Text>
+              <Text fontSize="sm" color="fg.muted">Hay {formatBaseQty(c.onHand, c.unitCode)} en {almacen}</Text>
+            </>
+          ) : (
+            <>
+              <Text>Alertas: <b>{resumenDeAlertas(c)}</b></Text>
+              {/* El mínimo propio del almacén gana sobre el del artículo: se dice, o el renglón promete otro. */}
+              {c.enabled && c.branchMinStock != null && (
+                <Text fontSize="sm" color="fg.muted">
+                  {wh.multi && c.warehouseName ? `En ${c.warehouseName}` : 'En esta sucursal'} avisa al llegar a {formatBaseQty(c.branchMinStock, c.unitCode)}
+                </Text>
+              )}
+            </>
           )}
         </Box>
-        {canConfigure && <Button minH="44px" variant="outline" onClick={() => abrir()}>Configurar ›</Button>}
+        {canConfigure && <Button minH="44px" variant="outline" disabled={cfg.isPlaceholderData} onClick={() => abrir()}>Configurar ›</Button>}
       </HStack>
 
       {forma && (
         <DrawerRoot open={hoja} placement="bottom" onOpenChange={(e) => { if (!e.open) setHoja(false); }}>
           <DrawerBackdrop />
           <DrawerContent borderTopRadius="l3" maxH="85dvh" display="flex" flexDirection="column">
-            <DrawerHeader><Text fontSize="lg" fontWeight="700">Alertas de {name}</Text></DrawerHeader>
+            <DrawerHeader><Text fontSize="lg" fontWeight="700">{otro ? `Mínimo de ${name} en ${almacen}` : `Alertas de ${name}`}</Text></DrawerHeader>
             <DrawerBody flex="1" minH={0} overflowY="auto">
+              {otro ? (
+                <Stack gap={2} maxW="560px">
+                  <QtyWithUnit label={`Mínimo en ${almacen}`} optional kind={kind} value={forma.min} keepAmount onChange={(min) => setForma({ ...forma, min })} />
+                  <Text fontSize="sm" color="fg.muted">
+                    {c.enabled
+                      ? `Avisa al llegar a este mínimo. Si avisa, cuándo y la franja se cambian en ${wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta'}.`
+                      : `Las alertas de este artículo están apagadas: se encienden en ${wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta'}.`}
+                  </Text>
+                  {error && <Text role="alert" color="fg.error">{error}</Text>}
+                </Stack>
+              ) : (
               <Stack gap={1} maxW="560px">
                 <Casilla checked={forma.enabled} onChange={(enabled) => setForma({ ...forma, enabled })}>
                   <Text fontWeight="700">Enviar alerta de stock bajo</Text>
@@ -169,11 +229,12 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
                 )}
                 {error && <Text role="alert" color="fg.error">{error}</Text>}
               </Stack>
+              )}
             </DrawerBody>
             <DrawerFooter>
               <Button minH="52px" variant="ghost" onClick={() => setHoja(false)}>Cancelar</Button>
               <Button minH="52px" colorPalette="brand" loading={verEfecto.isPending} onClick={() => {
-                if (forma.enabled && diasInvalidos(forma.dias)) { setError('Los días de cobertura van de 1 a 90 días.'); return; }
+                if (!otro && forma.enabled && diasInvalidos(forma.dias)) { setError('Los días de cobertura van de 1 a 90 días.'); return; }
                 verEfecto.mutate(forma);
               }}>Guardar</Button>
             </DrawerFooter>
@@ -185,7 +246,11 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
         <ConfirmSheet isOpen title="Guardar las alertas" confirmLabel="Guardar" confirmPalette="brand" loading={guardar.isPending}
           onConfirm={() => guardar.mutate(forma)} onCancel={() => setEfecto(null)}>
           <VStack align="stretch" gap={2}>
-            <Text>Se actualizará la configuración de alertas de <b>{name}</b>: {resumenDeAlertas({ ...c, ...cuerpo(forma, kind), minStock: efecto.min ?? cuerpo(forma, kind).minStock }).toLowerCase()}.</Text>
+            {otro ? (
+              <Text>Mínimo de <b>{name}</b> en {almacen}: {(() => { const m = baseQty(forma.min.qty, kind, forma.min.big); return m == null ? 'sin mínimo' : formatBaseQty(m, c.unitCode); })()}.</Text>
+            ) : (
+              <Text>Se actualizará la configuración de alertas de <b>{name}</b>{wh.multi ? ` en ${almacen}` : ''}: {primeraMinuscula(resumenDeAlertas({ ...c, ...cuerpo(forma, kind), minStock: efecto.min ?? cuerpo(forma, kind).minStock }))}.</Text>
+            )}
             {efecto.effect.opens.length > 0 && (
               <Box bg="orange.subtle" borderRadius="md" p={3} fontWeight="600">
                 Hoy quedan {formatBaseQty(efecto.onHand, c.unitCode)}, así que se enviará un aviso {efecto.effect.opens.map((k) => KIND_WORDS[k]).join(' y ')} al guardar.

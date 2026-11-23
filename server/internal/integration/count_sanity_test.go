@@ -21,7 +21,7 @@ import (
 func TestTheCountAsksToConfirmAnAbsurdFigure(t *testing.T) {
 	t.Parallel()
 	k := newCountKit(t)
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestTheCountAsksToConfirmAnAbsurdFigure(t *testing.T) {
 func TestTheLastClosedCountIsTheReferenceWhenNothingIsExpected(t *testing.T) {
 	t.Parallel()
 	k := newCountKit(t)
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestTheLastClosedCountIsTheReferenceWhenNothingIsExpected(t *testing.T) {
 		t.Fatal(err)
 	}
 	k.sale(t, k.leche, "-13500") // queda en -1.5 L
-	c2, err := k.svc.OpenCount(k.ctx, k.user)
+	c2, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestWeighingAPieceArticle(t *testing.T) {
 		values ($1, $2, 'Kilo', 400, $3, true)`, defaultCompanyID, popotes, kg); err != nil {
 		t.Fatal(err)
 	}
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestWeighingAPieceArticle(t *testing.T) {
 		}
 	})
 	t.Run("la lista del conteo dice que se puede pesar y trae todos sus empaques", func(t *testing.T) {
-		view, err := k.svc.CurrentCount(k.ctx)
+		view, err := k.svc.CurrentCount(k.ctx, domain.WarehouseSel{})
 		if err != nil || view == nil {
 			t.Fatal(err)
 		}

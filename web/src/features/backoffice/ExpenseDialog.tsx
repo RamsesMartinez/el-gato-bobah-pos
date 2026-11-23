@@ -141,7 +141,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   // El catálogo completo, una sola vez: el picker filtra en local (buscar no debe costar un
   // round-trip por tecla en un tablet).
   const { data: articles } = useQuery({ queryKey: ['articles'], queryFn: () => backofficeApi.searchArticles(''), enabled: open });
-  const { data: lastCount } = useQuery({ queryKey: ['stock', 'count', 'last-closed'], queryFn: backofficeApi.lastClosedCount, enabled: open });
+  const { data: lastCount } = useQuery({ queryKey: ['stock', 'count', 'last-closed'], queryFn: () => backofficeApi.lastClosedCount(), enabled: open });
   const hora = useHoraDelNegocio();
   const canDensity = can('inventory.configure', useSessionStore((s) => s.user));
   // La hoja de densidad de un artículo, encima del gasto (dos capas como máximo, spec 058).

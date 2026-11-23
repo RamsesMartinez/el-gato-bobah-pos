@@ -35,6 +35,8 @@ type RecordWasteCmd struct {
 	PresentationID *int64
 	Note           *string
 	Actor          int64
+	// Warehouse: de dónde se echó a perder (spec 094); sin él, el de venta.
+	Warehouse domain.WarehouseSel
 }
 
 // WasteResult dice cómo quedó: «applied» si ya restó, «pending» si espera aprobación.
@@ -66,6 +68,10 @@ func (s *BackofficeService) RecordWaste(ctx context.Context, cmd RecordWasteCmd)
 		if err != nil {
 			return err
 		}
+		wh, err := resolveWarehouse(ctx, q, cmd.Warehouse)
+		if err != nil {
+			return err
+		}
 		reason, err := activeWasteReason(ctx, q, cmd.ReasonID)
 		if err != nil {
 			return err
@@ -92,7 +98,7 @@ func (s *BackofficeService) RecordWaste(ctx context.Context, cmd RecordWasteCmd)
 			itemType = "producto"
 		}
 		rec, err := q.InsertWasteRecord(ctx, db.InsertWasteRecordParams{
-			BranchID: branch, ReasonID: reason.ID, ItemType: itemType, IngredientID: cmd.IngredientID,
+			WarehouseID: wh.ID, ReasonID: reason.ID, ItemType: itemType, IngredientID: cmd.IngredientID,
 			ProductID: cmd.ProductID, Quantity: plan.quantity, EnteredQty: entered, PresentationID: cmd.PresentationID,
 			UnitCost: plan.unitCost, TotalCost: plan.total, IsStaffMeal: reason.IsStaffMeal, Note: note,
 			Status: string(status), RecordedBy: cmd.Actor,
@@ -101,13 +107,14 @@ func (s *BackofficeService) RecordWaste(ctx context.Context, cmd RecordWasteCmd)
 			return err
 		}
 		if status == domain.WasteApplied {
-			if err := insertWasteMovements(ctx, q, rec.ID, branch, cmd.Actor, plan.deltas, movementCost(cmd.ProductID, plan.unitCost)); err != nil {
+			if err := insertWasteMovements(ctx, q, rec.ID, wh.ID, cmd.Actor, plan.deltas, movementCost(cmd.ProductID, plan.unitCost)); err != nil {
 				return err
 			}
 		}
 		out = WasteResult{ID: rec.ID, Status: string(status), TotalCost: plan.total}
 		return auditEntity(ctx, q, domain.AuditWasteRecorded, "waste_record", rec.ID, &branch, &cmd.Actor, nil,
-			map[string]any{"status": status, "quantity": plan.quantity, "totalCost": plan.total, "reason": reason.Name})
+			map[string]any{"status": status, "quantity": plan.quantity, "totalCost": plan.total, "reason": reason.Name,
+				"warehouseId": wh.ID, "warehouseName": wh.Name})
 	})
 	return out, err
 }
@@ -202,7 +209,7 @@ func movementCost(productID *int64, unitCost *decimal.Decimal) *decimal.Decimal 
 	return unitCost
 }
 
-func insertWasteMovements(ctx context.Context, q *db.Queries, recordID, branch, actor int64, deltas []domain.StockDelta, unitCost *decimal.Decimal) error {
+func insertWasteMovements(ctx context.Context, q *db.Queries, recordID, warehouse, actor int64, deltas []domain.StockDelta, unitCost *decimal.Decimal) error {
 	reason := wasteMovementReason
 	for _, d := range deltas {
 		qty := domain.Round4(d.Qty.Neg())
@@ -211,7 +218,7 @@ func insertWasteMovements(ctx context.Context, q *db.Queries, recordID, branch, 
 		}
 		p := db.InsertWasteMovementParams{
 			ItemType: db.StockItemType(d.ItemType), IngredientID: d.IngredientID, ProductID: d.ProductID, Quantity: qty,
-			WasteRecordID: &recordID, UserID: &actor, Reason: &reason, BranchID: branch,
+			WasteRecordID: &recordID, UserID: &actor, Reason: &reason, WarehouseID: warehouse,
 			ModifierOptionID: d.OptionID, ComponentOfProductID: d.ComponentOf,
 		}
 		if d.ProductID == nil && len(deltas) == 1 {
@@ -289,7 +296,7 @@ func (s *BackofficeService) ApproveWaste(ctx context.Context, id, actor int64) e
 		}
 		// Un conteo abierto que ya capturó el artículo ajustará esta pérdida al cerrar: aprobarla
 		// también la restaría dos veces. Queda cubierta por ese conteo, como al cerrarlo.
-		seenBy, err := q.OpenCountThatSaw(ctx, db.OpenCountThatSawParams{BranchID: r.BranchID, Ids: plan.ingredientIDs(), Since: r.RecordedAt})
+		seenBy, err := q.OpenCountThatSaw(ctx, db.OpenCountThatSawParams{WarehouseID: r.WarehouseID, Ids: plan.ingredientIDs(), Since: r.RecordedAt})
 		if err != nil {
 			return err
 		}
@@ -314,7 +321,7 @@ func (s *BackofficeService) ApproveWaste(ctx context.Context, id, actor int64) e
 		if n == 0 {
 			return fmt.Errorf("%w: esta merma ya se resolvió", domain.ErrConflict)
 		}
-		if err := insertWasteMovements(ctx, q, id, r.BranchID, actor, plan.deltas, movementCost(r.ProductID, unitCost)); err != nil {
+		if err := insertWasteMovements(ctx, q, id, r.WarehouseID, actor, plan.deltas, movementCost(r.ProductID, unitCost)); err != nil {
 			return err
 		}
 		branch := r.BranchID
@@ -367,7 +374,7 @@ func (s *BackofficeService) UndoWaste(ctx context.Context, id, actor int64, canC
 				}
 			}
 			slices.Sort(ids)
-			counted, err := q.IngredientsCountedSince(ctx, db.IngredientsCountedSinceParams{BranchID: r.BranchID, Ids: ids, Since: r.RecordedAt})
+			counted, err := q.IngredientsCountedSince(ctx, db.IngredientsCountedSinceParams{WarehouseID: r.WarehouseID, Ids: ids, Since: r.RecordedAt})
 			if err != nil {
 				return err
 			}
@@ -390,7 +397,7 @@ func (s *BackofficeService) UndoWaste(ctx context.Context, id, actor int64, canC
 		for _, m := range moves {
 			if err := q.InsertWasteMovement(ctx, db.InsertWasteMovementParams{
 				ItemType: m.ItemType, IngredientID: m.IngredientID, ProductID: m.ProductID, Quantity: m.Quantity.Neg(),
-				UnitCost: m.UnitCost, WasteRecordID: &id, UserID: &actor, Reason: &reason, BranchID: r.BranchID,
+				UnitCost: m.UnitCost, WasteRecordID: &id, UserID: &actor, Reason: &reason, WarehouseID: r.WarehouseID,
 				ModifierOptionID: m.ModifierOptionID, ComponentOfProductID: m.ComponentOfProductID,
 			}); err != nil {
 				return err
@@ -428,6 +435,8 @@ type WasteRow struct {
 	ReportReason int64            `json:"reportReasonId,omitempty"`
 	IsStaffMeal  bool             `json:"isStaffMeal,omitempty"`
 	Note         *string          `json:"note,omitempty"`
+	// WarehouseName: de qué almacén salió; las listas de hoy y por aprobar lo traen (spec 094).
+	WarehouseName string `json:"warehouseName,omitempty"`
 }
 
 // WasteToday lista lo registrado hoy en la sucursal.
@@ -446,7 +455,7 @@ func (s *BackofficeService) WasteToday(ctx context.Context) ([]WasteRow, error) 
 	for _, r := range rows {
 		out = append(out, WasteRow{ID: r.ID, ItemType: string(r.ItemType), ItemName: r.ItemName, Quantity: r.Quantity,
 			UnitCode: r.UnitCode, TotalCost: r.TotalCost, Status: r.Status, Reason: r.ReasonName,
-			RecordedBy: r.RecordedByName, RecordedAt: r.RecordedAt, RecordedByID: r.RecordedBy, Note: r.Note,
+			RecordedBy: r.RecordedByName, RecordedAt: r.RecordedAt, RecordedByID: r.RecordedBy, Note: r.Note, WarehouseName: r.WarehouseName,
 			CanUndo: r.Status == string(domain.WasteApplied) || r.Status == string(domain.WastePending)})
 	}
 	return out, nil
@@ -462,7 +471,7 @@ func (s *BackofficeService) PendingWaste(ctx context.Context) ([]WasteRow, error
 	for _, r := range rows {
 		out = append(out, WasteRow{ID: r.ID, ItemType: string(r.ItemType), ItemName: r.ItemName, Quantity: r.Quantity,
 			UnitCode: r.UnitCode, TotalCost: r.TotalCost, Status: string(domain.WastePending), Reason: r.ReasonName,
-			RecordedBy: r.RecordedByName, RecordedAt: r.RecordedAt})
+			RecordedBy: r.RecordedByName, RecordedAt: r.RecordedAt, WarehouseName: r.WarehouseName})
 	}
 	return out, nil
 }

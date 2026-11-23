@@ -74,8 +74,11 @@ type HealthNegative struct {
 	OnHand       decimal.Decimal `json:"onHand"`
 	// Branch solo viene con más de una sucursal: con una, nombrarla es ruido.
 	Branch *string `json:"branch"`
-	UsedBy int     `json:"usedBy"`
-	FixAt  string  `json:"fixAt"`
+	// WarehouseID y Warehouse: el almacén donde quedó en negativo; ahí se cuenta para corregirlo.
+	WarehouseID int64  `json:"warehouseId"`
+	Warehouse   string `json:"warehouse"`
+	UsedBy      int    `json:"usedBy"`
+	FixAt       string `json:"fixAt"`
 }
 
 type HealthNoPurchase struct {
@@ -256,7 +259,7 @@ func (s *InventoryHealthService) report(ctx context.Context, f domain.HealthFilt
 		}
 		for _, r := range rows {
 			n := HealthNegative{IngredientID: r.IngredientID, Name: r.Name, Unit: r.Unit, OnHand: r.OnHand,
-				UsedBy: int(r.UsedBy), FixAt: ingredientFixAt(r.IngredientID)}
+				WarehouseID: r.WarehouseID, Warehouse: r.Warehouse, UsedBy: int(r.UsedBy), FixAt: ingredientFixAt(r.IngredientID)}
 			if v.MultipleBranches {
 				b := r.Branch
 				n.Branch = &b

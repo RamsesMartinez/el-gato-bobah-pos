@@ -107,7 +107,7 @@ func (k *grossKit) gross(weight string, unit int16, containers int) *app.GrossCa
 // weighedOf es el desglose de la pesada que el conteo abierto devuelve para un artículo (#204).
 func weighedOf(t *testing.T, k *grossKit) *app.CountWeighed {
 	t.Helper()
-	v, err := k.svc.CurrentCount(k.ctx)
+	v, err := k.svc.CurrentCount(k.ctx, domain.WarehouseSel{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,13 +123,13 @@ func weighedOf(t *testing.T, k *grossKit) *app.CountWeighed {
 func TestCountingByWeighingWithThePresentation(t *testing.T) {
 	t.Parallel()
 	k := newGrossKit(t)
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("el conteo dice qué se puede pesar y con qué números", func(t *testing.T) {
-		v, err := k.svc.CurrentCount(k.ctx)
+		v, err := k.svc.CurrentCount(k.ctx, domain.WarehouseSel{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -322,7 +322,7 @@ func TestReopeningAWeighedCountKeepsHowClosedWasSplit(t *testing.T) {
 		values ($1, $2, 'Galón 4 L', 4000) returning id`, defaultCompanyID, k.salsa).Scan(&galon); err != nil {
 		t.Fatal(err)
 	}
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}

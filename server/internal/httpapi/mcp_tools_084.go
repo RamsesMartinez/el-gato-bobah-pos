@@ -32,7 +32,8 @@ type lowStockItemArg struct {
 
 type lowStockUpdateArgs struct {
 	writeCommon
-	Items []lowStockItemArg `json:"items" jsonschema:"de 1 a 100 artículos"`
+	Items       []lowStockItemArg `json:"items" jsonschema:"de 1 a 100 artículos"`
+	WarehouseID *int64            `json:"warehouse_id,omitempty" jsonschema:"almacén (de warehouses_list): min_stock pasa a ser el mínimo propio de ese almacén; sin él, el mínimo del artículo"`
 }
 
 func (in lowStockUpdateArgs) body() (map[string]any, error) {
@@ -54,7 +55,11 @@ func (in lowStockUpdateArgs) body() (map[string]any, error) {
 		}
 		items[i] = map[string]any{"itemType": it.ItemType, "id": it.ID, "enabled": it.Enabled, "minStock": min}
 	}
-	return map[string]any{"items": items}, nil
+	body := map[string]any{"items": items}
+	if in.WarehouseID != nil {
+		body["warehouseId"] = *in.WarehouseID
+	}
+	return body, nil
 }
 
 func register084() {

@@ -98,3 +98,25 @@ func ParseWarehouseParam(raw string, allowAll bool) (WarehouseSel, error) {
 	}
 	return WarehouseSel{ID: id}, nil
 }
+
+// TransferCounterpart es el otro almacén de una pata de traspaso: si la pata está en el origen, el
+// destino; si no, el origen. Una pata no dice hacia dónde fue y sin esto la lista de movimientos
+// mostraría «traspaso −6» sin decir a dónde.
+func TransferCounterpart(legWarehouse, fromWarehouse int64, fromName, toName string) string {
+	if legWarehouse == fromWarehouse {
+		return toName
+	}
+	return fromName
+}
+
+// WarehouseFromBody lee el almacén del cuerpo de una escritura: ausente es el de venta; presente y
+// no positivo se rechaza, igual que en la URL.
+func WarehouseFromBody(id *int64) (WarehouseSel, error) {
+	if id == nil {
+		return WarehouseSel{}, nil
+	}
+	if *id <= 0 {
+		return WarehouseSel{}, fmt.Errorf("%w: almacén inválido", ErrValidation)
+	}
+	return WarehouseSel{ID: *id}, nil
+}

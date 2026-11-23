@@ -26,6 +26,8 @@ export interface WasteRow {
   canUndo: boolean;
   isStaffMeal?: boolean;
   note?: string | null;
+  // De qué almacén salió (spec 094). Opcional: la API anterior no lo trae.
+  warehouseName?: string;
 }
 
 export interface WasteItems {
@@ -81,6 +83,8 @@ export interface RecordWasteInput {
   unitId?: number;
   presentationId?: number;
   note?: string;
+  // Spec 094: ausente es el almacén de venta.
+  warehouseId?: number;
 }
 
 export interface WasteResult {

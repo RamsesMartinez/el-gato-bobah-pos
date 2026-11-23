@@ -8,6 +8,7 @@
 select n.id, n.kind, n.status, n.item_type, n.ingredient_id, n.product_id, n.item_name, n.unit_code, n.query_text,
        n.on_hand_seen, n.min_seen, n.needs_count, n.opened_at, n.resolved_at, n.resolved_reason, n.opened_by,
        coalesce(ob.name, '')::text as opened_by_name, coalesce(rb.name, '')::text as resolved_by_name, b.name::text as branch_name,
+       n.warehouse_id, wh.name::text as warehouse_name,
        (r.read_at is not null)::bool as is_read,
        (n.status = 'open' and n.kind = 'stock_out' and coalesce(i.low_stock_banner, p.low_stock_banner, false)
          and r.banner_seen_at is null and n.opened_by is distinct from sqlc.arg(user_id)::bigint)::bool as banner,
@@ -15,6 +16,7 @@ select n.id, n.kind, n.status, n.item_type, n.ingredient_id, n.product_id, n.ite
          where s.notification_id = n.id and s.kind in ('report', 'confirmation') and s.undone_at is null)::int as confirmations
   from notifications n
   join branches b on b.id = n.branch_id
+  join warehouses wh on wh.id = n.warehouse_id
   left join users ob on ob.id = n.opened_by
   left join users rb on rb.id = n.resolved_by
   left join ingredients i on i.id = n.ingredient_id
@@ -62,42 +64,43 @@ update notifications
  where id = sqlc.arg(id) and (status = 'open' or resolved_at = now());
 
 -- name: ResolveOpenOfArticle :execrows
--- Cierra lo abierto de un artículo en todas las sucursales (archivar, unir, cambiar de unidad,
--- contar). Con kind vacío cierra todos los tipos.
+-- Cierra lo abierto de un artículo en todos los almacenes (archivar, unir, cambiar de unidad), o en
+-- uno (contar). Con kind vacío cierra todos los tipos.
 update notifications
    set status = 'resolved', resolved_at = now(), resolved_by = sqlc.narg(resolved_by), resolved_reason = sqlc.arg(resolved_reason)
  where status = 'open' and kind <> 'not_found'
    and item_key = coalesce(sqlc.narg(ingredient_id)::bigint, -sqlc.narg(product_id)::bigint, 0)
    and (sqlc.arg(kind)::text = '' or kind = sqlc.arg(kind)::text)
-   and (sqlc.narg(branch_id)::bigint is null or branch_id = sqlc.narg(branch_id)::bigint);
+   and (sqlc.narg(warehouse_id)::bigint is null or warehouse_id = sqlc.narg(warehouse_id)::bigint);
 
 -- name: EvaluateLowStock :exec
 -- La misma función que corre el trigger, para lo que cambia sin movimiento (configuración, conteo
--- que confirma la cifra, archivar, unir, cambiar de unidad).
-select evaluate_low_stock(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint,
-                          sqlc.arg(item_type)::stock_item_type, sqlc.narg(ingredient_id)::bigint, sqlc.narg(product_id)::bigint);
+-- que confirma la cifra, archivar, unir, cambiar de unidad), en un almacén.
+select evaluate_warehouse_low_stock(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(warehouse_id)::bigint,
+                                    sqlc.arg(item_type)::stock_item_type, sqlc.narg(ingredient_id)::bigint, sqlc.narg(product_id)::bigint);
 
 -- name: LowStockSnapshot :one
 -- Lo que la vista previa de un cambio de alertas necesita para calcular el efecto con
--- domain.LowStockEffect (la misma tabla de verdad que evaluate_low_stock): la existencia en la
--- sucursal, el mínimo de la sucursal si tiene, y lo abierto.
+-- domain.LowStockEffect (la misma tabla de verdad que evaluate_warehouse_low_stock): la existencia en
+-- el almacén, el mínimo del almacén si tiene, y lo abierto.
 select coalesce((select s.on_hand from stock_levels s
-                  where s.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))
+                  where s.warehouse_id = sqlc.arg(warehouse_id)::bigint
                     and (s.ingredient_id = sqlc.narg(ingredient_id) or s.product_id = sqlc.narg(product_id))), 0)::numeric as on_hand,
        m.min_stock as branch_min,
        coalesce((select array_agg(n.kind order by n.kind) from notifications n
-                  where n.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint)) and n.status = 'open' and n.kind <> 'not_found'
+                  where n.warehouse_id = sqlc.arg(warehouse_id)::bigint and n.status = 'open' and n.kind <> 'not_found'
                     and n.item_key = coalesce(sqlc.narg(ingredient_id)::bigint, -sqlc.narg(product_id)::bigint, 0)), '{}')::text[] as open_kinds,
        exists (select 1 from notifications n
-                where n.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint)) and n.status = 'open' and n.kind = 'stock_out' and n.opened_by is not null
+                where n.warehouse_id = sqlc.arg(warehouse_id)::bigint and n.status = 'open' and n.kind = 'stock_out' and n.opened_by is not null
                   and n.item_key = coalesce(sqlc.narg(ingredient_id)::bigint, -sqlc.narg(product_id)::bigint, 0))::bool as manual_out
   -- Left join y no subconsulta: así sqlc lo tipa como nulable (una sucursal sin mínimo propio).
   from (select 1) one
-  left join branch_stock_minimums m on m.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))
+  left join branch_stock_minimums m on m.warehouse_id = sqlc.arg(warehouse_id)::bigint
    and (m.ingredient_id = sqlc.narg(ingredient_id) or m.product_id = sqlc.narg(product_id));
 
--- name: CompanyBranches :many
-select id from branches where is_active order by id;
+-- name: CompanyWarehouses :many
+-- Los almacenes activos de la empresa: lo que cambia sin movimiento se evalúa en cada uno.
+select id from warehouses where is_active order by id;
 
 -- name: NotifyNotificationsChanged :exec
 select pg_notify('notifications', nullif(current_setting('app.company_id', true), '')::text);
@@ -183,28 +186,31 @@ returning updated_at;
 update ingredients set low_stock_asked_at = coalesce(low_stock_asked_at, now()) where id = sqlc.arg(id);
 
 -- name: UpsertBranchMinimum :exec
-insert into branch_stock_minimums (branch_id, item_type, ingredient_id, product_id, min_stock, updated_by)
-values (sqlc.arg(branch_id), sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id), sqlc.arg(min_stock), sqlc.arg(updated_by))
+-- El mínimo del almacén (la tabla conserva su nombre de cuando era por sucursal).
+insert into branch_stock_minimums (branch_id, warehouse_id, item_type, ingredient_id, product_id, min_stock, updated_by)
+select w.branch_id, w.id, sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id), sqlc.arg(min_stock), sqlc.arg(updated_by)
+  from warehouses w where w.id = sqlc.arg(warehouse_id)
 on conflict (warehouse_id, ingredient_id) where ingredient_id is not null
 do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now();
 
 -- name: UpsertBranchProductMinimum :exec
-insert into branch_stock_minimums (branch_id, item_type, product_id, min_stock, updated_by)
-values (sqlc.arg(branch_id), 'producto', sqlc.arg(product_id), sqlc.arg(min_stock), sqlc.arg(updated_by))
+insert into branch_stock_minimums (branch_id, warehouse_id, item_type, product_id, min_stock, updated_by)
+select w.branch_id, w.id, 'producto', sqlc.arg(product_id), sqlc.arg(min_stock), sqlc.arg(updated_by)
+  from warehouses w where w.id = sqlc.arg(warehouse_id)
 on conflict (warehouse_id, product_id) where product_id is not null
 do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now();
 
 -- name: DeleteBranchMinimum :exec
 delete from branch_stock_minimums
- where branch_id = sqlc.arg(branch_id)
+ where warehouse_id = sqlc.arg(warehouse_id)
    and (ingredient_id = sqlc.narg(ingredient_id) or product_id = sqlc.narg(product_id));
 
 -- name: ListLowStockConfigs :many
 -- La tabla de «Alertas por lote»: insumos activos y productos con existencia propia, con lo que hay
--- en la sucursal.
+-- en el almacén.
 select a.item_type, a.id, a.name, a.unit_code, a.low_stock_enabled, a.min_stock,
        coalesce((select s.on_hand from stock_levels s
-                  where s.warehouse_id = current_sales_warehouse_id()
+                  where s.warehouse_id = sqlc.arg(warehouse_id)
                     and ((a.item_type = 'ingrediente' and s.ingredient_id = a.id) or (a.item_type = 'producto' and s.product_id = a.id))), 0)::numeric as on_hand
   from (
     select 'ingrediente'::stock_item_type as item_type, i.id, i.name, u.code::text as unit_code, i.low_stock_enabled, i.min_stock

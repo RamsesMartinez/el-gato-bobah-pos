@@ -50,6 +50,13 @@ type CountItem struct {
 	Weighed *CountWeighed `json:"weighed"`
 	// AltNames: otros nombres para encontrarlo en la lista del conteo (spec 063). Siempre un arreglo.
 	AltNames []string `json:"altNames"`
+	// PlaceElsewhere: tiene lugar, pero en otro almacén; en este va al final, «Sin lugar en este
+	// almacén» (spec 094, R11 M4). Place y PlaceID vienen vacíos.
+	PlaceElsewhere bool `json:"placeElsewhere"`
+	// InWarehouse: es de este almacén (tiene existencia, lugar o ya se capturó aquí; en el de venta,
+	// todo). La pantalla de un almacén que no es el de venta enseña estos y deja los demás a la
+	// búsqueda.
+	InWarehouse bool `json:"inWarehouse"`
 }
 
 // CountWeighed es el desglose de lo contado pesando: lo cerrado (en la unidad base), lo que marcó la
@@ -67,10 +74,13 @@ type CountWeighed struct {
 // CountView es el conteo abierto con lo que hay que contar: los artículos y los productos con
 // existencia propia (spec 069). Siempre arreglos.
 type CountView struct {
-	ID       int64              `json:"id"`
-	OpenedAt time.Time          `json:"openedAt"`
-	Items    []CountItem        `json:"items"`
-	Products []CountProductItem `json:"products"`
+	ID       int64     `json:"id"`
+	OpenedAt time.Time `json:"openedAt"`
+	// WarehouseID y WarehouseName: el almacén que se cuenta (spec 094).
+	WarehouseID   int64              `json:"warehouseId"`
+	WarehouseName string             `json:"warehouseName"`
+	Items         []CountItem        `json:"items"`
+	Products      []CountProductItem `json:"products"`
 }
 
 // CountAdjustmentView es un renglón contado al cerrar: lo que el sistema tenía, lo contado y la
@@ -101,14 +111,18 @@ type CountCloseView struct {
 	SkippedProducts []CountProductView `json:"skippedProducts"`
 }
 
-// OpenCount abre el conteo de la sucursal de la sesión. Con uno abierto, 409.
-func (s *BackofficeService) OpenCount(ctx context.Context, userID int64) (CountView, error) {
+// OpenCount abre el conteo de un almacén de la sucursal de la sesión (el de venta si no se pide
+// otro). Con uno abierto en ese almacén, 409.
+func (s *BackofficeService) OpenCount(ctx context.Context, sel domain.WarehouseSel, userID int64) (CountView, error) {
 	var opened db.OpenStockCountRow
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
-		var err error
-		opened, err = q.OpenStockCount(ctx, userID)
+		wh, err := ResolveWarehouseID(ctx, q, sel)
+		if err != nil {
+			return err
+		}
+		opened, err = q.OpenStockCount(ctx, db.OpenStockCountParams{OpenedBy: userID, WarehouseID: wh})
 		if isUniqueViolation(err) {
-			return fmt.Errorf("%w: ya hay un conteo abierto en esta sucursal", domain.ErrConflict)
+			return fmt.Errorf("%w: ya hay un conteo abierto en este almacén", domain.ErrConflict)
 		}
 		return err
 	})
@@ -119,9 +133,14 @@ func (s *BackofficeService) OpenCount(ctx context.Context, userID int64) (CountV
 	return v, err
 }
 
-// CurrentCount devuelve el conteo abierto de la sucursal, o nil si no hay.
-func (s *BackofficeService) CurrentCount(ctx context.Context) (*CountView, error) {
-	cur, err := s.store.QC(ctx).CurrentStockCount(ctx)
+// CurrentCount devuelve el conteo abierto del almacén (el de venta si no se pide otro), o nil si no
+// hay.
+func (s *BackofficeService) CurrentCount(ctx context.Context, sel domain.WarehouseSel) (*CountView, error) {
+	wh, err := ResolveWarehouseID(ctx, s.store.QC(ctx), sel)
+	if err != nil {
+		return nil, err
+	}
+	cur, err := s.store.QC(ctx).CurrentStockCount(ctx, wh)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -159,7 +178,11 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 	if err != nil {
 		return CountView{}, err
 	}
-	v := CountView{ID: id, OpenedAt: openedAt, Items: make([]CountItem, len(rows)), Products: products}
+	wh, err := q.StockCountWarehouse(ctx, id)
+	if err != nil {
+		return CountView{}, err
+	}
+	v := CountView{ID: id, OpenedAt: openedAt, WarehouseID: wh.ID, WarehouseName: wh.Name, Items: make([]CountItem, len(rows)), Products: products}
 	for i, r := range rows {
 		ps := byIng[r.ID]
 		if ps == nil {
@@ -168,7 +191,7 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 		v.Items[i] = CountItem{IngredientID: r.ID, Name: r.Name, Place: r.CountPlace, PlaceID: r.CountPlaceID, BaseUnitCode: r.BaseUnitCode,
 			Presentations: ps, CountedQty: r.CountedQty, Weighable: weighable[r.ID], DensityGPerMl: r.DensityGPerMl,
 			GrossWeighable: grossWeighable(r.BaseUnitKind, r.DensityGPerMl, ps), Weighed: weighedOf(r, ps),
-			AltNames: nonNilStrings(r.AltNames)}
+			AltNames: nonNilStrings(r.AltNames), PlaceElsewhere: r.PlaceElsewhere, InWarehouse: r.InWarehouse}
 	}
 	return v, nil
 }
@@ -447,10 +470,10 @@ func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countI
 	// una merma o una venta en curso termina antes, y las dos cifras hablan del mismo momento. El
 	// periodo del faltante se ancla por ese id (spec 039, R2); sin el candado, una merma que
 	// confirmara a media captura quedaría fuera de lo que el conteo vio y se restaría dos veces.
-	if err := q.LockStockLevelForCapture(ctx, db.LockStockLevelForCaptureParams{IngredientID: ingredientID, BranchID: c.BranchID}); err != nil {
+	if err := q.LockStockLevelForCapture(ctx, db.LockStockLevelForCaptureParams{IngredientID: ingredientID, WarehouseID: c.WarehouseID}); err != nil {
 		return err
 	}
-	seen, err := q.OnHandForCapture(ctx, db.OnHandForCaptureParams{IngredientID: ingredientID, BranchID: c.BranchID})
+	seen, err := q.OnHandForCapture(ctx, db.OnHandForCaptureParams{IngredientID: ingredientID, WarehouseID: c.WarehouseID})
 	if err != nil {
 		return err
 	}
@@ -472,7 +495,7 @@ func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countI
 		return err
 	}
 	if in.Confirmable && !in.Confirmed {
-		ref, err := countReference(ctx, q, ingredientID, c.BranchID, seen.OnHand, kind)
+		ref, err := countReference(ctx, q, ingredientID, c.WarehouseID, seen.OnHand, kind)
 		if err != nil {
 			return err
 		}
@@ -499,9 +522,9 @@ func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countI
 }
 
 // countReference junta lo que el servidor sabe del artículo para el aviso del conteo.
-func countReference(ctx context.Context, q *db.Queries, ingredientID, branchID int64, expected decimal.Decimal, kind string) (domain.CountReference, error) {
+func countReference(ctx context.Context, q *db.Queries, ingredientID, warehouseID int64, expected decimal.Decimal, kind string) (domain.CountReference, error) {
 	ref := domain.CountReference{Expected: expected, BaseKind: kind}
-	last, err := q.LastClosedCountedQty(ctx, db.LastClosedCountedQtyParams{BranchID: branchID, IngredientID: ingredientID})
+	last, err := q.LastClosedCountedQty(ctx, db.LastClosedCountedQtyParams{WarehouseID: warehouseID, IngredientID: ingredientID})
 	switch {
 	case err == nil:
 		ref.LastCounted = &last
@@ -590,7 +613,7 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 			return err
 		}
 		// Las existencias de los productos contados se toman antes de leer sus cifras y su modo.
-		if err := lockCountedProducts(ctx, q, countID, c.BranchID); err != nil {
+		if err := lockCountedProducts(ctx, q, countID, c.WarehouseID); err != nil {
 			return err
 		}
 		var plan []domain.CountAdjustment
@@ -606,7 +629,7 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 			ids[i] = a.ItemID
 		}
 		if len(ids) > 0 {
-			if _, err := q.LockStockLevelsInBranchNowait(ctx, db.LockStockLevelsInBranchNowaitParams{Ids: ids, BranchID: c.BranchID}); err != nil {
+			if _, err := q.LockStockLevelsInBranchNowait(ctx, db.LockStockLevelsInBranchNowaitParams{Ids: ids, WarehouseID: c.WarehouseID}); err != nil {
 				return lockErr(err)
 			}
 		}
@@ -614,18 +637,18 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 		for _, a := range plan {
 			if err := q.InsertCountMovement(ctx, db.InsertCountMovementParams{
 				IngredientID: &a.ItemID, Quantity: a.Delta, StockCountID: &countID, UserID: &userID,
-				Reason: &reason, BranchID: c.BranchID,
+				Reason: &reason, WarehouseID: c.WarehouseID,
 			}); err != nil {
 				return err
 			}
 		}
-		if err := closeProducts(ctx, q, countID, c.BranchID, userID, productAdj, processed); err != nil {
+		if err := closeProducts(ctx, q, countID, c.WarehouseID, userID, productAdj, processed); err != nil {
 			return err
 		}
 		if _, err := q.FinishStockCount(ctx, db.FinishStockCountParams{ID: countID, Status: "closed", ClosedBy: &userID}); err != nil {
 			return err
 		}
-		if err := evaluateCounted(ctx, q, countID, c.BranchID, userID); err != nil {
+		if err := evaluateCounted(ctx, q, countID, c.WarehouseID, userID); err != nil {
 			return err
 		}
 		// El costo de cada artículo contado, para que su faltante no cambie después; y las mermas por
@@ -633,7 +656,7 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 		if err := q.SaveCountLineCosts(ctx, countID); err != nil {
 			return err
 		}
-		if err := coverPendingWaste(ctx, q, countID, c.BranchID); err != nil {
+		if err := coverPendingWaste(ctx, q, countID, c.WarehouseID); err != nil {
 			return err
 		}
 		// La vista previa dice cuánto sobraba o faltaba (decisión del dueño); con eso se puede volver a
@@ -646,7 +669,7 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 		return auditEntity(ctx, q, domain.AuditStockCounted, "stock_count", countID, &branch, &userID, nil,
 			map[string]any{"adjusted": len(out.Adjusted), "notCounted": len(out.NotCounted), "changedAfterPreview": changed,
 				"adjustedProducts": len(out.AdjustedProducts), "notCountedProducts": len(out.NotCountedProducts),
-				"skippedProducts": len(out.SkippedProducts)})
+				"skippedProducts": len(out.SkippedProducts), "warehouseId": c.WarehouseID})
 	})
 	return out, err
 }
@@ -662,9 +685,14 @@ func (s *BackofficeService) DiscardCount(ctx context.Context, countID, userID in
 	})
 }
 
-// LastClosedCount es cuándo se cerró el último conteo de la sucursal, o nil si nunca.
-func (s *BackofficeService) LastClosedCount(ctx context.Context) (*LastClosedCount, error) {
-	row, err := s.store.QC(ctx).LastClosedStockCount(ctx)
+// LastClosedCount es cuándo se cerró el último conteo del almacén (el de venta si no se pide otro),
+// o nil si nunca.
+func (s *BackofficeService) LastClosedCount(ctx context.Context, sel domain.WarehouseSel) (*LastClosedCount, error) {
+	wh, err := ResolveWarehouseID(ctx, s.store.QC(ctx), sel)
+	if err != nil {
+		return nil, err
+	}
+	row, err := s.store.QC(ctx).LastClosedStockCount(ctx, wh)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !row.ClosedAt.Valid) {
 		return nil, nil
 	}

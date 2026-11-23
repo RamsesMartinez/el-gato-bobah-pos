@@ -137,7 +137,7 @@ func TestCountLimitsReadAndSaveIsolated(t *testing.T) {
 func TestTheCountRejectsOverTheCompanyMax(t *testing.T) {
 	t.Parallel()
 	k := newCountKit(t)
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestTheCountConfirmUsesTheCompanyFigure(t *testing.T) {
 	t.Parallel()
 	k := newCountKit(t)
 	vasos := ingredientIn(t, k.st, defaultCompanyID, "Vasos límite", "pieza")
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}

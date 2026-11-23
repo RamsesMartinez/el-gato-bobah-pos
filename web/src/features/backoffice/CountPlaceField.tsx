@@ -13,11 +13,12 @@ import { useLocations } from './useLocations';
 
 // PlaceChooser es el botón que abre la hoja y guarda al elegir; sin rótulo, para que cada pantalla
 // ponga el suyo.
-export function PlaceChooser({ ingredientId, placeId, title = 'Ubicación', onSaved }: {
-  ingredientId: number; placeId: number | null; title?: string; onSaved?: () => void;
+// warehouseId (spec 094) ofrece los lugares de ese almacén; sin él, los del de venta.
+export function PlaceChooser({ ingredientId, placeId, title = 'Ubicación', onSaved, warehouseId }: {
+  ingredientId: number; placeId: number | null; title?: string; onSaved?: () => void; warehouseId?: number;
 }) {
   const qc = useQueryClient();
-  const { options, pickerProps } = useLocations();
+  const { options, pickerProps } = useLocations(warehouseId);
   const save = useMutation({
     mutationFn: (id: number | null) => backofficeApi.setCountPlace(ingredientId, id),
     onSuccess: () => {

@@ -165,7 +165,7 @@ func (q *Queries) HealthMultipleBranches(ctx context.Context) (bool, error) {
 
 const healthNegativeStock = `-- name: HealthNegativeStock :many
 select i.id as ingredient_id, i.name::text as name, u.code::text as unit, sl.on_hand,
-       b.name::text as branch,
+       b.name::text as branch, w.id as warehouse_id, w.name::text as warehouse,
        (select count(*) from recipe_items ri
          where ri.ingredient_id = i.id
            and (exists (select 1 from products p where p.recipe_id = ri.recipe_id and p.is_active)
@@ -176,11 +176,11 @@ select i.id as ingredient_id, i.name::text as name, u.code::text as unit, sl.on_
   join ingredients i on i.id = sl.ingredient_id
   join units u on u.id = i.base_unit_id
   join branches b on b.id = sl.branch_id
-  -- El de venta de cada sucursal (spec 094): un negativo es lo que el mostrador vendió sin tener; la
-  -- salud por almacén llega con el conteo por almacén.
-  join warehouses w on w.id = sl.warehouse_id and w.is_sales
+  -- Cada almacén por separado (spec 094): Bodega en -3 no se compensa con Local en 10, y quien la
+  -- corrige tiene que contar ESE almacén.
+  join warehouses w on w.id = sl.warehouse_id
  where sl.item_type = 'ingrediente' and sl.on_hand < 0 and i.is_active
- order by sl.on_hand, i.name, b.name
+ order by sl.on_hand, i.name, b.name, w.name
  limit $2::int offset $1::int
 `
 
@@ -195,11 +195,13 @@ type HealthNegativeStockRow struct {
 	Unit         string          `json:"unit"`
 	OnHand       decimal.Decimal `json:"on_hand"`
 	Branch       string          `json:"branch"`
+	WarehouseID  int64           `json:"warehouse_id"`
+	Warehouse    string          `json:"warehouse"`
 	UsedBy       int32           `json:"used_by"`
 	Total        int64           `json:"total"`
 }
 
-// Insumos activos con existencia menor que cero A HOY, por sucursal (research R8: no usa
+// Insumos activos con existencia menor que cero A HOY, por almacén (research R8: no usa
 // current_branch_id(), que con dos sucursales truena).
 func (q *Queries) HealthNegativeStock(ctx context.Context, arg HealthNegativeStockParams) ([]HealthNegativeStockRow, error) {
 	rows, err := q.db.Query(ctx, healthNegativeStock, arg.Off, arg.Lim)
@@ -216,6 +218,8 @@ func (q *Queries) HealthNegativeStock(ctx context.Context, arg HealthNegativeSto
 			&i.Unit,
 			&i.OnHand,
 			&i.Branch,
+			&i.WarehouseID,
+			&i.Warehouse,
 			&i.UsedBy,
 			&i.Total,
 		); err != nil {

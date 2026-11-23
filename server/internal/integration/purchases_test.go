@@ -695,7 +695,7 @@ func TestAbsurdQuantitiesAreRejectedQuickly(t *testing.T) {
 	if d := time.Since(start); d > 3*time.Second {
 		t.Errorf("rechazar los números absurdos tardó %s", d)
 	}
-	c, err := k.svc.OpenCount(k.ctx, k.user)
+	c, err := k.svc.OpenCount(k.ctx, domain.WarehouseSel{}, k.user)
 	if err != nil {
 		t.Fatal(err)
 	}
