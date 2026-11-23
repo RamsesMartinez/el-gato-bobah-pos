@@ -101,6 +101,7 @@ GET /api/v1/stock/articles/{id}/real-waste admin,gerente
 GET /api/v1/stock/count-places admin,gerente
 GET /api/v1/stock/counts/current admin,gerente
 GET /api/v1/stock/counts/last-closed admin,gerente
+GET /api/v1/stock/counts/{id}/expected admin,gerente
 GET /api/v1/stock/counts/{id}/loss admin,gerente
 GET /api/v1/stock/counts/{id}/preview admin,gerente
 GET /api/v1/stock/counts/{id}/vs-sales admin,gerente

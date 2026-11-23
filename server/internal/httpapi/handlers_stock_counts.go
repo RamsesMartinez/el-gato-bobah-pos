@@ -294,3 +294,19 @@ func (h *Handlers) UncaptureCountProduct(w http.ResponseWriter, r *http.Request)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// CountExpected es GET /stock/counts/{id}/expected (inventory.configure): lo que el sistema tiene de
+// cada insumo, para la vista avanzada (spec 096). Siempre arreglo.
+func (h *Handlers) CountExpected(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.CountExpected(r.Context(), id)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": v})
+}

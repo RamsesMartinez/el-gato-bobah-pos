@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
@@ -72,6 +73,40 @@ func TestCountVsSalesWithTheRealCount(t *testing.T) {
 		v, err := app.NewBackofficeService(as, clock).CountVsSales(c, last)
 		if err == nil && len(v.Items) > 0 {
 			t.Fatal("se vio el conteo contra ventas de otra empresa")
+		}
+	})
+}
+
+// Lo esperado del conteo (vista avanzada) solo lo da su ruta con inventory.configure (la referencia de
+// permisos lo fija: cajero y mesero no la tienen) y nunca cruza empresas.
+func TestCountExpectedIsOnlyForTheWarehouseAndIsolated(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	actor := makeUser(t, st, "gerente_esperado", "gerente")
+	svc, ctx := asWaste(t, defaultCompanyID)
+	ing := pieceIngredient(t, st, "Insumo esperado")
+	adjust(t, st, "ingrediente", ing, "40")
+	c, err := svc.OpenCount(ctx, domain.WarehouseSel{}, actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.CountExpected(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range got {
+		if e.IngredientID == ing && e.Expected.Equal(qty("40")) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("lo esperado no trae las 40 piezas: %+v", got)
+	}
+	inTheThreeCases(t, defaultCompanyID, makeCompany(t, st, "otra-esperado"), func(t *testing.T, as *store.Store, cc context.Context) {
+		v, err := app.NewBackofficeService(as, clock).CountExpected(cc, c.ID)
+		if err == nil && len(v) > 0 {
+			t.Fatal("se vio lo esperado del conteo de otra empresa")
 		}
 	})
 }

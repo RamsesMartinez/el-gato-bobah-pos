@@ -292,3 +292,11 @@ select l.counted_qty from stock_count_product_lines l join stock_counts c on c.i
  where c.status = 'closed' and c.warehouse_id = sqlc.arg(warehouse_id) and l.product_id = sqlc.arg(product_id)
  order by c.closed_at desc, c.id desc
  limit 1;
+
+-- name: CountExpected :many
+-- Lo que el sistema tiene de cada insumo en el almacén de un conteo (spec 096, vista avanzada). Solo
+-- lo pide quien configura el almacén: el conteo de quien cuenta sigue a ciegas (CountItems no lo trae).
+select sl.ingredient_id::bigint as ingredient_id, sl.on_hand
+  from stock_levels sl
+  join stock_counts c on c.id = sqlc.arg(count_id)
+ where sl.warehouse_id = c.warehouse_id and sl.item_type = 'ingrediente' and sl.ingredient_id is not null;
