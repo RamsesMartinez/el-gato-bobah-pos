@@ -316,6 +316,23 @@ describe('ubicación desde el conteo (FR-015f)', () => {
 
   // El aviso «Pídele a quien configura el almacén» con el Picker de verdad lo cubre CountPlaceField.test.tsx;
   // aquí el Picker es un doble y lo que se prueba es que el conteo no le pase el alta.
+  // SC-008: lo capturado vive en el servidor, así que cambiar de vista y regresar no pierde nada.
+  test('capturar en la sencilla, pasar a la avanzada y regresar conserva lo capturado', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+    tecla('2');
+    click('Guardar y seguir ›');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledTimes(1));
+    const [, , body] = back.captureCount.mock.calls[0];
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 1 ? { ...i, countedQty: body.countedQty } : i)) });
+    fireEvent.click(screen.getByRole('button', { name: 'Avanzada' }));
+    const jarabe = (await screen.findAllByTestId('renglon-conteo'))[0];
+    await waitFor(() => expect(jarabe).toHaveTextContent('✓'));
+    fireEvent.click(screen.getByRole('button', { name: 'Sencilla' }));
+    // Al volver, abre en el primer lugar con algo sin contar; el de Jarabe ya dice 1 de 1.
+    expect(within(screen.getByRole('group', { name: 'Lugar' })).getByRole('button', { name: 'Barra · 1/1' })).toBeInTheDocument();
+  });
+
   // Spec 096: la avanzada es la que compara; enseña lo que el sistema esperaba y, ya contado, la
   // diferencia con su signo. Lo que el conteo trae sin existencia esperada cuenta contra cero.
   test('la avanzada muestra lo esperado y, ya contado, la diferencia', async () => {

@@ -352,8 +352,10 @@ del conteo se ve en menos de la meta, medida antes y después.
   mostrar la cifra esperada.
 - **FR-025**: Quien solo puede contar MUST entrar siempre a la sencilla; la avanzada pide el permiso
   de configurar el almacén (`inventory.configure`).
-- **FR-026**: Existencias MUST tener la misma separación: vista sencilla (qué hay y qué falta) y
-  avanzada (valor, movimientos, mínimos, configuración).
+- **FR-026**: Existencias MUST separar el contenido igual: vista sencilla (qué hay, qué queda poco y
+  qué se acabó, sin valor) y avanzada (valor y mínimo por artículo); movimientos y avisos siguen en
+  sus pestañas. A diferencia del conteo, las dos vistas son para todo el que ve Existencias: la tabla
+  con valor ya la usaba quien tiene `inventory.view`, y esconderla le quitaría lo que hoy tiene.
 - **FR-027**: Existencias y la lista del conteo MUST cargar su primera pantalla por debajo de la meta
   de SC-007, medida antes y después sobre la base restaurada.
 
