@@ -105,6 +105,47 @@ func (q *Queries) AdminDetachGroup(ctx context.Context, arg AdminDetachGroupPara
 	return err
 }
 
+const adminGetOption = `-- name: AdminGetOption :one
+select mo.id, mo.group_id, mg.name as group_name, mg.is_active as group_active, mo.name, mo.price_delta,
+       mo.max_per_line, mo.is_favorite, mo.is_active, mo.composition_status
+from modifier_options mo
+join modifier_groups mg on mg.id = mo.group_id
+where mo.id = $1
+`
+
+type AdminGetOptionRow struct {
+	ID                int64           `json:"id"`
+	GroupID           int64           `json:"group_id"`
+	GroupName         string          `json:"group_name"`
+	GroupActive       bool            `json:"group_active"`
+	Name              string          `json:"name"`
+	PriceDelta        decimal.Decimal `json:"price_delta"`
+	MaxPerLine        int16           `json:"max_per_line"`
+	IsFavorite        bool            `json:"is_favorite"`
+	IsActive          bool            `json:"is_active"`
+	CompositionStatus *string         `json:"composition_status"`
+}
+
+// Una opción por id, con su grupo aunque esté inactivo (spec 090): la lista de extras solo trae los
+// de grupos activos, y por ella la opción de un grupo apagado «no existía».
+func (q *Queries) AdminGetOption(ctx context.Context, id int64) (AdminGetOptionRow, error) {
+	row := q.db.QueryRow(ctx, adminGetOption, id)
+	var i AdminGetOptionRow
+	err := row.Scan(
+		&i.ID,
+		&i.GroupID,
+		&i.GroupName,
+		&i.GroupActive,
+		&i.Name,
+		&i.PriceDelta,
+		&i.MaxPerLine,
+		&i.IsFavorite,
+		&i.IsActive,
+		&i.CompositionStatus,
+	)
+	return i, err
+}
+
 const adminGroupCounts = `-- name: AdminGroupCounts :one
 select count(*) filter (where is_active)::int as active,
        count(*) filter (where not is_active)::int as inactive
@@ -177,7 +218,7 @@ func (q *Queries) AdminGroupOptions(ctx context.Context, groupID int64) ([]Admin
 }
 
 const adminGroupProducts = `-- name: AdminGroupProducts :many
-select p.id, p.name,
+select p.id, p.name, p.is_active,
        coalesce(pmg.min_select, mg.default_min_select) as min_select,
        coalesce(pmg.max_select, mg.default_max_select) as max_select,
        (pmg.min_select is not null)::bool as overridden
@@ -191,6 +232,7 @@ order by p.name
 type AdminGroupProductsRow struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
+	IsActive   bool   `json:"is_active"`
 	MinSelect  int16  `json:"min_select"`
 	MaxSelect  int16  `json:"max_select"`
 	Overridden bool   `json:"overridden"`
@@ -209,6 +251,7 @@ func (q *Queries) AdminGroupProducts(ctx context.Context, groupID int64) ([]Admi
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.IsActive,
 			&i.MinSelect,
 			&i.MaxSelect,
 			&i.Overridden,
@@ -227,7 +270,7 @@ const adminListGroups = `-- name: AdminListGroups :many
 
 
 select g.id, g.name, g.is_active, g.default_min_select, g.default_max_select,
-       g.option_count, g.option_preview, g.product_count, g.override_count, g.total
+       g.option_count, g.option_preview, g.product_count, g.active_product_count, g.override_count, g.total
 from (
   select mg.id, mg.name, mg.is_active, mg.default_min_select, mg.default_max_select,
          (select count(*) from modifier_options mo where mo.group_id = mg.id and mo.is_active)::int as option_count,
@@ -248,6 +291,9 @@ from (
                    where mo.group_id = mg.id and mo.is_active
                    order by mo.sort_key, mo.name limit 4) t), '')::text as option_preview,
          (select count(*) from product_modifier_groups pmg where pmg.group_id = mg.id)::int as product_count,
+         -- Los productos activos que lo llevan (spec 090): son en los que deja de salir al archivarlo.
+         (select count(*) from product_modifier_groups pmg join products p on p.id = pmg.product_id
+           where pmg.group_id = mg.id and p.is_active)::int as active_product_count,
          (select count(*) from product_modifier_groups pmg where pmg.group_id = mg.id and pmg.min_select is not null)::int as override_count,
          count(*) over() as total
   from modifier_groups mg
@@ -277,16 +323,17 @@ type AdminListGroupsParams struct {
 }
 
 type AdminListGroupsRow struct {
-	ID               int64  `json:"id"`
-	Name             string `json:"name"`
-	IsActive         bool   `json:"is_active"`
-	DefaultMinSelect int16  `json:"default_min_select"`
-	DefaultMaxSelect int16  `json:"default_max_select"`
-	OptionCount      int32  `json:"option_count"`
-	OptionPreview    string `json:"option_preview"`
-	ProductCount     int32  `json:"product_count"`
-	OverrideCount    int32  `json:"override_count"`
-	Total            int64  `json:"total"`
+	ID                 int64  `json:"id"`
+	Name               string `json:"name"`
+	IsActive           bool   `json:"is_active"`
+	DefaultMinSelect   int16  `json:"default_min_select"`
+	DefaultMaxSelect   int16  `json:"default_max_select"`
+	OptionCount        int32  `json:"option_count"`
+	OptionPreview      string `json:"option_preview"`
+	ProductCount       int32  `json:"product_count"`
+	ActiveProductCount int32  `json:"active_product_count"`
+	OverrideCount      int32  `json:"override_count"`
+	Total              int64  `json:"total"`
 }
 
 // Gestión centralizada de modificadores (admin): catálogo de grupos + opciones,
@@ -321,6 +368,7 @@ func (q *Queries) AdminListGroups(ctx context.Context, arg AdminListGroupsParams
 			&i.OptionCount,
 			&i.OptionPreview,
 			&i.ProductCount,
+			&i.ActiveProductCount,
 			&i.OverrideCount,
 			&i.Total,
 		); err != nil {
@@ -332,6 +380,29 @@ func (q *Queries) AdminListGroups(ctx context.Context, arg AdminListGroupsParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const adminLockOption = `-- name: AdminLockOption :one
+select mo.name, mo.price_delta, mo.max_per_line
+from modifier_options mo
+join modifier_groups mg on mg.id = mo.group_id
+where mo.id = $1
+for update of mo
+`
+
+type AdminLockOptionRow struct {
+	Name       string          `json:"name"`
+	PriceDelta decimal.Decimal `json:"price_delta"`
+	MaxPerLine int16           `json:"max_per_line"`
+}
+
+// La opción con candado de fila para la edición parcial: se lee lo que no vino y se escribe todo en
+// la misma transacción. `of mo`: el grupo solo se lee, y bloquearlo frenaría a quien lo edita.
+func (q *Queries) AdminLockOption(ctx context.Context, id int64) (AdminLockOptionRow, error) {
+	row := q.db.QueryRow(ctx, adminLockOption, id)
+	var i AdminLockOptionRow
+	err := row.Scan(&i.Name, &i.PriceDelta, &i.MaxPerLine)
+	return i, err
 }
 
 const adminProductGroups = `-- name: AdminProductGroups :many

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"uuid"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -198,6 +199,34 @@ func (s *mcpSession) dispatch(ctx context.Context, tool string, method, pattern 
 	for k, v := range params {
 		path = strings.Replace(path, "{"+k+"}", strconv.FormatInt(v, 10), 1)
 	}
+	return s.serve(ctx, tool, method, pattern, path, query, body)
+}
+
+// dispatchDraft es dispatch para las rutas de la cuenta en captura, que se nombra con un UUID (spec
+// 090). El id llega como uuid.UUID, no como texto: su forma escrita solo lleva hex y guiones.
+func (s *mcpSession) dispatchDraft(ctx context.Context, tool string, method, pattern string, id uuid.UUID,
+	body any) (int, []byte, error) {
+	if !slices.Contains(mcpToolRoutes[tool], mcpRoute{method, pattern}) {
+		logging.SecurityEvent(ctx, "mcp_dispatch_denied", "tool", tool, "method", method, "pattern", pattern)
+		return 0, nil, errDispatchDenied
+	}
+	return s.serve(ctx, tool, method, pattern, strings.Replace(pattern, "{id}", id.String(), 1), nil, body)
+}
+
+// parseDraftID lee el id de cuenta que manda el agente. Solo la forma canónica: lo demás no llega al
+// despachador.
+func parseDraftID(raw string) (uuid.UUID, error) {
+	id, err := uuid.Parse(raw)
+	if err != nil || id.String() != strings.ToLower(raw) {
+		return uuid.UUID{}, toolErr("draft_id es el id de la cuenta que devolvió order_draft_create (un UUID).")
+	}
+	return id, nil
+}
+
+// serve resuelve `path` contra el router y lo sirve con la identidad del token. El patrón que
+// encuentra chi tiene que ser el de la lista blanca: así un camino armado no alcanza otra ruta.
+func (s *mcpSession) serve(ctx context.Context, tool, method, pattern, path string, query url.Values,
+	body any) (int, []byte, error) {
 	rctx := chi.NewRouteContext()
 	if strings.Contains(path, "{") || s.mux.Find(rctx, method, path) != pattern {
 		logging.SecurityEvent(ctx, "mcp_dispatch_denied", "tool", tool, "method", method, "pattern", pattern)

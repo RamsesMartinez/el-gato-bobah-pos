@@ -90,11 +90,13 @@ describe('IntegrationsPage', () => {
     expect(within(hoja).getByText(/abrir y cerrar caja/)).toBeVisible();
     expect(within(hoja).getByText(/conteos/)).toBeVisible();
     expect(within(hoja).getByText(/compras con su mercancía/)).toBeVisible();
-    expect(within(hoja).getByText(/devuelve el dinero/)).toBeVisible();
+    expect(within(hoja).getByText(/cobrar; anular pagos, cancelar y reembolsar/)).toBeVisible();
     // Spec 074: Gastos abarca corregir un gasto guardado. Spec 076: Almacén abarca los insumos y sus
     // empaques (un token con Almacén ya emitido gana dar de alta y editar insumos).
     expect(within(hoja).getByText(/corregir/)).toBeVisible();
-    expect(within(hoja).getByText(/^Insumos y sus empaques/)).toBeVisible();
+    expect(within(hoja).getByText(/^Insumos, sus costos y empaques/)).toBeVisible();
+    // Spec 090: Menú y precios abarca productos, grupos, extras y recetas.
+    expect(within(hoja).getByText(/^Productos, grupos, extras y recetas/)).toBeVisible();
   });
 
   test('la tarjeta nombra los alcances nuevos, nunca el identificador', async () => {

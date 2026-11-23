@@ -426,9 +426,13 @@ func sameDec(a, b *decimal.Decimal) bool {
 
 // CorrectArticleCost corrige a mano el costo de un artículo que se compra hecho (FR-005). Cuenta desde
 // ahora y no recalcula lo vendido (order_lines.unit_cost es copia); queda en el historial con quién lo hizo.
-func (s *BackofficeService) CorrectArticleCost(ctx context.Context, id int64, cost decimal.Decimal) error {
+func (s *BackofficeService) CorrectArticleCost(ctx context.Context, id int64, cost decimal.Decimal, rawReason *string) error {
 	if !domain.ValidMoney(cost, true) {
 		return fmt.Errorf("%w: costo inválido", domain.ErrValidation)
+	}
+	reason, err := domain.CostCorrectionReason(rawReason)
+	if err != nil {
+		return err
 	}
 	actor, ok := ActorUserFrom(ctx)
 	if !ok {
@@ -452,12 +456,16 @@ func (s *BackofficeService) CorrectArticleCost(ctx context.Context, id int64, co
 		if err != nil {
 			return err
 		}
-		if err := q.InsertCostCorrection(ctx, db.InsertCostCorrectionParams{IngredientID: id, PreviousCost: prev, NewCost: cost, UserID: actor}); err != nil {
+		if err := q.InsertCostCorrection(ctx, db.InsertCostCorrectionParams{IngredientID: id, PreviousCost: prev, NewCost: cost, UserID: actor, Reason: reason}); err != nil {
 			return err
+		}
+		after := map[string]any{"cost": cost}
+		if reason != nil {
+			after["reason"] = *reason
 		}
 		if err := recordAudit(ctx, q, domain.AuditEvent{
 			Action: domain.AuditIngredientCostCorrected, EntityType: "ingredient", EntityID: id,
-			Before: map[string]any{"cost": prev}, After: map[string]any{"cost": cost},
+			Before: map[string]any{"cost": prev}, After: after,
 		}); err != nil {
 			return err
 		}
@@ -483,6 +491,8 @@ type CostHistoryItem struct {
 	User     *string          `json:"user"`
 	// Brand es la marca con la que se compró (copiada en la compra, 0104).
 	Brand *string `json:"brand"`
+	// Reason: el motivo de una corrección (spec 090); null en una compra o en una corrección sin motivo.
+	Reason *string `json:"reason"`
 	// FromName es el insumo unido del que viene el renglón (spec 056); nulo si es del propio.
 	FromName *string `json:"fromName"`
 }
@@ -530,7 +540,7 @@ func (s *BackofficeService) ArticleCostHistory(ctx context.Context, id int64, be
 			page.Next = &next
 			break
 		}
-		it := CostHistoryItem{Kind: r.Kind, At: r.At, ID: r.ID, UnitCost: r.UnitCost, Presentation: r.Presentation,
+		it := CostHistoryItem{Kind: r.Kind, At: r.At, ID: r.ID, UnitCost: r.UnitCost, Presentation: r.Presentation, Reason: r.Reason,
 			PackQty: r.PackQtyInBase, Supplier: r.Supplier, User: r.UserName, Brand: r.Brand}
 		if name, ok := sourceNames[r.SourceID]; ok {
 			it.FromName = &name

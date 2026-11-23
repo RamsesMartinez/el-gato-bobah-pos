@@ -207,6 +207,9 @@ update register_cash_movements  set recipient_name = 'Usuario ' || recipient_use
 update stock_movements set reason = null, note = null where reason is not null or note is not null;
 update waste_records   set note = null where note is not null;
 update attendance_corrections set reason = 'motivo anonimizado';
+-- El motivo de una corrección de costo (0116) es texto libre: puede nombrar a un proveedor o a una persona.
+-- Vacío violaría su check: se reemplaza, como los demás motivos.
+update ingredient_cost_corrections set reason = 'motivo anonimizado' where reason is not null;
 -- IP y descripción del aparato de quien checó.
 update attendance_entries set in_ip = null, out_ip = null, in_device = null, out_device = null
  where in_ip is not null or out_ip is not null or in_device is not null or out_device is not null;
@@ -349,6 +352,7 @@ FUGAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "
        + (select count(*) from stock_movements where reason is not null or note is not null)
        + (select count(*) from waste_records where note is not null)
        + (select count(*) from attendance_corrections where reason <> 'motivo anonimizado')
+       + (select count(*) from ingredient_cost_corrections where reason <> 'motivo anonimizado')
        + (select count(*) from attendance_entries where in_ip is not null or out_ip is not null or in_device is not null or out_device is not null)
        + (select count(*) from audit_events where before is not null or after is not null or ip is not null or device is not null)
        + (select count(*) from expense_items where description <> 'concepto anonimizado')

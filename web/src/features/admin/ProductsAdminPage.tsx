@@ -191,10 +191,7 @@ export function ProductsAdminPage() {
                 <Table.Cell textAlign="end">{money(p.current_cost)}</Table.Cell>
                 <Table.Cell textAlign="end">{money(Number(p.price) - Number(p.current_cost))}</Table.Cell>
                 <Table.Cell textAlign="center">
-                  <Text as="span" color={p.groupCount === 0 ? 'fg.subtle' : undefined}
-                    fontWeight={p.groupCount === 0 ? undefined : '600'}>
-                    {p.groupCount}
-                  </Text>
+                  <GroupsCell groupCount={p.groupCount} inactiveGroupCount={p.inactiveGroupCount ?? 0} />
                 </Table.Cell>
                 <Table.Cell>
                   {/* Acciones como iconos (no texto): ahorran ancho en tabletas de 7". title = tooltip. */}
@@ -389,4 +386,25 @@ function costoOpcional(texto: string): number | undefined | null {
   if (texto.trim() === '') return undefined;
   const n = montoTecleado(texto);
   return n === undefined || n < 0 ? null : n;
+}
+
+// GroupsCell: cuántos grupos activos tiene el producto y, si hay, cuántos más están apagados (spec 090):
+// un grupo apagado no sale en la venta y el renglón se veía igual que los demás. La insignia es corta
+// para no ensanchar la columna; el detalle va en title, como la de min/máx personalizado.
+export function GroupsCell({ groupCount, inactiveGroupCount }: { groupCount: number; inactiveGroupCount: number }) {
+  return (
+    <HStack gap={1} justify="center" wrap="nowrap">
+      <Text as="span" color={groupCount === 0 ? 'fg.subtle' : undefined} fontWeight={groupCount === 0 ? undefined : '600'}>
+        {groupCount}
+      </Text>
+      {inactiveGroupCount > 0 && (
+        <Badge colorPalette="orange" whiteSpace="nowrap"
+          title={inactiveGroupCount === 1
+            ? '1 grupo inactivo: no sale en la venta'
+            : `${inactiveGroupCount} grupos inactivos: no salen en la venta`}>
+          {inactiveGroupCount} {inactiveGroupCount === 1 ? 'apagado' : 'apagados'}
+        </Badge>
+      )}
+    </HStack>
+  );
 }

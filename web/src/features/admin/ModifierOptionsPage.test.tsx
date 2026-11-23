@@ -82,3 +82,12 @@ test('con exactamente cuatro opciones no dice que haya más', async () => {
   expect(await screen.findByText(/BBQ · Búfalo · Chipotle · Ajo/)).toBeInTheDocument();
   expect(screen.queryByText(/más/)).toBeNull();
 });
+
+// ARCHIVAR UN GRUPO DICE EN CUÁNTOS PRODUCTOS DEJA DE OFRECERSE (#289, defecto 3). Solo cuentan los
+// productos activos: uno archivado no se ofrece de todos modos y contarlo haría mentir al aviso.
+test('el aviso de archivar dice en cuántos productos activos deja de ofrecerse', async () => {
+  const { archivedDescription } = await import('./archivedDescription');
+  expect(archivedDescription(0)).toBeUndefined();
+  expect(archivedDescription(1)).toBe('Ya no se ofrece en 1 producto');
+  expect(archivedDescription(3)).toBe('Ya no se ofrece en 3 productos');
+});

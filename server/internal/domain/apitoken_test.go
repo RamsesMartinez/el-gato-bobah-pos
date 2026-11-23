@@ -186,6 +186,15 @@ func TestIdempotencyArgsHashIncludesTheTool(t *testing.T) {
 	}
 }
 
+// screenWritesWithoutPermission son las escrituras cuya ruta de pantalla no pide permiso (spec 090):
+// capturar, mandar a cocina, entregar, descontar y cobrar un pedido los hace cualquiera que esté en el
+// local, a propósito (router.go lo explica en cada ruta). La herramienta pide lo mismo que la pantalla;
+// lo que el token agrega es el alcance write:orders, que quien crea el token elige.
+var screenWritesWithoutPermission = map[string]bool{
+	"order_draft_create": true, "order_draft_send": true, "order_draft_discard": true,
+	"order_deliver": true, "order_discount_set": true, "order_pay": true,
+}
+
 func TestMCPToolCatalog(t *testing.T) {
 	snake := regexp.MustCompile(`^[a-z]+(_[a-z]+)*$`)
 	seen := map[string]bool{}
@@ -206,7 +215,7 @@ func TestMCPToolCatalog(t *testing.T) {
 			if tool.Scope == ScopeRead || !strings.HasPrefix(string(tool.Scope), "write:") {
 				t.Errorf("%s escribe con alcance %q", tool.Name, tool.Scope)
 			}
-			if tool.Permission == "" {
+			if tool.Permission == "" && !screenWritesWithoutPermission[tool.Name] {
 				t.Errorf("%s escribe sin permiso: toda escritura de la pantalla tiene uno", tool.Name)
 			}
 		} else if tool.Scope != ScopeRead {
@@ -219,8 +228,8 @@ func TestMCPToolCatalog(t *testing.T) {
 			t.Errorf("%s no se encuentra por nombre", tool.Name)
 		}
 	}
-	if len(seen) != 55 || writes != 26 {
-		t.Fatalf("el contrato tiene 55 herramientas y 26 escrituras (084); hay %d y %d", len(seen), writes)
+	if len(seen) != 77 || writes != 43 {
+		t.Fatalf("el contrato tiene 77 herramientas y 43 escrituras (090); hay %d y %d", len(seen), writes)
 	}
 	// Las de la 073, con el alcance y el permiso de contracts/mcp-tools.md.
 	for name, want := range map[string]MCPTool{

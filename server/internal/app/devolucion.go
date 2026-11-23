@@ -720,6 +720,9 @@ type RefundInfoView struct {
 	// cobrado con tarjeta, así que la devolución pedirá el folio de la terminal.
 	CardTerminals []string `json:"cardTerminals"`
 	NeedsFolio    bool     `json:"needsFolio"`
+	// Pending es lo que queda por devolver de la cuenta entera, con la misma cuenta que /refund (spec
+	// 090: la vista previa del agente lo enseña antes de reembolsar).
+	Pending decimal.Decimal `json:"pending"`
 }
 
 // RefundInfo dice en qué terminal devolver y si hará falta el folio.
@@ -735,6 +738,9 @@ func (s *OrdersService) RefundInfo(ctx context.Context, orderID int64) (RefundIn
 			seen[*name] = true
 			v.CardTerminals = append(v.CardTerminals, *name)
 		}
+	}
+	if v.Pending, err = s.PorDevolver(ctx, orderID, nil); err != nil {
+		return RefundInfoView{}, err
 	}
 	return v, nil
 }

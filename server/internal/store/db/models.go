@@ -1235,6 +1235,7 @@ type IngredientCostCorrection struct {
 	NewCost      decimal.Decimal `json:"new_cost"`
 	UserID       int64           `json:"user_id"`
 	CreatedAt    time.Time       `json:"created_at"`
+	Reason       *string         `json:"reason"`
 }
 
 type IngredientDistinctPair struct {
