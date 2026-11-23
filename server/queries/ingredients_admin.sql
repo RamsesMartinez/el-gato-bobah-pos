@@ -82,7 +82,8 @@ select i.id, i.name::text as name, i.is_active, i.base_unit_id, u.code as base_u
        i.current_cost, i.cost_source::text as cost_source, i.min_stock, i.is_prep, i.category_id, ic.name as category,
        i.count_place_id, cp.name as count_place, i.updated_at, i.composition_status,
        coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
-       i.density_g_per_ml, i.density_method, i.density_set_at, du.name as density_set_by_name, i.alt_names
+       i.density_g_per_ml, i.density_method, i.density_set_at, du.name as density_set_by_name, i.alt_names,
+       i.expected_waste_pct
   from ingredients i
   join units u on u.id = i.base_unit_id
   left join users du on du.id = i.density_set_by

@@ -1,6 +1,6 @@
 # Data Model: Merma esperada (096)
 
-## Subida 1 — migración 0121 (`0121_expected_waste.sql`)
+## Subida 1 — migración 0126 (`0126_expected_waste.sql`)
 
 | Tabla | Columna | Tipo | Regla |
 | --- | --- | --- | --- |

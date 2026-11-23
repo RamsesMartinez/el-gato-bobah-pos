@@ -102,9 +102,11 @@ Test de integración que vende, cambia el general y comprueba que el renglón ve
 
 ## R9. Migración de S1 — número y tolerancia
 
-**Decision**: la siguiente libre al traer develop: **0121** (develop trae hasta la 0120 de la spec
-094). La 094 reservó 0121 para su subida 2: la que llegue después a develop renumera (instrucción del
-dueño). Solo agrega columnas nullable y copia `waste_pct` > 0: sin bloqueos largos (763 artículos).
+**Decision**: **0126**. Al traer develop (2026-11-23) ya estaban la 0121 a la 0124 de las specs 094 y
+097, con dos 0123 repetidas (`0123_public_menu.sql` y `0123_stock_movement_transfer_type.sql`): goose
+entra en pánico con «duplicate version 123» y la API de develop no arranca. Por la regla «la que llega
+después renumera», a la 097 le toca la 0125; esta spec toma la 0126 para no chocar. Solo agrega
+columnas nullable y copia `waste_pct` > 0: sin bloqueos largos (763 artículos).
 
 ## R10. S2 — conteo vs ventas
 
@@ -146,18 +148,18 @@ completa pintada de golpe sin paginar ni virtualizar, (3) consultas sin índice 
 
 ## R14. Revisión de arquitectura (db-architect y tablet-ui-reviewer, 2026-11-23), ya incorporada
 
-**Base de datos** — veredicto: cambios requeridos, 3 HIGH, ninguno bloquea la 0121 aditiva.
+**Base de datos** — veredicto: cambios requeridos, 3 HIGH, ninguno bloquea la 0126 aditiva.
 
 | Hallazgo | Decisión |
 | --- | --- |
 | H1 Merma real de un artículo unido: el trigger de la 0104 solo redirige movimientos **nuevos**; las ventas y mermas viejas del origen quedan con su id y en su unidad | Se resuelve la cadena de `ingredient_replacements` con `kind = 'merge'` (no `unit_change`: tras un cambio de unidad la ventana del artículo nuevo empieza en el cambio, como dice el spec), multiplicando factores como el trigger, para ventas, cancelaciones **y** mermas; el factor y la cadena se aplican en `domain` (`domain.MergeChain`), la consulta solo trae filas. Test de integración: unir con venta y merma previas y el % del destino es el del conjunto |
 | H2 (S2) `merma_esperada` huérfano al cancelar o partir un renglón: `orders.sql` cancela renglón, parte y cuenta ventas filtrando `movement_type = 'venta'`; también `inventory_health.sql` y `shopping_list.sql` | Tareas de S2 que listan cada consulta y un test «cancelar renglón con merma esperada deja el almacén igual». El consumo de la merma real es **solo** `venta` + `cancelacion` (no `merma_esperada`); la spec se corrige |
-| H3 La 0121 deja `waste_pct` desfasada si hay regreso a la versión anterior, y su Down pierde lo capturado | El Down copia de regreso `update ingredients set waste_pct = coalesce(expected_waste_pct, 0)` antes de quitar; dice que el % del producto y el general se pierden; tras bajar se recalculan costos (la API anterior recalcula al arrancar). Lo prueba la prueba de migración |
+| H3 La 0126 deja `waste_pct` desfasada si hay regreso a la versión anterior, y su Down pierde lo capturado | El Down copia de regreso `update ingredients set waste_pct = coalesce(expected_waste_pct, 0)` antes de quitar; dice que el % del producto y el general se pierden; tras bajar se recalculan costos (la API anterior recalcula al arrancar). Lo prueba la prueba de migración |
 | M1 Unir insumos descarta el % del origen | Regla: si el destino está «sin captura» y el origen tenía %, el destino hereda el del origen; si los dos tienen, gana el destino. Test que la nombra. Ninguna inserción de prueba o del MCP lista `waste_pct` (verificar al implementar) |
 | M2 La merma real por renglón del desglose serían N consultas | Una sola consulta agrupada `ingredient_id = any($1)` por `ingredient_id, warehouse_id`. La merma de producto terminado (`item_type = 'producto'`) no suma a ningún artículo. Techo anotado: con miles de mermas al año, índice parcial `(company_id, ingredient_id, recorded_at) where status in ('applied','covered')` |
 | M3 (S2) Encender «descontar» durante el traslape de S2 | La bandera solo se enciende cuando ya no corre la versión anterior; el plan de S2 lo dice |
-| M4 Números de migración | La prueba de la migración la nombra por archivo; si develop trae otra 0121, se renumera al traer develop (R9) |
-| L1 El `update` de la 0121 sube `updated_at` de los artículos copiados | Una ficha de artículo abierta durante la subida recibe un 409 «alguien la cambió» una vez y recarga. Aceptado |
+| M4 Números de migración | La prueba de la migración la nombra por archivo; si develop trae otra 0126, se renumera al traer develop (R9) |
+| L1 El `update` de la 0126 sube `updated_at` de los artículos copiados | Una ficha de artículo abierta durante la subida recibe un 409 «alguien la cambió» una vez y recarga. Aceptado |
 
 **Puerta (VIII)**: `order_lines` no guarda el % de merma aplicado en cada venta; el costo guardado ya lo incluye. Ningún requisito separa la merma del costo base en ventas pasadas (el reporte de S2 es de cantidades), así que **no se guarda**: separar ese dato en ventas anteriores a cuando se decida guardarlo no será posible. Se dice aquí como lo pide el principio VIII.
 

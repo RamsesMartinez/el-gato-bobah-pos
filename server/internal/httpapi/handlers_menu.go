@@ -131,12 +131,13 @@ func (h *Handlers) ProductCosting(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	cost, err := h.costing.ProductCost(r.Context(), id)
+	// De dónde sale el costo (spec 096): renglones con su %, de dónde vino y la merma real.
+	v, err := h.costing.ProductCosting(r.Context(), id)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"productId": id, "cost": cost})
+	JSON(w, http.StatusOK, v)
 }
 
 // GET /pos/menu/sold-out — los productos que salen «Agotado» ahora (spec 092). Sin caché: la

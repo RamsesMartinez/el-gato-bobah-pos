@@ -1,7 +1,7 @@
 -- Cargas para el motor de costeo (recompute batch).
 
 -- name: ListIngredientsForCosting :many
-select id, is_prep, recipe_id, yield_qty, waste_pct, current_cost, cost_source
+select id, is_prep, recipe_id, yield_qty, expected_waste_pct, current_cost, cost_source
 from ingredients;
 
 -- name: ListRecipeItemsForCosting :many
@@ -10,7 +10,13 @@ from recipe_items ri
 join units u on u.id = ri.unit_id;
 
 -- name: ListProductsForCosting :many
-select id, type, cost_source, manual_cost, recipe_id from products;
+select id, type, cost_source, manual_cost, recipe_id, expected_waste_pct from products;
+
+-- name: GetGeneralExpectedWaste :one
+-- La merma general de la empresa (spec 096). Sin cast a propósito: con `::numeric` sqlc la tipa no
+-- nula y el NULL de «sin merma general» —el estado con el que arranca toda empresa— tumbaría el
+-- recálculo entero (AGENTS.md, agregados que se pueden vaciar). Sin fila = sin merma general.
+select bs.expected_waste_pct from business_settings bs limit 1;
 
 -- name: ListComboSlotDefaultsForCosting :many
 select cs.combo_id, csp.product_id, cs.min_select
@@ -45,3 +51,23 @@ update products p set current_cost = v.cost::numeric, updated_at = now()
 update modifier_options o set current_cost = v.cost::numeric
   from (select unnest(sqlc.arg(ids)::bigint[]) as id, unnest(sqlc.arg(costs)::text[]) as cost) v
  where o.id = v.id and o.current_cost is distinct from v.cost::numeric;
+
+-- Los tres % de merma esperada (spec 096). Cada uno devuelve el valor anterior para la bitácora; sin
+-- fila = no existe o es de otra empresa (RLS), y sale como 404.
+
+-- name: SetGeneralExpectedWaste :one
+update business_settings bs set expected_waste_pct = sqlc.narg(pct), updated_at = now(), updated_by = sqlc.arg(updated_by)
+  from (select expected_waste_pct from business_settings limit 1) old
+returning old.expected_waste_pct as previous;
+
+-- name: SetProductExpectedWaste :one
+update products p set expected_waste_pct = sqlc.narg(pct), updated_at = now()
+  from (select expected_waste_pct from products where id = sqlc.arg(id)) old
+ where p.id = sqlc.arg(id)
+returning old.expected_waste_pct as previous;
+
+-- name: SetIngredientExpectedWaste :one
+update ingredients i set expected_waste_pct = sqlc.narg(pct), updated_at = now()
+  from (select expected_waste_pct from ingredients where id = sqlc.arg(id)) old
+ where i.id = sqlc.arg(id)
+returning old.expected_waste_pct as previous;

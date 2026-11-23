@@ -25,20 +25,20 @@ por la razón correcta.
 
 ## Phase 1: Setup
 
-- [ ] T001 Traer `origin/develop` en local con merge firmado y confirmar que la migración libre es la 0121 (`ls server/migrations`); si develop ya trae una 0121, renumerar esta (R9, R14 M4)
-- [ ] T002 Crear `server/migrations/0121_expected_waste.sql` vacío con su cabecera goose y `set local lock_timeout = '3s'`
+- [ ] T001 Traer `origin/develop` en local con merge firmado y confirmar que la migración libre es la 0126 (`ls server/migrations`); si develop ya trae una 0121, renumerar esta (R9, R14 M4)
+- [ ] T002 Crear `server/migrations/0126_expected_waste.sql` vacío con su cabecera goose y `set local lock_timeout = '3s'`
 
 ## Phase 2: Foundational (bloquea US1–US5)
 
 ### Tests primero
 
-- [ ] T003 Test de migración en `server/internal/integration/migracion_0121_test.go` sobre la base restaurada con dos empresas: (a) tras el Up, `ingredients.expected_waste_pct` = `waste_pct` donde > 0 y nulo donde 0, `products` y `business_settings` nulos; (b) recalcular costos tras el Up no cambia ningún `current_cost` de producto, extra ni preparado (SC-001); (c) el Down copia `expected_waste_pct` a `waste_pct` antes de quitar las columnas (R14 H3)
+- [ ] T003 Test de migración en `server/internal/integration/migration_0126_test.go` sobre la base restaurada con dos empresas: (a) tras el Up, `ingredients.expected_waste_pct` = `waste_pct` donde > 0 y nulo donde 0, `products` y `business_settings` nulos; (b) recalcular costos tras el Up no cambia ningún `current_cost` de producto, extra ni preparado (SC-001); (c) el Down copia `expected_waste_pct` a `waste_pct` antes de quitar las columnas (R14 H3)
 - [ ] T004 [P] Tests table-driven en `server/internal/domain/expected_waste_test.go`: `ExpectedWastePct(article, fallback)` (artículo capturado gana, 0 capturado gana y da 0, nulo cae al fallback, ambos nulos = 0 con origen `none`) y `ValidExpectedWastePct` (nulo válido; 0, 99.99 válidos; −0.01, 100, NaN, ±Inf, 3 decimales → `ErrValidation`)
 - [ ] T005 [P] Tests en `server/internal/domain/costing_test.go`: con 5 % general un producto sin otros % sube exactamente 5 %; 10 % producto + 5 % general → 10 %; artículo 15 % dentro de producto 10 % → 15 % solo en ese renglón; artículo 0 % capturado con general 5 % → 0; preparado dentro de preparado no recibe el general ni el del producto (no compone, R2); extra con receta usa artículo → general; combo suma sus productos cada uno con su %; producto de costo manual no cambia
 
 ### Implementación
 
-- [ ] T006 Escribir el Up y el Down de `server/migrations/0121_expected_waste.sql` según [data-model.md](data-model.md) (tres columnas nullable con check `>= 0 and < 100`; copia de `waste_pct > 0`; Down copia de regreso y quita)
+- [ ] T006 Escribir el Up y el Down de `server/migrations/0126_expected_waste.sql` según [data-model.md](data-model.md) (tres columnas nullable con check `>= 0 and < 100`; copia de `waste_pct > 0`; Down copia de regreso y quita)
 - [ ] T007 [P] Crear `server/internal/domain/expected_waste.go` con `WasteSource`, `ExpectedWastePct` y `ValidExpectedWastePct`
 - [ ] T008 Cambiar `server/internal/domain/costing.go`: `CostIngredient.ExpectedWastePct *float64`, `CostProduct.ExpectedWastePct *float64`, `NewCostGraph(..., general *float64)`; `recipeCost` recibe el fallback; `recCache` solo para preparados (R3)
 - [ ] T009 Cambiar `server/queries/costing.sql` (`ListIngredientsForCosting` lee `expected_waste_pct`, `ListProductsForCosting` también, consulta nueva del general en `server/queries/settings.sql`) y correr `make sqlc`

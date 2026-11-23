@@ -216,11 +216,13 @@ func (im *importer) importIngredients(ctx context.Context) error {
 		// base del kind (g/ml/pieza), así que normalizamos: costo por base = Costo / to_base.
 		costPerBase := pf(r["Costo"]) / u.toBase
 
+		// La merma va a expected_waste_pct (spec 096); un 0 de FUDO es «nadie la capturó», no «aquí no
+		// se pierde nada», y entra como sin captura.
 		var id int64
 		err := im.pool.QueryRow(ctx, `
-			insert into ingredients (name, category_id, base_unit_id, waste_pct, current_cost,
+			insert into ingredients (name, category_id, base_unit_id, expected_waste_pct, current_cost,
 			                         cost_source, supplier_id, track_stock, is_active)
-			values ($1,$2,$3,$4,$5,'manual',$6,$7,true)
+			values ($1,$2,$3,nullif($4::numeric, 0),$5,'manual',$6,$7,true)
 			returning id`,
 			r["Nombre"], nullID(catID), baseUnit, clampPct(pf(r["Merma"])), costPerBase,
 			nullID(supID), boolSi(r["Control de Stock"]),

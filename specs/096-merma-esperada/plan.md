@@ -7,7 +7,7 @@
 ## Summary
 
 S1 (costos): tres porcentajes nullable —general, producto, artículo— en columnas nuevas (migración
-0121), una función pura de precedencia en `domain` que el motor de costeo usa por renglón, el
+0126), una función pura de precedencia en `domain` que el motor de costeo usa por renglón, el
 desglose del costo por producto en el endpoint de costeo que ya existe, y la merma real de 90 días
 calculada al pedirla por artículo y almacén. S2 (inventario): reporte conteo vs ventas, opción de
 descontar la merma esperada, vistas sencilla y avanzada de conteo y existencias, y la carga medida
@@ -19,11 +19,11 @@ contra una meta; va encima de las pantallas de la spec 094 cuando el #65 esté c
 
 **Primary Dependencies**: chi, pgx + sqlc, goose (embebidas); Chakra UI v3, TanStack Query
 
-**Storage**: PostgreSQL con RLS (`gatobobah_app`); migración 0121 (S1) y una de S2 con número al
+**Storage**: PostgreSQL con RLS (`gatobobah_app`); migración 0126 (S1) y una de S2 con número al
 traer develop entonces
 
 **Testing**: `go test` table-driven en `domain`; integración bajo `appRoleStore` con
-`inTheThreeCases` para la merma real y los `PUT`; prueba de la 0121 sobre respaldo restaurado con dos
+`inTheThreeCases` para la merma real y los `PUT`; prueba de la 0126 sobre respaldo restaurado con dos
 empresas; vitest; Playwright a 1024×600 (pedido del dueño) y 1280×854
 
 **Target Platform**: equipo de mostrador táctil, 1280×854 mínimo; esta feature se diseña y prueba
@@ -46,7 +46,7 @@ columnas nuevas (R1); no se recalculan ventas pasadas (R7)
 | I Layering | Precedencia, validación, desglose y merma real puros en `domain/costing.go` y `domain/expected_waste.go`; orquestación y recálculo en `app/costing.go` y `app/expected_waste.go`; handlers finos en `httpapi/handlers_expected_waste.go`; SQL en `queries/costing.sql`, `settings.sql`, `admin.sql`, `ingredients_admin.sql`, `expected_waste.sql` |
 | II Errores | `domain.ErrValidation` para un % fuera de rango o ausente; 404 por `notFound` en producto o artículo ajeno; mapeo solo en `httpapi.Error` |
 | III Dinero | Costos con `Round4` por renglón y total = suma de renglones (R4); el % se valida con tope y `ValidMoney`-style para NaN/Inf. El desglose declara qué incluye: base, merma y total; la merma real no es dinero y no se suma a nada |
-| IV TDD / RLS | Bordes enumerados abajo, cada uno con test antes del código; merma real y `PUT` bajo `appRoleStore` con `inTheThreeCases`; prueba de la 0121 con dos empresas (ningún costo cambia); test de que una venta pasada conserva su costo. La 0121 es aditiva y tolera la versión anterior (R1) |
+| IV TDD / RLS | Bordes enumerados abajo, cada uno con test antes del código; merma real y `PUT` bajo `appRoleStore` con `inTheThreeCases`; prueba de la 0126 con dos empresas (ningún costo cambia); test de que una venta pasada conserva su costo. La 0126 es aditiva y tolera la versión anterior (R1) |
 | V Seguridad | `RequirePermission(menu.configure)` en los tres `PUT` y el desglose; `inventory.view` en la merma real; id ajeno = 404; `pct` malformado o ausente = 400, nunca default |
 | VI YAGNI | Sin tabla para la merma real ni el desglose (se calculan); sin permiso nuevo; sin % por presentación ni por almacén |
 | VII Idioma | `expected_waste_pct`, `ExpectedWastePct`, acciones `*.expected_waste`; textos en español |
@@ -113,14 +113,14 @@ specs/096-merma-esperada/
 
 ```text
 server/
-├── migrations/0121_expected_waste.sql                 # S1
+├── migrations/0126_expected_waste.sql                 # S1
 ├── queries/costing.sql, settings.sql, admin.sql, ingredients_admin.sql
 ├── queries/expected_waste.sql                         # merma real (S1), conteo vs ventas (S2)
 ├── internal/domain/costing.go (+ _test.go)            # precedencia por renglón, desglose
 ├── internal/domain/expected_waste.go (+ _test.go)     # validar %, merma real, (S2) sugerencia
 ├── internal/app/costing.go, expected_waste.go
 ├── internal/httpapi/handlers_expected_waste.go, handlers_menu.go (desglose)
-├── internal/integration/expected_waste_test.go, migracion_0121_test.go
+├── internal/integration/expected_waste_test.go, migration_0126_test.go
 └── cmd/fudo-import/main.go                            # escribe expected_waste_pct
 web/src/
 ├── features/admin/CostSettingsSection.tsx (+ test)    # S1

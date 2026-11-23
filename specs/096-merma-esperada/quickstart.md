@@ -6,7 +6,7 @@ con `menu.configure`.
 ## Subida 1
 
 1. **Nada cambia al subir**: antes de migrar, exportar `id, current_cost` de productos, extras y
-   preparados; migrar; recalcular; comparar → 0 diferencias (SC-001). Lo cubre la prueba de la 0121.
+   preparados; migrar; recalcular; comparar → 0 diferencias (SC-001). Lo cubre la prueba de la 0126.
 2. **General**: Ajustes › Costos › «Merma al preparar» 5 % → un producto con receta sin otros % sube
    5 % al centavo (SC-002). Vaciarlo lo regresa.
 3. **Producto**: su ficha › 10 % → usa 10 %, no 15 %. 0 % → no suma.
