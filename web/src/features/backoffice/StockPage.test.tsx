@@ -487,3 +487,59 @@ it('sin valor del servidor no hay columna Valor ni total', async () => {
   expect(screen.queryByRole('columnheader', { name: 'Valor' })).toBeNull();
   expect(screen.queryByText('Valor total')).toBeNull();
 });
+
+// Spec 096 (maqueta B «Tablero por estado»): la vista sencilla reparte lo que hay en tres columnas,
+// sin valor. Lo que no tiene mínimo nunca está «poco»: el sistema no sabe cuánto es poco.
+describe('Existencias en vista sencilla (spec 096)', () => {
+  beforeEach(() => { try { localStorage.clear(); } catch { /* sin almacenamiento */ } });
+  const niveles = () => back.stockLevels.mockResolvedValue({ totalValue: '900', items: [
+    { item_name: 'Leche', item_type: 'insumo', on_hand: '-3000', unit_code: 'ml', min_stock: null, value: '-60' },
+    { item_name: 'Vasos', item_type: 'insumo', on_hand: '0', unit_code: 'pieza', min_stock: '50', value: '0' },
+    { item_name: 'Azúcar', item_type: 'insumo', on_hand: '800', unit_code: 'g', min_stock: '1000', value: '20' },
+    { item_name: 'Café', item_type: 'insumo', on_hand: '5000', unit_code: 'g', min_stock: null, value: '900' },
+  ] } as never);
+
+  it('reparte en «Se acabó», «Queda poco» y «Hay», sin valor, y la vista se recuerda', async () => {
+    niveles();
+    sesion(['inventory.view']);
+    montar('/almacen');
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+    const col = (n: string) => within(screen.getByRole('region', { name: n })).getAllByTestId('ficha-existencia').map((f) => f.textContent);
+    expect(col('Se acabó')).toEqual([expect.stringContaining('Leche'), expect.stringContaining('Vasos')]);
+    expect(col('Queda poco')).toEqual([expect.stringMatching(/Azúcar.*mínimo 1 kg/)]);
+    expect(col('Hay')).toEqual([expect.stringContaining('Café')]);
+    expect(screen.queryByTestId('valor-total')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'Valor' })).toBeNull();
+    expect(localStorage.getItem('egb:existencias:vista')).toBe('sencilla');
+    cleanup();
+    montar('/almacen');
+    expect(await screen.findByTestId('tablero-existencias')).toBeInTheDocument();
+  });
+
+  it('la avanzada sigue siendo la tabla con valor y mínimo, y es la de siempre sin vista recordada', async () => {
+    niveles();
+    sesion(['inventory.view']);
+    montar('/almacen');
+    expect(await screen.findByTestId('valor-total')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Mínimo' })).toBeInTheDocument();
+    expect(screen.queryByTestId('tablero-existencias')).toBeNull();
+    expect(within(screen.getByRole('group', { name: 'Vista' })).getAllByRole('button').map((b) => b.querySelector('svg') !== null)).toEqual([true, true]);
+  });
+
+  it('en el tablero, un negativo con mercancía en la bodega también se trae con un toque', async () => {
+    back.warehouses.mockResolvedValue(twoWarehouses);
+    back.stockLevels.mockImplementation(() => Promise.resolve({ items: [
+      { item_name: 'Leche', item_type: 'ingrediente', ingredient_id: 7, product_id: null, on_hand: '-2000', unit_code: 'ml', min_stock: null, is_active: true,
+        transfer_from: [{ warehouseId: 2, name: 'Bodega', onHand: '20000' }] },
+      { item_name: 'Azúcar', item_type: 'ingrediente', ingredient_id: 8, product_id: null, on_hand: '-500', unit_code: 'g', min_stock: null, is_active: true },
+    ] } as never));
+    sesion(['inventory.view', 'inventory.transfer']);
+    localStorage.setItem('egb:existencias:vista', 'sencilla');
+    montar('/almacen');
+    const fichas = await screen.findAllByTestId('ficha-existencia');
+    expect(within(fichas[1]).queryByRole('button', { name: /Traer de/ })).toBeNull();
+    fireEvent.click(within(fichas[0]).getByRole('button', { name: 'Traer de Bodega' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Traspasar 2 L' }));
+    await vi.waitFor(() => expect(back.createTransfer).toHaveBeenCalledTimes(1));
+  });
+});

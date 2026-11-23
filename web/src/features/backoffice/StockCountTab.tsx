@@ -895,7 +895,7 @@ function PlaceView({ count, onSaved, initialQuery = '' }: {
           })} />
       )}
       <HStack align="stretch" gap={3} flex="1" minH={0}>
-        <Box w="260px" flexShrink={0} borderWidth="1px" borderRadius="lg" overflowY="auto" minH={0} bg="bg.panel">
+        <Box w={{ base: '180px', xl: '260px' }} flexShrink={0} borderWidth="1px" borderRadius="lg" overflowY="auto" minH={0} bg="bg.panel">
           {items.map((i) => (
             <Button key={i.ingredientId} data-testid="renglon-lugar" variant={i.ingredientId === item.ingredientId ? 'subtle' : 'ghost'}
               colorPalette={i.ingredientId === item.ingredientId ? undefined : 'gray'} w="100%" h="auto" minH="52px" px={3} py={2}
@@ -930,24 +930,26 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
   useCountKeys(e, c);
   return (
     <HStack align="stretch" gap={3} flex="1" minH={0}>
-      <VStack align="stretch" gap={3} flex="1" minH={0} p={4} borderWidth="1px" borderRadius="lg" bg="bg.panel">
+      <VStack align="stretch" gap={3} flex="1" minW={0} minH={0} p={4} borderWidth="1px" borderRadius="lg" bg="bg.panel">
         <Text fontSize="xs" color="fg.muted">{where}</Text>
         <HStack gap={3} flexWrap="wrap">
-          <Heading as="h2" fontSize="2xl" fontWeight="700" flex="1">{item.name}</Heading>
+          <Heading as="h2" fontSize={{ base: 'xl', xl: '2xl' }} fontWeight="700" flex="1" lineClamp={{ base: 1, xl: 2 }} title={item.name}>{item.name}</Heading>
           {isProduct(item) ? <Text color="fg.muted">Producto del menú · en piezas</Text> : <PlacePicker item={item} />}
         </HStack>
         <EntryFields item={item} e={e} serverError={c.serverError} onWeigh={() => setWeighing(true)} />
+        {/* Debajo de 1280 px no cabe «‹ Anterior» en el renglón y un segundo renglón le quita el alto al
+            campo de captura a 1024×600; ahí el anterior se toca en la lista de la izquierda. */}
         <HStack gap={3}>
-          <Button minH="44px" variant="outline" disabled={!onPrev} onClick={onPrev}>‹ Anterior</Button>
+          <Button minH="44px" variant="outline" hideBelow="xl" disabled={!onPrev} onClick={onPrev}>‹ Anterior</Button>
           <Box flex="1" />
           <Button minH="44px" variant="outline" onClick={onNext}>Saltar (no contar hoy)</Button>
           <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true })} />
-          <Button minH="56px" ml={8} colorPalette="brand" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
+          <Button minH="56px" ml={{ base: 0, xl: 8 }} colorPalette="brand" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
             Guardar y seguir ›
           </Button>
         </HStack>
       </VStack>
-      <Box w="232px"><NumericKeypad allowDecimal={e.allowDecimal} onKey={e.key} onNext={e.hasNext ? e.next : undefined} /></Box>
+      <Box w={{ base: '200px', xl: '232px' }} flexShrink={0}><NumericKeypad allowDecimal={e.allowDecimal} onKey={e.key} onNext={e.hasNext ? e.next : undefined} /></Box>
       <ConfirmFigure item={item} e={e} c={c} />
       {weighing && (
         <EntrySheet countId={countId} item={item} startWeighing onClose={() => setWeighing(false)}
