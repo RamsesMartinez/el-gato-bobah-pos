@@ -82,6 +82,7 @@ Crea el menú si falta (empresa nacida durante el traslape).
 
 ```json
 {
+  "businessName": "El Gato Bobah",
   "name": "el-gato-bobah",
   "url": "https://menu.elgatobobah.com/el-gato-bobah",
   "qrUrl": "https://menu.elgatobobah.com/q/3f9a0c2b7d1e",

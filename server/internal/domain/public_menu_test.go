@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -108,6 +110,25 @@ func TestPlanMenuRename(t *testing.T) {
 		}
 		if err != nil || got != c.want {
 			t.Errorf("%s: %v, %v; quiero %v", c.name, got, err, c.want)
+		}
+	}
+}
+
+// testdata/menu_slug_cases.json es la tabla que comparten Go, la base (public_menu_slugify) y la
+// pantalla de Ajustes (web/src/features/admin/settings/menuPublico/slug.ts): si una de las tres
+// normaliza distinto, la vista previa promete una dirección y se guarda otra.
+func TestSlugifyMenuNameSharedCases(t *testing.T) {
+	raw, err := os.ReadFile("testdata/menu_slug_cases.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases [][2]string
+	if err := json.Unmarshal(raw, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		if got := SlugifyMenuName(c[0]); got != c[1] {
+			t.Errorf("SlugifyMenuName(%q) = %q, la tabla compartida dice %q", c[0], got, c[1])
 		}
 	}
 }

@@ -214,6 +214,8 @@ func nonNil(p []PublicProduct) []PublicProduct {
 
 // PublicMenuSettings es la sección «Venta en web» de Ajustes.
 type PublicMenuSettings struct {
+	// BusinessName va en la tarjeta para imprimir.
+	BusinessName  string   `json:"businessName"`
 	Name          string   `json:"name"`
 	URL           string   `json:"url"`
 	QRURL         string   `json:"qrUrl"`
@@ -342,6 +344,10 @@ func (s *PublicMenuService) settings(ctx context.Context, q *db.Queries, company
 	if err != nil {
 		return PublicMenuSettings{}, err
 	}
+	business, err := q.CompanyDisplayName(ctx, company)
+	if err != nil {
+		return PublicMenuSettings{}, err
+	}
 	prev := []string{}
 	for _, n := range names {
 		if n.RetiredAt.Valid {
@@ -349,7 +355,7 @@ func (s *PublicMenuService) settings(ctx context.Context, q *db.Queries, company
 		}
 	}
 	return PublicMenuSettings{
-		Name: m.Name, URL: s.baseURL + "/" + m.Name, QRURL: s.baseURL + "/q/" + m.QrToken,
+		BusinessName: business, Name: m.Name, URL: s.baseURL + "/" + m.Name, QRURL: s.baseURL + "/q/" + m.QrToken,
 		Palette: m.BrandPalette, PreviousNames: prev,
 	}, nil
 }
