@@ -148,7 +148,7 @@ func TestResolvingNotificationsByHand(t *testing.T) {
 		if err := svc.Resolve(ctx, marisol, managerPerms084, nf.NotificationID, app.ResolveCmd{Action: "alias", IngredientID: &toalla}); err != nil {
 			t.Fatal(err)
 		}
-		found, err := out.Search(ctx, "servitoallas")
+		found, err := out.Search(ctx, "servitoallas", domain.WarehouseSel{})
 		if err != nil || len(found) != 1 || found[0].ID != toalla {
 			t.Fatalf("la búsqueda no lo encontró por el otro nombre: %v %v", found, err)
 		}

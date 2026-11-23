@@ -578,13 +578,13 @@ func (q *Queries) PendingOutMovementOf(ctx context.Context, notificationID int64
 
 const searchOutArticles = `-- name: SearchOutArticles :many
 
-with keys as (select unnest($1::text[]) as k)
+with keys as (select unnest($2::text[]) as k)
 select a.item_type, a.id, a.name, a.unit_code, a.open_out
   from (
     select 'ingrediente'::stock_item_type as item_type, i.id, i.name, u.code::text as unit_code,
            exists (select 1 from notifications n
                     where n.status = 'open' and n.kind = 'stock_out' and n.ingredient_id = i.id
-                      and n.branch_id = current_branch_id()) as open_out,
+                      and n.warehouse_id = $1) as open_out,
            string_to_array(catalog_name_key(i.name || ' ' || array_to_string(i.alt_names, ' ')), ' ') as words
       from ingredients i join units u on u.id = i.base_unit_id
      where i.is_active
@@ -592,7 +592,7 @@ select a.item_type, a.id, a.name, a.unit_code, a.open_out
     select 'producto'::stock_item_type, p.id, p.name, 'pieza'::text,
            exists (select 1 from notifications n
                     where n.status = 'open' and n.kind = 'stock_out' and n.product_id = p.id
-                      and n.branch_id = current_branch_id()),
+                      and n.warehouse_id = $1),
            string_to_array(catalog_name_key(p.name || ' ' || array_to_string(p.alt_names, ' ')), ' ')
       from products p
      where p.is_active and p.track_stock
@@ -601,6 +601,11 @@ select a.item_type, a.id, a.name, a.unit_code, a.open_out
  order by a.name
  limit 20
 `
+
+type SearchOutArticlesParams struct {
+	WarehouseID int64    `json:"warehouse_id"`
+	Keys        []string `json:"keys"`
+}
 
 type SearchOutArticlesRow struct {
 	ItemType StockItemType `json:"item_type"`
@@ -613,9 +618,10 @@ type SearchOutArticlesRow struct {
 // «Se acabó» y «No lo encuentro» (spec 084). RLS pone la empresa; la sucursal la resuelve
 // current_branch_id(), que con dos y sin selector truena en vez de adivinar.
 // Artículos activos cuyo nombre u otro nombre tiene una palabra que empieza con CADA llave (ya sin
-// acentos ni plural: domain.SearchKeys). Insumos y productos con existencia propia.
-func (q *Queries) SearchOutArticles(ctx context.Context, keys []string) ([]SearchOutArticlesRow, error) {
-	rows, err := q.db.Query(ctx, searchOutArticles, keys)
+// acentos ni plural: domain.SearchKeys). Insumos y productos con existencia propia. «Ya reportado» es
+// del almacén pedido (spec 094): lo reportado en Bodega no sale como reportado en Local.
+func (q *Queries) SearchOutArticles(ctx context.Context, arg SearchOutArticlesParams) ([]SearchOutArticlesRow, error) {
+	rows, err := q.db.Query(ctx, searchOutArticles, arg.WarehouseID, arg.Keys)
 	if err != nil {
 		return nil, err
 	}

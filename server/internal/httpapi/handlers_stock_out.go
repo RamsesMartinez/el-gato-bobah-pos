@@ -10,9 +10,15 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
-// GET /stock/out-reports/search?q= — lo que se puede reportar como «se acabó».
+// GET /stock/out-reports/search?q=&warehouseId= — lo que se puede reportar como «se acabó», con «ya
+// reportado» del almacén pedido (ausente, el de venta).
 func (h *Handlers) SearchOutArticles(w http.ResponseWriter, r *http.Request) {
-	items, err := h.stockOut.Search(r.Context(), r.URL.Query().Get("q"))
+	sel, err := warehouseFromQuery(r, false)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	items, err := h.stockOut.Search(r.Context(), r.URL.Query().Get("q"), sel)
 	if err != nil {
 		Error(w, err)
 		return
