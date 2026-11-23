@@ -37,6 +37,8 @@ type EditLineInput struct {
 	IsGift         bool
 	// ArrivedOn: «Ya llegó» ese día (AAAA-MM-DD); vacío = queda por recibir.
 	ArrivedOn string
+	// WarehouseID: a qué almacén entra (spec 094). Nulo = el de venta.
+	WarehouseID *int64
 }
 
 // EditHeaderInput son los campos del encabezado que cambian; nil = no cambia.
@@ -810,6 +812,12 @@ func (r *editRun) removeLines(ctx context.Context, ids []int64) error {
 
 func (r *editRun) reverseDeliveries(ctx context.Context, it db.ListExpenseItemsRow) error {
 	itemID := it.ID
+	// Lo aplicado de un renglón vive en su almacén (applyStockLines lo lleva ahí); un renglón de
+	// almacén siempre tiene uno (check de la 0121).
+	if it.WarehouseID == nil {
+		return fmt.Errorf("renglón %d: no dice a qué almacén entró", it.ID)
+	}
+	warehouse := *it.WarehouseID
 	rows, err := r.q.LineDeliveryDays(ctx, &itemID)
 	if err != nil {
 		return err
@@ -843,7 +851,7 @@ func (r *editRun) reverseDeliveries(ctx context.Context, it db.ListExpenseItemsR
 		if err := r.q.InsertLineMovement(ctx, db.InsertLineMovementParams{
 			ItemType: *it.ItemType, IngredientID: it.IngredientID, ProductID: it.ProductID,
 			Quantity: p.Qty, ExpenseID: &expenseID, ExpenseItemID: &itemID, UserID: &uid, Reason: &reason,
-			EffectiveOn: pgtype.Date{Time: p.Day, Valid: true},
+			EffectiveOn: pgtype.Date{Time: p.Day, Valid: true}, WarehouseID: warehouse,
 		}); err != nil {
 			return err
 		}
@@ -916,11 +924,15 @@ func (r *editRun) addLines(ctx context.Context, lines []EditLineInput) (map[int6
 		if err != nil {
 			return nil, err
 		}
+		wh, err := lineWarehouse(ctx, r.q, itemType, l.WarehouseID)
+		if err != nil {
+			return nil, err
+		}
 		newID, err := r.q.CreateExpenseItem(ctx, db.CreateExpenseItemParams{
 			ExpenseID: r.exp.ID, ItemType: itemType, IngredientID: l.IngredientID, ProductID: l.ProductID,
 			Description: l.Description, Quantity: qty, UnitID: unit, QtyReceived: recv,
 			UnitCost: domain.UnitCost(amount, qty), Amount: amount, PackQtyInBase: pack,
-			Position: pos, PresentationID: l.PresentationID, IsGift: l.IsGift,
+			Position: pos, PresentationID: l.PresentationID, IsGift: l.IsGift, WarehouseID: wh,
 		})
 		if err != nil {
 			return nil, err

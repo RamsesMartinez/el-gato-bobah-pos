@@ -33,6 +33,9 @@ type StockLineInput struct {
 	IngredientID *int64
 	ProductID    *int64
 	Description  string
+	// WarehouseID: a qué almacén entra (spec 094). Nulo en uno nuevo = el de venta; en uno que ya
+	// existe = el que tenía.
+	WarehouseID *int64
 	// Quantity: lo pedido. Received: lo que llegó (0 = llega después). NotComing: lo que ya no va
 	// a llegar. Las tres en la unidad del renglón (el empaque o la unidad elegida).
 	Quantity       decimal.Decimal
@@ -254,6 +257,9 @@ func (s *BackofficeService) applyStockLinesOn(ctx context.Context, q *db.Queries
 	if day != nil {
 		today = *day
 	}
+	if err := moveToLineWarehouse(ctx, q, expenseID, userID, byID, today); err != nil {
+		return nil, err
+	}
 
 	costChanged := false
 	out := make([]appliedMove, 0, len(moves))
@@ -285,6 +291,7 @@ func (s *BackofficeService) applyStockLinesOn(ctx context.Context, q *db.Queries
 			ItemType: *r.ItemType, IngredientID: r.IngredientID, ProductID: r.ProductID,
 			Quantity: m.Delta, UnitCost: &unitCost, ExpenseID: &expenseID, ExpenseItemID: &id,
 			UserID: &userID, Reason: &reason, EffectiveOn: pgtype.Date{Time: on, Valid: true},
+			WarehouseID: r.WarehouseID,
 		}); err != nil {
 			return nil, err
 		}
@@ -523,12 +530,17 @@ func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, ex
 	if received.IsPositive() && !excluded {
 		recv = &received
 	}
+	wh, err := lineWarehouse(ctx, q, itemType, l.WarehouseID)
+	if err != nil {
+		return err
+	}
 	if l.ID == nil {
 		_, err := q.CreateExpenseItem(ctx, db.CreateExpenseItemParams{
 			ExpenseID: expenseID, ItemType: itemType, IngredientID: l.IngredientID, ProductID: l.ProductID,
 			Description: l.Description, Quantity: qty, UnitID: unit, QtyReceived: recv,
 			UnitCost: domain.UnitCost(amount, qty), Amount: amount, PackQtyInBase: pack,
 			Position: int32(pos), PresentationID: l.PresentationID, IsGift: l.IsGift, Excluded: l.Excluded,
+			WarehouseID: wh,
 		})
 		return err
 	}
@@ -547,6 +559,13 @@ func (s *BackofficeService) saveStockLine(ctx context.Context, q *db.Queries, ex
 	// en unidad base daría diferencia cero y dejaría la existencia en el insumo equivocado.
 	if derefID(row.IngredientID) != derefID(l.IngredientID) || derefID(row.ProductID) != derefID(l.ProductID) {
 		if err := reverseLine(ctx, q, expenseID, userID, row, "cambio de artículo: "); err != nil {
+			return err
+		}
+	}
+	// Otro almacén: solo se anota en el renglón; applyStockLines saca lo aplicado del anterior y lo mete
+	// al nuevo, por diferencia (spec 094).
+	if wh != nil && *wh != row.WarehouseID {
+		if err := q.SetExpenseItemWarehouse(ctx, db.SetExpenseItemWarehouseParams{ID: *l.ID, ExpenseID: expenseID, WarehouseID: wh}); err != nil {
 			return err
 		}
 	}
@@ -598,6 +617,7 @@ func reverseLine(ctx context.Context, q *db.Queries, expenseID, userID int64, r 
 	if err := q.InsertLineMovement(ctx, db.InsertLineMovementParams{
 		ItemType: *r.ItemType, IngredientID: r.IngredientID, ProductID: r.ProductID,
 		Quantity: delta, ExpenseID: &expenseID, ExpenseItemID: &id, UserID: &userID, Reason: &reason,
+		WarehouseID: r.WarehouseID,
 	}); err != nil {
 		return err
 	}
@@ -680,4 +700,52 @@ func (s *BackofficeService) SetItemExcluded(ctx context.Context, expenseID, item
 		return ExpenseDetailView{}, err
 	}
 	return s.ExpenseDetail(ctx, expenseID)
+}
+
+// lineWarehouse resuelve el almacén que pidió un renglón de compra (spec 094): activo y de la sucursal
+// de la sesión. Nulo se queda nulo: en un renglón nuevo, el trigger pone el de venta; en uno que ya
+// existe, conserva el suyo. Un renglón sin artículo no es del almacén.
+func lineWarehouse(ctx context.Context, q *db.Queries, itemType *db.StockItemType, id *int64) (*int64, error) {
+	if id == nil || itemType == nil {
+		return nil, nil
+	}
+	if *id <= 0 {
+		return nil, fmt.Errorf("%w: almacén inválido", domain.ErrValidation)
+	}
+	wh, err := ResolveWarehouseID(ctx, q, domain.WarehouseSel{ID: *id})
+	if err != nil {
+		return nil, err
+	}
+	return &wh, nil
+}
+
+// moveToLineWarehouse lleva lo que cada renglón ya sumó al almacén que hoy dice el renglón: si se le
+// cambió el destino, sale del anterior y entra al nuevo con dos movimientos ligados al renglón. Lo
+// aplicado del renglón no cambia (es la suma de sus movimientos) y ningún movimiento se edita.
+func moveToLineWarehouse(ctx context.Context, q *db.Queries, expenseID, userID int64, lines map[int64]db.ListStockLinesRow, day time.Time) error {
+	applied, err := q.AppliedByWarehouse(ctx, &expenseID)
+	if err != nil {
+		return err
+	}
+	for _, a := range applied {
+		r, ok := lines[a.ExpenseItemID]
+		if !ok || a.WarehouseID == r.WarehouseID {
+			continue
+		}
+		reason := "cambio de almacén: " + r.Description
+		id := a.ExpenseItemID
+		for _, m := range []struct {
+			wh  int64
+			qty decimal.Decimal
+		}{{a.WarehouseID, a.Qty.Neg()}, {r.WarehouseID, a.Qty}} {
+			if err := q.InsertLineMovement(ctx, db.InsertLineMovementParams{
+				ItemType: *r.ItemType, IngredientID: r.IngredientID, ProductID: r.ProductID,
+				Quantity: m.qty, ExpenseID: &expenseID, ExpenseItemID: &id, UserID: &userID, Reason: &reason,
+				EffectiveOn: pgtype.Date{Time: day, Valid: true}, WarehouseID: m.wh,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

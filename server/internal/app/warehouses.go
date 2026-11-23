@@ -86,6 +86,38 @@ func (s *BackofficeService) RenameWarehouse(ctx context.Context, id int64, name 
 	})
 }
 
+// SetSalesWarehouse hace de este almacén el de venta de la sucursal: de él salen las ventas desde ese
+// momento. Lo ya vendido se queda en el almacén del que salió, y una cancelación repone ahí.
+func (s *BackofficeService) SetSalesWarehouse(ctx context.Context, id int64) error {
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := q.LockWarehouses(ctx); err != nil {
+			return err
+		}
+		w, err := q.LockWarehouse(ctx, id)
+		if err != nil {
+			return warehouseNotFound(err)
+		}
+		if !w.IsActive {
+			return domain.ErrWarehouseNotFound
+		}
+		if w.IsSales {
+			return nil
+		}
+		before, err := q.SalesWarehouse(ctx)
+		if err != nil {
+			return err
+		}
+		if err := q.ClearSalesWarehouse(ctx); err != nil {
+			return err
+		}
+		if err := q.MarkSalesWarehouse(ctx, id); err != nil {
+			return err
+		}
+		return auditWarehouse(ctx, q, domain.AuditWarehouseUpdated, id,
+			map[string]any{"salesWarehouse": before.Name}, map[string]any{"salesWarehouse": w.Name})
+	})
+}
+
 // ArchiveWarehouse archiva un almacén vacío, que no es el de venta y sin conteo abierto. Ya
 // archivado no hace nada: un reintento de la tableta no es un error.
 func (s *BackofficeService) ArchiveWarehouse(ctx context.Context, id int64) error {
@@ -97,11 +129,11 @@ func (s *BackofficeService) ArchiveWarehouse(ctx context.Context, id int64) erro
 		if !w.IsActive {
 			return nil
 		}
-		items, err := q.WarehouseItemsWithStock(ctx, &id)
+		items, err := q.WarehouseItemsWithStock(ctx, id)
 		if err != nil {
 			return err
 		}
-		open, err := q.WarehouseHasOpenCount(ctx, &id)
+		open, err := q.WarehouseHasOpenCount(ctx, id)
 		if err != nil {
 			return err
 		}

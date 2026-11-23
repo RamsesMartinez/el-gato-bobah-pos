@@ -53,7 +53,8 @@ func (h *Handlers) CreateWarehouse(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, map[string]int64{"id": id})
 }
 
-// PATCH /stock/warehouses/{id} — `{ name }`.
+// PATCH /stock/warehouses/{id} — `{ name }` y/o `{ isSales: true }`. Quitar la marca de venta no se
+// pide: se le da a otro. Sin ninguno de los dos es 400, no un éxito que no hizo nada.
 func (h *Handlers) RenameWarehouse(w http.ResponseWriter, r *http.Request) {
 	id, err := idParam(r, "id")
 	if err != nil {
@@ -61,15 +62,28 @@ func (h *Handlers) RenameWarehouse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name string `json:"name"`
+		Name    *string `json:"name"`
+		IsSales *bool   `json:"isSales"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	if err := h.backoffice.RenameWarehouse(r.Context(), id, body.Name); err != nil {
-		Error(w, err)
+	if body.Name == nil && body.IsSales == nil || body.IsSales != nil && !*body.IsSales {
+		Error(w, fmt.Errorf("%w: manda el nombre o isSales: true", domain.ErrValidation))
 		return
+	}
+	if body.Name != nil {
+		if err := h.backoffice.RenameWarehouse(r.Context(), id, *body.Name); err != nil {
+			Error(w, err)
+			return
+		}
+	}
+	if body.IsSales != nil {
+		if err := h.backoffice.SetSalesWarehouse(r.Context(), id); err != nil {
+			Error(w, err)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -63,6 +63,8 @@ type ReceiveItemInput struct {
 	Qty         decimal.Decimal
 	SeenApplied decimal.Decimal
 	ExtraAmount *decimal.Decimal
+	// WarehouseID: llegó a otro almacén que el que decía el renglón (spec 094). Nulo = el del renglón.
+	WarehouseID *int64
 }
 
 // lockedLine abre la transacción de una escritura sobre un renglón: el gasto, sus insumos y el
@@ -176,6 +178,16 @@ func (s *BackofficeService) ReceiveItem(ctx context.Context, expenseID, itemID i
 		if !domain.ValidLineUnitCost(domain.UnitCost(amount, quantity)) {
 			return fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
 		}
+		if in.WarehouseID != nil {
+			stockLine := db.StockItemTypeIngrediente // un renglón que se recibe siempre es del almacén
+			wh, err := lineWarehouse(ctx, q, &stockLine, in.WarehouseID)
+			if err != nil {
+				return err
+			}
+			if err := q.SetExpenseItemWarehouse(ctx, db.SetExpenseItemWarehouseParams{ID: itemID, ExpenseID: expenseID, WarehouseID: wh}); err != nil {
+				return err
+			}
+		}
 		if err := q.SetLineArrival(ctx, db.SetLineArrivalParams{
 			ID: itemID, QtyReceived: &got, Quantity: quantity, Amount: amount, UnitCost: domain.UnitCost(amount, quantity),
 		}); err != nil {
@@ -230,6 +242,8 @@ type ArrivedItemInput struct {
 	UnitID         *int16
 	Amount         decimal.Decimal
 	IsGift         bool
+	// WarehouseID: a qué almacén entra (spec 094). Nulo = el de venta.
+	WarehouseID *int64
 }
 
 // AddArrivedItem agrega lo que llegó de más a una compra. Pagado, sube el total por su importe; un
@@ -295,11 +309,15 @@ func (s *BackofficeService) AddArrivedItem(ctx context.Context, expenseID int64,
 		if err != nil {
 			return err
 		}
+		wh, err := lineWarehouse(ctx, q, itemType, in.WarehouseID)
+		if err != nil {
+			return err
+		}
 		if _, err := q.CreateExpenseItem(ctx, db.CreateExpenseItemParams{
 			ExpenseID: expenseID, ItemType: itemType, IngredientID: in.IngredientID, ProductID: in.ProductID,
 			Description: in.Description, Quantity: qty, UnitID: unit, QtyReceived: &qty,
 			UnitCost: domain.UnitCost(amount, qty), Amount: amount, PackQtyInBase: pack,
-			Position: pos, PresentationID: in.PresentationID, IsGift: in.IsGift,
+			Position: pos, PresentationID: in.PresentationID, IsGift: in.IsGift, WarehouseID: wh,
 		}); err != nil {
 			return err
 		}

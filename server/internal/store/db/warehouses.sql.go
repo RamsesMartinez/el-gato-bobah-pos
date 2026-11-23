@@ -9,6 +9,17 @@ import (
 	"context"
 )
 
+const clearSalesWarehouse = `-- name: ClearSalesWarehouse :exec
+update warehouses set is_sales = false where branch_id = current_branch_id() and is_sales
+`
+
+// Quita la marca al de venta de la sucursal; en la misma transacción se la pone otro (la 0121 exige,
+// al confirmar, que la sucursal tenga uno).
+func (q *Queries) ClearSalesWarehouse(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, clearSalesWarehouse)
+	return err
+}
+
 const createWarehouse = `-- name: CreateWarehouse :one
 insert into warehouses (branch_id, name) values (current_branch_id(), $1)
 returning id
@@ -104,6 +115,15 @@ func (q *Queries) LockWarehouses(ctx context.Context) error {
 	return err
 }
 
+const markSalesWarehouse = `-- name: MarkSalesWarehouse :exec
+update warehouses set is_sales = true where id = $1
+`
+
+func (q *Queries) MarkSalesWarehouse(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, markSalesWarehouse, id)
+	return err
+}
+
 const renameWarehouse = `-- name: RenameWarehouse :exec
 update warehouses set name = $1 where id = $2
 `
@@ -190,7 +210,7 @@ const warehouseHasOpenCount = `-- name: WarehouseHasOpenCount :one
 select exists (select 1 from stock_counts where warehouse_id = $1 and status = 'open')
 `
 
-func (q *Queries) WarehouseHasOpenCount(ctx context.Context, id *int64) (bool, error) {
+func (q *Queries) WarehouseHasOpenCount(ctx context.Context, id int64) (bool, error) {
 	row := q.db.QueryRow(ctx, warehouseHasOpenCount, id)
 	var exists bool
 	err := row.Scan(&exists)
@@ -201,7 +221,7 @@ const warehouseItemsWithStock = `-- name: WarehouseItemsWithStock :one
 select count(*)::bigint from stock_levels where warehouse_id = $1 and on_hand <> 0
 `
 
-func (q *Queries) WarehouseItemsWithStock(ctx context.Context, id *int64) (int64, error) {
+func (q *Queries) WarehouseItemsWithStock(ctx context.Context, id int64) (int64, error) {
 	row := q.db.QueryRow(ctx, warehouseItemsWithStock, id)
 	var column_1 int64
 	err := row.Scan(&column_1)

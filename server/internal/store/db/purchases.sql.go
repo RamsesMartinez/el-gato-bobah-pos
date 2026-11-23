@@ -68,6 +68,42 @@ func (q *Queries) AdjustLineToReceived(ctx context.Context, arg AdjustLineToRece
 	return err
 }
 
+const appliedByWarehouse = `-- name: AppliedByWarehouse :many
+select expense_item_id::bigint as expense_item_id, warehouse_id, sum(quantity)::numeric(14,4) as qty
+  from stock_movements
+ where expense_id = $1 and expense_item_id is not null
+ group by expense_item_id, warehouse_id
+having sum(quantity) <> 0
+`
+
+type AppliedByWarehouseRow struct {
+	ExpenseItemID int64           `json:"expense_item_id"`
+	WarehouseID   int64           `json:"warehouse_id"`
+	Qty           decimal.Decimal `json:"qty"`
+}
+
+// Lo que cada renglón del gasto ya sumó, por almacén: la suma de sus movimientos. Cambiar el destino
+// de un renglón mueve lo que está en otro almacén que el suyo (spec 094).
+func (q *Queries) AppliedByWarehouse(ctx context.Context, expenseID *int64) ([]AppliedByWarehouseRow, error) {
+	rows, err := q.db.Query(ctx, appliedByWarehouse, expenseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AppliedByWarehouseRow{}
+	for rows.Next() {
+		var i AppliedByWarehouseRow
+		if err := rows.Scan(&i.ExpenseItemID, &i.WarehouseID, &i.Qty); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const checkDeferredConstraintsNow = `-- name: CheckDeferredConstraintsNow :exec
 set constraints all immediate
 `
@@ -215,10 +251,11 @@ func (q *Queries) IngredientOnHandTotal(ctx context.Context, ingredientID *int64
 const insertCompensationMovement = `-- name: InsertCompensationMovement :exec
 insert into stock_movements (
   item_type, ingredient_id, movement_type, quantity, expense_id, stock_count_id, user_id, reason,
-  branch_id, effective_on
+  branch_id, warehouse_id, effective_on
 ) values (
   'ingrediente', $1, 'ajuste', $2, $3,
-  $4, $5, $6, $7, $8
+  $4, $5, $6, $7,
+  (select c.warehouse_id from stock_counts c where c.id = $4), $8
 )
 `
 
@@ -236,8 +273,8 @@ type InsertCompensationMovementParams struct {
 // «No mover» (spec 053, R6): el movimiento del renglón ya se registró; éste, de signo contrario, deja
 // las existencias como las dejó el conteo que ya lo había contado. Va ligado al conteo y al gasto pero
 // NO al renglón: lo aplicado del renglón sigue siendo la suma de SUS movimientos, y el historial de
-// precios de compra no lo ve. La sucursal es la del conteo, explícita (con dos sucursales, el trigger
-// tomaría la de la empresa y truena).
+// precios de compra no lo ve. La sucursal y el almacén son los del conteo, explícitos: el ajuste deja
+// como estaba lo que ESE conteo contó (spec 094).
 func (q *Queries) InsertCompensationMovement(ctx context.Context, arg InsertCompensationMovementParams) error {
 	_, err := q.db.Exec(ctx, insertCompensationMovement,
 		arg.IngredientID,
@@ -255,11 +292,11 @@ func (q *Queries) InsertCompensationMovement(ctx context.Context, arg InsertComp
 const insertLineMovement = `-- name: InsertLineMovement :exec
 insert into stock_movements (
   item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, expense_id, expense_item_id,
-  user_id, reason, branch_id, effective_on
+  user_id, reason, warehouse_id, effective_on
 ) values (
   $1, $2, $3, 'compra', $4,
   $5, $6, $7, $8,
-  $9, current_branch_id(), $10
+  $9, $10, $11
 )
 `
 
@@ -273,11 +310,12 @@ type InsertLineMovementParams struct {
 	ExpenseItemID *int64           `json:"expense_item_id"`
 	UserID        *int64           `json:"user_id"`
 	Reason        *string          `json:"reason"`
+	WarehouseID   int64            `json:"warehouse_id"`
 	EffectiveOn   pgtype.Date      `json:"effective_on"`
 }
 
-// Un movimiento de compra ligado a su gasto y a su RENGLÓN, con la sucursal de la sesión: con dos
-// sucursales y sin selector, `current_branch_id()` truena (EGB01) en vez de adivinar.
+// Un movimiento de compra ligado a su gasto y a su RENGLÓN, en el almacén donde está lo aplicado del
+// renglón (spec 094); la sucursal la toma el trigger del almacén.
 // `effective_on` es el día de la entrega (spec 053); nula, la pone el trigger de la 0103 con hoy.
 func (q *Queries) InsertLineMovement(ctx context.Context, arg InsertLineMovementParams) error {
 	_, err := q.db.Exec(ctx, insertLineMovement,
@@ -290,6 +328,7 @@ func (q *Queries) InsertLineMovement(ctx context.Context, arg InsertLineMovement
 		arg.ExpenseItemID,
 		arg.UserID,
 		arg.Reason,
+		arg.WarehouseID,
 		arg.EffectiveOn,
 	)
 	return err
@@ -365,6 +404,8 @@ const listStockLines = `-- name: ListStockLines :many
 select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description, ei.quantity,
        ei.qty_received, ei.amount, ei.pack_qty_in_base, ei.presentation_id, ei.is_gift,
        ei.applied_qty_base, ei.not_coming_qty, ei.unit_id, ei.position, ei.excluded,
+       -- A qué almacén entra (spec 094). Nunca nulo en un renglón de almacén (check de la 0121).
+       ei.warehouse_id::bigint as warehouse_id,
        bu.kind as buy_kind, bu.to_base as buy_to_base,
        coalesce(iu.kind, 'pieza'::unit_kind) as base_kind,
        -- La densidad fija del renglón gana a la vigente: lo ya convertido no se recalcula (spec 058).
@@ -395,6 +436,7 @@ type ListStockLinesRow struct {
 	UnitID         *int16           `json:"unit_id"`
 	Position       int32            `json:"position"`
 	Excluded       bool             `json:"excluded"`
+	WarehouseID    int64            `json:"warehouse_id"`
 	BuyKind        UnitKind         `json:"buy_kind"`
 	BuyToBase      decimal.Decimal  `json:"buy_to_base"`
 	BaseKind       UnitKind         `json:"base_kind"`
@@ -430,6 +472,7 @@ func (q *Queries) ListStockLines(ctx context.Context, expenseID int64) ([]ListSt
 			&i.UnitID,
 			&i.Position,
 			&i.Excluded,
+			&i.WarehouseID,
 			&i.BuyKind,
 			&i.BuyToBase,
 			&i.BaseKind,
@@ -569,8 +612,8 @@ func (q *Queries) LockIngredientCostNowait(ctx context.Context, id int64) (decim
 
 const lockIngredientStockNowait = `-- name: LockIngredientStockNowait :many
 select ingredient_id from stock_levels
- where item_type = 'ingrediente' and ingredient_id = any($1::bigint[]) and warehouse_id = current_sales_warehouse_id()
- order by ingredient_id
+ where item_type = 'ingrediente' and ingredient_id = any($1::bigint[]) and branch_id = current_branch_id()
+ order by ingredient_id, warehouse_id
    for update nowait
 `
 
@@ -578,6 +621,8 @@ select ingredient_id from stock_levels
 // orden de su ticket; si la compra esperara aquí podría cerrar un ciclo y Postgres cancelaría una
 // de las dos —a veces el cobro—. Tomadas antes de escribir, la compra ya no espera por nada (el
 // mismo arreglo del 037 en el cambio de modo).
+// En todos los almacenes de la sucursal (spec 094): una compra puede repartirse entre ellos y mover lo
+// de un renglón de uno a otro.
 func (q *Queries) LockIngredientStockNowait(ctx context.Context, ids []int64) ([]*int64, error) {
 	rows, err := q.db.Query(ctx, lockIngredientStockNowait, ids)
 	if err != nil {
@@ -1007,6 +1052,21 @@ type SetExpenseItemExcludedParams struct {
 
 func (q *Queries) SetExpenseItemExcluded(ctx context.Context, arg SetExpenseItemExcludedParams) error {
 	_, err := q.db.Exec(ctx, setExpenseItemExcluded, arg.Excluded, arg.ID)
+	return err
+}
+
+const setExpenseItemWarehouse = `-- name: SetExpenseItemWarehouse :exec
+update expense_items set warehouse_id = $1 where id = $2 and expense_id = $3
+`
+
+type SetExpenseItemWarehouseParams struct {
+	WarehouseID *int64 `json:"warehouse_id"`
+	ID          int64  `json:"id"`
+	ExpenseID   int64  `json:"expense_id"`
+}
+
+func (q *Queries) SetExpenseItemWarehouse(ctx context.Context, arg SetExpenseItemWarehouseParams) error {
+	_, err := q.db.Exec(ctx, setExpenseItemWarehouse, arg.WarehouseID, arg.ID, arg.ExpenseID)
 	return err
 }
 

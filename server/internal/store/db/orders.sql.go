@@ -1647,7 +1647,7 @@ type ListLineSaleMovementsRow struct {
 	OrderID              *int64           `json:"order_id"`
 	ModifierOptionID     *int64           `json:"modifier_option_id"`
 	ComponentOfProductID *int64           `json:"component_of_product_id"`
-	WarehouseID          *int64           `json:"warehouse_id"`
+	WarehouseID          int64            `json:"warehouse_id"`
 }
 
 // Los movimientos de venta de UN renglón, para partirlos en pares al partir el renglón. Incluye los

@@ -306,3 +306,46 @@ func TestAWarehouseOfAnotherBranchIsNotReachable(t *testing.T) {
 		t.Fatal("se archivó el almacén de otra sucursal")
 	}
 }
+
+// Cambiar cuál es el almacén de venta (desde la 0121): la marca pasa entera, la sucursal nunca se
+// queda sin uno, y uno archivado no puede ser el de venta.
+func TestTheSalesWarehouseCanChange(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	co := makeCompany(t, st, "cambia-almacen-venta")
+	svc, ctx := asWaste(t, co)
+	bodega, err := svc.CreateWarehouse(ctx, "Bodega")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetSalesWarehouse(ctx, bodega); err != nil {
+		t.Fatalf("hacer de la bodega el de venta: %v", err)
+	}
+	ws, _ := svc.ListWarehouses(ctx, false)
+	sales := 0
+	for _, w := range ws {
+		if w.IsSales {
+			sales++
+			if w.ID != bodega {
+				t.Fatalf("el de venta quedó en %q", w.Name)
+			}
+		}
+	}
+	if sales != 1 {
+		t.Fatalf("%d almacenes de venta; quiere uno", sales)
+	}
+	if err := svc.SetSalesWarehouse(ctx, bodega); err != nil {
+		t.Fatalf("repetirlo no es error: %v", err)
+	}
+	other, _ := svc.CreateWarehouse(ctx, "Cuarto frío")
+	if err := svc.ArchiveWarehouse(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetSalesWarehouse(ctx, other); !errors.Is(err, domain.ErrWarehouseNotFound) {
+		t.Fatalf("hacer de venta uno archivado = %v; quiere «no existe»", err)
+	}
+	var n int
+	if err := st.Pool.QueryRow(ctx, `select count(*) from audit_events where company_id = $1 and action = 'warehouse.updated'`, co).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("%d cambios en la bitácora, %v; quiere 1", n, err)
+	}
+}
