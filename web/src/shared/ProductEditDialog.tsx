@@ -23,6 +23,7 @@ import { SeccionAlertas } from './alertas/SeccionAlertas';
 import { can } from '../app/permissions';
 import { compositionLabel } from './compositionLabel';
 import { AltNamesField } from '../components/AltNamesField';
+import { PhotoField } from './PhotoField';
 import { altNameKey, withPendingAlt } from '../components/altNames';
 import { ApiError } from '../api/client';
 
@@ -117,7 +118,8 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   });
 
   return (
-    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }} placement="center" scrollBehavior="inside">
+    // lg (~512 px) y no md: la foto de 132 px va junto al nombre (spec 091, maqueta M1-A).
+    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }} placement="center" size="lg" scrollBehavior="inside">
       <DialogBackdrop />
       <DialogContent colorPalette={palette}>
         <DialogHeader><DialogTitle>Editar producto</DialogTitle></DialogHeader>
@@ -126,9 +128,34 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
           <>
             <DialogBody>
               <VStack align="stretch" gap={4}>
-                <Field label="Nombre">
-                  <Input minH="44px" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
-                </Field>
+                {/* La foto junto al nombre y la categoría (spec 091, M1-A): no le quita un renglón al
+                    formulario. Se guarda aparte, al tocar «Guardar foto». */}
+                <HStack align="start" gap={4}>
+                  <PhotoField kind="products" id={edit.id} name={edit.name} imageUrl={edit.imageUrl}
+                    categoryImageUrl={catDe(categorias, edit.categoryId)?.imageUrl ?? edit.categoryImageUrl}
+                    family={catDe(categorias, edit.categoryId)?.foodFamily ?? edit.categoryFoodFamily}
+                    onChanged={(url) => {
+                      setEdit({ ...edit, imageUrl: url });
+                      void qc.invalidateQueries({ queryKey: ['admin', 'products'] });
+                      void qc.invalidateQueries({ queryKey: ['menu'] });
+                    }} />
+                  <VStack align="stretch" gap={4} flex="1" minW={0}>
+                    <Field label="Nombre">
+                      <Input minH="44px" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
+                    </Field>
+                    <Field label="Categoría">
+                      {/* Picker táctil, no <select> nativo: en una tablet de 7" el desplegable del
+                          sistema tapa la pantalla con renglones de 20px. Ver la constitución. */}
+                      <Picker
+                        value={String(edit.categoryId || '')}
+                        onChange={(v) => setEdit({ ...edit, categoryId: Number(v) })}
+                        options={opcionesDeCategoria(categorias, edit)}
+                        placeholder="Sin categoría"
+                        title="Mover a la categoría"
+                      />
+                    </Field>
+                  </VStack>
+                </HStack>
                 {/* Precio y costo en una fila: cada renglón le quita alto a 600 px de pantalla. */}
                 <HStack align="start" gap={3}>
                 <Field flex="1" label="Precio">
@@ -162,17 +189,6 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                   <Text>Receta</Text>
                   <Text color="fg.muted" fontWeight="normal">{compositionLabel(edit.compositionStatus)} ›</Text>
                 </Button>
-                <Field label="Categoría">
-                  {/* Picker táctil, no <select> nativo: en una tablet de 7" el desplegable del
-                      sistema tapa la pantalla con renglones de 20px. Ver la constitución. */}
-                  <Picker
-                    value={String(edit.categoryId || '')}
-                    onChange={(v) => setEdit({ ...edit, categoryId: Number(v) })}
-                    options={opcionesDeCategoria(categorias, edit)}
-                    placeholder="Sin categoría"
-                    title="Mover a la categoría"
-                  />
-                </Field>
                 <AltNamesField ownName={edit.name} value={altNames} onChange={(v) => { setAltNames(v); setAltError(''); }}
                   draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similar} error={altError} />
                 <HStack justify="space-between">
@@ -236,6 +252,8 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
     </DialogRoot>
   );
 }
+
+const catDe = (cats: Category[], id: number) => cats.find((c) => c.id === id);
 
 // Las subcategorías se leen con su padre ("Bebidas › Calientes") para desambiguar dos "Calientes".
 // Mientras el catálogo no llega se pinta la categoría ACTUAL del producto: un picker vacío sobre el

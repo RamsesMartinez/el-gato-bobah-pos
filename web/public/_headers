@@ -9,6 +9,9 @@
 # El host de la API lo REESCRIBE CI para el ambiente de pruebas (ver .github/workflows/ci.yml): aquí
 # va el de producción, porque el CSP de producción debe listar solo lo que producción necesita.
 
+# img-src: las fotos del catálogo se sirven desde el dominio de medios (R2, spec 091) y la vista
+# previa del recorte es un blob: local. CI reescribe el dominio de medios igual que el de la API.
+
 # Cloudflare Pages headers (sintaxis propia, no un Caddyfile). Antes vivían en deploy/Caddyfile,
 # pero el frontend ya no lo sirve Caddy — ahora Cloudflare Pages. connect-src debe listar el
 # dominio de la API explícitamente: ya no es mismo-origen.
@@ -24,5 +27,5 @@
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.elgatobobah.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://media.elgatobobah.com; connect-src 'self' https://api.elgatobobah.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
   Referrer-Policy: no-referrer
