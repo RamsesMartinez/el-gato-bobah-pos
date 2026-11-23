@@ -274,9 +274,19 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     anterior; se pueden borrar una subida después.
   - **El nombre de un lugar de conteo es único por almacén**. Al contar un almacén, un artículo con
     lugar de otro va al final con `placeElsewhere`.
+  - **Un artículo tiene UN lugar para contar, de cualquier almacén** (decisión de diseño, cierre del
+    #65): `ingredients.count_place_id` es uno solo, y el lugar decide en qué recorrido de conteo entra.
+    La ficha ofrece los lugares de todos los almacenes, dice de cuál es el elegido («Se cuenta en
+    Bodega») y, si se elige uno de otro almacén, pide confirmar que el artículo pasa a ese recorrido y
+    sale del anterior. El campo NO va bajo el «¿De qué almacén?» de Alertas: ese selector cambia el
+    mínimo que se ve, no el lugar, y ponerlos juntos hacía creer que el lugar era del almacén elegido.
+    Un lugar por almacén sería otra tabla (artículo × almacén) y no se pidió.
   - **El valor de existencias no resta negativos**: cada almacén vale `greatest(on_hand, 0) × costo`,
     y «todos» es la suma de cada almacén, no la existencia sumada por el costo. La respuesta lo declara
-    (`totalValueExcludesNegative`).
+    (`totalValueExcludesNegative`). **Se redondea en cada almacén y luego se suma**
+    (`sum(round(…, 2))`): redondear la suma daba 16.67 donde el desglose sumaba 8.33 + 8.33, y el
+    total de «Todos» no era la suma de sus partes. Lo vigila
+    `TestStockValueOfAllIsTheSumOfTheWarehouses`.
   - **Un traspaso no es consumo**: la lista de compra mide `venta` y `cancelacion` y nada más.
   - **Las alertas son del artículo; el mínimo, de cada almacén.** Encendidas, «al mínimo», «al
     acabarse», la franja y el mínimo del artículo valen en todos los almacenes. Guardar desde otro

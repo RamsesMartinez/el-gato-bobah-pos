@@ -55,8 +55,11 @@ export function useLocations(warehouseId?: number, { all = false }: { all?: bool
       return { value: String(existing), label: found?.name ?? name };
     }
   };
+  // warehouseOf: con dos o más almacenes, de cuál es un lugar (por su valor en el Picker).
+  const warehouseOf = (value: string): string | undefined => (others.length ? options.find((o) => o.value === value)?.hint : undefined);
   return {
     options,
+    warehouseOf,
     pickerProps: {
       // El campo dice «Sin definir» siempre: el ejemplo en el campo parecía un valor ya puesto (prueba sin
       // contexto). Va dentro del buscador, y solo cuando no hay ninguna (decisión del dueño, 2026-10-20).
