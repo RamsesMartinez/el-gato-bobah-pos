@@ -17,8 +17,8 @@ con `Authorization: Bearer $TOKEN` (cliente MCP o `curl` con JSON-RPC `tools/cal
    queda; sobre una opción de un grupo inactivo → la encuentra y avisa del grupo. En la pantalla de
    productos, un producto con grupo inactivo muestra la insignia.
 2. **Pedido de plataforma**: `order_draft_create` (vista previa: total y `price_source` por renglón)
-   → aplicar → `order_draft_send` → `order_deliver` → `order_discount_set` → `order_pay` con
-   `all_remaining` y el método de la plataforma. El total cobrado = total de la vista previa.
+   → aplicar → `order_draft_send` → `order_deliver` → `order_discount_set` → `order_pay` por
+   monto con lo que falta y el método de la plataforma (`all_remaining` es del mostrador). El total cobrado = total de la vista previa.
 3. **Cuenta descartada**: `order_draft_create` + `order_draft_discard`.
 4. **Corrección de cobro**: pedido de mostrador cobrado en efectivo → `order_payment_void` →
    `order_pay` con otro método → `order_payment_terminal_set` (si hay terminal) → `order_refund`

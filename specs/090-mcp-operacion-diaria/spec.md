@@ -51,7 +51,7 @@ producto con grupo inactivo, y archivar un grupo ligado avisa a cuántos product
 4. **Given** un producto con un grupo inactivo ligado, **When** alguien abre la lista de productos,
    **Then** el renglón del producto dice que tiene un grupo inactivo.
 5. **Given** un grupo ligado a 3 productos, **When** alguien lo archiva, **Then** el aviso dice que
-   deja de salir en esos 3 productos (y ofrece deshacer, como hoy).
+   ya no se ofrece en esos 3 productos activos (y ofrece deshacer, como hoy).
 
 ---
 
@@ -81,9 +81,9 @@ MCP y queda entregado y cobrado, con el mismo total que la pantalla habría cobr
    vista previa; enviarla otra vez no duplica el pedido.
 4. **Given** una cuenta abierta por error, **When** se descarta, **Then** desaparece sin crear
    pedido.
-5. **Given** un pedido enviado, **When** se entrega, se le pone descuento y se cobra con «todo lo
-   que falta», **Then** queda entregado y saldado; un reintento con la misma clave no cobra dos
-   veces.
+5. **Given** un pedido de plataforma enviado, **When** se entrega, se le pone descuento y se cobra por
+   monto con lo que falta (la vista previa lo dice), **Then** queda entregado y saldado; un reintento
+   con la misma clave no cobra dos veces. Un pedido de mostrador se cobra además con «todo lo que falta».
 6. **Given** un pedido de plataforma, **When** se intenta cobrar con un método que no es el de su
    plataforma, **Then** se rechaza igual que en la pantalla.
 
