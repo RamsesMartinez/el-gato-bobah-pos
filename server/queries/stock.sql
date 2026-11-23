@@ -32,8 +32,10 @@ select sl.item_type,
        -- columna no nulable sin depender de cómo infiera sqlc un coalesce de dos left join.
        coalesce(i.is_active, p.is_active, true) as is_active,
        -- Valor al costo vigente, almacén por almacén y sin negativos: lo que falta en un almacén no le
-       -- resta valor a lo que sí hay en otro, y así la suma de los almacenes es el valor de todos.
-       round(sum(greatest(sl.on_hand, 0)) * coalesce(i.current_cost, p.current_cost, 0), 2)::numeric(14,2) as value
+       -- resta valor a lo que sí hay en otro. Se redondea en cada almacén y después se suma, igual que
+       -- el desglose por almacén de «Todos» (StockValueByWarehouse): redondear la suma daba 16.67 donde
+       -- los almacenes sumaban 8.33 + 8.33, y el total no cuadraba con sus partes.
+       coalesce(sum(round(greatest(sl.on_hand, 0) * coalesce(i.current_cost, p.current_cost, 0), 2)), 0)::numeric(14,2) as value
 from stock_levels sl
 left join ingredients i on i.id = sl.ingredient_id
 left join units iu on iu.id = i.base_unit_id

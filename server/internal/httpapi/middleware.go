@@ -153,8 +153,14 @@ func RequireAnyPermission(resolve PermissionResolver, ps ...domain.Permission) f
 					}
 				}
 			}
+			// «permission» sigue siendo la primera, la misma clave que RequirePermission, para que una
+			// búsqueda por ella no pierda estos eventos; «permissions» dice que cualquiera bastaba.
+			accepted := make([]string, len(ps))
+			for i, p := range ps {
+				accepted[i] = string(p)
+			}
 			logging.SecurityEvent(r.Context(), "forbidden",
-				"user_id", u.ID, "role", string(u.Role), "permission", string(ps[0]),
+				"user_id", u.ID, "role", string(u.Role), "permission", string(ps[0]), "permissions", accepted,
 				"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
 			Error(w, fmt.Errorf("%w: %s", domain.ErrForbidden, domain.PermissionDeniedMessage(ps[0])))
 		})

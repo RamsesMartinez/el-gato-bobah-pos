@@ -353,8 +353,9 @@ const listWaste = `-- name: ListWaste :many
 select w.id, w.item_type, coalesce(i.name, p.name)::text as item_name, w.quantity,
        coalesce(u.code, 'pza')::text as unit_code, w.total_cost, w.status, w.is_staff_meal,
        r.name as reason_name, coalesce(r.merged_into_id, r.id)::bigint as report_reason_id,
-       uu.name as recorded_by_name, w.recorded_at
+       uu.name as recorded_by_name, w.recorded_at, wh.name as warehouse_name
   from waste_records w
+  join warehouses wh on wh.id = w.warehouse_id
   join waste_reasons r on r.id = w.reason_id
   join users uu on uu.id = w.recorded_by
   left join ingredients i on i.id = w.ingredient_id
@@ -385,6 +386,7 @@ type ListWasteRow struct {
 	ReportReasonID int64            `json:"report_reason_id"`
 	RecordedByName string           `json:"recorded_by_name"`
 	RecordedAt     time.Time        `json:"recorded_at"`
+	WarehouseName  string           `json:"warehouse_name"`
 }
 
 // Los registros de un periodo para la pestaña; el motivo puede ser uno juntado: el filtro sigue la
@@ -411,6 +413,7 @@ func (q *Queries) ListWaste(ctx context.Context, arg ListWasteParams) ([]ListWas
 			&i.ReportReasonID,
 			&i.RecordedByName,
 			&i.RecordedAt,
+			&i.WarehouseName,
 		); err != nil {
 			return nil, err
 		}

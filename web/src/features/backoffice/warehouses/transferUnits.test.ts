@@ -16,4 +16,14 @@ describe('unidades del traspaso', () => {
     expect(toBase('-1', 'ml')).toBe(0);
     expect(toBase('.', 'ml')).toBe(0);
   });
+
+  // Con menos de una unidad grande en el origen, se teclea en la base: la existencia se ve «105 g».
+  test('la unidad sigue a como se ve la existencia', () => {
+    expect(typedUnit('g', '105').label).toBe('g');
+    expect(toBase('2', 'g', '105')).toBe(2);
+    expect(typedUnit('g', '25000').label).toBe('kg');
+    expect(toBase('2', 'g', '25000')).toBe(2000);
+    expect(typedUnit('cm', '50').label).toBe('cm');
+    expect(typedUnit('pieza', '3').label).toBe('pz');
+  });
 });

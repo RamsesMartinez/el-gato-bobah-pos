@@ -54,6 +54,19 @@ describe('almacenes de la sucursal (spec 094, maqueta A3)', () => {
     await waitFor(() => expect(back.createWarehouse).toHaveBeenCalledWith('Cuarto frío'));
   });
 
+  // Revisión (cierre del #65): quien solo cuenta o registra merma lee los nombres de otra consulta;
+  // un almacén nuevo o renombrado no le llegaba hasta recargar.
+  test('agregar un almacén refresca también la lista de nombres', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={['/negocio']}><WarehousesSettings /></MemoryRouter></Provider></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Agregar almacén' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cuarto frío' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['warehouses'] }));
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['warehouse-names'] });
+  });
+
   test('un nombre repetido lo dice en la hoja', async () => {
     back.createWarehouse.mockRejectedValue(new ApiError(409, 'WAREHOUSE_NAME_TAKEN', 'ya hay un almacén con ese nombre', ''));
     montar();

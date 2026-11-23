@@ -76,7 +76,7 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
   }, [fromLevels.data, toLevels.data]);
   const q = search.trim().toLowerCase();
   const shown = q ? rows.filter((r) => r.name.toLowerCase().includes(q)) : rows;
-  const chosen = rows.filter((r) => toBase(qty[r.key] ?? '', r.unit) > 0);
+  const chosen = rows.filter((r) => toBase(qty[r.key] ?? '', r.unit, r.from) > 0);
 
   const body = (confirmNegative: boolean): TransferBody => ({
     clientKey, fromWarehouseId: from!, toWarehouseId: to!, note: note.trim() || undefined,
@@ -84,7 +84,7 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
     lines: chosen.map((r) => ({
       itemType: r.itemType,
       ...(r.itemType === 'producto' ? { productId: r.id } : { ingredientId: r.id }),
-      qty: String(toBase(qty[r.key], r.unit)),
+      qty: String(toBase(qty[r.key], r.unit, r.from)),
     })),
   });
   const send = useMutation({
@@ -93,7 +93,7 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
       // Con un artículo se dice cuál y cuánto (prueba con usuario nuevo, 094): «1 artículo» no le decía
       // a quien traspasó si quedó lo que quería.
       const n = chosen.length;
-      const what = n === 1 ? `${qty[chosen[0].key]} ${typedUnit(chosen[0].unit).label} de ${chosen[0].name}` : `${n} artículos`;
+      const what = n === 1 ? `${qty[chosen[0].key]} ${typedUnit(chosen[0].unit, chosen[0].from).label} de ${chosen[0].name}` : `${n} artículos`;
       toaster.create({ title: `Listo: ${what} de ${name(from)} a ${name(to)}`, type: 'success' });
       setQty({});
       setNote('');
@@ -198,7 +198,7 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
                         onClick={() => setField(r.key)} onFocus={() => setField(r.key)} />
                       <IconButton aria-label="Más" variant="ghost" minH="44px" minW="44px" onClick={() => step(r, 1)}><LuPlus /></IconButton>
                     </HStack>
-                    <Text w="28px">{typedUnit(r.unit).label}</Text>
+                    <Text w="28px">{typedUnit(r.unit, r.from).label}</Text>
                   </HStack>
                 </Table.Cell>
               </Table.Row>
@@ -211,8 +211,8 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
         <Flex flexShrink={0} gap={3} align={{ base: 'end', lg: 'stretch' }} direction={{ base: 'row', lg: 'column' }}
           w={{ base: 'auto', lg: '280px' }} data-testid="teclado-traspaso">
           <Box flex={{ base: '1', lg: 'none' }} maxW="320px">
-            <NumericKeypad allowDecimal={typedUnit(fieldRow.unit).decimals}
-              onKey={(k) => setRowQty(fieldRow.key, apply(qty[fieldRow.key] ?? '', k, typedUnit(fieldRow.unit).decimals))} />
+            <NumericKeypad allowDecimal={typedUnit(fieldRow.unit, fieldRow.from).decimals}
+              onKey={(k) => setRowQty(fieldRow.key, apply(qty[fieldRow.key] ?? '', k, typedUnit(fieldRow.unit, fieldRow.from).decimals))} />
           </Box>
           <Box flex="1" display={{ base: 'block', lg: 'none' }} />
           {/* Separado del pie: con el teclado abierto «Listo» y «Traspasar» quedaban a 5 px. */}

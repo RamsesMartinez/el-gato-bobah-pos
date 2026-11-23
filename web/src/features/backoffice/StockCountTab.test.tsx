@@ -1068,4 +1068,33 @@ describe('conteo por almacén (spec 094)', () => {
     expect(await screen.findByText(/Bodega todavía no tiene artículos/)).toBeInTheDocument();
     expect(screen.getByText('¿Qué almacén cuentas?')).toBeInTheDocument();
   });
+  // Revisión (cierre del #65): al recargar con ?almacen=2 se pedía primero el conteo del de venta,
+  // antes de saber qué almacenes hay.
+  test('al recargar con ?almacen= no pide el conteo del de venta antes de leer los almacenes', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.count', 'inventory.health_view'] } as never });
+    let listo: (v: typeof dos) => void = () => {};
+    back.warehouses.mockReturnValue(new Promise((r) => { listo = r; }));
+    back.currentCount.mockResolvedValue(null);
+    montar('/almacen?almacen=2');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(back.currentCount).not.toHaveBeenCalled();
+    expect(back.lastClosedCount).not.toHaveBeenCalled();
+    listo(dos);
+    await waitFor(() => expect(back.currentCount).toHaveBeenCalledWith(2));
+    expect(back.currentCount.mock.calls.every((c) => c[0] === 2)).toBe(true);
+    await waitFor(() => expect(back.lastClosedCount).toHaveBeenCalled());
+    expect(back.lastClosedCount.mock.calls.every((c) => c[0] === 2)).toBe(true);
+  });
+  // Medido a 1024×600 (cierre del #65): con dos almacenes la pregunta ocupaba su propio renglón sobre
+  // el avance y la lista perdía 58 px (de 4 renglones a la vista a 3). En la lista va en el renglón
+  // del buscador, que ya existía.
+  test('con el conteo abierto en lista, la pregunta del almacén va en el renglón del buscador', async () => {
+    back.warehouses.mockResolvedValue(dos);
+    montar();
+    const grupo = await screen.findByRole('group', { name: '¿Qué almacén cuentas?' });
+    const buscar = screen.getByLabelText('Buscar');
+    expect(grupo.closest('[data-search-row]')).not.toBeNull();
+    expect(grupo.closest('[data-search-row]')).toContainElement(buscar);
+    expect(screen.getAllByText('¿Qué almacén cuentas?')).toHaveLength(1);
+  });
 });

@@ -46,7 +46,7 @@ func (h *Handlers) OpenCount(w http.ResponseWriter, r *http.Request) {
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	if err := d.Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		Error(w, domain.ErrValidation)
+		Error(w, fmt.Errorf("%w: el cuerpo solo acepta warehouseId", domain.ErrValidation))
 		return
 	}
 	sel, err := domain.WarehouseFromBody(body.WarehouseID)

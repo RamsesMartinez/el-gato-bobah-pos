@@ -233,6 +233,10 @@ func TestWarehouseInputsAtTheBoundary(t *testing.T) {
 	if w := do(t, r, http.MethodGet, "/api/v1/stock/movements?warehouseId=", tok, nil, ""); w.Code != http.StatusBadRequest {
 		t.Errorf("movimientos con ?warehouseId= vacío = %d; quiere 400", w.Code)
 	}
+	// El 400 dice qué campo espera: «datos inválidos» a secas no dice que el almacén va en warehouseId.
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/counts", tok, []byte(`{"warehouse_id":1}`), ct); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "warehouseId") {
+		t.Errorf("abrir conteo con warehouse_id = %d %s; quiere 400 que nombre warehouseId", w.Code, w.Body.String())
+	}
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stock/counts", io.NopCloser(strings.NewReader("")))
 	req.ContentLength = -1
 	req.Header.Set("Authorization", "Bearer "+tok)
@@ -450,4 +454,34 @@ func TestACashierCanListWarehouseNamesOnly(t *testing.T) {
 	if w := do(t, r, http.MethodGet, "/api/v1/stock/warehouses", tok, nil, ""); w.Code != http.StatusForbidden {
 		t.Fatalf("el cajero pide la lista con existencias = %d; quiere 403", w.Code)
 	}
+}
+
+// Los nombres de almacén (los lee hasta un cajero) tenían que salir de una consulta que no cuenta
+// existencias, y aislada como cualquier lectura de empresa: desde la ajena, con una conexión
+// reciclada o sin empresa, la Bodega de la dueña no aparece.
+func TestWarehouseNamesAreIsolatedInTheThreeCases(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	owner := makeCompany(t, st, "almacen-nombres-duena")
+	other := makeCompany(t, st, "almacen-nombres-ajena")
+	svc, ctx := asWaste(t, owner)
+	bodega, err := svc.CreateWarehouse(ctx, "Bodega de nombres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine, err := svc.WarehouseNames(ctx)
+	if err != nil || len(mine) != 2 || !mine[0].IsSales || mine[1].ID != bodega || mine[1].Name != "Bodega de nombres" {
+		t.Fatalf("los nombres de la dueña = %+v (%v); quiere el de venta y la Bodega", mine, err)
+	}
+	inTheThreeCases(t, owner, other, func(t *testing.T, as *store.Store, ctx context.Context) {
+		ws, err := app.NewBackofficeService(as, clock).WarehouseNames(ctx)
+		if err != nil {
+			return
+		}
+		for _, w := range ws {
+			if w.ID == bodega {
+				t.Fatalf("se ve el nombre de la bodega de otra empresa: %+v", w)
+			}
+		}
+	})
 }

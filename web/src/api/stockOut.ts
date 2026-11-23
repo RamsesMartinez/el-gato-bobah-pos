@@ -45,7 +45,9 @@ export interface OutReportResult {
 }
 
 export const stockOutApi = {
-  search: (q: string) => api.get<{ items: OutItem[] }>(`/stock/out-reports/search?q=${encodeURIComponent(q)}`),
+  // «Ya reportado» es del almacén pedido (spec 094); sin warehouseId, el de venta.
+  search: (q: string, warehouseId?: number) => api.get<{ items: OutItem[] }>(
+    `/stock/out-reports/search?q=${encodeURIComponent(q)}${warehouseId === undefined ? '' : `&warehouseId=${warehouseId}`}`),
   suggestions: () => api.get<OutSuggestions>('/stock/out-reports/suggestions'),
   // Sin warehouseId es el almacén de venta (spec 094).
   report: (item: OutItem, clientKey: string, warehouseId?: number) =>
