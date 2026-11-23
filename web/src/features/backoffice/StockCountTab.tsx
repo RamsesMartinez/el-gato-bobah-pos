@@ -10,7 +10,7 @@ import { NumericKeypad } from '../../components/NumericKeypad';
 import { pressKey } from '../../components/pressKey';
 import { backofficeApi, type CountCaptureBody, type CountClose, type CountItem, type CountProduct, type StockCount } from '../../api/backoffice';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
-import { matchedAlias, matchesWords } from '../../utils/format';
+import { matchedAlias, matchesWords, normalize } from '../../utils/format';
 import { AltMatchTag } from '../../components/AltMatchTag';
 import { formatBaseQty } from '../../shared/units';
 import { countedWords, diffWords, grossNet, isBigDiff, looseUnitsOf, packsTotal, restoreWeighed, withGross, closedPacksOf } from './countEntry';
@@ -56,6 +56,8 @@ const CountScopeContext = createContext<CountScope>({ key: ['stock', 'count', 'v
 // NO_PLACE_HERE: con varios almacenes, un artículo sin lugar en el que se cuenta puede tenerlo en
 // otro; «Sin definir» haría creer que nadie le puso lugar.
 const NO_PLACE_HERE = 'Sin lugar en este almacén';
+// OTHER_WAREHOUSE: en la vista sencilla, lo que todavía no es de este almacén (al contarlo pasa a serlo).
+const OTHER_WAREHOUSE = 'De otro almacén';
 const placeOf = (i: CountItem, multi = false) => i.place ?? (multi && i.placeElsewhere ? NO_PLACE_HERE : NO_LOCATION);
 
 // Productos con existencia propia en el conteo (spec 069, maqueta «Conteo con productos», opción C):
@@ -151,8 +153,9 @@ export function StockCountTab() {
   // el del elegido.
   const knowsWarehouse = picked === undefined || whData !== undefined;
   const { data: count, isLoading } = useQuery({ queryKey: countKey, queryFn: () => backofficeApi.currentCount(warehouseId), enabled: knowsWarehouse });
-  // Lo esperado de cada insumo, solo para la vista avanzada y solo con permiso de configurar el almacén:
-  // la ruta lo exige, así que a quien solo cuenta nunca le llega (spec 096).
+  // Lo esperado de cada insumo, solo con permiso de configurar el almacén (la ruta lo exige, así que a
+  // quien solo cuenta nunca le llega, spec 096). Se pide aunque se esté en la sencilla para que cambiar
+  // a la avanzada no espere; solo la avanzada lo pinta.
   const expected = useQuery({
     queryKey: [...countKey, 'esperado', count?.id], queryFn: () => backofficeApi.countExpected(count!.id),
     enabled: !!count && can('inventory.configure'),
@@ -331,7 +334,7 @@ export function StockCountTab() {
 
       {view === 'avanzada'
         ? <ListView count={shown} others={others} onSaved={onSaved} initialQuery={initialQuery} picker={picker || undefined} expected={expected.data} />
-        : <PlaceView count={shown} onSaved={onSaved} initialQuery={initialQuery} />}
+        : <PlaceView key={count.id} count={shown} others={others} onSaved={onSaved} initialQuery={initialQuery} />}
 
       {closing && (
         <CloseSheet countId={count.id} onClose={() => setClosing(false)}
@@ -858,12 +861,14 @@ function ExpectedCell({ expected, counted, unit }: { expected: string; counted: 
 // PlaceView es la vista para contar: arriba los lugares con su avance, a la izquierda lo de ese lugar
 // y a la derecha la tarjeta del artículo elegido con el teclado fijo. Al guardar pasa al siguiente sin
 // contar del mismo lugar. Lo esperado no se muestra: el conteo es a ciegas.
-function PlaceView({ count, onSaved, initialQuery = '' }: {
-  count: StockCount; onSaved: (id: number, qty: string | null) => void; initialQuery?: string;
+function PlaceView({ count, others = [], onSaved, initialQuery = '' }: {
+  count: StockCount; others?: CountItem[]; onSaved: (id: number, qty: string | null) => void; initialQuery?: string;
 }) {
   const { multi } = useContext(CountScopeContext);
-  // count.items ya trae los productos del menú al final (rowsOf), cada categoría como su lugar.
-  const rows = count.items;
+  // count.items ya trae los productos del menú al final (rowsOf), cada categoría como su lugar. Lo que
+  // todavía no es de este almacén va al último: la sencilla no tiene buscador, y sin esto quien solo
+  // cuenta no podía contar nada en el primer conteo de una Bodega nueva.
+  const rows = [...count.items, ...others.map((o) => ({ ...o, place: OTHER_WAREHOUSE }))];
   const places: string[] = [];
   for (const i of rows) if (!places.includes(placeOf(i, multi))) places.push(placeOf(i, multi));
   const firstIn = (p: string) => {
@@ -871,20 +876,33 @@ function PlaceView({ count, onSaved, initialQuery = '' }: {
     return (of.find((i) => i.countedQty === null) ?? of[0])?.ingredientId ?? null;
   };
   // Llegar desde «Revisar con un conteo» abre la tarjeta de ese artículo, no la del primer lugar.
-  const asked = initialQuery.trim() ? rows.find((i) => matchesWords(i.name, initialQuery.trim())) : undefined;
+  // La ficha manda el nombre exacto: primero ése, y la búsqueda por palabras solo si no está.
+  const q = initialQuery.trim();
+  const asked = q ? rows.find((i) => normalize(i.name) === normalize(q)) ?? rows.find((i) => matchesWords(i.name, q)) : undefined;
   const [place, setPlace] = useState(() => asked ? placeOf(asked, multi) : places.find((p) => rows.some((i) => placeOf(i, multi) === p && i.countedQty === null)) ?? places[0]);
   // Se sigue al INSUMO, no al lugar: ponerle otro lugar desde la tarjeta lo mueve de grupo, y la
   // tarjeta se va con él en vez de saltar a otro insumo a media captura.
   const [atId, setAtId] = useState<number | null>(() => asked?.ingredientId ?? firstIn(place));
+  // Avanza la tarjeta aunque siga en el mismo artículo (el último sin contar): sin otra llave, lo
+  // tecleado se quedaba en pantalla y un segundo toque lo guardaba otra vez.
+  const [turn, setTurn] = useState(0);
   const current = rows.find((i) => i.ingredientId === atId);
-  const shownPlace = current ? placeOf(current, multi) : place;
+  const shownPlace = current ? placeOf(current, multi) : places.includes(place) ? place : places[0];
   const items = rows.filter((i) => placeOf(i, multi) === shownPlace);
   const item = current ?? items[0];
   if (!item) return <Text color="fg.muted">No hay insumos que contar.</Text>;
+  // El siguiente sin contar: después de éste en el lugar, luego los de antes en el lugar (lo saltado
+  // vuelve), luego el primero de los lugares que siguen. Si ya no queda nada, se dice.
   const next = () => {
-    const after = items.slice(items.indexOf(item) + 1).find((i) => i.countedQty === null);
-    setAtId(after?.ingredientId ?? item.ingredientId);
+    const at = items.indexOf(item);
+    const pending = (i: CountItem) => i.countedQty === null && i.ingredientId !== item.ingredientId;
+    const later = places.slice(places.indexOf(shownPlace) + 1).concat(places.slice(0, places.indexOf(shownPlace)))
+      .flatMap((p) => rows.filter((i) => placeOf(i, multi) === p));
+    const n = items.slice(at + 1).find(pending) ?? items.slice(0, at).find(pending) ?? later.find(pending);
+    setAtId(n?.ingredientId ?? item.ingredientId);
+    setTurn((t) => t + 1);
   };
+  const allDone = rows.every((i) => i.countedQty !== null);
   return (
     <VStack align="stretch" gap={2} flex="1" minH={0}>
       {places.length > 1 && (
@@ -894,20 +912,25 @@ function PlaceView({ count, onSaved, initialQuery = '' }: {
             return { value: p, label: `${p} · ${of.filter((i) => i.countedQty !== null).length}/${of.length}` };
           })} />
       )}
+      {allDone && <Text fontWeight="600" color="fg.success">Ya se contó todo. Revisa lo que quieras y cierra el conteo.</Text>}
       <HStack align="stretch" gap={3} flex="1" minH={0}>
         <Box w={{ base: '180px', xl: '260px' }} flexShrink={0} borderWidth="1px" borderRadius="lg" overflowY="auto" minH={0} bg="bg.panel">
           {items.map((i) => (
             <Button key={i.ingredientId} data-testid="renglon-lugar" variant={i.ingredientId === item.ingredientId ? 'subtle' : 'ghost'}
               colorPalette={i.ingredientId === item.ingredientId ? undefined : 'gray'} w="100%" h="auto" minH="52px" px={3} py={2}
               borderRadius={0} borderBottomWidth="1px" justifyContent="start" fontWeight="normal" onClick={() => setAtId(i.ingredientId)}>
-              <Text flex="1" textAlign="start" truncate>{i.name}</Text>
-              <Text fontSize="sm" color={i.countedQty !== null ? 'fg.success' : 'fg.muted'} flexShrink={0}>
-                {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}` : '—'}
-              </Text>
+              {/* La cantidad va debajo del nombre: al lado le dejaba al nombre 60 px a 1024 y lo contado,
+                  que es lo que se busca para corregir, se volvía «Ace…». */}
+              <VStack flex="1" minW={0} gap={0} align="start">
+                <Text w="100%" textAlign="start" truncate>{i.name}</Text>
+                <Text fontSize="sm" color={i.countedQty !== null ? 'fg.success' : 'fg.muted'}>
+                  {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}` : 'Sin contar'}
+                </Text>
+              </VStack>
             </Button>
           ))}
         </Box>
-        <OneCard key={item.ingredientId} countId={count.id} item={item}
+        <OneCard key={`${item.ingredientId}-${turn}`} countId={count.id} item={item}
           where={`${shownPlace} · ${items.indexOf(item) + 1} de ${items.length}`}
           onPrev={items.indexOf(item) > 0 ? () => setAtId(items[items.indexOf(item) - 1].ingredientId) : undefined}
           onNext={next} onSaved={onSaved} />

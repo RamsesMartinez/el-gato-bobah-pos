@@ -169,70 +169,74 @@ export function StockPage() {
           {canConfigureStock && <Tabs.Trigger value="avisos" minH="44px">Avisos</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
-          <HStack align="start" gap={3} flexWrap="wrap">
-            <Box flex="1" minW={0}>{warehousePicker}</Box>
-            {/* Con íconos, como el selector de vista de Ajustes (pedido del dueño). */}
-            <Box mb={3}>
-              <Segmented label="Vista" value={stockView} onChange={pickStockView}
-                options={[{ value: 'sencilla', label: 'Sencilla', icon: <LuColumns3 /> }, { value: 'avanzada', label: 'Avanzada', icon: <LuSlidersHorizontal /> }]} />
-            </Box>
-          </HStack>
-          {stockView === 'avanzada' && valueSummary}
-          {stockView === 'sencilla' && (levels.isError
-            ? <Text color="fg.error">No se pudieron leer las existencias de este almacén</Text>
-            : (
-              <Box opacity={levels.isPlaceholderData ? 0.4 : 1} aria-busy={levels.isPlaceholderData || undefined}>
-                <StockBoard items={levels.data?.items ?? []}
-                  bringFrom={atSales && canTransfer ? (r) => ((r.transfer_from?.length ?? 0) > 0 && (r.ingredient_id ?? r.product_id) ? richestSource(r.transfer_from!).name : null) : undefined}
-                  onBring={setBring} />
+          {/* En el tablero cada columna desplaza por su cuenta: el alto lo da la pestaña, no un cálculo
+              de píxeles que se rompe en cuanto arriba hay un renglón más. */}
+          <Box h={stockView === 'sencilla' ? '100%' : undefined} display="flex" flexDirection="column">
+            <HStack align="start" gap={3} flexWrap="wrap">
+              <Box flex="1" minW={0}>{warehousePicker}</Box>
+              {/* Con íconos, como el selector de vista de Ajustes (pedido del dueño). */}
+              <Box mb={3}>
+                <Segmented label="Vista" value={stockView} onChange={pickStockView}
+                  options={[{ value: 'sencilla', label: 'Sencilla', icon: <LuColumns3 /> }, { value: 'avanzada', label: 'Avanzada', icon: <LuSlidersHorizontal /> }]} />
               </Box>
-            ))}
-          {stockView === 'avanzada' && (
-            <>
-            {/* Mientras llega la lista del almacén elegido, la anterior se atenúa: no se leen cifras de
-                otro almacén como si fueran de éste. */}
-            <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto" opacity={levels.isPlaceholderData ? 0.4 : 1}
-              aria-busy={levels.isPlaceholderData || undefined}>
-              <Table.Root size="sm">
-                <Table.Header><Table.Row><Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Mínimo</Table.ColumnHeader>{withValue && <Table.ColumnHeader textAlign="end">Valor</Table.ColumnHeader>}</Table.Row></Table.Header>
-                <Table.Body>
-                  {levels.isError && (
-                    <Table.Row><Table.Cell colSpan={levelCols}><Text color="fg.error">No se pudieron leer las existencias de este almacén</Text></Table.Cell></Table.Row>
-                  )}
-                  {!levels.isError && (levels.data?.items ?? []).length === 0 && (
-                    <Table.Row><Table.Cell colSpan={levelCols}><Text color="fg.subtle">
-                      {typeof warehouse === 'number' ? 'Este almacén todavía no tiene mercancía' : 'Sin existencias que mostrar'}
-                    </Text></Table.Cell></Table.Row>
-                  )}
-                  {!levels.isError && (levels.data?.items ?? []).map((s, i) => {
-                    const low = s.min_stock != null && Number(s.on_hand) <= Number(s.min_stock);
-                    return (
-                      <Table.Row key={i}>
-                        <Table.Cell>{s.item_name}</Table.Cell>
-                        <Table.Cell>{s.item_type}</Table.Cell>
-                        <Table.Cell textAlign="end" color={Number(s.on_hand) < 0 ? 'fg.error' : undefined}>
-                          {formatBaseQty(s.on_hand, s.unit_code)}{low && <Badge ml={2} colorPalette="orange">bajo</Badge>}
-                          {/* Igual que en Artículos: la cifra en rojo y la etiqueta, no el renglón entero. */}
-                          {Number(s.on_hand) < 0 && (
-                            <Text as="span" ml={2} px={2} py="1px" borderRadius="md" fontWeight="700" color="fg.error" bg="bg.error">Revisar</Text>
-                          )}
-                          {/* Un negativo en el de venta con mercancía en otro almacén se trae de ahí (spec 094). */}
-                          {atSales && canTransfer && Number(s.on_hand) < 0 && (s.transfer_from?.length ?? 0) > 0 && (s.ingredient_id ?? s.product_id) && (
-                            <Button ml={2} size="sm" minH="44px" variant="outline" onClick={() => setBring(s)}>
-                              Traer de {richestSource(s.transfer_from!).name}
-                            </Button>
-                          )}
-                        </Table.Cell>
-                        <Table.Cell textAlign="end">{s.min_stock == null ? '—' : formatBaseQty(s.min_stock, s.unit_code)}</Table.Cell>
-                        {withValue && <Table.Cell textAlign="end">{s.value == null ? '—' : money(s.value)}</Table.Cell>}
-                      </Table.Row>
-                    );
-                  })}
-                </Table.Body>
-              </Table.Root>
-            </Box>
-            </>
-          )}
+            </HStack>
+            {stockView === 'avanzada' && valueSummary}
+            {stockView === 'sencilla' && (levels.isError
+              ? <Text color="fg.error">No se pudieron leer las existencias de este almacén</Text>
+              : (
+                <Box flex="1" minH={0} display="flex" opacity={levels.isPlaceholderData ? 0.4 : 1} aria-busy={levels.isPlaceholderData || undefined}>
+                  <StockBoard items={levels.data?.items ?? []}
+                    bringFrom={atSales && canTransfer ? (r) => ((r.transfer_from?.length ?? 0) > 0 && (r.ingredient_id ?? r.product_id) ? richestSource(r.transfer_from!).name : null) : undefined}
+                    onBring={setBring} />
+                </Box>
+              ))}
+            {stockView === 'avanzada' && (
+              <>
+              {/* Mientras llega la lista del almacén elegido, la anterior se atenúa: no se leen cifras de
+                  otro almacén como si fueran de éste. */}
+              <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto" opacity={levels.isPlaceholderData ? 0.4 : 1}
+                aria-busy={levels.isPlaceholderData || undefined}>
+                <Table.Root size="sm">
+                  <Table.Header><Table.Row><Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Mínimo</Table.ColumnHeader>{withValue && <Table.ColumnHeader textAlign="end">Valor</Table.ColumnHeader>}</Table.Row></Table.Header>
+                  <Table.Body>
+                    {levels.isError && (
+                      <Table.Row><Table.Cell colSpan={levelCols}><Text color="fg.error">No se pudieron leer las existencias de este almacén</Text></Table.Cell></Table.Row>
+                    )}
+                    {!levels.isError && (levels.data?.items ?? []).length === 0 && (
+                      <Table.Row><Table.Cell colSpan={levelCols}><Text color="fg.subtle">
+                        {typeof warehouse === 'number' ? 'Este almacén todavía no tiene mercancía' : 'Sin existencias que mostrar'}
+                      </Text></Table.Cell></Table.Row>
+                    )}
+                    {!levels.isError && (levels.data?.items ?? []).map((s, i) => {
+                      const low = s.min_stock != null && Number(s.on_hand) <= Number(s.min_stock);
+                      return (
+                        <Table.Row key={i}>
+                          <Table.Cell>{s.item_name}</Table.Cell>
+                          <Table.Cell>{s.item_type}</Table.Cell>
+                          <Table.Cell textAlign="end" color={Number(s.on_hand) < 0 ? 'fg.error' : undefined}>
+                            {formatBaseQty(s.on_hand, s.unit_code)}{low && <Badge ml={2} colorPalette="orange">bajo</Badge>}
+                            {/* Igual que en Artículos: la cifra en rojo y la etiqueta, no el renglón entero. */}
+                            {Number(s.on_hand) < 0 && (
+                              <Text as="span" ml={2} px={2} py="1px" borderRadius="md" fontWeight="700" color="fg.error" bg="bg.error">Revisar</Text>
+                            )}
+                            {/* Un negativo en el de venta con mercancía en otro almacén se trae de ahí (spec 094). */}
+                            {atSales && canTransfer && Number(s.on_hand) < 0 && (s.transfer_from?.length ?? 0) > 0 && (s.ingredient_id ?? s.product_id) && (
+                              <Button ml={2} size="sm" minH="44px" variant="outline" onClick={() => setBring(s)}>
+                                Traer de {richestSource(s.transfer_from!).name}
+                              </Button>
+                            )}
+                          </Table.Cell>
+                          <Table.Cell textAlign="end">{s.min_stock == null ? '—' : formatBaseQty(s.min_stock, s.unit_code)}</Table.Cell>
+                          {withValue && <Table.Cell textAlign="end">{s.value == null ? '—' : money(s.value)}</Table.Cell>}
+                        </Table.Row>
+                      );
+                    })}
+                  </Table.Body>
+                </Table.Root>
+              </Box>
+              </>
+            )}
+          </Box>
         </Tabs.Content>
         {canTransfer && (
           <Tabs.Content value="traspaso" px={0} flex="1" minH={0}>

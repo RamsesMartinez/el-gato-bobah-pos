@@ -192,7 +192,7 @@ func (h *Handlers) CountLoss(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, v)
 }
 
-// CountVsSales es GET /waste/counts/{id}/vs-sales (inventory.health_view, como el faltante): conteo
+// CountVsSales es GET /stock/counts/{id}/vs-sales (inventory.health_view, como el faltante): conteo
 // contra ventas de un conteo cerrado (spec 096, subida 2). Siempre arreglo.
 func (h *Handlers) CountVsSales(w http.ResponseWriter, r *http.Request) {
 	id, err := idParam(r, "id")

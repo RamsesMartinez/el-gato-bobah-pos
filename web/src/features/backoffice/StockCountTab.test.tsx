@@ -178,15 +178,40 @@ describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
   test('vista sencilla: un lugar a la vez, saltar no guarda, guardar captura; la vista se recuerda', async () => {
     montar();
     fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
-    const lugares = within(screen.getByRole('group', { name: 'Lugar' }));
-    fireEvent.click(lugares.getByRole('button', { name: /^Bodega · 0\/1$/ }));
-    expect(screen.getAllByText('Azúcar').length).toBeGreaterThan(0);
+    fireEvent.click(within(screen.getByRole('group', { name: 'Lugar' })).getByRole('button', { name: /^Bodega · 0\/1$/ }));
+    expect(screen.getByRole('heading', { name: 'Azúcar' })).toBeInTheDocument();
+    // Revisión de código: al final de un lugar «Saltar» se quedaba en la misma tarjeta. Pasa al
+    // siguiente lugar con algo sin contar.
     click('Saltar (no contar hoy)');
     expect(back.captureCount).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Limón' })).toBeInTheDocument();
     tecla('1');
     click('Guardar y seguir ›');
-    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 2, { countedQty: '25000', confirmable: true }));
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3, { countedQty: '1', confirmable: true }));
+    // Y de ahí da la vuelta: lo saltado vuelve a ofrecerse.
+    expect(await screen.findByRole('heading', { name: 'Jarabe de vainilla' })).toBeInTheDocument();
     expect(localStorage.getItem('egb:conteo:vista')).toBe('sencilla');
+  });
+
+  test('el último sin contar: guardar limpia la tarjeta y dice que ya se contó todo', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3 ? i : { ...i, countedQty: '1' })) });
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+    expect(screen.getByRole('heading', { name: 'Limón' })).toBeInTheDocument();
+    tecla('4');
+    click('Guardar y seguir ›');
+    expect(await screen.findByText(/Ya se contó todo/)).toBeInTheDocument();
+    expect(back.captureCount).toHaveBeenCalledTimes(1);
+  });
+
+  test('desde la ficha abre el artículo con ese nombre exacto, no el primero que empieza igual', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: [
+      { ingredientId: 7, name: 'Azúcar mascabado', place: 'Bodega', placeId: 2, baseUnitCode: 'g', presentations: [], countedQty: null },
+      ...conteo().items,
+    ] });
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
+    montar('/almacen?tab=conteo&q=Azúcar');
+    expect(await screen.findByRole('heading', { name: 'Azúcar' })).toBeInTheDocument();
   });
 
   test('el cierre nombra lo no contado, dice sobraban/faltaban y marca lo grande, sin negativos a secas', async () => {
@@ -1092,6 +1117,21 @@ describe('conteo por almacén (spec 094)', () => {
     expect(screen.queryByText('Sin lugar en este almacén')).toBeNull();
     fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: 'limón' } });
     expect(await screen.findByText('Limón')).toBeInTheDocument();
+  });
+  // Revisión de código de la 096: la sencilla no tiene buscador, y quien solo cuenta no podía contar
+  // nada en el primer conteo de una Bodega nueva. Lo que no es del almacén va en un lugar al final.
+  test('quien solo cuenta, en una Bodega nueva, cuenta lo que todavía no es de ella', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
+    back.warehouses.mockResolvedValue(dos);
+    back.currentCount.mockResolvedValue({ ...conteo(), warehouseId: 2, warehouseName: 'Bodega', items: [
+      { ingredientId: 3, name: 'Limón', place: null, placeId: null, baseUnitCode: 'pieza', presentations: [], countedQty: null, inWarehouse: false },
+    ] });
+    montar('/almacen?almacen=2');
+    expect(await screen.findByRole('heading', { name: 'Limón' })).toBeInTheDocument();
+    expect(screen.getByText(/De otro almacén/)).toBeInTheDocument();
+    tecla('6');
+    click('Guardar y seguir ›');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3, { countedQty: '6', confirmable: true }));
   });
   // Recargar con un conteo abierto en la Bodega volvía al de venta y decía «No hay un conteo abierto».
   test('el almacén elegido viaja en la dirección y sobrevive a recargar', async () => {

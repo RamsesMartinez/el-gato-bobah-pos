@@ -232,13 +232,19 @@ where id = $1;
 -- vendido antes volvería a otro lugar y el primero quedaría descontado para siempre.
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
                              modifier_option_id, component_of_product_id, warehouse_id)
-select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, null,
+--
+-- La merma esperada vuelve como merma_esperada (spec 096): como cancelación, el reporte contra ventas
+-- leería venta negativa y la merma real un consumo negativo. Por eso se agrupa también por su clase.
+select sm.item_type, sm.ingredient_id, sm.product_id,
+       (case when sm.movement_type = 'merma_esperada' then 'merma_esperada' else 'cancelacion' end)::stock_movement_type,
+       -sum(sm.quantity), sm.order_id, null,
        sqlc.arg(actor_id), 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id, sm.warehouse_id
 from stock_movements sm
 where sm.order_id = sqlc.arg(oid) and sm.movement_type in ('venta', 'cancelacion', 'merma_esperada')
   and sm.order_line_id is null
 group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id,
-         sm.modifier_option_id, sm.component_of_product_id, sm.warehouse_id
+         sm.modifier_option_id, sm.component_of_product_id, sm.warehouse_id,
+         (sm.movement_type = 'merma_esperada')
 having sum(sm.quantity) <> 0;
 
 -- name: RecalcOrderTotals :exec
@@ -595,11 +601,13 @@ where id = $1 and cancelled_at is null;
 -- Al almacén del movimiento que revierte (spec 094, FR-011).
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
                              modifier_option_id, component_of_product_id, warehouse_id)
-select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, sm.order_line_id,
+select sm.item_type, sm.ingredient_id, sm.product_id,
+       (case when sm.movement_type = 'merma_esperada' then 'merma_esperada' else 'cancelacion' end)::stock_movement_type,
+       -sm.quantity, sm.order_id, sm.order_line_id,
        sqlc.arg(actor_id), 'cancelación de renglón', sm.modifier_option_id, sm.component_of_product_id, sm.warehouse_id
 from stock_movements sm
--- La merma esperada que descontó la venta (spec 096) vuelve con ella: sin esto, quitar el renglón
--- dejaba el almacén descontado de más para siempre.
+-- La merma esperada que descontó la venta (spec 096) vuelve con ella, y como merma_esperada: sin
+-- esto, quitar el renglón dejaba el almacén descontado de más para siempre.
 where sm.order_line_id = sqlc.arg(line_id) and sm.movement_type in ('venta', 'merma_esperada');
 
 -- name: RegistrarLoteDeRenglones :one

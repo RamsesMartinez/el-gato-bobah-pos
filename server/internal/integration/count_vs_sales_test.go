@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 
@@ -102,6 +103,17 @@ func TestCountExpectedIsOnlyForTheWarehouseAndIsolated(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("lo esperado no trae las 40 piezas: %+v", got)
+	}
+	// Revisión de código: un conteo que no existe respondía 200 vacío (y el reporte, «primer
+	// conteo»); un conteo abierto no tiene comparación contra ventas todavía.
+	if _, err := svc.CountExpected(ctx, 999999999); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("lo esperado de un conteo que no existe = %v; quiere ErrNotFound", err)
+	}
+	if _, err := svc.CountVsSales(ctx, 999999999); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("el reporte de un conteo que no existe = %v; quiere ErrNotFound", err)
+	}
+	if _, err := svc.CountVsSales(ctx, c.ID); !errors.Is(err, domain.ErrConflict) {
+		t.Errorf("el reporte de un conteo abierto = %v; quiere ErrConflict", err)
 	}
 	inTheThreeCases(t, defaultCompanyID, makeCompany(t, st, "otra-esperado"), func(t *testing.T, as *store.Store, cc context.Context) {
 		v, err := app.NewBackofficeService(as, clock).CountExpected(cc, c.ID)

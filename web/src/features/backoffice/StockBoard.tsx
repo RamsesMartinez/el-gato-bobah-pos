@@ -37,7 +37,7 @@ export function StockBoard({ items, bringFrom, onBring }: {
               <Text fontWeight="700" flex="1">{title}</Text>
               <Badge colorPalette={palette}>{of.length}</Badge>
             </HStack>
-            <Box flex="1" minH={0} maxH="calc(100dvh - 260px)" overflowY="auto">
+            <Box flex="1" minH={0} overflowY="auto">
               {of.length === 0 && <Text px={3} py={2} color="fg.subtle">Nada</Text>}
               {of.map((s, i) => {
                 const from = state === 'agotado' && Number(s.on_hand) < 0 ? bringFrom?.(s) : null;

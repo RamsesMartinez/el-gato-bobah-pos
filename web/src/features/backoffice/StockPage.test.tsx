@@ -496,6 +496,7 @@ describe('Existencias en vista sencilla (spec 096)', () => {
     { item_name: 'Leche', item_type: 'insumo', on_hand: '-3000', unit_code: 'ml', min_stock: null, value: '-60' },
     { item_name: 'Vasos', item_type: 'insumo', on_hand: '0', unit_code: 'pieza', min_stock: '50', value: '0' },
     { item_name: 'Azúcar', item_type: 'insumo', on_hand: '800', unit_code: 'g', min_stock: '1000', value: '20' },
+    { item_name: 'Canela', item_type: 'insumo', on_hand: '50', unit_code: 'g', min_stock: '50', value: '5' },
     { item_name: 'Café', item_type: 'insumo', on_hand: '5000', unit_code: 'g', min_stock: null, value: '900' },
   ] } as never);
 
@@ -506,7 +507,8 @@ describe('Existencias en vista sencilla (spec 096)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
     const col = (n: string) => within(screen.getByRole('region', { name: n })).getAllByTestId('ficha-existencia').map((f) => f.textContent);
     expect(col('Se acabó')).toEqual([expect.stringContaining('Leche'), expect.stringContaining('Vasos')]);
-    expect(col('Queda poco')).toEqual([expect.stringMatching(/Azúcar.*mínimo 1 kg/)]);
+    // Justo en el mínimo ya es «queda poco».
+    expect(col('Queda poco')).toEqual([expect.stringMatching(/Azúcar.*mínimo 1 kg/), expect.stringMatching(/Canela.*mínimo 50 g/)]);
     expect(col('Hay')).toEqual([expect.stringContaining('Café')]);
     expect(screen.queryByTestId('valor-total')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Valor' })).toBeNull();

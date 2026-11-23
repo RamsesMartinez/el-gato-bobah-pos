@@ -37,11 +37,18 @@ export function InventorySettingsSection() {
       ? 'La palabra va de 1 a 20 letras'
       : 'No se pudo guardar'),
   });
-  // Spec 096, subida 2: que la merma esperada también descuente del almacén.
+  // Spec 096, subida 2: que la merma esperada también descuente del almacén. Su error es suyo: en el
+  // de la palabra, un éxito de ella lo borraba y uno del interruptor no.
+  const [deductsError, setDeductsError] = useState('');
   const deducts = useMutation({
     mutationFn: (on: boolean) => backofficeApi.setExpectedWasteDeducts(on),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['business-settings'] }),
-    onError: (e) => setError(e instanceof ApiError && e.status < 500 ? e.message : 'No se pudo guardar'),
+    // Se escribe en la caché lo que se guardó: esperar el refetch dejaba el interruptor regresar un
+    // instante (o quedarse) en el valor anterior.
+    onSuccess: (_r, on) => {
+      setDeductsError('');
+      qc.setQueryData(['business-settings'], (o: object | undefined) => o && { ...o, expectedWasteDeducts: on });
+    },
+    onError: (e) => setDeductsError(e instanceof ApiError && e.status < 500 ? e.message : 'No se pudo guardar'),
   });
   if (!data) return null;
   const method: CostingMethod = data.costingMethod ?? 'last';
@@ -87,6 +94,7 @@ export function InventorySettingsSection() {
           checked={deducts.isPending ? deducts.variables : !!data.expectedWasteDeducts}
           onCheckedChange={(e) => deducts.mutate(e.checked)} />
       </HStack>
+      {deductsError && <Text fontSize="sm" color="fg.error" mt={1}>{deductsError}</Text>}
       {can('inventory.warehouse_manage', user) && <WarehousesSettings />}
       <CountPlacesSettings />
       <CountLimitsSettings />

@@ -283,3 +283,16 @@ Después: `make ci-local` verde y CI del PR verde. La prueba táctil posterior e
 
 **`/speckit-analyze`, última corrida (cuarta, 2026-11-23)**: 27 de 27 requisitos con tarea, CRITICAL 0,
 HIGH 0, MEDIUM 0, LOW 1 (redacción de FR-010).
+
+## R16. Revisión de código de la subida 2 (2026-11-23), ya incorporada
+
+| Hallazgo | Decisión |
+| --- | --- |
+| Cancelar un renglón o un pedido reponía la merma esperada como `cancelacion`: el reporte contra ventas leía vendido negativo y la merma real un consumo negativo (el total sí cuadraba) | La reposición conserva el tipo `merma_esperada`; el pedido completo agrupa también por esa clase. Test que lo nombra (`TestCancellingALineGivesBackTheExpectedWaste`) |
+| Quien solo cuenta leía lo esperado en la vista previa del cierre (capturar absurdo, leer `system`, recapturar para dejar el faltante en 0). Venía de antes de la 096, pero rompe el conteo a ciegas que promete FR-024/025 | Sin `inventory.configure`, la vista previa y el cierre llegan sin `system` ni `delta` (`blind: true`); sigue pudiendo cerrar. También por MCP, que usa la misma ruta. Test por HTTP con un rol al que la empresa solo le dio contar |
+| El aviso de cifra rara sirve de oráculo para sondear lo esperado | **No se cambia**: es el riesgo que el dueño aceptó en la spec 042 (2026-10-19) a cambio de que cada aviso quede en la bitácora (`AuditCountConfirmAsked`) |
+| Un conteo que no existe respondía 200 vacío en `/expected` y `/vs-sales` («primer conteo») | 404; `/vs-sales` de un conteo abierto, 409 |
+| `CountVsSalesLines` recorre el historial de cada insumo (`sm_ingredient`) | Medido en la base restaurada: 295 insumos con movimientos, 23 en promedio y 300 como máximo por insumo; cuesta milisegundos. Techo: con años de historial, un índice `(company_id, warehouse_id, ingredient_id, id)` creado `concurrently`. No se agrega hoy |
+| Durante el traslape de la subida, la API anterior no repone `merma_esperada` al cancelar | La opción nace apagada y solo la enciende la versión nueva: el riesgo es de segundos y solo si alguien la enciende y la versión vieja cancela en esa ventana. Aceptado (constitución IV: se declara aquí) |
+| Front: la sencilla sin buscador dejaba a quien solo cuenta sin poder contar en una Bodega nueva; «Saltar» al final de un lugar no se movía; volver a un almacén ya visto podía quedar vacío; `?q=` abría el primero que empezaba igual; el interruptor parpadeaba; el reporte con error se quedaba esperando | Lo que no es del almacén va en un lugar «De otro almacén» al final; el recorrido da la vuelta en el lugar y pasa al siguiente, y avisa «Ya se contó todo»; `key` por conteo; nombre exacto primero; la caché se escribe con lo guardado; mensajes de error. Un test por cada uno |
+| Pantalla: el nombre de lo contado se cortaba en la lista angosta; el tablero tenía su alto en píxeles fijos | La cantidad va debajo del nombre; el alto lo da la pestaña |

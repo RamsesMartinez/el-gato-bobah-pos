@@ -107,6 +107,12 @@ func TestCancellingALineGivesBackTheExpectedWaste(t *testing.T) {
 	if !total.IsZero() {
 		t.Fatalf("tras cancelar el renglón, la leche quedó movida %s (%v): la merma esperada no volvió", total, k.moved(t))
 	}
+	// Revisión de código: la merma vuelve como merma_esperada, no como cancelación. Si volvía como
+	// cancelación, el reporte contra ventas leía «vendido −20» y la merma real un consumo negativo.
+	m := k.moved(t)
+	if sold := m["venta"].Add(m["cancelacion"]); !sold.IsZero() || !m["merma_esperada"].IsZero() {
+		t.Fatalf("tras cancelar, vendido neto %s y merma esperada neta %s (%v); los dos deben quedar en 0", sold, m["merma_esperada"], m)
+	}
 }
 
 func TestRemovingOnePieceSplitsTheExpectedWaste(t *testing.T) {

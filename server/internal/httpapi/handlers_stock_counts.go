@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 
 	"github.com/shopspring/decimal"
 
@@ -184,7 +185,7 @@ func (h *Handlers) PreviewCount(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, v)
+	h.respondCountClose(w, r, v)
 }
 
 // POST /stock/counts/{id}/close — ajusta por la diferencia y cierra.
@@ -200,7 +201,53 @@ func (h *Handlers) CloseCount(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, v)
+	h.respondCountClose(w, r, v)
+}
+
+// respondCountClose manda la vista previa o el cierre. A quien no configura el almacén le llega sin
+// lo que tenía el sistema ni la diferencia (spec 096, FR-024/025): con ellas, quien solo cuenta
+// capturaba cifras absurdas, leía lo esperado en la vista previa y recapturaba para que el faltante
+// quedara en cero. Sigue pudiendo cerrar; lo que ve es qué se contó y qué no.
+func (h *Handlers) respondCountClose(w http.ResponseWriter, r *http.Request, v app.CountCloseView) {
+	u, _ := userFrom(r.Context())
+	perms, err := h.permissions(r.Context(), u)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if slices.Contains(perms, domain.PermInventoryConfigure) {
+		JSON(w, http.StatusOK, v)
+		return
+	}
+	JSON(w, http.StatusOK, blindCountClose(v))
+}
+
+type blindAdjustment struct {
+	IngredientID int64           `json:"ingredientId"`
+	Name         string          `json:"name"`
+	BaseUnitCode string          `json:"baseUnitCode"`
+	Counted      decimal.Decimal `json:"counted"`
+}
+
+type blindProductAdjustment struct {
+	ProductID int64           `json:"productId"`
+	Name      string          `json:"name"`
+	Counted   decimal.Decimal `json:"counted"`
+}
+
+// blindCountClose es la vista del cierre sin system ni delta. Blind le dice a la pantalla que no
+// pinte «sobraban/faltaban».
+func blindCountClose(v app.CountCloseView) map[string]any {
+	adj := make([]blindAdjustment, 0, len(v.Adjusted))
+	for _, a := range v.Adjusted {
+		adj = append(adj, blindAdjustment{IngredientID: a.IngredientID, Name: a.Name, BaseUnitCode: a.BaseUnitCode, Counted: a.Counted})
+	}
+	prods := make([]blindProductAdjustment, 0, len(v.AdjustedProducts))
+	for _, a := range v.AdjustedProducts {
+		prods = append(prods, blindProductAdjustment{ProductID: a.ProductID, Name: a.Name, Counted: a.Counted})
+	}
+	return map[string]any{"blind": true, "adjusted": adj, "notCounted": v.NotCounted, "adjustedProducts": prods,
+		"notCountedProducts": v.NotCountedProducts, "skippedProducts": v.SkippedProducts}
 }
 
 // POST /stock/counts/{id}/discard — sin tocar el almacén.

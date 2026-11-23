@@ -19,15 +19,19 @@ const GRUPOS: { id: CountVsSalesItem['group']; titulo: string }[] = [
 export function CountVsSalesReport({ countId }: { countId: number }) {
   const user = useSessionStore((s) => s.user);
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({ queryKey: ['conteo', 'contra-ventas', countId], queryFn: () => wasteApi.countVsSales(countId) });
+  const { data, isLoading, isError } = useQuery({ queryKey: ['conteo', 'contra-ventas', countId], queryFn: () => wasteApi.countVsSales(countId) });
+  const [fallo, setFallo] = useState<number | null>(null);
   const [hechos, setHechos] = useState<Record<number, string>>({});
   const usar = useMutation({
     mutationFn: (it: CountVsSalesItem) => backofficeApi.setArticleExpectedWaste(it.ingredientId, Number(it.suggestedPct)),
+    onError: (_e, it) => setFallo(it.ingredientId),
     onSuccess: (_r, it) => {
+      setFallo(null);
       setHechos((h) => ({ ...h, [it.ingredientId]: it.suggestedPct ?? '' }));
       void qc.invalidateQueries({ queryKey: ['article', it.ingredientId] });
     },
   });
+  if (isError) return <Text color="fg.error">No se pudo leer lo vendido contra lo contado. Vuelve a intentarlo.</Text>;
   if (isLoading || !data) return <Flex justify="center" py={6}><Spinner /></Flex>;
   if (data.firstCount) {
     return <Text color="fg.muted">Es el primer conteo de este almacén: todavía no hay otro con qué comparar lo vendido.</Text>;
@@ -47,7 +51,7 @@ export function CountVsSalesReport({ countId }: { countId: number }) {
                 <Table.Body>
                   {del.map((i) => (
                     <Table.Row key={i.ingredientId} aria-label={i.name}>
-                      <Table.Cell><Text truncate maxW="220px">{i.name}</Text></Table.Cell>
+                      <Table.Cell><Text truncate maxW="220px" title={i.name}>{i.name}</Text></Table.Cell>
                       <Table.Cell color="fg.muted" fontSize="sm" whiteSpace="nowrap">
                         vendido {formatBaseQty(i.sold, i.unitCode)} · contado {formatBaseQty(i.counted, i.unitCode)}
                       </Table.Cell>
@@ -61,6 +65,7 @@ export function CountVsSalesReport({ countId }: { countId: number }) {
                                 onClick={() => usar.mutate(i)}>Usar {Number(i.suggestedPct)} %</Button>
                               : <Text fontSize="sm" color="fg.muted">Sugerido: {Number(i.suggestedPct)} %</Text>
                         )}
+                        {fallo === i.ingredientId && <Text fontSize="sm" color="fg.error">No se guardó; vuelve a tocarlo</Text>}
                       </Table.Cell>
                     </Table.Row>
                   ))}

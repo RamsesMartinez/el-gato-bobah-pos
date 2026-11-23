@@ -55,4 +55,21 @@ describe('Almacén en Configuración del negocio (spec 038)', () => {
     await waitFor(() => expect(back.setExpectedWasteDeducts).toHaveBeenCalledWith(true));
     expect(screen.getByText(/Las ventas de antes no cambian/)).toBeInTheDocument();
   });
+
+  // Revisión de código: esperar el refetch dejaba el interruptor regresar al valor viejo.
+  test('encendido se queda encendido sin volver a leer los ajustes, y un error se dice ahí', async () => {
+    back.setExpectedWasteDeducts.mockResolvedValueOnce({ deducts: true }).mockRejectedValueOnce(new Error('red'));
+    montar();
+    const sw = await screen.findByRole('checkbox', { name: 'La merma esperada también descuenta del almacén' });
+    // Lo que se ve: el estado del control (en jsdom el input oculto no siempre se sincroniza).
+    const estado = () => sw.closest('label')?.getAttribute('data-state');
+    const lecturas = pos.businessSettings.mock.calls.length;
+    fireEvent.click(sw);
+    await waitFor(() => expect(sw).not.toBeDisabled());
+    expect(estado()).toBe('checked');
+    expect(pos.businessSettings.mock.calls.length).toBe(lecturas);
+    fireEvent.click(sw);
+    expect(await screen.findByText('No se pudo guardar')).toBeInTheDocument();
+    await waitFor(() => expect(estado()).toBe('checked'));
+  });
 });

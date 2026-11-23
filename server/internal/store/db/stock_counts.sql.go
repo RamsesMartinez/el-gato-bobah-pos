@@ -971,6 +971,19 @@ func (q *Queries) SetCountPlace(ctx context.Context, arg SetCountPlaceParams) (i
 	return result.RowsAffected(), nil
 }
 
+const stockCountStatus = `-- name: StockCountStatus :one
+select status::text from stock_counts where id = $1
+`
+
+// Si el conteo existe (en esta empresa: RLS) y en qué estado está, para las lecturas que solo tienen
+// sentido con uno abierto o con uno cerrado.
+func (q *Queries) StockCountStatus(ctx context.Context, id int64) (string, error) {
+	row := q.db.QueryRow(ctx, stockCountStatus, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
 const stockCountWarehouse = `-- name: StockCountWarehouse :one
 select w.id, w.name from stock_counts c join warehouses w on w.id = c.warehouse_id where c.id = $1
 `

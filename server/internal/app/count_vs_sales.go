@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/shopspring/decimal"
 
@@ -43,6 +44,14 @@ type CountVsSalesView struct {
 // Solo lee; aplicar la sugerencia es el PUT de la merma del artículo, con su bitácora.
 func (s *BackofficeService) CountVsSales(ctx context.Context, countID int64) (CountVsSalesView, error) {
 	q := s.store.QC(ctx)
+	// Uno que no existe no es «primer conteo», y uno abierto todavía no tiene con qué compararse.
+	status, err := q.StockCountStatus(ctx, countID)
+	if err != nil {
+		return CountVsSalesView{}, notFound(err)
+	}
+	if status != "closed" {
+		return CountVsSalesView{}, fmt.Errorf("%w: el conteo sigue abierto; ciérralo para compararlo con lo vendido", domain.ErrConflict)
+	}
 	rows, err := q.CountVsSalesLines(ctx, countID)
 	if err != nil {
 		return CountVsSalesView{}, err

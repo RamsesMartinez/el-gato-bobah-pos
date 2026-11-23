@@ -718,7 +718,11 @@ type CountExpectedItem struct {
 // CountExpected devuelve lo esperado de cada insumo del almacén del conteo (spec 096, vista avanzada).
 // La ruta pide configurar el almacén: quien solo cuenta nunca recibe estas cifras. Siempre arreglo.
 func (s *BackofficeService) CountExpected(ctx context.Context, countID int64) ([]CountExpectedItem, error) {
-	rows, err := s.store.QC(ctx).CountExpected(ctx, countID)
+	q := s.store.QC(ctx)
+	if _, err := q.StockCountStatus(ctx, countID); err != nil {
+		return nil, notFound(err)
+	}
+	rows, err := q.CountExpected(ctx, countID)
 	if err != nil {
 		return nil, err
 	}

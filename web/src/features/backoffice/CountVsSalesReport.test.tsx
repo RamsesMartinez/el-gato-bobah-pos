@@ -20,7 +20,7 @@ const item = (p: Partial<CountVsSalesItem>): CountVsSalesItem => ({
 
 function montar(perms: string[]) {
   useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'gerente', permissions: perms } as never });
-  render(<QueryClientProvider client={new QueryClient()}><Provider><CountVsSalesReport countId={9} /></Provider></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><Provider><CountVsSalesReport countId={9} /></Provider></QueryClientProvider>);
 }
 
 // Conteo contra ventas (spec 096, maqueta C): tres grupos de qué hacer, no solo qué pasó.
@@ -51,6 +51,22 @@ describe('Conteo contra ventas', () => {
     montar(['inventory.health_view']);
     expect(await screen.findByText('Sugerido: 3 %')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Usar 3 %' })).toBeNull();
+  });
+
+  // Revisión de código: un error se veía como espera eterna y «Usar» fallaba sin decir nada.
+  test('si no se pudo leer lo dice, y si «Usar» falla lo dice en el renglón', async () => {
+    waste.countVsSales.mockRejectedValueOnce(new Error('500'));
+    montar(['inventory.health_view']);
+    expect(await screen.findByText(/No se pudo leer lo vendido contra lo contado/)).toBeInTheDocument();
+  });
+
+  test('«Usar» que falla deja el botón y dice que no se guardó', async () => {
+    waste.countVsSales.mockResolvedValue({ firstCount: false, items: [item({ group: 'suggest', suggestedPct: '3' })] });
+    back.setArticleExpectedWaste.mockRejectedValueOnce(new Error('red'));
+    montar(['inventory.health_view', 'menu.configure']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar 3 %' }));
+    expect(await screen.findByText('No se guardó; vuelve a tocarlo')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Usar 3 %' })).toBeInTheDocument();
   });
 
   test('el primer conteo dice que no hay con qué comparar', async () => {
