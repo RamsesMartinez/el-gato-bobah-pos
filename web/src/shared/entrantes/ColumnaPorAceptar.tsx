@@ -63,7 +63,12 @@ export function ColumnaPorAceptar({ oculta = false }: { oculta?: boolean }) {
     let creado;
     try {
       creado = await aceptarEntrante(p);
-      toaster.create({ title: `Pedido #${creado.number} aceptado`, description: 'Ya está en cocina.', type: 'success' });
+      // Sin caja abierta el folio aún no existe (lo pone el turno al abrir): se nombra al cliente.
+      const quien = p.customerName || p.displayId;
+      toaster.create({
+        title: creado.number > 0 ? `Pedido #${creado.number} aceptado` : `Pedido de ${quien} aceptado`,
+        description: 'Ya está en cocina.', type: 'success',
+      });
     } catch (e) {
       // Que otra tableta ganara es el funcionamiento normal con varias: se dice sin alarmar. Sin
       // respuesta del servidor no se sabe: pudo aceptarse y perderse la respuesta, y entonces la
@@ -129,7 +134,7 @@ export function ColumnaPorAceptar({ oculta = false }: { oculta?: boolean }) {
 
           <ConfirmSheet
             isOpen={rechazo !== null}
-            title={`Rechazar ${rechazo?.displayId ?? ''} de ${rechazo?.sourceName ?? ''}`}
+            title={`Rechazar el pedido de ${rechazo?.customerName || rechazo?.displayId || ''}`}
             description={`${rechazo?.sourceName ?? 'La plataforma'} le avisa al cliente con este motivo.`}
             confirmLabel="Rechazar pedido"
             destructive

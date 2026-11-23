@@ -274,7 +274,10 @@ export function OrdersBoardPage() {
           <>
             {/* Dos columnas en pantalla ancha, una sola abajo de 900 px: en una tableta de 7" dos
                 columnas dejan tarjetas donde el nombre del producto ya no cabe. */}
-            <SimpleGrid flex="1" minW={0} columns={{ base: 1, md: 2 }} gap={3} alignItems="stretch">
+            {/* Con la columna «Por aceptar» a la vista, dos columnas más a 1024 px dejaban tarjetas de
+                ~290 px donde el nombre del producto ya no cabía: el tablero pasa a una sola hasta 1280. */}
+            <SimpleGrid flex="1" minW={0} columns={porAceptar.length > 0 ? { base: 1, xl: 2 } : { base: 1, md: 2 }}
+              gap={3} alignItems="stretch">
               <Columna titulo="En preparación" orders={preparando} acciones={acciones} />
               <Columna titulo="A entregar" orders={listos} acciones={acciones} />
             </SimpleGrid>

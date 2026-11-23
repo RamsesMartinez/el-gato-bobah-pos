@@ -138,6 +138,21 @@ describe('ColumnaPorAceptar (M-PorAceptar, B2)', () => {
     expect(montajes).toHaveBeenCalledTimes(1);
   });
 
+  // SIN CAJA ABIERTA EL FOLIO TODAVÍA NO EXISTE (lo pone el turno al abrir): «Pedido #0 aceptado» no
+  // le dice nada a nadie. Se nombra al cliente.
+  it('aceptado sin folio todavía, nombra al cliente', async () => {
+    vi.mocked(api.aceptarEntrante).mockResolvedValue({ id: 902, number: 0, platformRef: 'F1' });
+    montar([pedido(1)]);
+    await userEvent.click(screen.getByRole('button', { name: 'Aceptar' }));
+    expect(await screen.findByText('Pedido de Cliente 1 aceptado')).toBeInTheDocument();
+  });
+
+  it('la hoja de rechazo nombra al cliente, no el código', async () => {
+    montar([pedido(1)]);
+    await userEvent.click(screen.getByRole('button', { name: 'Rechazar' }));
+    expect(within(await screen.findByRole('dialog')).getByText('Rechazar el pedido de Cliente 1')).toBeInTheDocument();
+  });
+
   // VARIAS TABLETAS (US4): la que pierde no ve un error del sistema ni imprime nada.
   it('si otra tableta ya lo atendió, lo dice sin alarmar y no imprime', async () => {
     vi.mocked(api.aceptarEntrante).mockRejectedValue(new ApiError(409, 'ALREADY_DECIDED', 'ya', 'r'));
@@ -190,7 +205,7 @@ describe('ColumnaPorAceptar (M-PorAceptar, B2)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await userEvent.click(screen.getByRole('button', { name: 'Rechazar' }));
     const hoja = await screen.findByRole('dialog');
-    expect(within(hoja).getByText(/Rechazar F2/)).toBeInTheDocument();
+    expect(within(hoja).getByText(/Rechazar el pedido de Cliente 2/)).toBeInTheDocument();
     expect(within(hoja).getByRole('button', { name: 'Rechazar pedido' })).toBeDisabled();
   });
 

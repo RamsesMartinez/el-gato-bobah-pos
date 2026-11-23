@@ -38,3 +38,24 @@ pagados por la plataforma) y los sembrados que sobren se rechazan.
   carrera de dos aceptaciones, la cancelación por webhook y la migración 0117.
 - `cd web && bun run vitest run src/features/entrantes` — alarma, hook y componentes.
 - `bun run e2e -- entrantes` — escenarios 1–4, 6 y 8 contra la API local.
+
+## Prueba con alguien nuevo (2026-11-23, 1024×600 y 1280×854)
+
+Persona de una fonda, sin explicación. Las cuatro tareas salieron sin ayuda:
+
+| Tarea | Toques |
+|---|---|
+| Darse cuenta en Almacén y ver los pedidos | 1 (la franja apareció a los ~13 s) |
+| Aceptar el más urgente | 1 |
+| Rechazar porque se acabó un producto | 3 |
+| Imprimir el ticket / ver los cerrados de hoy | 3 / 1 |
+
+Todo lo tocado midió ≥ 44 px. Se corrigió: «Pedido #0 aceptado» sin caja abierta (ahora nombra
+al cliente), la hoja de rechazo nombraba el código y no al cliente, y con la columna a la vista el
+tablero a 1024 se partía en dos columnas de ~290 px (ahora una sola hasta 1280).
+
+Quedó fuera, porque ya venía de antes y no lo toca esta feature: el folio «#0» de un pedido aceptado
+sin caja (se renumera al abrir turno), la tarjeta del tablero no dice de qué plataforma es,
+«REIMPRESIÓN» en el primer ticket, la campana de avisos no cuenta los pedidos por aceptar, y el
+botón de versión de 14 px. No verificado en un equipo real: que se oiga la alarma (Chromium sin
+audio) y el cuadro de impresión del sistema.
