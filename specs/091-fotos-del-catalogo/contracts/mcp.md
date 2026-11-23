@@ -30,3 +30,8 @@ repetición; otra foto con la misma clave = conflicto).
 Base64 estándar dentro de los argumentos JSON. Tope del mensaje: 1 MiB (el `maxBody` del router),
 que alcanza para 400 KB + 100 KB de foto (~667 KB en base64). La computadora del catálogo prepara
 las dos variantes con el comando del [quickstart](../quickstart.md#preparar-fotos-en-lote).
+
+## Ritmo
+
+Las subidas cuentan contra el límite de 120 por minuto por usuario (el del token). Un lote de 200
+fotos tarda unos 2 minutos; un 429 se reintenta después de la espera que indica la respuesta.

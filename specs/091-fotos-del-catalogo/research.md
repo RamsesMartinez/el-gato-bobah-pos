@@ -84,7 +84,7 @@ Comparación pedida antes del plan, por peso, licencia y rendimiento:
 | Cobertura | 11/11 | 10/11; crepa aproximada | 11/11 |
 | Consistencia | Riesgo de verse tosco | Mismo trazo que los íconos que ya usa la UI | Baja |
 
-- **Decision**: sprite propio `web/public/ilustraciones/familias.v1.svg` con `<symbol>` por
+- **Decision**: sprite propio `web/public/ilustraciones/food-families.v1.svg` con `<symbol>` por
   familia, paths de Tabler (bubble tea, malteada, tazón con palillos, etc.) y `LuPopcorn` para
   snack, a dos tonos (trazo `currentColor`, fondo `var(--illu-bg)`). Encabezado con los avisos MIT
   e ISC. Se consume con `<svg><use href="…#coffee"/></svg>`: una descarga para toda la pantalla.

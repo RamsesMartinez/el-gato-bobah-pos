@@ -32,7 +32,7 @@ Enum de Postgres (no requiere clasificación para el respaldo anónimo):
 cold_drink, coffee, tea, frappe, soda, soup, snack, wings, dessert, breakfast, dish
 ```
 
-Espejo en `domain.FoodFamily` con `ValidFoodFamily`, y en el front (`FAMILIAS`) con su nombre en
+Espejo en `domain.FoodFamily` con `ValidFoodFamily`, y en el front (`FOOD_FAMILIES`) con su nombre en
 español y su `<symbol>` del sprite. Agregar una familia: `alter type … add value` en una migración,
 la constante en `domain`, el renglón en el front y el `<symbol>`; nada que llenar después.
 

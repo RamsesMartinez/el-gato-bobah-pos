@@ -70,7 +70,7 @@ Sin violaciones; sin Complexity Tracking.
   bucket. `config.Validate`: todas o ninguna de las `MEDIA_*`; en producción endpoint y base
   `https`. Nunca se loguean. **No va en KMS**: KMS cifra secretos de terceros *por empresa* que
   viven en la base; éste es del despliegue y vive en el `.env`, como el resto.
-- **DoS**: `maxBody` 1 MiB ya existe; límite por usuario de subidas (`rateLimiter`, 60/min) para
+- **DoS**: `maxBody` 1 MiB ya existe; límite por usuario de subidas (`rateLimiter`, 120/min; también lo cuenta el despacho del MCP, así que un lote de 200 fotos tarda ~2 min) para
   que una sesión no queme operaciones de escritura de R2; el MCP ya pasa por `s.limit`.
 - **Lectura pública**: las fotos de un menú no son secretas; la llave no expone nada más que ids.
 - **CSP**: `img-src` de `web/public/_headers` agrega el dominio de medios y `blob:` (vista previa
@@ -175,12 +175,12 @@ server/
 └── internal/integration/catalog_media_test.go, migration_0117_test.go, mcp_091_test.go
 
 web/
-├── public/ilustraciones/familias.v1.svg      # sprite, avisos MIT/ISC
+├── public/ilustraciones/food-families.v1.svg      # sprite, avisos MIT/ISC
 ├── public/_headers                           # img-src
-├── src/media/prepararFoto.ts (+test)         # recorte → dos WebP con tope
-├── src/media/familias.ts                     # lista, etiquetas, símbolo
-├── src/components/FotoDeCatalogo.tsx (+test) # img con srcset / ilustración (cadena FR-017)
-├── src/components/FotoField.tsx (+test)      # agregar/reemplazar/quitar + recorte
+├── src/media/preparePhoto.ts (+test)         # recorte → dos WebP con tope
+├── src/media/foodFamilies.ts                     # lista, etiquetas, símbolo
+├── src/components/CatalogImage.tsx (+test) # img con srcset / ilustración (cadena FR-017)
+├── src/components/PhotoField.tsx (+test)      # agregar/reemplazar/quitar + recorte
 ├── src/shared/ProductEditDialog.tsx
 ├── src/features/admin/ProductsAdminPage.tsx  # miniatura
 ├── src/features/admin/CategoriesAdminPage.tsx (+test)

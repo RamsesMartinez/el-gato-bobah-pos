@@ -24,7 +24,7 @@
 
 1. Pestaña «Categorías» → elegir familia «Café» en una categoría sin foto.
 2. **Esperado**: sus productos sin foto muestran la taza. Una categoría sin familia, el plato.
-3. Con 100+ productos en la lista, la pestaña Red muestra **una** petición a `familias.v1.svg`.
+3. Con 100+ productos en la lista, la pestaña Red muestra **una** petición a `food-families.v1.svg`.
 
 ## 3. Rechazos del servidor (FR-007)
 
@@ -68,5 +68,5 @@ Si una pasa del tope (400 KB / 100 KB), repetir con `-quality 70`.
 ```bash
 cd server && go test ./internal/domain/ ./internal/objstore/   # WebP, llaves, SigV4 (vector de AWS)
 make test-integration                                          # servicio, RLS en los tres casos, MCP
-cd web && bun run vitest run src/media src/components/Foto*     # recorte, calidad, cadena de respaldo
+cd web && bun run vitest run src/media src/components/PhotoField* src/components/CatalogImage*     # recorte, calidad, cadena de respaldo
 ```
