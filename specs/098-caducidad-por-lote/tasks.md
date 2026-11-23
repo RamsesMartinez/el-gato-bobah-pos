@@ -54,9 +54,9 @@ por la razón correcta. Los bordes del spec van primero.
 
 - [X] T012 [US1] `expiresOn` en los renglones de entrega y de gasto (`server/internal/app/purchases*.go`, `expense_edit.go`, `server/queries/purchases.sql`, `expenses.sql`): se valida con `domain.ParseExpiry`, se guarda en `expense_items.expires_on`, los movimientos de compra y la compensación llevan la fecha, y un cambio de fecha con lo aplicado > 0 inserta el par de reubicación
 - [X] T013 [US1] Handlers (`server/internal/httpapi/`) aceptan `expiresOn` en los cuerpos de entrega y gasto; tipos en `web/src/api/backoffice.ts`
-- [X] T014 [P] [US1] Test de `web/src/components/ExpiryPickerButton.test.tsx`: abre en la hoja de meses de este año, ‹ año › pagina, elige mes y día (3 toques), «No trae fecha» deja vacío, sin `allowPast` los meses pasados están apagados, todas las celdas ≥ 44 px
+- [X] T014 [P] [US1] Test de `web/src/components/ExpiryPickerButton.test.tsx`: abre en los 12 meses desde el actual, › pasa a los 12 siguientes, elige mes y día (3 toques), «No trae fecha» deja vacío, sin `allowPast` los meses pasados están apagados, todas las celdas ≥ 44 px
 - [X] T015 [US1] Componente común `web/src/components/ExpiryPickerButton.tsx` (maqueta «Fecha al recibir», opción C; estilo de `DatePickerButton`)
-- [X] T016 [US1] Test y cambio en `web/src/features/backoffice/DeliverySheet.tsx` (+ `DeliverySheet.test.tsx`): «Caduca…» compacto solo en renglones con cantidad > 0, la fecha viaja en el cuerpo, una fecha pasada pide confirmar, el botón del encabezado dice «Día de llegada por renglón» (fila «Fecha al recibir» de Maquetas)
+- [X] T016 [US1] Test y cambio en `web/src/features/backoffice/DeliverySheet.tsx` (+ `DeliverySheet.test.tsx`): «Caduca…» compacto solo en renglones con cantidad > 0, la fecha viaja en el cuerpo, no se ofrecen días anteriores a hoy (FR-012), el botón del encabezado dice «Día de llegada por renglón» (fila «Fecha al recibir» de Maquetas)
 
 ---
 
