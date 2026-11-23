@@ -250,7 +250,8 @@ almacén de otra empresa se rechaza.
 
 - **FR-001**: Cada sucursal MUST tener exactamente un almacén principal (el de venta), activo.
 - **FR-002**: Quien tenga el permiso de administrar almacenes MUST poder dar de alta, renombrar,
-  archivar y reactivar almacenes de su sucursal, y elegir cuál es el principal entre los activos.
+  archivar y reactivar almacenes de su sucursal, y elegir cuál es el principal entre los activos
+  (esto último desde la entrega E3: antes, las llaves de existencia por sucursal lo impiden; research R2).
 - **FR-003**: El sistema MUST negar archivar el principal, un almacén con alguna existencia distinta
   de cero o uno con un conteo abierto.
 - **FR-004**: Los nombres de almacén MUST ser únicos dentro de la sucursal sin distinguir mayúsculas,
