@@ -61,6 +61,23 @@ func TestMigration0117OnARealBackup(t *testing.T) {
 		}
 	})
 
+	t.Run("una fila con URL vieja se sigue editando", func(t *testing.T) {
+		// Un check `not valid` se evalúa en CADA update de la fila, aunque no toque image_url: el
+		// producto con la URL vieja quedaría sin poder cambiar su precio ni su nombre.
+		app := restoredAppRoleStore(t)
+		tx, err := app.Pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if _, err := tx.Exec(ctx, `select set_config('app.company_id', $1, true)`, strconv.FormatInt(a.company, 10)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(ctx, `update products set is_favorite = not is_favorite where id = $1`, a.product); err != nil {
+			t.Fatalf("editar un producto con una image_url vieja falló: %v", err)
+		}
+	})
+
 	t.Run("la API anterior sigue escribiendo productos y categorías", func(t *testing.T) {
 		app := restoredAppRoleStore(t)
 		tx, err := app.Pool.Begin(ctx)
@@ -93,6 +110,9 @@ func TestMigration0117OnARealBackup(t *testing.T) {
 		for _, u := range []string{"https://x.example.com/foto.jpg", "javascript:alert(1)-1200.webp", "https://x/a b-1200.webp"} {
 			if _, err := st.Pool.Exec(ctx, `update categories set image_url = $1 where id = $2`, u, b.category); err == nil {
 				t.Errorf("aceptó %q en categories.image_url", u)
+			}
+			if _, err := st.Pool.Exec(ctx, `insert into categories (company_id, name, image_url) values ($1, 'Cat ' || gen_random_uuid(), $2)`, b.company, u); err == nil {
+				t.Errorf("aceptó %q al crear una categoría", u)
 			}
 		}
 		if _, err := st.Pool.Exec(ctx, `update products set image_url = null where id = $1`, b.product); err != nil {

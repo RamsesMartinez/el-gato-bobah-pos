@@ -2,8 +2,8 @@
 -- Fotos del catálogo (spec 091): la familia de comida de cada categoría (decide la ilustración de lo
 -- que no tiene foto), la forma de image_url y los borrados de archivos que fallaron.
 --
--- Solo agrega. La API anterior no escribe image_url (solo la copia al duplicar, y la copia pasa el
--- check) ni conoce food_family ni la tabla nueva, así que sigue funcionando durante el traslape.
+-- Solo agrega. La API anterior no escribe image_url (solo la copia al duplicar, con una URL que esta
+-- misma API armó) ni conoce food_family ni la tabla nueva, así que sigue funcionando durante el traslape.
 set local lock_timeout = '3s';
 
 -- La lista es la de domain.FoodFamilies y la del sprite del front. Un enum y no un check sobre texto:
@@ -15,13 +15,29 @@ create type food_family as enum (
 -- Null = la genérica. No se rellena: ninguna categoría tiene familia hasta que alguien la elige.
 alter table categories add column food_family food_family;
 
--- image_url la escribe solo la API, con la URL de la variante de 1200. `not valid`: vale para toda
--- escritura nueva y no revisa las filas que ya existen, así que una URL vieja escrita a mano no
--- impide que la API nueva arranque (migra al arrancar).
-alter table products add constraint products_image_url_shape
-  check (image_url is null or image_url ~ '^https?://[^\s?#]+-1200\.webp$') not valid;
-alter table categories add constraint categories_image_url_shape
-  check (image_url is null or image_url ~ '^https?://[^\s?#]+-1200\.webp$') not valid;
+-- image_url la escribe solo la API, con la URL de la variante de 1200. Se valida con un trigger y
+-- NO con un check: un check (aun `not valid`) se evalúa en cada update de la fila, y un producto con
+-- una URL vieja escrita a mano quedaría sin poder cambiar su precio. El trigger solo mira el valor
+-- cuando cambia o cuando nace, así que lo viejo sigue editable y la API anterior no se entera.
+-- +goose StatementBegin
+create function catalog_image_url_shape() returns trigger
+language plpgsql as $$
+begin
+  if new.image_url is not null and new.image_url !~ '^https?://[^\s?#]+-1200\.webp$' then
+    raise exception 'image_url con forma inválida: % (debe ser la URL de la foto de 1200)', left(new.image_url, 120)
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+-- +goose StatementEnd
+create trigger products_image_url_shape before insert on products
+  for each row when (new.image_url is not null) execute function catalog_image_url_shape();
+create trigger products_image_url_shape_update before update of image_url on products
+  for each row when (new.image_url is distinct from old.image_url) execute function catalog_image_url_shape();
+create trigger categories_image_url_shape before insert on categories
+  for each row when (new.image_url is not null) execute function catalog_image_url_shape();
+create trigger categories_image_url_shape_update before update of image_url on categories
+  for each row when (new.image_url is distinct from old.image_url) execute function catalog_image_url_shape();
 
 -- Archivos cuyo borrado falló (el almacenamiento no respondió). La foto nueva ya quedó puesta; el
 -- archivo viejo se reintenta al terminar la siguiente escritura de foto de la misma empresa.
@@ -63,7 +79,10 @@ begin
 end $$;
 -- +goose StatementEnd
 drop table media_pending_deletions;
-alter table categories drop constraint categories_image_url_shape;
-alter table products drop constraint products_image_url_shape;
+drop trigger categories_image_url_shape_update on categories;
+drop trigger categories_image_url_shape on categories;
+drop trigger products_image_url_shape_update on products;
+drop trigger products_image_url_shape on products;
+drop function catalog_image_url_shape();
 alter table categories drop column food_family;
 drop type food_family;

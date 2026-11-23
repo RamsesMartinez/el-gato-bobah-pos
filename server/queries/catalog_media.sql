@@ -54,3 +54,17 @@ select id, name::text as name, image_url from products where id = @id;
 -- name: CategoryImageInfo :one
 select id, name::text as name, image_url, coalesce(food_family::text, '')::text as food_family
   from categories where id = @id;
+
+-- name: DeleteMediaPendingByKeys :exec
+-- Una llave que vuelve a estar en uso (se regresó a la foto de antes) deja de estar pendiente: el
+-- barrido no puede borrar una foto viva.
+delete from media_pending_deletions where object_key = any(@keys::text[]);
+
+-- name: LockMediaEntity :exec
+-- Serializa las escrituras de foto de una misma entidad, desde la subida hasta el borrado de lo
+-- viejo: dos subidas a la vez no se borran una a la otra. Candado de sesión, en la conexión de la
+-- empresa que el request ya tiene apartada.
+select pg_advisory_lock(hashtextextended(@entity::text, 91));
+
+-- name: UnlockMediaEntity :exec
+select pg_advisory_unlock(hashtextextended(@entity::text, 91));

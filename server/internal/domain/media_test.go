@@ -74,6 +74,10 @@ func TestValidateWebP(t *testing.T) {
 		{"VP8 que no es cuadro clave", noKey, 400, MaxMediaSmallBytes, ErrImageInvalid, "WebP"},
 		{"VP8L sin firma", func() []byte { b := vp8l(400, 400, 100); b[20] = 0; return b }(), 400, MaxMediaSmallBytes, ErrImageInvalid, "WebP"},
 		{"animado", vp8x(400, 400, 0x02, 500), 400, MaxMediaSmallBytes, ErrImageInvalid, "animada"},
+		// La pantalla vuelve a codificar y quita la metadata; el MCP sube los bytes tal cual. Un EXIF
+		// con GPS quedaría público un año en el dominio de medios.
+		{"con EXIF", vp8x(400, 400, 0x08, 500), 400, MaxMediaSmallBytes, ErrImageInvalid, "metadatos"},
+		{"con XMP", vp8x(400, 400, 0x04, 500), 400, MaxMediaSmallBytes, ErrImageInvalid, "metadatos"},
 		{"VP8L de 1200x1199", vp8l(1200, 1199, 500), 1200, MaxMediaLargeBytes, ErrImageInvalid, "1200×1199"},
 		{"lado de 800 en la de 1200", vp8(800, 600, 500), 1200, MaxMediaLargeBytes, ErrImageInvalid, "debe medir 1200×1200"},
 		{"de 400 pesando de más", vp8(400, 400, MaxMediaSmallBytes+1), 400, MaxMediaSmallBytes, ErrImageTooLarge, "máximo es 100 KB"},

@@ -93,17 +93,31 @@ func TestErrorsDoNotLeakTheSecret(t *testing.T) {
 
 func TestDeleteTreatsMissingAsDone(t *testing.T) {
 	status := http.StatusNotFound
+	bucketMissing := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete || r.URL.Path != "/media/k" {
 			t.Errorf("%s %s", r.Method, r.URL.Path)
 		}
 		w.WriteHeader(status)
+		if status == http.StatusNotFound {
+			code := "NoSuchKey"
+			if bucketMissing {
+				code = "NoSuchBucket"
+			}
+			_, _ = io.WriteString(w, "<Error><Code>"+code+"</Code></Error>")
+		}
 	}))
 	defer srv.Close()
 	c, _ := New(srv.URL, "media", "auto", "AK", "S")
 	if err := c.Delete(context.Background(), "k"); err != nil {
 		t.Fatalf("borrar lo que ya no existe debe contar como hecho: %v", err)
 	}
+	// Un 404 por bucket inexistente NO es «ya no estaba»: el archivo sigue en algún lado.
+	bucketMissing = true
+	if err := c.Delete(context.Background(), "k"); err == nil {
+		t.Fatal("NoSuchBucket se tomó como borrado: el archivo viejo se pierde de vista")
+	}
+	bucketMissing = false
 	status = http.StatusNoContent
 	if err := c.Delete(context.Background(), "k"); err != nil {
 		t.Fatal(err)

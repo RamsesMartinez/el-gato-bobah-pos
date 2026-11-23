@@ -66,7 +66,13 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	return c.do(req, nil, http.StatusNoContent, http.StatusOK, http.StatusNotFound)
+	err = c.do(req, nil, http.StatusNoContent, http.StatusOK)
+	// Un 404 de «esa llave no existe» es el estado que se buscaba; uno de «ese bucket no existe» es
+	// una configuración rota, y el archivo viejo sigue en algún lado.
+	if err != nil && strings.Contains(err.Error(), "respondió 404 NoSuchKey") {
+		return nil
+	}
+	return err
 }
 
 func (c *Client) request(ctx context.Context, method, key string, body []byte) (*http.Request, error) {

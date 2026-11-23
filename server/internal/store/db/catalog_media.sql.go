@@ -112,6 +112,17 @@ func (q *Queries) CategoryImageInfo(ctx context.Context, id int64) (CategoryImag
 	return i, err
 }
 
+const deleteMediaPendingByKeys = `-- name: DeleteMediaPendingByKeys :exec
+delete from media_pending_deletions where object_key = any($1::text[])
+`
+
+// Una llave que vuelve a estar en uso (se regresó a la foto de antes) deja de estar pendiente: el
+// barrido no puede borrar una foto viva.
+func (q *Queries) DeleteMediaPendingByKeys(ctx context.Context, keys []string) error {
+	_, err := q.db.Exec(ctx, deleteMediaPendingByKeys, keys)
+	return err
+}
+
 const deleteMediaPendingDeletion = `-- name: DeleteMediaPendingDeletion :exec
 delete from media_pending_deletions where id = $1
 `
@@ -171,6 +182,18 @@ func (q *Queries) LockCategoryImage(ctx context.Context, id int64) (*string, err
 	var image_url *string
 	err := row.Scan(&image_url)
 	return image_url, err
+}
+
+const lockMediaEntity = `-- name: LockMediaEntity :exec
+select pg_advisory_lock(hashtextextended($1::text, 91))
+`
+
+// Serializa las escrituras de foto de una misma entidad, desde la subida hasta el borrado de lo
+// viejo: dos subidas a la vez no se borran una a la otra. Candado de sesión, en la conexión de la
+// empresa que el request ya tiene apartada.
+func (q *Queries) LockMediaEntity(ctx context.Context, entity string) error {
+	_, err := q.db.Exec(ctx, lockMediaEntity, entity)
+	return err
 }
 
 const lockProductImage = `-- name: LockProductImage :one
@@ -245,5 +268,14 @@ type SetProductImageParams struct {
 
 func (q *Queries) SetProductImage(ctx context.Context, arg SetProductImageParams) error {
 	_, err := q.db.Exec(ctx, setProductImage, arg.ImageUrl, arg.ID)
+	return err
+}
+
+const unlockMediaEntity = `-- name: UnlockMediaEntity :exec
+select pg_advisory_unlock(hashtextextended($1::text, 91))
+`
+
+func (q *Queries) UnlockMediaEntity(ctx context.Context, entity string) error {
+	_, err := q.db.Exec(ctx, unlockMediaEntity, entity)
 	return err
 }

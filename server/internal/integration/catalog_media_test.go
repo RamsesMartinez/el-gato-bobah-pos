@@ -29,7 +29,10 @@ type fakeS3 struct {
 	objects    map[string][]byte
 	headers    map[string]http.Header
 	failPut    bool
+	failLarge  bool // falla solo la variante de 1200: la de 400 ya entró
 	failDelete bool
+	// onDelete corre al recibir un DELETE: simula a quien cierra la tableta justo después del commit.
+	onDelete func()
 }
 
 func newFakeS3(t *testing.T) (*fakeS3, *objstore.Client) {
@@ -41,7 +44,7 @@ func newFakeS3(t *testing.T) (*fakeS3, *objstore.Client) {
 		key := strings.TrimPrefix(r.URL.Path, "/media/")
 		switch r.Method {
 		case http.MethodPut:
-			if f.failPut {
+			if f.failPut || (f.failLarge && strings.HasSuffix(key, "-1200.webp")) {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
@@ -49,6 +52,9 @@ func newFakeS3(t *testing.T) (*fakeS3, *objstore.Client) {
 			f.objects[key] = b
 			f.headers[key] = r.Header.Clone()
 		case http.MethodDelete:
+			if f.onDelete != nil {
+				f.onDelete()
+			}
 			if f.failDelete {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
@@ -297,6 +303,18 @@ func TestFailedSaveLeavesNothingBehind(t *testing.T) {
 		}
 	})
 
+	t.Run("la chica entra y la grande falla", func(t *testing.T) {
+		k.s3.set(func(f *fakeS3) { f.failLarge = true })
+		defer k.s3.set(func(f *fakeS3) { f.failLarge = false })
+		_, err := k.svc.SetImage(k.ctx, domain.MediaProducts, k.product, photo(3), k.user)
+		if !errors.Is(err, domain.ErrMediaUnavailable) {
+			t.Fatalf("err = %v", err)
+		}
+		if k.s3.count() != 0 {
+			t.Fatalf("quedó la variante de 400 huérfana (%d archivos)", k.s3.count())
+		}
+	})
+
 	t.Run("la base rechaza el guardado", func(t *testing.T) {
 		// Una base de medios que no pasa el check de image_url: la transacción falla después de subir.
 		s3, c := newFakeS3(t)
@@ -528,5 +546,51 @@ func TestListsCarryEverythingTheFallbackNeeds(t *testing.T) {
 		if c.ID == k.cat && (c.FoodFamily != "tea" || c.ImageURL == nil) {
 			t.Fatalf("categoría del menú = %+v", c)
 		}
+	}
+}
+
+// VOLVER A LA FOTO DE ANTES NO LA PIERDE: si el borrado de A quedó pendiente y luego A vuelve a ser la
+// foto, el barrido no puede borrar la foto viva.
+func TestReturningToAPendingPhotoKeepsIt(t *testing.T) {
+	t.Parallel()
+	k := newMediaKit(t)
+	a, err := k.svc.SetImage(k.ctx, domain.MediaProducts, k.product, photo(1), k.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.s3.set(func(f *fakeS3) { f.failDelete = true })
+	if _, err := k.svc.SetImage(k.ctx, domain.MediaProducts, k.product, photo(2), k.user); err != nil {
+		t.Fatal(err)
+	}
+	k.s3.set(func(f *fakeS3) { f.failDelete = false })
+	if again, err := k.svc.SetImage(k.ctx, domain.MediaProducts, k.product, photo(1), k.user); err != nil || again != a {
+		t.Fatalf("%q %v", again, err)
+	}
+	for _, key := range keysOf(t, a, domain.MediaProducts, k.product) {
+		if !k.s3.has(key) {
+			t.Fatalf("el barrido borró %s, que es la foto que el producto muestra", key)
+		}
+	}
+	if n := k.pending(t); n != 0 {
+		t.Fatalf("quedaron %d pendientes", n)
+	}
+}
+
+// SI LA TABLETA SE VA JUSTO DESPUÉS DE GUARDAR, EL BORRADO QUE FALLE QUEDA ANOTADO: la limpieza no
+// depende de que quien subió siga conectado.
+func TestCleanupSurvivesTheClientLeaving(t *testing.T) {
+	t.Parallel()
+	k := newMediaKit(t)
+	if _, err := k.svc.SetImage(k.ctx, domain.MediaProducts, k.product, photo(1), k.user); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(k.ctx)
+	defer cancel()
+	k.s3.set(func(f *fakeS3) { f.failDelete = true; f.onDelete = cancel })
+	if _, err := k.svc.SetImage(ctx, domain.MediaProducts, k.product, photo(2), k.user); err != nil {
+		t.Fatal(err)
+	}
+	if n := k.pending(t); n != 2 {
+		t.Fatalf("pendientes = %d: con la petición cancelada el borrado fallido no quedó anotado y el archivo se perdió de vista", n)
 	}
 }

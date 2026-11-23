@@ -46,9 +46,9 @@ WebP animado (422), producto de otra empresa (404, sin objeto nuevo en el bucket
 En la computadora del catálogo, por cada foto (ImageMagick 7):
 
 ```bash
-magick foto.jpg -auto-orient -resize 1200x1200^ -gravity center -extent 1200x1200 \
+magick foto.jpg -auto-orient -strip -resize 1200x1200^ -gravity center -extent 1200x1200 \
   -quality 82 -define webp:method=6 foto-1200.webp
-magick foto.jpg -auto-orient -resize 400x400^ -gravity center -extent 400x400 \
+magick foto.jpg -auto-orient -strip -resize 400x400^ -gravity center -extent 400x400 \
   -quality 80 -define webp:method=6 foto-400.webp
 ```
 

@@ -47,12 +47,17 @@ func ValidateWebP(data []byte, side, maxBytes int) error {
 		return fmt.Errorf("%w: la foto de %d pesa %d KB; el máximo es %d KB", ErrImageTooLarge, side,
 			(len(data)+1023)>>10, maxBytes>>10)
 	}
-	w, h, animated, ok := webpSize(data)
+	w, h, flags, ok := webpSize(data)
 	if !ok {
 		return fmt.Errorf("%w: solo se aceptan fotos WebP (la de %d no lo es)", ErrImageInvalid, side)
 	}
-	if animated {
+	if flags&vp8xAnimation != 0 {
 		return fmt.Errorf("%w: la foto no puede ser animada", ErrImageInvalid)
+	}
+	// La pantalla vuelve a codificar y la metadata se pierde; lo que sube el MCP llega tal cual, y un
+	// EXIF con la ubicación del teléfono quedaría público un año en el dominio de medios.
+	if flags&(vp8xEXIF|vp8xXMP) != 0 {
+		return fmt.Errorf("%w: la foto de %d trae metadatos (EXIF o XMP); quítalos al convertirla (magick … -strip)", ErrImageInvalid, side)
 	}
 	if w != side || h != side {
 		return fmt.Errorf("%w: la foto de %d mide %d×%d; debe medir %d×%d", ErrImageInvalid, side, w, h, side, side)
@@ -60,35 +65,42 @@ func ValidateWebP(data []byte, side, maxBytes int) error {
 	return nil
 }
 
-// webpSize lee ancho y alto del primer chunk. Un RIFF cuyo tamaño declarado no es el del archivo
-// se rechaza: es un archivo truncado o con otra cosa pegada.
-func webpSize(b []byte) (w, h int, animated, ok bool) {
+// Banderas del chunk VP8X.
+const (
+	vp8xAnimation = 0x02
+	vp8xXMP       = 0x04
+	vp8xEXIF      = 0x08
+)
+
+// webpSize lee ancho, alto y banderas del primer chunk. Un RIFF cuyo tamaño declarado no es el del
+// archivo se rechaza: es un archivo truncado o con otra cosa pegada.
+func webpSize(b []byte) (w, h int, flags byte, ok bool) {
 	if len(b) < 30 || string(b[0:4]) != "RIFF" || string(b[8:12]) != "WEBP" {
-		return 0, 0, false, false
+		return 0, 0, 0, false
 	}
 	if int(binary.LittleEndian.Uint32(b[4:8])) != len(b)-8 {
-		return 0, 0, false, false
+		return 0, 0, 0, false
 	}
 	p := b[20:]
 	switch string(b[12:16]) {
 	case "VP8 ":
 		// Cuadro clave (bit 0 en 0) con su código de arranque; solo él trae las dimensiones.
 		if p[0]&0x01 != 0 || p[3] != 0x9d || p[4] != 0x01 || p[5] != 0x2a {
-			return 0, 0, false, false
+			return 0, 0, 0, false
 		}
-		return int(binary.LittleEndian.Uint16(p[6:8]) & 0x3fff), int(binary.LittleEndian.Uint16(p[8:10]) & 0x3fff), false, true
+		return int(binary.LittleEndian.Uint16(p[6:8]) & 0x3fff), int(binary.LittleEndian.Uint16(p[8:10]) & 0x3fff), 0, true
 	case "VP8L":
 		if p[0] != 0x2f {
-			return 0, 0, false, false
+			return 0, 0, 0, false
 		}
 		bits := binary.LittleEndian.Uint32(p[1:5])
-		return int(bits&0x3fff) + 1, int(bits>>14&0x3fff) + 1, false, true
+		return int(bits&0x3fff) + 1, int(bits>>14&0x3fff) + 1, 0, true
 	case "VP8X":
 		w = int(p[4]) | int(p[5])<<8 | int(p[6])<<16
 		h = int(p[7]) | int(p[8])<<8 | int(p[9])<<16
-		return w + 1, h + 1, p[0]&0x02 != 0, true
+		return w + 1, h + 1, p[0], true
 	}
-	return 0, 0, false, false
+	return 0, 0, 0, false
 }
 
 // MediaHash es la huella con la que se nombra la foto: 32 hex del SHA-256 de la variante grande,
