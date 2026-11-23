@@ -245,7 +245,7 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   - **«Stock bajo» y «se acabó» son dos eventos**: de 40 a 0 con mínimo 10 abre los dos, porque se
     eligen por separado en la ficha.
 
-- **Varios almacenes por sucursal** (spec 094, 0117). Cada sucursal tiene almacenes y uno es el de
+- **Varios almacenes por sucursal** (spec 094, 0120). Cada sucursal tiene almacenes y uno es el de
   venta (`warehouses.is_sales`). Cinco cosas que no se ven:
   - **Todo lo que guardaba existencias «de la sucursal» guarda su almacén**, con llave compuesta a la
     sucursal de la fila (`(company_id, branch_id, warehouse_id)`): un almacén de otra sucursal no se

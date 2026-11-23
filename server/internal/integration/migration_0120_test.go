@@ -11,13 +11,13 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const warehousesVersion = 117
+const warehousesVersion = 120
 
-// LA 0117 (varios almacenes, spec 094) CONTRA UN RESPALDO REAL CON DOS EMPRESAS. Lo que se prueba es lo
+// LA 0120 (varios almacenes, spec 094) CONTRA UN RESPALDO REAL CON DOS EMPRESAS. Lo que se prueba es lo
 // que no se puede arreglar después de subirla: que ningún registro quede sin almacén, que ninguna
 // existencia cambie de total, y que la API anterior —que no conoce la columna— siga escribiendo
 // durante la subida.
-func TestMigration0117OnARealBackup(t *testing.T) {
+func TestMigration0120OnARealBackup(t *testing.T) {
 	st := restoredStore(t)
 	ctx := context.Background()
 	migrarAbajoHasta(t, st.Pool, warehousesVersion-1)
@@ -107,7 +107,7 @@ func TestMigration0117OnARealBackup(t *testing.T) {
 		// El insert de un ajuste tal como lo hace la versión anterior: sin sucursal ni almacén.
 		if _, err := conn.Exec(ctx, `
 			insert into stock_movements (item_type, ingredient_id, movement_type, quantity, reason)
-			values ('ingrediente', $1, 'ajuste', 1, 'prueba 0117')`, ingredient); err != nil {
+			values ('ingrediente', $1, 'ajuste', 1, 'prueba 0120')`, ingredient); err != nil {
 			t.Fatalf("un ajuste sin almacén: %v", err)
 		}
 		if err := conn.QueryRow(ctx, `select on_hand::text from stock_levels where branch_id = $1 and ingredient_id = $2`,
@@ -120,19 +120,19 @@ func TestMigration0117OnARealBackup(t *testing.T) {
 		var sales bool
 		if err := conn.QueryRow(ctx, `
 			select w.is_sales from stock_movements m join warehouses w on w.id = m.warehouse_id
-			 where m.reason = 'prueba 0117'`).Scan(&sales); err != nil {
+			 where m.reason = 'prueba 0120'`).Scan(&sales); err != nil {
 			t.Fatal(err)
 		}
 		if !sales {
 			t.Fatal("el movimiento sin almacén no cayó en el de venta")
 		}
 		// Un lugar de conteo y un renglón de compra nacen con el almacén de venta de la matriz.
-		if _, err := conn.Exec(ctx, `insert into count_places (name, position) values ('Lugar 0117', 99)`); err != nil {
+		if _, err := conn.Exec(ctx, `insert into count_places (name, position) values ('Lugar 0120', 99)`); err != nil {
 			t.Fatalf("crear un lugar de conteo como la versión anterior: %v", err)
 		}
 		var placeSales bool
 		if err := conn.QueryRow(ctx, `select w.is_sales from count_places p join warehouses w on w.id = p.warehouse_id
-			where p.name = 'Lugar 0117'`).Scan(&placeSales); err != nil || !placeSales {
+			where p.name = 'Lugar 0120'`).Scan(&placeSales); err != nil || !placeSales {
 			t.Fatalf("el lugar nuevo no quedó en el almacén de venta: %v", err)
 		}
 		// Los upserts de la versión anterior siguen encontrando su llave por sucursal.
@@ -189,7 +189,7 @@ func TestMigration0117OnARealBackup(t *testing.T) {
 		// La versión anterior vuelve a sumar por sucursal.
 		if _, err := conn.Exec(ctx, `
 			insert into stock_movements (item_type, ingredient_id, movement_type, quantity, reason)
-			values ('ingrediente', $1, 'ajuste', -1, 'prueba 0117 de regreso')`, ingredient); err != nil {
+			values ('ingrediente', $1, 'ajuste', -1, 'prueba 0120 de regreso')`, ingredient); err != nil {
 			t.Fatalf("un ajuste después del Down: %v", err)
 		}
 	})

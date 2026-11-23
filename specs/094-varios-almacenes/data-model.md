@@ -2,7 +2,7 @@
 
 Decisiones y su porqué en [research.md](research.md). Identificadores en inglés (constitución VII).
 
-## warehouses (0117) — nueva
+## warehouses (0120) — nueva
 
 | Columna | Tipo | Regla |
 | --- | --- | --- |
@@ -33,9 +33,9 @@ Decisiones y su porqué en [research.md](research.md). Identificadores en inglé
 - `fill_stock_movement_branch_id()` (de la 0078) gana una rama: si `branch_id` es nulo y
   `warehouse_id` no, toma la sucursal del almacén.
 
-## Columna `warehouse_id` (0117, nullable; `not null` en 0118)
+## Columna `warehouse_id` (0120, nullable; `not null` en 0121)
 
-| Tabla | Llave compuesta | Relleno | Trigger de llenado | `not null` en 0118 |
+| Tabla | Llave compuesta | Relleno | Trigger de llenado | `not null` en 0121 |
 | --- | --- | --- | --- | --- |
 | stock_levels | `(company_id, branch_id, warehouse_id)` | de venta de su sucursal | sí | sí |
 | stock_movements | `(company_id, branch_id, warehouse_id)` | ídem | sí (nombre ordena después del de sucursal) | sí |
@@ -51,16 +51,16 @@ Decisiones y su porqué en [research.md](research.md). Identificadores en inglé
 
 **Llaves únicas** (research R2)
 
-| Tabla | 0117 agrega | 0118 borra |
+| Tabla | 0120 agrega | 0121 borra |
 | --- | --- | --- |
 | stock_levels | `(warehouse_id, ingredient_id)`, `(warehouse_id, product_id)` | `stock_levels_ingredient_per_branch`, `stock_levels_product_per_branch` |
 | branch_stock_minimums | `(warehouse_id, ingredient_id)` y `(warehouse_id, product_id)` parciales | `…_ingredient_key`, `…_product_key` |
 | notifications | `notifications_one_open_per_warehouse (company_id, warehouse_id, item_key, kind) where …` | `notifications_one_open` |
 | stock_counts | `stock_counts_one_open_per_warehouse (company_id, warehouse_id) where status = 'open'` | `stock_counts_one_open` |
 
-`apply_stock_movement()` pasa a `on conflict (warehouse_id, ingredient_id|product_id)` en la 0117.
+`apply_stock_movement()` pasa a `on conflict (warehouse_id, ingredient_id|product_id)` en la 0120.
 `low_stock_state` mide el almacén de venta y `evaluate_low_stock` hace `on conflict` sobre
-`notifications_one_open_per_warehouse` desde la 0117 (R12); en E5 los dos pasan a por almacén.
+`notifications_one_open_per_warehouse` desde la 0120 (R12); en E5 los dos pasan a por almacén.
 
 **Índices**: `stock_movements (company_id, warehouse_id, id desc)` para Movimientos por almacén
 (empieza por `company_id`, AGENTS.md).
@@ -87,7 +87,7 @@ Decisiones y su porqué en [research.md](research.md). Identificadores en inglé
 
 Sin update ni delete para `gatobobah_app` en las dos tablas: un traspaso no se edita.
 
-## Permisos (0117)
+## Permisos (0120)
 
 | id | code | área | Sugeridos que lo heredan |
 | --- | --- | --- | --- |
@@ -108,6 +108,6 @@ conteo abierto. Reactivar no exige nada.
 ## Ajustes de la revisión de base de datos
 
 Lo de [research.md › R11](research.md) manda sobre las tablas de arriba donde difieran: compuerta
-`EGB04` y `is_sales` inmutable en la 0117, `low_stock_state` sumado por sucursal, `expense_items`
+`EGB04` y `is_sales` inmutable en la 0120, `low_stock_state` sumado por sucursal, `expense_items`
 llenado por `item_type`, llaves compuestas con `warehouse_id` desde movimientos a conteo y merma,
 lugares con nombre único por almacén, `ON DELETE no action`, y Downs con guarda.

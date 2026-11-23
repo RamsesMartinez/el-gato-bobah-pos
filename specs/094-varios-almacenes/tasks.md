@@ -35,7 +35,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 - [X] T003 Test de migración sobre respaldo restaurado con dos empresas: ninguna fila sin almacén en las nueve tablas (en `expense_items`, todo renglón con `item_type`) y la existencia total por sucursal y artículo idéntica antes y después, en `server/internal/integration/warehouses_migration_test.go` (`TestWarehouseMigrationKeepsBranchTotals`)
 - [X] T004 [P] Test de convivencia con la API anterior: inserts sin `warehouse_id` en `stock_movements`, `stock_levels` (`EnsureProductStockLevel` viejo con `on conflict (branch_id, product_id)`), `stock_counts`, `waste_records`, `branch_stock_minimums` (`on conflict (branch_id, …)`), `stock_out_reports` (`OpenManualOut` viejo) y `expense_items` caen en el de venta sin error, en `server/internal/integration/warehouses_migration_test.go`
-- [X] T005 [P] Test: un movimiento a un almacén que no es el de venta responde `EGB04` y cambiar `is_sales` se rechaza mientras rija la 0117 (R11 H2), en `server/internal/integration/warehouses_test.go`
+- [X] T005 [P] Test: un movimiento a un almacén que no es el de venta responde `EGB04` y cambiar `is_sales` se rechaza mientras rija la 0120 (R11 H2), en `server/internal/integration/warehouses_test.go`
 - [X] T006 [P] Test: con existencias en dos almacenes por artículo (sembradas por SQL con el trigger de H2 apagado), una venta no truena en `low_stock_state` y el aviso mide el almacén de venta (Local 0 / Bodega 50 / mínimo 5 → abre «se acabó»), en `server/internal/integration/warehouses_test.go`
 - [X] T007 [P] Test: venta cruzando el mínimo **crea la fila** de aviso con el `on conflict` por almacén (R12), en `server/internal/integration/warehouses_test.go`
 - [X] T008 [P] Tests de aislamiento bajo `appRoleStore` con `inTheThreeCases` para `warehouses`; agregar `warehouses` a lo que vigila `TestEveryCompanyTableIsIsolated` (`server/internal/integration/rls_all_tables_test.go`)
@@ -101,7 +101,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 **Goal**: cada renglón dice dónde se guarda; la captura deja de verse amontonada.
 **Independent Test**: spec US4.
 
-- [ ] T039 [US4] Tests de la 0118: llaves por sucursal borradas, `not null` (check `not valid` + `validate` + `set not null`), «Local» creado donde falte, `expense_items` con `item_type is null or warehouse_id is not null`, compuerta EGB04 quitada salvo `cancelacion` sin almacén, `is_sales` cambiable; Down se niega con duplicados; en `server/internal/integration/warehouses_contract_test.go`
+- [ ] T039 [US4] Tests de la 0121: llaves por sucursal borradas, `not null` (check `not valid` + `validate` + `set not null`), «Local» creado donde falte, `expense_items` con `item_type is null or warehouse_id is not null`, compuerta EGB04 quitada salvo `cancelacion` sin almacén, `is_sales` cambiable; Down se niega con duplicados; en `server/internal/integration/warehouses_contract_test.go`
 - [ ] T040 [US4] `server/migrations/NNNN_warehouses_contract.sql` (revisada por db-architect antes de aplicarla)
 - [ ] T041 [P] [US4] Test de dominio: `PlanStockLines` por almacén (cambiar destino de un renglón aplicado = salida del anterior + entrada al nuevo; excluido no mueve) en `server/internal/domain/purchase_test.go`
 - [ ] T042 [US4] Destino por renglón en gasto, edición, `stock-lines` y «Por recibir» (`server/internal/app/purchases.go`, `expense_edit.go`, `server/queries/purchases.sql`, `expenses.sql`, handlers) con tests de integración (escenario 8 renglones / 2 a Bodega / 1 excluido)
@@ -148,7 +148,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 ## Phase 9: Polish
 
-- [ ] T064 `docs/mecanica/almacen.md`: notas de lo que no se ve (compuerta EGB04, llaves expandidas y contraídas, no volver atrás después de la 0118, reposición al almacén original)
+- [ ] T064 `docs/mecanica/almacen.md`: notas de lo que no se ve (compuerta EGB04, llaves expandidas y contraídas, no volver atrás después de la 0121, reposición al almacén original)
 - [ ] T065 Quitar el arnés de maquetas `web/maquetas-094/` (no versionado) al cerrar
 - [ ] T066 Comentario en el #65 con lo que entró por subida; cerrar solo si entraron las cinco
 
@@ -156,7 +156,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 ## Dependencies
 
-- Phase 2 bloquea todo. US1 + US2/US3 forman la subida 1. US4 depende de la subida 1 en producción (la 0118 necesita que la versión anterior sea la de la subida 1). US5 depende de US4 (almacén no de venta escribible). US6 y US7 dependen de US5 solo por el tipo de movimiento; pueden ir en la misma subida si no rompen R2.
+- Phase 2 bloquea todo. US1 + US2/US3 forman la subida 1. US4 depende de la subida 1 en producción (la 0121 necesita que la versión anterior sea la de la subida 1). US5 depende de US4 (almacén no de venta escribible). US6 y US7 dependen de US5 solo por el tipo de movimiento; pueden ir en la misma subida si no rompen R2.
 - US8 (MCP) va repartida en la subida de cada ruta.
 
 ## Parallel

@@ -163,7 +163,7 @@ func TestABranchOfAnotherCompanyIsRejected(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.table, func(t *testing.T) {
 			_, err := owner.Pool.Exec(ctx, c.sql, c.args...)
-			// Desde la 0117 el movimiento busca el almacén de venta de esa sucursal en SU empresa, no lo
+			// Desde la 0120 el movimiento busca el almacén de venta de esa sucursal en SU empresa, no lo
 			// encuentra y truena antes de llegar a la llave (EGB03): también es un rechazo.
 			var pgErr *pgconn.PgError
 			if c.table == "stock_movements" && errors.As(err, &pgErr) && pgErr.Code == "EGB03" {

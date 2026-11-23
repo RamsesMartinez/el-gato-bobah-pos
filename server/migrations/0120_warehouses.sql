@@ -472,7 +472,7 @@ set local lock_timeout = '3s';
 do $$
 begin
   if exists (select 1 from warehouses where not is_sales) then
-    raise exception 'hay almacenes además del de venta: bajar la 0117 perdería en cuál está cada existencia';
+    raise exception 'hay almacenes además del de venta: bajar la 0120 perdería en cuál está cada existencia';
   end if;
 end $$;
 -- +goose StatementEnd

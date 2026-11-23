@@ -134,7 +134,7 @@ func TestAWarehouseWithStockIsNotArchived(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Mientras rige la 0117 nada entra a la bodega por un movimiento (EGB04): se siembra la existencia
+	// Mientras rige la 0120 nada entra a la bodega por un movimiento (EGB04): se siembra la existencia
 	// directo, como owner.
 	ing := placeIngredient(t, st, co, "Leche entera")
 	if _, err := st.Pool.Exec(ctx, `insert into stock_levels (company_id, branch_id, warehouse_id, item_type, ingredient_id, on_hand)
@@ -202,7 +202,7 @@ func TestStockLevelsByWarehouse(t *testing.T) {
 	}
 	leche := placeIngredient(t, st, co, "Leche")
 	azucar := placeIngredient(t, st, co, "Azúcar")
-	// Mientras rige la 0117 un artículo vive en un solo almacén por sucursal: leche en el local y
+	// Mientras rige la 0120 un artículo vive en un solo almacén por sucursal: leche en el local y
 	// azúcar en la bodega, sembrados directo.
 	if _, err := st.Pool.Exec(ctx, `
 		insert into stock_levels (company_id, branch_id, warehouse_id, item_type, ingredient_id, on_hand)
@@ -242,7 +242,7 @@ func TestStockLevelsByWarehouse(t *testing.T) {
 }
 
 // Un ajuste manual (pantalla y MCP stock_adjust) va al almacén de venta por omisión; mientras rige la
-// 0117 la bodega todavía no recibe movimientos, y uno ajeno no existe.
+// 0120 la bodega todavía no recibe movimientos, y uno ajeno no existe.
 func TestAManualAdjustmentGoesToTheWarehouseAsked(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
@@ -264,7 +264,7 @@ func TestAManualAdjustmentGoesToTheWarehouseAsked(t *testing.T) {
 		t.Fatalf("el ajuste sin almacén no quedó en el de venta: %v", err)
 	}
 	if err := svc.RecordMovement(ctx, domain.WarehouseSel{ID: bodega}, "ingrediente", &ing, nil, "ajuste", decimal.NewFromInt(1), "a la bodega", user); !errors.Is(err, domain.ErrWarehouseNotWritableYet) {
-		t.Fatalf("ajuste a la bodega en la 0117 = %v; quiere «todavía no recibe»", err)
+		t.Fatalf("ajuste a la bodega en la 0120 = %v; quiere «todavía no recibe»", err)
 	}
 	osvc, octx := asWaste(t, other)
 	ouser := makeUserIn(t, st, other, "ajusta-ajena", "gerente")

@@ -21,7 +21,7 @@ const branchAmbiguousCode = "EGB01"
 // unió a otro. El mensaje trae «ingredient_merged|<destino>».
 const mergedIngredientCode = "EGB02"
 
-// warehouseMissingCode y warehouseNotWritableCode son los de la 0117: la sucursal no tiene almacén
+// warehouseMissingCode y warehouseNotWritableCode son los de la 0120: la sucursal no tiene almacén
 // de venta (`sales_warehouse_of`), y un movimiento o un cambio de almacén de venta que la base todavía
 // no admite mientras guarde las existencias con llave por sucursal.
 const (

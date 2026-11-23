@@ -20,7 +20,7 @@ import (
 // base como quedará tras la segunda migración (sin las llaves por sucursal ni la compuerta EGB04) y
 // comprueban que cada lectura, bloqueo y reposición sigue diciendo la verdad.
 
-// comoEnLaSegundaSubida quita, solo en la base de esta prueba, lo que la 0117 deja para impedir dos
+// comoEnLaSegundaSubida quita, solo en la base de esta prueba, lo que la 0120 deja para impedir dos
 // almacenes con existencias, y da de alta «Bodega» en la matriz. Devuelve los dos almacenes.
 func comoEnLaSegundaSubida(t *testing.T, st *store.Store, company int64) (local, bodega int64) {
 	t.Helper()
