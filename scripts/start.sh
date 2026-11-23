@@ -73,6 +73,7 @@ export PG_PORT="${PG_PORT:-$(infra_port postgres 5432 5490)}"
 export REDIS_PORT="${REDIS_PORT:-$(infra_port redis 6379 6390)}"
 export MAILPIT_HTTP_PORT="${MAILPIT_HTTP_PORT:-$(infra_port mailpit 8025 8095)}"
 export MAILPIT_SMTP_PORT="${MAILPIT_SMTP_PORT:-$(infra_port mailpit 1025 1095)}"
+export MEDIA_PORT="${MEDIA_PORT:-$(infra_port media 7070 9390)}"
 
 echo "▶ Levantando postgres (:${PG_PORT}) + redis (:${REDIS_PORT}) + mailpit (:${MAILPIT_HTTP_PORT})…"
 docker compose -f deploy/docker-compose.dev.yml up -d
@@ -83,6 +84,20 @@ for _ in $(seq 1 60); do
   [ "$(docker inspect --format '{{.State.Health.Status}}' "$PG_ID" 2>/dev/null)" = "healthy" ] && break
   sleep 1
 done
+
+# Bucket de fotos (spec 091): se crea y se abre a lectura pública cada arranque; las dos llamadas son
+# idempotentes. La firma es la de S3 que trae curl, con las credenciales de desarrollo del compose.
+echo "▶ Preparando el almacenamiento de fotos (:${MEDIA_PORT})…"
+media_s3() { curl -s -o /dev/null -w '%{http_code}' --aws-sigv4 "aws:amz:us-east-1:s3" \
+  --user "gatobobah-dev:gatobobah-dev-secret" "$@"; }
+for _ in $(seq 1 30); do
+  [ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${MEDIA_PORT}/")" != "000" ] && break
+  sleep 1
+done
+media_s3 -X PUT "http://localhost:${MEDIA_PORT}/media" >/dev/null
+code=$(media_s3 -X PUT -H 'Content-Type: application/json' "http://localhost:${MEDIA_PORT}/media?policy" \
+  --data '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::media/*"]}]}')
+[ "$code" = "204" ] || [ "$code" = "200" ] || echo "  ⚠ la política pública del bucket respondió $code: las fotos no se verán en local." >&2
 
 # API en background; usa scripts/dev-api.sh (secretos desde deploy/.env + conexión dev).
 # Se detiene junto con la web al salir (Ctrl-C).

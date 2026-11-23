@@ -270,6 +270,57 @@ func (ns NullFolioScheme) Value() (driver.Value, error) {
 	return string(ns.FolioScheme), nil
 }
 
+type FoodFamily string
+
+const (
+	FoodFamilyColdDrink FoodFamily = "cold_drink"
+	FoodFamilyCoffee    FoodFamily = "coffee"
+	FoodFamilyTea       FoodFamily = "tea"
+	FoodFamilyFrappe    FoodFamily = "frappe"
+	FoodFamilySoda      FoodFamily = "soda"
+	FoodFamilySoup      FoodFamily = "soup"
+	FoodFamilySnack     FoodFamily = "snack"
+	FoodFamilyWings     FoodFamily = "wings"
+	FoodFamilyDessert   FoodFamily = "dessert"
+	FoodFamilyBreakfast FoodFamily = "breakfast"
+	FoodFamilyDish      FoodFamily = "dish"
+)
+
+func (e *FoodFamily) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FoodFamily(s)
+	case string:
+		*e = FoodFamily(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FoodFamily: %T", src)
+	}
+	return nil
+}
+
+type NullFoodFamily struct {
+	FoodFamily FoodFamily `json:"food_family"`
+	Valid      bool       `json:"valid"` // Valid is true if FoodFamily is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFoodFamily) Scan(value interface{}) error {
+	if value == nil {
+		ns.FoodFamily, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FoodFamily.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFoodFamily) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FoodFamily), nil
+}
+
 type OrderStatus string
 
 const (
@@ -1003,13 +1054,14 @@ type CatalogVersion struct {
 }
 
 type Category struct {
-	ID       int64           `json:"id"`
-	Name     string          `json:"name"`
-	ParentID *int64          `json:"parent_id"`
-	SortKey  decimal.Decimal `json:"sort_key"`
-	Color    *string         `json:"color"`
-	ImageUrl *string         `json:"image_url"`
-	IsActive bool            `json:"is_active"`
+	ID         int64           `json:"id"`
+	Name       string          `json:"name"`
+	ParentID   *int64          `json:"parent_id"`
+	SortKey    decimal.Decimal `json:"sort_key"`
+	Color      *string         `json:"color"`
+	ImageUrl   *string         `json:"image_url"`
+	IsActive   bool            `json:"is_active"`
+	FoodFamily *FoodFamily     `json:"food_family"`
 }
 
 type CategoryChannel struct {
@@ -1301,6 +1353,16 @@ type McpIdempotencyKey struct {
 	Status    string    `json:"status"`
 	Result    []byte    `json:"result"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type MediaPendingDeletion struct {
+	ID        int64     `json:"id"`
+	CompanyID int64     `json:"company_id"`
+	ObjectKey string    `json:"object_key"`
+	Attempts  int32     `json:"attempts"`
+	LastError string    `json:"last_error"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type ModifierGroup struct {

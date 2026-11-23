@@ -58,6 +58,11 @@ type AdminProductView struct {
 	AltNames []string `json:"altNames"`
 	// MatchedAlt: el alternativo por el que salió en la búsqueda; vacío si salió por su nombre.
 	MatchedAlt string `json:"matchedAlt,omitempty"`
+	// La miniatura (spec 091): la foto propia o, sin ella, la de su categoría o su familia ("" =
+	// genérica). Las tres viajan para que la pantalla no pida nada más.
+	ImageURL           *string `json:"imageUrl"`
+	CategoryImageURL   *string `json:"categoryImageUrl"`
+	CategoryFoodFamily string  `json:"categoryFoodFamily"`
 	// Dónde se vende (spec 092). Sin decisión guardada: en los dos, al precio de mostrador.
 	SoldAtCounter bool             `json:"soldAtCounter"`
 	SoldOnWeb     bool             `json:"soldOnWeb"`
@@ -242,6 +247,31 @@ func (s *AdminService) Categories(ctx context.Context) ([]CategoryView, error) {
 	out := make([]CategoryView, len(rows))
 	for i, r := range rows {
 		out[i] = CategoryView{ID: r.ID, Name: r.Name, ParentID: r.ParentID}
+	}
+	return out, nil
+}
+
+// CategoryAdminView es un renglón de la pestaña de categorías (spec 091): foto, familia y cuántos
+// productos activos tiene.
+type CategoryAdminView struct {
+	ID           int64   `json:"id"`
+	Name         string  `json:"name"`
+	ParentID     *int64  `json:"parentId"`
+	ImageURL     *string `json:"imageUrl"`
+	FoodFamily   string  `json:"foodFamily"` // "" = genérica
+	ProductCount int     `json:"productCount"`
+}
+
+// CategoryList lista las categorías activas con su foto y su familia. Siempre un arreglo.
+func (s *AdminService) CategoryList(ctx context.Context) ([]CategoryAdminView, error) {
+	rows, err := s.store.QC(ctx).AdminCategoryList(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CategoryAdminView, len(rows))
+	for i, r := range rows {
+		out[i] = CategoryAdminView{ID: r.ID, Name: r.Name, ParentID: r.ParentID, ImageURL: r.ImageUrl,
+			FoodFamily: r.FoodFamily, ProductCount: int(r.ProductCount)}
 	}
 	return out, nil
 }
@@ -431,6 +461,7 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search string, 
 				TrackStock: r.TrackStock, HasRecipeItems: r.HasRecipeItems, IsPackage: r.Type == db.ProductTypeCombo,
 				CompositionStatus: textoDe(r.CompositionStatus),
 			}),
+			ImageURL: r.ImageUrl, CategoryImageURL: r.CategoryImageUrl, CategoryFoodFamily: r.CategoryFoodFamily,
 		})
 	}
 	c, err := s.store.QC(ctx).AdminProductCounts(ctx)

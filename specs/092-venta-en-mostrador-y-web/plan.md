@@ -46,7 +46,7 @@ comportamiento en la subida; controles de 44 px; sin `<select>` nativo
 | I. Layering | `domain`: `ChannelPrice`, `ValidChannelPrice`, `SoldOut`, `CheckStock`, `MeasuresStock`, `ErrOutOfStock`. `app`: `AdminService` (guardar `sales` en la tx del PATCH/alta), `MenuService.SoldOut`, `OrdersService` (chequeo en `createInTx`/`addLinesInTx`), `WebSalesService.Summary`. `httpapi`: handlers finos, mapeo `OUT_OF_STOCK` en `respond.go`. `store/db`: queries sqlc nuevas. |
 | II. Errores | `ErrOutOfStock` sentinel con tipo `OutOfStock{Name, Left}` y `Unwrap`; mapeo solo en `httpapi.Error`. |
 | III. Dinero | `webPrice` con `Round2` + `ValidMoney`, `> 0`; el precio de mostrador y de plataforma no se tocan; el pedido sigue recalculando en el servidor. |
-| IV. Test-first | Unitarios de tabla de cada función de `domain` primero. Integración: migración 0117 sobre base restaurada con dos empresas; RLS de lo nuevo con `inTheThreeCases`; `TestTwoCountersCannotSellTheLastPiece`; JSON crudo de `sold-out` con `[]`. |
+| IV. Test-first | Unitarios de tabla de cada función de `domain` primero. Integración: migración 0118 sobre base restaurada con dos empresas; RLS de lo nuevo con `inTheThreeCases`; `TestTwoCountersCannotSellTheLastPiece`; JSON crudo de `sold-out` con `[]`. |
 | IV. Migración tolerante | Solo agrega columna nullable, filas faltantes y normaliza un booleano que la versión anterior no lee (data-model, tabla de traslape). |
 | V. Seguridad | Todo detrás de `RequirePermission` (`menu.configure`, `business.configure`); `sold-out` en el grupo de Vender; valores absurdos → 400; la barrera del agotado y del oculto en mostrador vive en el servidor. |
 | VI. YAGNI | Sin tabla nueva, sin columna por lugar; sin menú público (#316); «Avisos» y «Apariencia» fuera hasta tener contenido. |
@@ -60,7 +60,7 @@ Sin violaciones; *Complexity Tracking* vacío.
 
 | Pieza | Capa | Archivo |
 | --- | --- | --- |
-| Migración 0117 + su test | migración / integración | `server/migrations/0117_product_channel_price.sql`, `server/internal/integration/migration_0117_test.go` |
+| Migración 0117 + su test | migración / integración | `server/migrations/0118_product_channel_price.sql`, `server/internal/integration/migracion_0118_test.go` |
 | Lugares de venta al crear empresa | query | `server/queries/companies.sql` (`CreateCompany`) |
 | Reglas de precio, agotado y chequeo | domain | `server/internal/domain/sales_channels.go`, `stock_availability.go` (+ `_test.go`) |
 | Leer/guardar lugares de venta y precio web | query + app | `server/queries/admin.sql`, `server/internal/app/admin.go` |
@@ -144,7 +144,7 @@ specs/092-venta-en-mostrador-y-web/
 
 ```text
 server/
-├── migrations/0117_product_channel_price.sql
+├── migrations/0118_product_channel_price.sql
 ├── queries/{admin,menu,orders,companies,web_sales}.sql
 └── internal/
     ├── domain/{sales_channels,stock_availability}.go

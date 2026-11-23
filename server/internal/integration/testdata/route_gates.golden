@@ -1,8 +1,10 @@
+DELETE /api/v1/admin/categories/{id}/image admin,gerente
 DELETE /api/v1/admin/platform-menus/connections/{id}/ admin,gerente
 DELETE /api/v1/admin/platform-menus/connections/{id}/exclusions/{externalId} admin,gerente
 DELETE /api/v1/admin/platform-menus/connections/{id}/links/{externalId} admin,gerente
 DELETE /api/v1/admin/platform-menus/connections/{id}/local-exclusions admin,gerente
 DELETE /api/v1/admin/products/{id}/groups/{groupId} admin,gerente
+DELETE /api/v1/admin/products/{id}/image admin,gerente
 DELETE /api/v1/business-settings/ticket-logo admin,gerente
 DELETE /api/v1/roles/{id} admin
 DELETE /api/v1/stock/articles/{id}/density admin,gerente
@@ -10,6 +12,7 @@ DELETE /api/v1/stock/counts/{id}/lines/{ingredientId} admin,gerente
 DELETE /api/v1/stock/counts/{id}/product-lines/{productId} admin,gerente
 DELETE /api/v1/supplier-items/{id} admin,gerente
 GET /api/v1/admin/categories admin,gerente
+GET /api/v1/admin/categories/{id}/image admin,gerente
 GET /api/v1/admin/groups/ admin,gerente
 GET /api/v1/admin/groups/{id}/options admin,gerente
 GET /api/v1/admin/groups/{id}/products admin,gerente
@@ -28,6 +31,7 @@ GET /api/v1/admin/products/ admin,gerente
 GET /api/v1/admin/products/{id}/alt-names/similar admin,gerente
 GET /api/v1/admin/products/{id}/composition admin,gerente
 GET /api/v1/admin/products/{id}/groups admin,gerente
+GET /api/v1/admin/products/{id}/image admin,gerente
 GET /api/v1/admin/recipes admin,gerente
 GET /api/v1/admin/web-sales/summary admin,gerente
 GET /api/v1/articles admin,gerente
@@ -124,6 +128,7 @@ GET /api/v1/waste/pending admin,gerente
 GET /api/v1/waste/reasons admin,gerente,cajero,mesero
 GET /api/v1/waste/reasons/all admin,gerente
 GET /api/v1/waste/today admin,gerente,cajero,mesero
+PATCH /api/v1/admin/categories/{id} admin,gerente
 PATCH /api/v1/admin/groups/{id} admin,gerente
 PATCH /api/v1/admin/modifier-options/{id} admin,gerente
 PATCH /api/v1/admin/products/{id} admin,gerente
@@ -239,12 +244,14 @@ POST /api/v1/waste/reasons/{id}/merge admin,gerente
 POST /api/v1/waste/{id}/approve admin,gerente
 POST /api/v1/waste/{id}/reject admin,gerente
 POST /api/v1/waste/{id}/undo admin,gerente,cajero,mesero
+PUT /api/v1/admin/categories/{id}/image admin,gerente
 PUT /api/v1/admin/modifier-options/{id}/composition admin,gerente
 PUT /api/v1/admin/platform-menus/connections/{id}/exclusions/{externalId} admin,gerente
 PUT /api/v1/admin/platform-menus/connections/{id}/links/{externalId} admin,gerente
 PUT /api/v1/admin/platform-menus/connections/{id}/local-exclusions admin,gerente
 PUT /api/v1/admin/products/{id}/alt-names admin,gerente
 PUT /api/v1/admin/products/{id}/composition admin,gerente
+PUT /api/v1/admin/products/{id}/image admin,gerente
 PUT /api/v1/branches/{id}/card-count-mode admin,gerente
 PUT /api/v1/business-settings admin,gerente
 PUT /api/v1/business-settings/ticket-logo admin,gerente

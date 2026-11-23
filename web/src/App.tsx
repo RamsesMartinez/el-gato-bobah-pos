@@ -27,6 +27,7 @@ import { EmparejarConexionPage } from './features/admin/EmparejarConexionPage';
 import { ProductsAdminPage } from './features/admin/ProductsAdminPage';
 import { RecipesPage } from './features/admin/RecipesPage';
 import { ModifierOptionsPage } from './features/admin/ModifierOptionsPage';
+import { CategoriesAdminPage } from './features/admin/CategoriesAdminPage';
 import { AppearancePage } from './features/admin/AppearancePage';
 import { BusinessSettingsPage } from './features/admin/BusinessSettingsPage';
 import { PrintSettingsPage } from './features/admin/PrintSettingsPage';
@@ -76,6 +77,7 @@ export const App = () => {
         <Route path="/catalogo" element={<RequirePermission path="/catalogo"><CatalogPage /></RequirePermission>}>
           <Route index element={<Navigate to="/catalogo/productos" replace />} />
           <Route path="productos" element={<ProductsAdminPage />} />
+          <Route path="categorias" element={<CategoriesAdminPage />} />
           <Route path="opciones" element={<ModifierOptionsPage />} />
           <Route path="recetas" element={<RecipesPage />} />
         </Route>

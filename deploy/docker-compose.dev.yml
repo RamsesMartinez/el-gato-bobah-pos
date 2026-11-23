@@ -48,8 +48,22 @@ services:
     ports: ["${MAILPIT_HTTP_PORT:-8095}:8025", "${MAILPIT_SMTP_PORT:-1095}:1025"]
     restart: unless-stopped
 
+  # Almacenamiento de fotos del catálogo (spec 091), compatible con S3 como Cloudflare R2. versitygw
+  # (Apache-2.0, 38 MB) y no MinIO: MinIO dejó de publicar su imagen. Verifica la firma SigV4 de
+  # verdad, así que un defecto de firma se ve aquí y no hasta producción. start.sh crea el bucket
+  # `media` con lectura pública, como el dominio de medios de R2.
+  media:
+    image: versity/versitygw:latest
+    command: ["posix", "/data"]
+    environment:
+      ROOT_ACCESS_KEY: gatobobah-dev
+      ROOT_SECRET_KEY: gatobobah-dev-secret
+    ports: ["${MEDIA_PORT:-9390}:7070"]
+    volumes: [media_dev:/data]
+
 # Sin red custom: nadie habla contenedor-a-contenedor (la API corre en el host y llega a cada
 # servicio por localhost:puerto). Compose crea la red 'default' sola; fijar subred aquí chocaba
 # con redes de otros compose del equipo — p.ej. sat_cfdi ocupa 172.28.0.0/16.
 volumes:
   pgdata_dev: {}
+  media_dev: {}

@@ -345,3 +345,74 @@ func TestValidate_RejectsAMalformedAlertRecipient(t *testing.T) {
 		t.Fatalf("un destinatario válido se rechazó: %v", err)
 	}
 }
+
+// Las fotos del catálogo (spec 091) se encienden con TODAS las MEDIA_* o con ninguna. Una a medias
+// arranca «encendida» y truena en la primera foto que alguien sube.
+func TestValidate_MediaTodasONinguna(t *testing.T) {
+	full := func(c *Config) {
+		c.MediaS3Endpoint = "https://acct.r2.cloudflarestorage.com"
+		c.MediaS3Bucket = "gatobobah-media"
+		c.MediaS3AccessKeyID = "ak"
+		c.MediaS3SecretAccessKey = "secreto-largo-de-r2"
+		c.MediaPublicBaseURL = "https://media.example.com"
+	}
+	c := base()
+	if err := Validate(c); err != nil || c.MediaEnabled() {
+		t.Fatalf("sin MEDIA_* debe arrancar con las fotos apagadas: err=%v enabled=%v", err, c.MediaEnabled())
+	}
+	full(&c)
+	if err := Validate(c); err != nil || !c.MediaEnabled() {
+		t.Fatalf("con todas debe arrancar encendida: err=%v", err)
+	}
+	for _, quitar := range []func(*Config){
+		func(c *Config) { c.MediaS3Endpoint = "" },
+		func(c *Config) { c.MediaS3Bucket = "" },
+		func(c *Config) { c.MediaS3AccessKeyID = "" },
+		func(c *Config) { c.MediaS3SecretAccessKey = "" },
+		func(c *Config) { c.MediaPublicBaseURL = "" },
+	} {
+		c := base()
+		full(&c)
+		quitar(&c)
+		if err := Validate(c); err == nil {
+			t.Errorf("con una MEDIA_* vacía arrancó: %+v", c)
+		}
+	}
+	for _, mal := range []func(*Config){
+		func(c *Config) { c.MediaPublicBaseURL = "https://media.example.com/" }, // la / final duplica la de la llave
+		func(c *Config) { c.MediaPublicBaseURL = "media.example.com" },
+		func(c *Config) { c.MediaS3SecretAccessKey = "cambia-esto" },
+	} {
+		c := base()
+		full(&c)
+		mal(&c)
+		if err := Validate(c); err == nil {
+			t.Errorf("config de medios mal formada aceptada: %+v", c)
+		}
+	}
+}
+
+func TestValidate_MediaEnProduccionSoloHTTPS(t *testing.T) {
+	c := base()
+	c.Env = "production"
+	c.AppDatabaseURL = "postgres://app"
+	c.PlatformDatabaseURL = "postgres://plat"
+	c.PlatformDBPassword = "x"
+	c.MediaS3Endpoint = "http://acct.r2.cloudflarestorage.com"
+	c.MediaS3Bucket = "b"
+	c.MediaS3AccessKeyID = "ak"
+	c.MediaS3SecretAccessKey = "secreto-largo-de-r2"
+	c.MediaPublicBaseURL = "https://media.example.com"
+	if err := Validate(c); err == nil {
+		t.Error("endpoint http aceptado en producción: el token viajaría en claro")
+	}
+	c.MediaS3Endpoint = "https://acct.r2.cloudflarestorage.com"
+	c.MediaPublicBaseURL = "http://media.example.com"
+	if err := Validate(c); err == nil {
+		t.Error("base pública http aceptada en producción: la página https no cargaría las fotos")
+	}
+	c.MediaPublicBaseURL = "https://media.example.com"
+	if err := Validate(c); err != nil {
+		t.Errorf("config de producción correcta rechazada: %v", err)
+	}
+}

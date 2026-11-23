@@ -1,6 +1,6 @@
 # Data model: 092
 
-Una sola migración, **0117** (`0117_product_channel_price.sql`), aditiva. Si otra rama llega antes
+Una sola migración, **0118** (la 0117 la tomó la 091, fotos del catálogo) (`0118_product_channel_price.sql`), aditiva. Si otra rama llega antes
 a develop con 0117, se renumera a la siguiente libre.
 
 ## Lo que ya existe y se reusa
@@ -14,7 +14,7 @@ a develop con 0117, se renumera a la siguiente libre.
 
 Lugares de venta de esta feature: **Mostrador = `channels.code = 'pos'`**, **Web = `'online'`**.
 
-## Cambios de 0117
+## Cambios de 0118
 
 ### Up
 

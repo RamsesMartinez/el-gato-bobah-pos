@@ -9,9 +9,9 @@ import (
 
 // salesChannelPriceVersion es la migración de los lugares de venta con precio (spec 092).
 // PROVISIONAL: se mueve al siguiente número libre de develop al fusionar, y esta constante con ella.
-const salesChannelPriceVersion = 117
+const salesChannelPriceVersion = 118
 
-// LA 0117 SOBRE UN RESPALDO REAL CON DOS EMPRESAS (constitución IV).
+// LA 0118 SOBRE UN RESPALDO REAL CON DOS EMPRESAS (constitución IV).
 //
 // Lo que solo se ve con datos reales: que ningún producto amanece agotado ni «editado hoy», que toda
 // empresa —también una sin catálogo de lugares de venta— queda con Mostrador y Web, y que un canal de
@@ -34,7 +34,7 @@ func TestMigrationSalesChannelPriceOnARealBackup(t *testing.T) {
 	// Una empresa sin catálogo de lugares de venta, como las que crea hoy la consola, y productos con
 	// «vender sin existencia» apagado como los dejó la importación de FUDO.
 	var bare int64
-	if err := st.Pool.QueryRow(ctx, `insert into companies (slug, name) values ('mig-0117-sin-canales', 'Sin canales') returning id`).Scan(&bare); err != nil {
+	if err := st.Pool.QueryRow(ctx, `insert into companies (slug, name) values ('mig-0118-sin-canales', 'Sin canales') returning id`).Scan(&bare); err != nil {
 		t.Fatal(err)
 	}
 	var falseBefore int

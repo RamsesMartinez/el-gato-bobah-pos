@@ -43,6 +43,10 @@ import (
 // noPersonalData son las columnas de texto que pasan intactas a la base de pruebas. El valor dice
 // por qué no llevan datos de una persona.
 var noPersonalData = map[string]string{
+	// Fotos del catálogo (091): la llave sale de ids y de la huella del archivo; el error es el que
+	// devolvió el almacenamiento, recortado y sin URL firmada.
+	"media_pending_deletions.object_key": "llave de archivo: ids y huella",
+	"media_pending_deletions.last_error": "error del almacenamiento",
 	// Avisos de inventario (084): tipos y estados de un conjunto cerrado, la copia del nombre y la unidad
 	// del artículo (catálogo), la llave del bloque de correo (una fecha) y la clave de idempotencia
 	// que genera la pantalla (un uuid al azar).

@@ -630,7 +630,16 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// una empresa con `menu.configure` pueda (constitución, «Roles: modelo híbrido»). Leer la
 				// receta sigue en el grupo de siempre.
 				menuConfigure := RequirePermission(h.permissions, domain.PermMenuConfigure)
+				// Fotos del catálogo (spec 091): por permiso, con tope de escrituras por persona.
+				mediaWrite := rateLimitUser(h.mediaWrites)
+				r.With(menuConfigure).Patch("/admin/categories/{id}", h.PatchCategory)
+				r.With(menuConfigure).Get("/admin/categories/{id}/image", h.GetCategoryImage)
+				r.With(menuConfigure, mediaWrite).Put("/admin/categories/{id}/image", h.PutCategoryImage)
+				r.With(menuConfigure, mediaWrite).Delete("/admin/categories/{id}/image", h.DeleteCategoryImage)
 				r.Route("/admin/products", func(r chi.Router) {
+					r.With(menuConfigure).Get("/{id}/image", h.GetProductImage)
+					r.With(menuConfigure, mediaWrite).Put("/{id}/image", h.PutProductImage)
+					r.With(menuConfigure, mediaWrite).Delete("/{id}/image", h.DeleteProductImage)
 					r.With(menuConfigure).Put("/{id}/composition", h.PutProductComposition)
 					r.With(menuConfigure).Post("/{id}/composition/confirm", h.ConfirmProductComposition)
 					// Nombres alternativos (spec 063): por permiso, fuera del grupo por rol. `menu.configure`

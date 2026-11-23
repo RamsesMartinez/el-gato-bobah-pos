@@ -23,6 +23,7 @@ import { SeccionAlertas } from './alertas/SeccionAlertas';
 import { can } from '../app/permissions';
 import { compositionLabel } from './compositionLabel';
 import { AltNamesField } from '../components/AltNamesField';
+import { PhotoField } from './PhotoField';
 import { altNameKey, withPendingAlt } from '../components/altNames';
 import { ApiError } from '../api/client';
 import { DosColumnas, LugaresDeVenta, MenuDePestanas, PanelVentaEnWeb, VenderSinExistencia, type Pestana } from './producto/PanelesDeVenta';
@@ -177,9 +178,33 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
               <Box flex="1" minW={0} py={3} role="tabpanel" aria-label={PESTANAS.find((t) => t.id === pestana)?.label}>
                 {pestana === 'general' && (
                   <DosColumnas>
-                    <Box><Field label="Nombre">
-                  <Input minH="44px" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
-                </Field></Box>
+                    <Box><HStack align="start" gap={4}>
+                  {/* La foto junto al nombre y la categoría (spec 091): se guarda aparte, al tocar
+                      «Guardar foto». */}
+                  <PhotoField kind="products" id={edit.id} name={edit.name} imageUrl={edit.imageUrl}
+                    categoryImageUrl={catDe(categorias, edit.categoryId)?.imageUrl ?? edit.categoryImageUrl}
+                    family={catDe(categorias, edit.categoryId)?.foodFamily ?? edit.categoryFoodFamily}
+                    onChanged={(url) => {
+                      setEdit((e) => e && { ...e, imageUrl: url });
+                      void qc.invalidateQueries({ queryKey: ['admin', 'products'] });
+                      void qc.invalidateQueries({ queryKey: ['menu'] });
+                    }} />
+                  <VStack align="stretch" gap={4} flex="1" minW={0}>
+                    <Field label="Nombre">
+                      <Input minH="44px" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
+                    </Field>
+                    <Field label="Categoría">
+                      {/* Picker táctil, no <select> nativo: ver la constitución. */}
+                      <Picker
+                        value={String(edit.categoryId || '')}
+                        onChange={(v) => setEdit({ ...edit, categoryId: Number(v) })}
+                        options={opcionesDeCategoria(categorias, edit)}
+                        placeholder="Sin categoría"
+                        title="Mover a la categoría"
+                      />
+                    </Field>
+                  </VStack>
+                </HStack></Box>
                     <Box><HStack align="start" gap={3}>
                 <Field flex="1" label="Precio">
                   <Input type="number" inputMode="decimal" minH="44px" value={edit.price}
@@ -208,17 +233,6 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                 )}
                 </Box>
                 </HStack></Box>
-                    <Box><Field label="Categoría">
-                  {/* Picker táctil, no <select> nativo: en una tablet de 7" el desplegable del
-                      sistema tapa la pantalla con renglones de 20px. Ver la constitución. */}
-                  <Picker
-                    value={String(edit.categoryId || '')}
-                    onChange={(v) => setEdit({ ...edit, categoryId: Number(v) })}
-                    options={opcionesDeCategoria(categorias, edit)}
-                    placeholder="Sin categoría"
-                    title="Mover a la categoría"
-                  />
-                </Field></Box>
                     <Box><AltNamesField ownName={edit.name} value={altNames} onChange={(v) => { setAltNames(v); setAltError(''); }}
                   draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similar} error={altError} /></Box>
                     <VStack align="stretch" gap={3}><HStack justify="space-between">
@@ -305,6 +319,8 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
     </DialogRoot>
   );
 }
+
+const catDe = (cats: Category[], id: number) => cats.find((c) => c.id === id);
 
 // Las subcategorías se leen con su padre ("Bebidas › Calientes") para desambiguar dos "Calientes".
 // Mientras el catálogo no llega se pinta la categoría ACTUAL del producto: un picker vacío sobre el

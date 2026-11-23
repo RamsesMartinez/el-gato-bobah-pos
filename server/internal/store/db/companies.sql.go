@@ -55,7 +55,7 @@ with company as (
   -- Y con sus límites del conteo (spec 044), con los defaults de la columna, como la 0098.
   insert into count_limits (company_id) select id from company
 ), sales_channels_seed as (
-  -- Y con sus lugares de venta (spec 092), los mismos que la 0117 dio a las que ya existían: sin
+  -- Y con sus lugares de venta (spec 092), los mismos que la 0118 dio a las que ya existían: sin
   -- ellos, apagar «Web» en un producto no tendría a qué apuntar.
   insert into channels (company_id, code, name)
   select c.id, v.code, v.name from company c

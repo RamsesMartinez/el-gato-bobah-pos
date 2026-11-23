@@ -516,3 +516,40 @@ func TestOutOfStockTravelsWithTheProduct(t *testing.T) {
 		t.Fatalf("message = %q", got.Error.Message)
 	}
 }
+
+// Las fotos del catálogo (spec 091): la pantalla y el MCP distinguen «otro archivo» de «la misma
+// foto, más chica» y de «el servidor no tiene dónde guardarla». Un VALIDATION genérico no lo diría.
+func TestCatalogMediaErrorsHaveTheirOwnCode(t *testing.T) {
+	casos := []struct {
+		err    error
+		status int
+		code   string
+		msg    string
+	}{
+		{fmt.Errorf("%w: la foto de 1200 mide 800×600; debe medir 1200×1200", domain.ErrImageInvalid), 422, "IMAGE_INVALID",
+			"la foto de 1200 mide 800×600; debe medir 1200×1200"},
+		{fmt.Errorf("%w: la foto de 400 pesa 120 KB; el máximo es 100 KB", domain.ErrImageTooLarge), 413, "IMAGE_TOO_LARGE",
+			"la foto de 400 pesa 120 KB; el máximo es 100 KB"},
+		{domain.ErrMediaDisabled, 503, "MEDIA_DISABLED", "las fotos no están configuradas en este servidor"},
+		{fmt.Errorf("%w: objstore: PUT respondió 500", domain.ErrMediaUnavailable), 502, "MEDIA_UNAVAILABLE",
+			"no se pudo guardar la foto; vuelve a intentar"},
+	}
+	for _, c := range casos {
+		t.Run(c.code, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			Error(w, c.err)
+			var got struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != c.status || got.Error.Code != c.code || got.Error.Message != c.msg {
+				t.Fatalf("%v → %d %s %q, quería %d %s %q", c.err, w.Code, got.Error.Code, got.Error.Message, c.status, c.code, c.msg)
+			}
+		})
+	}
+}

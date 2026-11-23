@@ -31,6 +31,13 @@ fi
 export MAIL_FROM="${MAIL_FROM:-no-reply@gatobobah.local}"
 export APP_BASE_URL="${APP_BASE_URL:-http://localhost:${FRONTEND_PORT:-3000}}"
 # el binario carga los secretos de aquí (JWT_SECRET, etc.) de forma literal
+# Fotos del catálogo (spec 091) contra el versitygw del compose: mismo protocolo que R2.
+export MEDIA_S3_ENDPOINT="${MEDIA_S3_ENDPOINT:-http://localhost:${MEDIA_PORT:-9390}}"
+export MEDIA_S3_BUCKET="${MEDIA_S3_BUCKET:-media}"
+export MEDIA_S3_REGION="${MEDIA_S3_REGION:-us-east-1}"
+export MEDIA_S3_ACCESS_KEY_ID="${MEDIA_S3_ACCESS_KEY_ID:-gatobobah-dev}"
+export MEDIA_S3_SECRET_ACCESS_KEY="${MEDIA_S3_SECRET_ACCESS_KEY:-gatobobah-dev-secret}"
+export MEDIA_PUBLIC_BASE_URL="${MEDIA_PUBLIC_BASE_URL:-http://localhost:${MEDIA_PORT:-9390}/media}"
 export ENV_FILE="$ROOT/deploy/.env"
 
 # La API de dev sirve con los MISMOS roles que producción, no como owner. El owner salta RLS y

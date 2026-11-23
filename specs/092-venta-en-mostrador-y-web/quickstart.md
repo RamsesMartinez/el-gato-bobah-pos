@@ -7,7 +7,7 @@ Pantalla a 1024×600 y a 1280×854, con `hasTouch`.
 ## 1. Nada cambió para lo existente (SC-001)
 
 - Antes de arrancar la API nueva: contar productos de El Gato Bobah que salen en Vender.
-- Arrancar la API (aplica 0117). Vender muestra los mismos productos y la lista de agotados está
+- Arrancar la API (aplica 0118). Vender muestra los mismos productos y la lista de agotados está
   vacía: `GET /api/v1/pos/menu/sold-out` → `{"productIds":[]}`.
 - `select count(*) from products where not allow_oversell` → 0.
 
