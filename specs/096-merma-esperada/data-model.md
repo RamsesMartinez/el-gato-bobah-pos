@@ -10,9 +10,10 @@
 
 - Up: agrega las tres columnas; `update ingredients set expected_waste_pct = waste_pct where waste_pct > 0`.
   `set local lock_timeout = '3s'`. Sin índices (se leen enteras en el recálculo).
-- Down: quita las tres columnas. No hay hecho que se pierda que el Up no vuelva a aceptar salvo los
-  0 % capturados a propósito después de subir → renglón en `guardedDownCleanup` no aplica (el Down no
-  se niega); se documenta en la prueba de migración que el Down pierde la distinción 0 / sin captura.
+- Down: primero `update ingredients set waste_pct = coalesce(expected_waste_pct, 0)` (la API anterior
+  vuelve a ver lo capturado), después quita las tres columnas. Pierde el % del producto, el general y
+  la distinción 0 / sin captura; no se niega, así que no lleva renglón en `guardedDownCleanup`. Tras
+  bajar, la API anterior recalcula costos al arrancar (R14 H3). La prueba de migración lo verifica.
 - `waste_pct` **se queda** (la API anterior la lee). Nadie la escribe salvo `fudo-import`, que pasa a
   la nueva.
 - Ninguna columna nueva es de texto: no entra a la clasificación del respaldo anónimo.

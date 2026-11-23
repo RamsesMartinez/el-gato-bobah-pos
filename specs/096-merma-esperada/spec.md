@@ -278,8 +278,9 @@ del conteo se ve en menos de la meta, medida antes y después.
 - **Merma real con consumo diminuto** (0.001 kg vendidos): se muestra el % redondeado y con el
   aviso de pocas ventas; con menos de una venta en el periodo, «sin ventas».
 - **Artículo unido a otro** (spec de unir insumos): su merma y su consumo cuentan en el destino.
-- **Cambio de unidad de un artículo**: la merma real compara en la unidad base de cada movimiento;
-  movimientos antes del cambio se convierten como hoy los convierte la existencia.
+- **Cambio de unidad de un artículo**: el cambio crea un artículo nuevo y archiva el viejo; la merma
+  real del nuevo cuenta desde el cambio (sus 90 días empiezan ahí) y no mezcla movimientos en otra
+  unidad. Las uniones, en cambio, sí se siguen con su factor.
 - **Opción «descontar merma» activa y artículo sin captura**: descuenta según la precedencia (puede
   ser el general); un 0 % capturado no descuenta.
 - **Cambiar de vista a media captura** con un renglón a medio teclear: el renglón se guarda antes de
@@ -340,7 +341,7 @@ del conteo se ve en menos de la meta, medida antes y después.
   menor a la mitad o mayor al doble del conteo anterior, la sencilla MUST pedir confirmarla sin
   mostrar la cifra esperada.
 - **FR-025**: Quien solo puede contar MUST entrar siempre a la sencilla; la avanzada pide el permiso
-  de administrar el conteo.
+  de configurar el almacén (`inventory.configure`).
 - **FR-026**: Existencias MUST tener la misma separación: vista sencilla (qué hay y qué falta) y
   avanzada (valor, movimientos, mínimos, configuración).
 - **FR-027**: Existencias y la lista del conteo MUST cargar su primera pantalla por debajo de la meta
@@ -405,8 +406,8 @@ Ver [research.md › Otros POS](research.md#otros-pos) para las fuentes. Lo que 
 - La merma general y la del producto aplican solo a los renglones de la receta del producto (y la
   general a la de los extras); dentro de un preparado manda el % del artículo, como hoy. Así un 5 %
   general sube 5 % y no se compone por nivel.
-- «Consumo por ventas» es lo que las ventas descontaron del almacén (incluye la parte de merma
-  esperada cuando S2 la active, que se separa); los traspasos no son consumo.
+- «Consumo por ventas» es lo que las ventas descontaron del almacén por receta, neto de
+  cancelaciones; la merma esperada que S2 descuente no es consumo, ni los traspasos.
 - La merma real se calcula al pedirla; con un año de movimientos no hace falta guardarla.
 - S1 sube antes que el #65 complete sus entregas: la merma real usa el almacén que la spec 094 ya
   guarda en mermas y movimientos (con un solo almacén se ve una sola cifra).

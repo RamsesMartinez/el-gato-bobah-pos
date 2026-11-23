@@ -64,6 +64,8 @@ columnas nuevas (R1); no se recalculan ventas pasadas (R7)
   (escribe la columna nueva), la carga del grafo en `loadGraph`, `ProductCost` (usa el mismo
   grafo con el general), el detalle de artículo y de producto (exponen el campo), y el recálculo al
   arrancar (`RecomputeCompanies`) que con el general cargado da lo mismo que el recálculo en línea.
+- *Artículos unidos*: la merma real sigue la cadena de uniones con su factor (R14 H1); unir hereda el % del origen si el destino está sin captura (R14 M1).
+- *Regreso a la versión anterior*: el Down copia el % a `waste_pct` (R14 H3).
 - *Compuesto*: un preparado dentro de un preparado no recibe el general (R2), test que lo nombra.
 - *Concurrencia*: dos `PUT` al general: cada uno toma el candado de composición; gana el último y los
   dos quedan en la bitácora.
@@ -72,13 +74,13 @@ columnas nuevas (R1); no se recalculan ventas pasadas (R7)
 
 | Pantalla | Subida | Dónde vive | Qué cambia | Componentes |
 | --- | --- | --- | --- | --- |
-| Ajustes › Costos (merma general) | S1 | Configuración del negocio, sección nueva visible con `menu.configure` | Un renglón «Merma al preparar» con el % general, vacío por omisión, y una línea de qué hace | `Input` numérico de 44 px, botón Guardar, `InfoButton` |
-| Ficha del producto: % y de dónde sale el costo | S1 | `ProductEditDialog`, bloque de Costo | Campo «Merma al preparar» (vacío = usa el general, con el general a la vista) y botón «Ver de dónde sale» que abre el desglose: renglón por artículo con cantidad, costo, %, origen y pesos sumados; merma real junto al %; total abajo | Hoja inferior (`DrawerRoot`), `Table`, etiquetas de estado del tema |
-| Ficha del artículo: % y merma real | S1 | `ArticleSheet` | Campo «Merma al preparar» con estado «Sin capturar» distinto de 0 %, y «Real en 90 días» por almacén | `Input`, `Segmented` o botón «Sin capturar», texto auxiliar |
-| Conteo vs ventas | S2 | Al cerrar un conteo y en el historial del conteo (junto a `CountLossReport`) | Tabla por artículo con las columnas de FR-020, sugerencia de % y marca «revisar» | `Table`, `SortHead`, `Segmented` de almacén (094) |
-| Conteo: vista sencilla y avanzada | S2 | Almacén › Conteo (sobre la pantalla con almacén de la 094) | Sencilla: recorrido por lugar, a ciegas, avance N de M, teclado numérico; avanzada: esperado, diferencia, lugares, cerrar. Interruptor de vista | `NumericKeypad`, `Segmented`, `Table` |
-| Existencias: vista sencilla y avanzada | S2 | Almacén › Existencias (con selector de almacén de la 094) | Sencilla: qué hay y qué falta; avanzada: valor, mínimos, movimientos | `Segmented`, `Table` |
-| Ajustes › Almacén: descontar merma | S2 | `InventorySettingsSection` | Interruptor «La merma esperada también descuenta del almacén» | Interruptor existente del tema |
+| Ajustes › Costos (merma general) | S1 | Ajustes del negocio, sección nueva «Costos» (ícono calculadora) visible con `menu.configure` | Panel «Merma al preparar»: campo de %, vacío por omisión («Sin merma»), Guardar y una línea de qué hace (maqueta A) | `SettingsLayout`, `Input` de 44 px, `Button` |
+| Ficha del producto: pestaña «Costo» | S1 | `ProductEditDialog`, pestaña nueva «Costo» entre «Receta e inventario» y «Extras» | Una fila: campo «Merma al preparar» (vacío = usa la general, con la general a la vista y «Usar la general») y las tres cifras (sin merma, lo que suma la merma, costo). Tabla de 5 columnas con encabezado y primera columna fijos y `overflowX=auto`: artículo, lleva, cuesta, merma (% y debajo, pequeño, de dónde vino y la merma real por almacén), suma (maqueta B, R14). Costo a mano o de compra: una línea y sin campo; combo: la suma de sus productos. En General, «Ver cómo se calcula ›» abre esta pestaña. Se guarda con el Guardar del diálogo | `MenuDePestanas`, `Table`, `Field` |
+| Ficha del artículo: merma y merma real | S1 | `ArticleSheet` | Columna izquierda, justo después de «Ubicación»: panel `bg.muted` «Merma al preparar» con (i), `Segmented` «Sin capturar / Capturada» y el campo; «Aquí no se pierde nada» solo con 0 %. Columna derecha: tarjetas gemelas «Costo» y «Merma real, últimos 90 días» por almacén, un renglón de 32 px por almacén con el aviso en el mismo renglón (maqueta A2, R14). Se guarda con el autoguardado de la ficha. El encabezado «Compras y correcciones» sin mayúsculas | `Segmented`, `InfoButton`, `Input` |
+| Conteo vs ventas | S2 | Al cerrar un conteo y en su historial (junto a `CountLossReport`) | Tres grupos: revisar receta o captura, usar el % sugerido (botón «Usar N %»), diferencia chica; cada renglón: vendido, contado y % (maqueta C) | `Segmented` de almacén (094), renglones de 52 px |
+| Conteo: vista sencilla y avanzada | S2 | Almacén › Conteo (con almacén de la 094) | Sencilla: `Segmented` de lugar con avance N/M, lista del lugar, teclado fijo a la derecha, aviso contra el conteo anterior sin enseñar lo esperado (maqueta B); avanzada: esperado, contado, diferencia. Cambio de vista con `Segmented` con íconos | `NumericKeypad`, `Segmented` |
+| Existencias: vista sencilla y avanzada | S2 | Almacén › Existencias (con selector de almacén de la 094) | Sencilla: tablero de tres columnas (se acabó, queda poco, hay); avanzada: tabla con valor, mínimo y movimientos. Cambio de vista con `Segmented` con íconos, como pidió el dueño (maqueta B) | `Segmented` (prop `icon`), `Table` |
+| Ajustes › Almacén: descontar merma | S2 | `InventorySettingsSection` | Interruptor «La merma esperada también descuenta del almacén» | `Switch` |
 
 Maquetas a 1024×600 (pedido del dueño) y 1280×854, con la cifra de cada opción contra la pantalla
 actual (toques y renglones visibles).
@@ -87,10 +89,10 @@ actual (toques y renglones visibles).
 |----------|----------|---------|---------|
 | Ajustes › Costos (merma general) | [maquetas](https://claude.ai/artifact/NFvuSJ9CPACsYwYboC7XuQ) | A · Sección «Costos» propia | La ve quien configura el menú sin depender del permiso de almacén; 3 toques |
 | Ficha del producto: % y de dónde sale el costo | [maquetas](https://claude.ai/artifact/VFw8d6naWiKZKWsJa2YURD) | B · Pestaña «Costo» | % arriba, tres cifras y desglose en un lugar; el efecto del % se ve al teclear |
-| Ficha del artículo: % y merma real | [maquetas](https://claude.ai/artifact/6RSvUpgY8serHMQGmqWK9f) | A · «Sin capturar / Capturada» — **por afinar** | El dueño pidió mejorarla con lo aprendido en las maquetas de otras specs (094: color heredado de Apariencia, estado como ícono, sin mayúsculas ni insignias de colores); falta rehacerla y confirmarla |
-| Conteo vs ventas (S2) | [maquetas](https://claude.ai/artifact/KxsQHew5tGpHWaCcsYRr98) | Pendiente | |
-| Conteo sencilla/avanzada (S2) | [maquetas](https://claude.ai/artifact/RPsFWUsVS8C2itYvBX9n1d) | Pendiente | |
-| Existencias sencilla/avanzada (S2) | [maquetas](https://claude.ai/artifact/5wmZHee7CYAwTfU3NXSLtD) | Pendiente | |
+| Ficha del artículo: % y merma real | [maquetas](https://claude.ai/artifact/6RSvUpgY8serHMQGmqWK9f) | A2 · la A afinada | El dueño pidió afinarla con lo aprendido (094): panel `bg.muted` con (i), color activo heredado de Apariencia, estado escrito solo si es excepción, merma real como tarjeta gemela del costo con ícono de aviso; sin mayúsculas ni insignias de colores |
+| Conteo vs ventas (S2) | [maquetas](https://claude.ai/artifact/KxsQHew5tGpHWaCcsYRr98) | C · Agrupado por qué hacer | Tres grupos (revisar receta, usar el % sugerido, diferencia chica): dice qué hacer, no solo qué pasó |
+| Conteo sencilla/avanzada (S2) | [maquetas](https://claude.ai/artifact/RPsFWUsVS8C2itYvBX9n1d) | B · Lista del lugar | Recorrido por lugar con avance y teclado fijo; 6 de 8 renglones del lugar a 1024×600. El cambio de vista, como en Existencias |
+| Existencias sencilla/avanzada (S2) | [maquetas](https://claude.ai/artifact/5wmZHee7CYAwTfU3NXSLtD) | B · Tablero por estado, con otro cambio de vista | 14 de 20 a 1024×600. El dueño pidió que el cambio sencilla/avanzada sea con íconos, como el selector de vista de Ajustes del negocio (`SettingsLayout`, botones ícono + texto en `radiogroup`); se hace con `Segmented` y su prop `icon` (un solo componente para elegir entre pocas, R14) |
 | Ajustes › Almacén: descontar merma (S2) | [maquetas](https://claude.ai/artifact/NFvuSJ9CPACsYwYboC7XuQ) (pestaña S2) | Única disposición | Un renglón con interruptor; sin alternativa razonable |
 
 ## Project Structure
@@ -122,8 +124,8 @@ server/
 └── cmd/fudo-import/main.go                            # escribe expected_waste_pct
 web/src/
 ├── features/admin/CostSettingsSection.tsx (+ test)    # S1
-├── shared/ProductEditDialog.tsx, shared/CostBreakdownSheet.tsx (+ test)
-├── features/backoffice/articles/ArticleSheet.tsx, ExpectedWasteField.tsx (+ test)
+├── shared/ProductEditDialog.tsx, shared/producto/CostTab.tsx, shared/producto/CostBreakdownTable.tsx (+ test)
+├── features/backoffice/articles/ArticleSheet.tsx, ExpectedWasteField.tsx, RealWasteCard.tsx (+ tests)
 ├── features/backoffice/ (S2: CountVsSalesReport, vistas de conteo y existencias)
 └── api/admin.ts, api/backoffice.ts, api/pos.ts
 docs/mecanica/almacen.md                               # la precedencia y por qué el general no compone
