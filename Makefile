@@ -142,6 +142,9 @@ sqlc-vet: db-migrate ## Prepara TODA query contra el esquema real (db-prepare) ‚
 respaldo-anonimo: ## Baja producci√≥n, borra los datos personales y restaura en TEST_RESTORED_DATABASE_URL
 	bash scripts/respaldo-anonimo.sh
 
+entrantes-de-prueba: ## Siembra pedidos de plataforma pendientes en la base de ESTE worktree: make entrantes-de-prueba [n=3] [slug=gatobobah]
+	@bash scripts/entrantes-de-prueba.sh $(or $(n),1) $(or $(slug),gatobobah)
+
 db-restaurar: deps-up ## Restaura en dev un respaldo de prod CON sus permisos: make db-restaurar [dump=backups/prod/x.dump]
 	@bash scripts/restaurar-respaldo.sh $(dump)
 

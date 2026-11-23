@@ -21,7 +21,7 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 ## Phase 1: Setup
 
 - [X] T001 Verificar que 0117 sigue libre en `origin/develop` (`git fetch && git ls-tree origin/develop server/migrations/`) y que el id de permiso 39 no lo tomó otra rama; si no, renumerar en plan.md, data-model.md y aquí
-- [ ] T002 [P] Script de desarrollo `scripts/entrantes-de-prueba.sh` (y su objetivo `make entrantes-de-prueba n=…` en `Makefile`) que inserta N pedidos de plataforma pendientes en la base LOCAL del worktree, con renglones y `decide_before` a 11 min; se niega fuera de un worktree con `.env.worktree.local` y nunca toca `deploy-postgres-1`; su test en `scripts/tests/entrantes-de-prueba-test.sh`
+- [X] T002 [P] Script de desarrollo `scripts/entrantes-de-prueba.sh` (y su objetivo `make entrantes-de-prueba n=…` en `Makefile`) que inserta N pedidos de plataforma pendientes en la base LOCAL del worktree, con renglones y `decide_before` a 11 min; se niega fuera de un worktree con `.env.worktree.local` y nunca toca `deploy-postgres-1`; su test en `scripts/tests/entrantes-de-prueba-test.sh`
 
 ---
 
