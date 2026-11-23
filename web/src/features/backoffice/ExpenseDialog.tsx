@@ -645,8 +645,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                     <Text fontWeight="700">{visibleItems.length} {visibleItems.length === 1 ? 'renglón' : 'renglones'}</Text>
                     {multiWh && ticketWh !== null && (
                       <HStack gap={2}>
-                        <Text fontSize="sm" fontWeight="600">¿Dónde se guarda el ticket?</Text>
-                        <Segmented label="¿Dónde se guarda el ticket?" value={String(ticketWh)}
+                        <Text fontSize="sm" fontWeight="600">¿Dónde se guarda lo comprado?</Text>
+                        <Segmented label="¿Dónde se guarda lo comprado?" value={String(ticketWh)}
                           options={whList.map((w) => ({ value: String(w.id), label: w.name, icon: w.isSales ? <LuStore /> : <LuWarehouse /> }))}
                           onChange={(v) => {
                             setTicketWh(Number(v));

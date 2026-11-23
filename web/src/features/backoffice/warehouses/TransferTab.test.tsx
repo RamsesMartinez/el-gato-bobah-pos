@@ -74,7 +74,7 @@ describe('traspaso entre almacenes (spec 094, maqueta B)', () => {
     expect(body).toMatchObject({ fromWarehouseId: 2, toWarehouseId: 1,
       lines: [{ itemType: 'ingrediente', ingredientId: 7, qty: '2000' }] });
     expect(body.clientKey).toMatch(/^[0-9a-f-]{36}$/);
-    await waitFor(() => expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'Listo: 1 artículo de Bodega a Local' })));
+    await waitFor(() => expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringMatching(/^Listo: .+ de Bodega a Local$/) })));
     expect(within(await fila('Leche entera')).getByLabelText('Cuánto de Leche entera')).toHaveValue('');
   });
 

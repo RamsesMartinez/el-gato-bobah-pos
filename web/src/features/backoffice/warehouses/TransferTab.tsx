@@ -90,8 +90,11 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
   const send = useMutation({
     mutationFn: (confirmNegative: boolean) => backofficeApi.createTransfer(body(confirmNegative)),
     onSuccess: () => {
+      // Con un artículo se dice cuál y cuánto (prueba con usuario nuevo, 094): «1 artículo» no le decía
+      // a quien traspasó si quedó lo que quería.
       const n = chosen.length;
-      toaster.create({ title: `Listo: ${n} ${n === 1 ? 'artículo' : 'artículos'} de ${name(from)} a ${name(to)}`, type: 'success' });
+      const what = n === 1 ? `${qty[chosen[0].key]} ${typedUnit(chosen[0].unit).label} de ${chosen[0].name}` : `${n} artículos`;
+      toaster.create({ title: `Listo: ${what} de ${name(from)} a ${name(to)}`, type: 'success' });
       setQty({});
       setNote('');
       setConfirm(null);
@@ -212,7 +215,8 @@ export function TransferTab({ warehouses }: { warehouses: Warehouse[] }) {
               onKey={(k) => setRowQty(fieldRow.key, apply(qty[fieldRow.key] ?? '', k, typedUnit(fieldRow.unit).decimals))} />
           </Box>
           <Box flex="1" display={{ base: 'block', lg: 'none' }} />
-          <Button minH="56px" colorPalette="brand" onClick={() => setField(null)}>Listo</Button>
+          {/* Separado del pie: con el teclado abierto «Listo» y «Traspasar» quedaban a 5 px. */}
+          <Button minH="56px" mb={{ base: 0, lg: 8 }} variant="outline" onClick={() => setField(null)}>Listo</Button>
         </Flex>
       )}
       </Flex>
