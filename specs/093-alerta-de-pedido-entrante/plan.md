@@ -87,7 +87,7 @@ constitución).
 
 1. **Indicador global de pedidos por aceptar** (opción A): una fila de 52 px en la columna del área
    de trabajo de `AppShell`, antes de la franja de agotados, con `position: relative` y la capa
-   `FRANJA` (2100, `features/entrantes/capas.ts`) para quedar encima de hojas, toaster y bloqueo por PIN. Dice cuántos hay y el más
+   `FRANJA` (2100, `shared/entrantes/capas.ts`) para quedar encima de hojas, toaster y bloqueo por PIN. Dice cuántos hay y el más
    urgente (origen, cliente, minutos), y lleva «Ver pedidos» a `/pedidos`. Con el sonido bloqueado,
    agrega el botón «Toca para activar el sonido». En Pedidos no se pinta: la sección ya lo muestra.
    Reemplaza la franja de Vender.
@@ -100,8 +100,10 @@ constitución).
    Teléfono, dirección y cómo paga cuando el origen los da. **El más urgente va abierto** con sus
    renglones (como los del tablero, con borde `md`); los demás, plegados en un botón de 44 px
    «N productos» (avisa si alguno no está en el menú) que los abre. Botones: «Aceptar» verde sólido
-   a la izquierda con `flex=1` y «Rechazar» en contorno rojo aparte a la derecha. La lista de la
-   columna hace scroll propio (`maxH` en dvh). Rechazar abre `ConfirmSheet` destructivo con los 5
+   a la izquierda con `flex=1` y «Rechazar» en contorno rojo aparte a la derecha. La columna NO
+   tiene scroll propio (la página ya desplaza; un scroll dentro de otro confundía al dedo). Con la
+   columna a la vista, el tablero pasa a una sola columna hasta 1280 px (a 1024 se partía en dos de
+   ~290 px y cortaba los nombres). Rechazar abre `ConfirmSheet` destructivo con los 5
    motivos como filas de 52 px; «Rechazar pedido» se habilita al elegir uno.
 3. **Pedidos: ticket y pestaña «Cerrados»** (pedidos por el dueño al ver la maqueta): pestañas
    «En curso» y «Cerrados» (`Tabs` de Chakra, como en Caja) en el renglón del título, sin quitarle
@@ -123,7 +125,7 @@ Lo que cambió en el diseño por sus hallazgos:
 
 **Pantalla**
 
-- **Capas, en una sola constante** (`features/entrantes/capas.ts`, con su test): hojas de Chakra
+- **Capas, en una sola constante** (`shared/entrantes/capas.ts`, con su test): hojas de Chakra
   1400 < toaster 1700 < bloqueo por PIN 2000 < franja de pedidos **2100**. La franja queda encima del
   bloqueo por inactividad, que es justo cuando suele llegar un pedido; **bloqueada, la franja solo
   dice cuántos hay** (sin cliente ni productos) y el botón de activar sonido si hace falta; «Ver
@@ -133,7 +135,7 @@ Lo que cambió en el diseño por sus hallazgos:
 - **Con la franja de agotados a la vez**, la de pedidos va primero. Chrome medido con las dos en el
   recorrido de prueba, no por separado.
 - **La tarjeta abierta muestra hasta 3 renglones** y «+N más»: así sus botones quedan dentro de los
-  primeros ~300 px de la columna a 1024×600. La columna hace scroll propio. Cifra corregida: a
+  primeros ~300 px de la columna a 1024×600. (La revisión de código quitó después el scroll propio de la columna.) Cifra corregida: a
   1024×600 se decide el primero sin desplazar y el segundo queda a la vista con sus botones; el
   tercero pide desplazar la columna.
 - **La impresora va en el renglón del título** como `IconButton` de 44×44, sin margen negativo, y un
@@ -216,7 +218,7 @@ scripts/entrantes-de-prueba.sh                       # siembra pendientes en la 
 
 Se borran `AvisoDePlataforma`, `AvisoDePedidoEntrante`, `PedidosEntrantesSheet`,
 `usePedidosDePlataforma` y `api/pedidosDePlataforma.ts` con sus tests, reemplazados por
-`features/entrantes`. `urgencia.ts` se mueve a `features/entrantes`.
+`shared/entrantes`. `urgencia.ts` se mueve a `shared/entrantes`.
 
 **Structure Decision**: monorepo existente; la feature front vive en su propia carpeta porque la
 consumen el shell, Vender y Pedidos.
