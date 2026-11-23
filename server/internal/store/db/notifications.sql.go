@@ -733,7 +733,9 @@ select n.id, n.kind, n.warehouse_id, coalesce(n.item_key, 0)::bigint as item_key
             then coalesce(w.name, '') else '' end::text as warehouse_label
   from notifications n left join users u on u.id = n.opened_by
   left join warehouses w on w.id = n.warehouse_id
- where n.status = 'open'
+ -- El aviso de caducados vive solo en la campana (spec 098): el correo no lo pinta, y contarlo en el
+ -- asunto anunciaría avisos que el cuerpo no muestra.
+ where n.status = 'open' and n.kind <> 'expired_left'
  order by n.kind, n.opened_at
 `
 

@@ -19,22 +19,22 @@ por la razón correcta. Los bordes del spec van primero.
 ## Phase 1: Setup
 
 - [X] T001 Traer `origin/develop` y confirmar que la migración libre es la 0128 (`ls server/migrations`); si ya está tomada, usar la siguiente y renombrar en estos documentos
-- [ ] T002 Crear `server/migrations/0128_stock_lots.sql` con su cabecera goose y `set local lock_timeout = '3s'`
+- [X] T002 Crear `server/migrations/0128_stock_lots.sql` con su cabecera goose y `set local lock_timeout = '3s'`
 
 ## Phase 2: Foundational (bloquea todas las historias)
 
 ### Tests primero
 
 - [X] T003 [P] Tests table-driven en `server/internal/domain/lots_test.go`: `ParseExpiry` (rango 2000-01-01..hoy+10 años, fecha pasada válida, formato inválido → `ErrValidation`), `ValidLotBreakdown` (cantidad > 0, fecha repetida, suma > contado → `ErrLotsExceedCounted`), `ProjectLots` (sin fecha primero, sobrante de un lote caducado no retrasa al siguiente, caduca hoy, sin consumo, caducado, sin fecha negativo) y `DaysLeft`
-- [ ] T004 Test de migración en `server/internal/integration/migration_0128_test.go` sobre la base restaurada con dos empresas: tras el Up ninguna `stock_levels.on_hand` cambia y `stock_lots` está vacía (SC-006, FR-005); el Down (con lotes, asignaciones, desglose y un aviso `expired_left` cargados) baja sin error y un Up de nuevo funciona; agregar su renglón en el harness de Downs si hace falta (`harness_restaurado_test.go`)
-- [ ] T005 Test de aislamiento en `server/internal/integration/stock_lots_isolation_test.go`: `stock_lots`, `stock_lot_allocations` y `stock_count_line_lots` con `inTheThreeCases` (otra empresa, conexión reciclada, sin empresa) bajo `appRoleStore`; confirmar que `TestEveryCompanyTableIsIsolated` las recorre, y que un lote con un almacén de otra sucursal se rechaza por la llave compuesta (FR-062)
-- [ ] T006 Tests de borde de la regla en `server/internal/integration/stock_lots_test.go` (helpers `lotIn`, `lotsOf`, `undatedOf` que leen la base): (a) lote sin fecha: un positivo sin fecha no crea lote y la suma de lotes + sin fecha = existencia; (b) dos compras con la misma fecha y almacén = un lote; en otro almacén = dos; (c) venta: sin fecha primero, luego por fecha; (d) nunca de un caducado: con un caducado y uno bueno, vender más que lo bueno deja el bueno en 0, el caducado intacto y lo sin fecha negativo; (e) caduca hoy (con `business_settings.timezone`) todavía se descuenta; (f) un `insert` de varias filas del mismo artículo descuenta en orden sin contar dos veces; (g) ningún lote queda negativo (corrección negativa más grande que el lote)
+- [X] T004 Test de migración en `server/internal/integration/migration_0128_test.go` sobre la base restaurada con dos empresas: tras el Up ninguna `stock_levels.on_hand` cambia y `stock_lots` está vacía (SC-006, FR-005); el Down (con lotes, asignaciones, desglose y un aviso `expired_left` cargados) baja sin error y un Up de nuevo funciona; agregar su renglón en el harness de Downs si hace falta (`harness_restaurado_test.go`)
+- [X] T005 Test de aislamiento en `server/internal/integration/stock_lots_isolation_test.go`: `stock_lots`, `stock_lot_allocations` y `stock_count_line_lots` con `inTheThreeCases` (otra empresa, conexión reciclada, sin empresa) bajo `appRoleStore`; confirmar que `TestEveryCompanyTableIsIsolated` las recorre, y que un lote con un almacén de otra sucursal se rechaza por la llave compuesta (FR-062)
+- [X] T006 Tests de borde de la regla en `server/internal/integration/stock_lots_test.go` (helpers `lotIn`, `lotsOf`, `undatedOf` que leen la base): (a) lote sin fecha: un positivo sin fecha no crea lote y la suma de lotes + sin fecha = existencia; (b) dos compras con la misma fecha y almacén = un lote; en otro almacén = dos; (c) venta: sin fecha primero, luego por fecha; (d) nunca de un caducado: con un caducado y uno bueno, vender más que lo bueno deja el bueno en 0, el caducado intacto y lo sin fecha negativo; (e) caduca hoy (con `business_settings.timezone`) todavía se descuenta; (f) un `insert` de varias filas del mismo artículo descuenta en orden sin contar dos veces; (g) ningún lote queda negativo (corrección negativa más grande que el lote)
 
 ### Implementación
 
 - [X] T007 [P] Implementar `server/internal/domain/lots.go` (`ParseExpiry`, `ValidLotBreakdown`, `ErrLotsExceedCounted`, `DaysLeft`, `ProjectLots`) hasta que T003 pase
-- [ ] T008 Migración `server/migrations/0128_stock_lots.sql` según [data-model.md](data-model.md): `stock_movements_id_company_key`, tablas `stock_lots`, `stock_lot_allocations`, `stock_count_line_lots` con RLS (`nullif`), grants y llaves compuestas; columnas `stock_movements.expires_on`, `expense_items.expires_on`, `waste_records.lot_expires_on`; checks de `notifications` (`expired_left`, `expired_cleared`); `business_today`; `apply_stock_lots` y `trg_stock_movement_lots` con las reglas de R4 y los atajos y la fecha derivada de R12; `evaluate_expired_left`; Down de R12. Hasta que T004–T006 pasen
-- [ ] T009 Clasificar `stock_lots` y `stock_count_line_lots` en `app.MergeTables` y `app.UnitChangeTables` (`server/internal/app/`), hasta que `TestEveryTableThatPointsToAnArticleIsClassified` pase
+- [X] T008 Migración `server/migrations/0128_stock_lots.sql` según [data-model.md](data-model.md): `stock_movements_id_company_key`, tablas `stock_lots`, `stock_lot_allocations`, `stock_count_line_lots` con RLS (`nullif`), grants y llaves compuestas; columnas `stock_movements.expires_on`, `expense_items.expires_on`, `waste_records.lot_expires_on`; checks de `notifications` (`expired_left`, `expired_cleared`); `business_today`; `apply_stock_lots` y `trg_stock_movement_lots` con las reglas de R4 y los atajos y la fecha derivada de R12; `evaluate_expired_left`; Down de R12. Hasta que T004–T006 pasen
+- [X] T009 Clasificar `stock_lots` y `stock_count_line_lots` en `app.MergeTables` y `app.UnitChangeTables` (`server/internal/app/`), hasta que `TestEveryTableThatPointsToAnArticleIsClassified` pase
 - [ ] T010 [P] `server/queries/lots.sql` con las consultas de lectura (lotes por almacén o sucursal, consumo de 30 días, lo pendiente de merma por lote, fechas conocidas por artículo) y `make sqlc`
 
 **Checkpoint**: la regla vive en la base y cubre a la versión anterior; ninguna existencia cambió.
@@ -135,8 +135,8 @@ por la razón correcta. Los bordes del spec van primero.
 
 ## Phase 10: Unión y cambio de unidad
 
-- [ ] T034 Tests en `server/internal/integration/stock_lots_merge_test.go`: unir pasa los lotes al destino con el factor por almacén y fecha (se suman si coinciden) y deja los del origen en 0; cambiar la unidad directo escala lotes, desglose y asignaciones
-- [ ] T035 Mover lotes en la unión y el reemplazo (`server/internal/app/` de unión y cambio de unidad, `server/queries/ingredient_merge.sql`), con candados de `stock_levels` en orden de id
+- [X] T034 Tests en `server/internal/integration/stock_lots_merge_test.go`: unir pasa los lotes al destino con el factor por almacén y fecha (se suman si coinciden) y deja los del origen en 0; cambiar la unidad directo escala lotes, desglose y asignaciones
+- [X] T035 Mover lotes en la unión y el reemplazo (`server/internal/app/` de unión y cambio de unidad, `server/queries/ingredient_merge.sql`), con candados de `stock_levels` en orden de id
 
 ---
 
