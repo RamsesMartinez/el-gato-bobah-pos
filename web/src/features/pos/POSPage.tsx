@@ -45,6 +45,8 @@ import { PlatformPriceDialog } from './PlatformPriceDialog';
 import { desglosePrecio, nombreDeLista, precioDeLista } from './precioPlataforma';
 import { SearchBar } from './SearchBar';
 import { FilaDeCuentas } from './FilaDeCuentas';
+import { AccountsColumn } from './AccountsColumn';
+import { useDeliverAccount } from './useDeliverAccount';
 import { TodasLasCuentasSheet } from './TodasLasCuentasSheet';
 import { DescartarCuentaSheet } from './DescartarCuentaSheet';
 import { hayQuePreguntar } from './estadosDeCuenta';
@@ -230,6 +232,20 @@ export function POSPage() {
       setCobrando(aPedidoParaCobrar(pedido));
     })();
   });
+
+  // Spec 089: cobrar una cuenta desde la columna o la lista, sin abrirla. Es un pedido ya enviado:
+  // se lee del servidor (el saldo lo decide él) y se abre la misma hoja de cobro.
+  const chargeAccount = (c: AccountItem) => {
+    if (c.kind !== 'order' || !c.orderId) return;
+    posApi.order(c.orderId)
+      .then((pedido) => {
+        ticketDrawer.onClose();
+        setSesionDeCobro((n) => n + 1);
+        setCobrando(aPedidoParaCobrar(pedido));
+      })
+      .catch((e: unknown) => toaster.create({ title: 'No se pudo abrir el cobro', description: mensajeDeError(e), type: 'error' }));
+  };
+  const { deliver: deliverAccount, delivering } = useDeliverAccount();
 
   // La venta termina cuando el pedido queda saldado. Se RELEE para imprimir: el ticket estampa
   // PAGADO o POR COBRAR y solo el servidor lo sabe.
@@ -547,78 +563,98 @@ export function POSPage() {
     onCancelarResto: () => setPerdiendo(true),
     onQuitarDeCocina: setQuitando,
     onImprimir: () => setPapel(cuentaImpresa(vista, new Date())),
+    liveAccount: vivas?.items?.find((c) => c.key === claveSeleccionada),
+    onDeliver: deliverAccount,
+    delivering: delivering !== null && delivering === claveSeleccionada,
   };
 
-  const catalog = (
-    <VStack align="stretch" gap={2} h="100%" overflow="hidden">
-      <Box px={{ base: 3, md: 4 }} pt={3}>
-        <PlatformPicker
-          platformId={vista.platformId}
-          platformOrderRef={folioActual}
-          bloqueado={vista.tipo === 'pedido'}
-          onCambiar={(id) => { setFolioTecleado(null); cuenta.cabecera({ platformId: id }); }}
-          onFolio={(texto) => {
-            if (vista.tipo === 'nueva') cuenta.cabecera({ platformOrderRef: texto });
-            else setFolioTecleado({ cuenta: claveCuenta, texto });
-          }}
-          onFolioListo={() => {
-            if (vista.tipo !== 'captura' || !folioTecleado || folioTecleado.cuenta !== claveCuenta) return;
-            if (folioTecleado.texto.trim() !== vista.platformOrderRef) {
-              cuenta.cabecera({ platformOrderRef: folioTecleado.texto.trim() || null });
-            }
-          }}
-        />
-      </Box>
+  const picker = (
+    <PlatformPicker
+      platformId={vista.platformId}
+      platformOrderRef={folioActual}
+      bloqueado={vista.tipo === 'pedido'}
+      onCambiar={(id) => { setFolioTecleado(null); cuenta.cabecera({ platformId: id }); }}
+      onFolio={(texto) => {
+        if (vista.tipo === 'nueva') cuenta.cabecera({ platformOrderRef: texto });
+        else setFolioTecleado({ cuenta: claveCuenta, texto });
+      }}
+      onFolioListo={() => {
+        if (vista.tipo !== 'captura' || !folioTecleado || folioTecleado.cuenta !== claveCuenta) return;
+        if (folioTecleado.texto.trim() !== vista.platformOrderRef) {
+          cuenta.cabecera({ platformOrderRef: folioTecleado.texto.trim() || null });
+        }
+      }}
+    />
+  );
+  const campo = (
+    <HStack flex="1" minW={0} gap={1}>
+      <Box flex="1" minW={0}><SearchBar value={search} onChange={setSearch} /></Box>
+      <IconButton aria-label="Cerrar búsqueda" size="lg" minW="44px" variant="ghost" colorPalette="gray"
+        onClick={() => { setSearch(''); setBuscando(false); }}><LuX /></IconButton>
+    </HStack>
+  );
+  const herramientas = (
+    <>
+      {buscadorPlegado ? (
+        !campoDeBusqueda && (
+          <IconButton aria-label="Buscar producto" size="lg" minW="44px" variant="outline" colorPalette="gray"
+            onClick={() => setBuscando(true)}><LuSearch /></IconButton>
+        )
+      ) : (
+        <Box w="clamp(120px, 20%, 200px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
+      )}
+      <IconButton
+        aria-label={showPrices ? 'Ocultar precios' : 'Mostrar precios'}
+        size="lg" variant={showPrices ? 'outline' : 'solid'}
+        colorPalette={showPrices ? 'gray' : undefined}
+        onClick={togglePrices}
+      >
+        {showPrices ? <LuEye /> : <LuEyeOff />}
+      </IconButton>
+      {canEdit && (
+        <IconButton
+          aria-label={editMode ? 'Salir de edición' : 'Editar productos'}
+          size="lg" variant={editMode ? 'solid' : 'outline'}
+          colorPalette={editMode ? 'orange' : 'gray'}
+          onClick={() => setEditMode((v) => !v)}
+        >
+          <LuPencil />
+        </IconButton>
+      )}
+    </>
+  );
+  const onNueva = () => { limpiarMotivo(); cuentaNueva(); };
+
+  // Spec 089, maqueta B: en modo ancho, canales y herramientas en UN renglón y las cuentas en una
+  // columna a la izquierda del catálogo. En angosto la columna no cabe: canales arriba y la fila de
+  // fichas con las herramientas, como antes.
+  const encabezado = wide ? (
+    <HStack px={{ base: 3, md: 4 }} pt={3} gap={2} align="center">
+      {campoDeBusqueda ? campo : <Box flex="1" minW={0}>{picker}</Box>}
+      {herramientas}
+    </HStack>
+  ) : (
+    <>
+      <Box px={{ base: 3, md: 4 }} pt={3}>{picker}</Box>
       <Box px={{ base: 3, md: 4 }} pt={2}>
         {/* Fila 2: las cuentas vivas · buscar · precios · editar. Las cuentas son lo único elástico. */}
         <HStack gap={2} align="center">
-          {campoDeBusqueda ? (
-            <HStack flex="1" minW={0} gap={1}>
-              <Box flex="1" minW={0}><SearchBar value={search} onChange={setSearch} /></Box>
-              <IconButton aria-label="Cerrar búsqueda" size="lg" minW="44px" variant="ghost" colorPalette="gray"
-                onClick={() => { setSearch(''); setBuscando(false); }}><LuX /></IconButton>
-            </HStack>
-          ) : (
+          {campoDeBusqueda ? campo : (
             <Box flex="1" minW={0}>
               <FilaDeCuentas cuentas={vivas?.items ?? []} seleccionada={claveSeleccionada}
                 recientes={recientes} nueva={seleccion === null}
-                onElegir={elegirCuenta} onNueva={() => { limpiarMotivo(); cuentaNueva(); }}
+                onElegir={elegirCuenta} onNueva={onNueva}
                 onVerTodas={() => setTodasAbierta(true)} />
             </Box>
           )}
-          {buscadorPlegado ? (
-            !campoDeBusqueda && (
-              <IconButton aria-label="Buscar producto" size="lg" minW="44px" variant="outline" colorPalette="gray"
-                onClick={() => setBuscando(true)}><LuSearch /></IconButton>
-            )
-          ) : (
-            <Box w="clamp(120px, 20%, 200px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
-          )}
-          <IconButton
-            aria-label={showPrices ? 'Ocultar precios' : 'Mostrar precios'}
-            size="lg" variant={showPrices ? 'outline' : 'solid'}
-            colorPalette={showPrices ? 'gray' : undefined}
-            onClick={togglePrices}
-          >
-            {showPrices ? <LuEye /> : <LuEyeOff />}
-          </IconButton>
-          {canEdit && (
-            <IconButton
-              aria-label={editMode ? 'Salir de edición' : 'Editar productos'}
-              size="lg" variant={editMode ? 'solid' : 'outline'}
-              colorPalette={editMode ? 'orange' : 'gray'}
-              onClick={() => setEditMode((v) => !v)}
-            >
-              <LuPencil />
-            </IconButton>
-          )}
+          {herramientas}
         </HStack>
       </Box>
-      {editMode && (
-        <Box mx={{ base: 3, md: 4 }} px={3} py={2} borderRadius="md" bg="orange.500" color="white" fontWeight="600" fontSize="sm">
-          Modo edición — toca un producto para editarlo (los cambios se ven al instante)
-        </Box>
-      )}
+    </>
+  );
+
+  const productos = (
+    <>
       <Box px={{ base: 3, md: 4 }}>
         {!search && <CategoryRail categories={allCategories} selection={selection} onSelect={setSelection} />}
       </Box>
@@ -644,6 +680,27 @@ export function POSPage() {
         />
       </Box>
       </Box>
+    </>
+  );
+
+  const catalog = (
+    <VStack align="stretch" gap={2} h="100%" overflow="hidden">
+      {encabezado}
+      {editMode && (
+        <Box mx={{ base: 3, md: 4 }} px={3} py={2} borderRadius="md" bg="orange.500" color="white" fontWeight="600" fontSize="sm">
+          Modo edición — toca un producto para editarlo (los cambios se ven al instante)
+        </Box>
+      )}
+      {wide ? (
+        <Flex flex="1" minH={0}>
+          <AccountsColumn cuentas={vivas?.items ?? []} seleccionada={claveSeleccionada} nueva={seleccion === null}
+            onElegir={elegirCuenta} onNueva={onNueva} onDeliver={deliverAccount} onCharge={chargeAccount}
+            delivering={delivering} />
+          <VStack align="stretch" gap={2} flex="1" minW={0} minH={0}>
+            {productos}
+          </VStack>
+        </Flex>
+      ) : productos}
     </VStack>
   );
 
@@ -733,7 +790,8 @@ export function POSPage() {
       />
 
       <TodasLasCuentasSheet isOpen={todasAbierta} seleccionada={claveSeleccionada}
-        onElegir={elegirCuenta} onClose={() => setTodasAbierta(false)} />
+        onElegir={elegirCuenta} onClose={() => setTodasAbierta(false)}
+        onDeliver={deliverAccount} onCharge={chargeAccount} delivering={delivering} />
 
       <DescartarCuentaSheet isOpen={descartando} nombre={vista.nombre}
         productos={vista.nuevos.length} total={vista.totalNuevo}

@@ -8,7 +8,9 @@ import {
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import type { AccountGroup, AccountItem } from '../../types/pos';
 import { money } from '../../utils/format';
-import { ESTADO, antiguedad, nombreDeCuenta } from './estadosDeCuenta';
+import { missingFor } from '../../domain/cuentas';
+import { antiguedad, nombreDeCuenta } from './estadosDeCuenta';
+import { AccountActions } from './AccountActions';
 
 // TODAS LAS CUENTAS VIVAS, agrupadas (spec 030, US1; lienzo V2-2).
 //
@@ -26,21 +28,19 @@ const GRUPOS: Array<{ g: AccountGroup; titulo: string }> = [
 // Con el teclado abierto la lista se queda en ~150 px: el buscador solo cuando hay de dónde buscar.
 const CON_BUSCADOR = 8;
 
-function aLaDerecha(c: AccountItem): string {
-  if (c.state === 'paid_in_kitchen') return 'pagada';
-  if (c.state === 'closed_with_new') return '';
-  if (c.state === 'partly_paid' || c.state === 'delivered_owes') return money(Number(c.outstanding));
-  return money(Number(c.total));
-}
-
 interface Props {
   isOpen: boolean;
   seleccionada: string | null;
   onElegir: (c: AccountItem) => void;
   onClose: () => void;
+  // Spec 089: lo que le falta a la cuenta se resuelve desde aquí, sin elegirla primero.
+  onDeliver: (c: AccountItem) => void;
+  onCharge: (c: AccountItem) => void;
+  // La cuenta que se está entregando: su botón espera y no manda dos veces.
+  delivering?: string | null;
 }
 
-export function TodasLasCuentasSheet({ isOpen, seleccionada, onElegir, onClose }: Props) {
+export function TodasLasCuentasSheet({ isOpen, seleccionada, onElegir, onClose, onDeliver, onCharge, delivering }: Props) {
   const hora = useHoraDelNegocio();
   const [buscar, setBuscar] = useState('');
   const { data, isPending, dataUpdatedAt } = useQuery({
@@ -98,7 +98,7 @@ export function TodasLasCuentasSheet({ isOpen, seleccionada, onElegir, onClose }
                   </Heading>
                   <VStack align="stretch" gap={1}>
                     {del.map((c) => {
-                      const e = ESTADO[c.state];
+                      const m = missingFor(c);
                       const nombre = nombreDeCuenta(c);
                       const cuando = g === 'previous_days'
                         ? hora.soloFecha(c.openedAt)
@@ -106,18 +106,19 @@ export function TodasLasCuentasSheet({ isOpen, seleccionada, onElegir, onClose }
                       const sub = [c.number !== null ? `#${c.number}` : null, cuando,
                         c.kind === 'draft' ? `${c.lineCount} ${c.lineCount === 1 ? 'producto' : 'productos'}` : null].filter(Boolean).join(' · ');
                       return (
-                        <Button key={c.key} aria-label={`${nombre} · ${e.texto}`} minH="56px" h="auto" py={2} px={3}
-                          variant={c.key === seleccionada ? 'subtle' : 'outline'} colorPalette="gray"
-                          justifyContent="space-between" onClick={() => { onElegir(c); salir(); }}>
-                          <VStack align="start" gap={0} minW={0}>
-                            <HStack gap={2} minW={0}>
-                              <Text fontWeight="700" truncate>{nombre}</Text>
-                              <Text fontSize="xs" fontWeight="700" color={`${e.color}.fg`} flexShrink={0}>{e.texto}</Text>
-                            </HStack>
-                            <Text fontSize="xs" color="fg.muted" truncate>{sub}</Text>
-                          </VStack>
-                          <Text fontWeight="700" flexShrink={0}>{aLaDerecha(c)}</Text>
-                        </Button>
+                        <HStack key={c.key} data-renglon gap={2} align="stretch">
+                          <Button aria-label={`${nombre} · ${m.text}`} minH="56px" h="auto" py={2} px={3} flex="1" minW={0}
+                            variant={c.key === seleccionada ? 'subtle' : 'outline'} colorPalette="gray"
+                            justifyContent="flex-start" onClick={() => { onElegir(c); salir(); }}>
+                            <VStack align="start" gap={0} minW={0}>
+                              <Text fontWeight="700" truncate maxW="100%">{nombre}</Text>
+                              <Text fontSize="sm" fontWeight="700" color={`${m.color}.fg`} truncate maxW="100%">{m.text}</Text>
+                              <Text fontSize="xs" color="fg.muted" truncate maxW="100%">{sub}</Text>
+                            </VStack>
+                          </Button>
+                          <AccountActions c={c} onDeliver={onDeliver} onCharge={(x) => { onCharge(x); salir(); }}
+                            delivering={delivering === c.key} />
+                        </HStack>
                       );
                     })}
                   </VStack>

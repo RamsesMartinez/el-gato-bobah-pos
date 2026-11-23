@@ -505,6 +505,15 @@ describe('las cuentas vivas en el cierre', () => {
     expect(screen.getByText('Bosque de Noruega')).toBeInTheDocument();
   });
 
+  // Spec 089: el cierre nombra cada cuenta con lo que le falta, igual que Vender.
+  test('cada cuenta pendiente dice lo que le falta, con el mismo texto que Vender', async () => {
+    wrap(<CuentasDelCierre pending={[]} cuentas={VIVAS} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: /Cuentas pendientes/ }));
+    expect(screen.getByText('#2 · Falta cobrar $195')).toBeInTheDocument();
+    expect(screen.getByText('Sin enviar · $74')).toBeInTheDocument();
+    expect(screen.queryByText(/Entregada · debe|Capturando/)).toBeNull();
+  });
+
   // Pedido 478 (7-nov-2026): cobrado y entregado, con algo «Nuevo» colgando. La fila decía «Cerrada»
   // y $0, y el equipo creyó que eso no lo dejaba cerrar y pidió soporte.
   test('un pedido cerrado con algo sin mandar dice cuántos productos y no un saldo de $0', async () => {

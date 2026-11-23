@@ -30,6 +30,7 @@ const api = vi.hoisted(() => ({
   sendDraft: vi.fn(),
   discardDraft: vi.fn(),
   paymentMethods: vi.fn(),
+  deliverOrder: vi.fn(),
 }));
 vi.mock('../../api/pos', () => ({
   posApi: {
@@ -224,6 +225,43 @@ describe('una sola fila de cuentas (US1)', () => {
     expect(screen.queryByPlaceholderText(/buscar/i)).toBeNull();
     await userEvent.click(lupa);
     expect(screen.getByPlaceholderText(/buscar/i)).toBeInTheDocument();
+  });
+});
+
+// Spec 089, US2: lo que le falta a una cuenta se resuelve desde Vender sin abrirla primero.
+describe('resolver una cuenta desde la columna', () => {
+  const pedidoDe = (id: number, folioName: string, over: Record<string, unknown> = {}) => ({
+    id, number: id, folioName, status: 'entregada', serviceType: 'mostrador', deliveryPlatformId: null,
+    platformOrderRef: null, customerName: null, subtotal: '195.00', discount: '0.00', deliveryFee: '0.00',
+    total: '195.00', currency: 'MXN', paid: false, outstanding: '195.00', openedAt: '',
+    lines: [{ id: 1, productName: 'Crepa', quantity: '1', unitPrice: '195.00', lineTotal: '195.00', delivered: '1', cancelled: false, modifiers: [] }],
+    payments: [], ...over,
+  });
+
+  test('«Cobrar» abre la hoja de cobro de ESE pedido aunque la cuenta abierta sea otra', async () => {
+    anchoDelPos.width = 1024;
+    vivas.current = [
+      cuenta({ key: 'd:d-1', kind: 'draft', draftId: 'd-1', orderId: null, folioName: 'Levkoy', state: 'capturing', group: 'capturing' }),
+      cuenta({ key: 'o:7', orderId: 7, folioName: 'Bosque de Noruega', state: 'delivered_owes', group: 'delivered_owes', outstanding: '195.00', total: '195.00' }),
+    ];
+    usePosStore.getState().seleccionar({ kind: 'draft', id: 'd-1' });
+    api.getDraft.mockResolvedValue(draft());
+    api.order.mockResolvedValue(pedidoDe(7, 'Bosque de Noruega'));
+    montar();
+    await userEvent.click(await screen.findByRole('button', { name: 'Cobrar $195 Bosque de Noruega' }));
+    await waitFor(() => expect(api.order).toHaveBeenCalledWith(7));
+    const hoja = await screen.findByRole('dialog');
+    expect(within(hoja).getAllByText(/\$195/).length).toBeGreaterThan(0);
+  });
+
+  test('«Entregar» entrega ese pedido sin abrirlo', async () => {
+    anchoDelPos.width = 1024;
+    vivas.current = [cuenta({ key: 'o:6', orderId: 6, folioName: 'Siamés', state: 'paid_in_kitchen', paid: '63.00', total: '63.00', outstanding: '0.00' })];
+    api.deliverOrder.mockResolvedValue(undefined);
+    montar();
+    await userEvent.click(await screen.findByRole('button', { name: 'Entregar Siamés' }));
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalledWith(6));
+    expect(usePosStore.getState().selected).toBeNull();
   });
 });
 

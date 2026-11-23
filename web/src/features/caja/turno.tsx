@@ -7,7 +7,7 @@ import { ReasonSheet } from '../../components/ReasonSheet';
 import { posApi } from '../../api/pos';
 import { descartarCuenta } from '../pos/descartarCuenta';
 import type { AccountItem } from '../../types/pos';
-import { ESTADO, nombreDeCuenta } from '../../domain/cuentas';
+import { missingFor, nombreDeCuenta } from '../../domain/cuentas';
 import { Box, Text, Button, Stack, VStack, HStack, Table, Textarea, Center, Spinner, Stat, Badge, SimpleGrid, Grid } from '@chakra-ui/react';
 import { useAnchoMinimo, ANCHO_2K, ANCHO_PC, desde } from '../../hooks/useAnchoMinimo';
 import { LuArrowLeftRight, LuChevronDown, LuChevronUp, LuChevronLeft, LuChevronRight, LuCheck, LuLock } from 'react-icons/lu';
@@ -915,7 +915,7 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
                   <Box minW={0} flex="1">
                     <Text fontWeight="600" truncate>{nombre(c)}</Text>
                     <Text fontSize="xs" color="fg.muted" truncate>
-                      {c.number !== null ? `#${c.number} · ` : ''}{ESTADO[c.state].texto}
+                      {c.number !== null ? `#${c.number} · ` : ''}{missingFor(c).text}
                     </Text>
                   </Box>
                   {/* Un pedido cerrado no debe nada: lo vivo es lo que falta mandar, no un saldo de $0. */}
