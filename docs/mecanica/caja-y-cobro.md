@@ -113,3 +113,27 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     servidor responde 403 si se manda sin el permiso.
   - **La explicación del cierre se guarda como nota** (`cash_session_adjustments`, tipo `note`) en
     la misma transacción del cierre: si el cierre falla, no queda nota huérfana.
+
+## Cuentas en curso en Vender: lo que le falta a cada una (spec 089)
+
+- **«Lo que le falta» es nombre, no regla.** `missingFor` (en `web/src/domain/cuentas.ts`) traduce
+  el estado que decide el servidor (`domain.AccountState`): «Falta cobrar $X y entregar», «Falta
+  entregar», «Falta cobrar $X», «Sin enviar». El monto es `outstanding` del servidor. Vender, la hoja
+  «Todas las cuentas», el ticket y el cierre de caja leen esa misma función; una pantalla que
+  recalcule el estado vuelve a decir cosas distintas de la misma cuenta.
+- **Entregar desde Vender** es el mismo `POST /orders/:id/deliver` que «Entregar todo» en Pedidos,
+  sin permiso propio (igual que cobrar). Sin estado optimista: la cuenta sale de la fila cuando el
+  servidor lo confirma; un segundo toque en la misma cuenta mientras va no manda otra entrega, y
+  entregar otra cuenta a la vez sí se manda (`useDeliverAccount`, candado por cuenta).
+- **Cobrar desde la columna no pisa una hoja abierta**: solo cuenta la respuesta del último toque y
+  nunca reemplaza un cobro en curso. Y solo el cobro de la cuenta abierta vuelve «propios» sus
+  cambios (`isOwnCharge`): cobrar otra no calla el aviso de que otra tableta cobró la abierta.
+- **Columna en modo ancho, fila en angosto.** Con el contenedor de Vender ≥ 900 px las cuentas van
+  en una columna de 248 px a la izquierda del catálogo, en orden de antigüedad que NO cambia al
+  elegir (en una lista vertical, subir la elegida movía la cuenta bajo el dedo). El renglón, y el de
+  la hoja «Todas las cuentas», trae su botón solo si le falta UNA cosa: «Entregar» junto a «Cobrar»
+  invitaba a entregar sin cobrar. Debajo de 900 px queda la fila de fichas con «+N».
+- **La hoja «Todas las cuentas» es la única que mira las deudas de más de 90 días** (pide
+  `olderDebts`). En modo ancho se abre desde el encabezado «Cuentas (N)» de la columna.
+- **Los canales no crecen con plataforma**: el folio va en el mismo renglón y cómo corregir un
+  precio queda detrás de la ayuda.

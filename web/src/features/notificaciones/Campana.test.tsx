@@ -167,10 +167,13 @@ describe('Franja de «se acabó»', () => {
     expect(await screen.findByTestId('franja-de-agotado')).toBeTruthy();
   });
 
-  test('va debajo del aviso de pedido de plataforma, aunque crezca', async () => {
+  // Usa el data-testid que la app REALMENTE pinta (FranjaDeEntrantes, spec 093). Con el viejo
+  // («aviso-de-pedido-entrante») esta prueba pasaba contra un elemento que ya no existía, y el aviso
+  // de agotado tapaba la franja de pedidos por aceptar en producción (encontrado en la spec 089).
+  test('va debajo de la franja de pedidos por aceptar, aunque crezca', async () => {
     api.list.mockResolvedValue({ items: [aviso({ id: 7, banner: true })] });
     const pedido = document.createElement('div');
-    pedido.setAttribute('data-testid', 'aviso-de-pedido-entrante');
+    pedido.setAttribute('data-testid', 'franja-de-entrantes');
     pedido.getBoundingClientRect = () => ({ bottom: 92 } as DOMRect);
     document.body.appendChild(pedido);
     montar(<FranjaDeAgotado onVer={() => {}} />);
@@ -184,7 +187,7 @@ describe('Franja de «se acabó»', () => {
     api.list.mockResolvedValue({ items: [] });
     let medidas = 0;
     const pedido = document.createElement('div');
-    pedido.setAttribute('data-testid', 'aviso-de-pedido-entrante');
+    pedido.setAttribute('data-testid', 'franja-de-entrantes');
     pedido.getBoundingClientRect = () => { medidas++; return { bottom: 0 } as DOMRect; };
     document.body.appendChild(pedido);
     montar(<FranjaDeAgotado onVer={() => {}} />);

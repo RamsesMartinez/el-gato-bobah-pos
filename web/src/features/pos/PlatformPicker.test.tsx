@@ -112,3 +112,49 @@ describe('PlatformPicker · el folio de la plataforma', () => {
     expect(campoDeFolio()).toBeNull();
   });
 });
+
+// Spec 089: los canales gastan un renglón de 44 px, también con una plataforma elegida. Antes
+// crecía dos renglones de texto (~40 px más, 135 px con el folio partido) justo cuando hay más pedidos.
+describe('PlatformPicker · canales compactos', () => {
+  beforeEach(() => {
+    estado = { platformId: null, ref: '' };
+    vi.clearAllMocks();
+  });
+
+  it('con una plataforma elegida no agrega renglones de texto debajo', () => {
+    montar();
+    fireEvent.click(screen.getByRole('button', { name: /Uber Eats/ }));
+    expect(screen.queryByText(/Cobrando con precios de/)).toBeNull();
+    expect(screen.queryByText(/Mantén presionado/)).toBeNull();
+    expect(screen.getByRole('button', { name: /Uber Eats/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /Mostrador/ })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('cada canal mide exactamente 44 px de alto: el grupo no crece', () => {
+    montar();
+    for (const n of [/Mostrador/, /Didi/, /Rappi/, /Uber Eats/]) {
+      const b = screen.getByRole('button', { name: n });
+      expect(getComputedStyle(b).height).toBe('44px');
+    }
+  });
+
+  it('cómo corregir un precio queda detrás de un botón de ayuda de 44 px', () => {
+    montar();
+    fireEvent.click(screen.getByRole('button', { name: /Uber Eats/ }));
+    const ayuda = screen.getByRole('button', { name: 'Cómo corregir un precio' });
+    expect(parseInt(getComputedStyle(ayuda).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    fireEvent.click(ayuda);
+    expect(screen.getByText(/Mantén presionado un producto para corregir su precio/)).toBeInTheDocument();
+  });
+
+  it('en Mostrador o con el pedido ya enviado no hay ayuda de precios', () => {
+    montar();
+    expect(screen.queryByRole('button', { name: 'Cómo corregir un precio' })).toBeNull();
+  });
+
+  it('con el pedido ya enviado tampoco: sus precios ya se cobraron', () => {
+    estado = { platformId: 6, ref: 'U1' };
+    montar(true);
+    expect(screen.queryByRole('button', { name: 'Cómo corregir un precio' })).toBeNull();
+  });
+});

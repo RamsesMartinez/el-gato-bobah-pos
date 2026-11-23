@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { tokenDeApi } from './ambiente';
+import { tokenDeApi, PRODUCTO } from './ambiente';
 import { botonCobrar, crearCuentaPorApi, entrar as entrarAlPos, fichas, mandarPorApi, productoPorNombre } from './pos';
 
 // TAREAS QUE QUEDARON ABIERTAS EN SPECS YA ENTREGADOS.
@@ -49,7 +49,7 @@ test('005/T047 · con cuentas vivas el mosaico conserva sus renglones', async ({
   expect(antes, 'no se encontró el mosaico').toBeGreaterThan(0);
 
   const jwt = await tokenDeApi();
-  const producto = await productoPorNombre(jwt, 'Dedos de Queso Pza');
+  const producto = await productoPorNombre(jwt, PRODUCTO);
   for (let i = 0; i < 6; i++) await crearCuentaPorApi(jwt, producto);
   await page.reload();
   await entrar(page);
@@ -86,7 +86,7 @@ test('001/T037 · el ticket se ve contra el desplegado, sin instalar nada', asyn
   // Un pedido propio, creado y mandado como lo haría otra tableta: la prueba ya no depende de que el
   // ambiente tenga deuda. La limpieza de la suite lo cobra y lo entrega al final.
   const jwt = await tokenDeApi();
-  const producto = await productoPorNombre(jwt, 'Dedos de Queso Pza');
+  const producto = await productoPorNombre(jwt, PRODUCTO);
   const { order } = await mandarPorApi(jwt, (await crearCuentaPorApi(jwt, producto)).id);
   await entrar(page);
   await page.goto(`/pos?pedido=${order.id}`);
@@ -113,7 +113,8 @@ test('001/T037 · el ticket se ve contra el desplegado, sin instalar nada', asyn
       .toBeTruthy();
   }
 
-  // El botón de imprimir se alcanza SIN desplazarse, en 1024×600 (SC-007).
+  // El botón de imprimir se alcanza SIN desplazarse en la pantalla del mostrador (SC-007; 1280×854 desde
+  // el #291).
   //
   // Se busca DENTRO del diálogo del ticket y no en toda la página: `Imprimir` como nombre accesible
   // hace match por substring, y el shell trae "Impresión" en la navegación. Medir el de la
@@ -122,7 +123,7 @@ test('001/T037 · el ticket se ve contra el desplegado, sin instalar nada', asyn
   await expect(imprimir).toBeVisible();
   const caja = await imprimir.boundingBox();
   expect(caja!.y + caja!.height,
-    'hay que desplazarse para llegar a imprimir').toBeLessThanOrEqual(600);
+    'hay que desplazarse para llegar a imprimir').toBeLessThanOrEqual(page.viewportSize()!.height);
   expect(Math.round(caja!.height), 'el botón de imprimir no llega al piso táctil').toBeGreaterThanOrEqual(44);
 
   // Nada falló en la red ni en la consola: si la vista previa dependiera de algo instalado, aquí
