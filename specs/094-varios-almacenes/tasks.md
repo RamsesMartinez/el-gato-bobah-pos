@@ -22,8 +22,8 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 ## Phase 1: Setup
 
-- [ ] T001 Traer `origin/develop` a la rama en local con merge firmado y correr `codegraph sync`; renumerar migración y permisos si otra rama ya tomó NNNN (`server/migrations/`)
-- [ ] T002 Restaurar el respaldo `backups/prod/pre-094-20261123-0241.dump` en la base del worktree con `make stop && make db-restaurar dump=… && make start` y anotar en `specs/094-varios-almacenes/quickstart.md` los totales por sucursal y artículo de antes de migrar (solo la consulta, no las cifras)
+- [X] T001 Traer `origin/develop` a la rama en local con merge firmado y correr `codegraph sync`; renumerar migración y permisos si otra rama ya tomó NNNN (`server/migrations/`)
+- [X] T002 Restaurar el respaldo `backups/prod/pre-094-20261123-0241.dump` en la base del worktree con `make stop && make db-restaurar dump=… && make start` y anotar en `specs/094-varios-almacenes/quickstart.md` los totales por sucursal y artículo de antes de migrar (solo la consulta, no las cifras)
 
 ---
 
@@ -33,28 +33,28 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 ### Tests primero
 
-- [ ] T003 Test de migración sobre respaldo restaurado con dos empresas: ninguna fila sin almacén en las nueve tablas (en `expense_items`, todo renglón con `item_type`) y la existencia total por sucursal y artículo idéntica antes y después, en `server/internal/integration/warehouses_migration_test.go` (`TestWarehouseMigrationKeepsBranchTotals`)
-- [ ] T004 [P] Test de convivencia con la API anterior: inserts sin `warehouse_id` en `stock_movements`, `stock_levels` (`EnsureProductStockLevel` viejo con `on conflict (branch_id, product_id)`), `stock_counts`, `waste_records`, `branch_stock_minimums` (`on conflict (branch_id, …)`), `stock_out_reports` (`OpenManualOut` viejo) y `expense_items` caen en el de venta sin error, en `server/internal/integration/warehouses_migration_test.go`
-- [ ] T005 [P] Test: un movimiento a un almacén que no es el de venta responde `EGB04` y cambiar `is_sales` se rechaza mientras rija la 0117 (R11 H2), en `server/internal/integration/warehouses_test.go`
-- [ ] T006 [P] Test: con existencias en dos almacenes por artículo (sembradas por SQL con el trigger de H2 apagado), una venta no truena en `low_stock_state` y el aviso mide el almacén de venta (Local 0 / Bodega 50 / mínimo 5 → abre «se acabó»), en `server/internal/integration/warehouses_test.go`
-- [ ] T007 [P] Test: venta cruzando el mínimo **crea la fila** de aviso con el `on conflict` por almacén (R12), en `server/internal/integration/warehouses_test.go`
-- [ ] T008 [P] Tests de aislamiento bajo `appRoleStore` con `inTheThreeCases` para `warehouses`; agregar `warehouses` a lo que vigila `TestEveryCompanyTableIsIsolated` (`server/internal/integration/rls_all_tables_test.go`)
-- [ ] T009 [P] Test: un almacén de otra sucursal o de otra empresa no se puede guardar en ninguna de las nueve tablas aunque RLS falle (llaves compuestas; conexión como owner), en `server/internal/integration/warehouses_test.go`
-- [ ] T010 [P] Clasificar `warehouses.name` en `noPersonalData` (`server/internal/integration/respaldo_anonimo_test.go`) y renglón de `guardedDownCleanup` para el Down de NNNN (`server/internal/integration/harness_restaurado_test.go`)
-- [ ] T011 [P] Helper de pruebas que crea el almacén de venta junto con la sucursal y reemplazo de los inserts directos a `branches` en los tests que listó R11 M2 (`server/internal/integration/*_test.go`)
+- [X] T003 Test de migración sobre respaldo restaurado con dos empresas: ninguna fila sin almacén en las nueve tablas (en `expense_items`, todo renglón con `item_type`) y la existencia total por sucursal y artículo idéntica antes y después, en `server/internal/integration/warehouses_migration_test.go` (`TestWarehouseMigrationKeepsBranchTotals`)
+- [X] T004 [P] Test de convivencia con la API anterior: inserts sin `warehouse_id` en `stock_movements`, `stock_levels` (`EnsureProductStockLevel` viejo con `on conflict (branch_id, product_id)`), `stock_counts`, `waste_records`, `branch_stock_minimums` (`on conflict (branch_id, …)`), `stock_out_reports` (`OpenManualOut` viejo) y `expense_items` caen en el de venta sin error, en `server/internal/integration/warehouses_migration_test.go`
+- [X] T005 [P] Test: un movimiento a un almacén que no es el de venta responde `EGB04` y cambiar `is_sales` se rechaza mientras rija la 0117 (R11 H2), en `server/internal/integration/warehouses_test.go`
+- [X] T006 [P] Test: con existencias en dos almacenes por artículo (sembradas por SQL con el trigger de H2 apagado), una venta no truena en `low_stock_state` y el aviso mide el almacén de venta (Local 0 / Bodega 50 / mínimo 5 → abre «se acabó»), en `server/internal/integration/warehouses_test.go`
+- [X] T007 [P] Test: venta cruzando el mínimo **crea la fila** de aviso con el `on conflict` por almacén (R12), en `server/internal/integration/warehouses_test.go`
+- [X] T008 [P] Tests de aislamiento bajo `appRoleStore` con `inTheThreeCases` para `warehouses`; agregar `warehouses` a lo que vigila `TestEveryCompanyTableIsIsolated` (`server/internal/integration/rls_all_tables_test.go`)
+- [X] T009 [P] Test: un almacén de otra sucursal o de otra empresa no se puede guardar en ninguna de las nueve tablas aunque RLS falle (llaves compuestas; conexión como owner), en `server/internal/integration/warehouses_test.go`
+- [X] T010 [P] Clasificar `warehouses.name` en `noPersonalData` (`server/internal/integration/respaldo_anonimo_test.go`) y renglón de `guardedDownCleanup` para el Down de NNNN (`server/internal/integration/harness_restaurado_test.go`)
+- [X] T011 [P] Helper de pruebas que crea el almacén de venta junto con la sucursal y reemplazo de los inserts directos a `branches` en los tests que listó R11 M2 (`server/internal/integration/*_test.go`)
 
 ### Implementación
 
-- [ ] T012 Escribir `server/migrations/NNNN_warehouses.sql` según data-model y R11/R12: `lock_timeout`, `lock table` en orden de la venta, tabla `warehouses` con RLS y grants, «Local» por sucursal, `warehouse_id` nullable + llaves compuestas `no action` + relleno en las nueve tablas, llaves únicas por almacén junto a las de sucursal, `sales_warehouse_of`, `fill_warehouse_id`, `fill_stock_movement_branch_id` extendida (almacén + compuerta EGB04), `warehouses_before_update` (is_sales inmutable, el de venta no se archiva), `apply_stock_movement` con destino por almacén, `low_stock_state` del almacén de venta, `evaluate_low_stock` con `on conflict` por almacén, `unique (id, company_id, warehouse_id)` en conteos y mermas con llave desde movimientos, índice `(company_id, warehouse_id, id desc)`, dos permisos con herencia a admin y gerente; Down con guarda. Pasarlo por el subagente db-architect antes de aplicarlo
-- [ ] T013 Mapear `EGB03`/`EGB04` a `domain.ErrWarehouseMissing` / `domain.ErrWarehouseNotWritableYet` en `server/internal/store/errors.go` y a 409 en `server/internal/httpapi/respond.go`
-- [ ] T014 `CreateCompany` crea «Local» en la misma consulta que la matriz, en `server/queries/companies.sql`; `make sqlc`
-- [ ] T015 Constantes `PermInventoryWarehouseManage` y `PermInventoryTransfer` con su etiqueta en `server/internal/domain/permission.go` y su espejo en `web/src/app/permissions.ts`
-- [ ] T016 Upserts por almacén en el código de la subida 1 (para que sea seguro como «versión anterior» de la subida 2, R11 H2b): `EnsureProductStockLevel` (`server/queries/stock_counts.sql`), `UpsertBranchMinimum`/`UpsertBranchProductMinimum` (`server/queries/notifications.sql`), `OpenManualOut` (`server/queries/stock_out_reports.sql`); `make sqlc`
+- [X] T012 Escribir `server/migrations/NNNN_warehouses.sql` según data-model y R11/R12: `lock_timeout`, `lock table` en orden de la venta, tabla `warehouses` con RLS y grants, «Local» por sucursal, `warehouse_id` nullable + llaves compuestas `no action` + relleno en las nueve tablas, llaves únicas por almacén junto a las de sucursal, `sales_warehouse_of`, `fill_warehouse_id`, `fill_stock_movement_branch_id` extendida (almacén + compuerta EGB04), `warehouses_before_update` (is_sales inmutable, el de venta no se archiva), `apply_stock_movement` con destino por almacén, `low_stock_state` del almacén de venta, `evaluate_low_stock` con `on conflict` por almacén, `unique (id, company_id, warehouse_id)` en conteos y mermas con llave desde movimientos, índice `(company_id, warehouse_id, id desc)`, dos permisos con herencia a admin y gerente; Down con guarda. Pasarlo por el subagente db-architect antes de aplicarlo
+- [X] T013 Mapear `EGB03`/`EGB04` a `domain.ErrWarehouseMissing` / `domain.ErrWarehouseNotWritableYet` en `server/internal/store/errors.go` y a 409 en `server/internal/httpapi/respond.go`
+- [X] T014 `CreateCompany` crea «Local» en la misma consulta que la matriz, en `server/queries/companies.sql`; `make sqlc`
+- [X] T015 Constantes `PermInventoryWarehouseManage` y `PermInventoryTransfer` con su etiqueta en `server/internal/domain/permission.go` y su espejo en `web/src/app/permissions.ts`
+- [X] T016 Upserts por almacén en el código de la subida 1 (para que sea seguro como «versión anterior» de la subida 2, R11 H2b): `EnsureProductStockLevel` (`server/queries/stock_counts.sql`), `UpsertBranchMinimum`/`UpsertBranchProductMinimum` (`server/queries/notifications.sql`), `OpenManualOut` (`server/queries/stock_out_reports.sql`); `make sqlc`
 - [X] T017 Test + arreglo: `RecomputeArticleStock`, `InsertMergeMove`, `InsertReplacementMove` y `LockArticleStockNowait` por almacén (`server/queries/ingredients_admin.sql`, `server/queries/ingredient_merge.sql`, `server/internal/app/ingredient_merge.go`, `server/internal/app/unit_change.go`), con existencias sembradas en un segundo almacén (`server/internal/integration/ingredient_merge_test.go`, `unit_change_test.go`)
 - [X] T018 Test + arreglo: los `join stock_levels … current_branch_id()` de lectura (`ListStockLevels`, `ListArticles`, `GetArticle`, `ListIngredients`, `ShoppingListItems`, `ListLowStockConfigs`, `LowStockSnapshot`, `ArticleOnHandByBranch`) leen el almacén de venta o suman por artículo sin duplicar renglones (`server/queries/stock.sql`, `ingredients_admin.sql`, `ingredients.sql`, `shopping_list.sql`, `notifications.sql`)
 - [X] T019 Test + arreglo: reposiciones de cancelación copian `warehouse_id` del movimiento original (`RestockCancelledOrder`, `RestockCancelledLine` y las otras dos de `server/queries/orders.sql`), test en `server/internal/integration/warehouses_test.go` (R12, FR-011)
 - [X] T020 Test + arreglo: conteo y merma comparan `warehouse_id` donde hoy comparan `branch_id` (`server/queries/stock_counts.sql`, `server/queries/waste.sql`)
-- [ ] T021 Revisar que ningún mapa de `movement_type` en Go ni en `web/src` truene con un valor desconocido (prepara la subida 3)
+- [X] T021 Revisar que ningún mapa de `movement_type` en Go ni en `web/src` truene con un valor desconocido (prepara la subida 3)
 
 **Checkpoint**: `cd server && go build ./... && go test ./...` y `make test-integration` en verde; quickstart › Migración con totales idénticos.
 
@@ -65,15 +65,15 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 **Goal**: dar de alta la bodega sin que cambie nada de lo que hay.
 **Independent Test**: spec US1, escenarios 1–6.
 
-- [ ] T022 [P] [US1] Tests de dominio table-driven: nombre válido (1–40, normalizado con `CatalogNameKey`), archivar (no el de venta, existencias en cero, sin conteo abierto) en `server/internal/domain/warehouse_test.go`
-- [ ] T023 [US1] `domain/warehouse.go` con las reglas y sentinels (`ErrWarehouseNotFound`, `ErrWarehouseIsSales`, `ErrWarehouseHasStock`, `ErrWarehouseCountOpen`, `ErrWarehouseNameTaken`)
-- [ ] T024 [P] [US1] Tests de integración del servicio (crear, renombrar, archivar con existencias → 409, reactivar, nombre repetido sin acentos → 409, `inTheThreeCases`, bitácora `warehouse.*`) en `server/internal/integration/warehouses_test.go`
-- [ ] T025 [US1] Consultas `server/queries/warehouses.sql` (lista con artículos con existencia, crear, renombrar, archivar `for update`, reactivar); `make sqlc`
-- [ ] T026 [US1] Servicio `server/internal/app/warehouses.go` con transacción, candado de nombre y bitácora
-- [ ] T027 [US1] Handlers `server/internal/httpapi/handlers_warehouses.go` y rutas con `RequirePermission` en `server/internal/httpapi/router.go` (contracts › subida 1); `warehouseId` malformado = 400, ajeno = 404
-- [ ] T028 [P] [US1] Componente común `web/src/components/Segmented.tsx` (44 px, `aria-pressed`, activo que no es el color de error, `overflowX="auto"`) con su test en `web/src/components/Segmented.test.tsx` (R12)
-- [ ] T029 [US1] Pantalla Almacenes en Negocio › Inventario (`web/src/features/admin/WarehousesSettings.tsx`, montada en `InventorySettingsSection.tsx`) según la fila «Almacenes» de Maquetas del plan (A3); `ListRow` ampliado con ícono opcional; `ConfirmSheet` al archivar; test en `WarehousesSettings.test.tsx`
-- [ ] T030 [US1] API del front `web/src/api/backoffice.ts` (`warehouses`, `createWarehouse`, `renameWarehouse`, `archiveWarehouse`, `restoreWarehouse`) y hook `web/src/features/backoffice/warehouses/useWarehouses.ts`
+- [X] T022 [P] [US1] Tests de dominio table-driven: nombre válido (1–40, normalizado con `CatalogNameKey`), archivar (no el de venta, existencias en cero, sin conteo abierto) en `server/internal/domain/warehouse_test.go`
+- [X] T023 [US1] `domain/warehouse.go` con las reglas y sentinels (`ErrWarehouseNotFound`, `ErrWarehouseIsSales`, `ErrWarehouseHasStock`, `ErrWarehouseCountOpen`, `ErrWarehouseNameTaken`)
+- [X] T024 [P] [US1] Tests de integración del servicio (crear, renombrar, archivar con existencias → 409, reactivar, nombre repetido sin acentos → 409, `inTheThreeCases`, bitácora `warehouse.*`) en `server/internal/integration/warehouses_test.go`
+- [X] T025 [US1] Consultas `server/queries/warehouses.sql` (lista con artículos con existencia, crear, renombrar, archivar `for update`, reactivar); `make sqlc`
+- [X] T026 [US1] Servicio `server/internal/app/warehouses.go` con transacción, candado de nombre y bitácora
+- [X] T027 [US1] Handlers `server/internal/httpapi/handlers_warehouses.go` y rutas con `RequirePermission` en `server/internal/httpapi/router.go` (contracts › subida 1); `warehouseId` malformado = 400, ajeno = 404
+- [X] T028 [P] [US1] Componente común `web/src/components/Segmented.tsx` (44 px, `aria-pressed`, activo que no es el color de error, `overflowX="auto"`) con su test en `web/src/components/Segmented.test.tsx` (R12)
+- [X] T029 [US1] Pantalla Almacenes en Negocio › Inventario (`web/src/features/admin/WarehousesSettings.tsx`, montada en `InventorySettingsSection.tsx`) según la fila «Almacenes» de Maquetas del plan (A3); `ListRow` ampliado con ícono opcional; `ConfirmSheet` al archivar; test en `WarehousesSettings.test.tsx`
+- [X] T030 [US1] API del front `web/src/api/backoffice.ts` (`warehouses`, `createWarehouse`, `renameWarehouse`, `archiveWarehouse`, `restoreWarehouse`) y hook `web/src/features/backoffice/warehouses/useWarehouses.ts`
 
 ---
 
@@ -82,14 +82,14 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 **Goal**: la venta descuenta solo del de venta; Existencias con selector.
 **Independent Test**: spec US2 y US3.
 
-- [ ] T031 [P] [US2] Test: con existencia en Bodega y cero en Local, vender (mostrador, plataforma, pedido web) baja Local y deja Bodega igual, en `server/internal/integration/warehouses_test.go`
-- [ ] T032 [P] [US2] Test de dominio de la regla «hay existencia en el lugar de venta» (Bodega 20, Local 0 → sin existencia) en `server/internal/domain/warehouse_test.go`; si el #326 ya llegó a develop, el test va contra su función y se le cambia el interior (no se duplica, R8)
+- [X] T031 [P] [US2] Test: con existencia en Bodega y cero en Local, vender (mostrador, plataforma, pedido web) baja Local y deja Bodega igual, en `server/internal/integration/warehouses_test.go`
+- [ ] T032 [P] [US2] (pendiente: el #326 todavía no llega a develop; mientras, «hay existencia» se lee del almacén de venta en `per_sale_on_hand` y en Existencias) Test de dominio de la regla «hay existencia en el lugar de venta» (Bodega 20, Local 0 → sin existencia) en `server/internal/domain/warehouse_test.go`; si el #326 ya llegó a develop, el test va contra su función y se le cambia el interior (no se duplica, R8)
 - [X] T033 [US2] `per_sale_on_hand` de recetas lee el almacén de venta (`server/queries/recipes.sql`)
-- [ ] T034 [P] [US3] Test de `GET /stock/levels?warehouseId=` (de venta por omisión, otro, `all` suma, `transferFrom` en negativos, 400/404) en `server/internal/integration/warehouses_test.go`
-- [ ] T035 [US3] `ListStockLevels` por almacén y `all`, y `BackofficeService.StockLevels` con `transferFrom` (`server/queries/stock.sql`, `server/internal/app/backoffice.go`, `server/internal/httpapi/handlers_backoffice.go`)
-- [ ] T036 [US3] Existencias con `Segmented` (solo con 2+ almacenes; 5+ pasa a botón con hoja) y «Traer de Bodega» con hoja y `NumericKeypad` según la fila «Existencias» de Maquetas, en `web/src/features/backoffice/StockPage.tsx` y `web/src/features/backoffice/warehouses/TraerSheet.tsx`, con test en `StockPage.test.tsx` (sin selector con un almacén)
-- [ ] T037 [US8] MCP `stock_levels` con `warehouse_id` opcional y `warehouses_list` nueva; `stock_adjust` con `warehouse_id` que responde `WAREHOUSE_NOT_WRITABLE_YET` fuera del de venta (contracts › MCP), en `server/internal/httpapi/mcp_tools_094.go` con test
-- [ ] T038 Editar la tabla de puertas de la constitución (puerta cruzada con la subida 1, R12) en `.specify/memory/constitution.md`, en un commit propio con versión MINOR y fecha de enmienda (Governance), y las notas de `docs/mecanica/almacen.md`
+- [X] T034 [P] [US3] Test de `GET /stock/levels?warehouseId=` (de venta por omisión, otro, `all` suma, `transferFrom` en negativos, 400/404) en `server/internal/integration/warehouses_test.go`
+- [X] T035 [US3] `ListStockLevels` por almacén y `all`, y `BackofficeService.StockLevels` (`transferFrom` pasa a T053: en la subida 1 ningún otro almacén puede tener existencia) (`server/queries/stock.sql`, `server/internal/app/backoffice.go`, `server/internal/httpapi/handlers_backoffice.go`)
+- [X] T036 [US3] Existencias con `Segmented` (solo con 2+ almacenes; 5+ pasa a botón con hoja; «Traer de Bodega» con hoja y `NumericKeypad` pasa a T053) según la fila «Existencias» de Maquetas, en `web/src/features/backoffice/StockPage.tsx` y `web/src/features/backoffice/warehouses/TraerSheet.tsx`, con test en `StockPage.test.tsx` (sin selector con un almacén)
+- [X] T037 [US8] MCP `stock_levels` con `warehouse_id` opcional y `warehouses_list` nueva; `stock_adjust` con `warehouse_id` que responde `WAREHOUSE_NOT_WRITABLE_YET` fuera del de venta (contracts › MCP), en `server/internal/httpapi/mcp_tools_094.go` con test
+- [X] T038 Editar la tabla de puertas de la constitución (puerta cruzada con la subida 1, R12) en `.specify/memory/constitution.md`, en un commit propio con versión MINOR y fecha de enmienda (Governance), y las notas de `docs/mecanica/almacen.md`
 - [ ] T038b [US1] Prueba con alguien nuevo de una fonda (subagente) a 1280×854 y 1024×600 sobre la base restaurada: dar de alta «Bodega», ver Existencias por almacén y vender; hallazgos con su test (SC-004, SC-005)
 
 **Checkpoint subida 1**: /revision-de-codigo, prueba con alguien nuevo de una fonda a 1280×854 y 1024×600 sobre la base restaurada, `make ci-local`, PR a develop, release a main con respaldo previo, `readyz` 200 y journal limpio.
