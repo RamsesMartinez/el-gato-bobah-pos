@@ -13,7 +13,6 @@ import { AltNamesField } from '../../../components/AltNamesField';
 import { altNameKey, withPendingAlt } from '../../../components/altNames';
 import { ConfirmSheet } from '../../../components/ConfirmSheet';
 import { useAutosave, type AutosaveStatus } from './useAutosave';
-import { useLocations } from '../useLocations';
 import { toaster } from '../../../components/ui/toaster';
 import { can } from '../../../app/permissions';
 import { useSessionStore } from '../../../stores/session';
@@ -24,6 +23,7 @@ import { PresentationsSheet } from '../PresentationsSheet';
 import { posApi } from '../../../api/pos';
 import { CostTrend } from './CostTrend';
 import { ExpectedWasteField } from './ExpectedWasteField';
+import { ArticlePlaceField } from './ArticlePlaceField';
 import { RealWasteCard } from './RealWasteCard';
 import { ArticleAuditSheet } from './ArticleAuditSheet';
 import { ArchiveSheet } from './ArchiveSheet';
@@ -108,7 +108,6 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
   const hora = useHoraDelNegocio();
   const art = useQuery({ queryKey: ['article', id], queryFn: () => backofficeApi.article(id) });
   const cats = useQuery({ queryKey: ['article-categories'], queryFn: backofficeApi.articleCategories });
-  const locations = useLocations(undefined, { all: true });
   const units = useQuery({ queryKey: ['units'], queryFn: backofficeApi.units, enabled: canConfigure });
   const allPres = useQuery({ queryKey: ['presentations'], queryFn: backofficeApi.presentations, enabled: canReceive });
   const history = useInfiniteQuery({
@@ -330,10 +329,8 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                       }
                     }} />
                 </Field>
-                <Field label="Ubicación">
-                  <Picker {...locations.pickerProps} disabled={!canConfigure} value={form.placeId} options={locations.options}
-                    onChange={(v) => { if (auto.busy('placeId')) return; setForm({ ...form, placeId: v }); auto.commit('placeId', v); }} />
-                </Field>
+                <ArticlePlaceField name={a.name} disabled={!canConfigure} value={form.placeId}
+                  onChange={(v) => { if (auto.busy('placeId')) return; setForm({ ...form, placeId: v }); auto.commit('placeId', v); }} />
                 {/* La merma va justo después de los datos de identidad: es lo que vino a buscar quien
                     revisa costos, y más abajo quedaba bajo el pliegue a 1024×600 (spec 096, R14). */}
                 <ExpectedWasteField key={`${id}-${a.expectedWastePct ?? 'sin'}`} id={id} value={a.expectedWastePct}

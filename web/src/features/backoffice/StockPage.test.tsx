@@ -468,7 +468,9 @@ it('Movimientos dice cuándo la contraparte está archivada y no parte la fecha'
   expect(fila.textContent).toContain('← Bodega (archivado)');
   const celdas = fila.querySelectorAll('td');
   expect(getComputedStyle(celdas[0]).whiteSpace).toBe('nowrap');
-  expect(within(fila).getByTitle(/Un motivo muy largo/)).toBeInTheDocument();
+  // En tableta no hay title que se vea: el motivo se lee en dos renglones antes de recortarse.
+  const motivo = within(fila).getByText(/Un motivo muy largo/);
+  expect(getComputedStyle(motivo).webkitLineClamp ?? motivo.style.getPropertyValue('-webkit-line-clamp')).toBe('2');
 });
 
 it('sin valor del servidor no hay columna Valor ni total', async () => {

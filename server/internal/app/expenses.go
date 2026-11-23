@@ -351,7 +351,8 @@ func (s *BackofficeService) createExpenseIn(ctx context.Context, q *db.Queries, 
 		if id, err = q.CreateExpense(ctx, params); err != nil {
 			return err
 		}
-		if err := s.insertItems(ctx, q, id, in.Items, amount, hasReceived); err != nil {
+		lines, err := s.insertItems(ctx, q, id, in.Items, amount, hasReceived)
+		if err != nil {
 			return err
 		}
 		if err := s.insertPayments(ctx, q, id, in.Description, in.UserID, payments); err != nil {
@@ -378,7 +379,7 @@ func (s *BackofficeService) createExpenseIn(ctx context.Context, q *db.Queries, 
 			return err
 		}
 		return auditEntity(ctx, q, "expense.created", "expense", id, nil, &in.UserID, nil,
-			map[string]any{"amount": params.Amount, "reason": in.Description, "status": in.Status})
+			map[string]any{"amount": params.Amount, "reason": in.Description, "status": in.Status, "lines": lines})
 	}()
 	return id, err
 }
@@ -992,11 +993,20 @@ func learnedStatus(it ExpenseItemInput) (string, error) {
 
 // ---- Líneas ----
 
+// auditLine es un renglón del almacén como queda en la bitácora del alta: a qué almacén va. Sin él,
+// una compra que nunca pasó por «Recibir» no dejaba rastro de su destino (spec 094).
+type auditLine struct {
+	Position    int    `json:"position"`
+	Description string `json:"description"`
+	WarehouseID int64  `json:"warehouseId"`
+}
+
 // insertItems guarda los renglones con las reglas de dinero de la compra (FR-004a): cada renglón de
 // mercancía lleva importe, salvo un regalo, y entre todos no pasan del total pagado. Con
 // `receivedAll`, un renglón de mercancía sin cantidad recibida se da por llegado completo.
-func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expenseID int64, items []ExpenseItemInput, total decimal.Decimal, receivedAll bool) error {
+func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expenseID int64, items []ExpenseItemInput, total decimal.Decimal, receivedAll bool) ([]auditLine, error) {
 	amounts := make([]decimal.Decimal, 0, len(items))
+	lines := []auditLine{}
 	for i, it := range items {
 		// Un renglón de la casa se guarda excluido: queda como evidencia, sin sumar al importe ni
 		// tocar el almacén (spec 049). Lo que diga de recibido se ignora: no es del negocio.
@@ -1006,41 +1016,41 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 		}
 		qty := domain.Round4(it.Quantity)
 		if !domain.ValidQty(qty, domain.MaxStockQty, false) {
-			return domain.ErrValidation
+			return nil, domain.ErrValidation
 		}
 		amount := domain.Round2(it.Amount)
 		if !domain.ValidMoney(amount, true) {
-			return domain.ErrValidation
+			return nil, domain.ErrValidation
 		}
 		// FR-004a vale para todo renglón que cuenta, sea del almacén o no: con la regla solo en la
 		// rama del almacén, el 0 lo rechazaba el CHECK expense_items_amount_positive como un 500.
 		if !excluded {
 			if err := checkLineMoney(amount, it.IsGift); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		if it.Description == "" {
-			return domain.ErrValidation
+			return nil, domain.ErrValidation
 		}
 		itemType, err := itemTypeParam(it)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if err := checkLineRefs(ctx, q, it.ProductID, it.UnitID); err != nil {
-			return err
+			return nil, err
 		}
 		if itemType != nil {
 			if excluded && it.IsGift && !amount.IsZero() {
-				return fmt.Errorf("%w: un regalo va con importe 0", domain.ErrValidation)
+				return nil, fmt.Errorf("%w: un regalo va con importe 0", domain.ErrValidation)
 			}
 			if it.UnitID, it.PackQtyInBase, err = lineUnit(ctx, q, it.IngredientID, it.PresentationID, it.UnitID, it.PackQtyInBase); err != nil {
-				return err
+				return nil, err
 			}
 			if it.QtyReceived == nil && receivedAll && !excluded {
 				it.QtyReceived = &qty
 			}
 		} else if it.IsGift || it.PresentationID != nil {
-			return domain.ErrValidation
+			return nil, domain.ErrValidation
 		}
 		if !excluded {
 			amounts = append(amounts, amount)
@@ -1048,24 +1058,24 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 		// Una línea inventariable exige unidad: sin ella no hay conversión a unidad de almacén
 		// (el CHECK de la tabla lo repite como defensa en profundidad).
 		if itemType != nil && it.UnitID == nil {
-			return domain.ErrValidation
+			return nil, domain.ErrValidation
 		}
 		if it.QtyReceived != nil {
 			v := domain.Round4(*it.QtyReceived)
 			// Lo que llega de más entra por «Recibir…» con su importe: recibido > pedido dividiría el
 			// costo entre lo que no entró.
 			if !domain.ValidStockQtyOrZero(v) || v.GreaterThan(qty) {
-				return domain.ErrValidation
+				return nil, domain.ErrValidation
 			}
 			it.QtyReceived = &v
 		}
 		unitCost := domain.UnitCost(amount, qty)
 		if !domain.ValidLineUnitCost(unitCost) {
-			return fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
+			return nil, fmt.Errorf("%w: el importe por unidad es demasiado grande", domain.ErrValidation)
 		}
 		wh, err := newLineWarehouse(ctx, q, itemType, it.WarehouseID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if _, err := q.CreateExpenseItem(ctx, db.CreateExpenseItemParams{
 			ExpenseID: expenseID, ItemType: itemType,
@@ -1075,10 +1085,13 @@ func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expe
 			PackQtyInBase: it.PackQtyInBase, Position: int32(i),
 			PresentationID: it.PresentationID, IsGift: it.IsGift, Excluded: excluded, WarehouseID: wh,
 		}); err != nil {
-			return err
+			return nil, err
+		}
+		if wh != nil {
+			lines = append(lines, auditLine{Position: i, Description: it.Description, WarehouseID: *wh})
 		}
 	}
-	return checkLinesFitTotal(amounts, total)
+	return lines, checkLinesFitTotal(amounts, total)
 }
 
 // itemTypeParam valida la coherencia tipo↔referencia antes de que el CHECK de la tabla la

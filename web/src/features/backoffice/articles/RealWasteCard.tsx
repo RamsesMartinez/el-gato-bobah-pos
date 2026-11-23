@@ -36,9 +36,11 @@ export function RealWasteRows({ items, expected, unit }: { items: RealWaste[]; e
       {items.map((r) => {
         const over = r.state === 'ratio' && r.ratio !== null && expected !== null && r.ratio > expected;
         return (
-          <HStack key={r.warehouseId} gap={2} minH="32px">
+          // El nombre no encoge: en una tarjeta angosta, lo demás baja de renglón. Con `flex="1"` y
+          // truncado quedaba con ancho 0 a 1024×600 y no se sabía de qué almacén era la cifra.
+          <HStack key={r.warehouseId} gap={2} minH="32px" flexWrap="wrap" rowGap={0}>
             <Box w="16px" color="fg.warning" flexShrink={0}>{over && <LuTriangleAlert aria-hidden="true" />}</Box>
-            <Text flex="1" truncate>{r.warehouseName}</Text>
+            <Text flexGrow={1} flexShrink={0} maxW="100%">{r.warehouseName}</Text>
             {over && <Text fontSize="sm" color="fg.warning">Pasa lo esperado</Text>}
             {/* Lo mermado sin ventas va en texto: un title no se ve al tocar. */}
             {r.state === 'no_sales' && <Text fontSize="sm" color="fg.muted">{Number(r.wasted)} {unit} mermados</Text>}

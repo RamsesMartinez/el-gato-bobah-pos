@@ -119,3 +119,11 @@ test('encuentra por otro nombre y lo señala; lo que coincide con un otro nombre
   await u.click(fila);
   expect(onChange).toHaveBeenCalledWith('i:1');
 });
+
+// El buscador de la hoja medía 40 px (cierre del #65): es lo primero que se toca para escribir.
+test('el buscador de la hoja mide al menos 44 px', async () => {
+  const u = userEvent.setup();
+  wrap(<Picker value="" options={sups} onChange={vi.fn()} title="Proveedor" searchThreshold={1} />);
+  await u.click(screen.getByRole('button', { name: /seleccionar/i }));
+  expect(screen.getByPlaceholderText('Buscar…')).toHaveStyle({ minHeight: '44px' });
+});

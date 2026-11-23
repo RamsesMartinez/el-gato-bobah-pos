@@ -1536,8 +1536,9 @@ func (s *BackofficeService) StockValueByWarehouse(ctx context.Context) ([]Wareho
 	return out, nil
 }
 
-// StockValueTotal suma el valor de los renglones. Cada uno ya viene sin negativos (ListStockLevels):
-// el total es lo que vale lo que hay, almacén por almacén.
+// StockValueTotal suma el valor de los renglones. Cada uno ya viene sin negativos y redondeado en
+// cada almacén antes de sumar (ListStockLevels): así el total de «Todos» es, al centavo, la suma de
+// StockValueByWarehouse.
 func StockValueTotal(items []StockLevelView) decimal.Decimal {
 	total := decimal.Zero
 	for _, it := range items {

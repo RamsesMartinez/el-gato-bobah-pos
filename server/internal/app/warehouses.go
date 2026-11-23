@@ -33,6 +33,26 @@ func (s *BackofficeService) ListWarehouses(ctx context.Context, includeArchived 
 	return out, nil
 }
 
+// WarehouseName es un almacén activo como lo ve quien solo elige dónde registrar.
+type WarehouseName struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	IsSales bool   `json:"isSales"`
+}
+
+// WarehouseNames lista los almacenes activos de la sucursal sin contar existencias.
+func (s *BackofficeService) WarehouseNames(ctx context.Context) ([]WarehouseName, error) {
+	rows, err := s.store.QC(ctx).ListWarehouseNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WarehouseName, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, WarehouseName{ID: r.ID, Name: r.Name, IsSales: r.IsSales})
+	}
+	return out, nil
+}
+
 // CreateWarehouse da de alta un almacén vacío en la sucursal de la sesión.
 func (s *BackofficeService) CreateWarehouse(ctx context.Context, name string) (int64, error) {
 	if err := domain.ValidWarehouseName(name); err != nil {

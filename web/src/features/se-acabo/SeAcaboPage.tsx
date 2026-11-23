@@ -69,7 +69,8 @@ export function SeAcaboPage() {
 
   const { data: sug } = useQuery({ queryKey: ['se-acabo', 'sugerencias'], queryFn: stockOutApi.suggestions });
   const { data: resultados } = useQuery({
-    queryKey: ['se-acabo', 'buscar', buscado], queryFn: () => stockOutApi.search(buscado), enabled: buscado !== '',
+    queryKey: ['se-acabo', 'buscar', buscado, wh.warehouseId ?? 'venta'],
+    queryFn: () => stockOutApi.search(buscado, wh.warehouseId), enabled: buscado !== '',
   });
 
   const error = (e: unknown) => setMensaje({ tipo: 'error', texto: e instanceof ApiError ? e.message : 'No se pudo avisar; vuelve a intentar.' });

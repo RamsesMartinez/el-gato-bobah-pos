@@ -50,13 +50,19 @@ type OutItem struct {
 	Times    int    `json:"times,omitempty"`
 }
 
-// Search busca por nombre u otros nombres, sin acentos ni plural.
-func (s *StockOutService) Search(ctx context.Context, q string) ([]OutItem, error) {
+// Search busca por nombre u otros nombres, sin acentos ni plural; «ya reportado» es del almacén
+// pedido (sin almacén, el de venta).
+func (s *StockOutService) Search(ctx context.Context, q string, sel domain.WarehouseSel) ([]OutItem, error) {
 	keys := domain.SearchKeys(q)
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("%w: escribe parte del nombre", domain.ErrValidation)
 	}
-	rows, err := s.store.QC(ctx).SearchOutArticles(ctx, keys)
+	qc := s.store.QC(ctx)
+	wh, err := resolveWarehouse(ctx, qc, sel)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := qc.SearchOutArticles(ctx, db.SearchOutArticlesParams{Keys: keys, WarehouseID: wh.ID})
 	if err != nil {
 		return nil, err
 	}

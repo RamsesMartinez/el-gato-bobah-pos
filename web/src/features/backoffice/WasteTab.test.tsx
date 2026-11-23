@@ -10,6 +10,8 @@ import { WasteTab } from './WasteTab';
 
 const waste = vi.hoisted(() => ({ list: vi.fn(), byReason: vi.fn() }));
 vi.mock('../../api/waste', async (orig) => ({ ...(await orig<object>()), wasteApi: waste }));
+const back = vi.hoisted(() => ({ warehouses: vi.fn(), warehouseNames: vi.fn() }));
+vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 vi.mock('../../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) } }));
 
 const row = (id: number, name: string, reason: string) => ({
@@ -23,6 +25,7 @@ beforeEach(() => {
     { reasonId: 15, name: 'Consumo del personal', isStaffMeal: true, records: 2, totalCost: '54.00', withoutCost: 0 },
   ]);
   waste.list.mockResolvedValue([row(1, 'Leche entera', 'Caducó'), row(2, 'Frappé de fresa', 'Consumo del personal')]);
+  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true }] });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.useRealTimers(); });
 
@@ -76,5 +79,21 @@ describe('pestaña «Se echó a perder» (spec 039, maqueta B)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Este mes' }));
     await waitFor(() => expect(waste.byReason).toHaveBeenCalledTimes(2));
     expect(document.querySelector('input[type="date"]')).toBeNull();
+  });
+
+  // Con Local y Bodega, «Leche entera · 2 L» no decía de dónde se restó (cierre del #65).
+  test('con dos o más almacenes, cada registro dice de qué almacén salió; con uno, no', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.view'] } as never });
+    back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true }, { id: 2, name: 'Bodega', isSales: false }] });
+    waste.list.mockResolvedValue([{ ...row(1, 'Leche entera', 'Caducó'), warehouseName: 'Bodega' }]);
+    montar();
+    expect(await screen.findByText(/Caducó · Ana · .* · Bodega/)).toBeInTheDocument();
+    cleanup();
+    back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true }] });
+    waste.list.mockResolvedValue([{ ...row(1, 'Leche entera', 'Caducó'), warehouseName: 'Local' }]);
+    montar();
+    await screen.findByText(/Leche entera/);
+    await waitFor(() => expect(back.warehouses).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/· Local/)).toBeNull();
   });
 });

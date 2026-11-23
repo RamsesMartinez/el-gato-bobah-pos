@@ -148,7 +148,14 @@ func configureLowStockIn(ctx context.Context, q *db.Queries, t db.StockItemType,
 		// Las alertas (encendidas, al mínimo, al acabarse, franja) y el mínimo del artículo son del
 		// artículo: valen en todos los almacenes. Desde otro almacén solo se cambia su mínimo propio;
 		// tomar los interruptores de esa hoja apagaba el aviso del almacén de venta sin decirlo.
-		in.Enabled, in.OnMin, in.OnOut, in.Banner = before.LowStockEnabled, before.LowStockOnMin, before.LowStockOnOut, before.LowStockBanner
+		//
+		// La vista previa sí los toma: la pantalla enciende las alertas del artículo desde la hoja de
+		// Bodega (guardándolas sin almacén) y la confirmación tiene que anunciar el aviso que eso abre en
+		// Bodega. Calcularla con los de antes decía «no se envía nada» y al guardar se abría el aviso.
+		if !preview {
+			in.Enabled, in.OnMin, in.OnOut = before.LowStockEnabled, before.LowStockOnMin, before.LowStockOnOut
+		}
+		in.Banner = before.LowStockBanner
 		in.MinStock, in.CoverageDays = before.MinStock, nil
 		if before.CoverageDays != nil {
 			d := int(*before.CoverageDays)

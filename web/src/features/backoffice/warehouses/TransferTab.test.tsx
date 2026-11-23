@@ -79,6 +79,24 @@ describe('traspaso entre almacenes (spec 094, maqueta B)', () => {
   });
 
   // Un reintento (red caída, o confirmar el negativo) reusa la clave: el servidor no duplica.
+  // Prueba con alguien nuevo (cierre del #65): Ajonjolí se veía «105 g» y la cantidad se tecleaba en
+  // kg; «2» llevaba 2 kg de algo que solo tenía 105 g.
+  test('la cantidad se teclea en la unidad en que se ve la existencia del origen', async () => {
+    back.stockLevels.mockImplementation((w?: number) => Promise.resolve({ items: w === 2
+      ? [lv('Ajonjolí', 11, '105', 'g'), lv('Azúcar', 8, '25000', 'g')] : [] }));
+    montar();
+    const ajonjoli = await fila('Ajonjolí');
+    expect(ajonjoli.textContent).toContain('105 g');
+    expect(within(ajonjoli).getByText('g')).toBeInTheDocument();
+    expect(within(await fila('Azúcar')).getByText('kg')).toBeInTheDocument();
+    fireEvent.click(within(ajonjoli).getByRole('button', { name: 'Más' }));
+    fireEvent.click(within(ajonjoli).getByRole('button', { name: 'Más' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Traspasar 1 artículo' }));
+    await waitFor(() => expect(back.createTransfer).toHaveBeenCalledTimes(1));
+    expect(back.createTransfer.mock.calls[0][0].lines).toEqual([{ itemType: 'ingrediente', ingredientId: 11, qty: '2' }]);
+    await waitFor(() => expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'Listo: 2 g de Ajonjolí de Bodega a Local' })));
+  });
+
   test('dejar el origen en negativo pide confirmar y reenvía con la misma clave', async () => {
     back.createTransfer.mockRejectedValueOnce(new ApiError(409, 'NEEDS_CONFIRM', 'x', '',
       { lines: [{ itemType: 'ingrediente', id: 8, available: '25000' }] }));

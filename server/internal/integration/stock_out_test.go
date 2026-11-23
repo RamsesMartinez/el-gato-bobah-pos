@@ -392,7 +392,7 @@ func TestStockOutIsIsolated(t *testing.T) {
 	cajero := makeUser(t, st, "cajero_084i", "cajero")
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, as *store.Store, ctx context.Context) {
 		svc := app.NewStockOutService(as, clock)
-		if items, err := svc.Search(ctx, "secreto"); err == nil && len(items) > 0 {
+		if items, err := svc.Search(ctx, "secreto", domain.WarehouseSel{}); err == nil && len(items) > 0 {
 			t.Fatalf("la búsqueda de otra empresa encontró %v", items)
 		}
 		if _, _, err := svc.ReportOut(ctx, app.ReportOutCmd{ItemType: "ingrediente", ID: ing, ClientKey: uuid.New(), Actor: cajero}); err == nil {

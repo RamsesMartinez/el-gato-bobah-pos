@@ -180,7 +180,7 @@ describe('Se acabó', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Queso crema/ }));
     fireEvent.change(screen.getByRole('textbox', { name: '¿Qué se acabó?' }), { target: { value: 'quesos' } });
     expect(screen.queryByText('Toca otra vez para avisar que se acabó')).toBeNull();
-    await waitFor(() => expect(out.search).toHaveBeenCalledWith('quesos'));
+    await waitFor(() => expect(out.search).toHaveBeenCalledWith('quesos', undefined));
   });
 
   test('«No lo encuentro» también pide un segundo toque y no toca existencias', async () => {
@@ -245,6 +245,20 @@ describe('se acabó por almacén (spec 094)', () => {
     expect(out.report.mock.calls[1][1]).not.toBe(out.report.mock.calls[0][1]);
     expect(await screen.findByText(/quedó en 0 en Bodega/)).toBeTruthy();
     expect(grupo).toBeInTheDocument();
+  });
+  // «Ya reportado» es del almacén: lo que se reportó en Bodega no puede salir reportado en Local.
+  test('la búsqueda va con el almacén elegido; en el de venta, sin almacén', async () => {
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    montar();
+    await screen.findByRole('group', { name: '¿De qué almacén?' });
+    const caja = screen.getByRole('textbox', { name: '¿Qué se acabó?' });
+    fireEvent.change(caja, { target: { value: 'queso' } });
+    await waitFor(() => expect(out.search).toHaveBeenCalledWith('queso', undefined));
+    fireEvent.click(screen.getByRole('button', { name: 'Bodega' }));
+    await waitFor(() => expect(out.search).toHaveBeenCalledWith('queso', 2));
   });
   test('lo reportado hoy dice el almacén con dos o más', async () => {
     back.warehouses.mockResolvedValue({ items: [

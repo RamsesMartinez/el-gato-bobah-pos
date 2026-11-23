@@ -14,6 +14,14 @@ select w.id, w.name, w.is_sales, w.is_active,
    and (w.is_active or sqlc.arg(include_archived)::boolean)
  order by w.is_sales desc, w.is_active desc, w.name, w.id;
 
+-- name: ListWarehouseNames :many
+-- Los activos de la sucursal, el de venta primero, sin contar existencias: la lee quien solo reporta o
+-- cuenta, y no tiene por qué recorrer stock_levels ni saber cuántos artículos hay en cada uno.
+select w.id, w.name, w.is_sales
+  from warehouses w
+ where w.branch_id = current_branch_id() and w.is_active
+ order by w.is_sales desc, w.name, w.id;
+
 -- name: CreateWarehouse :one
 insert into warehouses (branch_id, name) values (current_branch_id(), sqlc.arg(name))
 returning id;

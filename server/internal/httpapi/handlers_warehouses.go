@@ -39,19 +39,10 @@ func (h *Handlers) ListWarehouses(w http.ResponseWriter, r *http.Request) {
 // GET /stock/warehouses/names — los almacenes activos de la sucursal con su nombre y cuál es el de
 // venta, sin cuántos artículos tiene cada uno: lo que necesita una pantalla para preguntar dónde.
 func (h *Handlers) WarehouseNames(w http.ResponseWriter, r *http.Request) {
-	out, err := h.backoffice.ListWarehouses(r.Context(), false)
+	items, err := h.backoffice.WarehouseNames(r.Context())
 	if err != nil {
 		Error(w, err)
 		return
-	}
-	type name struct {
-		ID      int64  `json:"id"`
-		Name    string `json:"name"`
-		IsSales bool   `json:"isSales"`
-	}
-	items := make([]name, 0, len(out))
-	for _, wh := range out {
-		items = append(items, name{ID: wh.ID, Name: wh.Name, IsSales: wh.IsSales})
 	}
 	JSON(w, http.StatusOK, map[string]any{"items": items})
 }

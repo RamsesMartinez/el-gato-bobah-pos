@@ -53,6 +53,38 @@ func TestRequireAnyPermission(t *testing.T) {
 	RequireAnyPermission(only(domain.PermInventoryCount))
 }
 
+// El 403 de RequireAnyPermission anotaba solo el primer permiso aceptado: quien leía la bitácora
+// creía que la ruta pedía «contar» y no sabía que «configurar» o «reportar» también bastaban.
+func TestRequireAnyPermissionLogsEveryAcceptedPermission(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	defer slog.SetDefault(prev)
+	none := func(context.Context, AuthUser) ([]domain.Permission, error) { return []domain.Permission{}, nil }
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stock/warehouses/names", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userCtxKey, AuthUser{ID: 9, Role: domain.RoleMesero}))
+	rec := httptest.NewRecorder()
+	RequireAnyPermission(none, domain.PermInventoryReportOut, domain.PermInventoryCount, domain.PermInventoryConfigure)(next).ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("sin ninguno = %d; quiere 403", rec.Code)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &m); err != nil {
+		t.Fatalf("no se emitió evento parseable: %v (%s)", err, buf.String())
+	}
+	got, _ := m["permissions"].([]any)
+	want := []string{string(domain.PermInventoryReportOut), string(domain.PermInventoryCount), string(domain.PermInventoryConfigure)}
+	if m["security_event"] != "forbidden" || len(got) != len(want) {
+		t.Fatalf("el evento no anota los %d permisos que bastaban: %v", len(want), m)
+	}
+	for i, p := range want {
+		if got[i] != p {
+			t.Fatalf("permiso %d del evento = %v; quiere %s (%v)", i, got[i], p, m)
+		}
+	}
+}
+
 // RequirePermission pregunta por permiso, no por rol. El resolutor se inyecta porque hoy todos los
 // roles tienen `orders.cancel_pending`: sin inyectarlo no existe usuario con quien ver el 403, y
 // una ruta que perdió su gate pasaría todas las pruebas.

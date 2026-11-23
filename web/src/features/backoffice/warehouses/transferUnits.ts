@@ -15,16 +15,21 @@ const UNITS: Record<string, TypedUnit> = {
   pieza: { label: 'pz', factor: 1, decimals: false },
 };
 
-export function typedUnit(baseCode: string): TypedUnit {
-  return UNITS[baseCode] ?? { label: baseCode, factor: 1, decimals: true };
+// typedUnit es la unidad en que se teclea. Con `shown` (lo que hay en el origen), sigue a como se ve
+// esa existencia (formatBaseQty): con menos de una unidad grande se ve «105 g», y teclear en kg
+// llevaba 2 kg de algo que solo tenía 105 g.
+export function typedUnit(baseCode: string, shown?: string | number): TypedUnit {
+  const big = UNITS[baseCode] ?? { label: baseCode, factor: 1, decimals: true };
+  if (shown !== undefined && big.factor > 1 && Math.abs(Number(shown)) < big.factor) return { label: baseCode, factor: 1, decimals: true };
+  return big;
 }
 
 // toBase convierte lo tecleado a la unidad base, con los 4 decimales de la columna. Lo que no es un
 // número positivo es cero: no se manda.
-export function toBase(typed: string, baseCode: string): number {
+export function toBase(typed: string, baseCode: string, shown?: string | number): number {
   const n = Number(typed);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  return Math.round(n * typedUnit(baseCode).factor * 10000) / 10000;
+  return Math.round(n * typedUnit(baseCode, shown).factor * 10000) / 10000;
 }
 
 // KEY_REUSED_MESSAGE se dice cuando la clave del traspaso ya se usó con otro cuerpo: casi siempre el

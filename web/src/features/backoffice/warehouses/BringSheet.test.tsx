@@ -33,6 +33,15 @@ describe('«Traer de…» desde Existencias (spec 094)', () => {
     expect(back.createTransfer.mock.calls[0][0].lines[0].qty).toBe('4');
   });
 
+  // Como en Traspaso (cierre del #65): con 105 g en Bodega se ve «105 g», y la cantidad iba en kg.
+  test('la cantidad va en la unidad en que se ve la existencia del origen', async () => {
+    montar('-4', [{ warehouseId: 2, name: 'Bodega', onHand: '105' }]);
+    expect(await screen.findByLabelText('Cuánto traer')).toHaveTextContent('4 g');
+    fireEvent.click(screen.getByRole('button', { name: /^Traspasar 4 g/ }));
+    await waitFor(() => expect(back.createTransfer).toHaveBeenCalledTimes(1));
+    expect(back.createTransfer.mock.calls[0][0].lines[0].qty).toBe('4');
+  });
+
   // Con varios almacenes que tienen el artículo, propone el que más tiene, lo dice y deja cambiarlo.
   test('con varios orígenes propone el que más tiene y deja elegir otro', async () => {
     montar('-2000', [BODEGA, COCINA]);
