@@ -7,6 +7,8 @@ node_modules/
 web/dist/
 # El build de la consola de plataforma va a su propio directorio para no borrar el del POS.
 web/dist-consola/
+web/dist-menu/
+web/.wrangler/
 /build
 
 # frontend
