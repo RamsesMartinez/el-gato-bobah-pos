@@ -47,6 +47,8 @@ create table stock_lots (
   constraint stock_lots_key unique (company_id, warehouse_id, ingredient_id, expires_on),
   constraint stock_lots_tenant_key unique (company_id, id)
 );
+-- Unir y cambiar de unidad buscan todos los lotes de un artículo.
+create index stock_lots_by_ingredient on stock_lots (company_id, ingredient_id);
 
 create table stock_lot_allocations (
   id          bigint generated always as identity primary key,
@@ -93,7 +95,6 @@ create policy tenant_isolation on stock_count_line_lots
 -- asignaciones. Update en asignaciones y en el desglose solo lo usa el cambio de unidad.
 grant select, insert, update on stock_lots, stock_lot_allocations to gatobobah_app;
 grant select, insert, update, delete on stock_count_line_lots to gatobobah_app;
-grant usage, select on all sequences in schema public to gatobobah_app;
 
 -- Un artículo unido no recibe lotes nuevos ni desglose (las dos guardas de la 0104). La unión mueve
 -- los lotes del origen al destino antes de archivarlo.
@@ -144,8 +145,8 @@ $$;
 
 -- +goose StatementBegin
 -- evaluate_expired_left abre o cierra el aviso «lo que queda está caducado». Uno abierto por almacén y
--- artículo (índice de la 0120). Lo llaman el trigger y los caminos que mueven lotes sin movimiento
--- (cierre de conteo, unión).
+-- artículo (índice de la 0120). Lo llaman el trigger y el cierre de un conteo con fechas; la unión y
+-- el cambio de fecha de un renglón no lo evalúan: el siguiente movimiento del artículo lo corrige.
 create or replace function evaluate_expired_left(p_company bigint, p_warehouse bigint, p_ingredient bigint)
 returns void language plpgsql as $$
 declare
@@ -197,14 +198,22 @@ $$;
 create or replace function relocate_lot(p_company bigint, p_warehouse bigint, p_ingredient bigint,
   p_from date, p_to date, p_qty numeric) returns void language plpgsql as $$
 declare
-  v_qty numeric := p_qty;
-  r     record;
+  v_qty  numeric := p_qty;
+  v_free numeric;
+  r      record;
 begin
   if p_qty <= 0 or p_from is not distinct from p_to then
     return;
   end if;
   perform 1 from stock_levels where warehouse_id = p_warehouse and ingredient_id = p_ingredient for update;
-  if p_from is not null then
+  if p_from is null then
+    -- De lo sin fecha solo pasa lo que queda: lo vendido de ahí ya no existe y no se le pone fecha.
+    select greatest(0, coalesce((select on_hand from stock_levels where warehouse_id = p_warehouse and ingredient_id = p_ingredient), 0)
+                       - coalesce((select sum(l.qty) from stock_lots l where l.company_id = p_company
+                                     and l.warehouse_id = p_warehouse and l.ingredient_id = p_ingredient), 0))
+      into v_free;
+    v_qty := least(p_qty, v_free);
+  else
     select l.id, l.qty into r from stock_lots l where l.company_id = p_company and l.warehouse_id = p_warehouse
        and l.ingredient_id = p_ingredient and l.expires_on = p_from for update;
     if not found or r.qty <= 0 then
@@ -278,7 +287,9 @@ begin
   -- La fecha sale de su origen si el movimiento no la trae (R12 A2): la versión anterior de la API no
   -- conoce la columna y aprueba mermas o corrige renglones fechados igual. Solo si el movimiento es del
   -- artículo de la fila: la merma de un preparado resta a sus insumos, que no son de ese lote.
-  if v_exp is null and new.waste_record_id is not null then
+  -- Solo una salida: deshacer la merma (positiva) devuelve por sus asignaciones lo que cada lote y lo sin
+  -- fecha prestaron; con la fecha del registro, todo iría al lote.
+  if v_exp is null and new.waste_record_id is not null and new.quantity < 0 then
     select w.lot_expires_on into v_exp from waste_records w
      where w.id = new.waste_record_id and w.ingredient_id = new.ingredient_id;
   end if;
@@ -296,7 +307,7 @@ begin
        where l.company_id = new.company_id and l.warehouse_id = new.warehouse_id
          and l.ingredient_id = new.ingredient_id and l.expires_on = v_exp
        for update;
-      if found and r.qty > 0 then
+      if found and r.qty > 0 and new.quantity < 0 then
         v_take := least(r.qty, -new.quantity);
         update stock_lots set qty = qty - v_take, updated_at = now() where id = r.id;
         insert into stock_lot_allocations (company_id, movement_id, lot_id, qty) values (new.company_id, new.id, r.id, -v_take);

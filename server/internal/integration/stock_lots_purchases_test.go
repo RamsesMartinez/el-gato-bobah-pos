@@ -111,3 +111,21 @@ func TestADeliveryRejectsAnAbsurdExpiry(t *testing.T) {
 		}
 	}
 }
+
+// Fechar después un renglón que llegó sin fecha y ya se vendió en parte: solo pasa a lote lo que
+// queda sin fecha, no lo que se recibió (revisión de base de datos, spec 098).
+func TestDatingALineLaterOnlyMovesWhatIsLeft(t *testing.T) {
+	t.Parallel()
+	k := newEditKit(t)
+	exp, item := k.pendingTapas(t, "15")
+	k.confirmDelivery(t, exp, app.DeliveryInput{Lines: []app.DeliveryLineInput{{ItemID: item, Qty: dd("10")}}}, nil)
+	if _, err := k.st.Pool.Exec(context.Background(), `insert into stock_movements (item_type, ingredient_id, movement_type, quantity)
+		values ('ingrediente', $1, 'venta', -8)`, k.tapas); err != nil {
+		t.Fatal(err)
+	}
+	d := k.day(25)
+	k.confirmDelivery(t, exp, app.DeliveryInput{Lines: []app.DeliveryLineInput{{ItemID: item, Qty: dd("5"), ExpiresOn: ptr(d)}}}, nil)
+	if v := k.lotOf(t, k.tapas, d); !v.Equal(decimal.NewFromInt(7)) {
+		t.Fatalf("lote = %s, quería 7 (2 que quedaban sin fecha + 5 que llegaron); más que la existencia inventa mercancía", v)
+	}
+}

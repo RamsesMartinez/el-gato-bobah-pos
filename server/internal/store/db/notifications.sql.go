@@ -403,14 +403,18 @@ select n.id, n.kind, n.status, n.item_type, n.ingredient_id, n.product_id, n.ite
   left join notification_reads r on r.notification_id = n.id and r.user_id = $1
  where (n.status = 'open') = $2::bool
    and ($3::bool or n.kind <> 'not_found')
+   -- El aviso de caducados (spec 098) solo a la pantalla que lo conoce: la versión anterior del front
+   -- truena con un tipo que no sabe pintar, y sigue viva en las tabletas hasta que se recargan.
+   and ($4::bool or n.kind <> 'expired_left')
  order by coalesce(n.resolved_at, n.opened_at) desc
- limit $4
+ limit $5
 `
 
 type ListNotificationsParams struct {
 	UserID          int64 `json:"user_id"`
 	Open            bool  `json:"open"`
 	IncludeNotFound bool  `json:"include_not_found"`
+	IncludeExpired  bool  `json:"include_expired"`
 	Lim             int32 `json:"lim"`
 }
 
@@ -451,6 +455,7 @@ func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsPa
 		arg.UserID,
 		arg.Open,
 		arg.IncludeNotFound,
+		arg.IncludeExpired,
 		arg.Lim,
 	)
 	if err != nil {
@@ -1010,15 +1015,17 @@ select count(*)::int
   left join notification_reads r on r.notification_id = n.id and r.user_id = $1
  where n.status = 'open' and r.read_at is null
    and ($2::bool or n.kind <> 'not_found')
+   and ($3::bool or n.kind <> 'expired_left')
 `
 
 type UnreadNotificationsParams struct {
 	UserID          int64 `json:"user_id"`
 	IncludeNotFound bool  `json:"include_not_found"`
+	IncludeExpired  bool  `json:"include_expired"`
 }
 
 func (q *Queries) UnreadNotifications(ctx context.Context, arg UnreadNotificationsParams) (int32, error) {
-	row := q.db.QueryRow(ctx, unreadNotifications, arg.UserID, arg.IncludeNotFound)
+	row := q.db.QueryRow(ctx, unreadNotifications, arg.UserID, arg.IncludeNotFound, arg.IncludeExpired)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err

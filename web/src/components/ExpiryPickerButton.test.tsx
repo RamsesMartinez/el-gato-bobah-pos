@@ -45,6 +45,13 @@ test('en el conteo se puede elegir lo que ya caducó', async () => {
   expect(onChange).toHaveBeenCalledWith('2026-10-20');
 });
 
+test('sin fecha no ofrece quitarla', async () => {
+  renderPicker();
+  fireEvent.click(screen.getByRole('button', { name: 'Caduca Perlas' }));
+  await screen.findByRole('button', { name: 'nov 2026' });
+  expect(screen.queryByRole('button', { name: 'No trae fecha' })).toBeNull();
+});
+
 test('«No trae fecha» deja el campo vacío', async () => {
   const onChange = renderPicker({ value: '2027-01-10' });
   fireEvent.click(screen.getByRole('button', { name: 'Caduca Perlas' }));

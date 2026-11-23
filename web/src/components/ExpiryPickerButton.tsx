@@ -10,7 +10,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 // actual, y otros 12 con ›) y luego el día (spec 098, maqueta «Fecha al recibir», opción C). Las caducidades son de meses o
 // años, y el calendario de siempre (DatePickerButton) pide un toque por cada mes que se avanza. Vacío
 // es «sin fecha»: así se comporta como hoy. allowPast deja elegir lo que ya caducó (el conteo).
-export function ExpiryPickerButton({ value, onChange, label, today, allowPast, placeholder, w }: {
+export function ExpiryPickerButton({ value, onChange, label, today, allowPast, placeholder, w, clearLabel, compact }: {
   value: string;
   onChange: (v: string) => void;
   label: string;
@@ -19,6 +19,10 @@ export function ExpiryPickerButton({ value, onChange, label, today, allowPast, p
   allowPast?: boolean;
   placeholder?: string;
   w?: string;
+  // clearLabel nombra el botón que deja el campo vacío; sin valor no se ofrece (no haría nada).
+  clearLabel?: string;
+  // compact cabe en un renglón ya lleno (la hoja de entrega).
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const thisYear = Number(today.slice(0, 4));
@@ -46,8 +50,8 @@ export function ExpiryPickerButton({ value, onChange, label, today, allowPast, p
   return (
     <>
       <Button variant="outline" colorPalette="gray" minH="44px" w={w} justifyContent="flex-start" fontWeight="500"
-        aria-label={label} onClick={start}>
-        <Text color={value ? 'fg' : 'fg.muted'}>{value ? `Caduca ${formatDay(value)}` : (placeholder ?? 'Caduca…')}</Text>
+        px={compact ? 2 : undefined} fontSize={compact ? 'sm' : undefined} aria-label={label} onClick={start}>
+        <Text color={value ? 'fg' : 'fg.muted'}>{value ? `Caduca ${compact ? formatDay(value).replace(/ \d{4}$/, '') : formatDay(value)}` : (placeholder ?? 'Caduca…')}</Text>
       </Button>
       <DrawerRoot open={open} placement="bottom" onOpenChange={(e) => { if (!e.open) setOpen(false); }} size="md">
         <DrawerBackdrop />
@@ -83,7 +87,7 @@ export function ExpiryPickerButton({ value, onChange, label, today, allowPast, p
             )}
             <Flex gap={2} mt={3}>
               {month !== null && <Button flex="1" minH="44px" variant="outline" onClick={() => setChosen(null)}>‹ Otro mes</Button>}
-              <Button flex="1" minH="44px" variant="outline" onClick={() => pick('')}>No trae fecha</Button>
+              {value && <Button flex="1" minH="44px" variant="outline" onClick={() => pick('')}>{clearLabel ?? 'No trae fecha'}</Button>}
             </Flex>
           </Box>
         </DrawerContent>

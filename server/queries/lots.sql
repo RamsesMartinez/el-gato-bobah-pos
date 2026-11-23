@@ -33,7 +33,12 @@ update stock_lot_allocations a set qty = round(a.qty * sqlc.arg(factor)::numeric
  where l.id = a.lot_id and l.ingredient_id = sqlc.arg(id)::bigint and round(a.qty * sqlc.arg(factor)::numeric, 4) <> 0;
 
 -- name: ScaleIngredientCountLots :exec
--- El desglose de fechas de los conteos del artículo, en la unidad nueva.
+-- El desglose de fechas de los conteos del artículo, en la unidad nueva. Una cantidad que en la unidad
+-- nueva redondea a cero se borra: dejarla sin escalar mezclaría dos unidades en el mismo desglose.
+with gone as (
+  delete from stock_count_line_lots
+   where ingredient_id = sqlc.arg(id)::bigint and round(qty * sqlc.arg(factor)::numeric, 4) <= 0
+)
 update stock_count_line_lots set qty = round(qty * sqlc.arg(factor)::numeric, 4)
  where ingredient_id = sqlc.arg(id)::bigint and round(qty * sqlc.arg(factor)::numeric, 4) > 0;
 

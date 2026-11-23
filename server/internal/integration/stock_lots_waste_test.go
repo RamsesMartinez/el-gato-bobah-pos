@@ -93,3 +93,37 @@ func TestWastingALotTakesFromThatLot(t *testing.T) {
 		t.Fatalf("fecha absurda = %v, quería validación", err)
 	}
 }
+
+// Deshacer una merma de un lote que tomó parte de lo sin fecha devuelve a cada uno lo suyo
+// (revisión de base de datos, spec 098).
+func TestUndoingALotWasteGivesBackWhatEachLent(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	cajero := makeUser(t, st, "cajero_deshacer_lote", "cajero")
+	gerente := makeUser(t, st, "gerente_deshacer_lote", "gerente")
+	svc, sctx := asWaste(t, defaultCompanyID)
+	caduco := reasonNamed(t, st, defaultCompanyID, "Caducó")
+	ing := pieceIngredient(t, st, "Leche deshacer lote")
+	var today time.Time
+	if err := st.Pool.QueryRow(ctx, `select business_today($1)`, defaultCompanyID).Scan(&today); err != nil {
+		t.Fatal(err)
+	}
+	d := today.AddDate(0, 0, -1).Format(time.DateOnly)
+	adjust(t, st, "ingrediente", ing, "5")
+	if _, err := st.Pool.Exec(ctx, `insert into stock_movements (item_type, ingredient_id, movement_type, quantity, expires_on)
+		values ('ingrediente', $1, 'compra', 5, $2::date)`, ing, d); err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.RecordWaste(sctx, app.RecordWasteCmd{ReasonID: caduco, IngredientID: &ing, Qty: qty("8"), Actor: cajero, LotExpiresOn: &d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UndoWaste(sctx, res.ID, gerente, true); err != nil {
+		t.Fatal(err)
+	}
+	var lot decimal.Decimal
+	if err := st.Pool.QueryRow(ctx, `select qty from stock_lots where ingredient_id = $1`, ing).Scan(&lot); err != nil || !lot.Equal(decimal.NewFromInt(5)) {
+		t.Fatalf("lote tras deshacer = %s (%v), quería 5: lo que el lote prestó, no la merma entera", lot, err)
+	}
+}

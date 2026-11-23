@@ -76,6 +76,17 @@ func TestValidLotBreakdown(t *testing.T) {
 			t.Errorf("%s: error = %v, quería %v", c.name, err, c.err)
 		}
 	}
+	// Un desglose sin tope inflaría la transacción de captura (una fecha por día de diez años).
+	many := make([]LotQty, MaxCountLotsPerItem+1)
+	for i := range many {
+		many[i] = LotQty{ExpiresOn: day("2026-12-01").AddDate(0, 0, i), Qty: dec("1")}
+	}
+	if err := ValidLotBreakdown(dec("1000"), many); !errors.Is(err, ErrValidation) {
+		t.Fatalf("%d fechas = %v, quería validación", len(many), err)
+	}
+	if err := ValidLotBreakdown(dec("1000"), many[:MaxCountLotsPerItem]); err != nil {
+		t.Fatalf("%d fechas = %v", MaxCountLotsPerItem, err)
+	}
 	// ErrLotsExceedCounted también es de validación: la frontera responde 400.
 	if !errors.Is(ErrLotsExceedCounted, ErrValidation) {
 		t.Fatal("ErrLotsExceedCounted debe envolver ErrValidation")

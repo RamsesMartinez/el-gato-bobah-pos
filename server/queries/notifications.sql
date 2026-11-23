@@ -24,6 +24,9 @@ select n.id, n.kind, n.status, n.item_type, n.ingredient_id, n.product_id, n.ite
   left join notification_reads r on r.notification_id = n.id and r.user_id = sqlc.arg(user_id)
  where (n.status = 'open') = sqlc.arg(open)::bool
    and (sqlc.arg(include_not_found)::bool or n.kind <> 'not_found')
+   -- El aviso de caducados (spec 098) solo a la pantalla que lo conoce: la versión anterior del front
+   -- truena con un tipo que no sabe pintar, y sigue viva en las tabletas hasta que se recargan.
+   and (sqlc.arg(include_expired)::bool or n.kind <> 'expired_left')
  order by coalesce(n.resolved_at, n.opened_at) desc
  limit sqlc.arg(lim);
 
@@ -32,7 +35,8 @@ select count(*)::int
   from notifications n
   left join notification_reads r on r.notification_id = n.id and r.user_id = sqlc.arg(user_id)
  where n.status = 'open' and r.read_at is null
-   and (sqlc.arg(include_not_found)::bool or n.kind <> 'not_found');
+   and (sqlc.arg(include_not_found)::bool or n.kind <> 'not_found')
+   and (sqlc.arg(include_expired)::bool or n.kind <> 'expired_left');
 
 -- name: MarkNotificationsRead :exec
 -- Solo ids de la empresa (el select va bajo RLS): uno ajeno no truena, se ignora.

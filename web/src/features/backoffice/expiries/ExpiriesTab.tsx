@@ -35,20 +35,14 @@ export function ExpiriesTab({ onGoToCount }: { onGoToCount?: () => void }) {
     );
   }
   const lots = data.data?.lots ?? [];
-  const c = data.data?.counts;
 
   return (
     <VStack align="stretch" gap={3} opacity={data.isPlaceholderData ? 0.4 : 1} aria-busy={data.isPlaceholderData || undefined}>
       <HStack justify="space-between" gap={2} flexWrap="wrap">
         {whList.length > 1 ? (
-          <Segmented label="Almacén" value={String(picked)} onChange={(v) => setPicked(v === 'all' ? 'all' : Number(v))}
+          <Segmented label="Almacén" value={String(picked)} onChange={(v) => { setDone(''); setPicked(v === 'all' ? 'all' : Number(v)); }}
             options={[...whList.map((w) => ({ value: String(w.id), label: w.name })), { value: 'all', label: 'Todos' }]} />
         ) : <Box />}
-        {c && lots.length > 0 && (
-          <Text fontSize="sm" color="fg.muted">
-            {c.expired} caducados · {c.within7} esta semana · {c.within30} de 8 a 30 días · {c.within60} de 31 a 60
-          </Text>
-        )}
       </HStack>
       {done && <Text p={3} borderRadius="lg" bg="green.subtle" fontSize="sm" data-testid="listo">{done}</Text>}
       {lots.length === 0 && (
@@ -78,7 +72,10 @@ export function ExpiriesTab({ onGoToCount }: { onGoToCount?: () => void }) {
                   return (
                     <HStack key={`${l.warehouseId}-${l.ingredientId}-${l.expiresOn}`} data-testid="lote" minH="56px" px={3} py={1} gap={3} borderBottomWidth="1px">
                       <VStack align="start" gap={0} flex="1" minW={0}>
-                        <Text fontWeight="600" truncate>{l.name} <Text as="span" fontWeight="400" color="fg.muted">· {l.warehouseName}</Text></Text>
+                        <HStack gap={1} minW={0} w="100%">
+                          <Text fontWeight="600" truncate>{l.name}</Text>
+                          <Text color="fg.muted" flexShrink={0}>· {l.warehouseName}</Text>
+                        </HStack>
                         <Text fontSize="sm" color={pending ? 'fg.muted' : p.warn ? 'fg.warning' : 'fg.muted'}>
                           {pending ? 'Merma pendiente de aprobación' : p.text}
                         </Text>
@@ -89,7 +86,7 @@ export function ExpiriesTab({ onGoToCount }: { onGoToCount?: () => void }) {
                       </VStack>
                       {canWaste && (
                         <Button minH="44px" variant={l.expired ? 'solid' : 'outline'} colorPalette={l.expired ? 'brand' : 'gray'}
-                          disabled={pending} onClick={() => setWasting(l)}>A merma</Button>
+                          disabled={pending} onClick={() => { setDone(''); setWasting(l); }}>A merma</Button>
                       )}
                     </HStack>
                   );

@@ -568,3 +568,22 @@ func TestADeadlockIsAConflictToRetry(t *testing.T) {
 		t.Fatalf("el mensaje del bloqueo mutuo = %s; quiere «vuelve a intentar» y sin el texto de Postgres", w.Body.String())
 	}
 }
+
+// LAS FECHAS QUE PASAN LO CONTADO TIENEN SU CÓDIGO (spec 098). ErrLotsExceedCounted envuelve
+// ErrValidation: si su caso va después del genérico, la pantalla recibe VALIDATION y no puede decirlo
+// en el artículo.
+func TestLotsOverTheCountKeepTheirOwnCode(t *testing.T) {
+	rec := httptest.NewRecorder()
+	Error(rec, domain.ErrLotsExceedCounted)
+	var sobre struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &sobre); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusBadRequest || sobre.Error.Code != "LOTS_EXCEED_COUNTED" {
+		t.Fatalf("respondió %d %q: cayó al VALIDATION genérico", rec.Code, sobre.Error.Code)
+	}
+}

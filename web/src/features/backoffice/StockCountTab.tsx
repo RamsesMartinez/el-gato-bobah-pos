@@ -363,9 +363,10 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   const weighing = grossOpen && tared.length > 0;
   // Spec 098: las fechas de lo contado. Las que el sistema ya conocía llegan sin cantidad; si nadie
   // toca las fechas no se mandan y los lotes no se reescriben.
-  const [lotRows, setLotRows] = useState<LotRow[]>(() => (item.lots?.length
-    ? item.lots.map((l) => ({ expiresOn: l.expiresOn, qty: String(Number(l.qty)) }))
-    : (item.knownDates ?? []).map((d) => ({ expiresOn: d, qty: '' }))));
+  const [lotRows, setLotRows] = useState<LotRow[]>(() => [
+    ...(item.lots ?? []).map((l) => ({ expiresOn: l.expiresOn, qty: String(Number(l.qty)) })),
+    ...(item.knownDates ?? []).filter((d) => !(item.lots ?? []).some((l) => l.expiresOn === d)).map((d) => ({ expiresOn: d, qty: '' })),
+  ].sort((a, b) => a.expiresOn.localeCompare(b.expiresOn)));
   const [lotsDirty, setLotsDirty] = useState(false);
   const editLots = (f: (rows: LotRow[]) => LotRow[]) => { setLotRows(f); setLotsDirty(true); };
   const [field, setField] = useState<Field>(weighing ? 'gross' : packs.length ? 0 : 'rest');
@@ -411,8 +412,10 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   const openWeighing = () => { setGrossOpen(true); setRest(''); setField('gross'); };
   const closeWeighing = () => { setGrossOpen(false); setGrossWeight(''); setContainers('1'); setField('rest'); };
   const lotSum = lotRows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0);
-  const lotsOver = lotsDirty && total !== null && lotSum > total + 1e-9;
-  const lotsBody = lotsDirty ? { lots: lotRows.filter((r) => Number(r.qty) > 0).map((r) => ({ expiresOn: r.expiresOn, qty: r.qty })) } : {};
+  // El mismo predicado que pinta el aviso: unas fechas ya guardadas que pasan lo recontado también
+  // apagan «Guardar» (el servidor las rechazaría).
+  const lotsOver = total !== null && lotSum > total + 1e-9;
+  const lotsBody = lotsDirty ? { lots: lotRows.filter((r) => Number(r.qty) > 0).map((r) => ({ expiresOn: r.expiresOn, qty: String(Number(r.qty)) })) } : {};
   const body = (): CountCaptureBody | null => {
     const b = baseBody();
     return b && !lotsOver ? { ...b, ...lotsBody } : null;
@@ -441,9 +444,19 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
     setGrossPackId, containers, bumpContainers, gross,
     lotRows, activeLot: typeof field === 'string' && field.startsWith('lot:') ? Number(field.slice(4)) : null,
     pickLot: (i: number) => setField(`lot:${i}`),
-    setLotDate: (i: number, d: string) => editLots((rows) => rows.map((r, j) => (j === i ? { ...r, expiresOn: d } : r))),
-    addLot: (d: string) => { editLots((rows) => (rows.some((r) => r.expiresOn === d) ? rows : [...rows, { expiresOn: d, qty: '' }])); setField(`lot:${lotRows.length}`); },
-    removeLot: (i: number) => { editLots((rows) => rows.filter((_, j) => j !== i)); setField('rest'); } };
+    // Cambiar una fecha a otra que ya está junta las dos: una fecha es un lote.
+    setLotDate: (i: number, d: string) => editLots((rows) => {
+      const other = rows.findIndex((r, j) => j !== i && r.expiresOn === d);
+      if (other < 0) return rows.map((r, j) => (j === i ? { ...r, expiresOn: d } : r));
+      const merged = String(Number(((Number(rows[other].qty) || 0) + (Number(rows[i].qty) || 0)).toFixed(4)));
+      return rows.flatMap((r, j) => (j === i ? [] : j === other ? [{ ...r, qty: merged === '0' ? '' : merged }] : [r]));
+    }),
+    addLot: (d: string) => {
+      const at = lotRows.findIndex((r) => r.expiresOn === d);
+      if (at < 0) editLots((rows) => [...rows, { expiresOn: d, qty: '' }]);
+      setField(`lot:${at < 0 ? lotRows.length : at}`);
+    },
+    removeLot: (i: number) => { editLots((rows) => rows.filter((_, j) => j !== i)); setField(weighing ? 'gross' : packs.length ? 0 : 'rest'); } };
 }
 
 type Entry = ReturnType<typeof useEntry>;
@@ -626,7 +639,10 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
       // El desglose que quedó guardado reemplaza al de antes (#204): sin esto, reabrir mostraba la
       // captura anterior y «Guardar» sin tocar nada deshacía la corrección.
       qc.setQueryData(scope.key, (old: StockCount | null | undefined) => old && {
-        ...old, items: old.items.map((i) => (i.ingredientId === item.ingredientId ? { ...i, weighed: r && 'weighed' in r ? r.weighed ?? null : null } : i)),
+        ...old, items: old.items.map((i) => (i.ingredientId === item.ingredientId ? { ...i, weighed: r && 'weighed' in r ? r.weighed ?? null : null,
+          // Spec 098: el desglose que quedó guardado (o ninguno, al quitar lo contado); sin esto, reabrir
+          // enseñaba fechas que el servidor ya no tenía.
+          lots: b === null ? [] : b.lots ?? i.lots } : i)),
       });
       if (qty !== null) toaster.create({ title: `Guardado: ${countedWords(qty, item.baseUnitCode)}`, type: 'success', duration: 1500 });
       onSaved(item.ingredientId, qty);
@@ -824,7 +840,7 @@ function EntrySheet({ countId, item, onClose, onSaved, startWeighing }: {
             <Button minH="44px" variant="ghost" mr="auto" onClick={() => c.save.mutate(null)}>Quitar lo contado</Button>
           )}
           <Button minH="44px" variant="outline" onClick={onClose}>Cancelar</Button>
-          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true })} />
+          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true, ...(isProduct(item) ? {} : { lots: [] }) })} />
           <Button minH="56px" ml={8} colorPalette="brand" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
             Guardar
           </Button>
@@ -881,7 +897,7 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
           <Button minH="44px" variant="outline" disabled={!onPrev} onClick={onPrev}>‹ Anterior</Button>
           <Box flex="1" />
           <Button minH="44px" variant="outline" onClick={onNext}>Saltar (no contar hoy)</Button>
-          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true })} />
+          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true, ...(isProduct(item) ? {} : { lots: [] }) })} />
           <Button minH="56px" ml={8} colorPalette="brand" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
             Guardar y seguir ›
           </Button>

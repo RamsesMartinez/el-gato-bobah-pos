@@ -39,8 +39,9 @@ export const notificationsApi = {
   // (AGENTS.md: un arreglo nil sale como null y tumba la pantalla sin un error).
   // 200, el tope del servidor: con 50, más avisos sin leer que los que trae la lista dejaban la
   // insignia sin poder llegar a 0.
-  list: (status: 'open' | 'closed') => api.get<{ items?: NotificationView[] }>(`/notifications?status=${status}&limit=200`),
-  unread: () => api.get<{ unread: number }>('/notifications/unread-count'),
+  // withExpired: esta pantalla sabe pintar el aviso de caducados (spec 098).
+  list: (status: 'open' | 'closed') => api.get<{ items?: NotificationView[] }>(`/notifications?status=${status}&limit=200&withExpired=1`),
+  unread: () => api.get<{ unread: number }>('/notifications/unread-count?withExpired=1'),
   read: (ids: number[]) => api.post<void>('/notifications/read', { ids }),
   bannerSeen: (id: number) => api.post<void>(`/notifications/${id}/banner-seen`),
   resolve: (id: number, action: ResolveAction, ingredientId?: number) =>

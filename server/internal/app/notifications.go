@@ -87,12 +87,13 @@ func seesNotFound(perms []domain.Permission) bool {
 }
 
 // List devuelve los avisos abiertos (o los cerrados), los más recientes primero. Nunca nil.
-func (s *NotificationsService) List(ctx context.Context, user int64, perms []domain.Permission, open bool, limit int) ([]NotificationView, error) {
+// withExpired: la pantalla conoce el aviso de caducados (spec 098); la anterior no lo recibe.
+func (s *NotificationsService) List(ctx context.Context, user int64, perms []domain.Permission, open, withExpired bool, limit int) ([]NotificationView, error) {
 	if limit <= 0 || limit > 200 {
 		return nil, fmt.Errorf("%w: el límite va de 1 a 200", domain.ErrValidation)
 	}
 	rows, err := s.store.QC(ctx).ListNotifications(ctx, db.ListNotificationsParams{UserID: user, Open: open,
-		IncludeNotFound: seesNotFound(perms), Lim: int32(limit)})
+		IncludeNotFound: seesNotFound(perms), IncludeExpired: withExpired, Lim: int32(limit)})
 	if err != nil {
 		return nil, err
 	}
@@ -121,8 +122,8 @@ func (s *NotificationsService) List(ctx context.Context, user int64, perms []dom
 }
 
 // Unread cuenta lo abierto que la persona no ha leído.
-func (s *NotificationsService) Unread(ctx context.Context, user int64, perms []domain.Permission) (int, error) {
-	n, err := s.store.QC(ctx).UnreadNotifications(ctx, db.UnreadNotificationsParams{UserID: user, IncludeNotFound: seesNotFound(perms)})
+func (s *NotificationsService) Unread(ctx context.Context, user int64, perms []domain.Permission, withExpired bool) (int, error) {
+	n, err := s.store.QC(ctx).UnreadNotifications(ctx, db.UnreadNotificationsParams{UserID: user, IncludeNotFound: seesNotFound(perms), IncludeExpired: withExpired})
 	return int(n), err
 }
 

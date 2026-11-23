@@ -33,7 +33,8 @@ const limits = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn() }));
 vi.mock('../../api/countLimits', async (orig) => ({ ...(await orig<object>()), countLimitsApi: limits }));
 vi.mock('../../components/ExpiryPickerButton', () => ({
   ExpiryPickerButton: ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
-    <button type="button" aria-label={label} onClick={() => onChange(value || '2026-12-10')}>{value || label}</button>
+    // Tocar la fecha del 1 de diciembre la cambia al 10 (la que ya está): así se prueba juntar dos.
+    <button type="button" aria-label={label} onClick={() => onChange(value === '2026-12-01' ? '2026-12-10' : value || '2026-12-10')}>{value || label}</button>
   ),
 }));
 vi.mock('../../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) } }));
@@ -135,6 +136,67 @@ describe('fechas de caducidad al contar (spec 098)', () => {
     tecla('4');
     click('Guardar');
     await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3, { countedQty: '4', confirmable: true }));
+  });
+
+  // Revisión de tableta: cambiar una fecha a otra que ya estaba dejaba dos renglones con la misma
+  // fecha y el servidor rechazaba el desglose.
+  test('cambiar una fecha a otra que ya está junta sus cantidades', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3 ? { ...i, knownDates: ['2026-12-01', '2026-12-10'] } : i)) });
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    await screen.findByLabelText('Suelto de Limón');
+    tecla('9');
+    click('Cuánto caduca el 2026-12-01'); tecla('2');
+    click('Cuánto caduca el 2026-12-10'); tecla('3');
+    click('Fecha 1');
+    expect(screen.queryByRole('button', { name: 'Cuánto caduca el 2026-12-01' })).toBeNull();
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3,
+      { countedQty: '9', confirmable: true, lots: [{ expiresOn: '2026-12-10', qty: '5' }] }));
+  });
+
+  // Revisión de lógica del front: el caché no guardaba el desglose; al reabrir salían fechas que el
+  // servidor ya no tenía, y una fecha nueva borraba las guardadas.
+  test('al reabrir salen las fechas que se guardaron', async () => {
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    await screen.findByLabelText('Suelto de Limón');
+    tecla('9');
+    click('Agregar fecha'); tecla('6');
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalled());
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Cambiar' }));
+    expect(await screen.findByRole('button', { name: 'Cuánto caduca el 2026-12-10' })).toHaveTextContent('6');
+  });
+
+  test('«Sí, no hay» con fechas guardadas las borra en vez de chocar', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3
+      ? { ...i, countedQty: '9', lots: [{ expiresOn: '2026-12-10', qty: '6' }] } : i)) });
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Cambiar' }));
+    click('No hay'); click('Sí, no hay');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3, { countedQty: '0', confirmable: true, lots: [] }));
+  });
+
+  test('recontar menos que las fechas guardadas apaga «Guardar» sin tocar las fechas', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3
+      ? { ...i, countedQty: '9', lots: [{ expiresOn: '2026-12-10', qty: '6' }] } : i)) });
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Cambiar' }));
+    const suelto = await screen.findByLabelText('Suelto de Limón');
+    fireEvent.click(suelto);
+    tecla('Borrar'); tecla('2');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+  });
+
+  test('agregar una fecha que ya está la elige para teclear', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3 ? { ...i, knownDates: ['2026-12-10'] } : i)) });
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    await screen.findByLabelText('Suelto de Limón');
+    tecla('9');
+    click('Agregar fecha'); tecla('4');
+    expect(screen.getByRole('button', { name: 'Cuánto caduca el 2026-12-10' })).toHaveTextContent('4');
   });
 
   test('si las fechas suman más que lo contado no se guarda y lo dice en el artículo', async () => {
@@ -422,7 +484,7 @@ describe('Teclado del conteo (spec 042)', () => {
     expect(screen.getByText(/¿No hay nada de .+\?/)).toBeInTheDocument();
     expect(back.captureCount).not.toHaveBeenCalled();
     click('Sí, no hay');
-    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, { countedQty: '0', confirmable: true }));
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, { countedQty: '0', confirmable: true, lots: [] }));
   });
 
   test('+ y − ajustan de uno en uno; tocar la cantidad lleva el teclado ahí', async () => {

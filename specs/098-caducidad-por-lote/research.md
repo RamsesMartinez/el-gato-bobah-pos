@@ -191,3 +191,26 @@ Pantalla (ya reflejado en plan.md):
    «Mandar a merma» apagado hasta elegirlo; decimales según la unidad.
 10. Grupos: «Ya caducó», «Esta semana», «8 a 30 días», «31 a 60 días», «Más adelante». «No se ha
    vendido en 30 días» en vez de «sin consumo reciente».
+
+## R13 — Revisión de código (2026-11-23)
+
+Corregido, cada uno con su prueba de regresión vista en rojo:
+- El código `LOTS_EXCEED_COUNTED` nunca salía: su caso iba después del `VALIDATION` genérico.
+- La campana de la versión anterior del front truena con un tipo de aviso que no conoce: la lista y la
+  cuenta solo traen `expired_left` con `withExpired=1`, que manda la pantalla nueva.
+- Fechar después un renglón recibido sin fecha y ya vendido en parte metía a lote más que la existencia:
+  `relocate_lot` solo pasa lo que queda sin fecha.
+- Deshacer una merma de un lote que tomó parte de lo sin fecha devolvía todo al lote: la fecha del
+  registro solo se deriva para la salida; la devolución va por asignaciones.
+- Conteo: el caché no guardaba el desglose (reabrir enseñaba fechas viejas y una fecha nueva borraba las
+  guardadas); «Sí, no hay» y recontar menos que las fechas guardadas chocaban con el servidor; agregar o
+  cambiar a una fecha ya puesta dejaba el teclado sin casilla o la fecha repetida.
+- Tope de 20 fechas por artículo contado (una captura podía mandar miles).
+- Pantalla: «Caduca…» compacto en la hoja de entrega, sin «No trae fecha» cuando no hay fecha, el
+  almacén ya no se corta con el nombre en Caducidades, sin la línea de cuentas repetida, sin hueco en
+  Existencias con un solo almacén.
+
+Aceptado sin cambio: `stock_movements.expires_on` no la escribe hoy ningún camino (la fecha se deriva del
+renglón o de la merma); se deja porque es la vía explícita que las pruebas usan y que un camino futuro
+(la merma esperada, un ajuste fechado) puede tomar sin migración. La unión hecha por la versión anterior
+durante la subida deja los lotes en el artículo archivado (acotado a la subida).

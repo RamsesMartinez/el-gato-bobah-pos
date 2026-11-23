@@ -22,6 +22,10 @@ var ErrLotsExceedCounted = fmt.Errorf("%w: las fechas suman más de lo contado",
 // año tecleado de más), no un producto real de un negocio de comida.
 const MaxExpiryYears = 10
 
+// MaxCountLotsPerItem acota las fechas de un artículo contado: un estante real trae pocas, y sin tope
+// una sola captura podía mandar miles e inflar la transacción.
+const MaxCountLotsPerItem = 20
+
 var minExpiry = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // ParseExpiry valida una fecha de caducidad `YYYY-MM-DD`. Una fecha pasada es válida (el conteo
@@ -31,8 +35,8 @@ func ParseExpiry(s string, today time.Time) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, fmt.Errorf("%w: la fecha de caducidad va como AAAA-MM-DD", ErrValidation)
 	}
-	max := time.Date(today.Year()+MaxExpiryYears, today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
-	if t.Before(minExpiry) || t.After(max) {
+	limit := time.Date(today.Year()+MaxExpiryYears, today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+	if t.Before(minExpiry) || t.After(limit) {
 		return time.Time{}, fmt.Errorf("%w: la fecha de caducidad no es creíble", ErrValidation)
 	}
 	return t, nil
@@ -48,6 +52,9 @@ type LotQty struct {
 // cero, sin fechas repetidas (dos renglones con la misma fecha son el mismo lote) y la suma no
 // pasa de lo contado; lo que falta es lo sin fecha.
 func ValidLotBreakdown(counted decimal.Decimal, lots []LotQty) error {
+	if len(lots) > MaxCountLotsPerItem {
+		return fmt.Errorf("%w: hasta %d fechas por artículo", ErrValidation, MaxCountLotsPerItem)
+	}
 	seen := map[time.Time]bool{}
 	sum := decimal.Zero
 	for _, l := range lots {

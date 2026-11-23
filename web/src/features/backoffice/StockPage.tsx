@@ -68,9 +68,9 @@ export function StockPage() {
   // En Existencias, el aviso de caducidad va a la derecha del selector cuando cabe: así no le quita un
   // renglón a la lista (revisión de tableta, spec 098).
   const stockHeader = (
-    <HStack mb={3} gap={3} flexWrap="wrap" align="center">
+    <HStack mb={warehouseSegmented ? 3 : 0} gap={3} flexWrap="wrap" align="center">
       {warehouseSegmented}
-      {canViewStock && <Box flex="1" minW="280px"><ExpiryNotice warehouse={warehouse} onOpen={() => setParams({ tab: 'caducidades' }, { replace: true })} /></Box>}
+      {canViewStock && <Box flex="1" minW="280px" mb={warehouseSegmented ? 0 : 3} _empty={{ display: 'none' }}><ExpiryNotice warehouse={warehouse} onOpen={() => setParams({ tab: 'caducidades' }, { replace: true })} /></Box>}
     </HStack>
   );
   // El valor solo se pinta si el servidor lo manda: la API anterior no lo trae durante una subida.

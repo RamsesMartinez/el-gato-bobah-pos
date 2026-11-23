@@ -9,6 +9,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -263,5 +264,33 @@ func TestTheMorningSummaryIgnoresTheExpiredNotice(t *testing.T) {
 		if it.Kind == "expired_left" {
 			t.Fatal("el resumen de la mañana trae el aviso de caducados: su asunto contaría un aviso que el cuerpo no muestra")
 		}
+	}
+}
+
+// La campana de la versión anterior no sabe pintar el aviso de caducados y truena: solo lo recibe la
+// pantalla que lo pide (revisión de base de datos, spec 098).
+func TestTheExpiredNoticeOnlyReachesAScreenThatAsksForIt(t *testing.T) {
+	t.Parallel()
+	k := newLotKit(t)
+	k.move(t, k.local, "compra", "100", day(k.today(t), -1))
+	k.move(t, k.local, "venta", "-50", "")
+	svc, _, ctx := asNotifications(t, defaultCompanyID)
+	user := makeUser(t, k.st, "campana_lotes", "gerente")
+	perms := []domain.Permission{domain.PermInventoryView}
+	old, err := svc.List(ctx, user, perms, true, false, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range old {
+		if n.Kind == "expired_left" {
+			t.Fatal("la pantalla anterior recibió el aviso de caducados")
+		}
+	}
+	if n, _ := svc.Unread(ctx, user, perms, false); n != 0 {
+		t.Fatalf("la cuenta de la pantalla anterior incluye el aviso: %d", n)
+	}
+	cur, err := svc.List(ctx, user, perms, true, true, 50)
+	if err != nil || len(cur) != 1 || cur[0].Kind != "expired_left" {
+		t.Fatalf("la pantalla nueva = %+v (%v)", cur, err)
 	}
 }

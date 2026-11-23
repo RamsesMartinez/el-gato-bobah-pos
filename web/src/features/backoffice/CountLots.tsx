@@ -29,7 +29,7 @@ export function CountLotsFields({ rows, active, total, unitCode, onPick, onChang
       <Text fontWeight="700">Fechas de caducidad</Text>
       {rows.map((r, i) => (
         <HStack key={`${r.expiresOn}-${i}`} gap={2}>
-          <ExpiryPickerButton value={r.expiresOn} today={today} allowPast label={`Fecha ${i + 1}`} onChange={(d) => (d ? onChangeDate(i, d) : onRemove(i))} />
+          <ExpiryPickerButton value={r.expiresOn} today={today} allowPast clearLabel="Quitar fecha" label={`Fecha ${i + 1}`} onChange={(d) => (d ? onChangeDate(i, d) : onRemove(i))} />
           <Box as="button" aria-label={`Cuánto caduca el ${r.expiresOn}`} minH="44px" minW="110px" px={3} borderWidth="2px" borderRadius="md"
             borderColor={active === i ? 'brand.solid' : 'border'} bg={active === i ? 'brand.subtle' : undefined}
             fontWeight="700" textAlign="start" data-active={active === i ? '' : undefined} onClick={() => onPick(i)}>

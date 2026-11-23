@@ -3,6 +3,7 @@ import { Box, Button, HStack, Text, VStack } from '@chakra-ui/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter } from '../../../components/ui/drawer';
 import { NumericKeypad } from '../../../components/NumericKeypad';
+import { pressKey } from '../../../components/pressKey';
 import { Picker } from '../../../components/Picker';
 import { wasteApi, type WasteResult } from '../../../api/waste';
 import type { ExpiryLot } from '../../../api/backoffice';
@@ -24,14 +25,10 @@ export function WasteLotSheet({ lot, onClose, onDone }: { lot: ExpiryLot; onClos
   const decimals = lot.unitCode !== 'pieza';
   const n = parseNumero(qty);
   const ok = !!reason && n.estado === 'valido' && n.valor > 0 && n.valor <= Number(lot.qty);
+  // La primera tecla reemplaza «todo el lote» (como el resto de las casillas con teclado).
   const key = (k: string) => {
     setFresh(false);
-    setQty((v) => {
-      const base = fresh ? '' : v;
-      if (k === 'back') return base.slice(0, -1);
-      if (k === '.' && (!decimals || base.includes('.'))) return base;
-      return base + k;
-    });
+    setQty((v) => pressKey(fresh ? '' : v, k, decimals));
   };
   const save = useMutation({
     mutationFn: () => wasteApi.record({ reasonId: Number(reason), ingredientId: lot.ingredientId, qty,

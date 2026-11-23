@@ -379,6 +379,10 @@ func (q *Queries) RelocateLineLot(ctx context.Context, arg RelocateLineLotParams
 }
 
 const scaleIngredientCountLots = `-- name: ScaleIngredientCountLots :exec
+with gone as (
+  delete from stock_count_line_lots
+   where ingredient_id = $2::bigint and round(qty * $1::numeric, 4) <= 0
+)
 update stock_count_line_lots set qty = round(qty * $1::numeric, 4)
  where ingredient_id = $2::bigint and round(qty * $1::numeric, 4) > 0
 `
@@ -388,7 +392,8 @@ type ScaleIngredientCountLotsParams struct {
 	ID     int64           `json:"id"`
 }
 
-// El desglose de fechas de los conteos del artículo, en la unidad nueva.
+// El desglose de fechas de los conteos del artículo, en la unidad nueva. Una cantidad que en la unidad
+// nueva redondea a cero se borra: dejarla sin escalar mezclaría dos unidades en el mismo desglose.
 func (q *Queries) ScaleIngredientCountLots(ctx context.Context, arg ScaleIngredientCountLotsParams) error {
 	_, err := q.db.Exec(ctx, scaleIngredientCountLots, arg.Factor, arg.ID)
 	return err
