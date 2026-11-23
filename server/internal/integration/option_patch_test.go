@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -188,5 +189,46 @@ func TestGroupListCountsActiveProducts(t *testing.T) {
 	}
 	if g := page.Items[0]; g.ProductCount != 2 || g.ActiveProductCount != 1 {
 		t.Fatalf("grupo: %+v (2 ligados, 1 activo)", g)
+	}
+}
+
+// El hermano que no se movió (revisión de la 090): editar ya topaba el tope por renglón a int16, crear
+// no, y 70000 se guardaba como 4464 sin avisar. Un nombre repetido en el grupo tiene que decir eso, no
+// «conflicto».
+func TestOptionCreateAndPatchShareTheirLimits(t *testing.T) {
+	t.Parallel()
+	w := newMCPWorld(t)
+	jwt := adminJWT(t, w)
+	g, opt := groupWithOption(t, w, "Topes compartidos", true)
+	create := func(body string) (int, string) {
+		t.Helper()
+		rec := do(t, w.router, http.MethodPost, "/api/v1/admin/groups/"+itoa(int(g))+"/options", jwt, []byte(body), "application/json")
+		return rec.Code, rec.Body.String()
+	}
+	for _, body := range []string{`{"name":"Grande","maxPerLine":70000}`, `{"name":"Caro","priceDelta":"99999999999"}`} {
+		if code, b := create(body); code != http.StatusBadRequest {
+			t.Errorf("crear %s: %d %s", body, code, b)
+		}
+	}
+	for _, body := range []string{`{"maxPerLine":70000}`, `{"priceDelta":"99999999999"}`} {
+		if rec := do(t, w.router, http.MethodPatch, "/api/v1/admin/modifier-options/"+itoa(int(opt)), jwt, []byte(body), "application/json"); rec.Code != http.StatusBadRequest {
+			t.Errorf("editar %s: %d %s", body, rec.Code, rec.Body.String())
+		}
+	}
+	if code, b := create(`{"name":"Opción de Topes compartidos"}`); code != http.StatusConflict || !strings.Contains(b, "ya hay un extra con ese nombre") {
+		t.Errorf("nombre repetido: %d %s", code, b)
+	}
+	// Un máximo de 65536 daba la vuelta a 0 (grupo donde no se puede elegir nada) o tronaba un check (500).
+	for _, body := range []string{`{"name":"Vuelta","defaultMin":0,"defaultMax":65536}`, `{"name":"Vuelta 2","defaultMin":1,"defaultMax":65536}`} {
+		if rec := do(t, w.router, http.MethodPost, "/api/v1/admin/groups/", jwt, []byte(body), "application/json"); rec.Code != http.StatusBadRequest {
+			t.Errorf("grupo %s: %d %s", body, rec.Code, rec.Body.String())
+		}
+	}
+	prod := makeProduct(t, w.owner, "Producto con topes", decimal.NewFromInt(10), false)
+	for _, body := range []string{`{"groupId":` + itoa(int(g)) + `,"override":true,"minSelect":0,"maxSelect":65536}`,
+		`{"groupId":` + itoa(int(g)) + `,"position":4294967297}`} {
+		if rec := do(t, w.router, http.MethodPost, "/api/v1/admin/products/"+itoa(int(prod))+"/groups", jwt, []byte(body), "application/json"); rec.Code != http.StatusBadRequest {
+			t.Errorf("liga %s: %d %s", body, rec.Code, rec.Body.String())
+		}
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
 // Las herramientas de la spec 090 por la puerta para agentes, contra la API completa servida como
@@ -375,6 +376,27 @@ func TestMCPRecipes(t *testing.T) {
 	_ = json.Unmarshal(b, &v)
 	set["based_on"], set["also_in_same_name"] = v.Stamp, true
 	set["items"] = []map[string]any{{"ingredient_id": leche, "quantity": "250", "unit_id": grams}}
+	refused(t, callTool(t, w.router, tok, "recipe_set", applyArgs(set, "receta-avena-sin-also")), "also_based_on")
+	prev2 := callTool(t, w.router, tok, "recipe_set", set)
+	previewed(t, prev2)
+	resolved, _ := prev2.data["resolved"].(map[string]any)
+	also, _ := resolved["also_based_on"].(map[string]any)
+	if len(also) != 1 {
+		t.Fatalf("la vista previa no trae also_based_on del homónimo: %s", prev2.text)
+	}
+	set["also_based_on"] = also
+
+	// Alguien le guarda receta al homónimo entre la vista previa y el aplicar: no se pisa.
+	if _, err := w.owner.Pool.Exec(ctx, `update modifier_options set composition_confirmed_at = now() where id = $1`, twin); err != nil {
+		t.Fatal(err)
+	}
+	refused(t, callTool(t, w.router, tok, "recipe_set", applyArgs(set, "receta-avena-homonimo-viejo")), "recipe_get")
+	if recipeOf(twin) != 0 {
+		t.Fatal("se pisó la receta que alguien le guardó al homónimo")
+	}
+	if _, err := w.owner.Pool.Exec(ctx, `update modifier_options set composition_confirmed_at = null where id = $1`, twin); err != nil {
+		t.Fatal(err)
+	}
 	applied(t, callTool(t, w.router, tok, "recipe_set", applyArgs(set, "receta-avena-2")))
 	if recipeOf(twin) != 1 {
 		t.Fatal("con also_in_same_name el homónimo no recibió la receta")
@@ -420,7 +442,7 @@ func TestMCPCatalogEditing(t *testing.T) {
 
 	off := callTool(t, w.router, tok, "modifier_group_update", map[string]any{"group_id": g, "active": false})
 	previewed(t, off)
-	if !strings.Contains(off.text, "Latte MCP") {
+	if !strings.Contains(off.text, "Latte MCP") || !strings.Contains(off.text, "1 producto activo:") {
 		t.Fatalf("desactivar no nombra el producto donde deja de salir: %s", off.text)
 	}
 	call("modifier_group_update", map[string]any{"group_id": g, "active": false}, "grupo-off-catalogo")
@@ -440,5 +462,69 @@ func TestMCPCatalogEditing(t *testing.T) {
 	if name != "Latte grande MCP" || decimal.RequireFromString(price).Cmp(decimal.NewFromInt(65)) != 0 ||
 		decimal.RequireFromString(cost).Cmp(decimal.RequireFromString("18.50")) != 0 || catNow != cat {
 		t.Fatalf("solo el nombre cambió lo demás: %s %s %s %d", name, price, cost, catNow)
+	}
+}
+
+// Los ids derivados de la clave son la segunda red (revisión de seguridad de la 090): si el registro
+// de idempotencia se pierde, la misma clave manda el mismo id de cuenta y el mismo clientUuid, y la
+// ruta reconoce el reintento. Sin esta prueba, el registro tapaba la red y nunca se ejercitaba.
+func TestMCPDerivedIDsSurviveALostIdempotencyRecord(t *testing.T) {
+	t.Parallel()
+	o := newOrderWorld(t)
+	w := o.w
+	forget := func() {
+		t.Helper()
+		if _, err := w.owner.Pool.Exec(context.Background(), `delete from mcp_idempotency_keys`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	args := applyArgs(map[string]any{"lines": []map[string]any{{"product_id": o.propio, "qty": "1"}}}, "cuenta-perdida-0001")
+	draft := applied(t, callTool(t, w.router, o.tok, "order_draft_create", args))
+	forget()
+	again := applied(t, callTool(t, w.router, o.tok, "order_draft_create", args))
+	if draft["id"] != again["id"] || scalar(t, w, `select count(*) from order_drafts`) != 1 {
+		t.Fatalf("sin registro, la misma clave abrió otra cuenta: %v y %v", draft["id"], again["id"])
+	}
+	sent := applied(t, callTool(t, w.router, o.tok, "order_draft_send", applyArgs(map[string]any{"draft_id": draft["id"]}, "envio-perdido-0001")))
+	orderID := int64(sent["order"].(map[string]any)["id"].(float64))
+
+	pay := applyArgs(map[string]any{"order_id": orderID, "method_id": o.f.cash, "amount": "50"}, "cobro-perdido-0001")
+	applied(t, callTool(t, w.router, o.tok, "order_pay", pay))
+	forget()
+	applied(t, callTool(t, w.router, o.tok, "order_pay", pay))
+	if n := scalar(t, w, `select count(*) from order_payments where order_id = $1`, orderID); n != 1 {
+		t.Fatalf("sin registro, la misma clave cobró %d veces", n)
+	}
+
+	other := crearPedidoSimple(t, o.octx, o.orders, o.propio, w.admin)
+	forget()
+	res := callTool(t, w.router, o.tok, "order_pay", applyArgs(map[string]any{"order_id": other, "method_id": o.f.cash, "amount": "50"}, "cobro-perdido-0001"))
+	if !res.isError || scalar(t, w, `select count(*) from order_payments where order_id = $1`, other) != 0 {
+		t.Fatalf("la misma clave cobró otro pedido: %s", res.text)
+	}
+}
+
+// La barrera del permiso es la ruta, no que la herramienta se esconda: con un token sin payments.void la
+// ruta de reembolso responde 403 y nada cambia.
+func TestRefundRouteRefusesWithoutPermission(t *testing.T) {
+	t.Parallel()
+	o := newOrderWorld(t)
+	w := o.w
+	prod := makeProduct(t, w.owner, "Taro sin permiso", decimal.NewFromInt(70), false)
+	id := crearPedidoSimple(t, o.octx, o.orders, prod, w.admin)
+	charge(t, o.octx, o.orders, id, int16(o.f.cash), "70", w.admin)
+	if err := o.orders.DeliverAll(o.octx, id); err != nil {
+		t.Fatal(err)
+	}
+	uid := makeUser(t, w.owner, "solo-cobra-403", "mesero")
+	jwt, err := w.jm.Issue(domain.User{ID: uid, CompanyID: w.company, Name: "solo cobra", Role: domain.RoleMesero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !forbiddenByPermission(t, w.router, "POST", "/api/v1/orders/"+itoa(int(id))+"/refund", jwt) {
+		t.Fatal("la ruta de reembolso no exige payments.void")
+	}
+	if got := refundedTotal(t, w.owner, id); !got.IsZero() {
+		t.Fatalf("se devolvió %s sin permiso", got)
 	}
 }

@@ -350,6 +350,12 @@ solo el nombre deja intactos precio, categoría, costo, horario y favorito.
   este paquete no).
 - Archivar y reactivar grupos y opciones es `active` en sus herramientas de edición, no herramientas
   aparte: es el mismo campo y la misma ruta que la pantalla.
+- **Escrituras sin permiso**: crear, enviar y descartar una cuenta, entregar, descontar y cobrar no piden
+  permiso en la pantalla (cualquiera en el local lo hace) y tampoco en el MCP; la barrera del token es el
+  alcance `write:orders`, que elige quien lo crea. Consecuencia: un token ya emitido con `write:orders`
+  (antes solo cancelar) gana capturar y cobrar con la subida.
+- **Un pedido de plataforma se cobra por monto**, como en la pantalla: «todo lo que falta» es de la cuenta
+  dividida y la ruta lo rechaza.
 - El alcance del token: pedidos y cobros en `write:orders`; catálogo (grupos, opciones, productos,
   recetas) en `write:catalog`; costo en `write:inventory`.
 - Fuera de este paquete y anotado en el #289: cancelar o mover renglones de un pedido vivo, folio de

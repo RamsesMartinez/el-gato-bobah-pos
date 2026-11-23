@@ -142,7 +142,7 @@ No hay pantalla nueva ni cambio de disposición: `/maquetas` no genera opciones 
 
 | Pantalla | Cambio | Maquetas |
 | --- | --- | --- |
-| Menú › Productos (lista) | En la celda «Grupos» (el número sigue contando solo los activos, como hoy), una insignia corta «1 inact.» / «2 inact.» con `whiteSpace="nowrap"` cuando hay grupos inactivos ligados; el detalle va en `title` («2 grupos inactivos: no salen en la venta»), como la insignia de ajustes. Se mide a 1280×854: ancho de columna sin scroll horizontal y altura de renglón igual a la de hoy | No aplica: insignia en celda existente |
+| Menú › Productos (lista) | En la celda «Grupos» (el número sigue contando solo los activos, como hoy), una insignia corta «1 apagado» / «2 apagados» con `whiteSpace="nowrap"` cuando hay grupos inactivos ligados; el detalle va en `title` («2 grupos inactivos: no salen en la venta»), como la insignia de ajustes. Se mide a 1280×854: ancho de columna sin scroll horizontal y altura de renglón igual a la de hoy | No aplica: insignia en celda existente |
 | Menú › Modificadores (archivar grupo) | El aviso que ya sale («Grupo archivado», con Deshacer) lleva en su descripción «Ya no se ofrece en 1 producto» / «en N productos» cuando N > 0, contando solo productos activos; el aviso de «Grupo reactivado» no repite el conteo | No aplica: texto de un aviso existente |
 | Integraciones › Crear token | Texto de tres alcances: Almacén («Insumos, sus costos y empaques, mermas, ajustes y conteos»), Menú y precios («Productos, grupos, extras y recetas; precios por plataforma»), Pedidos («Capturar, entregar y cobrar; anular pagos, cancelar y reembolsar», 66 car.) | No aplica: texto; la más larga sigue siendo Compras (69 car.); se mide la hoja a 1280×854 |
 
@@ -205,6 +205,22 @@ Aprobado con ajustes, ya incorporados arriba y en research/data-model:
 | A2 | El check no garantiza «sin espacios a los lados» (db-architect) | `reason = btrim(reason) and char_length(reason) between 1 and 200`; el servicio recorta antes |
 | A3 | El respaldo anónimo debe dejar `reason` válido para el check (db-architect) | `set reason = 'motivo anonimizado' where reason is not null`, contado en `FUGAS` |
 | A4 | `union all` del historial es posicional (db-architect) | `null::text` en las ramas que no son corrección |
-| A5 | La insignia «N inactivo(s)» ensancha la celda y es notación de programador (tablet-ui-reviewer) | «2 inact.» sin salto, detalle en `title`, plural real; se mide a 1280×854 |
+| A5 | La insignia «N inactivo(s)» ensancha la celda y es notación de programador (tablet-ui-reviewer) | «2 apagados» sin salto (en táctil el `title` no se ve: revisión de código), detalle en `title`, plural real; se mide a 1280×854 |
 | A6 | «Deja de salir en N productos» es ambiguo y sin singular (tablet-ui-reviewer) | «Ya no se ofrece en 1 producto / N productos», en la descripción, solo activos |
 | A7 | El hint de Pedidos (72 car.) superaba a Compras (tablet-ui-reviewer) | «Capturar, entregar y cobrar; anular pagos, cancelar y reembolsar» (66) |
+
+## Revisión de código (2026-11-22)
+
+`/revision-de-codigo` (go-backend-reviewer, security-auditor, tablet-ui-reviewer) y el recorrido de punta a
+punta contra la base restaurada. Cada arreglo con su prueba:
+
+| # | Hallazgo (origen) | Decisión |
+| --- | --- | --- |
+| C1 | Mínimos, máximos, tope por renglón y orden que no caben en smallint/integer dan la vuelta (65536 → 0) o truenan un check como 500; `price_delta` fuera de numeric(10,2) da 500. Las rutas ya existían; la 090 se las abre al agente (security-auditor, go-backend-reviewer) | `domain.ValidSelectRange`, `ValidMaxPerLine`, `ValidPosition`, `ValidPriceDelta` en grupos, ligas y extras (crear y editar); `TestModifierLimits`, `TestOptionCreateAndPatchShareTheirLimits` |
+| C2 | `recipe_set` con homónimos tomaba los stamps de al aplicar: una receta guardada en medio se pisaba (go-backend-reviewer) | La vista previa da `also_based_on` y aplicar lo exige y lo reenvía; subtest «alguien le guarda receta al homónimo» |
+| C3 | Ensanche de tokens ya emitidos (security-auditor) | **Riesgo aceptado** (plan, «Seguridad»): texto de los alcances en Integraciones, `docs/mecanica/personal-y-permisos.md` y el comentario del #289 |
+| C4 | Ids derivados sin prueba propia; barrera de permiso probada solo por omisión (security-auditor) | `TestMCPDerivedIDsSurviveALostIdempotencyRecord`, `TestRefundRouteRefusesWithoutPermission` |
+| C5 | Motivos sin recortar (go-backend-reviewer) | La herramienta los recorta antes de despachar |
+| C6 | `product_update` lee y reescribe el producto completo (go-backend-reviewer) | **Residuo aceptado**, `ponytail:` en `mcp_tools_write.go`: es el mismo techo de la pantalla; el camino es un PATCH parcial |
+| C7 | La insignia «N inact.» no se entiende en táctil (tablet-ui-reviewer) | «1 apagado / 2 apagados» |
+| C8 | Recorrido: nombre repetido decía solo «conflicto»; «1 productos activos» | «ya hay un extra/grupo con ese nombre»; plural real |

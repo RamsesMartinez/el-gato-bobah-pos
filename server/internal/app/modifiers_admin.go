@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"errors"
-	"math"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
@@ -53,7 +53,14 @@ type GroupView struct {
 }
 
 // validMinMax: min ≥ 0, max ≥ 1, min ≤ max.
-func validMinMax(min, max int) bool { return min >= 0 && max >= 1 && min <= max }
+// Los nombres repetidos dicen qué se repite: un «conflicto» a secas no le dice nada a quien captura ni
+// al agente (spec 090).
+var (
+	errGroupNameTaken  = fmt.Errorf("%w: ya hay un grupo con ese nombre", domain.ErrConflict)
+	errOptionNameTaken = fmt.Errorf("%w: ya hay un extra con ese nombre en el grupo", domain.ErrConflict)
+)
+
+func validMinMax(min, max int) bool { return domain.ValidSelectRange(min, max) }
 
 type GroupsPage struct {
 	Items  []GroupView   `json:"items"`
@@ -94,7 +101,7 @@ func (s *AdminService) CreateGroup(ctx context.Context, name string, defMin, def
 		Name: name, DefaultMinSelect: int16(defMin), DefaultMaxSelect: int16(defMax),
 	})
 	if isUniqueViolation(err) {
-		return 0, domain.ErrConflict
+		return 0, errGroupNameTaken
 	}
 	return id, err
 }
@@ -107,7 +114,7 @@ func (s *AdminService) UpdateGroup(ctx context.Context, id int64, name string, a
 		ID: id, Name: name, IsActive: active, DefaultMinSelect: int16(defMin), DefaultMaxSelect: int16(defMax),
 	})
 	if isUniqueViolation(err) {
-		return domain.ErrConflict
+		return errGroupNameTaken
 	}
 	return err
 }
@@ -144,14 +151,14 @@ func (s *AdminService) GroupOptions(ctx context.Context, groupID int64) ([]Group
 }
 
 func (s *AdminService) CreateOption(ctx context.Context, groupID int64, name string, priceDelta decimal.Decimal, maxPerLine int) (int64, error) {
-	if name == "" || maxPerLine < 1 {
+	if name == "" || !domain.ValidMaxPerLine(maxPerLine) || !domain.ValidPriceDelta(priceDelta) {
 		return 0, domain.ErrValidation
 	}
 	id, err := s.store.QC(ctx).AdminCreateOption(ctx, db.AdminCreateOptionParams{
 		GroupID: groupID, Name: name, PriceDelta: domain.Round2(priceDelta), MaxPerLine: int16(maxPerLine),
 	})
 	if isUniqueViolation(err) {
-		return 0, domain.ErrConflict
+		return 0, errOptionNameTaken
 	}
 	return id, err
 }
@@ -185,14 +192,14 @@ func (s *AdminService) UpdateOptionFields(ctx context.Context, id int64, p Optio
 		if p.MaxPerLine != nil {
 			maxPerLine = *p.MaxPerLine
 		}
-		if name == "" || maxPerLine < 1 || maxPerLine > math.MaxInt16 {
+		if name == "" || !domain.ValidMaxPerLine(maxPerLine) || !domain.ValidPriceDelta(price) {
 			return domain.ErrValidation
 		}
 		err = q.AdminUpdateOptionFields(ctx, db.AdminUpdateOptionFieldsParams{
 			ID: id, Name: name, PriceDelta: domain.Round2(price), MaxPerLine: int16(maxPerLine),
 		})
 		if isUniqueViolation(err) {
-			return domain.ErrConflict
+			return errOptionNameTaken
 		}
 		return err
 	})
@@ -303,6 +310,9 @@ type AttachGroupInput struct {
 
 func (s *AdminService) AttachGroup(ctx context.Context, in AttachGroupInput) error {
 	var minP, maxP *int16
+	if !domain.ValidPosition(in.Position) {
+		return domain.ErrValidation
+	}
 	if in.Override {
 		if !validMinMax(in.MinSelect, in.MaxSelect) {
 			return domain.ErrValidation

@@ -102,6 +102,7 @@ type recipeSetArgs struct {
 	Components      []recipeComponentArg `json:"components,omitempty" jsonschema:"productos del paquete, con mode package"`
 	BasedOn         *string              `json:"based_on,omitempty" jsonschema:"el stamp de recipe_get o de la vista previa; obligatorio al aplicar (\"\" si no había receta)"`
 	AlsoInSameName  bool                 `json:"also_in_same_name,omitempty" jsonschema:"true también guarda la receta en los extras que se llaman igual en otros grupos; por omisión false"`
+	AlsoBasedOn     map[string]string    `json:"also_based_on,omitempty" jsonschema:"con also_in_same_name, obligatorio al aplicar: el also_based_on de la vista previa (los extras y su stamp)"`
 	ActualStock     *string              `json:"actual_stock,omitempty" jsonschema:"si la vista previa lo pide: cuántas hay de verdad, lo dice la persona"`
 	SeenProduct     *string              `json:"seen_product_on_hand,omitempty" jsonschema:"si la vista previa lo pide: la existencia del producto que mostró"`
 	SeenIngredient  *string              `json:"seen_ingredient_on_hand,omitempty" jsonschema:"si la vista previa lo pide: la existencia del insumo que mostró"`
@@ -236,7 +237,7 @@ func register090Catalog() {
 			if err := requireReason(in.Reason, "corrige el costo"); err != nil {
 				return "", "", nil, nil, nil, err
 			}
-			return http.MethodPost, pArticleCost, ids(in.IngredientID), nil, map[string]any{"cost": in.Cost, "reason": in.Reason}, nil
+			return http.MethodPost, pArticleCost, ids(in.IngredientID), nil, map[string]any{"cost": in.Cost, "reason": strings.TrimSpace(in.Reason)}, nil
 		},
 		state: func(s *mcpSession, ctx context.Context, in costSetArgs, _ json.RawMessage) any {
 			return s.soft(ctx, "ingredient_cost_set", pArticle, ids(in.IngredientID), nil)
@@ -274,7 +275,7 @@ func register090Catalog() {
 		_ = json.Unmarshal(b, &v)
 		return v, nil
 	}
-	recipeBody := func(in recipeSetArgs, cur map[string]any) map[string]any {
+	recipeBody := func(in recipeSetArgs) map[string]any {
 		items := make([]map[string]any, len(in.Items))
 		for i, it := range in.Items {
 			items[i] = map[string]any{"ingredientId": it.IngredientID, "quantity": it.Quantity, "unitId": it.UnitID}
@@ -286,18 +287,19 @@ func register090Catalog() {
 		body := map[string]any{"mode": in.Mode, "items": items, "components": comps, "linkedProductId": in.LinkedProductID,
 			"basedOn": in.BasedOn, "alsoOptionIds": []int64{}, "actualStock": in.ActualStock,
 			"seenProductOnHand": in.SeenProduct, "seenIngredientOnHand": in.SeenIngredient}
-		// Por omisión NO se copia a los homónimos (la trampa de «También en…»): solo si se pide, y con el
-		// stamp de cada uno para no pisar lo que alguien les guardó.
+		// Por omisión NO se copia a los homónimos (la trampa de «También en…»). Si se pide, van los extras y
+		// los stamps que la vista previa enseñó, no los de ahora: así una receta que alguien les guardó en
+		// medio se rechaza en vez de pisarse, y un homónimo que apareció en medio no recibe nada.
 		if in.AlsoInSameName {
-			twins, _ := cur["sameName"].([]any)
 			idsOut := []int64{}
 			stamps := map[string]string{}
-			for _, t := range twins {
-				m, _ := t.(map[string]any)
-				id, _ := m["id"].(float64)
-				st, _ := m["stamp"].(string)
-				idsOut = append(idsOut, int64(id))
-				stamps[strconv.FormatInt(int64(id), 10)] = st
+			for k, st := range in.AlsoBasedOn {
+				id, err := strconv.ParseInt(k, 10, 64)
+				if err != nil || id <= 0 {
+					continue
+				}
+				idsOut = append(idsOut, id)
+				stamps[k] = st
 			}
 			body["alsoOptionIds"], body["alsoBasedOn"] = idsOut, stamps
 		}
@@ -315,11 +317,11 @@ func register090Catalog() {
 			default:
 				return "", "", nil, nil, nil, toolErr("mode es items, package, product o nothing.")
 			}
-			cur, err := recipeNow(s, ctx, in)
-			if err != nil {
+			// Leerla aquí hace que un id que no existe se diga antes de la vista previa.
+			if _, err := recipeNow(s, ctx, in); err != nil {
 				return "", "", nil, nil, nil, err
 			}
-			return http.MethodPut, pattern, ids(id), nil, recipeBody(in, cur), nil
+			return http.MethodPut, pattern, ids(id), nil, recipeBody(in), nil
 		},
 		state: func(s *mcpSession, ctx context.Context, in recipeSetArgs, _ json.RawMessage) any {
 			cur, err := recipeNow(s, ctx, in)
@@ -339,7 +341,16 @@ func register090Catalog() {
 			if twins, _ := cur["sameName"].([]any); len(twins) > 0 {
 				if in.AlsoInSameName {
 					out["also_saved_in"] = twins
-					notes = append(notes, fmt.Sprintf("La receta también se guarda en %d extras con el mismo nombre (also_in_same_name).", len(twins)))
+					also := map[string]string{}
+					for _, t := range twins {
+						m, _ := t.(map[string]any)
+						id, _ := m["id"].(float64)
+						st, _ := m["stamp"].(string)
+						also[strconv.FormatInt(int64(id), 10)] = st
+					}
+					out["also_based_on"] = also
+					notes = append(notes, fmt.Sprintf("La receta también se guarda en %d extras con el mismo nombre. Al aplicar "+
+						"manda also_based_on tal como viene aquí.", len(twins)))
 				} else {
 					notes = append(notes, fmt.Sprintf("Hay %d extras con el mismo nombre en otros grupos; NO se tocan. Para copiarles "+
 						"esta receta manda also_in_same_name: true.", len(twins)))
@@ -361,6 +372,9 @@ func register090Catalog() {
 			if in.BasedOn == nil {
 				return toolErr("Para aplicar hace falta based_on: el stamp que dio recipe_get o la vista previa (\"\" si no había receta).")
 			}
+			if in.AlsoInSameName && len(in.AlsoBasedOn) == 0 {
+				return toolErr("Con also_in_same_name, aplicar pide also_based_on: el de la vista previa.")
+			}
 			return nil
 		},
 		run: func(s *mcpSession, ctx context.Context, in recipeSetArgs) (int, []byte, error) {
@@ -369,7 +383,7 @@ func register090Catalog() {
 			if err != nil {
 				return 0, nil, err
 			}
-			status, resp, err := s.dispatch(ctx, "recipe_set", http.MethodPut, pattern, ids(id), nil, recipeBody(in, cur))
+			status, resp, err := s.dispatch(ctx, "recipe_set", http.MethodPut, pattern, ids(id), nil, recipeBody(in))
 			switch {
 			case err != nil:
 			case status == http.StatusConflict:
@@ -476,8 +490,12 @@ func register090Catalog() {
 			if len(names) == 0 {
 				return nil, nil
 			}
-			return attentionFirst{attention: []string{fmt.Sprintf("Al archivarlo deja de ofrecerse en %d productos activos: %s.",
-				len(names), strings.Join(names, ", "))}, resolved: map[string]any{"products": env.Items}}, nil
+			what := fmt.Sprintf("%d productos activos", len(names))
+			if len(names) == 1 {
+				what = "1 producto activo"
+			}
+			return attentionFirst{attention: []string{fmt.Sprintf("Al archivarlo deja de ofrecerse en %s: %s.",
+				what, strings.Join(names, ", "))}, resolved: map[string]any{"products": env.Items}}, nil
 		},
 	})
 

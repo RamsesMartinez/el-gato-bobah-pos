@@ -402,7 +402,7 @@ export function GroupsCell({ groupCount, inactiveGroupCount }: { groupCount: num
           title={inactiveGroupCount === 1
             ? '1 grupo inactivo: no sale en la venta'
             : `${inactiveGroupCount} grupos inactivos: no salen en la venta`}>
-          {inactiveGroupCount} inact.
+          {inactiveGroupCount} {inactiveGroupCount === 1 ? 'apagado' : 'apagados'}
         </Badge>
       )}
     </HStack>

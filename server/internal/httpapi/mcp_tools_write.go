@@ -422,6 +422,9 @@ func registerWrites() {
 				return "", "", nil, nil, nil, err
 			}
 			// categoryId 0 = no mover; cost ausente = no tocar el costo (así lo lee la ruta).
+			// ponytail: la ruta recibe el producto completo, así que una edición hecha en la pantalla entre esta
+			// lectura y el PATCH se pierde. El techo es el mismo de la pantalla con dos tabletas abiertas; el
+			// camino es un PATCH parcial en el servicio, como el de los extras (spec 090).
 			body := map[string]any{"name": cur["name"], "price": cur["price"], "favorite": cur["is_favorite"],
 				"active": cur["is_active"], "categoryId": 0, "availableFrom": cur["availableFrom"],
 				"availableUntil": cur["availableUntil"], "needsPrep": cur["needsPrep"]}

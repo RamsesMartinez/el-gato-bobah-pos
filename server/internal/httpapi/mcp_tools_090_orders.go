@@ -471,7 +471,7 @@ func register090Orders() {
 			if err := requireReason(in.Reason, "anula el pago"); err != nil {
 				return "", "", nil, nil, nil, err
 			}
-			return http.MethodPost, pPaymentVoid, orderAndPayment(in.OrderID, in.PaymentID), nil, map[string]any{"reason": in.Reason}, nil
+			return http.MethodPost, pPaymentVoid, orderAndPayment(in.OrderID, in.PaymentID), nil, map[string]any{"reason": strings.TrimSpace(in.Reason)}, nil
 		},
 		state: func(s *mcpSession, ctx context.Context, in voidArgs, _ json.RawMessage) any {
 			return voidState(s, ctx, in.OrderID)
@@ -495,7 +495,7 @@ func register090Orders() {
 				return "", "", nil, nil, nil, err
 			}
 			return http.MethodPost, pPaymentTerminal, orderAndPayment(in.OrderID, in.PaymentID), nil,
-				map[string]any{"fromTerminalId": in.FromTerminalID, "terminalId": in.TerminalID, "reason": in.Reason}, nil
+				map[string]any{"fromTerminalId": in.FromTerminalID, "terminalId": in.TerminalID, "reason": strings.TrimSpace(in.Reason)}, nil
 		},
 		state: func(s *mcpSession, ctx context.Context, in terminalArgs, _ json.RawMessage) any {
 			return terminalState(s, ctx, in.OrderID)
@@ -523,7 +523,7 @@ func register090Orders() {
 				return "", "", nil, nil, nil, err
 			}
 			return http.MethodPost, pOrderRefund, ids(in.OrderID), nil,
-				map[string]any{"reason": in.Reason, "amount": in.Amount, "lineId": in.LineID, "cardFolio": in.CardFolio}, nil
+				map[string]any{"reason": strings.TrimSpace(in.Reason), "amount": in.Amount, "lineId": in.LineID, "cardFolio": in.CardFolio}, nil
 		},
 		state: func(s *mcpSession, ctx context.Context, in refundArgs, _ json.RawMessage) any {
 			return refundState(s, ctx, in.OrderID)
