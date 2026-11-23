@@ -37,6 +37,7 @@ var UnitChangeTables = map[string]string{
 	"notifications":               "cierra los avisos abiertos (unit_changed) y evalúa al final, ya convertido; los cerrados guardan su unidad",
 	"stock_out_reports":           "un reporte que todavía se puede deshacer bloquea; los demás guardan su delta histórico",
 	"branch_stock_minimums":       "convierte el mínimo; con reemplazo pasa al artículo nuevo",
+	"stock_transfer_lines":        "un traspaso obliga al reemplazo: guarda cantidades históricas en la unidad vieja",
 }
 
 // UnitChangeRequest es la clase nueva (su unidad base) y la equivalencia: cuánto de la base nueva vale

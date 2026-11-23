@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/alerts"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -46,6 +48,14 @@ type errorDetails struct {
 	IngredientID int64 `json:"ingredientId,omitempty"`
 	// Name: el nombre alternativo que chocó (spec 063), para señalarlo en la lista que se capturó.
 	Name string `json:"name,omitempty"`
+	// Lines: los renglones de un traspaso que dejarían el origen en negativo (spec 094), con lo que hay.
+	Lines []transferShortDetail `json:"lines,omitempty"`
+}
+
+type transferShortDetail struct {
+	ItemType  string          `json:"itemType"`
+	ID        int64           `json:"id"`
+	Available decimal.Decimal `json:"available"`
 }
 
 // JSON writes v as JSON with the given status.
@@ -352,8 +362,10 @@ func Error(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrUnitKindMismatch):
 		// 400 con código propio: la pantalla de la compra ofrece capturar la densidad ahí mismo.
 		status, code = http.StatusBadRequest, "UNIT_KIND_MISMATCH"
-	case errors.Is(err, domain.ErrCountNeedsConfirm):
+	case errors.Is(err, domain.ErrCountNeedsConfirm), errors.Is(err, domain.ErrTransferNeedsConfirm):
 		status, code = http.StatusConflict, "NEEDS_CONFIRM"
+	case errors.Is(err, domain.ErrTransferKeyReused):
+		status, code = http.StatusConflict, "TRANSFER_KEY_REUSED"
 	case errors.Is(err, domain.ErrIngredientMerged):
 		status, code = http.StatusConflict, "INGREDIENT_MERGED"
 	case errors.Is(err, domain.ErrMergeBlocked):
@@ -463,6 +475,13 @@ func Error(w http.ResponseWriter, err error) {
 	var mismatch domain.UnitKindMismatch
 	if errors.As(err, &mismatch) {
 		details = &errorDetails{IngredientID: mismatch.IngredientID, ProductName: mismatch.Name}
+	}
+	var short domain.TransferNeedsConfirm
+	if errors.As(err, &short) {
+		details = &errorDetails{}
+		for _, l := range short.Lines {
+			details.Lines = append(details.Lines, transferShortDetail{ItemType: l.ItemType, ID: l.ID, Available: l.Available})
+		}
 	}
 	var withStock domain.WarehouseHasStock
 	if errors.As(err, &withStock) {

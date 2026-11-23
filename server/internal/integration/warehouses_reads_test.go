@@ -93,7 +93,7 @@ func TestStockReadsUseTheSalesWarehouse(t *testing.T) {
 		var got []db.ListStockLevelsRow
 		for _, r := range rows {
 			if r.ItemName == "Leche dos almacenes" {
-				got = append(got, r)
+				got = append(got, r.ListStockLevelsRow)
 			}
 		}
 		if len(got) != 1 || !got[0].OnHand.Equal(cinco) {

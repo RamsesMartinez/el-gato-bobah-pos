@@ -142,6 +142,8 @@ func (q *Queries) InsertStockMovement(ctx context.Context, arg InsertStockMoveme
 const listStockLevels = `-- name: ListStockLevels :many
 
 select sl.item_type,
+       i.id as ingredient_id,
+       p.id as product_id,
        coalesce(i.name, p.name) as item_name,
        sum(sl.on_hand)::numeric(14,4) as on_hand,
        coalesce(i.min_stock, p.min_stock) as min_stock,
@@ -163,12 +165,14 @@ order by item_name
 `
 
 type ListStockLevelsRow struct {
-	ItemType StockItemType    `json:"item_type"`
-	ItemName string           `json:"item_name"`
-	OnHand   decimal.Decimal  `json:"on_hand"`
-	MinStock *decimal.Decimal `json:"min_stock"`
-	UnitCode string           `json:"unit_code"`
-	IsActive bool             `json:"is_active"`
+	ItemType     StockItemType    `json:"item_type"`
+	IngredientID *int64           `json:"ingredient_id"`
+	ProductID    *int64           `json:"product_id"`
+	ItemName     string           `json:"item_name"`
+	OnHand       decimal.Decimal  `json:"on_hand"`
+	MinStock     *decimal.Decimal `json:"min_stock"`
+	UnitCode     string           `json:"unit_code"`
+	IsActive     bool             `json:"is_active"`
 }
 
 // Almacén / niveles
@@ -185,6 +189,8 @@ func (q *Queries) ListStockLevels(ctx context.Context, warehouseIds []int64) ([]
 		var i ListStockLevelsRow
 		if err := rows.Scan(
 			&i.ItemType,
+			&i.IngredientID,
+			&i.ProductID,
 			&i.ItemName,
 			&i.OnHand,
 			&i.MinStock,

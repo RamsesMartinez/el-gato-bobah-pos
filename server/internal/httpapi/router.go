@@ -613,6 +613,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Patch("/warehouses/{id}", h.RenameWarehouse)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Post("/warehouses/{id}/archive", h.ArchiveWarehouse)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Post("/warehouses/{id}/restore", h.RestoreWarehouse)
+					// Traspasos entre almacenes (spec 094): los ve quien ve el almacén; los hace quien traspasa.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/transfers", h.ListTransfers)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryTransfer)).Post("/transfers", h.CreateTransfer)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/ingredients/{id}/presentations", h.ListIngredientPresentations)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredients/{id}/presentations", h.CreatePresentation)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/presentations/{id}", h.UpdatePresentation)
