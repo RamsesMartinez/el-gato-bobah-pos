@@ -32,6 +32,7 @@ GET /api/v1/admin/products/{id}/alt-names/similar admin,gerente
 GET /api/v1/admin/products/{id}/composition admin,gerente
 GET /api/v1/admin/products/{id}/groups admin,gerente
 GET /api/v1/admin/products/{id}/image admin,gerente
+GET /api/v1/admin/public-menu admin,gerente
 GET /api/v1/admin/recipes admin,gerente
 GET /api/v1/admin/web-sales/summary admin,gerente
 GET /api/v1/articles admin,gerente
@@ -133,6 +134,7 @@ PATCH /api/v1/admin/categories/{id} admin,gerente
 PATCH /api/v1/admin/groups/{id} admin,gerente
 PATCH /api/v1/admin/modifier-options/{id} admin,gerente
 PATCH /api/v1/admin/products/{id} admin,gerente
+PATCH /api/v1/admin/public-menu admin,gerente
 PATCH /api/v1/card-terminals/{id} admin,gerente
 PATCH /api/v1/cash-concepts/{id} admin,gerente
 PATCH /api/v1/cash-registers/{id} admin,gerente

@@ -1972,11 +1972,12 @@ type PublicMenuName struct {
 }
 
 type PublicMenuRoute struct {
-	Name        string      `json:"name"`
-	CompanyID   int64       `json:"company_id"`
-	IsCurrent   interface{} `json:"is_current"`
-	CurrentName string      `json:"current_name"`
-	QrToken     string      `json:"qr_token"`
+	Name          string      `json:"name"`
+	CompanyID     int64       `json:"company_id"`
+	IsCurrent     interface{} `json:"is_current"`
+	CurrentName   string      `json:"current_name"`
+	QrToken       string      `json:"qr_token"`
+	CompanyActive bool        `json:"company_active"`
 }
 
 type Recipe struct {

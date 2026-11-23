@@ -145,7 +145,7 @@ func TestMigrationPublicMenuOnARealBackup(t *testing.T) {
 			}
 			cols = append(cols, c)
 		}
-		if strings.Join(cols, ",") != "name,company_id,is_current,current_name,qr_token" {
+		if strings.Join(cols, ",") != "name,company_id,is_current,current_name,qr_token,company_active" {
 			t.Fatalf("la vista proyecta %v: cada columna de más la puede leer cualquier petición del rol de la aplicación", cols)
 		}
 	})

@@ -254,6 +254,7 @@ func main() {
 		Users:           app.NewUsersService(st, hibpClient, cfg.HIBPEnabled, cfg.PinPepper),
 		Menu:            app.NewMenuService(st, nil),
 		WebSales:        app.NewWebSalesService(st),
+		PublicMenu:      app.NewPublicMenuService(st, cfg.MenuBaseURLOrDefault()),
 		MenuCache:       cache.NewMenuCache(cfg.RedisURL),
 		Suggest:         app.NewSuggestService(st, nil),
 		Costing:         costing,

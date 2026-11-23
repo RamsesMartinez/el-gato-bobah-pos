@@ -30,6 +30,9 @@ const (
 )
 
 // DomainError traduce a un sentinel de domain los errores que la base lanza a propósito.
+// uniqueViolationCode es el SQLSTATE de una llave única repetida.
+const uniqueViolationCode = "23505"
+
 func DomainError(err error) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
@@ -47,6 +50,12 @@ func DomainError(err error) error {
 		return fmt.Errorf("%w (%s)", domain.ErrWarehouseMissing, pgErr.Message)
 	case warehouseNotWritableCode:
 		return domain.ErrWarehouseNotWritableYet
+	case uniqueViolationCode:
+		// Otra empresa ganó la carrera por el mismo nombre de menú (spec 097). Solo ESA restricción: el
+		// índice de «un vigente por empresa» no se disfraza de «no disponible».
+		if pgErr.ConstraintName == "public_menu_names_name_key" {
+			return domain.ErrMenuNameUnavailable
+		}
 	}
 	return err
 }

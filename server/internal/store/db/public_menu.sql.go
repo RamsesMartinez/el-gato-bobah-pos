@@ -221,13 +221,14 @@ func (q *Queries) PublicMenuNames(ctx context.Context, companyID int64) ([]Publi
 
 const resolvePublicMenuName = `-- name: ResolvePublicMenuName :one
 
-select company_id, is_current::bool as is_current, current_name from public_menu_routes where name = $1
+select company_id, is_current::bool as is_current, current_name, company_active::bool as company_active from public_menu_routes where name = $1
 `
 
 type ResolvePublicMenuNameRow struct {
-	CompanyID   int64  `json:"company_id"`
-	IsCurrent   bool   `json:"is_current"`
-	CurrentName string `json:"current_name"`
+	CompanyID     int64  `json:"company_id"`
+	IsCurrent     bool   `json:"is_current"`
+	CurrentName   string `json:"current_name"`
+	CompanyActive bool   `json:"company_active"`
 }
 
 // Menú público (spec 097). Las dos primeras resuelven SIN empresa, sobre la vista de la 0121: lo
@@ -235,23 +236,29 @@ type ResolvePublicMenuNameRow struct {
 func (q *Queries) ResolvePublicMenuName(ctx context.Context, name string) (ResolvePublicMenuNameRow, error) {
 	row := q.db.QueryRow(ctx, resolvePublicMenuName, name)
 	var i ResolvePublicMenuNameRow
-	err := row.Scan(&i.CompanyID, &i.IsCurrent, &i.CurrentName)
+	err := row.Scan(
+		&i.CompanyID,
+		&i.IsCurrent,
+		&i.CurrentName,
+		&i.CompanyActive,
+	)
 	return i, err
 }
 
 const resolvePublicMenuToken = `-- name: ResolvePublicMenuToken :one
-select company_id, current_name from public_menu_routes where qr_token = $1 and is_current
+select company_id, current_name, company_active::bool as company_active from public_menu_routes where qr_token = $1 and is_current
 `
 
 type ResolvePublicMenuTokenRow struct {
-	CompanyID   int64  `json:"company_id"`
-	CurrentName string `json:"current_name"`
+	CompanyID     int64  `json:"company_id"`
+	CurrentName   string `json:"current_name"`
+	CompanyActive bool   `json:"company_active"`
 }
 
 func (q *Queries) ResolvePublicMenuToken(ctx context.Context, qrToken string) (ResolvePublicMenuTokenRow, error) {
 	row := q.db.QueryRow(ctx, resolvePublicMenuToken, qrToken)
 	var i ResolvePublicMenuTokenRow
-	err := row.Scan(&i.CompanyID, &i.CurrentName)
+	err := row.Scan(&i.CompanyID, &i.CurrentName, &i.CompanyActive)
 	return i, err
 }
 

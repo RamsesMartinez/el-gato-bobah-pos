@@ -83,18 +83,20 @@ create policy public_menu_resolves on public_menus for select to gatobobah_publi
 create policy public_menu_resolves on public_menu_names for select to gatobobah_public_menu using (true);
 create policy public_menu_resolves on companies for select to gatobobah_public_menu using (true);
 
--- security_barrier: ningún predicado de quien consulta corre antes del filtro de empresa activa.
+-- Proyecta TODOS los nombres, también los de empresas inactivas: así un nombre que fue de una empresa
+-- dada de baja sigue contando como tomado. Servir o no el menú lo decide la API con company_active.
+-- security_barrier: ningún predicado de quien consulta se evalúa antes que los de la vista.
 create view public_menu_routes with (security_barrier = true) as
   select n.name,
          n.company_id,
          (n.retired_at is null) as is_current,
          cur.name               as current_name,
-         m.qr_token
+         m.qr_token,
+         c.is_active            as company_active
     from public_menu_names n
-    join public_menus m      on m.id = n.menu_id and m.company_id = n.company_id
+    join public_menus m        on m.id = n.menu_id and m.company_id = n.company_id
     join public_menu_names cur on cur.menu_id = m.id and cur.retired_at is null
-    join companies c         on c.id = n.company_id
-   where c.is_active;
+    join companies c           on c.id = n.company_id;
 alter view public_menu_routes owner to gatobobah_public_menu;
 revoke all on public_menu_routes from public;
 grant select on public_menu_routes to gatobobah_app;
@@ -139,7 +141,11 @@ begin
   end if;
   b := trim(both '-' from left(b, 40));
   cand := b;
-  while cand = any (reserved) or exists (select 1 from public_menu_names where name = cand) loop
+  -- La tabla y la vista: como owner (relleno, CreateCompany) la tabla ya lo ve todo; con el rol de
+  -- la aplicación RLS la reduce a la empresa propia y la vista ve las demás.
+  while cand = any (reserved)
+        or exists (select 1 from public_menu_names where name = cand)
+        or exists (select 1 from public_menu_routes where name = cand) loop
     n := n + 1;
     sfx := '-' || n::text;
     cand := rtrim(left(b, 40 - char_length(sfx)), '-') || sfx;
