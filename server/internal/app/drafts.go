@@ -743,7 +743,7 @@ func checkLineSells(ctx context.Context, q *db.Queries, in domain.DraftLineInput
 		return err
 	}
 	row := db.OrderDraftLine{ProductID: in.ProductID, Qty: in.Qty, Modifiers: modsJSON(in.Modifiers)}
-	products, options, err := pricedCatalog(ctx, q, lista, []db.OrderDraftLine{row})
+	products, options, err := pricedCatalog(ctx, q, lista, []db.OrderDraftLine{row}, nil)
 	if err != nil {
 		return err
 	}
@@ -1013,7 +1013,7 @@ type draftTotals struct {
 // que todavía no existe (Quote), para que la vista previa del agente no pueda decir otra cifra que la
 // que la cuenta dirá al crearse (spec 090).
 func priceDraft(ctx context.Context, q *db.Queries, lista listaDePrecios, rows []db.OrderDraftLine, h draftHeader) (draftTotals, error) {
-	products, options, err := pricedCatalog(ctx, q, lista, rows)
+	products, options, err := pricedCatalog(ctx, q, lista, rows, h.platformID)
 	if err != nil {
 		return draftTotals{}, err
 	}
@@ -1075,7 +1075,10 @@ func draftLineView(r db.OrderDraftLine, products map[int64]domain.PricedProduct,
 }
 
 // pricedCatalog trae los productos y opciones que usan los renglones, con la lista de precios dada.
-func pricedCatalog(ctx context.Context, q *db.Queries, lista listaDePrecios, rows []db.OrderDraftLine) (
+//
+// platformID es el de la cuenta: en una de mostrador, un producto apagado para Mostrador sale «ya no
+// se vende» desde que se apaga (spec 092), con la misma regla que el envío (`sellable`).
+func pricedCatalog(ctx context.Context, q *db.Queries, lista listaDePrecios, rows []db.OrderDraftLine, platformID *int16) (
 	map[int64]domain.PricedProduct, map[int64]domain.PricedOption, error) {
 	var prodIDs, optIDs []int64
 	for _, r := range rows {
@@ -1099,7 +1102,7 @@ func pricedCatalog(ctx context.Context, q *db.Queries, lista listaDePrecios, row
 	}
 	for _, p := range prodRows {
 		products[p.ID] = domain.PricedProduct{
-			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive, ModifierGroups: groups[p.ID],
+			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: sellable(p, platformID), ModifierGroups: groups[p.ID],
 			Price: domain.PlatformPrice(p.Price, lista.margen, lista.producto[p.ID]),
 		}
 	}
@@ -1241,7 +1244,11 @@ func (s *DraftsService) Import(ctx context.Context, accounts []ImportAccount, ac
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
-		lines, err := sellableLines(ctx, q, a.Lines)
+		var platform *int16
+		if a.Header != nil && a.Header.PlatformID.Set {
+			platform = a.Header.PlatformID.Value
+		}
+		lines, err := sellableLines(ctx, q, a.Lines, platform)
 		if err != nil {
 			return nil, err
 		}
@@ -1276,7 +1283,7 @@ func (s *DraftsService) Import(ctx context.Context, accounts []ImportAccount, ac
 
 // sellableLines deja fuera, en UNA lectura, los renglones cuyo producto ya no está en el menú: lo
 // demás que se capturó sí sube. Antes se reintentaba la creación entera por cada producto faltante.
-func sellableLines(ctx context.Context, q *db.Queries, lines []DraftLineCmd) ([]DraftLineCmd, error) {
+func sellableLines(ctx context.Context, q *db.Queries, lines []DraftLineCmd, platformID *int16) ([]DraftLineCmd, error) {
 	ids := make([]int64, 0, len(lines))
 	for _, l := range lines {
 		ids = append(ids, l.ProductID)
@@ -1287,7 +1294,7 @@ func sellableLines(ctx context.Context, q *db.Queries, lines []DraftLineCmd) ([]
 	}
 	active := make(map[int64]bool, len(rows))
 	for _, p := range rows {
-		active[p.ID] = p.IsActive
+		active[p.ID] = sellable(p, platformID)
 	}
 	out := make([]DraftLineCmd, 0, len(lines))
 	for _, l := range lines {
@@ -1560,7 +1567,8 @@ func orderLinesOf(ctx context.Context, q *db.Queries, rows []db.OrderDraftLine) 
 	if err != nil {
 		return nil, err
 	}
-	products, options, err := pricedCatalog(ctx, q, lista, rows)
+	// Sin plataforma: aquí solo se buscan las opciones; quién se puede vender lo decide el envío.
+	products, options, err := pricedCatalog(ctx, q, lista, rows, nil)
 	if err != nil {
 		return nil, err
 	}

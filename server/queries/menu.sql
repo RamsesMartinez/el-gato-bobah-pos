@@ -63,3 +63,8 @@ limit 60;
 -- es el mismo con el que MenuProducts filtra la disponibilidad por fecha. Sin fila = versión 0.
 select coalesce(max(version), 0)::bigint as version, current_date::date as today
 from catalog_versions;
+
+-- name: SoldOutCandidates :many
+-- Los productos activos con «vender sin existencia» apagado (spec 092): los únicos que pueden salir
+-- agotados. Casi siempre ninguno, y entonces la lista no carga el grafo de existencias.
+select id from products where is_active and not allow_oversell order by id;

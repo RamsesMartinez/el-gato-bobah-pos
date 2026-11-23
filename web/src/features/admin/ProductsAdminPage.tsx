@@ -6,7 +6,7 @@ import {
   IconButton, HStack, VStack, Pagination, useDisclosure, Text,
 } from '@chakra-ui/react';
 import {
-  LuStar, LuChevronLeft, LuChevronRight, LuSettings2, LuPlus,
+  LuStar, LuChevronLeft, LuChevronRight, LuChevronDown, LuSettings2, LuPlus,
   LuListFilter, LuPencil, LuLayers, LuArchive, LuRotateCcw, LuCopy,
 } from 'react-icons/lu';
 import { SortHead } from '../../components/SortHead';
@@ -29,6 +29,8 @@ import {
 } from '../../components/ui/dialog';
 import { Field } from '../../components/ui/field';
 import { montoTecleado } from '../../domain/numeros';
+import { LugaresDeVenta } from '../../shared/producto/PanelesDeVenta';
+import { ventaInicial, ventaParaGuardar } from '../../shared/producto/ventaDelProducto';
 
 const PAGE_SIZE = 25;
 
@@ -187,6 +189,7 @@ export function ProductsAdminPage() {
                       )}
                       {p.name}
                       {p.matchedAlt && <Box as="span" ml={2} display="inline-flex" verticalAlign="middle" maxW="260px"><AltMatchTag name={p.matchedAlt} /></Box>}
+                      <NoSeVendeEnNingunLado p={p} />
                       {p.overrideCount > 0 && (
                         <Badge ml={2} colorPalette="purple" title={`${p.overrideCount} grupo(s) con min/máx personalizado`}>
                           <LuSettings2 /> {p.overrideCount}
@@ -332,11 +335,17 @@ export function NewProductDialog({ isOpen, onClose, categoryOptions }: {
   const [favorite, setFavorite] = useState(false);
   const [cost, setCost] = useState('');
   const costo = costoOpcional(cost);
+  // Dónde se vende (spec 092): encendidas por omisión y dentro de «Opciones avanzadas», cerrado.
+  const [avanzadas, setAvanzadas] = useState(false);
+  const [venta, setVenta] = useState(ventaInicial(null));
+  const tocoDondeSeVende = !venta.counter || !venta.web;
 
-  const reset = () => { setName(''); setCategoryId(''); setPrice(''); setFavorite(false); setCost(''); };
+  const reset = () => { setName(''); setCategoryId(''); setPrice(''); setFavorite(false); setCost(''); setAvanzadas(false); setVenta(ventaInicial(null)); };
   const create = useMutation({
     mutationFn: () => adminApi.createProduct({
       name: name.trim(), categoryId: Number(categoryId), price: montoTecleado(price) ?? 0, favorite, cost: costo ?? undefined,
+      // Sin tocar las casillas no viaja: el servidor ya lo crea en los dos lugares.
+      ...(tocoDondeSeVende ? { sales: ventaParaGuardar(venta, null) } : {}),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'products'] });
@@ -375,6 +384,17 @@ export function NewProductDialog({ isOpen, onClose, categoryOptions }: {
               <Text>Favorito</Text>
               <Switch checked={favorite} onCheckedChange={(e) => setFavorite(e.checked)} />
             </HStack>
+            <Box borderTopWidth="1px" pt={2}>
+              <Button variant="ghost" colorPalette="gray" minH="44px" w="100%" justifyContent="space-between" px={1}
+                aria-expanded={avanzadas} onClick={() => setAvanzadas(!avanzadas)}>
+                <Text fontWeight="600">Opciones avanzadas</Text>
+                <HStack gap={2}>
+                  <Text fontSize="sm" color="fg.muted" fontWeight="normal">Se vende en: {resumenLugares(venta.counter, venta.web)}</Text>
+                  {avanzadas ? <LuChevronDown /> : <LuChevronRight />}
+                </HStack>
+              </Button>
+              {avanzadas && <Box pt={2}><LugaresDeVenta venta={venta} setVenta={setVenta} /></Box>}
+            </Box>
             <Text fontSize="xs" color="fg.muted">
               La receta y los grupos modificadores se configuran después, al editar el producto.
             </Text>
@@ -387,6 +407,19 @@ export function NewProductDialog({ isOpen, onClose, categoryOptions }: {
       </DialogContent>
     </DialogRoot>
   );
+}
+
+// resumenLugares dice dónde se vende sin abrir «Opciones avanzadas».
+function resumenLugares(counter: boolean, web: boolean): string {
+  const lugares = [counter && 'Mostrador', web && 'Web'].filter(Boolean);
+  return lugares.length ? lugares.join(' · ') : 'ningún lado';
+}
+
+// NoSeVendeEnNingunLado marca en la lista el producto con las dos casillas apagadas: así no se
+// confunde con un producto que desapareció por error.
+export function NoSeVendeEnNingunLado({ p }: { p: Pick<AdminProduct, 'soldAtCounter' | 'soldOnWeb'> }) {
+  if (p.soldAtCounter !== false || p.soldOnWeb !== false) return null;
+  return <Badge ml={2} colorPalette="gray" whiteSpace="nowrap">No se vende en ningún lado</Badge>;
 }
 
 // costoOpcional: vacío = no mandar costo (undefined); escrito y malformado o negativo = null, que

@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -60,6 +63,137 @@ type AdminProductView struct {
 	ImageURL           *string `json:"imageUrl"`
 	CategoryImageURL   *string `json:"categoryImageUrl"`
 	CategoryFoodFamily string  `json:"categoryFoodFamily"`
+	// Dónde se vende (spec 092). Sin decisión guardada: en los dos, al precio de mostrador.
+	SoldAtCounter bool             `json:"soldAtCounter"`
+	SoldOnWeb     bool             `json:"soldOnWeb"`
+	WebPrice      *decimal.Decimal `json:"webPrice"`
+	AllowOversell bool             `json:"allowOversell"`
+	// MeasuresStock: si el producto descuenta algo del almacén; sin eso «vender sin existencia» no
+	// significa nada y la pantalla no lo ofrece.
+	MeasuresStock bool   `json:"measuresStock"`
+	Description   string `json:"description"`
+}
+
+// SalesInput es dónde y cómo se vende un producto (spec 092). Viaja completo o no viaja: ausente en
+// el alta o el PATCH significa «no lo toques» (un cliente viejo no borra decisiones).
+type SalesInput struct {
+	Counter       bool
+	Web           bool
+	WebPrice      *decimal.Decimal
+	AllowOversell bool
+	Description   string
+}
+
+// maxDescription es el tope de la descripción para el cliente: un menú en línea la muestra bajo el
+// nombre, y un texto más largo ya no es una descripción.
+const maxDescription = 500
+
+func (in *SalesInput) validate() error {
+	if in == nil {
+		return nil
+	}
+	if err := domain.ValidChannelPrice(in.WebPrice); err != nil {
+		return err
+	}
+	in.Description = strings.TrimSpace(in.Description)
+	if len([]rune(in.Description)) > maxDescription {
+		return fmt.Errorf("%w: la descripción pasa de %d letras", domain.ErrValidation, maxDescription)
+	}
+	if !printableText(in.Description) {
+		return fmt.Errorf("%w: la descripción trae caracteres que no se pueden mostrar", domain.ErrValidation)
+	}
+	return nil
+}
+
+// printableText acepta texto de varios renglones: UTF-8 válido y sin caracteres de control salvo
+// salto de línea y tabulador. Un NUL lo rechaza Postgres con un error que saldría como 500.
+func printableText(s string) bool {
+	if !utf8.ValidString(s) {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) && r != '\n' && r != '\t' && r != '\r' {
+			return false
+		}
+	}
+	return true
+}
+
+func visibilityOf(on bool) db.ChannelVisibility {
+	if on {
+		return db.ChannelVisibilityVisible
+	}
+	return db.ChannelVisibilityOculto
+}
+
+// saveSales guarda dónde se vende, el precio web y «vender sin existencia» dentro de la transacción
+// de quien llama. El lugar de venta se asegura antes: una empresa que nació sin catálogo no puede
+// quedarse con un «apagar Web» que responde bien sin escribir. Un cambio de precio web deja su
+// evento, como el de mostrador.
+func saveSales(ctx context.Context, q *db.Queries, productID int64, in *SalesInput) error {
+	if in == nil {
+		return nil
+	}
+	before, err := q.GetProductSalesForAudit(ctx, productID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	pos, err := q.EnsureChannel(ctx, db.EnsureChannelParams{Code: "pos", Name: "Mostrador"})
+	if err != nil {
+		return err
+	}
+	web, err := q.EnsureChannel(ctx, db.EnsureChannelParams{Code: "online", Name: "Web"})
+	if err != nil {
+		return err
+	}
+	var price *decimal.Decimal
+	if in.WebPrice != nil {
+		p := domain.Round2(*in.WebPrice)
+		price = &p
+	}
+	if err := q.UpsertProductChannel(ctx, db.UpsertProductChannelParams{ProductID: productID, ChannelID: pos, Visibility: visibilityOf(in.Counter)}); err != nil {
+		return err
+	}
+	if err := q.UpsertProductChannel(ctx, db.UpsertProductChannelParams{ProductID: productID, ChannelID: web, Visibility: visibilityOf(in.Web), Price: price}); err != nil {
+		return err
+	}
+	var desc *string
+	if in.Description != "" {
+		desc = &in.Description
+	}
+	// «Vender sin existencia» apagado en un producto que no descuenta nada se guarda encendido: hoy
+	// no significa nada, y el día que el producto ganara receta lo agotaría sin que nadie lo decidiera.
+	oversell := in.AllowOversell || !domain.MeasuresStock(domain.ProductModeFacts{
+		TrackStock: before.TrackStock, HasRecipeItems: before.HasRecipeItems, IsPackage: before.IsPackage,
+		CompositionStatus: textoDe(before.CompositionStatus),
+	})
+	if err := q.SetProductSalesFields(ctx, db.SetProductSalesFieldsParams{ID: productID, AllowOversell: oversell, Description: desc}); err != nil {
+		return err
+	}
+	// Dónde se vende y «vender sin existencia» cambian lo que se puede vender: dejan su evento.
+	if before.SoldAtCounter != in.Counter || before.SoldOnWeb != in.Web || before.AllowOversell != oversell {
+		if err := auditEntity(ctx, q, domain.AuditProductSalesChanged, "product", productID, nil, nil,
+			map[string]any{"counter": before.SoldAtCounter, "web": before.SoldOnWeb, "allowOversell": before.AllowOversell},
+			map[string]any{"counter": in.Counter, "web": in.Web, "allowOversell": oversell}); err != nil {
+			return err
+		}
+	}
+	if samePrice(before.WebPrice, price) {
+		return nil
+	}
+	return auditEntity(ctx, q, "price.set", "product", productID, nil, nil,
+		map[string]any{"price": before.WebPrice, "channel": "web"},
+		map[string]any{"price": price, "channel": "web"})
+}
+
+func samePrice(a, b *decimal.Decimal) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.Equal(*b)
 }
 
 const dateFmt = "2006-01-02"
@@ -145,9 +279,12 @@ func (s *AdminService) CategoryList(ctx context.Context) ([]CategoryAdminView, e
 // CreateProduct da de alta un producto mínimo (activo, tipo simple). categoryID debe existir
 // (FK); receta y canales se configuran después. manualCost nil = sin costo capturado.
 // Nombre duplicado (por empresa) → 409.
-func (s *AdminService) CreateProduct(ctx context.Context, name string, categoryID int64, price decimal.Decimal, favorite, trackStock bool, manualCost *decimal.Decimal) (int64, error) {
+func (s *AdminService) CreateProduct(ctx context.Context, name string, categoryID int64, price decimal.Decimal, favorite, trackStock bool, manualCost *decimal.Decimal, sales *SalesInput) (int64, error) {
 	if name == "" || categoryID == 0 || !domain.ValidMoney(domain.Round2(price), true) {
 		return 0, domain.ErrValidation
+	}
+	if err := sales.validate(); err != nil {
+		return 0, err
 	}
 	cost, err := optionalManualCost(manualCost)
 	if err != nil {
@@ -166,6 +303,9 @@ func (s *AdminService) CreateProduct(ctx context.Context, name string, categoryI
 			Name: name, CategoryID: categoryID, Price: domain.Round2(price), IsFavorite: favorite, TrackStock: trackStock,
 		})
 		if err != nil {
+			return err
+		}
+		if err := saveSales(ctx, q, id, sales); err != nil {
 			return err
 		}
 		return setProductCost(ctx, q, id, cost)
@@ -315,6 +455,12 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search string, 
 			CompositionStatus: textoDe(r.CompositionStatus),
 			CostSource:        string(r.CostSource), ManualCost: r.ManualCost, HasRecipe: r.HasRecipe,
 			AltNames: nonNilStrings(r.AltNames), MatchedAlt: r.MatchedAlt,
+			SoldAtCounter: r.SoldAtCounter, SoldOnWeb: r.SoldOnWeb, WebPrice: r.WebPrice,
+			AllowOversell: r.AllowOversell, Description: r.Description,
+			MeasuresStock: domain.MeasuresStock(domain.ProductModeFacts{
+				TrackStock: r.TrackStock, HasRecipeItems: r.HasRecipeItems, IsPackage: r.Type == db.ProductTypeCombo,
+				CompositionStatus: textoDe(r.CompositionStatus),
+			}),
 			ImageURL: r.ImageUrl, CategoryImageURL: r.CategoryImageUrl, CategoryFoodFamily: r.CategoryFoodFamily,
 		})
 	}
@@ -342,6 +488,8 @@ type UpdateProductInput struct {
 	NeedsPrep bool
 	// Cost nil = no tocar el costo; así un cliente que no conoce el campo no borra costos.
 	Cost *domain.ProductCostChange
+	// Sales nil = no tocar dónde ni cómo se vende (spec 092), por la misma razón.
+	Sales *SalesInput
 }
 
 // AdminOptionView: opción de modificador con su grupo, para gestionar (favorito/activo) en el admin.
@@ -401,6 +549,9 @@ func (s *AdminService) SetOptionActive(ctx context.Context, id int64, active boo
 func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput) error {
 	if in.Name == "" || in.Price.IsNegative() {
 		return domain.ErrValidation
+	}
+	if err := in.Sales.validate(); err != nil {
+		return err
 	}
 	from, err := parseDate(in.AvailableFrom)
 	if err != nil {
@@ -466,6 +617,13 @@ func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput)
 			NeedsPrep:      in.NeedsPrep,
 		}); err != nil {
 			return err
+		}
+		if !missing {
+			if err := saveSales(ctx, q, in.ID, in.Sales); err != nil {
+				return err
+			}
+		} else if in.Sales != nil {
+			return domain.ErrNotFound
 		}
 		// Sin producto no hubo cambio (el update no tocó filas); con el mismo precio, tampoco.
 		if missing || oldPrice.Equal(newPrice) {

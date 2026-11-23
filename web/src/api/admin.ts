@@ -65,7 +65,27 @@ export interface AdminProduct {
   altNames?: string[];
   // El otro nombre por el que salió en la búsqueda; ausente si salió por su nombre.
   matchedAlt?: string;
+  // Dónde se vende (spec 092). Opcionales: una API anterior no los manda, y el compilador obliga a
+  // la guarda (ausente = en los dos, al precio de mostrador, con vender sin existencia).
+  soldAtCounter?: boolean;
+  soldOnWeb?: boolean;
+  webPrice?: string | null;
+  allowOversell?: boolean;
+  measuresStock?: boolean;
+  description?: string;
 }
+
+// Dónde y cómo se vende un producto (spec 092). Viaja completo o no viaja: el servidor rechaza un
+// objeto a medias para no apagar ni borrar lo que nadie pidió.
+export interface ProductSales {
+  counter: boolean;
+  web: boolean;
+  // Texto decimal con dos cifras ("39.00"), como el contrato; null = el de mostrador.
+  webPrice: string | null;
+  allowOversell: boolean;
+  description: string;
+}
+
 
 export type CostSource = 'manual' | 'compra' | 'receta';
 // Cambio de costo en el PATCH: ausente = no tocarlo.
@@ -208,6 +228,8 @@ export interface UpdateProductBody {
   availableFrom?: string | null;
   availableUntil?: string | null;
   cost?: CostChange;
+  // Ausente = no tocar dónde ni cómo se vende (spec 092).
+  sales?: ProductSales;
 }
 
 // query-string común de paginación admin (products / modifier-options).
@@ -254,6 +276,8 @@ export const adminApi = {
     api.post<void>(`/users/${id}/pin`, { pin }),
 
   categories: () => api.get<{ items: Category[] }>('/admin/categories'),
+  // Cuántos productos se venden en la web y cuántos con precio propio (spec 092).
+  webSalesSummary: () => api.get<{ onWeb: number; withWebPrice: number; total: number }>('/admin/web-sales/summary'),
   // Fotos del catálogo (spec 091): las dos variantes WebP en base64.
   setImage: (kind: 'products' | 'categories', id: number, b: { image1200: string; image400: string }) =>
     api.put<{ imageUrl: string }>(`/admin/${kind}/${id}/image`, b),
@@ -263,7 +287,7 @@ export const adminApi = {
     api.patch<{ id: number; foodFamily: string }>(`/admin/categories/${id}`, { foodFamily }),
   products: (p: ProductsQuery = {}) => api.get<ProductsPage>(`/admin/products?${pageQs(p)}`),
   // cost ausente = sin costo capturado.
-  createProduct: (b: { name: string; categoryId: number; price: number; favorite?: boolean; trackStock?: boolean; cost?: number }) =>
+  createProduct: (b: { name: string; categoryId: number; price: number; favorite?: boolean; trackStock?: boolean; cost?: number; sales?: ProductSales }) =>
     api.post<{ id: number }>('/admin/products', b),
   // Duplica un producto con todas sus relaciones (grupos, canales, receta, slots de combo).
   // cost ausente = la copia hereda el costo del original.

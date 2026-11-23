@@ -88,6 +88,7 @@ var auditActions = []struct {
 	// Qué resta un producto (spec 037). Va con los precios porque es configuración del menú: un
 	// grupo propio cambiaría la rejilla de contadores de la bitácora, pensada para la tableta.
 	{AuditProductConsumptionMode, AuditGroupPrice},
+	{AuditProductSalesChanged, AuditGroupPrice},
 	// Compras al almacén (spec 038). Recibir y corregir van con los demás gastos; el conteo con lo
 	// dado por perdido, que también reescribe lo guardado; el método de costeo con los precios. Ningún
 	// grupo nuevo: la rejilla de la bitácora es una disposición de tableta.
@@ -201,6 +202,9 @@ const (
 
 // AuditProductConsumptionMode: cambió qué resta un producto al venderse.
 const AuditProductConsumptionMode AuditAction = "product.consumption_mode"
+
+// AuditProductSalesChanged: cambió dónde se vende un producto o su «vender sin existencia» (spec 092).
+const AuditProductSalesChanged AuditAction = "product.sales_changed"
 
 const (
 	// AuditExpenseCountChanged: alguien cambió si un pago de gasto ya registrado entra al arqueo.

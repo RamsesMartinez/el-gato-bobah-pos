@@ -1066,12 +1066,12 @@ type Category struct {
 
 type CategoryChannel struct {
 	CategoryID int64 `json:"category_id"`
-	ChannelID  int16 `json:"channel_id"`
+	ChannelID  int64 `json:"channel_id"`
 	Visible    bool  `json:"visible"`
 }
 
 type Channel struct {
-	ID   int16  `json:"id"`
+	ID   int64  `json:"id"`
 	Code string `json:"code"`
 	Name string `json:"name"`
 }
@@ -1922,8 +1922,9 @@ type Product struct {
 
 type ProductChannel struct {
 	ProductID  int64             `json:"product_id"`
-	ChannelID  int16             `json:"channel_id"`
+	ChannelID  int64             `json:"channel_id"`
 	Visibility ChannelVisibility `json:"visibility"`
+	Price      *decimal.Decimal  `json:"price"`
 }
 
 type ProductModifierGroup struct {
