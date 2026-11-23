@@ -52,4 +52,13 @@ describe('Merma real en la ficha del artículo', () => {
     expect(getComputedStyle(name).flexShrink).toBe('0');
     expect(getComputedStyle(name.parentElement!).flexWrap).toBe('wrap');
   });
+
+  // A 1024×600 el «0 %» quedaba solo en un renglón y «· sin merma registrada» en otro: la cifra y su
+  // explicación bajan juntas o no bajan.
+  test('la cifra y su explicación no se parten en dos renglones', () => {
+    montar([rw({ ratio: 0, state: 'ratio', consumed: '50' })], 5);
+    const value = screen.getByText(/sin merma registrada/).parentElement!;
+    expect(value.textContent).toContain('0 %');
+    expect(getComputedStyle(value).whiteSpace).toBe('nowrap');
+  });
 });
