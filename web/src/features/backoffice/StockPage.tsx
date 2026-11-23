@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { ListaDeCompra } from './ListaDeCompra';
 import { Destinatarios } from './Destinatarios';
 import { formatBaseQty } from '../../shared/units';
 import {
-  Box, Heading, Table, Center, Spinner, Badge, Tabs, Text,
+  Box, Button, Heading, HStack, Table, Center, Spinner, Badge, Tabs, Text,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { backofficeApi } from '../../api/backoffice';
@@ -27,6 +27,7 @@ type Tab = (typeof TABS)[number];
 
 export function StockPage() {
   const horaNegocio = useHoraDelNegocio();
+  const navigate = useNavigate();
   // El almacén que se ve en Existencias (spec 094): por omisión el de venta. Con un solo almacén no
   // hay selector y la pantalla queda como antes.
   const [picked, setWarehouse] = useState<number | 'all' | undefined>(undefined);
@@ -79,7 +80,14 @@ export function StockPage() {
 
   return (
     <Page fill>
-      <Heading size="lg" mb={4}>Almacén</Heading>
+      <HStack justify="space-between" mb={4}>
+        <Heading size="lg">Almacén</Heading>
+        {/* La persona nueva buscaba aquí sus almacenes (prueba con usuario nuevo, 094): viven en Negocio,
+            junto a los lugares para contar, y este atajo la lleva. */}
+        {can('inventory.warehouse_manage', user) && (
+          <Button minH="44px" variant="ghost" onClick={() => navigate('/negocio#almacenes')}>Almacenes ›</Button>
+        )}
+      </HStack>
       <Tabs.Root value={tab} onValueChange={(e) => setParams({ tab: e.value }, { replace: true })}
         display="flex" flexDirection="column" flex="1" minH={0}>
         {/* Con «Se echó a perder» son siete: la fila se desplaza a lo ancho antes que salirse de 1024 px. */}
@@ -119,7 +127,9 @@ export function StockPage() {
                   <Table.Row><Table.Cell colSpan={4}><Text color="fg.error">No se pudieron leer las existencias de este almacén</Text></Table.Cell></Table.Row>
                 )}
                 {!levels.isError && (levels.data?.items ?? []).length === 0 && (
-                  <Table.Row><Table.Cell colSpan={4}><Text color="fg.subtle">Sin existencias que mostrar</Text></Table.Cell></Table.Row>
+                  <Table.Row><Table.Cell colSpan={4}><Text color="fg.subtle">
+                    {typeof warehouse === 'number' ? 'Este almacén todavía no tiene mercancía' : 'Sin existencias que mostrar'}
+                  </Text></Table.Cell></Table.Row>
                 )}
                 {!levels.isError && (levels.data?.items ?? []).map((s, i) => {
                   const low = atSales && s.min_stock != null && Number(s.on_hand) <= Number(s.min_stock);

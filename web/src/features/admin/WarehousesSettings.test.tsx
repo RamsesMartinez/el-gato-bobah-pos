@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router';
 import { Provider } from '../../components/ui/provider';
 import { ApiError } from '../../api/client';
 import { WarehousesSettings } from './WarehousesSettings';
@@ -21,12 +22,14 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 function montar() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={qc}><Provider><WarehousesSettings /></Provider></QueryClientProvider>);
+  render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={['/negocio']}><WarehousesSettings /></MemoryRouter></Provider></QueryClientProvider>);
 }
 
 describe('almacenes de la sucursal (spec 094, maqueta A3)', () => {
+  // «Lugares» al lado confundía (prueba con usuario nuevo): el texto no usa esa palabra.
   test('separa donde se vende de donde se guarda, con lo que tiene cada uno', async () => {
     montar();
+    expect(await screen.findByText('Dónde guardas mercancía: tu local y, si tienes, una bodega aparte.')).toBeInTheDocument();
     const venta = await screen.findByRole('group', { name: 'Donde se vende' });
     expect(within(venta).getByText('Local')).toBeInTheDocument();
     expect(within(venta).getByText('De venta')).toBeInTheDocument();
@@ -55,6 +58,7 @@ describe('almacenes de la sucursal (spec 094, maqueta A3)', () => {
     back.createWarehouse.mockRejectedValue(new ApiError(409, 'WAREHOUSE_NAME_TAKEN', 'ya hay un almacén con ese nombre', ''));
     montar();
     fireEvent.click(await screen.findByRole('button', { name: 'Agregar almacén' }));
+    expect(screen.getByLabelText('Nombre del almacén')).toHaveAttribute('placeholder', 'Nombre del almacén');
     fireEvent.change(screen.getByLabelText('Nombre del almacén'), { target: { value: 'bodega' } });
     fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
     expect(await screen.findByText('Ya hay un almacén con ese nombre')).toBeInTheDocument();

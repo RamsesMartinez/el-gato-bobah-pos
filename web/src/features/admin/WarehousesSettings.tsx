@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge, Box, Button, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react';
 import { LuChevronRight, LuShoppingCart, LuStore, LuWarehouse } from 'react-icons/lu';
@@ -37,14 +38,25 @@ export function WarehousesSettings() {
   const refresh = () => qc.invalidateQueries({ queryKey: ['warehouses'] });
   const sales = items.filter((w) => w.isSales);
   const storage = items.filter((w) => !w.isSales);
+  // Desde Almacén se llega con #almacenes: la sección vive dentro de Negocio y hay que ir a ella.
+  const box = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const fromStock = location.hash === '#almacenes';
+  useEffect(() => {
+    if (fromStock && items.length > 0) box.current?.scrollIntoView?.({ block: 'start' });
+  }, [fromStock, items.length]);
 
   return (
-    <Box id="almacenes" mt={6} borderWidth="1px" borderRadius="lg" p={5}>
+    <Box ref={box} id="almacenes" mt={6} borderWidth="1px" borderRadius="lg" p={5}>
       <Flex justify="space-between" align="center" gap={3} mb={1}>
         <Text fontWeight="700">Almacenes</Text>
-        <Button minH="44px" variant="outline" onClick={() => setAdding(true)}>Agregar almacén</Button>
+        <HStack gap={2}>
+          {fromStock && <Button minH="44px" variant="ghost" onClick={() => navigate('/almacen')}>‹ Volver al almacén</Button>}
+          <Button minH="44px" variant="outline" onClick={() => setAdding(true)}>Agregar almacén</Button>
+        </HStack>
       </Flex>
-      <Text fontSize="sm" color="fg.muted" mb={3}>Lugares de esta sucursal donde guardas mercancía.</Text>
+      <Text fontSize="sm" color="fg.muted" mb={3}>Dónde guardas mercancía: tu local y, si tienes, una bodega aparte.</Text>
       <StorageGroup title="Donde se vende" items={sales} emptyText="" onOpen={setEditing} />
       <StorageGroup title="Donde se guarda" items={storage} emptyText="Todavía no hay otro almacén." onOpen={setEditing} />
       {adding && <AddSheet onClose={() => setAdding(false)} onDone={() => { setAdding(false); void refresh(); }} />}
@@ -93,7 +105,7 @@ function AddSheet({ onClose, onDone }: { onClose: () => void; onDone: () => void
         <DrawerHeader><Text fontWeight="700">Agregar almacén</Text></DrawerHeader>
         <DrawerBody>
           <VStack align="stretch" gap={3}>
-            <Input aria-label="Nombre del almacén" placeholder="Nombre del lugar" minH="44px" maxLength={40}
+            <Input aria-label="Nombre del almacén" placeholder="Nombre del almacén" minH="44px" maxLength={40}
               value={name} onChange={(e) => setName(e.target.value)} />
             <HStack gap={2} flexWrap="wrap">
               <Text fontSize="sm" color="fg.muted">Sugerencias:</Text>

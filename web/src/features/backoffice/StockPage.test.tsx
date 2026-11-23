@@ -278,3 +278,29 @@ it('si no se pudo leer el almacén lo dice', async () => {
   expect(await screen.findByText('No se pudieron leer las existencias de este almacén')).toBeInTheDocument();
   expect(screen.queryByText('Sin existencias que mostrar')).toBeNull();
 });
+
+// La persona nueva buscó los almacenes en Almacén y no estaban (prueba con usuario nuevo, 094): quien
+// los administra tiene el atajo junto al título.
+it('quien administra almacenes llega a ellos desde Almacén', async () => {
+  sesion(['inventory.view', 'inventory.warehouse_manage']);
+  montar('/almacen');
+  expect(await screen.findByRole('button', { name: 'Almacenes ›' })).toBeInTheDocument();
+});
+
+it('quien no los administra no ve el atajo', async () => {
+  sesion(['inventory.view']);
+  montar('/almacen');
+  await screen.findByRole('columnheader', { name: 'Artículo' });
+  expect(screen.queryByRole('button', { name: 'Almacenes ›' })).toBeNull();
+});
+
+it('una bodega vacía lo dice', async () => {
+  back.warehouses.mockResolvedValue({ items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 0 },
+  ] });
+  sesion(['inventory.view']);
+  montar('/almacen');
+  fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
+  expect(await screen.findByText('Este almacén todavía no tiene mercancía')).toBeInTheDocument();
+});
