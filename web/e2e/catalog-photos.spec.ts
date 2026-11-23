@@ -94,6 +94,12 @@ test('F1 · subir, cambiar y quitar la foto de un producto', async ({ page }) =>
   const foto = conOrientacion6(await jpegDePrueba(page, '#ff0000', '#0000ff'));
   await page.locator('input[type=file]').setInputFiles({ name: 'celular.jpg', mimeType: 'image/jpeg', buffer: foto });
   await expect(page.getByText('Así se verá')).toBeVisible();
+  await page.waitForTimeout(600);
+  // «Ajustar encuadre» completo arriba del pie: la persona de la fonda lo vio medio tapado.
+  const ajustar = await page.getByRole('button', { name: /Ajustar encuadre/ }).boundingBox();
+  const guardarPie = await page.getByRole('button', { name: 'Guardar foto' }).boundingBox();
+  expect(ajustar && guardarPie && ajustar.y + ajustar.height <= guardarPie.y - 8,
+    `«Ajustar encuadre» queda bajo el pie: ${JSON.stringify({ ajustar, guardarPie })}`).toBeTruthy();
   await page.screenshot({ path: test.info().outputPath('2-asi-se-vera.png') });
   // «Guardar foto» siempre a la vista en 600 px de alto, también con el ajuste abierto.
   await page.getByRole('button', { name: /Ajustar encuadre/ }).click();

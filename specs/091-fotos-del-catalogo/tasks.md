@@ -111,8 +111,9 @@ con selector).
 - [X] T047 [P] Notas de lo que no se ve en docs/mecanica/catalogo-y-sucursales.md (duplicar no copia la foto, guarda de prefijo, URL de 400 derivada, el sprite versionado)
 - [X] T048 [P] Script de preparación en lote de la computadora del catálogo documentado en el quickstart y en docs/medios-r2.md
 - [X] T049 Prueba e2e de subir (con un JPEG cuya orientación EXIF lo gira: la foto guardada sale derecha), reemplazar y quitar una foto contra el `make start` del worktree, capturas en `test-results/`, en web/e2e/catalog-photos.spec.ts
-- [ ] T050 `/revision-de-codigo` y `/security-review`; corregir lo que encuentren con su test
-- [ ] T051 Prueba con alguien nuevo de una fonda a 1024×600 (y 1280×854) en local; corregir dónde se atore
+- [X] T050 `/revision-de-codigo` y `/security-review`; corregir lo que encuentren con su test
+- [X] T051 Prueba con alguien nuevo de una fonda a 1024×600 (y 1280×854) en local; corregir dónde se atore
+- [X] T053 [US2] Subcategoría hereda foto y familia de su padre (FR-017): `AdminListProducts` con `coalesce` del padre en server/queries/admin.sql y su test `TestSubcategoryInheritsItsParentsPhotoAndFamily`; en web/src/features/admin/CategoriesAdminPage.tsx con su test
 - [ ] T052 `make ci-local` verde
 
 ## Dependencies & Execution Order

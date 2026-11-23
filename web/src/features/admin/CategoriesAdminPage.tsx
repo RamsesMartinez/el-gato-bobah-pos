@@ -3,6 +3,7 @@ import { Box, Button, Center, HStack, IconButton, SimpleGrid, Spinner, Table, Te
 import { LuChevronRight } from 'react-icons/lu';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCategoryView, VIEWS } from './categoryView';
+import { useUiStore } from '../../stores/ui';
 import { adminApi, type Category } from '../../api/admin';
 import { Page } from '../../components/Page';
 import { Picker } from '../../components/Picker';
@@ -36,7 +37,9 @@ export function CategoryViewSwitch() {
   );
 }
 
-const famOptions = FOOD_FAMILIES.map((f) => ({ value: f.id, label: f.label }));
+// «Platillo» ya es la opción genérica del selector: ofrecerla dos veces obligaba a adivinar cuál.
+const famOptions = FOOD_FAMILIES.filter((f) => f.id !== 'dish').map((f) => ({ value: f.id, label: f.label }));
+const productos = (n: number) => (n === 1 ? '1 producto' : `${n} productos`);
 
 function useCategoryChanges() {
   const qc = useQueryClient();
@@ -85,10 +88,13 @@ function CategoryEditor({ c }: { c: Category }) {
 }
 
 function CategoryDialog({ c, onClose }: { c: Category; onClose: () => void }) {
+  const palette = useUiStore((st) => st.palette);
   return (
     <DialogRoot open onOpenChange={(e) => { if (!e.open) onClose(); }} placement="center" size="md" scrollBehavior="inside">
       <DialogBackdrop />
-      <DialogContent>
+      {/* La paleta del negocio, como el editor de producto: el botón de la foto es del mismo color
+          en las dos pantallas. */}
+      <DialogContent colorPalette={palette}>
         <DialogHeader><DialogTitle>{c.name}</DialogTitle></DialogHeader>
         <DialogCloseTrigger />
         <DialogBody><CategoryEditor c={c} /></DialogBody>
@@ -96,6 +102,14 @@ function CategoryDialog({ c, onClose }: { c: Category; onClose: () => void }) {
       </DialogContent>
     </DialogRoot>
   );
+}
+
+// Una subcategoría sin foto o sin familia propias muestra las de su categoría padre, igual que sus
+// productos (el servidor hereda lo mismo en la lista de productos).
+function withParent(c: Category, byId: Map<number, Category>): Category {
+  const p = c.parentId ? byId.get(c.parentId) : undefined;
+  if (!p) return c;
+  return { ...c, imageUrl: c.imageUrl ?? p.imageUrl, foodFamily: c.foodFamily || p.foodFamily };
 }
 
 const thumb = (c: Category, size: number, fluid?: boolean) => (
@@ -108,7 +122,9 @@ export function CategoriesAdminPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const { data, isLoading } = useQuery({ queryKey: ['admin', 'categories'], queryFn: adminApi.categories });
   const cats = data?.items ?? [];
+  const byId = new Map(cats.map((c) => [c.id, c]));
   const nameById = new Map(cats.map((c) => [c.id, c.name]));
+  const eff = (c: Category) => withParent(c, byId);
   const label = (c: Category) => (c.parentId ? `${nameById.get(c.parentId) ?? '—'} › ${c.name}` : c.name);
   const open = cats.find((c) => c.id === openId);
 
@@ -127,10 +143,10 @@ export function CategoriesAdminPage() {
                 // se está editando a la derecha.
                 bg={c.id === sel?.id ? 'bg.emphasized' : undefined} borderLeftWidth="4px"
                 borderLeftColor={c.id === sel?.id ? 'brand.solid' : 'transparent'} onClick={() => setSelectedId(c.id)}>
-                {thumb(c, 40)}
+                {thumb(eff(c), 40)}
                 <Box flex="1" minW={0}>
                   <Text fontWeight="600" lineClamp={1}>{label(c)}</Text>
-                  <Text fontSize="xs" color="fg.muted">{familyLabel(c.foodFamily)} · {c.productCount ?? 0}</Text>
+                  <Text fontSize="xs" color="fg.muted">{familyLabel(eff(c).foodFamily)} · {productos(c.productCount ?? 0)}</Text>
                 </Box>
               </HStack>
             ))}
@@ -163,9 +179,11 @@ export function CategoriesAdminPage() {
                 <Table.Row key={c.id} cursor="pointer" h="52px" tabIndex={0} aria-label={`Abrir ${label(c)}`}
                   onClick={() => setOpenId(c.id)}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenId(c.id); } }}>
-                  <Table.Cell py={1}>{thumb(c, 40)}</Table.Cell>
+                  <Table.Cell py={1}>{thumb(eff(c), 40)}</Table.Cell>
                   <Table.Cell fontWeight="600">{label(c)}</Table.Cell>
-                  <Table.Cell color={c.foodFamily ? undefined : 'fg.muted'}>{familyLabel(c.foodFamily)}</Table.Cell>
+                  <Table.Cell color={c.foodFamily ? undefined : 'fg.muted'}>
+                    {c.foodFamily || !eff(c).foodFamily ? familyLabel(c.foodFamily) : `${familyLabel(eff(c).foodFamily)} (de ${nameById.get(c.parentId!)})`}
+                  </Table.Cell>
                   <Table.Cell textAlign="end">{c.productCount ?? 0}</Table.Cell>
                   <Table.Cell><LuChevronRight /></Table.Cell>
                 </Table.Row>
@@ -177,10 +195,14 @@ export function CategoriesAdminPage() {
             {cats.map((c) => (
               <Box key={c.id} as="button" textAlign="left" borderWidth="1px" borderRadius="xl" overflow="hidden"
                 bg="bg.panel" onClick={() => setOpenId(c.id)}>
-                {thumb(c, 200, true)}
+                {thumb(eff(c), 200, true)}
+                {/* El nombre propio arriba y el padre abajo: «Bebidas frías › …» cortado no deja
+                    distinguir una subcategoría de otra. */}
                 <Box p={2}>
-                  <Text fontWeight="600" lineClamp={1}>{label(c)}</Text>
-                  <Text fontSize="xs" color="fg.muted">{c.productCount ?? 0} productos</Text>
+                  <Text fontWeight="600" lineClamp={1}>{c.name}</Text>
+                  <Text fontSize="xs" color="fg.muted" lineClamp={1}>
+                    {c.parentId ? `${nameById.get(c.parentId) ?? ''} · ` : ''}{productos(c.productCount ?? 0)}
+                  </Text>
                 </Box>
               </Box>
             ))}

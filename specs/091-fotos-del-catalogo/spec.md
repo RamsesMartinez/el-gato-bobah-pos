@@ -203,7 +203,9 @@ cada sección, y la que heredan sus productos sin foto.
   depende del nombre de la categoría.
 - **FR-017**: Qué se muestra para un producto: su foto; si no tiene, la foto de su categoría; si
   tampoco, la ilustración de la familia de su categoría; si no tiene familia, la genérica. Para
-  una categoría: su foto o la ilustración de su familia.
+  una categoría: su foto o la ilustración de su familia. Una subcategoría sin foto o sin familia
+  propias usa las de su categoría padre (lo pidió la prueba con alguien nuevo: elegir «Bebida fría»
+  para «Bebidas frías» y no verla en «Bebidas frías › Embotelladas» parecía un error).
 - **FR-018**: Las ilustraciones se cargan una sola vez para toda la pantalla, no una por producto.
 
 **MCP**

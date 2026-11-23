@@ -8,6 +8,7 @@ import { ConfirmSheet } from '../components/ConfirmSheet';
 import { CatalogImage } from '../components/CatalogImage';
 import { adminApi } from '../api/admin';
 import { ApiError } from '../api/client';
+import { useUiStore } from '../stores/ui';
 import {
   PhotoError, SMALL_SIDE, canPreparePhotos, cropFor, photoSize, preparePhoto, toBase64, type Framing,
 } from '../media/preparePhoto';
@@ -117,7 +118,10 @@ export function PhotoField({ kind, id, name, imageUrl, categoryImageUrl, family,
       <Box position="relative">
         <CatalogImage imageUrl={imageUrl} categoryImageUrl={categoryImageUrl} family={family} size={size} alt={name} />
         {!imageUrl && (
-          <Badge position="absolute" bottom={1} left={1} size="sm" variant="solid" colorPalette="gray">Sin foto</Badge>
+          // Sobre la foto heredada no dice «Sin foto»: lo que se ve es una foto, solo que no es la suya.
+          <Badge position="absolute" bottom={1} left={1} size="sm" variant="solid" colorPalette="gray">
+            {categoryImageUrl ? 'De la categoría' : 'Sin foto'}
+          </Badge>
         )}
       </Box>
       {/* Invisible y no display:none: Safari táctil no abre el selector de un input oculto así. */}
@@ -126,11 +130,12 @@ export function PhotoField({ kind, id, name, imageUrl, categoryImageUrl, family,
         onChange={(e) => void choose(e.target.files?.[0])} />
       <Box ref={actions}>
         {imageUrl ? (
+          // Con texto: una flecha circular sola no se lee como «cambiar».
           <HStack gap={1}>
-            <IconButton aria-label="Cambiar foto" title="Cambiar foto" variant="outline" minH="44px" flex="1"
-              disabled={!supported || busy} onClick={() => input.current?.click()}><LuRefreshCw /></IconButton>
-            <IconButton aria-label="Quitar foto" title="Quitar foto" variant="outline" colorPalette="red" minH="44px" flex="1"
-              disabled={busy} onClick={() => setConfirming(true)}><LuTrash2 /></IconButton>
+            <Button aria-label="Cambiar foto" variant="outline" size="xs" minH="44px" flex="1" px={1}
+              disabled={!supported || busy} onClick={() => input.current?.click()}><LuRefreshCw /> Cambiar</Button>
+            <Button aria-label="Quitar foto" variant="outline" colorPalette="red" size="xs" minH="44px" flex="1" px={1}
+              disabled={busy} onClick={() => setConfirming(true)}><LuTrash2 /> Quitar</Button>
           </HStack>
         ) : (
           <Button minH="44px" size="sm" w="100%" disabled={!supported || busy} onClick={() => input.current?.click()}>
@@ -166,7 +171,8 @@ function CropDialog({ src, width, height, busy, error, onCancel, onSave }: {
   const frame = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; f: Framing } | null>(null);
   const crop = useMemo(() => cropFor(width, height, framing), [width, height, framing]);
-  const view = adjusting ? 'min(340px, 44dvh)' : 'min(340px, 52dvh)';
+  // A 600 px de alto el marco deja a la vista «Ajustar encuadre» y el pie (lo mide la e2e F1).
+  const view = adjusting ? 'min(340px, 40dvh)' : 'min(340px, 44dvh)';
   // Acercar más allá de esto deja un cuadrado de menos de 400 px de la foto original: borroso.
   const maxZoom = Math.max(1, Math.min(width, height) / SMALL_SIDE);
 
@@ -185,11 +191,12 @@ function CropDialog({ src, width, height, busy, error, onCancel, onSave }: {
 
   // La foto se dibuja escalada para que el cuadrado elegido llene el marco.
   const pct = (v: number) => `${(v / crop.size) * 100}%`;
+  const palette = useUiStore((st) => st.palette);
   return (
     // Mientras se guarda no se cierra: cancelar a media subida no la detendría.
     <DialogRoot open onOpenChange={(e) => { if (!e.open && !busy) onCancel(); }} placement="center" size="md" scrollBehavior="inside">
       <DialogBackdrop />
-      <DialogContent>
+      <DialogContent colorPalette={palette}>
         <DialogHeader py={3}><DialogTitle>{adjusting ? 'Acomoda la foto' : 'Así se verá'}</DialogTitle></DialogHeader>
         <DialogCloseTrigger disabled={busy} />
         <DialogBody py={2}>

@@ -9,8 +9,10 @@ from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
          p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
          -- La miniatura de la lista (spec 091): la foto propia o, si no tiene, la de su categoría o
-         -- su familia. Las tres viajan para que la pantalla no pida nada más.
-         p.image_url, c.image_url as category_image_url, coalesce(c.food_family::text, '')::text as category_food_family,
+         -- su familia. Una subcategoría sin las suyas hereda las de su padre. Viajan para que la
+         -- pantalla no pida nada más.
+         p.image_url, coalesce(c.image_url, pc.image_url) as category_image_url,
+         coalesce(c.food_family::text, pc.food_family::text, '')::text as category_food_family,
          p.composition_status, p.cost_source, p.manual_cost, (p.recipe_id is not null)::bool as has_recipe,
          (select count(*) from product_modifier_groups pmg
             join modifier_groups mg on mg.id = pmg.group_id
@@ -31,6 +33,7 @@ from (
                                order by n limit 1), '') end)::text as matched_alt
   from products p
   join categories c on c.id = p.category_id
+  left join categories pc on pc.id = c.parent_id
   -- El producto genérico de plataforma (0077) no es del catálogo: lo usa el sistema para renglones
   -- sin pareja. Editarlo o borrarlo desde aquí dejaría a esos pedidos sin a dónde ir.
   where p.system_kind is null

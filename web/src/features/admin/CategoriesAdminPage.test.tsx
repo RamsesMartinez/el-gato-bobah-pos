@@ -121,3 +121,36 @@ describe('accesibilidad y errores de Categorías', () => {
     expect(first).toHaveAttribute('aria-current', 'true');
   });
 });
+
+describe('lo que vio alguien nuevo de una fonda', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useCategoryView.setState({ view: 'mosaico' });
+    api.categories.mockResolvedValueOnce({ items: [
+      { id: 1, name: 'Bebidas frías', parentId: null, imageUrl: null, foodFamily: 'cold_drink', productCount: 1 },
+      { id: 3, name: 'Embotelladas', parentId: 1, imageUrl: null, foodFamily: '', productCount: 47 },
+    ] as never });
+  });
+
+  it('una subcategoría sin familia muestra la de su categoría, y su nombre no se corta con el del padre', async () => {
+    const { container } = montar();
+    expect(await screen.findByText('Embotelladas')).toBeInTheDocument();
+    expect(screen.getAllByText('Bebidas frías').length).toBeGreaterThan(0);
+    const hrefs = Array.from(container.ownerDocument.querySelectorAll('use')).map((u) => u.getAttribute('href'));
+    expect(hrefs.filter((h) => h?.endsWith('#cold_drink'))).toHaveLength(2);
+  });
+
+  it('dice «1 producto», no «1 productos»', async () => {
+    montar();
+    expect(await screen.findByText('1 producto')).toBeInTheDocument();
+    expect(screen.getByText('Bebidas frías · 47 productos')).toBeInTheDocument();
+  });
+
+  it('el selector de familia no ofrece dos «Platillo»', async () => {
+    const u = userEvent.setup();
+    montar();
+    await u.click(await screen.findByText('Embotelladas'));
+    await u.click(await screen.findByRole('button', { name: /^Platillo \(genérica\)/ }));
+    expect(await screen.findAllByText(/^Platillo/)).toHaveLength(2); // el botón y la opción genérica
+  });
+});

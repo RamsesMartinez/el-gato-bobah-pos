@@ -594,3 +594,42 @@ func TestCleanupSurvivesTheClientLeaving(t *testing.T) {
 		t.Fatalf("pendientes = %d: con la petición cancelada el borrado fallido no quedó anotado y el archivo se perdió de vista", n)
 	}
 }
+
+// UNA SUBCATEGORÍA SIN FOTO NI FAMILIA HEREDA LAS DE SU CATEGORÍA PADRE: quien elige «Bebida fría»
+// para «Bebidas frías» espera verla también en «Bebidas frías › Embotelladas».
+func TestSubcategoryInheritsItsParentsPhotoAndFamily(t *testing.T) {
+	t.Parallel()
+	k := newMediaKit(t)
+	var sub, prod int64
+	if err := k.st.Pool.QueryRow(context.Background(),
+		`insert into categories (name, parent_id) values ('Embotelladas', $1) returning id`, k.cat).Scan(&sub); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.st.Pool.QueryRow(context.Background(),
+		`insert into products (name, category_id, price) values ('7up de prueba', $1, 20) returning id`, sub).Scan(&prod); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.svc.SetCategoryFamily(k.ctx, k.cat, "cold_drink", k.user); err != nil {
+		t.Fatal(err)
+	}
+	catURL, err := k.svc.SetImage(k.ctx, domain.MediaCategories, k.cat, photo(8), k.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := app.NewAdminService(k.appSt).ListProducts(k.ctx, "", "7up de prueba", 0, "", "", "", "", 25, 0)
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("%v %d", err, len(page.Items))
+	}
+	p := page.Items[0]
+	if p.CategoryFoodFamily != "cold_drink" || p.CategoryImageURL == nil || *p.CategoryImageURL != catURL {
+		t.Fatalf("el producto de la subcategoría muestra familia %q y foto %v: no heredó las de su padre", p.CategoryFoodFamily, p.CategoryImageURL)
+	}
+	// Lo propio de la subcategoría gana sobre lo heredado.
+	if err := k.svc.SetCategoryFamily(k.ctx, sub, "soda", k.user); err != nil {
+		t.Fatal(err)
+	}
+	page, _ = app.NewAdminService(k.appSt).ListProducts(k.ctx, "", "7up de prueba", 0, "", "", "", "", 25, 0)
+	if page.Items[0].CategoryFoodFamily != "soda" {
+		t.Fatalf("familia = %q, quería la propia de la subcategoría", page.Items[0].CategoryFoodFamily)
+	}
+}

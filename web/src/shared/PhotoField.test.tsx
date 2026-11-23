@@ -135,3 +135,15 @@ test('quitar bien borra el aviso de un error anterior', async () => {
   await u.click(await screen.findByRole('button', { name: 'Quitar' }));
   await waitFor(() => expect(screen.queryByText(/No se pudo quitar la foto/)).toBeNull());
 });
+
+test('sin foto propia pero con la de la categoría no dice «Sin foto» encima de una foto', () => {
+  wrap({ categoryImageUrl: 'https://media.test/1/categories/3/cccc-1200.webp' });
+  expect(screen.queryByText('Sin foto')).toBeNull();
+  expect(screen.getByText('De la categoría')).toBeTruthy();
+});
+
+test('«Cambiar» y «Quitar» se leen, no son solo íconos', () => {
+  wrap({ imageUrl: 'https://media.test/1/products/7/bbbb-1200.webp' });
+  expect(screen.getByRole('button', { name: 'Cambiar foto' })).toHaveTextContent('Cambiar');
+  expect(screen.getByRole('button', { name: 'Quitar foto' })).toHaveTextContent('Quitar');
+});
