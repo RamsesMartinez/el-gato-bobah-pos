@@ -114,7 +114,7 @@ con selector).
 - [X] T050 `/revision-de-codigo` y `/security-review`; corregir lo que encuentren con su test
 - [X] T051 Prueba con alguien nuevo de una fonda a 1024×600 (y 1280×854) en local; corregir dónde se atore
 - [X] T053 [US2] Subcategoría hereda foto y familia de su padre (FR-017): `AdminListProducts` con `coalesce` del padre en server/queries/admin.sql y su test `TestSubcategoryInheritsItsParentsPhotoAndFamily`; en web/src/features/admin/CategoriesAdminPage.tsx con su test
-- [ ] T052 `make ci-local` verde
+- [X] T052 `make ci-local` verde
 
 ## Dependencies & Execution Order
 
