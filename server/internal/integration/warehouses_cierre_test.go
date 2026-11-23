@@ -13,6 +13,8 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
@@ -348,4 +350,73 @@ func TestTheCooldownIsPerWarehouse(t *testing.T) {
 	if l := itemLine(t, k.box.sent[1].html, "Popotes enfriamiento"); !strings.Contains(l, "En Bodega") {
 		t.Fatalf("el segundo correo no es el de Bodega: %s", l)
 	}
+}
+
+// En «Todos», el valor total redondeaba la existencia ya sumada de los almacenes, y cada almacén se
+// redondeaba por su lado: 333.3333 ml a $0.025 en dos almacenes daba 8.33 + 8.33 = 16.66 en el
+// desglose y 16.67 en el total. La pantalla mostraba un total que no era la suma de sus partes.
+func TestStockValueOfAllIsTheSumOfTheWarehouses(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	owner := makeCompany(t, st, "valor-todos-duena")
+	other := makeCompany(t, st, "valor-todos-ajena")
+	local, bodega := comoEnLaSegundaSubida(t, st, owner)
+	leche := ingredientIn(t, st, owner, "Leche valor todos", "ml")
+	if _, err := st.Pool.Exec(context.Background(), `update ingredients set current_cost = 0.025 where id = $1`, leche); err != nil {
+		t.Fatal(err)
+	}
+	// adjustIn no lleva empresa y la columna toma la de omisión: aquí va explícita.
+	for _, wh := range []int64{local, bodega} {
+		if _, err := st.Pool.Exec(context.Background(), `insert into stock_movements (company_id, warehouse_id, item_type, ingredient_id, movement_type, quantity)
+			values ($1, $2, 'ingrediente', $3, 'ajuste', 333.3333)`, owner, wh, leche); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	svc, ctx := asTenant(t, owner)
+	items, err := svc.StockLevels(ctx, domain.WarehouseSel{All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := app.StockValueTotal(items)
+	byWarehouse, err := svc.StockValueByWarehouse(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sumWarehouses := decimal.Zero
+	for _, v := range byWarehouse {
+		sumWarehouses = sumWarehouses.Add(v.Value)
+	}
+	sumRows := decimal.Zero
+	for _, it := range items {
+		sumRows = sumRows.Add(it.Value)
+	}
+	if !sumWarehouses.Equal(total) {
+		t.Fatalf("la suma del valor por almacén es %s y el total de «Todos» es %s; el total no cuadra con su desglose",
+			sumWarehouses.StringFixed(2), total.StringFixed(2))
+	}
+	if !sumRows.Equal(total) {
+		t.Fatalf("la suma de los renglones es %s y el total es %s", sumRows.StringFixed(2), total.StringFixed(2))
+	}
+	if total.StringFixed(2) != "16.66" {
+		t.Fatalf("el total es %s; quiere 16.66 (8.33 por almacén)", total.StringFixed(2))
+	}
+
+	inTheThreeCases(t, owner, other, func(t *testing.T, as *store.Store, ctx context.Context) {
+		svc := app.NewBackofficeService(as, nil)
+		if items, err := svc.StockLevels(ctx, domain.WarehouseSel{All: true}); err == nil {
+			for _, it := range items {
+				if it.IngredientID != nil && *it.IngredientID == leche {
+					t.Fatal("«Todos» de otra sesión trae la leche de la dueña")
+				}
+			}
+		}
+		if vals, err := svc.StockValueByWarehouse(ctx); err == nil {
+			for _, v := range vals {
+				if v.WarehouseID == local || v.WarehouseID == bodega {
+					t.Fatalf("el valor por almacén de otra sesión trae el almacén %d de la dueña", v.WarehouseID)
+				}
+			}
+		}
+	})
 }
