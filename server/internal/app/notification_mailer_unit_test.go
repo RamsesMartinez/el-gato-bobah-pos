@@ -38,3 +38,23 @@ func TestMailOffIsTheErrorTheAPIKnows(t *testing.T) {
 		t.Fatalf("correo encendido: %v (enviados %d)", err, sent)
 	}
 }
+
+// «Todos» trae la lista de cada almacén en su orden, sin reordenar: lo sin proveedor de Local llega
+// antes que lo con proveedor de Bodega. El grupo «Sin lugar de compra» igual va al final del correo.
+func TestTheEmailPutsWithoutSupplierLast(t *testing.T) {
+	got := supplierGroups([]ShoppingLine{
+		{Name: "Jarabe", Supplier: ""},
+		{Name: "Bolsa", Supplier: "Desechables"},
+		{Name: "Leche", Supplier: "Lácteos"},
+		{Name: "Popotes", Supplier: "Desechables"},
+	})
+	want := []string{"Desechables", "Lácteos", withoutSupplier}
+	if len(got) != len(want) {
+		t.Fatalf("grupos = %v; quiere %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("grupos = %v; quiere %v", got, want)
+		}
+	}
+}

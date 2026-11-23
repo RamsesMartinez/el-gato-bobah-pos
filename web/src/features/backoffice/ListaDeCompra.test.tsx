@@ -36,6 +36,22 @@ describe('Lista de compra', () => {
   });
 });
 
+// «Todos» trae la lista de cada almacén en su orden, sin reordenar: lo sin proveedor de Local llega antes
+// que lo con proveedor de Bodega. Igual va al final, como en la lista de un solo almacén.
+test('«Sin lugar de compra» va al final aunque llegue primero', async () => {
+  api.list.mockResolvedValue({ items: [
+    { itemType: 'ingrediente', id: 2, name: 'Jarabe de taro', unit: 'ml', onHand: '800', min: '1500', dailyUse: null, coverageDays: 14,
+      supplier: '', state: 'low', suggested: null, why: 'x', warehouseId: 1, warehouseName: 'Local' },
+    { itemType: 'ingrediente', id: 1, name: 'Bolsa grande', unit: 'pieza', onHand: '0', min: '50', dailyUse: null, coverageDays: 14,
+      supplier: 'Desechables del Centro', state: 'out', suggested: null, why: 'x', warehouseId: 2, warehouseName: 'Bodega' },
+  ] });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={qc}><Provider><ListaDeCompra /></Provider></QueryClientProvider>);
+  const prov = await screen.findByText('Desechables del Centro');
+  const sin = screen.getByText('Sin lugar de compra');
+  expect(prov.compareDocumentPosition(sin) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
 // VARIOS ALMACENES (spec 094): con dos o más, cada renglón dice de qué almacén es lo que hay.
 describe('lista de compra por almacén (spec 094)', () => {
   const pintar = () => {

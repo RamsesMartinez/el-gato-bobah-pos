@@ -30,7 +30,10 @@ export function ListaDeCompra() {
     onError: (e) => setAviso(e instanceof ApiError ? e.message : 'No se pudo enviar; vuelve a intentar.'),
   });
   const items = lista.data?.items ?? [];
-  const grupos = [...new Set(items.map((l) => l.supplier || SIN_LUGAR))];
+  // «Sin lugar de compra» al final: la lista de «Todos» es la de cada almacén una tras otra, y lo sin
+  // proveedor de Local llega antes que lo con proveedor de Bodega.
+  const conLugar = [...new Set(items.map((l) => l.supplier).filter((s) => s))];
+  const grupos = items.some((l) => !l.supplier) ? [...conLugar, SIN_LUGAR] : conLugar;
   return (
     <VStack align="stretch" gap={3} flex="1" minH={0} overflowY="auto">
       <HStack justify="space-between" flexWrap="wrap" gap={2}>
