@@ -73,6 +73,7 @@ type editLineArg struct {
 	Amount         string `json:"amount" jsonschema:"importe del renglón, texto decimal"`
 	IsGift         bool   `json:"is_gift,omitempty" jsonschema:"true si vino de regalo (importe 0)"`
 	ArrivedOn      string `json:"arrived_on,omitempty" jsonschema:"día en que llegó, AAAA-MM-DD; omítelo si todavía no llega (queda por recibir)"`
+	WarehouseID    *int64 `json:"warehouse_id,omitempty" jsonschema:"almacén al que entra (de warehouses_list); sin él, el de venta"`
 }
 
 type expenseEditArgs struct {
@@ -137,6 +138,7 @@ func presentationState(s *mcpSession, ctx context.Context, tool string, ingredie
 func register074() {
 	writeTool(writeSpec[presentationCreateArgs]{
 		name: "presentation_create",
+		refs: refsPresentationCreate,
 		route: func(_ *mcpSession, _ context.Context, in presentationCreateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("ingredient_id", in.IngredientID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -157,6 +159,7 @@ func register074() {
 
 	writeTool(writeSpec[presentationUpdateArgs]{
 		name: "presentation_update",
+		refs: refsPresentationUpdate,
 		route: func(s *mcpSession, ctx context.Context, in presentationUpdateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			const tool = "presentation_update"
 			if err := positive("presentation_id", in.PresentationID); err != nil {
@@ -218,6 +221,7 @@ func register074() {
 
 	writeTool(writeSpec[expenseEditArgs]{
 		name: "expense_edit",
+		refs: refsExpenseEdit,
 		route: func(_ *mcpSession, _ context.Context, in expenseEditArgs) (string, string, map[string]int64, url.Values, any, error) {
 			body, err := expenseEditBody(in)
 			if err != nil {
@@ -318,7 +322,8 @@ func expenseEditBody(in expenseEditArgs) (map[string]any, error) {
 			return nil, toolErr("El renglón agregado %d lleva ingredient_id o product_id, no los dos.", i+1)
 		}
 		it := map[string]any{"description": strings.TrimSpace(l.Name), "quantity": l.Quantity, "amount": l.Amount,
-			"isGift": l.IsGift, "presentationId": l.PresentationID, "unitId": l.UnitID, "arrivedOn": l.ArrivedOn, "itemType": ""}
+			"isGift": l.IsGift, "presentationId": l.PresentationID, "unitId": l.UnitID, "arrivedOn": l.ArrivedOn, "itemType": "",
+			"warehouseId": l.WarehouseID}
 		switch {
 		case l.IngredientID != nil:
 			it["itemType"], it["ingredientId"] = "ingrediente", *l.IngredientID

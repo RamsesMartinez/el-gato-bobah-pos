@@ -53,7 +53,7 @@ de 44 px y sin `<select>` en Ajustes
 | I. Layering | `domain/public_menu.go`: `SlugifyMenuName`, `ValidMenuNameShape`, `ReservedMenuNames`, `PlanMenuRename`, `ValidPalette`, `FeaturePublicMenu`, `ErrMenuNameUnavailable`. `app/public_menu.go`: `PublicMenuService` (resolver sin tenant → `WithTenant` → oferta + categorías; ajustes con tx). `app/web_sales.go`: `offer(ctx, q)` compartido por `Offer` y el menú. `httpapi`: handlers finos `PublicMenu`, `PublicMenuByToken`, `GetPublicMenuSettings`, `UpdatePublicMenuSettings`; mapeo en `respond.go`. `store/db`: sqlc. Function: `web/menu/functions/` (I/O) sobre `web/src/menu-publico/` (puro). |
 | II. Errores | `ErrMenuNameUnavailable` y `ErrValidation` de `domain`, mapeados solo en `httpapi.Error`; 23505 del `unique` traducido a `ErrMenuNameUnavailable` en `store.DomainError`. |
 | III. Dinero | El precio sale de `domain.ChannelPrice` con `Round2` (la regla de #326); el menú no recalcula ni guarda precios. |
-| IV. Test-first | Tabla en `domain` primero (slugify, forma, reservados, transición de nombre). Integración: migración 0121 con dos empresas; aislamiento `inTheThreeCases` de las dos tablas y del servicio público; `TestThePublicMenuExposesOnlyThePublicFields` sobre el JSON crudo (lista blanca de llaves); SQL y Go normalizan igual. Vitest: plantilla escapa HTML, marca, Function (caché, copia vieja, 302, 404). |
+| IV. Test-first | Tabla en `domain` primero (slugify, forma, reservados, transición de nombre). Integración: migración 0123 con dos empresas; aislamiento `inTheThreeCases` de las dos tablas y del servicio público; `TestThePublicMenuExposesOnlyThePublicFields` sobre el JSON crudo (lista blanca de llaves); SQL y Go normalizan igual. Vitest: plantilla escapa HTML, marca, Function (caché, copia vieja, 302, 404). |
 | IV. Migración tolerante | Solo agrega (tablas, vista, funciones, rol, relleno). La versión anterior no lee nada nuevo. `CreateCompany` viejo crea empresas sin menú → `EnsurePublicMenu` lo repara al abrir Ajustes. |
 | IV. Tres casos de RLS | `public_menus` y `public_menu_names` entran solos a `TestEveryCompanyTableIsIsolated`; el servicio público se prueba con otra empresa, conexión reciclada y sin empresa. |
 | V. Seguridad | Endpoint público con lista blanca de campos, límite por IP con llave real (secreto Function→API, comparación de tiempo constante, test adversarial con IP falsa), 404 indistinguible, token del QR aleatorio, vista sin slug. `MENU_EDGE_KEY` y `MENU_BASE_URL` en `config.Validate` (https en producción; secreto ≥ 32). Ajustes detrás de `RequirePermission(business.configure)`. HTML con escape obligatorio y CSP sin scripts. `/security-review` obligatorio. |
@@ -69,7 +69,7 @@ Sin violaciones. *Complexity Tracking* abajo: un proyecto de Pages más.
 
 | Pieza | Capa | Archivo |
 | --- | --- | --- |
-| Migración 0121 + su test | migración / integración | `server/migrations/0121_public_menu.sql`, `server/internal/integration/migracion_0121_test.go` |
+| Migración 0123 + su test | migración / integración | `server/migrations/0123_public_menu.sql`, `server/internal/integration/migracion_0123_test.go` |
 | Menú al crear empresa | query | `server/queries/companies.sql` (`CreateCompany`) |
 | Reglas de nombre, paleta, clave | domain | `server/internal/domain/public_menu.go` (+ `_test.go`) |
 | Oferta web ampliada | query + app | `server/queries/web_sales.sql`, `server/internal/app/web_sales.go` |
@@ -193,14 +193,14 @@ specs/097-menu-publico/
 
 ```text
 server/
-├── migrations/0121_public_menu.sql
+├── migrations/0123_public_menu.sql
 ├── queries/{public_menu,web_sales,companies}.sql
 └── internal/
     ├── domain/public_menu.go
     ├── app/{public_menu,web_sales}.go
     ├── config/config.go
     ├── httpapi/{handlers_public_menu,router,ratelimit,respond}.go
-    └── integration/{migracion_0121,public_menu}_test.go
+    └── integration/{migracion_0123,public_menu}_test.go
 web/
 ├── menu/                       ← proyecto de Pages nuevo (sin Vite ni React)
 │   ├── plantilla/              ← plantilla + datos + marca (puro, probado con vitest)

@@ -155,6 +155,10 @@ func TestDecideIdempotency(t *testing.T) {
 		{"otra huella mientras la primera sigue", &IdempotencyRecord{Status: IdemStatusPending, ArgsHash: b}, IdemConflict},
 		{"la primera sigue en curso", &IdempotencyRecord{Status: IdemStatusPending, ArgsHash: a}, IdemInProgress},
 		{"la primera terminó en error interno o se cortó", &IdempotencyRecord{Status: IdemStatusUnknown, ArgsHash: a}, IdemUnknown},
+		// #335: un intento que falló sin aplicar nada no bloquea la clave; con la misma huella o con los
+		// argumentos corregidos se vuelve a correr.
+		{"la primera falló sin aplicar: se reintenta", &IdempotencyRecord{Status: IdemStatusFailed, ArgsHash: a}, IdemRetry},
+		{"la primera falló sin aplicar y se corrigieron los argumentos", &IdempotencyRecord{Status: IdemStatusFailed, ArgsHash: b}, IdemRetry},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

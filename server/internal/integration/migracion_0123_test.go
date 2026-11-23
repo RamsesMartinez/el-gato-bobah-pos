@@ -11,7 +11,7 @@ import (
 
 // publicMenuVersion es la migración del menú público (spec 097).
 // PROVISIONAL: se mueve al siguiente número libre de develop al fusionar, y esta constante con ella.
-const publicMenuVersion = 121
+const publicMenuVersion = 123
 
 // LA 0121 SOBRE UN RESPALDO REAL CON DOS EMPRESAS (constitución IV).
 //

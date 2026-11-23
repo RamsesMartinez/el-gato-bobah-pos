@@ -1,4 +1,4 @@
--- Menú público (spec 097). Las dos primeras resuelven SIN empresa, sobre la vista de la 0121: lo
+-- Menú público (spec 097). Las dos primeras resuelven SIN empresa, sobre la vista de la 0123: lo
 -- único que devuelven es a qué empresa pertenece un nombre o un código, que es público por diseño.
 
 -- name: ResolvePublicMenuName :one
@@ -60,7 +60,7 @@ from companies c left join business_settings b on b.company_id = c.id
 where c.id = sqlc.arg(company_id);
 
 -- name: FreeMenuNameFor :one
--- Para nombrar un menú nuevo con la misma regla que el relleno de la 0121.
+-- Para nombrar un menú nuevo con la misma regla que el relleno de la 0123.
 select public_menu_free_name(public_menu_slugify(sqlc.arg(display)::text), sqlc.arg(company_id)::bigint)::text;
 
 -- name: PublicMenuCategories :many

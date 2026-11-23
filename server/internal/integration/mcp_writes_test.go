@@ -188,7 +188,7 @@ func TestMCPPurchases(t *testing.T) {
 		ajeno := w.token(t, w.other, w.otherAdm, "write:purchases")
 		id := scalar(t, w, `select id from expenses where doc_folio = 'MCP-COMPRA'`)
 		res := callTool(t, w.router, ajeno, "purchase_receive", applyArgs(map[string]any{"expense_id": id}, "recibir-ajeno-1"))
-		if !res.isError || !strings.Contains(res.text, "No existe") {
+		if !res.isError || !strings.Contains(res.text, "no existe en esta empresa") {
 			t.Fatalf("otra empresa: %s", res.text)
 		}
 	})
@@ -575,7 +575,7 @@ func TestMCPOrderCancel(t *testing.T) {
 		id := crearPedidoSimple(t, octx, orders, prod, w.admin)
 		ajeno := w.token(t, w.other, w.otherAdm, "write:orders")
 		res := callTool(t, w.router, ajeno, "order_cancel", applyArgs(map[string]any{"order_id": id, "reason": "x"}, "cancelar-ajeno-1"))
-		if !res.isError || !strings.Contains(res.text, "No existe") || status(id) == "cancelada" {
+		if !res.isError || !strings.Contains(res.text, "no existe en esta empresa") || status(id) == "cancelada" {
 			t.Fatalf("otra empresa: %s", res.text)
 		}
 	})

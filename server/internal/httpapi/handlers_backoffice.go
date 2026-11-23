@@ -605,6 +605,8 @@ type expenseItemBody struct {
 	// Personal: el nombre viejo de Excluded; la API vieja lo mandaba y se trata igual (spec 049).
 	Personal bool `json:"personal"`
 	Excluded bool `json:"excluded"`
+	// WarehouseID: a qué almacén entra (spec 094); ausente = el de venta (o el que ya tenía).
+	WarehouseID *int64 `json:"warehouseId"`
 }
 
 // expensePaymentBody es un pago. registerId es la caja de la que salió; para métodos que mueven el
@@ -630,7 +632,7 @@ func toItemInputs(in []expenseItemBody) []app.ExpenseItemInput {
 			Description: it.Description, Quantity: it.Quantity, UnitID: it.UnitID,
 			QtyReceived: it.QtyReceived, Amount: it.Amount, PackQtyInBase: it.PackQtyInBase,
 			RawCode: it.RawCode, RawName: it.RawName, Personal: it.Personal, Excluded: it.Excluded,
-			PresentationID: it.PresentationID, IsGift: it.IsGift,
+			PresentationID: it.PresentationID, IsGift: it.IsGift, WarehouseID: it.WarehouseID,
 		}
 	}
 	return out

@@ -60,7 +60,7 @@ type FreeMenuNameForParams struct {
 	CompanyID int64  `json:"company_id"`
 }
 
-// Para nombrar un menú nuevo con la misma regla que el relleno de la 0121.
+// Para nombrar un menú nuevo con la misma regla que el relleno de la 0123.
 func (q *Queries) FreeMenuNameFor(ctx context.Context, arg FreeMenuNameForParams) (string, error) {
 	row := q.db.QueryRow(ctx, freeMenuNameFor, arg.Display, arg.CompanyID)
 	var column_1 string
@@ -231,7 +231,7 @@ type ResolvePublicMenuNameRow struct {
 	CompanyActive bool   `json:"company_active"`
 }
 
-// Menú público (spec 097). Las dos primeras resuelven SIN empresa, sobre la vista de la 0121: lo
+// Menú público (spec 097). Las dos primeras resuelven SIN empresa, sobre la vista de la 0123: lo
 // único que devuelven es a qué empresa pertenece un nombre o un código, que es público por diseño.
 func (q *Queries) ResolvePublicMenuName(ctx context.Context, name string) (ResolvePublicMenuNameRow, error) {
 	row := q.db.QueryRow(ctx, resolvePublicMenuName, name)

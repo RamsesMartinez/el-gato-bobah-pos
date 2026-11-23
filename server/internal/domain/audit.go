@@ -189,7 +189,7 @@ const (
 	AuditIngredientMergedInto AuditAction = "ingredient.merged_into"
 	// AuditWarehouseCreated: se dio de alta un almacén en una sucursal (spec 094).
 	AuditWarehouseCreated AuditAction = "warehouse.created"
-	// AuditWarehouseUpdated: cambió el nombre de un almacén.
+	// AuditWarehouseUpdated: cambió el nombre de un almacén o cuál es el de venta.
 	AuditWarehouseUpdated AuditAction = "warehouse.updated"
 	// AuditWarehouseArchived: se archivó un almacén vacío.
 	AuditWarehouseArchived AuditAction = "warehouse.archived"

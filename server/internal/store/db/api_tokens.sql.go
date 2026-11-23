@@ -12,18 +12,93 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const deleteIdempotencyKey = `-- name: DeleteIdempotencyKey :exec
-delete from mcp_idempotency_keys where token_id = $1 and idem_key = $2 and status = 'pending'
+const failIdempotencyKey = `-- name: FailIdempotencyKey :exec
+update mcp_idempotency_keys set status = 'failed', result = $1
+ where token_id = $2 and idem_key = $3 and status = 'pending'
 `
 
-type DeleteIdempotencyKeyParams struct {
+type FailIdempotencyKeyParams struct {
+	Result  []byte `json:"result"`
 	TokenID int64  `json:"token_id"`
 	IdemKey string `json:"idem_key"`
 }
 
-func (q *Queries) DeleteIdempotencyKey(ctx context.Context, arg DeleteIdempotencyKeyParams) error {
-	_, err := q.db.Exec(ctx, deleteIdempotencyKey, arg.TokenID, arg.IdemKey)
+// La escritura falló sin confirmar nada (#335): la llave guarda el error y queda libre para reintentar.
+func (q *Queries) FailIdempotencyKey(ctx context.Context, arg FailIdempotencyKeyParams) error {
+	_, err := q.db.Exec(ctx, failIdempotencyKey, arg.Result, arg.TokenID, arg.IdemKey)
 	return err
+}
+
+const findReferences = `-- name: FindReferences :many
+select r.kind::text as kind, r.id::bigint as id,
+       (coalesce(p.id, i.id, o.id, g.id, c.id, ip.id, sc.id, e.id, ec.id, s.id, pm.id, cr.id, cc.id,
+                 wr.id, ord.id, dp.id, w.id, ct.id, icat.id, pl.id) is not null)::boolean as found,
+       coalesce(p.is_active, true)::boolean as active,
+       coalesce(p.name, '')::text as name
+  from (select k.kind, d.id from unnest($1::text[]) with ordinality as k(kind, n)
+          join unnest($2::bigint[]) with ordinality as d(id, n) using (n)) as r
+  left join products p on r.kind = 'product' and p.id = r.id
+  left join ingredients i on r.kind = 'ingredient' and i.id = r.id
+  left join modifier_options o on r.kind = 'option' and o.id = r.id
+  left join modifier_groups g on r.kind = 'group' and g.id = r.id
+  left join categories c on r.kind = 'category' and c.id = r.id
+  left join ingredient_presentations ip on r.kind = 'presentation' and ip.id = r.id
+  left join stock_counts sc on r.kind = 'count' and sc.id = r.id
+  left join expenses e on r.kind = 'expense' and e.id = r.id
+  left join expense_categories ec on r.kind = 'expense_category' and ec.id = r.id
+  left join suppliers s on r.kind = 'supplier' and s.id = r.id
+  left join payment_methods pm on r.kind = 'payment_method' and pm.id = r.id
+  left join cash_registers cr on r.kind = 'register' and cr.id = r.id
+  left join cash_concepts cc on r.kind = 'cash_concept' and cc.id = r.id
+  left join waste_reasons wr on r.kind = 'waste_reason' and wr.id = r.id
+  left join orders ord on r.kind = 'order' and ord.id = r.id
+  left join delivery_platforms dp on r.kind = 'platform' and dp.id = r.id
+  left join warehouses w on r.kind = 'warehouse' and w.id = r.id
+  left join card_terminals ct on r.kind = 'terminal' and ct.id = r.id
+  left join ingredient_categories icat on r.kind = 'ingredient_category' and icat.id = r.id
+  left join count_places pl on r.kind = 'place' and pl.id = r.id
+`
+
+type FindReferencesParams struct {
+	Kinds []string `json:"kinds"`
+	Ids   []int64  `json:"ids"`
+}
+
+type FindReferencesRow struct {
+	Kind   string `json:"kind"`
+	ID     int64  `json:"id"`
+	Found  bool   `json:"found"`
+	Active bool   `json:"active"`
+	Name   string `json:"name"`
+}
+
+// Cuáles de los ids que manda una escritura del MCP existen en la empresa de la sesión (#335). RLS pone
+// el filtro por empresa en cada tabla: un id de otra empresa sale igual que uno que no existe. Las
+// llaves foráneas de una sola columna no sirven para esto porque Postgres las revisa saltándose RLS.
+func (q *Queries) FindReferences(ctx context.Context, arg FindReferencesParams) ([]FindReferencesRow, error) {
+	rows, err := q.db.Query(ctx, findReferences, arg.Kinds, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindReferencesRow{}
+	for rows.Next() {
+		var i FindReferencesRow
+		if err := rows.Scan(
+			&i.Kind,
+			&i.ID,
+			&i.Found,
+			&i.Active,
+			&i.Name,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const finishIdempotencyKey = `-- name: FinishIdempotencyKey :exec
@@ -250,6 +325,33 @@ delete from mcp_idempotency_keys where token_id = $1 and created_at < now() - in
 func (q *Queries) PurgeOldIdempotencyKeys(ctx context.Context, tokenID int64) error {
 	_, err := q.db.Exec(ctx, purgeOldIdempotencyKeys, tokenID)
 	return err
+}
+
+const retakeFailedIdempotencyKey = `-- name: RetakeFailedIdempotencyKey :execrows
+update mcp_idempotency_keys set status = 'pending', result = null, args_hash = $1, tool = $2
+ where token_id = $3 and idem_key = $4 and status = 'failed'
+`
+
+type RetakeFailedIdempotencyKeyParams struct {
+	ArgsHash []byte `json:"args_hash"`
+	Tool     string `json:"tool"`
+	TokenID  int64  `json:"token_id"`
+	IdemKey  string `json:"idem_key"`
+}
+
+// Retoma una llave cuyo intento falló sin aplicar nada, con la huella de ESTE intento (los argumentos
+// pudieron corregirse). Sin fila afectada, otro reintento la tomó primero.
+func (q *Queries) RetakeFailedIdempotencyKey(ctx context.Context, arg RetakeFailedIdempotencyKeyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, retakeFailedIdempotencyKey,
+		arg.ArgsHash,
+		arg.Tool,
+		arg.TokenID,
+		arg.IdemKey,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const revokeAPIToken = `-- name: RevokeAPIToken :one

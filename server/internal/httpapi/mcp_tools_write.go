@@ -160,6 +160,7 @@ func articleState(s *mcpSession, ctx context.Context, tool string, ingredient, p
 func registerWrites() {
 	writeTool(writeSpec[cashMovementArgs]{
 		name: "cash_movement_create",
+		refs: refsCashMovement,
 		route: func(_ *mcpSession, _ context.Context, in cashMovementArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("register_id", in.RegisterID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -188,6 +189,7 @@ func registerWrites() {
 
 	writeTool(writeSpec[expenseCreateArgs]{
 		name: "expense_create",
+		refs: refsExpenseCreate,
 		route: func(_ *mcpSession, _ context.Context, in expenseCreateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("category_id", in.CategoryID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -288,6 +290,7 @@ func registerWrites() {
 	payState := expenseState("expense_pay")
 	writeTool(writeSpec[expensePayArgs]{
 		name: "expense_pay",
+		refs: refsExpensePay,
 		route: func(_ *mcpSession, _ context.Context, in expensePayArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("expense_id", in.ExpenseID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -301,6 +304,7 @@ func registerWrites() {
 	cancelState := expenseState("expense_cancel")
 	writeTool(writeSpec[expenseCancelArgs]{
 		name: "expense_cancel",
+		refs: refsExpenseCancel,
 		route: func(_ *mcpSession, _ context.Context, in expenseCancelArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("expense_id", in.ExpenseID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -351,6 +355,7 @@ func registerWrites() {
 
 	writeTool(writeSpec[wasteArgs]{
 		name: "waste_record",
+		refs: refsWaste,
 		route: func(_ *mcpSession, _ context.Context, in wasteArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("reason_id", in.ReasonID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -372,6 +377,7 @@ func registerWrites() {
 
 	writeTool(writeSpec[stockAdjustArgs]{
 		name: "stock_adjust",
+		refs: refsStockAdjust,
 		route: func(_ *mcpSession, _ context.Context, in stockAdjustArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := oneOf(in.IngredientID, in.ProductID, "ingredient_id o product_id"); err != nil {
 				return "", "", nil, nil, nil, err
@@ -410,6 +416,7 @@ func registerWrites() {
 	}
 	writeTool(writeSpec[productUpdateArgs]{
 		name: "product_update",
+		refs: refsProductUpdate,
 		route: func(s *mcpSession, ctx context.Context, in productUpdateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("product_id", in.ProductID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -480,6 +487,7 @@ func registerWrites() {
 	}
 	writeTool(writeSpec[optionUpdateArgs]{
 		name: "modifier_option_update",
+		refs: refsOptionUpdate,
 		route: func(_ *mcpSession, _ context.Context, in optionUpdateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("option_id", in.OptionID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -563,8 +571,8 @@ func registerWrites() {
 			return projectPlatformPrices(b, in.ProductID, in.OptionID)
 		}
 	}
-	writeTool(writeSpec[platformPriceArgs]{name: "platform_price_set", route: priceRoute(true),
+	writeTool(writeSpec[platformPriceArgs]{name: "platform_price_set", route: priceRoute(true), refs: refsPlatformPrice,
 		state: priceState("platform_price_set")})
-	writeTool(writeSpec[platformPriceArgs]{name: "platform_price_delete", route: priceRoute(false),
+	writeTool(writeSpec[platformPriceArgs]{name: "platform_price_delete", route: priceRoute(false), refs: refsPlatformPrice,
 		state: priceState("platform_price_delete")})
 }

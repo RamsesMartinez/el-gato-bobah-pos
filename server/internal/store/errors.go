@@ -57,6 +57,14 @@ func DomainError(err error) error {
 		if pgErr.ConstraintName == "public_menu_names_name_key" {
 			return domain.ErrMenuNameUnavailable
 		}
+	case "23503":
+		// Insert o update con una referencia que no existe en la empresa (#335). Con RLS, Postgres no
+		// dice el valor, solo la tabla. El borrado frenado («is still referenced») no es esto.
+		const marker = `is not present in table "`
+		if _, rest, ok := strings.Cut(pgErr.Detail, marker); ok {
+			table, _, _ := strings.Cut(rest, `"`)
+			return domain.ReferenceNotFoundWrapping(table, err)
+		}
 	}
 	return err
 }
@@ -71,11 +79,13 @@ func DomainError(err error) error {
 type translating struct{ conn db.DBTX }
 
 func (t translating) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	t.noteStatement(ctx, sql)
 	tag, err := t.conn.Exec(ctx, sql, args...)
 	return tag, DomainError(err)
 }
 
 func (t translating) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	t.noteStatement(ctx, sql)
 	rows, err := t.conn.Query(ctx, sql, args...)
 	if err != nil {
 		return rows, DomainError(err)
@@ -84,6 +94,7 @@ func (t translating) Query(ctx context.Context, sql string, args ...any) (pgx.Ro
 }
 
 func (t translating) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	t.noteStatement(ctx, sql)
 	return translatingRow{t.conn.QueryRow(ctx, sql, args...)}
 }
 

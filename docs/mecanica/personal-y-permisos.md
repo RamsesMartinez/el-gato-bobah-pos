@@ -155,6 +155,27 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   completa. Un camino nuevo que cambie la captura de un gasto lo cambia para los dos.
 - **El lote de conteo** despacha un `PUT` por renglón con `confirmable: true` y se detiene en el
   primero que falla; capturar fija la cifra, así que repetirlo con la misma clave no duplica nada.
+- **Toda escritura declara los ids que manda (`refs`, #335) y se revisan antes que todo**, en la vista
+  previa y al aplicar, con RLS (`FindReferences`): un id de otra empresa y uno que no existe reciben el
+  mismo «El producto N no existe en esta empresa. Búscalo con …». Va antes de `route` porque varias
+  rutas leen el registro para armar la escritura y cada una lo decía distinto. Hacía falta por dos
+  razones: la vista previa no despacha la escritura (decía que todo estaba bien), y **muchas llaves
+  foráneas son de una sola columna, y Postgres las revisa saltándose RLS**: con un id de otra empresa
+  el insert pasaba y la fila quedaba apuntando a una ajena (medido: crear un extra en el grupo de otra
+  empresa, un producto en su categoría, un gasto con su proveedor o su categoría). El esquema sigue
+  así para la pantalla: #344. Una herramienta nueva con un `*_id` sin `refs` truena
+  en `TestEveryWriteToolWithIDsDeclaresItsRefs`.
+- **Una llave de idempotencia queda en `failed` (con el error) cuando el despacho no confirmó nada**:
+  un rechazo 4xx, una `guard` que no pasa, o un 500 sin ninguna confirmación. Lo sabe el rastreador de
+  `store.TrackWrites`, que anota cada `COMMIT` intentado y cada sentencia que no es `select` fuera de
+  transacción. Una `failed` se retoma con la misma llave, con o sin los argumentos corregidos.
+  `unknown` queda solo para lo que pudo haberse confirmado.
+- **Un 500 le dice al agente el id del error y la causa por categoría**, nunca el texto: la petición
+  interna lleva el `X-Request-Id` de la llamada, así que el correo del administrador y el error dicen
+  el mismo id. La causa sale de `domain.InternalCause` (el campo `cause` de la respuesta de un 500).
+- **Una FK que frena una referencia (23503 «is not present in table») responde 422
+  `REFERENCE_NOT_FOUND`** en toda la API (`store.DomainError`), no 500. Con RLS Postgres no dice el
+  valor, solo la tabla; de ahí sale el sustantivo.
 
 ### Lo que agregó la spec 074 (empaques de compra y corregir un gasto guardado)
 

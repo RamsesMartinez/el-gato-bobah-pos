@@ -59,8 +59,48 @@ update mcp_idempotency_keys set status = 'done', result = @result
 update mcp_idempotency_keys set status = 'unknown'
  where token_id = @token_id and idem_key = @idem_key and status = 'pending';
 
--- name: DeleteIdempotencyKey :exec
-delete from mcp_idempotency_keys where token_id = @token_id and idem_key = @idem_key and status = 'pending';
-
 -- name: PurgeOldIdempotencyKeys :exec
 delete from mcp_idempotency_keys where token_id = @token_id and created_at < now() - interval '7 days';
+
+-- name: FailIdempotencyKey :exec
+-- La escritura falló sin confirmar nada (#335): la llave guarda el error y queda libre para reintentar.
+update mcp_idempotency_keys set status = 'failed', result = @result
+ where token_id = @token_id and idem_key = @idem_key and status = 'pending';
+
+-- name: RetakeFailedIdempotencyKey :execrows
+-- Retoma una llave cuyo intento falló sin aplicar nada, con la huella de ESTE intento (los argumentos
+-- pudieron corregirse). Sin fila afectada, otro reintento la tomó primero.
+update mcp_idempotency_keys set status = 'pending', result = null, args_hash = @args_hash, tool = @tool
+ where token_id = @token_id and idem_key = @idem_key and status = 'failed';
+
+-- name: FindReferences :many
+-- Cuáles de los ids que manda una escritura del MCP existen en la empresa de la sesión (#335). RLS pone
+-- el filtro por empresa en cada tabla: un id de otra empresa sale igual que uno que no existe. Las
+-- llaves foráneas de una sola columna no sirven para esto porque Postgres las revisa saltándose RLS.
+select r.kind::text as kind, r.id::bigint as id,
+       (coalesce(p.id, i.id, o.id, g.id, c.id, ip.id, sc.id, e.id, ec.id, s.id, pm.id, cr.id, cc.id,
+                 wr.id, ord.id, dp.id, w.id, ct.id, icat.id, pl.id) is not null)::boolean as found,
+       coalesce(p.is_active, true)::boolean as active,
+       coalesce(p.name, '')::text as name
+  from (select k.kind, d.id from unnest(@kinds::text[]) with ordinality as k(kind, n)
+          join unnest(@ids::bigint[]) with ordinality as d(id, n) using (n)) as r
+  left join products p on r.kind = 'product' and p.id = r.id
+  left join ingredients i on r.kind = 'ingredient' and i.id = r.id
+  left join modifier_options o on r.kind = 'option' and o.id = r.id
+  left join modifier_groups g on r.kind = 'group' and g.id = r.id
+  left join categories c on r.kind = 'category' and c.id = r.id
+  left join ingredient_presentations ip on r.kind = 'presentation' and ip.id = r.id
+  left join stock_counts sc on r.kind = 'count' and sc.id = r.id
+  left join expenses e on r.kind = 'expense' and e.id = r.id
+  left join expense_categories ec on r.kind = 'expense_category' and ec.id = r.id
+  left join suppliers s on r.kind = 'supplier' and s.id = r.id
+  left join payment_methods pm on r.kind = 'payment_method' and pm.id = r.id
+  left join cash_registers cr on r.kind = 'register' and cr.id = r.id
+  left join cash_concepts cc on r.kind = 'cash_concept' and cc.id = r.id
+  left join waste_reasons wr on r.kind = 'waste_reason' and wr.id = r.id
+  left join orders ord on r.kind = 'order' and ord.id = r.id
+  left join delivery_platforms dp on r.kind = 'platform' and dp.id = r.id
+  left join warehouses w on r.kind = 'warehouse' and w.id = r.id
+  left join card_terminals ct on r.kind = 'terminal' and ct.id = r.id
+  left join ingredient_categories icat on r.kind = 'ingredient_category' and icat.id = r.id
+  left join count_places pl on r.kind = 'place' and pl.id = r.id;

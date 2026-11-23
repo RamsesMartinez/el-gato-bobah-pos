@@ -23,6 +23,7 @@ function errorMessage(e: unknown) {
     if (e.status === 400) return 'El nombre lleva de 1 a 40 letras';
     if (e.code === 'WAREHOUSE_HAS_STOCK') return 'Tiene existencias: traspásalas o cuéntalas en cero antes de archivarlo';
     if (e.code === 'WAREHOUSE_COUNT_OPEN') return 'Tiene un conteo abierto: ciérralo o descártalo primero';
+    if (e.code === 'WAREHOUSE_PENDING_PURCHASES') return 'Tiene compras por recibir: recíbelas o márcalas como que no llegan primero';
     if (e.code === 'WAREHOUSE_IS_SALES') return 'De aquí salen las ventas: este almacén no se archiva';
     if (e.code === 'WAREHOUSE_NOT_FOUND') return 'Este almacén ya no existe o lo archivó alguien más';
   }
@@ -127,6 +128,8 @@ function EditSheet({ w, onClose, onDone }: { w: Warehouse; onClose: () => void; 
   const [name, setName] = useState(w.name);
   const [error, setError] = useState('');
   const [archiving, setArchiving] = useState(false);
+  const [makingSales, setMakingSales] = useState(false);
+  const makeSales = useMutation({ mutationFn: () => backofficeApi.setSalesWarehouse(w.id), onSuccess: onDone, onError: (e) => setError(errorMessage(e)) });
   const rename = useMutation({ mutationFn: () => backofficeApi.renameWarehouse(w.id, name.trim()), onSuccess: onDone, onError: (e) => setError(errorMessage(e)) });
   const archive = useMutation({ mutationFn: () => backofficeApi.archiveWarehouse(w.id), onSuccess: onDone, onError: (e) => setError(errorMessage(e)) });
   const canArchive = !w.isSales && w.itemsWithStock === 0;
@@ -146,10 +149,20 @@ function EditSheet({ w, onClose, onDone }: { w: Warehouse; onClose: () => void; 
             </VStack>
           )}
           {archiving && <Text>Se archiva «{w.name}». Ya no aparece en las listas.</Text>}
+          {makingSales && <Text>Desde ahora las ventas descontarán de «{w.name}». Lo que ya se vendió no cambia.</Text>}
+          {!archiving && !makingSales && !w.isSales && (
+            <Button mt={4} minH="44px" variant="outline" onClick={() => { setError(''); setMakingSales(true); }}>Vender desde aquí</Button>
+          )}
           {error && <Text fontSize="sm" color="fg.error" mt={2}>{error}</Text>}
         </DrawerBody>
         <DrawerFooter>
-          {!archiving && (
+          {makingSales && (
+            <HStack w="100%" gap={3}>
+              <Button minH="44px" loading={makeSales.isPending} onClick={() => makeSales.mutate()}>Sí, vender desde {w.name}</Button>
+              <Button minH="44px" variant="ghost" onClick={() => setMakingSales(false)}>No</Button>
+            </HStack>
+          )}
+          {!archiving && !makingSales && (
             <HStack w="100%" justify="space-between" gap={12}>
               <Button minH="44px" disabled={!name.trim() || name.trim() === w.name} loading={rename.isPending}
                 onClick={() => rename.mutate()}>Guardar</Button>

@@ -9,7 +9,7 @@
 
 ```bash
 cd server && go build ./... && go test ./...
-make test-integration   # migración 0121, aislamiento, campos públicos, slugify SQL = Go
+make test-integration   # migración 0123, aislamiento, campos públicos, slugify SQL = Go
 curl -s localhost:80NN/api/v1/public/menus/el-gato-bobah | jq '.kind, (.categories|length)'
 curl -s -o /dev/null -w '%{http_code}\n' localhost:80NN/api/v1/public/menus/no-existe   # 404
 ```

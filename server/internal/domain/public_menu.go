@@ -24,13 +24,13 @@ var (
 // empresa podría acaparar nombres globales rotándolos.
 const MaxRetiredMenuNames = 20
 
-// menuNameMaxLen y menuNameMinLen son el check de public_menu_names (0121).
+// menuNameMaxLen y menuNameMinLen son el check de public_menu_names (0123).
 const (
 	menuNameMinLen = 3
 	menuNameMaxLen = 40
 )
 
-// menuAccents es LA tabla de acentos. public_menu_slugify (0121) usa exactamente la misma en su
+// menuAccents es LA tabla de acentos. public_menu_slugify (0123) usa exactamente la misma en su
 // translate(); una prueba de integración compara las dos sobre los mismos casos. Lo que no está aquí
 // se vuelve guion en las dos.
 const (
@@ -86,7 +86,7 @@ func ValidMenuNameShape(n string) bool {
 }
 
 // reservedMenuNames son rutas del propio menú y palabras que un cliente leería como del sistema. La
-// misma lista vive en public_menu_free_name (0121).
+// misma lista vive en public_menu_free_name (0123).
 var reservedMenuNames = []string{
 	"q", "api", "admin", "www", "menu", "menus", "static", "assets", "login", "ayuda", "soporte",
 	"app", "staff", "media", "cdn", "robots-txt", "favicon-ico", "sitemap-xml", "functions",

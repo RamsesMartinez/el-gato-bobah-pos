@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/alerts"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
@@ -22,6 +23,9 @@ type errorBody struct {
 	// Details lleva el error como DATO además de como prosa, para que el front pinte sin escarbar
 	// en el texto del mensaje. Se omite cuando no hay nada que detallar: la respuesta de siempre.
 	Details *errorDetails `json:"details,omitempty"`
+	// Cause es, solo en un 500, la causa por categoría (#335): quien llamó sabe qué pasó sin ver el
+	// texto del error, que puede traer la consulta o datos y sigue yendo solo a la bitácora y al correo.
+	Cause string `json:"cause,omitempty"`
 }
 
 // errorDetails son los campos estructurados que un error puede aportar: el producto que tumbó el
@@ -115,6 +119,12 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "OUT_OF_STOCK"
 	case errors.Is(err, domain.ErrWarehouseNotFound):
 		status, code = http.StatusNotFound, "WAREHOUSE_NOT_FOUND"
+	case errors.As(err, new(domain.ReferenceNotFound)):
+		// #335: la FK frenó una referencia que no es de esta empresa. 422 y no 404: la ruta existe, lo
+		// que no existe es lo que el cuerpo nombra. Sin texto envolvente: es el que lee quien opera.
+		var ref domain.ReferenceNotFound
+		errors.As(err, &ref)
+		status, code, msg = http.StatusUnprocessableEntity, "REFERENCE_NOT_FOUND", ref.Error()
 	case errors.Is(err, domain.ErrNotFound):
 		status, code = http.StatusNotFound, "NOT_FOUND"
 	case errors.Is(err, domain.ErrInvalidCredentials):
@@ -217,6 +227,8 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "WAREHOUSE_HAS_STOCK"
 	case errors.Is(err, domain.ErrWarehouseCountOpen):
 		status, code = http.StatusConflict, "WAREHOUSE_COUNT_OPEN"
+	case errors.Is(err, domain.ErrWarehousePendingPurchases):
+		status, code = http.StatusConflict, "WAREHOUSE_PENDING_PURCHASES"
 	case errors.Is(err, domain.ErrWarehouseNameTaken):
 		status, code = http.StatusConflict, "WAREHOUSE_NAME_TAKEN"
 	case errors.Is(err, domain.ErrWarehouseNotWritableYet):
@@ -408,7 +420,13 @@ func Error(w http.ResponseWriter, err error) {
 		msg = "Error interno del servidor"
 		// Sin details en un 500: el mensaje ya se ocultó por opaco, y adjuntar el interior del
 		// error por otra puerta lo desharía.
-		JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: msg}})
+		body := errorBody{Code: code, Message: msg}
+		// La causa solo a la petición que despachó el MCP (#335): el agente la necesita para decir qué
+		// pasó; a una ruta abierta (login, recuperar contraseña) no le hace falta saber ni la categoría.
+		if fromMCP(w) {
+			body.Cause = domain.InternalCause(alerts.ErrorKind(err))
+		}
+		JSON(w, status, errorEnvelope{Error: body})
 		return
 	}
 
