@@ -461,3 +461,31 @@ func TestStockValueOfAllIsTheSumOfTheWarehouses(t *testing.T) {
 		}
 	})
 }
+
+// El historial de merma (Almacén › Se echó a perder) no decía de qué almacén salió cada registro:
+// con Local y Bodega, «Leche · 4 ml» no decía de dónde se restó. Las listas de hoy y por aprobar ya
+// lo traían; la del periodo, no.
+func TestWasteHistoryNamesTheWarehouse(t *testing.T) {
+	t.Parallel()
+	k := newWhCountKit(t, "merma_historial")
+	caduco := reasonNamed(t, k.st, defaultCompanyID, "Caducó")
+	res, err := k.svc.RecordWaste(k.ctx, app.RecordWasteCmd{ReasonID: caduco, IngredientID: &k.leche, Qty: decimal.NewFromInt(4),
+		Actor: k.user, Warehouse: domain.WarehouseSel{ID: k.bodega}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	from, to := todayRange(t, k.st)
+	rows, err := k.svc.ListWaste(k.ctx, from, to, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows {
+		if r.ID == res.ID {
+			if r.WarehouseName != "Bodega" {
+				t.Fatalf("el historial dice almacén %q; quiere «Bodega»", r.WarehouseName)
+			}
+			return
+		}
+	}
+	t.Fatal("el historial no trae la merma de Bodega")
+}

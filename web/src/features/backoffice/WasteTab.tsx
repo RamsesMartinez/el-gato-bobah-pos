@@ -10,6 +10,7 @@ import { WASTE_STATUS_WORDS as STATUS_WORDS, wasteApi } from '../../api/waste';
 import { moneyExact } from '../../utils/format';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { formatBaseQty } from '../../shared/units';
+import { useWarehousePick } from './warehouses/WarehousePicker';
 
 // Lo que se echó a perder, por motivo (spec 039, maqueta B): fichas con el total de cada motivo en
 // una sola fila que se desplaza a lo ancho, y debajo los registros del periodo. Tocar una ficha
@@ -33,6 +34,8 @@ export function WasteTab() {
   const navigate = useNavigate();
   const user = useSessionStore((s) => s.user);
   const canRecord = can('inventory.write_off', user);
+  // Con dos o más almacenes cada registro dice de cuál salió; con uno sería ruido.
+  const { multi } = useWarehousePick();
   const [preset, setPreset] = useState<Preset>('semana');
   const [range, setRange] = useState(() => presetRange('semana'));
   const [reasonId, setReasonId] = useState<number | null>(null);
@@ -86,6 +89,7 @@ export function WasteTab() {
               <Text fontWeight="600">{r.itemName} · {formatBaseQty(r.quantity, r.unitCode)}</Text>
               <Text fontSize="sm" color="fg.muted">
                 {r.reason} · {r.recordedBy} · {hora.fechaYHora(r.recordedAt)}
+                {multi && r.warehouseName ? ` · ${r.warehouseName}` : ''}
                 {' · '}{STATUS_WORDS[r.status] ?? r.status}
               </Text>
             </Box>

@@ -253,7 +253,7 @@ func (s *BackofficeService) ListWaste(ctx context.Context, from, to time.Time, r
 	for _, r := range rows {
 		out = append(out, WasteRow{ID: r.ID, ItemType: string(r.ItemType), ItemName: r.ItemName, Quantity: r.Quantity,
 			UnitCode: r.UnitCode, TotalCost: r.TotalCost, Status: r.Status, Reason: r.ReasonName, IsStaffMeal: r.IsStaffMeal,
-			ReportReason: r.ReportReasonID, RecordedBy: r.RecordedByName, RecordedAt: r.RecordedAt})
+			ReportReason: r.ReportReasonID, RecordedBy: r.RecordedByName, RecordedAt: r.RecordedAt, WarehouseName: r.WarehouseName})
 	}
 	return out, nil
 }

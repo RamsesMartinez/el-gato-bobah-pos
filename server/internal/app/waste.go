@@ -435,7 +435,7 @@ type WasteRow struct {
 	ReportReason int64            `json:"reportReasonId,omitempty"`
 	IsStaffMeal  bool             `json:"isStaffMeal,omitempty"`
 	Note         *string          `json:"note,omitempty"`
-	// WarehouseName: de qué almacén salió; las listas de hoy y por aprobar lo traen (spec 094).
+	// WarehouseName: de qué almacén salió; lo traen las listas de hoy, por aprobar y del periodo (spec 094).
 	WarehouseName string `json:"warehouseName,omitempty"`
 }
 
