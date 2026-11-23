@@ -10,7 +10,8 @@ import { MenuRoot, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from '../
 import { cobraEnvio } from '../../domain/pedido';
 import { descuentoDeLaCuenta, type ModoDeDescuento } from '../../domain/descuento';
 import { parseMonto } from '../../domain/numeros';
-import type { DraftHeader } from '../../types/pos';
+import type { AccountItem, DraftHeader } from '../../types/pos';
+import { missingFor, nombreDeCuenta } from '../../domain/cuentas';
 import type { SwipeHandlers } from '../../hooks/useSwipeDownToClose';
 import { money } from '../../utils/format';
 import type { RenglonNuevo, RenglonPedido, VistaCuenta } from './cuentaEnPantalla';
@@ -63,6 +64,11 @@ interface Props {
   hora?: string;
   // El canal con su nombre («Uber Eats»). Sin él se dice el tipo: Mostrador o Domicilio.
   canal?: string;
+  // Spec 089: la ficha viva de este pedido (de GET /pos/accounts), para decir lo que le falta y
+  // ofrecer entregarlo. Cobrar ya está en el pie.
+  liveAccount?: AccountItem;
+  onDeliver?: (c: AccountItem) => void;
+  delivering?: boolean;
 }
 
 // Lo ya enviado se pliega SOLO cuando hay algo nuevo y más de tres renglones: en el panel de 600 px,
@@ -185,6 +191,11 @@ export function Ticket(props: Props) {
           </MenuRoot>
         )}
       </HStack>
+
+      {props.liveAccount && props.onDeliver && props.liveAccount.kind === 'order'
+        && props.liveAccount.orderId === vista.pedidoId && (
+        <LeFalta c={props.liveAccount} onDeliver={props.onDeliver} delivering={props.delivering} />
+      )}
 
       {capturando === 'cliente' && (
         <CampoCliente inicial={vista.customerName} onListo={(nombre) => {
@@ -498,5 +509,24 @@ function CampoDescuento({ subtotal, onMal, onListo }: {
     {d.malEscrito && <Text fontSize="xs" color="fg.error">Solo números</Text>}
     {d.excede && <Text fontSize="xs" color="fg.error">Máx {modo === 'pct' ? '100 %' : money(subtotal)}</Text>}
     </VStack>
+  );
+}
+
+// LeFalta dice, bajo el encabezado, lo que le falta al pedido para quitarse de la fila, y ofrece
+// entregarlo: una pagada que sigue ahí es una que nadie marcó como entregada (spec 089).
+function LeFalta({ c, onDeliver, delivering }: { c: AccountItem; onDeliver: (c: AccountItem) => void; delivering?: boolean }) {
+  const m = missingFor(c);
+  if (!m.charge && !m.deliver) return null;
+  return (
+    <HStack data-testid="le-falta" px={3} py={2} gap={2} bg={`${m.color}.subtle`} borderTopWidth="1px" borderBottomWidth="1px">
+      <Text flex="1" minW={0} fontSize="sm" fontWeight="700" color={`${m.color}.fg`}>{m.text}</Text>
+      {m.deliver && (
+        <Button size="sm" minH="44px" variant="outline" colorPalette="blue" bg="bg.panel" flexShrink={0}
+          aria-label={`Entregar ${nombreDeCuenta(c)}`} loading={delivering} disabled={delivering}
+          onClick={() => onDeliver(c)}>
+          Entregar
+        </Button>
+      )}
+    </HStack>
   );
 }

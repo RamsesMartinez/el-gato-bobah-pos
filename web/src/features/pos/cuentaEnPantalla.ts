@@ -185,3 +185,10 @@ export function armarVista(args: {
 export function puedeCancelarLoQueFalta(v: VistaCuenta): boolean {
   return v.tipo === 'pedido' && v.pedido?.status === 'entregada' && !v.esPlataforma && v.pagado > 0 && v.falta > 0;
 }
+
+// isOwnCharge dice si la hoja de cobro abierta es la de la cuenta que esta tableta tiene en pantalla.
+// Desde la spec 089 se puede cobrar otra cuenta desde la columna: solo el cobro de la abierta vuelve
+// «propios» sus cambios; si no, se callaba el aviso de que otra tableta cobró la abierta.
+export function isOwnCharge(chargingOrderId: number | null, selected: { kind: 'order'; id: number } | { kind: 'draft'; id: string } | null): boolean {
+  return chargingOrderId !== null && selected?.kind === 'order' && selected.id === chargingOrderId;
+}
