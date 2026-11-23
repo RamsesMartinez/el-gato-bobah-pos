@@ -226,3 +226,28 @@ food-variance-report); squareup.com/help/us/en/article/7401; support.apicbase.co
 
 Lo que no se copia: el conteo completo de Square que pone en cero lo no contado (borra existencias
 sin que nadie las vea); se mantiene «lo no contado no se toca».
+
+## R15. Revisión de código de la subida 1 (2026-11-23): veredicto consolidado
+
+Corrieron los cinco revisores que aplican al diff (`go-backend-reviewer`, `security-auditor`,
+`tablet-ui-reviewer`, `db-architect` y el de lógica del front). Ninguno encontró bloqueantes.
+**Veredicto: cambios requeridos, todos aplicados antes del PR #357**, cada uno con su prueba:
+
+| Revisor | Hallazgo | Corrección |
+| --- | --- | --- |
+| Seguridad | Las 4 rutas nuevas no estaban en `route_gates.golden`: la integración quedaba en rojo | Referencia regenerada: admin y gerente; cajero y mesero sin acceso |
+| Seguridad | El desglose entregaba la merma real a quien no ve el almacén | Solo con `inventory.view`; sin él, `realWaste: []` (prueba) |
+| Seguridad | El aislamiento solo exigía «error», no 404 | `errors.Is(err, ErrNotFound)` en los tres casos |
+| Base de datos | Un regreso de imagen sin Down dejaba `waste_pct` viejo | Trigger espejo en la 0126 (prueba sobre el respaldo) |
+| Base de datos | Down sin probar con nulo y check sin código | Prueba del espejo y de `23514` |
+| Go | Contrato de respuesta de los PUT | Contrato corregido: decimal como texto |
+| Go | Unir insumos heredaba el % sin bitácora | Bitácora `ingredient.expected_waste` con `inheritedFromMerge` |
+| Lógica del front | Carrera al tocar «Sin capturar» con el % en camino; borrar el % no guardaba; error sin reintento | Peticiones en fila contra lo último pedido; vacío = sin capturar; error regresa lo guardado (4 pruebas) |
+| Lógica del front | Vista previa del desglose distinta del servidor sin cambios | Sin cambio de %, se muestra lo del servidor tal cual |
+| Tableta | Encabezado de la tabla no quedaba fijo; dato solo en `title`; título de la tarjeta | `maxH` en dvh; texto visible; `Heading` |
+
+Después: `make ci-local` verde y CI del PR verde. La prueba táctil posterior encontró un defecto más
+(el aviso «Guardado» que se borraba), corregido con su prueba en #366 y en producción con el #368.
+
+**`/speckit-analyze`, última corrida (cuarta, 2026-11-23)**: 27 de 27 requisitos con tarea, CRITICAL 0,
+HIGH 0, MEDIUM 0, LOW 1 (redacción de FR-010).
