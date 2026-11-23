@@ -155,6 +155,15 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 ---
 
+## Cierre del #65
+
+- [X] T067 Correos de avisos y resumen de la mañana nombran el almacén con dos o más activos; con uno, igual que antes (`server/internal/app/notification_mailer.go`, `server/queries/notifications.sql`; pruebas de las dos ramas en `server/internal/integration/warehouses_cierre_test.go`)
+- [X] T068 Búsqueda de «se acabó» con `warehouseId` (ausente = venta, vacío o malformado = 400, ajeno = 404) y «ya reportado» por almacén; la pantalla lo manda con el almacén elegido (`server/queries/stock_out_reports.sql`, `server/internal/app/stock_out.go`, `server/internal/httpapi/handlers_stock_out.go`, `web/src/api/stockOut.ts`, `web/src/features/se-acabo/SeAcaboPage.tsx`; pruebas en los tres casos de RLS, frontera HTTP y front)
+- [X] T069 La bitácora del alta de una compra registra el almacén de cada renglón (`server/internal/app/expenses.go`; prueba que lo lee de `audit_events`)
+- [X] T070 Bajos del auditor: el evento `forbidden` de `RequireAnyPermission` anota todos los permisos aceptados (`server/internal/httpapi/middleware.go`, prueba que captura el log); `GET /stock/warehouses/names` con `ListWarehouseNames`, sin contar existencias, con su prueba en los tres casos
+
+---
+
 ## Dependencies
 
 - Phase 2 bloquea todo. US1 + US2/US3 forman la subida 1. US4 depende de la subida 1 en producción (la 0122 necesita que la versión anterior sea la de la subida 1). US5 depende de US4 (almacén no de venta escribible). US6 y US7 dependen de US5 solo por el tipo de movimiento; pueden ir en la misma subida si no rompen R2.
