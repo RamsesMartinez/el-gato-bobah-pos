@@ -364,3 +364,82 @@ it('un negativo en el de venta con mercancía en la bodega se trae con un toque'
   // Sin de dónde traer, no hay botón.
   expect(within((await screen.findByText('Azúcar')).closest('tr')!).queryByRole('button', { name: /Traer de/ })).toBeNull();
 });
+
+// MOVIMIENTOS Y VALOR POR ALMACÉN (spec 094, subida 5).
+const moveLeche = (over: Record<string, unknown>) => ({ id: 1, item_type: 'insumo', item_name: 'Leche', movement_type: 'venta',
+  quantity: '-6000', reason: null, created_at: '2026-11-20T15:00:00Z', unit_code: 'ml', warehouse_id: 1, warehouse_name: 'Local', ...over });
+
+it('con un solo almacén, Movimientos queda como antes: sin selector ni columna de almacén', async () => {
+  back.stockMovements.mockImplementation(() => Promise.resolve({ items: [moveLeche({})] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen?tab=movimientos');
+  await screen.findByText('Leche');
+  expect(screen.queryByRole('group', { name: 'Almacén' })).toBeNull();
+  expect(screen.queryByRole('columnheader', { name: 'Almacén' })).toBeNull();
+  expect(back.stockMovements).toHaveBeenLastCalledWith(undefined);
+});
+
+it('Movimientos dice la cantidad con su unidad, no «-6000»', async () => {
+  back.stockMovements.mockImplementation(() => Promise.resolve({ items: [moveLeche({})] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen?tab=movimientos');
+  const fila = (await screen.findByText('Leche')).closest('tr')!;
+  expect(fila.textContent).toContain('-6 L');
+  expect(fila.textContent).not.toContain('-6000');
+});
+
+it('con dos almacenes, Movimientos elige almacén y solo «Todos» trae la columna Almacén', async () => {
+  back.warehouses.mockResolvedValue(twoWarehouses);
+  back.stockMovements.mockImplementation(() => Promise.resolve({ items: [moveLeche({})] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen?tab=movimientos');
+  await screen.findByText('Leche');
+  expect(await screen.findByRole('group', { name: 'Almacén' })).toBeInTheDocument();
+  expect(screen.queryByRole('columnheader', { name: 'Almacén' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Bodega' }));
+  await vi.waitFor(() => expect(back.stockMovements).toHaveBeenLastCalledWith(2));
+  fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+  await vi.waitFor(() => expect(back.stockMovements).toHaveBeenLastCalledWith('all'));
+  expect(await screen.findByRole('columnheader', { name: 'Almacén' })).toBeInTheDocument();
+  await vi.waitFor(() => expect(screen.getByText('Leche').closest('tr')!.textContent).toContain('Local'));
+});
+
+it('un traspaso dice a dónde fue o de dónde vino', async () => {
+  back.warehouses.mockResolvedValue(twoWarehouses);
+  back.stockMovements.mockImplementation(() => Promise.resolve({ items: [
+    moveLeche({ id: 1, movement_type: 'traspaso', quantity: '-2000', warehouse_id: 2, warehouse_name: 'Bodega', transfer_id: 9, counterpart_warehouse_name: 'Local', item_name: 'Leche sale' }),
+    moveLeche({ id: 2, movement_type: 'traspaso', quantity: '2000', transfer_id: 9, counterpart_warehouse_name: 'Bodega', item_name: 'Leche entra' }),
+  ] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen?tab=movimientos');
+  expect((await screen.findByText('Leche sale')).closest('tr')!.textContent).toContain('→ Local');
+  expect(screen.getByText('Leche entra').closest('tr')!.textContent).toContain('← Bodega');
+});
+
+it('Existencias trae el valor de cada artículo y el total al pie', async () => {
+  back.stockLevels.mockImplementation(() => Promise.resolve({ totalValue: '1250.5', items: [
+    { item_name: 'Leche', item_type: 'insumo', on_hand: '10000', unit_code: 'ml', min_stock: null, is_active: true, value: '250.5' },
+    { item_name: 'Café', item_type: 'insumo', on_hand: '-100', unit_code: 'g', min_stock: null, is_active: true, value: '-30' },
+  ] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen');
+  expect(await screen.findByRole('columnheader', { name: 'Valor' })).toBeInTheDocument();
+  expect((await screen.findByText('Leche')).closest('tr')!.textContent).toContain('$250.50');
+  // El total es el que manda el servidor (no suma negativos), no una suma hecha aquí.
+  const pie = screen.getByText('Valor total').closest('tr')!;
+  expect(pie.textContent).toContain('$1,250.50');
+  // Qué incluye se lee tocando el (i), como instrucción.
+  fireEvent.click(within(pie).getByRole('button', { name: '¿Qué suma el valor total?' }));
+  expect(await screen.findByText(/no suma/i)).toBeInTheDocument();
+});
+
+it('sin valor del servidor no hay columna Valor ni total', async () => {
+  back.stockLevels.mockImplementation(() => Promise.resolve({ items: [
+    { item_name: 'Leche', item_type: 'insumo', on_hand: '10000', unit_code: 'ml', min_stock: null, is_active: true },
+  ] } as never));
+  sesion(['inventory.view']);
+  montar('/almacen');
+  await screen.findByText('Leche');
+  expect(screen.queryByRole('columnheader', { name: 'Valor' })).toBeNull();
+  expect(screen.queryByText('Valor total')).toBeNull();
+});

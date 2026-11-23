@@ -23,7 +23,9 @@ import { Segmented } from '../../components/Segmented';
 import { TransferTab } from './warehouses/TransferTab';
 import { BringSheet } from './warehouses/BringSheet';
 import { richestSource } from './warehouses/transferUnits';
-import type { StockLevel } from '../../api/backoffice';
+import type { StockLevel, StockMovement } from '../../api/backoffice';
+import { InfoButton } from '../../components/InfoButton';
+import { money } from '../../utils/format';
 
 // El orden lo fijó el plan del 038: Existencias · Movimientos · Insumos · Por recibir · Conteo · Salud.
 const TABS = ['existencias', 'traspaso', 'movimientos', 'insumos', 'compra', 'por-recibir', 'conteo', 'merma', 'salud', 'avisos'] as const;
@@ -47,7 +49,22 @@ export function StockPage() {
   const levels = useQuery({ queryKey: ['stock', 'levels', warehouse ?? 'venta'], queryFn: () => backofficeApi.stockLevels(warehouse),
     // Cambiar de almacén no borra la pantalla mientras llega la otra lista.
     placeholderData: (prev) => prev });
-  const moves = useQuery({ queryKey: ['stock', 'moves'], queryFn: backofficeApi.stockMovements });
+  // Movimientos sigue al mismo almacén que Existencias: cambiar de pestaña no cambia de almacén.
+  const moves = useQuery({ queryKey: ['stock', 'moves', warehouse ?? 'venta'], queryFn: () => backofficeApi.stockMovements(warehouse),
+    placeholderData: (prev) => prev });
+  const [valueHelp, setValueHelp] = useState(false);
+  const warehousePicker = whList.length > 1 && (
+    <Box mb={3}>
+      <Segmented label="Almacén"
+        value={String(warehouse ?? whList.find((w) => w.isSales)?.id ?? '')}
+        options={[...whList.map((w) => ({ value: String(w.id), label: w.isSales ? `${w.name} · de venta` : w.name })),
+          { value: 'all', label: 'Todos' }]}
+        onChange={(v) => setWarehouse(v === 'all' ? 'all' : whList.find((w) => String(w.id) === v)?.isSales ? undefined : Number(v))} />
+    </Box>
+  );
+  // El valor solo se pinta si el servidor lo manda: la API anterior no lo trae durante una subida.
+  const withValue = levels.data?.totalValue !== undefined;
+  const levelCols = withValue ? 5 : 4;
   const user = useSessionStore((s) => s.user);
   const canHealth = can('inventory.health_view', user);
   // Cómo llega cada insumo (spec 038): lo ve quien registra compras y lo cambia quien configura.
@@ -115,27 +132,19 @@ export function StockPage() {
           {canConfigureStock && <Tabs.Trigger value="avisos" minH="44px">Avisos</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
-          {whList.length > 1 && (
-            <Box mb={3}>
-              <Segmented label="Almacén"
-                value={String(warehouse ?? whList.find((w) => w.isSales)?.id ?? '')}
-                options={[...whList.map((w) => ({ value: String(w.id), label: w.isSales ? `${w.name} · de venta` : w.name })),
-                  { value: 'all', label: 'Todos' }]}
-                onChange={(v) => setWarehouse(v === 'all' ? 'all' : whList.find((w) => String(w.id) === v)?.isSales ? undefined : Number(v))} />
-            </Box>
-          )}
+          {warehousePicker}
           {/* Mientras llega la lista del almacén elegido, la anterior se atenúa: no se leen cifras de
               otro almacén como si fueran de éste. */}
           <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto" opacity={levels.isPlaceholderData ? 0.4 : 1}
             aria-busy={levels.isPlaceholderData || undefined}>
             <Table.Root size="sm">
-              <Table.Header><Table.Row><Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Mínimo</Table.ColumnHeader></Table.Row></Table.Header>
+              <Table.Header><Table.Row><Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Mínimo</Table.ColumnHeader>{withValue && <Table.ColumnHeader textAlign="end">Valor</Table.ColumnHeader>}</Table.Row></Table.Header>
               <Table.Body>
                 {levels.isError && (
-                  <Table.Row><Table.Cell colSpan={4}><Text color="fg.error">No se pudieron leer las existencias de este almacén</Text></Table.Cell></Table.Row>
+                  <Table.Row><Table.Cell colSpan={levelCols}><Text color="fg.error">No se pudieron leer las existencias de este almacén</Text></Table.Cell></Table.Row>
                 )}
                 {!levels.isError && (levels.data?.items ?? []).length === 0 && (
-                  <Table.Row><Table.Cell colSpan={4}><Text color="fg.subtle">
+                  <Table.Row><Table.Cell colSpan={levelCols}><Text color="fg.subtle">
                     {typeof warehouse === 'number' ? 'Este almacén todavía no tiene mercancía' : 'Sin existencias que mostrar'}
                   </Text></Table.Cell></Table.Row>
                 )}
@@ -159,10 +168,31 @@ export function StockPage() {
                         )}
                       </Table.Cell>
                       <Table.Cell textAlign="end">{!atSales || s.min_stock == null ? '—' : formatBaseQty(s.min_stock, s.unit_code)}</Table.Cell>
+                      {withValue && (
+                        <Table.Cell textAlign="end" color={Number(s.value ?? 0) < 0 ? 'fg.error' : undefined}>{s.value == null ? '—' : money(s.value)}</Table.Cell>
+                      )}
                     </Table.Row>
                   );
                 })}
               </Table.Body>
+              {withValue && !levels.isError && (
+                <Table.Footer>
+                  <Table.Row>
+                    <Table.Cell colSpan={levelCols - 1} fontWeight="700">
+                      <HStack gap={1}>
+                        <Text>Valor total</Text>
+                        <InfoButton label="¿Qué suma el valor total?" open={valueHelp} onToggle={() => setValueHelp((o) => !o)} />
+                      </HStack>
+                      {valueHelp && (
+                        <Text fontWeight="400" color="fg.muted" fontSize="sm">
+                          Suma lo que hay a su costo de hoy. No suma los artículos en negativo: cuéntalos para corregirlos.
+                        </Text>
+                      )}
+                    </Table.Cell>
+                    <Table.Cell textAlign="end" fontWeight="700">{money(levels.data!.totalValue!)}</Table.Cell>
+                  </Table.Row>
+                </Table.Footer>
+              )}
             </Table.Root>
           </Box>
         </Tabs.Content>
@@ -172,16 +202,21 @@ export function StockPage() {
           </Tabs.Content>
         )}
         <Tabs.Content value="movimientos" px={0} flex="1" minH={0} overflowY="auto">
-          <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
+          {warehousePicker}
+          <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto" opacity={moves.isPlaceholderData ? 0.4 : 1}
+            aria-busy={moves.isPlaceholderData || undefined}>
             <Table.Root size="sm">
-              <Table.Header><Table.Row><Table.ColumnHeader>Fecha</Table.ColumnHeader><Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Cantidad</Table.ColumnHeader><Table.ColumnHeader>Motivo</Table.ColumnHeader></Table.Row></Table.Header>
+              <Table.Header><Table.Row><Table.ColumnHeader>Fecha</Table.ColumnHeader>{warehouse === 'all' && <Table.ColumnHeader>Almacén</Table.ColumnHeader>}<Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Cantidad</Table.ColumnHeader><Table.ColumnHeader>Motivo</Table.ColumnHeader></Table.Row></Table.Header>
               <Table.Body>
                 {(moves.data?.items ?? []).map((m) => (
                   <Table.Row key={m.id}>
                     <Table.Cell>{horaNegocio.fechaYHora(m.created_at)}</Table.Cell>
+                    {warehouse === 'all' && <Table.Cell>{m.warehouse_name ?? '—'}</Table.Cell>}
                     <Table.Cell>{m.item_name}</Table.Cell>
-                    <Table.Cell>{m.movement_type}</Table.Cell>
-                    <Table.Cell textAlign="end" color={Number(m.quantity) < 0 ? 'fg.error' : 'fg.success'}>{m.quantity}</Table.Cell>
+                    <Table.Cell>{m.movement_type}{transferSide(m)}</Table.Cell>
+                    <Table.Cell textAlign="end" color={Number(m.quantity) < 0 ? 'fg.error' : 'fg.success'}>
+                      {m.unit_code ? formatBaseQty(m.quantity, m.unit_code) : m.quantity}
+                    </Table.Cell>
                     <Table.Cell>{m.reason ?? '—'}</Table.Cell>
                   </Table.Row>
                 ))}
@@ -239,4 +274,11 @@ export function StockPage() {
       )}
     </Page>
   );
+}
+
+// transferSide dice de qué lado del traspaso está el renglón: lo que sale va «→ a dónde», lo que
+// entra «← de dónde».
+function transferSide(m: StockMovement): string {
+  if (!m.counterpart_warehouse_name) return '';
+  return Number(m.quantity) < 0 ? ` → ${m.counterpart_warehouse_name}` : ` ← ${m.counterpart_warehouse_name}`;
 }

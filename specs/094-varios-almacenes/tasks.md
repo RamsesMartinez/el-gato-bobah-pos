@@ -142,7 +142,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 - [ ] T060 [P] [US7] Tests: `GET /stock/movements?warehouseId=` con almacén y traspaso contraparte; `GET /stock/valuation` (valor por almacén suma el total; negativos no suman valor, test que lo nombra; costo de ventas solo de `venta`) en `server/internal/integration/warehouses_reports_test.go`
 - [ ] T061 [US7] Consultas y servicio de movimientos y valuación (`server/queries/stock.sql`, `server/internal/app/backoffice.go`)
-- [ ] T062 [US7] Movimientos con almacén y traspaso; reporte de valor por almacén (`web/src/features/backoffice/StockPage.tsx`) con test
+- [X] T062 [US7] Movimientos con almacén y traspaso; reporte de valor por almacén (`web/src/features/backoffice/StockPage.tsx`) con test
 - [ ] T063 [US8] MCP `stock_movements` con `warehouse_id`; documentar en la descripción de las herramientas de recetas y pedidos que descuentan del de venta
 
 ---

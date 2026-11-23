@@ -819,6 +819,8 @@ export interface StockLevel {
   product_id?: number | null;
   // En el almacén de venta, un negativo dice de qué otro almacén se puede traer.
   transfer_from?: { warehouseId: number; name: string; onHand: string }[];
+  // Valor a costo vigente de lo que hay (spec 094); un negativo trae valor negativo.
+  value?: string;
 }
 
 // Un traspaso entre almacenes de la sucursal (spec 094). `qty` en la unidad base del artículo.
@@ -844,6 +846,13 @@ export interface StockMovement {
   quantity: string;
   reason: string | null;
   created_at: string;
+  // Spec 094: en qué almacén pasó y, si fue un traspaso, de o hacia cuál. Opcionales: el servidor
+  // anterior no los manda.
+  unit_code?: string;
+  warehouse_id?: number;
+  warehouse_name?: string;
+  transfer_id?: number | null;
+  counterpart_warehouse_name?: string | null;
 }
 
 // Cuerpos de request del detalle del gasto (lo que se envía; distinto de lo que se lee).
@@ -1358,9 +1367,11 @@ export const backofficeApi = {
   },
 
   // Sin almacén, el de venta; un id o 'all' (spec 094).
+  // totalValue no suma los negativos (spec 094); sin él, la pantalla no pinta el pie.
   stockLevels: (warehouseId?: number | 'all') =>
-    api.get<{ items: StockLevel[] }>(`/stock/levels${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
-  stockMovements: () => api.get<{ items: StockMovement[] }>('/stock/movements'),
+    api.get<{ items: StockLevel[]; totalValue?: string }>(`/stock/levels${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
+  stockMovements: (warehouseId?: number | 'all') =>
+    api.get<{ items: StockMovement[] }>(`/stock/movements${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
   inventoryHealth: (q: HealthQuery = {}) => api.get<InventoryHealth>(`/stock/health?${qsReporte(q as ReportQuery)}`),
   // El archivo de la misma pantalla. El nombre viene del servidor (Content-Disposition), con el periodo.
   exportInventoryHealth: async (q: Pick<HealthQuery, 'from' | 'to'>) => {
