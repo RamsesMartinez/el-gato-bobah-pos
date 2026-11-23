@@ -25,26 +25,26 @@ por la razón correcta.
 
 ## Phase 1: Setup
 
-- [ ] T001 Traer `origin/develop` en local con merge firmado y confirmar que la migración libre es la 0126 (`ls server/migrations`); si develop ya trae una 0121, renumerar esta (R9, R14 M4)
-- [ ] T002 Crear `server/migrations/0126_expected_waste.sql` vacío con su cabecera goose y `set local lock_timeout = '3s'`
+- [X] T001 Traer `origin/develop` en local con merge firmado y confirmar que la migración libre es la 0126 (`ls server/migrations`); si develop ya trae una 0121, renumerar esta (R9, R14 M4)
+- [X] T002 Crear `server/migrations/0126_expected_waste.sql` vacío con su cabecera goose y `set local lock_timeout = '3s'`
 
 ## Phase 2: Foundational (bloquea US1–US5)
 
 ### Tests primero
 
-- [ ] T003 Test de migración en `server/internal/integration/migration_0126_test.go` sobre la base restaurada con dos empresas: (a) tras el Up, `ingredients.expected_waste_pct` = `waste_pct` donde > 0 y nulo donde 0, `products` y `business_settings` nulos; (b) recalcular costos tras el Up no cambia ningún `current_cost` de producto, extra ni preparado (SC-001); (c) el Down copia `expected_waste_pct` a `waste_pct` antes de quitar las columnas (R14 H3)
-- [ ] T004 [P] Tests table-driven en `server/internal/domain/expected_waste_test.go`: `ExpectedWastePct(article, fallback)` (artículo capturado gana, 0 capturado gana y da 0, nulo cae al fallback, ambos nulos = 0 con origen `none`) y `ValidExpectedWastePct` (nulo válido; 0, 99.99 válidos; −0.01, 100, NaN, ±Inf, 3 decimales → `ErrValidation`)
-- [ ] T005 [P] Tests en `server/internal/domain/costing_test.go`: con 5 % general un producto sin otros % sube exactamente 5 %; 10 % producto + 5 % general → 10 %; artículo 15 % dentro de producto 10 % → 15 % solo en ese renglón; artículo 0 % capturado con general 5 % → 0; preparado dentro de preparado no recibe el general ni el del producto (no compone, R2); extra con receta usa artículo → general; combo suma sus productos cada uno con su %; producto de costo manual no cambia
+- [X] T003 Test de migración en `server/internal/integration/migration_0126_test.go` sobre la base restaurada con dos empresas: (a) tras el Up, `ingredients.expected_waste_pct` = `waste_pct` donde > 0 y nulo donde 0, `products` y `business_settings` nulos; (b) recalcular costos tras el Up no cambia ningún `current_cost` de producto, extra ni preparado (SC-001); (c) el Down copia `expected_waste_pct` a `waste_pct` antes de quitar las columnas (R14 H3)
+- [X] T004 [P] Tests table-driven en `server/internal/domain/expected_waste_test.go`: `ExpectedWastePct(article, fallback)` (artículo capturado gana, 0 capturado gana y da 0, nulo cae al fallback, ambos nulos = 0 con origen `none`) y `ValidExpectedWastePct` (nulo válido; 0, 99.99 válidos; −0.01, 100, NaN, ±Inf, 3 decimales → `ErrValidation`)
+- [X] T005 [P] Tests en `server/internal/domain/costing_test.go`: con 5 % general un producto sin otros % sube exactamente 5 %; 10 % producto + 5 % general → 10 %; artículo 15 % dentro de producto 10 % → 15 % solo en ese renglón; artículo 0 % capturado con general 5 % → 0; preparado dentro de preparado no recibe el general ni el del producto (no compone, R2); extra con receta usa artículo → general; combo suma sus productos cada uno con su %; producto de costo manual no cambia
 
 ### Implementación
 
-- [ ] T006 Escribir el Up y el Down de `server/migrations/0126_expected_waste.sql` según [data-model.md](data-model.md) (tres columnas nullable con check `>= 0 and < 100`; copia de `waste_pct > 0`; Down copia de regreso y quita)
-- [ ] T007 [P] Crear `server/internal/domain/expected_waste.go` con `WasteSource`, `ExpectedWastePct` y `ValidExpectedWastePct`
-- [ ] T008 Cambiar `server/internal/domain/costing.go`: `CostIngredient.ExpectedWastePct *float64`, `CostProduct.ExpectedWastePct *float64`, `NewCostGraph(..., general *float64)`; `recipeCost` recibe el fallback; `recCache` solo para preparados (R3)
-- [ ] T009 Cambiar `server/queries/costing.sql` (`ListIngredientsForCosting` lee `expected_waste_pct`, `ListProductsForCosting` también, consulta nueva del general en `server/queries/settings.sql`) y correr `make sqlc`
-- [ ] T010 Cambiar `loadGraph` en `server/internal/app/costing.go` para cargar el general y los % nuevos; `ProductCost` usa el mismo grafo
-- [ ] T011 [P] Cambiar `server/cmd/fudo-import/main.go` para escribir `expected_waste_pct` (nulo si 0) en vez de `waste_pct`
-- [ ] T012 Correr `cd server && go build ./... && go test ./internal/domain/` y la prueba T003 contra el Postgres de pruebas (`make test-integration`)
+- [X] T006 Escribir el Up y el Down de `server/migrations/0126_expected_waste.sql` según [data-model.md](data-model.md) (tres columnas nullable con check `>= 0 and < 100`; copia de `waste_pct > 0`; Down copia de regreso y quita)
+- [X] T007 [P] Crear `server/internal/domain/expected_waste.go` con `WasteSource`, `ExpectedWastePct` y `ValidExpectedWastePct`
+- [X] T008 Cambiar `server/internal/domain/costing.go`: `CostIngredient.ExpectedWastePct *float64`, `CostProduct.ExpectedWastePct *float64`, `NewCostGraph(..., general *float64)`; `recipeCost` recibe el fallback; `recCache` solo para preparados (R3)
+- [X] T009 Cambiar `server/queries/costing.sql` (`ListIngredientsForCosting` lee `expected_waste_pct`, `ListProductsForCosting` también, consulta nueva del general en `server/queries/settings.sql`) y correr `make sqlc`
+- [X] T010 Cambiar `loadGraph` en `server/internal/app/costing.go` para cargar el general y los % nuevos; `ProductCost` usa el mismo grafo
+- [X] T011 [P] Cambiar `server/cmd/fudo-import/main.go` para escribir `expected_waste_pct` (nulo si 0) en vez de `waste_pct`
+- [X] T012 Correr `cd server && go build ./... && go test ./internal/domain/` y la prueba T003 contra el Postgres de pruebas (`make test-integration`)
 
 **Checkpoint**: el motor aplica la precedencia; nada visible cambia todavía.
 
@@ -55,14 +55,14 @@ por la razón correcta.
 **Goal**: capturar el % general y que los costos se recalculen.
 **Independent Test**: producto de $20.00 con general vacío; 5 % → $21.00; vaciar → $20.00.
 
-- [ ] T013 [P] [US1] Test de integración en `server/internal/integration/expected_waste_test.go` bajo `appRoleStore` con `inTheThreeCases`: `PUT /settings/expected-waste` con 5 recalcula el costo del producto de prueba al centavo, con `null` lo regresa; otra empresa no ve ni cambia el general; bitácora `settings.expected_waste` con antes y después
-- [ ] T014 [P] [US1] Tests de frontera en `server/internal/httpapi/handlers_expected_waste_test.go`: cuerpo sin la llave `pct` = 400; `pct` 100, −1, texto = 400; sin `menu.configure` = 403
-- [ ] T015 [US1] Agregar `AuditSettingsExpectedWaste`, `AuditProductExpectedWaste`, `AuditIngredientExpectedWaste` (grupo precio) en `server/internal/domain/audit.go` y sus etiquetas en `web/src/shared/audit/labels.ts`
-- [ ] T016 [US1] Servicio `SetGeneralExpectedWaste` en `server/internal/app/expected_waste.go`: valida, actualiza, deja bitácora y llama a `recomputeCosts` en la misma transacción; un candado ocupado sale como `ErrConflict` «Se está recalculando el costo; intenta en un momento»
-- [ ] T017 [US1] Consulta `UpdateExpectedWaste` en `server/queries/settings.sql`, `expectedWastePct` en `GetBusinessSettings`, `make sqlc`
-- [ ] T018 [US1] Handler fino `PutGeneralExpectedWaste` en `server/internal/httpapi/handlers_expected_waste.go` y ruta `PUT /settings/expected-waste` con `RequirePermission(menu.configure)` en `server/internal/httpapi/router.go`; `expectedWastePct` en la respuesta de `/business-settings`
-- [ ] T019 [P] [US1] Test vitest en `web/src/features/admin/CostSettingsSection.test.tsx`: vacío dice «Sin merma» y manda `null`; teclear 5 y Guardar manda 5; Guardar deshabilitado sin cambio; 400 muestra el error del campo
-- [ ] T020 [US1] Sección «Costos» (maqueta A, plan › Maquetas fila «Ajustes › Costos») en `web/src/features/admin/CostSettingsSection.tsx` y su entrada en `web/src/features/admin/BusinessSettingsPage.tsx` visible con `can('menu.configure')`; campo de 44 px, texto «Sube el costo de lo que preparas…», sin repetir el título; API en `web/src/api/backoffice.ts` y tipo en `web/src/api/pos.ts`
+- [X] T013 [P] [US1] Test de integración en `server/internal/integration/expected_waste_test.go` bajo `appRoleStore` con `inTheThreeCases`: `PUT /settings/expected-waste` con 5 recalcula el costo del producto de prueba al centavo, con `null` lo regresa; otra empresa no ve ni cambia el general; bitácora `settings.expected_waste` con antes y después
+- [X] T014 [P] [US1] Tests de frontera en `server/internal/httpapi/handlers_expected_waste_test.go`: cuerpo sin la llave `pct` = 400; `pct` 100, −1, texto = 400; sin `menu.configure` = 403
+- [X] T015 [US1] Agregar `AuditSettingsExpectedWaste`, `AuditProductExpectedWaste`, `AuditIngredientExpectedWaste` (grupo precio) en `server/internal/domain/audit.go` y sus etiquetas en `web/src/shared/audit/labels.ts`
+- [X] T016 [US1] Servicio `SetGeneralExpectedWaste` en `server/internal/app/expected_waste.go`: valida, actualiza, deja bitácora y llama a `recomputeCosts` en la misma transacción; un candado ocupado sale como `ErrConflict` «Se está recalculando el costo; intenta en un momento»
+- [X] T017 [US1] Consulta `UpdateExpectedWaste` en `server/queries/settings.sql`, `expectedWastePct` en `GetBusinessSettings`, `make sqlc`
+- [X] T018 [US1] Handler fino `PutGeneralExpectedWaste` en `server/internal/httpapi/handlers_expected_waste.go` y ruta `PUT /settings/expected-waste` con `RequirePermission(menu.configure)` en `server/internal/httpapi/router.go`; `expectedWastePct` en la respuesta de `/business-settings`
+- [X] T019 [P] [US1] Test vitest en `web/src/features/admin/CostSettingsSection.test.tsx`: vacío dice «Sin merma» y manda `null`; teclear 5 y Guardar manda 5; Guardar deshabilitado sin cambio; 400 muestra el error del campo
+- [X] T020 [US1] Sección «Costos» (maqueta A, plan › Maquetas fila «Ajustes › Costos») en `web/src/features/admin/CostSettingsSection.tsx` y su entrada en `web/src/features/admin/BusinessSettingsPage.tsx` visible con `can('menu.configure')`; campo de 44 px, texto «Sube el costo de lo que preparas…», sin repetir el título; API en `web/src/api/backoffice.ts` y tipo en `web/src/api/pos.ts`
 
 **Checkpoint**: el general funciona de punta a punta.
 
@@ -73,9 +73,9 @@ por la razón correcta.
 **Goal**: un producto reemplaza al general.
 **Independent Test**: 5 % general y 10 % en el producto → sube 10 %, no 15 %.
 
-- [ ] T021 [P] [US2] Test de integración en `server/internal/integration/expected_waste_test.go`: `PUT /admin/products/{id}/expected-waste` 10 con general 5 → +10 %; 0 → sin merma; `null` → vuelve al general; producto de otra empresa = 404 (`inTheThreeCases`); bitácora `product.expected_waste`
-- [ ] T022 [US2] Servicio `SetProductExpectedWaste` en `server/internal/app/expected_waste.go` (valida, `notFound`, bitácora, recálculo en la misma transacción) y consulta `AdminSetProductExpectedWaste` en `server/queries/admin.sql`; `expected_waste_pct` en `AdminListProducts`/detalle; `make sqlc`
-- [ ] T023 [US2] Handler y ruta `PUT /admin/products/{id}/expected-waste` (grupo `menuConfigure`) en `server/internal/httpapi/handlers_expected_waste.go` y `router.go`; `expectedWastePct` en `web/src/api/admin.ts` (`AdminProduct`, opcional)
+- [X] T021 [P] [US2] Test de integración en `server/internal/integration/expected_waste_test.go`: `PUT /admin/products/{id}/expected-waste` 10 con general 5 → +10 %; 0 → sin merma; `null` → vuelve al general; producto de otra empresa = 404 (`inTheThreeCases`); bitácora `product.expected_waste`
+- [X] T022 [US2] Servicio `SetProductExpectedWaste` en `server/internal/app/expected_waste.go` (valida, `notFound`, bitácora, recálculo en la misma transacción) y consulta `AdminSetProductExpectedWaste` en `server/queries/admin.sql`; `expected_waste_pct` en `AdminListProducts`/detalle; `make sqlc`
+- [X] T023 [US2] Handler y ruta `PUT /admin/products/{id}/expected-waste` (grupo `menuConfigure`) en `server/internal/httpapi/handlers_expected_waste.go` y `router.go`; `expectedWastePct` en `web/src/api/admin.ts` (`AdminProduct`, opcional)
 
 **Checkpoint**: el % del producto se guarda; la pantalla llega en US4.
 
@@ -86,13 +86,13 @@ por la razón correcta.
 **Goal**: capturar 0 % a propósito distinto de «sin capturar».
 **Independent Test**: fresa 15 %, leche sin captura, lata 0 % en un producto con 10 % → 15 / 10 / 0.
 
-- [ ] T024 [P] [US3] Test de integración en `server/internal/integration/expected_waste_test.go`: `PUT /stock/articles/{id}/expected-waste` 0 y `null` dejan estados distintos y el costo lo refleja; artículo ajeno = 404 (`inTheThreeCases`); bitácora `ingredient.expected_waste`
-- [ ] T025 [P] [US3] Test en `server/internal/integration/ingredient_merge_test.go`: unir un origen con 6 % a un destino sin captura deja el destino en 6 %; si el destino tenía 3 %, se queda en 3 % (R14 M1)
-- [ ] T026 [US3] Servicio `SetArticleExpectedWaste` en `server/internal/app/expected_waste.go` y consulta en `server/queries/ingredients_admin.sql`; `expectedWastePct` en `GetArticle`; `make sqlc`
-- [ ] T027 [US3] Herencia del % al unir en `server/internal/app/ingredient_merge.go` (y su consulta en `server/queries/ingredient_merge.sql`)
-- [ ] T028 [US3] Handler y ruta `PUT /stock/articles/{id}/expected-waste` con `menu.configure` en `server/internal/httpapi/handlers_expected_waste.go` y `router.go`; revisar que ninguna inserción del MCP ni de `harness_test.go` liste `waste_pct`
-- [ ] T029 [P] [US3] Test vitest en `web/src/features/backoffice/articles/ExpectedWasteField.test.tsx`: «Sin capturar» manda `null`; «Capturada» con 0 muestra «Aquí no se pierde nada» y manda 0; vacío nunca manda 0; sin `menu.configure` se ve pero no se edita
-- [ ] T030 [US3] Panel «Merma al preparar» (maqueta A2, plan › Maquetas fila «Ficha del artículo») en `web/src/features/backoffice/articles/ExpectedWasteField.tsx` (`Segmented` «Sin capturar / Capturada», `InfoButton`, `Input` de 44 px, `bg.muted`) y colocarlo justo después de «Ubicación» en `web/src/features/backoffice/articles/ArticleSheet.tsx`, guardando con el autoguardado de la ficha y su indicador; «Compras y correcciones» sin mayúsculas
+- [X] T024 [P] [US3] Test de integración en `server/internal/integration/expected_waste_test.go`: `PUT /stock/articles/{id}/expected-waste` 0 y `null` dejan estados distintos y el costo lo refleja; artículo ajeno = 404 (`inTheThreeCases`); bitácora `ingredient.expected_waste`
+- [X] T025 [P] [US3] Test en `server/internal/integration/ingredient_merge_test.go`: unir un origen con 6 % a un destino sin captura deja el destino en 6 %; si el destino tenía 3 %, se queda en 3 % (R14 M1)
+- [X] T026 [US3] Servicio `SetArticleExpectedWaste` en `server/internal/app/expected_waste.go` y consulta en `server/queries/ingredients_admin.sql`; `expectedWastePct` en `GetArticle`; `make sqlc`
+- [X] T027 [US3] Herencia del % al unir en `server/internal/app/ingredient_merge.go` (y su consulta en `server/queries/ingredient_merge.sql`)
+- [X] T028 [US3] Handler y ruta `PUT /stock/articles/{id}/expected-waste` con `menu.configure` en `server/internal/httpapi/handlers_expected_waste.go` y `router.go`; revisar que ninguna inserción del MCP ni de `harness_test.go` liste `waste_pct`
+- [X] T029 [P] [US3] Test vitest en `web/src/features/backoffice/articles/ExpectedWasteField.test.tsx`: «Sin capturar» manda `null`; «Capturada» con 0 muestra «Aquí no se pierde nada» y manda 0; vacío nunca manda 0; sin `menu.configure` se ve pero no se edita
+- [X] T030 [US3] Panel «Merma al preparar» (maqueta A2, plan › Maquetas fila «Ficha del artículo») en `web/src/features/backoffice/articles/ExpectedWasteField.tsx` (`Segmented` «Sin capturar / Capturada», `InfoButton`, `Input` de 44 px, `bg.muted`) y colocarlo justo después de «Ubicación» en `web/src/features/backoffice/articles/ArticleSheet.tsx`, guardando con el autoguardado de la ficha y su indicador; «Compras y correcciones» sin mayúsculas
 
 **Checkpoint**: los tres niveles se capturan.
 
@@ -103,12 +103,12 @@ por la razón correcta.
 **Goal**: desglose por renglón con %, origen y pesos.
 **Independent Test**: el producto de US3 muestra 3 renglones con su origen y la suma es el total.
 
-- [ ] T031 [P] [US4] Tests en `server/internal/domain/costing_test.go` para `ProductBreakdown`: renglones con base, %, origen y merma redondeados a 4 decimales; total = suma de renglones (SC-003); preparado muestra su costo con su merma interna y solo la merma aplicada al usarlo; combo trae componentes; manual y compra traen `source` sin renglones; arreglos vacíos nunca nulos
-- [ ] T032 [P] [US4] Test en `server/internal/httpapi/handlers_menu_test.go` sobre el JSON crudo de `GET /products/{id}/costing`: `lines`, `components` y `realWaste` son `[]` y no `null` cuando no hay
-- [ ] T033 [US4] `CostGraph.ProductBreakdown` en `server/internal/domain/costing.go` y el servicio que lo arma (con nombres y unidades) en `server/internal/app/costing.go`; amplía `ProductCosting` en `server/internal/httpapi/handlers_menu.go` según [contracts/api.md](contracts/api.md)
-- [ ] T034 [US4] Test de integración en `server/internal/integration/expected_waste_test.go`: vender un producto, cambiar el general, el `order_lines.unit_cost` de esa venta no cambia (SC-004, R7)
-- [ ] T035 [P] [US4] Tests vitest en `web/src/shared/producto/CostTab.test.tsx`: campo vacío dice la general y manda `null`; las tres cifras y la suma de renglones coinciden; costo manual muestra la línea y no el campo; combo lista sus productos; un % inválido marca el punto rojo de la pestaña Costo
-- [ ] T036 [US4] Pestaña «Costo» (maqueta B, plan › Maquetas fila «Ficha del producto») en `web/src/shared/producto/CostTab.tsx` y `web/src/shared/producto/CostBreakdownTable.tsx` (5 columnas, encabezado y primera columna fijos, `overflowX=auto`, origen en palabras «general del negocio / de este producto / de este artículo»), registrada en `PESTANAS` entre «Receta e inventario» y «Extras» de `web/src/shared/ProductEditDialog.tsx`; el % viaja con el Guardar del diálogo (llama al `PUT` de T023) y entra a `erroresDe()`; en General, «Ver cómo se calcula ›» junto al costo de receta abre la pestaña
+- [X] T031 [P] [US4] Tests en `server/internal/domain/costing_test.go` para `ProductBreakdown`: renglones con base, %, origen y merma redondeados a 4 decimales; total = suma de renglones (SC-003); preparado muestra su costo con su merma interna y solo la merma aplicada al usarlo; combo trae componentes; manual y compra traen `source` sin renglones; arreglos vacíos nunca nulos
+- [X] T032 [P] [US4] Test en `server/internal/httpapi/handlers_menu_test.go` sobre el JSON crudo de `GET /products/{id}/costing`: `lines`, `components` y `realWaste` son `[]` y no `null` cuando no hay
+- [X] T033 [US4] `CostGraph.ProductBreakdown` en `server/internal/domain/costing.go` y el servicio que lo arma (con nombres y unidades) en `server/internal/app/costing.go`; amplía `ProductCosting` en `server/internal/httpapi/handlers_menu.go` según [contracts/api.md](contracts/api.md)
+- [X] T034 [US4] Test de integración en `server/internal/integration/expected_waste_test.go`: vender un producto, cambiar el general, el `order_lines.unit_cost` de esa venta no cambia (SC-004, R7)
+- [X] T035 [P] [US4] Tests vitest en `web/src/shared/producto/CostTab.test.tsx`: campo vacío dice la general y manda `null`; las tres cifras y la suma de renglones coinciden; costo manual muestra la línea y no el campo; combo lista sus productos; un % inválido marca el punto rojo de la pestaña Costo
+- [X] T036 [US4] Pestaña «Costo» (maqueta B, plan › Maquetas fila «Ficha del producto») en `web/src/shared/producto/CostTab.tsx` y `web/src/shared/producto/CostBreakdownTable.tsx` (5 columnas, encabezado y primera columna fijos, `overflowX=auto`, origen en palabras «general del negocio / de este producto / de este artículo»), registrada en `PESTANAS` entre «Receta e inventario» y «Extras» de `web/src/shared/ProductEditDialog.tsx`; el % viaja con el Guardar del diálogo (llama al `PUT` de T023) y entra a `erroresDe()`; en General, «Ver cómo se calcula ›» junto al costo de receta abre la pestaña
 
 **Checkpoint**: la pantalla de costos explica cada peso.
 
@@ -119,12 +119,12 @@ por la razón correcta.
 **Goal**: ver la merma real por almacén junto al %.
 **Independent Test**: 10 kg vendidos y 0.5 kg mermados → 5 %; el costo no cambia.
 
-- [ ] T037 [P] [US5] Tests en `server/internal/domain/expected_waste_test.go` para `RealWasteRatio` (merma/consumo; consumo ≤ 0 con merma → `no_sales`; ambos 0 → `no_data`; redondeo a 1 decimal) y `MergeChain` (factores multiplicados, profundidad 16, solo `kind = 'merge'`)
-- [ ] T038 [P] [US5] Tests de integración en `server/internal/integration/real_waste_test.go` bajo `appRoleStore` con `inTheThreeCases`: aplicadas y cubiertas cuentan; comida del personal, por aprobar, rechazadas y deshechas no; cancelación resta del consumo; merma de producto terminado no suma a ningún artículo; dos almacenes dan dos cifras; artículo unido con venta y merma previas da el % del conjunto con su factor (R14 H1); tras un cambio de unidad el artículo nuevo solo cuenta desde el cambio
-- [ ] T039 [US5] Consulta agrupada `ListRealWaste` (`ingredient_id = any($1)`, por `ingredient_id, warehouse_id`, últimos 90 días, con los orígenes unidos) en `server/queries/expected_waste.sql`; `make sqlc`
-- [ ] T040 [US5] Servicio `RealWaste` en `server/internal/app/expected_waste.go` (aplica `MergeChain` y `RealWasteRatio`, nombra almacenes) usado por el desglose (T033) y por `GET /stock/articles/{id}/real-waste` (`inventory.view`) en `server/internal/httpapi/handlers_expected_waste.go` y `router.go`
-- [ ] T041 [P] [US5] Tests vitest en `web/src/features/backoffice/articles/RealWasteCard.test.tsx`: un renglón por almacén; «sin ventas» y «sin datos»; ícono de aviso y «pasa lo esperado» solo cuando la real supera el % aplicado
-- [ ] T042 [US5] Tarjeta «Merma real, últimos 90 días» gemela del costo (maqueta A2) en `web/src/features/backoffice/articles/RealWasteCard.tsx` y su lugar en `ArticleSheet.tsx`; la merma real bajo el % en `CostBreakdownTable.tsx`
+- [X] T037 [P] [US5] Tests en `server/internal/domain/expected_waste_test.go` para `RealWasteRatio` (merma/consumo; consumo ≤ 0 con merma → `no_sales`; ambos 0 → `no_data`; redondeo a 1 decimal) y `MergeChain` (factores multiplicados, profundidad 16, solo `kind = 'merge'`)
+- [X] T038 [P] [US5] Tests de integración en `server/internal/integration/real_waste_test.go` bajo `appRoleStore` con `inTheThreeCases`: aplicadas y cubiertas cuentan; comida del personal, por aprobar, rechazadas y deshechas no; cancelación resta del consumo; merma de producto terminado no suma a ningún artículo; dos almacenes dan dos cifras; artículo unido con venta y merma previas da el % del conjunto con su factor (R14 H1); tras un cambio de unidad el artículo nuevo solo cuenta desde el cambio
+- [X] T039 [US5] Consulta agrupada `ListRealWaste` (`ingredient_id = any($1)`, por `ingredient_id, warehouse_id`, últimos 90 días, con los orígenes unidos) en `server/queries/expected_waste.sql`; `make sqlc`
+- [X] T040 [US5] Servicio `RealWaste` en `server/internal/app/expected_waste.go` (aplica `MergeChain` y `RealWasteRatio`, nombra almacenes) usado por el desglose (T033) y por `GET /stock/articles/{id}/real-waste` (`inventory.view`) en `server/internal/httpapi/handlers_expected_waste.go` y `router.go`
+- [X] T041 [P] [US5] Tests vitest en `web/src/features/backoffice/articles/RealWasteCard.test.tsx`: un renglón por almacén; «sin ventas» y «sin datos»; ícono de aviso y «pasa lo esperado» solo cuando la real supera el % aplicado
+- [X] T042 [US5] Tarjeta «Merma real, últimos 90 días» gemela del costo (maqueta A2) en `web/src/features/backoffice/articles/RealWasteCard.tsx` y su lugar en `ArticleSheet.tsx`; la merma real bajo el % en `CostBreakdownTable.tsx`
 
 **Checkpoint**: subida 1 completa.
 
@@ -132,7 +132,7 @@ por la razón correcta.
 
 ## Phase S1-Polish: cierre de la subida 1
 
-- [ ] T043 Nota en `docs/mecanica/almacen.md`: la precedencia, por qué el general no compone en preparados, que la merma real sigue las uniones y que el Down copia el % de regreso
+- [X] T043 Nota en `docs/mecanica/almacen.md`: la precedencia, por qué el general no compone en preparados, que la merma real sigue las uniones y que el Down copia el % de regreso
 - [ ] T044 E2E en `web/e2e/merma-esperada.spec.ts` contra el `make start` del worktree a 1024×600 y 1280×854 (capturas solo en `test-results/`): general 5 % sube el costo, % del producto, 0 % de artículo, desglose suma, historial del artículo con ≥ 2 renglones visibles a 1024×600; cuenta los toques de capturar el general y el % de un producto (≤ 4 cada uno, SC-005); deja todo como estaba
 - [ ] T045 `/revision-de-codigo` sobre el diff y corregir cada hallazgo con su test
 - [ ] T046 Prueba con alguien nuevo de una fonda a 1024×600 en local con la base restaurada (subagente sin contexto): capturar el general, el de un producto y ver de dónde sale el costo; anotar en este spec lo que se atore

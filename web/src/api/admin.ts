@@ -73,6 +73,47 @@ export interface AdminProduct {
   allowOversell?: boolean;
   measuresStock?: boolean;
   description?: string;
+  // La merma propia del producto (spec 096): texto decimal, null = usa la general. Opcional para
+  // que una API anterior que no la manda no se lea como «sin merma».
+  expectedWastePct?: string | null;
+}
+
+// De dónde sale el costo de un producto (spec 096). Los importes son texto decimal exacto.
+export type WasteSource = 'article' | 'product' | 'general' | 'none';
+export interface RealWaste {
+  warehouseId: number;
+  warehouseName: string;
+  isSales: boolean;
+  wasted: string;
+  consumed: string;
+  ratio: number | null;
+  state: 'ratio' | 'no_sales' | 'no_data';
+}
+export interface CostLine {
+  ingredientId: number;
+  name: string;
+  baseUnit: string;
+  isPrep: boolean;
+  qtyBase: string;
+  unitCost: string;
+  base: string;
+  pct: number;
+  pctSource: WasteSource;
+  waste: string;
+  // Opcional: el compilador obliga a la guarda si una respuesta no lo trae.
+  realWaste?: RealWaste[];
+}
+export interface CostComponent { productId: number; name: string; qty: number; cost: string; waste: string }
+export interface ProductCosting {
+  productId: number;
+  cost: string;
+  source: 'receta' | 'manual' | 'compra' | 'combo' | '';
+  base: string;
+  waste: string;
+  generalPct: number | null;
+  productPct: number | null;
+  lines?: CostLine[];
+  components?: CostComponent[];
 }
 
 // Dónde y cómo se vende un producto (spec 092). Viaja completo o no viaja: el servidor rechaza un
@@ -296,6 +337,10 @@ export const adminApi = {
   // cost ausente = la copia hereda el costo del original.
   duplicateProduct: (id: number, name: string, cost?: number) =>
     api.post<{ id: number }>(`/admin/products/${id}/duplicate`, { name, cost }),
+  // Merma esperada (spec 096): null = usa la general. Recalcula los costos al guardar.
+  setProductExpectedWaste: (id: number, pct: number | null) =>
+    api.put<{ pct: string | null }>(`/admin/products/${id}/expected-waste`, { pct }),
+  productCosting: (id: number) => api.get<ProductCosting>(`/products/${id}/costing`),
   updateProduct: (id: number, b: UpdateProductBody) =>
     api.patch<void>(`/admin/products/${id}`, b),
   // Lista completa de otros nombres (spec 063); va aparte del PATCH para que una pantalla que no la
