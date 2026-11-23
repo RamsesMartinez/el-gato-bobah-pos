@@ -145,7 +145,7 @@ por la razón correcta. Los bordes del spec van primero.
 - [X] T036 Medir SC-005 (con lotes ≤ 2× sin lotes): un pedido de 90 movimientos sin lotes y con lotes en el Postgres de pruebas; anotar las cifras en `docs/mecanica/almacen.md`
 - [X] T037 [P] `docs/mecanica/almacen.md`: sección de lotes (lo que no se ve: regla en el trigger, sin fecha primero, fecha derivada del origen, lo sin fecha negativo solo lo corrige un conteo, límite del traslape)
 - [X] T038 `/revision-de-codigo` y su corrección con test
-- [ ] T039 Prueba con alguien nuevo de una fonda a 1024×600 (y 1280×854) contra el `make start` con `make db-restaurar`, y `bun run e2e` de lo tocado
+- [X] T039 Prueba con alguien nuevo de una fonda a 1024×600 (y 1280×854) contra el `make start` con `make db-restaurar`, y `bun run e2e` de lo tocado
 - [ ] T040 `make ci-local` verde
 
 ## Dependencies

@@ -145,21 +145,21 @@ export function StockPage() {
         display="flex" flexDirection="column" flex="1" minH={0}>
         {/* Con «Se echó a perder» son siete: la fila se desplaza a lo ancho antes que salirse de 1024 px. */}
         <Tabs.List overflowX="auto" flexShrink={0}>
-          <Tabs.Trigger value="existencias" minH="44px">Existencias</Tabs.Trigger>
-          {canTransfer && <Tabs.Trigger value="traspaso" minH="44px">Traspaso</Tabs.Trigger>}
+          <Tabs.Trigger value="existencias" minH="44px" flexShrink={0}>Existencias</Tabs.Trigger>
+          {canTransfer && <Tabs.Trigger value="traspaso" minH="44px" flexShrink={0}>Traspaso</Tabs.Trigger>}
           {canView && <Tabs.Trigger value="caducidades" minH="44px" flexShrink={0}>Caducidades</Tabs.Trigger>}
-          <Tabs.Trigger value="movimientos" minH="44px">Movimientos</Tabs.Trigger>
-          {canView && <Tabs.Trigger value="insumos" minH="44px">{itemsTab}</Tabs.Trigger>}
+          <Tabs.Trigger value="movimientos" minH="44px" flexShrink={0}>Movimientos</Tabs.Trigger>
+          {canView && <Tabs.Trigger value="insumos" minH="44px" flexShrink={0}>{itemsTab}</Tabs.Trigger>}
           {canView && <Tabs.Trigger value="compra" minH="44px" flexShrink={0}>Lista de compra</Tabs.Trigger>}
           {canReceive && (
             <Tabs.Trigger value="por-recibir" minH="44px" flexShrink={0} whiteSpace="nowrap">
               Por recibir{pending.data && pending.data.length > 0 ? ` · ${pending.data.length}` : ''}
             </Tabs.Trigger>
           )}
-          {canCount && <Tabs.Trigger value="conteo" minH="44px">Conteo</Tabs.Trigger>}
+          {canCount && <Tabs.Trigger value="conteo" minH="44px" flexShrink={0}>Conteo</Tabs.Trigger>}
           {canHealth && <Tabs.Trigger value="merma" minH="44px" flexShrink={0}>Se echó a perder</Tabs.Trigger>}
-          {canHealth && <Tabs.Trigger value="salud" minH="44px">Salud</Tabs.Trigger>}
-          {canConfigureStock && <Tabs.Trigger value="avisos" minH="44px">Avisos</Tabs.Trigger>}
+          {canHealth && <Tabs.Trigger value="salud" minH="44px" flexShrink={0}>Salud</Tabs.Trigger>}
+          {canConfigureStock && <Tabs.Trigger value="avisos" minH="44px" flexShrink={0}>Avisos</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
           {stockHeader}
