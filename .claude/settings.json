@@ -14,5 +14,21 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git fetch)",
+      "Bash(git fetch *)",
+      "Bash(git -C /home/ramy/git/el-gato-bobah-pos fetch *)",
+      "Bash(gh run watch *)",
+      "Bash(go build ./...)",
+      "Bash(go vet *)",
+      "Bash(gofmt -l *)",
+      "Bash(docker volume ls*)",
+      "Bash(bun run lint)",
+      "Bash(bun run typecheck)",
+      "Bash(curl -s https://api.elgatobobah.com/readyz*)",
+      "Bash(curl -s https://api.elgatobobah.com/healthz*)"
+    ]
   }
 }
