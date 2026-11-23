@@ -34,6 +34,14 @@ capacitación para un conteo.
 S1 solo toca costo y márgenes; no mueve existencias. S2 depende de que el almacén exista en
 conteos, mermas y movimientos (spec 094, entregas E2 a E5).
 
+### Fuentes leídas (con todos sus comentarios)
+
+| Issue | Lo que se tomó |
+| --- | --- |
+| #226 | Cuerpo (2026-11-04): % general, por producto, precedencia, 0 % capturado, de dónde vino el %, sin recalcular el pasado. Ampliación (2026-11-16): conteo vs ventas, descontar la merma, rediseño de inventario y conteo, meta de carga. Comentario del 2026-11-23: merma real de 90 días, solo informativa. Decisión del dueño (2026-11-23): todo en un spec, dos subidas, la segunda sobre las pantallas del #65, merma real y conteo vs ventas por almacén |
+| #146 | Caso real del insumo caducado (motiva la merma real) y la decisión del dueño (2026-11-23): la caducidad por lote arranca después del #65 y nunca se descuenta de un lote caducado. Por eso la caducidad queda fuera de esta spec |
+| #65 | Requerimiento (2026-10-18) y actualización (2026-11-23): almacén en mermas, movimientos y conteos, y lo que se vende descuenta del almacén de venta. El 2026-11-23 entró completo a producción (spec 094, releases #347, #354, #360, #363 y #367), así que la subida 2 ya puede empezar cuando el dueño lo decida |
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Un porcentaje general cubre lo que se pierde al preparar (Priority: P1) — S1
@@ -52,7 +60,7 @@ deja en $21.00; vaciarlo lo regresa a $20.00.
 1. **Given** el general vacío (como arranca), **When** se sube esta entrega, **Then** ningún costo
    cambia.
 2. **Given** 5 % general y un producto sin otro porcentaje cuyos artículos no tienen uno propio,
-   **When** se recalcula, **Then** su costo sube 5 %.
+   **When** se recalcula, **Then** su costo sube 5 %, salvo sus empaques, que no suben.
 3. **Given** 5 % general, **When** se vacía, **Then** los costos vuelven a lo de antes.
 4. **Given** un producto con costo capturado a mano, **When** se captura el general, **Then** su
    costo no cambia (la merma aplica a lo que sale de una receta).
@@ -302,7 +310,8 @@ del conteo se ve en menos de la meta, medida antes y después.
   0 %; capturado reemplaza al del producto y al general en cualquier receta donde aparezca.
 - **FR-004**: El % que se aplica a cada renglón de la receta de un producto MUST seguir: artículo
   capturado → producto → general → nada. En la receta de un extra: artículo → general. Dentro de un
-  preparado: solo el del artículo.
+  preparado: solo el del artículo. Un artículo marcado como empaque (vaso, tapa, popote) MUST recibir
+  solo su propio %: ni el del producto ni el general (decisión del dueño, 2026-11-23).
 - **FR-005**: Los porcentajes MUST aceptar de 0 a menos de 100 con dos decimales; vacío es «sin
   captura», nunca 0; un valor fuera de rango se rechaza.
 - **FR-006**: Cambiar cualquier porcentaje MUST recalcular en ese momento los costos de productos,
@@ -367,7 +376,8 @@ del conteo se ve en menos de la meta, medida antes y después.
 
 - **SC-001**: Al subir S1, 0 costos de producto, extra o preparado cambian (general vacío y los
   artículos conservan su %).
-- **SC-002**: Con 5 % general, un producto sin otros porcentajes sube exactamente 5 % (al centavo).
+- **SC-002**: Con 5 % general, un producto sin otros porcentajes ni empaques sube exactamente 5 % (al
+  centavo); sus empaques no suben.
 - **SC-003**: En el desglose, la suma de lo que sumó cada renglón es igual al total de merma al
   centavo, en el 100 % de los productos con receta de la base restaurada.
 - **SC-004**: Ninguna venta cerrada antes de un cambio de % cambia su costo.
@@ -434,7 +444,7 @@ usa).
 | **La merma general también se suma a vasos, tapas y popotes** | **Pendiente de decisión del dueño** (ver abajo) |
 | La lista de productos no dice que el costo trae merma | Sin cambio: el desglose está a un toque en la ficha |
 
-**Decisión pendiente del dueño**: hoy la merma general aplica a todo renglón de la receta sin % propio,
+**Decidido por el dueño (2026-11-23)**: los empaques quedan fuera del % del producto y del general (FR-004). Antes: la merma general aplicaba a todo renglón de la receta sin % propio,
 empaques incluidos. Los artículos ya tienen la marca «es empaque»; excluirlos del general es un cambio
 de una regla en `domain.ResolveExpectedWaste` y no toca datos. Mientras tanto, capturar 0 % en esos
 artículos los deja fuera.

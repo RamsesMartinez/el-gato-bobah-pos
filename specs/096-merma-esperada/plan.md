@@ -66,6 +66,7 @@ columnas nuevas (R1); no se recalculan ventas pasadas (R7)
   arrancar (`RecomputeCompanies`) que con el general cargado da lo mismo que el recálculo en línea.
 - *Artículos unidos*: la merma real sigue la cadena de uniones con su factor (R14 H1); unir hereda el % del origen si el destino está sin captura (R14 M1).
 - *Regreso a la versión anterior*: el Down copia el % a `waste_pct` (R14 H3).
+- *Empaques*: un artículo empaque solo recibe su propio %, nunca el del producto ni el general (FR-004).
 - *Compuesto*: un preparado dentro de un preparado no recibe el general (R2), test que lo nombra.
 - *Concurrencia*: dos `PUT` al general: cada uno toma el candado de composición; gana el último y los
   dos quedan en la bitácora.
@@ -93,7 +94,7 @@ actual (toques y renglones visibles).
 | Conteo vs ventas (S2) | [maquetas](https://claude.ai/artifact/KxsQHew5tGpHWaCcsYRr98) | C · Agrupado por qué hacer | Tres grupos (revisar receta, usar el % sugerido, diferencia chica): dice qué hacer, no solo qué pasó |
 | Conteo sencilla/avanzada (S2) | [maquetas](https://claude.ai/artifact/RPsFWUsVS8C2itYvBX9n1d) | B · Lista del lugar | Recorrido por lugar con avance y teclado fijo; 6 de 8 renglones del lugar a 1024×600. El cambio de vista, como en Existencias |
 | Existencias sencilla/avanzada (S2) | [maquetas](https://claude.ai/artifact/5wmZHee7CYAwTfU3NXSLtD) | B · Tablero por estado, con otro cambio de vista | 14 de 20 a 1024×600. El dueño pidió que el cambio sencilla/avanzada sea con íconos, como el selector de vista de Ajustes del negocio (`SettingsLayout`, botones ícono + texto en `radiogroup`); se hace con `Segmented` y su prop `icon` (un solo componente para elegir entre pocas, R14) |
-| Ajustes › Almacén: descontar merma (S2) | [maquetas](https://claude.ai/artifact/NFvuSJ9CPACsYwYboC7XuQ) (pestaña S2) | Única disposición | Un renglón con interruptor; sin alternativa razonable |
+| Ajustes › Almacén: descontar merma (S2) | [maquetas](https://claude.ai/artifact/NFvuSJ9CPACsYwYboC7XuQ) (pestaña S2) | Única disposición, confirmada por el dueño | Un renglón con interruptor; sin alternativa razonable. El dueño confirmó el registro completo de maquetas el 2026-11-23 |
 
 ## Project Structure
 

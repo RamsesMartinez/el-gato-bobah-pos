@@ -288,6 +288,13 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     total de «Todos» no era la suma de sus partes. Lo vigila
     `TestStockValueOfAllIsTheSumOfTheWarehouses`.
   - **Un traspaso no es consumo**: la lista de compra mide `venta` y `cancelacion` y nada más.
+  - **La lista de compra de la pantalla y de «Enviarme por correo» es la de todos los almacenes**
+    (`?warehouseId=all`, con dos o más; con uno, sin almacén), cada renglón con el suyo: la del de
+    venta sola dejaba fuera el «se acabó» de Bodega al que mandaba la campana. «Todos» es la unión de
+    la lista de cada almacén, no una consulta aparte. **El mínimo del artículo solo cuenta en el de
+    venta** (como `warehouse_low_stock_state`): otro almacén entra a la lista con su mínimo propio o
+    con un aviso abierto; con el del artículo, una Bodega en 0 listaba todo artículo con mínimo
+    (`TestTheShoppingListOfAllWarehousesNamesEach`).
   - **Las alertas son del artículo; el mínimo, de cada almacén.** Encendidas, «al mínimo», «al
     acabarse», la franja y el mínimo del artículo valen en todos los almacenes. Guardar desde otro
     almacén solo cambia su mínimo propio: el servidor ignora los interruptores que lleguen con un
@@ -325,7 +332,9 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   - **El % del producto y el general solo aplican en la receta del producto** (y el general en la
     de un extra). Dentro de un preparado manda solo el % de cada artículo: si el general entrara
     también ahí, se compondría (5 % general subiría ~10 % un producto con jarabe) y el costo del
-    preparado, que es uno solo por artículo, dependería de quién lo usa.
+    preparado, que es uno solo por artículo, dependería de quién lo usa. **Un empaque** (`is_packaging`:
+    vaso, tapa, popote) tampoco los recibe: solo su propio % (decisión del dueño, 2026-11-23). La
+    vista previa del front lo repite con `isPackaging` del desglose.
   - **`ingredients.waste_pct` es la columna vieja y se queda hasta la subida 2**: la versión
     anterior de la API la lee durante el traslape. El código nuevo no la lee; el Down de la 0126
     le copia de regreso lo capturado para que un regreso de versión no cambie costos.

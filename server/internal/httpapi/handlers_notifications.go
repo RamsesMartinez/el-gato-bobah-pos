@@ -321,9 +321,10 @@ func (h *Handlers) LowStockBatch(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"items": res})
 }
 
-// GET /stock/shopping-list[?warehouseId=] — la lista de compra del almacén (el de venta sin él).
+// GET /stock/shopping-list[?warehouseId=<id>|all] — la lista de compra del almacén (el de venta sin
+// él), o la de todos con cada renglón en el suyo.
 func (h *Handlers) ShoppingList(w http.ResponseWriter, r *http.Request) {
-	sel, err := warehouseFromQuery(r, false)
+	sel, err := warehouseFromQuery(r, true)
 	if err != nil {
 		Error(w, err)
 		return

@@ -437,6 +437,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
       if (withGoods && counted.length > 0) medirAccion('gastos', 'registrar-compra');
       void qc.invalidateQueries({ queryKey: ['stock'] });
       void qc.invalidateQueries({ queryKey: ['ingredients'] });
+      void qc.invalidateQueries({ queryKey: ['lista-de-compra'] });
       reset();
       onSaved();
     },

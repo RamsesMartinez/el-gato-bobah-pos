@@ -143,11 +143,17 @@ por la razón correcta.
 
 ---
 
+## Phase S1b: los empaques fuera de la merma general (decisión del dueño, 2026-11-23)
+
+- [X] T071 [US1] Tests en `server/internal/domain/costing_test.go` y `expected_waste_test.go`: un artículo empaque sin % propio no recibe el del producto ni el general (origen `none`); con % propio, lo conserva; el desglose lo dice
+- [X] T072 [US1] `CostIngredient.IsPackaging` desde `ListIngredientsForCosting` (`server/queries/costing.sql`), regla en `domain.ResolveExpectedWaste` y en `recipeLines`, y la vista previa del front (`web/src/shared/merma/desglose.ts`) con el mismo criterio (`isPackaging` en el renglón del desglose)
+- [ ] T073 Integración: con 5 % general, un producto con vaso de empaque sube 5 % solo sobre lo que no es empaque; `make ci-local`, PR, release y comentario en el #226
+
 # SUBIDA 2 — INVENTARIO Y CONTEO (cuando el #65 esté completo en producción)
 
 ## Phase 8: Setup de la subida 2
 
-- [ ] T051 Confirmar que la spec 094 entregó E2–E5 en producción (ventas, compras, traspasos, conteo y merma por almacén); si no, esta subida no empieza
+- [X] T051 Confirmar que la spec 094 entregó E2–E5 en producción (entró completa el 2026-11-23: releases #347, #354, #360, #363 y #367; el dueño ordenó arrancar el 2026-11-23) (ventas, compras, traspasos, conteo y merma por almacén); si no, esta subida no empieza
 - [ ] T052 Medir la carga de hoy con el build servido en local (`bun run build && bun run preview`), base restaurada, 1024×600, CPU 4×: primera pantalla y lista completa de Existencias y del conteo; anotar las cifras en [research.md › R13](research.md) (SC-007)
 - [ ] T053 Migración siguiente libre (al traer develop) con solo `alter type stock_movement_type add value 'merma_esperada'`, y otra con `business_settings.expected_waste_deducts boolean not null default false` y, en ese orden, `drop trigger` de los dos espejos y `drop function mirror_expected_waste_pct()` de la 0126 y `drop column ingredients.waste_pct` (ninguna versión en producción la lee desde la subida 1), cada una con su test de migración
 

@@ -420,6 +420,9 @@ it('un traspaso dice a dónde fue o de dónde vino', async () => {
   montar('/almacen?tab=movimientos');
   expect((await screen.findByText('Leche sale')).closest('tr')!.textContent).toContain('→ Local');
   expect(screen.getByText('Leche entra').closest('tr')!.textContent).toContain('← Bodega');
+  // Prueba con alguien nuevo: a 1024×600 «traspaso → Bodega» se partía en dos renglones (fila de 57 px).
+  const tipo = within(screen.getByText('Leche sale').closest('tr')!).getByText(/traspaso/);
+  expect(getComputedStyle(tipo).whiteSpace).toBe('nowrap');
 });
 
 // El total va arriba, junto al selector: al pie de 440 renglones nadie lo encontraba (prueba con

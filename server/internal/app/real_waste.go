@@ -112,6 +112,7 @@ type CostLineView struct {
 	Name         string             `json:"name"`
 	BaseUnit     string             `json:"baseUnit"`
 	IsPrep       bool               `json:"isPrep"`
+	IsPackaging  bool               `json:"isPackaging"`
 	QtyBase      decimal.Decimal    `json:"qtyBase"`
 	UnitCost     decimal.Decimal    `json:"unitCost"`
 	Base         decimal.Decimal    `json:"base"`
@@ -191,7 +192,7 @@ func (s *CostingService) ProductCosting(ctx context.Context, productID int64, wi
 			rw = []RealWasteView{}
 		}
 		v.Lines = append(v.Lines, CostLineView{
-			IngredientID: l.IngredientID, Name: name[l.IngredientID], BaseUnit: unit[l.IngredientID], IsPrep: l.IsPrep,
+			IngredientID: l.IngredientID, Name: name[l.IngredientID], BaseUnit: unit[l.IngredientID], IsPrep: l.IsPrep, IsPackaging: l.IsPackaging,
 			QtyBase: d4(l.QtyBase), UnitCost: decimal.NewFromFloat(l.UnitCost).Round(6), Base: d4(l.Base),
 			Pct: l.Pct, PctSource: l.Source, Waste: d4(l.Waste), RealWaste: rw,
 		})

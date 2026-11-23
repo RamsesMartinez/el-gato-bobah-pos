@@ -229,6 +229,23 @@ describe('avisos con almacenes (spec 094)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Avisos/ }));
     expect(await screen.findByText(/Hay 3 piezas en Bodega · mínimo 10 piezas/)).toBeTruthy();
   });
+  // Prueba con alguien nuevo: «Bajo el mínimo» decía el almacén y «Se acabó» no; un «se acabó» de
+  // Bodega se leía como si se hubiera acabado en el mostrador.
+  test('«se acabó» con dos almacenes dice en cuál; con uno, como antes', async () => {
+    api.list.mockImplementation((st: string) => Promise.resolve({ items: st === 'open'
+      ? [aviso({ id: 4, warehouseId: 2, warehouseName: 'Bodega' } as Partial<NotificationView>)] : [] }));
+    montar(<ConCampana />);
+    fireEvent.click(await screen.findByRole('button', { name: /Avisos/ }));
+    expect(await screen.findByText('Lo reportó Ana')).toBeTruthy();
+    cleanup();
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    montar(<ConCampana />);
+    fireEvent.click(await screen.findByRole('button', { name: /Avisos/ }));
+    expect(await screen.findByText('En Bodega · Lo reportó Ana')).toBeTruthy();
+  });
   // Un cajero no ve el inventario: la lista de almacenes le daba 403 y su campana nunca decía de qué
   // almacén era el aviso (revisión de la 094). Lee los nombres.
   test('sin ver el inventario también dice de qué almacén', async () => {

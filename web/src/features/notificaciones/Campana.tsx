@@ -128,7 +128,7 @@ function Renglon({ n, onClose }: { n: NotificationView; onClose: () => void }) {
   const detalle = n.kind === 'stock_low'
     ? `Hay ${cantidad(n.onHandSeen)}${dondeHay} · mínimo ${cantidad(n.minSeen)}`
     : n.kind === 'stock_out'
-      ? `Lo reportó ${n.openedByName || 'el sistema'}${n.confirmations > 1 ? ` · lo confirmaron ${n.confirmations}` : ''}`
+      ? `${multi && n.warehouseName ? `En ${n.warehouseName} · ` : ''}Lo reportó ${n.openedByName || 'el sistema'}${n.confirmations > 1 ? ` · lo confirmaron ${n.confirmations}` : ''}`
       : n.kind === 'expired_left'
         ? `Se está usando${dondeHay} y lo que queda está caducado. Revisa si falta registrar una compra o un conteo.`
         : `Lo buscó ${n.openedByName || 'alguien'}`;

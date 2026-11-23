@@ -92,6 +92,7 @@ export function SeAcaboPage() {
       setHecho({ nombre: it.name, id: res.id, confirmacion: res.kind === 'confirmation', hasta: ahoraMismo + (sug?.undoSeconds ?? 90) * 1000, almacen: whName });
       void qc.invalidateQueries({ queryKey: ['se-acabo'] });
       void qc.invalidateQueries({ queryKey: ['avisos'] });
+      void qc.invalidateQueries({ queryKey: ['lista-de-compra'] });
     },
     onError: error,
   });
@@ -137,7 +138,7 @@ export function SeAcaboPage() {
         <VStack align="start" gap={0} minW={0}>
           <Text fontWeight="700" fontSize="md" lineClamp={2}>{it.name}</Text>
           <Text fontSize="xs" color={listo ? 'white' : 'fg.muted'} minH="16px">
-            {listo ? 'Toca otra vez para avisar que se acabó' : detalle ?? ''}
+            {listo ? (wh.multi ? `Otra vez: queda en 0 en ${wh.name}` : 'Toca otra vez para avisar que se acabó') : detalle ?? ''}
           </Text>
         </VStack>
       </Button>

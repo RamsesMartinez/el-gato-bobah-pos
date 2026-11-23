@@ -196,6 +196,19 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
     expect(item.unitId).toBeUndefined();
   });
 
+  // Revisión de código: una compra recibida al capturarla sube la existencia y la lista de compra
+  // seguía pidiendo lo que ya llegó.
+  test('guardar una compra recibida invalida la lista de compra', async () => {
+    const qc = await capturaConMercancia();
+    const inv = vi.spyOn(qc, 'invalidateQueries');
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    await waitFor(() => expect(inv).toHaveBeenCalledWith({ queryKey: ['lista-de-compra'] }));
+  });
+
   test('«Llega después» se guarda sin recibir', async () => {
     await capturaConMercancia();
     await elegir('Buscar o crear', /Leche entera/);
