@@ -173,6 +173,19 @@ func TestWarehousesAreIsolatedInTheThreeCases(t *testing.T) {
 		if err := s.ArchiveWarehouse(ctx, bodega); err == nil {
 			t.Fatal("se archivó la bodega de otra empresa")
 		}
+		if err := s.RestoreWarehouse(ctx, bodega); err == nil {
+			t.Fatal("se reactivó la bodega de otra empresa")
+		}
+		if rows, err := s.StockLevels(ctx, domain.WarehouseSel{ID: bodega}); err == nil {
+			t.Fatalf("se leyeron existencias de la bodega de otra empresa: %d renglones", len(rows))
+		}
+		if rows, err := s.StockLevels(ctx, domain.WarehouseSel{All: true}); err == nil && len(rows) > 0 {
+			t.Fatalf("«todos» trajo existencias de otra empresa: %d renglones", len(rows))
+		}
+		ing := int64(1)
+		if err := s.RecordMovement(ctx, domain.WarehouseSel{ID: bodega}, "ingrediente", &ing, nil, "ajuste", decimal.NewFromInt(1), "ajeno", 1); err == nil {
+			t.Fatal("se ajustó en la bodega de otra empresa")
+		}
 	})
 }
 
@@ -258,5 +271,35 @@ func TestAManualAdjustmentGoesToTheWarehouseAsked(t *testing.T) {
 	oing := placeIngredient(t, st, other, "Arroz")
 	if err := osvc.RecordMovement(octx, domain.WarehouseSel{ID: bodega}, "ingrediente", &oing, nil, "ajuste", decimal.NewFromInt(1), "ajena", ouser); !errors.Is(err, domain.ErrWarehouseNotFound) {
 		t.Fatalf("ajuste a la bodega de otra empresa = %v; quiere «no existe»", err)
+	}
+}
+
+// Un almacén de OTRA SUCURSAL de la misma empresa: RLS no lo separa, lo separa el filtro de sucursal de
+// la sesión. Con dos sucursales y sin selector la sesión no tiene sucursal (BRANCH_AMBIGUOUS); lo que
+// importa es que ninguna ruta alcance el almacén de la otra.
+func TestAWarehouseOfAnotherBranchIsNotReachable(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	co := makeCompany(t, st, "almacen-otra-sucursal")
+	svc, ctx := asWaste(t, co)
+	var norte int64
+	if err := st.Pool.QueryRow(ctx, `with b as (insert into branches (company_id, branch_number, code, name)
+		values ($1, 2, 'NORTE', 'Norte') returning *)
+		insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local Norte', true from b returning id`,
+		co).Scan(&norte); err != nil {
+		t.Fatal(err)
+	}
+	ing := placeIngredient(t, st, co, "Leche norte")
+	if _, err := svc.StockLevels(ctx, domain.WarehouseSel{ID: norte}); err == nil {
+		t.Fatal("se leyeron las existencias del almacén de otra sucursal")
+	}
+	if err := svc.RecordMovement(ctx, domain.WarehouseSel{ID: norte}, "ingrediente", &ing, nil, "ajuste", decimal.NewFromInt(1), "otra sucursal", 1); err == nil {
+		t.Fatal("se ajustó en el almacén de otra sucursal")
+	}
+	if err := svc.RenameWarehouse(ctx, norte, "Mío"); err == nil {
+		t.Fatal("se renombró el almacén de otra sucursal")
+	}
+	if err := svc.ArchiveWarehouse(ctx, norte); err == nil {
+		t.Fatal("se archivó el almacén de otra sucursal")
 	}
 }

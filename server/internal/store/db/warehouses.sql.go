@@ -121,6 +121,7 @@ func (q *Queries) RenameWarehouse(ctx context.Context, arg RenameWarehouseParams
 const resolveWarehouse = `-- name: ResolveWarehouse :one
 select id, name, is_sales from warehouses
  where id = $1 and branch_id = current_branch_id() and is_active
+   for share
 `
 
 type ResolveWarehouseRow struct {
@@ -131,6 +132,8 @@ type ResolveWarehouseRow struct {
 
 // El almacén que pidió una lectura o escritura, si es de la sucursal de la sesión y está activo. Uno
 // de otra empresa no existe para RLS; uno de otra sucursal o archivado tampoco se ofrece.
+// for share: dentro de la transacción que escribe, archivarlo (for update) espera a que termine; sin
+// eso, un movimiento podía quedar en un almacén que se archivó en medio.
 func (q *Queries) ResolveWarehouse(ctx context.Context, id int64) (ResolveWarehouseRow, error) {
 	row := q.db.QueryRow(ctx, resolveWarehouse, id)
 	var i ResolveWarehouseRow

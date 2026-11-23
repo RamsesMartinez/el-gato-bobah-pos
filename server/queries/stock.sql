@@ -99,5 +99,6 @@ select (u.to_base / bu.to_base)::numeric(20,6) as factor
 -- La existencia propia de un producto, sumada: es lo que la hoja de receta muestra al preguntar
 -- «¿Cuántas tienes de verdad?». La cifra que manda manda la vuelve a comparar contra la bloqueada.
 select coalesce(sum(on_hand), 0)::numeric(14,4) as on_hand,
-       count(*) filter (where on_hand <> 0)::int as branches
+       -- Sucursales, no filas: desde la 094 cada sucursal tiene una fila por almacén.
+       count(distinct branch_id) filter (where on_hand <> 0)::int as branches
   from stock_levels where item_type = 'producto' and product_id = $1;

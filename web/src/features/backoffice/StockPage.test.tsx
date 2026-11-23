@@ -9,9 +9,10 @@ import { useSessionStore } from '../../stores/session';
 import { Provider } from '../../components/ui/provider';
 import { StockPage } from './StockPage';
 
+const oneWarehouse = { items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] };
 const back = vi.hoisted(() => ({
   countPlaces: vi.fn(() => Promise.resolve([{ id: 4, name: 'Barra', position: 0, ingredients: 1 }])),
-  stockLevels: vi.fn((_w?: number | 'all') => Promise.resolve({ items: [] })),
+  stockLevels: vi.fn((_w?: number | 'all') => Promise.resolve({ items: [] as unknown[] })),
   warehouses: vi.fn(() => Promise.resolve({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] })),
   stockMovements: vi.fn(() => Promise.resolve({ items: [] })),
   units: vi.fn(() => Promise.resolve({ items: [
@@ -53,6 +54,12 @@ const admin = vi.hoisted(() => ({
   products: vi.fn(() => Promise.resolve({ items: [], total: 0, counts: { act: 0, inact: 0 } })),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
+// Cada prueba arranca con un solo almacén y sin existencias: una que cambie el almacén y falle a la
+// mitad no deja a las siguientes con dos.
+beforeEach(() => {
+  back.warehouses.mockResolvedValue(oneWarehouse);
+  back.stockLevels.mockImplementation(() => Promise.resolve({ items: [] }));
+});
 vi.mock('../../api/admin', () => ({ adminApi: admin }));
 const pos = vi.hoisted(() => ({ businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' } as Record<string, string>)) }));
 vi.mock('../../api/pos', () => ({ posApi: pos }));
@@ -237,5 +244,37 @@ it('con dos almacenes elige cuál ver, y «Todos» suma', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
   await vi.waitFor(() => expect(back.stockLevels).toHaveBeenLastCalledWith('all'));
   expect(grupo).toBeInTheDocument();
-  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] });
+});
+
+// El mínimo es del artículo y piensa en el local: comparar la bodega o la suma contra él dice «bajo»
+// donde no falta nada, o lo esconde donde sí (revisión de la 094). Fuera del de venta no se compara.
+it('fuera del almacén de venta no hay «bajo» ni mínimo', async () => {
+  back.warehouses.mockResolvedValue({ items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+  ] });
+  back.stockLevels.mockImplementation((w?: number | 'all') => Promise.resolve({ items: [
+    { item_name: 'Leche', item_type: 'insumo', on_hand: w === 2 ? '2000' : '1000', unit_code: 'ml', min_stock: '5000', is_active: true },
+  ] }));
+  sesion(['inventory.view']);
+  montar('/almacen');
+  expect(((await screen.findByText('Leche')).closest('tr')!).textContent).toContain('bajo');
+  fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
+  await vi.waitFor(() => expect(screen.getByText('Leche').closest('tr')!.textContent).toContain('2 L'));
+  expect(screen.getByText('Leche').closest('tr')!.textContent).not.toContain('bajo');
+  expect(screen.getByText('Leche').closest('tr')!.textContent).not.toContain('5 L');
+});
+
+// Un error al pedir otro almacén no se pinta como «sin existencias».
+it('si no se pudo leer el almacén lo dice', async () => {
+  back.warehouses.mockResolvedValue({ items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+  ] });
+  back.stockLevels.mockImplementation((w?: number | 'all') => (w === 2 ? Promise.reject(new Error('x')) : Promise.resolve({ items: [] })));
+  sesion(['inventory.view']);
+  montar('/almacen');
+  fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
+  expect(await screen.findByText('No se pudieron leer las existencias de este almacén')).toBeInTheDocument();
+  expect(screen.queryByText('Sin existencias que mostrar')).toBeNull();
 });

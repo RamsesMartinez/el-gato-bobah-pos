@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"testing"
 
@@ -247,5 +248,25 @@ func TestCancellingRestocksTheWarehouseTheSaleLeft(t *testing.T) {
 	}
 	if v := onHandIn(t, st, bodega, "product_id", refresco); !v.IsZero() {
 		t.Fatalf("la bodega quedó en %s: la cancelación repuso donde nunca hubo venta", v)
+	}
+}
+
+// En el reemplazo por cambio de unidad, la cifra corregida a mano es de la sucursal. Con existencia
+// en dos almacenes de esa sucursal no hay a cuál aplicarla: se rechaza en vez de descartarla en
+// silencio y guardar algo distinto de lo que confirmó la pantalla (revisión de la 094).
+func TestAStockOverrideWithTwoWarehousesIsRejected(t *testing.T) {
+	t.Parallel()
+	k := newPurchaseKit(t)
+	ctx := app.WithActorUser(k.ctx, k.user)
+	_, bodega := comoEnLaSegundaSubida(t, k.st, defaultCompanyID)
+	if _, err := k.svc.CreateExpense(ctx, k.bultos("1", "500")); err != nil {
+		t.Fatal(err)
+	}
+	adjustIn(t, k.st, bodega, "ingrediente", k.azucar, "1000")
+	branch := headquarters(t, k.st, defaultCompanyID)
+	err := k.svc.ChangeUnit(ctx, k.azucar, app.UnitChangeRequest{BaseUnitID: unitID(t, k.st, "pieza"), Factor: qty("0.0002"),
+		Overrides: map[string]decimal.Decimal{"stock:" + itoa(int(branch)): qty("7")}})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("corregir a mano la existencia de una sucursal con dos almacenes = %v; quiere ErrValidation", err)
 	}
 }

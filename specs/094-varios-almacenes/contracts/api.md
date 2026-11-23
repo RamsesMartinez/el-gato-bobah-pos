@@ -14,7 +14,7 @@ Ausente = el de venta.
 | `PATCH /stock/warehouses/{id}` | `inventory.warehouse_manage` | `{name}` | 200; en subida 2 también `{isSales: true}` |
 | `POST /stock/warehouses/{id}/archive` | `inventory.warehouse_manage` | — | 200; 409 `WAREHOUSE_IS_SALES` / `WAREHOUSE_HAS_STOCK` (con `{items: n}`) / `WAREHOUSE_COUNT_OPEN` |
 | `POST /stock/warehouses/{id}/restore` | `inventory.warehouse_manage` | — | 200 |
-| `GET /stock/levels` | `inventory.view` | `?warehouseId=<id>|all` | cada renglón suma `warehouseId` (nulo en `all`) y, si es negativo y otro almacén tiene, `transferFrom: [{warehouseId, name, onHand}]` |
+| `GET /stock/levels` | `inventory.view` | `?warehouseId=<id>|all` | un renglón por artículo; con `all`, la suma de los almacenes activos de la sucursal. `transferFrom` (sugerir traspaso en un negativo) llega con los traspasos, en la subida 3 |
 
 ## Subida 2 (E3)
 

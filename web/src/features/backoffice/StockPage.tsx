@@ -29,9 +29,15 @@ export function StockPage() {
   const horaNegocio = useHoraDelNegocio();
   // El almacén que se ve en Existencias (spec 094): por omisión el de venta. Con un solo almacén no
   // hay selector y la pantalla queda como antes.
-  const [warehouse, setWarehouse] = useState<number | 'all' | undefined>(undefined);
+  const [picked, setWarehouse] = useState<number | 'all' | undefined>(undefined);
   const warehouses = useQuery({ queryKey: ['warehouses'], queryFn: () => backofficeApi.warehouses() });
   const whList = warehouses.data?.items ?? [];
+  // Si el almacén elegido se archivó (en otra tableta), se vuelve al de venta: si no, ningún botón
+  // queda marcado y la lista falla sin salida.
+  const warehouse = typeof picked === 'number' && warehouses.data && !whList.some((w) => w.id === picked) ? undefined : picked;
+  // El mínimo es del artículo y piensa en el de venta: compararlo contra la bodega o la suma diría
+  // «bajo» donde no falta nada, o lo escondería donde sí (spec 094; mínimos por almacén en E5).
+  const atSales = warehouse === undefined;
   const levels = useQuery({ queryKey: ['stock', 'levels', warehouse ?? 'venta'], queryFn: () => backofficeApi.stockLevels(warehouse),
     // Cambiar de almacén no borra la pantalla mientras llega la otra lista.
     placeholderData: (prev) => prev });
@@ -102,15 +108,21 @@ export function StockPage() {
                 onChange={(v) => setWarehouse(v === 'all' ? 'all' : whList.find((w) => String(w.id) === v)?.isSales ? undefined : Number(v))} />
             </Box>
           )}
-          <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
+          {/* Mientras llega la lista del almacén elegido, la anterior se atenúa: no se leen cifras de
+              otro almacén como si fueran de éste. */}
+          <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto" opacity={levels.isPlaceholderData ? 0.4 : 1}
+            aria-busy={levels.isPlaceholderData || undefined}>
             <Table.Root size="sm">
               <Table.Header><Table.Row><Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Mínimo</Table.ColumnHeader></Table.Row></Table.Header>
               <Table.Body>
-                {(levels.data?.items ?? []).length === 0 && (
+                {levels.isError && (
+                  <Table.Row><Table.Cell colSpan={4}><Text color="fg.error">No se pudieron leer las existencias de este almacén</Text></Table.Cell></Table.Row>
+                )}
+                {!levels.isError && (levels.data?.items ?? []).length === 0 && (
                   <Table.Row><Table.Cell colSpan={4}><Text color="fg.subtle">Sin existencias que mostrar</Text></Table.Cell></Table.Row>
                 )}
-                {(levels.data?.items ?? []).map((s, i) => {
-                  const low = s.min_stock != null && Number(s.on_hand) <= Number(s.min_stock);
+                {!levels.isError && (levels.data?.items ?? []).map((s, i) => {
+                  const low = atSales && s.min_stock != null && Number(s.on_hand) <= Number(s.min_stock);
                   return (
                     <Table.Row key={i}>
                       <Table.Cell>{s.item_name}</Table.Cell>
@@ -122,7 +134,7 @@ export function StockPage() {
                           <Text as="span" ml={2} px={2} py="1px" borderRadius="md" fontWeight="700" color="fg.error" bg="bg.error">Revisar</Text>
                         )}
                       </Table.Cell>
-                      <Table.Cell textAlign="end">{s.min_stock == null ? '—' : formatBaseQty(s.min_stock, s.unit_code)}</Table.Cell>
+                      <Table.Cell textAlign="end">{!atSales || s.min_stock == null ? '—' : formatBaseQty(s.min_stock, s.unit_code)}</Table.Cell>
                     </Table.Row>
                   );
                 })}

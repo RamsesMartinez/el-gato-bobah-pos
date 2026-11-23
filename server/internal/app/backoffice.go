@@ -1476,20 +1476,21 @@ func (s *BackofficeService) RecordMovement(ctx context.Context, sel domain.Wareh
 	if reason != "" {
 		r = &reason
 	}
-	qs := s.store.QC(ctx)
-	wh, err := ResolveWarehouseID(ctx, qs, sel)
-	if err != nil {
-		return err
-	}
-	return qs.InsertStockMovement(ctx, db.InsertStockMovementParams{
-		ItemType:     db.StockItemType(itemType),
-		IngredientID: ingID,
-		ProductID:    prodID,
-		MovementType: db.StockMovementType(mtype),
-		Quantity:     q,
-		UserID:       &userID,
-		Reason:       r,
-		WarehouseID:  &wh,
+	return s.store.WithTx(ctx, func(qs *db.Queries) error {
+		wh, err := ResolveWarehouseID(ctx, qs, sel)
+		if err != nil {
+			return err
+		}
+		return qs.InsertStockMovement(ctx, db.InsertStockMovementParams{
+			ItemType:     db.StockItemType(itemType),
+			IngredientID: ingID,
+			ProductID:    prodID,
+			MovementType: db.StockMovementType(mtype),
+			Quantity:     q,
+			UserID:       &userID,
+			Reason:       r,
+			WarehouseID:  &wh,
+		})
 	})
 }
 

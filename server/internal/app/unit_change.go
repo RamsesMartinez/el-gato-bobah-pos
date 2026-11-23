@@ -619,6 +619,11 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 			perBranch[s.BranchID]++
 		}
 	}
+	for branch, n := range perBranch {
+		if _, ok := req.Overrides["stock:"+strconv.FormatInt(branch, 10)]; ok && n > 1 {
+			return fmt.Errorf("%w: esa sucursal tiene existencia en varios almacenes; no se corrige a mano", domain.ErrValidation)
+		}
+	}
 	for _, s := range locked {
 		if s.OnHand.IsZero() {
 			continue
