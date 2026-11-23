@@ -19,6 +19,8 @@ values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,sqlc.narg(warehouse_id));
 -- Los almacenes que se piden, sumados por artículo (spec 094): uno solo (el de venta por omisión, o
 -- el elegido) o todos los de la sucursal. Con un almacén, la suma es su cifra.
 select sl.item_type,
+       i.id as ingredient_id,
+       p.id as product_id,
        coalesce(i.name, p.name) as item_name,
        sum(sl.on_hand)::numeric(14,4) as on_hand,
        coalesce(i.min_stock, p.min_stock) as min_stock,

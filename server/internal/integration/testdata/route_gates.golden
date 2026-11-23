@@ -116,6 +116,7 @@ GET /api/v1/stock/presentation-suggestions admin,gerente
 GET /api/v1/stock/presentations admin,gerente
 GET /api/v1/stock/products/{id}/low-stock admin,gerente
 GET /api/v1/stock/shopping-list admin,gerente
+GET /api/v1/stock/transfers admin,gerente
 GET /api/v1/stock/warehouses admin,gerente
 GET /api/v1/supplier-items admin,gerente
 GET /api/v1/suppliers admin,gerente
@@ -235,6 +236,7 @@ POST /api/v1/stock/not-found admin,gerente,cajero,mesero
 POST /api/v1/stock/out-reports admin,gerente,cajero,mesero
 POST /api/v1/stock/out-reports/{id}/undo admin,gerente,cajero,mesero
 POST /api/v1/stock/shopping-list/email admin,gerente
+POST /api/v1/stock/transfers admin,gerente
 POST /api/v1/stock/warehouses admin,gerente
 POST /api/v1/stock/warehouses/{id}/archive admin,gerente
 POST /api/v1/stock/warehouses/{id}/restore admin,gerente

@@ -720,6 +720,7 @@ const (
 	StockMovementTypeMerma       StockMovementType = "merma"
 	StockMovementTypeProduccion  StockMovementType = "produccion"
 	StockMovementTypeCancelacion StockMovementType = "cancelacion"
+	StockMovementTypeTraspaso    StockMovementType = "traspaso"
 )
 
 func (e *StockMovementType) Scan(src interface{}) error {
@@ -2151,6 +2152,7 @@ type StockMovement struct {
 	EffectiveOn          pgtype.Date       `json:"effective_on"`
 	WarehouseID          int64             `json:"warehouse_id"`
 	WarehouseRelocation  bool              `json:"warehouse_relocation"`
+	TransferID           *int64            `json:"transfer_id"`
 }
 
 type StockOutReport struct {
@@ -2170,6 +2172,29 @@ type StockOutReport struct {
 	UndoneAt       pgtype.Timestamptz `json:"undone_at"`
 	UndoMovementID *int64             `json:"undo_movement_id"`
 	WarehouseID    int64              `json:"warehouse_id"`
+}
+
+type StockTransfer struct {
+	ID              int64     `json:"id"`
+	CompanyID       int64     `json:"company_id"`
+	BranchID        int64     `json:"branch_id"`
+	FromWarehouseID int64     `json:"from_warehouse_id"`
+	ToWarehouseID   int64     `json:"to_warehouse_id"`
+	Note            *string   `json:"note"`
+	ClientKey       uuid.UUID `json:"client_key"`
+	BodyHash        string    `json:"body_hash"`
+	CreatedBy       int64     `json:"created_by"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+type StockTransferLine struct {
+	TransferID   int64           `json:"transfer_id"`
+	LineNo       int16           `json:"line_no"`
+	CompanyID    int64           `json:"company_id"`
+	ItemType     StockItemType   `json:"item_type"`
+	IngredientID *int64          `json:"ingredient_id"`
+	ProductID    *int64          `json:"product_id"`
+	QtyBase      decimal.Decimal `json:"qty_base"`
 }
 
 type Supplier struct {

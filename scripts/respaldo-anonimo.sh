@@ -205,6 +205,7 @@ update register_cash_movements  set concept = 'concepto anonimizado';
 update register_cash_movements  set recipient_name = 'Usuario ' || recipient_user_id
  where recipient_name is not null;
 update stock_movements set reason = null, note = null where reason is not null or note is not null;
+update stock_transfers set note = null where note is not null;
 update waste_records   set note = null where note is not null;
 update attendance_corrections set reason = 'motivo anonimizado';
 -- El motivo de una corrección de costo (0116) es texto libre: puede nombrar a un proveedor o a una persona.
@@ -350,6 +351,7 @@ FUGAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "
        + (select count(*) from cash_transfers where note is not null)
        + (select count(*) from register_cash_movements where concept <> 'concepto anonimizado' or recipient_name <> 'Usuario ' || recipient_user_id)
        + (select count(*) from stock_movements where reason is not null or note is not null)
+       + (select count(*) from stock_transfers where note is not null)
        + (select count(*) from waste_records where note is not null)
        + (select count(*) from attendance_corrections where reason <> 'motivo anonimizado')
        + (select count(*) from ingredient_cost_corrections where reason <> 'motivo anonimizado')

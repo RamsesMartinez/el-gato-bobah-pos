@@ -323,6 +323,9 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
+	// La 0124 se niega con traspasos: en la copia de prueba se borran sus movimientos, renglones y
+	// documentos (los avisos que cuelgan de esos movimientos no existen: un traspaso no abre «se acabó»).
+	124: {`delete from stock_movements where transfer_id is not null`, `delete from stock_transfer_lines`, `delete from stock_transfers`},
 	// La 0122 se niega con cualquier registro fuera del almacén de venta o repetido por sucursal en dos
 	// almacenes. En la copia de prueba se borra lo que hay fuera del de venta (lo que cuelga de los
 	// movimientos primero) y se manda al de venta lo que solo lo apunta.

@@ -1142,7 +1142,7 @@ describe('dónde se guarda cada renglón (spec 094)', () => {
     await capturaConMercancia();
     await elegir('Buscar o crear', /Leche entera/);
     await screen.findByTestId('renglon-detalle');
-    expect(screen.queryByRole('group', { name: '¿Dónde se guarda el ticket?' })).toBeNull();
+    expect(screen.queryByRole('group', { name: '¿Dónde se guarda lo comprado?' })).toBeNull();
     fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
     click('Todavía no se paga');
     click('Guardar');
@@ -1159,7 +1159,7 @@ describe('dónde se guarda cada renglón (spec 094)', () => {
     await elegir('Buscar o crear', /Azúcar/);
     fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '100' } });
     // Todo a la bodega con un toque, arriba de la lista.
-    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda el ticket?' });
+    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda lo comprado?' });
     fireEvent.click(within(todo).getByRole('button', { name: /Bodega/ }));
     // El azúcar (elegido) regresa al local desde su detalle, y la lista lo dice.
     fireEvent.click(within(within(detalle()).getByRole('group', { name: '¿Dónde se guarda este renglón?' })).getByRole('button', { name: /Local/ }));
@@ -1176,11 +1176,11 @@ describe('dónde se guarda cada renglón (spec 094)', () => {
   test('recuerda el último destino del ticket en este equipo', async () => {
     back.warehouses.mockResolvedValue(dos);
     await capturaConMercancia();
-    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda el ticket?' });
+    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda lo comprado?' });
     fireEvent.click(within(todo).getByRole('button', { name: /Bodega/ }));
     cleanup();
     await capturaConMercancia();
-    const otra = await screen.findByRole('group', { name: '¿Dónde se guarda el ticket?' });
+    const otra = await screen.findByRole('group', { name: '¿Dónde se guarda lo comprado?' });
     await waitFor(() => expect(within(otra).getByRole('button', { name: /Bodega/ })).toHaveAttribute('aria-pressed', 'true'));
   });
 
@@ -1188,7 +1188,7 @@ describe('dónde se guarda cada renglón (spec 094)', () => {
     try { localStorage.setItem('egb:compra:almacen', '99'); } catch { /* sin almacenamiento */ }
     back.warehouses.mockResolvedValue(dos);
     await capturaConMercancia();
-    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda el ticket?' });
+    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda lo comprado?' });
     await waitFor(() => expect(within(todo).getByRole('button', { name: /Local/ })).toHaveAttribute('aria-pressed', 'true'));
   });
 
@@ -1213,7 +1213,7 @@ describe('dónde se guarda cada renglón (spec 094)', () => {
     await elegir('Buscar o crear', /Leche entera/);
     fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
     fireEvent.click(within(within(detalle()).getByRole('group', { name: '¿Dónde se guarda este renglón?' })).getByRole('button', { name: /Cocina/ }));
-    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda el ticket?' });
+    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda lo comprado?' });
     fireEvent.click(within(todo).getByRole('button', { name: /Bodega/ }));
     click('Todavía no se paga');
     click('Guardar');

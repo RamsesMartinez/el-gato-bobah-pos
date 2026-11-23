@@ -86,6 +86,8 @@ var noPersonalData = map[string]string{
 	"companies.name":                                "nombre de la empresa",
 	"companies.slug":                                "identificador de la empresa",
 	"count_places.name":                             "lugar del almacén",
+	"stock_transfers.client_key":                    "uuid que genera la tableta para no duplicar un traspaso; no identifica a nadie",
+	"stock_transfers.body_hash":                     "huella del cuerpo del traspaso para comparar un reintento",
 	"delivery_platforms.name":                       "nombre de la plataforma",
 	"expense_categories.name":                       "catálogo de gastos",
 	"folio_consumido.name":                          "nombre de folio de la lista fija del binario",

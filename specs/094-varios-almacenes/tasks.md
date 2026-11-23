@@ -114,14 +114,14 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 
 ## Phase 6: US5 — Traspasos (P2, subida 3)
 
-- [ ] T047 [US5] `server/migrations/NNNN_stock_movement_transfer_type.sql` solo con `add value 'traspaso'` (R11 H3)
-- [ ] T048 [P] [US5] Tests de dominio: plan del traspaso (origen ≠ destino, cantidades válidas, `NEEDS_CONFIRM` si deja el origen en negativo) en `server/internal/domain/transfer_test.go`
-- [ ] T049 [P] [US5] Tests de integración: escenario 10/20 → 16/14 con dos movimientos ligados y `unit_cost` en las dos patas; reintento con la misma `clientKey` no duplica; misma clave con otro cuerpo → 409; almacén archivado o de otra sucursal → 404; `inTheThreeCases` para las dos tablas; guardas de unión en `stock_transfer_lines`; cada pata en su origen o destino; en `server/internal/integration/transfers_test.go`
-- [ ] T050 [US5] `server/migrations/NNNN_stock_transfers.sql` (tablas, RLS, llaves, guardas de la 0104, `transfer_id` en movimientos) revisada por db-architect; `MergeTables` y `UnitChangeTables` (`server/internal/app/ingredient_merge.go`, `unit_change.go`); respaldo anónimo (`scripts/respaldo-anonimo.sh`, `respaldo_anonimo_test.go`)
-- [ ] T051 [US5] `domain/transfer.go`, `queries/transfers.sql`, `app/transfers.go` (con `lockIngredients` nowait y el almacén `for share`), handlers y rutas `POST/GET /stock/transfers`, bitácora `transfer.created`
-- [ ] T052 [US5] Pantalla Traspaso según la fila «Traspaso» de Maquetas: pestaña después de Existencias, `Picker` en De/A, buscador de 44 px, `NumericKeypad` fijo con `useKeypadField`, `clientKey` guardada en el borrador (`web/src/features/backoffice/warehouses/TransferTab.tsx`) con test
-- [ ] T053 [US5] «Traer de Bodega» de Existencias usa el traspaso real (T036)
-- [ ] T054 [US8] MCP `stock_transfer` con vista previa e idempotencia, test
+- [X] T047 [US5] `server/migrations/0123_stock_movement_transfer_type.sql` solo con `add value 'traspaso'` (R11 H3)
+- [X] T048 [P] [US5] Tests de dominio: plan del traspaso (origen ≠ destino, cantidades válidas, `NEEDS_CONFIRM` si deja el origen en negativo) en `server/internal/domain/transfer_test.go`
+- [X] T049 [P] [US5] Tests de integración: escenario 10/20 → 16/14 con dos movimientos ligados y `unit_cost` en las dos patas; reintento con la misma `clientKey` no duplica; misma clave con otro cuerpo → 409; almacén archivado o de otra sucursal → 404; `inTheThreeCases` para las dos tablas; guardas de unión en `stock_transfer_lines`; cada pata en su origen o destino; en `server/internal/integration/transfers_test.go`
+- [ ] T050 [US5] `server/migrations/0124_stock_transfers.sql` (escrita y probada; FALTA la revisión del db-architect, que lanza la sesión que orquesta) (tablas, RLS, llaves, guardas de la 0104, `transfer_id` en movimientos) revisada por db-architect; `MergeTables` y `UnitChangeTables` (`server/internal/app/ingredient_merge.go`, `unit_change.go`); respaldo anónimo (`scripts/respaldo-anonimo.sh`, `respaldo_anonimo_test.go`)
+- [X] T051 [US5] `domain/transfer.go`, `queries/transfers.sql`, `app/transfers.go` (con `lockIngredients` nowait y el almacén `for share`), handlers y rutas `POST/GET /stock/transfers`, bitácora `transfer.created`
+- [X] T052 [US5] Pantalla Traspaso según la fila «Traspaso» de Maquetas: pestaña después de Existencias, `Picker` en De/A, buscador de 44 px, `NumericKeypad` fijo con `useKeypadField`, `clientKey` guardada en el borrador (`web/src/features/backoffice/warehouses/TransferTab.tsx`) con test
+- [ ] T053 [US5] «Traer de Bodega» de Existencias usa el traspaso real (T036) — pantalla hecha (`BringSheet`, botón en el negativo con `transfer_from`); el servidor ya manda `transfer_from` e `ingredient_id`/`product_id` en `/stock/levels`; falta conectar la hoja al `POST /stock/transfers` en el front
+- [X] T054 [US8] MCP `stock_transfer` con vista previa e idempotencia, test
 - [ ] T054b [US5] E2E Playwright del traspaso de un artículo que mide los toques (≤ 6, SC-003) y prueba con alguien nuevo de una fonda: traspasar de Bodega a Local (SC-005), en `web/e2e/traspaso.spec.ts`
 
 ---
@@ -133,6 +133,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 - [ ] T057 [US6] (incluye lo que dejó el db-architect en la subida 1: `CurrentStockCount` y `LastClosedStockCount` siguen por sucursal y son `:one`; `ArticleMovedSince` mezcla conteos por sucursal con movimientos del almacén de venta — pasarlos a `warehouse_id`) Servicios y consultas de conteo, merma, se acabó, mínimos, lista de compra, salud y lugares con `warehouseId` (`server/internal/app/stock_counts.go`, `waste.go`, `stock_out.go`, `notifications.go`, `inventory_health.go`, queries respectivas)
 - [ ] T058b [US6] Prueba con alguien nuevo de una fonda: contar la Bodega y cerrar sin tocar Local (SC-005)
 - [ ] T058 [US6] Pantallas: elegir almacén al empezar el conteo (por omisión el de venta) en `web/src/features/backoffice/StockCountTab.tsx`; almacén en merma, se acabó, mínimos y avisos; con test
+- [ ] T056b [US6] Migración nueva que valida lo que la 0124 dejó `not valid` sobre `stock_movements`: `alter table stock_movements validate constraint stock_movements_transfer_of_branch` y `validate constraint stock_movements_transfer_link` (el `validate` toma `share update exclusive` y no frena a las ventas), con su test de integración
 - [ ] T059 [US8] MCP `stock_count_*`, `waste_record`, `low_stock_update` con `warehouse_id`, tests
 
 ---
