@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Box, SimpleGrid, Text, Badge, HStack, VStack, Center, Spinner, Flex, Button, IconButton,
+  Box, SimpleGrid, Text, Badge, HStack, VStack, Center, Spinner, Flex, Button, IconButton, Tabs,
 } from '@chakra-ui/react';
 import { MenuRoot, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from '../../components/ui/menu';
-import { LuStore, LuBike, LuEllipsisVertical, LuMinus, LuPlus, LuCheck, LuShoppingBag, LuTrash2 } from 'react-icons/lu';
+import { LuStore, LuBike, LuEllipsisVertical, LuMinus, LuPlus, LuCheck, LuShoppingBag, LuTrash2, LuPrinter } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { toaster } from '../../components/ui/toaster';
 import { mensajeDeError } from '../../api/mensajes';
@@ -30,6 +30,9 @@ import { quedaPorDevolver } from '../../domain/devolucion';
 import { diaCortoYHora } from '../../utils/horaDelNegocio';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { tituloDeEntregadas, vacioDeEntregadas } from './ventanaDeEntregadas';
+import { ColumnaPorAceptar } from '../../shared/entrantes/ColumnaPorAceptar';
+import { useEntrantes } from '../../shared/entrantes/useEntrantes';
+import { usePestanaDePedidos, type PestanaDePedidos } from '../../shared/entrantes/estado';
 
 // para_llevar ya no se ofrece al cobrar, pero hay pedidos históricos con ese tipo y sin su etiqueta
 // la tarjeta los mostraría como "para_llevar", con guion bajo.
@@ -43,15 +46,15 @@ const SERVICE_META: Record<string, { label: string; icon: IconType }> = {
 // entregado o por cobrado lo que no fue.
 const TAP = '44px';
 
-// Cuántas entregadas se listan. El resto vive en Ventas, que es la pantalla del histórico; aquí
-// estorbarían lo que falta por atender.
-const ENTREGADAS_VISIBLES = 5;
-
-
 export function OrdersBoardPage() {
   const horaNegocio = useHoraDelNegocio();
   const live = useOrderEvents();
   const [ticketOrderID, setTicketOrderID] = useState<number | null>(null);
+  // «En curso» y «Cerrados» (093, M-Pedidos): los entregados ya no se apilan bajo el tablero. La
+  // pestaña es compartida para que «Ver pedido» de la franja pueda volver a «En curso».
+  const pestana = usePestanaDePedidos((s) => s.pestana);
+  const setPestana = (p: PestanaDePedidos) => usePestanaDePedidos.setState({ pestana: p });
+  const { pedidos: porAceptar } = useEntrantes();
   const [cobrando, setCobrando] = useState<BoardOrder | null>(null);
   const [devolviendo, setDevolviendo] = useState<{ pedido: BoardOrder; cancelando: boolean } | null>(null);
   // En qué terminal se devuelve lo cobrado con tarjeta, y si pedirá su folio (spec 032).
@@ -237,6 +240,23 @@ export function OrdersBoardPage() {
       {/* Encabezado de un solo renglón. Antes ocupaba dos con el título en xl. */}
       <HStack mb={3} gap={2} flexWrap="wrap">
         <Text fontSize="lg" fontWeight="800">Pedidos</Text>
+        {/* Las pestañas van en el renglón del título: no le quitan alto al tablero. Sin permiso de
+            ver entregados no hay segunda pestaña, y entonces tampoco hay pestañas. */}
+        {puedeVerEntregadas && (
+          <Tabs.Root value={pestana} onValueChange={(e) => setPestana(e.value as PestanaDePedidos)} size="sm">
+            <Tabs.List>
+              <Tabs.Trigger value="curso" minH={TAP}>
+                En curso
+                {porAceptar.length > 0 && (
+                  <Badge colorPalette="red" variant="solid" borderRadius="full" px={2} aria-label={`${porAceptar.length} por aceptar`}>{porAceptar.length}</Badge>
+                )}
+              </Tabs.Trigger>
+              <Tabs.Trigger value="cerrados" minH={TAP}>
+                Cerrados <Badge borderRadius="full" px={2}>{entregadas.length}</Badge>
+              </Tabs.Trigger>
+            </Tabs.List>
+          </Tabs.Root>
+        )}
         <Badge colorPalette={live ? 'green' : 'gray'}>{live ? 'En vivo' : 'Sin conexión'}</Badge>
         {pendiente.cuantos > 0 && (
           <Badge colorPalette="orange" px={2} py={1}>
@@ -245,14 +265,27 @@ export function OrdersBoardPage() {
         )}
       </HStack>
 
-      {/* Dos columnas en pantalla ancha, una sola abajo de 900 px: en una tableta de 7" dos
-          columnas dejan tarjetas donde el nombre del producto ya no cabe. */}
-      <SimpleGrid columns={{ base: 1, md: 2 }} gap={3} alignItems="start">
-        <Columna titulo="En preparación" orders={preparando} acciones={acciones} />
-        <Columna titulo="A entregar" orders={listos} acciones={acciones} />
-      </SimpleGrid>
+      {/* «Por aceptar» a la izquierda (093, M-PorAceptar): solo existe con pedidos esperando, y no
+          le quita tarjetas al tablero, que se angosta en vez de bajar. Montada SIEMPRE en el mismo
+          lugar, oculta en «Cerrados»: una comanda en vuelo al cambiar de pestaña no se pierde. */}
+      <Flex gap={3} align="stretch">
+        <ColumnaPorAceptar oculta={pestana !== 'curso'} />
+        {pestana === 'curso' && (
+          <>
+            {/* Dos columnas en pantalla ancha, una sola abajo de 900 px: en una tableta de 7" dos
+                columnas dejan tarjetas donde el nombre del producto ya no cabe. */}
+            {/* Con la columna «Por aceptar» a la vista, dos columnas más a 1024 px dejaban tarjetas de
+                ~290 px donde el nombre del producto ya no cabía: el tablero pasa a una sola hasta 1280. */}
+            <SimpleGrid flex="1" minW={0} columns={porAceptar.length > 0 ? { base: 1, xl: 2 } : { base: 1, md: 2 }}
+              gap={3} alignItems="stretch">
+              <Columna titulo="En preparación" orders={preparando} acciones={acciones} />
+              <Columna titulo="A entregar" orders={listos} acciones={acciones} />
+            </SimpleGrid>
+          </>
+        )}
+      </Flex>
 
-      {puedeVerEntregadas && (
+      {puedeVerEntregadas && pestana === 'cerrados' && (
         <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} zona={horaNegocio.zona}
           onRefund={puedeDevolverDinero ? refund : undefined} onTicket={acciones.ticket}
           onAbrirCuenta={acciones.abrirCuenta} />
@@ -353,7 +386,8 @@ const PENDIENTES_A_LA_VISTA = 5;
 
 function Columna({ titulo, orders, acciones }: { titulo: string; orders: BoardOrder[]; acciones: Acciones }) {
   return (
-    <Box>
+    // Cada columna sobre su panel: sin él, las columnas no se distinguían entre sí (093).
+    <Box bg="bg.muted" borderRadius="lg" p={2}>
       <HStack mb={2} gap={2}>
         <Text fontWeight="700">{titulo}</Text>
         <Badge borderRadius="full" px={2}>{orders.length}</Badge>
@@ -404,15 +438,22 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             </Text>
           </HStack>
         </Box>
-        <VStack align="end" gap={0} flexShrink={0}>
-          <Text fontWeight="700" lineHeight="1.2">{money(o.total, o.currency)}</Text>
-          {debe && (
-            <Text fontSize="xs" fontWeight="700" color="orange.600">
-              debe {money(o.outstanding, o.currency)}
-            </Text>
-          )}
-          <MarcaDeDevolucion o={o} />
-        </VStack>
+        <HStack gap={1} align="start" flexShrink={0}>
+          {/* El ticket a un toque (093, M-Pedidos): antes vivía dentro del ⋮ y costaba dos. Va junto
+              al total y no encima de él: un dedo que busca el total no debe abrir el ticket. */}
+          <IconButton aria-label="Ticket" variant="ghost" minH={TAP} minW={TAP} onClick={() => acciones.ticket(o)}>
+            <LuPrinter />
+          </IconButton>
+          <VStack align="end" gap={0}>
+            <Text fontWeight="700" lineHeight="1.2">{money(o.total, o.currency)}</Text>
+            {debe && (
+              <Text fontSize="xs" fontWeight="700" color="orange.600">
+                debe {money(o.outstanding, o.currency)}
+              </Text>
+            )}
+            <MarcaDeDevolucion o={o} />
+          </VStack>
+        </HStack>
       </Flex>
 
       {/* Con muchos pendientes la lista se recorta y hace scroll propio: una tarjeta de once
@@ -496,7 +537,6 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
               Va con separador y con aire: la constitución pide separar las acciones destructivas, y
               aquí un dedo que erra por 6 px repone stock que no se repuso. */}
           <MenuContent minW="220px">
-            <MenuItem value="ticket" minH={TAP} px={3} onClick={() => acciones.ticket(o)}>Ver ticket</MenuItem>
             <MenuItem value="comanda" minH={TAP} px={3} onClick={() => acciones.comanda(o)}>Reimprimir comanda</MenuItem>
             {(ofreceQuitarFaltante || ofreceCancelar) && <MenuSeparator />}
             {ofreceQuitarFaltante && (
@@ -601,19 +641,16 @@ function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCue
   onAbrirCuenta?: (o: BoardOrder) => void;
 }) {
   return (
-    <Box mt={4}>
+    <Box>
       <HStack mb={2} gap={2}>
         <Text fontWeight="700">{tituloDeEntregadas(corteDeVista)}</Text>
         <Badge borderRadius="full" px={2}>{orders.length}</Badge>
-        {orders.length > ENTREGADAS_VISIBLES && (
-          <Text fontSize="xs" color="fg.muted">últimas {ENTREGADAS_VISIBLES}</Text>
-        )}
       </HStack>
       {orders.length === 0 ? (
         <Text color="fg.subtle" fontSize="sm">{vacioDeEntregadas(corteDeVista)}</Text>
       ) : (
         <VStack align="stretch" gap={1.5}>
-          {orders.slice(0, ENTREGADAS_VISIBLES).map((o) => {
+          {orders.map((o) => {
             const debe = Number(o.outstanding) > 0;
             return (
               <Flex key={o.id} data-delivered-row bg="bg.panel" borderWidth="1px"

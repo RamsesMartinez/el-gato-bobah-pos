@@ -22,9 +22,10 @@ const POR_EXPIRAR_MS = 2 * 60 * 1000;
 /**
  * urgenciaDe clasifica un pedido por lo que queda de plazo.
  *
- * `decideBefore` viene del SERVIDOR como instante absoluto: el reloj de la tableta puede estar
- * corrido, y una cuenta regresiva calculada con una hora equivocada miente en la dirección más
- * cara —promete tiempo que ya no existe—.
+ * `decideBefore` es el instante absoluto que fijó el SERVIDOR, no una duración: el plazo es suyo.
+ * La cuenta se hace contra el reloj de la tableta, así que una tableta atrasada promete minutos
+ * que ya no existen; por eso los minutos se redondean hacia abajo, y el servidor rechaza decidir
+ * un pedido vencido aunque la pantalla todavía lo ofrezca.
  */
 export function urgenciaDe(decideBefore: string | null, ahora: number): Urgencia {
   if (!decideBefore) return 'normal';
@@ -46,4 +47,22 @@ export function minutosQueQuedan(decideBefore: string | null, ahora: number): nu
   const resta = new Date(decideBefore).getTime() - ahora;
   if (Number.isNaN(resta) || resta <= 0) return 0;
   return Math.floor(resta / 60000);
+}
+
+/**
+ * minutosDesde dice hace cuánto llegó un pedido sin plazo (el pedido web). Hacia abajo y nunca
+ * negativo: un reloj de tableta atrasado no debe pintar «hace -1 min».
+ */
+export function minutosDesde(placedAt: string | null, ahora: number): number {
+  if (!placedAt) return 0;
+  const pasa = ahora - new Date(placedAt).getTime();
+  if (Number.isNaN(pasa) || pasa <= 0) return 0;
+  return Math.floor(pasa / 60000);
+}
+
+/** Cuánto le queda al pedido, o hace cuánto llegó si su origen no tiene plazo. */
+export function tiempoDe(p: { decideBefore: string | null; placedAt: string | null }, ahora: number): string {
+  return p.decideBefore
+    ? `quedan ${minutosQueQuedan(p.decideBefore, ahora)} min`
+    : `hace ${minutosDesde(p.placedAt, ahora)} min`;
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 	"uuid"
 
@@ -56,6 +57,8 @@ type PedidosDePlataformaService struct {
 	// variable de entorno: lo fija la plataforma, no la configuración de este sistema.
 	plazo time.Duration
 	ahora func() time.Time
+	// simulated: solo desarrollo (SimulateDecisions).
+	simulated bool
 }
 
 // PlazoParaDecidir: la plataforma cancela sola a los 11.5 minutos, y a los 90 segundos sin
@@ -75,6 +78,9 @@ func NewPedidosDePlataformaService(s *store.Store, clients PlatformClients, c Ci
 
 // orderDeciderFor devuelve el decisor de la plataforma para la empresa del contexto, o por qué no hay.
 func (s *PedidosDePlataformaService) orderDeciderFor(ctx context.Context, plataforma string) (DecisorDePedidos, error) {
+	if s.simulated {
+		return simulatedOrderDecider{}, nil
+	}
 	if s.clients == nil {
 		return nil, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, plataforma)
 	}
@@ -208,6 +214,9 @@ type AvisoRecibido struct {
 	// PedidoNuevo es falso en un reintento, en un segundo aviso del mismo pedido y en cualquier
 	// aviso que no sea de pedido: ninguno de ésos trae nada que la tableta no tenga ya.
 	PedidoNuevo bool
+	// Cambio: lo que la tableta pinta cambió —llegó un pedido o la plataforma canceló uno pendiente—.
+	// Una cancelación tardía de un pedido ya aceptado no cambia nada.
+	Cambio bool
 }
 
 // RecibirAviso es el camino completo de un aviso: autenticar, resolver de quién es, traer el
@@ -260,7 +269,7 @@ func (s *PedidosDePlataformaService) RecibirAviso(ctx context.Context, plataform
 		return AvisoRecibido{}, fmt.Errorf("registrar el aviso: %w", err)
 	}
 
-	nuevo, claseDeFallo, err := s.procesar(ctx, plataforma, conexion, sobre)
+	efecto, claseDeFallo, err := s.procesar(ctx, plataforma, conexion, sobre)
 	desenlace := "procesado"
 	var fallo *string
 	if err != nil {
@@ -274,7 +283,7 @@ func (s *PedidosDePlataformaService) RecibirAviso(ctx context.Context, plataform
 	if err != nil {
 		return AvisoRecibido{}, err
 	}
-	return AvisoRecibido{Empresa: empresa, PedidoNuevo: nuevo}, nil
+	return AvisoRecibido{Empresa: empresa, PedidoNuevo: efecto.nuevo, Cambio: efecto.nuevo || efecto.cancelado}, nil
 }
 
 // resolverTienda traduce (plataforma, id de tienda de allá) → (conexión, empresa).
@@ -387,16 +396,34 @@ func (s *PedidosDePlataformaService) llavesDe(ctx context.Context, empresa, cone
 // procesar hace lo que el tipo de aviso pida. Devuelve la clase del fallo para registrarla sin
 // guardar jamás el mensaje crudo del error: el de una API ajena puede traer la dirección del
 // cliente adentro.
-func (s *PedidosDePlataformaService) procesar(ctx context.Context, plataforma string, conexion int64, sobre sobreDelAviso) (nuevo bool, _ domain.ClaseDeFallo, _ error) {
+func (s *PedidosDePlataformaService) procesar(ctx context.Context, plataforma string, conexion int64, sobre sobreDelAviso) (noticeEffect, domain.ClaseDeFallo, error) {
 	switch domain.ClasificarAviso(sobre.EventType) {
 	case domain.AvisoPedidoNuevo:
-		return s.registrarPedido(ctx, plataforma, conexion, sobre)
+		nuevo, clase, err := s.registrarPedido(ctx, plataforma, conexion, sobre)
+		return noticeEffect{nuevo: nuevo}, clase, err
+	case domain.AvisoPedidoCancelado:
+		// La plataforma canceló. Sin esto el pedido se quedaba pendiente para siempre, y con la
+		// alerta continua (093) eso es una tableta sonando por un pedido que ya no existe. Si una
+		// tableta lo aceptó un instante antes, la consulta no lo pisa (cero filas, sin error).
+		if sobre.Meta.ResourceID == "" {
+			return noticeEffect{}, "", nil
+		}
+		n, err := s.store.QC(ctx).CancelIncomingOrder(ctx, db.CancelIncomingOrderParams{
+			ConnectionID: conexion, ExternalOrderID: sobre.Meta.ResourceID,
+		})
+		if err != nil {
+			return noticeEffect{}, domain.FalloRespuestaInvalida, fmt.Errorf("cancelar el pedido: %w", err)
+		}
+		return noticeEffect{cancelado: n > 0}, "", nil
 	default:
 		// Se confirma y no se procesa. Los demás tipos llegan en fases posteriores; no confirmarlos
 		// haría que la plataforma los reintente para siempre.
-		return false, "", nil
+		return noticeEffect{}, "", nil
 	}
 }
+
+// noticeEffect es lo que un aviso cambió de lo que pinta la tableta.
+type noticeEffect struct{ nuevo, cancelado bool }
 
 func (s *PedidosDePlataformaService) registrarPedido(ctx context.Context, plataforma string, conexion int64, sobre sobreDelAviso) (nuevo bool, _ domain.ClaseDeFallo, _ error) {
 	decisor, err := s.orderDeciderFor(ctx, plataforma)
@@ -566,7 +593,7 @@ type RenglonPendiente struct {
 // `null` en JSON y la pantalla hace `.filter()` al pintar. Eso ya tumbó la pantalla de pedidos de
 // producción con la API respondiendo 200 y sin una línea de error en el log.
 func (s *PedidosDePlataformaService) Pendientes(ctx context.Context) ([]PedidoPendiente, error) {
-	filas, err := s.store.QC(ctx).ListPendingIncomingOrders(ctx)
+	filas, err := s.store.QC(ctx).ListPendingIncomingOrders(ctx, s.ahora())
 	if err != nil {
 		return nil, fmt.Errorf("listar los pedidos pendientes: %w", err)
 	}
@@ -660,8 +687,8 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 	if err != nil {
 		return PedidoAceptado{}, fmt.Errorf("%w: ese pedido no existe", domain.ErrNotFound)
 	}
-	if ent.State != db.PlatformOrderStatePendiente {
-		return PedidoAceptado{}, fmt.Errorf("%w (está %s)", domain.ErrPedidoYaDecidido, ent.State)
+	if err := s.sigueDecidible(ent); err != nil {
+		return PedidoAceptado{}, err
 	}
 	decisor, err := s.orderDeciderFor(ctx, ent.PlatformName)
 	if err != nil {
@@ -669,7 +696,10 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 	}
 	if err := decisor.AceptarPedido(ctx, ent.ExternalOrderID, ""); err != nil {
 		// La plataforma NO confirmó: no se crea nada. Aceptar aquí y no allá es la peor
-		// combinación posible — la cocina prepara y la plataforma cancela.
+		// combinación posible — la cocina prepara y la plataforma cancela. Se registra la CLASE del
+		// fallo y nunca el mensaje crudo, que puede traer datos del cliente.
+		slog.WarnContext(ctx, "platform_decision_failed", "action", "accept", "platform", ent.PlatformName,
+			"incoming_id", entranteID, "failure", decisor.ClaseDeFallo(err))
 		return PedidoAceptado{}, fmt.Errorf("%w: %s no confirmó la aceptación", domain.ErrConflict, ent.PlatformName)
 	}
 
@@ -787,9 +817,68 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 		return nil
 	})
 	if err != nil {
+		// Dos tabletas aceptando EL MISMO pedido: la que pierde puede chocar con el único del folio
+		// de la plataforma antes de llegar al `execrows`. Es la misma respuesta: otra ganó. SOLO ese
+		// único: cualquier otro choque traducido así dejaría un pedido aceptado allá y pendiente
+		// aquí, con la pantalla diciendo que otra tableta lo atendió.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "orders_platform_ref" {
+			return PedidoAceptado{}, domain.ErrPedidoYaDecidido
+		}
 		return PedidoAceptado{}, err
 	}
 	return creado, nil
+}
+
+// sigueDecidible rechaza lo ya decidido y lo vencido ANTES de hablar con la plataforma: decidir un
+// pedido que la plataforma ya canceló sola es mandar una decisión que no va a ningún lado.
+func (s *PedidosDePlataformaService) sigueDecidible(ent db.GetIncomingOrderRow) error {
+	if ent.State != db.PlatformOrderStatePendiente {
+		return fmt.Errorf("%w (está %s)", domain.ErrPedidoYaDecidido, ent.State)
+	}
+	if !domain.IsPending(string(ent.State), cuando(ent.DecideBefore), s.ahora()) {
+		return fmt.Errorf("%w (venció el plazo)", domain.ErrPedidoYaDecidido)
+	}
+	return nil
+}
+
+// Rechazar le dice a la plataforma que no se prepara, con el motivo que eligió quien opera, y lo
+// marca rechazado. Como al aceptar: PRIMERO LA PLATAFORMA. Si no confirma, el pedido sigue
+// pendiente y sonando, porque allá también sigue esperando.
+func (s *PedidosDePlataformaService) Rechazar(ctx context.Context, entranteID, usuarioID int64, motivo string) error {
+	razon, err := domain.ParseIncomingRejectReason(motivo)
+	if err != nil {
+		return err
+	}
+	ent, err := s.store.QC(ctx).GetIncomingOrder(ctx, entranteID)
+	if err != nil {
+		return fmt.Errorf("%w: ese pedido no existe", domain.ErrNotFound)
+	}
+	if err := s.sigueDecidible(ent); err != nil {
+		return err
+	}
+	decisor, err := s.orderDeciderFor(ctx, ent.PlatformName)
+	if err != nil {
+		return err
+	}
+	if err := decisor.RechazarPedido(ctx, ent.ExternalOrderID, razon.PlatformCode(), razon.Label()); err != nil {
+		slog.WarnContext(ctx, "platform_decision_failed", "action", "reject", "platform", ent.PlatformName,
+			"incoming_id", entranteID, "failure", decisor.ClaseDeFallo(err))
+		return fmt.Errorf("%w: %s no confirmó el rechazo", domain.ErrConflict, ent.PlatformName)
+	}
+	motivoGuardado := string(razon)
+	filas, err := s.store.QC(ctx).DenyIncomingOrder(ctx, db.DenyIncomingOrderParams{
+		ID: entranteID, DecidedBy: &usuarioID, DenyReason: &motivoGuardado,
+	})
+	if err != nil {
+		return fmt.Errorf("marcar el rechazo: %w", err)
+	}
+	if filas == 0 {
+		// Otra tableta lo aceptó entre la lectura y este update. La plataforma recibió dos
+		// decisiones; la que vale allá es la primera, que es la de la otra tableta.
+		return domain.ErrPedidoYaDecidido
+	}
+	return nil
 }
 
 // turnoYFolio devuelve el turno abierto de la sucursal de la tienda y el folio que le toca, o

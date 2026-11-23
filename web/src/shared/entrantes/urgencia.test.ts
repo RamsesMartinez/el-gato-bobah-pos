@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { minutosQueQuedan, urgenciaDe } from './urgencia';
+import { minutosDesde, minutosQueQuedan, urgenciaDe } from './urgencia';
 
 const enMinutos = (m: number, ahora: number) => new Date(ahora + m * 60000).toISOString();
 
@@ -47,5 +47,15 @@ describe('minutos que quedan', () => {
 
   it('sin plazo son cero', () => {
     expect(minutosQueQuedan(null, ahora)).toBe(0);
+  });
+});
+
+describe('minutosDesde', () => {
+  const ahora = Date.parse('2026-11-23T19:00:00Z');
+  it('redondea hacia abajo y nunca es negativo', () => {
+    expect(minutosDesde('2026-11-23T18:57:10Z', ahora)).toBe(2);
+    expect(minutosDesde('2026-11-23T19:00:30Z', ahora)).toBe(0); // reloj de la tableta atrasado
+    expect(minutosDesde(null, ahora)).toBe(0);
+    expect(minutosDesde('basura', ahora)).toBe(0);
   });
 });
