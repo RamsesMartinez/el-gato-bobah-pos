@@ -333,7 +333,9 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                   onChange={(v) => { if (auto.busy('placeId')) return; setForm({ ...form, placeId: v }); auto.commit('placeId', v); }} />
                 {/* La merma va justo después de los datos de identidad: es lo que vino a buscar quien
                     revisa costos, y más abajo quedaba bajo el pliegue a 1024×600 (spec 096, R14). */}
-                <ExpectedWasteField key={`${id}-${a.expectedWastePct ?? 'sin'}`} id={id} value={a.expectedWastePct}
+                {/* Ligado al artículo y no a su valor: con el valor en la llave, el refresco tras guardar lo
+                    volvía a montar y borraba el aviso «Guardado» (prueba táctil con alguien nuevo). */}
+                <ExpectedWasteField key={id} id={id} value={a.expectedWastePct}
                   generalPct={settings.data?.expectedWastePct} canEdit={canMenu && a.isActive} />
                 <AltNamesField kind="article" ownName={form.name} value={form.alts} onChange={changeAlts} disabled={!canConfigure}
                   draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similarAlts} error={altError} />

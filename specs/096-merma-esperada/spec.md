@@ -438,3 +438,15 @@ usa).
 empaques incluidos. Los artículos ya tienen la marca «es empaque»; excluirlos del general es un cambio
 de una regla en `domain.ResolveExpectedWaste` y no toca datos. Mientras tanto, capturar 0 % en esos
 artículos los deja fuera.
+
+### Segunda vuelta, con toques táctiles reales (2026-11-23)
+
+Otra persona nueva, navegador propio con `hasTouch` a 1024×600 y solo `tap()`. Logró las tres tareas
+(8, 8 y 9 toques). Encontró un defecto: tras capturar 0 % en el artículo no apareció ningún aviso.
+El campo estaba ligado a su valor como llave y el refresco de la ficha lo volvía a montar, borrando
+«Guardado» y cerrando el (i); queda ligado al artículo, con su prueba. El (i) de la merma real ya no
+dice «entre lo que se vendió» (se leía «en medio de»): dice «qué porcentaje de lo vendido».
+
+Sin cambio, anotado: a 600 px de alto «Ajustes» queda fuera de la barra lateral y el chevron del pie
+no la desplaza (es de la barra, no de esta spec); el almacén se llama «Local» y el lugar de conteo
+«Almacén principal», nombres que el negocio puede cambiar.

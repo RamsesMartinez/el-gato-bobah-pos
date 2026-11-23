@@ -20,8 +20,9 @@ export function RealWasteCard({ id, expected, unit }: { id: number; expected: nu
       </HStack>
       {info && (
         <Text fontSize="sm" color="fg.muted">
-          Lo registrado en «Se echó a perder» entre lo que se vendió de este artículo. Solo informa: si es
-          mucho mayor que la merma al preparar, sube la merma o revisa la presentación que compras.
+          Qué porcentaje de lo vendido de este artículo en 90 días se registró en «Se echó a perder», en
+          cada almacén. Solo informa: si es mucho mayor que la merma al preparar, sube la merma o revisa
+          la presentación que compras.
         </Text>
       )}
       {isLoading ? <Spinner size="sm" mt={2} /> : <RealWasteRows items={data?.items ?? []} expected={expected} unit={unit} />}
