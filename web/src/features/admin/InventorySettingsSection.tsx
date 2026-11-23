@@ -10,6 +10,7 @@ import { WarehousesSettings } from './WarehousesSettings';
 import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
 import { CountLimitsSettings } from './CountLimitsSettings';
+import { Switch } from '../../components/ui/switch';
 
 const METHODS: { value: CostingMethod; label: string; hint: string }[] = [
   { value: 'last', label: 'Lo que costó la última compra', hint: 'El costo de cada insumo es el de su compra más reciente.' },
@@ -35,6 +36,12 @@ export function InventorySettingsSection() {
     onError: (e) => setError(e instanceof ApiError && e.status === 400
       ? 'La palabra va de 1 a 20 letras'
       : 'No se pudo guardar'),
+  });
+  // Spec 096, subida 2: que la merma esperada también descuente del almacén.
+  const deducts = useMutation({
+    mutationFn: (on: boolean) => backofficeApi.setExpectedWasteDeducts(on),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['business-settings'] }),
+    onError: (e) => setError(e instanceof ApiError && e.status < 500 ? e.message : 'No se pudo guardar'),
   });
   if (!data) return null;
   const method: CostingMethod = data.costingMethod ?? 'last';
@@ -69,6 +76,17 @@ export function InventorySettingsSection() {
       </HStack>
       <Text fontSize="sm" color="fg.muted" mt={1}>Se ve en la captura de compras: «Agregar {trimmed || current}».</Text>
       {error && <Text fontSize="sm" color="fg.error" mt={2}>{error}</Text>}
+      <HStack justify="space-between" align="start" mt={5}>
+        <Box pr={3}>
+          <Text fontWeight="600" id="descuenta-merma">La merma esperada también descuenta del almacén</Text>
+          <Text fontSize="sm" color="fg.muted">
+            Cada venta resta su receta más la merma al preparar. Las ventas de antes no cambian.
+          </Text>
+        </Box>
+        <Switch size="lg" py="10px" aria-labelledby="descuenta-merma" disabled={deducts.isPending}
+          checked={deducts.isPending ? deducts.variables : !!data.expectedWasteDeducts}
+          onCheckedChange={(e) => deducts.mutate(e.checked)} />
+      </HStack>
       {can('inventory.warehouse_manage', user) && <WarehousesSettings />}
       <CountPlacesSettings />
       <CountLimitsSettings />

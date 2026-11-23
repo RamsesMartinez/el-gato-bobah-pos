@@ -1342,6 +1342,8 @@ export const backofficeApi = {
   setArticleExpectedWaste: (id: number, pct: number | null) =>
     api.put<{ pct: string | null }>(`/stock/articles/${id}/expected-waste`, { pct }),
   articleRealWaste: (id: number) => api.get<{ days: number; items?: RealWaste[] }>(`/stock/articles/${id}/real-waste`),
+  // Que la merma esperada también descuente del almacén (spec 096, subida 2).
+  setExpectedWasteDeducts: (deducts: boolean) => api.put<{ deducts: boolean }>('/settings/expected-waste-deducts', { deducts }),
   setGeneralExpectedWaste: (pct: number | null) => api.put<{ pct: string | null }>('/settings/expected-waste', { pct }),
   correctArticleCost: (id: number, cost: string) => api.post<void>(`/stock/articles/${id}/cost`, { cost }),
   articleCostHistory: (id: number, before?: string) =>

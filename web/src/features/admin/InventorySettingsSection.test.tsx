@@ -6,7 +6,7 @@ import { Provider } from '../../components/ui/provider';
 import { InventorySettingsSection } from './InventorySettingsSection';
 
 const pos = vi.hoisted(() => ({ businessSettings: vi.fn() }));
-const back = vi.hoisted(() => ({ updateInventorySettings: vi.fn() }));
+const back = vi.hoisted(() => ({ updateInventorySettings: vi.fn(), setExpectedWasteDeducts: vi.fn() }));
 vi.mock('../../api/pos', () => ({ posApi: pos }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 
@@ -43,5 +43,16 @@ describe('Almacén en Configuración del negocio (spec 038)', () => {
     montar();
     await screen.findByLabelText('Palabra del almacén');
     expect(document.querySelector('select')).toBeNull();
+  });
+
+  // Spec 096, subida 2: la opción nace apagada y encenderla manda true; explica qué cambia.
+  test('«La merma esperada también descuenta del almacén» se enciende con un toque', async () => {
+    back.setExpectedWasteDeducts.mockResolvedValue({ deducts: true });
+    montar();
+    const sw = await screen.findByRole('checkbox', { name: 'La merma esperada también descuenta del almacén' });
+    expect(sw).not.toBeChecked();
+    fireEvent.click(sw);
+    await waitFor(() => expect(back.setExpectedWasteDeducts).toHaveBeenCalledWith(true));
+    expect(screen.getByText(/Las ventas de antes no cambian/)).toBeInTheDocument();
   });
 });

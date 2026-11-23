@@ -269,6 +269,8 @@ export interface BusinessSettings {
   wasteApprovalThreshold?: string | null;
   // La merma general (spec 096): texto decimal, null = sin merma general.
   expectedWastePct?: string | null;
+  // La merma esperada también descuenta del almacén (spec 096, subida 2); falta en una API anterior.
+  expectedWasteDeducts?: boolean;
   stockItemLabel?: string;
   // Identidad que va en el encabezado del ticket. Los opcionales llegan como string vacío y no
   // como null: el ticket omite el renglón cuando está vacío.
