@@ -116,7 +116,7 @@ function montar() {
   render(<QueryClientProvider client={qc}><Provider>
     <ExpenseDialog open onClose={vi.fn()} onSaved={onSaved} />
   </Provider></QueryClientProvider>);
-  return { onSaved };
+  return { onSaved, qc };
 }
 
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
@@ -136,10 +136,11 @@ async function encabezado(total = '1140') {
 }
 
 async function capturaConMercancia() {
-  montar();
+  const { qc } = montar();
   click(/Capturar sin ticket/);
   click('Sí');
   await encabezado();
+  return qc;
 }
 
 describe('Captura de una compra (spec 038, maqueta C)', () => {
@@ -1202,6 +1203,59 @@ describe('dónde se guarda cada renglón (spec 094)', () => {
     expect(interruptor(/Regalo del proveedor/)).not.toBeChecked();
     fireEvent.click(within(detalle()).getByRole('button', { name: 'Qué es esto' }));
     expect(within(detalle()).getByText(/en la misma compra pagaste algo para ti/i)).toBeInTheDocument();
+  });
+
+
+  // Revisión de la 094: «todo el ticket» no pisa un renglón que se mandó a mano a OTRO almacén.
+  test('cambiar todo el ticket respeta el renglón mandado a mano a un tercer almacén', async () => {
+    back.warehouses.mockResolvedValue({ items: [...dos.items, { id: 3, name: 'Cocina', isSales: false, isActive: true, itemsWithStock: 0 }] });
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
+    fireEvent.click(within(within(detalle()).getByRole('group', { name: '¿Dónde se guarda?' })).getByRole('button', { name: /Cocina/ }));
+    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda todo el ticket?' });
+    fireEvent.click(within(todo).getByRole('button', { name: /Bodega/ }));
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].items[0].warehouseId).toBe(3);
+  });
+
+  // Mientras la lista de almacenes no llega, guardar mandaría todo al de venta sin preguntar.
+  test('con mercancía no se guarda mientras los almacenes cargan, y si fallan lo dice', async () => {
+    back.warehouses.mockReturnValue(new Promise(() => {}));
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
+    click('Todavía no se paga');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+    cleanup();
+    back.warehouses.mockRejectedValue(new Error('sin red'));
+    await capturaConMercancia();
+    expect(await screen.findByText(/No se pudieron leer los almacenes/)).toBeInTheDocument();
+  });
+
+  // Un renglón cuyo almacén se archivó a media captura sigue al del ticket en vez de mandar uno que ya
+  // no existe (el servidor rechazaría la compra entera).
+  test('un renglón con un almacén que ya no está sigue al del ticket', async () => {
+    let lista = { items: [...dos.items, { id: 3, name: 'Cocina', isSales: false, isActive: true, itemsWithStock: 0 }] };
+    back.warehouses.mockImplementation(() => Promise.resolve(lista));
+    const qc = await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
+    fireEvent.click(within(within(detalle()).getByRole('group', { name: '¿Dónde se guarda?' })).getByRole('button', { name: /Cocina/ }));
+    lista = dos;
+    await qc.invalidateQueries({ queryKey: ['warehouses'] });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Cocina/ })).toBeNull());
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].items[0].warehouseId).toBe(1);
+  });
+
+  test('el regalo sin artículo dice por qué está apagado', async () => {
+    await capturaConMercancia();
+    expect(within(detalle()).getByText('Elige primero el artículo')).toBeInTheDocument();
   });
 
   // P1: el estado va como ícono al inicio; solo lo excepcional se escribe.

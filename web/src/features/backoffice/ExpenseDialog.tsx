@@ -182,11 +182,13 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const [askingKind, setAskingKind] = useState(false);
   // Almacenes (spec 094): «¿Dónde se guarda?» solo aparece con dos o más. El del ticket arranca en el
   // último que se eligió en este equipo (T045).
-  const { data: warehouses } = useQuery({ queryKey: ['warehouses'], queryFn: () => backofficeApi.warehouses(), enabled: open });
-  const whList = warehouses?.items ?? [];
+  const whQuery = useQuery({ queryKey: ['warehouses'], queryFn: () => backofficeApi.warehouses(), enabled: open });
+  const whList = whQuery.data?.items ?? [];
   const multiWh = whList.length > 1;
   const [ticketWh, setTicketWh] = useLastWarehouse(whList);
-  const whOf = (i: DraftItem) => i.warehouseId ?? ticketWh;
+  // Un renglón cuyo almacén se archivó a media captura sigue al del ticket: mandar uno que ya no
+  // existe haría que el servidor rechace la compra entera.
+  const whOf = (i: DraftItem) => (i.warehouseId !== null && whList.some((w) => w.id === i.warehouseId) ? i.warehouseId : ticketWh);
   // El renglón elegido: su detalle va al lado de la lista; en una pantalla angosta, en una hoja.
   const [selKey, setSelKey] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -466,7 +468,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   for (const i of counted) {
     if (isGoods(i) && i.itemId! > 0 && crossOf(i)?.missing && !densityShortcutRow.has(i.itemId!)) densityShortcutRow.set(i.itemId!, i.key);
   }
-  const canSave = !!categoryId && total > 0 && moneyCheck.missingAmount === 0 && !moneyCheck.over && !missingUnit && !badPayment
+  // Sin la lista de almacenes, guardar mandaría la mercancía al de venta sin preguntar.
+  const whPending = items.some((i) => !!i.itemId && !i.excluded) && (whQuery.isLoading || whQuery.isError);
+  const canSave = !whPending && !!categoryId && total > 0 && moneyCheck.missingAmount === 0 && !moneyCheck.over && !missingUnit && !badPayment
     && !payUnanswered && !payNeedsRegister && !anyPartBad && !badDrawerOut && !missingDensity;
 
   const setItem = (key: string, patch: Partial<DraftItem>) =>
@@ -531,7 +535,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         {step === 'start' && (
           <DialogBody>
             <VStack gap={4} maxW="560px" mx="auto" py={6}>
-              <Button size="xl" w="100%" minH="88px" colorPalette="brand" loading={parse.isPending}
+              <Button size="xl" w="100%" minH="88px" loading={parse.isPending}
                 onClick={() => fileRef.current?.click()}>
                 <LuUpload /> Sube la foto del ticket
               </Button>
@@ -546,7 +550,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
           <DialogBody>
             <VStack gap={4} maxW="560px" mx="auto" py={6}>
               <Text fontWeight="700" fontSize="lg">¿Trae mercancía para el almacén?</Text>
-              <Button size="lg" w="100%" minH="56px" colorPalette="brand"
+              <Button size="lg" w="100%" minH="56px"
                 onClick={() => { setWithGoods(true); setItems([emptyItem()]); setStep('capture'); }}>
                 Sí
               </Button>
@@ -606,8 +610,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 </HStack>
               ) : (
                 <Text fontSize="sm" color="fg.muted" mt={-2}>
-                  {[description, docFolio && `Folio ${docFolio}`, !turno && expenseDay !== today() && `Gasto del ${hora.soloFecha(`${expenseDay}T12:00:00`)}`]
-                    .filter(Boolean).join(' · ') || 'Día del gasto, comentario y folio'}
+                  {[description, docFolio && `Folio ${docFolio}`, expenseDay !== today() && `Gasto del ${hora.soloFecha(`${expenseDay}T12:00:00`)}`]
+                    .filter(Boolean).join(' · ')}
                 </Text>
               )}
 
@@ -646,8 +650,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                           options={whList.map((w) => ({ value: String(w.id), label: w.name, icon: w.isSales ? <LuStore /> : <LuWarehouse /> }))}
                           onChange={(v) => {
                             setTicketWh(Number(v));
-                            // Todo el ticket: los renglones que iban a otro lado vuelven a seguirlo.
-                            setItems((prev) => prev.map((i) => ({ ...i, warehouseId: null })));
+                            // Todo el ticket: el renglón que ya iba a ese almacén vuelve a seguir al ticket; el
+                            // que se mandó a mano a OTRO se queda donde lo pusieron.
+                            setItems((prev) => prev.map((i) => (i.warehouseId === Number(v) ? { ...i, warehouseId: null } : i)));
                           }} />
                       </HStack>
                     )}
@@ -739,13 +744,13 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 {methodList.filter((m) => m.isActive !== false && m.kind !== 'plataforma'
                   && (!m.affectsCashDrawer || cashRegisters.length > 0)).map((m) => (
                   <Button key={m.id} minH="44px" size="sm" aria-pressed={payWith === String(m.id)}
-                    variant={payWith === String(m.id) ? 'solid' : 'outline'} colorPalette={payWith === String(m.id) ? 'brand' : 'gray'}
+                    variant={payWith === String(m.id) ? 'solid' : 'outline'} colorPalette={payWith === String(m.id) ? undefined : 'gray'}
                     onClick={() => setPayWith(String(m.id))}>
                     {m.name}
                   </Button>
                 ))}
                 <Button minH="44px" size="sm" aria-pressed={payWith === 'later'}
-                  variant={payWith === 'later' ? 'solid' : 'outline'} colorPalette={payWith === 'later' ? 'brand' : 'gray'}
+                  variant={payWith === 'later' ? 'solid' : 'outline'} colorPalette={payWith === 'later' ? undefined : 'gray'}
                   onClick={() => setPayWith('later')}>
                   Todavía no se paga
                 </Button>
@@ -766,9 +771,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
               </HStack>
             )}
             <HStack w="100%" gap={3} align="center">
-              <Text fontSize="sm" flex="1" data-testid="pie-compra">
+              <Text fontSize="sm" flex="1" minW={0} lineClamp={1} data-testid="pie-compra">
                 {doubtfulCount > 0 && (
-                  <Text as="span" fontWeight="700" color="orange.700">
+                  <Text as="span" fontWeight="700" color="orange.fg">
                     {doubtfulCount} {doubtfulCount === 1 ? 'renglón sin confirmar: no suma' : 'renglones sin confirmar: no suman'} ·{' '}
                   </Text>
                 )}
@@ -778,18 +783,19 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                         quitaba alto a la lista de renglones. */}
                     {summary.length > 0 && ` · suma: ${summary.slice(0, 3).join(' · ')}${summary.length > 3 ? ` y ${summary.length - 3} más` : ''}`}</>
                 )}
-                {!categoryId && <Text as="span" color="orange.700"> · falta la categoría</Text>}
-                {!(total > 0) && <Text as="span" color="orange.700"> · falta el total</Text>}
+                {!categoryId && <Text as="span" color="orange.fg"> · falta la categoría</Text>}
+                {!(total > 0) && <Text as="span" color="orange.fg"> · falta el total</Text>}
                 {moneyCheck.missingAmount > 0 && (
-                  <Text as="span" fontWeight="700" color="orange.700">
+                  <Text as="span" fontWeight="700" color="orange.fg">
                     {' · '}falta el importe de {moneyCheck.missingAmount === 1 ? 'un renglón' : `${moneyCheck.missingAmount} renglones`}
                   </Text>
                 )}
-                {missingUnit && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo llegó cada {label}</Text>}
-                {anyPartBad && <Text as="span" fontWeight="700" color="orange.700"> · di cuántos llegaron (menos de lo pedido)</Text>}
+                {missingUnit && <Text as="span" fontWeight="700" color="orange.fg"> · elige cómo llegó cada {label}</Text>}
+                {anyPartBad && <Text as="span" fontWeight="700" color="orange.fg"> · di cuántos llegaron (menos de lo pedido)</Text>}
                 {missingDensity && <Text as="span" fontWeight="700" color="orange.fg"> · falta la densidad para convertir un renglón</Text>}
-                {payUnanswered && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo se pagó</Text>}
-                {payNeedsRegister && <Text as="span" fontWeight="700" color="orange.700"> · elige de qué caja sale</Text>}
+                {payUnanswered && <Text as="span" fontWeight="700" color="orange.fg"> · elige cómo se pagó</Text>}
+                {payNeedsRegister && <Text as="span" fontWeight="700" color="orange.fg"> · elige de qué caja sale</Text>}
+                {whQuery.isError && <Text as="span" fontWeight="700" color="fg.error"> · No se pudieron leer los almacenes: vuelve a abrir la compra</Text>}
                 {moneyCheck.over && (
                   <Text as="span" fontWeight="700" color="fg.error">
                     {' · '}los renglones suman {money(moneyCheck.linesSum.toFixed(2))} y el total es {money(total.toFixed(2))}
@@ -803,7 +809,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 )}
               </Text>
               <Button minH="44px" variant="outline" onClick={() => { onClose(); reset(); }}>Cancelar</Button>
-              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate(undefined)}>
+              <Button minH="44px" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate(undefined)}>
                 Guardar
               </Button>
             </HStack>
@@ -862,7 +868,7 @@ function DoubtfulRow({ item, presentations, onYes, onOther, onNotArrived }: {
   const s = item.suggestions[0];
   const pack = presentations.find((p) => p.ingredientId === s.itemId && p.active);
   return (
-    <HStack gap={3} p={3} borderWidth="2px" borderColor="orange.500" borderRadius="lg" bg="orange.subtle" flexWrap="wrap"
+    <HStack gap={3} p={3} borderWidth="2px" borderColor="orange.fg" borderRadius="lg" bg="orange.subtle" flexWrap="wrap"
       data-testid="renglon-dudoso">
       <VStack align="start" gap={0} flex="1" minW="220px">
         <Text fontWeight="700">Ticket: {item.rawName}</Text>
@@ -1042,7 +1048,8 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, cros
             <Text><b>No es del negocio:</b> en la misma compra pagaste algo para ti (el jabón de la casa, un refresco). Se guarda en el ticket para que el total cuadre, pero no es gasto del negocio ni mercancía.</Text>
           </VStack>
         )}
-        <SpecialToggle icon={<LuGift />} title="Regalo del proveedor" text="No te lo cobraron. Entra al almacén con costo $0."
+        <SpecialToggle icon={<LuGift />} title="Regalo del proveedor"
+          text={item.itemId ? 'No te lo cobraron. Entra al almacén con costo $0.' : 'Elige primero el artículo'}
           checked={item.isGift} disabled={!item.itemId}
           onChange={(on) => onChange({ isGift: on, excluded: on ? false : item.excluded })} />
         <SpecialToggle icon={<LuUser />} title="No es del negocio"
@@ -1050,7 +1057,8 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, cros
           checked={item.excluded} onChange={(on) => onChange({ excluded: on, isGift: on ? false : item.isGift })} />
       </VStack>
 
-      <HStack gap={2} justify="space-between" pt={1}>
+      {/* Lejos de «Listo» y de los interruptores: quitar no se deshace y el dedo es gordo. */}
+      <HStack gap={2} justify="space-between" pt={8} pb={8}>
         {item.rawName ? (
           <Button minH="44px" variant="outline" onClick={onSplit}><LuScissors /> Partir</Button>
         ) : <span />}
@@ -1151,7 +1159,7 @@ function Suggestions({ list, onPick }: { list: ArticleSuggestion[]; onPick: (s: 
     <HStack gap={1} flexWrap="wrap">
       <Text fontSize="xs" color="fg.subtle">¿Es…?</Text>
       {list.slice(0, 3).map((s) => (
-        <Button key={`${s.itemType}:${s.itemId}`} minH="44px" size="sm" variant="outline" colorPalette="blue"
+        <Button key={`${s.itemType}:${s.itemId}`} minH="44px" size="sm" variant="outline"
           onClick={() => onPick(s)}>
           {s.itemName}
         </Button>
@@ -1249,7 +1257,7 @@ function DocSummary({ parsed }: { parsed: ParsedDoc }) {
         <VStack align="stretch" gap={0.5}>
           {problems.slice(0, 6).map((p, i) => (
             <HStack key={i} gap={1} align="start">
-              <Box mt="2px" color="orange.500"><LuTriangleAlert size={12} /></Box>
+              <Box mt="2px" color="orange.fg"><LuTriangleAlert size={12} /></Box>
               <Text fontSize="xs" color="fg.muted">{p}</Text>
             </HStack>
           ))}
@@ -1285,7 +1293,7 @@ function Field({ label, children, ...box }: { label: string; children: ReactNode
 
 function Warn({ children }: { children: ReactNode }) {
   return (
-    <HStack gap={2} mt={2} color="orange.600">
+    <HStack gap={2} mt={2} color="orange.fg">
       <LuTriangleAlert size={14} />
       <Text fontSize="sm">{children}</Text>
     </HStack>
