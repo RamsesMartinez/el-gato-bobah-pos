@@ -193,9 +193,9 @@ func TestStockLevelsByWarehouse(t *testing.T) {
 	// azúcar en la bodega, sembrados directo.
 	if _, err := st.Pool.Exec(ctx, `
 		insert into stock_levels (company_id, branch_id, warehouse_id, item_type, ingredient_id, on_hand)
-		select w.company_id, w.branch_id, w.id, 'ingrediente', $2, 10 from warehouses w where w.company_id = $1 and w.is_sales
+		select w.company_id, w.branch_id, w.id, 'ingrediente'::stock_item_type, $2::bigint, 10 from warehouses w where w.company_id = $1 and w.is_sales
 		union all
-		select w.company_id, w.branch_id, w.id, 'ingrediente', $4, 25 from warehouses w where w.id = $3`,
+		select w.company_id, w.branch_id, w.id, 'ingrediente'::stock_item_type, $4::bigint, 25 from warehouses w where w.id = $3`,
 		co, leche, bodega, azucar); err != nil {
 		t.Fatal(err)
 	}
