@@ -112,7 +112,8 @@ func (g *CostGraph) ingredientCost(id int64, visiting map[int64]bool) float64 {
 }
 
 // wasteFallback es lo que recibe un renglón sin % propio: el del producto y el general en la receta
-// de un producto, solo el general en la de un extra, y nada dentro de un preparado (R2).
+// de un producto, solo el general en la de un extra, y nada dentro de un preparado (R2). Un empaque
+// nunca lo recibe: solo lleva el suyo (FR-004).
 type wasteFallback struct{ product, general *float64 }
 
 // prepRecipeCost es el costo de la receta de un preparado: sin fallback, así que no depende de quién

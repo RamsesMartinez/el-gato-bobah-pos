@@ -12,12 +12,12 @@ afterEach(() => vi.clearAllMocks());
 
 // El frappé: leche 200 ml $5.00 sin % propio, fresa 100 g $6.00 con 15 % propio. General 5 %.
 const frappe: ProductCosting = {
-  productId: 1, cost: '11.1500', source: 'receta', base: '11.0000', waste: '1.1500', generalPct: 5, productPct: null,
+  productId: 1, cost: '14.1500', source: 'receta', base: '13.0000', waste: '1.1500', generalPct: 5, productPct: null,
   lines: [
     { ingredientId: 1, name: 'Leche', baseUnit: 'ml', isPrep: false, qtyBase: '200', unitCost: '0.025', base: '5.0000', pct: 5, pctSource: 'general', waste: '0.2500',
       realWaste: [{ warehouseId: 1, warehouseName: 'Local', isSales: true, wasted: '1', consumed: '50', ratio: 2, state: 'ratio' }] },
     { ingredientId: 2, name: 'Fresa', baseUnit: 'g', isPrep: false, qtyBase: '100', unitCost: '0.06', base: '6.0000', pct: 15, pctSource: 'article', waste: '0.9000', realWaste: [] },
-    { ingredientId: 3, name: 'Vaso', baseUnit: 'pieza', isPrep: false, isPackaging: true, qtyBase: '1', unitCost: '2', base: '0.0000', pct: 0, pctSource: 'none', waste: '0.0000', realWaste: [] },
+    { ingredientId: 3, name: 'Vaso', baseUnit: 'pieza', isPrep: false, isPackaging: true, qtyBase: '1', unitCost: '2', base: '2.0000', pct: 0, pctSource: 'none', waste: '0.0000', realWaste: [] },
   ],
   components: [],
 };
@@ -41,7 +41,7 @@ describe('Ficha del producto › Costo (spec 096, maqueta B)', () => {
     const fresa = screen.getByRole('row', { name: /Fresa/ });
     expect(within(fresa).getByText(/de este artículo/)).toBeInTheDocument();
     expect(screen.getByLabelText('La merma suma')).toHaveTextContent('$1.15');
-    expect(screen.getByLabelText('Costo')).toHaveTextContent('$12.15');
+    expect(screen.getByLabelText('Costo')).toHaveTextContent('$14.15');
   });
 
   test('teclear 10 en el producto se ve en el acto, y la fresa conserva su 15', async () => {
@@ -57,9 +57,14 @@ describe('Ficha del producto › Costo (spec 096, maqueta B)', () => {
     expect(screen.getByLabelText('La merma suma')).toHaveTextContent('$1.40');
   });
 
-  test('vacío dice que usa la general', async () => {
-    montar(frappe);
-    expect(await screen.findByText('Usa la general: 5 %')).toBeInTheDocument();
+  test('vacío dice que usa la general, y el empaque no la toma', async () => {
+    montar(frappe, '10');
+    await screen.findByRole('row', { name: /Leche/ });
+    fireEvent.change(screen.getByLabelText('Merma del producto, en porcentaje'), { target: { value: '' } });
+    expect(screen.getByText('Usa la general: 5 %')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /Vaso/ })).getByText('0 %')).toBeInTheDocument();
+    // 5 % de la leche (0.25) + 15 % de la fresa (0.90); sin los 0.10 del 5 % sobre el vaso.
+    expect(screen.getByLabelText('La merma suma')).toHaveTextContent('$1.15');
   });
 
   test('un % inválido lo dice bajo el campo', async () => {

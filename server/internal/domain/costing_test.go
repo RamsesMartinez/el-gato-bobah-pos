@@ -265,4 +265,16 @@ func TestPackagingGetsOnlyItsOwnExpectedWaste(t *testing.T) {
 	if got := g.ProductCost(1); !almost(got, 12.6+2.2) {
 		t.Fatalf("el %% capturado en el propio empaque no se respetó: %v", got)
 	}
+
+	// El % propio del producto tampoco toca al vaso: 12 × 1.08 + 2.
+	prods[1] = CostProduct{ID: 1, Type: "simple", CostSource: "receta", RecipeID: p(200), ExpectedWastePct: pct(8)}
+	ings[4] = CostIngredient{ID: 4, CurrentCost: 2, IsPackaging: true}
+	g = NewCostGraph(ings, recipes, prods, nil, map[int64]CostOption{7: {ID: 7, RecipeID: p(200)}}, pct(5))
+	if got := g.ProductCost(1); !almost(got, 12*1.08+2) {
+		t.Fatalf("con 8 %% del producto el vaso sumó merma: %v", got)
+	}
+	// Un extra con la misma receta (artículo → general) tampoco le suma al vaso: 12.6 + 2.
+	if got := g.OptionCost(7); !almost(got, 14.6) {
+		t.Fatalf("en un extra el vaso recibió el general: %v", got)
+	}
 }
