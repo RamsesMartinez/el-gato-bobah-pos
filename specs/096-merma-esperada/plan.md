@@ -66,6 +66,7 @@ columnas nuevas (R1); no se recalculan ventas pasadas (R7)
   arrancar (`RecomputeCompanies`) que con el general cargado da lo mismo que el recálculo en línea.
 - *Artículos unidos*: la merma real sigue la cadena de uniones con su factor (R14 H1); unir hereda el % del origen si el destino está sin captura (R14 M1).
 - *Regreso a la versión anterior*: el Down copia el % a `waste_pct` (R14 H3).
+- *Empaques*: un artículo empaque solo recibe su propio %, nunca el del producto ni el general (FR-004).
 - *Compuesto*: un preparado dentro de un preparado no recibe el general (R2), test que lo nombra.
 - *Concurrencia*: dos `PUT` al general: cada uno toma el candado de composición; gana el último y los
   dos quedan en la bitácora.

@@ -31,6 +31,10 @@ reusa para descontar inventario.
 compone por nivel. Además el costo de un preparado se guarda por artículo y es compartido por todos
 los productos: si dependiera del producto que lo usa, no tendría un solo costo.
 
+**Empaques (decisión del dueño, 2026-11-23)**: un artículo marcado `is_packaging` (vaso, tapa, popote)
+no recibe el fallback: solo su propio %. Al preparar no se «pierde» un vaso; la prueba con alguien
+nuevo lo vio sumar la merma general y no lo entendió.
+
 **Alternatives considered**: aplicar el general también dentro de los preparados (compone: un
 producto con jarabe sube ~10 % con 5 % general, y el costo guardado del jarabe cambia al subir S1,
 contra SC-001).
