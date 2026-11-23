@@ -89,6 +89,9 @@ type DeliveryLineInput struct {
 	On          string // avanzado: otra fecha para este renglón
 	Shortfall   string // pending | adjust; vacío = la preselección
 	ExtraAmount *decimal.Decimal
+	// ExpiresOn: la caducidad que trae lo que llegó (spec 098); nula = no cambia la del renglón. Un
+	// renglón lleva una sola fecha: una nueva pasa lo ya recibido a ella.
+	ExpiresOn *string
 }
 
 // DeliveryInput es una entrega: una fecha y lo que llegó de cada renglón.
@@ -1005,6 +1008,9 @@ func (s *BackofficeService) DeliverExpense(ctx context.Context, id int64, in Del
 				if !ok || info.Excluded {
 					return domain.ErrNotFound
 				}
+				if err := r.setLineExpiry(ctx, l, info); err != nil {
+					return err
+				}
 				detail, err := r.deliverLine(ctx, l, info, day)
 				if err != nil {
 					return err
@@ -1021,6 +1027,34 @@ func (s *BackofficeService) DeliverExpense(ctx context.Context, id int64, in Del
 			r.audit["lines"] = got
 			return nil
 		})
+}
+
+// setLineExpiry guarda la caducidad que llegó con un renglón de artículo y, si cambia la que tenía,
+// pasa lo ya recibido a la fecha nueva (research R8). Va antes de subir lo que llegó: el movimiento de
+// la entrega toma la fecha del renglón (apply_stock_lots, 0128).
+func (r *editRun) setLineExpiry(ctx context.Context, l DeliveryLineInput, info db.ListStockLinesRow) error {
+	if l.ExpiresOn == nil {
+		return nil
+	}
+	exp, err := domain.ParseExpiry(*l.ExpiresOn, r.today)
+	if err != nil {
+		return err
+	}
+	if info.IngredientID == nil {
+		return fmt.Errorf("%w: la caducidad va solo en artículos del almacén", domain.ErrValidation)
+	}
+	prev, err := r.q.ExpenseItemExpiry(ctx, db.ExpenseItemExpiryParams{ID: l.ItemID, ExpenseID: r.exp.ID})
+	if err != nil {
+		return err
+	}
+	to := pgtype.Date{Time: exp, Valid: true}
+	if prev.Valid && prev.Time.Equal(exp) {
+		return nil
+	}
+	if err := r.q.RelocateLineLot(ctx, db.RelocateLineLotParams{IngredientID: *info.IngredientID, FromDate: prev, ToDate: to, ItemID: l.ItemID}); err != nil {
+		return err
+	}
+	return r.q.SetExpenseItemExpiry(ctx, db.SetExpenseItemExpiryParams{ExpiresOn: to, ID: l.ItemID, ExpenseID: r.exp.ID})
 }
 
 // deliverLine sube lo que llegó de un renglón. De más: sube lo pedido y el importe por lo que se

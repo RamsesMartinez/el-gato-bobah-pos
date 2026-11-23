@@ -8,8 +8,164 @@ package db
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 )
+
+const branchDailyUse = `-- name: BranchDailyUse :many
+select ingredient_id::bigint as ingredient_id, (-sum(quantity) / 30)::numeric as daily
+  from stock_movements
+ where branch_id = current_branch_id() and ingredient_id = any($1::bigint[])
+   and movement_type in ('venta', 'cancelacion') and created_at >= now() - interval '30 days'
+ group by ingredient_id
+`
+
+type BranchDailyUseRow struct {
+	IngredientID int64           `json:"ingredient_id"`
+	Daily        decimal.Decimal `json:"daily"`
+}
+
+// Consumo promedio diario de 30 días: ventas netas de cancelaciones de la sucursal. Un traspaso no es
+// consumo (como la lista de compra).
+func (q *Queries) BranchDailyUse(ctx context.Context, ids []int64) ([]BranchDailyUseRow, error) {
+	rows, err := q.db.Query(ctx, branchDailyUse, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BranchDailyUseRow{}
+	for rows.Next() {
+		var i BranchDailyUseRow
+		if err := rows.Scan(&i.IngredientID, &i.Daily); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const branchLots = `-- name: BranchLots :many
+select l.id, l.ingredient_id, i.name, u.code as unit_code, l.warehouse_id, w.name as warehouse_name,
+       l.expires_on, l.qty,
+       coalesce((select sum(wr.quantity) from waste_records wr
+                  where wr.status = 'pending' and wr.warehouse_id = l.warehouse_id
+                    and wr.ingredient_id = l.ingredient_id and wr.lot_expires_on = l.expires_on), 0)::numeric as pending_waste
+  from stock_lots l
+  join ingredients i on i.id = l.ingredient_id
+  join units u on u.id = i.base_unit_id
+  join warehouses w on w.id = l.warehouse_id
+ where l.branch_id = current_branch_id() and l.qty > 0 and i.is_active
+ order by l.expires_on, i.name, w.name
+`
+
+type BranchLotsRow struct {
+	ID            int64           `json:"id"`
+	IngredientID  int64           `json:"ingredient_id"`
+	Name          string          `json:"name"`
+	UnitCode      string          `json:"unit_code"`
+	WarehouseID   int64           `json:"warehouse_id"`
+	WarehouseName string          `json:"warehouse_name"`
+	ExpiresOn     pgtype.Date     `json:"expires_on"`
+	Qty           decimal.Decimal `json:"qty"`
+	PendingWaste  decimal.Decimal `json:"pending_waste"`
+}
+
+// Los lotes con algo de la sucursal (todos sus almacenes: la proyección los junta), con lo que mermas
+// por aprobar ya piden de cada uno. Los artículos archivados no se ofrecen (spec 077).
+func (q *Queries) BranchLots(ctx context.Context) ([]BranchLotsRow, error) {
+	rows, err := q.db.Query(ctx, branchLots)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BranchLotsRow{}
+	for rows.Next() {
+		var i BranchLotsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.IngredientID,
+			&i.Name,
+			&i.UnitCode,
+			&i.WarehouseID,
+			&i.WarehouseName,
+			&i.ExpiresOn,
+			&i.Qty,
+			&i.PendingWaste,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const branchUndated = `-- name: BranchUndated :many
+select s.ingredient_id::bigint as ingredient_id,
+       (sum(s.on_hand) - coalesce((select sum(l.qty) from stock_lots l
+                                   where l.branch_id = current_branch_id() and l.ingredient_id = s.ingredient_id), 0))::numeric as undated
+  from stock_levels s
+ where s.branch_id = current_branch_id() and s.ingredient_id = any($1::bigint[])
+ group by s.ingredient_id
+`
+
+type BranchUndatedRow struct {
+	IngredientID int64           `json:"ingredient_id"`
+	Undated      decimal.Decimal `json:"undated"`
+}
+
+// Lo sin fecha de cada artículo con lotes, en toda la sucursal: existencia menos lotes.
+func (q *Queries) BranchUndated(ctx context.Context, ids []int64) ([]BranchUndatedRow, error) {
+	rows, err := q.db.Query(ctx, branchUndated, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BranchUndatedRow{}
+	for rows.Next() {
+		var i BranchUndatedRow
+		if err := rows.Scan(&i.IngredientID, &i.Undated); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const businessToday = `-- name: BusinessToday :one
+select business_today(nullif(current_setting('app.company_id', true), '')::bigint)::date as today
+`
+
+func (q *Queries) BusinessToday(ctx context.Context) (pgtype.Date, error) {
+	row := q.db.QueryRow(ctx, businessToday)
+	var today pgtype.Date
+	err := row.Scan(&today)
+	return today, err
+}
+
+const expenseItemExpiry = `-- name: ExpenseItemExpiry :one
+select expires_on from expense_items where id = $1 and expense_id = $2
+`
+
+type ExpenseItemExpiryParams struct {
+	ID        int64 `json:"id"`
+	ExpenseID int64 `json:"expense_id"`
+}
+
+func (q *Queries) ExpenseItemExpiry(ctx context.Context, arg ExpenseItemExpiryParams) (pgtype.Date, error) {
+	row := q.db.QueryRow(ctx, expenseItemExpiry, arg.ID, arg.ExpenseID)
+	var expires_on pgtype.Date
+	err := row.Scan(&expires_on)
+	return expires_on, err
+}
 
 const moveLotsToIngredient = `-- name: MoveLotsToIngredient :exec
 
@@ -42,6 +198,31 @@ type MoveLotsToIngredientParams struct {
 // tiene tomadas las existencias de los dos artículos.
 func (q *Queries) MoveLotsToIngredient(ctx context.Context, arg MoveLotsToIngredientParams) error {
 	_, err := q.db.Exec(ctx, moveLotsToIngredient, arg.OldID, arg.Factor, arg.NewID)
+	return err
+}
+
+const relocateLineLot = `-- name: RelocateLineLot :exec
+select relocate_lot(nullif(current_setting('app.company_id', true), '')::bigint, a.warehouse_id, $1::bigint,
+                    $2::date, $3::date, a.qty)
+  from (select warehouse_id, sum(quantity) as qty from stock_movements
+         where expense_item_id = $4::bigint group by warehouse_id having sum(quantity) > 0) a
+`
+
+type RelocateLineLotParams struct {
+	IngredientID int64       `json:"ingredient_id"`
+	FromDate     pgtype.Date `json:"from_date"`
+	ToDate       pgtype.Date `json:"to_date"`
+	ItemID       int64       `json:"item_id"`
+}
+
+// Lo ya sumado de un renglón pasa de su fecha vieja a la nueva, en cada almacén (relocate_lot, 0128).
+func (q *Queries) RelocateLineLot(ctx context.Context, arg RelocateLineLotParams) error {
+	_, err := q.db.Exec(ctx, relocateLineLot,
+		arg.IngredientID,
+		arg.FromDate,
+		arg.ToDate,
+		arg.ItemID,
+	)
 	return err
 }
 
@@ -92,5 +273,20 @@ type ScaleIngredientLotsParams struct {
 // Cambio de unidad directo: los lotes del artículo en la unidad nueva.
 func (q *Queries) ScaleIngredientLots(ctx context.Context, arg ScaleIngredientLotsParams) error {
 	_, err := q.db.Exec(ctx, scaleIngredientLots, arg.Factor, arg.ID)
+	return err
+}
+
+const setExpenseItemExpiry = `-- name: SetExpenseItemExpiry :exec
+update expense_items set expires_on = $1::date where id = $2 and expense_id = $3
+`
+
+type SetExpenseItemExpiryParams struct {
+	ExpiresOn pgtype.Date `json:"expires_on"`
+	ID        int64       `json:"id"`
+	ExpenseID int64       `json:"expense_id"`
+}
+
+func (q *Queries) SetExpenseItemExpiry(ctx context.Context, arg SetExpenseItemExpiryParams) error {
+	_, err := q.db.Exec(ctx, setExpenseItemExpiry, arg.ExpiresOn, arg.ID, arg.ExpenseID)
 	return err
 }

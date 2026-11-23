@@ -206,12 +206,12 @@ func (q *Queries) InsertWasteReason(ctx context.Context, arg InsertWasteReasonPa
 const insertWasteRecord = `-- name: InsertWasteRecord :one
 insert into waste_records (
   branch_id, warehouse_id, reason_id, item_type, ingredient_id, product_id, quantity, entered_qty, presentation_id,
-  unit_cost, total_cost, is_staff_meal, note, status, recorded_by
+  unit_cost, total_cost, is_staff_meal, note, status, recorded_by, lot_expires_on
 )
 select w.branch_id, w.id, $1, $2, $3, $4,
        $5, $6, $7, $8, $9,
-       $10, $11, $12, $13
-  from warehouses w where w.id = $14
+       $10, $11, $12, $13, $14::date
+  from warehouses w where w.id = $15
 returning id, recorded_at
 `
 
@@ -229,6 +229,7 @@ type InsertWasteRecordParams struct {
 	Note           *string          `json:"note"`
 	Status         string           `json:"status"`
 	RecordedBy     int64            `json:"recorded_by"`
+	LotExpiresOn   pgtype.Date      `json:"lot_expires_on"`
 	WarehouseID    int64            `json:"warehouse_id"`
 }
 
@@ -253,6 +254,7 @@ func (q *Queries) InsertWasteRecord(ctx context.Context, arg InsertWasteRecordPa
 		arg.Note,
 		arg.Status,
 		arg.RecordedBy,
+		arg.LotExpiresOn,
 		arg.WarehouseID,
 	)
 	var i InsertWasteRecordRow

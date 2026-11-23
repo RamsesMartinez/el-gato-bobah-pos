@@ -191,6 +191,40 @@ $$;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- relocate_lot pasa lo que un renglón de compra ya sumó de una fecha a otra (nula = sin fecha), sin
+-- movimiento: la existencia no cambia, solo su desglose (R8). Toma primero la fila de stock_levels,
+-- como todo escritor de lotes. Un lote de origen con menos de lo pedido da lo que tiene.
+create or replace function relocate_lot(p_company bigint, p_warehouse bigint, p_ingredient bigint,
+  p_from date, p_to date, p_qty numeric) returns void language plpgsql as $$
+declare
+  v_qty numeric := p_qty;
+  r     record;
+begin
+  if p_qty <= 0 or p_from is not distinct from p_to then
+    return;
+  end if;
+  perform 1 from stock_levels where warehouse_id = p_warehouse and ingredient_id = p_ingredient for update;
+  if p_from is not null then
+    select l.id, l.qty into r from stock_lots l where l.company_id = p_company and l.warehouse_id = p_warehouse
+       and l.ingredient_id = p_ingredient and l.expires_on = p_from for update;
+    if not found or r.qty <= 0 then
+      v_qty := 0;
+    else
+      v_qty := least(r.qty, p_qty);
+      update stock_lots set qty = qty - v_qty, updated_at = now() where id = r.id;
+    end if;
+  end if;
+  if p_to is not null and v_qty > 0 then
+    insert into stock_lots as l (company_id, branch_id, warehouse_id, ingredient_id, expires_on, qty)
+    select p_company, w.branch_id, w.id, p_ingredient, p_to, v_qty from warehouses w where w.id = p_warehouse
+    on conflict (company_id, warehouse_id, ingredient_id, expires_on)
+      do update set qty = l.qty + excluded.qty, updated_at = now();
+  end if;
+end;
+$$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
 -- apply_stock_lots aplica la regla de R4 a cada movimiento de artículo. Corre después de
 -- trg_stock_movement (que ya tomó y movió la fila de stock_levels de este almacén y artículo, así que
 -- todo escritor de estos lotes queda en fila detrás de ella) y antes del aviso de existencias.
@@ -210,12 +244,15 @@ begin
   end if;
 
   -- La fecha sale de su origen si el movimiento no la trae (R12 A2): la versión anterior de la API no
-  -- conoce la columna y aprueba mermas o corrige renglones fechados igual.
+  -- conoce la columna y aprueba mermas o corrige renglones fechados igual. Solo si el movimiento es del
+  -- artículo de la fila: la merma de un preparado resta a sus insumos, que no son de ese lote.
   if v_exp is null and new.waste_record_id is not null then
-    select w.lot_expires_on into v_exp from waste_records w where w.id = new.waste_record_id;
+    select w.lot_expires_on into v_exp from waste_records w
+     where w.id = new.waste_record_id and w.ingredient_id = new.ingredient_id;
   end if;
   if v_exp is null and new.expense_item_id is not null then
-    select e.expires_on into v_exp from expense_items e where e.id = new.expense_item_id;
+    select e.expires_on into v_exp from expense_items e
+     where e.id = new.expense_item_id and e.ingredient_id = new.ingredient_id;
   end if;
 
   if v_exp is not null then
@@ -358,6 +395,7 @@ set local lock_timeout = '3s';
 drop trigger trg_stock_movement_lots on stock_movements;
 drop function apply_stock_lots();
 drop function lot_put(bigint, bigint, bigint, bigint, bigint, date, numeric);
+drop function relocate_lot(bigint, bigint, bigint, date, date, numeric);
 drop function evaluate_expired_left(bigint, bigint, bigint);
 drop function expired_left_state(bigint, bigint, bigint);
 drop function business_today(bigint);

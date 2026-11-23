@@ -36,3 +36,52 @@ update stock_lot_allocations a set qty = round(a.qty * sqlc.arg(factor)::numeric
 -- El desglose de fechas de los conteos del artículo, en la unidad nueva.
 update stock_count_line_lots set qty = round(qty * sqlc.arg(factor)::numeric, 4)
  where ingredient_id = sqlc.arg(id)::bigint and round(qty * sqlc.arg(factor)::numeric, 4) > 0;
+
+-- name: ExpenseItemExpiry :one
+select expires_on from expense_items where id = sqlc.arg(id) and expense_id = sqlc.arg(expense_id);
+
+-- name: SetExpenseItemExpiry :exec
+update expense_items set expires_on = sqlc.narg(expires_on)::date where id = sqlc.arg(id) and expense_id = sqlc.arg(expense_id);
+
+-- name: RelocateLineLot :exec
+-- Lo ya sumado de un renglón pasa de su fecha vieja a la nueva, en cada almacén (relocate_lot, 0128).
+select relocate_lot(nullif(current_setting('app.company_id', true), '')::bigint, a.warehouse_id, sqlc.arg(ingredient_id)::bigint,
+                    sqlc.narg(from_date)::date, sqlc.narg(to_date)::date, a.qty)
+  from (select warehouse_id, sum(quantity) as qty from stock_movements
+         where expense_item_id = sqlc.arg(item_id)::bigint group by warehouse_id having sum(quantity) > 0) a;
+
+-- name: BusinessToday :one
+select business_today(nullif(current_setting('app.company_id', true), '')::bigint)::date as today;
+
+-- name: BranchLots :many
+-- Los lotes con algo de la sucursal (todos sus almacenes: la proyección los junta), con lo que mermas
+-- por aprobar ya piden de cada uno. Los artículos archivados no se ofrecen (spec 077).
+select l.id, l.ingredient_id, i.name, u.code as unit_code, l.warehouse_id, w.name as warehouse_name,
+       l.expires_on, l.qty,
+       coalesce((select sum(wr.quantity) from waste_records wr
+                  where wr.status = 'pending' and wr.warehouse_id = l.warehouse_id
+                    and wr.ingredient_id = l.ingredient_id and wr.lot_expires_on = l.expires_on), 0)::numeric as pending_waste
+  from stock_lots l
+  join ingredients i on i.id = l.ingredient_id
+  join units u on u.id = i.base_unit_id
+  join warehouses w on w.id = l.warehouse_id
+ where l.branch_id = current_branch_id() and l.qty > 0 and i.is_active
+ order by l.expires_on, i.name, w.name;
+
+-- name: BranchUndated :many
+-- Lo sin fecha de cada artículo con lotes, en toda la sucursal: existencia menos lotes.
+select s.ingredient_id::bigint as ingredient_id,
+       (sum(s.on_hand) - coalesce((select sum(l.qty) from stock_lots l
+                                   where l.branch_id = current_branch_id() and l.ingredient_id = s.ingredient_id), 0))::numeric as undated
+  from stock_levels s
+ where s.branch_id = current_branch_id() and s.ingredient_id = any(sqlc.arg(ids)::bigint[])
+ group by s.ingredient_id;
+
+-- name: BranchDailyUse :many
+-- Consumo promedio diario de 30 días: ventas netas de cancelaciones de la sucursal. Un traspaso no es
+-- consumo (como la lista de compra).
+select ingredient_id::bigint as ingredient_id, (-sum(quantity) / 30)::numeric as daily
+  from stock_movements
+ where branch_id = current_branch_id() and ingredient_id = any(sqlc.arg(ids)::bigint[])
+   and movement_type in ('venta', 'cancelacion') and created_at >= now() - interval '30 days'
+ group by ingredient_id;
