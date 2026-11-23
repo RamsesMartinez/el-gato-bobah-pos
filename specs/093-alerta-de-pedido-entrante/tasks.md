@@ -138,7 +138,7 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 - [X] T043 [P] Anotar en `docs/mecanica/plataformas.md` lo que no se ve: «pendiente» lo decide el servidor (plazo + cancelación), la simulación solo en desarrollo, y que las rutas `/orders/platform/*` y eventos `platform.order.*` se retiran en una subida posterior
 - [X] T044 `/revision-de-codigo` sobre el diff y corregir con test cada hallazgo
 - [X] T045 Prueba con alguien nuevo de una fonda a 1024×600 (y 1280×854) contra el `make start` del worktree, con quickstart.md; sin pedidos de prueba abiertos al terminar
-- [ ] T046 `make ci-local` en verde
+- [X] T046 `make ci-local` en verde
 
 ---
 

@@ -36,7 +36,7 @@ pagados por la plataforma) y los sembrados que sobren se rechazan.
 - `cd server && go test ./internal/domain/ -run Incoming` — regla de pendiente, orden y motivos.
 - `make test-integration` — `IncomingOrders*` bajo `appRoleStore` en los tres casos de RLS, la
   carrera de dos aceptaciones, la cancelación por webhook y la migración 0117.
-- `cd web && bun run vitest run src/features/entrantes` — alarma, hook y componentes.
+- `cd web && bun run vitest run src/shared/entrantes` — alarma, hook y componentes.
 - `bun run e2e -- entrantes` — escenarios 1–4, 6 y 8 contra la API local.
 
 ## Prueba con alguien nuevo (2026-11-23, 1024×600 y 1280×854)
