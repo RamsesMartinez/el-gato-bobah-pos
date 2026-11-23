@@ -1462,8 +1462,9 @@ func (s *BackofficeService) StockMovements(ctx context.Context, limit int32) ([]
 	return s.store.QC(ctx).ListStockMovements(ctx, limit)
 }
 
-// RecordMovement registra un ajuste/compra/merma manual sobre un ingrediente o producto.
-func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string, ingID, prodID *int64, mtype string, qty decimal.Decimal, reason string, userID int64) error {
+// RecordMovement registra un ajuste/compra/merma manual sobre un ingrediente o producto, en el almacén
+// que se pidió (el de venta por omisión).
+func (s *BackofficeService) RecordMovement(ctx context.Context, sel domain.WarehouseSel, itemType string, ingID, prodID *int64, mtype string, qty decimal.Decimal, reason string, userID int64) error {
 	// allowNegative: el delta puede restar (merma/ajuste). Round4 porque la columna es
 	// numeric(14,4) (base units g/ml); Round2 rechazaría ajustes válidos de sub-centésima.
 	// Rechaza 0 y valores que desbordarían la columna.
@@ -1475,7 +1476,12 @@ func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string,
 	if reason != "" {
 		r = &reason
 	}
-	return s.store.QC(ctx).InsertStockMovement(ctx, db.InsertStockMovementParams{
+	qs := s.store.QC(ctx)
+	wh, err := ResolveWarehouseID(ctx, qs, sel)
+	if err != nil {
+		return err
+	}
+	return qs.InsertStockMovement(ctx, db.InsertStockMovementParams{
 		ItemType:     db.StockItemType(itemType),
 		IngredientID: ingID,
 		ProductID:    prodID,
@@ -1483,6 +1489,7 @@ func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string,
 		Quantity:     q,
 		UserID:       &userID,
 		Reason:       r,
+		WarehouseID:  &wh,
 	})
 }
 

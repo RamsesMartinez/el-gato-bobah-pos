@@ -43,6 +43,7 @@ const (
 	pSuppliers      = "/api/v1/suppliers"
 	pPaymentMethods = "/api/v1/payment-methods"
 	pStockLevels    = "/api/v1/stock/levels"
+	pWarehouses     = "/api/v1/stock/warehouses"
 	pStockMoves     = "/api/v1/stock/movements"
 	pArticle        = "/api/v1/stock/articles/{id}"
 	pWasteReasons   = "/api/v1/waste/reasons"
@@ -85,6 +86,7 @@ var mcpToolRoutes = map[string][]mcpRoute{
 	"expense_cancel":         {{http.MethodPost, pExpenseCancel}, get(pExpense)},
 	"supplier_create":        {{http.MethodPost, pSuppliers}, get(pSuppliers)},
 	"stock_levels":           {get(pStockLevels)},
+	"warehouses_list":        {get(pWarehouses)},
 	"stock_movements":        {get(pStockMoves)},
 	"waste_reasons_list":     {get(pWasteReasons)},
 	"waste_record":           {{http.MethodPost, pWaste}, get(pArticle), get(pWasteReasons)},
@@ -631,8 +633,10 @@ type limitArg struct {
 
 type stockLevelsArgs struct {
 	pageArgs
-	Search   string `json:"search,omitempty" jsonschema:"parte del nombre"`
-	ItemType string `json:"item_type,omitempty" jsonschema:"ingrediente o producto"`
+	Search        string `json:"search,omitempty" jsonschema:"parte del nombre"`
+	ItemType      string `json:"item_type,omitempty" jsonschema:"ingrediente o producto"`
+	WarehouseID   *int64 `json:"warehouse_id,omitempty" jsonschema:"almacén (de warehouses_list); sin él, el de venta"`
+	AllWarehouses bool   `json:"all_warehouses,omitempty" jsonschema:"suma de todos los almacenes de la sucursal"`
 }
 
 type catalogListArgs struct {
@@ -762,6 +766,7 @@ func init() {
 		return map[string]int64{"id": in.ExpenseID}, nil, nil
 	})
 	simpleRead("expense_categories_list", pExpenseCats, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
+	simpleRead("warehouses_list", pWarehouses, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
 	simpleRead("suppliers_list", pSuppliers, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
 	simpleRead("payment_methods_list", pPaymentMethods, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
 	readTool("stock_levels", func(s *mcpSession, ctx context.Context, in stockLevelsArgs) (any, error) {
@@ -769,7 +774,17 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		body, _, err := s.fetch(ctx, "stock_levels", pStockLevels, nil, nil)
+		if in.WarehouseID != nil && in.AllWarehouses {
+			return nil, toolErr("Manda warehouse_id o all_warehouses, no los dos.")
+		}
+		var q url.Values
+		switch {
+		case in.AllWarehouses:
+			q = url.Values{"warehouseId": {"all"}}
+		case in.WarehouseID != nil:
+			q = url.Values{"warehouseId": {strconv.FormatInt(*in.WarehouseID, 10)}}
+		}
+		body, _, err := s.fetch(ctx, "stock_levels", pStockLevels, nil, q)
 		if err != nil {
 			return nil, err
 		}

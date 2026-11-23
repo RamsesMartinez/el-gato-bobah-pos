@@ -228,8 +228,9 @@ func TestMCPToolCatalog(t *testing.T) {
 			t.Errorf("%s no se encuentra por nombre", tool.Name)
 		}
 	}
-	if len(seen) != 77 || writes != 43 {
-		t.Fatalf("el contrato tiene 77 herramientas y 43 escrituras (090); hay %d y %d", len(seen), writes)
+	// 094 suma warehouses_list (lectura).
+	if len(seen) != 78 || writes != 43 {
+		t.Fatalf("el contrato tiene 78 herramientas y 43 escrituras (094); hay %d y %d", len(seen), writes)
 	}
 	// Las de la 073, con el alcance y el permiso de contracts/mcp-tools.md.
 	for name, want := range map[string]MCPTool{

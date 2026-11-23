@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"github.com/shopspring/decimal"
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
@@ -224,5 +225,38 @@ func TestStockLevelsByWarehouse(t *testing.T) {
 	}
 	if err := svc.ArchiveWarehouse(ctx, bodega); err == nil {
 		t.Fatal("se archivó una bodega con existencias")
+	}
+}
+
+// Un ajuste manual (pantalla y MCP stock_adjust) va al almacén de venta por omisión; mientras rige la
+// 0117 la bodega todavía no recibe movimientos, y uno ajeno no existe.
+func TestAManualAdjustmentGoesToTheWarehouseAsked(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	co := makeCompany(t, st, "ajuste-por-almacen")
+	other := makeCompany(t, st, "ajuste-otra")
+	svc, ctx := asWaste(t, co)
+	user := makeUserIn(t, st, co, "ajusta-almacen", "gerente")
+	bodega, err := svc.CreateWarehouse(ctx, "Bodega")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ing := placeIngredient(t, st, co, "Frijol")
+	if err := svc.RecordMovement(ctx, domain.WarehouseSel{}, "ingrediente", &ing, nil, "ajuste", decimal.NewFromInt(5), "llegó", user); err != nil {
+		t.Fatalf("ajuste al de venta: %v", err)
+	}
+	var sales bool
+	if err := st.Pool.QueryRow(ctx, `select w.is_sales from stock_movements m join warehouses w on w.id = m.warehouse_id
+		where m.ingredient_id = $1`, ing).Scan(&sales); err != nil || !sales {
+		t.Fatalf("el ajuste sin almacén no quedó en el de venta: %v", err)
+	}
+	if err := svc.RecordMovement(ctx, domain.WarehouseSel{ID: bodega}, "ingrediente", &ing, nil, "ajuste", decimal.NewFromInt(1), "a la bodega", user); !errors.Is(err, domain.ErrWarehouseNotWritableYet) {
+		t.Fatalf("ajuste a la bodega en la 0117 = %v; quiere «todavía no recibe»", err)
+	}
+	osvc, octx := asWaste(t, other)
+	ouser := makeUserIn(t, st, other, "ajusta-ajena", "gerente")
+	oing := placeIngredient(t, st, other, "Arroz")
+	if err := osvc.RecordMovement(octx, domain.WarehouseSel{ID: bodega}, "ingrediente", &oing, nil, "ajuste", decimal.NewFromInt(1), "ajena", ouser); !errors.Is(err, domain.ErrWarehouseNotFound) {
+		t.Fatalf("ajuste a la bodega de otra empresa = %v; quiere «no existe»", err)
 	}
 }
