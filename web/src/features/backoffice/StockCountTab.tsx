@@ -1035,6 +1035,7 @@ function CloseDetail({ preview }: { preview: CountClose }) {
   const skipped = preview.skippedProducts ?? [];
   return (
     <VStack align="stretch" gap={3} data-testid="cierre">
+      {preview.blind && <Text>Lo que contaste reemplaza lo que había guardado. Quien administra el almacén ve las diferencias.</Text>}
       {big.length > 0 && <Text fontWeight="600">Revisa {big.length === 1 ? 'esta diferencia grande' : `estas ${big.length} diferencias grandes`} antes de cerrar:</Text>}
       {ordered.map((d) => (
         <HStack key={d.key} data-testid="diferencia" justify="space-between" p={2} borderRadius="md" bg={isBig(d) ? 'red.subtle' : undefined}>
@@ -1048,7 +1049,7 @@ function CloseDetail({ preview }: { preview: CountClose }) {
           <Text fontWeight={isBig(d) ? '700' : '400'}>{diffWords(d.delta, d.baseUnitCode)}</Text>
         </HStack>
       ))}
-      {all.length === 0 && <Text color="fg.muted">Todo lo contado cuadra con lo guardado.</Text>}
+      {all.length === 0 && !preview.blind && <Text color="fg.muted">Todo lo contado cuadra con lo guardado.</Text>}
       {notCounted.length > 0 && (
         <Box p={3} borderRadius="lg" bg="orange.subtle">
           <HStack justify="space-between" gap={3}>
@@ -1080,7 +1081,7 @@ function ClosedSummary({ result }: { result: CountClose }) {
   const plural = items + products !== 1;
   return (
     <Box p={3} borderRadius="lg" bg="green.subtle" data-testid="conteo-cerrado">
-      <Text fontWeight="700">Conteo cerrado: {parts.join(' y ')} {plural ? 'corregidos' : 'corregido'}</Text>
+      <Text fontWeight="700">{result.blind ? 'Conteo cerrado: se guardó lo que contaste' : `Conteo cerrado: ${parts.join(' y ')} ${plural ? 'corregidos' : 'corregido'}`}</Text>
       {notCounted > 0 && <Text fontSize="sm">{notCounted} sin contar se {notCounted === 1 ? 'quedó como estaba' : 'quedaron como estaban'}.</Text>}
       {skipped > 0 && <Text fontSize="sm">{skipped} {skipped === 1 ? 'contado ya no se cuenta solo: no se ajustó' : 'contados ya no se cuentan solos: no se ajustaron'}.</Text>}
     </Box>

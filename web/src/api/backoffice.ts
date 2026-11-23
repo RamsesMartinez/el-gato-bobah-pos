@@ -984,6 +984,8 @@ export interface CountClose {
   adjustedProducts?: CountProductAdjustment[];
   notCountedProducts?: { productId: number; name: string }[];
   skippedProducts?: { productId: number; name: string }[];
+  // blind: quien solo cuenta (spec 096). adjusted viene vacío: no se le dice qué cuadró ni por cuánto.
+  blind?: boolean;
 }
 
 // «Llegó algo más»: un renglón que no venía y ya llegó. Con `isGift`, `amount` va en 0.

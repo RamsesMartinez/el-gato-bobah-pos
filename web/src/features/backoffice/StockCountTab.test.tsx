@@ -233,6 +233,21 @@ describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
     expect(await screen.findByTestId('conteo-cerrado')).toHaveTextContent('Conteo cerrado: 2 insumos corregidos');
   });
 
+  // Revisión de seguridad de la 096: a quien solo cuenta, el servidor no le dice qué cuadró.
+  test('a ciegas, el cierre no habla de diferencias ni de corregidos', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => ({ ...i, countedQty: '1' })) });
+    const ciego = { blind: true, adjusted: [], notCounted: [], adjustedProducts: [], notCountedProducts: [], skippedProducts: [] };
+    back.previewCount.mockResolvedValue(ciego);
+    back.closeCount.mockResolvedValue(ciego);
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Cerrar conteo' }));
+    expect(await screen.findByText(/Lo que contaste reemplaza lo que había guardado/)).toBeInTheDocument();
+    expect(screen.queryByText(/cuadra con lo guardado/)).toBeNull();
+    click('Sí, cerrar y corregir lo guardado');
+    expect(await screen.findByText('Conteo cerrado: se guardó lo que contaste')).toBeInTheDocument();
+  });
+
   test('no se puede cerrar sin nada contado, y descartar pide confirmación', async () => {
     montar();
     expect(await screen.findByRole('button', { name: 'Cerrar conteo' })).toBeDisabled();

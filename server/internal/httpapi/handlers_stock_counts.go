@@ -222,31 +222,11 @@ func (h *Handlers) respondCountClose(w http.ResponseWriter, r *http.Request, v a
 	JSON(w, http.StatusOK, blindCountClose(v))
 }
 
-type blindAdjustment struct {
-	IngredientID int64           `json:"ingredientId"`
-	Name         string          `json:"name"`
-	BaseUnitCode string          `json:"baseUnitCode"`
-	Counted      decimal.Decimal `json:"counted"`
-}
-
-type blindProductAdjustment struct {
-	ProductID int64           `json:"productId"`
-	Name      string          `json:"name"`
-	Counted   decimal.Decimal `json:"counted"`
-}
-
-// blindCountClose es la vista del cierre sin system ni delta. Blind le dice a la pantalla que no
-// pinte «sobraban/faltaban».
+// blindCountClose es la vista del cierre para quien solo cuenta: sin lo ajustado. No basta quitar
+// system y delta: la lista solo trae lo que NO cuadra, así que estar o no en ella ya decía si lo
+// contado coincidía con lo que el sistema tenía. Lo no contado sí va: eso lo sabe quien contó.
 func blindCountClose(v app.CountCloseView) map[string]any {
-	adj := make([]blindAdjustment, 0, len(v.Adjusted))
-	for _, a := range v.Adjusted {
-		adj = append(adj, blindAdjustment{IngredientID: a.IngredientID, Name: a.Name, BaseUnitCode: a.BaseUnitCode, Counted: a.Counted})
-	}
-	prods := make([]blindProductAdjustment, 0, len(v.AdjustedProducts))
-	for _, a := range v.AdjustedProducts {
-		prods = append(prods, blindProductAdjustment{ProductID: a.ProductID, Name: a.Name, Counted: a.Counted})
-	}
-	return map[string]any{"blind": true, "adjusted": adj, "notCounted": v.NotCounted, "adjustedProducts": prods,
+	return map[string]any{"blind": true, "adjusted": []any{}, "notCounted": v.NotCounted, "adjustedProducts": []any{},
 		"notCountedProducts": v.NotCountedProducts, "skippedProducts": v.SkippedProducts}
 }
 

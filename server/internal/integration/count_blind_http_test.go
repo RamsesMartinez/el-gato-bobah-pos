@@ -61,8 +61,9 @@ func TestTheCloseSheetIsBlindForWhoOnlyCounts(t *testing.T) {
 	if strings.Contains(body, `"system"`) || strings.Contains(body, `"delta"`) || strings.Contains(body, "500") {
 		t.Errorf("quien solo cuenta ve lo que el sistema tenía (500 ml) en la vista previa: %s", body)
 	}
-	if !strings.Contains(body, `"blind":true`) || !strings.Contains(body, `"counted":"999999"`) {
-		t.Errorf("la vista a ciegas debe decir blind y traer lo contado: %s", body)
+	// Estar o no en adjusted ya decía si lo contado cuadraba: a ciegas la lista va vacía.
+	if !strings.Contains(body, `"blind":true`) || !strings.Contains(body, `"adjusted":[]`) || strings.Contains(body, "Leche conteo") {
+		t.Errorf("la vista a ciegas debe decir blind y no listar lo ajustado: %s", body)
 	}
 	if w := do(t, r, http.MethodGet, preview, gerente, nil, ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"system":"500"`) {
 		t.Errorf("quien configura = %d %s; quiere ver lo que el sistema tenía", w.Code, w.Body.String())

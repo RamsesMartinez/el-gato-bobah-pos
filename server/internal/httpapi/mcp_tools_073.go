@@ -709,7 +709,7 @@ func registerCounts() {
 		// Las diferencias contra lo que el sistema tiene se ven aquí y solo aquí, antes de cerrar: es la
 		// misma hoja que la pantalla muestra antes del botón (y queda marcada como vista).
 		preview: func(s *mcpSession, ctx context.Context, in countIDArgs) (any, []string) {
-			notes := []string{"Cerrar reemplaza lo que el sistema tiene por lo contado en cada artículo de adjusted; lo no contado no se toca."}
+			notes := []string{"Cerrar reemplaza lo que el sistema tiene por lo contado en cada artículo de adjusted; lo no contado no se toca. Con blind: true el usuario solo cuenta y adjusted va vacío a propósito: no se le dicen las diferencias."}
 			b, _, err := s.fetch(ctx, "stock_count_close", pCountPreview, ids(in.CountID), nil)
 			if err != nil {
 				return nil, append(notes, err.Error())
