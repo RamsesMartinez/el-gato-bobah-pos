@@ -72,7 +72,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 - [ ] T026 [US1] Servicio `server/internal/app/warehouses.go` con transacción, candado de nombre y bitácora
 - [ ] T027 [US1] Handlers `server/internal/httpapi/handlers_warehouses.go` y rutas con `RequirePermission` en `server/internal/httpapi/router.go` (contracts › subida 1); `warehouseId` malformado = 400, ajeno = 404
 - [ ] T028 [P] [US1] Componente común `web/src/components/Segmented.tsx` (44 px, `aria-pressed`, activo que no es el color de error, `overflowX="auto"`) con su test en `web/src/components/Segmented.test.tsx` (R12)
-- [ ] T029 [US1] Pantalla Almacenes en Negocio › Inventario (`web/src/features/admin/WarehousesSettings.tsx`, montada en `InventorySettingsSection.tsx`) según la fila «Almacenes» de Maquetas del plan — **espera la elección del dueño (A2 o A3)**; `ListRow` ampliado con ícono opcional; `ConfirmSheet` al archivar; test en `WarehousesSettings.test.tsx`
+- [ ] T029 [US1] Pantalla Almacenes en Negocio › Inventario (`web/src/features/admin/WarehousesSettings.tsx`, montada en `InventorySettingsSection.tsx`) según la fila «Almacenes» de Maquetas del plan (A3); `ListRow` ampliado con ícono opcional; `ConfirmSheet` al archivar; test en `WarehousesSettings.test.tsx`
 - [ ] T030 [US1] API del front `web/src/api/backoffice.ts` (`warehouses`, `createWarehouse`, `renameWarehouse`, `archiveWarehouse`, `restoreWarehouse`) y hook `web/src/features/backoffice/warehouses/useWarehouses.ts`
 
 ---
@@ -106,7 +106,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 - [ ] T041 [P] [US4] Test de dominio: `PlanStockLines` por almacén (cambiar destino de un renglón aplicado = salida del anterior + entrada al nuevo; excluido no mueve) en `server/internal/domain/purchase_test.go`
 - [ ] T042 [US4] Destino por renglón en gasto, edición, `stock-lines` y «Por recibir» (`server/internal/app/purchases.go`, `expense_edit.go`, `server/queries/purchases.sql`, `expenses.sql`, handlers) con tests de integración (escenario 8 renglones / 2 a Bodega / 1 excluido)
 - [ ] T043 [US4] `PATCH /stock/warehouses/{id}` acepta `isSales` (cambiar el de venta) con test
-- [ ] T044 [US4] Rediseño de la captura según la fila «Compra (captura completa)» de Maquetas (R3, R12): encabezado de una línea, lista + detalle al lado (hoja por debajo de 1100 px), «¿Dónde se guarda?» con 2+ almacenes, `ConfirmSheet` al quitar; sección regalo / no es del negocio según la fila «Regalo / no es del negocio» — **espera la elección del dueño (S1, S2 o S3)**; en `web/src/features/backoffice/ExpenseDialog.tsx` y componentes nuevos en `web/src/features/backoffice/expense/`, con tests vitest que cubran lo que hoy cubre `ExpenseDialog`
+- [ ] T044 [US4] Rediseño de la captura según la fila «Compra (captura completa)» de Maquetas (R3, R12): encabezado de una línea, lista + detalle al lado (hoja por debajo de 1100 px), «¿Dónde se guarda?» con 2+ almacenes, `ConfirmSheet` al quitar; sección regalo / no es del negocio según la fila «Regalo / no es del negocio» (S1: interruptores con explicación e `InfoButton`; panel de detalle con desplazamiento propio); en `web/src/features/backoffice/ExpenseDialog.tsx` y componentes nuevos en `web/src/features/backoffice/expense/`, con tests vitest que cubran lo que hoy cubre `ExpenseDialog`
 - [ ] T045 [US4] El último destino usado se recuerda por equipo en `localStorage` con try/catch (`web/src/features/backoffice/expense/useLastWarehouse.ts`) con test
 - [ ] T046 [US8] MCP `purchase_create`, `purchase_receive`, `expense_create`, `expense_edit` con `warehouse_id` por renglón; `stock_adjust` ya escribe en cualquier almacén activo; tests en `server/internal/httpapi/mcp_tools_094_test.go`
 
@@ -167,4 +167,4 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 ## Implementation Strategy
 
 MVP = subida 1 (Phase 2 + US1 + US2/US3). Cada subida siguiente se sube a producción por su cuenta.
-Bloqueos de decisión del dueño: T029 (Almacenes A2/A3) y T044 (sección regalo S1/S2/S3); lo demás no espera.
+Todas las maquetas están elegidas.
