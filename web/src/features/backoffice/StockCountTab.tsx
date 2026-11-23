@@ -139,7 +139,10 @@ export function StockCountTab() {
   const warehouseId = picked !== undefined && whList.some((w) => w.id === picked && !w.isSales) ? picked : undefined;
   const countKey = ['stock', 'count', warehouseId ?? 'venta'] as const;
   const scope: CountScope = { key: countKey, warehouseId, multi };
-  const { data: count, isLoading } = useQuery({ queryKey: countKey, queryFn: () => backofficeApi.currentCount(warehouseId) });
+  // Con ?almacen= se espera a saber qué almacenes hay: antes se pedía el conteo del de venta y luego
+  // el del elegido.
+  const knowsWarehouse = picked === undefined || whData !== undefined;
+  const { data: count, isLoading } = useQuery({ queryKey: countKey, queryFn: () => backofficeApi.currentCount(warehouseId), enabled: knowsWarehouse });
   // ?q= llega de la ficha del artículo (spec 045): la lista ya buscada. Uno por uno no tiene buscador,
   // así que con búsqueda se abre la lista sin cambiar la vista recordada.
   const initialQuery = params.get('q') ?? '';
@@ -162,7 +165,7 @@ export function StockCountTab() {
   });
   const { data: lastClosed } = useQuery({
     queryKey: ['stock', 'count', 'last-closed', warehouseId ?? 'venta'], queryFn: () => backofficeApi.lastClosedCount(warehouseId),
-    enabled: canSeeLoss && !count,
+    enabled: canSeeLoss && !count && knowsWarehouse,
   });
   const lossCountId = closedId ?? lastClosed?.id ?? null;
   useEffect(() => { medirAccion('inventario', 'ver-conteo'); }, []);
@@ -199,7 +202,7 @@ export function StockCountTab() {
   });
 
   const picker = multi && (
-    <HStack gap={3} flexWrap="wrap">
+    <HStack gap={3} flexWrap="wrap" flexShrink={0}>
       <Text fontWeight="600">¿Qué almacén cuentas?</Text>
       <Segmented label="¿Qué almacén cuentas?"
         value={String(warehouseId ?? whList.find((w) => w.isSales)?.id ?? '')}
@@ -208,7 +211,7 @@ export function StockCountTab() {
     </HStack>
   );
 
-  if (isLoading) return <Center py={16}><Spinner size="xl" /></Center>;
+  if (isLoading || !knowsWarehouse) return <Center py={16}><Spinner size="xl" /></Center>;
 
   if (!count) {
     return (
@@ -265,7 +268,9 @@ export function StockCountTab() {
     <CountScopeContext.Provider value={scope}>
     <KeyTargetContext.Provider value={keyTarget}>
     <VStack align="stretch" gap={3} h="100%" minH={0}>
-      {picker}
+      {/* En la lista, la pregunta va en el renglón del buscador: en su propio renglón le quitaba a la
+          lista 58 px a 1024×600, un renglón de artículo menos que con un solo almacén. */}
+      {view !== 'lista' && picker}
       <HStack gap={3} flexWrap="wrap">
         <Box flex="1" minW="260px">
           <Text fontSize="sm">
@@ -302,7 +307,7 @@ export function StockCountTab() {
       </HStack>
 
       {view === 'lista'
-        ? <ListView count={shown} others={others} onSaved={onSaved} initialQuery={initialQuery} />
+        ? <ListView count={shown} others={others} onSaved={onSaved} initialQuery={initialQuery} picker={picker || undefined} />
         : <OneByOne count={shown} onSaved={onSaved} />}
 
       {closing && (
@@ -687,7 +692,11 @@ function PlacePicker({ item }: { item: CountItem }) {
 // ---- Lista ----
 
 // others: lo que no es del almacén que se cuenta; solo sale al buscar.
-function ListView({ count, others = [], onSaved, initialQuery = '' }: { count: StockCount; others?: CountItem[]; onSaved: (id: number, qty: string | null) => void; initialQuery?: string }) {
+function ListView({ count, others = [], onSaved, initialQuery = '', picker }: {
+  count: StockCount; others?: CountItem[]; onSaved: (id: number, qty: string | null) => void; initialQuery?: string;
+  // picker es la pregunta del almacén con dos o más: va en este renglón para no gastar uno propio.
+  picker?: React.ReactNode;
+}) {
   const [q, setQ] = useState(initialQuery);
   // Se sigue por id: si el conteo se recarga (p. ej. cambió lo que pesa vacío un empaque), la hoja
   // abierta recibe el artículo nuevo.
@@ -708,8 +717,9 @@ function ListView({ count, others = [], onSaved, initialQuery = '' }: { count: S
     <VStack align="stretch" gap={3} flex="1" minH={0}>
       {/* El aviso de productos va en el renglón del buscador y no en uno nuevo (una fila menos de lista
           en 600 px), y solo sin búsqueda: con ella su grupo puede no estar (revisión de la 069). */}
-      <HStack gap={2}>
-        <Input aria-label="Buscar" placeholder="Buscar…" minH="44px" flex="1" value={q} onChange={(e) => setQ(e.target.value)} />
+      <HStack gap={3} data-search-row>
+        {picker}
+        <Input aria-label="Buscar" placeholder="Buscar…" minH="44px" flex="1" minW="160px" value={q} onChange={(e) => setQ(e.target.value)} />
         {!needle && productsShown > 0 && (
           <Button minH="44px" variant="ghost" colorPalette="brand" flexShrink={0}
             onClick={() => document.getElementById(PRODUCTS_ANCHOR)?.scrollIntoView({ block: 'start' })}>
