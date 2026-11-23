@@ -36,6 +36,7 @@ const back = vi.hoisted(() => ({
   payExpense: vi.fn(),
   expenseDetail: vi.fn(),
   setDensity: vi.fn(),
+  warehouses: vi.fn(),
 }));
 const pos = vi.hoisted(() => ({
   paymentMethods: vi.fn(() => Promise.resolve({ items: [] as unknown[] })),
@@ -97,6 +98,8 @@ beforeEach(() => {
   back.lastClosedCount.mockResolvedValue({ closedAt: null });
   back.expenseDetail.mockResolvedValue({ items: [], payments: [] });
   pos.businessSettings.mockResolvedValue({ stockItemLabel: 'artículo', timezone: 'America/Mexico_City' });
+  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 3 }] });
+  try { localStorage.clear(); } catch { /* sin almacenamiento */ }
 });
 // Las hojas dejan en `body` el bloqueo de scroll y el `aria-hidden` de lo que tapan; sin limpiarlo,
 // la prueba siguiente nace con su diálogo oculto.
@@ -117,6 +120,9 @@ function montar() {
 }
 
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
+// El detalle del renglón elegido (spec 094, maqueta R3): los controles del renglón viven aquí.
+const detalle = () => screen.getByTestId('renglon-detalle');
+const interruptor = (name: RegExp) => within(detalle()).getByRole('checkbox', { name });
 
 // Elige en un Picker: abre su hoja y toca la opción.
 async function elegir(placeholder: string | RegExp, opcion: string | RegExp) {
@@ -211,7 +217,7 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
   test('un regalo va en 0 y se guarda', async () => {
     await capturaConMercancia();
     await elegir('Buscar o crear', /Leche entera/);
-    click(/Regalo/);
+    await userEvent.click(interruptor(/Regalo del proveedor/));
     expect(screen.getByLabelText('Importe')).toHaveValue('0');
     click('Todavía no se paga');
     click('Guardar');
@@ -237,8 +243,8 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
   test('un regalo que deja de ser del almacén vuelve a pedir su importe', async () => {
     await capturaConMercancia();
     await elegir('Buscar o crear', /Leche entera/);
-    click(/Regalo/);
-    await elegir(/Leche entera/, /No es del almacén/);
+    await userEvent.click(interruptor(/Regalo del proveedor/));
+    await elegir(/^Leche entera$/, /No es del almacén/);
     fireEvent.change(screen.getByLabelText('Descripción'), { target: { value: 'Bolsa' } });
     click('Todavía no se paga');
     expect(screen.getByLabelText('Importe')).toBeEnabled();
@@ -260,13 +266,17 @@ describe('Captura de una compra (spec 038, maqueta C)', () => {
     expect((await screen.findAllByText(/Canela/)).length).toBeGreaterThan(0);
   });
 
-  test('quitar un renglón capturado pide confirmación', async () => {
+  // Con un solo renglón no se ofrece quitarlo (R12): queda vacío y no se manda.
+  test('quitar un renglón capturado pide confirmación, y el único no se quita', async () => {
     await capturaConMercancia();
     await elegir('Buscar o crear', /Leche entera/);
+    expect(screen.getByRole('button', { name: 'Quitar renglón' })).toBeDisabled();
+    click(/Agregar artículo/);
+    expect(screen.getAllByTestId('renglon')).toHaveLength(2);
     click('Quitar renglón');
-    expect(screen.getAllByTestId('renglon')).toHaveLength(1);
+    expect(screen.getAllByTestId('renglon')).toHaveLength(2);
     click('Quitar');
-    expect(screen.queryAllByTestId('renglon')).toHaveLength(0);
+    expect(screen.getAllByTestId('renglon')).toHaveLength(1);
   });
 
   test('una compra con fecha anterior al último conteo avisa', async () => {
@@ -346,12 +356,12 @@ describe('desde el ticket', () => {
     const dudoso = await subirTicket();
     fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
     await elegir(/Elegir categoría/, 'Mercancía');
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '400' } });
     fireEvent.click(screen.getByRole('button', { name: /Partir/ }));
     expect(screen.getAllByTestId('renglon')).toHaveLength(2);
-    const importes = screen.getAllByLabelText('Importe');
-    fireEvent.change(importes[0], { target: { value: '400' } });
+    // La mitad nueva queda elegida.
     await elegir('Buscar o crear', /Leche entera/);
-    fireEvent.change(screen.getAllByLabelText('Importe')[1], { target: { value: '200' } });
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '200' } });
     click('Todavía no se paga');
     click('Guardar');
     await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
@@ -361,25 +371,23 @@ describe('desde el ticket', () => {
     expect(b.rawName).toBeUndefined();
   });
 
-  test('«Excluir» de la captura se lee y no borra la descripción del renglón (spec 050)', async () => {
+  test('«No es del negocio» se lee con su explicación y no borra la descripción del renglón (spec 050, 094)', async () => {
     await capturaConMercancia();
-    const renglon = screen.getByTestId('renglon');
-    fireEvent.change(within(renglon).getByLabelText('Descripción'), { target: { value: 'Shampoo' } });
-    const boton = within(renglon).getByRole('button', { name: 'Excluir' });
-    expect(boton).toHaveTextContent('Excluir');
-    fireEvent.click(boton);
-    expect(within(renglon).getByLabelText('Descripción')).toHaveValue('Shampoo');
+    fireEvent.change(within(detalle()).getByLabelText('Descripción'), { target: { value: 'Shampoo' } });
+    expect(within(detalle()).getByText(/No cuenta como gasto ni entra al almacén/)).toBeInTheDocument();
+    await userEvent.click(interruptor(/No es del negocio/));
+    expect(within(detalle()).getByLabelText('Descripción')).toHaveValue('Shampoo');
+    expect(screen.getByTestId('renglon')).toHaveTextContent('No es del negocio');
   });
 
   test('«Excluir» conserva el artículo, no suma y se manda marcado (spec 049)', async () => {
     const dudoso = await subirTicket();
     fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
     await elegir(/Elegir categoría/, 'Mercancía');
-    const renglon = screen.getByTestId('renglon');
-    fireEvent.click(within(renglon).getByRole('button', { name: 'Excluir' }));
-    expect(within(renglon).getByRole('button', { name: 'Excluir' })).toHaveAttribute('aria-pressed', 'true');
-    expect(renglon).toHaveAttribute('data-excluded', 'true');
-    expect(within(renglon).getByRole('button', { name: /Azúcar/ })).toBeInTheDocument();
+    await userEvent.click(interruptor(/No es del negocio/));
+    expect(interruptor(/No es del negocio/)).toBeChecked();
+    expect(screen.getByTestId('renglon')).toHaveAttribute('data-excluded', 'true');
+    expect(within(detalle()).getByRole('button', { name: /Azúcar/ })).toBeInTheDocument();
     expect(screen.getByTestId('pie-compra')).not.toHaveTextContent('Azúcar +');
     click('Todavía no se paga');
     click('Guardar');
@@ -407,7 +415,7 @@ describe('desde el ticket', () => {
     await elegir('Elegir caja', 'Caja 1');
     // Sin excluidos no hay nada nuevo.
     expect(screen.queryByLabelText('Salió de la caja')).toBeNull();
-    fireEvent.click(within(screen.getByTestId('renglon')).getByRole('button', { name: 'Excluir' }));
+    await userEvent.click(interruptor(/No es del negocio/));
     const salio = await screen.findByLabelText('Salió de la caja');
     expect(salio).toHaveValue('540');
     fireEvent.change(salio, { target: { value: '1140.01' } });
@@ -429,7 +437,7 @@ describe('desde el ticket', () => {
     const dudoso = await subirTicket();
     fireEvent.click(within(dudoso).getByRole('button', { name: 'Sí, es ése' }));
     await elegir(/Elegir categoría/, 'Mercancía');
-    fireEvent.click(within(screen.getByTestId('renglon')).getByRole('button', { name: 'Excluir' }));
+    await userEvent.click(interruptor(/No es del negocio/));
     click('Agregar pago');
     await elegir('Método de pago', 'Tarjeta');
     expect(screen.queryByLabelText('Salió de la caja')).toBeNull();
@@ -440,14 +448,14 @@ describe('desde el ticket', () => {
     expect(screen.queryByLabelText('Salió de la caja')).toBeNull();
   });
 
-  test('lo que la lectura reconoce como de la casa llega con «Excluir» marcado', async () => {
+  test('lo que la lectura reconoce como de la casa llega marcado «No es del negocio»', async () => {
     back.suggestArticles.mockResolvedValue({ items: [
       { itemType: '', itemId: 0, itemName: '', source: 'personal', score: 1, matchedVia: 'AZUCAR', packQtyInBase: '', unitId: null },
     ] });
     montar();
     fireEvent.change(screen.getByTestId('ticket-file'), { target: { files: [new File(['x'], 't.jpg', { type: 'image/jpeg' })] } });
-    const renglon = await screen.findByTestId('renglon');
-    expect(within(renglon).getByRole('button', { name: 'Excluir' })).toHaveAttribute('aria-pressed', 'true');
+    await screen.findByTestId('renglon');
+    expect(interruptor(/No es del negocio/)).toBeChecked();
   });
 
   test('un ticket sin excluidos no agrega pasos ni manda la marca (SC-003)', async () => {
@@ -1070,11 +1078,12 @@ describe('compras entre peso y líquido (spec 058)', () => {
     back.searchArticles.mockResolvedValue({ items: [salsa] });
     await renglonEnKg();
     click(/Agregar artículo/);
-    const segundo = screen.getAllByTestId('renglon')[1];
-    fireEvent.click(within(segundo).getByRole('button', { name: 'Buscar o crear' }));
-    fireEvent.click(within(segundo).getByRole('button', { name: /Salsa de chocolate/ }));
-    fireEvent.click(within(segundo).getByRole('button', { name: 'kg' }));
-    expect(screen.getAllByText('Sin densidad para pasar kg a ml')).toHaveLength(2);
+    // El segundo queda elegido: dice que le falta, pero el atajo vive en el primero.
+    await elegir('Buscar o crear', /Salsa de chocolate/);
+    fireEvent.click(within(detalle()).getByRole('button', { name: 'kg' }));
+    expect(within(detalle()).getByText('Sin densidad para pasar kg a ml')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
+    fireEvent.click(screen.getAllByTestId('renglon')[0]);
     expect(screen.getAllByRole('button', { name: 'Capturar la densidad' })).toHaveLength(1);
   });
 
@@ -1118,5 +1127,100 @@ describe('compras entre peso y líquido (spec 058)', () => {
     click('Guardar');
     fireEvent.click(await screen.findByRole('button', { name: 'Capturar la densidad' }));
     expect(await screen.findByText('Densidad · Salsa de chocolate')).toBeInTheDocument();
+  });
+});
+
+// SPEC 094: la captura rediseñada (maqueta R3 + S1 + P1) y el almacén de destino por renglón.
+describe('dónde se guarda cada renglón (spec 094)', () => {
+  const dos = { items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 3 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 0 },
+  ] };
+
+  test('con un solo almacén no se pregunta y no se manda', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    await screen.findByTestId('renglon-detalle');
+    expect(screen.queryByRole('group', { name: '¿Dónde se guarda?' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    expect(back.createExpense.mock.calls[0][0].items[0].warehouseId).toBeUndefined();
+  });
+
+  test('«¿Dónde se guarda?» manda todo el ticket a un almacén y un renglón puede ir a otro', async () => {
+    back.warehouses.mockResolvedValue(dos);
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '180' } });
+    click(/Agregar artículo/);
+    await elegir('Buscar o crear', /Azúcar/);
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '100' } });
+    // Todo a la bodega con un toque, arriba de la lista.
+    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda todo el ticket?' });
+    fireEvent.click(within(todo).getByRole('button', { name: /Bodega/ }));
+    // El azúcar (elegido) regresa al local desde su detalle, y la lista lo dice.
+    fireEvent.click(within(within(detalle()).getByRole('group', { name: '¿Dónde se guarda?' })).getByRole('button', { name: /Local/ }));
+    expect(screen.getAllByTestId('renglon')[1]).toHaveTextContent('Local');
+    click('Todavía no se paga');
+    click('Guardar');
+    await waitFor(() => expect(back.createExpense).toHaveBeenCalled());
+    const [leche, azucar] = back.createExpense.mock.calls[0][0].items;
+    expect(leche.warehouseId).toBe(2);
+    expect(azucar.warehouseId).toBe(1);
+  });
+
+  // T045: el último destino se recuerda en el equipo; si ya no existe, el de venta.
+  test('recuerda el último destino del ticket en este equipo', async () => {
+    back.warehouses.mockResolvedValue(dos);
+    await capturaConMercancia();
+    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda todo el ticket?' });
+    fireEvent.click(within(todo).getByRole('button', { name: /Bodega/ }));
+    cleanup();
+    await capturaConMercancia();
+    const otra = await screen.findByRole('group', { name: '¿Dónde se guarda todo el ticket?' });
+    await waitFor(() => expect(within(otra).getByRole('button', { name: /Bodega/ })).toHaveAttribute('aria-pressed', 'true'));
+  });
+
+  test('un recuerdo que ya no existe cae al almacén de venta', async () => {
+    try { localStorage.setItem('egb:compra:almacen', '99'); } catch { /* sin almacenamiento */ }
+    back.warehouses.mockResolvedValue(dos);
+    await capturaConMercancia();
+    const todo = await screen.findByRole('group', { name: '¿Dónde se guarda todo el ticket?' });
+    await waitFor(() => expect(within(todo).getByRole('button', { name: /Local/ })).toHaveAttribute('aria-pressed', 'true'));
+  });
+
+  // S1: regalo y «no es del negocio» se explican y no se pueden marcar los dos.
+  test('regalo y «no es del negocio» se explican y se excluyen entre sí', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    expect(within(detalle()).getByText(/No te lo cobraron. Entra al almacén con costo \$0/)).toBeInTheDocument();
+    await userEvent.click(interruptor(/Regalo del proveedor/));
+    await userEvent.click(interruptor(/No es del negocio/));
+    expect(interruptor(/No es del negocio/)).toBeChecked();
+    expect(interruptor(/Regalo del proveedor/)).not.toBeChecked();
+    fireEvent.click(within(detalle()).getByRole('button', { name: 'Qué es esto' }));
+    expect(within(detalle()).getByText(/en la misma compra pagaste algo para ti/i)).toBeInTheDocument();
+  });
+
+  // P1: el estado va como ícono al inicio; solo lo excepcional se escribe.
+  test('la lista dice solo lo excepcional: «Llega después»', async () => {
+    await capturaConMercancia();
+    await elegir('Buscar o crear', /Leche entera/);
+    expect(screen.getByTestId('renglon')).not.toHaveTextContent('Llega después');
+    click('Llega después');
+    expect(screen.getByTestId('renglon')).toHaveTextContent('Llega después');
+  });
+
+  // R12: los datos opcionales se pliegan; lo obligatorio (categoría) sigue a la vista.
+  test('«Más datos» pliega comentario y folio, y la categoría sigue a la vista', async () => {
+    await capturaConMercancia();
+    expect(screen.getByRole('button', { name: 'Mercancía' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Concepto')).toBeNull();
+    click(/Más datos/);
+    fireEvent.change(screen.getByPlaceholderText('Concepto'), { target: { value: 'Surtido del lunes' } });
+    click(/Menos datos/);
+    expect(screen.getByText(/Surtido del lunes/)).toBeInTheDocument();
   });
 });

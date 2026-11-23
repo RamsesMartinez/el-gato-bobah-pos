@@ -847,6 +847,8 @@ export interface ExpenseItemBody {
   presentationId?: number;
   // Llegó sin costo: importe 0, suma a lo guardado y no mueve el costo.
   isGift?: boolean;
+  // A qué almacén entra (spec 094). Ausente, el de venta.
+  warehouseId?: number;
 }
 
 // Un renglón que falta por llegar (spec 038). Cantidades en la unidad del renglón: el empaque
