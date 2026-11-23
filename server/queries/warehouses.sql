@@ -53,3 +53,20 @@ select id, name, is_sales from warehouses
 
 -- name: SalesWarehouse :one
 select id, name, is_sales from warehouses where id = current_sales_warehouse_id();
+
+-- name: ClearSalesWarehouse :exec
+-- Quita la marca al de venta de la sucursal; en la misma transacción se la pone otro (la 0122 exige,
+-- al confirmar, que la sucursal tenga uno).
+update warehouses set is_sales = false where branch_id = current_branch_id() and is_sales;
+
+-- name: MarkSalesWarehouse :exec
+update warehouses set is_sales = true where id = sqlc.arg(id);
+
+-- name: WarehouseHasPendingPurchases :one
+-- Renglones de compra vivos que todavía esperan mercancía para este almacén: archivarlo dejaría que lo
+-- que llegue entre a un almacén que no sale en ninguna lista.
+select exists (
+  select 1 from expense_items ei join expenses e on e.id = ei.expense_id
+   where ei.warehouse_id = sqlc.arg(id) and ei.item_type is not null and ei.voided_at is null and not ei.excluded
+     and e.status <> 'cancelada'
+     and coalesce(ei.qty_received, 0) + ei.not_coming_qty < ei.quantity);

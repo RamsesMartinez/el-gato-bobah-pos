@@ -112,6 +112,7 @@ type purchaseLineArg struct {
 	Quantity       string `json:"quantity" jsonschema:"cuántos empaques o cuánto en la unidad, texto decimal"`
 	Amount         string `json:"amount" jsonschema:"importe del renglón, texto decimal"`
 	IsGift         bool   `json:"is_gift,omitempty" jsonschema:"true si vino de regalo (importe 0)"`
+	WarehouseID    *int64 `json:"warehouse_id,omitempty" jsonschema:"almacén al que entra (de warehouses_list); sin él, el de venta"`
 }
 
 type purchaseCreateArgs struct {
@@ -312,7 +313,7 @@ func purchaseItems(lines []purchaseLineArg) []map[string]any {
 	for _, l := range lines {
 		it := map[string]any{"description": strings.TrimSpace(l.Name), "rawName": strings.TrimSpace(l.Name),
 			"quantity": l.Quantity, "amount": l.Amount, "isGift": l.IsGift,
-			"unitId": l.UnitID, "presentationId": l.PresentationID}
+			"unitId": l.UnitID, "presentationId": l.PresentationID, "warehouseId": l.WarehouseID}
 		switch {
 		case !purchaseLineComplete(l):
 			// Incompleto solo puede llegar a la vista previa: como renglón sin almacén, que es lo que

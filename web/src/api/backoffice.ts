@@ -847,6 +847,8 @@ export interface ExpenseItemBody {
   presentationId?: number;
   // Llegó sin costo: importe 0, suma a lo guardado y no mueve el costo.
   isGift?: boolean;
+  // A qué almacén entra (spec 094). Ausente, el de venta.
+  warehouseId?: number;
 }
 
 // Un renglón que falta por llegar (spec 038). Cantidades en la unidad del renglón: el empaque
@@ -1241,6 +1243,8 @@ export const backofficeApi = {
     api.get<{ items?: Warehouse[] }>(`/stock/warehouses${includeArchived ? '?includeArchived=1' : ''}`),
   createWarehouse: (name: string) => api.post<{ id: number }>('/stock/warehouses', { name }),
   renameWarehouse: (id: number, name: string) => api.patch<void>(`/stock/warehouses/${id}`, { name }),
+  // Pasar las ventas a este almacén (spec 094): el anterior deja de ser el de venta en la misma operación.
+  setSalesWarehouse: (id: number) => api.patch<void>(`/stock/warehouses/${id}`, { isSales: true }),
   archiveWarehouse: (id: number) => api.post<void>(`/stock/warehouses/${id}/archive`, {}),
   restoreWarehouse: (id: number) => api.post<void>(`/stock/warehouses/${id}/restore`, {}),
   archiveCountPlace: (id: number, moveTo?: number | null) =>

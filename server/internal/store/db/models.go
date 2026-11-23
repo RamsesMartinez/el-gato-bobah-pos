@@ -938,7 +938,7 @@ type BranchStockMinimum struct {
 	MinStock     decimal.Decimal `json:"min_stock"`
 	UpdatedBy    int64           `json:"updated_by"`
 	UpdatedAt    time.Time       `json:"updated_at"`
-	WarehouseID  *int64          `json:"warehouse_id"`
+	WarehouseID  int64           `json:"warehouse_id"`
 }
 
 type BusinessSetting struct {
@@ -1122,7 +1122,7 @@ type CountPlace struct {
 	Position    int32              `json:"position"`
 	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
 	CreatedAt   time.Time          `json:"created_at"`
-	WarehouseID *int64             `json:"warehouse_id"`
+	WarehouseID int64              `json:"warehouse_id"`
 }
 
 type DailySummarySend struct {
@@ -1427,7 +1427,7 @@ type Notification struct {
 	ResolvedReason *string            `json:"resolved_reason"`
 	EmailState     string             `json:"email_state"`
 	EmailSendID    *int64             `json:"email_send_id"`
-	WarehouseID    *int64             `json:"warehouse_id"`
+	WarehouseID    int64              `json:"warehouse_id"`
 }
 
 type NotificationEmailSend struct {
@@ -2084,7 +2084,7 @@ type StockCount struct {
 	ClosedBy    *int64             `json:"closed_by"`
 	ClosedAt    pgtype.Timestamptz `json:"closed_at"`
 	PreviewedAt pgtype.Timestamptz `json:"previewed_at"`
-	WarehouseID *int64             `json:"warehouse_id"`
+	WarehouseID int64              `json:"warehouse_id"`
 }
 
 type StockCountLine struct {
@@ -2123,7 +2123,7 @@ type StockLevel struct {
 	OnHand       decimal.Decimal `json:"on_hand"`
 	UpdatedAt    time.Time       `json:"updated_at"`
 	BranchID     int64           `json:"branch_id"`
-	WarehouseID  *int64          `json:"warehouse_id"`
+	WarehouseID  int64           `json:"warehouse_id"`
 }
 
 type StockMovement struct {
@@ -2149,7 +2149,8 @@ type StockMovement struct {
 	WasteRecordID        *int64            `json:"waste_record_id"`
 	ReplacementID        *int64            `json:"replacement_id"`
 	EffectiveOn          pgtype.Date       `json:"effective_on"`
-	WarehouseID          *int64            `json:"warehouse_id"`
+	WarehouseID          int64             `json:"warehouse_id"`
+	WarehouseRelocation  bool              `json:"warehouse_relocation"`
 }
 
 type StockOutReport struct {
@@ -2168,7 +2169,7 @@ type StockOutReport struct {
 	ReportedAt     time.Time          `json:"reported_at"`
 	UndoneAt       pgtype.Timestamptz `json:"undone_at"`
 	UndoMovementID *int64             `json:"undo_movement_id"`
-	WarehouseID    *int64             `json:"warehouse_id"`
+	WarehouseID    int64              `json:"warehouse_id"`
 }
 
 type Supplier struct {
@@ -2320,7 +2321,7 @@ type WasteRecord struct {
 	ResolvedBy       *int64             `json:"resolved_by"`
 	ResolvedAt       pgtype.Timestamptz `json:"resolved_at"`
 	CoveredByCountID *int64             `json:"covered_by_count_id"`
-	WarehouseID      *int64             `json:"warehouse_id"`
+	WarehouseID      int64              `json:"warehouse_id"`
 }
 
 type WorkScheduleDay struct {

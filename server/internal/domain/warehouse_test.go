@@ -51,9 +51,13 @@ func TestCanArchiveWarehouse(t *testing.T) {
 		{"con un conteo abierto no se archiva", false, 0, true, ErrWarehouseCountOpen},
 		{"el de venta gana sobre lo demás", true, 3, true, ErrWarehouseIsSales},
 	}
+	// Con compras por recibir tampoco: lo que llegue después quedaría en un almacén que no se ve.
+	if err := CanArchiveWarehouse(false, 0, false, true); !errors.Is(err, ErrWarehousePendingPurchases) {
+		t.Fatalf("con compras por recibir = %v; quiere ErrWarehousePendingPurchases", err)
+	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := CanArchiveWarehouse(c.isSales, c.withStock, c.countOpen)
+			err := CanArchiveWarehouse(c.isSales, c.withStock, c.countOpen, false)
 			if c.want == nil {
 				if err != nil {
 					t.Fatalf("esperaba poder archivar, llegó %v", err)
@@ -69,7 +73,7 @@ func TestCanArchiveWarehouse(t *testing.T) {
 		})
 	}
 	var has WarehouseHasStock
-	if !errors.As(CanArchiveWarehouse(false, 7, false), &has) || has.Items != 7 {
+	if !errors.As(CanArchiveWarehouse(false, 7, false, false), &has) || has.Items != 7 {
 		t.Fatal("el rechazo por existencias dice cuántos artículos tiene")
 	}
 }
