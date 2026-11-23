@@ -505,7 +505,13 @@ func (m *NotificationMailer) SendShoppingListTo(ctx context.Context, company, us
 			return ErrNoEmail
 		}
 		to = *u.RecoveryEmail
-		lines, err := shoppingListIn(ctx, q, domain.WarehouseSel{})
+		// La de todos los almacenes, como la pantalla: la del de venta dejaba fuera lo que se acabó en
+		// Bodega. Con dos o más, cada renglón dice de cuál.
+		lines, err := shoppingListIn(ctx, q, domain.WarehouseSel{All: true})
+		if err != nil {
+			return err
+		}
+		whs, err := q.ListWarehouseNames(ctx)
 		if err != nil {
 			return err
 		}
@@ -528,6 +534,9 @@ func (m *NotificationMailer) SendShoppingListTo(ctx context.Context, company, us
 			}
 			it := mailtpl.Item{Kind: map[string]string{"out": "stock_out", "low": "stock_low"}[l.State], Name: l.Name, Why: l.Why,
 				Detail: "Hay " + domain.HumanQty(l.OnHand, l.Unit)}
+			if len(whs) > 1 {
+				it.Detail += " en " + l.WarehouseName
+			}
 			if l.Suggested != nil {
 				if l.Suggested.Packs > 0 {
 					it.Buy = fmt.Sprintf("%d × %s", l.Suggested.Packs, l.Suggested.PackName)

@@ -18,9 +18,11 @@ const ESTADO: Record<ShoppingLine['state'], { texto: string; color: string }> = 
 const SIN_LUGAR = 'Sin lugar de compra';
 
 export function ListaDeCompra() {
-  const lista = useQuery({ queryKey: ['lista-de-compra'], queryFn: shoppingApi.list });
-  // Con dos o más almacenes (spec 094) cada renglón dice en cuál está lo que hay.
-  const { multi } = useWarehousePick();
+  // Con dos o más almacenes (spec 094) la lista es la de todos y cada renglón dice en cuál está lo que
+  // hay: la del de venta sola dejaba fuera lo que se acabó en Bodega, y la campana mandaba aquí.
+  const { multi, known } = useWarehousePick();
+  const almacen = multi ? 'all' as const : undefined;
+  const lista = useQuery({ queryKey: ['lista-de-compra', almacen ?? 'venta'], queryFn: () => shoppingApi.list(almacen), enabled: known });
   const [aviso, setAviso] = useState<string | null>(null);
   const enviar = useMutation({
     mutationFn: shoppingApi.emailMe,
@@ -46,7 +48,7 @@ export function ListaDeCompra() {
             <Text fontWeight="800" fontSize="lg" mb={2}>{g}</Text>
             <VStack align="stretch" gap={0}>
               {items.filter((l) => (l.supplier || SIN_LUGAR) === g).map((l) => (
-                <Box key={`${l.itemType}:${l.id}`} data-row py={2} borderBottomWidth="1px">
+                <Box key={`${l.itemType}:${l.id}:${l.warehouseId ?? ''}`} data-row py={2} borderBottomWidth="1px">
                   <HStack justify="space-between" align="start" gap={2}>
                     <Box minW={0}>
                       <Text fontWeight="700">{l.name}</Text>

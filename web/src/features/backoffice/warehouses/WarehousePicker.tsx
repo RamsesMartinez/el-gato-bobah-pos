@@ -29,6 +29,9 @@ export function useWarehousePick() {
   return {
     list,
     multi: list.length > 1,
+    // Ya se sabe cuántos hay (o no hay permiso para preguntarlo): lo que pide distinto con uno que
+    // con varios espera a esto en vez de pedir dos veces.
+    known: canView ? !full.isPending : canNames ? !names.isPending : true,
     warehouseId: chosen?.id,
     // El nombre del elegido, para decir dónde quedó lo registrado.
     name: (chosen ?? sales)?.name,

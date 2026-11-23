@@ -61,4 +61,28 @@ describe('lista de compra por almacén (spec 094)', () => {
     await screen.findByText('Jarabe de taro');
     expect(await screen.findByText(/Hay 800 ml en Local/)).toBeTruthy();
   });
+  // Prueba con alguien nuevo: la lista pedía solo el almacén de venta, y desde un «se acabó» de
+  // Bodega la campana mandaba a una lista vacía. Con dos o más pide la de todos.
+  test('con dos pide la lista de todos los almacenes y pinta el renglón de Bodega', async () => {
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    api.list.mockImplementation((w?: string) => Promise.resolve({ items: w === 'all' ? [
+      { itemType: 'ingrediente', id: 2, name: 'Jarabe de taro', unit: 'ml', onHand: '800', min: '1500', dailyUse: null, coverageDays: 14,
+        supplier: '', state: 'low', suggested: null, why: 'x', warehouseId: 1, warehouseName: 'Local' },
+      { itemType: 'ingrediente', id: 2, name: 'Jarabe de taro', unit: 'ml', onHand: '0', min: null, dailyUse: null, coverageDays: 14,
+        supplier: '', state: 'out', suggested: null, why: 'x', warehouseId: 2, warehouseName: 'Bodega' },
+    ] : [] }));
+    pintar();
+    expect(await screen.findByText(/Hay 0 ml en Bodega/)).toBeTruthy();
+    expect(screen.getByText(/Hay 800 ml en Local/)).toBeTruthy();
+    expect(api.list).not.toHaveBeenCalledWith(undefined);
+  });
+  test('con uno la pide como antes, sin almacén', async () => {
+    conAlmacen();
+    pintar();
+    await screen.findByText('Jarabe de taro');
+    expect(api.list).toHaveBeenCalledWith(undefined);
+  });
 });
