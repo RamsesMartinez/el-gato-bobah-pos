@@ -37,9 +37,22 @@ jq '.audits["largest-contentful-paint"].numericValue, .audits["cumulative-layout
 Esperado: LCP < 2500 ms y CLS < 0.1 con el perfil móvil por omisión (4G lenta, CPU 4×). Medir con
 fotos: subir al menos 20 fotos de productos en local antes de medir.
 
+**Medido el 2026-11-23** (Lighthouse 12, perfil móvil por omisión, contra `dev:menu` local con el
+respaldo de producción restaurado: 183 productos, 8 categorías principales, 24 fotos de relleno con
+el peso de una foto real, ~42 KB la de 400 px):
+
+| Corrida | LCP | CLS | FCP | TBT | Bytes | Puntaje |
+|---|---|---|---|---|---|---|
+| 1 | 1,957 ms | 0 | 652 ms | 0 ms | 1,016 KB | 0.99 |
+| 2 | 1,955 ms | 0 | 618 ms | 7 ms | 1,016 KB | 0.99 |
+| 3 | 1,956 ms | 0 | 618 ms | 0 ms | 1,016 KB | 0.99 |
+
+El elemento LCP es la primera foto (400 px). No medido: la red real de Cloudflare ni el tiempo de un
+fallo de caché del borde contra la VM (el local no tiene ese salto).
+
 ## 4. Ajustes › Venta en web
 
-En `http://localhost:30NN/ajustes?seccion=venta-en-web` a 1280×854: ver dirección, copiar, abrir,
+En `http://localhost:30NN/negocio?seccion=web` a 1280×854: ver dirección, copiar, abrir,
 descargar PNG/SVG, imprimir tarjeta, cambiar el nombre (ver la vista previa normalizada), cambiar el
 color y comprobar en el menú (≤ 2 min, o al momento con `dev:menu` sin caché).
 

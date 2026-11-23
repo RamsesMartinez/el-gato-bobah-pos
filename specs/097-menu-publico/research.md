@@ -116,9 +116,9 @@ esconderlos no protege nada.
   `loading=lazy` con `width`/`height`.
 - El LCP debe ser texto (encabezado con el nombre del negocio) o una foto chica, nunca una portada
   a pantalla completa.
-- `content-visibility:auto` por categoría para no maquetar 180 tarjetas con la CPU lenta.
-- Estimado 1.8–2.1 s; se **mide** con Lighthouse (perfil móvil por omisión) contra la Function local
-  y el catálogo restaurado.
+- ~~`content-visibility:auto` por categoría~~ **quitado en la implementación**: con secciones sin pintar, el salto desde el mosaico calculaba mal la posición (tocar «Snacks» dejaba en «Ramen», lo atrapó la e2e). Sin él, el LCP medido es 1.96 s.
+- Estimado 1.8–2.1 s; **medido 1.96 s** con Lighthouse (perfil móvil por omisión) contra la Function
+  local y el catálogo restaurado (detalle en quickstart).
 
 ## R9. Generar el QR
 

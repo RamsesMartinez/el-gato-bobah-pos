@@ -115,7 +115,8 @@ Sin violaciones. *Complexity Tracking* abajo: un proyecto de Pages más.
     descripción completa. «Agotado» es una etiqueta junto al precio y la foto atenuada; nunca una
     cantidad.
   - Primeras 4 fotos `fetchpriority="high"`; el resto `loading="lazy"` con `width`/`height`.
-    `content-visibility: auto` por categoría. Tema claro y oscuro por `prefers-color-scheme`.
+    Sin `content-visibility` (rompía el salto a una categoría; ver research R8). Tema claro y oscuro
+    por `prefers-color-scheme`.
 - **Ajustes › Venta en web (B)**, dentro del `Page` de 640 px de Ajustes:
   1. Tarjeta «Comparte tu menú»: QR de 144 px a la izquierda; a la derecha la dirección vigente
      (texto grande, se parte si no cabe), fila Copiar enlace (sólido; cambia a «Copiado» con palomita)

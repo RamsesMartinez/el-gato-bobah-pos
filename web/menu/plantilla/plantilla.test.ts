@@ -112,6 +112,12 @@ describe('plantilla classic (A + mosaico)', () => {
     expect(html).not.toContain('id="categorias"');
   });
 
+  it('no difiere el pintado de las secciones: el salto a una categoría caería en otra', () => {
+    // Con content-visibility:auto, una sección sin pintar mide lo que dice contain-intrinsic-size y
+    // el salto desde el mosaico calculaba mal: tocar «Snacks» dejaba al cliente en «Ramen» (e2e).
+    expect(renderMenu(menu(), OPTS)).not.toContain('content-visibility');
+  });
+
   it('usa el color del negocio', () => {
     expect(renderMenu(menu(), OPTS)).toContain('--m700:#116932');
   });

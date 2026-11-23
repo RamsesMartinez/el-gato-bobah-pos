@@ -94,7 +94,7 @@ ul{list-style:none;margin:0;padding:0}a{color:inherit}a:focus-visible,summary:fo
 .chips a:active{background:var(--m100)}
 .mosb{background:var(--m700)!important;color:#fff!important;border-color:var(--m700)!important}
 main{max-width:1200px;margin:0 auto;padding:0 16px}
-section{content-visibility:auto;contain-intrinsic-size:auto 900px}
+
 h2{font-size:20px;margin:24px 0 8px;color:var(--m700)}h3{font-size:16px;margin:20px 0 4px;color:var(--mu)}
 @media (prefers-color-scheme:dark){h2{color:var(--tx)}}
 summary{list-style:none;cursor:pointer}summary::-webkit-details-marker{display:none}
