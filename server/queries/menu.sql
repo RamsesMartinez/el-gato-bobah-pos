@@ -1,7 +1,7 @@
 -- Lecturas planas para armar el documento del menú POS (se ensambla en Go y se cachea en Redis).
 
 -- name: MenuCategories :many
-select id, name, parent_id, sort_key, color, image_url
+select id, name, parent_id, sort_key, color, image_url, coalesce(food_family::text, '')::text as food_family
 from categories
 where is_active
 order by parent_id nulls first, sort_key, name;

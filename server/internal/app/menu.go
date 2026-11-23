@@ -47,6 +47,8 @@ type MenuCategory struct {
 	SortKey  float64 `json:"sortKey"`
 	Color    *string `json:"color"`
 	ImageURL *string `json:"imageUrl"`
+	// FoodFamily decide la ilustración de los productos sin foto ("" = genérica; spec 091).
+	FoodFamily string `json:"foodFamily"`
 }
 
 type MenuProduct struct {
@@ -193,7 +195,7 @@ func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 	for _, c := range catRows {
 		doc.Categories = append(doc.Categories, MenuCategory{
 			ID: c.ID, Name: c.Name, ParentID: c.ParentID,
-			SortKey: c.SortKey.InexactFloat64(), Color: c.Color, ImageURL: c.ImageUrl,
+			SortKey: c.SortKey.InexactFloat64(), Color: c.Color, ImageURL: c.ImageUrl, FoodFamily: c.FoodFamily,
 		})
 	}
 

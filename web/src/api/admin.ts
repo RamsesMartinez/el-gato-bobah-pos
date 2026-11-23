@@ -36,6 +36,10 @@ export interface Role {
 export interface AdminProduct {
   id: number;
   name: string;
+  // Foto propia y la de su categoría o su familia, para que la miniatura nunca sea un hueco (091).
+  imageUrl?: string | null;
+  categoryImageUrl?: string | null;
+  categoryFoodFamily?: string;
   price: string; // dinero = string decimal exacto (ver types/pos.ts)
   current_cost: string;
   type: string;
@@ -159,11 +163,16 @@ export interface RecipeQuery {
   offset?: number;
 }
 
-// Categoría (para filtro y alta de productos).
+// Categoría (para filtro, alta de productos y la pestaña de categorías). La foto, la familia y el
+// conteo vienen de la spec 091; opcionales para que una respuesta de la versión anterior no rompa
+// la pantalla durante una subida.
 export interface Category {
   id: number;
   name: string;
   parentId: number | null;
+  imageUrl?: string | null;
+  foodFamily?: string;
+  productCount?: number;
 }
 
 // Columnas ordenables de la tabla de productos (espejo de AdminListProducts en el backend).
@@ -245,6 +254,13 @@ export const adminApi = {
     api.post<void>(`/users/${id}/pin`, { pin }),
 
   categories: () => api.get<{ items: Category[] }>('/admin/categories'),
+  // Fotos del catálogo (spec 091): las dos variantes WebP en base64.
+  setImage: (kind: 'products' | 'categories', id: number, b: { image1200: string; image400: string }) =>
+    api.put<{ imageUrl: string }>(`/admin/${kind}/${id}/image`, b),
+  removeImage: (kind: 'products' | 'categories', id: number) =>
+    api.del<{ imageUrl: null }>(`/admin/${kind}/${id}/image`),
+  setCategoryFamily: (id: number, foodFamily: string) =>
+    api.patch<{ id: number; foodFamily: string }>(`/admin/categories/${id}`, { foodFamily }),
   products: (p: ProductsQuery = {}) => api.get<ProductsPage>(`/admin/products?${pageQs(p)}`),
   // cost ausente = sin costo capturado.
   createProduct: (b: { name: string; categoryId: number; price: number; favorite?: boolean; trackStock?: boolean; cost?: number }) =>

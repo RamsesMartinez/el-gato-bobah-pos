@@ -58,6 +58,16 @@ func Error(w http.ResponseWriter, err error) {
 	msg := err.Error()
 
 	switch {
+	// Fotos del catálogo (spec 091): cada rechazo con su código; la pantalla y el MCP actúan distinto.
+	case errors.Is(err, domain.ErrImageInvalid):
+		status, code = http.StatusUnprocessableEntity, "IMAGE_INVALID"
+	case errors.Is(err, domain.ErrImageTooLarge):
+		status, code = http.StatusRequestEntityTooLarge, "IMAGE_TOO_LARGE"
+	case errors.Is(err, domain.ErrMediaDisabled):
+		status, code = http.StatusServiceUnavailable, "MEDIA_DISABLED"
+	case errors.Is(err, domain.ErrMediaUnavailable):
+		// El detalle del almacenamiento ya quedó en el log del servicio; a quien opera, qué hacer.
+		status, code, msg = http.StatusBadGateway, "MEDIA_UNAVAILABLE", domain.ErrMediaUnavailable.Error()
 	// «Se acabó» (spec 084): la pantalla decide por el código qué mostrar.
 	case errors.Is(err, domain.ErrReportLimit):
 		status, code = http.StatusTooManyRequests, "REPORT_LIMIT"
@@ -419,6 +429,8 @@ var sentinelPrefixes = []string{
 	domain.ErrValidation.Error() + ": ",
 	domain.ErrForbidden.Error() + ": ",
 	domain.ErrNotFound.Error() + ": ",
+	domain.ErrImageInvalid.Error() + ": ",
+	domain.ErrImageTooLarge.Error() + ": ",
 }
 
 // operatorMessage quita los prefijos de los sentinels base del INICIO del mensaje, también los

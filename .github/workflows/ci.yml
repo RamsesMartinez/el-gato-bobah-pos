@@ -378,10 +378,14 @@ jobs:
       - name: Apuntar el CSP a la API de pruebas
         run: |
           sed -i 's|https://api\.elgatobobah\.com|https://api-dev.elgatobobah.com|g' dist/_headers
+          # Las fotos del catálogo (spec 091) salen del bucket del ambiente de pruebas.
+          sed -i 's|https://media\.elgatobobah\.com|https://media-dev.elgatobobah.com|g' dist/_headers
           # Falla ruidoso si el sed no encontró nada: un rename del dominio dejaría el CSP viejo y
           # el login volvería a romperse en silencio hasta que alguien lo probara a mano.
           grep -q 'connect-src .*https://api-dev\.elgatobobah\.com' dist/_headers
           ! grep -q 'https://api\.elgatobobah\.com' dist/_headers
+          grep -q 'img-src .*https://media-dev\.elgatobobah\.com' dist/_headers
+          ! grep -q 'https://media\.elgatobobah\.com' dist/_headers
 
       - name: Deploy a Cloudflare Pages (ambiente de pruebas)
         run: bunx wrangler pages deploy dist --project-name=el-gato-bobah-pos-dev --branch=staging --commit-dirty=true

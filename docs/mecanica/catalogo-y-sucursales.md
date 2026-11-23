@@ -33,3 +33,20 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   a `TestEveryMenuTableBumpsTheVersion`: una tabla sin trigger es exactamente ese camino. Y si
   aun así una tableta manda algo que ya no vale, el servidor responde `MENU_CHANGED` y la tableta
   recarga y pide elegir de nuevo.
+- **Fotos del catálogo** (spec 091, runbook [medios-r2.md](../medios-r2.md)):
+  - **`image_url` es la variante de 1200; la de 400 se deriva** cambiando `-1200.webp` por
+    `-400.webp`. Escribir otra cosa a mano en esa columna la rechaza un check desde la 0117 (las
+    filas viejas no se revisan: el check es `not valid`).
+  - **La API solo borra lo que armó**: una URL que no empieza con `MEDIA_PUBLIC_BASE_URL` +
+    empresa + clase + id del mismo registro se deja en paz. Por eso **duplicar un producto ya no
+    copia su foto**: la llave lleva el id del original, y quitar la del duplicado habría borrado la
+    del original.
+  - **Una categoría sin familia se dibuja como «platillo»**. La familia es del producto (un enum),
+    no de la empresa; una nueva lleva `alter type … add value`, su constante en `domain`, su
+    renglón en `web/src/media/foodFamilies.ts` y su `<symbol>` en el sprite, que **cambia de
+    nombre** (`food-families.v2.svg`) porque `public/` no lleva hash.
+  - **El navegador prepara la foto**: Safari no codifica WebP en canvas y la pantalla lo dice al
+    abrir el editor. En local, `start.sh` crea el bucket de versitygw con lectura pública; el
+    almacenamiento no manda CORS, así que una prueba que lea pixeles baja la foto desde Node, no
+    con `fetch` desde la página.
+

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AltMatchTag } from '../../components/AltMatchTag';
+import { CatalogImage } from '../../components/CatalogImage';
 import {
   Box, Table, Center, Spinner, Input, Badge, Button, ButtonGroup,
   IconButton, HStack, VStack, Pagination, useDisclosure, Text,
@@ -174,17 +175,25 @@ export function ProductsAdminPage() {
           <Table.Body>
             {items.map((p) => (
               <Table.Row key={p.id} opacity={p.is_active ? 1 : 0.5}>
-                <Table.Cell>
-                  {p.is_favorite && (
-                    <Box as="span" color="yellow.500" mr={1} display="inline-flex" verticalAlign="middle"><LuStar size={12} /></Box>
-                  )}
-                  {p.name}
-                  {p.matchedAlt && <Box as="span" ml={2} display="inline-flex" verticalAlign="middle" maxW="260px"><AltMatchTag name={p.matchedAlt} /></Box>}
-                  {p.overrideCount > 0 && (
-                    <Badge ml={2} colorPalette="purple" title={`${p.overrideCount} grupo(s) con min/máx personalizado`}>
-                      <LuSettings2 /> {p.overrideCount}
-                    </Badge>
-                  )}
+                <Table.Cell py={1}>
+                  {/* Miniatura de 32 px (spec 091): la foto, la de su categoría o su dibujo, sin subir
+                      el alto del renglón. */}
+                  <HStack gap={2}>
+                    <CatalogImage imageUrl={p.imageUrl} categoryImageUrl={p.categoryImageUrl} family={p.categoryFoodFamily}
+                      size={32} alt="" />
+                    <Box minW={0}>
+                      {p.is_favorite && (
+                        <Box as="span" color="yellow.500" mr={1} display="inline-flex" verticalAlign="middle"><LuStar size={12} /></Box>
+                      )}
+                      {p.name}
+                      {p.matchedAlt && <Box as="span" ml={2} display="inline-flex" verticalAlign="middle" maxW="260px"><AltMatchTag name={p.matchedAlt} /></Box>}
+                      {p.overrideCount > 0 && (
+                        <Badge ml={2} colorPalette="purple" title={`${p.overrideCount} grupo(s) con min/máx personalizado`}>
+                          <LuSettings2 /> {p.overrideCount}
+                        </Badge>
+                      )}
+                    </Box>
+                  </HStack>
                 </Table.Cell>
                 <Table.Cell>{p.category}</Table.Cell>
                 <Table.Cell textAlign="end">{money(p.price)}</Table.Cell>
