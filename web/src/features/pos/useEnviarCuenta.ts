@@ -79,6 +79,14 @@ export function useEnviarCuenta({ onComanda, onMenuChanged }: Opciones) {
       }
       const texto = e instanceof ApiError && e.code === 'NO_OPEN_REGISTER' ? 'No hay caja abierta' : mensajeDeError(e);
       setMotivo(texto);
+      // Se agotó mientras la pantalla decía que había (spec 092): el mensaje del servidor dice
+      // cuántas quedan, y la lista de agotados se vuelve a pedir para marcar el mosaico ya.
+      if (e instanceof ApiError && e.code === 'OUT_OF_STOCK') {
+        qc.invalidateQueries({ queryKey: ['menu', 'sold-out'] });
+        toaster.create({ title: texto, type: 'error' });
+        qc.invalidateQueries({ queryKey: ['pos', 'draft', draftId] });
+        return;
+      }
       if (e instanceof ApiError && e.code === 'ORDER_CLOSED') {
         const vieja = qc.getQueryData<DraftView>(['pos', 'draft', draftId]);
         toaster.create({

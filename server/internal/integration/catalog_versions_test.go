@@ -171,7 +171,7 @@ func TestTheAppRoleBumpsOnlyItsOwnCompany(t *testing.T) {
 		t.Fatal(err)
 	}
 	admin := app.NewAdminService(appSt)
-	if _, err := admin.CreateProduct(actx, "Frappé", cat, decimal.NewFromInt(50), false, false, nil); err != nil {
+	if _, err := admin.CreateProduct(actx, "Frappé", cat, decimal.NewFromInt(50), false, false, nil, nil); err != nil {
 		release()
 		t.Fatalf("CreateProduct como app: %v", err)
 	}

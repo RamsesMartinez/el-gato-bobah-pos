@@ -24,7 +24,7 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		// La puerta para agentes (spec 072).
 		"api_token.created", "api_token.revoked", "mcp.tool_called",
 		"payment.terminal_changed",
-		"product.consumption_mode", "expense.received", "expense.count_changed", "cash.opening_backdated", "expense.stock_corrected", "stock.counted",
+		"product.consumption_mode", "product.sales_changed", "expense.received", "expense.count_changed", "cash.opening_backdated", "expense.stock_corrected", "stock.counted",
 		"settings.costing_method", "waste.recorded", "waste.approved", "waste.rejected", "waste.undone",
 		"stock.out_reported", "stock.out_undone", "stock.low_stock_configured", "notification.recipients_changed",
 		"notification.resolved",
@@ -171,8 +171,8 @@ func TestAuditFilterActions(t *testing.T) {
 	// once de los artículos del almacén (spec 042), los límites del conteo (spec 044) y las dos de
 	// unir insumos (spec 056), y las tres de densidad y tara (spec 058). Y las dos de configurar
 	// avisos de inventario (spec 084): alertas de un artículo y destinatarios. Y las cinco de fotos
-	// y familias del catálogo (spec 091).
-	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 30 {
+	// y familias del catálogo (spec 091), y dónde se vende un producto (spec 092).
+	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 31 {
 		t.Fatalf("grupo precios = %v", got)
 	}
 	if got := (AuditFilter{Group: "price", Action: "price.set"}).Actions(); len(got) != 1 || got[0] != "price.set" {

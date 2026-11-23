@@ -258,3 +258,38 @@ func (s *MenuService) Popular(ctx context.Context) ([]int64, error) {
 	}
 	return ids, nil
 }
+
+// SoldOutView es la lista de agotados que la tableta pide aparte del menú (spec 092).
+type SoldOutView struct {
+	ProductIDs []int64 `json:"productIds"`
+}
+
+// SoldOut dice qué productos de la empresa salen «Agotado» ahora. Va aparte del documento del menú
+// a propósito: el menú se guarda por versión de catálogo y la existencia cambia con cada venta sin
+// subir esa versión. Siempre devuelve un arreglo (nunca nil), y sin productos con la opción apagada
+// no carga el grafo de existencias.
+func (s *MenuService) SoldOut(ctx context.Context) ([]int64, error) {
+	q := s.store.QC(ctx)
+	candidates, err := q.SoldOutCandidates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []int64{}
+	if len(candidates) == 0 {
+		return out, nil
+	}
+	graph, err := loadStockGraph(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	levels, err := salesStock(ctx, q)
+	if err != nil {
+		return nil, store.DomainError(err)
+	}
+	for _, id := range candidates {
+		if domain.SoldOut(graph, levels, id) {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}

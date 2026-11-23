@@ -26,6 +26,17 @@ import { AltNamesField } from '../components/AltNamesField';
 import { PhotoField } from './PhotoField';
 import { altNameKey, withPendingAlt } from '../components/altNames';
 import { ApiError } from '../api/client';
+import { DosColumnas, LugaresDeVenta, MenuDePestanas, PanelVentaEnWeb, VenderSinExistencia, type Pestana } from './producto/PanelesDeVenta';
+import { precioWebValido, ventaInicial, ventaParaGuardar } from './producto/ventaDelProducto';
+
+// Las pestañas de la ficha (spec 092, maqueta G2). Nombres de uso común, elegidos por el dueño.
+const PESTANAS: Pestana[] = [
+  { id: 'general', label: 'General' },
+  { id: 'disponibilidad', label: 'Disponibilidad' },
+  { id: 'web', label: 'Venta en web' },
+  { id: 'receta', label: 'Receta e inventario' },
+  { id: 'extras', label: 'Extras' },
+];
 
 interface Props {
   product: AdminProduct | null;
@@ -45,6 +56,12 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   const [altNames, setAltNames] = useState<string[]>(product?.altNames ?? []);
   const [altDraft, setAltDraft] = useState('');
   const [altError, setAltError] = useState('');
+  // Dónde y cómo se vende (spec 092): un solo estado para la casilla Web de Disponibilidad y el
+  // interruptor de Venta en web, así nunca dicen cosas distintas.
+  const [venta, setVenta] = useState(ventaInicial(product));
+  const [pestana, setPestana] = useState('general');
+  const [errores, setErrores] = useState<Set<string>>(new Set());
+  const [intento, setIntento] = useState(false);
   useEffect(() => {
     setEdit(product);
     setCostMode(modoInicial(product));
@@ -52,6 +69,10 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
     setAltNames(product?.altNames ?? []);
     setAltDraft('');
     setAltError('');
+    setVenta(ventaInicial(product));
+    setPestana('general');
+    setErrores(new Set());
+    setIntento(false);
   }, [product]);
   const similar = useCallback((name: string) => adminApi.similarProductAltNames(product?.id ?? 0, name), [product?.id]);
   const cost = edit ? cambioDeCosto(edit, costMode, costText) : undefined;
@@ -94,6 +115,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
         needsPrep: p.needsPrep, categoryId: p.categoryId,
         availableFrom: p.availableFrom, availableUntil: p.availableUntil,
         ...(cost && cost !== 'invalido' ? { cost } : {}),
+        sales: ventaParaGuardar(venta, product?.webPrice ?? null),
       });
       if (!sameList(wanted, first)) await put(wanted);
     },
@@ -117,21 +139,48 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
     },
   });
 
+  // Guardar siempre se puede tocar: si algo no es válido, la ficha va a la pestaña del error y la
+  // marca, en vez de un botón apagado que no dice por qué (revisión de tableta, 092).
+  const erroresDe = (): Set<string> => {
+    const conError = new Set<string>();
+    // Un precio de mostrador vacío o en cero no es un precio: guardarlo dejaría el producto gratis.
+    const precio = edit ? montoTecleado(String(edit.price)) : undefined;
+    if (cost === 'invalido' || precio === undefined || precio <= 0) conError.add('general');
+    if (venta.web && !precioWebValido(venta)) conError.add('web');
+    return conError;
+  };
+  // Tras el primer intento, las marcas se recalculan con cada cambio: corregir el campo quita el
+  // punto rojo sin tocar Guardar otra vez.
+  const marcas = intento ? erroresDe() : errores;
+  const guardar = () => {
+    if (!edit) return;
+    const conError = erroresDe();
+    setIntento(true);
+    setErrores(conError);
+    const primera = PESTANAS.find((t) => conError.has(t.id));
+    if (primera) {
+      setPestana(primera.id);
+      return;
+    }
+    save.mutate(edit);
+  };
+
   return (
-    // lg (~512 px) y no md: la foto de 132 px va junto al nombre (spec 091, maqueta M1-A).
-    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }} placement="center" size="lg" scrollBehavior="inside">
+    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }} size="full" scrollBehavior="inside">
       <DialogBackdrop />
       <DialogContent colorPalette={palette}>
         <DialogHeader><DialogTitle>Editar producto</DialogTitle></DialogHeader>
         <DialogCloseTrigger />
         {edit && (
           <>
-            <DialogBody>
-              <VStack align="stretch" gap={4}>
-                {/* La foto junto al nombre y la categoría (spec 091, M1-A): no le quita un renglón al
-                    formulario. Se guarda aparte, al tocar «Guardar foto». */}
-                <HStack align="start" gap={4}>
-                  {/* A 1024×600 siguen a la vista los cinco controles de siempre (lo mide la e2e F1). */}
+            <DialogBody display="flex" gap={6} pt={0}>
+              <MenuDePestanas pestanas={PESTANAS} activa={pestana} onElegir={setPestana} conError={marcas} />
+              <Box flex="1" minW={0} py={3} role="tabpanel" aria-label={PESTANAS.find((t) => t.id === pestana)?.label}>
+                {pestana === 'general' && (
+                  <DosColumnas>
+                    <Box><HStack align="start" gap={4}>
+                  {/* La foto junto al nombre y la categoría (spec 091): se guarda aparte, al tocar
+                      «Guardar foto». */}
                   <PhotoField kind="products" id={edit.id} name={edit.name} imageUrl={edit.imageUrl}
                     categoryImageUrl={catDe(categorias, edit.categoryId)?.imageUrl ?? edit.categoryImageUrl}
                     family={catDe(categorias, edit.categoryId)?.foodFamily ?? edit.categoryFoodFamily}
@@ -145,8 +194,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                       <Input minH="44px" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
                     </Field>
                     <Field label="Categoría">
-                      {/* Picker táctil, no <select> nativo: en una tablet de 7" el desplegable del
-                          sistema tapa la pantalla con renglones de 20px. Ver la constitución. */}
+                      {/* Picker táctil, no <select> nativo: ver la constitución. */}
                       <Picker
                         value={String(edit.categoryId || '')}
                         onChange={(v) => setEdit({ ...edit, categoryId: Number(v) })}
@@ -156,9 +204,8 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                       />
                     </Field>
                   </VStack>
-                </HStack>
-                {/* Precio y costo en una fila: cada renglón le quita alto a 600 px de pantalla. */}
-                <HStack align="start" gap={3}>
+                </HStack></Box>
+                    <Box><HStack align="start" gap={3}>
                 <Field flex="1" label="Precio">
                   <Input type="number" inputMode="decimal" minH="44px" value={edit.price}
                     onChange={(e) => setEdit({ ...edit, price: e.target.value })} />
@@ -185,22 +232,18 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                   </VStack>
                 )}
                 </Box>
-                </HStack>
-                <Button variant="outline" minH="44px" justifyContent="space-between" onClick={() => setComposing(true)}>
-                  <Text>Receta</Text>
-                  <Text color="fg.muted" fontWeight="normal">{compositionLabel(edit.compositionStatus)} ›</Text>
-                </Button>
-                <AltNamesField ownName={edit.name} value={altNames} onChange={(v) => { setAltNames(v); setAltError(''); }}
-                  draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similar} error={altError} />
-                <HStack justify="space-between">
+                </HStack></Box>
+                    <Box><AltNamesField ownName={edit.name} value={altNames} onChange={(v) => { setAltNames(v); setAltError(''); }}
+                  draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similar} error={altError} /></Box>
+                    <VStack align="stretch" gap={3}><HStack justify="space-between">
                   <Text>Favorito</Text>
-                  <Switch checked={edit.is_favorite} onCheckedChange={(e) => setEdit({ ...edit, is_favorite: e.checked })} />
+                  <Switch size="lg" py="10px" checked={edit.is_favorite} onCheckedChange={(e) => setEdit({ ...edit, is_favorite: e.checked })} />
                 </HStack>
                 <HStack justify="space-between">
                   <Text>Activo</Text>
-                  <Switch checked={edit.is_active} onCheckedChange={(e) => setEdit({ ...edit, is_active: e.checked })} />
-                </HStack>
-                {/* Lo que decide si el producto manda su pedido al tablero de Pedidos. Nace
+                  <Switch size="lg" py="10px" checked={edit.is_active} onCheckedChange={(e) => setEdit({ ...edit, is_active: e.checked })} />
+                </HStack></VStack>
+                    <Box>{/* Lo que decide si el producto manda su pedido al tablero de Pedidos. Nace
                     encendido, así que apagarlo es la excepción y no hay que revisar 1004 fichas. */}
                 <HStack justify="space-between" align="start">
                   <Box pr={3}>
@@ -210,16 +253,19 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                       que solo lleve cosas apagadas se cobra y ya, sin pasar por Pedidos.
                     </Text>
                   </Box>
-                  <Switch checked={edit.needsPrep}
+                  <Switch size="lg" py="10px" checked={edit.needsPrep}
                     onCheckedChange={(e) => setEdit({ ...edit, needsPrep: e.checked })} />
-                </HStack>
-                {/* Alertas de stock bajo (spec 084): solo aparece si el producto lleva existencia propia
-                    (el servidor responde 404 a los demás) y quien edita puede ver el almacén. */}
-                {can('inventory.view') && (
-                  <SeccionAlertas itemType="producto" id={edit.id} name={edit.name} kind="pieza" canConfigure={can('inventory.configure')} />
+                </HStack></Box>
+                  </DosColumnas>
                 )}
-                <Box>
-                  <Text fontSize="sm" fontWeight="600" mb={1}>Disponibilidad (temporada) — opcional</Text>
+                {pestana === 'disponibilidad' && (
+                  <VStack align="stretch" gap={6} maxW="640px">
+                    <Box>
+                      <Text fontSize="sm" fontWeight="600" mb={2}>Dónde se vende</Text>
+                      <LugaresDeVenta venta={venta} setVenta={setVenta} />
+                    </Box>
+                    <Box>
+                  <Text fontSize="sm" fontWeight="600" mb={1}>Temporada — opcional</Text>
                   <Text fontSize="xs" color="fg.muted" mb={2}>Con fechas, el producto solo aparece en el POS dentro del rango. Vacío = siempre.</Text>
                   <HStack>
                     <Field label="Desde">
@@ -232,16 +278,36 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                     </Field>
                   </HStack>
                 </Box>
-                <Box borderTopWidth="1px" pt={4}>
-                  <Text fontSize="sm" fontWeight="600" mb={1}>Grupos modificadores</Text>
-                  <Text fontSize="xs" color="fg.muted" mb={3}>Los cambios de grupos se aplican al instante (no dependen de «Guardar»).</Text>
-                  <ProductGroupsManager productId={edit.id} />
-                </Box>
-              </VStack>
+                  </VStack>
+                )}
+                {pestana === 'web' && (
+                  <PanelVentaEnWeb venta={venta} setVenta={setVenta} precioMostrador={edit.price} errorPrecio={marcas.has('web')} />
+                )}
+                {pestana === 'receta' && (
+                  <VStack align="stretch" gap={5} maxW="640px">
+                    <Button variant="outline" minH="44px" justifyContent="space-between" onClick={() => setComposing(true)}>
+                  <Text>Receta</Text>
+                  <Text color="fg.muted" fontWeight="normal">{compositionLabel(edit.compositionStatus)} ›</Text>
+                </Button>
+                    <VenderSinExistencia venta={venta} setVenta={setVenta} mide={edit.measuresStock ?? false} />
+                    {/* Alertas de stock bajo (spec 084): solo aparece si el producto lleva existencia propia
+                    (el servidor responde 404 a los demás) y quien edita puede ver el almacén. */}
+                {can('inventory.view') && (
+                  <SeccionAlertas itemType="producto" id={edit.id} name={edit.name} kind="pieza" canConfigure={can('inventory.configure')} />
+                )}
+                  </VStack>
+                )}
+                {pestana === 'extras' && (
+                  <Box maxW="760px">
+                    <Text fontSize="sm" fontWeight="600" mb={3}>Grupos modificadores</Text>
+                    <ProductGroupsManager productId={edit.id} />
+                  </Box>
+                )}
+              </Box>
             </DialogBody>
             <DialogFooter>
               <Button variant="ghost" minH="44px" mr={3} onClick={onClose}>Cancelar</Button>
-              <Button minH="44px" loading={save.isPending} disabled={cost === 'invalido'} onClick={() => save.mutate(edit)}>Guardar</Button>
+              <Button minH="44px" loading={save.isPending} onClick={guardar}>Guardar</Button>
             </DialogFooter>
           </>
         )}

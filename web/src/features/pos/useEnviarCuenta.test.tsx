@@ -144,3 +144,16 @@ describe('el menú cambió debajo de la cuenta al mandar o cobrar', () => {
     expect(qc.getQueryState(['pos', 'draft', 'd-1'])?.isInvalidated).toBe(true);
   });
 });
+
+// Un producto que se agotó mientras la pantalla decía que había (spec 092): el aviso dice cuántas
+// quedan, y la lista de agotados se vuelve a pedir para que el mosaico lo marque al instante.
+describe('enviar con un producto agotado', () => {
+  test('avisa con el mensaje del servidor y vuelve a pedir los agotados', async () => {
+    api.sendDraft.mockRejectedValue(new ApiError(409, 'OUT_OF_STOCK', 'Se agotó Coca: queda 1', 'r', { productId: 41, productName: 'Coca' }));
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const { result } = renderHook(() => useEnviarCuenta({ onComanda: vi.fn() }), { wrapper });
+    await act(async () => { await result.current.enviar('d-1'); });
+    expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'Se agotó Coca: queda 1' }));
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['menu', 'sold-out'] });
+  });
+});

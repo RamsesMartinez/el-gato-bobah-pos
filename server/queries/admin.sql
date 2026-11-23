@@ -25,6 +25,17 @@ from (
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and not mg.is_active)::int as inactive_group_count,
          p.alt_names,
+         -- Dónde se vende y a qué precio en la web (spec 092). Subconsultas por código y no un join:
+         -- cuando el lugar de venta sea también por sucursal, un join multiplicaría las filas.
+         -- Sin fila = se ofrece, al precio de mostrador.
+         (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                       where pc.product_id = p.id and ch.code = 'pos' and pc.visibility = 'oculto'))::bool as sold_at_counter,
+         (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                       where pc.product_id = p.id and ch.code = 'online' and pc.visibility = 'oculto'))::bool as sold_on_web,
+         (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
+           where pc.product_id = p.id and ch.code = 'online') as web_price,
+         p.allow_oversell, p.track_stock, coalesce(p.description, '')::text as description,
+         (exists (select 1 from recipe_items ri where ri.recipe_id = p.recipe_id))::bool as has_recipe_items,
          -- El alternativo que coincidió (spec 063): '' si no se busca o si coincide el nombre; el
          -- primero en el orden capturado. coalesce: la subconsulta sin coincidencia es NULL.
          (case when @search::text = '' or strpos(catalog_name_key(p.name), catalog_name_key(@search)) > 0 then ''
@@ -113,9 +124,53 @@ select sqlc.arg(dst_product), pmg.group_id, pmg.title, pmg.min_select, pmg.max_s
 from product_modifier_groups pmg where pmg.product_id = sqlc.arg(src_product);
 
 -- name: CloneProductChannels :exec
-insert into product_channels (product_id, channel_id, visibility)
-select sqlc.arg(dst_product), pc.channel_id, pc.visibility
+insert into product_channels (product_id, channel_id, visibility, price)
+select sqlc.arg(dst_product), pc.channel_id, pc.visibility, pc.price
 from product_channels pc where pc.product_id = sqlc.arg(src_product);
+
+-- ==== Dónde se vende (spec 092) ====
+
+-- name: EnsureChannel :one
+-- El lugar de venta de la empresa de la sesión (RLS pone el filtro), creado si faltaba: una empresa
+-- que nació sin catálogo no puede quedarse con un «apagar Web» que responde bien sin escribir.
+with created as (
+  insert into channels (code, name) values (sqlc.arg(code), sqlc.arg(name))
+  on conflict (company_id, code) do nothing
+  returning id
+)
+select id from created
+union all
+select id from channels where code = sqlc.arg(code)
+limit 1;
+
+-- name: UpsertProductChannel :exec
+-- Por la restricción con nombre: cuando el lugar de venta sea también por sucursal, cambia la
+-- restricción y no esta consulta.
+insert into product_channels (product_id, channel_id, visibility, price)
+values (sqlc.arg(product_id), sqlc.arg(channel_id), sqlc.arg(visibility), sqlc.narg(price))
+on conflict on constraint product_channels_pkey
+do update set visibility = excluded.visibility, price = excluded.price;
+
+-- name: GetProductSalesForAudit :one
+-- Lo que había antes de guardar, con candado: el precio web cambia en la misma transacción que su
+-- evento, como el de mostrador.
+-- Trae también lo que decide si el producto descuenta del almacén: «vender sin existencia» apagado
+-- en uno que no descuenta nada no significa nada hoy y lo agotaría el día que gane receta.
+select p.id, p.allow_oversell, coalesce(p.description, '')::text as description,
+       (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
+         where pc.product_id = p.id and ch.code = 'online') as web_price,
+       (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                     where pc.product_id = p.id and ch.code = 'pos' and pc.visibility = 'oculto'))::bool as sold_at_counter,
+       (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                     where pc.product_id = p.id and ch.code = 'online' and pc.visibility = 'oculto'))::bool as sold_on_web,
+       p.track_stock, (p.type = 'combo')::bool as is_package, p.composition_status,
+       (exists (select 1 from recipe_items ri where ri.recipe_id = p.recipe_id))::bool as has_recipe_items
+from products p where p.id = sqlc.arg(id)
+for update of p;
+
+-- name: SetProductSalesFields :exec
+update products set allow_oversell = sqlc.arg(allow_oversell), description = sqlc.narg(description), updated_at = now()
+where id = sqlc.arg(id);
 
 -- name: ListComboSlots :many
 select id, name, min_select, max_select, position from combo_slots where combo_id = $1 order by position, id;

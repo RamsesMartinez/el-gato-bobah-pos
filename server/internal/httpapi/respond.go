@@ -98,6 +98,10 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "ROLE_INACTIVE"
 	case errors.Is(err, domain.ErrUsernameTaken):
 		status, code = http.StatusConflict, "USERNAME_TAKEN"
+	// Spec 092: lo pedido de un producto con «vender sin existencia» apagado no alcanza. 409 porque
+	// es el estado del almacén, no lo que mandó la tableta; la pantalla lo marca agotado.
+	case errors.Is(err, domain.ErrOutOfStock):
+		status, code = http.StatusConflict, "OUT_OF_STOCK"
 	case errors.Is(err, domain.ErrNotFound):
 		status, code = http.StatusNotFound, "NOT_FOUND"
 	case errors.Is(err, domain.ErrInvalidCredentials):
@@ -386,6 +390,10 @@ func Error(w http.ResponseWriter, err error) {
 	var pu domain.ProductUnavailable
 	if errors.As(err, &pu) {
 		details = &errorDetails{ProductID: pu.ProductID, ProductName: pu.Name}
+	}
+	var oos domain.OutOfStock
+	if errors.As(err, &oos) {
+		details = &errorDetails{ProductID: oos.ProductID, ProductName: oos.Name}
 	}
 	var lr domain.LineRejected
 	if errors.As(err, &lr) && lr.LineID != "" {

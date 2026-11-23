@@ -185,7 +185,7 @@ func TestAltaYDuplicadoConCostoManual(t *testing.T) {
 	cat := categoriaDeEmpresa(t, st, defaultCompanyID, "Cat costo alta")
 	costo := decimal.RequireFromString("12.5")
 
-	id, err := admin.CreateProduct(ctx, "Té costo alta", cat, decimal.RequireFromString("35"), false, false, &costo)
+	id, err := admin.CreateProduct(ctx, "Té costo alta", cat, decimal.RequireFromString("35"), false, false, &costo, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestAltaYDuplicadoConCostoManual(t *testing.T) {
 	}
 
 	negativo := decimal.RequireFromString("-1")
-	if _, err := admin.CreateProduct(ctx, "Té negativo", cat, decimal.RequireFromString("35"), false, false, &negativo); !errors.Is(err, domain.ErrValidation) {
+	if _, err := admin.CreateProduct(ctx, "Té negativo", cat, decimal.RequireFromString("35"), false, false, &negativo, nil); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("costo negativo: %v", err)
 	}
 }

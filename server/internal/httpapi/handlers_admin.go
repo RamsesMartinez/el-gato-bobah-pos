@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"math"
 	"net/http"
 	"strconv"
@@ -79,12 +80,19 @@ func (h *Handlers) AdminCreateProduct(w http.ResponseWriter, r *http.Request) {
 		TrackStock bool            `json:"trackStock"`
 		// cost ausente = sin costo capturado; presente se valida como dinero (negativo → 400).
 		Cost *decimal.Decimal `json:"cost"`
+		// sales ausente = en Mostrador y Web, con vender sin existencia (spec 092).
+		Sales json.RawMessage `json:"sales"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	id, err := h.admin.CreateProduct(r.Context(), body.Name, body.CategoryID, body.Price, body.Favorite, body.TrackStock, body.Cost)
+	sales, err := parseSales(body.Sales)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	id, err := h.admin.CreateProduct(r.Context(), body.Name, body.CategoryID, body.Price, body.Favorite, body.TrackStock, body.Cost, sales)
 	if err != nil {
 		Error(w, err)
 		return
@@ -222,8 +230,15 @@ func (h *Handlers) AdminUpdateProduct(w http.ResponseWriter, r *http.Request) {
 			Source string           `json:"source"`
 			Amount *decimal.Decimal `json:"amount"`
 		} `json:"cost"`
+		// sales ausente = no tocar dónde ni cómo se vende (spec 092).
+		Sales json.RawMessage `json:"sales"`
 	}
 	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	sales, err := parseSales(body.Sales)
+	if err != nil {
 		Error(w, err)
 		return
 	}
@@ -242,6 +257,7 @@ func (h *Handlers) AdminUpdateProduct(w http.ResponseWriter, r *http.Request) {
 		AvailableFrom: body.AvailableFrom, AvailableUntil: body.AvailableUntil,
 		NeedsPrep: body.NeedsPrep,
 		Cost:      cost,
+		Sales:     sales,
 	}); err != nil {
 		Error(w, err)
 		return

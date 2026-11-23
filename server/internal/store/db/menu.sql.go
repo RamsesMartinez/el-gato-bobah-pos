@@ -278,3 +278,29 @@ func (q *Queries) PopularProducts(ctx context.Context) ([]PopularProductsRow, er
 	}
 	return items, nil
 }
+
+const soldOutCandidates = `-- name: SoldOutCandidates :many
+select id from products where is_active and not allow_oversell order by id
+`
+
+// Los productos activos con «vender sin existencia» apagado (spec 092): los únicos que pueden salir
+// agotados. Casi siempre ninguno, y entonces la lista no carga el grafo de existencias.
+func (q *Queries) SoldOutCandidates(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.Query(ctx, soldOutCandidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

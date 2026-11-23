@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -59,5 +60,23 @@ func TestWriteMenuReportsABuildFailure(t *testing.T) {
 	}
 	if w.Header().Get("ETag") != "" {
 		t.Fatal("un error salió con ETag: la tableta lo guardaría como si fuera el menú")
+	}
+}
+
+// La lista de agotados (spec 092) sale siempre como arreglo y sin caché, aunque el servicio
+// devuelva nil.
+func TestWriteSoldOutIsAlwaysAnArrayAndNeverCached(t *testing.T) {
+	for _, ids := range [][]int64{nil, {}, {7}} {
+		w := httptest.NewRecorder()
+		writeSoldOut(w, ids)
+		body := strings.TrimSpace(w.Body.String())
+		if len(ids) == 0 {
+			if body != `{"productIds":[]}` {
+				t.Fatalf("con %v respondió %s", ids, body)
+			}
+		}
+		if w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("Cache-Control = %q", w.Header().Get("Cache-Control"))
+		}
 	}
 }
