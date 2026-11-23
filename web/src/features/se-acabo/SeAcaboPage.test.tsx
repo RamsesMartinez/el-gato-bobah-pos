@@ -16,8 +16,7 @@ vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), ba
 const queso = { itemType: 'ingrediente' as const, id: 1, name: 'Queso crema', unit: 'g' };
 const bolsa = { itemType: 'ingrediente' as const, id: 2, name: 'Bolsa grande', unit: 'pieza' };
 
-function montar() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function montar(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={qc}>
       <Provider>
@@ -257,7 +256,18 @@ describe('se acabó por almacén (spec 094)', () => {
     await screen.findByRole('group', { name: '¿De qué almacén?' });
     fireEvent.click(screen.getByRole('button', { name: 'Bodega' }));
     fireEvent.click(await screen.findByRole('button', { name: /Queso crema/ }));
-    expect(await screen.findByText('Toca otra vez: queda en 0 en Bodega y se avisa a quien compra')).toBeTruthy();
+    // Corto a propósito (revisión de código): el largo bajaba a tres renglones y hacía crecer el
+    // mosaico justo bajo el dedo antes del segundo toque. El detalle va en el aviso de después.
+    expect(await screen.findByText('Otra vez: queda en 0 en Bodega')).toBeTruthy();
+  });
+  // Revisión de código: «se acabó» pone la existencia en 0 y la lista de compra seguía sin pedirlo.
+  test('reportar invalida la lista de compra', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const inv = vi.spyOn(qc, 'invalidateQueries');
+    montar(qc);
+    await confirmar(await screen.findByRole('button', { name: /Queso crema/ }));
+    await screen.findByText(/Queso crema quedó en 0/);
+    expect(inv).toHaveBeenCalledWith({ queryKey: ['lista-de-compra'] });
   });
   // «Ya reportado» es del almacén: lo que se reportó en Bodega no puede salir reportado en Local.
   test('la búsqueda va con el almacén elegido; en el de venta, sin almacén', async () => {
