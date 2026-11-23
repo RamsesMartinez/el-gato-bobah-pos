@@ -149,7 +149,7 @@ por la razón correcta.
 
 - [ ] T051 Confirmar que la spec 094 entregó E2–E5 en producción (ventas, compras, traspasos, conteo y merma por almacén); si no, esta subida no empieza
 - [ ] T052 Medir la carga de hoy con el build servido en local (`bun run build && bun run preview`), base restaurada, 1024×600, CPU 4×: primera pantalla y lista completa de Existencias y del conteo; anotar las cifras en [research.md › R13](research.md) (SC-007)
-- [ ] T053 Migración siguiente libre (al traer develop) con solo `alter type stock_movement_type add value 'merma_esperada'`, y otra con `business_settings.expected_waste_deducts boolean not null default false` y `drop column ingredients.waste_pct` (ninguna versión en producción la lee desde la subida 1), cada una con su test de migración
+- [ ] T053 Migración siguiente libre (al traer develop) con solo `alter type stock_movement_type add value 'merma_esperada'`, y otra con `business_settings.expected_waste_deducts boolean not null default false` y, en ese orden, `drop trigger` de los dos espejos y `drop function mirror_expected_waste_pct()` de la 0126 y `drop column ingredients.waste_pct` (ninguna versión en producción la lee desde la subida 1), cada una con su test de migración
 
 ## Phase 9: US6 — Conteo contra ventas (P1)
 

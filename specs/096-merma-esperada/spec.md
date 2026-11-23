@@ -318,8 +318,9 @@ del conteo se ve en menos de la meta, medida antes y después.
   cuando no hay divisor o no hay nada.
 - **FR-011**: La merma real MUST verse junto al % esperado en el desglose del costo y en la ficha del
   artículo, y no MUST cambiar ningún costo.
-- **FR-012**: Configurar los porcentajes MUST pedir el permiso de configurar el menú; ver el desglose
-  y la merma real, el mismo que hoy deja ver costos.
+- **FR-012**: Configurar los porcentajes MUST pedir el permiso de configurar el menú, igual que ver
+  el desglose del costo. La merma real (consumo y mermas por almacén) MUST pedir además el permiso de
+  ver el almacén: sin él, el desglose llega sin merma real.
 - **FR-013**: Cada cambio de porcentaje (general, producto, artículo) MUST quedar en la bitácora con el
   valor anterior y el nuevo.
 

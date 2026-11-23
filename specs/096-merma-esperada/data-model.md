@@ -37,7 +37,7 @@
 | --- | --- |
 | `business_settings.expected_waste_deducts` | `boolean not null default false` |
 | `stock_movement_type` | `add value 'merma_esperada'` (en migración propia: `alter type … add value` no corre dentro de la transacción de goose con uso en la misma) |
-| `ingredients.waste_pct` | `drop column` (S1 dejó de leerla) |
+| `ingredients.waste_pct` | Primero se quitan los triggers `ingredients_mirror_expected_waste_*` y la función `mirror_expected_waste_pct()` de la 0126 (espejo para un regreso de versión), después `drop column` (S1 dejó de leerla) |
 | Índices | los que la medición de SC-007 justifique, empezando por `company_id` |
 
 Reporte conteo vs ventas y merma real: calculados, sin tabla.
