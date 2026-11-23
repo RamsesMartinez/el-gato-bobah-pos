@@ -74,12 +74,25 @@ function cuerpoDeOtroAlmacen(f: Forma, kind: Kind, c: LowStockConfig, warehouseI
   };
 }
 
-// resumenDeOtroAlmacen: lo que avisa ese almacén, que solo mide su propio mínimo.
+// cuerpoDelArticulo: encender o apagar las alertas del artículo desde otro almacén. Va SIN warehouseId
+// y sin branchMinStock: así el servidor sí toma los interruptores (con otro almacén los ignora, son
+// del artículo) y no toca el mínimo propio del de venta. Al encender, «al llegar al mínimo» va
+// encendida: es el único aviso que el mínimo de ese almacén puede dar.
+function cuerpoDelArticulo(c: LowStockConfig, enabled: boolean): LowStockInput {
+  return {
+    enabled, onMin: enabled ? true : c.onMin, onOut: c.onOut, banner: c.banner, minStock: c.minStock,
+    coverageDays: c.coverageDays, expectedUpdatedAt: c.updatedAt,
+  };
+}
+
+// resumenDeOtroAlmacen: el mínimo de ese almacén y si avisa. Las alertas son del artículo; si están
+// apagadas se dice así, porque «Alertas en Bodega: Apagadas» con un mínimo puesto no se entendía.
 function resumenDeOtroAlmacen(c: LowStockConfig, almacen: string): string {
-  if (!c.enabled) return 'Apagadas';
-  if (c.branchMinStock == null) return `${almacen} sin mínimo`;
-  const min = formatBaseQty(c.branchMinStock, c.unitCode);
-  return c.onMin ? `Avisa al llegar a ${min}` : `Mínimo ${min}, sin aviso al llegar`;
+  const apagadas = 'las alertas del artículo están apagadas';
+  if (c.branchMinStock == null) return c.enabled ? `${almacen} sin mínimo` : `${almacen} sin mínimo · ${apagadas}`;
+  const min = `Mínimo en ${almacen}: ${formatBaseQty(c.branchMinStock, c.unitCode)}`;
+  if (!c.enabled) return `${min} · no avisa: ${apagadas}`;
+  return c.onMin ? `${min} · avisa al llegar` : `${min} · no avisa al llegar`;
 }
 
 // primeraMinuscula: la frase va dentro de otra; bajar todo escribía «10 l» por «10 L».
@@ -128,17 +141,31 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
   };
   const cuerpoDe = (f: Forma) => (wid !== undefined && cfg.data
     ? cuerpoDeOtroAlmacen(f, kind, cfg.data, wid) : cuerpo(f, kind, cfg.data?.updatedAt));
+  // Desde otro almacén, la casilla de las alertas del artículo cambió: se guarda el artículo (sin
+  // almacén) y, si también cambió, el mínimo de ese almacén con la versión que dejó el primero.
+  const cambiaArticulo = (f: Forma) => wid !== undefined && !!cfg.data && f.enabled !== cfg.data.enabled;
+  const cambiaMinimo = (f: Forma) => {
+    const antes = cfg.data?.branchMinStock;
+    const ahora = baseQty(f.min.qty, kind, f.min.big) ?? null;
+    return (antes == null ? null : Number(antes)) !== (ahora == null ? null : Number(ahora));
+  };
   const yaPregunto = useMutation({
     mutationFn: () => lowStockApi.asked(id),
     onSettled: () => void qc.invalidateQueries({ queryKey: ['alertas', itemType, id] }),
   });
   const verEfecto = useMutation({
-    mutationFn: (f: Forma) => lowStockApi.preview(itemType, id, cuerpoDe(f)),
+    mutationFn: (f: Forma) => lowStockApi.preview(itemType, id, cambiaArticulo(f) ? cuerpoDelArticulo(cfg.data!, f.enabled) : cuerpoDe(f)),
     onSuccess: (r) => { setError(null); setEfecto(r); },
     onError: fallo,
   });
   const guardar = useMutation({
-    mutationFn: (f: Forma) => lowStockApi.save(itemType, id, cuerpoDe(f)),
+    mutationFn: async (f: Forma) => {
+      if (!cambiaArticulo(f)) return lowStockApi.save(itemType, id, cuerpoDe(f));
+      const r = await lowStockApi.save(itemType, id, cuerpoDelArticulo(cfg.data!, f.enabled));
+      if (!cambiaMinimo(f)) return r;
+      const { expectedUpdatedAt: _, ...resto } = cuerpoDe(f);
+      return lowStockApi.save(itemType, id, { ...resto, enabled: f.enabled, ...(r.updatedAt ? { expectedUpdatedAt: r.updatedAt } : {}) });
+    },
     onSuccess: (r) => {
       if (r.updatedAt) onSaved?.(r.updatedAt);
       medirAccion('inventario', 'alertas');
@@ -162,6 +189,8 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
   const preguntar = canConfigure && itemType === 'ingrediente' && !c.asked && !preguntaCerrada && !hoja;
   const otro = wid !== undefined;
   const almacen = c.warehouseName ?? wh.name ?? '';
+  // Al encender o apagar las alertas desde otro almacén, la vista previa es la del de venta: se dice.
+  const dondeEfecto = otro && forma && forma.enabled !== c.enabled ? ` en ${wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta'}` : '';
 
   return (
     <>
@@ -170,7 +199,7 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
         <Box>
           {otro ? (
             <>
-              <Text>Alertas en {almacen}: <b>{resumenDeOtroAlmacen(c, almacen)}</b></Text>
+              <Text><b>{resumenDeOtroAlmacen(c, almacen)}</b></Text>
               <Text fontSize="sm" color="fg.muted">Hay {formatBaseQty(c.onHand, c.unitCode)} en {almacen}</Text>
             </>
           ) : (
@@ -197,10 +226,13 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
               {otro ? (
                 <Stack gap={2} maxW="560px">
                   <QtyWithUnit label={`Mínimo en ${almacen}`} optional kind={kind} value={forma.min} keepAmount onChange={(min) => setForma({ ...forma, min })} />
+                  <Casilla checked={forma.enabled} onChange={(enabled) => setForma({ ...forma, enabled })}>
+                    Alertas de este artículo, en todos los almacenes
+                  </Casilla>
                   <Text fontSize="sm" color="fg.muted">
-                    {c.enabled
-                      ? `Avisa al llegar a este mínimo. Si avisa, cuándo y la franja se cambian en ${wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta'}.`
-                      : `Las alertas de este artículo están apagadas: se encienden en ${wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta'}.`}
+                    {forma.enabled
+                      ? `Con las alertas encendidas, ${almacen} avisa al llegar a su mínimo. Cuándo avisa y la franja se cambian en ${wh.list.find((w) => w.isSales)?.name ?? 'el almacén de venta'}.`
+                      : `Con las alertas apagadas, ningún almacén avisa, aunque tenga mínimo.`}
                   </Text>
                   {error && <Text role="alert" color="fg.error">{error}</Text>}
                 </Stack>
@@ -246,6 +278,9 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
         <ConfirmSheet isOpen title="Guardar las alertas" confirmLabel="Guardar" confirmPalette="brand" loading={guardar.isPending}
           onConfirm={() => guardar.mutate(forma)} onCancel={() => setEfecto(null)}>
           <VStack align="stretch" gap={2}>
+            {otro && forma.enabled !== c.enabled && (
+              <Text>Se {forma.enabled ? 'encenderán' : 'apagarán'} las alertas de <b>{name}</b> en todos los almacenes.</Text>
+            )}
             {otro ? (
               <Text>Mínimo de <b>{name}</b> en {almacen}: {(() => { const m = baseQty(forma.min.qty, kind, forma.min.big); return m == null ? 'sin mínimo' : formatBaseQty(m, c.unitCode); })()}.</Text>
             ) : (
@@ -253,13 +288,13 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
             )}
             {efecto.effect.opens.length > 0 && (
               <Box bg="orange.subtle" borderRadius="md" p={3} fontWeight="600">
-                Hoy quedan {formatBaseQty(efecto.onHand, c.unitCode)}, así que se enviará un aviso {efecto.effect.opens.map((k) => KIND_WORDS[k]).join(' y ')} al guardar.
+                Hoy quedan {formatBaseQty(efecto.onHand, c.unitCode)}{dondeEfecto}, así que se enviará un aviso {efecto.effect.opens.map((k) => KIND_WORDS[k]).join(' y ')} al guardar.
                 {efecto.needsCount ? ' La existencia está en negativo: conviene contarlo.' : ''}
               </Box>
             )}
             {efecto.effect.closes.length > 0 && <Text>Se cerrará el aviso abierto de este artículo.</Text>}
             {efecto.effect.opens.length === 0 && efecto.effect.closes.length === 0 && (
-              <Text color="fg.muted">Hoy quedan {formatBaseQty(efecto.onHand, c.unitCode)}: no se envía nada al guardar.</Text>
+              <Text color="fg.muted">Hoy quedan {formatBaseQty(efecto.onHand, c.unitCode)}{dondeEfecto}: no se envía nada al guardar.</Text>
             )}
           </VStack>
         </ConfirmSheet>
