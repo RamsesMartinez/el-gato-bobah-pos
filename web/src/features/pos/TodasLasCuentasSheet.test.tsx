@@ -23,15 +23,18 @@ function montar(items: AccountItem[] = VARIAS) {
   api.businessSettings.mockResolvedValue({ timezone: 'America/Mexico_City' });
   const onElegir = vi.fn();
   const onClose = vi.fn();
+  const onDeliver = vi.fn();
+  const onCharge = vi.fn();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
       <Provider>
-        <TodasLasCuentasSheet isOpen seleccionada={null} onElegir={onElegir} onClose={onClose} />
+        <TodasLasCuentasSheet isOpen seleccionada={null} onElegir={onElegir} onClose={onClose}
+          onDeliver={onDeliver} onCharge={onCharge} />
       </Provider>
     </QueryClientProvider>,
   );
-  return { onElegir, onClose };
+  return { onElegir, onClose, onDeliver, onCharge };
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -63,11 +66,12 @@ describe('la hoja «+N» con todas las cuentas', () => {
     expect(await screen.findByText(/5 vivas · por cobrar \$605/)).toBeInTheDocument();
   });
 
-  test('cada renglón dice el estado y lo que falta, y mide al menos 56 px', async () => {
+  // Spec 089: el renglón dice lo que le falta para quitarse, no el estado interno.
+  test('cada renglón dice lo que le falta, y mide al menos 56 px', async () => {
     montar();
     const fila = await screen.findByRole('button', { name: /^Mesa de afuera/ });
-    expect(within(fila).getByText('Pago parcial')).toBeInTheDocument();
-    expect(within(fila).getByText('$130')).toBeInTheDocument();
+    expect(within(fila).getByText('Falta cobrar $130 y entregar')).toBeInTheDocument();
+    expect(within(fila).queryByText('Pago parcial')).toBeNull();
     expect(parseInt(getComputedStyle(fila).minHeight || '0', 10)).toBeGreaterThanOrEqual(56);
   });
 
@@ -128,4 +132,64 @@ test('una cerrada con algo nuevo no dice «en cocina» ni muestra su total como 
   const renglon = fila.closest('button') ?? fila.parentElement!.parentElement!;
   expect(within(renglon as HTMLElement).queryByText(/en cocina/)).toBeNull();
   expect(within(renglon as HTMLElement).queryByText('$93')).toBeNull();
+  expect(within(renglon as HTMLElement).getByText('Nuevo sin enviar')).toBeInTheDocument();
+});
+
+// Spec 089, US2: lo que le falta se resuelve desde la hoja, sin elegir la cuenta primero.
+describe('entregar y cobrar desde la hoja', () => {
+  const acciones = async (nombre: string) => {
+    const renglon = (await screen.findByRole('button', { name: new RegExp(`^${nombre}`) })).closest('[data-renglon]') as HTMLElement;
+    return {
+      entregar: within(renglon).queryByRole('button', { name: `Entregar ${nombre}` }),
+      cobrar: within(renglon).queryByRole('button', { name: new RegExp(`^Cobrar .* ${nombre}$`) }),
+    };
+  };
+
+  test('la pagada sin entregar ofrece solo «Entregar»', async () => {
+    montar();
+    const a = await acciones('Siamés');
+    expect(a.entregar).not.toBeNull();
+    expect(a.cobrar).toBeNull();
+  });
+
+  test('la entregada que debe ofrece solo «Cobrar» con lo que falta', async () => {
+    montar();
+    const a = await acciones('Manx');
+    expect(a.entregar).toBeNull();
+    expect(a.cobrar).toHaveTextContent('Cobrar $88');
+  });
+
+  // Revisión de la 089: «Entregar» pegado a «Cobrar» invita a entregar sin cobrar al querer cobrar.
+  // Con las dos pendientes se abre la cuenta: su ticket ofrece entregar arriba y cobrar abajo.
+  test('la que falta cobrar y entregar no ofrece botones: se abre', async () => {
+    montar();
+    const a = await acciones('Khao Manee');
+    expect(a.entregar).toBeNull();
+    expect(a.cobrar).toBeNull();
+  });
+
+  test('una cuenta en captura no ofrece ninguna: todavía no es pedido', async () => {
+    montar();
+    const a = await acciones('Levkoy');
+    expect(a.entregar).toBeNull();
+    expect(a.cobrar).toBeNull();
+  });
+
+  test('tocar «Entregar» o «Cobrar» resuelve esa cuenta sin elegirla', async () => {
+    const { onDeliver, onCharge, onElegir } = montar();
+    const s = await acciones('Siamés');
+    fireEvent.click(s.entregar!);
+    expect(onDeliver).toHaveBeenCalledWith(expect.objectContaining({ key: 'o:6' }));
+    const m = await acciones('Manx');
+    fireEvent.click(m.cobrar!);
+    expect(onCharge).toHaveBeenCalledWith(expect.objectContaining({ key: 'o:14' }));
+    expect(onElegir).not.toHaveBeenCalled();
+  });
+
+  test('los botones miden al menos 44 px', async () => {
+    montar();
+    const b1 = (await acciones('Siamés')).entregar;
+    const b2 = (await acciones('Manx')).cobrar;
+    for (const b of [b1!, b2!]) expect(parseInt(getComputedStyle(b).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
+  });
 });

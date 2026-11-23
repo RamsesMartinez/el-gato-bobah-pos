@@ -32,6 +32,7 @@ GET /api/v1/admin/products/{id}/alt-names/similar admin,gerente
 GET /api/v1/admin/products/{id}/composition admin,gerente
 GET /api/v1/admin/products/{id}/groups admin,gerente
 GET /api/v1/admin/products/{id}/image admin,gerente
+GET /api/v1/admin/public-menu admin,gerente
 GET /api/v1/admin/recipes admin,gerente
 GET /api/v1/admin/web-sales/summary admin,gerente
 GET /api/v1/articles admin,gerente
@@ -116,6 +117,7 @@ GET /api/v1/stock/presentation-suggestions admin,gerente
 GET /api/v1/stock/presentations admin,gerente
 GET /api/v1/stock/products/{id}/low-stock admin,gerente
 GET /api/v1/stock/shopping-list admin,gerente
+GET /api/v1/stock/transfers admin,gerente
 GET /api/v1/stock/warehouses admin,gerente
 GET /api/v1/supplier-items admin,gerente
 GET /api/v1/suppliers admin,gerente
@@ -133,6 +135,7 @@ PATCH /api/v1/admin/categories/{id} admin,gerente
 PATCH /api/v1/admin/groups/{id} admin,gerente
 PATCH /api/v1/admin/modifier-options/{id} admin,gerente
 PATCH /api/v1/admin/products/{id} admin,gerente
+PATCH /api/v1/admin/public-menu admin,gerente
 PATCH /api/v1/card-terminals/{id} admin,gerente
 PATCH /api/v1/cash-concepts/{id} admin,gerente
 PATCH /api/v1/cash-registers/{id} admin,gerente
@@ -235,6 +238,7 @@ POST /api/v1/stock/not-found admin,gerente,cajero,mesero
 POST /api/v1/stock/out-reports admin,gerente,cajero,mesero
 POST /api/v1/stock/out-reports/{id}/undo admin,gerente,cajero,mesero
 POST /api/v1/stock/shopping-list/email admin,gerente
+POST /api/v1/stock/transfers admin,gerente
 POST /api/v1/stock/warehouses admin,gerente
 POST /api/v1/stock/warehouses/{id}/archive admin,gerente
 POST /api/v1/stock/warehouses/{id}/restore admin,gerente

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 
 import { useSessionStore } from '../../stores/session';
 
@@ -11,6 +11,7 @@ import { StockPage } from './StockPage';
 
 const oneWarehouse = { items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] };
 const back = vi.hoisted(() => ({
+  createTransfer: vi.fn((_b?: unknown) => Promise.resolve({ id: 1 })),
   countPlaces: vi.fn(() => Promise.resolve([{ id: 4, name: 'Barra', position: 0, ingredients: 1 }])),
   stockLevels: vi.fn((_w?: number | 'all') => Promise.resolve({ items: [] as unknown[] })),
   warehouses: vi.fn(() => Promise.resolve({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] })),
@@ -71,7 +72,14 @@ vi.mock('../../api/notifications', async (orig) => ({ ...(await orig<object>()),
 
 function montar(entrada = '/almacen') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={[entrada]}><StockPage /></MemoryRouter></Provider></QueryClientProvider>);
+  return render(<QueryClientProvider client={qc}><Provider><MemoryRouter initialEntries={[entrada]}>
+    <Routes><Route path="/almacen" element={<StockPage />} /><Route path="/negocio" element={<Donde />} /></Routes>
+  </MemoryRouter></Provider></QueryClientProvider>);
+}
+
+function Donde() {
+  const l = useLocation();
+  return <p>{l.pathname + l.search + l.hash}</p>;
 }
 
 function sesion(permissions: string[]) {
@@ -284,7 +292,9 @@ it('si no se pudo leer el almacén lo dice', async () => {
 it('quien administra almacenes llega a ellos desde Almacén', async () => {
   sesion(['inventory.view', 'inventory.warehouse_manage']);
   montar('/almacen');
-  expect(await screen.findByRole('button', { name: 'Almacenes ›' })).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole('button', { name: 'Almacenes ›' }));
+  // Abre la sección de Inventario de Negocio, no la primera (prueba con usuario nuevo, 094).
+  expect(await screen.findByText('/negocio?seccion=inventario#almacenes')).toBeInTheDocument();
 });
 
 it('quien no los administra no ve el atajo', async () => {
@@ -303,4 +313,54 @@ it('una bodega vacía lo dice', async () => {
   montar('/almacen');
   fireEvent.click(await screen.findByRole('button', { name: 'Bodega' }));
   expect(await screen.findByText('Este almacén todavía no tiene mercancía')).toBeInTheDocument();
+});
+
+// TRASPASOS (spec 094, subida 3).
+const twoWarehouses = { items: [
+  { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 1 },
+  { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+] };
+
+it('la pestaña Traspaso sale con el permiso y dos almacenes, después de Existencias', async () => {
+  back.warehouses.mockResolvedValue(twoWarehouses);
+  sesion(['inventory.view', 'inventory.transfer']);
+  montar('/almacen');
+  const tabs = await screen.findAllByRole('tab');
+  await vi.waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toContain('Traspaso'));
+  const names = screen.getAllByRole('tab').map((t) => t.textContent);
+  expect(names.indexOf('Traspaso')).toBe(names.indexOf('Existencias') + 1);
+  expect(tabs.length).toBeGreaterThan(0);
+});
+
+it('sin el permiso o con un solo almacén no hay pestaña Traspaso', async () => {
+  back.warehouses.mockResolvedValue(twoWarehouses);
+  sesion(['inventory.view']);
+  montar('/almacen');
+  await screen.findByRole('columnheader', { name: 'Artículo' });
+  expect(screen.queryByRole('tab', { name: 'Traspaso' })).toBeNull();
+  cleanup();
+  back.warehouses.mockResolvedValue(oneWarehouse);
+  sesion(['inventory.view', 'inventory.transfer']);
+  montar('/almacen');
+  await screen.findByRole('columnheader', { name: 'Artículo' });
+  expect(screen.queryByRole('tab', { name: 'Traspaso' })).toBeNull();
+});
+
+it('un negativo en el de venta con mercancía en la bodega se trae con un toque', async () => {
+  back.warehouses.mockResolvedValue(twoWarehouses);
+  back.stockLevels.mockImplementation(() => Promise.resolve({ items: [
+    { item_name: 'Leche', item_type: 'ingrediente', ingredient_id: 7, product_id: null, on_hand: '-2000', unit_code: 'ml', min_stock: null, is_active: true,
+      transfer_from: [{ warehouseId: 2, name: 'Bodega', onHand: '20000' }] },
+    { item_name: 'Azúcar', item_type: 'ingrediente', ingredient_id: 8, product_id: null, on_hand: '-500', unit_code: 'g', min_stock: null, is_active: true },
+  ] } as never));
+  sesion(['inventory.view', 'inventory.transfer']);
+  montar('/almacen');
+  const fila = (await screen.findByText('Leche')).closest('tr')!;
+  fireEvent.click(within(fila).getByRole('button', { name: 'Traer de Bodega' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Traspasar 2 L' }));
+  await vi.waitFor(() => expect(back.createTransfer).toHaveBeenCalledTimes(1));
+  expect(back.createTransfer.mock.calls[0][0]).toMatchObject({ fromWarehouseId: 2, toWarehouseId: 1,
+    lines: [{ itemType: 'ingrediente', ingredientId: 7, qty: '2000' }] });
+  // Sin de dónde traer, no hay botón.
+  expect(within((await screen.findByText('Azúcar')).closest('tr')!).queryByRole('button', { name: /Traer de/ })).toBeNull();
 });

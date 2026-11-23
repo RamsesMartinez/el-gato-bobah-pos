@@ -35,6 +35,7 @@ var MergeTables = map[string]string{
 	"notifications":               "los avisos abiertos del origen se cierran (merged); el destino se evalúa al final",
 	"stock_out_reports":           "lo pasado se queda en el origen; después, rechaza",
 	"branch_stock_minimums":       "el destino conserva el suyo; los del origen se borran; después, rechaza",
+	"stock_transfer_lines":        "lo pasado se queda en el origen; después, rechaza (sus movimientos se redirigen como cualquiera)",
 }
 
 // MergeSourceInput es un origen y, si se mide distinto que el destino, su equivalencia: cuánto del

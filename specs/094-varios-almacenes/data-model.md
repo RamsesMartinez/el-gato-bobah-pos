@@ -33,9 +33,9 @@ Decisiones y su porqué en [research.md](research.md). Identificadores en inglé
 - `fill_stock_movement_branch_id()` (de la 0078) gana una rama: si `branch_id` es nulo y
   `warehouse_id` no, toma la sucursal del almacén.
 
-## Columna `warehouse_id` (0120, nullable; `not null` en 0121)
+## Columna `warehouse_id` (0120, nullable; `not null` en 0122)
 
-| Tabla | Llave compuesta | Relleno | Trigger de llenado | `not null` en 0121 |
+| Tabla | Llave compuesta | Relleno | Trigger de llenado | `not null` en 0122 |
 | --- | --- | --- | --- | --- |
 | stock_levels | `(company_id, branch_id, warehouse_id)` | de venta de su sucursal | sí | sí |
 | stock_movements | `(company_id, branch_id, warehouse_id)` | ídem | sí (nombre ordena después del de sucursal) | sí |
@@ -51,7 +51,7 @@ Decisiones y su porqué en [research.md](research.md). Identificadores en inglé
 
 **Llaves únicas** (research R2)
 
-| Tabla | 0120 agrega | 0121 borra |
+| Tabla | 0120 agrega | 0122 borra |
 | --- | --- | --- |
 | stock_levels | `(warehouse_id, ingredient_id)`, `(warehouse_id, product_id)` | `stock_levels_ingredient_per_branch`, `stock_levels_product_per_branch` |
 | branch_stock_minimums | `(warehouse_id, ingredient_id)` y `(warehouse_id, product_id)` parciales | `…_ingredient_key`, `…_product_key` |

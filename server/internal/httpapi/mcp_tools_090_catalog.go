@@ -227,6 +227,7 @@ func register090Catalog() {
 	// ---- Costo con motivo ----
 	writeTool(writeSpec[costSetArgs]{
 		name: "ingredient_cost_set",
+		refs: refsCostSet,
 		route: func(_ *mcpSession, _ context.Context, in costSetArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("ingredient_id", in.IngredientID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -307,6 +308,7 @@ func register090Catalog() {
 	}
 	writeTool(writeSpec[recipeSetArgs]{
 		name: "recipe_set",
+		refs: refsRecipeSet,
 		route: func(s *mcpSession, ctx context.Context, in recipeSetArgs) (string, string, map[string]int64, url.Values, any, error) {
 			pattern, id, err := in.pattern()
 			if err != nil {
@@ -435,6 +437,7 @@ func register090Catalog() {
 
 	writeTool(writeSpec[groupUpdateArgs]{
 		name: "modifier_group_update",
+		refs: refsGroupUpdate,
 		route: func(s *mcpSession, ctx context.Context, in groupUpdateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("group_id", in.GroupID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -501,6 +504,7 @@ func register090Catalog() {
 
 	writeTool(writeSpec[optionCreateArgs]{
 		name: "modifier_option_create",
+		refs: refsOptionCreate,
 		route: func(_ *mcpSession, _ context.Context, in optionCreateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("group_id", in.GroupID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -541,6 +545,7 @@ func register090Catalog() {
 	linkState := productGroupsState("product_group_link")
 	writeTool(writeSpec[groupLinkArgs]{
 		name: "product_group_link",
+		refs: refsGroupLink,
 		route: func(_ *mcpSession, _ context.Context, in groupLinkArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("product_id", in.ProductID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -571,6 +576,7 @@ func register090Catalog() {
 	unlinkState := productGroupsState("product_group_unlink")
 	writeTool(writeSpec[groupUnlinkArgs]{
 		name: "product_group_unlink",
+		refs: refsGroupUnlink,
 		route: func(_ *mcpSession, _ context.Context, in groupUnlinkArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("product_id", in.ProductID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -588,6 +594,7 @@ func register090Catalog() {
 	// ---- Productos ----
 	writeTool(writeSpec[productCreateArgs]{
 		name: "product_create",
+		refs: refsProductCreate,
 		route: func(_ *mcpSession, _ context.Context, in productCreateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if strings.TrimSpace(in.Name) == "" {
 				return "", "", nil, nil, nil, toolErr("name es obligatorio.")

@@ -278,6 +278,9 @@ export const adminApi = {
   categories: () => api.get<{ items: Category[] }>('/admin/categories'),
   // Cuántos productos se venden en la web y cuántos con precio propio (spec 092).
   webSalesSummary: () => api.get<{ onWeb: number; withWebPrice: number; total: number }>('/admin/web-sales/summary'),
+  // El menú público (spec 097): nombre, enlace, QR y color.
+  publicMenu: () => api.get<PublicMenuSettings>('/admin/public-menu'),
+  updatePublicMenu: (b: { name?: string; palette?: string }) => api.patch<PublicMenuSettings>('/admin/public-menu', b),
   // Fotos del catálogo (spec 091): las dos variantes WebP en base64.
   setImage: (kind: 'products' | 'categories', id: number, b: { image1200: string; image400: string }) =>
     api.put<{ imageUrl: string }>(`/admin/${kind}/${id}/image`, b),
@@ -412,4 +415,14 @@ export interface OptionsPage {
   items: AdminModifierOption[];
   total: number; // total del filtro (status+search) — para el paginador
   counts: { act: number; inact: number }; // opciones de grupos activos — para las pestañas
+}
+
+/** Ajustes del menú público (spec 097). `qrUrl` no cambia nunca, aunque cambie el nombre. */
+export interface PublicMenuSettings {
+  businessName: string;
+  name: string;
+  url: string;
+  qrUrl: string;
+  palette: string;
+  previousNames: string[];
 }

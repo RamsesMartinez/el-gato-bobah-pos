@@ -1,11 +1,14 @@
 import { DiaDelGasto } from './DiaDelGasto';
 import { presentationLabel } from '../../shared/presentationLabel';
 import { DatePickerButton } from '../../components/DatePickerButton';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  Box, Button, HStack, VStack, Text, Input, Badge, IconButton, Separator,
+  Box, Button, Grid, HStack, chakra, VStack, Text, Input, Badge, IconButton, Separator, Switch as ChakraSwitch,
 } from '@chakra-ui/react';
-import { LuPlus, LuTrash2, LuUpload, LuTriangleAlert, LuSparkles, LuMinus, LuScissors, LuGift, LuBan } from 'react-icons/lu';
+import {
+  LuPlus, LuTrash2, LuUpload, LuTriangleAlert, LuSparkles, LuMinus, LuScissors, LuGift, LuCheck, LuClock, LuUser,
+  LuChevronRight, LuChevronDown, LuChevronUp, LuStore, LuWarehouse,
+} from 'react-icons/lu';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { Picker, type PickerOption } from '../../components/Picker';
@@ -15,7 +18,7 @@ import {
   DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogCloseTrigger, DialogFooter,
 } from '../../components/ui/dialog';
 import {
-  DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader,
+  DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../components/ui/drawer';
 import { posApi } from '../../api/pos';
 import { money } from '../../utils/format';
@@ -24,9 +27,10 @@ import { DensitySheet } from './articles/DensitySheet';
 import { ApiError } from '../../api/client';
 import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
+import { useUiStore } from '../../stores/ui';
 import {
   backofficeApi, type ExpenseCategory, type Supplier, type ArticleSuggestion, type Article, type Unit,
-  type Presentation, type ExpenseItemBody, type ExpensePaymentBody, type ParsedDoc, type DocLine, type CashRegister,
+  type Presentation, type Warehouse, type ExpenseItemBody, type ExpensePaymentBody, type ParsedDoc, type DocLine, type CashRegister,
 } from '../../api/backoffice';
 import {
   activeRegisters, registerLabel, outsideAskOf, countsInDrawer, withCountChoice, drawerExtraOf, type CountChoice, type OutsideAsk,
@@ -37,6 +41,9 @@ import { crossBuyUnits, formatBaseQty, purchaseUnitsFor, unitLabel } from '../..
 import { PresentationsSheet } from './PresentationsSheet';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { medirAccion } from '../../api/uso';
+import { Segmented } from '../../components/Segmented';
+import { InfoButton } from '../../components/InfoButton';
+import { useLastWarehouse } from './expense/useLastWarehouse';
 
 // Alta de una compra (spec 038, maqueta «Captura de una compra», opción C: primero el ticket).
 //
@@ -75,6 +82,9 @@ interface DraftItem {
   // excluded: venía en el ticket pero no es del local (el shampoo de la casa). Conserva su artículo,
   // no suma al gasto ni toca el almacén; se manda para que el proveedor lo recuerde (spec 049).
   excluded: boolean;
+  // warehouseId: a qué almacén entra este renglón cuando no es el del ticket; null = el del ticket
+  // («¿Dónde se guarda?» de arriba). Solo se pregunta con dos o más almacenes (spec 094).
+  warehouseId: number | null;
 }
 
 interface DraftPayment {
@@ -96,6 +106,7 @@ const emptyItem = (): DraftItem => ({
   key: nextKey(), rawCode: '', rawName: '', description: '', itemType: '', itemId: null,
   itemName: '', quantity: '1', unitId: null, presentationId: null, amount: '', packQtyInBase: '',
   arrived: true, partQty: null, isGift: false, doubtful: false, suggestion: null, suggestions: [], docStatus: '', excluded: false,
+  warehouseId: null,
 });
 
 const emptyPayment = (paidOn: string): DraftPayment => ({
@@ -119,6 +130,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   open: boolean; onClose: () => void; onSaved: () => void;
 }) {
   const qc = useQueryClient();
+  const palette = useUiStore((s) => s.palette);
   const { data: cats } = useQuery({ queryKey: ['expense-cats'], queryFn: backofficeApi.expenseCategories, enabled: open });
   const { data: sups } = useQuery({ queryKey: ['suppliers'], queryFn: backofficeApi.suppliers, enabled: open });
   const { data: methods } = useQuery({ queryKey: ['payment-methods'], queryFn: posApi.paymentMethods, enabled: open });
@@ -168,6 +180,20 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const [packsOf, setPacksOf] = useState<Article | null>(null);
   const kindAsk = useRef<((k: Unit['kind'] | null) => void) | null>(null);
   const [askingKind, setAskingKind] = useState(false);
+  // Almacenes (spec 094): «¿Dónde se guarda?» solo aparece con dos o más. El del ticket arranca en el
+  // último que se eligió en este equipo (T045).
+  const whQuery = useQuery({ queryKey: ['warehouses'], queryFn: () => backofficeApi.warehouses(), enabled: open });
+  const whList = whQuery.data?.items ?? [];
+  const multiWh = whList.length > 1;
+  const [ticketWh, setTicketWh] = useLastWarehouse(whList);
+  // Un renglón cuyo almacén se archivó a media captura sigue al del ticket: mandar uno que ya no
+  // existe haría que el servidor rechace la compra entera.
+  const whOf = (i: DraftItem) => (i.warehouseId !== null && whList.some((w) => w.id === i.warehouseId) ? i.warehouseId : ticketWh);
+  // El renglón elegido: su detalle va al lado de la lista; en una pantalla angosta, en una hoja.
+  const [selKey, setSelKey] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const narrow = useNarrow();
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const label = settings?.stockItemLabel || 'artículo';
   const activeCats = (cats?.items ?? []).filter((c) => c.isActive);
@@ -186,6 +212,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
     setExpenseDate(today()); setCategoryId(''); setSupplierId(''); setAmount('');
     setDescription(''); setDocKind(''); setDocFolio(''); setDocRaw(undefined);
     setItems([]); setPayments([]); setParsed(null); setPayWith(''); setPayRegister('');
+    setSelKey(null); setSheetOpen(false); setMoreOpen(false);
   };
 
   // ---- Subir documento ----
@@ -313,6 +340,52 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
     return n === null ? null : `${i.itemName} +${formatBaseQty(n, base)}`;
   };
 
+  // ---- Renglones: cuál se ve en el detalle ----
+  const visibleItems = items.filter((i) => !i.doubtful);
+  const selected = visibleItems.find((i) => i.key === selKey) ?? visibleItems[0] ?? null;
+  const addLine = () => {
+    const it = emptyItem();
+    setItems((p) => [...p, it]);
+    setSelKey(it.key);
+    if (narrow) setSheetOpen(true);
+  };
+  // packOf es cómo se lee en la lista lo que llegó: «3 × Caja · 12 L», «2 kg».
+  const packOf = (i: DraftItem): string => {
+    if (!hasArticle(i)) return i.description ? '' : '';
+    const pres = presList.find((p) => p.id === i.presentationId);
+    if (pres) return `${i.quantity || '1'} × ${presentationLabel(pres)}`;
+    const u = unitList.find((x) => x.id === i.unitId);
+    return `${i.quantity || '1'} ${u ? unitLabel(u) : ''}`.trim();
+  };
+  const detailOf = (it: DraftItem) => (
+    <ItemRow key={it.key} item={it} units={unitList} articles={articleOptions} articleList={articleList}
+      presentations={presList} sums={sumsLine(it)} howItArrives={howItArrives} cross={crossOf(it)}
+      onDensity={canDensity && densityShortcutRow.get(it.itemId ?? 0) === it.key
+        ? () => setDensityFor({ id: it.itemId!, name: it.itemName }) : undefined}
+      askForDensity={!canDensity || !((it.itemId ?? 0) > 0)}
+      warehouses={multiWh ? whList : []} warehouseId={whOf(it)}
+      onWarehouse={(id) => setItem(it.key, { warehouseId: id === ticketWh ? null : id })}
+      canRemove={visibleItems.length > 1}
+      onChange={(patch) => setItem(it.key, patch)}
+      onSplit={() => {
+        // La mitad nueva no lleva el texto del ticket: aprenderlo dos veces pisaría el primero.
+        const copy: DraftItem = { ...emptyItem(), description: it.description, docStatus: it.docStatus, warehouseId: it.warehouseId };
+        setItems((p) => {
+          const at = p.findIndex((x) => x.key === it.key);
+          return [...p.slice(0, at + 1), copy, ...p.slice(at + 1)];
+        });
+        setSelKey(copy.key);
+      }}
+      onPacks={(a) => setPacksOf(a)}
+      onCreate={createArticle}
+      onRemove={() => {
+        const at = visibleItems.findIndex((x) => x.key === it.key);
+        setItems((p) => p.filter((x) => x.key !== it.key));
+        setSelKey(visibleItems[at + 1]?.key ?? visibleItems[at - 1]?.key ?? null);
+        setSheetOpen(false);
+      }} />
+  );
+
   const create = useMutation({
     mutationFn: (choice?: CountChoice) => backofficeApi.createExpense({
       expenseDate,
@@ -347,6 +420,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
           rawCode: i.doubtful ? undefined : i.rawCode || undefined,
           rawName: i.doubtful ? undefined : i.rawName || undefined,
           excluded: i.excluded || undefined,
+          warehouseId: goods && multiWh ? whOf(i) ?? undefined : undefined,
         };
       }),
       payments: (quickPayment ? [quickPayment] : payments.map((p): ExpensePaymentBody => ({
@@ -394,7 +468,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   for (const i of counted) {
     if (isGoods(i) && i.itemId! > 0 && crossOf(i)?.missing && !densityShortcutRow.has(i.itemId!)) densityShortcutRow.set(i.itemId!, i.key);
   }
-  const canSave = !!categoryId && total > 0 && moneyCheck.missingAmount === 0 && !moneyCheck.over && !missingUnit && !badPayment
+  // Sin la lista de almacenes, guardar mandaría la mercancía al de venta sin preguntar.
+  const whPending = items.some((i) => !!i.itemId && !i.excluded) && (whQuery.isLoading || whQuery.isError);
+  const canSave = !whPending && !!categoryId && total > 0 && moneyCheck.missingAmount === 0 && !moneyCheck.over && !missingUnit && !badPayment
     && !payUnanswered && !payNeedsRegister && !anyPartBad && !badDrawerOut && !missingDensity;
 
   const setItem = (key: string, patch: Partial<DraftItem>) =>
@@ -446,7 +522,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
       placement="center" size="full" scrollBehavior="inside">
       <DialogBackdrop />
       {/* Pantalla completa: «cover» con scroll interno lo dejaba en 400 de los 600 px. */}
-      <DialogContent h="100dvh" maxH="100dvh">
+      {/* El diálogo se pinta fuera del contenedor que lleva la paleta del negocio (Apariencia): lo
+          elegido y lo activo la toman aquí (spec 094, color P1). */}
+      <DialogContent h="100dvh" maxH="100dvh" colorPalette={palette}>
         <DialogHeader>
           <DialogTitle>{step === 'capture' && parsed ? 'Nuevo gasto · desde el ticket' : 'Nuevo gasto'}</DialogTitle>
         </DialogHeader>
@@ -457,7 +535,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         {step === 'start' && (
           <DialogBody>
             <VStack gap={4} maxW="560px" mx="auto" py={6}>
-              <Button size="xl" w="100%" minH="88px" colorPalette="brand" loading={parse.isPending}
+              <Button size="xl" w="100%" minH="88px" loading={parse.isPending}
                 onClick={() => fileRef.current?.click()}>
                 <LuUpload /> Sube la foto del ticket
               </Button>
@@ -472,7 +550,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
           <DialogBody>
             <VStack gap={4} maxW="560px" mx="auto" py={6}>
               <Text fontWeight="700" fontSize="lg">¿Trae mercancía para el almacén?</Text>
-              <Button size="lg" w="100%" minH="56px" colorPalette="brand"
+              <Button size="lg" w="100%" minH="56px"
                 onClick={() => { setWithGoods(true); setItems([emptyItem()]); setStep('capture'); }}>
                 Sí
               </Button>
@@ -487,20 +565,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
         {step === 'capture' && (<>
           <DialogBody pb={4}>
             <VStack align="stretch" gap={4} maxW="1100px" mx="auto">
-              {/* ---- Encabezado ---- */}
-              <HStack flexWrap="wrap" gap={3} align="start">
-                <Field label="Fecha del ticket" w="160px">
-                  <DatePickerButton label="Fecha del ticket" value={expenseDate} onChange={setExpenseDate} />
-                </Field>
-                <Field label="Categoría" flex="1" minW="180px">
-                  <Picker value={categoryId} onChange={setCategoryId} placeholder="Elegir categoría" title="Categoría"
-                    options={activeCats.map((c) => ({ value: String(c.id), label: c.name }))}
-                    onCreate={async (name) => {
-                      const c = await backofficeApi.createExpenseCategory({ name, financialGroup: 'operacional' });
-                      qc.setQueryData(['expense-cats'], (old?: { items: ExpenseCategory[] }) => ({ items: [...(old?.items ?? []), c] }));
-                      return { value: String(c.id), label: c.name };
-                    }} />
-                </Field>
+              {/* ---- Encabezado (spec 094, maqueta R3): lo obligatorio en una línea; comentario, folio y
+                  día del gasto se pliegan en «Más datos». ---- */}
+              <HStack flexWrap="wrap" gap={3} align="end">
                 <Field label="Proveedor" flex="1" minW="180px">
                   <Picker value={supplierId} onChange={setSupplierId} placeholder="— Sin proveedor —" title="Proveedor"
                     clearable clearLabel="— Sin proveedor —"
@@ -511,20 +578,42 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                       return { value: String(s.id), label: s.name };
                     }} />
                 </Field>
-                <Field label="Total de la compra" w="150px">
+                <Field label="Categoría" flex="1" minW="160px">
+                  <Picker value={categoryId} onChange={setCategoryId} placeholder="Elegir categoría" title="Categoría"
+                    options={activeCats.map((c) => ({ value: String(c.id), label: c.name }))}
+                    onCreate={async (name) => {
+                      const c = await backofficeApi.createExpenseCategory({ name, financialGroup: 'operacional' });
+                      qc.setQueryData(['expense-cats'], (old?: { items: ExpenseCategory[] }) => ({ items: [...(old?.items ?? []), c] }));
+                      return { value: String(c.id), label: c.name };
+                    }} />
+                </Field>
+                <Field label="Fecha del ticket" w="150px">
+                  <DatePickerButton label="Fecha del ticket" value={expenseDate} onChange={setExpenseDate} />
+                </Field>
+                <Field label="Total de la compra" w="140px">
                   <Input aria-label="Total de la compra" inputMode="decimal" placeholder="0.00" value={amount} minH="44px"
-                    onChange={(e) => setAmount(e.target.value)} />
+                    textAlign="end" fontWeight="700" onChange={(e) => setAmount(e.target.value)} />
                 </Field>
+                <Button minH="44px" variant="ghost" aria-expanded={moreOpen} onClick={() => setMoreOpen((m) => !m)}>
+                  {moreOpen ? <>Menos datos <LuChevronUp /></> : <>Más datos <LuChevronDown /></>}
+                </Button>
               </HStack>
-              <HStack flexWrap="wrap" gap={3} align="end">
-                <DiaDelGasto turno={turno} value={expenseDay} onChange={setExpenseDay} />
-                <Field label="Comentario" flex="1" minW="200px">
-                  <Input placeholder="Concepto" value={description} minH="44px" onChange={(e) => setDescription(e.target.value)} />
-                </Field>
-                <Field label="Folio" w="150px">
-                  <Input placeholder="—" value={docFolio} minH="44px" onChange={(e) => setDocFolio(e.target.value)} />
-                </Field>
-              </HStack>
+              {moreOpen ? (
+                <HStack flexWrap="wrap" gap={3} align="end">
+                  <DiaDelGasto turno={turno} value={expenseDay} onChange={setExpenseDay} />
+                  <Field label="Comentario" flex="1" minW="200px">
+                    <Input placeholder="Concepto" value={description} minH="44px" onChange={(e) => setDescription(e.target.value)} />
+                  </Field>
+                  <Field label="Folio" w="150px">
+                    <Input placeholder="—" value={docFolio} minH="44px" onChange={(e) => setDocFolio(e.target.value)} />
+                  </Field>
+                </HStack>
+              ) : (
+                <Text fontSize="sm" color="fg.muted" mt={-2}>
+                  {[description, docFolio && `Folio ${docFolio}`, expenseDay !== today() && `Gasto del ${hora.soloFecha(`${expenseDay}T12:00:00`)}`]
+                    .filter(Boolean).join(' · ')}
+                </Text>
+              )}
 
               {/* Los avisos van debajo del encabezado: no lo tapan. */}
               {ticketTotal !== undefined && total > 0 && Math.abs(ticketTotal - total) >= 0.01 && (
@@ -548,9 +637,29 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 </Warn>
               )}
 
-              {/* ---- Renglones ---- */}
+              {/* ---- Renglones (spec 094, maqueta R3): lista de una línea y el detalle del elegido al
+                  lado; en una pantalla angosta el detalle se abre en una hoja. ---- */}
               {withGoods && (
                 <VStack align="stretch" gap={2}>
+                  <HStack justify="space-between" flexWrap="wrap" gap={3} borderTopWidth="1px" pt={3}>
+                    <Text fontWeight="700">{visibleItems.length} {visibleItems.length === 1 ? 'renglón' : 'renglones'}</Text>
+                    {multiWh && ticketWh !== null && (
+                      <HStack gap={2}>
+                        <Text fontSize="sm" fontWeight="600">¿Dónde se guarda lo comprado?</Text>
+                        <Segmented label="¿Dónde se guarda lo comprado?" value={String(ticketWh)}
+                          options={whList.map((w) => ({ value: String(w.id), label: w.name, icon: w.isSales ? <LuStore /> : <LuWarehouse /> }))}
+                          onChange={(v) => {
+                            setTicketWh(Number(v));
+                            // Todo el ticket: el renglón que ya iba a ese almacén vuelve a seguir al ticket; el
+                            // que se mandó a mano a OTRO se queda donde lo pusieron.
+                            setItems((prev) => prev.map((i) => (i.warehouseId === Number(v) ? { ...i, warehouseId: null } : i)));
+                          }} />
+                      </HStack>
+                    )}
+                    <Button minH="44px" variant="outline" onClick={addLine}>
+                      <LuPlus /> {parsed ? `Agregar un ${label} que no venía` : `Agregar ${label}`}
+                    </Button>
+                  </HStack>
                   {/* Los dudosos arriba: son los que piden una decisión (FR-005a). */}
                   {items.filter((i) => i.doubtful).map((it) => (
                     <DoubtfulRow key={it.key} item={it} presentations={presList}
@@ -565,26 +674,34 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                       onOther={() => setItem(it.key, { doubtful: false })}
                       onNotArrived={() => setItem(it.key, { doubtful: false, arrived: false, docStatus: 'no_disponible' })} />
                   ))}
-                  <Button alignSelf="start" minH="44px" variant="outline" onClick={() => setItems((p) => [...p, emptyItem()])}>
-                    <LuPlus /> {parsed ? `Agregar un ${label} que no venía` : `Agregar ${label}`}
-                  </Button>
-                  {items.filter((i) => !i.doubtful).map((it) => (
-                    <ItemRow key={it.key} item={it} units={unitList} articles={articleOptions} articleList={articleList}
-                      presentations={presList} sums={sumsLine(it)} howItArrives={howItArrives} cross={crossOf(it)}
-                      onDensity={canDensity && densityShortcutRow.get(it.itemId ?? 0) === it.key
-                        ? () => setDensityFor({ id: it.itemId!, name: it.itemName }) : undefined}
-                      askForDensity={!canDensity || !((it.itemId ?? 0) > 0)}
-                      onChange={(patch) => setItem(it.key, patch)}
-                      onSplit={() => setItems((p) => {
-                        const at = p.findIndex((x) => x.key === it.key);
-                        // La mitad nueva no lleva el texto del ticket: aprenderlo dos veces pisaría el primero.
-                        const copy: DraftItem = { ...emptyItem(), description: it.description, docStatus: it.docStatus };
-                        return [...p.slice(0, at + 1), copy, ...p.slice(at + 1)];
-                      })}
-                      onPacks={(a) => setPacksOf(a)}
-                      onCreate={createArticle}
-                      onRemove={() => setItems((p) => p.filter((x) => x.key !== it.key))} />
-                  ))}
+                  <Grid templateColumns={narrow || !selected ? '1fr' : 'minmax(0, 1.15fr) minmax(0, 1fr)'} gap={4} alignItems="start">
+                    <VStack align="stretch" gap={2}>
+                      {visibleItems.map((it, n) => (
+                        <LineSummary key={it.key} n={n + 1} item={it} selected={!narrow && it.key === selected?.key}
+                          pack={packOf(it)} label={label}
+                          otherWarehouse={multiWh && whOf(it) !== ticketWh && hasArticle(it) && !it.excluded
+                            ? whList.find((w) => w.id === whOf(it)) ?? null : null}
+                          needsDensity={isGoods(it) && !!crossOf(it)?.missing}
+                          onOpen={() => { setSelKey(it.key); if (narrow) setSheetOpen(true); }} />
+                      ))}
+                    </VStack>
+                    {selected && !narrow && (
+                      <Box borderWidth="1px" borderRadius="lg" p={4} bg="bg.panel" position="sticky" top={0}
+                        maxH="calc(100dvh - 220px)" overflowY="auto">
+                        {detailOf(selected)}
+                      </Box>
+                    )}
+                  </Grid>
+                  {selected && narrow && (
+                    <DrawerRoot open={sheetOpen} placement="bottom" onOpenChange={(e) => { if (!e.open) setSheetOpen(false); }}>
+                      <DrawerBackdrop />
+                      <DrawerContent borderTopRadius="2xl" maxH="90dvh" colorPalette={palette}>
+                        <DrawerHeader><Text fontWeight="700" fontSize="lg">Renglón {visibleItems.indexOf(selected) + 1}</Text></DrawerHeader>
+                        <DrawerBody pb={4} overflowY="auto">{detailOf(selected)}</DrawerBody>
+                        <DrawerFooter><Button minH="52px" onClick={() => setSheetOpen(false)}>Listo</Button></DrawerFooter>
+                      </DrawerContent>
+                    </DrawerRoot>
+                  )}
                 </VStack>
               )}
 
@@ -627,13 +744,13 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 {methodList.filter((m) => m.isActive !== false && m.kind !== 'plataforma'
                   && (!m.affectsCashDrawer || cashRegisters.length > 0)).map((m) => (
                   <Button key={m.id} minH="44px" size="sm" aria-pressed={payWith === String(m.id)}
-                    variant={payWith === String(m.id) ? 'solid' : 'outline'} colorPalette={payWith === String(m.id) ? 'brand' : 'gray'}
+                    variant={payWith === String(m.id) ? 'solid' : 'outline'} colorPalette={payWith === String(m.id) ? undefined : 'gray'}
                     onClick={() => setPayWith(String(m.id))}>
                     {m.name}
                   </Button>
                 ))}
                 <Button minH="44px" size="sm" aria-pressed={payWith === 'later'}
-                  variant={payWith === 'later' ? 'solid' : 'outline'} colorPalette={payWith === 'later' ? 'brand' : 'gray'}
+                  variant={payWith === 'later' ? 'solid' : 'outline'} colorPalette={payWith === 'later' ? undefined : 'gray'}
                   onClick={() => setPayWith('later')}>
                   Todavía no se paga
                 </Button>
@@ -654,9 +771,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
               </HStack>
             )}
             <HStack w="100%" gap={3} align="center">
-              <Text fontSize="sm" flex="1" data-testid="pie-compra">
+              <Text fontSize="sm" flex="1" minW={0} lineClamp={1} data-testid="pie-compra">
                 {doubtfulCount > 0 && (
-                  <Text as="span" fontWeight="700" color="orange.700">
+                  <Text as="span" fontWeight="700" color="orange.fg">
                     {doubtfulCount} {doubtfulCount === 1 ? 'renglón sin confirmar: no suma' : 'renglones sin confirmar: no suman'} ·{' '}
                   </Text>
                 )}
@@ -666,18 +783,19 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                         quitaba alto a la lista de renglones. */}
                     {summary.length > 0 && ` · suma: ${summary.slice(0, 3).join(' · ')}${summary.length > 3 ? ` y ${summary.length - 3} más` : ''}`}</>
                 )}
-                {!categoryId && <Text as="span" color="orange.700"> · falta la categoría</Text>}
-                {!(total > 0) && <Text as="span" color="orange.700"> · falta el total</Text>}
+                {!categoryId && <Text as="span" color="orange.fg"> · falta la categoría</Text>}
+                {!(total > 0) && <Text as="span" color="orange.fg"> · falta el total</Text>}
                 {moneyCheck.missingAmount > 0 && (
-                  <Text as="span" fontWeight="700" color="orange.700">
+                  <Text as="span" fontWeight="700" color="orange.fg">
                     {' · '}falta el importe de {moneyCheck.missingAmount === 1 ? 'un renglón' : `${moneyCheck.missingAmount} renglones`}
                   </Text>
                 )}
-                {missingUnit && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo llegó cada {label}</Text>}
-                {anyPartBad && <Text as="span" fontWeight="700" color="orange.700"> · di cuántos llegaron (menos de lo pedido)</Text>}
+                {missingUnit && <Text as="span" fontWeight="700" color="orange.fg"> · elige cómo llegó cada {label}</Text>}
+                {anyPartBad && <Text as="span" fontWeight="700" color="orange.fg"> · di cuántos llegaron (menos de lo pedido)</Text>}
                 {missingDensity && <Text as="span" fontWeight="700" color="orange.fg"> · falta la densidad para convertir un renglón</Text>}
-                {payUnanswered && <Text as="span" fontWeight="700" color="orange.700"> · elige cómo se pagó</Text>}
-                {payNeedsRegister && <Text as="span" fontWeight="700" color="orange.700"> · elige de qué caja sale</Text>}
+                {payUnanswered && <Text as="span" fontWeight="700" color="orange.fg"> · elige cómo se pagó</Text>}
+                {payNeedsRegister && <Text as="span" fontWeight="700" color="orange.fg"> · elige de qué caja sale</Text>}
+                {whQuery.isError && <Text as="span" fontWeight="700" color="fg.error"> · No se pudieron leer los almacenes: vuelve a abrir la compra</Text>}
                 {moneyCheck.over && (
                   <Text as="span" fontWeight="700" color="fg.error">
                     {' · '}los renglones suman {money(moneyCheck.linesSum.toFixed(2))} y el total es {money(total.toFixed(2))}
@@ -691,7 +809,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                 )}
               </Text>
               <Button minH="44px" variant="outline" onClick={() => { onClose(); reset(); }}>Cancelar</Button>
-              <Button minH="44px" colorPalette="brand" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate(undefined)}>
+              <Button minH="44px" disabled={!canSave} loading={create.isPending} onClick={() => create.mutate(undefined)}>
                 Guardar
               </Button>
             </HStack>
@@ -750,7 +868,7 @@ function DoubtfulRow({ item, presentations, onYes, onOther, onNotArrived }: {
   const s = item.suggestions[0];
   const pack = presentations.find((p) => p.ingredientId === s.itemId && p.active);
   return (
-    <HStack gap={3} p={3} borderWidth="2px" borderColor="orange.500" borderRadius="lg" bg="orange.subtle" flexWrap="wrap"
+    <HStack gap={3} p={3} borderWidth="2px" borderColor="orange.fg" borderRadius="lg" bg="orange.subtle" flexWrap="wrap"
       data-testid="renglon-dudoso">
       <VStack align="start" gap={0} flex="1" minW="220px">
         <Text fontWeight="700">Ticket: {item.rawName}</Text>
@@ -765,7 +883,8 @@ function DoubtfulRow({ item, presentations, onYes, onOther, onNotArrived }: {
 
 // ---- Renglón de mercancía ----
 
-function ItemRow({ item, units, articles, articleList, presentations, sums, cross, onDensity, askForDensity, howItArrives, onChange, onSplit, onPacks, onCreate, onRemove }: {
+function ItemRow({ item, units, articles, articleList, presentations, sums, cross, onDensity, askForDensity, howItArrives,
+  warehouses, warehouseId, onWarehouse, canRemove, onChange, onSplit, onPacks, onCreate, onRemove }: {
   item: DraftItem;
   // Spec 058: la conversión entre peso y líquido del renglón, o lo que le falta, y el atajo a la densidad.
   cross: CrossConversion | null;
@@ -778,6 +897,12 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, cros
   articleList: Article[];
   presentations: Presentation[];
   sums: string | null;
+  // Spec 094: los almacenes entre los que se elige (vacío con uno solo) y a cuál va este renglón.
+  warehouses: Warehouse[];
+  warehouseId: number | null;
+  onWarehouse: (id: number) => void;
+  // El único renglón no se quita: vacío no se manda (R12).
+  canRemove: boolean;
   onChange: (patch: Partial<DraftItem>) => void;
   onSplit: () => void;
   onPacks: (a: Article) => void;
@@ -785,6 +910,7 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, cros
   onRemove: () => void;
 }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [help, setHelp] = useState(false);
   const art = articleList.find((a) => a.itemType === item.itemType && a.id === item.itemId);
   const packs = art && art.itemType === 'ingrediente'
     ? presentations.filter((p) => p.ingredientId === art.id && p.active) : [];
@@ -801,142 +927,230 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, cros
     });
   };
 
-  const hasContent = !!item.itemId || !!item.amount;
   const goods = !!item.itemId && !item.excluded;
+  const state = !item.arrived ? 'despues' : item.partQty !== null ? 'parte' : 'llego';
 
   return (
-    <Box borderWidth="1px" borderRadius="lg" p={3} bg="bg.panel" borderStyle={item.excluded ? 'dashed' : 'solid'}
-      data-testid="renglon" data-excluded={item.excluded || undefined}>
-      <VStack align="stretch" gap={2}>
-        {item.rawName && (
-          <HStack gap={2} flexWrap="wrap">
-            <Text fontSize="xs" color="fg.subtle">{item.rawCode && `${item.rawCode} · `}{item.rawName}</Text>
-            {item.suggestion && (
-              <HStack gap={1}><LuSparkles size={12} /><Text fontSize="xs" color="fg.success">reconocido de «{item.suggestion.matchedVia}»</Text></HStack>
-            )}
-          </HStack>
-        )}
-        <HStack gap={2} align="center" flexWrap="wrap">
-          <Box flex="1" minW="200px" opacity={item.excluded ? 0.6 : 1}>
-            <Picker value={item.itemId ? `${item.itemType}:${item.itemId}` : ''}
-              onChange={pick} placeholder="Buscar o crear" title="¿Qué llegó?"
-              clearable clearLabel="— No es del almacén (solo gasto) —"
-              options={articles} searchThreshold={0} onCreate={onCreate} />
-          </Box>
-          {goods ? (
-            <HStack gap={0} borderWidth="1px" borderRadius="md">
-              <IconButton aria-label="Menos" variant="ghost" minH="44px" minW="44px"
-                onClick={() => { const n = parseNumero(item.quantity); if (n.estado === 'valido' && n.valor > 1) onChange({ quantity: String(round2(n.valor - 1)) }); }}>
-                <LuMinus />
-              </IconButton>
-              <Input aria-label="Cantidad" w="64px" textAlign="center" border="none" inputMode="decimal" value={item.quantity}
-                onChange={(e) => onChange({ quantity: e.target.value })} />
-              <IconButton aria-label="Más" variant="ghost" minH="44px" minW="44px"
-                onClick={() => { const n = parseNumero(item.quantity); onChange({ quantity: String(round2((n.estado === 'valido' ? n.valor : 0) + 1)) }); }}>
-                <LuPlus />
-              </IconButton>
-            </HStack>
-          ) : (
-            <Input aria-label="Descripción" placeholder="Qué es (gas, envío…)" w="220px" minH="44px" value={item.description}
-              onChange={(e) => onChange({ description: e.target.value })} />
+    <VStack align="stretch" gap={3} data-testid="renglon-detalle" data-excluded={item.excluded || undefined}>
+      {item.rawName && (
+        <HStack gap={2} flexWrap="wrap">
+          <Text fontSize="xs" color="fg.subtle">{item.rawCode && `${item.rawCode} · `}{item.rawName}</Text>
+          {item.suggestion && (
+            <HStack gap={1}><LuSparkles size={12} /><Text fontSize="xs" color="fg.success">reconocido de «{item.suggestion.matchedVia}»</Text></HStack>
           )}
-          <Field label={item.excluded ? 'Importe (no suma al gasto)' : 'Importe'} w="120px" opacity={item.excluded ? 0.6 : 1}>
-            <Input aria-label="Importe" inputMode="decimal" textAlign="end" minH="44px" placeholder="0.00"
-              value={item.isGift ? '0' : item.amount} disabled={item.isGift}
-              onChange={(e) => onChange({ amount: e.target.value })} />
-          </Field>
-          <Button aria-pressed={item.excluded} minH="44px"
-            variant={item.excluded ? 'subtle' : 'outline'} colorPalette={item.excluded ? 'purple' : 'gray'}
-            title={item.excluded ? 'Excluido: no es del local' : 'Excluir: no es del local'}
-            onClick={() => onChange({ excluded: !item.excluded })}>
-            <LuBan /> Excluir
-          </Button>
-          {/* Separado del importe: quitar no se deshace y el dedo es gordo. */}
-          <Box ml={4}>
-            {confirmRemove ? (
-              <HStack gap={1}>
-                <Button minH="44px" colorPalette="red" onClick={onRemove}>Quitar</Button>
-                <Button minH="44px" variant="ghost" onClick={() => setConfirmRemove(false)}>No</Button>
-              </HStack>
-            ) : (
-              <IconButton aria-label="Quitar renglón" minH="44px" minW="44px" variant="outline"
-                onClick={() => (hasContent ? setConfirmRemove(true) : onRemove())}>
-                <LuTrash2 />
-              </IconButton>
-            )}
-          </Box>
         </HStack>
+      )}
+      <Box opacity={item.excluded ? 0.6 : 1}>
+        <Picker value={item.itemId ? `${item.itemType}:${item.itemId}` : ''}
+          onChange={pick} placeholder="Buscar o crear" title="¿Qué llegó?"
+          clearable clearLabel="— No es del almacén (solo gasto) —"
+          options={articles} searchThreshold={0} onCreate={onCreate} />
+      </Box>
+      <HStack gap={2} align="end" flexWrap="wrap">
+        {goods ? (
+          <HStack gap={0} borderWidth="1px" borderRadius="md">
+            <IconButton aria-label="Menos" variant="ghost" minH="44px" minW="44px"
+              onClick={() => { const n = parseNumero(item.quantity); if (n.estado === 'valido' && n.valor > 1) onChange({ quantity: String(round2(n.valor - 1)) }); }}>
+              <LuMinus />
+            </IconButton>
+            <Input aria-label="Cantidad" w="64px" minH="44px" textAlign="center" border="none" inputMode="decimal" value={item.quantity}
+              onChange={(e) => onChange({ quantity: e.target.value })} />
+            <IconButton aria-label="Más" variant="ghost" minH="44px" minW="44px"
+              onClick={() => { const n = parseNumero(item.quantity); onChange({ quantity: String(round2((n.estado === 'valido' ? n.valor : 0) + 1)) }); }}>
+              <LuPlus />
+            </IconButton>
+          </HStack>
+        ) : (
+          <Input aria-label="Descripción" placeholder="Qué es (gas, envío…)" flex="1" minW="180px" minH="44px" value={item.description}
+            onChange={(e) => onChange({ description: e.target.value })} />
+        )}
+        <Field label={item.excluded ? 'Importe (no suma al gasto)' : 'Importe'} w="130px" opacity={item.excluded ? 0.6 : 1}>
+          <Input aria-label="Importe" inputMode="decimal" textAlign="end" minH="44px" placeholder="0.00"
+            value={item.isGift ? '0' : item.amount} disabled={item.isGift}
+            onChange={(e) => onChange({ amount: e.target.value })} />
+        </Field>
+      </HStack>
 
-        {goods && art && (
-          <HStack gap={2} flexWrap="wrap" align="center">
-            {packs.map((p) => (
-              <Button key={p.id} minH="44px" size="sm" variant={item.presentationId === p.id ? 'subtle' : 'outline'}
-                colorPalette={item.presentationId === p.id ? 'brand' : 'gray'} aria-pressed={item.presentationId === p.id}
-                onClick={() => onChange({ presentationId: p.id, unitId: null })}>
-                {presentationLabel(p)} · {p.approximate ? '≈ ' : ''}{formatBaseQty(p.qtyInBase, p.baseUnitCode)}
-              </Button>
-            ))}
-            {buyUnits.map((u) => (
-              <Button key={u.id} minH="44px" size="sm" aria-pressed={!item.presentationId && item.unitId === u.id}
-                variant={!item.presentationId && item.unitId === u.id ? 'subtle' : 'outline'}
-                colorPalette={!item.presentationId && item.unitId === u.id ? 'brand' : 'gray'}
-                onClick={() => onChange({ unitId: u.id, presentationId: null })}>
-                {unitLabel(u)}
-              </Button>
-            ))}
-            {art.itemType === 'ingrediente' && (
-              <Button minH="44px" size="sm" variant="outline" borderStyle="dashed" onClick={() => onPacks(art)}>
-                + Otro empaque
-              </Button>
-            )}
+      {goods && art && (
+        <HStack gap={2} flexWrap="wrap" align="center">
+          {packs.map((p) => (
+            <Button key={p.id} minH="44px" size="sm" variant={item.presentationId === p.id ? 'subtle' : 'outline'}
+              colorPalette={item.presentationId === p.id ? undefined : 'gray'} aria-pressed={item.presentationId === p.id}
+              onClick={() => onChange({ presentationId: p.id, unitId: null })}>
+              {presentationLabel(p)} · {p.approximate ? '≈ ' : ''}{formatBaseQty(p.qtyInBase, p.baseUnitCode)}
+            </Button>
+          ))}
+          {buyUnits.map((u) => (
+            <Button key={u.id} minH="44px" size="sm" aria-pressed={!item.presentationId && item.unitId === u.id}
+              variant={!item.presentationId && item.unitId === u.id ? 'subtle' : 'outline'}
+              colorPalette={!item.presentationId && item.unitId === u.id ? undefined : 'gray'}
+              onClick={() => onChange({ unitId: u.id, presentationId: null })}>
+              {unitLabel(u)}
+            </Button>
+          ))}
+          {art.itemType === 'ingrediente' && (
+            <Button minH="44px" size="sm" variant="outline" borderStyle="dashed" onClick={() => onPacks(art)}>
+              + Otro empaque
+            </Button>
+          )}
+          {cross?.words ? <Text fontSize="sm" fontWeight="700" color="fg.success">{cross.words}</Text>
+            : sums && <Text fontSize="sm" fontWeight="700" color="fg.success">= {sums.split(' +').pop()}</Text>}
+        </HStack>
+      )}
+      {goods && art && (
+        <VStack align="stretch" gap={1}>
+          <Text fontSize="sm" fontWeight="600">¿Llegó?</Text>
+          <HStack gap={2} flexWrap="wrap">
+            <Segmented label="Estado" value={state}
+              options={[{ value: 'llego', label: 'Llegó' }, { value: 'parte', label: 'Llegó una parte' }, { value: 'despues', label: 'Llega después' }]}
+              onChange={(v) => onChange(v === 'llego' ? { arrived: true, partQty: null }
+                : v === 'parte' ? { arrived: true, partQty: item.partQty ?? '' } : { arrived: false, partQty: null })} />
             {item.arrived && item.partQty !== null && (
               <Input aria-label="¿Cuántos llegaron?" placeholder="¿Cuántos?" w="96px" minH="44px" inputMode="decimal"
                 value={item.partQty} onChange={(e) => onChange({ partQty: e.target.value })} />
             )}
-            {cross?.words ? <Text fontSize="sm" fontWeight="700" color="fg.success">{cross.words}</Text>
-              : sums && <Text fontSize="sm" fontWeight="700" color="fg.success">= {sums.split(' +').pop()}</Text>}
-            <HStack gap={0} ml="auto" borderWidth="1px" borderRadius="md" role="group" aria-label="Estado">
-              {(() => {
-                const full = item.arrived && item.partQty === null;
-                const part = item.arrived && item.partQty !== null;
-                return (<>
-                  <Button minH="44px" size="sm" variant={full ? 'subtle' : 'ghost'} colorPalette={full ? 'green' : 'gray'}
-                    aria-pressed={full} onClick={() => onChange({ arrived: true, partQty: null })}>Llegó</Button>
-                  <Button minH="44px" size="sm" variant={part ? 'subtle' : 'ghost'} colorPalette={part ? 'green' : 'gray'}
-                    aria-pressed={part} onClick={() => onChange({ arrived: true, partQty: item.partQty ?? '' })}>Llegó una parte</Button>
-                  <Button minH="44px" size="sm" variant={!item.arrived ? 'subtle' : 'ghost'} colorPalette={!item.arrived ? 'orange' : 'gray'}
-                    aria-pressed={!item.arrived} onClick={() => onChange({ arrived: false, partQty: null })}>Llega después</Button>
-                </>);
-              })()}
-            </HStack>
-            <Button minH="44px" size="sm" variant={item.isGift ? 'subtle' : 'outline'} colorPalette={item.isGift ? 'purple' : 'gray'}
-              aria-pressed={item.isGift} onClick={() => onChange({ isGift: !item.isGift })}>
-              <LuGift /> Regalo
-            </Button>
-            {item.rawName && (
-              <Button minH="44px" size="sm" variant="outline" onClick={onSplit}>
-                <LuScissors /> Partir
-              </Button>
-            )}
           </HStack>
+        </VStack>
+      )}
+      {goods && warehouses.length > 1 && warehouseId !== null && (
+        <VStack align="stretch" gap={1}>
+          <Text fontSize="sm" fontWeight="600">¿Dónde se guarda este renglón?</Text>
+          <Segmented label="¿Dónde se guarda este renglón?" value={String(warehouseId)}
+            options={warehouses.map((w) => ({ value: String(w.id), label: w.name, icon: w.isSales ? <LuStore /> : <LuWarehouse /> }))}
+            onChange={(v) => onWarehouse(Number(v))} />
+        </VStack>
+      )}
+      {/* Una línea propia: dentro de la fila de unidades y estado la hacía crecer una línea entera. */}
+      {goods && art && cross?.missing && (
+        <HStack gap={2} justify="space-between" data-testid="sin-densidad">
+          <Text fontSize="sm"><Text as="span" fontWeight="700" color="orange.fg">{cross.missing}</Text>{askForDensity && `. ${ASK_FOR_DENSITY}`}</Text>
+          {onDensity && <Button minH="44px" size="sm" variant="outline" flexShrink={0} onClick={onDensity}>Capturar la densidad</Button>}
+        </HStack>
+      )}
+      {!goods && !item.excluded && item.suggestions.length > 0 && !item.itemId && (
+        <Suggestions list={item.suggestions} onPick={(s) => onChange({
+          itemType: s.itemType, itemId: s.itemId, itemName: s.itemName,
+          packQtyInBase: item.packQtyInBase || s.packQtyInBase || '',
+          ...howItArrives(s.itemType, s.itemId, item.unitId ?? s.unitId ?? null),
+        })} />
+      )}
+
+      {/* S1 (spec 094): quien lo vio no supo qué era «Fue regalo» ni «No es del negocio»; cada uno dice
+          qué pasa al encenderlo, y el (i) da un ejemplo. Son excluyentes. */}
+      <VStack align="stretch" gap={2}>
+        <HStack justify="space-between">
+          <Text fontSize="sm" fontWeight="600">¿Este renglón es especial?</Text>
+          <InfoButton label="Qué es esto" open={help} onToggle={() => setHelp((h) => !h)} />
+        </HStack>
+        {help && (
+          <VStack align="stretch" gap={1} p={3} borderRadius="md" bg="bg.muted" fontSize="sm">
+            <Text><b>Regalo del proveedor:</b> el ticket lo trae en $0 o te lo dieron sin cobrar. Se suma a lo que tienes guardado sin subir el costo.</Text>
+            <Text><b>No es del negocio:</b> en la misma compra pagaste algo para ti (el jabón de la casa, un refresco). Se guarda en el ticket para que el total cuadre, pero no es gasto del negocio ni mercancía.</Text>
+          </VStack>
         )}
-        {/* Una línea propia: dentro de la fila de unidades y estado la hacía crecer una línea entera. */}
-        {goods && art && cross?.missing && (
-          <HStack gap={2} justify="space-between" data-testid="sin-densidad">
-            <Text fontSize="sm"><Text as="span" fontWeight="700" color="orange.fg">{cross.missing}</Text>{askForDensity && `. ${ASK_FOR_DENSITY}`}</Text>
-            {onDensity && <Button minH="44px" size="sm" variant="outline" colorPalette="brand" flexShrink={0} onClick={onDensity}>Capturar la densidad</Button>}
-          </HStack>
-        )}
-        {!goods && !item.excluded && item.suggestions.length > 0 && !item.itemId && (
-          <Suggestions list={item.suggestions} onPick={(s) => onChange({
-            itemType: s.itemType, itemId: s.itemId, itemName: s.itemName,
-            packQtyInBase: item.packQtyInBase || s.packQtyInBase || '',
-            ...howItArrives(s.itemType, s.itemId, item.unitId ?? s.unitId ?? null),
-          })} />
-        )}
+        <SpecialToggle icon={<LuGift />} title="Regalo del proveedor"
+          text={item.itemId ? 'No te lo cobraron. Entra al almacén con costo $0.' : 'Elige primero el artículo'}
+          checked={item.isGift} disabled={!item.itemId}
+          onChange={(on) => onChange({ isGift: on, excluded: on ? false : item.excluded })} />
+        <SpecialToggle icon={<LuUser />} title="No es del negocio"
+          text="Se pagó en este ticket pero es personal. No cuenta como gasto ni entra al almacén."
+          checked={item.excluded} onChange={(on) => onChange({ excluded: on, isGift: on ? false : item.isGift })} />
       </VStack>
-    </Box>
+
+      {/* Lejos de «Listo» y de los interruptores: quitar no se deshace y el dedo es gordo. */}
+      <HStack gap={2} justify="space-between" pt={8} pb={8}>
+        {item.rawName ? (
+          <Button minH="44px" variant="outline" onClick={onSplit}><LuScissors /> Partir</Button>
+        ) : <span />}
+        {/* Separado del resto: quitar no se deshace y el dedo es gordo. */}
+        {confirmRemove ? (
+          <HStack gap={1}>
+            <Button minH="44px" colorPalette="red" onClick={onRemove}>Quitar</Button>
+            <Button minH="44px" variant="ghost" onClick={() => setConfirmRemove(false)}>No</Button>
+          </HStack>
+        ) : (
+          <Button minH="44px" variant="outline" colorPalette="red" disabled={!canRemove} onClick={() => setConfirmRemove(true)}>
+            <LuTrash2 /> Quitar renglón
+          </Button>
+        )}
+      </HStack>
+    </VStack>
   );
+}
+
+// SpecialToggle es un renglón entero que se toca para encender o apagar: el interruptor solo es chico
+// para el dedo, y la explicación al lado dice qué pasa (S1, spec 094).
+function SpecialToggle({ icon, title, text, checked, disabled, onChange }: {
+  icon: ReactNode; title: string; text: string; checked: boolean; disabled?: boolean; onChange: (on: boolean) => void;
+}) {
+  return (
+    <ChakraSwitch.Root checked={checked} disabled={disabled} onCheckedChange={(e) => onChange(e.checked)}
+      display="flex" alignItems="center" gap={3} p={3} minH="64px" borderWidth="1px" borderRadius="md" cursor={disabled ? 'not-allowed' : 'pointer'}
+      opacity={disabled ? 0.6 : 1}>
+      <ChakraSwitch.HiddenInput aria-label={title} />
+      <Box boxSize="40px" borderRadius="md" bg="colorPalette.subtle" color="colorPalette.fg" display="flex" alignItems="center"
+        justifyContent="center" fontSize="20px" flexShrink={0} aria-hidden>{icon}</Box>
+      <VStack align="start" gap={0} flex="1" minW={0}>
+        <Text fontWeight="600">{title}</Text>
+        <Text fontSize="sm" color="fg.muted">{text}</Text>
+      </VStack>
+      <ChakraSwitch.Control><ChakraSwitch.Thumb /></ChakraSwitch.Control>
+    </ChakraSwitch.Root>
+  );
+}
+
+// LineSummary es un renglón de la lista (maqueta R3, color P1): el estado como ícono al inicio y solo
+// lo excepcional escrito; a la derecha el importe. Tocarlo abre su detalle.
+function LineSummary({ n, item, selected, pack, label, otherWarehouse, needsDensity, onOpen }: {
+  n: number; item: DraftItem; selected: boolean; pack: string; label: string;
+  otherWarehouse: Warehouse | null; needsDensity: boolean; onOpen: () => void;
+}) {
+  const name = item.itemName || item.description || item.rawName || `Renglón nuevo (${label} o gasto)`;
+  const [icon, status] = item.excluded ? [<LuUser key="u" />, 'No es del negocio']
+    : !item.arrived ? [<LuClock key="c" />, 'Llega después']
+      : item.partQty !== null ? [<LuClock key="c" />, 'Llegó una parte']
+        : [<LuCheck key="k" />, ''];
+  const amountText = item.isGift ? 'Regalo' : item.amount ? money(item.amount) : 'sin importe';
+  return (
+    <chakra.button type="button" onClick={onOpen} aria-label={`Renglón ${n}`} aria-current={selected || undefined}
+      data-testid="renglon" data-excluded={item.excluded || undefined}
+      display="flex" alignItems="center" gap={3} w="100%" minH="60px" px={3} py={2} textAlign="start"
+      borderWidth={selected ? '2px' : '1px'} borderStyle={item.excluded ? 'dashed' : 'solid'}
+      borderColor={selected ? 'colorPalette.solid' : 'border'} borderRadius="lg"
+      bg={selected ? 'colorPalette.subtle' : 'bg.panel'} opacity={item.excluded ? 0.75 : 1} cursor="pointer">
+      <Box boxSize="32px" borderRadius="full" display="flex" alignItems="center" justifyContent="center" flexShrink={0}
+        bg={status ? 'bg.muted' : 'colorPalette.subtle'} color={item.excluded ? 'fg.subtle' : status ? 'orange.fg' : 'colorPalette.fg'} aria-hidden>
+        {icon}
+      </Box>
+      <VStack align="start" gap={0} flex="1" minW={0}>
+        <Text fontWeight="700" truncate maxW="100%">{name}</Text>
+        {pack && <Text fontSize="sm" color="fg.muted" truncate maxW="100%">{pack}</Text>}
+      </VStack>
+      <HStack gap={2} flexShrink={0}>
+        {needsDensity && <Box color="orange.fg" aria-label="Falta la densidad"><LuTriangleAlert /></Box>}
+        {otherWarehouse && <Badge variant="subtle">{otherWarehouse.isSales ? <LuStore /> : <LuWarehouse />} {otherWarehouse.name}</Badge>}
+        {status && <Text fontSize="sm" color={item.excluded ? 'fg.muted' : 'orange.fg'}>{status}</Text>}
+        <Text fontWeight="700" w="96px" textAlign="end" textDecoration={item.excluded ? 'line-through' : undefined}
+          color={item.amount || item.isGift ? undefined : 'fg.muted'}>{amountText}</Text>
+        <LuChevronRight aria-hidden />
+      </HStack>
+    </chakra.button>
+  );
+}
+
+// useNarrow dice si la pantalla es angosta (menos de 1100 px): ahí el detalle del renglón no cabe al
+// lado de la lista y se abre en una hoja.
+function useNarrow() {
+  const query = '(max-width: 1099px)';
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+  return narrow;
 }
 
 // Suggestions muestra los candidatos como chips: un toque para aceptar. Nunca se aplica solo.
@@ -945,7 +1159,7 @@ function Suggestions({ list, onPick }: { list: ArticleSuggestion[]; onPick: (s: 
     <HStack gap={1} flexWrap="wrap">
       <Text fontSize="xs" color="fg.subtle">¿Es…?</Text>
       {list.slice(0, 3).map((s) => (
-        <Button key={`${s.itemType}:${s.itemId}`} minH="44px" size="sm" variant="outline" colorPalette="blue"
+        <Button key={`${s.itemType}:${s.itemId}`} minH="44px" size="sm" variant="outline"
           onClick={() => onPick(s)}>
           {s.itemName}
         </Button>
@@ -1043,7 +1257,7 @@ function DocSummary({ parsed }: { parsed: ParsedDoc }) {
         <VStack align="stretch" gap={0.5}>
           {problems.slice(0, 6).map((p, i) => (
             <HStack key={i} gap={1} align="start">
-              <Box mt="2px" color="orange.500"><LuTriangleAlert size={12} /></Box>
+              <Box mt="2px" color="orange.fg"><LuTriangleAlert size={12} /></Box>
               <Text fontSize="xs" color="fg.muted">{p}</Text>
             </HStack>
           ))}
@@ -1079,7 +1293,7 @@ function Field({ label, children, ...box }: { label: string; children: ReactNode
 
 function Warn({ children }: { children: ReactNode }) {
   return (
-    <HStack gap={2} mt={2} color="orange.600">
+    <HStack gap={2} mt={2} color="orange.fg">
       <LuTriangleAlert size={14} />
       <Text fontSize="sm">{children}</Text>
     </HStack>

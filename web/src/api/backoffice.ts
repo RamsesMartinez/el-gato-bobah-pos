@@ -814,6 +814,27 @@ export interface StockLevel {
   unit_code: string;
   // Opcional: la API anterior no lo manda durante una subida. Los insumos archivados ya no llegan.
   is_active?: boolean;
+  // El artículo (spec 094): lo necesita el traspaso. Opcional por la API anterior.
+  ingredient_id?: number | null;
+  product_id?: number | null;
+  // En el almacén de venta, un negativo dice de qué otro almacén se puede traer.
+  transfer_from?: { warehouseId: number; name: string; onHand: string }[];
+}
+
+// Un traspaso entre almacenes de la sucursal (spec 094). `qty` en la unidad base del artículo.
+export interface TransferLineBody {
+  itemType: string;
+  ingredientId?: number;
+  productId?: number;
+  qty: string;
+}
+export interface TransferBody {
+  clientKey: string;
+  fromWarehouseId: number;
+  toWarehouseId: number;
+  note?: string;
+  confirmNegative?: boolean;
+  lines: TransferLineBody[];
 }
 export interface StockMovement {
   id: number;
@@ -847,6 +868,8 @@ export interface ExpenseItemBody {
   presentationId?: number;
   // Llegó sin costo: importe 0, suma a lo guardado y no mueve el costo.
   isGift?: boolean;
+  // A qué almacén entra (spec 094). Ausente, el de venta.
+  warehouseId?: number;
 }
 
 // Un renglón que falta por llegar (spec 038). Cantidades en la unidad del renglón: el empaque
@@ -1241,6 +1264,11 @@ export const backofficeApi = {
     api.get<{ items?: Warehouse[] }>(`/stock/warehouses${includeArchived ? '?includeArchived=1' : ''}`),
   createWarehouse: (name: string) => api.post<{ id: number }>('/stock/warehouses', { name }),
   renameWarehouse: (id: number, name: string) => api.patch<void>(`/stock/warehouses/${id}`, { name }),
+  // Traspasos entre almacenes (spec 094): la clave del cliente hace que un reintento no duplique.
+  createTransfer: (b: TransferBody) => api.post<{ id: number }>('/stock/transfers', b),
+  transfers: () => api.get<{ items?: unknown[] }>('/stock/transfers'),
+  // Pasar las ventas a este almacén (spec 094): el anterior deja de ser el de venta en la misma operación.
+  setSalesWarehouse: (id: number) => api.patch<void>(`/stock/warehouses/${id}`, { isSales: true }),
   archiveWarehouse: (id: number) => api.post<void>(`/stock/warehouses/${id}/archive`, {}),
   restoreWarehouse: (id: number) => api.post<void>(`/stock/warehouses/${id}/restore`, {}),
   archiveCountPlace: (id: number, moveTo?: number | null) =>

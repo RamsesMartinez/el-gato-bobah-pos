@@ -151,6 +151,7 @@ var auditActions = []struct {
 	{AuditWarehouseUpdated, AuditGroupPrice},
 	{AuditWarehouseArchived, AuditGroupPrice},
 	{AuditWarehouseRestored, AuditGroupPrice},
+	{AuditTransferCreated, AuditGroupPrice},
 }
 
 const (
@@ -189,12 +190,14 @@ const (
 	AuditIngredientMergedInto AuditAction = "ingredient.merged_into"
 	// AuditWarehouseCreated: se dio de alta un almacén en una sucursal (spec 094).
 	AuditWarehouseCreated AuditAction = "warehouse.created"
-	// AuditWarehouseUpdated: cambió el nombre de un almacén.
+	// AuditWarehouseUpdated: cambió el nombre de un almacén o cuál es el de venta.
 	AuditWarehouseUpdated AuditAction = "warehouse.updated"
 	// AuditWarehouseArchived: se archivó un almacén vacío.
 	AuditWarehouseArchived AuditAction = "warehouse.archived"
 	// AuditWarehouseRestored: se reactivó un almacén archivado.
 	AuditWarehouseRestored AuditAction = "warehouse.restored"
+	// AuditTransferCreated: se movió mercancía entre almacenes de una sucursal (spec 094).
+	AuditTransferCreated AuditAction = "transfer.created"
 	// AuditIngredientDensitySet: se puso o se rehízo la densidad de un artículo (spec 058), con el
 	// método y los datos de la pesada o de la etiqueta.
 	AuditIngredientDensitySet AuditAction = "ingredient.density_set"

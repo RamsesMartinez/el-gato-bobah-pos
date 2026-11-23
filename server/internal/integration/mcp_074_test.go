@@ -245,7 +245,7 @@ func TestMCPPresentations(t *testing.T) {
 		ajeno := w.token(t, w.other, w.otherAdm, "write:inventory")
 		res := callTool(t, w.router, ajeno, "presentation_update", applyArgs(map[string]any{"presentation_id": bolsa,
 			"brand": "Ajena"}, "empaque-ajeno-01"))
-		if !res.isError || !strings.Contains(res.text, "No existe") {
+		if !res.isError || !strings.Contains(res.text, "no existe en esta empresa") {
 			t.Fatalf("otra empresa: %s", res.text)
 		}
 		if _, _, brand, _, _ := presentationRow(t, w, bolsa); brand != nil {
@@ -571,7 +571,7 @@ func TestMCPExpenseEditGates(t *testing.T) {
 	t.Run("un token de otra empresa no edita este gasto", func(t *testing.T) {
 		ajeno := w.token(t, w.other, w.otherAdm, "write:expenses")
 		res := callTool(t, w.router, ajeno, "expense_edit", remove)
-		if !res.isError || !strings.Contains(res.text, "No existe") {
+		if !res.isError || !strings.Contains(res.text, "no existe en esta empresa") {
 			t.Fatalf("otra empresa: %s", res.text)
 		}
 	})

@@ -277,7 +277,7 @@ export function BusinessSettingsPage() {
       </Box>
       </VStack>
     ) },
-    { id: 'web', label: 'Venta en web', icon: LuGlobe, resumen: 'Productos que se venden en la web', contenido: <VentaEnWebSection /> },
+    { id: 'web', label: 'Venta en web', icon: LuGlobe, resumen: 'Menú en línea: enlace, código QR, nombre y color', contenido: <VentaEnWebSection /> },
     { id: 'caja', label: 'Caja', icon: LuWallet, resumen: 'Métodos de cobro, contar sin ver lo esperado', contenido: (
       <VStack align="stretch" gap={6}>
       <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>

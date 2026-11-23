@@ -1434,7 +1434,21 @@ func (s *BackofficeService) UpdateExpenseCategory(ctx context.Context, id int64,
 
 // StockLevels son las existencias del almacén que se pidió (el de venta por omisión) o de todos los
 // de la sucursal sumados. Un almacén ajeno, de otra sucursal o archivado es «no existe».
-func (s *BackofficeService) StockLevels(ctx context.Context, sel domain.WarehouseSel) ([]db.ListStockLevelsRow, error) {
+// StockLevelView es un renglón de Existencias. En el almacén de venta, uno negativo trae de qué otros
+// almacenes de la sucursal se puede traer (spec 094); siempre arreglo.
+type StockLevelView struct {
+	db.ListStockLevelsRow
+	TransferFrom []TransferSource `json:"transfer_from"`
+}
+
+// TransferSource es otro almacén que sí tiene del artículo que falta en el de venta.
+type TransferSource struct {
+	WarehouseID int64           `json:"warehouseId"`
+	Name        string          `json:"name"`
+	OnHand      decimal.Decimal `json:"onHand"`
+}
+
+func (s *BackofficeService) StockLevels(ctx context.Context, sel domain.WarehouseSel) ([]StockLevelView, error) {
 	q := s.store.QC(ctx)
 	var ids []int64
 	if sel.All {
@@ -1453,10 +1467,29 @@ func (s *BackofficeService) StockLevels(ctx context.Context, sel domain.Warehous
 		ids = []int64{id}
 	}
 	rows, err := q.ListStockLevels(ctx, ids)
-	if rows == nil {
-		rows = []db.ListStockLevelsRow{}
+	if err != nil {
+		return nil, err
 	}
-	return rows, err
+	sources := map[domain.StockKey][]TransferSource{}
+	if sel.Sales() {
+		src, err := q.TransferSources(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range src {
+			k := salesStockKey(string(r.ItemType), r.IngredientID, r.ProductID)
+			sources[k] = append(sources[k], TransferSource{WarehouseID: r.WarehouseID, Name: r.Name, OnHand: r.OnHand})
+		}
+	}
+	out := make([]StockLevelView, 0, len(rows))
+	for _, r := range rows {
+		from := sources[salesStockKey(string(r.ItemType), r.IngredientID, r.ProductID)]
+		if from == nil {
+			from = []TransferSource{}
+		}
+		out = append(out, StockLevelView{ListStockLevelsRow: r, TransferFrom: from})
+	}
+	return out, nil
 }
 func (s *BackofficeService) StockMovements(ctx context.Context, limit int32) ([]db.ListStockMovementsRow, error) {
 	return s.store.QC(ctx).ListStockMovements(ctx, limit)

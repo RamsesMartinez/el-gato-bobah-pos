@@ -20,33 +20,12 @@ import (
 // base como quedará tras la segunda migración (sin las llaves por sucursal ni la compuerta EGB04) y
 // comprueban que cada lectura, bloqueo y reposición sigue diciendo la verdad.
 
-// comoEnLaSegundaSubida quita, solo en la base de esta prueba, lo que la 0120 deja para impedir dos
-// almacenes con existencias, y da de alta «Bodega» en la matriz. Devuelve los dos almacenes.
+// comoEnLaSegundaSubida da de alta «Bodega» en la matriz. Desde la 0122 la base ya admite existencias
+// del mismo artículo en dos almacenes; antes, esta función quitaba a mano lo que la 0120 dejaba. Devuelve
+// los dos almacenes.
 func comoEnLaSegundaSubida(t *testing.T, st *store.Store, company int64) (local, bodega int64) {
 	t.Helper()
 	ctx := context.Background()
-	for _, stmt := range []string{
-		`alter table stock_levels drop constraint stock_levels_ingredient_per_branch`,
-		`alter table stock_levels drop constraint stock_levels_product_per_branch`,
-		`create or replace function fill_stock_movement_branch_id() returns trigger language plpgsql as $$
-		 begin
-		   if new.branch_id is null and new.warehouse_id is not null then
-		     select w.branch_id into new.branch_id from warehouses w where w.id = new.warehouse_id and w.company_id = new.company_id;
-		   end if;
-		   if new.branch_id is null and new.order_id is not null then
-		     select o.branch_id into new.branch_id from orders o where o.id = new.order_id and o.company_id = new.company_id;
-		   end if;
-		   if new.branch_id is null then new.branch_id := branch_for_company(new.company_id); end if;
-		   if new.warehouse_id is null then new.warehouse_id := sales_warehouse_of(new.company_id, new.branch_id); end if;
-		   return new;
-		 end $$`,
-		`create or replace function warehouses_before_update() returns trigger language plpgsql as $$
-		 begin new.updated_at := now(); return new; end $$`,
-	} {
-		if _, err := st.Pool.Exec(ctx, stmt); err != nil {
-			t.Fatalf("preparar la base como en la segunda subida: %v", err)
-		}
-	}
 	if err := st.Pool.QueryRow(ctx, `
 		select w.id from warehouses w join branches b on b.id = w.branch_id
 		 where w.company_id = $1 and b.is_headquarters and w.is_sales`, company).Scan(&local); err != nil {
@@ -114,7 +93,7 @@ func TestStockReadsUseTheSalesWarehouse(t *testing.T) {
 		var got []db.ListStockLevelsRow
 		for _, r := range rows {
 			if r.ItemName == "Leche dos almacenes" {
-				got = append(got, r)
+				got = append(got, r.ListStockLevelsRow)
 			}
 		}
 		if len(got) != 1 || !got[0].OnHand.Equal(cinco) {
@@ -233,12 +212,20 @@ func TestCancellingRestocksTheWarehouseTheSaleLeft(t *testing.T) {
 		t.Fatalf("la venta no salió del local: %s", v)
 	}
 
-	// Dos sentencias: el índice de «uno de venta por sucursal» se revisa renglón por renglón.
-	if _, err := st.Pool.Exec(ctx, `update warehouses set is_sales = false where id = $1`, local); err != nil {
+	// Dos sentencias en una transacción: el índice de «uno de venta por sucursal» se revisa renglón por
+	// renglón, y la 0122 exige que al confirmar haya uno.
+	tx, err := st.Pool.Begin(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Pool.Exec(ctx, `update warehouses set is_sales = true where id = $1`, bodega); err != nil {
+	if _, err := tx.Exec(ctx, `update warehouses set is_sales = false where id = $1`, local); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `update warehouses set is_sales = true where id = $1`, bodega); err != nil {
 		t.Fatalf("hacer de la bodega el almacén de venta: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := svc.CancelarRenglon(tctx, ord, linea, cajero, "Ya no lo quiere"); err != nil {
 		t.Fatalf("CancelarRenglon: %v", err)

@@ -12,7 +12,7 @@ import { useAvisos } from './useAvisos';
 //     recargar). Quien lo reportó no la ve: ya vio su propio aviso verde.
 //   - Espera mientras haya una hoja abierta (un cobro, un ticket): no le roba el toque a una captura.
 //   - Se quita sola a los 90 s; el aviso sigue en la campana.
-//   - Si hay un aviso de pedido de plataforma, va debajo de él: se mide su alto en vivo, porque crece
+//   - Si hay pedidos por aceptar, va debajo de su franja (spec 093): se mide su alto en vivo, porque crece
 //     cuando su texto se parte en dos renglones.
 export const CAPA_DE_LA_FRANJA = 2000;
 export const DURA_MS = 90_000;
@@ -20,7 +20,7 @@ const SEPARACION = 8;
 
 const hayHojaAbierta = () => document.querySelector('[role="dialog"]') !== null;
 const altoDelPedido = () => {
-  const el = document.querySelector('[data-testid="aviso-de-pedido-entrante"]');
+  const el = document.querySelector('[data-testid="franja-de-entrantes"]');
   return el ? el.getBoundingClientRect().bottom : 0;
 };
 

@@ -155,6 +155,10 @@ func TestDecideIdempotency(t *testing.T) {
 		{"otra huella mientras la primera sigue", &IdempotencyRecord{Status: IdemStatusPending, ArgsHash: b}, IdemConflict},
 		{"la primera sigue en curso", &IdempotencyRecord{Status: IdemStatusPending, ArgsHash: a}, IdemInProgress},
 		{"la primera terminó en error interno o se cortó", &IdempotencyRecord{Status: IdemStatusUnknown, ArgsHash: a}, IdemUnknown},
+		// #335: un intento que falló sin aplicar nada no bloquea la clave; con la misma huella o con los
+		// argumentos corregidos se vuelve a correr.
+		{"la primera falló sin aplicar: se reintenta", &IdempotencyRecord{Status: IdemStatusFailed, ArgsHash: a}, IdemRetry},
+		{"la primera falló sin aplicar y se corrigieron los argumentos", &IdempotencyRecord{Status: IdemStatusFailed, ArgsHash: b}, IdemRetry},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -228,9 +232,9 @@ func TestMCPToolCatalog(t *testing.T) {
 			t.Errorf("%s no se encuentra por nombre", tool.Name)
 		}
 	}
-	// 094 suma warehouses_list (lectura).
-	if len(seen) != 83 || writes != 48 {
-		t.Fatalf("el contrato tiene 83 herramientas y 48 escrituras (094); hay %d y %d", len(seen), writes)
+	// 094 suma warehouses_list y stock_transfers_list (lecturas) y stock_transfer (escritura).
+	if len(seen) != 85 || writes != 49 {
+		t.Fatalf("el contrato tiene 85 herramientas y 49 escrituras (094); hay %d y %d", len(seen), writes)
 	}
 	// Las de la 073, con el alcance y el permiso de contracts/mcp-tools.md.
 	for name, want := range map[string]MCPTool{

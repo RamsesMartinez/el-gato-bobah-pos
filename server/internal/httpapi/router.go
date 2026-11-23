@@ -90,6 +90,18 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				Post("/webhooks/{plataforma}", h.WebhookDePlataforma)
 		}
 
+		// EL MENÚ PÚBLICO (spec 097), también fuera de RequireAuth y de WithTenant: quien lo abre no
+		// tiene sesión, y la empresa es el RESULTADO de leer el nombre. El servicio la fija después y
+		// todo lo demás corre bajo RLS. Su propio límite por IP, con la IP del visitante que reenvía
+		// la Function del borde cuando trae el secreto.
+		if h.publicMenu != nil {
+			r.Group(func(r chi.Router) {
+				r.Use(rateLimitPublicMenu(h.publicMenuIPs, cfg.Env == "production", h.menuEdgeKey))
+				r.Get("/public/menus/q/{token}", h.PublicMenuByToken)
+				r.Get("/public/menus/{name}", h.PublicMenu)
+			})
+		}
+
 		// LA CONSOLA DE PLATAFORMA (spec 016), y ni una de sus rutas dentro del grupo del negocio.
 		//
 		// No se monta si falta el manager o el servicio: una consola a medias respondería 500 en un
@@ -224,6 +236,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequirePermission(h.permissions, domain.PermBusinessConfigure)).Patch("/company", h.UpdateCompany)
 				// La sección «Venta en web» de Ajustes (spec 092).
 				r.With(RequirePermission(h.permissions, domain.PermBusinessConfigure)).Get("/admin/web-sales/summary", h.WebSalesSummary)
+				r.With(RequirePermission(h.permissions, domain.PermBusinessConfigure)).Get("/admin/public-menu", h.GetPublicMenuSettings)
+				r.With(RequirePermission(h.permissions, domain.PermBusinessConfigure)).Patch("/admin/public-menu", h.UpdatePublicMenuSettings)
 
 				r.Route("/orders", func(r chi.Router) {
 					r.Post("/", h.CreateOrder)
@@ -613,6 +627,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Patch("/warehouses/{id}", h.RenameWarehouse)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Post("/warehouses/{id}/archive", h.ArchiveWarehouse)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryWarehouseManage)).Post("/warehouses/{id}/restore", h.RestoreWarehouse)
+					// Traspasos entre almacenes (spec 094): los ve quien ve el almacén; los hace quien traspasa.
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/transfers", h.ListTransfers)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryTransfer)).Post("/transfers", h.CreateTransfer)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/ingredients/{id}/presentations", h.ListIngredientPresentations)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/ingredients/{id}/presentations", h.CreatePresentation)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/presentations/{id}", h.UpdatePresentation)

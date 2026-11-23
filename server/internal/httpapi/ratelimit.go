@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/subtle"
 	"net"
 	"net/http"
 	"strconv"
@@ -225,6 +226,51 @@ func rateKeyIP(r *http.Request, behindProxy bool) string {
 // magnitud de margen. El número existe para que una ráfaga no cueste una escritura por vuelta, no
 // para racionar pedidos.
 const webhookMax = 300
+
+// publicMenuMax: peticiones por minuto y por visitante al menú público (spec 097). Al menú llega la
+// Function del borde solo cuando su caché venció (una vez por minuto, por negocio y por centro de
+// datos), así que 120 es para quien llama directo; un visitante real ni se acerca.
+const publicMenuMax = 120
+
+// Encabezados con los que la Function del menú le dice a la API a quién está atendiendo.
+const (
+	menuEdgeKeyHeader  = "X-Menu-Edge-Key"
+	menuClientIPHeader = "X-Menu-Client-IP"
+)
+
+// publicMenuKey es la llave del límite del menú público. A la API la llama la Function del borde, y
+// por IP la API solo vería la de Cloudflare: todo un centro de datos compartiría el tope. Con el
+// secreto compartido (comparado en tiempo constante) se cree la IP del visitante que la Function
+// reenvía; sin él, o si lo reenviado no es una IP, se cuenta a quien llama, como en cualquier ruta.
+func publicMenuKey(r *http.Request, behindProxy bool, edgeKey string) string {
+	if edgeKey != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get(menuEdgeKeyHeader)), []byte(edgeKey)) == 1 {
+		if ip := net.ParseIP(strings.TrimSpace(r.Header.Get(menuClientIPHeader))); ip != nil {
+			// IPv6 por su /64: es lo que recibe una sola conexión, y contar la dirección completa
+			// dejaría que alguien rote dentro de su bloque y estrene tope en cada petición.
+			if ip.To4() == nil {
+				return (&net.IPNet{IP: ip.Mask(net.CIDRMask(64, 128)), Mask: net.CIDRMask(64, 128)}).String()
+			}
+			return ip.String()
+		}
+	}
+	return rateKeyIP(r, behindProxy)
+}
+
+// rateLimitPublicMenu es rateLimit con la llave del menú público.
+func rateLimitPublicMenu(rl *rateLimiter, behindProxy bool, edgeKey string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			key := publicMenuKey(r, behindProxy, edgeKey)
+			if rl.blocked(ctx, key) {
+				tooManyRequests(w, rl.retryAfter(ctx, key))
+				return
+			}
+			rl.record(ctx, key)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 
 func rateLimit(rl *rateLimiter, behindProxy bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

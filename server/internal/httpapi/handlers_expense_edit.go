@@ -62,6 +62,8 @@ type editLineBody struct {
 	Amount         decimal.Decimal `json:"amount"`
 	IsGift         bool            `json:"isGift"`
 	ArrivedOn      string          `json:"arrivedOn"`
+	// WarehouseID: a qué almacén entra (spec 094); ausente = el de venta (o el que ya tenía).
+	WarehouseID *int64 `json:"warehouseId"`
 }
 
 // POST /expenses/{id}/edit[?preview=1] — encabezado, renglones agregados y quitados.
@@ -100,7 +102,7 @@ func (h *Handlers) EditExpense(w http.ResponseWriter, r *http.Request) {
 	for _, a := range body.Add {
 		in.Add = append(in.Add, app.EditLineInput{ItemType: a.ItemType, IngredientID: a.IngredientID, ProductID: a.ProductID,
 			Description: a.Description, Quantity: a.Quantity, PresentationID: a.PresentationID, UnitID: a.UnitID,
-			Amount: a.Amount, IsGift: a.IsGift, ArrivedOn: a.ArrivedOn})
+			Amount: a.Amount, IsGift: a.IsGift, ArrivedOn: a.ArrivedOn, WarehouseID: a.WarehouseID})
 	}
 	u, _ := userFrom(r.Context())
 	// Agregar algo que «ya llegó» o quitar lo que ya sumó al almacén mueven existencias: además del

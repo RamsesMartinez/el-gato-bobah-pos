@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 import { randomUUID } from 'node:crypto';
-import { API, USUARIO, EMPRESA, PASSWORD, cuentasVivas, tokenDeApi, tokenDeRequest } from './ambiente';
+import { API, USUARIO, EMPRESA, PASSWORD, cuentasVivas, tokenDeApi, tokenDeRequest, PRODUCTO } from './ambiente';
 import { abrirTicket, botonCobrar, ponerUnProducto, productoPorNombre } from './pos';
 import { iniciarSesion } from './sesion';
 
@@ -153,7 +153,7 @@ test('Y20 · una cuenta guardada antes de esta feature sube al servidor y no dej
   expect(r.ok(), 'el login del ambiente de pruebas falló').toBeTruthy();
   const companyId: number = (await r.json()).user.companyId;
   const jwt = await tokenDeApi();
-  const producto = await productoPorNombre(jwt, 'Dedos de Queso Pza');
+  const producto = await productoPorNombre(jwt, PRODUCTO);
   const pestaña = randomUUID();
 
   const errores: string[] = [];
@@ -165,7 +165,7 @@ test('Y20 · una cuenta guardada antes de esta feature sube al servidor y no dej
       state: {
         tabs: [{
           id, num: 1, folioName: 'Tigre', envio: '',
-          lines: [{ lineId: 'l-1', productId, name: 'Dedos de Queso Pza', unitPrice: 12, qty: 2, modifiers: [] }],
+          lines: [{ lineId: 'l-1', productId, name: PRODUCTO, unitPrice: 12, qty: 2, modifiers: [] }],
           serviceType: 'mostrador', customerName: '', platformId: null,
           // sin platformOrderRef, tal como se guardaba antes
         }],

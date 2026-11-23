@@ -8,6 +8,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/shopspring/decimal"
+
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/alerts"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
@@ -22,6 +26,9 @@ type errorBody struct {
 	// Details lleva el error como DATO además de como prosa, para que el front pinte sin escarbar
 	// en el texto del mensaje. Se omite cuando no hay nada que detallar: la respuesta de siempre.
 	Details *errorDetails `json:"details,omitempty"`
+	// Cause es, solo en un 500, la causa por categoría (#335): quien llamó sabe qué pasó sin ver el
+	// texto del error, que puede traer la consulta o datos y sigue yendo solo a la bitácora y al correo.
+	Cause string `json:"cause,omitempty"`
 }
 
 // errorDetails son los campos estructurados que un error puede aportar: el producto que tumbó el
@@ -42,6 +49,14 @@ type errorDetails struct {
 	IngredientID int64 `json:"ingredientId,omitempty"`
 	// Name: el nombre alternativo que chocó (spec 063), para señalarlo en la lista que se capturó.
 	Name string `json:"name,omitempty"`
+	// Lines: los renglones de un traspaso que dejarían el origen en negativo (spec 094), con lo que hay.
+	Lines []transferShortDetail `json:"lines,omitempty"`
+}
+
+type transferShortDetail struct {
+	ItemType  string          `json:"itemType"`
+	ID        int64           `json:"id"`
+	Available decimal.Decimal `json:"available"`
 }
 
 // JSON writes v as JSON with the given status.
@@ -106,10 +121,21 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "USERNAME_TAKEN"
 	// Spec 092: lo pedido de un producto con «vender sin existencia» apagado no alcanza. 409 porque
 	// es el estado del almacén, no lo que mandó la tableta; la pantalla lo marca agotado.
+	// Nombre del menú público (spec 097): la pantalla pone el texto bajo el campo.
+	case errors.Is(err, domain.ErrMenuNameUnavailable):
+		status, code = http.StatusConflict, "MENU_NAME_UNAVAILABLE"
+	case errors.Is(err, domain.ErrMenuNameLimit):
+		status, code = http.StatusConflict, "MENU_NAME_LIMIT"
 	case errors.Is(err, domain.ErrOutOfStock):
 		status, code = http.StatusConflict, "OUT_OF_STOCK"
 	case errors.Is(err, domain.ErrWarehouseNotFound):
 		status, code = http.StatusNotFound, "WAREHOUSE_NOT_FOUND"
+	case errors.As(err, new(domain.ReferenceNotFound)):
+		// #335: la FK frenó una referencia que no es de esta empresa. 422 y no 404: la ruta existe, lo
+		// que no existe es lo que el cuerpo nombra. Sin texto envolvente: es el que lee quien opera.
+		var ref domain.ReferenceNotFound
+		errors.As(err, &ref)
+		status, code, msg = http.StatusUnprocessableEntity, "REFERENCE_NOT_FOUND", ref.Error()
 	case errors.Is(err, domain.ErrNotFound):
 		status, code = http.StatusNotFound, "NOT_FOUND"
 	case errors.Is(err, domain.ErrInvalidCredentials):
@@ -212,6 +238,8 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "WAREHOUSE_HAS_STOCK"
 	case errors.Is(err, domain.ErrWarehouseCountOpen):
 		status, code = http.StatusConflict, "WAREHOUSE_COUNT_OPEN"
+	case errors.Is(err, domain.ErrWarehousePendingPurchases):
+		status, code = http.StatusConflict, "WAREHOUSE_PENDING_PURCHASES"
 	case errors.Is(err, domain.ErrWarehouseNameTaken):
 		status, code = http.StatusConflict, "WAREHOUSE_NAME_TAKEN"
 	case errors.Is(err, domain.ErrWarehouseNotWritableYet):
@@ -340,8 +368,10 @@ func Error(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrUnitKindMismatch):
 		// 400 con código propio: la pantalla de la compra ofrece capturar la densidad ahí mismo.
 		status, code = http.StatusBadRequest, "UNIT_KIND_MISMATCH"
-	case errors.Is(err, domain.ErrCountNeedsConfirm):
+	case errors.Is(err, domain.ErrCountNeedsConfirm), errors.Is(err, domain.ErrTransferNeedsConfirm):
 		status, code = http.StatusConflict, "NEEDS_CONFIRM"
+	case errors.Is(err, domain.ErrTransferKeyReused):
+		status, code = http.StatusConflict, "TRANSFER_KEY_REUSED"
 	case errors.Is(err, domain.ErrIngredientMerged):
 		status, code = http.StatusConflict, "INGREDIENT_MERGED"
 	case errors.Is(err, domain.ErrMergeBlocked):
@@ -364,6 +394,10 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "ALT_NAME_TAKEN"
 	case errors.Is(err, domain.ErrConflict):
 		status, code = http.StatusConflict, "CONFLICT"
+	case isDeadlock(err):
+		// Postgres abortó esta transacción para destrabar otra (40P01): la otra terminó y ésta se
+		// reintenta. No es un error del servidor ni amerita el aviso por correo.
+		status, code, msg = http.StatusConflict, "CONFLICT", "Otra operación usaba esos artículos al mismo tiempo; vuelve a intentar"
 	case errors.Is(err, domain.ErrTooManyRequests):
 		status, code = http.StatusTooManyRequests, "TOO_MANY_REQUESTS"
 	case errors.Is(err, domain.ErrDescuentoMayorQueLaVenta):
@@ -403,7 +437,13 @@ func Error(w http.ResponseWriter, err error) {
 		msg = "Error interno del servidor"
 		// Sin details en un 500: el mensaje ya se ocultó por opaco, y adjuntar el interior del
 		// error por otra puerta lo desharía.
-		JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: msg}})
+		body := errorBody{Code: code, Message: msg}
+		// La causa solo a la petición que despachó el MCP (#335): el agente la necesita para decir qué
+		// pasó; a una ruta abierta (login, recuperar contraseña) no le hace falta saber ni la categoría.
+		if fromMCP(w) {
+			body.Cause = domain.InternalCause(alerts.ErrorKind(err))
+		}
+		JSON(w, status, errorEnvelope{Error: body})
 		return
 	}
 
@@ -445,6 +485,13 @@ func Error(w http.ResponseWriter, err error) {
 	var mismatch domain.UnitKindMismatch
 	if errors.As(err, &mismatch) {
 		details = &errorDetails{IngredientID: mismatch.IngredientID, ProductName: mismatch.Name}
+	}
+	var short domain.TransferNeedsConfirm
+	if errors.As(err, &short) {
+		details = &errorDetails{}
+		for _, l := range short.Lines {
+			details.Lines = append(details.Lines, transferShortDetail{ItemType: l.ItemType, ID: l.ID, Available: l.Available})
+		}
 	}
 	var withStock domain.WarehouseHasStock
 	if errors.As(err, &withStock) {
@@ -503,4 +550,10 @@ func DecodeStrict(r *http.Request, v any) error {
 		return domain.ErrValidation
 	}
 	return nil
+}
+
+// isDeadlock dice si Postgres canceló la transacción por un bloqueo mutuo.
+func isDeadlock(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "40P01"
 }

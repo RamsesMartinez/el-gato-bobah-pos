@@ -77,11 +77,15 @@ describe('la activa y la anterior siguen a la vista (validación como usuario nu
     expect(fichas[1]).toHaveAccessibleName(/^Levkoy ·/);
   });
 
-  // Lo que falta es lo que se cobra: con la ficha angosta, la etiqueta larga cede, la cifra no.
-  test('la cifra no cede ancho; la etiqueta sí', () => {
+  // Spec 089: la ficha dice lo que le falta en la forma corta (la larga no cabe en 112 px), y el
+  // lector de pantalla oye la frase completa.
+  test('la ficha dice lo que le falta en corto y su nombre accesible lo dice completo', () => {
     montar(2000);
-    const ficha = screen.getByRole('button', { name: /^Mesa afuera ·/ });
-    expect(getComputedStyle(within(ficha).getByText('falta $130')).flexShrink).toBe('0');
+    const parcial = screen.getByRole('button', { name: 'Mesa afuera · Falta cobrar $130 y entregar' });
+    expect(within(parcial).getByText('Cobrar $130 · entregar')).toBeInTheDocument();
+    const pagada = screen.getByRole('button', { name: 'Siamés · Falta entregar' });
+    expect(within(pagada).getByText('Falta entregar')).toBeInTheDocument();
+    expect(within(pagada).queryByText(/pagada/i)).toBeNull();
   });
 });
 
@@ -98,16 +102,16 @@ describe('FilaDeCuentas', () => {
     expect(screen.getByRole('button', { name: 'Ver todas las cuentas' })).toBeInTheDocument();
   });
 
+  // Spec 089: lo que le falta, en corto (lo que se lee en la ficha).
   test.each([
-    ['Levkoy', 'Capturando', '$74'],
-    ['Khao Manee', 'En cocina', '$194'],
-    ['Siamés', 'Pagada · en cocina', 'pagada'],
-    ['Mesa afuera', 'Pago parcial', 'falta $130'],
-    ['Bosque de Noruega', 'Entregada · debe', 'debe $195'],
-  ])('%s dice «%s» y «%s»', (nombre, estado, abajo) => {
+    ['Levkoy', 'Sin enviar · $74'],
+    ['Khao Manee', 'Cobrar $194 · entregar'],
+    ['Siamés', 'Falta entregar'],
+    ['Mesa afuera', 'Cobrar $130 · entregar'],
+    ['Bosque de Noruega', 'Cobrar $195'],
+  ])('%s dice «%s»', (nombre, abajo) => {
     montar(2000);
     const ficha = screen.getByRole('button', { name: new RegExp(`^${nombre} ·`) });
-    expect(within(ficha).getByText(estado)).toBeInTheDocument();
     expect(within(ficha).getByText(abajo)).toBeInTheDocument();
   });
 
