@@ -31,6 +31,21 @@ vi.mock('../../api/uso', () => ({ medirAccion }));
 const toast = vi.hoisted(() => vi.fn());
 vi.mock('../../components/ui/toaster', () => ({ toaster: { create: toast } }));
 
+// La columna «Por aceptar» tiene su propia prueba; aquí solo importa dónde se monta.
+const entrantes = vi.hoisted(() => ({ current: [] as unknown[] }));
+vi.mock('../../shared/entrantes/useEntrantes', () => ({
+  useEntrantes: () => ({ pedidos: entrantes.current, refrescar: () => {} }),
+  CLAVE_ENTRANTES: ['pedidos-entrantes'],
+}));
+vi.mock('../../shared/entrantes/ColumnaPorAceptar', () => ({
+  ColumnaPorAceptar: () => (entrantes.current.length ? <div data-testid="columna-por-aceptar" /> : null),
+}));
+
+// El ticket tiene su propia prueba; aquí importa qué pedido abre.
+vi.mock('../../shared/tickets/ReprintTicket', () => ({
+  ReprintTicket: ({ orderId }: { orderId: number | null }) => (orderId ? <div data-testid="ticket-abierto">{orderId}</div> : null),
+}));
+
 const navegar = vi.hoisted(() => vi.fn());
 vi.mock('react-router', async () => ({
   ...(await vi.importActual<typeof import('react-router')>('react-router')),
@@ -65,6 +80,8 @@ function pintar(o: BoardOrder, ajustes: Record<string, unknown> = {}) {
   return render(<Provider>{nodo}</Provider>);
 }
 
+const abrirCerrados = async () => userEvent.click(await screen.findByRole('tab', { name: /Cerrados/ }));
+
 const tarjeta = async (folio = 'Persa') => {
   const titulo = await screen.findByText(folio);
   return titulo.closest('[data-order-card]') as HTMLElement;
@@ -76,6 +93,7 @@ beforeEach(() => {
   api.paymentMethods.mockResolvedValue({ items: [] });
 });
 afterEach(() => {
+  entrantes.current = [];
   vi.clearAllMocks();
   useSessionStore.setState({ user: null, token: null });
 });
@@ -529,7 +547,10 @@ describe('las entregadas dicen cuándo y cuánto se devolvió', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<Provider><QueryClientProvider client={qc}><OrdersBoardPage /></QueryClientProvider></Provider>);
   }
-  const renglon = async () => (await screen.findByText('Siamés')).closest('[data-delivered-row]') as HTMLElement;
+  const renglon = async () => {
+    await abrirCerrados();
+    return (await screen.findByText('Siamés')).closest('[data-delivered-row]') as HTMLElement;
+  };
 
   test('el renglón trae fecha y hora del pedido en la zona del negocio', async () => {
     pintarEntregada({ outstanding: '0', paid: true });
@@ -582,6 +603,7 @@ describe('los entregados se ven por permiso', () => {
 
   test('la cajera ve el pedido entregado y su «Ticket», sin «Devolver»', async () => {
     pintarCon('cajero', ['orders.delivered_view', 'orders.move_lines']);
+    await abrirCerrados();
     const r = (await screen.findByText('Sofía')).closest('[data-delivered-row]') as HTMLElement;
     expect(within(r).getByRole('button', { name: 'Ticket' })).toBeInTheDocument();
     expect(within(r).queryByRole('button', { name: 'Devolver' })).toBeNull();
@@ -606,6 +628,7 @@ describe('los entregados se ven por permiso', () => {
   test('el diálogo de devolución se cierra si entra alguien sin el permiso', async () => {
     api.refundInfo.mockResolvedValue({ cardTerminals: [], needsFolio: false });
     pintarCon('gerente', ['orders.delivered_view', 'payments.void']);
+    await abrirCerrados();
     const r = (await screen.findByText('Sofía')).closest('[data-delivered-row]') as HTMLElement;
     await userEvent.click(within(r).getByRole('button', { name: 'Devolver' }));
     await screen.findByText('Devolver dinero');
@@ -616,6 +639,7 @@ describe('los entregados se ven por permiso', () => {
 
   test('con los dos permisos se ve «Ticket» y «Devolver»', async () => {
     pintarCon('gerente', ['orders.delivered_view', 'payments.void']);
+    await abrirCerrados();
     const r = (await screen.findByText('Sofía')).closest('[data-delivered-row]') as HTMLElement;
     expect(within(r).getByRole('button', { name: 'Ticket' })).toBeInTheDocument();
     expect(within(r).getByRole('button', { name: 'Devolver' })).toBeInTheDocument();
@@ -631,5 +655,50 @@ describe('la tarjeta del tablero dice cuándo y si se devolvió', () => {
   test('con una devolución, la marca con lo devuelto', async () => {
     pintar(pedido({ outstanding: '0', paid: true, refund: '30' }));
     expect(within(await tarjeta()).getByText('Devuelto $30')).toBeInTheDocument();
+  });
+});
+
+// PEDIDOS ENTRANTES Y PESTAÑAS (spec 093, M-PorAceptar y M-Pedidos).
+describe('Pedidos con la columna «Por aceptar», el ticket y los cerrados', () => {
+  test('con pedidos por aceptar, la columna va junto al tablero y el tablero sigue completo', async () => {
+    entrar(['orders.delivered_view']);
+    entrantes.current = [{ id: 1 }, { id: 2 }];
+    pintar(pedido());
+    expect(await screen.findByTestId('columna-por-aceptar')).toBeInTheDocument();
+    expect(screen.getByText('En preparación')).toBeInTheDocument();
+    expect(screen.getByText('A entregar')).toBeInTheDocument();
+    // La pestaña «En curso» dice cuántos esperan, para quien esté en «Cerrados».
+    expect(within(screen.getByRole('tab', { name: /En curso/ })).getByText('2 por aceptar')).toBeInTheDocument();
+  });
+
+  test('«Cerrados» lista todas las entregadas de hoy, no solo las últimas cinco', async () => {
+    entrar(['orders.delivered_view']);
+    api.deliveredOrders.mockResolvedValue({ items: Array.from({ length: 12 }, (_, i) =>
+      pedido({ id: 100 + i, folioName: `Cerrado ${i}`, status: 'entregada', lines: [], outstanding: '0', paid: true })) });
+    pintar(pedido());
+    await abrirCerrados();
+    await screen.findByText('Cerrado 11');
+    expect(document.querySelectorAll('[data-delivered-row]')).toHaveLength(12);
+    // Y el tablero no se pinta debajo: cada pestaña usa el alto entero.
+    expect(document.querySelector('[data-order-card]')).toBeNull();
+  });
+
+  test('sin permiso de ver entregadas no hay pestañas', async () => {
+    entrar(['orders.move_lines']);
+    pintar(pedido());
+    await tarjeta();
+    expect(screen.queryByRole('tab', { name: /Cerrados/ })).toBeNull();
+  });
+
+  test('el ticket está a un toque junto al total, mide 44 px y ya no está en el ⋮', async () => {
+    pintar(pedido());
+    const t = await tarjeta();
+    const boton = within(t).getByRole('button', { name: 'Ticket' });
+    expect(getComputedStyle(boton).minHeight).toBe('44px');
+    expect(getComputedStyle(boton).minWidth).toBe('44px');
+    await userEvent.click(boton);
+    expect(await screen.findByTestId('ticket-abierto')).toHaveTextContent('5');
+    await userEvent.click(within(t).getByRole('button', { name: 'Más' }));
+    expect(screen.queryByRole('menuitem', { name: 'Ver ticket' })).toBeNull();
   });
 });

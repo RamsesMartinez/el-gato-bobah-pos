@@ -88,10 +88,10 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 **Independent Test**: dos pendientes; aceptar uno lo manda a cocina con comanda; rechazar el otro con «Se acabó un producto» lo deja `rechazado`.
 
-- [ ] T028 [P] [US2] Test `web/src/shared/entrantes/ColumnaPorAceptar.test.tsx` (M-PorAceptar): el más urgente abierto con hasta 3 renglones y «+N más»; los demás plegados en «N productos» (avisa si alguno no está en el menú) que abre con un toque; ícono de origen junto al nombre; «quedan N min» con plazo y «hace N min» sin plazo; teléfono, dirección y pago cuando vienen; Aceptar y Rechazar ≥ 44 px; sin pendientes no se pinta
-- [ ] T029 [P] [US2] Test `web/src/shared/entrantes/RechazarSheet.test.tsx`: 5 motivos en palabras de quien opera; «Rechazar pedido» deshabilitado sin motivo; manda el código propio
-- [ ] T030 [US2] Implementar `ColumnaPorAceptar.tsx`, `TarjetaEntrante.tsx` y `RechazarSheet.tsx` (sobre `ConfirmSheet`) en `web/src/shared/entrantes/`
-- [ ] T031 [US2] Montar la columna en `web/src/features/orders/OrdersBoardPage.tsx` a la izquierda del tablero, columnas sobre panel `bg.muted`; aceptar imprime la comanda solo en esta tableta (`KitchenTicket`) y avisa en palabras del operador si falla; test en `OrdersBoardPage.test.tsx` de que con pendientes el tablero conserva sus columnas
+- [X] T028 [P] [US2] Test `web/src/shared/entrantes/ColumnaPorAceptar.test.tsx` (M-PorAceptar): el más urgente abierto con hasta 3 renglones y «+N más»; los demás plegados en «N productos» (avisa si alguno no está en el menú) que abre con un toque; ícono de origen junto al nombre; «quedan N min» con plazo y «hace N min» sin plazo; teléfono, dirección y pago cuando vienen; Aceptar y Rechazar ≥ 44 px; sin pendientes no se pinta
+- [X] T029 [P] [US2] Test `web/src/shared/entrantes/RechazarSheet.test.tsx`: 5 motivos en palabras de quien opera; «Rechazar pedido» deshabilitado sin motivo; manda el código propio
+- [X] T030 [US2] Implementar `ColumnaPorAceptar.tsx`, `TarjetaEntrante.tsx` y `RechazarSheet.tsx` (sobre `ConfirmSheet`) en `web/src/shared/entrantes/`
+- [X] T031 [US2] Montar la columna en `web/src/features/orders/OrdersBoardPage.tsx` a la izquierda del tablero, columnas sobre panel `bg.muted`; aceptar imprime la comanda solo en esta tableta (`KitchenTicket`) y avisa en palabras del operador si falla; test en `OrdersBoardPage.test.tsx` de que con pendientes el tablero conserva sus columnas
 
 ---
 
@@ -106,8 +106,8 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 ## Phase 6: User Story 4 — Varias tabletas (P1)
 
-- [ ] T034 [US4] Test en `ColumnaPorAceptar.test.tsx`/`AlertaDeEntrantes.test.tsx`: respuesta 409 al aceptar → toast «Otra tableta ya lo atendió», refetch y sin comanda; `incoming.changed` sin el pedido → se calla
-- [ ] T035 [US4] Implementar el manejo de 409 en la mutación de aceptar/rechazar
+- [X] T034 [US4] Test en `ColumnaPorAceptar.test.tsx`/`AlertaDeEntrantes.test.tsx`: respuesta 409 al aceptar → toast «Otra tableta ya lo atendió», refetch y sin comanda; `incoming.changed` sin el pedido → se calla
+- [X] T035 [US4] Implementar el manejo de 409 en la mutación de aceptar/rechazar
 
 ---
 
@@ -120,15 +120,15 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 ## Phase 8: User Story 6 — Permiso (P2)
 
-- [ ] T038 [US6] Test en `AlertaDeEntrantes.test.tsx` y `OrdersBoardPage.test.tsx`: sin `orders.accept_incoming` no hay alarma, franja ni columna (la barrera real ya la cubren T013 y T015)
-- [ ] T039 [US6] Gatear con `can('orders.accept_incoming', user)` en `AlertaDeEntrantes` y en la columna
+- [X] T038 [US6] Test en `AlertaDeEntrantes.test.tsx` y `OrdersBoardPage.test.tsx`: sin `orders.accept_incoming` no hay alarma, franja ni columna (la barrera real ya la cubren T013 y T015)
+- [X] T039 [US6] Gatear con `can('orders.accept_incoming', user)` en `AlertaDeEntrantes` y en la columna
 
 ---
 
 ## Phase 9: User Story 7 — Ticket a la mano y «Cerrados» (P3)
 
-- [ ] T040 [P] [US7] Test en `OrdersBoardPage.test.tsx` (M-Pedidos): pestañas «En curso» (con número de pendientes por aceptar) y «Cerrados» en el renglón del título; «Cerrados» lista TODAS las entregadas de hoy con Ticket y Devolver; la impresora junto al total mide 44×44 y no se encima con el total; «Ver ticket» ya no está en el ⋮
-- [ ] T041 [US7] Implementar pestañas e impresora en `web/src/features/orders/OrdersBoardPage.tsx` (`Tabs` como en Caja; `ReprintTicket`)
+- [X] T040 [P] [US7] Test en `OrdersBoardPage.test.tsx` (M-Pedidos): pestañas «En curso» (con número de pendientes por aceptar) y «Cerrados» en el renglón del título; «Cerrados» lista TODAS las entregadas de hoy con Ticket y Devolver; la impresora junto al total mide 44×44 y no se encima con el total; «Ver ticket» ya no está en el ⋮
+- [X] T041 [US7] Implementar pestañas e impresora en `web/src/features/orders/OrdersBoardPage.tsx` (`Tabs` como en Caja; `ReprintTicket`)
 
 ---
 
