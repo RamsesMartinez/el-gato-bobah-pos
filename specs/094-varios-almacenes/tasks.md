@@ -122,7 +122,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 - [X] T052 [US5] Pantalla Traspaso según la fila «Traspaso» de Maquetas: pestaña después de Existencias, `Picker` en De/A, buscador de 44 px, `NumericKeypad` fijo con `useKeypadField`, `clientKey` guardada en el borrador (`web/src/features/backoffice/warehouses/TransferTab.tsx`) con test
 - [ ] T053 [US5] «Traer de Bodega» de Existencias usa el traspaso real (T036) — pantalla hecha (`BringSheet`, botón en el negativo con `transfer_from`); el servidor ya manda `transfer_from` e `ingredient_id`/`product_id` en `/stock/levels`; falta conectar la hoja al `POST /stock/transfers` en el front
 - [X] T054 [US8] MCP `stock_transfer` con vista previa e idempotencia, test
-- [ ] T054b [US5] E2E Playwright del traspaso de un artículo que mide los toques (≤ 6, SC-003) y prueba con alguien nuevo de una fonda: traspasar de Bodega a Local (SC-005), en `web/e2e/traspaso.spec.ts`
+- [X] T054b [US5] E2E Playwright del traspaso de un artículo que mide los toques (≤ 6, SC-003) y prueba con alguien nuevo de una fonda: traspasar de Bodega a Local (SC-005), en `web/e2e/traspaso.spec.ts`
 
 ---
 
