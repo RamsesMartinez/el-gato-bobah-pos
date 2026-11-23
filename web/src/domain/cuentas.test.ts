@@ -22,6 +22,13 @@ describe('lo que le falta a cada cuenta', () => {
     expect(f.deliver).toBe(entregar);
   });
 
+  test('la acción sin cifra, para donde el monto ya se dice aparte', () => {
+    expect(missingFor(cuenta({ key: 'k', state: 'in_kitchen' })).action).toBe('Falta cobrar y entregar');
+    expect(missingFor(cuenta({ key: 'k', state: 'delivered_owes' })).action).toBe('Falta cobrar');
+    expect(missingFor(cuenta({ key: 'k', state: 'paid_in_kitchen', outstanding: '0.00' })).action).toBe('Falta entregar');
+    expect(missingFor(cuenta({ key: 'k', state: 'capturing', kind: 'draft' })).action).toBe('Sin enviar');
+  });
+
   test('el monto que falta es el del servidor (outstanding), no el total', () => {
     const f = missingFor(cuenta({ key: 'k', state: 'partly_paid', total: '300.00', paid: '150.00', outstanding: '150.00' }));
     expect(f.text).toContain('$150');

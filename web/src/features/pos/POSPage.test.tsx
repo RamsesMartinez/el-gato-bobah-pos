@@ -254,6 +254,27 @@ describe('resolver una cuenta desde la columna', () => {
     expect(within(hoja).getAllByText(/\$195/).length).toBeGreaterThan(0);
   });
 
+  // Revisión de la 089: con la red lenta, la respuesta tardía del primer «Cobrar» reemplazaba la hoja
+  // que ya se estaba usando para otra cuenta, y lo tecleado se perdía.
+  test('una respuesta tardía de otro «Cobrar» no reemplaza la hoja que ya está abierta', async () => {
+    anchoDelPos.width = 1024;
+    vivas.current = [
+      cuenta({ key: 'o:7', orderId: 7, folioName: 'Bosque de Noruega', state: 'delivered_owes', outstanding: '195.00', total: '195.00' }),
+      cuenta({ key: 'o:8', orderId: 8, folioName: 'Manx', state: 'delivered_owes', outstanding: '88.00', total: '88.00', openedAt: '2026-10-08T15:30:00Z' }),
+    ];
+    let soltar: (v: unknown) => void = () => {};
+    api.order.mockImplementation((id: number) => (id === 7
+      ? new Promise((r) => { soltar = r; })
+      : Promise.resolve(pedidoDe(8, 'Manx', { total: '88.00', outstanding: '88.00' }))));
+    montar();
+    await userEvent.click(await screen.findByRole('button', { name: 'Cobrar $195 Bosque de Noruega' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cobrar $88 Manx' }));
+    const hoja = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(hoja).getAllByText(/\$88/).length).toBeGreaterThan(0));
+    await act(async () => { soltar(pedidoDe(7, 'Bosque de Noruega')); });
+    expect(within(screen.getByRole('dialog')).queryAllByText(/\$195/)).toHaveLength(0);
+  });
+
   test('«Entregar» entrega ese pedido sin abrirlo', async () => {
     anchoDelPos.width = 1024;
     vivas.current = [cuenta({ key: 'o:6', orderId: 6, folioName: 'Siamés', state: 'paid_in_kitchen', paid: '63.00', total: '63.00', outstanding: '0.00' })];

@@ -12,20 +12,22 @@ import type { AccountItem } from '../../types/pos';
 // error se explica y la fila queda con el estado real.
 export function useDeliverAccount() {
   const qc = useQueryClient();
-  const [delivering, setDelivering] = useState<string | null>(null);
-  // El ref y no el estado: dos toques en el mismo cuadro todavía ven `delivering` en null.
-  const enCurso = useRef<string | null>(null);
+  // Las cuentas que se están entregando. Por cuenta y no una sola: con un candado único, «Entregar» en
+  // otra cuenta mientras iba la primera se perdía sin aviso.
+  const [delivering, setDelivering] = useState<ReadonlySet<string>>(new Set());
+  // El ref y no el estado: dos toques en el mismo cuadro todavía no ven el estado nuevo.
+  const enCurso = useRef(new Set<string>());
 
   const deliver = (c: AccountItem) => {
-    if (c.kind !== 'order' || !c.orderId || enCurso.current) return;
-    enCurso.current = c.key;
-    setDelivering(c.key);
+    if (c.kind !== 'order' || !c.orderId || enCurso.current.has(c.key)) return;
+    enCurso.current.add(c.key);
+    setDelivering(new Set(enCurso.current));
     posApi.deliverOrder(c.orderId)
       .then(() => toaster.create({ title: `${nombreDeCuenta(c)}: entregada`, type: 'success' }))
       .catch((e: unknown) => toaster.create({ title: 'No se pudo entregar', description: mensajeDeError(e), type: 'error' }))
       .finally(() => {
-        enCurso.current = null;
-        setDelivering(null);
+        enCurso.current.delete(c.key);
+        setDelivering(new Set(enCurso.current));
         qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
         qc.invalidateQueries({ queryKey: ['orders'] });
       });

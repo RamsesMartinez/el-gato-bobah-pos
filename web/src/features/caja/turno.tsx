@@ -915,7 +915,7 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
                   <Box minW={0} flex="1">
                     <Text fontWeight="600" truncate>{nombre(c)}</Text>
                     <Text fontSize="xs" color="fg.muted" truncate>
-                      {c.number !== null ? `#${c.number} · ` : ''}{missingFor(c).text}
+                      {c.number !== null ? `#${c.number} · ` : ''}{missingFor(c).action}
                     </Text>
                   </Box>
                   {/* Un pedido cerrado no debe nada: lo vivo es lo que falta mandar, no un saldo de $0. */}

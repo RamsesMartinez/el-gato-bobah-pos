@@ -159,11 +159,13 @@ describe('entregar y cobrar desde la hoja', () => {
     expect(a.cobrar).toHaveTextContent('Cobrar $88');
   });
 
-  test('la que falta cobrar y entregar ofrece las dos', async () => {
+  // Revisión de la 089: «Entregar» pegado a «Cobrar» invita a entregar sin cobrar al querer cobrar.
+  // Con las dos pendientes se abre la cuenta: su ticket ofrece entregar arriba y cobrar abajo.
+  test('la que falta cobrar y entregar no ofrece botones: se abre', async () => {
     montar();
     const a = await acciones('Khao Manee');
-    expect(a.entregar).not.toBeNull();
-    expect(a.cobrar).not.toBeNull();
+    expect(a.entregar).toBeNull();
+    expect(a.cobrar).toBeNull();
   });
 
   test('una cuenta en captura no ofrece ninguna: todavía no es pedido', async () => {
@@ -186,7 +188,8 @@ describe('entregar y cobrar desde la hoja', () => {
 
   test('los botones miden al menos 44 px', async () => {
     montar();
-    const a = await acciones('Khao Manee');
-    for (const b of [a.entregar!, a.cobrar!]) expect(parseInt(getComputedStyle(b).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
+    const b1 = (await acciones('Siamés')).entregar;
+    const b2 = (await acciones('Manx')).cobrar;
+    for (const b of [b1!, b2!]) expect(parseInt(getComputedStyle(b).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
   });
 });

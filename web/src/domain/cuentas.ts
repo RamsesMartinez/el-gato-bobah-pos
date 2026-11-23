@@ -13,6 +13,8 @@ export function nombreDeCuenta(c: Pick<AccountItem, 'folioName' | 'customerName'
 export interface Missing {
   text: string;
   short: string;
+  // Sin cifra: para donde el monto ya se dice aparte (el cierre de caja).
+  action: string;
   color: 'red' | 'blue' | 'gray';
   charge: boolean;
   deliver: boolean;
@@ -25,22 +27,23 @@ export function missingFor(c: Pick<AccountItem, 'state' | 'kind' | 'total' | 'ou
   const debe = money(Number(c.outstanding));
   const nada = { charge: false, deliver: false };
   if (c.kind !== 'order') {
-    const t = c.state === 'closed_with_new' ? 'Nuevo sin enviar' : `Sin enviar · ${money(Number(c.total))}`;
-    return { text: t, short: t, color: 'gray', ...nada };
+    const nuevo = c.state === 'closed_with_new';
+    const t = nuevo ? 'Nuevo sin enviar' : `Sin enviar · ${money(Number(c.total))}`;
+    return { text: t, short: t, action: nuevo ? 'Nuevo sin enviar' : 'Sin enviar', color: 'gray', ...nada };
   }
   switch (c.state) {
     case 'capturing': {
       const t = `Sin enviar · ${money(Number(c.total))}`;
-      return { text: t, short: t, color: 'gray', ...nada };
+      return { text: t, short: t, action: 'Sin enviar', color: 'gray', ...nada };
     }
     case 'closed_with_new':
-      return { text: 'Nuevo sin enviar', short: 'Nuevo sin enviar', color: 'gray', ...nada };
+      return { text: 'Nuevo sin enviar', short: 'Nuevo sin enviar', action: 'Nuevo sin enviar', color: 'gray', ...nada };
     case 'in_kitchen':
     case 'partly_paid':
-      return { text: `Falta cobrar ${debe} y entregar`, short: `Cobrar ${debe} · entregar`, color: 'red', charge: true, deliver: true };
+      return { text: `Falta cobrar ${debe} y entregar`, short: `Cobrar ${debe} · entregar`, action: 'Falta cobrar y entregar', color: 'red', charge: true, deliver: true };
     case 'paid_in_kitchen':
-      return { text: 'Falta entregar', short: 'Falta entregar', color: 'blue', charge: false, deliver: true };
+      return { text: 'Falta entregar', short: 'Falta entregar', action: 'Falta entregar', color: 'blue', charge: false, deliver: true };
     case 'delivered_owes':
-      return { text: `Falta cobrar ${debe}`, short: `Cobrar ${debe}`, color: 'red', charge: true, deliver: false };
+      return { text: `Falta cobrar ${debe}`, short: `Cobrar ${debe}`, action: 'Falta cobrar', color: 'red', charge: true, deliver: false };
   }
 }

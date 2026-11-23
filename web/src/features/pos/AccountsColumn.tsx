@@ -25,7 +25,7 @@ interface Props {
   onCharge: (c: AccountItem) => void;
   // La hoja con todas las cuentas: la única que agrupa y que mira las deudas de más de 90 días.
   onVerTodas: () => void;
-  delivering?: string | null;
+  delivering?: ReadonlySet<string>;
   // La tableta está en una cuenta nueva sin productos: se pinta como primer renglón.
   nueva?: boolean;
 }
@@ -65,12 +65,13 @@ export function AccountsColumn({ cuentas, seleccionada, onElegir, onNueva, onDel
           const m = missingFor(c);
           const nombre = nombreDeCuenta(c);
           return (
-            <HStack key={c.key} gap={1} align="stretch">
+            // 8 px entre el renglón y su botón: «Entregar» es de un toque y la cuenta sale de la fila.
+            <HStack key={c.key} gap={2} align="stretch">
               <Renglon activa={c.key === seleccionada} nombre={nombre} texto={m.text} color={m.color}
                 etiqueta={`${nombre} · ${m.text}`} onClick={() => onElegir(c)} />
               <Box display="flex" alignItems="center">
-                <AccountActions c={c} onlyWhenOne size="sm" onDeliver={onDeliver} onCharge={onCharge}
-                  delivering={delivering === c.key} />
+                <AccountActions c={c} compact size="sm" onDeliver={onDeliver} onCharge={onCharge}
+                  delivering={delivering?.has(c.key)} />
               </Box>
             </HStack>
           );

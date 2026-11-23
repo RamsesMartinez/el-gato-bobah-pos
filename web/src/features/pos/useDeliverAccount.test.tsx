@@ -33,6 +33,21 @@ describe('entregar una cuenta desde Vender', () => {
     expect(toasts.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'Siamés: entregada', type: 'success' }));
   });
 
+  // Revisión de la 089: con un candado único, un «Entregar» en OTRA cuenta mientras iba el primero se
+  // perdía sin aviso y la cuenta se quedaba en la fila.
+  test('entregar otra cuenta mientras va la primera también se manda', async () => {
+    let soltar: () => void = () => {};
+    api.deliverOrder.mockImplementation((id: number) => (id === 6 ? new Promise<void>((r) => { soltar = r; }) : Promise.resolve()));
+    const otra = cuenta({ key: 'o:7', orderId: 7, folioName: 'Persa', state: 'paid_in_kitchen', outstanding: '0.00' });
+    const { result } = renderHook(() => useDeliverAccount(), { wrapper });
+    act(() => { result.current.deliver(PAGADA); });
+    act(() => { result.current.deliver(otra); });
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalledWith(7));
+    expect(api.deliverOrder).toHaveBeenCalledWith(6);
+    await act(async () => { soltar(); });
+    await waitFor(() => expect(result.current.delivering.size).toBe(0));
+  });
+
   // Un dedo que toca dos veces en la hora pico no manda dos entregas (la segunda volvería con
   // conflicto y se leería como error).
   test('mientras entrega, un segundo toque no manda otra vez', async () => {
@@ -40,11 +55,11 @@ describe('entregar una cuenta desde Vender', () => {
     api.deliverOrder.mockReturnValue(new Promise<void>((r) => { soltar = r; }));
     const { result } = renderHook(() => useDeliverAccount(), { wrapper });
     act(() => { result.current.deliver(PAGADA); });
-    await waitFor(() => expect(result.current.delivering).toBe('o:6'));
+    await waitFor(() => expect(result.current.delivering.has('o:6')).toBe(true));
     act(() => { result.current.deliver(PAGADA); });
     expect(api.deliverOrder).toHaveBeenCalledTimes(1);
     await act(async () => { soltar(); });
-    await waitFor(() => expect(result.current.delivering).toBeNull());
+    await waitFor(() => expect(result.current.delivering.size).toBe(0));
   });
 
   test('si el servidor la rechaza, lo dice en palabras de mostrador y relee la fila', async () => {

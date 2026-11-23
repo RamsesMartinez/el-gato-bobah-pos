@@ -50,8 +50,9 @@ export function PlatformPicker({ platformId, platformOrderRef, bloqueado, onCamb
   return (
     <Box minW={0}>
       {/* El folio y la ayuda van EN ESTE MISMO renglón: apilados, el bloque crece y el mosaico
-          pierde un renglón. */}
-      <HStack gap={1} align="center" minW={0}>
+          pierde un renglón. Con tres plataformas cabe justo a 1024 con el ticket abierto (medido); el
+          wrap es la red para un negocio con más: baja de renglón en vez de recortar las herramientas. */}
+      <HStack gap={1} align="center" minW={0} flexWrap="wrap">
         {canal(null, 'Mostrador')}
         {plataformas.map((p) => canal(p.id, p.name))}
         {enPlataforma && !bloqueado && (

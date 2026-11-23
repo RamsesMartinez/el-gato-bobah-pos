@@ -6,7 +6,7 @@
 - **Lo que le falta**, con palabras de mostrador (research R-1). Color: rojo si falta cobrar, azul si
   solo falta entregar, gris si no se ha enviado.
 - Acciones (solo pedidos, nunca cuentas en captura): **Entregar** si `entregar`; **Cobrar** si
-  `cobrar`. Cada una ≥ 44 px. En la columna (opción B) el botón aparece solo cuando le falta UNA cosa; en la hoja «Todas las cuentas» aparecen los dos que apliquen; en el ticket, «Entregar» en la franja «Falta …».
+  `cobrar`. Cada una ≥ 44 px. En la columna y en la hoja «Todas las cuentas» el botón aparece solo cuando le falta UNA cosa (revisión de código: «Entregar» pegado a «Cobrar» invitaba a entregar sin cobrar); con las dos se abre la cuenta y su ticket ofrece «Entregar» en la franja «Falta …» y «Cobrar» en el pie.
 - `aria-label`: «{nombre} · le falta {texto}».
 
 ## Endpoints usados (existentes)

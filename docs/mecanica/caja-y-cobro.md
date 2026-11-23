@@ -123,11 +123,16 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   recalcule el estado vuelve a decir cosas distintas de la misma cuenta.
 - **Entregar desde Vender** es el mismo `POST /orders/:id/deliver` que «Entregar todo» en Pedidos,
   sin permiso propio (igual que cobrar). Sin estado optimista: la cuenta sale de la fila cuando el
-  servidor lo confirma; un segundo toque mientras va no manda otra entrega (`useDeliverAccount`).
+  servidor lo confirma; un segundo toque en la misma cuenta mientras va no manda otra entrega, y
+  entregar otra cuenta a la vez sí se manda (`useDeliverAccount`, candado por cuenta).
+- **Cobrar desde la columna no pisa una hoja abierta**: solo cuenta la respuesta del último toque y
+  nunca reemplaza un cobro en curso. Y solo el cobro de la cuenta abierta vuelve «propios» sus
+  cambios (`isOwnCharge`): cobrar otra no calla el aviso de que otra tableta cobró la abierta.
 - **Columna en modo ancho, fila en angosto.** Con el contenedor de Vender ≥ 900 px las cuentas van
   en una columna de 248 px a la izquierda del catálogo, en orden de antigüedad que NO cambia al
-  elegir (en una lista vertical, subir la elegida movía la cuenta bajo el dedo). El renglón trae su
-  botón solo si le falta UNA cosa. Debajo de 900 px queda la fila de fichas con «+N».
+  elegir (en una lista vertical, subir la elegida movía la cuenta bajo el dedo). El renglón, y el de
+  la hoja «Todas las cuentas», trae su botón solo si le falta UNA cosa: «Entregar» junto a «Cobrar»
+  invitaba a entregar sin cobrar. Debajo de 900 px queda la fila de fichas con «+N».
 - **La hoja «Todas las cuentas» es la única que mira las deudas de más de 90 días** (pide
   `olderDebts`). En modo ancho se abre desde el encabezado «Cuentas (N)» de la columna.
 - **Los canales no crecen con plataforma**: el folio va en el mismo renglón y cómo corregir un

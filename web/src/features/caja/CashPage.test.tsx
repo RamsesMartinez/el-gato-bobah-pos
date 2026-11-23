@@ -509,8 +509,9 @@ describe('las cuentas vivas en el cierre', () => {
   test('cada cuenta pendiente dice lo que le falta, con el mismo texto que Vender', async () => {
     wrap(<CuentasDelCierre pending={[]} cuentas={VIVAS} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: /Cuentas pendientes/ }));
-    expect(screen.getByText('#2 · Falta cobrar $195')).toBeInTheDocument();
-    expect(screen.getByText('Sin enviar · $74')).toBeInTheDocument();
+    // Sin la cifra: el monto ya va a la derecha del renglón (revisión de la 089).
+    expect(screen.getByText('#2 · Falta cobrar')).toBeInTheDocument();
+    expect(screen.getByText('Sin enviar')).toBeInTheDocument();
     expect(screen.queryByText(/Entregada · debe|Capturando/)).toBeNull();
   });
 

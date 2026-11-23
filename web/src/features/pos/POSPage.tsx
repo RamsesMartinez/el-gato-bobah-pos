@@ -64,6 +64,7 @@ import { useEnviarCuenta } from './useEnviarCuenta';
 import { subirCuentasViejas } from './subirCuentasViejas';
 import { useAbrirDesdeLaUrl } from './abrirDesdeLaUrl';
 import type { RenglonNuevo, RenglonPedido } from './cuentaEnPantalla';
+import { isOwnCharge } from './cuentaEnPantalla';
 import { cuentaImpresa } from './cuentaImpresa';
 
 // Posición de la píldora flotante (carrito/cobrar) como offset desde su esquina inferior-derecha.
@@ -117,13 +118,14 @@ export function POSPage() {
 
   // El pedido que se está cobrando. La hoja se abre SIEMPRE sobre un pedido que ya existe.
   const [cobrando, setCobrando] = useState<PedidoParaCobrar | null>(null);
+  const seleccionActual = usePosStore((s) => s.selected);
   // Rechazo por menú viejo: se trae el menú nuevo y, si el producto sigue a la venta con extras, su
   // hoja se reabre con lo actual.
   const [modProduct, setModProduct] = useState<MenuProduct | null>(null);
   const [editing, setEditing] = useState<RenglonNuevo | null>(null);
   const modSheet = useDisclosure();
   const cuenta = useCuenta({
-    envioPorDefecto, cobrando: cobrando !== null,
+    envioPorDefecto, cobrando: isOwnCharge(cobrando?.id ?? null, seleccionActual),
     onMenuChanged: (productId) => {
       void qc.fetchQuery({ queryKey: ['menu'], queryFn: posApi.menu, staleTime: 0 }).then((fresh) => {
         if (productId === null) return;
@@ -227,6 +229,7 @@ export function POSPage() {
         if (!pedido) return;
       }
       if (!pedido) return;
+      cobroPedido.current++; // un «Cobrar» de la columna que siga en camino ya no cuenta
       ticketDrawer.onClose();
       setSesionDeCobro((n) => n + 1);
       setCobrando(aPedidoParaCobrar(pedido));
@@ -235,10 +238,19 @@ export function POSPage() {
 
   // Spec 089: cobrar una cuenta desde la columna o la lista, sin abrirla. Es un pedido ya enviado:
   // se lee del servidor (el saldo lo decide él) y se abre la misma hoja de cobro.
+  //
+  // Solo cuenta la respuesta del ÚLTIMO toque, y nunca reemplaza una hoja ya abierta: con la red lenta,
+  // la respuesta tardía de un «Cobrar» anterior remontaba la hoja sobre otra cuenta y se perdía lo
+  // tecleado.
+  const cobroPedido = useRef(0);
+  const hojaAbierta = useRef(false);
+  useEffect(() => { hojaAbierta.current = cobrando !== null; }, [cobrando]);
   const chargeAccount = (c: AccountItem) => {
     if (c.kind !== 'order' || !c.orderId) return;
+    const turno = ++cobroPedido.current;
     posApi.order(c.orderId)
       .then((pedido) => {
+        if (turno !== cobroPedido.current || hojaAbierta.current) return;
         ticketDrawer.onClose();
         setSesionDeCobro((n) => n + 1);
         setCobrando(aPedidoParaCobrar(pedido));
@@ -565,7 +577,7 @@ export function POSPage() {
     onImprimir: () => setPapel(cuentaImpresa(vista, new Date())),
     liveAccount: vivas?.items?.find((c) => c.key === claveSeleccionada),
     onDeliver: deliverAccount,
-    delivering: delivering !== null && delivering === claveSeleccionada,
+    delivering: claveSeleccionada !== null && delivering.has(claveSeleccionada),
   };
 
   const picker = (

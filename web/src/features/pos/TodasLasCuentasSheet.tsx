@@ -37,7 +37,7 @@ interface Props {
   onDeliver: (c: AccountItem) => void;
   onCharge: (c: AccountItem) => void;
   // La cuenta que se está entregando: su botón espera y no manda dos veces.
-  delivering?: string | null;
+  delivering?: ReadonlySet<string>;
 }
 
 export function TodasLasCuentasSheet({ isOpen, seleccionada, onElegir, onClose, onDeliver, onCharge, delivering }: Props) {
@@ -117,7 +117,7 @@ export function TodasLasCuentasSheet({ isOpen, seleccionada, onElegir, onClose, 
                             </VStack>
                           </Button>
                           <AccountActions c={c} onDeliver={onDeliver} onCharge={(x) => { onCharge(x); salir(); }}
-                            delivering={delivering === c.key} />
+                            delivering={delivering?.has(c.key)} />
                         </HStack>
                       );
                     })}
