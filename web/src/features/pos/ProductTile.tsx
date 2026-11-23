@@ -20,13 +20,16 @@ interface Props {
   onEditPrice?: (p: MenuProduct) => void;
   // El otro nombre por el que salió en la búsqueda (spec 063); ocupa el lugar de la descripción.
   matchedAlt?: string;
+  // Agotado (spec 092): se ve, pero tocarlo avisa en vez de agregarlo a la cuenta.
+  soldOut?: boolean;
+  onSoldOutTap?: (p: MenuProduct) => void;
 }
 
-export function ProductTile({ product, count, onTap, showPrice, price, esManual, onEditPrice, matchedAlt }: Props) {
+export function ProductTile({ product, count, onTap, showPrice, price, esManual, onEditPrice, matchedAlt, soldOut, onSoldOutTap }: Props) {
   const hue = categoryColor(product.categoryId);
   const press = useLongPress(
     onEditPrice ? () => onEditPrice(product) : undefined,
-    () => onTap(product),
+    () => (soldOut ? onSoldOutTap?.(product) : onTap(product)),
   );
   return (
     <Box
@@ -54,9 +57,16 @@ export function ProductTile({ product, count, onTap, showPrice, price, esManual,
           {count}×
         </Badge>
       )}
+      {soldOut && (
+        // Con los colores del tema y no con opacidad sobre todo: atenuada, la etiqueta se dejaba de
+        // leer en el tema oscuro (revisión de tableta, 092).
+        <Badge position="absolute" bottom={2} right={2} colorPalette="red" variant="solid" px={2}>
+          Agotado
+        </Badge>
+      )}
       <Box>
         {/* Con el contador, el nombre deja su hueco: «1×» tapaba la última letra. */}
-        <Text fontWeight="600" fontSize="md" lineClamp={3} lineHeight="1.25" pr={count > 0 ? '32px' : undefined}>
+        <Text fontWeight="600" fontSize="md" lineClamp={3} lineHeight="1.25" pr={count > 0 ? '32px' : undefined} color={soldOut ? 'fg.muted' : undefined}>
           {product.name}
         </Text>
         {matchedAlt ? (
@@ -69,7 +79,7 @@ export function ProductTile({ product, count, onTap, showPrice, price, esManual,
         )}
       </Box>
       {showPrice && (
-        <Text fontWeight="700" fontSize="lg" mt={2} display="flex" alignItems="center" gap={1}>
+        <Text fontWeight="700" fontSize="lg" mt={2} display="flex" alignItems="center" gap={1} color={soldOut ? 'fg.muted' : undefined}>
           {money(price)}
           {esManual && <Box as="span" color="fg.muted" fontSize="sm"><LuPencil /></Box>}
         </Text>

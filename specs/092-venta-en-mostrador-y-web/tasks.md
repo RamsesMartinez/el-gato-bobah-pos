@@ -55,12 +55,12 @@ ve fallar por la razón correcta.
 - [X] T016 [US1] `GetPricedProducts` en `server/queries/orders.sql` trae `sold_at_counter` (sin fila oculta para `pos`); en `server/internal/app/orders.go` (`prepareCreate` y `prepareAddLines`) un producto oculto en mostrador cuenta como no activo solo si el pedido no es de plataforma
 - [X] T017 [US1] `AdminService` en `server/internal/app/admin.go`: `UpdateProductInput.Sales *SalesInput` y lo mismo en el alta; validación (`ValidChannelPrice`, descripción ≤ 500) y escritura en la misma transacción del PATCH; `ErrNotFound` si no hay canal tras asegurarlo
 - [X] T018 [US1] Handlers en `server/internal/httpapi/handlers_admin.go`: decodificar `sales` opcional con todos sus campos obligatorios; respuesta de la lista con los campos nuevos (`measuresStock` con `domain.MeasuresStock`)
-- [ ] T019 [P] [US1] Tipos y API en `web/src/api/admin.ts`: campos opcionales nuevos de `AdminProduct` (el compilador obliga a la guarda) y `sales` en `updateProduct`/`createProduct`
-- [ ] T020 [US1] Prueba (vitest) y luego la ficha a pantalla completa con menú lateral de pestañas (maqueta «Ficha del producto», G2 en plan.md §Maquetas) en `web/src/shared/ProductEditDialog.tsx` + `web/src/shared/producto/` (un archivo por pestaña: General, Disponibilidad, Venta en web, Receta e inventario, Extras); pruebas en `web/src/shared/ProductEditDialog.test.tsx`: cada bloque de hoy está en una sola pestaña, cambiar de pestaña conserva lo capturado, Guardar siempre tocable y salta a la pestaña del error con punto rojo, Extras ya no dice «no dependen de Guardar»
-- [ ] T021 [US1] Pestaña Disponibilidad en `web/src/shared/producto/Disponibilidad.tsx`: casillas grandes Mostrador/Web (≥ 56 px) y temporada; prueba de que apagar Mostrador manda `sales.counter=false`
-- [ ] T022 [US1] Alta en `web/src/features/admin/ProductsAdminPage.tsx` (`NewProductDialog`): «Opciones avanzadas» cerrado (botón ≥ 44 px) con las dos casillas y el resumen «Se vende en: Mostrador · Web»; prueba en `web/src/features/admin/ProductosCostoAltaDuplicado.test.tsx` o archivo hermano
-- [ ] T023 [US1] Lista de productos en `web/src/features/admin/ProductsAdminPage.tsx`: etiqueta «No se vende en ningún lado» cuando las dos están apagadas, con su prueba
-- [ ] T024 [US1] Vender ante `MENU_CHANGED` por un producto oculto: ya recarga el menú (spec 034); prueba de regresión en `web/src/features/pos/` de que el producto desaparece tras la recarga, y de que la pestaña «Top» y los favoritos no muestran un id que ya no está en el menú (`PopularProducts` puede devolverlo)
+- [X] T019 [P] [US1] Tipos y API en `web/src/api/admin.ts`: campos opcionales nuevos de `AdminProduct` (el compilador obliga a la guarda) y `sales` en `updateProduct`/`createProduct`
+- [X] T020 [US1] Prueba (vitest) y luego la ficha a pantalla completa con menú lateral de pestañas (maqueta «Ficha del producto», G2 en plan.md §Maquetas) en `web/src/shared/ProductEditDialog.tsx` + `web/src/shared/producto/` (un archivo por pestaña: General, Disponibilidad, Venta en web, Receta e inventario, Extras); pruebas en `web/src/shared/ProductEditDialog.test.tsx`: cada bloque de hoy está en una sola pestaña, cambiar de pestaña conserva lo capturado, Guardar siempre tocable y salta a la pestaña del error con punto rojo, Extras ya no dice «no dependen de Guardar»
+- [X] T021 [US1] Pestaña Disponibilidad en `web/src/shared/producto/Disponibilidad.tsx`: casillas grandes Mostrador/Web (≥ 56 px) y temporada; prueba de que apagar Mostrador manda `sales.counter=false`
+- [X] T022 [US1] Alta en `web/src/features/admin/ProductsAdminPage.tsx` (`NewProductDialog`): «Opciones avanzadas» cerrado (botón ≥ 44 px) con las dos casillas y el resumen «Se vende en: Mostrador · Web»; prueba en `web/src/features/admin/ProductosCostoAltaDuplicado.test.tsx` o archivo hermano
+- [X] T023 [US1] Lista de productos en `web/src/features/admin/ProductsAdminPage.tsx`: etiqueta «No se vende en ningún lado» cuando las dos están apagadas, con su prueba
+- [X] T024 [US1] Vender ante `MENU_CHANGED` por un producto oculto: ya recarga el menú (spec 034); prueba de regresión en `web/src/features/pos/` de que el producto desaparece tras la recarga, y de que la pestaña «Top» y los favoritos no muestran un id que ya no está en el menú (`PopularProducts` puede devolverlo)
 
 **Checkpoint**: US1 sola es entregable.
 
@@ -83,10 +83,10 @@ ve fallar por la razón correcta.
 - [X] T028 [US2] `MenuService.SoldOut` en `server/internal/app/menu.go`: si ningún producto activo tiene `allow_oversell=false`, `[]` sin cargar el grafo; si hay, `loadStockGraph` + `salesStock` + `domain.SoldOut`; consulta de candidatos en `server/queries/menu.sql`
 - [X] T029 [US2] Handler y ruta `GET /pos/menu/sold-out` en `server/internal/httpapi/handlers_menu.go` y `server/internal/httpapi/router.go` (mismo grupo y permisos que `GET /pos/menu`)
 - [X] T030 [US2] Chequeo en la venta en `server/internal/app/orders.go`: en `createInTx` y `addLinesInTx`, antes del primer `descontarRenglon` y solo sin plataforma, `lockSalesStock` + `domain.CheckStock` con la sucursal del pedido
-- [ ] T031 [US2] Guardar `allowOversell` en `sales` (ya en T017) y mostrarlo en la pestaña Receta e inventario `web/src/shared/producto/RecetaEInventario.tsx`: interruptor solo si `measuresStock`; si no, la línea «Este producto no descuenta del almacén. Agrega su receta para controlarlo.»; prueba vitest
-- [ ] T032 [P] [US2] `web/src/api/pos.ts` + `web/src/hooks/useSoldOut.ts`: consulta cada 60 s y al volver al frente, como `useMenu`; prueba en `web/src/hooks/useSoldOut.test.ts`
-- [ ] T033 [US2] Tarjeta «Agotado» en `web/src/features/pos/ProductTile.tsx` (y `ProductGrid.tsx`): mismo tamaño, etiqueta con tokens del tema, tocarla avisa «Agotado: no hay existencia» y no agrega; prueba en `web/src/features/pos/ProductTile.test.tsx`
-- [ ] T034 [US2] Ante 409 `OUT_OF_STOCK` al enviar o cobrar: mensaje con el nombre que manda el servidor e invalidación de `['menu','sold-out']`; prueba en el test del flujo de cobro de `web/src/features/pos/`
+- [X] T031 [US2] Guardar `allowOversell` en `sales` (ya en T017) y mostrarlo en la pestaña Receta e inventario `web/src/shared/producto/RecetaEInventario.tsx`: interruptor solo si `measuresStock`; si no, la línea «Este producto no descuenta del almacén. Agrega su receta para controlarlo.»; prueba vitest
+- [X] T032 [P] [US2] `web/src/api/pos.ts` + `web/src/hooks/useSoldOut.ts`: consulta cada 60 s y al volver al frente, como `useMenu`; prueba en `web/src/hooks/useSoldOut.test.ts`
+- [X] T033 [US2] Tarjeta «Agotado» en `web/src/features/pos/ProductTile.tsx` (y `ProductGrid.tsx`): mismo tamaño, etiqueta con tokens del tema, tocarla avisa «Agotado: no hay existencia» y no agrega; prueba en `web/src/features/pos/ProductTile.test.tsx`
+- [X] T034 [US2] Ante 409 `OUT_OF_STOCK` al enviar o cobrar: mensaje con el nombre que manda el servidor e invalidación de `['menu','sold-out']`; prueba en el test del flujo de cobro de `web/src/features/pos/`
 
 **Checkpoint**: US1 + US2 cubren los dos P1.
 
@@ -101,11 +101,11 @@ ve fallar por la razón correcta.
 ### Tests
 
 - [X] T035 [P] [US3] Integración en `server/internal/integration/sales_channels_test.go`: precio web guardado no cambia `products.price` ni `product_platform_prices`; `null` lo borra; `0`, negativo y 3 decimales → 400 (no 500 del check); cambiar el precio de mostrador sin precio web hace que el efectivo lo siga
-- [ ] T036 [P] [US3] Prueba vitest en `web/src/shared/producto/VentaEnWeb.test.tsx`: casilla «Usar el precio de mostrador ($35.00)» encendida por omisión; al apagarla el precio es obligatorio; apagar «Se vende en la web» oculta precio y descripción pero los conserva; el interruptor y la casilla Web de Disponibilidad son el mismo dato
+- [X] T036 [P] [US3] Prueba vitest en `web/src/shared/producto/VentaEnWeb.test.tsx`: casilla «Usar el precio de mostrador ($35.00)» encendida por omisión; al apagarla el precio es obligatorio; apagar «Se vende en la web» oculta precio y descripción pero los conserva; el interruptor y la casilla Web de Disponibilidad son el mismo dato
 
 ### Implementation
 
-- [ ] T037 [US3] Pestaña `web/src/shared/producto/VentaEnWeb.tsx` según la maqueta elegida, con `Field`, `Switch`, `Checkbox` del tema y descripción (≤ 500)
+- [X] T037 [US3] Pestaña `web/src/shared/producto/VentaEnWeb.tsx` según la maqueta elegida, con `Field`, `Switch`, `Checkbox` del tema y descripción (≤ 500)
 - [X] T038 [US3] Regla única de la web (FR-005, FR-012) y su resumen: `WebSalesService.Offer(ctx)` en `server/internal/app/web_sales.go` devuelve por producto activo que se vende en la web su id, precio efectivo (`domain.ChannelPrice`) y si está agotado (`salesStock` + `domain.SoldOut`), con su consulta en `server/queries/web_sales.sql`; el resumen cuenta sobre esa misma lista (no otra consulta), con prueba de que un producto apagado para web no sale, uno agotado sale marcado y el precio efectivo hereda; handler `GET /admin/web-sales/summary` en `server/internal/httpapi/handlers_web_sales.go` con `RequirePermission(business.configure)` en `router.go`; prueba de integración bajo `appRoleStore` con `inTheThreeCases` en `server/internal/integration/web_sales_test.go`
 
 ---

@@ -70,10 +70,14 @@ describe('costo del producto', () => {
 
   // Un campo vacío no es costo cero: guardarlo así pondría el margen igual al precio sin que nadie
   // lo decidiera.
-  it('con el costo borrado no se puede guardar', async () => {
+  // Guardar sigue tocable (spec 092): con el costo vacío no guarda, se queda en General y lo marca.
+  it('con el costo borrado no se guarda y la pestaña General queda marcada', async () => {
     montar({ costSource: 'manual', hasRecipe: false, manualCost: '12.00', current_cost: '12.00' });
     fireEvent.change(await screen.findByLabelText('Costo'), { target: { value: '' } });
-    expect(screen.getByRole('button', { name: /^guardar$/i })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /^guardar$/i }));
+    expect(api.updateProduct).not.toHaveBeenCalled();
+    expect(screen.getByText('Escribe el costo')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^general/i })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('regresar a «de su receta» solo se ofrece si tiene receta', async () => {

@@ -61,6 +61,35 @@ export interface AdminProduct {
   altNames?: string[];
   // El otro nombre por el que salió en la búsqueda; ausente si salió por su nombre.
   matchedAlt?: string;
+  // Dónde se vende (spec 092). Opcionales: una API anterior no los manda, y el compilador obliga a
+  // la guarda (ausente = en los dos, al precio de mostrador, con vender sin existencia).
+  soldAtCounter?: boolean;
+  soldOnWeb?: boolean;
+  webPrice?: string | null;
+  allowOversell?: boolean;
+  measuresStock?: boolean;
+  description?: string;
+}
+
+// Dónde y cómo se vende un producto (spec 092). Viaja completo o no viaja: el servidor rechaza un
+// objeto a medias para no apagar ni borrar lo que nadie pidió.
+export interface ProductSales {
+  counter: boolean;
+  web: boolean;
+  webPrice: number | null;
+  allowOversell: boolean;
+  description: string;
+}
+
+// salesOf lee lo guardado con los defaults de un producto que nunca se configuró.
+export function salesOf(p: AdminProduct): ProductSales {
+  return {
+    counter: p.soldAtCounter ?? true,
+    web: p.soldOnWeb ?? true,
+    webPrice: p.webPrice != null ? Number(p.webPrice) : null,
+    allowOversell: p.allowOversell ?? true,
+    description: p.description ?? '',
+  };
 }
 
 export type CostSource = 'manual' | 'compra' | 'receta';
@@ -199,6 +228,8 @@ export interface UpdateProductBody {
   availableFrom?: string | null;
   availableUntil?: string | null;
   cost?: CostChange;
+  // Ausente = no tocar dónde ni cómo se vende (spec 092).
+  sales?: ProductSales;
 }
 
 // query-string común de paginación admin (products / modifier-options).
@@ -247,7 +278,7 @@ export const adminApi = {
   categories: () => api.get<{ items: Category[] }>('/admin/categories'),
   products: (p: ProductsQuery = {}) => api.get<ProductsPage>(`/admin/products?${pageQs(p)}`),
   // cost ausente = sin costo capturado.
-  createProduct: (b: { name: string; categoryId: number; price: number; favorite?: boolean; trackStock?: boolean; cost?: number }) =>
+  createProduct: (b: { name: string; categoryId: number; price: number; favorite?: boolean; trackStock?: boolean; cost?: number; sales?: ProductSales }) =>
     api.post<{ id: number }>('/admin/products', b),
   // Duplica un producto con todas sus relaciones (grupos, canales, receta, slots de combo).
   // cost ausente = la copia hereda el costo del original.

@@ -125,6 +125,8 @@ export const posApi = {
   },
   // IDs de producto más vendidos (read model aparte, refresca cada pocos minutos).
   popular: () => api.get<{ items: number[] }>('/pos/popular'),
+  // Lo que sale «Agotado» ahora (spec 092). Va aparte del menú: la existencia cambia con cada venta.
+  soldOut: () => api.get<{ productIds?: number[] }>('/pos/menu/sold-out'),
   // producto → grupo → [optionId rankeadas] por probabilidad contextual. Claves string (JSON).
   modifierDefaults: () => api.get<ModifierDefaults>('/pos/modifier-defaults'),
   // Los nombres con los que se cantan los pedidos. Es la única copia de la lista y es
