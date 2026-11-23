@@ -20,9 +20,12 @@ import { ArticlesTab } from './articles/ArticlesTab';
 import { ArticleSheet } from './articles/ArticleSheet';
 import { posApi } from '../../api/pos';
 import { Segmented } from '../../components/Segmented';
+import { TransferTab } from './warehouses/TransferTab';
+import { BringSheet } from './warehouses/BringSheet';
+import type { StockLevel } from '../../api/backoffice';
 
 // El orden lo fijó el plan del 038: Existencias · Movimientos · Insumos · Por recibir · Conteo · Salud.
-const TABS = ['existencias', 'movimientos', 'insumos', 'compra', 'por-recibir', 'conteo', 'merma', 'salud', 'avisos'] as const;
+const TABS = ['existencias', 'traspaso', 'movimientos', 'insumos', 'compra', 'por-recibir', 'conteo', 'merma', 'salud', 'avisos'] as const;
 type Tab = (typeof TABS)[number];
 
 export function StockPage() {
@@ -39,6 +42,7 @@ export function StockPage() {
   // El mínimo es del artículo y piensa en el de venta: compararlo contra la bodega o la suma diría
   // «bajo» donde no falta nada, o lo escondería donde sí (spec 094; mínimos por almacén en E5).
   const atSales = warehouse === undefined;
+  const [bring, setBring] = useState<StockLevel | null>(null);
   const levels = useQuery({ queryKey: ['stock', 'levels', warehouse ?? 'venta'], queryFn: () => backofficeApi.stockLevels(warehouse),
     // Cambiar de almacén no borra la pantalla mientras llega la otra lista.
     placeholderData: (prev) => prev });
@@ -54,7 +58,9 @@ export function StockPage() {
   const asked = params.get('tab') as Tab | null;
   const canView = can('inventory.view', user);
   const canConfigureStock = can('inventory.configure', user);
-  const allowed = (t: Tab) => (t !== 'avisos' || canConfigureStock) && ((t !== 'insumos' && t !== 'compra') || canView) && ((t !== 'salud' && t !== 'merma') || canHealth) && (t !== 'por-recibir' || canReceive) && (t !== 'conteo' || canCount);
+  // Traspaso (spec 094): solo con el permiso y con dos o más almacenes; con uno no hay a dónde llevar.
+  const canTransfer = can('inventory.transfer', user) && whList.length > 1;
+  const allowed = (t: Tab) => (t !== 'traspaso' || canTransfer) && (t !== 'avisos' || canConfigureStock) && ((t !== 'insumos' && t !== 'compra') || canView) && ((t !== 'salud' && t !== 'merma') || canHealth) && (t !== 'por-recibir' || canReceive) && (t !== 'conteo' || canCount);
   const tab: Tab = asked && TABS.includes(asked) && allowed(asked) ? asked : 'existencias';
   const settings = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const pending = useQuery({ queryKey: ['stock', 'pending-receipts'], queryFn: backofficeApi.pendingReceipts, enabled: canReceive });
@@ -93,6 +99,7 @@ export function StockPage() {
         {/* Con «Se echó a perder» son siete: la fila se desplaza a lo ancho antes que salirse de 1024 px. */}
         <Tabs.List overflowX="auto" flexShrink={0}>
           <Tabs.Trigger value="existencias" minH="44px">Existencias</Tabs.Trigger>
+          {canTransfer && <Tabs.Trigger value="traspaso" minH="44px">Traspaso</Tabs.Trigger>}
           <Tabs.Trigger value="movimientos" minH="44px">Movimientos</Tabs.Trigger>
           {canView && <Tabs.Trigger value="insumos" minH="44px">{itemsTab}</Tabs.Trigger>}
           {canView && <Tabs.Trigger value="compra" minH="44px" flexShrink={0}>Lista de compra</Tabs.Trigger>}
@@ -143,6 +150,12 @@ export function StockPage() {
                         {Number(s.on_hand) < 0 && (
                           <Text as="span" ml={2} px={2} py="1px" borderRadius="md" fontWeight="700" color="fg.error" bg="bg.error">Revisar</Text>
                         )}
+                        {/* Un negativo en el de venta con mercancía en otro almacén se trae de ahí (spec 094). */}
+                        {atSales && canTransfer && Number(s.on_hand) < 0 && (s.transfer_from?.length ?? 0) > 0 && (s.ingredient_id ?? s.product_id) && (
+                          <Button ml={2} size="sm" minH="44px" variant="outline" onClick={() => setBring(s)}>
+                            Traer de {s.transfer_from![0].name}
+                          </Button>
+                        )}
                       </Table.Cell>
                       <Table.Cell textAlign="end">{!atSales || s.min_stock == null ? '—' : formatBaseQty(s.min_stock, s.unit_code)}</Table.Cell>
                     </Table.Row>
@@ -152,6 +165,11 @@ export function StockPage() {
             </Table.Root>
           </Box>
         </Tabs.Content>
+        {canTransfer && (
+          <Tabs.Content value="traspaso" px={0} flex="1" minH={0}>
+            <TransferTab warehouses={whList} />
+          </Tabs.Content>
+        )}
         <Tabs.Content value="movimientos" px={0} flex="1" minH={0} overflowY="auto">
           <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
             <Table.Root size="sm">
@@ -212,6 +230,12 @@ export function StockPage() {
       {article && <ArticleSheet key={article.id} id={article.id} justCreated={article.justCreated} onClose={closeArticle}
         onOpenArticle={(id) => openArticle(id)}
         onCount={canCount ? (name) => { setOpened(null); setParams({ tab: 'conteo', q: name }); } : undefined} />}
+      {bring && bring.transfer_from?.[0] && whList.find((w) => w.isSales) && (
+        <BringSheet onClose={() => setBring(null)}
+          item={{ itemType: bring.item_type, id: (bring.ingredient_id ?? bring.product_id)!, name: bring.item_name, unit: bring.unit_code, onHand: bring.on_hand }}
+          from={bring.transfer_from[0]}
+          to={{ id: whList.find((w) => w.isSales)!.id, name: whList.find((w) => w.isSales)!.name }} />
+      )}
     </Page>
   );
 }
