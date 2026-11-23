@@ -49,7 +49,7 @@ tablas medidas: `stock_movements` 7,219 filas, `stock_levels` 407 (2026-11-23)
 | V Seguridad | Permisos nuevos con `RequirePermission`; `warehouseId` ajeno = 404 (no enumera); `warehouseId` malformado = 400; `clientKey` reusado con otro cuerpo = 409; llaves compuestas impiden cruzar sucursal o empresa aunque RLS fallara |
 | VI YAGNI | Sin permisos por almacén, sin traspasos entre sucursales, sin almacén de venta por lugar de venta (research R8, spec Assumptions) |
 | VII Idioma | Identificadores en inglés (`warehouses`, `is_sales`); textos en español |
-| VIII Puertas | Cruza «Más de un almacén por sucursal». ¿Se puede agregar después al mismo costo? Lo que no: el almacén de cada movimiento — por eso entra en la subida 1 aunque solo exista uno. Se actualiza la tabla de puertas de la constitución al terminar la subida 2 |
+| VIII Puertas | Cruza «Más de un almacén por sucursal». ¿Se puede agregar después al mismo costo? Lo que no: el almacén de cada movimiento — por eso entra en la subida 1 aunque solo exista uno. Se actualiza la tabla de puertas de la constitución con la subida 1 (R12) |
 
 **Bordes enumerados antes de escribir código** (constitución IV):
 - Valor vacío: `warehouseId` ausente vs. `""` vs. `0` → ausente = de venta; `""`/`0`/texto = 400.
@@ -70,8 +70,8 @@ tablas medidas: `stock_movements` 7,219 filas, `stock_levels` 407 (2026-11-23)
 
 | Pantalla | Dónde vive | Qué cambia | Componentes |
 | --- | --- | --- | --- |
-| Almacenes | Almacén › pestaña nueva «Almacenes» (`StockPage`), visible con `inventory.warehouse_manage` | Nueva: lista de almacenes con el de venta marcado, alta, renombrar, archivar | `ListRow`, hoja inferior (`DrawerRoot`), `ConfirmSheet`, patrón de `CountPlacesSettings` |
-| Traspaso | Almacén › pestaña «Traspaso» con `inventory.transfer` | Nueva (maqueta B): «De Bodega → A Local» con botón para invertir y buscador arriba; tabla de lo que hay en el origen con su existencia en origen y destino y un −/+ por renglón; nota y «Traspasar N artículos» al pie | `Table`, stepper −/+ de 44 px, `Input` de búsqueda |
+| Almacenes | Negocio › Inventario, junto a «Lugares para contar», visible con `inventory.warehouse_manage` (R12) | Nueva: lista de almacenes con el de venta marcado, alta, renombrar, archivar | `ListRow`, hoja inferior (`DrawerRoot`), `ConfirmSheet`, patrón de `CountPlacesSettings` |
+| Traspaso | Almacén › pestaña «Traspaso», inmediatamente después de «Existencias», con `inventory.transfer` | Nueva (maqueta B): «De [Picker] → A [Picker]» con botón para invertir y buscador arriba; cantidades con `NumericKeypad` fijo al pie; tabla de lo que hay en el origen con su existencia en origen y destino y un −/+ por renglón; nota y «Traspasar N artículos» al pie | `Table`, stepper −/+ de 44 px, `Input` de búsqueda |
 | Existencias | Almacén › Existencias | Segmentado «Local · de venta / Bodega / Todos» arriba de la tabla, solo con 2+ almacenes (con 5+ pasa a botón con hoja); un negativo en el de venta con existencia en otro ofrece «Traer de Bodega», que abre una hoja con la cantidad propuesta y el teclado numérico | Segmentado de botones de 44 px, `Table` actual, `NumericKeypad` en hoja inferior |
 | Compra (captura completa) | `ExpenseDialog`, paso de captura | Rediseño (maqueta R3): encabezado proveedor · fecha · total + «Más datos»; lista de renglones de una línea (nombre, cantidad × empaque, estado, importe) a la izquierda y el detalle del elegido a la derecha (cantidad, empaque, ¿llegó?, ¿dónde se guarda?, regalo / no es del negocio, quitar). «¿Dónde se guarda?» arriba de la lista (solo con 2+ almacenes) | `Picker`, segmentados de 44 px, `InfoButton` |
 
@@ -82,6 +82,8 @@ tablas medidas: `stock_movements` 7,219 filas, `stock_levels` 407 (2026-11-23)
 | Existencias | [maquetas](https://claude.ai/artifact/YDruwPNs9Zsks9QFMY2Xei) | A · Segmentado | Los almacenes a la vista, 1 toque. Con 5 o más almacenes el mismo control pasa a botón con hoja (opción B), sin cambiar nada más de la pantalla |
 | Compra (captura completa) | [maquetas](https://claude.ai/artifact/S1AecknYDfWrjyUNaCtgMU) | R3 · Lista y detalle al lado | El dueño pidió rediseñar toda la captura (se veía amontonada): encabezado en una línea, renglones de una línea, detalle al lado sin tapar la lista. «¿Dónde se guarda?» para todo el ticket y etiqueta en el renglón que va a otro lado |
 | Regalo / no es del negocio | [maquetas](https://claude.ai/artifact/GaMa1CmFozHRUqP7itjjys) | esperando al dueño | — |
+
+Ajustes de las dos revisiones de diseño: [research.md › R11 y R12](research.md). Componente común nuevo: `web/src/components/Segmented.tsx`.
 
 ## Project Structure
 

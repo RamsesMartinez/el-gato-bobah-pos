@@ -131,7 +131,7 @@ Veredicto: 0 CRITICAL, 6 HIGH, 7 MEDIUM. Lo que cambia del diseño de arriba:
 
 | Hallazgo | Decisión |
 | --- | --- |
-| H1 `low_stock_state` hace un subselect de una fila sobre `stock_levels`; con dos almacenes por artículo truena «more than one row» **fuera** del `exception`, y tumba la venta | La 0117 lo reemplaza por `coalesce(sum(on_hand), 0)` de la sucursal. Con un almacén es idéntico. En E5 pasa a por almacén |
+| H1 `low_stock_state` hace un subselect de una fila sobre `stock_levels`; con dos almacenes por artículo truena «more than one row» **fuera** del `exception`, y tumba la venta | La 0117 lo reemplaza por la existencia del **almacén de venta** (no la suma de la sucursal: con Local en 0 y Bodega en 50 la suma no avisaría «se acabó»). Con un almacén es idéntico. En E5 pasa a por almacén |
 | H2 La compuerta «solo el de venta» vivía solo en Go | La 0117 la pone en la base: el trigger de llenado de `stock_movements` lanza `EGB04 warehouse_not_writable_yet` si `warehouse_id` no es el de venta, y `warehouses_before_update` rechaza cambiar `is_sales`. La 0118 quita las dos, en la misma migración que contrae las llaves |
 | H2b En la subida 2 la API vieja es la de la subida 1 y ya ve existencias en dos almacenes | Todo lo que la subida 1 lee o escribe por sucursal sobre existencias se vuelve por almacén **en la subida 1**: `RecomputeArticleStock`, `InsertMergeMove`, `InsertReplacementMove`, `LockArticleStockNowait` (por almacén), `ArticleOnHandByBranch`, los `join stock_levels … current_branch_id()` (sumados por artículo o filtrados al de venta), y los de conteo y merma que comparan `branch_id`. Cada uno con un test que siembra existencias en un segundo almacén por SQL (apagando el trigger de H2 solo en el test) |
 | H3 `ADD VALUE 'traspaso'` y su uso en la misma transacción | Migración propia solo con el `ADD VALUE` (Down no-op documentado); las tablas de traspaso en la siguiente |
@@ -148,3 +148,33 @@ Veredicto: 0 CRITICAL, 6 HIGH, 7 MEDIUM. Lo que cambia del diseño de arriba:
 | L1 | El llenado de almacén en `stock_movements` va dentro de `fill_stock_movement_branch_id` (una sola función), no en un trigger aparte que dependa del orden alfabético |
 | L3 | `(warehouse_id, ingredient_id)` sin `company_id` es a propósito: `warehouse_id` es único global |
 | L6 | Los únicos parciales de mínimos repiten el predicado exacto (`ingredient_id is not null`) para que el `on conflict … where` los infiera |
+
+## R12. Segunda vuelta de revisión (db-architect y tablet-ui-reviewer, 2026-11-23), ya incorporada
+
+**Base de datos**
+
+| Hallazgo | Decisión |
+| --- | --- |
+| HIGH `evaluate_low_stock` hace `on conflict` sobre `notifications_one_open`, que la 0118 borra; el `exception when others` se traga el error y los avisos dejan de crearse sin log | La 0117 redefine `evaluate_low_stock` con `on conflict` sobre `notifications_one_open_per_warehouse` (mismo predicado exacto) y el almacén del movimiento. Test después de la 0118: vender cruzando el mínimo y **afirmar que la fila de aviso existe** |
+| HIGH FR-011 sin diseño: las reposiciones de cancelación (`RestockCancelledOrder`, `RestockCancelledLine` y las otras dos de `orders.sql`) no traen almacén y el trigger las mandaría al de venta de hoy | En la subida 1 copian `sm.warehouse_id` del movimiento original (y lo agregan al `group by`). Test: vender, cambiar el de venta (desde la subida 2), cancelar pedido y renglón, verificar el almacén de cada reposición. La 0118 hace que el llenado rechace (`EGB04`) un movimiento `cancelacion` sin almacén |
+| MEDIUM `low_stock_state` sumando la sucursal | Corregido en R11 H1: mide el almacén de venta |
+| MEDIUM tres versiones del check de `expense_items` | Una sola: **todo renglón con `item_type` lleva almacén, excluido o no**; check `item_type is null or warehouse_id is not null` en la 0118. Un excluido guarda su almacén pero no mueve existencias (`PlanStockLines` ya le pone objetivo cero) |
+| MEDIUM traspaso sin costo guardado | Las dos patas del traspaso guardan `unit_cost` = costo vigente del artículo (snapshot; principio VIII) |
+| Menor llave del traspaso | `(transfer_id, company_id, branch_id)` desde `stock_movements`; un test verifica que cada pata está en el origen o el destino de su traspaso |
+| Puerta VIII | Se cruza con la 0117 (el hecho irrecuperable es el almacén de cada registro): la tabla de puertas de la constitución se edita en la subida 1. `sales_warehouse_of(company, branch)` conserva esa firma para poder ganar después un parámetro de lugar de venta (puerta «más de una caja») |
+| Enum nuevo `traspaso` | Las tareas revisan que ningún mapa de tipos de movimiento en Go o en `web/` truene con un valor desconocido antes de la subida 3 |
+
+**Pantallas**
+
+| Hallazgo | Decisión |
+| --- | --- |
+| HIGH Traspaso B teclea con el teclado del sistema | La cantidad usa `NumericKeypad` fijo al pie con `useKeypadField` (como `AddLineSheet`) |
+| HIGH «De / A» del traspaso parecen selector y no lo son | Cada uno es un `Picker` de 44 px que excluye el otro extremo; el botón de invertir se queda |
+| MEDIUM el activo en `brand` (rojo) se confunde con error | Componente común nuevo `web/src/components/Segmented.tsx` (44 px, `aria-pressed`, un solo color de activo que no es el de error, `overflowX="auto"`), usado en Existencias, Compra y Traspaso |
+| MEDIUM buscador del traspaso de 40 px | `minH="44px"` en el `Input` |
+| MEDIUM a 1024 px las pestañas nuevas quedan fuera de la vista | «Almacenes» no es pestaña: vive en Negocio › Inventario junto a «Lugares para contar» (es configuración, la usa quien tiene `inventory.warehouse_manage`). «Traspaso» va inmediatamente después de «Existencias» |
+| MEDIUM «Quitar renglón» sin confirmar junto a los conmutadores | `ConfirmSheet` y deshabilitado con un solo renglón |
+| MEDIUM Compra R3 a 1024×600 recorta el detalle | La fila «N renglones / ¿Dónde se guarda? / Agregar» sube al encabezado; por debajo de 1100 px de ancho el detalle se abre como hoja inferior (R1) |
+| LOW Almacenes A2/A3 con estilo propio | La opción que elija el dueño se construye ampliando `ListRow` (ícono opcional), sin etiquetas en mayúsculas que el POS no usa; «Archivar» con `ConfirmSheet` |
+| LOW nombres largos en el segmentado | `overflowX="auto"` en el contenedor; con 5+ almacenes pasa a botón con hoja |
+| Textos | El resumen «Se guarda en Local: N · en Bodega: M» y «¿Dónde se guarda?» solo aparecen con 2+ almacenes |

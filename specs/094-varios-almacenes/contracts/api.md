@@ -20,7 +20,8 @@ Ausente = el de venta.
 
 - Renglón de gasto (`POST /expenses`, `PUT /expenses/{id}`, `PUT /expenses/{id}/stock-lines`,
   recibir en «Por recibir»): campo `warehouseId` por renglón. Ausente = el de venta (la tableta con
-  la pantalla anterior sigue funcionando). En un renglón excluido o sin artículo se ignora y queda nulo.
+  la pantalla anterior sigue funcionando). Un renglón sin artículo lo ignora; un excluido lo guarda pero no
+  mueve existencias.
 - Cambiar `warehouseId` de un renglón ya aplicado: salida del almacén anterior por lo aplicado y
   entrada al nuevo (`PlanStockLines` por almacén).
 - `PATCH /stock/warehouses/{id}` acepta `{isSales: true}`.

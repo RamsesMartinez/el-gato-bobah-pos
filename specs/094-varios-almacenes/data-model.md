@@ -28,8 +28,8 @@ Decisiones y su porqué en [research.md](research.md). Identificadores en inglé
   (`warehouse_missing`) si no hay. `security invoker`, `stable`.
 - `fill_warehouse_id()` — trigger `BEFORE INSERT`: si `new.warehouse_id is null`, lo pone con
   `sales_warehouse_of(new.company_id, new.branch_id)`. Para tablas sin `branch_id`
-  (`expense_items`, `count_places`) la variante usa `branch_for_company(new.company_id)`; en
-  `expense_items` solo si el renglón es de almacén (`ingredient_id is not null and not excluded`).
+  (`expense_items`, `count_places`) la variante usa la matriz de la empresa (nunca `branch_for_company`,
+  que truena con dos sucursales); en `expense_items`, todo renglón con `item_type`.
 - `fill_stock_movement_branch_id()` (de la 0078) gana una rama: si `branch_id` es nulo y
   `warehouse_id` no, toma la sucursal del almacén.
 
@@ -44,7 +44,7 @@ Decisiones y su porqué en [research.md](research.md). Identificadores en inglé
 | branch_stock_minimums | ídem | ídem | sí | sí |
 | notifications | ídem | ídem | sí | sí |
 | stock_out_reports | ídem | ídem | sí | sí |
-| expense_items | `(company_id, warehouse_id)` | de venta de la sucursal de sus movimientos; si no tiene, de la matriz | sí, solo renglones de almacén | **no**: check `ingredient_id is null or excluded or warehouse_id is not null` |
+| expense_items | `(company_id, warehouse_id)` | de venta de la sucursal de sus movimientos; si no tiene, de la matriz explícita | sí, todo renglón con `item_type` (excluido o no) | check `item_type is null or warehouse_id is not null` |
 | count_places | `(company_id, warehouse_id)` | de venta de la matriz | sí | sí |
 
 `stock_count_lines` y `stock_count_product_lines` heredan del conteo (research R4).
@@ -59,8 +59,8 @@ Decisiones y su porqué en [research.md](research.md). Identificadores en inglé
 | stock_counts | `stock_counts_one_open_per_warehouse (company_id, warehouse_id) where status = 'open'` | `stock_counts_one_open` |
 
 `apply_stock_movement()` pasa a `on conflict (warehouse_id, ingredient_id|product_id)` en la 0117.
-`low_stock_state` y `evaluate_low_stock` reciben el almacén en 0118 (E5); en 0117 siguen por
-sucursal, que con un solo almacén con existencias es lo mismo.
+`low_stock_state` mide el almacén de venta y `evaluate_low_stock` hace `on conflict` sobre
+`notifications_one_open_per_warehouse` desde la 0117 (R12); en E5 los dos pasan a por almacén.
 
 **Índices**: `stock_movements (company_id, warehouse_id, id desc)` para Movimientos por almacén
 (empieza por `company_id`, AGENTS.md).
@@ -82,7 +82,7 @@ sucursal, que con un solo almacén con existencias es lo mismo.
 `app.MergeTables` (se redirige como los movimientos: guarda el hecho histórico, «conserva») y en
 `app.UnitChangeTables` (se reescribe con el cambio directo, como los ajustes).
 
-`stock_movements.transfer_id` (nullable) con FK `(transfer_id, company_id) → stock_transfers`.
+`stock_movements.transfer_id` (nullable) con FK `(transfer_id, company_id, branch_id) → stock_transfers`; las dos patas guardan `unit_cost` (costo vigente).
 `stock_movement_type` gana `traspaso`.
 
 Sin update ni delete para `gatobobah_app` en las dos tablas: un traspaso no se edita.
