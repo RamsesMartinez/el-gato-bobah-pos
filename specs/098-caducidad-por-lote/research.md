@@ -169,9 +169,9 @@ Base de datos (ya reflejado arriba y en data-model.md):
   harness de Downs; sin el índice parcial redundante; grants de las tres tablas.
 
 Pantalla (ya reflejado en plan.md):
-1. El selector de caducidad se pagina por año (12 meses por página, ‹ año ›); en el conteo deja ir
-   atrás (lo ya caducado); al recibir, una fecha pasada pide confirmar con la hoja de confirmación de
-   siempre («Esa fecha ya pasó. ¿Seguro?»).
+1. El selector de caducidad muestra los 12 meses desde el actual y pagina de 12 en 12 (una página por
+   año calendario costaba un toque extra de noviembre a marzo); en el conteo deja ir atrás (lo ya
+   caducado); al recibir no ofrece días anteriores a hoy, en vez de confirmar (FR-012).
 2. Las fechas conocidas se ofrecen sin cantidad (ver R6).
 3. El campo activo del teclado se marca con borde; el error «las fechas suman más de lo contado» es
    del artículo, no bloquea el cierre.

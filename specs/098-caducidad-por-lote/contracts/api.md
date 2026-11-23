@@ -5,7 +5,8 @@ como en la 094.
 
 ## GET /stock/expiries?warehouseId=
 
-Permiso `inventory.view`. Sin `warehouseId`: todos los almacenes de la sucursal.
+Permiso `inventory.view`. Sin `warehouseId`: el almacén de venta; `all`: todos los de la sucursal (la
+pantalla pide `all` por omisión).
 
 ```json
 {
@@ -35,16 +36,18 @@ Permiso `inventory.view`. `{ "expired": 1, "within7": 2 }` para el aviso de Exis
 
 ## Compras
 
-`expiresOn` (opcional, nulo = sin fecha) en cada renglón de los cuerpos que ya reciben renglones
-(alta y edición del gasto, recibir de «Por recibir»). Fuera de 2000-01-01..hoy+10 años: 400. Solo
-renglones de artículo; en un producto: 400.
+`POST /expenses/{id}/deliver`: `expiresOn` opcional por renglón (ausente = no cambia la del renglón).
+Fuera de 2000-01-01..hoy+10 años: 400. Solo renglones de artículo; en un producto: 400. Una fecha
+distinta de la que tenía el renglón pasa lo ya recibido a la nueva. El alta y la edición del gasto no
+llevan fecha: se recibe con la hoja de entrega.
 
 ## Conteo
 
 `PUT` de captura de un artículo: `lots` opcional, `[{ "expiresOn": "2026-12-10", "qty": 300 }]`.
 Ausente = no cambia el desglose; `[]` = lo borra. La lectura del conteo trae además `knownDates` por
 artículo (las fechas de sus lotes en el almacén, sin cantidad). Validación de R6 → 400 `LOTS_EXCEED_COUNTED` si la
-suma pasa de lo contado. La lectura del conteo devuelve `lots` por artículo.
+suma pasa de lo contado (también al recapturar sin `lots` una cifra menor que el desglose). La lectura
+del conteo devuelve `lots` por artículo.
 
 ## Merma
 

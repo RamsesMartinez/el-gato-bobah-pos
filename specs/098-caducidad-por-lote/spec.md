@@ -251,8 +251,8 @@ Enumerados antes de diseñar (constitución IV):
 - **Cambiar la unidad del artículo**: los lotes se convierten igual que la existencia.
 - **Archivar un almacén**: ya exige existencias en 0; con lotes en 0 no hay nada que mover.
 - **Fecha absurda**: una fecha más de 10 años en el futuro o anterior al 2000 se rechaza al
-  capturarla. Una fecha pasada sí se acepta en el conteo (lo que ya caducó) y en la compra se pide
-  confirmar.
+  capturarla. Una fecha pasada sí se acepta en el conteo (lo que ya caducó); al recibir, la pantalla
+  no la ofrece.
 - **Versión anterior de la API durante la subida**: sigue moviendo existencias sin fechas; sus
   ventas, mermas, traspasos y conteos descuentan con el mismo orden porque la regla vive en la base,
   no en cada pantalla.
@@ -281,7 +281,8 @@ Enumerados antes de diseñar (constitución IV):
 - **FR-011**: Corregir lo recibido, quitar el renglón o anular la compra mueve el lote en la diferencia,
   sin dejarlo negativo; cambiar la fecha de un renglón recibido pasa su cantidad al lote de la fecha
   nueva.
-- **FR-012**: Una fecha anterior a hoy en una compra pide confirmación en pantalla antes de guardar.
+- **FR-012**: Al recibir no se ofrecen fechas anteriores a hoy (recibir algo ya caducado no es una
+  entrada normal; si pasa, se registra al contar). El servidor acepta cualquier fecha creíble.
 
 **Salidas**
 
