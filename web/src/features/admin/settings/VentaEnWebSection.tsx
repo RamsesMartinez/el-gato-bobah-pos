@@ -35,7 +35,7 @@ export function VentaEnWebSection() {
         <Text fontSize="sm">
           {resumen.isError ? 'No se pudo leer cuántos productos se venden en la web.'
             : !resumen.data ? 'Contando productos…'
-            : <><b>{resumen.data.onWeb}</b> de {resumen.data.total} productos se venden en la web · <b>{resumen.data.withWebPrice}</b> con precio web</>}
+            : <><b>{resumen.data.onWeb}</b> de {resumen.data.total} productos salen en el menú en línea{resumen.data.withWebPrice > 0 ? <> · <b>{resumen.data.withWebPrice}</b> con un precio distinto al de mostrador</> : null}</>}
         </Text>
         <Button variant="outline" minH="44px" flexShrink={0} onClick={() => navigate('/catalogo')}>Ir a los productos</Button>
       </HStack>

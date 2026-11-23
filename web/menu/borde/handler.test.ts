@@ -70,7 +70,7 @@ describe('el menú en el borde', () => {
   });
 
   it('una forma imposible responde 404 sin gastar una petición a la API', async () => {
-    for (const p of ['/ab', '/a_b', '/x/y', '/' + 'a'.repeat(41), '/%00']) {
+    for (const p of ['/ab', '/x/y', '/' + 'a'.repeat(41), '/%00', '/🍕']) {
       const r = await get(p);
       expect(r.status, p).toBe(404);
     }
@@ -210,6 +210,13 @@ describe('el menú en el borde', () => {
     expect(r.headers.get('Cache-Control')).toBe('public, max-age=60');
     const g = await get('/nombre-viejo');
     expect(g.headers.get('Cache-Control')).toBe('public, max-age=60');
+  });
+
+  it('una dirección escrita a mano, con acentos o espacios, lleva al nombre normalizado', async () => {
+    const r = await get('/Do%C3%B1a%20Lupe');
+    expect(r.status).toBe(302);
+    expect(r.headers.get('Location')).toBe('/dona-lupe');
+    expect(calls).toHaveLength(0);
   });
 
   it('la forma canónica conserva la query string', async () => {

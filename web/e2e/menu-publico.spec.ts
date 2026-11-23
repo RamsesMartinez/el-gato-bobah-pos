@@ -23,12 +23,12 @@ test.describe('Ajustes › Venta en web', () => {
       await page.goto('/');
       await iniciarSesion(page);
       await page.goto('/negocio?seccion=web');
-      await expect(page.getByText('Comparte tu menú')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText('Comparte tu menú en línea')).toBeVisible({ timeout: 30_000 });
       await expect(page.getByRole('img', { name: /código qr/i }).locator('svg')).toBeVisible();
       await page.getByLabel(/nombre en la dirección/i).fill('ab');
       await expect(page.getByText(/usa al menos 3 letras o números/i)).toBeVisible();
       const panel = await page.evaluate(() => {
-        const t = [...document.querySelectorAll('div')].find((d) => getComputedStyle(d).overflowY === 'auto' && d.textContent?.includes('Comparte tu menú'))!;
+        const t = [...document.querySelectorAll('div')].find((d) => getComputedStyle(d).overflowY === 'auto' && d.textContent?.includes('Comparte tu menú en línea'))!;
         return { alto: t.scrollHeight, visible: t.clientHeight };
       });
       expect(panel.alto, `la sección mide ${panel.alto} px en ${panel.visible} px de alto útil`).toBeLessThanOrEqual(panel.visible + 1);
@@ -66,8 +66,11 @@ test.describe('el menú que abre un cliente', () => {
       await expect(page.locator('#categorias')).toBeHidden();
       await expect(page.locator(destino!)).toBeInViewport();
 
-      // Un producto se abre en su lugar y se cierra con otro toque.
-      const prod = page.locator(`${destino} details`).first();
+      // Un producto con foto o descripción se abre en su lugar y se cierra con otro toque; uno sin
+      // nada más que enseñar no es tocable.
+      expect(await page.locator('div.ren').count() + await page.locator('details.ren').count()).toBeGreaterThan(0);
+      const prod = page.locator('details.ren').first();
+      await prod.scrollIntoViewIfNeeded();
       await prod.locator('summary').click();
       await expect(prod).toHaveAttribute('open', '');
       await prod.locator('summary').click();

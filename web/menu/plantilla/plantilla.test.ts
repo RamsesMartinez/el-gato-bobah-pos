@@ -118,6 +118,23 @@ describe('plantilla classic (A + mosaico)', () => {
     expect(renderMenu(menu(), OPTS)).not.toContain('content-visibility');
   });
 
+  it('un producto sin foto ni descripción no parece tocable', () => {
+    const m = menu();
+    m.categories[0].products = [prod({ name: 'Solo nombre' })];
+    const html = renderMenu(m, OPTS);
+    expect(html).toMatch(/<div class="ren"><span class="tx"><b>Solo nombre<\/b>/);
+  });
+
+  it('la foto grande se ve grande: la medida de la miniatura no le aplica', () => {
+    const html = renderMenu(menu(), OPTS);
+    expect(html).toContain('.ren .mini{');
+    expect(html).not.toMatch(/\.ren img[,{]/);
+  });
+
+  it('el salto a una categoría es inmediato', () => {
+    expect(renderMenu(menu(), OPTS)).not.toContain('scroll-behavior:smooth');
+  });
+
   it('usa el color del negocio', () => {
     expect(renderMenu(menu(), OPTS)).toContain('--m700:#116932');
   });

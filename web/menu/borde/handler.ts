@@ -3,6 +3,7 @@
 // Cloudflare; worker.ts la conecta con las de verdad.
 import type { PublicMenu, PublicMoved } from '../plantilla/datos';
 import { paginaSimple, renderMenu } from '../plantilla';
+import { normalizaNombre } from './normaliza';
 
 export interface Env {
   API_ORIGIN: string;
@@ -86,9 +87,9 @@ export async function handle(request: Request, env: Env, d: Deps): Promise<Respo
   }
   if (partes.length !== 1) return seguridad(noExiste(), []);
 
-  // La forma canónica: minúsculas y sin diagonal final. Un enlace dictado por teléfono o escrito en
-  // un volante llega como sea.
-  const nombre = partes[0].toLowerCase();
+  // La forma canónica: la misma normalización que el nombre (minúsculas, sin acentos ni espacios) y sin
+  // diagonal final. Un enlace dictado por teléfono o escrito en un volante llega como sea.
+  const nombre = normalizaNombre(partes[0], false);
   if (nombre !== partes[0] || path.endsWith('/')) {
     if (NOMBRE.test(nombre) && nombre.length >= 3 && nombre.length <= 40) return redirige(`/${nombre}${url.search}`, VIDA_CANONICA);
     return seguridad(noExiste(), []);

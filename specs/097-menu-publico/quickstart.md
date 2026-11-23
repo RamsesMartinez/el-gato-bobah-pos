@@ -66,3 +66,18 @@ Cambiar `a → b → c → a`: `/b` y `/c` llevan a `/a` en un salto; `/q/<token
 cd web && E2E_BASE_URL=http://localhost:30NN E2E_API_URL=http://localhost:80NN/api/v1 \
   E2E_MENU_URL=http://localhost:87NN … bun run e2e -- menu-publico
 ```
+
+## 7. Prueba con alguien nuevo (2026-11-23, local)
+
+| Persona | Resultado | Lo que se corrigió |
+|---|---|---|
+| Dueña de una fonda (1280×854 y 2K), comparte por WhatsApp | 4/5. Copió el enlace, descargó el QR, imprimió la tarjeta, cambió nombre y color y lo regresó. Buscó primero en Menú y en Plataformas | «Copiado» movía los botones (ancho fijo); «0 con precio web» no se entendía (ahora «con un precio distinto al de mostrador», y solo si hay); el resumen de la sección dice «Menú en línea: enlace, código QR…»; la dirección escrita a mano («/Doña Lupe») lleva a `/dona-lupe` |
+| Cliente en celular (360×780) | 3/5. Encontró un Buldak en 2.5 s y lo de la última categoría en 1.4 s | La foto «grande» salía de 96 px; el salto a una categoría tardaba ~2 s (ahora inmediato); un renglón sin foto ni descripción parecía tocable |
+
+Verificado decodificando el PNG descargado: el QR lleva a `/q/<código>` antes y después de cambiar el
+nombre, y ese código redirige al nombre vigente.
+
+Fuera de la v1, anotado: buscador de productos, marcar en la barra la categoría donde se está (pide
+JavaScript), y abrir WhatsApp directo desde «Compartir» en la computadora (ahí copia). Un producto del
+catálogo real, «Pedido de plataforma (genérico)», sale en el menú porque está activo con «Web»
+encendido: se apaga en su pestaña «Venta en web» si el negocio no lo quiere publicar.

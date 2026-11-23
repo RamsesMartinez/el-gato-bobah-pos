@@ -124,6 +124,8 @@ describe('Ajustes › Venta en web (maqueta B)', () => {
   it('el resumen de productos queda en un renglón con su acceso', async () => {
     pinta();
     expect(await screen.findByText(/142/)).toBeInTheDocument();
+    expect(screen.getByText(/salen en el menú en línea/)).toBeInTheDocument();
+    expect(screen.getByText(/con un precio distinto al de mostrador/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /ir a los productos/i })).toBeInTheDocument();
   });
 });

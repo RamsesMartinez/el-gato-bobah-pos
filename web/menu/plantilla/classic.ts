@@ -38,16 +38,20 @@ export function renderClassic(m: PublicMenu, t: Tonos, o: OpcionesDePagina): str
 
   let n = 0;
   const imagen = (p: PublicProduct, fam: string | null, tam: number) => {
-    if (!p.imageUrl) return `<span class="ilu" aria-hidden="true"><svg><use href="#${familia(fam)}"/></svg></span>`;
+    if (!p.imageUrl) return `<span class="ilu mini" aria-hidden="true"><svg><use href="#${familia(fam)}"/></svg></span>`;
     const prioridad = n++ < CON_PRIORIDAD ? 'fetchpriority="high"' : 'loading="lazy" decoding="async"';
-    return `<img src="${esc(chica(p.imageUrl))}" width="${tam}" height="${tam}" alt="" ${prioridad}>`;
+    return `<img class="mini" src="${esc(chica(p.imageUrl))}" width="${tam}" height="${tam}" alt="" ${prioridad}>`;
   };
   const renglon = (p: PublicProduct, fam: string | null) => {
     const grande = p.imageUrl ? `<img src="${esc(p.imageUrl)}" width="600" height="600" alt="" loading="lazy" decoding="async">` : '';
     const ds = p.description ? `<span class="ds">${esc(p.description)}</span>` : '';
     const ago = p.soldOut ? ' <span class="et">Agotado</span>' : '';
-    const det = grande || p.description ? `<div class="det">${grande}${p.description ? `<p>${esc(p.description)}</p>` : ''}</div>` : '';
-    return `<li><details class="ren${p.soldOut ? ' ago' : ''}"><summary><span class="tx"><b>${esc(p.name)}</b>${ds}<span class="pr">${precio(p.price)}${ago}</span></span>${imagen(p, fam, 96)}</summary>${det}</details></li>`;
+    const fila = `<span class="tx"><b>${esc(p.name)}</b>${ds}<span class="pr">${precio(p.price)}${ago}</span></span>${imagen(p, fam, 96)}`;
+    // Sin foto ni descripción no hay nada más que enseñar: un renglón que se ve tocable y no hace nada
+    // confunde (prueba con un cliente nuevo).
+    if (!grande && !p.description) return `<li><div class="ren${p.soldOut ? ' ago' : ''}">${fila}</div></li>`;
+    const det = `<div class="det">${grande}${p.description ? `<p>${esc(p.description)}</p>` : ''}</div>`;
+    return `<li><details class="ren${p.soldOut ? ' ago' : ''}"><summary>${fila}</summary>${det}</details></li>`;
   };
   const seccion = (c: PublicCategory) => {
     const propios = c.products.length ? `<ul class="lis">${c.products.map((p) => renglon(p, c.family)).join('')}</ul>` : '';
@@ -93,8 +97,7 @@ ${cuerpo}
 function css(t: Tonos): string {
   return `:root{--m50:${t.c50};--m100:${t.c100};--m600:${t.c600};--m700:${t.c700};--tx:#18181b;--mu:#52525b;--bo:#e4e4e7;--bg:#fff;--bg2:#fafafa;--ilu:${t.c600};color-scheme:light}
 @media (prefers-color-scheme:dark){:root{--tx:#fafafa;--mu:#a1a1aa;--bo:#3f3f46;--bg:#111113;--bg2:#18181b;--m50:#1f1f23;--m100:#2a2a30;--ilu:${t.c100};color-scheme:dark}}
-*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:64px}body{margin:0;font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--tx);background:var(--bg)}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+*{box-sizing:border-box}html{scroll-padding-top:64px}body{margin:0;font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--tx);background:var(--bg)}
 ul{list-style:none;margin:0;padding:0}a{color:inherit}a:focus-visible,summary:focus-visible{outline:3px solid var(--m600);outline-offset:2px}
 .cab{background:var(--m700);color:#fff;padding:20px 16px 16px}.cab h1{margin:0;font-size:26px;line-height:1.2}.cab p{margin:4px 0 0;font-size:14px}
 .chips{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid var(--bo)}
@@ -113,13 +116,13 @@ img{border-radius:12px;background:var(--m50);display:block;max-width:100%;height
 .pr{font-weight:700;color:var(--m700);margin-top:4px}
 @media (prefers-color-scheme:dark){.pr{color:var(--tx)}}
 .et{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--bo);color:var(--tx);margin-left:6px;vertical-align:1px}
-.ago img,.ago .ilu{opacity:.45}
-.det{padding:8px 0 16px}.det img{width:100%;max-width:480px}.det p{margin:8px 0 0;color:var(--mu)}
+.ago .mini{opacity:.45}
+.det{padding:8px 0 16px}.det img{width:100%;max-width:480px;height:auto}.det p{margin:8px 0 0;color:var(--mu)}
 .lis{display:grid;grid-template-columns:1fr}
-.ren summary{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--bo);min-height:120px}
+.ren summary,div.ren{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--bo);min-height:120px}
 .ren .tx{flex:1;display:flex;flex-direction:column;min-width:0}
 .ren .ds{color:var(--mu);font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
-.ren img,.ren .ilu{width:96px;height:96px}
+.ren .mini{width:96px;height:96px;flex-shrink:0}
 .ren[open] .ds{display:none}
 .hoja{display:none;position:fixed;inset:0;z-index:5;background:rgba(0,0,0,.5);overscroll-behavior:contain}.hoja:target{display:block}
 html:has(.hoja:target){overflow:hidden}

@@ -14,7 +14,7 @@ export function ColorDelMenu({ menu }: { menu: PublicMenuSettings }) {
     mutationFn: (palette: string) => adminApi.updatePublicMenu({ palette }),
     onSuccess: (m) => {
       qc.setQueryData(['admin', 'public-menu'], m);
-      toaster.create({ title: 'Color guardado', description: 'El menú en línea lo toma en un par de minutos.', type: 'success' });
+      toaster.create({ title: 'Color guardado', description: 'Tus clientes lo ven en menos de 2 minutos.', type: 'success' });
     },
     onError: () => toaster.create({ title: 'No se pudo guardar el color', description: 'Intenta de nuevo.', type: 'error' }),
   });

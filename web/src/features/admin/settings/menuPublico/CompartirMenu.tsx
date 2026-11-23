@@ -67,10 +67,10 @@ export function CompartirMenu({ menu }: { menu: PublicMenuSettings }) {
             dangerouslySetInnerHTML={{ __html: svg }} />
         )}
         <VStack align="stretch" gap={3} flex="1" minW={0}>
-          <Text fontWeight="700">Comparte tu menú</Text>
+          <Text fontWeight="700">Comparte tu menú en línea</Text>
           <Text fontSize="lg" fontWeight="700" wordBreak="break-all">{sinEsquema(menu.url)}</Text>
           <HStack gap={2} flexWrap="wrap">
-            <Button minH="44px" onClick={() => copiar()}>{copiado ? <LuCheck /> : <LuCopy />} {copiado ? 'Copiado' : 'Copiar enlace'}</Button>
+            <Button minH="44px" minW="164px" onClick={() => copiar()}>{copiado ? <LuCheck /> : <LuCopy />} {copiado ? 'Copiado' : 'Copiar enlace'}</Button>
             <Button minH="44px" variant="outline" onClick={compartir}><LuShare2 /> Compartir</Button>
             <Button minH="44px" variant="outline" asChild><a href={menu.url} target="_blank" rel="noreferrer"><LuExternalLink /> Abrir</a></Button>
           </HStack>
