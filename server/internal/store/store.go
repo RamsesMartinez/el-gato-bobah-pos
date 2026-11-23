@@ -164,5 +164,7 @@ func (s *Store) WithTenant(ctx context.Context, companyID int64, fn func(q *db.Q
 // confirmar, donde `translating` no mira; sin esto, una venta que perdió la carrera contra una unión
 // respondía 500 en vez de 409 «vuelve a intentar».
 func commit(ctx context.Context, tx pgx.Tx) error {
+	// Antes de intentarlo: un COMMIT que falla por la red pudo haber confirmado igual.
+	noteWrite(ctx)
 	return DomainError(tx.Commit(ctx))
 }

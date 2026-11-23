@@ -284,6 +284,7 @@ func orderAndPayment(order, payment int64) map[string]int64 {
 func register090Orders() {
 	writeTool(writeSpec[draftCreateArgs]{
 		name: "order_draft_create",
+		refs: refsDraftCreate,
 		route: func(_ *mcpSession, _ context.Context, in draftCreateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if len(in.Lines) == 0 || len(in.Lines) > domain.MaxDraftLines {
 				return "", "", nil, nil, nil, toolErr("La cuenta lleva de 1 a %d renglones.", domain.MaxDraftLines)
@@ -369,6 +370,7 @@ func register090Orders() {
 	deliverState := orderState("order_deliver")
 	writeTool(writeSpec[orderWriteArgs]{
 		name: "order_deliver",
+		refs: refsOrderWrite,
 		route: func(_ *mcpSession, _ context.Context, in orderWriteArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("order_id", in.OrderID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -383,6 +385,7 @@ func register090Orders() {
 	discountState := orderState("order_discount_set")
 	writeTool(writeSpec[discountArgs]{
 		name: "order_discount_set",
+		refs: refsDiscount,
 		route: func(_ *mcpSession, _ context.Context, in discountArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("order_id", in.OrderID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -408,6 +411,7 @@ func register090Orders() {
 	payState := orderState("order_pay")
 	writeTool(writeSpec[payArgs]{
 		name: "order_pay",
+		refs: refsPay,
 		route: func(_ *mcpSession, _ context.Context, in payArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("order_id", in.OrderID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -461,6 +465,7 @@ func register090Orders() {
 	voidState := orderState("order_payment_void")
 	writeTool(writeSpec[voidArgs]{
 		name: "order_payment_void",
+		refs: refsVoid,
 		route: func(_ *mcpSession, _ context.Context, in voidArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("order_id", in.OrderID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -481,6 +486,7 @@ func register090Orders() {
 	terminalState := orderState("order_payment_terminal_set")
 	writeTool(writeSpec[terminalArgs]{
 		name: "order_payment_terminal_set",
+		refs: refsTerminal,
 		route: func(_ *mcpSession, _ context.Context, in terminalArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("order_id", in.OrderID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -515,6 +521,7 @@ func register090Orders() {
 	refundState := orderState("order_refund")
 	writeTool(writeSpec[refundArgs]{
 		name: "order_refund",
+		refs: refsRefund,
 		route: func(_ *mcpSession, _ context.Context, in refundArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("order_id", in.OrderID); err != nil {
 				return "", "", nil, nil, nil, err

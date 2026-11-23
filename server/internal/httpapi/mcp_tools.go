@@ -17,6 +17,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
 // Las herramientas del servidor MCP. Cada una nombra las rutas que puede despachar
@@ -268,7 +269,10 @@ func (s *mcpSession) fetch(ctx context.Context, tool, pattern string, params map
 	status, body, err := s.dispatch(ctx, tool, http.MethodGet, pattern, params, q, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "mcp_dispatch_failed", "tool", tool, "pattern", pattern, "error", err.Error())
-		return nil, 0, toolErr("Error interno del servidor MCP. Avísale al administrador.")
+		return nil, 0, internalToolError(ctx, nil, domain.InternalRead)
+	}
+	if status >= 500 {
+		return nil, status, internalToolError(ctx, body, domain.InternalRead)
 	}
 	if status >= 400 {
 		return nil, status, toolError{msg: toolHint(status, body, mcpListTool[tool]), status: status}
@@ -388,6 +392,10 @@ type writeSpec[In writeArgs] struct {
 	// se aplicó devuelve lo guardado aunque el estado ya no pase la revisión (la caja ya cerró).
 	// Opcional.
 	guard func(s *mcpSession, ctx context.Context, in In) error
+	// refs son los ids que manda la escritura (#335). Se revisa que sean de la empresa del token antes
+	// de la vista previa y antes de aplicar: la vista previa no despacha la escritura, y varias llaves
+	// foráneas de una sola columna aceptaban un id de otra empresa.
+	refs func(in In) []domain.Ref
 }
 
 // attentionFirst es la vista previa con avisos que van antes que todo lo demás.
@@ -396,9 +404,16 @@ type attentionFirst struct {
 	resolved  any
 }
 
+// mcpWriteSchemas y mcpWriteHasRefs los lee TestEveryWriteToolWithIDsDeclaresItsRefs (#335).
+var (
+	mcpWriteSchemas = map[string]*jsonschema.Schema{}
+	mcpWriteHasRefs = map[string]bool{}
+)
+
 func writeTool[In writeArgs](spec writeSpec[In]) {
 	mustRegisterOnce(spec.name)
 	schema := schemaFor[In]()
+	mcpWriteSchemas[spec.name], mcpWriteHasRefs[spec.name] = schema, spec.refs != nil
 	name := spec.name
 	mcpToolRegs[name] = func(s *mcpSession, srv *mcp.Server) {
 		mcp.AddTool(srv, toolDef(name, schema), func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
@@ -433,6 +448,22 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 		return nil, toolError{msg: domain.MissingScopeMessage(tool.Scope), status: http.StatusForbidden}
 	}
 	args := argsJSON(in)
+	c := in.common()
+	mode := "apply"
+	if c.DryRun == nil || *c.DryRun {
+		mode = "preview"
+	}
+	// Las referencias antes que la ruta: varias rutas leen el registro para armar la escritura, y con un
+	// id ajeno cada una lo decía a su manera; así el rechazo es uno solo.
+	var inactive []string
+	if spec.refs != nil {
+		notes, rerr := s.checkRefs(ctx, spec.refs(in))
+		if rerr != nil {
+			s.record(ctx, app.MCPCall{Tool: name, Mode: mode, Status: toolStatus(rerr), Args: args})
+			return nil, rerr
+		}
+		inactive = notes
+	}
 	method, pattern, params, q, body, err := spec.route(s, ctx, in)
 	if err != nil {
 		s.record(ctx, app.MCPCall{Tool: name, Mode: "preview", Status: http.StatusBadRequest, Args: args})
@@ -442,28 +473,21 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 	if spec.state != nil {
 		before = spec.state(s, ctx, in, nil)
 	}
-	c := in.common()
-	if c.DryRun == nil || *c.DryRun {
+	if mode == "preview" {
 		out := map[string]any{"preview": true, "before": before, "would_send": body,
 			"how_to_apply": "Repite la llamada con dry_run: false y una idempotency_key nueva."}
+		var notes []string
 		if spec.strictPreview != nil {
-			extra, notes, perr := spec.strictPreview(s, ctx, in)
+			extra, more, perr := spec.strictPreview(s, ctx, in)
 			if perr != nil {
-				status := http.StatusBadRequest
-				var te toolError
-				if errors.As(perr, &te) && te.status != 0 {
-					status = te.status
-				}
-				s.record(ctx, app.MCPCall{Tool: name, Mode: "preview", Status: status, Args: args})
+				s.record(ctx, app.MCPCall{Tool: name, Mode: "preview", Status: toolStatus(perr), Args: args})
 				return nil, perr
 			}
 			out["resolved"] = extra
-			if len(notes) > 0 {
-				out["notes"] = notes
-			}
+			notes = append(notes, more...)
 		}
 		if spec.preview != nil {
-			extra, notes := spec.preview(s, ctx, in)
+			extra, more := spec.preview(s, ctx, in)
 			// Lo que el agente tiene que leer antes que nada (un posible duplicado) va en «attention»:
 			// las llaves salen en orden alfabético y ésa queda antes que «before» y «would_send».
 			if a, ok := extra.(attentionFirst); ok {
@@ -475,9 +499,10 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 			if extra != nil {
 				out["resolved"] = extra
 			}
-			if len(notes) > 0 {
-				out["notes"] = notes
-			}
+			notes = append(notes, more...)
+		}
+		if notes = append(notes, inactive...); len(notes) > 0 {
+			out["notes"] = notes
 		}
 		s.record(ctx, app.MCPCall{Tool: name, Mode: "preview", Status: http.StatusOK, Args: args})
 		return out, nil
@@ -491,7 +516,8 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 	bg := context.WithoutCancel(ctx)
 	decision, saved, err := s.h.apiTokens.BeginIdempotent(bg, ref, domain.IdempotencyArgsHash(name, canonicalArgs(in)))
 	if err != nil {
-		return nil, toolErr("Error interno; no se aplicó nada. Vuelve a intentar.")
+		slog.ErrorContext(ctx, "mcp_idempotency_begin_failed", "tool", name, "error", err.Error())
+		return nil, internalToolError(ctx, nil, domain.InternalNotApplied)
 	}
 	switch decision {
 	case domain.IdemReplay:
@@ -502,44 +528,45 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 		s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: http.StatusConflict, Args: args})
 		return nil, toolError{msg: domain.IdempotencyMessage(decision), status: http.StatusConflict}
 	}
+	// fail deja la llave en «failed» con el error que recibe el agente (#335): nada se confirmó.
+	fail := func(status int, terr error) (any, error) {
+		saved, _ := json.Marshal(map[string]any{"error": terr.Error(), "status": status})
+		if ferr := s.h.apiTokens.FailIdempotent(bg, ref, saved); ferr != nil {
+			slog.ErrorContext(ctx, "mcp_idempotency_fail_failed", "tool", name, "error", ferr.Error())
+		}
+		s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: status, Args: args})
+		return nil, terr
+	}
 	if spec.guard != nil {
 		if gerr := spec.guard(s, ctx, in); gerr != nil {
-			if aerr := s.h.apiTokens.AbandonIdempotent(bg, ref); aerr != nil {
-				slog.ErrorContext(ctx, "mcp_idempotency_abandon_failed", "tool", name, "error", aerr.Error())
-			}
-			status := http.StatusBadRequest
-			var te toolError
-			if errors.As(gerr, &te) && te.status != 0 {
-				status = te.status
-			}
-			s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: status, Args: args})
-			return nil, gerr
+			return fail(toolStatus(gerr), gerr)
 		}
 	}
 
+	// El rastreador dice si el despacho confirmó algo: sin él, un 500 no sabría si reintentar es seguro.
+	dctx, writes := store.TrackWrites(ctx)
 	var status int
 	var resp []byte
 	if spec.run != nil {
-		status, resp, err = spec.run(s, ctx, in)
+		status, resp, err = spec.run(s, dctx, in)
 	} else {
-		status, resp, err = s.dispatch(ctx, name, method, pattern, params, q, body)
+		status, resp, err = s.dispatch(dctx, name, method, pattern, params, q, body)
 	}
 	switch {
 	case err != nil || status >= 500:
 		if err != nil {
 			slog.ErrorContext(ctx, "mcp_dispatch_failed", "tool", name, "pattern", pattern, "error", err.Error())
 		}
+		if !writes.MayHaveWritten() {
+			return fail(max(status, 500), internalToolError(ctx, resp, domain.InternalNotApplied))
+		}
 		if uerr := s.h.apiTokens.MarkIdempotentUnknown(bg, ref); uerr != nil {
 			slog.ErrorContext(ctx, "mcp_idempotency_mark_failed", "tool", name, "error", uerr.Error())
 		}
 		s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: max(status, 500), Args: args})
-		return nil, toolError{msg: domain.ToolErrorHint(500, "", ""), status: http.StatusInternalServerError}
+		return nil, internalToolError(ctx, resp, domain.InternalMayHaveApplied)
 	case status >= 400:
-		if aerr := s.h.apiTokens.AbandonIdempotent(bg, ref); aerr != nil {
-			slog.ErrorContext(ctx, "mcp_idempotency_abandon_failed", "tool", name, "error", aerr.Error())
-		}
-		s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: status, Args: args})
-		return nil, toolError{msg: toolHint(status, resp, mcpListTool[name]), status: status}
+		return fail(status, toolError{msg: toolHint(status, resp, mcpListTool[name]), status: status})
 	}
 	result := json.RawMessage(resp)
 	if len(strings.TrimSpace(string(resp))) == 0 {
@@ -563,6 +590,58 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 	s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: status, Args: args,
 		EntityBefore: argsJSON(before), EntityAfter: argsJSON(after)})
 	return map[string]any{"applied": true, "result": result, "before": before, "after": after}, nil
+}
+
+// toolStatus es el estado que la bitácora guarda para un error de herramienta.
+func toolStatus(err error) int {
+	var te toolError
+	if errors.As(err, &te) && te.status != 0 {
+		return te.status
+	}
+	return http.StatusBadRequest
+}
+
+// internalToolError es el error que recibe el agente por un 500 (#335): el id del error —el de esta
+// llamada, que es el mismo de la petición interna y del correo al administrador— y la causa que dio
+// la ruta, nunca el texto del error.
+func internalToolError(ctx context.Context, body []byte, outcome domain.InternalOutcome) toolError {
+	var env errorEnvelope
+	_ = json.Unmarshal(body, &env)
+	cause := env.Error.Cause
+	if cause == "" {
+		cause = domain.InternalCause("")
+	}
+	return toolError{msg: domain.InternalErrorHint(requestIDFrom(ctx), cause, outcome),
+		status: http.StatusInternalServerError}
+}
+
+// checkRefs revisa que los ids de una escritura sean de la empresa del token y devuelve los avisos de
+// la vista previa (un producto inactivo). Un id ajeno y uno que no existe reciben el mismo rechazo.
+func (s *mcpSession) checkRefs(ctx context.Context, refs []domain.Ref) ([]string, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	tctx, release, err := s.h.store.AcquireTenant(ctx, s.principal.CompanyID)
+	if err != nil {
+		slog.ErrorContext(ctx, "mcp_refs_failed", "error", err.Error())
+		return nil, internalToolError(ctx, nil, domain.InternalNotApplied)
+	}
+	defer release()
+	states, err := s.h.apiTokens.FindReferences(tctx, refs)
+	if err != nil {
+		slog.ErrorContext(ctx, "mcp_refs_failed", "error", err.Error())
+		return nil, internalToolError(ctx, nil, domain.InternalNotApplied)
+	}
+	var notes []string
+	for _, st := range states {
+		if !st.Found {
+			return nil, toolError{msg: domain.MissingRefMessage(st.Ref), status: http.StatusNotFound}
+		}
+		if st.WarnInactive && st.Kind == domain.RefProduct && !st.Active {
+			notes = append(notes, domain.InactiveProductNote(st.ID, st.Name))
+		}
+	}
+	return notes, nil
 }
 
 // soft lee una parte del estado para la vista previa: un 403 o un 404 se vuelven nota, no error,

@@ -258,10 +258,15 @@ func (s *mcpSession) serve(ctx context.Context, tool, method, pattern, path stri
 		return 0, nil, err
 	}
 	req.RemoteAddr = s.outer.RemoteAddr
-	for _, hname := range []string{"X-Forwarded-For", "X-Real-Ip", RequestIDHeader} {
+	for _, hname := range []string{"X-Forwarded-For", "X-Real-Ip"} {
 		if v := s.outer.Header.Get(hname); v != "" {
 			req.Header.Set(hname, v)
 		}
+	}
+	// El id de ESTA llamada, aunque el cliente no haya mandado uno (#335): el correo de un 500 de la
+	// petición interna y el error que recibe el agente tienen que decir el mismo.
+	if rid := requestIDFrom(s.outer.Context()); rid != "" {
+		req.Header.Set(RequestIDHeader, rid)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")

@@ -251,6 +251,7 @@ func (in ingredientUpdateArgs) check() error {
 func register076() {
 	writeTool(writeSpec[ingredientCreateArgs]{
 		name: "ingredient_create",
+		refs: refsIngredientCreate,
 		route: func(_ *mcpSession, _ context.Context, in ingredientCreateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if strings.TrimSpace(in.Name) == "" {
 				return "", "", nil, nil, nil, toolErr("name es obligatorio: el nombre del insumo.")
@@ -289,6 +290,7 @@ func register076() {
 
 	writeTool(writeSpec[ingredientUpdateArgs]{
 		name: "ingredient_update",
+		refs: refsIngredientUpdate,
 		route: func(_ *mcpSession, _ context.Context, in ingredientUpdateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := in.check(); err != nil {
 				return "", "", nil, nil, nil, err
