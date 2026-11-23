@@ -186,3 +186,14 @@ anterior) nace sin almacén de venta, y su primer movimiento truena con `EGB03`.
 trigger sobre `branches`: un restore con COPY lo dispararía y chocaría con el «Local» del respaldo
 (la razón de la 0076). La ventana es la del traslape, la API nueva lo crea en la misma consulta que la
 matriz, y la 0121 crea «Local» donde falte (R11 M2).
+
+## R14. Puertas con lo que viene encima (#146 caducidad por lote, #226 merma esperada)
+
+- **Lotes (#146)**: un lote guardará su almacén. El traspaso no asume que una existencia es solo
+  cantidad: `stock_transfer_lines` es un renglón por artículo y cantidad al que se le puede agregar
+  después el lote de origen (una columna nullable y, si hace falta, varios renglones por artículo);
+  los dos movimientos del traspaso llevan `transfer_id` y su `unit_cost`, así que un lote podrá
+  colgarse de cada pata sin reescribir traspasos pasados. Nada de esta feature guarda «la existencia
+  del almacén» como un número suelto fuera de `stock_levels`.
+- **Merma esperada (#226)**: su reporte de conteo contra ventas se construye por almacén encima de E5;
+  las ventas ya salen del almacén de venta y el conteo es por almacén.
