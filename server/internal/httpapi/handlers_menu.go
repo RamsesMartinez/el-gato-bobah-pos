@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
 )
 
@@ -136,4 +137,25 @@ func (h *Handlers) ProductCosting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]any{"productId": id, "cost": cost})
+}
+
+// GET /pos/menu/sold-out — los productos que salen «Agotado» ahora (spec 092). Sin caché: la
+// existencia cambia con cada venta.
+func (h *Handlers) PosSoldOut(w http.ResponseWriter, r *http.Request) {
+	ids, err := h.menu.SoldOut(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	writeSoldOut(w, ids)
+}
+
+// writeSoldOut escribe la lista siempre como arreglo: un `null` tumba la pantalla de venta sin un
+// solo error en el servidor (AGENTS.md, slices nil).
+func writeSoldOut(w http.ResponseWriter, ids []int64) {
+	if ids == nil {
+		ids = []int64{}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	JSON(w, http.StatusOK, app.SoldOutView{ProductIDs: ids})
 }

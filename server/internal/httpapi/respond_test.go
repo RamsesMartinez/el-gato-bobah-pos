@@ -487,3 +487,32 @@ func TestStockOutErrorsHaveTheirOwnCode(t *testing.T) {
 		}
 	}
 }
+
+// Un producto agotado (spec 092) responde 409 OUT_OF_STOCK con su id y nombre como dato: la tableta
+// lo marca agotado sin escarbar el texto, y el mensaje dice cuántas quedan.
+func TestOutOfStockTravelsWithTheProduct(t *testing.T) {
+	w := httptest.NewRecorder()
+	Error(w, domain.OutOfStock{ProductID: 12, Name: "Refresco de lata", Left: decimal.NewFromInt(1)})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, quería 409", w.Code)
+	}
+	var got struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Details *struct {
+				ProductID   int64  `json:"productId"`
+				ProductName string `json:"productName"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "OUT_OF_STOCK" || got.Error.Details == nil || got.Error.Details.ProductID != 12 || got.Error.Details.ProductName != "Refresco de lata" {
+		t.Fatalf("respuesta = %+v", got.Error)
+	}
+	if got.Error.Message != "Se agotó Refresco de lata: queda 1" {
+		t.Fatalf("message = %q", got.Error.Message)
+	}
+}

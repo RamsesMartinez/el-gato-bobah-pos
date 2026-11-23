@@ -120,7 +120,7 @@ func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListMod
 }
 
 const adminListProducts = `-- name: AdminListProducts :many
-select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, q.inactive_group_count, q.alt_names, q.matched_alt, count(*) over() as total
+select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, q.inactive_group_count, q.alt_names, q.sold_at_counter, q.sold_on_web, q.web_price, q.allow_oversell, q.track_stock, q.description, q.has_recipe_items, q.matched_alt, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
          p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
@@ -136,6 +136,17 @@ from (
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and not mg.is_active)::int as inactive_group_count,
          p.alt_names,
+         -- Dónde se vende y a qué precio en la web (spec 092). Subconsultas por código y no un join:
+         -- cuando el lugar de venta sea también por sucursal, un join multiplicaría las filas.
+         -- Sin fila = se ofrece, al precio de mostrador.
+         (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                       where pc.product_id = p.id and ch.code = 'pos' and pc.visibility = 'oculto'))::bool as sold_at_counter,
+         (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                       where pc.product_id = p.id and ch.code = 'online' and pc.visibility = 'oculto'))::bool as sold_on_web,
+         (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
+           where pc.product_id = p.id and ch.code = 'online') as web_price,
+         p.allow_oversell, p.track_stock, coalesce(p.description, '')::text as description,
+         (exists (select 1 from recipe_items ri where ri.recipe_id = p.recipe_id))::bool as has_recipe_items,
          -- El alternativo que coincidió (spec 063): '' si no se busca o si coincide el nombre; el
          -- primero en el orden capturado. coalesce: la subconsulta sin coincidencia es NULL.
          (case when $1::text = '' or strpos(catalog_name_key(p.name), catalog_name_key($1)) > 0 then ''
@@ -213,6 +224,13 @@ type AdminListProductsRow struct {
 	OverrideCount      int32            `json:"override_count"`
 	InactiveGroupCount int32            `json:"inactive_group_count"`
 	AltNames           []string         `json:"alt_names"`
+	SoldAtCounter      bool             `json:"sold_at_counter"`
+	SoldOnWeb          bool             `json:"sold_on_web"`
+	WebPrice           *decimal.Decimal `json:"web_price"`
+	AllowOversell      bool             `json:"allow_oversell"`
+	TrackStock         bool             `json:"track_stock"`
+	Description        string           `json:"description"`
+	HasRecipeItems     bool             `json:"has_recipe_items"`
 	MatchedAlt         string           `json:"matched_alt"`
 	Total              int64            `json:"total"`
 }
@@ -262,6 +280,13 @@ func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsPa
 			&i.OverrideCount,
 			&i.InactiveGroupCount,
 			&i.AltNames,
+			&i.SoldAtCounter,
+			&i.SoldOnWeb,
+			&i.WebPrice,
+			&i.AllowOversell,
+			&i.TrackStock,
+			&i.Description,
+			&i.HasRecipeItems,
 			&i.MatchedAlt,
 			&i.Total,
 		); err != nil {
@@ -491,8 +516,8 @@ func (q *Queries) CloneComboSlotProducts(ctx context.Context, arg CloneComboSlot
 }
 
 const cloneProductChannels = `-- name: CloneProductChannels :exec
-insert into product_channels (product_id, channel_id, visibility)
-select $1, pc.channel_id, pc.visibility
+insert into product_channels (product_id, channel_id, visibility, price)
+select $1, pc.channel_id, pc.visibility, pc.price
 from product_channels pc where pc.product_id = $2
 `
 
@@ -578,6 +603,34 @@ func (q *Queries) CloneRecipeItems(ctx context.Context, arg CloneRecipeItemsPara
 	return err
 }
 
+const ensureChannel = `-- name: EnsureChannel :one
+
+with created as (
+  insert into channels (code, name) values ($1, $2)
+  on conflict (company_id, code) do nothing
+  returning id
+)
+select id from created
+union all
+select id from channels where code = $1
+limit 1
+`
+
+type EnsureChannelParams struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+// ==== Dónde se vende (spec 092) ====
+// El lugar de venta de la empresa de la sesión (RLS pone el filtro), creado si faltaba: una empresa
+// que nació sin catálogo no puede quedarse con un «apagar Web» que responde bien sin escribir.
+func (q *Queries) EnsureChannel(ctx context.Context, arg EnsureChannelParams) (int64, error) {
+	row := q.db.QueryRow(ctx, ensureChannel, arg.Code, arg.Name)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getProductCloneInfo = `-- name: GetProductCloneInfo :one
 
 select type, recipe_id from products where id = $1
@@ -594,6 +647,35 @@ func (q *Queries) GetProductCloneInfo(ctx context.Context, id int64) (GetProduct
 	row := q.db.QueryRow(ctx, getProductCloneInfo, id)
 	var i GetProductCloneInfoRow
 	err := row.Scan(&i.Type, &i.RecipeID)
+	return i, err
+}
+
+const getProductSalesForAudit = `-- name: GetProductSalesForAudit :one
+select p.id, p.allow_oversell, coalesce(p.description, '')::text as description,
+       (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
+         where pc.product_id = p.id and ch.code = 'online') as web_price
+from products p where p.id = $1
+for update of p
+`
+
+type GetProductSalesForAuditRow struct {
+	ID            int64            `json:"id"`
+	AllowOversell bool             `json:"allow_oversell"`
+	Description   string           `json:"description"`
+	WebPrice      *decimal.Decimal `json:"web_price"`
+}
+
+// Lo que había antes de guardar, con candado: el precio web cambia en la misma transacción que su
+// evento, como el de mostrador.
+func (q *Queries) GetProductSalesForAudit(ctx context.Context, id int64) (GetProductSalesForAuditRow, error) {
+	row := q.db.QueryRow(ctx, getProductSalesForAudit, id)
+	var i GetProductSalesForAuditRow
+	err := row.Scan(
+		&i.ID,
+		&i.AllowOversell,
+		&i.Description,
+		&i.WebPrice,
+	)
 	return i, err
 }
 
@@ -633,4 +715,46 @@ func (q *Queries) ListComboSlots(ctx context.Context, comboID int64) ([]ListComb
 		return nil, err
 	}
 	return items, nil
+}
+
+const setProductSalesFields = `-- name: SetProductSalesFields :exec
+update products set allow_oversell = $1, description = $2, updated_at = now()
+where id = $3
+`
+
+type SetProductSalesFieldsParams struct {
+	AllowOversell bool    `json:"allow_oversell"`
+	Description   *string `json:"description"`
+	ID            int64   `json:"id"`
+}
+
+func (q *Queries) SetProductSalesFields(ctx context.Context, arg SetProductSalesFieldsParams) error {
+	_, err := q.db.Exec(ctx, setProductSalesFields, arg.AllowOversell, arg.Description, arg.ID)
+	return err
+}
+
+const upsertProductChannel = `-- name: UpsertProductChannel :exec
+insert into product_channels (product_id, channel_id, visibility, price)
+values ($1, $2, $3, $4)
+on conflict on constraint product_channels_pkey
+do update set visibility = excluded.visibility, price = excluded.price
+`
+
+type UpsertProductChannelParams struct {
+	ProductID  int64             `json:"product_id"`
+	ChannelID  int64             `json:"channel_id"`
+	Visibility ChannelVisibility `json:"visibility"`
+	Price      *decimal.Decimal  `json:"price"`
+}
+
+// Por la restricción con nombre: cuando el lugar de venta sea también por sucursal, cambia la
+// restricción y no esta consulta.
+func (q *Queries) UpsertProductChannel(ctx context.Context, arg UpsertProductChannelParams) error {
+	_, err := q.db.Exec(ctx, upsertProductChannel,
+		arg.ProductID,
+		arg.ChannelID,
+		arg.Visibility,
+		arg.Price,
+	)
+	return err
 }

@@ -279,6 +279,9 @@ type createPlan struct {
 	built   domain.BuiltOrder
 	graph   domain.StockGraph
 	bizDate pgtype.Date
+	// stockLines: los renglones de mostrador de productos con «vender sin existencia» apagado
+	// (spec 092), que se revisan contra la existencia dentro de la transacción.
+	stockLines []domain.StockCheckLine
 }
 
 // prepareCreate valúa el pedido con la lista de precios de su canal. No escribe nada.
@@ -323,7 +326,7 @@ func (s *OrdersService) prepareCreate(ctx context.Context, cmd CreateOrderCmd) (
 	products := map[int64]domain.PricedProduct{}
 	for _, p := range prodRows {
 		products[p.ID] = domain.PricedProduct{
-			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive, ModifierGroups: groups[p.ID],
+			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: sellable(p, cmd.DeliveryPlatformID), ModifierGroups: groups[p.ID],
 			// El costo NO lleva margen: el margen es de precio de VENTA. Vender por Uber consume
 			// exactamente el mismo inventario, y el margen extra es lo que se va en comisión.
 			Price: domain.PlatformPrice(p.Price, lista.margen, lista.producto[p.ID]),
@@ -377,7 +380,8 @@ func (s *OrdersService) prepareCreate(ctx context.Context, cmd CreateOrderCmd) (
 	// numeración corrida del turno nocturno es `NextFolioNumber`, no esta línea.
 	bizDate := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
 
-	return &createPlan{cmd: cmd, folio: folio, built: built, graph: stockGraph, bizDate: bizDate}, nil
+	return &createPlan{cmd: cmd, folio: folio, built: built, graph: stockGraph, bizDate: bizDate,
+		stockLines: stockLinesOf(built, prodRows, cmd.DeliveryPlatformID)}, nil
 }
 
 // createInTx escribe el pedido dentro de la transacción de quien llama: folio del turno, nombre,
@@ -416,6 +420,11 @@ func (s *OrdersService) createInTx(ctx context.Context, q *db.Queries, p *create
 		DiscountSetBy: authorOr(cmd.DiscountSetBy, cmd.OpenedBy),
 	})
 	if err != nil {
+		return 0, err
+	}
+	// Antes del primer descuento (spec 092): así ninguna venta toma un candado de existencia por el
+	// trigger sin haber tomado antes los de este chequeo.
+	if err := checkSalesStock(ctx, q, ord.BranchID, p.graph, p.stockLines); err != nil {
 		return 0, err
 	}
 	for _, l := range built.Lines {
@@ -1279,8 +1288,9 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 // addPlan es lo que AddLines lee ANTES de su transacción: solo lo nuevo, valuado con la lista del
 // pedido, y la composición para descontar inventario.
 type addPlan struct {
-	built domain.BuiltOrder
-	graph domain.StockGraph
+	built      domain.BuiltOrder
+	graph      domain.StockGraph
+	stockLines []domain.StockCheckLine
 }
 
 // prepareAddLines valúa lo que se va a agregar. No escribe nada; el estado del pedido se vuelve a
@@ -1330,7 +1340,7 @@ func (s *OrdersService) prepareAddLines(ctx context.Context, orderID int64, line
 	products := map[int64]domain.PricedProduct{}
 	for _, p := range prodRows {
 		products[p.ID] = domain.PricedProduct{
-			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive, ModifierGroups: groups[p.ID],
+			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: sellable(p, ord.DeliveryPlatformID), ModifierGroups: groups[p.ID],
 			Price: domain.PlatformPrice(p.Price, lista.margen, lista.producto[p.ID]),
 		}
 	}
@@ -1353,7 +1363,7 @@ func (s *OrdersService) prepareAddLines(ctx context.Context, orderID int64, line
 	if err != nil {
 		return nil, err
 	}
-	return &addPlan{built: built, graph: stockGraph}, nil
+	return &addPlan{built: built, graph: stockGraph, stockLines: stockLinesOf(built, prodRows, ord.DeliveryPlatformID)}, nil
 }
 
 // addLinesInTx agrega lo valuado en `p` dentro de la transacción de quien llama, y devuelve los
@@ -1419,6 +1429,11 @@ func addLinesInTx(ctx context.Context, q *db.Queries, orderID int64, p *addPlan,
 			}
 		}
 
+		if o.DeliveryPlatformID == nil {
+			if err := checkSalesStock(ctx, q, o.BranchID, p.graph, p.stockLines); err != nil {
+				return err
+			}
+		}
 		agregados = agregados[:0]
 		for _, l := range p.built.Lines {
 			lineID, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
@@ -2291,4 +2306,32 @@ func llaveDeCobro(u uuid.UUID) *uuid.UUID {
 		return nil
 	}
 	return &u
+}
+
+// sellable dice si el producto se puede poner en este pedido: activo y, si es de mostrador, no
+// apagado para Mostrador (spec 092). Un pedido de plataforma no mira el lugar de venta: la
+// plataforma ya lo vendió.
+func sellable(p db.GetPricedProductsRow, platformID *int16) bool {
+	return p.IsActive && (platformID != nil || p.SoldAtCounter)
+}
+
+// stockLinesOf junta los renglones de mostrador de productos con «vender sin existencia» apagado:
+// los únicos que la venta revisa contra la existencia. Un pedido de plataforma no se revisa nunca.
+func stockLinesOf(built domain.BuiltOrder, rows []db.GetPricedProductsRow, platformID *int16) []domain.StockCheckLine {
+	if platformID != nil {
+		return nil
+	}
+	off := map[int64]bool{}
+	for _, r := range rows {
+		if !r.AllowOversell {
+			off[r.ID] = true
+		}
+	}
+	var out []domain.StockCheckLine
+	for _, l := range built.Lines {
+		if off[l.ProductID] {
+			out = append(out, domain.StockCheckLine{ProductID: l.ProductID, Name: l.ProductName, Qty: l.Qty})
+		}
+	}
+	return out
 }

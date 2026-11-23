@@ -91,13 +91,15 @@ const (
 type Deps struct {
 	Cfg config.Config
 	// Alerts manda por correo cada 500 (spec 070); nil = avisos apagados.
-	Alerts    *alerts.Notifier
-	Version   string // SHA del build (ldflags); "dev" en local
-	BuiltAt   string // timestamp del build (ldflags); "" en local
-	JWT       *auth.Manager
-	Auth      *app.AuthService
-	Users     *app.UsersService
-	Menu      *app.MenuService
+	Alerts  *alerts.Notifier
+	Version string // SHA del build (ldflags); "dev" en local
+	BuiltAt string // timestamp del build (ldflags); "" en local
+	JWT     *auth.Manager
+	Auth    *app.AuthService
+	Users   *app.UsersService
+	Menu    *app.MenuService
+	// WebSales: la regla única de la venta en web (spec 092).
+	WebSales  *app.WebSalesService
 	MenuCache *cache.MenuCache
 	Suggest   *app.SuggestService
 	Costing   *app.CostingService
@@ -173,6 +175,7 @@ type Handlers struct {
 	auth              *app.AuthService
 	users             *app.UsersService
 	menu              *app.MenuService
+	webSales          *app.WebSalesService
 	menuCache         *cache.MenuCache
 	suggest           *app.SuggestService
 	costing           *app.CostingService
@@ -274,7 +277,7 @@ func newHandlers(d Deps) *Handlers {
 		tokenWrites:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:token-writes:", 30, time.Hour),
 		listEmails:    newRateLimiter(d.Cfg.RedisURL, "ratelimit:shopping-list-email:", 5, time.Hour),
 		cfg:           d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
-		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
+		menu: d.Menu, webSales: d.WebSales, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		purchaseDoc:       d.PurchaseDoc,
 		platformPrices:    d.PlatformPrices,
