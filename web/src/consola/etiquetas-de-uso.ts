@@ -48,6 +48,7 @@ const ACCIONES: Record<string, string> = {
   'cerrar-conteo': 'Cerrar conteo',
   'ver-merma': 'Ver lo que se echó a perder',
   'ver-faltante': 'Ver el faltante de un conteo',
+  'ver-contra-ventas': 'Ver el conteo contra lo vendido',
   'ver-articulos': 'Ver los artículos del almacén',
   'crear-articulo': 'Crear un artículo',
   'editar-articulo': 'Editar un artículo',

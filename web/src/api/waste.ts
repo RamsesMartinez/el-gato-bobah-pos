@@ -105,6 +105,8 @@ export const wasteApi = {
   reject: (id: number) => api.post<void>(`/waste/${id}/reject`),
   setThreshold: (threshold: string | null) => api.put<void>('/settings/waste-threshold', { threshold }),
   countLoss: (countId: number) => api.get<CountLoss>(`/stock/counts/${countId}/loss`),
+  // Conteo contra ventas (spec 096, subida 2).
+  countVsSales: (countId: number) => api.get<CountVsSales>(`/stock/counts/${countId}/vs-sales`),
   list: (from: string, to: string, reasonId?: number | null) =>
     api.get<WasteRow[]>(`/waste?from=${from}&to=${to}${reasonId ? `&reasonId=${reasonId}` : ''}`),
   byReason: (from: string, to: string) => api.get<WasteReasonTotal[]>(`/waste/by-reason?from=${from}&to=${to}`),
@@ -118,3 +120,28 @@ export const wasteApi = {
 export const WASTE_STATUS_WORDS: Record<string, string> = {
   applied: 'Ya se descontó', pending: 'Por aprobar', rejected: 'No se aprobó', covered: 'La cubrió el conteo', undone: 'Deshecha',
 };
+
+// Conteo contra ventas de un conteo cerrado (spec 096, subida 2). Cantidades en la unidad base, texto
+// decimal. group: qué hacer con el artículo (maqueta C).
+export interface CountVsSalesItem {
+  ingredientId: number;
+  name: string;
+  unitCode: string;
+  hasPrevious: boolean;
+  initial: string;
+  entries: string;
+  sold: string;
+  expectedWaste: string;
+  registered: string;
+  transfersOut: string;
+  system: string;
+  counted: string;
+  diff: string;
+  pct: string | null;
+  group: 'review' | 'suggest' | 'small';
+  suggestedPct: string | null;
+}
+export interface CountVsSales {
+  firstCount: boolean;
+  items?: CountVsSalesItem[];
+}

@@ -20,6 +20,7 @@ import { parseNumero } from '../../domain/numeros';
 import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { CountLossReport } from './CountLossReport';
+import { CountVsSalesReport } from './CountVsSalesReport';
 import { PlaceChooser } from './CountPlaceField';
 import { NO_LOCATION } from './useLocations';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -154,6 +155,8 @@ export function StockCountTab() {
   // El conteo que se acaba de cerrar o el último cerrado, para ver lo que se perdió (spec 039).
   const [closedId, setClosedId] = useState<number | null>(null);
   const [showLoss, setShowLoss] = useState(false);
+  // Conteo contra ventas (spec 096, subida 2), junto a lo que se perdió.
+  const [showVsSales, setShowVsSales] = useState(false);
   const canSeeLoss = can('inventory.health_view');
   const canOrder = can('inventory.configure');
   const navigate = useNavigate();
@@ -207,7 +210,7 @@ export function StockCountTab() {
       <Segmented label="¿Qué almacén cuentas?"
         value={String(warehouseId ?? whList.find((w) => w.isSales)?.id ?? '')}
         options={whList.map((w) => ({ value: String(w.id), label: w.isSales ? `${w.name} · de venta` : w.name }))}
-        onChange={(v) => { setPicked(Number(v)); setClosed(null); setClosedId(null); setShowLoss(false); }} />
+        onChange={(v) => { setPicked(Number(v)); setClosed(null); setClosedId(null); setShowLoss(false); setShowVsSales(false); }} />
     </HStack>
   );
 
@@ -225,6 +228,14 @@ export function StockCountTab() {
             <Button alignSelf="start" minH="44px" variant="outline"
               onClick={() => { setShowLoss(true); medirAccion('inventario', 'ver-faltante'); }}>
               {closed ? 'Ver lo que se perdió desde el conteo anterior' : 'Ver lo que se perdió en el último conteo'}
+            </Button>
+          ))}
+        {canSeeLoss && lossCountId !== null && (showVsSales
+          ? <CountVsSalesReport countId={lossCountId} />
+          : (
+            <Button alignSelf="start" minH="44px" variant="outline"
+              onClick={() => { setShowVsSales(true); medirAccion('inventario', 'ver-contra-ventas'); }}>
+              Ver lo vendido contra lo contado
             </Button>
           ))}
         <Text fontSize="sm" color="fg.muted">
