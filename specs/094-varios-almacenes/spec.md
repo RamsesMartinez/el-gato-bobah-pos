@@ -27,7 +27,7 @@ El alcance no cabe en una subida. Va en este orden, y cada entrega sube a produc
 
 | # | Entrega | Lo que el operador ve al terminar |
 | --- | --- | --- |
-| E1 | Almacenes y almacén en cada registro | Almacén › Almacenes: el principal («Local») y alta de otros. Todo lo existente queda en el principal; ningún total cambia |
+| E1 | Almacenes y almacén en cada registro | Negocio › Inventario › Almacenes: el principal («Local») y alta de otros. Todo lo existente queda en el principal; ningún total cambia |
 | E2 | Ventas | Las ventas (mostrador, plataformas, pedido web) descuentan del almacén de venta; Existencias con selector de almacén y «Todos» |
 | E3 | Compras con destino | Cada renglón de compra elige a qué almacén entra |
 | E4 | Traspasos | Mover mercancía entre almacenes de la misma sucursal |

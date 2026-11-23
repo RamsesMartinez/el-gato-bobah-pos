@@ -18,7 +18,7 @@ make stop && make db-restaurar dump=backups/prod/pre-094-20261123-0241.dump && m
 
 | Entrega | Escenario | Resultado esperado |
 | --- | --- | --- |
-| 1 | Almacén › Almacenes: dar de alta «Bodega» | Aparece vacía; «Local» marcado como de venta |
+| 1 | Negocio › Inventario › Almacenes: dar de alta «Bodega» | Aparece vacía; «Local» marcado como de venta |
 | 1 | Archivar «Local» | Se niega |
 | 1 | Vender un producto con receta | Baja «Local»; Movimientos del de venta lo muestra |
 | 1 | Sucursal con un solo almacén → Existencias | Sin selector, igual que hoy |
