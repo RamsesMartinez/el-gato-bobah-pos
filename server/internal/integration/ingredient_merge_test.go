@@ -783,6 +783,7 @@ func TestMergeIsIsolatedInTheThreeCases(t *testing.T) {
 // Unir insumos no tira la merma esperada (spec 096, R14 M1): si el destino está sin captura, hereda
 // la del origen; si tiene la suya, se queda con la suya.
 func TestMergeKeepsTheExpectedWaste(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name        string
 		target, src *string

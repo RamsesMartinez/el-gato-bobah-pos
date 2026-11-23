@@ -20,11 +20,12 @@ import (
 
 func wpct(s string) *decimal.Decimal { v := decimal.RequireFromString(s); return &v }
 
-func lastAudit(t *testing.T, st *store.Store, action domain.AuditAction, entity int64) (before, after string) {
+// lastAudit nombra la acción con su texto literal: así la encuentra TestEveryAuditActionIsProduced.
+func lastAudit(t *testing.T, st *store.Store, action string, entity int64) (before, after string) {
 	t.Helper()
 	if err := st.Pool.QueryRow(context.Background(), `
 		select coalesce(before::text, ''), coalesce(after::text, '') from audit_events
-		 where action = $1 and entity_id = $2 order by id desc limit 1`, string(action), entity).Scan(&before, &after); err != nil {
+		 where action = $1 and entity_id = $2 order by id desc limit 1`, action, entity).Scan(&before, &after); err != nil {
 		t.Fatalf("no quedó %s en la bitácora: %v", action, err)
 	}
 	return before, after
@@ -44,7 +45,7 @@ func TestGeneralExpectedWasteMovesRecipeCosts(t *testing.T) {
 	wantCost(t, owner, "frappé con 5 % general", "products", k.frappe, "4.2")
 	wantCost(t, owner, "el preparado no recibe el general", "ingredients", k.base, "0.02")
 	wantCost(t, owner, "extra de leche (artículo → general)", "modifier_options", k.extraLeche, "2.1")
-	if before, after := lastAudit(t, owner, domain.AuditSettingsExpectedWaste, k.company); before == "" || after == "" {
+	if before, after := lastAudit(t, owner, "settings.expected_waste", k.company); before == "" || after == "" {
 		t.Fatalf("la bitácora no dice de cuánto a cuánto: %q → %q", before, after)
 	}
 
@@ -74,7 +75,7 @@ func TestProductExpectedWasteReplacesTheGeneral(t *testing.T) {
 	}
 	wantCost(t, owner, "frappé con 10 % propio y 5 % general (10, no 15)", "products", k.frappe, "4.4")
 	wantCost(t, owner, "paquete de dos frappés", "products", k.paquete, "8.8")
-	if _, after := lastAudit(t, owner, domain.AuditProductExpectedWaste, k.frappe); after == "" {
+	if _, after := lastAudit(t, owner, "product.expected_waste", k.frappe); after == "" {
 		t.Fatal("el cambio del producto no quedó en la bitácora")
 	}
 
@@ -114,7 +115,7 @@ func TestArticleExpectedWasteZeroIsNotEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantCost(t, owner, "frappé con el artículo sin captura vuelve al general", "products", k.frappe, "4.2")
-	if _, after := lastAudit(t, owner, domain.AuditIngredientExpectedWaste, k.base); after == "" {
+	if _, after := lastAudit(t, owner, "ingredient.expected_waste", k.base); after == "" {
 		t.Fatal("el cambio del artículo no quedó en la bitácora")
 	}
 }
@@ -151,6 +152,7 @@ func TestExpectedWasteDoesNotRewritePastSales(t *testing.T) {
 }
 
 func TestExpectedWasteIsIsolated(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	k := seedCostCatalog(t, owner, defaultCompanyID, "")
 	other := makeCompany(t, owner, "otra-merma")

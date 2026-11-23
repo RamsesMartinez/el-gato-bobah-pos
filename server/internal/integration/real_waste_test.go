@@ -78,6 +78,7 @@ func seedRealWaste(t *testing.T, owner *store.Store) realWasteFixture {
 }
 
 func TestRealWasteByWarehouse(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	f := seedRealWaste(t, owner)
 	st := appRoleStore(t)
@@ -101,6 +102,7 @@ func TestRealWasteByWarehouse(t *testing.T) {
 }
 
 func TestProductCostingJSONAndRealWaste(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	f := seedRealWaste(t, owner)
 	st := appRoleStore(t)
@@ -141,6 +143,7 @@ func TestProductCostingJSONAndRealWaste(t *testing.T) {
 }
 
 func TestRealWasteAndCostingAreIsolated(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	f := seedRealWaste(t, owner)
 	other := makeCompany(t, owner, "otra-merma-real")
