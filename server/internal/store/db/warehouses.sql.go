@@ -32,6 +32,41 @@ func (q *Queries) CreateWarehouse(ctx context.Context, name string) (int64, erro
 	return id, err
 }
 
+const listWarehouseNames = `-- name: ListWarehouseNames :many
+select w.id, w.name, w.is_sales
+  from warehouses w
+ where w.branch_id = current_branch_id() and w.is_active
+ order by w.is_sales desc, w.name, w.id
+`
+
+type ListWarehouseNamesRow struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	IsSales bool   `json:"is_sales"`
+}
+
+// Los activos de la sucursal, el de venta primero, sin contar existencias: la lee quien solo reporta o
+// cuenta, y no tiene por qué recorrer stock_levels ni saber cuántos artículos hay en cada uno.
+func (q *Queries) ListWarehouseNames(ctx context.Context) ([]ListWarehouseNamesRow, error) {
+	rows, err := q.db.Query(ctx, listWarehouseNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListWarehouseNamesRow{}
+	for rows.Next() {
+		var i ListWarehouseNamesRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.IsSales); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWarehouses = `-- name: ListWarehouses :many
 select w.id, w.name, w.is_sales, w.is_active,
        (select count(*) from stock_levels s where s.warehouse_id = w.id and s.on_hand <> 0)::bigint as items_with_stock
