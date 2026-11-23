@@ -202,7 +202,7 @@ web/src/
 ├── api/pedidosEntrantes.ts
 ├── app/permissions.ts                               # 'orders.accept_incoming'
 ├── app/AppShell.tsx                                 # monta la alerta y el indicador
-├── features/entrantes/
+├── shared/entrantes/   (shared: la usan el shell y Pedidos; una pantalla no importa de otra)
 │   ├── alarma.ts (+ test)                           # AudioContext, búfer en bucle, desbloqueo
 │   ├── useEntrantes.ts (+ test)                     # consulta, evento, reconexión, visibilidad, sondeo
 │   ├── AlertaDeEntrantes.tsx (+ test)               # indicador + aviso de sonido

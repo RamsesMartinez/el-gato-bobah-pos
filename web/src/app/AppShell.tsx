@@ -20,6 +20,7 @@ import { MenuRail, RAIL_WIDTH, RAIL_WIDTH_WIDE } from './MenuRail';
 import { PendingWasteBar } from '../features/waste/PendingWasteBar';
 import { Campana } from '../features/notificaciones/Campana';
 import { FranjaDeAgotado } from '../features/notificaciones/FranjaDeAgotado';
+import { AlertaDeEntrantes } from '../shared/entrantes/AlertaDeEntrantes';
 import { railScrollFor } from './railScroll';
 
 // En pantalla ancha y alta el menú se muestra expandido (spec 085, FR-008). El alto manda: medido a
@@ -150,6 +151,9 @@ export function AppShell() {
       {/* La franja de mermas por aprobar es una FILA de esta columna y no algo encima: así le quita
           su alto a la pantalla en vez de empujarla 44 px fuera de los 600 (spec 039). */}
       <Flex flex="1" minW={0} direction="column">
+        {/* Pedidos por aceptar (spec 093): primera fila, antes que cualquier otro aviso, y encima de
+            hojas y del bloqueo por PIN. Suena en cualquier pantalla. */}
+        <AlertaDeEntrantes />
         <PendingWasteBar />
         <FranjaDeAgotado onVer={() => setAvisos(true)} />
         {/* tabIndex -1: el menú le pasa el foco al abrir una pantalla desde su panel (spec 085). */}

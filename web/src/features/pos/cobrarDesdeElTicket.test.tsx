@@ -11,12 +11,6 @@ import { reportarResultado } from './useSinConexion';
 import { reiniciarCaptura } from './useCuenta';
 import { POSPage } from './POSPage';
 
-const pendientes = vi.hoisted(() => ({ current: [] as unknown[] }));
-vi.mock('../../api/pedidosDePlataforma', () => ({
-  pedidosPendientes: () => Promise.resolve(pendientes.current),
-  aceptarPedidoDePlataforma: vi.fn(),
-}));
-
 const cashStatus = vi.hoisted(() => ({
   current: { open: true } as { open: boolean; deOtroDia?: boolean; openedAt?: string },
 }));
@@ -93,7 +87,6 @@ beforeEach(() => {
   anchoDelPos.width = 500;
   tabletaBaja(false);
   cashStatus.current = { open: true };
-  pendientes.current = [];
   vivas.current = [];
   usePosStore.setState({ selected: null });
   usePosStore.getState().reiniciarNueva();

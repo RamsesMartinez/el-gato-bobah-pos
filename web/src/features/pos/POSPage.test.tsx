@@ -16,9 +16,8 @@ import { useSessionStore } from '../../stores/session';
 import { POSPage } from './POSPage';
 
 const pendientes = vi.hoisted(() => ({ current: [] as unknown[] }));
-vi.mock('../../api/pedidosDePlataforma', () => ({
-  pedidosPendientes: () => Promise.resolve(pendientes.current),
-  aceptarPedidoDePlataforma: vi.fn(),
+vi.mock('../../api/pedidosEntrantes', () => ({
+  pedidosEntrantes: () => Promise.resolve(pendientes.current),
 }));
 
 const cashStatus = vi.hoisted(() => ({
@@ -144,17 +143,15 @@ describe('caja', () => {
     expect(screen.queryByRole('button', { name: /cobrar/i })).not.toBeInTheDocument();
   });
 
-  // Aceptar un pedido de plataforma no exige turno: la cocina no espera a que alguien abra caja.
-  test('sin caja abierta, un pedido de plataforma sigue avisando', async () => {
-    cashStatus.current = { open: false };
-    pendientes.current = [{
-      id: 1, platformName: 'Uber Eats', displayId: 'K4T2',
-      placedAt: '2026-09-17T18:04:00Z', decideBefore: new Date(Date.now() + 600000).toISOString(),
-      serviceType: 'domicilio', customerName: 'Ana', total: '342.00', lines: [],
-    }];
+  // El aviso de pedidos por aceptar lo pinta el shell en TODAS las pantallas (spec 093). Si Vender
+  // montara el suyo, un mismo pedido saldría dos veces: dos botones de Aceptar para lo mismo.
+  test('Vender no pinta su propio aviso de pedidos por aceptar', async () => {
+    pendientes.current = [{ source: 'platform', id: 1, sourceName: 'Uber Eats', displayId: 'K4T2', customerName: 'Ana',
+      customerPhone: '', address: '', serviceType: 'domicilio', total: '342.00', placedAt: null, decideBefore: null, lines: [] }];
     montar();
-    expect(await screen.findByText(/no hay caja abierta/i)).toBeInTheDocument();
-    expect(await screen.findByTestId('aviso-de-pedido-entrante')).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText(/buscar/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('aviso-de-pedido-entrante')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('franja-de-entrantes')).not.toBeInTheDocument();
   });
 
   test('con caja abierta la pantalla de venta se muestra', async () => {

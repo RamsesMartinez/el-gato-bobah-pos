@@ -62,9 +62,9 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 ### Front común
 
-- [ ] T018 [P] Agregar `'orders.accept_incoming'` a `web/src/app/permissions.ts` y su etiqueta en la pantalla de roles (donde se nombran los permisos), con el test que ya cubre el catálogo
-- [ ] T019 [P] `web/src/api/pedidosEntrantes.ts`: tipos del contrato (`lines?`/`options?` opcionales), `pendientes()`, `aceptar(source,id)`, `rechazar(source,id,reason)`
-- [ ] T020 [P] Test `web/src/features/entrantes/capas.test.ts` y `capas.ts`: hojas 1400 < toaster 1700 < bloqueo 2000 < franja 2100 (sustituye al test de `CAPA_DEL_AVISO`)
+- [X] T018 [P] Agregar `'orders.accept_incoming'` a `web/src/app/permissions.ts` y su etiqueta en la pantalla de roles (donde se nombran los permisos), con el test que ya cubre el catálogo
+- [X] T019 [P] `web/src/api/pedidosEntrantes.ts`: tipos del contrato (`lines?`/`options?` opcionales), `pendientes()`, `aceptar(source,id)`, `rechazar(source,id,reason)`
+- [X] T020 [P] Test `web/src/shared/entrantes/capas.test.ts` y `capas.ts`: hojas 1400 < toaster 1700 < bloqueo 2000 < franja 2100 (sustituye al test de `CAPA_DEL_AVISO`)
 
 **Checkpoint**: backend completo y probado; front con contrato y capas.
 
@@ -74,13 +74,13 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 **Independent Test**: con un pendiente sembrado, la tableta en Almacén suena y muestra la franja; al aceptarlo, se calla.
 
-- [ ] T021 [P] [US1] Test `web/src/features/entrantes/alarma.test.ts` con `AudioContext` falso: suena con ≥1 pendiente y una sola vez con varios; se calla con 0; `bloqueada` si el contexto está `suspended`; `pointerdown` llama `resume()`; el tono entra como función generadora del búfer y el test usa uno propio (FR-013)
-- [ ] T022 [US1] Implementar `web/src/features/entrantes/alarma.ts` (búfer generado en bucle, desbloqueo global, estado observable)
-- [ ] T023 [P] [US1] Test `web/src/features/entrantes/useEntrantes.test.ts`: consulta inicial; refetch con `incoming.changed`; sin permiso no consulta ni abre `/events`
-- [ ] T024 [US1] Implementar `web/src/features/entrantes/useEntrantes.ts` (TanStack Query, `refetchInterval` 15 s, `EventSource` con `incoming.changed`)
-- [ ] T025 [P] [US1] Test `web/src/features/entrantes/FranjaDeEntrantes.test.tsx` (M-Indicador): «N pedidos por aceptar» con el más urgente (origen, cliente, minutos); «Ver pedido» con 1 y «Ver pedidos» con varios lleva a `/pedidos`; capa `FRANJA` encima de una hoja abierta; con bloqueo por PIN solo dice cuántos (sin cliente); no se pinta en Pedidos mientras la columna está a la vista y sí en la pestaña «Cerrados»; sin pendientes no ocupa alto
-- [ ] T026 [US1] Implementar `web/src/features/entrantes/FranjaDeEntrantes.tsx` y `AlertaDeEntrantes.tsx` (hook + alarma + franja) y montarla en `web/src/app/AppShell.tsx` como fila de la columna de trabajo, antes de la franja de agotados
-- [ ] T027 [US1] Quitar `AvisoDePlataforma` de `web/src/features/pos/POSPage.tsx`; borrar `AvisoDePlataforma`, `AvisoDePedidoEntrante`, `PedidosEntrantesSheet`, `usePedidosDePlataforma`, `api/pedidosDePlataforma.ts` y sus tests; mover `urgencia.ts` (+test) a `web/src/features/entrantes/`; test en `POSPage.test.tsx` de que Vender no monta un segundo aviso
+- [X] T021 [P] [US1] Test `web/src/shared/entrantes/alarma.test.ts` con `AudioContext` falso: suena con ≥1 pendiente y una sola vez con varios; se calla con 0; `bloqueada` si el contexto está `suspended`; `pointerdown` llama `resume()`; el tono entra como función generadora del búfer y el test usa uno propio (FR-013)
+- [X] T022 [US1] Implementar `web/src/shared/entrantes/alarma.ts` (búfer generado en bucle, desbloqueo global, estado observable)
+- [X] T023 [P] [US1] Test `web/src/shared/entrantes/useEntrantes.test.ts`: consulta inicial; refetch con `incoming.changed`; sin permiso no consulta ni abre `/events`
+- [X] T024 [US1] Implementar `web/src/shared/entrantes/useEntrantes.ts` (TanStack Query, `refetchInterval` 15 s, `EventSource` con `incoming.changed`)
+- [X] T025 [P] [US1] Test `web/src/shared/entrantes/FranjaDeEntrantes.test.tsx` (M-Indicador): «N pedidos por aceptar» con el más urgente (origen, cliente, minutos); «Ver pedido» con 1 y «Ver pedidos» con varios lleva a `/pedidos`; capa `FRANJA` encima de una hoja abierta; con bloqueo por PIN solo dice cuántos (sin cliente); no se pinta en Pedidos mientras la columna está a la vista y sí en la pestaña «Cerrados»; sin pendientes no ocupa alto
+- [X] T026 [US1] Implementar `web/src/shared/entrantes/FranjaDeEntrantes.tsx` y `AlertaDeEntrantes.tsx` (hook + alarma + franja) y montarla en `web/src/app/AppShell.tsx` como fila de la columna de trabajo, antes de la franja de agotados
+- [X] T027 [US1] Quitar `AvisoDePlataforma` de `web/src/features/pos/POSPage.tsx`; borrar `AvisoDePlataforma`, `AvisoDePedidoEntrante`, `PedidosEntrantesSheet`, `usePedidosDePlataforma`, `api/pedidosDePlataforma.ts` y sus tests; mover `urgencia.ts` (+test) a `web/src/shared/entrantes/`; test en `POSPage.test.tsx` de que Vender no monta un segundo aviso
 
 ---
 
@@ -88,9 +88,9 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 **Independent Test**: dos pendientes; aceptar uno lo manda a cocina con comanda; rechazar el otro con «Se acabó un producto» lo deja `rechazado`.
 
-- [ ] T028 [P] [US2] Test `web/src/features/entrantes/ColumnaPorAceptar.test.tsx` (M-PorAceptar): el más urgente abierto con hasta 3 renglones y «+N más»; los demás plegados en «N productos» (avisa si alguno no está en el menú) que abre con un toque; ícono de origen junto al nombre; «quedan N min» con plazo y «hace N min» sin plazo; teléfono, dirección y pago cuando vienen; Aceptar y Rechazar ≥ 44 px; sin pendientes no se pinta
-- [ ] T029 [P] [US2] Test `web/src/features/entrantes/RechazarSheet.test.tsx`: 5 motivos en palabras de quien opera; «Rechazar pedido» deshabilitado sin motivo; manda el código propio
-- [ ] T030 [US2] Implementar `ColumnaPorAceptar.tsx`, `TarjetaEntrante.tsx` y `RechazarSheet.tsx` (sobre `ConfirmSheet`) en `web/src/features/entrantes/`
+- [ ] T028 [P] [US2] Test `web/src/shared/entrantes/ColumnaPorAceptar.test.tsx` (M-PorAceptar): el más urgente abierto con hasta 3 renglones y «+N más»; los demás plegados en «N productos» (avisa si alguno no está en el menú) que abre con un toque; ícono de origen junto al nombre; «quedan N min» con plazo y «hace N min» sin plazo; teléfono, dirección y pago cuando vienen; Aceptar y Rechazar ≥ 44 px; sin pendientes no se pinta
+- [ ] T029 [P] [US2] Test `web/src/shared/entrantes/RechazarSheet.test.tsx`: 5 motivos en palabras de quien opera; «Rechazar pedido» deshabilitado sin motivo; manda el código propio
+- [ ] T030 [US2] Implementar `ColumnaPorAceptar.tsx`, `TarjetaEntrante.tsx` y `RechazarSheet.tsx` (sobre `ConfirmSheet`) en `web/src/shared/entrantes/`
 - [ ] T031 [US2] Montar la columna en `web/src/features/orders/OrdersBoardPage.tsx` a la izquierda del tablero, columnas sobre panel `bg.muted`; aceptar imprime la comanda solo en esta tableta (`KitchenTicket`) y avisa en palabras del operador si falla; test en `OrdersBoardPage.test.tsx` de que con pendientes el tablero conserva sus columnas
 
 ---
@@ -99,8 +99,8 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 **Independent Test**: offline, se siembra; al volver la red suena en < 5 s.
 
-- [ ] T032 [P] [US3] Tests en `useEntrantes.test.ts`: error de red tras datos → los datos siguen y la alarma sigue; `alReconectar` → refetch; `visibilitychange` a visible → refetch y `resume()`; montar con pendientes en la primera respuesta → suena o queda `bloqueada`
-- [ ] T033 [US3] Implementar los tres caminos en `useEntrantes.ts` y `alarma.ts`
+- [X] T032 [P] [US3] Tests en `useEntrantes.test.ts`: error de red tras datos → los datos siguen y la alarma sigue; `alReconectar` → refetch; `visibilitychange` a visible → refetch y `resume()`; montar con pendientes en la primera respuesta → suena o queda `bloqueada`
+- [X] T033 [US3] Implementar los tres caminos en `useEntrantes.ts` y `alarma.ts`
 
 ---
 
@@ -113,8 +113,8 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 ## Phase 7: User Story 5 — Sonido bloqueado (P2)
 
-- [ ] T036 [US5] Test en `FranjaDeEntrantes.test.tsx`: con alarma `bloqueada` y pendientes, botón «Toca para activar el sonido»; tras el toque, si sigue bloqueada el botón sigue; sin pendientes no hay botón
-- [ ] T037 [US5] Implementar el botón en la franja
+- [X] T036 [US5] Test en `FranjaDeEntrantes.test.tsx`: con alarma `bloqueada` y pendientes, botón «Toca para activar el sonido»; tras el toque, si sigue bloqueada el botón sigue; sin pendientes no hay botón
+- [X] T037 [US5] Implementar el botón en la franja
 
 ---
 

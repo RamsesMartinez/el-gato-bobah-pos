@@ -47,3 +47,21 @@ export function minutosQueQuedan(decideBefore: string | null, ahora: number): nu
   if (Number.isNaN(resta) || resta <= 0) return 0;
   return Math.floor(resta / 60000);
 }
+
+/**
+ * minutosDesde dice hace cuánto llegó un pedido sin plazo (el pedido web). Hacia abajo y nunca
+ * negativo: un reloj de tableta atrasado no debe pintar «hace -1 min».
+ */
+export function minutosDesde(placedAt: string | null, ahora: number): number {
+  if (!placedAt) return 0;
+  const pasa = ahora - new Date(placedAt).getTime();
+  if (Number.isNaN(pasa) || pasa <= 0) return 0;
+  return Math.floor(pasa / 60000);
+}
+
+/** Cuánto le queda al pedido, o hace cuánto llegó si su origen no tiene plazo. */
+export function tiempoDe(p: { decideBefore: string | null; placedAt: string | null }, ahora: number): string {
+  return p.decideBefore
+    ? `quedan ${minutosQueQuedan(p.decideBefore, ahora)} min`
+    : `hace ${minutosDesde(p.placedAt, ahora)} min`;
+}
