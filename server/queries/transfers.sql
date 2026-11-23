@@ -24,6 +24,16 @@ insert into stock_movements (warehouse_id, item_type, ingredient_id, product_id,
 values (sqlc.arg(warehouse_id), sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id), 'traspaso',
         sqlc.arg(quantity), sqlc.narg(unit_cost), sqlc.arg(transfer_id), sqlc.arg(user_id), sqlc.arg(reason), sqlc.narg(note));
 
+-- name: LockProductStockNowait :many
+-- Las existencias de los productos de un traspaso, en todos los almacenes de la sucursal, en orden y
+-- SIN ESPERAR. Una venta toma la existencia del producto en el orden de su ticket; si el traspaso
+-- esperara aquí podría cerrar un ciclo y Postgres cancelaría una de las dos —a veces el cobro—. Así
+-- responde 409 «vuelve a intentar» y la venta sigue (lo mismo que LockIngredientStockNowait).
+select product_id from stock_levels
+ where item_type = 'producto' and product_id = any(sqlc.arg(ids)::bigint[]) and branch_id = current_branch_id()
+ order by warehouse_id, product_id
+   for update nowait;
+
 -- name: TransferArticles :many
 -- Lo que el traspaso necesita de cada artículo: que exista en la empresa, esté activo y su costo vigente.
 select 'ingrediente'::stock_item_type as item_type, i.id, i.is_active, i.current_cost

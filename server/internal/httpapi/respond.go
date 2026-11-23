@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/alerts"
@@ -388,6 +389,10 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "ALT_NAME_TAKEN"
 	case errors.Is(err, domain.ErrConflict):
 		status, code = http.StatusConflict, "CONFLICT"
+	case isDeadlock(err):
+		// Postgres abortó esta transacción para destrabar otra (40P01): la otra terminó y ésta se
+		// reintenta. No es un error del servidor ni amerita el aviso por correo.
+		status, code, msg = http.StatusConflict, "CONFLICT", "Otra operación usaba esos artículos al mismo tiempo; vuelve a intentar"
 	case errors.Is(err, domain.ErrTooManyRequests):
 		status, code = http.StatusTooManyRequests, "TOO_MANY_REQUESTS"
 	case errors.Is(err, domain.ErrDescuentoMayorQueLaVenta):
@@ -540,4 +545,10 @@ func DecodeStrict(r *http.Request, v any) error {
 		return domain.ErrValidation
 	}
 	return nil
+}
+
+// isDeadlock dice si Postgres canceló la transacción por un bloqueo mutuo.
+func isDeadlock(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "40P01"
 }

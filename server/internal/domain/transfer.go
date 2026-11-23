@@ -15,6 +15,10 @@ var (
 	ErrTransferKeyReused = fmt.Errorf("%w: esa clave ya se usó para otro traspaso", ErrConflict)
 )
 
+// MaxTransferLines es lo más que lleva un traspaso. Uno de verdad mueve unos cuantos artículos; el tope
+// existe para que un cuerpo enorme no tenga tomados los almacenes mientras inserta miles de renglones.
+const MaxTransferLines = 100
+
 // TransferLine es un renglón de traspaso: un artículo (insumo o producto con existencia propia) y la
 // cantidad en su unidad base.
 type TransferLine struct {
@@ -39,6 +43,9 @@ func ValidateTransfer(from, to int64, lines []TransferLine) ([]TransferLine, err
 	if len(lines) == 0 {
 		return nil, fmt.Errorf("%w: el traspaso no lleva artículos", ErrValidation)
 	}
+	if len(lines) > MaxTransferLines {
+		return nil, fmt.Errorf("%w: un traspaso lleva hasta %d artículos", ErrValidation, MaxTransferLines)
+	}
 	seen := map[StockKey]bool{}
 	out := make([]TransferLine, 0, len(lines))
 	for _, l := range lines {
@@ -59,6 +66,19 @@ func ValidateTransfer(from, to int64, lines []TransferLine) ([]TransferLine, err
 		out = append(out, TransferLine{ItemType: l.ItemType, ID: l.ID, Qty: q})
 	}
 	return out, nil
+}
+
+// TransferDuplicates rechaza el mismo artículo dos veces. Se vuelve a revisar después de seguir las
+// uniones de insumos: dos renglones distintos (A y B) son el mismo si A se unió a B.
+func TransferDuplicates(lines []TransferLine) error {
+	seen := map[StockKey]bool{}
+	for _, l := range lines {
+		if seen[l.Key()] {
+			return fmt.Errorf("%w: el mismo artículo va dos veces", ErrValidation)
+		}
+		seen[l.Key()] = true
+	}
+	return nil
 }
 
 // TransferShort es un renglón que el origen no alcanza a cubrir, con lo que hay.

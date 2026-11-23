@@ -100,8 +100,20 @@ func (s *BackofficeService) CreateTransfer(ctx context.Context, in TransferInput
 		if err := lockIngredients(ctx, q, ings); err != nil {
 			return err
 		}
+		// Los productos igual: sin esto el traspaso esperaba a una venta del mismo producto.
+		slices.Sort(prods)
+		if len(prods) > 0 {
+			if _, err := q.LockProductStockNowait(ctx, prods); err != nil {
+				return lockErr(err)
+			}
+		}
 		arts, err := q.TransferArticles(ctx, db.TransferArticlesParams{IngredientIds: ings, ProductIds: prods})
 		if err != nil {
+			return err
+		}
+		// Después de seguir las uniones, A y su destino B son el mismo renglón: se dice así en vez de
+		// «no existe».
+		if err := domain.TransferDuplicates(lines); err != nil {
 			return err
 		}
 		cost := map[domain.StockKey]decimal.Decimal{}

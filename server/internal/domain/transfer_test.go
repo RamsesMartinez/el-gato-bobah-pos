@@ -39,6 +39,18 @@ func TestValidateTransfer(t *testing.T) {
 			}
 		})
 	}
+	// Tope de renglones (revisión de la 094): por HTTP cabían miles en un cuerpo, cada uno tres inserts con
+	// los almacenes tomados.
+	many := make([]TransferLine, MaxTransferLines+1)
+	for i := range many {
+		many[i] = ing(int64(i+1), "1")
+	}
+	if _, err := ValidateTransfer(1, 2, many[:MaxTransferLines]); err != nil {
+		t.Fatalf("%d renglones caben: %v", MaxTransferLines, err)
+	}
+	if _, err := ValidateTransfer(1, 2, many); !errors.Is(err, ErrValidation) {
+		t.Fatalf("%d renglones = %v; quiere 400", MaxTransferLines+1, err)
+	}
 	got, _ := ValidateTransfer(1, 2, []TransferLine{ing(10, "6.123456")})
 	if !got[0].Qty.Equal(d("6.1235")) {
 		t.Fatalf("la cantidad se redondea a 4 decimales: %s", got[0].Qty)
@@ -66,5 +78,19 @@ func TestTransferShortfalls(t *testing.T) {
 	// Un artículo sin fila de existencia vale cero.
 	if got := TransferShortfalls([]TransferLine{{ItemType: "ingrediente", ID: 99, Qty: d("1")}}, onHand); len(got) != 1 || !got[0].Available.IsZero() {
 		t.Fatalf("sin existencia = %+v", got)
+	}
+}
+
+// Dos insumos distintos que resultan ser el mismo después de seguir una unión (A se unió a B) son el
+// mismo artículo dos veces: se dice así, no «no existe» (revisión de la 094).
+func TestTransferDuplicates(t *testing.T) {
+	a := TransferLine{ItemType: "ingrediente", ID: 7, Qty: d("1")}
+	b := TransferLine{ItemType: "producto", ID: 7, Qty: d("1")}
+	if err := TransferDuplicates([]TransferLine{a, b}); err != nil {
+		t.Fatalf("insumo 7 y producto 7 son distintos: %v", err)
+	}
+	err := TransferDuplicates([]TransferLine{a, a})
+	if !errors.Is(err, ErrValidation) || err.Error() == "" {
+		t.Fatalf("el mismo insumo dos veces = %v; quiere 400", err)
 	}
 }

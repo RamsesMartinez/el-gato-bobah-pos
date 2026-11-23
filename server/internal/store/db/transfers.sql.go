@@ -217,6 +217,37 @@ func (q *Queries) ListTransfers(ctx context.Context, lim int32) ([]ListTransfers
 	return items, nil
 }
 
+const lockProductStockNowait = `-- name: LockProductStockNowait :many
+select product_id from stock_levels
+ where item_type = 'producto' and product_id = any($1::bigint[]) and branch_id = current_branch_id()
+ order by warehouse_id, product_id
+   for update nowait
+`
+
+// Las existencias de los productos de un traspaso, en todos los almacenes de la sucursal, en orden y
+// SIN ESPERAR. Una venta toma la existencia del producto en el orden de su ticket; si el traspaso
+// esperara aquí podría cerrar un ciclo y Postgres cancelaría una de las dos —a veces el cobro—. Así
+// responde 409 «vuelve a intentar» y la venta sigue (lo mismo que LockIngredientStockNowait).
+func (q *Queries) LockProductStockNowait(ctx context.Context, ids []int64) ([]*int64, error) {
+	rows, err := q.db.Query(ctx, lockProductStockNowait, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*int64{}
+	for rows.Next() {
+		var product_id *int64
+		if err := rows.Scan(&product_id); err != nil {
+			return nil, err
+		}
+		items = append(items, product_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const mergeTargets = `-- name: MergeTargets :many
 select old_ingredient_id, new_ingredient_id from ingredient_replacements
  where kind = 'merge' and old_ingredient_id = any($1::bigint[])

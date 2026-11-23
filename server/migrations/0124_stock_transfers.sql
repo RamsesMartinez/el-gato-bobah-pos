@@ -77,10 +77,17 @@ create trigger stock_transfer_lines_merged_guard before insert or update of ingr
 create constraint trigger stock_transfer_lines_merged_check after insert or update of ingredient_id on stock_transfer_lines
   deferrable initially deferred for each row execute function reject_merged_ingredient();
 
--- Los movimientos del traspaso, ligados al documento y en su sucursal.
+-- Los movimientos del traspaso, ligados al documento y en su sucursal. Las dos reglas van `not valid`:
+-- la columna nace vacía y todas las filas existentes las cumplen, pero validarlas aquí recorrería
+-- stock_movements entera con un candado que frena a las ventas durante la subida. Aplican desde ya a
+-- toda fila nueva; el `validate` va en una migración posterior (no toma ese candado).
 alter table stock_movements add column transfer_id bigint;
 alter table stock_movements add constraint stock_movements_transfer_of_branch
-  foreign key (transfer_id, company_id, branch_id) references stock_transfers (id, company_id, branch_id);
+  foreign key (transfer_id, company_id, branch_id) references stock_transfers (id, company_id, branch_id) not valid;
+-- Un movimiento `traspaso` sin su documento no se puede explicar, y uno de otro tipo ligado a un
+-- traspaso lo haría parecer parte de él.
+alter table stock_movements add constraint stock_movements_transfer_link
+  check ((movement_type = 'traspaso') = (transfer_id is not null)) not valid;
 create index stock_movements_by_transfer on stock_movements (company_id, transfer_id) where transfer_id is not null;
 
 -- +goose Down
@@ -97,6 +104,7 @@ end $$;
 -- +goose StatementEnd
 
 drop index stock_movements_by_transfer;
-alter table stock_movements drop constraint stock_movements_transfer_of_branch, drop column transfer_id;
+alter table stock_movements drop constraint stock_movements_transfer_link,
+  drop constraint stock_movements_transfer_of_branch, drop column transfer_id;
 drop table stock_transfer_lines;
 drop table stock_transfers;
