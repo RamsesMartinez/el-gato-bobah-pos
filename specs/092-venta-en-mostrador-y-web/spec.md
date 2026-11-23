@@ -95,9 +95,10 @@ aunque la pantalla esté desactualizada.
 2. **Given** un producto con «Vender sin existencia» apagado y sin existencia para uno en la
    sucursal, **When** se abre Vender, **Then** la tarjeta se ve atenuada con la
    etiqueta «Agotado» y tocarla no agrega nada.
-3. **Given** ese mismo producto, **When** una tableta con la pantalla desactualizada intenta cobrar
-   una cuenta que lo incluye, **Then** el servidor la rechaza diciendo qué producto se agotó, y la
-   pantalla lo marca como agotado.
+3. **Given** ese mismo producto, **When** una tableta con la pantalla desactualizada envía a cocina
+   o cobra una cuenta en captura que lo incluye (o lo agrega a un pedido abierto), **Then** el
+   servidor la rechaza diciendo qué producto se agotó, y la pantalla lo marca como agotado. Un pedido
+   ya creado no se vuelve a revisar al cobrarlo: su existencia se descontó al crearlo.
 4. **Given** un producto con existencia 1 y «Vender sin existencia» apagado, **When** alguien pide
    2, **Then** se rechaza diciendo que solo queda 1.
 5. **Given** un producto agotado, **When** se registra una compra o un conteo que le devuelve
@@ -192,8 +193,10 @@ lo más dos toques desde que abre, sin desplazarse por secciones ajenas.
   servidor es quien decide al cobrar.
 - **Dos tabletas venden la última pieza a la vez**: solo una venta pasa; la otra recibe «se agotó».
 - **Pedido de plataforma**: nunca se rechaza por existencia ni por estar apagado para mostrador.
-- **Un producto apagado para mostrador que ya está en una cuenta abierta** antes del cambio: la
-  cuenta se puede cobrar (el cambio aplica a lo que se agrega después).
+- **Un producto apagado para mostrador mientras está en una cuenta**: si el pedido ya se creó (ya
+  salió a cocina), se cobra como siempre; si la cuenta sigue en captura sin enviar, al enviarla el
+  servidor responde que el menú cambió y la tableta recarga y pide elegir de nuevo (el mismo camino
+  que un producto archivado).
 - **Las dos casillas apagadas**: se permite, y la lista de productos lo dice.
 - **La API vieja durante la subida**: la versión anterior sigue creando productos y cobrando
   mientras la nueva arranca; nada de lo que agrega esta feature le cambia el contrato.
