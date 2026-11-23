@@ -97,6 +97,7 @@ GET /api/v1/stock/articles/{id}/archive-check admin,gerente
 GET /api/v1/stock/articles/{id}/audit admin,gerente
 GET /api/v1/stock/articles/{id}/cost-history admin,gerente
 GET /api/v1/stock/articles/{id}/low-stock admin,gerente
+GET /api/v1/stock/articles/{id}/real-waste admin,gerente
 GET /api/v1/stock/count-places admin,gerente
 GET /api/v1/stock/counts/current admin,gerente
 GET /api/v1/stock/counts/last-closed admin,gerente
@@ -261,6 +262,7 @@ PUT /api/v1/admin/platform-menus/connections/{id}/links/{externalId} admin,geren
 PUT /api/v1/admin/platform-menus/connections/{id}/local-exclusions admin,gerente
 PUT /api/v1/admin/products/{id}/alt-names admin,gerente
 PUT /api/v1/admin/products/{id}/composition admin,gerente
+PUT /api/v1/admin/products/{id}/expected-waste admin,gerente
 PUT /api/v1/admin/products/{id}/image admin,gerente
 PUT /api/v1/branches/{id}/card-count-mode admin,gerente
 PUT /api/v1/business-settings admin,gerente
@@ -273,11 +275,13 @@ PUT /api/v1/orders/{id}/settlement admin,gerente
 PUT /api/v1/settings/cash-close admin,gerente
 PUT /api/v1/settings/count-limits admin,gerente
 PUT /api/v1/settings/daily-summary-emails admin,gerente
+PUT /api/v1/settings/expected-waste admin,gerente
 PUT /api/v1/settings/inventory admin,gerente
 PUT /api/v1/settings/notification-recipients admin,gerente
 PUT /api/v1/settings/waste-threshold admin,gerente
 PUT /api/v1/stock/articles/{id}/alt-names admin,gerente
 PUT /api/v1/stock/articles/{id}/density admin,gerente
+PUT /api/v1/stock/articles/{id}/expected-waste admin,gerente
 PUT /api/v1/stock/articles/{id}/low-stock admin,gerente
 PUT /api/v1/stock/count-places/{id} admin,gerente
 PUT /api/v1/stock/counts/{id}/lines/{ingredientId} admin,gerente

@@ -1,3 +1,4 @@
+import type { RealWaste } from './admin';
 import type { SimilarAlt } from '../components/altNames';
 import { api } from './client';
 import type { PaymentMethod, AccountItem } from '../types/pos';
@@ -1337,6 +1338,11 @@ export const backofficeApi = {
     api.put<{ altNames: string[]; updatedAt: string }>(`/stock/articles/${id}/alt-names`, { altNames, expectedUpdatedAt }),
   similarArticleAltNames: (id: number, name: string) =>
     api.get<SimilarAlt[]>(`/stock/articles/${id}/alt-names/similar?name=${encodeURIComponent(name)}`),
+  // Merma esperada (spec 096): null = sin captura; 0 = capturada en cero.
+  setArticleExpectedWaste: (id: number, pct: number | null) =>
+    api.put<{ pct: string | null }>(`/stock/articles/${id}/expected-waste`, { pct }),
+  articleRealWaste: (id: number) => api.get<{ days: number; items?: RealWaste[] }>(`/stock/articles/${id}/real-waste`),
+  setGeneralExpectedWaste: (pct: number | null) => api.put<{ pct: string | null }>('/settings/expected-waste', { pct }),
   correctArticleCost: (id: number, cost: string) => api.post<void>(`/stock/articles/${id}/cost`, { cost }),
   articleCostHistory: (id: number, before?: string) =>
     api.get<CostHistoryPage>(`/stock/articles/${id}/cost-history${before ? `?before=${encodeURIComponent(before)}` : ''}`),
@@ -1503,6 +1509,8 @@ export interface ArticleSheet extends ArticleRow {
   mergedSources?: number;
   // Spec 058. method: weighing (pesada) | label (etiqueta) | manual (escrita).
   density?: DensityView | null;
+  // La merma del artículo (spec 096): null = sin captura, "0.00" = capturada en cero.
+  expectedWastePct?: string | null;
 }
 export interface DensityView { value: string; method: 'weighing' | 'label' | 'manual'; setByName: string; setAt: string }
 export type DensityBody =

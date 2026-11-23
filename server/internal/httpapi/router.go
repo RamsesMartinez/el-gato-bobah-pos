@@ -358,6 +358,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequirePermission(h.permissions, domain.PermBusinessConfigure)).Put("/business-settings", h.UpdateBusinessSettings)
 				// Costeo y palabra del almacén (spec 038): por permiso y aparte de los datos fiscales.
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/inventory", h.UpdateInventorySettings)
+				// La merma general la decide quien configura el menú, no quien configura el almacén (spec 096).
+				r.With(RequirePermission(h.permissions, domain.PermMenuConfigure)).Put("/settings/expected-waste", h.PutGeneralExpectedWaste)
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/waste-threshold", h.SetWasteThreshold)
 				// Límites del conteo (spec 044): los lee quien cuenta (el aviso del máximo), los cambia
 				// solo quien configura el almacén.
@@ -570,8 +572,11 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles", h.CreateArticle)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}", h.GetArticle)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/cost-history", h.ArticleCostHistory)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/real-waste", h.ArticleRealWaste)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/audit", h.ArticleAudit)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Patch("/articles/{id}", h.UpdateArticle)
+					// La merma del artículo es decisión del menú (spec 096): menu.configure, aparte de la ficha.
+					r.With(RequirePermission(h.permissions, domain.PermMenuConfigure)).Put("/articles/{id}/expected-waste", h.PutArticleExpectedWaste)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/cost", h.CorrectArticleCost)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/archive-check", h.ArticleArchiveCheck)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/archive", h.ArchiveArticle)
@@ -674,6 +679,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(menuConfigure, mediaWrite).Put("/{id}/image", h.PutProductImage)
 					r.With(menuConfigure, mediaWrite).Delete("/{id}/image", h.DeleteProductImage)
 					r.With(menuConfigure).Put("/{id}/composition", h.PutProductComposition)
+					r.With(menuConfigure).Put("/{id}/expected-waste", h.PutProductExpectedWaste)
 					r.With(menuConfigure).Post("/{id}/composition/confirm", h.ConfirmProductComposition)
 					// Nombres alternativos (spec 063): por permiso, fuera del grupo por rol. `menu.configure`
 					// lo tienen los roles que hoy editan un producto; no hay permiso nuevo.

@@ -267,6 +267,8 @@ export interface BusinessSettings {
   costingMethod?: 'last' | 'weighted';
   // A partir de cuánto una merma espera aprobación; nulo, ninguna (spec 039).
   wasteApprovalThreshold?: string | null;
+  // La merma general (spec 096): texto decimal, null = sin merma general.
+  expectedWastePct?: string | null;
   stockItemLabel?: string;
   // Identidad que va en el encabezado del ticket. Los opcionales llegan como string vacío y no
   // como null: el ticket omite el renglón cuando está vacío.

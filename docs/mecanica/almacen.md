@@ -299,3 +299,18 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     `CLIENT_KEY_REUSED`, y el almacén se resuelve antes que la llave (uno ajeno es 404).
   - **`?warehouseId=` vacío es 400** y los cuerpos que aceptan `warehouseId` rechazan campos que no
     conocen (`warehouse_id` restaba del de venta sin avisar).
+- **Merma esperada: artículo → producto → general** (spec 096, 0126). Cuatro cosas que no se ven:
+  - **Nulo no es cero**. `expected_waste_pct` nulo es «sin captura» y cae al siguiente nivel; un 0
+    es «aquí no se pierde nada» y se respeta. Lo decide `domain.ResolveExpectedWaste`. En el front,
+    un campo vacío viaja como `null` (`shared/merma/pct.ts`), nunca como `Number('')`.
+  - **El % del producto y el general solo aplican en la receta del producto** (y el general en la
+    de un extra). Dentro de un preparado manda solo el % de cada artículo: si el general entrara
+    también ahí, se compondría (5 % general subiría ~10 % un producto con jarabe) y el costo del
+    preparado, que es uno solo por artículo, dependería de quién lo usa.
+  - **`ingredients.waste_pct` es la columna vieja y se queda hasta la subida 2**: la versión
+    anterior de la API la lee durante el traslape. El código nuevo no la lee; el Down de la 0126
+    le copia de regreso lo capturado para que un regreso de versión no cambie costos.
+  - **La merma real sigue las uniones de insumos**: el trigger de la 0104 solo redirige lo que se
+    inserta después de unir; las ventas y mermas viejas del origen siguen con su id y su unidad.
+    `domain.MergeChain` las suma con su factor. Un cambio de unidad, en cambio, empieza de cero.
+    Unir hereda el % del origen si el destino está sin captura (`domain.InheritExpectedWaste`).

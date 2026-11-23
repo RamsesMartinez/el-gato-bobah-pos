@@ -21,7 +21,10 @@ import { useHoraDelNegocio } from '../../../hooks/useHoraDelNegocio';
 import { formatBaseQty, formatUnitCost, packExample } from '../../../shared/units';
 import { CompositionSheet } from '../../../shared/CompositionSheet';
 import { PresentationsSheet } from '../PresentationsSheet';
+import { posApi } from '../../../api/pos';
 import { CostTrend } from './CostTrend';
+import { ExpectedWasteField } from './ExpectedWasteField';
+import { RealWasteCard } from './RealWasteCard';
 import { ArticleAuditSheet } from './ArticleAuditSheet';
 import { ArchiveSheet } from './ArchiveSheet';
 import { UnitChangeSheet } from './UnitChangeSheet';
@@ -99,6 +102,9 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
   const canReceive = can('inventory.receive', user);
   const canView = can('inventory.view', user);
   const canCount = can('inventory.count', user);
+  // La merma esperada es decisión del menú (spec 096).
+  const canMenu = can('menu.configure', user);
+  const settings = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const hora = useHoraDelNegocio();
   const art = useQuery({ queryKey: ['article', id], queryFn: () => backofficeApi.article(id) });
   const cats = useQuery({ queryKey: ['article-categories'], queryFn: backofficeApi.articleCategories });
@@ -328,6 +334,10 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
                   <Picker {...locations.pickerProps} disabled={!canConfigure} value={form.placeId} options={locations.options}
                     onChange={(v) => { if (auto.busy('placeId')) return; setForm({ ...form, placeId: v }); auto.commit('placeId', v); }} />
                 </Field>
+                {/* La merma va justo después de los datos de identidad: es lo que vino a buscar quien
+                    revisa costos, y más abajo quedaba bajo el pliegue a 1024×600 (spec 096, R14). */}
+                <ExpectedWasteField key={`${id}-${a.expectedWastePct ?? 'sin'}`} id={id} value={a.expectedWastePct}
+                  generalPct={settings.data?.expectedWastePct} canEdit={canMenu && a.isActive} />
                 <AltNamesField kind="article" ownName={form.name} value={form.alts} onChange={changeAlts} disabled={!canConfigure}
                   draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similarAlts} error={altError} />
                 {/* El mínimo vive en «Alertas» (spec 084, maqueta M1-B): un renglón con el estado y su hoja. */}
@@ -383,20 +393,26 @@ export function ArticleSheet({ id, justCreated, onClose, onCount, onOpenArticle 
 
               {/* Columna derecha: el costo y su historial. */}
               <Stack gap={2} borderWidth="1px" borderRadius="lg" p={3} minH={0} order={{ base: 1, md: 2 }}>
-                <HStack gap={2} flexWrap="wrap">
-                  <Text fontWeight="700">Costo</Text>
-                  <Text fontSize="xl" fontWeight="800">{formatUnitCost(a.currentCost, a.baseUnitCode) ?? 'Sin costo'}</Text>
-                  {trend != null && Number(trend) !== 0 && (
-                    <Badge colorPalette={Number(trend) > 0 ? 'red' : 'green'} fontSize="sm">
-                      {Number(trend) > 0 ? '▲ Sube' : '▼ Baja'} {Math.abs(Number(trend))} %
-                    </Badge>
-                  )}
-                  <Box flex="1" />
-                  {canConfigure && !a.isPrep && <Button minH="44px" variant="outline" onClick={() => setPanel('cost')}>Corregir costo</Button>}
+                {/* Costo y merma real como tarjetas gemelas (spec 096, maqueta A2). */}
+                <HStack gap={3} align="stretch" flexWrap="wrap">
+                  <Box bg="bg.muted" borderRadius="lg" p={3} flex="1" minW="200px">
+                    <Text fontSize="sm" color="fg.muted">Costo</Text>
+                    <HStack gap={2} flexWrap="wrap">
+                      <Text fontSize="xl" fontWeight="800">{formatUnitCost(a.currentCost, a.baseUnitCode) ?? 'Sin costo'}</Text>
+                      {trend != null && Number(trend) !== 0 && (
+                        <Badge colorPalette={Number(trend) > 0 ? 'red' : 'green'} fontSize="sm">
+                          {Number(trend) > 0 ? '▲ Sube' : '▼ Baja'} {Math.abs(Number(trend))} %
+                        </Badge>
+                      )}
+                    </HStack>
+                    {canConfigure && !a.isPrep && <Button mt={2} minH="44px" variant="outline" bg="bg" onClick={() => setPanel('cost')}>Corregir costo</Button>}
+                  </Box>
+                  <RealWasteCard id={id} unit={a.baseUnitCode}
+                    expected={a.expectedWastePct != null ? Number(a.expectedWastePct) : settings.data?.expectedWastePct != null ? Number(settings.data.expectedWastePct) : null} />
                 </HStack>
                 {a.isPrep && <Text fontSize="sm" color="fg.muted">El costo de un preparado sale de su receta.</Text>}
                 <CostTrend items={items} baseUnitCode={a.baseUnitCode} day={(s) => hora.soloFecha(s)} />
-                <Text fontSize="xs" color="fg.muted" letterSpacing="wide" textTransform="uppercase">Compras y correcciones, la más reciente arriba</Text>
+                <Text fontWeight="600">Compras y correcciones, la más reciente arriba</Text>
                 <Box flex="1" minH={0} overflowY="auto">
                   {items.length === 0 && !history.isLoading && <Text color="fg.muted" py={2}>Todavía no hay compras de este artículo.</Text>}
                   {items.map((it) => (

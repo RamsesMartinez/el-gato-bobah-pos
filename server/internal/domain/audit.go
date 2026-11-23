@@ -114,6 +114,9 @@ var auditActions = []struct {
 	{AuditNotificationResolved, AuditGroupCancel},
 	{AuditSettingsWasteThreshold, AuditGroupPrice},
 	{AuditSettingsCountLimits, AuditGroupPrice},
+	{AuditSettingsExpectedWaste, AuditGroupPrice},
+	{AuditProductExpectedWaste, AuditGroupPrice},
+	{AuditIngredientExpectedWaste, AuditGroupPrice},
 	// Artículos del almacén (spec 042): configuración, con los precios, como el costeo. El costo
 	// corregido también. Ningún grupo nuevo, por la misma razón que la 038.
 	{AuditIngredientCreated, AuditGroupPrice},
@@ -257,6 +260,13 @@ const (
 	// AuditSettingsCashTolerance: cambió la tolerancia de diferencia de caja (#290, fase 4). Reclasifica
 	// los cortes «por explicar» pasados, por eso queda quién y de cuánto a cuánto.
 	AuditSettingsCashTolerance AuditAction = "settings.cash_tolerance"
+	// AuditSettingsExpectedWaste: cambió la merma general de la empresa (spec 096); mueve el costo de
+	// todo producto con receta que no tenga la suya. Nulo = sin merma general.
+	AuditSettingsExpectedWaste AuditAction = "settings.expected_waste"
+	// AuditProductExpectedWaste: cambió la merma propia de un producto; nulo = usa la general.
+	AuditProductExpectedWaste AuditAction = "product.expected_waste"
+	// AuditIngredientExpectedWaste: cambió la merma de un artículo; nulo = sin captura, 0 = capturada en 0.
+	AuditIngredientExpectedWaste AuditAction = "ingredient.expected_waste"
 	// AuditSettingsWasteThreshold: cambió el tope a partir del cual una merma espera aprobación.
 	AuditSettingsWasteThreshold AuditAction = "settings.waste_threshold"
 	// AuditSettingsCountLimits: cambiaron los límites del conteo (máximo y cifra para confirmar).
