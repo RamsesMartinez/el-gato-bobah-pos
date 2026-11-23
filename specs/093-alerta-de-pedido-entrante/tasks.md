@@ -20,7 +20,7 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 ## Phase 1: Setup
 
-- [ ] T001 Verificar que 0117 sigue libre en `origin/develop` (`git fetch && git ls-tree origin/develop server/migrations/`) y que el id de permiso 39 no lo tomó otra rama; si no, renumerar en plan.md, data-model.md y aquí
+- [X] T001 Verificar que 0117 sigue libre en `origin/develop` (`git fetch && git ls-tree origin/develop server/migrations/`) y que el id de permiso 39 no lo tomó otra rama; si no, renumerar en plan.md, data-model.md y aquí
 - [ ] T002 [P] Script de desarrollo `scripts/entrantes-de-prueba.sh` (y su objetivo `make entrantes-de-prueba n=…` en `Makefile`) que inserta N pedidos de plataforma pendientes en la base LOCAL del worktree, con renglones y `decide_before` a 11 min; se niega fuera de un worktree con `.env.worktree.local` y nunca toca `deploy-postgres-1`; su test en `scripts/tests/entrantes-de-prueba-test.sh`
 
 ---
@@ -29,36 +29,36 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 ### Dominio (puro)
 
-- [ ] T003 [P] Test table-driven `server/internal/domain/incoming_test.go`: `IsPending` (pendiente con plazo futuro, vencido, sin plazo, aceptado/rechazado/cancelado), `SortByUrgency` (plazo cercano primero, sin plazo al final por antigüedad, desempate por id), `ParseIncomingSource` (desconocido = `ErrValidation`), `IncomingRejectReason` (los 5 códigos válidos, vacío y desconocido = `ErrValidation`, nunca cae a `other`) y su traducción a código de la plataforma
-- [ ] T004 Implementar `server/internal/domain/incoming.go`: `IncomingOrder`, `IncomingLine` (slices nunca nil), `IncomingSource` (`platform`), `IsPending`, `SortByUrgency`, `IncomingRejectReason` con texto en español y `PlatformRejectCode`
-- [ ] T005 [P] Agregar `PermOrdersAcceptIncoming = "orders.accept_incoming"` a `server/internal/domain/permission.go` (y a `AllPermissions`), con su test en `permission_test.go` si el catálogo se prueba ahí
+- [X] T003 [P] Test table-driven `server/internal/domain/incoming_test.go`: `IsPending` (pendiente con plazo futuro, vencido, sin plazo, aceptado/rechazado/cancelado), `SortByUrgency` (plazo cercano primero, sin plazo al final por antigüedad, desempate por id), `ParseIncomingSource` (desconocido = `ErrValidation`), `IncomingRejectReason` (los 5 códigos válidos, vacío y desconocido = `ErrValidation`, nunca cae a `other`) y su traducción a código de la plataforma
+- [X] T004 Implementar `server/internal/domain/incoming.go`: `IncomingOrder`, `IncomingLine` (slices nunca nil), `IncomingSource` (`platform`), `IsPending`, `SortByUrgency`, `IncomingRejectReason` con texto en español y `PlatformRejectCode`
+- [X] T005 [P] Agregar `PermOrdersAcceptIncoming = "orders.accept_incoming"` a `server/internal/domain/permission.go` (y a `AllPermissions`), con su test en `permission_test.go` si el catálogo se prueba ahí
 
 ### Migración 0117
 
-- [ ] T006 Test de integración `server/internal/integration/migration_0117_test.go` contra base restaurada con dos empresas, cada una con un rol propio sembrado: tras Up, los 4 sugeridos tienen 39 por herencia y cada rol propio existente su override `granted=true` (`company_id` correcto, sin cruzar empresas); un rol propio creado después del Up NO lo tiene; Up repetido no duplica; Down borra todo; Down se niega con un override `granted=false`; `UserEffectivePermissions` de la API con el 39 no falla
-- [ ] T007 Migración `server/migrations/0117_incoming_orders_permission.sql` según data-model.md (company_id explícito, `on conflict do nothing`, Down con guarda y orden de borrado) y renglón `117` en `guardedDownCleanup` de `server/internal/integration/harness_restaurado_test.go`
+- [X] T006 Test de integración `server/internal/integration/migration_0117_test.go` contra base restaurada con dos empresas, cada una con un rol propio sembrado: tras Up, los 4 sugeridos tienen 39 por herencia y cada rol propio existente su override `granted=true` (`company_id` correcto, sin cruzar empresas); un rol propio creado después del Up NO lo tiene; Up repetido no duplica; Down borra todo; Down se niega con un override `granted=false`; `UserEffectivePermissions` de la API con el 39 no falla
+- [X] T007 Migración `server/migrations/0117_incoming_orders_permission.sql` según data-model.md (company_id explícito, `on conflict do nothing`, Down con guarda y orden de borrado) y renglón `117` en `guardedDownCleanup` de `server/internal/integration/harness_restaurado_test.go`
 
 ### Consultas (sqlc)
 
-- [ ] T008 En `server/queries/pedidos_de_plataforma.sql`: `ListPendingIncomingOrders` filtra `decide_before is null or decide_before > now()` y ordena `decide_before nulls last, placed_at, id`; nueva `CancelIncomingOrder :execrows` (`state='cancelado', settled_at=now()` por `connection_id, external_order_id` con `state='pendiente'`); `make sqlc`
+- [X] T008 En `server/queries/pedidos_de_plataforma.sql`: `ListPendingIncomingOrders` filtra `decide_before is null or decide_before > now()` y ordena `decide_before nulls last, placed_at, id`; nueva `CancelIncomingOrder :execrows` (`state='cancelado', settled_at=now()` por `connection_id, external_order_id` con `state='pendiente'`); `make sqlc`
 
 ### Configuración de desarrollo
 
-- [ ] T009 [P] Test en `server/internal/config/config_test.go`: `PLATFORM_ORDERS_SIMULATED=true` con `APP_ENV=production` hace fallar `Validate`; con `development` pasa
-- [ ] T010 Implementar el campo y el check en `server/internal/config/config.go`, y en `server/cmd/api/main.go` pasar un decisor simulado (confirma aceptar y rechazar sin red, valida el motivo con la lista del dominio) a `PedidosDePlataformaService` cuando está encendido; documentar la variable en `deploy/.env.example` como solo desarrollo
+- [X] T009 [P] Test en `server/internal/config/config_test.go`: `PLATFORM_ORDERS_SIMULATED=true` con `APP_ENV=production` hace fallar `Validate`; con `development` pasa
+- [X] T010 Implementar el campo y el check en `server/internal/config/config.go`, y en `server/cmd/api/main.go` pasar un decisor simulado (confirma aceptar y rechazar sin red, valida el motivo con la lista del dominio) a `PedidosDePlataformaService` cuando está encendido; documentar la variable en `deploy/.env.example` como solo desarrollo
 
 ### Servicio de plataforma: rechazar, cancelar, plazo
 
-- [ ] T011 Tests de integración en `server/internal/integration/pedidos_de_plataforma_test.go` (decisor falso): (a) `Rechazar` con motivo válido deja `rechazado`, `deny_reason`, `decided_by`; (b) la plataforma no confirma el rechazo → sigue `pendiente`; (c) rechazar un aceptado → `ErrPedidoYaDecidido`; (d) aceptar o rechazar vencido → `ErrPedidoYaDecidido` SIN llamar a la plataforma; (e) webhook `orders.cancel` de un pendiente → `cancelado` y `AvisoRecibido` marca cambio; (f) cancelación de un ya aceptado → cero filas, sin error, sigue `aceptado`; (g) dos `Aceptar` concurrentes, repetido 20 veces con pedidos distintos (SC-004) → en cada uno un pedido del POS, un cobro, el otro `ErrPedidoYaDecidido`; (h) aceptar mientras otra rechaza → solo una gana
-- [ ] T012 Implementar en `server/internal/app/pedidos_de_plataforma.go`: `Rechazar(ctx, id, usuario, motivo)`, la verificación de plazo antes de llamar a la plataforma en `Aceptar`/`Rechazar`, la rama `AvisoPedidoCancelado` en `procesar` con `CancelIncomingOrder`, y `AvisoRecibido.Cambio`
+- [X] T011 Tests de integración en `server/internal/integration/pedidos_de_plataforma_test.go` (decisor falso): (a) `Rechazar` con motivo válido deja `rechazado`, `deny_reason`, `decided_by`; (b) la plataforma no confirma el rechazo → sigue `pendiente`; (c) rechazar un aceptado → `ErrPedidoYaDecidido`; (d) aceptar o rechazar vencido → `ErrPedidoYaDecidido` SIN llamar a la plataforma; (e) webhook `orders.cancel` de un pendiente → `cancelado` y `AvisoRecibido` marca cambio; (f) cancelación de un ya aceptado → cero filas, sin error, sigue `aceptado`; (g) dos `Aceptar` concurrentes, repetido 20 veces con pedidos distintos (SC-004) → en cada uno un pedido del POS, un cobro, el otro `ErrPedidoYaDecidido`; (h) aceptar mientras otra rechaza → solo una gana
+- [X] T012 Implementar en `server/internal/app/pedidos_de_plataforma.go`: `Rechazar(ctx, id, usuario, motivo)`, la verificación de plazo antes de llamar a la plataforma en `Aceptar`/`Rechazar`, la rama `AvisoPedidoCancelado` en `procesar` con `CancelIncomingOrder`, y `AvisoRecibido.Cambio`
 
 ### Servicio común y rutas
 
-- [ ] T013 Tests de integración `server/internal/integration/incoming_orders_test.go` bajo `appRoleStore` con `inTheThreeCases` (otra empresa, conexión reciclada, sin empresa) para `IncomingOrdersService.Pending`, `Accept` y `Reject`; y test del handler sobre el JSON crudo: `orders`, `lines` y `options` son `[]` y nunca `null`
-- [ ] T014 Implementar `server/internal/app/incoming_orders.go` (`IncomingOrdersService`: junta lo pendiente de cada origen ya ordenado, despacha `Accept`/`Reject` por `source` con `switch`)
-- [ ] T015 Tests en `server/internal/httpapi/handlers_incoming_test.go`: sin permiso 403 en las tres rutas y en `/orders/platform/pending` y `/platform/{id}/accept`; `source` desconocido y `id` no positivo 400; motivo fuera de lista 400; aceptar y rechazar publican `incoming.changed` (y los viejos `platform.order.decided`)
-- [ ] T016 Implementar `server/internal/httpapi/handlers_incoming.go` y las rutas en `server/internal/httpapi/router.go` con `RequirePermission(PermOrdersAcceptIncoming)` (nuevas y viejas de plataforma); el webhook en `handlers_webhook_plataforma.go` publica `incoming.changed` al registrar un nuevo y al cancelar
-- [ ] T017 `cd server && go build ./... && go test ./...` y `make test-integration` en verde
+- [X] T013 Tests de integración `server/internal/integration/incoming_orders_test.go` bajo `appRoleStore` con `inTheThreeCases` (otra empresa, conexión reciclada, sin empresa) para `IncomingOrdersService.Pending`, `Accept` y `Reject`; y test del handler sobre el JSON crudo: `orders`, `lines` y `options` son `[]` y nunca `null`
+- [X] T014 Implementar `server/internal/app/incoming_orders.go` (`IncomingOrdersService`: junta lo pendiente de cada origen ya ordenado, despacha `Accept`/`Reject` por `source` con `switch`)
+- [X] T015 Tests en `server/internal/httpapi/handlers_incoming_test.go`: sin permiso 403 en las tres rutas y en `/orders/platform/pending` y `/platform/{id}/accept`; `source` desconocido y `id` no positivo 400; motivo fuera de lista 400; aceptar y rechazar publican `incoming.changed` (y los viejos `platform.order.decided`)
+- [X] T016 Implementar `server/internal/httpapi/handlers_incoming.go` y las rutas en `server/internal/httpapi/router.go` con `RequirePermission(PermOrdersAcceptIncoming)` (nuevas y viejas de plataforma); el webhook en `handlers_webhook_plataforma.go` publica `incoming.changed` al registrar un nuevo y al cancelar
+- [X] T017 `cd server && go build ./... && go test ./...` y `make test-integration` en verde
 
 ### Front común
 

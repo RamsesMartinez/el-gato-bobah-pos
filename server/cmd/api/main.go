@@ -230,6 +230,12 @@ func main() {
 	broker := realtime.NewBroker()
 	costing := app.NewCostingService(st)
 	menusPlataforma := app.NewMenusDePlataformaService(st, credentials, nil)
+	pedidosPlataforma := app.NewPedidosDePlataformaService(st, credentials, cipher, cfg.UberEatsEnv, nil)
+	if cfg.PlatformOrdersSimulated {
+		// Solo desarrollo: config.Validate no deja arrancar con esto en producción.
+		pedidosPlataforma.SimulateDecisions()
+		slog.Warn("platform_orders_simulated", "detail", "aceptar y rechazar pedidos de plataforma no hablan con la plataforma")
+	}
 	handlers := httpapi.NewHandlers(httpapi.Deps{
 		Cfg:             cfg,
 		Alerts:          notifier,
@@ -263,7 +269,8 @@ func main() {
 		PurchaseDoc:       app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
 		PlatformPrices:    app.NewPlatformPricesService(st),
 		MenusPlataforma:   menusPlataforma,
-		PedidosPlataforma: app.NewPedidosDePlataformaService(st, credentials, cipher, cfg.UberEatsEnv, nil),
+		PedidosPlataforma: pedidosPlataforma,
+		IncomingOrders:    app.NewIncomingOrdersService(pedidosPlataforma),
 		Credentials:       credentials,
 		Sales:             app.NewSalesService(st, nil),
 		Settlements:       app.NewSettlementsService(st),

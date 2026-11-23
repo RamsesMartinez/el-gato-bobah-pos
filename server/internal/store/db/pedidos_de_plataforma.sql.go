@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
@@ -30,6 +31,28 @@ type AcceptIncomingOrderParams struct {
 // «ya estaba decidido» y el handler responde 409 en vez de fingir que hizo algo.
 func (q *Queries) AcceptIncomingOrder(ctx context.Context, arg AcceptIncomingOrderParams) (int64, error) {
 	result, err := q.db.Exec(ctx, acceptIncomingOrder, arg.ID, arg.DecidedBy, arg.OrderID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const cancelIncomingOrder = `-- name: CancelIncomingOrder :execrows
+update platform_incoming_orders
+   set state = 'cancelado', settled_at = now()
+ where connection_id = $1 and external_order_id = $2 and state = 'pendiente'
+`
+
+type CancelIncomingOrderParams struct {
+	ConnectionID    int64  `json:"connection_id"`
+	ExternalOrderID string `json:"external_order_id"`
+}
+
+// La plataforma avisó que canceló. `where state = 'pendiente'` DENTRO del update: si una tableta lo
+// aceptó un instante antes, el aviso llega tarde y no debe pisar un `aceptado` (además el check
+// `quien_decidio` reventaría y el webhook respondería 500). Cero filas = nada que cambiar.
+func (q *Queries) CancelIncomingOrder(ctx context.Context, arg CancelIncomingOrderParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelIncomingOrder, arg.ConnectionID, arg.ExternalOrderID)
 	if err != nil {
 		return 0, err
 	}
@@ -604,7 +627,12 @@ select o.id, o.connection_id, p.name as platform_name, o.external_order_id, o.di
   join platform_connections c on c.id = o.connection_id
   join delivery_platforms p on p.id = c.delivery_platform_id
  where o.state = 'pendiente'
- order by o.decide_before
+   -- Vencido ya no se decide (domain.IsPending): la plataforma lo canceló sola. Sin este filtro, si
+   -- su aviso de cancelación no llega, la alerta continua sonaría para siempre por un pedido muerto.
+   -- La hora la pone el servicio y no ` + "`" + `now()` + "`" + `: es la misma con la que decide al aceptar, y se prueba.
+   and (o.decide_before is null or o.decide_before > $1::timestamptz)
+ -- El desempate fija el orden: dos tabletas tienen que pintar la misma lista.
+ order by o.decide_before nulls last, o.placed_at, o.id
 `
 
 type ListPendingIncomingOrdersRow struct {
@@ -622,8 +650,8 @@ type ListPendingIncomingOrdersRow struct {
 
 // Lo que pinta el aviso de la tableta. Ordenado por urgencia: el más cerca de expirar primero, que
 // es el único orden que le sirve a quien tiene que decidir.
-func (q *Queries) ListPendingIncomingOrders(ctx context.Context) ([]ListPendingIncomingOrdersRow, error) {
-	rows, err := q.db.Query(ctx, listPendingIncomingOrders)
+func (q *Queries) ListPendingIncomingOrders(ctx context.Context, now time.Time) ([]ListPendingIncomingOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listPendingIncomingOrders, now)
 	if err != nil {
 		return nil, err
 	}

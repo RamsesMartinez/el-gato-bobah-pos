@@ -125,6 +125,8 @@ type Deps struct {
 	// porque su mapa de lectores viene vacío. No es lo mismo que un servicio nil, que reventaría.
 	MenusPlataforma   *app.MenusDePlataformaService
 	PedidosPlataforma *app.PedidosDePlataformaService
+	// IncomingOrders es el módulo común de pedidos entrantes (spec 093).
+	IncomingOrders *app.IncomingOrdersService
 	// Credenciales de la app de cada plataforma, capturadas en pantalla (0075).
 	Credentials *app.PlatformCredentialsService
 	Sales       *app.SalesService
@@ -194,6 +196,7 @@ type Handlers struct {
 	platformPrices    *app.PlatformPricesService
 	menusPlataforma   *app.MenusDePlataformaService
 	pedidosPlataforma *app.PedidosDePlataformaService
+	incomingOrders    *app.IncomingOrdersService
 	credentials       *app.PlatformCredentialsService
 	sales             *app.SalesService
 	settlements       *app.SettlementsService
@@ -280,6 +283,7 @@ func newHandlers(d Deps) *Handlers {
 		platformPrices:    d.PlatformPrices,
 		menusPlataforma:   d.MenusPlataforma,
 		pedidosPlataforma: d.PedidosPlataforma,
+		incomingOrders:    d.IncomingOrders,
 		credentials:       d.Credentials,
 		sales:             d.Sales,
 		settlements:       d.Settlements,

@@ -345,3 +345,26 @@ func TestValidate_RejectsAMalformedAlertRecipient(t *testing.T) {
 		t.Fatalf("un destinatario válido se rechazó: %v", err)
 	}
 }
+
+// La simulación de la plataforma confirma aceptar y rechazar SIN avisarle a la plataforma. En
+// producción, eso es aceptar aquí un pedido que la plataforma va a cancelar sola: la cocina lo
+// prepara y el dinero nunca llega. La API no arranca.
+func TestValidate_RechazaLaSimulacionDePedidosFueraDeDesarrollo(t *testing.T) {
+	c := base()
+	c.PlatformOrdersSimulated = true
+	if err := Validate(c); err != nil {
+		t.Fatalf("en desarrollo la simulación debía pasar: %v", err)
+	}
+	c.Env = "production"
+	c.CORSOrigin = "https://app.elgatobobah.com"
+	c.AppDatabaseURL = "postgres://gatobobah_app:pw@x"
+	c.PlatformDatabaseURL = "postgres://gatobobah_platform:pw@x"
+	c.PlatformDBPassword = "pw"
+	if err := Validate(c); err == nil {
+		t.Fatal("PLATFORM_ORDERS_SIMULATED=true arrancó en producción")
+	}
+	c.PlatformOrdersSimulated = false
+	if err := Validate(c); err != nil {
+		t.Fatalf("producción sin simulación debía pasar: %v", err)
+	}
+}

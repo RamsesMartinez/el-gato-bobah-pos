@@ -245,12 +245,17 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					if h.audit != nil {
 						r.With(RequirePermission(h.permissions, domain.PermAuditView)).Get("/{id}/history", h.OrderHistory)
 					}
-					// LOS PEDIDOS QUE LLEGAN DE UNA PLATAFORMA (spec 021). Sin gate de rol, como
-					// la barra de pedidos en curso: quien atiende es quien decide, y el plazo de
-					// la plataforma no espera a que llegue un gerente.
+					// PEDIDOS ENTRANTES (spec 093): permiso propio, que llega por herencia a los cuatro
+					// sugeridos. Las rutas viejas de la 021 llevan el mismo permiso y se conservan esta
+					// subida para las tabletas con el front anterior en caché.
 					if h.pedidosPlataforma != nil {
-						r.Get("/platform/pending", h.PlatformPendingOrders)
-						r.Post("/platform/{id}/accept", h.AcceptPlatformOrder)
+						r.With(RequirePermission(h.permissions, domain.PermOrdersAcceptIncoming)).Get("/platform/pending", h.PlatformPendingOrders)
+						r.With(RequirePermission(h.permissions, domain.PermOrdersAcceptIncoming)).Post("/platform/{id}/accept", h.AcceptPlatformOrder)
+					}
+					if h.incomingOrders != nil {
+						r.With(RequirePermission(h.permissions, domain.PermOrdersAcceptIncoming)).Get("/incoming", h.IncomingOrders)
+						r.With(RequirePermission(h.permissions, domain.PermOrdersAcceptIncoming)).Post("/incoming/{source}/{id}/accept", h.AcceptIncomingOrder)
+						r.With(RequirePermission(h.permissions, domain.PermOrdersAcceptIncoming)).Post("/incoming/{source}/{id}/reject", h.RejectIncomingOrder)
 					}
 					// Mismo alcance que el reembolso: desde que cancelar un pedido cobrado DEVUELVE
 					// dinero, es una salida de caja como la otra. Sin esto quedaba el único camino
