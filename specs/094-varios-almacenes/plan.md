@@ -71,16 +71,17 @@ tablas medidas: `stock_movements` 7,219 filas, `stock_levels` 407 (2026-11-23)
 | Pantalla | Dónde vive | Qué cambia | Componentes |
 | --- | --- | --- | --- |
 | Almacenes | Almacén › pestaña nueva «Almacenes» (`StockPage`), visible con `inventory.warehouse_manage` | Nueva: lista de almacenes con el de venta marcado, alta, renombrar, archivar | `ListRow`, hoja inferior (`DrawerRoot`), `ConfirmSheet`, patrón de `CountPlacesSettings` |
-| Traspaso | Almacén › pestaña «Traspaso» con `inventory.transfer` | Nueva: origen → destino, renglones (artículo + cantidad), nota, confirmar | `Picker` para artículos y almacenes, `NumericKeypad`, `QtyWithUnit` |
-| Existencias | Almacén › Existencias | Selector de almacén arriba de la tabla (solo con 2+), «Todos», sugerencia de traspaso en negativos | Segmentado o `Picker`, `Table` actual |
-| Compra (renglón) | `ExpenseDialog` › `ItemRow` | Destino por renglón (solo con 2+ almacenes) | Chip/segmentado en la fila 2 del renglón |
+| Traspaso | Almacén › pestaña «Traspaso» con `inventory.transfer` | Nueva (maqueta B): «De Bodega → A Local» con botón para invertir y buscador arriba; tabla de lo que hay en el origen con su existencia en origen y destino y un −/+ por renglón; nota y «Traspasar N artículos» al pie | `Table`, stepper −/+ de 44 px, `Input` de búsqueda |
+| Existencias | Almacén › Existencias | Segmentado «Local · de venta / Bodega / Todos» arriba de la tabla, solo con 2+ almacenes (con 5+ pasa a botón con hoja); un negativo en el de venta con existencia en otro ofrece «Traer de Bodega», que abre una hoja con la cantidad propuesta y el teclado numérico | Segmentado de botones de 44 px, `Table` actual, `NumericKeypad` en hoja inferior |
+| Compra (captura completa) | `ExpenseDialog`, paso de captura | Rediseño (maqueta R3): encabezado proveedor · fecha · total + «Más datos»; lista de renglones de una línea (nombre, cantidad × empaque, estado, importe) a la izquierda y el detalle del elegido a la derecha (cantidad, empaque, ¿llegó?, ¿dónde se guarda?, regalo / no es del negocio, quitar). «¿Dónde se guarda?» arriba de la lista (solo con 2+ almacenes) | `Picker`, segmentados de 44 px, `InfoButton` |
 
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|
 | Almacenes | [maquetas](https://claude.ai/artifact/L8X2ZE7XG5fEZh22PLAmqh) | esperando al dueño | — |
-| Traspaso | [maquetas](https://claude.ai/artifact/V9629bGHmWbAaL1CarFKU1) | esperando al dueño | — |
-| Existencias | [maquetas](https://claude.ai/artifact/YDruwPNs9Zsks9QFMY2Xei) | esperando al dueño | — |
-| Compra (renglón) | [maquetas](https://claude.ai/artifact/S1AecknYDfWrjyUNaCtgMU) | esperando al dueño | — |
+| Traspaso | [maquetas](https://claude.ai/artifact/V9629bGHmWbAaL1CarFKU1) | B · Lista con cantidades | Origen y destino lado a lado y varios artículos con nota en un traspaso (2 toques + teclear) |
+| Existencias | [maquetas](https://claude.ai/artifact/YDruwPNs9Zsks9QFMY2Xei) | A · Segmentado | Los almacenes a la vista, 1 toque. Con 5 o más almacenes el mismo control pasa a botón con hoja (opción B), sin cambiar nada más de la pantalla |
+| Compra (captura completa) | [maquetas](https://claude.ai/artifact/S1AecknYDfWrjyUNaCtgMU) | R3 · Lista y detalle al lado | El dueño pidió rediseñar toda la captura (se veía amontonada): encabezado en una línea, renglones de una línea, detalle al lado sin tapar la lista. «¿Dónde se guarda?» para todo el ticket y etiqueta en el renglón que va a otro lado |
+| Regalo / no es del negocio | [maquetas](https://claude.ai/artifact/GaMa1CmFozHRUqP7itjjys) | esperando al dueño | — |
 
 ## Project Structure
 
