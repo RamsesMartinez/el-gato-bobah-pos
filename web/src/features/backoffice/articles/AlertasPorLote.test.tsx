@@ -8,6 +8,9 @@ import { AlertasPorLote } from './AlertasPorLote';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), preview: vi.fn(), save: vi.fn(), asked: vi.fn(), list: vi.fn(), batch: vi.fn() }));
 vi.mock('../../../api/notifications', async (orig) => ({ ...(await orig<object>()), lowStockApi: api }));
+const back = vi.hoisted(() => ({ warehouses: vi.fn() }));
+vi.mock('../../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
+import { useSessionStore } from '../../../stores/session';
 
 const montar = (onClose = vi.fn()) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -16,6 +19,8 @@ const montar = (onClose = vi.fn()) => {
 };
 
 beforeEach(() => {
+  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] });
+  useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.view'] } as never });
   api.list.mockResolvedValue({ items: [
     { itemType: 'ingrediente', id: 1, name: 'Queso crema', unitCode: 'g', enabled: false, minStock: null, onHand: '1200' },
     { itemType: 'ingrediente', id: 2, name: 'Vaso 16 oz', unitCode: 'pieza', enabled: true, minStock: '200', onHand: '180' },
@@ -90,5 +95,24 @@ describe('Alertas por lote', () => {
     const raiz = (await screen.findByRole('checkbox', { name: 'Alerta de Queso crema' })).closest('label')!;
     expect(getComputedStyle(raiz).minHeight).toBe('44px');
     expect(getComputedStyle(raiz).minWidth).toBe('44px');
+  });
+});
+
+// VARIOS ALMACENES (spec 094): el lote es del almacén de venta, y con dos o más lo dice.
+describe('alertas por lote con almacenes (spec 094)', () => {
+  test('con un solo almacén la columna dice «Hay»', async () => {
+    montar();
+    expect(await screen.findByRole('columnheader', { name: 'Hay' })).toBeTruthy();
+  });
+  test('con dos dice de qué almacén es lo que hay', async () => {
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    api.list.mockResolvedValue({ items: [
+      { itemType: 'ingrediente', id: 1, name: 'Queso crema', unitCode: 'g', enabled: false, minStock: null, onHand: '1200', warehouseId: 1, warehouseName: 'Local' },
+    ] });
+    montar();
+    expect(await screen.findByRole('columnheader', { name: 'Hay en Local' })).toBeTruthy();
   });
 });

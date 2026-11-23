@@ -10,6 +10,7 @@ import { formatBaseQty } from '../units';
 import { QtyWithUnit } from '../qty';
 import { baseQty, bigUnitOf, type Kind } from '../articleUnits';
 import { resumenDeAlertas } from './resumenDeAlertas';
+import { useWarehousePick, WarehousePicker } from '../../features/backoffice/warehouses/WarehousePicker';
 
 // La sección «Alertas» de la ficha (spec 084, maqueta M1, opción B): un renglón con el estado en
 // palabras y «Configurar ›», que abre su hoja con la casilla, el mínimo, los eventos, la franja y los
@@ -38,9 +39,12 @@ interface Forma {
 
 const DIAS_POR_OMISION = 14;
 
-function formaDe(c: LowStockConfig, kind: Kind): Forma {
+// otroAlmacen: con un almacén que no es el de venta elegido, el mínimo que se edita es el de ese
+// almacén (branchMinStock), no el del artículo.
+function formaDe(c: LowStockConfig, kind: Kind, otroAlmacen = false): Forma {
   const big = bigUnitOf(kind);
-  const n = c.minStock == null ? null : Number(c.minStock);
+  const raw = otroAlmacen ? c.branchMinStock : c.minStock;
+  const n = raw == null ? null : Number(raw);
   const enGrande = !!big && n != null && n >= big.factor;
   return {
     enabled: c.enabled, onMin: c.onMin, onOut: c.onOut, banner: c.banner,
@@ -51,11 +55,15 @@ function formaDe(c: LowStockConfig, kind: Kind): Forma {
 
 // cuerpo arma lo que se manda. Mínimo vacío es «sin mínimo» (null), nunca un cero escrito a medias; y
 // sin mínimo, «llegue al mínimo» viaja apagada aunque la casilla haya quedado marcada.
-function cuerpo(f: Forma, kind: Kind, updatedAt?: string): LowStockInput {
+// Con otro almacén (spec 094) el mínimo capturado es el de ese almacén y el del artículo viaja como
+// estaba; el almacén va con su id. El de venta va sin almacén.
+function cuerpo(f: Forma, kind: Kind, updatedAt?: string, otro?: { warehouseId: number; articleMin: string | null }): LowStockInput {
   const min = baseQty(f.min.qty, kind, f.min.big);
   return {
-    enabled: f.enabled, onMin: f.onMin && min != null && Number(min) > 0, onOut: f.onOut, banner: f.banner, minStock: min ?? null,
+    enabled: f.enabled, onMin: f.onMin && min != null && Number(min) > 0, onOut: f.onOut, banner: f.banner,
+    minStock: otro ? otro.articleMin : min ?? null,
     coverageDays: f.dias.trim() === '' ? null : Number(f.dias), ...(updatedAt ? { expectedUpdatedAt: updatedAt } : {}),
+    ...(otro ? { branchMinStock: min ?? null, warehouseId: otro.warehouseId } : {}),
   };
 }
 
@@ -74,7 +82,14 @@ function Casilla({ checked, onChange, disabled, children }: { checked: boolean; 
 
 export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved }: Props) {
   const qc = useQueryClient();
-  const cfg = useQuery({ queryKey: ['alertas', itemType, id], queryFn: () => lowStockApi.get(itemType, id) });
+  // De qué almacén se ve y se edita el mínimo (spec 094): por omisión el de venta.
+  const wh = useWarehousePick();
+  const wid = wh.warehouseId;
+  const llave = ['alertas', itemType, id, wid ?? 'venta'];
+  // Cambiar de almacén no quita la sección mientras llega el otro; solo del mismo artículo, y sin
+  // poder configurar hasta que llegue (se editaría el mínimo del almacén anterior).
+  const cfg = useQuery({ queryKey: llave, queryFn: () => lowStockApi.get(itemType, id, wid),
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === itemType && prevQuery?.queryKey[2] === id ? prev : undefined) });
   const [hoja, setHoja] = useState(false);
   const [forma, setForma] = useState<Forma | null>(null);
   const [efecto, setEfecto] = useState<LowStockEffect | null>(null);
@@ -86,24 +101,26 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
     if (e instanceof ApiError && e.code === 'STALE') {
       setError('Alguien más cambió estas alertas mientras las veías. Se volvieron a leer: revisa y guarda otra vez.');
       void qc.invalidateQueries({ queryKey: ['alertas', itemType, id] }).then(() => {
-        const nueva = qc.getQueryData<LowStockConfig>(['alertas', itemType, id]);
-        if (nueva) setForma(formaDe(nueva, kind));
+        const nueva = qc.getQueryData<LowStockConfig>(llave);
+        if (nueva) setForma(formaDe(nueva, kind, wid !== undefined));
       });
       return;
     }
     setError(e instanceof ApiError ? e.message : 'No se pudo; vuelve a intentar.');
   };
+  const cuerpoDe = (f: Forma) => cuerpo(f, kind, cfg.data?.updatedAt,
+    wid === undefined ? undefined : { warehouseId: wid, articleMin: cfg.data?.minStock ?? null });
   const yaPregunto = useMutation({
     mutationFn: () => lowStockApi.asked(id),
     onSettled: () => void qc.invalidateQueries({ queryKey: ['alertas', itemType, id] }),
   });
   const verEfecto = useMutation({
-    mutationFn: (f: Forma) => lowStockApi.preview(itemType, id, cuerpo(f, kind, cfg.data?.updatedAt)),
+    mutationFn: (f: Forma) => lowStockApi.preview(itemType, id, cuerpoDe(f)),
     onSuccess: (r) => { setError(null); setEfecto(r); },
     onError: fallo,
   });
   const guardar = useMutation({
-    mutationFn: (f: Forma) => lowStockApi.save(itemType, id, cuerpo(f, kind, cfg.data?.updatedAt)),
+    mutationFn: (f: Forma) => lowStockApi.save(itemType, id, cuerpoDe(f)),
     onSuccess: (r) => {
       if (r.updatedAt) onSaved?.(r.updatedAt);
       medirAccion('inventario', 'alertas');
@@ -119,7 +136,7 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
   const c = cfg.data;
   if (!c) return null;
   const abrir = (encender?: boolean) => {
-    const f = formaDe(c, kind);
+    const f = formaDe(c, kind, wid !== undefined);
     setForma(encender ? { ...f, enabled: true } : f);
     setError(null);
     setHoja(true);
@@ -128,15 +145,18 @@ export function SeccionAlertas({ itemType, id, name, kind, canConfigure, onSaved
 
   return (
     <>
+      {wh.multi && <Box mb={2}><WarehousePicker pick={wh} label="Almacén" /></Box>}
       <HStack justify="space-between" minH="44px" data-alertas>
         <Box>
           <Text>Alertas: <b>{resumenDeAlertas(c)}</b></Text>
           {/* El mínimo de la sucursal gana sobre el del artículo: se dice, o el renglón promete otro. */}
           {c.enabled && c.branchMinStock != null && (
-            <Text fontSize="sm" color="fg.muted">En esta sucursal avisa al llegar a {formatBaseQty(c.branchMinStock, c.unitCode)}</Text>
+            <Text fontSize="sm" color="fg.muted">
+              {wh.multi && c.warehouseName ? `En ${c.warehouseName}` : 'En esta sucursal'} avisa al llegar a {formatBaseQty(c.branchMinStock, c.unitCode)}
+            </Text>
           )}
         </Box>
-        {canConfigure && <Button minH="44px" variant="outline" onClick={() => abrir()}>Configurar ›</Button>}
+        {canConfigure && <Button minH="44px" variant="outline" disabled={cfg.isPlaceholderData} onClick={() => abrir()}>Configurar ›</Button>}
       </HStack>
 
       {forma && (

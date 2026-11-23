@@ -3,6 +3,7 @@ import { Badge, Box, Button, Grid, HStack, Text, VStack } from '@chakra-ui/react
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { medirAccion } from '../../api/uso';
+import { useWarehousePick } from './warehouses/WarehousePicker';
 import { shoppingApi, type ShoppingLine } from '../../api/notifications';
 import { formatBaseQty } from '../../shared/units';
 
@@ -18,6 +19,8 @@ const SIN_LUGAR = 'Sin lugar de compra';
 
 export function ListaDeCompra() {
   const lista = useQuery({ queryKey: ['lista-de-compra'], queryFn: shoppingApi.list });
+  // Con dos o más almacenes (spec 094) cada renglón dice en cuál está lo que hay.
+  const { multi } = useWarehousePick();
   const [aviso, setAviso] = useState<string | null>(null);
   const enviar = useMutation({
     mutationFn: shoppingApi.emailMe,
@@ -48,7 +51,7 @@ export function ListaDeCompra() {
                     <Box minW={0}>
                       <Text fontWeight="700">{l.name}</Text>
                       <Text fontSize="sm" color="fg.muted">
-                        Hay {formatBaseQty(l.onHand, l.unit)}{l.min ? ` · mínimo ${formatBaseQty(l.min, l.unit)}` : ''}
+                        Hay {formatBaseQty(l.onHand, l.unit)}{multi && l.warehouseName ? ` en ${l.warehouseName}` : ''}{l.min ? ` · mínimo ${formatBaseQty(l.min, l.unit)}` : ''}
                       </Text>
                     </Box>
                     <Badge colorPalette={ESTADO[l.state].color} flexShrink={0}>{ESTADO[l.state].texto}</Badge>

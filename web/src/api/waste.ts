@@ -81,6 +81,8 @@ export interface RecordWasteInput {
   unitId?: number;
   presentationId?: number;
   note?: string;
+  // Spec 094: ausente es el almacén de venta.
+  warehouseId?: number;
 }
 
 export interface WasteResult {

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { presentationLabel } from '../../shared/presentationLabel';
 import { Box, Button, Flex, Grid, HStack, Input, Text, VStack } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useWarehousePick, WarehousePicker, withWarehouse } from '../backoffice/warehouses/WarehousePicker';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../components/ui/drawer';
@@ -34,6 +35,8 @@ type Measure = { kind: 'base' } | { kind: 'unit'; id: number } | { kind: 'pack';
 
 export function WastePage() {
   const qc = useQueryClient();
+  // De qué almacén se echó a perder (spec 094): solo se pregunta con dos o más.
+  const wh = useWarehousePick();
   const [view, setView] = useState<View>(readView);
   const [tab, setTab] = useState<'registrar' | 'hoy'>('registrar');
   const [reasonId, setReasonId] = useState<number | null>(null);
@@ -64,17 +67,17 @@ export function WastePage() {
   const chooseReason = (id: number) => { setReasonId(id); setMessage(null); if (view === 'pasos') setStep(2); };
 
   const save = useMutation({
-    mutationFn: () => wasteApi.record({
+    mutationFn: () => wasteApi.record(withWarehouse({
       reasonId: reasonId!, qty,
       ...(item!.kind === 'i' ? { ingredientId: item!.id } : { productId: item!.id }),
       ...(measure.kind === 'unit' ? { unitId: measure.id } : {}),
       ...(measure.kind === 'pack' ? { presentationId: measure.id } : {}),
-    }),
+    }, wh.warehouseId)),
     onSuccess: (res) => {
       medirAccion('merma', 'registrar');
       setMessage(res.status === 'pending'
         ? { text: 'Quedó por aprobar: espera aprobación de quien revisa y todavía no se resta.', tone: 'warn' }
-        : { text: 'Guardado: ya se restó de lo que tienes.', tone: 'ok' });
+        : { text: wh.multi ? `Guardado: ya se restó de ${wh.name}.` : 'Guardado: ya se restó de lo que tienes.', tone: 'ok' });
       setItem(null); setQty(''); setReasonId(null); setStep(1); setMeasure({ kind: 'base' });
       void qc.invalidateQueries({ queryKey: ['merma'] });
     },
@@ -149,6 +152,9 @@ export function WastePage() {
           color={message.tone === 'error' ? 'fg.error' : message.tone === 'warn' ? 'orange.fg' : 'fg.success'}>
           {message.text}
         </Text>
+      )}
+      {tab === 'registrar' && wh.multi && (
+        <Box px={3} pt={2} flexShrink={0}><WarehousePicker pick={wh} label="¿De qué almacén?" /></Box>
       )}
       {tab === 'hoy' ? (
         <TodayList rows={today} />

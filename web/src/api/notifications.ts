@@ -26,6 +26,9 @@ export interface NotificationView {
   read: boolean;
   banner: boolean;
   confirmations: number;
+  // Spec 094: de qué almacén es el aviso. Opcionales por la API anterior.
+  warehouseId?: number;
+  warehouseName?: string;
 }
 
 export type ResolveAction = 'arrived' | 'dismiss' | 'created' | 'alias';
@@ -75,6 +78,9 @@ export interface LowStockConfig {
   unitCode: string;
   branches: number;
   updatedAt: string;
+  // Spec 094: de qué almacén son branchMinStock y onHand. Opcionales por la API anterior.
+  warehouseId?: number;
+  warehouseName?: string;
 }
 
 export interface LowStockInput {
@@ -85,6 +91,10 @@ export interface LowStockInput {
   minStock: string | null;
   coverageDays: number | null;
   expectedUpdatedAt?: string;
+  // Spec 094: el mínimo del almacén elegido; ausente no lo toca, null lo quita.
+  branchMinStock?: string | null;
+  // Ausente es el almacén de venta.
+  warehouseId?: number;
 }
 
 export interface LowStockEffect {
@@ -103,12 +113,16 @@ export interface LowStockRow {
   enabled: boolean;
   minStock: string | null;
   onHand: string;
+  // Spec 094: de qué almacén es onHand. Opcionales por la API anterior.
+  warehouseId?: number;
+  warehouseName?: string;
 }
 
 const ruta = (t: AlertItemType, id: number) => `/stock/${t === 'ingrediente' ? 'articles' : 'products'}/${id}/low-stock`;
 
 export const lowStockApi = {
-  get: (t: AlertItemType, id: number) => api.get<LowStockConfig>(ruta(t, id)),
+  get: (t: AlertItemType, id: number, warehouseId?: number) =>
+    api.get<LowStockConfig>(`${ruta(t, id)}${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
   preview: (t: AlertItemType, id: number, body: LowStockInput) => api.put<LowStockEffect>(`${ruta(t, id)}?preview=1`, body),
   save: (t: AlertItemType, id: number, body: LowStockInput) => api.put<LowStockEffect>(ruta(t, id), body),
   asked: (id: number) => api.post<void>(`/stock/articles/${id}/low-stock/asked`),
@@ -132,6 +146,9 @@ export interface ShoppingLine {
   state: 'out' | 'low' | 'count';
   suggested: { packs: number; packName: string; qty: string } | null;
   why: string;
+  // Spec 094: de qué almacén es lo que hay. Opcionales por la API anterior.
+  warehouseId?: number;
+  warehouseName?: string;
 }
 
 export const shoppingApi = {

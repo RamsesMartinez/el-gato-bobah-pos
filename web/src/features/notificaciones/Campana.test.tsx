@@ -13,7 +13,7 @@ import { FranjaDeAgotado, DURA_MS } from './FranjaDeAgotado';
 
 const api = vi.hoisted(() => ({ list: vi.fn(), unread: vi.fn(), read: vi.fn(), bannerSeen: vi.fn(), resolve: vi.fn() }));
 vi.mock('../../api/notifications', async (orig) => ({ ...(await orig<object>()), notificationsApi: api }));
-const back = vi.hoisted(() => ({ articles: vi.fn() }));
+const back = vi.hoisted(() => ({ articles: vi.fn(), warehouses: vi.fn() }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 let abiertos = 0;
 class FakeES { constructor() { abiertos++; } addEventListener() {} close() { abiertos--; } }
@@ -38,6 +38,7 @@ function ConCampana() {
 beforeEach(() => {
   useSessionStore.setState({ token: 't', status: 'authed', user: { id: 9, companyId: 1, name: 'Marisol', role: 'gerente',
     permissions: ['inventory.report_out', 'inventory.configure', 'inventory.receive', 'inventory.view'] } });
+  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] });
   api.unread.mockResolvedValue({ unread: 2 });
   api.read.mockResolvedValue(undefined);
   api.bannerSeen.mockResolvedValue(undefined);
@@ -201,5 +202,28 @@ describe('Franja de «se acabó»', () => {
     montar(<FranjaDeAgotado onVer={() => {}} />);
     await new Promise((r) => setTimeout(r, 100));
     expect(screen.queryByTestId('franja-de-agotado')).toBeNull();
+  });
+});
+
+// VARIOS ALMACENES (spec 094): con dos o más, el aviso dice en qué almacén.
+describe('avisos con almacenes (spec 094)', () => {
+  const conAlmacen = () => api.list.mockImplementation((st: string) => Promise.resolve({ items: st === 'open'
+    ? [aviso({ id: 1, kind: 'stock_low', onHandSeen: '3', minSeen: '10', warehouseId: 2, warehouseName: 'Bodega' } as Partial<NotificationView>)] : [] }));
+  test('con un solo almacén el aviso queda como antes', async () => {
+    conAlmacen();
+    montar(<ConCampana />);
+    fireEvent.click(await screen.findByRole('button', { name: /Avisos/ }));
+    expect(await screen.findByText(/Hay 3 piezas · mínimo 10 piezas/)).toBeTruthy();
+    expect(screen.queryByText(/Bodega/)).toBeNull();
+  });
+  test('con dos dice de qué almacén', async () => {
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    conAlmacen();
+    montar(<ConCampana />);
+    fireEvent.click(await screen.findByRole('button', { name: /Avisos/ }));
+    expect(await screen.findByText(/Hay 3 piezas en Bodega · mínimo 10 piezas/)).toBeTruthy();
   });
 });

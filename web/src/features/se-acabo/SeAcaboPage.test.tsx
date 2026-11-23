@@ -4,11 +4,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 
 import { Provider } from '../../components/ui/provider';
+import { useSessionStore } from '../../stores/session';
 import { ApiError } from '../../api/client';
 import { SeAcaboPage } from './SeAcaboPage';
 
 const out = vi.hoisted(() => ({ search: vi.fn(), suggestions: vi.fn(), report: vi.fn(), undo: vi.fn(), notFound: vi.fn() }));
 vi.mock('../../api/stockOut', async (orig) => ({ ...(await orig<object>()), stockOutApi: out }));
+const back = vi.hoisted(() => ({ warehouses: vi.fn() }));
+vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 
 const queso = { itemType: 'ingrediente' as const, id: 1, name: 'Queso crema', unit: 'g' };
 const bolsa = { itemType: 'ingrediente' as const, id: 2, name: 'Bolsa grande', unit: 'pieza' };
@@ -30,6 +33,8 @@ beforeEach(() => {
   out.report.mockResolvedValue({ id: 7, kind: 'report', notificationId: 3, delta: '-3', undoUntil: new Date(Date.now() + 90_000).toISOString(), confirmations: 1 });
   out.undo.mockResolvedValue(undefined);
   out.notFound.mockResolvedValue({ id: 8, notificationId: 4 });
+  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] });
+  useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.view'] } as never });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.useRealTimers(); });
 
@@ -209,5 +214,36 @@ describe('Se acabó', () => {
     fireEvent.click(screen.getByRole('button', { name: /Queso crema/ }));
     await screen.findByText(/Queso crema quedó en 0/);
     expect(screen.getByTestId('hueco-del-aviso').getAttribute('data-alto')).toBe('76');
+  });
+});
+
+// VARIOS ALMACENES (spec 094): el de venta va sin almacén; otro, con su id.
+describe('se acabó por almacén (spec 094)', () => {
+  test('con un solo almacén no pregunta de cuál y reporta sin almacén', async () => {
+    montar();
+    await confirmar(await screen.findByRole('button', { name: /Queso crema/ }));
+    await waitFor(() => expect(out.report).toHaveBeenCalledTimes(1));
+    expect(out.report.mock.calls[0][2]).toBeUndefined();
+    expect(screen.queryByRole('group', { name: '¿De qué almacén?' })).toBeNull();
+  });
+  test('con dos pregunta de cuál y la Bodega va con su id y su propia clave', async () => {
+    back.warehouses.mockResolvedValue({ items: [
+      { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+      { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+    ] });
+    out.report.mockRejectedValueOnce(new Error('red'));
+    montar();
+    const grupo = await screen.findByRole('group', { name: '¿De qué almacén?' });
+    expect(screen.getByRole('button', { name: 'Local · de venta' })).toHaveAttribute('aria-pressed', 'true');
+    // Falla en el local; el mismo artículo en la bodega no reusa la clave del local.
+    await confirmar(await screen.findByRole('button', { name: /Queso crema/ }));
+    await waitFor(() => expect(out.report).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Bodega' }));
+    await confirmar(await screen.findByRole('button', { name: /Queso crema/ }));
+    await waitFor(() => expect(out.report).toHaveBeenCalledTimes(2));
+    expect(out.report.mock.calls[1][2]).toBe(2);
+    expect(out.report.mock.calls[1][1]).not.toBe(out.report.mock.calls[0][1]);
+    expect(await screen.findByText(/quedó en 0 en Bodega/)).toBeTruthy();
+    expect(grupo).toBeInTheDocument();
   });
 });

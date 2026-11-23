@@ -6,6 +6,7 @@ import { ConfirmSheet } from '../../../components/ConfirmSheet';
 import { Switch } from '../../../components/ui/switch';
 import { ApiError } from '../../../api/client';
 import { medirAccion } from '../../../api/uso';
+import { useWarehousePick } from '../warehouses/WarehousePicker';
 import { lowStockApi, type LowStockRow } from '../../../api/notifications';
 import { formatBaseQty } from '../../../shared/units';
 import { baseQty, bigUnitOf, type Kind } from '../../../shared/articleUnits';
@@ -44,7 +45,10 @@ const sinAcentos = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLo
 
 export function AlertasPorLote({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
-  const lista = useQuery({ queryKey: ['alertas', 'lote'], queryFn: lowStockApi.list });
+  const lista = useQuery({ queryKey: ['alertas', 'lote'], queryFn: () => lowStockApi.list() });
+  // El lote es del almacén de venta (spec 094); con dos o más, la columna dice cuál.
+  const { multi } = useWarehousePick();
+  const whName = lista.data?.items?.[0]?.warehouseName;
   const [q, setQ] = useState('');
   const [cambios, setCambios] = useState<Record<string, Cambio>>({});
   const [confirmar, setConfirmar] = useState<{ nombre: string; abre: boolean; cierra: boolean; hay: string }[] | null>(null);
@@ -121,7 +125,7 @@ export function AlertasPorLote({ onClose }: { onClose: () => void }) {
             <Table.Root size="sm" stickyHeader>
               <Table.Header><Table.Row>
                 <Table.ColumnHeader>Insumo</Table.ColumnHeader>
-                <Table.ColumnHeader textAlign="end">Hay</Table.ColumnHeader>
+                <Table.ColumnHeader textAlign="end">{multi && whName ? `Hay en ${whName}` : 'Hay'}</Table.ColumnHeader>
                 <Table.ColumnHeader w="220px">Mínimo</Table.ColumnHeader>
                 <Table.ColumnHeader textAlign="center" w="96px">Alerta</Table.ColumnHeader>
               </Table.Row></Table.Header>

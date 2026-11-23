@@ -132,7 +132,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 - [ ] T056 [US6] Migración si hace falta (índice único de lugares por almacén, `low_stock_state`/`evaluate_low_stock` por almacén) revisada por db-architect
 - [ ] T057 [US6] (incluye lo que dejó el db-architect en la subida 1: `CurrentStockCount` y `LastClosedStockCount` siguen por sucursal y son `:one`; `ArticleMovedSince` mezcla conteos por sucursal con movimientos del almacén de venta — pasarlos a `warehouse_id`) Servicios y consultas de conteo, merma, se acabó, mínimos, lista de compra, salud y lugares con `warehouseId` (`server/internal/app/stock_counts.go`, `waste.go`, `stock_out.go`, `notifications.go`, `inventory_health.go`, queries respectivas)
 - [ ] T058b [US6] Prueba con alguien nuevo de una fonda: contar la Bodega y cerrar sin tocar Local (SC-005)
-- [ ] T058 [US6] Pantallas: elegir almacén al empezar el conteo (por omisión el de venta) en `web/src/features/backoffice/StockCountTab.tsx`; almacén en merma, se acabó, mínimos y avisos; con test
+- [X] T058 [US6] Pantallas: elegir almacén al empezar el conteo (por omisión el de venta) en `web/src/features/backoffice/StockCountTab.tsx`; almacén en merma, se acabó, mínimos y avisos; con test
 - [ ] T056b [US6] Migración nueva que valida lo que la 0124 dejó `not valid` sobre `stock_movements`: `alter table stock_movements validate constraint stock_movements_transfer_of_branch` y `validate constraint stock_movements_transfer_link` (el `validate` toma `share update exclusive` y no frena a las ventas), con su test de integración
 - [ ] T059 [US8] MCP `stock_count_*`, `waste_record`, `low_stock_update` con `warehouse_id`, tests
 
