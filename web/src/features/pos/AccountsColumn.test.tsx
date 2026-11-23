@@ -13,7 +13,7 @@ const CUENTAS: AccountItem[] = [
 ];
 
 function montar(seleccionada: string | null = null, extra: { nueva?: boolean } = {}) {
-  const props = { onElegir: vi.fn(), onNueva: vi.fn(), onDeliver: vi.fn(), onCharge: vi.fn() };
+  const props = { onElegir: vi.fn(), onNueva: vi.fn(), onDeliver: vi.fn(), onCharge: vi.fn(), onVerTodas: vi.fn() };
   render(<Provider><AccountsColumn cuentas={CUENTAS} seleccionada={seleccionada} nueva={extra.nueva} {...props} /></Provider>);
   return props;
 }
@@ -81,8 +81,18 @@ describe('la columna de cuentas', () => {
     expect(screen.getByText('Cuentas (4)')).toBeInTheDocument();
   });
 
+  // La hoja con todas las cuentas es la única que mira las deudas de más de 90 días y las agrupa:
+  // sin esta puerta, en modo ancho no había forma de llegar a ella.
+  test('el encabezado abre la lista completa con un control de 44 px', () => {
+    const p = montar();
+    const todas = screen.getByRole('button', { name: 'Ver todas las cuentas' });
+    expect(alto(todas)).toBeGreaterThanOrEqual(44);
+    fireEvent.click(todas);
+    expect(p.onVerTodas).toHaveBeenCalled();
+  });
+
   test('sin cuentas lo dice, y «Nueva» sigue ahí', () => {
-    render(<Provider><AccountsColumn cuentas={[]} seleccionada={null} onElegir={vi.fn()} onNueva={vi.fn()} onDeliver={vi.fn()} onCharge={vi.fn()} /></Provider>);
+    render(<Provider><AccountsColumn cuentas={[]} seleccionada={null} onElegir={vi.fn()} onNueva={vi.fn()} onDeliver={vi.fn()} onCharge={vi.fn()} onVerTodas={vi.fn()} /></Provider>);
     expect(screen.getByText('No hay cuentas abiertas')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cuenta nueva' })).toBeInTheDocument();
   });

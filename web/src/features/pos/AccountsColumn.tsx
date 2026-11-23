@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Box, Button, Flex, HStack, Text, VStack } from '@chakra-ui/react';
-import { LuPlus } from 'react-icons/lu';
+import { LuList, LuPlus } from 'react-icons/lu';
 import { missingFor, nombreDeCuenta } from '../../domain/cuentas';
 import type { AccountItem } from '../../types/pos';
 import { AccountActions } from './AccountActions';
@@ -23,12 +23,14 @@ interface Props {
   onNueva: () => void;
   onDeliver: (c: AccountItem) => void;
   onCharge: (c: AccountItem) => void;
+  // La hoja con todas las cuentas: la única que agrupa y que mira las deudas de más de 90 días.
+  onVerTodas: () => void;
   delivering?: string | null;
   // La tableta está en una cuenta nueva sin productos: se pinta como primer renglón.
   nueva?: boolean;
 }
 
-export function AccountsColumn({ cuentas, seleccionada, onElegir, onNueva, onDeliver, onCharge, delivering, nueva }: Props) {
+export function AccountsColumn({ cuentas, seleccionada, onElegir, onNueva, onDeliver, onCharge, onVerTodas, delivering, nueva }: Props) {
   const orden = [...cuentas].sort((a, b) => a.openedAt.localeCompare(b.openedAt));
   const lista = useRef<HTMLDivElement>(null);
 
@@ -41,15 +43,23 @@ export function AccountsColumn({ cuentas, seleccionada, onElegir, onNueva, onDel
     <Flex direction="column" w={`${ANCHO_COLUMNA}px`} flexShrink={0} minH={0} h="100%"
       borderRightWidth="1px" borderColor="border" bg="bg.muted">
       <HStack px={2} py={2} gap={2} flexShrink={0}>
-        <Text fontWeight="700" flex="1" pl={1}>Cuentas ({cuentas.length})</Text>
+        <Button flex="1" minW={0} minH="44px" size="sm" variant="ghost" colorPalette="gray" justifyContent="flex-start" px={1}
+          aria-label="Ver todas las cuentas" onClick={onVerTodas}>
+          <Text fontWeight="700" fontSize="md">Cuentas ({cuentas.length})</Text>
+          <LuList />
+        </Button>
         <Button minH="44px" size="sm" variant="outline" bg="bg.panel" aria-label="Cuenta nueva" onClick={onNueva}>
           <LuPlus /> Nueva
         </Button>
       </HStack>
       <VStack ref={lista} aria-label="Cuentas" align="stretch" gap={1} px={2} pb={2} flex="1" minH={0} overflowY="auto"
         css={{ overscrollBehavior: 'contain' }}>
+        {/* Dentro de un HStack, igual que las demás: suelto en la columna, su `flex="1"` lo estiraba a
+            todo el alto. */}
         {nueva && (
-          <Renglon activa nombre="Cuenta nueva" texto="Sin productos" color="gray" etiqueta="Cuenta nueva, sin productos" />
+          <HStack gap={1} align="stretch">
+            <Renglon activa nombre="Cuenta nueva" texto="Sin productos" color="gray" etiqueta="Cuenta nueva, sin productos" />
+          </HStack>
         )}
         {orden.map((c) => {
           const m = missingFor(c);

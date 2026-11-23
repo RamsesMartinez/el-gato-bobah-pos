@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { tokenDeApi } from './ambiente';
+import { tokenDeApi, PRODUCTO } from './ambiente';
 import { iniciarSesion } from './sesion';
 import {
   abrirTicket, alto, botonCobrar, botonEnviar, crearCuentaPorApi, cuentaNueva, entrar, fichas, fila,
@@ -99,7 +99,7 @@ test('T-cuenta · el papel de la cuenta sale desde el cobro y la hoja cabe en el
 // E7 BIS · DIVIDIR POR PRODUCTOS CABE EN LA TABLETA (spec 027, D-13), ahora desde el ticket.
 test('E7 bis · por productos, con efectivo y propina, Cobrar sigue a la vista', async ({ page }) => {
   await entrar(page);
-  for (const p of ['Dedos de Queso Pza', 'Coca Cola 355ml', 'Chai Miel', 'Kit Kat']) {
+  for (const p of [PRODUCTO, 'Coca Cola 355ml', 'Chai Miel', 'Kit Kat']) {
     await ponerUnProducto(page, p);
   }
   await abrirTicket(page);
@@ -127,31 +127,31 @@ test('E7 bis · por productos, con efectivo y propina, Cobrar sigue a la vista',
 // LA FILA DE CUENTAS, EL TICKET EN TRES SECCIONES Y LAS HOJAS NUEVAS (spec 030, T091; caso 29).
 // ---------------------------------------------------------------------------------------------
 
-test('F1 · la fila: fichas completas, «+N» cuenta las demás y nada se desborda con 10 cuentas', async ({ page }) => {
+// Desde la spec 089 las cuentas viven en una COLUMNA en modo ancho (maqueta B): una por renglón, con
+// su propio scroll vertical. A 1280×854 caben las diez.
+test('F1 · la columna: diez cuentas, renglones completos de 56 px y nada se desborda', async ({ page }) => {
   const jwt = await tokenDeApi();
-  const producto = await productoPorNombre(jwt, 'Dedos de Queso Pza');
+  const producto = await productoPorNombre(jwt, PRODUCTO);
   for (let i = 0; i < 10; i++) await crearCuentaPorApi(jwt, producto);
   await entrar(page);
-  await expect(fichas(page).first()).toBeVisible({ timeout: 30_000 });
+  await expect(fichas(page).nth(9)).toBeAttached({ timeout: 30_000 });
 
   const caja = (await fila(page).boundingBox())!;
-  const vistas = await fichas(page).count();
-  // Con el panel del ticket abierto la fila tiene ~612 px: al menos 2 fichas. Cerrado, al menos 4.
-  const minimo = (await panelAbierto(page)) ? 2 : 4;
-  expect(vistas, `solo se ven ${vistas} fichas`).toBeGreaterThanOrEqual(minimo);
-  for (let i = 0; i < vistas; i++) {
+  const total = await fichas(page).count();
+  let vistas = 0;
+  for (let i = 0; i < total; i++) {
     const f = (await fichas(page).nth(i).boundingBox())!;
-    expect(f.x + f.width, 'una ficha se sale de la fila').toBeLessThanOrEqual(caja.x + caja.width + 1);
-    expect(f.height, 'una ficha mide menos de 44 px').toBeGreaterThanOrEqual(44);
+    expect(f.x + f.width, 'un renglón se sale de la columna').toBeLessThanOrEqual(caja.x + caja.width + 1);
+    expect(f.height, 'un renglón mide menos de 56 px').toBeGreaterThanOrEqual(56);
+    if (f.y >= caja.y - 1 && f.y + f.height <= caja.y + caja.height + 1) vistas++;
   }
-  const mas = page.getByRole('button', { name: /^Ver todas las cuentas/ });
-  await expect(mas).toBeInViewport();
+  expect(vistas, `solo se ven ${vistas} cuentas`).toBeGreaterThanOrEqual(10);
+  await expect(page.getByRole('button', { name: 'Ver todas las cuentas' })).toBeInViewport();
   await expect(cuentaNueva(page)).toBeInViewport();
-  expect(await alto(page, /^Ver todas las cuentas/)).toBeGreaterThanOrEqual(44);
-  // Sin scroll horizontal escondido en la página.
+  expect(await alto(page, 'Ver todas las cuentas')).toBeGreaterThanOrEqual(44);
   const desborda = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(desborda, 'la página tiene scroll horizontal').toBe(false);
-  console.log(`[e2e] fila: ${vistas} fichas en ${Math.round(caja.width)}px (panel ${minimo === 2 ? 'abierto' : 'cerrado'})`);
+  console.log(`[e2e] columna: ${vistas} de ${total} cuentas a la vista`);
 });
 
 test('F2 · la hoja «+N» cabe y sus renglones miden 56 px', async ({ page }) => {
@@ -168,7 +168,7 @@ test('F2 · la hoja «+N» cabe y sus renglones miden 56 px', async ({ page }) =
 
 test('F3 · el ticket con las tres secciones deja ver renglones y el pie', async ({ page }) => {
   await entrar(page);
-  for (const p of ['Dedos de Queso Pza', 'Coca Cola 355ml', 'Chai Miel', 'Kit Kat']) {
+  for (const p of [PRODUCTO, 'Coca Cola 355ml', 'Chai Miel', 'Kit Kat']) {
     await ponerUnProducto(page, p);
   }
   await abrirTicket(page);
@@ -234,7 +234,7 @@ test('F5 · el aviso sin conexión no mueve nada: va encima', async ({ page, con
 // no empuja fuera de la pantalla el botón para seguir con el cierre.
 test('F6 · el cierre de caja con cuentas vivas deja a la vista cómo seguir', async ({ page }) => {
   const jwt = await tokenDeApi();
-  const producto = await productoPorNombre(jwt, 'Dedos de Queso Pza');
+  const producto = await productoPorNombre(jwt, PRODUCTO);
   await crearCuentaPorApi(jwt, producto);
   await entrar(page);
   await page.goto('/caja');

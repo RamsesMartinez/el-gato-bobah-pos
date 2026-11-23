@@ -695,7 +695,7 @@ export function POSPage() {
         <Flex flex="1" minH={0}>
           <AccountsColumn cuentas={vivas?.items ?? []} seleccionada={claveSeleccionada} nueva={seleccion === null}
             onElegir={elegirCuenta} onNueva={onNueva} onDeliver={deliverAccount} onCharge={chargeAccount}
-            delivering={delivering} />
+            onVerTodas={() => setTodasAbierta(true)} delivering={delivering} />
           <VStack align="stretch" gap={2} flex="1" minW={0} minH={0}>
             {productos}
           </VStack>

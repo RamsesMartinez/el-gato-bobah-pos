@@ -8,6 +8,10 @@ export const API = process.env.E2E_API_URL ?? 'https://api-dev.elgatobobah.com/a
 export const USUARIO = process.env.E2E_USER ?? 'admin';
 export const EMPRESA = process.env.E2E_SLUG ?? 'gatobobah';
 export const PASSWORD = process.env.E2E_PASSWORD ?? 'Dev-ffb903b3dfb31073!';
+// El producto con que las pruebas llenan una cuenta. Por omisión el del ambiente de pruebas; contra
+// un respaldo restaurado puede estar inactivo y se cambia con E2E_PRODUCTO (uno activo y sin
+// opciones obligatorias).
+export const PRODUCTO = process.env.E2E_PRODUCTO ?? 'Dedos de Queso Pza';
 
 // EL TOKEN SE REUSA DENTRO DE LA MISMA CORRIDA.
 //

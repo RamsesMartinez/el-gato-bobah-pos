@@ -62,12 +62,12 @@ cuentas» de la sección **Maquetas** de [plan.md](plan.md).
 - [X] T020 [US3] Disposición B en `web/src/features/pos/POSPage.tsx`: renglón de canales + herramientas; en modo ancho la columna a la izquierda de categorías y productos; en modo angosto la fila de hoy; buscador plegado con ticket abierto o con folio. Ajustar `POSPage.test.tsx` a lo que cambie
 - [X] T021 [P] [US3] Test de regresión del aviso de agotado: con la franja de entrantes montada, el aviso se coloca debajo de ella, en `web/src/features/notificaciones/FranjaDeAgotado.test.tsx`
 - [X] T022 [US3] Corregir el selector a `[data-testid="franja-de-entrantes"]` en `web/src/features/notificaciones/FranjaDeAgotado.tsx`
-- [ ] T023 [US3] E2E `web/e2e/vender-cuentas.spec.ts`: a 1024×600 y 1280×854 con ticket abierto mide inicio de productos, cuentas completas visibles en la columna (≥ 7 y ≥ 12 con al menos 14 cuentas) y controles ≥ 44 px; lo mismo con la franja de entrantes (52 px) inyectada arriba del área de trabajo y el aviso de agotado encima: la cuenta abierta y una fila completa de productos siguen visibles y sin tapar (FR-009, SC-005); con una pagada creada por API, «Entregar» desde la columna la quita (servidor: `status=entregada`); con una entregada que debe, «Cobrar» abre la hoja de cobro; todo pedido creado se cierra al final
-- [ ] T024 [US3] Ajustar las e2e que dependen de la fila (`e2e/cabe-en-la-tableta.spec.ts`, `e2e/deuda-de-especificaciones.spec.ts`, `e2e/una-sola-puerta.spec.ts`, helpers de `e2e/pos.ts`) a la columna
+- [X] T023 [US3] E2E `web/e2e/vender-cuentas.spec.ts`: a 1024×600 y 1280×854 con ticket abierto mide inicio de productos, cuentas completas visibles en la columna (≥ 7 y ≥ 12 con al menos 14 cuentas) y controles ≥ 44 px; lo mismo con la franja de entrantes (52 px) inyectada arriba del área de trabajo y el aviso de agotado encima: la cuenta abierta y una fila completa de productos siguen visibles y sin tapar (FR-009, SC-005); con una pagada creada por API, «Entregar» desde la columna la quita (servidor: `status=entregada`); con una entregada que debe, «Cobrar» abre la hoja de cobro; todo pedido creado se cierra al final
+- [X] T024 [US3] Ajustar las e2e que dependen de la fila (`e2e/cabe-en-la-tableta.spec.ts`, `e2e/deuda-de-especificaciones.spec.ts`, `e2e/una-sola-puerta.spec.ts`, helpers de `e2e/pos.ts`) a la columna
 
 ## Phase 6: Polish
 
-- [ ] T025 Nota del área en `docs/mecanica/caja-y-cobro.md`: «lo que falta» se deriva del estado del servidor; entregar desde Vender; la columna en modo ancho y la fila en angosto
+- [X] T025 Nota del área en `docs/mecanica/caja-y-cobro.md`: «lo que falta» se deriva del estado del servidor; entregar desde Vender; la columna en modo ancho y la fila en angosto
 - [ ] T026 `bun run lint`, `bun run vitest run`, `bun run build` en verde, desde `web/`
 - [ ] T027 Prueba con alguien nuevo de una fonda a 1024×600 contra el `make start` del worktree (quickstart), corregir lo que encuentre con su test, y cerrar los pedidos de prueba
 
