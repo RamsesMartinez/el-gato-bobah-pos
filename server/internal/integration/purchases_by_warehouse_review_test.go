@@ -239,6 +239,7 @@ func TestTheWarehouseOfALineIsValidated(t *testing.T) {
 // Las escrituras de compra con almacén, en los tres casos de RLS: nadie mete mercancía en la bodega de
 // otra empresa.
 func TestPurchaseWarehouseWritesAreIsolatedInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	k := newPurchaseKit(t)
 	_, bodega := comoEnLaSegundaSubida(t, k.st, defaultCompanyID)
 	other := makeCompany(t, k.st, "compra-tres-casos")
