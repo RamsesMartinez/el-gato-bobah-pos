@@ -1329,7 +1329,9 @@ export const backofficeApi = {
     return api.get<{ items: ArticleSuggestion[] }>(`/articles/suggest?${qs}`);
   },
 
-  stockLevels: () => api.get<{ items: StockLevel[] }>('/stock/levels'),
+  // Sin almacén, el de venta; un id o 'all' (spec 094).
+  stockLevels: (warehouseId?: number | 'all') =>
+    api.get<{ items: StockLevel[] }>(`/stock/levels${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
   stockMovements: () => api.get<{ items: StockMovement[] }>('/stock/movements'),
   inventoryHealth: (q: HealthQuery = {}) => api.get<InventoryHealth>(`/stock/health?${qsReporte(q as ReportQuery)}`),
   // El archivo de la misma pantalla. El nombre viene del servidor (Content-Disposition), con el periodo.

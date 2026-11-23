@@ -145,12 +145,21 @@ update stock_out_reports t set warehouse_id = w.id from warehouses w where w.com
 -- (no ha llegado, o es un excluido), la matriz. Nunca branch_for_company: truena con dos sucursales.
 -- Se llena todo renglón con artículo, excluido o no (R12): el check de la subida siguiente lo exige
 -- y un excluido puede dejar de serlo.
+--
+-- Dos checks de expense_items son NOT VALID (0101, 0092) y producción tiene filas viejas que no los
+-- cumplen (medido en el respaldo del 2026-11-23: una). Postgres los vuelve a revisar en CUALQUIER
+-- update de la fila, así que el relleno tumbaba la migración entera. Se apartan y vuelven igual, sin
+-- validar.
+alter table expense_items drop constraint expense_items_amount_positive, drop constraint expense_items_received_range;
 update expense_items t set warehouse_id = w.id
   from warehouses w
  where t.item_type is not null and w.company_id = t.company_id and w.is_sales
    and w.branch_id = coalesce(
          (select m.branch_id from stock_movements m where m.expense_item_id = t.id and m.company_id = t.company_id order by m.id limit 1),
          (select b.id from branches b where b.company_id = t.company_id and b.is_headquarters));
+alter table expense_items
+  add constraint expense_items_amount_positive check (amount > 0 or is_gift or (excluded and amount >= 0)) not valid,
+  add constraint expense_items_received_range check (coalesce(qty_received, 0) + not_coming_qty <= quantity) not valid;
 update count_places t set warehouse_id = w.id
   from warehouses w join branches b on b.company_id = w.company_id and b.id = w.branch_id and b.is_headquarters
  where w.company_id = t.company_id and w.is_sales;

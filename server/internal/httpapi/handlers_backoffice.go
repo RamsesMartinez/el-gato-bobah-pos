@@ -822,8 +822,14 @@ func (h *Handlers) CancelExpense(w http.ResponseWriter, r *http.Request) {
 
 // ---- Almacén ----
 
+// GET /stock/levels — `?warehouseId=<id>|all`; sin él, el almacén de venta (spec 094).
 func (h *Handlers) StockLevels(w http.ResponseWriter, r *http.Request) {
-	items, err := h.backoffice.StockLevels(r.Context())
+	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), true)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	items, err := h.backoffice.StockLevels(r.Context(), sel)
 	if err != nil {
 		Error(w, err)
 		return

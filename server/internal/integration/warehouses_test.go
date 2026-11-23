@@ -55,6 +55,18 @@ func TestWarehouseLifecycle(t *testing.T) {
 			t.Fatalf("renombrar como el de venta = %v; quiere nombre tomado", err)
 		}
 	})
+	t.Run("renombrar cambia el nombre y deja rastro", func(t *testing.T) {
+		if err := svc.RenameWarehouse(ctx, bodega, "Bodega grande"); err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.RenameWarehouse(ctx, bodega, "Bodega"); err != nil {
+			t.Fatal(err)
+		}
+		var n int
+		if err := st.Pool.QueryRow(ctx, `select count(*) from audit_events where company_id = $1 and action = 'warehouse.updated'`, co).Scan(&n); err != nil || n != 2 {
+			t.Fatalf("%d renombres en la bitácora, %v; quiere 2", n, err)
+		}
+	})
 	t.Run("el de venta no se archiva", func(t *testing.T) {
 		ws, _ := svc.ListWarehouses(ctx, false)
 		if err := svc.ArchiveWarehouse(ctx, ws[0].ID); !errors.Is(err, domain.ErrWarehouseIsSales) {
@@ -135,6 +147,7 @@ func TestAWarehouseWithStockIsNotArchived(t *testing.T) {
 }
 
 func TestWarehousesAreIsolatedInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	owner := makeCompany(t, st, "almacen-duena")
 	other := makeCompany(t, st, "almacen-ajena")
@@ -160,4 +173,56 @@ func TestWarehousesAreIsolatedInTheThreeCases(t *testing.T) {
 			t.Fatal("se archivó la bodega de otra empresa")
 		}
 	})
+}
+
+// EXISTENCIAS POR ALMACÉN (historia 3): por omisión el de venta, uno elegido o todos sumados.
+func TestStockLevelsByWarehouse(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	co := makeCompany(t, st, "existencias-por-almacen")
+	other := makeCompany(t, st, "existencias-otra")
+	svc, ctx := asWaste(t, co)
+	bodega, err := svc.CreateWarehouse(ctx, "Bodega")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leche := placeIngredient(t, st, co, "Leche")
+	azucar := placeIngredient(t, st, co, "Azúcar")
+	// Mientras rige la 0117 un artículo vive en un solo almacén por sucursal: leche en el local y
+	// azúcar en la bodega, sembrados directo.
+	if _, err := st.Pool.Exec(ctx, `
+		insert into stock_levels (company_id, branch_id, warehouse_id, item_type, ingredient_id, on_hand)
+		select w.company_id, w.branch_id, w.id, 'ingrediente', $2, 10 from warehouses w where w.company_id = $1 and w.is_sales
+		union all
+		select w.company_id, w.branch_id, w.id, 'ingrediente', $4, 25 from warehouses w where w.id = $3`,
+		co, leche, bodega, azucar); err != nil {
+		t.Fatal(err)
+	}
+	names := func(sel domain.WarehouseSel) map[string]string {
+		rows, err := svc.StockLevels(ctx, sel)
+		if err != nil {
+			t.Fatalf("StockLevels(%+v): %v", sel, err)
+		}
+		out := map[string]string{}
+		for _, r := range rows {
+			out[r.ItemName] = r.OnHand.String()
+		}
+		return out
+	}
+	if got := names(domain.WarehouseSel{}); got["Leche"] != "10" || got["Azúcar"] != "" {
+		t.Fatalf("por omisión (el de venta) = %v; quiere solo la leche", got)
+	}
+	if got := names(domain.WarehouseSel{ID: bodega}); got["Azúcar"] != "25" || got["Leche"] != "" {
+		t.Fatalf("la bodega = %v; quiere solo el azúcar", got)
+	}
+	if got := names(domain.WarehouseSel{All: true}); got["Leche"] != "10" || got["Azúcar"] != "25" {
+		t.Fatalf("todos = %v; quiere los dos", got)
+	}
+	osvc, octx := asWaste(t, other)
+	if _, err := osvc.StockLevels(octx, domain.WarehouseSel{ID: bodega}); !errors.Is(err, domain.ErrWarehouseNotFound) {
+		t.Fatalf("la bodega de otra empresa = %v; quiere «no existe»", err)
+	}
+	if err := svc.ArchiveWarehouse(ctx, bodega); err == nil {
+		t.Fatal("se archivó una bodega con existencias")
+	}
 }

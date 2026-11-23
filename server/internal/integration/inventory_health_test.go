@@ -386,7 +386,7 @@ func TestHealthSectionsThatDoNotDependOnSales(t *testing.T) {
 	}
 
 	// Con dos sucursales, la sucursal se muestra.
-	if _, err := st.Pool.Exec(ctx, `insert into branches (company_id, branch_number, code, name) values ($1, 2, 'SALUD2', 'Sucursal dos salud')`, defaultCompanyID); err != nil {
+	if _, err := st.Pool.Exec(ctx, `with b as (insert into branches (company_id, branch_number, code, name) values ($1, 2, 'SALUD2', 'Sucursal dos salud') returning *), w as (insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local', true from b) select 1`, defaultCompanyID); err != nil {
 		t.Fatal(err)
 	}
 	if v := reportAsApp(t, st, julio()); !v.MultipleBranches || negativeOf(v, k.milk) == nil || negativeOf(v, k.milk).Branch == nil {

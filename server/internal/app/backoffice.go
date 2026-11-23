@@ -1432,8 +1432,31 @@ func (s *BackofficeService) UpdateExpenseCategory(ctx context.Context, id int64,
 
 // ---- Almacén ----
 
-func (s *BackofficeService) StockLevels(ctx context.Context) ([]db.ListStockLevelsRow, error) {
-	return s.store.QC(ctx).ListStockLevels(ctx)
+// StockLevels son las existencias del almacén que se pidió (el de venta por omisión) o de todos los
+// de la sucursal sumados. Un almacén ajeno, de otra sucursal o archivado es «no existe».
+func (s *BackofficeService) StockLevels(ctx context.Context, sel domain.WarehouseSel) ([]db.ListStockLevelsRow, error) {
+	q := s.store.QC(ctx)
+	var ids []int64
+	if sel.All {
+		ws, err := q.ListWarehouses(ctx, false)
+		if err != nil {
+			return nil, err
+		}
+		for _, w := range ws {
+			ids = append(ids, w.ID)
+		}
+	} else {
+		id, err := ResolveWarehouseID(ctx, q, sel)
+		if err != nil {
+			return nil, err
+		}
+		ids = []int64{id}
+	}
+	rows, err := q.ListStockLevels(ctx, ids)
+	if rows == nil {
+		rows = []db.ListStockLevelsRow{}
+	}
+	return rows, err
 }
 func (s *BackofficeService) StockMovements(ctx context.Context, limit int32) ([]db.ListStockMovementsRow, error) {
 	return s.store.QC(ctx).ListStockMovements(ctx, limit)

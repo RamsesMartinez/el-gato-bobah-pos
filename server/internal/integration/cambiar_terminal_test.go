@@ -181,8 +181,8 @@ func TestChangingTheTerminalRejectsWhatItCannotDo(t *testing.T) {
 	}
 	// Destino de otra sucursal: existe, está activa, pero no es de la caja del pago.
 	var otraSucursal int64
-	if err := k.st.Pool.QueryRow(k.ctx, `insert into branches (company_id, name, branch_number, code)
-		select company_id, 'Sucursal Norte', 2, 'NTE' from branches where id = $1 returning id`, branchOfPrincipal(t, k.st)).Scan(&otraSucursal); err != nil {
+	if err := k.st.Pool.QueryRow(k.ctx, `with b as (insert into branches (company_id, name, branch_number, code)
+		select company_id, 'Sucursal Norte', 2, 'NTE' from branches where id = $1 returning *), w as (insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local', true from b) select id from b`, branchOfPrincipal(t, k.st)).Scan(&otraSucursal); err != nil {
 		t.Fatal(err)
 	}
 	ajena, err := app.NewTerminalsService(k.st).Create(k.ctx, otraSucursal, "Terminal de otra sucursal")

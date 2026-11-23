@@ -142,7 +142,7 @@ const listStockLevels = `-- name: ListStockLevels :many
 
 select sl.item_type,
        coalesce(i.name, p.name) as item_name,
-       sl.on_hand,
+       sum(sl.on_hand)::numeric(14,4) as on_hand,
        coalesce(i.min_stock, p.min_stock) as min_stock,
        coalesce(iu.code, 'pieza') as unit_code,
        -- El ` + "`" + `true` + "`" + ` final no cambia nada (todo renglón es de un insumo o de un producto): deja la
@@ -152,11 +152,12 @@ from stock_levels sl
 left join ingredients i on i.id = sl.ingredient_id
 left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = sl.product_id
-where sl.warehouse_id = current_sales_warehouse_id()
+where sl.warehouse_id = any($1::bigint[])
   -- Es la lista de faltantes de la pantalla (marca «bajo»): un insumo archivado ahí es un faltante
   -- falso (spec 077). Su existencia sigue en Almacén › Archivados. Un producto archivado sí sale,
   -- marcado: desactivar productos no es de esa feature.
   and (sl.ingredient_id is null or i.is_active)
+group by sl.item_type, i.id, p.id, iu.code
 order by item_name
 `
 
@@ -170,9 +171,10 @@ type ListStockLevelsRow struct {
 }
 
 // Almacén / niveles
-// Las de la sucursal (0076): con dos, el mismo insumo saldría dos veces sin decir de cuál es.
-func (q *Queries) ListStockLevels(ctx context.Context) ([]ListStockLevelsRow, error) {
-	rows, err := q.db.Query(ctx, listStockLevels)
+// Los almacenes que se piden, sumados por artículo (spec 094): uno solo (el de venta por omisión, o
+// el elegido) o todos los de la sucursal. Con un almacén, la suma es su cifra.
+func (q *Queries) ListStockLevels(ctx context.Context, warehouseIds []int64) ([]ListStockLevelsRow, error) {
+	rows, err := q.db.Query(ctx, listStockLevels, warehouseIds)
 	if err != nil {
 		return nil, err
 	}

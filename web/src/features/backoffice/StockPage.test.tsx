@@ -11,7 +11,8 @@ import { StockPage } from './StockPage';
 
 const back = vi.hoisted(() => ({
   countPlaces: vi.fn(() => Promise.resolve([{ id: 4, name: 'Barra', position: 0, ingredients: 1 }])),
-  stockLevels: vi.fn(() => Promise.resolve({ items: [] })),
+  stockLevels: vi.fn((_w?: number | 'all') => Promise.resolve({ items: [] })),
+  warehouses: vi.fn(() => Promise.resolve({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] })),
   stockMovements: vi.fn(() => Promise.resolve({ items: [] })),
   units: vi.fn(() => Promise.resolve({ items: [
     { id: 3, code: 'ml', name: 'Mililitro', kind: 'volumen', toBase: '1' },
@@ -210,4 +211,31 @@ describe('Almacén › Avisos', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Avisos' }));
     expect(((await screen.findByLabelText('Correo extra')) as HTMLInputElement).value).toBe('compras@ejemplo.mx');
   });
+});
+
+// Existencias por almacén (spec 094, maqueta A): con un solo almacén la pantalla queda como hoy; con
+// dos aparece el segmentado, por omisión el de venta, y «Todos» suma.
+it('con un solo almacén no hay selector', async () => {
+  sesion(['inventory.view']);
+  montar('/almacen');
+  await screen.findByRole('columnheader', { name: 'Artículo' });
+  expect(screen.queryByRole('group', { name: 'Almacén' })).toBeNull();
+  expect(back.stockLevels).toHaveBeenLastCalledWith(undefined);
+});
+
+it('con dos almacenes elige cuál ver, y «Todos» suma', async () => {
+  back.warehouses.mockResolvedValue({ items: [
+    { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 },
+    { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 1 },
+  ] });
+  sesion(['inventory.view']);
+  montar('/almacen');
+  const grupo = await screen.findByRole('group', { name: 'Almacén' });
+  expect(screen.getByRole('button', { name: 'Local · de venta' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'Bodega' }));
+  await vi.waitFor(() => expect(back.stockLevels).toHaveBeenLastCalledWith(2));
+  fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+  await vi.waitFor(() => expect(back.stockLevels).toHaveBeenLastCalledWith('all'));
+  expect(grupo).toBeInTheDocument();
+  back.warehouses.mockResolvedValue({ items: [{ id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 2 }] });
 });

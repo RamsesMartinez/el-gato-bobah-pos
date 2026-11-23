@@ -19,6 +19,7 @@ import { WasteTab } from './WasteTab';
 import { ArticlesTab } from './articles/ArticlesTab';
 import { ArticleSheet } from './articles/ArticleSheet';
 import { posApi } from '../../api/pos';
+import { Segmented } from '../../components/Segmented';
 
 // El orden lo fijó el plan del 038: Existencias · Movimientos · Insumos · Por recibir · Conteo · Salud.
 const TABS = ['existencias', 'movimientos', 'insumos', 'compra', 'por-recibir', 'conteo', 'merma', 'salud', 'avisos'] as const;
@@ -26,7 +27,14 @@ type Tab = (typeof TABS)[number];
 
 export function StockPage() {
   const horaNegocio = useHoraDelNegocio();
-  const levels = useQuery({ queryKey: ['stock', 'levels'], queryFn: backofficeApi.stockLevels });
+  // El almacén que se ve en Existencias (spec 094): por omisión el de venta. Con un solo almacén no
+  // hay selector y la pantalla queda como antes.
+  const [warehouse, setWarehouse] = useState<number | 'all' | undefined>(undefined);
+  const warehouses = useQuery({ queryKey: ['warehouses'], queryFn: () => backofficeApi.warehouses() });
+  const whList = warehouses.data?.items ?? [];
+  const levels = useQuery({ queryKey: ['stock', 'levels', warehouse ?? 'venta'], queryFn: () => backofficeApi.stockLevels(warehouse),
+    // Cambiar de almacén no borra la pantalla mientras llega la otra lista.
+    placeholderData: (prev) => prev });
   const moves = useQuery({ queryKey: ['stock', 'moves'], queryFn: backofficeApi.stockMovements });
   const user = useSessionStore((s) => s.user);
   const canHealth = can('inventory.health_view', user);
@@ -85,6 +93,15 @@ export function StockPage() {
           {canConfigureStock && <Tabs.Trigger value="avisos" minH="44px">Avisos</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
+          {whList.length > 1 && (
+            <Box mb={3}>
+              <Segmented label="Almacén"
+                value={String(warehouse ?? whList.find((w) => w.isSales)?.id ?? '')}
+                options={[...whList.map((w) => ({ value: String(w.id), label: w.isSales ? `${w.name} · de venta` : w.name })),
+                  { value: 'all', label: 'Todos' }]}
+                onChange={(v) => setWarehouse(v === 'all' ? 'all' : whList.find((w) => String(w.id) === v)?.isSales ? undefined : Number(v))} />
+            </Box>
+          )}
           <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
             <Table.Root size="sm">
               <Table.Header><Table.Row><Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Mínimo</Table.ColumnHeader></Table.Row></Table.Header>

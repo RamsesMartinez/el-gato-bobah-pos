@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -105,7 +106,7 @@ func TestStockReadsUseTheSalesWarehouse(t *testing.T) {
 
 	t.Run("Existencias", func(t *testing.T) {
 		svc, tctx := asTenant(t, defaultCompanyID)
-		rows, err := svc.StockLevels(tctx)
+		rows, err := svc.StockLevels(tctx, domain.WarehouseSel{})
 		if err != nil {
 			t.Fatal(err)
 		}

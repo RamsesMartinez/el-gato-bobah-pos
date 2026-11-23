@@ -463,7 +463,7 @@ func TestMergeMovesStockBranchByBranch(t *testing.T) {
 	if err := k.st.Pool.QueryRow(ctx, `select id from branches where company_id = $1 order by id limit 1`, defaultCompanyID).Scan(&main); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.st.Pool.QueryRow(ctx, `insert into branches (company_id, branch_number, code, name) values ($1, 2, 'S2', 'Sucursal 2') returning id`,
+	if err := k.st.Pool.QueryRow(ctx, `with b as (insert into branches (company_id, branch_number, code, name) values ($1, 2, 'S2', 'Sucursal 2') returning *), w as (insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local', true from b) select id from b`,
 		defaultCompanyID).Scan(&second); err != nil {
 		t.Fatal(err)
 	}
