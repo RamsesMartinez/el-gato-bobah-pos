@@ -134,8 +134,8 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 ## Phase 10: Polish y cierre
 
-- [ ] T042 [P] e2e `web/e2e/entrantes.spec.ts` contra el `make start` del worktree con `PLATFORM_ORDERS_SIMULATED=true`: suena (estado de la alarma expuesto como `data-` en la franja) en otra pantalla; aceptar desde la columna; rechazar con motivo; dos contextos de navegador: aceptar en uno apaga el otro; offline → online; cierra (entrega) todo pedido que acepte
-- [ ] T043 [P] Anotar en `docs/mecanica/plataformas.md` lo que no se ve: «pendiente» lo decide el servidor (plazo + cancelación), la simulación solo en desarrollo, y que las rutas `/orders/platform/*` y eventos `platform.order.*` se retiran en una subida posterior
+- [X] T042 [P] e2e `web/e2e/entrantes.spec.ts` contra el `make start` del worktree con `PLATFORM_ORDERS_SIMULATED=true`: suena (estado de la alarma expuesto como `data-` en la franja) en otra pantalla; aceptar desde la columna; rechazar con motivo; dos contextos de navegador: aceptar en uno apaga el otro; offline → online; cierra (entrega) todo pedido que acepte
+- [X] T043 [P] Anotar en `docs/mecanica/plataformas.md` lo que no se ve: «pendiente» lo decide el servidor (plazo + cancelación), la simulación solo en desarrollo, y que las rutas `/orders/platform/*` y eventos `platform.order.*` se retiran en una subida posterior
 - [ ] T044 `/revision-de-codigo` sobre el diff y corregir con test cada hallazgo
 - [ ] T045 Prueba con alguien nuevo de una fonda a 1024×600 (y 1280×854) contra el `make start` del worktree, con quickstart.md; sin pedidos de prueba abiertos al terminar
 - [ ] T046 `make ci-local` en verde

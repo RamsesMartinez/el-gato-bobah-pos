@@ -47,7 +47,8 @@ declare
 begin
   select id into empresa from companies where slug = current_setting('seed.slug');
   if empresa is null then raise exception 'no existe la empresa %', current_setting('seed.slug'); end if;
-  select id into plataforma from delivery_platforms where name = 'Uber Eats';
+  select id into plataforma from delivery_platforms where company_id = empresa and name = 'Uber Eats';
+  if plataforma is null then raise exception 'la empresa no tiene la plataforma Uber Eats'; end if;
   -- La conexión de prueba, aparte de cualquier tienda real que traiga un respaldo.
   select id into conexion from platform_connections
    where company_id = empresa and delivery_platform_id = plataforma and external_store_id = 'tienda-de-prueba-local';
