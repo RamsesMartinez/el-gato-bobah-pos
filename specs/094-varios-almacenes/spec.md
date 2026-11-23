@@ -304,10 +304,16 @@ almacén de otra empresa se rechaza.
   ese almacén. Puede haber un conteo abierto por almacén.
 - **FR-041**: Los lugares de conteo MUST pertenecer a un almacén; al contar, solo aparecen los del
   almacén contado.
+  Cada artículo tiene un solo lugar (de cualquier almacén): asignarle uno de otro almacén lo pasa a
+  ese recorrido, y la ficha lo confirma antes. El conteo de un almacén que no es el de venta enseña lo
+  que tiene existencia o lugar ahí; lo demás se encuentra buscando.
 - **FR-042**: La merma (incluidos consumo del personal y cortesías) MUST llevar almacén, por omisión el
   de venta.
 - **FR-043**: Los mínimos, la lista de compra, el aviso de stock bajo y el «se acabó» MUST ser por
   almacén y decir de cuál.
+  Encender o apagar las alertas (al mínimo, al acabarse, la franja) es del artículo y vale en todos
+  sus almacenes; el mínimo es de cada almacén, y un almacén que no es el de venta solo avisa con su
+  mínimo propio.
 - **FR-044**: La salud del inventario MUST medir por almacén.
 - **FR-045**: Unir insumos MUST sumar existencias por almacén.
 
