@@ -139,6 +139,12 @@ var auditActions = []struct {
 	// Unir insumos (spec 056): configuración del almacén, con el reemplazo.
 	{AuditIngredientMerged, AuditGroupPrice},
 	{AuditIngredientMergedInto, AuditGroupPrice},
+	// Fotos del catálogo (spec 091): configuración del menú, con los precios.
+	{AuditProductImageSet, AuditGroupPrice},
+	{AuditProductImageRemoved, AuditGroupPrice},
+	{AuditCategoryImageSet, AuditGroupPrice},
+	{AuditCategoryImageRemoved, AuditGroupPrice},
+	{AuditCategoryFamilySet, AuditGroupPrice},
 }
 
 const (
@@ -392,3 +398,12 @@ func (f AuditFilter) Actions() []AuditAction {
 	}
 	return []AuditAction{}
 }
+
+// Fotos del catálogo (spec 091). Antes y después son la URL de la foto (o la familia).
+const (
+	AuditProductImageSet      AuditAction = "product.image_set"
+	AuditProductImageRemoved  AuditAction = "product.image_removed"
+	AuditCategoryImageSet     AuditAction = "category.image_set"
+	AuditCategoryImageRemoved AuditAction = "category.image_removed"
+	AuditCategoryFamilySet    AuditAction = "category.family_set"
+)

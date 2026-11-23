@@ -35,12 +35,13 @@ fi
 
 pg=$((5500 + N)) pgtest=$((5600 + N)) ci=$((5700 + N)) redis=$((6400 + N))
 mail_http=$((8200 + N)) mail_smtp=$((1100 + N)) api=$((8000 + N)) web=$((3000 + N))
+media=$((9300 + N))
 
 # Un puerto ocupado por OTRA cosa se dice antes de escribir nada; uno ocupado por los contenedores
 # de este mismo proyecto es el caso normal de volver a correrlo.
 busy() { ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$1\$"; }
 mine="$(docker ps --filter "label=com.docker.compose.project=egb$N" --format '{{.Ports}}' 2>/dev/null || true)"
-for p in $pg $pgtest $redis $mail_http $mail_smtp; do
+for p in $pg $pgtest $redis $mail_http $mail_smtp $media; do
   if busy "$p" && ! grep -q ":$p->" <<<"$mine"; then
     echo "El puerto $p ya lo usa otro proceso; elige otro número o libéralo." >&2
     exit 1
@@ -56,6 +57,8 @@ CI_PG_PORT=$ci
 REDIS_PORT=$redis
 MAILPIT_HTTP_PORT=$mail_http
 MAILPIT_SMTP_PORT=$mail_smtp
+# Almacenamiento de fotos compatible con S3 (versitygw, spec 091).
+MEDIA_PORT=$media
 BACKEND_PORT=$api
 # El binario de la API lee PORT; start.sh lo deriva de BACKEND_PORT, dev-api.sh no.
 PORT=$api
@@ -64,6 +67,6 @@ TEST_DATABASE_URL=postgres://gatobobah:gatobobah@localhost:$pgtest/gatobobah_tes
 EOF
 
 echo "Listo: $OUT"
-echo "  Postgres :$pg  ·  pruebas :$pgtest  ·  Redis :$redis  ·  API :$api  ·  web :$web  (proyecto egb$N)"
+echo "  Postgres :$pg  ·  pruebas :$pgtest  ·  Redis :$redis  ·  fotos :$media  ·  API :$api  ·  web :$web  (proyecto egb$N)"
 echo "Siguiente: make start (levanta todo con estos puertos). Las credenciales salen de deploy/.env"
 echo "de ESTE worktree; si no existe, make check-env lo crea con contraseñas nuevas."

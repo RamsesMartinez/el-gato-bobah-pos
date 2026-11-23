@@ -33,19 +33,20 @@ func (q *Queries) CatalogVersion(ctx context.Context) (CatalogVersionRow, error)
 
 const menuCategories = `-- name: MenuCategories :many
 
-select id, name, parent_id, sort_key, color, image_url
+select id, name, parent_id, sort_key, color, image_url, coalesce(food_family::text, '')::text as food_family
 from categories
 where is_active
 order by parent_id nulls first, sort_key, name
 `
 
 type MenuCategoriesRow struct {
-	ID       int64           `json:"id"`
-	Name     string          `json:"name"`
-	ParentID *int64          `json:"parent_id"`
-	SortKey  decimal.Decimal `json:"sort_key"`
-	Color    *string         `json:"color"`
-	ImageUrl *string         `json:"image_url"`
+	ID         int64           `json:"id"`
+	Name       string          `json:"name"`
+	ParentID   *int64          `json:"parent_id"`
+	SortKey    decimal.Decimal `json:"sort_key"`
+	Color      *string         `json:"color"`
+	ImageUrl   *string         `json:"image_url"`
+	FoodFamily string          `json:"food_family"`
 }
 
 // Lecturas planas para armar el documento del menú POS (se ensambla en Go y se cachea en Redis).
@@ -65,6 +66,7 @@ func (q *Queries) MenuCategories(ctx context.Context) ([]MenuCategoriesRow, erro
 			&i.SortKey,
 			&i.Color,
 			&i.ImageUrl,
+			&i.FoodFamily,
 		); err != nil {
 			return nil, err
 		}
