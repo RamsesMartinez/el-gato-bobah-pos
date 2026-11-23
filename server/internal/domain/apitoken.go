@@ -412,9 +412,11 @@ var mcpTools = []MCPTool{
 	rd("presentations_list", "Empaques de compra de los insumos (bolsa de 5 kg, caja de 12…); con ingredient_id, solo los de ese insumo.", PermInventoryReceive),
 	rd("pending_receipts_list", "Compras con mercancía que todavía no llega.", PermInventoryReceive),
 	wr("purchase_create", "Captura una compra con su mercancía: entra al almacén y cambia el costo de cada insumo. "+
-		"La vista previa propone insumos y muestra el costo nuevo; aplicar exige insumo y empaque o unidad en cada renglón.",
+		"La vista previa propone insumos y muestra el costo nuevo; aplicar exige insumo y empaque o unidad en cada renglón. "+
+		"Cada renglón entra al almacén de venta o al de su warehouse_id.",
 		ScopeWritePurchases, PermExpensesCapture),
-	wr("purchase_receive", "Recibe una compra pendiente: lo que llegó de cada renglón entra al almacén.",
+	wr("purchase_receive", "Recibe una compra pendiente: lo que llegó de cada renglón entra al almacén que el renglón ya "+
+		"dice (el que se eligió al capturarla); para cambiarlo, expense_edit.",
 		ScopeWritePurchases, PermInventoryReceive),
 	rd("stock_count_current", "El conteo abierto y qué artículos se pueden contar. No dice lo que el sistema tiene.", PermInventoryCount),
 	wr("stock_count_open", "Abre un conteo de existencias.", ScopeWriteInventory, PermInventoryCount),
@@ -441,7 +443,7 @@ var mcpTools = []MCPTool{
 	wr("expense_edit", "Corrige un gasto o compra ya guardado: encabezado, renglones agregados (add) y quitados "+
 		"(remove). Para cambiar el insumo o el empaque de un renglón, quítalo y agrégalo en la misma llamada. "+
 		"La vista previa trae los efectos y un fingerprint; aplicar exige ese fingerprint y las decisiones que pidió. "+
-		"Los pagos no cambian.", ScopeWriteExpenses, PermExpensesEdit),
+		"Los pagos no cambian. Un renglón agregado entra al almacén de venta o al de su warehouse_id.", ScopeWriteExpenses, PermExpensesEdit),
 
 	// Spec 084: alertas de stock bajo por lote.
 	wr("low_stock_update", "Enciende o apaga la alerta de stock bajo de varios insumos o productos (con existencia "+
