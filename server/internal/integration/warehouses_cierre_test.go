@@ -121,6 +121,47 @@ func TestStockOutSearchIsIsolatedInTheThreeCases(t *testing.T) {
 	})
 }
 
+// El almacén de otra sucursal de la misma empresa: RLS no lo separa (es de la misma empresa), lo
+// separa el filtro de sucursal. Buscar «se acabó» con su id no alcanza nada y responde 404.
+func TestStockOutSearchWithAWarehouseOfAnotherBranch(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	co := makeCompany(t, st, "busca-otra-sucursal")
+	var norte int64
+	if err := st.Pool.QueryRow(context.Background(), `with b as (insert into branches (company_id, branch_number, code, name)
+		values ($1, 2, 'NORTE', 'Norte') returning *)
+		insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local Norte', true from b returning id`,
+		co).Scan(&norte); err != nil {
+		t.Fatal(err)
+	}
+	var norteBranch int64
+	if err := st.Pool.QueryRow(context.Background(), `select branch_id from warehouses where id = $1`, norte).Scan(&norteBranch); err != nil {
+		t.Fatal(err)
+	}
+	// La sesión trabaja en una sucursal: `app.branch_id` es la puerta del selector de sucursal. Con
+	// una sola conexión en el pool, el ajuste de sesión sigue puesto cuando AcquireTenant la toma.
+	searchFrom := func(branch int64) error {
+		t.Helper()
+		as := appRoleStoreWithOneConn(t)
+		if _, err := as.Pool.Exec(context.Background(), "select set_config('app.branch_id', $1, false)", itoa(int(branch))); err != nil {
+			t.Fatal(err)
+		}
+		ctx, release, err := as.AcquireTenant(context.Background(), co)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer release()
+		_, err = app.NewStockOutService(as, clock).Search(ctx, "Leche", domain.WarehouseSel{ID: norte})
+		return err
+	}
+	if err := searchFrom(norteBranch); err != nil {
+		t.Fatalf("desde Norte, buscar en su propio almacén = %v; la prueba no está eligiendo sucursal", err)
+	}
+	if err := searchFrom(headquarters(t, st, co)); !errors.Is(err, domain.ErrWarehouseNotFound) {
+		t.Fatalf("desde la matriz, buscar en el almacén de Norte = %v; quiere 404 por el almacén", err)
+	}
+}
+
 // La bitácora de una compra solo decía a qué almacén iba cada renglón al recibirlo: una compra
 // capturada sin que llegara nada (o que llegó completa al crearla) no dejaba rastro de su destino, y
 // «¿quién mandó esto a Bodega?» no tenía respuesta. Ahora el alta lo registra por renglón.

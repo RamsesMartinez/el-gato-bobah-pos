@@ -993,9 +993,6 @@ func learnedStatus(it ExpenseItemInput) (string, error) {
 
 // ---- Líneas ----
 
-// insertItems guarda los renglones con las reglas de dinero de la compra (FR-004a): cada renglón de
-// mercancía lleva importe, salvo un regalo, y entre todos no pasan del total pagado. Con
-// `receivedAll`, un renglón de mercancía sin cantidad recibida se da por llegado completo.
 // auditLine es un renglón del almacén como queda en la bitácora del alta: a qué almacén va. Sin él,
 // una compra que nunca pasó por «Recibir» no dejaba rastro de su destino (spec 094).
 type auditLine struct {
@@ -1004,6 +1001,9 @@ type auditLine struct {
 	WarehouseID int64  `json:"warehouseId"`
 }
 
+// insertItems guarda los renglones con las reglas de dinero de la compra (FR-004a): cada renglón de
+// mercancía lleva importe, salvo un regalo, y entre todos no pasan del total pagado. Con
+// `receivedAll`, un renglón de mercancía sin cantidad recibida se da por llegado completo.
 func (s *BackofficeService) insertItems(ctx context.Context, q *db.Queries, expenseID int64, items []ExpenseItemInput, total decimal.Decimal, receivedAll bool) ([]auditLine, error) {
 	amounts := make([]decimal.Decimal, 0, len(items))
 	lines := []auditLine{}

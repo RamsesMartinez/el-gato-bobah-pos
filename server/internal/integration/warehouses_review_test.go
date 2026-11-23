@@ -233,6 +233,10 @@ func TestWarehouseInputsAtTheBoundary(t *testing.T) {
 	if w := do(t, r, http.MethodGet, "/api/v1/stock/movements?warehouseId=", tok, nil, ""); w.Code != http.StatusBadRequest {
 		t.Errorf("movimientos con ?warehouseId= vacío = %d; quiere 400", w.Code)
 	}
+	// El 400 dice qué campo espera: «datos inválidos» a secas no dice que el almacén va en warehouseId.
+	if w := do(t, r, http.MethodPost, "/api/v1/stock/counts", tok, []byte(`{"warehouse_id":1}`), ct); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "warehouseId") {
+		t.Errorf("abrir conteo con warehouse_id = %d %s; quiere 400 que nombre warehouseId", w.Code, w.Body.String())
+	}
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stock/counts", io.NopCloser(strings.NewReader("")))
 	req.ContentLength = -1
 	req.Header.Set("Authorization", "Bearer "+tok)
