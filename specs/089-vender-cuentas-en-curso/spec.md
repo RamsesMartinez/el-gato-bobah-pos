@@ -31,8 +31,9 @@ a 1024×600 y a 1280×854:
   cuenta en «+N», que abre la lista completa.
 - **Una cuenta pagada que no se ha marcado entregada sigue en la fila**, y la ficha no dice por qué
   ni ofrece cómo quitarla. Entregar solo se puede desde la pantalla de Pedidos. Se acumulan.
-- Las franjas del shell —pedidos por aceptar (52 px, spec 093) y agotados (60 px)— aparecen arriba
-  de cualquier pantalla y le quitan ese alto a Vender mientras están.
+- Las franjas del shell aparecen arriba de cualquier pantalla: la de pedidos por aceptar (spec 093)
+  es una fila de 52 px que le quita ese alto a Vender mientras hay pedidos; el aviso de agotado
+  (spec 084) flota encima, 60 px al centro, durante 90 segundos, y tapa lo que quede debajo.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -165,7 +166,8 @@ según la opción elegida en las maquetas) y caben más cuentas que hoy.
   distinguible por color.
 - **FR-008**: Vender MUST mostrar más cuentas completas a la vez que hoy a 1024×600 con el ticket
   abierto (hoy 2) y cerrado (hoy 4); las que no caben MUST seguir alcanzables en un toque.
-- **FR-009**: La disposición MUST caber a 1024×600 con las dos franjas del shell abiertas (112 px),
+- **FR-009**: La disposición MUST caber a 1024×600 con la franja de entrantes abierta (52 px) y el
+  aviso de agotado encima (60 px),
   dejando visibles la cuenta activa y al menos una fila completa de productos; y MUST revisarse
   también a 1280×854.
 - **FR-010**: Todo control tappable nuevo o movido MUST medir al menos 44 px; sin `<select>` nativo.

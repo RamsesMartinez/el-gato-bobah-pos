@@ -115,15 +115,15 @@ specs/089-vender-cuentas-en-curso/
 
 ```text
 web/src/
-├── domain/cuentas.ts                 # ESTADO + loQueFalta (texto y acciones por estado)
+├── domain/cuentas.ts                 # ESTADO + missingFor (texto y acciones por estado)
 ├── features/pos/
 │   ├── estadosDeCuenta.ts            # medidas de la fila, orden
-│   ├── ColumnaDeCuentas.tsx          # columna B (modo ancho)
+│   ├── AccountsColumn.tsx          # columna B (modo ancho)
 │   ├── FilaDeCuentas.tsx             # fila horizontal (modo angosto) con «lo que falta»
 │   ├── TodasLasCuentasSheet.tsx      # renglones con lo que falta + entregar/cobrar
 │   ├── PlatformPicker.tsx            # canales compactos, sin renglones de texto
 │   ├── POSPage.tsx                   # disposición, entregar (mutación) y cobrar desde la cuenta
-│   └── useEntregarCuenta.ts          # mutación de entregar con invalidación y mensaje de error
+│   └── useDeliverAccount.ts          # mutación de entregar con invalidación y mensaje de error
 ├── features/caja/turno.tsx           # usa el mismo texto de «lo que falta»
 └── features/notificaciones/FranjaDeAgotado.tsx  # se coloca debajo de la franja de entrantes
 web/e2e/vender-cuentas.spec.ts        # medidas a 1024×600/1280×854 y entregar/cobrar
