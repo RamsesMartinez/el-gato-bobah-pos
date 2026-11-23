@@ -19,7 +19,9 @@ func TestNotificationListenerPublishesOnCommitOnly(t *testing.T) {
 	broker := realtime.NewBroker()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	listener := app.NewNotificationListener(basesPorPrueba[pruebaRaiz(t.Name())], broker)
+	// testURL toma basesMu: leer el mapa directo chocaba con las pruebas en paralelo que lo escriben
+	// («concurrent map read and map write», 2026-11-23).
+	listener := app.NewNotificationListener(testURL(t), broker)
 	go listener.Run(ctx)
 	events, unsub := broker.Subscribe(defaultCompanyID)
 	defer unsub()
