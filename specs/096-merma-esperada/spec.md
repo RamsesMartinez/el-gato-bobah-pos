@@ -34,6 +34,14 @@ capacitación para un conteo.
 S1 solo toca costo y márgenes; no mueve existencias. S2 depende de que el almacén exista en
 conteos, mermas y movimientos (spec 094, entregas E2 a E5).
 
+### Fuentes leídas (con todos sus comentarios)
+
+| Issue | Lo que se tomó |
+| --- | --- |
+| #226 | Cuerpo (2026-11-04): % general, por producto, precedencia, 0 % capturado, de dónde vino el %, sin recalcular el pasado. Ampliación (2026-11-16): conteo vs ventas, descontar la merma, rediseño de inventario y conteo, meta de carga. Comentario del 2026-11-23: merma real de 90 días, solo informativa. Decisión del dueño (2026-11-23): todo en un spec, dos subidas, la segunda sobre las pantallas del #65, merma real y conteo vs ventas por almacén |
+| #146 | Caso real del insumo caducado (motiva la merma real) y la decisión del dueño (2026-11-23): la caducidad por lote arranca después del #65 y nunca se descuenta de un lote caducado. Por eso la caducidad queda fuera de esta spec |
+| #65 | Requerimiento (2026-10-18) y actualización (2026-11-23): almacén en mermas, movimientos y conteos, y lo que se vende descuenta del almacén de venta. El 2026-11-23 entró completo a producción (spec 094, releases #347, #354, #360, #363 y #367), así que la subida 2 ya puede empezar cuando el dueño lo decida |
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Un porcentaje general cubre lo que se pierde al preparar (Priority: P1) — S1
