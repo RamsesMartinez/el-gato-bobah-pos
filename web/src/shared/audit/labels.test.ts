@@ -24,7 +24,7 @@ const FROM_SERVER = [
   'ingredient.merged', 'ingredient.merged_into',
   'product.image_set', 'product.image_removed', 'category.image_set', 'category.image_removed',
   'category.family_set',
-  'warehouse.created', 'warehouse.updated', 'warehouse.archived', 'warehouse.restored',
+  'warehouse.created', 'warehouse.updated', 'warehouse.archived', 'warehouse.restored', 'transfer.created',
   'ingredient.density_set', 'ingredient.density_cleared', 'presentation.tare_set',
   'role.created', 'role.renamed', 'role.permissions_changed', 'role.reset', 'role.deactivated',
   'role.reactivated', 'role.deleted', 'user.role_changed',

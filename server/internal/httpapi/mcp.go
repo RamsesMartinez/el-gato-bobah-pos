@@ -300,8 +300,23 @@ func toolHint(status int, body []byte, listTool string) string {
 	var env errorEnvelope
 	_ = json.Unmarshal(body, &env)
 	var ref domain.ExistingRef
+	code, msg := env.Error.Code, env.Error.Message
 	if d := env.Error.Details; d != nil {
 		ref = domain.ExistingRef{ID: d.ExistingID, Archived: d.Archived}
+		// El traspaso comparte NEEDS_CONFIRM con el conteo, pero se confirma con otro campo; lo
+		// distinguen sus renglones faltantes, que el agente necesita para preguntarle a la persona.
+		if code == "NEEDS_CONFIRM" && len(d.Lines) > 0 {
+			code = "TRANSFER_NEEDS_CONFIRM"
+			short := make([]string, len(d.Lines))
+			for i, l := range d.Lines {
+				kind := "insumo"
+				if l.ItemType == "producto" {
+					kind = "producto"
+				}
+				short[i] = fmt.Sprintf("%s %d: hay %s", kind, l.ID, l.Available.String())
+			}
+			msg = strings.TrimRight(strings.TrimSpace(msg), ".") + " (" + strings.Join(short, "; ") + ")"
+		}
 	}
-	return domain.ToolErrorHintWith(status, env.Error.Code, env.Error.Message, listTool, ref)
+	return domain.ToolErrorHintWith(status, code, msg, listTool, ref)
 }

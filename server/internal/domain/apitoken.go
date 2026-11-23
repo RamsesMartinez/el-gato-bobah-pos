@@ -347,6 +347,8 @@ var toolFixByCode = map[string]string{
 		"authorized_close_reason si tu rol puede cerrar sin esa salida.",
 	"NEEDS_CONFIRM": "La cifra está fuera de lo de costumbre. Si es lo que se contó, repite ese renglón con " +
 		"confirmed: true.",
+	"TRANSFER_NEEDS_CONFIRM": "El sistema dice que el origen no alcanza. Pregúntale a la persona; solo si confirma " +
+		"que la mercancía sí está ahí, repite el traspaso con confirm_negative: true y una idempotency_key nueva.",
 	"INGREDIENT_MERGED": "Ese insumo se unió a otro: búscalo con articles_search y usa el que quedó.",
 	"OPEN_ORDERS": "Hay pedidos sin terminar en este turno: entrégalos en la pantalla o cancélalos con " +
 		"order_cancel antes de cerrar.",
@@ -452,6 +454,9 @@ var mcpTools = []MCPTool{
 	wr("waste_record", "Registra lo que se echó a perder. Lo que pasa el tope de la empresa queda por aprobar.", ScopeWriteInventory, PermInventoryWriteOff),
 	wr("stock_adjust", "Ajusta la existencia de un insumo o producto (cantidad con signo), en el almacén de venta o en "+
 		"warehouse_id.", ScopeWriteInventory, PermInventoryCount),
+	wr("stock_transfer", "Traspasa mercancía de un almacén a otro de la sucursal (insumos o productos con existencia "+
+		"propia, en su unidad base). Si el origen no alcanza, pide confirmar.", ScopeWriteInventory, PermInventoryTransfer),
+	rd("stock_transfers_list", "Traspasos entre almacenes recientes, con sus renglones.", PermInventoryView),
 	rd("products_list", "Productos del menú con precio, costo y si están activos; con búsqueda.", PermMenuConfigure),
 	rd("modifier_options_list", "Extras (opciones de modificador) con su precio y grupo; con búsqueda.", PermMenuConfigure),
 	rd("platform_prices_list", "Plataformas de reparto y los precios propios de cada producto y extra.", ""),

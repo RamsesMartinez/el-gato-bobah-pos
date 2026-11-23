@@ -38,7 +38,7 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		// Fotos del catálogo (spec 091).
 		"product.image_set", "product.image_removed", "category.image_set", "category.image_removed",
 		"category.family_set",
-		"warehouse.created", "warehouse.updated", "warehouse.archived", "warehouse.restored",
+		"warehouse.created", "warehouse.updated", "warehouse.archived", "warehouse.restored", "transfer.created",
 	}
 	got := AllAuditActions()
 	if len(got) != len(want) {
@@ -173,8 +173,8 @@ func TestAuditFilterActions(t *testing.T) {
 	// unir insumos (spec 056), y las tres de densidad y tara (spec 058). Y las dos de configurar
 	// avisos de inventario (spec 084): alertas de un artículo y destinatarios. Y las cinco de fotos
 	// y familias del catálogo (spec 091), dónde se vende un producto (spec 092) y las cuatro de
-	// almacenes (spec 094).
-	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 35 {
+	// almacenes y el traspaso (spec 094).
+	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 36 {
 		t.Fatalf("grupo precios = %v", got)
 	}
 	if got := (AuditFilter{Group: "price", Action: "price.set"}).Actions(); len(got) != 1 || got[0] != "price.set" {

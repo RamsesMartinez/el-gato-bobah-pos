@@ -23,6 +23,8 @@ export interface ApiErrorDetails {
   ingredientId?: number;
   // El nombre alternativo que chocó (spec 063, ALT_NAME_TAKEN); el mensaje ya lo nombra.
   name?: string;
+  // Los artículos que un traspaso dejaría en negativo en el origen y cuánto hay (spec 094, NEEDS_CONFIRM).
+  lines?: { itemType: string; id: number; available: string }[];
 }
 
 export class ApiError extends Error {

@@ -77,6 +77,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'warehouse.updated': 'Cambió un almacén',
   'warehouse.archived': 'Archivó un almacén',
   'warehouse.restored': 'Reactivó un almacén',
+  'transfer.created': 'Traspasó entre almacenes',
   'presentation.created': 'Agregó un empaque',
   'presentation.updated': 'Editó un empaque',
   'presentation.retired': 'Retiró o volvió un empaque',

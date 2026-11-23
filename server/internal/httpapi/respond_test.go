@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -551,5 +552,19 @@ func TestCatalogMediaErrorsHaveTheirOwnCode(t *testing.T) {
 				t.Fatalf("%v → %d %s %q, quería %d %s %q", c.err, w.Code, got.Error.Code, got.Error.Message, c.status, c.code, c.msg)
 			}
 		})
+	}
+}
+
+// Un bloqueo mutuo (40P01) que Postgres resolvió abortando esta transacción no es un error del
+// servidor: la otra terminó y ésta se puede reintentar. Como 500 dispara el aviso por correo y la
+// pantalla dice «error del servidor» a quien solo tiene que volver a tocar.
+func TestADeadlockIsAConflictToRetry(t *testing.T) {
+	w := httptest.NewRecorder()
+	Error(w, fmt.Errorf("traspaso: %w", &pgconn.PgError{Code: "40P01", Message: "deadlock detected"}))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("un bloqueo mutuo respondió %d; quiere 409", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "vuelve a intentar") || strings.Contains(w.Body.String(), "deadlock") {
+		t.Fatalf("el mensaje del bloqueo mutuo = %s; quiere «vuelve a intentar» y sin el texto de Postgres", w.Body.String())
 	}
 }
