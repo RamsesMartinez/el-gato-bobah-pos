@@ -120,10 +120,15 @@ func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListMod
 }
 
 const adminListProducts = `-- name: AdminListProducts :many
-select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, q.inactive_group_count, q.alt_names, q.matched_alt, count(*) over() as total
+select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.image_url, q.category_image_url, q.category_food_family, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, q.inactive_group_count, q.alt_names, q.matched_alt, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
          p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
+         -- La miniatura de la lista (spec 091): la foto propia o, si no tiene, la de su categoría o
+         -- su familia. Una subcategoría sin las suyas hereda las de su padre. Viajan para que la
+         -- pantalla no pida nada más.
+         p.image_url, coalesce(c.image_url, pc.image_url) as category_image_url,
+         coalesce(c.food_family::text, pc.food_family::text, '')::text as category_food_family,
          p.composition_status, p.cost_source, p.manual_cost, (p.recipe_id is not null)::bool as has_recipe,
          (select count(*) from product_modifier_groups pmg
             join modifier_groups mg on mg.id = pmg.group_id
@@ -144,6 +149,7 @@ from (
                                order by n limit 1), '') end)::text as matched_alt
   from products p
   join categories c on c.id = p.category_id
+  left join categories pc on pc.id = c.parent_id
   -- El producto genérico de plataforma (0077) no es del catálogo: lo usa el sistema para renglones
   -- sin pareja. Editarlo o borrarlo desde aquí dejaría a esos pedidos sin a dónde ir.
   where p.system_kind is null
@@ -205,6 +211,9 @@ type AdminListProductsRow struct {
 	NeedsPrep          bool             `json:"needs_prep"`
 	Category           string           `json:"category"`
 	CategoryID         int64            `json:"category_id"`
+	ImageUrl           *string          `json:"image_url"`
+	CategoryImageUrl   *string          `json:"category_image_url"`
+	CategoryFoodFamily string           `json:"category_food_family"`
 	CompositionStatus  *string          `json:"composition_status"`
 	CostSource         CostSource       `json:"cost_source"`
 	ManualCost         *decimal.Decimal `json:"manual_cost"`
@@ -254,6 +263,9 @@ func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsPa
 			&i.NeedsPrep,
 			&i.Category,
 			&i.CategoryID,
+			&i.ImageUrl,
+			&i.CategoryImageUrl,
+			&i.CategoryFoodFamily,
 			&i.CompositionStatus,
 			&i.CostSource,
 			&i.ManualCost,
@@ -525,10 +537,10 @@ func (q *Queries) CloneProductModifierGroups(ctx context.Context, arg CloneProdu
 const cloneProductRow = `-- name: CloneProductRow :one
 insert into products (
   name, description, type, category_id, price, cost_source, manual_cost, current_cost,
-  recipe_id, track_stock, allow_oversell, min_stock, is_favorite, sort_key, image_url, is_active
+  recipe_id, track_stock, allow_oversell, min_stock, is_favorite, sort_key, is_active
 )
 select $1, p.description, p.type, p.category_id, p.price, p.cost_source, p.manual_cost, p.current_cost,
-       $2, p.track_stock, p.allow_oversell, p.min_stock, p.is_favorite, p.sort_key, p.image_url, p.is_active
+       $2, p.track_stock, p.allow_oversell, p.min_stock, p.is_favorite, p.sort_key, p.is_active
 from products p where p.id = $3
 returning id
 `
@@ -541,6 +553,8 @@ type CloneProductRowParams struct {
 
 // Copia la fila del producto de origen con nombre nuevo. sku queda null (es unique; no se copia)
 // y recipe_id apunta a la receta ya clonada (o null). company_id lo sella el default del GUC.
+// La foto NO se copia (spec 091): su archivo lleva el id del original, y quitar la del duplicado
+// borraría la del original.
 func (q *Queries) CloneProductRow(ctx context.Context, arg CloneProductRowParams) (int64, error) {
 	row := q.db.QueryRow(ctx, cloneProductRow, arg.Name, arg.RecipeID, arg.SrcID)
 	var id int64

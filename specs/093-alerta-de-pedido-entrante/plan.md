@@ -22,7 +22,7 @@ Detalle de cada decisión: [research.md](research.md).
 **Primary Dependencies**: chi, pgx + sqlc, goose; Chakra UI v3, TanStack Query, Zustand. Sin
 dependencias nuevas (el sonido es Web Audio del navegador).
 
-**Storage**: PostgreSQL. Una migración de solo filas (0117); sin tablas ni columnas nuevas.
+**Storage**: PostgreSQL. Una migración de solo filas (0118); sin tablas ni columnas nuevas.
 
 **Testing**: `go test` (domain, table-driven), integración contra Postgres real bajo `appRoleStore`,
 vitest + Testing Library, Playwright contra el `make start` del worktree.
@@ -145,7 +145,7 @@ Lo que cambió en el diseño por sus hallazgos:
 
 **Base de datos**
 
-- **0117 pone `company_id` a mano** en `role_permission_overrides` (el default sale de la sesión y en
+- **0118 pone `company_id` a mano** en `role_permission_overrides` (el default sale de la sesión y en
   la migración no hay): `select r.company_id, r.id, 39, true from roles r where r.system_role_id is
   null on conflict do nothing`. Sin `set_config`: el owner salta RLS (0108 no usa `force`).
 - **Down**: se niega solo si una empresa le **quitó** el permiso a un rol (`not granted`); si no,
@@ -186,7 +186,7 @@ specs/093-alerta-de-pedido-entrante/
 
 ```text
 server/
-├── migrations/0117_incoming_orders_permission.sql   # + su test de integración
+├── migrations/0118_incoming_orders_permission.sql   # + su test de integración
 ├── queries/pedidos_de_plataforma.sql                # lista con plazo, cancelar por folio externo
 ├── internal/domain/incoming.go (+ _test)            # IncomingOrder, IsPending, orden, motivos
 ├── internal/domain/permission.go                    # PermOrdersAcceptIncoming
@@ -226,3 +226,6 @@ consumen el shell, Vender y Pedidos.
 - Quitar `/orders/platform/pending`, `/orders/platform/{id}/accept` y los eventos `platform.order.*`
   en una subida posterior, cuando ningún front en caché los use.
 - Marcar `expirado` en la fila si un reporte necesita contar vencidos.
+
+> **Renumerada (2026-11-23):** la migración de esta feature es la **0118**. La 0117 la tomó la de
+> fotos del catálogo (#325), que llegó antes a `develop`. El id de permiso 39 seguía libre.

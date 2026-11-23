@@ -56,14 +56,14 @@ Lo que se leyó del código antes de diseñar, y las decisiones que salen de ah�
 
 ### D4. Permiso `orders.accept_incoming` (id 39)
 
-- **Decision**: migración 0117 inserta el permiso, lo da a los 4 roles sugeridos en
+- **Decision**: migración 0118 inserta el permiso, lo da a los 4 roles sugeridos en
   `system_role_permissions` (herencia), y a cada rol **propio** existente le agrega un override
   `granted = true` una sola vez. Las rutas nuevas y las viejas de plataforma lo exigen.
 - **Rationale**: hoy cualquier sesión ve y acepta; un rol propio no hereda permisos nuevos
   (constitución), así que sin el override sus usuarios dejarían de oír pedidos al subir. El override
   es una decisión de la empresa ya tomada en los hechos, no herencia: los roles propios que se creen
   después no lo traen.
-- **Riesgo de número**: 0117 y el id 39 los pueden tomar las ramas del #325/#326. La que llegue
+- **Riesgo de número**: 0118 y el id 39 los pueden tomar las ramas del #325/#326. La que llegue
   después a `develop` renumera las dos cosas.
 
 ### D5. La alarma: Web Audio con un búfer generado en bucle

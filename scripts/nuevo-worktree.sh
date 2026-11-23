@@ -36,7 +36,7 @@ cd "$DEST"
 # cambiaba la contraseña al rol de la app (pasó al crear la 044 desde la 042). Lo vigila
 # scripts/tests/nuevo-worktree-test.sh: cada `export` del Makefile tiene que estar aquí.
 unset BACKEND_PORT CI_PG_PORT COMPOSE_PROJECT_NAME DEV_DATABASE_URL DEV_JWT_SECRET DEV_REDIS_URL
-unset FRONTEND_PORT MAILPIT_HTTP_PORT MAILPIT_SMTP_PORT PG_PORT PG_TEST_PORT PORT REDIS_PORT TEST_DATABASE_URL
+unset FRONTEND_PORT MAILPIT_HTTP_PORT MAILPIT_SMTP_PORT MEDIA_PORT PG_PORT PG_TEST_PORT PORT REDIS_PORT TEST_DATABASE_URL
 
 echo "▶ Infraestructura propia (n=$N)"
 make -s worktree-env n="$N"

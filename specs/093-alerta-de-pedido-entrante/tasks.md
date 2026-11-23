@@ -20,7 +20,7 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 
 ## Phase 1: Setup
 
-- [X] T001 Verificar que 0117 sigue libre en `origin/develop` (`git fetch && git ls-tree origin/develop server/migrations/`) y que el id de permiso 39 no lo tomó otra rama; si no, renumerar en plan.md, data-model.md y aquí
+- [X] T001 Verificar que 0118 sigue libre en `origin/develop` (`git fetch && git ls-tree origin/develop server/migrations/`) y que el id de permiso 39 no lo tomó otra rama; si no, renumerar en plan.md, data-model.md y aquí
 - [X] T002 [P] Script de desarrollo `scripts/entrantes-de-prueba.sh` (y su objetivo `make entrantes-de-prueba n=…` en `Makefile`) que inserta N pedidos de plataforma pendientes en la base LOCAL del worktree, con renglones y `decide_before` a 11 min; se niega fuera de un worktree con `.env.worktree.local` y nunca toca `deploy-postgres-1`; su test en `scripts/tests/entrantes-de-prueba-test.sh`
 
 ---
@@ -33,10 +33,10 @@ plan: **M-Indicador** (franja en fila), **M-PorAceptar** (B2, el más urgente ab
 - [X] T004 Implementar `server/internal/domain/incoming.go`: `IncomingOrder`, `IncomingLine` (slices nunca nil), `IncomingSource` (`platform`), `IsPending`, `SortByUrgency`, `IncomingRejectReason` con texto en español y `PlatformRejectCode`
 - [X] T005 [P] Agregar `PermOrdersAcceptIncoming = "orders.accept_incoming"` a `server/internal/domain/permission.go` (y a `AllPermissions`), con su test en `permission_test.go` si el catálogo se prueba ahí
 
-### Migración 0117
+### Migración 0118
 
-- [X] T006 Test de integración `server/internal/integration/migration_0117_test.go` contra base restaurada con dos empresas, cada una con un rol propio sembrado: tras Up, los 4 sugeridos tienen 39 por herencia y cada rol propio existente su override `granted=true` (`company_id` correcto, sin cruzar empresas); un rol propio creado después del Up NO lo tiene; Up repetido no duplica; Down borra todo; Down se niega con un override `granted=false`; `UserEffectivePermissions` de la API con el 39 no falla
-- [X] T007 Migración `server/migrations/0117_incoming_orders_permission.sql` según data-model.md (company_id explícito, `on conflict do nothing`, Down con guarda y orden de borrado) y renglón `117` en `guardedDownCleanup` de `server/internal/integration/harness_restaurado_test.go`
+- [X] T006 Test de integración `server/internal/integration/migration_0118_test.go` contra base restaurada con dos empresas, cada una con un rol propio sembrado: tras Up, los 4 sugeridos tienen 39 por herencia y cada rol propio existente su override `granted=true` (`company_id` correcto, sin cruzar empresas); un rol propio creado después del Up NO lo tiene; Up repetido no duplica; Down borra todo; Down se niega con un override `granted=false`; `UserEffectivePermissions` de la API con el 39 no falla
+- [X] T007 Migración `server/migrations/0118_incoming_orders_permission.sql` según data-model.md (company_id explícito, `on conflict do nothing`, Down con guarda y orden de borrado) y renglón `118` en `guardedDownCleanup` de `server/internal/integration/harness_restaurado_test.go`
 
 ### Consultas (sqlc)
 

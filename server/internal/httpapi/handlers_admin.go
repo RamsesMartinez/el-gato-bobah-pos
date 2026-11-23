@@ -58,9 +58,10 @@ func (h *Handlers) AdminListProducts(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, page)
 }
 
-// GET /admin/categories — categorías activas para el filtro y el alta de productos.
+// GET /admin/categories — categorías activas para el filtro, el alta de productos y la pestaña de
+// categorías (con su foto, su familia y cuántos productos tienen; spec 091).
 func (h *Handlers) AdminCategories(w http.ResponseWriter, r *http.Request) {
-	items, err := h.admin.Categories(r.Context())
+	items, err := h.admin.CategoryList(r.Context())
 	if err != nil {
 		Error(w, err)
 		return

@@ -323,9 +323,12 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
-	// La 0117 se niega si una empresa le quitó el permiso de pedidos entrantes a un rol: en la copia
+	// La 0118 se niega si una empresa le quitó el permiso de pedidos entrantes a un rol: en la copia
 	// de prueba se borran los ajustes de roles sobre el permiso 39.
-	117: {`delete from role_permission_overrides where permission_id = 39`},
+	118: {`delete from role_permission_overrides where permission_id = 39`},
+	// La 0117 se niega con borrados de fotos pendientes; además pierde las familias, que el Up no
+	// vuelve a llenar. En la copia de prueba se vacían las dos cosas.
+	117: {`delete from media_pending_deletions`, `update categories set food_family = null where food_family is not null`},
 	// La 0115 se niega con avisos o con alertas encendidas: en la copia de prueba se borran (las
 	// lecturas caen en cascada; los reportes antes que los avisos a los que apuntan), se apagan las
 	// alertas y se quitan los ajustes de roles sobre el permiso 38.

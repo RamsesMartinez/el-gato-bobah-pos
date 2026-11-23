@@ -13,7 +13,10 @@
 # de compose; en la carpeta principal no hay archivo y todo sigue igual.
 ifneq ($(wildcard .env.worktree.local),)
 include .env.worktree.local
-export COMPOSE_PROJECT_NAME PG_TEST_PORT CI_PG_PORT MAILPIT_HTTP_PORT MAILPIT_SMTP_PORT BACKEND_PORT FRONTEND_PORT PORT TEST_DATABASE_URL
+# Un worktree creado antes de la spec 091 no trae MEDIA_PORT: sale de su número (9300+NN), como lo
+# escribiría worktree-env.sh, para que su almacenamiento de fotos no choque con el de otro.
+MEDIA_PORT ?= $(shell echo $$((9300 + $(patsubst egb%,%,$(COMPOSE_PROJECT_NAME)))))
+export COMPOSE_PROJECT_NAME PG_TEST_PORT CI_PG_PORT MAILPIT_HTTP_PORT MAILPIT_SMTP_PORT MEDIA_PORT BACKEND_PORT FRONTEND_PORT PORT TEST_DATABASE_URL
 endif
 PG_PORT    ?= 5490
 REDIS_PORT ?= 6390

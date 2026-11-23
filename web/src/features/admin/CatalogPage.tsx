@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Flex, Box, HStack, Button, IconButton, Text, VStack } from '@chakra-ui/react';
-import { LuTag, LuStar, LuClipboardList, LuCircleHelp } from 'react-icons/lu';
+import { LuTag, LuStar, LuClipboardList, LuCircleHelp, LuFolder } from 'react-icons/lu';
+import { CategoryViewSwitch } from './CategoriesAdminPage';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { DialogRoot, DialogBackdrop, DialogContent, DialogBody } from '../../components/ui/dialog';
 
@@ -17,6 +18,15 @@ const TABS = [
       'Toca un producto para cambiar su nombre, precio, categoría o foto.',
       '«Nuevo producto» agrega uno.',
       'Archiva lo que ya no vendes: deja de salir en Vender y sus ventas pasadas se conservan.',
+    ],
+  },
+  {
+    to: '/catalogo/categorias', label: 'Categorías', icon: LuFolder,
+    what: 'La foto de cada categoría y el dibujo que se ve cuando un producto no tiene foto.',
+    steps: [
+      'Toca una categoría para ponerle foto o elegir su familia de comida (café, ramen, postre…).',
+      'Un producto sin foto propia muestra la de su categoría; sin ella, el dibujo de su familia.',
+      'Los botones de arriba a la derecha cambian la vista: mosaico, tabla o lista con panel.',
     ],
   },
   {
@@ -61,6 +71,9 @@ export function CatalogPage() {
             );
           })}
           <Box flex="1" />
+          {/* El selector de vista vive en el hueco de la barra (spec 091, M3): no le quita alto a la
+              lista y las pestañas no se mueven al cambiar de pestaña. */}
+          {current.to === '/catalogo/categorias' && <CategoryViewSwitch />}
           <IconButton aria-label={`¿Para qué sirve ${current.label}?`} variant="ghost" colorPalette="gray" color="fg.muted"
             minH="44px" minW="44px" onClick={() => setHelp(true)}>
             <LuCircleHelp />
