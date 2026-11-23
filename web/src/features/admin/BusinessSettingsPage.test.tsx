@@ -46,11 +46,12 @@ const ajustes = {
   sessionHours: 8, hasLogo: false, logoUpdatedAt: null, corteDeVista: 'medianoche', blindCashCount: false,
 };
 
-function pinta(nodo: ReactNode) {
+// Spec 092: la pantalla va por secciones; cada prueba abre la suya por la URL, como un enlace.
+function pinta(nodo: ReactNode, seccion?: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <ChakraProvider value={defaultSystem}>
-      <QueryClientProvider client={qc}><MemoryRouter>{nodo}</MemoryRouter></QueryClientProvider>
+      <QueryClientProvider client={qc}><MemoryRouter initialEntries={[seccion ? `/negocio?seccion=${seccion}` : '/negocio']}>{nodo}</MemoryRouter></QueryClientProvider>
     </ChakraProvider>,
   );
 }
@@ -79,7 +80,7 @@ afterEach(() => { vi.clearAllMocks(); });
 // El corte se elige con `Picker`, nunca con un `<select>` nativo: en una tableta de 7 pulgadas el
 // desplegable del sistema tapa la pantalla con renglones de 20 px y no se acierta con el dedo.
 test('el corte de vista se elige sin desplegables del sistema', async () => {
-  const { container } = pinta(<BusinessSettingsPage />);
+  const { container } = pinta(<BusinessSettingsPage />, 'mostrador');
   await screen.findByText(/Pedidos entregados en pantalla/i);
   expect(container.querySelector('select'), 'un <select> nativo en 7 pulgadas no se puede tocar').toBeNull();
 });
@@ -111,7 +112,7 @@ test('al cambiar la zona se avisa qué cambia y qué NO', async () => {
 // o decidir si su efectivo llega al cajón exigía entrar a la base de datos.
 describe('los métodos de cobro', () => {
   test('cada método trae sus tres interruptores, con su etiqueta en el encabezado', async () => {
-    pinta(<BusinessSettingsPage />);
+    pinta(<BusinessSettingsPage />, 'caja');
     await screen.findByText('Métodos de cobro');
     // Las etiquetas viven UNA vez, en el encabezado: en 520 px de ancho no caben repetidas por
     // renglón, que es lo que el plan daba por bueno midiendo contra 1024.
@@ -135,7 +136,7 @@ describe('los métodos de cobro', () => {
   // cobrar, que filtra los apagados, así que el renglón desaparecía junto con su propio
   // interruptor y no quedaba camino para volver a encenderlo.
   test('un método apagado sigue en la tabla, con su interruptor en falso', async () => {
-    pinta(<BusinessSettingsPage />);
+    pinta(<BusinessSettingsPage />, 'caja');
     await screen.findByText('Métodos de cobro');
     expect(screen.getByLabelText('Rappi efectivo activo')).not.toBeChecked();
   });
@@ -146,7 +147,7 @@ describe('los métodos de cobro', () => {
   // los tres valores en cada cambio, desactivar un método le apaga de paso el del cajón y saca su
   // dinero del arqueo.
   test('apagar «Activo» manda solo ese interruptor', async () => {
-    pinta(<BusinessSettingsPage />);
+    pinta(<BusinessSettingsPage />, 'caja');
     await screen.findByText('Métodos de cobro');
 
     fireEvent.click(screen.getByLabelText('Didi efectivo activo'));
@@ -155,7 +156,7 @@ describe('los métodos de cobro', () => {
   });
 
   test('apagar «Va al cajón» manda solo ese interruptor', async () => {
-    pinta(<BusinessSettingsPage />);
+    pinta(<BusinessSettingsPage />, 'caja');
     await screen.findByText('Métodos de cobro');
 
     fireEvent.click(screen.getByLabelText('Didi efectivo va al cajón'));
@@ -164,7 +165,7 @@ describe('los métodos de cobro', () => {
   });
 
   test('no hay desplegables del sistema en el bloque de métodos', async () => {
-    const { container } = pinta(<BusinessSettingsPage />);
+    const { container } = pinta(<BusinessSettingsPage />, 'caja');
     await screen.findByText('Métodos de cobro');
     expect(container.querySelector('select')).toBeNull();
   });
@@ -178,7 +179,7 @@ describe('los métodos de cobro', () => {
 // distintas, y quién decide cuál aplica es el dueño.
 describe('el arqueo ciego', () => {
   test('se enciende desde Ajustes, y el texto dice qué cambia para quien cuenta', async () => {
-    pinta(<BusinessSettingsPage />);
+    pinta(<BusinessSettingsPage />, 'caja');
     await screen.findByText('Contar sin ver lo esperado');
     expect(screen.getByText(/La diferencia aparece al confirmar/i)).toBeInTheDocument();
 

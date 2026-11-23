@@ -76,3 +76,17 @@ describe('cambiar la categoría de un producto', () => {
     });
   });
 });
+
+// La foto vive en el editor (spec 091, maqueta M1-A): sin foto propia se ve la de su categoría o su
+// dibujo, nunca un hueco, y el botón para agregarla está a un toque.
+describe('la foto del producto', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('sin foto propia muestra el dibujo de la familia de su categoría y el botón de agregar', async () => {
+    api.categories.mockResolvedValueOnce({ items: [{ id: 88, name: 'Snacks', parentId: null, foodFamily: 'snack' } as never] });
+    const { container } = montar();
+    expect(await screen.findByRole('button', { name: /Agregar foto/ })).toBeInTheDocument();
+    await waitFor(() => expect(container.ownerDocument.querySelector('use')?.getAttribute('href')).toMatch(/#snack$/));
+    expect(screen.getByText('Sin foto')).toBeInTheDocument();
+  });
+});

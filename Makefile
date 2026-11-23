@@ -13,7 +13,10 @@
 # de compose; en la carpeta principal no hay archivo y todo sigue igual.
 ifneq ($(wildcard .env.worktree.local),)
 include .env.worktree.local
-export COMPOSE_PROJECT_NAME PG_TEST_PORT CI_PG_PORT MAILPIT_HTTP_PORT MAILPIT_SMTP_PORT BACKEND_PORT FRONTEND_PORT PORT TEST_DATABASE_URL
+# Un worktree creado antes de la spec 091 no trae MEDIA_PORT: sale de su número (9300+NN), como lo
+# escribiría worktree-env.sh, para que su almacenamiento de fotos no choque con el de otro.
+MEDIA_PORT ?= $(shell echo $$((9300 + $(patsubst egb%,%,$(COMPOSE_PROJECT_NAME)))))
+export COMPOSE_PROJECT_NAME PG_TEST_PORT CI_PG_PORT MAILPIT_HTTP_PORT MAILPIT_SMTP_PORT MEDIA_PORT BACKEND_PORT FRONTEND_PORT PORT TEST_DATABASE_URL
 endif
 PG_PORT    ?= 5490
 REDIS_PORT ?= 6390
@@ -141,6 +144,9 @@ sqlc-vet: db-migrate ## Prepara TODA query contra el esquema real (db-prepare) �
 # TEST_DATABASE_URL porque el harness de integración borra el esquema al empezar cada test.
 respaldo-anonimo: ## Baja producción, borra los datos personales y restaura en TEST_RESTORED_DATABASE_URL
 	bash scripts/respaldo-anonimo.sh
+
+entrantes-de-prueba: ## Siembra pedidos de plataforma pendientes en la base de ESTE worktree: make entrantes-de-prueba [n=3] [slug=gatobobah]
+	@bash scripts/entrantes-de-prueba.sh $(or $(n),1) $(or $(slug),gatobobah)
 
 db-restaurar: deps-up ## Restaura en dev un respaldo de prod CON sus permisos: make db-restaurar [dump=backups/prod/x.dump]
 	@bash scripts/restaurar-respaldo.sh $(dump)

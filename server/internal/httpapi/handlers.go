@@ -89,15 +89,19 @@ const (
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
 type Deps struct {
-	Cfg config.Config
+	// Media guarda las fotos del catálogo (spec 091); con el almacenamiento apagado responde 503.
+	Media *app.CatalogMediaService
+	Cfg   config.Config
 	// Alerts manda por correo cada 500 (spec 070); nil = avisos apagados.
-	Alerts    *alerts.Notifier
-	Version   string // SHA del build (ldflags); "dev" en local
-	BuiltAt   string // timestamp del build (ldflags); "" en local
-	JWT       *auth.Manager
-	Auth      *app.AuthService
-	Users     *app.UsersService
-	Menu      *app.MenuService
+	Alerts  *alerts.Notifier
+	Version string // SHA del build (ldflags); "dev" en local
+	BuiltAt string // timestamp del build (ldflags); "" en local
+	JWT     *auth.Manager
+	Auth    *app.AuthService
+	Users   *app.UsersService
+	Menu    *app.MenuService
+	// WebSales: la regla única de la venta en web (spec 092).
+	WebSales  *app.WebSalesService
 	MenuCache *cache.MenuCache
 	Suggest   *app.SuggestService
 	Costing   *app.CostingService
@@ -125,6 +129,8 @@ type Deps struct {
 	// porque su mapa de lectores viene vacío. No es lo mismo que un servicio nil, que reventaría.
 	MenusPlataforma   *app.MenusDePlataformaService
 	PedidosPlataforma *app.PedidosDePlataformaService
+	// IncomingOrders es el módulo común de pedidos entrantes (spec 093).
+	IncomingOrders *app.IncomingOrdersService
 	// Credenciales de la app de cada plataforma, capturadas en pantalla (0075).
 	Credentials *app.PlatformCredentialsService
 	Sales       *app.SalesService
@@ -162,6 +168,12 @@ type Deps struct {
 }
 
 type Handlers struct {
+	// media pone y quita las fotos del catálogo (spec 091).
+	media *app.CatalogMediaService
+	// mediaWrites acota las subidas por persona: cada una son dos escrituras en R2. Cuenta también lo
+	// que despacha el MCP (corre por el mismo router), y 120 por minuto suben un lote de 200 fotos en
+	// menos de dos minutos.
+	mediaWrites *rateLimiter
 	// listEmails acota «Enviarme por correo» de la lista de compra (spec 084): 5 por hora y persona.
 	listEmails        *rateLimiter
 	stockOut          *app.StockOutService
@@ -173,6 +185,7 @@ type Handlers struct {
 	auth              *app.AuthService
 	users             *app.UsersService
 	menu              *app.MenuService
+	webSales          *app.WebSalesService
 	menuCache         *cache.MenuCache
 	suggest           *app.SuggestService
 	costing           *app.CostingService
@@ -194,6 +207,7 @@ type Handlers struct {
 	platformPrices    *app.PlatformPricesService
 	menusPlataforma   *app.MenusDePlataformaService
 	pedidosPlataforma *app.PedidosDePlataformaService
+	incomingOrders    *app.IncomingOrdersService
 	credentials       *app.PlatformCredentialsService
 	sales             *app.SalesService
 	settlements       *app.SettlementsService
@@ -246,6 +260,9 @@ type Handlers struct {
 // BeginShutdown hace que /readyz responda 503 mientras la copia termina lo que trae.
 func (h *Handlers) BeginShutdown() { h.shuttingDown.Store(true) }
 
+// mediaWritesMax: subidas y borrados de fotos por persona y por minuto.
+const mediaWritesMax = 120
+
 func NewHandlers(d Deps) *Handlers {
 	h := newHandlers(d)
 	// La lectura del menú copia precios en una goroutine que no pasa por un handler (0077). El menú
@@ -262,6 +279,8 @@ func newHandlers(d Deps) *Handlers {
 	permissions := d.Permissions
 	return &Handlers{
 		permissions: permissions, roles: d.Roles, passwordCheck: d.PasswordCheck,
+		media:         d.Media,
+		mediaWrites:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:media-writes:", mediaWritesMax, time.Minute),
 		attendance:    d.Attendance,
 		audit:         d.Audit,
 		health:        d.InventoryHealth,
@@ -274,12 +293,13 @@ func newHandlers(d Deps) *Handlers {
 		tokenWrites:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:token-writes:", 30, time.Hour),
 		listEmails:    newRateLimiter(d.Cfg.RedisURL, "ratelimit:shopping-list-email:", 5, time.Hour),
 		cfg:           d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
-		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
+		menu: d.Menu, webSales: d.WebSales, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		purchaseDoc:       d.PurchaseDoc,
 		platformPrices:    d.PlatformPrices,
 		menusPlataforma:   d.MenusPlataforma,
 		pedidosPlataforma: d.PedidosPlataforma,
+		incomingOrders:    d.IncomingOrders,
 		credentials:       d.Credentials,
 		sales:             d.Sales,
 		settlements:       d.Settlements,

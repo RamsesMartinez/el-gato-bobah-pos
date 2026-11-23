@@ -861,7 +861,7 @@ func (q *Queries) GetOrderForQuote(ctx context.Context, id int64) (GetOrderForQu
 }
 
 const getOrderForUpdate = `-- name: GetOrderForUpdate :one
-select id, status, service_type, delivery_platform_id, total, written_off_amount
+select id, status, service_type, delivery_platform_id, total, written_off_amount, branch_id
 from orders where id = $1
 for update
 `
@@ -873,6 +873,7 @@ type GetOrderForUpdateRow struct {
 	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
 	Total              decimal.Decimal `json:"total"`
 	WrittenOffAmount   decimal.Decimal `json:"written_off_amount"`
+	BranchID           int64           `json:"branch_id"`
 }
 
 // El pedido al que se le va a agregar, bloqueado dentro de la transacción: dos meseros agregando a
@@ -888,6 +889,7 @@ func (q *Queries) GetOrderForUpdate(ctx context.Context, id int64) (GetOrderForU
 		&i.DeliveryPlatformID,
 		&i.Total,
 		&i.WrittenOffAmount,
+		&i.BranchID,
 	)
 	return i, err
 }
@@ -1284,20 +1286,26 @@ func (q *Queries) GetPricedOptions(ctx context.Context, dollar_1 []int64) ([]Get
 
 const getPricedProducts = `-- name: GetPricedProducts :many
 
-select id, name, price, current_cost, is_active, needs_prep
-from products where id = any($1::bigint[])
+select p.id, p.name, p.price, p.current_cost, p.is_active, p.needs_prep, p.allow_oversell,
+       (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                     where pc.product_id = p.id and ch.code = 'pos' and pc.visibility = 'oculto'))::bool as sold_at_counter
+from products p where p.id = any($1::bigint[])
 `
 
 type GetPricedProductsRow struct {
-	ID          int64           `json:"id"`
-	Name        string          `json:"name"`
-	Price       decimal.Decimal `json:"price"`
-	CurrentCost decimal.Decimal `json:"current_cost"`
-	IsActive    bool            `json:"is_active"`
-	NeedsPrep   bool            `json:"needs_prep"`
+	ID            int64           `json:"id"`
+	Name          string          `json:"name"`
+	Price         decimal.Decimal `json:"price"`
+	CurrentCost   decimal.Decimal `json:"current_cost"`
+	IsActive      bool            `json:"is_active"`
+	NeedsPrep     bool            `json:"needs_prep"`
+	AllowOversell bool            `json:"allow_oversell"`
+	SoldAtCounter bool            `json:"sold_at_counter"`
 }
 
 // Pricing (autoritativo en el servidor)
+// sold_at_counter: sin fila «oculto» para Mostrador (spec 092). allow_oversell decide si la venta de
+// mostrador revisa existencia.
 func (q *Queries) GetPricedProducts(ctx context.Context, dollar_1 []int64) ([]GetPricedProductsRow, error) {
 	rows, err := q.db.Query(ctx, getPricedProducts, dollar_1)
 	if err != nil {
@@ -1314,6 +1322,8 @@ func (q *Queries) GetPricedProducts(ctx context.Context, dollar_1 []int64) ([]Ge
 			&i.CurrentCost,
 			&i.IsActive,
 			&i.NeedsPrep,
+			&i.AllowOversell,
+			&i.SoldAtCounter,
 		); err != nil {
 			return nil, err
 		}

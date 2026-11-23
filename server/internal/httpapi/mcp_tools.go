@@ -277,9 +277,17 @@ func (s *mcpSession) fetch(ctx context.Context, tool, pattern string, params map
 }
 
 func argsJSON(v any) json.RawMessage {
+	if r, ok := v.(forLog); ok {
+		v = r.forLog()
+	}
 	b, _ := json.Marshal(v)
 	return b
 }
+
+// forLog lo implementan los argumentos que no deben guardarse tal cual en la bitácora (una foto en
+// base64 son cientos de KB). Lo que devuelve sirve también para la huella de idempotencia, así que
+// debe distinguir dos llamadas distintas: una foto se resume con su sha256, no se borra.
+type forLog interface{ forLog() any }
 
 // mustRegisterOnce truena si dos archivos registran la misma herramienta: el mapa se queda con la del
 // último init en orden de archivo, en silencio, y la otra deja de existir.

@@ -270,3 +270,23 @@ func TestAStockOverrideWithTwoWarehousesIsRejected(t *testing.T) {
 		t.Fatalf("corregir a mano la existencia de una sucursal con dos almacenes = %v; quiere ErrValidation", err)
 	}
 }
+
+// «¿Hay existencia de este producto en este lugar de venta?» (spec 092, la única puerta) mide el
+// almacén de venta: con la botella en la bodega y ninguna en el local, en el mostrador está agotada
+// (#65, actualización del 2026-11-23).
+func TestSoldOutMeasuresTheSalesWarehouse(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	_, bodega := comoEnLaSegundaSubida(t, st, defaultCompanyID)
+	menu := app.NewMenuService(st, clock)
+	bottle := makeProduct(t, st, "Botella en la bodega", dec("20"), true)
+	setOversell(t, st, bottle, false)
+	adjustIn(t, st, bodega, "producto", bottle, "10")
+	ids, err := menu.SoldOut(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 || ids[0] != bottle {
+		t.Fatalf("agotados = %v; con 10 en la bodega y 0 en el local, la botella está agotada en el mostrador", ids)
+	}
+}

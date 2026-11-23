@@ -138,7 +138,12 @@ select o.id, o.connection_id, p.name as platform_name, o.external_order_id, o.di
   join platform_connections c on c.id = o.connection_id
   join delivery_platforms p on p.id = c.delivery_platform_id
  where o.state = 'pendiente'
- order by o.decide_before;
+   -- Vencido ya no se decide (domain.IsPending): la plataforma lo canceló sola. Sin este filtro, si
+   -- su aviso de cancelación no llega, la alerta continua sonaría para siempre por un pedido muerto.
+   -- La hora la pone el servicio y no `now()`: es la misma con la que decide al aceptar, y se prueba.
+   and (o.decide_before is null or o.decide_before > @now::timestamptz)
+ -- El desempate fija el orden: dos tabletas tienen que pintar la misma lista.
+ order by o.decide_before nulls last, o.placed_at, o.id;
 
 -- name: ListLinesOfIncomingOrders :many
 -- Los renglones de varios pedidos de un golpe. Uno por pedido sería N+1 sobre la consulta que la
@@ -170,6 +175,14 @@ select id, connection_id, state, order_id
 update platform_incoming_orders
    set state = 'aceptado', settled_at = now(), decided_by = $2, order_id = $3
  where id = $1 and state = 'pendiente';
+
+-- name: CancelIncomingOrder :execrows
+-- La plataforma avisó que canceló. `where state = 'pendiente'` DENTRO del update: si una tableta lo
+-- aceptó un instante antes, el aviso llega tarde y no debe pisar un `aceptado` (además el check
+-- `quien_decidio` reventaría y el webhook respondería 500). Cero filas = nada que cambiar.
+update platform_incoming_orders
+   set state = 'cancelado', settled_at = now()
+ where connection_id = $1 and external_order_id = $2 and state = 'pendiente';
 
 -- name: DenyIncomingOrder :execrows
 update platform_incoming_orders

@@ -83,7 +83,7 @@ migración y de permiso se fijan al llegar a develop (R11 M7); aquí se escriben
 **Independent Test**: spec US2 y US3.
 
 - [X] T031 [P] [US2] Test: con existencia en Bodega y cero en Local, vender (mostrador, plataforma, pedido web) baja Local y deja Bodega igual, en `server/internal/integration/warehouses_test.go`
-- [ ] T032 [P] [US2] (pendiente: el #326 todavía no llega a develop; mientras, «hay existencia» se lee del almacén de venta en `per_sale_on_hand` y en Existencias) Test de dominio de la regla «hay existencia en el lugar de venta» (Bodega 20, Local 0 → sin existencia) en `server/internal/domain/warehouse_test.go`; si el #326 ya llegó a develop, el test va contra su función y se le cambia el interior (no se duplica, R8)
+- [X] T032 [P] [US2] (hecho sobre la función del #326: `salesStock` y `lockSalesStock` leen el almacén de venta; prueba `TestSoldOutMeasuresTheSalesWarehouse`) Test de dominio de la regla «hay existencia en el lugar de venta» (Bodega 20, Local 0 → sin existencia) en `server/internal/domain/warehouse_test.go`; si el #326 ya llegó a develop, el test va contra su función y se le cambia el interior (no se duplica, R8)
 - [X] T033 [US2] `per_sale_on_hand` de recetas lee el almacén de venta (`server/queries/recipes.sql`)
 - [X] T034 [P] [US3] Test de `GET /stock/levels?warehouseId=` (de venta por omisión, otro, `all` suma, `transferFrom` en negativos, 400/404) en `server/internal/integration/warehouses_test.go`
 - [X] T035 [US3] `ListStockLevels` por almacén y `all`, y `BackofficeService.StockLevels` (`transferFrom` pasa a T053: en la subida 1 ningún otro almacén puede tener existencia) (`server/queries/stock.sql`, `server/internal/app/backoffice.go`, `server/internal/httpapi/handlers_backoffice.go`)

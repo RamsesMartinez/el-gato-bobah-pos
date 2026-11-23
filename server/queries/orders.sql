@@ -1,8 +1,12 @@
 -- Pricing (autoritativo en el servidor)
 
 -- name: GetPricedProducts :many
-select id, name, price, current_cost, is_active, needs_prep
-from products where id = any($1::bigint[]);
+-- sold_at_counter: sin fila «oculto» para Mostrador (spec 092). allow_oversell decide si la venta de
+-- mostrador revisa existencia.
+select p.id, p.name, p.price, p.current_cost, p.is_active, p.needs_prep, p.allow_oversell,
+       (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                     where pc.product_id = p.id and ch.code = 'pos' and pc.visibility = 'oculto'))::bool as sold_at_counter
+from products p where p.id = any($1::bigint[]);
 
 -- name: GetPricedOptions :many
 -- max_per_line viaja porque el servidor lo valida: es el tope de veces que una opción puede ir en
@@ -300,7 +304,7 @@ where o.id = $1;
 -- El pedido al que se le va a agregar, bloqueado dentro de la transacción: dos meseros agregando a
 -- la misma cuenta al mismo tiempo recalcularían el total sobre el estado viejo y uno de los dos
 -- agregados desaparecería del importe.
-select id, status, service_type, delivery_platform_id, total, written_off_amount
+select id, status, service_type, delivery_platform_id, total, written_off_amount, branch_id
 from orders where id = $1
 for update;
 

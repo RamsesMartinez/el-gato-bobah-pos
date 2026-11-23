@@ -44,12 +44,14 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 		PermBusinessConfigure,
 		// Reportar que algo se acabó (084): lo ve quien vende; los cuatro sugeridos lo traen.
 		PermInventoryReportOut,
+		// Aceptar pedidos entrantes (093): antes no tenía gate; los cuatro sugeridos lo traen.
+		PermOrdersAcceptIncoming,
 		// Almacenes y traspasos (094): quien hoy configura y cuenta el almacén.
 		PermInventoryWarehouseManage, PermInventoryTransfer}
 	// El cajero abría caja, corregía el folio de plataforma y capturaba precios por plataforma
 	// (RequireRole admin, gerente, cajero); el mesero, nada de eso.
 	cajero := []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff, PermOrdersDeliveredView,
-		PermCashOperate, PermOrdersPlatformRef, PermPlatformPricesCapture, PermInventoryReportOut}
+		PermCashOperate, PermOrdersPlatformRef, PermPlatformPricesCapture, PermInventoryReportOut, PermOrdersAcceptIncoming}
 	cases := []struct {
 		role Role
 		want []Permission
@@ -57,7 +59,7 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 		{RoleAdmin, all},
 		{RoleGerente, gerente},
 		{RoleCajero, cajero},
-		{RoleMesero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff, PermInventoryReportOut}},
+		{RoleMesero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff, PermInventoryReportOut, PermOrdersAcceptIncoming}},
 		{Role("dueño"), nil},
 		{Role(""), nil},
 	}
@@ -102,6 +104,7 @@ func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 		PermInventoryCount:             "Tu usuario no puede contar el almacén",
 		PermInventoryWriteOff:          "Tu usuario no puede registrar lo que se echó a perder",
 		PermInventoryReportOut:         "Tu usuario no puede avisar que algo se acabó",
+		PermOrdersAcceptIncoming:       "Tu usuario no puede aceptar ni rechazar pedidos que llegan",
 		PermInventoryWriteOffApprove:   "Tu usuario no puede aprobar lo que se echó a perder",
 		PermInventoryView:              "Tu usuario no puede ver el almacén",
 		PermCashCloseWithoutClockOut:   "Tu usuario no puede cerrar la caja sin la salida de quien la abrió",

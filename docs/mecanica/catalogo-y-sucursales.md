@@ -33,3 +33,50 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   a `TestEveryMenuTableBumpsTheVersion`: una tabla sin trigger es exactamente ese camino. Y si
   aun así una tableta manda algo que ya no vale, el servidor responde `MENU_CHANGED` y la tableta
   recarga y pide elegir de nuevo.
+- **Dónde se vende cada producto** (spec 092, 0118). Lugares de venta por empresa en `channels`:
+  `pos` = Mostrador, `online` = Web (`qr` existe y no se usa). La decisión por producto vive en
+  `product_channels` con **«sin fila = se ofrece»**: un producto nuevo o uno de antes de la 092 se
+  vende en los dos sin que nadie lo marque. `product_channels.price` es el precio en ese lugar
+  (null = el de mostrador; nunca cero). Cuatro cosas que muerden:
+  - **Toda empresa necesita su catálogo de lugares de venta**: `CreateCompany` lo siembra y la 0118
+    se lo dio a las que no lo tenían. El servicio igual lo asegura (`EnsureChannel`) antes de
+    escribir: sin él, «apagar Web» insertaría cero filas y respondería bien.
+  - **Leer el lugar de venta con subconsultas por código, no con un join**: cuando se agregue la
+    sucursal a `product_channels`, un join multiplicaría filas. El upsert apunta a la restricción por
+    nombre (`product_channels_pkey`) para que ese cambio no toque el SQL.
+  - **La regla de la web vive en una sola función** (`WebSalesService.Offer`): qué se vende, a qué
+    precio y si está agotado. El resumen de Ajustes y el menú público (#316) la usan; no la repitan.
+  - **Oculto en mostrador lo rechaza también el servidor** (`MENU_CHANGED`) en pedidos sin
+    plataforma; un pedido de plataforma no mira el lugar de venta.
+- **«Vender sin existencia» y «Agotado»** (spec 092). `products.allow_oversell` (default true; la
+  0118 normalizó a true los valores heredados de FUDO, que nunca se aplicaron). Con la opción
+  apagada, un producto sale agotado si lo que descuenta una pieza sin extras (`domain.ExpandSale`:
+  existencia propia, receta base o piezas del paquete) no alcanza en la sucursal; sin fila de
+  existencia = 0. Lo que no descuenta nada nunca se agota.
+  - **La existencia con la que se vende se lee SOLO por `app/sales_stock.go`** (`salesStock`,
+    `lockSalesStock`). Con varios almacenes por sucursal (#65) cambia ahí por dentro y en ningún otro
+    lado.
+  - **El chequeo de la venta va dentro de la transacción del pedido y antes del primer descuento**,
+    con un solo `select … for update` ordenado: dos tabletas que venden la última pieza no pasan las
+    dos (`TestTwoCountersCannotSellTheLastPiece`). Rechaza con 409 `OUT_OF_STOCK`. Un pedido de
+    plataforma nunca se revisa.
+  - **La lista de agotados va aparte del menú** (`GET /pos/menu/sold-out`, sin caché): el menú se
+    guarda por versión de catálogo y la existencia cambia con cada venta sin subir esa versión. No
+    metas el agotado en el documento del menú.
+- **Fotos del catálogo** (spec 091, runbook [medios-r2.md](../medios-r2.md)):
+  - **`image_url` es la variante de 1200; la de 400 se deriva** cambiando `-1200.webp` por
+    `-400.webp`. Escribir otra cosa a mano en esa columna la rechaza un check desde la 0117 (las
+    filas viejas no se revisan: el check es `not valid`).
+  - **La API solo borra lo que armó**: una URL que no empieza con `MEDIA_PUBLIC_BASE_URL` +
+    empresa + clase + id del mismo registro se deja en paz. Por eso **duplicar un producto ya no
+    copia su foto**: la llave lleva el id del original, y quitar la del duplicado habría borrado la
+    del original.
+  - **Una categoría sin familia se dibuja como «platillo»**. La familia es del producto (un enum),
+    no de la empresa; una nueva lleva `alter type … add value`, su constante en `domain`, su
+    renglón en `web/src/media/foodFamilies.ts` y su `<symbol>` en el sprite, que **cambia de
+    nombre** (`food-families.v2.svg`) porque `public/` no lleva hash.
+  - **El navegador prepara la foto**: Safari no codifica WebP en canvas y la pantalla lo dice al
+    abrir el editor. En local, `start.sh` crea el bucket de versitygw con lectura pública; el
+    almacenamiento no manda CORS, así que una prueba que lea pixeles baja la foto desde Node, no
+    con `fetch` desde la página.
+

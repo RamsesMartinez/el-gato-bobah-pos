@@ -93,6 +93,11 @@ type Config struct {
 	// integración está apagada y el POS arranca igual. No tiene default porque adivinarlo es elegir
 	// por el operador entre la tienda de pruebas y la que factura.
 	UberEatsEnv string `env:"UBER_EATS_ENV" envDefault:""`
+	// PlatformOrdersSimulated: SOLO DESARROLLO (spec 093). Aceptar y rechazar un pedido de plataforma
+	// se confirman sin hablar con la plataforma, para poder probar la alerta de punta a punta en
+	// local, donde no hay credenciales ni pedidos de prueba. Validate se niega a arrancar con él
+	// fuera de desarrollo.
+	PlatformOrdersSimulated bool `env:"PLATFORM_ORDERS_SIMULATED" envDefault:"false"`
 
 	// --- Cifrado de secretos de terceros (0075) ---
 	// Exactamente una. CredentialsKMSKey es el nombre de la llave de Cloud KMS
@@ -101,7 +106,22 @@ type Config struct {
 	// no protegería el respaldo, que es lo único que el cifrado viene a proteger.
 	CredentialsKMSKey   string `env:"CREDENTIALS_KMS_KEY" envDefault:""`
 	CredentialsLocalKey string `env:"CREDENTIALS_LOCAL_KEY" envDefault:""`
+
+	// --- Fotos del catálogo (spec 091): Cloudflare R2 por su API S3; versitygw en local ---
+	// Todas o ninguna; vacías = fotos apagadas y el POS opera igual. El token es del DESPLIEGUE, no
+	// de una empresa: vive aquí como SMTP_PASS, no cifrado por KMS en la base (eso es para los
+	// secretos de terceros que captura cada empresa).
+	MediaS3Endpoint        string `env:"MEDIA_S3_ENDPOINT" envDefault:""`
+	MediaS3Bucket          string `env:"MEDIA_S3_BUCKET" envDefault:""`
+	MediaS3Region          string `env:"MEDIA_S3_REGION" envDefault:"auto"`
+	MediaS3AccessKeyID     string `env:"MEDIA_S3_ACCESS_KEY_ID" envDefault:""`
+	MediaS3SecretAccessKey string `env:"MEDIA_S3_SECRET_ACCESS_KEY" envDefault:""`
+	// MediaPublicBaseURL es el dominio de medios por el que se sirven las fotos, sin / final.
+	MediaPublicBaseURL string `env:"MEDIA_PUBLIC_BASE_URL" envDefault:""`
 }
+
+// MediaEnabled reports whether catalog photos have somewhere to go.
+func (c Config) MediaEnabled() bool { return c.MediaS3Endpoint != "" }
 
 // UberEatsEnabled reports whether this deployment talks to Uber Eats at all.
 func (c Config) UberEatsEnabled() bool { return c.UberEatsEnv != "" }
@@ -239,8 +259,54 @@ func Validate(c Config) error {
 	if c.UberEatsEnv != "" && c.UberEatsEnv != "sandbox" && c.UberEatsEnv != "production" {
 		return errors.New(`UBER_EATS_ENV debe ser "sandbox" o "production" (o vacío para apagar la integración)`)
 	}
+	// Simular en producción es aceptar aquí lo que la plataforma va a cancelar: la cocina prepara y
+	// el dinero nunca llega.
+	// Y también si habla con la Uber de producción: APP_ENV vale «development» cuando falta, y un
+	// contenedor arrancado a mano sin él no debe poder fingir decisiones ante la tienda que factura.
+	if c.PlatformOrdersSimulated && (c.Env != "development" || c.UberEatsEnv == "production") {
+		return errors.New("PLATFORM_ORDERS_SIMULATED solo se permite con APP_ENV=development y sin UBER_EATS_ENV=production")
+	}
 	if err := validateCredentialsCipher(c); err != nil {
 		return err
+	}
+	return validateMedia(c)
+}
+
+// validateMedia exige las MEDIA_* completas o ninguna: a medias, la API arranca «con fotos» y
+// truena en la primera que alguien sube.
+func validateMedia(c Config) error {
+	vals := []string{c.MediaS3Endpoint, c.MediaS3Bucket, c.MediaS3AccessKeyID, c.MediaS3SecretAccessKey, c.MediaPublicBaseURL}
+	set := 0
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			set++
+		}
+	}
+	if set == 0 {
+		return nil
+	}
+	if set != len(vals) {
+		return errors.New("MEDIA_* a medias: define MEDIA_S3_ENDPOINT, MEDIA_S3_BUCKET, MEDIA_S3_ACCESS_KEY_ID, MEDIA_S3_SECRET_ACCESS_KEY y MEDIA_PUBLIC_BASE_URL, o ninguna para apagar las fotos")
+	}
+	if IsPlaceholder(c.MediaS3SecretAccessKey) {
+		return errors.New("MEDIA_S3_SECRET_ACCESS_KEY de ejemplo: usa el secreto del token de R2")
+	}
+	scheme := func(raw string) string {
+		u, err := url.Parse(raw)
+		if err != nil || u.Host == "" {
+			return ""
+		}
+		return u.Scheme
+	}
+	ep, pub := scheme(c.MediaS3Endpoint), scheme(c.MediaPublicBaseURL)
+	if (ep != "http" && ep != "https") || (pub != "http" && pub != "https") {
+		return errors.New("MEDIA_S3_ENDPOINT y MEDIA_PUBLIC_BASE_URL deben ser direcciones http(s)://host")
+	}
+	if strings.HasSuffix(c.MediaPublicBaseURL, "/") {
+		return errors.New("MEDIA_PUBLIC_BASE_URL sin / final (la llave del objeto ya empieza con una)")
+	}
+	if c.Env == "production" && (ep != "https" || pub != "https") {
+		return errors.New("MEDIA_S3_ENDPOINT y MEDIA_PUBLIC_BASE_URL deben ser https en producción")
 	}
 	return nil
 }

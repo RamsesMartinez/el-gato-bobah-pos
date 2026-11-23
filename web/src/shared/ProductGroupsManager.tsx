@@ -50,7 +50,11 @@ export function ProductGroupsManager({ productId }: { productId: number }) {
 
   const attach = useMutation({
     mutationFn: (b: AttachBody) => adminApi.attachProductGroup(productId, b),
-    onSuccess: invalidate,
+    // Se guarda al momento, sin el Guardar de la ficha: el aviso lo dice (revisión de tableta, 092).
+    onSuccess: () => {
+      invalidate();
+      toaster.create({ id: 'grupos-guardado', title: 'Guardado', type: 'success', duration: 2000 });
+    },
     onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
   });
   const detach = useMutation({

@@ -16,9 +16,8 @@ import { useSessionStore } from '../../stores/session';
 import { POSPage } from './POSPage';
 
 const pendientes = vi.hoisted(() => ({ current: [] as unknown[] }));
-vi.mock('../../api/pedidosDePlataforma', () => ({
-  pedidosPendientes: () => Promise.resolve(pendientes.current),
-  aceptarPedidoDePlataforma: vi.fn(),
+vi.mock('../../api/pedidosEntrantes', () => ({
+  pedidosEntrantes: () => Promise.resolve(pendientes.current),
 }));
 
 const cashStatus = vi.hoisted(() => ({
@@ -45,11 +44,12 @@ vi.mock('../../api/pos', () => ({
     ...api,
   },
 }));
-const menuQ = vi.hoisted(() => ({ error: null as Error | null }));
+const menuQ = vi.hoisted(() => ({ error: null as Error | null, products: [] as unknown[], popular: [] as number[], soldOut: new Set<number>() }));
 vi.mock('../../hooks/useMenu', () => ({
-  useMenu: () => ({ data: { categories: [], products: [], platforms: [] }, isLoading: false, error: menuQ.error }),
+  useMenu: () => ({ data: { categories: [], products: menuQ.products, platforms: [] }, isLoading: false, error: menuQ.error }),
 }));
-vi.mock('../../hooks/usePopular', () => ({ usePopular: () => ({ data: [] }) }));
+vi.mock('../../hooks/usePopular', () => ({ usePopular: () => ({ data: menuQ.popular }) }));
+vi.mock('../../hooks/useSoldOut', () => ({ useSoldOut: () => menuQ.soldOut }));
 // EL ANCHO SE MOCKEA PORQUE JSDOM NO HACE LAYOUT: sin esto `wide` sería siempre false y la rama
 // ancha del POS —donde viven la píldora y el panel— no se montaría nunca.
 const anchoDelPos = vi.hoisted(() => ({ width: 500 }));
@@ -99,6 +99,9 @@ beforeEach(() => {
   tabletaBaja(false);
   cashStatus.current = { open: true };
   menuQ.error = null;
+  menuQ.products = [];
+  menuQ.popular = [];
+  menuQ.soldOut = new Set();
   pendientes.current = [];
   vivas.current = [];
   usePosStore.setState({ selected: null });
@@ -144,17 +147,15 @@ describe('caja', () => {
     expect(screen.queryByRole('button', { name: /cobrar/i })).not.toBeInTheDocument();
   });
 
-  // Aceptar un pedido de plataforma no exige turno: la cocina no espera a que alguien abra caja.
-  test('sin caja abierta, un pedido de plataforma sigue avisando', async () => {
-    cashStatus.current = { open: false };
-    pendientes.current = [{
-      id: 1, platformName: 'Uber Eats', displayId: 'K4T2',
-      placedAt: '2026-09-17T18:04:00Z', decideBefore: new Date(Date.now() + 600000).toISOString(),
-      serviceType: 'domicilio', customerName: 'Ana', total: '342.00', lines: [],
-    }];
+  // El aviso de pedidos por aceptar lo pinta el shell en TODAS las pantallas (spec 093). Si Vender
+  // montara el suyo, un mismo pedido saldría dos veces: dos botones de Aceptar para lo mismo.
+  test('Vender no pinta su propio aviso de pedidos por aceptar', async () => {
+    pendientes.current = [{ source: 'platform', id: 1, sourceName: 'Uber Eats', displayId: 'K4T2', customerName: 'Ana',
+      customerPhone: '', address: '', serviceType: 'domicilio', total: '342.00', placedAt: null, decideBefore: null, lines: [] }];
     montar();
-    expect(await screen.findByText(/no hay caja abierta/i)).toBeInTheDocument();
-    expect(await screen.findByTestId('aviso-de-pedido-entrante')).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText(/buscar/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('aviso-de-pedido-entrante')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('franja-de-entrantes')).not.toBeInTheDocument();
   });
 
   test('con caja abierta la pantalla de venta se muestra', async () => {
@@ -329,3 +330,28 @@ test('una revisión del menú que falla no tumba la pantalla de venta si ya hay 
   expect(await screen.findByPlaceholderText(/buscar/i)).toBeInTheDocument();
   expect(screen.queryByText(/error cargando el menú/i)).not.toBeInTheDocument();
 });
+
+// Spec 092: lo apagado para Mostrador ya no viene en el menú, y «Top» no lo resucita aunque el
+// servidor lo cuente entre los más vendidos; y un agotado se ve en el mosaico con su etiqueta.
+describe('dónde se vende y agotado en Vender', () => {
+  const producto = (id: number, name: string) => ({ id, name, price: '30.00', categoryId: 1, groups: [], favorite: false });
+
+  test('«Top» no muestra un producto que ya no está en el menú', async () => {
+    menuQ.products = [producto(1, 'Agua de jamaica')];
+    menuQ.popular = [99, 1];
+    montar();
+    expect(await screen.findByText('Agua de jamaica')).toBeInTheDocument();
+    expect(screen.getAllByRole('button').some((b) => b.textContent?.includes('99'))).toBe(false);
+  });
+
+  test('un agotado sale con su etiqueta', async () => {
+    menuQ.products = [producto(1, 'Agua de jamaica'), producto(2, 'Lata de refresco')];
+    menuQ.soldOut = new Set([2]);
+    montar();
+    const tile = (await screen.findByText('Lata de refresco')).closest('button')!;
+    expect(within(tile).getByText('Agotado')).toBeInTheDocument();
+    const otro = screen.getByText('Agua de jamaica').closest('button')!;
+    expect(within(otro).queryByText('Agotado')).not.toBeInTheDocument();
+  });
+});
+

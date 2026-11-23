@@ -229,8 +229,8 @@ func TestMCPToolCatalog(t *testing.T) {
 		}
 	}
 	// 094 suma warehouses_list (lectura).
-	if len(seen) != 78 || writes != 43 {
-		t.Fatalf("el contrato tiene 78 herramientas y 43 escrituras (094); hay %d y %d", len(seen), writes)
+	if len(seen) != 83 || writes != 48 {
+		t.Fatalf("el contrato tiene 83 herramientas y 48 escrituras (094); hay %d y %d", len(seen), writes)
 	}
 	// Las de la 073, con el alcance y el permiso de contracts/mcp-tools.md.
 	for name, want := range map[string]MCPTool{

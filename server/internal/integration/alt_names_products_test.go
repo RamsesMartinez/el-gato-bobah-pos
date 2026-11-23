@@ -151,7 +151,7 @@ func TestProductPrincipalNameAgainstAltNames(t *testing.T) {
 	cat := categoriaDeEmpresa(t, st, defaultCompanyID, "Bebidas de prueba")
 
 	t.Run("alta con el nombre de un alternativo", func(t *testing.T) {
-		_, err := admin.CreateProduct(ctx, "Cafe frio", cat, price, false, false, nil)
+		_, err := admin.CreateProduct(ctx, "Cafe frio", cat, price, false, false, nil, nil)
 		taken := requireAltTaken(t, err, "Cafe frio", "Ice Coffee")
 		if !taken.OwnerAlt {
 			t.Fatal("no dice que es otro nombre")

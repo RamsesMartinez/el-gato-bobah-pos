@@ -19,6 +19,7 @@ import { useMenu } from '../../hooks/useMenu';
 import { useMenuEvents } from '../../hooks/useMenuEvents';
 import { useOrderEvents } from '../../hooks/useOrderEvents';
 import { usePopular } from '../../hooks/usePopular';
+import { useSoldOut } from '../../hooks/useSoldOut';
 import { useModifierDefaults } from '../../hooks/useModifierDefaults';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useUiStore } from '../../stores/ui';
@@ -39,7 +40,6 @@ import { AutoPrintTicket, KitchenTicket } from '../../shared/tickets/AutoPrintTi
 import { aliasCoincidente, buscarProductos } from './buscarProducto';
 import { CategoryRail, type Selection } from './CategoryRail';
 import { PlatformPicker } from './PlatformPicker';
-import { AvisoDePlataforma } from './AvisoDePlataforma';
 import { AvisoSinConexion } from './AvisoSinConexion';
 import { PlatformPriceDialog } from './PlatformPriceDialog';
 import { desglosePrecio, nombreDeLista, precioDeLista } from './precioPlataforma';
@@ -90,6 +90,7 @@ export function POSPage() {
   const qc = useQueryClient();
   const { data: menu, isLoading, error } = useMenu();
   const { data: popular } = usePopular();
+  const soldOut = useSoldOut();
   const { data: modifierDefaults } = useModifierDefaults();
   const { data: settings } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const envioPorDefecto = settings ? Number(settings.deliveryFee) : 20;
@@ -427,6 +428,11 @@ export function POSPage() {
     ? desglosePrecio(menu, lista, editandoPrecio.id, Number(editandoPrecio.price))
     : null;
 
+  // Un agotado se ve pero no se agrega (spec 092); el toque avisa para que no se repita a ciegas.
+  const avisarAgotado = (p: MenuProduct) => {
+    toaster.create({ id: `agotado-${p.id}`, title: `Agotado: no hay existencia de ${p.name}`, type: 'info' });
+  };
+
   const tapProduct = (p: MenuProduct) => {
     if (editMode && canEdit) {
       const ap = adminProducts?.items.find((x) => x.id === p.id);
@@ -495,8 +501,6 @@ export function POSPage() {
   if (cashStatus.data && !cashStatus.data.open) {
     return (
       <>
-        {/* El aviso de plataforma también aquí: aceptar un pedido de plataforma no exige turno. */}
-        <AvisoDePlataforma />
         <Center h="80vh" px={6}>
         <VStack gap={4} maxW="420px" textAlign="center">
           <Box color="orange.500"><LuTriangleAlert size={44} /></Box>
@@ -632,6 +636,11 @@ export function POSPage() {
           lista={lista}
           onEditPrice={lista !== null && !editMode ? setEditandoPrecio : undefined}
           matchedAlts={matchedAlts}
+          // Solo bloquea en mostrador fuera de modo editar: un pedido de plataforma se acepta aunque
+          // no haya existencia (la plataforma ya lo vendió), y en modo editar el agotado es justo el
+          // producto que hay que poder abrir para corregirlo.
+          soldOut={lista === null && !editMode ? soldOut : undefined}
+          onSoldOutTap={avisarAgotado}
         />
       </Box>
       </Box>
@@ -640,7 +649,6 @@ export function POSPage() {
 
   return (
     <Box ref={ref} h="100%" bg="bg.subtle" position="relative">
-      <AvisoDePlataforma />
       <AvisoDeTurnoViejo estado={cashStatus.data} />
       {wide ? (
         <Flex h="100%">

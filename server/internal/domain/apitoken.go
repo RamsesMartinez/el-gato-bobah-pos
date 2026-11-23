@@ -496,6 +496,16 @@ var mcpTools = []MCPTool{
 	wr("product_group_unlink", "Quita un grupo de un producto.", ScopeWriteCatalog, PermMenuConfigure),
 	wr("product_create", "Da de alta un producto (nombre, categoría, precio, costo manual opcional, existencia propia, "+
 		"favorito). La vista previa pone primero los productos con nombre parecido.", ScopeWriteCatalog, PermMenuConfigure),
+
+	// Spec 091: fotos del catálogo y familia de comida.
+	wr("product_image_set", "Pone o reemplaza la foto de un producto: dos WebP cuadrados en base64 (1200×1200 hasta "+
+		"400 KB y 400×400 hasta 100 KB). La vista previa los valida sin subir nada.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("product_image_remove", "Quita la foto de un producto; vuelve a verse la de su categoría o su dibujo.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("category_image_set", "Pone o reemplaza la foto de una categoría, con las mismas medidas que la de un producto. "+
+		"Los productos sin foto propia la muestran.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("category_image_remove", "Quita la foto de una categoría; vuelve a verse el dibujo de su familia.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("category_family_set", "Elige la familia de comida de una categoría (el dibujo de lo que no tiene foto): "+
+		"cold_drink, coffee, tea, frappe, soda, soup, snack, wings, dessert, breakfast o dish; vacío = genérica.", ScopeWriteCatalog, PermMenuConfigure),
 }
 
 // MCPTools devuelve el catálogo en el orden del contrato.
