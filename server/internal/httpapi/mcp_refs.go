@@ -135,6 +135,7 @@ func refsPurchaseCreate(in purchaseCreateArgs) []domain.Ref {
 	l.payments(in.Payments)
 	for _, ln := range in.Lines {
 		l.purchaseLine(ln.IngredientID, ln.ProductID, ln.PresentationID)
+		l.opt(domain.RefWarehouse, ln.WarehouseID)
 	}
 	return l
 }
@@ -202,6 +203,7 @@ func refsExpenseEdit(in expenseEditArgs) []domain.Ref {
 	l.opt(domain.RefExpenseCategory, in.CategoryID)
 	for _, ln := range in.Add {
 		l.purchaseLine(ln.IngredientID, ln.ProductID, ln.PresentationID)
+		l.opt(domain.RefWarehouse, ln.WarehouseID)
 	}
 	return l
 }

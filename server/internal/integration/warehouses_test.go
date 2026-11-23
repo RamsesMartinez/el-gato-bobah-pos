@@ -134,8 +134,7 @@ func TestAWarehouseWithStockIsNotArchived(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Mientras rige la 0120 nada entra a la bodega por un movimiento (EGB04): se siembra la existencia
-	// directo, como owner.
+	// La existencia de la bodega se siembra directo, como owner.
 	ing := placeIngredient(t, st, co, "Leche entera")
 	if _, err := st.Pool.Exec(ctx, `insert into stock_levels (company_id, branch_id, warehouse_id, item_type, ingredient_id, on_hand)
 		select w.company_id, w.branch_id, w.id, 'ingrediente', $2, 20 from warehouses w where w.id = $1`, bodega, ing); err != nil {
@@ -202,8 +201,7 @@ func TestStockLevelsByWarehouse(t *testing.T) {
 	}
 	leche := placeIngredient(t, st, co, "Leche")
 	azucar := placeIngredient(t, st, co, "Azúcar")
-	// Mientras rige la 0120 un artículo vive en un solo almacén por sucursal: leche en el local y
-	// azúcar en la bodega, sembrados directo.
+	// Leche en el local y azúcar en la bodega, sembrados directo.
 	if _, err := st.Pool.Exec(ctx, `
 		insert into stock_levels (company_id, branch_id, warehouse_id, item_type, ingredient_id, on_hand)
 		select w.company_id, w.branch_id, w.id, 'ingrediente'::stock_item_type, $2::bigint, 10 from warehouses w where w.company_id = $1 and w.is_sales
@@ -242,7 +240,7 @@ func TestStockLevelsByWarehouse(t *testing.T) {
 }
 
 // Un ajuste manual (pantalla y MCP stock_adjust) va al almacén de venta por omisión; mientras rige la
-// 0120 la bodega todavía no recibe movimientos, y uno ajeno no existe.
+// 0122 la bodega también recibe, y uno ajeno no existe.
 func TestAManualAdjustmentGoesToTheWarehouseAsked(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
@@ -263,8 +261,13 @@ func TestAManualAdjustmentGoesToTheWarehouseAsked(t *testing.T) {
 		where m.ingredient_id = $1`, ing).Scan(&sales); err != nil || !sales {
 		t.Fatalf("el ajuste sin almacén no quedó en el de venta: %v", err)
 	}
-	if err := svc.RecordMovement(ctx, domain.WarehouseSel{ID: bodega}, "ingrediente", &ing, nil, "ajuste", decimal.NewFromInt(1), "a la bodega", user); !errors.Is(err, domain.ErrWarehouseNotWritableYet) {
-		t.Fatalf("ajuste a la bodega en la 0120 = %v; quiere «todavía no recibe»", err)
+	// Desde la 0122 la bodega recibe ajustes: entra a ella y no al local.
+	if err := svc.RecordMovement(ctx, domain.WarehouseSel{ID: bodega}, "ingrediente", &ing, nil, "ajuste", decimal.NewFromInt(3), "a la bodega", user); err != nil {
+		t.Fatalf("ajuste a la bodega: %v", err)
+	}
+	var inBodega string
+	if err := st.Pool.QueryRow(ctx, `select on_hand::text from stock_levels where warehouse_id = $1 and ingredient_id = $2`, bodega, ing).Scan(&inBodega); err != nil || inBodega != "3.0000" {
+		t.Fatalf("la bodega quedó con %q, %v; quiere 3", inBodega, err)
 	}
 	osvc, octx := asWaste(t, other)
 	ouser := makeUserIn(t, st, other, "ajusta-ajena", "gerente")
@@ -301,5 +304,48 @@ func TestAWarehouseOfAnotherBranchIsNotReachable(t *testing.T) {
 	}
 	if err := svc.ArchiveWarehouse(ctx, norte); err == nil {
 		t.Fatal("se archivó el almacén de otra sucursal")
+	}
+}
+
+// Cambiar cuál es el almacén de venta (desde la 0122): la marca pasa entera, la sucursal nunca se
+// queda sin uno, y uno archivado no puede ser el de venta.
+func TestTheSalesWarehouseCanChange(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	co := makeCompany(t, st, "cambia-almacen-venta")
+	svc, ctx := asWaste(t, co)
+	bodega, err := svc.CreateWarehouse(ctx, "Bodega")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetSalesWarehouse(ctx, bodega); err != nil {
+		t.Fatalf("hacer de la bodega el de venta: %v", err)
+	}
+	ws, _ := svc.ListWarehouses(ctx, false)
+	sales := 0
+	for _, w := range ws {
+		if w.IsSales {
+			sales++
+			if w.ID != bodega {
+				t.Fatalf("el de venta quedó en %q", w.Name)
+			}
+		}
+	}
+	if sales != 1 {
+		t.Fatalf("%d almacenes de venta; quiere uno", sales)
+	}
+	if err := svc.SetSalesWarehouse(ctx, bodega); err != nil {
+		t.Fatalf("repetirlo no es error: %v", err)
+	}
+	other, _ := svc.CreateWarehouse(ctx, "Cuarto frío")
+	if err := svc.ArchiveWarehouse(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetSalesWarehouse(ctx, other); !errors.Is(err, domain.ErrWarehouseNotFound) {
+		t.Fatalf("hacer de venta uno archivado = %v; quiere «no existe»", err)
+	}
+	var n int
+	if err := st.Pool.QueryRow(ctx, `select count(*) from audit_events where company_id = $1 and action = 'warehouse.updated'`, co).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("%d cambios en la bitácora, %v; quiere 1", n, err)
 	}
 }

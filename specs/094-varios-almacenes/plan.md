@@ -19,8 +19,8 @@ requerimiento (research R3).
 
 **Primary Dependencies**: chi, pgx + sqlc, goose (embebidas); Chakra UI v3, TanStack Query
 
-**Storage**: PostgreSQL con RLS (`gatobobah_app`); migraciones 0120 (subida 1), 0121 (subida 2),
-0122 (subida 3)
+**Storage**: PostgreSQL con RLS (`gatobobah_app`); migraciones 0120 (subida 1), 0122 (subida 2),
+0123 (subida 3)
 
 **Testing**: `go test` (dominio, table-driven), integración contra Postgres de pruebas bajo
 `appRoleStore` con `inTheThreeCases`, migración sobre respaldo restaurado con dos empresas; vitest;
@@ -105,8 +105,8 @@ specs/094-varios-almacenes/
 ```text
 server/
 ├── migrations/NNNN_warehouses.sql            # subida 1 (número al llegar a develop, R11 M7)
-├── migrations/0121_warehouses_contract.sql   # subida 2
-├── migrations/0122_stock_transfers.sql       # subida 3
+├── migrations/0122_warehouses_contract.sql   # subida 2
+├── migrations/0123_stock_transfers.sql       # subida 3
 ├── queries/warehouses.sql, transfers.sql     # nuevas; y las existentes por almacén
 ├── internal/domain/warehouse.go, transfer.go (+ _test.go)
 ├── internal/app/warehouses.go, transfers.go  # y los servicios de existencias que cambian

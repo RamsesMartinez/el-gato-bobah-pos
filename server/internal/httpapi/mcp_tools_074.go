@@ -73,6 +73,7 @@ type editLineArg struct {
 	Amount         string `json:"amount" jsonschema:"importe del renglón, texto decimal"`
 	IsGift         bool   `json:"is_gift,omitempty" jsonschema:"true si vino de regalo (importe 0)"`
 	ArrivedOn      string `json:"arrived_on,omitempty" jsonschema:"día en que llegó, AAAA-MM-DD; omítelo si todavía no llega (queda por recibir)"`
+	WarehouseID    *int64 `json:"warehouse_id,omitempty" jsonschema:"almacén al que entra (de warehouses_list); sin él, el de venta"`
 }
 
 type expenseEditArgs struct {
@@ -321,7 +322,8 @@ func expenseEditBody(in expenseEditArgs) (map[string]any, error) {
 			return nil, toolErr("El renglón agregado %d lleva ingredient_id o product_id, no los dos.", i+1)
 		}
 		it := map[string]any{"description": strings.TrimSpace(l.Name), "quantity": l.Quantity, "amount": l.Amount,
-			"isGift": l.IsGift, "presentationId": l.PresentationID, "unitId": l.UnitID, "arrivedOn": l.ArrivedOn, "itemType": ""}
+			"isGift": l.IsGift, "presentationId": l.PresentationID, "unitId": l.UnitID, "arrivedOn": l.ArrivedOn, "itemType": "",
+			"warehouseId": l.WarehouseID}
 		switch {
 		case l.IngredientID != nil:
 			it["itemType"], it["ingredientId"] = "ingrediente", *l.IngredientID

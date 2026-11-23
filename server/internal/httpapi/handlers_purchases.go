@@ -27,6 +27,8 @@ type stockLineBody struct {
 	IsGift         bool             `json:"isGift"`
 	// Excluded: solo en un renglón nuevo; uno que ya existe conserva su marca (spec 049).
 	Excluded bool `json:"excluded"`
+	// WarehouseID: a qué almacén entra (spec 094); ausente = el de venta (o el que ya tenía).
+	WarehouseID *int64 `json:"warehouseId"`
 }
 
 // PUT /expenses/{id}/stock-lines — permiso inventory.receive. El conjunto deseado de renglones de
@@ -51,7 +53,7 @@ func (h *Handlers) SaveStockLines(w http.ResponseWriter, r *http.Request) {
 			ID: l.ID, SeenApplied: l.SeenApplied, ItemType: l.ItemType, IngredientID: l.IngredientID,
 			ProductID: l.ProductID, Description: l.Description, Quantity: l.Quantity, Received: l.Received,
 			NotComing: l.NotComing, PresentationID: l.PresentationID, UnitID: l.UnitID, Amount: l.Amount,
-			IsGift: l.IsGift, Excluded: l.Excluded,
+			IsGift: l.IsGift, Excluded: l.Excluded, WarehouseID: l.WarehouseID,
 		}
 	}
 	v, err := h.backoffice.SaveStockLines(r.Context(), id, lines, u.ID)
@@ -111,6 +113,8 @@ func (h *Handlers) ReceiveItem(w http.ResponseWriter, r *http.Request) {
 		Qty         decimal.Decimal  `json:"qty"`
 		SeenApplied decimal.Decimal  `json:"seenApplied"`
 		ExtraAmount *decimal.Decimal `json:"extraAmount"`
+		// WarehouseID: llegó a otro almacén que el del renglón (spec 094).
+		WarehouseID *int64 `json:"warehouseId"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -118,7 +122,7 @@ func (h *Handlers) ReceiveItem(w http.ResponseWriter, r *http.Request) {
 	}
 	u, _ := userFrom(r.Context())
 	if err := h.backoffice.ReceiveItem(r.Context(), id, itemID, app.ReceiveItemInput{
-		Qty: body.Qty, SeenApplied: body.SeenApplied, ExtraAmount: body.ExtraAmount,
+		Qty: body.Qty, SeenApplied: body.SeenApplied, ExtraAmount: body.ExtraAmount, WarehouseID: body.WarehouseID,
 	}, u.ID); err != nil {
 		Error(w, err)
 		return
@@ -170,6 +174,7 @@ func (h *Handlers) AddArrivedItem(w http.ResponseWriter, r *http.Request) {
 		UnitID         *int16          `json:"unitId"`
 		Amount         decimal.Decimal `json:"amount"`
 		IsGift         bool            `json:"isGift"`
+		WarehouseID    *int64          `json:"warehouseId"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -179,7 +184,7 @@ func (h *Handlers) AddArrivedItem(w http.ResponseWriter, r *http.Request) {
 	if err := h.backoffice.AddArrivedItem(r.Context(), id, app.ArrivedItemInput{
 		ItemType: body.ItemType, IngredientID: body.IngredientID, ProductID: body.ProductID,
 		Description: body.Description, Quantity: body.Quantity, PresentationID: body.PresentationID,
-		UnitID: body.UnitID, Amount: body.Amount, IsGift: body.IsGift,
+		UnitID: body.UnitID, Amount: body.Amount, IsGift: body.IsGift, WarehouseID: body.WarehouseID,
 	}, u.ID); err != nil {
 		Error(w, err)
 		return

@@ -186,7 +186,7 @@ export function StockCountTab() {
           <HStack gap={3} flexWrap="wrap">
             <Text fontSize="sm">Se recorre en este orden: {places.map((p) => p.name).join(' → ')}</Text>
             {canOrder && (
-              <Button minH="44px" variant="outline" onClick={() => navigate('/negocio#lugares')}>Ordenar lugares en Negocio ›</Button>
+              <Button minH="44px" variant="outline" onClick={() => navigate('/negocio?seccion=inventario#lugares')}>Ordenar lugares en Negocio ›</Button>
             )}
           </HStack>
         )}
