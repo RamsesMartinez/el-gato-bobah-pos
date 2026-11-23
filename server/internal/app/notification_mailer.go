@@ -122,7 +122,8 @@ func (m *NotificationMailer) windowJob(ctx context.Context, q *db.Queries, w tim
 		}
 		keep = append(keep, n.ID)
 		items = append(items, mailItem{kind: n.Kind, name: n.ItemName, unit: n.UnitCode, query: n.QueryText, at: n.OpenedAt.In(loc),
-			by: n.OpenedByName, onHand: n.OnHandSeen.String(), min: n.MinSeen.String(), needsCount: n.NeedsCount, key: keyOf(n.ItemKey)})
+			by: n.OpenedByName, onHand: n.OnHandSeen.String(), min: n.MinSeen.String(), needsCount: n.NeedsCount, key: keyOf(n.ItemKey),
+			warehouse: n.WarehouseLabel})
 	}
 	if len(skip) > 0 {
 		if err := q.MarkNotificationsEmailed(ctx, db.MarkNotificationsEmailedParams{State: "skipped", Ids: skip}); err != nil {
@@ -188,7 +189,8 @@ func (m *NotificationMailer) SendMorning(ctx context.Context, company int64) err
 		items := make([]mailItem, 0, len(open))
 		for _, n := range open {
 			items = append(items, mailItem{kind: n.Kind, name: n.ItemName, unit: n.UnitCode, query: n.QueryText, at: n.OpenedAt.In(loc),
-				by: n.OpenedByName, onHand: n.OnHandSeen.String(), min: n.MinSeen.String(), needsCount: n.NeedsCount, key: n.ItemKey})
+				by: n.OpenedByName, onHand: n.OnHandSeen.String(), min: n.MinSeen.String(), needsCount: n.NeedsCount, key: n.ItemKey,
+				warehouse: n.WarehouseLabel})
 		}
 		if len(items) == 0 {
 			return q.FinishNotificationSend(ctx, db.FinishNotificationSendParams{ID: claimed[0], Status: "empty"})
@@ -256,9 +258,11 @@ func (m *NotificationMailer) deliver(ctx context.Context, company int64, jobs []
 // mailItem es un aviso como entra al correo.
 type mailItem struct {
 	kind, name, unit, query, by, onHand, min string
-	key                                      int64 // id del insumo, o el del producto en negativo (notifications.item_key)
-	at                                       time.Time
-	needsCount                               bool
+	// warehouse es el almacén del aviso, solo cuando la sucursal tiene dos o más activos (spec 094).
+	warehouse  string
+	key        int64 // id del insumo, o el del producto en negativo (notifications.item_key)
+	at         time.Time
+	needsCount bool
 }
 
 // bodies arma el HTML de cada destinatario con los tipos de aviso que recibe; quien no recibe nada de
@@ -377,6 +381,9 @@ func (m *NotificationMailer) item(it mailItem, buy map[int64]ShoppingLine) mailt
 		out.Name = "«" + it.query + "»"
 		out.Detail = fmt.Sprintf("Lo buscó %s a las %s y no está en el sistema. Dalo de alta o márcalo como otro nombre de un insumo.", it.by, it.at.Format("15:04"))
 		return out
+	}
+	if it.warehouse != "" {
+		out.Detail = "En " + it.warehouse + " · " + out.Detail
 	}
 	if l, ok := buy[it.key]; ok {
 		out.Supplier, out.Why = l.Supplier, l.Why

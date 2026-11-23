@@ -229,9 +229,14 @@ select count(*)::int from branches where is_active;
 select n.id, n.kind, n.status, n.item_key, n.branch_id, coalesce(n.item_name, '')::text as item_name,
        coalesce(n.unit_code, '')::text as unit_code, coalesce(n.query_text, '')::text as query_text, n.opened_at,
        coalesce(u.name, '')::text as opened_by_name, coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen,
-       coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count
+       coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count,
+       -- El almacén solo se nombra con dos o más activos en la sucursal del aviso: con uno, el correo
+       -- queda como antes (spec 094).
+       case when (select count(*) from warehouses w2 where w2.branch_id = n.branch_id and w2.is_active) >= 2
+            then coalesce(w.name, '') else '' end::text as warehouse_label
   from notifications n
   left join users u on u.id = n.opened_by
+  left join warehouses w on w.id = n.warehouse_id
  where n.email_state = 'pending' and n.opened_at < sqlc.arg(before)
  order by n.opened_at, n.id;
 
@@ -268,8 +273,13 @@ select exists (select 1 from notification_email_sends where kind = 'morning' and
 -- name: OpenNotificationsForMorning :many
 select n.id, n.kind, coalesce(n.item_key, 0)::bigint as item_key, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
        coalesce(n.query_text, '')::text as query_text, n.opened_at, coalesce(u.name, '')::text as opened_by_name,
-       coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen, coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count
+       coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen, coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count,
+       -- El almacén solo se nombra con dos o más activos en la sucursal del aviso: con uno, el correo
+       -- queda como antes (spec 094).
+       case when (select count(*) from warehouses w2 where w2.branch_id = n.branch_id and w2.is_active) >= 2
+            then coalesce(w.name, '') else '' end::text as warehouse_label
   from notifications n left join users u on u.id = n.opened_by
+  left join warehouses w on w.id = n.warehouse_id
  where n.status = 'open'
  order by n.kind, n.opened_at;
 

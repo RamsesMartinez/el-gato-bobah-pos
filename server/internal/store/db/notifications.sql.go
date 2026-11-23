@@ -719,24 +719,30 @@ func (q *Queries) NotifyNotificationsChanged(ctx context.Context) error {
 const openNotificationsForMorning = `-- name: OpenNotificationsForMorning :many
 select n.id, n.kind, coalesce(n.item_key, 0)::bigint as item_key, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
        coalesce(n.query_text, '')::text as query_text, n.opened_at, coalesce(u.name, '')::text as opened_by_name,
-       coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen, coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count
+       coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen, coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count,
+       -- El almacén solo se nombra con dos o más activos en la sucursal del aviso: con uno, el correo
+       -- queda como antes (spec 094).
+       case when (select count(*) from warehouses w2 where w2.branch_id = n.branch_id and w2.is_active) >= 2
+            then coalesce(w.name, '') else '' end::text as warehouse_label
   from notifications n left join users u on u.id = n.opened_by
+  left join warehouses w on w.id = n.warehouse_id
  where n.status = 'open'
  order by n.kind, n.opened_at
 `
 
 type OpenNotificationsForMorningRow struct {
-	ID           int64           `json:"id"`
-	Kind         string          `json:"kind"`
-	ItemKey      int64           `json:"item_key"`
-	ItemName     string          `json:"item_name"`
-	UnitCode     string          `json:"unit_code"`
-	QueryText    string          `json:"query_text"`
-	OpenedAt     time.Time       `json:"opened_at"`
-	OpenedByName string          `json:"opened_by_name"`
-	OnHandSeen   decimal.Decimal `json:"on_hand_seen"`
-	MinSeen      decimal.Decimal `json:"min_seen"`
-	NeedsCount   bool            `json:"needs_count"`
+	ID             int64           `json:"id"`
+	Kind           string          `json:"kind"`
+	ItemKey        int64           `json:"item_key"`
+	ItemName       string          `json:"item_name"`
+	UnitCode       string          `json:"unit_code"`
+	QueryText      string          `json:"query_text"`
+	OpenedAt       time.Time       `json:"opened_at"`
+	OpenedByName   string          `json:"opened_by_name"`
+	OnHandSeen     decimal.Decimal `json:"on_hand_seen"`
+	MinSeen        decimal.Decimal `json:"min_seen"`
+	NeedsCount     bool            `json:"needs_count"`
+	WarehouseLabel string          `json:"warehouse_label"`
 }
 
 func (q *Queries) OpenNotificationsForMorning(ctx context.Context) ([]OpenNotificationsForMorningRow, error) {
@@ -760,6 +766,7 @@ func (q *Queries) OpenNotificationsForMorning(ctx context.Context) ([]OpenNotifi
 			&i.OnHandSeen,
 			&i.MinSeen,
 			&i.NeedsCount,
+			&i.WarehouseLabel,
 		); err != nil {
 			return nil, err
 		}
@@ -775,27 +782,33 @@ const pendingEmailNotifications = `-- name: PendingEmailNotifications :many
 select n.id, n.kind, n.status, n.item_key, n.branch_id, coalesce(n.item_name, '')::text as item_name,
        coalesce(n.unit_code, '')::text as unit_code, coalesce(n.query_text, '')::text as query_text, n.opened_at,
        coalesce(u.name, '')::text as opened_by_name, coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen,
-       coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count
+       coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count,
+       -- El almacén solo se nombra con dos o más activos en la sucursal del aviso: con uno, el correo
+       -- queda como antes (spec 094).
+       case when (select count(*) from warehouses w2 where w2.branch_id = n.branch_id and w2.is_active) >= 2
+            then coalesce(w.name, '') else '' end::text as warehouse_label
   from notifications n
   left join users u on u.id = n.opened_by
+  left join warehouses w on w.id = n.warehouse_id
  where n.email_state = 'pending' and n.opened_at < $1
  order by n.opened_at, n.id
 `
 
 type PendingEmailNotificationsRow struct {
-	ID           int64           `json:"id"`
-	Kind         string          `json:"kind"`
-	Status       string          `json:"status"`
-	ItemKey      *int64          `json:"item_key"`
-	BranchID     int64           `json:"branch_id"`
-	ItemName     string          `json:"item_name"`
-	UnitCode     string          `json:"unit_code"`
-	QueryText    string          `json:"query_text"`
-	OpenedAt     time.Time       `json:"opened_at"`
-	OpenedByName string          `json:"opened_by_name"`
-	OnHandSeen   decimal.Decimal `json:"on_hand_seen"`
-	MinSeen      decimal.Decimal `json:"min_seen"`
-	NeedsCount   bool            `json:"needs_count"`
+	ID             int64           `json:"id"`
+	Kind           string          `json:"kind"`
+	Status         string          `json:"status"`
+	ItemKey        *int64          `json:"item_key"`
+	BranchID       int64           `json:"branch_id"`
+	ItemName       string          `json:"item_name"`
+	UnitCode       string          `json:"unit_code"`
+	QueryText      string          `json:"query_text"`
+	OpenedAt       time.Time       `json:"opened_at"`
+	OpenedByName   string          `json:"opened_by_name"`
+	OnHandSeen     decimal.Decimal `json:"on_hand_seen"`
+	MinSeen        decimal.Decimal `json:"min_seen"`
+	NeedsCount     bool            `json:"needs_count"`
+	WarehouseLabel string          `json:"warehouse_label"`
 }
 
 // Lo que todavía no sale por correo y se abrió antes de `before` (el inicio del bloque en curso).
@@ -822,6 +835,7 @@ func (q *Queries) PendingEmailNotifications(ctx context.Context, before time.Tim
 			&i.OnHandSeen,
 			&i.MinSeen,
 			&i.NeedsCount,
+			&i.WarehouseLabel,
 		); err != nil {
 			return nil, err
 		}

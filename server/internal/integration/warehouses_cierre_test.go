@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
@@ -157,6 +158,98 @@ func TestCreatingAPurchaseAuditsTheWarehouseOfEachLine(t *testing.T) {
 	for _, l := range lines {
 		if l.WarehouseID == nil || *l.WarehouseID != want[l.Position] {
 			t.Fatalf("el renglón %d (%s) dice almacén %v; quiere %d (%s)", l.Position, l.Description, l.WarehouseID, want[l.Position], raw)
+		}
+	}
+}
+
+// openOutIn abre un «se acabó» de un insumo nuevo en un almacén dado y fija su hora en la base.
+func (k *mailerKit) openOutIn(t *testing.T, warehouse int64, name string, at time.Time) {
+	t.Helper()
+	ing := pieceIngredient(t, k.st, name)
+	so, ctx := asStockOut(t, defaultCompanyID)
+	if _, _, err := so.ReportOut(ctx, app.ReportOutCmd{ItemType: "ingrediente", ID: ing, ClientKey: uuid.New(), Actor: k.user,
+		Warehouse: domain.WarehouseSel{ID: warehouse}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.st.Pool.Exec(context.Background(),
+		`update notifications set opened_at = $2 where ingredient_id = $1 and status = 'open'`, ing, at); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// itemLine es la tarjeta del correo de un artículo: desde su nombre hasta la tarjeta siguiente.
+func itemLine(t *testing.T, html, name string) string {
+	t.Helper()
+	i := strings.Index(html, name)
+	if i < 0 {
+		t.Fatalf("el correo no trae %s", name)
+	}
+	rest := html[i:]
+	if j := strings.Index(rest, "border-left:4px"); j > 0 {
+		rest = rest[:j]
+	}
+	return rest
+}
+
+// Con Local y Bodega, un correo que decía «Leche: se acabó» no decía DÓNDE: quien compra iba a
+// surtir el local cuando lo vacío era la bodega. Con dos o más almacenes activos cada aviso nombra
+// el suyo, en el correo por bloque y en el resumen de la mañana.
+func TestStockEmailsNameTheWarehouseWithTwoOrMore(t *testing.T) {
+	t.Parallel()
+	k := newMailerKit(t)
+	ctx := context.Background()
+	_, bodega := comoEnLaSegundaSubida(t, k.st, defaultCompanyID)
+	k.openAt(t, "Vasos cierre", k.block.Add(time.Minute))
+	k.openOutIn(t, bodega, "Popotes cierre", k.block.Add(2*time.Minute))
+	if err := k.mailer(k.block.Add(6*time.Minute)).SendWindows(ctx, defaultCompanyID); err != nil {
+		t.Fatal(err)
+	}
+	if k.box.count() != 1 {
+		t.Fatalf("salieron %d correos; quiere 1", k.box.count())
+	}
+	html := k.box.sent[0].html
+	if l := itemLine(t, html, "Vasos cierre"); !strings.Contains(l, "En Local") {
+		t.Fatalf("el aviso de Local no dice su almacén: %s", l)
+	}
+	if l := itemLine(t, html, "Popotes cierre"); !strings.Contains(l, "En Bodega") {
+		t.Fatalf("el aviso de Bodega no dice su almacén: %s", l)
+	}
+	morning := time.Date(2026, 11, 15, 14, 5, 0, 0, time.UTC)
+	if err := k.mailer(morning).SendMorning(ctx, defaultCompanyID); err != nil {
+		t.Fatal(err)
+	}
+	if k.box.count() != 2 {
+		t.Fatalf("el resumen de la mañana no salió: %d correos", k.box.count())
+	}
+	html = k.box.sent[1].html
+	if l := itemLine(t, html, "Vasos cierre"); !strings.Contains(l, "En Local") {
+		t.Fatalf("el resumen no dice el almacén del aviso de Local: %s", l)
+	}
+	if l := itemLine(t, html, "Popotes cierre"); !strings.Contains(l, "En Bodega") {
+		t.Fatalf("el resumen no dice el almacén del aviso de Bodega: %s", l)
+	}
+}
+
+// Con un solo almacén el texto queda como antes: nombrar «Local» en cada renglón es ruido para el
+// negocio que nunca dio de alta otro.
+func TestStockEmailsWithOneWarehouseDoNotNameIt(t *testing.T) {
+	t.Parallel()
+	k := newMailerKit(t)
+	ctx := context.Background()
+	k.openAt(t, "Tapas cierre", k.block.Add(time.Minute))
+	if err := k.mailer(k.block.Add(6*time.Minute)).SendWindows(ctx, defaultCompanyID); err != nil {
+		t.Fatal(err)
+	}
+	morning := time.Date(2026, 11, 15, 14, 5, 0, 0, time.UTC)
+	if err := k.mailer(morning).SendMorning(ctx, defaultCompanyID); err != nil {
+		t.Fatal(err)
+	}
+	if k.box.count() != 2 {
+		t.Fatalf("salieron %d correos; quiere el del bloque y el de la mañana", k.box.count())
+	}
+	for _, m := range k.box.sent {
+		if l := itemLine(t, m.html, "Tapas cierre"); strings.Contains(l, "En Local") {
+			t.Fatalf("con un solo almacén el correo «%s» lo nombra: %s", m.subject, l)
 		}
 	}
 }
