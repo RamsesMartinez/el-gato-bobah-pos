@@ -302,9 +302,7 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   - **«Ya reportado» en la búsqueda de «se acabó» es del almacén pedido**: la pantalla manda el
     almacén elegido (el de venta, sin `warehouseId`). Lo reportado en Bodega no sale reportado en Local.
   - **Los correos de avisos nombran el almacén solo con dos o más activos en la sucursal** («En
-    Bodega · …»). Lo que siguen midiendo por artículo y no por almacén: la sugerencia de compra del
-    correo sale de la lista de compra del de venta, y el enfriamiento de 12 h cuenta el artículo en
-    cualquier almacén.
+    Bodega · …»).
   - **El almacén de cada renglón de compra queda en la bitácora desde el alta** (`expense.created`,
     `lines`), no solo al recibir.
 - **Merma esperada: artículo → producto → general** (spec 096, 0126). Cuatro cosas que no se ven:

@@ -226,7 +226,7 @@ select count(*)::int from branches where is_active;
 
 -- name: PendingEmailNotifications :many
 -- Lo que todavía no sale por correo y se abrió antes de `before` (el inicio del bloque en curso).
-select n.id, n.kind, n.status, n.item_key, n.branch_id, coalesce(n.item_name, '')::text as item_name,
+select n.id, n.kind, n.status, n.item_key, n.branch_id, n.warehouse_id, coalesce(n.item_name, '')::text as item_name,
        coalesce(n.unit_code, '')::text as unit_code, coalesce(n.query_text, '')::text as query_text, n.opened_at,
        coalesce(u.name, '')::text as opened_by_name, coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen,
        coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count,
@@ -241,10 +241,12 @@ select n.id, n.kind, n.status, n.item_key, n.branch_id, coalesce(n.item_name, ''
  order by n.opened_at, n.id;
 
 -- name: LastEmailedAt :one
--- La última vez que un artículo salió en un correo (para el enfriamiento de 12 h). Época si nunca.
+-- La última vez que un artículo salió en un correo desde ESE almacén (para el enfriamiento de 12 h).
+-- Época si nunca. Por almacén: un correo de Local no calla el mismo artículo agotado en Bodega.
 select coalesce(max(s.sent_at), 'epoch'::timestamptz)::timestamptz
   from notifications n join notification_email_sends s on s.id = n.email_send_id
- where n.item_key = sqlc.arg(item_key) and n.kind <> 'not_found' and n.email_state = 'sent';
+ where n.item_key = sqlc.arg(item_key) and n.warehouse_id = sqlc.arg(warehouse_id)
+   and n.kind <> 'not_found' and n.email_state = 'sent';
 
 -- name: ClaimNotificationSend :many
 -- La fila se toma ANTES de mandar: dos APIs vivas o un reinicio no mandan dos veces. Solo se vuelve a
@@ -271,7 +273,7 @@ update notifications set email_state = sqlc.arg(state), email_send_id = sqlc.nar
 select exists (select 1 from notification_email_sends where kind = 'morning' and period_key = sqlc.arg(period_key) and status in ('sent', 'empty'))::bool;
 
 -- name: OpenNotificationsForMorning :many
-select n.id, n.kind, coalesce(n.item_key, 0)::bigint as item_key, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
+select n.id, n.kind, n.warehouse_id, coalesce(n.item_key, 0)::bigint as item_key, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
        coalesce(n.query_text, '')::text as query_text, n.opened_at, coalesce(u.name, '')::text as opened_by_name,
        coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen, coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count,
        -- El almacén solo se nombra con dos o más activos en la sucursal del aviso: con uno, el correo

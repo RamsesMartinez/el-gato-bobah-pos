@@ -253,3 +253,99 @@ func TestStockEmailsWithOneWarehouseDoNotNameIt(t *testing.T) {
 		}
 	}
 }
+
+// whyIn es el porqué de compra de un artículo en la lista de un almacén.
+func whyIn(t *testing.T, warehouse, ing int64) string {
+	t.Helper()
+	ns, _, ctx := asNotifications(t, defaultCompanyID)
+	lines, err := ns.ShoppingList(ctx, domain.WarehouseSel{ID: warehouse})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range lines {
+		if l.ItemType == "ingrediente" && l.ID == ing {
+			return l.Why
+		}
+	}
+	t.Fatalf("el artículo %d no está en la lista de compra del almacén %d", ing, warehouse)
+	return ""
+}
+
+// La sugerencia de compra de un aviso de Bodega salía de la lista del almacén de venta: con leche
+// que se vende diario en Local y una Bodega que nunca vende, el correo de Bodega decía cuánto comprar
+// según el consumo de Local.
+func TestTheEmailSuggestionComesFromTheWarehouseOfTheNotice(t *testing.T) {
+	t.Parallel()
+	k := newMailerKit(t)
+	ctx := context.Background()
+	local, bodega := comoEnLaSegundaSubida(t, k.st, defaultCompanyID)
+	ing := pieceIngredient(t, k.st, "Leche sugerida")
+	alertOn(t, k.st, ing, "100", false, true) // en la lista de Local por mínimo, sin aviso que estorbe
+	adjustIn(t, k.st, local, "ingrediente", ing, "90")
+	for d := 1; d <= 8; d++ { // vende 10 diarios en Local: consumo medido
+		if _, err := k.st.Pool.Exec(ctx, `insert into stock_movements (warehouse_id, item_type, ingredient_id, movement_type, quantity, created_at)
+			values ($1, 'ingrediente', $2, 'venta', -10, now() - make_interval(days => $3))`, local, ing, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	so, sctx := asStockOut(t, defaultCompanyID)
+	if _, _, err := so.ReportOut(sctx, app.ReportOutCmd{ItemType: "ingrediente", ID: ing, ClientKey: uuid.New(), Actor: k.user,
+		Warehouse: domain.WarehouseSel{ID: bodega}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.st.Pool.Exec(ctx, `update notifications set opened_at = $2 where ingredient_id = $1 and status = 'open'`, ing, k.block.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	inLocal, inBodega := whyIn(t, local, ing), whyIn(t, bodega, ing)
+	if inLocal == inBodega {
+		t.Fatalf("la prueba necesita porqués distintos por almacén; los dos dicen %q", inLocal)
+	}
+	if err := k.mailer(k.block.Add(6*time.Minute)).SendWindows(ctx, defaultCompanyID); err != nil {
+		t.Fatal(err)
+	}
+	if k.box.count() != 1 {
+		t.Fatalf("salieron %d correos; quiere 1", k.box.count())
+	}
+	card := itemLine(t, k.box.sent[0].html, "Leche sugerida")
+	if strings.Contains(card, inLocal) || !strings.Contains(card, inBodega) {
+		t.Fatalf("el aviso de Bodega trae la sugerencia de Local (%q); quiere la de Bodega (%q): %s", inLocal, inBodega, card)
+	}
+}
+
+// El enfriamiento de 12 h era por artículo: un correo de leche agotada en Local callaba la leche
+// agotada en Bodega dos horas después, y quien compra no se enteraba de que faltaba en los dos.
+func TestTheCooldownIsPerWarehouse(t *testing.T) {
+	t.Parallel()
+	k := newMailerKit(t)
+	ctx := context.Background()
+	_, bodega := comoEnLaSegundaSubida(t, k.st, defaultCompanyID)
+	ing, _ := k.openAt(t, "Popotes enfriamiento", k.block.Add(time.Minute))
+	if err := k.mailer(k.block.Add(6*time.Minute)).SendWindows(ctx, defaultCompanyID); err != nil {
+		t.Fatal(err)
+	}
+	if k.box.count() != 1 {
+		t.Fatalf("primer correo: %d", k.box.count())
+	}
+	if _, err := k.st.Pool.Exec(ctx, `update notification_email_sends set sent_at = $1`, k.block.Add(6*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	so, sctx := asStockOut(t, defaultCompanyID)
+	if _, _, err := so.ReportOut(sctx, app.ReportOutCmd{ItemType: "ingrediente", ID: ing, ClientKey: uuid.New(), Actor: k.user,
+		Warehouse: domain.WarehouseSel{ID: bodega}}); err != nil {
+		t.Fatal(err)
+	}
+	later := k.block.Add(2 * time.Hour)
+	if _, err := k.st.Pool.Exec(ctx, `update notifications set opened_at = $3 where ingredient_id = $1 and warehouse_id = $2 and status = 'open'`,
+		ing, bodega, later.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.mailer(later.Add(6*time.Minute)).SendWindows(ctx, defaultCompanyID); err != nil {
+		t.Fatal(err)
+	}
+	if k.box.count() != 2 {
+		t.Fatalf("el correo de Local calló el aviso de Bodega: %d correos; quiere 2", k.box.count())
+	}
+	if l := itemLine(t, k.box.sent[1].html, "Popotes enfriamiento"); !strings.Contains(l, "En Bodega") {
+		t.Fatalf("el segundo correo no es el de Bodega: %s", l)
+	}
+}

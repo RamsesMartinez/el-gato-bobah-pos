@@ -309,12 +309,19 @@ func (q *Queries) GetNotificationForUpdate(ctx context.Context, id int64) (GetNo
 const lastEmailedAt = `-- name: LastEmailedAt :one
 select coalesce(max(s.sent_at), 'epoch'::timestamptz)::timestamptz
   from notifications n join notification_email_sends s on s.id = n.email_send_id
- where n.item_key = $1 and n.kind <> 'not_found' and n.email_state = 'sent'
+ where n.item_key = $1 and n.warehouse_id = $2
+   and n.kind <> 'not_found' and n.email_state = 'sent'
 `
 
-// La última vez que un artículo salió en un correo (para el enfriamiento de 12 h). Época si nunca.
-func (q *Queries) LastEmailedAt(ctx context.Context, itemKey *int64) (time.Time, error) {
-	row := q.db.QueryRow(ctx, lastEmailedAt, itemKey)
+type LastEmailedAtParams struct {
+	ItemKey     *int64 `json:"item_key"`
+	WarehouseID int64  `json:"warehouse_id"`
+}
+
+// La última vez que un artículo salió en un correo desde ESE almacén (para el enfriamiento de 12 h).
+// Época si nunca. Por almacén: un correo de Local no calla el mismo artículo agotado en Bodega.
+func (q *Queries) LastEmailedAt(ctx context.Context, arg LastEmailedAtParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, lastEmailedAt, arg.ItemKey, arg.WarehouseID)
 	var column_1 time.Time
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -717,7 +724,7 @@ func (q *Queries) NotifyNotificationsChanged(ctx context.Context) error {
 }
 
 const openNotificationsForMorning = `-- name: OpenNotificationsForMorning :many
-select n.id, n.kind, coalesce(n.item_key, 0)::bigint as item_key, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
+select n.id, n.kind, n.warehouse_id, coalesce(n.item_key, 0)::bigint as item_key, coalesce(n.item_name, '')::text as item_name, coalesce(n.unit_code, '')::text as unit_code,
        coalesce(n.query_text, '')::text as query_text, n.opened_at, coalesce(u.name, '')::text as opened_by_name,
        coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen, coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count,
        -- El almacén solo se nombra con dos o más activos en la sucursal del aviso: con uno, el correo
@@ -733,6 +740,7 @@ select n.id, n.kind, coalesce(n.item_key, 0)::bigint as item_key, coalesce(n.ite
 type OpenNotificationsForMorningRow struct {
 	ID             int64           `json:"id"`
 	Kind           string          `json:"kind"`
+	WarehouseID    int64           `json:"warehouse_id"`
 	ItemKey        int64           `json:"item_key"`
 	ItemName       string          `json:"item_name"`
 	UnitCode       string          `json:"unit_code"`
@@ -757,6 +765,7 @@ func (q *Queries) OpenNotificationsForMorning(ctx context.Context) ([]OpenNotifi
 		if err := rows.Scan(
 			&i.ID,
 			&i.Kind,
+			&i.WarehouseID,
 			&i.ItemKey,
 			&i.ItemName,
 			&i.UnitCode,
@@ -779,7 +788,7 @@ func (q *Queries) OpenNotificationsForMorning(ctx context.Context) ([]OpenNotifi
 }
 
 const pendingEmailNotifications = `-- name: PendingEmailNotifications :many
-select n.id, n.kind, n.status, n.item_key, n.branch_id, coalesce(n.item_name, '')::text as item_name,
+select n.id, n.kind, n.status, n.item_key, n.branch_id, n.warehouse_id, coalesce(n.item_name, '')::text as item_name,
        coalesce(n.unit_code, '')::text as unit_code, coalesce(n.query_text, '')::text as query_text, n.opened_at,
        coalesce(u.name, '')::text as opened_by_name, coalesce(n.on_hand_seen, 0)::numeric as on_hand_seen,
        coalesce(n.min_seen, 0)::numeric as min_seen, n.needs_count,
@@ -800,6 +809,7 @@ type PendingEmailNotificationsRow struct {
 	Status         string          `json:"status"`
 	ItemKey        *int64          `json:"item_key"`
 	BranchID       int64           `json:"branch_id"`
+	WarehouseID    int64           `json:"warehouse_id"`
 	ItemName       string          `json:"item_name"`
 	UnitCode       string          `json:"unit_code"`
 	QueryText      string          `json:"query_text"`
@@ -827,6 +837,7 @@ func (q *Queries) PendingEmailNotifications(ctx context.Context, before time.Tim
 			&i.Status,
 			&i.ItemKey,
 			&i.BranchID,
+			&i.WarehouseID,
 			&i.ItemName,
 			&i.UnitCode,
 			&i.QueryText,
