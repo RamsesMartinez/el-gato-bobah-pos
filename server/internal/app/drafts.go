@@ -974,49 +974,76 @@ func buildDraftView(ctx context.Context, q *db.Queries, d db.GetDraftRow) (*Draf
 	if err != nil {
 		return nil, err
 	}
-	products, options, err := pricedCatalog(ctx, q, lista, rows)
-	if err != nil {
-		return nil, err
-	}
 	v := &DraftView{
 		ID: d.ID, OrderID: d.OrderID, FolioName: d.FolioName, Status: d.Status, HeaderVersion: d.HeaderVersion,
 		Version: d.Version, UpdatedAt: d.UpdatedAt, CreatedAt: d.CreatedAt, OpenedBy: d.OpenedByName, ServiceType: string(d.ServiceType),
 		CustomerName: d.CustomerName, PlatformID: d.DeliveryPlatformID, PlatformOrderRef: d.PlatformOrderRef,
-		DeliveryFee: d.DeliveryFee, Lines: make([]DraftLineView, 0, len(rows)), Unavailable: []string{},
+		DeliveryFee: d.DeliveryFee,
 	}
 	if d.DiscountAmount != nil {
 		v.Discount = &DraftDiscount{Amount: d.DiscountAmount}
 	} else if d.DiscountPercent != nil {
 		v.Discount = &DraftDiscount{Percent: d.DiscountPercent}
 	}
+	t, err := priceDraft(ctx, q, lista, rows, draftHeader{serviceType: v.ServiceType, platformID: d.DeliveryPlatformID,
+		deliveryFee: d.DeliveryFee, discountAmount: d.DiscountAmount, discountPercent: d.DiscountPercent})
+	if err != nil {
+		return nil, err
+	}
+	// Quitar o cambiar renglones ya no deja un descuento mayor que la venta (keepDiscountWithinSale); sí
+	// un precio del catálogo que bajó con la cuenta abierta. La vista no se cae: priceDraft lo recorta y
+	// enviar lo rechaza con el máximo.
+	v.Lines, v.Unavailable, v.Subtotal, v.DiscountTotal, v.Total = t.lines, t.unavailable, t.subtotal, t.discount, t.total
+	return v, nil
+}
+
+// draftTotals es lo que cuesta una cuenta, con la lista de precios que le toca.
+type draftTotals struct {
+	lines       []DraftLineView
+	unavailable []string
+	subtotal    decimal.Decimal
+	discount    decimal.Decimal
+	total       decimal.Decimal
+	// discountOver: el descuento en pesos pasa de la venta (y se recortó a la venta).
+	discountOver bool
+}
+
+// priceDraft valúa renglones con la lista dada y resuelve descuento y envío. Es la ÚNICA cuenta del
+// total de una cuenta en captura: la usan la cuenta guardada (buildDraftView) y la cotización de una
+// que todavía no existe (Quote), para que la vista previa del agente no pueda decir otra cifra que la
+// que la cuenta dirá al crearse (spec 090).
+func priceDraft(ctx context.Context, q *db.Queries, lista listaDePrecios, rows []db.OrderDraftLine, h draftHeader) (draftTotals, error) {
+	products, options, err := pricedCatalog(ctx, q, lista, rows)
+	if err != nil {
+		return draftTotals{}, err
+	}
+	t := draftTotals{lines: make([]DraftLineView, 0, len(rows)), unavailable: []string{}}
 	subtotal := decimal.Zero
 	for _, r := range rows {
 		lv := draftLineView(r, products, options)
 		if lv.Available {
 			subtotal = subtotal.Add(lv.LineTotal)
-		} else if !contiene(v.Unavailable, lv.ProductName) {
-			v.Unavailable = append(v.Unavailable, lv.ProductName)
+		} else if !contiene(t.unavailable, lv.ProductName) {
+			t.unavailable = append(t.unavailable, lv.ProductName)
 		}
-		v.Lines = append(v.Lines, lv)
+		t.lines = append(t.lines, lv)
 	}
-	v.Subtotal = domain.Round2(subtotal)
-	descuento, err := domain.ResolverDescuento(v.Subtotal, d.DiscountAmount, d.DiscountPercent)
+	t.subtotal = domain.Round2(subtotal)
+	descuento, err := domain.ResolverDescuento(t.subtotal, h.discountAmount, h.discountPercent)
 	if errors.Is(err, domain.ErrDescuentoMayorQueLaVenta) {
-		// Quitar o cambiar renglones ya no llega aquí (keepDiscountWithinSale); sí un precio del
-		// catálogo que bajó con la cuenta abierta. La vista no se cae; enviar lo rechaza con el máximo.
-		descuento = v.Subtotal
+		descuento, t.discountOver = t.subtotal, true
 	} else if err != nil {
-		return nil, err
+		return draftTotals{}, err
 	}
-	v.DiscountTotal = descuento
-	v.Total = domain.Round2(v.Subtotal.Sub(descuento))
-	if v.Total.IsNegative() {
-		v.Total = decimal.Zero
+	t.discount = descuento
+	t.total = domain.Round2(t.subtotal.Sub(descuento))
+	if t.total.IsNegative() {
+		t.total = decimal.Zero
 	}
-	if v.ServiceType == "domicilio" && v.PlatformID == nil {
-		v.Total = domain.Round2(v.Total.Add(v.DeliveryFee))
+	if h.serviceType == "domicilio" && h.platformID == nil {
+		t.total = domain.Round2(t.total.Add(h.deliveryFee))
 	}
-	return v, nil
+	return t, nil
 }
 
 func draftLineView(r db.OrderDraftLine, products map[int64]domain.PricedProduct, options map[int64]domain.PricedOption) DraftLineView {

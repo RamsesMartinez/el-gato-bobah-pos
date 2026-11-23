@@ -94,15 +94,22 @@ type stockAdjustArgs struct {
 
 type productUpdateArgs struct {
 	writeCommon
-	ProductID int64   `json:"product_id" jsonschema:"id del producto (de products_list)"`
-	Price     *string `json:"price,omitempty" jsonschema:"precio nuevo, texto decimal"`
-	Active    *bool   `json:"active,omitempty" jsonschema:"true lo ofrece, false lo quita del menú"`
+	ProductID      int64   `json:"product_id" jsonschema:"id del producto (de products_list)"`
+	Name           *string `json:"name,omitempty" jsonschema:"nombre nuevo"`
+	CategoryID     *int64  `json:"category_id,omitempty" jsonschema:"categoría nueva (de categories_list)"`
+	Price          *string `json:"price,omitempty" jsonschema:"precio nuevo, texto decimal"`
+	Cost           *string `json:"cost,omitempty" jsonschema:"costo manual, texto decimal; o cost_from_recipe"`
+	CostFromRecipe bool    `json:"cost_from_recipe,omitempty" jsonschema:"true: el costo sale de su receta; o cost"`
+	Favorite       *bool   `json:"favorite,omitempty" jsonschema:"true lo pone en favoritos"`
+	Active         *bool   `json:"active,omitempty" jsonschema:"true lo ofrece, false lo quita del menú"`
 }
 
 type optionUpdateArgs struct {
 	writeCommon
 	OptionID   int64   `json:"option_id" jsonschema:"id del extra (de modifier_options_list)"`
+	Name       *string `json:"name,omitempty" jsonschema:"nombre nuevo; no se repite en el grupo"`
 	PriceDelta *string `json:"price_delta,omitempty" jsonschema:"lo que suma al precio, texto decimal"`
+	MaxPerLine *int    `json:"max_per_line,omitempty" jsonschema:"cuántas veces cabe en un renglón"`
 	Active     *bool   `json:"active,omitempty" jsonschema:"true lo ofrece, false lo quita"`
 }
 
@@ -403,21 +410,40 @@ func registerWrites() {
 			if err := positive("product_id", in.ProductID); err != nil {
 				return "", "", nil, nil, nil, err
 			}
-			if in.Price == nil && in.Active == nil {
-				return "", "", nil, nil, nil, toolErr("Manda price, active o los dos.")
+			if in.Name == nil && in.CategoryID == nil && in.Price == nil && in.Cost == nil && !in.CostFromRecipe &&
+				in.Favorite == nil && in.Active == nil {
+				return "", "", nil, nil, nil, toolErr("Manda al menos uno de name, category_id, price, cost, cost_from_recipe, favorite o active.")
+			}
+			if in.Cost != nil && in.CostFromRecipe {
+				return "", "", nil, nil, nil, toolErr("Manda cost o cost_from_recipe, no los dos.")
 			}
 			cur, err := productNow(s, ctx, in.ProductID)
 			if err != nil {
 				return "", "", nil, nil, nil, err
 			}
+			// categoryId 0 = no mover; cost ausente = no tocar el costo (así lo lee la ruta).
 			body := map[string]any{"name": cur["name"], "price": cur["price"], "favorite": cur["is_favorite"],
-				"active": cur["is_active"], "categoryId": cur["categoryId"], "availableFrom": cur["availableFrom"],
+				"active": cur["is_active"], "categoryId": 0, "availableFrom": cur["availableFrom"],
 				"availableUntil": cur["availableUntil"], "needsPrep": cur["needsPrep"]}
+			if in.Name != nil {
+				body["name"] = *in.Name
+			}
+			if in.CategoryID != nil {
+				body["categoryId"] = *in.CategoryID
+			}
 			if in.Price != nil {
 				body["price"] = *in.Price
 			}
+			if in.Favorite != nil {
+				body["favorite"] = *in.Favorite
+			}
 			if in.Active != nil {
 				body["active"] = *in.Active
+			}
+			if in.Cost != nil {
+				body["cost"] = map[string]any{"source": "manual", "amount": *in.Cost}
+			} else if in.CostFromRecipe {
+				body["cost"] = map[string]any{"source": "receta"}
 			}
 			return http.MethodPatch, pProduct, ids(in.ProductID), nil, body, nil
 		},
@@ -426,49 +452,43 @@ func registerWrites() {
 			if err != nil {
 				return nil
 			}
-			return map[string]any{"id": p["id"], "name": p["name"], "price": p["price"], "active": p["is_active"]}
+			return map[string]any{"id": p["id"], "name": p["name"], "price": p["price"], "active": p["is_active"],
+				"favorite": p["is_favorite"], "categoryId": p["categoryId"], "category": p["category"],
+				"costSource": p["costSource"], "manualCost": p["manualCost"]}
 		},
 	})
 
-	// El precio de un extra viaja con su nombre y su tope por renglón: el tope no está en la lista
-	// de extras, se lee de las opciones de su grupo para no regresarlo a 1.
+	// La opción se lee por id (spec 090): la lista de extras solo trae los de grupos activos, y por ella
+	// una opción de un grupo apagado «no existía». El PATCH ya es parcial: solo viaja lo pedido.
 	optionNow := func(s *mcpSession, ctx context.Context, id int64) (map[string]any, error) {
-		b, _, err := s.fetch(ctx, "modifier_option_update", pOptions, nil, url.Values{"limit": {"0"}})
+		b, _, err := s.fetch(ctx, "modifier_option_update", pOption, ids(id), nil)
 		if err != nil {
 			return nil, err
 		}
-		o := findByID(b, id)
-		if o == nil {
-			return nil, toolErr("No existe el extra %d en esta empresa. Búscalo con modifier_options_list.", id)
+		var o map[string]any
+		if json.Unmarshal(b, &o) != nil {
+			return nil, toolErr("No se pudo leer el extra %d.", id)
 		}
-		group, _ := o["groupId"].(float64)
-		gb, _, err := s.fetch(ctx, "modifier_option_update", pGroupOptions, ids(int64(group)), nil)
-		if err != nil {
-			return nil, err
-		}
-		full := findByID(gb, id)
-		if full == nil {
-			return nil, toolErr("No se pudo leer el tope por renglón del extra %d.", id)
-		}
-		o["maxPerLine"] = full["maxPerLine"]
 		return o, nil
 	}
 	writeTool(writeSpec[optionUpdateArgs]{
 		name: "modifier_option_update",
-		route: func(s *mcpSession, ctx context.Context, in optionUpdateArgs) (string, string, map[string]int64, url.Values, any, error) {
+		route: func(_ *mcpSession, _ context.Context, in optionUpdateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("option_id", in.OptionID); err != nil {
 				return "", "", nil, nil, nil, err
 			}
-			if in.PriceDelta == nil && in.Active == nil {
-				return "", "", nil, nil, nil, toolErr("Manda price_delta, active o los dos.")
+			if in.Name == nil && in.PriceDelta == nil && in.MaxPerLine == nil && in.Active == nil {
+				return "", "", nil, nil, nil, toolErr("Manda al menos uno de name, price_delta, max_per_line o active.")
 			}
 			body := map[string]any{}
+			if in.Name != nil {
+				body["name"] = *in.Name
+			}
 			if in.PriceDelta != nil {
-				cur, err := optionNow(s, ctx, in.OptionID)
-				if err != nil {
-					return "", "", nil, nil, nil, err
-				}
-				body["name"], body["priceDelta"], body["maxPerLine"] = cur["name"], *in.PriceDelta, cur["maxPerLine"]
+				body["priceDelta"] = *in.PriceDelta
+			}
+			if in.MaxPerLine != nil {
+				body["maxPerLine"] = *in.MaxPerLine
 			}
 			if in.Active != nil {
 				body["active"] = *in.Active
@@ -478,10 +498,20 @@ func registerWrites() {
 		state: func(s *mcpSession, ctx context.Context, in optionUpdateArgs, _ json.RawMessage) any {
 			o, err := optionNow(s, ctx, in.OptionID)
 			if err != nil {
-				return nil
+				return map[string]string{"unavailable": err.Error()}
 			}
-			return map[string]any{"id": o["id"], "name": o["name"], "priceDelta": o["priceDelta"],
-				"active": o["active"], "maxPerLine": o["maxPerLine"]}
+			return o
+		},
+		preview: func(s *mcpSession, ctx context.Context, in optionUpdateArgs) (any, []string) {
+			o, err := optionNow(s, ctx, in.OptionID)
+			if err != nil {
+				return nil, []string{err.Error()}
+			}
+			if active, _ := o["groupActive"].(bool); !active {
+				return nil, []string{fmt.Sprintf("Su grupo %v está inactivo: el extra no sale en la pantalla de venta aunque "+
+					"esté activo. Reactiva el grupo con modifier_group_update y active: true.", o["groupName"])}
+			}
+			return nil, nil
 		},
 	})
 

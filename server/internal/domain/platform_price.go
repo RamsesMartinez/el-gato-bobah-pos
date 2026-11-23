@@ -29,3 +29,26 @@ func PlatformPrice(base, markupPct decimal.Decimal, manual *decimal.Decimal) dec
 	}
 	return Round2(base.Mul(cien.Add(markupPct)).Div(cien))
 }
+
+// De dónde sale el precio de un renglón (spec 090): lo enseña la vista previa de una cuenta para que
+// quien captura un pedido de plataforma vea cuáles no tienen precio propio.
+const (
+	PriceFromCounter  = "counter"  // sin plataforma: el precio del menú
+	PriceFromPlatform = "platform" // el precio propio capturado para esa plataforma
+	PriceFromMarkup   = "markup"   // el base más el margen de la plataforma
+	PriceFromBase     = "base"     // plataforma sin margen ni precio propio: el del menú
+)
+
+// PlatformPriceSource dice qué rama de PlatformPrice dio el precio.
+func PlatformPriceSource(platform bool, markupPct decimal.Decimal, manual *decimal.Decimal) string {
+	switch {
+	case !platform:
+		return PriceFromCounter
+	case manual != nil:
+		return PriceFromPlatform
+	case markupPct.IsZero():
+		return PriceFromBase
+	default:
+		return PriceFromMarkup
+	}
+}

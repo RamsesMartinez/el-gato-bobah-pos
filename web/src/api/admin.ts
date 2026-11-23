@@ -48,6 +48,8 @@ export interface AdminProduct {
   availableFrom: string | null;  // "YYYY-MM-DD" o null (temporada)
   availableUntil: string | null;
   groupCount: number;    // grupos de modificadores activos ligados al producto
+  // Grupos ligados que están apagados: no salen en la venta (spec 090). Opcional: una API anterior no lo manda.
+  inactiveGroupCount?: number;
   overrideCount: number; // grupos con min/max personalizado en este producto
   compositionStatus?: CompositionStatus;
   // De dónde sale current_cost. Opcionales para que el compilador obligue a la guarda en quien
@@ -314,6 +316,8 @@ export interface Group {
   // Las primeras opciones por su orden real: la tarjeta dice QUÉ tiene el grupo, no solo cuántas.
   optionPreview: string;
   productCount: number;
+  // De esos, los activos: en ellos deja de ofrecerse al archivar el grupo (spec 090).
+  activeProductCount?: number;
   overrideCount: number; // productos que sobrescriben el default
 }
 export interface GroupsPage {

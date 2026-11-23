@@ -14,6 +14,11 @@ from (
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
          (select count(*) from product_modifier_groups pmg
            where pmg.product_id = p.id and pmg.min_select is not null)::int as override_count,
+         -- Los grupos ligados que están apagados (spec 090, defecto 3): no salen en la pantalla de
+         -- venta y el producto se veía igual que los demás.
+         (select count(*) from product_modifier_groups pmg
+            join modifier_groups mg on mg.id = pmg.group_id
+           where pmg.product_id = p.id and not mg.is_active)::int as inactive_group_count,
          p.alt_names,
          -- El alternativo que coincidió (spec 063): '' si no se busca o si coincide el nombre; el
          -- primero en el orden capturado. coalesce: la subconsulta sin coincidencia es NULL.

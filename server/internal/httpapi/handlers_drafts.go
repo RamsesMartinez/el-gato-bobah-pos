@@ -152,6 +152,39 @@ func (h *Handlers) CreateDraft(w http.ResponseWriter, r *http.Request) {
 	JSON(w, status, v)
 }
 
+// POST /pos/drafts/quote — lo que costaría una cuenta con esa cabecera y esos renglones, sin crearla
+// (spec 090). Mismo gate que crear: quien puede abrir una cuenta puede preguntar cuánto costaría.
+func (h *Handlers) QuoteDraft(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Header draftHeaderBody `json:"header"`
+		Lines  []draftLineBody `json:"lines"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	var header *app.DraftHeaderPatch
+	if body.Header != nil {
+		p, err := body.Header.patch()
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		header = &p
+	}
+	q, err := h.drafts.Quote(r.Context(), header, lineCmds(body.Lines), u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, q)
+}
+
 // GET /pos/drafts/{id}
 func (h *Handlers) GetDraft(w http.ResponseWriter, r *http.Request) {
 	id, err := draftIDParam(r, "id")

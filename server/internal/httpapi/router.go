@@ -191,6 +191,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				if h.drafts != nil {
 					r.Post("/pos/drafts", h.CreateDraft)
 					r.Post("/pos/drafts/import", h.ImportDrafts)
+					r.Post("/pos/drafts/quote", h.QuoteDraft)
 					r.Get("/pos/drafts/{id}", h.GetDraft)
 					r.Post("/pos/drafts/{id}/lines", h.AddDraftLine)
 					r.Patch("/pos/drafts/{id}/lines/{lineId}", h.ChangeDraftLine)
@@ -653,6 +654,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Group(func(r chi.Router) {
 						r.Use(menuConfigure)
 						r.Get("/", h.AdminListModifierOptions)
+						r.Get("/{id}", h.AdminGetOption)
 						r.Patch("/{id}", h.AdminUpdateOption)
 						r.Get("/{id}/composition", h.GetOptionComposition)
 					})

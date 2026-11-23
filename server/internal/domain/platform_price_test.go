@@ -56,3 +56,28 @@ func TestSinPlataformaElPrecioEsElBase(t *testing.T) {
 
 // ptrStr: puntero a un literal, para expresar "hay precio manual" en la tabla de casos.
 func ptrStr(s string) *string { return &s }
+
+// El origen del precio es lo que la vista previa de una cuenta de plataforma enseña por renglón: un
+// producto sin precio propio en la plataforma toma base × (1 + margen), que puede no coincidir con
+// lo que la app publica (#289, 16-nov). Tiene que salir de la misma decisión que PlatformPrice.
+func TestPlatformPriceSource(t *testing.T) {
+	propio := decimal.RequireFromString("99")
+	cases := []struct {
+		name     string
+		platform bool
+		markup   decimal.Decimal
+		manual   *decimal.Decimal
+		want     string
+	}{
+		{"mostrador", false, decimal.Zero, nil, PriceFromCounter},
+		{"plataforma con precio propio", true, decimal.NewFromInt(30), &propio, PriceFromPlatform},
+		{"plataforma sin precio propio: base más margen", true, decimal.NewFromInt(30), nil, PriceFromMarkup},
+		{"plataforma sin margen ni precio propio", true, decimal.Zero, nil, PriceFromBase},
+		{"precio propio aunque el margen sea cero", true, decimal.Zero, &propio, PriceFromPlatform},
+	}
+	for _, c := range cases {
+		if got := PlatformPriceSource(c.platform, c.markup, c.manual); got != c.want {
+			t.Errorf("%s: %q, esperaba %q", c.name, got, c.want)
+		}
+	}
+}

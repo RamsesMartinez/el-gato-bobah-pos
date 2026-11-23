@@ -43,6 +43,9 @@ type AdminProductView struct {
 	CompositionStatus string `json:"compositionStatus"`
 	GroupCount        int    `json:"groupCount"`    // grupos de modificadores activos ligados al producto
 	OverrideCount     int    `json:"overrideCount"` // grupos con min/max personalizado en este producto
+	// InactiveGroupCount: grupos ligados que están apagados (no salen en la venta). GroupCount solo
+	// cuenta los activos.
+	InactiveGroupCount int `json:"inactiveGroupCount"`
 	// CostSource: "manual" | "compra" | "receta". La pantalla muestra el costo de receta solo de
 	// lectura y el manual editable; HasRecipe decide si se ofrece regresar a «de su receta».
 	CostSource string           `json:"costSource"`
@@ -278,7 +281,7 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search string, 
 			NeedsPrep: r.NeedsPrep,
 			Category:  r.Category, CategoryID: r.CategoryID,
 			AvailableFrom: dateStr(r.AvailableFrom), AvailableUntil: dateStr(r.AvailableUntil),
-			GroupCount: int(r.GroupCount), OverrideCount: int(r.OverrideCount),
+			GroupCount: int(r.GroupCount), OverrideCount: int(r.OverrideCount), InactiveGroupCount: int(r.InactiveGroupCount),
 			CompositionStatus: textoDe(r.CompositionStatus),
 			CostSource:        string(r.CostSource), ManualCost: r.ManualCost, HasRecipe: r.HasRecipe,
 			AltNames: nonNilStrings(r.AltNames), MatchedAlt: r.MatchedAlt,

@@ -176,7 +176,8 @@ func (b articleUpdateBody) update() (app.ArticleUpdate, error) {
 	return in, nil
 }
 
-// POST /stock/articles/{id}/cost — `{ cost }`: corrección a mano del costo por unidad base.
+// POST /stock/articles/{id}/cost — `{ cost, reason? }`: corrección a mano del costo por unidad base.
+// El motivo es opcional para la pantalla y lo exige el MCP (spec 090).
 func (h *Handlers) CorrectArticleCost(w http.ResponseWriter, r *http.Request) {
 	id, err := idParam(r, "id")
 	if err != nil {
@@ -184,13 +185,14 @@ func (h *Handlers) CorrectArticleCost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Cost decimal.Decimal `json:"cost"`
+		Cost   decimal.Decimal `json:"cost"`
+		Reason *string         `json:"reason"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	if err := h.backoffice.CorrectArticleCost(r.Context(), id, body.Cost); err != nil {
+	if err := h.backoffice.CorrectArticleCost(r.Context(), id, body.Cost, body.Reason); err != nil {
 		Error(w, err)
 		return
 	}

@@ -232,24 +232,25 @@ with recursive src (ingredient_id, factor, depth) as (
     from ingredient_replacements r join src on r.new_ingredient_id = src.ingredient_id
    where r.kind = 'merge' and src.depth < 16
 )
-select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name, brand, source_id from (
+select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name, brand, source_id, reason from (
   -- Las correcciones van primero en el union a propósito: sqlc toma los tipos de la primera rama, y
   -- con null::text ahí sabe que proveedor y empaque pueden faltar.
   select 'correction'::text as kind, c.created_at as at, c.id, round(c.new_cost / src.factor, 6)::numeric(12,6) as unit_cost,
          null::text as presentation, null::numeric(14,4) as pack_qty_in_base, null::text as supplier, u.name as user_name,
-         null::text as brand, c.ingredient_id as source_id
+         null::text as brand, c.ingredient_id as source_id, c.reason
     from ingredient_cost_corrections c
     join src on src.ingredient_id = c.ingredient_id
     left join users u on u.id = c.user_id
   union all
   -- Un renglón por compra: la primera entrada de cada renglón (una compra recibida en dos entregas
   -- es una compra), sin renglones anulados ni gastos cancelados, que no son un precio.
-  select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name, brand, source_id from (
+  select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name, brand, source_id, reason from (
     select distinct on (ei.id) 'purchase'::text as kind, m.created_at as at, m.id,
            round(m.unit_cost / src.factor, 6)::numeric(12,6) as unit_cost,
            p.name as presentation, round(ei.pack_qty_in_base * src.factor, 4)::numeric(14,4) as pack_qty_in_base,
            (select s.name::text from suppliers s where s.id = e.supplier_id) as supplier,
-           null::text as user_name, ei.presentation_brand as brand, m.ingredient_id as source_id
+           null::text as user_name, ei.presentation_brand as brand, m.ingredient_id as source_id,
+           null::text as reason
       from stock_movements m
       join src on src.ingredient_id = m.ingredient_id
       join expense_items ei on ei.id = m.expense_item_id
@@ -286,6 +287,7 @@ type ArticleCostHistoryRow struct {
 	UserName      *string          `json:"user_name"`
 	Brand         *string          `json:"brand"`
 	SourceID      int64            `json:"source_id"`
+	Reason        *string          `json:"reason"`
 }
 
 // El historial de costos: cada compra recibida (solo lo que entró con costo: ni las diferencias de
@@ -320,6 +322,7 @@ func (q *Queries) ArticleCostHistory(ctx context.Context, arg ArticleCostHistory
 			&i.UserName,
 			&i.Brand,
 			&i.SourceID,
+			&i.Reason,
 		); err != nil {
 			return nil, err
 		}
@@ -800,8 +803,8 @@ func (q *Queries) GetPresentationForAudit(ctx context.Context, id int64) (GetPre
 }
 
 const insertCostCorrection = `-- name: InsertCostCorrection :exec
-insert into ingredient_cost_corrections (ingredient_id, previous_cost, new_cost, user_id)
-values ($1, $2, $3, $4)
+insert into ingredient_cost_corrections (ingredient_id, previous_cost, new_cost, user_id, reason)
+values ($1, $2, $3, $4, $5)
 `
 
 type InsertCostCorrectionParams struct {
@@ -809,6 +812,7 @@ type InsertCostCorrectionParams struct {
 	PreviousCost decimal.Decimal `json:"previous_cost"`
 	NewCost      decimal.Decimal `json:"new_cost"`
 	UserID       int64           `json:"user_id"`
+	Reason       *string         `json:"reason"`
 }
 
 func (q *Queries) InsertCostCorrection(ctx context.Context, arg InsertCostCorrectionParams) error {
@@ -817,6 +821,7 @@ func (q *Queries) InsertCostCorrection(ctx context.Context, arg InsertCostCorrec
 		arg.PreviousCost,
 		arg.NewCost,
 		arg.UserID,
+		arg.Reason,
 	)
 	return err
 }

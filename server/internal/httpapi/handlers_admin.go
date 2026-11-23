@@ -142,6 +142,21 @@ func (h *Handlers) AdminListModifierOptions(w http.ResponseWriter, r *http.Reque
 	JSON(w, http.StatusOK, page)
 }
 
+// GET /admin/modifier-options/{id} — una opción, con su grupo aunque esté inactivo (spec 090).
+func (h *Handlers) AdminGetOption(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	v, err := h.admin.GetOption(r.Context(), id)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
 // PATCH /admin/modifier-options/{id}  {favorite?, active?, name?, priceDelta?, maxPerLine?} — actualiza lo que venga.
 func (h *Handlers) AdminUpdateOption(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -160,19 +175,13 @@ func (h *Handlers) AdminUpdateOption(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	// edición de campos: nombre/precio/max llegan juntos desde el formulario
-	if body.Name != nil {
-		pd, mpl := decimal.Zero, 1
-		if body.PriceDelta != nil {
-			pd = *body.PriceDelta
-		}
-		if body.MaxPerLine != nil {
-			mpl = *body.MaxPerLine
-		}
-		if err := h.admin.UpdateOptionFields(r.Context(), id, *body.Name, pd, mpl); err != nil {
-			Error(w, err)
-			return
-		}
+	// Solo cambia lo que viene (spec 090): el formulario manda los tres, pero otro cliente puede mandar
+	// uno solo, y rellenar los ausentes con 0 y 1 dejó precios en cero.
+	if err := h.admin.UpdateOptionFields(r.Context(), id, app.OptionFieldsPatch{
+		Name: body.Name, PriceDelta: body.PriceDelta, MaxPerLine: body.MaxPerLine,
+	}); err != nil {
+		Error(w, err)
+		return
 	}
 	if body.Favorite != nil {
 		if err := h.admin.SetOptionFavorite(r.Context(), id, *body.Favorite); err != nil {

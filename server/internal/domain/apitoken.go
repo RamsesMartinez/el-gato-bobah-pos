@@ -28,7 +28,8 @@ const (
 	// ScopeWritePurchases (spec 073): compras con su mercancía. Toca dinero y almacén a la vez, por eso
 	// no cabe en gastos ni en almacén.
 	ScopeWritePurchases APIScope = "write:purchases"
-	// ScopeWriteOrders (spec 073): cancelar pedidos, que puede devolver dinero ya cobrado.
+	// ScopeWriteOrders (spec 073): cancelar pedidos, que puede devolver dinero ya cobrado. Desde la 090 también
+	// capturar, entregar y cobrar pedidos, y anular, mover de terminal o reembolsar un pago.
 	ScopeWriteOrders APIScope = "write:orders"
 )
 
@@ -393,8 +394,10 @@ var mcpTools = []MCPTool{
 	rd("products_list", "Productos del menú con precio, costo y si están activos; con búsqueda.", PermMenuConfigure),
 	rd("modifier_options_list", "Extras (opciones de modificador) con su precio y grupo; con búsqueda.", PermMenuConfigure),
 	rd("platform_prices_list", "Plataformas de reparto y los precios propios de cada producto y extra.", ""),
-	wr("product_update", "Cambia el precio o si está activo un producto. No toca nada más.", ScopeWriteCatalog, PermMenuConfigure),
-	wr("modifier_option_update", "Cambia el precio o si está activo un extra. No toca nada más.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("product_update", "Edita un producto: nombre, categoría, precio, costo (manual o de receta), favorito y si "+
+		"está activo. Solo cambia lo que mandes.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("modifier_option_update", "Edita un extra: nombre, lo que suma al precio, tope por renglón y si está activo. "+
+		"Solo cambia lo que mandes; encuentra también los extras de un grupo inactivo y lo avisa.", ScopeWriteCatalog, PermMenuConfigure),
 	wr("platform_price_set", "Pone el precio de un producto o extra en una plataforma de reparto.", ScopeWriteCatalog, PermPlatformPricesCapture),
 	wr("platform_price_delete", "Quita el precio propio de un producto o extra en una plataforma.", ScopeWriteCatalog, PermPlatformPricesCapture),
 	rd("audit_list", "Bitácora de auditoría: quién hizo qué y cuándo, paginada.", PermAuditView),
@@ -452,6 +455,44 @@ var mcpTools = []MCPTool{
 		"reactiva; active va solo en la llamada. La vista previa dice su existencia y las recetas que lo usan; "+
 		"confirm_on_hand: true solo si la persona decide desactivarlo con existencia.",
 		ScopeWriteInventory, PermInventoryConfigure),
+
+	// Spec 090: pedidos completos, correcciones de cobro, costo con motivo, recetas, modificadores y productos.
+	wr("order_draft_create", "Abre una cuenta (tipo de servicio, plataforma, folio de la plataforma, cliente, renglones "+
+		"con extras). La vista previa trae el total que calcula el servidor con los precios de la plataforma y, por "+
+		"renglón, si el precio es el propio de la plataforma o el base más su margen. Aplicar no la manda a cocina: "+
+		"eso es order_draft_send.", ScopeWriteOrders, ""),
+	wr("order_draft_send", "Manda a cocina una cuenta abierta: nace el pedido. Repetirlo no duplica el pedido.", ScopeWriteOrders, ""),
+	wr("order_draft_discard", "Descarta una cuenta abierta que no se va a mandar.", ScopeWriteOrders, ""),
+	wr("order_deliver", "Marca como entregado todo lo que falta de un pedido.", ScopeWriteOrders, ""),
+	wr("order_discount_set", "Pone el descuento de un pedido (monto o porcentaje) o lo quita con clear: true.", ScopeWriteOrders, ""),
+	wr("order_pay", "Cobra un pedido: todo lo que falta o un monto, con un método de pago. La vista previa dice cuánto "+
+		"cobraría el servidor. Un pedido de plataforma solo se cobra con el método de su plataforma.", ScopeWriteOrders, ""),
+	wr("order_payment_void", "Anula un pago de un turno abierto, con motivo: sale de los pagos y su monto vuelve a quedar "+
+		"por cobrar. Para cambiar el método de un pago, anúlalo y cobra de nuevo con order_pay.", ScopeWriteOrders, PermPaymentsVoid),
+	wr("order_payment_terminal_set", "Corrige en qué terminal se cobró un pago con tarjeta, con motivo.", ScopeWriteOrders, PermPaymentsChangeTerminal),
+	wr("order_refund", "Reembolsa un pedido entregado (todo, un monto o un renglón), con motivo. La vista previa dice "+
+		"cuánto queda por devolver, en qué terminal y si hace falta el folio de la terminal.", ScopeWriteOrders, PermPaymentsVoid),
+	rd("card_terminals_list", "Las terminales de tarjeta del negocio.", PermCashOperate),
+	wr("ingredient_cost_set", "Corrige el costo por unidad base de un insumo, con motivo (queda en su historial). La "+
+		"vista previa trae el costo actual, el historial reciente y las recetas que lo usan. No mete mercancía ni crea "+
+		"un gasto.", ScopeWriteInventory, PermInventoryConfigure),
+	rd("recipe_get", "Lo que resta del almacén un producto o un extra: su receta, si tiene existencia propia y los "+
+		"extras que se llaman igual. Trae el based_on que pide recipe_set.", PermMenuConfigure),
+	wr("recipe_set", "Guarda lo que resta un producto o un extra (insumos, el producto que es, los productos de un "+
+		"paquete o nada). No copia la receta a los extras con el mismo nombre salvo also_in_same_name: true. Aplicar "+
+		"pide el based_on de recipe_get o de la vista previa.", ScopeWriteCatalog, PermMenuConfigure),
+	rd("categories_list", "Las categorías del menú, para dar de alta o mover un producto.", PermMenuConfigure),
+	rd("modifier_groups_list", "Grupos de modificadores con su mínimo, máximo, si están activos y en cuántos productos están.", PermMenuConfigure),
+	wr("modifier_group_create", "Crea un grupo de modificadores con su mínimo y máximo por omisión.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("modifier_group_update", "Edita un grupo: nombre, mínimo y máximo por omisión, y si está activo. Solo cambia lo "+
+		"que mandes; al desactivarlo, la vista previa dice en qué productos deja de salir.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("modifier_option_create", "Crea un extra dentro de un grupo, con lo que suma al precio y su tope por renglón.", ScopeWriteCatalog, PermMenuConfigure),
+	rd("product_groups_get", "Los grupos ligados a un producto, con título, mínimo, máximo, orden y si el grupo está activo.", PermMenuConfigure),
+	wr("product_group_link", "Liga un grupo a un producto (o cambia su liga) con título, mínimo, máximo y orden; sin "+
+		"mínimo ni máximo hereda los del grupo.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("product_group_unlink", "Quita un grupo de un producto.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("product_create", "Da de alta un producto (nombre, categoría, precio, costo manual opcional, existencia propia, "+
+		"favorito). La vista previa pone primero los productos con nombre parecido.", ScopeWriteCatalog, PermMenuConfigure),
 }
 
 // MCPTools devuelve el catálogo en el orden del contrato.
