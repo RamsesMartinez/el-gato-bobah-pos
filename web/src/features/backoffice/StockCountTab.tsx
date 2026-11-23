@@ -199,10 +199,13 @@ export function StockCountTab() {
   });
 
   const picker = multi && (
-    <Segmented label="¿Qué almacén cuentas?"
-      value={String(warehouseId ?? whList.find((w) => w.isSales)?.id ?? '')}
-      options={whList.map((w) => ({ value: String(w.id), label: w.isSales ? `${w.name} · de venta` : w.name }))}
-      onChange={(v) => { setPicked(Number(v)); setClosed(null); setClosedId(null); setShowLoss(false); }} />
+    <HStack gap={3} flexWrap="wrap">
+      <Text fontWeight="600">¿Qué almacén cuentas?</Text>
+      <Segmented label="¿Qué almacén cuentas?"
+        value={String(warehouseId ?? whList.find((w) => w.isSales)?.id ?? '')}
+        options={whList.map((w) => ({ value: String(w.id), label: w.isSales ? `${w.name} · de venta` : w.name }))}
+        onChange={(v) => { setPicked(Number(v)); setClosed(null); setClosedId(null); setShowLoss(false); }} />
+    </HStack>
   );
 
   if (isLoading) return <Center py={16}><Spinner size="xl" /></Center>;
@@ -715,6 +718,12 @@ function ListView({ count, others = [], onSaved, initialQuery = '' }: { count: S
         )}
       </HStack>
       <Box borderWidth="1px" borderRadius="lg" overflowY="auto" flex="1" minH={0} bg="bg.panel">
+        {/* El primer conteo de una Bodega nueva no tiene nada suyo todavía: se cuenta buscando. */}
+        {!needle && count.items.length === 0 && others.length > 0 && (
+          <Text p={3} color="fg.muted">
+            {count.warehouseName ?? 'Este almacén'} todavía no tiene artículos. Busca arriba lo que tienes ahí para contarlo.
+          </Text>
+        )}
         {[...groups.entries()].map(([place, items], gi, all) => (
           <Box key={place}>
             <Text px={3} py={2} fontWeight="700" bg="bg.subtle"

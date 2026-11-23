@@ -1057,4 +1057,15 @@ describe('conteo por almacén (spec 094)', () => {
     await waitFor(() => expect(back.currentCount).toHaveBeenCalledWith(2));
     expect(await screen.findByRole('button', { name: 'Bodega' })).toHaveAttribute('aria-pressed', 'true');
   });
+  // Medido a 1024×600: el primer conteo de una Bodega nueva decía «0 de 0 contados» sobre una lista
+  // vacía, sin decir que se busca para contar. Y la pregunta del almacén no se leía.
+  test('una Bodega sin nada dice que se busca para contar, y la pregunta se lee', async () => {
+    back.warehouses.mockResolvedValue(dos);
+    back.currentCount.mockResolvedValue({ ...conteo(), warehouseId: 2, warehouseName: 'Bodega', items: [
+      { ingredientId: 3, name: 'Limón', place: null, placeId: null, baseUnitCode: 'pieza', presentations: [], countedQty: null, inWarehouse: false },
+    ] });
+    montar('/almacen?almacen=2');
+    expect(await screen.findByText(/Bodega todavía no tiene artículos/)).toBeInTheDocument();
+    expect(screen.getByText('¿Qué almacén cuentas?')).toBeInTheDocument();
+  });
 });
