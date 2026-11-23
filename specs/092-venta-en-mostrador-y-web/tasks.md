@@ -118,20 +118,20 @@ ve fallar por la razón correcta.
 
 ### Tests
 
-- [ ] T039 [P] [US4] Prueba vitest en `web/src/features/admin/BusinessSettingsPage.test.tsx`: cada bloque de hoy aparece en exactamente una sección; secciones según permiso; `?seccion=` abre la sección; la vista elegida se recuerda (con `localStorage` que truena, abre en A); los tres botones del selector tienen texto y ≥ 44 px
-- [ ] T040 [P] [US4] Prueba vitest de la sección «Venta en web» en `web/src/features/admin/settings/VentaEnWebSection.test.tsx`: muestra los dos conteos y el acceso a Menú
+- [X] T039 [P] [US4] Prueba vitest en `web/src/features/admin/BusinessSettingsPage.test.tsx`: cada bloque de hoy aparece en exactamente una sección; secciones según permiso; `?seccion=` abre la sección; la vista elegida se recuerda (con `localStorage` que truena, abre en A); los tres botones del selector tienen texto y ≥ 44 px
+- [X] T040 [P] [US4] Prueba vitest de la sección «Venta en web» en `web/src/features/admin/settings/VentaEnWebSection.test.tsx`: muestra los dos conteos y el acceso a Menú
 
 ### Implementation
 
-- [ ] T041 [US4] Partir `web/src/features/admin/BusinessSettingsPage.tsx` en secciones (`web/src/features/admin/settings/{Negocio,VentaEnMostrador,VentaEnWeb,Caja}Section.tsx`, reutilizando `InventorySettingsSection` y `AttendanceSettingsSection`) sin cambiar el comportamiento de ningún ajuste
-- [ ] T042 [US4] Barra de título fija con selector de vista (Lista, Íconos, Índice) y las tres vistas en `web/src/features/admin/settings/SettingsLayout.tsx` (maqueta «Ajustes del negocio» en plan.md §Maquetas); vista en `localStorage` con try/catch; sección en `?seccion=`
-- [ ] T043 [US4] `VentaEnWebSection` con `GET /admin/web-sales/summary` (T038) y botón a Menú
+- [X] T041 [US4] Partir `web/src/features/admin/BusinessSettingsPage.tsx` en secciones (`web/src/features/admin/settings/{Negocio,VentaEnMostrador,VentaEnWeb,Caja}Section.tsx`, reutilizando `InventorySettingsSection` y `AttendanceSettingsSection`) sin cambiar el comportamiento de ningún ajuste
+- [X] T042 [US4] Barra de título fija con selector de vista (Lista, Íconos, Índice) y las tres vistas en `web/src/features/admin/settings/SettingsLayout.tsx` (maqueta «Ajustes del negocio» en plan.md §Maquetas); vista en `localStorage` con try/catch; sección en `?seccion=`
+- [X] T043 [US4] `VentaEnWebSection` con `GET /admin/web-sales/summary` (T038) y botón a Menú
 
 ---
 
 ## Phase 7: Polish
 
-- [ ] T044 Documentar en `docs/mecanica/catalogo-y-sucursales.md`: lugares de venta (`pos`=Mostrador, `online`=Web), «sin fila = se ofrece», precio por lugar, la puerta única de existencia para vender (#65) y que un canal nuevo necesita el trigger de 0093
+- [X] T044 Documentar en `docs/mecanica/catalogo-y-sucursales.md`: lugares de venta (`pos`=Mostrador, `online`=Web), «sin fila = se ofrece», precio por lugar, la puerta única de existencia para vender (#65) y que un canal nuevo necesita el trigger de 0093
 - [ ] T045 Herramientas MCP: si `mcp_tools_090_catalog.go` edita productos con un PATCH completo, verificar que no borre `sales` (ausente = no tocar) con una prueba en `server/internal/httpapi/`
 - [ ] T046 `/revision-de-codigo` (hook `after_implement`) y corregir lo que encuentre con su prueba
 - [ ] T047 Prueba con alguien nuevo de una fonda a 1024×600 y 1280×854 contra `make start` del worktree con base restaurada (`make db-restaurar`), siguiendo `quickstart.md`, y medir con Playwright que ninguna pestaña de la ficha desliza a 1024×600 con un producto de 4 grupos de extras (SC-007); corregir y volver a probar

@@ -33,3 +33,33 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   a `TestEveryMenuTableBumpsTheVersion`: una tabla sin trigger es exactamente ese camino. Y si
   aun así una tableta manda algo que ya no vale, el servidor responde `MENU_CHANGED` y la tableta
   recarga y pide elegir de nuevo.
+- **Dónde se vende cada producto** (spec 092, 0117). Lugares de venta por empresa en `channels`:
+  `pos` = Mostrador, `online` = Web (`qr` existe y no se usa). La decisión por producto vive en
+  `product_channels` con **«sin fila = se ofrece»**: un producto nuevo o uno de antes de la 092 se
+  vende en los dos sin que nadie lo marque. `product_channels.price` es el precio en ese lugar
+  (null = el de mostrador; nunca cero). Cuatro cosas que muerden:
+  - **Toda empresa necesita su catálogo de lugares de venta**: `CreateCompany` lo siembra y la 0117
+    se lo dio a las que no lo tenían. El servicio igual lo asegura (`EnsureChannel`) antes de
+    escribir: sin él, «apagar Web» insertaría cero filas y respondería bien.
+  - **Leer el lugar de venta con subconsultas por código, no con un join**: cuando se agregue la
+    sucursal a `product_channels`, un join multiplicaría filas. El upsert apunta a la restricción por
+    nombre (`product_channels_pkey`) para que ese cambio no toque el SQL.
+  - **La regla de la web vive en una sola función** (`WebSalesService.Offer`): qué se vende, a qué
+    precio y si está agotado. El resumen de Ajustes y el menú público (#316) la usan; no la repitan.
+  - **Oculto en mostrador lo rechaza también el servidor** (`MENU_CHANGED`) en pedidos sin
+    plataforma; un pedido de plataforma no mira el lugar de venta.
+- **«Vender sin existencia» y «Agotado»** (spec 092). `products.allow_oversell` (default true; la
+  0117 normalizó a true los valores heredados de FUDO, que nunca se aplicaron). Con la opción
+  apagada, un producto sale agotado si lo que descuenta una pieza sin extras (`domain.ExpandSale`:
+  existencia propia, receta base o piezas del paquete) no alcanza en la sucursal; sin fila de
+  existencia = 0. Lo que no descuenta nada nunca se agota.
+  - **La existencia con la que se vende se lee SOLO por `app/sales_stock.go`** (`salesStock`,
+    `lockSalesStock`). Con varios almacenes por sucursal (#65) cambia ahí por dentro y en ningún otro
+    lado.
+  - **El chequeo de la venta va dentro de la transacción del pedido y antes del primer descuento**,
+    con un solo `select … for update` ordenado: dos tabletas que venden la última pieza no pasan las
+    dos (`TestTwoCountersCannotSellTheLastPiece`). Rechaza con 409 `OUT_OF_STOCK`. Un pedido de
+    plataforma nunca se revisa.
+  - **La lista de agotados va aparte del menú** (`GET /pos/menu/sold-out`, sin caché): el menú se
+    guarda por versión de catálogo y la existencia cambia con cada venta sin subir esa versión. No
+    metas el agotado en el documento del menú.

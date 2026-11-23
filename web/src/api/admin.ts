@@ -276,6 +276,8 @@ export const adminApi = {
     api.post<void>(`/users/${id}/pin`, { pin }),
 
   categories: () => api.get<{ items: Category[] }>('/admin/categories'),
+  // Cuántos productos se venden en la web y cuántos con precio propio (spec 092).
+  webSalesSummary: () => api.get<{ onWeb: number; withWebPrice: number; total: number }>('/admin/web-sales/summary'),
   products: (p: ProductsQuery = {}) => api.get<ProductsPage>(`/admin/products?${pageQs(p)}`),
   // cost ausente = sin costo capturado.
   createProduct: (b: { name: string; categoryId: number; price: number; favorite?: boolean; trackStock?: boolean; cost?: number; sales?: ProductSales }) =>
