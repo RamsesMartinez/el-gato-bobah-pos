@@ -81,3 +81,43 @@ describe('pestaña Categorías (spec 091, maqueta M3)', () => {
     expect(screen.getByRole('button', { name: /Agregar foto/ })).toBeInTheDocument();
   });
 });
+
+describe('accesibilidad y errores de Categorías', () => {
+  beforeEach(() => { vi.clearAllMocks(); useCategoryView.setState({ view: 'tabla' }); });
+
+  it('en la tabla cada categoría se abre también con el teclado', async () => {
+    const u = userEvent.setup();
+    montar();
+    const row = (await screen.findByText('Guisados')).closest('tr')!;
+    expect(row).toHaveAttribute('tabindex', '0');
+    row.focus();
+    await u.keyboard('{Enter}');
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('si la familia no se guarda, regresa a la que tenía antes de ESTE cambio y lo dice sin «Error:»', async () => {
+    useCategoryView.setState({ view: 'panel' });
+    api.setCategoryFamily
+      .mockResolvedValueOnce({ id: 1, foodFamily: 'coffee' })
+      .mockRejectedValueOnce(new Error('sin red'));
+    const u = userEvent.setup();
+    montar();
+    // En el panel la primera ya está abierta a la derecha. Té → Café se guarda; Café → Snack falla.
+    await u.click(await screen.findByRole('button', { name: /^Té o bubble tea/ }));
+    await u.click(await screen.findByText('Café'));
+    await u.click(await screen.findByRole('button', { name: /^Café/ }));
+    await u.click(await screen.findByText('Snack'));
+    await waitFor(() => expect(api.setCategoryFamily).toHaveBeenCalledTimes(2));
+    // Regresar a «Té» diría algo falso: el servidor tiene Café.
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Café/ })).toBeInTheDocument());
+    expect(screen.queryByText(/^Error:/)).toBeNull();
+  });
+
+  it('el selector se anuncia como un grupo de vistas y la categoría elegida en el panel se marca', async () => {
+    useCategoryView.setState({ view: 'panel' });
+    montar();
+    expect(screen.getByRole('group', { name: 'Vista de categorías' })).toBeInTheDocument();
+    const first = (await screen.findAllByText('Tés con perlas'))[0].closest('button')!;
+    expect(first).toHaveAttribute('aria-current', 'true');
+  });
+});

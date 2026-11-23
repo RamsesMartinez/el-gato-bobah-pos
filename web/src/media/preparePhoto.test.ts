@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { cropFor, encodeUnder, preparePhoto, PhotoError, type PhotoDeps } from './preparePhoto';
 
 const blob = (bytes: number, type = 'image/webp') => new Blob([new Uint8Array(bytes)], { type });
@@ -37,19 +37,23 @@ describe('encodeUnder', () => {
 });
 
 describe('preparePhoto', () => {
-  const deps = (w: number, h: number, fail = false): PhotoDeps => ({
-    decode: () => (fail ? Promise.reject(new Error('x')) : Promise.resolve({ width: w, height: h, close: () => {} })),
-    render: (_src, crop, side) => (q: number) => Promise.resolve(blob(side === 1200 ? 200_000 : 50_000 + Math.round(q) + crop.size * 0)),
+  const deps = (w: number, h: number, fail = false, close = vi.fn()): PhotoDeps => ({
+    decode: () => (fail ? Promise.reject(new Error('x')) : Promise.resolve({ width: w, height: h, close })),
+    render: (_src, _crop, side) => (q: number) => Promise.resolve(blob(side === 1200 ? (q > 0.8 ? 500_000 : 200_000) : 50_000)),
   });
 
-  it('entrega la de 1200 y la de 400, ambas WebP dentro del tope', async () => {
-    const out = await preparePhoto(blob(10, 'image/jpeg'), undefined, deps(4000, 3000));
+  it('entrega la de 1200 y la de 400, ambas WebP dentro del tope, y libera la foto leída', async () => {
+    const close = vi.fn();
+    const out = await preparePhoto(blob(10, 'image/jpeg'), undefined, deps(4000, 3000, false, close));
+    expect(close).toHaveBeenCalledTimes(1);
     expect(out.large.size).toBeLessThanOrEqual(400 * 1024);
     expect(out.small.size).toBeLessThanOrEqual(100 * 1024);
     expect(out.large.type).toBe('image/webp');
   });
-  it('una foto de menos de 400 px se rechaza: en el menú se vería borrosa', async () => {
-    await expect(preparePhoto(blob(10), undefined, deps(300, 600))).rejects.toMatchObject({ reason: 'too_small' });
+  it('una foto de menos de 400 px se rechaza (en el menú se vería borrosa) y también se libera', async () => {
+    const close = vi.fn();
+    await expect(preparePhoto(blob(10), undefined, deps(300, 600, false, close))).rejects.toMatchObject({ reason: 'too_small' });
+    expect(close).toHaveBeenCalledTimes(1);
   });
   it('un archivo que el navegador no abre (HEIC, un PDF) se rechaza con su propio motivo', async () => {
     const err = await preparePhoto(blob(10), undefined, deps(0, 0, true)).catch((e) => e);

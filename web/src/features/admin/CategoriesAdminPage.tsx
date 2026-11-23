@@ -22,7 +22,7 @@ import { FOOD_FAMILIES, familyLabel } from '../../media/foodFamilies';
 export function CategoryViewSwitch() {
   const { view, setView } = useCategoryView();
   return (
-    <HStack gap={0} borderWidth="1px" borderRadius="lg" p="2px">
+    <HStack gap={0} borderWidth="1px" borderRadius="lg" p="2px" role="group" aria-label="Vista de categorías">
       {VIEWS.map((v) => {
         const I = v.icon;
         const on = v.id === view;
@@ -55,10 +55,17 @@ function CategoryEditor({ c }: { c: Category }) {
   const [imageUrl, setImageUrl] = useState(c.imageUrl ?? null);
   const saveFamily = useMutation({
     mutationFn: (f: string) => adminApi.setCategoryFamily(c.id, f),
+    // Lo que había antes de ESTE cambio, no lo de la última consulta: con dos cambios seguidos, el
+    // segundo que falla regresa al primero, que sí se guardó.
+    onMutate: (f: string) => {
+      const prev = family;
+      setFamily(f);
+      return { prev };
+    },
     onSuccess: changed,
-    onError: (e) => {
-      setFamily(c.foodFamily ?? '');
-      toaster.create({ title: 'No se guardó la familia', description: String(e), type: 'error' });
+    onError: (_e, _f, ctx) => {
+      setFamily(ctx?.prev ?? '');
+      toaster.create({ title: 'No se guardó la familia', description: 'Revisa la conexión e intenta de nuevo.', type: 'error' });
     },
   });
   return (
@@ -71,7 +78,7 @@ function CategoryEditor({ c }: { c: Category }) {
       <Field label="Familia de comida" helperText="El dibujo que se ve cuando no hay foto.">
         <Picker value={family} options={famOptions} title="Familia de comida" clearable clearLabel="Platillo (genérica)"
           placeholder="Platillo (genérica)"
-          onChange={(v) => { setFamily(v); saveFamily.mutate(v); }} />
+          onChange={(v) => saveFamily.mutate(v)} />
       </Field>
     </VStack>
   );
@@ -115,7 +122,11 @@ export function CategoriesAdminPage() {
           <Box w="44%" overflowY="auto" borderWidth="1px" borderRadius="lg" bg="bg.panel">
             {cats.map((c) => (
               <HStack key={c.id} as="button" w="100%" textAlign="left" px={3} minH="56px" gap={3} borderBottomWidth="1px"
-                bg={c.id === sel?.id ? 'colorPalette.subtle' : undefined} onClick={() => setSelectedId(c.id)}>
+                aria-current={c.id === sel?.id ? 'true' : undefined}
+                // La elegida se marca con fondo Y con una barra: el color solo no basta para saber cuál
+                // se está editando a la derecha.
+                bg={c.id === sel?.id ? 'bg.emphasized' : undefined} borderLeftWidth="4px"
+                borderLeftColor={c.id === sel?.id ? 'brand.solid' : 'transparent'} onClick={() => setSelectedId(c.id)}>
                 {thumb(c, 40)}
                 <Box flex="1" minW={0}>
                   <Text fontWeight="600" lineClamp={1}>{label(c)}</Text>
@@ -149,7 +160,9 @@ export function CategoriesAdminPage() {
             </Table.Row></Table.Header>
             <Table.Body>
               {cats.map((c) => (
-                <Table.Row key={c.id} cursor="pointer" h="52px" onClick={() => setOpenId(c.id)}>
+                <Table.Row key={c.id} cursor="pointer" h="52px" tabIndex={0} aria-label={`Abrir ${label(c)}`}
+                  onClick={() => setOpenId(c.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenId(c.id); } }}>
                   <Table.Cell py={1}>{thumb(c, 40)}</Table.Cell>
                   <Table.Cell fontWeight="600">{label(c)}</Table.Cell>
                   <Table.Cell color={c.foodFamily ? undefined : 'fg.muted'}>{familyLabel(c.foodFamily)}</Table.Cell>

@@ -131,11 +131,12 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                 {/* La foto junto al nombre y la categoría (spec 091, M1-A): no le quita un renglón al
                     formulario. Se guarda aparte, al tocar «Guardar foto». */}
                 <HStack align="start" gap={4}>
+                  {/* A 1024×600 siguen a la vista los cinco controles de siempre (lo mide la e2e F1). */}
                   <PhotoField kind="products" id={edit.id} name={edit.name} imageUrl={edit.imageUrl}
                     categoryImageUrl={catDe(categorias, edit.categoryId)?.imageUrl ?? edit.categoryImageUrl}
                     family={catDe(categorias, edit.categoryId)?.foodFamily ?? edit.categoryFoodFamily}
                     onChanged={(url) => {
-                      setEdit({ ...edit, imageUrl: url });
+                      setEdit((e) => e && { ...e, imageUrl: url });
                       void qc.invalidateQueries({ queryKey: ['admin', 'products'] });
                       void qc.invalidateQueries({ queryKey: ['menu'] });
                     }} />

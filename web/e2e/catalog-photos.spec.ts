@@ -81,6 +81,13 @@ test('F1 · subir, cambiar y quitar la foto de un producto', async ({ page }) =>
   await abrirEditor(page);
   const editor = page.getByRole('dialog');
   await expect(editor.getByText('Sin foto')).toBeVisible();
+  await page.waitForTimeout(600); // que asiente la animación antes de medir
+  // La foto no le quita renglones al formulario: a 1024×600 siguen a la vista los cinco controles
+  // de antes (nombre, categoría, precio, costo y receta), sin desplazar.
+  const pie = await editor.getByRole('button', { name: 'Guardar', exact: true }).boundingBox();
+  const receta = await editor.getByRole('button', { name: /^Receta/ }).boundingBox();
+  expect(pie && receta && receta.y + receta.height <= pie.y,
+    `«Receta» quedó fuera de la vista: ${JSON.stringify({ pie, receta })}`).toBeTruthy();
   await page.screenshot({ path: test.info().outputPath('1-sin-foto.png') });
 
   // Subir: el botón grande abre el selector (el input es invisible); se ve «Así se verá».

@@ -100,8 +100,10 @@ Sin violaciones; sin Complexity Tracking.
 Dos pantallas cambian. Maquetas medidas a **1024×600** (pedido del dueño) y a 1280×854 y 2560×1440.
 
 1. **Editor de producto** (`shared/ProductEditDialog.tsx`, opción A): el diálogo pasa a `size="lg"`
-   (~512 px) y el bloque de foto de 132 px va a la izquierda de Nombre y Categoría; Precio/Costo
-   (con el botón largo de costo) quedan a todo el ancho debajo. Sin foto: la ilustración (o la foto de la categoría) con la
+   (~512 px) y el bloque de foto va a la izquierda de Nombre y Categoría; Precio/Costo (con el botón
+   largo de costo) quedan a todo el ancho debajo. Foto de 132 px; el renglón de estado bajo la foto
+   solo aparece cuando hay algo que decir, y así «Receta» sigue a la vista a 1024×600 (lo mide la
+   e2e F1). Sin foto: la ilustración (o la foto de la categoría) con la
    etiqueta «Sin foto» y el botón «Agregar foto». Con foto: dos botones de ícono de 44 px, «Cambiar
    foto» y «Quitar foto». Quitar confirma con `ConfirmSheet` destructivo («Volver» como acción
    segura). La foto se guarda al tocar «Guardar foto», sin esperar al «Guardar» del producto (como

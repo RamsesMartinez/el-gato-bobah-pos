@@ -60,14 +60,16 @@ export interface PhotoDeps {
 const browserDeps: PhotoDeps = {
   // La orientación guardada en la foto se aplica al leerla: una foto de celular sale derecha.
   decode: (file) => createImageBitmap(file, { imageOrientation: 'from-image' }),
-  render: (src, crop, side) => (quality) => {
+  // Se dibuja UNA vez por medida y solo se repite la codificación: un canvas de 1200² son ~5.7 MB, y
+  // uno por intento de calidad se juntaba hasta seis esperando al recolector.
+  render: (src, crop, side) => {
     const canvas = document.createElement('canvas');
     canvas.width = side;
     canvas.height = side;
     const ctx = canvas.getContext('2d')!;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(src as ImageBitmap, crop.x, crop.y, crop.size, crop.size, 0, 0, side, side);
-    return new Promise<Blob>((resolve, reject) =>
+    return (quality) => new Promise<Blob>((resolve, reject) =>
       canvas.toBlob((b) => (b ? resolve(b) : reject(new PhotoError('no_webp'))), 'image/webp', quality));
   },
 };

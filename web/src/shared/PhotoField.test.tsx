@@ -1,5 +1,5 @@
 import { vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from '../components/ui/provider';
@@ -99,4 +99,39 @@ test('quitar la foto pide confirmación y dice el efecto', async () => {
   await u.click(screen.getByRole('button', { name: 'Quitar' }));
   await waitFor(() => expect(api.removeImage).toHaveBeenCalledWith('categories', 7));
   expect(onChanged).toHaveBeenCalledWith(null);
+});
+
+test('si guardar falla, el aviso se ve dentro del recorte y la foto sigue ahí para reintentar', async () => {
+  api.setImage.mockRejectedValueOnce(new Error('sin red'));
+  const u = userEvent.setup({ pointerEventsCheck: 0 });
+  const { onChanged } = wrap();
+  await u.upload(document.querySelector('input[type=file]') as HTMLInputElement, file);
+  await u.click(await screen.findByRole('button', { name: 'Guardar foto' }));
+  const dialog = await screen.findByRole('dialog');
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(/No se pudo guardar la foto/);
+  expect(onChanged).not.toHaveBeenCalled();
+});
+
+test('mientras se guarda no se puede cancelar: lo que se ve es lo que pasa', async () => {
+  let resolve!: (v: { imageUrl: string }) => void;
+  api.setImage.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+  const u = userEvent.setup({ pointerEventsCheck: 0 });
+  wrap();
+  await u.upload(document.querySelector('input[type=file]') as HTMLInputElement, file);
+  await u.click(await screen.findByRole('button', { name: 'Guardar foto' }));
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Cancelar' }) as HTMLButtonElement).disabled).toBe(true));
+  resolve({ imageUrl: 'https://media.test/1/products/7/aaaa-1200.webp' });
+  expect(await screen.findByText('Foto guardada')).toBeTruthy();
+});
+
+test('quitar bien borra el aviso de un error anterior', async () => {
+  api.removeImage.mockRejectedValueOnce(new Error('x'));
+  const u = userEvent.setup();
+  wrap({ imageUrl: 'https://media.test/1/products/7/bbbb-1200.webp' });
+  await u.click(screen.getByRole('button', { name: 'Quitar foto' }));
+  await u.click(await screen.findByRole('button', { name: 'Quitar' }));
+  expect(await screen.findByText(/No se pudo quitar la foto/)).toBeTruthy();
+  await u.click(screen.getByRole('button', { name: 'Quitar foto' }));
+  await u.click(await screen.findByRole('button', { name: 'Quitar' }));
+  await waitFor(() => expect(screen.queryByText(/No se pudo quitar la foto/)).toBeNull());
 });
