@@ -59,4 +59,5 @@ de lo que ya devuelve.
 
 `imageUrl` ya viaja en el menú del POS (`MenuProduct.imageUrl`, `Category.imageUrl`); el menú agrega
 `foodFamily` en cada categoría. `GET /admin/products` agrega `imageUrl` y `categoryImageUrl` /
-`categoryFoodFamily` para pintar la miniatura sin otra llamada.
+`categoryFoodFamily` para pintar la miniatura sin otra llamada. En una subcategoría sin foto o sin
+familia propias, esos dos campos traen los de su categoría padre (FR-017).

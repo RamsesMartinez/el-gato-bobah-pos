@@ -104,17 +104,19 @@ Dos pantallas cambian. Maquetas medidas a **1024×600** (pedido del dueño) y a 
    largo de costo) quedan a todo el ancho debajo. Foto de 132 px; el renglón de estado bajo la foto
    solo aparece cuando hay algo que decir, y así «Receta» sigue a la vista a 1024×600 (lo mide la
    e2e F1). Sin foto: la ilustración (o la foto de la categoría) con la
-   etiqueta «Sin foto» y el botón «Agregar foto». Con foto: dos botones de ícono de 44 px, «Cambiar
-   foto» y «Quitar foto». Quitar confirma con `ConfirmSheet` destructivo («Volver» como acción
+   etiqueta «Sin foto» y el botón «Agregar foto». Con foto: dos botones de 44 px con ícono y texto,
+   «Cambiar» y «Quitar». Quitar confirma con `ConfirmSheet` destructivo («Volver» como acción
    segura). La foto se guarda al tocar «Guardar foto», sin esperar al «Guardar» del producto (como
-   los grupos): el bloque dice «La foto se guarda aparte» y, al guardar, «Foto guardada».
+   los grupos): al guardar, el bloque dice «Foto guardada»; sin nada que decir no ocupa renglón.
+   Sobre la foto heredada de la categoría la etiqueta dice «De la categoría», no «Sin foto».
    El selector de archivo es un `<input type=file>` invisible (`opacity:0`, no `display:none`) que
    dispara el botón; `accept="image/jpeg,image/png,image/webp"`; su `value` se limpia tras elegir.
    Una foto que el navegador no abre (HEIC) dice «Esta foto no se puede abrir. Elige una en JPG o
    PNG». Si el navegador no puede preparar fotos, se detecta al montar: «Agregar foto» queda
    deshabilitado con «Este navegador no puede preparar la foto. Ábrelo en Chrome o Edge».
 2. **Recorte** (opción B): al elegir el archivo se abre un diálogo «Así se verá» con la foto centrada
-   en cuadrado (`min(340px, 52dvh)`; `44dvh` con el ajuste abierto), «Ajustar encuadre» (rejilla,
+   en cuadrado (`min(340px, 44dvh)`; `40dvh` con el ajuste abierto, para que «Ajustar encuadre» y el
+   pie queden a la vista a 1024×600), «Ajustar encuadre» (rejilla,
    arrastre y botones −/+ de 44 px), «Cancelar» y «Guardar foto». Cuerpo con scroll interno y pie
    siempre visible. Recorte y confirmación se montan dentro del `DialogRoot` del editor (como
    `CompositionSheet`): cerrarlos no cierra el editor ni pierde lo escrito.
@@ -128,7 +130,9 @@ Dos pantallas cambian. Maquetas medidas a **1024×600** (pedido del dueño) y a 
      aplica al momento (foto con «Guardar foto», familia al elegirla): no hay cambios pendientes que
      perder al tocar otra categoría.
    En mosaico y tabla, tocar abre el diálogo de la categoría: foto (mismo bloque que el producto) y
-   «Familia de comida» con `Picker`, que también se aplica al elegirla. La confirmación de quitar la
+   «Familia de comida» con `Picker` (una sola opción «Platillo (genérica)»), que también se aplica
+   al elegirla. Una subcategoría sin foto o sin familia propias muestra las de su categoría padre
+   (FR-017); en el mosaico el nombre propio va arriba y el padre abajo. La confirmación de quitar la
    foto de una categoría dice «Los productos sin foto propia dejarán de mostrar ésta».
    El selector va en el hueco que hoy empuja la ayuda a la derecha (las pestañas no se mueven),
    con `aria-label`, `title` y `aria-pressed`. La pestaña lleva su `what`/`steps` de ayuda y su
@@ -215,10 +219,12 @@ Se pide cuando la implementación llegue a ese paso (local avanza sin esto):
 `db-architect` y `tablet-ui-reviewer`: aprobado con cambios; todos aplicados arriba y en
 [data-model.md](data-model.md).
 
-- Base: `CloneProductRow` deja de copiar `image_url`; checks de `image_url` `not valid`; Down que
+- Base: `CloneProductRow` deja de copiar `image_url`; forma de `image_url` validada con triggers
+  que solo miran el valor cuando cambia (el check `not valid` se evaluaba en cada update: revisión
+  de código); Down que
   se niega con pendientes y sus renglones de limpieza; check de tabla de `object_key` contra
   `company_id`; clasificación del respaldo anónimo.
-- Pantalla: editor `size="lg"`; «La foto se guarda aparte»; navegador sin soporte detectado al
+- Pantalla: editor `size="lg"`; «Foto guardada» solo al guardar; navegador sin soporte detectado al
   montar; recorte y confirmación dentro del mismo `DialogRoot` con `ConfirmSheet`; recorte con pie
   siempre visible; miniatura de 32 px; mosaico con columnas mínimas de 150 px; autoguardado en la
   vista de panel; selector con `aria-pressed`; input de archivo invisible y reiniciado.

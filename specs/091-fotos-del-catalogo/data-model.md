@@ -14,15 +14,13 @@ Forma de la URL: `<MEDIA_PUBLIC_BASE_URL>/<company_id>/<products|categories>/<id
 La de 400 px es la misma con `-400.webp`. Un `update` a estas columnas ya sube `catalog_versions`
 (triggers de la 0093), así que el menú guardado de cada tableta se renueva solo.
 
-Restricción nueva, agregada **`not valid`**: vale para toda escritura nueva y no revisa las filas que
-ya existen, así que la API nueva arranca aunque alguna fila de producción traiga un valor viejo
-(no se pudo contar en producción desde esta máquina). El test de migración cubre un respaldo con
-`image_url` ajena y comprueba que la migración pasa y que la URL vieja no se toca:
-
-- `products_image_url_shape` / `categories_image_url_shape`: `image_url is null or image_url ~
-  '^https?://[^\s]+-1200\.webp$'`. Un `https?` y no solo `https` porque en local el dominio es
-  `http://localhost:93NN`. Si el conteo en producción no diera 0, el check va `not valid` y el plan
-  se corrige.
+Forma validada con **triggers** (`catalog_image_url_shape`), no con un check: un check, aun
+`not valid`, se evalúa en cada `update` de la fila, y un producto con una URL vieja escrita a mano
+quedaría sin poder cambiar su precio (lo encontró la revisión de código; lo cubre la prueba de la
+migración). El trigger corre al insertar con `image_url` y al actualizar **solo si `image_url`
+cambia**, y exige `^https?://[^\s?#]+-1200\.webp$` (`http` porque en local el dominio es
+`http://localhost:93NN`). Una URL vieja con otra forma nunca se borra del almacenamiento (la guarda
+de prefijo la descarta) y se reemplaza al subir una foto nueva.
 
 ## Tipo nuevo: `food_family`
 
@@ -84,7 +82,7 @@ de antes).
 
 ## Down
 
-Quita, en orden: los dos checks de `image_url`, `categories.food_family`, la tabla y el tipo.
+Quita, en orden: la tabla, los cuatro triggers y su función, `categories.food_family` y el tipo.
 **Se niega** (`raise exception`) si `media_pending_deletions` tiene filas: bajar perdería las llaves
 y esos archivos quedarían en el bucket para siempre. Lleva su renglón en `guardedDownCleanup`
 (`harness_restaurado_test.go`), que vacía la tabla en la copia de prueba, y otro para
