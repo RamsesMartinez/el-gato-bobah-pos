@@ -237,6 +237,7 @@ func main() {
 		pedidosPlataforma.SimulateDecisions()
 		slog.Warn("platform_orders_simulated", "detail", "aceptar y rechazar pedidos de plataforma no hablan con la plataforma")
 	}
+	logMenuConfig(cfg)
 	media, err := catalogMedia(cfg, st)
 	if err != nil {
 		slog.Error("fotos del catálogo", "error", err)
@@ -253,6 +254,7 @@ func main() {
 		Users:           app.NewUsersService(st, hibpClient, cfg.HIBPEnabled, cfg.PinPepper),
 		Menu:            app.NewMenuService(st, nil),
 		WebSales:        app.NewWebSalesService(st),
+		PublicMenu:      app.NewPublicMenuService(st, cfg.MenuBaseURLOrDefault()),
 		MenuCache:       cache.NewMenuCache(cfg.RedisURL),
 		Suggest:         app.NewSuggestService(st, nil),
 		Costing:         costing,
@@ -1008,6 +1010,14 @@ func (u uberClient) Verify(ctx context.Context) error {
 		// Cualquier otro rechazo (un 400 con un código que no conocemos) se trata como credencial
 		// no aceptada: no guardarla es lo seguro, y el detalle queda en el error envuelto.
 		return fmt.Errorf("%w: %w", domain.ErrCredentialsRejected, err)
+	}
+}
+
+// logMenuConfig dice al arrancar cómo quedó el menú público (spec 097): sin MENU_EDGE_KEY el límite
+// por IP cuenta la IP de Cloudflare y no la del visitante, y eso tiene que verse en el journal.
+func logMenuConfig(cfg config.Config) {
+	if cfg.MenuEdgeKey == "" {
+		slog.Warn("menu_edge_key_missing", "detail", "el límite del menú público cuenta la IP de quien llama, no la del visitante")
 	}
 }
 

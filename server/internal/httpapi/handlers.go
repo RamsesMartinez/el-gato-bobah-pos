@@ -101,11 +101,13 @@ type Deps struct {
 	Users   *app.UsersService
 	Menu    *app.MenuService
 	// WebSales: la regla única de la venta en web (spec 092).
-	WebSales  *app.WebSalesService
-	MenuCache *cache.MenuCache
-	Suggest   *app.SuggestService
-	Costing   *app.CostingService
-	Orders    *app.OrdersService
+	WebSales *app.WebSalesService
+	// PublicMenu: el menú público de cada negocio (spec 097).
+	PublicMenu *app.PublicMenuService
+	MenuCache  *cache.MenuCache
+	Suggest    *app.SuggestService
+	Costing    *app.CostingService
+	Orders     *app.OrdersService
 	// Drafts es la cuenta en captura (spec 030).
 	Drafts *app.DraftsService
 	// Accounts es la fila de cuentas vivas del POS (spec 030).
@@ -175,17 +177,22 @@ type Handlers struct {
 	// menos de dos minutos.
 	mediaWrites *rateLimiter
 	// listEmails acota «Enviarme por correo» de la lista de compra (spec 084): 5 por hora y persona.
-	listEmails        *rateLimiter
-	stockOut          *app.StockOutService
-	notifications     *app.NotificationsService
-	cfg               config.Config
-	version           string
-	builtAt           string
-	jwt               *auth.Manager
-	auth              *app.AuthService
-	users             *app.UsersService
-	menu              *app.MenuService
-	webSales          *app.WebSalesService
+	listEmails    *rateLimiter
+	stockOut      *app.StockOutService
+	notifications *app.NotificationsService
+	cfg           config.Config
+	version       string
+	builtAt       string
+	jwt           *auth.Manager
+	auth          *app.AuthService
+	users         *app.UsersService
+	menu          *app.MenuService
+	webSales      *app.WebSalesService
+	publicMenu    *app.PublicMenuService
+	// publicMenuIPs limita la puerta pública del menú (spec 097), con su propio contador: un abuso
+	// del menú no le quita cupo al login ni al webhook.
+	publicMenuIPs     *rateLimiter
+	menuEdgeKey       string
 	menuCache         *cache.MenuCache
 	suggest           *app.SuggestService
 	costing           *app.CostingService
@@ -293,7 +300,7 @@ func newHandlers(d Deps) *Handlers {
 		tokenWrites:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:token-writes:", 30, time.Hour),
 		listEmails:    newRateLimiter(d.Cfg.RedisURL, "ratelimit:shopping-list-email:", 5, time.Hour),
 		cfg:           d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
-		menu: d.Menu, webSales: d.WebSales, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
+		menu: d.Menu, webSales: d.WebSales, publicMenu: d.PublicMenu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		purchaseDoc:       d.PurchaseDoc,
 		platformPrices:    d.PlatformPrices,
@@ -327,7 +334,9 @@ func newHandlers(d Deps) *Handlers {
 		// no tenerlo — un rechazo a la plataforma es un pedido que no entra. Y como el limitador
 		// de este repo es fail-open cuando Redis no contesta, un hiccup del caché nunca bloquea
 		// un pedido.
-		webhookIPs: newRateLimiter(d.Cfg.RedisURL, "ratelimit:webhook:", webhookMax, time.Minute),
+		webhookIPs:    newRateLimiter(d.Cfg.RedisURL, "ratelimit:webhook:", webhookMax, time.Minute),
+		publicMenuIPs: newRateLimiter(d.Cfg.RedisURL, "ratelimit:public-menu:", publicMenuMax, time.Minute),
+		menuEdgeKey:   d.Cfg.MenuEdgeKey,
 		platformRefWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-ref:",
 			platformRefMax, platformRefWindow),
 		descuentoWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:descuento:",

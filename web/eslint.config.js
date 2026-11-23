@@ -38,6 +38,14 @@ const MENSAJE_CONSOLA_NO_IMPORTA_POS =
   'necesite, lo tiene propio. Tomar algo de aquí ata los dos ciclos de vida y un refactor del POS ' +
   'la rompe en silencio.';
 
+const MENSAJE_POS_NO_IMPORTA_MENU =
+  'El POS no importa nada del menú público (web/menu): es otro producto, que corre en el borde de ' +
+  'Cloudflare y lo abre un cliente en su celular. Si los dos necesitan lo mismo, cópialo.';
+
+const MENSAJE_MENU_NO_IMPORTA_NADA =
+  'El menú público (spec 097) no importa nada del POS ni de React: es HTML sin JavaScript que se arma ' +
+  'en el borde, y cada kilobyte cuenta contra la carga de 2.5 s en un celular de gama baja.';
+
 const FRONTERAS = [
   {
     files: ['src/domain/**/*.ts'],
@@ -128,11 +136,18 @@ const FRONTERAS = [
             group: ['**/consola/*', '**/consola/**', '../consola/*', './consola/*'],
             message: MENSAJE_POS_NO_IMPORTA_CONSOLA,
           },
+          {
+            group: ['**/menu/plantilla/**', '**/menu/borde/**', '**/menu/plantilla', '**/menu/borde'],
+            message: MENSAJE_POS_NO_IMPORTA_MENU,
+          },
         ],
       }],
       'no-restricted-syntax': ['error', {
         selector: 'ImportExpression[source.value=/(^|\\/)consola\\//]',
         message: MENSAJE_POS_NO_IMPORTA_CONSOLA,
+      }, {
+        selector: 'ImportExpression[source.value=/menu\\/(plantilla|borde)/]',
+        message: MENSAJE_POS_NO_IMPORTA_MENU,
       }],
     },
   },
@@ -167,6 +182,22 @@ const FRONTERAS = [
     },
   },
   {
+    // EL MENÚ PÚBLICO (spec 097) NO IMPORTA NADA DE FUERA DE web/menu: ni el POS ni React.
+    files: ['menu/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['**/src/**', '../src/*', '../../src/*'], message: MENSAJE_MENU_NO_IMPORTA_NADA },
+          { group: ['react', 'react-dom', 'react/*', '@chakra-ui/*', '@tanstack/*', 'zustand'], message: MENSAJE_MENU_NO_IMPORTA_NADA },
+        ],
+      }],
+      'no-restricted-syntax': ['error', {
+        selector: 'ImportExpression[source.value=/(^|\\/)src\\//]',
+        message: MENSAJE_MENU_NO_IMPORTA_NADA,
+      }],
+    },
+  },
+  {
     files: ['src/components/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
@@ -197,6 +228,11 @@ const NADA_DE_REIMPLEMENTAR = {
   ],
   rules: {
     'no-restricted-syntax': ['error',
+      // Las fronteras de import dinámico van TAMBIÉN aquí: este bloque redefine la regla para estas
+      // carpetas, y sin repetirlas un `import('../consola/x')` o `import('../../menu/…')` desde una
+      // pantalla pasaba limpio (lo encontró menu/frontera.test.ts, spec 097).
+      { selector: 'ImportExpression[source.value=/(^|\\/)consola\\//]', message: MENSAJE_POS_NO_IMPORTA_CONSOLA },
+      { selector: 'ImportExpression[source.value=/menu\\/(plantilla|borde)/]', message: MENSAJE_POS_NO_IMPORTA_MENU },
       {
         // Math.round(x * 100) / 100 en cualquiera de sus formas.
         selector: 'BinaryExpression[operator="/"][right.value=100] > CallExpression[callee.object.name="Math"][callee.property.name="round"]',
@@ -217,7 +253,7 @@ const NADA_DE_REIMPLEMENTAR = {
 
 export default tseslint.config(
   // snippets generados por Chakra CLI + build: no se lintan
-  { ignores: ['dist', 'src/components/ui/**'] },
+  { ignores: ['dist', 'dist-consola', 'dist-menu', 'src/components/ui/**', 'maquetas-*/**'] },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -239,7 +275,7 @@ export default tseslint.config(
   NADA_DE_REIMPLEMENTAR,
   // Los tests de nodo leen el árbol de archivos: necesitan los globals de node, no los del navegador.
   {
-    files: ['src/**/*.test.{ts,tsx}'],
+    files: ['src/**/*.test.{ts,tsx}', 'menu/**/*.ts'],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
   },
 );

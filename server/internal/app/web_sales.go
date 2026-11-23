@@ -7,6 +7,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
 // WebSalesService es la regla única de la venta en web (spec 092): qué productos se ofrecen, a qué
@@ -15,17 +16,26 @@ type WebSalesService struct{ store *store.Store }
 
 func NewWebSalesService(s *store.Store) *WebSalesService { return &WebSalesService{store: s} }
 
-// WebOfferItem es un producto que se vende en la web.
+// WebOfferItem es un producto que se vende en la web, con lo que el menú público pinta (spec 097).
 type WebOfferItem struct {
-	ProductID int64           `json:"productId"`
-	Price     decimal.Decimal `json:"price"`
-	SoldOut   bool            `json:"soldOut"`
+	ProductID   int64           `json:"productId"`
+	Price       decimal.Decimal `json:"price"`
+	SoldOut     bool            `json:"soldOut"`
+	Name        string          `json:"name"`
+	Description *string         `json:"description"`
+	ImageURL    *string         `json:"imageUrl"`
+	CategoryID  int64           `json:"categoryId"`
 }
 
 // Offer lista lo que se vende en la web con su precio efectivo y si está agotado. Un agotado se
 // marca, no se oculta (decisión del dueño, #326).
 func (s *WebSalesService) Offer(ctx context.Context) ([]WebOfferItem, error) {
-	q := s.store.QC(ctx)
+	return offer(ctx, s.store.QC(ctx))
+}
+
+// offer es la regla única sobre unas Queries dadas: el menú público la corre dentro de la
+// transacción en la que fijó la empresa que resolvió por nombre, sin sesión.
+func offer(ctx context.Context, q *db.Queries) ([]WebOfferItem, error) {
 	rows, err := q.WebOfferProducts(ctx)
 	if err != nil {
 		return nil, err
@@ -34,7 +44,8 @@ func (s *WebSalesService) Offer(ctx context.Context) ([]WebOfferItem, error) {
 	var graph *domain.StockGraph
 	var levels domain.StockLevels
 	for _, r := range rows {
-		item := WebOfferItem{ProductID: r.ID, Price: domain.ChannelPrice(r.Price, r.WebPrice)}
+		item := WebOfferItem{ProductID: r.ID, Price: domain.ChannelPrice(r.Price, r.WebPrice),
+			Name: r.Name, Description: r.Description, ImageURL: r.ImageUrl, CategoryID: r.CategoryID}
 		if !r.AllowOversell {
 			if graph == nil {
 				g, err := loadStockGraph(ctx, q)

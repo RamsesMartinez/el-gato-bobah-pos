@@ -121,6 +121,11 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "USERNAME_TAKEN"
 	// Spec 092: lo pedido de un producto con «vender sin existencia» apagado no alcanza. 409 porque
 	// es el estado del almacén, no lo que mandó la tableta; la pantalla lo marca agotado.
+	// Nombre del menú público (spec 097): la pantalla pone el texto bajo el campo.
+	case errors.Is(err, domain.ErrMenuNameUnavailable):
+		status, code = http.StatusConflict, "MENU_NAME_UNAVAILABLE"
+	case errors.Is(err, domain.ErrMenuNameLimit):
+		status, code = http.StatusConflict, "MENU_NAME_LIMIT"
 	case errors.Is(err, domain.ErrOutOfStock):
 		status, code = http.StatusConflict, "OUT_OF_STOCK"
 	case errors.Is(err, domain.ErrWarehouseNotFound):
