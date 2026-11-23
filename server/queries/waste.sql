@@ -77,11 +77,11 @@ select id, current_cost from products where id = $1;
 -- El almacén ya viene resuelto (de la sucursal de la sesión y activo); la sucursal es la suya.
 insert into waste_records (
   branch_id, warehouse_id, reason_id, item_type, ingredient_id, product_id, quantity, entered_qty, presentation_id,
-  unit_cost, total_cost, is_staff_meal, note, status, recorded_by
+  unit_cost, total_cost, is_staff_meal, note, status, recorded_by, lot_expires_on
 )
 select w.branch_id, w.id, sqlc.arg(reason_id), sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id),
        sqlc.arg(quantity), sqlc.arg(entered_qty), sqlc.narg(presentation_id), sqlc.narg(unit_cost), sqlc.narg(total_cost),
-       sqlc.arg(is_staff_meal), sqlc.narg(note), sqlc.arg(status), sqlc.arg(recorded_by)
+       sqlc.arg(is_staff_meal), sqlc.narg(note), sqlc.arg(status), sqlc.arg(recorded_by), sqlc.narg(lot_expires_on)::date
   from warehouses w where w.id = sqlc.arg(warehouse_id)
 returning id, recorded_at;
 

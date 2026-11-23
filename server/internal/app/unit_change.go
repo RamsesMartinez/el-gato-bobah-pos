@@ -38,6 +38,8 @@ var UnitChangeTables = map[string]string{
 	"stock_out_reports":           "un reporte que todavía se puede deshacer bloquea; los demás guardan su delta histórico",
 	"branch_stock_minimums":       "convierte el mínimo; con reemplazo pasa al artículo nuevo",
 	"stock_transfer_lines":        "un traspaso obliga al reemplazo: guarda cantidades históricas en la unidad vieja",
+	"stock_lots":                  "convierte la cantidad (y lo que tomó cada movimiento); con reemplazo pasan al artículo nuevo",
+	"stock_count_line_lots":       "convierte; un conteo abierto con el artículo lo bloquea",
 }
 
 // UnitChangeRequest es la clase nueva (su unidad base) y la equivalencia: cuánto de la base nueva vale
@@ -460,6 +462,16 @@ func changeUnitDirect(ctx context.Context, q *db.Queries, p unitPlan, req UnitCh
 	if err := convertSideTables(ctx, q, id, id, f, detail); err != nil {
 		return err
 	}
+	// Los lotes, lo que tomó cada movimiento y el desglose de los conteos, en la unidad nueva (spec 098).
+	if err := q.ScaleIngredientLots(ctx, db.ScaleIngredientLotsParams{Factor: f, ID: id}); err != nil {
+		return err
+	}
+	if err := q.ScaleIngredientLotAllocations(ctx, db.ScaleIngredientLotAllocationsParams{Factor: f, ID: id}); err != nil {
+		return err
+	}
+	if err := q.ScaleIngredientCountLots(ctx, db.ScaleIngredientCountLotsParams{Factor: f, ID: id}); err != nil {
+		return err
+	}
 	if err := q.RecomputeArticleStock(ctx, &id); err != nil {
 		return err
 	}
@@ -644,6 +656,10 @@ func replaceArticle(ctx context.Context, q *db.Queries, p unitPlan, req UnitChan
 			}
 		}
 		moved = append(moved, map[string]any{"branchId": s.BranchID, "warehouseId": s.WarehouseID, "old": s.OnHand, "new": to})
+	}
+	// Los lotes pasan al artículo nuevo con la equivalencia (spec 098).
+	if err := q.MoveLotsToIngredient(ctx, db.MoveLotsToIngredientParams{Factor: f, OldID: old.ID, NewID: newID}); err != nil {
+		return err
 	}
 	// Todas, también las de productos inactivos: si se reactivan, venden del artículo nuevo.
 	for _, r := range p.recipes {

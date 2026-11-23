@@ -34,8 +34,13 @@ func (h *Handlers) ListNotifications(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
+	withExpired, err := withExpiredParam(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	u, _ := userFrom(r.Context())
-	list, err := h.notifications.List(r.Context(), u.ID, h.permissionsOf(r.Context(), u), open, limit)
+	list, err := h.notifications.List(r.Context(), u.ID, h.permissionsOf(r.Context(), u), open, withExpired, limit)
 	if err != nil {
 		Error(w, err)
 		return
@@ -45,8 +50,13 @@ func (h *Handlers) ListNotifications(w http.ResponseWriter, r *http.Request) {
 
 // GET /notifications/unread-count — el número de la campana.
 func (h *Handlers) UnreadNotifications(w http.ResponseWriter, r *http.Request) {
+	withExpired, err := withExpiredParam(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	u, _ := userFrom(r.Context())
-	n, err := h.notifications.Unread(r.Context(), u.ID, h.permissionsOf(r.Context(), u))
+	n, err := h.notifications.Unread(r.Context(), u.ID, h.permissionsOf(r.Context(), u), withExpired)
 	if err != nil {
 		Error(w, err)
 		return
@@ -368,4 +378,17 @@ func (h *Handlers) EmailShoppingList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]string{"sentTo": to})
+}
+
+// withExpiredParam lee `withExpired`: la pantalla que conoce el aviso de caducados (spec 098) lo pide
+// con 1. Ausente es no; cualquier otro valor se rechaza.
+func withExpiredParam(r *http.Request) (bool, error) {
+	switch r.URL.Query().Get("withExpired") {
+	case "":
+		return false, nil
+	case "1":
+		return true, nil
+	default:
+		return false, fmt.Errorf("%w: withExpired es 1", domain.ErrValidation)
+	}
 }

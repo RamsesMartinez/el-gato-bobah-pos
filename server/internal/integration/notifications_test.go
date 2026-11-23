@@ -51,32 +51,32 @@ func TestTheBellIsPerPerson(t *testing.T) {
 	}
 
 	t.Run("cada quien su contador; «No lo encuentro» solo para quien configura", func(t *testing.T) {
-		if n, _ := svc.Unread(ctx, marisol, managerPerms084); n != 2 {
+		if n, _ := svc.Unread(ctx, marisol, managerPerms084, true); n != 2 {
 			t.Fatalf("el gerente tiene %d sin leer", n)
 		}
-		if n, _ := svc.Unread(ctx, ana, cashierPerms084); n != 1 {
+		if n, _ := svc.Unread(ctx, ana, cashierPerms084, true); n != 1 {
 			t.Fatalf("la cajera tiene %d sin leer; «No lo encuentro» no es para ella", n)
 		}
 		if err := svc.MarkRead(ctx, marisol, []int64{rep.NotificationID}); err != nil {
 			t.Fatal(err)
 		}
-		if n, _ := svc.Unread(ctx, marisol, managerPerms084); n != 1 {
+		if n, _ := svc.Unread(ctx, marisol, managerPerms084, true); n != 1 {
 			t.Fatalf("tras leer, el gerente tiene %d", n)
 		}
-		if n, _ := svc.Unread(ctx, ramiro, managerPerms084); n != 2 {
+		if n, _ := svc.Unread(ctx, ramiro, managerPerms084, true); n != 2 {
 			t.Fatalf("leer uno bajó el contador de otra persona: %d", n)
 		}
 	})
 
 	t.Run("la franja no sale a quien reportó y sale una vez a los demás", func(t *testing.T) {
-		mine, err := svc.List(ctx, ana, cashierPerms084, true, 50)
+		mine, err := svc.List(ctx, ana, cashierPerms084, true, true, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if mine[0].Banner {
 			t.Fatal("la franja salió en la tableta de quien lo reportó")
 		}
-		theirs, err := svc.List(ctx, ramiro, managerPerms084, true, 50)
+		theirs, err := svc.List(ctx, ramiro, managerPerms084, true, true, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -87,14 +87,14 @@ func TestTheBellIsPerPerson(t *testing.T) {
 		if err := svc.BannerSeen(ctx, ramiro, rep.NotificationID); err != nil {
 			t.Fatal(err)
 		}
-		again, _ := svc.List(ctx, ramiro, managerPerms084, true, 50)
+		again, _ := svc.List(ctx, ramiro, managerPerms084, true, true, 50)
 		if again[slices.IndexFunc(again, func(n app.NotificationView) bool { return n.ID == rep.NotificationID })].Banner {
 			t.Fatal("la franja volvió a salir después de verla")
 		}
 	})
 
 	t.Run("una lista vacía sale como [] en el JSON, nunca null", func(t *testing.T) {
-		closed, err := svc.List(ctx, ramiro, managerPerms084, false, 50)
+		closed, err := svc.List(ctx, ramiro, managerPerms084, false, true, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -206,7 +206,7 @@ func TestNotificationsAreIsolated(t *testing.T) {
 	rep := reportOut(t, out, ctx, ing, ana)
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, as *store.Store, ctx context.Context) {
 		svc := app.NewNotificationsService(as, clock)
-		if list, err := svc.List(ctx, ana, managerPerms084, true, 50); err == nil && len(list) > 0 {
+		if list, err := svc.List(ctx, ana, managerPerms084, true, true, 50); err == nil && len(list) > 0 {
 			t.Fatalf("otra empresa ve %d avisos", len(list))
 		}
 		if err := svc.Resolve(ctx, ana, managerPerms084, rep.NotificationID, app.ResolveCmd{Action: "dismiss"}); err == nil {

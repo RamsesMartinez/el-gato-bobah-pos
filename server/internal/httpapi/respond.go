@@ -192,6 +192,10 @@ func Error(w http.ResponseWriter, err error) {
 	// Lo que salió de la caja (spec 050): antes de ErrValidation, que lo envuelve.
 	case errors.Is(err, domain.ErrDrawerExtraTooHigh):
 		status, code = http.StatusBadRequest, "DRAWER_EXTRA_TOO_HIGH"
+	// Fechas del conteo que pasan lo contado (spec 098): antes de ErrValidation, que lo envuelve; la
+	// pantalla lo dice en el artículo.
+	case errors.Is(err, domain.ErrLotsExceedCounted):
+		status, code = http.StatusBadRequest, "LOTS_EXCEED_COUNTED"
 	case errors.Is(err, domain.ErrValidation):
 		status, code = http.StatusBadRequest, "VALIDATION"
 	case errors.Is(err, domain.ErrPlatformNotFound):

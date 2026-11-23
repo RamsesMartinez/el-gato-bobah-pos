@@ -141,6 +141,7 @@ func (h *Handlers) DeliverExpense(w http.ResponseWriter, r *http.Request) {
 			On          string           `json:"on"`
 			Shortfall   string           `json:"shortfall"`
 			ExtraAmount *decimal.Decimal `json:"extraAmount"`
+			ExpiresOn   *string          `json:"expiresOn"`
 		} `json:"lines"`
 		Decisions   map[string]string `json:"decisions"`
 		Fingerprint string            `json:"fingerprint"`
@@ -152,7 +153,7 @@ func (h *Handlers) DeliverExpense(w http.ResponseWriter, r *http.Request) {
 	in := app.DeliveryInput{On: body.On, Decisions: body.Decisions, Fingerprint: body.Fingerprint}
 	for _, l := range body.Lines {
 		in.Lines = append(in.Lines, app.DeliveryLineInput{ItemID: l.ItemID, Qty: l.Qty, On: l.On, Shortfall: l.Shortfall,
-			ExtraAmount: l.ExtraAmount})
+			ExtraAmount: l.ExtraAmount, ExpiresOn: l.ExpiresOn})
 	}
 	u, _ := userFrom(r.Context())
 	res, err := h.backoffice.DeliverExpense(r.Context(), id, in, u.ID, preview)

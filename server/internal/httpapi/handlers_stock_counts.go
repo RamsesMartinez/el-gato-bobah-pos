@@ -116,6 +116,8 @@ func (h *Handlers) CaptureCount(w http.ResponseWriter, r *http.Request) {
 			// ClosedPacks: cómo se repartió countedQty entre empaques (#204); falta en la pantalla anterior.
 			ClosedPacks []domain.ClosedPack `json:"closedPacks"`
 		} `json:"gross"`
+		// Lots: el desglose de fechas (spec 098). Ausente no cambia el que había; `[]` lo borra.
+		Lots *[]app.CountLot `json:"lots"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -128,7 +130,7 @@ func (h *Handlers) CaptureCount(w http.ResponseWriter, r *http.Request) {
 	u, _ := userFrom(r.Context())
 	in := app.CountCapture{
 		Qty: *body.CountedQty, Weight: body.Weight, WeightUnitID: body.WeightUnitID,
-		Confirmable: body.Confirmable, Confirmed: body.Confirmed,
+		Confirmable: body.Confirmable, Confirmed: body.Confirmed, Lots: body.Lots,
 	}
 	if g := body.Gross; g != nil {
 		in.Gross = &app.GrossCapture{Weight: g.Weight, WeightUnitID: g.WeightUnitID, PresentationID: g.PresentationID,
