@@ -134,3 +134,18 @@ web/e2e/vender-cuentas.spec.ts        # medidas a 1024×600/1280×854 y entregar
 ## Complexity Tracking
 
 Sin violaciones.
+
+## Revisión de arquitectura (after_plan, 2026-11-23)
+
+- `db-architect`: no aplica (sin tablas, columnas, índices, migraciones ni consultas).
+- `tablet-ui-reviewer`: el subagente se cortó por límite de gasto; revisión hecha en la sesión con
+  su misma lista, sobre la maqueta B medida. Sin `<select>`; ningún control bajo 44 px (medido en
+  el arnés). Hallazgos a cuidar en la implementación:
+  - MEDIUM: la columna necesita `flex="1" minH={0}` en su lista o `overflowY="auto"` no desplaza
+    (AGENTS.md); lo vigila la e2e de medidas.
+  - MEDIUM: «Entregar» en el renglón queda a ≥ 8 px del área de tocar la cuenta y es un botón
+    propio; sin confirmación (igual que en Pedidos), porque una entrega de más en una pagada es lo
+    que se quería, y en una no pagada la cuenta sigue visible con «Falta cobrar».
+  - LOW: con ticket abierto a 1024×600 caben 8 productos completos (hoy 9); aceptado por el dueño al
+    elegir B.
+  Veredicto: aprobado; repetir la revisión del subagente sobre el diff en `/revision-de-codigo`.
