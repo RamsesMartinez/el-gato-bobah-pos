@@ -183,7 +183,7 @@ web (celular de gama media-baja, red 4G lenta) contra un menú con el catálogo 
 - **Producto en temporada terminada o inactivo**: no sale, igual que en Vender.
 - **Producto agotado**: sale con «Agotado»; nunca se muestra cuánto queda.
 - **Producto con precio web pero «Web» apagado**: no sale.
-- **Descripción larga**: se corta visualmente a tres renglones en la tarjeta (el texto completo no
+- **Descripción larga**: se corta visualmente a dos renglones en la tarjeta (el texto completo no
   se pierde: se ve al tocar la tarjeta).
 - **Producto sin categoría activa** o categoría inactiva: no sale.
 - **Más de un negocio con datos en la misma base**: el menú de uno nunca muestra productos, precios
