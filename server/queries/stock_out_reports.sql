@@ -114,7 +114,7 @@ returning id;
 insert into notifications (branch_id, kind, item_type, ingredient_id, product_id, item_name, unit_code, on_hand_seen, opened_by)
 values (sqlc.arg(branch_id), 'stock_out', sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id),
         sqlc.arg(item_name), sqlc.arg(unit_code), sqlc.arg(on_hand_seen), sqlc.arg(opened_by))
-on conflict (company_id, branch_id, item_key, kind) where status = 'open' and kind <> 'not_found' do nothing
+on conflict (company_id, warehouse_id, item_key, kind) where status = 'open' and kind <> 'not_found' do nothing
 returning id;
 
 -- name: OpenOutNotification :one

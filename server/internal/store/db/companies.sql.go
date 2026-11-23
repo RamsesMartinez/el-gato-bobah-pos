@@ -28,6 +28,10 @@ with company as (
   insert into branches (company_id, branch_number, code, name, is_headquarters)
   select id, 1, headquarters_code(slug), left(name, 60), true from company
   returning company_id, id
+), sales_warehouse as (
+  -- Y su almacén de venta (spec 094): sin él, el primer movimiento de existencias truena (EGB03).
+  insert into warehouses (company_id, branch_id, name, is_sales)
+  select company_id, id, 'Local', true from headquarters
 ), terminal as (
   -- Un negocio nace con una terminal por omisión (spec 032, punto 8).
   insert into card_terminals (company_id, branch_id, name)

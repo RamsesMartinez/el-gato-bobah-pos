@@ -380,7 +380,7 @@ func (q *Queries) DeleteCountProductLine(ctx context.Context, arg DeleteCountPro
 const ensureProductStockLevel = `-- name: EnsureProductStockLevel :exec
 insert into stock_levels (company_id, branch_id, item_type, product_id, on_hand)
 select p.company_id, $1::bigint, 'producto', p.id, 0 from products p where p.id = $2::bigint
-on conflict (branch_id, product_id) do nothing
+on conflict (warehouse_id, product_id) do nothing
 `
 
 type EnsureProductStockLevelParams struct {

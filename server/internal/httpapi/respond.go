@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"strings"
 
@@ -88,6 +89,8 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "ROLE_INACTIVE"
 	case errors.Is(err, domain.ErrUsernameTaken):
 		status, code = http.StatusConflict, "USERNAME_TAKEN"
+	case errors.Is(err, domain.ErrWarehouseNotFound):
+		status, code = http.StatusNotFound, "WAREHOUSE_NOT_FOUND"
 	case errors.Is(err, domain.ErrNotFound):
 		status, code = http.StatusNotFound, "NOT_FOUND"
 	case errors.Is(err, domain.ErrInvalidCredentials):
@@ -182,6 +185,22 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusUnprocessableEntity, "CAPTURE_PRICE_REQUIRED"
 	case errors.Is(err, domain.ErrLinkKindMismatch):
 		status, code = http.StatusUnprocessableEntity, "LINK_KIND_MISMATCH"
+	// Almacenes (spec 094). Antes de ErrConflict/ErrNotFound, que los envuelven: cada uno pide a la
+	// pantalla algo distinto.
+	case errors.Is(err, domain.ErrWarehouseIsSales):
+		status, code = http.StatusConflict, "WAREHOUSE_IS_SALES"
+	case errors.Is(err, domain.ErrWarehouseHasStock):
+		status, code = http.StatusConflict, "WAREHOUSE_HAS_STOCK"
+	case errors.Is(err, domain.ErrWarehouseCountOpen):
+		status, code = http.StatusConflict, "WAREHOUSE_COUNT_OPEN"
+	case errors.Is(err, domain.ErrWarehouseNameTaken):
+		status, code = http.StatusConflict, "WAREHOUSE_NAME_TAKEN"
+	case errors.Is(err, domain.ErrWarehouseNotWritableYet):
+		status, code = http.StatusConflict, "WAREHOUSE_NOT_WRITABLE_YET"
+	case errors.Is(err, domain.ErrWarehouseMissing):
+		// Estado del negocio que no debería existir: 409 con código propio, no un 500 genérico.
+		status, code = http.StatusConflict, "WAREHOUSE_MISSING"
+		msg = domain.ErrWarehouseMissing.Error()
 	case errors.Is(err, domain.ErrBranchAmbiguous):
 		// 409 y código propio: es el estado del negocio (dos sucursales y nadie eligió), no algo
 		// que el operador mandó mal. Con un 500 genérico parecería una caída.
@@ -403,6 +422,10 @@ func Error(w http.ResponseWriter, err error) {
 	var mismatch domain.UnitKindMismatch
 	if errors.As(err, &mismatch) {
 		details = &errorDetails{IngredientID: mismatch.IngredientID, ProductName: mismatch.Name}
+	}
+	var withStock domain.WarehouseHasStock
+	if errors.As(err, &withStock) {
+		details = &errorDetails{Ingredients: int32(min(withStock.Items, math.MaxInt32))}
 	}
 	var busy domain.CountPlaceHasIngredients
 	if errors.As(err, &busy) {

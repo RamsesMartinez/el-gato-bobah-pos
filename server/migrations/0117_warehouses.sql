@@ -85,6 +85,16 @@ $$;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- current_sales_warehouse_id es el de venta de la sucursal de la sesión: lo que hoy leen las
+-- pantallas que decían `branch_id = current_branch_id()`. Con dos almacenes, leer por sucursal
+-- duplicaría cada artículo.
+create function current_sales_warehouse_id() returns bigint
+language sql stable as $$
+  select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, current_branch_id())
+$$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
 create function warehouses_before_update() returns trigger
 language plpgsql as $$
 begin
@@ -634,5 +644,6 @@ alter table count_places drop column warehouse_id;
 
 drop trigger warehouses_before_update on warehouses;
 drop function warehouses_before_update();
+drop function current_sales_warehouse_id();
 drop function sales_warehouse_of(bigint, bigint);
 drop table warehouses;

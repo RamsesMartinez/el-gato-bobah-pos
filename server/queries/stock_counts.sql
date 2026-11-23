@@ -186,7 +186,7 @@ select track_stock, (type = 'combo')::bool as is_package, is_active from product
 -- arquitectura de la 069). La empresa es la del producto, que RLS ya dejó ver.
 insert into stock_levels (company_id, branch_id, item_type, product_id, on_hand)
 select p.company_id, sqlc.arg(branch_id)::bigint, 'producto', p.id, 0 from products p where p.id = sqlc.arg(product_id)::bigint
-on conflict (branch_id, product_id) do nothing;
+on conflict (warehouse_id, product_id) do nothing;
 
 -- name: LockProductStockLevelForCapture :exec
 -- Mismo arreglo que el de los insumos: el candado en una sentencia y la lectura en otra.

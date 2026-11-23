@@ -358,7 +358,7 @@ const openManualOut = `-- name: OpenManualOut :many
 insert into notifications (branch_id, kind, item_type, ingredient_id, product_id, item_name, unit_code, on_hand_seen, opened_by)
 values ($1, 'stock_out', $2, $3, $4,
         $5, $6, $7, $8)
-on conflict (company_id, branch_id, item_key, kind) where status = 'open' and kind <> 'not_found' do nothing
+on conflict (company_id, warehouse_id, item_key, kind) where status = 'open' and kind <> 'not_found' do nothing
 returning id
 `
 

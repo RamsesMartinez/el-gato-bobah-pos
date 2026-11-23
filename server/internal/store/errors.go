@@ -21,6 +21,14 @@ const branchAmbiguousCode = "EGB01"
 // unió a otro. El mensaje trae «ingredient_merged|<destino>».
 const mergedIngredientCode = "EGB02"
 
+// warehouseMissingCode y warehouseNotWritableCode son los de la 0117: la sucursal no tiene almacén
+// de venta (`sales_warehouse_of`), y un movimiento o un cambio de almacén de venta que la base todavía
+// no admite mientras guarde las existencias con llave por sucursal.
+const (
+	warehouseMissingCode     = "EGB03"
+	warehouseNotWritableCode = "EGB04"
+)
+
 // DomainError traduce a un sentinel de domain los errores que la base lanza a propósito.
 func DomainError(err error) error {
 	var pgErr *pgconn.PgError
@@ -35,6 +43,10 @@ func DomainError(err error) error {
 			return domain.IngredientMergedInto{Target: target}
 		}
 		return domain.ErrIngredientMerged
+	case warehouseMissingCode:
+		return fmt.Errorf("%w (%s)", domain.ErrWarehouseMissing, pgErr.Message)
+	case warehouseNotWritableCode:
+		return domain.ErrWarehouseNotWritableYet
 	}
 	return err
 }

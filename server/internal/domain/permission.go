@@ -90,6 +90,12 @@ const (
 	// del artículo en 0 con un ajuste fijo, sin cantidad: por eso puede tenerlo quien no ajusta
 	// existencias. Lo traen los cuatro sugeridos porque quien vende es quien ve que se acabó.
 	PermInventoryReportOut Permission = "inventory.report_out"
+	// PermInventoryWarehouseManage: dar de alta, renombrar, archivar almacenes y elegir el de venta
+	// (094). Lo traen los sugeridos que hoy configuran el almacén.
+	PermInventoryWarehouseManage Permission = "inventory.warehouse_manage"
+	// PermInventoryTransfer: mover mercancía entre almacenes de la misma sucursal (094). Lo traen los
+	// sugeridos que hoy cuentan el almacén: quien cuenta es quien sabe qué falta en el local.
+	PermInventoryTransfer Permission = "inventory.transfer"
 )
 
 // AllPermissions devuelve todos los permisos que existen, en un orden fijo.
@@ -101,7 +107,8 @@ func AllPermissions() []Permission {
 		PermExpensesEdit, PermExpensesCancel, PermOrdersDeliveredView,
 		PermCashOperate, PermOrdersPlatformRef, PermPlatformPricesCapture, PermSalesView, PermPlatformSettlementsCapture,
 		PermReportsView, PermExpensesCapture, PermPlatformsConfigure, PermPlatformsCredentials, PermBusinessConfigure,
-		PermEmployeesManage, PermRolesManage, PermIntegrationsManage, PermInventoryReportOut}
+		PermEmployeesManage, PermRolesManage, PermIntegrationsManage, PermInventoryReportOut,
+		PermInventoryWarehouseManage, PermInventoryTransfer}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -123,7 +130,8 @@ func PermissionsFor(role Role) []Permission {
 			PermInventoryWriteOff, PermInventoryWriteOffApprove, PermInventoryView, PermCashCloseWithoutClockOut, PermCashAdjustCount,
 			PermExpensesCancel, PermOrdersDeliveredView,
 			PermCashOperate, PermOrdersPlatformRef, PermPlatformPricesCapture, PermSalesView, PermPlatformSettlementsCapture,
-			PermReportsView, PermExpensesCapture, PermPlatformsConfigure, PermBusinessConfigure, PermInventoryReportOut}
+			PermReportsView, PermExpensesCapture, PermPlatformsConfigure, PermBusinessConfigure, PermInventoryReportOut,
+			PermInventoryWarehouseManage, PermInventoryTransfer}
 	case RoleCajero:
 		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending, PermInventoryWriteOff, PermOrdersDeliveredView,
 			PermCashOperate, PermOrdersPlatformRef, PermPlatformPricesCapture, PermInventoryReportOut}
@@ -175,6 +183,10 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede avisar que algo se acabó"
 	case PermInventoryWriteOffApprove:
 		return "Tu usuario no puede aprobar lo que se echó a perder"
+	case PermInventoryWarehouseManage:
+		return "Tu usuario no puede dar de alta ni cambiar almacenes"
+	case PermInventoryTransfer:
+		return "Tu usuario no puede traspasar entre almacenes"
 	case PermInventoryView:
 		return "Tu usuario no puede ver el almacén"
 	case PermCashCloseWithoutClockOut:
@@ -242,6 +254,8 @@ var permissionMeta = map[Permission][2]string{
 	PermInventoryCount:             {"inventory", "Contar y ajustar existencias"},
 	PermInventoryWriteOff:          {"inventory", "Registrar lo que se echó a perder"},
 	PermInventoryReportOut:         {"inventory", "Avisar que algo se acabó o no se encuentra"},
+	PermInventoryWarehouseManage:   {"inventory", "Administrar los almacenes"},
+	PermInventoryTransfer:          {"inventory", "Traspasar entre almacenes"},
 	PermInventoryWriteOffApprove:   {"inventory", "Aprobar lo que se echó a perder"},
 	PermInventoryConfigure:         {"inventory", "Configurar el almacén"},
 	PermInventoryHealthView:        {"inventory", "Ver la salud del inventario"},

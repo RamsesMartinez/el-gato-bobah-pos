@@ -185,13 +185,13 @@ update ingredients set low_stock_asked_at = coalesce(low_stock_asked_at, now()) 
 -- name: UpsertBranchMinimum :exec
 insert into branch_stock_minimums (branch_id, item_type, ingredient_id, product_id, min_stock, updated_by)
 values (sqlc.arg(branch_id), sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id), sqlc.arg(min_stock), sqlc.arg(updated_by))
-on conflict (branch_id, ingredient_id) where ingredient_id is not null
+on conflict (warehouse_id, ingredient_id) where ingredient_id is not null
 do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now();
 
 -- name: UpsertBranchProductMinimum :exec
 insert into branch_stock_minimums (branch_id, item_type, product_id, min_stock, updated_by)
 values (sqlc.arg(branch_id), 'producto', sqlc.arg(product_id), sqlc.arg(min_stock), sqlc.arg(updated_by))
-on conflict (branch_id, product_id) where product_id is not null
+on conflict (warehouse_id, product_id) where product_id is not null
 do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now();
 
 -- name: DeleteBranchMinimum :exec

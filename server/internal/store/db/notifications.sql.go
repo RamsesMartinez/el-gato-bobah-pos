@@ -993,7 +993,7 @@ func (q *Queries) UnreadNotifications(ctx context.Context, arg UnreadNotificatio
 const upsertBranchMinimum = `-- name: UpsertBranchMinimum :exec
 insert into branch_stock_minimums (branch_id, item_type, ingredient_id, product_id, min_stock, updated_by)
 values ($1, $2, $3, $4, $5, $6)
-on conflict (branch_id, ingredient_id) where ingredient_id is not null
+on conflict (warehouse_id, ingredient_id) where ingredient_id is not null
 do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now()
 `
 
@@ -1021,7 +1021,7 @@ func (q *Queries) UpsertBranchMinimum(ctx context.Context, arg UpsertBranchMinim
 const upsertBranchProductMinimum = `-- name: UpsertBranchProductMinimum :exec
 insert into branch_stock_minimums (branch_id, item_type, product_id, min_stock, updated_by)
 values ($1, 'producto', $2, $3, $4)
-on conflict (branch_id, product_id) where product_id is not null
+on conflict (warehouse_id, product_id) where product_id is not null
 do update set min_stock = excluded.min_stock, updated_by = excluded.updated_by, updated_at = now()
 `
 
