@@ -645,8 +645,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                     <Text fontWeight="700">{visibleItems.length} {visibleItems.length === 1 ? 'renglón' : 'renglones'}</Text>
                     {multiWh && ticketWh !== null && (
                       <HStack gap={2}>
-                        <Text fontSize="sm" fontWeight="600">¿Dónde se guarda?</Text>
-                        <Segmented label="¿Dónde se guarda todo el ticket?" value={String(ticketWh)}
+                        <Text fontSize="sm" fontWeight="600">¿Dónde se guarda el ticket?</Text>
+                        <Segmented label="¿Dónde se guarda el ticket?" value={String(ticketWh)}
                           options={whList.map((w) => ({ value: String(w.id), label: w.name, icon: w.isSales ? <LuStore /> : <LuWarehouse /> }))}
                           onChange={(v) => {
                             setTicketWh(Number(v));
@@ -695,7 +695,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                   {selected && narrow && (
                     <DrawerRoot open={sheetOpen} placement="bottom" onOpenChange={(e) => { if (!e.open) setSheetOpen(false); }}>
                       <DrawerBackdrop />
-                      <DrawerContent borderTopRadius="2xl" maxH="90dvh">
+                      <DrawerContent borderTopRadius="2xl" maxH="90dvh" colorPalette={palette}>
                         <DrawerHeader><Text fontWeight="700" fontSize="lg">Renglón {visibleItems.indexOf(selected) + 1}</Text></DrawerHeader>
                         <DrawerBody pb={4} overflowY="auto">{detailOf(selected)}</DrawerBody>
                         <DrawerFooter><Button minH="52px" onClick={() => setSheetOpen(false)}>Listo</Button></DrawerFooter>
@@ -1014,8 +1014,8 @@ function ItemRow({ item, units, articles, articleList, presentations, sums, cros
       )}
       {goods && warehouses.length > 1 && warehouseId !== null && (
         <VStack align="stretch" gap={1}>
-          <Text fontSize="sm" fontWeight="600">¿Dónde se guarda?</Text>
-          <Segmented label="¿Dónde se guarda?" value={String(warehouseId)}
+          <Text fontSize="sm" fontWeight="600">¿Dónde se guarda este renglón?</Text>
+          <Segmented label="¿Dónde se guarda este renglón?" value={String(warehouseId)}
             options={warehouses.map((w) => ({ value: String(w.id), label: w.name, icon: w.isSales ? <LuStore /> : <LuWarehouse /> }))}
             onChange={(v) => onWarehouse(Number(v))} />
         </VStack>

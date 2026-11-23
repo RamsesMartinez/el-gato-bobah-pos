@@ -85,7 +85,7 @@ export function StockPage() {
         {/* La persona nueva buscaba aquí sus almacenes (prueba con usuario nuevo, 094): viven en Negocio,
             junto a los lugares para contar, y este atajo la lleva. */}
         {can('inventory.warehouse_manage', user) && (
-          <Button minH="44px" variant="ghost" onClick={() => navigate('/negocio#almacenes')}>Almacenes ›</Button>
+          <Button minH="44px" variant="ghost" onClick={() => navigate('/negocio?seccion=inventario#almacenes')}>Almacenes ›</Button>
         )}
       </HStack>
       <Tabs.Root value={tab} onValueChange={(e) => setParams({ tab: e.value }, { replace: true })}

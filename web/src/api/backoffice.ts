@@ -1243,6 +1243,8 @@ export const backofficeApi = {
     api.get<{ items?: Warehouse[] }>(`/stock/warehouses${includeArchived ? '?includeArchived=1' : ''}`),
   createWarehouse: (name: string) => api.post<{ id: number }>('/stock/warehouses', { name }),
   renameWarehouse: (id: number, name: string) => api.patch<void>(`/stock/warehouses/${id}`, { name }),
+  // Pasar las ventas a este almacén (spec 094): el anterior deja de ser el de venta en la misma operación.
+  setSalesWarehouse: (id: number) => api.patch<void>(`/stock/warehouses/${id}`, { isSales: true }),
   archiveWarehouse: (id: number) => api.post<void>(`/stock/warehouses/${id}/archive`, {}),
   restoreWarehouse: (id: number) => api.post<void>(`/stock/warehouses/${id}/restore`, {}),
   archiveCountPlace: (id: number, moveTo?: number | null) =>

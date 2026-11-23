@@ -7,7 +7,7 @@ import { ApiError } from '../../api/client';
 import { WarehousesSettings } from './WarehousesSettings';
 
 const back = vi.hoisted(() => ({
-  warehouses: vi.fn(), createWarehouse: vi.fn(), renameWarehouse: vi.fn(), archiveWarehouse: vi.fn(), restoreWarehouse: vi.fn(),
+  warehouses: vi.fn(), createWarehouse: vi.fn(), renameWarehouse: vi.fn(), archiveWarehouse: vi.fn(), restoreWarehouse: vi.fn(), setSalesWarehouse: vi.fn(),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 
@@ -16,7 +16,7 @@ beforeEach(() => {
     { id: 1, name: 'Local', isSales: true, isActive: true, itemsWithStock: 16 },
     { id: 2, name: 'Bodega', isSales: false, isActive: true, itemsWithStock: 0 },
   ] });
-  for (const f of [back.createWarehouse, back.renameWarehouse, back.archiveWarehouse, back.restoreWarehouse]) f.mockResolvedValue(undefined);
+  for (const f of [back.createWarehouse, back.renameWarehouse, back.archiveWarehouse, back.restoreWarehouse, back.setSalesWarehouse]) f.mockResolvedValue(undefined);
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -81,6 +81,16 @@ describe('almacenes de la sucursal (spec 094, maqueta A3)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Archivar' }));
     fireEvent.click(screen.getByRole('button', { name: 'Sí, archivar' }));
     expect(await screen.findByText('Tiene compras por recibir: recíbelas o márcalas como que no llegan primero')).toBeInTheDocument();
+  });
+
+  // La persona nueva no encontró cómo cambiar el almacén de venta (prueba con usuario nuevo, 094).
+  test('otro almacén se puede volver el de venta, con confirmación', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: /Bodega/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Vender desde aquí' }));
+    expect(back.setSalesWarehouse).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Sí, vender desde Bodega' }));
+    await waitFor(() => expect(back.setSalesWarehouse).toHaveBeenCalledWith(2));
   });
 
   test('el de venta y uno con existencias no ofrecen archivar, y dicen por qué', async () => {
