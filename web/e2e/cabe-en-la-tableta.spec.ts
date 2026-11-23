@@ -15,7 +15,6 @@ import { alPasoDelCierre } from './cierre';
 // así que se mide en vez de recordarse. Vitest no puede: las medidas de Chakra son clases CSS que
 // jsdom no resuelve. Aquí hay un navegador de verdad.
 
-const panelAbierto = (page: Page) => page.getByRole('button', { name: 'Ocultar pedido' }).isVisible().catch(() => false);
 
 async function altoDeLaHoja(page: Page) {
   return Math.round((await page.locator('[role="dialog"]').last().boundingBox())?.height ?? 0);
