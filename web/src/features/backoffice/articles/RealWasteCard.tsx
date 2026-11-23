@@ -44,7 +44,8 @@ export function RealWasteRows({ items, expected, unit }: { items: RealWaste[]; e
             {over && <Text fontSize="sm" color="fg.warning">Pasa lo esperado</Text>}
             {/* Lo mermado sin ventas va en texto: un title no se ve al tocar. */}
             {r.state === 'no_sales' && <Text fontSize="sm" color="fg.muted">{Number(r.wasted)} {unit} mermados</Text>}
-            <Text fontWeight="700">
+            {/* nowrap: en una tarjeta angosta la cifra y su explicación bajan juntas, no partidas. */}
+            <Text fontWeight="700" whiteSpace="nowrap">
               {r.state === 'ratio' ? `${r.ratio} %` : r.state === 'no_sales' ? 'Sin ventas' : 'Sin datos'}
               {/* Un 0 % con ventas se leía como «sin datos»: dice que no se registró merma. */}
               {r.state === 'ratio' && r.ratio === 0 && <Text as="span" fontSize="sm" fontWeight="normal" color="fg.muted"> · sin merma registrada</Text>}

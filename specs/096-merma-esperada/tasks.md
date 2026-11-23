@@ -137,9 +137,9 @@ por la razón correcta.
 - [X] T045 `/revision-de-codigo` sobre el diff y corregir cada hallazgo con su test
 - [X] T046 Prueba con alguien nuevo de una fonda a 1024×600 en local con la base restaurada (subagente sin contexto): capturar el general, el de un producto y ver de dónde sale el costo; anotar en este spec lo que se atore
 - [X] T047 `make ci-local` en verde
-- [ ] T048 PR a develop al día (develop en local con commit firmado), CI verde y merge
-- [ ] T049 Release develop → main: respaldo previo, PR nombrando lo que trae develop de otras sesiones, CI verde, merge, deploy hasta `readyz` 200, journal de solo lectura sin ERROR ni 5xx propios
-- [ ] T050 Comentar en el #226 qué entró y que la subida 2 queda lista en esta lista de tareas para cuando el #65 esté completo
+- [X] T048 PR a develop al día (develop en local con commit firmado), CI verde y merge
+- [X] T049 Release develop → main: respaldo previo, PR nombrando lo que trae develop de otras sesiones, CI verde, merge, deploy hasta `readyz` 200, journal de solo lectura sin ERROR ni 5xx propios
+- [X] T050 Comentar en el #226 qué entró y que la subida 2 queda lista en esta lista de tareas para cuando el #65 esté completo
 
 ---
 
