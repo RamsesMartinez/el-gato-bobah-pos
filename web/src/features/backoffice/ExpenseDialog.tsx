@@ -27,6 +27,7 @@ import { DensitySheet } from './articles/DensitySheet';
 import { ApiError } from '../../api/client';
 import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
+import { useUiStore } from '../../stores/ui';
 import {
   backofficeApi, type ExpenseCategory, type Supplier, type ArticleSuggestion, type Article, type Unit,
   type Presentation, type Warehouse, type ExpenseItemBody, type ExpensePaymentBody, type ParsedDoc, type DocLine, type CashRegister,
@@ -129,6 +130,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   open: boolean; onClose: () => void; onSaved: () => void;
 }) {
   const qc = useQueryClient();
+  const palette = useUiStore((s) => s.palette);
   const { data: cats } = useQuery({ queryKey: ['expense-cats'], queryFn: backofficeApi.expenseCategories, enabled: open });
   const { data: sups } = useQuery({ queryKey: ['suppliers'], queryFn: backofficeApi.suppliers, enabled: open });
   const { data: methods } = useQuery({ queryKey: ['payment-methods'], queryFn: posApi.paymentMethods, enabled: open });
@@ -516,7 +518,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
       placement="center" size="full" scrollBehavior="inside">
       <DialogBackdrop />
       {/* Pantalla completa: «cover» con scroll interno lo dejaba en 400 de los 600 px. */}
-      <DialogContent h="100dvh" maxH="100dvh">
+      {/* El diálogo se pinta fuera del contenedor que lleva la paleta del negocio (Apariencia): lo
+          elegido y lo activo la toman aquí (spec 094, color P1). */}
+      <DialogContent h="100dvh" maxH="100dvh" colorPalette={palette}>
         <DialogHeader>
           <DialogTitle>{step === 'capture' && parsed ? 'Nuevo gasto · desde el ticket' : 'Nuevo gasto'}</DialogTitle>
         </DialogHeader>
