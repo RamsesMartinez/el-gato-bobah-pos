@@ -136,7 +136,7 @@ por la razón correcta.
 - [X] T044 E2E en `web/e2e/merma-esperada.spec.ts` contra el `make start` del worktree a 1024×600 y 1280×854 (capturas solo en `test-results/`): general 5 % sube el costo, % del producto, 0 % de artículo, desglose suma, historial del artículo con ≥ 2 renglones visibles a 1024×600; cuenta los toques de capturar el general y el % de un producto (≤ 4 cada uno, SC-005); deja todo como estaba
 - [X] T045 `/revision-de-codigo` sobre el diff y corregir cada hallazgo con su test
 - [X] T046 Prueba con alguien nuevo de una fonda a 1024×600 en local con la base restaurada (subagente sin contexto): capturar el general, el de un producto y ver de dónde sale el costo; anotar en este spec lo que se atore
-- [ ] T047 `make ci-local` en verde
+- [X] T047 `make ci-local` en verde
 - [ ] T048 PR a develop al día (develop en local con commit firmado), CI verde y merge
 - [ ] T049 Release develop → main: respaldo previo, PR nombrando lo que trae develop de otras sesiones, CI verde, merge, deploy hasta `readyz` 200, journal de solo lectura sin ERROR ni 5xx propios
 - [ ] T050 Comentar en el #226 qué entró y que la subida 2 queda lista en esta lista de tareas para cuando el #65 esté completo
