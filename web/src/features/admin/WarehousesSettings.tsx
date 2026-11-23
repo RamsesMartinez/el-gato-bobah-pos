@@ -1,0 +1,155 @@
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Badge, Box, Button, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react';
+import { LuChevronRight, LuShoppingCart, LuStore, LuWarehouse } from 'react-icons/lu';
+import {
+  DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
+} from '../../components/ui/drawer';
+import { ApiError } from '../../api/client';
+import { backofficeApi, type Warehouse } from '../../api/backoffice';
+
+// Los almacenes de la sucursal (spec 094, maqueta A3): «Donde se vende» y «Donde se guarda», cada uno
+// con su ícono y lo que tiene. Tocar un renglón abre su hoja (renombrar, archivar); es el mismo patrón
+// que «Lugares para contar», que vive al lado.
+
+const SUGERENCIAS = ['Bodega', 'Cuarto frío', 'Sótano'];
+const contenido = (w: Warehouse) => (w.itemsWithStock === 0 ? 'Vacío'
+  : w.itemsWithStock === 1 ? '1 artículo con existencia' : `${w.itemsWithStock} artículos con existencia`);
+
+function mensaje(e: unknown) {
+  if (e instanceof ApiError) {
+    if (e.code === 'WAREHOUSE_NAME_TAKEN') return 'Ya hay un almacén con ese nombre';
+    if (e.status === 400) return 'El nombre lleva de 1 a 40 letras';
+    if (e.code === 'WAREHOUSE_HAS_STOCK') return 'Tiene existencias: traspásalas o cuéntalas en cero antes de archivarlo';
+    if (e.code === 'WAREHOUSE_COUNT_OPEN') return 'Tiene un conteo abierto: ciérralo o descártalo primero';
+  }
+  return 'No se pudo guardar';
+}
+
+export function WarehousesSettings() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['warehouses'], queryFn: () => backofficeApi.warehouses() });
+  const items = data?.items ?? [];
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Warehouse | null>(null);
+  const refresh = () => qc.invalidateQueries({ queryKey: ['warehouses'] });
+  const venta = items.filter((w) => w.isSales);
+  const guarda = items.filter((w) => !w.isSales);
+
+  return (
+    <Box id="almacenes" mt={6} borderWidth="1px" borderRadius="lg" p={5}>
+      <Flex justify="space-between" align="center" gap={3} mb={1}>
+        <Text fontWeight="700">Almacenes</Text>
+        <Button minH="44px" variant="outline" onClick={() => setAdding(true)}>Agregar almacén</Button>
+      </Flex>
+      <Text fontSize="sm" color="fg.muted" mb={3}>Lugares de esta sucursal donde guardas mercancía.</Text>
+      <Grupo titulo="Donde se vende" items={venta} vacio="" onOpen={setEditing} />
+      <Grupo titulo="Donde se guarda" items={guarda} vacio="Todavía no hay otro almacén." onOpen={setEditing} />
+      {adding && <AltaSheet onClose={() => setAdding(false)} onDone={() => { setAdding(false); void refresh(); }} />}
+      {editing && <EditSheet w={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); void refresh(); }} />}
+    </Box>
+  );
+}
+
+function Grupo({ titulo, items, vacio, onOpen }: { titulo: string; items: Warehouse[]; vacio: string; onOpen: (w: Warehouse) => void }) {
+  if (items.length === 0 && !vacio) return null;
+  return (
+    <VStack align="stretch" gap={2} mb={3} role="group" aria-label={titulo}>
+      <Text fontSize="sm" fontWeight="600" color="fg.muted">{titulo}</Text>
+      {items.length === 0 && <Text fontSize="sm" color="fg.muted">{vacio}</Text>}
+      {items.map((w) => (
+        <Button key={w.id} variant="outline" minH="72px" h="auto" py={3} justifyContent="space-between" bg="bg.panel"
+          whiteSpace="normal" textAlign="start" fontWeight="400" onClick={() => onOpen(w)}>
+          <HStack gap={4} minW={0}>
+            <Box boxSize="48px" borderRadius="lg" display="flex" alignItems="center" justifyContent="center" flexShrink={0}
+              bg="colorPalette.subtle" color="colorPalette.fg" fontSize="24px" aria-hidden>
+              {w.isSales ? <LuStore /> : <LuWarehouse />}
+            </Box>
+            <VStack align="start" gap={0} minW={0}>
+              <HStack gap={2}>
+                <Text fontWeight="700" fontSize="lg" truncate>{w.name}</Text>
+                {w.isSales && <Badge variant="subtle"><LuShoppingCart aria-hidden /> De venta</Badge>}
+              </HStack>
+              <Text fontSize="sm" color="fg.muted">{w.isSales ? 'De aquí salen las ventas · ' : ''}{contenido(w)}</Text>
+            </VStack>
+          </HStack>
+          <LuChevronRight aria-hidden />
+        </Button>
+      ))}
+    </VStack>
+  );
+}
+
+function AltaSheet({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const save = useMutation({ mutationFn: () => backofficeApi.createWarehouse(name.trim()), onSuccess: onDone, onError: (e) => setError(mensaje(e)) });
+  return (
+    <DrawerRoot open onOpenChange={(e) => { if (!e.open) onClose(); }} placement="bottom">
+      <DrawerBackdrop />
+      <DrawerContent>
+        <DrawerHeader><Text fontWeight="700">Agregar almacén</Text></DrawerHeader>
+        <DrawerBody>
+          <VStack align="stretch" gap={3}>
+            <Input aria-label="Nombre del almacén" placeholder="Nombre del lugar" minH="44px" maxLength={40}
+              value={name} onChange={(e) => setName(e.target.value)} />
+            <HStack gap={2} flexWrap="wrap">
+              <Text fontSize="sm" color="fg.muted">Sugerencias:</Text>
+              {SUGERENCIAS.map((s) => <Button key={s} size="sm" minH="44px" variant="outline" onClick={() => setName(s)}>{s}</Button>)}
+            </HStack>
+            <Text fontSize="sm" color="fg.muted">Nace vacío. Lo que llegue ahí se registra en la compra o con un traspaso.</Text>
+            {error && <Text fontSize="sm" color="fg.error">{error}</Text>}
+          </VStack>
+        </DrawerBody>
+        <DrawerFooter>
+          <Button minH="44px" disabled={!name.trim()} loading={save.isPending} onClick={() => save.mutate()}>Agregar</Button>
+        </DrawerFooter>
+      </DrawerContent>
+    </DrawerRoot>
+  );
+}
+
+function EditSheet({ w, onClose, onDone }: { w: Warehouse; onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState(w.name);
+  const [error, setError] = useState('');
+  const [archiving, setArchiving] = useState(false);
+  const rename = useMutation({ mutationFn: () => backofficeApi.renameWarehouse(w.id, name.trim()), onSuccess: onDone, onError: (e) => setError(mensaje(e)) });
+  const archive = useMutation({ mutationFn: () => backofficeApi.archiveWarehouse(w.id), onSuccess: onDone, onError: (e) => setError(mensaje(e)) });
+  const canArchive = !w.isSales && w.itemsWithStock === 0;
+  return (
+    <DrawerRoot open onOpenChange={(e) => { if (!e.open) onClose(); }} placement="bottom">
+      <DrawerBackdrop />
+      <DrawerContent>
+        <DrawerHeader><Text fontWeight="700">{archiving ? 'Archivar almacén' : w.name}</Text></DrawerHeader>
+        <DrawerBody>
+          {!archiving && (
+            <VStack align="stretch" gap={3}>
+              <Input aria-label="Nombre del almacén" minH="44px" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
+              {w.isSales && <Text fontSize="sm" color="fg.muted">De aquí salen las ventas. Este almacén no se archiva.</Text>}
+              {!w.isSales && w.itemsWithStock > 0 && (
+                <Text fontSize="sm" color="fg.muted">{contenido(w)}. Para archivarlo, traspasa o cuenta en cero lo que tiene.</Text>
+              )}
+            </VStack>
+          )}
+          {archiving && <Text>Se archiva «{w.name}». Ya no aparece en las listas.</Text>}
+          {error && <Text fontSize="sm" color="fg.error" mt={2}>{error}</Text>}
+        </DrawerBody>
+        <DrawerFooter>
+          {!archiving && (
+            <HStack w="100%" justify="space-between" gap={12}>
+              <Button minH="44px" disabled={!name.trim() || name.trim() === w.name} loading={rename.isPending}
+                onClick={() => rename.mutate()}>Guardar</Button>
+              {canArchive && <Button minH="44px" variant="ghost" colorPalette="red" onClick={() => { setError(''); setArchiving(true); }}>Archivar</Button>}
+            </HStack>
+          )}
+          {archiving && (
+            <HStack w="100%" gap={3}>
+              <Button minH="44px" colorPalette="red" loading={archive.isPending} onClick={() => archive.mutate()}>Sí, archivar</Button>
+              <Button minH="44px" variant="ghost" onClick={() => setArchiving(false)}>No</Button>
+            </HStack>
+          )}
+        </DrawerFooter>
+      </DrawerContent>
+    </DrawerRoot>
+  );
+}
