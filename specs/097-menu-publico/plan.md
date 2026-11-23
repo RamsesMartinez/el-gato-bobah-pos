@@ -76,8 +76,8 @@ Sin violaciones. *Complexity Tracking* abajo: un proyecto de Pages más.
 | Menú público y ajustes | query + app | `server/queries/public_menu.sql`, `server/internal/app/public_menu.go` |
 | Rutas públicas y de ajustes, límite por IP | httpapi | `server/internal/httpapi/handlers_public_menu.go`, `router.go`, `ratelimit.go` (`publicMenuKey`), `respond.go` |
 | Configuración | config | `server/internal/config/config.go` (`MENU_BASE_URL`, `MENU_EDGE_KEY`) |
-| Plantilla, datos, marca | web (puro) | `web/src/menu-publico/{plantillas/classic.ts,datos.ts,marca.ts,html.ts,formato.ts}` |
-| Function | web (Pages) | `web/menu/functions/[[path]].ts`, `web/menu/public/{_routes.json,_headers,robots.txt,og-default.png}`, `web/tsconfig.menu.json`, scripts `build:menu`/`dev:menu`/`typecheck:menu` |
+| Plantilla, datos, marca | web (puro) | `web/menu/plantilla/{classic,datos,marca,html,formato,sprite,paginas,index}.ts` |
+| Function | web (Pages) | `web/menu/borde/{handler,worker}.ts` (empaquetada como `_worker.js` por `web/menu/build.ts`), `web/menu/public/{_routes.json,_headers,robots.txt,og-default.png}`, `web/tsconfig.menu.json`, scripts `build:menu`/`dev:menu`/`typecheck:menu` |
 | Barrera POS ↔ menú | lint | `web/eslint.config.js` |
 | Venta en web (Ajustes) | web | `web/src/features/admin/settings/VentaEnWebSection.tsx` + `web/src/features/admin/settings/menuPublico/*` (enlace, QR, tarjeta, color), `web/src/api/admin.ts` |
 | Despliegue | CI | `.github/workflows/ci.yml` (`deploy-menu`, `deploy-menu-staging`, typecheck y tests del menú en `frontend`) |
@@ -202,10 +202,11 @@ server/
     ├── httpapi/{handlers_public_menu,router,ratelimit,respond}.go
     └── integration/{migracion_0121,public_menu}_test.go
 web/
-├── menu/                       ← proyecto de Pages nuevo (sin Vite)
-│   ├── functions/[[path]].ts
+├── menu/                       ← proyecto de Pages nuevo (sin Vite ni React)
+│   ├── plantilla/              ← plantilla + datos + marca (puro, probado con vitest)
+│   ├── borde/{handler,worker}.ts
+│   ├── build.ts · dev.sh
 │   └── public/{_routes.json,_headers,robots.txt,og-default.png}
-├── src/menu-publico/           ← plantilla + datos + marca (puro, probado con vitest)
 ├── src/features/admin/settings/{VentaEnWebSection.tsx,menuPublico/*}
 └── tsconfig.menu.json
 ```
