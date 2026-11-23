@@ -60,23 +60,11 @@ type WebSalesSummary struct {
 	Total        int `json:"total"`
 }
 
-// Summary cuenta sobre la misma oferta: si el resumen tuviera su propia consulta, podría decir algo
-// distinto de lo que la web muestra.
+// Summary cuenta con la misma base que Offer, en una sola sentencia (WebSalesCounts).
 func (s *WebSalesService) Summary(ctx context.Context) (WebSalesSummary, error) {
-	q := s.store.QC(ctx)
-	rows, err := q.WebOfferProducts(ctx)
+	r, err := s.store.QC(ctx).WebSalesCounts(ctx)
 	if err != nil {
 		return WebSalesSummary{}, err
 	}
-	total, err := q.ActiveCatalogCount(ctx)
-	if err != nil {
-		return WebSalesSummary{}, err
-	}
-	sum := WebSalesSummary{OnWeb: len(rows), Total: int(total)}
-	for _, r := range rows {
-		if r.WebPrice != nil {
-			sum.WithWebPrice++
-		}
-	}
-	return sum, nil
+	return WebSalesSummary{OnWeb: int(r.OnWeb), WithWebPrice: int(r.WithWebPrice), Total: int(r.Total)}, nil
 }

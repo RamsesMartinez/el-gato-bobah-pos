@@ -336,7 +336,7 @@ export function NewProductDialog({ isOpen, onClose, categoryOptions }: {
     mutationFn: () => adminApi.createProduct({
       name: name.trim(), categoryId: Number(categoryId), price: montoTecleado(price) ?? 0, favorite, cost: costo ?? undefined,
       // Sin tocar las casillas no viaja: el servidor ya lo crea en los dos lugares.
-      ...(tocoDondeSeVende ? { sales: ventaParaGuardar(venta) } : {}),
+      ...(tocoDondeSeVende ? { sales: ventaParaGuardar(venta, null) } : {}),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'products'] });

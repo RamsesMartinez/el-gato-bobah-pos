@@ -29,6 +29,7 @@ GET /api/v1/admin/products/{id}/alt-names/similar admin,gerente
 GET /api/v1/admin/products/{id}/composition admin,gerente
 GET /api/v1/admin/products/{id}/groups admin,gerente
 GET /api/v1/admin/recipes admin,gerente
+GET /api/v1/admin/web-sales/summary admin,gerente
 GET /api/v1/articles admin,gerente
 GET /api/v1/articles/suggest admin,gerente
 GET /api/v1/branches/card-count-modes admin,gerente
@@ -67,6 +68,7 @@ GET /api/v1/payment-methods/all admin,gerente
 GET /api/v1/permissions admin
 GET /api/v1/pos/folio-names admin,gerente,cajero,mesero
 GET /api/v1/pos/menu admin,gerente,cajero,mesero
+GET /api/v1/pos/menu/sold-out admin,gerente,cajero,mesero
 GET /api/v1/pos/modifier-defaults admin,gerente,cajero,mesero
 GET /api/v1/pos/popular admin,gerente,cajero,mesero
 GET /api/v1/products/{id}/costing admin,gerente

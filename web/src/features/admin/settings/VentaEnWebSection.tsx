@@ -7,14 +7,15 @@ import { adminApi } from '../../../api/admin';
 // 092, FR-025). Aquí vivirán después el menú en línea, el QR y la marca (#316).
 export function VentaEnWebSection() {
   const navigate = useNavigate();
-  const { data, isLoading } = useQuery({ queryKey: ['admin', 'web-sales'], queryFn: adminApi.webSalesSummary });
+  const { data, isLoading, isError } = useQuery({ queryKey: ['admin', 'web-sales'], queryFn: adminApi.webSalesSummary });
   return (
     <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
       <Text fontWeight="700" mb={1}>Productos en la web</Text>
       <Text fontSize="sm" color="fg.muted" mb={4}>
         Lo que se ofrece en el menú en línea. Se decide en cada producto, en su pestaña «Venta en web».
       </Text>
-      {isLoading || !data ? <Spinner /> : (
+      {isError ? <Text fontSize="sm" color="fg.muted" mb={4}>No se pudo leer cuántos productos se venden en la web.</Text>
+        : isLoading || !data ? <Spinner /> : (
         <HStack gap={10} mb={4} align="start">
           <Box>
             <Text fontSize="2xl" fontWeight="700">

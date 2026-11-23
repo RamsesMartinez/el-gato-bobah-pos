@@ -146,9 +146,17 @@ do update set visibility = excluded.visibility, price = excluded.price;
 -- name: GetProductSalesForAudit :one
 -- Lo que había antes de guardar, con candado: el precio web cambia en la misma transacción que su
 -- evento, como el de mostrador.
+-- Trae también lo que decide si el producto descuenta del almacén: «vender sin existencia» apagado
+-- en uno que no descuenta nada no significa nada hoy y lo agotaría el día que gane receta.
 select p.id, p.allow_oversell, coalesce(p.description, '')::text as description,
        (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
-         where pc.product_id = p.id and ch.code = 'online') as web_price
+         where pc.product_id = p.id and ch.code = 'online') as web_price,
+       (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                     where pc.product_id = p.id and ch.code = 'pos' and pc.visibility = 'oculto'))::bool as sold_at_counter,
+       (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                     where pc.product_id = p.id and ch.code = 'online' and pc.visibility = 'oculto'))::bool as sold_on_web,
+       p.track_stock, (p.type = 'combo')::bool as is_package, p.composition_status,
+       (exists (select 1 from recipe_items ri where ri.recipe_id = p.recipe_id))::bool as has_recipe_items
 from products p where p.id = sqlc.arg(id)
 for update of p;
 

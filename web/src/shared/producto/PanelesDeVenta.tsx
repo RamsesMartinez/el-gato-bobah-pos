@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Box, Checkbox, HStack, Input, Text, Textarea, VStack } from '@chakra-ui/react';
+import { Box, Button, Checkbox, HStack, Input, Text, Textarea, VStack } from '@chakra-ui/react';
 import { Field } from '../../components/ui/field';
 import { Switch } from '../../components/ui/switch';
 import { moneyExact } from '../../utils/format';
@@ -109,13 +109,12 @@ export function MenuDePestanas({ pestanas, activa, onElegir, conError }: { pesta
       {pestanas.map((p) => {
         const on = p.id === activa;
         return (
-          <Box as="button" key={p.id} role="tab" aria-selected={on} onClick={() => onElegir(p.id)}
-            minH="48px" px={3} borderRadius="md" textAlign="left" display="flex" alignItems="center" justifyContent="space-between"
-            bg={on ? 'brand.subtle' : 'transparent'} color={on ? 'brand.fg' : 'fg'} fontWeight={on ? '600' : 'normal'}
-            _hover={{ bg: on ? 'brand.subtle' : 'bg.muted' }}>
+          <Button key={p.id} role="tab" aria-selected={on} onClick={() => onElegir(p.id)}
+            minH="48px" justifyContent="space-between" variant={on ? 'subtle' : 'ghost'} colorPalette={on ? undefined : 'gray'}
+            fontWeight={on ? '600' : 'normal'}>
             <span>{p.label}</span>
             {conError.has(p.id) && <Box as="span" aria-label="tiene un error" w="10px" h="10px" borderRadius="full" bg="red.solid" />}
-          </Box>
+          </Button>
         );
       })}
     </VStack>

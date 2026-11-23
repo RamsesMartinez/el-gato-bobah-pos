@@ -16,7 +16,7 @@ const FROM_SERVER = [
   'price.set', 'price.deleted', 'price.synced', 'attendance.clock_in', 'attendance.clock_out',
   'attendance.corrected', 'attendance.manual_entry', 'attendance.settings_changed',
   'attendance.schedule_set', 'user.tracks_attendance_changed', 'payment.terminal_changed',
-  'product.consumption_mode',
+  'product.consumption_mode', 'product.sales_changed',
   'ingredient.created', 'ingredient.updated', 'ingredient.archived', 'ingredient.reactivated',
   'ingredient.cost_corrected', 'ingredient.unit_changed', 'ingredient.unit_changed.detail',
   'ingredient.replaced', 'presentation.created', 'presentation.updated', 'presentation.retired',
@@ -100,4 +100,9 @@ test('los eventos de roles van en el grupo de Asistencia, como en el servidor', 
     expect(auditGroupOf(a), a).toBe('attendance');
   }
   expect(auditGroupOf('payment.charged')).toBe('money');
+});
+
+test('el cambio de dónde se vende se lee en palabras de quien opera', () => {
+  expect(summarizeEvent('product.sales_changed', { counter: true, web: true, allowOversell: true }, { counter: false, web: true, allowOversell: false }))
+    .toBe('Se vende en: Mostrador · Web → Web · Vender sin existencia: sí → no');
 });

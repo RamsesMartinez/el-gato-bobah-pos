@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -92,7 +94,24 @@ func (in *SalesInput) validate() error {
 	if len([]rune(in.Description)) > maxDescription {
 		return fmt.Errorf("%w: la descripción pasa de %d letras", domain.ErrValidation, maxDescription)
 	}
+	if !printableText(in.Description) {
+		return fmt.Errorf("%w: la descripción trae caracteres que no se pueden mostrar", domain.ErrValidation)
+	}
 	return nil
+}
+
+// printableText acepta texto de varios renglones: UTF-8 válido y sin caracteres de control salvo
+// salto de línea y tabulador. Un NUL lo rechaza Postgres con un error que saldría como 500.
+func printableText(s string) bool {
+	if !utf8.ValidString(s) {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) && r != '\n' && r != '\t' && r != '\r' {
+			return false
+		}
+	}
+	return true
 }
 
 func visibilityOf(on bool) db.ChannelVisibility {
@@ -140,8 +159,22 @@ func saveSales(ctx context.Context, q *db.Queries, productID int64, in *SalesInp
 	if in.Description != "" {
 		desc = &in.Description
 	}
-	if err := q.SetProductSalesFields(ctx, db.SetProductSalesFieldsParams{ID: productID, AllowOversell: in.AllowOversell, Description: desc}); err != nil {
+	// «Vender sin existencia» apagado en un producto que no descuenta nada se guarda encendido: hoy
+	// no significa nada, y el día que el producto ganara receta lo agotaría sin que nadie lo decidiera.
+	oversell := in.AllowOversell || !domain.MeasuresStock(domain.ProductModeFacts{
+		TrackStock: before.TrackStock, HasRecipeItems: before.HasRecipeItems, IsPackage: before.IsPackage,
+		CompositionStatus: textoDe(before.CompositionStatus),
+	})
+	if err := q.SetProductSalesFields(ctx, db.SetProductSalesFieldsParams{ID: productID, AllowOversell: oversell, Description: desc}); err != nil {
 		return err
+	}
+	// Dónde se vende y «vender sin existencia» cambian lo que se puede vender: dejan su evento.
+	if before.SoldAtCounter != in.Counter || before.SoldOnWeb != in.Web || before.AllowOversell != oversell {
+		if err := auditEntity(ctx, q, domain.AuditProductSalesChanged, "product", productID, nil, nil,
+			map[string]any{"counter": before.SoldAtCounter, "web": before.SoldOnWeb, "allowOversell": before.AllowOversell},
+			map[string]any{"counter": in.Counter, "web": in.Web, "allowOversell": oversell}); err != nil {
+			return err
+		}
 	}
 	if samePrice(before.WebPrice, price) {
 		return nil

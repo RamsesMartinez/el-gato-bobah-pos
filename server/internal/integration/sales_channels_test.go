@@ -268,3 +268,35 @@ func TestWebPrice(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// Revisión de código de la 092: una descripción con un byte NUL es 400 y no un 500 de la base;
+// «vender sin existencia» apagado en algo que no descuenta nada se guarda encendido; y el cambio de
+// dónde se vende deja evento en la bitácora.
+func TestSalesInputEdges(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	admin, ctx := adminAsApp(t, st, defaultCompanyID, "bordes")
+	id := makeProduct(t, st, "Agua del día", dec("20"), false)
+
+	err := updateWith(t, ctx, admin, st, id, &app.SalesInput{Counter: true, Web: true, AllowOversell: true, Description: "a\x00b"})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("una descripción con NUL debía ser validación, fue %v", err)
+	}
+	if err := updateWith(t, ctx, admin, st, id, &app.SalesInput{Counter: true, Web: true, AllowOversell: true, Description: "Fresca\ndel día"}); err != nil {
+		t.Fatalf("una descripción de dos renglones se rechazó: %v", err)
+	}
+
+	if err := updateWith(t, ctx, admin, st, id, &app.SalesInput{Counter: false, Web: true, AllowOversell: false}); err != nil {
+		t.Fatal(err)
+	}
+	if p := salesProductRow(t, ctx, admin, id); !p.AllowOversell {
+		t.Fatal("un producto que no descuenta nada quedó con «vender sin existencia» apagado: se agotaría el día que gane receta")
+	}
+	var n int
+	if err := st.Pool.QueryRow(context.Background(), `select count(*) from audit_events where action = 'product.sales_changed' and entity_id = $1`, id).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("apagar Mostrador dejó %d eventos de bitácora, se esperaba 1", n)
+	}
+}

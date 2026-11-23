@@ -639,7 +639,10 @@ export function POSPage() {
           lista={lista}
           onEditPrice={lista !== null && !editMode ? setEditandoPrecio : undefined}
           matchedAlts={matchedAlts}
-          soldOut={soldOut}
+          // Solo bloquea en mostrador fuera de modo editar: un pedido de plataforma se acepta aunque
+          // no haya existencia (la plataforma ya lo vendió), y en modo editar el agotado es justo el
+          // producto que hay que poder abrir para corregirlo.
+          soldOut={lista === null && !editMode ? soldOut : undefined}
           onSoldOutTap={avisarAgotado}
         />
       </Box>

@@ -357,3 +357,4 @@ describe('dónde se vende y agotado en Vender', () => {
     expect(within(otro).queryByText('Agotado')).not.toBeInTheDocument();
   });
 });
+

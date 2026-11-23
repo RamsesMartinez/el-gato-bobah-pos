@@ -653,20 +653,34 @@ func (q *Queries) GetProductCloneInfo(ctx context.Context, id int64) (GetProduct
 const getProductSalesForAudit = `-- name: GetProductSalesForAudit :one
 select p.id, p.allow_oversell, coalesce(p.description, '')::text as description,
        (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
-         where pc.product_id = p.id and ch.code = 'online') as web_price
+         where pc.product_id = p.id and ch.code = 'online') as web_price,
+       (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                     where pc.product_id = p.id and ch.code = 'pos' and pc.visibility = 'oculto'))::bool as sold_at_counter,
+       (not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
+                     where pc.product_id = p.id and ch.code = 'online' and pc.visibility = 'oculto'))::bool as sold_on_web,
+       p.track_stock, (p.type = 'combo')::bool as is_package, p.composition_status,
+       (exists (select 1 from recipe_items ri where ri.recipe_id = p.recipe_id))::bool as has_recipe_items
 from products p where p.id = $1
 for update of p
 `
 
 type GetProductSalesForAuditRow struct {
-	ID            int64            `json:"id"`
-	AllowOversell bool             `json:"allow_oversell"`
-	Description   string           `json:"description"`
-	WebPrice      *decimal.Decimal `json:"web_price"`
+	ID                int64            `json:"id"`
+	AllowOversell     bool             `json:"allow_oversell"`
+	Description       string           `json:"description"`
+	WebPrice          *decimal.Decimal `json:"web_price"`
+	SoldAtCounter     bool             `json:"sold_at_counter"`
+	SoldOnWeb         bool             `json:"sold_on_web"`
+	TrackStock        bool             `json:"track_stock"`
+	IsPackage         bool             `json:"is_package"`
+	CompositionStatus *string          `json:"composition_status"`
+	HasRecipeItems    bool             `json:"has_recipe_items"`
 }
 
 // Lo que había antes de guardar, con candado: el precio web cambia en la misma transacción que su
 // evento, como el de mostrador.
+// Trae también lo que decide si el producto descuenta del almacén: «vender sin existencia» apagado
+// en uno que no descuenta nada no significa nada hoy y lo agotaría el día que gane receta.
 func (q *Queries) GetProductSalesForAudit(ctx context.Context, id int64) (GetProductSalesForAuditRow, error) {
 	row := q.db.QueryRow(ctx, getProductSalesForAudit, id)
 	var i GetProductSalesForAuditRow
@@ -675,6 +689,12 @@ func (q *Queries) GetProductSalesForAudit(ctx context.Context, id int64) (GetPro
 		&i.AllowOversell,
 		&i.Description,
 		&i.WebPrice,
+		&i.SoldAtCounter,
+		&i.SoldOnWeb,
+		&i.TrackStock,
+		&i.IsPackage,
+		&i.CompositionStatus,
+		&i.HasRecipeItems,
 	)
 	return i, err
 }

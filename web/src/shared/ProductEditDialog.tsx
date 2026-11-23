@@ -60,6 +60,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   const [venta, setVenta] = useState(ventaInicial(product));
   const [pestana, setPestana] = useState('general');
   const [errores, setErrores] = useState<Set<string>>(new Set());
+  const [intento, setIntento] = useState(false);
   useEffect(() => {
     setEdit(product);
     setCostMode(modoInicial(product));
@@ -70,6 +71,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
     setVenta(ventaInicial(product));
     setPestana('general');
     setErrores(new Set());
+    setIntento(false);
   }, [product]);
   const similar = useCallback((name: string) => adminApi.similarProductAltNames(product?.id ?? 0, name), [product?.id]);
   const cost = edit ? cambioDeCosto(edit, costMode, costText) : undefined;
@@ -112,7 +114,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
         needsPrep: p.needsPrep, categoryId: p.categoryId,
         availableFrom: p.availableFrom, availableUntil: p.availableUntil,
         ...(cost && cost !== 'invalido' ? { cost } : {}),
-        sales: ventaParaGuardar(venta),
+        sales: ventaParaGuardar(venta, product?.webPrice ?? null),
       });
       if (!sameList(wanted, first)) await put(wanted);
     },
@@ -138,11 +140,21 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
 
   // Guardar siempre se puede tocar: si algo no es válido, la ficha va a la pestaña del error y la
   // marca, en vez de un botón apagado que no dice por qué (revisión de tableta, 092).
+  const erroresDe = (): Set<string> => {
+    const conError = new Set<string>();
+    // Un precio de mostrador vacío o en cero no es un precio: guardarlo dejaría el producto gratis.
+    const precio = edit ? montoTecleado(String(edit.price)) : undefined;
+    if (cost === 'invalido' || precio === undefined || precio <= 0) conError.add('general');
+    if (venta.web && !precioWebValido(venta)) conError.add('web');
+    return conError;
+  };
+  // Tras el primer intento, las marcas se recalculan con cada cambio: corregir el campo quita el
+  // punto rojo sin tocar Guardar otra vez.
+  const marcas = intento ? erroresDe() : errores;
   const guardar = () => {
     if (!edit) return;
-    const conError = new Set<string>();
-    if (cost === 'invalido') conError.add('general');
-    if (venta.web && !precioWebValido(venta)) conError.add('web');
+    const conError = erroresDe();
+    setIntento(true);
     setErrores(conError);
     const primera = PESTANAS.find((t) => conError.has(t.id));
     if (primera) {
@@ -161,7 +173,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
         {edit && (
           <>
             <DialogBody display="flex" gap={6} pt={0}>
-              <MenuDePestanas pestanas={PESTANAS} activa={pestana} onElegir={setPestana} conError={errores} />
+              <MenuDePestanas pestanas={PESTANAS} activa={pestana} onElegir={setPestana} conError={marcas} />
               <Box flex="1" minW={0} py={3} role="tabpanel" aria-label={PESTANAS.find((t) => t.id === pestana)?.label}>
                 {pestana === 'general' && (
                   <DosColumnas>
@@ -211,11 +223,11 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                   draft={altDraft} onDraftChange={(d) => { setAltDraft(d); setAltError(''); }} similar={similar} error={altError} /></Box>
                     <VStack align="stretch" gap={3}><HStack justify="space-between">
                   <Text>Favorito</Text>
-                  <Switch checked={edit.is_favorite} onCheckedChange={(e) => setEdit({ ...edit, is_favorite: e.checked })} />
+                  <Switch size="lg" py="10px" checked={edit.is_favorite} onCheckedChange={(e) => setEdit({ ...edit, is_favorite: e.checked })} />
                 </HStack>
                 <HStack justify="space-between">
                   <Text>Activo</Text>
-                  <Switch checked={edit.is_active} onCheckedChange={(e) => setEdit({ ...edit, is_active: e.checked })} />
+                  <Switch size="lg" py="10px" checked={edit.is_active} onCheckedChange={(e) => setEdit({ ...edit, is_active: e.checked })} />
                 </HStack></VStack>
                     <Box>{/* Lo que decide si el producto manda su pedido al tablero de Pedidos. Nace
                     encendido, así que apagarlo es la excepción y no hay que revisar 1004 fichas. */}
@@ -227,7 +239,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                       que solo lleve cosas apagadas se cobra y ya, sin pasar por Pedidos.
                     </Text>
                   </Box>
-                  <Switch checked={edit.needsPrep}
+                  <Switch size="lg" py="10px" checked={edit.needsPrep}
                     onCheckedChange={(e) => setEdit({ ...edit, needsPrep: e.checked })} />
                 </HStack></Box>
                   </DosColumnas>
@@ -255,7 +267,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                   </VStack>
                 )}
                 {pestana === 'web' && (
-                  <PanelVentaEnWeb venta={venta} setVenta={setVenta} precioMostrador={edit.price} errorPrecio={errores.has('web') && !precioWebValido(venta)} />
+                  <PanelVentaEnWeb venta={venta} setVenta={setVenta} precioMostrador={edit.price} errorPrecio={marcas.has('web')} />
                 )}
                 {pestana === 'receta' && (
                   <VStack align="stretch" gap={5} maxW="640px">

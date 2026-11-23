@@ -57,22 +57,22 @@ export function ProductTile({ product, count, onTap, showPrice, price, esManual,
           {count}×
         </Badge>
       )}
-      {soldOut && (
-        // Con los colores del tema y no con opacidad sobre todo: atenuada, la etiqueta se dejaba de
-        // leer en el tema oscuro (revisión de tableta, 092).
-        <Badge position="absolute" bottom={2} right={2} colorPalette="red" variant="solid" px={2}>
-          Agotado
-        </Badge>
-      )}
+
       <Box>
         {/* Con el contador, el nombre deja su hueco: «1×» tapaba la última letra. */}
         <Text fontWeight="600" fontSize="md" lineClamp={3} lineHeight="1.25" pr={count > 0 ? '32px' : undefined} color={soldOut ? 'fg.muted' : undefined}>
           {product.name}
         </Text>
-        {matchedAlt ? (
+        {soldOut && (
+          // En su propio renglón, bajo el nombre: en la esquina se encimaba con el precio en la
+          // tarjeta angosta. Con los colores del tema y no con opacidad: atenuada no se leía en el
+          // tema oscuro (revisión de tableta, 092).
+          <Badge mt={1} colorPalette="red" variant="solid" px={2}>Agotado</Badge>
+        )}
+        {!soldOut && matchedAlt ? (
           // xs y del alto de la línea de descripción: el tile no crece mientras se busca (revisión M3).
           <Box mt={0.5} display="flex" minW={0} h="16px" alignItems="center"><AltMatchTag name={matchedAlt} size="xs" /></Box>
-        ) : product.description && (
+        ) : !soldOut && product.description && (
           <Text fontSize="xs" color="fg.muted" lineClamp={1} mt={0.5}>
             {product.description}
           </Text>

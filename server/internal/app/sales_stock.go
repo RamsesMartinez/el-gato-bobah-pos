@@ -55,8 +55,15 @@ func salesStockKey(itemType string, ingredientID, productID *int64) domain.Stock
 
 // checkSalesStock rechaza con domain.ErrOutOfStock la venta de mostrador que pide más de lo que hay
 // de los productos con «vender sin existencia» apagado. Va dentro de la transacción del pedido y
-// ANTES de descontar: así ninguna transacción toma un candado de existencia por el trigger sin haber
-// tomado antes los de este chequeo.
+// ANTES de descontar, con los candados en un orden fijo: dos ventas que revisan los mismos renglones
+// se serializan sin abrazarse.
+//
+// ponytail: una venta revisada contra otra que no se revisa (de plataforma, o con la opción
+// encendida) todavía puede cruzar candados por el trigger si tocan los mismos insumos en orden
+// contrario; Postgres aborta una con 40P01 y la tableta reintenta. El riesgo ya existía entre dos
+// ventas cualesquiera; el arreglo de fondo es bloquear en orden fijo todo lo que cualquier venta
+// descuenta. Los extras no cuentan para el chequeo (dependen de la elección) y pueden dejar negativo
+// un insumo, que está permitido.
 func checkSalesStock(ctx context.Context, q *db.Queries, branchID int64, g domain.StockGraph, lines []domain.StockCheckLine) error {
 	if len(lines) == 0 {
 		return nil

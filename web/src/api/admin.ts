@@ -76,21 +76,12 @@ export interface AdminProduct {
 export interface ProductSales {
   counter: boolean;
   web: boolean;
-  webPrice: number | null;
+  // Texto decimal con dos cifras ("39.00"), como el contrato; null = el de mostrador.
+  webPrice: string | null;
   allowOversell: boolean;
   description: string;
 }
 
-// salesOf lee lo guardado con los defaults de un producto que nunca se configuró.
-export function salesOf(p: AdminProduct): ProductSales {
-  return {
-    counter: p.soldAtCounter ?? true,
-    web: p.soldOnWeb ?? true,
-    webPrice: p.webPrice != null ? Number(p.webPrice) : null,
-    allowOversell: p.allowOversell ?? true,
-    description: p.description ?? '',
-  };
-}
 
 export type CostSource = 'manual' | 'compra' | 'receta';
 // Cambio de costo en el PATCH: ausente = no tocarlo.

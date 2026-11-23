@@ -108,7 +108,7 @@ describe('ficha del producto por pestañas', () => {
     await u.type(screen.getByLabelText(/precio en la web/i), '39');
     await u.click(screen.getByRole('button', { name: /^guardar$/i }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(sent().sales).toMatchObject({ web: true, webPrice: 39 });
+    expect(sent().sales).toMatchObject({ web: true, webPrice: '39.00' });
   });
 
   it('apagar la web conserva el precio y la descripción capturados', async () => {
@@ -118,7 +118,7 @@ describe('ficha del producto por pestañas', () => {
     await u.click(screen.getByLabelText(/se vende en la web/i));
     await u.click(screen.getByRole('button', { name: /^guardar$/i }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(sent().sales).toMatchObject({ web: false, webPrice: 39, description: 'De arroz con canela' });
+    expect(sent().sales).toMatchObject({ web: false, webPrice: '39.00', description: 'De arroz con canela' });
   });
 
   it('Guardar siempre se puede tocar: con un error lleva a su pestaña y la marca', async () => {
