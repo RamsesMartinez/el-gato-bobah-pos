@@ -53,10 +53,31 @@ mermas por almacén, que su ruta propia pide con ese permiso).
 ### `GET /stock/articles/{id}/real-waste` — `inventory.view`
 `{ "days": 90, "items": [RealWaste...] }`.
 
-## Subida 2 (se detalla al implementar; forma esperada)
+## Subida 2 (como quedó implementada)
 
-- `GET /stock/counts/{id}/vs-sales` — `inventory.view`: renglones del reporte (R10) con
-  `suggestedPct` o `flag: "review"`.
-- `POST /stock/articles/{id}/expected-waste/apply-suggestion` — `menu.configure`.
-- `PUT /settings/inventory` (existente) agrega `expectedWasteDeducts: boolean`.
-- El detalle del conteo deja de mandar lo esperado a quien solo tiene `inventory.count`.
+### `GET /stock/counts/{id}/vs-sales` — `inventory.health_view`
+El mismo permiso que el faltante del conteo (`/counts/{id}/loss`), junto al que se muestra.
+`{ "firstCount": bool, "items": [CountVsSalesItem...] }`; cada renglón: `ingredientId`, `name`,
+`unitCode`, `hasPrevious`, `initial`, `entries`, `sold`, `expectedWaste`, `registered`,
+`transfersOut`, `system`, `counted`, `diff`, `pct` (diferencia ÷ vendido, `null` sin ventas),
+`group` (`review` | `suggest` | `small`) y `suggestedPct` (solo en `suggest`). Solo movimientos del
+almacén del conteo; un traspaso es entrada o salida, no venta.
+
+**Aplicar la sugerencia no tiene ruta propia**: «Usar N %» llama a `PUT /stock/articles/{id}/expected-waste`
+(`menu.configure`, bitácora `ingredient.expected_waste`). Una ruta aparte habría repetido la misma
+validación y la misma bitácora con otro nombre.
+
+### `PUT /settings/expected-waste-deducts` — `inventory.configure`
+`{ "deducts": bool }` (la llave es obligatoria: sin ella, 400). Responde `204`. Bitácora
+`settings.expected_waste_deducts` solo si cambió. Va en su propia ruta y no en `PUT /settings/inventory`
+porque el interruptor guarda al tocarlo: por la otra ruta tendría que reenviar el método de costeo y
+la palabra del almacén, y un formulario abierto en otra tableta los pisaría. `GET /settings/business` lo devuelve como `expectedWasteDeducts`.
+
+### `GET /stock/counts/{id}/expected` — `inventory.configure`
+`{ "items": [{ "ingredientId", "expected" }] }`: lo que el sistema tiene del almacén del conteo, en
+unidad base. El detalle del conteo (`/stock/counts/current`) nunca manda lo esperado: quien solo
+cuenta no tiene cómo pedirlo (conteo a ciegas en el servidor, R12).
+
+### Tipo de movimiento `merma_esperada`
+Lo escribe la venta solo con la opción encendida, en el almacén de venta, con el mismo pedido,
+renglón, opción y componente que su `venta`. Cancelar el pedido o el renglón y partir lo reponen.

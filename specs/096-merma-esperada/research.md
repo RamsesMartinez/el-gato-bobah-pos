@@ -156,6 +156,34 @@ medición señale, en este orden de sospecha: (1) una petición por artículo o 
 completa pintada de golpe sin paginar ni virtualizar, (3) consultas sin índice que empiece por
 `company_id, warehouse_id`. Meta: SC-007. No se fija la técnica antes de medir.
 
+**Medición de hoy (T052, 2026-11-23)**: build de producción servido en local (`vite preview`), base
+restaurada del 23-nov (gatobobah), 1024×600, CPU 4× más lenta, mediana de tres cargas
+([medir-carga.mjs](../../web/maquetas-096/medir-carga.mjs) no se versiona: arnés local).
+
+| Pantalla | Primera pantalla | Lista completa | Renglones |
+| --- | --- | --- | --- |
+| Existencias | 0.74 s | 1.20 s | 438 |
+| Conteo | 0.84 s | 1.35 s | 438 |
+
+Hoy ya cumple la meta de SC-007 en local. Lo que no se mide aquí es la red del local hacia la VM: la
+meta se vuelve a medir con la pantalla nueva (T068), contra estas mismas cifras, y la vista sencilla no
+puede quedar más lenta que la de hoy.
+
+**Medición con las pantallas nuevas (T068, 2026-11-23)**: mismo arnés, mismo build servido en local y
+misma base, dos corridas por vista (la mediana de tres cargas en cada una). El conteo se midió sin
+conteo abierto, igual que la cifra de hoy.
+
+| Pantalla | Primera pantalla | Lista completa | Contra hoy |
+| --- | --- | --- | --- |
+| Existencias, sencilla (tablero) | 0.67 s | 1.15 s | más rápida |
+| Existencias, avanzada (tabla) | 0.77–0.82 s | 1.24–1.28 s | +0.03 a +0.08 s, dentro del ruido entre corridas |
+| Conteo | 0.78–0.91 s | 1.29–1.41 s | igual, dentro del ruido |
+
+Las dos quedan bajo SC-007 (1 s y 2 s). No hubo nada que atacar: ninguna pantalla pide algo por
+renglón (la avanzada del conteo agrega **una** petición, lo esperado, solo para quien configura) y las
+consultas nuevas filtran por el almacén del conteo con los índices de la 094. Lo que sigue sin medir es
+la red del local hacia la VM.
+
 ## R14. Revisión de arquitectura (db-architect y tablet-ui-reviewer, 2026-11-23), ya incorporada
 
 **Base de datos** — veredicto: cambios requeridos, 3 HIGH, ninguno bloquea la 0126 aditiva.
