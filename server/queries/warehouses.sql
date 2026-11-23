@@ -55,7 +55,7 @@ select id, name, is_sales from warehouses
 select id, name, is_sales from warehouses where id = current_sales_warehouse_id();
 
 -- name: ClearSalesWarehouse :exec
--- Quita la marca al de venta de la sucursal; en la misma transacción se la pone otro (la 0121 exige,
+-- Quita la marca al de venta de la sucursal; en la misma transacción se la pone otro (la 0122 exige,
 -- al confirmar, que la sucursal tenga uno).
 update warehouses set is_sales = false where branch_id = current_branch_id() and is_sales;
 

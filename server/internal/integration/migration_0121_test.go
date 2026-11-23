@@ -4,154 +4,146 @@ package integration
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/pressly/goose/v3"
 )
 
-const warehousesContractVersion = 121
+const idemFailedVersion = 121
 
-// LA 0121 (segunda subida de varios almacenes, spec 094) CONTRA UN RESPALDO REAL CON DOS EMPRESAS.
-// Contrae lo que la 0120 dejó por la versión anterior: borra las llaves por sucursal, pone el almacén
-// como obligatorio y quita las compuertas. Lo que se prueba es que después de ella sí caben dos
-// almacenes por artículo, que nada queda sin almacén, y que el Down se niega cuando bajar perdería en
-// cuál está cada existencia.
+// LA 0121 («failed» en la llave de idempotencia del MCP, #335) CONTRA UN RESPALDO REAL CON DOS
+// EMPRESAS. Lo que se prueba: lo que escribe la API anterior sigue entrando, «failed» exige su error,
+// el rol de la API puede retomar una llave fallida con otra huella, RLS sigue separando empresas, y el
+// Down suelta las fallidas sin negarse.
 func TestMigration0121OnARealBackup(t *testing.T) {
 	st := restoredStore(t)
 	ctx := context.Background()
-	migrarAbajoHasta(t, st.Pool, warehousesContractVersion-1)
+	migrarAbajoHasta(t, st.Pool, idemFailedVersion-1)
 	t.Cleanup(func() { migrarArriba(t, st.Pool) })
 
-	// Una sucursal que dio de alta la API anterior durante la subida, sin almacén de venta.
-	var company int64
-	if err := st.Pool.QueryRow(ctx, `select max(id) from companies`).Scan(&company); err != nil {
+	type who struct{ company, user, token int64 }
+	var ws []who
+	rows, err := st.Pool.Query(ctx, `
+		select distinct on (company_id) company_id, id from users where is_active order by company_id, id`)
+	if err != nil {
 		t.Fatal(err)
 	}
-	var orphan int64
-	if err := st.Pool.QueryRow(ctx, `insert into branches (company_id, branch_number, code, name, is_active)
-		values ($1, 9, 'HUERFANA', 'Sin almacén', false) returning id`, company).Scan(&orphan); err != nil {
+	for rows.Next() {
+		var w who
+		if err := rows.Scan(&w.company, &w.user); err != nil {
+			t.Fatal(err)
+		}
+		ws = append(ws, w)
+	}
+	rows.Close()
+	if len(ws) < 2 {
+		t.Fatalf("el respaldo trae usuarios de %d empresas; la prueba necesita dos", len(ws))
+	}
+	hash := strings.Repeat("ab", 32)
+	for i := range ws[:2] {
+		if err := st.Pool.QueryRow(ctx, `
+			insert into api_tokens (company_id, user_id, name, secret_hint, secret_hash, scopes, expires_at)
+			values ($1, $2, 'Claude 0121', 'abab', decode($3, 'hex'), '{read,write:inventory}', now() + interval '30 days')
+			returning id`, ws[i].company, ws[i].user, hash).Scan(&ws[i].token); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, b := ws[0], ws[1]
+	ins := func(w who, key, status, result string) error {
+		_, err := st.Pool.Exec(ctx, `
+			insert into mcp_idempotency_keys (company_id, token_id, idem_key, tool, args_hash, status, result)
+			values ($1, $2, $3, 'stock_adjust', decode($4, 'hex'), $5, $6::jsonb)`,
+			w.company, w.token, key, hash, status, nilIfEmpty(result))
+		return err
+	}
+	// Lo de antes de subir: una llave terminada y una desconocida.
+	if err := ins(a, "antes-done-1", "done", `{"ok":true}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := ins(a, "antes-unknown-1", "unknown", ""); err != nil {
+		t.Fatal(err)
+	}
+	exigeViolacionDeRestriccion(t, ins(a, "antes-failed-1", "failed", `{"error":"x"}`), "«failed» antes de la 0121")
+
+	if err := goose.UpToContext(ctx, prepararGoose(t, st.Pool), ".", idemFailedVersion); err != nil {
 		t.Fatal(err)
 	}
 
-	// Un renglón de compra que la API de la 0120 dio de alta en otra sucursal: apunta al de venta de la
-	// matriz, pero su mercancía está en el de la sucursal donde se capturó.
-	var item, movedTo int64
-	err := st.Pool.QueryRow(ctx, `select ei.id, m.warehouse_id from expense_items ei
-		join stock_movements m on m.expense_item_id = ei.id where ei.company_id = $1 order by ei.id limit 1`, company).Scan(&item, &movedTo)
-	hasItem := err == nil
-	if hasItem {
-		var norte int64
-		if err := st.Pool.QueryRow(ctx, `with b as (insert into branches (company_id, branch_number, code, name, is_active)
-			values ($1, 8, 'NORTE8', 'Norte', false) returning *)
-			insert into warehouses (company_id, branch_id, name, is_sales) select company_id, id, 'Local Norte', true from b returning id`,
-			company).Scan(&norte); err != nil {
-			t.Fatal(err)
+	t.Run("lo de la API anterior sigue entrando y «failed» exige su error", func(t *testing.T) {
+		if err := ins(a, "despues-pending", "pending", ""); err != nil {
+			t.Fatalf("una llave en curso, como la escribe la API anterior: %v", err)
 		}
-		if _, err := st.Pool.Exec(ctx, `alter table expense_items drop constraint expense_items_amount_positive, drop constraint expense_items_received_range`); err != nil {
-			t.Fatal(err)
+		if err := ins(a, "despues-unknown", "unknown", ""); err != nil {
+			t.Fatalf("una llave desconocida, como la escribe la API anterior: %v", err)
 		}
-		if _, err := st.Pool.Exec(ctx, `update expense_items set warehouse_id = $2 where id = $1`, item, norte); err != nil {
-			t.Fatal(err)
+		if err := ins(a, "despues-failed", "failed", `{"error":"el producto 3 no existe en esta empresa"}`); err != nil {
+			t.Fatalf("una llave fallida con su error: %v", err)
 		}
-		if _, err := st.Pool.Exec(ctx, `alter table expense_items
-			add constraint expense_items_amount_positive check (amount > 0 or is_gift or (excluded and amount >= 0)) not valid,
-			add constraint expense_items_received_range check (coalesce(qty_received, 0) + not_coming_qty <= quantity) not valid`); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if err := goose.UpToContext(ctx, prepararGoose(t, st.Pool), ".", warehousesContractVersion); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Run("toda sucursal tiene almacén de venta, también la que nació sin él", func(t *testing.T) {
-		var n int
-		if err := st.Pool.QueryRow(ctx, `select count(*) from warehouses where branch_id = $1 and is_sales`, orphan).Scan(&n); err != nil || n != 1 {
-			t.Fatalf("la sucursal sin almacén quedó con %d de venta, %v", n, err)
-		}
+		exigeViolacionDeRestriccion(t, ins(a, "fallida-sin-error", "failed", ""), "«failed» sin el error")
+		exigeViolacionDeRestriccion(t, ins(a, "unknown-con-algo", "unknown", `{"x":1}`), "«unknown» con resultado")
 	})
 
-	t.Run("el renglón de compra queda en el almacén donde está su mercancía", func(t *testing.T) {
-		if !hasItem {
-			t.Skip("el respaldo no trae compras con movimientos de esta empresa")
+	t.Run("el rol de la API retoma una llave fallida de su empresa y no ve la de otra", func(t *testing.T) {
+		if err := ins(b, "fallida-de-b", "failed", `{"error":"x"}`); err != nil {
+			t.Fatal(err)
 		}
-		var got int64
-		if err := st.Pool.QueryRow(ctx, `select warehouse_id from expense_items where id = $1`, item).Scan(&got); err != nil || got != movedTo {
-			t.Fatalf("el renglón quedó en el almacén %d, %v; su mercancía está en %d", got, err, movedTo)
-		}
-	})
-
-	t.Run("el almacén es obligatorio donde hay existencias", func(t *testing.T) {
-		for _, tbl := range []string{"stock_levels", "stock_movements", "stock_counts", "waste_records",
-			"branch_stock_minimums", "notifications", "stock_out_reports", "count_places"} {
-			var nullable string
-			if err := st.Pool.QueryRow(ctx, `select is_nullable from information_schema.columns
-				where table_name = $1 and column_name = 'warehouse_id'`, tbl).Scan(&nullable); err != nil {
+		app := restoredAppRoleStore(t)
+		retake := func(company, token int64, key string) int64 {
+			t.Helper()
+			tx, err := app.Pool.Begin(ctx)
+			if err != nil {
 				t.Fatal(err)
 			}
-			if nullable != "NO" {
-				t.Errorf("%s.warehouse_id sigue aceptando nulo", tbl)
+			defer tx.Rollback(ctx) //nolint:errcheck // la prueba no deja nada
+			if _, err := tx.Exec(ctx, `select set_config('app.company_id', $1, true)`, strconv.FormatInt(company, 10)); err != nil {
+				t.Fatal(err)
+			}
+			tag, err := tx.Exec(ctx, `update mcp_idempotency_keys set status = 'pending', result = null,
+				args_hash = decode($3, 'hex'), tool = 'waste_record'
+				where token_id = $1 and idem_key = $2 and status = 'failed'`, token, key, strings.Repeat("cd", 32))
+			if err != nil {
+				t.Fatalf("retomar como gatobobah_app: %v", err)
+			}
+			return tag.RowsAffected()
+		}
+		if n := retake(a.company, a.token, "despues-failed"); n != 1 {
+			t.Fatalf("la empresa A retomó %d llaves suyas", n)
+		}
+		if n := retake(a.company, b.token, "fallida-de-b"); n != 0 {
+			t.Fatal("la empresa A retomó la llave fallida de la empresa B")
+		}
+		// Lo que evita una escritura doble: una llave «unknown» (pudo aplicarse) o «pending» no se retoma.
+		for _, k := range []string{"despues-unknown", "despues-pending"} {
+			if n := retake(a.company, a.token, k); n != 0 {
+				t.Fatalf("se retomó la llave %s, que no falló", k)
 			}
 		}
-		_, err := st.Pool.Exec(ctx, `update expense_items set warehouse_id = null where id = (select min(id) from expense_items where item_type is not null)`)
-		exigeViolacionDeRestriccion(t, err, "un renglón de compra con artículo y sin almacén")
 	})
 
-	var branch, local, ingredient int64
-	if err := st.Pool.QueryRow(ctx, `select s.branch_id, s.warehouse_id, s.ingredient_id from stock_levels s
-		where s.company_id = $1 and s.ingredient_id is not null order by s.ingredient_id limit 1`, company).Scan(&branch, &local, &ingredient); err != nil {
-		t.Fatal(err)
-	}
-	conn := conexionDeEmpresa(t, st, company)
-	var bodega int64
-	if err := conn.QueryRow(ctx, `insert into warehouses (branch_id, name) values ($1, 'Bodega 0121') returning id`, branch).Scan(&bodega); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Run("dos almacenes de la misma sucursal tienen cada uno su existencia", func(t *testing.T) {
-		if _, err := conn.Exec(ctx, `insert into stock_movements (warehouse_id, item_type, ingredient_id, movement_type, quantity, reason)
-			values ($1, 'ingrediente', $2, 'ajuste', 20, 'a la bodega 0121')`, bodega, ingredient); err != nil {
-			t.Fatalf("un movimiento a la bodega después de la 0121: %v", err)
+	t.Run("el Down suelta las fallidas sin negarse y deja las demás", func(t *testing.T) {
+		if err := goose.DownToContext(ctx, prepararGoose(t, st.Pool), ".", idemFailedVersion-1); err != nil {
+			t.Fatalf("el Down se negó: %v", err)
 		}
-		var n int
-		if err := conn.QueryRow(ctx, `select count(*) from stock_levels where branch_id = $1 and ingredient_id = $2`, branch, ingredient).Scan(&n); err != nil || n != 2 {
-			t.Fatalf("el artículo tiene %d filas de existencia en la sucursal, %v; quiere una por almacén", n, err)
-		}
-	})
-
-	t.Run("una cancelación sin almacén ya no adivina", func(t *testing.T) {
-		_, err := conn.Exec(ctx, `insert into stock_movements (item_type, ingredient_id, movement_type, quantity, reason)
-			values ('ingrediente', $1, 'cancelacion', 1, 'sin almacén')`, ingredient)
-		exigeCodigo(t, err, "EGB04", "una reposición de cancelación sin almacén")
-	})
-
-	t.Run("el almacén de venta se puede cambiar, pero siempre hay uno", func(t *testing.T) {
-		tx, err := conn.Begin(ctx)
-		if err != nil {
+		var failed, kept int64
+		if err := st.Pool.QueryRow(ctx, `select count(*) filter (where status = 'failed'),
+			count(*) filter (where idem_key in ('antes-done-1', 'antes-unknown-1', 'despues-pending'))
+			from mcp_idempotency_keys where token_id in ($1, $2)`, a.token, b.token).Scan(&failed, &kept); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := tx.Exec(ctx, `update warehouses set is_sales = false where id = $1`, local); err != nil {
+		if failed != 0 || kept != 3 {
+			t.Fatalf("tras el Down: %d fallidas (quería 0) y %d de las demás (quería 3)", failed, kept)
+		}
+		exigeViolacionDeRestriccion(t, ins(a, "tras-el-down", "failed", `{"error":"x"}`), "«failed» tras el Down")
+		var grants int64
+		if err := st.Pool.QueryRow(ctx, `select count(*) from information_schema.column_privileges
+			where table_name = 'mcp_idempotency_keys' and grantee = 'gatobobah_app' and privilege_type = 'UPDATE'
+			  and column_name in ('args_hash', 'tool')`).Scan(&grants); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := tx.Exec(ctx, `update warehouses set is_sales = true where id = $1`, bodega); err != nil {
-			t.Fatalf("pasar la venta a la bodega: %v", err)
-		}
-		if err := tx.Rollback(ctx); err != nil {
-			t.Fatal(err)
-		}
-		tx, err = conn.Begin(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tx.Exec(ctx, `update warehouses set is_sales = false where id = $1`, local); err != nil {
-			t.Fatal(err)
-		}
-		exigeViolacionDeRestriccion(t, tx.Commit(ctx), "una sucursal sin almacén de venta")
-	})
-
-	t.Run("el Down se niega con dos almacenes por artículo", func(t *testing.T) {
-		if err := goose.DownContext(ctx, prepararGoose(t, st.Pool), "."); err == nil {
-			t.Fatal("el Down bajó con existencias en dos almacenes: perdería en cuál está cada una")
+		if grants != 0 {
+			t.Fatalf("tras el Down gatobobah_app sigue pudiendo reescribir %d columnas de la huella", grants)
 		}
 	})
 }

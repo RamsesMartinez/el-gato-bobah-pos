@@ -813,7 +813,7 @@ func (r *editRun) removeLines(ctx context.Context, ids []int64) error {
 func (r *editRun) reverseDeliveries(ctx context.Context, it db.ListExpenseItemsRow) error {
 	itemID := it.ID
 	// Lo aplicado de un renglón vive en su almacén (applyStockLines lo lleva ahí); un renglón de
-	// almacén siempre tiene uno (check de la 0121).
+	// almacén siempre tiene uno (check de la 0122).
 	if it.WarehouseID == nil {
 		return fmt.Errorf("renglón %d: no dice a qué almacén entró", it.ID)
 	}

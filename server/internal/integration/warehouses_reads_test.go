@@ -20,7 +20,7 @@ import (
 // base como quedará tras la segunda migración (sin las llaves por sucursal ni la compuerta EGB04) y
 // comprueban que cada lectura, bloqueo y reposición sigue diciendo la verdad.
 
-// comoEnLaSegundaSubida da de alta «Bodega» en la matriz. Desde la 0121 la base ya admite existencias
+// comoEnLaSegundaSubida da de alta «Bodega» en la matriz. Desde la 0122 la base ya admite existencias
 // del mismo artículo en dos almacenes; antes, esta función quitaba a mano lo que la 0120 dejaba. Devuelve
 // los dos almacenes.
 func comoEnLaSegundaSubida(t *testing.T, st *store.Store, company int64) (local, bodega int64) {
@@ -213,7 +213,7 @@ func TestCancellingRestocksTheWarehouseTheSaleLeft(t *testing.T) {
 	}
 
 	// Dos sentencias en una transacción: el índice de «uno de venta por sucursal» se revisa renglón por
-	// renglón, y la 0121 exige que al confirmar haya uno.
+	// renglón, y la 0122 exige que al confirmar haya uno.
 	tx, err := st.Pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)

@@ -138,6 +138,7 @@ func presentationState(s *mcpSession, ctx context.Context, tool string, ingredie
 func register074() {
 	writeTool(writeSpec[presentationCreateArgs]{
 		name: "presentation_create",
+		refs: refsPresentationCreate,
 		route: func(_ *mcpSession, _ context.Context, in presentationCreateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("ingredient_id", in.IngredientID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -158,6 +159,7 @@ func register074() {
 
 	writeTool(writeSpec[presentationUpdateArgs]{
 		name: "presentation_update",
+		refs: refsPresentationUpdate,
 		route: func(s *mcpSession, ctx context.Context, in presentationUpdateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			const tool = "presentation_update"
 			if err := positive("presentation_id", in.PresentationID); err != nil {
@@ -219,6 +221,7 @@ func register074() {
 
 	writeTool(writeSpec[expenseEditArgs]{
 		name: "expense_edit",
+		refs: refsExpenseEdit,
 		route: func(_ *mcpSession, _ context.Context, in expenseEditArgs) (string, string, map[string]int64, url.Values, any, error) {
 			body, err := expenseEditBody(in)
 			if err != nil {

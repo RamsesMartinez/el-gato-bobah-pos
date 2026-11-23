@@ -382,6 +382,7 @@ func registerPurchases() {
 
 	writeTool(writeSpec[purchaseCreateArgs]{
 		name: "purchase_create",
+		refs: refsPurchaseCreate,
 		route: func(s *mcpSession, ctx context.Context, in purchaseCreateArgs) (string, string, map[string]int64, url.Values, any, error) {
 			applying := in.DryRun != nil && !*in.DryRun
 			if applying {
@@ -484,6 +485,7 @@ func registerPurchases() {
 
 	writeTool(writeSpec[purchaseReceiveArgs]{
 		name: "purchase_receive",
+		refs: refsPurchaseReceive,
 		route: func(_ *mcpSession, _ context.Context, in purchaseReceiveArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("expense_id", in.ExpenseID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -603,6 +605,7 @@ func registerCounts() {
 	captureState := current("stock_count_capture")
 	writeTool(writeSpec[countCaptureArgs]{
 		name: "stock_count_capture",
+		refs: refsCountCapture,
 		route: func(_ *mcpSession, _ context.Context, in countCaptureArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("count_id", in.CountID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -672,6 +675,7 @@ func registerCounts() {
 
 	writeTool(writeSpec[countIDArgs]{
 		name: "stock_count_close",
+		refs: refsCountID,
 		route: func(_ *mcpSession, _ context.Context, in countIDArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("count_id", in.CountID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -701,6 +705,7 @@ func registerCounts() {
 	discardState := current("stock_count_discard")
 	writeTool(writeSpec[countIDArgs]{
 		name: "stock_count_discard",
+		refs: refsCountID,
 		route: func(_ *mcpSession, _ context.Context, in countIDArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("count_id", in.CountID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -782,6 +787,7 @@ func registerOrders() {
 	}
 	writeTool(writeSpec[orderCancelArgs]{
 		name: "order_cancel",
+		refs: refsOrderCancel,
 		route: func(_ *mcpSession, _ context.Context, in orderCancelArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("order_id", in.OrderID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -850,6 +856,7 @@ func registerCash() {
 
 	writeTool(writeSpec[cashOpenArgs]{
 		name: "cash_session_open",
+		refs: refsCashOpen,
 		route: func(_ *mcpSession, _ context.Context, in cashOpenArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("register_id", in.RegisterID); err != nil {
 				return "", "", nil, nil, nil, err
@@ -879,6 +886,7 @@ func registerCash() {
 
 	writeTool(writeSpec[cashCloseArgs]{
 		name: "cash_session_close",
+		refs: refsCashClose,
 		route: func(s *mcpSession, ctx context.Context, in cashCloseArgs) (string, string, map[string]int64, url.Values, any, error) {
 			if err := positive("register_id", in.RegisterID); err != nil {
 				return "", "", nil, nil, nil, err

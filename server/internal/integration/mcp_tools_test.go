@@ -356,9 +356,10 @@ func TestMCPReads(t *testing.T) {
 		}
 	})
 
-	t.Run("la vista previa dice si la categoría no existe", func(t *testing.T) {
+	// #335: la vista previa rechaza un id que no es de la empresa, como lo hará al aplicar.
+	t.Run("la vista previa rechaza una categoría que no existe", func(t *testing.T) {
 		res := callTool(t, w.router, tok, "expense_create", map[string]any{"category_id": 999999, "amount": "1.00"})
-		if res.isError || !strings.Contains(res.text, "No existe la categoría") {
+		if !res.isError || !strings.Contains(res.text, "La categoría de gasto 999999 no existe en esta empresa") {
 			t.Fatalf("vista previa: %s", res.text)
 		}
 	})

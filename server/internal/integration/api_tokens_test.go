@@ -258,11 +258,35 @@ func TestIdempotencyKeysEndToEnd(t *testing.T) {
 	key2 := key
 	key2.Key = "gasto-0002"
 	_, _, _ = svc.BeginIdempotent(ctx, key2, hashA)
-	if err := svc.AbandonIdempotent(ctx, key2); err != nil {
+	// #335: un intento que falló sin aplicar nada deja la llave en «failed» con su error, y se retoma
+	// con la misma huella o con los argumentos corregidos.
+	if err := svc.FailIdempotent(ctx, key2, json.RawMessage(`{"error":"el producto 3 no existe en esta empresa"}`)); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := w.owner.Pool.QueryRow(ctx, `select status from mcp_idempotency_keys where idem_key = $1`, key2.Key).Scan(&status); err != nil || status != "failed" {
+		t.Fatalf("tras un rechazo la llave quedó en %q (%v), no en failed", status, err)
+	}
+	if d, _, _ := svc.BeginIdempotent(ctx, key2, hashA); d != domain.IdemProceed {
+		t.Fatalf("tras un rechazo la clave se retoma: %v", d)
+	}
+	if d, _, _ := svc.BeginIdempotent(ctx, key2, hashA); d != domain.IdemInProgress {
+		t.Fatalf("retomada, otra llamada igual espera: %v", d)
+	}
+	if err := svc.FailIdempotent(ctx, key2, json.RawMessage(`{"error":"x"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if d, _, _ := svc.BeginIdempotent(ctx, key2, hashB); d != domain.IdemProceed {
+		t.Fatalf("con los argumentos corregidos también se retoma: %v", d)
+	}
+	if d, _, _ := svc.BeginIdempotent(ctx, key2, hashA); d != domain.IdemConflict {
+		t.Fatalf("retomada con la huella nueva, la vieja ya es otra escritura: %v", d)
+	}
+	if err := svc.FailIdempotent(ctx, key2, json.RawMessage(`{"error":"x"}`)); err != nil {
 		t.Fatal(err)
 	}
 	if d, _, _ := svc.BeginIdempotent(ctx, key2, hashA); d != domain.IdemProceed {
-		t.Fatalf("tras un 4xx la clave se libera: %v", d)
+		t.Fatalf("de vuelta a la huella original: %v", d)
 	}
 	if err := svc.MarkIdempotentUnknown(ctx, key2); err != nil {
 		t.Fatal(err)

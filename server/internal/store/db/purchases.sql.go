@@ -321,7 +321,7 @@ type InsertLineMovementParams struct {
 // renglón (spec 094); la sucursal la toma el trigger del almacén.
 // `effective_on` es el día de la entrega (spec 053); nula, la pone el trigger de la 0103 con hoy.
 // `warehouse_relocation`: el par de movimientos que lleva lo ya llegado a otro almacén cuando se cambia
-// el destino del renglón. No es una entrega: no cuenta para el día de recibido ni el historial (0121).
+// el destino del renglón. No es una entrega: no cuenta para el día de recibido ni el historial (0122).
 func (q *Queries) InsertLineMovement(ctx context.Context, arg InsertLineMovementParams) error {
 	_, err := q.db.Exec(ctx, insertLineMovement,
 		arg.ItemType,
@@ -410,7 +410,7 @@ const listStockLines = `-- name: ListStockLines :many
 select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description, ei.quantity,
        ei.qty_received, ei.amount, ei.pack_qty_in_base, ei.presentation_id, ei.is_gift,
        ei.applied_qty_base, ei.not_coming_qty, ei.unit_id, ei.position, ei.excluded,
-       -- A qué almacén entra (spec 094). Nunca nulo en un renglón de almacén (check de la 0121).
+       -- A qué almacén entra (spec 094). Nunca nulo en un renglón de almacén (check de la 0122).
        ei.warehouse_id::bigint as warehouse_id,
        bu.kind as buy_kind, bu.to_base as buy_to_base,
        coalesce(iu.kind, 'pieza'::unit_kind) as base_kind,

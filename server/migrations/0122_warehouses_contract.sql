@@ -193,7 +193,7 @@ begin
      or exists (select 1 from notifications where status = 'open' and kind <> 'not_found'
                  group by company_id, branch_id, item_key, kind having count(*) > 1)
      or exists (select 1 from stock_counts where status = 'open' group by company_id, branch_id having count(*) > 1) then
-    raise exception 'hay registros repetidos por sucursal en dos almacenes: bajar la 0121 los mezclaría';
+    raise exception 'hay registros repetidos por sucursal en dos almacenes: bajar la 0122 los mezclaría';
   end if;
   if exists (select 1 from warehouses w where not w.is_sales and (
        exists (select 1 from stock_levels t where t.warehouse_id = w.id)

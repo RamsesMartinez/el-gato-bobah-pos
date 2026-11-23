@@ -39,7 +39,7 @@ constraint matching» durante el traslape (500 en capturar producto en conteo y 
 - **Consecuencia**: mientras vivan las dos llaves, una sucursal solo puede tener existencias en **un**
   almacén por artículo. Por eso la subida 1 **no escribe en otro almacén que el de venta** y **no
   permite cambiar cuál es el de venta**: dar de alta «Bodega» sí, llenarla no.
-- **Subida 2 (0121)**: cuando la versión anterior ya es la subida 1, se borran las llaves por sucursal
+- **Subida 2 (0122)**: cuando la versión anterior ya es la subida 1, se borran las llaves por sucursal
   y se pone el `not null`. Desde ahí hay compras con destino (E3) y cambiar el de venta.
 
 ## R3. Qué se puede subir en cada subida
@@ -47,8 +47,8 @@ constraint matching» durante el traslape (500 en capturar producto en conteo y 
 | Subida | Migración | Entregas | Por qué juntas |
 | --- | --- | --- | --- |
 | 1 | 0120 | E1 almacenes y almacén en cada registro + E2 ventas | La venta ya descuenta del almacén de venta por el trigger (R1); E2 es leer por almacén en Existencias y la regla de «hay existencia» |
-| 2 | 0121 | contraer llaves + `not null` + E3 compras con destino | E3 es la primera escritura en otro almacén y necesita la llave contraída |
-| 3 | 0122 | E4 traspasos | Tabla nueva de traspasos |
+| 2 | 0122 | contraer llaves + `not null` + E3 compras con destino | E3 es la primera escritura en otro almacén y necesita la llave contraída |
+| 3 | 0123 | E4 traspasos | Tabla nueva de traspasos |
 | 4 | — o 0120 | E5 conteo, merma, mínimos y lugares por almacén | Las columnas ya existen desde 0120 |
 | 5 | — | E6 reportes y movimientos | Solo lectura |
 
@@ -91,7 +91,7 @@ presentación y su cantidad). Cada renglón produce dos movimientos de tipo nuev
 `transfer_id`. Al costo vigente del artículo: el costo es del artículo, no del almacén, así que el
 traspaso no cambia costos. No es costo de ventas: el reporte de costo de ventas sale de `venta`.
 
-`ALTER TYPE … ADD VALUE` no puede usarse en la misma transacción que lo agrega: la 0122 lo agrega en
+`ALTER TYPE … ADD VALUE` no puede usarse en la misma transacción que lo agrega: la 0123 lo agrega en
 su propia sentencia sin transacción (`-- +goose NO TRANSACTION` en un archivo aparte si hace falta) y
 el código que lo usa llega en la misma subida, después de migrar.
 
@@ -132,14 +132,14 @@ Veredicto: 0 CRITICAL, 6 HIGH, 7 MEDIUM. Lo que cambia del diseño de arriba:
 | Hallazgo | Decisión |
 | --- | --- |
 | H1 `low_stock_state` hace un subselect de una fila sobre `stock_levels`; con dos almacenes por artículo truena «more than one row» **fuera** del `exception`, y tumba la venta | La 0120 lo reemplaza por la existencia del **almacén de venta** (no la suma de la sucursal: con Local en 0 y Bodega en 50 la suma no avisaría «se acabó»). Con un almacén es idéntico. En E5 pasa a por almacén |
-| H2 La compuerta «solo el de venta» vivía solo en Go | La 0120 la pone en la base: el trigger de llenado de `stock_movements` lanza `EGB04 warehouse_not_writable_yet` si `warehouse_id` no es el de venta, y `warehouses_before_update` rechaza cambiar `is_sales`. La 0121 quita las dos, en la misma migración que contrae las llaves |
+| H2 La compuerta «solo el de venta» vivía solo en Go | La 0120 la pone en la base: el trigger de llenado de `stock_movements` lanza `EGB04 warehouse_not_writable_yet` si `warehouse_id` no es el de venta, y `warehouses_before_update` rechaza cambiar `is_sales`. La 0122 quita las dos, en la misma migración que contrae las llaves |
 | H2b En la subida 2 la API vieja es la de la subida 1 y ya ve existencias en dos almacenes | Todo lo que la subida 1 lee o escribe por sucursal sobre existencias se vuelve por almacén **en la subida 1**: `RecomputeArticleStock`, `InsertMergeMove`, `InsertReplacementMove`, `LockArticleStockNowait` (por almacén), `ArticleOnHandByBranch`, los `join stock_levels … current_branch_id()` (sumados por artículo o filtrados al de venta), y los de conteo y merma que comparan `branch_id`. Cada uno con un test que siembra existencias en un segundo almacén por SQL (apagando el trigger de H2 solo en el test) |
 | H3 `ADD VALUE 'traspaso'` y su uso en la misma transacción | Migración propia solo con el `ADD VALUE` (Down no-op documentado); las tablas de traspaso en la siguiente |
 | H4 `stock_transfer_lines` | En `MergeTables` como «lo pasado se queda; después, rechaza», con las dos guardas de la 0104; en `UnitChangeTables` «obliga al reemplazo» |
-| H5 `expense_items` | Se llena todo renglón con `item_type` (excluido o no); check en la 0121: `item_type is null or warehouse_id is not null`. Relleno por la sucursal del movimiento ligado y, si no hay, la matriz explícita (no `branch_for_company`) |
-| H6 Downs | 0120: se niega si hay almacén que no sea de venta o fila fuera del de venta; restaura `apply_stock_movement` (0076) y el llenado de sucursal (0078) antes de soltar columnas; borra overrides, `system_role_permissions` y `permissions` de los dos permisos. 0121: recrea las llaves por sucursal y se niega con duplicados. Tablas de traspaso: se niega con traspasos. Cada guarda con su renglón en `guardedDownCleanup`. **Después de la 0121 ya no se puede volver a una imagen anterior a esta feature** |
+| H5 `expense_items` | Se llena todo renglón con `item_type` (excluido o no); check en la 0122: `item_type is null or warehouse_id is not null`. Relleno por la sucursal del movimiento ligado y, si no hay, la matriz explícita (no `branch_for_company`) |
+| H6 Downs | 0120: se niega si hay almacén que no sea de venta o fila fuera del de venta; restaura `apply_stock_movement` (0076) y el llenado de sucursal (0078) antes de soltar columnas; borra overrides, `system_role_permissions` y `permissions` de los dos permisos. 0122: recrea las llaves por sucursal y se niega con duplicados. Tablas de traspaso: se niega con traspasos. Cada guarda con su renglón en `guardedDownCleanup`. **Después de la 0122 ya no se puede volver a una imagen anterior a esta feature** |
 | M1 Bloqueos | `set local lock_timeout = '3s'` y un solo `lock table stock_movements, stock_levels, …` en el orden en que opera la venta, antes del relleno |
-| M2 Una empresa creada por la API anterior durante la subida 1 nace sin «Local» | La 0121 crea «Local» donde falte antes de validar. Helper de pruebas que crea el almacén junto con la sucursal |
+| M2 Una empresa creada por la API anterior durante la subida 1 nace sin «Local» | La 0122 crea «Local» donde falte antes de validar. Helper de pruebas que crea el almacén junto con la sucursal |
 | M3 Un ajuste de conteo o de merma podía llevar otro almacén que su conteo o su merma | `unique (id, company_id, warehouse_id)` en `stock_counts` y `waste_records` y llaves compuestas desde `stock_movements`; ídem `(transfer_id, company_id, branch_id)` |
 | M4 Lugares de conteo | Decisión: el lugar pertenece a un almacén (requerimiento, punto 4); nombre único por `(company_id, warehouse_id)`. El artículo conserva un solo lugar: al contar un almacén, los artículos cuyo lugar es de otro almacén salen al final en «Sin lugar en este almacén». Sin tabla puente (se agrega después desde cero, sin hecho perdido) |
 | M5 `ON DELETE` | `no action` en las llaves nuevas; `cascade` a `companies` en las tablas nuevas |
@@ -155,10 +155,10 @@ Veredicto: 0 CRITICAL, 6 HIGH, 7 MEDIUM. Lo que cambia del diseño de arriba:
 
 | Hallazgo | Decisión |
 | --- | --- |
-| HIGH `evaluate_low_stock` hace `on conflict` sobre `notifications_one_open`, que la 0121 borra; el `exception when others` se traga el error y los avisos dejan de crearse sin log | La 0120 redefine `evaluate_low_stock` con `on conflict` sobre `notifications_one_open_per_warehouse` (mismo predicado exacto) y el almacén del movimiento. Test después de la 0121: vender cruzando el mínimo y **afirmar que la fila de aviso existe** |
-| HIGH FR-011 sin diseño: las reposiciones de cancelación (`RestockCancelledOrder`, `RestockCancelledLine` y las otras dos de `orders.sql`) no traen almacén y el trigger las mandaría al de venta de hoy | En la subida 1 copian `sm.warehouse_id` del movimiento original (y lo agregan al `group by`). Test: vender, cambiar el de venta (desde la subida 2), cancelar pedido y renglón, verificar el almacén de cada reposición. La 0121 hace que el llenado rechace (`EGB04`) un movimiento `cancelacion` sin almacén |
+| HIGH `evaluate_low_stock` hace `on conflict` sobre `notifications_one_open`, que la 0122 borra; el `exception when others` se traga el error y los avisos dejan de crearse sin log | La 0120 redefine `evaluate_low_stock` con `on conflict` sobre `notifications_one_open_per_warehouse` (mismo predicado exacto) y el almacén del movimiento. Test después de la 0122: vender cruzando el mínimo y **afirmar que la fila de aviso existe** |
+| HIGH FR-011 sin diseño: las reposiciones de cancelación (`RestockCancelledOrder`, `RestockCancelledLine` y las otras dos de `orders.sql`) no traen almacén y el trigger las mandaría al de venta de hoy | En la subida 1 copian `sm.warehouse_id` del movimiento original (y lo agregan al `group by`). Test: vender, cambiar el de venta (desde la subida 2), cancelar pedido y renglón, verificar el almacén de cada reposición. La 0122 hace que el llenado rechace (`EGB04`) un movimiento `cancelacion` sin almacén |
 | MEDIUM `low_stock_state` sumando la sucursal | Corregido en R11 H1: mide el almacén de venta |
-| MEDIUM tres versiones del check de `expense_items` | Una sola: **todo renglón con `item_type` lleva almacén, excluido o no**; check `item_type is null or warehouse_id is not null` en la 0121. Un excluido guarda su almacén pero no mueve existencias (`PlanStockLines` ya le pone objetivo cero) |
+| MEDIUM tres versiones del check de `expense_items` | Una sola: **todo renglón con `item_type` lleva almacén, excluido o no**; check `item_type is null or warehouse_id is not null` en la 0122. Un excluido guarda su almacén pero no mueve existencias (`PlanStockLines` ya le pone objetivo cero) |
 | MEDIUM traspaso sin costo guardado | Las dos patas del traspaso guardan `unit_cost` = costo vigente del artículo (snapshot; principio VIII) |
 | Menor llave del traspaso | `(transfer_id, company_id, branch_id)` desde `stock_movements`; un test verifica que cada pata está en el origen o el destino de su traspaso |
 | Puerta VIII | Se cruza con la 0120 (el hecho irrecuperable es el almacén de cada registro): la tabla de puertas de la constitución se edita en la subida 1. `sales_warehouse_of(company, branch)` conserva esa firma para poder ganar después un parámetro de lugar de venta (puerta «más de una caja») |
@@ -185,7 +185,7 @@ Una empresa que dé de alta la API anterior durante el traslape (o tras un regre
 anterior) nace sin almacén de venta, y su primer movimiento truena con `EGB03`. No se arregla con un
 trigger sobre `branches`: un restore con COPY lo dispararía y chocaría con el «Local» del respaldo
 (la razón de la 0076). La ventana es la del traslape, la API nueva lo crea en la misma consulta que la
-matriz, y la 0121 crea «Local» donde falte (R11 M2).
+matriz, y la 0122 crea «Local» donde falte (R11 M2).
 
 ## R14. Puertas con lo que viene encima (#146 caducidad por lote, #226 merma esperada)
 
@@ -198,10 +198,10 @@ matriz, y la 0121 crea «Local» donde falte (R11 M2).
 - **Merma esperada (#226)**: su reporte de conteo contra ventas se construye por almacén encima de E5;
   las ventas ya salen del almacén de venta y el conteo es por almacén.
 
-## R15. Lo que encontró la revisión de la segunda subida (0121 y compras con destino)
+## R15. Lo que encontró la revisión de la segunda subida (0122 y compras con destino)
 
 - **El traslado de lo ya llegado al cambiar el destino no es una entrega**: sus dos movimientos llevan
-  `stock_movements.warehouse_relocation` (columna nueva de la 0121) y no cuentan para el día de
+  `stock_movements.warehouse_relocation` (columna nueva de la 0122) y no cuentan para el día de
   recibido, el historial de entregas ni el contra-movimiento por día. Marca explícita y no «sin
   costo» o un texto en `reason`, que otro camino puede repetir.
 - **Dos entregas a dos almacenes no caben en un renglón con un destino**: recibir en otro almacén

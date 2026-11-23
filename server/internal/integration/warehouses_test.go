@@ -240,7 +240,7 @@ func TestStockLevelsByWarehouse(t *testing.T) {
 }
 
 // Un ajuste manual (pantalla y MCP stock_adjust) va al almacén de venta por omisión; mientras rige la
-// 0121 la bodega también recibe, y uno ajeno no existe.
+// 0122 la bodega también recibe, y uno ajeno no existe.
 func TestAManualAdjustmentGoesToTheWarehouseAsked(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
@@ -261,7 +261,7 @@ func TestAManualAdjustmentGoesToTheWarehouseAsked(t *testing.T) {
 		where m.ingredient_id = $1`, ing).Scan(&sales); err != nil || !sales {
 		t.Fatalf("el ajuste sin almacén no quedó en el de venta: %v", err)
 	}
-	// Desde la 0121 la bodega recibe ajustes: entra a ella y no al local.
+	// Desde la 0122 la bodega recibe ajustes: entra a ella y no al local.
 	if err := svc.RecordMovement(ctx, domain.WarehouseSel{ID: bodega}, "ingrediente", &ing, nil, "ajuste", decimal.NewFromInt(3), "a la bodega", user); err != nil {
 		t.Fatalf("ajuste a la bodega: %v", err)
 	}
@@ -307,7 +307,7 @@ func TestAWarehouseOfAnotherBranchIsNotReachable(t *testing.T) {
 	}
 }
 
-// Cambiar cuál es el almacén de venta (desde la 0121): la marca pasa entera, la sucursal nunca se
+// Cambiar cuál es el almacén de venta (desde la 0122): la marca pasa entera, la sucursal nunca se
 // queda sin uno, y uno archivado no puede ser el de venta.
 func TestTheSalesWarehouseCanChange(t *testing.T) {
 	t.Parallel()

@@ -323,10 +323,10 @@ func migrarAbajoHastaErr(t *testing.T, pool *pgxpool.Pool, version int64) error 
 // Una migración nueva cuyo Down se niegue con datos agrega aquí su limpieza, o su razón en
 // guardedDownWithoutCleanup; TestEveryGuardedDownHasItsTestCleanup truena si falta.
 var guardedDownCleanup = map[int64][]string{
-	// La 0121 se niega con cualquier registro fuera del almacén de venta o repetido por sucursal en dos
+	// La 0122 se niega con cualquier registro fuera del almacén de venta o repetido por sucursal en dos
 	// almacenes. En la copia de prueba se borra lo que hay fuera del de venta (lo que cuelga de los
 	// movimientos primero) y se manda al de venta lo que solo lo apunta.
-	121: {`delete from stock_out_reports where warehouse_id in (select id from warehouses where not is_sales)`,
+	122: {`delete from stock_out_reports where warehouse_id in (select id from warehouses where not is_sales)`,
 		`delete from notifications where warehouse_id in (select id from warehouses where not is_sales)`,
 		`delete from stock_movements where warehouse_id in (select id from warehouses where not is_sales)`,
 		`delete from stock_levels where warehouse_id in (select id from warehouses where not is_sales)`,
