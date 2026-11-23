@@ -9,14 +9,14 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const alertsPerWarehouseVersion = 125
+const alertsPerWarehouseVersion = 127
 
-// LA 0125 (avisos, lugares y reglas de traspaso por almacén, spec 094) CONTRA UN RESPALDO REAL CON DOS
+// LA 0127 (avisos, lugares y reglas de traspaso por almacén, spec 094) CONTRA UN RESPALDO REAL CON DOS
 // EMPRESAS. Lo que se prueba: que valida las dos reglas que la 0124 dejó pendientes sin tocar filas,
 // que un movimiento en un almacén que no es el de venta abre el aviso en ESE almacén cuando tiene
 // mínimo propio, que el nombre de un lugar se repite entre almacenes y no dentro de uno, y que el Down
 // se niega con nombres repetidos entre almacenes.
-func TestMigration0125OnARealBackup(t *testing.T) {
+func TestMigration0127OnARealBackup(t *testing.T) {
 	st := restoredStore(t)
 	ctx := context.Background()
 	migrarAbajoHasta(t, st.Pool, alertsPerWarehouseVersion-1)
@@ -50,7 +50,7 @@ func TestMigration0125OnARealBackup(t *testing.T) {
 	}
 	conn := conexionDeEmpresa(t, st, company)
 	var bodega int64
-	if err := conn.QueryRow(ctx, `insert into warehouses (branch_id, name) values ($1, 'Bodega 0125') returning id`, branch).Scan(&bodega); err != nil {
+	if err := conn.QueryRow(ctx, `insert into warehouses (branch_id, name) values ($1, 'Bodega 0127') returning id`, branch).Scan(&bodega); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,19 +74,19 @@ func TestMigration0125OnARealBackup(t *testing.T) {
 	})
 
 	t.Run("un lugar se repite entre almacenes, no dentro de uno", func(t *testing.T) {
-		if _, err := conn.Exec(ctx, `insert into count_places (name, warehouse_id, position) values ('Refri 0125', $1, 0)`, bodega); err != nil {
+		if _, err := conn.Exec(ctx, `insert into count_places (name, warehouse_id, position) values ('Refri 0127', $1, 0)`, bodega); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := conn.Exec(ctx, `insert into count_places (name, position) values ('refri 0125', 0)`); err != nil {
+		if _, err := conn.Exec(ctx, `insert into count_places (name, position) values ('refri 0127', 0)`); err != nil {
 			t.Fatalf("el mismo nombre en el almacén de venta: %v", err)
 		}
-		_, err := conn.Exec(ctx, `insert into count_places (name, warehouse_id, position) values ('REFRI 0125', $1, 1)`, bodega)
+		_, err := conn.Exec(ctx, `insert into count_places (name, warehouse_id, position) values ('REFRI 0127', $1, 1)`, bodega)
 		exigeViolacionDeRestriccion(t, err, "dos lugares con el mismo nombre en Bodega")
 	})
 
 	t.Run("el Down se niega con nombres repetidos entre almacenes", func(t *testing.T) {
 		if err := goose.DownContext(ctx, prepararGoose(t, st.Pool), "."); err == nil {
-			t.Fatal("el Down bajó con «Refri 0125» en dos almacenes")
+			t.Fatal("el Down bajó con «Refri 0127» en dos almacenes")
 		}
 	})
 }

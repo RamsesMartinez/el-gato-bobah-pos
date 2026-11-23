@@ -217,7 +217,7 @@ begin
   if exists (select 1 from count_places where archived_at is null
               group by company_id, regexp_replace(translate(lower(btrim(name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
              having count(*) > 1) then
-    raise exception 'hay lugares de conteo con el mismo nombre en dos almacenes: bajar la 0125 exige renombrarlos primero';
+    raise exception 'hay lugares de conteo con el mismo nombre en dos almacenes: bajar la 0127 exige renombrarlos primero';
   end if;
 end $$;
 -- +goose StatementEnd

@@ -263,7 +263,7 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   - **Una cancelación repone al almacén del movimiento que repone**, no al de venta de hoy.
   - **El relleno de `expense_items` aparta sus checks `NOT VALID`**: producción tiene filas viejas que
     no los cumplen y Postgres los revisa en cualquier update de la fila (medido: una, el 2026-11-23).
-  - **Conteo, merma, «se acabó», mínimos y lugares son de UN almacén** (0125). Lo que llega sin
+  - **Conteo, merma, «se acabó», mínimos y lugares son de UN almacén** (0127). Lo que llega sin
     `warehouseId` es el de venta. El conteo ajusta, compara su faltante y cubre mermas solo en su
     almacén; cerrar el de Bodega no cierra el «se acabó» de Local.
   - **Los avisos miden el almacén del movimiento** (`warehouse_low_stock_state` y
