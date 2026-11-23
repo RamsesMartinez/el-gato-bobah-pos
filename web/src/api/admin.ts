@@ -94,6 +94,8 @@ export interface CostLine {
   name: string;
   baseUnit: string;
   isPrep: boolean;
+  // Un empaque solo lleva su propio %: la vista previa no le aplica el del producto ni el general.
+  isPackaging?: boolean;
   qtyBase: string;
   unitCost: string;
   base: string;

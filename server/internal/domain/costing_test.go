@@ -240,3 +240,29 @@ func TestProductBreakdown(t *testing.T) {
 		t.Fatalf("el combo: %+v", c)
 	}
 }
+
+// Un vaso no se «pierde al preparar» (decisión del dueño, 2026-11-23): el empaque no recibe ni el %
+// del producto ni el general; solo el suyo si lo tiene capturado.
+func TestPackagingGetsOnlyItsOwnExpectedWaste(t *testing.T) {
+	ings, recipes := expectedWasteFixture(nil, nil, nil)
+	ings[4] = CostIngredient{ID: 4, CurrentCost: 2, IsPackaging: true}
+	recipes[200] = append(recipes[200], CostRecipeItem{IngredientID: 4, QtyBase: 1})
+	prods := map[int64]CostProduct{1: {ID: 1, Type: "simple", CostSource: "receta", RecipeID: p(200)}}
+
+	g := NewCostGraph(ings, recipes, prods, nil, nil, pct(5))
+	// 12 de lo demás al 5 % = 12.6, más el vaso de 2 sin merma.
+	if got := g.ProductCost(1); !almost(got, 14.6) {
+		t.Fatalf("con 5 %% general el vaso sumó merma: costo %v, quiere 14.6", got)
+	}
+	for _, l := range g.ProductBreakdown(1).Lines {
+		if l.IngredientID == 4 && (l.Pct != 0 || l.Source != WasteNone) {
+			t.Fatalf("el desglose del vaso dice %v %% %s; quiere 0 sin merma", l.Pct, l.Source)
+		}
+	}
+
+	ings[4] = CostIngredient{ID: 4, CurrentCost: 2, IsPackaging: true, ExpectedWastePct: pct(10)}
+	g = NewCostGraph(ings, recipes, prods, nil, nil, pct(5))
+	if got := g.ProductCost(1); !almost(got, 12.6+2.2) {
+		t.Fatalf("el %% capturado en el propio empaque no se respetó: %v", got)
+	}
+}

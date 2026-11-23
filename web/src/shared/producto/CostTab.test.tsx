@@ -17,6 +17,7 @@ const frappe: ProductCosting = {
     { ingredientId: 1, name: 'Leche', baseUnit: 'ml', isPrep: false, qtyBase: '200', unitCost: '0.025', base: '5.0000', pct: 5, pctSource: 'general', waste: '0.2500',
       realWaste: [{ warehouseId: 1, warehouseName: 'Local', isSales: true, wasted: '1', consumed: '50', ratio: 2, state: 'ratio' }] },
     { ingredientId: 2, name: 'Fresa', baseUnit: 'g', isPrep: false, qtyBase: '100', unitCost: '0.06', base: '6.0000', pct: 15, pctSource: 'article', waste: '0.9000', realWaste: [] },
+    { ingredientId: 3, name: 'Vaso', baseUnit: 'pieza', isPrep: false, isPackaging: true, qtyBase: '1', unitCost: '2', base: '0.0000', pct: 0, pctSource: 'none', waste: '0.0000', realWaste: [] },
   ],
   components: [],
 };
@@ -51,6 +52,8 @@ describe('Ficha del producto › Costo (spec 096, maqueta B)', () => {
     expect(within(leche).getByText('10 %')).toBeInTheDocument();
     expect(within(leche).getByText(/de este producto/)).toBeInTheDocument();
     expect(within(screen.getByRole('row', { name: /Fresa/ })).getByText('15 %')).toBeInTheDocument();
+    // El empaque no toma el % del producto (decisión del dueño, 2026-11-23).
+    expect(within(screen.getByRole('row', { name: /Vaso/ })).getByText('0 %')).toBeInTheDocument();
     expect(screen.getByLabelText('La merma suma')).toHaveTextContent('$1.40');
   });
 
