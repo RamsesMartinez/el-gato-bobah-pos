@@ -177,3 +177,20 @@ func recordServerError(w http.ResponseWriter, err error) {
 		w = u.Unwrap()
 	}
 }
+
+// fromMCP dice si la respuesta es de una petición que despachó el servidor MCP: el contexto de la
+// petición lo guarda el serverErrorWriter de afuera.
+func fromMCP(w http.ResponseWriter) bool {
+	for w != nil {
+		if sw, ok := w.(*serverErrorWriter); ok {
+			_, ok := mcpPrincipalFrom(sw.ctx)
+			return ok
+		}
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return false
+		}
+		w = u.Unwrap()
+	}
+	return false
+}

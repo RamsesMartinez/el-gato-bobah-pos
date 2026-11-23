@@ -83,7 +83,7 @@ func TestOptionUpdateFindsOptionOfInactiveGroup(t *testing.T) {
 	refused(t, callTool(t, w.router, tok, "modifier_option_update", map[string]any{"option_id": opt}), "Manda")
 	ajeno := w.token(t, w.other, w.otherAdm, "write:catalog")
 	refused(t, callTool(t, w.router, ajeno, "modifier_option_update",
-		applyArgs(map[string]any{"option_id": opt, "name": "x"}, "opcion-ajena-1")), "No existe")
+		applyArgs(map[string]any{"option_id": opt, "name": "x"}, "opcion-ajena-1")), "no existe en esta empresa")
 }
 
 // ---- US2: un pedido de plataforma de punta a punta ----

@@ -224,9 +224,11 @@ func refsIngredientUpdate(in ingredientUpdateArgs) []domain.Ref {
 func refsLowStock(in lowStockUpdateArgs) []domain.Ref {
 	var l refList
 	for _, it := range in.Items {
-		if it.ItemType == "producto" {
+		// Un tipo que no es ninguno de los dos lo rechaza la validación de la herramienta.
+		switch it.ItemType {
+		case "producto":
 			l.product(it.ID)
-		} else {
+		case "ingrediente":
 			l.add(domain.RefIngredient, it.ID)
 		}
 	}

@@ -114,6 +114,12 @@ func TestMigration0121OnARealBackup(t *testing.T) {
 		if n := retake(a.company, b.token, "fallida-de-b"); n != 0 {
 			t.Fatal("la empresa A retomó la llave fallida de la empresa B")
 		}
+		// Lo que evita una escritura doble: una llave «unknown» (pudo aplicarse) o «pending» no se retoma.
+		for _, k := range []string{"despues-unknown", "despues-pending"} {
+			if n := retake(a.company, a.token, k); n != 0 {
+				t.Fatalf("se retomó la llave %s, que no falló", k)
+			}
+		}
 	})
 
 	t.Run("el Down suelta las fallidas sin negarse y deja las demás", func(t *testing.T) {
@@ -128,6 +134,16 @@ func TestMigration0121OnARealBackup(t *testing.T) {
 		}
 		if failed != 0 || kept != 3 {
 			t.Fatalf("tras el Down: %d fallidas (quería 0) y %d de las demás (quería 3)", failed, kept)
+		}
+		exigeViolacionDeRestriccion(t, ins(a, "tras-el-down", "failed", `{"error":"x"}`), "«failed» tras el Down")
+		var grants int64
+		if err := st.Pool.QueryRow(ctx, `select count(*) from information_schema.column_privileges
+			where table_name = 'mcp_idempotency_keys' and grantee = 'gatobobah_app' and privilege_type = 'UPDATE'
+			  and column_name in ('args_hash', 'tool')`).Scan(&grants); err != nil {
+			t.Fatal(err)
+		}
+		if grants != 0 {
+			t.Fatalf("tras el Down gatobobah_app sigue pudiendo reescribir %d columnas de la huella", grants)
 		}
 	})
 }

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -33,17 +34,25 @@ func TestMissingReferenceIsA422ThatNamesIt(t *testing.T) {
 // #335: un 500 dice la causa por categoría, para que quien llamó sepa qué pasó, sin el texto del error
 // (la consulta, los valores) que sigue yendo solo a la bitácora y al correo.
 func TestInternalErrorCarriesACauseButNotItsText(t *testing.T) {
-	w := httptest.NewRecorder()
-	Error(w, fmt.Errorf("guardar: %w", &pgconn.PgError{Code: "23514", Message: "new row violates check constraint \"secreto\""}))
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("status %d", w.Code)
+	boom := fmt.Errorf("guardar: %w", &pgconn.PgError{Code: "23514", Message: "new row violates check constraint \"secreto\""})
+	rec := httptest.NewRecorder()
+	ctx := context.WithValue(context.Background(), mcpPrincipalKey{}, &mcpPrincipal{tool: "stock_adjust"})
+	Error(&serverErrorWriter{ResponseWriter: rec, status: http.StatusOK, ctx: ctx}, boom)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status %d", rec.Code)
 	}
 	var env errorEnvelope
-	_ = json.Unmarshal(w.Body.Bytes(), &env)
+	_ = json.Unmarshal(rec.Body.Bytes(), &env)
 	if !strings.Contains(env.Error.Cause, "regla de los datos") {
 		t.Fatalf("sin causa: %+v", env.Error)
 	}
-	if strings.Contains(w.Body.String(), "secreto") {
-		t.Fatalf("el texto interno llegó en la respuesta: %s", w.Body.String())
+	if strings.Contains(rec.Body.String(), "secreto") {
+		t.Fatalf("el texto interno llegó en la respuesta: %s", rec.Body.String())
+	}
+	// Una ruta de la pantalla (o abierta, como login) no recibe ni la categoría.
+	plain := httptest.NewRecorder()
+	Error(&serverErrorWriter{ResponseWriter: plain, status: http.StatusOK, ctx: context.Background()}, boom)
+	if strings.Contains(plain.Body.String(), "cause") {
+		t.Fatalf("una petición que no es del MCP recibió la causa: %s", plain.Body.String())
 	}
 }

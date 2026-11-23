@@ -413,8 +413,13 @@ func Error(w http.ResponseWriter, err error) {
 		msg = "Error interno del servidor"
 		// Sin details en un 500: el mensaje ya se ocultó por opaco, y adjuntar el interior del
 		// error por otra puerta lo desharía.
-		JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: msg,
-			Cause: domain.InternalCause(alerts.ErrorKind(err))}})
+		body := errorBody{Code: code, Message: msg}
+		// La causa solo a la petición que despachó el MCP (#335): el agente la necesita para decir qué
+		// pasó; a una ruta abierta (login, recuperar contraseña) no le hace falta saber ni la categoría.
+		if fromMCP(w) {
+			body.Cause = domain.InternalCause(alerts.ErrorKind(err))
+		}
+		JSON(w, status, errorEnvelope{Error: body})
 		return
 	}
 

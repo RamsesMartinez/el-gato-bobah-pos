@@ -57,6 +57,8 @@ func TestWriteTrackerSeesAutocommitWrites(t *testing.T) {
 		{"-- name: InsertMovement :one\ninsert into stock_movements (x) values ($1)", true},
 		{"update products set price = $1", true},
 		{"with x as (insert into a values (1) returning id) select id from x", true},
+		{"-- name: EnsureCompanyRoles :exec\nselect ensure_company_roles($1)", true},
+		{"select evaluate_low_stock($1, $2)", true},
 	}
 	for _, c := range cases {
 		ctx, tr := TrackWrites(context.Background())

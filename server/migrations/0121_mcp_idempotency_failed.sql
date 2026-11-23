@@ -10,12 +10,15 @@
 -- Solo ensancha los checks: la API anterior, durante el traslape, nunca escribe «failed», y si lee
 -- uno lo trata como «unknown» (pide revisar con una lectura), que es lo seguro.
 -- ---------------------------------------------------------------------------------------------
-alter table mcp_idempotency_keys drop constraint mcp_idempotency_keys_status;
-alter table mcp_idempotency_keys add constraint mcp_idempotency_keys_status
-  check (status in ('pending', 'done', 'unknown', 'failed'));
-alter table mcp_idempotency_keys drop constraint mcp_idempotency_keys_result;
-alter table mcp_idempotency_keys add constraint mcp_idempotency_keys_result
-  check ((status in ('done', 'failed')) = (result is not null));
+-- Un solo ALTER: una sola toma del candado y ningún momento sin check. Con lock_timeout, si una
+-- escritura del MCP retiene la tabla, la migración falla limpio en vez de encolar a todas detrás.
+set lock_timeout = '3s';
+alter table mcp_idempotency_keys
+  drop constraint mcp_idempotency_keys_status,
+  drop constraint mcp_idempotency_keys_result,
+  add constraint mcp_idempotency_keys_status check (status in ('pending', 'done', 'unknown', 'failed')),
+  add constraint mcp_idempotency_keys_result check ((status in ('done', 'failed')) = (result is not null));
+reset lock_timeout;
 grant update (args_hash, tool) on mcp_idempotency_keys to gatobobah_app;
 
 -- +goose Down

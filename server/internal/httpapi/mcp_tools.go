@@ -404,16 +404,26 @@ type attentionFirst struct {
 	resolved  any
 }
 
-// mcpWriteSchemas y mcpWriteHasRefs los lee TestEveryWriteToolWithIDsDeclaresItsRefs (#335).
+// mcpWriteSchemas y mcpWriteRefsProbe los lee TestEveryWriteToolWithIDsDeclaresItsRefs (#335): manda
+// un id distinto en cada campo del esquema y exige que refs devuelva todos.
 var (
-	mcpWriteSchemas = map[string]*jsonschema.Schema{}
-	mcpWriteHasRefs = map[string]bool{}
+	mcpWriteSchemas   = map[string]*jsonschema.Schema{}
+	mcpWriteRefsProbe = map[string]func(raw []byte) ([]domain.Ref, error){}
 )
 
 func writeTool[In writeArgs](spec writeSpec[In]) {
 	mustRegisterOnce(spec.name)
 	schema := schemaFor[In]()
-	mcpWriteSchemas[spec.name], mcpWriteHasRefs[spec.name] = schema, spec.refs != nil
+	mcpWriteSchemas[spec.name] = schema
+	if spec.refs != nil {
+		mcpWriteRefsProbe[spec.name] = func(raw []byte) ([]domain.Ref, error) {
+			var in In
+			if err := json.Unmarshal(raw, &in); err != nil {
+				return nil, err
+			}
+			return spec.refs(in), nil
+		}
+	}
 	name := spec.name
 	mcpToolRegs[name] = func(s *mcpSession, srv *mcp.Server) {
 		mcp.AddTool(srv, toolDef(name, schema), func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
@@ -566,7 +576,18 @@ func apply[In writeArgs](s *mcpSession, ctx context.Context, spec writeSpec[In],
 		s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: max(status, 500), Args: args})
 		return nil, internalToolError(ctx, resp, domain.InternalMayHaveApplied)
 	case status >= 400:
-		return fail(status, toolError{msg: toolHint(status, resp, mcpListTool[name]), status: status})
+		rejected := toolError{msg: toolHint(status, resp, mcpListTool[name]), status: status}
+		// Una herramienta de varios despachos pudo confirmar el primero antes del rechazo (la ficha de
+		// un insumo antes de sus otros nombres): esa llave no es «fallida», reintentarla repetiría lo ya
+		// escrito.
+		if writes.MayHaveWritten() {
+			if uerr := s.h.apiTokens.MarkIdempotentUnknown(bg, ref); uerr != nil {
+				slog.ErrorContext(ctx, "mcp_idempotency_mark_failed", "tool", name, "error", uerr.Error())
+			}
+			s.record(ctx, app.MCPCall{Tool: name, Mode: "apply", Status: status, Args: args})
+			return nil, rejected
+		}
+		return fail(status, rejected)
 	}
 	result := json.RawMessage(resp)
 	if len(strings.TrimSpace(string(resp))) == 0 {

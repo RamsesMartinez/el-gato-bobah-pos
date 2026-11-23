@@ -336,3 +336,30 @@ func TestMCPPreviewWarnsAboutAnInactiveProduct(t *testing.T) {
 		t.Fatalf("la vista previa no avisa del producto inactivo: %s", res.text)
 	}
 }
+
+// Revisión de código del #335: una herramienta de varios despachos que confirma el primero y recibe un
+// 4xx en el segundo YA escribió. Su llave no puede quedar en «failed» —reintentar con la misma llave
+// volvería a escribir la ficha—: queda en «unknown», con el mensaje de lo que sí quedó.
+func TestMCPRejectionAfterAPartialWriteIsNotFailed(t *testing.T) {
+	t.Parallel()
+	w := newMCPWorld(t)
+	ctx := context.Background()
+	ing := ingredientIn(t, w.owner, w.company, "Queso 335", "g")
+	otro := ingredientIn(t, w.owner, w.company, "Queso 335 de cabra", "g")
+	if _, err := w.owner.Pool.Exec(ctx, `update ingredients set alt_names = '{"Queso fresco 335"}' where id = $1`, otro); err != nil {
+		t.Fatal(err)
+	}
+	tok := w.token(t, w.company, w.admin, "write:inventory")
+	res := callTool(t, w.router, tok, "ingredient_update", applyArgs(map[string]any{"ingredient_id": ing,
+		"name": "Queso panela 335", "alt_names": []string{"Queso fresco 335"}}, "parcial-335-01"))
+	if !res.isError || !strings.Contains(res.text, "ficha ya quedó cambiada") {
+		t.Fatalf("se esperaba el rechazo de los otros nombres con la ficha guardada: %s", res.text)
+	}
+	var status string
+	if err := w.owner.Pool.QueryRow(ctx, `select status from mcp_idempotency_keys where idem_key = 'parcial-335-01'`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "unknown" {
+		t.Fatalf("la llave quedó en %q tras escribir la ficha; un reintento la repetiría", status)
+	}
+}

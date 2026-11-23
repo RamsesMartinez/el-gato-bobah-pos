@@ -52,5 +52,12 @@ func isPlainSelect(sql string) bool {
 		}
 		s = strings.TrimSpace(rest)
 	}
-	return len(s) >= 6 && strings.EqualFold(s[:6], "select")
+	if len(s) < 6 || !strings.EqualFold(s[:6], "select") {
+		return false
+	}
+	// Las funciones de la base que escriben y se llaman con select (ensure_company_roles,
+	// ensure_platform_unpaired_product, evaluate_low_stock). Hoy todas corren dentro de transacción;
+	// si una llega a correr sola, que cuente como escritura y no deje una llave «failed» que se repita.
+	low := strings.ToLower(s)
+	return !strings.Contains(low, "ensure_") && !strings.Contains(low, "evaluate_")
 }
