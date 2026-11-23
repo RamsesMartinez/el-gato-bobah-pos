@@ -54,7 +54,12 @@ export function ExpiriesTab({ onGoToCount }: { onGoToCount?: () => void }) {
       )}
       {GROUPS.map((g) => {
         const ls = lots.filter((l) => groupOf(l) === g);
-        if (ls.length === 0) return null;
+        // «Esta semana» se ve aunque esté vacío: así se sabe que nada caduca pronto, no que falta el grupo.
+        if (ls.length === 0) {
+          return g === 'Esta semana' && lots.length > 0
+            ? <Text key={g} color="fg.muted" data-testid="grupo-vacio">Esta semana · nada caduca en los próximos 7 días</Text>
+            : null;
+        }
         const collapsed = g === 'Más adelante' && !later;
         return (
           <Box key={g} data-testid={`grupo-${g}`}>

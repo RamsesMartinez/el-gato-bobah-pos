@@ -199,6 +199,22 @@ describe('fechas de caducidad al contar (spec 098)', () => {
     expect(screen.getByRole('button', { name: 'Cuánto caduca el 2026-12-10' })).toHaveTextContent('4');
   });
 
+  // Prueba con alguien nuevo: contó 10 L, puso 6 en una fecha y quedaron 6 ml. La cantidad de cada fecha
+  // va en la unidad elegida arriba y se manda en la base.
+  test('la cantidad de cada fecha va en la unidad elegida', async () => {
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[0]).getByRole('button', { name: 'Contar' }));
+    fireEvent.click(await screen.findByLabelText('Suelto de Jarabe de vainilla'));
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
+    tecla('2');
+    click('Agregar fecha'); tecla('1'); tecla('punto'); tecla('5');
+    expect(screen.getByRole('button', { name: 'Cuánto caduca el 2026-12-10' })).toHaveTextContent('1.5 L');
+    expect(screen.getByText('Sin fecha: 0.5 L')).toBeInTheDocument();
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1,
+      { countedQty: '2000', confirmable: true, lots: [{ expiresOn: '2026-12-10', qty: '1500' }] }));
+  });
+
   test('si las fechas suman más que lo contado no se guarda y lo dice en el artículo', async () => {
     montar();
     fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));

@@ -398,7 +398,7 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   const key = (k: string) => {
     if (typeof field === 'string' && field.startsWith('lot:')) {
       const at = Number(field.slice(4));
-      editLots((rows) => rows.map((r, i) => (i === at ? { ...r, qty: pressKey(r.qty, k, item.baseUnitCode !== 'pieza') } : r)));
+      editLots((rows) => rows.map((r, i) => (i === at ? { ...r, qty: pressKey(r.qty, k, unit.weightCode ? item.baseUnitCode !== 'pieza' : unit.decimals) } : r)));
       return;
     }
     if (field === 'rest') setRest((v) => pressKey(v, k, unit.decimals));
@@ -411,11 +411,15 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   const next = () => setField((f) => fields[(fields.indexOf(f) + 1) % fields.length]);
   const openWeighing = () => { setGrossOpen(true); setRest(''); setField('gross'); };
   const closeWeighing = () => { setGrossOpen(false); setGrossWeight(''); setContainers('1'); setField('rest'); };
-  const lotSum = lotRows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0);
+  // Las cantidades de cada fecha van en la unidad elegida para lo suelto (L, kg), como lo suelto; al
+  // servidor viajan en la base. Una unidad de peso de un artículo en piezas no se convierte aquí.
+  const lotFactor = unit.weightCode ? 1 : unit.factor;
+  const lotLabel = unit.weightCode ? item.baseUnitCode : unit.label;
+  const lotSum = lotRows.reduce((acc, r) => acc + (Number(r.qty) || 0) * lotFactor, 0);
   // El mismo predicado que pinta el aviso: unas fechas ya guardadas que pasan lo recontado también
   // apagan «Guardar» (el servidor las rechazaría).
   const lotsOver = total !== null && lotSum > total + 1e-9;
-  const lotsBody = lotsDirty ? { lots: lotRows.filter((r) => Number(r.qty) > 0).map((r) => ({ expiresOn: r.expiresOn, qty: String(Number(r.qty)) })) } : {};
+  const lotsBody = lotsDirty ? { lots: lotRows.filter((r) => Number(r.qty) > 0).map((r) => ({ expiresOn: r.expiresOn, qty: String(Number((Number(r.qty) * lotFactor).toFixed(4))) })) } : {};
   const body = (): CountCaptureBody | null => {
     const b = baseBody();
     return b && !lotsOver ? { ...b, ...lotsBody } : null;
@@ -439,10 +443,10 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   return { packs, units, unit, unitIdx, setUnitIdx, counts, rest, field, setField, total, captured, key, bump, next, body,
     hasNext: fields.length > 1,
     weighed: !weighing && !!unit.weightCode && restNum.estado === 'valido', fromPacks, overMax,
-    allowDecimal: (field === 'rest' && unit.decimals) || (typeof field === 'string' && field.startsWith('lot:') && item.baseUnitCode !== 'pieza') || field === 'gross',
+    allowDecimal: (field === 'rest' && unit.decimals) || (typeof field === 'string' && field.startsWith('lot:') && (unit.weightCode ? item.baseUnitCode !== 'pieza' : unit.decimals)) || field === 'gross',
     tared, weighing, openWeighing, closeWeighing, grossWeight, grossUnitIdx, setGrossUnitIdx, grossPack,
     setGrossPackId, containers, bumpContainers, gross,
-    lotRows, activeLot: typeof field === 'string' && field.startsWith('lot:') ? Number(field.slice(4)) : null,
+    lotRows, lotLabel, lotFactor, lotSum, activeLot: typeof field === 'string' && field.startsWith('lot:') ? Number(field.slice(4)) : null,
     pickLot: (i: number) => setField(`lot:${i}`),
     // Cambiar una fecha a otra que ya está junta las dos: una fecha es un lote.
     setLotDate: (i: number, d: string) => editLots((rows) => {
@@ -600,7 +604,7 @@ function EntryFields({ item, e, serverError, onWeigh }: {
           </Box>
         )}
         {!isProduct(item) && (
-          <CountLotsFields rows={e.lotRows} active={e.activeLot} total={e.total} unitCode={item.baseUnitCode}
+          <CountLotsFields rows={e.lotRows} active={e.activeLot} total={e.total} unitCode={item.baseUnitCode} unitLabel={e.lotLabel} unitFactor={e.lotFactor} sum={e.lotSum}
             onPick={e.pickLot} onChangeDate={e.setLotDate} onAdd={e.addLot} onRemove={e.removeLot} />
         )}
       </VStack>
@@ -799,7 +803,7 @@ function ListView({ count, others = [], onSaved, initialQuery = '', picker }: {
                   ? <Text w="160px" flexShrink={0} fontSize="sm" color="fg.muted">Producto del menú</Text>
                   : <PlacePicker item={i} />}
                 <Text fontSize="sm" color={i.countedQty !== null ? 'fg.success' : 'fg.muted'} minW="120px">
-                  {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}` : 'Sin contar'}
+                  {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}${i.lots?.length ? ` · ${i.lots.length} ${i.lots.length === 1 ? 'fecha' : 'fechas'}` : ''}` : 'Sin contar'}
                 </Text>
                 <Button minH="44px" minW="120px" variant="outline" onClick={() => setEditingId(i.ingredientId)}>
                   {i.countedQty !== null ? 'Cambiar' : 'Contar'}

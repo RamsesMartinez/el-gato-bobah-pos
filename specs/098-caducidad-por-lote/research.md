@@ -214,3 +214,20 @@ Aceptado sin cambio: `stock_movements.expires_on` no la escribe hoy ningún cami
 renglón o de la merma); se deja porque es la vía explícita que las pruebas usan y que un camino futuro
 (la merma esperada, un ajuste fechado) puede tomar sin migración. La unión hecha por la versión anterior
 durante la subida deja los lotes en el artículo archivado (acotado a la subida).
+
+## R14 — Prueba con alguien nuevo de una fonda (2026-11-23, 1024×600 y 1280×854 táctil)
+
+Logró las cinco tareas. Corregido, con prueba:
+- **Defecto**: en el conteo, la cantidad de cada fecha se tomaba en la unidad base aunque arriba se
+  eligió «L» (contó 10 L, puso 6 en una fecha y quedaron 6 ml, sin aviso). Ahora va en la unidad
+  elegida, como lo suelto, y viaja en la base.
+- «Esta semana» se ve aunque esté vacío; «Caduca…» con fondo propio (se perdía sobre el verde del
+  renglón), con año cuando no es el de hoy y «Caduca: sin fecha» cuando no lleva; la hoja dice de qué
+  artículo es la fecha; el renglón contado dice cuántas fechas lleva; la pestaña no se encoge a 1024 px.
+
+Quedó fuera, a propósito:
+- La campana no suena por un lote caducado sin más: el dueño la pidió para cuando lo bueno queda en
+  negativo y lo que queda está caducado (decisión del 2026-11-23). Lo caducado se ve en la franja de
+  Existencias y en Caducidades.
+- «Por recibir» no muestra la nota de la compra y la hoja dice «Gasto N»; la vista previa de la entrega
+  no menciona la caducidad. Son pantallas de las specs 038 y 053 que esta entrega no rediseña.

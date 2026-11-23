@@ -48,6 +48,11 @@ test('agrupa por plazo y cada lote dice en una frase qué pasa', async () => {
   expect(screen.getByText('No se ha vendido en 30 días')).toBeTruthy();
 });
 
+test('«Esta semana» vacío lo dice en vez de desaparecer', async () => {
+  setup([lot({ daysLeft: 20 })]);
+  expect(await screen.findByTestId('grupo-vacio')).toHaveTextContent('nada caduca en los próximos 7 días');
+});
+
 test('sin lotes dice cómo registrarlos', async () => {
   setup([]);
   expect(await screen.findByTestId('sin-caducidades')).toBeTruthy();

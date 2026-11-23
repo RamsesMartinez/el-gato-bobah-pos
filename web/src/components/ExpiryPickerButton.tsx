@@ -10,7 +10,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 // actual, y otros 12 con ›) y luego el día (spec 098, maqueta «Fecha al recibir», opción C). Las caducidades son de meses o
 // años, y el calendario de siempre (DatePickerButton) pide un toque por cada mes que se avanza. Vacío
 // es «sin fecha»: así se comporta como hoy. allowPast deja elegir lo que ya caducó (el conteo).
-export function ExpiryPickerButton({ value, onChange, label, today, allowPast, placeholder, w, clearLabel, compact }: {
+export function ExpiryPickerButton({ value, onChange, label, today, allowPast, placeholder, w, clearLabel, compact, itemName }: {
   value: string;
   onChange: (v: string) => void;
   label: string;
@@ -23,6 +23,8 @@ export function ExpiryPickerButton({ value, onChange, label, today, allowPast, p
   clearLabel?: string;
   // compact cabe en un renglón ya lleno (la hoja de entrega).
   compact?: boolean;
+  // itemName dice en la hoja de qué artículo es la fecha.
+  itemName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const thisYear = Number(today.slice(0, 4));
@@ -50,15 +52,15 @@ export function ExpiryPickerButton({ value, onChange, label, today, allowPast, p
   return (
     <>
       <Button variant="outline" colorPalette="gray" minH="44px" w={w} justifyContent="flex-start" fontWeight="500"
-        px={compact ? 2 : undefined} fontSize={compact ? 'sm' : undefined} aria-label={label} onClick={start}>
-        <Text color={value ? 'fg' : 'fg.muted'}>{value ? `Caduca ${compact ? formatDay(value).replace(/ \d{4}$/, '') : formatDay(value)}` : (placeholder ?? 'Caduca…')}</Text>
+        bg="bg" px={compact ? 2 : undefined} fontSize={compact ? 'sm' : undefined} aria-label={label} onClick={start}>
+        <Text color={value ? 'fg' : 'fg.muted'}>{value ? `Caduca ${compact && value.startsWith(today.slice(0, 4)) ? formatDay(value).replace(/ \d{4}$/, '') : formatDay(value)}` : (placeholder ?? 'Caduca: sin fecha')}</Text>
       </Button>
       <DrawerRoot open={open} placement="bottom" onOpenChange={(e) => { if (!e.open) setOpen(false); }} size="md">
         <DrawerBackdrop />
         <DrawerContent borderTopRadius="2xl" maxH="90dvh" aria-label={label}>
           <DrawerCloseTrigger />
           <Box maxW="560px" w="100%" mx="auto" px={4} pt={4} pb={6}>
-            <Text fontWeight="700" fontSize="lg" mb={2}>{month === null ? '¿Cuándo caduca?' : `¿Qué día de ${MONTHS[month]} ${year}?`}</Text>
+            <Text fontWeight="700" fontSize="lg" mb={2}>{month === null ? `¿Cuándo caduca${itemName ? ` ${itemName}` : ''}?` : `¿Qué día de ${MONTHS[month]} ${year}?`}</Text>
             {month === null ? (
               <>
                 <Flex justify="space-between" align="center" mb={2}>

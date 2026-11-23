@@ -147,7 +147,7 @@ export function StockPage() {
         <Tabs.List overflowX="auto" flexShrink={0}>
           <Tabs.Trigger value="existencias" minH="44px">Existencias</Tabs.Trigger>
           {canTransfer && <Tabs.Trigger value="traspaso" minH="44px">Traspaso</Tabs.Trigger>}
-          {canView && <Tabs.Trigger value="caducidades" minH="44px">Caducidades</Tabs.Trigger>}
+          {canView && <Tabs.Trigger value="caducidades" minH="44px" flexShrink={0}>Caducidades</Tabs.Trigger>}
           <Tabs.Trigger value="movimientos" minH="44px">Movimientos</Tabs.Trigger>
           {canView && <Tabs.Trigger value="insumos" minH="44px">{itemsTab}</Tabs.Trigger>}
           {canView && <Tabs.Trigger value="compra" minH="44px" flexShrink={0}>Lista de compra</Tabs.Trigger>}

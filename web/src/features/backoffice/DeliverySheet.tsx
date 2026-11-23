@@ -134,7 +134,7 @@ export function DeliverySheet({ expense, onClose, onDone, onlyItemId }: {
                       <IconButton aria-label={`Más ${name}`} variant="ghost" minH="44px" minW="44px" onClick={() => bump(l, 1)}><LuPlus /></IconButton>
                     </HStack>
                     {n > 0 && l.itemType === 'ingrediente' && (
-                      <ExpiryPickerButton compact value={expires[l.id] ?? ''} today={today} label={`Caduca ${name}`}
+                      <ExpiryPickerButton compact itemName={name} value={expires[l.id] ?? ''} today={today} label={`Caduca ${name}`}
                         onChange={(v) => setExpires((p) => ({ ...p, [l.id]: v }))} />
                     )}
                     {n > 0
