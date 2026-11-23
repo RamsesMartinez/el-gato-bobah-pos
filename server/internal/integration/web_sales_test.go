@@ -72,3 +72,52 @@ func TestWebOffer(t *testing.T) {
 		}
 	})
 }
+
+// El menú público pinta lo que la oferta web trae (spec 097): nombre, descripción, foto, categoría y
+// orden salen de la MISMA consulta que decide qué se vende, y un producto de una categoría apagada
+// no se ofrece (en el POS tampoco se ve). El resumen de Ajustes cuenta sobre la misma base.
+func TestWebOfferCarriesWhatThePublicMenuPaints(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	_, actx := adminAsApp(t, st, defaultCompanyID, "web-menu")
+	web := app.NewWebSalesService(appRoleStore(t))
+	ctx := context.Background()
+
+	shown := makeProduct(t, st, "Horchata", dec("35"), false)
+	if _, err := st.Pool.Exec(ctx, `update products set description = 'De arroz', image_url = 'https://media.test/1/products/1/x-1200.webp' where id = $1`, shown); err != nil {
+		t.Fatal(err)
+	}
+	gone := makeProduct(t, st, "De una categoría apagada", dec("10"), false)
+	var off int64
+	if err := st.Pool.QueryRow(ctx, `insert into categories (company_id, name, is_active) values ($1, 'Apagada', false) returning id`, defaultCompanyID).Scan(&off); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `update products set category_id = $1 where id = $2`, off, gone); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := web.Summary(actx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, err := web.Offer(actx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got *app.WebOfferItem
+	for i := range offer {
+		if offer[i].ProductID == gone {
+			t.Fatal("un producto de una categoría apagada salió en la web")
+		}
+		if offer[i].ProductID == shown {
+			got = &offer[i]
+		}
+	}
+	if got == nil || got.Name != "Horchata" || got.Description == nil || *got.Description != "De arroz" ||
+		got.ImageURL == nil || got.CategoryID == 0 {
+		t.Fatalf("la oferta no trae lo que el menú pinta: %+v", got)
+	}
+	if before.OnWeb != len(offer) {
+		t.Fatalf("el resumen cuenta %d en la web y la oferta trae %d: miden sobre bases distintas", before.OnWeb, len(offer))
+	}
+}

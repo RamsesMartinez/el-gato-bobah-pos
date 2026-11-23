@@ -21,6 +21,10 @@ const branchAmbiguousCode = "EGB01"
 // unió a otro. El mensaje trae «ingredient_merged|<destino>».
 const mergedIngredientCode = "EGB02"
 
+// uniqueViolationCode es el SQLSTATE de una llave única repetida (el nombre de un menú público que
+// otra empresa ganó en la carrera, spec 097).
+const uniqueViolationCode = "23505"
+
 // warehouseMissingCode y warehouseNotWritableCode son los de la 0120: la sucursal no tiene almacén
 // de venta (`sales_warehouse_of`), y un movimiento o un cambio de almacén de venta que la base todavía
 // no admite mientras guarde las existencias con llave por sucursal.
@@ -47,6 +51,12 @@ func DomainError(err error) error {
 		return fmt.Errorf("%w (%s)", domain.ErrWarehouseMissing, pgErr.Message)
 	case warehouseNotWritableCode:
 		return domain.ErrWarehouseNotWritableYet
+	case uniqueViolationCode:
+		// Otra empresa ganó la carrera por el mismo nombre de menú (spec 097). Solo ESA restricción: el
+		// índice de «un vigente por empresa» no se disfraza de «no disponible».
+		if pgErr.ConstraintName == "public_menu_names_name_key" {
+			return domain.ErrMenuNameUnavailable
+		}
 	case "23503":
 		// Insert o update con una referencia que no existe en la empresa (#335). Con RLS, Postgres no
 		// dice el valor, solo la tabla. El borrado frenado («is still referenced») no es esto.

@@ -64,6 +64,16 @@ with company as (
   insert into channels (company_id, code, name)
   select c.id, v.code, v.name from company c
   cross join (values ('pos', 'Mostrador'), ('qr', 'Menú QR'), ('online', 'Web')) as v(code, name)
+), public_menu as (
+  -- Y con su menú público (spec 097), nombrado con la misma regla que el relleno de la 0123: del
+  -- nombre de la empresa, nunca del slug con el que se inicia sesión.
+  insert into public_menus (company_id, qr_token)
+  select id, substr(replace(gen_random_uuid()::text, '-', ''), 1, 12) from company
+  returning id, company_id
+), public_menu_name as (
+  insert into public_menu_names (company_id, menu_id, name)
+  select m.company_id, m.id, public_menu_free_name(public_menu_slugify(c.name), c.id)
+  from public_menu m join company c on c.id = m.company_id
 )
 select id, slug, name, is_active, created_at, updated_at from company
 `

@@ -30,6 +30,10 @@ POS propio para un solo local (reemplaza a FUDO). Monorepo:
   firma con `PLATFORM_JWT_SECRET` y se conecta con el rol `gatobobah_platform`, que solo puede leer
   `companies` y `platform_operators` — las barreras y sus pruebas están en
   [docs/security-owasp.md](docs/security-owasp.md).
+- **`web/menu/`** — el **menú público** (spec 097): tercer producto de `web/`, HTML sin JavaScript que
+  arma una Function en el borde de Cloudflare (`bun run build:menu` → `dist-menu/`, otro proyecto de
+  Pages, dominio `menu.elgatobobah.com`). No comparte código con el POS ni usa React; `eslint.config.js`
+  lo impone en las dos direcciones. Runbook: [docs/menu-publico.md](docs/menu-publico.md).
 - **`specs/`** — un directorio por feature (`NNN-slug/`), generado por spec-kit.
 - **`docs/`** — referencia viva, histórico y fixtures; el índice manda ([docs/README.md](docs/README.md), ver §6).
 - **`http/`** — peticiones a las APIs de las plataformas, en texto plano, para la extensión
@@ -148,6 +152,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   | Postgres de `make ci-local` | 5700+NN | Antes fijo en 5510: dos `ci-local` a la vez chocaban |
   | Redis | 6400+NN | |
   | API · web | 8000+NN · 3000+NN | |
+  | Menú público (`bun run dev:menu`) | 8700+NN | `MENU_PORT`; la API arma el enlace y el QR con él (spec 097) |
   | mailpit (web · SMTP) | 8200+NN · 1100+NN | |
 
   Reglas:
@@ -279,6 +284,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   | Gastos y sus pagos | pagos de gasto en efectivo, arqueo por hora, renglones excluidos, editar y anular gastos, lo que salió de la caja | [docs/mecanica/gastos.md](docs/mecanica/gastos.md) |
   | Caja y cobro | dividir la cuenta, terminales de tarjeta, fondo fijo y retiro, abrir y cerrar caja con asistencia | [docs/mecanica/caja-y-cobro.md](docs/mecanica/caja-y-cobro.md) |
   | Personal, permisos y bitácora | roles y permisos por empresa, asistencia y bitácora de auditoría | [docs/mecanica/personal-y-permisos.md](docs/mecanica/personal-y-permisos.md) |
+  | Menú público | el menú en línea, su Function del borde, nombres, QR y caché | [docs/menu-publico.md](docs/menu-publico.md) |
   | Medición de uso y mapa de toques | instrumentar pantallas para la consola de plataforma | [docs/mecanica/medicion-de-uso.md](docs/mecanica/medicion-de-uso.md) |
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id

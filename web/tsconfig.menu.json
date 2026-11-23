@@ -1,0 +1,8 @@
+{
+  // El typecheck del MENÚ PÚBLICO (spec 097), aparte del POS y de la consola: corre en el borde de
+  // Cloudflare (un Worker), sin React. Un typo aquí no puede dejar varado un despliegue del mostrador.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "jsx": "preserve", "types": ["node"] },
+  "include": ["menu"],
+  "exclude": ["menu/public", "menu/build.ts"]
+}

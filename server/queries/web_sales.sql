@@ -2,18 +2,20 @@
 -- que muestre o cuente la web: el resumen de Ajustes hoy y el menú público (#316) después.
 
 -- name: WebOfferProducts :many
--- Activos, dentro de su temporada (como el menú del POS) y sin fila «oculto» para Web. Sin fila de
--- lugar de venta = se ofrece, al precio de mostrador.
-select p.id, p.price, p.allow_oversell,
+-- Activos, dentro de su temporada (como el menú del POS), en una categoría activa y sin fila
+-- «oculto» para Web. Sin fila de lugar de venta = se ofrece, al precio de mostrador. Es LA regla de
+-- qué se vende en la web: el menú público (spec 097) la usa tal cual, con lo que necesita pintar.
+select p.id, p.price, p.allow_oversell, p.name, p.description, p.image_url, p.category_id, p.sort_key,
        (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
          where pc.product_id = p.id and ch.code = 'online') as web_price
 from products p
+join categories c on c.id = p.category_id and c.is_active
 where p.is_active and p.system_kind is null
   and (p.available_from is null or p.available_from <= current_date)
   and (p.available_until is null or p.available_until >= current_date)
   and not exists (select 1 from product_channels pc join channels ch on ch.id = pc.channel_id
                    where pc.product_id = p.id and ch.code = 'online' and pc.visibility = 'oculto')
-order by p.id;
+order by p.sort_key, p.name, p.id;
 
 -- name: WebSalesCounts :one
 -- El resumen de Ajustes, en UNA sentencia y con la misma base que WebOfferProducts (activos, sin el
@@ -26,6 +28,7 @@ with base as (
          (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
            where pc.product_id = p.id and ch.code = 'online') as web_price
   from products p
+  join categories c on c.id = p.category_id and c.is_active
   where p.is_active and p.system_kind is null
     and (p.available_from is null or p.available_from <= current_date)
     and (p.available_until is null or p.available_until >= current_date)
