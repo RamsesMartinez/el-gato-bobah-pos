@@ -10,6 +10,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
@@ -68,7 +69,7 @@ func TestPathsWithoutMovementEvaluate(t *testing.T) {
 		if _, _, err := out.ReportOut(outCtx, app.ReportOutCmd{ItemType: "ingrediente", ID: ing, ClientKey: uuid.New(), Actor: user}); err != nil {
 			t.Fatal(err)
 		}
-		c, err := svc.OpenCount(ctx, user)
+		c, err := svc.OpenCount(ctx, domain.WarehouseSel{}, user)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,7 +87,7 @@ func TestPathsWithoutMovementEvaluate(t *testing.T) {
 	t.Run("un conteo cerrado deja de pedir conteo en lo que abra después", func(t *testing.T) {
 		ing := pieceIngredient(t, st, "Recién contado 084p")
 		adjust(t, st, "ingrediente", ing, "10")
-		c, err := svc.OpenCount(ctx, user)
+		c, err := svc.OpenCount(ctx, domain.WarehouseSel{}, user)
 		if err != nil {
 			t.Fatal(err)
 		}

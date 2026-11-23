@@ -21,8 +21,8 @@ func TestRenamingAPlaceRenamesItForAllItsItems(t *testing.T) {
 	st := newTestStore(t)
 	co := makeCompany(t, st, "lugares-renombrar")
 	svc, ctx := asWaste(t, co)
-	refri, _ := svc.CreateCountPlace(ctx, "Refri")
-	barra, _ := svc.CreateCountPlace(ctx, "Barra")
+	refri, _ := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Refri")
+	barra, _ := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Barra")
 	for i := range 3 {
 		ing := placeIngredient(t, st, co, fmt.Sprintf("En el refri %d", i))
 		if err := svc.SetCountPlace(ctx, ing, &refri); err != nil {
@@ -49,7 +49,7 @@ func TestMovingAPlaceChangesTheCountRoute(t *testing.T) {
 	svc, ctx := asWaste(t, co)
 	ids := map[string]int64{}
 	for _, n := range []string{"Refri", "Barra", "Bodega"} {
-		id, err := svc.CreateCountPlace(ctx, n)
+		id, err := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, n)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,7 +84,7 @@ func TestMovingAPlaceChangesTheCountRoute(t *testing.T) {
 		mk("B sin lugar", "")
 		mk("C en bodega", "Bodega")
 		mk("D en refri", "Refri")
-		c, err := svc.OpenCount(ctx, makeUserIn(t, st, co, "gerente_recorrido", "gerente"))
+		c, err := svc.OpenCount(ctx, domain.WarehouseSel{}, makeUserIn(t, st, co, "gerente_recorrido", "gerente"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -106,7 +106,7 @@ func TestConcurrentPlaceChangesKeepOneOrderAndUniqueNames(t *testing.T) {
 	st := newTestStore(t)
 	co := makeCompany(t, st, "lugares-concurrencia")
 	svc, ctx := asWaste(t, co)
-	first, _ := svc.CreateCountPlace(ctx, "Primero")
+	first, _ := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Primero")
 	// Cada rutina con su propia sesión: una sesión es una sola conexión y no se comparte.
 	type sess struct {
 		svc *app.BackofficeService
@@ -125,7 +125,7 @@ func TestConcurrentPlaceChangesKeepOneOrderAndUniqueNames(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			if _, err := a.svc.CreateCountPlace(a.ctx, fmt.Sprintf("Alta %d", i)); err == nil {
+			if _, err := a.svc.CreateCountPlace(a.ctx, domain.WarehouseSel{}, fmt.Sprintf("Alta %d", i)); err == nil {
 				mu.Lock()
 				created++
 				mu.Unlock()
@@ -152,8 +152,8 @@ func TestConcurrentPlaceChangesKeepOneOrderAndUniqueNames(t *testing.T) {
 		t.Fatalf("%d posiciones repetidas, %d lugares (quiere 7), %d altas", dup, active, created)
 	}
 
-	x, _ := svc.CreateCountPlace(ctx, "Equis")
-	y, _ := svc.CreateCountPlace(ctx, "Ye")
+	x, _ := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Equis")
+	y, _ := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Ye")
 	a, b := sessions[0], sessions[1]
 	var okA, okB error
 	wg.Add(2)
@@ -175,8 +175,8 @@ func TestArchivingAPlaceMovesItsItems(t *testing.T) {
 	st := newTestStore(t)
 	co := makeCompany(t, st, "lugares-archivar")
 	svc, ctx := asWaste(t, co)
-	refri, _ := svc.CreateCountPlace(ctx, "Refri")
-	barra, _ := svc.CreateCountPlace(ctx, "Barra")
+	refri, _ := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Refri")
+	barra, _ := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Barra")
 	active := placeIngredient(t, st, co, "Activo en refri")
 	inactive := placeIngredient(t, st, co, "Inactivo en refri")
 	for _, ing := range []int64{active, inactive} {
@@ -209,7 +209,7 @@ func TestArchivingAPlaceMovesItsItems(t *testing.T) {
 		t.Fatalf("pasarlos a uno archivado = %v; quiere conflicto", err)
 	}
 	// Un destino inválido se rechaza aunque el lugar no tenga artículos que mover.
-	vacio, _ := svc.CreateCountPlace(ctx, "Vacío")
+	vacio, _ := svc.CreateCountPlace(ctx, domain.WarehouseSel{}, "Vacío")
 	if err := svc.ArchiveCountPlaceMoving(ctx, vacio, &refri); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("archivar uno vacío hacia uno archivado = %v; quiere conflicto", err)
 	}

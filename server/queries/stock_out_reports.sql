@@ -44,8 +44,10 @@ select r.item_type, coalesce(r.ingredient_id, r.product_id)::bigint as id,
 -- Lo reportado en la sucursal desde `since`: la columna «Reportado hoy».
 select r.id, r.kind, r.item_type, r.ingredient_id, r.product_id,
        coalesce(i.name, p.name, n.query_text)::text as name, r.reported_at, r.undone_at, r.reported_by,
-       u.name::text as reported_by_name, (r.delta is not null)::bool as moved, n.status::text as notification_status
+       u.name::text as reported_by_name, (r.delta is not null)::bool as moved, n.status::text as notification_status,
+       r.warehouse_id, wh.name as warehouse_name
   from stock_out_reports r
+  join warehouses wh on wh.id = r.warehouse_id
   join notifications n on n.id = r.notification_id
   join users u on u.id = r.reported_by
   left join ingredients i on i.id = r.ingredient_id
@@ -95,38 +97,39 @@ select a.name, a.unit_code, a.is_active
   ) a;
 
 -- name: StockOnHandForUpdate :many
--- La existencia del artículo en la sucursal, tomada: el ajuste a 0 resta exactamente lo que hay.
+-- La existencia del artículo en el almacén, tomada: el ajuste a 0 resta exactamente lo que hay.
 select on_hand from stock_levels
- where warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint))
+ where warehouse_id = sqlc.arg(warehouse_id)::bigint
    and (ingredient_id = sqlc.narg(ingredient_id) or product_id = sqlc.narg(product_id))
  for update;
 
 -- name: InsertOutAdjustment :one
 -- El ajuste de «se acabó» (o su deshacer). Es un ajuste, no una venta: no cuenta como consumo.
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, user_id, reason, branch_id)
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, user_id, reason, warehouse_id)
 values (sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id), 'ajuste', sqlc.arg(quantity),
-        sqlc.arg(user_id), sqlc.arg(reason), sqlc.arg(branch_id))
+        sqlc.arg(user_id), sqlc.arg(reason), sqlc.arg(warehouse_id))
 returning id;
 
 -- name: OpenManualOut :many
 -- Abre el «se acabó» reportado a mano. Si ya hay uno abierto (de alguien más o del sistema), no abre
 -- otro: el índice único lo impide también con dos tabletas a la vez.
-insert into notifications (branch_id, kind, item_type, ingredient_id, product_id, item_name, unit_code, on_hand_seen, opened_by)
-values (sqlc.arg(branch_id), 'stock_out', sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id),
-        sqlc.arg(item_name), sqlc.arg(unit_code), sqlc.arg(on_hand_seen), sqlc.arg(opened_by))
+insert into notifications (branch_id, warehouse_id, kind, item_type, ingredient_id, product_id, item_name, unit_code, on_hand_seen, opened_by)
+select w.branch_id, w.id, 'stock_out', sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id),
+       sqlc.arg(item_name), sqlc.arg(unit_code), sqlc.arg(on_hand_seen), sqlc.arg(opened_by)
+  from warehouses w where w.id = sqlc.arg(warehouse_id)
 on conflict (company_id, warehouse_id, item_key, kind) where status = 'open' and kind <> 'not_found' do nothing
 returning id;
 
 -- name: OpenOutNotification :one
 select id from notifications
- where branch_id = sqlc.arg(branch_id) and status = 'open' and kind = 'stock_out'
+ where warehouse_id = sqlc.arg(warehouse_id) and status = 'open' and kind = 'stock_out'
    and item_key = coalesce(sqlc.narg(ingredient_id)::bigint, -sqlc.narg(product_id)::bigint, 0);
 
 -- name: ClaimTriggerOut :one
 -- El aviso que abrió el trigger al dejar la existencia en 0 no sabe quién fue: el reporte que se
 -- cuelga de él lo deja a nombre de quien reportó (lo vuelve manual: espera a que haya existencia).
 update notifications set opened_by = sqlc.arg(opened_by)
- where branch_id = sqlc.arg(branch_id) and status = 'open' and kind = 'stock_out'
+ where warehouse_id = sqlc.arg(warehouse_id) and status = 'open' and kind = 'stock_out'
    and item_key = coalesce(sqlc.narg(ingredient_id)::bigint, -sqlc.narg(product_id)::bigint, 0)
    and opened_by is null
 returning id;
@@ -137,14 +140,15 @@ values (sqlc.arg(branch_id), 'not_found', sqlc.arg(query_text), sqlc.arg(opened_
 returning id;
 
 -- name: InsertOutReport :one
-insert into stock_out_reports (branch_id, kind, item_type, ingredient_id, product_id, notification_id, movement_id, delta,
+insert into stock_out_reports (branch_id, warehouse_id, kind, item_type, ingredient_id, product_id, notification_id, movement_id, delta,
                                client_key, reported_by)
-values (sqlc.arg(branch_id), sqlc.arg(kind), sqlc.narg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id),
-        sqlc.arg(notification_id), sqlc.narg(movement_id), sqlc.narg(delta), sqlc.arg(client_key), sqlc.arg(reported_by))
+select w.branch_id, w.id, sqlc.arg(kind), sqlc.narg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id),
+       sqlc.arg(notification_id), sqlc.narg(movement_id), sqlc.narg(delta), sqlc.arg(client_key), sqlc.arg(reported_by)
+  from warehouses w where w.id = sqlc.arg(warehouse_id)
 returning id, reported_at;
 
 -- name: GetOutReportForUndo :one
-select id, branch_id, kind, item_type, ingredient_id, product_id, notification_id, movement_id, delta, reported_by,
+select id, branch_id, warehouse_id, kind, item_type, ingredient_id, product_id, notification_id, movement_id, delta, reported_by,
        reported_at, undone_at
   from stock_out_reports where id = sqlc.arg(id) for update;
 
@@ -152,13 +156,13 @@ select id, branch_id, kind, item_type, ingredient_id, product_id, notification_i
 -- ¿Algo movió el artículo después del reporte? Un movimiento posterior o un renglón de conteo
 -- capturado después: reponer el delta original lo pisaría.
 select (exists (select 1 from stock_movements m
-                 where m.warehouse_id = (select sales_warehouse_of(nullif(current_setting('app.company_id', true), '')::bigint, sqlc.arg(branch_id)::bigint)) and m.id > sqlc.arg(movement_id)::bigint
+                 where m.warehouse_id = sqlc.arg(warehouse_id)::bigint and m.id > sqlc.arg(movement_id)::bigint
                    and (m.ingredient_id = sqlc.narg(ingredient_id) or m.product_id = sqlc.narg(product_id)))
      or exists (select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id
-                 where c.branch_id = sqlc.arg(branch_id) and l.ingredient_id = sqlc.narg(ingredient_id)
+                 where c.warehouse_id = sqlc.arg(warehouse_id) and l.ingredient_id = sqlc.narg(ingredient_id)
                    and l.captured_at > sqlc.arg(reported_at))
      or exists (select 1 from stock_count_product_lines l join stock_counts c on c.id = l.count_id
-                 where c.branch_id = sqlc.arg(branch_id) and l.product_id = sqlc.narg(product_id)
+                 where c.warehouse_id = sqlc.arg(warehouse_id) and l.product_id = sqlc.narg(product_id)
                    and l.captured_at > sqlc.arg(reported_at)))::bool;
 
 -- name: MarkOutReportUndone :exec

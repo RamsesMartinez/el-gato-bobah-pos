@@ -263,3 +263,18 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
   - **Una cancelación repone al almacén del movimiento que repone**, no al de venta de hoy.
   - **El relleno de `expense_items` aparta sus checks `NOT VALID`**: producción tiene filas viejas que
     no los cumplen y Postgres los revisa en cualquier update de la fila (medido: una, el 2026-11-23).
+  - **Conteo, merma, «se acabó», mínimos y lugares son de UN almacén** (0125). Lo que llega sin
+    `warehouseId` es el de venta. El conteo ajusta, compara su faltante y cubre mermas solo en su
+    almacén; cerrar el de Bodega no cierra el «se acabó» de Local.
+  - **Los avisos miden el almacén del movimiento** (`warehouse_low_stock_state` y
+    `evaluate_warehouse_low_stock`). Un almacén que no es el de venta **solo avisa si tiene mínimo
+    propio**: el mínimo del artículo y «se acabó» automático hablan del mostrador. El «se acabó» que una
+    persona reporta en Bodega sí se cierra solo cuando vuelve a haber. `low_stock_state` y
+    `evaluate_low_stock` (por sucursal) siguen vivas como envoltura sobre el de venta para la API
+    anterior; se pueden borrar una subida después.
+  - **El nombre de un lugar de conteo es único por almacén**. Al contar un almacén, un artículo con
+    lugar de otro va al final con `placeElsewhere`.
+  - **El valor de existencias no resta negativos**: cada almacén vale `greatest(on_hand, 0) × costo`,
+    y «todos» es la suma de cada almacén, no la existencia sumada por el costo. La respuesta lo declara
+    (`totalValueExcludesNegative`).
+  - **Un traspaso no es consumo**: la lista de compra mide `venta` y `cancelacion` y nada más.

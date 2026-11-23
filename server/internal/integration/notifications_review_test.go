@@ -59,7 +59,7 @@ func TestNotificationPathsAreIsolatedInTheThreeCases(t *testing.T) {
 		if err := svc.Resolve(ctx, gerente, managerPerms084, nf.NotificationID, app.ResolveCmd{Action: "alias", IngredientID: &ing}); err == nil {
 			t.Fatal("otra empresa ligó un nombre a un insumo ajeno")
 		}
-		if lines, err := svc.ShoppingList(ctx); err == nil {
+		if lines, err := svc.ShoppingList(ctx, domain.WarehouseSel{}); err == nil {
 			for _, l := range lines {
 				if l.ID == ing {
 					t.Fatal("otra empresa ve la lista de compra ajena")
@@ -142,7 +142,7 @@ func TestABatchRowWithoutMinimumKeepsIt(t *testing.T) {
 	if _, err := svc.ConfigureLowStock(ctx, "ingrediente", ing, lowStockIn(false, "8"), gerente, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.ConfigureBatch(ctx, []app.LowStockBatchItem{{ItemType: "ingrediente", ID: ing, Enabled: true, KeepMin: true}}, gerente, false); err != nil {
+	if _, err := svc.ConfigureBatch(ctx, []app.LowStockBatchItem{{ItemType: "ingrediente", ID: ing, Enabled: true, KeepMin: true}}, domain.WarehouseSel{}, gerente, false); err != nil {
 		t.Fatal(err)
 	}
 	var min *decimal.Decimal

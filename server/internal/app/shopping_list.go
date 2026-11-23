@@ -36,20 +36,28 @@ type ShoppingLine struct {
 	State        string                     `json:"state"` // out | low | count
 	Suggested    *domain.PurchaseSuggestion `json:"suggested"`
 	Why          string                     `json:"why"`
+	// WarehouseID y WarehouseName: el almacén cuya existencia y mínimo se leyeron.
+	WarehouseID   int64  `json:"warehouseId"`
+	WarehouseName string `json:"warehouseName"`
 }
 
-// ShoppingList arma la lista de la sucursal de la sesión. Nunca nil.
-func (s *NotificationsService) ShoppingList(ctx context.Context) ([]ShoppingLine, error) {
-	return shoppingListIn(ctx, s.store.QC(ctx))
+// ShoppingList arma la lista de un almacén de la sucursal de la sesión (el de venta si no se pide
+// otro). Nunca nil.
+func (s *NotificationsService) ShoppingList(ctx context.Context, sel domain.WarehouseSel) ([]ShoppingLine, error) {
+	return shoppingListIn(ctx, s.store.QC(ctx), sel)
 }
 
 // shoppingListIn es la lista dentro de una transacción ajena (el correo de la mañana).
-func shoppingListIn(ctx context.Context, q *db.Queries) ([]ShoppingLine, error) {
+func shoppingListIn(ctx context.Context, q *db.Queries, sel domain.WarehouseSel) ([]ShoppingLine, error) {
+	wh, err := resolveWarehouse(ctx, q, sel)
+	if err != nil {
+		return nil, err
+	}
 	now, err := q.DBNow(ctx)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := q.ShoppingListItems(ctx, now.Add(-consumptionWindow*24*time.Hour))
+	rows, err := q.ShoppingListItems(ctx, db.ShoppingListItemsParams{Since: now.Add(-consumptionWindow * 24 * time.Hour), WarehouseID: wh.ID})
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +85,7 @@ func shoppingListIn(ctx context.Context, q *db.Queries) ([]ShoppingLine, error) 
 	out := make([]ShoppingLine, 0, len(rows))
 	for _, r := range rows {
 		l := ShoppingLine{ItemType: string(r.ItemType), ID: r.ID, Name: r.Name, Unit: r.UnitCode, OnHand: r.OnHand,
-			CoverageDays: int(r.CoverageDays), Supplier: r.Supplier, State: "low"}
+			CoverageDays: int(r.CoverageDays), Supplier: r.Supplier, State: "low", WarehouseID: wh.ID, WarehouseName: wh.Name}
 		if l.CoverageDays == 0 {
 			l.CoverageDays = domain.DefaultCoverageDays
 		}

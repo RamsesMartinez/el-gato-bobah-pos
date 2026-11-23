@@ -86,6 +86,13 @@ func refsWaste(in wasteArgs) []domain.Ref {
 	if in.ProductID != nil {
 		l.product(*in.ProductID)
 	}
+	l.opt(domain.RefWarehouse, in.WarehouseID)
+	return l
+}
+
+func refsCountOpen(in countOpenArgs) []domain.Ref {
+	var l refList
+	l.opt(domain.RefWarehouse, in.WarehouseID)
 	return l
 }
 
@@ -225,6 +232,7 @@ func refsIngredientUpdate(in ingredientUpdateArgs) []domain.Ref {
 
 func refsLowStock(in lowStockUpdateArgs) []domain.Ref {
 	var l refList
+	l.opt(domain.RefWarehouse, in.WarehouseID)
 	for _, it := range in.Items {
 		// Un tipo que no es ninguno de los dos lo rechaza la validación de la herramienta.
 		switch it.ItemType {

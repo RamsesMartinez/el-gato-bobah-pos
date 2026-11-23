@@ -128,6 +128,8 @@ type ReportOutCmd struct {
 	ID        int64
 	ClientKey uuid.UUID
 	Actor     int64
+	// Warehouse: dónde se acabó (spec 094); sin él, el de venta.
+	Warehouse domain.WarehouseSel
 }
 
 // OutReportResult es lo que la pantalla necesita para el aviso verde y el deshacer.
@@ -197,12 +199,16 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 		if err != nil {
 			return err
 		}
+		wh, err := resolveWarehouse(ctx, q, cmd.Warehouse)
+		if err != nil {
+			return err
+		}
 		if ing != nil {
 			if err := lockIngredients(ctx, q, []int64{*ing}); err != nil {
 				return err
 			}
 		}
-		existing, err := q.OpenOutNotification(ctx, db.OpenOutNotificationParams{BranchID: branch, IngredientID: ing, ProductID: prod})
+		existing, err := q.OpenOutNotification(ctx, db.OpenOutNotificationParams{WarehouseID: wh.ID, IngredientID: ing, ProductID: prod})
 		alreadyOpen := err == nil
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
@@ -222,7 +228,7 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 		notification := existing
 		if !alreadyOpen {
 			kind = "report"
-			levels, err := q.StockOnHandForUpdate(ctx, db.StockOnHandForUpdateParams{BranchID: branch, IngredientID: ing, ProductID: prod})
+			levels, err := q.StockOnHandForUpdate(ctx, db.StockOnHandForUpdateParams{WarehouseID: wh.ID, IngredientID: ing, ProductID: prod})
 			if err != nil {
 				return err
 			}
@@ -233,13 +239,13 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 			if !onHand.IsZero() {
 				d := onHand.Neg()
 				id, err := q.InsertOutAdjustment(ctx, db.InsertOutAdjustmentParams{ItemType: itemType, IngredientID: ing,
-					ProductID: prod, Quantity: d, UserID: &cmd.Actor, Reason: ptr(outReason), BranchID: branch})
+					ProductID: prod, Quantity: d, UserID: &cmd.Actor, Reason: ptr(outReason), WarehouseID: wh.ID})
 				if err != nil {
 					return err
 				}
 				movement, delta = &id, &d
 			}
-			ids, err := q.OpenManualOut(ctx, db.OpenManualOutParams{BranchID: branch, ItemType: &itemType, IngredientID: ing,
+			ids, err := q.OpenManualOut(ctx, db.OpenManualOutParams{WarehouseID: wh.ID, ItemType: &itemType, IngredientID: ing,
 				ProductID: prod, ItemName: &art.Name, UnitCode: &art.UnitCode, OnHandSeen: &onHand, OpenedBy: &cmd.Actor})
 			if err != nil {
 				return err
@@ -250,19 +256,19 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 				// El ajuste a 0 lo acaba de abrir el trigger (un artículo con alerta «al acabarse»): el
 				// reporte se cuelga de ese aviso y lo deja a su nombre, o la franja le saldría a quien
 				// reportó y el panel diría que lo reportó el sistema.
-				notification, err = q.ClaimTriggerOut(ctx, db.ClaimTriggerOutParams{OpenedBy: &cmd.Actor, BranchID: branch, IngredientID: ing, ProductID: prod})
+				notification, err = q.ClaimTriggerOut(ctx, db.ClaimTriggerOutParams{OpenedBy: &cmd.Actor, WarehouseID: wh.ID, IngredientID: ing, ProductID: prod})
 				if errors.Is(err, pgx.ErrNoRows) {
 					// Otra tableta lo reportó mientras ésta esperaba el candado de la existencia (un
 					// producto no tiene el candado del insumo): ya está en 0 y con autor; esto confirma.
 					kind = "confirmation"
-					notification, err = q.OpenOutNotification(ctx, db.OpenOutNotificationParams{BranchID: branch, IngredientID: ing, ProductID: prod})
+					notification, err = q.OpenOutNotification(ctx, db.OpenOutNotificationParams{WarehouseID: wh.ID, IngredientID: ing, ProductID: prod})
 				}
 				if err != nil {
 					return err
 				}
 			}
 		}
-		rep, err := q.InsertOutReport(ctx, db.InsertOutReportParams{BranchID: branch, Kind: kind, ItemType: &itemType,
+		rep, err := q.InsertOutReport(ctx, db.InsertOutReportParams{WarehouseID: wh.ID, Kind: kind, ItemType: &itemType,
 			IngredientID: ing, ProductID: prod, NotificationID: notification, MovementID: movement, Delta: delta,
 			ClientKey: cmd.ClientKey, ReportedBy: cmd.Actor})
 		if err != nil {
@@ -279,7 +285,8 @@ func (s *StockOutService) ReportOut(ctx context.Context, cmd ReportOutCmd) (OutR
 			UndoUntil: rep.ReportedAt.Add(domain.OutReportUndoWindow()), Confirmations: int(live)}
 		created = true
 		return auditEntity(ctx, q, domain.AuditStockOutReported, "stock_out_report", rep.ID, &branch, &cmd.Actor, nil,
-			map[string]any{"item": art.Name, "itemType": itemType, "kind": kind, "delta": delta})
+			map[string]any{"item": art.Name, "itemType": itemType, "kind": kind, "delta": delta,
+				"warehouseId": wh.ID, "warehouseName": wh.Name})
 	})
 	if err != nil {
 		return OutReportResult{}, false, lockErr(err)
@@ -387,7 +394,7 @@ func (s *StockOutService) UndoOut(ctx context.Context, id, actor int64, canConfi
 					return err
 				}
 			}
-			moved, err := q.ArticleMovedSince(ctx, db.ArticleMovedSinceParams{BranchID: r.BranchID, MovementID: revert.MovementID,
+			moved, err := q.ArticleMovedSince(ctx, db.ArticleMovedSinceParams{WarehouseID: r.WarehouseID, MovementID: revert.MovementID,
 				IngredientID: r.IngredientID, ProductID: r.ProductID, ReportedAt: revert.ReportedAt})
 			if err != nil {
 				return err
@@ -397,7 +404,7 @@ func (s *StockOutService) UndoOut(ctx context.Context, id, actor int64, canConfi
 			}
 			if undoMovement, err = q.InsertOutAdjustment(ctx, db.InsertOutAdjustmentParams{ItemType: *r.ItemType,
 				IngredientID: r.IngredientID, ProductID: r.ProductID, Quantity: revert.Delta.Neg(), UserID: &actor,
-				Reason: ptr(outUndoReason), BranchID: r.BranchID}); err != nil {
+				Reason: ptr(outUndoReason), WarehouseID: r.WarehouseID}); err != nil {
 				return err
 			}
 		}
@@ -462,7 +469,11 @@ func (s *StockOutService) ReportNotFound(ctx context.Context, text string, key u
 		if err != nil {
 			return err
 		}
-		rep, err := q.InsertOutReport(ctx, db.InsertOutReportParams{BranchID: branch, Kind: "not_found",
+		wh, err := ResolveWarehouseID(ctx, q, domain.WarehouseSel{})
+		if err != nil {
+			return err
+		}
+		rep, err := q.InsertOutReport(ctx, db.InsertOutReportParams{WarehouseID: wh, Kind: "not_found",
 			NotificationID: n, ClientKey: key, ReportedBy: actor})
 		if err != nil {
 			return err

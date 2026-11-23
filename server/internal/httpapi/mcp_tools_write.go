@@ -82,6 +82,7 @@ type wasteArgs struct {
 	Qty          string `json:"qty" jsonschema:"cantidad que se echó a perder, en la unidad base del artículo"`
 	UnitID       *int16 `json:"unit_id,omitempty" jsonschema:"unidad en que se capturó, si no es la base"`
 	Note         string `json:"note,omitempty" jsonschema:"nota"`
+	WarehouseID  *int64 `json:"warehouse_id,omitempty" jsonschema:"almacén donde se echó a perder (de warehouses_list); sin él, el de venta"`
 }
 
 type stockAdjustArgs struct {
@@ -367,6 +368,9 @@ func registerWrites() {
 				"productId": in.ProductID, "qty": in.Qty, "unitId": in.UnitID}
 			if in.Note != "" {
 				body["note"] = in.Note
+			}
+			if in.WarehouseID != nil {
+				body["warehouseId"] = *in.WarehouseID
 			}
 			return http.MethodPost, pWaste, nil, nil, body, nil
 		},

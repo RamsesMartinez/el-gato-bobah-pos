@@ -122,6 +122,7 @@ type lowStockBody struct {
 	CoverageDays      *int             `json:"coverageDays"`
 	BranchMinStock    *json.RawMessage `json:"branchMinStock"`
 	ExpectedUpdatedAt *time.Time       `json:"expectedUpdatedAt"`
+	WarehouseID       *int64           `json:"warehouseId"`
 }
 
 func (b lowStockBody) input() (app.LowStockInput, error) {
@@ -148,7 +149,12 @@ func (h *Handlers) GetLowStock(itemType string) http.HandlerFunc {
 			Error(w, err)
 			return
 		}
-		v, err := h.notifications.LowStockConfig(r.Context(), itemType, id)
+		sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		v, err := h.notifications.LowStockConfig(r.Context(), itemType, id, sel)
 		if err != nil {
 			Error(w, err)
 			return
@@ -180,6 +186,10 @@ func (h *Handlers) PutLowStock(itemType string) http.HandlerFunc {
 			Error(w, err)
 			return
 		}
+		if in.Warehouse, err = lowStockWarehouse(r, body.WarehouseID); err != nil {
+			Error(w, err)
+			return
+		}
 		u, _ := userFrom(r.Context())
 		res, err := h.notifications.ConfigureLowStock(r.Context(), itemType, id, in, u.ID, preview)
 		if err != nil {
@@ -188,6 +198,27 @@ func (h *Handlers) PutLowStock(itemType string) http.HandlerFunc {
 		}
 		JSON(w, http.StatusOK, res)
 	}
+}
+
+// lowStockWarehouse es el almacén de un PUT de alertas: en la URL (como el GET) o en el cuerpo. Los
+// dos a la vez y distintos se rechazan: guardar el mínimo en uno cuando la pantalla mostraba el otro
+// es peor que un 400.
+func lowStockWarehouse(r *http.Request, inBody *int64) (domain.WarehouseSel, error) {
+	fromURL, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	if err != nil {
+		return fromURL, err
+	}
+	fromBody, err := domain.WarehouseFromBody(inBody)
+	if err != nil {
+		return fromBody, err
+	}
+	switch {
+	case fromBody.Sales():
+		return fromURL, nil
+	case fromURL.Sales() || fromURL == fromBody:
+		return fromBody, nil
+	}
+	return domain.WarehouseSel{}, fmt.Errorf("%w: el almacén de la dirección y el del cuerpo no coinciden", domain.ErrValidation)
 }
 
 // POST /stock/articles/{id}/low-stock/asked — «No, por ahora»: la pregunta no vuelve.
@@ -204,9 +235,14 @@ func (h *Handlers) LowStockAsked(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GET /stock/low-stock — la tabla de «Alertas por lote».
+// GET /stock/low-stock[?warehouseId=] — la tabla de «Alertas por lote», con lo que hay en el almacén.
 func (h *Handlers) ListLowStock(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.notifications.ListLowStock(r.Context())
+	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	rows, err := h.notifications.ListLowStock(r.Context(), sel)
 	if err != nil {
 		Error(w, err)
 		return
@@ -224,6 +260,8 @@ type batchBody struct {
 		Enabled  bool            `json:"enabled"`
 		MinStock json.RawMessage `json:"minStock"`
 	} `json:"items"`
+	// WarehouseID: con él, minStock es el mínimo propio de ese almacén (spec 094).
+	WarehouseID *int64 `json:"warehouseId"`
 }
 
 func (b batchBody) items() ([]app.LowStockBatchItem, error) {
@@ -257,8 +295,13 @@ func (h *Handlers) LowStockBatch(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	sel, err := domain.WarehouseFromBody(body.WarehouseID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	u, _ := userFrom(r.Context())
-	res, err := h.notifications.ConfigureBatch(r.Context(), items, u.ID, preview)
+	res, err := h.notifications.ConfigureBatch(r.Context(), items, sel, u.ID, preview)
 	if err != nil {
 		Error(w, err)
 		return
@@ -266,9 +309,14 @@ func (h *Handlers) LowStockBatch(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"items": res})
 }
 
-// GET /stock/shopping-list — la lista de compra de la sucursal.
+// GET /stock/shopping-list[?warehouseId=] — la lista de compra del almacén (el de venta sin él).
 func (h *Handlers) ShoppingList(w http.ResponseWriter, r *http.Request) {
-	lines, err := h.notifications.ShoppingList(r.Context())
+	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	lines, err := h.notifications.ShoppingList(r.Context(), sel)
 	if err != nil {
 		Error(w, err)
 		return

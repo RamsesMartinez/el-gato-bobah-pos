@@ -12,9 +12,15 @@ import (
 
 // Conteo de existencias (spec 038, historia 3). Las cifras van en la unidad base del insumo.
 
-// GET /stock/counts/current — el conteo abierto de la sucursal, o 204 si no hay.
+// GET /stock/counts/current[?warehouseId=] — el conteo abierto del almacén (el de venta sin él), o
+// 204 si no hay.
 func (h *Handlers) CurrentCount(w http.ResponseWriter, r *http.Request) {
-	v, err := h.backoffice.CurrentCount(r.Context())
+	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.CurrentCount(r.Context(), sel)
 	if err != nil {
 		Error(w, err)
 		return
@@ -26,10 +32,25 @@ func (h *Handlers) CurrentCount(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, v)
 }
 
-// POST /stock/counts — abre un conteo; con uno abierto en la sucursal, 409.
+// POST /stock/counts — `{ warehouseId? }`: abre un conteo del almacén (el de venta sin él); con uno
+// abierto en ese almacén, 409. Un cuerpo vacío es el de venta, como lo manda la pantalla anterior.
 func (h *Handlers) OpenCount(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WarehouseID *int64 `json:"warehouseId"`
+	}
+	if r.ContentLength != 0 {
+		if err := Decode(r, &body); err != nil {
+			Error(w, err)
+			return
+		}
+	}
+	sel, err := domain.WarehouseFromBody(body.WarehouseID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	u, _ := userFrom(r.Context())
-	v, err := h.backoffice.OpenCount(r.Context(), u.ID)
+	v, err := h.backoffice.OpenCount(r.Context(), sel, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -37,9 +58,15 @@ func (h *Handlers) OpenCount(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, v)
 }
 
-// GET /stock/counts/last-closed — `{ closedAt }` del último conteo cerrado, o null.
+// GET /stock/counts/last-closed[?warehouseId=] — `{ closedAt }` del último conteo cerrado del
+// almacén, o null.
 func (h *Handlers) LastClosedCount(w http.ResponseWriter, r *http.Request) {
-	last, err := h.backoffice.LastClosedCount(r.Context())
+	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	last, err := h.backoffice.LastClosedCount(r.Context(), sel)
 	if err != nil {
 		Error(w, err)
 		return

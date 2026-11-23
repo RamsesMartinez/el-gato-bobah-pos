@@ -22,9 +22,12 @@ type LowStockInput struct {
 	Enabled, OnMin, OnOut, Banner bool
 	MinStock                      *decimal.Decimal
 	CoverageDays                  *int
-	// BranchMinStock: el mínimo de la sucursal actual. Sin Set no se toca; con Set y nil se quita.
+	// BranchMinStock: el mínimo del almacén (el de venta si no se pidió otro). Sin Set no se toca; con
+	// Set y nil se quita. Conserva el nombre de cuando era por sucursal: así lo manda la pantalla.
 	BranchMinStock    Field[decimal.Decimal]
 	ExpectedUpdatedAt *time.Time
+	// Warehouse: de qué almacén son el mínimo y el efecto (spec 094).
+	Warehouse domain.WarehouseSel
 }
 
 // LowStockResult es lo que pasa (o pasaría) al guardar.
@@ -50,6 +53,9 @@ type LowStockConfigView struct {
 	UnitCode     string           `json:"unitCode"`
 	Branches     int              `json:"branches"`
 	UpdatedAt    time.Time        `json:"updatedAt"`
+	// WarehouseID y WarehouseName: de qué almacén son BranchMin y OnHand.
+	WarehouseID   int64  `json:"warehouseId"`
+	WarehouseName string `json:"warehouseName"`
 }
 
 func validLowStock(in LowStockInput) error {
@@ -65,8 +71,8 @@ func validLowStock(in LowStockInput) error {
 	return nil
 }
 
-// LowStockConfig lee la sección «Alertas» de la ficha.
-func (s *NotificationsService) LowStockConfig(ctx context.Context, itemType string, id int64) (LowStockConfigView, error) {
+// LowStockConfig lee la sección «Alertas» de la ficha, con el mínimo y la existencia del almacén.
+func (s *NotificationsService) LowStockConfig(ctx context.Context, itemType string, id int64, sel domain.WarehouseSel) (LowStockConfigView, error) {
 	t, err := itemTypeOf(itemType)
 	if err != nil {
 		return LowStockConfigView{}, err
@@ -77,12 +83,12 @@ func (s *NotificationsService) LowStockConfig(ctx context.Context, itemType stri
 		if err != nil {
 			return notFound(err)
 		}
-		branch, err := q.CurrentBranchID(ctx)
+		wh, err := resolveWarehouse(ctx, q, sel)
 		if err != nil {
 			return err
 		}
 		ing, prod := itemIDs(t, id)
-		snap, err := q.LowStockSnapshot(ctx, db.LowStockSnapshotParams{BranchID: branch, IngredientID: ing, ProductID: prod})
+		snap, err := q.LowStockSnapshot(ctx, db.LowStockSnapshotParams{WarehouseID: wh.ID, IngredientID: ing, ProductID: prod})
 		if err != nil {
 			return err
 		}
@@ -97,7 +103,8 @@ func (s *NotificationsService) LowStockConfig(ctx context.Context, itemType stri
 		}
 		out = LowStockConfigView{Enabled: c.LowStockEnabled, OnMin: c.LowStockOnMin, OnOut: c.LowStockOnOut, Banner: c.LowStockBanner,
 			MinStock: c.MinStock, BranchMin: snap.BranchMin, CoverageDays: days, Asked: c.LowStockAskedAt.Valid,
-			OnHand: snap.OnHand, UnitCode: c.UnitCode, Branches: int(n), UpdatedAt: c.UpdatedAt}
+			OnHand: snap.OnHand, UnitCode: c.UnitCode, Branches: int(n), UpdatedAt: c.UpdatedAt,
+			WarehouseID: wh.ID, WarehouseName: wh.Name}
 		return nil
 	})
 	return out, err
@@ -133,21 +140,31 @@ func configureLowStockIn(ctx context.Context, q *db.Queries, t db.StockItemType,
 	if in.ExpectedUpdatedAt != nil && !before.UpdatedAt.Equal(*in.ExpectedUpdatedAt) {
 		return LowStockResult{}, domain.ErrArticleStale
 	}
+	wh, err := resolveWarehouse(ctx, q, in.Warehouse)
+	if err != nil {
+		return LowStockResult{}, err
+	}
 	branch, err := q.CurrentBranchID(ctx)
 	if err != nil {
 		return LowStockResult{}, err
 	}
 	ing, prod := itemIDs(t, id)
-	snap, err := q.LowStockSnapshot(ctx, db.LowStockSnapshotParams{BranchID: branch, IngredientID: ing, ProductID: prod})
+	snap, err := q.LowStockSnapshot(ctx, db.LowStockSnapshotParams{WarehouseID: wh.ID, IngredientID: ing, ProductID: prod})
 	if err != nil {
 		return LowStockResult{}, err
 	}
-	min := in.MinStock
+	// Un almacén que no es el de venta no hereda el mínimo del artículo: sin el suyo no avisa (la
+	// misma regla que warehouse_low_stock_state).
+	fallback := in.MinStock
+	if !wh.IsSales {
+		fallback = nil
+	}
+	min := fallback
 	if snap.BranchMin != nil {
 		min = snap.BranchMin
 	}
 	if in.BranchMinStock.Set {
-		min = in.MinStock
+		min = fallback
 		if in.BranchMinStock.Value != nil {
 			min = in.BranchMinStock.Value
 		}
@@ -156,7 +173,7 @@ func configureLowStockIn(ctx context.Context, q *db.Queries, t db.StockItemType,
 	for i, k := range snap.OpenKinds {
 		open[i] = domain.NotificationKind(k)
 	}
-	cfg := domain.LowStockConfig{Enabled: in.Enabled, OnMin: in.OnMin, OnOut: in.OnOut, Min: min}
+	cfg := domain.LowStockConfig{Enabled: in.Enabled && (wh.IsSales || min != nil), OnMin: in.OnMin, OnOut: in.OnOut, Min: min}
 	out := LowStockResult{Effect: domain.LowStockEffect(cfg, snap.OnHand, open, snap.ManualOut), OnHand: snap.OnHand, Min: min,
 		NeedsCount: snap.OnHand.IsNegative()}
 	if preview {
@@ -191,12 +208,12 @@ func configureLowStockIn(ctx context.Context, q *db.Queries, t db.StockItemType,
 		if v := in.BranchMinStock.Value; v != nil {
 			m := domain.Round4(*v)
 			if t == "ingrediente" {
-				err = q.UpsertBranchMinimum(ctx, db.UpsertBranchMinimumParams{BranchID: branch, ItemType: t, IngredientID: ing, MinStock: m, UpdatedBy: actor})
+				err = q.UpsertBranchMinimum(ctx, db.UpsertBranchMinimumParams{WarehouseID: wh.ID, ItemType: t, IngredientID: ing, MinStock: m, UpdatedBy: actor})
 			} else {
-				err = q.UpsertBranchProductMinimum(ctx, db.UpsertBranchProductMinimumParams{BranchID: branch, ProductID: prod, MinStock: m, UpdatedBy: actor})
+				err = q.UpsertBranchProductMinimum(ctx, db.UpsertBranchProductMinimumParams{WarehouseID: wh.ID, ProductID: prod, MinStock: m, UpdatedBy: actor})
 			}
 		} else {
-			err = q.DeleteBranchMinimum(ctx, db.DeleteBranchMinimumParams{BranchID: branch, IngredientID: ing, ProductID: prod})
+			err = q.DeleteBranchMinimum(ctx, db.DeleteBranchMinimumParams{WarehouseID: wh.ID, IngredientID: ing, ProductID: prod})
 		}
 		if err != nil {
 			return LowStockResult{}, err
@@ -209,7 +226,8 @@ func configureLowStockIn(ctx context.Context, q *db.Queries, t db.StockItemType,
 		map[string]any{"enabled": before.LowStockEnabled, "onMin": before.LowStockOnMin, "onOut": before.LowStockOnOut,
 			"banner": before.LowStockBanner, "minStock": before.MinStock, "coverageDays": before.CoverageDays},
 		map[string]any{"enabled": in.Enabled, "onMin": in.OnMin, "onOut": in.OnOut, "banner": in.Banner, "minStock": minStock,
-			"coverageDays": days, "branchMinStock": in.BranchMinStock.Value, "effect": out.Effect})
+			"coverageDays": days, "branchMinStock": in.BranchMinStock.Value, "effect": out.Effect,
+			"warehouseId": wh.ID, "warehouseName": wh.Name})
 }
 
 // LowStockAsked guarda que ya se preguntó por las alertas de un insumo («No, por ahora»).
@@ -244,7 +262,10 @@ type LowStockBatchResult struct {
 
 // ConfigureBatch enciende o apaga y fija el mínimo de varios artículos en una transacción. Conserva los
 // eventos y la franja de cada uno (se cambian en su ficha). La vista previa no guarda nada.
-func (s *NotificationsService) ConfigureBatch(ctx context.Context, items []LowStockBatchItem, actor int64, preview bool) ([]LowStockBatchResult, error) {
+//
+// Sin almacén, el mínimo es el del artículo (el que mide el de venta). Con un almacén nombrado, es el
+// mínimo propio de ese almacén y el del artículo no se toca.
+func (s *NotificationsService) ConfigureBatch(ctx context.Context, items []LowStockBatchItem, sel domain.WarehouseSel, actor int64, preview bool) ([]LowStockBatchResult, error) {
 	if len(items) == 0 || len(items) > 100 {
 		return nil, fmt.Errorf("%w: van de 1 a 100 artículos por lote", domain.ErrValidation)
 	}
@@ -271,7 +292,11 @@ func (s *NotificationsService) ConfigureBatch(ctx context.Context, items []LowSt
 			// El efecto se calcula con el mínimo de la sucursal si lo hay (configureLowStockIn): es el
 			// que de verdad dispara el aviso, aunque el renglón muestre el del artículo.
 			in := LowStockInput{Enabled: it.Enabled, OnMin: cur.LowStockOnMin, OnOut: cur.LowStockOnOut, Banner: cur.LowStockBanner,
-				MinStock: min, CoverageDays: days}
+				MinStock: min, CoverageDays: days, Warehouse: sel}
+			if !sel.Sales() {
+				in.MinStock = cur.MinStock
+				in.BranchMinStock = Field[decimal.Decimal]{Set: !it.KeepMin, Value: it.MinStock}
+			}
 			if err := validLowStock(in); err != nil {
 				return err
 			}
@@ -295,18 +320,26 @@ type LowStockRow struct {
 	Enabled  bool             `json:"enabled"`
 	MinStock *decimal.Decimal `json:"minStock"`
 	OnHand   decimal.Decimal  `json:"onHand"`
+	// WarehouseID y WarehouseName: de qué almacén es OnHand.
+	WarehouseID   int64  `json:"warehouseId"`
+	WarehouseName string `json:"warehouseName"`
 }
 
-// ListLowStock es la tabla de «Alertas por lote». Nunca nil.
-func (s *NotificationsService) ListLowStock(ctx context.Context) ([]LowStockRow, error) {
-	rows, err := s.store.QC(ctx).ListLowStockConfigs(ctx)
+// ListLowStock es la tabla de «Alertas por lote», con lo que hay en el almacén. Nunca nil.
+func (s *NotificationsService) ListLowStock(ctx context.Context, sel domain.WarehouseSel) ([]LowStockRow, error) {
+	q := s.store.QC(ctx)
+	wh, err := resolveWarehouse(ctx, q, sel)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.ListLowStockConfigs(ctx, wh.ID)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]LowStockRow, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, LowStockRow{ItemType: string(r.ItemType), ID: r.ID, Name: r.Name, UnitCode: r.UnitCode,
-			Enabled: r.LowStockEnabled, MinStock: r.MinStock, OnHand: r.OnHand})
+			Enabled: r.LowStockEnabled, MinStock: r.MinStock, OnHand: r.OnHand, WarehouseID: wh.ID, WarehouseName: wh.Name})
 	}
 	return out, nil
 }

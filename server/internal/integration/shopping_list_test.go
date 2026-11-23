@@ -8,6 +8,7 @@ import (
 	"uuid"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
 // LA LISTA DE COMPRA (spec 084, historia 8): sale de lo que se acabó o está bajo su mínimo, mide el
@@ -38,7 +39,7 @@ func TestShoppingListExcludesOutReportsFromConsumption(t *testing.T) {
 	adjust(t, st, "ingrediente", sinAlerta, "1")
 
 	svc, _, nctx := asNotifications(t, defaultCompanyID)
-	lines, err := svc.ShoppingList(nctx)
+	lines, err := svc.ShoppingList(nctx, domain.WarehouseSel{})
 	if err != nil {
 		t.Fatal(err)
 	}

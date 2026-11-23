@@ -7,9 +7,15 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
-// GET /stock/count-places — los lugares que se ofrecen, en el orden del recorrido.
+// GET /stock/count-places[?warehouseId=] — los lugares del almacén (el de venta sin él), en el
+// orden del recorrido.
 func (h *Handlers) ListCountPlaces(w http.ResponseWriter, r *http.Request) {
-	out, err := h.backoffice.ListCountPlaces(r.Context())
+	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), false)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	out, err := h.backoffice.ListCountPlaces(r.Context(), sel)
 	if err != nil {
 		Error(w, err)
 		return
@@ -17,16 +23,23 @@ func (h *Handlers) ListCountPlaces(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, out)
 }
 
-// POST /stock/count-places — `{ name }`: al final del recorrido. 409 con el que ya existe.
+// POST /stock/count-places — `{ name, warehouseId? }`: al final del recorrido del almacén. 409 con el
+// que ya existe en ese almacén.
 func (h *Handlers) CreateCountPlace(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string `json:"name"`
+		Name        string `json:"name"`
+		WarehouseID *int64 `json:"warehouseId"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	id, err := h.backoffice.CreateCountPlace(r.Context(), body.Name)
+	sel, err := domain.WarehouseFromBody(body.WarehouseID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	id, err := h.backoffice.CreateCountPlace(r.Context(), sel, body.Name)
 	if err != nil {
 		Error(w, err)
 		return

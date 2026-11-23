@@ -836,16 +836,25 @@ func (h *Handlers) StockLevels(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"items": items})
+	// totalValueExcludesNegative lo declara en la respuesta: el total no resta lo que está en negativo
+	// (un faltante no es valor que se tenga), así que no es la suma de existencia × costo.
+	JSON(w, http.StatusOK, map[string]any{"items": items, "totalValue": app.StockValueTotal(items),
+		"totalValueExcludesNegative": true})
 }
 
+// GET /stock/movements — `?warehouseId=<id>|all&limit=`; sin almacén, el de venta (spec 094).
 func (h *Handlers) StockMovements(w http.ResponseWriter, r *http.Request) {
 	limite, err := limiteDeQuery(r.URL.Query(), 100)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	items, err := h.backoffice.StockMovements(r.Context(), limite)
+	sel, err := domain.ParseWarehouseParam(r.URL.Query().Get("warehouseId"), true)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	items, err := h.backoffice.StockMovements(r.Context(), sel, limite)
 	if err != nil {
 		Error(w, err)
 		return

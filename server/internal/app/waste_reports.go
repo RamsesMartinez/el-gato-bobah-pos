@@ -84,8 +84,8 @@ func (s *BackofficeService) CountLoss(ctx context.Context, countID int64) (Count
 // conteo vio: registradas antes de que capturara alguno de los artículos que restarían. El conteo
 // ya reflejó esa pérdida; aprobarlas después la restaría dos veces. Una registrada después de la
 // captura no la vio y sigue por aprobar (revisión de arquitectura).
-func coverPendingWaste(ctx context.Context, q *db.Queries, countID, branch int64) error {
-	pending, err := q.PendingWasteToCover(ctx, branch)
+func coverPendingWaste(ctx context.Context, q *db.Queries, countID, warehouse int64) error {
+	pending, err := q.PendingWasteToCover(ctx, warehouse)
 	if err != nil || len(pending) == 0 {
 		return err
 	}

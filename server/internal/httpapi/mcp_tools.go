@@ -739,6 +739,12 @@ type limitArg struct {
 	Limit int `json:"limit,omitempty" jsonschema:"cuántos (por omisión 50)"`
 }
 
+type stockMovementsArgs struct {
+	Limit         int    `json:"limit,omitempty" jsonschema:"cuántos (por omisión 100)"`
+	WarehouseID   *int64 `json:"warehouse_id,omitempty" jsonschema:"almacén (de warehouses_list); sin él, el de venta"`
+	AllWarehouses bool   `json:"all_warehouses,omitempty" jsonschema:"true: los de todos los almacenes de la sucursal"`
+}
+
 type stockLevelsArgs struct {
 	pageArgs
 	Search        string `json:"search,omitempty" jsonschema:"parte del nombre"`
@@ -922,11 +928,21 @@ func init() {
 		}
 		return map[string]any{"items": items, "total": total, "page": page + 1, "page_size": size}, nil
 	})
-	simpleRead("stock_movements", pStockMoves, func(in limitArg) (map[string]int64, url.Values, error) {
-		if in.Limit == 0 {
-			return nil, nil, nil
+	simpleRead("stock_movements", pStockMoves, func(in stockMovementsArgs) (map[string]int64, url.Values, error) {
+		if in.WarehouseID != nil && in.AllWarehouses {
+			return nil, nil, toolErr("Manda warehouse_id o all_warehouses, no los dos.")
 		}
-		return nil, url.Values{"limit": {strconv.Itoa(in.Limit)}}, nil
+		q := url.Values{}
+		if in.Limit != 0 {
+			q.Set("limit", strconv.Itoa(in.Limit))
+		}
+		switch {
+		case in.AllWarehouses:
+			q.Set("warehouseId", "all")
+		case in.WarehouseID != nil:
+			q.Set("warehouseId", strconv.FormatInt(*in.WarehouseID, 10))
+		}
+		return nil, q, nil
 	})
 	simpleRead("waste_reasons_list", pWasteReasons, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
 	catalogQuery := func(in catalogListArgs) (map[string]int64, url.Values, error) {

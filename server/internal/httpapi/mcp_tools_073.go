@@ -143,6 +143,19 @@ type purchaseReceiveArgs struct {
 
 type countOpenArgs struct {
 	writeCommon
+	WarehouseID *int64 `json:"warehouse_id,omitempty" jsonschema:"almacén que se cuenta (de warehouses_list); sin él, el de venta"`
+}
+
+type countCurrentArgs struct {
+	WarehouseID *int64 `json:"warehouse_id,omitempty" jsonschema:"almacén (de warehouses_list); sin él, el de venta"`
+}
+
+// warehouseQuery es ?warehouseId= cuando se nombró un almacén.
+func warehouseQuery(id *int64) url.Values {
+	if id == nil {
+		return nil
+	}
+	return url.Values{"warehouseId": {strconv.FormatInt(*id, 10)}}
 }
 
 type countLineArg struct {
@@ -577,7 +590,9 @@ func presentationSuggestion(s *mcpSession, ctx context.Context, b *baseUnits, in
 // ---- Conteos ----
 
 func registerCounts() {
-	simpleRead("stock_count_current", pCountCurrent, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
+	simpleRead("stock_count_current", pCountCurrent, func(in countCurrentArgs) (map[string]int64, url.Values, error) {
+		return nil, warehouseQuery(in.WarehouseID), nil
+	})
 
 	// El conteo abierto trae todos los artículos que se pueden contar (cientos): en el antes y el
 	// después de una escritura va solo su resumen, o cada captura le mandaría al agente la lista
@@ -591,14 +606,23 @@ func registerCounts() {
 			return countSummary(b)
 		}
 	}
-	openState := current("stock_count_open")
 	writeTool(writeSpec[countOpenArgs]{
 		name: "stock_count_open",
-		route: func(_ *mcpSession, _ context.Context, _ countOpenArgs) (string, string, map[string]int64, url.Values, any, error) {
-			return http.MethodPost, pCounts, nil, nil, map[string]any{}, nil
+		refs: refsCountOpen,
+		route: func(_ *mcpSession, _ context.Context, in countOpenArgs) (string, string, map[string]int64, url.Values, any, error) {
+			body := map[string]any{}
+			if in.WarehouseID != nil {
+				body["warehouseId"] = *in.WarehouseID
+			}
+			return http.MethodPost, pCounts, nil, nil, body, nil
 		},
+		// El antes y el después del almacén que se abre, no del de venta.
 		state: func(s *mcpSession, ctx context.Context, in countOpenArgs, _ json.RawMessage) any {
-			return openState(s, ctx, in)
+			b, _, err := s.fetch(ctx, "stock_count_open", pCountCurrent, nil, warehouseQuery(in.WarehouseID))
+			if err != nil {
+				return map[string]string{"unavailable": err.Error()}
+			}
+			return countSummary(b)
 		},
 	})
 

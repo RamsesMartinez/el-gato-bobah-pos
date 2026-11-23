@@ -74,14 +74,16 @@ select i.id, i.current_cost,
 select id, current_cost from products where id = $1;
 
 -- name: InsertWasteRecord :one
+-- El almacén ya viene resuelto (de la sucursal de la sesión y activo); la sucursal es la suya.
 insert into waste_records (
-  branch_id, reason_id, item_type, ingredient_id, product_id, quantity, entered_qty, presentation_id,
+  branch_id, warehouse_id, reason_id, item_type, ingredient_id, product_id, quantity, entered_qty, presentation_id,
   unit_cost, total_cost, is_staff_meal, note, status, recorded_by
-) values (
-  sqlc.arg(branch_id), sqlc.arg(reason_id), sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id),
-  sqlc.arg(quantity), sqlc.arg(entered_qty), sqlc.narg(presentation_id), sqlc.narg(unit_cost), sqlc.narg(total_cost),
-  sqlc.arg(is_staff_meal), sqlc.narg(note), sqlc.arg(status), sqlc.arg(recorded_by)
-) returning id, recorded_at;
+)
+select w.branch_id, w.id, sqlc.arg(reason_id), sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id),
+       sqlc.arg(quantity), sqlc.arg(entered_qty), sqlc.narg(presentation_id), sqlc.narg(unit_cost), sqlc.narg(total_cost),
+       sqlc.arg(is_staff_meal), sqlc.narg(note), sqlc.arg(status), sqlc.arg(recorded_by)
+  from warehouses w where w.id = sqlc.arg(warehouse_id)
+returning id, recorded_at;
 
 -- name: DBNow :one
 -- La hora de la base. Las decisiones de tiempo de la merma (mismo día, contado después, vio el
@@ -90,14 +92,14 @@ insert into waste_records (
 select clock_timestamp()::timestamptz as now;
 
 -- name: InsertWasteMovement :exec
--- La sucursal es la del registro, explícita: el trigger genérico la tomaría de la empresa y truena
--- con dos sucursales (como la venta en la 0078). La FK compuesta impide otra.
+-- El almacén es el del registro, explícito (la sucursal la pone el trigger desde él): sin él, la
+-- merma de Bodega restaría de Local. stock_movements_waste_same_warehouse impide otro.
 insert into stock_movements (
   item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, waste_record_id, user_id,
-  reason, branch_id, modifier_option_id, component_of_product_id
+  reason, warehouse_id, modifier_option_id, component_of_product_id
 ) values (
   sqlc.arg(item_type), sqlc.narg(ingredient_id), sqlc.narg(product_id), 'merma', sqlc.arg(quantity),
-  sqlc.narg(unit_cost), sqlc.arg(waste_record_id), sqlc.arg(user_id), sqlc.arg(reason), sqlc.arg(branch_id),
+  sqlc.narg(unit_cost), sqlc.arg(waste_record_id), sqlc.arg(user_id), sqlc.arg(reason), sqlc.arg(warehouse_id),
   sqlc.narg(modifier_option_id), sqlc.narg(component_of_product_id)
 );
 
@@ -107,7 +109,7 @@ select item_type, ingredient_id, product_id, quantity, unit_cost, modifier_optio
   from stock_movements where waste_record_id = $1 order by id;
 
 -- name: LockWasteRecord :one
-select id, branch_id, item_type, ingredient_id, product_id, quantity, unit_cost, total_cost, status,
+select id, branch_id, warehouse_id, item_type, ingredient_id, product_id, quantity, unit_cost, total_cost, status,
        recorded_by, recorded_at
   from waste_records where id = $1 and branch_id = current_branch_id() for update;
 
@@ -120,12 +122,12 @@ update waste_records
  where id = sqlc.arg(id) and status = sqlc.arg(from_status);
 
 -- name: IngredientsCountedSince :one
--- ¿Algún conteo de la sucursal, cerrado o abierto, capturó alguno de estos insumos después de la
--- merma? Entonces el conteo ya corrige lo guardado contra lo que vio, y deshacer inventaría lo que
+-- ¿Algún conteo del almacén de la merma, cerrado o abierto, capturó alguno de estos insumos después
+-- de la merma? Entonces el conteo ya corrige lo guardado contra lo que vio, y deshacer inventaría lo que
 -- quitó; abierto también: su ajuste se calculó al capturar (revisión de código).
 select exists (
   select 1 from stock_count_lines l join stock_counts c on c.id = l.count_id
-   where c.status in ('open', 'closed') and c.branch_id = sqlc.arg(branch_id)
+   where c.status in ('open', 'closed') and c.warehouse_id = sqlc.arg(warehouse_id)
      and l.ingredient_id = any(sqlc.arg(ids)::bigint[]) and l.captured_at > sqlc.arg(since)
 )::bool;
 
@@ -133,8 +135,10 @@ select exists (
 -- Lo registrado en la sucursal desde un momento (el inicio del día del local).
 select w.id, w.item_type, coalesce(i.name, p.name)::text as item_name, w.quantity, w.entered_qty,
        coalesce(u.code, 'pza')::text as unit_code, w.total_cost, w.status, w.note,
-       r.name as reason_name, w.recorded_by, uu.name as recorded_by_name, w.recorded_at
+       r.name as reason_name, w.recorded_by, uu.name as recorded_by_name, w.recorded_at,
+       w.warehouse_id, wh.name as warehouse_name
   from waste_records w
+  join warehouses wh on wh.id = w.warehouse_id
   join waste_reasons r on r.id = w.reason_id
   join users uu on uu.id = w.recorded_by
   left join ingredients i on i.id = w.ingredient_id
@@ -146,8 +150,9 @@ select w.id, w.item_type, coalesce(i.name, p.name)::text as item_name, w.quantit
 -- name: PendingWaste :many
 select w.id, w.item_type, coalesce(i.name, p.name)::text as item_name, w.quantity,
        coalesce(u.code, 'pza')::text as unit_code, w.total_cost, r.name as reason_name,
-       uu.name as recorded_by_name, w.recorded_at
+       uu.name as recorded_by_name, w.recorded_at, w.warehouse_id, wh.name as warehouse_name
   from waste_records w
+  join warehouses wh on wh.id = w.warehouse_id
   join waste_reasons r on r.id = w.reason_id
   join users uu on uu.id = w.recorded_by
   left join ingredients i on i.id = w.ingredient_id
@@ -157,20 +162,20 @@ select w.id, w.item_type, coalesce(i.name, p.name)::text as item_name, w.quantit
  order by w.recorded_at, w.id;
 
 -- name: OpenCountThatSaw :one
--- El conteo abierto de la sucursal que capturó alguno de estos insumos después de la merma, si lo
+-- El conteo abierto del almacén de la merma que capturó alguno de estos insumos después de la merma, si lo
 -- hay: ya ajustará esa pérdida al cerrar, así que aprobarla la restaría dos veces.
 select coalesce((
   select c.id from stock_count_lines l join stock_counts c on c.id = l.count_id
-   where c.status = 'open' and c.branch_id = sqlc.arg(branch_id)
+   where c.status = 'open' and c.warehouse_id = sqlc.arg(warehouse_id)
      and l.ingredient_id = any(sqlc.arg(ids)::bigint[]) and l.captured_at >= sqlc.arg(since)
    order by c.id limit 1), 0)::bigint;
 
 -- name: PendingWasteToCover :many
--- Las por aprobar de la sucursal, para que el cierre de un conteo cubra las que vio; cuáles vio lo
+-- Las por aprobar del almacén del conteo, para que su cierre cubra las que vio; cuáles vio lo
 -- decide coverPendingWaste contra la hora de captura de cada insumo.
 select id, item_type, ingredient_id, product_id, quantity, recorded_at
   from waste_records
- where branch_id = sqlc.arg(branch_id) and status = 'pending'
+ where warehouse_id = sqlc.arg(warehouse_id) and status = 'pending'
  order by id;
 
 -- name: ListWaste :many

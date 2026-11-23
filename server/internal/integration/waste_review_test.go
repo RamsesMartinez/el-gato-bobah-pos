@@ -34,7 +34,7 @@ func TestApprovingWasteAnOpenCountSawSubtractsItOnce(t *testing.T) {
 	if err != nil || r.Status != string(domain.WastePending) {
 		t.Fatalf("= %+v, %v", r, err)
 	}
-	c, err := svc.OpenCount(ctx, actor)
+	c, err := svc.OpenCount(ctx, domain.WarehouseSel{}, actor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestUndoingWasteAnOpenCountCapturedIsRefused(t *testing.T) {
 	if err != nil || r.Status != string(domain.WasteApplied) {
 		t.Fatalf("= %+v, %v", r, err)
 	}
-	c, err := svc.OpenCount(ctx, actor)
+	c, err := svc.OpenCount(ctx, domain.WarehouseSel{}, actor)
 	if err != nil {
 		t.Fatal(err)
 	}

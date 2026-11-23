@@ -169,7 +169,7 @@ func TestUndoingWasteGivesBackWhatItTook(t *testing.T) {
 func closeCountOf(t *testing.T, ing int64, counted string, actor int64) {
 	t.Helper()
 	svc, ctx := asWaste(t, defaultCompanyID)
-	c, err := svc.OpenCount(ctx, actor)
+	c, err := svc.OpenCount(ctx, domain.WarehouseSel{}, actor)
 	if err != nil {
 		t.Fatalf("abrir conteo: %v", err)
 	}

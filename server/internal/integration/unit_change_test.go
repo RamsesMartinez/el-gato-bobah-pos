@@ -218,7 +218,7 @@ func TestUnitChangeBlocks(t *testing.T) {
 	})
 	t.Run("un conteo abierto que lo capturó lo detiene", func(t *testing.T) {
 		pera := ingredientIn(t, k.st, defaultCompanyID, "Pera unidad", "pieza")
-		c, err := k.svc.OpenCount(ctx, k.user)
+		c, err := k.svc.OpenCount(ctx, domain.WarehouseSel{}, k.user)
 		if err != nil {
 			t.Fatal(err)
 		}

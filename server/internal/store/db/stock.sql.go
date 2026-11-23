@@ -150,7 +150,10 @@ select sl.item_type,
        coalesce(iu.code, 'pieza') as unit_code,
        -- El ` + "`" + `true` + "`" + ` final no cambia nada (todo renglón es de un insumo o de un producto): deja la
        -- columna no nulable sin depender de cómo infiera sqlc un coalesce de dos left join.
-       coalesce(i.is_active, p.is_active, true) as is_active
+       coalesce(i.is_active, p.is_active, true) as is_active,
+       -- Valor al costo vigente, almacén por almacén y sin negativos: lo que falta en un almacén no le
+       -- resta valor a lo que sí hay en otro, y así la suma de los almacenes es el valor de todos.
+       round(sum(greatest(sl.on_hand, 0)) * coalesce(i.current_cost, p.current_cost, 0), 2)::numeric(14,2) as value
 from stock_levels sl
 left join ingredients i on i.id = sl.ingredient_id
 left join units iu on iu.id = i.base_unit_id
@@ -173,6 +176,7 @@ type ListStockLevelsRow struct {
 	MinStock     *decimal.Decimal `json:"min_stock"`
 	UnitCode     string           `json:"unit_code"`
 	IsActive     bool             `json:"is_active"`
+	Value        decimal.Decimal  `json:"value"`
 }
 
 // Almacén / niveles
@@ -196,6 +200,7 @@ func (q *Queries) ListStockLevels(ctx context.Context, warehouseIds []int64) ([]
 			&i.MinStock,
 			&i.UnitCode,
 			&i.IsActive,
+			&i.Value,
 		); err != nil {
 			return nil, err
 		}
@@ -209,26 +214,49 @@ func (q *Queries) ListStockLevels(ctx context.Context, warehouseIds []int64) ([]
 
 const listStockMovements = `-- name: ListStockMovements :many
 select sm.id, sm.item_type, coalesce(i.name, p.name) as item_name, sm.movement_type,
-       sm.quantity, sm.reason, sm.created_at
+       sm.quantity, sm.reason, sm.created_at, sm.warehouse_id, w.name as warehouse_name,
+       coalesce(iu.code, 'pieza')::text as unit_code, sm.transfer_id,
+       t.from_warehouse_id as transfer_from_id, fw.name as transfer_from_name, tw.name as transfer_to_name
 from stock_movements sm
+join warehouses w on w.id = sm.warehouse_id
 left join ingredients i on i.id = sm.ingredient_id
+left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = sm.product_id
-order by sm.created_at desc
-limit $1
+left join stock_transfers t on t.id = sm.transfer_id
+left join warehouses fw on fw.id = t.from_warehouse_id
+left join warehouses tw on tw.id = t.to_warehouse_id
+where sm.warehouse_id = any($1::bigint[])
+order by sm.id desc
+limit $2
 `
 
-type ListStockMovementsRow struct {
-	ID           int64             `json:"id"`
-	ItemType     StockItemType     `json:"item_type"`
-	ItemName     string            `json:"item_name"`
-	MovementType StockMovementType `json:"movement_type"`
-	Quantity     decimal.Decimal   `json:"quantity"`
-	Reason       *string           `json:"reason"`
-	CreatedAt    time.Time         `json:"created_at"`
+type ListStockMovementsParams struct {
+	WarehouseIds []int64 `json:"warehouse_ids"`
+	Lim          int32   `json:"lim"`
 }
 
-func (q *Queries) ListStockMovements(ctx context.Context, limit int32) ([]ListStockMovementsRow, error) {
-	rows, err := q.db.Query(ctx, listStockMovements, limit)
+type ListStockMovementsRow struct {
+	ID               int64             `json:"id"`
+	ItemType         StockItemType     `json:"item_type"`
+	ItemName         string            `json:"item_name"`
+	MovementType     StockMovementType `json:"movement_type"`
+	Quantity         decimal.Decimal   `json:"quantity"`
+	Reason           *string           `json:"reason"`
+	CreatedAt        time.Time         `json:"created_at"`
+	WarehouseID      int64             `json:"warehouse_id"`
+	WarehouseName    string            `json:"warehouse_name"`
+	UnitCode         string            `json:"unit_code"`
+	TransferID       *int64            `json:"transfer_id"`
+	TransferFromID   *int64            `json:"transfer_from_id"`
+	TransferFromName *string           `json:"transfer_from_name"`
+	TransferToName   *string           `json:"transfer_to_name"`
+}
+
+// Los últimos movimientos de los almacenes pedidos (spec 094). De un traspaso viajan sus dos
+// almacenes: la contraparte de cada pata se decide en el servicio. Por id y no por hora: el índice
+// por almacén ya los trae en ese orden.
+func (q *Queries) ListStockMovements(ctx context.Context, arg ListStockMovementsParams) ([]ListStockMovementsRow, error) {
+	rows, err := q.db.Query(ctx, listStockMovements, arg.WarehouseIds, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
@@ -244,6 +272,13 @@ func (q *Queries) ListStockMovements(ctx context.Context, limit int32) ([]ListSt
 			&i.Quantity,
 			&i.Reason,
 			&i.CreatedAt,
+			&i.WarehouseID,
+			&i.WarehouseName,
+			&i.UnitCode,
+			&i.TransferID,
+			&i.TransferFromID,
+			&i.TransferFromName,
+			&i.TransferToName,
 		); err != nil {
 			return nil, err
 		}

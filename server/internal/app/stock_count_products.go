@@ -59,7 +59,7 @@ func countProducts(ctx context.Context, q *db.Queries, countID int64) ([]CountPr
 }
 
 // CaptureCountProduct guarda lo contado de un producto con existencia propia, con lo que el sistema
-// tiene ahora en la sucursal del conteo. Recapturar reemplaza las dos. Un producto que no lleva su
+// tiene ahora en el almacén del conteo. Recapturar reemplaza las dos. Un producto que no lleva su
 // propia existencia no se cuenta: no encontrado.
 func (s *BackofficeService) CaptureCountProduct(ctx context.Context, countID, productID int64, in CountCapture, userID int64) (decimal.Decimal, error) {
 	counted := domain.Round4(in.Qty)
@@ -80,13 +80,13 @@ func (s *BackofficeService) CaptureCountProduct(ctx context.Context, countID, pr
 		}
 		// La fila de existencia primero: un producto que nunca se movió en la sucursal no la tiene, y
 		// sin fila el candado no toma nada. Después el candado y, en otra sentencia, la lectura.
-		if err := q.EnsureProductStockLevel(ctx, db.EnsureProductStockLevelParams{BranchID: c.BranchID, ProductID: productID}); err != nil {
+		if err := q.EnsureProductStockLevel(ctx, db.EnsureProductStockLevelParams{WarehouseID: c.WarehouseID, ProductID: productID}); err != nil {
 			return err
 		}
-		if err := q.LockProductStockLevelForCapture(ctx, db.LockProductStockLevelForCaptureParams{ProductID: productID, BranchID: c.BranchID}); err != nil {
+		if err := q.LockProductStockLevelForCapture(ctx, db.LockProductStockLevelForCaptureParams{ProductID: productID, WarehouseID: c.WarehouseID}); err != nil {
 			return err
 		}
-		seen, err := q.ProductOnHandForCapture(ctx, db.ProductOnHandForCaptureParams{ProductID: productID, BranchID: c.BranchID})
+		seen, err := q.ProductOnHandForCapture(ctx, db.ProductOnHandForCaptureParams{ProductID: productID, WarehouseID: c.WarehouseID})
 		if err != nil {
 			return err
 		}
@@ -99,7 +99,7 @@ func (s *BackofficeService) CaptureCountProduct(ctx context.Context, countID, pr
 		}
 		if in.Confirmable && !in.Confirmed {
 			ref := domain.CountReference{Expected: seen.OnHand, BaseKind: productKind}
-			last, err := q.LastClosedCountedProductQty(ctx, db.LastClosedCountedProductQtyParams{BranchID: c.BranchID, ProductID: productID})
+			last, err := q.LastClosedCountedProductQty(ctx, db.LastClosedCountedProductQtyParams{WarehouseID: c.WarehouseID, ProductID: productID})
 			switch {
 			case err == nil:
 				ref.LastCounted = &last
@@ -138,7 +138,7 @@ func (s *BackofficeService) UncaptureCountProduct(ctx context.Context, countID, 
 //
 // El conteo ya está bloqueado (openCount), así que ninguna captura cambia sus renglones entre esta
 // lectura y la del plan.
-func lockCountedProducts(ctx context.Context, q *db.Queries, countID, branchID int64) error {
+func lockCountedProducts(ctx context.Context, q *db.Queries, countID, warehouseID int64) error {
 	lines, err := q.CountProductLines(ctx, countID)
 	if err != nil || len(lines) == 0 {
 		return err
@@ -147,7 +147,7 @@ func lockCountedProducts(ctx context.Context, q *db.Queries, countID, branchID i
 	for i, l := range lines {
 		ids[i] = l.ProductID
 	}
-	_, err = q.LockProductStockLevelsInBranchNowait(ctx, db.LockProductStockLevelsInBranchNowaitParams{Ids: ids, BranchID: branchID})
+	_, err = q.LockProductStockLevelsInBranchNowait(ctx, db.LockProductStockLevelsInBranchNowaitParams{Ids: ids, WarehouseID: warehouseID})
 	return lockErr(err)
 }
 
@@ -186,11 +186,11 @@ func productPlan(ctx context.Context, q *db.Queries, countID int64, out *CountCl
 
 // closeProducts inserta el ajuste de cada producto con diferencia, ligado al conteo, y guarda el
 // costo de los que procesó.
-func closeProducts(ctx context.Context, q *db.Queries, countID, branchID, userID int64, plan []domain.CountAdjustment, processed []int64) error {
+func closeProducts(ctx context.Context, q *db.Queries, countID, warehouseID, userID int64, plan []domain.CountAdjustment, processed []int64) error {
 	reason := "conteo"
 	for _, a := range plan {
 		if err := q.InsertCountProductMovement(ctx, db.InsertCountProductMovementParams{
-			ProductID: &a.ItemID, Quantity: a.Delta, StockCountID: &countID, UserID: &userID, Reason: &reason, BranchID: branchID,
+			ProductID: &a.ItemID, Quantity: a.Delta, StockCountID: &countID, UserID: &userID, Reason: &reason, WarehouseID: warehouseID,
 		}); err != nil {
 			return err
 		}

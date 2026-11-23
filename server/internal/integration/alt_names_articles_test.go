@@ -277,7 +277,7 @@ func TestArticleReadsCarryAltNames(t *testing.T) {
 				t.Fatalf("el buscador del gasto no trae los alternativos: %v", a.AltNames)
 			}
 		}
-		view, err := svc.OpenCount(tctx, makeUser(t, owner, "contador_alt", "admin"))
+		view, err := svc.OpenCount(tctx, domain.WarehouseSel{}, makeUser(t, owner, "contador_alt", "admin"))
 		if err != nil {
 			t.Fatal(err)
 		}

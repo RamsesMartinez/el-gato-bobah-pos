@@ -114,3 +114,30 @@ func TestParseWarehouseParam(t *testing.T) {
 		})
 	}
 }
+
+// La pata que salió de Bodega dice Local, y la que entró a Local dice Bodega.
+func TestTransferCounterpart(t *testing.T) {
+	const bodega, local = 7, 3
+	if got := TransferCounterpart(bodega, bodega, "Bodega", "Local"); got != "Local" {
+		t.Fatalf("la pata del origen dice %q; quiere el destino (Local)", got)
+	}
+	if got := TransferCounterpart(local, bodega, "Bodega", "Local"); got != "Bodega" {
+		t.Fatalf("la pata del destino dice %q; quiere el origen (Bodega)", got)
+	}
+}
+
+// En el cuerpo, un 0 no es «el de venta»: es un cliente que mandó basura.
+func TestWarehouseFromBody(t *testing.T) {
+	if s, err := WarehouseFromBody(nil); err != nil || !s.Sales() {
+		t.Fatalf("ausente = %+v, %v; quiere el de venta", s, err)
+	}
+	id := int64(9)
+	if s, err := WarehouseFromBody(&id); err != nil || s.ID != 9 {
+		t.Fatalf("9 = %+v, %v", s, err)
+	}
+	for _, bad := range []int64{0, -1} {
+		if _, err := WarehouseFromBody(&bad); !errors.Is(err, ErrValidation) {
+			t.Fatalf("%d = %v; quiere 400", bad, err)
+		}
+	}
+}

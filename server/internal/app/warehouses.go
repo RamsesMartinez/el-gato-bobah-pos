@@ -178,18 +178,31 @@ func (s *BackofficeService) RestoreWarehouse(ctx context.Context, id int64) erro
 // ResolveWarehouseID convierte lo que pidió una petición en el id de un almacén activo de la
 // sucursal; sin almacén, el de venta. Uno ajeno, de otra sucursal o archivado es «no existe».
 func ResolveWarehouseID(ctx context.Context, q *db.Queries, sel domain.WarehouseSel) (int64, error) {
+	w, err := resolveWarehouse(ctx, q, sel)
+	return w.ID, err
+}
+
+// resolvedWarehouse es el almacén resuelto con su nombre, para lo que la respuesta tiene que decir.
+type resolvedWarehouse struct {
+	ID      int64
+	Name    string
+	IsSales bool
+}
+
+// resolveWarehouse es ResolveWarehouseID con el nombre.
+func resolveWarehouse(ctx context.Context, q *db.Queries, sel domain.WarehouseSel) (resolvedWarehouse, error) {
 	if sel.Sales() {
 		w, err := q.SalesWarehouse(ctx)
 		if err != nil {
-			return 0, warehouseNotFound(err)
+			return resolvedWarehouse{}, warehouseNotFound(err)
 		}
-		return w.ID, nil
+		return resolvedWarehouse{ID: w.ID, Name: w.Name, IsSales: w.IsSales}, nil
 	}
 	w, err := q.ResolveWarehouse(ctx, sel.ID)
 	if err != nil {
-		return 0, warehouseNotFound(err)
+		return resolvedWarehouse{}, warehouseNotFound(err)
 	}
-	return w.ID, nil
+	return resolvedWarehouse{ID: w.ID, Name: w.Name, IsSales: w.IsSales}, nil
 }
 
 func warehouseNameFree(ctx context.Context, q *db.Queries, name string, self int64) error {
