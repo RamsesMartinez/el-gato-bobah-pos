@@ -117,3 +117,26 @@ func TestMergeChain(t *testing.T) {
 		t.Fatalf("ciclo = %v", loop)
 	}
 }
+
+func TestInheritExpectedWaste(t *testing.T) {
+	d := func(s string) *decimal.Decimal { v := decimal.RequireFromString(s); return &v }
+	cases := []struct {
+		name    string
+		target  *decimal.Decimal
+		sources []*decimal.Decimal
+		want    string
+	}{
+		{"el destino conserva el suyo", d("3"), []*decimal.Decimal{d("6")}, "3"},
+		{"el destino conserva su 0", d("0"), []*decimal.Decimal{d("6")}, "0"},
+		{"sin captura hereda el primero capturado", nil, []*decimal.Decimal{nil, d("6"), d("8")}, "6"},
+		{"nadie capturado", nil, []*decimal.Decimal{nil}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := InheritExpectedWaste(c.target, c.sources)
+			if (c.want == "") != (got == nil) || (got != nil && !got.Equal(decimal.RequireFromString(c.want))) {
+				t.Fatalf("InheritExpectedWaste = %v; quiere %q", got, c.want)
+			}
+		})
+	}
+}

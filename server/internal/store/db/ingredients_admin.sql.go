@@ -1043,28 +1043,29 @@ const lockArticleNowait = `-- name: LockArticleNowait :one
 
 select id, is_active, name::text as name, base_unit_id, min_stock, current_cost, cost_source::text as cost_source,
        yield_qty, is_prep, category_id, count_place_id, track_stock, is_packaging,
-       density_g_per_ml, density_method, density_set_by, density_set_at
+       density_g_per_ml, density_method, density_set_by, density_set_at, expected_waste_pct
   from ingredients where id = $1 for update nowait
 `
 
 type LockArticleNowaitRow struct {
-	ID            int64              `json:"id"`
-	IsActive      bool               `json:"is_active"`
-	Name          string             `json:"name"`
-	BaseUnitID    int16              `json:"base_unit_id"`
-	MinStock      *decimal.Decimal   `json:"min_stock"`
-	CurrentCost   decimal.Decimal    `json:"current_cost"`
-	CostSource    string             `json:"cost_source"`
-	YieldQty      *decimal.Decimal   `json:"yield_qty"`
-	IsPrep        bool               `json:"is_prep"`
-	CategoryID    *int64             `json:"category_id"`
-	CountPlaceID  *int64             `json:"count_place_id"`
-	TrackStock    bool               `json:"track_stock"`
-	IsPackaging   bool               `json:"is_packaging"`
-	DensityGPerMl *decimal.Decimal   `json:"density_g_per_ml"`
-	DensityMethod *string            `json:"density_method"`
-	DensitySetBy  *int64             `json:"density_set_by"`
-	DensitySetAt  pgtype.Timestamptz `json:"density_set_at"`
+	ID               int64              `json:"id"`
+	IsActive         bool               `json:"is_active"`
+	Name             string             `json:"name"`
+	BaseUnitID       int16              `json:"base_unit_id"`
+	MinStock         *decimal.Decimal   `json:"min_stock"`
+	CurrentCost      decimal.Decimal    `json:"current_cost"`
+	CostSource       string             `json:"cost_source"`
+	YieldQty         *decimal.Decimal   `json:"yield_qty"`
+	IsPrep           bool               `json:"is_prep"`
+	CategoryID       *int64             `json:"category_id"`
+	CountPlaceID     *int64             `json:"count_place_id"`
+	TrackStock       bool               `json:"track_stock"`
+	IsPackaging      bool               `json:"is_packaging"`
+	DensityGPerMl    *decimal.Decimal   `json:"density_g_per_ml"`
+	DensityMethod    *string            `json:"density_method"`
+	DensitySetBy     *int64             `json:"density_set_by"`
+	DensitySetAt     pgtype.Timestamptz `json:"density_set_at"`
+	ExpectedWastePct *decimal.Decimal   `json:"expected_waste_pct"`
 }
 
 // ---- Cambio de unidad (spec 042, FR-009) ----
@@ -1090,6 +1091,7 @@ func (q *Queries) LockArticleNowait(ctx context.Context, id int64) (LockArticleN
 		&i.DensityMethod,
 		&i.DensitySetBy,
 		&i.DensitySetAt,
+		&i.ExpectedWastePct,
 	)
 	return i, err
 }

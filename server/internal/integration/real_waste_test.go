@@ -53,8 +53,9 @@ func seedRealWaste(t *testing.T, owner *store.Store) realWasteFixture {
 		select $1, 'Leche litro merma', id, 20 from units where code = 'l' returning id`, co)
 
 	mov := func(ing int64, qty string, kind string) {
-		ex(`insert into stock_movements (company_id, item_type, ingredient_id, movement_type, quantity, order_id)
-			values ($1, 'ingrediente', $2, $3::stock_movement_type, $4::numeric, $5)`, co, ing, kind, qty, f.order)
+		// Con su almacén: una cancelación sin él la rechaza la base (repone al almacén del que salió).
+		ex(`insert into stock_movements (company_id, item_type, ingredient_id, movement_type, quantity, order_id, warehouse_id)
+			values ($1, 'ingrediente', $2, $3::stock_movement_type, $4::numeric, $5, $6)`, co, ing, kind, qty, f.order, f.local)
 	}
 	mov(f.k.leche, "-10000", "venta")
 	mov(f.k.leche, "1000", "cancelacion")

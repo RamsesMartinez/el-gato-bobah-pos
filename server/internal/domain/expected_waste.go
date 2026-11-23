@@ -106,3 +106,19 @@ func MergeChain(target int64, edges []MergeEdge) map[int64]float64 {
 	}
 	return out
 }
+
+// InheritExpectedWaste es la merma que le queda al destino de una unión (spec 096, R14 M1): la suya si
+// la tiene capturada (0 incluido); si no, la primera capturada de los orígenes en el orden en que se
+// pidieron. Sin esto, unir un insumo con su merma a otro sin captura la tiraba sin aviso y el costo
+// bajaba.
+func InheritExpectedWaste(target *decimal.Decimal, sources []*decimal.Decimal) *decimal.Decimal {
+	if target != nil {
+		return target
+	}
+	for _, s := range sources {
+		if s != nil {
+			return s
+		}
+	}
+	return nil
+}

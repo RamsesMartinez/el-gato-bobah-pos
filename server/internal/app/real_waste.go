@@ -97,8 +97,10 @@ func realWaste(ctx context.Context, q *db.Queries, ingredientIDs []int64) (map[i
 func (s *CostingService) ArticleRealWaste(ctx context.Context, ingredientID int64) ([]RealWasteView, error) {
 	q := s.store.QC(ctx)
 	// Uno de otra empresa no se distingue de uno que no existe (RLS no lo deja ver).
-	if _, err := q.GetArticle(ctx, ingredientID); err != nil {
-		return nil, notFound(err)
+	if labels, err := q.ListIngredientLabels(ctx, []int64{ingredientID}); err != nil {
+		return nil, err
+	} else if len(labels) == 0 {
+		return nil, domain.ErrNotFound
 	}
 	m, err := realWaste(ctx, q, []int64{ingredientID})
 	if err != nil {

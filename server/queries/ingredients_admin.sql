@@ -302,7 +302,7 @@ select name, qty_in_base, active, brand, tare_g from ingredient_presentations wh
 -- El artículo sin esperar: una venta en curso lo tiene y el cambio se reintenta (E6).
 select id, is_active, name::text as name, base_unit_id, min_stock, current_cost, cost_source::text as cost_source,
        yield_qty, is_prep, category_id, count_place_id, track_stock, is_packaging,
-       density_g_per_ml, density_method, density_set_by, density_set_at
+       density_g_per_ml, density_method, density_set_by, density_set_at, expected_waste_pct
   from ingredients where id = sqlc.arg(id) for update nowait;
 
 -- name: LockArticleStockNowait :many
