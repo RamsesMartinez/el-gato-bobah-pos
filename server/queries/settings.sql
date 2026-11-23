@@ -26,6 +26,7 @@ select delivery_fee,
        stock_item_label,
        waste_approval_threshold,
        expected_waste_pct,
+       expected_waste_deducts,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -112,3 +113,10 @@ update business_settings b
        updated_at = now(), updated_by = sqlc.arg(updated_by)
   from (select costing_method from business_settings limit 1) old
 returning old.costing_method as previous_method;
+
+-- name: SetExpectedWasteDeducts :one
+-- «La merma esperada también descuenta del almacén» (spec 096, subida 2). Devuelve el valor anterior
+-- para la bitácora. Sin where: una fila por empresa y RLS la acota (ver SetGeneralExpectedWaste).
+update business_settings bs set expected_waste_deducts = sqlc.arg(deducts), updated_at = now(), updated_by = sqlc.arg(updated_by)
+  from (select expected_waste_deducts from business_settings limit 1) old
+returning old.expected_waste_deducts as previous;

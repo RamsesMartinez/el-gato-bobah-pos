@@ -1095,6 +1095,19 @@ func descontarRenglon(ctx context.Context, q *db.Queries, graph domain.StockGrap
 			return err
 		}
 	}
+	// La merma esperada, si la empresa la encendió (spec 096): un movimiento propio por insumo y origen,
+	// ligado al mismo renglón para que cancelar y partir lo traten como a la venta.
+	if graph.DeductExpectedWaste {
+		for _, d := range graph.ExpectedWasteOfSale(line) {
+			p := movementIngredientOrProduct(orderID, lineID, actorID, "merma esperada", d.ItemType, d.IngredientID, d.ProductID, d.Qty.Neg())
+			p.MovementType = db.StockMovementType("merma_esperada")
+			p.ModifierOptionID = d.OptionID
+			p.ComponentOfProductID = d.ComponentOf
+			if err := insertDepletion(ctx, q, p); err != nil {
+				return err
+			}
+		}
+	}
 	for _, c := range comps {
 		qty := domain.StockQty(c.Qty)
 		if !domain.ValidQty(qty, domain.MaxStockQty, false) {

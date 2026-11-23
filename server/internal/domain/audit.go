@@ -117,6 +117,7 @@ var auditActions = []struct {
 	{AuditSettingsExpectedWaste, AuditGroupPrice},
 	{AuditProductExpectedWaste, AuditGroupPrice},
 	{AuditIngredientExpectedWaste, AuditGroupPrice},
+	{AuditSettingsExpectedWasteDeducts, AuditGroupPrice},
 	// Artículos del almacén (spec 042): configuración, con los precios, como el costeo. El costo
 	// corregido también. Ningún grupo nuevo, por la misma razón que la 038.
 	{AuditIngredientCreated, AuditGroupPrice},
@@ -267,6 +268,8 @@ const (
 	AuditProductExpectedWaste AuditAction = "product.expected_waste"
 	// AuditIngredientExpectedWaste: cambió la merma de un artículo; nulo = sin captura, 0 = capturada en 0.
 	AuditIngredientExpectedWaste AuditAction = "ingredient.expected_waste"
+	// AuditSettingsExpectedWasteDeducts: se encendió o apagó que la merma esperada descuente del almacén.
+	AuditSettingsExpectedWasteDeducts AuditAction = "settings.expected_waste_deducts"
 	// AuditSettingsWasteThreshold: cambió el tope a partir del cual una merma espera aprobación.
 	AuditSettingsWasteThreshold AuditAction = "settings.waste_threshold"
 	// AuditSettingsCountLimits: cambiaron los límites del conteo (máximo y cifra para confirmar).

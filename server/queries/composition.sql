@@ -1,7 +1,7 @@
 -- name: ListProductsForStock :many
 -- Lo mínimo de cada producto para saber qué descuenta al venderse (spec 028). Sin filtro de empresa:
 -- lo pone RLS.
-select id, type, track_stock, recipe_id from products;
+select id, type, track_stock, recipe_id, expected_waste_pct from products;
 
 -- name: GetProductComposition :one
 select p.id, p.type, p.track_stock, p.recipe_id, p.composition_status, p.composition_confirmed_at,
@@ -177,3 +177,8 @@ select g.id as group_id, coalesce(nullif(pmg.title, ''), g.name)::text as group_
 
 -- name: ProductOptionsDeduct :one
 select product_options_deduct($1)::bool;
+
+-- name: GetExpectedWasteDeducts :one
+-- Si la merma esperada también descuenta del almacén (spec 096, subida 2). Se lee en la transacción
+-- de la venta; sin fila (empresa sin ajustes) es apagado.
+select bs.expected_waste_deducts from business_settings bs limit 1;

@@ -31,6 +31,7 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		"settings.waste_threshold", "settings.count_limits_changed",
 		// Merma esperada (spec 096).
 		"settings.expected_waste", "product.expected_waste", "ingredient.expected_waste",
+		"settings.expected_waste_deducts",
 		"ingredient.created", "ingredient.updated", "ingredient.archived", "ingredient.reactivated",
 		"ingredient.cost_corrected", "ingredient.unit_changed", "ingredient.unit_changed.detail",
 		"ingredient.density_set", "ingredient.density_cleared", "presentation.tare_set",
@@ -176,8 +177,8 @@ func TestAuditFilterActions(t *testing.T) {
 	// avisos de inventario (spec 084): alertas de un artículo y destinatarios. Y las cinco de fotos
 	// y familias del catálogo (spec 091), dónde se vende un producto (spec 092) y las cuatro de
 	// almacenes y el traspaso (spec 094). Y las tres de merma esperada: general, de producto y de
-	// artículo (spec 096).
-	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 39 {
+	// artículo (spec 096), y la de que descuente inventario.
+	if got := (AuditFilter{Group: "price"}).Actions(); len(got) != 40 {
 		t.Fatalf("grupo precios = %v", got)
 	}
 	if got := (AuditFilter{Group: "price", Action: "price.set"}).Actions(); len(got) != 1 || got[0] != "price.set" {

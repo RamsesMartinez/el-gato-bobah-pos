@@ -360,6 +360,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/inventory", h.UpdateInventorySettings)
 				// La merma general la decide quien configura el menú, no quien configura el almacén (spec 096).
 				r.With(RequirePermission(h.permissions, domain.PermMenuConfigure)).Put("/settings/expected-waste", h.PutGeneralExpectedWaste)
+				// Que la merma descuente del almacén lo decide quien configura el almacén (spec 096, subida 2).
+				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/expected-waste-deducts", h.PutExpectedWasteDeducts)
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/waste-threshold", h.SetWasteThreshold)
 				// Límites del conteo (spec 044): los lee quien cuenta (el aviso del máximo), los cambia
 				// solo quien configura el almacén.

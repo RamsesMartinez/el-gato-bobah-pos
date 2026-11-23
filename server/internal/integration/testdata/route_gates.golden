@@ -276,6 +276,7 @@ PUT /api/v1/settings/cash-close admin,gerente
 PUT /api/v1/settings/count-limits admin,gerente
 PUT /api/v1/settings/daily-summary-emails admin,gerente
 PUT /api/v1/settings/expected-waste admin,gerente
+PUT /api/v1/settings/expected-waste-deducts admin,gerente
 PUT /api/v1/settings/inventory admin,gerente
 PUT /api/v1/settings/notification-recipients admin,gerente
 PUT /api/v1/settings/waste-threshold admin,gerente

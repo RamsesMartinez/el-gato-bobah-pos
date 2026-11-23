@@ -95,3 +95,29 @@ func (h *Handlers) ArticleRealWaste(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, map[string]any{"days": 90, "items": items})
 }
+
+// PutExpectedWasteDeducts es PUT /settings/expected-waste-deducts (inventory.configure): enciende o
+// apaga que la merma esperada descuente del almacén. La llave es obligatoria.
+func (h *Handlers) PutExpectedWasteDeducts(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Deducts *bool `json:"deducts"`
+	}
+	if err := DecodeStrict(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.Deducts == nil {
+		Error(w, fmt.Errorf("%w: falta si descuenta o no", domain.ErrValidation))
+		return
+	}
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	if err := h.costing.SetExpectedWasteDeducts(r.Context(), *body.Deducts, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"deducts": *body.Deducts})
+}
