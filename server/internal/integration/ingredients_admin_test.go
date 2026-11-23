@@ -437,7 +437,7 @@ func TestEditingAnArticle(t *testing.T) {
 		if _, err := k.st.Pool.Exec(context.Background(), `update ingredients set is_prep = true, recipe_id = $2, yield_qty = 1000 where id = $1`, prep, recipe); err != nil {
 			t.Fatal(err)
 		}
-		if err := svc.CorrectArticleCost(ctx, prep, qty("0.05")); !errors.Is(err, domain.ErrPrepCost) {
+		if err := svc.CorrectArticleCost(ctx, prep, qty("0.05"), nil); !errors.Is(err, domain.ErrPrepCost) {
 			t.Fatalf("= %v; quiere ErrPrepCost", err)
 		}
 	})
@@ -458,7 +458,7 @@ func TestEditingAnArticle(t *testing.T) {
 		}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.CorrectArticleCost(ctx, k.azucar, qty("0.022")); err != nil {
+	if err := svc.CorrectArticleCost(ctx, k.azucar, qty("0.022"), nil); err != nil {
 		t.Fatal(err)
 	}
 

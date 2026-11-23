@@ -21,6 +21,7 @@ import { useUiStore } from '../../stores/ui';
 import { Page } from '../../components/Page';
 import { ConfirmPopover } from '../../components/ui/confirm-popover';
 import { GroupOptions } from './GroupOptions';
+import { archivedDescription } from './archivedDescription';
 
 type Status = 'act' | 'inact' | 'all';
 type Sort = 'name' | 'options' | 'products';
@@ -191,6 +192,7 @@ function GroupCard({ group, search, open, hideInactiveOpts, onToggle, onEdit, on
       qc.invalidateQueries({ queryKey: ['menu'] });
       toaster.create({
         title: active ? 'Grupo reactivado' : 'Grupo archivado',
+        description: active ? undefined : archivedDescription(group.activeProductCount ?? 0),
         type: 'success',
         action: { label: 'Deshacer', onClick: () => arch.mutate(!active) },
       });
@@ -359,3 +361,4 @@ function GroupProductsDialog({ group, isOpen, onClose }: { group: Group | null; 
     </DialogRoot>
   );
 }
+

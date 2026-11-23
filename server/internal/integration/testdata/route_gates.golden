@@ -14,6 +14,7 @@ GET /api/v1/admin/groups/ admin,gerente
 GET /api/v1/admin/groups/{id}/options admin,gerente
 GET /api/v1/admin/groups/{id}/products admin,gerente
 GET /api/v1/admin/modifier-options/ admin,gerente
+GET /api/v1/admin/modifier-options/{id} admin,gerente
 GET /api/v1/admin/modifier-options/{id}/composition admin,gerente
 GET /api/v1/admin/platform-menus/available-stores admin,gerente
 GET /api/v1/admin/platform-menus/connections admin,gerente

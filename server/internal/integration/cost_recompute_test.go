@@ -194,7 +194,7 @@ func TestCorrectingAnIngredientCostMovesEverythingThatUsesIt(t *testing.T) {
 	st := appRoleStore(t)
 	ctx := tenantCtx(t, st, k.company, k.admin)
 
-	if err := app.NewBackofficeService(st, clock).CorrectArticleCost(ctx, k.leche, decimal.RequireFromString("0.04")); err != nil {
+	if err := app.NewBackofficeService(st, clock).CorrectArticleCost(ctx, k.leche, decimal.RequireFromString("0.04"), nil); err != nil {
 		t.Fatal(err)
 	}
 	// base = (500 × 0.04 + 100 × 0.10) / 1000 = 0.03; frappé = 200 × 0.03 = 6.
@@ -267,14 +267,14 @@ func TestCostRecomputeDoesNotCrossCompanies(t *testing.T) {
 
 	st := appRoleStore(t)
 	ctx := tenantCtx(t, st, k.company, k.admin)
-	if err := app.NewBackofficeService(st, clock).CorrectArticleCost(ctx, k.leche, decimal.RequireFromString("0.04")); err != nil {
+	if err := app.NewBackofficeService(st, clock).CorrectArticleCost(ctx, k.leche, decimal.RequireFromString("0.04"), nil); err != nil {
 		t.Fatal(err)
 	}
 	wantCost(t, owner, "extra de la empresa que corrigió", "modifier_options", k.extraLeche, "4")
 	wantCost(t, owner, "extra de la otra empresa", "modifier_options", b.extraLeche, "0")
 
 	inTheThreeCases(t, k.company, otra, func(t *testing.T, ast *store.Store, ctx context.Context) {
-		err := app.NewBackofficeService(ast, clock).CorrectArticleCost(app.WithActorUser(ctx, b.admin), k.leche, decimal.RequireFromString("1"))
+		err := app.NewBackofficeService(ast, clock).CorrectArticleCost(app.WithActorUser(ctx, b.admin), k.leche, decimal.RequireFromString("1"), nil)
 		if err == nil {
 			t.Fatal("corregir el insumo de otra empresa debió fallar")
 		}
@@ -337,7 +337,7 @@ func TestTwoConcurrentCostCorrectionsDoNotOverwriteEachOther(t *testing.T) {
 		cost string
 	}{{k.leche, "0.04"}, {k.te, "0.20"}} {
 		ctx := tenantCtx(t, st, k.company, k.admin)
-		wg.Go(func() { errs[i] = bo.CorrectArticleCost(ctx, fix.ing, decimal.RequireFromString(fix.cost)) })
+		wg.Go(func() { errs[i] = bo.CorrectArticleCost(ctx, fix.ing, decimal.RequireFromString(fix.cost), nil) })
 	}
 	// Si la prueba se corta antes de soltar el frappé, las dos correcciones se quedarían esperando y
 	// el cierre de los pools con ellas: se suelta y se esperan antes que nada.
@@ -413,7 +413,7 @@ func TestCorrectingACostWhileARecipeIsSavedDoesNotDeadlock(t *testing.T) {
 	ctx := tenantCtx(t, st, k.company, k.admin)
 	var wg sync.WaitGroup
 	var correctErr error
-	wg.Go(func() { correctErr = bo.CorrectArticleCost(ctx, k.leche, decimal.RequireFromString("0.04")) })
+	wg.Go(func() { correctErr = bo.CorrectArticleCost(ctx, k.leche, decimal.RequireFromString("0.04"), nil) })
 	t.Cleanup(func() { _ = recipe.Rollback(context.Background()); wg.Wait() })
 	waitForBlocked(t, owner, 1)
 

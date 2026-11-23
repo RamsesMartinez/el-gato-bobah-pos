@@ -120,7 +120,7 @@ func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListMod
 }
 
 const adminListProducts = `-- name: AdminListProducts :many
-select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, q.alt_names, q.matched_alt, count(*) over() as total
+select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, q.inactive_group_count, q.alt_names, q.matched_alt, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
          p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
@@ -130,6 +130,11 @@ from (
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
          (select count(*) from product_modifier_groups pmg
            where pmg.product_id = p.id and pmg.min_select is not null)::int as override_count,
+         -- Los grupos ligados que están apagados (spec 090, defecto 3): no salen en la pantalla de
+         -- venta y el producto se veía igual que los demás.
+         (select count(*) from product_modifier_groups pmg
+            join modifier_groups mg on mg.id = pmg.group_id
+           where pmg.product_id = p.id and not mg.is_active)::int as inactive_group_count,
          p.alt_names,
          -- El alternativo que coincidió (spec 063): '' si no se busca o si coincide el nombre; el
          -- primero en el orden capturado. coalesce: la subconsulta sin coincidencia es NULL.
@@ -188,27 +193,28 @@ type AdminListProductsParams struct {
 }
 
 type AdminListProductsRow struct {
-	ID                int64            `json:"id"`
-	Name              string           `json:"name"`
-	Price             decimal.Decimal  `json:"price"`
-	CurrentCost       decimal.Decimal  `json:"current_cost"`
-	Type              ProductType      `json:"type"`
-	IsActive          bool             `json:"is_active"`
-	IsFavorite        bool             `json:"is_favorite"`
-	AvailableFrom     pgtype.Date      `json:"available_from"`
-	AvailableUntil    pgtype.Date      `json:"available_until"`
-	NeedsPrep         bool             `json:"needs_prep"`
-	Category          string           `json:"category"`
-	CategoryID        int64            `json:"category_id"`
-	CompositionStatus *string          `json:"composition_status"`
-	CostSource        CostSource       `json:"cost_source"`
-	ManualCost        *decimal.Decimal `json:"manual_cost"`
-	HasRecipe         bool             `json:"has_recipe"`
-	GroupCount        int32            `json:"group_count"`
-	OverrideCount     int32            `json:"override_count"`
-	AltNames          []string         `json:"alt_names"`
-	MatchedAlt        string           `json:"matched_alt"`
-	Total             int64            `json:"total"`
+	ID                 int64            `json:"id"`
+	Name               string           `json:"name"`
+	Price              decimal.Decimal  `json:"price"`
+	CurrentCost        decimal.Decimal  `json:"current_cost"`
+	Type               ProductType      `json:"type"`
+	IsActive           bool             `json:"is_active"`
+	IsFavorite         bool             `json:"is_favorite"`
+	AvailableFrom      pgtype.Date      `json:"available_from"`
+	AvailableUntil     pgtype.Date      `json:"available_until"`
+	NeedsPrep          bool             `json:"needs_prep"`
+	Category           string           `json:"category"`
+	CategoryID         int64            `json:"category_id"`
+	CompositionStatus  *string          `json:"composition_status"`
+	CostSource         CostSource       `json:"cost_source"`
+	ManualCost         *decimal.Decimal `json:"manual_cost"`
+	HasRecipe          bool             `json:"has_recipe"`
+	GroupCount         int32            `json:"group_count"`
+	OverrideCount      int32            `json:"override_count"`
+	InactiveGroupCount int32            `json:"inactive_group_count"`
+	AltNames           []string         `json:"alt_names"`
+	MatchedAlt         string           `json:"matched_alt"`
+	Total              int64            `json:"total"`
 }
 
 // Página filtrada por estado (”=todos | 'act' | 'inact'), búsqueda (”=sin filtro), categoría
@@ -254,6 +260,7 @@ func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsPa
 			&i.HasRecipe,
 			&i.GroupCount,
 			&i.OverrideCount,
+			&i.InactiveGroupCount,
 			&i.AltNames,
 			&i.MatchedAlt,
 			&i.Total,

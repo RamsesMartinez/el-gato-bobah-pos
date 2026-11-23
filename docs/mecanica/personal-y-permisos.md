@@ -214,6 +214,40 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
 - **Un rol que configura y no ve el almacén no edita insumos**: la lectura de la ficha pide
   `inventory.view` y se niega. Igual en la pantalla, que sin ese permiso no abre la ficha.
 
+
+### Lo que agregó la spec 090 (pedidos completos, correcciones de cobro, costo, recetas, modificadores y productos)
+
+- **Tres alcances crecieron con la subida.** `write:orders` (antes solo cancelar) gana capturar, mandar
+  a cocina, entregar, descontar y cobrar un pedido, y anular, mover de terminal o reembolsar un pago;
+  `write:catalog` gana recetas, grupos, extras, ligas y el alta de productos; `write:inventory` gana
+  `ingredient_cost_set`. Un token ya emitido con esos alcances las gana si el rol de su dueño tiene el
+  permiso de su pantalla. El texto de cada alcance en Integraciones lo dice.
+- **Seis escrituras no piden permiso, porque su pantalla tampoco**: crear, enviar y descartar una
+  cuenta, entregar, descontar y cobrar. El catálogo las nombra en `screenWritesWithoutPermission`
+  (`apitoken_test.go`); toda otra escritura sin permiso truena ese test. La barrera del token es el
+  alcance, que elige quien lo crea.
+- **El despachador acepta UUID para la cuenta en captura** (`dispatchDraft`). El id llega como
+  `uuid.UUID`, no como texto: el camino solo lleva hex y guiones. `parseDraftID` solo acepta la forma
+  canónica. Lo vigila `TestDispatcherRejectsNonUUIDDraftID`.
+- **El id de la cuenta, el de cada renglón y el `clientUuid` del cobro se derivan de la clave**
+  (`domain.DerivedUUID`, versión 8): un reintento manda el mismo id y la ruta lo reconoce aunque el
+  registro de idempotencia se haya perdido.
+- **La vista previa de una cuenta es `POST /pos/drafts/quote`**, que corre `priceDraft`, la misma
+  cuenta que la cuenta guardada: la cifra de la vista previa es la del pedido al centavo
+  (`TestDraftQuoteMatchesTheDraftItBecomes`). Cada renglón trae `priceSource` (`platform`, `markup`,
+  `base`, `counter`) y una nota por cada precio que no es el propio de la plataforma.
+- **Un pedido de plataforma se cobra por monto**, como en la pantalla: `all_remaining` es de la cuenta
+  dividida y la ruta lo rechaza; la vista previa lo dice con lo que falta.
+- **Cambiar el método de un pago es anular y volver a cobrar**; no hay herramienta propia.
+- **`refund-info` trae `pending`**, lo que queda por devolver con la misma cuenta que `/refund`.
+- **El motivo del costo (0116) es opcional para la pantalla y obligatorio para el MCP.** El historial y
+  la bitácora lo traen; el respaldo anónimo lo reemplaza por «motivo anonimizado».
+- **`recipe_set` exige `based_on` al aplicar** y no copia la receta a los extras homónimos salvo
+  `also_in_same_name: true`. Con existencia propia, la vista previa trae las dos existencias y qué
+  mandar; un 409 o un 400 de la ruta llega con la corrección para el agente.
+- **El `PATCH` de extras ya es parcial** (defecto del 15-nov): el servicio lee la opción con candado y
+  solo cambia lo que llega. `GET /admin/modifier-options/{id}` lee una opción aunque su grupo esté
+  apagado; la lista sigue trayendo solo los de grupos activos.
 ### Lo que agregó la spec 077 (desactivar y reactivar insumos)
 
 - **`write:inventory` creció otra vez, sin herramienta nueva.** `ingredient_update` acepta `active`

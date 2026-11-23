@@ -9,7 +9,7 @@
 -- Ordenable por nombre / #opciones / #productos (@sort) en @dir (asc|desc); subquery para poder
 -- ordenar por los conteos calculados.
 select g.id, g.name, g.is_active, g.default_min_select, g.default_max_select,
-       g.option_count, g.option_preview, g.product_count, g.override_count, g.total
+       g.option_count, g.option_preview, g.product_count, g.active_product_count, g.override_count, g.total
 from (
   select mg.id, mg.name, mg.is_active, mg.default_min_select, mg.default_max_select,
          (select count(*) from modifier_options mo where mo.group_id = mg.id and mo.is_active)::int as option_count,
@@ -30,6 +30,9 @@ from (
                    where mo.group_id = mg.id and mo.is_active
                    order by mo.sort_key, mo.name limit 4) t), '')::text as option_preview,
          (select count(*) from product_modifier_groups pmg where pmg.group_id = mg.id)::int as product_count,
+         -- Los productos activos que lo llevan (spec 090): son en los que deja de salir al archivarlo.
+         (select count(*) from product_modifier_groups pmg join products p on p.id = pmg.product_id
+           where pmg.group_id = mg.id and p.is_active)::int as active_product_count,
          (select count(*) from product_modifier_groups pmg where pmg.group_id = mg.id and pmg.min_select is not null)::int as override_count,
          count(*) over() as total
   from modifier_groups mg
@@ -117,7 +120,7 @@ order by pmg.position, mg.name;
 
 -- name: AdminGroupProducts :many
 -- Productos que usan un grupo. min/max efectivos + si el producto sobrescribe el default.
-select p.id, p.name,
+select p.id, p.name, p.is_active,
        coalesce(pmg.min_select, mg.default_min_select) as min_select,
        coalesce(pmg.max_select, mg.default_max_select) as max_select,
        (pmg.min_select is not null)::bool as overridden
@@ -138,3 +141,21 @@ set title = excluded.title, min_select = excluded.min_select,
 
 -- name: AdminDetachGroup :exec
 delete from product_modifier_groups where product_id = @product_id and group_id = @group_id;
+
+-- name: AdminGetOption :one
+-- Una opción por id, con su grupo aunque esté inactivo (spec 090): la lista de extras solo trae los
+-- de grupos activos, y por ella la opción de un grupo apagado «no existía».
+select mo.id, mo.group_id, mg.name as group_name, mg.is_active as group_active, mo.name, mo.price_delta,
+       mo.max_per_line, mo.is_favorite, mo.is_active, mo.composition_status
+from modifier_options mo
+join modifier_groups mg on mg.id = mo.group_id
+where mo.id = @id;
+
+-- name: AdminLockOption :one
+-- La opción con candado de fila para la edición parcial: se lee lo que no vino y se escribe todo en
+-- la misma transacción. `of mo`: el grupo solo se lee, y bloquearlo frenaría a quien lo edita.
+select mo.name, mo.price_delta, mo.max_per_line
+from modifier_options mo
+join modifier_groups mg on mg.id = mo.group_id
+where mo.id = @id
+for update of mo;

@@ -67,8 +67,8 @@ update ingredients i set current_cost = sqlc.arg(cost), cost_source = 'manual', 
 returning prev.prev_cost::numeric(12,6) as previous_cost;
 
 -- name: InsertCostCorrection :exec
-insert into ingredient_cost_corrections (ingredient_id, previous_cost, new_cost, user_id)
-values (sqlc.arg(ingredient_id), sqlc.arg(previous_cost), sqlc.arg(new_cost), sqlc.arg(user_id));
+insert into ingredient_cost_corrections (ingredient_id, previous_cost, new_cost, user_id, reason)
+values (sqlc.arg(ingredient_id), sqlc.arg(previous_cost), sqlc.arg(new_cost), sqlc.arg(user_id), sqlc.narg(reason));
 
 -- name: InsertInitialStock :exec
 -- La existencia con la que nace un artículo: un ajuste. La sucursal la pone el trigger con la de la
@@ -130,12 +130,12 @@ with recursive src (ingredient_id, factor, depth) as (
     from ingredient_replacements r join src on r.new_ingredient_id = src.ingredient_id
    where r.kind = 'merge' and src.depth < 16
 )
-select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name, brand, source_id from (
+select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_name, brand, source_id, reason from (
   -- Las correcciones van primero en el union a propósito: sqlc toma los tipos de la primera rama, y
   -- con null::text ahí sabe que proveedor y empaque pueden faltar.
   select 'correction'::text as kind, c.created_at as at, c.id, round(c.new_cost / src.factor, 6)::numeric(12,6) as unit_cost,
          null::text as presentation, null::numeric(14,4) as pack_qty_in_base, null::text as supplier, u.name as user_name,
-         null::text as brand, c.ingredient_id as source_id
+         null::text as brand, c.ingredient_id as source_id, c.reason
     from ingredient_cost_corrections c
     join src on src.ingredient_id = c.ingredient_id
     left join users u on u.id = c.user_id
@@ -147,7 +147,8 @@ select kind, at, id, unit_cost, presentation, pack_qty_in_base, supplier, user_n
            round(m.unit_cost / src.factor, 6)::numeric(12,6) as unit_cost,
            p.name as presentation, round(ei.pack_qty_in_base * src.factor, 4)::numeric(14,4) as pack_qty_in_base,
            (select s.name::text from suppliers s where s.id = e.supplier_id) as supplier,
-           null::text as user_name, ei.presentation_brand as brand, m.ingredient_id as source_id
+           null::text as user_name, ei.presentation_brand as brand, m.ingredient_id as source_id,
+           null::text as reason
       from stock_movements m
       join src on src.ingredient_id = m.ingredient_id
       join expense_items ei on ei.id = m.expense_item_id
