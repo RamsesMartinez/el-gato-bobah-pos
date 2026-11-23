@@ -137,7 +137,7 @@ export function SeAcaboPage() {
         <VStack align="start" gap={0} minW={0}>
           <Text fontWeight="700" fontSize="md" lineClamp={2}>{it.name}</Text>
           <Text fontSize="xs" color={listo ? 'white' : 'fg.muted'} minH="16px">
-            {listo ? 'Toca otra vez para avisar que se acabó' : detalle ?? ''}
+            {listo ? (wh.multi ? `Toca otra vez: queda en 0 en ${wh.name} y se avisa a quien compra` : 'Toca otra vez para avisar que se acabó') : detalle ?? ''}
           </Text>
         </VStack>
       </Button>
