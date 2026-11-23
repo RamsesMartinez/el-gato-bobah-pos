@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"sort"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -67,18 +66,9 @@ func shoppingListIn(ctx context.Context, q *db.Queries, sel domain.WarehouseSel)
 		}
 		out = append(out, lines...)
 	}
-	// El orden de una sola lista (proveedor, sin proveedor al final, nombre); el de venta primero
-	// dentro del mismo artículo porque ListWarehouseNames ya lo pone primero y el orden es estable.
-	sort.SliceStable(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if (a.Supplier == "") != (b.Supplier == "") {
-			return b.Supplier == ""
-		}
-		if a.Supplier != b.Supplier {
-			return a.Supplier < b.Supplier
-		}
-		return a.Name < b.Name
-	})
+	// Sin reordenar: cada lista ya viene en el orden de la base (proveedor, sin proveedor al final,
+	// nombre) y ListWarehouseNames pone primero el de venta. Reordenar aquí compararía bytes y no la
+	// collation de la base: «Ácido» saltaría al final y «Todos» no se leería como la lista de un almacén.
 	return out, nil
 }
 

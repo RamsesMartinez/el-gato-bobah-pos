@@ -218,3 +218,157 @@ func TestShoppingListAllIsIsolatedInTheThreeCases(t *testing.T) {
 		}
 	})
 }
+
+// shoppingRouter arma la API con la sesión de un usuario de la empresa dada.
+func shoppingRouter(t *testing.T, st *store.Store, user, company int64) (http.Handler, string) {
+	t.Helper()
+	jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
+	h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Admin: app.NewAdminService(st), Backoffice: app.NewBackofficeService(st, nil),
+		Notifications: app.NewNotificationsService(st, clock), MenuCache: cache.NewMenuCache(""), Broker: realtime.NewBroker()})
+	tok, err := jm.Issue(domain.User{ID: user, CompanyID: company, Name: "gerente", Role: "gerente"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return httpapi.Router(config.Config{}, jm, h, st), tok
+}
+
+// Revisión de código: una lista vacía tiene que salir como arreglo. Un `null` tumba la pantalla con la
+// API en 200 y sin una línea en el log (AGENTS.md); deserializar a Go borra esa diferencia, por eso se
+// lee el JSON crudo.
+func TestShoppingListAllWithNothingIsAnEmptyArray(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	co := makeCompany(t, st, "compra-vacia")
+	comoEnLaSegundaSubida(t, st, co)
+	user := makeUserIn(t, st, co, "compra_vacia", "gerente")
+	r, tok := shoppingRouter(t, st, user, co)
+	for _, q := range []string{"", "?warehouseId=all"} {
+		w := do(t, r, http.MethodGet, "/api/v1/stock/shopping-list"+q, tok, nil, "")
+		if w.Code != http.StatusOK {
+			t.Fatalf("lista vacía con %q = %d %s", q, w.Code, w.Body.String())
+		}
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.TrimSpace(string(raw["items"])); got != "[]" {
+			t.Fatalf("la lista vacía con %q trae \"items\":%s; la pantalla espera [] y con null no se pinta", q, got)
+		}
+	}
+}
+
+// Con un solo almacén, «Todos» es esa misma lista y en el mismo orden: quien no tiene Bodega no ve
+// nada distinto por pedir «Todos». Los nombres con acento y minúscula son los que un orden por bytes
+// pone en otro lugar que la base.
+func TestShoppingListAllWithOneWarehouseIsTheSalesList(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	user := makeUser(t, st, "compra_un_almacen", "gerente")
+	for _, name := range []string{"Bicarbonato uno", "Ácido uno", "agua uno"} {
+		ing := pieceIngredient(t, st, name)
+		alertOn(t, st, ing, "100", true, false)
+		adjust(t, st, "ingrediente", ing, "1")
+	}
+	r, tok := shoppingRouter(t, st, user, defaultCompanyID)
+	sales := do(t, r, http.MethodGet, "/api/v1/stock/shopping-list", tok, nil, "")
+	all := do(t, r, http.MethodGet, "/api/v1/stock/shopping-list?warehouseId=all", tok, nil, "")
+	if sales.Code != http.StatusOK || all.Code != http.StatusOK {
+		t.Fatalf("lista = %d, todos = %d", sales.Code, all.Code)
+	}
+	if sales.Body.String() != all.Body.String() {
+		t.Fatalf("con un solo almacén «Todos» no es la lista del de venta:\nsin parámetro: %s\ntodos:         %s", sales.Body.String(), all.Body.String())
+	}
+}
+
+// ?warehouseId=<Bodega> lee solo el mínimo propio de Bodega: los popotes (mínimo 50 en Bodega) salen
+// con ese mínimo, y la leche (mínimo 100 del artículo, que es del de venta) no sale.
+func TestShoppingListOfBodegaUsesOnlyItsOwnMinimum(t *testing.T) {
+	t.Parallel()
+	k := newShoppingAllKit(t)
+	ns, _, ctx := asNotifications(t, defaultCompanyID)
+	lines, err := ns.ShoppingList(ctx, domain.WarehouseSel{ID: k.bodega})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range lines {
+		if l.WarehouseID != k.bodega {
+			t.Fatalf("la lista de Bodega trae un renglón del almacén %d (%s)", l.WarehouseID, l.Name)
+		}
+	}
+	if l, ok := linesOf(lines, k.popotes)[k.bodega]; !ok || l.Min == nil || l.Min.String() != "50" {
+		t.Fatalf("los popotes no salen en Bodega con su mínimo propio de 50: %+v", linesOf(lines, k.popotes))
+	}
+	if got := linesOf(lines, k.leche); len(got) != 0 {
+		t.Fatalf("la leche sale en la lista de Bodega con %+v: aplicó el mínimo del artículo, que es del almacén de venta", got)
+	}
+}
+
+// Un almacén archivado no se surte: su «se acabó» viejo no puede seguir pidiendo compra en «Todos».
+func TestShoppingListAllLeavesOutAnArchivedWarehouse(t *testing.T) {
+	t.Parallel()
+	k := newShoppingAllKit(t)
+	if _, err := k.st.Pool.Exec(context.Background(), `update warehouses set is_active = false where id = $1`, k.bodega); err != nil {
+		t.Fatal(err)
+	}
+	ns, _, ctx := asNotifications(t, defaultCompanyID)
+	lines, err := ns.ShoppingList(ctx, domain.WarehouseSel{All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range lines {
+		if l.WarehouseID == k.bodega {
+			t.Fatalf("«Todos» trae %s de Bodega, que está archivada", l.Name)
+		}
+	}
+}
+
+// Solo «all» tal cual: una variante en mayúsculas o con espacio es un parámetro malformado, no «Todos»
+// ni el de venta en silencio.
+func TestShoppingListRejectsVariantsOfAll(t *testing.T) {
+	t.Parallel()
+	k := newShoppingAllKit(t)
+	r, tok := shoppingRouter(t, k.st, k.user, defaultCompanyID)
+	for _, q := range []string{"?warehouseId=ALL", "?warehouseId=%20all", "?warehouseId=all%20"} {
+		if w := do(t, r, http.MethodGet, "/api/v1/stock/shopping-list"+q, tok, nil, ""); w.Code != http.StatusBadRequest {
+			t.Errorf("lista de compra con %q = %d %s; quiere 400", q, w.Code, w.Body.String())
+		}
+	}
+}
+
+// Revisión de código: «Todos» reordenaba con los bytes de Go y no con la collation de la base, así que
+// «agua» y «Ácido» salían en otro lugar que en la lista de su almacén. Ahora es la lista de cada almacén
+// tal como la da la consulta, el de venta primero. No se fija el orden esperado de los tres nombres: lo
+// decide la collation de la base, que no es la misma en todos los Postgres.
+func TestShoppingListAllKeepsTheOrderOfEachWarehouse(t *testing.T) {
+	t.Parallel()
+	k := newShoppingAllKit(t)
+	for _, name := range []string{"Bicarbonato orden", "Ácido orden", "agua orden"} {
+		ing := pieceIngredient(t, k.st, name)
+		alertOn(t, k.st, ing, "100", true, false)
+		adjustIn(t, k.st, k.local, "ingrediente", ing, "1")
+	}
+	ns, _, ctx := asNotifications(t, defaultCompanyID)
+	all, err := ns.ShoppingList(ctx, domain.WarehouseSel{All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, err := ns.ShoppingList(ctx, domain.WarehouseSel{ID: k.local})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodega, err := ns.ShoppingList(ctx, domain.WarehouseSel{ID: k.bodega})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := func(ls []app.ShoppingLine) []string {
+		out := []string{}
+		for _, l := range ls {
+			out = append(out, l.WarehouseName+"/"+l.Name)
+		}
+		return out
+	}
+	want := append(key(local), key(bodega)...)
+	if got := key(all); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("«Todos» no es la lista de Local y luego la de Bodega, cada una en su orden:\n got  %v\n want %v", got, want)
+	}
+}
