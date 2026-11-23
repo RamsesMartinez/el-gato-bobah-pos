@@ -28,6 +28,8 @@ import { altNameKey, withPendingAlt } from '../components/altNames';
 import { ApiError } from '../api/client';
 import { DosColumnas, LugaresDeVenta, MenuDePestanas, PanelVentaEnWeb, VenderSinExistencia, type Pestana } from './producto/PanelesDeVenta';
 import { precioWebValido, ventaInicial, ventaParaGuardar } from './producto/ventaDelProducto';
+import { CostTab } from './producto/CostTab';
+import { pctTecleado, pctTexto } from './merma/pct';
 
 // Las pestañas de la ficha (spec 092, maqueta G2). Nombres de uso común, elegidos por el dueño.
 const PESTANAS: Pestana[] = [
@@ -35,6 +37,8 @@ const PESTANAS: Pestana[] = [
   { id: 'disponibilidad', label: 'Disponibilidad' },
   { id: 'web', label: 'Venta en web' },
   { id: 'receta', label: 'Receta e inventario' },
+  // De dónde sale el costo y la merma del producto (spec 096, maqueta B).
+  { id: 'costo', label: 'Costo' },
   { id: 'extras', label: 'Extras' },
 ];
 
@@ -59,6 +63,8 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   // Dónde y cómo se vende (spec 092): un solo estado para la casilla Web de Disponibilidad y el
   // interruptor de Venta en web, así nunca dicen cosas distintas.
   const [venta, setVenta] = useState(ventaInicial(product));
+  // La merma del producto (spec 096): se teclea en la pestaña Costo y viaja con «Guardar».
+  const [wasteText, setWasteText] = useState(pctTexto(product?.expectedWastePct));
   const [pestana, setPestana] = useState('general');
   const [errores, setErrores] = useState<Set<string>>(new Set());
   const [intento, setIntento] = useState(false);
@@ -70,6 +76,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
     setAltDraft('');
     setAltError('');
     setVenta(ventaInicial(product));
+    setWasteText(pctTexto(product?.expectedWastePct));
     setPestana('general');
     setErrores(new Set());
     setIntento(false);
@@ -118,6 +125,15 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
         sales: ventaParaGuardar(venta, product?.webPrice ?? null),
       });
       if (!sameList(wanted, first)) await put(wanted);
+      // La merma solo viaja si cambió: un guardado de nombre no recalcula costos.
+      const pct = pctTecleado(wasteText);
+      const pctAntes = product?.expectedWastePct == null ? null : Number(product.expectedWastePct);
+      if (pct !== 'invalido' && pct !== pctAntes) {
+        // El PATCH ya quedó: la lista se refresca aunque este PUT falle y la ficha se quede abierta.
+        void qc.invalidateQueries({ queryKey: ['admin', 'products'] });
+        await adminApi.setProductExpectedWaste(p.id, pct);
+        void qc.invalidateQueries({ queryKey: ['admin', 'costing', p.id] });
+      }
     },
     onSuccess: () => {
       // Después de que el servidor guardó, nunca antes (spec 017, US3).
@@ -147,6 +163,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
     const precio = edit ? montoTecleado(String(edit.price)) : undefined;
     if (cost === 'invalido' || precio === undefined || precio <= 0) conError.add('general');
     if (venta.web && !precioWebValido(venta)) conError.add('web');
+    if (pctTecleado(wasteText) === 'invalido') conError.add('costo');
     return conError;
   };
   // Tras el primer intento, las marcas se recalculan con cada cambio: corregir el campo quita el
@@ -219,6 +236,9 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                   <CostoFijo monto={edit.costSource === 'receta' ? edit.current_cost : undefined}
                     nota={edit.costSource === 'receta' ? 'Sale de su receta' : 'Se calculará de su receta al guardar'}>
                     <Button variant="outline" size="sm" minH="44px" onClick={() => setCostMode('manual')}>Poner costo a mano</Button>
+                    {edit.costSource === 'receta' && (
+                      <Button variant="ghost" size="sm" minH="44px" onClick={() => setPestana('costo')}>Ver cómo se calcula ›</Button>
+                    )}
                   </CostoFijo>
                 ) : (
                   <VStack align="stretch" gap={2}>
@@ -297,6 +317,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                 )}
                   </VStack>
                 )}
+                {pestana === 'costo' && <CostTab productId={edit.id} text={wasteText} onText={setWasteText} />}
                 {pestana === 'extras' && (
                   <Box maxW="760px">
                     <Text fontSize="sm" fontWeight="600" mb={3}>Grupos modificadores</Text>

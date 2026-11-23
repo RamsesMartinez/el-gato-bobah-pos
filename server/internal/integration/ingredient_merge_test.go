@@ -779,3 +779,39 @@ func TestMergeIsIsolatedInTheThreeCases(t *testing.T) {
 		t.Fatal("algún caso unió de verdad")
 	}
 }
+
+// Unir insumos no tira la merma esperada (spec 096, R14 M1): si el destino está sin captura, hereda
+// la del origen; si tiene la suya, se queda con la suya.
+func TestMergeKeepsTheExpectedWaste(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name        string
+		target, src *string
+		want        *string
+	}{
+		{"destino sin captura hereda el del origen", nil, new("6"), new("6")},
+		{"destino con el suyo lo conserva", new("3"), new("6"), new("3")},
+		{"destino con 0 capturado lo conserva", new("0"), new("6"), new("0")},
+		{"ninguno capturado sigue sin captura", nil, nil, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			k := newMergeKit(t)
+			set := func(id int64, v *string) {
+				if _, err := k.st.Pool.Exec(context.Background(), `update ingredients set expected_waste_pct = $2::numeric where id = $1`, id, v); err != nil {
+					t.Fatal(err)
+				}
+			}
+			set(k.a, c.target)
+			set(k.b, c.src)
+			k.merge(t, k.a, k.req(k.b))
+			var got *decimal.Decimal
+			if err := k.st.Pool.QueryRow(context.Background(), `select expected_waste_pct from ingredients where id = $1`, k.a).Scan(&got); err != nil {
+				t.Fatal(err)
+			}
+			if (got == nil) != (c.want == nil) || (got != nil && !got.Equal(decimal.RequireFromString(*c.want))) {
+				t.Fatalf("el destino quedó con %v; quiere %v", got, c.want)
+			}
+		})
+	}
+}

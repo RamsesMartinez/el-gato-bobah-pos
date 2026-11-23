@@ -11,11 +11,12 @@ import { Switch } from '../../components/ui/switch';
 import { InstallAppSection } from '../../shared/pwa/InstallAppSection';
 import { AttendanceSettingsSection } from './AttendanceSettingsSection';
 import { InventorySettingsSection } from './InventorySettingsSection';
+import { CostSettingsSection } from './CostSettingsSection';
 import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
 import { ZONAS_MEXICO } from './zonas';
 import { montoTecleado } from '../../domain/numeros';
-import { LuGlobe, LuPackage, LuShoppingCart, LuStore, LuUsers, LuWallet } from 'react-icons/lu';
+import { LuGlobe, LuPackage, LuShoppingCart, LuStore, LuUsers, LuWallet, LuCalculator } from 'react-icons/lu';
 import { SettingsLayout, type SeccionDeAjustes } from './settings/SettingsLayout';
 import { VentaEnWebSection } from './settings/VentaEnWebSection';
 
@@ -359,6 +360,8 @@ export function BusinessSettingsPage() {
       </Box>
       </VStack>
     ) },
+    // La merma general es del menú, no del almacén (spec 096): sección propia con menu.configure.
+    ...(can('menu.configure', user) ? [{ id: 'costos', label: 'Costos', icon: LuCalculator, resumen: 'Merma al preparar', contenido: <CostSettingsSection /> }] : []),
     ...(can('inventory.configure', user) ? [{ id: 'inventario', label: 'Inventario', icon: LuPackage, resumen: 'Costeo, lugares de conteo, merma', contenido: <InventorySettingsSection /> }] : []),
     ...(can('attendance.configure', user) ? [{ id: 'personal', label: 'Personal', icon: LuUsers, resumen: 'Asistencia', contenido: <AttendanceSettingsSection /> }] : []),
   ];

@@ -450,6 +450,9 @@ func (m *mergeRun) apply(ctx context.Context) error {
 	if err := m.mergeNotifications(ctx); err != nil {
 		return err
 	}
+	if err := m.mergeExpectedWaste(ctx); err != nil {
+		return err
+	}
 	// Las recetas cambiaron de insumo y el costo del destino pudo cambiar: lo que las lleva se recostea.
 	return recomputeCosts(ctx, q)
 }
@@ -787,4 +790,24 @@ func (m *mergeRun) mergeNotifications(ctx context.Context) error {
 		}
 	}
 	return evaluateEverywhere(ctx, m.q, "ingrediente", &m.targetID, nil)
+}
+
+// mergeExpectedWaste deja al destino con su merma esperada o, si no tenía, con la del primer origen
+// que la tenga capturada (spec 096). El recálculo de abajo ya la aplica.
+func (m *mergeRun) mergeExpectedWaste(ctx context.Context) error {
+	srcs := make([]*decimal.Decimal, len(m.sources))
+	for i, s := range m.sources {
+		srcs[i] = s.ExpectedWastePct
+	}
+	pct := domain.InheritExpectedWaste(m.target.ExpectedWastePct, srcs)
+	if pct == m.target.ExpectedWastePct {
+		return nil
+	}
+	// El candado de composición ya está tomado (lock): el valor anterior es el que se ve aquí.
+	if _, err := m.q.SetIngredientExpectedWaste(ctx, db.SetIngredientExpectedWasteParams{ID: m.targetID, Pct: pct}); err != nil {
+		return err
+	}
+	// Heredarla cambia el costo del destino: queda en la bitácora como cualquier cambio de merma.
+	return auditEntity(ctx, m.q, domain.AuditIngredientExpectedWaste, "ingredient", m.targetID, nil, &m.actor,
+		map[string]any{"pct": m.target.ExpectedWastePct}, map[string]any{"pct": pct, "inheritedFromMerge": true})
 }

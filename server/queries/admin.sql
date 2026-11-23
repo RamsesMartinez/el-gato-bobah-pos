@@ -35,6 +35,7 @@ from (
          (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
            where pc.product_id = p.id and ch.code = 'online') as web_price,
          p.allow_oversell, p.track_stock, coalesce(p.description, '')::text as description,
+         p.expected_waste_pct,
          (exists (select 1 from recipe_items ri where ri.recipe_id = p.recipe_id))::bool as has_recipe_items,
          -- El alternativo que coincidió (spec 063): '' si no se busca o si coincide el nombre; el
          -- primero en el orden capturado. coalesce: la subconsulta sin coincidencia es NULL.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -113,15 +114,6 @@ func (b *costBatch) add(ctx context.Context, kind string, id int64, cost, limit 
 	b.costs = append(b.costs, d.String())
 }
 
-// ProductCost devuelve el costo calculado de un producto (sin persistir), para /costing.
-func (s *CostingService) ProductCost(ctx context.Context, productID int64) (decimal.Decimal, error) {
-	g, _, _, _, err := loadGraph(ctx, s.store.QC(ctx))
-	if err != nil {
-		return decimal.Zero, err
-	}
-	return decimal.NewFromFloat(g.ProductCost(productID)).Round(4), nil
-}
-
 func loadGraph(ctx context.Context, q *db.Queries) (
 	*domain.CostGraph,
 	[]db.ListIngredientsForCostingRow,
@@ -149,16 +141,23 @@ func loadGraph(ctx context.Context, q *db.Queries) (
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	general, err := q.GetGeneralExpectedWaste(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		general, err = nil, nil
+	}
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
 
 	ingredients := make(map[int64]domain.CostIngredient, len(ingRows))
 	for _, r := range ingRows {
 		ingredients[r.ID] = domain.CostIngredient{
-			ID:          r.ID,
-			IsPrep:      r.IsPrep,
-			RecipeID:    r.RecipeID,
-			YieldQty:    numF(r.YieldQty),
-			WastePct:    r.WastePct.InexactFloat64(),
-			CurrentCost: r.CurrentCost.InexactFloat64(),
+			ID:               r.ID,
+			IsPrep:           r.IsPrep,
+			RecipeID:         r.RecipeID,
+			YieldQty:         numF(r.YieldQty),
+			ExpectedWastePct: pctF(r.ExpectedWastePct),
+			CurrentCost:      r.CurrentCost.InexactFloat64(),
 		}
 	}
 	recipes := map[int64][]domain.CostRecipeItem{}
@@ -175,6 +174,8 @@ func loadGraph(ctx context.Context, q *db.Queries) (
 			CostSource: string(r.CostSource),
 			ManualCost: numF(r.ManualCost),
 			RecipeID:   r.RecipeID,
+
+			ExpectedWastePct: pctF(r.ExpectedWastePct),
 		}
 	}
 	comboDefaults := map[int64][]domain.ComboDefault{}
@@ -188,7 +189,7 @@ func loadGraph(ctx context.Context, q *db.Queries) (
 		options[r.ID] = domain.CostOption{ID: r.ID, RecipeID: r.RecipeID, LinkedProductID: r.LinkedProductID}
 	}
 
-	g := domain.NewCostGraph(ingredients, recipes, products, comboDefaults, options)
+	g := domain.NewCostGraph(ingredients, recipes, products, comboDefaults, options, pctF(general))
 	return g, ingRows, prodRows, optRows, nil
 }
 
@@ -200,4 +201,12 @@ func numF(n *decimal.Decimal) float64 {
 		return 0
 	}
 	return n.InexactFloat64()
+}
+
+// pctF convierte un % nullable conservando el nil: «sin captura» no es 0 (spec 096).
+func pctF(n *decimal.Decimal) *float64 {
+	if n == nil {
+		return nil
+	}
+	return new(n.InexactFloat64())
 }

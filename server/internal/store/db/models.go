@@ -974,6 +974,7 @@ type BusinessSetting struct {
 	WasteApprovalThreshold    *decimal.Decimal   `json:"waste_approval_threshold"`
 	CashDifferenceTolerance   decimal.Decimal    `json:"cash_difference_tolerance"`
 	NotificationsMorningAt    pgtype.Time        `json:"notifications_morning_at"`
+	ExpectedWastePct          *decimal.Decimal   `json:"expected_waste_pct"`
 }
 
 type CandidatasDelAviso struct {
@@ -1275,6 +1276,7 @@ type Ingredient struct {
 	LowStockBanner         bool               `json:"low_stock_banner"`
 	CoverageDays           *int16             `json:"coverage_days"`
 	LowStockAskedAt        pgtype.Timestamptz `json:"low_stock_asked_at"`
+	ExpectedWastePct       *decimal.Decimal   `json:"expected_waste_pct"`
 }
 
 type IngredientCategory struct {
@@ -1923,6 +1925,7 @@ type Product struct {
 	LowStockBanner         bool               `json:"low_stock_banner"`
 	CoverageDays           *int16             `json:"coverage_days"`
 	LowStockAskedAt        pgtype.Timestamptz `json:"low_stock_asked_at"`
+	ExpectedWastePct       *decimal.Decimal   `json:"expected_waste_pct"`
 }
 
 type ProductChannel struct {
