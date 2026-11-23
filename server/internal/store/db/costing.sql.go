@@ -11,6 +11,20 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const getGeneralExpectedWaste = `-- name: GetGeneralExpectedWaste :one
+select bs.expected_waste_pct from business_settings bs limit 1
+`
+
+// La merma general de la empresa (spec 096). Sin cast a propósito: con `::numeric` sqlc la tipa no
+// nula y el NULL de «sin merma general» —el estado con el que arranca toda empresa— tumbaría el
+// recálculo entero (AGENTS.md, agregados que se pueden vaciar). Sin fila = sin merma general.
+func (q *Queries) GetGeneralExpectedWaste(ctx context.Context) (*decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, getGeneralExpectedWaste)
+	var expected_waste_pct *decimal.Decimal
+	err := row.Scan(&expected_waste_pct)
+	return expected_waste_pct, err
+}
+
 const listComboSlotDefaultsForCosting = `-- name: ListComboSlotDefaultsForCosting :many
 select cs.combo_id, csp.product_id, cs.min_select
 from combo_slots cs
@@ -46,18 +60,18 @@ func (q *Queries) ListComboSlotDefaultsForCosting(ctx context.Context) ([]ListCo
 
 const listIngredientsForCosting = `-- name: ListIngredientsForCosting :many
 
-select id, is_prep, recipe_id, yield_qty, waste_pct, current_cost, cost_source
+select id, is_prep, recipe_id, yield_qty, expected_waste_pct, current_cost, cost_source
 from ingredients
 `
 
 type ListIngredientsForCostingRow struct {
-	ID          int64            `json:"id"`
-	IsPrep      bool             `json:"is_prep"`
-	RecipeID    *int64           `json:"recipe_id"`
-	YieldQty    *decimal.Decimal `json:"yield_qty"`
-	WastePct    decimal.Decimal  `json:"waste_pct"`
-	CurrentCost decimal.Decimal  `json:"current_cost"`
-	CostSource  CostSource       `json:"cost_source"`
+	ID               int64            `json:"id"`
+	IsPrep           bool             `json:"is_prep"`
+	RecipeID         *int64           `json:"recipe_id"`
+	YieldQty         *decimal.Decimal `json:"yield_qty"`
+	ExpectedWastePct *decimal.Decimal `json:"expected_waste_pct"`
+	CurrentCost      decimal.Decimal  `json:"current_cost"`
+	CostSource       CostSource       `json:"cost_source"`
 }
 
 // Cargas para el motor de costeo (recompute batch).
@@ -75,7 +89,7 @@ func (q *Queries) ListIngredientsForCosting(ctx context.Context) ([]ListIngredie
 			&i.IsPrep,
 			&i.RecipeID,
 			&i.YieldQty,
-			&i.WastePct,
+			&i.ExpectedWastePct,
 			&i.CurrentCost,
 			&i.CostSource,
 		); err != nil {
@@ -120,15 +134,16 @@ func (q *Queries) ListModifierOptionsForCosting(ctx context.Context) ([]ListModi
 }
 
 const listProductsForCosting = `-- name: ListProductsForCosting :many
-select id, type, cost_source, manual_cost, recipe_id from products
+select id, type, cost_source, manual_cost, recipe_id, expected_waste_pct from products
 `
 
 type ListProductsForCostingRow struct {
-	ID         int64            `json:"id"`
-	Type       ProductType      `json:"type"`
-	CostSource CostSource       `json:"cost_source"`
-	ManualCost *decimal.Decimal `json:"manual_cost"`
-	RecipeID   *int64           `json:"recipe_id"`
+	ID               int64            `json:"id"`
+	Type             ProductType      `json:"type"`
+	CostSource       CostSource       `json:"cost_source"`
+	ManualCost       *decimal.Decimal `json:"manual_cost"`
+	RecipeID         *int64           `json:"recipe_id"`
+	ExpectedWastePct *decimal.Decimal `json:"expected_waste_pct"`
 }
 
 func (q *Queries) ListProductsForCosting(ctx context.Context) ([]ListProductsForCostingRow, error) {
@@ -146,6 +161,7 @@ func (q *Queries) ListProductsForCosting(ctx context.Context) ([]ListProductsFor
 			&i.CostSource,
 			&i.ManualCost,
 			&i.RecipeID,
+			&i.ExpectedWastePct,
 		); err != nil {
 			return nil, err
 		}
@@ -187,6 +203,49 @@ func (q *Queries) ListRecipeItemsForCosting(ctx context.Context) ([]ListRecipeIt
 		return nil, err
 	}
 	return items, nil
+}
+
+const setGeneralExpectedWaste = `-- name: SetGeneralExpectedWaste :one
+
+update business_settings bs set expected_waste_pct = $1, updated_at = now(), updated_by = $2
+  from (select expected_waste_pct from business_settings limit 1) old
+returning old.expected_waste_pct as previous
+`
+
+type SetGeneralExpectedWasteParams struct {
+	Pct       *decimal.Decimal `json:"pct"`
+	UpdatedBy *int64           `json:"updated_by"`
+}
+
+// Los tres % de merma esperada (spec 096). Cada uno devuelve el valor anterior para la bitácora; sin
+// fila = no existe o es de otra empresa (RLS), y sale como 404.
+// Sin where a propósito: business_settings tiene una fila por empresa y RLS la acota a la de la
+// sesión (sqlc no conoce company_id, AGENTS.md §1). Solo corre como gatobobah_app; como owner tocaría
+// a todas las empresas.
+func (q *Queries) SetGeneralExpectedWaste(ctx context.Context, arg SetGeneralExpectedWasteParams) (*decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, setGeneralExpectedWaste, arg.Pct, arg.UpdatedBy)
+	var previous *decimal.Decimal
+	err := row.Scan(&previous)
+	return previous, err
+}
+
+const setIngredientExpectedWaste = `-- name: SetIngredientExpectedWaste :one
+update ingredients i set expected_waste_pct = $1, updated_at = now()
+  from (select expected_waste_pct from ingredients where id = $2) old
+ where i.id = $2
+returning old.expected_waste_pct as previous
+`
+
+type SetIngredientExpectedWasteParams struct {
+	Pct *decimal.Decimal `json:"pct"`
+	ID  int64            `json:"id"`
+}
+
+func (q *Queries) SetIngredientExpectedWaste(ctx context.Context, arg SetIngredientExpectedWasteParams) (*decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, setIngredientExpectedWaste, arg.Pct, arg.ID)
+	var previous *decimal.Decimal
+	err := row.Scan(&previous)
+	return previous, err
 }
 
 const setOptionCosts = `-- name: SetOptionCosts :exec
@@ -240,6 +299,25 @@ type SetProductCostsParams struct {
 func (q *Queries) SetProductCosts(ctx context.Context, arg SetProductCostsParams) error {
 	_, err := q.db.Exec(ctx, setProductCosts, arg.Ids, arg.Costs)
 	return err
+}
+
+const setProductExpectedWaste = `-- name: SetProductExpectedWaste :one
+update products p set expected_waste_pct = $1, updated_at = now()
+  from (select expected_waste_pct from products where id = $2) old
+ where p.id = $2
+returning old.expected_waste_pct as previous
+`
+
+type SetProductExpectedWasteParams struct {
+	Pct *decimal.Decimal `json:"pct"`
+	ID  int64            `json:"id"`
+}
+
+func (q *Queries) SetProductExpectedWaste(ctx context.Context, arg SetProductExpectedWasteParams) (*decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, setProductExpectedWaste, arg.Pct, arg.ID)
+	var previous *decimal.Decimal
+	err := row.Scan(&previous)
+	return previous, err
 }
 
 const updateIngredientCost = `-- name: UpdateIngredientCost :exec

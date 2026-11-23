@@ -245,6 +245,8 @@ type ArticleSheet struct {
 	MergedSources int `json:"mergedSources"`
 	// Density: la densidad vigente (spec 058); nula si no tiene.
 	Density *DensityView `json:"density"`
+	// ExpectedWastePct: la merma del artículo (spec 096); nula = sin captura, 0 = capturada en cero.
+	ExpectedWastePct *decimal.Decimal `json:"expectedWastePct"`
 }
 
 // MergedInto es el destino de una unión, para la ficha del origen.
@@ -291,7 +293,7 @@ func (s *BackofficeService) GetArticle(ctx context.Context, id int64) (ArticleSh
 			AltNames: nonNilStrings(r.AltNames),
 		},
 		CostSource: r.CostSource, UpdatedAt: r.UpdatedAt, MergedInto: into, MergedSources: int(sources),
-		Density: densityView(r),
+		Density: densityView(r), ExpectedWastePct: r.ExpectedWastePct,
 	}, nil
 }
 

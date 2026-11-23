@@ -710,7 +710,8 @@ describe('Nuevo artículo · aviso de parecido', () => {
 describe('Ficha · densidad', () => {
   it('en g sin densidad dice «Sin capturar» y «Capturar» abre la hoja', async () => {
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
-    expect(await screen.findByText('Sin capturar')).toBeInTheDocument();
+    // La merma esperada (spec 096) también dice «Sin capturar»: aquí se mira solo la fila de densidad.
+    await waitFor(() => expect(document.querySelector('[data-density-row]')).toHaveTextContent('Sin capturar'));
     expect(screen.getByText('Densidad')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Capturar la densidad' }));
     expect(await screen.findByText('Densidad · Hielo en bolsa')).toBeInTheDocument();
@@ -741,7 +742,7 @@ describe('Ficha · densidad', () => {
     back.article.mockResolvedValue({ ...ficha, baseUnitCode: 'pieza', baseUnitKind: 'pieza', onHand: '12' });
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
     await screen.findByText(/Hay 12 piezas/);
-    expect(screen.queryByText('Sin capturar')).toBeNull();
+    expect(document.querySelector('[data-density-row]')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
   });
 
@@ -769,7 +770,8 @@ describe('Ficha · densidad', () => {
   it('sin permiso de configurar se ve, pero no se captura', async () => {
     useSessionStore.setState({ user: { id: 1, companyId: 2, name: 'Ana', role: 'cajero', permissions: ['inventory.view'] } as never });
     montar(<ArticleSheet id={7} onClose={vi.fn()} />);
-    expect(await screen.findByText('Sin capturar')).toBeInTheDocument();
+    // La merma esperada (spec 096) también dice «Sin capturar»: aquí se mira solo la fila de densidad.
+    await waitFor(() => expect(document.querySelector('[data-density-row]')).toHaveTextContent('Sin capturar'));
     expect(screen.queryByRole('button', { name: 'Capturar la densidad' })).toBeNull();
   });
 });

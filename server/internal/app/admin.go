@@ -72,6 +72,8 @@ type AdminProductView struct {
 	// significa nada y la pantalla no lo ofrece.
 	MeasuresStock bool   `json:"measuresStock"`
 	Description   string `json:"description"`
+	// ExpectedWastePct: la merma propia del producto (spec 096); nula = usa la general.
+	ExpectedWastePct *decimal.Decimal `json:"expectedWastePct"`
 }
 
 // SalesInput es dónde y cómo se vende un producto (spec 092). Viaja completo o no viaja: ausente en
@@ -456,7 +458,7 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search string, 
 			CostSource:        string(r.CostSource), ManualCost: r.ManualCost, HasRecipe: r.HasRecipe,
 			AltNames: nonNilStrings(r.AltNames), MatchedAlt: r.MatchedAlt,
 			SoldAtCounter: r.SoldAtCounter, SoldOnWeb: r.SoldOnWeb, WebPrice: r.WebPrice,
-			AllowOversell: r.AllowOversell, Description: r.Description,
+			AllowOversell: r.AllowOversell, Description: r.Description, ExpectedWastePct: r.ExpectedWastePct,
 			MeasuresStock: domain.MeasuresStock(domain.ProductModeFacts{
 				TrackStock: r.TrackStock, HasRecipeItems: r.HasRecipeItems, IsPackage: r.Type == db.ProductTypeCombo,
 				CompositionStatus: textoDe(r.CompositionStatus),

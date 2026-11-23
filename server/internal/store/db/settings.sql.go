@@ -44,6 +44,7 @@ select delivery_fee,
        costing_method,
        stock_item_label,
        waste_approval_threshold,
+       expected_waste_pct,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -72,6 +73,7 @@ type GetBusinessSettingsRow struct {
 	CostingMethod          string             `json:"costing_method"`
 	StockItemLabel         string             `json:"stock_item_label"`
 	WasteApprovalThreshold *decimal.Decimal   `json:"waste_approval_threshold"`
+	ExpectedWastePct       *decimal.Decimal   `json:"expected_waste_pct"`
 	HasLogo                bool               `json:"has_logo"`
 	LogoUpdatedAt          pgtype.Timestamptz `json:"logo_updated_at"`
 	UpdatedAt              time.Time          `json:"updated_at"`
@@ -108,6 +110,7 @@ func (q *Queries) GetBusinessSettings(ctx context.Context) (GetBusinessSettingsR
 		&i.CostingMethod,
 		&i.StockItemLabel,
 		&i.WasteApprovalThreshold,
+		&i.ExpectedWastePct,
 		&i.HasLogo,
 		&i.LogoUpdatedAt,
 		&i.UpdatedAt,

@@ -120,7 +120,7 @@ func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListMod
 }
 
 const adminListProducts = `-- name: AdminListProducts :many
-select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.image_url, q.category_image_url, q.category_food_family, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, q.inactive_group_count, q.alt_names, q.sold_at_counter, q.sold_on_web, q.web_price, q.allow_oversell, q.track_stock, q.description, q.has_recipe_items, q.matched_alt, count(*) over() as total
+select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.image_url, q.category_image_url, q.category_food_family, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, q.inactive_group_count, q.alt_names, q.sold_at_counter, q.sold_on_web, q.web_price, q.allow_oversell, q.track_stock, q.description, q.expected_waste_pct, q.has_recipe_items, q.matched_alt, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
          p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
@@ -151,6 +151,7 @@ from (
          (select pc.price from product_channels pc join channels ch on ch.id = pc.channel_id
            where pc.product_id = p.id and ch.code = 'online') as web_price,
          p.allow_oversell, p.track_stock, coalesce(p.description, '')::text as description,
+         p.expected_waste_pct,
          (exists (select 1 from recipe_items ri where ri.recipe_id = p.recipe_id))::bool as has_recipe_items,
          -- El alternativo que coincidió (spec 063): '' si no se busca o si coincide el nombre; el
          -- primero en el orden capturado. coalesce: la subconsulta sin coincidencia es NULL.
@@ -239,6 +240,7 @@ type AdminListProductsRow struct {
 	AllowOversell      bool             `json:"allow_oversell"`
 	TrackStock         bool             `json:"track_stock"`
 	Description        string           `json:"description"`
+	ExpectedWastePct   *decimal.Decimal `json:"expected_waste_pct"`
 	HasRecipeItems     bool             `json:"has_recipe_items"`
 	MatchedAlt         string           `json:"matched_alt"`
 	Total              int64            `json:"total"`
@@ -298,6 +300,7 @@ func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsPa
 			&i.AllowOversell,
 			&i.TrackStock,
 			&i.Description,
+			&i.ExpectedWastePct,
 			&i.HasRecipeItems,
 			&i.MatchedAlt,
 			&i.Total,

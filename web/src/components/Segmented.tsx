@@ -12,11 +12,13 @@ export interface SegmentedOption<T extends string> {
 // (heredado de Apariencia, no fijo en `brand`), y lo demás sin fondo: con el rojo de marca en un
 // `subtle` lo elegido se leía como un aviso de error junto a «Revisar» (revisión de la 094). Con
 // nombres largos la fila se desplaza a lo ancho en vez de salirse de la pantalla.
-export function Segmented<T extends string>({ label, value, options, onChange }: {
+export function Segmented<T extends string>({ label, value, options, onChange, disabled }: {
   label: string;
   value: T;
   options: SegmentedOption<T>[];
   onChange: (v: T) => void;
+  // Se ve pero no se cambia (quien no tiene el permiso).
+  disabled?: boolean;
 }) {
   return (
     <HStack gap={0} borderWidth="1px" borderRadius="md" role="group" aria-label={label}
@@ -25,7 +27,7 @@ export function Segmented<T extends string>({ label, value, options, onChange }:
         const on = o.value === value;
         return (
           <Button key={o.value} minH="44px" flexShrink={0} variant={on ? 'solid' : 'ghost'}
-            colorPalette={on ? undefined : 'gray'} aria-pressed={on} onClick={() => onChange(o.value)}>
+            colorPalette={on ? undefined : 'gray'} aria-pressed={on} disabled={disabled} onClick={() => onChange(o.value)}>
             {o.icon}{o.label}
           </Button>
         );

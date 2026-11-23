@@ -72,8 +72,10 @@ type BusinessSettings struct {
 	StockItemLabel string `json:"stockItemLabel"`
 	// WasteApprovalThreshold: a partir de cuánto una merma espera aprobación; nulo, ninguna (spec 039).
 	WasteApprovalThreshold *decimal.Decimal `json:"wasteApprovalThreshold"`
-	HasLogo                bool             `json:"hasLogo"`
-	LogoUpdatedAt          *time.Time       `json:"logoUpdatedAt"`
+	// ExpectedWastePct: la merma general (spec 096); nula = sin merma general.
+	ExpectedWastePct *decimal.Decimal `json:"expectedWastePct"`
+	HasLogo          bool             `json:"hasLogo"`
+	LogoUpdatedAt    *time.Time       `json:"logoUpdatedAt"`
 }
 
 func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
@@ -122,6 +124,7 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		FolioScheme:            string(row.FolioScheme),
 		CostingMethod:          row.CostingMethod,
 		WasteApprovalThreshold: row.WasteApprovalThreshold,
+		ExpectedWastePct:       row.ExpectedWastePct,
 		StockItemLabel:         row.StockItemLabel,
 		HasLogo:                row.HasLogo,
 	}

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
 // GET /pos/menu — documento denormalizado del catálogo, con ETag. La versión se lee ANTES de
@@ -131,12 +133,21 @@ func (h *Handlers) ProductCosting(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	cost, err := h.costing.ProductCost(r.Context(), id)
+	// De dónde sale el costo (spec 096): renglones con su %, de dónde vino y la merma real. La merma
+	// real son consumo y mermas por almacén, lo mismo que su ruta propia pide con inventory.view: sin
+	// ese permiso no viaja (un rol propio con menu.configure y sin ver el almacén no la reconstruye).
+	u, _ := userFrom(r.Context())
+	perms, err := h.permissions(r.Context(), u)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"productId": id, "cost": cost})
+	v, err := h.costing.ProductCosting(r.Context(), id, slices.Contains(perms, domain.PermInventoryView))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
 }
 
 // GET /pos/menu/sold-out — los productos que salen «Agotado» ahora (spec 092). Sin caché: la
