@@ -104,6 +104,8 @@ var accionesMedibles = map[string]map[string]struct{}{
 		"ver-por-recibir": {}, "recibir": {}, "ver-conteo": {}, "cerrar-conteo": {},
 		// Spec 039: la pestaña de lo que se echó a perder y el faltante de un conteo.
 		"ver-merma": {}, "ver-faltante": {},
+		// Spec 096: conteo contra ventas.
+		"ver-contra-ventas": {},
 		// Spec 084: guardar las alertas de un artículo y las de varios a la vez.
 		"alertas": {}, "alertas-lote": {}, "destinatarios": {}, "enviar-lista": {},
 		// Spec 042: los artículos del almacén y su ficha.

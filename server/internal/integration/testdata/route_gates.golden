@@ -101,8 +101,10 @@ GET /api/v1/stock/articles/{id}/real-waste admin,gerente
 GET /api/v1/stock/count-places admin,gerente
 GET /api/v1/stock/counts/current admin,gerente
 GET /api/v1/stock/counts/last-closed admin,gerente
+GET /api/v1/stock/counts/{id}/expected admin,gerente
 GET /api/v1/stock/counts/{id}/loss admin,gerente
 GET /api/v1/stock/counts/{id}/preview admin,gerente
+GET /api/v1/stock/counts/{id}/vs-sales admin,gerente
 GET /api/v1/stock/expiries admin,gerente
 GET /api/v1/stock/expiries/summary admin,gerente
 GET /api/v1/stock/health admin,gerente
@@ -278,6 +280,7 @@ PUT /api/v1/settings/cash-close admin,gerente
 PUT /api/v1/settings/count-limits admin,gerente
 PUT /api/v1/settings/daily-summary-emails admin,gerente
 PUT /api/v1/settings/expected-waste admin,gerente
+PUT /api/v1/settings/expected-waste-deducts admin,gerente
 PUT /api/v1/settings/inventory admin,gerente
 PUT /api/v1/settings/notification-recipients admin,gerente
 PUT /api/v1/settings/waste-threshold admin,gerente

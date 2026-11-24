@@ -45,6 +45,7 @@ select delivery_fee,
        stock_item_label,
        waste_approval_threshold,
        expected_waste_pct,
+       expected_waste_deducts,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -74,6 +75,7 @@ type GetBusinessSettingsRow struct {
 	StockItemLabel         string             `json:"stock_item_label"`
 	WasteApprovalThreshold *decimal.Decimal   `json:"waste_approval_threshold"`
 	ExpectedWastePct       *decimal.Decimal   `json:"expected_waste_pct"`
+	ExpectedWasteDeducts   bool               `json:"expected_waste_deducts"`
 	HasLogo                bool               `json:"has_logo"`
 	LogoUpdatedAt          pgtype.Timestamptz `json:"logo_updated_at"`
 	UpdatedAt              time.Time          `json:"updated_at"`
@@ -111,6 +113,7 @@ func (q *Queries) GetBusinessSettings(ctx context.Context) (GetBusinessSettingsR
 		&i.StockItemLabel,
 		&i.WasteApprovalThreshold,
 		&i.ExpectedWastePct,
+		&i.ExpectedWasteDeducts,
 		&i.HasLogo,
 		&i.LogoUpdatedAt,
 		&i.UpdatedAt,
@@ -157,6 +160,26 @@ on conflict do nothing
 func (q *Queries) SeedBusinessSettings(ctx context.Context, businessName string) error {
 	_, err := q.db.Exec(ctx, seedBusinessSettings, businessName)
 	return err
+}
+
+const setExpectedWasteDeducts = `-- name: SetExpectedWasteDeducts :one
+update business_settings bs set expected_waste_deducts = $1, updated_at = now(), updated_by = $2
+  from (select expected_waste_deducts from business_settings limit 1) old
+returning old.expected_waste_deducts as previous
+`
+
+type SetExpectedWasteDeductsParams struct {
+	Deducts   bool   `json:"deducts"`
+	UpdatedBy *int64 `json:"updated_by"`
+}
+
+// «La merma esperada también descuenta del almacén» (spec 096, subida 2). Devuelve el valor anterior
+// para la bitácora. Sin where: una fila por empresa y RLS la acota (ver SetGeneralExpectedWaste).
+func (q *Queries) SetExpectedWasteDeducts(ctx context.Context, arg SetExpectedWasteDeductsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, setExpectedWasteDeducts, arg.Deducts, arg.UpdatedBy)
+	var previous bool
+	err := row.Scan(&previous)
+	return previous, err
 }
 
 const setTicketLogo = `-- name: SetTicketLogo :exec

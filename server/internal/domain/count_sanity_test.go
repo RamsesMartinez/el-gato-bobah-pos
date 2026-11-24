@@ -47,6 +47,11 @@ func TestCountNeedsConfirm(t *testing.T) {
 		{"cinta sin empaques, 60 m avisa", "6000", CountReference{BaseKind: "longitud"}, true},
 		{"cinta sin empaques, 40 m no avisa", "4000", CountReference{BaseKind: "longitud"}, false},
 		{"un último conteo en 0 no sirve de referencia", "740000", CountReference{BaseKind: "masa", LastCounted: new(decimal.Zero), PackQtys: decs("15000")}, true},
+		// 5. Spec 096: contra el conteo anterior, menos de la mitad o más del doble pide confirmar, aunque
+		// lo esperado diga otra cosa (el aviso nunca dice contra qué se comparó).
+		{"último conteo 12 L, 5 L avisa: menos de la mitad", "5000", CountReference{Expected: dec("6000"), LastCounted: &last, BaseKind: "volumen"}, true},
+		{"último conteo 12 L, 25 L avisa: más del doble", "25000", CountReference{Expected: dec("20000"), LastCounted: &last, BaseKind: "volumen"}, true},
+		{"último conteo 12 L, 7 L no avisa", "7000", CountReference{Expected: dec("6000"), LastCounted: &last, BaseKind: "volumen"}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

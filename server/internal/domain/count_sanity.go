@@ -41,6 +41,13 @@ func CountNeedsConfirm(captured decimal.Decimal, ref CountReference) bool {
 			return true
 		}
 	}
+	// Contra el conteo anterior (spec 096, FR-024): menos de la mitad o más del doble de lo que se contó
+	// la vez pasada casi siempre es una unidad equivocada o un lugar que no se recorrió. Va antes que lo
+	// esperado porque lo contado es un hecho y lo esperado arrastra el inventario heredado.
+	if ref.LastCounted != nil && ref.LastCounted.IsPositive() &&
+		(captured.Mul(decimal.NewFromInt(2)).LessThan(*ref.LastCounted) || captured.GreaterThan(ref.LastCounted.Mul(decimal.NewFromInt(2)))) {
+		return true
+	}
 	base := decimal.Zero
 	switch {
 	case ref.Expected.IsPositive():

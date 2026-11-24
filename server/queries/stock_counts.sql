@@ -13,6 +13,11 @@ select id, opened_at, opened_by from stock_counts where status = 'open' and ware
 -- name: StockCountWarehouse :one
 select w.id, w.name from stock_counts c join warehouses w on w.id = c.warehouse_id where c.id = sqlc.arg(id);
 
+-- name: StockCountStatus :one
+-- Si el conteo existe (en esta empresa: RLS) y en qué estado está, para las lecturas que solo tienen
+-- sentido con uno abierto o con uno cerrado.
+select status::text from stock_counts where id = $1;
+
 -- name: LockStockCount :one
 -- El conteo bloqueado: capturar y cerrar se forman, y una cifra no entra después del cierre.
 select id, branch_id, warehouse_id, status from stock_counts where id = $1 for update;
@@ -292,3 +297,11 @@ select l.counted_qty from stock_count_product_lines l join stock_counts c on c.i
  where c.status = 'closed' and c.warehouse_id = sqlc.arg(warehouse_id) and l.product_id = sqlc.arg(product_id)
  order by c.closed_at desc, c.id desc
  limit 1;
+
+-- name: CountExpected :many
+-- Lo que el sistema tiene de cada insumo en el almacén de un conteo (spec 096, vista avanzada). Solo
+-- lo pide quien configura el almacén: el conteo de quien cuenta sigue a ciegas (CountItems no lo trae).
+select sl.ingredient_id::bigint as ingredient_id, sl.on_hand
+  from stock_levels sl
+  join stock_counts c on c.id = sqlc.arg(count_id)
+ where sl.warehouse_id = c.warehouse_id and sl.item_type = 'ingrediente' and sl.ingredient_id is not null;

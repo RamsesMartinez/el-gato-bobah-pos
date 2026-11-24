@@ -194,6 +194,22 @@ func (h *Handlers) CountLoss(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, v)
 }
 
+// CountVsSales es GET /stock/counts/{id}/vs-sales (inventory.health_view, como el faltante): conteo
+// contra ventas de un conteo cerrado (spec 096, subida 2). Siempre arreglo.
+func (h *Handlers) CountVsSales(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.CountVsSales(r.Context(), id)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
 // wastePeriodParams lee `from` y `to` (AAAA-MM-DD). Sin ellos, los últimos siete días; mal escritos,
 // 400: caer a un periodo por omisión mostraría un número que nadie pidió.
 func wastePeriodParams(r *http.Request) (time.Time, time.Time, error) {

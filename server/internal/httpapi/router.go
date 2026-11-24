@@ -360,6 +360,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/inventory", h.UpdateInventorySettings)
 				// La merma general la decide quien configura el menú, no quien configura el almacén (spec 096).
 				r.With(RequirePermission(h.permissions, domain.PermMenuConfigure)).Put("/settings/expected-waste", h.PutGeneralExpectedWaste)
+				// Que la merma descuente del almacén lo decide quien configura el almacén (spec 096, subida 2).
+				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/expected-waste-deducts", h.PutExpectedWasteDeducts)
 				r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Put("/settings/waste-threshold", h.SetWasteThreshold)
 				// Límites del conteo (spec 044): los lee quien cuenta (el aviso del máximo), los cambia
 				// solo quien configura el almacén.
@@ -599,6 +601,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/health.csv", h.ExportInventoryHealth)
 					// El faltante de un conteo (spec 039): lo lee quien ve la salud del inventario.
 					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/counts/{id}/loss", h.CountLoss)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryHealthView)).Get("/counts/{id}/vs-sales", h.CountVsSales)
+					// Lo esperado solo para quien configura el almacén: el conteo de quien cuenta es a ciegas (spec 096).
+					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Get("/counts/{id}/expected", h.CountExpected)
 					// Empaques de compra (spec 038): por permiso y fuera del grupo por rol, igual que la salud.
 					// Leerlos es de quien registra compras; cambiarlos, de quien configura el almacén.
 					r.With(RequirePermission(h.permissions, domain.PermInventoryReceive)).Get("/presentations", h.ListPresentations)

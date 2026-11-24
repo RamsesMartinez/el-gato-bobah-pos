@@ -92,6 +92,19 @@ func (q *Queries) DeletePackageSlots(ctx context.Context, comboID int64) error {
 	return err
 }
 
+const getExpectedWasteDeducts = `-- name: GetExpectedWasteDeducts :one
+select bs.expected_waste_deducts from business_settings bs limit 1
+`
+
+// Si la merma esperada también descuenta del almacén (spec 096, subida 2). Se lee en la transacción
+// de la venta; sin fila (empresa sin ajustes) es apagado.
+func (q *Queries) GetExpectedWasteDeducts(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, getExpectedWasteDeducts)
+	var expected_waste_deducts bool
+	err := row.Scan(&expected_waste_deducts)
+	return expected_waste_deducts, err
+}
+
 const getIngredientComposition = `-- name: GetIngredientComposition :one
 select i.id, i.is_prep, i.recipe_id, i.yield_qty, bu.code as base_unit_code,
        i.composition_status, i.composition_confirmed_at, u.name as confirmed_by_name
@@ -416,14 +429,15 @@ func (q *Queries) ListPackageComponents(ctx context.Context, comboID int64) ([]L
 }
 
 const listProductsForStock = `-- name: ListProductsForStock :many
-select id, type, track_stock, recipe_id from products
+select id, type, track_stock, recipe_id, expected_waste_pct from products
 `
 
 type ListProductsForStockRow struct {
-	ID         int64       `json:"id"`
-	Type       ProductType `json:"type"`
-	TrackStock bool        `json:"track_stock"`
-	RecipeID   *int64      `json:"recipe_id"`
+	ID               int64            `json:"id"`
+	Type             ProductType      `json:"type"`
+	TrackStock       bool             `json:"track_stock"`
+	RecipeID         *int64           `json:"recipe_id"`
+	ExpectedWastePct *decimal.Decimal `json:"expected_waste_pct"`
 }
 
 // Lo mínimo de cada producto para saber qué descuenta al venderse (spec 028). Sin filtro de empresa:
@@ -442,6 +456,7 @@ func (q *Queries) ListProductsForStock(ctx context.Context) ([]ListProductsForSt
 			&i.Type,
 			&i.TrackStock,
 			&i.RecipeID,
+			&i.ExpectedWastePct,
 		); err != nil {
 			return nil, err
 		}

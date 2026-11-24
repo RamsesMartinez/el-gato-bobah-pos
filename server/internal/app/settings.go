@@ -74,8 +74,10 @@ type BusinessSettings struct {
 	WasteApprovalThreshold *decimal.Decimal `json:"wasteApprovalThreshold"`
 	// ExpectedWastePct: la merma general (spec 096); nula = sin merma general.
 	ExpectedWastePct *decimal.Decimal `json:"expectedWastePct"`
-	HasLogo          bool             `json:"hasLogo"`
-	LogoUpdatedAt    *time.Time       `json:"logoUpdatedAt"`
+	// ExpectedWasteDeducts: la merma esperada también descuenta del almacén (spec 096, subida 2).
+	ExpectedWasteDeducts bool       `json:"expectedWasteDeducts"`
+	HasLogo              bool       `json:"hasLogo"`
+	LogoUpdatedAt        *time.Time `json:"logoUpdatedAt"`
 }
 
 func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
@@ -125,6 +127,7 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		CostingMethod:          row.CostingMethod,
 		WasteApprovalThreshold: row.WasteApprovalThreshold,
 		ExpectedWastePct:       row.ExpectedWastePct,
+		ExpectedWasteDeducts:   row.ExpectedWasteDeducts,
 		StockItemLabel:         row.StockItemLabel,
 		HasLogo:                row.HasLogo,
 	}

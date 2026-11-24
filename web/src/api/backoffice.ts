@@ -1004,6 +1004,8 @@ export interface CountClose {
   adjustedProducts?: CountProductAdjustment[];
   notCountedProducts?: { productId: number; name: string }[];
   skippedProducts?: { productId: number; name: string }[];
+  // blind: quien solo cuenta (spec 096). adjusted viene vacío: no se le dice qué cuadró ni por cuánto.
+  blind?: boolean;
 }
 
 // «Llegó algo más»: un renglón que no venía y ya llegó. Con `isGift`, `amount` va en 0.
@@ -1358,10 +1360,14 @@ export const backofficeApi = {
     api.put<{ altNames: string[]; updatedAt: string }>(`/stock/articles/${id}/alt-names`, { altNames, expectedUpdatedAt }),
   similarArticleAltNames: (id: number, name: string) =>
     api.get<SimilarAlt[]>(`/stock/articles/${id}/alt-names/similar?name=${encodeURIComponent(name)}`),
+  // Lo esperado de cada insumo del conteo (vista avanzada, spec 096): solo con inventory.configure.
+  countExpected: (countId: number) => api.get<{ items?: { ingredientId: number; expected: string }[] }>(`/stock/counts/${countId}/expected`),
   // Merma esperada (spec 096): null = sin captura; 0 = capturada en cero.
   setArticleExpectedWaste: (id: number, pct: number | null) =>
     api.put<{ pct: string | null }>(`/stock/articles/${id}/expected-waste`, { pct }),
   articleRealWaste: (id: number) => api.get<{ days: number; items?: RealWaste[] }>(`/stock/articles/${id}/real-waste`),
+  // Que la merma esperada también descuente del almacén (spec 096, subida 2).
+  setExpectedWasteDeducts: (deducts: boolean) => api.put<{ deducts: boolean }>('/settings/expected-waste-deducts', { deducts }),
   setGeneralExpectedWaste: (pct: number | null) => api.put<{ pct: string | null }>('/settings/expected-waste', { pct }),
   correctArticleCost: (id: number, cost: string) => api.post<void>(`/stock/articles/${id}/cost`, { cost }),
   articleCostHistory: (id: number, before?: string) =>

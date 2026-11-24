@@ -33,7 +33,8 @@ func loadStockGraph(ctx context.Context, q *db.Queries) (domain.StockGraph, erro
 		return g, err
 	}
 	for _, r := range ings {
-		in := domain.StockIngredient{ID: r.ID, IsPrep: r.IsPrep, RecipeID: r.RecipeID}
+		in := domain.StockIngredient{ID: r.ID, IsPrep: r.IsPrep, RecipeID: r.RecipeID,
+			ExpectedWastePct: r.ExpectedWastePct, IsPackaging: r.IsPackaging}
 		if r.YieldQty != nil {
 			in.YieldQty = *r.YieldQty
 		}
@@ -51,7 +52,8 @@ func loadStockGraph(ctx context.Context, q *db.Queries) (domain.StockGraph, erro
 		return g, err
 	}
 	for _, r := range prods {
-		g.Products[r.ID] = domain.StockProduct{ID: r.ID, IsCombo: r.Type == db.ProductTypeCombo, TrackStock: r.TrackStock, RecipeID: r.RecipeID}
+		g.Products[r.ID] = domain.StockProduct{ID: r.ID, IsCombo: r.Type == db.ProductTypeCombo, TrackStock: r.TrackStock,
+			RecipeID: r.RecipeID, ExpectedWastePct: r.ExpectedWastePct}
 	}
 	slots, err := q.ListComboSlotDefaultsForCosting(ctx)
 	if err != nil {
@@ -66,6 +68,20 @@ func loadStockGraph(ctx context.Context, q *db.Queries) (domain.StockGraph, erro
 	}
 	for _, r := range opts {
 		g.Options[r.ID] = domain.StockOption{ID: r.ID, RecipeID: r.RecipeID, LinkedProductID: r.LinkedProductID}
+	}
+	// La merma esperada que descuenta (spec 096): la general y si la empresa la encendió. Sin fila de
+	// ajustes, apagado y sin general.
+	switch deducts, err := q.GetExpectedWasteDeducts(ctx); {
+	case err == nil:
+		g.DeductExpectedWaste = deducts
+	case !errors.Is(err, pgx.ErrNoRows):
+		return g, err
+	}
+	switch general, err := q.GetGeneralExpectedWaste(ctx); {
+	case err == nil:
+		g.General = general
+	case !errors.Is(err, pgx.ErrNoRows):
+		return g, err
 	}
 	return g, nil
 }

@@ -803,3 +803,27 @@ type LastClosedCount struct {
 	ID       int64
 	ClosedAt time.Time
 }
+
+// CountExpectedItem es lo que el sistema tiene de un insumo, para la vista avanzada del conteo.
+type CountExpectedItem struct {
+	IngredientID int64           `json:"ingredientId"`
+	Expected     decimal.Decimal `json:"expected"`
+}
+
+// CountExpected devuelve lo esperado de cada insumo del almacén del conteo (spec 096, vista avanzada).
+// La ruta pide configurar el almacén: quien solo cuenta nunca recibe estas cifras. Siempre arreglo.
+func (s *BackofficeService) CountExpected(ctx context.Context, countID int64) ([]CountExpectedItem, error) {
+	q := s.store.QC(ctx)
+	if _, err := q.StockCountStatus(ctx, countID); err != nil {
+		return nil, notFound(err)
+	}
+	rows, err := q.CountExpected(ctx, countID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CountExpectedItem, len(rows))
+	for i, r := range rows {
+		out[i] = CountExpectedItem{IngredientID: r.IngredientID, Expected: r.OnHand}
+	}
+	return out, nil
+}

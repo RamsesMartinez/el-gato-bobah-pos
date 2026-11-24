@@ -93,3 +93,20 @@ func samePct(a, b *decimal.Decimal) bool {
 	}
 	return a.Equal(*b)
 }
+
+// SetExpectedWasteDeducts enciende o apaga que la merma esperada descuente del almacén (spec 096,
+// subida 2). Solo cambia lo que se venda después: ninguna venta ni existencia pasada se toca.
+func (s *CostingService) SetExpectedWasteDeducts(ctx context.Context, deducts bool, userID int64) error {
+	company, _ := store.CompanyFrom(ctx)
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		prev, err := q.SetExpectedWasteDeducts(ctx, db.SetExpectedWasteDeductsParams{Deducts: deducts, UpdatedBy: &userID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: captura primero los datos del negocio", domain.ErrConflict)
+		}
+		if err != nil || prev == deducts {
+			return err
+		}
+		return auditEntity(ctx, q, domain.AuditSettingsExpectedWasteDeducts, "business_settings", company, nil, &userID,
+			map[string]any{"deducts": prev}, map[string]any{"deducts": deducts})
+	})
+}

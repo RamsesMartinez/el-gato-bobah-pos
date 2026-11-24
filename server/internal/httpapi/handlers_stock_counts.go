@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 
 	"github.com/shopspring/decimal"
 
@@ -186,7 +187,7 @@ func (h *Handlers) PreviewCount(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, v)
+	h.respondCountClose(w, r, v)
 }
 
 // POST /stock/counts/{id}/close — ajusta por la diferencia y cierra.
@@ -202,7 +203,33 @@ func (h *Handlers) CloseCount(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, v)
+	h.respondCountClose(w, r, v)
+}
+
+// respondCountClose manda la vista previa o el cierre. A quien no configura el almacén le llega sin
+// lo que tenía el sistema ni la diferencia (spec 096, FR-024/025): con ellas, quien solo cuenta
+// capturaba cifras absurdas, leía lo esperado en la vista previa y recapturaba para que el faltante
+// quedara en cero. Sigue pudiendo cerrar; lo que ve es qué se contó y qué no.
+func (h *Handlers) respondCountClose(w http.ResponseWriter, r *http.Request, v app.CountCloseView) {
+	u, _ := userFrom(r.Context())
+	perms, err := h.permissions(r.Context(), u)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if slices.Contains(perms, domain.PermInventoryConfigure) {
+		JSON(w, http.StatusOK, v)
+		return
+	}
+	JSON(w, http.StatusOK, blindCountClose(v))
+}
+
+// blindCountClose es la vista del cierre para quien solo cuenta: sin lo ajustado. No basta quitar
+// system y delta: la lista solo trae lo que NO cuadra, así que estar o no en ella ya decía si lo
+// contado coincidía con lo que el sistema tenía. Lo no contado sí va: eso lo sabe quien contó.
+func blindCountClose(v app.CountCloseView) map[string]any {
+	return map[string]any{"blind": true, "adjusted": []any{}, "notCounted": v.NotCounted, "adjustedProducts": []any{},
+		"notCountedProducts": v.NotCountedProducts, "skippedProducts": v.SkippedProducts}
 }
 
 // POST /stock/counts/{id}/discard — sin tocar el almacén.
@@ -295,4 +322,20 @@ func (h *Handlers) UncaptureCountProduct(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// CountExpected es GET /stock/counts/{id}/expected (inventory.configure): lo que el sistema tiene de
+// cada insumo, para la vista avanzada (spec 096). Siempre arreglo.
+func (h *Handlers) CountExpected(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.CountExpected(r.Context(), id)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": v})
 }

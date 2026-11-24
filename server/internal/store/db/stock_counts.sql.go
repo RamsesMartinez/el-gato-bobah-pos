@@ -26,6 +26,40 @@ func (q *Queries) CountChangedAfterPreview(ctx context.Context, countID int64) (
 	return column_1, err
 }
 
+const countExpected = `-- name: CountExpected :many
+select sl.ingredient_id::bigint as ingredient_id, sl.on_hand
+  from stock_levels sl
+  join stock_counts c on c.id = $1
+ where sl.warehouse_id = c.warehouse_id and sl.item_type = 'ingrediente' and sl.ingredient_id is not null
+`
+
+type CountExpectedRow struct {
+	IngredientID int64           `json:"ingredient_id"`
+	OnHand       decimal.Decimal `json:"on_hand"`
+}
+
+// Lo que el sistema tiene de cada insumo en el almacén de un conteo (spec 096, vista avanzada). Solo
+// lo pide quien configura el almacén: el conteo de quien cuenta sigue a ciegas (CountItems no lo trae).
+func (q *Queries) CountExpected(ctx context.Context, countID int64) ([]CountExpectedRow, error) {
+	rows, err := q.db.Query(ctx, countExpected, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountExpectedRow{}
+	for rows.Next() {
+		var i CountExpectedRow
+		if err := rows.Scan(&i.IngredientID, &i.OnHand); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countItems = `-- name: CountItems :many
 select i.id, i.name, cp.name as count_place, cp.id as count_place_id, u.code as base_unit_code, l.counted_qty, l.captured_at,
        u.kind as base_unit_kind, i.density_g_per_ml, l.gross_g, l.gross_containers, l.tare_g_used, l.density_used,
@@ -935,6 +969,19 @@ func (q *Queries) SetCountPlace(ctx context.Context, arg SetCountPlaceParams) (i
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const stockCountStatus = `-- name: StockCountStatus :one
+select status::text from stock_counts where id = $1
+`
+
+// Si el conteo existe (en esta empresa: RLS) y en qué estado está, para las lecturas que solo tienen
+// sentido con uno abierto o con uno cerrado.
+func (q *Queries) StockCountStatus(ctx context.Context, id int64) (string, error) {
+	row := q.db.QueryRow(ctx, stockCountStatus, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
 }
 
 const stockCountWarehouse = `-- name: StockCountWarehouse :one

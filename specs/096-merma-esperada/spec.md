@@ -346,14 +346,18 @@ del conteo se ve en menos de la meta, medida antes y después.
   propio, y la cancelación con reposición la repone.
 - **FR-023**: Activar o apagar la opción no MUST tocar ventas pasadas ni existencias.
 - **FR-024**: El conteo MUST tener una vista sencilla (solo contar, a ciegas, recorrido por lugar,
-  avance visible, presentación a elegir) y una avanzada (esperado, diferencias, lugares, configurar,
-  cerrar), intercambiables sin perder lo capturado, también tras recargar. Al teclear una cantidad
+  avance visible, presentación a elegir) y una avanzada (esperado, diferencias, lugares, configurar),
+  intercambiables sin perder lo capturado, también tras recargar. Al teclear una cantidad
   menor a la mitad o mayor al doble del conteo anterior, la sencilla MUST pedir confirmarla sin
   mostrar la cifra esperada.
 - **FR-025**: Quien solo puede contar MUST entrar siempre a la sencilla; la avanzada pide el permiso
-  de configurar el almacén (`inventory.configure`).
-- **FR-026**: Existencias MUST tener la misma separación: vista sencilla (qué hay y qué falta) y
-  avanzada (valor, movimientos, mínimos, configuración).
+  de configurar el almacén (`inventory.configure`). Cerrar se puede desde las dos; a quien solo cuenta, la
+  vista previa y el cierre le llegan sin lo que el sistema tenía ni la lista de lo ajustado (estar en
+  ella ya diría qué no cuadró).
+- **FR-026**: Existencias MUST separar el contenido igual: vista sencilla (qué hay, qué queda poco y
+  qué se acabó, sin valor) y avanzada (valor y mínimo por artículo); movimientos y avisos siguen en
+  sus pestañas. A diferencia del conteo, las dos vistas son para todo el que ve Existencias: la tabla
+  con valor ya la usaba quien tiene `inventory.view`, y esconderla le quitaría lo que hoy tiene.
 - **FR-027**: Existencias y la lista del conteo MUST cargar su primera pantalla por debajo de la meta
   de SC-007, medida antes y después sobre la base restaurada.
 
