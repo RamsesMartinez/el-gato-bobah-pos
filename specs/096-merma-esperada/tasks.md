@@ -188,7 +188,7 @@ por la razón correcta.
 
 ## Phase 13: Cierre de la subida 2
 
-- [ ] T069 E2E a 1024×600 y 1280×854: conteo completo en la vista sencilla, reporte, opción de descontar; prueba con alguien nuevo de una fonda (SC-006)
+- [X] T069 E2E a 1024×600 y 1280×854: conteo completo en la vista sencilla, reporte, opción de descontar; prueba con alguien nuevo de una fonda (SC-006)
 - [ ] T070 `/revision-de-codigo`, `make ci-local`, PR, release y comentario en el #226; cerrar el issue y el worktree solo con OK del dueño
 
 ---

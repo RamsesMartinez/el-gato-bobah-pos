@@ -165,6 +165,9 @@ export function StockCountTab() {
   const initialQuery = params.get('q') ?? '';
   const [stored, setView] = useState<View>(() => (initialQuery ? 'avanzada' : readView()));
   const canAdvanced = can('inventory.configure');
+  // El artículo en que iba la vista sencilla: ir a la avanzada y regresar volvía al primer lugar
+  // (prueba con alguien nuevo de la 096).
+  const [placeAt, setPlaceAt] = useState<number | null>(null);
   const view: View = canAdvanced ? stored : 'sencilla';
   const [closed, setClosed] = useState<CountClose | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
@@ -334,7 +337,7 @@ export function StockCountTab() {
 
       {view === 'avanzada'
         ? <ListView count={shown} others={others} onSaved={onSaved} initialQuery={initialQuery} picker={picker || undefined} expected={expected.data} />
-        : <PlaceView key={count.id} count={shown} others={others} onSaved={onSaved} initialQuery={initialQuery} />}
+        : <PlaceView key={count.id} count={shown} others={others} onSaved={onSaved} initialQuery={initialQuery} resumeAt={placeAt} onAt={setPlaceAt} />}
 
       {closing && (
         <CloseSheet countId={count.id} onClose={() => setClosing(false)}
@@ -670,13 +673,25 @@ function useCountKeys(e: Entry, c: ReturnType<typeof useCapture>) {
 // «Guardar» dejaba la existencia en 0 al cerrar el conteo, y contar 0 nunca avisa (revisión de la 042).
 function NoHay({ item, onConfirm }: { item: CountItem; onConfirm: () => void }) {
   const [asking, setAsking] = useState(false);
-  if (!asking) return <Button minH="44px" variant="outline" onClick={() => setAsking(true)}>No hay</Button>;
+  // La pregunta va en una hoja inferior, como el aviso de cifra rara: metida en la fila de botones,
+  // un nombre largo ensanchaba la tarjeta y sacaba el teclado de la pantalla (prueba con alguien
+  // nuevo de la 096, a 1024×600 y a 1280×854).
   return (
-    <HStack gap={2}>
-      <Text>¿No hay nada de {item.name}?</Text>
-      <Button minH="44px" variant="ghost" onClick={() => setAsking(false)}>No</Button>
-      <Button minH="44px" variant="outline" colorPalette="brand" onClick={() => { setAsking(false); onConfirm(); }}>Sí, no hay</Button>
-    </HStack>
+    <>
+      <Button minH="44px" variant="outline" onClick={() => setAsking(true)}>No hay</Button>
+      {asking && (
+        <DrawerRoot open placement="bottom" onOpenChange={(x) => { if (!x.open) setAsking(false); }}>
+          <DrawerBackdrop />
+          <DrawerContent borderTopRadius="2xl">
+            <DrawerHeader><Text fontWeight="700" fontSize="lg">¿No hay nada de {item.name}?</Text></DrawerHeader>
+            <DrawerFooter>
+              <Button minH="52px" variant="outline" onClick={() => setAsking(false)}>No, sí hay</Button>
+              <Button minH="52px" colorPalette="brand" onClick={() => { setAsking(false); onConfirm(); }}>Sí, no hay</Button>
+            </DrawerFooter>
+          </DrawerContent>
+        </DrawerRoot>
+      )}
+    </>
   );
 }
 
@@ -861,8 +876,9 @@ function ExpectedCell({ expected, counted, unit }: { expected: string; counted: 
 // PlaceView es la vista para contar: arriba los lugares con su avance, a la izquierda lo de ese lugar
 // y a la derecha la tarjeta del artículo elegido con el teclado fijo. Al guardar pasa al siguiente sin
 // contar del mismo lugar. Lo esperado no se muestra: el conteo es a ciegas.
-function PlaceView({ count, others = [], onSaved, initialQuery = '' }: {
+function PlaceView({ count, others = [], onSaved, initialQuery = '', resumeAt = null, onAt }: {
   count: StockCount; others?: CountItem[]; onSaved: (id: number, qty: string | null) => void; initialQuery?: string;
+  resumeAt?: number | null; onAt?: (id: number) => void;
 }) {
   const { multi } = useContext(CountScopeContext);
   // count.items ya trae los productos del menú al final (rowsOf), cada categoría como su lugar. Lo que
@@ -878,11 +894,13 @@ function PlaceView({ count, others = [], onSaved, initialQuery = '' }: {
   // Llegar desde «Revisar con un conteo» abre la tarjeta de ese artículo, no la del primer lugar.
   // La ficha manda el nombre exacto: primero ése, y la búsqueda por palabras solo si no está.
   const q = initialQuery.trim();
-  const asked = q ? rows.find((i) => normalize(i.name) === normalize(q)) ?? rows.find((i) => matchesWords(i.name, q)) : undefined;
+  const asked = (q ? rows.find((i) => normalize(i.name) === normalize(q)) ?? rows.find((i) => matchesWords(i.name, q)) : undefined)
+    ?? rows.find((i) => i.ingredientId === resumeAt);
   const [place, setPlace] = useState(() => asked ? placeOf(asked, multi) : places.find((p) => rows.some((i) => placeOf(i, multi) === p && i.countedQty === null)) ?? places[0]);
   // Se sigue al INSUMO, no al lugar: ponerle otro lugar desde la tarjeta lo mueve de grupo, y la
   // tarjeta se va con él en vez de saltar a otro insumo a media captura.
-  const [atId, setAtId] = useState<number | null>(() => asked?.ingredientId ?? firstIn(place));
+  const [atId, setAtIdState] = useState<number | null>(() => asked?.ingredientId ?? firstIn(place));
+  const setAtId = (id: number | null) => { setAtIdState(id); if (id !== null) onAt?.(id); };
   // Avanza la tarjeta aunque siga en el mismo artículo (el último sin contar): sin otra llave, lo
   // tecleado se quedaba en pantalla y un segundo toque lo guardaba otra vez.
   const [turn, setTurn] = useState(0);
@@ -953,7 +971,7 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
   useCountKeys(e, c);
   return (
     <HStack align="stretch" gap={3} flex="1" minH={0}>
-      <VStack align="stretch" gap={3} flex="1" minW={0} minH={0} p={4} borderWidth="1px" borderRadius="lg" bg="bg.panel">
+      <VStack align="stretch" gap={{ base: 2, xl: 3 }} flex="1" minW={0} minH={0} p={{ base: 3, xl: 4 }} borderWidth="1px" borderRadius="lg" bg="bg.panel">
         <Text fontSize="xs" color="fg.muted">{where}</Text>
         <HStack gap={3} flexWrap="wrap">
           <Heading as="h2" fontSize={{ base: 'xl', xl: '2xl' }} fontWeight="700" flex="1" lineClamp={{ base: 1, xl: 2 }} title={item.name}>{item.name}</Heading>

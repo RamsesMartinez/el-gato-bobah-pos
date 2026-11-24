@@ -193,6 +193,17 @@ describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
     expect(localStorage.getItem('egb:conteo:vista')).toBe('sencilla');
   });
 
+  // Prueba con alguien nuevo de la 096: ir a la avanzada y regresar la ponía otra vez en el primer lugar.
+  test('ir a la avanzada y regresar deja la tarjeta en el artículo donde iba', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Lugar' })).getByRole('button', { name: /^Bodega · 0\/1$/ }));
+    expect(screen.getByRole('heading', { name: 'Azúcar' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Avanzada' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+    expect(await screen.findByRole('heading', { name: 'Azúcar' })).toBeInTheDocument();
+  });
+
   test('el último sin contar: guardar limpia la tarjeta y dice que ya se contó todo', async () => {
     back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3 ? i : { ...i, countedQty: '1' })) });
     montar();

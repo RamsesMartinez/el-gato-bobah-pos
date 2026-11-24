@@ -296,3 +296,19 @@ HIGH 0, MEDIUM 0, LOW 1 (redacción de FR-010).
 | Durante el traslape de la subida, la API anterior no repone `merma_esperada` al cancelar | La opción nace apagada y solo la enciende la versión nueva: el riesgo es de segundos y solo si alguien la enciende y la versión vieja cancela en esa ventana. Aceptado (constitución IV: se declara aquí) |
 | Front: la sencilla sin buscador dejaba a quien solo cuenta sin poder contar en una Bodega nueva; «Saltar» al final de un lugar no se movía; volver a un almacén ya visto podía quedar vacío; `?q=` abría el primero que empezaba igual; el interruptor parpadeaba; el reporte con error se quedaba esperando | Lo que no es del almacén va en un lugar «De otro almacén» al final; el recorrido da la vuelta en el lugar y pasa al siguiente, y avisa «Ya se contó todo»; `key` por conteo; nombre exacto primero; la caché se escribe con lo guardado; mensajes de error. Un test por cada uno |
 | Pantalla: el nombre de lo contado se cortaba en la lista angosta; el tablero tenía su alto en píxeles fijos | La cantidad va debajo del nombre; el alto lo da la pestaña |
+
+## R17. Prueba con alguien nuevo de una fonda, subida 2 (T069, 2026-11-23)
+
+Un agente en el papel de cocinera y cajera de una fonda, sin ver el código, con toques reales a
+1024×600 contra la API local y la base restaurada. Contó 30 artículos en la vista sencilla **sin
+ayuda** (SC-006): 52.5 s y 116 toques medidos con Playwright, de 0.7 a 1.9 s por artículo (tiempo
+de máquina; una persona buscando en el anaquel tardaría más, estimado). Cambiar a la avanzada y
+regresar conservó los 30 (SC-008). Descartó los conteos que abrió; no cerró ninguno.
+
+| Lo que encontró | Qué se hizo |
+| --- | --- |
+| «No hay» metía su pregunta en la fila de botones y sacaba el teclado de la pantalla (1024 y 1280) | La pregunta va en una hoja inferior, como el aviso de cifra rara |
+| «Cuánto hay» salía cortado a 1024×600 | Menos relleno en la tarjeta debajo de 1280 px; medido, se ve completo |
+| Ir a la avanzada y regresar la ponía otra vez en el primer lugar | La sencilla regresa al artículo donde iba |
+| El aviso de cifra rara saltó 4 veces en 30 con cifras normales (la regla de FR-024: menos de la mitad o más del doble del conteo anterior) y no saltó con «2 ml» en un artículo que se cuenta en litros con existencia 0 | **Sin cambio**: la regla es la que pide FR-024 y la del 0 es la de la spec 042. Se le avisa al dueño |
+| El nombre largo se corta a un renglón a 1024; los lugares se llaman como el negocio los configuró («Sin definir», «Almacén principal») | Se deja: el nombre completo está en la lista y al tocarlo; los nombres de lugar los pone cada empresa |
