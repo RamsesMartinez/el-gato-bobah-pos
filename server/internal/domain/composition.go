@@ -107,6 +107,9 @@ type StockIngredient struct {
 	IsPrep   bool
 	RecipeID *int64
 	YieldQty decimal.Decimal
+	// La merma esperada (spec 096): nil = sin captura. Un empaque solo lleva la suya.
+	ExpectedWastePct *decimal.Decimal
+	IsPackaging      bool
 }
 
 // RecipeLine es un renglón de receta en unidad base.
@@ -121,6 +124,8 @@ type StockProduct struct {
 	IsCombo    bool
 	TrackStock bool
 	RecipeID   *int64
+	// ExpectedWastePct: la merma propia del producto (spec 096); nil = usa la general.
+	ExpectedWastePct *decimal.Decimal
 }
 
 // StockOption es un extra: lleva receta o es otro producto.
@@ -137,6 +142,10 @@ type StockGraph struct {
 	Products      map[int64]StockProduct
 	ComboDefaults map[int64][]ComboDefault
 	Options       map[int64]StockOption
+	// General es la merma general de la empresa (spec 096); nil = sin merma general.
+	General *decimal.Decimal
+	// DeductExpectedWaste: la empresa encendió «la merma esperada también descuenta del almacén».
+	DeductExpectedWaste bool
 }
 
 // SaleOption es un extra elegido; Qty es por unidad del renglón.

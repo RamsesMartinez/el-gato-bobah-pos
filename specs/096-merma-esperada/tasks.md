@@ -147,48 +147,48 @@ por la razón correcta.
 
 - [X] T071 [US1] Tests en `server/internal/domain/costing_test.go` y `expected_waste_test.go`: un artículo empaque sin % propio no recibe el del producto ni el general (origen `none`); con % propio, lo conserva; el desglose lo dice
 - [X] T072 [US1] `CostIngredient.IsPackaging` desde `ListIngredientsForCosting` (`server/queries/costing.sql`), regla en `domain.ResolveExpectedWaste` y en `recipeLines`, y la vista previa del front (`web/src/shared/merma/desglose.ts`) con el mismo criterio (`isPackaging` en el renglón del desglose)
-- [ ] T073 Integración: con 5 % general, un producto con vaso de empaque sube 5 % solo sobre lo que no es empaque; `make ci-local`, PR, release y comentario en el #226
+- [X] T073 Integración: con 5 % general, un producto con vaso de empaque sube 5 % solo sobre lo que no es empaque; `make ci-local`, PR, release y comentario en el #226
 
 # SUBIDA 2 — INVENTARIO Y CONTEO (cuando el #65 esté completo en producción)
 
 ## Phase 8: Setup de la subida 2
 
 - [X] T051 Confirmar que la spec 094 entregó E2–E5 en producción (entró completa el 2026-11-23: releases #347, #354, #360, #363 y #367; el dueño ordenó arrancar el 2026-11-23) (ventas, compras, traspasos, conteo y merma por almacén); si no, esta subida no empieza
-- [ ] T052 Medir la carga de hoy con el build servido en local (`bun run build && bun run preview`), base restaurada, 1024×600, CPU 4×: primera pantalla y lista completa de Existencias y del conteo; anotar las cifras en [research.md › R13](research.md) (SC-007)
-- [ ] T053 Migración siguiente libre (al traer develop) con solo `alter type stock_movement_type add value 'merma_esperada'`, y otra con `business_settings.expected_waste_deducts boolean not null default false` y, en ese orden, `drop trigger` de los dos espejos y `drop function mirror_expected_waste_pct()` de la 0126 y `drop column ingredients.waste_pct` (ninguna versión en producción la lee desde la subida 1), cada una con su test de migración
+- [X] T052 Medir la carga de hoy con el build servido en local (`bun run build && bun run preview`), base restaurada, 1024×600, CPU 4×: primera pantalla y lista completa de Existencias y del conteo; anotar las cifras en [research.md › R13](research.md) (SC-007)
+- [X] T053 Migración siguiente libre (al traer develop) con solo `alter type stock_movement_type add value 'merma_esperada'`, y otra con `business_settings.expected_waste_deducts boolean not null default false` y, en ese orden, `drop trigger` de los dos espejos y `drop function mirror_expected_waste_pct()` de la 0126 y `drop column ingredients.waste_pct` (ninguna versión en producción la lee desde la subida 1), cada una con su test de migración
 
 ## Phase 9: US6 — Conteo contra ventas (P1)
 
 **Independent Test**: 10 + 5 − 12 − 0.3 = 2.7 esperado, 2.2 contado → −0.5 kg y −4.2 %.
 
-- [ ] T054 [P] [US6] Tests table-driven en `server/internal/domain/count_vs_sales_test.go`: renglón (inicial, entradas, ventas, merma esperada, merma registrada, traspasos, esperado, contado, diferencia, %); sugerencia solo con tres conteos estables entre 2 y 4 % y rango ≤ 1.5 puntos, redondeada a 0.5; «revisar» con > 10 % o errática; primer conteo sin comparación
-- [ ] T055 [P] [US6] Test de integración en `server/internal/integration/count_vs_sales_test.go` con `inTheThreeCases`: solo cuenta movimientos del almacén del conteo; traspasos como entrada o salida, no venta
-- [ ] T056 [US6] Consulta agrupada por artículo y tipo de movimiento entre conteos en `server/queries/expected_waste.sql`, servicio en `server/internal/app/expected_waste.go`, `GET /stock/counts/{id}/vs-sales` (`inventory.view`) y `POST /stock/articles/{id}/expected-waste/apply-suggestion` (`menu.configure`, bitácora)
-- [ ] T057 [P] [US6] Test vitest de `web/src/features/backoffice/CountVsSalesReport.test.tsx` (tres grupos, «Usar N %» llama al endpoint, primer conteo)
-- [ ] T058 [US6] Reporte agrupado (maqueta C, plan › Maquetas fila «Conteo vs ventas») en `web/src/features/backoffice/CountVsSalesReport.tsx` junto a `CountLossReport`
+- [X] T054 [P] [US6] Tests table-driven en `server/internal/domain/count_vs_sales_test.go`: renglón (inicial, entradas, ventas, merma esperada, merma registrada, traspasos, esperado, contado, diferencia, %); sugerencia solo con tres conteos estables entre 2 y 4 % y rango ≤ 1.5 puntos, redondeada a 0.5; «revisar» con > 10 % o errática; primer conteo sin comparación
+- [X] T055 [P] [US6] Test de integración en `server/internal/integration/count_vs_sales_test.go` con `inTheThreeCases`: solo cuenta movimientos del almacén del conteo; traspasos como entrada o salida, no venta
+- [X] T056 [US6] Consulta agrupada por artículo y tipo de movimiento entre conteos en `server/queries/expected_waste.sql`, servicio en `server/internal/app/count_vs_sales.go`, `GET /stock/counts/{id}/vs-sales` (quedó con `inventory.health_view`, el permiso del faltante junto al que se muestra) y aplicar la sugerencia (quedó sobre `PUT /stock/articles/{id}/expected-waste`, `menu.configure`, bitácora; ver [contracts/api.md](contracts/api.md))
+- [X] T057 [P] [US6] Test vitest de `web/src/features/backoffice/CountVsSalesReport.test.tsx` (tres grupos, «Usar N %» llama al endpoint, primer conteo)
+- [X] T058 [US6] Reporte agrupado (maqueta C, plan › Maquetas fila «Conteo vs ventas») en `web/src/features/backoffice/CountVsSalesReport.tsx` junto a `CountLossReport`
 
 ## Phase 10: US7 — La merma esperada descuenta inventario (P2)
 
-- [ ] T059 [P] [US7] Tests en `server/internal/integration/expected_waste_deduct_test.go`: apagada descuenta como hoy; encendida agrega `merma_esperada` = receta × % (precedencia de R2) en el almacén de venta; cancelar el pedido, cancelar un renglón, partir y pasar un producto reponen también la merma esperada («cancelar renglón con merma esperada deja el almacén igual», R14 H2); activar no toca ventas pasadas
-- [ ] T060 [US7] Escribir los movimientos `merma_esperada` en la venta y ampliar cada consulta que hoy filtra `movement_type = 'venta'`: `server/queries/orders.sql` (cancelar pedido, cancelar renglón, partir/pasar, ventas sin renglón), `server/queries/inventory_health.sql`, `server/queries/shopping_list.sql` (decidir y anotar si el consumo cuenta la merma esperada)
-- [ ] T061 [US7] Interruptor en `web/src/features/admin/InventorySettingsSection.tsx` (plan › Maquetas fila «Ajustes › Almacén: descontar merma») y en `PUT /settings/inventory`; nota en el plan de la subida: no se enciende mientras corra la versión anterior (R14 M3)
-- [ ] T062 [US7] Mapas de tipo de movimiento en Go y en `web/` (Movimientos, etiquetas) muestran «Merma esperada» y no truenan con el valor nuevo
+- [X] T059 [P] [US7] Tests en `server/internal/integration/expected_waste_deduct_test.go`: apagada descuenta como hoy; encendida agrega `merma_esperada` = receta × % (precedencia de R2) en el almacén de venta; cancelar el pedido, cancelar un renglón, partir y pasar un producto reponen también la merma esperada («cancelar renglón con merma esperada deja el almacén igual», R14 H2); activar no toca ventas pasadas
+- [X] T060 [US7] Escribir los movimientos `merma_esperada` en la venta y ampliar cada consulta que hoy filtra `movement_type = 'venta'`: `server/queries/orders.sql` (cancelar pedido, cancelar renglón, partir/pasar, ventas sin renglón), `server/queries/inventory_health.sql`, `server/queries/shopping_list.sql` (decidir y anotar si el consumo cuenta la merma esperada)
+- [X] T061 [US7] Interruptor en `web/src/features/admin/InventorySettingsSection.tsx` (plan › Maquetas fila «Ajustes › Almacén: descontar merma») y en su propia ruta `PUT /settings/expected-waste-deducts` (ver [contracts/api.md](contracts/api.md)); nota en el plan de la subida: no se enciende mientras corra la versión anterior (R14 M3)
+- [X] T062 [US7] Mapas de tipo de movimiento en Go y en `web/` (Movimientos, etiquetas) muestran «Merma esperada» y no truenan con el valor nuevo
 
 ## Phase 11: US8 — Conteo sencillo y avanzado (P1)
 
-- [ ] T063 [P] [US8] Test de integración: quien solo tiene `inventory.count` no recibe lo esperado en el detalle del conteo (conteo a ciegas en el servidor, R12)
-- [ ] T064 [P] [US8] Tests vitest de la vista sencilla en `web/src/features/backoffice/StockCountTab.test.tsx`: lugar con avance N/M, teclado fijo, contar en la presentación elegida convierte a la unidad base, aviso «menos de la mitad / más del doble» contra el conteo anterior sin mostrar lo esperado, cambiar de vista y regresar conserva lo capturado, F5 conserva lo capturado
-- [ ] T065 [US8] Vista sencilla (maqueta B, plan › Maquetas fila «Conteo sencilla/avanzada») y avanzada en `web/src/features/backoffice/StockCountTab.tsx`, cambio de vista con `Segmented` con íconos, vista recordada por equipo con try/catch, forzada a sencilla sin `inventory.configure`
+- [X] T063 [P] [US8] Test de integración: quien solo tiene `inventory.count` no recibe lo esperado en el detalle del conteo (conteo a ciegas en el servidor, R12): el detalle nunca lo manda y la ruta de lo esperado pide `inventory.configure` (`route_gates.golden`); el aislamiento de esa ruta lo prueba `TestCountExpectedIsOnlyForTheWarehouseAndIsolated`
+- [X] T064 [P] [US8] Tests vitest de la vista sencilla en `web/src/features/backoffice/StockCountTab.test.tsx`: lugar con avance N/M, teclado fijo, contar en la presentación elegida convierte a la unidad base, aviso «menos de la mitad / más del doble» contra el conteo anterior sin mostrar lo esperado, cambiar de vista y regresar conserva lo capturado, F5 conserva lo capturado
+- [X] T065 [US8] Vista sencilla (maqueta B, plan › Maquetas fila «Conteo sencilla/avanzada») y avanzada en `web/src/features/backoffice/StockCountTab.tsx`, cambio de vista con `Segmented` con íconos, vista recordada por equipo con try/catch, forzada a sencilla sin `inventory.configure`
 
 ## Phase 12: US9 — Existencias sencilla y avanzada y carga medida (P2)
 
-- [ ] T066 [P] [US9] Tests vitest en `web/src/features/backoffice/StockPage.test.tsx`: tablero de tres columnas por estado y cambio de vista con íconos
-- [ ] T067 [US9] Vista sencilla en tablero y avanzada con valor y mínimos (maqueta B, plan › Maquetas fila «Existencias») en `web/src/features/backoffice/StockPage.tsx`
-- [ ] T068 [US9] Atacar lo que la medición de T052 señale (peticiones por renglón, lista sin paginar ni virtualizar, índices que empiecen por `company_id`); volver a medir y anotar antes y después en [research.md › R13](research.md) contra SC-007
+- [X] T066 [P] [US9] Tests vitest en `web/src/features/backoffice/StockPage.test.tsx`: tablero de tres columnas por estado y cambio de vista con íconos
+- [X] T067 [US9] Vista sencilla en tablero y avanzada con valor y mínimos (maqueta B, plan › Maquetas fila «Existencias») en `web/src/features/backoffice/StockPage.tsx`
+- [X] T068 [US9] Atacar lo que la medición de T052 señale (peticiones por renglón, lista sin paginar ni virtualizar, índices que empiecen por `company_id`); volver a medir y anotar antes y después en [research.md › R13](research.md) contra SC-007
 
 ## Phase 13: Cierre de la subida 2
 
-- [ ] T069 E2E a 1024×600 y 1280×854: conteo completo en la vista sencilla, reporte, opción de descontar; prueba con alguien nuevo de una fonda (SC-006)
+- [X] T069 E2E a 1024×600 y 1280×854: conteo completo en la vista sencilla, reporte, opción de descontar; prueba con alguien nuevo de una fonda (SC-006)
 - [ ] T070 `/revision-de-codigo`, `make ci-local`, PR, release y comentario en el #226; cerrar el issue y el worktree solo con OK del dueño
 
 ---

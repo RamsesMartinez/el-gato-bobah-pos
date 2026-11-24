@@ -11,6 +11,7 @@ import { ApiError } from '../../api/client';
 
 const back = vi.hoisted(() => ({
   currentCount: vi.fn(),
+  countExpected: vi.fn(),
   openCount: vi.fn(),
   captureCount: vi.fn(),
   uncaptureCount: vi.fn(),
@@ -77,6 +78,9 @@ const conteo = (): StockCount => ({
 
 beforeEach(() => {
   try { localStorage.clear(); } catch { /* sin almacenamiento */ }
+  // Quien configura el almacén ve las dos vistas y abre en la avanzada (spec 096).
+  useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.count', 'inventory.configure'] } as never });
+  back.countExpected.mockResolvedValue({ items: [] });
   back.currentCount.mockResolvedValue(conteo());
   back.openCount.mockResolvedValue(conteo());
   back.captureCount.mockResolvedValue(undefined);
@@ -291,18 +295,55 @@ describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
     expect(screen.getByTestId('avance')).toHaveTextContent('1 de 3 contados');
   });
 
-  test('uno por uno: saltar no guarda; guardar y seguir pasa al siguiente; la vista se recuerda', async () => {
+  // Spec 096, maqueta B: la sencilla recorre un lugar a la vez con su avance; saltar no guarda.
+  test('vista sencilla: un lugar a la vez, saltar no guarda, guardar captura; la vista se recuerda', async () => {
     montar();
-    fireEvent.click(await screen.findByRole('button', { name: 'Uno por uno' }));
-    expect(screen.getByText('Jarabe de vainilla')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Lugar' })).getByRole('button', { name: /^Bodega · 0\/1$/ }));
+    expect(screen.getByRole('heading', { name: 'Azúcar' })).toBeInTheDocument();
+    // Revisión de código: al final de un lugar «Saltar» se quedaba en la misma tarjeta. Pasa al
+    // siguiente lugar con algo sin contar.
     click('Saltar (no contar hoy)');
-    expect(screen.getByText('Azúcar')).toBeInTheDocument();
     expect(back.captureCount).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Limón' })).toBeInTheDocument();
     tecla('1');
     click('Guardar y seguir ›');
-    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 2, { countedQty: '25000', confirmable: true }));
-    expect(await screen.findByText('Limón')).toBeInTheDocument();
-    expect(localStorage.getItem('egb:conteo:vista')).toBe('uno');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3, { countedQty: '1', confirmable: true }));
+    // Y de ahí da la vuelta: lo saltado vuelve a ofrecerse.
+    expect(await screen.findByRole('heading', { name: 'Jarabe de vainilla' })).toBeInTheDocument();
+    expect(localStorage.getItem('egb:conteo:vista')).toBe('sencilla');
+  });
+
+  // Prueba con alguien nuevo de la 096: ir a la avanzada y regresar la ponía otra vez en el primer lugar.
+  test('ir a la avanzada y regresar deja la tarjeta en el artículo donde iba', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Lugar' })).getByRole('button', { name: /^Bodega · 0\/1$/ }));
+    expect(screen.getByRole('heading', { name: 'Azúcar' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Avanzada' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+    expect(await screen.findByRole('heading', { name: 'Azúcar' })).toBeInTheDocument();
+  });
+
+  test('el último sin contar: guardar limpia la tarjeta y dice que ya se contó todo', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3 ? i : { ...i, countedQty: '1' })) });
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+    expect(screen.getByRole('heading', { name: 'Limón' })).toBeInTheDocument();
+    tecla('4');
+    click('Guardar y seguir ›');
+    expect(await screen.findByText(/Ya se contó todo/)).toBeInTheDocument();
+    expect(back.captureCount).toHaveBeenCalledTimes(1);
+  });
+
+  test('desde la ficha abre el artículo con ese nombre exacto, no el primero que empieza igual', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: [
+      { ingredientId: 7, name: 'Azúcar mascabado', place: 'Bodega', placeId: 2, baseUnitCode: 'g', presentations: [], countedQty: null },
+      ...conteo().items,
+    ] });
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
+    montar('/almacen?tab=conteo&q=Azúcar');
+    expect(await screen.findByRole('heading', { name: 'Azúcar' })).toBeInTheDocument();
   });
 
   test('el cierre nombra lo no contado, dice sobraban/faltaban y marca lo grande, sin negativos a secas', async () => {
@@ -322,6 +363,21 @@ describe('Conteo (spec 038, maqueta «Almacén › Conteo»)', () => {
     click('Sí, cerrar y corregir lo guardado');
     await waitFor(() => expect(back.closeCount).toHaveBeenCalledWith(5));
     expect(await screen.findByTestId('conteo-cerrado')).toHaveTextContent('Conteo cerrado: 2 insumos corregidos');
+  });
+
+  // Revisión de seguridad de la 096: a quien solo cuenta, el servidor no le dice qué cuadró.
+  test('a ciegas, el cierre no habla de diferencias ni de corregidos', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => ({ ...i, countedQty: '1' })) });
+    const ciego = { blind: true, adjusted: [], notCounted: [], adjustedProducts: [], notCountedProducts: [], skippedProducts: [] };
+    back.previewCount.mockResolvedValue(ciego);
+    back.closeCount.mockResolvedValue(ciego);
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Cerrar conteo' }));
+    expect(await screen.findByText(/Lo que contaste reemplaza lo que había guardado/)).toBeInTheDocument();
+    expect(screen.queryByText(/cuadra con lo guardado/)).toBeNull();
+    click('Sí, cerrar y corregir lo guardado');
+    expect(await screen.findByText('Conteo cerrado: se guardó lo que contaste')).toBeInTheDocument();
   });
 
   test('no se puede cerrar sin nada contado, y descartar pide confirmación', async () => {
@@ -346,7 +402,7 @@ test('dice por qué no se puede cerrar todavía', async () => {
 // crear una pide configurar el almacén y quien solo cuenta elige entre las que hay.
 const quienConfigura = () => useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'gerente', permissions: ['inventory.count', 'inventory.configure'] } as never });
 // Spec 045 (US2): la ficha del artículo lleva aquí con ?q=<nombre>; la lista llega ya buscada, aunque
-// la vista recordada fuera «Uno por uno», que no tiene buscador.
+// la vista recordada fuera la sencilla, que no tiene buscador.
 // Spec 045 (US3): buscar «apio» traía «Tapioca». Coincide al inicio de una palabra del nombre o del empaque.
 describe('buscador del conteo (spec 045)', () => {
   const items = () => [
@@ -388,8 +444,8 @@ describe('llegar desde la ficha con ?q= (spec 045)', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveTextContent('Azúcar');
   });
-  test('aunque la vista recordada sea uno por uno', async () => {
-    try { localStorage.setItem('egb:conteo:vista', 'uno'); } catch { /* sin almacenamiento */ }
+  test('aunque la vista recordada sea la sencilla', async () => {
+    try { localStorage.setItem('egb:conteo:vista', 'sencilla'); } catch { /* sin almacenamiento */ }
     montar('/almacen?tab=conteo&q=Lim%C3%B3n');
     expect(await screen.findByLabelText('Buscar')).toHaveValue('Limón');
   });
@@ -432,23 +488,60 @@ describe('ubicación desde el conteo (FR-015f)', () => {
 
   // El aviso «Pídele a quien configura el almacén» con el Picker de verdad lo cubre CountPlaceField.test.tsx;
   // aquí el Picker es un doble y lo que se prueba es que el conteo no le pase el alta.
-  test('quien solo cuenta elige pero no crea', async () => {
-    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
+  // SC-008: lo capturado vive en el servidor, así que cambiar de vista y regresar no pierde nada.
+  test('capturar en la sencilla, pasar a la avanzada y regresar conserva lo capturado', async () => {
     montar();
-    const fila = (await screen.findAllByTestId('renglon-conteo'))[2];
-    fireEvent.click(await within(fila).findByRole('button', { name: 'Sin definir' }));
-    expect(await within(fila).findByRole('button', { name: 'Barra' })).toBeInTheDocument();
-    expect(within(fila).queryByPlaceholderText('Buscar…')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+    tecla('2');
+    click('Guardar y seguir ›');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledTimes(1));
+    const [, , body] = back.captureCount.mock.calls[0];
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 1 ? { ...i, countedQty: body.countedQty } : i)) });
+    fireEvent.click(screen.getByRole('button', { name: 'Avanzada' }));
+    const jarabe = (await screen.findAllByTestId('renglon-conteo'))[0];
+    await waitFor(() => expect(jarabe).toHaveTextContent('✓'));
+    fireEvent.click(screen.getByRole('button', { name: 'Sencilla' }));
+    // Al volver, abre en el primer lugar con algo sin contar; el de Jarabe ya dice 1 de 1.
+    expect(within(screen.getByRole('group', { name: 'Lugar' })).getByRole('button', { name: 'Barra · 1/1' })).toBeInTheDocument();
+  });
+
+  // Spec 096: la avanzada es la que compara; enseña lo que el sistema esperaba y, ya contado, la
+  // diferencia con su signo. Lo que el conteo trae sin existencia esperada cuenta contra cero.
+  test('la avanzada muestra lo esperado y, ya contado, la diferencia', async () => {
+    back.countExpected.mockResolvedValue({ items: [{ ingredientId: 1, expected: '1000' }] });
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 1 ? { ...i, countedQty: '750' } : i)) });
+    montar();
+    const filas = await screen.findAllByTestId('renglon-conteo');
+    await waitFor(() => expect(filas[0]).toHaveTextContent('Esperado 1 L'));
+    expect(filas[0]).toHaveTextContent('Diferencia -250 ml');
+    expect(filas[1]).toHaveTextContent('Esperado 0 g');
+    expect(filas[1]).not.toHaveTextContent('Diferencia');
+  });
+
+  // Spec 096: quien solo cuenta entra siempre a la sencilla, no ve «Avanzada» ni pide lo esperado.
+  test('quien solo cuenta entra a la sencilla, sin lo esperado, y elige lugar pero no lo crea', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
+    localStorage.setItem('egb:conteo:vista', 'avanzada');
+    montar();
+    expect((await screen.findAllByTestId('renglon-lugar')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Avanzada' })).toBeNull();
+    expect(screen.queryAllByTestId('renglon-conteo')).toHaveLength(0);
+    expect(back.countExpected).not.toHaveBeenCalled();
+    const lugares = within(screen.getByRole('group', { name: 'Lugar' })).getAllByRole('button');
+    fireEvent.click(lugares.find((b) => /Sin definir/.test(b.textContent ?? '')) ?? lugares[lugares.length - 1]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sin definir' }));
+    expect(await screen.findByRole('button', { name: 'Barra' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Buscar…')).toBeNull();
   });
 });
 
-// Poner un lugar reordena el conteo; en «Uno por uno» la tarjeta sigue en el mismo insumo y no salta
+// Poner un lugar reordena el conteo; en la vista sencilla la tarjeta sigue en el mismo insumo y no salta
 // al que quedó en su posición.
-test('uno por uno sigue en el mismo insumo cuando el lugar lo reordena', async () => {
+test('la vista sencilla sigue en el mismo insumo cuando el lugar lo reordena', async () => {
   quienConfigura();
   montar();
-  fireEvent.click(await screen.findByRole('button', { name: 'Uno por uno' }));
-  expect(screen.getByText('Jarabe de vainilla')).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+  expect(screen.getByRole('heading', { name: 'Jarabe de vainilla' })).toBeInTheDocument();
   const reordered = conteo();
   reordered.items = [reordered.items[1], reordered.items[2], { ...reordered.items[0], place: 'Zótano', placeId: 9 }];
   back.currentCount.mockResolvedValue(reordered);
@@ -457,8 +550,8 @@ test('uno por uno sigue en el mismo insumo cuando el lugar lo reordena', async (
   fireEvent.click(screen.getByRole('button', { name: /Crear «Zótano»/ }));
   await waitFor(() => expect(back.setCountPlace).toHaveBeenCalledWith(1, 9));
   await waitFor(() => expect(back.currentCount.mock.calls.length).toBeGreaterThan(1));
-  expect(await screen.findByText('Jarabe de vainilla')).toBeInTheDocument();
-  expect(screen.queryByText('Azúcar')).toBeNull();
+  expect(await screen.findByRole('heading', { name: 'Jarabe de vainilla' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Azúcar' })).toBeNull();
 });
 
 // SC-005: un conteo a medias sobrevive a recargar y a cambiar de tableta. Lo contado vive en el
@@ -624,11 +717,11 @@ describe('teclado físico (spec 044)', () => {
     press('3');
     expect(suelto()).toHaveValue('3');
     cleanup();
-    // Limón tiene una sola casilla; en «uno por uno» no hay hoja que atrape el Tab por su cuenta.
+    // Limón tiene una sola casilla; en la vista sencilla no hay hoja que atrape el Tab por su cuenta.
     const c = conteo();
     c.items = [c.items[2]];
     back.currentCount.mockResolvedValue(c);
-    localStorage.setItem('egb:conteo:vista', 'uno');
+    localStorage.setItem('egb:conteo:vista', 'sencilla');
     montar();
     await screen.findByRole('button', { name: /Guardar y seguir/ });
     const tab2 = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
@@ -892,10 +985,10 @@ describe('pesar con empaque (spec 058)', () => {
     await waitFor(() => expect(back.currentCount.mock.calls.length).toBeGreaterThan(calls));
   });
 
-  test('en «Uno por uno» el renglón abre la hoja completa del artículo', async () => {
+  test('en la vista sencilla el renglón abre la hoja completa del artículo', async () => {
     back.currentCount.mockResolvedValue(jarabe());
     montar();
-    fireEvent.click(await screen.findByRole('button', { name: 'Uno por uno' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     click(/Pesar con empaque/);
     const sheet = await screen.findByRole('dialog');
@@ -926,14 +1019,14 @@ describe('pesar con empaque (spec 058)', () => {
     }
   });
 
-  test('en «Uno por uno», la hoja de la pesada abre con la báscula a la vista', async () => {
+  test('en la vista sencilla, la hoja de la pesada abre con la báscula a la vista', async () => {
     const scroll = vi.fn();
     const orig = Element.prototype.scrollIntoView;
     Element.prototype.scrollIntoView = scroll;
     try {
       back.currentCount.mockResolvedValue(jarabe());
       montar();
-      fireEvent.click(await screen.findByRole('button', { name: 'Uno por uno' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
       click(/Pesar con empaque/);
       const sheet = await screen.findByRole('dialog');
       const bascula = within(sheet).getByLabelText('Peso en la báscula de Jarabe de vainilla');
@@ -1065,11 +1158,13 @@ describe('productos con existencia propia (spec 069)', () => {
     expect(back.uncaptureCount).not.toHaveBeenCalled();
   });
 
-  test('uno por uno los recorre después de los artículos', async () => {
+  test('en la vista sencilla los productos van en su propio lugar, al final', async () => {
     montar();
-    fireEvent.click(await screen.findByRole('button', { name: 'Uno por uno' }));
-    for (let i = 0; i < 3; i++) click('Saltar (no contar hoy)');
-    expect(screen.getByText('Agua mineral 355 ml')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Sencilla' }));
+    const lugares = within(screen.getByRole('group', { name: 'Lugar' })).getAllByRole('button').map((b) => b.textContent);
+    expect(lugares.slice(-2)).toEqual(['Bebidas · del menú · 0/2', 'Postres · del menú · 1/1']);
+    fireEvent.click(screen.getByRole('button', { name: 'Bebidas · del menú · 0/2' }));
+    expect(screen.getAllByText('Agua mineral 355 ml').length).toBeGreaterThan(0);
     expect(screen.getByText('Producto del menú · en piezas')).toBeInTheDocument();
   });
 
@@ -1169,6 +1264,21 @@ describe('conteo por almacén (spec 094)', () => {
     expect(screen.queryByText('Sin lugar en este almacén')).toBeNull();
     fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: 'limón' } });
     expect(await screen.findByText('Limón')).toBeInTheDocument();
+  });
+  // Revisión de código de la 096: la sencilla no tiene buscador, y quien solo cuenta no podía contar
+  // nada en el primer conteo de una Bodega nueva. Lo que no es del almacén va en un lugar al final.
+  test('quien solo cuenta, en una Bodega nueva, cuenta lo que todavía no es de ella', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero', permissions: ['inventory.count'] } as never });
+    back.warehouses.mockResolvedValue(dos);
+    back.currentCount.mockResolvedValue({ ...conteo(), warehouseId: 2, warehouseName: 'Bodega', items: [
+      { ingredientId: 3, name: 'Limón', place: null, placeId: null, baseUnitCode: 'pieza', presentations: [], countedQty: null, inWarehouse: false },
+    ] });
+    montar('/almacen?almacen=2');
+    expect(await screen.findByRole('heading', { name: 'Limón' })).toBeInTheDocument();
+    expect(screen.getByText(/De otro almacén/)).toBeInTheDocument();
+    tecla('6');
+    click('Guardar y seguir ›');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3, { countedQty: '6', confirmable: true }));
   });
   // Recargar con un conteo abierto en la Bodega volvía al de venta y decía «No hay un conteo abierto».
   test('el almacén elegido viaja en la dirección y sobrevive a recargar', async () => {

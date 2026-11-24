@@ -6,7 +6,7 @@ import { Provider } from '../../components/ui/provider';
 import { InventorySettingsSection } from './InventorySettingsSection';
 
 const pos = vi.hoisted(() => ({ businessSettings: vi.fn() }));
-const back = vi.hoisted(() => ({ updateInventorySettings: vi.fn() }));
+const back = vi.hoisted(() => ({ updateInventorySettings: vi.fn(), setExpectedWasteDeducts: vi.fn() }));
 vi.mock('../../api/pos', () => ({ posApi: pos }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 
@@ -43,5 +43,33 @@ describe('Almacén en Configuración del negocio (spec 038)', () => {
     montar();
     await screen.findByLabelText('Palabra del almacén');
     expect(document.querySelector('select')).toBeNull();
+  });
+
+  // Spec 096, subida 2: la opción nace apagada y encenderla manda true; explica qué cambia.
+  test('«La merma esperada también descuenta del almacén» se enciende con un toque', async () => {
+    back.setExpectedWasteDeducts.mockResolvedValue({ deducts: true });
+    montar();
+    const sw = await screen.findByRole('checkbox', { name: 'La merma esperada también descuenta del almacén' });
+    expect(sw).not.toBeChecked();
+    fireEvent.click(sw);
+    await waitFor(() => expect(back.setExpectedWasteDeducts).toHaveBeenCalledWith(true));
+    expect(screen.getByText(/Las ventas de antes no cambian/)).toBeInTheDocument();
+  });
+
+  // Revisión de código: esperar el refetch dejaba el interruptor regresar al valor viejo.
+  test('encendido se queda encendido sin volver a leer los ajustes, y un error se dice ahí', async () => {
+    back.setExpectedWasteDeducts.mockResolvedValueOnce({ deducts: true }).mockRejectedValueOnce(new Error('red'));
+    montar();
+    const sw = await screen.findByRole('checkbox', { name: 'La merma esperada también descuenta del almacén' });
+    // Lo que se ve: el estado del control (en jsdom el input oculto no siempre se sincroniza).
+    const estado = () => sw.closest('label')?.getAttribute('data-state');
+    const lecturas = pos.businessSettings.mock.calls.length;
+    fireEvent.click(sw);
+    await waitFor(() => expect(sw).not.toBeDisabled());
+    expect(estado()).toBe('checked');
+    expect(pos.businessSettings.mock.calls.length).toBe(lecturas);
+    fireEvent.click(sw);
+    expect(await screen.findByText('No se pudo guardar')).toBeInTheDocument();
+    await waitFor(() => expect(estado()).toBe('checked'));
   });
 });

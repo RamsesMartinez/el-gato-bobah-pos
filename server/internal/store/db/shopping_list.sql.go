@@ -95,7 +95,7 @@ select b.item_type, b.id, b.name, b.unit_code, coalesce(b.coverage_days, 0)::int
   left join lateral (
     select -sum(m.quantity) as used, count(distinct (m.created_at at time zone 'UTC')::date) as days
       from stock_movements m
-     where m.warehouse_id = $1::bigint and m.movement_type in ('venta', 'cancelacion')
+     where m.warehouse_id = $1::bigint and m.movement_type in ('venta', 'cancelacion', 'merma_esperada')
        and m.created_at >= $2
        and ((b.item_type = 'ingrediente' and m.ingredient_id = b.id) or (b.item_type = 'producto' and m.product_id = b.id))
   ) u on true

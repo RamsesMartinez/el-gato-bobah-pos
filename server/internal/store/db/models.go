@@ -714,13 +714,14 @@ func (ns NullStockItemType) Value() (driver.Value, error) {
 type StockMovementType string
 
 const (
-	StockMovementTypeVenta       StockMovementType = "venta"
-	StockMovementTypeCompra      StockMovementType = "compra"
-	StockMovementTypeAjuste      StockMovementType = "ajuste"
-	StockMovementTypeMerma       StockMovementType = "merma"
-	StockMovementTypeProduccion  StockMovementType = "produccion"
-	StockMovementTypeCancelacion StockMovementType = "cancelacion"
-	StockMovementTypeTraspaso    StockMovementType = "traspaso"
+	StockMovementTypeVenta         StockMovementType = "venta"
+	StockMovementTypeCompra        StockMovementType = "compra"
+	StockMovementTypeAjuste        StockMovementType = "ajuste"
+	StockMovementTypeMerma         StockMovementType = "merma"
+	StockMovementTypeProduccion    StockMovementType = "produccion"
+	StockMovementTypeCancelacion   StockMovementType = "cancelacion"
+	StockMovementTypeTraspaso      StockMovementType = "traspaso"
+	StockMovementTypeMermaEsperada StockMovementType = "merma_esperada"
 )
 
 func (e *StockMovementType) Scan(src interface{}) error {
@@ -975,6 +976,7 @@ type BusinessSetting struct {
 	CashDifferenceTolerance   decimal.Decimal    `json:"cash_difference_tolerance"`
 	NotificationsMorningAt    pgtype.Time        `json:"notifications_morning_at"`
 	ExpectedWastePct          *decimal.Decimal   `json:"expected_waste_pct"`
+	ExpectedWasteDeducts      bool               `json:"expected_waste_deducts"`
 }
 
 type CandidatasDelAviso struct {
@@ -1252,7 +1254,6 @@ type Ingredient struct {
 	IsPrep                 bool               `json:"is_prep"`
 	RecipeID               *int64             `json:"recipe_id"`
 	YieldQty               *decimal.Decimal   `json:"yield_qty"`
-	WastePct               decimal.Decimal    `json:"waste_pct"`
 	CurrentCost            decimal.Decimal    `json:"current_cost"`
 	CostSource             CostSource         `json:"cost_source"`
 	SupplierID             *int64             `json:"supplier_id"`

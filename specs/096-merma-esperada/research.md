@@ -156,6 +156,34 @@ medición señale, en este orden de sospecha: (1) una petición por artículo o 
 completa pintada de golpe sin paginar ni virtualizar, (3) consultas sin índice que empiece por
 `company_id, warehouse_id`. Meta: SC-007. No se fija la técnica antes de medir.
 
+**Medición de hoy (T052, 2026-11-23)**: build de producción servido en local (`vite preview`), base
+restaurada del 23-nov (gatobobah), 1024×600, CPU 4× más lenta, mediana de tres cargas
+([medir-carga.mjs](../../web/maquetas-096/medir-carga.mjs) no se versiona: arnés local).
+
+| Pantalla | Primera pantalla | Lista completa | Renglones |
+| --- | --- | --- | --- |
+| Existencias | 0.74 s | 1.20 s | 438 |
+| Conteo | 0.84 s | 1.35 s | 438 |
+
+Hoy ya cumple la meta de SC-007 en local. Lo que no se mide aquí es la red del local hacia la VM: la
+meta se vuelve a medir con la pantalla nueva (T068), contra estas mismas cifras, y la vista sencilla no
+puede quedar más lenta que la de hoy.
+
+**Medición con las pantallas nuevas (T068, 2026-11-23)**: mismo arnés, mismo build servido en local y
+misma base, dos corridas por vista (la mediana de tres cargas en cada una). El conteo se midió sin
+conteo abierto, igual que la cifra de hoy.
+
+| Pantalla | Primera pantalla | Lista completa | Contra hoy |
+| --- | --- | --- | --- |
+| Existencias, sencilla (tablero) | 0.67 s | 1.15 s | más rápida |
+| Existencias, avanzada (tabla) | 0.77–0.82 s | 1.24–1.28 s | +0.03 a +0.08 s, dentro del ruido entre corridas |
+| Conteo | 0.78–0.91 s | 1.29–1.41 s | igual, dentro del ruido |
+
+Las dos quedan bajo SC-007 (1 s y 2 s). No hubo nada que atacar: ninguna pantalla pide algo por
+renglón (la avanzada del conteo agrega **una** petición, lo esperado, solo para quien configura) y las
+consultas nuevas filtran por el almacén del conteo con los índices de la 094. Lo que sigue sin medir es
+la red del local hacia la VM.
+
 ## R14. Revisión de arquitectura (db-architect y tablet-ui-reviewer, 2026-11-23), ya incorporada
 
 **Base de datos** — veredicto: cambios requeridos, 3 HIGH, ninguno bloquea la 0126 aditiva.
@@ -255,3 +283,32 @@ Después: `make ci-local` verde y CI del PR verde. La prueba táctil posterior e
 
 **`/speckit-analyze`, última corrida (cuarta, 2026-11-23)**: 27 de 27 requisitos con tarea, CRITICAL 0,
 HIGH 0, MEDIUM 0, LOW 1 (redacción de FR-010).
+
+## R16. Revisión de código de la subida 2 (2026-11-23), ya incorporada
+
+| Hallazgo | Decisión |
+| --- | --- |
+| Cancelar un renglón o un pedido reponía la merma esperada como `cancelacion`: el reporte contra ventas leía vendido negativo y la merma real un consumo negativo (el total sí cuadraba) | La reposición conserva el tipo `merma_esperada`; el pedido completo agrupa también por esa clase. Test que lo nombra (`TestCancellingALineGivesBackTheExpectedWaste`) |
+| Quien solo cuenta leía lo esperado en la vista previa del cierre (capturar absurdo, leer `system`, recapturar para dejar el faltante en 0). Venía de antes de la 096, pero rompe el conteo a ciegas que promete FR-024/025 | Sin `inventory.configure`, la vista previa y el cierre llegan sin `system` ni `delta` (`blind: true`); sigue pudiendo cerrar. También por MCP, que usa la misma ruta. Test por HTTP con un rol al que la empresa solo le dio contar |
+| El aviso de cifra rara sirve de oráculo para sondear lo esperado | **No se cambia**: es el riesgo que el dueño aceptó en la spec 042 (2026-10-19) a cambio de que cada aviso quede en la bitácora (`AuditCountConfirmAsked`) |
+| Un conteo que no existe respondía 200 vacío en `/expected` y `/vs-sales` («primer conteo») | 404; `/vs-sales` de un conteo abierto, 409 |
+| `CountVsSalesLines` recorre el historial de cada insumo (`sm_ingredient`) | Medido en la base restaurada: 295 insumos con movimientos, 23 en promedio y 300 como máximo por insumo; cuesta milisegundos. Techo: con años de historial, un índice `(company_id, warehouse_id, ingredient_id, id)` creado `concurrently`. No se agrega hoy |
+| Durante el traslape de la subida, la API anterior no repone `merma_esperada` al cancelar | La opción nace apagada y solo la enciende la versión nueva: el riesgo es de segundos y solo si alguien la enciende y la versión vieja cancela en esa ventana. Aceptado (constitución IV: se declara aquí) |
+| Front: la sencilla sin buscador dejaba a quien solo cuenta sin poder contar en una Bodega nueva; «Saltar» al final de un lugar no se movía; volver a un almacén ya visto podía quedar vacío; `?q=` abría el primero que empezaba igual; el interruptor parpadeaba; el reporte con error se quedaba esperando | Lo que no es del almacén va en un lugar «De otro almacén» al final; el recorrido da la vuelta en el lugar y pasa al siguiente, y avisa «Ya se contó todo»; `key` por conteo; nombre exacto primero; la caché se escribe con lo guardado; mensajes de error. Un test por cada uno |
+| Pantalla: el nombre de lo contado se cortaba en la lista angosta; el tablero tenía su alto en píxeles fijos | La cantidad va debajo del nombre; el alto lo da la pestaña |
+
+## R17. Prueba con alguien nuevo de una fonda, subida 2 (T069, 2026-11-23)
+
+Un agente en el papel de cocinera y cajera de una fonda, sin ver el código, con toques reales a
+1024×600 contra la API local y la base restaurada. Contó 30 artículos en la vista sencilla **sin
+ayuda** (SC-006): 52.5 s y 116 toques medidos con Playwright, de 0.7 a 1.9 s por artículo (tiempo
+de máquina; una persona buscando en el anaquel tardaría más, estimado). Cambiar a la avanzada y
+regresar conservó los 30 (SC-008). Descartó los conteos que abrió; no cerró ninguno.
+
+| Lo que encontró | Qué se hizo |
+| --- | --- |
+| «No hay» metía su pregunta en la fila de botones y sacaba el teclado de la pantalla (1024 y 1280) | La pregunta va en una hoja inferior, como el aviso de cifra rara |
+| «Cuánto hay» salía cortado a 1024×600 | Menos relleno en la tarjeta debajo de 1280 px; medido, se ve completo |
+| Ir a la avanzada y regresar la ponía otra vez en el primer lugar | La sencilla regresa al artículo donde iba |
+| El aviso de cifra rara saltó 4 veces en 30 con cifras normales (la regla de FR-024: menos de la mitad o más del doble del conteo anterior) y no saltó con «2 ml» en un artículo que se cuenta en litros con existencia 0 | **Sin cambio**: la regla es la que pide FR-024 y la del 0 es la de la spec 042. Se le avisa al dueño |
+| El nombre largo se corta a un renglón a 1024; los lugares se llaman como el negocio los configuró («Sin definir», «Almacén principal») | Se deja: el nombre completo está en la lista y al tocarlo; los nombres de lugar los pone cada empresa |

@@ -1632,28 +1632,30 @@ func (q *Queries) ListLineComponents(ctx context.Context, orderLineID int64) ([]
 
 const listLineSaleMovements = `-- name: ListLineSaleMovements :many
 select item_type, ingredient_id, product_id, quantity, unit_cost, order_id,
-       modifier_option_id, component_of_product_id, warehouse_id
+       modifier_option_id, component_of_product_id, warehouse_id, movement_type
 from stock_movements
-where order_line_id = $1 and movement_type = 'venta'
+where order_line_id = $1 and movement_type in ('venta', 'merma_esperada')
 order by id
 `
 
 type ListLineSaleMovementsRow struct {
-	ItemType             StockItemType    `json:"item_type"`
-	IngredientID         *int64           `json:"ingredient_id"`
-	ProductID            *int64           `json:"product_id"`
-	Quantity             decimal.Decimal  `json:"quantity"`
-	UnitCost             *decimal.Decimal `json:"unit_cost"`
-	OrderID              *int64           `json:"order_id"`
-	ModifierOptionID     *int64           `json:"modifier_option_id"`
-	ComponentOfProductID *int64           `json:"component_of_product_id"`
-	WarehouseID          int64            `json:"warehouse_id"`
+	ItemType             StockItemType     `json:"item_type"`
+	IngredientID         *int64            `json:"ingredient_id"`
+	ProductID            *int64            `json:"product_id"`
+	Quantity             decimal.Decimal   `json:"quantity"`
+	UnitCost             *decimal.Decimal  `json:"unit_cost"`
+	OrderID              *int64            `json:"order_id"`
+	ModifierOptionID     *int64            `json:"modifier_option_id"`
+	ComponentOfProductID *int64            `json:"component_of_product_id"`
+	WarehouseID          int64             `json:"warehouse_id"`
+	MovementType         StockMovementType `json:"movement_type"`
 }
 
 // Los movimientos de venta de UN renglón, para partirlos en pares al partir el renglón. Incluye los
 // pares de particiones anteriores: cada uno se parte en proporción y la suma sigue cuadrando. El
 // extra o el paquete de origen viaja con el par: sin él, la perla extra quedaría contada como el
 // producto mismo y el reporte por extra y por paquete dejaría de cuadrar.
+// La merma esperada (spec 096) se parte con su renglón y conserva su tipo.
 func (q *Queries) ListLineSaleMovements(ctx context.Context, orderLineID *int64) ([]ListLineSaleMovementsRow, error) {
 	rows, err := q.db.Query(ctx, listLineSaleMovements, orderLineID)
 	if err != nil {
@@ -1673,6 +1675,7 @@ func (q *Queries) ListLineSaleMovements(ctx context.Context, orderLineID *int64)
 			&i.ModifierOptionID,
 			&i.ComponentOfProductID,
 			&i.WarehouseID,
+			&i.MovementType,
 		); err != nil {
 			return nil, err
 		}
@@ -2715,10 +2718,12 @@ func (q *Queries) RegistrarLoteDeRenglones(ctx context.Context, arg RegistrarLot
 const restockCancelledLine = `-- name: RestockCancelledLine :exec
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
                              modifier_option_id, component_of_product_id, warehouse_id)
-select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, sm.order_line_id,
+select sm.item_type, sm.ingredient_id, sm.product_id,
+       (case when sm.movement_type = 'merma_esperada' then 'merma_esperada' else 'cancelacion' end)::stock_movement_type,
+       -sm.quantity, sm.order_id, sm.order_line_id,
        $1, 'cancelación de renglón', sm.modifier_option_id, sm.component_of_product_id, sm.warehouse_id
 from stock_movements sm
-where sm.order_line_id = $2 and sm.movement_type = 'venta'
+where sm.order_line_id = $2 and sm.movement_type in ('venta', 'merma_esperada')
 `
 
 type RestockCancelledLineParams struct {
@@ -2736,6 +2741,8 @@ type RestockCancelledLineParams struct {
 // existencias.
 //
 // Al almacén del movimiento que revierte (spec 094, FR-011).
+// La merma esperada que descontó la venta (spec 096) vuelve con ella, y como merma_esperada: sin
+// esto, quitar el renglón dejaba el almacén descontado de más para siempre.
 func (q *Queries) RestockCancelledLine(ctx context.Context, arg RestockCancelledLineParams) error {
 	_, err := q.db.Exec(ctx, restockCancelledLine, arg.ActorID, arg.LineID)
 	return err
@@ -2744,13 +2751,16 @@ func (q *Queries) RestockCancelledLine(ctx context.Context, arg RestockCancelled
 const restockCancelledOrder = `-- name: RestockCancelledOrder :exec
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
                              modifier_option_id, component_of_product_id, warehouse_id)
-select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, null,
+select sm.item_type, sm.ingredient_id, sm.product_id,
+       (case when sm.movement_type = 'merma_esperada' then 'merma_esperada' else 'cancelacion' end)::stock_movement_type,
+       -sum(sm.quantity), sm.order_id, null,
        $1, 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id, sm.warehouse_id
 from stock_movements sm
-where sm.order_id = $2 and sm.movement_type in ('venta', 'cancelacion')
+where sm.order_id = $2 and sm.movement_type in ('venta', 'cancelacion', 'merma_esperada')
   and sm.order_line_id is null
 group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id,
-         sm.modifier_option_id, sm.component_of_product_id, sm.warehouse_id
+         sm.modifier_option_id, sm.component_of_product_id, sm.warehouse_id,
+         (sm.movement_type = 'merma_esperada')
 having sum(sm.quantity) <> 0
 `
 
@@ -2770,6 +2780,9 @@ type RestockCancelledOrderParams struct {
 //
 // Repone al almacén del que salió (spec 094, FR-011), no al de venta de hoy: si cambió cuál es, lo
 // vendido antes volvería a otro lugar y el primero quedaría descontado para siempre.
+//
+// La merma esperada vuelve como merma_esperada (spec 096): como cancelación, el reporte contra ventas
+// leería venta negativa y la merma real un consumo negativo. Por eso se agrupa también por su clase.
 func (q *Queries) RestockCancelledOrder(ctx context.Context, arg RestockCancelledOrderParams) error {
 	_, err := q.db.Exec(ctx, restockCancelledOrder, arg.ActorID, arg.Oid)
 	return err
