@@ -602,7 +602,7 @@ export interface EditExpenseBody {
 }
 export interface DeliveryBody {
   on?: string;
-  lines: { itemId: number; qty: string; on?: string; shortfall?: 'pending' | 'adjust'; extraAmount?: string }[];
+  lines: { itemId: number; qty: string; on?: string; shortfall?: 'pending' | 'adjust'; extraAmount?: string; expiresOn?: string }[];
   decisions?: Record<string, string>;
   fingerprint?: string;
 }
@@ -936,6 +936,24 @@ export interface CountItem {
   // capturado aquí; en el de venta, todo). Opcionales: la API anterior no los trae.
   placeElsewhere?: boolean;
   inWarehouse?: boolean;
+  // Spec 098: el desglose de fechas de lo contado y las fechas que el sistema ya conoce, sin
+  // cantidad. Opcionales: una API anterior no los trae.
+  lots?: CountLot[];
+  knownDates?: string[];
+}
+export interface CountLot { expiresOn: string; qty: string }
+// Un lote en Caducidades (spec 098). dailyUse nulo = no se ha vendido en 30 días; leftoverAtExpiry
+// nulo = se termina a tiempo.
+export interface ExpiryLot {
+  ingredientId: number; name: string; unitCode: string; warehouseId: number; warehouseName: string;
+  expiresOn: string; qty: string; daysLeft: number; expired: boolean;
+  dailyUse: string | null; noRecentUse: boolean; finishesInDays: number | null; leftoverAtExpiry: string | null;
+  pendingWaste: string;
+}
+export interface ExpiriesView {
+  today: string;
+  counts: { expired: number; within7: number; within30: number; within60: number };
+  lots: ExpiryLot[];
 }
 // CountWeighed es cómo se capturó una pesada con empaque (#204). closedPacks falta o es null si no se
 // sabe cómo se repartió lo cerrado entre empaques.
@@ -954,6 +972,8 @@ export interface CountCaptureBody {
   // seenDensity son los números con que la pantalla hizo la cuenta.
   gross?: { weight: string; weightUnitId: number; presentationId: number; containers: number; seenTareG: string; seenDensity?: string | null;
     closedPacks?: { presentationId: number; qty: number }[] };
+  // Spec 098: ausente no cambia el desglose; [] lo borra.
+  lots?: CountLot[];
 }
 // Un producto con existencia propia en el conteo (spec 069): se cuenta en piezas enteras. Sin lo que
 // el sistema tiene: el conteo es a ciegas.
@@ -1400,6 +1420,11 @@ export const backofficeApi = {
   // totalValue no suma los negativos (spec 094); sin él, la pantalla no pinta el pie.
   stockLevels: (warehouseId?: number | 'all') =>
     api.get<{ items: StockLevel[]; totalValue?: string; valueByWarehouse?: WarehouseValue[] }>(`/stock/levels${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
+  // Caducidades (spec 098): sin almacén, el de venta; 'all', todos los de la sucursal.
+  expiries: (warehouseId?: number | 'all') =>
+    api.get<ExpiriesView>(`/stock/expiries${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
+  expirySummary: (warehouseId?: number | 'all') =>
+    api.get<{ expired: number; within7: number }>(`/stock/expiries/summary${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
   stockMovements: (warehouseId?: number | 'all') =>
     api.get<{ items: StockMovement[] }>(`/stock/movements${warehouseId === undefined ? '' : `?warehouseId=${warehouseId}`}`),
   inventoryHealth: (q: HealthQuery = {}) => api.get<InventoryHealth>(`/stock/health?${qsReporte(q as ReportQuery)}`),

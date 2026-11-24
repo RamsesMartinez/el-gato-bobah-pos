@@ -92,7 +92,7 @@ func TestReportingOutLeavesZeroAndOpensTheNotification(t *testing.T) {
 			t.Fatalf("el aviso que abrió el trigger quedó sin autor: %v (%v)", opener, err)
 		}
 		nsvc, _, nctx := asNotifications(t, defaultCompanyID)
-		list, err := nsvc.List(nctx, cajero, []domain.Permission{domain.PermInventoryReportOut}, true, 50)
+		list, err := nsvc.List(nctx, cajero, []domain.Permission{domain.PermInventoryReportOut}, true, true, 50)
 		if err != nil {
 			t.Fatal(err)
 		}

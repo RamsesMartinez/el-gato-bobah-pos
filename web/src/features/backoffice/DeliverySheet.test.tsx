@@ -17,6 +17,12 @@ vi.mock('../../components/DatePickerButton', () => ({
   ),
 }));
 
+vi.mock('../../components/ExpiryPickerButton', () => ({
+  ExpiryPickerButton: ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
+    <button type="button" aria-label={label} onClick={() => onChange('2027-03-15')}>{value || 'Caduca…'}</button>
+  ),
+}));
+
 const item = (over: Partial<ExpenseItem>): ExpenseItem => ({
   id: 1, itemType: 'ingrediente', ingredientId: 7, productId: null, itemName: 'Vasos 16 oz', description: 'Vasos',
   quantity: '5', unitCode: 'pieza', qtyReceived: null, unitCost: '10', amount: '50', packQtyInBase: null, applied: '0',
@@ -98,13 +104,29 @@ describe('DeliverySheet', () => {
     expect(screen.getByRole('button', { name: 'Ver efectos' })).toBeTruthy();
   });
 
-  test('«Fechas por renglón» manda la fecha de cada renglón', async () => {
+  test('«Día de llegada por renglón» manda la fecha de cada renglón', async () => {
     setup([item({})]);
-    fireEvent.click(screen.getByRole('button', { name: 'Fechas por renglón' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Día de llegada por renglón' }));
     fireEvent.click(screen.getByRole('button', { name: 'Llegó el día de Vasos 16 oz' }));
     fireEvent.click(screen.getByRole('button', { name: 'Ver efectos' }));
     await waitFor(() => expect(back.deliverExpense).toHaveBeenCalled());
     expect(back.deliverExpense.mock.calls[0][1].lines).toEqual([{ itemId: 1, qty: '5', on: '2026-10-30' }]);
+  });
+
+  // Spec 098: la caducidad va en el renglón de un artículo que llegó; viaja en el cuerpo.
+  test('«Caduca…» manda la fecha del lote y solo aparece en un artículo que llegó', async () => {
+    setup([item({}), item({ id: 2, itemName: 'Refresco', itemType: 'producto', ingredientId: null, productId: 9, quantity: '1' })]);
+    expect(screen.queryByRole('button', { name: 'Caduca Refresco' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Caduca Vasos 16 oz' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver efectos' }));
+    await waitFor(() => expect(back.deliverExpense).toHaveBeenCalled());
+    expect(back.deliverExpense.mock.calls[0][1].lines[0]).toEqual({ itemId: 1, qty: '5', expiresOn: '2027-03-15' });
+  });
+
+  test('un renglón que no llegó no pide caducidad', () => {
+    setup([item({})]);
+    fireEvent.click(screen.getByRole('button', { name: 'No llegó' }));
+    expect(screen.queryByRole('button', { name: 'Caduca Vasos 16 oz' })).toBeNull();
   });
 
   test('lo que ya llegó completo no se ofrece', () => {
