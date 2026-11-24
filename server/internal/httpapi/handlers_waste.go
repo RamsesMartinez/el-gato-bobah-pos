@@ -66,6 +66,7 @@ func (h *Handlers) RecordWaste(w http.ResponseWriter, r *http.Request) {
 		PresentationID *int64          `json:"presentationId"`
 		Note           *string         `json:"note"`
 		WarehouseID    *int64          `json:"warehouseId"`
+		LotExpiresOn   *string         `json:"lotExpiresOn"`
 	}
 	if err := DecodeStrict(r, &body); err != nil {
 		Error(w, err)
@@ -80,6 +81,7 @@ func (h *Handlers) RecordWaste(w http.ResponseWriter, r *http.Request) {
 	res, err := h.backoffice.RecordWaste(r.Context(), app.RecordWasteCmd{
 		ReasonID: body.ReasonID, IngredientID: body.IngredientID, ProductID: body.ProductID, Qty: body.Qty,
 		UnitID: body.UnitID, PresentationID: body.PresentationID, Note: body.Note, Actor: u.ID, Warehouse: sel,
+		LotExpiresOn: body.LotExpiresOn,
 	})
 	if err != nil {
 		Error(w, err)

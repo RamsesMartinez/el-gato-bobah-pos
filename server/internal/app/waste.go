@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -37,6 +38,9 @@ type RecordWasteCmd struct {
 	Actor          int64
 	// Warehouse: de dónde se echó a perder (spec 094); sin él, el de venta.
 	Warehouse domain.WarehouseSel
+	// LotExpiresOn: la merma sale de ese lote (Caducidades, spec 098), no del orden de consumo. El
+	// movimiento toma la fecha del registro, también al aprobar y al deshacer.
+	LotExpiresOn *string
 }
 
 // WasteResult dice cómo quedó: «applied» si ya restó, «pending» si espera aprobación.
@@ -76,6 +80,10 @@ func (s *BackofficeService) RecordWaste(ctx context.Context, cmd RecordWasteCmd)
 		if err != nil {
 			return err
 		}
+		lotDate, err := wasteLotDate(ctx, q, cmd)
+		if err != nil {
+			return err
+		}
 		plan, err := planWaste(ctx, q, cmd, entered)
 		if err != nil {
 			return err
@@ -101,7 +109,7 @@ func (s *BackofficeService) RecordWaste(ctx context.Context, cmd RecordWasteCmd)
 			WarehouseID: wh.ID, ReasonID: reason.ID, ItemType: itemType, IngredientID: cmd.IngredientID,
 			ProductID: cmd.ProductID, Quantity: plan.quantity, EnteredQty: entered, PresentationID: cmd.PresentationID,
 			UnitCost: plan.unitCost, TotalCost: plan.total, IsStaffMeal: reason.IsStaffMeal, Note: note,
-			Status: string(status), RecordedBy: cmd.Actor,
+			Status: string(status), RecordedBy: cmd.Actor, LotExpiresOn: lotDate,
 		})
 		if err != nil {
 			return err
@@ -117,6 +125,25 @@ func (s *BackofficeService) RecordWaste(ctx context.Context, cmd RecordWasteCmd)
 				"warehouseId": wh.ID, "warehouseName": wh.Name})
 	})
 	return out, err
+}
+
+// wasteLotDate valida el lote de una merma: solo de un artículo y con una fecha creíble.
+func wasteLotDate(ctx context.Context, q *db.Queries, cmd RecordWasteCmd) (pgtype.Date, error) {
+	if cmd.LotExpiresOn == nil {
+		return pgtype.Date{}, nil
+	}
+	if cmd.IngredientID == nil {
+		return pgtype.Date{}, fmt.Errorf("%w: un lote es de un artículo del almacén", domain.ErrValidation)
+	}
+	today, err := q.BusinessToday(ctx)
+	if err != nil {
+		return pgtype.Date{}, err
+	}
+	d, err := domain.ParseExpiry(*cmd.LotExpiresOn, today.Time)
+	if err != nil {
+		return pgtype.Date{}, err
+	}
+	return pgtype.Date{Time: d, Valid: true}, nil
 }
 
 // wastePlan es lo que una merma restaría: los movimientos y su costo.

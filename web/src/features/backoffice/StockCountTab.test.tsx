@@ -32,6 +32,12 @@ vi.mock('../../api/uso', async (orig) => ({ ...(await orig<object>()), ...uso })
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
 const limits = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn() }));
 vi.mock('../../api/countLimits', async (orig) => ({ ...(await orig<object>()), countLimitsApi: limits }));
+vi.mock('../../components/ExpiryPickerButton', () => ({
+  ExpiryPickerButton: ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
+    // Tocar la fecha del 1 de diciembre la cambia al 10 (la que ya está): así se prueba juntar dos.
+    <button type="button" aria-label={label} onClick={() => onChange(value === '2026-12-01' ? '2026-12-10' : value || '2026-12-10')}>{value || label}</button>
+  ),
+}));
 vi.mock('../../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) } }));
 
 // Doble del Picker sin hoja animada (ver ExpenseDialog.test.tsx).
@@ -109,6 +115,121 @@ function montar(url = '/almacen') {
 }
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
 const tecla = (k: string) => fireEvent.click(screen.getByRole('button', { name: k }));
+
+// Spec 098: las fechas de lo contado. Sin tocarlas no se mandan; con fechas que pasan lo contado no se
+// guarda; las que el sistema ya conocía llegan sin cantidad.
+describe('fechas de caducidad al contar (spec 098)', () => {
+  test('con fechas, el desglose viaja con lo contado y lo sin fecha se calcula solo', async () => {
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    await screen.findByLabelText('Suelto de Limón');
+    tecla('9');
+    click('Agregar fecha');
+    tecla('6');
+    expect(screen.getByText('Sin fecha: 3 piezas')).toBeInTheDocument();
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3,
+      { countedQty: '9', confirmable: true, lots: [{ expiresOn: '2026-12-10', qty: '6' }] }));
+  });
+
+  test('las fechas que ya conocía llegan sin cantidad y, sin tocarlas, no se mandan', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3 ? { ...i, knownDates: ['2026-12-01'] } : i)) });
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    expect(await screen.findByRole('button', { name: 'Cuánto caduca el 2026-12-01' })).toHaveTextContent('¿cuánto?');
+    tecla('4');
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3, { countedQty: '4', confirmable: true }));
+  });
+
+  // Revisión de tableta: cambiar una fecha a otra que ya estaba dejaba dos renglones con la misma
+  // fecha y el servidor rechazaba el desglose.
+  test('cambiar una fecha a otra que ya está junta sus cantidades', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3 ? { ...i, knownDates: ['2026-12-01', '2026-12-10'] } : i)) });
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    await screen.findByLabelText('Suelto de Limón');
+    tecla('9');
+    click('Cuánto caduca el 2026-12-01'); tecla('2');
+    click('Cuánto caduca el 2026-12-10'); tecla('3');
+    click('Fecha 1');
+    expect(screen.queryByRole('button', { name: 'Cuánto caduca el 2026-12-01' })).toBeNull();
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3,
+      { countedQty: '9', confirmable: true, lots: [{ expiresOn: '2026-12-10', qty: '5' }] }));
+  });
+
+  // Revisión de lógica del front: el caché no guardaba el desglose; al reabrir salían fechas que el
+  // servidor ya no tenía, y una fecha nueva borraba las guardadas.
+  test('al reabrir salen las fechas que se guardaron', async () => {
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    await screen.findByLabelText('Suelto de Limón');
+    tecla('9');
+    click('Agregar fecha'); tecla('6');
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalled());
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Cambiar' }));
+    expect(await screen.findByRole('button', { name: 'Cuánto caduca el 2026-12-10' })).toHaveTextContent('6');
+  });
+
+  test('«Sí, no hay» con fechas guardadas las borra en vez de chocar', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3
+      ? { ...i, countedQty: '9', lots: [{ expiresOn: '2026-12-10', qty: '6' }] } : i)) });
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Cambiar' }));
+    click('No hay'); click('Sí, no hay');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 3, { countedQty: '0', confirmable: true, lots: [] }));
+  });
+
+  test('recontar menos que las fechas guardadas apaga «Guardar» sin tocar las fechas', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3
+      ? { ...i, countedQty: '9', lots: [{ expiresOn: '2026-12-10', qty: '6' }] } : i)) });
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Cambiar' }));
+    const suelto = await screen.findByLabelText('Suelto de Limón');
+    fireEvent.click(suelto);
+    tecla('Borrar'); tecla('2');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+  });
+
+  test('agregar una fecha que ya está la elige para teclear', async () => {
+    back.currentCount.mockResolvedValue({ ...conteo(), items: conteo().items.map((i) => (i.ingredientId === 3 ? { ...i, knownDates: ['2026-12-10'] } : i)) });
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    await screen.findByLabelText('Suelto de Limón');
+    tecla('9');
+    click('Agregar fecha'); tecla('4');
+    expect(screen.getByRole('button', { name: 'Cuánto caduca el 2026-12-10' })).toHaveTextContent('4');
+  });
+
+  // Prueba con alguien nuevo: contó 10 L, puso 6 en una fecha y quedaron 6 ml. La cantidad de cada fecha
+  // va en la unidad elegida arriba y se manda en la base.
+  test('la cantidad de cada fecha va en la unidad elegida', async () => {
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[0]).getByRole('button', { name: 'Contar' }));
+    fireEvent.click(await screen.findByLabelText('Suelto de Jarabe de vainilla'));
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
+    tecla('2');
+    click('Agregar fecha'); tecla('1'); tecla('punto'); tecla('5');
+    expect(screen.getByRole('button', { name: 'Cuánto caduca el 2026-12-10' })).toHaveTextContent('1.5 L');
+    expect(screen.getByText('Sin fecha: 0.5 L')).toBeInTheDocument();
+    click('Guardar');
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1,
+      { countedQty: '2000', confirmable: true, lots: [{ expiresOn: '2026-12-10', qty: '1500' }] }));
+  });
+
+  test('si las fechas suman más que lo contado no se guarda y lo dice en el artículo', async () => {
+    montar();
+    fireEvent.click(within((await screen.findAllByTestId('renglon-conteo'))[2]).getByRole('button', { name: 'Contar' }));
+    await screen.findByLabelText('Suelto de Limón');
+    tecla('2');
+    click('Agregar fecha');
+    tecla('5');
+    expect(screen.getByRole('alert')).toHaveTextContent('Las fechas suman más de lo contado');
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+  });
+});
 
 // #103: el botón dice que lleva a Negocio; «Cambiar el orden ›» cambiaba de sección sin avisar.
 // La segunda prueba sin contexto (040, T022) no encontró cómo cambiar el orden del recorrido: antes
@@ -472,7 +593,7 @@ describe('Teclado del conteo (spec 042)', () => {
     expect(screen.getByText(/¿No hay nada de .+\?/)).toBeInTheDocument();
     expect(back.captureCount).not.toHaveBeenCalled();
     click('Sí, no hay');
-    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, { countedQty: '0', confirmable: true }));
+    await waitFor(() => expect(back.captureCount).toHaveBeenCalledWith(5, 1, { countedQty: '0', confirmable: true, lots: [] }));
   });
 
   test('+ y − ajustan de uno en uno; tocar la cantidad lleva el teclado ahí', async () => {

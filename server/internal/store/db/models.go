@@ -1204,6 +1204,7 @@ type ExpenseItem struct {
 	PresentationBrand *string            `json:"presentation_brand"`
 	DensityGPerMl     *decimal.Decimal   `json:"density_g_per_ml"`
 	WarehouseID       *int64             `json:"warehouse_id"`
+	ExpiresOn         pgtype.Date        `json:"expires_on"`
 }
 
 type ExpensePayment struct {
@@ -2137,6 +2138,14 @@ type StockCountLine struct {
 	ClosedPacks     []byte           `json:"closed_packs"`
 }
 
+type StockCountLineLot struct {
+	CompanyID    int64           `json:"company_id"`
+	CountID      int64           `json:"count_id"`
+	IngredientID int64           `json:"ingredient_id"`
+	ExpiresOn    pgtype.Date     `json:"expires_on"`
+	Qty          decimal.Decimal `json:"qty"`
+}
+
 type StockCountProductLine struct {
 	CountID        int64            `json:"count_id"`
 	CompanyID      int64            `json:"company_id"`
@@ -2157,6 +2166,26 @@ type StockLevel struct {
 	UpdatedAt    time.Time       `json:"updated_at"`
 	BranchID     int64           `json:"branch_id"`
 	WarehouseID  int64           `json:"warehouse_id"`
+}
+
+type StockLot struct {
+	ID           int64           `json:"id"`
+	CompanyID    int64           `json:"company_id"`
+	BranchID     int64           `json:"branch_id"`
+	WarehouseID  int64           `json:"warehouse_id"`
+	IngredientID int64           `json:"ingredient_id"`
+	ExpiresOn    pgtype.Date     `json:"expires_on"`
+	Qty          decimal.Decimal `json:"qty"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+}
+
+type StockLotAllocation struct {
+	ID         int64           `json:"id"`
+	CompanyID  int64           `json:"company_id"`
+	MovementID int64           `json:"movement_id"`
+	LotID      int64           `json:"lot_id"`
+	Qty        decimal.Decimal `json:"qty"`
 }
 
 type StockMovement struct {
@@ -2185,6 +2214,7 @@ type StockMovement struct {
 	WarehouseID          int64             `json:"warehouse_id"`
 	WarehouseRelocation  bool              `json:"warehouse_relocation"`
 	TransferID           *int64            `json:"transfer_id"`
+	ExpiresOn            pgtype.Date       `json:"expires_on"`
 }
 
 type StockOutReport struct {
@@ -2379,6 +2409,7 @@ type WasteRecord struct {
 	ResolvedAt       pgtype.Timestamptz `json:"resolved_at"`
 	CoveredByCountID *int64             `json:"covered_by_count_id"`
 	WarehouseID      int64              `json:"warehouse_id"`
+	LotExpiresOn     pgtype.Date        `json:"lot_expires_on"`
 }
 
 type WorkScheduleDay struct {

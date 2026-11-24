@@ -37,14 +37,17 @@ const STOCK_VIEW_KEY = 'egb:existencias:vista';
 function readStockView(): StockView {
   try { return localStorage.getItem(STOCK_VIEW_KEY) === 'sencilla' ? 'sencilla' : 'avanzada'; } catch { return 'avanzada'; }
 }
+import { ExpiriesTab } from './expiries/ExpiriesTab';
+import { ExpiryNotice } from './expiries/ExpiryNotice';
 
 // El orden lo fijó el plan del 038: Existencias · Movimientos · Insumos · Por recibir · Conteo · Salud.
-const TABS = ['existencias', 'traspaso', 'movimientos', 'insumos', 'compra', 'por-recibir', 'conteo', 'merma', 'salud', 'avisos'] as const;
+const TABS = ['existencias', 'traspaso', 'caducidades', 'movimientos', 'insumos', 'compra', 'por-recibir', 'conteo', 'merma', 'salud', 'avisos'] as const;
 type Tab = (typeof TABS)[number];
 
 export function StockPage() {
   const horaNegocio = useHoraDelNegocio();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   // El almacén que se ve en Existencias (spec 094): por omisión el de venta. Con un solo almacén no
   // hay selector y la pantalla queda como antes.
   const [picked, setWarehouse] = useState<number | 'all' | undefined>(undefined);
@@ -64,14 +67,22 @@ export function StockPage() {
   const moves = useQuery({ queryKey: ['stock', 'moves', warehouse ?? 'venta'], queryFn: () => backofficeApi.stockMovements(warehouse),
     placeholderData: (prev) => prev });
   const [valueHelp, setValueHelp] = useState(false);
-  const warehousePicker = whList.length > 1 && (
-    <Box mb={3}>
+  const canViewStock = can('inventory.view', useSessionStore((st) => st.user));
+  const warehouseSegmented = whList.length > 1 && (
       <Segmented label="Almacén"
         value={String(warehouse ?? whList.find((w) => w.isSales)?.id ?? '')}
         options={[...whList.map((w) => ({ value: String(w.id), label: w.isSales ? `${w.name} · de venta` : w.name })),
           { value: 'all', label: 'Todos' }]}
         onChange={(v) => setWarehouse(v === 'all' ? 'all' : whList.find((w) => String(w.id) === v)?.isSales ? undefined : Number(v))} />
-    </Box>
+  );
+  const warehousePicker = warehouseSegmented && <Box mb={3}>{warehouseSegmented}</Box>;
+  // En Existencias, el aviso de caducidad va a la derecha del selector cuando cabe: así no le quita un
+  // renglón a la lista (revisión de tableta, spec 098).
+  const stockHeader = (
+    <HStack mb={warehouseSegmented ? 3 : 0} gap={3} flexWrap="wrap" align="center">
+      {warehouseSegmented}
+      {canViewStock && <Box flex="1" minW="280px" mb={warehouseSegmented ? 0 : 3} _empty={{ display: 'none' }}><ExpiryNotice warehouse={warehouse} onOpen={() => setParams({ tab: 'caducidades' }, { replace: true })} /></Box>}
+    </HStack>
   );
   // El valor solo se pinta si el servidor lo manda: la API anterior no lo trae durante una subida.
   const withValue = levels.data?.totalValue !== undefined;
@@ -102,7 +113,6 @@ export function StockPage() {
   const canCount = can('inventory.count', user);
   // La dirección decide la pestaña y el insumo abierto: «Salud del inventario» manda aquí con
   // ?tab=insumos&open=N. Un valor desconocido cae a la primera pestaña, nunca a una que no existe.
-  const [params, setParams] = useSearchParams();
   const asked = params.get('tab') as Tab | null;
   const canView = can('inventory.view', user);
   const canConfigureStock = can('inventory.configure', user);
@@ -115,7 +125,7 @@ export function StockPage() {
   };
   // Traspaso (spec 094): solo con el permiso y con dos o más almacenes; con uno no hay a dónde llevar.
   const canTransfer = can('inventory.transfer', user) && whList.length > 1;
-  const allowed = (t: Tab) => (t !== 'traspaso' || canTransfer) && (t !== 'avisos' || canConfigureStock) && ((t !== 'insumos' && t !== 'compra') || canView) && ((t !== 'salud' && t !== 'merma') || canHealth) && (t !== 'por-recibir' || canReceive) && (t !== 'conteo' || canCount);
+  const allowed = (t: Tab) => (t !== 'traspaso' || canTransfer) && (t !== 'avisos' || canConfigureStock) && ((t !== 'insumos' && t !== 'compra' && t !== 'caducidades') || canView) && ((t !== 'salud' && t !== 'merma') || canHealth) && (t !== 'por-recibir' || canReceive) && (t !== 'conteo' || canCount);
   const tab: Tab = asked && TABS.includes(asked) && allowed(asked) ? asked : 'existencias';
   const settings = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const pending = useQuery({ queryKey: ['stock', 'pending-receipts'], queryFn: backofficeApi.pendingReceipts, enabled: canReceive });
@@ -153,27 +163,28 @@ export function StockPage() {
         display="flex" flexDirection="column" flex="1" minH={0}>
         {/* Con «Se echó a perder» son siete: la fila se desplaza a lo ancho antes que salirse de 1024 px. */}
         <Tabs.List overflowX="auto" flexShrink={0}>
-          <Tabs.Trigger value="existencias" minH="44px">Existencias</Tabs.Trigger>
-          {canTransfer && <Tabs.Trigger value="traspaso" minH="44px">Traspaso</Tabs.Trigger>}
-          <Tabs.Trigger value="movimientos" minH="44px">Movimientos</Tabs.Trigger>
-          {canView && <Tabs.Trigger value="insumos" minH="44px">{itemsTab}</Tabs.Trigger>}
+          <Tabs.Trigger value="existencias" minH="44px" flexShrink={0}>Existencias</Tabs.Trigger>
+          {canTransfer && <Tabs.Trigger value="traspaso" minH="44px" flexShrink={0}>Traspaso</Tabs.Trigger>}
+          {canView && <Tabs.Trigger value="caducidades" minH="44px" flexShrink={0}>Caducidades</Tabs.Trigger>}
+          <Tabs.Trigger value="movimientos" minH="44px" flexShrink={0}>Movimientos</Tabs.Trigger>
+          {canView && <Tabs.Trigger value="insumos" minH="44px" flexShrink={0}>{itemsTab}</Tabs.Trigger>}
           {canView && <Tabs.Trigger value="compra" minH="44px" flexShrink={0}>Lista de compra</Tabs.Trigger>}
           {canReceive && (
             <Tabs.Trigger value="por-recibir" minH="44px" flexShrink={0} whiteSpace="nowrap">
               Por recibir{pending.data && pending.data.length > 0 ? ` · ${pending.data.length}` : ''}
             </Tabs.Trigger>
           )}
-          {canCount && <Tabs.Trigger value="conteo" minH="44px">Conteo</Tabs.Trigger>}
+          {canCount && <Tabs.Trigger value="conteo" minH="44px" flexShrink={0}>Conteo</Tabs.Trigger>}
           {canHealth && <Tabs.Trigger value="merma" minH="44px" flexShrink={0}>Se echó a perder</Tabs.Trigger>}
-          {canHealth && <Tabs.Trigger value="salud" minH="44px">Salud</Tabs.Trigger>}
-          {canConfigureStock && <Tabs.Trigger value="avisos" minH="44px">Avisos</Tabs.Trigger>}
+          {canHealth && <Tabs.Trigger value="salud" minH="44px" flexShrink={0}>Salud</Tabs.Trigger>}
+          {canConfigureStock && <Tabs.Trigger value="avisos" minH="44px" flexShrink={0}>Avisos</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="existencias" px={0} flex="1" minH={0} overflowY="auto">
           {/* En el tablero cada columna desplaza por su cuenta: el alto lo da la pestaña, no un cálculo
               de píxeles que se rompe en cuanto arriba hay un renglón más. */}
           <Box h={stockView === 'sencilla' ? '100%' : undefined} display="flex" flexDirection="column">
             <HStack align="start" gap={3} flexWrap="wrap">
-              <Box flex="1" minW={0}>{warehousePicker}</Box>
+              <Box flex="1" minW={0}>{stockHeader}</Box>
               {/* Con íconos, como el selector de vista de Ajustes (pedido del dueño). */}
               <Box mb={3}>
                 <Segmented label="Vista" value={stockView} onChange={pickStockView}
@@ -238,6 +249,11 @@ export function StockPage() {
             )}
           </Box>
         </Tabs.Content>
+        {canView && (
+          <Tabs.Content value="caducidades" px={0} flex="1" minH={0} overflowY="auto">
+            <ExpiriesTab onGoToCount={canCount ? () => setParams({ tab: 'conteo' }, { replace: true }) : undefined} />
+          </Tabs.Content>
+        )}
         {canTransfer && (
           <Tabs.Content value="traspaso" px={0} flex="1" minH={0}>
             <TransferTab warehouses={whList} />

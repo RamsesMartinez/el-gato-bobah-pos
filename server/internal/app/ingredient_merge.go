@@ -36,6 +36,8 @@ var MergeTables = map[string]string{
 	"stock_out_reports":           "lo pasado se queda en el origen; después, rechaza",
 	"branch_stock_minimums":       "el destino conserva el suyo; los del origen se borran; después, rechaza",
 	"stock_transfer_lines":        "lo pasado se queda en el origen; después, rechaza (sus movimientos se redirigen como cualquiera)",
+	"stock_lots":                  "pasan al destino con la equivalencia, por almacén y fecha (se suman si coinciden); el origen queda en cero; después, rechaza",
+	"stock_count_line_lots":       "lo pasado se queda en el origen; un conteo abierto bloquea; después, rechaza",
 }
 
 // MergeSourceInput es un origen y, si se mide distinto que el destino, su equivalencia: cuánto del
@@ -381,6 +383,10 @@ func (m *mergeRun) apply(ctx context.Context) error {
 			}
 			targetAfter[row.WarehouseID] = targetAfter[row.WarehouseID].Add(to)
 			m.moved[src.ID] = append(m.moved[src.ID], map[string]any{"branchId": row.BranchID, "warehouseId": row.WarehouseID, "from": row.OnHand, "to": to})
+		}
+		// Los lotes del origen pasan al destino por almacén y fecha (spec 098).
+		if err := q.MoveLotsToIngredient(ctx, db.MoveLotsToIngredientParams{Factor: f, OldID: src.ID, NewID: m.targetID}); err != nil {
+			return err
 		}
 		if err := m.movePresentations(ctx, src, f); err != nil {
 			return err

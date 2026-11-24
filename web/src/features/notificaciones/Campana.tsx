@@ -24,6 +24,7 @@ const TIPO: Record<NotificationView['kind'], { texto: string; color: string }> =
   stock_out: { texto: 'Se acabó', color: 'red' },
   stock_low: { texto: 'Bajo el mínimo', color: 'orange' },
   not_found: { texto: 'No lo encuentro', color: 'purple' },
+  expired_left: { texto: 'Lo que queda está caducado', color: 'red' },
 };
 
 // El panel lo abre la campana o el «Ver» de la franja: el estado vive en el riel y llega aquí.
@@ -128,7 +129,9 @@ function Renglon({ n, onClose }: { n: NotificationView; onClose: () => void }) {
     ? `Hay ${cantidad(n.onHandSeen)}${dondeHay} · mínimo ${cantidad(n.minSeen)}`
     : n.kind === 'stock_out'
       ? `${multi && n.warehouseName ? `En ${n.warehouseName} · ` : ''}Lo reportó ${n.openedByName || 'el sistema'}${n.confirmations > 1 ? ` · lo confirmaron ${n.confirmations}` : ''}`
-      : `Lo buscó ${n.openedByName || 'alguien'}`;
+      : n.kind === 'expired_left'
+        ? `Se está usando${dondeHay} y lo que queda está caducado. Revisa si falta registrar una compra o un conteo.`
+        : `Lo buscó ${n.openedByName || 'alguien'}`;
   return (
     <Box data-row borderWidth="1px" borderRadius="lg" p={3} bg={abierto && !n.read ? 'brand.subtle' : 'bg'}>
       <HStack gap={2} flexWrap="wrap">
@@ -180,6 +183,9 @@ function Renglon({ n, onClose }: { n: NotificationView; onClose: () => void }) {
                 <Button minH="44px" variant="ghost" disabled={cerrar.isPending} onClick={() => cerrar.mutate({ action: 'dismiss' })}>Descartar</Button>
               </Flex>
             </>
+          )}
+          {n.kind === 'expired_left' && can('inventory.view', user) && (
+            <Button minH="44px" variant="ghost" onClick={() => { onClose(); navigate('/almacen?tab=caducidades'); }}>Ver caducidades ›</Button>
           )}
           {n.kind === 'stock_low' && can('inventory.view', user) && (
             <Button minH="44px" variant="ghost" onClick={() => { onClose(); navigate('/almacen?tab=compra'); }}>Ver en la lista de compra ›</Button>

@@ -650,6 +650,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Existencias y movimientos: verlos es «ver el almacén»; un ajuste a mano reemplaza lo que el
 					// sistema creía tener, como un conteo. Los insumos preparados se capturan en Almacén.
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/levels", h.StockLevels)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/expiries", h.Expiries)
+					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/expiries/summary", h.ExpirySummary)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/movements", h.StockMovements)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryCount)).Post("/movements", h.CreateStockMovement)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/ingredients/{id}/composition", h.GetIngredientComposition)

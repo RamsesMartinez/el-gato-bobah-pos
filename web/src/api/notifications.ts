@@ -2,7 +2,8 @@ import { api } from './client';
 
 // Avisos de inventario (spec 084): la campana, lo leído por persona y cerrar un aviso a mano.
 
-export type NotificationKind = 'stock_low' | 'stock_out' | 'not_found';
+// expired_left (spec 098): lo bueno se acabó y lo que queda está caducado. Solo campana.
+export type NotificationKind = 'stock_low' | 'stock_out' | 'not_found' | 'expired_left';
 
 export interface NotificationView {
   id: number;
@@ -38,8 +39,9 @@ export const notificationsApi = {
   // (AGENTS.md: un arreglo nil sale como null y tumba la pantalla sin un error).
   // 200, el tope del servidor: con 50, más avisos sin leer que los que trae la lista dejaban la
   // insignia sin poder llegar a 0.
-  list: (status: 'open' | 'closed') => api.get<{ items?: NotificationView[] }>(`/notifications?status=${status}&limit=200`),
-  unread: () => api.get<{ unread: number }>('/notifications/unread-count'),
+  // withExpired: esta pantalla sabe pintar el aviso de caducados (spec 098).
+  list: (status: 'open' | 'closed') => api.get<{ items?: NotificationView[] }>(`/notifications?status=${status}&limit=200&withExpired=1`),
+  unread: () => api.get<{ unread: number }>('/notifications/unread-count?withExpired=1'),
   read: (ids: number[]) => api.post<void>('/notifications/read', { ids }),
   bannerSeen: (id: number) => api.post<void>(`/notifications/${id}/banner-seen`),
   resolve: (id: number, action: ResolveAction, ingredientId?: number) =>
@@ -60,6 +62,7 @@ export const REASON_WORDS: Record<string, string> = {
   dismissed: 'Descartado',
   created: 'Se dio de alta',
   alias: 'Era otro nombre de un insumo',
+  expired_cleared: 'Ya no queda nada caducado',
 };
 
 // Alertas de stock bajo de un artículo (spec 084, historia 3). Cantidades en la unidad base, en texto.

@@ -21,6 +21,7 @@ import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { CountLossReport } from './CountLossReport';
 import { CountVsSalesReport } from './CountVsSalesReport';
+import { CountLotsFields, type LotRow } from './CountLots';
 import { PlaceChooser } from './CountPlaceField';
 import { NO_LOCATION } from './useLocations';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -359,7 +360,7 @@ export function StockCountTab() {
 // por empaque con − y + para ajustar de uno en uno, y lo suelto con su unidad elegida. Tocar una
 // casilla lleva el teclado en pantalla ahí (`inputMode="none"`: el del sistema no se abre).
 // 'gross' y 'containers' son las casillas de «Pesar con empaque» (spec 058).
-type Field = number | 'rest' | 'gross' | 'containers';
+type Field = number | 'rest' | 'gross' | 'containers' | `lot:${number}`;
 
 // GROSS_UNITS son las unidades de la báscula: siempre peso, aunque el artículo se guarde en ml.
 const GROSS_UNITS = [{ label: 'g', factor: 1, code: 'g' as const }, { label: 'kg', factor: 1000, code: 'kg' as const }];
@@ -389,6 +390,14 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   const [grossPackId, setGrossPackId] = useState<number | null>(restored?.packId ?? null);
   const [containers, setContainers] = useState(restored?.containers ?? '1');
   const weighing = grossOpen && tared.length > 0;
+  // Spec 098: las fechas de lo contado. Las que el sistema ya conocía llegan sin cantidad; si nadie
+  // toca las fechas no se mandan y los lotes no se reescriben.
+  const [lotRows, setLotRows] = useState<LotRow[]>(() => [
+    ...(item.lots ?? []).map((l) => ({ expiresOn: l.expiresOn, qty: String(Number(l.qty)) })),
+    ...(item.knownDates ?? []).filter((d) => !(item.lots ?? []).some((l) => l.expiresOn === d)).map((d) => ({ expiresOn: d, qty: '' })),
+  ].sort((a, b) => a.expiresOn.localeCompare(b.expiresOn)));
+  const [lotsDirty, setLotsDirty] = useState(false);
+  const editLots = (f: (rows: LotRow[]) => LotRow[]) => { setLotRows(f); setLotsDirty(true); };
   const [field, setField] = useState<Field>(weighing ? 'gross' : packs.length ? 0 : 'rest');
   const unit = units[unitIdx];
   const restNum = parseNumero(rest);
@@ -416,6 +425,11 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   const overMax = total !== null ? overMaxMessage(limits, item.baseUnitCode, total) : null;
   const fields: Field[] = [...packs.map((_, i) => i), ...(weighing ? ['gross', 'containers'] as const : ['rest'] as const)];
   const key = (k: string) => {
+    if (typeof field === 'string' && field.startsWith('lot:')) {
+      const at = Number(field.slice(4));
+      editLots((rows) => rows.map((r, i) => (i === at ? { ...r, qty: pressKey(r.qty, k, unit.weightCode ? item.baseUnitCode !== 'pieza' : unit.decimals) } : r)));
+      return;
+    }
     if (field === 'rest') setRest((v) => pressKey(v, k, unit.decimals));
     else if (field === 'gross') setGrossWeight((v) => pressKey(v, k, true));
     else if (field === 'containers') setContainers((v) => pressKey(v, k, false));
@@ -426,7 +440,20 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   const next = () => setField((f) => fields[(fields.indexOf(f) + 1) % fields.length]);
   const openWeighing = () => { setGrossOpen(true); setRest(''); setField('gross'); };
   const closeWeighing = () => { setGrossOpen(false); setGrossWeight(''); setContainers('1'); setField('rest'); };
+  // Las cantidades de cada fecha van en la unidad elegida para lo suelto (L, kg), como lo suelto; al
+  // servidor viajan en la base. Una unidad de peso de un artículo en piezas no se convierte aquí.
+  const lotFactor = unit.weightCode ? 1 : unit.factor;
+  const lotLabel = unit.weightCode ? item.baseUnitCode : unit.label;
+  const lotSum = lotRows.reduce((acc, r) => acc + (Number(r.qty) || 0) * lotFactor, 0);
+  // El mismo predicado que pinta el aviso: unas fechas ya guardadas que pasan lo recontado también
+  // apagan «Guardar» (el servidor las rechazaría).
+  const lotsOver = total !== null && lotSum > total + 1e-9;
+  const lotsBody = lotsDirty ? { lots: lotRows.filter((r) => Number(r.qty) > 0).map((r) => ({ expiresOn: r.expiresOn, qty: String(Number((Number(r.qty) * lotFactor).toFixed(4))) })) } : {};
   const body = (): CountCaptureBody | null => {
+    const b = baseBody();
+    return b && !lotsOver ? { ...b, ...lotsBody } : null;
+  };
+  const baseBody = (): CountCaptureBody | null => {
     if (!captured || invalid || overMax) return null;
     if (grossOk && grossPack) {
       const wu = weightUnitId(grossUnit.code);
@@ -445,9 +472,24 @@ function useEntry(item: CountItem, opts: { startWeighing?: boolean; restore?: bo
   return { packs, units, unit, unitIdx, setUnitIdx, counts, rest, field, setField, total, captured, key, bump, next, body,
     hasNext: fields.length > 1,
     weighed: !weighing && !!unit.weightCode && restNum.estado === 'valido', fromPacks, overMax,
-    allowDecimal: (field === 'rest' && unit.decimals) || field === 'gross',
+    allowDecimal: (field === 'rest' && unit.decimals) || (typeof field === 'string' && field.startsWith('lot:') && (unit.weightCode ? item.baseUnitCode !== 'pieza' : unit.decimals)) || field === 'gross',
     tared, weighing, openWeighing, closeWeighing, grossWeight, grossUnitIdx, setGrossUnitIdx, grossPack,
-    setGrossPackId, containers, bumpContainers, gross };
+    setGrossPackId, containers, bumpContainers, gross,
+    lotRows, lotLabel, lotFactor, lotSum, activeLot: typeof field === 'string' && field.startsWith('lot:') ? Number(field.slice(4)) : null,
+    pickLot: (i: number) => setField(`lot:${i}`),
+    // Cambiar una fecha a otra que ya está junta las dos: una fecha es un lote.
+    setLotDate: (i: number, d: string) => editLots((rows) => {
+      const other = rows.findIndex((r, j) => j !== i && r.expiresOn === d);
+      if (other < 0) return rows.map((r, j) => (j === i ? { ...r, expiresOn: d } : r));
+      const merged = String(Number(((Number(rows[other].qty) || 0) + (Number(rows[i].qty) || 0)).toFixed(4)));
+      return rows.flatMap((r, j) => (j === i ? [] : j === other ? [{ ...r, qty: merged === '0' ? '' : merged }] : [r]));
+    }),
+    addLot: (d: string) => {
+      const at = lotRows.findIndex((r) => r.expiresOn === d);
+      if (at < 0) editLots((rows) => [...rows, { expiresOn: d, qty: '' }]);
+      setField(`lot:${at < 0 ? lotRows.length : at}`);
+    },
+    removeLot: (i: number) => { editLots((rows) => rows.filter((_, j) => j !== i)); setField(weighing ? 'gross' : packs.length ? 0 : 'rest'); } };
 }
 
 type Entry = ReturnType<typeof useEntry>;
@@ -590,6 +632,10 @@ function EntryFields({ item, e, serverError, onWeigh }: {
             {e.weighing && <WeighFields item={item} e={e} />}
           </Box>
         )}
+        {!isProduct(item) && (
+          <CountLotsFields rows={e.lotRows} active={e.activeLot} total={e.total} unitCode={item.baseUnitCode} unitLabel={e.lotLabel} unitFactor={e.lotFactor} sum={e.lotSum}
+            onPick={e.pickLot} onChangeDate={e.setLotDate} onAdd={e.addLot} onRemove={e.removeLot} />
+        )}
       </VStack>
       {!many && <Box pt={2} borderTopWidth="1px" flexShrink={0}>{totalLine}</Box>}
       {(e.overMax ?? serverError) && <Text color="fg.error" fontWeight="700" role="alert">{e.overMax ?? serverError}</Text>}
@@ -626,7 +672,10 @@ function useCapture(countId: number, item: CountItem, onSaved: (id: number, qty:
       // El desglose que quedó guardado reemplaza al de antes (#204): sin esto, reabrir mostraba la
       // captura anterior y «Guardar» sin tocar nada deshacía la corrección.
       qc.setQueryData(scope.key, (old: StockCount | null | undefined) => old && {
-        ...old, items: old.items.map((i) => (i.ingredientId === item.ingredientId ? { ...i, weighed: r && 'weighed' in r ? r.weighed ?? null : null } : i)),
+        ...old, items: old.items.map((i) => (i.ingredientId === item.ingredientId ? { ...i, weighed: r && 'weighed' in r ? r.weighed ?? null : null,
+          // Spec 098: el desglose que quedó guardado (o ninguno, al quitar lo contado); sin esto, reabrir
+          // enseñaba fechas que el servidor ya no tenía.
+          lots: b === null ? [] : b.lots ?? i.lots } : i)),
       });
       if (qty !== null) toaster.create({ title: `Guardado: ${countedWords(qty, item.baseUnitCode)}`, type: 'success', duration: 1500 });
       onSaved(item.ingredientId, qty);
@@ -798,7 +847,7 @@ function ListView({ count, others = [], onSaved, initialQuery = '', picker, expe
                   ? <Text w="160px" flexShrink={0} fontSize="sm" color="fg.muted">Producto del menú</Text>
                   : <PlacePicker item={i} />}
                 <Text fontSize="sm" color={i.countedQty !== null ? 'fg.success' : 'fg.muted'} minW="120px">
-                  {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}` : 'Sin contar'}
+                  {i.countedQty !== null ? `✓ ${countedWords(i.countedQty, i.baseUnitCode)}${i.lots?.length ? ` · ${i.lots.length} ${i.lots.length === 1 ? 'fecha' : 'fechas'}` : ''}` : 'Sin contar'}
                 </Text>
                 {expected && !isProduct(i) && (
                   <ExpectedCell expected={expectedOf.get(i.ingredientId) ?? '0'} counted={i.countedQty} unit={i.baseUnitCode} />
@@ -842,7 +891,7 @@ function EntrySheet({ countId, item, onClose, onSaved, startWeighing }: {
             <Button minH="44px" variant="ghost" mr="auto" onClick={() => c.save.mutate(null)}>Quitar lo contado</Button>
           )}
           <Button minH="44px" variant="outline" onClick={onClose}>Cancelar</Button>
-          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true })} />
+          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true, ...(isProduct(item) ? {} : { lots: [] }) })} />
           <Button minH="56px" ml={8} colorPalette="brand" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
             Guardar
           </Button>
@@ -984,7 +1033,7 @@ function OneCard({ countId, item, where, onPrev, onNext, onSaved }: {
           <Button minH="44px" variant="outline" hideBelow="xl" disabled={!onPrev} onClick={onPrev}>‹ Anterior</Button>
           <Box flex="1" />
           <Button minH="44px" variant="outline" onClick={onNext}>Saltar (no contar hoy)</Button>
-          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true })} />
+          <NoHay item={item} onConfirm={() => c.save.mutate({ countedQty: '0', confirmable: true, ...(isProduct(item) ? {} : { lots: [] }) })} />
           <Button minH="56px" ml={{ base: 0, xl: 8 }} colorPalette="brand" disabled={e.body() === null} loading={c.save.isPending} onClick={() => c.save.mutate(e.body())}>
             Guardar y seguir ›
           </Button>

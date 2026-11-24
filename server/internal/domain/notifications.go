@@ -21,11 +21,14 @@ const (
 	KindStockLow NotificationKind = "stock_low" // llegó a su mínimo
 	KindStockOut NotificationKind = "stock_out" // se acabó (lo detectó el sistema o lo reportó alguien)
 	KindNotFound NotificationKind = "not_found" // alguien buscó algo que no está en el sistema
+	// KindExpiredLeft: lo bueno de un artículo quedó en negativo y lo que queda está caducado (spec
+	// 098). Solo campana, sin correo.
+	KindExpiredLeft NotificationKind = "expired_left"
 )
 
 // NotificationKinds es la lista de tipos; la base la repite en su check (prueba de paridad).
 func NotificationKinds() []NotificationKind {
-	return []NotificationKind{KindStockLow, KindStockOut, KindNotFound}
+	return []NotificationKind{KindStockLow, KindStockOut, KindNotFound, KindExpiredLeft}
 }
 
 // NotificationReason es por qué se cerró un aviso. Se guarda como dato: no se renombra.
@@ -44,12 +47,14 @@ const (
 	ReasonDismissed   NotificationReason = "dismissed"    // alguien lo descartó
 	ReasonCreated     NotificationReason = "created"      // «No lo encuentro» terminó en un alta
 	ReasonAlias       NotificationReason = "alias"        // «No lo encuentro» era otro nombre de algo que existe
+	// ReasonExpiredCleared: ya no hay caducados de ese artículo en el almacén (spec 098).
+	ReasonExpiredCleared NotificationReason = "expired_cleared"
 )
 
 // NotificationReasons es la lista de motivos; la base la repite en su check (prueba de paridad).
 func NotificationReasons() []NotificationReason {
 	return []NotificationReason{ReasonAboveMin, ReasonRestocked, ReasonCounted, ReasonArrived, ReasonUndone,
-		ReasonAlertOff, ReasonArchived, ReasonMerged, ReasonUnitChanged, ReasonDismissed, ReasonCreated, ReasonAlias}
+		ReasonAlertOff, ReasonArchived, ReasonMerged, ReasonUnitChanged, ReasonDismissed, ReasonCreated, ReasonAlias, ReasonExpiredCleared}
 }
 
 var (

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -57,6 +59,16 @@ type CountItem struct {
 	// todo). La pantalla de un almacén que no es el de venta enseña estos y deja los demás a la
 	// búsqueda.
 	InWarehouse bool `json:"inWarehouse"`
+	// Lots es el desglose de fechas de lo contado (spec 098); KnownDates, las fechas de los lotes que el
+	// sistema ya tiene del artículo en este almacén, sin cantidad. Siempre arreglos.
+	Lots       []CountLot `json:"lots"`
+	KnownDates []string   `json:"knownDates"`
+}
+
+// CountLot es una cantidad contada con su fecha de caducidad.
+type CountLot struct {
+	ExpiresOn string          `json:"expiresOn"`
+	Qty       decimal.Decimal `json:"qty"`
 }
 
 // CountWeighed es el desglose de lo contado pesando: lo cerrado (en la unidad base), lo que marcó la
@@ -183,6 +195,22 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 		return CountView{}, err
 	}
 	v := CountView{ID: id, OpenedAt: openedAt, WarehouseID: wh.ID, WarehouseName: wh.Name, Items: make([]CountItem, len(rows)), Products: products}
+	counted, err := q.CountLotsOf(ctx, id)
+	if err != nil {
+		return CountView{}, err
+	}
+	lotsOf := map[int64][]CountLot{}
+	for _, l := range counted {
+		lotsOf[l.IngredientID] = append(lotsOf[l.IngredientID], CountLot{ExpiresOn: l.ExpiresOn.Time.Format(time.DateOnly), Qty: l.Qty})
+	}
+	known, err := q.KnownLotDates(ctx, wh.ID)
+	if err != nil {
+		return CountView{}, err
+	}
+	knownOf := map[int64][]string{}
+	for _, l := range known {
+		knownOf[l.IngredientID] = append(knownOf[l.IngredientID], l.ExpiresOn.Time.Format(time.DateOnly))
+	}
 	for i, r := range rows {
 		ps := byIng[r.ID]
 		if ps == nil {
@@ -191,7 +219,11 @@ func (s *BackofficeService) countView(ctx context.Context, id int64, openedAt ti
 		v.Items[i] = CountItem{IngredientID: r.ID, Name: r.Name, Place: r.CountPlace, PlaceID: r.CountPlaceID, BaseUnitCode: r.BaseUnitCode,
 			Presentations: ps, CountedQty: r.CountedQty, Weighable: weighable[r.ID], DensityGPerMl: r.DensityGPerMl,
 			GrossWeighable: grossWeighable(r.BaseUnitKind, r.DensityGPerMl, ps), Weighed: weighedOf(r, ps),
-			AltNames: nonNilStrings(r.AltNames), PlaceElsewhere: r.PlaceElsewhere, InWarehouse: r.InWarehouse}
+			AltNames: nonNilStrings(r.AltNames), PlaceElsewhere: r.PlaceElsewhere, InWarehouse: r.InWarehouse,
+			Lots: lotsOf[r.ID], KnownDates: nonNilStrings(knownOf[r.ID])}
+		if v.Items[i].Lots == nil {
+			v.Items[i].Lots = []CountLot{}
+		}
 	}
 	return v, nil
 }
@@ -275,6 +307,8 @@ type CountCapture struct {
 	Gross       *GrossCapture
 	Confirmable bool
 	Confirmed   bool
+	// Lots: el desglose de fechas (spec 098). nil = no cambia el que había; vacío = lo borra.
+	Lots *[]CountLot
 }
 
 // GrossCapture es una pesada con empaque: lo que marcó la báscula, en qué unidad, de qué empaque y
@@ -518,7 +552,50 @@ func (s *BackofficeService) captureTx(ctx context.Context, q *db.Queries, countI
 	if isForeignKeyViolation(err) {
 		return domain.ErrNotFound // un insumo de otra empresa o que no existe
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return captureLots(ctx, q, countID, ingredientID, counted, in.Lots)
+}
+
+// captureLots guarda el desglose de fechas de un artículo contado (spec 098, R6). Sin desglose nuevo,
+// el que había tiene que seguir cabiendo en lo contado.
+func captureLots(ctx context.Context, q *db.Queries, countID, ingredientID int64, counted decimal.Decimal, lots *[]CountLot) error {
+	if lots == nil {
+		sum, err := q.CountLotsSum(ctx, db.CountLotsSumParams{CountID: countID, IngredientID: ingredientID})
+		if err != nil {
+			return err
+		}
+		if sum.GreaterThan(counted) {
+			return domain.ErrLotsExceedCounted
+		}
+		return nil
+	}
+	today, err := q.BusinessToday(ctx)
+	if err != nil {
+		return err
+	}
+	parsed := make([]domain.LotQty, len(*lots))
+	for i, l := range *lots {
+		d, err := domain.ParseExpiry(l.ExpiresOn, today.Time)
+		if err != nil {
+			return err
+		}
+		parsed[i] = domain.LotQty{ExpiresOn: d, Qty: domain.Round4(l.Qty)}
+	}
+	if err := domain.ValidLotBreakdown(counted, parsed); err != nil {
+		return err
+	}
+	if err := q.DeleteCountLots(ctx, db.DeleteCountLotsParams{CountID: countID, IngredientID: ingredientID}); err != nil {
+		return err
+	}
+	for _, l := range parsed {
+		if err := q.InsertCountLot(ctx, db.InsertCountLotParams{CountID: countID, IngredientID: ingredientID,
+			ExpiresOn: pgtype.Date{Time: l.ExpiresOn, Valid: true}, Qty: l.Qty}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // countReference junta lo que el servidor sabe del artículo para el aviso del conteo.
@@ -547,6 +624,9 @@ func countReference(ctx context.Context, q *db.Queries, ingredientID, warehouseI
 func (s *BackofficeService) UncaptureCount(ctx context.Context, countID, ingredientID int64) error {
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		if _, err := openCount(ctx, q, countID); err != nil {
+			return err
+		}
+		if err := q.DeleteCountLots(ctx, db.DeleteCountLotsParams{CountID: countID, IngredientID: ingredientID}); err != nil {
 			return err
 		}
 		_, err := q.DeleteCountLine(ctx, db.DeleteCountLineParams{CountID: countID, IngredientID: ingredientID})
@@ -628,6 +708,16 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 		for i, a := range plan {
 			ids[i] = a.ItemID
 		}
+		// Los artículos contados con fechas fijan sus lotes aunque no tengan diferencia: también se toman.
+		withLots, err := q.CountLotIngredients(ctx, countID)
+		if err != nil {
+			return err
+		}
+		for _, id := range withLots {
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
 		if len(ids) > 0 {
 			if _, err := q.LockStockLevelsInBranchNowait(ctx, db.LockStockLevelsInBranchNowaitParams{Ids: ids, WarehouseID: c.WarehouseID}); err != nil {
 				return lockErr(err)
@@ -639,6 +729,11 @@ func (s *BackofficeService) CloseCount(ctx context.Context, countID, userID int6
 				IngredientID: &a.ItemID, Quantity: a.Delta, StockCountID: &countID, UserID: &userID,
 				Reason: &reason, WarehouseID: c.WarehouseID,
 			}); err != nil {
+				return err
+			}
+		}
+		for _, id := range withLots {
+			if err := q.ApplyCountLots(ctx, db.ApplyCountLotsParams{CountID: countID, IngredientID: id}); err != nil {
 				return err
 			}
 		}
