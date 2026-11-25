@@ -654,6 +654,39 @@ func (h *Handlers) CancelOrderLine(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"repusoInventario": repuso})
 }
 
+// POST /orders/{id}/lines/{lineId}/void-unpaid  {reason}
+//
+// Quita un renglón al que ningún pago cubre aunque figure como entregado. Lo cubierto por un pago
+// sigue yendo por reembolso. Pide la capacidad de cancelar pedidos porque toca un pedido ya cerrado.
+func (h *Handlers) VoidUnpaidOrderLine(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	lineID, err := strconv.ParseInt(chi.URLParam(r, "lineId"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	repuso, err := h.orders.VoidUnpaidLine(r.Context(), id, lineID, u.ID, body.Reason)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	logging.SecurityEvent(r.Context(), "order_line_void_unpaid", "order_id", id, "line_id", lineID, "user_id", u.ID)
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, map[string]any{"repusoInventario": repuso})
+}
+
 // POST /orders/{id}/lines/cancel-pending  {reason}
 //
 // El cuerpo es opcional: «Cerrar pedido» lo manda vacío sobre un pedido sin productos, donde el

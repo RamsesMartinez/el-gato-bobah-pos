@@ -337,6 +337,12 @@ func refsVoid(in voidArgs) []domain.Ref {
 	return l
 }
 
+func refsLineCancel(in lineCancelArgs) []domain.Ref {
+	var l refList
+	l.add(domain.RefOrder, in.OrderID)
+	return l
+}
+
 func refsTerminal(in terminalArgs) []domain.Ref {
 	var l refList
 	l.add(domain.RefOrder, in.OrderID)
