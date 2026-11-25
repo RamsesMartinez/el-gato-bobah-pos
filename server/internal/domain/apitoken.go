@@ -543,6 +543,9 @@ var mcpTools = []MCPTool{
 		"cobraría el servidor. Un pedido de plataforma solo se cobra con el método de su plataforma.", ScopeWriteOrders, ""),
 	wr("order_payment_void", "Anula un pago de un turno abierto, con motivo: sale de los pagos y su monto vuelve a quedar "+
 		"por cobrar. Para cambiar el método de un pago, anúlalo y cobra de nuevo con order_pay.", ScopeWriteOrders, PermPaymentsVoid),
+	wr("order_line_cancel", "Quita un producto de un pedido aunque figure entregado, SOLO si ningún pago lo cubre "+
+		"(agregado por error a un pedido ya cobrado), con motivo. Un producto pagado se devuelve con order_refund. "+
+		"El pedido debe ser de un turno abierto.", ScopeWriteOrders, PermOrdersCancel),
 	wr("order_payment_terminal_set", "Corrige en qué terminal se cobró un pago con tarjeta, con motivo.", ScopeWriteOrders, PermPaymentsChangeTerminal),
 	wr("order_refund", "Reembolsa un pedido entregado (todo, un monto o un renglón), con motivo. La vista previa dice "+
 		"cuánto queda por devolver, en qué terminal y si hace falta el folio de la terminal.", ScopeWriteOrders, PermPaymentsVoid),

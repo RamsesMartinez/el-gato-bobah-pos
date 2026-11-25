@@ -33,6 +33,7 @@ const (
 	pPaymentVoid     = "/api/v1/orders/{id}/payments/{paymentId}/void"
 	pPaymentTerminal = "/api/v1/orders/{id}/payments/{paymentId}/terminal"
 	pOrderRefund     = "/api/v1/orders/{id}/refund"
+	pOrderLineVoid   = "/api/v1/orders/{id}/lines/{lineId}/void-unpaid"
 	pOrderRefundInfo = "/api/v1/orders/{id}/refund-info"
 	pCardTerminals   = "/api/v1/card-terminals"
 )
@@ -48,12 +49,13 @@ func init() {
 		"order_payment_void":         {{http.MethodPost, pPaymentVoid}, get(pOrder)},
 		"order_payment_terminal_set": {{http.MethodPost, pPaymentTerminal}, get(pOrder), get(pCardTerminals)},
 		"order_refund":               {{http.MethodPost, pOrderRefund}, get(pOrderRefundInfo), get(pOrder)},
+		"order_line_cancel":          {{http.MethodPost, pOrderLineVoid}, get(pOrder)},
 		"card_terminals_list":        {get(pCardTerminals)},
 	} {
 		mcpToolRoutes[name] = routes
 	}
 	for _, name := range []string{"order_deliver", "order_discount_set", "order_pay", "order_payment_void",
-		"order_payment_terminal_set", "order_refund"} {
+		"order_payment_terminal_set", "order_refund", "order_line_cancel"} {
 		mcpListTool[name] = "sales_list"
 	}
 	for k := range map[string]bool{"delivery_fee": true, "discount_amount": true, "tip": true} {
@@ -124,6 +126,13 @@ type voidArgs struct {
 	OrderID   int64  `json:"order_id" jsonschema:"id del pedido"`
 	PaymentID int64  `json:"payment_id" jsonschema:"id del pago (de order_get)"`
 	Reason    string `json:"reason" jsonschema:"por qué se anula"`
+}
+
+type lineCancelArgs struct {
+	writeCommon
+	OrderID int64  `json:"order_id" jsonschema:"id del pedido"`
+	LineID  int64  `json:"line_id" jsonschema:"id del renglón (de order_get)"`
+	Reason  string `json:"reason" jsonschema:"por qué se quita el producto"`
 }
 
 type terminalArgs struct {
@@ -275,6 +284,10 @@ func asJSONOrNote(v any) json.RawMessage {
 	}
 	b, _ := json.Marshal(v)
 	return b
+}
+
+func orderAndLine(order, line int64) map[string]int64 {
+	return map[string]int64{"id": order, "lineId": line}
 }
 
 func orderAndPayment(order, payment int64) map[string]int64 {
@@ -480,6 +493,27 @@ func register090Orders() {
 		},
 		state: func(s *mcpSession, ctx context.Context, in voidArgs, _ json.RawMessage) any {
 			return voidState(s, ctx, in.OrderID)
+		},
+	})
+
+	lineCancelState := orderState("order_line_cancel")
+	writeTool(writeSpec[lineCancelArgs]{
+		name: "order_line_cancel",
+		refs: refsLineCancel,
+		route: func(_ *mcpSession, _ context.Context, in lineCancelArgs) (string, string, map[string]int64, url.Values, any, error) {
+			if err := positive("order_id", in.OrderID); err != nil {
+				return "", "", nil, nil, nil, err
+			}
+			if err := positive("line_id", in.LineID); err != nil {
+				return "", "", nil, nil, nil, err
+			}
+			if err := requireReason(in.Reason, "quita el producto"); err != nil {
+				return "", "", nil, nil, nil, err
+			}
+			return http.MethodPost, pOrderLineVoid, orderAndLine(in.OrderID, in.LineID), nil, map[string]any{"reason": strings.TrimSpace(in.Reason)}, nil
+		},
+		state: func(s *mcpSession, ctx context.Context, in lineCancelArgs, _ json.RawMessage) any {
+			return lineCancelState(s, ctx, in.OrderID)
 		},
 	})
 

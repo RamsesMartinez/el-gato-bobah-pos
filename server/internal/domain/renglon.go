@@ -51,6 +51,31 @@ func PuedeCancelarRenglon(estadoPedido string, cantidad, entregado decimal.Decim
 	return nil
 }
 
+// ErrRenglonConPago: el renglón tiene un pago aplicado. Se rechaza con el mismo texto de quitar una
+// pieza pagada, porque la salida es la misma: primero se devuelve el pago.
+var ErrRenglonConPago = ErrPieceAlreadyPaidToRemove
+
+// PuedeAnularRenglonSinPago decide si un renglón se puede quitar de un pedido aunque ya figure como
+// entregado, porque ningún pago lo cubre.
+//
+// Es la salida de un renglón agregado por error a un pedido ya cobrado: al marcar el pedido como
+// entregado, el renglón queda entregado sin haberse servido desde ahí, y no había cómo quitarlo
+// (PuedeCancelarRenglon lo rechaza y devolver el dinero no aplica, no hay dinero). Se limita a lo
+// que de verdad no mueve dinero: el pedido no está cancelado ni reembolsado, su turno sigue abierto
+// (si no, el arqueo ya lo contó) y `cubierto` es cero. Lo cubierto por un pago se devuelve, no se anula.
+func PuedeAnularRenglonSinPago(estadoPedido string, turnoAbierto bool, cubierto decimal.Decimal) error {
+	if !OrderNotVoided(estadoPedido) {
+		return fmt.Errorf("%w: un pedido %s ya no admite cambios en sus renglones", ErrConflict, estadoPedido)
+	}
+	if !turnoAbierto {
+		return Reword(ErrOrderFromClosedShift, "Ese pedido es de un turno cerrado; no se puede quitar el producto")
+	}
+	if cubierto.IsPositive() {
+		return ErrRenglonConPago
+	}
+	return nil
+}
+
 // LinePieces son las piezas de un renglón: cuántas tiene, cuántas se entregaron y cuántas cubre
 // algún pago vivo.
 type LinePieces struct {

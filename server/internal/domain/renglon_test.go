@@ -176,3 +176,43 @@ func TestMovablePieces(t *testing.T) {
 		}
 	}
 }
+
+// UN RENGLÓN SIN PAGO SE PUEDE ANULAR AUNQUE FIGURE ENTREGADO.
+//
+// El caso real: se agregó un producto a un pedido que ya estaba cobrado y, al entregar el pedido, el
+// renglón quedó entregado sin servirse desde ahí. Sin pago aplicado no hay dinero que devolver, y la
+// única salida era dejarlo como saldo pendiente para siempre.
+func TestPuedeAnularRenglonSinPago(t *testing.T) {
+	casos := []struct {
+		nombre   string
+		estado   string
+		abierto  bool
+		cubierto string
+		quiere   bool
+	}{
+		{"pedido entregado, turno abierto, sin pago", StatusEntregada, true, "0", true},
+		{"pedido abierto, turno abierto, sin pago", StatusAbierta, true, "0", true},
+		{"con una pieza cubierta por un pago", StatusEntregada, true, "1", false},
+		{"turno cerrado", StatusEntregada, false, "0", false},
+		{"pedido cancelado", StatusCancelada, true, "0", false},
+		{"pedido reembolsado", StatusReembolsada, true, "0", false},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			err := PuedeAnularRenglonSinPago(c.estado, c.abierto, d(c.cubierto))
+			if c.quiere && err != nil {
+				t.Fatalf("debía poderse anular, fue %v", err)
+			}
+			if !c.quiere && err == nil {
+				t.Fatal("debía rechazarse y pasó")
+			}
+		})
+	}
+}
+
+// Con un pago aplicado se rechaza con su propio error: la pantalla dice que primero se devuelve el pago.
+func TestAnularRenglonConPagoSeRechazaConSuError(t *testing.T) {
+	if err := PuedeAnularRenglonSinPago(StatusEntregada, true, d("1")); !errors.Is(err, ErrPieceAlreadyPaid) {
+		t.Fatalf("err = %v, quiere ErrPieceAlreadyPaid", err)
+	}
+}
