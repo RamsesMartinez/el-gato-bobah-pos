@@ -176,3 +176,40 @@ func TestMovablePieces(t *testing.T) {
 		}
 	}
 }
+
+// An unpaid line can be voided even if it shows as delivered: the only exit for a product added by
+// mistake to an order that was already paid.
+func TestCanVoidUnpaidLine(t *testing.T) {
+	cases := []struct {
+		name      string
+		status    string
+		shiftOpen bool
+		covered   string
+		want      bool
+	}{
+		{"delivered order, open shift, no payment", StatusEntregada, true, "0", true},
+		{"open order, open shift, no payment", StatusAbierta, true, "0", true},
+		{"a piece covered by a payment", StatusEntregada, true, "1", false},
+		{"closed shift", StatusEntregada, false, "0", false},
+		{"cancelled order", StatusCancelada, true, "0", false},
+		{"refunded order", StatusReembolsada, true, "0", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := CanVoidUnpaidLine(c.status, c.shiftOpen, d(c.covered))
+			if c.want && err != nil {
+				t.Fatalf("should be voidable, got %v", err)
+			}
+			if !c.want && err == nil {
+				t.Fatal("should be rejected and passed")
+			}
+		})
+	}
+}
+
+// A covered line is rejected with its own error so the screen can say the payment goes back first.
+func TestVoidingACoveredLineIsRejectedWithItsOwnError(t *testing.T) {
+	if err := CanVoidUnpaidLine(StatusEntregada, true, d("1")); !errors.Is(err, ErrPieceAlreadyPaid) {
+		t.Fatalf("err = %v, want ErrPieceAlreadyPaid", err)
+	}
+}

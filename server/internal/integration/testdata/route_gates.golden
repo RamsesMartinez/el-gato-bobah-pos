@@ -209,6 +209,7 @@ POST /api/v1/orders/{id}/lines/cancel-pending admin,gerente,cajero,mesero
 POST /api/v1/orders/{id}/lines/move admin,gerente,cajero,mesero
 POST /api/v1/orders/{id}/lines/{lineId}/cancel admin,gerente,cajero,mesero
 POST /api/v1/orders/{id}/lines/{lineId}/deliver admin,gerente,cajero,mesero
+POST /api/v1/orders/{id}/lines/{lineId}/void-unpaid admin,gerente
 POST /api/v1/orders/{id}/pay admin,gerente,cajero,mesero
 POST /api/v1/orders/{id}/payments/{paymentId}/terminal admin,gerente
 POST /api/v1/orders/{id}/payments/{paymentId}/void admin,gerente

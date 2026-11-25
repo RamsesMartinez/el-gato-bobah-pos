@@ -290,6 +290,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Cancelar UN renglón no mueve dinero por sí solo —baja el total de un pedido que
 					// todavía no se cobró—, así que no pide el rol que exige la salida de caja.
 					r.Post("/{id}/lines/{lineId}/cancel", h.CancelOrderLine)
+					// Toca un pedido ya cerrado, así que pide la capacidad de cancelar pedidos y no la de
+					// cancelar un renglón pendiente, que es de todos.
+					r.With(RequirePermission(h.permissions, domain.PermOrdersCancel)).
+						Post("/{id}/lines/{lineId}/void-unpaid", h.VoidUnpaidOrderLine)
 					// Quitar lo que falta por entregar, de un jalón. Hoy lo tienen todos los roles:
 					// es también la única salida de un pedido que se quedó sin productos, y negárselo
 					// a quien atiende el mostrador lo deja en el tablero sin nada que lo cierre.

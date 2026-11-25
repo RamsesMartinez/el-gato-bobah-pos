@@ -17,6 +17,7 @@ resolved?, notes?, attention?}`; aplicar, `{applied, result, before, after}` (co
 | `order_payment_void` | `order_id`, `payment_id`, `reason` | El pedido con sus pagos | `payments.void` |
 | `order_payment_terminal_set` | `order_id`, `payment_id`, `terminal_id`, `from_terminal_id?`, `reason` | El pedido y las terminales | `payments.change_terminal` |
 | `order_refund` | `order_id`, `reason`, `amount?`, `line_id?`, `card_folio?` | `refund-info` (cuánto, terminal, si pide folio) y el pedido | `payments.void` |
+| `order_line_cancel` | `order_id`, `line_id`, `reason` | el pedido | `orders.cancel` |
 | `card_terminals_list` | — | — | Lectura (`cash.operate`) |
 
 ## Costo e inventario (`write:inventory`)

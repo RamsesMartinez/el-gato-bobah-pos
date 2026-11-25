@@ -51,6 +51,26 @@ func PuedeCancelarRenglon(estadoPedido string, cantidad, entregado decimal.Decim
 	return nil
 }
 
+// CanVoidUnpaidLine decide si un renglón se quita de un pedido aunque ya figure como entregado,
+// porque ningún pago lo cubre.
+//
+// Existe porque PuedeCancelarRenglon rechaza lo entregado y el reembolso solo devuelve dinero: un
+// producto agregado por error a un pedido ya cobrado no tenía salida. Se limita a lo que no mueve
+// dinero: el pedido no está cancelado ni reembolsado, su turno sigue abierto (si no, el arqueo ya
+// lo contó) y ninguna pieza está cubierta por un pago, que se devuelve y no se anula.
+func CanVoidUnpaidLine(orderStatus string, shiftOpen bool, covered decimal.Decimal) error {
+	if !OrderNotVoided(orderStatus) {
+		return fmt.Errorf("%w: un pedido %s ya no admite cambios en sus renglones", ErrConflict, orderStatus)
+	}
+	if !shiftOpen {
+		return Reword(ErrOrderFromClosedShift, "Ese pedido es de un turno cerrado; no se puede quitar el producto")
+	}
+	if covered.IsPositive() {
+		return ErrPieceAlreadyPaidToRemove
+	}
+	return nil
+}
+
 // LinePieces son las piezas de un renglón: cuántas tiene, cuántas se entregaron y cuántas cubre
 // algún pago vivo.
 type LinePieces struct {
