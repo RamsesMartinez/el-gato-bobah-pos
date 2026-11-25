@@ -586,8 +586,17 @@ func (s *OrdersService) VoidUnpaidLine(ctx context.Context, orderID, lineID, act
 		if err != nil {
 			return err
 		}
-		shiftOpen := o.SessionStatus == string(db.SessionStatusAbierta)
-		if err := domain.CanVoidUnpaidLine(string(o.Status), shiftOpen, guard.covered[lineID]); err != nil {
+		// El turno se lee con candado compartido y no del join de arriba, como en VoidPayment: un
+		// cierre que corre a la vez termina antes y aquí se ve cerrado. Sin turno cuenta como cerrado.
+		shiftOpen := false
+		if o.RegisterSessionID != nil {
+			status, err := q.LockSessionStatusForShare(ctx, *o.RegisterSessionID)
+			if err != nil {
+				return err
+			}
+			shiftOpen = status == string(db.SessionStatusAbierta)
+		}
+		if err := domain.CanVoidUnpaidLine(string(o.Status), shiftOpen, guard.covered[lineID], guard.paid, o.WrittenOffAmount); err != nil {
 			return err
 		}
 		if err := q.CancelOrderLine(ctx, db.CancelOrderLineParams{
@@ -616,7 +625,7 @@ func (s *OrdersService) VoidUnpaidLine(ctx context.Context, orderID, lineID, act
 		if err := cerrarSiYaSeEntregoTodo(ctx, q, orderID, deliveryLines); err != nil {
 			return err
 		}
-		return auditOrder(ctx, q, "order.line_removed", orderID, &actor, nil, map[string]any{"lineId": lineID, "unpaid": true, "reason": motivo})
+		return auditOrder(ctx, q, "order.line_removed", orderID, &actor, nil, map[string]any{"lineId": lineID, "unpaid": true, "reason": reason})
 	})
 	return restocked, err
 }
