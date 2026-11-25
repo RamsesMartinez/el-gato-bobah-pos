@@ -185,18 +185,20 @@ func TestCanVoidUnpaidLine(t *testing.T) {
 		status    string
 		shiftOpen bool
 		covered   string
+		paid      string
 		want      bool
 	}{
-		{"delivered order, open shift, no payment", StatusEntregada, true, "0", true},
-		{"open order, open shift, no payment", StatusAbierta, true, "0", true},
-		{"a piece covered by a payment", StatusEntregada, true, "1", false},
-		{"closed shift", StatusEntregada, false, "0", false},
-		{"cancelled order", StatusCancelada, true, "0", false},
-		{"refunded order", StatusReembolsada, true, "0", false},
+		{"delivered order, open shift, paid order", StatusEntregada, true, "0", "80", true},
+		{"open order, open shift, paid order", StatusAbierta, true, "0", "80", true},
+		{"a piece covered by a payment", StatusEntregada, true, "1", "80", false},
+		{"closed shift", StatusEntregada, false, "0", "80", false},
+		{"cancelled order", StatusCancelada, true, "0", "80", false},
+		{"refunded order", StatusReembolsada, true, "0", "80", false},
+		{"order with no payment at all", StatusEntregada, true, "0", "0", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := CanVoidUnpaidLine(c.status, c.shiftOpen, d(c.covered))
+			err := CanVoidUnpaidLine(c.status, c.shiftOpen, d(c.covered), d(c.paid))
 			if c.want && err != nil {
 				t.Fatalf("should be voidable, got %v", err)
 			}
@@ -209,7 +211,15 @@ func TestCanVoidUnpaidLine(t *testing.T) {
 
 // A covered line is rejected with its own error so the screen can say the payment goes back first.
 func TestVoidingACoveredLineIsRejectedWithItsOwnError(t *testing.T) {
-	if err := CanVoidUnpaidLine(StatusEntregada, true, d("1")); !errors.Is(err, ErrPieceAlreadyPaid) {
+	if err := CanVoidUnpaidLine(StatusEntregada, true, d("1"), d("80")); !errors.Is(err, ErrPieceAlreadyPaid) {
 		t.Fatalf("err = %v, want ErrPieceAlreadyPaid", err)
+	}
+}
+
+// With no payment at all the line is not voided: removing what was delivered would erase a sale with
+// no money trail, and the way out is to charge it or write it off.
+func TestVoidingInAnOrderWithoutPaymentsIsRejectedWithItsOwnError(t *testing.T) {
+	if err := CanVoidUnpaidLine(StatusEntregada, true, d("0"), d("0")); !errors.Is(err, ErrOrderWithoutPayments) {
+		t.Fatalf("err = %v, want ErrOrderWithoutPayments", err)
 	}
 }

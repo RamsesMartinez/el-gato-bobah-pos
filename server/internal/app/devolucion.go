@@ -587,7 +587,7 @@ func (s *OrdersService) VoidUnpaidLine(ctx context.Context, orderID, lineID, act
 			return err
 		}
 		shiftOpen := o.SessionStatus == string(db.SessionStatusAbierta)
-		if err := domain.CanVoidUnpaidLine(string(o.Status), shiftOpen, guard.covered[lineID]); err != nil {
+		if err := domain.CanVoidUnpaidLine(string(o.Status), shiftOpen, guard.covered[lineID], guard.paid); err != nil {
 			return err
 		}
 		if err := q.CancelOrderLine(ctx, db.CancelOrderLineParams{
@@ -616,7 +616,7 @@ func (s *OrdersService) VoidUnpaidLine(ctx context.Context, orderID, lineID, act
 		if err := cerrarSiYaSeEntregoTodo(ctx, q, orderID, deliveryLines); err != nil {
 			return err
 		}
-		return auditOrder(ctx, q, "order.line_removed", orderID, &actor, nil, map[string]any{"lineId": lineID, "unpaid": true, "reason": motivo})
+		return auditOrder(ctx, q, "order.line_removed", orderID, &actor, nil, map[string]any{"lineId": lineID, "unpaid": true, "reason": reason})
 	})
 	return restocked, err
 }

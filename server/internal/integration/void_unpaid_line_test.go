@@ -140,3 +140,29 @@ func TestALineCoveredByAPaymentIsNotVoided(t *testing.T) {
 		t.Fatalf("a covered line should be rejected with ErrPieceAlreadyPaid, got %v", err)
 	}
 }
+
+// An order that never had a payment keeps its delivered lines: voiding them would erase a sale.
+func TestADeliveredLineOfAnOrderWithoutPaymentsIsNotVoided(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	svc := app.NewOrdersService(st, clock)
+
+	cashier := makeUser(t, st, "cashier_void_nopay", "cajero")
+	abrirCajaPrincipal(t, st, cashier)
+
+	product := makeProduct(t, st, "Producto sin cobro", pesos("80"), false)
+	ord, err := svc.Create(ctx, app.CreateOrderCmd{
+		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cashier,
+		Lines: []domain.OrderLineInput{{ProductID: product, Qty: pesos("1")}},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := svc.DeliverAll(ctx, ord.ID); err != nil {
+		t.Fatalf("DeliverAll: %v", err)
+	}
+	if _, err := svc.VoidUnpaidLine(ctx, ord.ID, ord.Lines[0].ID, cashier, "prueba"); !errors.Is(err, domain.ErrOrderWithoutPayments) {
+		t.Fatalf("an order without payments should be rejected with ErrOrderWithoutPayments, got %v", err)
+	}
+}
