@@ -548,6 +548,79 @@ func (s *OrdersService) RemovePieces(ctx context.Context, orderID, lineID, actor
 	return repuso, err
 }
 
+// VoidUnpaidLine quita UN renglón al que ningún pago cubre, aunque figure como entregado.
+//
+// Es la salida de un producto agregado por error a un pedido ya cobrado: al entregar el pedido el
+// renglón queda «entregado» sin servirse desde ahí, RemovePieces lo rechaza y el reembolso no
+// aplica porque no hay dinero. Lo cubierto por un pago se devuelve; un turno cerrado ya lo contó el
+// arqueo (ver domain.CanVoidUnpaidLine).
+//
+// Devuelve si repuso el inventario con la misma regla de siempre (ReponeInventario): lo que ya salió
+// a cocina no se repone, y el descuadre lo ajusta el siguiente conteo.
+func (s *OrdersService) VoidUnpaidLine(ctx context.Context, orderID, lineID, actor int64, motivo string) (restocked bool, err error) {
+	reason, err := domain.MotivoValido(motivo)
+	if err != nil {
+		return false, err
+	}
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Pedido y luego renglón, como RemovePieces y DeliverLine: en otro orden una entrega y una
+		// anulación simultáneas se bloquean entre sí.
+		o, err := q.GetOrderForCharge(ctx, orderID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		l, err := q.GetOrderLineForCancel(ctx, db.GetOrderLineForCancelParams{ID: lineID, OrderID: orderID})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if l.CancelledAt.Valid {
+			return nil // un doble toque no puede reponer dos veces el mismo insumo
+		}
+		guard, err := loadPaymentGuard(ctx, q, orderID)
+		if err != nil {
+			return err
+		}
+		shiftOpen := o.SessionStatus == string(db.SessionStatusAbierta)
+		if err := domain.CanVoidUnpaidLine(string(o.Status), shiftOpen, guard.covered[lineID]); err != nil {
+			return err
+		}
+		if err := q.CancelOrderLine(ctx, db.CancelOrderLineParams{
+			ID: lineID, CancelledBy: &actor, CancelReason: &reason,
+		}); err != nil {
+			return err
+		}
+		restocked = domain.ReponeInventario(l.NeedsPrep, nullTime(l.EnviadoACocinaAt))
+		if restocked {
+			if err := q.RestockCancelledLine(ctx, db.RestockCancelledLineParams{
+				LineID: &lineID, ActorID: &actor,
+			}); err != nil {
+				return err
+			}
+		}
+		if err := q.RecalcOrderTotals(ctx, orderID); err != nil {
+			return err
+		}
+		if err := guard.keepsPayments(ctx, q, orderID); err != nil {
+			return err
+		}
+		deliveryLines, err := lineasDeEntrega(ctx, q, orderID)
+		if err != nil {
+			return err
+		}
+		if err := cerrarSiYaSeEntregoTodo(ctx, q, orderID, deliveryLines); err != nil {
+			return err
+		}
+		return auditOrder(ctx, q, "order.line_removed", orderID, &actor, nil, map[string]any{"lineId": lineID, "unpaid": true, "reason": motivo})
+	})
+	return restocked, err
+}
+
 // paymentGuard es la ÚNICA validación de pagos al quitar productos, la de quitar uno y la de quitar
 // lo que falta. Una copia en cada camino es como nace el camino nuevo que se salta el control viejo.
 type paymentGuard struct {
