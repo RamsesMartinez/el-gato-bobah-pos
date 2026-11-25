@@ -105,6 +105,7 @@ var (
 	ErrPaymentFromClosedShift     = fmt.Errorf("%w: Ese pago es de un turno cerrado: devuélvelo desde Pedidos entregados", ErrConflict)
 	ErrOrderFromClosedShift       = fmt.Errorf("%w: Ese pedido es de un turno cerrado; no se divide", ErrConflict)
 	ErrPlatformOrderNotSplittable = fmt.Errorf("%w: Los pedidos de plataforma no se dividen", ErrConflict)
+	ErrOrderWithWriteOff          = fmt.Errorf("%w: A ese pedido ya se le dio por perdido un monto; no se puede quitar el producto", ErrConflict)
 	ErrOrderWithoutPayments       = fmt.Errorf("%w: Ese pedido no tiene ningún cobro. Cóbralo o dalo por perdido en vez de quitar el producto", ErrConflict)
 	ErrOrderWouldBeOverpaid       = fmt.Errorf("%w: Ya se cobró más de lo que quedaría. Primero hay que devolver un pago", ErrConflict)
 	ErrMixedDeliveredPieces       = fmt.Errorf("%w: Ese producto tiene piezas entregadas y otras sin entregar. Pásalas todas juntas", ErrConflict)

@@ -59,8 +59,9 @@ func PuedeCancelarRenglon(estadoPedido string, cantidad, entregado decimal.Decim
 // dinero: el pedido no está cancelado ni reembolsado, su turno sigue abierto (si no, el arqueo ya
 // lo contó), el pedido ya tiene algún cobro y ninguna pieza está cubierta por un pago, que se devuelve
 // y no se anula. Sin ningún cobro, quitar lo entregado borraría una venta sin rastro de dinero: eso
-// se cobra o se da por perdido.
-func CanVoidUnpaidLine(orderStatus string, shiftOpen bool, covered, paid decimal.Decimal) error {
+// se cobra o se da por perdido. Con un monto ya dado por perdido tampoco: el corte suma ese monto y
+// seguiría reportando una pérdida que el pedido ya no tiene.
+func CanVoidUnpaidLine(orderStatus string, shiftOpen bool, covered, paid, writtenOff decimal.Decimal) error {
 	if !OrderNotVoided(orderStatus) {
 		return fmt.Errorf("%w: un pedido %s ya no admite cambios en sus renglones", ErrConflict, orderStatus)
 	}
@@ -72,6 +73,9 @@ func CanVoidUnpaidLine(orderStatus string, shiftOpen bool, covered, paid decimal
 	}
 	if !paid.IsPositive() {
 		return ErrOrderWithoutPayments
+	}
+	if writtenOff.IsPositive() {
+		return ErrOrderWithWriteOff
 	}
 	return nil
 }
