@@ -101,3 +101,15 @@ func TestCategoryCreateArgsBody(t *testing.T) {
 		t.Fatalf("cuerpo de una raíz = %s", got)
 	}
 }
+
+// Un cuerpo ilegible de la lista de categorías se dice como error: leído como «no hay categorías»,
+// la vista previa afirmaba «no existe la categoría N» de una que sí existe.
+func TestParseCategoryRows(t *testing.T) {
+	if _, err := parseCategoryRows([]byte(`{"items": [{"id": "no es número"}]}`)); err == nil {
+		t.Fatal("un cuerpo ilegible pasó como lista vacía")
+	}
+	rows, err := parseCategoryRows([]byte(`{"items": [{"id": 3, "name": "Frías", "parentId": 1, "isActive": true}]}`))
+	if err != nil || len(rows) != 1 || rows[0].ID != 3 || rows[0].ParentID == nil || *rows[0].ParentID != 1 {
+		t.Fatalf("= %+v, %v", rows, err)
+	}
+}
