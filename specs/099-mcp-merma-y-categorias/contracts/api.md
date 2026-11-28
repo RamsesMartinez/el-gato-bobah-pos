@@ -11,8 +11,8 @@ mal formado → 400 `VALIDATION`. Id de otra empresa o inexistente → 404.
 {
   "ingredientId": 331, "name": "…", "isActive": true, "baseUnit": "ml",
   "unitCost": 0.1234,
-  "current": {"pct": 7, "effectiveCost": 0.1320},
-  "next":    {"pct": 8, "effectiveCost": 0.1333},
+  "current": {"pct": "7", "effectiveCost": 0.1320},
+  "next":    {"pct": "8", "effectiveCost": 0.1333},
   "fallback": {"productOrGeneral": true, "generalPct": 5},
   "unchanged": false,
   "uses": [
@@ -24,7 +24,8 @@ mal formado → 400 `VALIDATION`. Id de otra empresa o inexistente → 404.
 }
 ```
 
-- `current.pct`/`next.pct` = `null` cuando no hay captura; entonces su `effectiveCost` es `null` y
+- `current.pct`/`next.pct` van como texto decimal (exacto, como el resto de los % de la API), o
+  `null` cuando no hay captura; entonces su `effectiveCost` es `null` y
   `fallback.productOrGeneral` = `true` (el costo depende del producto; ver `uses`).
 - `uses` es siempre arreglo (vacío si nadie lo usa); transitivo por preparados, combos y extras que
   son otro producto. `manual: true` = producto de costo manual: usa el insumo y `before == after`.

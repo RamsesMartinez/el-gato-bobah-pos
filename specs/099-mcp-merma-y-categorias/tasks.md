@@ -67,8 +67,8 @@ description: "Tasks de la 099 — merma esperada y categorías del menú desde e
 - [X] T024 [P] Documentar en `docs/mecanica/catalogo-y-sucursales.md`: reglas del árbol (dos niveles, por qué), la carrera aceptada de producto activo en categoría inactiva (research R7), que las reglas viven en el servicio (SQL manual y el importador no las aplican) y que `parent_id` sigue siendo FK de una columna (#344).
 - [X] T025 [P] Documentar en `docs/mecanica/almacen.md`: la vista previa de merma simula sobre el grafo en memoria, «sin captura» ≠ 0 y el `reason` opcional de la ruta.
 - [X] T026 `cd server && go build ./... && go test ./...` y `make test-integration` en verde.
-- [ ] T027 `/revision-de-codigo` (hook `after_implement`); cada hallazgo se corrige con su test.
-- [ ] T028 Quickstart §2 contra el `make start` del worktree (API :8099) con un token MCP; lo creado se desactiva al terminar.
+- [X] T027 `/revision-de-codigo` (hook `after_implement`); cada hallazgo se corrige con su test.
+- [X] T028 Quickstart §2 contra el `make start` del worktree (API :8099) con un token MCP; lo creado se desactiva al terminar.
 - [ ] T029 `make ci-local` verde; commits firmados sin `Co-Authored-By`; PR a `develop`, CI verde, merge con develop al día.
 - [ ] T030 PR de release `develop` → `main`, CI verde, merge; respaldo previo; seguir el deploy hasta `readyz` 200 en producción y revisar logs sin 5xx.
 - [ ] T031 Aviso a finanzas en el buzón pos-finanzas (`respuesta_pos_a_finanzas_AAAA-MM-DD.md`, sin secretos) y comentario en el #289 con lo que entró, sin precios ni nombres del negocio; `make cerrar-worktree datos=1` y borrar la rama remota.
