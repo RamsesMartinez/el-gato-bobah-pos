@@ -144,14 +144,23 @@ func allCategories(s *mcpSession, ctx context.Context, tool string) (json.RawMes
 	if err != nil {
 		return nil, nil, err
 	}
+	rows, err := parseCategoryRows(b)
+	if err != nil {
+		return nil, nil, err
+	}
+	return b, rows, nil
+}
+
+// parseCategoryRows lee la lista de categorías. Un cuerpo ilegible es un error, no «no hay
+// categorías»: leído así, la vista previa diría «no existe la categoría N» de una que sí existe.
+func parseCategoryRows(b []byte) ([]categoryRow, error) {
 	var env struct {
 		Items []categoryRow `json:"items"`
 	}
-	// Un cuerpo ilegible no es «no hay categorías»: diría «no existe la categoría N» de una que sí.
 	if err := json.Unmarshal(b, &env); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return b, env.Items, nil
+	return env.Items, nil
 }
 
 func findCategory(rows []categoryRow, id int64) *categoryRow {

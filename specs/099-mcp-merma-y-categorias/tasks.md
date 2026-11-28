@@ -69,9 +69,9 @@ description: "Tasks de la 099 — merma esperada y categorías del menú desde e
 - [X] T026 `cd server && go build ./... && go test ./...` y `make test-integration` en verde.
 - [X] T027 `/revision-de-codigo` (hook `after_implement`); cada hallazgo se corrige con su test.
 - [X] T028 Quickstart §2 contra el `make start` del worktree (API :8099) con un token MCP; lo creado se desactiva al terminar.
-- [ ] T029 `make ci-local` verde; commits firmados sin `Co-Authored-By`; PR a `develop`, CI verde, merge con develop al día.
-- [ ] T030 PR de release `develop` → `main`, CI verde, merge; respaldo previo; seguir el deploy hasta `readyz` 200 en producción y revisar logs sin 5xx.
-- [ ] T031 Aviso a finanzas en el buzón pos-finanzas (`respuesta_pos_a_finanzas_AAAA-MM-DD.md`, sin secretos) y comentario en el #289 con lo que entró, sin precios ni nombres del negocio; `make cerrar-worktree datos=1` y borrar la rama remota.
+- [X] T029 `make ci-local` verde; commits firmados sin `Co-Authored-By`; PR a `develop`, CI verde, merge con develop al día.
+- [X] T030 PR de release `develop` → `main`, CI verde, merge; respaldo previo; seguir el deploy hasta `readyz` 200 en producción y revisar logs sin 5xx.
+- [X] T031 Aviso a finanzas en el buzón pos-finanzas (`respuesta_pos_a_finanzas_AAAA-MM-DD.md`, sin secretos) y comentario en el #289 con lo que entró, sin precios ni nombres del negocio; `make cerrar-worktree datos=1` y borrar la rama remota.
 
 ## Dependencies & Execution Order
 
