@@ -262,18 +262,23 @@ type CategoryAdminView struct {
 	ImageURL     *string `json:"imageUrl"`
 	FoodFamily   string  `json:"foodFamily"` // "" = genérica
 	ProductCount int     `json:"productCount"`
+	// IsActive e InactiveProductCount: el MCP pide también las apagadas para reactivarlas (spec 099).
+	IsActive             bool `json:"isActive"`
+	InactiveProductCount int  `json:"inactiveProductCount"`
 }
 
-// CategoryList lista las categorías activas con su foto y su familia. Siempre un arreglo.
-func (s *AdminService) CategoryList(ctx context.Context) ([]CategoryAdminView, error) {
-	rows, err := s.store.QC(ctx).AdminCategoryList(ctx)
+// CategoryList lista las categorías activas (y las apagadas si includeInactive) con su foto y su
+// familia. Siempre un arreglo.
+func (s *AdminService) CategoryList(ctx context.Context, includeInactive bool) ([]CategoryAdminView, error) {
+	rows, err := s.store.QC(ctx).AdminCategoryList(ctx, includeInactive)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]CategoryAdminView, len(rows))
 	for i, r := range rows {
 		out[i] = CategoryAdminView{ID: r.ID, Name: r.Name, ParentID: r.ParentID, ImageURL: r.ImageUrl,
-			FoodFamily: r.FoodFamily, ProductCount: int(r.ProductCount)}
+			FoodFamily: r.FoodFamily, ProductCount: int(r.ProductCount), IsActive: r.IsActive,
+			InactiveProductCount: int(r.InactiveProductCount)}
 	}
 	return out, nil
 }

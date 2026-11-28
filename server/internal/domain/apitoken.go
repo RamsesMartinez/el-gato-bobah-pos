@@ -367,6 +367,13 @@ var toolFixByCode = map[string]string{
 		"decide desactivarlo con esa existencia, manda confirm_on_hand: true.",
 	"IN_USE": "Quítalo de esas recetas, o cierra o descarta el conteo, en la pantalla; desactivarlo no cambia " +
 		"ninguna receta ni producto.",
+	// Las de la 099: categorías del menú. La regla es de domain.CheckCategoryChange.
+	"CATEGORY_NAME_TAKEN": "Usa esa categoría (si está inactiva, reactívala con category_update y active: true) o " +
+		"elige otro nombre.",
+	"CATEGORY_HAS_ACTIVE_PRODUCTS": "Mueve esos productos a otra categoría o desactívalos con product_update, y repite.",
+	"CATEGORY_HAS_ACTIVE_CHILDREN": "Desactiva o mueve primero esas subcategorías con category_update.",
+	"CATEGORY_PARENT_INVALID": "El padre debe ser una categoría raíz activa y la categoría no debe tener " +
+		"subcategorías; búscalo con categories_list.",
 }
 
 // ToolErrorHintFor es ToolErrorHint con el código de error de la API: si la operación tiene una
@@ -558,7 +565,8 @@ var mcpTools = []MCPTool{
 	wr("recipe_set", "Guarda lo que resta un producto o un extra (insumos, el producto que es, los productos de un "+
 		"paquete o nada). No copia la receta a los extras con el mismo nombre salvo also_in_same_name: true. Aplicar "+
 		"pide el based_on de recipe_get o de la vista previa.", ScopeWriteCatalog, PermMenuConfigure),
-	rd("categories_list", "Las categorías del menú, para dar de alta o mover un producto.", PermMenuConfigure),
+	rd("categories_list", "Las categorías del menú, para dar de alta o mover un producto. include_inactive: true "+
+		"agrega las apagadas (isActive false), para reactivarlas.", PermMenuConfigure),
 	rd("modifier_groups_list", "Grupos de modificadores con su mínimo, máximo, si están activos y en cuántos productos están.", PermMenuConfigure),
 	wr("modifier_group_create", "Crea un grupo de modificadores con su mínimo y máximo por omisión.", ScopeWriteCatalog, PermMenuConfigure),
 	wr("modifier_group_update", "Edita un grupo: nombre, mínimo y máximo por omisión, y si está activo. Solo cambia lo "+
@@ -580,6 +588,17 @@ var mcpTools = []MCPTool{
 	wr("category_image_remove", "Quita la foto de una categoría; vuelve a verse el dibujo de su familia.", ScopeWriteCatalog, PermMenuConfigure),
 	wr("category_family_set", "Elige la familia de comida de una categoría (el dibujo de lo que no tiene foto): "+
 		"cold_drink, coffee, tea, frappe, soda, soup, snack, wings, dessert, breakfast o dish; vacío = genérica.", ScopeWriteCatalog, PermMenuConfigure),
+
+	// Spec 099: merma esperada de un insumo y alta y edición de categorías.
+	wr("ingredient_expected_waste_set", "Cambia la merma esperada de un insumo (pct de 0 a 99.99) o quita su captura "+
+		"(clear: true, hereda la del producto o la general), con motivo. Costo efectivo = costo × (1 + %/100). La vista "+
+		"previa trae el % actual y el nuevo, el costo efectivo antes y después y lo que usa el insumo con su costo antes "+
+		"y después. Una pérdida que ya ocurrió va con waste_record.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("category_create", "Da de alta una categoría del menú, raíz o dentro de una categoría raíz activa. La vista previa "+
+		"pone primero las categorías de nombre parecido.", ScopeWriteCatalog, PermMenuConfigure),
+	wr("category_update", "Edita una categoría del menú: nombre, active (false la apaga, true la reactiva) y padre "+
+		"(parent_id, o make_root). Solo cambia lo que mandes. No se apaga con productos activos ni con subcategorías "+
+		"activas; la vista previa lo avisa.", ScopeWriteCatalog, PermMenuConfigure),
 }
 
 // MCPTools devuelve el catálogo en el orden del contrato.

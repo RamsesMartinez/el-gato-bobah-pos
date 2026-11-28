@@ -342,6 +342,13 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     inserta después de unir; las ventas y mermas viejas del origen siguen con su id y su unidad.
     `domain.MergeChain` las suma con su factor. Un cambio de unidad, en cambio, empieza de cero.
     Unir hereda el % del origen si el destino está sin captura (`domain.InheritExpectedWaste`).
+  - **Desde el MCP** (spec 099, `ingredient_expected_waste_set`): `pct` o `clear: true`, nunca «ausente
+    = quitar la captura». Su vista previa (`GET …/expected-waste/preview?pct=8|none`) **simula sobre el
+    grafo de costeo en memoria** (`CostGraph.WithIngredientWaste` + `domain.ExpectedWasteImpact`): no
+    toma el candado de composición ni escribe costos para deshacerlos, así que puede leer un grafo que
+    otra escritura cambia un instante después. La ruta del PUT acepta un `reason` opcional que va al
+    `after` de la bitácora; la pantalla no lo manda. Lo que ya se perdió (un bote que caducó) va con
+    `waste_record`, no subiendo el %.
 - **Caducidad por lote** (spec 098, 0128). Un lote es almacén + artículo + fecha (`stock_lots`); lo sin
   fecha no se guarda: es `stock_levels.on_hand` menos los lotes. Seis cosas que no se ven:
   - **La regla de consumo vive en el trigger `apply_stock_lots`**, no en Go: todo movimiento de artículo

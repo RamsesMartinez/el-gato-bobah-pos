@@ -23,11 +23,17 @@ update categories set food_family = sqlc.narg(food_family)::food_family where id
 
 -- name: AdminCategoryList :many
 -- La pestaña de categorías: foto, familia y cuántos productos activos del catálogo tiene cada una.
+-- Con include_inactive (el MCP, spec 099) también las apagadas, para poder reactivarlas. «Producto
+-- activo» es el mismo predicado que CategoryActiveProductCount: la cifra que se ve en la lista es la
+-- que bloquea apagarla.
 select c.id, c.name, c.parent_id, c.image_url, coalesce(c.food_family::text, '')::text as food_family,
+       c.is_active,
        (select count(*) from products p
-         where p.category_id = c.id and p.is_active and p.system_kind is null)::int as product_count
+         where p.category_id = c.id and p.is_active and p.system_kind is null)::int as product_count,
+       (select count(*) from products p
+         where p.category_id = c.id and not p.is_active and p.system_kind is null)::int as inactive_product_count
   from categories c
- where c.is_active
+ where c.is_active or @include_inactive::boolean
  order by c.parent_id nulls first, c.sort_key, c.name;
 
 -- name: AddMediaPendingDeletion :exec

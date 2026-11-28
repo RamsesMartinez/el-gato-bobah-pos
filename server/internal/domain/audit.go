@@ -156,6 +156,9 @@ var auditActions = []struct {
 	{AuditWarehouseArchived, AuditGroupPrice},
 	{AuditWarehouseRestored, AuditGroupPrice},
 	{AuditTransferCreated, AuditGroupPrice},
+	// Alta y edición de categorías del menú (spec 099): configuración del menú, con su familia.
+	{AuditCategoryCreated, AuditGroupPrice},
+	{AuditCategoryUpdated, AuditGroupPrice},
 }
 
 const (
@@ -439,4 +442,10 @@ const (
 	AuditCategoryImageSet     AuditAction = "category.image_set"
 	AuditCategoryImageRemoved AuditAction = "category.image_removed"
 	AuditCategoryFamilySet    AuditAction = "category.family_set"
+)
+
+// Alta y edición de categorías (spec 099). Antes y después llevan solo los campos que cambiaron.
+const (
+	AuditCategoryCreated AuditAction = "category.created"
+	AuditCategoryUpdated AuditAction = "category.updated"
 )

@@ -96,6 +96,7 @@ GET /api/v1/stock/articles/{id}/alt-names/similar admin,gerente
 GET /api/v1/stock/articles/{id}/archive-check admin,gerente
 GET /api/v1/stock/articles/{id}/audit admin,gerente
 GET /api/v1/stock/articles/{id}/cost-history admin,gerente
+GET /api/v1/stock/articles/{id}/expected-waste/preview admin,gerente
 GET /api/v1/stock/articles/{id}/low-stock admin,gerente
 GET /api/v1/stock/articles/{id}/real-waste admin,gerente
 GET /api/v1/stock/count-places admin,gerente
@@ -156,6 +157,7 @@ PATCH /api/v1/stock/articles/{id} admin,gerente
 PATCH /api/v1/stock/warehouses/{id} admin,gerente
 PATCH /api/v1/suppliers/{id} admin,gerente
 PATCH /api/v1/users/{id} admin
+POST /api/v1/admin/categories admin,gerente
 POST /api/v1/admin/groups/ admin,gerente
 POST /api/v1/admin/groups/{id}/options admin,gerente
 POST /api/v1/admin/groups/{id}/options/reorder admin,gerente

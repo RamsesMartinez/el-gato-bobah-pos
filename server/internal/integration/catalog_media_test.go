@@ -467,7 +467,7 @@ func TestCategoryPhotoAndFamily(t *testing.T) {
 		t.Fatalf("archivos=%d", k.s3.count())
 	}
 
-	cats, err := app.NewAdminService(k.appSt).CategoryList(k.ctx)
+	cats, err := app.NewAdminService(k.appSt).CategoryList(k.ctx, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,7 +507,7 @@ func TestCatalogMediaIsIsolated(t *testing.T) {
 		if err == nil && len(rows) > 0 {
 			t.Errorf("se vieron %d pendientes ajenos (el barrido borraría archivos de otra empresa)", len(rows))
 		}
-		cats, err := q.AdminCategoryList(ctx)
+		cats, err := q.AdminCategoryList(ctx, true)
 		if err == nil {
 			for _, c := range cats {
 				if c.ID == k.cat {

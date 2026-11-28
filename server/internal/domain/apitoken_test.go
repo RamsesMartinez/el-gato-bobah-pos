@@ -233,9 +233,10 @@ func TestMCPToolCatalog(t *testing.T) {
 		}
 	}
 	// 094 suma warehouses_list y stock_transfers_list (lecturas) y stock_transfer (escritura); además
-	// order_line_cancel (escritura).
-	if len(seen) != 86 || writes != 50 {
-		t.Fatalf("el contrato tiene 86 herramientas y 50 escrituras (094 + order_line_cancel); hay %d y %d", len(seen), writes)
+	// order_line_cancel (escritura). 099 suma ingredient_expected_waste_set, category_create y
+	// category_update (escrituras).
+	if len(seen) != 89 || writes != 53 {
+		t.Fatalf("el contrato tiene 89 herramientas y 53 escrituras (099); hay %d y %d", len(seen), writes)
 	}
 	// Las de la 073, con el alcance y el permiso de contracts/mcp-tools.md.
 	for name, want := range map[string]MCPTool{
