@@ -137,6 +137,10 @@ type optionCreateArgs struct {
 	MaxPerLine *int    `json:"max_per_line,omitempty" jsonschema:"cuántas veces cabe en un renglón; vacío = 1"`
 }
 
+type categoriesListArgs struct {
+	IncludeInactive bool `json:"include_inactive,omitempty" jsonschema:"true agrega las categorías apagadas (para reactivarlas)"`
+}
+
 type productIDArgs struct {
 	ProductID int64 `json:"product_id" jsonschema:"producto (de products_list)"`
 }
@@ -398,7 +402,12 @@ func register090Catalog() {
 	})
 
 	// ---- Grupos ----
-	simpleRead("categories_list", pCategories, func(noArgs) (map[string]int64, url.Values, error) { return nil, nil, nil })
+	simpleRead("categories_list", pCategories, func(in categoriesListArgs) (map[string]int64, url.Values, error) {
+		if in.IncludeInactive {
+			return nil, url.Values{"status": {"all"}}, nil
+		}
+		return nil, nil, nil
+	})
 	simpleRead("modifier_groups_list", pGroups, func(in groupsListArgs) (map[string]int64, url.Values, error) {
 		q := url.Values{"limit": {"0"}}
 		if in.Search != "" {

@@ -73,6 +73,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'category.image_set': 'Puso la foto de una categoría',
   'category.image_removed': 'Quitó la foto de una categoría',
   'category.family_set': 'Cambió la familia de una categoría',
+  'category.created': 'Agregó una categoría',
+  'category.updated': 'Cambió una categoría',
   'warehouse.created': 'Agregó un almacén',
   'warehouse.updated': 'Cambió un almacén',
   'warehouse.archived': 'Archivó un almacén',

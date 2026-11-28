@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"strconv"
@@ -60,9 +61,18 @@ func (h *Handlers) AdminListProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /admin/categories — categorías activas para el filtro, el alta de productos y la pestaña de
-// categorías (con su foto, su familia y cuántos productos tienen; spec 091).
+// categorías (con su foto, su familia y cuántos productos tienen; spec 091). `status=all` agrega las
+// apagadas (el MCP, spec 099); cualquier otro valor se rechaza en vez de caer a «solo activas».
 func (h *Handlers) AdminCategories(w http.ResponseWriter, r *http.Request) {
-	items, err := h.admin.CategoryList(r.Context())
+	includeInactive := false
+	if r.URL.Query().Has("status") {
+		if r.URL.Query().Get("status") != "all" {
+			Error(w, fmt.Errorf("%w: status es all o se omite", domain.ErrValidation))
+			return
+		}
+		includeInactive = true
+	}
+	items, err := h.admin.CategoryList(r.Context(), includeInactive)
 	if err != nil {
 		Error(w, err)
 		return

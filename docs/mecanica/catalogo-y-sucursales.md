@@ -79,4 +79,20 @@ Notas de mecánica de esta área: lo que no se ve en el código ni en la pantall
     abrir el editor. En local, `start.sh` crea el bucket de versitygw con lectura pública; el
     almacenamiento no manda CORS, así que una prueba que lea pixeles baja la foto desde Node, no
     con `fetch` desde la página.
-
+- **Árbol de categorías: dos niveles** (spec 099). La pantalla de venta pinta raíces y las
+  subcategorías de la raíz elegida; una de tercer nivel, o una activa colgada de un padre apagado,
+  desaparece de la venta sin error. Las reglas viven en `domain.CheckCategoryChange` y las aplican el
+  alta y el PATCH de `/admin/categories` (el MCP: `category_create`, `category_update`). Cuatro cosas
+  que no se ven:
+  - **Las reglas son del servicio, no de la base**: un `insert` o `update` por SQL a mano, o el
+    importador de FUDO, no las aplican. Se escribe por la API o se revisa a mano.
+  - **`categories.parent_id` es llave foránea de una columna** y salta RLS: aceptaría un padre de otra
+    empresa. El servicio lee el padre bajo RLS y uno ajeno «no existe». La llave compuesta es del #344.
+  - **Categoría y padre se bloquean en una sola sentencia y en orden de id**
+    (`LockCategoriesForChange`): con dos candados en el orden pedido, mover A bajo B y B bajo A a la
+    vez daba deadlock (lo vigila `TestCrossedCategoryMovesDoNotDeadlock`).
+  - **Puede quedar un producto activo en una categoría apagada**: un alta de producto concurrente
+    espera el commit de quien apaga (la llave foránea toma `FOR KEY SHARE`) e inserta en la ya
+    inactiva, y reactivar un producto no pasa por la llave. Se aceptó para no acoplar el alta de
+    productos a un candado más; `categories_list` con `include_inactive` lo deja ver (productos
+    activos en una inactiva).

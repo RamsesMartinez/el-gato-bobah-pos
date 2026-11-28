@@ -11,6 +11,47 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const costingNames = `-- name: CostingNames :many
+select 'product'::text as kind, id, name::text as name from products where id = any($1::bigint[])
+union all
+select 'option'::text, id, name::text from modifier_options where id = any($2::bigint[])
+union all
+select 'prep'::text, id, name::text from ingredients where id = any($3::bigint[])
+`
+
+type CostingNamesParams struct {
+	ProductIds []int64 `json:"product_ids"`
+	OptionIds  []int64 `json:"option_ids"`
+	PrepIds    []int64 `json:"prep_ids"`
+}
+
+type CostingNamesRow struct {
+	Kind string `json:"kind"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// Los nombres de lo que la vista previa dice que cambia de costo.
+func (q *Queries) CostingNames(ctx context.Context, arg CostingNamesParams) ([]CostingNamesRow, error) {
+	rows, err := q.db.Query(ctx, costingNames, arg.ProductIds, arg.OptionIds, arg.PrepIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CostingNamesRow{}
+	for rows.Next() {
+		var i CostingNamesRow
+		if err := rows.Scan(&i.Kind, &i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getGeneralExpectedWaste = `-- name: GetGeneralExpectedWaste :one
 select bs.expected_waste_pct from business_settings bs limit 1
 `
@@ -23,6 +64,36 @@ func (q *Queries) GetGeneralExpectedWaste(ctx context.Context) (*decimal.Decimal
 	var expected_waste_pct *decimal.Decimal
 	err := row.Scan(&expected_waste_pct)
 	return expected_waste_pct, err
+}
+
+const ingredientWasteInfo = `-- name: IngredientWasteInfo :one
+select i.id, i.name::text as name, i.is_active, i.expected_waste_pct, u.code::text as base_unit
+  from ingredients i
+  join units u on u.id = i.base_unit_id
+ where i.id = $1
+`
+
+type IngredientWasteInfoRow struct {
+	ID               int64            `json:"id"`
+	Name             string           `json:"name"`
+	IsActive         bool             `json:"is_active"`
+	ExpectedWastePct *decimal.Decimal `json:"expected_waste_pct"`
+	BaseUnit         string           `json:"base_unit"`
+}
+
+// La ficha que encabeza la vista previa de merma del MCP (spec 099). Bajo RLS: un insumo de otra
+// empresa no vuelve.
+func (q *Queries) IngredientWasteInfo(ctx context.Context, id int64) (IngredientWasteInfoRow, error) {
+	row := q.db.QueryRow(ctx, ingredientWasteInfo, id)
+	var i IngredientWasteInfoRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.IsActive,
+		&i.ExpectedWastePct,
+		&i.BaseUnit,
+	)
+	return i, err
 }
 
 const listComboSlotDefaultsForCosting = `-- name: ListComboSlotDefaultsForCosting :many

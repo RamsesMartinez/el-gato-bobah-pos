@@ -260,3 +260,45 @@ select exists(select 1 from categories where id = $1);
 -- petición sin categoría no debe mover el producto, y un cliente viejo que no manda el campo no
 -- puede terminar mandándolos todos a la categoría 0.
 update products set category_id = $2, updated_at = now() where id = $1;
+
+-- Alta y edición de categorías (spec 099). Las reglas del árbol viven en domain.CheckCategoryChange;
+-- estas consultas solo leen los hechos (con candado) y escriben.
+
+-- name: LockCategoriesForChange :many
+-- La categoría y su padre en UNA sentencia y en orden de id: mover A bajo B y B bajo A a la vez con
+-- candados en orden distinto daba deadlock. Bajo RLS, un id de otra empresa simplemente no vuelve:
+-- la llave foránea de parent_id es de una columna y saltaría RLS, así que el servicio no confía en ella.
+select id, name::text as name, parent_id, is_active
+  from categories
+ where id = any(@ids::bigint[])
+ order by id
+   for update;
+
+-- name: CategoryChildren :many
+-- Las subcategorías de una categoría (activas e inactivas), para la regla y la vista previa.
+select id, name::text as name, is_active from categories where parent_id = @id::bigint order by name;
+
+-- name: CategoryActiveProductCount :one
+-- Mismo predicado que product_count en AdminCategoryList.
+select count(*)::int from products where category_id = @id and is_active and system_kind is null;
+
+-- name: FindCategorySibling :one
+-- El homónimo bajo el mismo padre, para decir su id en vez de un «ya existe» a secas. `is not
+-- distinct from` porque un `=` contra un padre nulo nunca encuentra a las raíces; `id <> self` para
+-- que renombrar una categoría a su propio nombre no choque consigo misma. name es citext: no
+-- distingue mayúsculas, igual que el índice categories_name_scope.
+select id, is_active
+  from categories
+ where parent_id is not distinct from sqlc.narg(parent_id)::bigint
+   and name = @name::citext
+   and id <> @self_id::bigint
+ limit 1;
+
+-- name: InsertCategory :one
+insert into categories (name, parent_id) values (@name::citext, sqlc.narg(parent_id)::bigint)
+returning id;
+
+-- name: UpdateCategoryTree :exec
+update categories
+   set name = @name::citext, parent_id = sqlc.narg(parent_id)::bigint, is_active = @is_active
+ where id = @id;

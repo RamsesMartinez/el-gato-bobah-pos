@@ -587,3 +587,33 @@ func TestLotsOverTheCountKeepTheirOwnCode(t *testing.T) {
 		t.Fatalf("respondió %d %q: cayó al VALIDATION genérico", rec.Code, sobre.Error.Code)
 	}
 }
+
+// Las reglas de categoría (spec 099) llevan código propio: el MCP le dice al agente qué hacer por el
+// código, y sin él todas caían a CONFLICT o VALIDATION genéricos.
+func TestErrorCategoryRulesHaveTheirCode(t *testing.T) {
+	cases := []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{fmt.Errorf("%w: «Bebidas» (id 3)", domain.ErrCategoryNameTaken), 409, "CATEGORY_NAME_TAKEN"},
+		{fmt.Errorf("%w: 3 productos", domain.ErrCategoryHasActiveProducts), 409, "CATEGORY_HAS_ACTIVE_PRODUCTS"},
+		{fmt.Errorf("%w: Frías", domain.ErrCategoryHasActiveChildren), 409, "CATEGORY_HAS_ACTIVE_CHILDREN"},
+		{fmt.Errorf("%w: el padre debe ser raíz", domain.ErrCategoryParentInvalid), 422, "CATEGORY_PARENT_INVALID"},
+	}
+	for _, c := range cases {
+		t.Run(c.code, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			Error(w, c.err)
+			var got struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			}
+			_ = json.NewDecoder(w.Body).Decode(&got)
+			if w.Code != c.status || got.Error.Code != c.code {
+				t.Fatalf("= %d %q, quiere %d %q", w.Code, got.Error.Code, c.status, c.code)
+			}
+		})
+	}
+}

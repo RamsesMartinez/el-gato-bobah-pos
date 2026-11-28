@@ -102,7 +102,7 @@ func TestArticleExpectedWasteZeroIsNotEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	// La base es lo único que lleva el frappé: capturada en 0 a propósito, el general no le suma.
-	if err := svc.SetArticleExpectedWaste(ctx, k.base, wpct("0"), k.admin); err != nil {
+	if err := svc.SetArticleExpectedWaste(ctx, k.base, wpct("0"), k.admin, ""); err != nil {
 		t.Fatal(err)
 	}
 	wantCost(t, owner, "frappé cuyo único artículo está capturado en 0", "products", k.frappe, "4")
@@ -111,7 +111,7 @@ func TestArticleExpectedWasteZeroIsNotEmpty(t *testing.T) {
 		t.Fatalf("0 capturado se guardó como %v (%v): se confundiría con «sin captura»", pct, err)
 	}
 
-	if err := svc.SetArticleExpectedWaste(ctx, k.base, nil, k.admin); err != nil {
+	if err := svc.SetArticleExpectedWaste(ctx, k.base, nil, k.admin, ""); err != nil {
 		t.Fatal(err)
 	}
 	wantCost(t, owner, "frappé con el artículo sin captura vuelve al general", "products", k.frappe, "4.2")
@@ -162,7 +162,7 @@ func TestExpectedWasteIsIsolated(t *testing.T) {
 		if err := svc.SetProductExpectedWaste(ctx, k.frappe, wpct("10"), k.admin); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("merma de un producto ajeno = %v; quiere ErrNotFound", err)
 		}
-		if err := svc.SetArticleExpectedWaste(ctx, k.base, wpct("10"), k.admin); !errors.Is(err, domain.ErrNotFound) {
+		if err := svc.SetArticleExpectedWaste(ctx, k.base, wpct("10"), k.admin, ""); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("merma de un artículo ajeno = %v; quiere ErrNotFound", err)
 		}
 		_ = svc.SetGeneralExpectedWaste(ctx, wpct("10"), k.admin)

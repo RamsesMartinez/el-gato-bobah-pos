@@ -74,6 +74,15 @@ func Error(w http.ResponseWriter, err error) {
 	msg := err.Error()
 
 	switch {
+	// Categorías del menú (spec 099): el MCP le dice al agente qué corregir por el código.
+	case errors.Is(err, domain.ErrCategoryNameTaken):
+		status, code = http.StatusConflict, "CATEGORY_NAME_TAKEN"
+	case errors.Is(err, domain.ErrCategoryHasActiveProducts):
+		status, code = http.StatusConflict, "CATEGORY_HAS_ACTIVE_PRODUCTS"
+	case errors.Is(err, domain.ErrCategoryHasActiveChildren):
+		status, code = http.StatusConflict, "CATEGORY_HAS_ACTIVE_CHILDREN"
+	case errors.Is(err, domain.ErrCategoryParentInvalid):
+		status, code = http.StatusUnprocessableEntity, "CATEGORY_PARENT_INVALID"
 	// Fotos del catálogo (spec 091): cada rechazo con su código; la pantalla y el MCP actúan distinto.
 	case errors.Is(err, domain.ErrImageInvalid):
 		status, code = http.StatusUnprocessableEntity, "IMAGE_INVALID"
