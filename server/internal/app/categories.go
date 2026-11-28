@@ -95,6 +95,13 @@ func (s *AdminService) UpdateCategory(ctx context.Context, id int64, p CategoryP
 		if p.SetParent {
 			next.ParentID = p.ParentID
 		}
+		out = CategoryRow{ID: id, Name: next.Name, ParentID: next.ParentID, IsActive: next.Active}
+		before, after := categoryDiff(cur, next)
+		if len(after) == 0 {
+			// Nada cambia: ni se valida (un árbol heredado inválido no hace fallar un no-cambio) ni se
+			// escribe ni deja bitácora.
+			return nil
+		}
 		facts := domain.CategoryFacts{Target: cur}
 		if next.ParentID != nil {
 			if facts.Parent = nodes[*next.ParentID]; facts.Parent == nil && !p.SetParent {
@@ -127,11 +134,6 @@ func (s *AdminService) UpdateCategory(ctx context.Context, id int64, p CategoryP
 		}
 		if err := domain.CheckCategoryChange(facts, next); err != nil {
 			return err
-		}
-		out = CategoryRow{ID: id, Name: next.Name, ParentID: next.ParentID, IsActive: next.Active}
-		before, after := categoryDiff(cur, next)
-		if len(after) == 0 {
-			return nil
 		}
 		if _, renamed := after["name"]; renamed || !sameID(cur.ParentID, next.ParentID) {
 			if err := checkSibling(ctx, q, next.Name, next.ParentID, id); err != nil {

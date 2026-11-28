@@ -54,6 +54,14 @@ func TestCheckCategoryChange(t *testing.T) {
 		{name: "renombrar una subcategoría ya activa bajo un padre inactivo no se bloquea por el padre",
 			facts: CategoryFacts{Target: &CategoryNode{ID: 6, Name: "Viejo", ParentID: catID(2), Active: true}, Parent: inactiveRoot},
 			next:  CategoryNext{Name: "Nuevo", ParentID: catID(2), Active: true}},
+		// Un árbol heredado de antes de las reglas (tercer nivel, o una subcategoría con hijas) no
+		// bloquea renombrar ni apagar sin mover: las reglas del padre aplican cuando el padre cambia.
+		{name: "renombrar una de tercer nivel heredada sin moverla",
+			facts: CategoryFacts{Target: &CategoryNode{ID: 7, Name: "Nieta", ParentID: catID(3), Active: true}, Parent: sub},
+			next:  CategoryNext{Name: "Nieta nueva", ParentID: catID(3), Active: true}},
+		{name: "apagar una subcategoría heredada que tiene hijas apagadas",
+			facts: CategoryFacts{Target: sub, Parent: root, HasChildren: true},
+			next:  CategoryNext{Name: "Frías", ParentID: catID(1), Active: false}},
 		{name: "apagar una subcategoría inactiva bajo padre inactivo", facts: CategoryFacts{Target: &CategoryNode{ID: 5, Name: "Molletes", ParentID: catID(2)}, Parent: inactiveRoot},
 			next: CategoryNext{Name: "Molletes", ParentID: catID(2), Active: false}},
 	}

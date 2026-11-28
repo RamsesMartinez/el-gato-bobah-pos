@@ -74,20 +74,25 @@ func CheckCategoryChange(f CategoryFacts, next CategoryNext) error {
 		if f.Parent == nil || f.Parent.ID != *next.ParentID {
 			return fmt.Errorf("%w: no existe la categoría %d", ErrNotFound, *next.ParentID)
 		}
-		if f.Target != nil && f.Target.ID == *next.ParentID {
-			return fmt.Errorf("%w: una categoría no puede ser su propio padre", ErrCategoryParentInvalid)
+		// Las reglas del padre aplican cuando el padre cambia (o en un alta): un árbol heredado de antes
+		// de ellas —un tercer nivel, una subcategoría con hijas— no bloquea renombrarla ni apagarla.
+		parentChanges := f.Target == nil || !sameParent(f.Target.ParentID, next.ParentID)
+		if parentChanges {
+			if f.Target != nil && f.Target.ID == *next.ParentID {
+				return fmt.Errorf("%w: una categoría no puede ser su propio padre", ErrCategoryParentInvalid)
+			}
+			if f.Parent.ParentID != nil {
+				return fmt.Errorf("%w: «%s» ya es subcategoría; el padre debe ser una categoría raíz",
+					ErrCategoryParentInvalid, f.Parent.Name)
+			}
+			if f.Target != nil && f.HasChildren {
+				return fmt.Errorf("%w: «%s» tiene subcategorías y no puede quedar dentro de otra",
+					ErrCategoryParentInvalid, f.Target.Name)
+			}
 		}
-		if f.Parent.ParentID != nil {
-			return fmt.Errorf("%w: «%s» ya es subcategoría; el padre debe ser una categoría raíz",
-				ErrCategoryParentInvalid, f.Parent.Name)
-		}
-		if f.Target != nil && f.HasChildren {
-			return fmt.Errorf("%w: «%s» tiene subcategorías y no puede quedar dentro de otra",
-				ErrCategoryParentInvalid, f.Target.Name)
-		}
-		// Solo cuando la categoría pasa a estar activa bajo ese padre (alta, reactivar o mover): un
-		// estado viejo con una subcategoría activa bajo un padre apagado no bloquea renombrarla.
-		becomesVisible := f.Target == nil || !f.Target.Active || !sameParent(f.Target.ParentID, next.ParentID)
+		// Igual con el padre apagado: solo cuando la categoría pasa a estar activa bajo él (alta,
+		// reactivar o mover).
+		becomesVisible := parentChanges || !f.Target.Active
 		if next.Active && !f.Parent.Active && becomesVisible {
 			return fmt.Errorf("%w: «%s» está inactiva; actívala primero", ErrCategoryParentInvalid, f.Parent.Name)
 		}

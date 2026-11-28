@@ -21,8 +21,9 @@ const (
 )
 
 // pctPattern es el % de merma que acepta la herramienta: de 0 a 99.99, dos decimales. El tope
-// exclusivo de 100 es el de domain.ValidExpectedWastePct.
-var pctPattern = regexp.MustCompile(`^[0-9]{1,2}(\.[0-9]{1,2})?$`)
+// exclusivo de 100 es el de domain.ValidExpectedWastePct. Sin cero a la izquierda: el % viaja como
+// número JSON y "08" no lo es (la vista previa lo aceptaba y aplicar tronaba).
+var pctPattern = regexp.MustCompile(`^(0|[1-9][0-9]?)(\.[0-9]{1,2})?$`)
 
 func init() {
 	for name, routes := range map[string][]mcpRoute{
@@ -146,7 +147,10 @@ func allCategories(s *mcpSession, ctx context.Context, tool string) (json.RawMes
 	var env struct {
 		Items []categoryRow `json:"items"`
 	}
-	_ = json.Unmarshal(b, &env)
+	// Un cuerpo ilegible no es «no hay categorías»: diría «no existe la categoría N» de una que sí.
+	if err := json.Unmarshal(b, &env); err != nil {
+		return nil, nil, err
+	}
 	return b, env.Items, nil
 }
 
@@ -239,6 +243,9 @@ func register099() {
 			}
 			var attention []string
 			similar := similarNames(b, in.Name)
+			if similar == nil {
+				similar = []map[string]any{}
+			}
 			if len(similar) > 0 {
 				attention = append(attention, "Ya hay categorías con nombre parecido (activas o inactivas): si es una de ellas, "+
 					"úsala (o reactívala con category_update) y no crees otra.")
@@ -281,7 +288,7 @@ func register099() {
 			if cur == nil {
 				return nil, nil
 			}
-			var children []map[string]any
+			children := []map[string]any{}
 			var activeChildren []string
 			for _, r := range rows {
 				if r.ParentID != nil && *r.ParentID == cur.ID {

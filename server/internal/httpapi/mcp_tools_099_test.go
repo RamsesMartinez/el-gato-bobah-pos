@@ -25,6 +25,9 @@ func TestExpectedWasteSetArgsBody(t *testing.T) {
 		{name: "motivo de puros espacios", args: expectedWasteSetArgs{IngredientID: 1, Pct: new("8"), Reason: "   "}, errHas: "reason"},
 		{name: "100 no cabe", args: expectedWasteSetArgs{IngredientID: 1, Pct: new("100"), Reason: "x"}, errHas: "menos de 100"},
 		{name: "tres decimales", args: expectedWasteSetArgs{IngredientID: 1, Pct: new("7.125"), Reason: "x"}, errHas: "menos de 100"},
+		{name: "cero a la izquierda no es un número JSON y tronaba al aplicar", args: expectedWasteSetArgs{IngredientID: 1, Pct: new("08"), Reason: "x"}, errHas: "menos de 100"},
+		{name: "00 tampoco", args: expectedWasteSetArgs{IngredientID: 1, Pct: new("00"), Reason: "x"}, errHas: "menos de 100"},
+		{name: "0.5 sí", args: expectedWasteSetArgs{IngredientID: 1, Pct: new("0.5"), Reason: "x"}, wantPct: "0.5"},
 		{name: "negativo", args: expectedWasteSetArgs{IngredientID: 1, Pct: new("-1"), Reason: "x"}, errHas: "menos de 100"},
 		{name: "sin insumo", args: expectedWasteSetArgs{Pct: new("8"), Reason: "x"}, errHas: "ingredient_id"},
 	}

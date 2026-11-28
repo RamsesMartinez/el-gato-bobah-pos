@@ -163,6 +163,16 @@ func TestMCPCategories(t *testing.T) {
 			"reactívala")
 	})
 
+	t.Run("los arreglos vacíos salen como [] y no como null", func(t *testing.T) {
+		// Sobre el texto crudo: deserializar a Go borraría la diferencia entre null y [].
+		if res := callTool(t, router, tok, "category_update", map[string]any{"category_id": vacia, "name": "Desayunos viejos MCP"}); !strings.Contains(res.text, `"children":[]`) {
+			t.Fatalf("una categoría sin subcategorías no trae children []: %s", res.text)
+		}
+		if res := callTool(t, router, tok, "category_create", map[string]any{"name": "Zzz única"}); !strings.Contains(res.text, `"similar":[]`) {
+			t.Fatalf("sin parecidas no trae similar []: %s", res.text)
+		}
+	})
+
 	t.Run("un padre de otra empresa no existe", func(t *testing.T) {
 		var ajena int64
 		if err := w.owner.Pool.QueryRow(ctx, `insert into categories (company_id, name) values ($1, 'Ajena MCP') returning id`, w.other).Scan(&ajena); err != nil {
