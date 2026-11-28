@@ -16,7 +16,8 @@ mal formado → 400 `VALIDATION`. Id de otra empresa o inexistente → 404.
   "fallback": {"productOrGeneral": true, "generalPct": 5},
   "unchanged": false,
   "uses": [
-    {"kind": "product", "id": 10, "name": "…", "costSource": "receta", "before": 25.10, "after": 25.14},
+    {"kind": "product", "id": 10, "name": "…", "before": 25.10, "after": 25.14},
+    {"kind": "product", "id": 12, "name": "…", "before": 30, "after": 30, "manual": true},
     {"kind": "option",  "id": 44, "name": "…", "before": 3.20, "after": 3.21},
     {"kind": "prep",    "id": 90, "name": "…", "before": 0.0400, "after": 0.0404}
   ]
@@ -25,14 +26,15 @@ mal formado → 400 `VALIDATION`. Id de otra empresa o inexistente → 404.
 
 - `current.pct`/`next.pct` = `null` cuando no hay captura; entonces su `effectiveCost` es `null` y
   `fallback.productOrGeneral` = `true` (el costo depende del producto; ver `uses`).
-- `uses` es siempre arreglo (vacío si nadie lo usa); transitivo por preparados. `costSource:
-  "manual"` → `before == after`.
-- Costos de producto y extra con 2 decimales; de insumo y preparado (por unidad base) con 4.
+- `uses` es siempre arreglo (vacío si nadie lo usa); transitivo por preparados, combos y extras que
+  son otro producto. `manual: true` = producto de costo manual: usa el insumo y `before == after`.
+- Todos los costos con 4 decimales, el redondeo de `current_cost`: con 2, un cambio chico se vería
+  como «sin cambio».
 
 ## PUT /stock/articles/{id}/expected-waste  (ampliada)
 
 Cuerpo: `{"pct": número | null, "reason"?: "texto"}`. `reason` opcional (la pantalla no lo manda);
-si llega: trim, 1–200 caracteres, o 400. Va al `after` del evento `ingredient.expected_waste`.
+si llega: se quitan los espacios de los extremos; vacío = sin motivo; más de 200 letras = 400. Va al `after` del evento `ingredient.expected_waste`.
 Respuesta sin cambios: `{"pct": …}`.
 
 ## GET /admin/categories?status=all  (ampliada)

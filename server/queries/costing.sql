@@ -74,3 +74,19 @@ update ingredients i set expected_waste_pct = sqlc.narg(pct), updated_at = now()
   from (select expected_waste_pct from ingredients where id = sqlc.arg(id)) old
  where i.id = sqlc.arg(id)
 returning old.expected_waste_pct as previous;
+
+-- name: IngredientWasteInfo :one
+-- La ficha que encabeza la vista previa de merma del MCP (spec 099). Bajo RLS: un insumo de otra
+-- empresa no vuelve.
+select i.id, i.name::text as name, i.is_active, i.expected_waste_pct, u.code::text as base_unit
+  from ingredients i
+  join units u on u.id = i.base_unit_id
+ where i.id = @id;
+
+-- name: CostingNames :many
+-- Los nombres de lo que la vista previa dice que cambia de costo.
+select 'product'::text as kind, id, name::text as name from products where id = any(@product_ids::bigint[])
+union all
+select 'option'::text, id, name::text from modifier_options where id = any(@option_ids::bigint[])
+union all
+select 'prep'::text, id, name::text from ingredients where id = any(@prep_ids::bigint[]);

@@ -386,3 +386,22 @@ func refsCategoryFamily(in categoryFamilyArgs) []domain.Ref {
 	l.add(domain.RefCategory, in.CategoryID)
 	return l
 }
+
+func refsExpectedWasteSet(in expectedWasteSetArgs) []domain.Ref {
+	var l refList
+	l.add(domain.RefIngredient, in.IngredientID)
+	return l
+}
+
+func refsCategoryCreate(in categoryCreateArgs) []domain.Ref {
+	var l refList
+	l.opt(domain.RefCategory, in.ParentID)
+	return l
+}
+
+func refsCategoryUpdate(in categoryUpdateArgs) []domain.Ref {
+	var l refList
+	l.add(domain.RefCategory, in.CategoryID)
+	l.opt(domain.RefCategory, in.ParentID)
+	return l
+}

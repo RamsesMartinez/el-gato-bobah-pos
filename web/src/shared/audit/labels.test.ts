@@ -23,7 +23,7 @@ const FROM_SERVER = [
   'stock.count_confirm_asked', 'settings.count_limits_changed', 'expense.edited',
   'ingredient.merged', 'ingredient.merged_into',
   'product.image_set', 'product.image_removed', 'category.image_set', 'category.image_removed',
-  'category.family_set',
+  'category.family_set', 'category.created', 'category.updated',
   'warehouse.created', 'warehouse.updated', 'warehouse.archived', 'warehouse.restored', 'transfer.created',
   'ingredient.density_set', 'ingredient.density_cleared', 'presentation.tare_set',
   'role.created', 'role.renamed', 'role.permissions_changed', 'role.reset', 'role.deactivated',

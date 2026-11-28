@@ -19,15 +19,46 @@ func decodeExpectedWastePct(r *http.Request) (*decimal.Decimal, error) {
 	if err := DecodeStrict(r, &body); err != nil {
 		return nil, err
 	}
-	if len(body.Pct) == 0 {
+	return parseExpectedWastePct(body.Pct)
+}
+
+// decodeArticleExpectedWaste es decodeExpectedWastePct con el motivo opcional que manda el MCP
+// (spec 099). Solo la merma del artículo lo acepta: es la única que el MCP cambia.
+func decodeArticleExpectedWaste(r *http.Request) (*decimal.Decimal, string, error) {
+	var body struct {
+		Pct    json.RawMessage `json:"pct"`
+		Reason string          `json:"reason"`
+	}
+	if err := DecodeStrict(r, &body); err != nil {
+		return nil, "", err
+	}
+	pct, err := parseExpectedWastePct(body.Pct)
+	return pct, body.Reason, err
+}
+
+func parseExpectedWastePct(raw json.RawMessage) (*decimal.Decimal, error) {
+	if len(raw) == 0 {
 		return nil, fmt.Errorf("%w: falta el porcentaje", domain.ErrValidation)
 	}
-	if string(body.Pct) == "null" {
+	if string(raw) == "null" {
 		return nil, nil
 	}
 	var v decimal.Decimal
-	if err := json.Unmarshal(body.Pct, &v); err != nil || body.Pct[0] == '"' {
+	if err := json.Unmarshal(raw, &v); err != nil || raw[0] == '"' {
 		return nil, fmt.Errorf("%w: el porcentaje es un número", domain.ErrValidation)
+	}
+	return &v, nil
+}
+
+// parsePreviewPct lee el % de la vista previa de la URL: un número, o `none` para «sin captura».
+func parsePreviewPct(r *http.Request) (*decimal.Decimal, error) {
+	raw := r.URL.Query().Get("pct")
+	if raw == "none" {
+		return nil, nil
+	}
+	v, err := decimal.NewFromString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%w: pct es un número de 0 a menos de 100, o none (sin captura)", domain.ErrValidation)
 	}
 	return &v, nil
 }
@@ -51,16 +82,50 @@ func (h *Handlers) PutProductExpectedWaste(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// PUT /stock/articles/{id}/expected-waste — menu.configure. La merma de un artículo.
+// PUT /stock/articles/{id}/expected-waste — menu.configure. La merma de un artículo, con el motivo
+// opcional que manda el MCP (spec 099).
 func (h *Handlers) PutArticleExpectedWaste(w http.ResponseWriter, r *http.Request) {
 	id, err := idParam(r, "id")
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	h.putExpectedWaste(w, r, func(pct *decimal.Decimal, user int64) error {
-		return h.costing.SetArticleExpectedWaste(r.Context(), id, pct, user)
-	})
+	pct, reason, err := decodeArticleExpectedWaste(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	if err := h.costing.SetArticleExpectedWaste(r.Context(), id, pct, u.ID, reason); err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"pct": pct})
+}
+
+// GET /stock/articles/{id}/expected-waste/preview?pct= — menu.configure. Qué le pasaría al costo de
+// lo que usa el artículo con otra merma, sin guardar nada (la vista previa del MCP, spec 099).
+func (h *Handlers) ArticleExpectedWastePreview(w http.ResponseWriter, r *http.Request) {
+	id, err := idParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	pct, err := parsePreviewPct(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	p, err := h.costing.ArticleExpectedWastePreview(r.Context(), id, pct)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, p)
 }
 
 func (h *Handlers) putExpectedWaste(w http.ResponseWriter, r *http.Request, set func(*decimal.Decimal, int64) error) {

@@ -472,6 +472,49 @@ func (q *Queries) AdminUpdateProductCategory(ctx context.Context, arg AdminUpdat
 	return err
 }
 
+const categoryActiveProductCount = `-- name: CategoryActiveProductCount :one
+select count(*)::int from products where category_id = $1 and is_active and system_kind is null
+`
+
+// Mismo predicado que product_count en AdminCategoryList.
+func (q *Queries) CategoryActiveProductCount(ctx context.Context, id int64) (int32, error) {
+	row := q.db.QueryRow(ctx, categoryActiveProductCount, id)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const categoryChildren = `-- name: CategoryChildren :many
+select id, name::text as name, is_active from categories where parent_id = $1::bigint order by name
+`
+
+type CategoryChildrenRow struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	IsActive bool   `json:"is_active"`
+}
+
+// Las subcategorías de una categoría (activas e inactivas), para la regla y la vista previa.
+func (q *Queries) CategoryChildren(ctx context.Context, id int64) ([]CategoryChildrenRow, error) {
+	rows, err := q.db.Query(ctx, categoryChildren, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CategoryChildrenRow{}
+	for rows.Next() {
+		var i CategoryChildrenRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.IsActive); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const categoryExists = `-- name: CategoryExists :one
 select exists(select 1 from categories where id = $1)
 `
@@ -648,6 +691,37 @@ func (q *Queries) EnsureChannel(ctx context.Context, arg EnsureChannelParams) (i
 	return id, err
 }
 
+const findCategorySibling = `-- name: FindCategorySibling :one
+select id, is_active
+  from categories
+ where parent_id is not distinct from $1::bigint
+   and name = $2::citext
+   and id <> $3::bigint
+ limit 1
+`
+
+type FindCategorySiblingParams struct {
+	ParentID *int64 `json:"parent_id"`
+	Name     string `json:"name"`
+	SelfID   int64  `json:"self_id"`
+}
+
+type FindCategorySiblingRow struct {
+	ID       int64 `json:"id"`
+	IsActive bool  `json:"is_active"`
+}
+
+// El homónimo bajo el mismo padre, para decir su id en vez de un «ya existe» a secas. `is not
+// distinct from` porque un `=` contra un padre nulo nunca encuentra a las raíces; `id <> self` para
+// que renombrar una categoría a su propio nombre no choque consigo misma. name es citext: no
+// distingue mayúsculas, igual que el índice categories_name_scope.
+func (q *Queries) FindCategorySibling(ctx context.Context, arg FindCategorySiblingParams) (FindCategorySiblingRow, error) {
+	row := q.db.QueryRow(ctx, findCategorySibling, arg.ParentID, arg.Name, arg.SelfID)
+	var i FindCategorySiblingRow
+	err := row.Scan(&i.ID, &i.IsActive)
+	return i, err
+}
+
 const getProductCloneInfo = `-- name: GetProductCloneInfo :one
 
 select type, recipe_id from products where id = $1
@@ -716,6 +790,23 @@ func (q *Queries) GetProductSalesForAudit(ctx context.Context, id int64) (GetPro
 	return i, err
 }
 
+const insertCategory = `-- name: InsertCategory :one
+insert into categories (name, parent_id) values ($1::citext, $2::bigint)
+returning id
+`
+
+type InsertCategoryParams struct {
+	Name     string `json:"name"`
+	ParentID *int64 `json:"parent_id"`
+}
+
+func (q *Queries) InsertCategory(ctx context.Context, arg InsertCategoryParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertCategory, arg.Name, arg.ParentID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const listComboSlots = `-- name: ListComboSlots :many
 select id, name, min_select, max_select, position from combo_slots where combo_id = $1 order by position, id
 `
@@ -754,6 +845,52 @@ func (q *Queries) ListComboSlots(ctx context.Context, comboID int64) ([]ListComb
 	return items, nil
 }
 
+const lockCategoriesForChange = `-- name: LockCategoriesForChange :many
+
+select id, name::text as name, parent_id, is_active
+  from categories
+ where id = any($1::bigint[])
+ order by id
+   for update
+`
+
+type LockCategoriesForChangeRow struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	ParentID *int64 `json:"parent_id"`
+	IsActive bool   `json:"is_active"`
+}
+
+// Alta y edición de categorías (spec 099). Las reglas del árbol viven en domain.CheckCategoryChange;
+// estas consultas solo leen los hechos (con candado) y escriben.
+// La categoría y su padre en UNA sentencia y en orden de id: mover A bajo B y B bajo A a la vez con
+// candados en orden distinto daba deadlock. Bajo RLS, un id de otra empresa simplemente no vuelve:
+// la llave foránea de parent_id es de una columna y saltaría RLS, así que el servicio no confía en ella.
+func (q *Queries) LockCategoriesForChange(ctx context.Context, ids []int64) ([]LockCategoriesForChangeRow, error) {
+	rows, err := q.db.Query(ctx, lockCategoriesForChange, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockCategoriesForChangeRow{}
+	for rows.Next() {
+		var i LockCategoriesForChangeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ParentID,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setProductSalesFields = `-- name: SetProductSalesFields :exec
 update products set allow_oversell = $1, description = $2, updated_at = now()
 where id = $3
@@ -767,6 +904,29 @@ type SetProductSalesFieldsParams struct {
 
 func (q *Queries) SetProductSalesFields(ctx context.Context, arg SetProductSalesFieldsParams) error {
 	_, err := q.db.Exec(ctx, setProductSalesFields, arg.AllowOversell, arg.Description, arg.ID)
+	return err
+}
+
+const updateCategoryTree = `-- name: UpdateCategoryTree :exec
+update categories
+   set name = $1::citext, parent_id = $2::bigint, is_active = $3
+ where id = $4
+`
+
+type UpdateCategoryTreeParams struct {
+	Name     string `json:"name"`
+	ParentID *int64 `json:"parent_id"`
+	IsActive bool   `json:"is_active"`
+	ID       int64  `json:"id"`
+}
+
+func (q *Queries) UpdateCategoryTree(ctx context.Context, arg UpdateCategoryTreeParams) error {
+	_, err := q.db.Exec(ctx, updateCategoryTree,
+		arg.Name,
+		arg.ParentID,
+		arg.IsActive,
+		arg.ID,
+	)
 	return err
 }
 

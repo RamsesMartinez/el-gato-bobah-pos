@@ -29,25 +29,33 @@ func (q *Queries) AddMediaPendingDeletion(ctx context.Context, arg AddMediaPendi
 
 const adminCategoryList = `-- name: AdminCategoryList :many
 select c.id, c.name, c.parent_id, c.image_url, coalesce(c.food_family::text, '')::text as food_family,
+       c.is_active,
        (select count(*) from products p
-         where p.category_id = c.id and p.is_active and p.system_kind is null)::int as product_count
+         where p.category_id = c.id and p.is_active and p.system_kind is null)::int as product_count,
+       (select count(*) from products p
+         where p.category_id = c.id and not p.is_active and p.system_kind is null)::int as inactive_product_count
   from categories c
- where c.is_active
+ where c.is_active or $1::boolean
  order by c.parent_id nulls first, c.sort_key, c.name
 `
 
 type AdminCategoryListRow struct {
-	ID           int64   `json:"id"`
-	Name         string  `json:"name"`
-	ParentID     *int64  `json:"parent_id"`
-	ImageUrl     *string `json:"image_url"`
-	FoodFamily   string  `json:"food_family"`
-	ProductCount int32   `json:"product_count"`
+	ID                   int64   `json:"id"`
+	Name                 string  `json:"name"`
+	ParentID             *int64  `json:"parent_id"`
+	ImageUrl             *string `json:"image_url"`
+	FoodFamily           string  `json:"food_family"`
+	IsActive             bool    `json:"is_active"`
+	ProductCount         int32   `json:"product_count"`
+	InactiveProductCount int32   `json:"inactive_product_count"`
 }
 
 // La pestaña de categorías: foto, familia y cuántos productos activos del catálogo tiene cada una.
-func (q *Queries) AdminCategoryList(ctx context.Context) ([]AdminCategoryListRow, error) {
-	rows, err := q.db.Query(ctx, adminCategoryList)
+// Con include_inactive (el MCP, spec 099) también las apagadas, para poder reactivarlas. «Producto
+// activo» es el mismo predicado que CategoryActiveProductCount: la cifra que se ve en la lista es la
+// que bloquea apagarla.
+func (q *Queries) AdminCategoryList(ctx context.Context, includeInactive bool) ([]AdminCategoryListRow, error) {
+	rows, err := q.db.Query(ctx, adminCategoryList, includeInactive)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +69,9 @@ func (q *Queries) AdminCategoryList(ctx context.Context) ([]AdminCategoryListRow
 			&i.ParentID,
 			&i.ImageUrl,
 			&i.FoodFamily,
+			&i.IsActive,
 			&i.ProductCount,
+			&i.InactiveProductCount,
 		); err != nil {
 			return nil, err
 		}

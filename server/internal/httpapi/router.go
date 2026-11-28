@@ -583,6 +583,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Patch("/articles/{id}", h.UpdateArticle)
 					// La merma del artículo es decisión del menú (spec 096): menu.configure, aparte de la ficha.
 					r.With(RequirePermission(h.permissions, domain.PermMenuConfigure)).Put("/articles/{id}/expected-waste", h.PutArticleExpectedWaste)
+					r.With(RequirePermission(h.permissions, domain.PermMenuConfigure)).Get("/articles/{id}/expected-waste/preview", h.ArticleExpectedWastePreview)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/cost", h.CorrectArticleCost)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryView)).Get("/articles/{id}/archive-check", h.ArticleArchiveCheck)
 					r.With(RequirePermission(h.permissions, domain.PermInventoryConfigure)).Post("/articles/{id}/archive", h.ArchiveArticle)
@@ -681,6 +682,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				menuConfigure := RequirePermission(h.permissions, domain.PermMenuConfigure)
 				// Fotos del catálogo (spec 091): por permiso, con tope de escrituras por persona.
 				mediaWrite := rateLimitUser(h.mediaWrites)
+				r.With(menuConfigure).Post("/admin/categories", h.CreateCategory)
 				r.With(menuConfigure).Patch("/admin/categories/{id}", h.PatchCategory)
 				r.With(menuConfigure).Get("/admin/categories/{id}/image", h.GetCategoryImage)
 				r.With(menuConfigure, mediaWrite).Put("/admin/categories/{id}/image", h.PutCategoryImage)
